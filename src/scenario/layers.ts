@@ -47,7 +47,7 @@ export interface LayerContext {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** WGS84 bounding box (west, south, east, north) of the domain square plus a margin (m). */
-export function domainBBox(centre: LatLon, extent: number, marginM = SCENARIO_PARAMS.queryMarginM): [number, number, number, number] {
+export function domainBBox(centre: LatLon, extent: number, marginM: number = SCENARIO_PARAMS.queryMarginM): [number, number, number, number] {
   const p = new LocalProjection(centre);
   const h = extent / 2 + marginM;
   const sw = p.toLatLon(-h, -h);

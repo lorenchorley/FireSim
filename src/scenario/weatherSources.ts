@@ -18,7 +18,7 @@
  * annual rainfall from the 10-year archive mean → demo table → 1.25 × the last 365 days.
  */
 import type { DailyWeather, LatLon, WeatherSeries, WindEdit } from '../core/types';
-import { cachedFetch, fetchJson, isHttpError, openCache, type CacheOrigin, type KV } from '../data';
+import { cachedFetch, fetchJson, findAreaPacks, isHttpError, loadAreaPackItem, openCache, type CacheOrigin, type KV } from '../data';
 import { droughtFactor, kbdiSeries } from '../fuel/moisture/drought';
 import { applyBeltKitToForecast, normaliseManualSeries, type BeltKitReading } from './beltKit';
 import { MESSAGES } from './messages';
@@ -168,6 +168,9 @@ interface LivePlan {
 
 const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+/** Surface variables requested with the pressure-level fallbacks (so the parser's required checks pass). */
+const REQUIRED_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'wind_direction_10m'];
+
 /** The request plan of a live mode (§11.1). */
 export function livePlan(loc: LatLon, t0: number, durationS: number, now: number, isPast: boolean): LivePlan {
   const P = SCENARIO_PARAMS;
@@ -195,8 +198,6 @@ export function livePlan(loc: LatLon, t0: number, durationS: number, now: number
   }
   return { kind: 'historical', surface: [['era5', archiveHourlyUrl(loc, startDate, endDate)]], levels: [], label: 'ERA5 reanalysis' };
 }
-
-const REQUIRED_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'wind_direction_10m'];
 
 /** Parse and validate one response for the window; null when unusable. */
 function usable(json: OpenMeteoResponse, kind: LiveKind, source: string, from: number, to: number): WeatherSeries | null {
@@ -228,8 +229,8 @@ async function storedWeather(loc: LatLon, from: number, to: number, ctx: Weather
   }
   if (best) return best;
   try {
-    const { findAreaPacks, loadAreaPackItem } = await import('../data');
-    for (const m of await findAreaPacks(ctx.centre, 3000, kv)) {
+    // Weather is point data: any pack whose square contains the domain centre will do.
+    for (const m of await findAreaPacks(ctx.centre, 0, kv)) {
       if (!m.itemNames.includes('weather')) continue;
       const w = await loadAreaPackItem<OpenMeteoResponse>(m.id, 'weather', kv);
       if (!w) continue;
@@ -349,17 +350,14 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       const hs = [...mode.series.hours].sort((a, b) => a.time - b.time);
       if (!hs.length) throw new Error('Manual weather: no readings');
       const t0 = mode.start ?? hs.find((h) => h.time >= hs[0]!.time + H)?.time ?? hs[0]!.time;
-      const r = normaliseManualSeries(mode.series, {
+      const input: WeatherSeries = { ...mode.series };
+      if (input.kbdi === undefined && mode.kbdi !== undefined) input.kbdi = mode.kbdi;
+      const r = normaliseManualSeries(input, {
         from: t0 - P.minCachedSpinupHours * H,
         to: t0 + ctx.duration * 1000 + H,
         sourceElevation: ctx.centreElevation,
         ...(mode.cloudCover !== undefined ? { cloudCover: mode.cloudCover } : {}),
       });
-      if (mode.kbdi !== undefined && r.series.kbdi !== undefined && mode.series.kbdi === undefined) {
-        // An explicit KBDI entered with the mode overrides the one inferred from DF.
-        r.series.kbdi = mode.kbdi;
-        r.warnings = r.warnings.filter((w) => !w.startsWith('KBDI '));
-      }
       return { series: r.series, t0, maxDuration: Infinity, warnings: r.warnings, edits: [], origin: 'manual' };
     }
     case 'now':
@@ -416,6 +414,13 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
   } catch (e) {
     if (ctx.signal?.aborted) throw e;
   }
+  if (!archive.length) {
+    const pk = await packDaily(ctx);
+    if (pk) {
+      archive = pk.daily.daily.filter((d) => d.date >= start && d.date <= end);
+      if (archive.length) source = `daily history (area pack '${pk.pack}')`;
+    }
+  }
   const byDate = new Map<string, DailyWeather>();
   for (const d of archive) byDate.set(d.date, d);
   const lastArchive = archive.length ? archive[archive.length - 1]!.date : null;
@@ -460,6 +465,20 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
   return { daily, source, warnings };
 }
 
+/** The `daily` item of an area pack containing the domain centre (see areaPack.ts). */
+async function packDaily(ctx: WeatherContext): Promise<{ daily: { daily: DailyWeather[]; annualRainfall?: number }; pack: string } | null> {
+  try {
+    for (const m of await findAreaPacks(ctx.centre, 0, ctx.kv)) {
+      if (!m.itemNames.includes('daily')) continue;
+      const d = await loadAreaPackItem<{ daily: DailyWeather[]; annualRainfall?: number }>(m.id, 'daily', ctx.kv);
+      if (d && Array.isArray(d.daily)) return { daily: d, pack: m.name };
+    }
+  } catch {
+    /* no packs */
+  }
+  return null;
+}
+
 /** Annual rainfall (mm): cached 10-year archive mean → demo table → undefined (drought then uses 1.25 × 365 d). */
 export async function annualRainfall(loc: LatLon, siteId: string | undefined, t0: number, ctx: WeatherContext): Promise<{ mm?: number; source: string }> {
   const P = SCENARIO_PARAMS;
@@ -481,6 +500,8 @@ export async function annualRainfall(loc: LatLon, siteId: string | undefined, t0
       if (ctx.signal?.aborted) throw e;
     }
   }
+  const pk = await packDaily(ctx);
+  if (pk?.daily.annualRainfall !== undefined && pk.daily.annualRainfall > 0) return { mm: pk.daily.annualRainfall, source: `area pack '${pk.pack}'` };
   const table = demoAnnualRainfall(siteId);
   if (table !== undefined) return { mm: table, source: 'demo-site table' };
   return { source: 'estimated' };

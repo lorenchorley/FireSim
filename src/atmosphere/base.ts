@@ -4,7 +4,7 @@
  * time interpolation, κ scaling at z_ref, the fire-influence mask and coupling, sub-grid slope flows, ridge wind,
  * lee-separation blend, surface heat flux, the §5.2 near-surface temperature template and common diagnostics.
  */
-import { G, airDensity, CP, KAPPA_VK, RD, dewPointC, pressureIsa } from '../core/physics';
+import { G, airDensity, CP, KAPPA_VK, RD, dewPointC, pressureIsa, STABLE_NIGHT_PARAMS } from '../core/physics';
 import type { Rng } from '../core/rng';
 import type {
   AtmosDiagnostics,
@@ -591,11 +591,14 @@ export abstract class AtmosBase implements AtmosphereLike {
     const hav = this.derived.heightAboveValley;
     const z = this.terrain.elevation;
     const Ts = w.temperature;
+    // Same continuous form as fuel/moisture cellAir(): the isothermal shift z → z_inv is weighted by the stable-night
+    // strength sn = clamp(Δθ/3 K, 0, 1), so the pool fades out continuously as Δθ → 0 (D49) and both modules agree.
+    const sn = Math.min(1, Math.max(0, dTh) / STABLE_NIGHT_PARAMS.snScaleK);
     for (let k = 0; k < this.nf; k++) {
-      const h = hav[k]!;
+      const h = Math.max(0, hav[k]!);
       if (dTh > 0 && h < hInv) {
-        const zInv = z[k]! - h + hInv;
-        out[k] = Ts - (gamma * (zInv - zs)) / 1000 - dTh * (1 - h / hInv);
+        const zq = z[k]! + sn * (hInv - h);
+        out[k] = Ts - (gamma * (zq - zs)) / 1000 - dTh * (1 - h / hInv);
       } else out[k] = Ts - (gamma * (z[k]! - zs)) / 1000;
     }
   }
