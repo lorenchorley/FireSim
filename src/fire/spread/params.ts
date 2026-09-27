@@ -141,7 +141,9 @@ export const SPREAD_PARAMS = {
     /**
      * Deviation [H]: upwind cells count while burning *or* within this long after their arrival (s). The spec's
      * "burning" (t − t_arr < 3τ_f ≈ 2 min) is shorter than the time the lee-eddy backing fire needs to enter a zone
-     * that starts a cell or two below a (30 m-smoothed) crest, so the crossing head could never activate it. 0 = spec.
+     * that starts a cell or two below a (30 m-smoothed) crest, so the crossing head itself cannot activate it: on the
+     * V10 ridge (28° lee, 40 km/h, Δx 30 m) the spec rule (recentS 0, activateOnContact false) first activates the
+     * zone 28 min after the crest crossing (from later intense flank burning), these defaults 13 s after it. 0 = spec.
      */
     recentS: 1800,
     /** Deviation [H]: the zone also counts as reached when an unburnt zone cell touches the burnt area. false = spec. */
@@ -266,9 +268,16 @@ export const SPREAD_PARAMS = {
   cliffNonFlammable: true,
 } as const;
 
-export type SpreadParams = typeof SPREAD_PARAMS;
+/** Literal types of an `as const` object widened to their primitives (so overrides may take any value). */
+type Widen<T> = T extends number ? number : T extends boolean ? boolean : T extends string ? string : T extends object ? { readonly [K in keyof T]: Widen<T[K]> } : T;
 
-/** Deep-partial override of {@link SPREAD_PARAMS} (constructor option; tests and the G_max user setting). */
+/** Shape of {@link SPREAD_PARAMS} with widened value types (what the model and the math functions accept). */
+export type SpreadParams = Widen<typeof SPREAD_PARAMS>;
+
+/**
+ * One-level-deep partial override of {@link SPREAD_PARAMS} (constructor option; tests and the G_max user setting).
+ * Every value is honoured: the model passes its resolved groups to the math functions of `math.ts` and `attribution.ts`.
+ */
 export type SpreadParamsOverride = { [K in keyof SpreadParams]?: SpreadParams[K] extends object ? Partial<SpreadParams[K]> : SpreadParams[K] };
 
 /** Merge an override into a copy of the defaults (one level deep, which is all the object has). */
@@ -280,8 +289,7 @@ export function resolveSpreadParams(o?: SpreadParamsOverride): SpreadParams {
     const v = o[key];
     out[key] = v === undefined ? d : typeof d === 'object' && d !== null ? { ...(d as object), ...(v as object) } : v;
   }
-  const r = out as unknown as SpreadParams;
-  const a = r.attachment;
-  if (a.gMax < a.gMaxMin || a.gMax > a.gMaxMax) (out['attachment'] as { gMax: number }).gMax = Math.min(a.gMaxMax, Math.max(a.gMaxMin, a.gMax));
-  return r;
+  const a = out['attachment'] as { gMax: number; gMaxMin: number; gMaxMax: number };
+  if (!(a.gMax >= a.gMaxMin && a.gMax <= a.gMaxMax)) a.gMax = Math.min(a.gMaxMax, Math.max(a.gMaxMin, Number.isFinite(a.gMax) ? a.gMax : SPREAD_PARAMS.attachment.gMax));
+  return out as unknown as SpreadParams;
 }

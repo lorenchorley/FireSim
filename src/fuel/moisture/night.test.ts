@@ -97,15 +97,17 @@ describe('stableNight() (spec §5.2a, core/physics)', () => {
 });
 
 describe('stable-night spin-up over a series', () => {
-  it('a 19:00 LMST start on the calm-night preset (15 Mar) begins with ≈ 1.3 K (this sun model: 1.46 K)', () => {
+  it('a 19:00 LMST start on the calm-night preset (15 Mar) begins with ≈ 1.3 K, independent of the sub-step', () => {
     const lon = 150.3;
     const lmstMidnight = Date.UTC(2026, 2, 15) - (lon / 15) * H;
     const t0 = lmstMidnight + 19 * H;
     const series = diurnalSeries(t0 - 48 * H, 60, { tMin: 8, tMax: 24, td: 6, uDay: 2, uNight: 1.5, cloud: 0, dir: 270 }, { lat: -33.715, lon }, 900, { dThetaMax: 6, hInv: 150 });
     const s = spinUpStableNight(series, t0);
     expect(s.dThetaMax).toBe(6);
-    expect(s.dTheta).toBeGreaterThan(1.0);
-    expect(s.dTheta).toBeLessThan(1.6);
+    // Sunset (apparent elevation 0) ≈ 18:14 LMST: 6·(1 − e^{−0.76/3}) ≈ 1.27 K. The sub-step is split at the horizon
+    // crossing, so a 600 s spin-up equals a 10 s one (an unsplit 600 s step gave 1.46 K).
+    expect(Math.abs(s.dTheta - 1.3)).toBeLessThan(0.1);
+    expect(spinUpStableNight(series, t0, 24, 10).dTheta).toBeCloseTo(s.dTheta, 3);
     // A 07:00 start the next morning inherits the night's cold pool.
     const s7 = spinUpStableNight(series, t0 + 12 * H);
     expect(s7.dTheta).toBeGreaterThan(2);

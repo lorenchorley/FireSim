@@ -10,7 +10,7 @@
 import { smoothstep } from '../../core/units';
 import { CP, G } from '../../core/physics';
 import { slopeFactor } from '../models/common';
-import { SPREAD_PARAMS } from './params';
+import { SPREAD_PARAMS, type SpreadParams } from './params';
 
 export { slopeFactor };
 
@@ -54,16 +54,17 @@ export interface HybridOut {
 
 export const createHybridOut = (): HybridOut => ({ ex: 0, ey: 1, e: 0, thetaE: 0, vMag: 0, rMult: 0, rAdd: 0, blend: 0, d: 0, rHyb: 0 });
 
-const HY = SPREAD_PARAMS.hybrid;
-
 /**
  * Hybrid head of spec §7.3 (D3, D44): `s⃗ = (SF(θ) − 1)·R0·û_up`, `w⃗ = (R_w − R0)·û_w`, `e = azimuth(s⃗ + w⃗)`,
  * `R_mult = R_w·SF(θ_e)`, `R_add = R0 + |v⃗|`, `R_hyb = (1 − b)R_mult + b·R_add` and the Kataburn bound
  * `R_hyb ≤ R_w·SF(θ_e)` when θ_e < 0.
  * @param gx,gy terrain gradient (m/m); pass 0, 0 on flat cells (aspect NaN → s⃗ = 0, θ_e = 0)
  * @param wx,wy unit vector the wind blows TOWARDS; pass 0, 0 when calm (ψ_w := 0, i.e. north)
+ * @param HY blend edges and thresholds (the model passes its resolved `SPREAD_PARAMS.hybrid`)
  */
-export function hybridHead(r0: number, rw: number, gx: number, gy: number, wx: number, wy: number, out: HybridOut): HybridOut {
+export function hybridHead(
+  r0: number, rw: number, gx: number, gy: number, wx: number, wy: number, out: HybridOut, HY: SpreadParams['hybrid'] = SPREAD_PARAMS.hybrid,
+): HybridOut {
   const tanT = Math.sqrt(gx * gx + gy * gy);
   const flat = !(tanT > 0);
   const upX = flat ? 0 : gx / tanT;
@@ -112,20 +113,20 @@ export function finishHybrid(rw: number, gx: number, gy: number, out: HybridOut)
 }
 
 /** Convenience form of {@link hybridHead} with slope θ (deg), upslope azimuth ψ_up and wind-to azimuth ψ_w (tests, explain). */
-export function hybridHeadDeg(r0: number, rw: number, slopeDeg: number, upAzDeg: number, windToDeg: number | null, out: HybridOut = createHybridOut()): HybridOut {
+export function hybridHeadDeg(
+  r0: number, rw: number, slopeDeg: number, upAzDeg: number, windToDeg: number | null, out: HybridOut = createHybridOut(), HY: SpreadParams['hybrid'] = SPREAD_PARAMS.hybrid,
+): HybridOut {
   const t = Number.isNaN(upAzDeg) ? 0 : Math.tan(slopeDeg * DEG);
   const gx = t * Math.sin(upAzDeg * DEG);
   const gy = t * Math.cos(upAzDeg * DEG);
   const wx = windToDeg === null ? 0 : Math.sin(windToDeg * DEG);
   const wy = windToDeg === null ? 0 : Math.cos(windToDeg * DEG);
-  return hybridHead(r0, rw, Number.isNaN(upAzDeg) ? 0 : gx, Number.isNaN(upAzDeg) ? 0 : gy, wx, wy, out);
+  return hybridHead(r0, rw, Number.isNaN(upAzDeg) ? 0 : gx, Number.isNaN(upAzDeg) ? 0 : gy, wx, wy, out, HY);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §7.7 Gully-axis steering
 // ─────────────────────────────────────────────────────────────────────────────
-
-const GP = SPREAD_PARAMS.gully;
 
 /**
  * Rotate ê toward the up-gully axis (spec §7.7) where T ≥ 0.5, α ≥ 15° and angle(e, axis) ≤ 90°, by the fraction
@@ -133,7 +134,7 @@ const GP = SPREAD_PARAMS.gully;
  * out.ex/ey/e in place (the caller then calls {@link finishHybrid}).
  * @param alphaDeg directional slope along the gully axis (deg)
  */
-export function gullySteer(out: HybridOut, trench: number, axisDeg: number, alphaDeg: number): number {
+export function gullySteer(out: HybridOut, trench: number, axisDeg: number, alphaDeg: number, GP: SpreadParams['gully'] = SPREAD_PARAMS.gully): number {
   if (!(trench >= GP.minTrench) || !(alphaDeg >= GP.minAlongSlopeDeg) || Number.isNaN(axisDeg)) return 0;
   let diff = ((axisDeg - out.e + 540) % 360) - 180; // signed shortest arc from e to the axis
   if (Math.abs(diff) > GP.maxAngleDeg) return 0;
@@ -228,43 +229,41 @@ export function cflBoundDt(rMs: number, nx: number, ny: number, dx: number, nu: 
 // §7.6 Attachment / eruptive amplifier
 // ─────────────────────────────────────────────────────────────────────────────
 
-const AP = SPREAD_PARAMS.attachment;
+const AP0 = SPREAD_PARAMS.attachment;
 
 /** `S(x; c, w) = 1/(1 + exp(−4(x − c)/w))`. */
 export const logisticS = (x: number, c: number, w: number): number => 1 / (1 + Math.exp((-4 * (x - c)) / w));
 
 /** W_align (spec §7.6): 1 if d ≤ 60° or U10 < 10 km/h; 0.5 if d ≥ 120° (and U10 ≥ 10); linear between. */
-export function alignmentWeight(dDeg: number, u10Kmh: number): number {
+export function alignmentWeight(dDeg: number, u10Kmh: number, AP: SpreadParams['attachment'] = AP0): number {
   if (u10Kmh < AP.alignWindKmh || !(dDeg > AP.alignFullDeg)) return 1;
   const t = Math.min(1, (dDeg - AP.alignFullDeg) / (AP.alignHalfDeg - AP.alignFullDeg));
   return 1 - (1 - AP.alignLowWeight) * t;
 }
 
 /** `A = S(θ_e; 22°, 6°)·max(T, 0.4)·W_align` (spec §7.6). */
-export const attachmentScore = (thetaEDeg: number, trench: number, wAlign: number): number =>
+export const attachmentScore = (thetaEDeg: number, trench: number, wAlign: number, AP: SpreadParams['attachment'] = AP0): number =>
   logisticS(thetaEDeg, AP.thetaCentreDeg, AP.thetaWidthDeg) * (trench > AP.trenchFloor ? trench : AP.trenchFloor) * wAlign;
 
 /** `G = 1 + (G_max − 1)·A·E·(1 − s_res)` (spec §7.6). */
-export const amplifierGain = (a: number, e: number, sRes: number, gMax: number = AP.gMax): number => 1 + (gMax - 1) * a * e * (1 - sRes);
+export const amplifierGain = (a: number, e: number, sRes: number, gMax: number = AP0.gMax): number => 1 + (gMax - 1) * a * e * (1 - sRes);
 
 /** Exact exponential relaxation of the engagement E toward A over dt (τ_e = 180 s). */
-export const relaxEngagement = (e: number, a: number, dt: number, tau: number = AP.tauE): number => (dt > 0 ? a + (e - a) * Math.exp(-dt / tau) : e);
+export const relaxEngagement = (e: number, a: number, dt: number, tau: number = AP0.tauE): number => (dt > 0 ? a + (e - a) * Math.exp(-dt / tau) : e);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §7.8 Build-up
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BP = SPREAD_PARAMS.build;
-
 /** `build = max(0.1, 1 − e^(−α·age_min))`, α = 0.115 /min (× 2 in the eruptive regime) (spec §7.8). */
-export function buildFraction(ageS: number, eruptive = false): number {
+export function buildFraction(ageS: number, eruptive = false, BP: SpreadParams['build'] = SPREAD_PARAMS.build): number {
   const alpha = BP.alphaPerMin * (eruptive ? BP.eruptiveAlphaFactor : 1);
   const b = ageS > 0 ? 1 - Math.exp((-alpha * ageS) / 60) : 0;
   return b > BP.minBuild ? b : BP.minBuild;
 }
 
 /** Origin of a line ignition of length L: `t_ign + 60·ln(1 − b₀)/α`, b₀ = min(0.9, L/500 m) (spec §7.8). */
-export function lineIgnitionOrigin(tIgn: number, lengthM: number): number {
+export function lineIgnitionOrigin(tIgn: number, lengthM: number, BP: SpreadParams['build'] = SPREAD_PARAMS.build): number {
   const b0 = Math.min(BP.lineMaxB0, Math.max(0, lengthM) / BP.lineRefLengthM);
   return b0 > 0 ? tIgn + (60 * Math.log(1 - b0)) / BP.alphaPerMin : tIgn;
 }
@@ -273,12 +272,8 @@ export function lineIgnitionOrigin(tIgn: number, lengthM: number): number {
 // §7.9 VLS score and lee separation
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VP = SPREAD_PARAMS.vls;
-const SP = SPREAD_PARAMS.sep;
-const COS_VLS_LO = Math.cos(VP.aspectLoDeg * DEG);
-const COS_VLS_HI = Math.cos(VP.aspectHiDeg * DEG);
-const COS_SEP_LO = Math.cos(SP.leeLoDeg * DEG);
-const COS_SEP_HI = Math.cos(SP.leeHiDeg * DEG);
+const VP0 = SPREAD_PARAMS.vls;
+const SP0 = SPREAD_PARAMS.sep;
 
 /** Lee alignment `lee = isNaN(aspect) ? 0 : cos(aspect − windTo)` (spec §7.9). */
 export const leeAlignment = (aspectDeg: number, windToDeg: number): number => (Number.isNaN(aspectDeg) ? 0 : Math.cos((aspectDeg - windToDeg) * DEG));
@@ -288,11 +283,11 @@ export const leeAlignment = (aspectDeg: number, windToDeg: number): number => (N
  * smoothstep(cos 45°, cos 25°, lee), smoothstep(3.5, 6.5 m/s, U_ridge), S_ridge ∈ {0, 1}, smoothstep(12 %, 8 %, M).
  * NaN U_ridge (no crest) → 0.
  */
-export function vlsScore(slope30Deg: number, lee: number, uRidgeMs: number, sRidge: number, mPct: number): number {
-  if (!(sRidge > 0) || !(uRidgeMs === uRidgeMs)) return 0;
+export function vlsScore(slope30Deg: number, lee: number, uRidgeMs: number, sRidge: number, mPct: number, VP: SpreadParams['vls'] = VP0): number {
+  if (!(sRidge > 0) || !(uRidgeMs === uRidgeMs) || !(mPct === mPct)) return 0;
   return (
     smoothstep(VP.slopeLoDeg, VP.slopeHiDeg, slope30Deg) *
-    smoothstep(COS_VLS_LO, COS_VLS_HI, lee) *
+    smoothstep(Math.cos(VP.aspectLoDeg * DEG), Math.cos(VP.aspectHiDeg * DEG), lee) *
     smoothstep(VP.windLoMs, VP.windHiMs, uRidgeMs) *
     sRidge *
     smoothstep(VP.fuelWetPct, VP.fuelDryPct, mPct)
@@ -303,13 +298,17 @@ export function vlsScore(slope30Deg: number, lee: number, uRidgeMs: number, sRid
  * Lee separation weight (spec §7.9): `smoothstep(15°, 25°, slope30)·smoothstep(cos 60°, cos 30°, lee)·
  * smoothstep(4.2, 6.9 m/s, U_ridge)·[d ≤ min(5·relief, 1000 m)]` (the bracket is `crestOk`).
  */
-export function leeSeparation(slope30Deg: number, lee: number, uRidgeMs: number, crestOk: boolean): number {
+export function leeSeparation(slope30Deg: number, lee: number, uRidgeMs: number, crestOk: boolean, SP: SpreadParams['sep'] = SP0): number {
   if (!crestOk || !(uRidgeMs === uRidgeMs)) return 0;
-  return smoothstep(SP.slopeLoDeg, SP.slopeHiDeg, slope30Deg) * smoothstep(COS_SEP_LO, COS_SEP_HI, lee) * smoothstep(SP.windLoMs, SP.windHiMs, uRidgeMs);
+  return (
+    smoothstep(SP.slopeLoDeg, SP.slopeHiDeg, slope30Deg) *
+    smoothstep(Math.cos(SP.leeLoDeg * DEG), Math.cos(SP.leeHiDeg * DEG), lee) *
+    smoothstep(SP.windLoMs, SP.windHiMs, uRidgeMs)
+  );
 }
 
 /** VLS lateral rate (m/s): `R̄·[1 + 0.8·sin(2π(t − t_act)/T_p)]`, R̄ = (0.4 + 2.4v) km/h, v = clamp((VLS − 0.5)/0.5, 0, 1). */
-export function vlsLateralRate(vls: number, sinceActS: number, periodS: number): number {
+export function vlsLateralRate(vls: number, sinceActS: number, periodS: number, VP: SpreadParams['vls'] = VP0): number {
   let v = (vls - 0.5) / 0.5;
   v = v < 0 ? 0 : v > 1 ? 1 : v;
   const mean = (VP.rateBaseKmh + VP.rateSpanKmh * v) / 3.6;
@@ -320,26 +319,20 @@ export function vlsLateralRate(vls: number, sinceActS: number, periodS: number):
 // §7.10 Junctions, §7.4 breach, §8.10 N_c
 // ─────────────────────────────────────────────────────────────────────────────
 
-const JP = SPREAD_PARAMS.junction;
-
 /** Geometric closing factor `1/sin(θ₀/2)` of a V with included angle θ₀ (deg). */
 export const junctionGeometric = (theta0Deg: number): number => 1 / Math.sin((theta0Deg * DEG) / 2);
 
 /** Junction boost `1 + 0.5·(min(1/sin(θ₀/2), 6) − 1)` (spec §7.10). θ₀ = 180° − Δψ of the two outward normals. */
-export function junctionBoost(theta0Deg: number): number {
+export function junctionBoost(theta0Deg: number, JP: SpreadParams['junction'] = SPREAD_PARAMS.junction): number {
   const g = theta0Deg > 0 ? junctionGeometric(theta0Deg) : Infinity;
   return 1 + JP.boostFraction * ((g < JP.geomCap ? g : JP.geomCap) - 1);
 }
 
-const BR = SPREAD_PARAMS.breach;
-
 /** Wilson breach probability `P = z/(1 + z)`, `z = exp(1.36 + 0.00036·I − b·W)`, b = 0.38 with trees else 0.99 (spec §7.4). */
-export function breachProbability(intensityKwm: number, widthM: number, trees: boolean): number {
+export function breachProbability(intensityKwm: number, widthM: number, trees: boolean, BR: SpreadParams['breach'] = SPREAD_PARAMS.breach): number {
   const z = Math.exp(BR.c0 + BR.cI * intensityKwm - (trees ? BR.bTrees : BR.bOpen) * widthM);
   return z / (1 + z);
 }
-
-const NP = SPREAD_PARAMS.nc;
 
 /**
  * Byram convective number (spec §8.10): `N_c = min(100, 2gI/(ρ c_p T·max(U·ê − R, 0.5 m/s)³))`, I in W/m, T in K.
@@ -348,7 +341,9 @@ const NP = SPREAD_PARAMS.nc;
  * @param rosMs spread rate (m/s)
  * @param tempC air temperature (°C)
  */
-export function byramConvectiveNumber(intensityKwm: number, uAlongMs: number, rosMs: number, rho: number, tempC: number): number {
+export function byramConvectiveNumber(
+  intensityKwm: number, uAlongMs: number, rosMs: number, rho: number, tempC: number, NP: SpreadParams['nc'] = SPREAD_PARAMS.nc,
+): number {
   if (!(intensityKwm > 0)) return 0;
   let rel = uAlongMs - rosMs;
   if (!(rel > NP.minRelWindMs)) rel = NP.minRelWindMs;

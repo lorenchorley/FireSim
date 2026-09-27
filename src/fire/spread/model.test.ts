@@ -92,12 +92,14 @@ describe('calm planes (spec §7.13, V1): upslope 2^(θ/10), Kataburn backing', (
       const s = makeScenario(terrain, uniformFuel(terrain.grid, FuelType.DryForestShrubby), { windKmh: 0, moisturePct: 8, droughtFactor: 10 });
       s.model.ignite(point(0, -250));
       runScenario(s, 9 * 3600, { dtA: 300 });
+      // Same windows on flat (V1): 100–300 m for the head, 20–60 m for the back.
       const flatR = rosBetween(flatRun(), 0, 0, 0, 100, 300);
+      const flatBack = rosBetween(flatRun(), 0, 0, 180, 20, 60);
       const upR = rosBetween(s, 0, -250, 0, 100, 300);
       const downR = rosBetween(s, 0, -250, 180, 20, 60);
       expect(Math.abs(upR / flatR / up - 1)).toBeLessThan(0.05);
-      expect(Math.abs(downR / flatR / down - 1)).toBeLessThan(0.05);
-      expect(downR / flatR).toBeGreaterThanOrEqual(0.5 * 0.95);
+      expect(Math.abs(downR / flatBack / down - 1)).toBeLessThan(0.05);
+      expect(downR / flatBack).toBeGreaterThanOrEqual(0.5 * 0.95);
       // The head is attributed to slope.
       const kHead = cellAt(terrain.grid, 0, -50);
       expect(s.model.field.driver[kHead]).toBe(SpreadDriver.Slope);

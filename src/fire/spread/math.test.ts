@@ -54,14 +54,14 @@ describe('§7.3 slope factor (D2, D3) and hybrid head', () => {
     const o = createHybridOut();
     hybridHeadDeg(26, 1681, 20, 90, 90, o);
     vec(o.e, '90.0', 0, 'e aligned');
-    vec(o.rHyb, 6724, 1, 'R_hyb aligned');
+    vec(o.rHyb, '6724.0', 0, 'R_hyb aligned');
     hybridHeadDeg(26, 1681, 20, 90, 45, o);
     vec(o.e, '46.8', 0, 'e 45');
     vec(o.thetaE, '14.87', 0, 'θe 45');
-    vec(o.rMult, '4712.1', 3, 'R_mult 45'); // printed from rounded θ_e; ±3 m/h
+    vec(o.rMult, '4712.1', 0, 'R_mult 45');
     vec(o.rAdd, '1737.0', 0, 'R_add 45');
     vec(o.blend, '0.5', 0, 'b 45');
-    vec(o.rHyb, '3224.6', 2, 'R_hyb 45');
+    vec(o.rHyb, '3224.6', 0, 'R_hyb 45');
     hybridHeadDeg(26, 1681, 20, 90, 0, o);
     vec(o.e, '2.7', 0, 'e 0');
     vec(o.rHyb, '1682.8', 0, 'R_hyb 0');

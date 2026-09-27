@@ -3,7 +3,7 @@
  * (§6.12, D45). Pure functions; the model fills an {@link AttributionInput} at each arrival (and in evaluateCell).
  */
 import { SpreadDriver } from '../../core/types';
-import { SPREAD_PARAMS } from './params';
+import { SPREAD_PARAMS, type SpreadParams } from './params';
 
 /** Everything §7.12 looks at, for one cell at arrival. */
 export interface AttributionInput {
@@ -31,9 +31,6 @@ export const createAttributionInput = (): AttributionInput => ({
   seeded: false, vlsTerm: 0, ros: 0, junction: 1, gain: 1, direction: 1, fireWindShare: 0, wind: 1, slope: 1, moisture: 1, fuel: 1,
 });
 
-const AT = SPREAD_PARAMS.attribution;
-const LN_NONE = Math.log(AT.noneFactor);
-
 /**
  * Driver of a cell's arrival (spec §7.12, first match wins): Spotting (seeded) → LateralVorticity (R_VLS|n·t̂| ≥ 0.3R)
  * → Junction (≥ 1.3) → Eruptive (G ≥ 1.3) → Backing (direction ≤ 0.3) → FireInducedWind (share ≥ 0.3) → the factor
@@ -41,7 +38,7 @@ const LN_NONE = Math.log(AT.noneFactor);
  * ℓ_f = |ln fuel|: None if all < ln 1.2; WindAndSlope if ℓ_w and ℓ_s are both ≥ 0.4·max; else the largest of
  * Wind / Slope / DryFuel / Fuel.
  */
-export function attributeDriver(a: AttributionInput): SpreadDriver {
+export function attributeDriver(a: AttributionInput, AT: SpreadParams['attribution'] = SPREAD_PARAMS.attribution): SpreadDriver {
   if (a.seeded) return SpreadDriver.Spotting;
   if (a.ros > 0 && a.vlsTerm >= AT.vlsShare * a.ros) return SpreadDriver.LateralVorticity;
   if (a.junction >= AT.junction) return SpreadDriver.Junction;
@@ -66,7 +63,7 @@ export function attributeDriver(a: AttributionInput): SpreadDriver {
     max = lf;
     drv = SpreadDriver.Fuel;
   }
-  if (max < LN_NONE) return SpreadDriver.None;
+  if (max < Math.log(AT.noneFactor)) return SpreadDriver.None;
   if (lw >= AT.pairShare * max && ls >= AT.pairShare * max) return SpreadDriver.WindAndSlope;
   return drv;
 }

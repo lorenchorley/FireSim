@@ -20,14 +20,15 @@
  * at Δx 30 m reached 0.64 of the analytic head after 30 min, 0.96 with the extension (the spec's measured 0.959).
  *
  * Every `reinitEvery` sub-steps the band is re-distanced by fast sweeping (4 orderings × 2 iterations) of |∇φ| = 1 on
- * the band's bounding box: zero-crossing cells keep their exact φ (re-interpolating them pulls young fronts back),
+ * the band's bounding box: zero-crossing cells keep their exact φ (re-interpolating them pulls young fronts back;
+ * burnt ones at most 2 cells deeper than Δx, so a front that stalled beside them does not jump when it resumes),
  * unburnt cells take the distance, burnt extension cells the deeper of their extension and the distance (at most 2
  * cells deeper); φ = ±9Δx outside |φ| ≤ 8Δx and the band list is rebuilt sorted. Ghost cells outside the domain are
  * linear extrapolations of φ. The core knows nothing about fuel or weather: the owner fills the speed coefficients
  * and receives arrivals and lazy speed requests through {@link LevelSetHooks}. No allocation per sub-step.
  */
 import type { GridSpec } from '../../core/grid';
-import { SPREAD_PARAMS } from './params';
+import { SPREAD_PARAMS, type SpreadParams } from './params';
 
 /** Callbacks from the core into the fire model. */
 export interface LevelSetHooks {
@@ -41,7 +42,7 @@ export interface LevelSetHooks {
   onArrival(k: number, tA: number, r: number, nx: number, ny: number): void;
 }
 
-type LevelSetParams = typeof SPREAD_PARAMS.levelSet;
+type LevelSetParams = SpreadParams['levelSet'];
 
 const NO_HOOKS: LevelSetHooks = { ensureSpeed: () => undefined, onArrival: () => undefined };
 
@@ -523,7 +524,13 @@ export class LevelSetCore {
         const d = dist[k]!;
         let v: number;
         if (d <= bandMax) {
-          if (fixed[k] === 1) v = phi[k]!; // crossing cells keep their exact φ
+          if (fixed[k] === 1) {
+            // Crossing cells keep their exact φ; a burnt one (distance to the front < Δx) at most `extra` cells deeper
+            // than Δx, so an extension cell beside a stalled front (holding break, non-fuel, fuel too wet) does not
+            // accumulate depth that later launches the resumed front through the next cell (bounded overshoot).
+            v = phi[k]!;
+            if (neg && ext && sBurnt[k]! > 0 && v < -(h + extraH)) v = -(h + extraH);
+          }
           else if (!neg) v = d;
           else if (ext && sBurnt[k]! > 0) {
             // The deeper of the arrival extension and the true distance (the extension carries narrow heads, the

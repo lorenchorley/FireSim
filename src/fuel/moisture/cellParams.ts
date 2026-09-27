@@ -38,7 +38,7 @@ export const MOISTURE_TYPE_DEFAULTS: Readonly<Record<FuelType, TypeDefaults>> = 
   [FuelType.AlpineHeathGrass]: { family: 'heath', moistureFamily: 'heath', cover: 0, lai: 0.3, wrf: 1.5, cRef: 0 },
   [FuelType.SnowGumWoodland]: { family: 'vesta2', moistureFamily: 'forest', cover: 0.5, lai: 1.2, wrf: 2.5, cRef: 0.5 },
   [FuelType.PinePlantation]: { family: 'pine', moistureFamily: 'pine', cover: 0.8, lai: 3.0, wrf: 4.0, cRef: 0.8 },
-  [FuelType.Urban]: { family: 'grass', moistureFamily: 'grass', cover: 0.3, lai: 1.0, wrf: 1.2, cRef: 0.3 },
+  [FuelType.Urban]: { family: 'grass', moistureFamily: 'grass', cover: 0.3, lai: 1.0, wrf: 1.5, cRef: 0.3 },
 });
 
 /**

@@ -18,16 +18,17 @@
  *
  * Hot loops use typed arrays, no allocation, and the tables of fastMath.ts. Runs in a Web Worker and in Node.
  */
-import type { FuelMap, MoistureFamily, StableNightState, Terrain, WeatherHour, WeatherSeries } from '../../core/types';
+import type { FuelMap, FuelType, MoistureFamily, StableNightState, Terrain, WeatherHour, WeatherSeries } from '../../core/types';
 import type { InsolationResult, MoistureContext, TerrainDerived } from '../../core/simTypes';
 import { Landform } from '../../core/types';
+import { FUEL_TYPES } from '../catalogue';
 import { STABLE_NIGHT_PARAMS, dewPointC, initialStableNight, lmstHour } from '../../core/physics';
 import { horizontalIrradiance, insolation, solarPosition } from '../../terrain';
 import { MFam, afdrsMoistureCode, familyCode, familyName, forestMoisture, forestPeriod, isAfdrsNight, rainMemoryMc2 } from './afdrs';
 import { lapseRate, medianOf } from './air';
 import { cellAvailability, faBlendWeight } from './availability';
 import { fuelParamsAt } from '../fuelMap';
-import { MOISTURE_TYPE_DEFAULTS, type MoistureCellParams, type MoistureCellResolver } from './cellParams';
+import type { MoistureCellParams, MoistureCellResolver } from './cellParams';
 import { EXPNEG_TABLE, FAST_TABLES, esatFast, fillExpTable } from './fastMath';
 import {
   columnEmc,
@@ -225,6 +226,8 @@ export class MoistureModel {
   private readonly faBlend: Float32Array;
   private readonly relief: number;
   private readonly medianZ: number;
+  /** Mean elevation (m): the altitude of the clear-sky irradiance inside terrain `insolation()`. */
+  private readonly meanZ: number;
   private readonly kRef: number;
   private zS: number;
   private rain: RainEvent[] = [];
@@ -270,6 +273,9 @@ export class MoistureModel {
     this.zeroRad = new Float32Array(n);
     this.relief = Math.max(1, terrain.maxElevation - terrain.minElevation);
     this.medianZ = medianOf(terrain.elevation);
+    let zSum = 0;
+    for (let k = 0; k < n; k++) zSum += terrain.elevation[k]!;
+    this.meanZ = n > 0 ? zSum / n : 0;
     this.zS = this.medianZ;
     this.kRef = referenceRate(this.params);
     const c = this.cells;
@@ -301,10 +307,14 @@ export class MoistureModel {
     c.cover[k] = cover;
     c.lai[k] = lai;
     c.cRef[k] = cRef;
-    // Reference LAI at the reference cover with the type's LAI density LAI_type/c_type (= lai/cover when the CHM
-    // scaled the LAI; the catalogue value for open cells).
-    const d = MOISTURE_TYPE_DEFAULTS[p.type];
-    c.laiRef[k] = cover > 1e-3 ? (lai * cRef) / cover : d && d.cover > 0 ? (d.lai * cRef) / d.cover : lai;
+    // Reference LAI of the family reference column (spec §5.4): the catalogue LAI density at the reference cover,
+    // LAI_ref = LAI_type·c_ref/c_type (FUEL_TYPES, §4.1). It must not be derived from the cell's own lai/cover: the
+    // cell LAI is CHM-scaled only where the CHM is valid, so lai/cover ≠ LAI_type/c_type elsewhere (and where the
+    // §4.7 LAI ratio clamp applies), which would bias E_ref and hence the anomaly of every such cell.
+    const ft = FUEL_TYPES[p.type as FuelType];
+    const laiType = ft ? ft.lai : lai;
+    const cType = ft ? ft.canopyCover : cover;
+    c.laiRef[k] = cType > 1e-3 ? (laiType * cRef) / cType : laiType;
     c.wrf[k] = p.wrf > 0 ? p.wrf : 1;
     c.uFac[k] = 1 / (P.uFDivisor * c.wrf[k]!);
     c.tauD[k] = diffuseTransmittance(cover, lai, P);
@@ -386,7 +396,7 @@ export class MoistureModel {
     const lwSky = night ? 1 - Math.min(1, Math.max(0, F.cloudFrac)) : 0;
     const lwOpen = P.lwCoolOpen * lwSky;
     const lwCan = P.lwCoolCanopy * lwSky;
-    const dtS = F.dtS;
+    const dtS = F.dtS > 0 ? F.dtS : 0; // a negative or NaN step never advances the state
     const dtH = dtS / 3600;
     const invDtH = 1 / Math.max(dtH, 1e-9);
     const lapse = F.lapse / 1000;
@@ -412,15 +422,15 @@ export class MoistureModel {
     const directRef = F.directRef;
     const diffuseRef = F.diffuseRef;
     const init = F.init;
-    const uScalar = F.u10Scalar;
+    const uScalar = F.u10Scalar >= 0 ? F.u10Scalar : 0; // NaN/negative grid-point wind → calm
     const hasDirect = F.direct !== null;
     const direct = F.direct ?? this.zeroRad;
     const total = F.total ?? this.zeroRad;
-    const hasU = F.u10 !== null;
+    const hasU = F.u10 !== null && F.u10.length === n;
     const u10a = F.u10 ?? this.zeroRad;
-    const hasAirT = F.airT !== null;
+    const hasAirT = F.airT !== null && F.airT.length === n;
     const airTa = F.airT ?? this.zeroRad;
-    const hasBurnt = F.burnt !== null;
+    const hasBurnt = F.burnt !== null && F.burnt.length === n; // an empty mask = no fire
     const burnt = F.burnt ?? EMPTY_U8;
     const aS = P.aS;
     const bU = P.bU;
@@ -462,7 +472,10 @@ export class MoistureModel {
         dPool = dTheta * (1 - h * invHInv);
       }
       const dz = zq - zS;
-      const t = hasAirT ? airTa[k]! : tS - lapse * dz - dPool;
+      // The atmosphere's T replaces the lapse T where it is finite (a NaN from the solver falls back to §5.2).
+      const tLapse = tS - lapse * dz - dPool;
+      const tAtm = hasAirT ? airTa[k]! : NaN;
+      const t = tAtm === tAtm ? tAtm : tLapse;
       let td = tdS - dewL * dz;
       if (td > t) td = t;
       x = (t - T_LO) * T_INV;
@@ -477,7 +490,10 @@ export class MoistureModel {
       airT[k] = t;
       airRH[k] = rh;
       // §5.4 fuel temperature of the cell
-      const u10 = hasU ? u10a[k]! : uScalar;
+      // Per-cell open-equivalent wind; a non-finite or negative value falls back to the grid-point wind (a NaN
+      // here would otherwise turn M_eq into its 2 % floor through the NaN comparisons below).
+      const uc = hasU ? u10a[k]! : uScalar;
+      const u10 = uc >= 0 ? uc : uScalar;
       const uF = u10 * uFac[k]!;
       const cc = cover[k]!;
       let sF = 0;
@@ -652,6 +668,12 @@ export class MoistureModel {
    * rain clocks) is unchanged and only the diagnosed outputs are re-evaluated.
    */
   update(w: WeatherHour, sun: InsolationResult, dtSeconds: number, ctx: MoistureContext): void {
+    const n = this.cells.n;
+    // Fire-grid arrays of the wrong size are a wiring error (§0.2 grid identity); an empty `burnt` means no fire.
+    if (sun.direct.length !== n || sun.total.length !== n) throw new Error(`MoistureModel.update: insolation arrays (${sun.direct.length}) differ from the fire grid (${n})`);
+    if (ctx.u10.length !== n) throw new Error(`MoistureModel.update: ctx.u10 (${ctx.u10.length}) differs from the fire grid (${n})`);
+    if (ctx.airT && ctx.airT.length !== n) throw new Error(`MoistureModel.update: ctx.airT (${ctx.airT.length}) differs from the fire grid (${n})`);
+    if (ctx.burnt.length !== n && ctx.burnt.length !== 0) throw new Error(`MoistureModel.update: ctx.burnt (${ctx.burnt.length}) differs from the fire grid (${n})`);
     if (ctx.kbdi !== this.kbdi || ctx.df !== this.df) {
       this.kbdi = ctx.kbdi;
       this.df = ctx.df;
@@ -680,6 +702,7 @@ export class MoistureModel {
     const P = this.params;
     const hs = series.hours;
     if (hs.length === 0) throw new Error('MoistureModel.initialise: the weather series has no hours');
+    this.warnings.length = 0; // notes of this initialisation only
     this.kbdi = drought.kbdi;
     this.df = drought.df;
     this.computeAvailability();
@@ -705,7 +728,8 @@ export class MoistureModel {
       lut.units.lDew.fill(0);
     }
     const ns = initialStableNight({ dThetaMax: night.dThetaMax, hInv: night.hInv });
-    const meanAlt = this.medianZ;
+    // Clear-sky irradiance at the altitude insolation() uses, so the flat reference column and the cells agree.
+    const meanAlt = this.meanZ;
     let calibSum = 0;
     let calibN = 0;
     let tPrev = tStart;
@@ -738,6 +762,9 @@ export class MoistureModel {
           const sun = insolation(this.terrain, t, radOpts);
           F.direct = sun.direct;
           F.total = sun.total;
+          // Reference column from the same horizontal irradiance as the cells (as update() does).
+          F.directRef = sun.dni * Math.sin((sunElev * Math.PI) / 180);
+          F.diffuseRef = sun.dhi;
         } else {
           F.direct = this.zeroRad;
           F.total = this.zeroRad;

@@ -17,12 +17,13 @@
  *  - **minuteTasks** (every 60 s): junction boosts (§7.10, pyrogenic off), rolling debris (§7.11), frontDist.
  *
  * Contract interpretations: `env.time` = seconds from the scenario start (as FireField.arrivalTime); when it is a
- * plausible value (finite, |t| < 1e11) it is adopted at the start of prepare/step/refreshMasks/minuteTasks, otherwise
- * the model's own Float64 clock (advanced by step) is used. The domain wind direction for the crest sector and the
- * lee alignment is `env.weather.windDir10` (the grid-point wind, as atmosphere/ uses for U_ridge). `aux.front` lists
- * the level-set front (arrived cells with a burnable unburnt 4-neighbour) with per-cell outward normals
- * `frontNormalX/Y`; `aux.headIndex` is a cell index; `frontCells()` (ember emitters) are Burning cells with an
- * Unburnt 4-neighbour (§7.5); rates in CellEvaluation are m/s.
+ * plausible value (finite, |t| < 1e11) it is adopted at the start of prepare/step/refreshMasks (minuteTasks: only a
+ * later time, since §12.2 runs them before t += Δt_a), otherwise the model's own Float64 clock (advanced by step) is
+ * used. The domain wind direction for the crest sector and the lee alignment is `env.weather.windDir10` (the
+ * grid-point wind, as atmosphere/ uses for U_ridge). `aux.front` lists the level-set front (arrived cells with a
+ * burnable unburnt 4-neighbour) with per-cell outward normals `frontNormalX/Y`; `aux.headIndex` is a cell index;
+ * `frontCells()` (ember emitters) are Burning cells with an Unburnt 4-neighbour (§7.5); rates in CellEvaluation are
+ * m/s; with no fire lit yet, `evaluateCell` describes a developed fire (build 1).
  *
  * Deviations (all switchable in SPREAD_PARAMS; see the final report): the burnt-side extension of the level set
  * (levelSet.ts); VLS activation also counts upwind cells that burnt within 30 min and zone cells touching the burnt
@@ -52,7 +53,7 @@ import { DistanceTransform, distToPolyline, labelComponents4, polylineLength, si
 import { LevelSetCore } from './levelSet';
 import {
   alignmentWeight, amplifierGain, attachmentScore, azimuthOf, breachProbability, buildFraction, byramConvectiveNumber, createEllipseSpeedsOut,
-  createHybridOut, ellipseSpeeds, finishHybrid, gullySteer, hybridHead, leeAlignment, leeSeparation, lineIgnitionOrigin, logisticS, offsetEllipseSpeed,
+  createHybridOut, ellipseSpeeds, finishHybrid, gullySteer, hybridHead, junctionBoost, leeAlignment, leeSeparation, lineIgnitionOrigin, logisticS, offsetEllipseSpeed,
   relaxEngagement, vlsLateralRate, vlsScore, type EllipseSpeedsOut, type HybridOut,
 } from './math';
 import { resolveSpreadParams, type SpreadParams, type SpreadParamsOverride } from './params';
@@ -88,6 +89,16 @@ interface Prep {
   eruptive: boolean;
   vlsR: number;
   fws: number;
+}
+
+/** Scratch of the §6.12 factor decomposition (base in m/s). */
+interface FactorScratch {
+  base: number;
+  wind: number;
+  fuel: number;
+  moisture: number;
+  slope: number;
+  terrain: number;
 }
 
 /** A rolling-debris trajectory kept for render/explain (spec §7.11). */
@@ -298,6 +309,7 @@ export class FireSpreadModel {
   private readonly IO: IntensityOut = createIntensityOut();
   private readonly RF: ReferenceFactorsOut = createReferenceFactorsOut();
   private readonly att: AttributionInput = createAttributionInput();
+  private readonly FX: FactorScratch = { base: 0, wind: 1, fuel: 1, moisture: 1, slope: 1, terrain: 1 };
   private readonly prep: Prep = FireSpreadModel.makePrep();
   private readonly prepEval: Prep = FireSpreadModel.makePrep();
 
@@ -607,10 +619,10 @@ export class FireSpreadModel {
       sd = (x, y) => Math.hypot(x - px, y - py) - r;
     } else if (ign.kind === 'line') {
       sd = (x, y) => distToPolyline(x, y, pts) - r;
-      org = lineIgnitionOrigin(ign.time, polylineLength(pts));
+      org = lineIgnitionOrigin(ign.time, polylineLength(pts), this.P.build);
     } else {
       sd = (x, y) => signedDistToPolygon(x, y, pts) - r;
-      org = lineIgnitionOrigin(ign.time, polylineLength(pts, true));
+      org = lineIgnitionOrigin(ign.time, polylineLength(pts, true), this.P.build);
     }
     let x0 = Infinity;
     let x1 = -Infinity;
@@ -691,9 +703,9 @@ export class FireSpreadModel {
       const d = this.cD[a]!;
       const rel = this.cRel[a]!;
       const sRidge = has && d <= VP.ridgeMaxDistM && this.cZ[a]! - z[k]! <= rel * VP.ridgeUpperFraction ? 1 : 0;
-      this.vls[k] = vlsScore(s30[k]!, lee, uR, sRidge, M[k]!);
+      this.vls[k] = vlsScore(s30[k]!, lee, uR, sRidge, M[k]!, VP);
       const sepOk = has && d <= Math.min(SP.reliefFactor * rel, SP.maxDistM);
-      this.sep[k] = leeSeparation(s30[k]!, lee, uR, sepOk);
+      this.sep[k] = leeSeparation(s30[k]!, lee, uR, sepOk, SP);
     }
     this.relabelZones();
     this.masksOn = true;
@@ -721,8 +733,11 @@ export class FireSpreadModel {
     for (let a = 0; a < ls.bandCount; a++) {
       const k = band[a]!;
       const z = this.vlsZone[k]!;
-      if (z > 0 && mountain && this.zActive[z] === 1 && this.canBurn[k] === 1 && !this.holding(k, t)) ls.sVls[k] = this.vlsRateAt(k, z, t);
-      else if (ls.sVls[k] !== 0) ls.sVls[k] = 0;
+      // VLS lateral rate of every band cell in an active zone that can spread now (non-zero ellipse speeds: a cell whose
+      // fuel cannot carry fire, e.g. above the moisture of extinction, gets no lateral spread either).
+      if (z > 0 && mountain && this.zActive[z] === 1 && this.canBurn[k] === 1 && !this.holding(k, t) && (ls.sA2[k] !== 0 || ls.sB2[k] !== 0)) {
+        ls.sVls[k] = this.vlsRateAt(k, z, t);
+      } else if (ls.sVls[k] !== 0) ls.sVls[k] = 0;
       const p = phi[k]!;
       // Unburnt cells near the front, and burnt cells the front never reached (ignition cells: their unit-slope
       // extension uses their own speed, which must follow build-up and the wind).
@@ -770,7 +785,7 @@ export class FireSpreadModel {
    * roll debris (§7.11, mountainPhenomena), prune trajectories and refresh frontDist.
    */
   minuteTasks(env: SpreadEnvironment): void {
-    this.syncClock(env);
+    this.syncClock(env, true);
     const t = this.t;
     const dt = Number.isFinite(this.lastMinuteT) ? t - this.lastMinuteT : 60;
     this.lastMinuteT = t;
@@ -882,7 +897,9 @@ export class FireSpreadModel {
     const p = this.fc.load(k, this.pScratch);
     intensityKernel(p, ros * 3600, s.fa, this.IO, env.droughtFactor, s.rs);
     const f = this.factorsFor(k, ros, 1, s.uKmh, s.m, s.fa, s.rw, s.hyb.rHyb, env.droughtFactor);
-    const factors: SpreadFactors = { ...f, build: s.build, fireWindShare: s.fws, direction: 1 };
+    const factors: SpreadFactors = {
+      base: f.base, wind: f.wind, fuel: f.fuel, moisture: f.moisture, slope: f.slope, terrain: f.terrain, build: s.build, fireWindShare: s.fws, direction: 1,
+    };
     const att = this.att;
     att.seeded = false;
     att.vlsTerm = vlsTerm;
@@ -898,7 +915,7 @@ export class FireSpreadModel {
     const rEll = s.ell.rH / 3600;
     return {
       ros, rH: s.ell.rH / 3600, rB: s.ell.rB / 3600, rF: s.ell.rF / 3600, headDir: s.hyb.e, lb: s.ell.lbB, intensity: this.IO.intensity,
-      flameHeight: this.IO.flameHeight, phase: s.phase, factors, driver: attributeDriver(att),
+      flameHeight: this.IO.flameHeight, phase: s.phase, factors, driver: attributeDriver(att, this.P.attribution),
       validated: this.isValidated(s.valid, s.hyb.thetaE, s.ell.capped, s.g, this.ls.sJun[k]!, rEll > 0 ? vlsTerm / rEll : 0, s.a * s.e),
     };
   }
@@ -986,9 +1003,14 @@ export class FireSpreadModel {
   // Internals: environment helpers
   // ─────────────────────────────────────────────────────────────────────────
 
-  private syncClock(env: SpreadEnvironment): void {
+  /**
+   * Adopt a plausible `env.time` (s from the scenario start) as the model clock. `forwardOnly` (minuteTasks): in the
+   * normative §12.2 order the minute tasks run after `step` but before the sim advances t (step 10), so their env still
+   * carries the step's start time; the clock must not jump back by Δt_a there.
+   */
+  private syncClock(env: SpreadEnvironment, forwardOnly = false): void {
     const et = env.time;
-    if (typeof et === 'number' && Number.isFinite(et) && Math.abs(et) < 1e11 && et !== this.t) this.t = et;
+    if (typeof et === 'number' && Number.isFinite(et) && Math.abs(et) < 1e11 && et !== this.t && (!forwardOnly || et > this.t)) this.t = et;
   }
 
   private mountainOn(env: SpreadEnvironment): boolean {
@@ -1183,7 +1205,7 @@ export class FireSpreadModel {
   }
 
   private vlsRateAt(k: number, z: number, t: number): number {
-    return vlsLateralRate(this.vls[k]!, t - this.zTAct[z]!, this.zTp[z]!);
+    return vlsLateralRate(this.vls[k]!, t - this.zTAct[z]!, this.zTp[z]!, this.P.vls);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1256,7 +1278,7 @@ export class FireSpreadModel {
     const gx = this.gX[k]!;
     const gy = this.gY[k]!;
     // §7.3 hybrid head.
-    const hyb = hybridHead(s.r0, s.rw, gx, gy, wx, wy, s.hyb);
+    const hyb = hybridHead(s.r0, s.rw, gx, gy, wx, wy, s.hyb, P.hybrid);
     const mountain = this.mountainOn(env);
     const T = this.features.trench[k]!;
     // §7.7 gully steering.
@@ -1264,14 +1286,14 @@ export class FireSpreadModel {
       const ax = this.features.gullyAxis[k]!;
       if (ax === ax) {
         const alpha = Math.atan(gx * Math.sin(ax * DEG) + gy * Math.cos(ax * DEG)) * RAD;
-        if (gullySteer(hyb, T, ax, alpha) > 0) finishHybrid(s.rw, gx, gy, hyb);
+        if (gullySteer(hyb, T, ax, alpha, P.gully) > 0) finishHybrid(s.rw, gx, gy, hyb);
       }
     }
     // §7.6 attachment.
     let A = 0;
     let sRes = 0;
     if (mountain) {
-      A = attachmentScore(hyb.thetaE, T === T ? T : 0, alignmentWeight(hyb.d, uKmh));
+      A = attachmentScore(hyb.thetaE, T === T ? T : 0, alignmentWeight(hyb.d, uKmh, P.attachment), P.attachment);
       const ind = (env.fireIndU[k]! * this.upX[k]! + env.fireIndV[k]! * this.upY[k]!) / P.attachment.sResWindMs;
       sRes = ind < 0 ? 0 : ind > 1 ? 1 : ind;
     }
@@ -1288,7 +1310,7 @@ export class FireSpreadModel {
     // §7.8 build-up.
     const o = this.originEstimate(k, t);
     s.origin = o;
-    s.build = buildFraction(t - o, s.eruptive);
+    s.build = buildFraction(t - o, s.eruptive, P.build);
     // §7.4 ellipse speeds.
     const cosW = calm ? 0 : wx * hyb.ex + wy * hyb.ey;
     const uAxis = uKmh * cosW > 0 ? uKmh * cosW : 0;
@@ -1419,7 +1441,8 @@ export class FireSpreadModel {
     }
     if (o < Infinity) return o;
     if (est < Infinity) return est;
-    return this.firstOrigin < Infinity ? this.firstOrigin : t;
+    // No fire has been lit yet (only evaluateCell gets here): describe a developed fire (build 1), not a new ignition.
+    return this.firstOrigin < Infinity ? this.firstOrigin : -Infinity;
   }
 
   /** Wilson breach draw the first time the front reaches a break cell, and again when a 30 min hold expires (§7.4). */
@@ -1428,7 +1451,7 @@ export class FireSpreadModel {
     if (st === 1 || (st === 2 && t < this.breachUntil[k]!)) return;
     const I = this.maxBurntNbr(k, this.field.intensity, t);
     if (!(I > 0) && !this.hasBurntNbr(k, t)) return;
-    const p = breachProbability(I, this.breakW[k]!, this.treesNear[k] === 1);
+    const p = breachProbability(I, this.breakW[k]!, this.treesNear[k] === 1, this.P.breach);
     const breached = this.rng.next() < p;
     this.breachState[k] = breached ? 1 : 2;
     if (!breached) this.breachUntil[k] = t + this.P.breach.holdS;
@@ -1461,14 +1484,21 @@ export class FireSpreadModel {
     );
   }
 
-  /** §6.12 decomposition at a normal speed rMs (m/s) with the direction factor dir. */
-  private factorsFor(k: number, rMs: number, dir: number, uKmh: number, m: number, fa: number, rw: number, rHyb: number, df: number) {
+  /** §6.12 decomposition at a normal speed rMs (m/s) with the direction factor dir, into the reusable `this.FX`. */
+  private factorsFor(k: number, rMs: number, dir: number, uKmh: number, m: number, fa: number, rw: number, rHyb: number, df: number): FactorScratch {
     const p = this.fc.load(k, this.pScratch);
     const RF = referenceFactors(p, uKmh, m, fa, this.RF, df);
     const fuel = Number.isFinite(RF.fuel) ? RF.fuel : 1;
     const slope = rw > 0 ? rHyb / rw : 1;
     const denom = RF.base * RF.wind * fuel * RF.moisture * slope * dir;
-    return { base: RF.base, wind: RF.wind, fuel, moisture: RF.moisture, slope, terrain: denom > 0 ? rMs / denom : 1 };
+    const o = this.FX;
+    o.base = RF.base;
+    o.wind = RF.wind;
+    o.fuel = fuel;
+    o.moisture = RF.moisture;
+    o.slope = slope;
+    o.terrain = denom > 0 ? rMs / denom : 1;
+    return o;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1533,7 +1563,7 @@ export class FireSpreadModel {
       att.slope = fx ? fx.slope : 1;
       att.moisture = fx ? fx.moisture : 1;
       att.fuel = fx ? fx.fuel : 1;
-      f.driver[k] = attributeDriver(att);
+      f.driver[k] = attributeDriver(att, this.P.attribution);
     }
     const rEllMs = rEll / 3600;
     this.cValid[k] = this.isValidated(
@@ -1622,7 +1652,7 @@ export class FireSpreadModel {
     ls.commitInserts();
     for (let a = 0; a < this.pendingIgn.length; a++) ls.touched[this.pendingIgn[a]!] = 1;
     if (org < this.firstOrigin) this.firstOrigin = org;
-    this.updateFront(null);
+    this.updateFront(this.env);
   }
 
   /** Record the ignition cells queued by ignite/igniteAt (needs the environment of the step). */
@@ -1638,7 +1668,7 @@ export class FireSpreadModel {
       const ls = this.ls;
       this.recordArrival(k, this.field.arrivalTime[k]!, this.pRH[k]! / 3600, ls.sEx[k]!, ls.sEy[k]!, env, true, drv[a]!);
     }
-    this.updateFront(null);
+    this.updateFront(env);
   }
 
   private applyDueDebris(t: number): void {
@@ -1738,7 +1768,7 @@ export class FireSpreadModel {
         const along = env.windU[k]! * ux + env.windV[k]! * uy;
         const rho = env.airRho[k]! > 0 ? env.airRho[k]! : RHO_REF;
         const tc = env.airT[k]! === env.airT[k]! ? env.airT[k]! : 20;
-        this.nc[k] = byramConvectiveNumber(f.intensity[k]!, along, f.ros[k]!, rho, tc);
+        this.nc[k] = byramConvectiveNumber(f.intensity[k]!, along, f.ros[k]!, rho, tc, this.P.nc);
       }
     }
     this.frontCount = nf;
@@ -1841,7 +1871,7 @@ export class FireSpreadModel {
       if (minDot > cosMax) continue;
       const dPsi = Math.acos(Math.max(-1, Math.min(1, minDot))) * RAD;
       const theta0 = 180 - dPsi;
-      const boost = 1 + JP.boostFraction * (Math.min(theta0 > 0 ? 1 / Math.sin((theta0 * DEG) / 2) : Infinity, JP.geomCap) - 1);
+      const boost = junctionBoost(theta0, JP);
       if (boost > ls.sJun[k]!) {
         ls.sJun[k] = boost;
         if (this.inJun[k] !== 1) {
@@ -1852,13 +1882,18 @@ export class FireSpreadModel {
     }
   }
 
-  /** §7.11 rolling debris from burning steep cells with heavy fuel or high bark hazard. */
+  /**
+   * §7.11 rolling debris from burning steep cells with heavy fuel or high bark hazard. Items follow the D8 receivers of
+   * the filled surface but stop where the next cell is not lower on the DEM (a pit: the filled surface would route
+   * them over its spill point, i.e. uphill).
+   */
   private rollDebris(env: SpreadEnvironment, dtS: number, t: number): void {
     const DP = this.P.debris;
     const { nx, h, grid } = this;
     const bs = this.field.burnState;
     const tA = this.field.arrivalTime;
     const M = this.mCacheSet ? this.mCache : env.moisture;
+    const zr = this.terrain.elevation;
     for (let a = 0; a < this.activeCount; a++) {
       const k = this.active[a]!;
       if (bs[k] !== BurnState.Burning) continue;
@@ -1879,7 +1914,8 @@ export class FireSpreadModel {
         push(cur);
         for (let s = 0; s < DP.maxPathCells; s++) {
           const nxt = this.descent[cur]!;
-          if (nxt < 0) break;
+          // The filled-surface receiver routes pits over their spill point; debris cannot roll uphill (raw DEM).
+          if (nxt < 0 || !(zr[nxt]! < zr[cur]!)) break;
           const di = (nxt % nx) - (cur % nx);
           const len = di !== 0 && Math.abs(nxt - cur) !== 1 ? Math.SQRT2 * h : h;
           cur = nxt;
