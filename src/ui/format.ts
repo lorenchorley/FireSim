@@ -1,0 +1,211 @@
+/**
+ * Display formatters for the field UI. Pure functions (no DOM), unit-tested in format.test.ts.
+ * Numbers are rounded to what a firefighter can use; precision is never implied beyond the model.
+ */
+import { compassName, msToKmh, wrapDeg } from '../core/units';
+
+export type SpeedUnit = 'kmh' | 'ms';
+
+export const DEFAULT_TZ = 'Australia/Sydney';
+
+const nf0 = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat('en-AU', { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+
+/** Round to `digits` significant decimals with a thousands separator (en-AU). */
+export function formatNumber(v: number, digits = 0): string {
+  if (!Number.isFinite(v)) return '–';
+  if (digits === 0) return nf0.format(v);
+  if (digits === 1) return nf1.format(v);
+  return new Intl.NumberFormat('en-AU', { maximumFractionDigits: digits }).format(v);
+}
+
+// ───────────────────────────── time ─────────────────────────────
+
+const clockFormats = new Map<string, Intl.DateTimeFormat>();
+function fmt(tz: string, opts: Intl.DateTimeFormatOptions, key: string): Intl.DateTimeFormat {
+  const k = `${tz}|${key}`;
+  let f = clockFormats.get(k);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-AU', { timeZone: tz, hourCycle: 'h23', ...opts });
+    clockFormats.set(k, f);
+  }
+  return f;
+}
+
+/** "14:35" in the scenario's time zone. */
+export function formatClock(ms: number, tz = DEFAULT_TZ): string {
+  if (!Number.isFinite(ms)) return '–';
+  return fmt(tz, { hour: '2-digit', minute: '2-digit' }, 'hm').format(ms);
+}
+
+/** "Sat 14:35". */
+export function formatDayClock(ms: number, tz = DEFAULT_TZ): string {
+  if (!Number.isFinite(ms)) return '–';
+  const parts = fmt(tz, { weekday: 'short', hour: '2-digit', minute: '2-digit' }, 'whm').formatToParts(ms);
+  const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('weekday')} ${get('hour')}:${get('minute')}`;
+}
+
+/** "Sat 27 Sep 2026, 14:35". */
+export function formatDateTime(ms: number, tz = DEFAULT_TZ): string {
+  if (!Number.isFinite(ms)) return '–';
+  const parts = fmt(tz, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }, 'full').formatToParts(ms);
+  const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('weekday')} ${get('day')} ${get('month')} ${get('year')}, ${get('hour')}:${get('minute')}`;
+}
+
+/** Local hour of day (0–24, fractional) in a time zone. */
+export function localHour(ms: number, tz = DEFAULT_TZ): number {
+  const parts = fmt(tz, { hour: '2-digit', minute: '2-digit' }, 'hm').formatToParts(ms);
+  const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return (hh % 24) + mm / 60;
+}
+
+/** Duration "2 h 35 min", "45 min", "0 min", "12 h". Negative values are shown as their magnitude. */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '–';
+  const totalMin = Math.round(Math.abs(seconds) / 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  if (hh === 0) return `${mm} min`;
+  if (mm === 0) return `${hh} h`;
+  return `${hh} h ${mm} min`;
+}
+
+/** Elapsed simulation time "+2 h 35 min". */
+export function formatElapsed(seconds: number): string {
+  return `${seconds < 0 ? '−' : '+'}${formatDuration(seconds)}`;
+}
+
+/** Compact elapsed "+2:35" (h:mm), for tight spaces. */
+export function formatElapsedShort(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '–';
+  const totalMin = Math.round(Math.abs(seconds) / 60);
+  return `${seconds < 0 ? '−' : '+'}${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, '0')}`;
+}
+
+/** Relative "in 45 min" / "35 min ago" / "now". */
+export function formatRelative(deltaSeconds: number): string {
+  if (Math.abs(deltaSeconds) < 60) return 'now';
+  return deltaSeconds > 0 ? `in ${formatDuration(deltaSeconds)}` : `${formatDuration(deltaSeconds)} ago`;
+}
+
+// ───────────────────────────── speeds ─────────────────────────────
+
+/** Wind speed in the user's unit, e.g. "35 km/h" or "9.7 m/s". Input m/s. */
+export function formatWind(ms: number, unit: SpeedUnit = 'kmh'): string {
+  if (!Number.isFinite(ms)) return '–';
+  return unit === 'kmh' ? `${formatNumber(msToKmh(ms))} km/h` : `${formatNumber(ms, ms < 10 ? 1 : 0)} m/s`;
+}
+
+/** Value only (no unit) in the user's unit. */
+export function windValue(ms: number, unit: SpeedUnit = 'kmh'): number {
+  return unit === 'kmh' ? msToKmh(ms) : ms;
+}
+
+export const windUnitLabel = (unit: SpeedUnit): string => (unit === 'kmh' ? 'km/h' : 'm/s');
+
+/**
+ * Fire rate of spread (input m/s): km/h when ≥ 1 km/h, otherwise m/h (Australian practice), e.g. "2.4 km/h",
+ * "450 m/h", "0 m/h".
+ */
+export function formatRos(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0 m/h';
+  const mh = ms * 3600;
+  if (mh >= 1000) return `${formatNumber(mh / 1000, 1)} km/h`;
+  if (mh >= 100) return `${formatNumber(Math.round(mh / 10) * 10)} m/h`;
+  return `${formatNumber(mh)} m/h`;
+}
+
+// ───────────────────────────── fire quantities ─────────────────────────────
+
+/** Fireline intensity (kW/m), e.g. "4,300 kW/m", "< 10 kW/m". */
+export function formatIntensity(kWm: number): string {
+  if (!Number.isFinite(kWm) || kWm <= 0) return '0 kW/m';
+  if (kWm < 10) return '< 10 kW/m';
+  const r = kWm >= 10000 ? Math.round(kWm / 1000) * 1000 : kWm >= 1000 ? Math.round(kWm / 100) * 100 : Math.round(kWm / 10) * 10;
+  return `${formatNumber(r)} kW/m`;
+}
+
+/** Area in hectares: "< 0.1 ha", "3.4 ha", "120 ha", "1,250 ha". */
+export function formatArea(ha: number): string {
+  if (!Number.isFinite(ha) || ha <= 0) return '0 ha';
+  if (ha < 0.1) return '< 0.1 ha';
+  if (ha < 10) return `${formatNumber(ha, 1)} ha`;
+  return `${formatNumber(ha)} ha`;
+}
+
+/** Distance: "450 m", "1.2 km", "12 km". */
+export function formatDistance(m: number): string {
+  if (!Number.isFinite(m)) return '–';
+  if (Math.abs(m) < 1000) return `${formatNumber(Math.round(m / 10) * 10)} m`;
+  return Math.abs(m) < 10000 ? `${formatNumber(m / 1000, 1)} km` : `${formatNumber(m / 1000)} km`;
+}
+
+/** Short lengths such as flame height: "0.6 m", "2.5 m", "15 m". */
+export function formatMetres(m: number): string {
+  if (!Number.isFinite(m)) return '–';
+  return m < 10 ? `${formatNumber(m, 1)} m` : `${formatNumber(m)} m`;
+}
+
+/** Multiplier "×2.4", "×0.55", "×12". */
+export function formatMultiplier(f: number): string {
+  if (!Number.isFinite(f)) return '×–';
+  if (f >= 10) return `×${formatNumber(f)}`;
+  if (f >= 0.995 && f <= 1.005) return '×1';
+  if (f < 0.1) return `×${formatNumber(f, 2)}`;
+  return f < 1 ? `×${formatNumber(f, 2)}` : `×${formatNumber(f, 1)}`;
+}
+
+// ───────────────────────────── weather ─────────────────────────────
+
+export const formatTemp = (c: number): string => (Number.isFinite(c) ? `${formatNumber(c)} °C` : '–');
+export const formatRH = (rh: number): string => (Number.isFinite(rh) ? `${formatNumber(rh)}%` : '–');
+export const formatPercent = (p: number, digits = 0): string => (Number.isFinite(p) ? `${formatNumber(p, digits)}%` : '–');
+
+/** Wind direction (FROM), e.g. "NW (315°)". */
+export function formatDirFrom(deg: number): string {
+  if (!Number.isFinite(deg)) return '–';
+  const d = Math.round(wrapDeg(deg));
+  return `${compassName(d)} (${d % 360}°)`;
+}
+
+/** Azimuth a thing moves TOWARDS, e.g. "towards NE (45°)". */
+export function formatHeading(deg: number): string {
+  if (!Number.isFinite(deg)) return '–';
+  const d = Math.round(wrapDeg(deg));
+  return `towards ${compassName(d)} (${d % 360}°)`;
+}
+
+export { compassName };
+
+// ───────────────────────────── other ─────────────────────────────
+
+/** "33.7150° S, 150.2850° E". */
+export function formatLatLon(lat: number, lon: number, digits = 4): string {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '–';
+  const ns = lat < 0 ? 'S' : 'N';
+  const ew = lon < 0 ? 'W' : 'E';
+  return `${Math.abs(lat).toFixed(digits)}° ${ns}, ${Math.abs(lon).toFixed(digits)}° ${ew}`;
+}
+
+/** Years since fire: "No record", "< 1 year", "1 year", "7 years", "30+ years". */
+export function formatYears(y: number): string {
+  if (!Number.isFinite(y)) return 'No record';
+  if (y < 1) return '< 1 year';
+  if (y >= 30) return '30+ years';
+  const r = Math.round(y);
+  return r === 1 ? '1 year' : `${r} years`;
+}
+
+/** Playback speed label: "1×", "60×", "Max". */
+export function formatPlaybackSpeed(speed: number): string {
+  return Number.isFinite(speed) ? `${formatNumber(speed)}×` : 'Max';
+}
+
+/** Bytes → "12 MB". */
+export function formatBytes(b: number): string {
+  if (b < 1024 * 1024) return `${formatNumber(b / 1024)} kB`;
+  return `${formatNumber(b / (1024 * 1024), b < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
