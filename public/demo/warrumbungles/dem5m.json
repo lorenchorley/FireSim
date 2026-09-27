@@ -1,0 +1,16 @@
+{
+ "id": "warrumbungles",
+ "cellSize": 10,
+ "n": 900,
+ "centre": {
+  "lat": -31.28,
+  "lon": 149.02
+ },
+ "extent": 9000,
+ "encoding": "terrarium rgb; row 0 = north",
+ "source": "NSW Spatial Services NSW_5M_Elevation ImageServer (5 m LiDAR-derived bare-earth DTM), exportImage F32 GeoTIFF in EPSG:3857, bilinear-resampled to 10 m local grid",
+ "attribution": "\u00a9 Spatial Services NSW (CC BY 4.0)",
+ "minElevation": 425.2,
+ "maxElevation": 1163.66,
+ "nodataCount": 0
+}
