@@ -35,11 +35,8 @@ export const FIRE_MODEL_PARAMS = {
     valid: { u10Min: 5, u10Max: 70, mMin: 4, mMax: 20, wrfMin: 3, wrfMax: 5 },
   },
 
-  /** Fuel availability (spec §5.9; the Mk2 logistic, D8/D9). The wet-forest C1 domain is W ∈ [3, 5] (FBI-TG). */
+  /** Fuel availability (spec §5.9; functions from fuel/moisture). The wet-forest C1 domain is W ∈ [3, 5] (FBI-TG). */
   availability: {
-    /** C1 uses W = clamp(wrf, wMin, wMax); outside [3, 5] the output is flagged not validated. */
-    wMin: 3,
-    wMax: 6,
     /** KBDI assumed by the object API for wet forest / pine when the input gives none [H]. */
     defaultKbdi: 100,
   },
@@ -135,7 +132,11 @@ export const FIRE_MODEL_PARAMS = {
   fbi: { topMetric: 90000, topFbi: 200 },
 
   /** AFDRS-parity FBI path (D41): curing assumed for grass types when the caller gives none [H]. */
-  afdrs: { defaultCuring: 100 },
+  afdrs: {
+    defaultCuring: 100,
+    /** Eaten-out grass below 5 km/h in the parity path: the FBI-TG eq 3.11 form (AFDRS operational parity) [H]. */
+    eatenOutFbitg: true,
+  },
 
   /** Validation flag for mountain multipliers (spec §6.12): any [H] multiplier > this makes `validated` false. */
   multiplierValidMax: 1.3,

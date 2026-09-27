@@ -11,6 +11,7 @@
  * ```
  */
 import type { GrassState } from '../../core/types';
+import { powPos } from './common';
 import { FIRE_MODEL_PARAMS } from './params';
 
 const G = FIRE_MODEL_PARAMS.grass;
@@ -31,10 +32,10 @@ export const grassStateFromLoad = (lTha: number): GrassState =>
 /** Wind function R (km/h, before moisture, curing and WAF) for a grass state. `fbitgLowWind` selects the FBI-TG eaten-out form. */
 export function grassWindRate(u10: number, state: GrassState, fbitgLowWind = false): number {
   const u = u10 > 0 ? u10 : 0;
-  if (state === 'natural') return u < 5 ? 0.054 + 0.269 * u : 1.4 + 0.838 * Math.pow(u - 5, 0.844);
-  if (state === 'grazed') return u < 5 ? 0.054 + 0.209 * u : 1.1 + 0.715 * Math.pow(u - 5, 0.844);
+  if (state === 'natural') return u < 5 ? 0.054 + 0.269 * u : 1.4 + 0.838 * powPos(u - 5, 0.844);
+  if (state === 'grazed') return u < 5 ? 0.054 + 0.209 * u : 1.1 + 0.715 * powPos(u - 5, 0.844);
   if (u < 5) return fbitgLowWind ? 0.054 + 0.209 * u : 0.027 + 0.1045 * u;
-  return 0.55 + 0.357 * Math.pow(u - 5, 0.844);
+  return 0.55 + 0.357 * powPos(u - 5, 0.844);
 }
 
 /** CSIRO grassland head ROS (m/h, flat). */
