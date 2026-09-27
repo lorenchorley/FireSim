@@ -27,6 +27,8 @@ Tags:
 - **[K]**: established knowledge or literature that was not re-read in this session. Verify before relying on it.
 - **[D]**: derived here (the arithmetic is shown).
 - **[H]**: heuristic or engineering recommendation. Benchmark it on real devices and make it tunable.
+- **(verified: …)** / **(UNVERIFIED — …)**: the result of the adversarial fact-check pass (§0.1). "verified" means the
+  source was re-opened in that pass and the quote or number matched, or was corrected to match.
 
 > Source-code facts reflect `main` branches in September 2026. Shipping OS builds can lag or differ, so every
 > capability must be **feature-detected at runtime**, never inferred from the OS version.
@@ -56,8 +58,9 @@ graphics and fire-science references stay [K].
    (α ≈ 27.5°, δ = 20°) is from **Fan et al. (2025), IJWF 34, WF24134**, as corrected in 01-terrain-fire-behaviour.md.
 6. The HIG "strive for 7:1, especially in small text" is from the **Dark Mode** page. The Accessibility page minimum is
    4.5:1 up to 17 pt, and 3:1 at 18 pt or for bold text.
-7. The central-difference normal formula is not Horn's (1981) method. Horn's weighted 3×3 stencil is now given
-   separately.
+7. The central-difference normal formula is not Horn's (1981) method; GDAL calls it Zevenbergen–Thorne. Horn's
+   weighted 3×3 stencil is now given separately, with signs checked against GDAL `gdaldem_lib.cpp`. The repo's
+   `terrain/analysis.ts` already uses Horn.
 8. flutter_scene does not strictly need a command-line flag. Flutter GPU is off by default and has to be enabled per
    platform, with `--enable-flutter-gpu` in development or an `Info.plist`/`AndroidManifest` key when shipping.
 9. expo-gl: "a WebGL2 subset" was not a quote. The docs say it "resembles a WebGL2RenderingContext" and list the
@@ -67,11 +70,17 @@ graphics and fire-science references stay [K].
 12. The WebKit 20 s `processSuspensionTimeout` is an upper bound for the WebContent process to finish `PrepareToSuspend`.
     It is not a guaranteed 20 s of JavaScript.
 13. "Flame depth D = R·τ_r (Byram 1959)" is a kinematic identity. Its attribution is UNVERIFIED.
+14. "T_a in R32F or R16F" was unsafe. Half floats resolve 6-h arrival times only to 8–16 s, which is comparable to
+    flame residence time, so T_a must be R32F or offset (§8.4).
+15. The dataSync/mediaProcessing FGS types do not match a simulation by Android's own definitions. `specialUse` is
+    the honest type (§5.2).
+16. Apple's wording was tightened throughout (2.4.2, 2.5.9, 4.2 quotes checked). Guidelines 2.5.2 (no downloaded code) and
+    2.5.4 (background modes only for their intended purposes) were added.
 
 **Additions:** SystemBars `insetsHandling` for Android WebView < 140; whole-file reads in the iOS asset handler and Range
 requests; Android thermal-headroom semantics; Apple's `.serious` guidance (60→30 fps, fewer particles); Lockdown Mode's
-JIT-less WebContent process; SAB detection via `crossOriginIsolated`; vertical-CFL budget; Vesta Mk 2 flame height for
-display; iOS deployment-target advice; compass and declination; DEM-resolution slope bias; and a phenomenon → "Show me"
+JIT-less WebContent process; SAB detection via `crossOriginIsolated`; vertical-CFL budget; Project Vesta (AFDRS forest)
+flame height for display; iOS deployment-target advice; compass and declination; DEM-resolution slope bias; and a phenomenon → "Show me"
 visual-layer map (§11.4).
 
 ---
@@ -89,8 +98,9 @@ visual-layer map (§11.4).
      current design does.
 2. **Use WebGL2 as the production rendering baseline.**
    - WebGL2 is universal: Safari 15+ and Chrome Android 58+ [S: BCD]. three.js dropped WebGL 1 in r163 [S: `WebGLRenderer.js`].
-   - WebGPU is on by default on iOS/iPadOS 26, including in WKWebView. The WebKit pref has no WebKit/WKWebView-specific
-     default, and `ENABLE_WEBGPU_BY_DEFAULT` is set for `PLATFORM(IOS)` [S].
+   - WebGPU is on by default on iOS/iPadOS 26 (verified: gpuweb wiki). For WKWebView this is inferred: the WebKit pref has
+     no WebKit/WKWebView-specific default, and `ENABLE_WEBGPU_BY_DEFAULT` is set for `PLATFORM(IOS)` (verified: WebKit
+     `main`). It is UNVERIFIED on a shipping device.
    - On Chrome Android, WebGPU needs version 121+ on Android 12+ with ARM/Qualcomm/Intel GPUs [S: gpuweb wiki].
    - **Android WebView support for WebGPU is unconfirmed.** BCD only "mirrors" Chrome Android here [S].
    - So treat WebGPU as an optional accelerator, used after `navigator.gpu.requestAdapter()` succeeds.
@@ -100,10 +110,13 @@ visual-layer map (§11.4).
      androidx.webkit **1.18.0-alpha01 (9 Sep 2026)** [S].
    - On iOS, WebKit would honour COOP/COEP on `capacitor://localhost` because scheme-handler origins count as
      "potentially trustworthy" [S]. But Capacitor never sends those headers, and its `loadView()` is `final` [S].
-   - **Use transferable ArrayBuffers with a buffer pool.** SAB is a progressive enhancement.
+   - **Use transferable ArrayBuffers with a buffer pool.** SAB is a progressive enhancement, gated on
+     `self.crossOriginIsolated === true`. Android WebView exposes the SAB constructor without isolation, so checking
+     `typeof SharedArrayBuffer` is wrong (§4.2).
 4. **Mobile OSes will stop the simulation when the app is backgrounded, so checkpointing is mandatory.**
-   - iOS gives `applicationDidEnterBackground` 5 s [S]. WebKit then asks the WebContent process to suspend, with a 20 s
-     timeout [S: `ProcessThrottler.cpp`].
+   - iOS gives `applicationDidEnterBackground` "approximately five seconds" (verified: Apple docs). WebKit then asks the
+     WebContent process to suspend, with a 20 s **upper-bound** timeout (verified: `ProcessThrottler.cpp`). In practice
+     JavaScript stops within seconds.
    - If the WebContent process is killed (for example by memory pressure), Capacitor iOS simply calls `webView.reload()` [S],
      so all in-memory state is lost.
    - On Android, an unhandled `onRenderProcessGone` crashes or kills the app [S].
@@ -117,7 +130,8 @@ visual-layer map (§11.4).
 6. **Store area packs as native files, not as IndexedDB blobs.**
    - Capacitor's own guide warns that iOS may reclaim IndexedDB [S].
    - WebKit caps embedded-WebView origins at about 15 % of disk (20 % overall) [S: MDN].
-   - Lockdown Mode disables IndexedDB, WebGL and WebGPU entirely [S: WebKit prefs].
+   - Lockdown Mode disables IndexedDB, WebGL and WebGPU entirely (verified: WebKit prefs). It also runs pages in a
+     separate "CaptivePortal" WebContent process where Apple says JIT is off [K].
    - Read files back with `Capacitor.convertFileSrc()` + `fetch()`, which returns binary directly with no base64 bridge.
 7. **CapacitorHttp patches only `window.fetch`/XHR on the main thread** [S: `native-bridge.js`]. Web Workers do not get the
    CORS bypass, so do network I/O on the main thread (or natively) and transfer the bytes to workers.
@@ -129,10 +143,12 @@ visual-layer map (§11.4).
    - GPU wind-particle streaks, an optional raymarched plume volume, and additively blended embers.
    - Every one of these reads from a small data texture updated per snapshot, so no geometry is rebuilt.
 9. **Atmosphere cost scales as W ∝ L²·N_z/Δx³ (cells ∝ L²/Δx², steps ∝ 1/Δx)** [D]. With the domain L and N_z fixed,
-   halving Δx costs 8×. The multigrid pressure solve adds a little more on top. Hold the phone atmosphere grid at about
+   halving Δx costs 8×. The multigrid pressure solve adds a little more on top (one extra coarse level per halving [H]).
+   Explicit vertical advection would cost 3–5× more again (§4.4). Hold the phone atmosphere grid at about
    50–60 k cells (the architecture's 48×48×24) and spend any extra budget on the fire grid and rendering instead.
 10. **Field UX**:
-    - Primary controls at least 64 pt [H] (platform floors are 44 pt on iOS and 48 dp on Android [S]).
+    - Primary controls at least 64 pt [H] (platform floors are 44 pt on iOS and 48 dp on Android; verified: HIG Buttons,
+      Android accessibility guide).
     - Text contrast 7:1 (HIG Dark Mode: "strive for a contrast ratio of 7:1, especially in small text"; the HIG
       Accessibility minimum is 4.5:1), because "in bright surroundings, colors look darker and more muted" [S: HIG Color].
     - No gesture-only functions [S: HIG]; one-thumb bottom-sheet layout; a crosshair "mark fire here" instead of precise taps.
@@ -240,7 +256,8 @@ they are derived from Chrome Android rather than tested.)
     `(PLATFORM(MAC) && ≥ 26.0) || PLATFORM(IOS) || PLATFORM(VISION) || PLATFORM(WATCHOS)` (verified: WebKit `main`
     2026-09-27). **Inference:** Capacitor iOS apps on iOS 26 get `navigator.gpu`. `main` may differ from the shipped
     iOS 26 build, so this is UNVERIFIED on device.
-  - WebGPU is also exposed in workers (`WorkerNavigator.gpu`, Safari 26) [S: BCD].
+  - WebGPU is also exposed in workers (`WorkerNavigator.gpu`: Safari 26, Chrome Android 121) (verified: BCD
+    `api/WorkerNavigator.json`).
 - **Lockdown Mode (iOS):** `WebGLEnabled`, `WebGPUEnabled`, `IndexedDBAPIEnabled`, `FileSystemEnabled`,
   `CacheAPIEnabled` and `ServiceWorkersEnabled` all carry `disableInLockdownMode: true` (verified:
   `UnifiedWebPreferences.yaml`, 48 prefs in total). Lockdown pages run in the `com.apple.WebKit.WebContent.CaptivePortal`
@@ -254,7 +271,9 @@ they are derived from Chrome Android rather than tested.)
   `kAAPMBlocksWebGPU` ("enforces WebGPU security in Android Advanced Protection Mode", enabled by default) blocks WebGPU
   under Android Advanced Protection Mode (verified: `gpu_finch_features.cc` L297–299).
 - **Android WebView:** BCD marks `GPU` as a "mirror" of Chrome Android, which is auto-derived and not verified. No
-  WebView-specific disable was found in `aw_field_trials.cc` [S]. **Status is unverified. Detect at runtime.**
+  WebView-specific disable was found in `aw_field_trials.cc` (verified: the only GPU overrides there disable
+  `kGpuShaderDiskCache` and `kGpuPersistentCache`). `kWebGPUService` is enabled by default for `IS_ANDROID` builds
+  (verified: `gpu_finch_features.cc` L287–293). **Status is still unverified on devices. Detect at runtime.**
 - **Spec default limits** (verified: `gpuweb/spec/index.bs` limits table, `main`, 2026-09-27):
   - `maxTextureDimension3D` 2048;
   - `maxStorageBufferBindingSize` 134 217 728 B (128 MiB);
@@ -337,6 +356,8 @@ they are derived from Chrome Android rather than tested.)
    - Atmosphere view, 48×48×24 × 4 channels × 2 B (half float) → 0.44 MB.
    - 4 000 embers × 7 floats × 4 B → 112 kB.
    - At one snapshot per 5 simulated minutes (72 per 6 h), total traffic is under 150 MB even at the larger grid.
+   - (Arithmetic verified: 200²×4 B = 160 000 B; 48·48·24·4·2 B = 442 368 B; 4 000·7·4 B = 112 000 B;
+     72 × (1.0 + 0.44 + 0.11) MB ≈ 112 MB.)
 
 ### 4.3 WASM
 
@@ -347,7 +368,8 @@ they are derived from Chrome Android rather than tested.)
   - Start in TypeScript on `Float32Array`s: it is testable and the engines JIT it well.
   - Port only the measured hot loop to WASM SIMD (Rust `+simd128`, or AssemblyScript). The pressure/Poisson solve is
     typically the hot loop [K].
-  - Expect at most about 4× on float32 SIMD lanes, and less in practice due to memory bandwidth [K]. Benchmark it.
+  - Expect at most about 4× (128-bit `v128` = 4 × f32 lanes [D]), and less in practice due to memory bandwidth [K].
+    Benchmark it.
 
 ### 4.4 Budget arithmetic [D]
 
@@ -366,7 +388,8 @@ they are derived from Chrome Android rather than tested.)
   - **The 22–54 s estimate therefore depends on semi-Lagrangian advection and on implicit treatment of the vertical
     terms.** Keep both.
 
-**Architecture budget check:** the architecture budget is 10–25 ms per step for 48×48×24 = 55 296 cells, i.e. 22–54 s for 6 h.
+**Architecture budget check:** the architecture budget is 10–25 ms per step for 48×48×24 = 55 296 cells at Δt ≈ 10 s
+(verified: `docs/ARCHITECTURE.md` "Performance budget"), i.e. 22–54 s for 6 h.
 This implies c ≈ 0.18–0.45 µs per cell-update including the pressure solve. That is plausible for JIT-compiled typed-array
 code on a 2023+ phone core, but it must be benchmarked.
 
@@ -585,7 +608,8 @@ means throttling, even when no OS signal has fired [H].
 - iOS: SPM project; set `ios.webContentsDebuggingEnabled` for dev builds (maps to WKWebView `isInspectable`; verified:
   `CapacitorBridge.swift` L478).
 - Android: `minWebViewVersion`, a WebViewListener for render-process crashes, and an FGS declaration if used.
-- Live reload: `server.url` (dev only; "not intended for use in production" [S]).
+- Live reload: `server.url` (dev only; "**This is not intended for use in production.**"; verified: `@capacitor/cli`
+  `declarations.d.ts`).
 - Ship the WASM kernels and data as assets. `webDir` content is served with correct MIME types [S].
 
 ### 7.2 Test pyramid
@@ -654,29 +678,33 @@ while post-process chains are expensive.
   - render the mesh at 20–30 m or with RTIN error ≈ 1–2 m;
   - carry the fine DEM detail in a **normal map** (below).
 
-**Normals** from the finest DEM. The simplest option is the second-order central difference (often attributed to
-Fleming & Hoffer 1979 or Zevenbergen & Thorne 1987 [K]). **It is not Horn's method** (correction):
+**Normals** from the finest DEM. The simplest option is the second-order central difference. GDAL calls it
+`ZEVENBERGEN_THORNE` (Zevenbergen & Thorne 1987) (verified: GDAL `apps/gdaldem_lib.cpp`, `x = (afWin[3] − afWin[5])·inv_ewres`).
+**It is not Horn's method** (correction):
 
 ```
 ∂z/∂x ≈ (z_{i+1,j} − z_{i−1,j}) / (2Δx)
 ∂z/∂y ≈ (z_{i,j+1} − z_{i,j−1}) / (2Δy)
-n = normalize(−∂z/∂x, −∂z/∂y, 1)          (z-up frame; in three.js y-up, swap to (−∂z/∂x, 1, −∂z/∂y))
+n = normalize(−∂z/∂x, −∂z/∂y, 1)          (z-up, x east, y north; remap components to the scene's axes)
 ```
 
-**Horn (1981)** uses the weighted 3×3 (Sobel-like) stencil, which is less noisy on LiDAR DEMs. With the neighbourhood
-labelled a b c / d e f / g h i (rows north→south) [K; it is the form used by GDAL `gdaldem` "Horn"]:
+**Horn (1981)** uses the weighted 3×3 (Sobel-like) stencil, which is less noisy on LiDAR DEMs. Label the neighbourhood
+a b c / d e f / g h i, with rows running north→south (afWin[0..8] in GDAL):
 
 ```
-∂z/∂x = ((c + 2f + i) − (a + 2d + g)) / (8Δx)
-∂z/∂y = ((g + 2h + i) − (a + 2b + c)) / (8Δy)     (sign depends on whether raster rows increase southward)
+∂z/∂x (east +)  = ((c + 2f + i) − (a + 2d + g)) / (8Δx)
+∂z/∂y (north +) = ((a + 2b + c) − (g + 2h + i)) / (8Δy)
 slope = atan(√((∂z/∂x)² + (∂z/∂y)²))
 ```
 
-(UNVERIFIED — Horn 1981 not re-read this pass; the stencil is standard. Use the **same** operator in `terrain/analysis.ts`
-and the shader, so the slope the trainee sees matches the slope the fire model uses.)
+(verified: GDAL `gdaldem_lib.cpp` `Gradient<T, GradientAlg::HORN>` with the 1/(8·res) scale at L854–858. GDAL's own
+x and y are the negatives of these, i.e. west−east and south−north. Horn 1981 itself was not re-read [K].) The repo's
+`src/terrain/analysis.ts` already uses Horn (verified: file header). **Use the same operator in the shader normal map**,
+so the slope the trainee sees matches the slope the fire model uses.
 
-Store them as an RG8 or RGBA8 normal texture (8-bit quantisation gives about 0.5° resolution near vertical [D], which is
-fine for shading). Lighting then shows gullies finer than the mesh.
+Store them as an RGBA8 normal texture. 8-bit components step by 2/255 ≈ 0.0078, i.e. about 0.45° of slope when all
+three components are stored [D], which is fine for shading. RG8 with z reconstructed as √(1−x²−y²) loses precision on
+near-vertical cliffs, so prefer RGBA8 for escarpments. Lighting then shows gullies finer than the mesh.
 
 **Triplanar texturing on steep faces** (sandstone cliffs of the Blue Mountains, Budawangs and Warrumbungles) [K]:
 
@@ -688,7 +716,8 @@ This blends the XZ, YZ and XY projections, so escarpments show rock strata inste
 
 **Shader overlays:** layers are uniforms and textures in one terrain material, so toggling them costs nothing.
 
-- Slope classes, e.g. < 10°, 10–20°, **> 20° "beyond validated model"** (see 01-terrain-fire-behaviour.md).
+- Slope classes, e.g. < 10°, 10–20°, **> 20° "beyond validated model"**, and > ~24–27° "flame attachment likely"
+  (Wu, Xing & Atkinson 2000 critical angle of 24°; Fan et al. 2025 canyon α ≈ 27.5°; both verified in 01 §1 and §2.3).
 - Aspect-vs-wind alignment.
 - Fuel hazard per stratum, time since fire, dead fuel moisture, and arrival-time isochrones.
 - **Contours** with constant pixel width, using WebGL2 derivatives [K]:
@@ -700,9 +729,15 @@ This blends the XZ, YZ and XY projections, so escarpments show rock strata inste
 
 - **Hillshade** as the existing `src/terrain/hillshade.ts` does (multi-directional; Lambertian `n̂·ŝ`). Use it as baked
   ambient on the low tier, and use real sun position (`terrain/solar.ts`) on the high tier.
+- **Terrain shadow and "sun on this slope" layer (mountain-specific) [H].** The upslope-day / downslope-night cards
+  (doc 02 #3–#4) depend on whether a slope is sunlit, i.e. cos i > 0.3 with no horizon occlusion. Render the same
+  quantity the physics uses: incidence cos i = n̂·ŝ, times a horizon-shadow mask computed in the prep worker by marching
+  the DEM toward the sun. The trainee then sees *why* the east face is running at 10 am and the west face at 3 pm.
+  Deep NSW gorges (Kanangra, Grose, Wolgan) stay shaded long after sunrise.
 
 **Vertical exaggeration:** 1× by default, with an optional 1.5–2× that is always labelled [H]. Exaggeration visually
-steepens slopes and could mis-teach the slope effect.
+steepens slopes and could mis-teach the slope effect. For example, 2× turns a 20° slope into an apparent 36°
+(atan(2·tan 20°) = 36.1° [D]). Slope overlays and cards must always use the true slope.
 
 ### 8.3 Vegetation and fuel strata
 
@@ -712,16 +747,24 @@ The strata follow the Overall Fuel Hazard Guide: surface, near-surface, elevated
   follows the canopy-height raster. Visual stems are representative, not a census: 1 crown per ~15–25 m [H].
 - **Instancing and LOD.**
   - Use one `InstancedMesh` per species group × LOD, in spatial tiles about 500 m square. Core `InstancedMesh` culls only
-    as a whole via its bounding sphere [S: `InstancedMesh.js`], so tiling is needed.
+    as a whole via its bounding sphere (verified: r186 `InstancedMesh.js` `computeBoundingSphere`), so tiling is needed.
   - Alternatives:
-    - `BatchedMesh`, with `perObjectFrustumCulled`, `sortObjects`, `setVisibleAt`, `addInstance` and multi-draw [S];
-    - `@three.ez/instanced-mesh` (InstancedMesh2): per-instance culling, dynamic BVH, LOD and shadow LOD [S].
-      Its README does not claim `WebGPURenderer` support.
-  - r186's `webgl_batch_lod_bvh` example shows 5 LODs via meshoptimizer, BVH culling and a radix sort, using
-    `@three.ez/batched-mesh-extensions` [S].
+    - `BatchedMesh`, with `perObjectFrustumCulled`, `sortObjects` (both default `true`), `setVisibleAt`, `addInstance`,
+      and `WEBGL_multi_draw` via `multiDrawElementsWEBGL` (verified: r186 `BatchedMesh.js`,
+      `WebGLIndexedBufferRenderer.js`);
+    - `@three.ez/instanced-mesh` (InstancedMesh2): "Per-instance frustum culling", "Spatial indexing (dynamic BVH)",
+      "Level of Detail (LOD)" and "Shadow LOD" (verified: README). Its README does not mention `WebGPURenderer`.
+  - r186's `webgl_batch_lod_bvh` example: "Each geometry has 5 LODs (4 generated with meshoptimizer)", and "Frustum
+    culling and raycasting are accelerated by using BVHs (TLAS & BLAS)". It uses `createRadixSort` from
+    `@three.ez/batched-mesh-extensions` (verified: example source at tag r186).
   - LOD bands [H]: near (< 300 m) a 200–600-triangle eucalypt with open, clumped crowns and a visible trunk; mid
     (300–1 500 m) crossed quads or impostors; far: canopy tint in the terrain shader.
-  - Memory: 64 B per instance matrix, so 50 k instances ≈ 3.2 MB [D].
+  - Memory: 64 B per instance matrix (16 × Float32), so 50 k instances ≈ 3.2 MB [D, verified arithmetic].
+  - **Mountain-specific vegetation cues [H]:** NSW escarpment country changes fuel type sharply with topography, e.g.
+    heath and mallee on exposed sandstone ridges, dry sclerophyll on the upper slopes, and wet sclerophyll or rainforest
+    in sheltered gullies. Drive the species group and the understorey density from the fuel raster (doc 05), not from a
+    uniform "forest" brush. The trainee should *see* that the gully vegetation differs, and that when it dries out it
+    carries fire differently.
 - **Per-instance state attribute** (`InstancedBufferAttribute`, Uint8), updated per snapshot: unburnt, scorched crown,
   crown fire, burnt trunk only. The shader selects colour and emissive flicker, so no meshes are rebuilt.
 - **Elevated and near-surface fuel.** Draw instanced shrub clumps (2–20 tris) whose density comes from the elevated-fuel
@@ -735,22 +778,41 @@ The strata follow the Overall Fuel Hazard Guide: surface, near-surface, elevated
 
 ### 8.4 Fire front, flames, isochrones
 
-The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if unburnt) is the single source of truth.
+The arrival-time texture T_a(x,y) (seconds since start, +∞ if unburnt) is the single source of truth.
+
+- **Use R32F, not R16F, for T_a [D].** Half floats have an 11-bit significand. Between 2¹⁴ and 2¹⁵ s (4.6–9.1 h) the
+  spacing is 2^(14−10) = 16 s, and between 2¹³ and 2¹⁴ s (2.3–4.6 h) it is 8 s. That is a sizeable fraction of a 30–60 s
+  flame residence time, so the burning band would flicker and step.
+  - Sample R32F with `NEAREST` and do bilinear interpolation manually in the shader. In WebGL2, a float32 texture with
+    `LINEAR` filtering but without `OES_texture_float_linear` is incomplete and samples as black [K] (see §3.1).
+  - Alternatively, store T_a − t_ref in R16F with t_ref updated per snapshot.
 
 - **Burning band in the terrain shader.**
   - Flaming if 0 ≤ t − T_a ≤ τ_r.
   - Glowing or smouldering if τ_r < t − T_a ≤ τ_s.
   - Otherwise burnt (black and ash).
-  - Here τ_r is the flame residence time. Flame depth is D = R·τ_r (Byram 1959) [K].
+  - Here τ_r is the flame residence time. Flame depth is D = R·τ_r. This is a kinematic identity; the attribution to
+    Byram (1959) is UNVERIFIED (residence-time work such as Anderson 1969 is also cited for it) [K]. Doc 07 uses
+    τ_f = 30–60 s as an uncertain placeholder for eucalypt fuels. For example, at R = 0.5 m/s the band is 15–30 m wide,
+    i.e. 1–2 fire cells at 20 m [D].
 - **Front line.** Draw it with the isoline trick on T_a − t.
 - **Hourly isochrones.** Use `fract(T_a/3600 s)`, with a perceptually ordered, colour-blind-safe ramp.
 - **Flames.**
   - The prep or sim worker extracts the front polyline with marching squares on T_a = t each snapshot.
   - The main thread places up to ~2 000 instanced camera-facing flame quads along it, with additive blending and animated noise.
   - Height follows Byram's flame length, L = 0.0775·I^0.46 (L in m, I in kW/m), where I = H·w·R. Here H is the heat of
-    combustion (kJ/kg), w the fuel consumed (kg/m²) and R the ROS (m/s) (Byram 1959; reviewed by Alexander & Cruz 2012) [K].
-  - This is **for display only**. Eucalypt-forest flame heights with elevated fuels differ, so take the physics from the
-    fire module.
+    combustion (kJ/kg; the AFDRS default is 18 600 kJ/kg), w the fuel consumed (kg/m²) and R the ROS (m/s). The units
+    check: kJ/kg × kg/m² × m/s = kW/m. (Verified against doc 03 §3.1: the FBI Technical Guide eq. 3.18 for I; the AFDRS
+    pine model eq. 3.93 uses 0.07755·I^0.46. The Byram 1959 original and the Alexander & Cruz 2012 review are [K], not
+    re-read.) Example [D]: I = 5 167 kW/m (10 t/ha consumed at 1 km/h) gives L ≈ 0.0775·5167^0.46 ≈ 3.95 m.
+  - **Better for NSW dry eucalypt forest:** the Project Vesta (Cheney et al. 2012) flame height, as used in the AFDRS
+    forest model: FH = 0.0193·ROS^0.723·e^(0.64·H_el)·1.07
+    (FH in m; ROS in **m/h**; H_el = elevated-fuel height in m). ROS = 1000 m/h with H_el = 1.5 m gives 7.96 m
+    (verified via doc 03 §3.4, FBI-TG eq. 3.59; recomputed 7.96 m [D]). Byram tends to give lower flames here because
+    elevated fuel and bark add to the flame (compare 3.95 m vs 7.96 m at the same ROS, [D]). Use FH for forest cells
+    and Byram for other fuels.
+  - Either way this is **for display only**. Take the flame height from the fire module when it is available, so the
+    picture and the numbers agree.
 - **ROS arrows** at the head and flanks, as instanced cones with length ∝ ROS. Tapping one opens "Why here?".
 
 ### 8.5 Smoke and plume
@@ -759,11 +821,16 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
   at active cells and advected by the worker's wind, up to about 1–3 k particles at half resolution [H].
 - **High tier:** raymarch the atmosphere's smoke and temperature-anomaly fields.
   - Upload them as a `Data3DTexture` (RGBA16F, 48×48×24 × 8 B ≈ 0.44 MB) [D].
-  - Step count: r186's `webgl_volume_cloud` defaults to 100 steps on a 128³ texture; `webgpu_volume_fire` uses 16 [S].
+  - Step count: r186's `webgl_volume_cloud` defaults to `steps: 100` on a `size = 128` (128³) texture;
+    `webgpu_volume_fire` uses `volumetricMaterial.steps = 16` (verified: example sources at tag r186).
     On phones, use 24–32 steps at ¼–½ resolution with blue-noise jitter, then upsample [H].
   - Cost ≈ pixels × steps. At ½-res DPR 1.5 that is 0.19 MP × 32 ≈ 6 M samples per frame [D].
-- **Plume core:** show an isosurface of the temperature anomaly ΔT above a threshold (for example +2 K, user-tunable) with
-  `MarchingCubes` on the coarse grid [S: r186 addon]. This lets trainees *see* the column tilt with wind.
+- **Plume core:** show an isosurface of the temperature anomaly ΔT above a threshold (for example +2 K, user-tunable [H])
+  with `MarchingCubes` on the coarse grid (verified: r186 `examples/jsm/objects/MarchingCubes.js` exists). This lets
+  trainees *see* the column tilt with wind.
+  - Colour the column by regime using Byram's convection number N_c = 2gI/(ρ c_p T (U − R)³) (doc 02 §2.6; N_c > 10
+    plume-dominated, < 2 wind-driven). An upright column means "the fire is making its own weather", and a bent-over one
+    means "the wind is in charge" [H, thresholds from doc 02 (verified there)].
 
 ### 8.6 Wind (the most important "why" visual in mountains)
 
@@ -779,6 +846,16 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
   sinking cool air) and potential temperature. This is the clearest way to show "hot and cold air movements".
 - **Time-of-day flow.** At night, animate the particles at katabatic heights so trainees see drainage winds down gullies
   (see 02-mountain-meteorology.md).
+- **Mountain flow features that need a picture, not a number [H]:**
+  - *Lee-side separation and reverse flow.* In the along-wind cross-section, near-surface arrows on a steep lee slope
+    point **up** the slope, against the ridge-top wind (doc 02 card #2). Draw them in a contrasting colour, because this
+    is the most counter-intuitive mountain behaviour.
+  - *Crest speed-up.* Colour ridge-top streaks by the speed-up factor relative to the upwind reference (doc 02 card #9)
+    so trainees see why fire "wakes up" at the crest.
+  - *Cold-air pool and thermal belt.* At night, draw a translucent layer up to the diagnosed inversion top, with smoke
+    particles trapped beneath it. The mid-slope thermal belt shows as a warmer band on the slope (doc 02 cards #6, #19).
+  - *Valley channelling.* Show the valley-axis wind and the ridge-top wind together when they differ by more than 45°
+    (doc 02 card #5).
 
 ### 8.7 Embers
 
@@ -790,10 +867,19 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
   with age and cooling (blackbody-like ramp) [K]. Size attenuates, with a minimum of 2 px so embers stay visible in sunlight.
 - **Landing markers.** A ring's radius and opacity follow ignition probability. When a spot fire ignites, a pulsing marker
   appears and a "Spot fire" card is shown. Also draw a **max-spotting-distance arc** downwind.
+- **Terrain matters for embers (mountain-specific) [H using doc 06 §2.9].** Embers launched from a ridge-top fire start
+  hundreds of metres above the valley floor on the lee side, so the same flight time carries them further horizontally
+  before they reach the ground. Extra range ≈ Ū·Δh/v_t, e.g. Ū = 12 m/s, Δh = 400 m and terminal velocity v_t = 5 m/s
+  give about +1 km. Albini's model has explicit ridge/valley source terms for this (doc 06 §2.9, verified there against
+  BehavePlus `spot.cpp`). Lee-side eddies can also drop them onto the lee face or carry them back upslope.
+  Render trajectories against the true terrain surface, not a flat plane, and colour each landing zone by the fuel
+  moisture there (a shaded, moist gully vs a sun-exposed ridge). The card can then say *why* this ember caught and that
+  one did not.
 
 ### 8.8 Picking and "Why here?"
 
-- Raymarch the heightfield on the CPU from the camera ray (fast and exact on a DEM), or use `three-mesh-bvh` on the terrain mesh [S: npm 0.9.15].
+- Raymarch the heightfield on the CPU from the camera ray (fast and exact on a DEM), or use `three-mesh-bvh` on the
+  terrain mesh (0.9.15, 9 Sep 2026; verified: npm).
 - Send `explain(x, y)` to the worker. The response lists the factor decomposition (slope, wind, fuel, moisture, phenomenon
   multipliers) from the fire module.
 
@@ -803,16 +889,18 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
 
 | Need | Evidence | FireSim rule |
 |---|---|---|
-| Touch targets | iOS: "hit region of at least 44x44 pt" [S: HIG]. Android: "at least 48dp×48dp. Larger is even better" [S]. WCAG 2.2 AA 24×24 CSS px; AAA 44×44 [S] | **Primary actions ≥ 64×64 pt with ≥ 12 pt gaps; secondary actions ≥ 48** [H]. Gloved fingertips are larger and less precise, and many firefighting gloves are not capacitive [K]. Field-trial with RFS-issue gloves |
-| Gestures | "Offer alternatives to gestures… avoid custom multifinger" [S: HIG] | Every pinch, rotate or tilt also has buttons: ＋/－ zoom, "Look uphill", "Look downwind", "Plan view", "My position". Two-finger tilt is optional |
+| Touch targets | iOS: "a button needs a hit region of at least 44x44 pt" (verified: HIG Buttons). Android: "touch target size, of at least 48dpx48dp. Larger is even better" (verified: developer.android.com accessibility). WCAG 2.2 SC 2.5.8 (AA) 24×24 CSS px; SC 2.5.5 (AAA) 44×44 CSS px [K; W3C pages not re-read] | **Primary actions ≥ 64×64 pt with ≥ 12 pt gaps; secondary actions ≥ 48** [H]. Gloved fingertips are larger and less precise, and many firefighting gloves are not capacitive [K]. Field-trial with RFS-issue gloves |
+| Gestures | "Offer alternatives to gestures"; "use the simplest gesture possible — avoid custom multifinger and multihand gestures" (verified: HIG Accessibility). "People may not always have both hands available" (verified: HIG Gestures) | Every pinch, rotate or tilt also has buttons: ＋/－ zoom, "Look uphill", "Look downwind", "Plan view", "My position". Two-finger tilt is optional |
 | Precise placement | [H] | **Crosshair placement:** drag the map under a fixed centre reticle and press the big "Mark fire here" button. "Mark at my GPS position" and "Mark at bearing + distance" (compass) are alternatives. Haptic confirmation (`@capacitor/haptics`) |
-| Sunlight | "In bright surroundings, colors look darker and more muted" [S: HIG]. Contrast ≥ 4.5:1; "strive for … 7:1, especially in small text" [S: HIG] | "Sun" theme: near-black text on white or pale backgrounds, 7:1 minimum, heavy weights, no thin lines. Map overlays get 2-px dark outlines. Body text ≥ 17 pt (the iOS default) [S] |
+| Sunlight | "Colors can look different when you view your app outside on a sunny day or in dim light. In bright surroundings, colors look darker and more muted" (verified: HIG Color). Minimum contrast 4.5:1 up to 17 pt, 3:1 at 18 pt or bold (verified: HIG Accessibility table); "For custom foreground and background colors, strive for a contrast ratio of 7:1, especially in small text" (verified: HIG **Dark Mode**). Android: 4.5:1 for text below 18sp (or bold below 14sp), otherwise 3:1 (verified) | "Sun" theme: near-black text on white or pale backgrounds, 7:1 minimum, heavy weights, no thin lines. Map overlays get 2-px dark outlines. Body text ≥ 17 pt (the iOS default) [S] |
 | Night and smoke | [H] | "Night" theme: dark UI with dimmed map and no pure-white panels. Respect the system dark mode, and allow manual override |
 | Colour vision | About 8 % of men of European ancestry have red–green deficiency (Birch 2012) [K] | Fire, burnt and unburnt are never shown by red/green alone. Add patterns (hatching), labels and a luminance-ordered ramp |
 | One-handed | [H] | Bottom sheet with 3 detents. The primary action and timeline scrubber sit in the thumb zone. Nothing critical in the top 25 % of the screen |
-| Interruptions | "Minimize use of time-boxed interface elements… Prefer dismissing views with an explicit action" [S: HIG] | Insight cards persist in a list, with no auto-dismiss toasts |
+| Interruptions | "Minimize use of time-boxed interface elements … Prefer dismissing views with an explicit action" (verified: HIG Accessibility) | Insight cards persist in a list, with no auto-dismiss toasts |
 | Wet screens | [K] | Water causes phantom touches. Add a "lock interaction" toggle, and confirm destructive actions |
 | Safety framing | [H] | A persistent "Training aid — not an operational prediction" banner. Follow the IC and NSW RFS procedures |
+| Glare and heat | [K] | In direct summer sun phones throttle and dim the screen (thermal). The "Sun" theme should not depend on max brightness. Pair it with the §5.3 thermal policy so the UI stays readable when the renderer drops to a static frame |
+| Mountain orientation | [H] | Label ridges, gullies and the user's own position with a height-above-valley readout. Offer a "Look uphill from the fire" camera preset. Novices mis-read 3-D slope from a phone screen, so the camera presets must teach "the fire is *below* you on this slope" explicitly |
 
 ---
 
@@ -824,8 +912,11 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
    - `webgl2`;
    - extension set (`OES_texture_float_linear`, `EXT_color_buffer_float`, `WEBGL_multi_draw`);
    - `navigator.gpu?.requestAdapter()` and its limits;
-   - `crossOriginIsolated`;
+   - `self.crossOriginIsolated === true` (**not** `typeof SharedArrayBuffer`, because Android WebView exposes the
+     constructor without isolation; §4.2);
    - WASM SIMD, by validating a tiny SIMD module;
+   - a JIT sanity check: if the benchmark is more than ~5× slower than the model's expected tier, suspect Lockdown Mode
+     or a JIT-less WebView and offer the "reduced resolution" preset [H];
    - `Device.getInfo()`;
    - a 1.5 s micro-benchmark: one atmosphere step on 48×48×24, plus 60 frames of the terrain scene.
    - Output: tier `low | mid | high`, persisted in Preferences and re-measured after OS or WebView updates.
@@ -835,15 +926,22 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
    - Render on demand.
    - Time-based animation.
    - `webglcontextlost` → show a message; on `webglcontextrestored` → rebuild GPU resources from CPU copies.
-3. **Textures:** half-float for all sampled scalar and vector fields, which also covers iPhone float-linear filtering; KTX2
-   for imagery and vegetation atlases.
-4. **Worker protocol:** transferable buffer pool; yield every ≤ 50 ms; checkpoint every 10 simulated minutes and on
-   `App.addListener('pause')`; restore on launch.
-5. **Native glue (small custom plugin):** `thermal` (state + events), `lowPower`, and an Android `WebViewListener` for
-   `onRenderProcessGone`. Add `@capacitor/app`, `@capacitor/network`, `@capacitor/device`, `@capacitor/haptics` and
-   `@capacitor-community/keep-awake`.
-6. **Storage:** area packs in `Directory.LibraryNoCloud` as files plus a JSON manifest; IndexedDB only as a cache index;
-   `navigator.storage.persist()`.
+3. **Textures:** half-float for all sampled scalar and vector fields. This sidesteps the uncertain iPhone float32
+   linear filtering (§3.1). Use KTX2 for imagery and vegetation atlases.
+4. **Worker protocol:** transferable buffer pool; yield every ≤ 50 ms; checkpoint every 10 simulated minutes **and** on
+   `App.addListener('pause')`, since the pause handler alone may not finish within iOS's ~5 s; restore on launch.
+5. **Native glue (small custom plugin):**
+   - `thermal` (state + events): iOS `ProcessInfo.thermalStateDidChangeNotification`; Android
+     `addThermalStatusListener` (API 29), plus `getThermalHeadroom` polled at ≤ 1 Hz (API 30–35) or
+     `addThermalHeadroomListener` (API 36);
+   - `lowPower`: iOS `isLowPowerModeEnabled`; Android `isPowerSaveMode` + `ACTION_POWER_SAVE_MODE_CHANGED`;
+   - an Android `WebViewListener` whose `onRenderProcessGone` returns `true` and recreates the WebView.
+   - Add `@capacitor/app`, `@capacitor/network`, `@capacitor/device`, `@capacitor/haptics` and
+     `@capacitor-community/keep-awake`.
+   - Raise the iOS deployment target to 16.4 and `android.minWebViewVersion` to 91 (§2.2).
+6. **Storage:** area packs in `Directory.LibraryNoCloud` as files, tiled at ≤ 8–16 MB (or read with Range requests),
+   plus a JSON manifest; IndexedDB only as a cache index; `navigator.storage.persist()`. Keep the 5 m DEM for mountain
+   packs (§6.4).
 7. **Network:** all fetches on the main thread through the existing `data/http.ts`; bytes are transferred to workers.
 8. **Tests:** add a Vitest browser-mode project (Chromium + WebKit) for the worker protocol and shader compile; a
    Playwright Android WebView perf job on one physical device; and an iOS manual perf checklist.
@@ -855,8 +953,10 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
   - iOS needs a `patch-package` patch adding `Cross-Origin-Opener-Policy: same-origin` and
     `Cross-Origin-Embedder-Policy: require-corp` to `WebViewAssetHandler`, which then requires CORP or CORS on every
     subresource;
-  - Android needs androidx.webkit ≥ 1.18 with the allowlist and `Document-Isolation-Policy`, once stable.
-- Optional Android `dataSync`/`specialUse` FGS and iOS `BGContinuedProcessingTask` experiments for background completion.
+  - Android needs androidx.webkit ≥ 1.18 with the allowlist and `Document-Isolation-Policy`, once stable. That means
+    overriding Capacitor's pinned `androidxWebkitVersion 1.14.0`.
+- Optional Android `specialUse` FGS (preferred over `dataSync`, whose definition does not cover simulation; §5.2) and
+  iOS `BGContinuedProcessingTask` experiments for background completion.
 
 ### 10.3 Simplifications and their consequences
 
@@ -865,9 +965,11 @@ The arrival-time texture T_a(x,y) (R32F or R16F; seconds since start, +∞ if un
 | Atmosphere ≤ 60 k cells (150 m) on CPU tier | Cannot resolve VLS or gully-scale flows (needs ≤ 80 m [01]) | Parameterised mountain phenomena; label "sub-grid" in cards |
 | Snapshots every 5 sim-min | Jerky ember and plume motion | Interpolation + short ember tracks |
 | Representative trees, not a census | Visual density ≠ stems/ha | The fuel model uses rasters, not visuals; say so in the legend |
-| Half-float fields | ~3 significant digits | Fine for display; the simulation stays Float32/64 in the worker |
+| Half-float fields | ~3.3 significant digits (11-bit significand; max 65 504) | Fine for display of winds and temperatures; **not** for absolute arrival times (§8.4). The simulation stays Float32/64 in the worker |
 | No background execution guarantee | Long runs stop when the phone locks | Checkpoint/resume; keep-awake during runs; progress in simulated time |
-| Byram flame length for display | Can mismatch the model's flame height | Use the fire module's flame height when available |
+| Byram flame length for display | Can mismatch the model's flame height; in forest it is lower than Vesta FH | Use the fire module's (Vesta/AFDRS) flame height when available |
+| 30 m DEM when no 5 m pack | Gully walls and escarpments look and model gentler than reality | "Coarse terrain" badge; prefer NSW 5 m packs (§6.4) |
+| Semi-Lagrangian vertical advection at C_z ≈ 5 | Plume base smeared, updraft peak under-estimated | Keep Δz₁ ≈ 20 m; use a plume model (MTT) for ember lofting (docs 06, 07) rather than the resolved w |
 
 ### 10.4 User-editable inputs (technical side)
 
@@ -893,8 +995,12 @@ Physical inputs (fuel strata, moisture, wind override, spot fires) are specified
 
 - **Content:** title (≤ 6 words); one-sentence **why**; **what to watch for**; a **confidence/validity badge**
   ("Model OK", "Beyond validated slope", "Sub-grid estimate"); a **Show me** button; and **Why here?** for the cell.
-  - Show me flies the camera, turns on the relevant overlay (slope arrows, wind streaks, cross-section) and pauses playback.
-- **No auto-dismiss** [S: HIG]. At most 1 new card per 20 s of wall time. Order by severity: safety-critical, then
+  - Show me flies the camera, turns on the relevant overlay (slope arrows, wind streaks, cross-section) and pauses
+    playback. The per-phenomenon mapping is in §11.4.
+  - **Mountain framing:** every fire-behaviour card should say how the behaviour differs from flat ground (e.g. "on flat
+    ground this fire would be moving at about {R₀}; this slope makes it ×{SF}"). That comparison is the intuition a
+    beginner lacks [H].
+- **No auto-dismiss** (verified: HIG Accessibility "Minimize use of time-boxed interface elements"). At most 1 new card per 20 s of wall time. Order by severity: safety-critical, then
   behaviour change, then explanatory.
 - **Accessibility:** cards are read by VoiceOver/TalkBack; the text is ≥ 17 pt; the icon and pattern encode severity, not only colour.
 
@@ -904,15 +1010,20 @@ Thresholds come from 01-terrain-fire-behaviour.md and 02-mountain-meteorology.md
 
 | Card | Detection (evaluated by `explain/` every ~60 s simulated) | Text |
 |---|---|---|
-| **Running uphill** | Slope component along the spread direction θ_d ≥ 10° at an active head-fire cell | "The fire is climbing a {θ_d}° slope. Uphill, flames lean into unburnt fuel and pre-heat it, so spread roughly doubles every 10° (about ×{2^(θ_d/10)} here)." (Noble et al. 1980 via [01]) |
-| **Beyond the model** | θ_d > 20° | "Above ~20° slopes, flames can attach to the ground and all standard models under-predict. Treat this run as possibly faster than shown." [01] |
-| **Slow downhill, but it still moves** | θ_d ≤ −10° | "Going downhill the fire slows, but not much, and rarely below half its flat-ground speed. A backing fire can still reach you." (kataburn, via [01]) |
-| **Gully / chimney** | Head cell in a channel (TPI and curvature concave) with along-axis slope near 25–30° and side walls about 20° | "This gully acts like a chimney. Hot air and flame are funnelled up it and the run can accelerate suddenly. Never be above a fire in a gully." (Xie et al. 2017; Viegas via [01]) |
-| **Lee-slope sideways run (VLS)** | Lee slope > ~20°, aspect within ~30–40° of the wind-to direction, ridge wind > ~20–25 km/h, active fire on that slope | "Wind rolling over the ridge makes a spinning eddy on this steep lee slope. Fire can run *sideways* along it and throw embers far downwind." (Sharples et al. 2012 via [01][02]; sub-grid estimate) |
-| **Wind change coming** | Forecast direction change ≥ 45° within 2 h over the scenario window [H] | "At {time} the wind swings to {dir}. Today's long flank becomes the head fire, with a much wider front." |
-| **Upslope day / downslope night** | Local solar time and insolation on the slope (see [02]) | "Sun on this slope is driving air uphill, and the fire rides it." / "After dark, cool air drains down the gullies and pushes fire downhill." |
-| **Spotting** | An ember lands > 100 m ahead of the front with ignition probability > 0.3 [H] | "Embers are landing {d} m ahead in dry fuel. New fires can start in front of you, not just at the edge." |
-| **Fire makes its own wind** | Surface wind within 300 m of the fire deviates > 45° from ambient, or \|Δu\| > 30 % of ambient, toward the fire [H] | "Air is being sucked into the fire's rising column. Near the fire, the wind you feel is not the forecast wind." |
+| **Running uphill** | Slope component along the spread direction θ_d ≥ 10° at an active head-fire cell | "The fire is climbing a {θ_d}° slope. Uphill, flames lean into unburnt fuel and pre-heat it, so spread roughly doubles every 10° (about ×{2^(θ_d/10)} here)." (McArthur rule, R_θ = R₀·e^(0.069θ), Noble et al. 1980; verified in 01 §2.2) |
+| **Beyond the model** | θ_d > 20° | "Above about 20° slopes, flames start to lie down onto the fuel ahead, and every standard model tends to under-predict. Treat this run as possibly faster than shown." (verified in 01 §1: 2026 lab comparison, all models under-predict above 20°; attachment critical angle ≈ 24°, Wu et al. 2000) |
+| **Slow downhill, but it still moves** | θ_d ≤ −10° | "Going downhill the fire slows, but much less than it speeds up going uphill. On this {−θ_d}° downslope it still moves at about {SF}× its flat-ground speed. A backing fire can still reach you." SF = kataburn: SF(−θ) = SF(θ)/(2·SF(θ) − 1), which gives 0.67 at −10° and 0.57 at −20° and never falls below 0.5 (Sullivan et al. 2014; verified in 01 §1 and §2.2; values recomputed [D]) |
+| **Gully / chimney** | Head cell in a drainage line (concave plan curvature, TPI < 0) with along-axis slope > 20°, fire at or below the cell, and upslope within ±45° of the wind (doc 02 card #11). Raise severity as the along-gully slope approaches α ≈ 27.5° with side walls δ ≈ 20° | "This steep gully acts like a chimney. The fire's own heat draws air up it and the flames lie down onto the fuel ahead, so it can accelerate suddenly even though the wind hasn't changed. Never be above a fire in a gully." (**Corrected:** the α = 27.5°, δ = 20° canyon threshold is Fan et al. 2025, IJWF 34, WF24134, not Xie et al. 2017; head-fire turning toward the gully axis for α ≥ 15° is also Fan et al. 2025; trench step-change is Xie et al. 2017; all verified in 01 §2.3) |
+| **Lee-slope sideways run (VLS)** | Lee slope > ~20–25°, aspect within ~30–40° of the wind-to direction, ridge wind > ~20 km/h (published triggers ≈ 18–30 km/h; 01 §4.4 uses a logistic centred at 25 km/h), and active fire on that slope within ~300 m of the crest | "Wind rolling over the ridge makes a spinning eddy on this steep lee slope. Fire can run *sideways* along it, across the wind, and throw embers far downwind. Don't assume the flanks are safe here." (Sharples, McRae & Wilkes 2012, IJWF 21:282–296, doi:10.1071/WF10055; Sharples & Hilton 2020; verified in 01 §2.4 and 02 card #1; **sub-grid estimate** at 150 m, since resolving VLS needs ≤ 80 m, Simpson et al. 2014) |
+| **Wind on this slope blows the "wrong" way** | Lee-facing, slope > ~20°, ridge wind > ~20–25 km/h (separation mask; doc 02 card #2 [V/H]) | "Behind a steep ridge the main wind lifts off the slope. Underneath, air circulates back *up* the slope, gusty and changing direction. A fire here may creep uphill toward the ridge, against the main wind." |
+| **Stronger wind on the crest** | Crest cell; H/L > 0.05; computed speed-up > 25 % (doc 02 card #9 [H]) | "Wind squeezes over the top of the hill and speeds up (about +{X} % here). A fire reaching this ridge suddenly gets stronger wind and can throw embers over the other side." |
+| **Wind change coming** | Forecast direction change ≥ 45° within 2 h over the scenario window [H] | "At {time} the wind swings to {dir}. Today's long flank becomes the head fire, with a much wider front." (Wind change was the main factor in 42 % of 45 Australian entrapments, 1980–2017; Lahaye et al. 2018, verified in 01 §1) |
+| **Upslope day** | Cell sunlit (cos i > 0.3, not horizon-shadowed), solar elevation > 10°, ridge wind < ~15 km/h, slope > 10° (doc 02 card #3 [H]) | "The sun has heated this slope and warm air is flowing up it. The fire gets an extra push uphill on top of the slope effect." |
+| **Downslope evening / night** | Slope in shadow or sun elevation < 5°, cloud < 3/8, ridge wind < ~10–15 km/h (doc 02 card #4 [H]) | "This slope is in shadow and cooling. Cool air now drains *down* the slope and valley. The upslope run should slow and the fire may back downhill. Smoke will sink into the valley." |
+| **The fire is about to wake up** | Diagnosed morning inversion about to break, typically 2–5 h after sunrise (doc 02 card #8; Whiteman 1982, verified there) | "The morning cold layer that has been holding the fire down is about to break. When it goes, stronger, drier winds from above reach the fire within minutes." |
+| **Ridges don't sleep** | Night; ridge cells above the diagnosed inversion top; ridge wind > 15 km/h (doc 02 card #7 [H]) | "Up here you're above the night-time cold layer. The wind keeps blowing and the fuel doesn't recover overnight, so fire on the tops can stay active all night." |
+| **Spotting** | An ember lands > 100 m ahead of the front with ignition probability > 0.3 [H]; escalate at > 500 m (doc 02 card #20) | "Embers are landing {d} m ahead in dry fuel. New fires can start in front of you, not just at the edge." |
+| **Fire makes its own wind** | Surface wind within 300 m of the fire deviates > 45° from ambient, or \|Δu\| > 30 % of ambient, toward the fire [H]; **or** Byram N_c > 10 (doc 02 card #16, thresholds verified there) | "Air is being sucked into the fire's rising column. Near the fire, the wind you feel is not the forecast wind." |
 
 ### 11.3 System and technology cards
 
@@ -924,6 +1035,26 @@ Thresholds come from 01-terrain-fire-behaviour.md and 02-mountain-meteorology.md
 | Offline data | Any layer older than its TTL, or `connectionType: 'none'` | "No signal: using weather from {issued} ({age} old). Enter belt-weather readings to update." |
 | Poor GPS | `accuracy` > 50 m [H] | "GPS is uncertain (±{acc} m) in this valley. Check your position on the map before marking the fire." |
 | Graphics limited | No WebGL2 (e.g. Lockdown Mode) | "3-D view unavailable on this device setting. Simulation results are still shown in 2-D." |
+| Slow device mode | Start-up benchmark more than ~5× slower than expected (JIT-less or Lockdown) [H] | "This phone is running the simulation slowly, so a coarser model is used. Directions and reasons are still valid; timings are rougher." |
+| Coarse terrain | Only a 30 m DEM is available for the site [H] | "The terrain here is from coarse 30 m data. Real gully walls and cliffs are likely steeper than shown, so the fire may be faster on them." |
+| Exaggerated view | Vertical exaggeration > 1× | "Heights are stretched ×{k} to make the terrain easier to read. Slope numbers and fire speeds use the true slope." |
+
+### 11.4 "Show me": which visual layer explains which phenomenon [H]
+
+The same detection that raises a card also picks the rendering layers (§8) that make the *why* visible. That is the
+point of "better than a drape map".
+
+| Phenomenon (card) | Camera preset | Layers switched on | What the trainee should notice |
+|---|---|---|---|
+| Running uphill / beyond the model | Side-on, looking across the slope | Slope classes (> 20° hatched), ROS arrows, flame billboards | Flames leaning into the slope; arrows longer on steeper cells |
+| Gully / chimney | Looking up the gully axis from below | Drainage-line highlight, along-axis slope label, 3-D streamlines at 10 m AGL, isochrones | Isochrones bunching into a "V" up the gully; indraft streamlines converging |
+| VLS / lee reverse flow | Along the ridge, lee side | Vertical cross-section (w, θ), lee-separation mask, lateral ROS arrows, ember landings | Reverse (upslope) arrows under the ridge; fire front moving *across* the wind |
+| Crest speed-up | Profile across the ridge | Wind streaks coloured by speed-up | Faster streaks at the crest; ember arcs over the ridge |
+| Upslope day / downslope night | Plan view, then oblique | Sun-incidence and shadow layer, surface-flow particles, time scrubber | Particles reversing direction when the slope goes into shadow |
+| Inversion / thermal belt / smoke trapped | Oblique over the valley | Inversion-top layer, smoke particles, θ profile inset | Smoke pooled under the lid; mid-slope warm band |
+| Fire makes its own wind | Oblique, fire centred | Plume isosurface coloured by N_c regime, surface-flow particles | Particles bending *toward* the fire; column upright vs bent over |
+| Spotting | Downwind, high oblique | Ember tracks, landing rings coloured by fuel moisture, max-spot arc | Embers catching in dry, sun-exposed fuel but not in the moist gully |
+| Wind change | Plan view | Current and future wind arrows, the flank that becomes the head highlighted | The long flank turning into a wide head fire |
 
 ---
 
@@ -938,7 +1069,16 @@ Thresholds come from 01-terrain-fire-behaviour.md and 02-mountain-meteorology.md
 4. **Real per-cell cost c on target phones**, and sustained-vs-burst throttling over a 2-min solve.
 5. **WebContent memory ceilings** (jetsam) on 4–6 GB iPhones. Apple does not publish them. Measure with `memUsed` and Instruments.
 6. **Glove usability** of 64-pt targets with RFS-issue gloves. This needs field trials, since no primary standard exists for gloved touch.
-7. **Lockdown Mode exclusion UX**: confirm the per-app exclusion flow on iOS 26.
+7. **Lockdown Mode exclusion UX**: confirm the per-app exclusion flow on iOS 26, and measure how much slower the solver
+   runs without JIT (and whether WebAssembly is available) in Lockdown's CaptivePortal WebContent process.
+8. **`OES_texture_float_linear` on A14+ iPhones.** The ANGLE Metal source suggests it can be exposed, while BCD says
+   "iPadOS only". Probe on an iPhone 12 or newer and an iPhone 11.
+9. **Real plume-core vertical velocities** in the coarse atmosphere, and how much semi-Lagrangian smearing at C_z ≈ 5
+   reduces them. This decides whether ember lofting can use the resolved w or needs the MTT plume model.
+10. **Bibliographic details** of the graphics and fire references ([K] items in §13). doi.org, Crossref and publisher
+    sites were blocked in this pass.
+11. **Google Play FGS declaration rules** (support.google.com blocked), and whether a `specialUse` "training simulation"
+    justification passes review.
 
 ---
 
@@ -954,19 +1094,21 @@ Thresholds come from 01-terrain-fire-behaviour.md and 02-mountain-meteorology.md
    - iOS `WebViewAssetHandler.swift`, `CAPBridgeViewController.swift`, `WebViewDelegationHandler.swift`.
    https://github.com/ionic-team/capacitor
 4. Ionic. Plugin READMEs: `@capacitor/geolocation` 8.2.2, `filesystem` 8.1.3, `preferences` 8.0.1, `device`, `app`, `network`. https://github.com/ionic-team/capacitor-plugins ; https://capacitorjs.com/docs/apis
-5. Ionic. *Capacitor Background Runner* README. https://github.com/ionic-team/capacitor-background-runner
-6. Capacitor issue #6182, "bug: SharedArrayBuffer support". https://github.com/ionic-team/capacitor/issues/6182
-7. capacitor-community/sqlite README. https://github.com/capacitor-community/sqlite
+5. Ionic. *Capacitor Background Runner* README. https://github.com/ionic-team/capacitor-background-runner (verified)
+6. Capacitor issue #6182, "bug: SharedArrayBuffer support" (iOS, opened Dec 2022, closed). https://github.com/ionic-team/capacitor/issues/6182 (verified: issue page)
+7. capacitor-community/sqlite README (8.1.1). https://github.com/capacitor-community/sqlite (verified)
 
 **WebKit, Chromium and web platform**
 
-8. WebKit. Source files on `main`:
+8. WebKit. Source files on `main` (all re-read 2026-09-27 via raw.githubusercontent.com):
    - `Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml`;
    - `Source/WTF/wtf/PlatformEnable.h`;
    - `Source/WebCore/page/SecurityOrigin.cpp`;
    - `Source/WebCore/loader/CrossOriginOpenerPolicy.cpp`;
    - `Source/WebKit/UIProcess/ProcessThrottler.cpp`;
-   - `Source/WebCore/platform/graphics/AnimationFrameRate.{h,cpp}`.
+   - `Source/WebCore/platform/graphics/AnimationFrameRate.{h,cpp}`;
+   - `Source/WebKit/UIProcess/Launcher/cocoa/ProcessLauncherCocoa.mm` (Lockdown "CaptivePortal" WebContent service);
+   - `Source/ThirdParty/ANGLE/src/libANGLE/renderer/metal/{DisplayMtl.mm, mtl_format_table_autogen.mm}` (float32 filtering).
    https://github.com/WebKit/WebKit
 9. Chromium. Source files on `main`:
    - `android_webview/common/aw_features.cc`;
@@ -975,58 +1117,70 @@ Thresholds come from 01-terrain-fire-behaviour.md and 02-mountain-meteorology.md
    - `gpu/config/gpu_finch_features.cc`;
    - `third_party/blink/renderer/platform/runtime_enabled_features.json5`.
    https://github.com/chromium/chromium
-10. Android Developers. *AndroidX WebKit release notes* (1.18.0-alpha01, 9 Sep 2026). https://developer.android.com/jetpack/androidx/releases/webkit
-11. Chromium issue 40914606, "SharedArrayBuffer is unavailable in Android WebView because crossOriginIsolated is false". https://issues.chromium.org/issues/40914606 (not readable here; search snippet only)
-12. cmer81/maps PR #128, "fallback sans SharedArrayBuffer (WebView Android)", merged 25 Sep 2026. https://github.com/cmer81/maps/pull/128
-13. GPU for the Web CG. *WebGPU Implementation Status*. https://github.com/gpuweb/gpuweb/wiki/Implementation-Status
-14. W3C. *WebGPU* (spec source `spec/index.bs`: limits and `float32-filterable`). https://www.w3.org/TR/webgpu/ ; https://github.com/gpuweb/gpuweb
-15. MDN. browser-compat-data (`api/GPU`, `WorkerNavigator`, `OffscreenCanvas`, `Worker`, `StorageManager`,
+10. Android Developers. *AndroidX WebKit release notes* (1.18.0-alpha01, 9 Sep 2026; 1.18.0-alpha02, 23 Sep 2026; 1.17.1 stable, 23 Sep 2026). https://developer.android.com/jetpack/androidx/releases/webkit (verified)
+11. Chromium issue 40914606, "SharedArrayBuffer is unavailable in Android WebView because crossOriginIsolated is false". https://issues.chromium.org/issues/40914606 (UNVERIFIED — not readable here; search snippet only. The behaviour it describes is corroborated by ref 12)
+12. cmer81/maps PR #128, "fix: fallback sans SharedArrayBuffer (WebView Android)", merged 25 Sep 2026. https://github.com/cmer81/maps/pull/128 (verified: PR page)
+13. GPU for the Web CG. *WebGPU Implementation Status*. https://github.com/gpuweb/gpuweb/wiki/Implementation-Status (verified: raw wiki markdown, 2026-09-27)
+14. W3C. *WebGPU* (spec source `spec/index.bs`: limits and `float32-filterable`). https://www.w3.org/TR/webgpu/ ; https://github.com/gpuweb/gpuweb (verified: limits table)
+15. MDN. browser-compat-data, `main` JSON re-read 2026-09-27 (`api/GPU`, `WorkerNavigator`, `OffscreenCanvas`, `Worker`, `StorageManager`,
     `FileSystemSyncAccessHandle`, `WakeLock`, `BatteryManager`, `PressureObserver`, `Navigator`, WebGL extensions;
     `javascript/builtins/SharedArrayBuffer`; `webassembly/*`). https://github.com/mdn/browser-compat-data
-16. MDN. *Storage quotas and eviction criteria*. https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria
+16. MDN. *Storage quotas and eviction criteria*. https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria (source: https://github.com/mdn/content/blob/main/files/en-us/web/api/storage_api/storage_quotas_and_eviction_criteria/index.md; verified)
 
 **Apple and Android platform documentation**
 
-17. Apple. *Extending your app's background execution time*. https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time
-18. Apple. *Performing long-running tasks on iOS and iPadOS*, `BGContinuedProcessingTask(Request)`. https://developer.apple.com/documentation/backgroundtasks/performing-long-running-tasks-on-ios-and-ipados
-19. Apple. `ProcessInfo.thermalState`, `ProcessInfo.ThermalState`, `isLowPowerModeEnabled`, and `WKNavigationDelegate.webViewWebContentProcessDidTerminate(_:)`. https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.enum
-20. Apple. *App Store Review Guidelines* (2.4.2, 2.5.2, 2.5.6, 2.5.9, 4.2). https://developer.apple.com/app-store/review/guidelines/
-21. Apple. *Human Interface Guidelines*: Buttons, Accessibility, Dark Mode, Color. https://developer.apple.com/design/human-interface-guidelines/
-22. Android Developers. *Foreground service types*; *Behavior changes: Android 15*. https://developer.android.com/develop/background-work/services/fgs/service-types ; https://developer.android.com/about/versions/15/behavior-changes-15
-23. Android Developers. `PowerManager` and `WebViewClient` references. https://developer.android.com/reference/android/os/PowerManager ; https://developer.android.com/reference/android/webkit/WebViewClient
-24. Android Developers. *Make apps more accessible*. https://developer.android.com/guide/topics/ui/accessibility/apps
+17. Apple. *Extending your app's background execution time*. https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time ; `applicationDidEnterBackground(_:)`: https://developer.apple.com/documentation/uikit/uiapplicationdelegate/applicationdidenterbackground(_:) (verified: "approximately five seconds")
+18. Apple. *Performing long-running tasks on iOS and iPadOS*, `BGContinuedProcessingTask(Request)`. https://developer.apple.com/documentation/backgroundtasks/performing-long-running-tasks-on-ios-and-ipados (verified via the documentation JSON API)
+19. Apple. `ProcessInfo.thermalState`, `ProcessInfo.ThermalState` (cases `.fair`, `.serious`, `.critical`), `isLowPowerModeEnabled`, and `WKNavigationDelegate.webViewWebContentProcessDidTerminate(_:)`. https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.enum ; https://developer.apple.com/documentation/foundation/processinfo/thermalstate-swift.enum/serious (verified via the documentation JSON API)
+20. Apple. *App Store Review Guidelines* (2.4.2, 2.5.2, 2.5.4, 2.5.6, 2.5.9, 4.2). https://developer.apple.com/app-store/review/guidelines/ (verified 2026-09-27)
+21. Apple. *Human Interface Guidelines*: Buttons, Accessibility, Dark Mode (source of the 7:1 advice), Color, Gestures. https://developer.apple.com/design/human-interface-guidelines/accessibility ; …/dark-mode ; …/color ; …/buttons (verified via the JSON API)
+22. Android Developers. *Foreground service types*; *Behavior changes: Android 15*. https://developer.android.com/develop/background-work/services/fgs/service-types ; https://developer.android.com/about/versions/15/behavior-changes-15 (both verified)
+23. Android Developers. `PowerManager` and `WebViewClient` references. https://developer.android.com/reference/android/os/PowerManager ; https://developer.android.com/reference/android/webkit/WebViewClient (verified)
+24. Android Developers. *Make apps more accessible*. https://developer.android.com/guide/topics/ui/accessibility/apps (verified: 48dp and contrast rules)
 25. W3C. *Understanding SC 2.5.8 Target Size (Minimum)*; *2.5.5 Target Size (Enhanced)*. https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html ; https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html
 
 **Three.js, terrain and graphics**
 
 26. three.js r186:
-    - `WebGPURenderer.js`, `WebGLRenderer.js`, `InstancedMesh.js`, `BatchedMesh.js`;
-    - examples `webgl_batch_lod_bvh`, `webgl_volume_cloud`, `webgpu_volume_fire`, `webgpu_particles_soft`.
+    - `WebGPURenderer.js`, `common/Renderer.js`, `WebGLRenderer.js`, `InstancedMesh.js`, `BatchedMesh.js`,
+      `WebGLIndexedBufferRenderer.js` (verified in `node_modules/three` 0.186.1);
+    - examples `webgl_batch_lod_bvh`, `webgl_volume_cloud`, `webgpu_volume_fire`, `webgpu_particles_soft` (verified at tag r186).
     https://github.com/mrdoob/three.js/tree/r186
 27. agargaro. *InstancedMesh2* (`@three.ez/instanced-mesh`). https://github.com/agargaro/instanced-mesh
-28. Mapbox. *MARTINI* README. https://github.com/mapbox/martini
-    - Algorithm: Evans W., Kirkpatrick D., Townsend G. (2001), *Right-triangulated irregular networks*, Algorithmica 30:264–286 [K].
-29. Strugar F. (2009). *Continuous distance-dependent level of detail for rendering heightmaps*. J. Graphics, GPU & Game Tools 14(4):57–74 [K].
+28. Mapbox. *MARTINI* README. https://github.com/mapbox/martini (verified)
+    - Algorithm: the README cites "Right-Triangulated Irregular Networks" by Will Evans et al. (1997), https://www.cs.ubc.ca/~will/papers/rtin.pdf. Journal version: Evans W., Kirkpatrick D., Townsend G. (2001), Algorithmica 30:264–286 [K].
+29. Strugar F. (2009). *Continuous distance-dependent level of detail for rendering heightmaps*. J. Graphics, GPU & Game Tools 14(4):57–74. https://doi.org/10.1080/2151237X.2009.10129287 (DOI verified from https://github.com/fstrugar/CDLOD README; volume/pages [K]).
 30. Losasso F., Hoppe H. (2004). *Geometry clipmaps: terrain rendering using nested regular grids*. ACM Trans. Graphics 23(3):769–776 [K].
-31. Horn B.K.P. (1981). *Hill shading and the reflectance map*. Proc. IEEE 69(1):14–47 [K].
+31. Horn B.K.P. (1981). *Hill shading and the reflectance map*. Proc. IEEE 69(1):14–47 [K]. Source of the weighted 3×3 gradient in §8.2, not of the central difference.
+31a. Zevenbergen L.W., Thorne C.R. (1987). Quantitative analysis of land surface topography. *Earth Surface Processes and Landforms* 12:47–56 [K] (second-order central-difference gradient).
+31b. GDAL. `apps/gdaldem_lib.cpp` (Horn and Zevenbergen–Thorne gradient implementations). https://github.com/OSGeo/gdal/blob/master/apps/gdaldem_lib.cpp (verified)
 
 **Alternative frameworks and tooling**
 
-32. Expo. *GLView* docs. https://docs.expo.dev/versions/latest/sdk/gl-view/ (source: https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/gl-view.mdx)
-33. react-native-wgpu 0.5.17 (npm, 8 Jul 2026). https://github.com/wcandillon/react-native-webgpu
-34. Meta. *Hermes* README. https://github.com/facebook/hermes
-35. flutter_scene 0.23.0 README (pub.dev, 25 Aug 2026). https://github.com/bdero/flutter_scene
-36. Vite. *Features: Web Workers*. https://vite.dev/guide/features#web-workers
-37. Vitest. *Browser Mode*. https://vitest.dev/guide/browser/
+32. Expo. *GLView* docs. https://docs.expo.dev/versions/latest/sdk/gl-view/ (source: https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/gl-view.mdx; verified)
+33. react-native-wgpu 0.5.17 (npm, 8 Jul 2026). https://github.com/wcandillon/react-native-webgpu (verified: npm registry, README)
+34. Meta. *Hermes* README. https://github.com/facebook/hermes (verified)
+35. flutter_scene 0.23.0 (pub.dev, 25 Aug 2026). https://pub.dev/packages/flutter_scene ; https://github.com/bdero/flutter_scene (verified: pub.dev page and API)
+35a. React Native 0.87.1 (npm, 26 Aug 2026). https://www.npmjs.com/package/react-native (verified)
+36. Vite. *Features: Web Workers*. https://vite.dev/guide/features#web-workers (verified: `vitejs/vite/docs/guide/features.md` L768)
+37. Vitest. *Browser Mode*. https://vitest.dev/guide/browser/ (verified: `vitest-dev/vitest/docs/guide/browser/index.md`)
 38. Playwright. *Android* (experimental), per `playwright-core` 1.63 type docs. https://playwright.dev/docs/api/class-android
-39. vite-plugin-pwa 1.3.0. https://github.com/vite-pwa/vite-plugin-pwa
+39. vite-plugin-pwa 1.3.0 (npm, 5 May 2026). https://github.com/vite-pwa/vite-plugin-pwa (verified: npm)
 
 **Fire science and human factors**
 
 40. Byram G.M. (1959). Combustion of forest fuels. In Davis K.P. (ed.), *Forest Fire: Control and Use*, McGraw-Hill, pp. 61–89 [K].
 41. Alexander M.E., Cruz M.G. (2012). Interdependencies between flame length and fireline intensity in predicting crown fire initiation and crown scorch height. IJWF 21:95–113. https://doi.org/10.1071/WF11001 [K]
 42. Noble I.R., Bary G.A.V., Gill A.M. (1980). McArthur's fire-danger meters expressed as equations. Aust. J. Ecology 5:201–203. https://doi.org/10.1111/j.1442-9993.1980.tb01243.x [via 01]
-43. Sharples J.J., McRae R.H.D., Wilkes S.R. (2012). Wind–terrain effects on the propagation of wildfires in rugged terrain: fire channelling. IJWF 21:282–296. https://doi.org/10.1071/WF10055 [via 01/02]
+43. Sharples J.J., McRae R.H.D., Wilkes S.R. (2012). Wind–terrain effects on the propagation of wildfires in rugged terrain: fire channelling. IJWF 21:282–296. https://doi.org/10.1071/WF10055 [via 01/02, verified there]
+43a. Sullivan A.L., Sharples J.J., Matthews S., Plucinski M.P. (2014). A downslope fire spread correction factor based on landscape-scale fire behaviour. *Environmental Modelling & Software* 62:153–163. https://www.sciencedirect.com/science/article/abs/pii/S1364815214002485 [via 01] (kataburn)
+43b. Fan J., Chen B., Guo Y., Bu C., Gao J., Dou X., Hu H., Sun L., Hu T. (2025). Experimental study on the evolution of canyon fire spread behavior under different terrains and the critical conditions for eruptive fire. IJWF 34(10), WF24134. https://connectsci.au/wf/article/34 [via 01] (α ≈ 27.5°, δ = 20°)
+43c. Wu Y., Xing H.J., Atkinson G. (2000). Interaction of fire plume with inclined surface. *Fire Safety Journal* 35(4):391–403 [via 01] (24° critical angle)
+43d. Simpson C.C., Sharples J.J., Evans J.P. (2014). Resolving vorticity-driven lateral fire spread using the WRF-Fire coupled atmosphere–fire numerical model. *NHESS* 14:2359–2371. https://nhess.copernicus.org/articles/14/2359/2014/ [via 01] (≤ 80 m needed)
+43e. Lahaye S., Sharples J., Matthews S., Heemstra S., Price O., Badlan R. (2018). How do weather and terrain contribute to firefighter entrapments in Australia? IJWF 27(2):85–98 [via 01]
+43f. Cheney N.P., Gould J.S., McCaw W.L., Anderson W.R. (2012). Predicting fire behaviour in dry eucalypt forest in southern Australia. *Forest Ecology and Management* 280:120–131. https://doi.org/10.1016/j.foreco.2012.06.012 [via 03; flame-height equation via 03 §3.4, AFDRS FBI Technical Guide eq. 3.59]
 44. Hines F., Tolhurst K.G., Wilson A.A.G., McCarthy G.J. (2010). *Overall Fuel Hazard Assessment Guide*, 4th edn. Fire and Adaptive Management Report 82, Victorian DSE [K].
 45. Birch J. (2012). Worldwide prevalence of red–green color deficiency. J. Opt. Soc. Am. A 29(3):313–320 [K].
-46. FireSim internal: `docs/ARCHITECTURE.md`; `docs/research/01-terrain-fire-behaviour.md`; `docs/research/02-mountain-meteorology.md`.
+46. FireSim internal: `docs/ARCHITECTURE.md`; `docs/research/01-terrain-fire-behaviour.md`; `docs/research/02-mountain-meteorology.md`; `03-australian-fire-models.md`; `05-fuel-accumulation-history.md`; `06-embers-spotting.md`; `07-fire-atmosphere-coupling.md`.
+47. Ionic. *System Bars* (`@capacitor/core` 8.5.2 `system-bars.md`; Android WebView < 140 safe-area bug, `insetsHandling`). https://capacitorjs.com/docs/apis/system-bars (verified in `node_modules`)
+48. Chromium issue 40699457 (Android WebView safe-area-inset `env()` values), as cited by Capacitor's System Bars doc. https://issues.chromium.org/issues/40699457 [not opened]
