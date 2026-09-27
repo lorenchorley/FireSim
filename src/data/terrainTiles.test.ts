@@ -129,7 +129,7 @@ describe('tile planning', () => {
 describe('loadElevation', () => {
   it('builds the Katoomba demo grid from bundled tiles (30 m, 6 km)', async () => {
     let progress = 0;
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 6000, cellSize: 30, demoSiteId: 'katoomba', cache: createMemoryKV(), onProgress: () => progress++ });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 6000, cellSize: 30, demoSiteId: 'katoomba', cache: createMemoryKV(), onProgress: () => progress++ });
     expect(r.grid.nx).toBe(200);
     expect(r.grid.ny).toBe(200);
     expect(r.elevation.length).toBe(200 * 200);
@@ -153,7 +153,7 @@ describe('loadElevation', () => {
   });
 
   it('is georeferenced correctly: each cell equals an independent bilinear lookup in its tile', async () => {
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 30, demoSiteId: 'katoomba', cache: null });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 3000, cellSize: 30, demoSiteId: 'katoomba', cache: null });
     const proj = new LocalProjection(r.grid.origin);
     const tiles = new Map<string, Float32Array>();
     const pixel = (gx: number, gy: number): number => {
@@ -178,9 +178,9 @@ describe('loadElevation', () => {
   });
 
   it('gives the same elevation for the same place from grids with different origins', async () => {
-    const a = await loadElevation({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: null });
+    const a = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: null });
     const shifted = new LocalProjection(KATOOMBA.centre).toLatLon(600, -900);
-    const b = await loadElevation({ centre: shifted, extent: 4000, cellSize: 30, cache: null });
+    const b = await loadElevation({ lidar: false, centre: shifted, extent: 4000, cellSize: 30, cache: null });
     const pa = new LocalProjection(a.grid.origin);
     const pb = new LocalProjection(b.grid.origin);
     let maxDiff = 0;
@@ -199,7 +199,7 @@ describe('loadElevation', () => {
   });
 
   it('finds bundled tiles automatically when inside a demo area without a demoSiteId', async () => {
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 2000, cellSize: 30, cache: null, offline: true });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 2000, cellSize: 30, cache: null, offline: true });
     expect(r.source).toContain('bundled (katoomba)');
   });
 
@@ -221,30 +221,30 @@ describe('loadElevation', () => {
     expect(urls).toHaveLength(first.tiles);
     expect(urls[0]).toMatch(/^https:\/\/s3\.amazonaws\.com\/elevation-tiles-prod\/terrarium\/13\//);
     expect((await kv.keys('terrarium/13/')).length).toBe(first.tiles);
-    const second = await loadElevation({ ...req, offline: true });
+    const second = await loadElevation({ lidar: false, ...req, offline: true });
     expect(second.source).toContain(`${first.tiles} cached`);
     expect(urls).toHaveLength(first.tiles);
     expect(second.elevation).toEqual(first.elevation);
     // Identical to the bundled result.
     setAssetLoader(null);
-    const bundled = await loadElevation({ ...req, cache: null });
+    const bundled = await loadElevation({ lidar: false, ...req, cache: null });
     expect(bundled.elevation).toEqual(first.elevation);
   });
 
   it('throws ElevationUnavailableError listing the tiles when offline with nothing cached', async () => {
     // An explicit zoom never falls back.
-    const err = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 10, zoom: 14, cache: createMemoryKV(), offline: true }).catch((e) => e);
+    const err = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 3000, cellSize: 10, zoom: 14, cache: createMemoryKV(), offline: true }).catch((e) => e);
     expect(err).toBeInstanceOf(ElevationUnavailableError);
     expect((err as ElevationUnavailableError).missing.every((t) => t.z === 14)).toBe(true);
     // Far from any demo site, network failing → also unavailable.
     setHttpConfig({ fetch: (async () => { throw new TypeError('fetch failed'); }) as typeof fetch, retryDelayMs: 1 });
-    const err2 = await loadElevation({ centre: { lat: -30.5, lon: 152.0 }, extent: 2000, cellSize: 30, cache: null }).catch((e) => e);
+    const err2 = await loadElevation({ lidar: false, centre: { lat: -30.5, lon: 152.0 }, extent: 2000, cellSize: 30, cache: null }).catch((e) => e);
     expect(err2).toBeInstanceOf(ElevationUnavailableError);
   });
 
   it('falls back to the bundled zoom-13 tiles when fine cells (default zoom 14) are requested offline', async () => {
     // Regression: at a demo site with < 20 m cells and no network this used to fail outright.
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 10, cache: createMemoryKV(), offline: true });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 3000, cellSize: 10, cache: createMemoryKV(), offline: true });
     expect(r.zoom).toBe(13);
     expect(r.grid.cellSize).toBe(10);
     expect(r.grid.nx).toBe(300);
@@ -258,7 +258,7 @@ describe('loadElevation', () => {
   it('interpolates around isolated no-data pixels instead of dropping cells to sea level', async () => {
     // Regression: one void pixel made every cell touching it NaN → 0 m, a 800 m deep pit in the surface.
     setAssetLoader(async (p) => (p.endsWith('.png') ? makeTile((c, r) => ((c + r) % 37 === 0 ? -32768 : 800 + c * 0.5)) : null));
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 30, cache: null, offline: true });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 3000, cellSize: 30, cache: null, offline: true });
     const s = stats(r.elevation);
     expect(r.seaOrNoDataCells).toBe(0);
     expect(s.nan).toBe(0);
@@ -277,10 +277,10 @@ describe('loadElevation', () => {
     const kv = createMemoryKV();
     await saveAreaPack({ id: 'nn', name: 'Narrow Neck', centre: KATOOMBA.centre, extent: 5000, createdAt: 1, items }, kv);
     setAssetLoader(async () => null); // nothing bundled
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: kv, offline: true });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: kv, offline: true });
     expect(r.source).toContain(`${tiles.length} from area pack 'Narrow Neck'`);
     setAssetLoader(null);
-    const bundled = await loadElevation({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: null, offline: true });
+    const bundled = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: null, offline: true });
     expect(r.elevation).toEqual(bundled.elevation);
   });
 
@@ -320,17 +320,17 @@ describe('loadElevation', () => {
         return new Response(readPublic(`demo/katoomba/terrarium/${m[1]}/${m[2]}/${m[3]}.png`));
       }) as typeof fetch,
     });
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv });
     expect(calls).toBe(tiles.length);
     expect(r.source).toContain(`${tiles.length} downloaded`);
     // The good copy replaced the corrupt one: the next load is served from the cache.
-    const again = await loadElevation({ centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv, offline: true });
+    const again = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv, offline: true });
     expect(again.source).toContain(`${tiles.length} cached`);
   });
 
   it('clamps sea / no-data to 0 m and counts it', async () => {
     setAssetLoader(async (p) => (p.endsWith('.png') ? makeTile((c) => (c < 128 ? -32768 : -12)) : null));
-    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 2000, cellSize: 50, cache: null, offline: true });
+    const r = await loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 2000, cellSize: 50, cache: null, offline: true });
     expect(stats(r.elevation)).toMatchObject({ min: 0, max: 0, nan: 0 });
     expect(r.seaOrNoDataCells).toBe(r.elevation.length);
   });
@@ -338,17 +338,17 @@ describe('loadElevation', () => {
   it('respects an aborted signal', async () => {
     const ctrl = new AbortController();
     ctrl.abort();
-    await expect(loadElevation({ centre: KATOOMBA.centre, extent: 2000, cellSize: 30, cache: null, signal: ctrl.signal })).rejects.toBeTruthy();
+    await expect(loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 2000, cellSize: 30, cache: null, signal: ctrl.signal })).rejects.toBeTruthy();
   });
 
   it('refuses absurdly large requests', async () => {
-    await expect(loadElevation({ centre: KATOOMBA.centre, extent: 60000, cellSize: 10, cache: null })).rejects.toThrow(RangeError);
+    await expect(loadElevation({ lidar: false, centre: KATOOMBA.centre, extent: 60000, cellSize: 10, cache: null })).rejects.toThrow(RangeError);
   });
 
   for (const id of ['grose', 'kanangra', 'thredbo']) {
     it(`loads the ${id} demo terrain without gaps`, async () => {
       const site = DEMO_SITES.find((s) => s.id === id)!;
-      const r = await loadElevation({ centre: site.centre, extent: 6000, cellSize: 30, demoSiteId: id, cache: null, offline: true });
+      const r = await loadElevation({ lidar: false, centre: site.centre, extent: 6000, cellSize: 30, demoSiteId: id, cache: null, offline: true });
       const s = stats(r.elevation);
       expect(s.nan).toBe(0);
       expect(s.min).toBeGreaterThan(200);

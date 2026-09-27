@@ -19,6 +19,7 @@ import { loadAssetJson, loadAsset } from './assets';
 import { cachedFetch, listAreaPacks, loadAreaPackItem, openCache, type KV, type CacheOrigin } from './cache';
 import { fetchBinary, HttpError, serviceUrl, type RequestOptions } from './http';
 
+import { loadDemoElevation } from './demoRasters';
 export { syntheticElevation, syntheticSource, type SyntheticTerrainKind } from './syntheticTerrain';
 
 export const TERRARIUM_TILE_SIZE = 256;
@@ -108,6 +109,8 @@ export interface ElevationRequest {
   /** Skip the network (only bundled + cached tiles). */
   offline?: boolean;
   onProgress?: (done: number, total: number) => void;
+  /** Use a bundled LiDAR DTM when one covers the domain (default true). */
+  lidar?: boolean;
 }
 
 export interface ElevationResult {
@@ -322,6 +325,13 @@ type TileOrigin = 'bundled' | 'pack' | CacheOrigin;
  * back to {@link syntheticElevation}.
  */
 export async function loadElevation(req: ElevationRequest): Promise<ElevationResult> {
+  // Prefer a bundled 5 m LiDAR bare-earth DTM when one covers the whole domain (demo sites, works offline).
+  if (req.signal?.aborted) throw req.signal.reason ?? new DOMException('Aborted', 'AbortError');
+  if (req.lidar !== false) {
+    const grid = makeGridSpec(req.centre, req.extent, req.cellSize);
+    const hit = await loadDemoElevation(grid, candidateDemoSites(req.centre, req.extent, req.demoSiteId), req.signal);
+    if (hit) return { grid, elevation: hit.elevation, source: hit.source, zoom: 0, tiles: 0, seaOrNoDataCells: 0 };
+  }
   const z = resolveZoom(req.cellSize, req.zoom);
   try {
     return await loadElevationAtZoom(req, z);

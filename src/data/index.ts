@@ -90,3 +90,19 @@ export {
 } from './canopy';
 
 export { DEMO_SITES, DEMO_EXTENT_M, DEMO_TILE_ZOOM, type DemoSite } from './demoSites';
+export {
+  LIDAR_DEM_SOURCE,
+  demoRasterGrid,
+  loadDemoDem,
+  loadDemoElevation,
+  rasterCovers,
+  loadDemoImageryInfo,
+  loadDemoImageryBytes,
+  imageryWindow,
+  loadDemoFireHistoryGeoJson,
+  loadDemoVegetationGeoJson,
+  type DemoRasterMeta,
+  type GeoJsonFeatureCollection,
+  type NpwsFireProps,
+  type SvtmProps,
+} from './demoRasters';

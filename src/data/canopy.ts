@@ -158,7 +158,7 @@ async function loadBundledCanopy(grid: GridSpec, siteId: string, signal?: AbortS
  * local projections, so source x depends only on the destination column and source y only on the row, even when the
  * grids have different origins.
  */
-interface GridMap {
+export interface GridMap {
   fi: Float64Array;
   fj: Float64Array;
   /** Destination cell size in source cells (for area averaging). */
@@ -166,7 +166,7 @@ interface GridMap {
   scaleY: number;
 }
 
-function mapGrids(src: GridSpec, dst: GridSpec): GridMap {
+export function mapGrids(src: GridSpec, dst: GridSpec): GridMap {
   const dp = new LocalProjection(dst.origin);
   const sp = new LocalProjection(src.origin);
   const fi = new Float64Array(dst.nx);
@@ -199,7 +199,7 @@ const usesBox = (m: GridMap): boolean => m.scaleX > BOX_THRESHOLD || m.scaleY > 
  * similar, exact box (area) averaging when it is coarser (> 1.25× the source cell). Cells outside the source are
  * extended from the nearest edge; `valid` (if given) is set to 1 for cells whose centre lies inside the source.
  */
-function resampleMapped(src: GridSpec, f: Float32Array, dst: GridSpec, m: GridMap, valid?: Uint8Array): Float32Array {
+export function resampleMapped(src: GridSpec, f: Float32Array, dst: GridSpec, m: GridMap, valid?: Uint8Array): Float32Array {
   const { nx: snx, ny: sny } = src;
   const out = new Float32Array(dst.nx * dst.ny);
   if (valid) {
