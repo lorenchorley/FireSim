@@ -76,8 +76,11 @@ So I did three things:
    - **Meta/WRI 1 m canopy height**: uint8 metres in EPSG:3857 tiles named by zoom-9 quadkey (Katoomba = `311230121`). The files are **1-row strips with no overviews and no CORS** [V], so pre-process them off-device.
    - **ESA WorldCover 10 m v200 (2021)**: 3°×3° COGs, tiled 1024, 6 overviews, **no CORS** [V].
    - **NSW SVTM PCT map** (`VIS/SVTM_NSW_Extant_PCT/MapServer`) [3P].
-   - **DEA Sentinel‑2 live fuel moisture content (`ga_s2_fmc_3_v1`)**: 20 m COG in %, **CORS \***, current to 2026‑09‑10 for tile 56HKH [V]. This is a bonus layer for live FMC in the elevated and near-surface fuels.
-6. **Fire history comes from NPWS Fire History** (`Fire/NPWS_Fire_History/MapServer/0`). Fields are `FireName`, `FireNo`, `FireType` (**1 = wildfire, 2 = prescribed burn**), `FireYear` (season code such as `201920`), `StartDate`, `EndDate`, `AreaHa` and `PerimeterM` [3P]. It includes Black Summer [3P]. Rasterise it to *time since fire* for fuel accumulation.
+   - **DEA Sentinel‑2 live fuel moisture content (`ga_s2_fmc_3_v1`)**: 20 m COG in %, **CORS \***, current to 2026‑09‑10 for tile 56HKH [V] (re-verified: bucket listing shows two datatakes on 2026‑09‑10). This is a bonus layer for live FMC in the elevated and near-surface fuels.
+6. **Fire history comes from NPWS Fire History** (`Fire/NPWS_Fire_History/MapServer/0`).
+   - Fields: `FireName`, `FireNo`, `FireType` (**1 = wildfire, 2 = prescribed burn**), `FireYear` (season code such as `201920`), `Label`, `StartDate`, `EndDate`, `AreaHa`, `PerimeterM`, `Intensity`, `OFHObjMet`, `ObjNotMet`, `NPWSBranch`, `NPWSArea` and `VerDate` [3P] (verified by two independent field lists: uprez-net/propure-main and chulund/redbackfire-static).
+   - It includes Black Summer [3P]. Rasterise it to *time since fire* for fuel accumulation.
+   - **NEW:** add the national **Digital Atlas "Historical Bushfire Boundaries"** (1899–2023, CC BY 4.0). It covers fires outside the NPWS estate. Also add **NSW FESM** fire-severity maps (per season, 2016‑17 onwards), because *how hard* an area last burnt changes how its fuel regrows (§3.11) [3P].
 7. **Incidents and hotspots**:
    - **NSW RFS `majorIncidents.json`**: GeoJSON with GeometryCollections (point plus fire-extent polygons). `category` is one of Emergency Warning, Watch and Act, Advice, Not Applicable or Planned Burn. The fields STATUS, TYPE, SIZE, COUNCIL AREA, LOCATION, FIRE and RESPONSIBLE AGENCY are packed into an HTML `description` string [3P]. The licence is CC BY 4.0.
      - **CORRECTED CORS:** a 2026 browser app reports that RFS *"sends ACAO: \* only when an Origin header is present, which browsers always do"* (ben-gy/au-bushfires `src/live.ts`) [3P]. The older "no CORS" reports date from 2015–2019. Test on device and keep native HTTP as the fallback.
@@ -118,6 +121,8 @@ So I did three things:
 | ~90 m | 9.7° | 25.7° | 48.3° | 57.8° | 18.0 | 6.9 | 3.2 |
 | ~180 m | 7.4° | 24.7° | 37.8° | 43.6° | 15.4 | 5.3 | 0.4 |
 
+(verified: re-run by the fact-checker on the same `S34E150.hgt.gz`, bbox lat −33.755…−33.665 and lon 150.256…150.364, Horn slope, block means of 1, 3 and 6 cells. Every value was reproduced; p90 at 30 m came out 27.3° instead of 27.4°. The cells are really 26 × 31 m, 77 × 93 m and 154 × 185 m. The GA-DEM-minus-SRTM offsets of 2.5, 6.0 and 8.1 m below were also reproduced.)
+
   Consequences:
   - At the 100–200 m atmosphere grid, **the cliff lines disappear**: cells steeper than 40° fall from 3.3 % to 0.4 %.
   - At 30 m the slopes still under-represent LiDAR cliffs. SRTM itself is roughly 30 m and smooths vertical walls [K].
@@ -129,9 +134,11 @@ So I did three things:
 
 - **Grid size.** IFS HRES has 9 km cells, ICON global 11 km, ACCESS-G 15 km and GFS 13 km (0.25° for pressure levels) [S]. The Jamison Valley (about 400 m deep, 3–5 km wide) is **sub-grid** in all of them. Model output represents a smoothed "grid-cell mountain", and valley–ridge differences must be reconstructed.
 - **Open-Meteo "downscaling".**
-  - Open-Meteo chooses a land grid cell with similar elevation, using a 90 m DEM (`cell_selection=land`, the default).
-  - It then shifts **temperature only** by `ΔT = (z_model − z_target)·0.0065 K/m` [S].
-  - Humidity, wind and pressure are **not** adjusted [S].
+  - Open-Meteo chooses a land grid cell with similar elevation, using a 90 m DEM (`cell_selection=land`, the default) [S].
+  - It then shifts the **temperature-type variables** by `ΔT = (z_model − z_target)·0.0065 K/m` [S] (verified: `GenericReader.swift`, comment *"correct temperature by 0.65° per 100 m elevation"*).
+    - **CORRECTED:** for `ecmwf_ifs` the shifted variables include `dew_point_2m`. For ICON they include the 80/120/180 m temperatures.
+  - Wind, pressure-level fields and native RH are **not** adjusted [S].
+  - With `elevation=nan`, *"all downscaling is disabled and the average grid-cell elevation is used"* [S] (verified: docs `+page.svelte`).
   - In the evening and at night, cold air pools in NSW valleys (document 02), so a lapse-rate adjustment warms valley floors that are really colder and moister. By day on a dry, well-mixed afternoon it is about right [K].
   - FireSim should ask for `elevation=nan` (raw grid-cell values) plus pressure levels, then build its own vertical profile (§5.3).
 - **Time semantics differ by variable.**

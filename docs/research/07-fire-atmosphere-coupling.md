@@ -277,8 +277,13 @@ Artificial viscosity (WRF, `fire_viscosity = 0.4` [V]) adds
 ν·|R|·[(D⁺ₓφ − D⁻ₓφ) + (D⁺ᵧφ − D⁻ᵧφ)]      ≡ ν R Δx ∇²φ
 ```
 
+(verified: `tend_ls`: `te = te + fire_viscosity_var*abs(rr)*((diffRx-diffLx)+(diffRy-diffLy))`. With Δx = Δy this is ν|R|Δx∇²φ, a diffusion with coefficient D = ν|R|Δx.)
+
 - It damps kinks where fronts merge.
-- WRF can taper it near the front: `fire_viscosity_bg` within `fire_viscosity_ngp = 2` cells, ramping to `fire_viscosity` outside. Both default to 0.4, so it is uniform by default [V code].
+- WRF can taper it near the front: `fire_viscosity_bg` within `fire_viscosity_ngp = 2` cells, ramping to `fire_viscosity` outside. Both default to 0.4, so it is uniform by default [V code]. (verified: `registry.fire`. The ramp width is `fire_viscosity_band = 0.5`, in multiples of the ngp band.)
+- It also slows curved fronts: the speed changes by −ν R Δx κ, where κ is the curvature.
+  - In the stability test (§3.4), a 200 m-radius circle on a 20 m grid grew 3% too slowly with ν = 0.4, against 0.5% with ν = 0 [M].
+  - Small ignitions are the most affected.
 - WENO3/5 in a band of `fire_lsm_band_ngp = 4` cells (WRF 4.x default, Muñoz-Esparza et al. 2018) sharpens fronts but costs about 3×. ENO1 is adequate at 10–30 m for education.
 
 ### 3.4 Time step

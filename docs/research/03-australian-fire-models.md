@@ -210,6 +210,12 @@ ROS = R1(1 − P2) + R2·P2·(1 − P3) + R3·P3                 otherwise (as c
 ```
 Notes and uncertainties:
 - The **phase-3 mixing** differs between implementations. PyroXL and PyroPy2 use the form above. The older PyroPy uses `[R1(1−P2) + R2·P2]·(1−P3) + R3·P3`. The two agree whenever P2 ≈ 1, which is always the case when P3 > 0 in the test cases (Appendix A). Check against the guide and expose a switch [S-code, H].
+  - **Fact-check:** in the coded form the three weights sum to `(1 − P2) + P2(1 − P3) + P3 = 1 + P3(1 − P2)`. That exceeds 1 whenever 0.5 ≤ P2 < 1 and P3 > 0, so the overshoot is at most `(1 − P2)·P3·R3 ≤ 0.5·R3`.
+  - A normalised alternative treats P3 as conditional on phase 2: `R1(1 − P2) + P2·[(1 − P3)·R2 + P3·R3]`.
+  - In practice P2 > 0.99 whenever P3 is non-negligible. For example, with WRF 3, FL 5, MC 6% and U10 30, g2 = 8.4. So the choice changes ROS by < 1% except in wet forest (WRF ≥ 5) at low FL.
+  - Note also that the `P2 < 0.5` branch discards R3 entirely, even if P3 is high. This can happen with WRF 5 and FL ≤ 5 at U10 ≈ 30 km/h.
+  - Default to the coded form, for parity with NSW RFS tools, and offer the normalised form as a switch [H].
+- **P3 gate units (fact-check).** PyroPy2 zeroes P3 when `R2 < 300` m/h. PyroXL `prob_phase3` tests `ros2 < 0.3`, and its docstring says km/h. But PyroXL's `ros2_Vesta2` returns m/h (×1000), so in PyroXL the gate is effectively never applied. The difference is immaterial: R2 < 300 m/h implies low wind or high moisture, where g3 < −10 and P3 < 10⁻⁴ (computed for FME ≤ 0.87 and U10 ≤ 25). Use 300 m/h.
 - The **wet-forest C1** constant: the FBI-TG prints "= 0.0175" (a typo), PyroPy2 and the PyroXL forest code use −0.0175, and `Vesta2.bas` has −0.175. **Use −0.0175** [S-doc/code]. PyroXL also caps wet-forest FA at 0.1·DF. At WRF = 5 and DF = 10: KBDI 50 → FA 0.03, KBDI 100 → 0.35, KBDI 150 → 0.89, KBDI 200 → 1.0. At WRF = 6 fuel needs KBDI > ~140. At WRF ≤ 3, C1 = 1 [computed].
 - **What φM and FA do** (computed): φM is 1.00, 0.87, 0.69, 0.51, 0.37, 0.23 and 0.17 at MC 4, 6, 8, 10, 12, 15 and 20%. FA is 0.14, 0.29, 0.50, 0.72, 0.87, 0.95 and 1.00 at DF 3, 4, 5, 6, 7, 8 and 10. Mk 2 is far **less** sensitive to very dry fuel than Vesta 2012: 4% vs 7% moisture is ×1.28 in Mk 2 against ×2.31 in 2012.
 - **Transition thresholds**, solving g = 0 (computed; WRF = 3):

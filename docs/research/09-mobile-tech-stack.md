@@ -643,23 +643,40 @@ while post-process chains are expensive.
 **Mesh:**
 
 - Chunks of 129² or 257² vertices with skirts, and LOD by screen-space error:
-  - CDLOD (Strugar 2009) [K];
-  - or fixed-error RTIN meshes via MARTINI, "(2^k+1)×(2^k+1) grid … hierarchy of triangular meshes … in milliseconds"
-    (`tile.getMesh(maxErrorMetres)`) [S].
+  - CDLOD (Strugar 2009, doi:10.1080/2151237X.2009.10129287, verified from the author's `fstrugar/CDLOD` README) [K];
+  - or fixed-error RTIN meshes via MARTINI: "Given a (2^k+1) × (2^k+1) terrain grid, it generates a hierarchy of
+    triangular meshes of varying level of detail in milliseconds". It is "experimental" and "A work in progress", and
+    is based on Evans et al. (1997). The `tile.getMesh(maxError)` error is in the height units, i.e. metres for a
+    metric DEM (verified: mapbox/martini README).
 - **Size [D]:** a full 10 km × 10 km mesh at 10 m is 1 001² ≈ 1.0 M vertices and 2.0 M triangles, about 56 MB with
-  position, normal, uv and 32-bit indices. Instead:
+  Float32 position (12 B), normal (12 B), uv (8 B) and 32-bit indices (6 M × 4 B = 24 MB). (Arithmetic verified:
+  32 B × 1.002 M + 24 MB ≈ 56 MB.) Instead:
   - render the mesh at 20–30 m or with RTIN error ≈ 1–2 m;
   - carry the fine DEM detail in a **normal map** (below).
 
-**Normals** from the finest DEM, by central differences [K/Horn 1981]:
+**Normals** from the finest DEM. The simplest option is the second-order central difference (often attributed to
+Fleming & Hoffer 1979 or Zevenbergen & Thorne 1987 [K]). **It is not Horn's method** (correction):
 
 ```
 ∂z/∂x ≈ (z_{i+1,j} − z_{i−1,j}) / (2Δx)
 ∂z/∂y ≈ (z_{i,j+1} − z_{i,j−1}) / (2Δy)
-n = normalize(−∂z/∂x, −∂z/∂y, 1)
+n = normalize(−∂z/∂x, −∂z/∂y, 1)          (z-up frame; in three.js y-up, swap to (−∂z/∂x, 1, −∂z/∂y))
 ```
 
-Store them as an RG8 or RGBA8 normal texture. Lighting then shows gullies finer than the mesh.
+**Horn (1981)** uses the weighted 3×3 (Sobel-like) stencil, which is less noisy on LiDAR DEMs. With the neighbourhood
+labelled a b c / d e f / g h i (rows north→south) [K; it is the form used by GDAL `gdaldem` "Horn"]:
+
+```
+∂z/∂x = ((c + 2f + i) − (a + 2d + g)) / (8Δx)
+∂z/∂y = ((g + 2h + i) − (a + 2b + c)) / (8Δy)     (sign depends on whether raster rows increase southward)
+slope = atan(√((∂z/∂x)² + (∂z/∂y)²))
+```
+
+(UNVERIFIED — Horn 1981 not re-read this pass; the stencil is standard. Use the **same** operator in `terrain/analysis.ts`
+and the shader, so the slope the trainee sees matches the slope the fire model uses.)
+
+Store them as an RG8 or RGBA8 normal texture (8-bit quantisation gives about 0.5° resolution near vertical [D], which is
+fine for shading). Lighting then shows gullies finer than the mesh.
 
 **Triplanar texturing on steep faces** (sandstone cliffs of the Blue Mountains, Budawangs and Warrumbungles) [K]:
 
