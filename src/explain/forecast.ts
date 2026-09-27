@@ -71,10 +71,12 @@ export function windowWind(hours: readonly WeatherHour[], t0: number, t1: number
 
 /**
  * Wind changes in [startMs, endMs] (spec §10.3): for each stamp hour h, the circular-mean direction and mean speed
- * over [h − 1 h, h] vs [h + 1 h, h + 2 h]; a change at the hour of maximum |Δdir| when Δdir ≥ 45° and the post-change
- * U10 ≥ 15 km/h; changes < 2 h apart are merged (the larger shift wins). The change time is refined to the first
- * sample in [h − 1 h, h + 2 h] whose direction is closer to the post-change direction (a documented refinement: a
- * sharp change at t_c gives equal |Δdir| at h = t_c − 1 h and t_c).
+ * over [h − 1 h, h] vs [h + 1 h, h + 2 h]. Consecutive hours with |Δdir| ≥ 45° form a candidate; its change hour is
+ * the hour of maximum |Δdir| (middle of a plateau), and it counts when the post-change U10 at that hour is
+ * ≥ 15 km/h (so a mixed window straddling the change cannot pass on the old wind's speed). Changes < 2 h apart are
+ * merged (the larger shift wins). The change time is refined to the first sample in [h − 1 h, h + 2 h] whose
+ * direction is closer to the post-change direction (a documented refinement: a sharp change at t_c peaks at
+ * h = t_c − 1 h).
  */
 export function detectWindChanges(series: WeatherSeries, startMs: number, endMs: number): WindChange[] {
   const W = P.windChange;
@@ -87,21 +89,36 @@ export function detectWindChanges(series: WeatherSeries, startMs: number, endMs:
     const pre = windowWind(hours, h - H, h);
     const post = windowWind(hours, h + H, h + 2 * H);
     if (!(pre.n > 0 && post.n > 0) || !Number.isFinite(pre.dir) || !Number.isFinite(post.dir)) continue;
-    const shift = angDist(post.dir, pre.dir);
-    if (shift >= W.minShiftDeg && post.speed * 3.6 >= W.minPostKmh) raw.push({ h, shift, pre, post });
+    raw.push({ h, shift: angDist(post.dir, pre.dir), pre, post });
   }
-  // Merge runs closer than 2 h: keep the maximum shift; on a plateau of equal maxima take its middle.
-  const out: WindChange[] = [];
+  // Runs of consecutive hours with |Δdir| ≥ 45°; the peak of each run is the change hour.
+  const peaks: Raw[] = [];
   let a = 0;
   while (a < raw.length) {
+    if (raw[a]!.shift < W.minShiftDeg) {
+      a++;
+      continue;
+    }
     let b = a;
-    while (b + 1 < raw.length && raw[b + 1]!.h - raw[b]!.h < W.mergeS * 1000) b++;
+    while (b + 1 < raw.length && raw[b + 1]!.shift >= W.minShiftDeg && raw[b + 1]!.h - raw[b]!.h <= 1.5 * H) b++;
     let best = a;
     for (let c = a; c <= b; c++) if (raw[c]!.shift > raw[best]!.shift + 1e-6) best = c;
     let last = best;
     while (last + 1 <= b && Math.abs(raw[last + 1]!.shift - raw[best]!.shift) < 1e-6) last++;
-    const pick = raw[(best + last) >> 1]!;
-    // Refine the time.
+    const pk = raw[(best + last) >> 1]!;
+    if (pk.post.speed * 3.6 >= W.minPostKmh) peaks.push(pk);
+    a = b + 1;
+  }
+  // Merge peaks < 2 h apart (keep the larger shift).
+  const merged: Raw[] = [];
+  for (const pk of peaks) {
+    const prev = merged[merged.length - 1];
+    if (prev && pk.h - prev.h < W.mergeS * 1000) {
+      if (pk.shift > prev.shift + 1e-6) merged[merged.length - 1] = pk;
+    } else merged.push(pk);
+  }
+  const out: WindChange[] = [];
+  for (const pick of merged) {
     let tc = pick.h;
     for (const hr of hours) {
       if (hr.time < pick.h - H || hr.time > pick.h + 2 * H) continue;
@@ -111,7 +128,6 @@ export function detectWindChanges(series: WeatherSeries, startMs: number, endMs:
       }
     }
     out.push({ time: tc, hour: pick.h, fromDir: pick.pre.dir, toDir: pick.post.dir, shift: pick.shift, preSpeed: pick.pre.speed, postSpeed: pick.post.speed });
-    a = b + 1;
   }
   return out;
 }

@@ -14,6 +14,7 @@ import { makeGridSpec, type GridSpec } from '../core/grid';
 import type { FuelMap, Terrain } from '../core/types';
 import { clamp } from '../core/units';
 import { KAPPA_VK } from '../core/physics';
+import { terrainDerived } from '../terrain';
 import { ATMOS_PARAMS, ATMOS_TIERS, type AtmosTierSettings } from './params';
 import type { QualityTier } from '../core/types';
 
@@ -170,27 +171,6 @@ function gaussPass(nx: number, ny: number, z: Float64Array, tmp: Float64Array): 
     const ju = j < ny - 1 ? j + 1 : j;
     for (let i = 0; i < nx; i++) z[j * nx + i] = 0.25 * tmp[jd * nx + i]! + 0.5 * tmp[j * nx + i]! + 0.25 * tmp[ju * nx + i]!;
   }
-}
-
-/** Sliding-window minimum over a (2r+1)² square (clamped), brute force (the atmosphere grid is small). */
-function windowMin(nx: number, ny: number, z: Float64Array, r: number): Float32Array {
-  const out = new Float32Array(nx * ny);
-  const tmp = new Float64Array(nx * ny);
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      let m = Infinity;
-      for (let t = Math.max(0, i - r); t <= Math.min(nx - 1, i + r); t++) m = Math.min(m, z[j * nx + t]!);
-      tmp[j * nx + i] = m;
-    }
-  }
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      let m = Infinity;
-      for (let t = Math.max(0, j - r); t <= Math.min(ny - 1, j + r); t++) m = Math.min(m, tmp[t * nx + i]!);
-      out[j * nx + i] = m;
-    }
-  }
-  return out;
 }
 
 /**
@@ -363,9 +343,13 @@ export function buildAtmosGrid(
     cd[c] = cdv.cd;
   }
 
-  // ── valley floor per column and P90 of the fire terrain ──
-  const rFloor = Math.max(1, Math.round(P.valleyFloorRadius / dx));
-  const zFloor = windowMin(nx, ny, zs, rFloor);
+  // ── valley floor per column (§8.4: z_floor,col = z_s − heightAboveValley of the column, the column mean of the
+  //    fire-grid heightAboveValley) and P90 of the fire terrain ──
+  const hav = terrainDerived(terrain).heightAboveValley;
+  const havSum = new Float64Array(plane);
+  for (let k = 0; k < nf; k++) havSum[colOfFire[k]!]! += hav[k]!;
+  const zFloor = new Float32Array(plane);
+  for (let c = 0; c < plane; c++) zFloor[c] = zs[c]! - (fireCount[c]! > 0 ? havSum[c]! / fireCount[c]! : 0);
   const sorted = Float32Array.from(terrain.elevation).sort();
   const zP90 = sorted[Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))]!;
 

@@ -58,6 +58,9 @@ export function ridgeGeometry(ctx: Pick<CycleContext, 'statics' | 'features' | '
 }
 
 const geoCache = new WeakMap<object, Map<number, { cross: number; leeSteeper: boolean }>>();
+const NC_BUF = new Float32Array(2048);
+const U_BUF = new Float32Array(2048);
+const MED_BUF = new Float32Array(2048);
 
 function detectGeneral(ctx: CycleContext): Candidate[] {
   const s = ctx.s;
@@ -66,36 +69,40 @@ function detectGeneral(ctx: CycleContext): Candidate[] {
   if (ctx.nFront > 0) {
     // steep: validated = false on ≥ 10 % of front cells because θ > 20°.
     let steep = 0;
+    let seen = 0;
     let sk = -1;
-    for (let a = 0; a < ctx.nFront; a++) {
-      const k = ctx.front[a]!;
-      if (ctx.slopeAlong(k, ctx.frontSpread[a]!) > Gp.steepSlopeDeg) {
+    for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
+      seen++;
+      if (ctx.frontTheta[a]! > Gp.steepSlopeDeg) {
         steep++;
-        if (sk < 0) sk = k;
+        if (sk < 0) sk = ctx.front[a]!;
       }
     }
-    const share = steep / ctx.nFront;
+    const share = steep / Math.max(1, seen);
     const scS = ge(share, Gp.steepShare);
-    if (scS >= H && steep >= 3) out.push(note('steep', ctx.x(sk), ctx.y(sk), scS, { share }));
+    if (scS >= H && steep * ctx.fStride >= 3) out.push(note('steep', ctx.x(sk), ctx.y(sk), scS, { share }));
 
     // wind-driven and light-wind at the head.
     if (ctx.nHead > 0) {
-      const nc: number[] = [];
-      const u: number[] = [];
+      // Medians over at most 2048 strided head cells (preallocated buffers).
+      const stride = Math.max(1, Math.ceil(ctx.nHead / 2048));
+      let n = 0;
       let v2 = 0;
       let slow = 0;
-      for (let a = 0; a < ctx.nHead; a++) {
+      const hasNc = s.aux.nc.length === ctx.N;
+      for (let a = 0; a < ctx.nHead; a += stride) {
         const k = ctx.head[a]!;
-        nc.push(s.aux.nc[k] ?? 0);
         const sp = ctx.windSpeed(k) * 3.6;
-        u.push(sp);
+        NC_BUF[n] = hasNc ? s.aux.nc[k]! : 0;
+        U_BUF[n] = sp;
+        n++;
         if (familyAt(ctx.fuel, k) === 'vesta2') {
           v2++;
           if (sp < Gp.lightWindMaxKmh) slow++;
         }
       }
-      const mNc = medianFinite(nc);
-      const mU = medianFinite(u);
+      const mNc = medianFinite(NC_BUF.subarray(0, n), MED_BUF);
+      const mU = medianFinite(U_BUF.subarray(0, n), MED_BUF);
       const scW = softAnd(le(mNc, Gp.windDrivenMaxNc), ge(mU, Gp.windDrivenMinKmh));
       if (scW >= H) out.push(note('wind-driven', hx, hy, scW, { nc: mNc, u10: mU / 3.6 }));
       if (v2 > 0) {
@@ -111,7 +118,7 @@ function detectGeneral(ctx: CycleContext): Candidate[] {
     let best = -1;
     let bw = Infinity;
     let bsc = 0;
-    for (let a = 0; a < ctx.nFront; a++) {
+    for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
       const k = ctx.front[a]!;
       if (!ctx.features.drainage[k] || bs[k] !== BurnState.Burning) continue;
       const slope = ctx.terrain.slopeDeg[k]!;
@@ -155,14 +162,14 @@ function detectGeneral(ctx: CycleContext): Candidate[] {
     const sc = softAnd(ge(geo.cross, Gp.mountainWaveCrossShare), Math.max(waveFr, waveNight));
     if (sc >= H) {
       const synthetic = d?.upperAirSource === 'synthetic' || d?.upperAirSource === 'none' ? 1 : 0;
-      out.push(note('mountain-wave', hx, hy, sc, { frH: fr, cross: geo.cross, synthetic }));
+      out.push(note('mountain-wave', ctx.cx, ctx.cy, sc, { frH: fr, cross: geo.cross, synthetic }));
     }
   }
 
   // foehn (P1): 850/700 hPa wind from 250–320° at ≥ 15 m/s on the lee side of the divide.
   if (ctx.statics.leeOfDivide) {
     const fa = foehnAloft(s.weather);
-    if (fa) out.push(note('foehn', hx, hy, 2, { dirAloft: fa.dir, uAloft: fa.speed }));
+    if (fa) out.push(note('foehn', ctx.cx, ctx.cy, 2, { dirAloft: fa.dir, uAloft: fa.speed }));
   }
   return out;
 }

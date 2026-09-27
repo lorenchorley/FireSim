@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { makeGridSpec, type GridSpec } from '../core/grid';
 import { FuelType, type FuelMap, type PressureLevelData, type Terrain, type WeatherHour, type WeatherSeries } from '../core/types';
-import type { StableNightState, TerrainFeatures } from '../core/simTypes';
+import type { AtmosphereLike, FireWindContext, StableNightState, TerrainFeatures } from '../core/simTypes';
 import { buildTerrain } from '../terrain';
 import { loadDemoDem } from '../data';
 import { clamp, wrapDeg, DEG } from '../core/units';
@@ -250,4 +250,39 @@ export function parseOpenMeteoFixture(file: string): WeatherSeries {
     hours,
     upperAirSource: nLevelsMax >= 3 ? 'model' : 'synthetic',
   };
+}
+
+/** A FireWindContext without fire (no separation, no front), slope flows on unless overridden. */
+export function ctxFor(t: Terrain, extra: Partial<FireWindContext> = {}): FireWindContext {
+  const n = t.grid.nx * t.grid.ny;
+  return { sep: new Float32Array(n), frontDist: new Float32Array(n).fill(Infinity), firePowerW: 0, plumeTopAGL: 1000, slopeFlowOn: true, time: 0, ...extra };
+}
+
+/** surfaceWindForFire into fresh arrays. */
+export function fireWinds(a: AtmosphereLike, t: Terrain, ctx: FireWindContext = ctxFor(t)) {
+  const n = t.grid.nx * t.grid.ny;
+  const o = Array.from({ length: 7 }, () => new Float32Array(n));
+  a.surfaceWindForFire(t.grid, o[0]!, o[1]!, o[2]!, o[3]!, o[4]!, o[5]!, o[6]!, ctx);
+  return { u: o[0]!, v: o[1]!, bu: o[2]!, bv: o[3]!, iu: o[4]!, iv: o[5]!, ridge: o[6]! };
+}
+
+/** Step the model for `seconds` with its own stable Δt (≤ the remaining time). Returns the step count. */
+export function runFor(a: AtmosphereLike, seconds: number): number {
+  let t = 0;
+  let steps = 0;
+  while (t < seconds - 1e-9) {
+    const dt = Math.min(a.maxStableDt(), seconds - t);
+    a.step(dt);
+    t += dt;
+    steps++;
+  }
+  return steps;
+}
+
+/** Fire-grid cell index nearest to a local point. */
+export function cellAt(t: Terrain, x: number, y: number): number {
+  const g = t.grid;
+  const i = clamp(Math.round((x - g.x0) / g.cellSize), 0, g.nx - 1);
+  const j = clamp(Math.round((y - g.y0) / g.cellSize), 0, g.ny - 1);
+  return j * g.nx + i;
 }

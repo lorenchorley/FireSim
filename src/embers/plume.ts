@@ -137,13 +137,15 @@ export class PlumeField {
     // Deposit w_sg·φ (max over sources) on the nodes within Δx_a of each axis point.
     const nxy = this.nx * this.ny;
     const rNodes = Math.ceil(dxa / h);
+    const dxa2 = dxa * dxa;
+    const invDxa = 1 / dxa;
     for (let s = 0; s < ns; s++) {
       const w0 = src.w0[s]!;
       const z0 = src.z0[s]!;
       const alpha = src.alpha[s]!;
       for (let l = 0; l < nl; l++) {
         const wl = w0 * Math.exp(-(l * dz) / p.zd);
-        if (wl < 0.02) break;
+        if (wl < p.plumeWMin) break;
         const cx = this.ax[s * nl + l]!;
         const cy = this.ay[s * nl + l]!;
         const lev = Math.round((z0 + l * dz - this.zBase) / dz);
@@ -158,7 +160,11 @@ export class PlumeField {
             const i = ic + di;
             if (i < 0 || i >= this.nx) continue;
             const xn = this.gx0 + i * h;
-            const phi = 1 - Math.hypot(xn - cx, yn - cy) / dxa;
+            const ddx = xn - cx;
+            const ddy = yn - cy;
+            const d2 = ddx * ddx + ddy * ddy;
+            if (d2 >= dxa2) continue;
+            const phi = 1 - Math.sqrt(d2) * invDxa;
             if (phi <= 0) continue;
             const v = wl * phi;
             const idx = lev * nxy + j * this.nx + i;

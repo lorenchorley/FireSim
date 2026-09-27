@@ -34,8 +34,8 @@ function detectSpotting(ctx: CycleContext): Candidate[] {
   }
   // Bark variant: burning cells with BH ≥ 3, U10 ≥ 30 km/h, M ≤ 7.
   const acc = ctx.acc;
-  acc.reset(Sp.minCells);
-  for (let a = 0; a < ctx.nFront; a++) {
+  acc.reset(ctx.kFor(Sp.minCells));
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const bh = ctx.fuel.barkHazard[k]!;
     if (bh < Sp.minBark * H) continue;
@@ -155,6 +155,13 @@ function detectJunction(ctx: CycleContext): Candidate[] {
   const range = new Int32Array(4);
   const stride = Math.max(1, Math.ceil(ctx.nFront / J.maxProbe));
   const rMax = J.maxGapM / H;
+  const rMaxC = rMax / g.cellSize;
+  // Cheap dot-product pre-filters (no trigonometry) before the exact angles: facing within 45°/H, normals at least
+  // 180° − 60°/H apart.
+  const cosFace = Math.cos(((J.faceAngleDeg / H) * Math.PI) / 180);
+  const cosOpp = Math.cos(((180 - J.watchAlphaDeg / H) * Math.PI) / 180);
+  const cnx = ctx.cellNx;
+  const cny = ctx.cellNy;
   const best = new Map<number, Candidate>();
   const alphas = new Map<number, number[]>();
   const unburntAt = (fi: number, fj: number): boolean => {
@@ -166,21 +173,29 @@ function detectJunction(ctx: CycleContext): Candidate[] {
     const p = ctx.front[a]!;
     const np = ctx.frontNormal[a]!;
     if (!(np === np)) continue;
+    const pnx = cnx[p]!;
+    const pny = cny[p]!;
     const jp = (p / nx) | 0;
     const ip = p - jp * nx;
     hash.bucketRange(ctx.x(p), ctx.y(p), rMax, range);
     for (let bj = range[2]!; bj <= range[3]!; bj++) {
       for (let bi = range[0]!; bi <= range[1]!; bi++) {
         const b = bj * hash.bnx + bi;
-        for (let e = hash.bucketStart(b), end = hash.bucketEnd(b); e < end; e++) {
+        // Dense fronts: the partner cells are subsampled with the same stride as the probes.
+        for (let e = hash.bucketStart(b), end = hash.bucketEnd(b); e < end; e += stride) {
           const q = hash.item(e);
           if (stride === 1 ? q <= p : q === p) continue;
           const jq = (q / nx) | 0;
           const iq = q - jq * nx;
           const dx = iq - ip;
           const dy = jq - jp;
-          const d = Math.hypot(dx, dy) * g.cellSize;
-          if (d < 2.5 * g.cellSize || d > rMax) continue;
+          const dc2 = dx * dx + dy * dy;
+          if (dc2 < 6.25 || dc2 > rMaxC * rMaxC) continue;
+          const dc = Math.sqrt(dc2);
+          const qnx = cnx[q]!;
+          const qny = cny[q]!;
+          if (pnx * dx + pny * dy < cosFace * dc || -(qnx * dx + qny * dy) < cosFace * dc || pnx * qnx + pny * qny > cosOpp) continue;
+          const d = dc * g.cellSize;
           const nq = ctx.cellNormal[q]!;
           const az = azimuthOf(dx, dy);
           const f1 = angDist(np, az);
@@ -249,16 +264,23 @@ function detectFireWind(ctx: CycleContext): Candidate[] {
   const s = ctx.s;
   if (!(s.coupling > 0) || ctx.nFront === 0) return [];
   let n = 0;
+  let m = 0;
   let sum = 0;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
+    m++;
     const k = ctx.front[a]!;
-    const fi = Math.hypot(s.fireIndU[k]!, s.fireIndV[k]!);
-    if (fi >= Math.max(F.minAbsMs, F.relBg * ctx.bgSpeed(k))) {
+    const fu = s.fireIndU[k]!;
+    const fv = s.fireIndV[k]!;
+    const fi2 = fu * fu + fv * fv;
+    if (fi2 < F.minAbsMs * F.minAbsMs) continue;
+    const bu = s.windBgU[k]!;
+    const bv = s.windBgV[k]!;
+    if (fi2 >= F.relBg * F.relBg * (bu * bu + bv * bv)) {
       n++;
-      sum += fi;
+      sum += Math.sqrt(fi2);
     }
   }
-  const share = n / ctx.nFront;
+  const share = n / Math.max(1, m);
   const sc = ge(share, F.minShare);
   if (sc < H || ctx.headK < 0) return [];
   return [cand(ctx.key('fire-induced-wind', ctx.headK), ctx.headX, ctx.headY, sc, 'watch', { fw: n ? sum / n : 0, share })];
@@ -270,11 +292,11 @@ function detectCrown(ctx: CycleContext): Candidate[] {
   const C = P.crown;
   const s = ctx.s;
   const acc = ctx.acc;
-  acc.reset(C.minCells);
+  acc.reset(ctx.kFor(C.minCells));
   const I = s.fire.intensity;
   const FH = s.fire.flameHeight;
   const cfb = s.aux.cfb;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const ik = I[k]!;
     if (ik < C.iGate * H && !((cfb[k] ?? 0) >= C.cfb * H)) continue;
@@ -306,9 +328,9 @@ function detectHeavyFuel(ctx: CycleContext): Candidate[] {
   const Hf = P.heavyFuel;
   const fuel = ctx.fuel;
   const acc = ctx.acc;
-  acc.reset(Hf.minCells);
+  acc.reset(ctx.kFor(Hf.minCells));
   const flags = fuel.flags;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     let c = Math.max(ge(fuel.surfaceHazard[k]!, Hf.fhsS), ge(fuel.barkHazard[k]!, Hf.bark), ge(fuel.elevatedHazard[k]!, Hf.fhsEl));
     if (flags && flags[k]! & FuelFlag.HeavyFuel) c = Math.max(c, 1);

@@ -50,8 +50,6 @@ export const ATMOS_PARAMS = {
   zEffZ0Mult: 10,
   /** C_D cap. */
   cdMax: 0.03,
-  /** Radius (m) of the minimum filter that defines a column's valley floor z_floor,col for the 3-D cold pool [H]. */
-  valleyFloorRadius: 1500,
 
   // ── §8.2 background profile ──────────────────────────────────────────────────────────────────────
   /** Interpolate winds linearly in ln z below this height AGL (m), linearly in z above [H §8.2]. */
@@ -123,8 +121,15 @@ export const ATMOS_PARAMS = {
   spinUpS: 900,
   /** Projection relative-residual tolerance (§8.4 step 7) and the extra cycles allowed to reach it. */
   projTol: 1e-3,
-  /** Extra V-cycles allowed beyond the tier's count when the residual is above projTol (0: fixed cost per step). */
-  projExtraCycles: 0,
+  /** Extra V-cycles allowed beyond the tier's count while the predicted max|∇·u|·Δx/|u| > projTol [H]. */
+  projExtraCycles: 2,
+  /** Max-norm divergence reduction per V-cycle assumed by that prediction (measured ≈ 0.3 on the Katoomba DEM) [H]. */
+  projRateEstimate: 0.3,
+  /** Extra corrections switch from V-cycles to fine-level smoothing once m_pre ≤ projSmoothMax·projTol [H]. */
+  projSmoothMax: 10,
+  /** Zebra sweeps of a smoothing correction and its assumed max-norm reduction (measured ≈ 0.25) [H]. */
+  projSmoothSweeps: 2,
+  projSmoothRate: 0.35,
   /**
    * [H, FireSim] Relaxation time (s) of the horizontal mean of (θ′ − θ′_cold-pool) on 50 m ASL bands toward zero.
    * The forecast θ_env already contains the area-mean diurnal warming/cooling; without this control the injected
@@ -154,6 +159,10 @@ export const ATMOS_PARAMS = {
     [FuelType.PinePlantation]: 0.1,
     [FuelType.Urban]: 0.2,
   } as Record<FuelType, number>,
+  /** Albedo of fuel types missing from the table [H]. */
+  albedoDefault: 0.15,
+  /** Floor on cos β in the per-horizontal-area column flux Q_h,k/cos β_k (cliff cells) [H]. */
+  minCosSlope: 0.2,
   /** Q* = [(1 − A)Q_sw + c1·T⁶ − σT⁴ + c2·N]/(1 + c3) [V cellDiurnal.cpp]. */
   qStarC1: 5.31e-13,
   qStarC2: 60,
@@ -185,6 +194,10 @@ export const ATMOS_PARAMS = {
   fireAlphaMin: 50,
   /** Canopy-heat decay above H_o,eff (m). */
   crownDecay: 50,
+  /** Canopy-heat injection height when H_o,eff is missing (m) [H]. */
+  crownHeightDefault: 20,
+  /** Fire heat is deposited up to this height AGL (the e-folding profile is < 1e-17 of Q above it) [D]. */
+  fireHeatTopAGL: 3000,
   /** Smoke decay (s) [H]. */
   smokeTauS: 10800,
   /** Smoke source scale (arbitrary units per J/m²) [H, display only]. */
@@ -196,12 +209,16 @@ export const ATMOS_PARAMS = {
   /** m_f = clamp(1 − d_fire/max(2·z_plume, fireMaskMin), 0, 1). */
   fireMaskMin: 500,
   plumeTopDefault: 1000,
+  /** Lee-eddy reversed wind fraction of U_ridge in the §7.9 separation blend (D25) [H]. */
+  leeEddyFraction: 0.3,
   /** Fast-tier night decoupling U_bg10·[1 − c·sn·(1 − w_night)] [H]. */
   nightDecouple: 0.7,
   /** Pyrogenic potential [H, UNVERIFIED Hilton constant, §16 item 13]. */
   pyroK: 6e-4,
   pyroMax: 5,
   pyroIntervalS: 60,
+  /** Head-correction fallback without a head mask: cells with |U_bg10| above this (m/s) count as head cells [H]. */
+  pyroHeadMinWind: 0.1,
 
   // ── §8.10 diagnostics ────────────────────────────────────────────────────────────────────────────
   inversionPresentK: 3,
@@ -215,6 +232,19 @@ export const ATMOS_PARAMS = {
   plumeW0Min: 1,
   plumeWStop: 0.1,
   plumeCap: 16000,
+  /** Reference air density (kg/m³) of the similarity w* and the break-ETA heat deficit [K]. */
+  rhoRef: 1.1,
+  /** Minimum inversion depth (m) integrated by the break-ETA heat deficit [H]. */
+  breakMinDepth: 50,
+  /** Parcel-method mixed-layer top: first height where θ exceeds θ(z₁) by this (K) [K]. */
+  mixedLayerParcelK: 0.5,
+  /** Profile extensions below/above the model levels: dθ/dz clamped to [0 (or the synthetic lapse), max] (K/m);
+   *  humidity above the top sample scaled by topHumidityFactor [H]. */
+  profileGradMax: 0.01,
+  topHumidityFactor: 0.1,
+  /** PFT (P2, model/preset upper air only): enabled flag (default off, §0.4) and coefficient [UNVERIFIED, §16]. */
+  pftEnabled: false,
+  pftCoef: 0.3,
   /** Synthetic humidity above the mixed layer (%) [H §8.10]. */
   synthRhAbove: 30,
   /** Similarity turbulence: z_i by day = BLH ?? 1500 m, 200 m at night [H §8.9]. */

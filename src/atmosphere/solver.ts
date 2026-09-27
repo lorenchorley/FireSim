@@ -84,9 +84,10 @@ export class EllipticSolver {
   private sx: Float64Array;
   private sy: Float64Array;
   private wt: Float64Array;
-  private tmpCol: Float64Array;
   /** Metric factor (1 − ζF[m]/H′) per w-face level. */
   private fzeta: Float64Array;
+  /** Coarse-row buffer of the separable transfers. */
+  private rowBuf: Float64Array;
   // PCG scratch.
   private pr: Float64Array;
   private pz: Float64Array;
@@ -94,6 +95,7 @@ export class EllipticSolver {
   private pAp: Float64Array;
   /** Set when the system has no Dirichlet face (compatibility: remove the mean). */
   singular = false;
+
 
   constructor(g: AtmosGrid, Rh: number, Rv: number, masks: BoundaryMasks) {
     this.g = g;
@@ -106,9 +108,9 @@ export class EllipticSolver {
     this.sx = new Float64Array(g.nW);
     this.sy = new Float64Array(g.nW);
     this.wt = new Float64Array(g.nW);
-    this.tmpCol = new Float64Array(g.nz);
     this.fzeta = new Float64Array(g.nz + 1);
     for (let m = 0; m <= g.nz; m++) this.fzeta[m] = 1 - g.zetaF[m]! / g.Hp;
+    this.rowBuf = new Float64Array(g.nx + 1);
     this.pr = new Float64Array(g.n);
     this.pz = new Float64Array(g.n);
     this.pp = new Float64Array(g.n);
@@ -568,48 +570,50 @@ export class EllipticSolver {
 
   /**
    * Zebra z-line Gauss–Seidel sweeps; `reverse` swaps the colour order (symmetric V-cycle). Each line is solved with
-   * its pre-factorised Thomas coefficients (tInv, tC); the neighbours of a colour belong to the other colour.
+   * its pre-factorised Thomas coefficients (tInv, tC); the neighbours of a colour belong to the other colour, so the
+   * lines of one colour are independent and are swept plane by plane (contiguous memory): the forward elimination
+   * writes its intermediate values into x (the line's own x is not read by the right-hand side), the back
+   * substitution then completes them.
    */
   private relax(L: Level, sweeps: number, reverse: boolean): void {
     const { nx, ny, nz, plane, cx, cy, cz, b, x, tInv, tC } = L;
     const nx1 = nx + 1;
-    const tmp = this.tmpCol;
     const strideU = ny * nx1;
     const strideV = (ny + 1) * nx;
+    const nxm = nx - 1;
     for (let s = 0; s < sweeps; s++) {
       for (let pass = 0; pass < 2; pass++) {
         const colour = reverse ? 1 - pass : pass;
-        for (let j = 0; j < ny; j++) {
-          const hasS = j > 0;
-          const hasN = j < ny - 1;
-          for (let i = (j + colour) & 1; i < nx; i += 2) {
-            const c = j * nx + i;
-            const hasW = i > 0;
-            const hasE = i < nx - 1;
-            let fu = j * nx1 + i;
-            let fv = j * nx + i;
-            let idx = c;
-            let rp = 0;
-            for (let k = 0; k < nz; k++) {
+        for (let k = 0; k < nz; k++) {
+          const o = k * plane;
+          const ou = k * strideU;
+          const ov = k * strideV;
+          const hasD = k > 0;
+          for (let j = 0; j < ny; j++) {
+            const hasS = j > 0;
+            const hasN = j < ny - 1;
+            const row = o + j * nx;
+            const fuRow = ou + j * nx1;
+            const fvRow = ov + j * nx;
+            for (let i = (j + colour) & 1; i < nx; i += 2) {
+              const idx = row + i;
               let rhs = b[idx]!;
-              if (hasW) rhs += cx[fu]! * x[idx - 1]!;
-              if (hasE) rhs += cx[fu + 1]! * x[idx + 1]!;
-              if (hasS) rhs += cy[fv]! * x[idx - nx]!;
-              if (hasN) rhs += cy[fv + nx]! * x[idx + nx]!;
-              if (k > 0) rhs += cz[idx]! * rp;
-              rp = rhs * tInv[idx]!;
-              tmp[k] = rp;
-              idx += plane;
-              fu += strideU;
-              fv += strideV;
+              if (i > 0) rhs += cx[fuRow + i]! * x[idx - 1]!;
+              if (i < nxm) rhs += cx[fuRow + i + 1]! * x[idx + 1]!;
+              if (hasS) rhs += cy[fvRow + i]! * x[idx - nx]!;
+              if (hasN) rhs += cy[fvRow + i + nx]! * x[idx + nx]!;
+              if (hasD) rhs += cz[idx]! * x[idx - plane]!;
+              x[idx] = rhs * tInv[idx]!;
             }
-            idx -= plane;
-            let xv = tmp[nz - 1]!;
-            x[idx] = xv;
-            for (let k = nz - 2; k >= 0; k--) {
-              idx -= plane;
-              xv = tmp[k]! + tC[idx]! * xv;
-              x[idx] = xv;
+          }
+        }
+        for (let k = nz - 2; k >= 0; k--) {
+          const o = k * plane;
+          for (let j = 0; j < ny; j++) {
+            const row = o + j * nx;
+            for (let i = (j + colour) & 1; i < nx; i += 2) {
+              const idx = row + i;
+              x[idx] = x[idx]! + tC[idx]! * x[idx + plane]!;
             }
           }
         }
@@ -617,30 +621,42 @@ export class EllipticSolver {
     }
   }
 
-  /** r = b − A₇x on a level. */
-  private residual7(L: Level): void {
+  /**
+   * r = b − A₇x on a level, evaluated on the lines of `colour` only (−1: all lines). Right after a zebra sweep whose
+   * last pass relaxed the other colour, the residual of those lines is zero to rounding (their line equations were
+   * just solved exactly and nothing changed since), so only half the lines need evaluating.
+   */
+  private residual7(L: Level, colour = -1): void {
     const { nx, ny, nz, plane, cx, cy, cz, b, x, diag, r } = L;
     const nx1 = nx + 1;
+    const nxm = nx - 1;
+    const step = colour < 0 ? 1 : 2;
+    if (colour >= 0) r.fill(0);
     for (let k = 0; k < nz; k++) {
+      const hasD = k > 0;
+      const hasU = k < nz - 1;
       for (let j = 0; j < ny; j++) {
-        for (let i = 0; i < nx; i++) {
-          const c = j * nx + i;
-          const idx = k * plane + c;
-          const fu = (k * ny + j) * nx1 + i;
-          const fv = (k * (ny + 1) + j) * nx + i;
+        const hasS = j > 0;
+        const hasN = j < ny - 1;
+        const row = k * plane + j * nx;
+        const fuRow = (k * ny + j) * nx1;
+        const fvRow = (k * (ny + 1) + j) * nx;
+        for (let i = colour < 0 ? 0 : (j + colour) & 1; i < nx; i += step) {
+          const idx = row + i;
           let s = b[idx]! - diag[idx]! * x[idx]!;
-          if (i > 0) s += cx[fu]! * x[idx - 1]!;
-          if (i < nx - 1) s += cx[fu + 1]! * x[idx + 1]!;
-          if (j > 0) s += cy[fv]! * x[idx - nx]!;
-          if (j < ny - 1) s += cy[fv + nx]! * x[idx + nx]!;
-          if (k > 0) s += cz[idx]! * x[idx - plane]!;
-          if (k < nz - 1) s += cz[idx + plane]! * x[idx + plane]!;
+          if (i > 0) s += cx[fuRow + i]! * x[idx - 1]!;
+          if (i < nxm) s += cx[fuRow + i + 1]! * x[idx + 1]!;
+          if (hasS) s += cy[fvRow + i]! * x[idx - nx]!;
+          if (hasN) s += cy[fvRow + i + nx]! * x[idx + nx]!;
+          if (hasD) s += cz[idx]! * x[idx - plane]!;
+          if (hasU) s += cz[idx + plane]! * x[idx + plane]!;
           r[idx] = s;
         }
       }
     }
   }
 
+  /** C.b = Pᵀ F.r (full weighting): separable, x-weights into a coarse row buffer, then the two coarse rows. */
   private restrict(F: Level, C: Level): void {
     const cb = C.b;
     cb.fill(0);
@@ -654,30 +670,32 @@ export class EllipticSolver {
     const ay0 = F.ay0!;
     const ay1 = F.ay1!;
     const cnx = C.nx;
+    const row = this.rowBuf;
     for (let k = 0; k < nz; k++) {
       const oc = k * C.plane;
       for (let j = 0; j < ny; j++) {
+        for (let I = 0; I < cnx; I++) row[I] = 0;
+        const fr = k * plane + j * nx;
+        for (let i = 0; i < nx; i++) {
+          const v = r[fr + i]!;
+          if (v === 0) continue;
+          row[px0[i]!] += ax0[i]! * v;
+          row[px1[i]!] += ax1[i]! * v;
+        }
         const J0 = oc + py0[j]! * cnx;
         const J1 = oc + py1[j]! * cnx;
         const b0 = ay0[j]!;
         const b1 = ay1[j]!;
-        const row = k * plane + j * nx;
-        for (let i = 0; i < nx; i++) {
-          const v = r[row + i]!;
-          if (v === 0) continue;
-          const w0 = ax0[i]! * v;
-          const w1 = ax1[i]! * v;
-          const I0 = px0[i]!;
-          const I1 = px1[i]!;
-          cb[J0 + I0] += w0 * b0;
-          cb[J0 + I1] += w1 * b0;
-          cb[J1 + I0] += w0 * b1;
-          cb[J1 + I1] += w1 * b1;
+        for (let I = 0; I < cnx; I++) {
+          const v = row[I]!;
+          cb[J0 + I] += b0 * v;
+          cb[J1 + I] += b1 * v;
         }
       }
     }
   }
 
+  /** F.x += P C.x (bilinear): separable, the y-interpolated coarse row first, then x per fine point. */
   private prolongAdd(F: Level, C: Level): void {
     const { nx, ny, nz, plane, x } = F;
     const px0 = F.px0!;
@@ -690,6 +708,7 @@ export class EllipticSolver {
     const ay1 = F.ay1!;
     const cnx = C.nx;
     const cx = C.x;
+    const row = this.rowBuf;
     for (let k = 0; k < nz; k++) {
       const oc = k * C.plane;
       for (let j = 0; j < ny; j++) {
@@ -697,14 +716,9 @@ export class EllipticSolver {
         const J1 = oc + py1[j]! * cnx;
         const b0 = ay0[j]!;
         const b1 = ay1[j]!;
-        const row = k * plane + j * nx;
-        for (let i = 0; i < nx; i++) {
-          const I0 = px0[i]!;
-          const I1 = px1[i]!;
-          const a0 = ax0[i]!;
-          const a1 = ax1[i]!;
-          x[row + i] += b0 * (a0 * cx[J0 + I0]! + a1 * cx[J0 + I1]!) + b1 * (a0 * cx[J1 + I0]! + a1 * cx[J1 + I1]!);
-        }
+        for (let I = 0; I < cnx; I++) row[I] = b0 * cx[J0 + I]! + b1 * cx[J1 + I]!;
+        const fr = k * plane + j * nx;
+        for (let i = 0; i < nx; i++) x[fr + i] += ax0[i]! * row[px0[i]!]! + ax1[i]! * row[px1[i]!]!;
       }
     }
   }
@@ -718,7 +732,8 @@ export class EllipticSolver {
       return;
     }
     this.relax(L, nu1, false);
-    this.residual7(L);
+    // The last pre-smoothing pass relaxed colour 1, so only colour-0 lines carry a residual.
+    this.residual7(L, nu1 > 0 ? 0 : -1);
     const C = this.levels[l + 1]!;
     this.restrict(L, C);
     C.x.fill(0);
@@ -736,6 +751,16 @@ export class EllipticSolver {
     if (this.singular) removeMean(L0.b);
     L0.x.fill(0);
     this.vcycle(0, 2, 2, symmetric);
+    z.set(L0.x);
+  }
+
+  /** Fine-level smoothing only: z ≈ A₇⁻¹ r by `sweeps` zebra z-line sweeps from zero (cheap local correction). */
+  smoothOnly(r: Float64Array, z: Float64Array, sweeps: number): void {
+    const L0 = this.levels[0]!;
+    L0.b.set(r);
+    if (this.singular) removeMean(L0.b);
+    L0.x.fill(0);
+    this.relax(L0, sweeps, false);
     z.set(L0.x);
   }
 

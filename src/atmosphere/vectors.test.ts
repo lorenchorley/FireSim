@@ -5,8 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import { atmosCellSize, canopyDrag, stretchRatio } from './grid';
 import { logLawKappa } from './profile';
-import { anabaticSpeed, crownLayerFraction, expLayerFraction, katabaticSpeed, sensibleHeatFlux } from './surface';
-import { briggsRise, byramNc, cHaines } from './plume';
+import { anabaticSpeed, crownLayerFraction, expLayerFraction, katabaticSpeed, netRadiation, sensibleHeatFlux } from './surface';
+import { interpolateHour } from './weatherInterp';
+import { briggsRise, byramNc, cHaines, plumeColumn, pyroFirepowerThreshold } from './plume';
+import { buildProfile } from './profile';
 import { airDensity, exner } from '../core/physics';
 
 /** §14 tolerance: half a unit of the last printed digit, or ±0.1 % for closed forms, whichever is larger. */
@@ -42,6 +44,7 @@ describe('§8.2 κ', () => {
 
 describe('§8.6 surface heat flux Q_h', () => {
   it('Q_sw 564, N 0, T 300 K, A 0.10, KBDI < 50 → 165.2 W/m² (Q* 388.8)', () => {
+    near(netRadiation(564, 0.1, 300, 0), 388.8, 0.1);
     near(sensibleHeatFlux(564, 0.1, 300, 0, 20), 165.2, 0.1);
   });
   it('KBDI 150 (B = 4) → 264.4', () => {
@@ -125,5 +128,36 @@ describe('§8.10 C-Haines, Briggs, N_c', () => {
     const r1 = byramNc(5e6, 6, 0.5, airDensity(15, 1013.25), 288.15);
     const r2 = byramNc(5e6, 6, 0.5, airDensity(2, 794.95), 275.15);
     near(r2 / r1 - 1, 0.274, 0.002);
+  });
+});
+
+describe('§14 weather interpolation (local copy of the §11.2 weatherAt wind rule)', () => {
+  it('350° 5 m/s and 10° 5 m/s at the midpoint → 0°, 4.92 m/s (vector mean)', () => {
+    const a = { time: 0, temperature: 20, relativeHumidity: 40, windSpeed10: 5, windDir10: 350 };
+    const b = { time: 3600e3, temperature: 22, relativeHumidity: 30, windSpeed10: 5, windDir10: 10 };
+    const m = interpolateHour(a, b, 0.5);
+    near(m.windSpeed10, 4.92, 0.01);
+    expect(Math.min(m.windDir10, 360 - m.windDir10)).toBeLessThan(1e-6);
+    near(m.temperature, 21, 1e-3);
+  });
+});
+
+describe('§8.10 PFT (P2, optional)', () => {
+  it('moist sounding: the 1-D plume reaches its LCL, free convection above it gives a finite positive PFT', () => {
+    const levels = [
+      { hPa: 850, height: 1500, temperature: 19, relativeHumidity: 70, windSpeed: 8, windDir: 300 },
+      { hPa: 700, height: 3100, temperature: 7, relativeHumidity: 60, windSpeed: 12, windDir: 300 },
+      { hPa: 500, height: 5850, temperature: -10, relativeHumidity: 50, windSpeed: 18, windDir: 300 },
+    ];
+    const w = { time: Date.UTC(2025, 0, 5, 4), temperature: 30, relativeHumidity: 55, windSpeed10: 5, windDir10: 300, pressureLevels: levels };
+    const s = { kind: 'fixture' as const, source: 't', location: { lat: -33.7, lon: 150.3 }, timezone: 'Australia/Sydney', hours: [w], sourceElevation: 300, upperAirSource: 'model' as const };
+    const p = buildProfile(w, s, 300, 300);
+    const pl = plumeColumn(p, 2e10, 5e5, 300, 1.1, 303);
+    expect(Number.isFinite(pl.lclASL)).toBe(true);
+    const r = pyroFirepowerThreshold(p, pl, 300);
+    expect(r).not.toBeNull();
+    expect(r!.zfcAGL).toBeGreaterThanOrEqual(pl.lclASL - 300 - 1e-6);
+    expect(r!.pft).toBeGreaterThan(0);
+    expect(Number.isFinite(r!.pft)).toBe(true);
   });
 });

@@ -6,8 +6,11 @@
 import { makeGridSpec, type GridSpec } from '../core/grid';
 import { BurnState, FuelFlag, FuelType, type FireAux, type FireField, type FuelFamily, type FuelMap, type LandingInfo, type Terrain } from '../core/types';
 import { buildTerrain } from '../terrain';
+import { Rng } from '../core/rng';
+import type { QualityTier, SpotProvenance } from '../core/types';
 import type { WindFn } from './plume';
-import type { LandingFn, TurbFn } from './EmberModel';
+import { EmberModel, type EmberEnvironment, type EmberLandingEvent, type LandingFn, type TurbFn } from './EmberModel';
+import type { DeepPartial, EmberParams } from './params';
 
 export const TEST_ORIGIN = { lat: -33.7, lon: 150.3 };
 
@@ -214,4 +217,123 @@ export function weightedQuantile(values: number[], weights: number[], q: number)
     if (acc >= q * tot) return values[i]!;
   }
   return values[idx[idx.length - 1]!] ?? NaN;
+}
+
+// ── line-fire validation harness (§9.7, §15 V9) ─────────────────────────────────────────────────────────────
+
+export interface LineFireSpec {
+  /** 10 m wind (km/h) from the west (power-law profile). */
+  u10kmh: number;
+  /** Normal ROS (m/h), arrival intensity (kW/m), flame height (m) of the head front (moving east). */
+  rosMh: number;
+  intensity: number;
+  flameHeight: number;
+  tier?: QualityTier;
+  fuel?: UniformFuel;
+  /** Landing fuel moisture (%) and fuel temperature (°C) [5, 35]. */
+  moisture?: number;
+  fuelTempC?: number;
+  /** Simulated seconds [3600], atmosphere step [10 s], seed [7], domain extent [20 km], front half-length [1 km]. */
+  seconds?: number;
+  dt?: number;
+  seed?: number;
+  extent?: number;
+  halfLength?: number;
+  maxEmbers?: number;
+  /** Turbulence scales [z_i 1500 m, w* 2 m/s, u* 0.8 m/s]. */
+  turb?: [number, number, number];
+  /** Analytic resolved plume updraft (m/s) above the moving front (3-D tiers stand-in for the atmosphere). */
+  plumeW?: number;
+  params?: DeepPartial<EmberParams>;
+  env?: EmberEnvironment;
+  /** Terrain elevation z(x, y) (default flat 500 m). */
+  terrainFn?: (x: number, y: number) => number;
+  /** Front start offset from the domain centre, against the spread direction (m) [extent/2 − 2000]. */
+  frontOffset?: number;
+  /** Spread direction (azimuth towards, deg) [90]; the wind blows the same way. */
+  dirDeg?: number;
+  /** Called after every atmosphere step with the end time (s). */
+  onStep?: (t: number, model: EmberModel) => void;
+}
+
+export interface LineFireResult {
+  model: EmberModel;
+  events: EmberLandingEvent[];
+  spots: { x: number; y: number; t: number; travel: number; prov: SpotProvenance }[];
+  /** Wall time of the emit + step loop (ms). */
+  ms: number;
+  frontKm: number;
+  hours: number;
+}
+
+/** A planar head front on a flat (or given) surface with the analytic callbacks: the §9.7 / V9 spotting runs. */
+export function runLineFire(o: LineFireSpec): LineFireResult {
+  const extent = o.extent ?? 20000;
+  const g = grid(extent, 30);
+  const terrain = o.terrainFn ? terrainFrom(g, o.terrainFn) : flatTerrain(g);
+  const fuel = uniformFuel(g, o.fuel ?? {});
+  const halfLength = o.halfLength ?? 1000;
+  const dir = o.dirDeg ?? 90;
+  const off = o.frontOffset ?? extent / 2 - 2000;
+  const ux = Math.sin((dir * Math.PI) / 180);
+  const uy = Math.cos((dir * Math.PI) / 180);
+  const front: PlanarFront = {
+    x0: -off * ux, y0: -off * uy, dirDeg: dir, ros: o.rosMh / 3600, intensity: o.intensity, flameHeight: o.flameHeight, halfLength,
+  };
+  const fire = planarFire(g, front);
+  const aux = emptyAux(g.nx * g.ny);
+  let now = 0;
+  const events: EmberLandingEvent[] = [];
+  const model = new EmberModel(terrain, fuel, { maxEmbers: o.maxEmbers ?? 4000, tier: o.tier ?? 'fast', params: o.params, onLanding: (e) => events.push(e) },
+    new Rng(o.seed ?? 7));
+  if (o.env) model.setEnvironment(o.env);
+  const base = powerLawWind(o.u10kmh / 3.6, (dir + 180) % 360);
+  const pw = o.plumeW ?? 0;
+  const wind: WindFn = pw > 0
+    ? (x, y, z, out) => {
+        base(x, y, z, out);
+        // distance from the tilted plume axis above the moving front (along / across the spread direction)
+        const along = (x - front.x0) * ux + (y - front.y0) * uy - front.ros * now - (Math.hypot(out[0]!, out[1]!) / pw) * z;
+        const across = Math.abs(-(x - front.x0) * uy + (y - front.y0) * ux);
+        const d = Math.abs(along);
+        out[2] = d < 300 && across < halfLength + 100 && z < 2500 ? pw * (1 - d / 300) * (1 - z / 2500) : 0;
+      }
+    : base;
+  const [zi, ws, us] = o.turb ?? [1500, 2, 0.8];
+  const turb = constTurb(zi, ws, us);
+  const landing = planarLanding(g, fire, front, () => now, { moisture: o.moisture ?? 5, fuelTempC: o.fuelTempC ?? 35 });
+  const spots: LineFireResult['spots'] = [];
+  const dt = o.dt ?? 10;
+  const T = o.seconds ?? 3600;
+  const t0 = performance.now();
+  for (let t = 0; t < T; t += dt) {
+    now = t;
+    model.emit(fire, fuel, burningAt(fire, t, dt, 200), dt, t, aux);
+    now = t + dt;
+    model.step(dt, wind, turb, landing, (x, y, travel, prov) => spots.push({ x, y, t: now, travel, prov }));
+    o.onStep?.(t + dt, model);
+  }
+  return { model, events, spots, ms: performance.now() - t0, frontKm: (2 * halfLength) / 1000, hours: T / 3600 };
+}
+
+/** W-weighted quantile of the travel distance of ignition-capable (p ≥ pMin) landings, optionally one class. */
+export function capableQuantile(events: EmberLandingEvent[], q: number, cls?: string, pMin = 0.05): number {
+  const a = events.filter((e) => e.p >= pMin && (cls === undefined || e.emberClass === cls));
+  return weightedQuantile(a.map((e) => e.travel), a.map((e) => e.weight), q);
+}
+
+/** McArthur Mk5 forest (§6.4): FFDI, R (m/h) and S (km) at fuel load W (t/ha), flat. */
+export function mk5(tC: number, rh: number, u10kmh: number, df: number, w = 15): { ffdi: number; rosMh: number; flameHeight: number; spotKm: number } {
+  const ffdi = 2 * Math.exp(-0.45 + 0.987 * Math.log(df) - 0.0345 * rh + 0.0338 * tC + 0.0234 * u10kmh);
+  const r = 0.0012 * ffdi * w; // km/h
+  return { ffdi, rosMh: 1000 * r, flameHeight: 13 * r + 0.24 * w - 2, spotKm: Math.max(0, r * (4.17 - 0.033 * w) - 0.36) };
+}
+
+/** AFDRS forest spotting envelope S(R) (§6.10, m; R m/h, U10 km/h). */
+export function spottingEnvelope(rosMh: number, u10kmh: number, fhs: number): number {
+  const raw = (r: number): number =>
+    Math.abs(176.969 * Math.atan(fhs) * Math.sqrt(r / Math.pow(u10kmh, 0.25)) + 1568800 / fhs * Math.pow(r / Math.pow(u10kmh, 0.25), -1.5) - 3015.09);
+  if (rosMh < 150) return 50;
+  if (rosMh < 1000) return 50 + ((raw(1000) - 50) * (rosMh - 150)) / 850;
+  return Math.max(raw(rosMh), raw(1000));
 }

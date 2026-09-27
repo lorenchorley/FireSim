@@ -172,12 +172,12 @@ export function buildProfile(
   if (hasLevels) {
     const lo = tSamples[0]!;
     const lo2 = tSamples[1] ?? [lo[0] + 1000, lo[1] + 3.3, lo[2]];
-    const gLo = clamp((lo2[1] - lo[1]) / (lo2[0] - lo[0]), 0, 0.01);
+    const gLo = clamp((lo2[1] - lo[1]) / (lo2[0] - lo[0]), 0, P.profileGradMax);
     tSamples.unshift([lo[0] - 3000, lo[1] - gLo * 3000, lo[2]]);
     const hi = tSamples[tSamples.length - 1]!;
     const hi2 = tSamples[tSamples.length - 2]!;
-    const gHi = clamp((hi[1] - hi2[1]) / (hi[0] - hi2[0]), lapse, 0.01);
-    tSamples.push([Math.max(hi[0] + 1000, zgp + 16000), hi[1] + gHi * (Math.max(hi[0] + 1000, zgp + 16000) - hi[0]), hi[2] * 0.1]);
+    const gHi = clamp((hi[1] - hi2[1]) / (hi[0] - hi2[0]), lapse, P.profileGradMax);
+    tSamples.push([Math.max(hi[0] + 1000, zgp + 16000), hi[1] + gHi * (Math.max(hi[0] + 1000, zgp + 16000) - hi[0]), hi[2] * P.topHumidityFactor]);
   }
   const nt = tSamples.length;
   const tz = new Float64Array(nt);

@@ -3,8 +3,10 @@
  *
  * On the fire grid coarsened ×2: −∇²ψ = k·q (q = fire heat flux kW/m², ψ = 0 on the boundary), u_p = ∇ψ,
  * |u_p| ≤ 5 m/s. An infinite strip of intensity I kW/m induces k·I/2 m/s each side (3 m/s at 10 MW/m, k = 6e-4).
- * Solved exactly with a separable discrete sine transform (cell-centred Dirichlet eigenbasis sin(πp(i + ½)/n)),
- * O(n³) per solve with precomputed tables (≈ 4 ms at 100², every 60 s of simulated time).
+ * Solved exactly with a separable discrete sine transform (cell-centred Dirichlet eigenbasis sin(πp(i + ½)/n))
+ * instead of the spec's 2-D multigrid (same solution, no iteration tolerance): dense O(n³) products ordered as
+ * contiguous row updates, the forward passes restricted to the non-empty source rows (≈ 2 ms at 100², ≈ 7 ms at
+ * 150², every 60 s of simulated time).
  */
 import type { GridSpec } from '../core/grid';
 import { ATMOS_PARAMS } from './params';
@@ -43,6 +45,11 @@ export class PyrogenicPotential {
   readonly vp: Float32Array;
   private tmp: Float64Array;
   private q: Float64Array;
+  private readonly gx: Float64Array;
+  private readonly gy: Float64Array;
+  /** Transposed x basis (contiguous forward pass) and the non-empty rows of the source. */
+  private readonly SxT: Float64Array;
+  private readonly rowHas: Uint8Array;
 
   constructor(fire: GridSpec) {
     this.fire = fire;
@@ -56,6 +63,12 @@ export class PyrogenicPotential {
     this.q = new Float64Array(this.nx * this.ny);
     this.up = new Float32Array(fire.nx * fire.ny);
     this.vp = new Float32Array(fire.nx * fire.ny);
+    const n = this.nx;
+    this.SxT = new Float64Array(n * n);
+    for (let p = 0; p < n; p++) for (let i = 0; i < n; i++) this.SxT[i * n + p] = this.dx.S[p * n + i]!;
+    this.rowHas = new Uint8Array(this.ny);
+    this.gx = new Float64Array(this.nx * this.ny);
+    this.gy = new Float64Array(this.nx * this.ny);
   }
 
   /** Solve for the heat-flux field q (kW/m², fire grid) and refresh u_p on the fire grid. */
@@ -89,43 +102,65 @@ export class PyrogenicPotential {
         q[J * nx + I] = (k * q[J * nx + I]!) / (cx * cy);
       }
     }
-    // Forward DST in x (rows), then y.
-    const Sx = this.dx.S;
-    const Sy = this.dy.S;
+    // Separable DST with the matrix products ordered as contiguous row updates (axpy); the forward passes skip
+    // zero rows and zero entries (the fire occupies a small part of the domain).
+    const Sx = this.dx.S; // Sx[p·nx + i]
+    const Sy = this.dy.S; // Sy[qy·ny + J]
+    const SxT = this.SxT; // SxT[i·nx + p] = Sx[p·nx + i]
     const t = this.tmp;
+    t.fill(0);
+    const rowHas = this.rowHas;
+    for (let J = 0; J < ny; J++) {
+      const r = J * nx;
+      let has = 0;
+      for (let i = 0; i < nx; i++) {
+        const qv = q[r + i]!;
+        if (qv === 0) continue;
+        has = 1;
+        const o = i * nx;
+        for (let p = 0; p < nx; p++) t[r + p] = t[r + p]! + qv * SxT[o + p]!;
+      }
+      rowHas[J] = has;
+    }
+    const invNx = this.dx.invNorm;
+    for (let J = 0; J < ny; J++) {
+      if (!rowHas[J]) continue;
+      const r = J * nx;
+      for (let p = 0; p < nx; p++) t[r + p] = t[r + p]! * invNx[p]!;
+    }
+    // ψ̂[qy][p] = Σ_J Sy[qy][J]·t[J][p] / (norm·λ): accumulate row by row.
+    const psi = this.psi;
+    psi.fill(0);
+    for (let qy = 0; qy < ny; qy++) {
+      const ro = qy * nx;
+      const so = qy * ny;
+      for (let J = 0; J < ny; J++) {
+        if (!rowHas[J]) continue;
+        const sv = Sy[so + J]!;
+        const r = J * nx;
+        for (let p = 0; p < nx; p++) psi[ro + p] = psi[ro + p]! + sv * t[r + p]!;
+      }
+      const f = this.dy.invNorm[qy]! * h * h;
+      const lamY = this.dy.lam[qy]!;
+      for (let p = 0; p < nx; p++) psi[ro + p] = (psi[ro + p]! * f) / (this.dx.lam[p]! + lamY);
+    }
+    // Inverse: t[J][p] = Σ_qy Sy[qy][J]·ψ̂[qy][p]; ψ[J][i] = Σ_p t[J][p]·Sx[p][i].
+    t.fill(0);
+    for (let qy = 0; qy < ny; qy++) {
+      const ro = qy * nx;
+      for (let J = 0; J < ny; J++) {
+        const sv = Sy[qy * ny + J]!;
+        const r = J * nx;
+        for (let p = 0; p < nx; p++) t[r + p] = t[r + p]! + sv * psi[ro + p]!;
+      }
+    }
+    psi.fill(0);
     for (let J = 0; J < ny; J++) {
       const r = J * nx;
       for (let p = 0; p < nx; p++) {
-        let s = 0;
+        const tv = t[r + p]!;
         const o = p * nx;
-        for (let i = 0; i < nx; i++) s += q[r + i]! * Sx[o + i]!;
-        t[r + p] = s * this.dx.invNorm[p]!;
-      }
-    }
-    const psi = this.psi;
-    for (let p = 0; p < nx; p++) {
-      for (let qy = 0; qy < ny; qy++) {
-        let s = 0;
-        const o = qy * ny;
-        for (let J = 0; J < ny; J++) s += t[J * nx + p]! * Sy[o + J]!;
-        // Divide by the eigenvalue of −∇² (1/h² scaling).
-        psi[qy * nx + p] = (s * this.dy.invNorm[qy]! * h * h) / (this.dx.lam[p]! + this.dy.lam[qy]!);
-      }
-    }
-    // Inverse: y then x.
-    for (let p = 0; p < nx; p++) {
-      for (let J = 0; J < ny; J++) {
-        let s = 0;
-        for (let qy = 0; qy < ny; qy++) s += psi[qy * nx + p]! * Sy[qy * ny + J]!;
-        t[J * nx + p] = s;
-      }
-    }
-    for (let J = 0; J < ny; J++) {
-      const r = J * nx;
-      for (let i = 0; i < nx; i++) {
-        let s = 0;
-        for (let p = 0; p < nx; p++) s += t[r + p]! * Sx[p * nx + i]!;
-        psi[r + i] = s;
+        for (let i = 0; i < nx; i++) psi[r + i] = psi[r + i]! + tv * Sx[o + i]!;
       }
     }
     this.gradientToFire();
@@ -135,8 +170,8 @@ export class PyrogenicPotential {
   private gradientToFire(): void {
     const { nx, ny, h, psi } = this;
     const fg = this.fire;
-    const gx = new Float64Array(nx * ny);
-    const gy = new Float64Array(nx * ny);
+    const gx = this.gx;
+    const gy = this.gy;
     for (let J = 0; J < ny; J++) {
       for (let I = 0; I < nx; I++) {
         const c = J * nx + I;
@@ -164,7 +199,7 @@ export class PyrogenicPotential {
         const c3 = nx > 1 && ny > 1 ? c + nx + 1 : c;
         let u = (gx[c]! * (1 - tx) + gx[c1]! * tx) * (1 - ty) + (gx[c2]! * (1 - tx) + gx[c3]! * tx) * ty;
         let v = (gy[c]! * (1 - tx) + gy[c1]! * tx) * (1 - ty) + (gy[c2]! * (1 - tx) + gy[c3]! * tx) * ty;
-        const sp = Math.hypot(u, v);
+        const sp = Math.sqrt(u * u + v * v);
         if (sp > cap) {
           u *= cap / sp;
           v *= cap / sp;

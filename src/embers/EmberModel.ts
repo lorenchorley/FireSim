@@ -37,13 +37,34 @@
  *
  * Deviations from the spec text (reasons in the final report and in `params.ts`):
  *  1. E4 has no 0.3·v_t0 floor (n = 1, Albini): with the floor the §9.7 vector z_b = v_t0·τ_b/2 → Ū·τ_b cannot hold.
- *  2. τ̄_c in W_c is the measured mean slot residence of the class (EMA, prior = proposal mean τ_b, floored), not the
- *     median τ_b: with importance-sampled lifetimes and early landings the median gives populations 0.02–2.3× the
- *     budget; §9.7 asks for 0.8·maxEmbers ± 10 %. n̄_c is a bias-corrected EMA (no ×10 start-up overshoot).
+ *  2. τ̄_c in W_c is the measured mean slot residence of the class (EMA, prior = proposal mean τ_b), not the median
+ *     τ_b: with importance-sampled lifetimes and early landings the median gives populations 0.02–2.3× the budget;
+ *     §9.7 asks for 0.8·maxEmbers ± 10 %. The equal allocation π_c is applied by water-filling: a class whose W_c sits
+ *     at its floor (1e-3, or a throughput cap of π_0·B/60 s particles per second that stops quick-landing classes
+ *     from spawning thousands of particles per step) gives its unused share to the others. n̄_c is a bias-corrected
+ *     EMA (no ×10 start-up overshoot), and W_c uses max(n̄_c, this step's rate) so a burst of cells igniting together
+ *     (a grid-aligned front) cannot spawn a multiple of the budget before the EMA catches up.
  *  3. Fast-tier loft cap uses the decay scale L = 0.5·z_p (C_w·F_L^{1/3}·e^{−z/L} ≤ v_t) instead of z_d = 200 m, which
  *     would cap every brand below ≈ 100–300 m and make fast-tier spotting several times shorter than the Mk5 / AFDRS
  *     targets (V9); the rise follows the tilted plume axis at the source slip speed (spec gives no rise kinematics).
- *  4. Resolved-updraft subtraction uses max(0, w_resolved) (a resolved downdraft does not enlarge w_sg).
+ *  4. Domain exit: brands that would burn out before reaching the ground beyond the edge are counted in `leftDomain`
+ *     but not in the beyond-edge histogram (the spec's t = min(z/v_t, τ_b − age) would count them as if they landed);
+ *     the fall time is the exact burning fall (v_t decreasing with mass), not z/v_t at the exit speed.
+ *  5. Budget full: after the glowing E3/E4 (oldest first, §9.2) the newborn is refused rather than dropping glowing
+ *     long-range brands in flight (dropping the oldest biased the far tail by −25 % in tests); its weight is carried
+ *     to the next particle of its class, so the emitted brand count stays unbiased.
+ *  6. Holdovers form only from glowing landings that did not start an immediate spot (the cell of an immediate spot
+ *     burns, which cancels a holdover there); a holdover record carries E[N | N ≥ 1] smouldering brands of the
+ *     super-particle (N ~ Poisson(0.02·W)) and converts with N × the per-brand hazard.
+ *
+ * Performance (§9.7, §13): the transport loop inlines the ground, density LUT, OU noise and the burning-fall integral
+ * (carried as r^{n+1}), ≈ 150–180 ns per particle sub-step on one x86 core with CBL turbulence; the whole model with
+ * ≈ 3200 embers is ≈ 1.1–1.9 ms per atmosphere step on x86 (≈ 2.5–5 ms on a phone). The 1-D quantities that vary on
+ * km scales (turbulence scales z_i, w*, u*) are sampled once per particle per atmosphere step.
+ *
+ * Checkpoints hold every piece of model state (particles, emitters, weights and residence estimates, pile windows,
+ * pending ignitions, holdovers, stats windows, overlays, RNG) plus the scalar environment; the per-cell rasters of
+ * `setEnvironment` (uRidge, relief, sep) and the crest resolver belong to sim/fire and are not copied.
  */
 import { BurnState, FuelFlag, Landform } from '../core/types';
 import type {
@@ -73,9 +94,9 @@ import {
   type DeepPartial,
   type EmberParams,
 } from './params';
-import { briggsPlumeRise, fallIntegral, ignitionProbability, lineBuoyancyFlux, powN } from './physics';
+import { briggsPlumeRise, fallTime, ignitionProbability, lineBuoyancyFlux } from './physics';
 import { PlumeField, PlumeSources, type WindFn } from './plume';
-import { FastRng, NORMAL_TABLE, NORMAL_TABLE_SIZE, medianTauB, proposalMeanTauB, sampleClass, type EmberDraw } from './sampling';
+import { FastRng, NORMAL_TABLE, medianTauB, proposalMeanTauB, sampleClass, type EmberDraw } from './sampling';
 import { DecayRaster, RollingWindow, WIN } from './stats';
 import { catalogueCellFuel, catalogueReceptivity, hasRibbonBark, hasStringybark, type EmberCellFuel } from './fuelInfo';
 
@@ -172,6 +193,8 @@ export interface EmberStatsExt extends EmberStats {
   dropped: number;
   /** Cumulative expected real brands emitted per class (exact ΣΔN_c, before Poisson sampling). */
   emittedBrands: number[];
+  /** Cumulative particle sub-steps Δt_e (performance diagnostics). */
+  particleSteps: number;
 }
 
 interface PendingIgnition {
@@ -186,6 +209,10 @@ interface Holdover {
   x: number;
   y: number;
   tLand: number;
+  /** Time up to which the conversion hazard has been integrated (s). */
+  tCheck: number;
+  /** Expected smouldering real brands in the record, E[N | N ≥ 1] with N ~ Poisson(0.02·W). */
+  n: number;
   prov: SpotProvenance;
 }
 
@@ -275,6 +302,9 @@ export class EmberModel {
   private readonly clsN = new Float64Array(N_CLASSES);
   private readonly clsFloor = new Float64Array(N_CLASSES);
   private readonly clsReflame = new Float64Array(N_CLASSES);
+  /** Exponent code (0: n = 1, 1: n = 1/2, 2: n = 1/4, 3: other) and the floor ratio r_c = floor^{1/n} per class. */
+  private readonly clsNCode = new Uint8Array(N_CLASSES);
+  private readonly clsRc = new Float64Array(N_CLASSES);
   private readonly shareTable = new Float64Array(32 * N_CLASSES);
 
   // ── emission state ──
@@ -297,12 +327,21 @@ export class EmberModel {
   private readonly rateM = new Float64Array(N_CLASSES);
   private rateNorm = 0;
   private readonly wC = new Float64Array(N_CLASSES).fill(1);
+  /** Weight of refused newborns carried to the next particle of the class (budget full). */
+  private readonly wCarry = new Float64Array(N_CLASSES);
+  /** This step's class emission rate (brands/s), for the pulse guard of W_c. */
+  private readonly rateNow = new Float64Array(N_CLASSES);
   private readonly lifeS = new Float64Array(N_CLASSES);
   private readonly lifeN = new Float64Array(N_CLASSES);
   private readonly lifePrior = new Float64Array(N_CLASSES);
   private readonly lifeFloor = new Float64Array(N_CLASSES);
+  private readonly wTmpRate = new Float64Array(N_CLASSES);
+  private readonly wTmpLife = new Float64Array(N_CLASSES);
+  private readonly wTmpLow = new Float64Array(N_CLASSES);
+  private readonly wTmpFree = new Uint8Array(N_CLASSES);
   private readonly classPop = new Int32Array(N_CLASSES);
   private readonly emitted = new Float64Array(N_CLASSES);
+  private readonly classSum = new Float64Array(N_CLASSES);
   private firePowerW = 0;
   private powerM = 0;
   private powerNorm = 0;
@@ -313,6 +352,11 @@ export class EmberModel {
   private readonly colIndex: Int32Array;
   private readonly usedCols: number[] = [];
   private readonly nxa: number;
+  private readonly nya: number;
+  /** Per-step cache of the turbulence scales per atmosphere column ([z_i, w*, u*] × columns) and its step stamps. */
+  private readonly turbCache: Float32Array;
+  private readonly turbStamp: Uint32Array;
+  private stepId = 0;
   private readonly sources = new PlumeSources();
   private readonly plume: PlumeField;
   private sepField: Float32Array | null = null;
@@ -333,7 +377,9 @@ export class EmberModel {
   private zRef: number;
 
   // ── landing / ignition state ──
-  private pile = new Map<number, { t0: number; n: number }>();
+  /** Pile synergy per fire cell: start time of the current 60 s window and real brands landed in it. */
+  private readonly pileT0: Float64Array;
+  private readonly pileN: Float32Array;
   private pending: PendingIgnition[] = [];
   private holdovers: Holdover[] = [];
   private lastHoldoverCheck = -Infinity;
@@ -343,6 +389,8 @@ export class EmberModel {
   private leftDomain = 0;
   private burntOut = 0;
   private dropped = 0;
+  /** Cumulative particle sub-steps (performance diagnostics, §9.7 budget per particle-step). */
+  private subSteps = 0;
   private time = 0;
   /** Simulation time at which the particle `advance` just removed left (landing / burnout / exit). */
   private goneAt = 0;
@@ -382,9 +430,14 @@ export class EmberModel {
     this.cellFuelFn = opts.cellFuel ?? null;
     this.onLanding = opts.onLanding ?? null;
     this.cellState = new Uint8Array(this.nCells);
+    this.pileT0 = new Float64Array(this.nCells).fill(-Infinity);
+    this.pileN = new Float32Array(this.nCells);
     this.nxa = Math.ceil((this.xMax - this.xMin) / this.dxa) + 1;
     const nya = Math.ceil((this.yMax - this.yMin) / this.dxa) + 1;
+    this.nya = nya;
     this.colIndex = new Int32Array(this.nxa * nya).fill(-1);
+    this.turbCache = new Float32Array(3 * this.nxa * nya);
+    this.turbStamp = new Uint32Array(this.nxa * nya);
     this.plume = new PlumeField(this.params.transport);
     const P = this.params;
     this.win = new RollingWindow(P.stats.binSeconds, P.stats.bins, P.stats.edgeBins);
@@ -398,6 +451,8 @@ export class EmberModel {
       this.clsN[c] = cp.n;
       this.clsFloor[c] = cp.vtFloor;
       this.clsReflame[c] = cp.reflameRate;
+      this.clsNCode[c] = cp.n === 1 ? 0 : cp.n === 0.5 ? 1 : cp.n === 0.25 ? 2 : 3;
+      this.clsRc[c] = cp.vtFloor > 0 ? Math.pow(cp.vtFloor, 1 / cp.n) : 0;
       this.lifePrior[c] = proposalMeanTauB(cp, P);
       this.lifeFloor[c] = Math.max(P.weights.lifeFloorFrac * medianTauB(cp, P), P.weights.lifeFloorAbs);
     }
@@ -481,7 +536,8 @@ export class EmberModel {
       this.scratchT1 = new Float64Array(Math.ceil(nAct * 1.5));
     }
     const sN = this.scratchN;
-    const classSum = [0, 0, 0, 0, 0];
+    const classSum = this.classSum;
+    classSum.fill(0);
     let heat = 0;
     let hx = 0;
     let hy = 0;
@@ -551,23 +607,15 @@ export class EmberModel {
       this.heatCx = hx / heat;
       this.heatCy = hy / heat;
     }
-    // 3. Class weights W_c = max(wMin, n̄_c·τ̄_c/(π_c·0.8·maxEmbers)), n̄_c bias-corrected EMA over 300 s.
+    // 3. Class weights W_c = max(wMin, n̄_c·τ̄_c/(π_c·0.8·maxEmbers)), n̄_c bias-corrected EMA over 300 s (§9.2).
     if (dt > 0) {
       const beta = Math.exp(-dt / P.weights.rateTau);
       this.rateNorm = this.rateNorm * beta + (1 - beta);
-      let present = 0;
       for (let c = 0; c < N_CLASSES; c++) {
-        this.rateM[c] = this.rateM[c]! * beta + (classSum[c]! / dt) * (1 - beta);
-        if (this.rateM[c]! > 0) present++;
+        this.rateNow[c] = classSum[c]! / dt;
+        this.rateM[c] = this.rateM[c]! * beta + this.rateNow[c]! * (1 - beta);
       }
-      const budget = P.weights.budgetFraction * this.maxEmbers;
-      for (let c = 0; c < N_CLASSES; c++) {
-        const nbar = this.rateNorm > 0 ? this.rateM[c]! / this.rateNorm : 0;
-        if (nbar > 0) {
-          const pi = 1 / present;
-          this.wC[c] = Math.max(P.weights.wMin, (nbar * this.lifeEstimate(c)) / (pi * budget));
-        }
-      }
+      this.updateWeights();
     }
     // 4. Super-particles.
     this.victims = null;
@@ -600,6 +648,7 @@ export class EmberModel {
    */
   step(dt: number, wind: WindFn, turb: TurbFn, landing: LandingFn, onIgnite: IgniteFn): void {
     this.syncIn();
+    this.stepId = (this.stepId + 1) >>> 0 || 1; // new turbulence-cache generation (0 = never sampled)
     const t0 = this.time;
     const t1 = t0 + dt;
     const P = this.params;
@@ -676,6 +725,7 @@ export class EmberModel {
       burntOutInFlight: this.burntOut,
       dropped: this.dropped,
       emittedBrands: Array.from(this.emitted),
+      particleSteps: this.subSteps,
     };
   }
 
@@ -691,7 +741,7 @@ export class EmberModel {
     const i = this.acquireSlot();
     if (i < 0) return false;
     const t = p.time ?? this.time;
-    this.initParticle(i, c, p.x, p.y, p.z, p.vt0, p.tauF ?? Math.min(p.tauB, this.params.classes[c]!.tauF.median), p.tauB, p.weight ?? 1, t,
+    this.initParticle(i, c, p.x, p.y, p.z, this.ground(p.x, p.y), p.vt0, p.tauF ?? Math.min(p.tauB, this.params.classes[c]!.tauF.median), p.tauB, p.weight ?? 1, t,
       p.sourceCell ?? this.cellIndex(p.x, p.y), 0, 1);
     this.state[i] = ST_INJECTED;
     return true;
@@ -730,6 +780,7 @@ export class EmberModel {
       rateNorm: this.rateNorm,
       emitted: this.emitted.slice(),
       wC: this.wC.slice(),
+      wCarry: this.wCarry.slice(),
       lifeS: this.lifeS.slice(),
       lifeN: this.lifeN.slice(),
       firePowerW: this.firePowerW,
@@ -747,7 +798,7 @@ export class EmberModel {
         w0: this.sources.w0.slice(0, this.sources.n),
         alpha: this.sources.alpha.slice(0, this.sources.n),
       },
-      pile: Array.from(this.pile.entries()).map(([k, v]) => [k, v.t0, v.n]),
+      pile: this.pileCheckpoint(),
       pending: this.pending.map((p) => ({ ...p, prov: cloneProv(p.prov) })),
       holdovers: this.holdovers.map((h) => ({ ...h, prov: cloneProv(h.prov) })),
       lastHoldoverCheck: this.lastHoldoverCheck,
@@ -757,6 +808,8 @@ export class EmberModel {
       leftDomain: this.leftDomain,
       burntOut: this.burntOut,
       dropped: this.dropped,
+      subSteps: this.subSteps,
+      env: scalarEnv(this.env),
     };
   }
 
@@ -765,17 +818,21 @@ export class EmberModel {
       time: number; rng: number; maxEmbers: number; count: number; arrays: ParticleArrays; cellState: Uint8Array;
       act: { n: number; cell: Int32Array; until: Float64Array; tArr: Float64Array; tau: Float32Array; amp: Float32Array;
         mask: Uint8Array; fl13: Float32Array; heat: Float32Array; fh: Float32Array; ho: Float32Array; i: Float32Array };
-      rateM: Float64Array; rateNorm: number; emitted: Float64Array; wC: Float64Array; lifeS: Float64Array; lifeN: Float64Array; firePowerW: number;
+      rateM: Float64Array; rateNorm: number; emitted: Float64Array; wC: Float64Array; wCarry: Float64Array; lifeS: Float64Array; lifeN: Float64Array; firePowerW: number;
       powerM: number; powerNorm: number;
       heatCx: number; heatCy: number; plumeTop: number; windToDeg: number;
       sources: { n: number; x: Float64Array; y: Float64Array; z0: Float64Array; w0: Float64Array; alpha: Float64Array };
-      pile: [number, number, number][]; pending: PendingIgnition[]; holdovers: Holdover[]; lastHoldoverCheck: number;
+      pile: { idx: Int32Array; t0: Float64Array; n: Float32Array }; pending: PendingIgnition[]; holdovers: Holdover[]; lastHoldoverCheck: number;
       win: ReturnType<RollingWindow['checkpoint']>; ovLanding: ReturnType<DecayRaster['checkpoint']>;
       ovIgnition: ReturnType<DecayRaster['checkpoint']>; leftDomain: number; burntOut: number; dropped: number;
+      subSteps: number; env?: EmberEnvironment;
     };
     this.time = s.time;
+    this.turbStamp.fill(0); // invalidate the per-step turbulence cache
+    this.stepId = 0;
     this.rng.state = s.rng;
     this.r.s = s.rng >>> 0;
+    this.r.spare = NaN;
     if (s.maxEmbers !== this.maxEmbers) {
       this.maxEmbers = s.maxEmbers;
       this.allocParticles(s.maxEmbers);
@@ -800,6 +857,7 @@ export class EmberModel {
     this.rateNorm = s.rateNorm;
     this.emitted.set(s.emitted);
     this.wC.set(s.wC);
+    this.wCarry.set(s.wCarry);
     this.lifeS.set(s.lifeS);
     this.lifeN.set(s.lifeN);
     this.firePowerW = s.firePowerW;
@@ -819,7 +877,12 @@ export class EmberModel {
       this.colIndex[col] = this.sources.push(cx, cy, s.sources.z0[q]!, s.sources.w0[q]!, s.sources.alpha[q]!);
       this.usedCols.push(col);
     }
-    this.pile = new Map(s.pile.map(([k, t0, n]) => [k, { t0, n }]));
+    this.pileT0.fill(-Infinity);
+    this.pileN.fill(0);
+    for (let q = 0; q < s.pile.idx.length; q++) {
+      this.pileT0[s.pile.idx[q]!] = s.pile.t0[q]!;
+      this.pileN[s.pile.idx[q]!] = s.pile.n[q]!;
+    }
     this.pending = s.pending.map((p) => ({ ...p, prov: cloneProv(p.prov) }));
     this.holdovers = s.holdovers.map((h) => ({ ...h, prov: cloneProv(h.prov) }));
     this.lastHoldoverCheck = s.lastHoldoverCheck;
@@ -829,6 +892,24 @@ export class EmberModel {
     this.leftDomain = s.leftDomain;
     this.burntOut = s.burntOut;
     this.dropped = s.dropped;
+    this.subSteps = s.subSteps;
+    // Scalar environment (weather profile, N², plume top, density, hooks); the per-cell rasters (uRidge, relief, sep)
+    // and the crest resolver belong to sim/fire and stay as currently set.
+    if (s.env) this.setEnvironment(s.env);
+  }
+
+  /** Sparse copy of the live pile-synergy windows (t − t0 ≤ window). */
+  private pileCheckpoint(): { idx: Int32Array; t0: Float64Array; n: Float32Array } {
+    const wnd = this.params.ignition.pileWindow;
+    const idx: number[] = [];
+    for (let k = 0; k < this.nCells; k++) if (this.time - this.pileT0[k]! <= wnd) idx.push(k);
+    const t0 = new Float64Array(idx.length);
+    const n = new Float32Array(idx.length);
+    idx.forEach((k, q) => {
+      t0[q] = this.pileT0[k]!;
+      n[q] = this.pileN[k]!;
+    });
+    return { idx: Int32Array.from(idx), t0, n };
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -850,19 +931,25 @@ export class EmberModel {
     }
     const E = this.params.emission;
     const cf = this.cellFuel(k);
-    const intensity = fire.intensity[k]!;
-    const ros = Math.max(fire.ros[k]!, E.rosFloor);
-    const fh = fire.flameHeight[k]!;
-    const bh = fuel.barkHazard[k]!;
+    // NaN-safe reads: a non-finite intensity, ROS, flame height or bark hazard emits nothing (never NaN rates).
+    const iRaw = fire.intensity[k]!;
+    const intensity = iRaw > 0 && iRaw < Infinity ? iRaw : 0;
+    const rRaw = fire.ros[k]!;
+    const ros = rRaw > E.rosFloor ? rRaw : E.rosFloor;
+    const fhRaw = fire.flameHeight[k]!;
+    const fh = fhRaw > 0 ? fhRaw : 0;
+    const bhRaw = fuel.barkHazard[k]!;
+    const bh = bhRaw === bhRaw ? bhRaw : 0;
     const h = this.h;
     let amp = 0;
     let mask = 0;
     if (cf.spotting && intensity > 0) {
       const e = (fh - 1) / (E.hBark - 1);
       const g = (intensity - E.onsetI0) / (E.onsetI1 - E.onsetI0);
-      const ee = e < 0 ? 0 : e > 1 ? 1 : e;
-      const gg = g < 0 ? 0 : g > 1 ? 1 : g;
+      const ee = e > 0 ? (e < 1 ? e : 1) : 0;
+      const gg = g > 0 ? (g < 1 ? g : 1) : 0;
       amp = E.e0 * E.densityScale * Math.pow(E.barkBase, bh - E.barkRef) * (intensity / 1000) * ee * gg * h * (h / ros);
+      if (!(amp > 0 && amp < Infinity)) amp = 0;
       if (hasStringybark(cf, E.mixedIsStringy)) mask |= 1 << CLS_FLAKE;
       if (bh >= E.ribbonMinBh && hasRibbonBark(cf, E.mixedIsRibbon)) mask |= 1 << CLS_RIBBON;
       if (cf.hOEff > 0 && fh > E.leafFhFrac * cf.hOEff) mask |= 1 << CLS_LEAF;
@@ -871,7 +958,9 @@ export class EmberModel {
     this.ensureActive(this.nAct + 1);
     const a = this.nAct++;
     this.aCell[a] = k;
-    this.aUntil[a] = tArr;
+    // Emission starts at max(tArr, window start): a cell first seen after it ignited (embers switched on mid-run, a
+    // gap in the burning list) does not dump its past emission into the current window.
+    this.aUntil[a] = tArr > this.time ? tArr : this.time;
     this.aTArr[a] = tArr;
     this.aTau[a] = cf.tauF > 0 ? cf.tauF : 30;
     this.aAmp[a] = amp;
@@ -937,17 +1026,79 @@ export class EmberModel {
     this.aI[a] = this.aI[l]!;
   }
 
-  /** τ̄_c: measured mean slot residence (EMA with the proposal-mean prior), floored (deviation 2). */
+  /** τ̄_c: measured mean slot residence of class c (EMA with the proposal-mean prior; deviation 2). */
   private lifeEstimate(c: number): number {
     const n0 = this.params.weights.lifePriorCount;
-    const est = (this.lifeS[c]! + n0 * this.lifePrior[c]!) / (this.lifeN[c]! + n0);
-    return est > this.lifeFloor[c]! ? est : this.lifeFloor[c]!;
+    return (this.lifeS[c]! + n0 * this.lifePrior[c]!) / (this.lifeN[c]! + n0);
+  }
+
+  /**
+   * W_c = max(W_low,c, n̄_c·τ̄_c/(π_c·B)), B = 0.8·maxEmbers (§9.2) with the equal allocation π_c = 1/(number of
+   * classes with n̄_c > 0) applied by water-filling: a class whose weight sits at its floor W_low,c (the spec's 1e-3,
+   * or the throughput cap n̄_c·τ_min,c/(π_0·B) that keeps quick-landing classes from spawning more than π_0·B/τ_min,c
+   * particles per second) cannot use its share, and the unused budget is split equally among the other classes, so the
+   * class populations sum to B in steady emission (§9.7) [deviation 2]. Classes that never emitted keep W_c.
+   */
+  private updateWeights(): void {
+    const Pw = this.params.weights;
+    const budget = Pw.budgetFraction * this.maxEmbers;
+    const nbar = this.wTmpRate;
+    const life = this.wTmpLife;
+    const low = this.wTmpLow;
+    const free = this.wTmpFree;
+    let present = 0;
+    for (let c = 0; c < N_CLASSES; c++) {
+      // n̄_c (300 s EMA), or this step's rate when larger: a burst (a grid-aligned front ignites whole rows at once)
+      // must not spawn a multiple of the budget before the EMA catches up.
+      const nb = this.rateNorm > 0 ? this.rateM[c]! / this.rateNorm : 0;
+      nbar[c] = nb > this.rateNow[c]! ? nb : this.rateNow[c]!;
+      if (nbar[c]! > 0) present++;
+    }
+    if (present === 0) return;
+    const pi0 = 1 / present;
+    for (let c = 0; c < N_CLASSES; c++) {
+      free[c] = nbar[c]! > 0 ? 1 : 0;
+      if (!free[c]) continue;
+      life[c] = this.lifeEstimate(c);
+      const thr = (nbar[c]! * this.lifeFloor[c]!) / (pi0 * budget);
+      low[c] = thr > Pw.wMin ? thr : Pw.wMin;
+    }
+    let rest = budget;
+    let nFree = present;
+    for (let it = 0; it < N_CLASSES && nFree > 0; it++) {
+      const share = rest / nFree;
+      let changed = false;
+      for (let c = 0; c < N_CLASSES; c++) {
+        if (!free[c]) continue;
+        const w = (nbar[c]! * life[c]!) / share;
+        if (!(w > low[c]!)) {
+          // constrained: weight at its floor, population n̄·τ̄/W_low (< share)
+          this.wC[c] = low[c]!;
+          rest -= (nbar[c]! * life[c]!) / low[c]!;
+          free[c] = 0;
+          nFree--;
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    if (nFree > 0) {
+      const share = Math.max(rest, 0) / nFree;
+      for (let c = 0; c < N_CLASSES; c++) {
+        if (!free[c]) continue;
+        const w = share > 0 ? (nbar[c]! * life[c]!) / share : low[c]!;
+        this.wC[c] = w > low[c]! ? w : low[c]!;
+      }
+    }
   }
 
   /** Create one particle of class c from active emitter a, born at tBirth. */
   private spawn(a: number, c: number, tBirth: number): void {
     const i = this.acquireSlot();
-    if (i < 0) return;
+    if (i < 0) {
+      this.wCarry[c]! += this.wC[c]!;
+      return;
+    }
     const P = this.params;
     const E = P.emission;
     const cp = P.classes[c]!;
@@ -986,13 +1137,15 @@ export class EmberModel {
       if (zc > zg + hl) hl = zc - zg;
     }
     if (!(hl > 0.1)) hl = 0.1;
-    this.initParticle(i, c, x, y, zg + hl, d.vt0, d.tauF, d.tauB, this.wC[c]! * d.weight, tBirth, k, this.ncField ? this.ncField[k]! : 0,
+    const wNew = (this.wC[c]! + this.wCarry[c]!) * d.weight;
+    this.wCarry[c] = 0;
+    this.initParticle(i, c, x, y, zg + hl, zg, d.vt0, d.tauF, d.tauB, wNew, tBirth, k, this.ncField ? this.ncField[k]! : 0,
       this.aFL13[a]!);
     this.srcClass[i] = this.sourceClassCode(k);
     if (this.loftMode === 'briggs') this.state[i] = ST_NEEDLOFT;
   }
 
-  private initParticle(i: number, c: number, x: number, y: number, z: number, vt0: number, tauF: number, tauB: number, w: number, tBirth: number,
+  private initParticle(i: number, c: number, x: number, y: number, z: number, zg: number, vt0: number, tauF: number, tauB: number, w: number, tBirth: number,
     k: number, cn: number, fl13: number): void {
     this.px[i] = x;
     this.py[i] = y;
@@ -1006,7 +1159,7 @@ export class EmberModel {
     this.flameEnd[i] = tauF;
     this.W[i] = w;
     this.zLaunch[i] = z;
-    this.maxH[i] = Math.max(0, z - this.ground(x, y));
+    this.maxH[i] = Math.max(0, z - zg);
     this.sumU[i] = 0;
     this.sumV[i] = 0;
     this.cn[i] = cn;
@@ -1024,33 +1177,31 @@ export class EmberModel {
     this.srcCell[i] = k;
   }
 
-  /** A free slot, or −1. When the budget is full drop the oldest glowing E3/E4, then the oldest glowing (§9.2). */
+  /**
+   * A free slot, or −1. When the budget is full the oldest glowing E3/E4 is dropped first (§9.2). When none is left the
+   * newborn is refused instead of dropping long-range brands in flight (which would bias the far tail); the caller
+   * carries its weight to the next particle of the class (`wCarry`), so the emitted brand count stays unbiased.
+   */
   private acquireSlot(): number {
     if (this.count < this.maxEmbers) return this.count++;
     if (!this.victims) this.victims = this.buildVictims();
     const v = this.victims.pop();
-    if (v === undefined) {
-      this.dropped++;
-      return -1;
-    }
-    this.recordResidence(v, this.time);
     this.dropped++;
+    if (v === undefined) return -1;
+    this.recordResidence(v, this.time);
     return v;
   }
 
+  /** Glowing E3/E4 particles, youngest … oldest (pop() takes the oldest). */
   private buildVictims(): number[] {
     const pri: number[] = [];
-    const sec: number[] = [];
     for (let i = 0; i < this.count; i++) {
       if (this.age[i]! < this.flameEnd[i]!) continue; // flaming: keep
       const c = this.cls[i]!;
-      (c === CLS_LEAF || c === CLS_TWIG ? pri : sec).push(i);
+      if (c === CLS_LEAF || c === CLS_TWIG) pri.push(i);
     }
-    const byAge = (a: number, b: number): number => this.age[a]! - this.age[b]! || b - a;
-    pri.sort(byAge);
-    sec.sort(byAge);
-    // pop() takes from the end: order = sec (youngest … oldest) then pri (youngest … oldest)
-    return sec.concat(pri);
+    pri.sort((a, b) => this.age[a]! - this.age[b]! || b - a);
+    return pri;
   }
 
   /** Crest height upwind of cell k (m ASL) for the VLS launch. */
@@ -1146,73 +1297,99 @@ export class EmberModel {
   }
 
   /**
+   * Fast-tier rise phase of particle i over [tc, tc + rem]: kinematic along the tilted plume axis until the release
+   * age `riseT`. Returns the time consumed, or −1 when the particle is gone (burnt out / left the domain; `goneAt` set).
+   * When the particle is still rising at the end of the window the whole `rem` is consumed.
+   */
+  private riseStep(i: number, rem: number, tc: number, wind: WindFn): number {
+    const rt = this.riseT[i]!;
+    const sx = this.srcX[i]!;
+    const sy = this.srcY[i]!;
+    const sz = this.zLaunch[i]!;
+    const tauB = this.tauB[i]!;
+    let age = this.age[i]!;
+    const zgs = this.ground(sx, sy);
+    if (age + rem < rt) {
+      age += rem;
+      const f = age / rt;
+      this.px[i] = sx + (this.rx[i]! - sx) * f;
+      this.py[i] = sy + (this.ry[i]! - sy) * f;
+      this.pz[i] = sz + (this.rz[i]! - sz) * f;
+      this.age[i] = age;
+      const hh = this.pz[i]! - zgs;
+      if (hh > this.maxH[i]!) this.maxH[i] = hh;
+      if (age >= tauB) {
+        this.burntOut++;
+        this.goneAt = tc + rem;
+        return -1;
+      }
+      return rem;
+    }
+    const dr = rt - age;
+    age = rt;
+    const x = this.rx[i]!;
+    const y = this.ry[i]!;
+    const z = this.rz[i]!;
+    this.px[i] = x;
+    this.py[i] = y;
+    this.pz[i] = z;
+    this.age[i] = age;
+    this.state[i] = this.state[i]! & ~ST_RISING;
+    const hh = z - zgs;
+    if (hh > this.maxH[i]!) this.maxH[i] = hh;
+    if (age >= tauB) {
+      this.burntOut++;
+      this.goneAt = tc + dr;
+      return -1;
+    }
+    if (x < this.xMin || x > this.xMax || y < this.yMin || y > this.yMax) {
+      this.exitDomain(i, x, y, hh, tc + dr, wind);
+      this.goneAt = tc + dr;
+      return -1;
+    }
+    return dr;
+  }
+
+  /**
    * Advance particle i from max(t0, birth) to t1. Returns true when the particle is gone (landed, burnt out, left).
-   * The hot loop: locals only, no allocation.
+   *
+   * The hot loop (§9.7 budget ≤ 300 ns per particle-step on a phone): locals only, no allocation, no calls except the
+   * wind callback and the plume lookup. Inlined here: the bilinear ground, the density LUT, the mulberry32 draws of the
+   * OU noise (index = top 12 bits of the 32-bit output, identical to ⌊u·4096⌋), and the exact burning-fall integral
+   * carried as r^{n+1} with r = 1 − age/τ_b (v_t/v_t0 = r^n = r^{n+1}/r above the floor), so each sub-step costs one
+   * power (a square root for n = 1/2, two for 1/4, none for 1).
    */
   private advance(i: number, t0: number, t1: number, wind: WindFn, turb: TurbFn, landing: LandingFn): boolean {
-    const P = this.params;
-    const T = P.transport;
-    const TB = P.turbulence;
     const tb = this.tBirth[i]!;
     let tc = tb > t0 ? tb : t0;
     let rem = t1 - tc;
     if (!(rem > 0)) return false;
     if (this.state[i]! & ST_NEEDLOFT) this.loft(i, wind);
+    if (this.state[i]! & ST_RISING) {
+      const used = this.riseStep(i, rem, tc, wind);
+      if (used < 0) return true;
+      rem -= used;
+      tc += used;
+      if (!(rem > 1e-9)) return false;
+    }
+    const P = this.params;
+    const T = P.transport;
+    const TB = P.turbulence;
     const c = this.cls[i]!;
     const tauB = this.tauB[i]!;
+    const invTau = 1 / tauB;
     const vt0 = this.vt0[i]!;
+    const nCode = this.clsNCode[c]!;
     const n = this.clsN[c]!;
     const fl = this.clsFloor[c]!;
+    const tauN1 = tauB / (n + 1);
+    const ac = tauB * (1 - this.clsRc[c]!); // age where the v_t floor starts
+    const rpc = fl * this.clsRc[c]!; // r^{n+1} at the floor age
     let age = this.age[i]!;
     let x = this.px[i]!;
     let y = this.py[i]!;
     let z = this.pz[i]!;
     let st = this.state[i]!;
-    // Rising inside the fast-tier plume: kinematic along the tilted axis until release.
-    if (st & ST_RISING) {
-      const rt = this.riseT[i]!;
-      const sx = this.srcX[i]!;
-      const sy = this.srcY[i]!;
-      const sz = this.zLaunch[i]!;
-      if (age + rem < rt) {
-        age += rem;
-        const f = age / rt;
-        this.px[i] = sx + (this.rx[i]! - sx) * f;
-        this.py[i] = sy + (this.ry[i]! - sy) * f;
-        this.pz[i] = sz + (this.rz[i]! - sz) * f;
-        this.age[i] = age;
-        const hh = this.pz[i]! - this.ground(sx, sy);
-        if (hh > this.maxH[i]!) this.maxH[i] = hh;
-        if (age >= tauB) {
-          this.burntOut++;
-          this.goneAt = t1;
-          return true;
-        }
-        return false;
-      }
-      const dr = rt - age;
-      rem -= dr;
-      tc += dr;
-      age = rt;
-      x = this.rx[i]!;
-      y = this.ry[i]!;
-      z = this.rz[i]!;
-      st &= ~ST_RISING;
-      const hh = z - this.ground(sx, sy);
-      if (hh > this.maxH[i]!) this.maxH[i] = hh;
-      if (age >= tauB) {
-        this.burntOut++;
-        this.goneAt = tc;
-        return true;
-      }
-      if (x < this.xMin || x > this.xMax || y < this.yMin || y > this.yMax) {
-        this.age[i] = age;
-        this.pz[i] = z;
-        this.exitDomain(i, z - this.ground(sx, sy), 0, 0, tc);
-        this.goneAt = tc;
-        return true;
-      }
-    }
     let up = this.up[i]!;
     let vp = this.vp[i]!;
     let wp = this.wp[i]!;
@@ -1221,29 +1398,63 @@ export class EmberModel {
     let sumU = this.sumU[i]!;
     let sumV = this.sumV[i]!;
     const reflame = this.clsReflame[c]!;
+    const reflameDur = P.ignition.reflameDuration;
+    // r^{n+1} at the current age (carried between sub-steps).
+    let r = 1 - age * invTau;
+    if (r < 0) r = 0;
+    let rp = nCode === 0 ? r * r : nCode === 1 ? r * Math.sqrt(r) : nCode === 2 ? r * Math.sqrt(Math.sqrt(r)) : Math.pow(r, n + 1);
+    // Grid, bounds, density LUT.
+    const elev = this.terrain.elevation;
+    const gnx = this.nx;
+    const gny = this.ny;
+    const gx0 = this.gx0;
+    const gy0 = this.gy0;
+    const h = this.h;
+    const invH = 1 / h;
+    const fxMax = gnx - 1;
+    const fyMax = gny - 1;
+    const xMin = this.xMin;
+    const xMax = this.xMax;
+    const yMin = this.yMin;
+    const yMax = this.yMax;
+    const densLut = this.densLut;
+    const densLo = this.densLo;
+    const invDensDz = 1 / this.densDz;
+    const densTop = densLut.length - 1;
     let zg = this.ground(x, y);
-    // Turbulence scales once per atmosphere step (they vary on km scales).
+    // Turbulence scales (z_i, w*, u*): column quantities, sampled once per atmosphere column and step at the column
+    // centre (the atmosphere's sampleTurb is itself a nearest-column lookup) and shared by all particles in it.
     const out = this.wOut;
-    const tOut = this.tOut;
-    turb(x, y, Math.max(1, z - zg), tOut);
-    const zi = tOut[0]!;
-    const ws = tOut[1]!;
-    const us = tOut[2]!;
+    const tc3 = this.turbColumn(x, y, turb);
+    const tcache = this.turbCache;
+    const zi = tcache[tc3]!;
+    const ws = tcache[tc3 + 1]!;
+    const us = tcache[tc3 + 2]!;
+    const sqrtCblA = Math.sqrt(TB.cblA);
+    const sigFree = TB.sigmaFree;
+    const tMin = TB.tMin;
+    const tMax = TB.tMax;
+    const beta = TB.beta;
     const sep = this.mountainOn ? this.sepField : null;
-    const uRidge = this.env.uRidge ?? null;
     const plume = this.plume;
     const plumeOn = plume.active;
     const dxa = this.dxa;
     const dz1 = this.dz1;
-    const nx = this.nx;
-    const h = this.h;
-    const gx0 = this.gx0;
-    const gy0 = this.gy0;
-    const modelTop = this.modelTop;
+    // Above the model top the ambient profile replaces the callback (only when a profile has been set).
+    const modelTop = this.profH.length > 0 ? this.modelTop : Infinity;
+    const cfl = T.cfl;
+    const dtMin = T.dtMin;
+    const dtMax = T.dtMax;
+    const dzGrowth = T.dzGrowth;
+    const landEps = T.landEps;
+    const zd = T.zd;
+    const nt = NORMAL_TABLE;
     const rr = this.r;
+    let rs = rr.s; // mulberry32 state (written back before every exit)
     let u = 0;
     let v = 0;
     while (rem > 1e-9) {
+      this.subSteps++;
       const zagl = z - zg;
       // Resolved wind (or the ambient profile above the model top).
       let w: number;
@@ -1259,59 +1470,54 @@ export class EmberModel {
         w = out[2]!;
       }
       // Lee eddy (§9.4): below 0.3·relief on separated cells, blend toward 0.3·U_ridge upslope.
-      if (sep) {
-        const ci = Math.round((x - gx0) / h);
-        const cj = Math.round((y - gy0) / h);
-        if (ci >= 0 && cj >= 0 && ci < nx && cj < this.ny) {
-          const k = cj * nx + ci;
-          const s = sep[k]!;
+      if (sep !== null) {
+        const ci = ((x - gx0) * invH + 0.5) | 0;
+        const cj = ((y - gy0) * invH + 0.5) | 0;
+        if (ci >= 0 && cj >= 0 && ci < gnx && cj < gny) {
+          const s = sep[cj * gnx + ci]!;
           if (s >= P.mountain.sepMin) {
-            const relief = this.reliefAt(k);
-            const asp = this.terrain.aspectDeg[k]!;
-            if (zagl < P.mountain.eddyDepth * relief && asp === asp) {
-              let ur = uRidge ? uRidge[k]! : NaN;
-              if (!(ur === ur)) {
-                wind(x, y, relief, out);
-                ur = Math.hypot(out[0]!, out[1]!);
-              }
-              const a = asp * DEG;
-              const tu = -P.mountain.eddyFraction * ur * Math.sin(a);
-              const tv = -P.mountain.eddyFraction * ur * Math.cos(a);
-              u = (1 - s) * u + s * tu;
-              v = (1 - s) * v + s * tv;
+            const eddy = this.leeEddy(cj * gnx + ci, s, x, y, zagl, u, v, wind);
+            if (eddy) {
+              u = out[0]!;
+              v = out[1]!;
               st |= ST_EDDY;
             }
           }
         }
       }
-      // Sub-grid plume (3-D tiers), minus the resolved updraft.
+      // Sub-grid plume (3-D tiers): w_sg ← max(0, w_sg − w_resolved), w += w_sg, i.e. w = max(w_resolved, w_sg).
       let wsg = 0;
       let alpha = 0;
       if (plumeOn) {
         wsg = plume.sample(x, y, z);
         if (wsg > 0) {
           alpha = plume.lastAlpha;
-          const add = wsg - (w > 0 ? w : 0);
-          if (add > 0) w += add;
+          if (wsg > w) w = wsg;
         }
       }
-      // Terminal velocity now (for Δt_e) with the density factor.
-      const dens = this.densAt(z);
-      const mr = 1 - age / tauB;
-      let vf = powN(mr, n);
+      // Terminal velocity now (Δt_e bound, crossing trajectories): v_t0·max(floor, r^n)·√(ρ_ref/ρ).
+      let q = ((z - densLo) * invDensDz + 0.5) | 0;
+      if (q < 0) q = 0;
+      else if (q > densTop) q = densTop;
+      const dens = densLut[q]!;
+      let vf = r > 0 ? rp / r : 0;
       if (vf < fl) vf = fl;
       const vtNow = vt0 * dens * vf;
-      // Sub-step Δt_e.
-      const wrel = Math.abs(w + wp - vtNow);
+      // Sub-step Δt_e = clamp(0.4·min(Δz_local/|w_rel|, Δx_a/|u_h|), 0.5, 5) s.
+      let wrel = w + wp - vtNow;
+      if (wrel < 0) wrel = -wrel;
       const uh = Math.sqrt(u * u + v * v);
-      const dzl = zagl * T.dzGrowth > dz1 ? zagl * T.dzGrowth : dz1;
-      let dte = T.cfl * Math.min(wrel > 1e-6 ? dzl / wrel : 1e9, uh > 1e-6 ? dxa / uh : 1e9);
-      if (dte < T.dtMin) dte = T.dtMin;
-      if (dte > T.dtMax) dte = T.dtMax;
+      const dzl = zagl * dzGrowth > dz1 ? zagl * dzGrowth : dz1;
+      const b1 = wrel > 1e-6 ? dzl / wrel : 1e9;
+      const b2 = uh > 1e-6 ? dxa / uh : 1e9;
+      let dte = cfl * (b1 < b2 ? b1 : b2);
+      if (dte < dtMin) dte = dtMin;
+      if (dte > dtMax) dte = dtMax;
       if (dte > rem) dte = rem;
       const left = tauB - age;
       if (dte > left) dte = left;
       if (!(dte > 0)) {
+        rr.s = rs;
         this.burntOut++;
         this.goneAt = tc;
         return true;
@@ -1320,8 +1526,8 @@ export class EmberModel {
       let su = 0;
       let sv = 0;
       let sw = 0;
-      let th = TB.tMax;
-      let tw = TB.tMax;
+      let th = tMax;
+      let tw = tMax;
       let dsw2 = 0;
       const zz = zagl > 1 ? zagl : 1;
       if (zi > 0) {
@@ -1329,68 +1535,99 @@ export class EmberModel {
           su = TB.slSigmaU * us;
           sv = TB.slSigmaV * us;
           sw = TB.slSigmaW * us;
-          tw = sw > 0 ? clampT((0.5 * zz) / sw, TB.tMin, TB.tMax) : TB.tMax;
+          if (sw > 0) {
+            tw = (0.5 * zz) / sw;
+            tw = tw < tMin ? tMin : tw > tMax ? tMax : tw;
+          }
           th = tw;
         } else if (zz < zi) {
           if (ws > 0) {
             const zr = zz / zi;
-            const q = 1 - 0.8 * zr;
+            const qq = 1 - 0.8 * zr;
             const cb = Math.cbrt(zr);
-            sw = ws * Math.sqrt(TB.cblA) * cb * q;
+            sw = ws * sqrtCblA * cb * qq;
             su = TB.cblH * ws;
             sv = su;
-            th = clampT((TB.cblT * zi) / su, TB.tMin, 10 * TB.tMax);
-            tw = sw > 0 ? clampT((TB.cblT * zi) / sw, TB.tMin, 10 * TB.tMax) : TB.tMax;
-            dsw2 = ((TB.cblA * ws * ws) / zi) * ((2 / 3) * (q * q) / cb - 1.6 * cb * cb * q);
+            th = (TB.cblT * zi) / su;
+            th = th < tMin ? tMin : th > 10 * tMax ? 10 * tMax : th;
+            if (sw > 0) {
+              tw = (TB.cblT * zi) / sw;
+              tw = tw < tMin ? tMin : tw > 10 * tMax ? 10 * tMax : tw;
+            }
+            dsw2 = ((TB.cblA * ws * ws) / zi) * (((2 / 3) * (qq * qq)) / cb - 1.6 * cb * cb * qq);
           } else {
             const f = Math.pow(1 - zz / zi, TB.stableExp);
             su = TB.slSigmaU * us * f;
             sv = TB.slSigmaV * us * f;
             sw = TB.slSigmaW * us * f;
-            tw = sw > 0 ? clampT((0.5 * TB.slFrac * zi) / sw, TB.tMin, TB.tMax) : TB.tMax;
+            if (sw > 0) {
+              tw = (0.5 * TB.slFrac * zi) / sw;
+              tw = tw < tMin ? tMin : tw > tMax ? tMax : tw;
+            }
             th = tw;
             const s0 = TB.slSigmaW * us;
             dsw2 = -((2 * TB.stableExp * s0 * s0) / zi) * Math.pow(1 - zz / zi, 2 * TB.stableExp - 1);
           }
-          if (su < TB.sigmaFree) su = TB.sigmaFree;
-          if (sv < TB.sigmaFree) sv = TB.sigmaFree;
-          if (sw < TB.sigmaFree) sw = TB.sigmaFree;
+          if (su < sigFree) su = sigFree;
+          if (sv < sigFree) sv = sigFree;
+          if (sw < sigFree) sw = sigFree;
         } else {
-          su = TB.sigmaFree;
-          sv = TB.sigmaFree;
-          sw = TB.sigmaFree;
+          su = sigFree;
+          sv = sigFree;
+          sw = sigFree;
           th = TB.tFree;
           tw = TB.tFree;
         }
       }
       if (wsg > 0) {
-        const spw = alpha * wsg;
+        // In plume: σ_w = α_p·w_plume with w_plume the plume updraft at the particle (sub-grid or resolved).
+        const spw = alpha * w;
         if (spw > sw) {
           sw = spw;
-          tw = clampT((0.5 * zz) / sw, TB.tMin, TB.tMax);
-          dsw2 = (-2 * spw * spw) / T.zd;
+          tw = (0.5 * zz) / sw;
+          tw = tw < tMin ? tMin : tw > tMax ? tMax : tw;
+          dsw2 = (-2 * spw * spw) / zd;
         }
       }
-      // OU update (exact), crossing trajectories, well-mixed drift.
+      // OU update (exact), crossing trajectories T_eff = T/√(1 + (β·v_t/σ)²), well-mixed drift ½∂σ_w²/∂z.
       if (su > 0) {
-        const rv = (TB.beta * vtNow) / su;
-        const te = th / Math.sqrt(1 + rv * rv);
-        const e = Math.exp(-dte / te);
+        const rv = (beta * vtNow) / su;
+        const e = Math.exp((-dte * Math.sqrt(1 + rv * rv)) / th);
         const sq = Math.sqrt(1 - e * e);
-        up = up * e + su * sq * NORMAL_TABLE[(rr.next() * NORMAL_TABLE_SIZE) | 0]!;
-        vp = vp * e + sv * sq * NORMAL_TABLE[(rr.next() * NORMAL_TABLE_SIZE) | 0]!;
+        rs = (rs + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(rs ^ (rs >>> 15), rs | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        up = up * e + su * sq * nt[((t ^ (t >>> 14)) >>> 0) >>> 20]!;
+        rs = (rs + 0x6d2b79f5) >>> 0;
+        t = Math.imul(rs ^ (rs >>> 15), rs | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        vp = vp * e + sv * sq * nt[((t ^ (t >>> 14)) >>> 0) >>> 20]!;
       } else if (up !== 0 || vp !== 0) {
-        up *= Math.exp(-dte / th);
-        vp *= Math.exp(-dte / th);
+        const e = Math.exp(-dte / th);
+        up *= e;
+        vp *= e;
       }
       if (sw > 0) {
-        const rv = (TB.beta * vtNow) / sw;
-        const te = tw / Math.sqrt(1 + rv * rv);
-        const e = Math.exp(-dte / te);
-        wp = wp * e + sw * Math.sqrt(1 - e * e) * NORMAL_TABLE[(rr.next() * NORMAL_TABLE_SIZE) | 0]! + 0.5 * dsw2 * dte;
+        const rv = (beta * vtNow) / sw;
+        const e = Math.exp((-dte * Math.sqrt(1 + rv * rv)) / tw);
+        rs = (rs + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(rs ^ (rs >>> 15), rs | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        wp = wp * e + sw * Math.sqrt(1 - e * e) * nt[((t ^ (t >>> 14)) >>> 0) >>> 20]! + 0.5 * dsw2 * dte;
       } else if (wp !== 0) wp *= Math.exp(-dte / tw);
-      // Move: horizontal with the frozen wind + fluctuation, vertical with the exact burning fall integral.
-      const fall = vt0 * dens * fallIntegral(tauB, n, fl, age, age + dte);
+      // Exact burning fall over [age, age + dte]: ∫ v_t0·max(floor, (1 − a/τ)^n)·dens da.
+      const a1 = age + dte;
+      let r1 = 1 - a1 * invTau;
+      if (r1 < 0) r1 = 0;
+      const rp1 = nCode === 0 ? r1 * r1 : nCode === 1 ? r1 * Math.sqrt(r1) : nCode === 2 ? r1 * Math.sqrt(Math.sqrt(r1)) : Math.pow(r1, n + 1);
+      let fi: number;
+      if (a1 <= ac) fi = tauN1 * (rp - rp1);
+      else if (age >= ac) fi = fl * dte;
+      else fi = tauN1 * (rp - rpc) + fl * (a1 - ac);
+      const fall = vt0 * dens * fi;
+      r = r1;
+      rp = rp1;
+      // Move: horizontal with the frozen wind + fluctuation, vertical with the burning fall.
       const xPrev = x;
       const yPrev = y;
       const zPrev = z;
@@ -1402,24 +1639,59 @@ export class EmberModel {
       z += (w + wp) * dte - fall;
       sumU += ut * dte;
       sumV += vt * dte;
-      age += dte;
+      age = a1;
       rem -= dte;
       const tPrev = tc;
       tc += dte;
-      // Glowing E1 re-flames (hazard λ_rf).
-      if (reflame > 0 && age >= flameEnd && rr.next() < 1 - Math.exp(-reflame * dte)) {
-        flameEnd = age + P.ignition.reflameDuration;
-        st |= ST_REFLAMED;
+      // Glowing E1 re-flames with hazard λ (1 − e^{−λΔt} ≈ λΔt(1 − λΔt/2), relative error < (λΔt)²/6 ≤ 1e-4).
+      if (reflame > 0 && age >= flameEnd) {
+        const lt = reflame * dte;
+        rs = (rs + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(rs ^ (rs >>> 15), rs | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        if (((t ^ (t >>> 14)) >>> 0) / 4294967296 < lt * (1 - 0.5 * lt)) {
+          flameEnd = age + reflameDur;
+          st |= ST_REFLAMED;
+        }
       }
-      // Left the domain → analytic continuation.
-      if (x < this.xMin || x > this.xMax || y < this.yMin || y > this.yMax) {
-        this.storeState(i, x, y, z, up, vp, wp, age, flameEnd, maxH, sumU, sumV, st);
-        this.exitDomain(i, zPrev - zgPrev, ut, vt, tc);
+      // Non-finite state (a NaN wind sample): the particle is lost, never rendered or landed.
+      if (!(x === x && y === y && z === z)) {
+        rr.s = rs;
+        this.burntOut++;
         this.goneAt = tc;
         return true;
       }
-      zg = this.ground(x, y);
-      if (z <= zg + T.landEps) {
+      // Left the domain → analytic continuation.
+      if (x < xMin || x > xMax || y < yMin || y > yMax) {
+        rr.s = rs;
+        this.storeState(i, x, y, z, up, vp, wp, age, flameEnd, maxH, sumU, sumV, st);
+        this.exitDomain(i, x, y, zPrev - zgPrev, tc, wind);
+        this.goneAt = tc;
+        return true;
+      }
+      // Ground under the new position (bilinear on the fire grid, clamped at the edges).
+      {
+        let fx = (x - gx0) * invH;
+        let fy = (y - gy0) * invH;
+        if (fx < 0) fx = 0;
+        else if (fx > fxMax) fx = fxMax;
+        if (fy < 0) fy = 0;
+        else if (fy > fyMax) fy = fyMax;
+        let gi = fx | 0;
+        let gj = fy | 0;
+        if (gi > gnx - 2) gi = gnx - 2;
+        if (gj > gny - 2) gj = gny - 2;
+        const tx = fx - gi;
+        const ty = fy - gj;
+        const gk = gj * gnx + gi;
+        const e00 = elev[gk]!;
+        const e10 = elev[gk + 1]!;
+        const e01 = elev[gk + gnx]!;
+        const e11 = elev[gk + gnx + 1]!;
+        zg = (e00 + (e10 - e00) * tx) * (1 - ty) + (e01 + (e11 - e01) * tx) * ty;
+      }
+      if (z <= zg + landEps) {
+        rr.s = rs;
         const hp = zPrev - zgPrev;
         const hn = z - zg;
         const f = hp - hn > 1e-9 ? Math.min(1, Math.max(0, hp / (hp - hn))) : 1;
@@ -1435,13 +1707,58 @@ export class EmberModel {
       const hn = z - zg;
       if (hn > maxH) maxH = hn;
       if (age >= tauB - 1e-9) {
+        rr.s = rs;
         this.burntOut++;
         this.goneAt = tc;
         return true;
       }
     }
+    rr.s = rs;
     this.storeState(i, x, y, z, up, vp, wp, age, flameEnd, maxH, sumU, sumV, st);
     return false;
+  }
+
+  /** Offset into `turbCache` of the column holding (x, y), sampling `turb` there once per step. */
+  private turbColumn(x: number, y: number, turb: TurbFn): number {
+    let ci = ((x - this.xMin) / this.dxa) | 0;
+    let cj = ((y - this.yMin) / this.dxa) | 0;
+    if (ci < 0) ci = 0;
+    else if (ci >= this.nxa) ci = this.nxa - 1;
+    if (cj < 0) cj = 0;
+    else if (cj >= this.nya) cj = this.nya - 1;
+    const col = cj * this.nxa + ci;
+    if (this.turbStamp[col] !== this.stepId) {
+      this.turbStamp[col] = this.stepId;
+      const t = this.tOut;
+      turb(this.xMin + (ci + 0.5) * this.dxa, this.yMin + (cj + 0.5) * this.dxa, 10, t);
+      this.turbCache[3 * col] = t[0]!;
+      this.turbCache[3 * col + 1] = t[1]!;
+      this.turbCache[3 * col + 2] = t[2]!;
+    }
+    return 3 * col;
+  }
+
+  /**
+   * Lee eddy wind (§9.4) on separated cell k (s_sep = s ≥ 0.5): below eddyDepth·relief AGL, the horizontal wind is
+   * blended toward eddyFraction·U_ridge along the upslope direction with weight s. Writes (u, v) to `wOut`; returns
+   * false (and leaves `wOut` untouched) when the particle is above the eddy or the cell is flat.
+   */
+  private leeEddy(k: number, s: number, x: number, y: number, zagl: number, u: number, v: number, wind: WindFn): boolean {
+    const M = this.params.mountain;
+    const relief = this.reliefAt(k);
+    const asp = this.terrain.aspectDeg[k]!;
+    if (!(zagl < M.eddyDepth * relief) || asp !== asp) return false;
+    const uRidge = this.env.uRidge;
+    let ur = uRidge ? uRidge[k]! : NaN;
+    const out = this.wOut;
+    if (!(ur === ur)) {
+      wind(x, y, relief, out);
+      ur = Math.hypot(out[0]!, out[1]!);
+    }
+    const a = asp * DEG;
+    out[0] = (1 - s) * u - s * M.eddyFraction * ur * Math.sin(a);
+    out[1] = (1 - s) * v - s * M.eddyFraction * ur * Math.cos(a);
+    return true;
   }
 
   private storeState(i: number, x: number, y: number, z: number, up: number, vp: number, wp: number, age: number, flameEnd: number,
@@ -1460,29 +1777,36 @@ export class EmberModel {
     this.state[i] = st;
   }
 
-  /** Domain exit (§9.3): remaining flight t = min(z/v_t, τ_b − age), beyond-edge distance Ū·t, histogram W·P_ig. */
-  private exitDomain(i: number, zagl: number, ut: number, vt: number, t: number): void {
+  /**
+   * Domain exit (§9.3 analytic continuation): the remaining burning fall from the exit height takes t (exact inverse of
+   * the fall integral; brands that burn out first are not histogrammed, deviation 4); beyond-edge distance Ū·t with Ū
+   * the mean ambient profile speed over the fall column (or the frozen wind at mid-column at the edge when no profile
+   * is set); histogram weighted by W·P_ig(ambient M, T_f); `leftDomain += 1`.
+   */
+  private exitDomain(i: number, x: number, y: number, zagl: number, t: number, wind: WindFn): void {
     const P = this.params;
     this.leftDomain++;
     const W = this.W[i]!;
     this.win.add(t, WIN.exits, W);
     const c = this.cls[i]!;
     const age = this.age[i]!;
-    const tauB = this.tauB[i]!;
-    const mr = 1 - age / tauB;
-    let vf = powN(mr, this.clsN[c]!);
-    if (vf < this.clsFloor[c]!) vf = this.clsFloor[c]!;
-    const vtNow = Math.max(0.1, this.vt0[i]! * this.densAt(this.pz[i]!) * vf);
     const h = zagl > 0 ? zagl : 0;
-    const tFall = h / vtNow;
-    if (tFall > tauB - age) return; // burns out before landing
+    const dens = this.densAt(this.pz[i]!);
+    const tFall = fallTime(this.tauB[i]!, this.clsN[c]!, this.clsFloor[c]!, age, h / (this.vt0[i]! * dens));
+    if (!(tFall < Infinity)) return; // burns out before landing
     let ubar: number;
     if (this.profH.length > 0) ubar = this.profileMean(h);
-    else ubar = P.transport.exitWindFrac * Math.hypot(ut, vt);
+    else {
+      const xe = x < this.xMin ? this.xMin : x > this.xMax ? this.xMax : x;
+      const ye = y < this.yMin ? this.yMin : y > this.yMax ? this.yMax : y;
+      wind(xe, ye, 0.5 * h, this.tOut);
+      ubar = Math.hypot(this.tOut[0]!, this.tOut[1]!);
+    }
     const d = ubar * tFall;
     const flaming = age + tFall < this.flameEnd[i]!;
     const pig = ignitionProbability(this.env.ambientFuelTempC ?? P.ignition.ambientFuelTemp, this.env.ambientMoisture ?? P.ignition.ambientMoisture);
-    const s = flaming ? 1 : P.ignition.glowFactor * 0.5;
+    // S_state: flaming 1; glowing 0.3·clamp(bedWind/2) with the assumed ambient bed wind beyond the edge [H].
+    const s = flaming ? 1 : P.ignition.glowFactor * clamp01(P.ignition.ambientBedWind / P.ignition.bedWindRef);
     const bin = Math.min(P.stats.edgeBins - 1, Math.floor(d / P.stats.edgeBinM));
     this.win.addHist(t, bin, W * pig);
     this.win.add(t, WIN.exitExpected, W * pig);
@@ -1550,13 +1874,12 @@ export class EmberModel {
         const m = Math.max(0, 1 - age / tauB);
         p = ignitionProbability(info.fuelTempC, info.moisture) * sState * rec * fam * Math.sqrt(Math.sqrt(m));
         // Pile synergy: ≥ 3 real brands in one cell within 60 s.
-        let pe = this.pile.get(k);
-        if (!pe || t - pe.t0 > IG.pileWindow) {
-          pe = { t0: t, n: 0 };
-          this.pile.set(k, pe);
+        if (t - this.pileT0[k]! > IG.pileWindow) {
+          this.pileT0[k] = t;
+          this.pileN[k] = 0;
         }
-        pe.n += W;
-        if (pe.n >= IG.pileMin) p *= 1 + IG.pileGain * Math.min(pe.n - 1, IG.pileMaxN);
+        const pn = (this.pileN[k] = this.pileN[k]! + W);
+        if (pn >= IG.pileMin) p *= 1 + IG.pileGain * Math.min(pn - 1, IG.pileMaxN);
         if (p > IG.pMax) p = IG.pMax;
         if (p >= IG.capableP) {
           this.win.add(t, WIN.capable, W);
@@ -1564,19 +1887,24 @@ export class EmberModel {
         }
         if (p > 0) this.ovIgnition.add(k, W * p, t);
         pSpot = 1 - Math.exp(-W * p);
-        const heavy = info.surfaceHazard >= IG.holdoverFhs || ((this.fuel.flags ? this.fuel.flags[k]! : 0) & FuelFlag.HeavyFuel) !== 0;
-        if (!flaming && heavy && this.r.next() < 1 - Math.exp(-IG.holdoverShare * W)) {
-          hold = true;
-          const prov = this.provenance(i, zgl, k, 'holdover', info.moisture, p, travel);
-          if (this.holdovers.length >= IG.maxHoldovers) this.holdovers.shift();
-          this.holdovers.push({ x: xl, y: yl, tLand: t, prov });
-        }
         if (pSpot > 0 && this.r.next() < pSpot) {
           const dl = flaming ? IG.delayFlaming : IG.delayGlowing;
           const due = t + this.r.range(dl[0], dl[1]);
           const prov = this.provenance(i, zgl, k, stateName, info.moisture, p, travel);
           this.schedule({ due, x: xl, y: yl, travel, prov });
           scheduled = true;
+        } else if (!flaming) {
+          // Holdover (§9.5): 2 % of the glowing brands that did not start a fire now smoulder in heavy fuel (a brand
+          // whose cell ignites now needs no holdover: the cell burns and a holdover there would be cancelled).
+          const heavy = info.surfaceHazard >= IG.holdoverFhs || ((this.fuel.flags ? this.fuel.flags[k]! : 0) & FuelFlag.HeavyFuel) !== 0;
+          const lam = IG.holdoverShare * W;
+          const pHold = 1 - Math.exp(-lam);
+          if (heavy && this.r.next() < pHold) {
+            hold = true;
+            const prov = this.provenance(i, zgl, k, 'holdover', info.moisture, p, travel);
+            if (this.holdovers.length >= IG.maxHoldovers) this.holdovers.shift();
+            this.holdovers.push({ x: xl, y: yl, tLand: t, tCheck: t, n: lam / pHold, prov });
+          }
         }
       }
     }
@@ -1635,11 +1963,6 @@ export class EmberModel {
         onIgnite(p.x, p.y, p.travel, p.prov);
       }
     }
-    // Prune the pile-synergy windows.
-    if (this.pile.size > 0) {
-      const wnd = this.params.ignition.pileWindow;
-      for (const [k, v] of this.pile) if (t1 - v.t0 > wnd) this.pile.delete(k);
-    }
     // Holdovers: smoulder ≤ 24 h, convert with hazard (1/3600 s⁻¹)·clamp((10 − M)/5, 0, 1).
     const IG = this.params.ignition;
     if (this.holdovers.length === 0) {
@@ -1647,15 +1970,17 @@ export class EmberModel {
       return;
     }
     if (t1 - this.lastHoldoverCheck < IG.holdoverCheck) return;
-    const dtc = Math.min(t1 - this.lastHoldoverCheck, 3600);
     this.lastHoldoverCheck = t1;
     const keep: Holdover[] = [];
     for (const hv of this.holdovers) {
       if (t1 - hv.tLand > IG.holdoverMaxAge) continue;
       const info = landing(hv.x, hv.y);
       if (!info.burnable || info.burnt) continue;
+      // Hazard integrated since this holdover's last check (the moisture of the check holds over the interval).
+      const dtc = t1 - hv.tCheck;
+      hv.tCheck = t1;
       const hz = (1 / IG.holdoverTime) * clamp01((IG.holdoverM0 - info.moisture) / IG.holdoverDm);
-      const pc = 1 - Math.exp(-hz * dtc);
+      const pc = 1 - Math.exp(-hz * hv.n * dtc);
       if (pc > 0 && this.r.next() < pc) {
         const prov = { ...hv.prov, landingMoisture: info.moisture, pIgnite: pc };
         this.win.add(t1, WIN.ignitions, 1);
@@ -1914,6 +2239,7 @@ export class EmberModel {
 
   private syncIn(): void {
     this.r.s = this.rng.state >>> 0;
+    this.r.spare = NaN; // the cached Box–Muller partner never outlives a public call (determinism across checkpoints)
   }
 
   private syncOut(): void {
@@ -1928,7 +2254,12 @@ interface ParticleArrays {
 }
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-const clampT = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+
+/** The environment without per-cell rasters and functions (checkpoint content; structured-clone safe). */
+function scalarEnv(e: EmberEnvironment): EmberEnvironment {
+  const { uRidge: _u, relief: _r, sep: _s, crest: _c, ...rest } = e;
+  return rest.weather ? { ...rest, weather: structuredClone(rest.weather) } : rest;
+}
 
 function cloneProv(p: SpotProvenance): SpotProvenance {
   return { ...p, meanWindAloft: [p.meanWindAloft[0], p.meanWindAloft[1]] };

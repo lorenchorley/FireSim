@@ -9,26 +9,28 @@
  * - a severity escalation (armed/shown/cooldown key whose candidate is more severe than the last shown card)
  *   bypasses persistence and cool-down;
  * - at most 3 new insights per cycle, ranked danger > watch > info, then score, then distance to the head;
- * - [H] kind-level de-duplication: a new key is not shown when a key of the same kind within `dedupRadiusM` is shown
- *   or cooling down with the same or higher severity (the key then tracks silently as shown).
+ * - [H] kind-level de-duplication: a new key is not shown when a key of the same kind within `dedupRadiusM` is shown,
+ *   cooling down or selected earlier in the same cycle with the same or higher severity (the key then tracks
+ *   silently as shown, so a moving head does not re-raise the same card in every 500 m tile).
  * Deterministic: fixed rule order, keys processed in sorted order, ties broken by key (no RNG needed).
  */
 import { localDate } from '../core/physics';
-import type {
-  CellExplanation,
-  FuelMap,
+import {
   FuelType,
-  Insight,
-  InsightKind,
-  SimStateView,
-  Terrain,
-  TerrainDerived,
-  TerrainFeatures,
-  WeatherHour,
-  WeatherSeries,
+  type CellExplanation,
+  type FuelMap,
+  type Insight,
+  type InsightKind,
+  type SimStateView,
+  type Terrain,
+  type TerrainDerived,
+  type TerrainFeatures,
+  type WeatherHour,
+  type WeatherSeries,
 } from '../core/types';
 import { CycleContext, freshMemory, type EngineMemory } from './context';
-import { explainCell } from './explainCell';
+import { afdrsFbi, fuelSummary } from './deps';
+import { explainCell, localFuelSummary, type ExplainOptions, type MoistureReasonParts } from './explainCell';
 import { analyseSeries, buildForecastInsights, type ForecastAnalysis } from './forecast';
 import { EXPLAIN_PARAMS } from './params';
 import { INSIGHT_RULES, RULE_LIST } from './registry';
@@ -43,12 +45,14 @@ const E = EXPLAIN_PARAMS.engine;
 export interface InsightEngineOptions {
   /** unix ms of the scenario start (else learnt from forecastInsights, else weather.time is used as "now"). */
   startTime?: number;
-  /** fire/ afdrsFbi (spec §2.4) for the S13 "FBI ≥ 50" branch; absent → weather branch only. */
-  afdrsFbi?: (fuelType: FuelType, w: WeatherHour, lonDeg: number, df: number, kbdi: number) => { fbi: number; rating: string; intensity: number };
+  /** fire/ afdrsFbi (spec §2.4) for the S13 "FBI ≥ 50" branch; default: fire/models afdrsFbi; null → weather branch only. */
+  afdrsFbi?: ((fuelType: FuelType, w: WeatherHour, lonDeg: number, df: number, kbdi: number) => { fbi: number; rating: string; intensity: number }) | null;
   /** Fuel type the FBI is evaluated for (dominant burnable type); default DryForestShrubby (4). */
   fbiFuelType?: FuelType;
-  /** fuel/ fuelSummary (spec §4.7) for explainAt. */
+  /** fuel/ fuelSummary (spec §4.7) for explainAt; default: fuel/fuelMap fuelSummary (local fallback on error). */
   fuelSummary?: (fuel: FuelMap, k: number) => string;
+  /** fuel/moisture per-cell breakdown (MoistureModel.breakdown) for the "Why here?" moisture reason. */
+  moistureBreakdown?: (k: number) => MoistureReasonParts | null;
   /** Rate-of-spread provider for the DMZ sweep (default: Mk5 estimate, see safety.ts). */
   dmzRos?: DmzRosFn;
   /** Rules to run (default: the full registry, in registry order). */
@@ -101,6 +105,7 @@ export class InsightEngine {
   private dmzLayer: Float32Array | null = null;
   private fcCache: { series: WeatherSeries; n: number; start: number; lon: number; a: ForecastAnalysis } | null = null;
   private readonly geoCache = new Map<number, { cross: number; leeSteeper: boolean }>();
+  private readonly fbiFn: NonNullable<InsightEngineOptions['afdrsFbi']> | null;
   /** Wall-clock ms of the last update (performance monitor). */
   lastUpdateMs = 0;
 
@@ -116,6 +121,7 @@ export class InsightEngine {
     this.rules = opts.rules ?? RULE_LIST;
     this.ruleOf = new Map(this.rules.map((r) => [r.kind, r]));
     this.startMs = opts.startTime ?? NaN;
+    this.fbiFn = opts.afdrsFbi === null ? null : (opts.afdrsFbi ?? afdrsFbi);
     this.dmz = new DmzComputer(terrain, fuel);
     this.ctx.services.dmz = (ctx, change) => {
       const r = this.dmz.compute(ctx.s, ctx.front, ctx.nFront, change, this.opts.dmzRos);
@@ -131,6 +137,8 @@ export class InsightEngine {
   /** Recompute fuel-dependent caches after fuel edits (recent burns, wet gullies, fuel breaks). */
   refreshFuel(): void {
     this.statics.refreshFuel();
+    // §10.5: the DMZ is recomputed on edits.
+    this.mem.dmzT = NaN;
   }
 
   /** Overlay rasters for SimSnapshot.layers (spec §2.1): 'dmz' while a change is ≤ 60 min away. */
@@ -159,9 +167,8 @@ export class InsightEngine {
     if (mem.lastRunT === mem.lastRunT && tSim - mem.lastRunT < E.cadenceS - 1e-6 && tSim >= mem.lastRunT) return [];
     const lon = this.terrain.grid.origin.lon;
     ctx.prepare(s, mem, this.startMs, this.analysis(s.series, lon));
-    ctx.afdrsFbi = this.opts.afdrsFbi
-      ? (w: WeatherHour) => this.opts.afdrsFbi!(this.opts.fbiFuelType ?? (4 as FuelType), w, lon, s.droughtFactor, s.kbdi).fbi
-      : null;
+    const fbiFn = this.fbiFn;
+    ctx.afdrsFbi = fbiFn ? (w: WeatherHour) => fbiFn(this.opts.fbiFuelType ?? FuelType.DryForestShrubby, w, lon, s.droughtFactor, s.kbdi).fbi : null;
     // New spot fires since the last cycle.
     const newSpots = [];
     let maxId = mem.spotMaxId;
@@ -237,13 +244,24 @@ export class InsightEngine {
     // Kind-level de-duplication, ranking and the per-cycle cap.
     const selected: Ready[] = [];
     const kept: Ready[] = [];
+    // Active (shown or cooling) keys per kind, for the de-dup radius test.
+    const active = new Map<InsightKind, KeyState[]>();
+    if (ready.length) {
+      for (const o of this.states.values()) {
+        if (!(o.phase === Phase.Shown || (o.phase === Phase.Cooldown && t - o.offAt < o.cooldown))) continue;
+        let l = active.get(o.kind);
+        if (!l) active.set(o.kind, (l = []));
+        l.push(o);
+      }
+    }
     for (const r of ready) {
-      if (!r.escalation && this.suppressed(r, t)) {
+      if (!r.escalation && this.suppressed(r, active.get(r.st.kind))) {
         // Track silently as shown so it neither spams nor re-arms while the nearby card is active.
         r.st.phase = Phase.Shown;
         r.st.sev = SEV_RANK[r.c.severity];
         r.st.shownAt = t;
         r.st.cycles = 0;
+        active.get(r.st.kind)?.push(r.st);
         continue;
       }
       kept.push(r);
@@ -254,6 +272,19 @@ export class InsightEngine {
     );
     for (const r of kept) {
       if (selected.length >= E.maxNewPerCycle) break;
+      // Same-cycle duplicates: a lower-ranked key near an already selected one of its kind tracks silently.
+      if (!r.escalation && r.rule.dedupRadiusM > 0) {
+        const near = selected.some(
+          (o) => o.st.kind === r.st.kind && SEV_RANK[o.c.severity] >= SEV_RANK[r.c.severity] && Math.hypot(o.c.x - r.c.x, o.c.y - r.c.y) <= r.rule.dedupRadiusM,
+        );
+        if (near) {
+          r.st.phase = Phase.Shown;
+          r.st.sev = SEV_RANK[r.c.severity];
+          r.st.shownAt = t;
+          r.st.cycles = 0;
+          continue;
+        }
+      }
       selected.push(r);
     }
     const out: Insight[] = [];
@@ -273,14 +304,13 @@ export class InsightEngine {
     return out;
   }
 
-  private suppressed(r: Ready, t: number): boolean {
+  /** A new key of a kind with an active (shown / cooling) key within the rule's de-dup radius, as severe or more. */
+  private suppressed(r: Ready, active: KeyState[] | undefined): boolean {
     const rad = r.rule.dedupRadiusM;
-    if (!(rad > 0)) return false;
+    if (!(rad > 0) || !active) return false;
     const sev = SEV_RANK[r.c.severity];
-    for (const o of this.states.values()) {
-      if (o === r.st || o.kind !== r.st.kind || o.sev < sev) continue;
-      const active = o.phase === Phase.Shown || (o.phase === Phase.Cooldown && t - o.offAt < o.cooldown);
-      if (!active) continue;
+    for (const o of active) {
+      if (o === r.st || o.sev < sev) continue;
       if (Math.hypot(o.x - r.c.x, o.y - r.c.y) <= rad) return true;
     }
     return false;
@@ -293,8 +323,8 @@ export class InsightEngine {
 
   /** "Why here?" explanation of the cell at (x, y) (spec §10.4). */
   explainAt(x: number, y: number, s: SimStateView): CellExplanation {
-    const o: { fuelSummary?: (fuel: FuelMap, k: number) => string; startMs?: number } = {};
-    if (this.opts.fuelSummary) o.fuelSummary = this.opts.fuelSummary;
+    const o: ExplainOptions = { fuelSummary: this.opts.fuelSummary ?? defaultFuelSummary };
+    if (this.opts.moistureBreakdown) o.moistureBreakdown = this.opts.moistureBreakdown;
     if (Number.isFinite(this.startMs)) o.startMs = this.startMs;
     return explainCell(x, y, s, o);
   }
@@ -306,7 +336,7 @@ export class InsightEngine {
     const a = analyseSeries(series, start, duration, lonDeg);
     this.fcCache = { series, n: series.hours.length, start, lon: lonDeg, a };
     const ctxLike = { statics: this.statics, features: this.features, terrain: this.terrain };
-    const fbi = this.opts.afdrsFbi;
+    const fbi = this.fbiFn;
     const out = buildForecastInsights(
       series,
       start,
@@ -320,7 +350,7 @@ export class InsightEngine {
         ridgeGeometry: (from) => ridgeGeometry(ctxLike, from, this.geoCache),
       },
       a,
-      fbi ? { afdrsFbi: (w) => fbi(this.opts.fbiFuelType ?? (4 as FuelType), w, lonDeg, series.droughtFactor ?? EXPLAIN_PARAMS.forecast.defaultDf, series.kbdi ?? 0).fbi } : {},
+      fbi ? { afdrsFbi: (w) => fbi(this.opts.fbiFuelType ?? FuelType.DryForestShrubby, w, lonDeg, series.droughtFactor ?? EXPLAIN_PARAMS.forecast.defaultDf, series.kbdi ?? 0).fbi } : {},
     );
     // The daily high-drought card of t0 is the forecast one.
     if (out.some((i) => i.kind === 'high-drought')) this.mem.highDroughtDay = localDate(start);
@@ -344,7 +374,20 @@ export class InsightEngine {
     this.mem = { ...cp.mem, windHist: [...cp.mem.windHist] };
     this.startMs = cp.startMs;
     this.dmzLayer = cp.dmzLayer ? cp.dmzLayer.slice() : null;
+    // The fuel map may have been rewound with the sim (edits): rebuild the fuel-dependent caches.
+    this.statics.refreshFuel();
   }
+}
+
+/** fuel/ fuelSummary (spec §4.7), falling back to the local summary on a partial fuel map. */
+function defaultFuelSummary(fuel: FuelMap, k: number): string {
+  try {
+    const t = fuelSummary(fuel, k);
+    if (t && !/NaN|undefined/.test(t)) return t;
+  } catch {
+    // fall through
+  }
+  return localFuelSummary(fuel, k);
 }
 
 export { INSIGHT_RULES };

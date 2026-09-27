@@ -132,6 +132,17 @@ describe('domain exit and model top', () => {
     expect(st.beyondEdgeHistogram.length).toBe(30);
   });
 
+  it('a brand that would burn out before landing beyond the edge counts in leftDomain but not in the histogram', () => {
+    const { model, x0 } = setup(6000, 60);
+    const xEdge = x0 + (100 - 0.5) * 60;
+    // twig (n = 1, no floor) 400 m AGL with τ_b 60 s: fall capacity v_t0·τ_b/2 = 150 m < 400 m
+    model.injectParticle({ x: xEdge - 30, y: 0, z: 300 + 400, emberClass: 'twig', vt0: 5, tauB: 60, tauF: 20 });
+    runFor(model, 10, uniformWind(20, 0));
+    const st = model.stats();
+    expect(st.leftDomain).toBe(1);
+    expect(Array.from(st.beyondEdgeHistogram).every((v) => v === 0)).toBe(true);
+  });
+
   it('above the model top the ambient profile replaces the callback wind', () => {
     const { model, x0 } = setup(40000, 60);
     model.setEnvironment({ modelTopAGL: 500, weather: { time: 0, temperature: 25, relativeHumidity: 30, windSpeed10: 30, windDir10: 270 } });

@@ -50,17 +50,17 @@ export class DiagnosticWind extends AtmosBase {
 
   /**
    * Night decoupling weight w_night(z_cell) (§8.4 taper): smoothstep(z_low, z_low + 300, z_cell) with
-   * z_low = min(P90 − 300 m, z_floor,col + h_inv). Deviation [H]: the spec's §8.4 z_low (min(P90, …)) describes air
-   * 300 m above ridge level in the 3-D column; evaluated at the ground it would decouple ridge tops and the whole of
-   * a flat domain (breaking V21 at night). Shifting the ridge term down by the taper depth keeps surfaces at ridge
-   * level coupled and valley floors inside the cold pool decoupled.
+   * z_low = min(P90 − 300 m, z_floor + h_inv), z_floor = z_cell − heightAboveValley (the cell's own valley floor).
+   * Deviation [H]: the spec's §8.4 z_low (min(P90, …)) describes air 300 m above ridge level in the 3-D column;
+   * evaluated at the ground it would decouple ridge tops and the whole of a flat domain (breaking V21 at night).
+   * Shifting the ridge term down by the taper depth keeps surfaces at ridge level coupled and valley floors inside
+   * the cold pool decoupled.
    */
   private wNight(k: number): number {
-    const g = this.grid;
-    const c = g.colOfFire[k]!;
     const d = ATMOS_PARAMS.nudgeNightDepth;
-    const zLow = Math.min(g.zP90 - d, g.zFloor[c]! + this.night.hInv);
-    return smoothstep(zLow, zLow + d, this.terrain.elevation[k]!);
+    const z = this.terrain.elevation[k]!;
+    const zLow = Math.min(this.grid.zP90 - d, z - this.derived.heightAboveValley[k]! + this.night.hInv);
+    return smoothstep(zLow, zLow + d, z);
   }
 
   protected fireWindTier(
@@ -103,8 +103,8 @@ export class DiagnosticWind extends AtmosBase {
           ex = ctx.headDirX[k]!;
           ey = ctx.headDirY[k]!;
         } else {
-          const sp = Math.hypot(bu, bv);
-          isHead = sp > 0.1;
+          const sp = Math.sqrt(bu * bu + bv * bv);
+          isHead = sp > P.pyroHeadMinWind;
           ex = sp > 0 ? bu / sp : 0;
           ey = sp > 0 ? bv / sp : 0;
         }

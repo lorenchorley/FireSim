@@ -30,6 +30,11 @@ export const EXPLAIN_PARAMS = Object.freeze({
     hashBucketM: 250,
     /** Head cells = front cells with aux.direction ≥ this (§10.1). */
     headDirectionMin: 0.8,
+    /**
+     * [H performance] Per-front detectors examine at most this many front cells (strided sample above it; count
+     * thresholds scale with the stride). Realistic fronts (≤ 6000 cells ≈ 180 km of perimeter at 30 m) are exact.
+     */
+    maxFrontExamined: 6000,
     /** Ratio caps of the soft-AND scores (score = min of per-condition ratios, each capped here). */
     ratioCap: 2,
   }),

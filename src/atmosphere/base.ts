@@ -4,7 +4,7 @@
  * time interpolation, κ scaling at z_ref, the fire-influence mask and coupling, sub-grid slope flows, ridge wind,
  * lee-separation blend, surface heat flux, the §5.2 near-surface temperature template and common diagnostics.
  */
-import { G, airDensity, CP, KAPPA_VK, pressureIsa } from '../core/physics';
+import { G, airDensity, CP, KAPPA_VK, RD, dewPointC, pressureIsa } from '../core/physics';
 import type { Rng } from '../core/rng';
 import type {
   AtmosDiagnostics,
@@ -20,11 +20,11 @@ import { angleDiffDeg, clamp, smoothstep, DEG } from '../core/units';
 import { sampleBilinear } from '../core/grid';
 import { solarPosition, terrainDerived } from '../terrain';
 import { buildAtmosGrid, levelFrac, type AtmosGrid, type AtmosGridOptions } from './grid';
-import { MassConsistentSolver, facesToCentres, resolveWindEdits, type BgWind, type ResolvedWindEdit } from './massConsistent';
+import { MassConsistentSolver, resolveWindEdits, type BgWind, type ResolvedWindEdit } from './massConsistent';
 import { ATMOS_PARAMS } from './params';
 import { buildProfile, kappaLookup, kappaTable, pressureAt, type BackgroundProfile, type KappaTable } from './profile';
 import { anabaticSpeed, katabaticSpeed, sensibleHeatFlux } from './surface';
-import { briggsRise, cHaines, plumeColumn, type PlumeResult } from './plume';
+import { briggsRise, cHaines, plumeColumn, pyroFirepowerThreshold, type PlumeResult } from './plume';
 import { interpolateHour } from './weatherInterp';
 
 /** Constructor extras beyond the spec signature (all optional). */
@@ -116,10 +116,12 @@ export abstract class AtmosBase implements AtmosphereLike {
   // ── fire-cell sampling stencil (static) ──
   protected readonly nf: number;
   protected readonly zRef: Float32Array;
+  /** Horizontal bilinear stencil of every fire cell: 4 columns and weights. */
   protected readonly stC: Int32Array;
   protected readonly stW: Float32Array;
-  protected readonly stK: Int16Array;
-  protected readonly stT: Float32Array;
+  /** Trilinear stencil (8 flat centre indices and weights) of every fire cell's z_ref sample point (§8.8). */
+  protected readonly st8O: Int32Array;
+  protected readonly st8W: Float32Array;
   // ── surface heating ──
   protected night: StableNightState;
   protected kbdi = 0;
@@ -130,6 +132,12 @@ export abstract class AtmosBase implements AtmosphereLike {
   protected readonly qhCol: Float64Array;
   protected readonly albedo: Float32Array;
   protected readonly cosSlope: Float32Array;
+  /** Downslope unit vector (east, north) = û(aspect); 0 on flat cells (aspect NaN). */
+  protected readonly downX: Float32Array;
+  protected readonly downY: Float32Array;
+  /** Hydraulic slope-flow speed S (m/s, §8.6) per cell for the current heating: > 0 upslope (Q_h > 0) flow,
+   *  < 0 downslope (Q_h < 0) flow; recomputed by setSurfaceHeating. */
+  protected readonly slopeS: Float32Array;
   protected readonly valleyCols: Int32Array;
   protected qValley = 0;
   protected heatSinceSunrise = 0;
@@ -154,7 +162,8 @@ export abstract class AtmosBase implements AtmosphereLike {
   /** κ table level heights of a J = 1 column (level centres). */
   protected readonly levelZ: Float64Array;
   protected simTime = 0;
-  protected readonly isFast: boolean;
+  /** Last diagnostics(): C-Haines used the 2 m values because 850 hPa lies below the grid-point surface (§8.10). */
+  cHainesSurface = false;
 
   constructor(
     terrain: Terrain,
@@ -168,7 +177,6 @@ export abstract class AtmosBase implements AtmosphereLike {
     opts: AtmosphereOptions = {},
   ) {
     this.tier = tier;
-    this.isFast = tier === 'fast';
     this.terrain = terrain;
     this.fuel = fuel;
     this.features = features;
@@ -191,17 +199,24 @@ export abstract class AtmosBase implements AtmosphereLike {
     this.zRef = new Float32Array(nf);
     this.stC = new Int32Array(4 * nf);
     this.stW = new Float32Array(4 * nf);
-    this.stK = new Int16Array(4 * nf);
-    this.stT = new Float32Array(4 * nf);
-    this.buildStencil();
+    const zRefAsl = this.buildStencil();
+    [this.st8O, this.st8W] = this.verticalStencil(zRefAsl);
     // ── surface ──
     this.qhFire = new Float32Array(nf);
     this.qhCol = new Float64Array(g.plane);
     this.albedo = new Float32Array(nf);
     this.cosSlope = new Float32Array(nf);
+    this.downX = new Float32Array(nf);
+    this.downY = new Float32Array(nf);
+    this.slopeS = new Float32Array(nf);
     for (let k = 0; k < nf; k++) {
-      this.albedo[k] = ATMOS_PARAMS.albedo[fuel.type[k] as keyof typeof ATMOS_PARAMS.albedo] ?? 0.15;
-      this.cosSlope[k] = Math.max(0.2, Math.cos(terrain.slopeDeg[k]! * DEG));
+      this.albedo[k] = ATMOS_PARAMS.albedo[fuel.type[k] as keyof typeof ATMOS_PARAMS.albedo] ?? ATMOS_PARAMS.albedoDefault;
+      this.cosSlope[k] = Math.max(ATMOS_PARAMS.minCosSlope, Math.cos(terrain.slopeDeg[k]! * DEG));
+      const asp = terrain.aspectDeg[k]!;
+      if (Number.isFinite(asp)) {
+        this.downX[k] = Math.sin(asp * DEG);
+        this.downY[k] = Math.cos(asp * DEG);
+      }
     }
     const vc: number[] = [];
     for (let c = 0; c < g.plane; c++) if (g.zs[c]! - g.zFloor[c]! < ATMOS_PARAMS.valleyColumnMaxHav) vc.push(c);
@@ -230,6 +245,18 @@ export abstract class AtmosBase implements AtmosphereLike {
       s.fireBgU = s.fireBgV = s.fireKre = s.fireKim = null;
     }
     if (Number.isFinite(this.time)) this.setTime(this.time);
+  }
+
+  /**
+   * Update the stable-night state (§5.2a: cold-pool Δθ, h_inv, sn) without touching the surface fluxes — e.g. every
+   * atmosphere step between the 600 s setSurfaceHeating calls, or for tests with surface heating off.
+   */
+  setNightState(night: StableNightState): void {
+    const o = this.night;
+    // Negligible changes keep the current nudging/cold-pool fields (deterministic early-out; they cost O(n)).
+    if (Math.abs(night.dTheta - o.dTheta) < 0.02 && Math.abs(night.sn - o.sn) < 0.005 && night.hInv === o.hInv) return;
+    this.night = { ...night };
+    this.onHeatingChanged();
   }
 
   /** Coupling c_f fallback when the FireWindContext does not carry it. */
@@ -344,12 +371,18 @@ export abstract class AtmosBase implements AtmosphereLike {
   // Fire-cell stencil
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  private buildStencil(): void {
+  /**
+   * Horizontal stencil and z_ref (§8.8): z_ref = max(50 m, H_o,eff + 20 m, z₁ + Δz₁/2) AGL; the sample point is
+   * z_ASL = max(z_cell + z_ref, z_s,atm + z₁) (the fire cell's real elevation, not the smoothed atmosphere terrain).
+   * Returns the sample heights (m ASL).
+   */
+  private buildStencil(): Float64Array {
     const g = this.grid;
     const fg = this.terrain.grid;
     const P = ATMOS_PARAMS;
     const { nx, ny, dx } = g;
     const hEff = this.fuel.canopyHeightEff;
+    const zAslOut = new Float64Array(this.nf);
     for (let j = 0; j < fg.ny; j++) {
       const y = fg.y0 + j * fg.cellSize;
       for (let i = 0; i < fg.nx; i++) {
@@ -362,54 +395,113 @@ export abstract class AtmosBase implements AtmosphereLike {
         const tx = fx - i0;
         const ty = fy - j0;
         const c00 = j0 * nx + i0;
-        const cs = [c00, c00 + 1, c00 + nx, c00 + nx + 1];
+        const c01 = nx > 1 ? c00 + 1 : c00;
+        const c10 = ny > 1 ? c00 + nx : c00;
+        const c11 = nx > 1 && ny > 1 ? c00 + nx + 1 : c00;
+        const cs = [c00, c01, c10, c11];
         const ws = [(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty];
         let zsA = 0;
         let Jb = 0;
         for (let q = 0; q < 4; q++) {
           zsA += ws[q]! * g.zs[cs[q]!]!;
           Jb += ws[q]! * g.J[cs[q]!]!;
+          this.stC[4 * k + q] = cs[q]!;
+          this.stW[4 * k + q] = ws[q]!;
         }
         let hO = hEff ? hEff[k]! : this.fuel.canopyHeight[k]!;
         if (!Number.isFinite(hO)) hO = 0;
         const z1 = g.zetaC[0]! * Jb;
         const zRef = Math.max(P.zRefMin, hO + P.zRefCanopyAdd, g.zetaF[1]! * Jb);
         this.zRef[k] = zRef;
-        const zCell = this.terrain.elevation[k]!;
-        const zAsl = Math.max(zCell + zRef, zsA + z1);
-        for (let q = 0; q < 4; q++) {
-          const c = cs[q]!;
-          const kf = levelFrac(g, c, zAsl - g.zs[c]!);
-          const k0 = Math.min(Math.floor(kf), g.nz - 2);
-          this.stC[4 * k + q] = c;
-          this.stW[4 * k + q] = ws[q]!;
-          this.stK[4 * k + q] = k0;
-          this.stT[4 * k + q] = kf - k0;
-        }
+        zAslOut[k] = Math.max(this.terrain.elevation[k]! + zRef, zsA + z1);
       }
+    }
+    return zAslOut;
+  }
+
+  /**
+   * Trilinear stencil of a height per fire cell (m ASL): the 4 columns of the horizontal stencil, each linearly
+   * interpolated between its two bracketing level centres (clamped to the lowest/highest centre). Returns 8 flat
+   * centre indices and weights per cell.
+   */
+  protected verticalStencil(zAsl: ArrayLike<number>): [Int32Array, Float32Array] {
+    const g = this.grid;
+    const nf = this.nf;
+    const o8 = new Int32Array(8 * nf);
+    const w8 = new Float32Array(8 * nf);
+    for (let k = 0; k < nf; k++) {
+      for (let q = 0; q < 4; q++) {
+        const c = this.stC[4 * k + q]!;
+        const w = this.stW[4 * k + q]!;
+        const kf = levelFrac(g, c, zAsl[k]! - g.zs[c]!);
+        const k0 = g.nz > 1 ? Math.min(Math.floor(kf), g.nz - 2) : 0;
+        const t = g.nz > 1 ? kf - k0 : 0;
+        o8[8 * k + 2 * q] = k0 * g.plane + c;
+        w8[8 * k + 2 * q] = w * (1 - t);
+        o8[8 * k + 2 * q + 1] = (g.nz > 1 ? k0 + 1 : k0) * g.plane + c;
+        w8[8 * k + 2 * q + 1] = w * t;
+      }
+    }
+    return [o8, w8];
+  }
+
+  /** Sample two centre fields at every fire cell through an 8-point stencil (default: the z_ref stencil). */
+  protected sampleFire(fu: Float32Array, fv: Float32Array, outU: Float32Array, outV: Float32Array, o8: Int32Array = this.st8O, w8: Float32Array = this.st8W): void {
+    const nf = this.nf;
+    // Unrolled: V8 does not unroll the 8-term inner loop, and the gather dominates (≈ 1.5× faster).
+    for (let k = 0; k < nf; k++) {
+      const b = 8 * k;
+      let w = w8[b]!;
+      let o = o8[b]!;
+      let su = w * fu[o]!;
+      let sv = w * fv[o]!;
+      w = w8[b + 1]!;
+      o = o8[b + 1]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 2]!;
+      o = o8[b + 2]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 3]!;
+      o = o8[b + 3]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 4]!;
+      o = o8[b + 4]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 5]!;
+      o = o8[b + 5]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 6]!;
+      o = o8[b + 6]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      w = w8[b + 7]!;
+      o = o8[b + 7]!;
+      su += w * fu[o]!;
+      sv += w * fv[o]!;
+      outU[k] = su;
+      outV[k] = sv;
     }
   }
 
-  /** Sample two centre fields at every fire cell's z_ref point. */
-  protected sampleFire(fu: Float32Array, fv: Float32Array, outU: Float32Array, outV: Float32Array): void {
-    const plane = this.grid.plane;
-    const stC = this.stC;
-    const stW = this.stW;
-    const stK = this.stK;
-    const stT = this.stT;
-    for (let k = 0; k < this.nf; k++) {
-      let su = 0;
-      let sv = 0;
-      for (let q = 4 * k; q < 4 * k + 4; q++) {
-        const w = stW[q]!;
-        if (w === 0) continue;
-        const o = stK[q]! * plane + stC[q]!;
-        const t = stT[q]!;
-        su += w * (fu[o]! + (fu[o + plane]! - fu[o]!) * t);
-        sv += w * (fv[o]! + (fv[o + plane]! - fv[o]!) * t);
-      }
-      outU[k] = su;
-      outV[k] = sv;
+  /** Sample one centre field at every fire cell through an 8-point stencil (unrolled like sampleFire). */
+  protected sampleFire1(f: Float32Array, out: Float32Array, o8: Int32Array, w8: Float32Array): void {
+    const nf = this.nf;
+    for (let k = 0; k < nf; k++) {
+      const b = 8 * k;
+      out[k] =
+        w8[b]! * f[o8[b]!]! +
+        w8[b + 1]! * f[o8[b + 1]!]! +
+        w8[b + 2]! * f[o8[b + 2]!]! +
+        w8[b + 3]! * f[o8[b + 3]!]! +
+        w8[b + 4]! * f[o8[b + 4]!]! +
+        w8[b + 5]! * f[o8[b + 5]!]! +
+        w8[b + 6]! * f[o8[b + 6]!]! +
+        w8[b + 7]! * f[o8[b + 7]!]!;
     }
   }
 
@@ -421,7 +513,7 @@ export abstract class AtmosBase implements AtmosphereLike {
     this.heatingOn = true;
     this.night = { ...night };
     this.kbdi = kbdi;
-    this.cloud = clamp((w.cloudCover ?? 0) / 100, 0, 1);
+    this.cloud = Number.isFinite(w.cloudCover) ? clamp(w.cloudCover! / 100, 0, 1) : 0;
     this.sunElevation = sun.sunElevation;
     const up = sun.sunElevation > 0;
     if (up && !this.lastSunUp) this.heatSinceSunrise = 0;
@@ -433,15 +525,46 @@ export abstract class AtmosBase implements AtmosphereLike {
     const qsw = sun.total;
     this.qhCol.fill(0);
     for (let k = 0; k < nf; k++) {
-      const q = sensibleHeatFlux(qsw[k] ?? 0, this.albedo[k]!, airT[k]! + 273.15, this.cloud, kbdi);
+      const sw = qsw[k]!;
+      const q = sensibleHeatFlux(sw > 0 ? sw : 0, this.albedo[k]!, airT[k]! + 273.15, this.cloud, Number.isFinite(kbdi) ? kbdi : 0);
       this.qhFire[k] = q;
       this.qhCol[g.colOfFire[k]!]! += q / this.cosSlope[k]!;
     }
     for (let c = 0; c < g.plane; c++) this.qhCol[c] = g.fireCount[c]! > 0 ? this.qhCol[c]! / g.fireCount[c]! : 0;
+    this.updateSlopeFlowSpeeds(airT);
     let qv = 0;
     for (let q = 0; q < this.valleyCols.length; q++) qv += this.qhCol[this.valleyCols[q]!]!;
     this.qValley = this.valleyCols.length ? qv / this.valleyCols.length : 0;
     this.onHeatingChanged();
+  }
+
+  /**
+   * Hydraulic slope-flow speed S per cell (§8.6, [V WindNinja cellDiurnal compute_S]) from the current Q_h:
+   * upslope S = [Q_h g Δz_u/((C_d + E)ρc_pT)]^{1/3} with Δz_u = valleyDrop; downslope
+   * S = [−Q_h g L sin α/(ρc_pT (C_d + E))]^{1/3}(1 − e^{−L/L_e})^{1/3} with Δz_d = crestRise, L = crestDist,
+   * sin α = min(Δz_d/L, sin slope). ρ and T from the §5.2 template at the heating time (ρT = p/R_d, so S depends
+   * on T only through the pressure). Flat cells (aspect NaN) get 0.
+   */
+  private updateSlopeFlowSpeeds(airT: Float32Array): void {
+    const f = this.features;
+    const slope = this.terrain.slopeDeg;
+    const pSfc = this.stampA ? this.stampA.profile.pSfc : pressureIsa(this.series.sourceElevation ?? this.grid.zMin);
+    for (let k = 0; k < this.nf; k++) {
+      const qh = this.qhFire[k]!;
+      let S = 0;
+      if (qh !== 0 && (this.downX[k] !== 0 || this.downY[k] !== 0)) {
+        const tK = airT[k]! + 273.15;
+        const rho = airDensity(airT[k]!, pSfc * this.pRatio[k]!);
+        if (qh > 0) S = anabaticSpeed(qh, f.valleyDrop[k]!, rho, tK);
+        else {
+          const dzd = f.crestRise[k]!;
+          const L = f.crestDist[k]!;
+          const sinA = Math.min(L > 0 ? dzd / L : 0, Math.sin(slope[k]! * DEG));
+          S = -katabaticSpeed(qh, dzd, L, sinA, rho, tK);
+        }
+      }
+      this.slopeS[k] = Number.isFinite(S) ? S : 0;
+    }
   }
 
   /** Integrate the valley-column heating since sunrise (break ETA, §8.10); called by step(). */
@@ -460,7 +583,7 @@ export abstract class AtmosBase implements AtmosphereLike {
   protected templateAirT(w: WeatherHour, out: Float32Array): void {
     const zs = this.series.sourceElevation ?? this.grid.zMin;
     const relief = this.terrain.maxElevation - this.terrain.minElevation;
-    const sunEl = Number.isFinite(this.sunElevation) && this.sunElevation > -90 ? this.sunElevation : solarPosition(w.time, this.series.location.lat, this.series.location.lon).elevation;
+    const sunEl = this.heatingOn ? this.sunElevation : solarPosition(w.time, this.series.location.lat, this.series.location.lon).elevation;
     const blh = w.boundaryLayerHeight && w.boundaryLayerHeight > 0 ? w.boundaryLayerHeight : ATMOS_PARAMS.defaultMixedLayer;
     const gamma = 6.5 + 3.3 * smoothstep(5, 15, sunEl) * smoothstep(0.75 * relief, 1.25 * relief, blh);
     const dTh = this.night.dTheta;
@@ -482,8 +605,10 @@ export abstract class AtmosBase implements AtmosphereLike {
     const w = this.ambient;
     this.templateAirT(w, outT);
     this.addAirAnomaly(outT);
-    const ps = this.stampA.profile.pSfc;
-    for (let k = 0; k < this.nf; k++) outRho[k] = airDensity(outT[k]!, ps * this.pRatio[k]!);
+    // ρ = p/(R_d T) with p = p_sfc(z_gp)·(ISA ratio to the cell) (airDensity of core/physics, inlined).
+    const c = (this.stampA.profile.pSfc * 100) / RD;
+    const pr = this.pRatio;
+    for (let k = 0; k < this.nf; k++) outRho[k] = (c * pr[k]!) / (outT[k]! + 273.15);
   }
 
   /** 3-D tiers add the resolved θ′ anomaly relative to the cold-pool template (°C, in place). */
@@ -510,15 +635,6 @@ export abstract class AtmosBase implements AtmosphereLike {
       outU[k] = au[k]! + (bu[k]! - au[k]!) * a;
       outV[k] = av[k]! + (bv[k]! - av[k]!) * a;
     }
-  }
-
-  /** Complex κ(z_ref) (re, im) at fire cell k for the current time → out[0..1]. */
-  protected kappaAt(k: number, out: Float64Array): void {
-    const a = this.wgt;
-    const A = this.stampA;
-    const B = this.stampB;
-    out[0] = A.fireKre![k]! + (B.fireKre![k]! - A.fireKre![k]!) * a;
-    out[1] = A.fireKim![k]! + (B.fireKim![k]! - A.fireKim![k]!) * a;
   }
 
   /** kCrest per fire cell for the 22.5° sector of a wind direction (cached). */
@@ -572,79 +688,86 @@ export abstract class AtmosBase implements AtmosphereLike {
     const ridge = this.features.ridge;
     for (let k = 0; k < nf; k++) {
       const kc = crest[k]!;
-      outRidge[k] = kc >= 0 ? Math.hypot(outBgU[kc]!, outBgV[kc]!) : NaN;
-      if (ridge[k]) ridgeSp[nr++] = Math.hypot(outBgU[k]!, outBgV[k]!);
+      if (kc >= 0) {
+        const a = outBgU[kc]!;
+        const b = outBgV[kc]!;
+        outRidge[k] = Math.sqrt(a * a + b * b);
+      } else outRidge[k] = NaN;
+      if (ridge[k]) {
+        const a = outBgU[k]!;
+        const b = outBgV[k]!;
+        ridgeSp[nr++] = Math.sqrt(a * a + b * b);
+      }
     }
-    if (nr === 0) for (let k = 0; k < nf; k++) ridgeSp[nr++] = Math.hypot(outBgU[k]!, outBgV[k]!);
+    if (nr === 0) {
+      for (let k = 0; k < nf; k++) {
+        const a = outBgU[k]!;
+        const b = outBgV[k]!;
+        ridgeSp[nr++] = Math.sqrt(a * a + b * b);
+      }
+    }
     this.uRidgeMedian = median(ridgeSp, nr);
     // Fire-influence mask m_f.
     const zPlume = Number.isFinite(ctx.plumeTopAGL) && ctx.plumeTopAGL > 0 ? ctx.plumeTopAGL : P.plumeTopDefault;
     const mfScale = Math.max(2 * zPlume, P.fireMaskMin);
-    const fireOn = ctx.firePowerW > 0;
-    for (let k = 0; k < nf; k++) {
-      const d = ctx.frontDist ? ctx.frontDist[k]! : Infinity;
-      this.fireInfluence[k] = fireOn && Number.isFinite(d) ? clamp(1 - d / mfScale, 0, 1) : 0;
+    const fireOn = ctx.firePowerW > 0 && !!ctx.frontDist;
+    const mfA = this.fireInfluence;
+    if (!fireOn) mfA.fill(0);
+    else {
+      const fd = ctx.frontDist;
+      const inv = 1 / mfScale;
+      for (let k = 0; k < nf; k++) {
+        const m = 1 - fd[k]! * inv; // NaN/Infinity distance → 0 below
+        mfA[k] = m > 0 ? (m < 1 ? m : 1) : 0;
+      }
     }
     const res = this.fireWindTier(outU, outV, outBgU, outBgV, outIndU, outIndV, ctx, cf, null, null);
-    // Sub-grid slope-flow top-up (§8.6) — fire wind and background (no fire terms).
+    // Sub-grid slope-flow top-up (§8.6) — fire wind and background (no fire terms):
+    //   S_top = min(3, max(0, S − U_resolved·ŝ))·(1 − smoothstep(3, 8, U_ridge,median)) along the fall line ŝ;
+    //   by day (Q_h > 0) max(0, S_top − 1.5)·û(ψ_up) is added, at night S_top·û(aspect) in full.
     const slopeOn = ctx.slopeFlowOn && this.heatingOn;
-    const fade = 1 - smoothstep(P.slopeFade0, P.slopeFade1, this.uRidgeMedian);
-    const airT = this.airTScratch;
-    if (slopeOn && fade > 0) this.templateAirT(this.ambient, airT);
-    const pSfc = this.stampA.profile.pSfc;
-    const f = this.features;
-    const aspect = this.terrain.aspectDeg;
-    const slope = this.terrain.slopeDeg;
+    const fade = slopeOn ? 1 - smoothstep(P.slopeFade0, P.slopeFade1, this.uRidgeMedian) : 0;
+    const S = this.slopeS;
+    const dxA = this.downX;
+    const dyA = this.downY;
+    const ru = res.resolvedU;
+    const rv = res.resolvedV;
+    const sf = this.slopeFlow;
+    const cap = P.slopeFlowCap;
+    const off = P.anabaticOffset;
     for (let k = 0; k < nf; k++) {
       let sTop = 0;
-      if (slopeOn && fade > 0) {
-        const qh = this.qhFire[k]!;
-        const asp = aspect[k]!;
-        if (qh !== 0 && Number.isFinite(asp)) {
-          const tK = airT[k]! + 273.15;
-          const rho = airDensity(airT[k]!, pSfc * this.pRatio[k]!);
-          const ax = Math.sin(asp * DEG); // downslope unit vector (aspect = downhill azimuth)
-          const ay = Math.cos(asp * DEG);
-          let S: number;
-          let sgn: number;
-          if (qh > 0) {
-            S = anabaticSpeed(qh, f.valleyDrop[k]!, rho, tK);
-            sgn = -1; // upslope = −downslope
-          } else {
-            const dzd = f.crestRise[k]!;
-            const L = f.crestDist[k]!;
-            const sinA = Math.min(L > 0 ? dzd / L : 0, Math.sin(slope[k]! * DEG));
-            S = katabaticSpeed(qh, dzd, L, sinA, rho, tK);
-            sgn = 1;
-          }
-          const ru = res.resolvedU ? res.resolvedU[k]! : 0;
-          const rv = res.resolvedV ? res.resolvedV[k]! : 0;
-          const along = sgn * (ru * ax + rv * ay);
-          sTop = Math.min(P.slopeFlowCap, Math.max(0, S - along)) * fade;
-          const add = qh > 0 ? Math.max(0, sTop - P.anabaticOffset) : sTop;
-          if (add > 0) {
-            const dxu = sgn * ax * add;
-            const dyu = sgn * ay * add;
-            outU[k] = outU[k]! + dxu;
-            outV[k] = outV[k]! + dyu;
-            outBgU[k] = outBgU[k]! + dxu;
-            outBgV[k] = outBgV[k]! + dyu;
-          }
+      const sk = S[k]!;
+      if (fade > 0 && sk !== 0) {
+        const up = sk > 0;
+        const sgn = up ? -1 : 1; // flow direction along the downslope vector
+        const ex = sgn * dxA[k]!;
+        const ey = sgn * dyA[k]!;
+        const along = ru ? ru[k]! * ex + rv![k]! * ey : 0;
+        sTop = Math.min(cap, Math.max(0, (up ? sk : -sk) - along)) * fade;
+        const add = up ? Math.max(0, sTop - off) : sTop;
+        if (add > 0) {
+          const du = ex * add;
+          const dv = ey * add;
+          outU[k] = outU[k]! + du;
+          outV[k] = outV[k]! + dv;
+          outBgU[k] = outBgU[k]! + du;
+          outBgV[k] = outBgV[k]! + dv;
         }
       }
-      this.slopeFlow[k] = sTop;
-      // Lee-separation blend (§7.9): U ← (1 − s)U + s·0.3·U_ridge·û(ψ_up).
-      const s = ctx.sep ? ctx.sep[k]! : 0;
-      if (s > 0) {
+      sf[k] = sTop;
+    }
+    // Lee-separation blend (§7.9): U ← (1 − s)U + s·0.3·U_ridge·û(ψ_up) (flat cells: lee = 0, no blend).
+    const sep = ctx.sep;
+    if (sep) {
+      for (let k = 0; k < nf; k++) {
+        const s = sep[k]!;
+        if (!(s > 0)) continue;
         const ur = outRidge[k]!;
-        const asp = aspect[k]!;
-        if (Number.isFinite(ur) && Number.isFinite(asp)) {
-          const e = 0.3 * ur; // [H D25] eddy fraction
-          const ux = -Math.sin(asp * DEG) * e;
-          const uy = -Math.cos(asp * DEG) * e;
-          outU[k] = (1 - s) * outU[k]! + s * ux;
-          outV[k] = (1 - s) * outV[k]! + s * uy;
-        }
+        if (!Number.isFinite(ur) || (dxA[k] === 0 && dyA[k] === 0)) continue;
+        const e = P.leeEddyFraction * ur;
+        outU[k] = (1 - s) * outU[k]! - s * dxA[k]! * e;
+        outV[k] = (1 - s) * outV[k]! - s * dyA[k]! * e;
       }
     }
   }
@@ -696,12 +819,12 @@ export abstract class AtmosBase implements AtmosphereLike {
     const g = this.grid;
     const P = ATMOS_PARAMS;
     const w = this.ambient;
-    const day = this.sunElevation > P.daySunDeg;
+    const day = this.sunNow() > P.daySunDeg;
     const zi = day ? (w.boundaryLayerHeight && w.boundaryLayerHeight > 0 ? w.boundaryLayerHeight : P.defaultMixedLayer) : P.nightZi;
     const c = this.columnAt(x, y);
     const qh = this.heatingOn ? this.qhCol[c]! : 0;
     const tK = w.temperature + 273.15;
-    const rho = 1.1;
+    const rho = P.rhoRef;
     const wStar = qh > 0 ? Math.cbrt(((G / tK) * (qh / (rho * CP))) * zi) : 0;
     const z0 = g.z0[c]!;
     const d = g.disp[c]!;
@@ -712,6 +835,19 @@ export abstract class AtmosBase implements AtmosphereLike {
     out[0] = zi;
     out[1] = wStar;
     out[2] = uStar;
+  }
+
+  private sunCacheT = NaN;
+  private sunCacheEl = -90;
+  /** Sun elevation (deg): the last setSurfaceHeating's, or (heating never set) from the ambient time. */
+  protected sunNow(): number {
+    if (this.heatingOn) return this.sunElevation;
+    const t = this.ambient.time;
+    if (t !== this.sunCacheT) {
+      this.sunCacheT = t;
+      this.sunCacheEl = solarPosition(t, this.series.location.lat, this.series.location.lon).elevation;
+    }
+    return this.sunCacheEl;
   }
 
   /** Nearest atmosphere column of a local point. */
@@ -748,17 +884,23 @@ export abstract class AtmosBase implements AtmosphereLike {
     const p = A.profile;
     const w = this.ambient;
     const upper = p.source;
-    // C-Haines from the pressure levels (model/preset only).
+    // C-Haines from the pressure levels (model/preset only) [V Mills & McCaw 2010]; where 850 hPa lies below the
+    // grid-point surface the 2 m values replace it and `cHainesSurface` flags it (§8.10).
     let ch: number | null = null;
+    this.cHainesSurface = false;
     if (!p.synthetic && (upper === 'model' || upper === 'preset')) {
       const lv = w.pressureLevels ?? [];
       const l850 = lv.find((l) => l.hPa === 850);
       const l700 = lv.find((l) => l.hPa === 700);
       if (l700) {
-        const below = !l850 || l850.height < p.zgp;
+        const below = !l850 || !Number.isFinite(l850.height) || l850.height < p.zgp;
+        this.cHainesSurface = below;
         const t850 = below ? w.temperature : l850!.temperature;
-        const td850 = below ? (w.dewPoint ?? w.temperature - 10) : (l850!.dewPoint ?? dewFromRh(l850!.temperature, l850!.relativeHumidity));
-        ch = cHaines(t850, l700.temperature, td850).ch;
+        const td850 = below
+          ? (w.dewPoint ?? dewPointC(w.temperature, w.relativeHumidity))
+          : (l850!.dewPoint ?? dewPointC(l850!.temperature, l850!.relativeHumidity));
+        const v = cHaines(t850, l700.temperature, td850).ch;
+        ch = Number.isFinite(v) ? v : null;
       }
     }
     // Inversion over valley columns.
@@ -782,11 +924,11 @@ export abstract class AtmosBase implements AtmosphereLike {
       for (let q = 0; q < this.valleyCols.length; q++) {
         const c = this.valleyCols[q]!;
         const zf = this.grid.zFloor[c]!;
-        const top = zf + Math.max(this.night.hInv, 50);
+        const top = zf + Math.max(this.night.hInv, P.breakMinDepth);
         const thTop = this.thetaAt(c, top);
         let s = 0;
         for (let z = zf + 5; z < top; z += 10) s += Math.max(0, thTop - this.thetaAt(c, z)) * 10;
-        deficit += CP * 1.1 * s;
+        deficit += CP * P.rhoRef * s;
         nc++;
       }
       deficit /= Math.max(1, nc);
@@ -798,7 +940,7 @@ export abstract class AtmosBase implements AtmosphereLike {
     const th0 = this.thetaAt(cMed, zs + this.grid.zetaC[0]! * this.grid.J[cMed]!);
     let mlTop = 0;
     for (let z = 20; z < this.grid.Hp; z += 20) {
-      if (this.thetaAt(cMed, zs + z) > th0 + 0.5) break;
+      if (this.thetaAt(cMed, zs + z) > th0 + P.mixedLayerParcelK) break;
       mlTop = z;
     }
     const pl = this.plume();
@@ -810,9 +952,15 @@ export abstract class AtmosBase implements AtmosphereLike {
       lcl = pl.lclASL;
       if (!Number.isFinite(plumeTop)) {
         const U = Math.hypot(w.windSpeed10, 0);
-        const b = briggsRise(P.chiC * this.firePowerW, U, p.nSquared, 1.1, w.temperature + 273.15);
+        const b = briggsRise(P.chiC * this.firePowerW, U, p.nSquared, P.rhoRef, w.temperature + 273.15);
         plumeTop = this.fireSrcZ + b.rise;
       }
+    }
+    // PFT (P2, behind ATMOS_PARAMS.pftEnabled): model/preset upper air only.
+    let pft: number | null = null;
+    if (P.pftEnabled && pl && !p.synthetic && (upper === 'model' || upper === 'preset')) {
+      const r = pyroFirepowerThreshold(p, pl, this.fireSrcZ);
+      pft = r && Number.isFinite(r.pft) ? r.pft : null;
     }
     const nfSrc = upper === 'none' ? 'none' : upper;
     return {
@@ -821,7 +969,7 @@ export abstract class AtmosBase implements AtmosphereLike {
       upperAirSource: nfSrc,
       inversion: { present, dTheta: dThetaMax, topASL: present ? topASL : NaN, mixedLayerTopAGL: mlTop, breakEta },
       cHaines: ch,
-      pft: null,
+      pft,
       frH: p.froude,
       nSquared: p.nSquared,
       plumeTopASL: plumeTop,
@@ -832,8 +980,16 @@ export abstract class AtmosBase implements AtmosphereLike {
       fireInfluence: this.fireInfluence,
       heatFlux: this.qhFire,
       slopeFlow: this.slopeFlow,
-      kappa: A.kappa ? kappaLookup(A.kappa.mag, ATMOS_PARAMS.zRefMin) : 1,
+      kappa: this.kappaNow(ATMOS_PARAMS.zRefMin),
     };
+  }
+
+  /** κ(z) magnitude interpolated in time between the stamp pair (like u_bg). */
+  protected kappaNow(z: number): number {
+    const A = this.stampA;
+    const B = this.stampB;
+    if (!A?.kappa || !B?.kappa) return 1;
+    return kappaLookup(A.kappa.mag, z) * (1 - this.wgt) + kappaLookup(B.kappa.mag, z) * this.wgt;
   }
 
   private medCol = -1;
@@ -853,7 +1009,7 @@ export abstract class AtmosBase implements AtmosphereLike {
     return {
       seq: this.seq.map((s) => ({
         hour: s.hour,
-        bg: s.bg ? { u: s.bg.u.slice(), v: s.bg.v.slice(), w: s.bg.w.slice(), phi: s.bg.phi.slice(), alphaV: s.bg.alphaV } : null,
+        phi: s.bg ? s.bg.phi.slice() : null,
       })),
       time: this.time,
       night: { ...this.night },
@@ -863,6 +1019,7 @@ export abstract class AtmosBase implements AtmosphereLike {
       heatingOn: this.heatingOn,
       qhFire: this.qhFire.slice(),
       qhCol: this.qhCol.slice(),
+      slopeS: this.slopeS.slice(),
       qValley: this.qValley,
       heatSinceSunrise: this.heatSinceSunrise,
       lastSunUp: this.lastSunUp,
@@ -881,16 +1038,8 @@ export abstract class AtmosBase implements AtmosphereLike {
   protected baseRestore(c: BaseCheckpoint): void {
     this.seq = c.seq.map((s) => {
       const st = this.makeStamp(s.hour);
-      if (s.bg) {
-        const g = this.grid;
-        const uc = new Float32Array(g.n);
-        const vc = new Float32Array(g.n);
-        const wc = new Float32Array(g.n);
-        const u = s.bg.u.slice();
-        const v = s.bg.v.slice();
-        const w = s.bg.w.slice();
-        facesToCentres(g, u, v, w, uc, vc, wc);
-        st.bg = { time: s.hour.time, profile: st.profile, u, v, w, uc, vc, wc, phi: s.bg.phi.slice(), alphaV: s.bg.alphaV, result: { iterations: 0, relResidual: 0, rate: 0, method: 'none' } };
+      if (s.phi) {
+        st.bg = this.mc.fromPotential(st.profile, this.edits, s.phi);
         this.deriveStamp(st);
       }
       return st;
@@ -902,6 +1051,7 @@ export abstract class AtmosBase implements AtmosphereLike {
     this.heatingOn = c.heatingOn;
     this.qhFire.set(c.qhFire);
     this.qhCol.set(c.qhCol);
+    this.slopeS.set(c.slopeS);
     this.qValley = c.qValley;
     this.heatSinceSunrise = c.heatSinceSunrise;
     this.lastSunUp = c.lastSunUp;
@@ -930,7 +1080,8 @@ export abstract class AtmosBase implements AtmosphereLike {
 }
 
 export interface BaseCheckpoint {
-  seq: { hour: WeatherHour; bg: { u: Float32Array; v: Float32Array; w: Float32Array; phi: Float64Array; alphaV: number } | null }[];
+  /** Stamps with the converged potential of each solved background (u_bg is rebuilt from it, bitwise). */
+  seq: { hour: WeatherHour; phi: Float64Array | null }[];
   time: number;
   night: StableNightState;
   kbdi: number;
@@ -939,6 +1090,7 @@ export interface BaseCheckpoint {
   heatingOn: boolean;
   qhFire: Float32Array;
   qhCol: Float64Array;
+  slopeS: Float32Array;
   qValley: number;
   heatSinceSunrise: number;
   lastSunUp: boolean;
@@ -951,9 +1103,4 @@ export interface BaseCheckpoint {
   coupling: number;
   simTime: number;
   rng: number;
-}
-
-function dewFromRh(t: number, rh: number): number {
-  const g = Math.log((Math.max(1, rh) / 100) * Math.exp((17.67 * t) / (t + 243.5)));
-  return (243.5 * g) / (17.67 - g);
 }

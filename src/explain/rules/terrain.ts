@@ -56,21 +56,22 @@ function tileMean(ctx: CycleContext, t: number, f: (k: number) => number): numbe
 function detectUpslope(ctx: CycleContext): Candidate[] {
   const U = P.upslope;
   const acc = ctx.acc;
-  acc.reset(U.minCells);
+  acc.reset(ctx.kFor(U.minCells));
   const ros = ctx.s.fire.ros;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const up = ctx.upslope(k);
     if (!(up === up)) continue;
     const sp = ctx.frontSpread[a]!;
-    const th = ctx.slopeAlong(k, sp);
+    const th = ctx.frontTheta[a]!;
     if (th < U.minSlopeDeg * H) continue;
     acc.add(k, softAnd(angLe(angDist(sp, up), U.maxAngleDeg), ge(th, U.minSlopeDeg), ge(ros[k]!, U.minRosMs)));
   }
   return tileCandidates(ctx, 'upslope-run', (t, best, score) => {
     const th = tileMean(ctx, t, (k) => ctx.slopeAlong(k, ctx.cellSpread[k]!));
     const r = tileMean(ctx, t, (k) => ros[k]!);
-    return cand('', ctx.x(best), ctx.y(best), score, th >= U.watchSlopeDeg ? 'watch' : 'info', { theta: th, ros: r });
+    const sub = tileMean(ctx, t, (k) => ctx.subgridShare(k));
+    return cand('', ctx.x(best), ctx.y(best), score, th >= U.watchSlopeDeg ? 'watch' : 'info', { theta: th, ros: r, subgrid: sub });
   });
 }
 
@@ -83,15 +84,15 @@ function detectDownslope(ctx: CycleContext): Candidate[] {
   const ros = s.fire.ros;
   const out: Candidate[] = [];
   // Main trigger.
-  acc.reset(D.minCells);
+  acc.reset(ctx.kFor(D.minCells));
   const s43 = new Map<number, number>();
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const aspect = ctx.terrain.aspectDeg[k]!;
     if (!(aspect === aspect)) continue;
-    const sp = ctx.frontSpread[a]!;
-    const thd = ctx.slopeAlong(k, sp);
+    const thd = ctx.frontTheta[a]!;
     if (thd > D.maxSlopeDeg * H) continue;
+    const sp = ctx.frontSpread[a]!;
     const wAlong = along(s.windU[k]!, s.windV[k]!, sp) * 3.6;
     const c = softAnd(angLe(angDist(sp, aspect), D.maxAngleDeg), ge(-thd, -D.maxSlopeDeg), le(wAlong, D.maxWindAlongKmh));
     if (c <= 0) continue;
@@ -114,14 +115,15 @@ function detectDownslope(ctx: CycleContext): Candidate[] {
       const th = tileMean(ctx, t, (k) => ctx.slopeAlong(k, ctx.cellSpread[k]!));
       const r = tileMean(ctx, t, (k) => ros[k]!);
       const wall = s43.get(t);
+      const sub = tileMean(ctx, t, (k) => ctx.subgridShare(k));
       return wall !== undefined
-        ? cand('', ctx.x(best), ctx.y(best), score, 'watch', { variant: 'S43', theta: th, ros: r, wall })
-        : cand('', ctx.x(best), ctx.y(best), score, 'info', { theta: th, ros: r });
+        ? cand('', ctx.x(best), ctx.y(best), score, 'watch', { variant: 'S43', theta: th, ros: r, wall, subgrid: sub })
+        : cand('', ctx.x(best), ctx.y(best), score, 'info', { theta: th, ros: r, subgrid: sub });
     }),
   );
   // S10: strong downslope wind on dry fuel.
-  acc.reset(D.s10MinCells);
-  for (let a = 0; a < ctx.nFront; a++) {
+  acc.reset(ctx.kFor(D.s10MinCells));
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const aspect = ctx.terrain.aspectDeg[k]!;
     if (!(aspect === aspect)) continue;
@@ -174,13 +176,19 @@ function detectGully(ctx: CycleContext): Candidate[] {
     const score = softAnd(ge(seg.axialMax, Gp.minAxialSlopeDeg), rFire, Math.max(rW, rA));
     if (score < H) continue;
     let ae = 0;
-    for (let a = 0; a < seg.cells.length; a++) ae = Math.max(ae, attach[seg.cells[a]!] ?? 0);
+    let sub = 0;
+    for (let a = 0; a < seg.cells.length; a++) {
+      const q = seg.cells[a]!;
+      ae = Math.max(ae, attach[q] ?? 0);
+      if (bs[q] === BurnState.Burning) sub = Math.max(sub, ctx.subgridShare(q));
+    }
     out.push(
       cand(ctx.key('gully-chimney', seg.base), ctx.x(seg.base), ctx.y(seg.base), score, ae >= Gp.dangerAttach ? 'danger' : 'watch', {
         axial: seg.axialMax,
         baseDist: lowerBurning ? 0 : baseDist,
         attach: ae,
         variant: rA > rW ? 'anabatic' : 'wind',
+        subgrid: sub,
       }),
     );
   }
@@ -208,17 +216,17 @@ function detectEruptive(ctx: CycleContext): Candidate[] {
   const E = P.eruptive;
   const s = ctx.s;
   const acc = ctx.acc;
-  acc.reset(E.minCells);
+  acc.reset(ctx.kFor(E.minCells));
   const steps = Math.max(1, Math.ceil(E.runM / ctx.cs));
   const mf = s.atmosDiag?.fireInfluence;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const up = ctx.upslope(k);
     if (!(up === up)) continue;
+    if (ctx.frontTheta[a]! < 12) continue; // A < 0.03 below 12° (cheap pre-filter)
     const sp = ctx.frontSpread[a]!;
     const ang = angDist(sp, up);
     if (ang > E.maxAngleDeg / H) continue;
-    if (ctx.slopeAlong(k, sp) < 12) continue; // A < 0.03 below 12° (cheap pre-filter)
     let aMin = attachmentScore(ctx, k, sp);
     for (let st = 1; st <= steps && aMin >= E.minA * H; st++) {
       const q = stepCell(ctx.grid, k, sp, st * ctx.cs);
@@ -256,7 +264,7 @@ function detectRidgeCrest(ctx: CycleContext): Candidate[] {
   const st = ctx.statics;
   const normals = new Map<number, number>();
   const best = new Map<number, { r: number; d: number; u: number }>();
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const k = ctx.front[a]!;
     const d = st.ridgeDist[k]!;
     if (d > R.distM / H) continue;
@@ -291,19 +299,30 @@ function detectLeeEddy(ctx: CycleContext): Candidate[] {
   const sep = s.aux.sep;
   const bs = s.fire.burnState;
   const burningTile = new Set<number>();
-  for (let k = 0; k < ctx.N; k++) {
-    const v = sep[k]!;
-    if (!(v >= L.minSep * H)) continue;
-    const burning = bs[k] === BurnState.Burning;
-    if (!burning) {
-      if (bs[k] !== BurnState.Unburnt) continue;
-      const t = ctx.tiles.ofCell(k);
-      if (ctx.tileFireDist(t) > L.aheadM) continue;
-      if (ctx.distToFire(k, L.aheadM * 2) > L.aheadM) continue;
+  const T = ctx.tiles;
+  const g = ctx.grid;
+  const cpt = T.cellsPerTile;
+  for (let t = 0; t < T.count; t++) {
+    // Burning cells are at distance 0, so tiles beyond 500 m of the fire hold no candidate.
+    if (ctx.tileFireDist(t) > L.aheadM) continue;
+    const i0 = Math.floor(T.tx(t) * cpt);
+    const j0 = Math.floor(T.ty(t) * cpt);
+    const i1 = Math.min(g.nx, Math.floor((T.tx(t) + 1) * cpt));
+    const j1 = Math.min(g.ny, Math.floor((T.ty(t) + 1) * cpt));
+    for (let j = j0; j < j1; j++) {
+      for (let k = j * g.nx + i0, e = j * g.nx + i1; k < e; k++) {
+        const v = sep[k]!;
+        if (!(v >= L.minSep * H)) continue;
+        const burning = bs[k] === BurnState.Burning;
+        if (!burning) {
+          if (bs[k] !== BurnState.Unburnt) continue;
+          if (ctx.distToFire(k, L.aheadM * 2) > L.aheadM) continue;
+        }
+        const c = ge(v, L.minSep);
+        acc.add(k, c, t);
+        if (burning && c >= 1) burningTile.add(t);
+      }
     }
-    const c = ge(v, L.minSep);
-    acc.add(k, c);
-    if (burning && c >= 1) burningTile.add(ctx.tiles.ofCell(k));
   }
   return tileCandidates(ctx, 'lee-slope-eddy', (t, best, score) => {
     const ur = s.uRidge[best]!;
@@ -344,7 +363,8 @@ function detectVls(ctx: CycleContext): Candidate[] {
     const steps = Math.ceil(V.lookM / ctx.cs);
     const stride = Math.max(1, Math.ceil(ctx.nHead / 48));
     const g = ctx.grid;
-    ctx.mark.fill(0);
+    const mark = ctx.nextStamp();
+    const stamp = ctx.stamp;
     for (let a = 0; a < ctx.nHead; a += stride) {
       const h = ctx.head[a]!;
       const wTo = ctx.windTo(h);
@@ -359,8 +379,8 @@ function detectVls(ctx: CycleContext): Candidate[] {
           const j = Math.round(jh + uy * st - ux * lat);
           if (i < 0 || j < 0 || i >= g.nx || j >= g.ny) continue;
           const k = j * g.nx + i;
-          if (ctx.mark[k]) continue;
-          ctx.mark[k] = 1;
+          if (stamp[k] === mark) continue;
+          stamp[k] = mark;
           if (s.fire.burnState[k] !== BurnState.Unburnt) continue;
           const v = aux.vls[k]!;
           const ur = s.uRidge[k]!;
@@ -386,10 +406,11 @@ function detectSaddle(ctx: CycleContext): Candidate[] {
   if (ctx.nHead === 0) return [];
   const acc = ctx.acc;
   acc.reset(1);
-  const sd = ctx.statics.saddleCells;
+  const sd = ctx.statics.saddleReps;
   const info = new Map<number, { d: number; u: number }>();
   for (let a = 0; a < sd.length; a++) {
     const k = sd[a]!;
+    if (ctx.tileFireDist(ctx.tiles.ofCell(k)) > S.distM / H) continue;
     const u = ctx.bgSpeed(k);
     if (u * 3.6 < S.minURidgeKmh * H) continue;
     const h = ctx.headHash.nearest(ctx.x(k), ctx.y(k), S.distM / H);
@@ -436,7 +457,10 @@ function detectValley(ctx: CycleContext): Candidate[] {
     if (ctx.tileFireDist(ctx.tiles.ofCell(k)) > Vp.fireDistM) continue;
     const d = ctx.distToFire(k, Vp.fireDistM * 1.5);
     if (d > Vp.fireDistM / H) continue;
-    const [sp, dir] = uvToWind(s.windU[k]!, s.windV[k]!);
+    const u = s.windU[k]!;
+    const v = s.windV[k]!;
+    const sp = Math.sqrt(u * u + v * v);
+    const dir = azimuthOf(-u, -v);
     const c = softAnd(le(d, Vp.fireDistM), ge(angDist(dir, rdir), Vp.minDiffDeg), ge(ctx.derived.localRelief[k]!, Vp.minReliefM), ge(sp, Vp.minFloorWindMs));
     acc.add(k, c);
   }
@@ -469,7 +493,23 @@ export function crestSpeedUp(ctx: CycleContext, r: number): number {
     return uU > 0.1 ? uC / uU - 1 : 0;
   }
   // Fast tier: analytic ΔS = min(2H/L, 1) (Jackson & Hunt), H = crest − lowest point within 2 km upwind,
-  // L = horizontal distance from the crest to where the terrain has dropped by H/2.
+  // L = horizontal distance from the crest to where the terrain has dropped by H/2. Terrain-only: cached per
+  // crest cell and 10° wind sector.
+  const sector = Math.round(from / 10) % 36;
+  const key = r * 36 + sector;
+  const hit = speedUpCache.get(ctx.statics)?.get(key);
+  if (hit !== undefined) return hit;
+  const v = analyticSpeedUp(ctx, r, sector * 10);
+  let m = speedUpCache.get(ctx.statics);
+  if (!m) speedUpCache.set(ctx.statics, (m = new Map()));
+  m.set(key, v);
+  return v;
+}
+
+const speedUpCache = new WeakMap<object, Map<number, number>>();
+
+function analyticSpeedUp(ctx: CycleContext, r: number, from: number): number {
+  const Rp = P.ridgeSpeedUp;
   const z = ctx.terrain.elevation;
   const zc = z[r]!;
   let zMin = zc;

@@ -19,7 +19,10 @@ import { cand, makeRule, mergeByKey, type InsightRule } from './types';
 const P = EXPLAIN_PARAMS;
 const H = P.engine.hysteresis;
 
-/** Where a domain card is placed: the head when there is fire, else the domain centre. */
+/**
+ * Where a domain card about the fire is placed (§10.1 "domain centre unless a location is meaningful"): the head
+ * when there is fire (wind change without an exposed flank, pyroconvection, inversion), else the domain centre.
+ */
 const domainXY = (ctx: CycleContext): [number, number] => (ctx.headK >= 0 ? [ctx.headX, ctx.headY] : [ctx.cx, ctx.cy]);
 
 /** The next forecast change with time ∈ [now − hold, now + horizon], or null. */
@@ -44,7 +47,7 @@ function detectWindChange(ctx: CycleContext): Candidate[] {
   let n = 0;
   let sx = 0;
   let sy = 0;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     if (angDist(ctx.frontNormal[a]!, newTo) > W.flankAngleDeg) continue;
     const k = ctx.front[a]!;
     n++;
@@ -52,14 +55,14 @@ function detectWindChange(ctx: CycleContext): Candidate[] {
     sy += ctx.y(k);
   }
   // Mean cell-count → length factor over orientations: (4/π)·ln(1 + √2) ≈ 1.12 [D].
-  const flankM = n * ctx.cs * 1.122;
+  const flankM = n * ctx.fStride * ctx.cs * 1.122;
   let [x, y] = domainXY(ctx);
   if (n > 0) {
     // Snap to the flank cell nearest the flank centroid.
     const mx = sx / n;
     const my = sy / n;
     let bd = Infinity;
-    for (let a = 0; a < ctx.nFront; a++) {
+    for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
       if (angDist(ctx.frontNormal[a]!, newTo) > W.flankAngleDeg) continue;
       const k = ctx.front[a]!;
       const d = (ctx.x(k) - mx) ** 2 + (ctx.y(k) - my) ** 2;
@@ -155,7 +158,7 @@ function detectAnabatic(ctx: CycleContext): Candidate[] {
   const rU = le(ctx.uRidgeMedian, A.maxURidgeMs);
   if (rU < H) return [];
   const acc = ctx.acc;
-  acc.reset(A.minCells);
+  acc.reset(ctx.kFor(A.minCells));
   const qh = s.surfaceHeatFlux;
   const sf = s.slopeFlowS;
   const hasSf = sf.length === ctx.N;
@@ -210,12 +213,14 @@ function recordFrontWind(ctx: CycleContext): void {
   if (ctx.nFront === 0) return;
   let u = 0;
   let v = 0;
-  for (let a = 0; a < ctx.nFront; a++) {
+  let n = 0;
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     u += ctx.s.windU[ctx.front[a]!]!;
     v += ctx.s.windV[ctx.front[a]!]!;
+    n++;
   }
   const h = mem.windHist;
-  h.push(ctx.t, u / ctx.nFront, v / ctx.nFront);
+  h.push(ctx.t, u / n, v / n);
   const keep = P.katabatic.s17LagS + 900;
   let drop = 0;
   while (drop < h.length && h[drop]! < ctx.t - keep) drop += 3;
@@ -408,7 +413,7 @@ function detectInversion(ctx: CycleContext): Candidate[] {
   if (beforeBreak && ctx.nFront > 0 && n.dTheta >= I.minDTheta * H) {
     let below = 0;
     const hav = ctx.derived.heightAboveValley;
-    for (let a = 0; a < ctx.nFront; a++) if (hav[ctx.front[a]!]! <= n.hInv) below++;
+    for (let a = 0; a < ctx.nFront; a += ctx.fStride) if (hav[ctx.front[a]!]! <= n.hInv) below++;
     if (below > 0) out.push(cand('inversion-break:domain', x, y, ge(n.dTheta, I.minDTheta), 'info', { variant: 'smoke', dTheta: n.dTheta }));
   }
   return mergeByKey(out);
@@ -427,21 +432,24 @@ function detectAspectDry(ctx: CycleContext): Candidate[] {
   const slope = ctx.terrain.slopeDeg;
   const M = s.moisture;
   const lm = s.lmstHour;
-  // Per-tile octant moisture sums (lazy, per cycle).
+  // Per-tile octant moisture sums of cells with slope ≥ 10° (lazy, per cycle) and the per (tile, opposite octant)
+  // mean over the tiles within 1 km.
+  const octant = ctx.statics.aspectOctant;
+  const T = ctx.tiles;
   const oct = new Map<number, Float64Array>();
   const octOf = (t: number): Float64Array => {
     let o = oct.get(t);
     if (o) return o;
     o = new Float64Array(16);
-    const cpt = ctx.tiles.cellsPerTile;
-    const i0 = Math.floor(ctx.tiles.tx(t) * cpt);
-    const j0 = Math.floor(ctx.tiles.ty(t) * cpt);
-    for (let j = j0; j < Math.min(g.ny, Math.floor(j0 + cpt)); j++) {
-      for (let i = i0; i < Math.min(g.nx, Math.floor(i0 + cpt)); i++) {
-        const k = j * g.nx + i;
-        const a = asp[k]!;
-        if (!(a === a) || slope[k]! < A.minSlopeDeg) continue;
-        const b = Math.round(wrapDeg(a) / 45) % 8;
+    const cpt = T.cellsPerTile;
+    const i0 = Math.floor(T.tx(t) * cpt);
+    const j0 = Math.floor(T.ty(t) * cpt);
+    const i1 = Math.min(g.nx, Math.floor((T.tx(t) + 1) * cpt));
+    const j1 = Math.min(g.ny, Math.floor((T.ty(t) + 1) * cpt));
+    for (let j = j0; j < j1; j++) {
+      for (let k = j * g.nx + i0, e = j * g.nx + i1; k < e; k++) {
+        const b = octant[k]!;
+        if (b === 255) continue;
         o[2 * b] += M[k]!;
         o[2 * b + 1] += 1;
       }
@@ -449,33 +457,38 @@ function detectAspectDry(ctx: CycleContext): Candidate[] {
     oct.set(t, o);
     return o;
   };
-  const rT = Math.ceil(A.oppositeRadiusM / ctx.tiles.tileM);
+  const rT = Math.ceil(A.oppositeRadiusM / T.tileM);
+  const oppCache = new Map<number, number>();
   const oppMean = (k: number): number => {
-    const t = ctx.tiles.ofCell(k);
-    const tx = ctx.tiles.tx(t);
-    const ty = ctx.tiles.ty(t);
+    const t = T.ofCell(k);
     const ob = (Math.round(wrapDeg(asp[k]! + 180) / 45) % 8) | 0;
+    const key = t * 8 + ob;
+    const hit = oppCache.get(key);
+    if (hit !== undefined) return hit;
+    const tx = T.tx(t);
+    const ty = T.ty(t);
+    const b0 = (ob + 7) % 8;
+    const b2 = (ob + 1) % 8;
     let sm = 0;
     let n = 0;
     for (let dy = -rT; dy <= rT; dy++) {
       for (let dx = -rT; dx <= rT; dx++) {
         const x = tx + dx;
         const y = ty + dy;
-        if (x < 0 || y < 0 || x >= ctx.tiles.tnx || y >= ctx.tiles.tny || dx * dx + dy * dy > rT * rT) continue;
-        const o = octOf(y * ctx.tiles.tnx + x);
-        for (const b of [(ob + 7) % 8, ob, (ob + 1) % 8]) {
-          sm += o[2 * b]!;
-          n += o[2 * b + 1]!;
-        }
+        if (x < 0 || y < 0 || x >= T.tnx || y >= T.tny || dx * dx + dy * dy > rT * rT) continue;
+        const o = octOf(y * T.tnx + x);
+        sm += o[2 * b0]! + o[2 * ob]! + o[2 * b2]!;
+        n += o[2 * b0 + 1]! + o[2 * ob + 1]! + o[2 * b2 + 1]!;
       }
     }
-    return n > 0 ? sm / n : NaN;
+    const v = n > 0 ? sm / n : NaN;
+    oppCache.set(key, v);
+    return v;
   };
   const acc = ctx.acc;
   acc.reset(A.minCells);
-  const opp = new Map<number, number>();
   const step = 1.5 * ctx.cs;
-  for (let a = 0; a < ctx.nFront; a++) {
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     const f = ctx.front[a]!;
     const sp = ctx.frontSpread[a]!;
     const jf = (f / g.nx) | 0;
@@ -488,8 +501,7 @@ function detectAspectDry(ctx: CycleContext): Candidate[] {
     if (!(a0 === a0) || slope[k]! < A.minSlopeDeg * H) continue;
     const sunny = inSector(a0, A.northFrom, A.northTo) || (lm >= A.westAfterLmst && inSector(a0, A.westFrom, A.westTo));
     if (!sunny) continue;
-    let mo = opp.get(k);
-    if (mo === undefined) opp.set(k, (mo = oppMean(k)));
+    const mo = oppMean(k);
     const dM = mo - M[k]!;
     acc.add(k, softAnd(ge(slope[k]!, A.minSlopeDeg), ge(dM, A.minDrierPp)));
   }
@@ -499,7 +511,7 @@ function detectAspectDry(ctx: CycleContext): Candidate[] {
     const sc = acc.score(t);
     if (sc < H) continue;
     const k0 = acc.cell(t, 0);
-    const mo = opp.get(k0) ?? NaN;
+    const mo = oppMean(k0);
     out.push(cand(ctx.tiles.key('aspect-dry-fuel', t), ctx.x(k0), ctx.y(k0), sc, 'info', { aspect: asp[k0]!, moisture: M[k0]!, opposite: mo, dM: mo - M[k0]! }));
   }
   // S38: wind, slope and sun (or drier fuel ahead) all within 45° of the head direction (3 of 3) → watch.
@@ -557,12 +569,14 @@ function detectMoistGully(ctx: CycleContext): Candidate[] {
   // Front means (moisture, availability) of the burnable front.
   let mF = 0;
   let faF = 0;
-  for (let a = 0; a < ctx.nFront; a++) {
+  let nF = 0;
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
     mF += s.moisture[ctx.front[a]!]!;
     faF += s.availability[ctx.front[a]!]!;
+    nF++;
   }
-  mF /= ctx.nFront;
-  faF /= ctx.nFront;
+  mF /= nF;
+  faF /= nF;
   const drought = s.kbdi >= Mg.droughtKbdi;
   const acc = ctx.acc;
   acc.reset(Mg.minCells);
@@ -603,7 +617,7 @@ function detectHighDrought(ctx: CycleContext): Candidate[] {
   if (ctx.mem.highDroughtDay === day) return [];
   const sc = Math.max(ge(s.droughtFactor, D.df), ge(s.kbdi, D.kbdi));
   if (sc < 1) return [];
-  const [x, y] = domainXY(ctx);
+  const [x, y] = [ctx.cx, ctx.cy];
   return [cand('high-drought:domain', x, y, sc, 'watch', { df: s.droughtFactor, kbdi: s.kbdi, day })];
 }
 
@@ -611,8 +625,12 @@ function detectHighDrought(ctx: CycleContext): Candidate[] {
 
 function frontMeanMoisture(ctx: CycleContext): number {
   let m = 0;
-  for (let a = 0; a < ctx.nFront; a++) m += ctx.s.moisture[ctx.front[a]!]!;
-  return ctx.nFront ? m / ctx.nFront : NaN;
+  let n = 0;
+  for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
+    m += ctx.s.moisture[ctx.front[a]!]!;
+    n++;
+  }
+  return n ? m / n : NaN;
 }
 
 function detectNightSlowdown(ctx: CycleContext): Candidate[] {
@@ -657,7 +675,7 @@ function detectAfternoon(ctx: CycleContext): Candidate[] {
   const A = P.afternoon;
   const s = ctx.s;
   const day = localDate(ctx.nowMs);
-  const [x, y] = domainXY(ctx);
+  const [x, y] = [ctx.cx, ctx.cy];
   const out: Candidate[] = [];
   const l = lmstHour(ctx.nowMs, ctx.lon);
   if (ctx.mem.afternoonDay !== day && l >= A.lmstStart && l <= A.lmstEnd) {

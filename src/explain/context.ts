@@ -14,10 +14,10 @@
  */
 import type { GridSpec } from '../core/grid';
 import { BurnState, type FuelMap, type SimStateView, type SpotFire, type Terrain, type TerrainDerived, type TerrainFeatures, type WeatherHour } from '../core/types';
-import { RAD, wrapDeg } from '../core/units';
+import { DEG, RAD } from '../core/units';
 import type { ForecastAnalysis } from './forecast';
 import { EXPLAIN_PARAMS } from './params';
-import { StaticMaps } from './statics';
+import { StaticMaps, distanceTransform } from './statics';
 import { CellHash, TileTopK, Tiles, azimuthOf, medianFinite } from './util';
 
 const P = EXPLAIN_PARAMS;
@@ -95,7 +95,15 @@ export class CycleContext {
   readonly front: Int32Array;
   readonly frontNormal: Float32Array;
   readonly frontSpread: Float32Array;
+  /** Directional slope θ (deg, + uphill) along the spread direction of each front entry. */
+  readonly frontTheta: Float32Array;
   nFront = 0;
+  /**
+   * Front sampling stride of the per-front detectors: 1 up to `engine.maxFrontExamined` front cells, then the
+   * smallest stride that keeps the examined set within it [H performance, spec §10.1 "front cells ≤ 20 000"].
+   * Count thresholds scale with it (`kFor`).
+   */
+  fStride = 1;
   /** Head cells [0, nHead) (indices into the fire grid). */
   readonly head: Int32Array;
   nHead = 0;
@@ -107,10 +115,15 @@ export class CycleContext {
   headRos = 0;
   /** Scratch buffer (length N). */
   readonly scratch: Float32Array;
-  readonly mark: Uint8Array;
+  /** Per-cell visit stamps (compare with `nextStamp()`), so marking needs no clearing pass. */
+  readonly stamp: Int32Array;
+  private stampId = 0;
   /** Outward normal / spread azimuth per fire cell, valid on the current front cells. */
   readonly cellNormal: Float32Array;
   readonly cellSpread: Float32Array;
+  /** Unit outward-normal vector per fire cell (valid on the current front cells). */
+  readonly cellNx: Float32Array;
+  readonly cellNy: Float32Array;
   /** Spot fires not seen by an earlier cycle (set by the engine before the detectors run). */
   newSpots: SpotFire[] = [];
   /** Detector cycle counter (stamps per-cycle caches). */
@@ -121,6 +134,11 @@ export class CycleContext {
   services: { dmz?: (ctx: CycleContext, change: { time: number; toDir: number; postSpeed: number }) => void } = {};
   private readonly tileFireDistV: Float32Array;
   private readonly tileFireStamp: Int32Array;
+  /** Per-cycle tile distance transform (m, lower bound) used when aux.frontDist is absent. */
+  private readonly tileDt: Float32Array;
+  private readonly tileDtNearest: Int32Array;
+  private readonly tileHasFire: Uint8Array;
+  private tileDtCycle = -1;
 
   s!: SimStateView;
   mem!: EngineMemory;
@@ -157,19 +175,26 @@ export class CycleContext {
     this.cs = g.cellSize;
     this.N = g.nx * g.ny;
     this.tiles = statics.tiles;
-    this.acc = new TileTopK(this.tiles, 16);
+    // K up to 32: "≥ 200 m of head" is 20 cells on a 10 m grid (plume-dominated).
+    this.acc = new TileTopK(this.tiles, 32);
     this.frontHash = new CellHash(g, P.engine.hashBucketM);
     this.headHash = new CellHash(g, P.engine.hashBucketM);
     this.front = new Int32Array(this.N);
     this.frontNormal = new Float32Array(this.N);
     this.frontSpread = new Float32Array(this.N);
+    this.frontTheta = new Float32Array(this.N);
     this.head = new Int32Array(this.N);
     this.scratch = new Float32Array(this.N);
-    this.mark = new Uint8Array(this.N);
+    this.stamp = new Int32Array(this.N);
     this.cellNormal = new Float32Array(this.N);
     this.cellSpread = new Float32Array(this.N);
+    this.cellNx = new Float32Array(this.N);
+    this.cellNy = new Float32Array(this.N);
     this.tileFireDistV = new Float32Array(this.tiles.count);
     this.tileFireStamp = new Int32Array(this.tiles.count).fill(-1);
+    this.tileDt = new Float32Array(this.tiles.count);
+    this.tileDtNearest = new Int32Array(this.tiles.count);
+    this.tileHasFire = new Uint8Array(this.tiles.count);
     this.lat = g.origin.lat;
     this.lon = g.origin.lon;
     this.cx = g.x0 + ((g.nx - 1) * g.cellSize) / 2;
@@ -196,12 +221,31 @@ export class CycleContext {
     this.ambientSpeed = s.weather.windSpeed10;
     this.ambientFrom = s.weather.windDir10;
     const ur = s.atmosDiag?.uRidgeMedian;
-    this.uRidgeMedian = ur !== undefined && Number.isFinite(ur) ? ur : medianFinite(s.uRidge, this.scratch);
+    this.uRidgeMedian = ur !== undefined && Number.isFinite(ur) ? ur : this.ridgeMedianFallback();
     this.frontDistOk = s.aux.frontDist.length === this.N;
     this.buildFront();
+    this.fStride = Math.max(1, Math.ceil(this.nFront / P.engine.maxFrontExamined));
     this.buildHead();
     this.frontHash.build(this.front, this.nFront);
     this.headHash.build(this.head, this.nHead);
+  }
+
+  /**
+   * U_ridge,median when the atmosphere does not report it (D42: median over ridge cells of |U_bg10| at the crest):
+   * the per-tile ridge representatives, else a strided sample of `s.uRidge` (bounded cost).
+   */
+  private ridgeMedianFallback(): number {
+    const reps = this.statics.ridgeReps;
+    const buf = this.scratch;
+    let n = 0;
+    if (reps.length > 0) {
+      for (let a = 0; a < reps.length; a++) buf[n++] = this.bgSpeed(reps[a]!);
+    } else {
+      const u = this.s.uRidge;
+      const stride = Math.max(1, Math.ceil(u.length / 4096));
+      for (let k = 0; k < u.length; k += stride) buf[n++] = u[k]!;
+    }
+    return medianFinite(buf.subarray(0, n));
   }
 
   private buildFront(): void {
@@ -212,12 +256,27 @@ export class CycleContext {
     const nxA = s.aux.frontNormalX;
     const nyA = s.aux.frontNormalY;
     this.frontNormalSrc = nxA.length === N && nyA.length === N ? 'cell' : nxA.length === af.length && nyA.length === af.length && af.length > 0 ? 'entry' : 'none';
+    const src = this.frontNormalSrc;
+    const cnx = this.cellNx;
+    const cny = this.cellNy;
     let n = 0;
     for (let a = 0; a < af.length; a++) {
       const k = af[a]!;
       if (k < 0 || k >= N) continue;
       this.front[n] = k;
-      this.frontNormal[n] = this.normalFromAux(a, k);
+      let az = NaN;
+      if (src !== 'none') {
+        const idx = src === 'cell' ? k : a;
+        const vx = nxA[idx]!;
+        const vy = nyA[idx]!;
+        const m = Math.sqrt(vx * vx + vy * vy);
+        if (m > 1e-6) {
+          az = azimuthOf(vx, vy);
+          cnx[k] = vx / m;
+          cny[k] = vy / m;
+        }
+      }
+      this.frontNormal[n] = az;
       n++;
     }
     if (n === 0) {
@@ -240,23 +299,43 @@ export class CycleContext {
     }
     this.nFront = n;
     const sd = s.fire.spreadDir;
+    const dzdx = this.terrain.dzdx;
+    const dzdy = this.terrain.dzdy;
     for (let a = 0; a < n; a++) {
       const k = this.front[a]!;
       let nrm = this.frontNormal[a]!;
-      if (!(nrm === nrm)) nrm = this.geometricNormal(k);
+      let vecOk = nrm === nrm;
+      if (!vecOk) nrm = this.geometricNormal(k);
       const sp = sd[k]!;
-      this.frontSpread[a] = sp === sp ? sp : nrm;
-      if (!(nrm === nrm)) nrm = this.frontSpread[a]!;
+      const spread = sp === sp ? sp : nrm;
+      if (!(nrm === nrm)) nrm = spread;
+      if (!vecOk) {
+        if (nrm === nrm) {
+          const r = nrm * DEG;
+          cnx[k] = Math.sin(r);
+          cny[k] = Math.cos(r);
+        } else {
+          cnx[k] = 0;
+          cny[k] = 0;
+        }
+        vecOk = true;
+      }
+      this.frontSpread[a] = spread;
       this.frontNormal[a] = nrm;
       this.cellNormal[k] = nrm;
-      this.cellSpread[k] = this.frontSpread[a]!;
+      this.cellSpread[k] = spread;
+      // θ along the spread direction (reuse the normal's unit vector when the spread follows the normal).
+      if (spread === spread) {
+        let sx = cnx[k]!;
+        let sy = cny[k]!;
+        if (spread !== nrm) {
+          const r = spread * DEG;
+          sx = Math.sin(r);
+          sy = Math.cos(r);
+        }
+        this.frontTheta[a] = Math.atan(dzdx[k]! * sx + dzdy[k]! * sy) * RAD;
+      } else this.frontTheta[a] = NaN;
     }
-  }
-
-  private normalFromAux(a: number, k: number): number {
-    if (this.frontNormalSrc === 'none') return NaN;
-    const idx = this.frontNormalSrc === 'cell' ? k : a;
-    return azimuthOf(this.s.aux.frontNormalX[idx]!, this.s.aux.frontNormalY[idx]!);
   }
 
   /** Outward normal from the burnt/unburnt neighbourhood (unit vectors towards unburnt neighbours). */
@@ -335,6 +414,20 @@ export class CycleContext {
     }
   }
 
+  /** A "≥ K front cells" count threshold under the front sampling stride. */
+  kFor(K: number): number {
+    return Math.max(1, Math.ceil(K / this.fStride));
+  }
+
+  /** A fresh stamp value for `stamp` (cells stamped with it count as visited). */
+  nextStamp(): number {
+    if (++this.stampId >= 0x7fffffff) {
+      this.stamp.fill(0);
+      this.stampId = 1;
+    }
+    return this.stampId;
+  }
+
   /** Distance (m) from cell k to the nearest burning cell (aux.frontDist, else the front hash; ∞ without fire). */
   distToFire(k: number, rMax = 1e9): number {
     if (this.nFront === 0) return Infinity;
@@ -349,26 +442,48 @@ export class CycleContext {
   }
 
   /**
-   * Lower bound (m) of the distance from any cell of tile t to the fire (tile centre distance − half diagonal),
-   * cached per cycle; used to skip whole tiles in the all-cell detectors.
+   * Lower bound (m) of the distance from any cell of tile t to the fire, cached per cycle; used to skip whole tiles
+   * in the all-cell detectors. Exact tile minimum of aux.frontDist when the fire module provides it (§7.13), else a
+   * chamfer distance transform on the 500 m tile grid (conservative: centre distance − one tile diagonal).
    */
   tileFireDist(t: number): number {
     if (this.tileFireStamp[t] === this.cycle) return this.tileFireDistV[t]!;
     let d = Infinity;
     if (this.nFront > 0) {
-      const g = this.grid;
-      const cpt = this.tiles.cellsPerTile;
-      const x = g.x0 + (this.tiles.tx(t) + 0.5) * cpt * g.cellSize;
-      const y = g.y0 + (this.tiles.ty(t) + 0.5) * cpt * g.cellSize;
-      const half = 0.7072 * this.tiles.tileM;
-      // Detectors only ask about ≤ 2 km, so search 3 km and report a lower bound beyond it.
-      const R = 3000;
-      this.frontHash.nearest(x, y, R);
-      d = Math.max(0, Math.min(this.frontHash.lastDist, R) - half);
+      if (this.frontDistOk) {
+        const g = this.grid;
+        const cpt = this.tiles.cellsPerTile;
+        const i0 = Math.floor(this.tiles.tx(t) * cpt);
+        const j0 = Math.floor(this.tiles.ty(t) * cpt);
+        const i1 = Math.min(g.nx, Math.floor((this.tiles.tx(t) + 1) * cpt));
+        const j1 = Math.min(g.ny, Math.floor((this.tiles.ty(t) + 1) * cpt));
+        const fd = this.s.aux.frontDist;
+        for (let j = j0; j < j1; j++) {
+          for (let k = j * g.nx + i0, e = j * g.nx + i1; k < e; k++) {
+            const v = fd[k]!;
+            if (v < d) d = v;
+          }
+        }
+        if (!(d === d)) d = 0;
+      } else {
+        if (this.tileDtCycle !== this.cycle) this.buildTileDt();
+        d = this.tileDt[t]!;
+      }
     }
     this.tileFireDistV[t] = d;
     this.tileFireStamp[t] = this.cycle;
     return d;
+  }
+
+  private buildTileDt(): void {
+    const T = this.tiles;
+    this.tileHasFire.fill(0);
+    for (let a = 0; a < this.nFront; a++) this.tileHasFire[T.ofCell(this.front[a]!)] = 1;
+    const tg = { nx: T.tnx, ny: T.tny, cellSize: T.tileM, x0: 0, y0: 0, origin: this.grid.origin };
+    distanceTransform(tg, this.tileHasFire, this.tileDt, this.tileDtNearest);
+    const diag = Math.SQRT2 * T.tileM;
+    for (let t = 0; t < T.count; t++) this.tileDt[t] = Math.max(0, 0.92 * this.tileDt[t]! - diag);
+    this.tileDtCycle = this.cycle;
   }
 
   /** Fire-wind speed (m/s) at cell k. */
@@ -397,16 +512,44 @@ export class CycleContext {
   distToHead(x: number, y: number): number {
     return this.headK < 0 ? Infinity : Math.hypot(x - this.headX, y - this.headY);
   }
-  /** Upslope azimuth (aspect + 180°), NaN on flat cells. */
+  /** Upslope azimuth (aspect + 180°), NaN on flat cells (static cache). */
   upslope(k: number): number {
-    const a = this.terrain.aspectDeg[k]!;
-    return a === a ? wrapDeg(a + 180) : NaN;
+    return this.statics.upslopeAz[k]!;
   }
   /** Directional slope (deg, + uphill) along azimuth az at cell k. */
   slopeAlong(k: number, az: number): number {
     const r = az / RAD;
     return Math.atan(this.terrain.dzdx[k]! * Math.sin(r) + this.terrain.dzdy[k]! * Math.cos(r)) * RAD;
   }
+  /**
+   * Share (0–1) of the local ROS or wind that comes from sub-grid terms at cell k (spec §10.1 "the model can't see
+   * this precisely" note): the attachment gain (G − 1)/G with G = 1 + (G_max − 1)·A·E (§7.6), the VLS lateral rate
+   * R_VLS/ROS (§7.9), the lee-eddy weight s_sep of the fire wind (§8.8) and the slope-flow top-up S/|U_fire| (§8.6).
+   */
+  subgridShare(k: number): number {
+    const s = this.s;
+    const aux = s.aux;
+    let sh = 0;
+    const ae = aux.attach[k] ?? 0;
+    if (ae > 0) {
+      const G = 1 + (P.eruptive.gMax - 1) * ae;
+      sh = (G - 1) / G;
+    }
+    if (aux.vlsActive[k]) {
+      const v = Math.min(1, Math.max(0, ((aux.vls[k] ?? 0) - 0.5) / 0.5));
+      const rv = (0.4 + 2.4 * v) / 3.6; // §7.9 mean lateral rate (m/s)
+      const r = s.fire.ros[k]!;
+      sh = Math.max(sh, r > 0 ? Math.min(1, rv / r) : 1);
+    }
+    const sep = aux.sep[k] ?? 0;
+    if (sep > sh) sh = sep;
+    if (s.slopeFlowS.length === this.N) {
+      const top = Math.abs(s.slopeFlowS[k]!);
+      if (top > 0) sh = Math.max(sh, Math.min(1, top / Math.max(0.1, this.windSpeed(k))));
+    }
+    return sh;
+  }
+
   /** Spatial key of cell k's tile. */
   key(kind: string, k: number): string {
     return this.tiles.key(kind, this.tiles.ofCell(k));

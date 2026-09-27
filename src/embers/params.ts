@@ -97,7 +97,10 @@ export interface EmberParams {
     lifeTau: number;
     /** Pseudo-count of the τ̄_c prior (the proposal mean τ_b) in the residence EMA [H]. */
     lifePriorCount: number;
-    /** τ̄_c floor = max(lifeFloorFrac·median τ_b, lifeFloorAbs): bounds particle throughput of quick-landing classes [H]. */
+    /**
+     * Throughput cap: class c spawns at most π_0·0.8·maxEmbers/τ_min,c particles per second, τ_min,c =
+     * max(lifeFloorFrac·median τ_b, lifeFloorAbs) (s); W_c is raised when a quick-landing class would exceed it [H].
+     */
     lifeFloorFrac: number;
     lifeFloorAbs: number;
   };
@@ -119,10 +122,10 @@ export interface EmberParams {
     /** Plume field: vertical level spacing (m), vertical extent (× z_d) [numerical]. */
     plumeDz: number;
     plumeDepthZd: number;
+    /** w_sg below this (m/s) is not deposited (negligible against v_t and σ_w) [numerical]. */
+    plumeWMin: number;
     /** Landing tolerance above the ground (m) [numerical: Float32 round-off at burnout-limited landings]. */
     landEps: number;
-    /** Mean wind over the fall column relative to the current wind when no ambient profile is set [H]. */
-    exitWindFrac: number;
   };
   turbulence: {
     /** Surface layer z < slFrac·z_i: σ_u,v,w = slSigma·u* [K Panofsky & Dutton 1984], T = clamp(0.5z/σ_w, tMin, tMax). */
@@ -198,6 +201,8 @@ export interface EmberParams {
     /** Ambient fuel moisture (%) and fuel temperature (°C) for beyond-edge brands when not set [H]. */
     ambientMoisture: number;
     ambientFuelTemp: number;
+    /** Bed wind u_f (m/s) assumed beyond the domain edge for the glowing S_state of exiting brands [H]. */
+    ambientBedWind: number;
   };
   mountain: {
     /** Lee eddy on cells with s_sep ≥ sepMin, below eddyDepth·relief, toward eddyFraction·U_ridge upslope [§9.4, D25]. */
@@ -259,7 +264,7 @@ const DEFAULTS: EmberParams = {
     lifeTau: 900,
     lifePriorCount: 50,
     lifeFloorFrac: 0.1,
-    lifeFloorAbs: 20,
+    lifeFloorAbs: 60,
   },
   transport: {
     cfl: 0.4,
@@ -273,8 +278,8 @@ const DEFAULTS: EmberParams = {
     alphaPVls: 0.4,
     plumeDz: 25,
     plumeDepthZd: 5,
+    plumeWMin: 0.1,
     landEps: 0.02,
-    exitWindFrac: 0.85,
   },
   turbulence: {
     slFrac: 0.1,
@@ -325,6 +330,7 @@ const DEFAULTS: EmberParams = {
     reflameDuration: 15,
     ambientMoisture: 8,
     ambientFuelTemp: 35,
+    ambientBedWind: 1,
   },
   mountain: {
     sepMin: 0.5,
@@ -408,8 +414,16 @@ const DEFAULTS: EmberParams = {
   albiniK: (4 * ALBINI_CD) / (Math.PI * ALBINI_K * 9.81),
 };
 
-/** Default parameters (frozen at the top level; use `emberParams(overrides)` for a tuned copy). */
-export const EMBER_PARAMS: Readonly<EmberParams> = Object.freeze(DEFAULTS);
+/** Default parameters (deep-frozen; use `emberParams(overrides)` for a tuned, mutable copy). */
+export const EMBER_PARAMS: Readonly<EmberParams> = deepFreeze(DEFAULTS);
+
+function deepFreeze<T>(v: T): T {
+  if (typeof v === 'object' && v !== null) {
+    for (const x of Object.values(v as Record<string, unknown>)) deepFreeze(x);
+    Object.freeze(v);
+  }
+  return v;
+}
 
 /** Deep-merge partial overrides onto the defaults (arrays replaced wholesale). */
 export function emberParams(over?: DeepPartial<EmberParams> | null): EmberParams {

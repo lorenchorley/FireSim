@@ -4,8 +4,9 @@
  *
  * - fuel/ (§4.1–4.2): FUEL_TYPES, resolveClass (class → merged type row).
  * - fuel/moisture (§5.3): afdrsMoisture (AFDRS-equivalent M_A per moisture family).
- * - fire/models (§6.4, §6.8, §6.10): ffdi, mk5 (flat ROS for the DMZ estimate), lengthToBreadth + ellipse
- *   coefficients, spottingEnvelope.
+ * - fire/models (§6.4, §6.8, §6.10, §6.11): ffdi, mk5 (flat ROS for the DMZ estimate), lengthToBreadth + ellipse
+ *   coefficients, spottingEnvelope, afdrsFbi (S13 "FBI ≥ 50" branch).
+ * - fuel/fuelMap (§4.7): fuelSummary (the "Why here?" fuel line).
  */
 import { FuelType, type FuelFamily, type FuelMap, type MoistureFamily } from '../core/types';
 import { FUEL_TYPES, resolveClass } from '../fuel/catalogue';
@@ -16,6 +17,8 @@ export { ffdi, mk5 } from '../fire/models/mcarthur';
 export { lengthToBreadth, ellipseCoefficients, createEllipseCoeffs } from '../fire/models/shape';
 export type { EllipseCoeffs } from '../fire/models/shape';
 export { spottingEnvelope } from '../fire/models/spotting';
+export { afdrsFbi } from '../fire/models/fbi';
+export { fuelSummary } from '../fuel/fuelMap';
 
 /** Class-resolved fuel family of cell k (class overrides the type, e.g. Alpine Herbfields → grass). */
 export function familyAt(fuel: FuelMap, k: number): FuelFamily {

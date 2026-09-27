@@ -8,8 +8,9 @@ import type { AtmosGrid } from './grid';
 import { ATMOS_PARAMS } from './params';
 
 /**
- * Cell-centred velocities: physical (uc, vc, wc) and index-space rates (Ui, Vi, Wi in cells per second) with
- * Wi = ω/Δζ_k, ω = (w − u·z_x|ζ − v·z_y|ζ)/J.
+ * Cell-centred velocities: physical (uc, vc, wc) and, when given, index-space rates (Ui, Vi, Wi in cells per
+ * second) with Wi = ω/Δζ_k, ω = (w − u·z_x|ζ − v·z_y|ζ)/J. `stats` (optional) receives max(|uc|, |vc|) and max|wc|
+ * (physical w, as the §8.4 Δt_a rule uses).
  */
 export function collocate(
   g: AtmosGrid,
@@ -22,10 +23,13 @@ export function collocate(
   Ui: Float32Array | null,
   Vi: Float32Array | null,
   Wi: Float32Array | null,
+  stats: Float64Array | null = null,
 ): void {
   const { nx, ny, nz, plane, dx } = g;
   const nx1 = nx + 1;
   const invdx = 1 / dx;
+  let mh = 0;
+  let mv = 0;
   for (let k = 0; k < nz; k++) {
     const fz = 1 - g.zetaC[k]! / g.Hp;
     const idz = 1 / g.dzeta[k]!;
@@ -48,26 +52,20 @@ export function collocate(
           Vi![o + i] = b * invdx;
           Wi![o + i] = om * idz;
         }
+        if (stats) {
+          const h = a > 0 ? a : -a;
+          const hb = b > 0 ? b : -b;
+          const vv = c > 0 ? c : -c;
+          if (h > mh) mh = h;
+          if (hb > mh) mh = hb;
+          if (vv > mv) mv = vv;
+        }
       }
     }
   }
-}
-
-/** Index-space rates from the cell-centred physical velocities (see collocate). */
-export function indexRates(g: AtmosGrid, uc: Float32Array, vc: Float32Array, wc: Float32Array, Ui: Float32Array, Vi: Float32Array, Wi: Float32Array): void {
-  const { nz, plane, dx } = g;
-  const invdx = 1 / dx;
-  for (let k = 0; k < nz; k++) {
-    const fz = 1 - g.zetaC[k]! / g.Hp;
-    const idz = 1 / g.dzeta[k]!;
-    const o = k * plane;
-    for (let c = 0; c < plane; c++) {
-      const a = uc[o + c]!;
-      const b = vc[o + c]!;
-      Ui[o + c] = a * invdx;
-      Vi[o + c] = b * invdx;
-      Wi[o + c] = ((wc[o + c]! - fz * (a * g.zsx[c]! + b * g.zsy[c]!)) / g.J[c]!) * idz;
-    }
+  if (stats) {
+    stats[0] = mh;
+    stats[1] = mv;
   }
 }
 
@@ -339,111 +337,122 @@ export function diffuseH(
   }
 }
 
-/**
- * Implicit vertical diffusion (tridiagonal per column) of a centre-level field living at horizontal position
- * (ox, oy) (u-faces: ox = ½). Zero flux at the ground and the lid; K at w-faces = mean of the centres; spacing uses
- * the column Jacobian. `scratch` needs ≥ 2·nz entries.
- */
-export function diffuseVLevels(
-  g: AtmosGrid,
-  dt: number,
-  K: Float32Array,
-  f: Float32Array,
-  nxF: number,
-  nyF: number,
-  ox: number,
-  oy: number,
-  Jf: Float64Array,
-  scratch: Float64Array,
-): void {
-  const { nx, ny, nz, plane } = g;
+/** Column geometry of a staggered centre-level field for the vertical diffusion kernels. */
+export interface ColumnMap {
+  planeF: number;
+  /** The two centre columns whose K average onto each field column (equal for centre fields). */
+  c0: Int32Array;
+  c1: Int32Array;
+  /** 1/J² of each field column. */
+  invJ2: Float64Array;
+}
+
+/** Build the ColumnMap of a field living at horizontal position (ox, oy) (u-faces: ox = ½) with Jacobian Jf. */
+export function columnMap(g: AtmosGrid, nxF: number, nyF: number, ox: number, oy: number, Jf: Float64Array): ColumnMap {
+  const { nx, ny } = g;
   const planeF = nxF * nyF;
-  const cp = scratch;
-  const dp = scratch.subarray(nz);
+  const c0 = new Int32Array(planeF);
+  const c1 = new Int32Array(planeF);
+  const invJ2 = new Float64Array(planeF);
   for (let jF = 0; jF < nyF; jF++) {
     const jc0 = Math.min(ny - 1, Math.max(0, jF - (oy > 0 ? 1 : 0)));
     const jc1 = Math.min(ny - 1, jF);
     for (let iF = 0; iF < nxF; iF++) {
       const ic0 = Math.min(nx - 1, Math.max(0, iF - (ox > 0 ? 1 : 0)));
       const ic1 = Math.min(nx - 1, iF);
-      const c0 = jc0 * nx + ic0;
-      const c1 = jc1 * nx + ic1;
-      const J = Jf[jF * nxF + iF]!;
-      const J2 = J * J;
-      const base = jF * nxF + iF;
-      let prevC = 0;
-      let prevD = 0;
-      for (let k = 0; k < nz; k++) {
-        const dzk = g.dzeta[k]!;
-        let a = 0;
-        let cc = 0;
-        if (k > 0) {
-          const Kw = 0.25 * (K[(k - 1) * plane + c0]! + K[(k - 1) * plane + c1]! + K[k * plane + c0]! + K[k * plane + c1]!);
-          a = (dt * Kw) / (J2 * dzk * g.dzetaW[k]!);
-        }
-        if (k < nz - 1) {
-          const Kw = 0.25 * (K[k * plane + c0]! + K[k * plane + c1]! + K[(k + 1) * plane + c0]! + K[(k + 1) * plane + c1]!);
-          cc = (dt * Kw) / (J2 * dzk * g.dzetaW[k + 1]!);
-        }
-        const diag = 1 + a + cc;
-        const den = diag - a * prevC;
-        const rhs = f[k * planeF + base]!;
-        prevC = cc / den;
-        prevD = (rhs + a * prevD) / den;
-        cp[k] = prevC;
-        dp[k] = prevD;
+      const q = jF * nxF + iF;
+      c0[q] = jc0 * nx + ic0;
+      c1[q] = jc1 * nx + ic1;
+      const J = Jf[q]!;
+      invJ2[q] = 1 / (J * J);
+    }
+  }
+  return { planeF, c0, c1, invJ2 };
+}
+
+/**
+ * Implicit vertical diffusion (tridiagonal per column, backward Euler) of a centre-level field. Zero flux at the
+ * ground and the lid; K at w-faces = mean of the (up to 4) neighbouring centres; spacing uses the column
+ * Jacobian. The Thomas elimination runs plane by plane over all columns (contiguous memory); `cp` needs
+ * ≥ planeF·nz entries, `kw` ≥ planeF.
+ */
+export function diffuseVLevels(g: AtmosGrid, dt: number, K: Float32Array, f: Float32Array, map: ColumnMap, cp: Float64Array, kw: Float64Array): void {
+  const { nz, plane } = g;
+  const { planeF, c0, c1, invJ2 } = map;
+  const dz = g.dzeta;
+  const dzw = g.dzetaW;
+  for (let q = 0; q < planeF; q++) kw[q] = 0;
+  for (let k = 0; k < nz; k++) {
+    const o = k * planeF;
+    const ok = k * plane;
+    const ok1 = (k + 1) * plane;
+    const hasU = k < nz - 1;
+    const fa = dt / (dz[k]! * dzw[k]!);
+    const fc = hasU ? dt / (dz[k]! * dzw[k + 1]!) : 0;
+    for (let q = 0; q < planeF; q++) {
+      const a0 = c0[q]!;
+      const a1 = c1[q]!;
+      const ij2 = invJ2[q]!;
+      const a = fa * kw[q]! * ij2;
+      let ku = 0;
+      if (hasU) ku = 0.25 * (K[ok + a0]! + K[ok + a1]! + K[ok1 + a0]! + K[ok1 + a1]!);
+      kw[q] = ku;
+      const cc = fc * ku * ij2;
+      const idx = o + q;
+      if (k === 0) {
+        const den = 1 + cc;
+        cp[idx] = cc / den;
+        f[idx] = f[idx]! / den;
+      } else {
+        const den = 1 + a + cc - a * cp[idx - planeF]!;
+        cp[idx] = cc / den;
+        f[idx] = (f[idx]! + a * f[idx - planeF]!) / den;
       }
-      let x = dp[nz - 1]!;
-      f[(nz - 1) * planeF + base] = x;
-      for (let k = nz - 2; k >= 0; k--) {
-        x = dp[k]! + cp[k]! * x;
-        f[k * planeF + base] = x;
-      }
+    }
+  }
+  for (let k = nz - 2; k >= 0; k--) {
+    const o = k * planeF;
+    for (let q = 0; q < planeF; q++) {
+      const idx = o + q;
+      f[idx] = f[idx]! + cp[idx]! * f[idx + planeF]!;
     }
   }
 }
 
 /**
- * Implicit vertical diffusion of w on the interior w-faces (ground and lid values fixed). K at the centres between
- * faces; spacing uses the column Jacobian.
+ * Implicit vertical diffusion of w on the interior w-faces (ground and lid values fixed), plane-major like
+ * diffuseVLevels. K at the centres between faces; spacing uses the column Jacobian. `cp` ≥ plane·(nz + 1).
  */
-export function diffuseVW(g: AtmosGrid, dt: number, K: Float32Array, w: Float32Array, scratch: Float64Array): void {
+export function diffuseVW(g: AtmosGrid, dt: number, K: Float32Array, w: Float32Array, invJ2: Float64Array, cp: Float64Array): void {
   const { nz, plane } = g;
-  const n = nz - 1; // unknowns m = 1..nz−1
-  if (n <= 0) return;
-  const cp = scratch;
-  const dp = scratch.subarray(nz);
-  for (let c = 0; c < plane; c++) {
-    const J = g.J[c]!;
-    const J2 = J * J;
-    let prevC = 0;
-    let prevD = 0;
-    for (let m = 1; m < nz; m++) {
-      const dzw = g.dzetaW[m]!;
-      const a = (dt * K[(m - 1) * plane + c]!) / (J2 * dzw * g.dzeta[m - 1]!);
-      const cc = (dt * K[m * plane + c]!) / (J2 * dzw * g.dzeta[m]!);
-      let rhs = w[m * plane + c]!;
-      let aa = a;
-      let ccEff = cc;
-      if (m === 1) {
-        rhs += a * w[c]!;
-        aa = 0;
-      }
-      if (m === nz - 1) {
-        rhs += cc * w[nz * plane + c]!;
-        ccEff = 0;
-      }
-      const den = 1 + a + cc - aa * prevC;
-      prevC = ccEff / den;
-      prevD = (rhs + aa * prevD) / den;
-      cp[m] = prevC;
-      dp[m] = prevD;
+  if (nz < 2) return;
+  const dz = g.dzeta;
+  const dzw = g.dzetaW;
+  for (let m = 1; m < nz; m++) {
+    const o = m * plane;
+    const fa = dt / (dzw[m]! * dz[m - 1]!);
+    const fc = dt / (dzw[m]! * dz[m]!);
+    const first = m === 1;
+    const last = m === nz - 1;
+    for (let c = 0; c < plane; c++) {
+      const ij2 = invJ2[c]!;
+      const a = fa * K[o - plane + c]! * ij2;
+      const cc = fc * K[o + c]! * ij2;
+      const idx = o + c;
+      let rhs = w[idx]!;
+      if (first) rhs += a * w[c]!;
+      if (last) rhs += cc * w[o + plane + c]!;
+      const aa = first ? 0 : a;
+      const den = 1 + a + cc - aa * (first ? 0 : cp[idx - plane]!);
+      cp[idx] = last ? 0 : cc / den;
+      w[idx] = (rhs + (first ? 0 : aa * w[idx - plane]!)) / den;
     }
-    let x = dp[nz - 1]!;
-    w[(nz - 1) * plane + c] = x;
-    for (let m = nz - 2; m >= 1; m--) {
-      x = dp[m]! + cp[m]! * x;
-      w[m * plane + c] = x;
+  }
+  for (let m = nz - 2; m >= 1; m--) {
+    const o = m * plane;
+    for (let c = 0; c < plane; c++) {
+      const idx = o + c;
+      w[idx] = w[idx]! + cp[idx]! * w[idx + plane]!;
     }
   }
 }

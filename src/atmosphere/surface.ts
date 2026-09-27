@@ -7,21 +7,28 @@ import { smoothstep } from '../core/units';
 import { ATMOS_PARAMS } from './params';
 
 /**
- * Sensible heat flux Q_h (W/m² of slope surface) of one cell:
- *   Q* = [(1 − A)·Q_sw + 5.31e-13·T⁶ − σT⁴ + 60N]/(1 + 0.12);  B = 1 + 3·smoothstep(50, 150, KBDI);
- *   Q_h = B/(1 + B)·Q*·(1 − c_g). Same Q* at night (no Holtslag iteration in v1).
- * @param qsw    shortwave on the slope (insolation().total, W/m²)
+ * Net radiation Q* (W/m²) [V WindNinja cellDiurnal.cpp, Holtslag & van Ulden 1983 form]:
+ *   Q* = [(1 − A)·Q_sw + 5.31e-13·T⁶ − σT⁴ + 60N]/(1 + 0.12)
+ * @param qsw    shortwave on the slope (insolation().total, W/m²; D50)
  * @param albedo A
  * @param tK     cell air temperature (K)
  * @param cloud  cloud fraction N (0–1)
  */
-export function sensibleHeatFlux(qsw: number, albedo: number, tK: number, cloud: number, kbdi: number): number {
+export function netRadiation(qsw: number, albedo: number, tK: number, cloud: number): number {
   const P = ATMOS_PARAMS;
   const t2 = tK * tK;
   const t4 = t2 * t2;
-  const qStar = ((1 - albedo) * qsw + P.qStarC1 * t4 * t2 - SIGMA_SB * t4 + P.qStarC2 * cloud) / (1 + P.qStarC3);
+  return ((1 - albedo) * qsw + P.qStarC1 * t4 * t2 - SIGMA_SB * t4 + P.qStarC2 * cloud) / (1 + P.qStarC3);
+}
+
+/**
+ * Sensible heat flux Q_h (W/m² of slope surface) of one cell (§8.6):
+ *   B = 1 + 3·smoothstep(50, 150, KBDI);  Q_h = B/(1 + B)·Q*·(1 − c_g).  Same Q* at night (no Holtslag iteration).
+ */
+export function sensibleHeatFlux(qsw: number, albedo: number, tK: number, cloud: number, kbdi: number): number {
+  const P = ATMOS_PARAMS;
   const B = P.bowenBase + P.bowenDrought * smoothstep(P.bowenKbdi0, P.bowenKbdi1, kbdi);
-  return (B / (1 + B)) * qStar * (1 - P.groundHeatFrac);
+  return (B / (1 + B)) * netRadiation(qsw, albedo, tK, cloud) * (1 - P.groundHeatFrac);
 }
 
 /** Upslope (anabatic) hydraulic flow speed S (m/s): [Q_h·g·Δz_u/((C_d + E)·ρc_pT)]^{1/3} (Q_h > 0). */

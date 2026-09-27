@@ -17,6 +17,7 @@ export type {
   SourceClass,
 } from './EmberModel';
 export type { WindFn } from './plume';
+export type { EmberCellFuel } from './fuelInfo';
 export { EMBER_PARAMS, EMBER_CLASSES, emberParams } from './params';
 export type { EmberParams, EmberClassParams, DeepPartial } from './params';
 export {
@@ -26,6 +27,7 @@ export {
   albiniFallHeight,
   burnoutFallCoefficient,
   fallIntegral,
+  fallTime,
   lineBuoyancyFlux,
   convectiveNumber,
   briggsPlumeRise,

@@ -12,6 +12,7 @@ import {
   convectiveNumber,
   emissionPerUnitLength,
   fallIntegral,
+  fallTime,
   ignitionProbability,
   lineBuoyancyFlux,
   onsetRamp,
@@ -57,6 +58,24 @@ describe('aerodynamics and burnout (§9.6) [V doc 06 §3.1–3.2]', () => {
       const parts = fallIntegral(tau, n, floor, 0, 100) + fallIntegral(tau, n, floor, 100, 249) + fallIntegral(tau, n, floor, 249, 300);
       expect(parts).toBeCloseTo(fallIntegral(tau, n, floor, 0, tau), 9);
     }
+  });
+
+  it('fallTime inverts fallIntegral (power-law and floor segments) and is +∞ beyond the burnout capacity', () => {
+    for (const [n, floor] of [[0.25, 0.3], [0.5, 0.3], [1, 0], [0.5, 0]] as const) {
+      const tau = 300;
+      for (const a0 of [0, 50, 280]) {
+        const cap = fallIntegral(tau, n, floor, a0, tau);
+        for (const f of [0.1, 0.5, 0.9, 0.999]) {
+          const t = fallTime(tau, n, floor, a0, f * cap);
+          expect(t).toBeGreaterThanOrEqual(0);
+          expect(a0 + t).toBeLessThanOrEqual(tau + 1e-9);
+          expect(fallIntegral(tau, n, floor, a0, a0 + t)).toBeCloseTo(f * cap, 6);
+        }
+        expect(fallTime(tau, n, floor, a0, 1.001 * cap + 1e-6)).toBe(Infinity);
+      }
+    }
+    expect(fallTime(100, 0.5, 0.3, 0, 0)).toBe(0);
+    expect(fallTime(100, 0.5, 0.3, 100, 1)).toBe(Infinity);
   });
 });
 

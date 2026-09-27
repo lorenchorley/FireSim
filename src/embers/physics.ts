@@ -5,9 +5,7 @@
  * - Exact fall distance of a burning brand with v_t = max(f·v_t0, v_t0·(1 − a/τ_b)^n) (§9.3), used by the transport
  *   integrator so burnout-limited fall heights (z* = 0.8005·v_t0·τ_b for E2, z_b = v_t0·τ_b/2 for E4) are exact.
  * - Line-fire buoyancy flux F_L, Briggs final plume rise [P, §8.10 cross-check form], Byram convective number.
- * - Schroeder (1969) ignition probability as coded in behave `ignite.cpp` [V; UNVERIFIED for eucalypt] — the same
- *   formula as `fuel/moisture` `ignitionProbability()` (§5.10), duplicated here so embers do not depend on the
- *   moisture module's file layout (contract note in the final report).
+ * - Schroeder (1969) ignition probability `ignitionProbability()` of fuel/moisture (§5.10), re-exported.
  * - Emission per unit front length (D52).
  */
 import { CP, G, HEAT_YIELD_KJ_PER_KG, RHO_REF } from '../core/physics';
@@ -83,6 +81,31 @@ export function fallIntegral(tauB: number, n: number, floor: number, a0: number,
   return s;
 }
 
+/**
+ * Inverse of `fallIntegral`: the flight time t (s) after age a0 for which ∫_{a0}^{a0+t} v_t/v_t0 da = s (s in m per
+ * m/s of v_t0, i.e. fall height / (v_t0·density factor)). +Infinity when the brand burns out before falling that far.
+ */
+export function fallTime(tauB: number, n: number, floor: number, a0: number, s: number): number {
+  if (!(s > 0)) return 0;
+  if (!(a0 < tauB)) return Infinity;
+  const rc = floorRatio(floor, n);
+  const ac = tauB * (1 - rc);
+  if (a0 < ac) {
+    const sp = fallIntegral(tauB, n, floor, a0, ac); // power-law part
+    if (s <= sp) {
+      const q = powN1(1 - a0 / tauB, n) - (s * (n + 1)) / tauB;
+      const r = q > 0 ? Math.pow(q, 1 / (n + 1)) : 0;
+      return Math.max(0, tauB * (1 - r) - a0);
+    }
+    if (!(floor > 0)) return Infinity;
+    const t = ac - a0 + (s - sp) / floor;
+    return a0 + t <= tauB ? t : Infinity;
+  }
+  if (!(floor > 0)) return Infinity;
+  const t = s / floor;
+  return a0 + t <= tauB ? t : Infinity;
+}
+
 /** Fall height from launch to burnout divided by v_t0·τ_b (0.8005 for n = 1/4 with the 0.3 floor; 0.5 for n = 1). */
 export const burnoutFallCoefficient = (n: number, floor: number): number => fallIntegral(1, n, floor, 0, 1);
 
@@ -124,19 +147,12 @@ export function briggsPlumeRise(qPlumeW: number, uMs: number, nBv: number, rhoA 
 }
 
 /**
- * Schroeder (1969) / Rothermel (1983) probability of ignition, T_f in °C and M in % [V behave `ignite.cpp`, §5.10].
+ * Schroeder (1969) / Rothermel (1983) probability of ignition, T_f in °C and M in % [V behave `ignite.cpp`, §5.10;
+ * UNVERIFIED for eucalypt]: the fuel/moisture implementation (the spec's single owner), re-exported for the cards.
  * Vectors (T_f 30 °C; M 3, 5, 6, 7, 10, 12, 15, 20, 25 %) = 0.811, 0.610, 0.529, 0.458, 0.293, 0.214, 0.129, 0.049,
  * 0.014; (T_f 20 °C; 5 %, 10 %) = 0.571, 0.267.
  */
-export function ignitionProbability(tfC: number, mPct: number): number {
-  const m = Math.max(0, mPct) / 100;
-  let q = 144.51 - 0.266 * tfC - 0.00058 * tfC * tfC - tfC * m + 18.54 * (1 - Math.exp(-15.1 * m)) + 640 * m;
-  if (q > 400) q = 400;
-  const x = (400 - q) / 10;
-  if (!(x > 0)) return 0;
-  const p = (0.000048 * Math.pow(x, 4.3)) / 50;
-  return p < 0 ? 0 : p > 1 ? 1 : p;
-}
+export { ignitionProbability } from '../fuel/moisture';
 
 /** Bark engagement e_k = clamp((FH − 1)/(h_bark − 1), 0, 1) [A doc 06 §4.2]. */
 export function barkEngagement(flameHeightM: number, hBark = EMBER_PARAMS.emission.hBark): number {

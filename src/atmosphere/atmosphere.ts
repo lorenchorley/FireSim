@@ -9,9 +9,14 @@
  *   4 heat sources (surface Q_h,col e-folding Δz₁, fire heat §8.7) ·1/(ρc_pΠΔz); cap θ′ ≤ 60 K
  *   5 implicit drag (lowest level), implicit nudging to u_bg with the taper w_n, implicit sponge (top 800 m)
  *   6 Smagorinsky: horizontal explicit, vertical implicit; θ′ diffused about θ_env(z_ASL)
- *   7 projection ∇·(∇p′) = (ρ₀/Δt)∇·u* (multigrid V(2,2), Neumann ground/top/inflow, p′ = 0 on outflow faces)
+ *   7 projection ∇·(∇p′) = (ρ₀/Δt)∇·u* (warm-started defect correction, V(2,2) + adaptive extra corrections to
+ *     max|∇·u|·Δx/|u| ≤ 1e-3; Neumann ground/top/inflow, p′ = 0 on outflow faces)
  *   8 Davies relaxation zones (u, v × w_n)
  * plus the [H] horizontal-mean θ′ control (ATMOS_PARAMS.meanThetaTauS) and smoke decay.
+ * FireSim [H] choices (documented at their code): drag and momentum diffusion act on the departure from u_bg (the
+ * mass-consistent background is an equilibrium, so flat terrain keeps the forecast profile, V21/D30); the Davies θ′
+ * target is the cold pool plus the interior band mean; airAt() adds the resolved anomaly θ′ − θ′_cp to the §5.2
+ * template so both temperature paths agree at t0.
  */
 import { CP, G, exner, pressureIsa } from '../core/physics';
 import type { Rng } from '../core/rng';
@@ -19,7 +24,7 @@ import type { AtmosDiagnostics, TerrainFeatures } from '../core/simTypes';
 import type { AtmosphereView, FuelMap, GridSpec, QualityTier, Terrain, WeatherSeries } from '../core/types';
 import { clamp, smoothstep } from '../core/units';
 import { AtmosBase, type AtmosphereOptions, type BaseCheckpoint, type FireWindContextExt, type Stamp } from './base';
-import { advect, collocate, diffuseH, diffuseVLevels, diffuseVW, displacements, indexRates, smagorinsky } from './dynamics';
+import { advect, collocate, columnMap, diffuseH, diffuseVLevels, diffuseVW, displacements, smagorinsky, type ColumnMap } from './dynamics';
 import { levelFrac } from './grid';
 import { setGroundW } from './massConsistent';
 import { ATMOS_PARAMS } from './params';
@@ -61,6 +66,8 @@ export class Atmosphere extends AtmosBase {
   private th: Float32Array;
   private sm: Float32Array;
   private phi: Float64Array;
+  private readonly dphi: Float64Array;
+  private readonly invVol: Float64Array;
   // ── scratch ──
   private u2: Float32Array;
   private v2: Float32Array;
@@ -78,7 +85,11 @@ export class Atmosphere extends AtmosBase {
   private readonly khh: Float32Array;
   private readonly khv: Float32Array;
   private readonly rhs: Float64Array;
-  private readonly colScratch: Float64Array;
+  private readonly cpScratch: Float64Array;
+  private readonly kwScratch: Float64Array;
+  private readonly mapU: ColumnMap;
+  private readonly mapV: ColumnMap;
+  private readonly mapC: ColumnMap;
   // ── blended background / per-cell environment ──
   private readonly bgU: Float32Array;
   private readonly bgV: Float32Array;
@@ -100,8 +111,6 @@ export class Atmosphere extends AtmosBase {
   private readonly zAslV: Float32Array;
   private readonly zAglW: Float32Array;
   private readonly zAslW: Float32Array;
-  private readonly JuF: Float64Array;
-  private readonly JvF: Float64Array;
   private readonly dvU: Float32Array;
   private readonly dvV: Float32Array;
   private readonly dvC: Float32Array;
@@ -117,8 +126,13 @@ export class Atmosphere extends AtmosBase {
   private readonly binCnt: Float64Array;
   private readonly dzMin: number;
   private readonly piFire: Float32Array;
-  private readonly st2K: Int16Array;
-  private readonly st2T: Float32Array;
+  /** 8-point stencil of every fire cell's z_cell + 2 m point (airAt). */
+  private readonly st2O: Int32Array;
+  private readonly st2W: Float32Array;
+  /** Highest flat centre index (exclusive) the 2 m stencil reads. */
+  private readonly st2Top: number;
+  /** Scratch: anomaly θ′ − θ′_cp on the lowest levels. */
+  private readonly thA: Float32Array;
   // ── night-dependent ──
   private readonly nuU: Float32Array;
   private readonly nuV: Float32Array;
@@ -145,10 +159,15 @@ export class Atmosphere extends AtmosBase {
   private maxU = 0;
   private maxW = 0;
   private smokeActive = false;
-  private readonly tmp2 = new Float64Array(2);
   private readonly tmp2b = new Float64Array(2);
-  /** Last projection solve (tests/diagnostics). */
+  private readonly stats2 = new Float64Array(2);
+  /**
+   * Last projection (tests/diagnostics): V-cycles run and max|∇·u|·Δx/|u|max right after it (predicted, or measured
+   * when trackDivergence is set).
+   */
   lastProjection = { iterations: 0, relResidual: NaN };
+  /** Tests: measure the exact post-projection divergence metric every step (one extra divergence evaluation). */
+  trackDivergence = false;
 
   constructor(
     terrain: Terrain,
@@ -172,6 +191,9 @@ export class Atmosphere extends AtmosBase {
     this.th = new Float32Array(n);
     this.sm = new Float32Array(n);
     this.phi = new Float64Array(n);
+    this.dphi = new Float64Array(n);
+    this.invVol = new Float64Array(n);
+    for (let k = 0; k < nz; k++) for (let c = 0; c < plane; c++) this.invVol[k * plane + c] = 1 / (g.J[c]! * g.dx * g.dx * g.dzeta[k]!);
     this.u2 = new Float32Array(nU);
     this.v2 = new Float32Array(nV);
     this.w2 = new Float32Array(nW);
@@ -188,7 +210,11 @@ export class Atmosphere extends AtmosBase {
     this.khh = new Float32Array(n);
     this.khv = new Float32Array(n);
     this.rhs = new Float64Array(n);
-    this.colScratch = new Float64Array(2 * (nz + 1));
+    this.cpScratch = new Float64Array(Math.max(nU, nV, nW));
+    this.kwScratch = new Float64Array(Math.max((nx + 1) * ny, nx * (ny + 1)));
+    this.mapU = columnMap(g, nx + 1, ny, 0.5, 0, g.Ju);
+    this.mapV = columnMap(g, nx, ny + 1, 0, 0.5, g.Jv);
+    this.mapC = columnMap(g, nx, ny, 0, 0, g.J);
     this.bgU = new Float32Array(nU);
     this.bgV = new Float32Array(nV);
     this.bgW = new Float32Array(nW);
@@ -229,8 +255,6 @@ export class Atmosphere extends AtmosBase {
       if (g.zetaF[k]! < 8 * alphaF) nSurf = k + 1;
     }
     this.nSurfLevels = nSurf;
-    this.JuF = g.Ju;
-    this.JvF = g.Jv;
     this.zAglU = new Float32Array(nU);
     this.zAslU = new Float32Array(nU);
     this.zAglV = new Float32Array(nV);
@@ -314,19 +338,16 @@ export class Atmosphere extends AtmosBase {
     // ── fire-cell Exner and the z_cell + 2 m stencil (levels only; horizontal part shared) ──
     const nf = this.nf;
     this.piFire = new Float32Array(nf);
-    this.st2K = new Int16Array(4 * nf);
-    this.st2T = new Float32Array(4 * nf);
+    const z2 = new Float64Array(nf);
     for (let k = 0; k < nf; k++) {
-      const z = terrain.elevation[k]! + 2;
-      this.piFire[k] = exner(pressureIsa(z));
-      for (let q = 0; q < 4; q++) {
-        const c = this.stC[4 * k + q]!;
-        const kf = levelFrac(g, c, z - g.zs[c]!);
-        const k0 = Math.min(Math.floor(kf), nz - 2);
-        this.st2K[4 * k + q] = k0;
-        this.st2T[4 * k + q] = kf - k0;
-      }
+      z2[k] = terrain.elevation[k]! + 2;
+      this.piFire[k] = exner(pressureIsa(z2[k]!));
     }
+    [this.st2O, this.st2W] = this.verticalStencil(z2);
+    let top2 = 0;
+    for (let q = 0; q < this.st2O.length; q++) top2 = Math.max(top2, this.st2O[q]! + 1);
+    this.st2Top = top2;
+    this.thA = new Float32Array(n);
     // ── projection solver (R = 1); masks set per stamp pair ──
     this.masks = { activeU: new Uint8Array(nU), activeV: new Uint8Array(nV), topActive: false };
     this.proj = new EllipticSolver(g, 1, 1, this.masks);
@@ -498,7 +519,7 @@ export class Atmosphere extends AtmosBase {
     this.sm.fill(0);
     this.phi.fill(0);
     this.initialised = true;
-    collocate(this.grid, this.u, this.v, this.w, this.uc, this.vc, this.wc, null, null, null);
+    collocate(this.grid, this.u, this.v, this.w, this.uc, this.vc, this.wc, this.Ui, this.Vi, this.Wi);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -520,12 +541,13 @@ export class Atmosphere extends AtmosBase {
       const q = heatKwM2[k]!;
       if (!(q > 0)) continue;
       const c = g.colOfFire[k]!;
-      const cs = clamp(crownShare[k] ?? 0, 0, 1);
+      const csRaw = crownShare[k]!;
+      const cs = csRaw > 0 ? (csRaw < 1 ? csRaw : 1) : 0; // NaN → 0
       this.qfS[c]! += scale * q * (1 - cs);
       if (cs > 0) {
         const qc = scale * q * cs;
         this.qfC[c]! += qc;
-        this.hC[c]! += qc * (Number.isFinite(hEff[k]!) ? hEff[k]! : 20);
+        this.hC[c]! += qc * (Number.isFinite(hEff[k]!) ? hEff[k]! : ATMOS_PARAMS.crownHeightDefault);
       }
       cols.add(c);
     }
@@ -538,6 +560,10 @@ export class Atmosphere extends AtmosBase {
   // Step
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Δt_a = clamp(3·min(Δx/|u|max, Δz_min/|w|max), 3 s, 12 s) (§8.4), with the cell-centred maxima of the last step
+   * (physical w; Δz_min = the thinnest first layer).
+   */
   maxStableDt(): number {
     const P = ATMOS_PARAMS;
     const a = this.maxU > 1e-6 ? this.grid.dx / this.maxU : Infinity;
@@ -554,8 +580,8 @@ export class Atmosphere extends AtmosBase {
     const { nx, ny, nz, plane, n } = g;
     const nx1 = nx + 1;
 
-    // 1 advection (uc, vc, wc are the collocated fields of the current state, kept up to date by every writer)
-    indexRates(g, this.uc, this.vc, this.wc, this.Ui, this.Vi, this.Wi);
+    // 1 advection (uc, vc, wc and the index rates Ui, Vi, Wi of the current state are kept up to date by every
+    //   writer of u, v, w: the end of step(), initialiseState() and restore())
     // Displacements overwrite the index-rate arrays' companions (khh/khv/kmh reused as scratch before Smagorinsky).
     const Dx = this.kmh;
     const Dy = this.kmv;
@@ -614,7 +640,7 @@ export class Atmosphere extends AtmosBase {
           let dq = qs * this.fF[o]!;
           if (qc > 0) dq += qc * crownLayerFraction(g.zetaF[k]! * J, g.zetaF[k + 1]! * J, H);
           if (dq <= 0) {
-            if (g.zetaF[k]! * J > 3000) break;
+            if (g.zetaF[k]! * J > P.fireHeatTopAGL) break;
             continue;
           }
           th[o] = th[o]! + dt * dq * hc[o]!;
@@ -641,8 +667,10 @@ export class Atmosphere extends AtmosBase {
         const vb = 0.25 * (v[j * nx + il]! + v[(j + 1) * nx + il]! + v[j * nx + ir]! + v[(j + 1) * nx + ir]!);
         const vbb = 0.25 * (this.bgV[j * nx + il]! + this.bgV[(j + 1) * nx + il]! + this.bgV[j * nx + ir]! + this.bgV[(j + 1) * nx + ir]!);
         const a = (dt * cd) / (g.dzeta[0]! * g.Ju[f]!);
-        const sp = Math.hypot(u[f]!, vb);
-        const spb = Math.hypot(this.bgU[f]!, vbb);
+        const uf = u[f]!;
+        const ub0 = this.bgU[f]!;
+        const sp = Math.sqrt(uf * uf + vb * vb);
+        const spb = Math.sqrt(ub0 * ub0 + vbb * vbb);
         u[f] = (u[f]! + a * spb * bgU[f]!) / (1 + a * sp);
       }
     }
@@ -655,8 +683,10 @@ export class Atmosphere extends AtmosBase {
         const ub = 0.25 * (u[jl * nx1 + i]! + u[jl * nx1 + i + 1]! + u[jr * nx1 + i]! + u[jr * nx1 + i + 1]!);
         const ubb = 0.25 * (this.bgU[jl * nx1 + i]! + this.bgU[jl * nx1 + i + 1]! + this.bgU[jr * nx1 + i]! + this.bgU[jr * nx1 + i + 1]!);
         const a = (dt * cd) / (g.dzeta[0]! * g.Jv[f]!);
-        const sp = Math.hypot(v[f]!, ub);
-        const spb = Math.hypot(this.bgV[f]!, ubb);
+        const vf = v[f]!;
+        const vb0 = this.bgV[f]!;
+        const sp = Math.sqrt(vf * vf + ub * ub);
+        const spb = Math.sqrt(vb0 * vb0 + ubb * ubb);
         v[f] = (v[f]! + a * spb * bgV[f]!) / (1 + a * sp);
       }
     }
@@ -683,12 +713,13 @@ export class Atmosphere extends AtmosBase {
       diffuseH(g, dt, this.khh, sm, this.sm2, nx, ny, nz, 0, 0, 0);
       [this.sm, this.sm2] = [this.sm2, this.sm];
     }
-    const cs = this.colScratch;
-    diffuseVLevels(g, dt, this.kmv, this.u, nx + 1, ny, 0.5, 0, this.JuF, cs);
-    diffuseVLevels(g, dt, this.kmv, this.v, nx, ny + 1, 0, 0.5, this.JvF, cs);
-    diffuseVW(g, dt, this.kmv, this.w, cs);
-    diffuseVLevels(g, dt, this.khv, this.th, nx, ny, 0, 0, g.J, cs);
-    if (this.smokeActive) diffuseVLevels(g, dt, this.khv, this.sm, nx, ny, 0, 0, g.J, cs);
+    const cs = this.cpScratch;
+    const kw = this.kwScratch;
+    diffuseVLevels(g, dt, this.kmv, this.u, this.mapU, cs, kw);
+    diffuseVLevels(g, dt, this.kmv, this.v, this.mapV, cs, kw);
+    diffuseVW(g, dt, this.kmv, this.w, this.mapC.invJ2, cs);
+    diffuseVLevels(g, dt, this.khv, this.th, this.mapC, cs, kw);
+    if (this.smokeActive) diffuseVLevels(g, dt, this.khv, this.sm, this.mapC, cs, kw);
     addInPlace(this.u, bgU);
     addInPlace(this.v, bgV);
     addInPlace(this.w, this.cbW);
@@ -699,6 +730,7 @@ export class Atmosphere extends AtmosBase {
     // 8 Davies zones (θ′ target = cold pool + the current band mean, so the zones follow the interior's mean state)
     this.bandMeans();
     this.davies();
+    // (the same band means feed the mean-θ′ control below)
 
     // [H] horizontal-mean θ′ control on ASL bands, smoke decay
     this.meanThetaControl(dt);
@@ -708,15 +740,11 @@ export class Atmosphere extends AtmosBase {
       for (let o = 0; o < n; o++) s[o] = s[o]! * f;
     }
 
-    // Stats and the collocated fields for sampling.
-    collocate(g, this.u, this.v, this.w, this.uc, this.vc, this.wc, null, null, null);
-    let mu = 0;
-    for (let q = 0; q < this.u.length; q++) mu = Math.max(mu, Math.abs(this.u[q]!));
-    for (let q = 0; q < this.v.length; q++) mu = Math.max(mu, Math.abs(this.v[q]!));
-    let mw = 0;
-    for (let q = plane; q < this.w.length - plane; q++) mw = Math.max(mw, Math.abs(this.w[q]!));
-    this.maxU = mu;
-    this.maxW = mw;
+    // Collocated fields for sampling, index rates for the next step's advection, CFL stats (cell-centred maxima).
+    const st = this.stats2;
+    collocate(g, this.u, this.v, this.w, this.uc, this.vc, this.wc, this.Ui, this.Vi, this.Wi, st);
+    this.maxU = st[0]!;
+    this.maxW = st[1]!;
     this.spinTime += dt;
     this.accumulateHeating(dt);
   }
@@ -746,15 +774,64 @@ export class Atmosphere extends AtmosBase {
     }
   }
 
+  /**
+   * Step 7: projection ∇·(∇p′) = (ρ₀/Δt)∇·u* with the warm-started potential φ = −(Δt/ρ₀)p′ (defect correction on the
+   * full metric operator, V(2,2) on its 7-point part, §8.5). The system is linear, so correcting u* with the previous
+   * step's potential φ₀ first and then taking the divergence gives the defect r = D(u* + Gφ₀) = Du* − Aφ₀ directly;
+   * each correction δ ≈ A₇⁻¹r is applied to u and added to φ. φ persists between steps (hydrostatic and
+   * terrain-induced pressure vary slowly), so φ₀ is an excellent first guess.
+   * Corrections: the tier's V-cycles (standard 1, high 2) always run. Then, while the predicted metric
+   * ρ·m_pre (m_pre = max|∇·u|·Δx/|u|max before the correction) exceeds projTol (spec tol 1e-3), up to
+   * projExtraCycles more run: a V-cycle for large defects (transients), or — once m_pre ≤ projSmoothMax·projTol —
+   * two fine-level zebra sweeps on the true defect, which remove the local metric-term errors next to steep ground
+   * that limit the defect correction (measured: 2 sweeps ≈ 0.25 reduction at a third of a V-cycle's cost).
+   * `trackDivergence` (tests) measures the exact post-projection metric.
+   */
   private project(): void {
     const g = this.grid;
     const P = ATMOS_PARAMS;
-    this.proj.divergence(this.u, this.v, this.w, this.rhs);
-    const cycles = g.tier.vCycles;
-    const res = this.proj.solve(this.phi, this.rhs, { tol: P.projTol, minIter: cycles, maxIter: cycles + P.projExtraCycles });
-    this.lastProjection = { iterations: res.iterations, relResidual: res.relResidual };
-    this.proj.correct(this.phi, this.u, this.v, this.w);
+    const phi = this.phi;
+    const dphi = this.dphi;
+    const proj = this.proj;
+    proj.correct(phi, this.u, this.v, this.w);
+    const minC = g.tier.vCycles;
+    const maxC = minC + P.projExtraCycles;
+    let it = 0;
+    let est = NaN;
+    for (;;) {
+      proj.divergence(this.u, this.v, this.w, this.rhs);
+      const m = this.divergenceOf(this.rhs);
+      if (it >= minC && (est <= P.projTol || it >= maxC)) break;
+      if (it >= minC && m <= P.projSmoothMax * P.projTol) {
+        proj.smoothOnly(this.rhs, dphi, P.projSmoothSweeps);
+        est = P.projSmoothRate * m;
+      } else {
+        proj.precondition(this.rhs, dphi);
+        est = P.projRateEstimate * m;
+      }
+      proj.correct(dphi, this.u, this.v, this.w);
+      for (let q = 0; q < phi.length; q++) phi[q] = phi[q]! + dphi[q]!;
+      it++;
+      if (it >= minC && (est <= P.projTol || it >= maxC)) break;
+    }
+    if (proj.singular) removeMeanF64(phi);
     setGroundW(g, this.u, this.v, this.w);
+    if (this.trackDivergence) {
+      proj.divergence(this.u, this.v, this.w, this.rhs);
+      est = this.divergenceOf(this.rhs);
+    }
+    this.lastProjection = { iterations: it, relResidual: est };
+  }
+
+  /** max|∇·u|·Δx/|u|max of a volume-integrated divergence field (|u|max from the last step, floor 0.5 m/s). */
+  private divergenceOf(div: Float64Array): number {
+    const iv = this.invVol;
+    let worst = 0;
+    for (let q = 0; q < div.length; q++) {
+      const d = Math.abs(div[q]!) * iv[q]!;
+      if (d > worst) worst = d;
+    }
+    return (worst * this.grid.dx) / Math.max(this.maxU, 0.5);
   }
 
   private davies(): void {
@@ -808,11 +885,10 @@ export class Atmosphere extends AtmosBase {
     for (let b = 0; b < sum.length; b++) sum[b] = this.binCnt[b]! > 0 ? sum[b]! / this.binCnt[b]! : 0;
   }
 
-  /** Relax the band means of (θ′ − θ′_cp) toward 0 with τ = meanThetaTauS (uses binSum from bandMeans()). */
+  /** Relax the band means of (θ′ − θ′_cp) toward 0 with τ = meanThetaTauS (uses binSum from the last bandMeans()). */
   private meanThetaControl(dt: number): void {
     const tau = ATMOS_PARAMS.meanThetaTauS;
     if (!(tau > 0)) return;
-    this.bandMeans();
     const f = 1 - Math.exp(-dt / tau);
     const th = this.th;
     const bin = this.bin;
@@ -839,26 +915,35 @@ export class Atmosphere extends AtmosBase {
     const du = this.scratchA;
     const dv = this.scratchB;
     this.sampleFire(this.uc, this.vc, du, dv);
-    const kap = this.tmp2;
+    // Complex κ(z_ref), linear in time between the stamp pair like u_bg (fused here: no temporary arrays).
+    const a = this.wgt;
+    const A = this.stampA;
+    const B = this.stampB;
+    const ar = A.fireKre!;
+    const ai = A.fireKim!;
+    const br = B.fireKre!;
+    const bi = B.fireKim!;
+    const mfA = this.fireInfluence;
+    const coupled = cf > 0;
     for (let k = 0; k < this.nf; k++) {
-      this.kappaAt(k, kap);
-      const re = kap[0]!;
-      const im = kap[1]!;
+      const re = ar[k]! + (br[k]! - ar[k]!) * a;
+      const im = ai[k]! + (bi[k]! - ai[k]!) * a;
       const pu = du[k]!;
       const pv = dv[k]!;
       const dyU = re * pu - im * pv;
       const dyV = re * pv + im * pu;
       du[k] = dyU;
       dv[k] = dyV;
-      const bu = outBgU[k]!;
-      const bv = outBgV[k]!;
-      const mf = this.fireInfluence[k]!;
-      if (cf > 0) {
+      if (coupled) {
+        const bu = outBgU[k]!;
+        const bv = outBgV[k]!;
+        const mf = mfA[k]!;
         const f = 1 - mf + cf * mf;
+        const g = cf * mf;
         outU[k] = bu + (dyU - bu) * f;
         outV[k] = bv + (dyV - bv) * f;
-        outIndU[k] = cf * mf * (dyU - bu);
-        outIndV[k] = cf * mf * (dyV - bv);
+        outIndU[k] = g * (dyU - bu);
+        outIndV[k] = g * (dyV - bv);
       } else {
         outU[k] = dyU;
         outV[k] = dyV;
@@ -869,25 +954,22 @@ export class Atmosphere extends AtmosBase {
     return { resolvedU: du, resolvedV: dv };
   }
 
-  /** Resolved θ′ anomaly at z_cell + 2 m relative to the cold-pool template, converted to K (°C difference). */
+  /**
+   * Resolved θ′ anomaly at z_cell + 2 m relative to the cold-pool template (θ′ − θ′_cp, trilinear; points below
+   * the lowest level centre take the lowest level), converted to a temperature difference with the local Π.
+   */
   protected override addAirAnomaly(outT: Float32Array): void {
     if (!this.initialised) return;
-    const plane = this.grid.plane;
     const th = this.th;
     const cp = this.cpT;
-    for (let k = 0; k < this.nf; k++) {
-      let s = 0;
-      for (let q = 4 * k; q < 4 * k + 4; q++) {
-        const wq = this.stW[q]!;
-        if (wq === 0) continue;
-        const o = this.st2K[q]! * plane + this.stC[q]!;
-        const t = this.st2T[q]!;
-        const a = th[o]! - cp[o]!;
-        const b = th[o + plane]! - cp[o + plane]!;
-        s += wq * (a + (b - a) * t);
-      }
-      outT[k] = outT[k]! + s * this.piFire[k]!;
-    }
+    const A = this.thA;
+    // Only the lowest levels, which the 2 m stencil can reach, are needed.
+    const top = this.st2Top;
+    for (let o = 0; o < top; o++) A[o] = th[o]! - cp[o]!;
+    const tmp = this.scratchA;
+    this.sampleFire1(A, tmp, this.st2O, this.st2W);
+    const pi = this.piFire;
+    for (let k = 0; k < this.nf; k++) outT[k] = outT[k]! + tmp[k]! * pi[k]!;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1013,7 +1095,10 @@ export class Atmosphere extends AtmosBase {
   }
 
   diagnostics(): AtmosDiagnostics {
-    return this.commonDiagnostics(this.maxW);
+    let up = 0;
+    const wc = this.wc;
+    if (this.initialised) for (let q = 0; q < wc.length; q++) if (wc[q]! > up) up = wc[q]!;
+    return this.commonDiagnostics(up);
   }
 
   /** Max |∇·u|·Δx/|u| over the domain (projection quality, §8.11). */
@@ -1085,8 +1170,15 @@ export class Atmosphere extends AtmosBase {
     this.fireCols = c.fireCols.slice();
     this.blendKey = '';
     this.maskKey = null;
-    collocate(this.grid, this.u, this.v, this.w, this.uc, this.vc, this.wc, null, null, null);
+    collocate(this.grid, this.u, this.v, this.w, this.uc, this.vc, this.wc, this.Ui, this.Vi, this.Wi);
   }
+}
+
+function removeMeanF64(a: Float64Array): void {
+  let s = 0;
+  for (let q = 0; q < a.length; q++) s += a[q]!;
+  const m = s / a.length;
+  for (let q = 0; q < a.length; q++) a[q] = a[q]! - m;
 }
 
 function mulInto(out: Float32Array, a: Float32Array, b: Float32Array): void {

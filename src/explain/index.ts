@@ -34,7 +34,7 @@ export {
   type ForecastAnalysis,
   type ForecastTerrain,
 } from './forecast';
-export { explainCell, factorShares, localFuelSummary, moistureReason, type ExplainOptions } from './explainCell';
+export { explainCell, factorShares, localFuelSummary, moistureReason, type ExplainOptions, type MoistureReasonParts } from './explainCell';
 export { toblerKmh, walkingSpeedKmh, refugeCheck, DmzComputer, type DmzRosFn, type DmzSpeeds, type DmzResult, type RefugeCheck } from './safety';
 export { StaticMaps, distanceTransform, leeOfDivide } from './statics';
 export { CycleContext, freshMemory, standaloneContext, type EngineMemory } from './context';

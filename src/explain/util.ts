@@ -248,32 +248,50 @@ export class CellHash {
     start[0] = 0;
     this.count = n;
   }
-  /** Nearest hashed cell to (x, y) within rMax (m), or −1. Sets `lastDist`. */
+  /**
+   * Nearest hashed cell to (x, y) within rMax (m), or −1. Sets `lastDist`. Buckets are visited in square rings
+   * around the query's bucket and the search stops once the next ring cannot hold anything closer.
+   */
   nearest(x: number, y: number, rMax: number): number {
     const g = this.grid;
     const cs = g.cellSize;
+    const cb = this.cellBucket;
     const fi = (x - g.x0) / cs;
     const fj = (y - g.y0) / cs;
     const rc = rMax / cs;
-    const b0 = Math.max(0, Math.floor((fi - rc) / this.cellBucket));
-    const b1 = Math.min(this.bnx - 1, Math.floor((fi + rc) / this.cellBucket));
-    const c0 = Math.max(0, Math.floor((fj - rc) / this.cellBucket));
-    const c1 = Math.min(this.bny - 1, Math.floor((fj + rc) / this.cellBucket));
+    const bi0 = Math.min(this.bnx - 1, Math.max(0, Math.floor(fi / cb)));
+    const bj0 = Math.min(this.bny - 1, Math.max(0, Math.floor(fj / cb)));
+    const b0 = Math.max(0, Math.floor((fi - rc) / cb));
+    const b1 = Math.min(this.bnx - 1, Math.floor((fi + rc) / cb));
+    const c0 = Math.max(0, Math.floor((fj - rc) / cb));
+    const c1 = Math.min(this.bny - 1, Math.floor((fj + rc) / cb));
+    const maxRing = Math.max(bi0 - b0, b1 - bi0, bj0 - c0, c1 - bj0, 0);
     let best = -1;
     let bd2 = rc * rc;
     const nx = g.nx;
-    for (let bj = c0; bj <= c1; bj++) {
-      for (let bi = b0; bi <= b1; bi++) {
-        const b = bj * this.bnx + bi;
-        for (let a = this.start[b]!, e = this.start[b + 1]!; a < e; a++) {
-          const k = this.items[a]!;
-          const j = (k / nx) | 0;
-          const di = k - j * nx - fi;
-          const dj = j - fj;
-          const d2 = di * di + dj * dj;
-          if (d2 <= bd2) {
-            bd2 = d2;
-            best = k;
+    for (let ring = 0; ring <= maxRing; ring++) {
+      // Every cell of ring r is more than (r − 1)·cb cells away (also for a query outside the grid, clamped to the
+      // edge bucket), so stop once that exceeds the best distance found.
+      if (best >= 0 && ring > 1) {
+        const gap = (ring - 1) * cb;
+        if (gap * gap > bd2) break;
+      }
+      for (let bj = bj0 - ring; bj <= bj0 + ring; bj++) {
+        if (bj < c0 || bj > c1) continue;
+        const edgeRow = bj === bj0 - ring || bj === bj0 + ring;
+        for (let bi = bi0 - ring; bi <= bi0 + ring; bi += edgeRow || ring === 0 ? 1 : 2 * ring) {
+          if (bi < b0 || bi > b1) continue;
+          const b = bj * this.bnx + bi;
+          for (let a = this.start[b]!, e = this.start[b + 1]!; a < e; a++) {
+            const k = this.items[a]!;
+            const j = (k / nx) | 0;
+            const di = k - j * nx - fi;
+            const dj = j - fj;
+            const d2 = di * di + dj * dj;
+            if (d2 <= bd2) {
+              bd2 = d2;
+              best = k;
+            }
           }
         }
       }

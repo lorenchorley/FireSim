@@ -198,7 +198,8 @@ describe('spot ignition: delays, cancellation, holdovers, provenance', () => {
     const r = rig();
     r.model.injectParticle({ x: 0, y: 0, z: 800, emberClass: 'twig', vt0: 5, tauB: 121, tauF: 200, weight: 400, sourceCell: 7 });
     r.info = { ...base, distToFront: 800 };
-    r.run(120, 1);
+    // lands after ≈ 110 s (5·(a − a²/242) = 300 m), ignites U(5, 30) s later
+    r.run(150, 1);
     expect(r.spots.length).toBe(1);
     const p = r.spots[0]!.prov;
     expect(p.emberClass).toBe('twig');
@@ -221,7 +222,7 @@ describe('spot ignition: delays, cancellation, holdovers, provenance', () => {
       ign += ov.ignitions[k]!;
     }
     // ΣW/m² in the landing cell decayed by e^{−t/600} since landing
-    expect(dens).toBeGreaterThan((400 / 900) * Math.exp(-120 / 600));
+    expect(dens).toBeGreaterThan((400 / 900) * Math.exp(-45 / 600));
     expect(dens).toBeLessThan(400 / 900);
     expect(ign).toBeGreaterThan(0);
     // overlays decay with τ = 10 min

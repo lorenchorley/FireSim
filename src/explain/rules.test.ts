@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { BurnState, FuelType, type Insight, type InsightKind, type SpotFire } from '../core/types';
 import { windToUV } from '../core/units';
 import { InsightEngine, type InsightEngineOptions } from './engine';
-import { INSIGHT_KINDS } from './registry';
-import { DOCTRINE } from './text';
-import { TestWorld, constantSeries, type WorldOptions } from './testing/simState';
+import { INSIGHT_KINDS, INSIGHT_RULES } from './registry';
+import { DOCTRINE, GENERAL_SUBS } from './text';
+import { TestWorld, type WorldOptions } from './testing/simState';
 
 const tan = (d: number): number => Math.tan((d * Math.PI) / 180);
+
+/** Kinds (and general sub-notes) that fired anywhere in this file, checked by the coverage test at the end. */
+const FIRED = new Set<string>();
 
 /** Run the engine for `cycles` detector cycles (60 s apart) starting at sim time t0, applying `each` first. */
 function run(w: TestWorld, cycles = 3, opts: InsightEngineOptions = {}, each?: (c: number) => void, t0 = 60): { all: Insight[]; eng: InsightEngine } {
@@ -21,6 +24,7 @@ function run(w: TestWorld, cycles = 3, opts: InsightEngineOptions = {}, each?: (
     each?.(c);
     all.push(...eng.update(w.view));
   }
+  for (const i of all) FIRED.add(i.kind === 'general' ? (i.key ?? 'general') : i.kind);
   return { all, eng };
 }
 const kinds = (xs: Insight[]): InsightKind[] => xs.map((i) => i.kind);
@@ -427,6 +431,28 @@ describe('weather and diurnal cards', () => {
     expect(kinds(r.all)).not.toContain('dead-man-zone');
   });
 
+  it('V12: the wind-change card comes ≥ 60 min before the change with the exposed flank length within 20 %', () => {
+    const r0 = 1000;
+    const w = new TestWorld({ windSpeed: 30 / 3.6, windDir: 315 });
+    w.igniteDisc(0, 0, r0);
+    const tc = w.startMs + 150 * 60e3; // 2.5 h ahead
+    for (const h of w.view.series.hours) {
+      if (h.time >= tc) {
+        h.windDir10 = 225;
+        h.windSpeed10 = 40 / 3.6;
+      }
+    }
+    const c = of(run(w, 2).all, 'wind-change')[0]!;
+    expect(c).toBeDefined();
+    expect(c.time).toBeLessThanOrEqual((tc - w.startMs) / 1000 - 3600);
+    // Outward normals within 45° of the new windTo (45°): a quarter of the circle, (π/2)·r.
+    const L = Number(c.factors.find((f) => f.label === 'Exposed flank')!.value.replace(/[^0-9.]/g, '')) * 1000;
+    expect(Math.abs(L - (Math.PI / 2) * r0) / ((Math.PI / 2) * r0)).toBeLessThan(0.2);
+    // Placed on that flank (north-east side).
+    expect(c.x).toBeGreaterThan(0);
+    expect(c.y).toBeGreaterThan(0);
+  });
+
   it('pyroconvection-risk: danger for C-Haines 11 & FFDI ≥ 50, watch for C-Haines 9 & FFDI 30; nothing with synthetic upper air', () => {
     const mk = (ch: number, t: number, rh: number, kmh: number, src: 'model' | 'synthetic'): Insight[] => {
       const w = neutral({ temperature: t, rh, windSpeed: kmh / 3.6, droughtFactor: 10 });
@@ -667,8 +693,27 @@ describe('general notes', () => {
 });
 
 describe('coverage', () => {
-  it('every InsightKind has a crafted test above (registry sanity)', () => {
+  it('every InsightKind (and every general sub-note) fired in a crafted situation above', () => {
     expect(INSIGHT_KINDS.length).toBe(34);
+    const missing = INSIGHT_KINDS.filter((k) => k !== 'general' && !FIRED.has(k));
+    expect(missing).toEqual([]);
+    const subs = GENERAL_SUBS.filter((sub) => !FIRED.has(`general:${sub}:domain`));
+    expect(subs).toEqual([]);
+  });
+  it('every rule is registered with its spec priority, persistence and cool-down', () => {
+    for (const k of INSIGHT_KINDS) {
+      const r = INSIGHT_RULES[k];
+      expect(r.kind).toBe(k);
+      expect(r.cooldown).toBeGreaterThan(0);
+      expect(r.persistence).toBeGreaterThanOrEqual(1);
+    }
+    const p1: InsightKind[] = ['vorticity-lateral-spread', 'ridge-speed-up', 'dead-man-zone', 'fire-induced-wind', 'rolling-debris'];
+    for (const k of INSIGHT_KINDS) expect(INSIGHT_RULES[k].priority).toBe(p1.includes(k) ? 'P1' : 'P0');
+    expect(INSIGHT_RULES['plume-dominated'].persistence).toBe(5);
+    expect(INSIGHT_RULES['fire-induced-wind'].persistence).toBe(5);
+    expect(INSIGHT_RULES['spot-fire'].cooldown).toBe(600);
+    expect(INSIGHT_RULES['upslope-run'].persistence).toBe(2);
+    expect(INSIGHT_RULES['upslope-run'].cooldown).toBe(900);
   });
   it('insights carry the doctrine line and a key', () => {
     const w = new TestWorld({ elevation: (_x, y) => 600 + tan(25) * y });
@@ -681,5 +726,3 @@ describe('coverage', () => {
   });
 });
 
-// Unused helper guard for noUnusedLocals in some editors.
-void constantSeries;

@@ -202,6 +202,15 @@ export class DmzComputer {
     };
   }
 
+  /** §7.4 support-function speed R(ψ) of node q along the unit step (ux, uy); 0 for non-fuel / unprepared nodes. */
+  private stepSpeed(q: number, ux: number, uy: number): number {
+    const a = this.aC[q]!;
+    if (!(a > 0)) return 0;
+    const cp = ux * this.eX[q]! + uy * this.eY[q]!;
+    const bF = this.bC[q]!;
+    return this.cC[q]! * cp + Math.sqrt(a * a * cp * cp + bF * bF * (1 - cp * cp));
+  }
+
   /**
    * Cells the fire could reach within `minutes` after a wind change to `toDir` at `postSpeed` (m/s), from the
    * current perimeter (spec §10.5). Writes `layer` and returns summary numbers.
@@ -272,15 +281,12 @@ export class DmzComputer {
           const len = Math.hypot(di, dj);
           const ux = di / len;
           const uy = dj / len;
-          // Convex offset-ellipse speed of §7.4 along the step (average of both nodes' ellipses).
-          let R = 0;
-          for (const q of [n, m]) {
-            const a = this.aC[q]!;
-            if (!(a > 0)) continue;
-            const cp = ux * this.eX[q]! + uy * this.eY[q]!;
-            const bF = this.bC[q]!;
-            R += 0.5 * (this.cC[q]! * cp + Math.sqrt(a * a * cp * cp + bF * bF * (1 - cp * cp)));
-          }
+          // Convex offset-ellipse speed of §7.4 along the step (mean of both nodes' ellipses; a non-fuel seed
+          // contributes the neighbour's speed only). Used as the ray speed: ≥ the exact wavelet ray speed off-axis,
+          // so the zone errs on the large side.
+          const Rn = this.stepSpeed(n, ux, uy);
+          const Rm = this.stepSpeed(m, ux, uy);
+          const R = Rn > 0 ? 0.5 * (Rn + Rm) : Rm;
           if (!(R > 1e-6)) continue;
           const tm = tn + (len * h) / R;
           if (tm < this.time[m]! && tm <= limit) {

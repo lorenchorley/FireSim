@@ -160,13 +160,13 @@ type Render = (c: Candidate) => CardText;
 const upslopeRun: Render = (c) => {
   const th = num(c, 'theta');
   const sf = slopeFactorText(th);
-  const lead = th > EXPLAIN_PARAMS.notes.steepDeg ? 'at least about' : 'about';
+  const lead = th > EXPLAIN_PARAMS.notes.steepDeg ? 'at least' : 'about';
   return {
     title: 'Fire runs uphill',
     body:
       `On this ${int(th)}° slope the flames lean into the fuel above and pre-heat it, so the fire is spreading ${lead} ${times(sf)} ` +
       `faster than on flat ground${steep(th)}. Fire roughly doubles its speed for every 10° of slope. ` +
-      'Watch for flames leaning uphill and smoke sweeping up the slope.',
+      `Watch for flames leaning uphill and smoke sweeping up the slope.${subgrid(num(c, 'subgrid', 0))}`,
     safety: safetyLine('Never position yourself upslope of a fire; escape routes should not go uphill.'),
     factors: [f('Slope along the spread', `about ${int(th)}°`, `${times(sf)} spread`), f('Spread rate', rate(num(c, 'ros')))],
     source: 'McArthur 1967; Noble 1980; Cruz 2021',
@@ -196,13 +196,14 @@ const downslopeBacking: Render = (c) => {
   const base =
     `The fire is creeping downhill at ${rate(num(c, 'ros'))}, about ${int(pct)} % of its flat-ground speed. ` +
     'Downhill spread slows but never stops (kataburn).';
+  const note = subgrid(num(c, 'subgrid', 0));
   if (v === 'S43') {
     return {
       ...common,
       title: 'Backing fire reaching a narrow gully',
       body:
         `${base} When it reaches the gully floor it will start running up the other side, which is about ` +
-        `${int(num(c, 'wall'))}° steep and already heated across the gap.`,
+        `${int(num(c, 'wall'))}° steep and already heated across the gap.${note}`,
       safety,
       factors: [f('Slope along the spread', `about ${int(th)}°`, `about ${int(pct)} % of flat`), f('Opposite wall', `about ${int(num(c, 'wall'))}°`)],
     };
@@ -210,7 +211,7 @@ const downslopeBacking: Render = (c) => {
   return {
     ...common,
     title: 'Backing downhill',
-    body: `${base} Watch for burning bark and logs rolling down and starting fires below.`,
+    body: `${base} Watch for burning bark and logs rolling down and starting fires below.${note}`,
     safety,
     factors: [f('Slope along the spread', `about ${int(th)}°`, `about ${int(pct)} % of flat`), f('Spread rate', rate(num(c, 'ros')))],
   };
@@ -223,7 +224,8 @@ const gullyChimney: Render = (c) => {
     title: 'Chimney / gully run',
     body:
       "This steep gully works like a chimney: the fire's own heat pulls air up it and the walls heat each other, so fire can " +
-      `race up it in minutes. It climbs at about ${int(a)}°${steep(a)} and ${why}. Many firefighter deaths happened in or above gullies like this.`,
+      `race up it in minutes. It climbs at about ${int(a)}°${steep(a)} and ${why}. Many firefighter deaths happened in or above gullies like this.` +
+      subgrid(num(c, 'subgrid', 0)),
     safety: safetyLine('Do not work in, above or at the head of a gully with fire below.'),
     factors: [f('Gully slope', `about ${int(a)}°`), f('Fire from the gully base', `about ${int(num(c, 'baseDist'))} m`), f('Attachment', short(num(c, 'attach')))],
     source: 'Viegas & Pita 2004; IRPG 2025',
@@ -531,6 +533,7 @@ const thermalBelt: Render = (c) => {
   return {
     title: 'Thermal belt',
     body:
+      'At night cold air sinks into the valley, but the middle of the slope can stay warmer and drier than both the valley and the ridge top. ' +
       'Cold air has pooled in the valley; this band part-way up the slope stays warmer and drier all night ' +
       `(${int(num(c, 'moisture'))} % litter vs ${int(num(c, 'floorMoisture'))} % on the valley floor), so fire keeps burning here.`,
     safety: safetyLine("Night doesn't always mean quiet; expect activity on mid-slopes."),
@@ -589,7 +592,7 @@ const aspectDryFuel: Render = (c) => {
       body:
         'Right now wind, slope and sun are all pushing the fire the same way. When all three line up, fires make their biggest runs. ' +
         'When they oppose each other, the fire slows.',
-      safety: safetyLine('Look at the map: where will wind, slope and sun line up next? That is where the fire will run.'),
+      safety: safetyLine('Watch where wind, slope and sun will line up next: that is where the fire will make its next run.'),
       factors: [f('Wind', `about ${kmh(num(c, 'wind'))} km/h with the spread`), f('Slope', `about ${int(num(c, 'slope'))}° uphill`), f('Sun', 'on the slope ahead')],
       source: 'Campbell 1995; IRPG 2025',
       confidence: 'rule-of-thumb',
@@ -600,7 +603,7 @@ const aspectDryFuel: Render = (c) => {
     title: 'Sunny-side slope',
     body:
       `This ${facing(num(c, 'aspect'))} slope faces the sun; its litter is about ${short(num(c, 'dM'))} points drier than the shady side, ` +
-      'so the fire speeds up crossing onto it.',
+      'so the fire speeds up crossing onto it. In Australia north- and west-facing slopes get the most sun, and the bush there is often more open.',
     safety: safetyLine('Expect the fire to pick up on sunny slopes in the afternoon.'),
     factors: [f('Litter moisture here', `about ${int(num(c, 'moisture'))} %`), f('Shady side', `about ${int(num(c, 'opposite'))} %`)],
     source: 'Slijepcevic 2015; Nyman 2018',
@@ -626,7 +629,9 @@ const moistGully: Render = (c) => {
   }
   return {
     title: 'Wet gully slowing the fire',
-    body: `This shaded gully holds moister fuel and wetter forest (${int(num(c, 'moisture'))} %), so the fire slows here.`,
+    body:
+      `This shaded gully holds moister fuel and wetter forest (${int(num(c, 'moisture'))} %), so the fire slows here. ` +
+      'Little sun reaches the gully floor and the air stays damp, so its litter dries slowly.',
     safety,
     factors: [f('Gully litter moisture', `about ${int(num(c, 'moisture'))} %`), f('At the fire edge', `about ${int(num(c, 'frontMoisture'))} %`)],
     source: 'FBI-TG eq 3.2; AFDRS-RP §10.1',
@@ -789,7 +794,9 @@ const GENERAL: Record<string, Render> = {
   }),
   'embers-exit': (c) => ({
     title: 'Embers beyond the map',
-    body: `About ${int(100 * num(c, 'share'))} % of burning embers are carried past the edge of the model area, up to about ${short(num(c, 'dKm'))} km.`,
+    body:
+      `About ${int(100 * num(c, 'share'))} % of burning embers are carried past the edge of the model area, up to about ${short(num(c, 'dKm'))} km. ` +
+      'The model only follows embers inside its map.',
     safety: safetyLine('Spot fires can start outside this map.'),
     factors: [f('Embers leaving the map', `about ${int(100 * num(c, 'share'))} %`)],
     source: 'FireSim ember model',
@@ -798,7 +805,9 @@ const GENERAL: Record<string, Render> = {
   }),
   'wind-driven': (c) => ({
     title: 'Wind-driven fire',
-    body: `The wind dominates this fire: it runs with the wind (about ${kmh(num(c, 'u10'))} km/h at the head) and its plume leans over.`,
+    body:
+      `The wind dominates this fire: it runs with the wind (about ${kmh(num(c, 'u10'))} km/h at the head) and its plume leans over. ` +
+      'Most of its spread comes from the wind pushing the flames onto unburnt fuel.',
     safety: safetyLine('Watch the wind direction; the head follows it.'),
     factors: [f('Wind at the head', `about ${kmh(num(c, 'u10'))} km/h`), f('Convective number', `about ${short(num(c, 'nc'))}`)],
     source: 'Byram 1959; Nelson 1993',
@@ -807,7 +816,9 @@ const GENERAL: Record<string, Render> = {
   }),
   'light-wind': (c) => ({
     title: 'Light winds',
-    body: `Winds at the head (about ${kmh(num(c, 'u10'))} km/h) are below the range the forest model was tested on, so spread here is less certain.`,
+    body:
+      `Winds at the head (about ${kmh(num(c, 'u10'))} km/h) are below the range the forest model was tested on, so spread here is less certain. ` +
+      "In light winds the slope and the fire's own heat decide where it goes.",
     safety: safetyLine('Small wind shifts can change the head direction.'),
     factors: [f('Wind at the head', `about ${kmh(num(c, 'u10'))} km/h`)],
     source: 'Cruz 2021 (Vesta Mk2 data range)',
@@ -818,7 +829,7 @@ const GENERAL: Record<string, Render> = {
     title: "What the model can't see",
     body:
       `This gully (about ${int(num(c, 'width'))} m across) is narrower than the wind model's grid (about ${int(num(c, 'gridM'))} m), ` +
-      'so its channelled winds are only estimated.',
+      'so its channelled winds are only estimated. Wind squeezed into a narrow gully is often faster and gustier than the model shows.',
     safety: safetyLine('Expect local winds stronger than shown.'),
     factors: [f('Gully width', `about ${int(num(c, 'width'))} m`), f('Wind grid', `about ${int(num(c, 'gridM'))} m`)],
     source: 'FireSim atmosphere resolution',

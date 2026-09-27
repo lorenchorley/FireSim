@@ -15,9 +15,26 @@ import { compassWord, facing, int, rate, short, STEEP_NOTE, times } from './text
 
 const P = EXPLAIN_PARAMS;
 
+/**
+ * The parts of fuel/moisture's per-cell breakdown (`MoistureModel.breakdown(k)`, spec §5) the "reason" uses, in
+ * percentage points of litter moisture. Injected by the sim; without it the reason is inferred from the view.
+ */
+export interface MoistureReasonParts {
+  /** Physical anomaly A (pp): terrain, canopy, sun, wind via the fuel temperature. */
+  anomaly: number;
+  /** Rain memory (pp) and the effective hours since that rain. */
+  rainMemory: number;
+  hoursSinceRainEff: number;
+  /** Dew (pp) and user / class offset (pp). */
+  dew: number;
+  offset: number;
+}
+
 export interface ExplainOptions {
   /** fuel/ fuelSummary(fuel, k) (spec §4.7); a local summary is used when absent. */
   fuelSummary?: (fuel: FuelMap, k: number) => string;
+  /** fuel/moisture breakdown of cell k (optional, see MoistureReasonParts). */
+  moistureBreakdown?: (k: number) => MoistureReasonParts | null;
   /** unix ms of the scenario start (for the clock; see context.ts). */
   startMs?: number;
 }
@@ -43,27 +60,53 @@ export function localFuelSummary(fuel: FuelMap, k: number): string {
   return parts.join(' · ');
 }
 
-/** The largest identifiable reason for the cell's moisture differing from the AFDRS value (spec §10.4). */
-export function moistureReason(s: SimStateView, k: number, nowMs: number): string {
+/** Wording of the anomaly A: sunlit / shaded aspect, canopy shade, or local terrain and sun. */
+function anomalyWords(s: SimStateView, k: number, a: number): string {
+  const slope = s.terrain.slopeDeg[k]!;
+  if (slope >= 10 && s.sunElevation > 0) return a < 0 ? `sunlit ${facing(s.terrain.aspectDeg[k]!)} slope` : `shaded ${facing(s.terrain.aspectDeg[k]!)} slope`;
+  if (s.fuel.canopyCover[k]! >= 0.5 && a > 0) return 'shaded by the canopy';
+  return a < 0 ? 'drier ground and air here' : 'moister ground and air here';
+}
+
+/**
+ * The largest identifiable reason for the cell's moisture differing from the AFDRS value (spec §10.4): sunlit /
+ * shaded aspect (the radiation part of A), canopy shade, cold pool / thermal belt (T − T_free), rain {h} h ago,
+ * dew, or a user edit. With the moisture module's breakdown the largest term (pp) wins; otherwise the reason is
+ * inferred from the view in that order of precedence.
+ */
+export function moistureReason(s: SimStateView, k: number, nowMs: number, parts?: MoistureReasonParts | null): string {
+  const night = s.sunElevation < 0;
+  // Cold pool / thermal belt: the cell's air vs the free-atmosphere lapse from the grid point (§5.2).
+  let dT = 0;
+  if (night && s.airT.length === s.moisture.length) {
+    const z = s.terrain.elevation[k]!;
+    const zs = s.series.sourceElevation ?? z;
+    dT = s.airT[k]! - (s.weather.temperature - 0.0065 * (z - zs));
+  }
+  const coldWords = dT <= -1.5 ? 'cold air pooled in the valley' : dT >= 1.5 ? 'thermal belt, warmer than the valley floor' : '';
+  if (parts) {
+    // [H] ≈ 0.4 pp of litter moisture per K of cold-pool / belt temperature difference.
+    const cand: [number, string][] = [
+      [Math.abs(parts.offset), `user edit (${parts.offset > 0 ? '+' : ''}${short(parts.offset)} points)`],
+      [parts.rainMemory, `rain ${int(parts.hoursSinceRainEff)} h ago`],
+      [parts.dew, 'dew'],
+      [coldWords ? 0.4 * Math.abs(dT) : 0, coldWords],
+      [Math.abs(parts.anomaly), anomalyWords(s, k, parts.anomaly)],
+    ];
+    let best: [number, string] = [0.5, ''];
+    for (const c of cand) if (c[0] > best[0] && c[1]) best = c;
+    return best[1] || "today's weather";
+  }
   const off = s.fuel.moistureOffset?.[k] ?? 0;
   if (Math.abs(off) >= 0.5) return `user edit (${off > 0 ? '+' : ''}${short(off)} points)`;
   // Rain in the last 48 h.
   let lastRain = NaN;
   for (const h of s.series.hours) if (h.time <= nowMs && h.time > nowMs - 48 * 3.6e6 && (h.precipitation ?? 0) >= 0.2) lastRain = h.time;
   if (Number.isFinite(lastRain)) return `rain ${int((nowMs - lastRain) / 3.6e6)} h ago`;
-  const night = s.sunElevation < 0;
-  if (night && s.airT.length === s.moisture.length) {
-    const z = s.terrain.elevation[k]!;
-    const zs = s.series.sourceElevation ?? z;
-    const tFree = s.weather.temperature - 0.0065 * (z - zs);
-    const d = s.airT[k]! - tFree;
-    if (d <= -1.5) return 'cold air pooled in the valley';
-    if (d >= 1.5) return 'thermal belt, warmer than the valley floor';
-    if ((s.airRH[k] ?? 0) >= 95) return 'dew';
-  }
+  if (coldWords) return coldWords;
+  if (night && (s.airRH[k] ?? 0) >= 95) return 'dew';
   const a = s.moistureAnomaly[k] ?? 0;
-  const slope = s.terrain.slopeDeg[k]!;
-  if (!night && slope >= 10 && Math.abs(a) >= 0.5) return a < 0 ? `sunlit ${facing(s.terrain.aspectDeg[k]!)} slope` : `shaded ${facing(s.terrain.aspectDeg[k]!)} slope`;
+  if (!night && s.terrain.slopeDeg[k]! >= 10 && Math.abs(a) >= 0.5) return anomalyWords(s, k, a);
   if (s.fuel.canopyCover[k]! >= 0.5 && a > 0) return 'shaded by the canopy';
   return "today's weather";
 }
@@ -87,8 +130,9 @@ const joinAnd = (xs: string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${x
 export function explainCell(x: number, y: number, s: SimStateView, opts: ExplainOptions = {}): CellExplanation {
   const terrain = s.terrain;
   const g = terrain.grid;
-  const i = Math.min(g.nx - 1, Math.max(0, Math.round((x - g.x0) / g.cellSize)));
-  const j = Math.min(g.ny - 1, Math.max(0, Math.round((y - g.y0) / g.cellSize)));
+  // Clamp into the grid (a non-finite coordinate maps to the grid origin cell rather than NaN indices).
+  const i = Math.min(g.nx - 1, Math.max(0, Math.round((x - g.x0) / g.cellSize) || 0));
+  const j = Math.min(g.ny - 1, Math.max(0, Math.round((y - g.y0) / g.cellSize) || 0));
   const k = j * g.nx + i;
   const startMs = opts.startMs;
   const t = s.time > 1e11 ? (s.time - (startMs ?? s.series.hours[0]?.time ?? s.time)) / 1000 : s.time;
@@ -131,7 +175,8 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
   const th = Number.isFinite(dir) ? Math.atan(terrain.dzdx[k]! * Math.sin((dir * Math.PI) / 180) + terrain.dzdy[k]! * Math.cos((dir * Math.PI) / 180)) * (180 / Math.PI) : 0;
   const M = s.moisture[k]!;
   const fam = familyAt(s.fuel, k);
-  // Validity (spec §6.12) for burnt cells, from the same criteria the fire model uses.
+  // Validity (spec §6.12) for burnt cells, from the §6.12 criteria visible here (θ_head, U10, M, SF cap, the forest
+  // 15 km/h cap, attachment, any mountain multiplier > 1.3); unburnt cells use the fire module's own flag.
   const reasons: string[] = [];
   if (th > 20) reasons.push('slope over 20°');
   if (th < -30) reasons.push('downhill slope over 30°');
@@ -139,6 +184,9 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
   if (U * 3.6 > 70) reasons.push('very strong wind');
   if (fam === 'vesta2' && (M < 4 || M > 20)) reasons.push('moisture outside 4–20 %');
   if ((s.aux.attach[k] ?? 0) > 0.3) reasons.push('eruptive regime');
+  if (factors.slope >= 16) reasons.push('slope factor at its cap');
+  if ((fam === 'vesta2' || fam === 'pine') && ros >= 15 / 3.6 - 1e-6) reasons.push('at the 15 km/h forest cap');
+  if (factors.terrain > 1.3) reasons.push('mountain effects over ×1.3');
   if (burnt) validated = reasons.length === 0;
 
   const fuelSummary = (opts.fuelSummary ?? localFuelSummary)(s.fuel, k);
@@ -156,7 +204,8 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
     let summary = why.length ? `${lead} because: ${joinAnd(why)}.` : `${lead}.`;
     if (th > P.notes.steepDeg) summary += ` ${STEEP_NOTE}`;
     narrative.push(summary);
-    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, fuelSummary, nowMs }));
+    const parts = opts.moistureBreakdown ? opts.moistureBreakdown(k) : null;
+    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, fuelSummary, nowMs, parts }));
   }
   // Validity + wind decomposition.
   const Ua = s.weather.windSpeed10 * 3.6;
@@ -253,7 +302,7 @@ function phrase(key: FactorKey, f: number, c: PhraseCtx): string {
   }
 }
 
-function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; nowMs: number }): string {
+function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; nowMs: number; parts: MoistureReasonParts | null }): string {
   const s = c.s;
   const k = c.k;
   switch (key) {
@@ -264,7 +313,7 @@ function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; n
       return `Wind: ${int(c.U * 3.6)} km/h from the ${compassWord(c.windFrom) || 'variable directions'} → ${times(f)}${drawn}.`;
     }
     case 'moisture':
-      return `Litter moisture ${int(c.M)} % (${int(s.moistureAfdrs[k]!)} % by the AFDRS equations; ${moistureReason(s, k, c.nowMs)}) → ${times(f)}.`;
+      return `Litter moisture ${int(c.M)} % (${int(s.moistureAfdrs[k]!)} % by the AFDRS equations; ${moistureReason(s, k, c.nowMs, c.parts)}) → ${times(f)}.`;
     case 'fuel': {
       const t = FUEL_TYPES[s.fuel.type[k] as keyof typeof FUEL_TYPES]?.name ?? 'fuel';
       return `${c.fuelSummary} → ${times(f)} relative to typical ${t.toLowerCase()}.`;

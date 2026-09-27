@@ -27,12 +27,22 @@ export class FastRng {
   range(lo: number, hi: number): number {
     return lo + (hi - lo) * this.next();
   }
-  /** Accurate standard normal (Box–Muller; used at emission, not in the transport loop). */
+  /** Cached second Box–Muller variate (NaN = none); the model clears it at every public call. */
+  spare = NaN;
+  /** Accurate standard normal (Box–Muller pairs; used at emission, not in the transport loop). */
   normal(): number {
+    const sp = this.spare;
+    if (sp === sp) {
+      this.spare = NaN;
+      return sp;
+    }
     let u = 0;
     while (u === 0) u = this.next();
     const v = this.next();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    const r = Math.sqrt(-2 * Math.log(u));
+    const a = 2 * Math.PI * v;
+    this.spare = r * Math.sin(a);
+    return r * Math.cos(a);
   }
   /** Poisson count (Knuth below 30, normal approximation above) — same algorithm as `Rng.poisson`. */
   poisson(mean: number): number {

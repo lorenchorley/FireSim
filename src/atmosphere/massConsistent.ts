@@ -178,15 +178,40 @@ export class MassConsistentSolver {
     const v = new Float32Array(g.nV);
     const w = new Float32Array(g.nW);
     this.firstGuess(p, edits, u, v, w);
+    const ratio = this.configure(p);
+    this.solver.divergence(u, v, w, this.rhs);
+    const phi = warm ? Float64Array.from(warm) : new Float64Array(g.n);
+    const result = this.solver.solve(phi, this.rhs, { tol: P.mcTol, maxIter: P.mcMaxIter, allowPcg: true });
+    return this.finish(p, u, v, w, phi, ratio, result);
+  }
+
+  /**
+   * Rebuild a stamp's background from its stored potential φ (checkpoint restore): u = u₀ + R∇φ is a pure function
+   * of the profile, the edits and φ, so the result is bitwise identical to the original solve.
+   */
+  fromPotential(p: BackgroundProfile, edits: ResolvedWindEdit[], phi: Float64Array): BgWind {
+    const g = this.g;
+    const u = new Float32Array(g.nU);
+    const v = new Float32Array(g.nV);
+    const w = new Float32Array(g.nW);
+    this.firstGuess(p, edits, u, v, w);
+    const ratio = this.configure(p);
+    return this.finish(p, u, v, w, Float64Array.from(phi), ratio, { iterations: 0, relResidual: NaN, rate: 0, method: 'none' });
+  }
+
+  /** Stability weighting R_h = 1/(2α_h²), R_v = 1/(2α_v²), α_v = α_h·clamp(1/Fr_h, 1, 10) (§8.3); returns α_v/α_h. */
+  private configure(p: BackgroundProfile): number {
+    const aH = ATMOS_PARAMS.alphaH;
     const ratio = alphaVRatio(p);
-    const aH = P.alphaH;
     const aV = aH * ratio;
     const Rh = 1 / (2 * aH * aH);
     const Rv = 1 / (2 * aV * aV);
     if (this.solver.Rh !== Rh || this.solver.Rv !== Rv) this.solver.reconfigure(Rh, Rv, this.solver.masks);
-    this.solver.divergence(u, v, w, this.rhs);
-    const phi = warm ? Float64Array.from(warm) : new Float64Array(g.n);
-    const result = this.solver.solve(phi, this.rhs, { tol: P.mcTol, maxIter: P.mcMaxIter, allowPcg: true });
+    return ratio;
+  }
+
+  private finish(p: BackgroundProfile, u: Float32Array, v: Float32Array, w: Float32Array, phi: Float64Array, ratio: number, result: SolveResult): BgWind {
+    const g = this.g;
     this.solver.correct(phi, u, v, w);
     setGroundW(g, u, v, w);
     const uc = new Float32Array(g.n);

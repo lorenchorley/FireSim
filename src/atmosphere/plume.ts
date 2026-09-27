@@ -2,7 +2,7 @@
  * Plume and stability diagnostics (spec §8.10): C-Haines [V Mills & McCaw 2010], Briggs plume rise [K], the 1-D
  * bent-over MTT plume column (P1) and Byram's convective number N_c.
  */
-import { CP, G, esat, exner } from '../core/physics';
+import { CP, G, LV, RD, esat, exner } from '../core/physics';
 import { clamp } from '../core/units';
 import { ATMOS_PARAMS } from './params';
 import { mixingRatioAt, pressureAt, profileWind, thetaRaw, type BackgroundProfile } from './profile';
@@ -43,6 +43,8 @@ export interface PlumeResult {
   rise: number;
   /** Lifting condensation level of the plume parcel (m ASL), NaN when not reached. */
   lclASL: number;
+  /** Parcel potential temperature θ_env + θ′_p at the LCL (K), NaN when not reached. */
+  thetaLcl: number;
   /** Maximum updraft (m/s) along the column. */
   maxW: number;
   /** Source parameters. */
@@ -60,7 +62,7 @@ export interface PlumeResult {
  */
 export function plumeColumn(p: BackgroundProfile, powerW: number, burningArea: number, zSource: number, rhoSrc: number, tSrcK: number): PlumeResult {
   const P = ATMOS_PARAMS;
-  const out: PlumeResult = { topASL: zSource, rise: 0, lclASL: NaN, maxW: 0, F0: 0, b0: 0, w0: 0 };
+  const out: PlumeResult = { topASL: zSource, rise: 0, lclASL: NaN, thetaLcl: NaN, maxW: 0, F0: 0, b0: 0, w0: 0 };
   if (!(powerW > 0)) return out;
   const F0 = buoyancyFlux(P.chiC * powerW, rhoSrc, tSrcK);
   const b0 = Math.max(P.plumeB0Min, Math.sqrt(Math.max(0, burningArea) / Math.PI));
@@ -150,7 +152,10 @@ export function plumeColumn(p: BackgroundProfile, powerW: number, burningArea: n
       const tpC = thP * exner(pz) - 273.15;
       const es = esat(tpC);
       const qsat = (0.622 * es) / Math.max(1, pz - es);
-      if (s[5]! / Q >= qsat) out.lclASL = zn;
+      if (s[5]! / Q >= qsat) {
+        out.lclASL = zn;
+        out.thetaLcl = thP;
+      }
     }
     if (w < P.plumeWStop) {
       z += dz;
@@ -160,4 +165,45 @@ export function plumeColumn(p: BackgroundProfile, powerW: number, burningArea: n
   out.topASL = Math.min(z, zSource + P.plumeCap);
   out.rise = out.topASL - zSource;
   return out;
+}
+
+/**
+ * Pyrocumulonimbus firepower threshold (§8.10, P2) [form verified (Tory & Kepert), constant UNVERIFIED]:
+ * PFT = 0.3·z_fc²·U·Δθ_fc (GW), z_fc (km AGL) = free-convection height of the 1-D plume parcel (moist adiabat above
+ * its LCL: first height where the saturated parcel is warmer than the environment), U = mean wind 0–z_fc (m/s),
+ * Δθ_fc = θ_env(z_fc) − θ_env(2 m) (K). Null when the parcel does not reach its LCL or free convection below 16 km.
+ */
+export function pyroFirepowerThreshold(p: BackgroundProfile, pl: PlumeResult, zSource: number): { pft: number; zfcAGL: number } | null {
+  const P = ATMOS_PARAMS;
+  if (!Number.isFinite(pl.lclASL) || !Number.isFinite(pl.thetaLcl)) return null;
+  const dz = P.plumeDz;
+  let z = pl.lclASL;
+  let T = pl.thetaLcl * exner(pressureAt(p, z)); // K
+  let zfc = NaN;
+  for (; z < zSource + P.plumeCap; z += dz) {
+    const pz = pressureAt(p, z);
+    const th = T / exner(pz);
+    if (th >= thetaRaw(p, z)) {
+      zfc = z;
+      break;
+    }
+    // Saturated adiabatic lapse rate Γ_m = g(1 + L q_s/(R_d T))/(c_p + L² q_s ε/(R_d T²)) [K].
+    const es = esat(T - 273.15);
+    const qs = (0.622 * es) / Math.max(1, pz - es);
+    const gm = (G * (1 + (LV * qs) / (RD * T))) / (CP + (LV * LV * qs * 0.622) / (RD * T * T));
+    T -= gm * dz;
+  }
+  if (!Number.isFinite(zfc)) return null;
+  const zfcAGL = zfc - zSource;
+  const o = new Float64Array(2);
+  let su = 0;
+  let n = 0;
+  for (let h = 10; h <= zfcAGL; h += 50) {
+    profileWind(p, Math.max(10, zSource + h - p.zgp), o);
+    su += Math.hypot(o[0]!, o[1]!);
+    n++;
+  }
+  const U = n ? su / n : 0;
+  const dTh = thetaRaw(p, zfc) - thetaRaw(p, zSource + 2);
+  return { pft: P.pftCoef * (zfcAGL / 1000) ** 2 * U * dTh, zfcAGL };
 }

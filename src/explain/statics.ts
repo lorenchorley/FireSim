@@ -123,6 +123,12 @@ export class StaticMaps {
   breakCells: Int32Array;
   /** Slope cells (≥ 10°, within 500 m of a ridge, subsampled) for the mountain-wave lee/windward medians. */
   readonly ridgeSlopeCells: Int32Array;
+  /** Upslope azimuth (aspect + 180°, deg) per cell, NaN on flat cells. */
+  readonly upslopeAz: Float32Array;
+  /** Aspect octant (0 = N … 7 = NW) of cells with slope ≥ 10°, 255 elsewhere (aspect-dry-fuel). */
+  readonly aspectOctant: Uint8Array;
+  /** Up to 4 lowest saddle cells per tile (saddle-channelling representatives). */
+  readonly saddleReps: Int32Array;
   /** Lee of the Great Dividing Range (foehn note). */
   readonly leeOfDivide: boolean;
   /** Domain relief (m). */
@@ -132,6 +138,9 @@ export class StaticMaps {
   readonly gullyWidth: Float32Array;
   /** Cached crest cell reached by climbing from a ridge cell (−2 = not computed). */
   private readonly crestOf: Int32Array;
+  /** Crest-normal cache: the 2° windTo bin it was computed for and the value. */
+  private readonly crestNormalTo: Float32Array;
+  private readonly crestNormalV: Float32Array;
 
   constructor(
     readonly terrain: Terrain,
@@ -164,6 +173,30 @@ export class StaticMaps {
     }
     this.ridgeCells = Int32Array.from(ridge);
     this.saddleCells = Int32Array.from(saddle);
+    {
+      const byTile = new Map<number, number[]>();
+      for (const k of saddle) {
+        const t = tiles.ofCell(k);
+        let l = byTile.get(t);
+        if (!l) byTile.set(t, (l = []));
+        l.push(k);
+      }
+      const reps: number[] = [];
+      for (const t of [...byTile.keys()].sort((a, b) => a - b)) {
+        const l = byTile.get(t)!.sort((a, b) => z[a]! - z[b]! || a - b);
+        for (let a = 0; a < Math.min(4, l.length); a++) reps.push(l[a]!);
+      }
+      this.saddleReps = Int32Array.from(reps);
+    }
+    this.upslopeAz = new Float32Array(N);
+    this.aspectOctant = new Uint8Array(N).fill(255);
+    for (let k = 0; k < N; k++) {
+      const a = terrain.aspectDeg[k]!;
+      this.upslopeAz[k] = Number.isFinite(a) ? (a + 180) % 360 : NaN;
+      if (Number.isFinite(a) && terrain.slopeDeg[k]! >= P.aspectDry.minSlopeDeg) this.aspectOctant[k] = Math.round((((a % 360) + 360) % 360) / 45) % 8;
+    }
+    this.crestNormalTo = new Float32Array(N).fill(NaN);
+    this.crestNormalV = new Float32Array(N).fill(NaN);
     this.narrowValleyCells = Int32Array.from(narrow);
     this.ridgeReps = Int32Array.from(Array.from(this.ridgeRepOfTile).filter((k) => k >= 0));
 
@@ -369,10 +402,19 @@ export class StaticMaps {
    * non-ridge cells within 90 m of r on its windTo side. NaN when none.
    */
   crestNormal(r: number, windTo: number): number {
+    if (!(windTo === windTo)) return NaN;
+    // Evaluated at the centre of the 2° windTo bin, so the cached value depends only on the bin (rewind
+    // determinism, spec §12.5), never on which direction happened to be asked first.
+    const bin = Math.round((((windTo % 360) + 360) % 360) / 2) % 180;
+    if (this.crestNormalTo[r] === bin) return this.crestNormalV[r]!;
+    const to = bin * 2;
     // Spec: non-ridge cells only; where the ridge mask is wider than 90 m (relPos ≥ 0.9 bands on broad crests)
     // fall back to every sloping cell on the windTo side.
-    const a = this.meanAspect(r, windTo, true);
-    return a === a ? a : this.meanAspect(r, windTo, false);
+    let a = this.meanAspect(r, to, true);
+    if (!(a === a)) a = this.meanAspect(r, to, false);
+    this.crestNormalTo[r] = bin;
+    this.crestNormalV[r] = a;
+    return a;
   }
 
   private meanAspect(r: number, windTo: number, nonRidgeOnly: boolean): number {
