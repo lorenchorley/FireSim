@@ -51,6 +51,10 @@ export interface Terrain {
   maxElevation: number;
   /** Human-readable provenance, e.g. "AWS Terrain Tiles (SRTM 1″)". */
   source: string;
+  /** 90th-percentile slope (deg) of the 10 m sub-cells inside each cell (captures cliffs the cell slope smooths). */
+  slopeP90Deg?: Float32Array;
+  /** Fraction (0–1) of 10 m sub-cells steeper than 60° (cliff). */
+  cliffFraction?: Float32Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +118,14 @@ export interface WeatherHour {
   cape?: number;
   /** Surface pressure (hPa). */
   surfacePressure?: number;
+  /** Horizontal beam radiation, mean of the preceding hour (W/m², Open-Meteo direct_radiation). */
+  directRadiation?: number;
+  /** Horizontal diffuse radiation, mean of the preceding hour (W/m²). */
+  diffuseRadiation?: number;
+  /** Clearness k_t = GHI_hour / clear-sky GHI at the hour mid-point, stamped at time − 30 min by the parser (spec §11.2). */
+  clearness?: number;
+  /** Vapour pressure deficit (kPa), cross-check only. */
+  vpd?: number;
 }
 
 export interface DailyWeather {
@@ -144,6 +156,15 @@ export interface WeatherSeries {
   /** Pre-computed or user-entered drought indices. */
   kbdi?: number;
   droughtFactor?: number;
+  /** Climatological mean annual rainfall (mm) used by KBDI (spec §5.7). */
+  annualRainfall?: number;
+  /** Daily rain (mm) for the last 20 days, index 19 = yesterday, for the drought factor (spec §5.8). */
+  rainLast20?: number[];
+  /** Where pressure levels came from: a model, a designed preset air mass, or synthesis (spec §8.2). Absent = none. */
+  upperAirSource?: 'model' | 'preset' | 'synthetic';
+  /** Night cold-pool parameters (presets, user edits); default { dThetaMax: 5, hInv: 150 } (spec §5.2a). */
+  nightTemplate?: { dThetaMax: number; hInv: number };
+  warnings?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +189,142 @@ export enum FuelType {
 }
 
 export const FUEL_TYPE_COUNT = 13;
+
+export type FuelFamily = 'vesta2' | 'grass' | 'heath' | 'pine' | 'none';
+export type MoistureFamily = 'forest' | 'wetForest' | 'heath' | 'grass' | 'pine' | 'none';
+/** Olson accumulation parameters of one fuel layer. */
+export interface LayerParams {
+  /** Steady-state load (t/ha). */
+  load: number;
+  /** Olson rate constant (1/yr). */
+  k: number;
+}
+export type BarkClass = 'none' | 'smooth' | 'stringy' | 'ribbon' | 'mixed';
+export type GrassState = 'natural' | 'grazed' | 'eatenOut';
+
+/** One row of FUEL_TYPES (spec §4.1); the data lives in fuel/catalogue.ts. */
+export interface FuelTypeInfo {
+  id: FuelType;
+  name: string;
+  family: FuelFamily;
+  moistureFamily: MoistureFamily;
+  afdrsType: string;
+  surface: LayerParams;
+  nearSurface: LayerParams;
+  elevated: LayerParams;
+  bark: LayerParams;
+  canopy: LayerParams;
+  /** Steady-state hazard scores 0–4. */
+  fhsMax: { surface: number; nearSurface: number; elevated: number };
+  /** m */
+  nearSurfaceHeight: number;
+  /** m */
+  elevatedHeight: number;
+  /** Type defaults (also the H_o,eff floor, spec §4.7). */
+  canopyHeight: number;
+  canopyCover: number;
+  lai: number;
+  /** Vesta sub-canopy wind reduction factor (u = U10 / WRF). */
+  wrf: number;
+  /** Grass family: wind adjustment for grass under trees (1 / 0.5 / 0.3). */
+  grassWaf?: number;
+  grassStateDefault?: GrassState;
+  wetSubmodel: boolean;
+  spotting: boolean;
+  barkClass: BarkClass;
+  tfi?: { minSfaz: number; minLmz: number; max: number } | 'avoid';
+  /** τ_f (s): flaming residence for heat release (spec §7.5). */
+  flameResidence: number;
+  /** Ember-landing receptivity R_fuel (spec §9.5). */
+  receptivity: number;
+  /** c_ref of the family reference column (spec §5.4). */
+  moistureRefCanopy: number;
+  /** Legend colour of the fuel overlay. */
+  colour: string;
+}
+
+/** One row of FUEL_CLASSES (spec §4.2). */
+export interface FuelClassInfo {
+  id: number;
+  name: string;
+  fuelType: FuelType;
+  lut?: number;
+  /** Includes family / moistureFamily for some classes. */
+  overrides: Partial<Omit<FuelTypeInfo, 'id'>>;
+  /** Percentage points (e.g. −15). */
+  curingOffset?: number;
+  /** e.g. +3 pp while KBDI < 100. */
+  moistureOffsetIfKbdiBelow?: { pp: number; kbdi: number };
+  grassState?: GrassState;
+}
+
+/** Everything the hot loops need for one fire-grid cell, resolved once at init and after edits (fuel/ fuelParamsAt). */
+export interface CellFuelParams {
+  type: FuelType;
+  fuelClass: number;
+  family: FuelFamily;
+  moistureFamily: MoistureFamily;
+  /** t/ha */
+  surfaceLoad: number;
+  nearSurfaceLoad: number;
+  elevatedLoad: number;
+  barkLoad: number;
+  canopyLoad: number;
+  fhsS: number;
+  fhsNs: number;
+  fhsEl: number;
+  barkHazard: number;
+  /** m */
+  hNs: number;
+  hEl: number;
+  /** Canopy height used for drag/display (CHM when present), m. */
+  hO: number;
+  /** max(CHM p90, 0.8·type H_o): intensity gating, crown cards, ember launch, z_ref (m). */
+  hOEff: number;
+  cover: number;
+  lai: number;
+  wrf: number;
+  grassState: GrassState;
+  grassWaf: number;
+  curing: number;
+  underWoodland: boolean;
+  wetSubmodel: boolean;
+  spotting: boolean;
+  barkClass: BarkClass;
+  tauF: number;
+  receptivity: number;
+  cRef: number;
+  /** Spec §5.9 topographic blend weight w (wetForest cells), else 0. */
+  faBlendW: number;
+  moistureOffset: number;
+  flags: number;
+  timeSinceFire: number;
+}
+
+/** Bit flags in FuelMap.flags (plain enum: isolatedModules forbids const enum). */
+export enum FuelFlag {
+  WetSubmodel = 1,
+  PostFire = 2,
+  Stringybark = 4,
+  RibbonBark = 8,
+  WetGullyMinority = 16,
+  NoFireRecord = 32,
+  UserEdited = 64,
+  InferredVegetation = 128,
+  UnderWoodland = 256,
+  Cliff = 512,
+  Road = 1024,
+  HeavyFuel = 2048,
+}
+
+/** Compact per-cell fire history the worker needs for setType / setTimeSinceFire edits (spec §4.8). */
+export interface FuelHistoryCompact {
+  /** nCells + 1 offsets into recIndex. */
+  recStart: Uint32Array;
+  recIndex: Uint32Array;
+  tb: Float64Array;
+  kind: Uint8Array;
+}
 
 /** Where a fire record came from. */
 export enum FireHistoryKind {
@@ -211,6 +368,24 @@ export interface FuelMap {
   lastFireKind: Uint8Array;
   /** Provenance notes for display. */
   sources: string[];
+  /** Index into FUEL_CLASSES (spec §4.2); 0..12 = generic class of FuelType 0..12. */
+  fuelClass?: Uint8Array;
+  /** Wind reduction factor (10 m open → sub-canopy), per cell. */
+  wrf?: Float32Array;
+  /** Canopy (overstorey) fine fuel load (t/ha). */
+  canopyLoad?: Float32Array;
+  /** H_o,eff (m), spec §4.7. */
+  canopyHeightEff?: Float32Array;
+  /** FuelFlag bits. */
+  flags?: Uint16Array;
+  /** Percentage points added by the moisture model (FuelEdit.moistureDelta, wet classes). */
+  moistureOffset?: Float32Array;
+  /** Recorded fires in the last 30 years. */
+  fireCount30?: Uint8Array;
+  /** Fires closer than the class TFI minimum to the next fire. */
+  fireCountTfi?: Uint8Array;
+  /** m; > 0 on cells holding a sub-cell fire break (FuelFlag.Road), 0 elsewhere. */
+  breakWidth?: Float32Array;
 }
 
 /** A mapped fire-history polygon (wildfire or prescribed burn / back burn). */
@@ -221,6 +396,17 @@ export interface FireHistoryRecord {
   startTime: number;
   /** Rings of [lon, lat] (GeoJSON order); first ring outer. */
   rings: [number, number][][];
+  /** Unix ms (local end date, 12:00 AEST), spec §4.4. */
+  endTime?: number;
+  /** Decoded first year of the FireYear season, e.g. 196465 → 1964. */
+  season?: number;
+  name?: string;
+  areaHa?: number;
+  /** False when StartDate was null (startTime = season mid-point). */
+  datesKnown?: boolean;
+  /** Local calendar dates 'yyyy-mm-dd' (spec §0.2). */
+  startDate?: string;
+  endDate?: string;
 }
 
 /** A current incident from the NSW RFS feed. */
@@ -244,7 +430,12 @@ export interface Incident {
 export interface VegetationRecord {
   formation: string;
   className?: string;
-  fuelType: FuelType;
+  /** Filled by fuel/ (data/ does not depend on fuel/). */
+  fuelType?: FuelType;
+  /** PCTID */
+  pctId?: number;
+  /** FUEL_CLASSES index resolved by the fuel/ mapping. */
+  fuelClass?: number;
   rings: [number, number][][];
 }
 
@@ -276,6 +467,24 @@ export interface FireBehaviourInput {
   relativeHumidity: number;
   canopyCover: number;
   canopyHeight: number;
+  wrf?: number;
+  kbdi?: number;
+  wetForest?: boolean;
+  fuelClass?: number;
+  surfaceLoad?: number;
+  nearSurfaceLoad?: number;
+  elevatedLoad?: number;
+  barkLoad?: number;
+  canopyLoad?: number;
+  /** 0–1 override; absent → computed from DF (and KBDI/WRF if wet). */
+  fuelAvailability?: number;
+  /** Directional slope (deg, + upslope) along the spread direction; default 0. */
+  slopeDeg?: number;
+  grassState?: GrassState;
+  /** Heath under an overstorey (10 m → 2 m wind factor 0.35 instead of 0.667). */
+  underWoodland?: boolean;
+  /** H_o,eff for intensity gating (default: type value). */
+  canopyHeightEff?: number;
 }
 
 /** Multiplicative decomposition of a spread rate, used to explain *why* it is fast or slow. */
@@ -292,6 +501,12 @@ export interface SpreadFactors {
   slope: number;
   /** Multiplier from special terrain phenomena (eruptive/chimney, VLS lateral spread, ridge-top). */
   terrain: number;
+  /** Build-up fraction 0–1 (spec §7.8); part of `terrain`. */
+  build?: number;
+  /** |U_fireInd| / max(|U_fire|, 0.1). */
+  fireWindShare?: number;
+  /** R(ψ)/R_H of the spec §7.4 ellipse at the arrival normal (1 at the head). */
+  direction?: number;
 }
 
 export interface FireBehaviourOutput {
@@ -315,6 +530,19 @@ export interface FireBehaviourOutput {
   factors: SpreadFactors;
   /** Which fire model was used. */
   model: string;
+  /** No-wind, no-slope ROS R0 for this fuel and moisture (m/s), spec §6.2. */
+  ros0?: number;
+  /** Vesta Mk2 phase probabilities. */
+  p2?: number;
+  p3?: number;
+  /** φ_M */
+  moistureFactor?: number;
+  /** FA */
+  fuelAvailability?: number;
+  fbi?: number;
+  rating?: string;
+  /** False outside the model's data range (slope, wind, moisture). */
+  validated?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -391,14 +619,22 @@ export interface SimOptions {
   mountainPhenomena: boolean;
   /** Simulated seconds between snapshots sent to the UI. */
   snapshotInterval: number;
+  /** Quality tier; default 'auto' (spec §12.6). */
+  tier?: 'auto' | QualityTier;
+  /** First-level thickness Δζ₁ (m); tier default. */
+  atmosDz1?: number;
 }
+
+export type QualityTier = 'fast' | 'standard' | 'high';
 
 export const DEFAULT_SIM_OPTIONS: SimOptions = {
   seed: 1,
   fireCellSize: 30,
-  atmosCellSize: 150,
-  atmosLevels: 24,
+  atmosCellSize: 200,
+  atmosLevels: 20,
   atmosTop: 3000,
+  atmosDz1: 30,
+  tier: 'auto',
   coupling: 1,
   embers: true,
   maxEmbers: 4000,
@@ -423,6 +659,12 @@ export interface ScenarioData {
   ignitions: Ignition[];
   edits: ScenarioEdit[];
   options: SimOptions;
+  /** 10 m DEM (render, atmosphere block-averaging). */
+  terrainHiRes?: { grid: GridSpec; elevation: Float32Array };
+  /** Fire-grid history for edits (spec §4.8). */
+  fuelHistory?: FuelHistoryCompact;
+  /** Fires burning at t0 (spec §4.4), display only. */
+  activeFires?: FireHistoryRecord[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -486,6 +728,15 @@ export interface SpotFire {
   distance: number;
   /** Distance travelled by the firebrand (m). */
   travel: number;
+  emberClass?: 'flake' | 'ribbon' | 'leaf' | 'twig' | 'heavy';
+  maxHeightAGL?: number;
+  flightTime?: number;
+  landingMoisture?: number;
+  pIgnite?: number;
+  sourceX?: number;
+  sourceY?: number;
+  leeEddy?: boolean;
+  ridgeDrop?: number;
 }
 
 /** Near-surface and volume atmosphere fields for display. */
@@ -572,6 +823,11 @@ export interface Insight {
   factors: InsightFactor[];
   /** Short literature reference. */
   source?: string;
+  confidence?: 'physics' | 'rule-of-thumb' | 'model-estimate' | 'sub-grid';
+  /** Render layer ids for "Show me" (spec §10.2 mapping table). */
+  showLayers?: string[];
+  /** Detector key `kind:tileX:tileY` or `kind:domain`, stable across snapshots. */
+  key?: string;
 }
 
 /** Full explanation of what is happening at one location ("Why here?" panel). */
@@ -633,4 +889,8 @@ export interface SimSnapshot {
   stats: SimStats;
   /** Insights generated since the previous snapshot. */
   insights: Insight[];
+  /** Extra overlay rasters on the fire grid, keyed by OverlayKind ('vls', 'attach', 'trench', 'dmz', 'landing'). */
+  layers?: Record<string, Float32Array>;
 }
+
+export * from './simTypes';

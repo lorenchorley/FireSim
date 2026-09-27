@@ -373,6 +373,26 @@ export const INSOLATION_RAMP = makeRamp([
   { at: 1100, colour: '#fffbe0' },
 ]);
 
+/** Hazard / potential score 0–1 (VLS, attachment, trench, dead man zone): pale yellow → orange → red → magenta. */
+export const HAZARD_RAMP = makeRamp([
+  { at: 0, colour: '#fff7bc' },
+  { at: 0.25, colour: '#fec44f' },
+  { at: 0.5, colour: '#fe9929' },
+  { at: 0.75, colour: '#d7301f' },
+  { at: 1, colour: '#7a0177' },
+]);
+
+/** Ember landing density (brands per hectare per hour, log scale). */
+export const LANDING_RAMP = makeRamp(
+  [
+    { at: 0.1, colour: '#fee391' },
+    { at: 1, colour: '#fe9929' },
+    { at: 10, colour: '#cc4c02' },
+    { at: 100, colour: '#662506' },
+  ],
+  { log: true },
+);
+
 /** Wind speed (m/s) for particles and arrows: calm blue → white → yellow → orange → magenta. */
 export const WIND_RAMP = makeRamp([
   { at: 0, colour: '#8fc3e8' },

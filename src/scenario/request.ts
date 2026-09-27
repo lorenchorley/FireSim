@@ -25,7 +25,7 @@ export interface ScenarioRequest {
 }
 
 export interface BuildProgress {
-  step: 'terrain' | 'canopy' | 'vegetation' | 'fireHistory' | 'fuel' | 'weather' | 'moisture' | 'done';
+  step: 'terrain' | 'canopy' | 'vegetation' | 'fireHistory' | 'fuel' | 'weather' | 'drought' | 'moisture' | 'done';
   /** 0–1 */
   fraction: number;
   message: string;

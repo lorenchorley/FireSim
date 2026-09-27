@@ -12,7 +12,13 @@ export type OverlayKind =
   | 'timeSinceFire'
   | 'slope'
   | 'aspect'
-  | 'insolation';
+  | 'insolation'
+  // Mountain-phenomena rasters from SimSnapshot.layers (spec §2.3)
+  | 'vls' // vorticity-driven lateral spread potential
+  | 'attach' // flame attachment / eruptive potential
+  | 'trench' // gully / chimney (trench) score
+  | 'dmz' // dead man zone (flank that becomes a head after the forecast wind change)
+  | 'landing'; // ember landing density
 
 export interface LayerState {
   overlay: OverlayKind;
