@@ -1,0 +1,13 @@
+{
+ "id": "barrington",
+ "cellSize": 8,
+ "n": 1125,
+ "centre": {
+  "lat": -32.06,
+  "lon": 151.47
+ },
+ "extent": 9000,
+ "source": "NSW Spatial Services NSW_Imagery MapServer XYZ tiles, zoom 15 (100 tiles, Web Mercator), 2x2 area-averaged then bilinear-resampled to 8 m local grid; JPEG quality 82",
+ "attribution": "\u00a9 Spatial Services NSW (CC BY 4.0)",
+ "encoding": "RGB JPEG; row 0 = north"
+}
