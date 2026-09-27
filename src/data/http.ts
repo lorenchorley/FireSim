@@ -178,7 +178,7 @@ export const isHttpError = (e: unknown): e is HttpError => e instanceof HttpErro
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface RequestOptions {
-  /** Timeout for the whole request including reading the body (ms). */
+  /** Timeout for the whole request including reading the body (ms); 0 or Infinity disables it. */
   timeoutMs?: number;
   signal?: AbortSignal;
   headers?: Record<string, string>;
@@ -205,7 +205,7 @@ export async function fetchJson<T>(url: string, opts: RequestOptions = {}): Prom
 
 /** GET a binary resource. */
 export async function fetchBinary(url: string, opts: RequestOptions = {}): Promise<ArrayBuffer> {
-  return (await request(url, 'binary', { timeoutMs: config.binaryTimeoutMs, ...opts })) as ArrayBuffer;
+  return (await request(url, 'binary', { ...opts, timeoutMs: opts.timeoutMs ?? config.binaryTimeoutMs })) as ArrayBuffer;
 }
 
 /** GET a text resource. */
@@ -220,7 +220,7 @@ export async function fetchText(url: string, opts: RequestOptions = {}): Promise
  */
 export async function httpRequest(url: string, opts: RequestOptions = {}): Promise<RawResponse> {
   const target = opts.route === false ? url : routeUrl(url);
-  return attempt(target, 'binary', { timeoutMs: config.binaryTimeoutMs, ...opts }, true) as Promise<RawResponse>;
+  return attempt(target, 'binary', { ...opts, timeoutMs: opts.timeoutMs ?? config.binaryTimeoutMs }, true) as Promise<RawResponse>;
 }
 
 async function request(url: string, kind: BodyKind, opts: RequestOptions): Promise<unknown> {
@@ -259,10 +259,10 @@ async function fetchAttempt(
   // Combine the caller's signal with our timeout (AbortSignal.any is missing on older Android WebViews).
   const ctrl = new AbortController();
   let timedOut = false;
-  const timer = setTimeout(() => {
+  const timer = startTimer(timeoutMs, () => {
     timedOut = true;
     ctrl.abort();
-  }, timeoutMs);
+  });
   const onAbort = (): void => ctrl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
   try {
@@ -303,10 +303,10 @@ async function nativeAttempt(
   let onAbort: (() => void) | undefined;
   // The native call cannot be cancelled; we stop waiting for it on timeout / abort.
   const guard = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
+    timer = startTimer(timeoutMs, () => {
       timedOut = true;
       reject(new HttpError('timeout', url, `Timed out after ${timeoutMs} ms: ${url}`));
-    }, timeoutMs);
+    });
     onAbort = () => reject(new HttpError('aborted', url, `Request aborted: ${url}`));
     signal?.addEventListener('abort', onAbort, { once: true });
   });
@@ -317,8 +317,7 @@ async function nativeAttempt(
         method: 'GET',
         headers: headers ?? {},
         responseType: kind === 'binary' ? 'arraybuffer' : kind === 'json' ? 'json' : 'text',
-        connectTimeout: timeoutMs,
-        readTimeout: timeoutMs,
+        ...(hasTimeout(timeoutMs) ? { connectTimeout: timeoutMs, readTimeout: timeoutMs } : {}),
       }),
       guard,
     ]);
@@ -339,6 +338,15 @@ async function nativeAttempt(
     clearTimeout(timer);
     if (onAbort) signal?.removeEventListener('abort', onAbort);
   }
+}
+
+/** Largest delay setTimeout accepts; longer (or Infinity) overflows to an immediate timeout in browsers and Node. */
+const MAX_TIMER_MS = 2_147_483_647;
+/** A timeout of 0, a negative value, NaN or Infinity means "no timeout". */
+const hasTimeout = (ms: number): boolean => ms > 0 && ms < MAX_TIMER_MS;
+
+function startTimer(ms: number, fn: () => void): ReturnType<typeof setTimeout> | undefined {
+  return hasTimeout(ms) ? setTimeout(fn, ms) : undefined;
 }
 
 function classify(e: unknown, url: string, timedOut: boolean, signal: AbortSignal | undefined, timeoutMs: number): HttpError {

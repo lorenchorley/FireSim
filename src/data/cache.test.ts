@@ -218,6 +218,15 @@ describe('area packs', () => {
     expect(await kv.keys('pack/item/p/')).toEqual(['pack/item/p/only']);
   });
 
+  it('sizes items with shared or cyclic references without recursing forever', async () => {
+    // Structured clone (and so IndexedDB) supports cycles; the size estimate used to overflow the stack on them.
+    const node: { name: string; self?: unknown; data: Float32Array } = { name: 'n', data: new Float32Array(1000) };
+    node.self = node;
+    const meta = await saveAreaPack({ ...makePack('cyc', 1), items: { graph: node, again: { a: node.data, b: node.data } } }, createMemoryKV());
+    expect(meta.bytes).toBeGreaterThanOrEqual(4000);
+    expect(meta.bytes).toBeLessThan(9000);
+  });
+
   it('rejects ids that would break the key layout', async () => {
     await expect(saveAreaPack(makePack('a/b', 1), createMemoryKV())).rejects.toThrow(/Invalid area pack id/);
   });

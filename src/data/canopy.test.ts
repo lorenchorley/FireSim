@@ -1,19 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { decode } from 'fast-png';
+import { decode, encode } from 'fast-png';
 import { makeGridSpec, type GridSpec } from '../core/grid';
 import { LocalProjection } from '../core/geo';
 import { DEMO_SITES } from './demoSites';
 import { setAssetLoader } from './assets';
 import { createMemoryKV } from './cache';
-import { loadBundledCanopyRaster, loadCanopy, loadRemoteCanopy, quadkey, remoteCanopyCacheKey } from './canopy';
+import { resetHttpConfig, setHttpConfig } from './http';
+import { fillInvalidNearest, loadBundledCanopyRaster, loadCanopy, loadRemoteCanopy, quadkey, remoteCanopyCacheKey } from './canopy';
 
 const PUBLIC = new URL('../../public/', import.meta.url);
 const site = (id: string) => DEMO_SITES.find((s) => s.id === id)!;
 // Only these fixtures are guaranteed to be present (others may still be downloading).
 const READY = ['katoomba', 'grose', 'kanangra', 'thredbo'];
 
-afterEach(() => setAssetLoader(null));
+afterEach(() => {
+  setAssetLoader(null);
+  resetHttpConfig();
+  vi.restoreAllMocks();
+});
 
 const mean = (a: ArrayLike<number>) => {
   let s = 0;
@@ -152,6 +157,19 @@ describe('loadCanopy (bundled)', () => {
     expect(part.source).toMatch(/% of area covered/);
   });
 
+  it('handles a bundled raster only one cell wide and tall (degenerate bilinear) without NaN', async () => {
+    // Regression: bilinear resampling indexed cell −1 when the source had a single row or column.
+    const centre = site('katoomba').centre;
+    const json = JSON.stringify({ id: 'tiny', cellSize: 20, n: 1, centre, extent: 20 });
+    const png = encode({ width: 1, height: 1, data: new Uint8Array([18, 9, 204]), channels: 3, depth: 8 });
+    setAssetLoader(async (p) => (p === 'demo/tiny/canopy.json' ? new TextEncoder().encode(json) : p === 'demo/tiny/canopy.png' ? png : null));
+    const c = (await loadCanopy({ nx: 3, ny: 3, cellSize: 5, x0: -5, y0: -5, origin: centre }, { demoSiteId: 'tiny' }))!;
+    expect(c).not.toBeNull();
+    expect([...c.height]).toEqual(new Array(9).fill(18));
+    expect([...c.meanHeight]).toEqual(new Array(9).fill(9));
+    for (const v of c.cover) expect(v).toBeCloseTo(0.8, 6);
+  });
+
   it('returns null far from any demo site when remote access is not allowed', async () => {
     expect(await loadCanopy(makeGridSpec({ lat: -30.5, lon: 152.0 }, 3000, 30))).toBeNull();
   });
@@ -202,6 +220,57 @@ describe('remote canopy', () => {
     expect(r.coverage).toBe(1);
   });
 
+  it('aggregates a 1 m COG with 1-row strips into p90 / mean / cover with the right orientation (fake server)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const centre = site('katoomba').centre;
+    const grid = makeGridSpec(centre, 600, 20);
+    const server = fakeChmServer(grid, () => true);
+    setHttpConfig({ fetch: server.fetch });
+    const c = (await loadRemoteCanopy(grid, { cache: null }))!;
+    expect(c).not.toBeNull();
+    expect(c.coverage).toBe(1);
+    expect(server.urls.every((u) => u.includes('/forests/v1/alsgedi_global_v6_float/chm/311230121.tif'))).toBe(true);
+    // 1-row strips are read with about one range request per sampled row (every 4th of ~500 rows here). Regression:
+    // without geotiff's block cache every row also cost two 4-byte requests for its strip offset and byte count (~460).
+    expect(server.rangeRequests).toBeGreaterThan(20);
+    expect(server.rangeRequests).toBeLessThan(200);
+    let checked = 0;
+    for (let j = 0; j < grid.ny; j++)
+      for (let i = 0; i < grid.nx; i++) {
+        const x = grid.x0 + i * 20;
+        const y = grid.y0 + j * 20;
+        if (Math.abs(x) < 30 || Math.abs(y) < 30) continue; // cells straddling a quadrant boundary
+        const k = j * grid.nx + i;
+        const q = quadrantCanopy(x, y);
+        expect(c.height[k], `p90 at ${x},${y}`).toBe(q.p90);
+        expect(c.meanHeight[k]!, `mean at ${x},${y}`).toBeCloseTo(q.mean, q.mean === 20 ? 0 : 5);
+        expect(c.cover[k], `cover at ${x},${y}`).toBe(q.cover);
+        checked++;
+      }
+    expect(checked).toBeGreaterThan(600);
+  });
+
+  it('caches complete remote results, but not partial ones where a COG failed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Straddle the z9 quadkey boundary at lon 150.46875 so two COGs are needed.
+    const grid = makeGridSpec({ lat: -33.715, lon: 150.46875 }, 400, 20);
+    const west = quadkey(-33.715, 150.46, 9);
+    expect(quadkey(-33.715, 150.48, 9)).not.toBe(west);
+    const kv = createMemoryKV();
+    // Only the western COG answers: the result must not be cached (regression: it was, leaving a permanent hole).
+    setHttpConfig({ fetch: fakeChmServer(grid, (url) => url.includes(`/${west}.tif`)).fetch });
+    expect(await loadRemoteCanopy(grid, { cache: kv })).not.toBeNull();
+    expect(await kv.keys('canopy/')).toEqual([]);
+    // Both answer: cached, and the next call does not touch the network.
+    const server = fakeChmServer(grid, () => true);
+    setHttpConfig({ fetch: server.fetch });
+    expect((await loadRemoteCanopy(grid, { cache: kv }))!.coverage).toBe(1);
+    expect(await kv.keys('canopy/')).toHaveLength(1);
+    const n = server.urls.length;
+    expect((await loadRemoteCanopy(grid, { cache: kv }))!.source).toMatch(/\(cached\)$/);
+    expect(server.urls.length).toBe(n);
+  });
+
   it.skipIf(!process.env.NET)('reads the Meta CHM COG over the network and matches the bundled raster (NET=1)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const grid = makeGridSpec(site('katoomba').centre, 600, 20);
@@ -221,3 +290,156 @@ describe('remote canopy', () => {
     expect(dc / remote.height.length).toBeLessThan(0.05);
   }, 180_000);
 });
+
+describe('fillInvalidNearest', () => {
+  it('copies each invalid cell from a valid cell at the minimum 4-neighbour distance', () => {
+    const nx = 37;
+    const ny = 23;
+    const valid = new Uint8Array(nx * ny);
+    const f = new Float32Array(nx * ny).fill(-1);
+    let seed = 12345;
+    const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
+    for (let k = 0; k < valid.length; k++) if (rnd() < 0.04) (valid[k] = 1), (f[k] = k); // value = own index
+    const g = f.slice();
+    fillInvalidNearest({ nx, ny }, valid, [f, g]);
+    for (let k = 0; k < f.length; k++) {
+      const src = f[k]!;
+      expect(src).toBeGreaterThanOrEqual(0);
+      expect(g[k]).toBe(src); // all fields filled consistently
+      expect(valid[Math.round(src)]).toBe(1);
+      // Manhattan distance to the source equals the distance to the nearest valid cell.
+      const d = (a: number, b: number) => Math.abs((a % nx) - (b % nx)) + Math.abs(Math.floor(a / nx) - Math.floor(b / nx));
+      let best = Infinity;
+      for (let q = 0; q < valid.length; q++) if (valid[q]) best = Math.min(best, d(k, q));
+      expect(d(k, src)).toBe(best);
+    }
+  });
+
+  it('is linear-time: a 1000 × 1000 grid with one valid cell fills quickly', () => {
+    const n = 1000;
+    const valid = new Uint8Array(n * n);
+    valid[123 * n + 456] = 1;
+    const f = new Float32Array(n * n);
+    f[123 * n + 456] = 7;
+    const t0 = performance.now();
+    fillInvalidNearest({ nx: n, ny: n }, valid, [f]);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(f[0]).toBe(7);
+    expect(f[n * n - 1]).toBe(7);
+    expect(valid[0]).toBe(0); // the mask is not modified
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fake Meta CHM server: a hand-built uncompressed 8-bit GeoTIFF in Web Mercator with 1-row strips (like the real COGs)
+// served with HTTP range requests through the injectable fetch.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MERC_R = 6378137;
+const CHM_RES = (2 * Math.PI * MERC_R) / 2 ** 25;
+
+/** Expected canopy statistics per quadrant of the fake image (x east, y north of the grid origin). */
+function quadrantCanopy(x: number, y: number): { p90: number; mean: number; cover: number } {
+  if (x > 0 && y > 0) return { p90: 30, mean: 20, cover: 1 }; // NE: alternate 1 m columns 10 m / 30 m tall
+  if (x <= 0 && y > 0) return { p90: 0, mean: 0, cover: 0 }; // NW: bare
+  if (x > 0) return { p90: 5, mean: 5, cover: 1 }; // SE: 5 m regrowth
+  return { p90: 1, mean: 1, cover: 0 }; // SW: 1 m heath, below the 2 m cover threshold
+}
+
+function quadrantPixel(x: number, y: number, col: number): number {
+  if (x > 0 && y > 0) return col % 2 ? 30 : 10;
+  if (x <= 0 && y > 0) return 0;
+  return x > 0 ? 5 : 1;
+}
+
+/** Minimal little-endian TIFF: uint8, one band, uncompressed, RowsPerStrip = 1, ModelPixelScale + ModelTiepoint. */
+function buildStripTiff(w: number, h: number, pixels: Uint8Array, minX: number, maxY: number): ArrayBuffer {
+  const entries: [tag: number, type: number, count: number, value: number | number[]][] = [];
+  const nEntries = 13;
+  const ifdSize = 2 + nEntries * 12 + 4;
+  let off = 8 + ifdSize;
+  const stripOffsetsAt = off;
+  off += 4 * h;
+  const stripCountsAt = off;
+  off += 4 * h;
+  const scaleAt = off;
+  off += 24;
+  const tieAt = off;
+  off += 48;
+  const dataAt = off;
+  const buf = new ArrayBuffer(dataAt + w * h);
+  const dv = new DataView(buf);
+  dv.setUint16(0, 0x4949, true);
+  dv.setUint16(2, 42, true);
+  dv.setUint32(4, 8, true);
+  const SHORT = 3;
+  const LONG = 4;
+  const DOUBLE = 12;
+  entries.push([256, LONG, 1, w], [257, LONG, 1, h], [258, SHORT, 1, 8], [259, SHORT, 1, 1], [262, SHORT, 1, 1]);
+  entries.push([273, LONG, h, stripOffsetsAt], [277, SHORT, 1, 1], [278, LONG, 1, 1], [279, LONG, h, stripCountsAt]);
+  entries.push([284, SHORT, 1, 1], [339, SHORT, 1, 1], [33550, DOUBLE, 3, scaleAt], [33922, DOUBLE, 6, tieAt]);
+  dv.setUint16(8, nEntries, true);
+  entries.forEach(([tag, type, count, value], e) => {
+    const p = 10 + e * 12;
+    dv.setUint16(p, tag, true);
+    dv.setUint16(p + 2, type, true);
+    dv.setUint32(p + 4, count, true);
+    if (type === SHORT && count === 1) dv.setUint16(p + 8, value as number, true);
+    else dv.setUint32(p + 8, value as number, true);
+  });
+  dv.setUint32(10 + nEntries * 12, 0, true);
+  for (let r = 0; r < h; r++) {
+    dv.setUint32(stripOffsetsAt + 4 * r, dataAt + r * w, true);
+    dv.setUint32(stripCountsAt + 4 * r, w, true);
+  }
+  [CHM_RES, CHM_RES, 0].forEach((v, n) => dv.setFloat64(scaleAt + 8 * n, v, true));
+  [0, 0, 0, minX, maxY, 0].forEach((v, n) => dv.setFloat64(tieAt + 8 * n, v, true));
+  new Uint8Array(buf, dataAt).set(pixels);
+  return buf;
+}
+
+/** A fetch that serves a fake CHM covering `grid` (plus a margin) for URLs accepted by `serve`, 404 otherwise. */
+function fakeChmServer(grid: GridSpec, serve: (url: string) => boolean) {
+  const proj = new LocalProjection(grid.origin);
+  const half = (grid.nx * grid.cellSize) / 2 + 60;
+  const sw = proj.toLatLon(-half, -half);
+  const ne = proj.toLatLon(half, half);
+  const mx = (lon: number) => (MERC_R * lon * Math.PI) / 180;
+  const my = (lat: number) => MERC_R * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const minX = mx(sw.lon);
+  const maxY = my(ne.lat);
+  const w = Math.ceil((mx(ne.lon) - minX) / CHM_RES);
+  const h = Math.ceil((maxY - my(sw.lat)) / CHM_RES);
+  const pixels = new Uint8Array(w * h);
+  for (let r = 0; r < h; r++) {
+    const lat = ((2 * Math.atan(Math.exp((maxY - (r + 0.5) * CHM_RES) / MERC_R)) - Math.PI / 2) * 180) / Math.PI;
+    const y = proj.toLocal({ lat, lon: grid.origin.lon })[1];
+    for (let c = 0; c < w; c++) {
+      const lon = (((minX + (c + 0.5) * CHM_RES) / MERC_R) * 180) / Math.PI;
+      const x = proj.toLocal({ lat: grid.origin.lat, lon })[0];
+      pixels[r * w + c] = quadrantPixel(x, y, c);
+    }
+  }
+  const tiff = new Uint8Array(buildStripTiff(w, h, pixels, minX, maxY));
+  const urls: string[] = [];
+  let rangeRequests = 0;
+  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    urls.push(url);
+    if (!serve(url)) return new Response('not found', { status: 404 });
+    const range = (init?.headers as Record<string, string> | undefined)?.['range'];
+    const m = /bytes=(\d+)-(\d+)/.exec(range ?? '');
+    if (!m) return new Response(tiff.slice());
+    rangeRequests++;
+    const a = Number(m[1]);
+    const b = Math.min(Number(m[2]), tiff.length - 1);
+    return new Response(tiff.slice(a, b + 1), { status: 206, headers: { 'content-range': `bytes ${a}-${b}/${tiff.length}`, 'content-type': 'image/tiff' } });
+  }) as typeof globalThis.fetch;
+  return {
+    fetch,
+    urls,
+    get rangeRequests() {
+      return rangeRequests;
+    },
+  };
+}

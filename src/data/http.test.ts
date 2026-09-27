@@ -147,6 +147,26 @@ describe('fetch transport', () => {
     expect(Date.now() - t0).toBeLessThan(2000);
   });
 
+  it('treats timeoutMs Infinity / 0 as "no timeout" instead of an immediate one', async () => {
+    // Regression: setTimeout(fn, Infinity) fires at once, so disabling the timeout timed every request out.
+    const slow = (async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return json({ ok: true });
+    }) as typeof fetch;
+    setHttpConfig({ fetch: slow, retryDelayMs: 1 });
+    expect(await fetchJson('https://example.org/a', { timeoutMs: Infinity, retries: 0 })).toEqual({ ok: true });
+    expect(await fetchJson('https://example.org/b', { timeoutMs: 0, retries: 0 })).toEqual({ ok: true });
+  });
+
+  it('fetchBinary keeps the binary default timeout when timeoutMs is passed as undefined', async () => {
+    setHttpConfig({ fetch: hangingFetch, retryDelayMs: 1, timeoutMs: 5, binaryTimeoutMs: 60 });
+    const t0 = Date.now();
+    const err = (await fetchBinary('https://example.org/t.png', { timeoutMs: undefined, retries: 0 }).catch((e) => e)) as HttpError;
+    expect(err.kind).toBe('timeout');
+    expect(err.message).toContain('60 ms');
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(50);
+  });
+
   it('stops immediately when the caller aborts, without retrying', async () => {
     let n = 0;
     setHttpConfig({ fetch: ((u: RequestInfo | URL, i?: RequestInit) => (n++, hangingFetch(u, i))) as typeof fetch, retryDelayMs: 1 });

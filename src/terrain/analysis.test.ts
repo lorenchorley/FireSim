@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Landform, type Terrain } from '../core/types';
 import { cellAt, makeGridSpec } from '../core/grid';
-import { angleDiffDeg, RAD } from '../core/units';
+import { angleDiffDeg, DEG, RAD } from '../core/units';
 import {
   buildTerrain,
   directionalSlopeDeg,
@@ -112,6 +112,88 @@ describe('buildTerrain – gradients, slope and aspect (Horn 1981)', () => {
     const t = build(g, z);
     expect(Number.isFinite(t.elevation[500])).toBe(true);
     expect(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation)).toBe(true);
+    const all = build(g, new Float32Array(g.nx * g.ny).fill(NaN));
+    expect(all.elevation.every((v) => v === 0)).toBe(true);
+  });
+
+  it('regression: a no-data hole is filled from the surrounding terrain, not the domain mean (no false pit or cliffs)', () => {
+    // A 1000 m plateau in the north half, a 400 m valley floor in the south half (domain mean ≈ 700 m), with an
+    // 8 × 8-cell hole on the plateau. Filling with the mean made a 300 m pit ringed by "Cliff" and "Gully" cells.
+    const z = surface(g, (_x, y) => (y > -600 ? 1000 : 400));
+    const hole: number[] = [];
+    const c = cellAt(g, 600, 600);
+    for (let dj = -4; dj < 4; dj++) for (let di = -4; di < 4; di++) hole.push(c + dj * g.nx + di);
+    for (const k of hole) z[k] = NaN;
+    const t = build(g, z);
+    for (const k of hole) expect(t.elevation[k]).toBeCloseTo(1000, 3);
+    for (let dj = -7; dj < 7; dj++) {
+      for (let di = -7; di < 7; di++) {
+        const k = c + dj * g.nx + di;
+        expect(t.slopeDeg[k]).toBeLessThan(0.01);
+        expect(t.landform[k]).not.toBe(Landform.Cliff);
+        expect(t.landform[k]).not.toBe(Landform.Gully);
+      }
+    }
+    // A hole in a plane is filled with the plane (harmonic interpolation is exact for linear surfaces).
+    const p = plane(g, 0.1, -0.05);
+    const ref = Float32Array.from(p);
+    for (const k of hole) p[k] = NaN;
+    const tp = build(g, p);
+    for (const k of hole) expect(Math.abs(tp.elevation[k]! - ref[k]!)).toBeLessThan(0.05);
+    // The input array is not modified (a cleaned copy is made).
+    expect(Number.isNaN(p[hole[0]!])).toBe(true);
+  });
+
+  it('regression: aspect is stored in [0, 360) even when it rounds to 360 in float32', () => {
+    // Faces north with a tiny westward tilt: the double azimuth 359.9999999976° rounds to 360 in a Float32Array.
+    const g5 = makeGridSpec({ lat: -33.7, lon: 150.3 }, 150, 30);
+    const z = surface(g5, (_x, y) => -0.2 * y);
+    const kc = 2 * g5.nx + 2;
+    z[kc + 1] = 1e-9; // east neighbour of the centre, on the y = 0 row
+    const t = build(g5, z);
+    expect(t.aspectDeg[kc]).toBeGreaterThanOrEqual(0);
+    expect(t.aspectDeg[kc]).toBeLessThan(360);
+    expect(Math.abs(angleDiffDeg(t.aspectDeg[kc]!, 0))).toBeLessThan(1e-3);
+    for (let k = 0; k < t.aspectDeg.length; k++) if (!Number.isNaN(t.aspectDeg[k])) expect(t.aspectDeg[k]).toBeLessThan(360);
+    // Helpers wrap the same way (a gradient that rounds to exactly 360 in double precision).
+    t.dzdx[kc] = -1e-18;
+    t.dzdy[kc] = 0.2;
+    const up = upslopeAzimuth(t, kc);
+    expect(up).toBeGreaterThanOrEqual(0);
+    expect(up).toBeLessThan(360);
+  });
+
+  it('non-square grids (nx ≠ ny) keep the row-major, j = 0 south convention', () => {
+    const gr = { nx: 150, ny: 90, cellSize: 30, x0: -2235, y0: -1335, origin: { lat: -33.7, lon: 150.3 } };
+    const t = build(gr, plane(gr, 0.1, -0.2)); // rises west and south → faces ENE-ish: azimuth of (−0.1, 0.2)
+    const expected = (Math.atan2(-0.1, 0.2) * RAD + 360) % 360;
+    for (const k of [0, gr.nx - 1, 45 * gr.nx + 70, gr.nx * gr.ny - 1]) {
+      expect(Math.abs(angleDiffDeg(t.aspectDeg[k]!, expected))).toBeLessThan(1e-3);
+      expect(Math.abs(t.tpi[k]!)).toBeLessThan(0.05);
+    }
+    // A bump in the north-east corner shows up in the north-east of the arrays.
+    // (1515, 795) is the centre of cell (125, 71).
+    const b = build(gr, surface(gr, (x, y) => 500 + 200 * Math.exp(-((x - 1515) ** 2 + (y - 795) ** 2) / (2 * 300 ** 2))));
+    const top = cellAt(gr, 1515, 795);
+    expect(top).toBe(71 * gr.nx + 125);
+    expect(b.elevation[top]).toBeCloseTo(700, 0);
+    expect(b.landform[top]).toBe(Landform.Peak);
+    expect(Math.abs(angleDiffDeg(b.aspectDeg[cellAt(gr, 1515, 495)]!, 180))).toBeLessThan(0.1); // south flank faces south
+    expect(Math.abs(angleDiffDeg(b.aspectDeg[cellAt(gr, 1815, 795)]!, 90))).toBeLessThan(0.1); // east flank faces east
+  });
+
+  it('tiny grids do not crash and give finite fields', () => {
+    for (const [nx, ny] of [
+      [2, 2],
+      [3, 5],
+      [7, 2],
+    ] as const) {
+      const gt = { nx, ny, cellSize: 30, x0: 0, y0: 0, origin: { lat: -33.7, lon: 150.3 } };
+      const t = build(gt, surface(gt, (x, y) => 500 + 0.1 * x + 0.05 * y));
+      for (const f of [t.slopeDeg, t.dzdx, t.dzdy, t.tpi, t.curvature]) expect(f.every((v) => Number.isFinite(v))).toBe(true);
+      expect(t.slopeDeg[0]).toBeCloseTo(Math.atan(Math.hypot(0.1, 0.05)) * RAD, 3);
+      expect(Number.isFinite(reliefStats(t).meanTRI)).toBe(true);
+    }
   });
 });
 
@@ -161,6 +243,25 @@ describe('curvature, TPI and valley axes', () => {
     const tr = build(g, rot);
     expect(Math.abs(angleDiffDeg(valleyAxisAzimuth(tr, k), 45))).toBeLessThan(1);
     expect(Math.abs(angleDiffDeg(downValleyAzimuth(tr, k), 225))).toBeLessThan(1);
+  });
+
+  it('V-shaped gully (planar walls, as asked for in docs/research/01 §4.1): convergent curvature at the axis only', () => {
+    // 20° walls meeting at x = 0, the thalweg falling 8.5° towards the south.
+    const wall = Math.tan(20 * DEG);
+    const t = build(g, surface(g, (x, y) => 500 + wall * Math.abs(x) + 0.15 * y));
+    const axis = cellAt(g, 0, 0);
+    const d = terrainDerived(t);
+    expect(t.curvature[axis]).toBeLessThan(-1e-3);
+    expect(d.planCurvature[axis]).toBeLessThan(-1e-3); // convergent across the slope
+    expect(t.landform[axis]).toBe(Landform.Gully);
+    expect(Math.abs(angleDiffDeg(downValleyAzimuth(t, axis), 180))).toBeLessThan(2);
+    // On the planar walls, well outside the ≈ 100 m smoothing footprint, the surface is not curved.
+    for (const x of [-450, 450]) {
+      const k = cellAt(g, x, 0);
+      expect(Math.abs(t.curvature[k]!)).toBeLessThan(1e-5);
+      expect(t.landform[k]).not.toBe(Landform.Gully);
+      expect(t.aspectDeg[k]).toBeCloseTo((Math.atan2(-Math.sign(x) * wall, -0.15) * RAD + 360) % 360, 2);
+    }
   });
 
   it('valley axis is undefined on a ridge or a plane', () => {

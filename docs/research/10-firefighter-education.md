@@ -12,7 +12,7 @@ Scope:
 - how fire behaviour changes through the day in mountains;
 - the evidence on how fire-behaviour intuition is taught (sand tables, staff rides, simulation).
 
-It ends with a library of 40 insight cards.
+It ends with a library of 46 insight cards (S01–S40 from the first draft, S41–S46 added in the fact-check pass).
 
 Companion documents: `02-mountain-meteorology.md` covers VLS, lee separation, C-Haines, PFT, katabatic and anabatic flow and thermal belts in depth. This document cross-references it and does not duplicate that physics. Card IDs here use the prefix **S** (safety/education) so they cannot collide with the meteorology cards in doc 02.
 
@@ -57,7 +57,7 @@ Items checked in this pass carry **"(verified: source)"**. Items that could not 
 
 ## 1. Executive summary: what matters most for this app
 
-1. **Most Australian firefighter burnovers are wind-change / flank events, not head-fire events.** A fire's long flank becomes a wide head fire the moment the wind swings. Examples:
+1. **Most Australian firefighter burnovers are wind-change / flank events, not head-fire events.** This is [L/H]: it is the pattern of the cases below. No Australian statistical analysis of firefighter entrapments was retrieved (Blanchi et al. 2014 covers mainly civilians). A fire's long flank becomes a wide head fire the moment the wind swings. Examples:
    - **Linton, Vic, 2 December 1998:** five CFA firefighters died when "a south-westerly wind change turned an uncontrolled part of the east flank into the head of the fire" [V]; the crew "never received a vital message about when the wind change was due" [V].
    - **Upper Beaconsfield, Ash Wednesday, 16 Feb 1983:** twelve volunteer firefighters were trapped and killed when the wind change struck (secondary: archived Wikipedia text; UNVERIFIED against the coronial record).
    - **Black Saturday 2009:** the SW change between about 17:30 and 18:30 turned the roughly 55 km long eastern flank of the Kilmore East fire into a head fire (cross-checked: doc 02, verified there from Cruz et al. 2012).
@@ -104,7 +104,7 @@ Items checked in this pass carry **"(verified: source)"**. Items that could not 
    - Bill Slade (NSW) and Mat Kavanagh (Vic): causes not verified here.
    - Captain Ian McBeth, First Officer Paul Hudson and Flight Engineer Rick DeMorgan Jr, US aircrew: their C-130 air tanker crashed near Peak View in the NSW Snowy Monaro on 23 Jan 2020 (verified: condolence motion).
 
-   Hazard trees, vehicle travel in fire areas, and extreme pyroconvective winds therefore belong in the curriculum alongside burnovers. A near miss adds crew protection: on 21 Dec 2019 a Blue Mountains (Blackheath-area) tanker was overrun after running out of water, "meaning it couldn't activate the sprinkler system" (verified: condolence motion). Keeping a crew-protection water reserve is therefore a card (S41).
+   Hazard trees, vehicle travel in fire areas, and extreme pyroconvective winds therefore belong in the curriculum alongside burnovers. A near miss adds crew protection: on 21 Dec 2019 the truck of an NSW volunteer firefighter "from up near Blackheath" (Blue Mountains) was overrun by flames. It "had run out of water, meaning it couldn't activate the sprinkler system" (verified: condolence motion; the fireground location was not stated). Keeping a crew-protection water reserve is therefore a card (S41).
 
 7. **How intuition is taught.**
    - Expert fireground decisions are recognition-primed (Klein et al. 1986) [L]. Intuition is built by many cheap "predict, then see what happens" cycles in realistic settings: sand tables, tactical decision games, staff rides and simulations.
@@ -198,7 +198,7 @@ The 10 Standard Orders originate from a 1957 US Forest Service task force (NWCG 
 | 5 | Uninformed on strategy, tactics, and hazards | Not detectable |
 | 6 | Instructions and assignments not clear | Not detectable |
 | 7 | No communication link with crewmembers or supervisor | Not detectable (user flag) |
-| 8 | Constructing line without safe anchor point | Control line drawn not connected to non-fuel/black → S26 |
+| 8 | Constructing line without safe anchor point | Control line drawn not connected to non-fuel/black → S46 (*first draft pointed to S26, which is the column-collapse card; corrected*) |
 | 9 | Building fireline downhill with fire below | Crew above active edge on slope → S06 |
 | 10 | Attempting frontal assault on fire | Crew in front of head (within DMZ, head-facing) → S12 |
 | 11 | Unburned fuel between you and fire | Crew separated from fire edge by unburnt fuel → S21 |
@@ -237,7 +237,7 @@ Doug Campbell's CPS (1995) [L] teaches beginners to read fire behaviour as the *
 - When they oppose, it slows.
 - Fires tend to repeat the same "signature" at the same alignment.
 
-This maps directly onto FireSim's factor attribution. An "alignment meter" (0–3 forces aligned) is an excellent beginner-level summary of the physics, provided the full simulation backs it (S38). The alignment idea is also current US doctrine. The IRPG closes each fire-environment page with "Dry fuels to burn intensely, wind to push them, instability factors from the sky, from the terrain, or from the fire itself. If they seem to align and raise your concerns, say something" (verified: IRPG 2025 pp. 34–37). CPS itself is [L]: the Campbell (1995) text could not be read.
+This maps directly onto FireSim's factor attribution. An "alignment meter" (0–3 forces aligned) is an excellent beginner-level summary of the physics, provided the full simulation backs it (S38). The alignment idea is also current US doctrine. The IRPG closes its topography, fuel and changing-fire-behaviour indicator pages with "Dry fuels to burn intensely, wind to push them, instability factors from the sky, from the terrain, or from the fire itself. If they seem to align and raise your concerns, say something" (verified: IRPG 2025 pp. 35–37). CPS itself is [L]: the Campbell (1995) text could not be read.
 
 ---
 
@@ -471,17 +471,22 @@ This gives FireSim a direct, doctrine-consistent way to label *simulated* intens
   - > 30,000 kW/m: "blow-up or conflagration level".
 - **NSW RFS (2014) forest table** (AFDRS-RP Table 2.5, based on a 20 t/ha fuel load). This gives **more conservative** tactics than the bands above:
 
-  | FDI | Flame height | Intensity | Tactic |
+  | FDI | Flame height | Intensity | Rating: tactic |
   |---|---|---|---|
-  | 0–12 | 0–0.5 m | 0–50 kW/m | hand-tool line will hold |
-  | 12–25 | 1.5–3 m | 500–2,000 kW/m | "Fire too intense for direct attack. Parallel attack recommended" |
-  | 25–50 | 3–10 m | 2,000+ kW/m | "Crown fire at upper intensities. Indirect attack recommended" |
+  | 0–12 | 0–0.5 m | 0–50 kW/m | Low: "Fire generally self-extinguish or hand tool line will hold the fire" |
+  | 12–15 | 0.5–1.5 m | 50–500 kW/m | Moderate: "Offensive operations usually possible in bush fuels" |
+  | 12–25 | 1.5–3 m | 500–2,000 kW/m | High: "Fire too intense for direct attack. Parallel attack recommended" |
+  | 25–50 | 3–10 m | 2,000+ kW/m | Very High: "Crown fire at upper intensities. Indirect attack recommended" |
+  | 50–75 | 10+ m | 12,000–18,000 kW/m | Severe: focus on safeguarding people and defensive operations; offensive operations may be possible at night |
+  | 75–100 | 12+ m | 18,000–25,000 kW/m | Extreme: crew and public safety a major concern |
+  | 100+ | 15+ m | 25,000+ kW/m | Catastrophic: "Actions must focus on safeguarding lives" |
 
-  The table as printed has overlapping rows. The card wording must follow the NSW RFS version, not the Canadian-derived bands.
+  The table as printed has overlapping FDI rows (12–15 and 12–25) and a gap between 2,000+ and 12,000 kW/m; it is reproduced as printed. The card wording must follow the NSW RFS version, not the Canadian-derived bands.
 - **US equivalent** (IRPG "Fire Behavior Observations & Interpretations", from PMS 437; verified: IRPG 2025 p. 50):
 
   | Flame length | Tactical interpretation |
   |---|---|
+  | < 1 ft (< 0.3 m) | not spreading; limited flaming; handline holds |
   | 1–4 ft (0.3–1.2 m) | handtools at head or flanks; handline should hold |
   | 4–8 ft (1.2–2.4 m) | too intense for direct attack with handtools |
   | 8–11 ft (2.4–3.4 m) | serious control problems, torching and spotting; control efforts at head are ineffective |
@@ -581,14 +586,14 @@ Caveat [D]: this is a lower bound on the danger. It assumes the post-change fron
 
 | Case | Setting | Mechanism | Lessons for cards | Evidence |
 |---|---|---|---|---|
-| **Linton, Vic**, 2 Dec 1998 | Forest and plantation, undulating | SW change turned the uncontrolled east flank into the head; five Geelong West CFA firefighters died at and near their tanker. The coroner reported on 11 Jan 2002 with 55 recommendations, citing training and communication failures (the change message was not received). | S11, S12, communication prompt | [V] (Vic coroner report; The Courier) |
+| **Linton, Vic**, 2 Dec 1998 | Forest and plantation, undulating | SW change turned the uncontrolled east flank into the head; five Geelong West CFA volunteers died. At about 20:45 two appliances were entrapped; one crew died. Fire about 660 ha. The coroner reported on 11 Jan 2002 with 55 recommendations, citing training and communication failures (the change message was not received). | S11, S12, communication prompt | [V first pass] (Vic coroner report; The Courier). Time, appliance count and area from secondary sources (archived Wikipedia text). Date and number of recommendations not re-checked |
 | **Wangary, SA**, 10–11 Jan 2005 | Farmland (stubble), paperbark swamp and sugar gums, Lower Eyre Peninsula | Ignited after 15:00 on 10 Jan. Declared "contained" at 20:54 while still burning in the sugar gums and swamp, then "controlled" at 07:45 on 11 Jan; the coroner called that declaration "flawed". A landholder's backburn at the swamp edge had penetrated the swamp. Breakouts from about 09:50 and 10:25 under a strong NW wind, with heavy spotting out of the swamp into stubble; uncontrollable. About 11:30 the wind at Settlers Road changed to westerly, and two farm firefighters in a utility died there. Nine deaths in total. The fire reached the coast at North Shields. | S11, S44 ("contained ≠ out"), backburn into un-mop-able fuel | (verified: SA Coroner findings summary). The 93 homes, ~78,000 ha and "just over two hours" are from ABC 2025 / GA fieldwork (secondary [V] from the first pass; not re-checked) |
 | **Upper Beaconsfield, Vic**, 16 Feb 1983 (Ash Wednesday) | Forested hills (Dandenong Ranges) | Twelve volunteer firefighters killed, trapped "when the wind change struck" | S11 | (secondary: archived Wikipedia text; UNVERIFIED against coronial or CFA records) |
 | **Black Saturday, Kilmore East**, 7 Feb 2009 | Ranges north of Melbourne | Extreme pre-frontal NW winds. The SW change (about 17:30–18:30) turned the roughly 55 km eastern flank into a head fire. Spotting up to 33 km; pyroCb. | S11, S20, S27 | (cross-checked: doc 02, verified from Cruz et al. 2012 abstract); VBRC 2010 [L] |
 | **Canberra / Brindabellas**, 18 Jan 2003 | Mountains to urban edge | VLS on lee slopes, pyroCb, pyro-tornado | S09 (doc 02), S27, S28 | [L] (Fromm 2006; McRae 2013, 2015) |
 | **Green Wattle Creek, NSW**, 19 Dec 2019 | Southern highlands, near Buxton | Two Horsley Park brigade RFS volunteers (Geoffrey Keaton, Andrew O'Dwyer) killed when a tree struck their tanker, which left the road | S40 (hazard trees), vehicle travel in fire areas | (verified: names, brigade and fire, from the Feb 2020 condolence motion); mechanism cross-checked from doc 01 [S]; coronial findings not retrieved |
 | **Jingellic (Green Valley fire), NSW**, 30 Dec 2019 | Upper Murray, hilly | Morven brigade RFS volunteer Samuel McPaul (28) killed when extreme wind overturned his truck; two crewmates burned | S27, S28 | (verified: PM statement 31 Dec 2019; news reports). Vortex vs pyroCb-downdraft attribution UNVERIFIED |
-| **Blackheath area, Blue Mountains, NSW**, 21 Dec 2019 (near miss) | Blue Mountains | A tanker was overrun by flames. It "had run out of water, meaning it couldn't activate the sprinkler system"; the driver got the crew out | S41 (crew-protection water reserve) | (verified: Feb 2020 condolence motion) |
+| **NSW volunteer truck overrun**, 21 Dec 2019 (near miss; volunteer from near Blackheath, Blue Mountains) | Not stated | A truck was overrun by flames. It "had run out of water, meaning it couldn't activate the sprinkler system"; the driver got the crew out | S41 (crew-protection water reserve) | (verified: Feb 2020 condolence motion) |
 | **Peak View, Snowy Monaro, NSW**, 23 Jan 2020 | Mountainous, strong winds | C-130 large air tanker crashed; three US aircrew killed | Aviation limits in mountain winds (instructor note, not a beginner card) | (verified: condolence motion). Causal findings (ATSB) not retrieved |
 | **Mann Gulch, Montana**, 5 Aug 1949 | Steep grass slope | Fire crossed the gulch below the crew and ran up slopes of up to 76% (≈37°). Of 16 men, 13 died. Dodge's escape fire | S01, S06, S33 | (cross-checked: doc 01 [S]; Rothermel 1993) |
 | **South Canyon, Colorado**, 6 Jul 1994 | Steep slope in Gambel oak, cold-front passage | Crew above the fire on a steep slope; the fire ran up gullies after a frontal wind. Drainage spread about 3 ft/s (≈3.3 km/h); upslope runs in live oak 6–9 ft/s (≈6.6–9.9 km/h); 14 died | S01, S03, S06, S11 | (cross-checked: doc 01 [S], from Butler et al. 1998) |
@@ -641,7 +646,7 @@ These are widely taught AFAC, NSW RFS and NWCG principles [L], except where mark
 8. **Vehicles.**
    - Park facing the way out, in a cleared area, not in saddles or gullies and not under hazard trees. The IRPG lists "vehicles parked for escape" under escape routes (verified).
    - Keep crew-protection systems ready. NSW RFS tankers carry crew protection (cabin deluge sprays, radiant curtains) and crews practise burnover drills [L].
-   - **Never run the tank dry.** The 21 Dec 2019 Blue Mountains overrun happened to a truck that "had run out of water, meaning it couldn't activate the sprinkler system" (verified: condolence motion). The reserve volume that SOPs require is UNVERIFIED (250 L is quoted in secondary sources).
+   - **Never run the tank dry.** The 21 Dec 2019 NSW overrun happened to a truck that "had run out of water, meaning it couldn't activate the sprinkler system" (verified: condolence motion). The reserve volume that SOPs require is UNVERIFIED (250 L is quoted in secondary sources).
 9. **Hazard trees.**
    - Burning or fire-weakened trees fall without warning, especially in the black and along roads after the front passes (Green Wattle Creek; cross-checked: doc 01 [S]). Gleason lists "fire-weakened timber (standing and lying)" as an objective hazard (verified).
    - IRPG indicators (verified: pp. 20–21): "trees burning for any period of time"; "dead, broken, or burning tops, and limbs overhead"; "leaning or hung-up trees"; steep slopes; wind; night; and "potential for trees to domino". Controls include "No Work Zones", and repositioning firefighters "in response to high winds in forecast". It also says to monitor hazard trees "along roads and when selecting break areas".
@@ -705,7 +710,7 @@ This is one of the highest-value features for building intuition.
   Mitigations:
   - show uncertainty (ensembles or ranges);
   - label every card's confidence;
-  - include "the model can't see this" cards (S36, S37);
+  - include "the model can't see this" cards that rely on what the crew observes (S35, S37, S45; the first draft cited S36, which is not one of these);
   - always end in doctrine.
 
 ---
@@ -724,7 +729,9 @@ This is one of the highest-value features for building intuition.
   - D8 flow accumulation for gullies and chimneys;
   - saddle points from the Hessian sign test;
   - ridge lines;
-  - cliff mask (slope > 60° [H]).
+  - cliff mask (slope > 60° [H]);
+  - narrow-valley mask: valley-floor width ≤ 200 m with both walls ≥ 15° [H], for S43 slope reversals;
+  - steep-slope mask at θ ≥ 24° (45%), the IRPG indicator (verified), for S02.
 - **Card state machine.** Each card has the states `idle → armed → shown → cooldown`.
   - Use hysteresis: the trigger turns off at 80% of its on-threshold [H].
   - Per-card cooldown is 15 simulated minutes [H].
@@ -748,6 +755,9 @@ This is one of the highest-value features for building intuition.
 | Fuel edits: surface, elevated and bark hazard (OFHAG classes), time since fire, recent HR burn polygons | Fuel inputs | Plain-language pickers with photos |
 | Smoke/column observation (vertical, leaning, flattened, capped, collapsing) | Links what they see to cards S25–S28 | Education only; it also nudges the plume parameters |
 | Inversion present (yes/no), time of day | Diurnal cards | |
+| Tanker water remaining and crew-protection reserve (L) | S41 | Reserve default must be set from the local SOP; the 250 L default is UNVERIFIED |
+| Perimeter status (going / contained / controlled / out) | S44 | "Contained" with heat inside plus a bad next-day forecast fires S44 |
+| Observed column signs (sudden calm, sprinkles, thunder, smoke at feet, cap, leaning) | S45 | One-tap checklist taken from the IRPG plume-dynamics indicators |
 | Prediction taps (POE) | Learning loop | Scored against the simulation |
 
 ### 9.3 Safety overlays and their algorithms [D/H]
@@ -817,9 +827,9 @@ Each should come with POE prompts and debrief cards.
 - `FMC_d`: dead fine fuel moisture (%). `FH`: predicted flame height (m). `I`: intensity (kW/m). `R`: ROS (km/h).
 - Time is local solar time; the conversion from AEDT or AEST is handled in code.
 
-### 10.3 Insight card library (45 cards)
+### 10.3 Insight card library (46 cards)
 
-Thresholds tagged [H] are design choices for RFS instructors to tune. Published thresholds carry their source tag. Cards S41–S45 were added in the fact-check pass, drawing on the verified IRPG, the Wangary coronial findings and the Feb 2020 condolence motion.
+Thresholds tagged [H] are design choices for RFS instructors to tune. Published thresholds carry their source tag. Cards S41–S46 were added in the fact-check pass, drawing on the verified IRPG, the Wangary coronial findings and the Feb 2020 condolence motion.
 
 ---
 
@@ -1114,7 +1124,7 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 **S41 — Keep your crew-protection water** · Danger (reserve breached) / Watch Out (approaching)
 
 - **Trigger:** user-entered or simulated tanker water remaining ≤ the brigade's crew-protection reserve (default 250 L [UNVERIFIED — set from local SOP]), with active fire within 500 m of the vehicle or its route [H].
-- **Why:** In a burnover your truck's sprays and curtains need water. In December 2019 a Blue Mountains crew's truck was overrun after it had run out of water, so its sprinkler system couldn't work.
+- **Why:** In a burnover your truck's sprays and curtains need water. In December 2019 an NSW volunteer crew's truck was overrun by flames after it had run out of water, so its sprinkler system couldn't work.
 - **Safety:** Never pump the tank below the reserve. Head back to refill before you reach it. Tell your Crew Leader your water level.
 - **Source:** Feb 2020 condolence motion (verified); crew-protection reserve SOP (secondary: archived Wikipedia; UNVERIFIED volume).
 
@@ -1146,6 +1156,13 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 - **Safety:** Stop, tell your Crew Leader, and get ready to move to your refuge or the black.
 - **Source:** IRPG: "On-scene factors (thunder/lightning, sprinkles, sudden calm, smoke at your feet) mean imminent wind changes"; plume-dynamics indicators (verified: p. 37).
 
+**S46 — Control line with no anchor** · Watch Out
+
+- **Trigger:** a user-drawn control line (or line under construction) whose starting end is more than 20 m from non-fuel, well-burnt black, a road or trail, or water (fuel-grid classes) [H]. Watch Out #8.
+- **Why:** A line that doesn't start from something that can't burn can be outflanked. The fire simply goes around the open end and gets behind you. On a slope that often happens from below.
+- **Safety:** Start every line from a secure anchor, such as a road, rock, creek or burnt ground, and keep the burnt ground at your back. When building down from the top, anchor the top first.
+- **Source:** Watch Out #8 (verified: PMS 110-18); IRPG downhill checklist: "Starting point will be anchored for crew(s) building fireline down from the top"; "the fireline should be completed between anchor points before being fired out" (verified: p. 7).
+
 ---
 
 ## 11. Open questions, uncertainties and verification checklist
@@ -1176,32 +1193,81 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 9. **Tobler for firefighters:** the load and fatigue factors are heuristic. Campbell et al. (2017) coefficients were not verified.
 10. **Night thermal-belt and inversion-break thresholds** depend on the atmosphere model's skill at 100–200 m resolution. See doc 02 on resolution limits.
 11. **Mountain wind-change arrival:** there is no quantitative literature on terrain-induced timing differences of fronts in NSW valleys; treat it qualitatively.
-12. **AFDRS FBI bands** and their mapping to intensity for forest fuels must be verified from the AFDRS technical documentation.
+12. **AFDRS FBI bands** and the forest intensity mapping are now verified (FBI-TG §2.1.5, §2.3). The AFDRS launch date (1 Sep 2022) was not in the documents read.
 13. **Cliff-line / sandstone escarpment behaviour** (Blue Mountains) is a gap in the retrieved literature.
+14. **Crew-protection water reserve volume** (250 L in secondary sources) must be confirmed against current NSW RFS SOPs and appliance types.
+15. **US-to-NSW transfer.** Many newly verified items are US doctrine: IRPG local-wind speeds, the 14:00–17:00 critical burn period, the flame-length tactical table, and the 10 mph / 20% safety-zone doubling. They are labelled as US guidance. NSW RFS instructors should confirm that Australian equivalents are consistent before cards cite them as rules.
+16. **Card thresholds.** S02, S25 and S32 now overlap with cards in docs 01, 02 and 07, whose thresholds differ slightly: S02 uses 24°/100 m here and 22°/60 m in doc 01. Harmonise them in one card registry before implementation.
+
+### 11.1 Corrections made in the fact-check pass (2026-09-27)
+
+1. **10 Standard Orders, #8**: "ensure" corrected to "be sure they are understood". Watch Outs #4, #7 and #9 now use the full current wording ("influencing fire behavior"; "with crewmembers or supervisor"; "Building fireline downhill").
+2. **Common denominators**: the fifth item was wrong for the current IRPG. It is "during critical burn period between 1400 and 1700", not the air-tanker warning. Added the verified "blowup to burnover … as little as 5 minutes".
+3. **Downhill checklist**: replaced the from-memory paraphrase with the seven items of the IRPG 2025 checklist, including "Fireline will not lie in or adjacent to a chute or chimney".
+4. **SSD**:
+   - Δ is a 3-way lookup (wind × burning condition × slope), not a 2-way slope-wind factor. The full Δ table was added from the Fire Lab code.
+   - The claim that the current IRPG contains the SSD table was false (Jan 2025 edition).
+   - Safety-zone area π·SSD² was added.
+5. **Refuge-size trigger (S32)**: changed from 15° / 20 km/h [H] to the IRPG's 20% (≈11°) / 10 mph (16 km/h) doubling thresholds.
+6. **Downslope spread**: "halves per 10° downslope" replaced with the kataburn correction (never below 0.5×), cross-checked against doc 01.
+7. **McArthur slope validity**: "only tested to about 20°" corrected. The nominal domain is ±40°, Cheney cautioned beyond 30°, and models under-predict above 20°.
+8. **Black Saturday spotting**: "about 30 km or more" corrected to 33 km. The eastern flank length (~55 km) and change timing were added.
+9. **Storey et al. 2020**: "kilometres to tens of kilometres" refined to "most < 5 km, occasional to ~14 km".
+10. **Dead-man zone**: the unconfirmable "600 m/h in under three minutes" was withdrawn from use.
+11. **Wangary**:
+    - Corrected "it had continued to smoulder" to: still actively burning in a paperbark swamp and sugar gums.
+    - Added the contained (20:54) and controlled (07:45) declarations, the backburn into the swamp, and the NW-wind breakout.
+    - Added the westerly change at about 11:30 that killed two farm firefighters.
+    - "Wide front" and "93 homes / 78,000 ha / two hours" are relabelled as secondary.
+12. **2019–20 deaths**: the incomplete "falling trees … and a pyroconvective vortex" summary was replaced with the verified list of nine firefighter deaths. It adds the Peak View C-130 crash (Snowy Monaro) and the 21 Dec 2019 truck overrun, whose truck was out of water. The Jingellic mechanism is marked UNVERIFIED, and McPaul's brigade (Morven) was added.
+13. **Suppression bands**: now sourced from Alexander 2008, CFA, NSW RFS 2014 and Loane & Gould 1986 (via AFDRS-RP). NSW RFS's more conservative wording was added: 500–2,000 kW/m means "too intense for direct attack. Parallel attack recommended".
+14. **AFDRS**: the FBI bands were verified, and "No rating" (0–11) and the forest intensity↔FBI table were added.
+15. **Heat yield**: 18,600 kJ/kg verified as the AFDRS constant, and a unit-trap formula was added for km/h and t/ha inputs.
+16. **Vesta moisture function** and the Matthews et al. 2010 dead-fuel-moisture equations were added (verified: FBI-TG). Worked examples were checked numerically.
+17. **Van Wagner**: the AFDRS code uses 26 rather than 25.9 (noted). Byram flame-length worked values were added.
+18. **New verified content**:
+    - IRPG local-wind magnitudes, plume and smoke indicators, critical-wind speeds, and topography indicators (steep slopes >45%, gap winds, box canyons, slope reversals, thermal belts);
+    - hazard-tree indicators and fireline-location rules (ridge lines on the ridgetop or lee side; avoid undercut and mid-slope lines);
+    - Gleason's four objective hazards and the lookout principle.
+19. **New cards**: S41 (crew-protection water), S42 (ridge-line placement), S43 (slope reversal in narrow gullies), S44 ("contained ≠ out"), S45 (column warning signs) and S46 (anchor point).
+20. **Broken cross-reference**: Watch Out #8 (no anchor point) pointed to S26, the column-collapse card. It now points to the new S46.
 
 ---
 
 ## 12. References
 
-Session evidence: **[V]** marks items seen in this session's search results. All others are [L] and must be verified.
+Session evidence: **[V]** marks items seen in the first session's search results. **(read 2026-09-27)** marks documents downloaded and read in the fact-check pass. All others are [L] and must be verified.
+
+**Primary documents read in the fact-check pass**
+- NWCG (2025) *Incident Response Pocket Guide (IRPG)*, PMS 461, January 2025, NFES 001077. https://fs-prod-nwcg.s3.us-gov-west-1.amazonaws.com/s3fs-public/publication/pms461.pdf (read 2026-09-27; pp. 3–7, 20–23, 34–42, 50, 84–87)
+- NWCG (2020) *10 Standard Firefighting Orders / 18 Watch Out Situations*, PMS 110-18 (05/20), NFES 002638. https://fs-prod-nwcg.s3.us-gov-west-1.amazonaws.com/s3fs-public/2023-06/pms110-18.pdf (read 2026-09-27)
+- Gleason P (1991) *Lookouts, Communication, Escape Routes and Safety Zones "LCES"* (June 1991). https://fs-dev-nwcg.s3.us-gov-west-1.amazonaws.com/s3fs-public/2023-06/lces-gleason.pdf (read 2026-09-27)
+- Schapel AE, Deputy State Coroner SA (2007) *Finding of Inquest into the deaths of Neil George Richardson, Trent Alan Murnane, Star Ellen Borlase, Jack Morley Borlase, Judith Maud Griffith, Jody Maria Kay, Graham Joseph Russell, Zoe Russell-Kay and Helen Kald Castle (Wangary bushfire)*, summary. Inquest held 5 Oct 2005 – 8 May 2007; finding dated 18 Dec 2007. https://safecom-files-v8.s3.amazonaws.com/current/docs/wangary_bushfire_findings_summary.pdf (read 2026-09-27)
+- Matthews S (2022) *Fire Behaviour Index Technical Guide*, v1.0, 23 June 2022. AFDRS. Copy: https://github.com/Geoffysicist/PyroXL/blob/main/docs/fire-behaviour-index-technical-guide.pdf (read 2026-09-27; §2, §3.3)
+- Matthews S, Fox-Hughes P, Grootemaat S, Hollis JJ, Kenny BJ, Sauvage S (2019) *Australian Fire Danger Rating System: Research Prototype.* NSW RFS / BoM. Copy: https://github.com/Geoffysicist/PyroXL/blob/main/docs/afdrs_research_prototype_report_2019.pdf (read 2026-09-27; Tables 2.5–2.11)
+- USFS Missoula Fire Lab, `behave` library: `safeSeparationDistanceCalculator.cpp` (Page & Butler SSD Δ lookup). https://github.com/firelab/behave/blob/master/src/behave/safeSeparationDistanceCalculator.cpp (read 2026-09-27)
+- Prime Minister of Australia (2019) Statement, 31 Dec 2019 (death of Samuel McPaul), PM Transcripts 42577; and (2020) Condolence motion on the 2019–20 bushfires, PM Transcripts 42893. https://pmtranscripts.pmc.gov.au (read 2026-09-27 via the GLAM-Workbench/pm-transcripts-data GitHub mirror)
+- Arndt J (2018) *Calculating McArthur's Forest Fire Danger Index and the Keetch-Byram Drought Index* (technical note; FFDI equation cross-check) (read 2026-09-27)
+- "Dead man zone", Wikipedia, archived text (secondary; read 2026-09-27 via a GitHub mirror)
 
 **Doctrine and training**
 - AFAC. *Use of Lookouts, Awareness, Communications, Escape Routes, Safety Zones (LACES) system for safety on the fireground.* https://www.afac.com.au/resources/use-of-lookouts--awareness--communications--escape-routes--safety-zones--laces--system-for-safety-on-the-fireground [V]
 - NSW RFS. *Prescribed Burning Activities General Operational Protocol.* https://www.rfs.nsw.gov.au/__data/assets/pdf_file/0007/245851/RFS-OPG-Prescribed-Burning.pdf [V]
 - NSW RFS. Foundational doctrine: *Bush and Forest Fires*, https://www.rfs.nsw.gov.au/resources/publications/doctrine/foundational/bush-and-forest-fires ; *Grass and Crop Fires*, https://www.rfs.nsw.gov.au/resources/publications/doctrine/foundational/grass-and-crop-fires ; *Safety Refuges from Bush and Grass Fires*, https://www.rfs.nsw.gov.au/resources/publications/doctrine/foundational/safety-refuges-from-bush-and-grass-fires ; *Fundamental Protocol 2*, https://www.rfs.nsw.gov.au/resources/publications/doctrine/fundamental-protocols/fundamental-protocol-2 [V existence]
 - NWCG. *10 Standard Firefighting Orders*, PMS 110: https://www.nwcg.gov/publications/pms110/10-standard-firefighting-orders-pms-110 ; *18 Watch Out Situations*, PMS 118: http://www.nwcg.gov/publications/pms118/18-watch-out-situations-pms-118 ; *10 and 18 Poster*, PMS 110-18: https://fs-prod-nwcg.s3.us-gov-west-1.amazonaws.com/s3fs-public/2023-06/pms110-18.pdf ; *Origin of the 10 and 18 – June 17, 1957*: https://www.nwcg.gov/6mfs/day-in-history/origin-of-the-10-and-18-june-17-1957 [V]
-- NWCG. *Incident Response Pocket Guide* (PMS 461), current edition, for the downhill line checklist and SSD table. https://www.nwcg.gov/publications/pms461 [L]
-- Gleason P. *Lookouts, Communication, Escape Routes and Safety Zones "LCES".* https://fs-dev-nwcg.s3.us-gov-west-1.amazonaws.com/s3fs-public/2023-06/lces-gleason.pdf [V existence]
+- NWCG. *Incident Response Pocket Guide* (PMS 461), publication page https://www.nwcg.gov/publications/461 (the Jan 2025 PDF is listed above; it contains the downhill checklist but **not** the SSD table).
+- Page WG, Butler BW (2017): see "Safety zones" below for the SSD source; the Δ values were verified via the Fire Lab code.
+- Gleason P (1991): see "Primary documents read" above.
 - Wilson CC (1977) Fatal and near-fatal forest fires: the common denominators. *International Fire Chief* 43(9):9–15. [L]
 - Campbell D (1995) *The Campbell Prediction System: A Wild Land Fire Prediction System & Language*. 2nd edn, self-published, Ojai CA. [L]
 
 **Dead-man zone, wind change and case studies**
 - Cheney NP, Gould JS, McCaw L (2001) The dead-man zone – a neglected area of firefighter safety. *Australian Forestry* 64(1):45–50. https://doi.org/10.1080/00049158.2001.10676160 [V]; ResearchGate: https://www.researchgate.net/publication/237695247 [V]
-- "Dead man zone", Wikipedia (secondary summary). https://en.wikipedia.org/wiki/Dead_man_zone [V, secondary]
+- "Dead man zone", Wikipedia (secondary summary). https://en.wikipedia.org/wiki/Dead_man_zone [V, secondary; archived text re-read in the fact-check pass. It does **not** contain the "600 m/h in 3 min" statement.]
 - Cheney NP, Gould JS (1995) Fire growth in grassland fuels. *IJWF* 5(4):237–247. https://doi.org/10.1071/WF9950237 [L]
 - State Coroner Victoria (2002) *Report of the Investigation and Inquests into a Wildfire and the Deaths of Five Firefighters at Linton on 2 December 1998.* https://www.ffm.vic.gov.au/__data/assets/pdf_file/0031/526594/Report-of-the-Investigation-and-Inquests-into-a-Wildfire-and-the-Deaths-of-Five-Firefighters-at-Linton.pdf [V]; The Courier, "Linton inquest findings": https://www.thecourier.com.au/story/323255/linton-inquest-findings/ [V]
-- SA Coroner. *Inquest into the deaths of Star Ellen Borlase, Jack Morley Borlase, … (Wangary bushfire) – findings summary.* https://safecom-files-v8.s3.amazonaws.com/current/docs/wangary_bushfire_findings_summary.pdf [V]; ABC News (2025) "SA's Wangary 2005 bushfire rewrote the record book": https://www.abc.net.au/news/2025-01-11/wangary-grassfire-20-year-anniversary/104806782 [V]; Geoscience Australia, *Eyre Peninsula Bushfire Fieldwork 10 January 2005*: https://www.ga.gov.au/bigobj/GA9582.pdf [V]
-- Cruz MG, Sullivan AL, Gould JS, Sims NC, Bannister AJ, Hollis JJ, Hurley RJ (2012) Anatomy of a catastrophic wildfire: the Black Saturday Kilmore East fire in Victoria, Australia. *Forest Ecology and Management* 284:269–285. https://doi.org/10.1016/j.foreco.2012.02.035 [L]
+- SA Coroner, Wangary findings summary: see "Primary documents read" above. ABC News (2025) "SA's Wangary 2005 bushfire rewrote the record book": https://www.abc.net.au/news/2025-01-11/wangary-grassfire-20-year-anniversary/104806782 [V]; Geoscience Australia, *Eyre Peninsula Bushfire Fieldwork 10 January 2005*: https://www.ga.gov.au/bigobj/GA9582.pdf [V]
+- Cruz MG, Sullivan AL, Gould JS, Sims NC, Bannister AJ, Hollis JJ, Hurley RJ (2012) Anatomy of a catastrophic wildfire: the Black Saturday Kilmore East fire in Victoria, Australia. *Forest Ecology and Management* 284:269–285. https://doi.org/10.1016/j.foreco.2012.02.035 (abstract facts verified in doc 02: ~55 km flank, 33 km spotting)
 - Teague B, McLeod R, Pascoe S (2010) *2009 Victorian Bushfires Royal Commission Final Report.* Parliament of Victoria. [L]
 - Owens D, O'Kane M (2020) *Final Report of the NSW Bushfire Inquiry.* NSW Government. [L]
 - Rothermel RC (1993) *Mann Gulch Fire: A Race That Couldn't Be Won.* USDA FS GTR INT-299. [L]
@@ -1212,12 +1278,29 @@ Session evidence: **[V]** marks items seen in this session's search results. All
 **Safety zones, escape and triggers**
 - Butler BW, Cohen JD (1998) Firefighter safety zones: a theoretical model based on radiative heating. *IJWF* 8(2):73–77. https://doi.org/10.1071/WF9980073 [L]
 - Butler BW (2014) Wildland firefighter safety zones: a review of past science and summary of future needs. *IJWF* 23(3):295–308. https://doi.org/10.1071/WF13021 [V existence]
-- Page WG, Butler BW (2017) An empirically based approach to defining wildland firefighter safety and survival zone separation distances. *IJWF* 26(8):655–667. https://doi.org/10.1071/WF16213 [L]
+- Page WG, Butler BW (2017) An empirically based approach to defining wildland firefighter safety and survival zone separation distances. *IJWF* 26(8):655–667. https://doi.org/10.1071/WF16213 [L for text; SSD = 8·VH·Δ and the Δ table verified via the Fire Lab `behave` code; class boundaries UNVERIFIED]
 - Campbell MJ, Dennison PE, Butler BW (2017) A LiDAR-based analysis of the effects of slope, vegetation density, and ground surface roughness on travel rates for wildland firefighter escape route mapping. *IJWF* 26(10):884–895. https://doi.org/10.1071/WF17031 [L]
-- Tobler W (1993) *Three Presentations on Geographical Analysis and Modeling.* NCGIA Technical Report 93-1. [L]
+- Tobler W (1993) *Three Presentations on Geographical Analysis and Modeling.* NCGIA Technical Report 93-1. [L; the standard form of the hiking function is used; primary not re-read]
 - Cova TJ, Dennison PE, Kim TH, Moritz MA (2005) Setting wildfire evacuation trigger points using fire spread modeling and GIS. *Transactions in GIS* 9(4):603–617. [L]
 - Fryer GK, Dennison PE, Cova TJ (2013) Wildland firefighter entrapment avoidance: modelling evacuation triggers. *IJWF* 22(7):883–893. https://doi.org/10.1071/WF12160 [L]
 - Budd GM et al. (1997) Project Aquarius (series of papers on the physiology of bushfire suppression). *IJWF* 7(2):69–218. [L]
+
+**Suppression-difficulty sources (cited via AFDRS-RP chapter 2; primaries not read)**
+- Alexander ME (2008) Proposed revision of fire danger class criteria for forest and rural areas in New Zealand. National Rural Fire Authority / Scion. [L]
+- Luke RH, McArthur AG (1977/1978) *Bushfires in Australia.* AGPS, Canberra. [L]
+- Loane IT, Gould JS (1986) *Aerial suppression of bushfires: cost-benefit study for Victoria.* CSIRO. [L]
+- NSW Rural Fire Service (2014): the suppression-threshold table as reproduced in AFDRS-RP Table 2.5. [L; original document not identified]
+- Cheney NP, Sullivan AL (1997) *Grassfires: Fuel, Weather and Fire Behaviour.* CSIRO Publishing. [L]
+
+**Cross-checked via companion docs (01, 02, 03, 06), not re-read here**
+- Sullivan AL, Sharples JJ, Matthews S, Plucinski MP (2014) A downslope fire spread correction factor based on landscape-scale fire behaviour. *Environmental Modelling & Software* 62:153–163. (via doc 01)
+- Cruz MG, Sullivan AL, Alexander ME (2014) *Fire behaviour knowledge in Australia.* CSIRO review. https://www.frames.gov/documents/catalog/cruz_sullivan_alexander_2014.pdf (via doc 01)
+- Xie X et al. (2017) trench fire experiments in pine litter; Lahaye S et al. (2018) burnover analysis, Southern California (both via doc 01; full citations in doc 01)
+- USDA FS (2020) Wildland firefighter burnover fatalities on prescribed fires and wildfires in the United States, 1990 to 2017. RMRS-P-78, 177–181. https://www.fs.usda.gov/rm/pubs_series/rmrs/proc/rmrs_p078/rmrs_p078_177_181.pdf (via doc 01)
+- Schroeder MJ, Buck CC (1970) *Fire Weather.* USDA Agriculture Handbook 360 (thermal-belt definition; via doc 02)
+- Whiteman CD (1982) Breakup of temperature inversions in deep mountain valleys. Part I: observations. *J. Appl. Meteorol.* 21:270–289 (via doc 02)
+- Nelson RM (1993) Byram's energy criterion for wildland fires: units and equations. USDA FS Research Note INT-415 (via docs 02/07)
+- Matthews S, Gould J, McCaw L (2010) Simple models for predicting dead fuel moisture in eucalyptus forests. *IJWF* 19:459–467 (equations verified via FBI-TG; the bibliographic details are [L])
 
 **Fire behaviour and terrain**
 - McArthur AG (1967) *Fire Behaviour in Eucalypt Forests.* Forestry and Timber Bureau Leaflet 107, Canberra. [L]

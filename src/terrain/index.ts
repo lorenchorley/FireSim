@@ -40,6 +40,7 @@ export {
   insolation,
   dailyInsolation,
   SOLAR_CONSTANT,
+  MAX_CLEAR_SKY_RATIO,
 } from './solar';
 export type { SolarPosition, SunTimes, Irradiance, InsolationOptions, InsolationResult, DailyInsolation } from './solar';
 export { hillshade, multiHillshade } from './hillshade';

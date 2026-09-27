@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellAt, sampleBilinear } from '../core/grid';
+import { cellAt, makeGridSpec, sampleBilinear } from '../core/grid';
 import { Landform, type Terrain } from '../core/types';
 import { angleDiffDeg, DEG, RAD } from '../core/units';
 import { buildTerrain, terrainDerived } from './analysis';
@@ -11,7 +11,9 @@ import {
   cloudAttenuation,
   dailyInsolation,
   erbsDecomposition,
+  horizontalIrradiance,
   insolation,
+  MAX_CLEAR_SKY_RATIO,
   skyViewFactor,
   solarPosition,
   sunTimes,
@@ -173,6 +175,47 @@ describe('irradiance models', () => {
     expect(cloudAttenuation(100)).toBeCloseTo(0.25, 6);
     expect(cloudAttenuation(50)).toBeGreaterThan(0.9);
   });
+
+  it('regression: the beam / diffuse split is continuous at 0 % cloud and beam falls steadily with cloud', () => {
+    // Plain Erbs on the first percent of cloud moved ≈ 6 % of the beam into diffuse (DNI 960 → 905 W/m²).
+    const sun = solarPosition(Date.parse('2025-10-15T03:00:00Z'), -33.7, 150.3);
+    const clear = horizontalIrradiance(sun, 900, {});
+    const c1 = horizontalIrradiance(sun, 900, { cloudCover: 1 });
+    expect(Math.abs(c1.dni / clear.dni - 1)).toBeLessThan(0.005);
+    expect(Math.abs(c1.dhi / clear.dhi - 1)).toBeLessThan(0.02);
+    let prevDni = Infinity;
+    for (const cc of [0, 1, 10, 30, 50, 70, 90, 100]) {
+      const r = horizontalIrradiance(sun, 900, { cloudCover: cc });
+      expect(r.dni).toBeLessThanOrEqual(prevDni + 1e-9);
+      expect(r.dni).toBeLessThanOrEqual(clear.dni + 1e-9);
+      expect(r.dni * Math.sin(sun.elevation * DEG) + r.dhi).toBeCloseTo(r.ghi, 6);
+      prevDni = r.dni;
+    }
+    const overcast = horizontalIrradiance(sun, 900, { cloudCover: 100 });
+    expect((overcast.dni * Math.sin(sun.elevation * DEG)) / overcast.ghi).toBeLessThan(0.05);
+  });
+
+  it('regression: measured hourly-mean GHI near sunrise cannot make a noon-strength beam', () => {
+    // 12 minutes after sunrise the sun is ≈ 2° up. An hourly mean GHI of 80 W/m² was split by Erbs into a
+    // beam above 1000 W/m², so east-facing slopes glowed at dawn.
+    const st = sunTimes(Date.parse('2025-03-20T02:00:00Z'), -33.7, 150.3);
+    const sun = solarPosition(st.sunrise + 12 * MIN, -33.7, 150.3);
+    expect(sun.elevation).toBeGreaterThan(1);
+    expect(sun.elevation).toBeLessThan(4);
+    const clear = clearSkyIrradiance(sun.elevation, 900, 3, sun.distanceAU);
+    const r = horizontalIrradiance(sun, 900, { ghi: 80 });
+    expect(r.ghi).toBeLessThanOrEqual(MAX_CLEAR_SKY_RATIO * clear.ghi + 1e-9);
+    expect(r.dni).toBeLessThanOrEqual(clear.dni + 1e-9);
+    // On a 30° east-facing slope the total stays of the order of the clear-sky value, not hundreds of W/m².
+    const g = testGrid(1500, 30);
+    const t = build(g, plane(g, -Math.tan(30 * DEG), 0)); // rises west → faces east
+    const ins = insolation(t, st.sunrise + 12 * MIN, { ghi: 80 });
+    const k = cellAt(g, 0, 0);
+    expect(ins.total[k]!).toBeLessThan(clear.dni * 0.9 + clear.dhi + 5);
+    // A plausible midday measurement passes through unchanged.
+    const noonSun = solarPosition(st.solarNoon, -33.7, 150.3);
+    expect(horizontalIrradiance(noonSun, 900, { ghi: 650 }).ghi).toBe(650);
+  });
 });
 
 describe('sky-view factor', () => {
@@ -256,6 +299,55 @@ describe('cast shadows', () => {
       }
       expect(agree / total).toBeGreaterThan(0.97);
     }
+  });
+
+  it('non-square grids (nx ≠ ny): shadows match brute-force ray marching', () => {
+    const g = { nx: 150, ny: 90, cellSize: 30, x0: -2235, y0: -1335, origin: { lat: -33.7, lon: 150.3 } };
+    const hills = (x: number, y: number): number =>
+      600 + 200 * Math.exp(-((x - 300) ** 2 + (y + 200) ** 2) / (2 * 400 ** 2)) + 150 * Math.exp(-((x + 900) ** 2 + (y - 300) ** 2) / (2 * 300 ** 2));
+    const z = new Float32Array(g.nx * g.ny);
+    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) z[j * g.nx + i] = hills(g.x0 + i * g.cellSize, g.y0 + j * g.cellSize);
+    const t = buildTerrain(g, z, 'rect');
+    const xMax = g.x0 + (g.nx - 1) * g.cellSize;
+    const yMax = g.y0 + (g.ny - 1) * g.cellSize;
+    for (const [az, el] of [
+      [20, 12],
+      [300, 8],
+      [60, 10],
+      [135, 15],
+      [250, 9],
+    ] as const) {
+      const sh = castShadows(t, az, el);
+      const ux = Math.sin(az * DEG);
+      const uy = Math.cos(az * DEG);
+      const tanE = Math.tan(el * DEG);
+      let agree = 0;
+      let shadowed = 0;
+      for (let j = 0; j < g.ny; j++) {
+        for (let i = 0; i < g.nx; i++) {
+          const x = g.x0 + i * g.cellSize;
+          const y = g.y0 + j * g.cellSize;
+          const z0 = t.elevation[j * g.nx + i]!;
+          let shadow = 0;
+          for (let d = g.cellSize / 2; ; d += g.cellSize / 4) {
+            const px = x + ux * d;
+            const py = y + uy * d;
+            if (px < g.x0 || py < g.y0 || px > xMax || py > yMax) break;
+            if (sampleBilinear(g, t.elevation, px, py) > z0 + d * tanE) {
+              shadow = 1;
+              break;
+            }
+          }
+          shadowed += shadow;
+          if ((sh[j * g.nx + i]! >= 0.5 ? 1 : 0) === shadow) agree++;
+        }
+      }
+      expect(shadowed).toBeGreaterThan(50); // the test actually exercises shadows
+      expect(agree / (g.nx * g.ny)).toBeGreaterThan(0.98);
+    }
+    // Sky-view factor of an unobstructed plane on the same grid shape.
+    const p = buildTerrain(g, plane(g, Math.tan(25 * DEG), 0), 'rect-plane');
+    expect(Math.abs(skyViewFactor(p)[45 * g.nx + 75]! - (1 + Math.cos(25 * DEG)) / 2)).toBeLessThan(0.02);
   });
 
   it('no cast shadows on a uniform plane, even on steep side-slopes at low sun', () => {
@@ -359,6 +451,52 @@ describe('insolation', () => {
     expect(r.sunElevation).toBeLessThan(0);
     expect(r.total.every((v) => v === 0)).toBe(true);
     expect(r.shaded.every((v) => v === 1)).toBe(true);
+    // A non-finite time is treated as night rather than filling the fields with NaN.
+    const bad = insolation(build(g, randomHills(g)), NaN);
+    expect(bad.total.every((v) => v === 0)).toBe(true);
+    expect(bad.shaded.every((v) => v === 1)).toBe(true);
+  });
+
+  it('matches the beam-radiation geometry in docs/research/04-fuel-moisture.md (30° slopes at 33.7° S)', () => {
+    // Ratios of beam energy on 30° slopes to beam energy on flat ground (clear sky, open terrain).
+    const g = makeGridSpec({ lat: -33.7, lon: 150.3 }, 1500, 30);
+    const k = cellAt(g, 0, 0);
+    const s30 = Math.tan(30 * DEG);
+    const facing = (asp: number): Terrain => build(g, plane(g, -s30 * Math.sin(asp * DEG), -s30 * Math.cos(asp * DEG)));
+    const flat = build(g, plane(g, 0, 0));
+    const beam = (t: Terrain, day: string, h0: number, h1: number): number => {
+      const noon = sunTimes(Date.parse(day), -33.7, 150.3).solarNoon;
+      let e = 0;
+      for (let tm = noon + h0 * 3600e3; tm <= noon + h1 * 3600e3; tm += 5 * MIN) e += insolation(t, tm).direct[k]!;
+      return e;
+    };
+    // Winter solstice: a 30° south-facing slope gets ≈ 4 % of the flat beam all day.
+    const jun = '2025-06-21T02:00:00Z';
+    const southWinter = beam(facing(180), jun, -12, 12) / beam(flat, jun, -12, 12);
+    expect(southWinter).toBeGreaterThan(0.02);
+    expect(southWinter).toBeLessThan(0.07);
+    // 15 October, 13–16 h solar time: NW slope ≈ 1.29 × flat, SE slope ≈ 0.45 × flat.
+    const oct = '2025-10-15T02:00:00Z';
+    const fo = beam(flat, oct, 1, 4);
+    expect(beam(facing(315), oct, 1, 4) / fo).toBeCloseTo(1.29, 1);
+    expect(beam(facing(135), oct, 1, 4) / fo).toBeCloseTo(0.45, 1);
+    // Midsummer: the south-facing slope still gets ≈ 0.82–0.87 of the flat daily beam.
+    const dec = '2025-12-21T02:00:00Z';
+    const southSummer = beam(facing(180), dec, -12, 12) / beam(flat, dec, -12, 12);
+    expect(southSummer).toBeGreaterThan(0.8);
+    expect(southSummer).toBeLessThan(0.9);
+  });
+
+  it('dailyInsolation ignores an instantaneous ghi and integrates polar day', () => {
+    const g = testGrid(1500, 30);
+    const t = build(g, plane(g, 0.2, 0));
+    const day = Date.parse('2025-06-21T02:00:00Z');
+    const a = dailyInsolation(t, day, { stepMinutes: 60 });
+    const b = dailyInsolation(t, day, { stepMinutes: 60, ghi: 900 });
+    expect(Array.from(b.energy.slice(0, 20))).toEqual(Array.from(a.energy.slice(0, 20)));
+    const polar = dailyInsolation(t, Date.parse('2025-06-21T12:00:00Z'), { stepMinutes: 60, location: { lat: 80, lon: 0 } });
+    expect(polar.sunHours[cellAt(g, 0, 0)]!).toBeGreaterThan(12);
+    expect(polar.energy[cellAt(g, 0, 0)]!).toBeGreaterThan(5);
   });
 
   it('200×200 grid: first call (incl. sky-view factor) < 150 ms, repeat calls much faster', () => {

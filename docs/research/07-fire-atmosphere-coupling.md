@@ -30,6 +30,51 @@ This note does not repeat them. It supplies the numerics and the coupling rules 
 
 No numbers were invented. Where a value is uncertain, the text says so.
 
+### 0.1 Adversarial fact-check pass (second author)
+
+**What this pass could do.**
+- Every publisher and agency host was blocked again: Copernicus, MDPI, CSIRO Publishing, USDA FS, archive.org, open-meteo.com, Crossref, OpenAlex.
+- The web-search budget was already used up.
+- So the checks were made against sources on GitHub:
+  - WRF master: `registry.fire`, `module_fr_fire_{core,phys,atm,driver,model,util}.F`, `share/module_model_constants.F`, `Registry.EM_COMMON`, `dyn_em/module_{diffusion,small_step}_em.F`, `test/em_fire/{namelist.input_hill_simple,input_sounding_hill_simple}`;
+  - WindNinja master: `ninja.cpp`, `cellDiurnal.cpp`;
+  - the WRF-SFIRE `README-SFIRE.md`;
+  - the Open-Meteo website source (`open-meteo/open-meteo-website`, `docs/options.ts`, `docs/bom-api/*`);
+  - caniuse data (`Fyrd/caniuse`);
+  - the PavelDoGreat WebGL fluid source;
+  - secondary transcriptions of Clark et al. (1996) and Hilton et al. (2018) found by GitHub code search.
+- New experiments were run in Node 22: a level-set stability test, and re-runs of the smoother and multigrid tests (§3.4, §7.4).
+
+**Inline tags used in this pass.**
+- **(verified: source)**: the claim was re-read in the named source during this pass.
+- **(UNVERIFIED — reason)**: the claim could not be checked here.
+- The first author's [V]/[K]/[D]/[M]/[H] tags are kept.
+
+**Corrections made (most important first).**
+1. **The level-set time step ignored the artificial viscosity.** WRF's `tbound` covers only the advective term. With `fire_viscosity = 0.4`, the recommended Δt_f ≈ 0.5·Δx/R_max is **unstable**: in the test the whole domain spuriously "burnt".
+   - The corrected bound is `Δt_f ≤ 1/max[R((|n_x|+2ν)/Δx + (|n_y|+2ν)/Δy)]`, which is about 0.33·Δx/R at ν = 0.4.
+   - Changed in §1, §3.4, §7.11 and §9.1 [D + M].
+2. **Crown heat is released *above* 15 m, not below.** WRF's flux profile is constant below `fire_crwn_hgt`, so there is no heating there. It e-folds above that height (verified: `fire_tendency`).
+3. **WRF's slope and wind projection depend on `fire_advection`, whose Registry default is 1.** Only `fire_advection = 0` uses `tanφ = ∇z·n`. The default uses |∇z| and |U| times max(0, cos).
+4. **`windrf` is not applied in WRF master.** The tabulated 20 ft-to-midflame factors (0.36–0.55) are read and printed but never multiply the spread wind. Also, `fire_lsm_zcoupling` defaults to `.false.`.
+5. **Elevation effect on buoyancy.** The Briggs F and Byram N_c scale as 1/(ρT) = R_d/p. The gain is therefore about +13% at 1,000 m and +27% at 2,000 m, not 10–20%.
+6. **Convective Froude number.** The formula now includes the spread rate, `F_c² = (U − S_f)²/(g(Δθ/θ̄)W_f)`. It is from Clark et al. (1996), *IJWF* 6, 177–190, Eq. 1, not from the *J. Appl. Meteor.* paper.
+7. **Top sponge sign.** WRF damps w toward 0. The corrected implicit update is `w ← w/(1 + Δtγ)`, and relaxation toward a reference is `(w + Δtγ w_ref)/(1 + Δtγ)`.
+8. **The "why here" example multiplier.** 28° upslope gives ×7.0 (2^2.8), not ×4.8. The slope handling is now aligned with 01 §4.2: head direction from the wind+slope vector sum, and the Kataburn correction downslope.
+9. **Open-Meteo.** BoM ACCESS-G via Open-Meteo gives 10/40/80/120 m winds, **no pressure levels**, and open-data delivery is currently suspended. The 180 m winds and pressure levels must come from ECMWF IFS, GFS or ICON (consistent with 08).
+10. **Buoyancy–stratification coupling.** It must be forward–backward. Forward Euler for the (w, θ′) pair is unconditionally unstable [D].
+11. **Other fixes.**
+    - Terrain-following stencil: 15-point, not "19-point".
+    - WRF's upwind-split branch has a typo; see §3.2.
+    - WRF treats the fuel load as wet mass.
+    - θ tendency: WRF omits the Exner factor.
+    - Radiative fraction: sourced to Wooster et al. (2005), 14 ± 3%.
+    - Taylor–Lee escarpment factor: 0.8.
+    - Prometheus does not use the rear-focus back-ROS rule.
+    - Re-measured smoother numbers.
+    - Mountain-specific caveats on nudging and diffusion in valleys.
+    - Five new mountain insight cards (§10, cards 14–18).
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
@@ -40,12 +85,15 @@ No numbers were invented. Where a value is uncertain, the text says so.
    - it returns sensible and latent heat fluxes, which the atmosphere inserts as a θ tendency decaying with height.
 
    This is the WRF-SFIRE design: "in every time step, the fire model inputs the surface wind, which drives the fire, and outputs the heat flux from the fire into the atmosphere" [V] (Mandel et al. 2011). FireSim should copy this loop, with Australian ROS models.
-2. **Fire front: level set.** Use a Godunov/ENO1 upwind level set with Heun RK2 (the WRF-SFIRE 0.1 baseline [V]).
-   - Stable step: `dt ≤ 1 / max[R(|n_x|/Δx + |n_y|/Δy)]` [V, WRF code].
+2. **Fire front: level set.** Use a Godunov/ENO1 upwind level set with Heun RK2 (the WRF-SFIRE 0.1 baseline [V]) (verified: WRF-SFIRE `README-SFIRE.md` "propagated with RK2 (Heun's) and ENO1").
+   - WRF's advective bound is `dt ≤ 1 / max[R(|n_x|/Δx + |n_y|/Δy)]` [V, WRF code] (verified: `tend_ls`).
+   - **Corrected here:** the artificial viscosity is explicit, so it must be included:
+     `dt ≤ 1 / max[R((|n_x|+2ν)/Δx + (|n_y|+2ν)/Δy)]`. At ν = 0.4 that is about 0.33·Δx/R, and the old 0.5·Δx/R blows up [D + M, §3.4].
    - Use a small artificial viscosity, "grows only", and periodic reinitialisation.
    - Take the normal speed as the **support function of the local elliptical Huygens wavelet**, `R(n) = c(n·e) + √(a²(n·e)² + b²(n·e⊥)²)` [D]. This reproduces FARSITE/Prometheus-style elliptical growth without marker tangling. Its first term is pure advection, which gives a clean upwind split.
 3. **Wind height is the most common coupling bug.** Australian models (Vesta Mk2, McArthur, CSIRO grass) want the **10 m open wind**. A model wind at 10 m AGL inside a 25 m eucalypt canopy is not that.
    - Take the resolved wind at a reference height above the canopy and above the fire-contaminated layer. WRF has exactly this option (`fire_lsm_zcoupling_ref = 50 m`, log profile down) [V code].
+     - (verified: `registry.fire` and `interpolate_atm2fire`. The switch `fire_lsm_zcoupling` defaults to `.false.`. When on, WRF computes u* = κU(50 m)/ln(50/z₀) and U(z_f) = (u*/κ)ln((z_f + z₀)/z₀) with the fire-grid z₀.)
    - Convert it to 10 m-open with a log law.
 4. **Double counting.** Empirical ROS already contain the fire's own near-field indraft.
    - At 100–200 m the atmosphere resolves only the broad fire-induced convergence.
@@ -59,9 +107,11 @@ No numbers were invented. Where a value is uncertain, the text says so.
    vertical shape: e-folding depth 50 m
    ```
 
-   Here ṁ is the fuel mass-loss rate. If each cell's heat release integrates to `H·w`, the front-integrated heat equals Byram's `I = H·w·R` [D].
+   (verified: WRF `heat_fluxes` and `fire_tendency`. The 50 m extinction depth goes back to Clark et al. 1996, *IJWF* 6, Eq. 10, via a secondary transcription.)
+
+   Here ṁ is the fuel mass-loss rate. If each cell's heat release integrates to `H·w`, the front-integrated heat equals Byram's `I = H·w·R` [D] (verified: arithmetic).
 6. **The plume will outgrow our 3 km box.**
-   - Briggs final rise for a 1–10 GW fire in 5 m/s wind and stable air is about 0.7–1.5 km [D]. In a deep mixed layer the plume goes much higher.
+   - Briggs final rise for a 1–10 GW fire in 5 m/s wind and stable air is about 0.7–1.5 km [D] (verified: recomputed, 676 m and 1,457 m). In a deep mixed layer the plume goes much higher.
    - Use a top sponge, plus a 1-D Morton–Taylor–Turner (MTT) plume column for "how high / pyroCu?" answers (links to PFT in 02).
 7. **Atmosphere solver.**
    - Boussinesq "stable fluids" on a MAC grid in terrain-following coordinates: semi-Lagrangian advection of u, v, w and θ′; buoyancy; Smagorinsky (WRF form, c_s = 0.25, stability-corrected [V code]); pressure projection.
@@ -75,6 +125,8 @@ No numbers were invented. Where a value is uncertain, the text says so.
 10. **Performance.**
     - Measured in V8 on one 2.1 GHz Xeon core, a full step at 48×48×24 took about 12 ms and a 300² level-set step about 2 ms [M].
     - A phone is plausibly 1–3× slower [H]. That gives 30–90 s for 4 h at Δt_a = 6 s on the CPU.
+      - (Partly re-verified: semi-Lagrangian advection re-measured at 23.7 ns per cell per field on the same class of 2.1 GHz Xeon.)
+      - (UNVERIFIED — phone factor. The benchmarked step used 20 red-black sweeps. 1–2 multigrid V-cycles cost more, so allow +0–50% for the pressure solve, §8.)
     - WebGPU is an optional accelerator, not a dependency.
 11. **Why-explanations come from diagnostics this solver already has:**
     - fire-induced wind share;
@@ -109,19 +161,21 @@ WRF's own idealised hill test gives a concrete instance [V, `test/em_fire/nameli
 - `sr_x = sr_y = 4`, a 12.5 m fire mesh;
 - a stable sounding, with θ rising by 0.7 K per 100 m.
 
+(verified: `namelist.input_hill_simple` has `dx = 50`, `e_vert = 51`, `ztop = 4000`, `time_step_fract = 1/2`, `sr_x = sr_y = 4`, `fire_wind_height = 1.` and `damp_opt = 0`. `input_sounding_hill_simple` has θ = 288 K at 10 m rising 0.7 K per 100 m to 1 km, then 0.75 K per 100 m, with a uniform 3 m/s westerly.)
+
 ### 2.2 Model landscape
 
 | Model | Atmosphere | Fire front | Coupling details | Typical use and cost | What FireSim takes |
 |---|---|---|---|---|---|
-| **WRF-SFIRE / WRF-Fire** (Mandel, Coen, Kochanski, Muñoz-Esparza) | WRF compressible non-hydrostatic, LES-capable | Level set on a refined mesh. Upwinding default `fire_upwinding=9` (WENO5 near the front, ENO1 elsewhere). WRF 4.x calls `prop_ls_rk3` + `reinit_ls_rk3`; SFIRE 0.1 uses RK2 Heun + ENO1 [V code/README] | Wind log-interpolated to `fire_wind_height = 6.096 m` (20 ft, for Rothermel midflame via a wind-reduction factor) [V]. Heat e-folding `fire_ext_grnd = 50 m`; crown heat below `fire_crwn_hgt = 15 m` [V] | "faster than real time on a cluster… at dekameter resolution" [V abstract] | The whole loop, the CFL rule, the heat-flux formulas, the reinit and viscosity defaults |
-| **CAWFE** (Clark, Coen) | Clark terrain-following anelastic model | Tracer-based front, Rothermel | Established convective feedback: fire-line fingering, bulging head [K] (Clark et al. 1996, 2004) | Research | Convective Froude number idea (§6.3) |
+| **WRF-SFIRE / WRF-Fire** (Mandel, Coen, Kochanski, Muñoz-Esparza) | WRF compressible non-hydrostatic, LES-capable | Level set on a refined mesh. Upwinding default `fire_upwinding=9` (WENO5 near the front, ENO1 elsewhere). WRF 4.x calls `prop_ls_rk3` + `reinit_ls_rk3`; SFIRE 0.1 uses RK2 Heun + ENO1 [V code/README] (verified: `module_fr_fire_model.F` calls `prop_ls_rk3`/`reinit_ls_rk3`) | Wind log-interpolated to `fire_wind_height = 6.096 m` (20 ft) [V]. **Corrected:** in WRF master the tabulated `windrf` 20 ft→midflame factors are *not* applied to the spread wind (verified: grep of all fire modules). Default `fire_advection = 1` projects \|U\| and \|∇z\| onto the normal with max(0, cos) (verified: `registry.fire`, `fire_ros`). Heat e-folding `fire_ext_grnd = 50 m`. **Corrected:** crown heat is injected *from* `fire_crwn_hgt = 15 m` upward; the flux is constant below 15 m, so there is no heating there, and it e-folds with `fire_ext_crwn = 50 m` above (verified: `fire_tendency`) | "faster than real time on a cluster… at dekameter resolution" [V abstract] | The whole loop, the CFL rule, the heat-flux formulas, the reinit and viscosity defaults |
+| **CAWFE** (Clark, Coen) | Clark terrain-following anelastic model | Tracer-based front. Clark et al. (1996) used a McArthur-type ROS; later CAWFE used Rothermel | Established convective feedback: fire-line fingering, bulging head [K] (Clark et al. 1996a,b, 2004). Origin of the 50 m heat extinction depth (verified: secondary transcription of Clark et al. 1996b, *IJWF* 6, Eq. 10) | Research | Convective Froude number idea (§6.3) |
 | **ACCESS-Fire** (BoM / Kepert, Peace, Toivanen) | UK Met Office Unified Model (ACCESS), nested | Level-set spread [K] | Used for Waroona WA (evening ember storms linked to "above-surface wind fields, local topography and the fire plume") and for NSW's **Sir Ivan** fire [V]. Also Black Summer case studies [V] | Research / hindcast, supercomputer | NSW validation cases; the message that above-surface winds matter |
 | **MesoNH–ForeFire** (Univ. Corse / CNRS) | MesoNH LES | Lagrangian front markers (ForeFire, C++) | Two-way coupling with MesoNH [V README] | Research / forecast | — |
-| **FIRETEC / HIGRAD** (LANL) | Multiphase physics-based CFD, metre-scale | Resolved combustion, no ROS law | Fully physical [K] | Supercomputer, hours per minute [K] | Qualitative benchmarks |
-| **QUIC-Fire** (Linn et al. 2020) | QUIC-URB rapid 3-D diagnostic wind solver | "Physics-based cellular automata fire spread model Fire-CA" with FIRETEC-like 3-D fuels | Coupled feedback. Results "show strong agreement" with FIRETEC [V abstract] | Laptop-scale prescribed-burn planning | Evidence that **diagnostic wind + cheap fire + plume feedback** is credible |
+| **FIRETEC / HIGRAD** (LANL) | Multiphase physics-based CFD, metre-scale | Resolved combustion, no ROS law | Fully physical [K] | Supercomputer, hours per minute [K] (UNVERIFIED — order of magnitude only) | Qualitative benchmarks |
+| **QUIC-Fire** (Linn et al. 2020) | QUIC-URB rapid 3-D diagnostic wind solver | "Physics-based cellular automata fire spread model Fire-CA" with FIRETEC-like 3-D fuels | Coupled feedback. Results "show strong agreement" with FIRETEC [V abstract] (verified: citation and DOI 10.1016/j.envsoft.2019.104616 via several bibliographies; UNVERIFIED — abstract wording not re-read) | Laptop-scale prescribed-burn planning | Evidence that **diagnostic wind + cheap fire + plume feedback** is credible |
 | **Spark** (CSIRO Data61) | None natively; add-ons | Level set, "speed … defined at every point… merging … without additional computational cost" [V] | Pyrogenic potential for convective feedback (Hilton et al. 2018); rapid wind–terrain correction (Hilton & Garg 2021) [K] | Operational-style, seconds | Pyrogenic potential for sub-grid indraft |
 | **Phoenix RapidFire** (Tolhurst) | None; uses input weather | Huygens-type propagation on a raster [K] | Empirical ember and convection terms [K] | Operational in Victoria [K] | — |
-| **FARSITE / Prometheus** | None | Vector front, Huygens elliptical wavelets (Richards 1990 ODEs) [K] | None | Operational, seconds | Ellipse → level-set speed (§3.2) |
+| **FARSITE / Prometheus** | None | Vector front, Huygens elliptical wavelets (Richards 1990 ODEs) [K]. FARSITE derives the back ROS from LB with the rear-focus (HB) rule; Prometheus takes the back ROS from the Canadian FBP BROS equations instead [K] | None | Operational, seconds | Ellipse → level-set speed (§3.2) |
 | **Cellular automata** | None | Cell-to-cell ignition times | None | Very fast | Avoid: grid-orientation distortion (§3.7) |
 | **WindNinja** (USFS) | Diagnostic mass-conserving FE wind, plus an optional OpenFOAM momentum solver | — | Diurnal slope-flow add-on [V code] | Seconds–minutes on a laptop | Mass-consistent background (§7.10) and slope-flow top-up (§7.9) |
 
@@ -147,12 +201,14 @@ arrival time t_a(x): the time when φ(x) first becomes ≤ 0
 ```
 
 The fire can only grow: WRF enforces `φ^{n+1} ≤ φ^n` (`fire_grows_only = 1`) [V code]. A new spot fire or a user-marked "fire has jumped ahead" is a union: `φ ← min(φ, |x − x_s| − r_s)` [D].
+- (verified: `registry.fire` default `fire_grows_only = 1`. WRF implements it by clipping the ROS, `rr = max(rr, 0)`, inside `tend_ls`.)
+- Caution from the stability test (§3.4): "grows only" turns any numerical instability into **spurious ignition**. The instability drives φ negative, and the min() never lets it recover. A CFL violation therefore shows up as the whole domain "burning", not as a crash.
 
 ### 3.2 Normal speed from an elliptical wavelet (the key coupling to empirical models)
 
 Australian models give a head ROS `R_h` (m/s) and a length-to-breadth ratio LB. See the ROS note; Vesta/McArthur use the 10 m open wind.
 
-Assume the Huygens wavelet is an ellipse with the ignition at its rear focus (the FARSITE/Prometheus convention [K]):
+Assume the Huygens wavelet is an ellipse with the ignition at its rear focus. This is the FARSITE convention, and 03's Vesta code uses the same rule (`cb = (1 − cc)/(1 + cc)`). Prometheus is different: it takes the back ROS from the FBP BROS equation [K].
 
 ```
 ε = √(1 − 1/LB²) ,  R_b = R_h (1 − ε)/(1 + ε)                     [K, Alexander 1985 / Anderson et al. 1982]
@@ -160,14 +216,30 @@ a = (R_h + R_b)/2  (semi-major speed) ;  c = (R_h − R_b)/2  (centre drift) ;  
 R(n) = c (n·e) + √( a² (n·e)² + b² (n·e⊥)² )                                                      [D]
 ```
 
-- e is the unit vector of the 10 m wind (U_fire, §4.2). Slope enters only through the directional factor below. **Do not also fold slope into e**, or slope is counted twice.
+(verified: algebra re-derived. (1+ε)/(1−ε) equals the head:back ratio HB = (LB + √(LB²−1))/(LB − √(LB²−1)). The flank speed `a/LB` matches 03's `h = 0.5(1 + cb)/LB`. UNVERIFIED — the Alexander 1985 and Anderson et al. 1982 originals were not re-read.)
+
+- **Corrected: slope handling, aligned with 01 §4.2.**
+  - The earlier text made e the pure wind direction and said slope must not be folded into e.
+  - 01 §4.2, the project's agreed slope rule, does the opposite for the *head direction*. The head direction is the vector sum of a wind vector (R_w − R₀) and an upslope vector ((SF(θ) − 1)·R₀). The head magnitude R_h is multiplicative (R_w·SF) when wind and upslope are aligned within 45°, and blended beyond that. LB comes from an *effective wind*.
+  - Use it this way:
+    - e = unit(head-direction vector from 01 §4.2);
+    - R_h already includes SF(θ_head);
+    - apply the *relative* directional factor `SF(θ_n)/SF(θ_head)` to R(n), so that n = e still returns exactly R_h;
+    - SF uses Kataburn downslope (01 §4.2), not exp(−0.069θ).
+  - Slope is then counted once: the head through R_h, and other directions only through the ratio.
+  - (verified: 01 §4.2 re-read in this repo.)
 - R(n) is the **support function** of the offset ellipse. A level set moving with normal speed equal to the wavelet's support function traces exactly the Huygens envelope [D; the same geometry underlies Richards 1990].
 - Checks:
   - n = e gives R_h;
   - n = −e gives R_b;
   - n ⊥ e gives b.
-- Worked example, LB = 3: ε = 0.943, R_b = 0.029 R_h, flank b = 0.17 R_h [D].
-- Slope: multiply by the *directional* slope factor along n, with θ_n = atan(∇z·n) (01 §4.2). WRF likewise uses `tanφ = ∇z·n` [V code].
+- Worked example, LB = 3: ε = 0.943, R_b = 0.029 R_h, flank b = 0.17 R_h [D] (verified: recomputed, ε = 0.9428, R_b/R_h = 0.0294, b/R_h = 0.1716).
+- Slope: multiply by the *relative directional* slope factor `SF(θ_n)/SF(θ_head)`, with θ_n = atan(∇z·n) (01 §4.2).
+- **Corrected: WRF's slope rule depends on `fire_advection`.**
+  - `tanφ = ∇z·n` is used only with `fire_advection = 0`.
+  - The Registry default, `fire_advection = 1` ("fireline particle speed projected on normal"), uses the *total* wind speed |U| and total slope |∇z| in Rothermel. It then multiplies the wind and slope ROS terms by max(0, cos) of their angle to n.
+  - (verified: `registry.fire` default 1, and `fire_ros` in `module_fr_fire_phys.F`.)
+  - WRF adds the Rothermel terms, `ros = ros_base + ros_wind + ros_slope`, capped at 6 m/s. It is not multiplicative like the Australian models.
 
 **Split for robust upwinding** [D]:
 
@@ -177,13 +249,17 @@ c (n·e)|∇φ| = c e·∇φ
 
 - This term is linear advection with velocity c·e. Discretise it with first-order (or WENO) upwinding.
 - The remaining symmetric ellipse term uses the Godunov form below.
-- This mirrors WRF's `fire_upwind_split = 1`, which advects the wind part separately from the normal backing spread [V code].
+  - Strictly, the Sethian/Godunov formula of §3.3 is exact only for an *isotropic* Hamiltonian R|∇φ|.
+  - WRF, like this recipe, evaluates R from the upwinded normal and then applies the isotropic formula. That works in practice.
+  - The textbook-safe alternative for the anisotropic term `√(a²(e·∇φ)² + b²(e⊥·∇φ)²)` is a Lax–Friedrichs flux with dissipation coefficients α_x = max|∂H/∂φ_x| (Osher & Fedkiw 2003, ch. 5) [K].
+- This mirrors WRF's `fire_upwind_split = 1`, which advects the wind part separately from the normal backing spread [V code] (verified: `tend_ls`; the default is `fire_upwind_split = 0`).
+  - **Do not copy WRF's split branch verbatim.** Its x-advection term reads `- min(advx,0.)*diffRy`. That should be `diffRx`, a typo in `module_fr_fire_core.F` (verified: WRF master).
 
 ### 3.3 Discretisation
 
 One-sided differences: `D⁻ₓφ = (φ_i − φ_{i−1})/Δx`, `D⁺ₓφ = (φ_{i+1} − φ_i)/Δx`.
 
-For outward motion (R ≥ 0), the upwind gradient magnitude, identical to WRF option 4 "Sethian" [V code], is:
+For outward motion (R ≥ 0), the upwind gradient magnitude, identical to WRF option 4 "Sethian" [V code] (verified: `tend_ls` case(4), "Sethian – twice stronger pushdown of bumps"), is:
 
 ```
 |∇φ|² ≈ max(D⁻ₓφ,0)² + min(D⁺ₓφ,0)² + max(D⁻ᵧφ,0)² + min(D⁺ᵧφ,0)²

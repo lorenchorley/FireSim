@@ -247,20 +247,132 @@ export function slidingMinMax(g: GridSpec, f: ArrayLike<number>, r: number): { m
 // buildTerrain
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Replace non-finite elevations (no-data) by the mean of the finite ones. Returns the input if already clean. */
-function sanitiseElevation(elevation: Float32Array): Float32Array {
+/**
+ * Fill non-finite elevations (no-data holes) from the surrounding terrain. Holes are first filled ring by ring from
+ * their edges inward, each cell taking the mean of its already-known 8-neighbours. They are then relaxed towards
+ * the harmonic interpolant of the rim, so a hole in a 1000 m plateau is filled at 1000 m and a hole in a plane is
+ * filled with the plane. Filling with the domain mean would create a false pit or spike walled by cliffs.
+ * A grid with no finite value becomes 0 m. Returns the input unchanged (same object) if it is already clean.
+ */
+function sanitiseElevation(grid: GridSpec, elevation: Float32Array): Float32Array {
+  const n = elevation.length;
   let bad = 0;
-  let sum = 0;
-  for (let k = 0; k < elevation.length; k++) {
-    const z = elevation[k]!;
-    if (Number.isFinite(z)) sum += z;
-    else bad++;
-  }
+  for (let k = 0; k < n; k++) if (!Number.isFinite(elevation[k]!)) bad++;
   if (bad === 0) return elevation;
-  const mean = bad === elevation.length ? 0 : sum / (elevation.length - bad);
   const out = new Float32Array(elevation);
-  for (let k = 0; k < out.length; k++) if (!Number.isFinite(out[k]!)) out[k] = mean;
+  if (bad === n) return out.fill(0);
+  const { nx, ny } = grid;
+  // 0 = unknown, 1 = known, 2 = queued in the current ring.
+  const state = new Uint8Array(n);
+  for (let k = 0; k < n; k++) if (Number.isFinite(out[k]!)) state[k] = 1;
+  let ring = new Int32Array(bad);
+  let next = new Int32Array(bad);
+  const vals = new Float32Array(bad);
+  let len = 0;
+  const hasKnownNeighbour = (i: number, j: number): boolean => {
+    for (let dj = -1; dj <= 1; dj++) {
+      const jj = j + dj;
+      if (jj < 0 || jj >= ny) continue;
+      for (let di = -1; di <= 1; di++) {
+        const ii = i + di;
+        if (ii >= 0 && ii < nx && state[jj * nx + ii] === 1) return true;
+      }
+    }
+    return false;
+  };
+  for (let k = 0; k < n; k++) {
+    if (state[k] === 0 && hasKnownNeighbour(k % nx, (k / nx) | 0)) {
+      state[k] = 2;
+      ring[len++] = k;
+    }
+  }
+  while (len > 0) {
+    // Values of the whole ring come from cells known before it, so the result does not depend on scan order.
+    for (let q = 0; q < len; q++) {
+      const k = ring[q]!;
+      const i = k % nx;
+      const j = (k / nx) | 0;
+      let s = 0;
+      let c = 0;
+      for (let dj = -1; dj <= 1; dj++) {
+        const jj = j + dj;
+        if (jj < 0 || jj >= ny) continue;
+        for (let di = -1; di <= 1; di++) {
+          const ii = i + di;
+          if (ii < 0 || ii >= nx) continue;
+          const kk = jj * nx + ii;
+          if (state[kk] === 1) {
+            s += out[kk]!;
+            c++;
+          }
+        }
+      }
+      vals[q] = s / c; // c ≥ 1: every queued cell touches a known one
+    }
+    for (let q = 0; q < len; q++) {
+      out[ring[q]!] = vals[q]!;
+      state[ring[q]!] = 1;
+    }
+    // Next ring: unknown neighbours of this one.
+    let nl = 0;
+    for (let q = 0; q < len; q++) {
+      const k = ring[q]!;
+      const i = k % nx;
+      const j = (k / nx) | 0;
+      for (let dj = -1; dj <= 1; dj++) {
+        const jj = j + dj;
+        if (jj < 0 || jj >= ny) continue;
+        for (let di = -1; di <= 1; di++) {
+          const ii = i + di;
+          if (ii < 0 || ii >= nx) continue;
+          const kk = jj * nx + ii;
+          if (state[kk] === 0) {
+            state[kk] = 2;
+            next[nl++] = kk;
+          }
+        }
+      }
+    }
+    const tmp = ring;
+    ring = next;
+    next = tmp;
+    len = nl;
+  }
+  // Relax the filled cells towards the harmonic (Laplace) interpolant of the hole's rim: exact for planes, smooth
+  // across the hole, no terracing from the ring means. Successive over-relaxation with the ring fill as the first
+  // guess; the iteration cap keeps huge holes cheap, where the ring fill is already a fair answer.
+  const holes = new Int32Array(bad);
+  let nh = 0;
+  for (let k = 0; k < n; k++) if (!Number.isFinite(elevation[k]!)) holes[nh++] = k;
+  const omega = 1.8;
+  for (let it = 0; it < 300; it++) {
+    let maxDelta = 0;
+    for (let q = 0; q < nh; q++) {
+      const k = holes[q]!;
+      const i = k % nx;
+      const j = (k / nx) | 0;
+      let s = 0;
+      let c = 0;
+      if (i > 0) (s += out[k - 1]!), c++;
+      if (i < nx - 1) (s += out[k + 1]!), c++;
+      if (j > 0) (s += out[k - nx]!), c++;
+      if (j < ny - 1) (s += out[k + nx]!), c++;
+      if (c === 0) continue;
+      const d = omega * (s / c - out[k]!);
+      out[k] = out[k]! + d;
+      const ad = d < 0 ? -d : d;
+      if (ad > maxDelta) maxDelta = ad;
+    }
+    if (maxDelta < 1e-3) break;
+  }
   return out;
+}
+
+/** Wrap a finite angle (deg) to [0, period), robust to round-off (never returns `period`). */
+function wrapPeriod(a: number, period: number): number {
+  let r = a % period;
+  if (r < 0) r += period;
+  return r >= period ? 0 : r;
 }
 
 function stdDev(f: Float32Array): number {
@@ -289,7 +401,7 @@ export function buildTerrain(grid: GridSpec, elevation: Float32Array, source: st
   const { nx, ny, cellSize: h } = grid;
   const n = nx * ny;
   if (elevation.length !== n) throw new Error(`buildTerrain: elevation has ${elevation.length} cells, grid has ${n}`);
-  const z = sanitiseElevation(elevation);
+  const z = sanitiseElevation(grid, elevation);
 
   // Radii in cells.
   const rL = Math.max(1, Math.round(TPI_RADIUS_M / h));
@@ -359,10 +471,12 @@ export function buildTerrain(grid: GridSpec, elevation: Float32Array, source: st
       slopeDeg[k] = sl;
       if (sl < FLAT_SLOPE_DEG) aspectDeg[k] = NaN;
       else {
-        // Azimuth of the downhill vector (−gx, −gy): atan2(east, north).
+        // Azimuth of the downhill vector (−gx, −gy): atan2(east, north). Rounded to float32 BEFORE the wrap test:
+        // 359.99999999 would otherwise be stored as 360.
         let az = Math.atan2(-gx, -gy) * RAD;
         if (az < 0) az += 360;
-        aspectDeg[k] = az >= 360 ? 0 : az;
+        const af = Math.fround(az);
+        aspectDeg[k] = af >= 360 ? 0 : af;
       }
       tpi[k] = ze - meanL[p]!;
       tpiSmall[k] = ze - meanS[p]!;
@@ -564,8 +678,7 @@ export function directionalSlopeDeg(terrain: Terrain, k: number, azimuthDeg: num
 /** Compass azimuth (deg, [0, 360)) of steepest ascent at cell k; NaN where the slope is < {@link FLAT_SLOPE_DEG}. */
 export function upslopeAzimuth(terrain: Terrain, k: number): number {
   if (!(terrain.slopeDeg[k]! >= FLAT_SLOPE_DEG)) return NaN;
-  const az = Math.atan2(terrain.dzdx[k]!, terrain.dzdy[k]!) * RAD;
-  return az < 0 ? az + 360 : az;
+  return wrapPeriod(Math.atan2(terrain.dzdx[k]!, terrain.dzdy[k]!) * RAD, 360);
 }
 
 /** Principal curvatures and directions of the ≈ 50 m-smoothed surface at cell k. */
@@ -586,9 +699,7 @@ export function hessianAt(terrain: Terrain, k: number): HessianInfo {
   const mean = 0.5 * (a + c);
   const rad = Math.sqrt(0.25 * (a - c) * (a - c) + b * b);
   const th = 0.5 * Math.atan2(2 * b, a - c) * RAD; // math angle (deg from +x, CCW) of the lambdaMax eigenvector
-  let az = (90 - th) % 180;
-  if (az < 0) az += 180;
-  return { lambdaMax: mean + rad, lambdaMin: mean - rad, acrossValleyAzimuth: az };
+  return { lambdaMax: mean + rad, lambdaMin: mean - rad, acrossValleyAzimuth: wrapPeriod(90 - th, 180) };
 }
 
 /**
@@ -601,8 +712,7 @@ export function valleyAxisAzimuth(terrain: Terrain, k: number): number {
   const d = terrainDerived(terrain);
   const hs = hessianAt(terrain, k);
   if (!(hs.lambdaMax > d.thresholds.curvature * 0.5) || hs.lambdaMax < 2 * Math.abs(hs.lambdaMin)) return NaN;
-  const az = hs.acrossValleyAzimuth + 90;
-  return az >= 180 ? az - 180 : az;
+  return wrapPeriod(hs.acrossValleyAzimuth + 90, 180);
 }
 
 /**
@@ -628,6 +738,7 @@ export function windShelter(terrain: Terrain, windFromDeg: number, maxDistM = 30
   const { grid, elevation: z } = terrain;
   const { nx, ny, cellSize: h } = grid;
   const out = new Float32Array(nx * ny);
+  if (nx < 2 || ny < 2 || !Number.isFinite(windFromDeg)) return out; // bilinear sampling needs a 2 × 2 stencil
   const r = windFromDeg * (Math.PI / 180);
   // Upwind step in cell units.
   const di = Math.sin(r);

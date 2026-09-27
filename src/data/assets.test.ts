@@ -43,6 +43,11 @@ describe('asset loader', () => {
     setAssetBase(null);
     vi.stubGlobal('location', { href: 'https://app.example/firesim/assets/sim.worker-abc123.js' });
     expect(resolveAssetBase()).toBe('https://app.example/firesim/');
+    // Vite dev server: the worker is served from its source path, public/ from the root (regression: resolved to /src/sim/).
+    vi.stubGlobal('location', { href: 'http://localhost:5173/src/sim/worker.ts?type=module&worker_file' });
+    expect(resolveAssetBase()).toBe('http://localhost:5173/');
+    vi.stubGlobal('location', { href: 'https://app.example/firesim/worker.js' });
+    expect(resolveAssetBase()).toBe('https://app.example/firesim/');
     vi.stubGlobal('document', { baseURI: 'https://app.example/other/' });
     expect(resolveAssetBase()).toBe('https://app.example/other/');
   });

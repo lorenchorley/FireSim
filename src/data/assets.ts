@@ -3,7 +3,8 @@
  *
  * - Browser / WebView / Worker: fetched relative to the app's base URL (`demo/katoomba/manifest.json`). The base is
  *   the document's base URI on the main thread; in a Web Worker bundled under `/assets/` it is the parent of that
- *   folder. Override with {@link setAssetBase} (the main thread can pass `document.baseURI` to its workers).
+ *   folder, and under the Vite dev server (worker served from `/src/…`) the server root. Override with
+ *   {@link setAssetBase} (the main thread can pass `document.baseURI` to its workers).
  * - Node (Vitest, scripts): read from the repository's `public/` directory with `node:fs`.
  * - Anything else (tests, a Capacitor Filesystem-backed store): install a custom loader with {@link setAssetLoader}.
  *
@@ -61,9 +62,16 @@ export function resolveAssetBase(): string {
   if (g.document?.baseURI) return g.document.baseURI;
   const href = g.location?.href;
   if (href) {
-    // A Vite worker lives at <base>/assets/<name>.js: the app root is the parent of /assets/.
+    // A built Vite worker lives at <base>/assets/<name>.js: the app root is the parent of /assets/.
     const i = href.lastIndexOf('/assets/');
-    return i >= 0 ? href.slice(0, i + 1) : new URL('./', href).href;
+    if (i >= 0) return href.slice(0, i + 1);
+    // Under the Vite dev server a worker is served from its source path (<root>/src/sim/worker.ts?worker_file…,
+    // or /@fs/… / /node_modules/… for dependencies) while public/ is served at the root.
+    for (const marker of ['/src/', '/@fs/', '/@id/', '/node_modules/']) {
+      const d = href.indexOf(marker);
+      if (d >= 0) return href.slice(0, d + 1);
+    }
+    return new URL('./', href).href;
   }
   return '/';
 }

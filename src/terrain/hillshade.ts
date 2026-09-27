@@ -40,7 +40,7 @@ export function hillshade(terrain: Terrain, azimuth = 315, elevation = 45, zFact
 }
 
 export interface MultiHillshadeOptions {
-  /** Light azimuths (deg). Default [225, 270, 315, 360]. */
+  /** Light azimuths (deg). Default (also used for an empty list): [225, 270, 315, 360]. */
   azimuths?: number[];
   /** Light elevation (deg). Default 30 (Mark 1992 / GDAL). */
   elevation?: number;
@@ -51,7 +51,7 @@ export interface MultiHillshadeOptions {
 
 /** Multi-directional, aspect-weighted hillshade, 0–1. */
 export function multiHillshade(terrain: Terrain, opts: MultiHillshadeOptions = {}): Float32Array {
-  const azimuths = opts.azimuths ?? [225, 270, 315, 360];
+  const azimuths = opts.azimuths && opts.azimuths.length > 0 ? opts.azimuths : [225, 270, 315, 360];
   const elevation = opts.elevation ?? 30;
   const zf = opts.zFactor ?? 1;
   const aspectWeighted = (opts.weighting ?? 'aspect') === 'aspect';

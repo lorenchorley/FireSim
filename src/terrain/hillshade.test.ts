@@ -48,6 +48,14 @@ describe('multiHillshade', () => {
     expect(multiHillshade(t)[k]).toBeCloseTo(0.5, 6);
   });
 
+  it('regression: an empty azimuth list falls back to the defaults instead of dividing by zero (NaN)', () => {
+    const t = buildTerrain(g, randomHills(g, 9), 'x');
+    const def = multiHillshade(t);
+    const empty = multiHillshade(t, { azimuths: [] });
+    expect(empty.every((v) => Number.isFinite(v))).toBe(true);
+    expect(Array.from(empty.slice(0, 100))).toEqual(Array.from(def.slice(0, 100)));
+  });
+
   it('equal weighting is the mean of the single-light hillshades', () => {
     const t = buildTerrain(g, randomHills(g, 4), 'x');
     const m = multiHillshade(t, { weighting: 'equal', elevation: 40 });

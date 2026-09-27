@@ -306,6 +306,13 @@ const MERC_R = 6378137;
 const CHM_RES = (2 * Math.PI * MERC_R) / 2 ** 25;
 const CHM_PATH = '/forests/v1/alsgedi_global_v6_float/chm/';
 const HIST_BINS = 61; // 0..60 m, as in the bundling script
+/**
+ * Read the COGs through geotiff's block cache. Without it geotiff fetches each strip's StripOffsets and StripByteCounts
+ * entries with two separate 4-byte range requests, i.e. three round trips per row; with small (4 KB) blocks the index
+ * entries of neighbouring rows share a cached block and each sampled row costs one request (measured over a 600 m
+ * Katoomba window: 462 → 158 requests, 5.8 → 2.5 s, 1.6 → 2.2 MB).
+ */
+const COG_BLOCKS = { blockSize: 4096, cacheSize: 512 };
 
 /** Bing-style quadkey of the tile containing a point. */
 export function quadkey(lat: number, lon: number, z: number): string {
@@ -437,7 +444,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
     const url = serviceUrl('chm', `${CHM_PATH}${qk}.tif`);
     let img: GeoTIFFImage;
     try {
-      const tif = await fromCustomClient(new ChmClient(url, signal), { allowFullFile: false }, signal);
+      const tif = await fromCustomClient(new ChmClient(url, signal), { allowFullFile: false, ...COG_BLOCKS }, signal);
       img = await tif.getImage(0);
     } catch (e) {
       if (signal?.aborted) throw e;

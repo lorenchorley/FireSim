@@ -31,6 +31,49 @@ Tags:
 > Source-code facts reflect `main` branches in September 2026. Shipping OS builds can lag or differ, so every
 > capability must be **feature-detected at runtime**, never inferred from the OS version.
 
+### 0.1 Adversarial fact-check pass (2026-09-27)
+
+A second pass re-opened the primary sources: Capacitor 8.5.2 sources in `node_modules`, raw WebKit/Chromium/three.js
+`main` or `r186` files, MDN BCD JSON, the capacitor-docs, Vite and Vitest docs, the Apple documentation JSON, App Store
+Guidelines, the HIG JSON, developer.android.com, the gpuweb wiki and spec, and npm/pub.dev registry metadata.
+Tags such as "(verified: …)" and "(UNVERIFIED — …)" were added to each parameter block. Bibliographic hosts were blocked
+(doi.org, Crossref, OpenAlex, publish.csiro.au, support.apple.com, support.google.com), so the journal details of the
+graphics and fire-science references stay [K].
+
+**Corrections made in this pass:**
+
+1. `applicationDidEnterBackground` gives "**approximately** five seconds", not a hard 5 s (Apple doc quote fixed).
+2. WebKit halves `requestAnimationFrame` for `LowPowerMode`, `AggressiveThermalMitigation`, `VisuallyIdle` and
+   non-interacted cross-origin frames. Plain `ThermalMitigation` is **not** in `halfSpeedThrottlingReasons`
+   (`AnimationFrameRate.cpp`). The earlier text said "Low Power Mode or thermal mitigation".
+3. "iPhones cannot linearly filter float32" was too strong. BCD says "Only supported on iPadOS", but WebKit's ANGLE Metal
+   backend makes `R32Float` filterable when the GPU is Apple family 7 or later **and** `MTLDevice.supports32BitFloatFiltering`
+   is true (`mtl_format_table_autogen.mm`). So filtering may be present on A14+ iPhones. Treat it as not guaranteed,
+   feature-detect it, and default to RGBA16F.
+4. `@capacitor/geolocation` `interval` defaults to the value of `timeout` (10 000 ms), not 5 000 ms. Only
+   `minimumUpdateInterval` defaults to 5 000 ms.
+5. The gully/chimney card cited Xie et al. (2017) for "along-axis slope 25–30°, side walls ≈ 20°". That criterion
+   (α ≈ 27.5°, δ = 20°) is from **Fan et al. (2025), IJWF 34, WF24134**, as corrected in 01-terrain-fire-behaviour.md.
+6. The HIG "strive for 7:1, especially in small text" is from the **Dark Mode** page. The Accessibility page minimum is
+   4.5:1 up to 17 pt, and 3:1 at 18 pt or for bold text.
+7. The central-difference normal formula is not Horn's (1981) method. Horn's weighted 3×3 stencil is now given
+   separately.
+8. flutter_scene does not strictly need a command-line flag. Flutter GPU is off by default and has to be enabled per
+   platform, with `--enable-flutter-gpu` in development or an `Info.plist`/`AndroidManifest` key when shipping.
+9. expo-gl: "a WebGL2 subset" was not a quote. The docs say it "resembles a WebGL2RenderingContext" and list the
+   unimplemented methods. That list also includes `compressedTexImage2D`, so there are no compressed textures at all.
+10. The executive summary said cost scales as "(L/Δx)³". With N_z fixed the scaling is W ∝ L²/Δx³, as §4.4 already derived.
+11. The VLS wind trigger is now aligned with docs 01/02 (ridge wind above ~20 km/h; published range ~18–30 km/h).
+12. The WebKit 20 s `processSuspensionTimeout` is an upper bound for the WebContent process to finish `PrepareToSuspend`.
+    It is not a guaranteed 20 s of JavaScript.
+13. "Flame depth D = R·τ_r (Byram 1959)" is a kinematic identity. Its attribution is UNVERIFIED.
+
+**Additions:** SystemBars `insetsHandling` for Android WebView < 140; whole-file reads in the iOS asset handler and Range
+requests; Android thermal-headroom semantics; Apple's `.serious` guidance (60→30 fps, fewer particles); Lockdown Mode's
+JIT-less WebContent process; SAB detection via `crossOriginIsolated`; vertical-CFL budget; Vesta Mk 2 flame height for
+display; iOS deployment-target advice; compass and declination; DEM-resolution slope bias; and a phenomenon → "Show me"
+visual-layer map (§11.4).
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
@@ -39,7 +82,9 @@ Tags:
    - On iOS, WKWebView is the only place a third-party app gets a JIT-compiled JavaScript engine plus WebGL2/WebGPU [K].
    - React Native runs in Hermes, which uses AOT bytecode [S: Hermes README]. Its 3-D options are an incomplete WebGL2
      (`expo-gl`) [S] or a young WebGPU binding [S: npm].
-   - Flutter's 3-D stack (`flutter_scene` on Flutter GPU) still needs an opt-in flag (`--enable-flutter-gpu`) [S].
+   - Flutter's 3-D stack (`flutter_scene` 0.23, pre-1.0, on Flutter GPU) needs Flutter GPU switched on per platform:
+     `--enable-flutter-gpu` in development, or `FLTEnableFlutterGPU` in `Info.plist` / a manifest meta-data key when
+     shipping (verified: pub.dev flutter_scene 0.23.0 page, 25 Aug 2026).
    - None of these alternatives would let the TypeScript kernels be tested unchanged in Node and Chromium the way the
      current design does.
 2. **Use WebGL2 as the production rendering baseline.**
@@ -67,7 +112,8 @@ Tags:
    - iOS exposes `ProcessInfo.thermalState` (nominal/fair/serious/critical, each with Apple guidance) and Low Power Mode [S].
    - Android exposes `PowerManager.getCurrentThermalStatus()` and a listener (API 29), `getThermalHeadroom()` (API 30) and
      `isPowerSaveMode()` [S].
-   - WebKit itself halves `requestAnimationFrame` from 60 to 30 fps under Low Power Mode or thermal mitigation [S].
+   - WebKit itself halves `requestAnimationFrame` from 60 to 30 fps under Low Power Mode or *aggressive* thermal
+     mitigation [S] (verified: `AnimationFrameRate.cpp` `halfSpeedThrottlingReasons`; plain `ThermalMitigation` is not in the set).
 6. **Store area packs as native files, not as IndexedDB blobs.**
    - Capacitor's own guide warns that iOS may reclaim IndexedDB [S].
    - WebKit caps embedded-WebView origins at about 15 % of disk (20 % overall) [S: MDN].
@@ -82,11 +128,13 @@ Tags:
    - flames as instanced billboards along the extracted front;
    - GPU wind-particle streaks, an optional raymarched plume volume, and additively blended embers.
    - Every one of these reads from a small data texture updated per snapshot, so no geometry is rebuilt.
-9. **Performance cost scales as (L/Δx)³ for the atmosphere** [D]. Halving Δx costs 8×. Hold the phone atmosphere grid at
-   about 50–60 k cells (the architecture's 48×48×24) and spend extra budget on the fire grid and rendering instead.
+9. **Atmosphere cost scales as W ∝ L²·N_z/Δx³ (cells ∝ L²/Δx², steps ∝ 1/Δx)** [D]. With the domain L and N_z fixed,
+   halving Δx costs 8×. The multigrid pressure solve adds a little more on top. Hold the phone atmosphere grid at about
+   50–60 k cells (the architecture's 48×48×24) and spend any extra budget on the fire grid and rendering instead.
 10. **Field UX**:
     - Primary controls at least 64 pt [H] (platform floors are 44 pt on iOS and 48 dp on Android [S]).
-    - Text contrast 7:1 [S: HIG "strive for"], because sunlight mutes colours [S: HIG].
+    - Text contrast 7:1 (HIG Dark Mode: "strive for a contrast ratio of 7:1, especially in small text"; the HIG
+      Accessibility minimum is 4.5:1), because "in bright surroundings, colors look darker and more muted" [S: HIG Color].
     - No gesture-only functions [S: HIG]; one-thumb bottom-sheet layout; a crosshair "mark fire here" instead of precise taps.
     - Insight cards that never auto-dismiss [S: HIG].
     - Data freshness badges for offline use.
@@ -99,12 +147,13 @@ Tags:
 
 | Criterion | **Capacitor 8** (chosen) | **React Native 0.87 + expo-gl / react-native-wgpu** | **Flutter + flutter_scene** |
 |---|---|---|---|
-| JS/compute engine | WKWebView JavaScriptCore with JIT; Android WebView V8 with JIT [K] | Hermes: "ahead-of-time static optimization and compact bytecode" [S]; no third-party JIT on iOS [K] | Dart AOT native code and isolates (good for numeric kernels) [K] |
-| 3-D API | Full WebGL2; WebGPU on iOS 26 and Chrome-based Android where available [S] | expo-gl is "a WebGL2 subset": fences/sync, `getBufferSubData`, compressed 3-D textures and `renderbufferStorageMultisample` are unimplemented; no argument checking, so bad arguments "may cause a native crash" [S]. react-native-wgpu 0.5.17 (Dawn, RN ≥ 0.81) [S: npm] | flutter_scene 0.23 (Aug 2026), which requires the `--enable-flutter-gpu` flag on every native platform [S]; no Three.js ecosystem |
-| Three.js | Native, all addons | Via expo-three/WebGPU; Three.js cannot run inside worklets [S: Expo docs] | No |
+| JS/compute engine | WKWebView JavaScriptCore with JIT; Android WebView V8 with JIT [K]. **Lockdown Mode runs WKWebView in a separate "CaptivePortal" WebContent service** (verified: WebKit `ProcessLauncherCocoa.mm`), and Apple documents JIT as disabled there [K] | Hermes: "ahead-of-time static optimization and compact bytecode" (verified: Hermes README); no third-party JIT on iOS [K] | Dart AOT native code and isolates (good for numeric kernels) [K] |
+| 3-D API | Full WebGL2; WebGPU on iOS 26 and Chrome-based Android where available [S] | expo-gl's `gl` "resembles a WebGL2RenderingContext". The docs list 20 unimplemented methods, including all sync/fence calls, `getBufferSubData`, `compressedTexImage2D/3D`, `renderbufferStorageMultisample` and `getUniform`. There is no argument checking, so bad arguments "may cause a native crash" (verified: expo `gl-view.mdx`). react-native-wgpu 0.5.17 (8 Jul 2026, "powered by Dawn", peer `react-native >= 0.81.0`) (verified: npm) | flutter_scene 0.23.0 (25 Aug 2026, pre-1.0, Flutter 3.47+). Flutter GPU must be enabled per native platform, by flag or by `Info.plist`/manifest key (verified: pub.dev); no Three.js ecosystem |
+| Three.js | Native, all addons | Via expo-three/WebGPU; "Third-party libraries like Pixi.js or Three.js won't work inside the worklet" (verified: Expo docs) | No |
 | Workers | Standard module workers [S] | Worklets/JSI; not Web Workers | Isolates |
 | Same code in Node/Chromium tests | Yes | Partly | No (Dart) |
-| PWA fallback | Same bundle | Separate (RN-web) | Flutter web (WebGL2 backend) [S] |
+| PWA fallback | Same bundle | Separate (RN-web) | Flutter web; flutter_scene ships its own WebGL2 backend there (verified: pub.dev) |
+| Current version (Sep 2026) | Capacitor 8.5.2 | React Native 0.87.1 (26 Aug 2026) (verified: npm) | flutter_scene 0.23.0 |
 
 **Recommendation [H]:**
 
@@ -116,30 +165,50 @@ Tags:
 
 ### 2.2 Capacitor 8 platform facts [S: capacitor-docs `updating/8-0.md`; Capacitor sources]
 
-- **Tooling and minimums:**
+- **Tooling and minimums** (verified: capacitor-docs `updating/8-0.md`, fetched raw from GitHub):
   - iOS deployment target 15.0; Xcode 26.0+; Swift Package Manager is the default for new iOS projects.
-  - Android: `minSdkVersion 24`, `compileSdk/targetSdk 36`; Android Studio Otter 2025.2.1+; `androidxWebkitVersion 1.14.0`.
+  - Android: `minSdkVersion 24`, `compileSdk/targetSdk 36`; Android Studio Otter 2025.2.1+; AGP 8.13.0;
+    `androidxWebkitVersion 1.14.0`.
   - Node 22+.
+  - **FireSim recommendation [H]:** raise the iOS deployment target to **16.4** (fixed-width WASM SIMD; the BCD
+    `Worker/worker_support` entry for workers created inside workers). Consider 17.0 if a render worker with
+    OffscreenCanvas WebGL is wanted. This is the iOS counterpart of the Android `minWebViewVersion` advice below.
 - **Edge-to-edge:** `android.adjustMarginsForEdgeToEdge` was removed in favour of the SystemBars core plugin and CSS
-  `env(safe-area-inset-*)`. Android 15 enforces edge-to-edge for apps targeting it [S: Android 15 behaviour changes].
-  Every overlay must honour safe-area insets.
+  `env(safe-area-inset-*)`. Android 15 makes apps that target API 35 edge-to-edge by default (verified: Android 15
+  behaviour changes). Every overlay must honour safe-area insets.
+  - **Gotcha:** "Due to a bug in some older versions of Android WebView (< 140), correct safe area values are not
+    available via the `safe-area-inset-x` CSS `env` variables" (verified: `@capacitor/core/system-bars.md`). SystemBars
+    `insetsHandling` defaults to `css`. That mode pads the WebView on Chromium < 140 and injects `--safe-area-inset-*` CSS
+    variables. Write `padding-top: var(--safe-area-inset-top, env(safe-area-inset-top))`. Starting in Capacitor 9 the
+    default becomes `native`.
 - **Origins:** the app is served from `https://localhost` on Android (`androidScheme` default `https`) and from
-  `capacitor://localhost` on iOS. Changing Android to a non-http(s) scheme breaks routing since WebView 117 [S: config reference].
-- **WebView version:** `android.minWebViewVersion` defaults to 60 (the minimum allowed is 55) [S: `Bridge.java`].
+  `capacitor://localhost` on iOS (`iosScheme` default `capacitor`). "Custom schemes on Android are unable to change the
+  URL path as of Webview 117", so a non-http(s) Android scheme can break routing (verified: `@capacitor/cli`
+  `declarations.d.ts`).
+- **WebView version:** `android.minWebViewVersion` defaults to 60 and cannot go below 55 (verified: `Bridge.java`
+  `DEFAULT_ANDROID_WEBVIEW_VERSION = 60`, `MINIMUM_ANDROID_WEBVIEW_VERSION = 55`; `CapConfig.getMinWebViewVersion`).
   For FireSim, raise it to ≥ 91 [H] so module workers (Chrome 80), WASM SIMD (91) and WebGL2-in-OffscreenCanvas (69)
-  are guaranteed [S: BCD].
-- **WASM MIME types:** both local servers serve `.wasm` as `application/wasm` (`WebViewLocalServer.getMimeType`, iOS
-  `mimeTypes["wasm"]`) [S], so `WebAssembly.instantiateStreaming` works.
+  are guaranteed (verified: BCD).
+- **WASM MIME types:** both local servers serve `.wasm` as `application/wasm` (verified: `WebViewLocalServer.java`
+  L584–585; iOS `WebViewAssetHandler.swift` `"wasm": "application/wasm"`), so `WebAssembly.instantiateStreaming` works.
 
 ### 2.3 Store constraints that shape the design
 
-- **Apple 2.4.2:** apps "should not rapidly drain battery, generate excessive heat, or put unnecessary strain on device
-  resources" [S]. So duty-cycle the solver and throttle when hot.
-- **Apple 2.5.9:** apps may not "alter or disable the functions of standard switches, such as the Volume Up/Down" [S].
-  Hardware-button shortcuts for gloved use are therefore not an option on iOS.
-- **Apple 4.2:** apps must be "beyond a repackaged website" [S]. Offline packs, GPS, native HTTP and thermal adaptation satisfy this.
-- **Google Play:** apps targeting Android 14+ must declare foreground-service types in Play Console [S]. `specialUse`
-  justifications are reviewed [S].
+- **Apple 2.4.2:** "Apps should not rapidly drain battery, generate excessive heat, or put unnecessary strain on device
+  resources" (verified: App Store Review Guidelines). So duty-cycle the solver and throttle when hot.
+- **Apple 2.5.2:** apps may not "download, install, or execute code which introduces or changes features or
+  functionality of the app" (verified). Ship WASM kernels inside the bundle. Area packs are data, which is fine [H].
+- **Apple 2.5.4:** "Multitasking apps may only use background services for their intended purposes: VoIP, audio
+  playback, location, task completion, local notifications, etc." (verified). **Do not** abuse the location or audio
+  background modes to keep the solver alive.
+- **Apple 2.5.9:** "Apps that alter or disable the functions of standard switches, such as the Volume Up/Down and
+  Ring/Silent switches … will be rejected" (verified). The inference that hardware-button shortcuts for gloved use are
+  not an option on iOS is [H]. Android can handle volume keys natively.
+- **Apple 4.2:** "Your app should include features, content, and UI that elevate it beyond a repackaged website"
+  (verified). Offline packs, GPS, native HTTP and thermal adaptation should satisfy this [H].
+- **Google Play:** apps targeting Android 14+ must declare their foreground-service types in Play Console [K]
+  (UNVERIFIED this pass — support.google.com blocked). `specialUse` use cases "are reviewed when you submit your app in
+  the Google Play Console" (verified: developer.android.com FGS types).
 
 ---
 
@@ -150,56 +219,78 @@ Tags:
 | Feature | Safari/iOS | Chrome/Android WebView | FireSim consequence |
 |---|---|---|---|
 | WebGL2 | 15 | 58 | Baseline [S: BCD] |
-| `EXT_color_buffer_float` (render to float) | 15 | 56 | GPU particle ping-pong is OK [S] |
+| `EXT_color_buffer_float` (render to float) | 15 | 56 (Chrome; Android "mirror") | GPU particle ping-pong is OK [S] |
 | `EXT_color_buffer_half_float` | 14 | 63 | Preferred [S] |
-| `OES_texture_float_linear` | 8, "**Only supported on iPadOS**" | 29 | **iPhones cannot linearly filter float32 textures.** Store volumes and velocity fields as `HalfFloatType` (RGBA16F), or filter manually [S] |
+| `OES_texture_float_linear` | 8, with BCD note "**Only supported on iPadOS**" | 29 | **Not guaranteed on iPhone.** WebKit's ANGLE Metal backend marks `R32Float` filterable only when `supportsAppleGPUFamily(7) && supports32BitFloatFiltering()` (verified: WebKit `mtl_format_table_autogen.mm`, `DisplayMtl.mm`). So A14+ iPhones *may* expose it, and older ones will not. The BCD note may be stale (UNVERIFIED on device). Probe `getExtension('OES_texture_float_linear')`; store sampled volumes and velocity fields as `HalfFloatType` (RGBA16F) by default, or filter manually [S] |
 | `WEBGL_multi_draw` | 15 | 86 | three.js `BatchedMesh` uses it [S: `WebGLIndexedBufferRenderer.js`] |
 | `EXT_disjoint_timer_query_webgl2` | No | No on Chrome Android | No GPU timers on device; measure frame times on the CPU [S] |
 | ASTC / ETC2 compressed textures | 12 / 13.1 | 47 / 63 | Use KTX2 + Basis transcoding (`KTX2Loader`) [S/K] |
 | `KHR_parallel_shader_compile` | 14.1 | 76 | Compile shaders asynchronously to avoid startup hitches (`renderer.compileAsync`) [S/K] |
-| OffscreenCanvas WebGL2 in a worker | 17 | 69 | A render worker is possible but not needed (§4.6) [S] |
+| OffscreenCanvas WebGL2 in a worker | 17 | 69 | A render worker is possible but not needed (§4.5) [S] |
+
+(Table verified 2026-09-27 against MDN BCD `api/*.json` on `main`. Android WebView entries are "mirror", which means
+they are derived from Chrome Android rather than tested.)
 
 ### 3.2 WebGPU status
 
 - **iOS/iPadOS 26:**
   - "In macOS Tahoe 26, iOS 26, iPadOS 26, and visionOS 26, WebGPU is supported and enabled by default" [S: gpuweb wiki].
-  - In WebKit, `WebGPUEnabled.defaultValue = ENABLE(WEBGPU_BY_DEFAULT)`, with no separate `WebKit:` (WKWebView) default.
-    `PlatformEnable.h` defines `ENABLE_WEBGPU_BY_DEFAULT 1` for `PLATFORM(IOS)` [S]. **Inference:** Capacitor iOS apps on
-    iOS 26 get `navigator.gpu`. Confirm on device.
+  - In WebKit, `WebGPUEnabled.defaultValue` is `"ENABLE(WEBGPU_BY_DEFAULT)": true`, `default: false`, with no separate
+    `WebKit:` (WKWebView) default. `PlatformEnable.h` L640–641 defines `ENABLE_WEBGPU_BY_DEFAULT 1` for
+    `(PLATFORM(MAC) && ≥ 26.0) || PLATFORM(IOS) || PLATFORM(VISION) || PLATFORM(WATCHOS)` (verified: WebKit `main`
+    2026-09-27). **Inference:** Capacitor iOS apps on iOS 26 get `navigator.gpu`. `main` may differ from the shipped
+    iOS 26 build, so this is UNVERIFIED on device.
   - WebGPU is also exposed in workers (`WorkerNavigator.gpu`, Safari 26) [S: BCD].
-- **Lockdown Mode (iOS):** `WebGLEnabled`, `WebGPUEnabled`, `IndexedDBAPIEnabled` and `FileSystemEnabled` all carry
-  `disableInLockdownMode: true` [S]. Detect "no WebGL" and show a message to add a Lockdown Mode exclusion for the app
-  (the exact Settings path is not verified here [K]).
+- **Lockdown Mode (iOS):** `WebGLEnabled`, `WebGPUEnabled`, `IndexedDBAPIEnabled`, `FileSystemEnabled`,
+  `CacheAPIEnabled` and `ServiceWorkersEnabled` all carry `disableInLockdownMode: true` (verified:
+  `UnifiedWebPreferences.yaml`, 48 prefs in total). Lockdown pages run in the `com.apple.WebKit.WebContent.CaptivePortal`
+  service (verified: `ProcessLauncherCocoa.mm`). Apple's public description says JIT (and, reportedly, WebAssembly) is
+  off there [K] (UNVERIFIED this pass — support.apple.com blocked). **Consequences:** no 3-D view, no IndexedDB/OPFS,
+  and a solver that may run 10× or more slower. The start-up micro-benchmark (§10.1) catches the slowdown. Detect
+  "no WebGL" and show a message to add a Lockdown Mode exclusion for the app. The exact Settings path is not verified
+  here [K].
 - **Chrome Android:** WebGPU 121+ on ARM/Qualcomm/Intel with Android 12+. Imagination GPUs need Android 16+ (139).
-  Samsung Xclipse is "probably 154" (in progress) [S: gpuweb wiki]. `kAAPMBlocksWebGPU` blocks WebGPU under Android
-  Advanced Protection Mode [S: `gpu_finch_features.cc`].
+  Samsung Xclipse is "probably 154" (in progress) (verified: gpuweb wiki *Implementation-Status.md*, raw, 2026-09-27).
+  `kAAPMBlocksWebGPU` ("enforces WebGPU security in Android Advanced Protection Mode", enabled by default) blocks WebGPU
+  under Android Advanced Protection Mode (verified: `gpu_finch_features.cc` L297–299).
 - **Android WebView:** BCD marks `GPU` as a "mirror" of Chrome Android, which is auto-derived and not verified. No
   WebView-specific disable was found in `aw_field_trials.cc` [S]. **Status is unverified. Detect at runtime.**
-- **Spec default limits** [S: WebGPU spec]:
+- **Spec default limits** (verified: `gpuweb/spec/index.bs` limits table, `main`, 2026-09-27):
   - `maxTextureDimension3D` 2048;
-  - `maxStorageBufferBindingSize` 128 MiB;
-  - `maxBufferSize` 256 MiB;
-  - `maxComputeInvocationsPerWorkgroup` 256 (128 in compatibility mode);
+  - `maxStorageBufferBindingSize` 134 217 728 B (128 MiB);
+  - `maxBufferSize` 268 435 456 B (256 MiB);
+  - `maxComputeInvocationsPerWorkgroup` 256 (128 in compatibility mode), and the same for `maxComputeWorkgroupSizeX/Y`;
   - `maxComputeWorkgroupStorageSize` 16 384 B;
-  - `maxStorageBuffersPerShaderStage` 8.
+  - `maxStorageBuffersPerShaderStage` 8; `maxStorageTexturesPerShaderStage` 4; `maxStorageBuffersInFragmentStage` 8
+    (4 in compatibility mode).
   - Float32 textures are only filterable with the optional `float32-filterable` feature, so use `rgba16float` for anything sampled.
+  - Budget check [D]: a 48×48×24 field of `vec4<f32>` is 0.88 MB, far below the buffer limits. The binding-count limit
+    (8 storage buffers per stage) constrains the solver more than memory does, so pack fields into a few buffers.
 
 ### 3.3 Renderer recommendation [H]
 
 - **v1: `WebGLRenderer`** (mature; all addons work, e.g. `@three.ez/instanced-mesh`, `three-mesh-bvh`, CSM). Write custom
   shaders in GLSL ES 3.00.
 - **Keep the render module independent** of these choices so a `WebGPURenderer` + TSL path can be added later.
-  r186's `WebGPURenderer` automatically falls back to a WebGL2 backend ("WebGPU is not available, running under WebGL2
-  backend") and has `forceWebGL` [S]. Its `outputBufferType` defaults to `HalfFloatType`. On phones, consider
-  `UnsignedByteType` to save bandwidth [S].
+  r186's `WebGPURenderer` automatically falls back to a WebGL2 backend ("WebGPURenderer: WebGPU is not available,
+  running under WebGL2 backend.") and has `forceWebGL` (verified: `WebGPURenderer.js` L41–67). Its `outputBufferType`
+  defaults to `HalfFloatType`. The source says "To save memory and bandwidth, `UnsignedByteType` might be used", so
+  consider it on phones (verified: `Renderer.js` L70–71).
 - **WebGPU compute for the atmosphere** (v2) is the bigger win. r186's `webgpu_volume_fire` example runs a
-  100×100×200 = 2 M-cell stable-fluids solver on the GPU, with 2 Jacobi iterations and a 16-step `VolumeNodeMaterial` [S].
-  That is about 35× FireSim's atmosphere cell count, but it is a visual effect, not a validated solver.
+  100×100×200 = 2 M-cell GPU solver ("semi-Lagrangian advection + curlNoise, buoyancy, Jacobi projection") with
+  `PRESSURE_ITERATIONS = 2` ("default 6") and `volumetricMaterial.steps = 16` (verified: example source at tag r186).
+  That is about 36× FireSim's 55 k atmosphere cells [D], but it is a visual effect, not a validated solver. Two Jacobi
+  iterations leave the flow far from divergence-free (compare doc 07 §7.4).
 
 ### 3.4 Frame pacing
 
-- WebKit throttles `requestAnimationFrame` to 30 fps when `LowPowerMode` or `ThermalMitigation` throttling reasons are
-  active (`HalfSpeedThrottlingFramesPerSecond = 30`) [S: `AnimationFrameRate.h/.cpp`].
+- WebKit throttles `requestAnimationFrame` to 30 fps (`HalfSpeedThrottlingFramesPerSecond = 30`, interval 30 ms) when
+  any of `halfSpeedThrottlingReasons` is active: `LowPowerMode`, `AggressiveThermalMitigation`, `VisuallyIdle` or
+  `NonInteractedCrossOriginFrame`. An enum value `ThermalMitigation` also exists but is not in that set. `OutsideViewport`
+  stops rAF entirely (verified: `AnimationFrameRate.h` L40–57 and `AnimationFrameRate.cpp`, WebKit `main`).
+- Apple's own `.serious` thermal guidance says to "Reduce the target framerate from 60 FPS to 30 FPS" and to "Reduce the
+  level of detail in rendered content by using fewer particles or lower-resolution textures" (verified: Apple
+  `ProcessInfo.ThermalState.serious` doc JSON). This supports the policy table in §5.3.
 - Design every animation to be time-based, not frame-based.
 - Render on demand: redraw only when the camera moves, a snapshot arrives, or an animation is playing [K: three.js
   "rendering on demand"].
@@ -211,21 +302,26 @@ Tags:
 
 ### 4.1 Workers under Vite + Capacitor
 
-- **Creating workers:** use `new Worker(new URL('./sim.worker.ts', import.meta.url), { type: 'module' })`. Vite detects a
-  worker "only … if the `new URL()` constructor is used directly inside the `new Worker()` declaration" and requires static
-  option literals [S: Vite docs]. The repo already sets `worker.format: 'es'` and `base: './'`.
-- **Browser support:** module workers need Safari 15 (nested workers 15.5, script loading in nested workers 16.4) and Chrome 80 [S: BCD].
-- **Core counts:** Safari clamps `navigator.hardwareConcurrency` to **4 or 8** "to prevent device fingerprinting" [S: BCD],
-  and `navigator.deviceMemory` does not exist in Safari [S]. Use `Device.getInfo()` (`model`, `memUsed`, `webViewVersion`) [S]
-  plus a first-run micro-benchmark to pick a quality tier.
+- **Creating workers:** use `new Worker(new URL('./sim.worker.ts', import.meta.url), { type: 'module' })`. Vite's docs say
+  "The worker detection will only work if the `new URL()` constructor is used directly inside the `new Worker()`
+  declaration … all options parameters must be static values (i.e. string literals)" (verified: `vite/docs/guide/features.md`).
+  The repo already sets `worker.format: 'es'` and `base: './'` (verified: `vite.config.ts`).
+- **Browser support:** module workers (`options_type_parameter`) need Safari 15 and Chrome 80 (verified: BCD). BCD's
+  module-worker notes say "Nested workers support was introduced in Safari 15.5" and "Script loading in nested workers
+  was introduced in Safari 16.4". The general `Worker/worker_support` entry (workers created inside workers) says
+  Safari 16.4, partial. FireSim spawns every worker from the main thread, so this does not matter.
+- **Core counts:** since Safari 15.4, "The value of this property is clamped to 4 or 8 cores, to prevent device
+  fingerprinting" (verified: BCD `Navigator.hardwareConcurrency`). `navigator.deviceMemory` does not exist in Safari
+  (verified: BCD). Use `Device.getInfo()` (`model` e.g. "iPhone13,4", `memUsed` in bytes, `webViewVersion`)
+  (verified: `@capacitor/device` README) plus a first-run micro-benchmark to pick a quality tier.
 
 ### 4.2 Transferables vs SharedArrayBuffer
 
 | Platform | `crossOriginIsolated` / SAB | Evidence |
 |---|---|---|
-| Android WebView | SAB `false` in BCD; WASM threads `false` in BCD. "Android WebView exposes SharedArrayBuffer but is never cross-origin isolated (COOP/COEP have no effect)" (Chromium issue 40914606, search snippet only) | [S: BCD]; [K: issue not readable] |
-| Android WebView (new) | `AwBrowserContext.setCrossOriginIsolatedAllowList()` → `OriginSupportsConcreteCrossOriginIsolation()`. The error text says: "consider allowing your origin with `Profile#setCrossOriginIsolatedAllowlist()`, and add the Document-Isolation-Policy header". Shipped in androidx.webkit **1.18.0-alpha01** (9 Sep 2026). A 25 Sep 2026 open-source app still found DIP "unsupported by Android WebView" | [S: Chromium `AwContents.java`, `aw_browser_context.cc`; Android release notes; cmer81/maps PR #128] |
-| iOS WKWebView | Scheme-handler schemes are potentially trustworthy (`schemeIsHandledBySchemeHandler` → true). COOP is parsed only for trustworthy origins, and `same-origin` + COEP `require-corp` → `SameOriginPlusCOEP`. Capacitor's `WebViewAssetHandler` sends only `Content-Type`/`Cache-Control` (plus CORS for live reload), and `CAPBridgeViewController.loadView()` is `final` with a `private prepareWebView`. **Enabling isolation needs a patch to `@capacitor/ios`**; unverified on device (Capacitor issue #6182) | [S: `SecurityOrigin.cpp` L90–105, `CrossOriginOpenerPolicy.cpp` L212–247, Capacitor iOS sources] |
+| Android WebView | SAB `version_added: false` in BCD; WASM threads-and-atomics `false` in BCD (verified: BCD `javascript/builtins/SharedArrayBuffer.json`, `webassembly/threads-and-atomics.json`). "Android WebView exposes SharedArrayBuffer but is never cross-origin isolated (COOP/COEP have no effect)" (Chromium issue 40914606, search snippet only). The cmer81/maps PR #128 (merged 25 Sep 2026) independently reports that "Android WebView exposes the constructor but lacks cross-origin isolation". **So test `self.crossOriginIsolated === true`, never `typeof SharedArrayBuffer`** | [S: BCD]; [K: Chromium issue not readable]; [S: PR #128 page] |
+| Android WebView (new) | `AwBrowserContext::SetCrossOriginIsolatedAllowList()` → `AllowCrossOriginIsolatedApis()` → `OriginSupportsConcreteCrossOriginIsolation()`. `AwContents.postMessageToMainFrame` throws: "Cannot send SharedArrayBuffer to a frame that is not cross-origin isolated. If this was intended, consider allowing your origin with `Profile#setCrossOriginIsolatedAllowlist()`, and add the Document-Isolation-Policy header the page's response." The androidx.webkit **1.18.0-alpha01** (9 Sep 2026) notes say "Added `Profile#setCrossOriginIsolatedAllowlist` and `Profile#getCrossOriginIsolatedAllowlist` API to opt out of origin isolation security features, allowing the use of `SharedArrayBuffer`". 1.18.0-alpha02 followed on 23 Sep 2026; the latest stable is 1.17.1. Capacitor 8 pins `androidxWebkitVersion 1.14.0`, so using the API means overriding that variable. The PR #128 author called DIP "not supported by Android WebView" | (verified: Chromium `AwContents.java` L3655–3662, `aw_browser_context.cc` L953–984, `aw_content_browser_client.cc` L1473; AndroidX WebKit release notes page; cmer81/maps PR #128) |
+| iOS WKWebView | Scheme-handler schemes are potentially trustworthy (`schemeIsHandledBySchemeHandler` → true). COOP is parsed only for trustworthy origins, and `same-origin` + COEP `require-corp` → `SameOriginPlusCOEP`. Capacitor's `WebViewAssetHandler` sends only `Content-Type`/`Cache-Control` (plus CORS for live reload, and range headers). `CAPBridgeViewController.loadView()` is `public final`, constructs `WebViewAssetHandler(router:)` itself, and registers it inside a `private prepareWebView`. **Enabling isolation needs a patch to `@capacitor/ios`.** The only unpatched route is overriding the `open` `webView(with:configuration:)` to rebuild a fresh `WKWebViewConfiguration` with a subclassed handler, which is fragile [H]. Unverified on device; Capacitor issue #6182 ("bug: SharedArrayBuffer support", iOS, Dec 2022) is closed | (verified: `SecurityOrigin.cpp` L90–109, `CrossOriginOpenerPolicy.cpp` L231–245, Capacitor iOS 8.5.2 `CAPBridgeViewController.swift` L30–45 and L292–297, `WebViewAssetHandler.swift` L60–68; GitHub issue page) |
 
 **Design [H]:**
 
@@ -244,8 +340,9 @@ Tags:
 
 ### 4.3 WASM
 
-- **Fixed-width SIMD:** Safari 16.4, Chrome 91 [S: BCD]. **Relaxed SIMD:** not in Safari ("preview") [S].
-  **Threads/atomics:** need SAB, so they are unavailable in Android WebView [S].
+- **Fixed-width SIMD:** Safari 16.4, Chrome 91. **Relaxed SIMD:** Chrome 114; not in Safari ("preview").
+  **Threads/atomics:** Chrome Android 88 and Safari 15.2, but `false` for Android WebView (verified: BCD
+  `webassembly/fixed-width-SIMD.json`, `relaxed-SIMD.json`, `threads-and-atomics.json`). They need SAB.
 - **Guidance [H]:**
   - Start in TypeScript on `Float32Array`s: it is testable and the engines JIT it well.
   - Port only the measured hot loop to WASM SIMD (Rust `+simd128`, or AssemblyScript). The pressure/Poisson solve is
@@ -260,20 +357,29 @@ Tags:
 
 - N_steps = T_sim/Δt, with Δt ≤ C·Δx/U_max (advective CFL; C ≈ 1).
 - Semi-Lagrangian advection removes the stability limit but not the accuracy limit [K].
-- At Δx = 150 m and U_max = 15 m/s, Δt ≈ 10 s, so N_steps = 21 600 s / 10 s = 2 160 for 6 h.
+- At Δx = 150 m and U_max = 15 m/s, Δt ≈ 10 s, so N_steps = 21 600 s / 10 s = 2 160 for 6 h. (Arithmetic verified [D].)
+- **Vertical Courant number (mountain/plume caveat) [D]:** doc 07 §7.6 stretches the grid from Δz₁ = 20 m. With plume
+  updrafts of about 10 m/s (docs 02, 06, 07 quote 5–30 m/s for intense fires, [D]/[H]), Δt = 10 s gives
+  C_z = w·Δt/Δz₁ ≈ 5 in the lowest layers.
+  - Semi-Lagrangian advection stays stable, but plume-base detail is smeared.
+  - An explicit Eulerian scheme would need Δt ≈ 2–3 s (doc 02 §4.1), i.e. 3–5× the step count. That would break the budget.
+  - **The 22–54 s estimate therefore depends on semi-Lagrangian advection and on implicit treatment of the vertical
+    terms.** Keep both.
 
 **Architecture budget check:** the architecture budget is 10–25 ms per step for 48×48×24 = 55 296 cells, i.e. 22–54 s for 6 h.
 This implies c ≈ 0.18–0.45 µs per cell-update including the pressure solve. That is plausible for JIT-compiled typed-array
 code on a 2023+ phone core, but it must be benchmarked.
 
-**Scaling law:** with N_z fixed, W ∝ (L/Δx)²·(1/Δx) = L²/Δx³. Going from 150 m to 100 m costs (1.5)³ ≈ 3.4×, i.e. 75–180 s.
+**Scaling law:** with N_z fixed, W ∝ (L/Δx)²·(1/Δx) = L²/Δx³. Going from 150 m to 100 m costs (1.5)³ ≈ 3.4×, i.e. 75–180 s
+(verified arithmetic: 22–54 s × 3.375 = 74–182 s).
 That breaks the 1–2 min budget on the CPU. **Keep ≤ 60 k atmosphere cells on the CPU tier.** Offer 100 m only on a
 WebGPU tier after benchmarking.
 
 **Fire grid:** the level-set cost is ∝ cells × sub-steps, with Δt_f ≤ 0.5·Δx/ROS_max.
 
-- At Δx = 20 m and ROS_max = 3 m/s (about 11 km/h, extreme forest), Δt_f ≤ 3.3 s.
-- 250 k cells × 6 500 sub-steps ≈ 1.6×10⁹ updates over 6 h.
+- At Δx = 20 m and ROS_max = 3 m/s (10.8 km/h), Δt_f ≤ 3.3 s. Doc 07 §3.4 calls 3 m/s a grass run and 1 m/s a fast
+  forest run (Δt_f = 10 s). WRF caps ROS at 6 m/s.
+- 250 k cells × 6 500 sub-steps ≈ 1.6×10⁹ updates over 6 h (verified arithmetic [D]: 21 600 s / 3.33 s = 6 480).
 - Recommend a narrow-band update (only cells within a few cells of the front) and adaptive Δt from the current ROS_max [H/K].
 
 ### 4.5 Worker topology [H]
@@ -287,6 +393,9 @@ WebGPU tier after benchmarking.
   interface returns the same `AtmosphereView`.
 - **Determinism:** ECMAScript leaves `Math.exp`, `Math.pow` and similar "implementation-approximated" [K], so V8 and JSC
   can differ in the last bits. Unit tests must use tolerances, and golden files should be per-engine or rounded.
+- **Keep the solver loop inside the worker.** When the Android WebView or WKWebView is hidden, rAF stops, and
+  main-thread timers can be throttled [K]. A worker's `advance()` loop that yields via `MessageChannel` does not depend
+  on main-thread timers. It still stops when the OS suspends or kills the process (§5).
 
 ---
 
@@ -294,59 +403,89 @@ WebGPU tier after benchmarking.
 
 ### 5.1 iOS
 
-- **Background time:** `applicationDidEnterBackground` "has five seconds to perform any tasks and return. Shortly after …
-  the system puts your app into the suspended state". `beginBackgroundTask` adds limited extra time
+- **Background time:** "Your implementation of this method has approximately five seconds to perform any tasks and
+  return. If the method doesn't return before time runs out, your app is terminated and purged from memory" (verified:
+  Apple doc JSON `applicationDidEnterBackground(_:)`). `beginBackgroundTask` adds limited extra time
   (`backgroundTimeRemaining`) [S: Apple].
-- **WebKit suspension:** WebKit sends the WebContent process "PrepareToSuspend" and allows `processSuspensionTimeout = 20 s`
-  before dropping its assertion [S: `ProcessThrottler.cpp`]. After that, JavaScript and workers stop.
+- **Capacitor `pause`** fires on `UIApplication.didEnterBackgroundNotification` on iOS and on Activity `onPause` on
+  Android (verified: `@capacitor/app` README). The JS handler crosses the bridge asynchronously, so it may get only part
+  of those ~5 s. **Do not rely on `pause` alone; checkpoint periodically as well** [H].
+- **WebKit suspension:** WebKit sends the WebContent process "PrepareToSuspend" and starts
+  `processSuspensionTimeout { 20_s }`, "so it can't stay running in the background for too long" (verified:
+  `ProcessThrottler.cpp` L49 and L392–396). This is an **upper bound**. The process is suspended as soon as it
+  acknowledges, and the host app itself is suspended ~5 s after backgrounding unless it holds a background task. Assume
+  JavaScript and workers stop within seconds [H].
 - **iOS 26 `BGContinuedProcessingTask`:** must start "in response to someone's action, such as tapping a button". It shows a
   Live Activity with progress, the user can cancel it, and the system "prioritizes the termination of tasks that reflect
-  minimal … progress". GPU access in the background needs the `com.apple.developer.background-tasks.continued-processing.gpu`
-  entitlement and device support [S]. **Unknown:** whether WKWebView JavaScript keeps running under such a task. This is
+  minimal progress, if resource constraints occur at run time". GPU access in the background needs the
+  `com.apple.developer.background-tasks.continued-processing.gpu` entitlement (Background GPU Access capability) and
+  device support. "The system cancels any running tasks if a person closes the app in the app switcher, but the app
+  doesn't receive an indication of cancellation in that case" (all verified: Apple doc JSON *Performing long-running
+  tasks on iOS and iPadOS*). **Unknown:** whether WKWebView JavaScript keeps running under such a task. The API is
   documented for native work, so assume it does not.
 - **WebContent termination:** if the WebContent process dies, Capacitor's `webViewWebContentProcessDidTerminate` runs
-  `bridge?.reset(); webView.reload()` [S]. The app restarts from scratch, so restore from the last checkpoint and offer
-  "Resume scenario?".
+  `bridge?.reset(); webView.reload()` (verified: `WebViewDelegationHandler.swift` L164–168). The method is `open`, so
+  a subclass can override it to show a "Restoring…" state before reloading. The app restarts from scratch, so restore
+  from the last checkpoint and offer "Resume scenario?".
 
 ### 5.2 Android
 
-- **Timers:** Capacitor's `KeepRunning` preference defaults to `true`, so WebView JS timers are *not* paused on `onPause` [S: `Bridge.java`].
-  But the OS may still freeze or kill a backgrounded process [K].
+- **Timers:** Capacitor's `KeepRunning` preference defaults to `true` (`preferences.getBoolean("KeepRunning", true)`).
+  `Bridge.onPause()` passes it to the Cordova shim, whose `setPaused(true)` would otherwise call `webView.onPause()` and
+  `webView.pauseTimers()`. So WebView JS timers are *not* paused on `onPause` (verified: `Bridge.java` L463–464 and
+  L1370–1378, `MockCordovaWebViewImpl.java` L270–278). The OS may still freeze or kill a backgrounded process [K].
 - **Foreground-service options:**
 
   | Type | Limit |
   |---|---|
-  | `shortService` | About 3 min [S] |
-  | `dataSync` and `mediaProcessing` | 6 h per 24 h for apps targeting Android 15, shared across services of that type; reset when the user foregrounds the app; `onTimeout()` → `stopSelf()` within seconds, or a `RemoteServiceException` [S] |
-  | `specialUse` | Play review of the declared subtype [S] |
+  | `shortService` | "Can only run for a short period of time (about 3 minutes)" (verified) |
+  | `dataSync` and `mediaProcessing` | 6 h per 24 h for apps targeting Android 15 (API 35), shared by all of the app's services of that type. "If the user brings the app to the foreground, the timer resets." At the limit `Service.onTimeout(int, int)` is called and the service "has a few seconds to call `Service.stopSelf()`". Otherwise it fails with `RemoteServiceException` "A foreground service of type dataSync did not stop within its timeout" (verified: Android 15 behaviour changes) |
+  | `specialUse` | "Covers any valid foreground service use cases that aren't covered by the other foreground service types". Its use cases "are reviewed when you submit your app in the Google Play Console" (verified) |
+
+  **Type fit [H]:** `dataSync` is defined as "Data transfer operations" (upload/download, backup, import/export, fetch,
+  local file processing), and `mediaProcessing` as "operations on media assets, like converting media to different
+  formats" (verified: FGS types page). Neither describes a physics simulation. `specialUse` is the honest declaration,
+  and it is reviewed.
 
   A notification-backed FGS can keep the WebView's worker alive for a user-started "finish this 6-h run". Whether the
   WebView renderer keeps its priority under an FGS is not verified [K]. **Treat it as optional.**
-- **`onRenderProcessGone`:** returns "true if the host application handled the situation … otherwise, application will
-  crash if render process crashed, or be killed if render process was killed by the system" [S]. Capacitor forwards it to
-  `WebViewListener`s [S]. **Register a listener** that destroys and recreates the WebView, then restores the checkpoint.
-- **`@capacitor/background-runner`:** not a WebView ("DOM APIs" unavailable). It has about 30 s per invocation on iOS, a
-  10-min maximum on Android, and a ≥ 15-min repeat interval [S]. It is useful for prefetching forecasts, not for the solver.
+- **`onRenderProcessGone`:** returns "true if the host application handled the situation that process has exited,
+  otherwise, application will crash if render process crashed, or be killed if render process was killed by the
+  system" (verified: `WebViewClient` reference). Capacitor's `BridgeWebViewClient` forwards it to every
+  `WebViewListener` and ORs their results (verified: `BridgeWebViewClient.java` L92–103). **Register a listener** that
+  destroys and recreates the WebView, returns `true`, then restores the checkpoint.
+- **`@capacitor/background-runner`:** "does not execute your Javascript code in a browser or web view", so no DOM APIs.
+  On iOS each invocation has "approximately up to 30 seconds". On Android there is "a maximum of 10 minutes", and
+  repeating tasks have "a minimal interval of at least 15 minutes" (verified: README). It is useful for prefetching
+  forecasts, not for the solver.
 
 ### 5.3 Thermal, power, battery
 
-- **Web APIs are unavailable:** `PressureObserver` is not on Chrome Android or Safari, and `BatteryManager` is not in Safari [S: BCD].
+- **Web APIs are unavailable:** `PressureObserver` is Chrome 125 desktop only (`false` on Chrome Android and Safari), and
+  `BatteryManager` is `false` in Safari (verified: BCD).
 - **Native signals:**
-  - iOS `ProcessInfo.thermalState`:
-    - `.fair` → "reduce or defer background work";
-    - `.serious` → "reduce CPU and GPU usage by stopping or deferring work" and "reduce the requested level of accuracy for location";
-    - `.critical` → reduce to "the minimum level required for user interaction" [S].
-  - `isLowPowerModeEnabled` means the system is "reducing CPU and GPU performance" [S].
-  - Android: `getCurrentThermalStatus()`/`addThermalStatusListener()` (API 29), with `THERMAL_STATUS_NONE…SHUTDOWN` = 0–6.
-    `getThermalHeadroom(forecastSeconds)` (API 30): calling it "more frequently than about once per second" may return `NaN` [S].
-  - `isPowerSaveMode()` (API 21) [S].
-  - `Device.getBatteryInfo()` → `batteryLevel` (0–1), `isCharging` [S].
-- **Policy [H]:**
+  - iOS `ProcessInfo.thermalState` (verified: Apple doc JSON for each case):
+    - `.fair` → "Reduce or defer background work, like prefetching content over the network or updating database indexes";
+    - `.serious` → "Reduce CPU and GPU usage by stopping or deferring work", "Reduce the requested level of accuracy for
+      location", "Reduce the target framerate from 60 FPS to 30 FPS", and "fewer particles or lower-resolution textures";
+    - `.critical` → "Reduce usage of the CPU, GPU, and I/O … to the minimum level required for user interaction".
+  - `isLowPowerModeEnabled`: Low Power Mode enacts measures "such as: Reducing CPU and GPU performance … Pausing
+    discretionary and background activities" (verified).
+  - Android `PowerManager` (verified: reference page):
+    - `getCurrentThermalStatus()` and `addThermalStatusListener()` (API 29), with `THERMAL_STATUS_NONE…SHUTDOWN` = 0–6.
+    - `getThermalHeadroom(forecastSeconds)` (API 30). Calling it "significantly more frequently" than about once per
+      second "may result in the function returning NaN". **Semantics:** the value "represents how much of the thermal
+      envelope is in use"; "A value of 1.0 indicates that the device is (or will be) throttled at
+      THERMAL_STATUS_SEVERE". Larger means hotter, despite the name.
+    - `addThermalHeadroomListener()` (API 36) and `getThermalHeadroomThresholds()` (API 35) avoid polling on new devices.
+  - `isPowerSaveMode()` (API 21) (verified).
+  - `Device.getBatteryInfo()` → `batteryLevel` (0–1), `isCharging` (verified: `@capacitor/device` README).
+- **Policy [H]** (thresholds are engineering choices; the direction of each step follows Apple's `.serious` guidance above):
 
 | Signal | Render | Sim worker | GPS |
 |---|---|---|---|
 | Nominal, or charging | DPR ≤ 2, 60/30 fps, plume volume on | Full speed | `watchPosition` 5 s |
-| iOS `.fair` / Android LIGHT(1) / headroom > 0.7 | DPR 1.5, no volume, 30 fps | Full | 10 s |
+| iOS `.fair` / Android LIGHT(1) / headroom > 0.7 (i.e. 70 % of the way to SEVERE) | DPR 1.5, no volume, 30 fps | Full | 10 s |
 | `.serious` / MODERATE–SEVERE(2–3) / Low Power / battery < 20 % | DPR 1.25, particles ÷ 2, shadows off, render on demand only | Yield 30 % duty cycle | 30 s, coarse |
 | `.critical` / CRITICAL+(≥ 4) | Static frame; UI only | Pause and checkpoint; tell the user why | Off |
 
@@ -361,13 +500,16 @@ means throttling, even when no OS signal has fired [H].
 
 - It is enabled by `plugins.CapacitorHttp.enabled` (already set in `capacitor.config.ts`) and patches `window.fetch` and
   `window.XMLHttpRequest`. **Workers are not patched.**
-- **Request routing:**
-  - GET/HEAD/OPTIONS/TRACE are rewritten to `${serverUrl}/_capacitor_http_interceptor_?u=<url>`, fetched natively, and
-    streamed back through the local server, so binary bodies are fine.
+- **Request routing** (verified: `native-bridge.js` L141–153 and L469–500, 8.5.2):
+  - GET/HEAD/OPTIONS/TRACE are rewritten by `createProxyUrl` to `${serverUrl}/_capacitor_http_interceptor_?u=<url>`,
+    fetched natively, and served back through the local scheme handler, so binary bodies are fine. On iOS the handler
+    serves the proxy only when `CapacitorHttp.enabled` is true (verified: `WebViewAssetHandler.swift` L38–46).
   - Other methods go through the JSON bridge.
-  - Requests to the app's own origin bypass the patch.
-- **Downloads:** "parsing and transferring large amount of data from native to the web can cause issues". Use
-  `@capacitor/file-transfer` for large downloads, directly to disk [S].
+  - Requests whose URL starts with `${cap.getServerUrl()}/` bypass the patch, as do relative URLs.
+  - On Android, a custom `User-Agent` header is copied to `x-cap-user-agent` to work around a WebView header-stripping bug.
+- **Downloads:** "Due to the nature of the bridge, parsing and transferring large amount of data from native to the web
+  can cause issues" (verified: `@capacitor/core/http.md`). Use `@capacitor/file-transfer` for large downloads, directly
+  to disk. Filesystem's own `downloadFile` is deprecated since 7.1.0 (verified: filesystem README).
 - **Worker trick [H]:** a worker could fetch the same-origin interceptor URL itself. This is **undocumented internal API**
   and may change, so don't rely on it.
 
@@ -375,36 +517,59 @@ means throttling, even when no OS signal has fired [H].
 
 | Store | Capacity and persistence | Use in FireSim |
 |---|---|---|
-| `@capacitor/preferences` | UserDefaults / SharedPreferences. "Not meant to be used as a local database" [S] | Settings, last location, UI state |
-| IndexedDB | WebKit: embedded apps about 15 % of disk per origin and 20 % overall. Chromium: 60 % per origin. Safari proactive 7-day eviction applies to Safari's tracking prevention [S: MDN]. Capacitor: "IndexedDB at least on iOS" must be considered transient [S] | Cache index, small scenario JSON, checkpoints (duplicated to a file) |
-| OPFS (`navigator.storage.getDirectory`, `FileSystemSyncAccessHandle` in workers) | Safari 15.2, Chrome Android 109 [S]; same eviction class as IndexedDB; disabled in Lockdown Mode [S] | Fast checkpoint writes from the worker (optional) |
-| `@capacitor/filesystem` | `LibraryNoCloud` = iOS Library without iCloud backup; `Data` = app files on Android; `Cache` "can be deleted in cases of low memory" [S] | **Area packs** (DEM, canopy, fuel, fire history, weather), checkpoints |
-| `@capacitor-community/sqlite` 8.1.1 | Native SQLite; uses SQLCipher "even for unencrypted databases", which may trigger US encryption export reporting [S] | Optional observation log / pack index; a simple JSON manifest is enough for v1 |
+| `@capacitor/preferences` | UserDefaults / SharedPreferences. "This API is _not_ meant to be used as a local database" (verified: README) | Settings, last location, UI state |
+| IndexedDB | WebKit: "other WebKit-based apps that embed web content" get "around 15% of total disk" per origin, with an overall quota of "20% of disk size for non-browser apps". Chromium: 60 % per origin. Safari's proactive 7-day eviction applies "when cross-site tracking prevention is turned on", for origins with no user interaction in the last seven days of browser use (verified: MDN `storage_quotas_and_eviction_criteria/index.md`). Capacitor: "The same can be said for IndexedDB at least on iOS", i.e. it must be considered transient (verified: capacitor-docs `guides/storage.md`) | Cache index, small scenario JSON, checkpoints (duplicated to a file) |
+| OPFS (`navigator.storage.getDirectory`, `FileSystemSyncAccessHandle` in workers) | Safari 15.2; Chrome 86 desktop / 109 Android for `getDirectory`; sync handle Chrome 102 / Android 109 (verified: BCD). Same eviction class as IndexedDB; `FileSystemEnabled` is disabled in Lockdown Mode (verified: WebKit prefs) | Fast checkpoint writes from the worker (optional) |
+| `@capacitor/filesystem` | `LibraryNoCloud`: "The Library directory without cloud backup. Used in iOS. On Android it's the directory holding application files" (since 7.1.0). `Data` = Documents on iOS (backed up) and app files on Android. `Cache` "Can be deleted in cases of low memory" (verified: README) | **Area packs** (DEM, canopy, fuel, fire history, weather), checkpoints |
+| `@capacitor-community/sqlite` 8.1.1 (6 Aug 2026) | Native SQLite. "This plugin uses the SQLCipher library (even for unencrypted databases), which is subject to the Encryption Export Regulations and may require you to submit a year-end self-classification report" (verified: README, npm) | Optional observation log / pack index; a simple JSON manifest is enough for v1 |
 
 - **Reading packs [H]:** `const url = Capacitor.convertFileSrc((await Filesystem.getUri({path, directory: Directory.LibraryNoCloud})).uri); const buf = await (await fetch(url)).arrayBuffer();`.
-  This serves the file through `/_capacitor_file_` [S] with no base64, and a worker can do the same fetch because the URL
-  is same-origin.
-- **Writing** through `Filesystem.writeFile` is base64 over the bridge [S], which is fine for MB-scale checkpoints. Use
-  `FileTransfer.downloadFile` for pack downloads.
-- **Call `navigator.storage.persist()`** anyway (Safari 15.2+, Chrome 55+) [S]. It is harmless.
+  This serves the file through `/_capacitor_file_` (verified: `Bridge.CAPACITOR_FILE_START`, iOS
+  `fileStartIdentifier`) with no base64, and a worker can do the same fetch because the URL is same-origin.
+- **iOS memory gotcha:** without a `Range` header, the iOS `WebViewAssetHandler` reads the **whole file** into a `Data`
+  (`Data(contentsOf:)`, memory-mapped only for media extensions) before passing it to WebKit. With `Range: bytes=a-b`
+  it seeks and returns only that slice as `206` (verified: `WebViewAssetHandler.swift` L70–104). A 200 MB pack
+  therefore costs about 200 MB of native memory plus the JS copy. **Split packs into tiles of ≤ 8–16 MB**, or read
+  them with Range requests from the worker [H].
+- **Writing** through `Filesystem.writeFile` is base64 over the bridge. Binary data must be "provided … as base64
+  encoded, so that the plugin can decode it before writing to disk" (verified: README). That is fine for MB-scale
+  checkpoints (+33 % size, plus encode time). Use `FileTransfer.downloadFile` for pack downloads.
+- **Call `navigator.storage.persist()`** anyway (Safari 15.2+, Chrome 55+) (verified: BCD). It is harmless.
 
 ### 6.3 Location
 
-- `@capacitor/geolocation` 8.2.2: `enableHighAccuracy` (default `false`; ignored on Android 12+ if only coarse location was
-  granted); `timeout` 10 000 ms by default; `maximumAge` 0.
-- Android-only options: `interval`/`minimumUpdateInterval` (5 000 ms), and `enableLocationFallback` (default `true`, uses
-  `LocationManager`/GPS-only in airplane mode, "may take longer … you may need to provide a higher timeout") [S].
-- iOS needs both `NSLocationWhenInUseUsageDescription` and `NSLocationAlwaysAndWhenInUseUsageDescription` strings [S].
+- `@capacitor/geolocation` 8.2.2 (verified: README in `node_modules`):
+  - `enableHighAccuracy` defaults to `false`. On Android 12+ it "will be ignored if users didn't grant
+    ACCESS_FINE_LOCATION". Coarse location is "usually around 2 kilometers", which is useless for marking a fire.
+  - `timeout` defaults to 10 000 ms; `maximumAge` to 0.
+- Android-only options (verified):
+  - `interval` (since 8.0.0) defaults to the value of `timeout`, so 10 000 ms unless changed. **Earlier text said 5 000 ms,
+    which was wrong.**
+  - `minimumUpdateInterval` defaults to 5 000 ms.
+  - `enableLocationFallback` defaults to `true`. It falls back to `LocationManager`, and "If the device's in airplane mode,
+    only the GPS provider is used, which may take longer … you may need to provide a higher timeout".
+- iOS requires `NSLocationAlwaysAndWhenInUseUsageDescription` and `NSLocationWhenInUseUsageDescription` in `Info.plist`
+  (verified).
 - **In the mountains:**
   - Use `coords.accuracy` to draw an uncertainty circle.
   - Take elevation from the DEM, not from `coords.altitude` (GPS vertical error is typically worse than horizontal [K]).
-  - Use `timeout ≥ 30 s` in gorges with poor sky view [H].
+  - Use `timeout ≥ 30 s` in gorges with poor sky view [H]. Canyon walls also cause multipath error [K].
+  - **Bearing + distance marking** needs a compass heading. On iOS the web `DeviceOrientationEvent` requires
+    `DeviceOrientationEvent.requestPermission()` from a user gesture and gives `webkitCompassHeading` relative to
+    magnetic north [K]. Magnetic declination in the NSW ranges is roughly 12–13° E [K]. Compute it from WMM2025 for the
+    site rather than hard-coding it (UNVERIFIED — value not re-checked this pass). A wrong declination puts a mark
+    1 km away about 200 m off per 12° [D: 1000·sin 12° ≈ 208 m].
 
 ### 6.4 Low connectivity [H]
 
 - **Offline-first:** a scenario must build entirely from an area pack or the bundled demo sites.
 - **Pack download:** download "area packs" on Wi-Fi before deployment. For example, 10×10 km of DEM at 5 m in Int16 is
-  2 001² × 2 B ≈ 8 MB raw [D]; the 30 m SRTM equivalent is ~0.2 MB.
+  2 001² × 2 B ≈ 8 MB raw [D]; the 30 m SRTM equivalent is ~0.2 MB (334² × 2 B = 0.22 MB) [D]. (Int16 at 1 m steps
+  quantises elevation. Store decimetres, or a scaled offset, if slope is derived from the pack [H].)
+- **Why prefer the 5 m DEM in the mountains:** coarser DEMs smooth ridges and gullies, so they **under-estimate slope**
+  [K]. Slope drives the ROS multiplier exponentially, at roughly ×2 per 10° (01 §2.2). Under-estimating a 30° gully wall as
+  22° under-predicts ROS by about 2^0.8 ≈ 1.7× [D], and can hide the > 20° "beyond validated model" flag. When only
+  30 m data is available, show a "coarse terrain: slopes may be steeper than shown" badge [H].
 - **Freshness:** every layer carries a `fetchedAt`, and the UI shows badges like "Weather: forecast issued 06:00, 7 h old".
 - **Manual entry:** belt-weather-kit entry (T, RH, wind speed and direction, time) is always available and overrides the forecast.
 - **Connectivity events:** `Network.getStatus()` / `networkStatusChange` (`connectionType: 'none'`) [S] drive retries.
@@ -417,7 +582,8 @@ means throttling, even when no OS signal has fired [H].
 ### 7.1 Build [S/K]
 
 - `npm run build` (tsc + Vite 8) → `dist/` → `npx cap sync`.
-- iOS: SPM project; set `ios.webContentsDebuggingEnabled` for dev builds (maps to WKWebView `isInspectable`).
+- iOS: SPM project; set `ios.webContentsDebuggingEnabled` for dev builds (maps to WKWebView `isInspectable`; verified:
+  `CapacitorBridge.swift` L478).
 - Android: `minWebViewVersion`, a WebViewListener for render-process crashes, and an FGS declaration if used.
 - Live reload: `server.url` (dev only; "not intended for use in production" [S]).
 - Ship the WASM kernels and data as assets. `webDir` content is served with correct MIME types [S].
@@ -427,21 +593,24 @@ means throttling, even when no OS signal has fired [H].
 | Layer | Tool | Notes |
 |---|---|---|
 | Numerical kernels | Vitest (`environment: 'node'`) | Already configured. Deterministic seeded RNG (`src/core/rng.ts`) |
-| Worker protocol, WebGL shaders | Vitest browser mode with `@vitest/browser-playwright` [S] | Real Chromium and WebKit engines; the `preview` provider "relies on simulating events", so use playwright in CI [S] |
-| App e2e | Playwright 1.63, Pixel 7 profile, SwiftShader WebGL (existing config) | Add a WebKit project for iOS-like JS/CSS behaviour. It is not a true WKWebView (different GPU path) [K] |
-| On-device Android WebView | Playwright `_android` (**experimental**): "This includes Chrome for Android and Android WebView". Needs ADB and Chrome 87+; "not everything works" [S] | Nightly perf test: run a 6-h scenario and record wall time, fps and thermal status |
+| Worker protocol, WebGL shaders | Vitest browser mode with `@vitest/browser-playwright` (verified: vitest `docs/guide/browser/index.md`) | Real Chromium and WebKit engines. The default `preview` provider "relies on simulating events instead of using Chrome DevTools Protocol", and "to run tests in CI you need to install either playwright or webdriverio" (verified) |
+| App e2e | Playwright 1.63, Pixel 7 profile, SwiftShader WebGL via `--use-angle=swiftshader` (verified: `playwright.config.ts`) | Add a WebKit project for iOS-like JS/CSS behaviour. It is not a true WKWebView (different GPU path) [K]. SwiftShader timings are meaningless for GPU performance |
+| On-device Android WebView | Playwright `_android` (**experimental**): "This includes Chrome for Android and Android WebView". Needs ADB, "Chrome 87 or newer", and "Enable command line on non-rooted devices" in `chrome://flags`; "We didn't run all the tests against the device, so not everything works" (verified: `playwright-core` 1.63 `types.d.ts` L24130–24144). The app must enable WebView debugging (`android.webContentsDebuggingEnabled`) [K] | Nightly perf test: run a 6-h scenario and record wall time, fps and thermal status |
 | On-device iOS | Safari Web Inspector (inspectable WKWebView) + XCUITest/Appium [K] | Manual perf runs on the oldest supported iPhone |
 
 ### 7.3 PWA fallback [S/K]
 
-- Build it with `vite-plugin-pwa` 1.3.0 [S: npm]. The same bundle serves as a PWA.
+- Build it with `vite-plugin-pwa` 1.3.0 (5 May 2026) (verified: npm). The same bundle serves as a PWA.
 - **Limits** compared with the native app:
   - no CapacitorHttp, so CORS-less services need a proxy;
   - no background execution or native thermal signal;
-  - storage: a Home-Screen web app gets the browser-app quota (about 60 % of disk) [S: MDN];
-  - Screen Wake Lock on iOS is full only from 18.4, and "does not work in standalone Home Screen Web Apps" before that [S: BCD];
-  - WebGPU works in Safari 26 [S].
-- The native app should use `@capacitor-community/keep-awake` [S] during a run.
+  - storage: "If the user has saved the site as a web app on the Home Screen or the Dock, it uses the same origin
+    quota as the browser app (around 60% of disk space)" (verified: MDN);
+  - Screen Wake Lock on iOS: Safari iOS 16.4–18.3 is partial ("Does not work in standalone Home Screen Web Apps");
+    full from 18.4 (verified: BCD `api/WakeLock.json`);
+  - WebGPU works in Safari 26 (verified: BCD `api/GPU`).
+- The native app should use `@capacitor-community/keep-awake` 8.0.1 (peer `@capacitor/core >= 8.0.0`) (verified: npm)
+  during a run.
 
 ---
 
@@ -464,6 +633,7 @@ arrival time.
 
 **Pixel arithmetic [D]:** a 393×852-pt iPhone at DPR 3 renders 1179×2556 = 3.0 MP. DPR 2 gives 1.34 MP (−56 %) and
 DPR 1.5 gives 0.75 MP (−75 %). Fragment-heavy effects (raymarching, soft particles) scale with this number.
+(Arithmetic verified: 1179·2556 = 3 013 524; 786·1704 = 1 339 344; 589.5·1278 = 753 381.)
 
 Mobile GPUs are tile-based. Avoid extra full-screen passes. MSAA via `antialias: true` is relatively cheap on tilers [K],
 while post-process chains are expensive.

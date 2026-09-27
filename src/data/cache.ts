@@ -205,15 +205,17 @@ export interface AreaPackMeta {
 const PACK_META = 'pack/meta/';
 const packItemPrefix = (id: string): string => `pack/item/${id}/`;
 
-function approxBytes(v: unknown): number {
+/** Rough stored size of a structured-cloneable value. Shared / cyclic references are counted once. */
+function approxBytes(v: unknown, seen: Set<object> = new Set()): number {
+  if (typeof v === 'string') return v.length * 2;
+  if (!v || typeof v !== 'object') return 8;
+  if (seen.has(v)) return 8;
+  seen.add(v);
   if (v instanceof ArrayBuffer) return v.byteLength;
   if (ArrayBuffer.isView(v)) return v.byteLength;
-  if (v && typeof v === 'object') {
-    let n = 0;
-    for (const x of Object.values(v)) n += x && typeof x === 'object' ? approxBytes(x) : typeof x === 'string' ? x.length * 2 : 8;
-    return n + 16;
-  }
-  return 8;
+  let n = 16;
+  for (const x of Object.values(v)) n += approxBytes(x, seen);
+  return n;
 }
 
 /** Store an area pack, replacing any existing pack with the same id. */

@@ -51,17 +51,21 @@ A second agent tried to refute every number, equation, URL and field name in thi
 12. **Heath rows.** The heath model uses `WF_Heath` = 0.67, not the `WRF_For` value shown in Table 3.2.
 13. Added **version disagreements in fuel heights.** The AFDRS national rows use H_el 1.3 m and H_ns 25 cm, where NSW v4.02 has 2 m and 20 cm. That changes flame height by e^{0.64·0.7} ≈ 1.6×.
 14. Added mountain-specific content: the montane ash forest fuel-availability result, post-fire canopy opening letting in wind, the missing slope/aspect term (C2) in wet-forest FA, LiDAR fuel mapping, the drought-and-weather muting of gully refugia, and new insight cards F15–F18.
+15. **Heath k in v4.02.** Rows 42–45 have `Fk_total` = 0, which gives zero heath load at every age if used as written. Take k from `Fk_s` or from AFDRS `Fk_total` (§3.2).
+16. **Mt Jerrabomberra.** The 2009 and 2010 sites with Extreme and Very High elevated hazard were most likely *prescribed*-burn sites (§2.3). That strengthens the "hazard reduction can raise shrub hazard" lesson.
+17. **"Load doesn't matter, structure does"** is a Vesta Mk1 simplification. Mk2 puts surface load back in (§2.1).
+18. **Minor fixes:** the NSW `FL_b` upper bound is 5.0 (swamp forests), not 4.5; the Mk1 moisture reference is 7% FMC; Penman 2014a "19%" is a *reduction*; the BFRMP is a 2018 *draft*; and the attribution to Kenny et al. 2004 is [K].
 
 ---
 
 ## 1. Executive summary: what matters most for FireSim
 
-1. **Fuel is layered, and each layer drives a different part of fire behaviour.** The Overall Fuel Hazard Assessment Guide (OFHG; Hines et al. 2010) [S] defines five layers: surface litter, near-surface, elevated shrubs, bark and canopy. The layers do different jobs:
-   - Surface and near-surface hazard drive **rate of spread** (Vesta/AFDRS forest model) [S].
+1. **Fuel is layered, and each layer drives a different part of fire behaviour.** The Overall Fuel Hazard Assessment Guide (OFHG; Hines et al. 2010) defines five layers (the guide is cited by Cirulis et al. and used by the Mt Jerrabomberra plan; the PDF itself is UNVERIFIED because the host was blocked): surface litter, near-surface, elevated shrubs, bark and canopy. The layers do different jobs:
+   - Surface and near-surface hazard drive **rate of spread** (Vesta/AFDRS forest model) (verified: PyroXL `ROS_forest`).
    - **Elevated fuel height drives flame height exponentially**: FH ∝ e^{0.64·H_el} [S].
    - **Bark drives spotting** physically [K: Ellis 2011]. The operational Vesta spotting-distance formula, however, takes surface FHS and ROS as inputs, not bark (verified: PyroXL `Spotting_forest`). FireSim's ember model must add bark explicitly (see doc 06).
    - Layers are added to fireline intensity as flames reach them: elevated fuel once flames exceed 1 m, half the canopy once flames exceed 0.66 × canopy height (verified: PyroXL `AFDRS_forest.bas` `Intensity_forest`, re-read 2026-09-27).
-2. **Accumulation follows Olson (1963)** [S]: `X(t) = X_ss·(1 − e^{−k·t})`. There is one curve per layer and per fuel type. Operational NSW/AFDRS parameters exist for every Keith vegetation class and are reproduced here (Tables 3–5). Surface litter reaches 95% of steady state in about 4 years (rainforest, k = 0.75/yr) to about 18–20 years (Sydney montane and tableland dry sclerophyll, k = 0.15–0.17/yr). Bark recovers slowest (k = 0.1/yr, about 30 years to 95%) [S].
+2. **Accumulation follows Olson (1963)** [S]: `X(t) = X_ss·(1 − e^{−k·t})`. There is one curve per layer and per fuel type. Operational NSW/AFDRS parameters exist for every Keith vegetation class (heath, rainforest, grassland and wetland classes are lumped) and are reproduced here (§3.1–§3.3). Surface litter reaches 95% of steady state in about 4 years (rainforest, k = 0.75/yr) to about 18–20 years (Sydney montane and tableland dry sclerophyll, k = 0.15–0.17/yr). Bark recovers slowest (k = 0.1/yr, about 30 years to 95%) [S].
 3. **Recently burnt ground is not a fixed fuel reduction.** After high-severity fire, shrubby and seeder-dominated communities often regrow a dense near-surface and elevated layer within about 3–15 years. The ACT's post-2019–20 LUT fuel types ("2020_…") encode this [S]:
    - near-surface steady state ×4 and elevated ×2–3;
    - faster accumulation (k 0.4–0.5/yr);
@@ -73,7 +77,7 @@ A second agent tried to refute every number, equation, URL and field name in thi
 
    This is the most important nuance for 2026: much of the Blue Mountains, Wollemi, Budawangs and Kosciuszko burnt in 2019–20. The NSW total was about 5.5 Mha [S].
 4. **Treatment benefits are real but short-lived and weather-limited** [S/K]. Prescribed-burn effects on unplanned fire lasted about 6 years in SW WA (Boer et al. 2009) [K]. In Sydney, treatment of 7–10% of the landscape is needed to halve risk to people and property (Bradstock et al. 2012, as reported by Cirulis et al.) [S]. In the ACT and Tasmanian study landscapes of Cirulis et al., current treatment rates are "well below 5%" [S]. (verified: Cirulis et al. full text, Discussion; corrected 2026-09-27, as the earlier text wrongly attached the <5% figure to Sydney) Under extreme weather the effect of fuel age on severity shrinks (Bradstock et al. 2010; Price & Bradstock 2012) [K]. A San Diego simulation study found the same pattern (Penman et al. 2014b) [S].
-5. **Fire frequency changes the vegetation and hence the fuel.** NSW minimum and maximum tolerable fire intervals by Keith formation are verified (Table 6) [S]:
+5. **Fire frequency changes the vegetation and hence the fuel.** NSW minimum and maximum tolerable fire intervals by Keith formation are verified (§3.5; Lake George BFRMP Table 3.3, re-read 2026-09-27):
    - Rainforest and Alpine complex: fire should be avoided.
    - Wet sclerophyll forest, shrubby: 25–60 yr.
    - Dry sclerophyll forest, shrubby: 7–30 yr.
@@ -86,7 +90,7 @@ A second agent tried to refute every number, equation, URL and field name in thi
 
    Wet gullies act as barriers only while fuel is unavailable. The AFDRS wet-forest availability function makes this quantitative: rainforest fuel availability is about 0.03 at KBDI 50 and about 0.9 at KBDI 150 (Drought Factor 10) (verified: recomputed from PyroXL `fuel_availability_forest`). **Montane wet sclerophyll (alpine ash, mountain gum; WRF 3.5) gets almost no such protection.** Its FA is ≈ 0.95 at DF 10 even at KBDI 25, so in the model it dries like dry forest. Only the rainforest and escarpment/tableland WSF types with WRF 4.5–5 act as drought-dependent barriers.
 7. **Data exists and is queryable**:
-   - **NPWS Fire History** ArcGIS service, layer 0, CC BY 4.0. It covers seasons from 1902–03 to the current season, 2026–27 as of September 2026, and is updated monthly. Its quirks are verified [S; range corrected 2026-09-27 from an independent full-table ingest].
+   - **NPWS Fire History** ArcGIS service, layer 0, CC BY 4.0. It covers seasons from 1902–03 to the current season, 2026–27 as of September 2026. It is reportedly updated monthly (UNVERIFIED this pass). Its quirks are verified [S; range corrected 2026-09-27 from an independent full-table ingest].
    - **SVTM** PCT vector layer with `PCTID`, `PCTName`, `vegClass`, `vegForm` [S].
    - **FESM** severity classes [S].
    - **National Historical Bushfire Boundaries**, CC BY 4.0 [S].
@@ -116,7 +120,7 @@ Layer definitions: (UNVERIFIED against the OFHG PDF, which was blocked. The elev
 
 The fine-fuel definition used in NSW asset-protection guidance is "any dead or living vegetation < 6 mm diameter". The rule of thumb is **4 t/ha ≈ a 1 cm layer of leaf litter**. (verified: *Final South Jerrabomberra Bushfire Study*, QPRC, quoting the APZ standard: "4 t/ha is equivalent to a 1 cm thick layer of leaf litter and fine fuel means any dead or living vegetation of less than 6 mm in diameter".) That implies a litter bulk density of about 40 kg/m³ (0.4 kg/m² over 0.01 m), a useful default for converting user-entered litter depth to load [H]. Real eucalypt litter beds vary with compaction, so the depth-to-load conversion should be shown as approximate.
 
-**Why the layers matter differently.** Project Vesta showed that forest spread rate depends on the *hazard scores and structure* of the surface and near-surface layers, not on total fuel load (Gould et al. 2007; McCaw et al. 2012) [K]. The AFDRS implementation makes this explicit. ROS uses `FHS_s` and `FHS_ns·H_ns` (§3.4) [S]. Intensity then adds layers progressively as flames grow [S]:
+**Why the layers matter differently.** Project Vesta showed that forest spread rate depends on the *hazard scores and structure* of the surface and near-surface layers, not on total fuel load (Gould et al. 2007; McCaw et al. 2012) [K]. The AFDRS Mk1-form implementation makes this explicit: ROS uses `FHS_s` and `FHS_ns·H_ns` (§3.4) (verified: PyroXL `ROS_forest`). Note that **Vesta Mk2** (Cruz et al. 2021/2022) puts surface fine-fuel load back in explicitly, as (FL_s/10)^0.8 in phase 1 (§3.4) (verified: PyroXL `Vesta2.bas`). "Load doesn't matter, structure does" is therefore a Mk1-era simplification; both structure and load matter. Intensity then adds layers progressively as flames grow [S]:
 
 ```
 fuel_load = FL_s(capped at 10 t/ha) + FL_ns
@@ -156,7 +160,7 @@ X(t) = X_ss · (1 − e^{−k·t})
 
 (verified: PyroXL `AFDRS_General.bas` `fuel_amount`: `Round(fuel_param_max * (1 - exp(-1 * tsf * k)), 1)`. Cirulis et al. confirm that PHOENIX also uses "a negative exponential growth function" per vegetation type (Watson 2011). Olson 1963 itself: UNVERIFIED, PDF blocked; the equation is standard.)
 
-Derived quantities:
+Derived quantities (verified: exact algebra of the Olson solution; −ln 0.05 = 2.996, −ln 0.5 = 0.693):
 
 | Quantity | Formula | Notes |
 |---|---|---|
@@ -173,7 +177,7 @@ Derived quantities:
 
 ### 2.3 Layer-by-layer recovery after fire, and the post-fire shrub pulse
 
-Recovery rates in the NSW LUT [S], with t₉₅ = 3/k:
+Recovery rates in the NSW LUT for the mountain forest and woodland rows, with t₉₅ = 3/k (verified: re-parsed. Heath differs: tall heath k_s is 0.07, giving t₉₅ ≈ 43 yr, and short heath is 0.6):
 - **Surface** recovers fastest (k 0.15–0.75/yr; t₉₅ ≈ 4–20 yr).
 - **Near-surface** in NSW v4.02 shares the surface k.
 - **Elevated** k 0.15–0.3/yr (t₉₅ 10–20 yr).
@@ -198,7 +202,7 @@ The ACT's AFDRS fuel types built after the 2019–20 fires quantify the effect. 
 
 (FL in t/ha, k in yr⁻¹, WRF = wind reduction factor. Verified: re-parsed from the `AFDRS Fuel LUT` sheet, 2026-09-27. Also unchanged between standard and "2020_" types: H_ns 18/18 cm and 25/25 cm; H_el 0.9/0.9 m and 1.3/1.3 m; FL_o 5.8/5.8 and 4.5/4.5 t/ha; FHS_s 2.8/2.8 and 2.6/2.6. The "2020_" types appear only in the AFDRS sheet, not in the NSW v4.02 sheet.)
 
-Five years after fire, near-surface fuel is 3.7 t/ha in the post-fire type versus 0.5 t/ha in the standard type, and elevated fuel is 4.3 versus 1.3 t/ha. My reading of the "2020_" prefix as "post-2019–20 fire state" is an interpretation of the naming. The numbers themselves are [S].
+Five years after fire in tableland shrubby DSF (1106 vs 1105; verified arithmetic), near-surface fuel is 3.7 t/ha in the post-fire type versus 0.5 t/ha in the standard type, and elevated fuel is 4.3 versus 1.3 t/ha. My reading of the "2020_" prefix as "post-2019–20 fire state" is an interpretation of the naming. The numbers themselves are [S].
 
 The lower WRF encodes a physical effect: crown-killing fire opens the canopy, so more wind reaches the surface. In the AFDRS forest model the fuel-level wind is U = U10·3/WRF. Dropping WRF from 3 to 2 therefore raises the effective wind by **1.5×**, and from 2.5 to 1.5 by **1.67×**, at the same forecast wind. For a beginner this is a strong mountain lesson. On a ridge burnt in 2019–20, the regrowth is dense *and* the wind reaches it more easily than under an intact canopy. (Arithmetic from the verified PyroXL `ROS_forest` wind line.)
 
@@ -229,7 +233,7 @@ In the NSW v4.02 forest types, `FL_b` ranges from 0.6 (Sydney sand flats DSF) th
 
 **Model caveat (verified: PyroXL `Spotting_forest`).** The Vesta spotting-distance equation in §3.4 has no bark term. Its inputs are ROS, U10 and FHS_s, and `Spotting` in the LUT is only a 0/1 flag. So the bark-type effects in this section are **FireSim's own addition** from the literature (Ellis 2011) and must go into the ember model (doc 06). They cannot be read off the AFDRS equations.
 
-Species guide for defaults [K]:
+Species guide for defaults (UNVERIFIED: botanical bark classes from domain knowledge [K]; the stringybark, ribbon and smooth contrast is consistent with the SA LUT types above. The Mt Jerrabomberra survey found the greatest fuel loads in plots with Red Stringybark (*E. macrorhyncha*) and Burgan, with hazard varying with the density of stringybark and ribbon-shedding trees (verified: plan text, fuel-assessment section)):
 
 | Bark group | Mountain species | Default bark hazard |
 |---|---|---|
@@ -254,7 +258,7 @@ Scorched leaves can drop soon after the burn and partially re-supply the litter.
 
 The **mapped burn polygon is therefore an upper bound on treated area**. PHOENIX-based studies reset all fuel inside the block to its minimum, and Cirulis et al. list this explicitly as a limitation [S].
 
-**How long the benefit lasts** [K unless noted]:
+**How long the benefit lasts** (UNVERIFIED: none of these papers was accessible; figures [K] unless noted; the citation details match the Cirulis et al. reference list where they overlap):
 - In SW WA, prescribed-fire effects on unplanned fire incidence and extent lasted about **6 years** (Boer et al. 2009, *FEM* 259: 132–142).
 - In the Sydney sandstone region, the probability of fire spreading into recently burnt fuel was reduced only for a few years (Price & Bradstock 2010, *IJWF* 19: 35–45). Treat the exact duration as needing verification.
 - In the 2009 Victorian fires, previous burns reduced crown fire and severity mainly when recent, with much weaker effects under extreme weather (Price & Bradstock 2012, *J. Environ. Manage.* 113: 146–157).
@@ -271,9 +275,9 @@ The **mapped burn polygon is therefore an upper bound on treated area**. PHOENIX
 
 ### 2.6 Fire frequency and interval effects
 
-Short intervals remove species that must reach reproductive maturity before the next fire. Long absences allow senescence of shrubs and fire-dependent species. NSW operationalises this as **fire interval thresholds by Keith formation** (Table 6, verified from an NSW RFS BFRMP; derived from Kenny et al. 2004) [S].
+Short intervals remove species that must reach reproductive maturity before the next fire. Long absences allow senescence of shrubs and fire-dependent species. NSW operationalises this as **fire interval thresholds by Keith formation** (§3.5; verified 2026-09-27 from the Lake George BFRMP draft, 2018, Table 3.3. The derivation from Kenny et al. 2004 is [K].)
 
-Mechanisms and NSW mountain examples [K]:
+Mechanisms and NSW mountain examples (UNVERIFIED: papers inaccessible [K]; Cirulis et al. (verified) show that more treatment raises the area burnt below minimum TFI, but they do not measure the resulting vegetation change):
 - **Heath obligate seeders** (e.g. *Banksia ericifolia*) need a fire-free juvenile period of several years. Repeated fires at short intervals shift heath towards resprouters and sedges (Bradstock, Tozer & Keith 1997).
 - **Alpine ash (*E. delegatensis*)** is killed by severe fire and regenerates from seed. It needs roughly two decades to produce seed. Repeated fires (2003, 2006–07 in Victoria, 2019–20) caused regeneration failure and conversion of forest to shrubland or grassland (Bowman et al. 2014; Fairman, Nitschke & Bennett 2016).
 - **Blue Mountains ash (*E. oreades*)** has similar seeder biology.
@@ -285,12 +289,28 @@ The fuel consequence is that **frequent fire can raise elevated-fuel hazard for 
 
 ### 2.7 Vegetation classification and how NSW maps vegetation to fuel
 
-- **Keith (2004)**, *Ocean Shores to Desert Dunes*, classifies NSW vegetation into formations, sub-formations and **vegetation classes** [K]. There are 12 formations: rainforests, wet sclerophyll forests, grassy woodlands, grasslands, dry sclerophyll forests, heathlands, alpine complex, freshwater wetlands, forested wetlands, saline wetlands, semi-arid woodlands and arid shrublands. The formation list matches Table 6 [S].
-- **SVTM** (State Vegetation Type Map) maps **Plant Community Types (PCTs)** statewide. It carries `PCTID`, `PCTName`, `vegClass` and `vegForm` attributes [S], with display layers derived from 5 m mapping [S].
-- **NSW RFS fuel LUT v4.02** is keyed by the Keith vegetation class name (FTno 1–76, e.g. 30 = "Sydney montane dry sclerophyll forests"). It maps each class to an AFDRS fuel type (Forest, Wet_forest, Woodland, Heath, Grass, …) and to a fire behaviour model (Vesta forest, heath, grass, …) [S]. **The join from SVTM `vegClass` to the NSW LUT is a case-insensitive name match** [S by inspection]. The exception is heath: the LUT has only "Tall heath", "Short heath" and "Montane & Alpine heath", so Keith heath classes need a mapping (§4.2) [H].
-- **AFDRS national LUT** NSW types (FTno 2xxx) are coarser, at formation or sub-formation level. Examples: 2105 Tableland shrubby DSF, 2114 Hinterland shrubby DSF, 2152 Shrubby WSF, 2154 Montane grassy WSF, 2109 Subalpine woodlands, 2603 Montane & Alpine heath, 2751 Alpine herbfields [S]. The first digit of FTno_State is the state: 1 ACT, 2 NSW, 3 Vic, 4 Qld, 5 SA, 6 WA, 7 Tas, 8 NT [S by inspection of names].
+- **Keith (2004)**, *Ocean Shores to Desert Dunes*, classifies NSW vegetation into formations, sub-formations and **vegetation classes** [K]. There are 12 formations: rainforests, wet sclerophyll forests, grassy woodlands, grasslands, dry sclerophyll forests, heathlands, alpine complex, freshwater wetlands, forested wetlands, saline wetlands, semi-arid woodlands and arid shrublands. The formation list matches the §3.5 thresholds table and the 16 SVTM `vegForm` formation and sub-formation labels (verified: Zen-TM/logjam `SVTM_FORMATION_MU`).
+- **SVTM** (State Vegetation Type Map) maps **Plant Community Types (PCTs)** statewide. It carries `PCTID`, `PCTName`, `vegClass` and `vegForm` attributes, with display layers derived from 5 m mapping. Version C2.0 M2.2 is distributed as a 5 m GeoTIFF with 1,687 distinct PCTs.
+  - `vegForm` values are formation or sub-formation names that match the fire-threshold table (§3.5) almost one to one: "Rainforests", "Wet Sclerophyll Forests (Grassy sub-formation)", "Wet Sclerophyll Forests (Shrubby sub-formation)", "Dry Sclerophyll Forests (Shrub/grass sub-formation)", "Dry Sclerophyll Forests (Shrubby sub-formation)", "Grassy Woodlands", "Grasslands", "Heathlands", "Forested Wetlands", "Freshwater Wetlands", "Saline Wetlands", "Semi-arid Woodlands (Grassy/Shrubby sub-formation)", "Arid Shrublands (Acacia/Chenopod sub-formation)", "Alpine Complex" and "Not classified".
+  - (verified: field names in mwhewins/ecoTools `main.R` and TheKillerKangaroo/BushfireBurnout; `vegForm` value list and raster details in Zen-TM/logjam `topo/build_svtm_formation.py`)
+- **NSW RFS fuel LUT v4.02** is keyed by the Keith vegetation class name (FTno 1–76, e.g. 30 = "Sydney montane dry sclerophyll forests"). It maps each class to an AFDRS fuel type (Forest, Wet_forest, Woodland, Heath, Grass, …) and to a fire behaviour model (column `FBM`: Forest, Heath, Grass, Woodland, Mallee, Pine, Spinifex, …) (verified: NSW v4.02 sheet re-parsed).
+  - **The join from SVTM `vegClass` to the NSW LUT is a case-insensitive name match for most forest and woodland classes** [K: comparison of LUT names with Keith 2004 class names; the full SVTM `vegClass` list was not retrieved].
+  - It is **not** a direct match for several groups, which need a mapping (§4.2) [H]:
+    - heath: the LUT has only "Tall heath", "Short heath" and "Montane & Alpine heath";
+    - rainforest: Keith has 7 classes, the LUT has "Rainforests";
+    - grasslands (e.g. Temperate Montane Grasslands) → "Native Grasslands";
+    - freshwater wetlands (e.g. Montane Bogs and Fens) → "Freshwater wetlands";
+    - forested wetlands → "Swamp forests" / "Floodplain forests".
+- **AFDRS national LUT** NSW types (FTno 2xxx) are coarser, at formation or sub-formation level. Examples: 2105 Tableland shrubby DSF, 2114 Hinterland shrubby DSF, 2152 Shrubby WSF, 2154 Montane grassy WSF, 2109 Subalpine woodlands, 2603 Montane & Alpine heath, 2751 Alpine herbfields (verified: re-parsed). The first digit of FTno_State is the state: 1 ACT, 2 NSW, 3 Vic, 4 Qld, 5 SA, 6 WA, 7 Tas, 8 NT. (Verified by inspection of the names in each block: 6xxx = "Jarrah North East", 7xxx = "Buttongrass …", 8xxx = "Lancewood" and "gamba", 4xxx = Queensland regional-ecosystem style names. Row counts: 13 ACT, 45 NSW, 68, 121, 69, 58, 46 and 49.)
 - **Australian Fuel Classification** (Cruz et al. 2018, *Fire* 1(1): 13; Hollis et al. 2015) is the hierarchical scheme behind AFDRS fuel types [K].
-- **Version disagreement matters** [S]. For "Subalpine woodlands", FL_s is 15 t/ha in the NSW v4.02 row but 9 t/ha in the ACT row. For "Tableland shrubby DSF", FL_s is 19 t/ha in the NSW 2105 row but 11 t/ha in the ACT 1105 row. These are expert-set values, not measurements. Treat them as ±30–50% uncertain [H].
+- **Version disagreement matters** (verified: both sheets re-parsed).
+  - For "Subalpine woodlands", FL_s is 15 t/ha in the NSW v4.02 row but 9 t/ha in the ACT row (AFDRS sheet, 1109).
+  - For "Tableland shrubby DSF", FL_s is 19 t/ha in the NSW 2105 row but 11 t/ha in the ACT 1105 row. The NSW sheet's own copy of 1105 carries 19.
+  - **Fuel heights also differ.** AFDRS national NSW rows (2xxx) mostly use H_el = 1.3 m and H_ns = 25 cm. The matching NSW v4.02 Keith rows mostly use H_el = 2 m and H_ns = 20 cm (e.g. 2114 vs 24; 2151 vs 1; 2154 vs 10).
+    - Through FH ∝ e^{0.64·H_el}, the difference changes predicted flame height by e^{0.64×0.7} ≈ **1.57×**.
+    - H_ns > 20 cm is capped in ROS, so the H_ns difference matters less.
+
+  These are expert-set values, not measurements. Treat them as ±30–50% uncertain [H], and let the user choose "LUT version" in developer settings.
 
 ### 2.8 Where vegetation (and therefore fuel) sits in mountain terrain
 
@@ -327,6 +347,10 @@ The fuel consequence is that **frequent fire can raise elevated-fuel hazard for 
 
 Fire-severity studies in the Sydney–Blue Mountains region found crown fire concentrated on ridges and upper slopes. Weather dominated over fuel age (Bradstock et al. 2010, *Landscape Ecol.* 25: 607–619), and severity varied by vegetation type (Hammill & Bradstock 2006, *IJWF* 15: 213–226) [K]. For 2019–20, drought and weather, not prior management, explained most of the extent and severity (Bowman et al. 2021; Collins et al. 2021) [K].
 
+**Topographic refugia fail under severe weather** [K, not re-verified; Collins, Bennett, Leonard & Penman 2019, *Glob. Change Biol.* 25: 3829–3843]. In SE Australian forests, sheltered gullies, lower slopes and long-unburnt patches that normally escape high severity lost most of that protection under severe fire weather and drought. This is the empirical counterpart of the wet-forest FA curve in §3.4, and it is the core of insight card F9.
+
+**Mountain-specific gap in the fuel-availability model** (verified: `Vesta2.bas` and PyroPy_2 both contain `C2 = 0 'TODO: implement slope/aspect effect'`). The Vesta Mk2 wet-forest availability has a slope and aspect term, **C2**, that neither public implementation fills in. The coefficients are UNVERIFIED because Cruz et al. 2021/2022 was not accessible. Until it is sourced, FireSim should carry aspect effects through the dead-fuel-moisture model (doc 04). It should *not* invent a C2.
+
 ---
 
 ## 3. Quantitative reference
@@ -341,7 +365,11 @@ Fire-severity studies in the Sydney–Blue Mountains region found crown fire con
 | t | Time since fire (TSF) | yr | ≥ 0 |
 | X₀ | Residue after fire | t ha⁻¹ | 0 (operational default) |
 
-`X(t) = X_ss(1 − e^{−kt}) + X₀e^{−kt}` (Olson 1963) [S]. The same curve is applied to **fuel hazard scores** in PyroXL (`FHS_s(t) = FHS_s,max·(1 − e^{−k_s t})`) [S].
+`X(t) = X_ss(1 − e^{−kt}) + X₀e^{−kt}` (Olson 1963).
+
+The same curve is applied to **fuel hazard scores** in PyroXL: `FHS_s(t) = FHS_s,max·(1 − e^{−k_s t})` and `FHS_ns(t) = FHS_ns,max·(1 − e^{−k_ns t})`, using the LUT `FHS_s` and `FHS_ns` columns. Heights (H_ns, H_el, H_o) and WRF are taken from the LUT **unchanged with time since fire**. The LUT's `Hk_ns` column, which looks like an intended k for near-surface height, is not used.
+
+(verified: `update_from_LUT_Forest` in `AFDRS_forest.bas`, and the workbook Changelog of 2024-10-11: "Surface and near surface hazard scored now calculated directly from Lut and time since fire".) Ranges verified from the re-parsed NSW v4.02 sheet. The surface range 5–24 applies to forest and woodland rows; heath and grass rows carry their load in `FL_total`.
 
 ### 3.2 NSW fuel LUT v4.02: mountain vegetation classes [S]
 
@@ -367,7 +395,7 @@ Steady-state loads in t/ha, k in yr⁻¹, t₉₅ = 3/k (years to 95% of surface
 | 37 | New England grassy woodlands | Woodland | 8 | 0.40 | 7.5 | 2 | 0.5 | 0.20 | 3.3 | 4.5 | 20 | 2 | 25 | 2.5 | 1 |
 | 38 | Southern tableland grassy woodlands | Woodland | 8 | 0.40 | 7.5 | 2 | 0.5 | 0.20 | 2.11 | 4.5 | 20 | 2 | 30 | 2.5 | 1 |
 | 39 | **Subalpine woodlands** (snow gum) | Forest | 15 | 0.30 | 10 | 1 | 2 | 0.20 | 1.0 | 6.8 | 20 | 2 | 15 | 2.5 | 1 |
-| 42 | Tall heath | Heath | 22.2 | 0.07 | 43 | 1.7 | 13 | 0.15 | 0 | 0 | – | 4* | – | 2 | – |
+| 42 | Tall heath | Heath | 22.2 (total 36.9, k 0.07*) | 0.07 | 43 | 1.7 | 13 | 0.15 | 0 | 0 | – | 4* | – | 2 | – |
 | 43 | Short heath | Heath | total 11.8, k 0.6 | | 5 | | 6 | 0.6 | | | | 1.5* | | 1.5 | – |
 | 44 | Montane & Alpine heath | Heath | total 12.6, k 0.1 | | 30 | | 6 | 0.25 | | | | 1* | | 1.5 | – |
 | 45 | Alpine fjaeldmarks | Heath | total 2.6, k 0.15 | | 20 | | | | | | | 0.25* | | 1 | – |
@@ -377,14 +405,19 @@ Steady-state loads in t/ha, k in yr⁻¹, t₉₅ = 3/k (years to 95% of surface
 
 \*Heath H_el and total-load k are taken from the equivalent AFDRS NSW rows 2601–2604, 2751 and 2752. In the v4.02 rows 42–46, `Fk_total` = 0 and the heath k is carried in `Fk_s`.
 
-**Notes** [S]:
-- The heath model in PyroXL uses `FL_total` with `Fk_total`.
-- Several `Hk_ns` entries in the NSW sheet look corrupted (e.g. 3.3, 12.3, 21.3) and **must not be used**.
+**Table verification** (verified: every cell in the rows above re-parsed from `NSW_Fuel_v402_LUT` in `PyroXL_Operational_20250206.xlsm` on 2026-09-27 and matched; FHS_s/FHS_ns/FHS_el maxima for the forest rows are listed in §3.3).
+
+**Notes** (verified):
+- The heath model in PyroXL uses `FL_total` with `Fk_total`, via `update_from_LUT_Heath`.
+  - Because v4.02 rows 42–45 have `Fk_total = 0`, running PyroXL in "NSWv402" mode would give `fuel_amount(FL_total, tsf, 0) = 0`, i.e. **zero heath load at every age**. This is a data-entry gap in the NSW sheet.
+  - FireSim must take heath k from `Fk_s` (v4.02) or `Fk_total` (AFDRS 2601–2604).
+- **The heath spread model uses `WF_Heath` = 0.67, not the `WRF` column shown above.** U2 = U10 × 0.67 for open heath. The raw Anderson form uses 0.35 under a woodland overstorey. `WRF_For` in heath rows is only used if a forest model is run on them.
+- 14 `Hk_ns` entries in the NSW sheet are corrupted (3.3, 6.3, 12.3, 13.3, 16.3, 18.3, 21.3, 25.3, 26.3, 36.3, 38.3, 39.3, 40.3, 42.3). They sit in the copied national rows 1105, 1109, 1152, 1153, 1162, 1200, 1303, 1350, 1360, 1752, 1810, 1820, 1900 and 1950, and look like an Excel auto-fill artefact. All other rows carry 0.3. **Do not use `Hk_ns`.**
 - Heath FL_total values are *total* fine fuel.
 
-**Implied net litter input L = k·X_ss** [S arithmetic]: Rainforests 6.0; escarpment WSF 5.9; Montane WSF 4.8; Subalpine woodland 4.5; Sydney montane DSF 2.5; Southern tableland DSF 2.9 t ha⁻¹ yr⁻¹. These are within the broad range reported for eucalypt litterfall (Birk & Simpson 1980; Walker 1981) [K].
+**Implied net litter input L = k·X_ss** (verified arithmetic from re-parsed LUT values): Rainforests 6.0; escarpment WSF 5.9; Montane WSF 4.8; Subalpine woodland 4.5; Sydney montane DSF 2.5; Southern tableland DSF 2.9 t ha⁻¹ yr⁻¹. These are within the broad range reported for eucalypt litterfall (Birk & Simpson 1980; Walker 1981) [K].
 
-**Worked example (Sydney montane DSF, surface)**: X(2) = 4.2, X(5) = 8.3, X(10) = 11.9, X(20) = 14.0 t/ha [S arithmetic]. A 2019–20 burn surveyed in late 2026 (t ≈ 6.8 yr) is at about 69% of steady state.
+**Worked example (Sydney montane DSF, surface)**: X(2) = 4.2, X(5) = 8.3, X(10) = 11.9, X(20) = 14.0 t/ha (verified arithmetic: 14.5·(1−e^{−0.17t})). A 2019–20 burn surveyed in late 2026 (t ≈ 6.8 yr) is at about 69% of steady state.
 
 ### 3.3 Load ↔ Vesta fuel hazard score (FHS)
 
@@ -397,49 +430,92 @@ From PyroXL `fl_to_fhs` [S]. FHS 1 = Low, 2 = Moderate, 3 = High, 3.5 = Very Hig
 | Elevated | ≤ 1 | ≤ 2 | ≤ 3 | ≤ 5 | > 5 |
 | Bark (FHS 0/1/2/3/4) | 0 | ≤ 1 | ≤ 2 | ≤ 5 | > 5 |
 
+(verified: `fl_to_fhs` in `AFDRS_General.bas` re-read. The class boundaries are inclusive upper bounds. For bark the columns mean FHS 0/1/2/3/4, not 1/2/3/3.5/4.)
+
 For the inverse (user picks a hazard rating), use the class midpoint. For example, surface "High" → 11 t/ha [H].
+
+**Do not use `fl_to_fhs` to drive the spread model from LUT loads** (verified: correction 2026-09-27). The operational workflow takes FHS from the LUT maxima on the Olson curve (§3.1), and the two routes disagree strongly for near-surface fuel. Steady-state FHS maxima in NSW v4.02 (FHS_s / FHS_ns / FHS_el):
+
+| FTno | Type | FHS_s | FHS_ns | FHS_el | FHS_ns from `fl_to_fhs(FL_ns)` |
+|---|---|---|---|---|---|
+| 1 | Rainforests | 2.8 | 2.4 | 2.6 | 1 (FL_ns 1) |
+| 4 / 5 | Escarpment WSF | 3.7 | 3.0 | 3.1 | 1 (FL_ns 2) |
+| 10 | Montane WSF | 4.0 | 3.0 | 2.8 | 1 (FL_ns 0) |
+| 24 / 30 | Sydney hinterland / montane DSF | 3.4 | 2.9 | 3.3 | 1 (FL_ns 1.9) |
+| 31 | Northern tableland DSF | 3.6 | 3.0 | 3.0 | 1 |
+| 32 | Southern tableland DSF | 2.8 | 2.8 | 2.0 | 1 |
+| 39 | Subalpine woodlands | 3.3 | 2.8 | 2.8 | 1 |
+| 37 / 38 | Tableland grassy woodlands | 3.0 | 2.6 | 2.2 | 1 |
+
+In the Vesta Mk1 ROS the term is (FHS_ns·H_ns)^0.6366. Using FHS_ns = 1 instead of 2.9 would under-predict ROS by (2.9)^0.6366 ≈ **1.97×**. Use `fl_to_fhs` only to convert a *user-entered load* into a score. When the user enters an OFHG rating directly, use the rating.
 
 ### 3.4 Where fuel enters the spread and intensity equations
 
-These equations are transcribed from PyroXL. Verify against the primary sources: Gould et al. 2007; Cruz et al. 2021/2022; Anderson et al. 2015.
+These equations are transcribed from PyroXL, which was re-read line by line on 2026-09-27. They were cross-checked where possible against PyroPy_2 (the same author, NSW RFS) and against wuinity `Forest.cs` (an independent C# port). **None has been checked against the primary papers**, which were inaccessible: Cheney et al. 2012 and Gould et al. 2007 (Vesta Mk1), Cruz et al. 2021/2022 (Mk2), Anderson et al. 2015 (heath) and the AFDRS technical guide / Hollis et al. 2024. Treat them as "operational-implementation verified, primary UNVERIFIED".
 
-**AFDRS forest (dry and wet), Vesta Mk1 form** [S]:
+**AFDRS forest (dry and wet), Vesta Mk1 form** (verified: PyroXL `ROS_forest`, `Mf_forest`; wuinity `Forest.cs` has the same structure; primary source Cheney et al. 2012 UNVERIFIED):
 
 ```
-U  = U10 · 3 / WAF                           (km/h; WAF 3–5)
+U  = U10 · 3 / WAF                           (km/h; WAF 2.5–5 in LUT forest rows; Vesta reference WAF = 3)
 R0 = 30 + 1.5308 · (U − 5)^0.8576 · FHS_s^0.9301 · (FHS_ns · H_ns)^0.6366 · 1.03    if U > 5
 R0 = 30                                      otherwise
 R  = R0 · Mf(FMC)                            (m/h)
 ```
 
-- FHS_s and FHS_ns are first multiplied by fuel availability FA.
+- U10 is the 10 m open wind in km/h. WAF (= WRF) is dimensionless; LUT values run 2.5–5 for forest types.
+- FHS_s and FHS_ns are first multiplied by fuel availability FA. FHS values are 0–4.
 - H_ns is in cm, capped at 20.
-- Mf = 18.35·FMC^−1.495 for 4 < FMC ≤ 20%. Mf = 2.31 for FMC ≤ 4%, and 0.05 for FMC > 20%.
+- Mf = 18.35·FMC^−1.495 for 4 < FMC ≤ 20%. Mf = 2.31 for FMC ≤ 4%, and 0.05 for FMC > 20%. FMC is dead fine fuel moisture in %.
+  - Mf(7%) = 1.00, so R0 is the ROS at 7% FMC; the code comment says "calculate ROS for 7% moisture".
+  - **There is a discontinuity at 20%.** The power law gives Mf(20) = 0.21, but values above 20% jump to 0.05. FireSim should smooth this, e.g. with a linear taper from 0.21 at 20% to 0.05 at 24% [H], so the fire does not "switch off" abruptly in the app.
+- The Mk1 ROS has **no explicit fuel-load term.** Fuel enters only through hazard scores and near-surface height, which is Vesta's central finding. Slope is applied separately; see doc 01.
 
-**Flame height** [S]: `FH = 0.0193 · R^0.723 · e^{0.64·H_el} · 1.07` (m; R in m/h, H_el in m).
+**Flame height** (verified: PyroXL `Flame_height_forest`; primary UNVERIFIED): `FH = 0.0193 · R^0.723 · e^{0.64·H_el} · 1.07` (m; R in m/h, H_el in m).
 
-The elevated factor e^{0.64 H_el} is 1.9 at 1 m, 3.6 at 2 m, 6.8 at 3 m and 12.9 at 4 m. This is the quantitative reason post-fire thickets matter.
+The elevated factor e^{0.64 H_el} is 1.9 at 1 m, 3.6 at 2 m, 6.8 at 3 m and 12.9 at 4 m (verified arithmetic). This is the quantitative reason post-fire thickets matter.
 
-**Byram intensity** [S]: `I = 18600 · w · R` (kW/m; w in kg/m², R in m/s). w follows the layered accumulation of §2.1.
+**Byram intensity** (verified: PyroXL `intensity`): `I = 18600 · w · R` (kW/m; w in kg/m², R in m/s; 18,600 kJ/kg is the heat yield). w follows the layered accumulation of §2.1.
 
-**Vesta Mk2** (Cruz et al. 2021, as transcribed) [S]. Surface fuel load enters explicitly:
-- `R1 = 1000·(0.03 + 0.05024·(u−1)^0.92628·(FL_s/10)^0.79928)·φ·SF` for u > 2 (m/h), with u = U10/WAF.
+**Unit trap:** the PyroXL docstrings for `intensity()` and `Intensity_forest()` say ROS is in km/h, but the code does `ROS = ROS / 3600 'm/s`, so it really expects **m/h**. In FireSim, keep ROS internally in m/s and convert once.
+
+**Vesta Mk2** (Cruz et al. 2021 user guide, eq. numbers as cited in code; journal version Cruz et al. 2022). (verified: PyroXL `Vesta2.bas` and PyroPy_2 `spread_model_vesta2.py` agree; primary UNVERIFIED.) Surface fuel load enters explicitly. Wind and moisture:
+- `u = U10 / WAF` (km/h).
+- Moisture function `Mf = 0.9082 + 0.1206·M − 0.03106·M² + 0.001853·M³ − 0.00003467·M⁴` for 4.1 < M ≤ 24%. Mf = 1 for M ≤ 4.1 and 0 for M > 24.
+- `φ = Mf·FA`.
+
+Fuel availability in Mk2 is **logistic in DF for dry forest too**, not DF/10: `FA = 1.008 / (1 + 104.9·exp(−0.9306·DF))`. This gives 0.14 at DF 3, 0.50 at DF 5, 0.87 at DF 7 and 1.00 at DF 10. For wet forest, PyroPy_2 replaces DF with `DF_eff = clip(DF·max(C1raw, 0)/10, 0, 10)`. Here C1raw is the bracketed term of the AFDRS C1 below, *before* its 0.1 factor. This equals C1·DF in the AFDRS form, except that AFDRS clamps C1 ≤ 1 while PyroPy_2 clips DF_eff ≤ 10.
+
+Rate of spread by phase (m/h):
+- `R1 = 1000·(0.03 + 0.05024·(u−1)^0.92628·(FL_s/10)^0.79928)·φ·SF` for u > 2; `R1 = 1000·0.03·φ·SF` otherwise.
 - `R2 = 1000·0.19591·u^0.8257·(FL_s/10)^0.4672·h_u^0.495·φ·SF`.
-- Phase-2 transition probability logit `−23.9315 + 1.7033u + 12.0822φ + 0.95236·FL_s`, with P2 = 0 if FL_s < 1 t/ha.
-- φ = Mf·FA.
+- `R3 = 1000·0.05235·U10^1.19128·φ`. This uses open U10, not u, and PyroPy_2 applies no slope factor to phase 3.
 
-**Fuel availability FA** [S]:
-- Dry forest: FA = DF/10.
-- Wet forest (PyroXL `AFDRS_forest.bas`):
+Understorey height: `h_u = −0.1 + 0.06·FHS_el + 0.48·H_el` (m; "Cruz 2021 eq 1", PyroPy_2).
+
+Phase probabilities and weighting:
+- Phase-2 logit `g2 = −23.9315 + 1.7033·u + 12.0822·φ + 0.95236·FL_s`, P2 = 1/(1+e^{−g2}); P2 = 0 if FL_s < 1 t/ha.
+- Phase-3 logit `g3 = −32.3074 + 0.2951·U10 + 26.8734·φ`; P3 = 0 if R2 < 300 m/h.
+- Weighting: if P2 < 0.5, `R = R1(1−P2) + R2·P2`. Otherwise `R = R1(1−P2) + R2·P2(1−P3) + R3·P3`.
+
+Slope factor: `SF = 2^{θ/10}` for upslope θ > 0 (degrees). For downslope θ < 0, `SF = 2^{−θ/10} / (2·2^{−θ/10} − 1)`. This is the McArthur doubling-per-10° rule, with the Sullivan et al. (2014) downslope refinement as cited in code. It gives 0.67 at −10° and 0.57 at −20°, tending to 0.5.
+
+**Definition trap:** in PyroPy_2 the Mk2 argument `fuel_load_surface` is documented as "**surface + near-surface** fuel load t/ha". So Mk2 FL_s = FL_s + FL_ns of the LUT, not FL_s alone. UNVERIFIED against Cruz et al.; confirm before use.
+
+**Fuel availability FA** (verified: implementations as named):
+- Dry forest, AFDRS Mk1 form: FA = DF/10 (PyroXL `fuel_availability_forest`).
+- Dry forest, Mk2 form: logistic, as above.
+- Wet forest, AFDRS form (PyroXL `AFDRS_forest.bas`; identical in wuinity `Forest.cs`; PyroPy_2 uses the same C1 inside the logistic):
 
 ```
 C1 = clamp01( 0.1·[ (0.0046·WAF² − 0.0079·WAF − 0.0175)·KBDI + (−0.9167·WAF² + 1.5833·WAF + 13.5) ] )
 FA = min( 1.008 / (1 + 104.9·exp(−0.9306·C1·DF)),  DF/10 )
 ```
 
-The `Vesta2.bas` module in the same repository writes −0.175 instead of −0.0175. With −0.175, wet forest becomes unavailable for KBDI > ~18, which is physically implausible, so it is probably a typo. **Verify against the AFDRS technical guide.**
+The `Vesta2.bas` module in the same repository writes −0.175 instead of −0.0175. With −0.175 the KBDI coefficient turns **negative** (−0.117 per KBDI unit at WAF 4.5), so wet forest becomes unavailable for KBDI > ~18 and gets *less* available as drought deepens. That is physically backwards. Three implementations (PyroXL `AFDRS_forest.bas`, PyroPy_2, wuinity) use −0.0175, so **−0.0175 is adopted** (verified: cross-implementation, 2026-09-27; primary Cruz et al. 2022 / AFDRS guide still UNVERIFIED).
 
-Computed wet-forest FA at DF 10 [S arithmetic]:
+Units: KBDI in mm (0–200); DF 0–10; WAF dimensionless (3–5). The code clamps C1 to [0, 1]. The final `min(…, DF/10)` stops wet forest ever exceeding dry-forest availability ("shouldn't get higher ros for wet when WAF is low").
+
+Computed wet-forest FA at DF 10 (verified: recomputed independently, 2026-09-27):
 
 | WAF (type) | KBDI 25 | 50 | 100 | 150 | 200 |
 |---|---|---|---|---|---|
@@ -447,19 +523,41 @@ Computed wet-forest FA at DF 10 [S arithmetic]:
 | 4.5 (escarpment and tableland WSF) | 0.14 | 0.30 | 0.74 | 0.95 | 1.00 |
 | 5.0 (rainforest) | 0.01 | 0.03 | 0.35 | 0.89 | 1.00 |
 
-At DF 6, the WAF 4.5 row is 0.05 / 0.09 / 0.22 / 0.47 / 0.60.
+At DF 6, the WAF 4.5 row is 0.05 / 0.09 / 0.22 / 0.47 / 0.60. At DF 8: the WAF 5 row is 0.03 / 0.19 / 0.67 / 0.80 at KBDI 50 / 100 / 150 / 200, and the WAF 4.5 row is 0.17 / 0.47 / 0.80 / 0.80 at the same KBDI values (verified arithmetic).
 
-**Heath (Anderson et al. 2015)** [S]:
-- Spread depends on 2 m wind (U10·WAF_heath), elevated fuel height and FMC.
+**Reading the table for mountains.** WAF 3.5 (Montane WSF: alpine ash and mountain gum; Southern tableland WSF) sits on the DF/10 ceiling at almost any KBDI. In the operational model, these tall montane forests are *not* moisture-protected the way rainforest gullies are. This matches the 2003, 2006–07 and 2019–20 alpine-ash fire history, in which repeated crown fires hit these forests [K].
+
+**Heath (AFDRS form, after Anderson et al. 2015)** (verified: PyroXL `AFDRS_heath.bas`; primary UNVERIFIED):
+- `U2 = U10 · WF_Heath` (km/h; WF_Heath = 0.67 in all NSW heath rows).
+- Spread index (go/no-go probability): `SI = logistic(2.5790 + 0.17561·U2 + 0.75245·H_el + 0.14917·H_el·U2 − 0.43073·MC)`, with MC in %.
+- `ROS = SI · exp(3.34696 + 0.58866·√U2 − 0.78855·ln(m/(1−m)) + 0.41499·ln(H_el))` (m/h), where m = MC/100. The code comment gives the range 0–6000 m/h.
+- Raw Anderson et al. (2015) power law, kept in `ROS_heath_raw`: `R = 5.6715·(wrf·U10)^0.912·H_el^0.227·exp(−0.0762·MC)·60` (m/h). Here wrf = 0.667 for open heath and 0.35 under a woodland overstorey, and MC is capped to [4, 20] with Mf = 0.05 above 20%.
+- Heath moisture (Cruz et al. 2010 mallee-heath, plus the Marsden-Smedley rain term): `MC = 4.37 + 0.161·RH − 0.1·(T − 25) − [0.027·RH if RH ≤ 60] + 67.128·(1 − e^{−3.132·rain48h})·e^{−0.0858·hours_since_rain}`.
 - Intensity uses the Olson-accumulated heath total load: `I = 18600·(FL/10)·(R/3600)`.
+- Flame height, borrowed from the mallee-heath model of Cruz et al. 2013: `FH = e^{−4.142}·I^0.633` (m; I in kW/m).
 
-**Vesta spotting distance** [S, transcribed]:
+**Vesta spotting distance** (verified: PyroXL `Spotting_forest`; primary Gould et al. 2007 UNVERIFIED):
 - If R < 150 m/h: 50 m.
-- Otherwise: `|176.969·atan(FHS_s)·(R/U10^0.25)^0.5 + 1568800·FHS_s^−1·(R/U10^0.25)^−1.5 − 3015.09|` (m).
+- Otherwise: `|176.969·atan(FHS_s)·(R/U10^0.25)^0.5 + 1568800·FHS_s^−1·(R/U10^0.25)^−1.5 − 3015.09|` (m). R is in m/h, U10 in km/h, and FHS_s is the **surface** hazard score.
+- Caveats:
+  - The `abs()` hides negative raw values at low R/U^0.25. For example, R = 150 m/h, U10 = 10 km/h and FHS_s = 3.5 give a raw value of about −336 m, reported as +336 m.
+  - Near that threshold, cap the result at the 50 m floor instead of trusting `abs()` [H].
+  - Sanity check: R = 1000 m/h, U10 = 40, FHS_s = 3.5 gives ≈ 1.6 km.
+  - Bark hazard is **not** an input; see §2.4.
 
 ### 3.5 NSW fire interval thresholds by formation [S]
 
-Source: Lake George BFMC Bush Fire Risk Management Plan (NSW RFS, 2018), Table 3.3, which follows Kenny et al. (2004). The minimum SFAZ/LMZ table (RFS 2006) matches.
+Source: Lake George BFMC *Bush Fire Risk Management Plan*, **draft for public exhibition** (PDF dated 23 March 2018; comments closed 7 May 2018), §3.4, Table 3.3 "Fire Thresholds for Vegetation Categories". (verified: every value and note re-read in the OCR copy, 2026-09-27.)
+
+- The attribution to Kenny et al. (2004) is [K]. The BFRMP text does not cite it.
+- The "2006 SFAZ table gives minimum 7" note for freshwater wetlands is UNVERIFIED this pass.
+- Rows not shown are all outside FireSim's mountain scope: Saline wetlands and Arid chenopod shrublands ("fire should be avoided"); Semi-arid woodlands grassy 6/9/no max and shrubby 10/15/no max; Arid acacia 10/15/no max.
+- Full notes, verbatim in substance:
+  - Grassy woodland: "Occasional intervals greater than 15 years may be desirable."
+  - Grassland: "Occasional intervals greater than 7 years should be included in coastal areas".
+  - Freshwater wetlands: "Occasional intervals greater than 30 years may be desirable."
+  - Forested wetlands: "Some intervals greater than 20 years may be desirable."
+- **Mapping to SVTM:** the formation names match SVTM `vegForm` values one to one (§2.7), so TFI lookup needs no hand mapping.
 
 | Formation | Min (SFAZ) | Min (LMZ) | Max | Note |
 |---|---|---|---|---|
@@ -484,21 +582,29 @@ Source: Lake George BFMC Bush Fire Risk Management Plan (NSW RFS, 2018), Table 3
 ### 4.1 NPWS Fire History – Wildfires and Prescribed Burns
 
 - **Service**: `https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0` [S; used by several independent codebases].
-- **Content**: final fire boundaries for every year with data. Subtype field `FireType`: **1 = Wildfire, 2 = Prescribed Burn** [S].
+- **Content**: final fire boundaries for every year with data. `FireType` is a **coded integer with no coded-value domain on the field**; the codes live in the layer's renderer: **1 = Wildfire, 2 = Prescribed Burn**. (verified: bolat-t/spatial-analytics README and `config.py`; corrected from "subtype field".)
   - Polygons are mutually exclusive within each year and often extend outside NPWS estate.
-  - RFS and Forestry Corporation data are sometimes imported [S from the SEED description].
-  - Coverage 1920-01-01 to 2025-04-30 at last listing; updated monthly; **CC BY 4.0** [S].
-- **Fields** [S]: `OBJECTID, FireType, FireName, FireNo, FireYear, Label, StartDate, EndDate, Intensity, AreaHa, NPWSBranch, NPWSArea`.
-- **Quirks** (measured by bolat-t/spatial-analytics on 38,092 polygons) [S]:
-  - `FireYear` is a **6-digit financial year**: `201920` = the 2019–20 season. One row has the 4-digit value `2004`. Decode with `fy ≥ 10000 ? floor(fy/100) : fy`.
-  - `StartDate` is null on 40% of rows and `EndDate` on 53%. They are ArcGIS epoch milliseconds.
-  - `Intensity` uses 9999 as a null sentinel. Its codes are undocumented.
+  - RFS and Forestry Corporation data are sometimes imported (UNVERIFIED this pass: SEED page blocked; from an earlier search extract).
+  - **Coverage.** The seasons decoded from a full-table ingest run from **1902–03** to **2026–27** (bolat-t/spatial-analytics web map range 1902–2026, repository committed 15 Sep 2026). An earlier SEED metadata extract said 1920-01-01 to 2025-04-30, which is stale.
+  - Updated monthly (UNVERIFIED this pass).
+  - **Licence CC BY 4.0**, with required attribution "© State Government of NSW and NSW Department of Climate Change, Energy, the Environment and Water 2010" (verified: Zen-TM/logjam `build_fire_history.py` and `topo/README.md`).
+- **Fields**:
+  - Core, used by an ingest (verified: bolat-t `ingest_fire.py` `FIELDS`): `OBJECTID, FireType, FireName, FireNo, FireYear, Label, StartDate, EndDate, Intensity, AreaHa, NPWSBranch, NPWSArea`.
+  - Additional fields exist on the layer (verified: field list in uprez-net/propure-main `apps/web/lib/map/layers.ts`): `PerimeterM`, `OFHObjMet`, `ObjNotMet`, `VerDate`, `Shape.STArea()`, `Shape.STLength()`.
+  - `OFHObjMet` / `ObjNotMet` look like "Overall Fuel Hazard objective met / objective not met" flags for prescribed burns. Their meaning and codes are UNVERIFIED. If they are populated, they are the only in-dataset hint of **how well a hazard-reduction burn actually worked**, and could inform the patchiness p (§5.2).
+- **Quirks** (verified: measured by bolat-t/spatial-analytics on 38,092 polygons; README re-read 2026-09-27):
+  - `FireYear` is a **6-digit financial year**: `201920` = the 2019–20 season, `190203` = 1902–03. One row ("Tamban Forest fire") has the 4-digit value `2004` and a null `StartDate`. Decode with `fy ≥ 10000 ? floor(fy/100) : fy`. Never compare `FireYear` to a calendar year directly: `FireYear > 2019` matches almost every row.
+  - `StartDate` is null on 15,341 rows (40%) and `EndDate` on 20,018 (53%). They are ArcGIS epoch milliseconds.
+  - `Intensity` uses 9999 as a null sentinel. Its codes are undocumented. Pages where it is all-null come back typed as double, pages of real codes as int.
   - 22,810 wildfire rows (30.8 Mha cumulative) and 15,282 prescribed-burn rows (3.7 Mha).
-  - 0.87% of geometries are invalid.
-  - Native spatial reference is GDA94 (EPSG:4283).
+  - 332 of 38,092 geometries (0.87%) are invalid. Repair them before rasterising; reprojection can re-invalidate repaired rings.
+  - Native spatial reference is GDA94 (EPSG:4283). PROJ treats EPSG:4283 as lat/lon axis order, but the data are lon/lat, so use `always_xy`. The GDA94–WGS84 offset is ~1.8 m, negligible at 10–30 m cells.
   - `maxRecordCount` is 1000, but large polygons trigger HTTP 500. 500 features can be 10.7 MB. Page by `OBJECTID`, not offset, and halve the page size on failure.
+  - **ArcGIS returns failed queries as HTTP 200 with an `error` object**, so check the body, not just the status.
 - **Label**: a free-text display label. Its exact format was not verified.
-- **Envelope query, WGS84 in and out, GeoJSON** (parameter set verified in use: `geometryType=esriGeometryEnvelope`, `inSR/outSR=4326`, `f=geojson`) [S]:
+- **Envelope query, WGS84 in and out, GeoJSON.**
+  - Verified in use by two separate codebases: resuly/property-scores uses `geometryType=esriGeometryEnvelope`, `inSR=4326`, `outSR=4326`, `spatialRel=esriSpatialRelIntersects` and `where=FireType = 1`, with `f=json`; bolat-t uses `f=geojson`, `orderByFields=OBJECTID ASC`, `resultRecordCount` and `where=OBJECTID>{n}`.
+  - The *combination* below has not been run, because the host was blocked.
 
 ```
 GET …/Fire/NPWS_Fire_History/MapServer/0/query
@@ -525,10 +631,14 @@ GET …/Fire/NPWS_Fire_History/MapServer/0/query
   - `PCTID` and `PCTName`;
   - `vegClass`: the Keith class, e.g. "Sydney Montane Dry Sclerophyll Forests";
   - `vegForm`: the Keith formation/sub-formation.
-- **WMS**: `https://mapprod3.environment.nsw.gov.au/arcgis/services/VIS/SVTM_NSW_Extant_PCT/MapServer/WMSServer`. It has four display layers with scale ranges [S]: 0 = PCT labels (z ≥ 15), 1 = PCT (z 13–14), 2 = vegetation class (z 10–12), 3 = formation (z ≤ 9). WMS returns colours, not codes, so **do not decode classes from WMS**.
+- **WMS**: `https://mapprod3.environment.nsw.gov.au/arcgis/services/VIS/SVTM_NSW_Extant_PCT/MapServer/WMSServer`. It has four display layers with Leaflet zoom ranges: 0 = PCT labels (z 15–21), 1 = PCT (z 13–14), 2 = vegetation class (z 10–12), 3 = formation (z ≤ 9). (verified: gangerang/bushwalkers-topos `index.html`.) WMS returns colours, not codes, so **do not decode classes from WMS**.
+- **Layer-index trap.** WMS layer 3 (the formation display) is *not* REST layer 3 (vector PCT features); the two numberings are independent. Another client uses REST `showLayers [0,1,2,3,4]`, so the REST MapServer has at least five layers (verified: hcec-org-au/b2h `layers.jsonl`). Read `…/MapServer?f=json` at build time rather than hard-coding layer ids.
 - Query exactly as in §4.1, with `outFields=PCTID,PCTName,vegClass,vegForm`. The polygons are dense, so always generalise.
-- Licence not verified; likely CC BY 4.0 like other SEED data [K].
-- **Join to fuel** [S by inspection]: `lower(vegClass)` = `lower("Fuel name")` in NSW LUT v4.02, which gives FTno 1–76. Heath classes need a mapping [H]:
+- **Raster alternative for offline packs (recommended).** Statewide 5 m GeoTIFF `SVTM_NSW_Extant_PCT_vC2_0_M2_2_5m.tif`, about 2.3 GB, uint16 PCT codes, with a `.vat.dbf` attribute table that includes `vegForm`. (verified: Zen-TM/logjam `build_svtm_formation.py` and Zen-TM/vegform_classifier.)
+  - An older release, C1.1.M1.1 (Dec 2022), is on SEED as dataset `95437fbd-2ef7-44df-8579-d7a64402d42d` (verified: ces-unsw-edu-au/cesdata).
+  - Resample to the fire grid by **mode**, as ozjimbob/FireTools2R does (verified). Mode keeps a narrow gully rainforest strip only if it is wider than about half a cell, so at 30 m cells FireSim should keep a "minority class present" flag for wet gullies [H].
+- **Licence**: CC BY 4.0 is used by at least one downstream app, with the credit string "© State Government of NSW and NSW Department of Climate Change, Energy, the Environment and Water 2020 — State Vegetation Type Map (CC BY 4.0)". That app itself marks it "to confirm via SEED portal". UNVERIFIED at source.
+- **Join to fuel** [K; corrected from "S by inspection"]: `lower(vegClass)` = `lower("Fuel name")` in NSW LUT v4.02, which gives FTno 1–76 for most forest and woodland classes. Heath, rainforest, grassland and wetland classes need a mapping [H]:
   - Sydney montane heaths → 43 Short heath;
   - Northern/Southern montane heaths and alpine heaths → 44 Montane & Alpine heath;
   - coastal and wallum heaths → 42 Tall heath;
@@ -547,22 +657,43 @@ NSW DPE/RFS **Fire Extent and Severity Mapping** is a Sentinel-2 machine-learnin
 - **high**: complete canopy scorch, partial canopy consumption;
 - **extreme**: full canopy consumption.
 
-One redistribution (ALA) describes a 0 (unburnt) to 5 (extreme) code scale [S]. Confirm the exact code table in the FESM metadata before decoding. It is on SEED as `fire-extent-and-severity-mapping-fesm`. Method: Gibson et al. (2020), *Remote Sens. Environ.* 240: 111702 [K]. Use it to set the post-fire state (§5.3).
+(verified: class wording in cardat/cardat.github.com `nsw_government_seed.html`, which quotes the SEED description.)
+
+**Raster codes**:
+
+| Code | Class |
+|---|---|
+| 0 | unburnt |
+| 1 | reserved; no class-1 pixels found in a global audit |
+| 2 | low |
+| 3 | moderate |
+| 4 | high |
+| 5 | extreme |
+| 255 | NoData; never relabel as unburnt |
+
+(verified via a secondary source: raei-2748/AUSSEF `METHODS_AND_LIMITATIONS.md`, citing FESM v3 factsheet p. 2, Dec 2020: `https://datasets.seed.nsw.gov.au/dataset/eeaf2006-db96-4218-a124-43b19cd15765/resource/43c71151-d790-423a-8436-457036c470cb/download/fireextentandseveritymapping_fesmv3_factsheet_december2020.docx.pdf`. The factsheet itself was UNVERIFIED because the host was blocked.)
+
+Code 0 inside a mapped extent is "unburnt within the fire footprint", not "outside the fire". FESM is on SEED as `fire-extent-and-severity-mapping-fesm`. Method: Gibson et al. (2020), *Remote Sens. Environ.* 240: 111702 [K]. Use it to set the post-fire state (§5.2).
 
 ### 4.4 National alternatives
 
-- **Historical Bushfire Boundaries v2.0** (Digital Atlas of Australia / Geoscience Australia; CC BY 4.0) [S]:
-  - `https://services-ap1.arcgis.com/ypkPEy1AmwPKGNNv/arcgis/rest/services/Bushfire_Boundaries_Historic_Dec_view/FeatureServer/0`: 311,984 polygons, 1899 to Oct 2023, no NT.
-  - Continuation: `…/Historical_Bushfire_Extents_2020%E2%80%9325_View/FeatureServer/3` (July 2020 to June 2025; note the en dash in the name).
+- **Historical Bushfire Boundaries v2.0** (Digital Atlas of Australia / Geoscience Australia; CC BY 4.0) (verified: ben-gy/au-bushfires `pipeline/collect.mjs`, `src/live.ts`, `plan.md`):
+  - `https://services-ap1.arcgis.com/ypkPEy1AmwPKGNNv/arcgis/rest/services/Bushfire_Boundaries_Historic_Dec_view/FeatureServer/0`: 311,984 polygons, 1899-12-30 to 2023-10-15, 7 jurisdictions, no NT.
+  - Continuation: `…/Historical_Bushfire_Extents_2020%E2%80%9325_View/FeatureServer/3` ("Other States", 43,778 records, 2020-07-01 to 2025-06-30; note the en dash in the name). Layer 0 of the same service is NT only.
   - Live: `…/Near_Real_Time_Bushfire_Boundaries_view/FeatureServer/3` (~3-hourly). This could pre-fill "where the fire is".
   - Fields: `fire_id, fire_name, ignition_date, fire_type, ignition_cause, area_ha, perim_km, state, agency`.
   - Multipart fires repeat the parent `area_ha` on every part. De-duplicate before summing. The historic and 2020–25 layers overlap from 2020 to 2023; cut over at 1 July 2020.
-- **NVIS v7.0** (DCCEEW; CC BY 4.0; 100 m rasters, GDA2020 Albers) [S]:
-  - Major Vegetation Groups (~31–33 classes) and Subgroups (~80–85).
+- **NVIS v7.0** (DCCEEW, released Nov 2024; CC BY 4.0; 100 m rasters) (verified: Ecosystem-Indicators-Workflows `AUS-NVIS-v7-State-files.ipynb`; lgruen/izzy-map; AGRF/MicrobialLandScape. The raster CRS is UNVERIFIED):
+  - **33 Major Vegetation Groups (MVG) and 85 Major Vegetation Subgroups (MVS)**, corrected from "~31–33 / ~80–85".
+  - Download items on ArcGIS Online: extant `5e70b5afc36a4c458a2cceb313eb3889`; pre-1750 `d82f6eab808542ee9d9a0ea09ea36567`.
   - REST: `https://gis.environment.gov.au/gispubmap/rest/services/ogc_services/NVIS_ext_mvg/MapServer` (also `NVIS_ext_mvs`, and `NVIS_pre_*` for pre-1750).
   - Too coarse for 10–30 m cells. Use it only as a fallback outside SVTM coverage.
 - **AFDRS national fuel type map**: an AFAC/state product whose parameters appear in the LUT above [S]. **Public raster availability not verified.** The NSW state fuel map (v4.02) is similarly unverified for public download.
-- **NSW RFS planned hazard-reduction burns**: a community scrape exists (fields `location, lga, size, startDate, endDate, leadAgency`) [S]. It lists *planned* burns only. Do not treat it as burnt area.
+- **NSW RFS planned hazard-reduction burns**: a community scrape exists (fields `location, lga, size, startDate, endDate, leadAgency`) (UNVERIFIED this pass). It lists *planned* burns only. Do not treat it as burnt area.
+- **Airborne LiDAR (NSW / ELVIS)** for fuel *structure* [K; not re-verified]. LiDAR point clouds can map near-surface and elevated fuel cover and height over large areas of NSW forest (Price & Gordon 2016). They can also map post-fire recovery patterns after mixed-severity fire (Gordon, Price & Tasker 2017).
+  - ELVIS LiDAR and DEM products are CC BY 4.0 (verified: Zen-TM/logjam licence table).
+  - They are the only public route to **measured** elevated-fuel height at 10–30 m, instead of class-average H_el. They also support the "better than a drape map" goal: a LiDAR-derived shrub-height layer can be draped *and* extruded in the 3D view.
+  - Caveat: LiDAR capture dates pre-date recent fires, so flag cells whose last fire is after the capture date. logjam does exactly this with its `fire_stale` mask.
 
 ---
 
@@ -582,11 +713,16 @@ One redistribution (ALA) describes a 0 (unburnt) to 5 (extreme) code scale [S]. 
    - `nFires_30y`.
 
    Cells with no record get `tsf = max(t₉₅ across layers)`, i.e. steady state, and are flagged "no recorded fire (may be older than records)".
-4. **Fuel state.** For each layer L ∈ {s, ns, el, b, o}: `X_L = X_ss,L·(1 − e^{−k_L·tsf}) + X₀,L·e^{−k_L·tsf}`. Heights H_ns, H_el and H_o come from the LUT; H_el is held constant by default. FHS values come from §3.3.
+4. **Fuel state.** For each layer L ∈ {s, ns, el, b, o}: `X_L = X_ss,L·(1 − e^{−k_L·tsf}) + X₀,L·e^{−k_L·tsf}`.
+   - Heights H_ns, H_el and H_o come from the LUT; H_el is held constant by default.
+   - **FHS values: `FHS_s(t) = FHS_s,max·(1 − e^{−k_s·tsf})` and `FHS_ns(t) = FHS_ns,max·(1 − e^{−k_ns·tsf})`, using the LUT `FHS_*` maxima (§3.1).** This is the operational method (verified: PyroXL changelog 2024-10-11; corrected 2026-09-27; the earlier text said "from §3.3").
+   - Use `fl_to_fhs` (§3.3) only when the user edits a load directly.
+   - For heath: `FL_total(t)` with k from `Fk_s` (v4.02) or `Fk_total` (AFDRS). **Never** use the v4.02 `Fk_total` = 0.
 5. **Derived per-cell properties** passed to the spread model:
-   - FHS_s, FHS_ns, H_ns, H_el, FL layers, WAF (`WRF_For`), wet/dry submodel (from AFDRS type), spotting flag, bark class;
-   - for heath: `FL_total(t)` and `WF_Heath`;
-   - for grass: load and curing (curing belongs to another document).
+   - FHS_s, FHS_ns, H_ns, H_el, FL layers, WAF (`WRF_For`), wet/dry submodel (from the AFDRS type), spotting flag, bark class;
+   - for heath: `FL_total(t)` and `WF_Heath` (0.67);
+   - for grass: load and curing (curing belongs to another document);
+   - **post-fire flags**: `postFire` (bool) and `wrfDelta`, so the ROS model can apply the open-canopy wind increase (§2.3).
 6. **Cache** everything in IndexedDB, keyed by AOI and data version.
 
 **Cost** [H estimate]:
@@ -594,6 +730,8 @@ One redistribution (ALA) describes a 0 (unburnt) to 5 (extreme) code scale [S]. 
 - Rasterising a few hundred polygons takes under 1 s.
 - Network payload dominates (MBs). Hence the offline packs.
 - Fuel does not change within a 2–6 h scenario, so it adds nothing to the per-timestep budget. Only consumption (burnt, or partially burnt by a low-intensity flank) changes during the run.
+- **Fuel availability does change with the scenario's drought inputs.** Precompute FA per cell once per scenario from (DF, KBDI, WAF, submodel) with the §3.4 formula. It is a scalar per cell, so the cost is negligible. Recompute only if the user edits DF or KBDI mid-run.
+- Per-timestep ROS, FH and I evaluations are closed-form (§3.4). With about 250 k cells and only the burning-front cells (typically < 5%) evaluated per step, this is far inside the 1–2 min budget for 2–6 h scenarios [H].
 
 **Offline region packs** [H]:
 - Pre-bake FTno and a TSF/severity raster for the mountain regions at 20–30 m as tiled Cloud-Optimised GeoTIFF or PMTiles.
@@ -605,8 +743,12 @@ One redistribution (ALA) describes a 0 (unburnt) to 5 (extreme) code scale [S]. 
 
 Primary data on consumption fractions by layer and severity could not be retrieved. The defaults below are **[H]** placeholders and are editable.
 
-- **Wildfire with FESM high or extreme, or unknown severity**: X₀ = 0 for all layers (the operational convention) [S convention]. If the vegetation is shrubby DSF, heath, subalpine woodland or montane WSF, **switch to the post-fire parameter set**. Use the ACT "2020_" pattern as the template: ns and el steady state ×(2–4), k_ns and k_el 0.4–0.5, k_b 0.02, WRF − 1. Apply it while tsf < 15 yr [H], then revert.
-- **Wildfire with FESM low or moderate**, or a **prescribed burn**: model patchiness with coverage fraction `p` (user-editable; placeholder 0.6 [H]). Effective state = p·(reset state) + (1−p)·(pre-fire state).
+- **Wildfire with FESM high or extreme, or unknown severity**: X₀ = 0 for all layers, the operational convention (verified: PyroXL `fuel_amount` has no residue term, and Cirulis et al. state PHOENIX resets burn blocks to the lowest value).
+  - If the vegetation is shrubby DSF, heath, subalpine woodland or montane WSF, **switch to the post-fire parameter set**.
+  - Use the ACT "2020_" pattern as the template (verified values, §2.3): ns steady state ×4, el ×2–3, k_ns and k_el 0.4–0.5, k_s reduced by about a third (0.15 → 0.10, 0.3 → 0.2), k_b 0.02, WRF − 1.
+  - Apply it while tsf < 15 yr [H], then revert. The persistence period is a FireSim assumption; no source gives it.
+- **Wildfire with FESM low or moderate**, or a **prescribed burn**: model patchiness with coverage fraction `p` (user-editable; placeholder 0.6 [H]; UNVERIFIED because Penman et al. 2007 values were not retrieved). Effective state = p·(reset state) + (1−p)·(pre-fire state). If the NPWS `OFHObjMet` field turns out to be populated and meaningful, use it to raise or lower p per burn.
+  - **Shrub-seeder exception** (verified case: the Mt Jerrabomberra 2009 and 2010 burns, §2.3): in DSF with *Kunzea* or *Acacia* understorey, even a prescribed burn can trigger the post-fire elevated-fuel pulse. Offer the user a "regrowth thicket here" toggle rather than applying it automatically.
   - Within the burnt fraction use X₀ = 0 for surface and near-surface.
   - Elevated and bark are partially retained: X₀,el = 0.5·X_pre and X₀,b = 0.5·X_pre [H].
   - Pre-fire state comes from the previous record.
@@ -625,13 +767,16 @@ Primary data on consumption fractions by layer and severity could not be retriev
 | No moisture–fuel-type coupling here | Gully wet forest behaves like dry forest | Always use AFDRS wet/dry submodel and FA (§3.4); aspect moisture in doc 01/02 |
 | TSF from season when dates are null | Up to ±1 yr TSF error; small effect except in young fuels | Flag when `StartDate` is null and tsf < 3 yr |
 | No fire record = steady state | Correct for litter; wrong for areas burnt before records or burnt privately | Flag; allow override |
+| Mode-resampling SVTM to 20–30 m | Narrow gully rainforest or wet forest strips (< ~½ cell wide) vanish, so gully "barriers" are lost | Keep a minority-class flag per cell; or sample SVTM along the DEM drainage network at 5 m [H] |
+| Class-average H_el (no LiDAR) | Flame-height factor e^{0.64·H_el} is wrong by up to ~1.6× between LUT versions alone | Offer the H_el slider (§5.4); use LiDAR-derived shrub height where available (§4.4) |
+| Mk1 Mf discontinuity at 20% FMC | ROS drops abruptly by 4× as fuel crosses 20% (e.g. into a moist gully) | Smooth the taper (§3.4) and explain it as "fuel too wet to carry fire" |
 
 ### 5.4 Inputs the user should be able to edit on site
 
 1. **Vegetation/fuel type** (paint brush over cells), including "heath", "rainforest gully" and "grass".
 2. **Time since fire**, or **"burnt N years ago"** per polygon, plus fire type and severity.
 3. **Layer hazard ratings** as OFHG words (Low … Extreme) for surface, near-surface, elevated and bark. These are converted to loads with §3.3 and back to an equivalent fuel age with t_eq.
-4. **Litter depth** in mm (converted at ~0.4 t/ha per mm [S rule of thumb]).
+4. **Litter depth** in mm (converted at ~0.4 t/ha per mm; verified rule of thumb: 4 t/ha ≈ 1 cm, NSW APZ standard as quoted in the QPRC South Jerrabomberra Bushfire Study).
 5. **Elevated fuel height** (m), with slider presets: "knee", "waist", "head", "above head".
 6. **Bark type** (smooth / fibrous / stringy / ribbon) → bark class and spotting flag.
 7. **Prescribed-burn patchiness** p, and "back-burnt here" polygons.
@@ -646,7 +791,10 @@ Conventions:
 - rel_L = X_L/X_ss,L (fraction of steady state).
 - FHS scores as in §3.3.
 - U10 in km/h; FMC is dead fine fuel moisture in %.
-- FFDI/FBI thresholds: "Extreme" is FBI ≥ 50 (AFDRS) [K] or FFDI ≥ 50.
+- FFDI/FBI thresholds: "Extreme" is FBI 50–99 under AFDRS (Moderate 12–23, High 24–49, Catastrophic ≥ 100) [K].
+  - Under the **legacy** NSW FFDI scale, 50–74 was "Severe" and 75–99 "Extreme" (verified: FDR table in the Mt Jerrabomberra Bushfire Management Plan 2017: "EXTREME 75-99").
+  - FireSim uses FBI ≥ 50 **or FFDI ≥ 50** as a "severe-or-worse weather" trigger and labels it by the AFDRS name. This corrects the earlier text, which called FFDI ≥ 50 "Extreme".
+- **All detection thresholds in the table below are [H] FireSim heuristics**, except where they reuse a verified quantity (FA, H_el factor, TFI).
 
 Show at most two fuel cards at once and rank them after the terrain cards of doc 01. Every card carries a "Watch for" cue.
 
@@ -655,7 +803,7 @@ Show at most two fuel cards at once and rank them after the terrain cards of doc
 | F1 | **Recently burnt: fire should slow** | Front will enter cells with tsf ≤ 3 and rel_s ≤ 0.6, forest or heath type | "This area burnt about {tsf} years ago. The leaf litter is only about {rel_s·100}% of what it will grow to. **Why:** fire needs fine fuel to carry it; less litter means lower flames and slower spread. **Watch for:** grass and regrowth that can still carry fire, and embers landing beyond the burnt area." |
 | F2 | **Old burn won't stop it today** | tsf ≤ 5 and (FBI ≥ 50 or FFDI ≥ 50 or U10 ≥ 40 with RH ≤ 15%) | "The old burn helps less on a day like this. Research on big NSW and Victorian fires found that weather mattered more than how long ago an area was burnt. **Why:** in strong wind, embers fly over the burnt patch and sparse fuel still burns." |
 | F3 | **Fuel has built up fully** | tsf ≥ t₉₅(surface), forest type | "This bush hasn't burnt for {tsf}+ years, so the litter has reached its maximum (about {X_ss} t/ha, roughly {X_ss/4} cm deep). Extra years don't add much more. Now **dryness and wind** decide how it burns." |
-| F4 | **Regrowth thicket: taller flames** | lastSeverity ≥ high (or wildfire, unknown severity) and 3 ≤ tsf ≤ 15 and formation ∈ {DSF shrubby, heath, subalpine, montane WSF}, or H_el ≥ 1.5 m, or FHS_el ≥ 3.5 | "After the last big fire, shrubs and wattles came back **thick**. Dense shrubs {H_el} m tall can make flames about {e^{0.64·H_el}}× taller than in open forest with the same wind. **Why:** shrubs lift the fire off the ground and feed it more air. Recently burnt doesn't always mean safe." |
+| F4 | **Regrowth thicket: taller flames** | lastSeverity ≥ high (or wildfire, unknown severity) and 3 ≤ tsf ≤ 15 and formation ∈ {DSF shrubby, heath, subalpine, montane WSF}, or H_el ≥ 1.5 m, or FHS_el ≥ 3.5 | "After the last big fire, shrubs and wattles came back **thick**. Dense shrubs {H_el} m tall can make flames about {e^{0.64·H_el}}× taller than in open forest spreading at the same speed. **Why:** shrubs lift the fire off the ground and feed it more air. Recently burnt doesn't always mean safe." |
 | F5 | **Fire has climbed into the shrubs / crowns** | Predicted FH > 1 m (shrubs join), or FH > 0.66·H_o (crowns join) | "The flames are now tall enough to reach the {shrubs/tree crowns}. That adds {ΔFL} t/ha of fuel to the fire front, so intensity roughly jumps {×} here. **Why:** each fuel layer only joins the fire when the flames reach it." |
 | F6 | **Stringybark: ember factory** | Bark class stringy or FHS_b ≥ 3, or LUT Spotting = 1 with FL_b ≥ 3, and U10 ≥ 20 | "These are stringybark trees. Their loose, fibrous bark catches easily and breaks off burning, so **expect lots of spot fires downwind**, often hundreds of metres ahead. **Watch for:** glowing bark drifting in the smoke." |
 | F7 | **Ribbon bark: long-distance embers** | User or botanical flag ribbon bark (candlebark, manna gum, mountain gum), montane WSF or tableland WSF, strong plume or U10 ≥ 30 | "Ribbon-barked gums shed long streamers. Lifted in a strong smoke column, they can carry fire **kilometres** ahead. In the 2009 Kilmore East fire, spot fires were reported tens of kilometres ahead." |
@@ -666,19 +814,26 @@ Show at most two fuel cards at once and rank them after the terrain cards of doc
 | F12 | **Burnt too often: the bush has changed** | nFires_TFImin ≥ 1 in the cell's formation, esp. montane WSF, heath or *E. oreades* | "This area has burnt {n} times within {TFImin} years. Some plants here only regrow from seed and need years to mature, so repeated fires can turn forest into **scrub or grass**. That changes how future fires behave: faster in grass, or thicker shrubs." |
 | F13 | **Snow gum and alpine country** | FTno ∈ {39, 44, 45, 46} | "Above about 1,500 m, snow gum woodland and alpine heath burn rarely but recover slowly; managers aim to keep fire out of alpine areas. After fire, shrubs can come back thick, and frost-hollow grasslands in the valleys can carry fast grass fires." |
 | F14 | **Data confidence** | Vegetation from NVIS fallback, or `StartDate` null with tsf < 3, or user edits active | "Fuel here is estimated from {source}. Real fuel can be half or double this. Check what you see and adjust it in the fuel editor." |
+| F15 | **Tall mountain ash forest is not a wet-gully barrier** | FTno ∈ {9, 10} (WRF 3.5) and DF ≥ 7 and FA ≥ 0.6 | "This is tall montane forest (alpine ash or mountain gum). It looks wet and green, but its litter dries almost like dry forest, so today about {FA·100}% of it can burn. **Why:** its canopy is more open than rainforest, letting in sun and wind. Deep litter, up to about {X_ss} t/ha, plus ribbon bark means intense fire and long-range embers. **Watch for:** crown fire on the steep upper slopes." |
+| F16 | **Burnt canopy lets the wind in** | lastSeverity ≥ high and tsf < 15 and forest type (post-fire set active, wrfDelta ≥ 1) | "The last fire killed or thinned the tree crowns here, so the wind at ground level is about {(WRF/(WRF−1))}× stronger than under a full canopy, on top of thick regrowth. **Why:** tree crowns normally slow the wind before it reaches the fuel. **Watch for:** faster runs through regrowth on ridges and upper slopes." |
+| F17 | **Hazard-reduced, but the shrubs came back thicker** | Prescribed-burn polygon with 3 ≤ tsf ≤ 10, DSF formation, and user flag "wattle/burgan thicket" or FHS_el ≥ 3.5 | "This block was burnt to reduce fuel {tsf} years ago, but wattles and burgan sprang back dense. Near Queanbeyan, sites burnt this way were rated **Very High to Extreme** fuel hazard 7–8 years later. **Why:** fire triggers mass germination of some shrubs, and the thicket feeds tall flames." |
+| F18 | **The fire is entering ground it has already burnt, or a back-burn** | Front reaches cells with tsf < 0.1 (burnt this scenario, or a user-drawn back-burn) | "There is almost no fine fuel left here, so the flame front will stop. **Watch for:** embers carrying fire past it, and unburnt islands or tree crowns inside that can still flare up." |
 
 ---
 
 ## 7. Open questions and uncertainties
 
 1. **Primary fuel curves.** Watson (2011, Part 1 forests and grassy woodlands; Report to NSW RFS, UOW) and the heathland review (Gordon, UOW) could not be opened. The LUT values are presumed to derive partly from them (Cirulis et al.) but are not verified against them. The LUT copy in PyroXL may lag the current RFS production LUT.
-2. **LUT version conflicts**: ACT versus NSW rows (subalpine FL_s 9 vs 15; tableland shrubby DSF 11 vs 19); 5018 FL_el is 3 in the national LUT and 6 in the NSW copy; `Hk_ns` entries look corrupted.
-3. **Wet-forest FA coefficient**: −0.0175 vs −0.175. Check against the AFDRS technical documentation.
+2. **LUT version conflicts** (verified present, 2026-09-27): ACT versus NSW rows (subalpine FL_s 9 vs 15; tableland shrubby DSF 11 vs 19); 5018 FL_el is 3 in the national LUT and 6 in the NSW copy; 14 `Hk_ns` entries are corrupted; **fuel heights** differ (AFDRS 2xxx H_el 1.3 m vs NSW v4.02 2 m, so flame height differs ≈ 1.6×); v4.02 heath rows have `Fk_total` = 0.
+3. **Wet-forest FA coefficient**: −0.0175 is now adopted, because three implementations agree and −0.175 is physically backwards. It is still to be confirmed against Cruz et al. 2022 or the AFDRS technical guide. The **slope/aspect term C2** of the Mk2 wet-forest availability is unimplemented everywhere public; its coefficients are unknown.
+3a. **Vesta Mk2 details** needing primary confirmation: whether Mk2 "FL_s" is surface + near-surface; the h_u equation; whether phase 3 uses open U10 and ignores slope; the downslope SF form.
+3b. **Spotting distance.** Should the Vesta formula use surface FHS (as coded) or bark hazard? Check Gould et al. 2007. Also, how should the `abs()` artefact at low R be handled?
 4. **Post-fire state**: does "2020_" mean post-2019–20 wildfire? How long should it persist, and is it valid in NSW mountain classes other than the two ACT types?
 5. **Consumption by layer and severity; prescribed-burn patchiness p**: no values retrieved (Penman et al. 2007 has data).
 6. **Treatment longevity numbers** for NSW mountains (Price & Bradstock 2010/2012): exact durations need checking. Leverage magnitudes (Price et al. 2015a) need checking.
-7. **NPWS service**: whether back-burns are included in wildfire polygons; the `Label` format; `Intensity` codes; CORS; whether `maxAllowableOffset` behaves well on this server.
-8. **SVTM**: licence; the full REST layer list (only layer 3 confirmed as vector PCTs); payload sizes for dense 5 m-derived polygons.
+7. **NPWS service**: whether back-burns are included in wildfire polygons; the `Label` format; `Intensity` codes; the meaning and codes of `OFHObjMet`, `ObjNotMet` and `VerDate`; CORS; whether `maxAllowableOffset` behaves well on this server; whether an envelope query with `f=geojson` and `inSR/outSR=4326` together has ever been run (each part has been run separately).
+8. **SVTM**: licence (CC BY 4.0 is assumed downstream but unconfirmed at source); the full REST layer list (at least layers 0–4 exist; only layer 3 confirmed as vector PCTs); payload sizes for dense 5 m-derived polygons. The raster route (5 m GeoTIFF + VAT) avoids the payload problem for offline packs.
+8a. **FESM code table**: confirm 0 / 1 (reserved) / 2–5 / 255 from the FESM v3 factsheet itself.
 9. **Heath class mapping** (Keith heath classes → LUT heath types) needs RFS confirmation.
 10. **Public availability of the NSW/AFDRS fuel type rasters.** If available, they would replace the SVTM→LUT join.
 
@@ -686,7 +841,22 @@ Show at most two fuel cards at once and rank them after the terrain cards of doc
 
 ## 8. References
 
-Primary and operational sources. [S] = content confirmed this session; [K] = cited from knowledge, verify.
+Primary and operational sources. [S] = content confirmed this session; [K] = cited from knowledge, verify. None of the journal papers could be opened in either pass; bibliographic details are [K] unless marked.
+
+Added in the 2026-09-27 fact-check pass:
+- Cheney NP, Gould JS, McCaw WL, Anderson WR (2012) Predicting fire behaviour in dry eucalypt forest in southern Australia. *For. Ecol. Manage.* 280: 120–131. The primary source of the Vesta Mk1 ROS form in §3.4. [K]
+- Collins L, Bennett AF, Leonard SWJ, Penman TD (2019) Wildfire refugia in forests: severe fire weather and drought mute the influence of topography and fuel age. *Glob. Change Biol.* 25: 3829–3843. [K]
+- Cruz MG, Gould JS, Alexander ME, Sullivan AL, McCaw WL, Matthews S (2015) *A Guide to Rate of Fire Spread Models for Australian Vegetation.* CSIRO Land & Water and AFAC, Canberra/Melbourne. [K]
+- Cruz MG, Cheney NP, Gould JS, McCaw WL, Kilinc M, Sullivan AL (2022) An empirical-based model for predicting the forward spread rate of wildfires in eucalypt forests. *IJWF* 31: 81–95. https://doi.org/10.1071/WF21068 [K]
+- Gordon CE, Price OF, Tasker EM, Denham AJ (2017) Acacia shrubs respond positively to high severity wildfire: implications for conservation and fuel hazard management. *Sci. Total Environ.* 575: 858–868. [K]
+- Gordon CE, Price OF, Tasker EM (2017) Mapping and exploring variation in post-fire vegetation recovery following mixed severity wildfire using airborne LiDAR. *Ecol. Appl.* 27: 1618–1632. [K]
+- Hollis JJ, Matthews S, Fox-Hughes P, Grootemaat S, Heemstra S, Kenny BJ, Sauvage S (2024) Introduction to the Australian Fire Danger Rating System. *IJWF* 33: WF23140. [K]
+- Price OF, Gordon CE (2016) The potential for LiDAR technology to map fire fuel hazard over large areas of Australian forest. *J. Environ. Manage.* 181: 663–673. [K]
+- Queanbeyan-Palerang Regional Council (2017) *Bushfire Management Plan – Mount Jerrabomberra* (council meeting attachment, 11 Oct 2017, item 4.3) and *Final South Jerrabomberra Bushfire Study*. OCR copies in https://github.com/nicolfamilyfarm/qprc-helper [S: post-burn Burgan/Golden Wattle hazard, 5–34+ t/ha range, FDR table, 4 t/ha ≈ 1 cm rule]
+- NSW DPE (2020) *Fire Extent and Severity Mapping (FESM) v3 factsheet*, December 2020. SEED resource URL in §4.3. [codes S via secondary: raei-2748/AUSSEF]
+- Geoffysicist (Geoff Goldrick, NSW RFS, per the workbook Changelog), **PyroPy_2**, `pyropy2/spread_model_vesta2.py`. https://github.com/Geoffysicist/PyroPy_2 [S]
+- bran-jnw/**wuinity**, `PREACT/…/SpreadModels/AFDRS/FuelModels/Forest.cs`: an independent C# port of the AFDRS forest model. https://github.com/bran-jnw/wuinity [S: wet-forest FA coefficient −0.0175]
+- CSIRO Australian Ecosystem Models Framework (`CSIRO-enviro-informatics/ecosystems-models-framework`, `rdf/emf.jsonld`), "Eucalypt woodland" umbrella group definition. [S: fire promotes shrubs in sub-alpine resprouter woodland]
 
 - Anderson WR, Cruz MG, Fernandes PM, McCaw L, Vega JA, Bradstock RA, et al. (2015) A generic, empirical-based model for predicting rate of fire spread in shrublands. *IJWF* 24: 443–460. [S cit.]
 - Birk EM, Simpson RW (1980) Steady state and the continuous input model of litter accumulation and decomposition in Australian eucalypt forests. *Ecology* 61: 481–485. [K]
@@ -704,7 +874,7 @@ Primary and operational sources. [S] = content confirmed this session; [K] = cit
 - Cruz MG, Gould JS, Hollis JJ, McCaw WL (2018) A hierarchical classification of wildland fire fuels for Australian vegetation types. *Fire* 1(1): 13. https://doi.org/10.3390/fire1010013 [K]
 - Cruz MG, et al. (2021) Vesta Mk 2 rate of spread model for dry eucalypt forests (CSIRO report); journal version Cruz et al. (2022) *IJWF* 31: 81–95. [K; equations S via PyroXL]
 - Dalgleish SA, van Etten EJB, Stock WD, Knuckey C (2015) Fuel dynamics and vegetation recovery after fire in a semiarid Australian shrubland. *IJWF* 24: 613–623. [S cit.]
-- Duff TJ, Bell TL, York A (2012/2013) Predicting continuous variation in forest fuel load using biophysical models: a case study in south-eastern Australia. *IJWF*. [S cit.]
+- Duff TJ, Bell TL, York A (2012/2013) Predicting continuous variation in forest fuel load using biophysical models: a case study in south-eastern Australia. *IJWF* 22: 318–332 (online 2012) [pages K]. [S cit.]
 - Ellis PFM (2011) Fuelbed ignition potential and bark morphology explain the notoriety of the eucalypt messmate 'stringybark' for intense spotting. *IJWF* 20: 897–907. [K]
 - Fairman TA, Nitschke CR, Bennett LT (2016) Too much, too soon? A review of the effects of increasing wildfire frequency on tree mortality and regeneration in temperate eucalypt forests. *IJWF* 25: 831–848. [K]
 - Gibson R, Danaher T, Hehir W, Collins L (2020) A remote sensing approach to mapping fire severity in south-eastern Australia using Sentinel 2 and random forest. *Remote Sens. Environ.* 240: 111702. [K]
@@ -714,12 +884,12 @@ Primary and operational sources. [S] = content confirmed this session; [K] = cit
 - Keith DA (2004) *Ocean Shores to Desert Dunes: the Native Vegetation of New South Wales and the ACT*. DEC NSW, Hurstville. [K]
 - Keith DA, Benson DH (1988) The natural vegetation of the Katoomba 1:100 000 map sheet. *Cunninghamia* 2: 107–143. [K]
 - Kenny B, Sutherland E, Tasker E, Bradstock R (2004) *Guidelines for Ecologically Sustainable Fire Management*. NSW NPWS. [K; thresholds S via BFRMP]
-- Lake George Bush Fire Management Committee (2018) *Bush Fire Risk Management Plan* (NSW RFS), Table 3.3 Fire thresholds. OCR copy: https://github.com/nicolfamilyfarm/qprc-helper (yourvoice/markdown/…Lake-George-Bush-Fire-Risk-Management-Plan.md) [S]
+- Lake George Bush Fire Management Committee (2018) *Bush Fire Risk Management Plan* — draft for public exhibition, March 2018 (NSW RFS), Table 3.3 Fire thresholds. OCR copy: https://github.com/nicolfamilyfarm/qprc-helper (yourvoice/markdown/…Lake-George-Bush-Fire-Risk-Management-Plan.md) [S]
 - McCaw WL, Gould JS, Cheney NP, Ellis PFM, Anderson WR (2012) Changes in behaviour of fire in dry eucalypt forest as fuel increases with age. *For. Ecol. Manage.* 271: 170–181. [K]
 - NSW DPE/DCCEEW. NPWS Fire History – Wildfires and Prescribed Burns (SEED). https://datasets.seed.nsw.gov.au/dataset/fire-history-wildfires-and-prescribed-burns-1e8b6; service https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0 [S]
 - NSW DPE. State Vegetation Type Map (SVTM) Extant PCT. https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/VIS/SVTM_NSW_Extant_PCT/MapServer [S]
 - NSW DPE/RFS. Fire Extent and Severity Mapping (FESM). https://datasets.seed.nsw.gov.au/dataset/fire-extent-and-severity-mapping-fesm [S]
-- Geoffysicist (GitHub user; README asks users to acknowledge the author and NSW RFS), **PyroXL** (AFDRS models, AFDRS fuel LUT, NSW fuel LUT v4.02), workbook `PyroXL_Operational_20250206.xlsm` and `src/vba_scripts/*.bas`. https://github.com/Geoffysicist/PyroXL [S]
+- Geoffysicist (Geoff Goldrick, NSW RFS Predictive Services, per the workbook Changelog; README asks users to acknowledge the author and NSW RFS; GPL-3.0), **PyroXL** (AFDRS models, AFDRS fuel LUT, NSW fuel LUT v4.02), workbook `PyroXL_Operational_20250206.xlsm` and `src/vba_scripts/*.bas`. https://github.com/Geoffysicist/PyroXL [S]
 - Olson JS (1963) Energy storage and the balance of producers and decomposers in ecological systems. *Ecology* 44: 322–331. https://doi.org/10.2307/1932179 [S cit.; DOI K]
 - Penman TD, Kavanagh RP, Binns DL, Melick DR (2007) Patchiness of prescribed burns in dry sclerophyll eucalypt forests in south-eastern Australia. *For. Ecol. Manage.* 252: 24–32. [S cit.]
 - Penman TD, Bradstock RA, Price OF (2014a) Reducing wildfire risk to urban developments: simulation of cost-effective fuel treatment solutions in south eastern Australia. *Environ. Model. Softw.* 52: 166–175. [S cit. and finding via Cirulis]
@@ -738,12 +908,17 @@ Primary and operational sources. [S] = content confirmed this session; [K] = cit
 - Zylstra PJ (2018) Flammability dynamics in the Australian Alps. *Austral Ecol.* 43: 578–591. [K]
 
 Data and code consulted (GitHub):
-- bolat-t/spatial-analytics: NPWS fields, quirks, paging.
-- resuly/property-scores: envelope query.
+- bolat-t/spatial-analytics: NPWS fields, quirks, paging, season range 1902–2026 (re-read 2026-09-27).
+- resuly/property-scores: envelope query (`f=json`) and a Black Summer canary test.
+- uprez-net/propure-main: full NPWS field list, including `PerimeterM`, `OFHObjMet`, `ObjNotMet`, `VerDate`.
+- Zen-TM/logjam: SVTM 5 m raster + VAT, `vegForm` list, NPWS and SVTM licence and attribution strings, ELVIS LiDAR, fire-staleness mask.
 - mwhewins/ecoTools: SVTM fields.
-- TheKillerKangaroo/BushfireBurnout: SVTM layer 3, BFPL.
-- gangerang/bushwalkers-topos: SVTM WMS layers; national near-real-time layer.
+- TheKillerKangaroo/BushfireBurnout: SVTM layer 3 used as a feature layer with `vegClass`, BFPL.
+- hcec-org-au/b2h: SVTM REST `showLayers [0,1,2,3,4]`.
+- gangerang/bushwalkers-topos: SVTM WMS layers and zoom ranges; national near-real-time layer.
+- ozjimbob/FireTools2R: mode resampling of the SVTM 5 m raster.
 - ben-gy/au-bushfires: national historical boundaries.
-- dcceew-bdr/eiatest-catalogue and lgruen/izzy-map: NVIS.
-- cardat/cardat.github.com: FESM class definitions.
+- dcceew-bdr/eiatest-catalogue, Ecosystem-Indicators-Workflows/ecosystems-maps-australia and lgruen/izzy-map: NVIS v7 (33 MVG / 85 MVS, CC BY 4.0).
+- cardat/cardat.github.com: FESM class definitions; raei-2748/AUSSEF: FESM raster codes.
+- ces-unsw-edu-au/cesdata: SVTM SEED dataset id and release C1.1.M1.1.
 - nicolfamilyfarm/qprc-helper: RFS BFRMP thresholds, APZ fuel rule, OFHG field survey.

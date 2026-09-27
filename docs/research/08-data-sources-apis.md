@@ -26,6 +26,15 @@ So I did three things:
 | **[K]** | Domain knowledge I could not re-verify this session. Check it before hard-coding. |
 | **[H]** | A FireSim design choice or heuristic. It is not a property of the data source. |
 
+**Adversarial fact-check pass (2026‑09‑27, second reviewer).** Every endpoint, formula and number was re-checked against: fresh clones of `open-meteo/open-meteo` (server, commit of 2026‑09‑23) and `open-meteo/open-meteo-website` (docs, 2026‑09‑24); live S3 requests (tile decode, COG IFD lists, CORS pre-flights, a re-run of the slope table); the installed `@capacitor/*` type definitions; and independent third-party code on GitHub. The same egress blocks applied (Open-Meteo, BoM, RFS, SIX, DCCEEW, DEA Hotspots, FIRMS, ArcGIS Online), so NSW/RFS/BoM facts stay [3P]. Corrections are marked **CORRECTED** in place. The ones that change the design are:
+
+1. **`models=ecmwf_ifs` (IFS HRES 9 km) has NO pressure-level fields.** The docs say so ("no pressure-level fields. Pressure-level data is available only from the 0.25° open-data models"), and the server's `EcmwfEcdpsIfsVariable` enum has none. A pressure-level request to `ecmwf_ifs` returns arrays of `null`. Vertical profiles must come from `ecmwf_ifs025` (0.25°, 3-hourly) or `ncep_gfs_global` (0.25°, hourly to 120 h).
+2. **Open-Meteo's elevation correction is not "temperature only".** It applies to every variable flagged `isElevationCorrectable` with unit °C. For `ecmwf_ifs` that includes **`dew_point_2m`**. RH is then derived from the shifted T and T_d, so the dew-point depression is kept and RH changes only slightly.
+3. **NSW RFS `majorIncidents.json` CORS:** a 2026 third-party test reports `Access-Control-Allow-Origin: *` **when an `Origin` header is sent**, which browsers always do. The older "no CORS" reports are from 2015–2019.
+4. **`Filesystem.downloadFile` is deprecated since Capacitor 7.1.0.** Use `@capacitor/file-transfer`.
+5. **NSW 5 m DEM provenance is disputed.** One 2026 source says "LiDAR resampled to 5 m"; another says "stereo-photogrammetry, NOT LiDAR". A photogrammetric surface in forest partly follows the canopy, which matters for gully slopes (§3.5).
+6. **New sources added:** Digital Atlas of Australia national fire-history and near-real-time fire-extent services (CORS \*), NSW FESM fire-severity WMS, and RFS hazard-reduction feed format. Also a warning: DEA `recent-hotspots.json` is **about 149 MB**, so a phone must never fetch it.
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
@@ -34,12 +43,22 @@ So I did three things:
    - One keyless JSON API (`/v1/forecast`) gives current conditions, past data (`past_days` 0–92) and forecast data (up to 16 days) [S].
    - Pressure-level profiles (T, RH, wind, geopotential height at 1000…30 hPa) initialise the 3-D atmosphere [S].
    - **BoM ACCESS-G via Open-Meteo has no pressure levels, CAPE or PBL height**. Open-Meteo's BoM page also says *"BOM … open-data delivery has been temporarily suspended"* [S].
-   - Use **ECMWF IFS HRES 9 km (`models=ecmwf_ifs`)** as the primary source. It has been open data (CC BY 4.0) since 1 Oct 2025, provides `boundary_layer_height`, `cape` and pressure levels 1000/925/850/700/…, and has 100 m/200 m winds [S]. Use **GFS 0.25°** for a finer-spaced vertical profile (25 hPa steps) and **ICON global** for 80/120/180 m winds [S].
-   - Open-Meteo corrects **only 2 m temperature (and surface temperature)** for elevation, using a fixed **0.0065 K m⁻¹** lapse rate (see `GenericReader.swift`). **RH is not corrected** [S]. In mountains with inversions that is wrong, so FireSim must downscale from the pressure levels itself (§5.3).
-   - CORS is open to all origins, verified in the server's `configure.swift` [S]. Free use is limited to non-commercial use: under 10 000 calls/day, 5 000/hour and 600/minute; data is CC BY 4.0 [S]. Education counts as non-commercial [S].
+   - Use **ECMWF IFS HRES 9 km (`models=ecmwf_ifs`)** as the primary **surface** source. It has been open data (CC BY 4.0) since 1 Oct 2025, and provides `boundary_layer_height`, `cape`, native 2 m dew point and native 10/100/200 m winds [S] (verified: `ecmwf-api/+page.svelte`; `EcmwfEcpdsVariable.swift`).
+   - **CORRECTED: IFS HRES 9 km has no pressure levels** [S] (verified: docs text *"The IFS HRES 9 km model additionally provides native dew point, direct radiation, visibility, showers and boundary layer height, but no pressure-level fields. Pressure-level data is available only from the 0.25° open-data models"*; the server's `EcmwfEcdpsIfsVariable` enum has no `*_hPa` cases). Take the **vertical profile** from **`ecmwf_ifs025`**: 0.25°, 3-hourly (Open-Meteo interpolates it to hourly), levels 1000/925/850/700/500/300/250/200/150/50 hPa. A server comment says 600/400/100 hPa are "only AIFS", so treat those as uncertain for IFS 0.25° [S]. Alternatively use **`ncep_gfs_global`**: pressure variables at 0.25°, hourly to 120 h, 25 hPa steps from 1000 to 100 hPa [S]. **ICON global** has 80/120/180 m winds. Its levels are 1000/950/925/900/850/800/700/… hPa (no 975) [S] (verified: `Icon.swift` `levels`).
+   - **CORRECTED:** Open-Meteo applies a fixed **0.0065 K m⁻¹** shift, `ΔT = (z_model − z_target)·0.0065`. It applies it to *every* variable that the model flags `isElevationCorrectable` and that is in °C, not only 2 m temperature [S] (verified: `GenericReader.swift` `scale()`). The set varies by model:
+     - `ecmwf_ifs`: `temperature_2m`, **`dew_point_2m`**, T max/min, surface and soil temperatures (verified: `EcmwfEcpdsVariable.swift`).
+     - ICON: 2/80/120/180 m temperatures and soil temperatures.
+     - GFS: 2/80/100 m temperatures and soil temperatures.
+     - Winds, pressure and all pressure-level fields are never adjusted.
+     - For `ecmwf_ifs`, RH is recomputed from the shifted T and T_d, so the dew-point depression is preserved and RH changes by only a few %.
+
+     A single standard lapse rate is wrong in mountains with inversions or cold pools, so FireSim must downscale from the pressure levels itself (§5.3).
+   - CORS is open to all origins, verified in the server's `configure.swift` [S]. Free use is limited to non-commercial use: under 10 000 calls/day, 5 000/hour and 600/minute; data is CC BY 4.0 [S]. Education counts as non-commercial [S] (verified: `terms/+page.svelte`, *"Incorporating our service into educational content"*). The exception is an app with subscriptions or ads.
+   - **Mountain caveat (why this matters for fire):** at a 9–25 km grid the Blue Mountains plateau, the Grose/Jamison valleys and the Kosciuszko main range are one smoothed "hill". So the forecast has no valley cold pools, no ridge-top wind speed-up, no slope/valley wind reversals and no gully channelling. FireSim's own 3‑D terrain model has to add these, and the insight cards should say that the forecast cannot see them (§6).
 2. **Past weather:**
-   - **Historical Forecast API**: IFS HRES 9 km from **2017‑01‑01**, most other models from 2021–22 [S].
-   - **Archive API**: ERA5 from 1940, ERA5‑Land from 1950, IFS 9 km from 2017, with a **5-day delay** for ERA5 and **no pressure levels** [S].
+   - **Historical Forecast API**: IFS HRES 9 km from **2017‑01‑01** (surface only, since it has no pressure levels). IFS 0.25° is available from 2024‑02‑03 and IFS 0.4° from 2022‑11‑07. GFS and GFS pressure variables start 2021‑03‑23 and ACCESS-G 2024‑01‑18 [S] (verified: `historical-forecast-api/+page.svelte` table).
+     - **CORRECTED:** a Black Summer (Dec 2019) replay therefore has **no pressure-level profile** from Open-Meteo. It must use ERA5 pressure levels from the Copernicus CDS, which is off-device and outside Open-Meteo [K], or the surface fields only.
+   - **Archive API**: ERA5 from 1940, ERA5‑Land from 1950 and IFS 9 km from 2017 (*"Every 6 hours with no delay"*). ERA5 and ERA5‑Land have a **5-day delay**. There are **no pressure levels** [S].
    - **Single Runs API**: re-play a forecast exactly as issued (`run=`); IFS HRES from March 2024 [S].
 3. **BoM station observations are the ground truth, but they are awkward to get.**
    - The `fwo/IDN60801/IDN60801.<WMO>.json` feed is the easy route: 72 h of half-hourly observations with `air_temp`, `dewpt`, `rel_hum`, `wind_dir`, `wind_spd_kmh`, `gust_kmh` and `delta_t` [3P].
@@ -47,7 +66,9 @@ So I did three things:
    - Use it only through native HTTP, on the user's explicit request, rate-limited, and never as a background poller [H].
    - Katoomba (Farnells Rd) is **WMO 94744**; Mount Boyce AWS is **94743** [3P].
 4. **Terrain.** Use **three sources**, in order of preference:
-   - **(a) NSW Spatial Services statewide 5 m DEM** (`NSW_5M_Elevation/ImageServer/exportImage`, Float32 GeoTIFF, LiDAR-derived bare earth, CC BY 4.0) [3P, verified by third parties in 2026]. Cold responses can take about 28 s [3P].
+   - **(a) NSW Spatial Services statewide 5 m DEM** (`NSW_5M_Elevation/ImageServer/exportImage`, Float32 GeoTIFF, CC BY 4.0) [3P, used by four independent projects in 2026]. Cold responses can take about 28 s [3P].
+     - **UNVERIFIED provenance:** jo-chemla/terrain-viewer says "1m/2m LiDAR resampled to a 5m statewide grid". nico579/lidar2map says "stereo-photogrammetry (NOT LiDAR)". It may be a mosaic of both.
+     - Read the service `?f=json` description on device. Where the source is photogrammetric, forested gully slopes may be biased by canopy.
    - **(b) Geoscience Australia 1″ SRTM-derived DEM/DEM‑S** as a **CORS-enabled, 512-px-tiled Float32 COG** for all of Australia on `dea-public-data`. It is bare-earth corrected [V]. It sits **2.5–8 m below raw SRTM** at our four Blue Mountains sample sites. That matches the removal of the vegetation offset [V].
    - **(c) AWS Terrain Tiles (Terrarium)**: `h = R·256 + G + B/256 − 32768`. Verified **1021–1022 m at Katoomba**; the header shows the source is `srtm/S34E150.tif`, so over NSW this is **SRTM 1″ (~30 m)** [V]. Zoom 13–15 tiles are only interpolated SRTM [V, S].
    - **Resolution matters for slope**. We measured this on SRTM around Katoomba. The 99th-percentile slope is **58.6° at 30 m, 48.3° at 90 m and 37.8° at 180 m** [V]. The fire model must use the finest DEM available, and the atmosphere model a separately smoothed one.
@@ -58,12 +79,16 @@ So I did three things:
    - **DEA Sentinel‑2 live fuel moisture content (`ga_s2_fmc_3_v1`)**: 20 m COG in %, **CORS \***, current to 2026‑09‑10 for tile 56HKH [V]. This is a bonus layer for live FMC in the elevated and near-surface fuels.
 6. **Fire history comes from NPWS Fire History** (`Fire/NPWS_Fire_History/MapServer/0`). Fields are `FireName`, `FireNo`, `FireType` (**1 = wildfire, 2 = prescribed burn**), `FireYear` (season code such as `201920`), `StartDate`, `EndDate`, `AreaHa` and `PerimeterM` [3P]. It includes Black Summer [3P]. Rasterise it to *time since fire* for fuel accumulation.
 7. **Incidents and hotspots**:
-   - **NSW RFS `majorIncidents.json`**: GeoJSON with GeometryCollections (point plus fire-extent polygons). `category` is one of Emergency Warning, Watch and Act, Advice, Not Applicable or Planned Burn. The fields STATUS, TYPE, SIZE, COUNCIL AREA, LOCATION, FIRE and RESPONSIBLE AGENCY are packed into an HTML `description` string [3P]. CC BY 4.0, **no CORS** [3P].
-   - **DEA Hotspots WFS** (`public:hotspots`, `public:hotspots_three_days`; CC BY 4.0; updated about every 10 min) [S, 3P].
-   - **NASA FIRMS** needs a free MAP_KEY. The area API accepts `DAY_RANGE` 1–5 only, with a limit of 5 000 transactions per 10 min [3P].
+   - **NSW RFS `majorIncidents.json`**: GeoJSON with GeometryCollections (point plus fire-extent polygons). `category` is one of Emergency Warning, Watch and Act, Advice, Not Applicable or Planned Burn. The fields STATUS, TYPE, SIZE, COUNCIL AREA, LOCATION, FIRE and RESPONSIBLE AGENCY are packed into an HTML `description` string [3P]. The licence is CC BY 4.0.
+     - **CORRECTED CORS:** a 2026 browser app reports that RFS *"sends ACAO: \* only when an Origin header is present, which browsers always do"* (ben-gy/au-bushfires `src/live.ts`) [3P]. The older "no CORS" reports date from 2015–2019. Test on device and keep native HTTP as the fallback.
+   - **Digital Atlas of Australia near-real-time bushfire extents** (`Near_Real_Time_Bushfire_Boundaries_view/FeatureServer/3`) are national, about 3-hourly, CC BY 4.0, and reported **CORS \*** [3P]. **NEW.**
+   - **DEA Hotspots WFS** (`public:hotspots`, `public:hotspots_three_days`; CC BY 4.0; updated every 10 min) [S] (verified: dea-knowledge-hub `_data.yaml`, `data_update_frequency: 10_MIN`, coverage from 27 Aug 2002).
+     - The 10-min cadence comes from the Himawari geostationary detections, which are coarse at about 2 km or more [K].
+     - **Never fetch `recent-hotspots.json` on a phone**: it is about 149 MB and 175 000 features for all of Australia [3P]. Use a bbox WFS query instead.
+   - **NASA FIRMS** needs a free MAP_KEY. The area API accepts `DAY_RANGE` 1–5 only: three independent 2026 client repos measured this, although the older docs say 1–10. The limit is 5 000 transactions per 10 min [3P].
 8. **Transport rule for the app** [S, from our `src/data/http.ts`, and H]:
    - All network I/O runs on the **main thread** through `CapacitorHttp`. The Web Worker has no native bridge.
-   - Binary data is fetched as base64 or through `Filesystem.downloadFile`, then handed to the worker as transferable `ArrayBuffer`s.
+   - Binary data is fetched as base64 or downloaded to disk, then handed to the worker as transferable `ArrayBuffer`s. **CORRECTED:** `Filesystem.downloadFile` still exists in `@capacitor/filesystem` 8.1.3 but is marked *"@deprecated Use the @capacitor/file-transfer plugin instead"* since 7.1.0 (verified: installed `definitions.d.ts`). Use `@capacitor/file-transfer` for pack downloads.
    - Imagery for Three.js textures must arrive as bytes and then go through `createImageBitmap`. A cross-origin `<img>` without CORS would taint WebGL.
 9. **Area packs are mandatory.** A 10 km × 10 km pack is about **15–40 MB** (§5.5):
    - 5 m DEM resampled to 10 m;

@@ -12,7 +12,10 @@ field, running in a Web Worker on a phone).
 >
 > * **[V]** verified in this session from the source's own abstract or index record, via search extract.
 > * **[S01]/[S02]** reported with a source in sibling FireSim reviews `01-terrain-fire-behaviour.md` or
->   `02-mountain-meteorology.md`. I did not re-verify these.
+>   `02-mountain-meteorology.md`. I did not re-verify these. The fact-check pass added **[S03]**,
+>   **[S05]** and **[S08]** for docs `03-australian-fire-models.md`, `05-fuel-accumulation-history.md`
+>   and `08-data-sources-apis.md`, and checked [S01]/[S02] items for consistency with the current
+>   sibling docs.
 > * **[P]** primary literature recalled from prior reading. I believe the citation is correct, but I did
 >   **not** re-check the exact number or wording this session. **Check it against the original before
 >   hard-coding it.**
@@ -446,8 +449,9 @@ These are the key "why" items for trainees.
      [S02, McRae line-scan observations].
    * The combination drove deep flaming and pyroCb in the 2003 Canberra fires and in the Grose Valley in
      November 2006 (McRae, Sharples & Fromm 2015) [S02].
-5. **Slope inside the source fire.** Storey et al. (2020, IJWF) found that source-fire area was the
-   strongest predictor of maximum spot distance. A steep slope within the source fire also increased
+5. **Slope inside the source fire.** Storey et al. (2020, IJWF) analysed 338 line-scan observations from
+   south-east Australia, 2002–2018 (sample size per doc 01, [S01]). They found that source-fire area was
+   the strongest predictor of maximum spot distance. A steep slope within the source fire also increased
    maximum spotting distance and the probability of spots beyond 500 m [S01].
 6. **Upslope spotting and convergence.**
    * When wind and slope align, embers from a fire low on a slope land upslope ahead of it.
@@ -550,7 +554,7 @@ v_t = sqrt( 2 m g / (ρ_a C_d A_p) )            [m/s]
 * Valid for Re = ρ_a v_t L/μ ≈ 10³–10⁵, with μ ≈ 1.8×10⁻⁵ Pa s. Ember sizes of mm to cm at a few m/s
   give Re ≈ 10³–10⁴ [D].
 
-**(2) Thin plate falling flat** (thickness δ, solid density ρ_s):
+**(2) Thin plate falling flat** (thickness δ, solid density ρ_s) (verified: follows from eq. 1 with m = ρ_s δ A_p):
 
 ```
 v_t = sqrt( 2 ρ_s δ g / (ρ_a C_d) )
@@ -584,7 +588,7 @@ Evaluated with ρ_a = 1.1 and C_d = 1.2 [D]:
 The densities are illustrative; charred-bark densities were not retrieved. **Measured values:**
 ribbon-bark strips fall at 5.2–5.8 m/s [V]. Calibrate class defaults to measurements where they exist.
 
-**(4) Response time and kinematic approximation** [D]
+**(4) Response time and kinematic approximation** [D] (verified: arithmetic. The same assumption as Tarifa's key conclusion that brands fall at terminal velocity, per Manzello et al. 2020 §4)
 
 ```
 τ_p ≈ v_t / g ≈ 0.3–0.6 s
@@ -609,25 +613,43 @@ temperature matters as much as altitude.
 
 ### 3.2 Burning in flight
 
-**(7) Tarifa/Albini wood burning law** (Albini 1979, after Tarifa et al. 1965) [P: verify the exact form
-and constant in INT-GTR-56]
+**(7) Tarifa/Albini wood burning law** (Albini 1979, after Tarifa et al. 1965)
 
 ```
-d(ρ_s D)/dt = − K ρ_a v_r ,    K ≈ 0.0064 (dimensionless),  v_r ≈ v_t (relative air speed)
-lifetime τ ≈ (ρ_s D)_0 / (K ρ_a v_r)
+d(ρ_s D)/dt = − K ρ_a v_r ,    K = 0.0064 (dimensionless),  v_r = v_t (brand falling at terminal speed)
+
+Because v_t ∝ sqrt(ρ_s D) (eq. 3), v_t falls LINEARLY in time:  v_t(t) = v_t0 (1 − t/τ)
+lifetime        τ = 4 C_d v_t0 / (π K g)  ≈ 24.3 · v_t0  [s, v_t0 in m/s; C_d = 1.2]
+                  (= 2 (ρ_s D)_0 / (K ρ_a v_t0), i.e. twice the constant-speed estimate)
+max fall height while still burning   z_b = v_t0 τ / 2 = 2 C_d v_t0² / (π K g)
 ```
 
-Two consequences: slow-falling brands burn more slowly, and brands burn more slowly in thin air.
+(Verified: FARSITE `fsxwspot.cpp` implements `tao = 4.8·voo/(0.0064·π·32)`, i.e. τ = 4C_d v_t0/(πKg)
+with C_d = 1.2 in ft-s units. It also implements the fall `z(t) = voo·tao·(t/tao − ½(t/tao)²)` and
+the burnout-limited fall height `MAXZ = 39000·D` ft. That value equals 2.4·v_t0²/(πKg) with
+v_t0² = 10 612·D ft²/s², which the arithmetic here confirms. The form of the law and K = 0.0064 are
+therefore confirmed as Albini's operational implementation. UNVERIFIED against the INT-56 text itself.)
 
-**Check against eucalypt bark** [D]:
-* For a strip at v_t = 5.2–5.8 m/s, eq. (1) gives m/(D·L) ≈ 2.0–2.5 kg/m². The equivalent ρ_s·D is
-  ≈ 2.5–3.1 kg/m².
-* Eq. (7) then gives τ ≈ 63–71 s.
-* Hall et al. measured *mean* burnouts of 122–429 s [V].
-* **The wood law under-predicts bark lifetime by about 2–7×**, so FireSim uses empirical lifetimes per
-  class.
+Two consequences: slow-falling brands burn more slowly, and brands burn more slowly in thin air
+(τ ∝ v_t0 ∝ ρ_a^{−1/2}).
 
-**(8) FireSim mass loss and fall speed** [A, D]
+**Check against eucalypt bark** [D] (corrected in this pass):
+* For a strip at v_t = 5.2–5.8 m/s, eq. (1) with ρ_a = 1.2 gives m/(D·L) ≈ 2.0–2.5 kg/m². The
+  equivalent solid-cylinder ρ_s·D is ≈ 2.5–3.2 kg/m².
+* Albini's law then gives τ = 24.3·v_t0 ≈ **127 s (5.2 m/s), 131 s (5.4 m/s) and 141 s (5.8 m/s)**.
+  * The earlier figure of 63–71 s held v_r fixed at v_t0. Albini's own coupled form doubles that.
+* Hall et al. measured *mean* burnouts of 251 s (plates, 5.4 m/s), 122 s (simple cylinders, 5.2 m/s)
+  and 429 s (convoluted cylinders, 5.8 m/s) [V]. Measured/Albini ratios are therefore **1.9, 0.96
+  and 3.0**.
+* **The wood law is adequate for simple bark cylinders. It under-predicts flat plates about 2× and
+  convoluted strips (the long-range carriers) about 3×, and it misses the long tail entirely.**
+  FireSim therefore uses empirical lifetimes per class.
+* **Alternative physics (not recommended as default).** WRF-Fire's firebrand module uses a sphere
+  "d²-law" with burning constant β₀ = 4.8×10⁻⁷ m²/s and a convective correction
+  β = β₀(1 + 0.276 Re^{1/2} Sc^{1/3}), after Tse & Fernandez-Pello (1998). (Verified: WRF
+  `module_firebrand_spotting.F`, subroutine `burnout`.) It is calibrated for wood spheres, not bark.
+
+**(8) FireSim mass loss and fall speed** [A, D] (the exponents were checked from eqs. 2–3: plate v ∝ δ^{1/2} ∝ m^{1/2}; cylinder v ∝ D^{1/2} ∝ m^{1/4}. The linear m(t) is an assumption)
 
 ```
 m(t)/m0 = max(0, 1 − t/τ_b)
@@ -641,7 +663,8 @@ samples [V]; the total sample count and rate were not retrieved. v_t must never 
 
 ### 3.3 Plume strength, lofting and plume height
 
-**(9) Line-fire buoyancy flux** [P, standard plume theory]
+**(9) Line-fire buoyancy flux** [P, standard plume theory] (verified: dimensional check. The worked
+table below was recomputed in this pass and all 15 cells match)
 
 ```
 F_L = g I / (ρ_a c_p T_a)        [m³ s⁻³],   I = Byram fireline intensity (W/m)
@@ -649,7 +672,7 @@ F_L = g I / (ρ_a c_p T_a)        [m³ s⁻³],   I = Byram fireline intensity (
 
 Byram's I includes radiated heat. The convective share is smaller, but the fraction is uncertain [P].
 
-**(10) Byram convective number** (Byram 1959; units clarified by Nelson 1993) [P]
+**(10) Byram convective number** (Byram 1959; units clarified by Nelson 1993) [P] (the form was verified against docs 02 and 07; see the note under the regimes)
 
 ```
 N_c = 2 g I / (ρ_a c_p T_a (U − R)³) = 2 F_L / (U − R)³
@@ -658,6 +681,13 @@ N_c = 2 g I / (ρ_a c_p T_a (U − R)³) = 2 F_L / (U − R)³
 * U: wind speed (m/s). The reference height is not standardised: use the 10 m open wind and state it.
 * R: ROS (m/s).
 * Regimes: N_c < 2 wind-driven, N_c > 10 plume-dominated (Morvan & Frangieh 2018) [P].
+* (Verified: the formula matches doc 02 §2.6 and doc 07, both from Byram 1959 and Nelson 1993. The
+  2/10 bands are verified only "as commonly cited".)
+* **Reference-height trap.** The height at which U is taken is not standardised across papers (doc 07,
+  open question 4; UNVERIFIED what Byram used). N_c ∝ (U − R)^{−3}, so a factor of 1.5 in U changes
+  N_c by about 3.4×. Using the 10 m open wind in forest gives a larger U than the canopy-top or
+  in-forest wind, so it gives a smaller N_c. For cards, state which wind is used; FireSim's default is
+  the 10 m open wind [A]. Treat the 2/10 bands as fuzzy (±×3).
 
 Worked values [D] (ρ_a = 1.1, T_a = 303 K, R ≪ U):
 
@@ -672,7 +702,7 @@ Worked values [D] (ρ_a = 1.1, T_a = 303 K, R ≪ U):
 Identity [D]: (N_c/2)^{1/3} = F_L^{1/3}/(U − R). N_c ≈ 10 therefore means the plume velocity scale is
 about 1.7× the wind speed.
 
-**(11) Line-plume velocity scale** [P, similarity theory]
+**(11) Line-plume velocity scale** [P, similarity theory] (UNVERIFIED coefficient: C_w is a FireSim calibration constant, not a literature value)
 
 ```
 w_c ≈ C_w F_L^{1/3}
@@ -688,22 +718,40 @@ them readily [D].
 F  = g Q / (π ρ_a c_p T_a)                 [m⁴ s⁻³],  Q = heat release (W)
 Δh = 1.6 F^{1/3} x^{2/3} / U               neutral, bent-over, transitional rise at distance x
 Δh = 2.6 (F / (U N²))^{1/3}                stable, windy (final rise)
-Δh = 5.0 F^{1/4} N^{−3/4}                  stable, calm (final rise)
+Δh = 5.0 F^{1/4} N^{−3/4}                  stable, calm (final rise)  [N^{−3/4} = s^{−3/8}, s = N²]
 N  = sqrt( (g/θ) dθ/dz )                   Brunt–Väisälä frequency (s⁻¹)
+In stable air take the SMALLER of the windy and calm predictions (and of the transitional value).
 ```
 
-Worked example [D]: a 1 km front at 10 MW/m (Q = 10 GW) gives F ≈ 9.3×10⁴ m⁴/s³.
+(Partly verified: the 1.6·F^{1/3}x^{2/3}/U and 5.0·F^{1/4}s^{−3/8} forms, and the "take the minimum"
+rule, match an independent transcription of Seinfeld & Pandis (2006) Table 18.4 in the `cmaq2hemco`
+code. The stable-windy coefficient is **UNVERIFIED**: Briggs's own versions differ, with 2.4–2.9
+quoted across the 1969/1971/1975 papers. 2.6 is the commonly quoted 1975 value, and a 10 % spread
+changes Δh by 10 %.)
+
+**Line-fire caveat.** These are *point-source* (stack) laws. A 1 km fire front is closer to a line
+source, and line plumes entrain differently. Treat point-source numbers for long fronts as ±50 %
+order-of-magnitude checks only [A]. The resolved atmosphere is the real answer.
+
+Worked example [D] (recomputed in this pass): a 1 km front at 10 MW/m (Q = 10 GW) gives
+F ≈ 9.3×10⁴ m⁴/s³.
 
 | Conditions | Final rise |
 |---|---|
 | Stable, N = 0.01 s⁻¹, U = 10 m/s | about 1.2 km |
 | Weakly stable, N = 0.005 s⁻¹, U = 10 m/s | about 1.9 km |
-| Night inversion, N = 0.02 s⁻¹ | about 0.74 km |
+| Night inversion, N = 0.02 s⁻¹, **U = 10 m/s** (windy law; the calm law gives 1.6 km, so take the smaller) | about 0.74 km |
+| Night inversion, N = 0.02 s⁻¹, U = 2 m/s | about 1.3 km (windy law: 1.27 km < calm 1.64 km) |
 | Q = 50 GW, N = 0.005 s⁻¹, U = 10 m/s | about 3.2 km |
 
-These are dry-plume numbers. PyroCu/pyroCb (latent heat) exceed them.
+These are dry-plume numbers. PyroCu/pyroCb (latent heat) exceed them. Stability is conveniently
+expressed as dθ/dz: N = 0.01 s⁻¹ ≈ 0.3 K per 100 m, and N = 0.02 s⁻¹ ≈ 1.2 K per 100 m at
+θ ≈ 295 K.
 
-**(13) Satellite-calibrated injection height** (Sofiev et al. 2012) [P: constants recalled, verify]
+**(13) Satellite-calibrated injection height** (Sofiev et al. 2012) (verified: the form and all six
+constants match the independent EarthSciML `EnvironmentalTransport.jl` implementation
+`sofiev_2012.jl`, which cites doi:10.5194/acp-12-1995-2012. H_abl is the boundary-layer height (m),
+and N_FT is the Brunt–Väisälä frequency in the free troposphere (s⁻¹))
 
 ```
 H_p = α H_abl + β (FRP / P_f0)^γ · exp(−δ N_FT² / N_0²)
@@ -713,7 +761,7 @@ H_p = α H_abl + β (FRP / P_f0)^γ · exp(−δ N_FT² / N_0²)
 FRP is fire radiative power (W), only a fraction of the total heat release. Use this only as a
 cross-check on resolved plume tops.
 
-**(14) Lofting criterion** (Albini 1979/1983 concept) [P]
+**(14) Lofting criterion** (Albini 1979/1983 concept) [P] (verified in structure: BehavePlus `CrownFirebrandProcessor::processFirebrandLoft` climbs plume layers until the vertical dynamic pressure no longer supports the ember)
 
 An ember rises while w_air(z) > v_t(t). It is released to fall where w_air = v_t or at plume top. Low-v_t
 embers are lofted highest.
@@ -722,6 +770,7 @@ embers are lofted highest.
 
 Albini (1979, INT-GTR-56) [V existence] predicts maximum spot distance from torching trees. Extensions
 cover burning piles (Albini 1981) and wind-driven surface fires via line thermals (Albini 1983a,b) [P].
+A crown-fire version (Albini, Alexander & Cruz 2012) is in BehavePlus 7 [P; code verified below].
 
 Its structure:
 1. The source (tree species, DBH, number torching, or fireline intensity) sets flame height and
@@ -732,19 +781,64 @@ Its structure:
    ```
    u(z) = u_H · ln((z − 0.64H)/(0.13H)) / ln(0.36/0.13)      [P]
    ```
-   where H is canopy height and u_H the wind at canopy top.
+   where H is canopy height and u_H the wind at canopy top. (UNVERIFIED: this profile could not be
+   matched to code. The operational closed form below is what BehavePlus actually uses.)
 5. The maximum distance belongs to the brand that just burns out as it lands.
 6. A terrain correction uses ridge-to-valley elevation difference, ridge-to-valley horizontal distance
-   and the source's position on the slope [P, these are BehavePlus spotting inputs].
+   and the source's position on the slope (verified: BehavePlus `spot.cpp`).
+
+**Operational equations** (verified transcription: USFS `behave` library, `spot.cpp`, from BehavePlus 5
+by Bevins; **US customary units exactly as coded**):
+
+```
+Critical cover height (ft):   H_c = 2.2 · z_F^0.337 − 4.0 ;   H_used = max(H_cover, H_c)
+                              (H_cover is halved if the downwind canopy is "open")
+Flat-terrain distance (mi):   D_flat = 0.000718 · U20 · sqrt(H_used) ·
+                                        ( 0.362 + sqrt(z_F/H_used)/2 · ln(z_F/H_used) )
+      U20 = 20-ft (6.1 m) wind, mi/h;  z_F = initial firebrand height, ft
+Surface (wind-driven) fire source (Albini 1983; the code does not name the curve-fit authors;
+      attributing them to Chase 1984 or Morris 1987 is UNVERIFIED):
+      I_B  = (L_f / 0.45)^(1/0.46)          Byram intensity (BTU ft⁻¹ s⁻¹) from flame length L_f (ft)
+      f    = 322 · (0.474 · U20)^(−1.01)
+      z_F  = 1.055 · sqrt(f · I_B)           (ft)
+      drift = 0.000278 · U20 · z_F^0.643     (mi), added to D_flat
+Burning pile:  z_F = 12.2 · (pile flame height, ft)
+Mountain terrain correction (Albini 1979):
+      a = D_flat / D_RV ,  b = ΔH_RV / (10π) / 1000      (D in mi, ΔH_RV = ridge–valley relief in ft)
+      iterate 6×:  x ← a − b · [ cos(πx − Lπ/2) − cos(Lπ/2) ]
+      D_mountain = x · D_RV
+      L (source location) = 0 mid-slope windward, 1 valley bottom, 2 mid-slope leeward, 3 ridge top
+Active crown fire (Albini, Alexander & Cruz 2012, in CrownFirebrandProcessor.cpp): needs I ≥ 1000 kW/m,
+      canopy-top wind u_H = U_anem / (3.6·(1 + ln(1 + 2.94·z_anem/H))) m/s (U in km/h); default
+      alighting ember diameter 0.5 mm.
+```
+
+Worked mountain example [D, using the verified correction; computed in this pass]. D_flat = 0.5 mi
+(0.8 km), D_RV = 1 mi (1.6 km) and ΔH = 2000 ft (610 m) give b = 0.064. Each source location then
+reduces to a simpler equation:
+
+| Source location | Equation | Distance | Change |
+|---|---|---|---|
+| mid-slope windward | x = a + b(1 − cos πx) | 0.58 mi | **+16 %** |
+| ridge top | x = a + b·sin πx | 0.56 mi | **+12 %** |
+| mid-slope leeward | x = a − b(1 − cos πx) | 0.45 mi | **−11 %** |
+| valley bottom | x = a − b·sin πx | 0.44 mi | **−12 %** |
+
+The corrections are modest, of order ±10–20 %, for typical NSW relief. They grow with ΔH/D_RV.
+
+The terrain is idealised as a sinusoid of half-wavelength D_RV. This is the published way to give
+trainees the "height advantage" number, and FireSim's explicit 3-D terrain collision should reproduce
+its sign.
 
 For FireSim, reuse the *structure* but not the calibrations. Albini's calibrations were built for North
-American conifers and wood brands [A].
+American conifers and wood brands [A]. Use the BehavePlus numbers only in unit tests (§4.9) and as a
+"what the US tool would say" comparison.
 
 ### 3.5 Flight-time and burnout bounds
 
 These give cheap, honest sanity checks and explanations.
 
-**(15) Steady horizontal wind, constant v_t** [D]
+**(15) Steady horizontal wind, constant v_t** [D] (verified: kinematics; the worked table was recomputed)
 
 ```
 X = (1/v_t) ∫_{z_land}^{z_L} U(z) dz = Ū · (z_L − z_land)/v_t
@@ -757,6 +851,11 @@ X = (1/v_t) ∫_{z_land}^{z_L} U(z) dz = Ū · (z_L − z_land)/v_t
 ```
 z* = v_t τ_b ;   X_max ≈ Ū τ_b   (if the plume lofts the brand to ≥ z*)
 ```
+
+(These assume v_t is constant while the brand burns. Under Albini's coupled law, v_t falls linearly
+to zero, so the burnout-limited fall height is z_b = v_t0·τ/2 (eq. 7). Measured bark lifetimes (Hall
+et al.) already include whatever v_t change occurred in the wind tunnel, so constant v_t with measured
+τ_b is the more honest choice for bark [D].)
 
 Worked cases [D]:
 
@@ -772,8 +871,10 @@ columns.
 
 ### 3.6 Empirical Australian spotting-distance relations
 
-**(17) McArthur Forest Fire Danger Meter Mk5 as equations** (Noble, Bary & Gill 1980) [P: the form is
-well known; verify coefficients]
+**(17) McArthur Forest Fire Danger Meter Mk5 as equations** (Noble, Bary & Gill 1980) (verified: the
+coefficients match three independent code transcriptions: fiRetools `forest_behav.R`,
+FireBehaviourCalcsR `forest_mcarthur.R` (from Tolhurst's NSW RFS AFBPS workbook) and FireSim doc 03.
+Spotting uses the **flat-ground** R, and S is clipped at 0.)
 
 ```
 R = 0.0012 · FFDI · W                 R = ROS on flat ground (km/h), W = fine fuel load (t/ha)
@@ -799,24 +900,77 @@ distance.
 * Bark hazard 3 → 2 gives about a third of the firebrand density [V].
 * Fuel characteristics and wind correlate with firebrand density and spotting distance, both of which
   increase with time since fire [V].
-* The Vesta field guide also gives a maximum-spotting-distance model. **Its equation was not
-  retrievable in this session and must be transcribed from the source** before use.
+* The Vesta field guide also gives a maximum-spotting-distance model. Its operational fit is now
+  transcribed below as eq. (18a).
+
+**(18a) AFDRS forest maximum spotting distance: a fit to the Vesta/DEFFM spotting model** (Gould et al.
+2007; K. Tolhurst pers. comm.). (Verified, four independent transcriptions agree:
+* AFDRS FBI Technical Guide v1.0 (2022), eq. 3.51;
+* Matthews et al. (2019), AFDRS Research Prototype eq. 3.52;
+* PyroXL `AFDRS_forest.bas` `Spotting_forest()` (NSW RFS);
+* FireBehaviourCalcsR `forest_vesta.R`.)
+
+```
+if ROS < 150 m/h:   S = 50 m
+else:               S = | 176.969 · atan(FHS_s) · (ROS / U10^0.25)^0.5
+                          + 1568800 · FHS_s^(−1) · (ROS / U10^0.25)^(−1.5)
+                          − 3015.09 |                                   [m]
+ROS = forward ROS (m/h); U10 = 10 m open wind (km/h); FHS_s = surface fuel hazard score (0–4);
+atan in radians
+```
+
+Computed values [D, this pass]:
+
+| FHS_s | U10 (km/h) | ROS 500 m/h | 1000 | 2000 | 3000 | 5000 |
+|---|---|---|---|---|---|---|
+| 2 | 40 | 27 m | 0.99 km | 2.5 km | 3.8 km | 5.7 km |
+| 3 | 40 | 288 m | 1.5 km | 3.2 km | 4.6 km | 6.8 km |
+| 3.5 | 40 | 370 m | 1.6 km | 3.5 km | 4.9 km | 7.2 km |
+| 4 | 20 | 701 m | 2.1 km | 4.2 km | 5.8 km | 8.4 km |
+| 4 | 60 | 293 m | 1.5 km | 3.3 km | 4.7 km | 6.9 km |
+
+Caveats [D]:
+* **The fit is not monotonic below about 700–1000 m/h.** The absolute value creates a V-shaped
+  minimum. For example, FHS_s = 2 and U10 = 40 gives 201 m at 150 m/h, 273 m at 300 m/h and 27 m at
+  500 m/h. Use it only for ROS ≥ 1000 m/h, and clamp it to ≥ 50 m and non-decreasing in ROS below
+  that [A].
+* At fixed ROS, a higher wind gives a *shorter* S. Physically, the same ROS in stronger wind implies
+  less fuel and a weaker plume.
+* It is a *maximum* (envelope) distance for normal forest fires. It does not represent pyroconvective
+  20–30 km events.
+* **FireSim use:** calibration and test target for the P95–P99 Lagrangian landing distance in
+  non-pyroconvective runs (§4.9 test 5b), and a cross-check card ("the Australian operational model
+  says up to ~S km").
 
 ### 3.7 Landing-distance distributions
 
-**(19) Lognormal kernel** (Sardoy et al. 2008; used in Kaur et al. 2016) [P]
+**(19) Lognormal kernel** (Sardoy et al. 2008; used in Kaur et al. 2016) (form verified: ELMFIRE lognormal CDF code)
 
 ```
 f(ℓ) = 1 / (sqrt(2π) σ ℓ) · exp( −(ln ℓ − μ)² / (2σ²) )
 ```
 
 Sardoy's regressions for μ and σ as functions of I (MW/m) and U (m/s), with separate branches for
-plume- and wind-dominated Froude numbers, are reproduced in Kaur et al. (2016). As recalled:
-* wind-driven branch: μ = 1.32 I^{0.26} U^{0.11} − 0.02 and σ = 4.95 I^{−0.01} U^{−0.02} − 3.48;
-* plume-driven branch: μ = 1.47 I^{0.54} U^{−0.55} + 1.14 and σ = 0.86 I^{−0.21} U^{0.44} + 0.19.
+plume- and wind-dominated Froude numbers, are reproduced in Kaur et al. (2016):
+* wind-driven branch (Fr > 1): μ = 1.32 I^{0.26} U^{0.11} − 0.02 and σ = 4.95 I^{−0.01} U^{−0.02} − 3.48;
+* plume-driven branch (Fr ≤ 1): μ = 1.47 I^{0.54} U^{−0.55} + 1.14 and σ = 0.86 I^{−0.21} U^{0.44} + 0.19;
+* with Fr = U/sqrt(g L_c) and L_c = ( I / (ρ_a c_p T_a sqrt(g)) )^{2/3}. In that expression I is in
+  kW/m, c_p = 1.0 kJ kg⁻¹ K⁻¹, ρ_a = 1.1 kg/m³ and T_a = 300 K. U is the 10 m wind. μ and σ are the
+  log-space parameters for ℓ in **metres**.
 
-**Low confidence.** These constants are recalled, not re-checked. They were derived for idealised disk
-brands from line fires, not eucalypt bark, and are **not** used in FireSim defaults.
+(Verified: all eight constants, the Froude switch and L_c match ELMFIRE's `EMPIRICAL_PDF_PARAMETERS`,
+`elmfire_spotting.f90`. ELMFIRE uses the exponent 0.67 for 2/3 and caps μ at 5.0. UNVERIFIED against
+Sardoy et al. 2008 directly.)
+
+**Worked value [D, this pass]:** I = 10 MW/m and U = 10 m/s give L_c ≈ 4.5 m and Fr ≈ 1.5, so the
+wind-driven branch applies. Then μ ≈ 3.07 and σ ≈ 1.14:
+* median ℓ ≈ 22 m;
+* mean ≈ 41 m;
+* P99 ≈ 300 m.
+
+**So the Sardoy kernel is a short-range kernel.** It was derived for idealised disk brands from line
+fires, not eucalypt bark, and it cannot produce km-scale eucalypt spotting. It is **not** used in
+FireSim defaults.
 
 **Evidence against a single kernel.** Observed south-east Australian distributions are often
 **multimodal**, and exponential-shaped kernels can under-estimate long-range spotting (Storey et al.
@@ -825,14 +979,17 @@ distributions [P]. This supports FireSim's choice to *simulate* rather than pres
 
 ### 3.8 Turbulence for unresolved eddies
 
-**(20) Ornstein–Uhlenbeck (Langevin) velocity fluctuation**, exact discrete update, one per component
+**(20) Ornstein–Uhlenbeck (Langevin) velocity fluctuation**, exact discrete update, one per component (verified: the exact solution of the OU process)
 [standard]:
 
 ```
 u'_{n+1} = u'_n · e^{−Δt/T} + σ · sqrt(1 − e^{−2Δt/T}) · ξ ,   ξ ~ N(0,1)
 ```
 
-**(21) Boundary-layer turbulence** [P, standard parameterisations]:
+**(21) Boundary-layer turbulence** [P, standard parameterisations] (UNVERIFIED this pass: no
+independent transcription was checked. These are textbook values: σ_u/u* = 2.39, σ_v/u* = 1.92 and
+σ_w/u* = 1.25 in Panofsky & Dutton, and the Lenschow profile. Uncertainty is about ±20 % and the
+choice does not matter at FireSim's resolution):
 
 ```
 Neutral surface layer (Panofsky & Dutton 1984):  σ_u ≈ 2.4 u*,  σ_v ≈ 1.9 u*,  σ_w ≈ 1.25 u*
@@ -847,19 +1004,28 @@ T_L ≈ 0.15 z_i / σ  (CBL, Hanna 1982)           T_L,w ≈ 0.5 z / σ_w (near-
 * *Crossing trajectories* (Csanady 1963) [P]: T_eff = T_L / sqrt(1 + (β v_t/σ)²), with β of order 1.
 * *Well-mixed drift* (Thomson 1987) [P]: add the ½·∂σ_w²/∂z drift term. Without it, particles
   accumulate spuriously where turbulence is weak. The error is small for heavy, falling brands, but the
-  term is cheap.
+  term is cheap. (For Gaussian inhomogeneous turbulence, the full Thomson drift in the Langevin
+  equation for w′ is ½(∂σ_w²/∂z)(1 + w′²/σ_w²). The ½·∂σ_w²/∂z form is its mean, i.e. the simplified
+  Legg & Raupach form. Either is acceptable here.)
 
 ### 3.9 Ignition probability on landing
 
-**(22) Schroeder (1969) / Rothermel (1983) "probability of ignition"** [P]. This is the standard US
-fine-dead-fuel ignition index, used in BehavePlus spotting practice. It is an American index; use it
+**(22) Schroeder (1969) / Rothermel (1983) "probability of ignition"**. This is the standard US
+fine-dead-fuel ignition index, used in the BehavePlus IGNITE module. It is an American index; use it
 only as a documented fallback.
 
 ```
-Q_ig = 144.5 − 0.266 T_f − 0.00058 T_f² − T_f M + 18.54 (1 − e^{−15.1 M}) + 640 M     [cal/g]
+Q_ig = 144.51 − 0.266 T_f − 0.00058 T_f² − T_f M + 18.54 (1 − e^{−15.1 M}) + 640 M     [cal/g]
+Q_ig = min(Q_ig, 400)
 X    = (400 − Q_ig) / 10
-P_ig = 0.000048 · X^{4.3} / 50        (clip to [0,1]; 0 if X ≤ 0)
+P_ig = 0.000048 · X^{4.3} / 50        (clip to [0,1])
+Fuel temperature (BehavePlus rule):  T_f = T_air + (25 − 20·shade) °F
+                                     i.e. +13.9 °C in full sun … +2.8 °C in full shade
 ```
+
+(Verified: the constants, the 400 cap, the clip and the fuel-temperature rule are exactly as coded in the
+USFS `behave` library `ignite.cpp` `calculateFirebrandIgnitionProbability()`, which uses 1-h moisture as a
+fraction and T_f in °C. The table below was recomputed in this pass; one cell was corrected, 0.77 → 0.76.)
 
 * T_f: fuel temperature (°C), which is higher than air temperature in sunlit litter.
 * M: dead fine fuel moisture as a *fraction*.
@@ -868,11 +1034,11 @@ Computed values [D]:
 
 | T_f | M 3 % | 5 % | 7 % | 10 % | 12 % | 15 % | 18 % | 20 % | 25 % |
 |---|---|---|---|---|---|---|---|---|---|
-| 20 °C | 0.77 | 0.57 | 0.42 | 0.27 | 0.19 | 0.11 | 0.06 | 0.04 | 0.01 |
+| 20 °C | 0.76 | 0.57 | 0.42 | 0.27 | 0.19 | 0.11 | 0.06 | 0.04 | 0.01 |
 | 30 °C | 0.81 | 0.61 | 0.46 | 0.29 | 0.21 | 0.13 | 0.07 | 0.05 | 0.01 |
 | 40 °C | 0.86 | 0.65 | 0.49 | 0.32 | 0.24 | 0.15 | 0.09 | 0.06 | 0.02 |
 
-**(23) Eucalypt-specific form (target: Ellis 2015)** [V structure; coefficients not retrieved]
+**(23) Eucalypt-specific form (target: Ellis 2015)** [V structure; coefficients not retrieved] (UNVERIFIED: coefficients unknown; the structure is from the abstract only)
 
 ```
 flaming:  logit P = a_f + b_f·M + c_f·[wind > 0]
@@ -884,14 +1050,27 @@ Replace the fallback with these once the coefficients are transcribed.
 ### 3.10 Spot-fire acceleration
 
 **(24) FBP point-ignition acceleration** (Forestry Canada Fire Danger Group 1992; McAlpine & Wakimoto
-1991) [P]
+1991)
 
 ```
-R(t) = R_eq (1 − e^{−α t}),   α = 0.115 min⁻¹
+R(t) = R_eq (1 − e^{−α t}),   α = 0.115 min⁻¹  (open fuel types; t in minutes since ignition)
+α_closed = 0.115 − 18.8 · CFB^{2.5} · e^{−8·CFB}  (closed-canopy types; CFB = crown fraction burned)
+Head-fire distance travelled:  D(t) = R_eq · ( t + e^{−αt}/α − 1/α )
 ```
 
-t₅₀ = 6 min, t₉₀ = 20 min, t₉₅ = 26 min [D]. It was fitted for Canadian fuels, so applying it to
-eucalypt litter is an assumption [A]. Replace it with the eucalypt-litter growth study once retrieved.
+(Verified: cffdrs R package, `distance_at_time.r` and `fire_behaviour_prediction.r`, labelled FCFDG
+1992 Eqs. 70–72. The package converts hours to minutes before use.)
+
+t₅₀ = 6 min, t₉₀ = 20 min, t₉₅ = 26 min [D]. After 20 min, a spot has travelled only
+D ≈ R_eq·(20 − 7.8) ≈ 12·R_eq·min, about 60 % of what a steady fire would have covered. It was fitted
+for Canadian fuels, so applying it to eucalypt litter is an assumption [A]. Replace it with the
+eucalypt-litter growth study once retrieved.
+
+Supporting Australian evidence (doc 03, [S03]): the AFDRS Research Prototype found that Vesta-based
+predictions over-predicted fires still in their build-up phase, i.e. new ignitions spread slower than
+the steady-state model. Slope accelerates build-up: in lab hill experiments, merging spot fires
+restored the ROS the hill had suppressed (Storey et al. 2021, [S01]). FBP α has no slope term, so
+FireSim applies the slope factor to R_eq and keeps α [A].
 
 ---
 
@@ -918,7 +1097,7 @@ eucalypt litter is an assumption [A]. Replace it with the eucalypt-litter growth
 | E1 stringybark flake | 35 % | lognormal, median 4.5, range 3–6 | lognormal, median 30 | lognormal, median 150, tail to ≥ 600 (internal combustion [V]) | U(0.3, 1.0) × min(flame ht, loose-bark ht) | λ_rf re-flame 0.005 s⁻¹ [A] |
 | E2 ribbon strip | 30 % when ribbon species present, else 0 | U(5.2, 5.8) [V] | median 60 | mixture over 3 morphologies with means 251 / 122 / 429 s [V], plus a long tail to about 1500 s [A, consistent with > 20 km [V]] | crown base to canopy top when flame reaches crown, or I > 10 MW/m | long-range carrier |
 | E3 leaf | 15 % when crown involved | 1.5–2.5 [D] | 10 | 25 | canopy | burns out < 1 km |
-| E4 twig | 15 % | 4–7 [D] | 20 | 60 [D, eq. 7] | 0.5–1 × flame height | |
+| E4 twig | 15 % | 4–7 [D] | 20 | 120: eq. 7 corrected gives τ ≈ 24·v_t0 ≈ 100–170 s [D; law verified] | 0.5–1 × flame height | |
 | E5 heavy | 5 % | 8–12 | 60 | 600 | ground | rarely lofted; hand-off to rolling-debris module |
 
 ### 4.2 Emission
@@ -934,6 +1113,19 @@ e_k  = clamp((L_f − 1 m)/(h_bark − 1 m), 0, 1)   bark engagement; h_bark = l
 * I_k is spread over the flaming residence time. E0 is a calibration constant (§4.9).
 * Crown involvement adds leaves and twigs in proportion to crown fraction burnt.
 * Split ṅ_k into classes by the cell's bark type.
+* **Onset ramp** [A, anchored to a verified threshold]. Multiply ṅ_k by
+  g(I) = clamp((I − 500)/(2000 − 500), 0, 1). This matches "spotting commences" at 500–2000 kW/m and
+  "very little ember production and spot fire activity at less than 1,000 kW/m" (Gould et al. 2007a,
+  verified via AFDRS-RP 2019). The ramp stops low-intensity back-burns showering embers.
+* **Bark hazard from fire history.** BH_k comes from the doc 05 bark-load Olson curve (k_b ≈ 0.1 yr⁻¹)
+  and the FHS thresholds there. Only cells with BH ≥ 3 may emit the long-range E2 tail, following the
+  AFDRS long-range flag (verified).
+* **An order-of-magnitude anchor for E0 (UNVERIFIED primary).** ELMFIRE's "PER-MW" generation default
+  for vegetation is 33.3 embers s⁻¹ per MW of fireline power (`EMBER_GR_PER_MW_VEGE = 33.3`, i.e.
+  ṅ = I[kW/m]·Δx[m]/1000 × 33.3 s⁻¹; code attributes it to "Ju et al., 2023").
+  * For a 30 m cell at 10 MW/m (300 MW) that is about 10⁴ brands/s.
+  * These are sampled embers of all sizes in a US model, not ignition-competent eucalypt bark.
+  * Use it only to set the *scale* of W, then calibrate E0 against Australian spot counts.
 
 **Super-particle sampling.**
 * Each atmosphere step, draw N_c particles per class, with Poisson(ṅ_class·dt / W_class).
@@ -969,6 +1161,13 @@ C_w = 1.5 (calibrate so that resolved + sub-grid plume top matches Briggs, eq. 1
 **Above the atmosphere top (~3 km).**
 * Use ambient winds interpolated from pressure-level NWP (Open-Meteo 850/700/500 hPa, about 1.5, 3
   and 5.5 km) with w = 0.
+  * Use the fields `wind_speed_<L>hPa`, `wind_direction_<L>hPa` and `geopotential_height_<L>hPa`
+    (m above MSL). These names are verified in doc 08 §2, [S08].
+  * **Mountain trap:** on the Kosciuszko Main Range (1,800–2,230 m) and the high New England and
+    Barrington plateaus, 850 hPa (about 1.5 km MSL) is at or **below ground**. 700 hPa can be only
+    about 1 km above the surface.
+  * Interpolate by geopotential height above *ground*, drop sub-surface levels, and request
+    600/500/400/300 hPa too, so that deep columns (pyroCb flag) have winds up to about 9 km.
 * If the diagnosed plume top from the atmosphere or eq. (12)/(13) exceeds the model top (pyroCu/Cb
   flag, doc 02 PFT/C-Haines), continue w_sg aloft up to that plume top so that long-range carriers can
   be represented [A].
@@ -1011,18 +1210,24 @@ These are ember-specific; the fire-spread versions are in doc 01.
    * On lee-separated cells (doc 01 fuzzy VLS score V > 0.5, or diagnosed separation), the resolved
      150 m wind will not reproduce the thin reversed layer.
    * Below z_sep = 0.3 × local relief (ridge-to-valley) [A], blend the horizontal wind towards
-     −0.3 × U_crest along the fall line (upslope) [A: magnitude uncertain].
+     −0.3 × U_crest along the fall line (upslope) [A: magnitude uncertain; consistent with doc 01's
+     0.2–0.4 × U_crest heuristic].
    * Embers falling into the eddy are then drawn back towards the slope and ridge.
 2. **VLS ember injection.** When V > 0.5 and the cell burns above about 4000 kW/m [S01], multiply E1–E4
    emission by 2–3 [A]. Launch at the ridge-top height, where the separated shear layer carries them
    downwind. This follows Hilton et al.'s finding that lateral spread "casts off" embers causing deep
-   flaming [S02].
+   flaming [S02]. The same cells get an in-plume turbulence boost, α_p 0.25 → 0.4 [A], as a stand-in for
+   unresolved fire whirls (§2.9 item 14).
 3. **Ridge release.** Nothing special is needed. Explicit terrain collision gives the release-height
    advantage automatically. Record Δh for the explanation.
 4. **Thermal belt and inversion.** Ignition uses per-cell moisture from the moisture module (thermal-belt
    logic, doc 01 §4.4 item 6 [S01]). Plume capping comes from the resolved stratification.
 5. **Cross-valley preheating** lowers M at receiving cells (doc 01 §4.7 [S01]), which raises P_ign
    automatically.
+6. **Terrain-relative source label.** Record the BehavePlus location class L for every source cell
+   (ridge top / mid-slope windward / mid-slope leeward / valley bottom, from TPI and aspect versus
+   wind) and the ridge-to-valley relief. The explanation card can then quote both the Lagrangian result
+   and the Albini "height advantage" (§3.4). Both are cheap.
 
 ### 4.6 Landing, ignition, delay and growth
 
@@ -1041,14 +1246,36 @@ p        = P_M · S_state · R_fuel · (m/m0)^{0.25}   // small remnants ignite 
 P_spot   = 1 − exp(−W·p)                              // super-particle of weight W
 ```
 
+**Checks on these defaults (fact-check pass).**
+* Single glowing brands were "unlikely" to ignite even very dry pine straw, mulch or grass
+  (Manzello et al., verified via the 2020 review). Ellis (2015) did find glowing ignitions in dry
+  eucalypt litter, dependent on wind speed [V abstract].
+* So the glowing multiplier of 0.5 at 2 m/s is at the generous end. Expose it with a range of
+  0.1–0.5 [A].
+* The flaming S_state = 1.0 inherits Schroeder's P_ig. At M = 5 % and 30 °C that is 0.61, which is
+  plausible for flaming brands on dry fine litter. No eucalypt check is possible until Ellis's
+  coefficients are transcribed.
+
 **Exclusion zone (avoid double counting).**
 * Vesta- and McArthur-type ROS already include short-range spotting in the observed spread [P/A].
 * Do not spawn spot fires within d_ex = max(2 Δx_fire, R_local × 3 min) of the active front on its
   downwind side. Count such landings as "short-range spotting".
 * Landings on burnt cells are ignored. Unburnt islands inside the perimeter *can* ignite.
 
+**Pile / density synergy** [A, motivated by the verified Hakes et al. and Hayashi results in §2.7].
+* If n ≥ 3 landings hit one fire cell within 60 s, multiply p by (1 + 0.2·min(n − 1, 10)), capped
+  so that p ≤ 0.95.
+* This is a placeholder until eucalypt pile data exist. Expose it as a slider (default 0.2). Setting
+  it to 0 shows the independent-ember case, which lets a trainer demonstrate why ember showers matter
+  more than single embers.
+
 **Delay** [A]: τ_d is U(5, 30) s for flaming landings and U(60, 600) s for glowing ones (smoulder to
 flame).
+* **Holdover option** [A]: a small fraction (default 2 %) of glowing landings in deep litter, log or
+  bark-crevice cells are held as *smouldering*.
+* They convert to flaming with a hazard rate that rises when M drops below 10 % (for example after
+  the morning inversion breaks).
+* This demonstrates next-morning flare-ups. There is no Australian duration data (§6).
 
 **Growth.** Ignite with the eq. (24) acceleration ramp applied to the local ROS. Seed the spot with a
 radius of about 1 fire cell.
@@ -1103,8 +1330,8 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
 
 ### 4.9 Calibration and validation tests (Vitest)
 
-1. **Aerodynamics.** v_t from eqs. (2) and (3) matches the table in §3.1. The ribbon class returns
-   5.2–5.8 m/s [V].
+1. **Aerodynamics.** v_t from eqs. (2) and (3) matches the table in §3.1 (recomputed and verified). The
+   ribbon class returns 5.2–5.8 m/s [V].
 2. **Flight bound.** In a uniform 16.7 m/s wind with no plume, releasing E2 at z* = v_t·τ_b lands at
    Ū·τ_b ± 5 % (for example 1200 s → 20 km) [D, V].
 3. **Plume.** A 1 km × 10 MW/m line fire in N = 0.01 s⁻¹ and U = 10 m/s has a resolved + sub-grid
@@ -1112,6 +1339,14 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
 4. **Bark hazard.** Raising BH from 2 to 3 triples landing density, all else equal [V].
 5. **McArthur order of magnitude.** For FFDI 50, W = 15 t/ha, flat terrain and dry litter, the
    P95–P99 spot distance lies within a factor of about 2 of S ≈ 3 km (eq. 17) [A tolerance].
+   5b. **AFDRS/Vesta envelope.** For a non-pyroconvective run with head ROS 2000 m/h, U10 = 40 km/h and
+   FHS_s = 3.5, the P95–P99 landing distance of *ignition-capable* embers lies within ×0.5–×2 of
+   S ≈ 3.5 km (eq. 18a, verified) [A tolerance].
+   5c. **BehavePlus unit tests.** Port `spotDistanceFlatTerrain` and `spotDistanceMountainTerrain`
+   (§3.4). Check that the ridge-top correction is +12 % and the valley-bottom one −12 % for the
+   §3.4 example, as a regression guard for the explanation card.
+   5d. **Albini burnout.** A wood cylinder with v_t0 = 5 m/s burns out in 24.3·5 ≈ 122 s and falls
+   z_b = v_t0·τ/2 ≈ 304 m while burning (eq. 7, verified against FARSITE).
 6. **Moisture.** Raising M from 6 % to 18 % (night) cuts successful spots by about 5–10× (eq. 22
    table) while landings stay similar.
 7. **Multimodality.** With a ribbon-bark source and a deep plume, the landing histogram shows a
@@ -1147,13 +1382,17 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
 * Each card fires from model state, at most once per 10 simulated minutes per phenomenon per area.
 * Cards should cite the provenance record ("this ember came from…").
 * Thresholds marked [A] are FireSim defaults. Those marked [S01] follow doc 01.
+* Thresholds marked "(verified …)" come from Australian operational sources checked in the
+  fact-check pass: the 1000 kW/m ember onset, the 2000 kW/m stringybark retardant limit, the bark
+  FHS ≥ 3 long-range flag and the Vesta spotting envelope. Prefer these when a trainer asks "says
+  who?".
 
 | # | Card title | Detection criteria | Card text (plain language) |
 |---|---|---|---|
 | 1 | **Spot fire — here's why** | Any spot fire spawned (rate-limited, the most distant one first) | "A spot fire just started **{d} m ahead**. A {flaming/glowing} {stringybark flake / ribbon of bark} from {place} was lifted about **{h} m** by the fire's smoke column, drifted **{t} min** in **{U} km/h** winds aloft, and landed on litter at **{M} %** moisture (ignition chance about {p} %)." |
 | 2 | **Embers arrive before the flames** | Landing density within 0–500 m downwind of the head exceeds 20 real embers per 100 m² per 10 min [A], or ≥ 3 spots within 500 m | "Embers are landing well **ahead of the flames**. Most start small fires that the main front soon swallows, but they mean the fire grows faster than the flame front alone suggests. **Your escape route can be cut off from ahead.**" |
 | 3 | **Stringybark = ember factory** | ≥ 40 % of emitted embers from cells with BH ≥ 3 stringybark | "This forest has loose, stringy bark. It peels off in flakes that **burn while flying** and can **re-ignite** when they land. That is why fires in stringybark throw so many spot fires." |
-| 4 | **Ribbon bark = long-range embers** | E2 particles lofted above 1 km, or E2 landings beyond 3 km | "Long ribbons of bark (candlebark, ribbon gum, mountain gum) roll into tubes that fall slowly and **burn for 2–7 minutes on average, some much longer**. Carried high in the smoke column, they can start fires **tens of km** away (20 km+ has been measured possible)." |
+| 4 | **Ribbon bark = long-range embers** | E2 particles lofted above 1 km, or E2 landings beyond 3 km | "Long ribbons of bark (candlebark, ribbon gum, mountain gum) roll into tubes that fall slowly and **burn for 2–7 minutes on average, some much longer**. Carried high in the smoke column, they can start fires **tens of km** away. Wind-tunnel burn times imply 20 km+ is possible, and Black Saturday spotted 33 km." |
 | 5 | **Tall column → long spotting** | Plume top ≥ 3 km, or pyroCu/pyroCb flag, with wind at the plume mid-height ≥ 30 km/h | "The smoke column is **{h} km** tall. Embers only travel far if the fire lifts them high **and** strong winds aloft carry them. Both are happening now, so expect spot fires **several km** downwind, even across valleys and roads." |
 | 6 | **Plume-dominated fire: spots in all directions** | N_c > 10 and I > 3000 kW/m | "The fire's own heat is now **stronger than the wind** (upright column). Embers go up and come down all around the fire, **including on the flanks and behind control lines**. Wind changes near the column are erratic." |
 | 7 | **Wind-driven fire: a narrow ember stream** | N_c < 2 and U10 ≥ 30 km/h | "Strong wind is **laying the smoke column over**. Embers stay low and are blown **far downwind in a narrow band**, so spot fires line up ahead of the head fire." |
@@ -1174,6 +1413,12 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
 | 22 | **Night inversion caps the column** | Resolved plume top ≤ inversion height, and N ≥ 0.02 s⁻¹ in the valley | "Cold air trapped in the valley is **capping the smoke column**, so embers aren't lifted far tonight. When the inversion **breaks in the morning** the column will grow and spotting will jump." |
 | 23 | **Embers leaving the map** | `leftDomain` beyond-edge histogram P50 ≥ 1 km | "Some embers are flying **beyond the modelled area**. They could start fires up to **{X} km** away that this simulation cannot show." |
 | 24 | **Embers landing behind you** | Landings with P_spot ≥ 0.05 between the user location and the nearest safety area, or behind a marked control line | "Embers are landing **behind your position / across the control line**. Check your escape route and safety area." |
+| 25 | **Why a line won't hold in stringybark** | Head or flank I ≥ 2000 kW/m in cells with stringybark BH ≥ 3, next to a user-marked control or retardant line | "At this intensity, fires in stringybark throw embers **over** control lines. Victorian studies found retardant lines alone stopped holding at about **2,000 kW/m** in stringybark because of spotting across the line (about 3,000 kW/m with crews following up). **Spot fires behind the line are expected, so patrol behind it.**" (threshold verified: AFDRS-RP 2019, quoting Loane & Gould 1986) |
+| 26 | **Few embers yet: fire is still gentle** | Head I < 1000 kW/m and no spot fires in the last 30 min | "The fire is burning gently, and fires this mild throw **very few embers** (below about 1,000 kW/m). That changes fast if the wind picks up or the fire reaches a slope or stringybark." (threshold verified: Gould et al. 2007a via AFDRS-RP) |
+| 27 | **What the Australian model says** | Any time the head ROS ≥ 1000 m/h, shown alongside card 1 or 5 | "Australia's operational forest model (AFDRS/Vesta) puts the likely maximum spotting distance here at about **{S_vesta} km**. FireSim's embers are reaching **{d95} km**. {If the ratio > 2: 'We're further because the smoke column is tall and winds aloft are strong. The operational formula doesn't see that.'}" |
+| 28 | **Hidden spot fires overnight** | Holdover smoulders exist and local time is 03:00–09:00 | "Some embers that landed last night are **still smouldering** in logs, stumps or thick litter. When the sun comes up and the air dries out, they can **flare into new spot fires**. Patrol the spot-fire zone at first light." |
+| 29 | **Embers drifting downhill at night** | Night-time (sun below horizon), drainage flow resolved (near-surface wind downslope ≥ 1 m/s), landings downslope of the source | "At night, cold air **slides downhill** like water. Low embers ride it into gullies and valleys, below the fire. Most land on damp fuel and go out, but in dry spells they can start fires **downhill and down-valley**." |
+| 30 | **Ridge-top fire, longer reach (Albini check)** | Source cell class L = ridge top or mid-slope windward, relief ΔH ≥ 200 m | "US fire behaviour tools add about **{+x} %** to spotting distance for a fire in this position because of the drop into the valley. FireSim's 3-D flight shows **{ΔX} m** extra." |
 
 "Why" statements to reuse across cards:
 * "Embers only go far if they are lifted high, stay alight long, and meet strong wind."
@@ -1197,22 +1442,38 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
    * "Messmate stringybark: bark ignitability and burning sustainability in relation to fragment
      dimensions, hazard score and time since fire" [V existence];
    * the Frontiers 2021 study of firebrands from different burning tree species [V existence].
-3. **Vesta maximum-spotting-distance equation** (Gould et al. 2007 field guide). It must be transcribed.
+3. ~~Vesta maximum-spotting-distance equation~~. **RESOLVED** in the fact-check pass: the AFDRS fit is
+   eq. (18a), verified in four transcriptions. Still open: its validity for ROS < 1000 m/h, where it is
+   non-monotonic, and the original Vesta/DEFFM form it approximates.
 4. **Messmate flake terminal velocities and burnout times** (Ellis 2013 full text). Also the flake data
    in the Ellis 2000 PhD thesis and Ellis 2010 (jarrah/karri flakes).
-5. **Albini's burning constant K and the exact eq. (7) form**. Also Albini's wind-profile and terrain
-   terms (INT-GTR-56; Chase 1981 pocket-calculator equations).
+5. **Albini's K and eq. (7) form.** **Partly RESOLVED**: K = 0.0064, the coupled lifetime
+   τ = 4C_d v_t0/(πKg) and the flat-terrain and mountain-terrain spotting equations are verified from
+   FARSITE/BehavePlus source. Still UNVERIFIED against the INT-56 text: the canopy log-wind profile in
+   §3.4 item 4.
 6. **Lee-eddy reversed-flow magnitude** and depth for ember purposes. The −0.3·U_crest blend is a
    placeholder.
 7. **Byram N_c reference wind height** and the convective vs total I fraction. The 2/10 thresholds are
    from idealised CFD.
 8. **Eucalypt spot-fire acceleration.** FBP α = 0.115 min⁻¹ is Canadian. Check the eucalypt-litter
    growth study.
-9. **Kilmore East spotting distances** (Cruz et al. 2012) and **Black Summer NSW spotting statistics**.
-   These were not retrieved, and "about 33 km" is recalled, not verified.
-10. **Sardoy/Kaur lognormal constants** (§3.7). Recalled with low confidence; not used by default.
+9. **Kilmore East**: 33 km is now verified (AFDRS-RP 2019 citing Cruz et al. 2012). That report's case
+   table says 40–41 km, which is unresolved. **Black Summer NSW spotting statistics** are still not
+   retrieved.
+10. **Sardoy/Kaur lognormal constants** (§3.7). Now verified against ELMFIRE code. They are
+    short-range only and not used by default.
 11. **Plume turbulence intensity α_p** and C_w for the sub-grid plume.
-12. All [P] items: verify against the originals. This session had no full-text access (egress proxy).
+12. All remaining [P] items: verify against the originals. Neither pass had full-text access to
+    publishers (egress proxy). The fact-check pass used code and agency full texts instead (legend).
+13. **Briggs stable-windy coefficient**: 2.4, 2.6 or 2.9 depending on the Briggs paper. Pick one with
+    the original in hand. It has a ±10 % effect.
+14. **Ember-pile synergy and holdover (smoulder) durations** for eucalypt litter, logs and stringybark
+    crevices. The §4.6 multipliers are placeholders.
+15. **ELMFIRE "33.3 embers/s per MW"** default (attributed to "Ju et al. 2023"). Find the primary
+    source, and check whether it counts all firebrands or only ignition-competent ones.
+16. **Hall et al. (2015), Ellis (2013, 2015), Storey et al. (2020) and Project Vesta** numbers tagged
+    [V] were verified by the first author from abstracts or search extracts. The fact-check pass could
+    **not** re-open them, so treat them as abstract-level.
 
 ---
 
@@ -1242,10 +1503,10 @@ Tags as in the legend. URLs are the canonical landing pages found or known; many
 - Gould JS, McCaw WL, Cheney NP, Ellis PF, Matthews S (2007) *Field Guide: Fuel assessment and fire behaviour prediction in dry eucalypt forest*. https://www.publish.csiro.au/book/5991/ [V existence]
 - Cheney NP, Gould JS, McCaw WL, Anderson WR (2012) Predicting fire behaviour in dry eucalypt forest in southern Australia. *Forest Ecology and Management* 280, 120–131. [P]
 - Cruz MG et al. (2021) *The Vesta Mk 2 rate of fire spread model: a user's guide*. CSIRO. https://research.csiro.au/vestamk2/wp-content/uploads/sites/443/2021/12/Vesta-Mk-2-users-guide-2021_a.pdf [V existence]
-- Noble IR, Bary GAV, Gill AM (1980) McArthur's fire-danger meters expressed as equations. *Australian Journal of Ecology* 5, 201–203. [P]
+- Noble IR, Bary GAV, Gill AM (1980) McArthur's fire-danger meters expressed as equations. *Australian Journal of Ecology* 5, 201–203. [coefficients verified via three code transcriptions]
 - McArthur AG (1967) *Fire behaviour in eucalypt forests*. Forestry and Timber Bureau Leaflet 107. [P]
 - Hines F, Tolhurst KG, Wilson AAG, McCarthy GJ (2010) *Overall fuel hazard assessment guide*, 4th edn. Vic DSE Research Report 82. [P]
-- Cruz MG, Sullivan AL, Gould JS, Sims NC, Bannister AJ, Hollis JJ, Hurley RJ (2012) Anatomy of a catastrophic wildfire: the Black Saturday Kilmore East fire in Victoria, Australia. *Forest Ecology and Management* 284, 269–285. [P]
+- Cruz MG, Sullivan AL, Gould JS, Sims NC, Bannister AJ, Hollis JJ, Hurley RJ (2012) Anatomy of a catastrophic wildfire: the Black Saturday Kilmore East fire in Victoria, Australia. *Forest Ecology and Management* 284, 269–285. [citation and 33 km verified via Matthews et al. 2019 §9.3]
 - Storey MA, Price OF, Bradstock RA, Sharples JJ (2020) Analysis of variation in distance, number, and distribution of spotting in southeast Australian wildfires. *Fire* 3(2), 10. doi:10.3390/fire3020010. https://ro.uow.edu.au/smhpapers1/1534 [V]
 - Storey MA, Price OF, Sharples JJ, Bradstock RA (2020) Drivers of long-distance spotting during wildfires in south-eastern Australia. *IJWF* 29(6), 459–472. https://publish.csiro.au/wf/fulltext/wf19124 [S01]
 - Storey MA, Price OF, Almeida M, Ribeiro C, Bradstock RA, Sharples JJ (2021) Experiments on the influence of spot fire and topography interaction on fire rate of spread. *PLOS ONE* 16(1), e0245132. [S01]
@@ -1264,13 +1525,13 @@ Tags as in the legend. URLs are the canonical landing pages found or known; many
 
 **Firebrand physics and spotting models**
 - Koo E, Pagni PJ, Weise DR, Woycheese JP (2010) Firebrands and spotting ignition in large-scale fires. *IJWF* 19(7), 818–843. doi:10.1071/WF07119. https://research.fs.usda.gov/treesearch/38384 [V]
-- Albini FA (1979) *Spot fire distance from burning trees – a predictive model*. USDA Forest Service Gen. Tech. Rep. INT-56. https://www.frames.gov/catalog/8153 ; https://archive.org/details/CAT79721328 [V existence; P equations]
+- Albini FA (1979) *Spot fire distance from burning trees – a predictive model*. USDA Forest Service Gen. Tech. Rep. INT-56. https://www.frames.gov/catalog/8153 ; https://archive.org/details/CAT79721328 [V existence; equations verified via BehavePlus/FARSITE code. The URLs were not re-opened in the fact-check pass (egress blocked)]
 - Albini FA (1981) *Spot fire distance from isolated sources – extensions of a predictive model*. USDA FS Res. Note INT-309. https://www.frames.gov/catalog/8157 [V existence]
-- Albini FA (1983a) Transport of firebrands by line thermals. *Combustion Science and Technology* 32, 277–288. [P]
+- Albini FA (1983a) Transport of firebrands by line thermals. *Combustion Science and Technology* 32, 277–288. [P. Manzello et al. 2020 ref. 67 gives the same volume and pages but names *Combust Flame*, probably a slip in the review]
 - Albini FA (1983b) *Potential spotting distance from wind-driven surface fires*. USDA FS Res. Pap. INT-309. [P]
 - Chase CH (1981) *Spot fire distance equations for pocket calculators*. USDA FS Res. Note INT-310. [P]
 - Tarifa CS, del Notario PP, Moreno FG (1965) On the flight paths and lifetimes of burning particles of wood. *Proceedings of the Combustion Institute* 10, 1021–1037. [P]
-- Sardoy N, Consalvi JL, Porterie B, Fernandez-Pello AC (2007) Modeling transport and combustion of firebrands from burning trees. *Combustion and Flame* 150, 151–169. [P]
+- Sardoy N, Consalvi JL, Porterie B, Fernandez-Pello AC (2007) Modeling transport and combustion of firebrands from burning trees. *Combustion and Flame* 150, 151–169. [journal, volume and pages verified via Manzello et al. 2020, ref. 73. That list also names J-C Loraud as a co-author; the author list is unresolved]
 - Sardoy N, Consalvi JL, Kaiss A, Fernandez-Pello AC, Porterie B (2008) Numerical study of ground-level distribution of firebrands generated by line fires. *Combustion and Flame* 154, 478–488. [P]
 - Koo E, Linn RR, Pagni PJ, Edminster CB (2012) Modelling firebrand transport in wildfires using HIGRAD/FIRETEC. *IJWF* 21(4), 396–417. [P]
 - Bhutia S, Jenkins MA, Sun R (2010) Comparison of firebrand propagation prediction by a plume model and a coupled-fire/atmosphere large-eddy simulator. *Journal of Advances in Modeling Earth Systems* 2, 4. [P]
@@ -1282,9 +1543,9 @@ Tags as in the legend. URLs are the canonical landing pages found or known; many
 - Tohidi A, Kaye NB (2017b) Comprehensive wind tunnel experiments of lofting and downwind transport of non-combusting rod-like model firebrands during firebrand shower scenarios. *Fire Safety Journal* 90, 95–111. [P]
 - Himoto K, Tanaka T (2005) Transport of disk-shaped firebrands in a turbulent boundary layer. *Fire Safety Science* 8, 433–444. [P]
 - Tachikawa M (1983) Trajectories of flat plates in uniform flow with application to wind-generated missiles. *Journal of Wind Engineering and Industrial Aerodynamics* 14, 443–453. [P]
-- Manzello SL, Cleary TG, Shields JR, Yang JC (2006) Ignition of mulch and grasses by firebrands in wildland–urban interface fires. *IJWF* 15, 427–431. [P]
+- Manzello SL, Cleary TG, Shields JR, Yang JC (2006) Ignition of mulch and grasses by firebrands in wildland–urban interface fires. *IJWF* 15, 427–431. [volume and pages verified via Manzello et al. 2020, ref. 87, which gives the title as "Ignition of vegetation and mulch by firebrands in Wildland/Urban Interface (WUI) fires". Check the exact title]
 - Manzello SL, Maranghides A, Mell WE (2007) Firebrand generation from burning vegetation. *IJWF* 16, 458–462. [P]
-- Manzello SL, Suzuki S, Gollner MJ, Fernandez-Pello AC (2020) Role of firebrand combustion in large outdoor fire spread. *Progress in Energy and Combustion Science* 76, 100801. [P]
+- Manzello SL, Suzuki S, Gollner MJ, Fernandez-Pello AC (2020) Role of firebrand combustion in large outdoor fire spread. *Progress in Energy and Combustion Science* 76, 100801. doi:10.1016/j.pecs.2019.100801 [verified full text: §§4–5 read in the fact-check pass]
 - Ganteaume A et al. (2009) Spot fires: fuel bed flammability and capability of firebrands to ignite fuel beds. *IJWF* 18, 951–969. [P]
 - Ganteaume A et al. (2011) Laboratory characterization of firebrands involved in spot fires. *Annals of Forest Science* 68, 531–541. [P]
 - Plucinski MP, Anderson WR (2008) Laboratory determination of factors influencing successful point ignition in the litter layer of shrubland vegetation. *IJWF* 17, 628–637. [P]
@@ -1299,12 +1560,34 @@ Tags as in the legend. URLs are the canonical landing pages found or known; many
 - Nelson RM Jr (1993) *Byram's energy criterion for wildland fires: units and equations*. USDA FS Res. Note INT-415. [P]
 - Morvan D, Frangieh N (2018) Wildland fires behaviour: wind effect versus Byram's convective number and consequences upon the regime of propagation. *IJWF* 27(9), 636–641. [P]
 - Briggs GA (1975) Plume rise predictions. In *Lectures on Air Pollution and Environmental Impact Analyses*, AMS, 59–111. [P]
-- Sofiev M, Ermakova T, Vankevich R (2012) Evaluation of the smoke-injection height from wild-land fires using remote-sensing data. *Atmospheric Chemistry and Physics* 12, 1995–2006. [P]
+- Sofiev M, Ermakova T, Vankevich R (2012) Evaluation of the smoke-injection height from wild-land fires using remote-sensing data. *Atmospheric Chemistry and Physics* 12, 1995–2006. doi:10.5194/acp-12-1995-2012 [constants verified via EarthSciML code]
 - Csanady GT (1963) Turbulent diffusion of heavy particles in the atmosphere. *Journal of the Atmospheric Sciences* 20, 201–208. [P]
 - Thomson DJ (1987) Criteria for the selection of stochastic models of particle trajectories in turbulent flows. *Journal of Fluid Mechanics* 180, 529–556. [P]
 - Hanna SR (1982) Applications in air pollution modeling. In Nieuwstadt FTM, van Dop H (eds) *Atmospheric Turbulence and Air Pollution Modelling*. Reidel, 275–310. [P]
 - Lenschow DH, Wyngaard JC, Pennell WT (1980) Mean-field and second-moment budgets in a baroclinic, convective boundary layer. *Journal of the Atmospheric Sciences* 37, 1313–1326. [P]
 - Panofsky HA, Dutton JA (1984) *Atmospheric Turbulence*. Wiley. [P]
-- Rothermel RC (1983) *How to predict the spread and intensity of forest and range fires*. USDA FS Gen. Tech. Rep. INT-143 (Schroeder 1969 ignition probability). [P]
+- Rothermel RC (1983) *How to predict the spread and intensity of forest and range fires*. USDA FS Gen. Tech. Rep. INT-143 (Schroeder 1969 ignition probability). [P; equation verified via behave `ignite.cpp`]
 - Forestry Canada Fire Danger Group (1992) *Development and structure of the Canadian Forest Fire Behavior Prediction System*. Information Report ST-X-3. [P]
 - McAlpine RS, Wakimoto RH (1991) The acceleration of fire from point source to equilibrium spread. *Forest Science* 37, 1314–1337. [P]
+- Nelson RM Jr (1993) Byram's derivation of the energy criterion for forest and wildland fires. *IJWF* 3, 131–138. [S02]
+
+**Added in the fact-check pass (sources actually read)**
+- Matthews S, Fox-Hughes P, Grootemaat S, Hollis JJ, Kenny BJ, Sauvage S (2019) *Australian Fire Danger Rating System: Research Prototype*. NSW Rural Fire Service, Lidcombe, 384 pp. Sources read there: eq. 3.52 (Vesta spotting fit), §4.4.1 (bark FHS ≥ 3 long-range flag), the readiness-level table (Gould et al. 2007a < 1000 kW/m; Loane & Gould 1986 2000/3000 kW/m), Table 2.4 (AEMC 2009 descriptors) and §9.3 (Kilmore East 33 km). [verified full text]
+- AFDRS (2022) *Fire Behaviour Index Technical Guide*, v1.0 (23 June 2022; owner S. Matthews). Eq. 3.51 (forest spotting distance). [verified full text]
+- Loane IT, Gould JS (1986) *Aerial suppression of bushfires: cost-benefit study for Victoria*. National Bushfire Research Unit, CSIRO. [P; as quoted in Matthews et al. 2019]
+- USDA Forest Service RMRS Missoula Fire Sciences Lab, `behave` (BehavePlus core library), `src/behave/ignite.cpp`, `spot.cpp`, `CrownFirebrandProcessor.cpp`. https://github.com/firelab/behave [verified code]
+- FARSITE (Finney) spotting source `fsxwspot.cpp` (Albini 1979 implementation), public mirror https://github.com/mbedward/farsite [verified code]
+- Lautenberger C, ELMFIRE, `build/source/elmfire_spotting.f90` (Sardoy and Himoto kernels; PER-MW generation). https://github.com/lautenberger/elmfire [verified code]
+- cffdrs R package (Canadian FBP/FWI), `R/distance_at_time.r`, `R/fire_behaviour_prediction.r`. https://github.com/cffdrs/cffdrs_r [verified code]
+- PyroXL (NSW RFS), `src/AFDRS_forest.bas`. https://github.com/Geoffysicist/PyroXL [verified code]
+- fiRetools, `R/forest_behav.R` (McArthur Mk5). https://github.com/ozjimbob/fiRetools [verified code]
+- EarthSciML, `EnvironmentalTransport.jl`, `src/plume_rise/sofiev_2012.jl`. https://github.com/EarthSciML/EnvironmentalTransport.jl [verified code]
+- Frediani M, Juliano TW et al. (NCAR RAL), WRF-Fire firebrand spotting module `module_firebrand_spotting.F` (burnout after Tse & Fernandez-Pello 1998 and Bhutia et al. 2010). [verified code]
+- Henderson B, `cmaq2hemco` `plumerise_briggs` (Briggs forms after Seinfeld & Pandis 2006 Table 18.4). https://github.com/barronh/cmaq2hemco [verified code]
+- Albini FA, Alexander ME, Cruz MG (2012) A mathematical model for predicting the maximum potential spotting distance from a crown fire. *IJWF* 21(5), 609–627. [P; implemented in behave `CrownFirebrandProcessor.cpp`]
+- Tse SD, Fernandez-Pello AC (1998) On the flight paths of metal particles and embers generated by power lines in high winds — a potential source of wildland fires. *Fire Safety Journal* 30, 333–356. doi:10.1016/S0379-7112(97)00050-7 [P; DOI as cited in WRF code]
+- Hakes RSP, Salehizadeh H, Weston-Dawkes MJ, Gollner MJ (2019) Thermal characterization of firebrand piles. *Fire Safety Journal* 104, 34–42. [citation and findings verified via Manzello et al. 2020, ref. 99]
+- Manzello SL, Cleary TG, Shields JR, Yang JC (2006) On the ignition of fuel beds by firebrands. *Fire and Materials* 30, 77–87. [citation verified via Manzello et al. 2020, ref. 86]
+- Seinfeld JH, Pandis SN (2006) *Atmospheric Chemistry and Physics*, 2nd edn, Wiley, Table 18.4 (Briggs plume rise). [P]
+- Schroeder MJ (1969) *Ignition probability*. USDA Forest Service, Office Report 2106-1. [P; equation verified in behave code]
+- Forestry Canada Fire Danger Group (1992) ST-X-3, Eqs. 70–72 (acceleration). [verified via cffdrs]

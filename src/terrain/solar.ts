@@ -15,6 +15,9 @@
  *    {@link clearSkyGhiHaurwitz}: Haurwitz (1945) simple model.
  *  - {@link cloudAttenuation}: Kasten & Czeplak (1980) GHI reduction by total cloud cover.
  *  - {@link erbsDecomposition}: Erbs, Klein & Duffie (1982) diffuse fraction from the clearness index.
+ *  - {@link horizontalIrradiance}: clear sky → cloud or measured GHI → beam / diffuse. The split is anchored to
+ *    the clear-sky model (continuous at 0 % cloud, beam never above the clear-sky DNI) and measured GHI is capped at
+ *    {@link MAX_CLEAR_SKY_RATIO} × clear sky, so hourly-mean data near sunrise cannot make a noon-strength beam.
  *  - {@link insolation}: per-cell irradiance on the sloping surface = beam·cos(incidence)·(1 − shadow)
  *    + sky diffuse (Hay & Davies 1980: circumsolar part treated as beam, isotropic part × sky-view factor)
  *    + ground-reflected (albedo · GHI · (1 − sky-view factor)).
@@ -469,7 +472,8 @@ export function skyViewFactor(terrain: Terrain, directions = 16): Float32Array {
 
 export interface InsolationOptions {
   /** Measured / forecast global horizontal irradiance (W/m²). When given it overrides the clear-sky model and
-   *  cloud cover, and is split into beam and diffuse with the Erbs model. */
+   *  cloud cover. It is capped at {@link MAX_CLEAR_SKY_RATIO} × clear sky and split into beam and diffuse (Erbs,
+   *  anchored to the clear-sky split). */
   ghi?: number;
   /** Total cloud cover (%), used with the clear-sky model when `ghi` is not given. */
   cloudCover?: number;
@@ -509,14 +513,57 @@ function meanElevation(t: Terrain): number {
   return m;
 }
 
-/** Horizontal irradiance components for a sun position and options (clear sky → cloud → decomposition). */
+/**
+ * Upper bound on a measured / forecast GHI relative to the clear-sky GHI at the same instant. Larger values come
+ * from hourly-mean data evaluated near sunrise or sunset, or from bad data. Short cloud-edge enhancement rarely
+ * exceeds this in hourly data. Without the cap, an hourly mean of 80 W/m² evaluated with the sun 2° up would be
+ * split into a beam of more than 1000 W/m², lighting east-facing slopes at dawn like noon.
+ */
+export const MAX_CLEAR_SKY_RATIO = 1.2;
+
+/** Diffuse fraction DHI / GHI from the Erbs correlation for a horizontal irradiance at a solar elevation. */
+function erbsDiffuseFraction(ghi: number, elevationDeg: number, distanceAU: number): number {
+  const d = erbsDecomposition(ghi, elevationDeg, distanceAU);
+  return ghi > 0 ? d.dhi / ghi : 1;
+}
+
+/**
+ * Split a (cloudy or measured) GHI into beam and diffuse so that the result is continuous with the clear-sky split
+ * and physically bounded:
+ *  - diffuse fraction kd = Erbs(GHI) + f·(kd_clear − Erbs(GHI_clear)), with f = clamp((r − 0.25)/0.75, 0, 1) and
+ *    r = GHI / GHI_clear. With no cloud (r = 1) it gives the Ineichen clear-sky split. Under overcast
+ *    (r ≤ 0.25, the Kasten–Czeplak limit) it gives the plain Erbs split. Plain Erbs on a slightly cloudy sky
+ *    moves ≈ 10 % of the beam to diffuse at the first percent of cloud, a visible jump on sunny slopes.
+ *  - beam ≤ the clear-sky DNI: cloud and haze only remove direct sun, and extra light is diffuse.
+ */
+function splitGhi(ghi: number, clear: Irradiance, elevationDeg: number, distanceAU: number): Irradiance {
+  if (!(ghi > 0) || !(clear.ghi > 0)) return { ghi: Math.max(0, ghi || 0), dni: 0, dhi: Math.max(0, ghi || 0) };
+  const cz = Math.sin(elevationDeg * DEG);
+  const r = ghi / clear.ghi;
+  const f = Math.min(1, Math.max(0, (r - 0.25) / 0.75));
+  const kdClear = clear.dhi / clear.ghi;
+  let kd = erbsDiffuseFraction(ghi, elevationDeg, distanceAU) + f * (kdClear - erbsDiffuseFraction(clear.ghi, elevationDeg, distanceAU));
+  kd = kd < 0 ? 0 : kd > 1 ? 1 : kd;
+  const dni = Math.min(((1 - kd) * ghi) / cz, clear.dni);
+  return { ghi, dni, dhi: Math.max(0, ghi - dni * cz) };
+}
+
+/**
+ * Horizontal irradiance components for a sun position and options:
+ *  - `ghi` given (measured / forecast): capped at {@link MAX_CLEAR_SKY_RATIO} × clear sky, then split;
+ *  - else `cloudCover` > 0: clear sky × Kasten–Czeplak attenuation, then split;
+ *  - else the Ineichen–Perez clear sky.
+ * The split (see splitGhi) is continuous with the clear-sky model and never gives more beam than a clear sky.
+ */
 export function horizontalIrradiance(sun: SolarPosition, altitude: number, opts: InsolationOptions = {}): Irradiance {
   const el = sun.elevation;
-  if (el <= 0) return { ghi: 0, dni: 0, dhi: 0 };
-  if (opts.ghi !== undefined && Number.isFinite(opts.ghi)) return erbsDecomposition(Math.max(0, opts.ghi), el, sun.distanceAU);
+  if (!(el > 0)) return { ghi: 0, dni: 0, dhi: 0 };
   const clear = clearSkyIrradiance(el, altitude, opts.linkeTurbidity ?? 3, sun.distanceAU);
+  if (opts.ghi !== undefined && Number.isFinite(opts.ghi)) {
+    return splitGhi(Math.min(Math.max(0, opts.ghi), MAX_CLEAR_SKY_RATIO * clear.ghi), clear, el, sun.distanceAU);
+  }
   if (opts.cloudCover !== undefined && Number.isFinite(opts.cloudCover) && opts.cloudCover > 0) {
-    return erbsDecomposition(clear.ghi * cloudAttenuation(opts.cloudCover), el, sun.distanceAU);
+    return splitGhi(clear.ghi * cloudAttenuation(opts.cloudCover), clear, el, sun.distanceAU);
   }
   return clear;
 }
@@ -536,7 +583,8 @@ export function insolation(terrain: Terrain, timeMs: number, opts: InsolationOpt
   const shaded = new Uint8Array(n);
   const irr = horizontalIrradiance(sun, meanElevation(terrain), opts);
   const base = { sunAzimuth: sun.azimuth, sunElevation: sun.elevation, ghi: irr.ghi, dni: irr.dni, dhi: irr.dhi };
-  if (sun.elevation <= 0) {
+  // Night, or a non-finite time: no sun anywhere.
+  if (!(sun.elevation > 0)) {
     shaded.fill(1);
     return { total, direct, shaded, ...base };
   }
@@ -577,7 +625,8 @@ export interface DailyInsolation {
 
 /**
  * Integrate {@link insolation} over the local-mean-solar day containing `dayTimeMs` (trapezoid rule, default 30 min
- * steps between sunrise and sunset). Handy for aspect-driven fuel dryness maps and teaching overlays.
+ * steps between sunrise and sunset; the whole day in polar day). Handy for aspect-driven fuel dryness maps and
+ * teaching overlays. `opts.ghi` is ignored because one GHI value cannot describe a whole day. Use `cloudCover`.
  */
 export function dailyInsolation(terrain: Terrain, dayTimeMs: number, opts: InsolationOptions & { stepMinutes?: number } = {}): DailyInsolation {
   const loc = opts.location ?? terrain.grid.origin;
@@ -585,13 +634,20 @@ export function dailyInsolation(terrain: Terrain, dayTimeMs: number, opts: Insol
   const n = terrain.elevation.length;
   const energy = new Float32Array(n);
   const sunHours = new Float32Array(n);
-  if (!Number.isFinite(st.sunrise)) return { energy, sunHours };
-  const stepS = (opts.stepMinutes ?? 30) * 60;
-  const steps = Math.max(1, Math.ceil((st.sunset - st.sunrise) / 1000 / stepS));
-  const dt = (st.sunset - st.sunrise) / 1000 / steps;
+  let t0 = st.sunrise;
+  let t1 = st.sunset;
+  if (!Number.isFinite(t0) || !Number.isFinite(t1)) {
+    if (st.dayLengthHours < 24) return { energy, sunHours }; // polar night
+    t0 = st.solarNoon - DAY_MS / 2;
+    t1 = st.solarNoon + DAY_MS / 2;
+  }
+  const stepOpts: InsolationOptions = { ...opts, ghi: undefined };
+  const stepS = Math.max(1, (opts.stepMinutes ?? 30) * 60);
+  const steps = Math.max(1, Math.ceil((t1 - t0) / 1000 / stepS));
+  const dt = (t1 - t0) / 1000 / steps;
   for (let s = 0; s <= steps; s++) {
     const w = (s === 0 || s === steps ? 0.5 : 1) * dt;
-    const r = insolation(terrain, st.sunrise + s * dt * 1000, opts);
+    const r = insolation(terrain, t0 + s * dt * 1000, stepOpts);
     for (let k = 0; k < n; k++) {
       energy[k] += r.total[k]! * w * 1e-6;
       if (!r.shaded[k]) sunHours[k] += w / 3600;
