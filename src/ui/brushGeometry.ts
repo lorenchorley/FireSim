@@ -1,5 +1,5 @@
 /**
- * Geometry for the fuel brush and fire-line tools (pure, unit-tested).
+ * Geometry for the fuel brush, fire-line and local-wind tools (pure, unit-tested).
  *
  * A painted brush stroke (a finger path with a radius) must become ONE fuel edit: sending overlapping circles would
  * apply additive hazard changes twice where they overlap. {@link strokeToPolygon} therefore rasterises the stroke's
@@ -219,4 +219,20 @@ export function thinPath(pts: readonly Pt[], minSpacing: number): Pt[] {
     if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= minSpacing || i === pts.length - 1) out.push(p);
   }
   return out;
+}
+
+/**
+ * Screen rotation (deg, clockwise) of the local-wind glyph so that its arrow points the way the wind blows on screen,
+ * whatever the camera heading and tilt: the downwind ground point is projected too. Falls back to a north-up map when
+ * that point is off-screen.
+ */
+export function windScreenRotation(at: Pt, dirFrom: number, q: [number, number], project: (p: Pt) => [number, number] | null): number {
+  const rad = (dirFrom * Math.PI) / 180;
+  // Wind FROM dirFrom blows towards dirFrom + 180°: unit vector (−sin, −cos) in local x east / y north.
+  const q2 = project([at[0] - 150 * Math.sin(rad), at[1] - 150 * Math.cos(rad)]);
+  if (!q2) return dirFrom;
+  const dx = q2[0] - q[0];
+  const dy = q2[1] - q[1];
+  if (Math.hypot(dx, dy) < 2) return dirFrom; // looking straight along the wind: keep the north-up estimate
+  return Math.round(((Math.atan2(-dx, dy) * 180) / Math.PI) * 2) / 2;
 }

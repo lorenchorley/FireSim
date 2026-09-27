@@ -191,7 +191,7 @@ function typedBytes(a: unknown): number {
 export function estimateSnapshotBytes(s: SimSnapshot): number {
   let b = 2048;
   const f = s.fire;
-  for (const k of ['arrivalTime', 'burnState', 'ros', 'intensity', 'flameHeight', 'spreadDir', 'driver', 'phase'] as const) b += typedBytes(f[k]);
+  if (f) for (const k of ['arrivalTime', 'burnState', 'ros', 'intensity', 'flameHeight', 'spreadDir', 'driver', 'phase'] as const) b += typedBytes(f[k]);
   b += typedBytes(s.moisture);
   b += typedBytes(s.embers?.data);
   const a = s.atmosphere;

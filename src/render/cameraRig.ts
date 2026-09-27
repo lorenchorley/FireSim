@@ -1,0 +1,344 @@
+/**
+ * Camera and touch controls: OrbitControls tuned for phones (one finger rotates, two fingers pan + pinch-zoom; in the
+ * top view one finger pans like a map), damping, distance/tilt limits, a terrain-clearance clamp, animated fly-to and
+ * three view modes:
+ *   orbit   oblique 3-D view around a target on the ground
+ *   top     plan view (north up unless rotated), for overlays and marking fire
+ *   ground  eye level (1.7 m) at the user's position, looking towards the fire — "what you would see from here"
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { HeightField } from './heightfield';
+
+export type ViewMode = 'orbit' | 'top' | 'ground';
+
+interface Flight {
+  t0: number;
+  duration: number;
+  fromTarget: THREE.Vector3;
+  toTarget: THREE.Vector3;
+  fromPos: THREE.Vector3;
+  toPos: THREE.Vector3;
+}
+
+const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+export class CameraRig {
+  readonly camera: THREE.PerspectiveCamera;
+  readonly controls: OrbitControls;
+  private hf: HeightField | null = null;
+  private flight: Flight | null = null;
+  private _mode: ViewMode = 'orbit';
+  private interaction = true;
+  /** Eye height above ground in 'ground' mode (m). */
+  eyeHeight = 1.7;
+  private readonly tmp = new THREE.Vector3();
+  private readonly tmp2 = new THREE.Vector3();
+  private readonly tmp3 = new THREE.Vector3();
+  private domainSize = 9000;
+  /**
+   * Eye position (world) held fixed in 'ground' mode. OrbitControls orbits the camera around its target; with the
+   * target 1 m in front of the eye that would move the eye by up to 2 m while looking around, so after each controls
+   * update both are shifted back to keep the eye still (a first-person look-around).
+   */
+  private eye: THREE.Vector3 | null = null;
+
+  constructor(dom: HTMLElement, aspect: number) {
+    this.camera = new THREE.PerspectiveCamera(50, aspect, 2, 200000);
+    this.camera.position.set(0, 4000, 6000);
+    this.controls = new OrbitControls(this.camera, dom);
+    const c = this.controls;
+    c.enableDamping = true;
+    c.dampingFactor = 0.12;
+    c.rotateSpeed = 0.6;
+    c.zoomSpeed = 1.1;
+    c.panSpeed = 1.0;
+    c.screenSpacePanning = false; // pan over the ground plane, not the screen plane
+    c.minDistance = 40;
+    c.maxDistance = 30000;
+    c.maxPolarAngle = THREE.MathUtils.degToRad(86);
+    c.zoomToCursor = true;
+    this.applyModeControls();
+  }
+
+  get mode(): ViewMode {
+    return this._mode;
+  }
+
+  /** Attach the heightfield used for clearance and target clamping. */
+  setHeightField(hf: HeightField): void {
+    this.hf = hf;
+    this.domainSize = Math.max(hf.xMax - hf.xMin, hf.yMax - hf.yMin);
+    this.controls.maxDistance = this.domainSize * 3;
+    this.camera.far = Math.max(60000, this.domainSize * 12);
+    this.camera.near = 1;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** World-space target point on the ground for a local point. */
+  groundPoint(x: number, y: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const h = this.hf ? this.hf.worldHeightAt(x, y) : 0;
+    return out.set(x, h, -y);
+  }
+
+  /** Default overview: from the south-south-west, looking at the domain centre. */
+  home(animate = false): void {
+    if (!this.hf) return;
+    const cx = (this.hf.xMin + this.hf.xMax) / 2;
+    const cy = (this.hf.yMin + this.hf.yMax) / 2;
+    const target = this.groundPoint(cx, cy);
+    const d = this.domainSize * 0.95;
+    const pos = this.offsetFrom(target, d, THREE.MathUtils.degToRad(200), THREE.MathUtils.degToRad(52));
+    this.goTo(target, pos, animate ? 1.2 : 0);
+  }
+
+  /** Camera position at distance d from target, looking from compass azimuth `az` (radians) with polar angle `polar`. */
+  private offsetFrom(target: THREE.Vector3, d: number, az: number, polar: number): THREE.Vector3 {
+    // Camera sits in the direction `az` FROM the target (az 180° = camera south of the target, looking north).
+    const hx = Math.sin(az) * Math.sin(polar) * d;
+    const hy = Math.cos(az) * Math.sin(polar) * d;
+    return new THREE.Vector3(target.x + hx, target.y + Math.cos(polar) * d, target.z - hy);
+  }
+
+  setMode(mode: ViewMode, opts: { user?: [number, number] | null; lookAt?: [number, number] | null } = {}): void {
+    const prev = this._mode;
+    this._mode = mode;
+    this.applyModeControls();
+    if (!this.hf) return;
+    const c = this.controls;
+    if (mode === 'top') {
+      const t = c.target.clone();
+      const d = prev === 'ground' ? this.domainSize * 0.8 : Math.max(800, this.camera.position.distanceTo(t));
+      this.goTo(t, new THREE.Vector3(t.x, t.y + d, t.z + d * 1e-3), 0.9);
+    } else if (mode === 'orbit') {
+      const t = prev === 'ground' ? this.groundPoint(...(opts.lookAt ?? [c.target.x, -c.target.z])) : c.target.clone();
+      const d = prev === 'ground' ? this.domainSize * 0.5 : Math.max(600, this.camera.position.distanceTo(t));
+      this.goTo(t, this.offsetFrom(t, d, this.azimuthOfView(), THREE.MathUtils.degToRad(55)), 0.9);
+    } else {
+      const [ux, uy] = opts.user ?? [(this.hf.xMin + this.hf.xMax) / 2, (this.hf.yMin + this.hf.yMax) / 2];
+      const eye = this.groundPoint(ux, uy);
+      eye.y += this.eyeHeight * Math.max(1, this.hf.vex);
+      let dir: THREE.Vector3;
+      if (opts.lookAt) {
+        const la = this.groundPoint(opts.lookAt[0], opts.lookAt[1]);
+        dir = la.sub(eye);
+        // Look slightly above the target so the horizon and the smoke are in view.
+        dir.y = Math.max(dir.y, -0.25 * Math.hypot(dir.x, dir.z));
+      } else dir = new THREE.Vector3(0, 0, -1);
+      dir.normalize();
+      const target = eye.clone().addScaledVector(dir, 1);
+      this.goTo(target, eye, 1.1);
+      this.eye = eye.clone();
+    }
+    if (mode !== 'ground') this.eye = null;
+  }
+
+  /**
+   * Re-scale world heights after a vertical-exaggeration change (old → new factor), keeping the camera's offset from
+   * its target so the view does not jump.
+   */
+  rescaleHeights(oldVex: number, newVex: number): void {
+    if (oldVex === newVex || oldVex <= 0) return;
+    const t = this.controls.target;
+    const dy = t.y * (newVex / oldVex) - t.y;
+    t.y += dy;
+    this.camera.position.y += dy;
+    if (this.eye) this.eye.y += dy;
+    const f = this.flight;
+    if (f) {
+      for (const [tgt, pos] of [
+        [f.fromTarget, f.fromPos],
+        [f.toTarget, f.toPos],
+      ] as const) {
+        const d = tgt.y * (newVex / oldVex) - tgt.y;
+        tgt.y += d;
+        pos.y += d;
+      }
+    }
+  }
+
+  /** Compass azimuth (radians) of the camera as seen from the target. */
+  private azimuthOfView(): number {
+    const v = this.tmp.copy(this.camera.position).sub(this.controls.target);
+    return Math.atan2(v.x, -v.z);
+  }
+
+  private applyModeControls(): void {
+    const c = this.controls;
+    c.enabled = this.interaction;
+    if (this._mode === 'top') {
+      c.minPolarAngle = 0;
+      c.maxPolarAngle = 0.001;
+      c.enableRotate = true;
+      c.enablePan = true;
+      c.enableZoom = true;
+      c.rotateSpeed = 0.6;
+      c.minDistance = 60;
+      c.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+      c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    } else if (this._mode === 'ground') {
+      c.minPolarAngle = THREE.MathUtils.degToRad(20);
+      c.maxPolarAngle = THREE.MathUtils.degToRad(160);
+      c.enablePan = false;
+      c.enableZoom = false;
+      c.enableRotate = true;
+      c.rotateSpeed = -0.35; // look around: drag the view, not the world
+      c.minDistance = 0.5;
+      c.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.ROTATE };
+      c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.ROTATE };
+    } else {
+      c.minPolarAngle = 0;
+      c.maxPolarAngle = THREE.MathUtils.degToRad(86);
+      c.enablePan = true;
+      c.enableZoom = true;
+      c.enableRotate = true;
+      c.rotateSpeed = 0.6;
+      c.minDistance = 40;
+      c.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+      c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    }
+  }
+
+  setInteractionEnabled(on: boolean): void {
+    this.interaction = on;
+    if (!this.flight) this.controls.enabled = on;
+  }
+
+  /** Animate to a target/position (duration s; 0 = jump). */
+  goTo(target: THREE.Vector3, pos: THREE.Vector3, duration = 1.2): void {
+    if (duration <= 0) {
+      this.flight = null;
+      this.controls.target.copy(target);
+      this.camera.position.copy(pos);
+      this.camera.lookAt(target);
+      this.controls.update();
+      return;
+    }
+    this.flight = {
+      t0: performance.now(),
+      duration: duration * 1000,
+      fromTarget: this.controls.target.clone(),
+      toTarget: target.clone(),
+      fromPos: this.camera.position.clone(),
+      toPos: pos.clone(),
+    };
+    this.controls.enabled = false;
+  }
+
+  /** Fly to a local point keeping the current viewing direction; `distance` defaults to the current one (≥ 400 m). */
+  flyTo(x: number, y: number, distance?: number): void {
+    const target = this.groundPoint(x, y);
+    if (this._mode === 'ground') this.setMode('orbit');
+    const dir = this.tmp2.copy(this.camera.position).sub(this.controls.target);
+    const cur = dir.length();
+    const d = distance ?? Math.max(400, Math.min(cur, 4000));
+    if (cur < 1e-6) dir.set(0, 1, 1);
+    dir.normalize();
+    if (this._mode === 'top') dir.set(0, 1, 1e-3).normalize();
+    this.goTo(target, target.clone().addScaledVector(dir, d), 1.3);
+  }
+
+  get flying(): boolean {
+    return this.flight !== null;
+  }
+
+  /** Per-frame update: flights, damping, clamps, near plane. Returns true if the camera moved. */
+  update(now: number): boolean {
+    const before = this.tmp.copy(this.camera.position);
+    const bx = before.x;
+    const by = before.y;
+    const bz = before.z;
+    const tb = this.tmp3.copy(this.controls.target);
+    if (this.flight) {
+      const f = this.flight;
+      const t = Math.min(1, (now - f.t0) / f.duration);
+      const e = easeInOut(t);
+      this.controls.target.lerpVectors(f.fromTarget, f.toTarget, e);
+      // Arc a little higher mid-flight for long moves so the flight does not skim through ridges.
+      const pos = this.tmp2.lerpVectors(f.fromPos, f.toPos, e);
+      const dist = f.fromTarget.distanceTo(f.toTarget);
+      pos.y += Math.sin(Math.PI * e) * Math.min(dist * 0.25, 1500);
+      this.camera.position.copy(pos);
+      this.camera.lookAt(this.controls.target);
+      if (t >= 1) {
+        this.flight = null;
+        this.controls.enabled = this.interaction;
+        this.controls.update();
+      }
+    } else {
+      this.controls.update();
+      if (this._mode === 'ground' && this.eye) {
+        // First-person look-around: keep the eye where it is (see `eye`).
+        const off = this.tmp2.copy(this.eye).sub(this.camera.position);
+        if (off.lengthSq() > 1e-10) {
+          this.camera.position.add(off);
+          this.controls.target.add(off);
+        }
+      }
+    }
+    this.clamp();
+    this.updateNear();
+    const moved =
+      Math.abs(this.camera.position.x - bx) + Math.abs(this.camera.position.y - by) + Math.abs(this.camera.position.z - bz) > 1e-3 ||
+      tb.distanceToSquared(this.controls.target) > 1e-6;
+    return moved;
+  }
+
+  /**
+   * Near plane from the camera's height above the ground: ~0.4 m at eye level, tens of metres in overviews. A fixed
+   * 1 m near plane with a 100 km far plane leaves only metres of depth resolution at 10 km (24-bit depth), so tree
+   * bases and flames would z-fight with the ground in wide views.
+   */
+  private updateNear(): void {
+    if (!this.hf) return;
+    const cam = this.camera.position;
+    const x = THREE.MathUtils.clamp(cam.x, this.hf.xMin, this.hf.xMax);
+    const y = THREE.MathUtils.clamp(-cam.z, this.hf.yMin, this.hf.yMax);
+    const agl = Math.max(0, cam.y - this.hf.worldHeightAt(x, y));
+    const near = THREE.MathUtils.clamp(agl * 0.25, 0.3, 60);
+    if (Math.abs(near - this.camera.near) > 0.1 * this.camera.near) {
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  /** Keep the target on the ground inside the domain and the camera above the terrain. */
+  private clamp(): void {
+    const hf = this.hf;
+    if (!hf || this.flight) return;
+    const c = this.controls;
+    const cam = this.camera.position;
+    if (this._mode !== 'ground') {
+      // Target inside the domain and on the surface (move the camera with it so the view does not jump).
+      const tx = THREE.MathUtils.clamp(c.target.x, hf.xMin, hf.xMax);
+      const tz = THREE.MathUtils.clamp(c.target.z, -hf.yMax, -hf.yMin);
+      const ty = hf.worldHeightAt(tx, -tz);
+      const dx = tx - c.target.x;
+      const dz = tz - c.target.z;
+      const dy = (ty - c.target.y) * 0.25; // ease vertically
+      if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-4) {
+        c.target.x += dx;
+        c.target.y += dy;
+        c.target.z += dz;
+        cam.x += dx;
+        cam.y += dy;
+        cam.z += dz;
+      }
+    }
+    // Camera clearance above the ground under it (inside or just outside the domain).
+    const x = THREE.MathUtils.clamp(cam.x, hf.xMin, hf.xMax);
+    const y = THREE.MathUtils.clamp(-cam.z, hf.yMin, hf.yMax);
+    const ground = hf.worldHeightAt(x, y);
+    const clearance = this._mode === 'ground' ? this.eyeHeight * Math.max(1, hf.vex) * 0.9 : Math.max(8, 0.03 * cam.distanceTo(c.target));
+    if (cam.y < ground + clearance) cam.y = ground + clearance;
+  }
+
+  resize(aspect: number): void {
+    this.camera.aspect = aspect;
+    this.camera.updateProjectionMatrix();
+  }
+
+  dispose(): void {
+    this.controls.dispose();
+  }
+}

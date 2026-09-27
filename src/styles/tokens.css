@@ -1,0 +1,108 @@
+/*
+ * Design tokens. Two themes (doc 09 §9):
+ *  - light = "Sunlight": near-black on white, 7:1+ text contrast, heavy weights, 2 px dark outlines, no thin lines;
+ *  - dark  = "Night": dark UI, dimmed map, no pure-white panels.
+ * The theme is chosen by <html data-theme> (set from the setting / OS preference in src/ui/settings.ts).
+ */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f1f3f5;
+  --surface-3: #e3e7eb;
+  --surface-glass: rgba(255, 255, 255, 0.96);
+  --text: #0b0d10;
+  --muted: #3a414b;
+  --border: #1d232b;
+  --border-soft: #bfc6ce;
+  --primary: #111418;
+  --on-primary: #ffffff;
+  --accent: #ff6a13;
+  --on-accent: #111111;
+  --accent-soft: #fff1e6;
+  --danger: #c92a2a;
+  --on-danger: #ffffff;
+  --danger-bg: #fff0f0;
+  --watch: #f2a900;
+  --on-watch: #1a1400;
+  --watch-ink: #7a4d00;
+  --watch-bg: #fff7e0;
+  --info: #1c5fd0;
+  --on-info: #ffffff;
+  --info-bg: #edf3ff;
+  --ok: #237a36;
+  --ok-bg: #eaf7ed;
+  --focus: #1c5fd0;
+  --grid: rgba(11, 13, 16, 0.14);
+  --chart-wind: #1c5fd0;
+  --chart-temp: #c2410c;
+  --chart-rh: #0b7285;
+  --chart-moist: #8a5a14;
+  --band-dry: rgba(201, 42, 42, 0.1);
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  --shadow-strong: 0 6px 28px rgba(0, 0, 0, 0.32);
+  --map-dim: transparent;
+  --badge-bg: #ffd400;
+  --badge-ink: #111111;
+  --control-border: 2px solid var(--border);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --surface: #161b22;
+  --surface-2: #1f2630;
+  --surface-3: #2b333e;
+  --surface-glass: rgba(22, 27, 34, 0.96);
+  --text: #eef1f4;
+  --muted: #b6bfcb;
+  --border: #6b7788;
+  --border-soft: #353e4a;
+  --primary: #ff8a3d;
+  --on-primary: #111111;
+  --accent: #ff8a3d;
+  --on-accent: #111111;
+  --accent-soft: #3a2415;
+  --danger: #ff6b6b;
+  --on-danger: #1a0505;
+  --danger-bg: #3a1618;
+  --watch: #ffc94d;
+  --on-watch: #1a1400;
+  --watch-ink: #ffd772;
+  --watch-bg: #33290f;
+  --info: #7cb0ff;
+  --on-info: #0a1428;
+  --info-bg: #15223a;
+  --ok: #69d47e;
+  --ok-bg: #12301a;
+  --focus: #9cc2ff;
+  --grid: rgba(255, 255, 255, 0.14);
+  --chart-wind: #7cb0ff;
+  --chart-temp: #ff9a5c;
+  --chart-rh: #4fd1e0;
+  --chart-moist: #e0b060;
+  --band-dry: rgba(255, 107, 107, 0.14);
+  --shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+  --shadow-strong: 0 8px 30px rgba(0, 0, 0, 0.65);
+  --map-dim: rgba(0, 0, 0, 0.2);
+  --badge-bg: #c9a400;
+  --badge-ink: #0e0e0e;
+  --control-border: 2px solid var(--border);
+}
+
+:root {
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tap: 48px;
+  --tap-lg: 60px;
+  --badge-h: 22px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --topbar-h: 128px;
+  --scrub-h: 78px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}

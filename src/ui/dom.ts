@@ -112,11 +112,14 @@ export function setChildren(el: Node, children: Child): void {
   append(el, children);
 }
 
+/** Events of elements, the document (e.g. `visibilitychange`) and the window (e.g. `popstate`). */
+type AnyEventMap = HTMLElementEventMap & DocumentEventMap & WindowEventMap;
+
 /** Add a typed event listener; returns a function that removes it. */
-export function listen<K extends keyof HTMLElementEventMap>(
+export function listen<K extends keyof AnyEventMap>(
   target: HTMLElement | Document | Window,
   type: K,
-  fn: (ev: HTMLElementEventMap[K]) => void,
+  fn: (ev: AnyEventMap[K]) => void,
   opts?: AddEventListenerOptions,
 ): () => void {
   target.addEventListener(type, fn as EventListener, opts);

@@ -62,6 +62,48 @@ export function localHour(ms: number, tz = DEFAULT_TZ): number {
   return (hh % 24) + mm / 60;
 }
 
+/** Offset (hours) of a time zone from UTC at an instant (handles daylight saving). */
+export function tzOffsetHours(ms: number, tz = DEFAULT_TZ): number {
+  const p = fmt(tz, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }, 'ymdhm').formatToParts(ms);
+  const get = (t: string): number => Number(p.find((x) => x.type === t)?.value ?? 0);
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'));
+  return Math.round(((asUtc - Math.floor(ms / 60_000) * 60_000) / 3600_000) * 4) / 4;
+}
+
+/** Local calendar date "yyyy-mm-dd" of an instant in a time zone. */
+export function zonedDate(ms: number, tz = DEFAULT_TZ): string {
+  const p = fmt(tz, { year: 'numeric', month: '2-digit', day: '2-digit' }, 'ymd').formatToParts(ms);
+  const get = (t: string): string => p.find((x) => x.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Unix ms of a wall-clock time on a local date in a time zone. */
+export function zonedTime(date: string, hour: number, minute = 0, tz = DEFAULT_TZ): number {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const guess = Date.UTC(y, m - 1, d, hour, minute);
+  const first = guess - tzOffsetHours(guess, tz) * 3600_000;
+  // Re-evaluate at the result in case the guess fell on the other side of a daylight-saving change.
+  return guess - tzOffsetHours(first, tz) * 3600_000;
+}
+
+/**
+ * Value for an `<input type="datetime-local">` ("yyyy-mm-ddThh:mm") showing an instant as wall-clock time in `tz`.
+ * The setup screen uses the scenario time zone (NSW) rather than the device's, so the times typed match the
+ * simulation clock even on a phone or laptop set to another zone.
+ */
+export function toZonedInput(ms: number, tz = DEFAULT_TZ): string {
+  const p = fmt(tz, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }, 'ymdhm').formatToParts(ms);
+  const get = (t: string): string => p.find((x) => x.type === t)?.value ?? '00';
+  return `${get('year')}-${get('month')}-${get('day')}T${String(Number(get('hour')) % 24).padStart(2, '0')}:${get('minute')}`;
+}
+
+/** Inverse of {@link toZonedInput}: unix ms of a "yyyy-mm-ddThh:mm" wall-clock time in `tz` (NaN if malformed). */
+export function fromZonedInput(v: string, tz = DEFAULT_TZ): number {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(v);
+  if (!m) return Number.NaN;
+  return zonedTime(m[1]!, Number(m[2]), Number(m[3]), tz);
+}
+
 /** Duration "2 h 35 min", "45 min", "0 min", "12 h". Negative values are shown as their magnitude. */
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds)) return '–';

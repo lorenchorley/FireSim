@@ -1,0 +1,55 @@
+/**
+ * Insight card: severity is shown by colour AND icon AND label (doc 09 §9: never colour alone). Cards never
+ * auto-dismiss; tapping one flies the view to the place it is about.
+ */
+import type { Insight } from '../../../core/types';
+import { h } from '../../dom';
+import { icon, type IconName } from '../../icons';
+import { formatClock, formatElapsedShort } from '../../format';
+import { SEVERITY_LABELS } from '../../labels';
+
+const SEVERITY_ICON: Record<Insight['severity'], IconName> = { danger: 'danger', watch: 'warning', info: 'info' };
+
+export function insightCard(ins: Insight, opts: { tz: string; absTime: (t: number) => number; onShow: (i: Insight) => void; compact?: boolean; forecast?: boolean }): HTMLElement {
+  const when = opts.forecast ? `Forecast · ${formatClock(opts.absTime(ins.time), opts.tz)}` : `${formatClock(opts.absTime(ins.time), opts.tz)} · ${formatElapsedShort(ins.time)}`;
+  const show = h(
+    'button',
+    { type: 'button', class: 'btn btn-secondary insight-show', aria: { label: `Show “${ins.title}” on the map` }, on: { click: () => opts.onShow(ins) } },
+    [icon('eye', { size: 20 }), h('span', { class: 'btn-text' }, 'Show on map')],
+  );
+  const body = [
+    h('div', { class: 'insight-head' }, [
+      h('span', { class: 'sev-badge' }, [icon(SEVERITY_ICON[ins.severity], { size: 18 }), SEVERITY_LABELS[ins.severity]]),
+      h('span', { class: 'insight-time' }, when),
+    ]),
+    h('h3', { class: 'insight-title' }, ins.title),
+    opts.compact ? null : h('p', { class: 'insight-body' }, ins.body),
+    !opts.compact && ins.safety ? h('p', { class: 'insight-safety' }, [icon('lock', { size: 18 }), h('span', null, ins.safety)]) : null,
+    !opts.compact && ins.factors.length
+      ? h(
+          'ul',
+          { class: 'factor-chips', aria: { label: 'Factors' } },
+          ins.factors.map((f) => h('li', { class: 'factor-chip' }, [h('span', { class: 'fc-label' }, f.label), h('span', { class: 'fc-value' }, f.value), f.effect ? h('span', { class: 'fc-effect' }, f.effect) : null])),
+        )
+      : null,
+    h('div', { class: 'insight-foot' }, [
+      !opts.compact && ins.source ? h('details', { class: 'insight-source' }, [h('summary', null, 'Learn more'), h('p', null, `Source: ${ins.source}`)]) : h('span'),
+      show,
+    ]),
+  ];
+  const onCardClick = (e: MouseEvent): void => {
+    // Tapping the card flies to the place it is about (the explicit button does the same for assistive tech).
+    if ((e.target as HTMLElement).closest('button, summary, details, a')) return;
+    opts.onShow(ins);
+  };
+  return h(
+    'article',
+    {
+      on: { click: onCardClick },
+      class: ['insight', `sev-${ins.severity}`, opts.compact && 'compact'],
+      dataset: { testid: 'insight-card', kind: ins.kind, severity: ins.severity },
+      aria: { label: `${SEVERITY_LABELS[ins.severity]}: ${ins.title}` },
+    },
+    h('div', { class: 'insight-main' }, body),
+  );
+}
