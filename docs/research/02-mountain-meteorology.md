@@ -34,7 +34,7 @@ Main corrections in this pass:
 
 ## 1. Executive summary: what matters most for FireSim
 
-1. **In mountains, weather is not a smooth field.** Sharples (2009) argues that rugged terrain produces "complex dynamics and emergent properties that are discontinuous in nature". The "fire weather continuum" assumed in fire-danger practice is therefore of reduced validity in hilly country [V]. Two consequences follow:
+1. **In mountains, weather is not a smooth field.** Sharples (2009) argues that rugged terrain produces "complex dynamics and emergent properties that are discontinuous in nature". The "fire weather continuum" assumed in fire-danger practice is therefore of reduced validity in hilly country [V] (UNVERIFIED in the fact-check: the quote was not re-seen; the abstract confirms the paper reviews how mountain effects "might contribute to fire potential and fire behaviour"). Two consequences follow:
    - FireSim must never just interpolate one station's weather across ridges.
    - FireSim needs separate terrain-aware sub-models for wind, temperature and humidity.
 2. **Vorticity-driven lateral spread (VLS, "fire channelling") is the single most important mountain-specific dynamic behaviour for NSW crews.**
@@ -86,7 +86,7 @@ Sharples (2009, IJWF 18:737–754, DOI 10.1071/WF08041) (verified: CSIRO Publish
 - inversions and thermal belts;
 - the interaction of upper winds with rugged terrain.
 
-The key message [V]: these processes "can lead to otherwise unexpected fire behaviour and escalation in fire size and severity that could endanger firefighting crews and compromise suppression activities".
+The key message [V]: these processes "can lead to otherwise unexpected fire behaviour and escalation in fire size and severity that could endanger firefighting crews and compromise suppression activities" (quote UNVERIFIED in the fact-check pass; the abstract seen says the paper aims "to promote understanding… of how mountain meteorological effects might contribute to fire potential and fire behaviour").
 
 Flat-land models assume one wind vector modified only by fuel and slope. In NSW gorge country (the Blue Mountains sandstone plateau cut by deep gorges; the Great Escarpment gorges of New England; the Snowy/Brindabella ranges) the wind at a point can be:
 - thermally driven, and opposite in sign between day and night;
@@ -337,7 +337,7 @@ Australian evidence (BoM/BNHCRC ACCESS case studies at about 440 m grid spacing;
 - **Aberfeldy fire, Victoria, 17 January 2013 (night).** The fireground was high on the southern slopes of the Great Divide. Modelling "showed clear evidence that mountain waves and strong downslope winds developed overnight". These "would have directly increased the fire intensity and spread, as well as contributed to firebrand transport" (verified: BNHCRC 2017).
 - **Margaret River fire, WA, 2011.** The ingredients were "nocturnal cooling, reasonably strong synoptic flow, gentle upwind slope and steeper downwind" (verified: BNHCRC 2017 / Hazard Note 24).
   - The BoM summary adds that "in contrast to the State Mine fire, strong near-surface atmospheric stability due to a nocturnal temperature inversion" was crucial to wave development in another of the cases.
-  - So mountain-wave wind can occur **both** with a night-time surface inversion (Margaret River, Aberfeldy) **and** by day without one (State Mine).
+  - So mountain-wave wind can occur **both** with a night-time surface inversion (probably Margaret River and/or Aberfeldy) **and** without a strong surface inversion (State Mine, per the BoM contrast). Do not gate the FireSim mountain-wave flag on night-time alone.
   - (UNVERIFIED: the extract does not name which case the stability statement refers to.)
   - This recipe is directly usable as a FireSim detection rule (card 13).
 - (CORRECTED: the earlier draft attributed the Aberfeldy "overnight" quotes to the State Mine fire.)
@@ -373,7 +373,7 @@ This is why foehn afternoons in the lee (for example the Monaro, the Bega and Sh
 - For 29 December 2019 to 2 January 2020, 2.2 km Unified Model runs show near-surface dry air that originated in the upper atmosphere over the Indian and Southern Oceans. It circulated around an anticyclone, descended "as a dry slot onto a deep mixed layer" and reached the surface "rapidly … through convective rolls", producing FFDI > 100. The dry region formed ahead of a strong front (verified: Ayat, Lane, Wales, Reeder & Huang 2025, JGR 130(6) e2024JD041706, abstract).
 - Mills (2005, AMM 54:265–290) analysed the sub-synoptic meteorology of the January 2003 extreme days (verified: citation).
 
-**Turbulence, gustiness and direction variability.** In complex terrain the wind direction at lee and valley sites is multi-modal, not a Gaussian scatter around the synoptic direction [V] (Sharples et al. 2010 EMS; Sharples et al. MODSIM 2009, "An empirical probabilistic study of wind direction over complex terrain"). FireSim should represent this as a probability distribution, not as one arrow [H].
+**Turbulence, gustiness and direction variability.** In complex terrain the wind direction at lee and valley sites is multi-modal, not a Gaussian scatter around the synoptic direction [V] (Sharples et al. 2010 EMS; Sharples et al. MODSIM 2009, "An empirical probabilistic study of wind direction over complex terrain") (verified in substance: Sharples, McRae & Weber 2010 EMS 25:1099–1120 use joint speed–direction distributions to identify multiple wind–terrain states; the MODSIM 2009 title is UNVERIFIED). FireSim should represent this as a probability distribution, not as one arrow [H].
 
 ### 2.6 Fire–terrain–atmosphere coupling (dynamic fire behaviour)
 
@@ -613,7 +613,8 @@ Implementation notes:
 4. **Lee eddy.** Where the lee separation mask is true:
    - set the near-surface wind to −(0.2…0.5)·U_ridge along the slope-normal projection (reversed, upslope) [H];
    - raise the direction variance, and show this as a wind "rose" instead of one arrow;
-   - reduce the effective wind factor in the spread model.
+   - reduce the effective wind factor in the spread model;
+   - limit the mask to about 3–7 H downwind of the crest, where H is ridge height above the lee valley floor. This is an order-of-magnitude reattachment length (UNVERIFIED, §2.5).
 5. **Consequences of the simplifications:**
    - no explicit mountain-wave amplitude, rotor timing or hydraulic jumps;
    - speed-up is overpredicted on steep crests unless capped;
@@ -680,6 +681,10 @@ Before the fire gets there, show pre-computed VLS-prone terrain as an overlay: "
 | Stability: C-Haines override, mixing height | NWP / sounding | Teaching pyroconvection |
 | "Plume behaviour" observation (vertical column vs bent over) | Nc estimate | Switches plume-dominated / wind-driven explanations |
 | Separation / VLS sensitivity sliders | Defaults in §4.5 | Instructor demonstration; uncertainty |
+| "Cloud banked on the far side of the range, clear here" | none | Foehn cue (Sharples & Ma 2026); raises the foehn flag and confidence in lee drying |
+| "Rain in the last 24 h / valley floor wet" | Observations | Delays inversion break-up (Whiteman 1982) and slows the fuel-drying ramp |
+| DEM resolution / VLS slope-threshold calibration | Auto from DEM | σ is resolution-dependent (Sharples et al. 2015; Sharples & Hilton 2020) |
+| "Strong gusts coming down the lee slope at night" | none | Observation that triggers the mountain-wave mode when the diagnostic misses it |
 
 ### 4.7 Validation and replay scenarios (NSW-centred)
 
@@ -701,26 +706,30 @@ The wording is plain on purpose. The thresholds are the ones the engine checks. 
 
 | # | Card title | Detection criteria | Card text ("why") |
 |---|---|---|---|
-| 1 | **Fire can run sideways along this lee slope (VLS)** | VLS score > 0.5 (§4.5): lee slope > 20–25°, aspect within 30–40° of downwind, ridge wind > ~20 km/h [V]; fire within ~300 m of crest [H] | "Wind pouring over this ridge breaks away from the steep downwind slope and rolls into a big invisible eddy. When fire gets into that eddy, its rising heat spins it up into a vertical whirl that drags the fire *sideways* along the slope, across the wind, at up to 3–5 km/h, while throwing embers far downwind. Don't assume the flanks are safe here." |
+| 1 | **Fire can run sideways along this lee slope (VLS)** | VLS score > 0.5 (§4.5): lee slope > 20–25°, aspect within 30–40° of downwind, ridge wind > ~18–20 km/h (≈ 5 m/s) (verified: Sharples & Hilton 2020; Sharples et al. 2015); fire within ~300 m of crest [H] | "Wind pouring over this ridge breaks away from the steep downwind slope and rolls into a big invisible eddy. When fire gets into that eddy, its rising heat spins it up into a vertical whirl that drags the fire *sideways* along the slope, across the wind, typically about 2 km/h but surging to 4–5 km/h in pulses every 10–15 minutes, while throwing embers far downwind. Don't assume the flanks are safe here: a flank can become a head fire without any wind change." |
 | 2 | **The wind on this slope blows the 'wrong' way** | Separation mask true: lee-facing, slope > ~20°, ridge wind > ~20–25 km/h [V/H] | "Behind a steep ridge the main wind lifts off the slope. Underneath, the air circulates back *up* the slope, gusty and changing direction. A fire here may creep uphill toward the ridge against the main wind, and embers from the ridge can land anywhere on this face." |
 | 3 | **Fire is racing upslope with the morning sun** | Cell sunlit (cos i > 0.3), solar elevation > 10°, ridge wind < ~15 km/h [H]; slope > 10° | "The sun has heated this slope, and warm air is flowing up it (about 5–13 km/h). Fire here gets an extra push uphill on top of the slope effect." |
 | 4 | **Evening: the wind is turning downhill** | Slope in shadow or sun < 5°, cloud < 3/8, ridge wind < ~10–15 km/h [H] | "This slope is in shadow and cooling. Cool air now drains *down* the slope and valley (3–8 km/h). The fire's upslope run should slow and it may back downhill. Smoke will sink into the valley." |
 | 5 | **Valley wind: this valley has its own wind** | Valley relief > ~150 m, valley-axis wind differs > 45° from ridge wind [H] | "Valleys steer the wind along their length, whatever the wind is doing above the ridges. In the afternoon it blows up the valley, at night down it. Sometimes it even blows opposite to the wind on the tops." |
 | 6 | **Thermal belt: fire stays active on the mid-slope tonight** | Night, inversion diagnosed; cell within the thermal-belt band [V concept; H band width] | "At night cold air pools in the valley bottom like water. Just above that cold pool, around the middle of the slope, it stays warmer and drier all night, so the fuel doesn't recover and fire keeps burning while the valley floor goes quiet." |
-| 7 | **Ridges don't sleep** | Night; ridge cells above inversion top; ridge wind > 15 km/h [H] | "Up here you're above the night-time cold layer. The wind keeps blowing and the air stays dry, so fire on the tops can stay active overnight." |
-| 8 | **The fire is about to wake up** | Column model: heat deficit about to be exceeded, or mixed-layer top reaching ridge height; typically 2–5 h after sunrise [V range 3.5–5 h in deep valleys] | "The morning cold layer that has been holding the fire down is about to break. When it goes, the stronger, drier winds from above reach the fire within minutes. Expect a jump in speed and a change in direction." |
+| 7 | **Ridges don't sleep** | Night; ridge cells above inversion top; ridge wind > 15 km/h [H] (concept verified: Aberfeldy 2013 case, BNHCRC 2017) | "Up here you're above the night-time cold layer. The wind keeps blowing and the air stays dry, so the fuel doesn't soak up moisture overnight and fire on the tops can stay active all night." |
+| 8 | **The fire is about to wake up** | Column model: heat deficit about to be exceeded, or mixed-layer top reaching ridge height; typically 2–5 h after sunrise (verified: 3.5–5 h in deep Colorado valleys, Whiteman 1982; later if the valley floor is wet or snow-covered) | "The morning cold layer that has been holding the fire down is about to break. When it goes, the stronger, drier winds from above reach the fire within minutes. Expect a jump in speed and a change in direction." |
 | 9 | **Stronger wind on the crest** | Crest cell; H/L > 0.05; computed speed-up > 25 % [H] | "Wind squeezes over the top of the hill and speeds up (here about +X %). A fire reaching this ridge will suddenly get much stronger wind and throw embers over the other side." |
 | 10 | **Saddle / gap: wind and fire funnel through here** | Saddle cell on ridge and cross-ridge wind > 10 km/h [H] | "The ridge is lower here, so wind (and fire) push through the gap faster than over the higher parts." |
 | 11 | **Gully / chimney run** | Drainage line with slope > 20°, fire at base, upslope aligned with wind within ±45° [H; see fire-behaviour note] | "This steep gully acts like a chimney. The fire's own heat draws air up it, and the flames lie down onto the fuel ahead. It can accelerate suddenly even though the wind hasn't changed." |
 | 12 | **Hot dry wind coming down off the range (foehn)** | W–NW flow at 850–700 hPa > ~15 m/s crossing the GDR; site on lee side; forecast or observed T rise and RH fall [V mechanism; H thresholds] | "Air from high above the ranges is being dragged down this side. It heats up as it sinks (about 1 °C per 100 m) and was already dry, so humidity can crash to single figures within hours." |
-| 13 | **Mountain waves: strong gusts at night in the lee** | Stable layer near crest (Fr 0.7–1.3), Scorer parameter decreasing with height, strong cross-ridge wind; night [L/H] | "Air flowing over the range is bouncing like water over a rock. On this side it can come crashing down the slope as strong, gusty wind, even at night when you'd expect calm." |
+| 13 | **Mountain waves: sudden strong gusts in the lee (often at night)** | Fr_h ≈ 0.6–1.2 and/or Scorer parameter decreasing with height, **or** nocturnal surface inversion + reasonably strong cross-ridge wind + gentle upwind slope and steeper lee slope (Margaret River recipe); most likely at night [L/H; recipe verified: Kepert et al. 2016] | "Air flowing over the range is bouncing like water over a rock. On this side it can come crashing down the slope as strong, gusty wind, even at night when you'd expect calm. This happened at the Aberfeldy fire in Victoria in 2013. At the State Mine fire in the Blue Mountains, a band of strong wind came down to the fire in the same way." |
 | 14 | **Wind change: this flank will become the head fire** | Wind change forecast or set within scenario; new direction rotates > 45° | "When the wind swings to the south-west, this whole flank, about X km long, turns into the front of the fire. A wide front moves fast and is hard to stop. Plan now for where it will run." |
 | 15 | **Southerly buster** | Coastal or escarpment domain; buster forecast | "A shallow wall of cold air is racing up the coast. Winds can swing to the south and gust over 50 km/h within minutes. Fires on the coast side will turn north. Tableland fires may not feel it." |
 | 16 | **The fire is making its own weather** | Byram Nc > 10 [V] | "The fire's heat is now stronger than the wind. The smoke goes straight up, and winds near the fire are pulled *toward* it from all sides and can change quickly. Normal wind-based predictions become unreliable." |
-| 17 | **Thunderstorm from the fire possible (pyroCb)** | C-Haines ≥ 10 (or above local 95th percentile ≈ 7–10) [V] and simulated firepower > PFT [V/L]; or VLS active on a large front | "The air above is unstable and dry. A big enough fire can build its own thunderstorm: violent gusts, downdrafts, lightning and embers carried many kilometres. Watch the smoke column for a white cap forming." |
+| 17 | **Thunderstorm from the fire possible (pyroCb)** | C-Haines ≥ 10 with FFDI ≥ 50 (strict) or C-Haines ≥ 8 with FFDI ≥ 25 (watch) (verified: Di Virgilio et al. 2019); or CH above local 95th percentile ≈ 7–10; and simulated firepower > PFT [form verified; constant UNVERIFIED]; or VLS active on a large front | "The air above is unstable and dry. A big enough fire can build its own thunderstorm: violent gusts, downdrafts, lightning and embers carried many kilometres. Watch the smoke column for a white cap forming." |
 | 18 | **Sudden drying expected** | Forecast dew point drop ≥ 5 °C within 3 h and mixed layer > 2.5 km [H]; or dry slot in forecast | "Very dry air from higher up is being mixed down to the ground. Humidity can fall sharply within an hour, and fire activity jumps." |
 | 19 | **Smoke trapped in the valley** | Night or morning inversion; valley cell below inversion top | "Cold air under a warm lid is trapping smoke here. The fire looks quiet, but it hasn't gone out. It will pick up once the sun breaks the lid." |
-| 20 | **Embers landing far ahead** | Spotting model: spot > 500 m ahead; steep terrain + strong wind [V drivers] | "Embers are landing well ahead of the front. In south-east Australia most spot fires land within 5 km, but some go more than 10 km, especially from big fires in steep, forested country with strong winds." |
+| 20 | **Embers landing far ahead** | Spotting model: spot > 500 m ahead; steep terrain + strong wind (verified drivers: Storey et al. 2020, source fire area is the top predictor, then strong wind, dense forest, steep slope) | "Embers are landing well ahead of the front. In south-east Australia most spot fires land within 5 km, but some go more than 10 km, especially from big fires in steep, forested country with strong winds. On Black Saturday spot fires started up to 33 km ahead." |
+| 21 | **Cloud on the far side, clear skies here: foehn sign** | Site on lee side of GDR; forecast W–NW cross-range flow; user reports or satellite shows cloud banked on the windward (western) ranges and clear sky in the lee (cue verified: Sharples & Ma 2026) | "See the cloud piled up on the other side of the range while it's clear here? The moisture is being left behind over there, and the air coming down this side is dry and warming as it sinks. Expect lower humidity and more active fire than the forecast for the lowlands suggests." |
+| 22 | **High country drying tonight** | Night; elevated cells (e.g. > 1,000 m) where column dew point aloft is much lower than the lowland dew point, and a stable layer is absent or eroding under cross-range flow [H; phenomenon verified: Sharples, Mills & McRae 2012; Badlan et al. 2012] | "On these high ridges dry air from aloft is reaching the ground. Humidity up here can be far lower than in the valleys, even at night, so the fuel keeps drying when you'd expect it to recover." |
+| 23 | **Wet ground: slow wake-up** | Rain in previous 24 h or dew/wet valley floor; valley inversion diagnosed at dawn [verified qualitatively: Whiteman 1982, "unless… the ground is wet"] | "The valley floor is wet, so the sun's energy is going into drying it out instead of heating the air. The cold layer will take longer to break this morning. The fire may stay quiet longer, then pick up quickly once it does break." |
+| 24 | **Southerly buster: arrival estimate** | Coastal/escarpment domain; buster observed at a station to the south at time t₀ and distance d | "The southerly change is moving up the coast at roughly 35–45 km/h (about 530 km from Cape Howe to Newcastle in 12–15 hours). At that speed it will reach here around [t₀ + d/40 km/h]. Get ready for the wind to swing south and for the fire's northern flank to become the head fire." (speed verified: BoM; arrival formula [D]) |
 
 Card logic rules:
 - Show at most 2–3 cards at a time, ranked by "danger × novelty".
@@ -732,52 +741,63 @@ Card logic rules:
 ## 6. Open questions and uncertainties
 
 1. **VLS threshold interdependence.** The exact joint wind–slope–aspect thresholds from Simpson et al. (2016) and Sharples et al. (2013) could not be read in full in this session. The smooth score in §4.5 is a placeholder calibrated to the published "~20–25°, 30–40°, ~20 km/h" summary.
+   - *Partly resolved in the fact-check*: the coupled-model wind threshold is about 5 m/s; Canberra gave σ ≈ 25°, δ ≈ 40° (Sharples et al. 2015). The slope–wind trade-off curve is still unknown.
 2. **DEM resolution vs slope thresholds.** Slope magnitude depends on the DEM grid: 5 m LiDAR shows much steeper slopes than a 30 m SRTM-derived DEM, which is steeper again than 100–250 m smoothing. The DEM resolution used to derive the Canberra thresholds needs to be confirmed from Sharples et al. (2012) before calibrating S_slope.
-3. **Wind-speed reference height** for VLS (10 m open, ridge-top, or model level) is ambiguous in secondary summaries. Confirm it from the original papers.
-4. **Taylor–Lee and Jackson–Hunt coefficients** (B, A and the ln vs ln² form) should be checked against the original papers. They are known to overpredict on steep, forested NSW terrain.
+   - *Fact-check*: the same terrain filter used σ = 10.5° in Sharples & Hilton (2020) versus σ ≈ 25° for Canberra. That confirms strong resolution dependence, but the DEM spacing behind each value is still UNVERIFIED.
+3. **Wind-speed reference height** for VLS (10 m open, ridge-top, or model level) is ambiguous in secondary summaries. Confirm it from the original papers. The WRF studies use a "reference" or background wind at an unspecified height (UNVERIFIED).
+4. **Taylor–Lee and Jackson–Hunt coefficients** (B, A and the ln vs ln² form) should be checked against the original papers. They are known to overpredict on steep, forested NSW terrain. The fact-check could not access Taylor & Lee (1984). The A values are consistent with ASCE 7.
 5. **Thermal-belt height and inversion depth for NSW valleys**: no local climatology was found. Consider NSW RFS/BoM AWS pairs (valley vs ridge) or a literature search for Australian cold-pool studies.
 6. **Foehn statistics** (frequency, typical ΔT/ΔRH, affected districts) from Sharples et al. (2010) were not extracted.
 7. **C-Haines at high elevation** (Snowy Mountains): no validated alternative was found.
 8. **PFT inputs** (z_fc, Δθ_fc) need a sounding algorithm (Tory & Kepert 2021). The convective fraction of fire heat release is uncertain.
 9. **Mountain waves** cannot be predicted reliably by our diagnostic model. We can only flag favourable conditions.
 10. **Synoptic-thermal blending threshold** (§2.3) is an engineering choice, not a published value.
+11. **C-Haines constants.** The structure and caps are confirmed, but the exact numbers (−2, 1/3, −1, 30, 5 + (CB − 5)/2) were not re-read from CAWCR CTR_020 because the PDF host was blocked. Unit-test against a published worked example before release.
+12. **PFT leading constant 0.3.** Unconfirmed. Prefer implementing the full Tory & Kepert expression, with p_fc and θ_fc, over the 0.3 shortcut.
+13. **Mountain-wave NSW climatology.** Only case studies exist (State Mine; plus Aberfeldy in Victoria and Margaret River in WA). There are no frequency statistics for the Blue Mountains or the south-coast escarpment.
+14. **AS/NZS 1170.2 (2021)** hill-shape provisions (L1, L2, the 0.45 separation switch, 0.71) were quoted from the 2011 edition. Check them against the current edition.
+15. **Nocturnal high-country drying** (Sharples, Mills & McRae 2012): the event magnitudes (ΔT_d, RH) and station list were not extracted. They are needed to calibrate card 22.
+16. **Slope-wind magnitudes** are US handbook values (NWCG). No Australian eucalypt-forest measurements of anabatic/katabatic speeds were found. Tall open forest canopies may shelter or decouple the near-surface flow.
 
 ---
 
 ## 7. References
 
-- Ayat, H. et al. (2025) Rapid surface drying during the Black Summer bushfires in Australia: insights from high-resolution simulations. *J. Geophys. Res. Atmos.* https://doi.org/10.1029/2024JD041706
+- Ayat, H., Lane, T.P., Wales, S., Reeder, M.J., Huang, Y. (2025) Rapid surface drying during the Black Summer bushfires in Australia: insights from high-resolution simulations. *J. Geophys. Res. Atmos.* 130(6):e2024JD041706. https://doi.org/10.1029/2024JD041706 (verified)
+- Badlan, R.L., Lane, T.P., Mills, G.A., Caine, S. (2012) Mesoscale modelling of two 'drying events': governing processes and implications for fire danger. *Aust. Meteorol. Oceanogr. J.* 62:143–156. https://connectsci.au/es/article/62/3/143/264524 (verified)
 - Balch, J.K. et al. (2022) Warming weakens the night-time barrier to global fire. *Nature* 602:442–448. https://www.nature.com/articles/s41586-021-04325-1
 - Bolton, D. (1980) The computation of equivalent potential temperature. *Mon. Wea. Rev.* 108:1046–1053.
 - Bureau of Meteorology. Fire Weather Knowledge Centre: How weather affects fires. https://www.bom.gov.au/resources/learn-and-explore/fire-weather-knowledge-centre/how-weather-affects-fires
 - Bureau of Meteorology (2018) The big bust: southerly busters explained. https://media.bom.gov.au/social/blog/18/the-big-bustsoutherly-busters-explained/
 - Bureau of Meteorology. Research: how mountain waves can escalate bushfires. https://media.bom.gov.au/social/blog/1311/research-how-mountain-waves-can-escalate-bushfires/
-- Bushfire & Natural Hazards CRC (2017) Mountain waves and extreme fire behaviour. https://www.bnhcrc.com.au/news/2017/mountain-waves-and-extreme-fire-behaviour
+- Bushfire & Natural Hazards CRC (2017) Mountain waves and extreme fire behaviour. https://www.bnhcrc.com.au/news/2017/mountain-waves-and-extreme-fire-behaviour (verified; covers the State Mine, Aberfeldy and Margaret River cases)
 - Butler, B.W. et al. (2015) High-resolution observations of the near-surface wind field over an isolated mountain and in a steep river canyon. *Atmos. Chem. Phys.* 15:3785–3801. https://acp.copernicus.org/articles/15/3785/2015/
 - Byram, G.M. (1959) Combustion of forest fuels. In Davis, K.P. (ed.) *Forest Fire: Control and Use*. McGraw-Hill.
 - Colquhoun, J.R., Shepherd, D.J., Coulman, C.E., Smith, R.K., McInnes, K. (1985) The southerly burster of south eastern Australia: an orographically forced cold front. *Mon. Wea. Rev.* 113:2090–2107.
 - Cruz, M.G. et al. (2012) Anatomy of a catastrophic wildfire: the Black Saturday Kilmore East fire in Victoria, Australia. *For. Ecol. Manage.* 284:269–285. https://www.sciencedirect.com/science/article/abs/pii/S0378112712001223
-- Di Virgilio, G. et al. (2019) Climate change increases the potential for extreme wildfires. *Geophys. Res. Lett.* https://doi.org/10.1029/2019GL083699
+- Di Virgilio, G. et al. (2019) Climate change increases the potential for extreme wildfires. *Geophys. Res. Lett.* 46:8517–8526. https://doi.org/10.1029/2019GL083699 (verified; pyroCb thresholds CH ≥ 8 & FFDI ≥ 25; CH ≥ 10 & FFDI ≥ 50; end page UNVERIFIED)
 - Dold, J.W., Zinoviev, A. (2009) Fire eruption through intensity and spread rate interaction mediated by flow attachment. *Combust. Theory Model.* 13:763–793.
 - Dowdy, A.J., Pepler, A. (2018) Pyroconvection risk in Australia: climatological changes in atmospheric stability and surface fire weather conditions. *Geophys. Res. Lett.* https://doi.org/10.1002/2017GL076654
 - Dowdy, A.J., Fromm, M.D., McCarthy, N. (2017) Pyrocumulonimbus lightning and fire ignition on Black Saturday in southeast Australia. *J. Geophys. Res. Atmos.* 122:7342–7354. https://doi.org/10.1002/2017JD026577
 - Durran, D.R. (1990) Mountain waves and downslope winds. *Meteorol. Monogr.* 23(45):59–81. AMS.
 - EUMeTrain. Physical background of lee waves. https://resources.eumetrain.org/data/4/452/print_4.htm
-- Forthofer, J.M. et al. (2009) Simulating diurnally driven slope winds with WindNinja. https://www.fs.usda.gov/rm/pubs_journals/2009/rmrs_2009_forthofer_j001.pdf
+- Forthofer, J.M., Shannon, K., Butler, B.W. (2009) Simulating diurnally driven slope winds with WindNinja. AMS conference paper 4.4 (venue/year details UNVERIFIED). https://www.fs.usda.gov/rm/pubs_journals/2009/rmrs_2009_forthofer_j001.pdf (verified: title, authors, model inputs)
 - Forthofer, J.M., Butler, B.W., Wagenbrenner, N.S. (2014) A comparison of three approaches for simulating fine-scale surface winds in support of wildland fire management. Part I. *Int. J. Wildland Fire* 23:969–981. [L]
 - Fromm, M. et al. (2006) Violent pyro-convective storm devastates Australia's capital and pollutes the stratosphere. *Geophys. Res. Lett.* 33:L05815. https://doi.org/10.1029/2005GL025161
 - Haines, D.A. (1988) A lower atmosphere severity index for wildland fires. *Natl. Wea. Dig.* 13:23–27.
 - Hilton, J.E., Sullivan, A.L., Swedosh, W., Sharples, J., Thomas, C. (2018) Incorporating convective feedback in wildfire simulations using pyrogenic potential. *Environ. Model. Softw.* 107:12–24. https://www.sciencedirect.com/science/article/abs/pii/S1364815217309593
-- Hilton, J.E., Garg, N., Sharples, J.J. (2019) Incorporating firebrands and spot fires into vorticity-driven wildfire behaviour models. MODSIM2019. https://www.naturalhazards.com.au/crc-collection/downloads/conf_paper_hilton_etal_modsim2019_1.pdf
+- Hilton, J.E., Garg, N., Sharples, J.J. (2019) Incorporating firebrands and spot fires into vorticity-driven wildfire behaviour models. MODSIM2019, pp. 761–767. https://doi.org/10.36334/modsim.2019.H7.hilton2 ; PDF: https://mssanz.org.au/modsim2019/H7/hilton2.pdf (verified)
 - Hilton, J.E., Garg, N. (2021) Rapid wind–terrain correction for wildfire simulations. *Int. J. Wildland Fire* 30:410–427. https://www.publish.csiro.au/wf/WF20062
 - Iqbal, M. (1983) *An Introduction to Solar Radiation*. Academic Press.
 - Jackson, P.S., Hunt, J.C.R. (1975) Turbulent wind flow over a low hill. *Q. J. R. Meteorol. Soc.* 101:929–955. https://doi.org/10.1002/qj.49710143015
-- Kochanski, A.K. et al. (2019) Modeling wildfire smoke feedback mechanisms using a coupled fire-atmosphere model with a radiatively active aerosol scheme. *J. Geophys. Res. Atmos.* [L]
+- Kepert, J., Tory, K., Thurston, W., Ching, S., Fawcett, R., Yeo, C. (2016) Fire escalation by downslope winds. BNHCRC *Hazard Note* 24. https://www.bnhcrc.com.au/hazardnotes/24 (verified citation)
+- Kochanski, A.K., Mallia, D.V., Fearon, M.G., Mandel, J., Souri, A.H., Brown, T.J. (2019) Modeling wildfire smoke feedback mechanisms using a coupled fire-atmosphere model with a radiatively active aerosol scheme. *J. Geophys. Res. Atmos.* 124(16):9099–9116. https://doi.org/10.1029/2019JD030558 (verified)
+- Lin, Y.-L., Wang, T.-A. (1996) Flow regimes and transient dynamics of two-dimensional stratified flow over an isolated mountain ridge. *J. Atmos. Sci.* 53:139–158. (UNVERIFIED: citation details from memory; the Fr 0.6–1.12 windstorm range comes from a search extract of a later study)
 - McRae, R.H.D., Sharples, J.J., Wilkes, S.R., Walker, A. (2013) An Australian pyro-tornadogenesis event. *Nat. Hazards* 65:1801–1811. https://doi.org/10.1007/s11069-012-0443-7
 - McRae, R.H.D., Sharples, J.J., Fromm, M. (2015) Linking local wildfire dynamics to pyroCb development. *Nat. Hazards Earth Syst. Sci.* 15:417–428. https://nhess.copernicus.org/articles/15/417/2015/
 - McRae, R.H.D. (2023) Operational prediction of extreme bushfires. *Aust. J. Emerg. Manage.* (October 2023). https://knowledge.aidr.org.au/resources/ajem-october-2023-operational-prediction-of-extreme-bushfires/ ; UNSW summary: https://www.unsw.edu.au/news/2023/10/world-first-warning-system-can-help-predict-extreme-bushfires
 - Mills, G.A. (2005) On the sub-synoptic scale meteorology of two extreme fire weather days during the eastern Australian fires of January 2003. *Aust. Meteorol. Mag.* 54:265–290.
-- Mills, G.A. (2008a, b) Abrupt surface drying and fire weather, Parts 1 and 2. *Aust. Meteorol. Mag.* 57:299–309; 57:311–328.
+- Mills, G.A. (2008a, b) Abrupt surface drying and fire weather. Part 1: overview and case study of the South Australian fires of 11 January 2005; Part 2: a preliminary synoptic climatology in the forested areas of southern Australia. *Aust. Meteorol. Mag.* 57:299–309; 57:311–328. (verified)
 - Mills, G.A., McCaw, W.L. (2010) Atmospheric stability environments and fire weather in Australia – extending the Haines Index. CAWCR Technical Report No. 20. https://www.cawcr.gov.au/technical-reports/CTR_020.pdf
 - Morvan, D., Frangieh, N. (2018) Wildland fires behaviour: wind effect versus Byram's convective number and consequences upon the regime of propagation. *Int. J. Wildland Fire* 27:636–641.
 - Nelson, R.M. Jr (1993) Byram's derivation of the energy criterion for forest and wildland fires. *Int. J. Wildland Fire* 3:131–138. See also USDA FS Res. Note INT-415: https://archive.org/stream/byramsenergycrit415nels/byramsenergycrit415nels_djvu.txt
@@ -787,19 +807,21 @@ Card logic rules:
 - Prandtl, L. (1942) *Führer durch die Strömungslehre*. Vieweg.
 - Schroeder, M.J., Buck, C.C. (1970) *Fire Weather*. USDA Agriculture Handbook 360 (NWCG PMS 425-1). https://www.nwcg.gov/publications/pms425-1/7-convective-winds
 - Scorer, R.S. (1949) Theory of waves in the lee of mountains. *Q. J. R. Meteorol. Soc.* 75:41–56.
-- Sharples, J.J. (2009) An overview of mountain meteorological effects relevant to fire behaviour and bushfire risk. *Int. J. Wildland Fire* 18:737–754. https://connectsci.au/wf/article-abstract/18/7/737/23161/ (DOI 10.1071/WF08041 [L])
+- Sharples, J.J. (2009) An overview of mountain meteorological effects relevant to fire behaviour and bushfire risk. *Int. J. Wildland Fire* 18:737–754. https://doi.org/10.1071/WF08041 (DOI verified) ; https://publish.csiro.au/wf/wf08041
 - Sharples, J.J., Mills, G.A., McRae, R.H.D., Weber, R.O. (2010) Foehn-like winds and elevated fire danger conditions in southeastern Australia. *J. Appl. Meteorol. Climatol.* 49:1067–1095. https://doi.org/10.1175/2010JAMC2219.1
 - Sharples, J.J., McRae, R.H.D., Weber, R.O. (2010) Wind characteristics over complex terrain with implications for bushfire risk management. *Environ. Model. Softw.* 25:1099–1120. https://doi.org/10.1016/j.envsoft.2010.03.016
 - Sharples, J.J. et al. (2011) Lateral bushfire propagation driven by the interaction of wind, terrain and fire. MODSIM2011. https://mssanz.org.au/modsim2011/A2/sharples.pdf
 - Sharples, J.J., McRae, R.H.D., Wilkes, S.R. (2012) Wind–terrain effects on the propagation of wildfires in rugged terrain: fire channelling. *Int. J. Wildland Fire* 21:282–296. https://www.publish.csiro.au/wf/WF10055
-- Sharples, J.J., Simpson, C.C., Evans, J.P. (2013) Examination of wind speed thresholds for vorticity-driven lateral fire spread. MODSIM2013, 263–269. https://www.mssanz.org.au/modsim2013/A3/sharples3.pdf
+- Sharples, J.J., Simpson, C.C., Evans, J.P. (2013) Examination of wind speed thresholds for vorticity-driven lateral fire spread. MODSIM2013, 263–269. https://www.mssanz.org.au/modsim2013/A3/sharples3.pdf (verified: no VLS at 2.5 m/s; 0.4–5 km/h oscillating lateral ROS, about 10–15 min period)
+- Sharples, J.J. et al. (2015) Threshold behaviour in dynamic fire propagation. BNHCRC Report No. 2015.018. https://www.naturalhazards.com.au/crc-collection/downloads/sharples.pdf (verified: VLS wind threshold ≈ 5 m/s; σ ≈ 25°, δ ≈ 40° for Canberra 2003)
+- Sharples, J.J., Mills, G.A., McRae, R.H.D. (2012) Extreme drying events in the Australian high-country and their implications for bushfire risk management. *Aust. Meteorol. Oceanogr. J.* 62:157–169 (end page UNVERIFIED). http://www.bom.gov.au/jshess/docs/2012/sharples.pdf ; doi:10.22499/2.6203.004
 - Sharples, J.J., Kiss, A.E. et al. (2015) Pyrogenic vorticity from windward and lee slope fires. MODSIM2015. https://www.mssanz.org.au/modsim2015/A4/sharples.pdf
 - Sharples, J.J. et al. (2016) Natural hazards in Australia: extreme bushfire. *Climatic Change* 139:85–99. https://doi.org/10.1007/s10584-016-1811-1
 - Sharples, J.J., Hilton, J.E. (2020) Modeling vorticity-driven wildfire behavior using near-field techniques. *Front. Mech. Eng.* 5:69. https://doi.org/10.3389/fmech.2019.00069
 - Sharples, J.J., Ma, W. (2026) Ask an Expert: How foehn winds exacerbate dangerous bushfires. UNSW. https://www.unsw.edu.au/news/2026/01/ask-an-expert--how-foehn-winds-exacerbate-dangerous-bushfires
 - Simpson, C.C., Sharples, J.J., Evans, J.P., McCabe, M.F. (2013) Large eddy simulation of atypical wildland fire spread on leeward slopes. *Int. J. Wildland Fire* 22:599–614. https://www.publish.csiro.au/wf/wf12072
 - Simpson, C.C., Sharples, J.J., Evans, J.P. (2014) Resolving vorticity-driven lateral fire spread using the WRF-Fire coupled atmosphere–fire numerical model. *Nat. Hazards Earth Syst. Sci.* 14:2359–2371. https://nhess.copernicus.org/articles/14/2359/2014/
-- Simpson, C.C., Sharples, J.J., Evans, J.P. (2016) Sensitivity of atypical lateral fire spread to wind and slope. *Geophys. Res. Lett.* https://agupubs.onlinelibrary.wiley.com/doi/full/10.1002/2015GL067343
+- Simpson, C.C., Sharples, J.J., Evans, J.P. (2016) Sensitivity of atypical lateral fire spread to wind and slope. *Geophys. Res. Lett.* 43:1744–1751. https://doi.org/10.1002/2015GL067343 (verified)
 - Standards Australia (2021) AS/NZS 1170.2 Structural design actions – Wind actions (topographic multiplier M_h).
 - Steinacker, R. (1984) Area-height distribution of a valley and its relation to the valley wind. *Contrib. Atmos. Phys.* 57:64–71. [L]
 - Storey, M.A., Price, O.F., Sharples, J.J., Bradstock, R.A. (2020) Drivers of long-distance spotting during wildfires in south-eastern Australia. *Int. J. Wildland Fire* 29:459–472. https://doi.org/10.1071/WF19124
@@ -816,7 +838,11 @@ Card logic rules:
 - Whiteman, C.D., Doran, J.C. (1993) The relationship between overlying synoptic-scale flows and winds within a valley. *J. Appl. Meteorol.* 32:1669–1682. https://journals.ametsoc.org/view/journals/apme/32/11/1520-0450_1993_032_1669_trboss_2_0_co_2.xml
 - Whiteman, C.D. (2000) *Mountain Meteorology: Fundamentals and Applications*. Oxford University Press.
 - Whiteman, C.D. et al. (2004) Minimum temperatures, diurnal temperature ranges, and temperature inversions in limestone sinkholes of different sizes and shapes. *J. Appl. Meteorol.* 43:1224–1236. http://www.met.sjsu.edu/~clements/papers/whitemanetal2004.pdf
-- Wilke, D.J., Kepert, J.D., Tory, K.J. (2022) The meteorology of the Tathra bushfire. *Weather Forecast.* 37(5). https://journals.ametsoc.org/view/journals/wefo/37/5/WAF-D-21-0084.1.xml
-- Wilson, C.S., Sharples, J.J., Evans, J.P. (2025) Atmospheric profiles associated with pyrocumulonimbus in southeast Australia. *Sci. Rep.* https://www.nature.com/articles/s41598-025-22530-0
-- Wood, N. (1995) The onset of separation in neutral, turbulent flow over hills. *Boundary-Layer Meteorol.* 76:137–164. https://link.springer.com/article/10.1007/BF00710894
+- Webb, C., Park, J. (2023) Channelling flows in the Hunter Valley. *J. South. Hemisph. Earth Syst. Sci.* 73:194–211. https://www.publish.csiro.au/es/fulltext/ES22021 (verified)
+- Wilke, D.J., Kepert, J.D., Tory, K.J. (2022) The meteorology of the Tathra bushfire. *Weather Forecast.* 37(5):581–600. https://journals.ametsoc.org/view/journals/wefo/37/5/WAF-D-21-0084.1.xml (verified)
+- Wilson, C.S., Sharples, J.J., Evans, J.P. (2025) Atmospheric profiles associated with pyrocumulonimbus in southeast Australia. *Sci. Rep.* 15:38538. https://www.nature.com/articles/s41598-025-22530-0 (verified)
+- Wood, N. (1995) The onset of separation in neutral, turbulent flow over hills. *Boundary-Layer Meteorol.* 76:137–164. https://link.springer.com/article/10.1007/BF00710894 (verified)
+- [Authors not confirmed here] (2026) Observations of vorticity-driven lateral spread in a wildfire. *Fire* 9(2):79. https://www.mdpi.com/2571-6255/9/2/79 (verified: Airport Fire 2024, lateral ROS mean 1.9 km/h, about 4 km/h near plume touch-down, peaks of 20 km/h)
+- Ross, A.N., Vosper, S.B. (2005) Neutral turbulent flow over forested hills. *Q. J. R. Meteorol. Soc.* 131:1841–1862. https://doi.org/10.1256/qj.04.129 (verified)
+- Stull, R. *Practical Meteorology*, §17.4 open-channel hydraulics and §17.7 mountain waves (width-based Froude number). https://geo.libretexts.org/Bookshelves/Meteorology_and_Climate_Science/Practical_Meteorology_(Stull)/17:_Regional_Winds/17.7:_Mountain_Waves (verified)
 - Zardi, D., Whiteman, C.D. (2013) Diurnal mountain wind systems. In Chow, De Wekker, Snyder (eds) *Mountain Weather Research and Forecasting*. Springer, 35–119. https://link.springer.com/chapter/10.1007/978-94-007-4098-3_2

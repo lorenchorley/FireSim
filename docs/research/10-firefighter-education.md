@@ -412,57 +412,131 @@ The fuel physics is in the fuel research documents. For education, three points 
 
 These equations appear in "why" explanations and safety overlays. The main spread model may use more sophisticated equivalents from other documents; the education layer must use **the same numbers as the simulation**, so these are fallbacks and explanatory forms.
 
-**4.1 McArthur Forest FFDI** (Noble, Bary & Gill 1980) [L]:
+**4.1 McArthur Forest FFDI** (Noble, Bary & Gill 1980) (verified: equation as reproduced in Arndt (2018) *Calculating McArthur's FFDI and the KBDI*, a technical note read this pass, and in doc 03; primary not re-read):
 `FFDI = 2·exp(−0.450 + 0.987·ln D − 0.0345·H + 0.0338·T + 0.0234·V)`
 - D is the drought factor (0–10, dimensionless);
 - H is relative humidity (%);
 - T is air temperature (°C);
 - V is 10-m open wind speed (km/h).
 
-Legacy categories [L]: Low–Moderate 0–11, High 12–24, Very High 25–49, Severe 50–74, Extreme 75–99, Catastrophic 100+.
+Legacy categories: Low–Moderate 0–11, High 12–24, Very High 25–49, Severe 50–74, Extreme 75–99, Catastrophic 100+. (Partly verified: the NSW RFS 2014 forest suppression table reproduced in AFDRS-RP Table 2.5 uses FDI breaks at 12, 25, 50, 75 and 100. The integer boundaries are the conventional published form.)
 
-Since 1 September 2022 the **AFDRS** has replaced these ratings with Moderate / High / Extreme / Catastrophic, based on a Fire Behaviour Index (FBI) with bands Moderate 12–23, High 24–49, Extreme 50–99, Catastrophic 100+ [L; verify]. Cards should use AFDRS terms.
+Since 1 September 2022 the **AFDRS** has replaced these ratings. The rating uses Fire Behaviour Index (FBI) thresholds of 12, 24, 50 and 100, the same for all fuel types (verified: FBI-TG §2.3):
+- 0–11: No rating;
+- 12–23: Moderate;
+- 24–49: High;
+- 50–99: Extreme;
+- 100+: Catastrophic.
 
-**4.2 McArthur Mk5 forest ROS with slope** (Noble et al. 1980) [L]:
+FBI is floored to an integer. Cards should use AFDRS terms. The launch date is [L]: widely reported, but not in the documents read.
+
+For **forest** fuels the FBI is a piecewise-linear function of fireline intensity (verified: FBI-TG §2.1.5), anchored at FBI 200 = 90,000 kW/m (Kilmore East):
+
+| Intensity (kW/m) | FBI | Rating |
+|---|---|---|
+| 0–100 | 0–6 | No rating |
+| 100–750 | 6–12 | No rating |
+| 750–4,000 | 12–24 | Moderate |
+| 4,000–10,000 | 24–50 | High |
+| 10,000–30,000 | 50–100 | Extreme |
+| 30,000+ | 100+ | Catastrophic |
+
+This gives FireSim a direct, doctrine-consistent way to label *simulated* intensity with the AFDRS words beginners hear in briefings.
+
+**4.2 McArthur Mk5 forest ROS with slope** (Noble et al. 1980) (cross-checked: docs 01 and 03, verified there against the fiRetools/PyroXL code transcriptions):
 `R = 0.0012 · FFDI · W · exp(0.069 θ)`
-- R in km/h; W is fine fuel load (t/ha); θ is ground slope in degrees (+ upslope, − downslope).
-- The slope factor `exp(0.069θ)` gives ×2.0 at 10°, ×4.0 at 20°, ×2 per 10° [D].
-- The flat-ground part is known to under-predict fast fires in dry eucalypt forest; Vesta supersedes it (Cheney et al. 2012, *FEM* 280:120–131) [L].
-- The slope rule's validity is only established to about 20°; above that, see attachment and eruption (§3.2) [L].
+- R in km/h; W is fine fuel load (t/ha); θ is ground slope in degrees, positive upslope.
+- The slope factor `exp(0.069θ)` gives ×2.0 at 10°, ×4.0 at 20° and ×7.9 at 30°: about ×2 per 10° [D].
+- **Use it only for upslope.** For downslope use kataburn (§3.2). The symmetric `exp(0.069θ)` with negative θ over-slows backing fires.
+- The flat-ground part is known to under-predict fast fires in dry eucalypt forest; Vesta supersedes it (Cheney et al. 2012, *FEM* 280:120–131) [L]. As implemented in the AFDRS, the forest model itself contains no slope term: the slope effect must be added by the application (cross-checked: doc 03 [S-doc FBI-TG]).
+- The slope rule's nominal domain is ±40°, with Cheney (1981) cautioning beyond 30°. All models under-predict above about 20°; see attachment and eruption (§3.2) (cross-checked: doc 01).
 
 **4.3 Byram fireline intensity** (Byram 1959) [L]:
 `I = H · w · R`
-- I in kW/m; H is heat yield (kJ/kg), about 18,000–18,700 for eucalypt fuels [L; the exact value used by the spread model should be reused]; w is fuel consumed (kg/m²); R is ROS (m/s).
+- I in kW/m; H is heat yield (kJ/kg); w is fuel consumed (kg/m²); R is ROS (m/s).
+- The AFDRS assumes **H = 18,600 kJ/kg** for most fuels, with 19,900 kJ/kg for buttongrass. It notes grass may be lower (verified: FBI-TG §3.3; also the PyroXL/AFDRS code constant). Reuse the spread model's value.
+- Unit trap [D]: with R in km/h and w in t/ha, `I = 18,600 · (w/10) · (R/3.6)`, so 1 t/ha at 1 km/h is about 517 kW/m.
 - Example [D]: w = 1.5 kg/m² (15 t/ha), R = 0.5 m/s (1.8 km/h), H = 18,600 gives I ≈ 14,000 kW/m.
 
-**4.4 Suppression-difficulty bands.** These are rule-of-thumb bands used in Australian training [L; exact source and values must be confirmed]:
-- below about 500 kW/m: hand tools can work at the edge;
-- up to about 2,000 kW/m: tankers and machines;
-- up to about 4,000 kW/m: aircraft may help;
-- above about 4,000 kW/m: direct attack is unsafe and ineffective, so use indirect tactics;
-- above about 10,000 kW/m: crowning and massive spotting; uncontrollable.
+**4.4 Suppression-difficulty bands.** The first draft's bands (500 / 2,000 / 4,000 / 10,000 kW/m) are **confirmed in outline**. They trace to Alexander (2008) and to Australian agency tables compiled in the AFDRS Research Prototype, chapter 2 (verified: AFDRS-RP Tables 2.5–2.11):
+- **Alexander (2008)**: about 500 kW/m for ground crews with hand tools; about 2,000 kW/m for ground crews with heavy machinery or power tools; about 4,000 kW/m for single drops from airtankers and helitankers; about 10,000 kW/m for indirect attack using backfires from the ground or air.
+- **Offensive limit**: "4,000 kW/m is the widely agreed threshold for 'offensive' suppression strategies" (CFA 2005; NSW RFS 2005; Smith 2009 citing Muller 2008). Luke & McArthur (1977) gave about 4,000 kW/m as the limit of control in eucalypt forest.
+- **Aircraft in stringybark**: unsupported retardant drops in stringybark forest were ineffective at holding a fire above about **2,000 kW/m**, because of heavy spotting across the drop zone. With ground crews supporting the drop within one hour, the limit was about 3,000 kW/m (Loane & Gould 1986). This is directly relevant to NSW tableland and escarpment stringybark forests.
+- **CFA readiness levels** (Beaver, unpublished; AFDRS-RP Table 2.9):
+  - < 500 kW/m: direct manual attack at head or flanks is possible;
+  - 500–2,000 kW/m: planned-burn range; spotting commences;
+  - 2,000–4,000 kW/m: challenging but achievable with dozers, tankers and air support; control at the head may fail at the upper end;
+  - 4,000–10,000 kW/m: all efforts at direct control likely to fail; restrict action to the flanks and back;
+  - 10,000–30,000 kW/m: threshold for continuous crown fire;
+  - > 30,000 kW/m: "blow-up or conflagration level".
+- **NSW RFS (2014) forest table** (AFDRS-RP Table 2.5, based on a 20 t/ha fuel load). This gives **more conservative** tactics than the bands above:
 
-Present these as bands with "approximately", and tie them to observed flame height through the model.
+  | FDI | Flame height | Intensity | Tactic |
+  |---|---|---|---|
+  | 0–12 | 0–0.5 m | 0–50 kW/m | hand-tool line will hold |
+  | 12–25 | 1.5–3 m | 500–2,000 kW/m | "Fire too intense for direct attack. Parallel attack recommended" |
+  | 25–50 | 3–10 m | 2,000+ kW/m | "Crown fire at upper intensities. Indirect attack recommended" |
 
-**4.5 Flame length from intensity** (Byram 1959) [L]:
+  The table as printed has overlapping rows. The card wording must follow the NSW RFS version, not the Canadian-derived bands.
+- **US equivalent** (IRPG "Fire Behavior Observations & Interpretations", from PMS 437; verified: IRPG 2025 p. 50):
+
+  | Flame length | Tactical interpretation |
+  |---|---|
+  | 1–4 ft (0.3–1.2 m) | handtools at head or flanks; handline should hold |
+  | 4–8 ft (1.2–2.4 m) | too intense for direct attack with handtools |
+  | 8–11 ft (2.4–3.4 m) | serious control problems, torching and spotting; control efforts at head are ineffective |
+  | 11–25 ft (3.4–7.6 m) | active crown fire |
+  | > 25 ft (> 7.6 m) | "Extreme intensity, turbulent fire, chaotic spread. Escape to safety should be considered." |
+
+Present these as bands with "approximately", tie them to flame height through the model, and cite NSW RFS wording first.
+
+**4.5 Flame length from intensity** (Byram 1959):
 `L = 0.0775 · I^0.46` (L in m, I in kW/m).
+- (Partly verified: the same form, `0.07755·I^0.46`, is used as flame height in the AFDRS pine model (FBI-TG eq. 3.93, via doc 03, and the AFDRS/PyroXL code read this pass). Byram's primary text was not re-read.)
 - This is a generic relation. For eucalypt forests, the Vesta flame-height model (which includes elevated-fuel height) should be used if the spread model provides it [L].
+- Worked values [D]: 500 kW/m gives 1.35 m; 2,000 kW/m gives 2.6 m; 4,000 kW/m gives 3.5 m; 10,000 kW/m gives 5.4 m. Eucalypt forests with elevated fuel and bark usually show *taller* flames than this at the same intensity (the NSW RFS table gives 3–10 m at 2,000+ kW/m), so do not use Byram's flame length for refuge sizing in forest if Vesta flame height is available [L/H].
 
 **4.6 Crown-fire initiation** (Van Wagner 1977, *Can. J. For. Res.* 7:23–34) [L]:
 `I₀ = (0.010 · z · (460 + 25.9 · m))^1.5`
 - I₀ is the critical surface intensity (kW/m); z is canopy base height (m); m is foliar moisture content (%).
 - Crowning is predicted when surface I ≥ I₀. It was developed for conifers; eucalypt canopies differ (bark and elevated fuels act as ladders), so use it only as an *explanatory* "ladder" criterion [L/U].
+- (Partly verified: the AFDRS pine model code read this pass uses `(0.01·CBH·(460 + 26·FMC))^1.5`. That is the rounded Cruz form of Van Wagner's criterion. Van Wagner's original coefficient 25.9 is [L]. Doc 03 records the same discrepancy.)
+- Worked value [D]: CBH 4 m, FMC 100% gives I₀ ≈ (0.04 × 3050)^1.5 ≈ 1,350 kW/m.
+- The Australian operational **continuous crown fire** threshold is about 10,000 kW/m (verified: AFDRS-RP Table 2.9, CFA readiness level 4–5). Eucalypt forests typically show intermittent crowning and torching well below this.
 
 **4.7 Safety refuge and separation distance:**
-- Australian doctrine: clear radius `r ≥ 4 · FH_pred` in the direction of fire approach [V] (after Butler & Cohen 1998, *IJWF* 8:73–77, a radiant-only model on flat ground) [L].
-- US empirical SSD (Page & Butler 2017, *IJWF* 26:655–667; NWCG IRPG) [L]:
-  - `SSD = 8 · H_v · Δ`, where H_v is vegetation height (m) and Δ is a tabulated slope-wind factor;
-  - Δ = 1 for light wind on flat ground, rising to about 10 for extreme wind on steep slopes;
-  - **copy the intermediate table values from the current IRPG (PMS 461); do not guess them.**
-- Radiant-heat tolerance thresholds for protected skin (Butler & Cohen used about 7 kW/m²) [L]. Convective heating from wind and slope is the reason SSD grows (Butler 2014 review, *IJWF* 23:295–308) [V existence, L content].
+- **Australian doctrine**: clear radius `r ≥ 4 · FH_pred` in the direction of fire approach [V first pass], after Butler & Cohen (1998, *IJWF* 8:73–77), a radiant-only model on flat ground [L].
+- **Current US IRPG** (verified: PMS 461, Jan 2025, p. 6): "at least four times the maximum continuous flame height". The printed table is radiant-only, for flat terrain and no wind:
 
-**4.8 Escape travel rate** (Tobler 1993, NCGIA TR 93-1) [L]:
-`v = 6 · exp(−3.5 · |tan θ + 0.05|)` (km/h), where tan θ is the signed gradient in the direction of travel. Multiply by 0.6 off-track (Tobler) [L]. Campbell, Dennison & Butler (2017, *IJWF* 26:884–895) measured firefighter-relevant travel rates falling with slope and vegetation density [L].
+  | Flame height | Separation distance | Area (3-person engine crew) |
+  |---|---|---|
+  | 10 ft | 40 ft | 1/10 acre |
+  | 20 ft | 80 ft | ½ acre |
+  | 50 ft | 200 ft | 3 acres |
+  | 100 ft | 400 ft | 12 acres |
+  | 200 ft | 800 ft | 46 acres |
+
+  "Safety zones downwind or upslope from the fire will require larger separation distances." Size may more than double when wind exceeds 10 mph (16 km/h) and/or slope exceeds 20% (≈11.3°) (verified: p. 5).
+- **Empirical SSD** (Page & Butler 2017, *IJWF* 26:655–667):
+  - `SSD = 8 · H_v · Δ`, where H_v is vegetation height (same unit as SSD) and Δ is a dimensionless factor.
+  - Safety-zone area is π·SSD² (verified: USFS Fire Lab `behave`, `safeSeparationDistanceCalculator.cpp`).
+  - *Correction:* Δ is not a two-way "slope-wind" factor. It is a **three-way lookup** of wind-speed class (Light / Moderate / High), burning condition (Low / Moderate / Extreme) and slope class (Flat / Moderate / Steep) (verified: Fire Lab `behave` source). Values are Flat / Moderate / Steep slope:
+
+    | Wind | Low burning | Moderate burning | Extreme burning |
+    |---|---|---|---|
+    | Light | 1 / 1 / 2 | 1 / 1 / 2 | 1 / 2 / 3 |
+    | Moderate | 1.5 / 3 / 4 | 2 / 4 / 5 | 2.5 / 5 / 5 |
+    | High | 3 / 4 / 6 | 3 / 5 / 7 | 4 / 5 / 10 |
+
+  - UNVERIFIED: the numeric boundaries of the wind, burning and slope classes (mph and %). They are defined in Page & Butler (2017) and the BehavePlus help, neither of which could be read. Do not ship SSD until they are copied from the paper.
+  - The IRPG's "10 mph / 20%" doubling statement is a reasonable interim proxy for the Moderate class boundary [H].
+  - Applicability: SSD was derived mostly from US grass and shrub fires. With eucalypt forest vegetation heights of 20–40 m it gives 160–320 m even at Δ = 1, and up to 3.2 km at Δ = 10 [D]. Its transfer to tall forest is uncertain [U]. Show it as "US guidance suggests…" and not as a rule.
+- **Heat thresholds**: radiant-heat tolerance for protected skin is [L] (Butler & Cohen used about 7 kW/m²). Convective heating from wind and slope is why SSD grows (Butler 2014 review, *IJWF* 23:295–308) [V existence, L content].
+
+**4.8 Escape travel rate** (Tobler 1993, NCGIA TR 93-1) (UNVERIFIED against the primary; this is the standard published form, and doc 01 uses the same value independently):
+`v = 6 · exp(−3.5 · |tan θ + 0.05|)` (km/h), where tan θ is the signed gradient in the direction of travel (positive uphill). The maximum of 6 km/h is at a gentle 5% *downhill* grade. Multiply by 0.6 off-track (Tobler) [L]. Campbell, Dennison & Butler (2017, *IJWF* 26:884–895) measured firefighter-relevant travel rates falling with slope and vegetation density [L; coefficients not retrieved].
+
+The IRPG requires escape routes to be "timed considering slowest person, fatigue, and temperature factors", "scouted for loose soils, rocks, vegetation", and to "evaluate escape time vs. rate of spread" (verified: IRPG 2025 p. 5). FireSim's escape-time check (§9.3) is exactly that comparison.
 
 Worked comparison [D]:
 
@@ -477,7 +551,9 @@ Against that, a fire at FFDI 40 in 15 t/ha fuel on a 20° upslope under Mk5 spre
 **4.9 Byram convection number** (§3.8) [L]:
 `N_c = 2gI / (ρ c_p T_a (U − R)³)`
 - g = 9.81 m/s²; I in W/m (so ×1000 from kW/m); ρ ≈ 1.1–1.2 kg/m³; c_p ≈ 1005 J/(kg·K); T_a in K; U and R in m/s.
+- Regimes: N_c > 10 plume-dominated; N_c < 2 wind-driven (cross-checked: doc 02 [V]; Morvan & Frangieh 2018).
 - The reference height for U varies between authors (midflame or 10 m) [U].
+- Worked example [D]: I = 10,000 kW/m, U − R = 5 m/s, ρ = 1.15, T_a = 305 K gives N_c ≈ 2·9.81·10⁷ / (1.15·1005·305·125) ≈ 4.5 (mixed regime). At U − R = 3 m/s, N_c ≈ 21 (plume-dominated). The cube makes N_c extremely sensitive to wind, so show it as a regime, not a number.
 
 **4.10 Junction speed** (§3.9) [D]: `V_j = R / sin(α/2)`.
 
@@ -491,9 +567,11 @@ Against that, a fire at FFDI 40 in 15 t/ha fuel on a 20° upslope under Mk5 spre
 | 6 km/h | 500 m |
 | 12 km/h | 1 km |
 
-This is consistent with the "<100 m to >1 km" range [V].
+This is consistent with the "<100 m to >1 km" range (secondary [V]).
 
-**4.12 Trigger point** (Cova et al. 2005, *Trans. GIS* 9:603–617; Fryer et al. 2013, *IJWF* 22:883–893) [L]. A crew must leave when the fire's travel time to them equals `t_escape + t_margin`. FireSim computes fire arrival time by reverse travel-time on the spread field (§9.3).
+Caveat [D]: this is a lower bound on the danger. It assumes the post-change front is at quasi-steady ROS from t = 0, which is the Cheney insight for wide flanks. It ignores spot fires ahead and the post-change acceleration from pyroconvection. The IRPG's "blowup to burnover … can be as little as 5 minutes" (verified) supports keeping the 5-minute horizon as a floor, not a target.
+
+**4.12 Trigger point** (Cova et al. 2005, *Trans. GIS* 9:603–617; Fryer et al. 2013, *IJWF* 22:883–893) [L]. A crew must leave when the fire's travel time to them equals `t_escape + t_margin`. FireSim computes fire arrival time by reverse travel-time on the spread field (§9.3). US doctrine requires lookouts to have "knowledge of trigger points". It also names wind–topography alignment during the critical burn period as "a trigger point to reevaluate tactics" (verified: IRPG 2025 pp. 3, 5).
 
 **4.13 C-Haines and PFT:** see doc 02 §2.6 (Mills & McCaw 2010; Tory & Kepert 2021).
 
@@ -504,17 +582,23 @@ This is consistent with the "<100 m to >1 km" range [V].
 | Case | Setting | Mechanism | Lessons for cards | Evidence |
 |---|---|---|---|---|
 | **Linton, Vic**, 2 Dec 1998 | Forest and plantation, undulating | SW change turned the uncontrolled east flank into the head; five Geelong West CFA firefighters died at and near their tanker. The coroner reported on 11 Jan 2002 with 55 recommendations, citing training and communication failures (the change message was not received). | S11, S12, communication prompt | [V] (Vic coroner report; The Courier) |
-| **Wangary, SA**, 11 Jan 2005 | Farmland and grass, Eyre Peninsula | A "contained" fire re-escaped (it had continued to smoulder in a swamp). The wind change opened a wide front. Nine deaths, 93 homes, about 78,000 ha, just over two hours to the sea. | S11, mop-up and "contained ≠ out" | [V] (ABC 2025; SA coroner summary; GA fieldwork report) |
-| **Upper Beaconsfield, Vic**, 16 Feb 1983 (Ash Wednesday) | Forested hills | Twelve CFA firefighters killed as the wind change swung the fire onto them. | S11 | [L; verify count and detail] |
-| **Black Saturday, Kilmore East**, 7 Feb 2009 | Ranges north of Melbourne | Extreme pre-frontal NW winds; the SW change turned a long flank into a very wide head; long-range spotting; pyroCb. | S11, S20, S27 | [L] (Cruz et al. 2012; VBRC 2010) |
+| **Wangary, SA**, 10–11 Jan 2005 | Farmland (stubble), paperbark swamp and sugar gums, Lower Eyre Peninsula | Ignited after 15:00 on 10 Jan. Declared "contained" at 20:54 while still burning in the sugar gums and swamp, then "controlled" at 07:45 on 11 Jan; the coroner called that declaration "flawed". A landholder's backburn at the swamp edge had penetrated the swamp. Breakouts from about 09:50 and 10:25 under a strong NW wind, with heavy spotting out of the swamp into stubble; uncontrollable. About 11:30 the wind at Settlers Road changed to westerly, and two farm firefighters in a utility died there. Nine deaths in total. The fire reached the coast at North Shields. | S11, S44 ("contained ≠ out"), backburn into un-mop-able fuel | (verified: SA Coroner findings summary). The 93 homes, ~78,000 ha and "just over two hours" are from ABC 2025 / GA fieldwork (secondary [V] from the first pass; not re-checked) |
+| **Upper Beaconsfield, Vic**, 16 Feb 1983 (Ash Wednesday) | Forested hills (Dandenong Ranges) | Twelve volunteer firefighters killed, trapped "when the wind change struck" | S11 | (secondary: archived Wikipedia text; UNVERIFIED against coronial or CFA records) |
+| **Black Saturday, Kilmore East**, 7 Feb 2009 | Ranges north of Melbourne | Extreme pre-frontal NW winds. The SW change (about 17:30–18:30) turned the roughly 55 km eastern flank into a head fire. Spotting up to 33 km; pyroCb. | S11, S20, S27 | (cross-checked: doc 02, verified from Cruz et al. 2012 abstract); VBRC 2010 [L] |
 | **Canberra / Brindabellas**, 18 Jan 2003 | Mountains to urban edge | VLS on lee slopes, pyroCb, pyro-tornado | S09 (doc 02), S27, S28 | [L] (Fromm 2006; McRae 2013, 2015) |
-| **Green Wattle Creek, NSW**, 19 Dec 2019 | Southern highlands, near Buxton | Two Horsley Park RFS volunteers (Geoffrey Keaton, Andrew O'Dwyer) killed when a tree fell onto or in front of their tanker, which then left the road | S40 (hazard trees), vehicle travel in fire areas | [L; coronial findings not retrieved] |
-| **Jingellic (Green Valley fire), NSW**, 30 Dec 2019 | Upper Murray, hilly | RFS volunteer Samuel McPaul killed when an extreme fire-generated wind or vortex overturned a heavy tanker during a pyroconvective event | S27, S28 | [L; verify details against the coronial findings] |
-| **Mann Gulch, Montana**, 5 Aug 1949 | Steep grass slope | Fire crossed the gulch below the crew and ran upslope. Crew raced uphill; 13 died. Dodge's escape fire. | S01, S06, S33 | [L] (Rothermel 1993) |
-| **South Canyon, Colorado**, 6 Jul 1994 | Steep slope in Gambel oak, cold-front passage | Crew above the fire on a steep slope; the fire ran up gullies after a frontal wind; 14 died | S01, S03, S06, S11 | [L] (Butler et al. 1998) |
+| **Green Wattle Creek, NSW**, 19 Dec 2019 | Southern highlands, near Buxton | Two Horsley Park brigade RFS volunteers (Geoffrey Keaton, Andrew O'Dwyer) killed when a tree struck their tanker, which left the road | S40 (hazard trees), vehicle travel in fire areas | (verified: names, brigade and fire, from the Feb 2020 condolence motion); mechanism cross-checked from doc 01 [S]; coronial findings not retrieved |
+| **Jingellic (Green Valley fire), NSW**, 30 Dec 2019 | Upper Murray, hilly | Morven brigade RFS volunteer Samuel McPaul (28) killed when extreme wind overturned his truck; two crewmates burned | S27, S28 | (verified: PM statement 31 Dec 2019; news reports). Vortex vs pyroCb-downdraft attribution UNVERIFIED |
+| **Blackheath area, Blue Mountains, NSW**, 21 Dec 2019 (near miss) | Blue Mountains | A tanker was overrun by flames. It "had run out of water, meaning it couldn't activate the sprinkler system"; the driver got the crew out | S41 (crew-protection water reserve) | (verified: Feb 2020 condolence motion) |
+| **Peak View, Snowy Monaro, NSW**, 23 Jan 2020 | Mountainous, strong winds | C-130 large air tanker crashed; three US aircrew killed | Aviation limits in mountain winds (instructor note, not a beginner card) | (verified: condolence motion). Causal findings (ATSB) not retrieved |
+| **Mann Gulch, Montana**, 5 Aug 1949 | Steep grass slope | Fire crossed the gulch below the crew and ran up slopes of up to 76% (≈37°). Of 16 men, 13 died. Dodge's escape fire | S01, S06, S33 | (cross-checked: doc 01 [S]; Rothermel 1993) |
+| **South Canyon, Colorado**, 6 Jul 1994 | Steep slope in Gambel oak, cold-front passage | Crew above the fire on a steep slope; the fire ran up gullies after a frontal wind. Drainage spread about 3 ft/s (≈3.3 km/h); upslope runs in live oak 6–9 ft/s (≈6.6–9.9 km/h); 14 died | S01, S03, S06, S11 | (cross-checked: doc 01 [S], from Butler et al. 1998) |
 | **Yarnell Hill, Arizona**, 30 Jun 2013 | Brush-filled bowl, thunderstorm outflow | Wind reversal from outflow; crew in a box canyon without lookout visibility; 19 died | S26, S28, S37 | [L] |
 
-**Pattern for teaching** (from Wilson 1977 and Page et al. 2019 [L]): small or quiet fires; light fuels; a wind shift; steep terrain with chimneys; an afternoon peak; crews positioned upslope of the fire or on the "flank that becomes the head"; escape routes that were too long, ran uphill, or were blocked; and missing or late information about the wind change.
+**Pattern for teaching** (from Wilson 1977 and Page et al. 2019 [L]; the IRPG's five common denominators [verified]): small or quiet fires; light fuels; a wind shift; steep terrain with chimneys; an afternoon peak (14:00–17:00); crews positioned upslope of the fire or on the "flank that becomes the head"; escape routes that were too long, ran uphill, or were blocked; and missing or late information about the wind change. Two quantitative anchors (cross-checked: doc 01 [S]):
+- US burnover fatalities 1990–2017: 41 incidents, 96 deaths, 76% in mountainous terrain;
+- US entrapments 1981–2017 (Page et al. 2019): 166 entrapments involving 1,202 people.
+
+Australian case evidence adds three things. The wind-change flank (Linton, Upper Beaconsfield, Kilmore East). "Contained is not out" (Wangary). And non-burnover killers: trees, rollovers and extreme winds (2019–20).
 
 A scenario library of "replays" of these cases on *NSW analogue terrain* (not a re-enactment of real fatalities on the real site, out of respect for families) is recommended [H].
 
@@ -526,35 +610,45 @@ These are widely taught AFAC, NSW RFS and NWCG principles [L], except where mark
 
 1. **Anchor, flank and pinch.** Start control line from a secure anchor (road, rock, water, previously burnt ground) and work along the flanks toward the head, keeping the burnt ground at your back (Watch Out #8).
 2. **Work from the black** ("one foot in the black") wherever the fire intensity allows direct attack. The black is the nearest refuge in a wind change (dead-man zone). In forest, check the black for hazard trees and unburnt canopy.
-3. **Do not work above a fire on a slope.** If downhill line construction is unavoidable, NWCG specifies strict conditions [L]:
-   - a downhill checklist;
-   - a lookout who can see the fire below;
-   - the line anchored at the top;
-   - communication with the crew below;
-   - escape routes that do not go uphill ahead of the fire;
-   - fire below that is not expected to make a run.
-4. **Avoid chimneys, gullies, saddles and mid-slope positions** when fire is below, or when fire can be carried into them by a wind change.
-5. **Rolling material.** Burning bark, logs and cones roll downslope and start spot fires *below* a control line or a crew (Watch Out #13). In steep eucalypt country, patrol below the line.
+3. **Do not work above a fire on a slope.** The IRPG *Downhill Fireline Construction Checklist* says downhill line "is hazardous in steep terrain, fast-burning fuels, or rapidly changing weather. It should not be attempted unless there is no tactical alternative." When it is done, it requires (verified: IRPG 2025 p. 7, paraphrased item by item):
+   1. discussion with crew supervisors and fireline overhead first, with the responsible overhead staying until the job is complete;
+   2. the proposed line scouted by the supervisors of the crews involved;
+   3. LCES for all personnel: supervisors "in direct contact with lookout who can see the fire", communication between all crews, and "rapid access to safety zone(s) in case fire crosses below crew(s)";
+   4. direct attack whenever possible, otherwise the line completed between anchor points before being fired out;
+   5. "Fireline will not lie in or adjacent to a chute or chimney";
+   6. the starting point anchored for crews building line down from the top;
+   7. monitoring of the bottom of the fire, securing the edge there if it may spread.
+
+   *Correction:* the first draft's list (including "fire below not expected to make a run") was a paraphrase from memory and did not match the current checklist.
+4. **Avoid chimneys, gullies, saddles and mid-slope positions** when fire is below, or when fire can be carried into them by a wind change. The IRPG fireline-location guidance says (verified: IRPG 2025 p. 85):
+   - "Avoid undercut and mid-slope line in steep terrain."
+   - "Lines that run along ridges should be located on the ridgetop or slightly to the lee side, away from the main fire."
+   - "Make the line as short and straight as practical, using topography to your advantage."
+   - "Avoid sharp turns in the line."
+5. **Rolling material.** Burning bark, logs and cones roll downslope and start spot fires *below* a control line or a crew (Watch Out #13). In steep eucalypt country, patrol below the line. Gleason counts "rolling rocks" among the four objective hazards (verified: Gleason 1991). The IRPG says to "avoid working downhill from equipment where rolling material could jeopardize your safety" (verified: p. 87).
 6. **Escape routes.**
-   - They must work at jogging pace [V].
-   - They must be timed, ideally walked, with gear.
-   - They should not climb ahead of the fire.
+   - They must work at jogging pace [V first pass].
+   - They must be timed, ideally walked, with gear. The IRPG says "timed considering slowest person, fatigue, and temperature factors" and "marked for day or night" (verified: p. 5).
+   - They should not climb ahead of the fire. The IRPG: "avoid steep, uphill escape routes" (verified).
    - Assume the travel rate falls sharply with slope (Tobler, §4.8).
-   - Two routes are preferable; with only one, a refuge must be within 100 m [V].
+   - Two routes are preferable (IRPG: "more than one escape route", verified); with only one, a refuge must be within 100 m [V first pass].
+   - They should not be under or near overhead powerlines (verified: IRPG pp. 22–23).
 7. **Safety refuges.**
-   - At least 4× predicted flame height of clearance in the direction of fire approach [V].
-   - Prefer large, flat, burnt-out or non-fuel areas: roads with wide clearings, rock platforms, bare paddocks, wide burnt ground.
-   - Avoid refuges at the top of chimneys, in saddles, or downwind of heavy fuel.
+   - At least 4× predicted flame height of clearance in the direction of fire approach [V first pass; also the IRPG rule, verified].
+   - Prefer large, flat, burnt-out or non-fuel areas: roads with wide clearings, rock platforms, bare paddocks, wide burnt ground. The IRPG: "Back into clean burn"; natural features such as rock areas, water and meadows; and "take advantage of heat barriers such as lee side of ridges, large rocks" (verified: pp. 5–6).
+   - Avoid refuges at the top of chimneys, in saddles, or downwind of heavy fuel. The IRPG: "Avoid locations that are upslope or downwind from the fire, chimneys, saddles, narrow canyons, and steep, uphill escape routes". It also asks "Upslope? Downwind? Heavy fuels? Each means more heat impact meaning larger safety zone" (verified: pp. 5–6).
    - Consider SSD with wind and slope (§4.7).
 8. **Vehicles.**
-   - Park facing the way out, in a cleared area, not in saddles or gullies and not under hazard trees.
+   - Park facing the way out, in a cleared area, not in saddles or gullies and not under hazard trees. The IRPG lists "vehicles parked for escape" under escape routes (verified).
    - Keep crew-protection systems ready. NSW RFS tankers carry crew protection (cabin deluge sprays, radiant curtains) and crews practise burnover drills [L].
+   - **Never run the tank dry.** The 21 Dec 2019 Blue Mountains overrun happened to a truck that "had run out of water, meaning it couldn't activate the sprinkler system" (verified: condolence motion). The reserve volume that SOPs require is UNVERIFIED (250 L is quoted in secondary sources).
 9. **Hazard trees.**
-   - Burning or fire-weakened trees fall without warning, especially in the black and along roads after the front passes (Green Wattle Creek [L]).
-   - Keep at least two tree-lengths from trees being felled or known to be burning internally [L, a widely used rule].
-   - Look up.
+   - Burning or fire-weakened trees fall without warning, especially in the black and along roads after the front passes (Green Wattle Creek; cross-checked: doc 01 [S]). Gleason lists "fire-weakened timber (standing and lying)" as an objective hazard (verified).
+   - IRPG indicators (verified: pp. 20–21): "trees burning for any period of time"; "dead, broken, or burning tops, and limbs overhead"; "leaning or hung-up trees"; steep slopes; wind; night; and "potential for trees to domino". Controls include "No Work Zones", and repositioning firefighters "in response to high winds in forecast". It also says to monitor hazard trees "along roads and when selecting break areas".
+   - Keep at least two tree-lengths from trees being felled or known to be burning internally (UNVERIFIED — widely used rule; not found in the IRPG, which gives no distance).
+   - Look up. The IRPG: "frequently scan overhead" (verified).
 10. **Heat stress and fatigue in steep terrain.** Hand-tool work on slopes is extremely demanding (Project Aquarius, Budd et al. 1997, *IJWF* 7(2)) [L]. Fatigue degrades judgement (Watch Out #18). The app should add fatigue prompts in long scenarios [H].
-11. **Lookouts** need a view of *both* the fire and the crew, and knowledge of the trigger points (§9.3).
+11. **Lookouts** need a view of *both* the fire and the crew, and knowledge of the trigger points (§9.3) (verified: Gleason 1991; IRPG 2025 p. 5). In broken mountain terrain, "one lookout is normally not sufficient" (Gleason 1991, verified).
 
 ---
 
@@ -563,7 +657,9 @@ These are widely taught AFAC, NSW RFS and NWCG principles [L], except where mark
 Terminology (Australia): a **backburn** is fire lit from a control line to consume fuel ahead of the main fire (indirect attack). A **burn-out** consumes unburnt pockets between the line and the fire edge. A **hazard-reduction burn** is a prescribed burn. LACES applies to all prescribed burning activities [V].
 
 **Principles** [L unless marked; confirm against the NSW RFS Prescribed Burning protocol and the Crew Leader training material]:
-- **Secure anchor and control line first.** The line must be wide enough and patrolled. The depth of black created must exceed the likely short-range spotting distance before the main fire arrives.
+- **Secure anchor and control line first.** The line must be wide enough and patrolled. The depth of black created must exceed the likely short-range spotting distance before the main fire arrives. WA doctrine says an indirect attack at Very High danger is "possible provided back burn can be controlled and is sufficiently deep to capture spot fires" (verified: AFDRS-RP Table 2.6). The IRPG says to locate an indirect line "an adequate distance from the main fire so it can be completed, fired, and held, considering the predicted rate of spread of the main fire". It adds: "allow adequate time to permit forces to complete the line and conduct any firing operations in advance of severe burning conditions" (verified: IRPG 2025 p. 85).
+- **Know the limit.** The NSW RFS grassland table notes that at Extreme danger, "Backburns from a good secure line will be difficult to hold because of windblown embers" (verified: AFDRS-RP Table 2.7, from Cheney & Sullivan 1997 and NSW RFS 2014).
+- **Don't backburn into fuel you cannot mop up.** At Wangary, a landholder's backburn at the edge of a paperbark swamp penetrated the swamp. The fire in the swamp could not be blacked out, and the breakout came from the swamp next morning (verified: SA Coroner findings, paras 27–28, 57–61).
 - **Test burn.** Light a small test section and observe flame height, spread and spotting before committing.
 - **Light so the fire backs.** Light from the top of slopes and along ridge-top control lines so the backburn **backs downhill** and into the wind, at low intensity.
   - **Never light below yourself, or below other crews, on a slope.**
@@ -576,7 +672,8 @@ Terminology (Australia): a **backburn** is fire lit from a control line to consu
 - **Spotting over the line.** Have holding crews on the downwind side, and lookouts watching for spot fires (Watch Out #16).
 
 **Mountain-specific risks** [L]:
-- slopes and gullies below the line turn a backing fire into a run the moment it reaches the base of an adjacent upslope;
+- slopes and gullies below the line turn a backing fire into a run the moment it reaches the base of an adjacent upslope. This is the IRPG's "slope reversals in narrow canyons can change backing fire to head fire" (verified: IRPG 2025 p. 35);
+- a ridge-top control line should sit on the ridgetop or slightly to the lee side, away from the main fire (verified: IRPG p. 85). But in a W–NW gale the lee side is also the side where VLS and lee eddies operate (doc 02), so lee-side spot-fire patrols are essential;
 - valley-wind reversals (up-valley by day, down-valley by night) can reverse the backburn's direction;
 - inversion break-up the next morning re-activates the fire;
 - lee eddies and spotting across the ridge on which the control line sits.
@@ -663,7 +760,11 @@ This is one of the highest-value features for building intuition.
    - Safety margin M = max(5 min, 0.5·T_e) [H].
    - **Card S33 fires if** `T_a(crew) < T_e + M` along the route, or if the route crosses cells whose `T_a` is less than the time the crew reaches them.
 4. **Trigger points.** Along the predicted fire path, mark the contour `T_a(x) = T_a(crew) − (T_e + M)`: "when the fire reaches this line, you must be moving."
-5. **Refuge check.** Clear radius r versus 4·FH_pred (doctrine) and versus SSD with Δ from the IRPG table (once verified). Also check terrain red flags: saddle, chimney top, mid-slope, downwind of heavy fuel.
+5. **Refuge check.** Compare the clear radius r against:
+   - 4·FH_pred (doctrine);
+   - SSD = 8·H_v·Δ, with Δ from the Page & Butler lookup (§4.7; Δ values verified, class boundaries still to be copied).
+
+   Also check terrain red flags: saddle, chimney top, mid-slope, upslope or downwind of the fire, narrow canyon, downwind of heavy fuel (IRPG list, verified). Until the SSD class boundaries are confirmed, upgrade to "check size" whenever 10-m wind exceeds 16 km/h (10 mph) or local slope exceeds 11° (20%) (IRPG doubling statement, verified).
 6. **Viewshed** from lookouts and crews, over the DEM plus canopy height (the project already fetches canopy height). Check which active perimeter cells and which crews are visible.
 
 ### 9.4 Performance budget and simplifications [H]
@@ -716,9 +817,9 @@ Each should come with POE prompts and debrief cards.
 - `FMC_d`: dead fine fuel moisture (%). `FH`: predicted flame height (m). `I`: intensity (kW/m). `R`: ROS (km/h).
 - Time is local solar time; the conversion from AEDT or AEST is handled in code.
 
-### 10.3 Insight card library (40 cards)
+### 10.3 Insight card library (45 cards)
 
-Thresholds tagged [H] are design choices for RFS instructors to tune. Published thresholds carry their source tag.
+Thresholds tagged [H] are design choices for RFS instructors to tune. Published thresholds carry their source tag. Cards S41–S45 were added in the fact-check pass, drawing on the verified IRPG, the Wangary coronial findings and the Feb 2020 condolence motion.
 
 ---
 
@@ -726,50 +827,53 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 
 - **Trigger:** perimeter cell with ∠(head_dir, upslope_dir) ≤ 45° and θ ≥ 10° [H].
 - **Why:** On a slope, the flames lean toward the fuel above them and heat it before the fire arrives. Hot air also rushes up the slope face. On this slope of about {θ}°, the fire is spreading about ×{exp(0.069θ)} faster than it would on flat ground.
+  - For θ > 20° the text must say "at least ×{exp(0.069θ)}, and real fires on slopes this steep often go faster than any model predicts", because all models under-predict there (doc 01) [D/H].
 - **Safety:** Never position yourself upslope of a fire. Your escape route should not go uphill.
-- **Source:** McArthur 1967; Noble et al. 1980 [L].
+- **Source:** McArthur 1967; Noble et al. 1980 (cross-checked: doc 01, code-verified); IRPG common denominator 4, "when fire responds to topographic conditions and runs uphill" (verified).
 
 **S02 — Steep enough for the flames to "stick" to the slope** · Watch Out
 
-- **Trigger:** fire heading upslope (∠ ≤ 30°) on θ ≥ 24° sustained over ≥ 100 m upslope run length [L threshold, H run length].
+- **Trigger:** fire heading upslope (∠ ≤ 30°) on θ ≥ 24° sustained over ≥ 100 m upslope run length.
+  - The 24° is the laboratory critical angle (Wu et al. 2000). It is also the IRPG ">45%" steep-slope indicator (verified). The 100 m run length is [H].
+  - Doc 01 uses a softer logistic around 22° over ≥ 60 m. Harmonise the two before release [H].
 - **Why:** On very steep ground the flame stops rising away from the slope and lies down along it, like a blowtorch pointed uphill. Heating of the fuel ahead jumps sharply, and the fire can accelerate on its own without any wind change.
 - **Safety:** Expect sudden runs on slopes this steep. Keep well clear above and beside it.
-- **Source:** Wu et al. 2000; Viegas 2005; Dold & Zinoviev 2009 [L].
+- **Source:** Wu et al. 2000 (cross-checked: doc 01); Viegas 2005; Dold & Zinoviev 2009 [L]; IRPG 2025 p. 35 (verified).
 
 **S03 — Chimney / gully run** · Danger (if a crew is within 500 m above) / Watch Out
 
 - **Trigger:** gully mask (TPI₁₅₀ ≤ −10 m, concave plan curvature, flow accumulation ≥ 5 ha [H]) with axial θ ≥ 20°. Fire within 200 m of the gully base. Wind within 45° of up-gully, or calm afternoon anabatic conditions [H]. Aligns with doc 02 card 11.
 - **Why:** This steep gully works like a chimney. The fire's own heat pulls air up it and the sides radiate into each other, so fire can race up in minutes. Many firefighter deaths worldwide happened in or above gullies like this.
-- **Safety:** Do not work in, above or at the head of a gully with fire below.
-- **Source:** Viegas & Pita 2004; Wilson 1977; Butler et al. 1998 [L].
+- **Safety:** Do not work in, above or at the head of a gully with fire below. Never put a control line in or beside a chute or chimney.
+- **Source:** Viegas & Pita 2004; Wilson 1977; Butler et al. 1998 [L]. IRPG 2025: "Steep slopes, enhanced by drainages, draws, chutes, and chimneys, can produce instability over your fire and extreme upslope spread events"; and "Fireline will not lie in or adjacent to a chute or chimney" (verified: pp. 7, 35).
 
 **S04 — Saddle ahead** · Watch Out
 
 - **Trigger:** saddle point within 1 km of the head, in the direction of spread (∠ ≤ 45°), and ridge-level wind ≥ 15 km/h [H]. Also fires if a crew, vehicle or refuge is within 200 m of the saddle.
 - **Why:** Wind squeezes through low points in a ridge and speeds up, and fire follows it through into the next valley. Saddles look like easy crossing points, but they are fire corridors.
 - **Safety:** Don't park, rest or plan a refuge in a saddle.
-- **Source:** widely taught terrain principle [L]; Sharples 2009 [L].
+- **Source:** IRPG 2025: "Gap winds (saddles and passes) can be gusty and erratic"; safety zones should avoid "chimneys, saddles, narrow canyons" (verified: pp. 6, 35); Sharples 2009 [L].
 
 **S05 — Mid-slope road with fire below** · Danger if a crew is on the road
 
 - **Trigger:** road or trail cell with cross-slope θ ≥ 15°, active fire within 500 m downslope, spreading upslope [H].
 - **Why:** A fire below will run up to this road and keep going. The road has fuel above and below it, and smoke and heat can block both directions at once.
 - **Safety:** Treat a mid-slope road as a trap when fire is below. Know which way out is downhill or into the black.
-- **Source:** NWCG/AFAC terrain hazards [L].
+- **Source:** IRPG 2025 common tactical hazards: "Building undercut or mid-slope fireline"; line location: "Avoid undercut and mid-slope line in steep terrain" (verified: pp. 4, 85). AFAC equivalents [L].
 
 **S06 — You are above the fire** · Danger
 
 - **Trigger:** crew elevation more than 20 m above an active perimeter cell within 500 m horizontal distance, on slope θ₂₅₀ ≥ 10°, with that cell heading toward the crew (∠ ≤ 60°) [H]. Watch Out #9.
 - **Why:** Fire spreads fastest uphill, and people move slowest uphill. From above, you often can't see the fire coming through the smoke and trees.
-- **Safety:** Move so that you are beside or below the fire, or in the black. Downhill line construction needs a lookout, an anchor and an agreed escape route first.
-- **Source:** NWCG 18 Watch Outs #9; Rothermel 1993; Butler et al. 1998 [L].
+- **Safety:** Move so that you are beside or below the fire, or in the black. Downhill line should only be built when there is no tactical alternative. It needs a lookout who can see the fire, an anchor at the top, and rapid access to a safety zone if the fire crosses below you.
+- **Source:** Watch Out #9 (verified: PMS 110-18); IRPG Downhill Fireline Construction Checklist (verified: p. 7); US burnover statistic, 76% in mountainous terrain (cross-checked: doc 01); Rothermel 1993; Butler et al. 1998 [L].
 
 **S07 — Rolling embers and logs** · Watch Out
 
 - **Trigger:** burning cells with θ ≥ 20° directly upslope of unburnt fuel, or of a control line, within 300 m [H]. Watch Out #13.
 - **Why:** Burning bark, logs and cones roll downhill and can start new fires below you and below your control line.
 - **Safety:** Patrol below the line. Don't stand in the path of material rolling off a burning slope.
-- **Source:** NWCG 18 Watch Outs #13 [L].
+- **Source:** Watch Out #13 (verified: PMS 110-18); Gleason 1991, "rolling rocks" as an objective hazard (verified).
 
 **S08 — Fire reaching the ridge** · Watch Out
 
@@ -788,58 +892,58 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 **S10 — Strong wind can push fire downhill** · Watch Out
 
 - **Trigger:** downslope wind component ≥ 25 km/h at 10 m (∠(wind_to, −upslope_dir) ≤ 45°), with θ ≥ 10° and FMC_d ≤ 8% [H].
-- **Why:** Fire normally creeps slowly downhill. A strong wind blowing down the slope overrides that, and the fire can run downhill fast, especially in foehn-type winds off the ranges.
+- **Why:** Without wind, fire usually backs downhill more slowly than it spreads on flat ground. It is still at least about half as fast, not stopped. A strong wind blowing down the slope overrides that, and the fire can run downhill fast, especially in foehn-type winds off the ranges.
 - **Safety:** "Fire doesn't go downhill" is not a safe rule. Check the wind direction relative to the slope.
-- **Source:** Sharples 2009 [L]; doc 02.
+- **Source:** kataburn, Sullivan et al. 2014 (cross-checked: doc 01); IRPG lists "downslope" and "foehn winds 20–60 mph, can exceed 90 mph" among critical winds (verified: pp. 40–41); Sharples 2009 [L]; doc 02.
 
 **S11 — Wind change coming: the flank will become the head** · Danger
 
 - **Trigger:** forecast or user-set wind direction change ≥ 45° with post-change speed ≥ 15 km/h within the next 3 h [H]. A countdown is shown. The card names the exposed flank and its length.
-- **Why:** When the wind swings, the whole long side of this fire (about {L_flank} km) becomes the front. Because the new front is already wide, it runs at full speed almost at once. This is how the five Linton firefighters died in 1998.
+- **Why:** When the wind swings, the whole long side of this fire (about {L_flank} km) becomes the front. Because the new front is already wide, it runs at full speed almost at once. This is how the five Linton firefighters died in 1998. On Black Saturday a flank about 55 km long became the head in about an hour.
 - **Safety:** Everyone must know the change time. Move off the flank that will become the head, or into the black, before the change.
-- **Source:** Cheney et al. 2001 [V]; Linton coroner 2002 [V]; Cheney & Gould 1995 [L].
+- **Source:** Cheney et al. 2001 (secondary [V]); Linton coroner 2002 (first-pass [V]); Cheney & Gould 1995 [L]; Kilmore East (cross-checked: doc 02 [V]); Watch Out #15 and IRPG common denominator 3 (verified).
 
 **S12 — You are in the dead-man zone** · Danger
 
 - **Trigger:** crew inside the DMZ polygon (§9.3), i.e. would be reached within 5 min of the forecast or worst-case change, and not within 20 m [H] of well-burnt black.
 - **Why:** If the wind changed now, fire could reach you in under five minutes: {T} min by the model. That is not enough time to reach a refuge unless you are right next to burnt ground.
 - **Safety:** Work close to the black, or move out of the zone. Keep your escape short and downhill or sideways.
-- **Source:** Cheney, Gould & McCaw 2001 [V].
+- **Source:** Cheney, Gould & McCaw 2001 (5-min definition via secondary [V]); IRPG 2025: "Blowup to burnover … can be as little as 5 minutes" (verified).
 
 **S13 — Hot, dry and windy ahead of the front** · Watch Out
 
-- **Trigger:** forecast NW–W sector wind ≥ 30 km/h with RH ≤ 20% and T ≥ 32 °C, or AFDRS rating ≥ Extreme [H; the AFDRS categories are L].
+- **Trigger:** forecast NW–W sector wind ≥ 30 km/h with RH ≤ 20% and T ≥ 32 °C [H], or AFDRS rating ≥ Extreme, i.e. FBI ≥ 50 (AFDRS thresholds verified: FBI-TG §2.3).
 - **Why:** Before a cold front, NSW gets hot, dry north-westerly winds that dry the leaf litter to a crisp. The fire will be at its most aggressive just before the change, and then the change swings it.
 - **Safety:** Plan both for the run now and for the change later.
 - **Source:** Mills 2008; Sharples 2009 [L].
 
 **S14 — Afternoon peak** · Insight
 
-- **Trigger:** local solar time between 13:00 and 17:00, with the simulated FMC_d at or near its daily minimum (within 1 percentage point) [H]. Also covers Watch Out #14 (hotter and drier trend).
+- **Trigger:** local solar time between 13:00 and 17:00, with the simulated FMC_d at or near its daily minimum (within 1 percentage point) [H]. This window brackets the IRPG's 14:00–17:00 critical burn period (verified). Also covers Watch Out #14 (hotter and drier trend).
 - **Why:** Leaf litter is driest and the air hottest and driest in mid-to-late afternoon. Winds blow up the slopes most strongly now. North- and west-facing slopes are the driest of all.
-- **Safety:** Expect the biggest runs now. Don't be lulled by a quiet morning.
-- **Source:** Sharples 2009; Whiteman 2000 [L]; Page et al. 2019 [L].
+- **Safety:** Expect the biggest runs now. Don't be lulled by a quiet morning. US crews are taught to take a "tactical pause" around 14:00 to re-check terrain, weather and fuel.
+- **Source:** IRPG 2025 common denominator 5 and "tactical pause … around 1400" (verified: p. 3); Sharples 2009; Whiteman 2000 [L]; Page et al. 2019 [L].
 
 **S15 — Morning inversion about to break** · Watch Out
 
 - **Trigger:** atmosphere model shows a surface-based inversion in the valley (dθ/dz > 0 in the lowest 200 m [H]) after sunrise, with mixed-layer growth predicted to exceed the valley depth within 60 min [H].
 - **Why:** Overnight, cold air pooled in the valley like a lid and kept the fire and smoke down. When the sun breaks the lid, the stronger, drier wind above mixes down and the fire can wake up very quickly.
-- **Safety:** A quiet smoky morning is not a safe morning. Re-check escape routes before mid-morning.
-- **Source:** Whiteman 2000; Sharples 2009 [L]; doc 02 §2.4.
+- **Safety:** A quiet smoky morning is not a safe morning. Re-check escape routes before mid-morning. If you see smoke start to "boil" up through the lid, that is the moment.
+- **Source:** IRPG 2025: "Smoke begins to boil through the inversion overcoming the stable layer. Expect lowering RH, possible wind shifts, and increasing flames, spread, and spotting". "Box and narrow canyons … support rapid increase in fire activity when inversion breaks" (verified: pp. 35, 38). Break-up 3.5–5 h after sunrise in deep valleys (Whiteman 1982; cross-checked: doc 02 [V]); Sharples 2009 [L]; doc 02 §2.4.
 
 **S16 — Night thermal belt** · Insight
 
 - **Trigger:** night (sun elevation < 0°), with fire in a mid-slope band where the simulated T is ≥ 2 °C warmer and RH ≥ 10 points lower than the valley floor [H].
 - **Why:** At night cold air sinks into the valley, but the middle of the slope can stay warmer and drier than both the valley and the ridge top. Fires in this band can keep burning actively all night.
 - **Safety:** Night doesn't always mean quiet. Expect activity on mid-slopes.
-- **Source:** Hayes 1941; Whiteman 2000 [L]; doc 02.
+- **Source:** Thermal-belt definition (Schroeder & Buck 1970; cross-checked: doc 02 [V]); IRPG: "Thermal belts should be factored into night operations. Learn the elevation of concern and when they set up" (verified: p. 35); Hayes 1941; Whiteman 2000 [L].
 
 **S17 — Evening wind flip** · Insight
 
 - **Trigger:** within 90 min of sunset, simulated near-surface slope or valley wind direction reverses by ≥ 90° [H].
 - **Why:** During the day, warm air flows up the slopes and valleys. After sunset it cools and drains down them instead. The fire's direction can change even though the forecast wind hasn't.
 - **Safety:** Re-check which side of the fire is "the head" at dusk.
-- **Source:** Whiteman 2000 [L]; doc 02 §2.3.
+- **Source:** IRPG local winds: "Downslope 2–5 mph, follows evening end of upslope winds"; "Downvalley 5–10 mph, peaks late night" (verified: p. 42); Whiteman 2000 [L]; doc 02 §2.3.
 
 **S18 — Sunny-side slope** · Insight
 
@@ -853,28 +957,30 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 - **Trigger:** at least 2 simulated spot ignitions across a user control line within 30 simulated minutes, or at least 1 within 200 m of a crew [H]. Watch Out #16.
 - **Why:** Embers are landing across your line and starting new fires. The fire is now effectively on both sides of you, and spot fires grow and join up quickly.
 - **Safety:** Tell your Crew Leader. Lookouts must watch behind the line. Be ready to move.
-- **Source:** NWCG 18 Watch Outs #16 [L]; Ellis 2015 [L].
+- **Source:** Watch Out #16 (verified: PMS 110-18); IRPG "increased frequency of spot fires" as a rapidly-changing-behaviour indicator (verified: p. 37); Ellis 2015 (cross-checked: doc 06).
 
 **S20 — Long-range embers** · Watch Out
 
 - **Trigger:** simulated ember landings ≥ 1 km ahead of the head, or bark fuel hazard ≥ High (stringybark/ribbon bark) with 10-m wind ≥ 30 km/h and FMC_d ≤ 7% [H].
-- **Why:** Stringybark and ribbon bark peel off in burning strips that the wind and smoke column can carry for kilometres. New fires can start well ahead of the main front, including on the other side of valleys.
+- **Why:** Stringybark and ribbon bark peel off in burning strips that the wind and smoke column can carry for kilometres. New fires can start well ahead of the main front, including on the other side of valleys. In south-east Australia most spot fires land within about 5 km. Big fires in steep, forested country have thrown them much further: 33 km on Black Saturday.
 - **Safety:** Your location may be "ahead of the fire" even if the main edge is far away. Watch for smoke behind you.
-- **Source:** Ellis 2011; Storey et al. 2020; Cruz et al. 2012 [L].
+- **Source:** Storey et al. 2020 (cross-checked: docs 01/02); Cruz et al. 2012 (cross-checked: doc 02); Ellis 2011 [L]; bark FHS ≥ 3 as the AFDRS long-range-spotting flag (cross-checked: doc 03).
 
 **S21 — Unburnt fuel between you and the fire** · Watch Out
 
 - **Trigger:** crew with fuel load ≥ 5 t/ha [H] between them and the nearest active perimeter, and not in the black. Watch Out #11.
 - **Why:** Fuel between you and the fire can ignite and cut you off, or burn toward you. The black is behind the fire edge, not in front of it.
 - **Safety:** Where the fire is low enough to allow it, work from the burnt side.
-- **Source:** NWCG 18 Watch Outs #11 [L]; Cheney et al. 2001 [V].
+- **Source:** Watch Out #11 (verified: PMS 110-18); IRPG indirect-attack disadvantage: "Firefighters may be in more danger because they are distant from the fire and have unburned fuels between them and the fire" (verified: p. 84); Cheney et al. 2001 (secondary [V]).
 
 **S22 — Leaf litter is bone dry** · Watch Out
 
-- **Trigger:** simulated or observed FMC_d ≤ 6% [H; within the Vesta moisture-function range, L].
-- **Why:** Leaf litter this dry catches from a single ember and lets fire spread fast even in light wind. Spot fires will take off almost as soon as they land.
+- **Trigger:** simulated or observed FMC_d ≤ 6% [H].
+  - This sits within the Vesta moisture-function domain, 4–20% (verified: FBI-TG eq. 3.47). At 6% the Vesta moisture factor is about 2.8× its value at 12% [D].
+  - On a sunny afternoon it corresponds to roughly RH ≤ 30% at 30 °C (Matthews et al. 2010 equation, verified: FBI-TG eq. 3.48).
+- **Why:** Leaf litter this dry catches easily from embers and lets fire spread fast even in light wind. Spot fires will take off almost as soon as they land.
 - **Safety:** Expect many spot fires and fast growth. Treat any ember as a new fire.
-- **Source:** Gould et al. 2007; Ellis 2015 [L].
+- **Source:** Cheney et al. 2012 / FBI-TG (verified); Ellis 2015 ("dominating influence of fuel moisture"; cross-checked: doc 06). The claim "catches from a single ember" is qualitative [L]; no probability threshold is verified.
 
 **S23 — Tall understorey: flames will get taller** · Insight
 
@@ -885,52 +991,52 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 
 **S24 — The fire is climbing into the treetops** · Danger
 
-- **Trigger:** surface I ≥ I₀ (Van Wagner, §4.6), or the spread model reports canopy involvement, and I ≥ 4,000 kW/m [L band].
+- **Trigger:** surface I ≥ I₀ (Van Wagner, §4.6), or the spread model reports canopy involvement, and I ≥ 4,000 kW/m. 4,000 kW/m is the "widely agreed threshold for 'offensive' suppression"; about 10,000 kW/m is the continuous-crown-fire threshold (verified: AFDRS-RP Tables 2.9 and 2.11).
 - **Why:** The fire is now hot enough to set the tree canopy alight. Crown fire spreads faster, throws far more embers and cannot be stopped by crews on the ground.
 - **Safety:** Direct attack is not possible. Go to your safety refuge or the black, and let the Crew Leader decide on indirect tactics.
-- **Source:** Van Wagner 1977; suppression bands [L].
+- **Source:** Van Wagner 1977 [L; coefficient partly verified, §4.6]; AFDRS-RP suppression tables (verified); NSW RFS 2014: 2,000+ kW/m "Crown fire at upper intensities. Indirect attack recommended" (verified via AFDRS-RP Table 2.5); IRPG: "Trees begin to torch" as a rapidly-changing-behaviour indicator (verified: p. 37).
 
 **S25 — The fire is making its own wind** · Watch Out
 
-- **Trigger:** N_c ≥ 10 [L threshold, uncertain] over ≥ 200 m of front, or simulated plume updraft ≥ 5 m/s at 500 m above ground level [H].
+- **Trigger:** N_c ≥ 10 over ≥ 200 m of front (threshold cross-checked: doc 02 [V]), or simulated plume updraft ≥ 5 m/s at 500 m above ground level [H]. Harmonise with doc 07 card 2, which uses N_c ≥ 10 for ≥ 5 min.
 - **Why:** This fire is releasing so much heat that its smoke column rises straight up and sucks air in from all sides. Its spread depends less on the forecast wind and can change direction suddenly.
 - **Safety:** Expect erratic behaviour and winds blowing toward the fire. Stay near your refuge.
-- **Source:** Byram 1959; Morvan & Frangieh 2018 [L].
+- **Source:** Byram 1959; Nelson 1993; Morvan & Frangieh 2018 (via doc 02); IRPG plume indicators "well developed, near vertical column" and "alternating and strengthening inflows, and outflows" (verified: p. 37).
 
 **S26 — Smoke column collapse: sudden winds** · Danger
 
-- **Trigger:** simulated plume-top descent, or a downdraft ≥ 3 m/s reaching the surface within 2 km, or the user reports a "collapsing" column [H].
-- **Why:** When a big smoke column collapses, cooled air crashes to the ground and spreads out in all directions. The fire can suddenly be pushed toward you from a new direction, as happened at Yarnell Hill in 2013.
+- **Trigger:** simulated plume-top descent, or a downdraft ≥ 3 m/s reaching the surface within 2 km, or the user reports a "collapsing" column [H]. Also the user-reported precursors in S45.
+- **Why:** When a big smoke column collapses, cooled air crashes to the ground and spreads out in all directions. Outflow winds are typically 40–55 km/h and can exceed 95 km/h. The fire can suddenly be pushed toward you from a new direction, as happened with the thunderstorm outflow at Yarnell Hill in 2013.
 - **Safety:** Get to your refuge or the black immediately. Don't try to finish the task.
-- **Source:** Forthofer & Goodrick 2011 [L]; Yarnell Hill investigation [L].
+- **Source:** IRPG critical winds: thunderstorm- and pyrocumulus-induced outflows and downdrafts "25–35 mph, can exceed 60 mph … winds radiate from center of storm" (verified: p. 41); Forthofer & Goodrick 2011 [L]; Yarnell Hill investigation [L].
 
 **S27 — PyroCb (fire thunderstorm) possible** · Danger
 
 - **Trigger:** doc 02 criteria (C-Haines ≥ 10 or above the local 95th percentile, and simulated firepower > PFT), or the user reports a white cap or anvil on the column [H/V per doc 02].
-- **Why:** The air above is unstable. This fire may build its own thunderstorm, bringing violent gusts, downdrafts, lightning, fire tornadoes and embers carried many kilometres. The Jingellic tanker was overturned by fire-generated winds in 2019.
+- **Why:** The air above is unstable. This fire may build its own thunderstorm, bringing violent gusts, downdrafts, lightning, fire tornadoes and embers carried many kilometres. In December 2019 near Jingellic, extreme winds on the fireground overturned a heavy RFS truck and killed a volunteer.
 - **Safety:** Crews should be in safe areas before this happens. Vehicles are not safe from these winds.
-- **Source:** Fromm et al. 2006; McRae et al. 2015; Tory & Kepert 2021 [L]; doc 02.
+- **Source:** Fromm et al. 2006; McRae et al. 2015; Tory & Kepert 2021 [L]; doc 02. IRPG indicators "pyrocumulus or ice cap on column", "thunder/lightning flashes", "sprinkles of rain" (verified: p. 37). Jingellic: death and rollover verified (PM statement; news); wind mechanism UNVERIFIED.
 
 **S28 — Fire whirl** · Watch Out
 
 - **Trigger:** simulated vertical vorticity |ζ| ≥ 0.1 s⁻¹ at the fire grid near the perimeter [H]. Or a lee-slope VLS score > 0.5 with an active fire edge; or two fire edges meeting.
-- **Why:** Spinning wind combined with the fire's heat can form a burning whirlwind. It can move erratically, fling embers and knock things over.
+- **Why:** Spinning wind combined with the fire's heat can form a burning whirlwind, with winds of 80 km/h or more. It can move erratically, fling large embers and knock things over.
 - **Safety:** Keep clear. Whirls often form behind ridges and where fire lines meet.
-- **Source:** Forthofer & Goodrick 2011; McRae et al. 2013 [L].
+- **Source:** IRPG "Whirlwinds 50 mph and higher … strong winds in outer portion of whirl can lift large embers"; "firewhirls beginning" as an indicator (verified: pp. 37, 41); Forthofer & Goodrick 2011; McRae et al. 2013 [L].
 
 **S29 — Junction zone: two fire lines meeting** · Danger
 
 - **Trigger:** two active perimeter segments (main fire and backburn, or two spot fires) converging with an included angle α ≤ 45° and a gap ≤ 300 m [H]. The speed-up factor 1/sin(α/2) is shown.
 - **Why:** Where two fires meet at a sharp angle, the point where they join races forward, about {1/sin(α/2)}× faster by geometry alone, and faster again because the two fires feed each other's heat and wind. The pocket between them can burn out violently.
 - **Safety:** Never be in the unburnt pocket between two fires.
-- **Source:** Viegas et al. 2012; Raposo et al. 2018 [L]; geometry [D].
+- **Source:** Viegas et al. 2012; Raposo et al. 2018 (cross-checked: doc 01 [S]); geometry [D]; WA doctrine "Junction zone effect must be considered when determining required back burn depth" (verified: AFDRS-RP Table 2.6).
 
 **S30 — Backburn race against the change** · Danger
 
 - **Trigger:** active user backburn, with the forecast wind change arriving before the model's predicted completion and securing of the backburn (black depth ≥ 100 m [H] along the whole line).
 - **Why:** A backburn that isn't finished when the wind changes becomes a new fire front with its own flank. The change can turn it back over your control line.
 - **Safety:** Backburns must be completed and secured well before the change. Stop lighting if you can't finish.
-- **Source:** NSW RFS Prescribed Burning OPG (LACES) [V]; backburning principles [L].
+- **Source:** IRPG: "Allow adequate time to permit forces to complete the line and conduct any firing operations in advance of severe burning conditions" (verified: p. 85); NSW RFS Prescribed Burning OPG (LACES) [V first pass]; backburning principles [L].
 
 **S31 — Lighting below yourself** · Danger
 
@@ -941,83 +1047,130 @@ Thresholds tagged [H] are design choices for RFS instructors to tune. Published 
 
 **S32 — This refuge is too small** · Danger
 
-- **Trigger:** refuge clear distance in the fire-approach direction < 4 × predicted FH [V doctrine]. Or it passes 4× but is on θ ≥ 15° or in 10-m wind ≥ 20 km/h, where SSD is greater [L/H].
-- **Why:** To be safe from the heat you need clear ground of at least four times the flame height between you and the fire. With about {FH} m flames that is {4·FH} m, and more on slopes and in wind, because hot gases are pushed toward you.
+- **Trigger:** refuge clear distance in the fire-approach direction < 4 × predicted FH [V doctrine].
+  - Or it passes 4× but the ground between fire and refuge slopes up toward the refuge at > 11° (20%), or the 10-m wind is > 16 km/h (10 mph). There the IRPG says safety-zone size may "more than double" (verified: IRPG 2025 p. 5).
+  - Or it fails SSD = 8·H_v·Δ (§4.7; Δ verified, class boundaries UNVERIFIED).
+  - *Correction:* the first draft used 15° and 20 km/h [H]. It now uses the IRPG values.
+- **Why:** To be safe from the heat you need clear ground of at least four times the flame height between you and the fire. With about {FH} m flames that is {4·FH} m. On slopes and in wind it can be more than double that, because hot gases are pushed toward you.
 - **Safety:** Find a bigger clearing, a road junction, rock or well-burnt ground. Tell your Crew Leader.
-- **Source:** NSW RFS / AFAC LACES [V]; Butler & Cohen 1998; Page & Butler 2017 [L].
+- **Source:** NSW RFS / AFAC LACES [V first pass]; IRPG 2025 pp. 5–6 (verified); Butler & Cohen 1998 [L]; Page & Butler 2017 (Δ table verified via Fire Lab code).
 
 **S33 — You can't outrun it uphill** · Danger
 
 - **Trigger:** T_a(crew) < T_e + M along the chosen escape route (§9.3), or the route climbs more than 30 m toward fire-exposed ground [H]. Watch Out #17.
 - **Why:** On this {θ}° slope, walking uphill with gear is only about {v} km/h. The fire is predicted to climb at about {R} km/h. The fire wins.
 - **Safety:** Escape routes should go downhill, sideways or into the black, and be short enough to jog.
-- **Source:** Tobler 1993; Campbell et al. 2017 [L]; LACES [V]; §4.8 [D].
+- **Source:** Watch Out #17 (verified: PMS 110-18); IRPG "Avoid steep, uphill escape routes"; "Evaluate escape time vs. rate of spread" (verified: p. 5); Tobler 1993; Campbell et al. 2017 [L]; LACES [V first pass]; §4.8 [D].
 
 **S34 — Trigger point reached: leave now** · Danger
 
 - **Trigger:** the active perimeter crosses the trigger contour for any crew (§9.3).
 - **Why:** The fire has reached the point where the time left, by the model, is only just enough for you to walk out to your refuge with a safety margin. Waiting longer uses up that margin.
 - **Safety:** Move now, calmly, along the planned route.
-- **Source:** Cova et al. 2005; Fryer et al. 2013 [L].
+- **Source:** Cova et al. 2005; Fryer et al. 2013 [L]; IRPG: lookouts need "knowledge of trigger points"; "Sound alarm early, not late" (verified: p. 5).
 
 **S35 — Smoke turned dark** · Insight
 
 - **Trigger:** the user reports a white-to-black change, or the model shows a fuel-consumption or crowning jump (I increases ×3 within 10 min) [H].
 - **Why:** Darker, thicker smoke usually means the fire has moved into heavier fuel or is burning hotter, often climbing into shrubs or treetops. White smoke is more often light, moist fuel.
 - **Safety:** Treat a sudden colour change as a warning to look again and tell your Crew Leader. It is a clue, not a measurement.
-- **Source:** widely taught smoke-reading heuristic [L].
+- **Source:** widely taught smoke-reading heuristic [L; the colour-to-fuel mapping is UNVERIFIED]. The IRPG supports the general practice: "Read smoke column for what is burning, how intensely it is burning" (verified: p. 37).
 
 **S36 — "Innocent-looking" fire** · Insight
 
 - **Trigger:** low current intensity (I < 500 kW/m) in grass or light fuels, but a forecast change or rising wind within 2 h, or θ ≥ 15° uphill of the fire [H].
-- **Why:** Most firefighter deaths happened on small or quiet-looking fires in light fuels, just before the wind changed or the fire hit a steep slope. Grass and light scrub react to wind almost instantly.
+- **Why:** Many firefighter deaths happened on small or quiet-looking fires in light fuels, just after the wind changed or the fire hit a steep slope. Grass and light scrub react to wind almost instantly. Blow-up to burnover can take as little as five minutes.
 - **Safety:** Quiet now does not mean safe soon. Keep LACES in place.
-- **Source:** Wilson 1977 [L].
+- **Source:** IRPG common denominators 1–4 and the 5-minute blow-up statement (verified: p. 3); Wilson 1977 [L].
 
 **S37 — No one can see the head** · Watch Out
 
 - **Trigger:** viewshed from the crews and lookouts covers less than 20% of the active head-fire cells [H]. Watch Out #12.
 - **Why:** From here the trees, ridges and smoke hide the front of the fire. If it changes, no one will see it coming in time.
-- **Safety:** Post a lookout who can see both the fire and you, and agree a signal.
-- **Source:** LACES [V]; NWCG 18 Watch Outs #12 [L].
+- **Safety:** Post a lookout who can see both the fire and you, and agree a signal. In broken country one lookout is usually not enough.
+- **Source:** Watch Out #12 (verified: PMS 110-18); Gleason 1991: lookouts must see "both the objective hazard and the firefighter(s)"; "one lookout is normally not sufficient" (verified); LACES [V first pass].
 
 **S38 — Forces aligned** · Watch Out (at 3 of 3) / Insight (at 2 of 3)
 
 - **Trigger:** count of the forces aligned with head_dir, each within 45° [H]: (i) wind_to; (ii) upslope_dir with θ ≥ 10°; (iii) sun-facing aspect in the afternoon, or fuel moisture lower ahead than behind.
 - **Why:** Right now wind, slope and sun are all pushing the fire the same way. When all three line up, fires make their biggest runs. When they oppose each other, the fire slows.
 - **Safety:** Look at the map: where will these three line up next? That is where the fire will run.
-- **Source:** Campbell 1995 [L].
+- **Source:** Campbell 1995 [L]; IRPG: "Alignment of topography and wind during the critical burning period should be considered a trigger point to reevaluate tactics" (verified: p. 3).
 
 **S39 — This area burned recently** · Insight
 
 - **Trigger:** fire approaching a polygon with time since fire or hazard-reduction burn ≤ 5 years [H], per user input or the fire-history layer.
 - **Why:** This area burned {n} years ago, so there is less leaf litter and understorey. The fire should slow down and burn lower here. It can be a good anchor or refuge, but it won't stop embers.
 - **Safety:** Use recently burnt ground to your advantage, but check it for hazard trees and unburnt patches.
-- **Source:** Olson 1963; fuel accumulation [L].
+- **Source:** Olson 1963 curve as used per fuel layer in the AFDRS (verified: FBI-TG eqs 3.52–3.56). The AFDRS assumes 25 years since fire where there is no record (cross-checked: doc 03). The 5-year threshold is [H]: litter recovers much faster than bark (k ≈ 0.2–0.3 vs ≈ 0.1 /yr; doc 03), so "burned 5 years ago" can still carry near-full litter.
 
 **S40 — The black isn't always safe** · Watch Out
 
 - **Trigger:** crew in black that is less than 60 min old in forest (canopy cover ≥ 30%), where the spread model shows the canopy unburnt or partially burnt, or where the refuge is under trees [H].
 - **Why:** In forests, burnt ground can still re-burn if the treetops or patches didn't burn. Fire-weakened trees can fall without warning, as they did at Green Wattle Creek in 2019.
-- **Safety:** Choose well-burnt, open black away from standing dead trees. Look up. Keep two tree-lengths from burning trees.
-- **Source:** hazard-tree practice [L]; Green Wattle Creek (2019) [L].
+- **Safety:** Choose well-burnt, open black away from standing dead trees. Look up. Keep well clear of burning trees; "two tree-lengths" is a common rule of thumb (UNVERIFIED).
+- **Source:** IRPG Hazard Tree Safety: "trees burning for any period of time", "dead, broken, or burning tops, and limbs overhead", "potential for trees to domino", "frequently scan overhead" (verified: pp. 20–21); Gleason 1991, "fire-weakened timber (standing and lying)" (verified); Green Wattle Creek 2019 (cross-checked: doc 01 [S]).
+
+**S41 — Keep your crew-protection water** · Danger (reserve breached) / Watch Out (approaching)
+
+- **Trigger:** user-entered or simulated tanker water remaining ≤ the brigade's crew-protection reserve (default 250 L [UNVERIFIED — set from local SOP]), with active fire within 500 m of the vehicle or its route [H].
+- **Why:** In a burnover your truck's sprays and curtains need water. In December 2019 a Blue Mountains crew's truck was overrun after it had run out of water, so its sprinkler system couldn't work.
+- **Safety:** Never pump the tank below the reserve. Head back to refill before you reach it. Tell your Crew Leader your water level.
+- **Source:** Feb 2020 condolence motion (verified); crew-protection reserve SOP (secondary: archived Wikipedia; UNVERIFIED volume).
+
+**S42 — Control line on the wrong side of the ridge** · Watch Out
+
+- **Trigger:** user-drawn control line whose cells lie within 50 m of a ridge line (§9.1 ridge mask), on the side facing the active fire, and more than 10 m below the crest [H].
+- **Why:** A line just below the crest on the fire's side gets the full upslope run, radiant heat and embers before the fire slows at the top. The same line on the crest, or just over it on the far side, is hit by a fire that has already used up its run.
+- **Safety:** Put ridge lines on the ridgetop or slightly over the far side. Patrol the far slope for spot fires, where lee eddies can carry fire sideways.
+- **Source:** IRPG: "Lines that run along ridges should be located on the ridgetop or slightly to the lee side, away from the main fire" (verified: p. 85); lee-side VLS caveat (doc 02).
+
+**S43 — Backing fire reaching the bottom of a narrow gully** · Watch Out
+
+- **Trigger:** fire backing downslope (∠(head_dir, −upslope_dir) ≤ 45°) arrives within 50 m of a valley floor where the opposite wall has θ ≥ 15° and the valley-floor width is ≤ 200 m [H].
+- **Why:** Fire creeping down this side will reach the gully floor and then start running *up* the other side as a head fire. The other side has already been heated by the fire across the gap. Embers can also jump straight across. In narrow gorges a slow backing fire can turn into a fast uphill run in minutes.
+- **Safety:** Don't be on the opposite slope above the gully when the fire gets to the bottom.
+- **Source:** IRPG: "Slope reversals in narrow canyons can change backing fire to head fire. Be mindful of spotting potential and sunny aspects on the other side" (verified: p. 35); cross-valley pre-heating (doc 01 §2).
+
+**S44 — "Contained" is not "out"** · Watch Out
+
+- **Trigger:** the user marks a perimeter "contained" or "controlled" while simulated burning or smouldering cells remain inside it, **and** tomorrow's forecast is AFDRS ≥ High (FBI ≥ 24) or wind ≥ 30 km/h [H].
+- **Why:** A fire inside its lines can still be burning in logs, stumps, swamps or deep litter. At Wangary in 2005, a fire declared contained, and then controlled, was still burning in a swamp. It broke out the next morning in hot north-westerly winds, and nine people died.
+- **Safety:** Treat any heat inside the line as a possible breakout. Patrol and mop up the edge nearest the next day's wind.
+- **Source:** SA Coroner, Wangary findings summary (verified). AFDRS thresholds (verified: FBI-TG).
+
+**S45 — Warning signs from the smoke column** · Watch Out (user-reported or simulated)
+
+- **Trigger:** the user reports any of: "sudden calm", "sprinkles of rain", "thunder/lightning", "smoke at my feet", "white cap on the column", "column leaning or sheared". Or the model shows alternating inflow/outflow near the head [H].
+- **Why:** These signs mean the fire's smoke column is changing and the wind near you is about to change, possibly violently. A sudden calm near a big column is not good news. It can come just before strong winds rush out in any direction.
+- **Safety:** Stop, tell your Crew Leader, and get ready to move to your refuge or the black.
+- **Source:** IRPG: "On-scene factors (thunder/lightning, sprinkles, sudden calm, smoke at your feet) mean imminent wind changes"; plume-dynamics indicators (verified: p. 37).
 
 ---
 
 ## 11. Open questions, uncertainties and verification checklist
 
 1. **Doctrine wording.** The full text of the NSW RFS *Bush and Forest Fires*, *Safety Refuges from Bush and Grass Fires* and *Fundamental Protocols* could not be read. Only the LACES text in the Prescribed Burning protocol was verified [V]. An NSW RFS instructor must review all card safety takeaways against current doctrine.
-2. **Dead-man zone paper.** Only the abstract and secondary summaries were read. Before quoting in-app, verify in the PDF: the "five minutes" definition; the "600 m h⁻¹ in under three minutes" Vesta statement; the "<100 m to >1 km" range; and the list of case studies.
+2. **Dead-man zone paper.** Only the abstract and secondary summaries were read. Before quoting in-app, verify in the PDF:
+   - the "five minutes" definition, which is confirmed in secondary sources;
+   - the "<100 m to >1 km" range, confirmed in secondary sources;
+   - the "nearly three times what was previously thought" statement, confirmed in secondary sources;
+   - the "600 m h⁻¹ in under three minutes" statement, which was **not found** in any source in the fact-check pass and has been withdrawn from card use;
+   - the list of case studies.
 3. **Case-study facts.** Check against coronial findings before in-app use:
-   - Ash Wednesday / Upper Beaconsfield (count and wind-change detail);
-   - Black Saturday (change timing, flank width, maximum spotting distance);
-   - Green Wattle Creek (sequence: tree strike versus rollover);
-   - Jingellic (vortex versus downdraft attribution).
+   - Upper Beaconsfield: the count of twelve comes from secondary sources only;
+   - Linton: the 55 recommendations and the report date come from first-pass search text;
+   - Green Wattle Creek: the sequence of tree strike and rollover;
+   - Jingellic: vortex or downdraft attribution;
+   - Bill Slade and Mat Kavanagh: causes;
+   - the Peak View C-130 crash: ATSB findings.
+
+   Black Saturday timing, flank length and 33 km spotting are now cross-checked via doc 02. Wangary is now verified from the coroner's findings summary.
 
    Sensitivity: use a respectful memorial tone and avoid graphic detail. Recommend family- and agency-sensitive framing.
-4. **SSD slope-wind factor table** (IRPG PMS 461): copy the exact values; they were deliberately not reproduced here.
-5. **Suppression-difficulty intensity bands:** confirm the exact Australian source (e.g. the Vesta field guide or AFAC training material) and the values.
-6. **N_c regime thresholds** and the reference wind height are uncertain.
+4. **SSD Δ table.** It is now reproduced from the USFS Fire Lab `behave` code (§4.7). The **class boundaries** are still UNVERIFIED: wind-speed classes (mph), burning-condition definitions and slope classes (%). Copy them from Page & Butler (2017), Table 3 or equivalent, before shipping. The Jan 2025 IRPG does not contain the SSD table. Its applicability to 20–40 m eucalypt forest is unknown.
+5. **Suppression-difficulty intensity bands.** These are now sourced (AFDRS-RP Tables 2.5–2.11, verified). The remaining task is to choose which agency table the app quotes. Recommendation: NSW RFS 2014 wording for tactics, AFDRS FBI words for ratings, and Alexander 2008 / CFA bands only in "advanced" mode.
+6. **N_c regime thresholds.** The values >10 and <2 are cross-checked via doc 02 but were not re-read here. The reference wind height remains uncertain.
 7. **Smoke-colour heuristics** have little quantitative validation. Keep them in "clue, not measurement" form.
 8. **Evidence on training outcomes:** no rigorous evaluation of sand-table or simulation training outcomes for wildland firefighters was retrieved. FireSim could collect pre/post POE scores (with consent) to generate this evidence.
 9. **Tobler for firefighters:** the load and fatigue factors are heuristic. Campbell et al. (2017) coefficients were not verified.

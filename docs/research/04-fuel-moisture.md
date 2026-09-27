@@ -38,26 +38,53 @@ Every quantitative item is therefore tagged:
 
 No number was invented. Where I am unsure of a published value, I say so and give the source to check.
 
+### 0.1 Adversarial fact-check pass (27 Sep 2026)
+
+A second reviewer re-checked every equation, coefficient, threshold and API name. WebSearch was exhausted and most publisher hosts were still blocked, but these primary or near-primary sources **were** read in full:
+
+| Source read | What it verified |
+|---|---|
+| **AFDRS Fire Behaviour Index Technical Guide** v1.0 (Matthews, 23 Jun 2022), full text extracted from the PDF | Vesta/AFDRS forest FMC periods and equations (eqs 3.47–3.50), dry- and wet-forest fuel availability (3.1–3.3), grass FMC (3.13–3.16), shrubland/heath FMC with rain term (3.75–3.77), mallee-heath FMC (3.60–3.62), pine litter FMC (3.81), buttongrass FMC (3.35–3.37), eucalypt-litter sustained-fire threshold |
+| **AFDRS Research Prototype** (Matthews et al. 2019, NSW RFS, 384 pp), full text extract | Heath FMC of Cruz et al. (2010) (eq. 13.8), reference list (Duff et al. 2018, Cawson et al. 2017, Matthews et al. 2010) |
+| xclim `compute/fire/_ffdi.py` (Ouranos/CSIRO), RISICO-2023 `mark5/functions.rs`, `kbdi/functions.rs` (CIMA Foundation), NCAR `fire-indices/calc_kbdi.ncl` | Metric KBDI, 5 mm runoff rule, Griffiths/Finkele drought factor and event rule, x_lim, Mk5 FFDI |
+| cffdrs (Canadian Forest Service R package) `hourly_fine_fuel_moisture_code.r`, `fine_fuel_moisture_code.r` | Van Wagner EMC, hourly and daily drying/wetting rates, FFMC rain equation |
+| WRF-SFIRE `phys/module_fr_fire_phys.F` (openwfm master) | WRF-SFIRE time-lag moisture model constants |
+| USFS Missoula Fire Lab `behave` (`ignite.cpp`, `fuelModels.cpp`, `fineDeadFuelMoistureTool.cpp`) | Schroeder P_ig, fuel-model extinction moistures, Rothermel (1983) aspect/shading correction tables, sun/shade fuel-temperature rule |
+| PyroXL (G. Goldrick) `Vesta2.bas`, `AFDRS_forest.bas`, `AFDRS_heath.bas`, `AFDRS_grass.bas`, `Mk5.bas`; Bushfire Toolkit `models.js` (states it is "transcribed verbatim from the reference AFDRS spreadsheet"); FireBehaviourCalcsR (Tolhurst workbook port); firebehavioR `ffm_function.R`; FireDanger `indices.py`; KNMI `turbowin/TVOCHT.CPP` | Code transcriptions of AFDRS, Vesta Mk 2, Mk5, Sharples FMI, WMO psychrometer |
+| NWCG *Incident Response Pocket Guide* PMS 461 (Jan 2025) | Night-time fine-fuel-moisture rule and FFM/P_ig interpretation table |
+| Open-Meteo documentation source (`docs`, `bom-api`, `historical-weather-api`) | API parameter and variable names |
+
+Each block below now carries **(verified: …)** or **(UNVERIFIED — reason)**. **Corrections from this pass are marked "CORRECTED"**; the most important are:
+1. **AFDRS dry-forest fuel availability is linear, FA = 0.1·DF**, not the logistic curve. The logistic curve is Vesta Mk 2, and AFDRS uses it only for wet forest (with a KBDI/wind-reduction stand factor) and pine.
+2. **AFDRS clamps the Vesta Mk 1 moisture function**: φ = 2.31 for M ≤ 4 %, and 0 above 20 % (code ports use 0.05).
+3. **The AFDRS grassland FMC is `MC = 9.58 − 0.205·T + 0.138·RH`**, not the McArthur/Noble hyperbolic form.
+4. **Heath FMC confirmed** and extended with its operational rain/dew term.
+5. **Griffiths DF**: N is days since the *wettest day* of the rain event.
+6. **WRF-SFIRE**: the code uses 0.942 (not 0.924), and its 14 h wetting lag applies to the 10-h class (1.4 h for 1-h fuel).
+7. **The "limited overnight recovery above the inversion" example is the Aberfeldy fire** (Victoria, January 2013), not State Mine (companion note 02 was corrected).
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
 
 1. **Dead fine fuel moisture is the most sensitive weather-driven input to forest spread rate in the dry range.**
-   - Vesta Mk 1 moisture function: φ_M = 18.35·M^−1.495 [K]. Going from 7 % to 5 % multiplies ROS by 1.65; going from 7 % to 12 % multiplies it by 0.45 [D].
-   - Vesta Mk 2 (as coded in PyroXL) is flatter: φ_M = 1 at ≤ 4.1 %, 0.78 at 7 %, 0.37 at 12 %, and 0 above 24 % [S, D].
+   - Vesta Mk 1 moisture function: φ_M = 18.35·M^−1.495. Going from 7 % to 5 % multiplies ROS by 1.65; going from 7 % to 12 % multiplies it by 0.45 [D]. **AFDRS clamps it**: φ_M = 2.31 for M ≤ 4 % and 0 for M > 20 % (verified: FBI Technical Guide eq. 3.47; PyroXL `AFDRS_forest.bas` uses 0.05 above 20 %).
+   - Vesta Mk 2 (as coded in PyroXL) is flatter: φ_M = 1 at ≤ 4.1 %, 0.78 at 7 %, 0.37 at 12 %, and 0 above 24 % (verified: PyroXL `Vesta2.bas`; UNVERIFIED against the Cruz et al. 2021/2022 PDF).
    - A 10-point RH error changes FMC by about 1.2–2 points (Vesta slopes 0.124–0.198 %/%RH) [D]. RH is therefore the forcing to get right.
-2. **Operational baseline.** Use the Vesta/AFDRS dry-forest equations [S], with M in % and RH in %:
-   - Peak (Oct–Mar, 12–17 h): M = 2.76 + 0.124·RH − 0.0187·T
-   - Night (≤ 06 h or ≥ 19 h): M = 3.08 + 0.198·RH − 0.0483·T
-   - Other daytime: M = 3.60 + 0.169·RH − 0.045·T
-   - These are empirical flat-ground, under-canopy, dry-forest relations. They have **no terrain term, no rain term and no memory**.
+2. **Operational baseline.** Use the Vesta/AFDRS dry-forest equations, with M in % and RH in % (verified: FBI Technical Guide eqs 3.48–3.50, which cite Matthews, Gould & McCaw 2010):
+   - Period 1, "sunny afternoon (clear skies), 12:00–17:00, October to March": M = 2.76 + 0.124·RH − 0.0187·T
+   - Period 2, "overcast, daylight hours": M = 3.60 + 0.169·RH − 0.045·T
+   - Period 3, "night time hours": M = 3.08 + 0.198·RH − 0.0483·T
+   - The Technical Guide defines the periods in words. Code ports use different clock cut-offs (§3.2), so FireSim should select the period from computed sun elevation and cloud or radiation, not from clock time.
+   - These are empirical flat-ground, under-canopy, dry-forest relations. They have **no terrain term, no rain term and no memory**. The Technical Guide says so explicitly: the Vesta model "does not include fuel availability or rainfall effects in its fuel moisture models".
 3. **Mountains need a physically based layer on top.** FMC responds to *fuel-level* temperature and humidity:
    - sun on the slope heats the litter above air temperature, which lowers the humidity in contact with the fuel and so its equilibrium moisture;
    - shade, canopy, horizon, cold-air pools and dew do the opposite.
    - Recommended core: an EMC plus exponential time-lag model per cell (Van Wagner EMC at fuel temperature, two litter layers, rain and dew stores) forced by terrain-resolved radiation, calibrated to reproduce Vesta on flat ground [H].
-4. **Aspect effect: measured values** [S]:
+4. **Aspect effect: measured values** [S] (UNVERIFIED against the papers themselves: these come from abstracts and extracts via companion note 01, and both studies are in Victorian forest, not NSW):
    - Slijepcevic et al. (2018): about 3 FMC points on average in dry forest, about 11 in moist forest.
-   - Nyman et al. (2015): north-aspect litter peaked at 43.7 °C against 29.8 °C on the south aspect on a 38.9 °C day. North-aspect litter was below fibre saturation on 128 days, south-aspect litter on 49.
+   - Nyman et al. (2015): north-aspect litter peaked at 43.7 °C against 29.8 °C on the south aspect on a 38.9 °C day. That is about +5 °C above air on the north slope and about −9 °C below air on the south slope. North-aspect litter was below fibre saturation on 128 days, south-aspect litter on 49.
+   - US operational cross-check (verified: Rothermel 1983 tables as coded in USFS `behave/fineDeadFuelMoistureTool.cpp`, and NWCG IRPG PMS 461). For fully sunlit fuel at 14:00–16:00 in midsummer, the correction differs between aspects by only 0–1 point. In mid-winter a steep (> 30 %) poleward slope gets +4 to +6 points against +1 to +2 on the sunny slope, and ≥ 50 % shading adds +3 to +6 at any aspect. For NSW, mirror aspects (US "north" = NSW "south") and shift months by six.
 5. **Aspect effect: geometry** [D]. At 33.7° S (Katoomba):
    - On 30° slopes on 15 October, afternoon (13–16 h solar) clear-sky beam radiation is 1.29× flat on a NW slope and 0.45× on a SE slope.
    - At the winter solstice a 30° south-facing slope gets 4 % of flat beam radiation all day. Slopes steeper than about 33° get **no direct sun at all** at noon.
@@ -69,20 +96,29 @@ No number was invented. Where I am unsure of a published value, I say so and giv
 7. **Rain.** 1 mm of throughfall holds 1 kg m⁻² of water. On 1 kg m⁻² (10 t ha⁻¹) of litter that is +100 FMC points if absorbed [D]. So a few millimetres through the canopy take litter far above extinction.
    - Recovery then takes hours (exposed, sunny) to days (shaded gully).
    - This is exactly what the drought factor's rain term encodes: with P = 20 mm yesterday, Griffiths DF ≈ 1.3 at KBDI 50; it recovers to ≈ 7.9 after 7 days [D].
-8. **Drought (KBDI/SDI → DF → fuel availability) controls how much of the litter bed, bark, logs and wet gully fuel is available.**
-   - Vesta Mk 2 availability: FA = 1.008/(1 + 104.9·e^(−0.9306·DF)) [S]. FA = 0.50 at DF 5, 0.87 at DF 7, ≈ 1 at DF ≥ 9 [D].
-   - In severe drought the normal "wet gully / south slope as barrier" effect collapses (2019–20).
+8. **Drought (KBDI/SDI → DF → fuel availability) controls how much of the litter bed, bark, logs and wet gully fuel is available.** (CORRECTED)
+   - **AFDRS dry forest: FA = 0.1·DF**, i.e. linear (verified: FBI Technical Guide eq. 3.1; PyroXL and Bushfire Toolkit ports).
+   - **Vesta Mk 2** (Cruz et al. 2021): FA = 1.008/(1 + 104.9·e^(−0.9306·DF)) (verified: PyroXL `Vesta2.bas`). FA = 0.50 at DF 5, 0.87 at DF 7, and ≈ 1 at DF ≥ 9 [D].
+   - **AFDRS wet forest** (wet sclerophyll, rainforest margins): the same logistic curve with DF scaled by a stand factor C1(KBDI, wind-reduction factor) (verified: FBI Technical Guide eqs 3.2–3.3; §3.2). In the densest wet forests (WRF 5), fuel is only about 35 % available at DF 10 when KBDI is 100 mm. It becomes about 90 % available at KBDI 150 [D].
+   - This is the quantitative form of "wet gullies stop fires until deep drought". In severe drought the normal "wet gully / south slope as barrier" effect collapses (2019–20).
 9. **Spotting.** Ember ignition probability rises steeply as litter dries.
-   - The US Schroeder/BEHAVE P_ig gives about 53 % at 6 % and 30 °C, 21 % at 12 %, and 5 % at 20 % [K, D].
+   - The US Schroeder/BEHAVE P_ig gives about 53 % at 6 % and 30 °C, 21 % at 12 %, and 5 % at 20 % (verified: equation in USFS `behave/ignite.cpp`; values [D]).
+   - The NWCG pocket guide gives a matching field interpretation: 1-h fuel at 5–7 % means P_ig 50–70 % and "extensive spotting"; below 5 % means 80–100 % (verified: NWCG IRPG PMS 461, 2025, p. 49).
    - Use it as a placeholder, flagged, until Australian firebrand-litter data (Ellis 2015; Plucinski & Anderson 2008) are transcribed.
-10. **Extinction.** Useful values:
-    - Vesta Mk 2 moisture function goes to 0 at 24 % [S];
-    - CSIRO grass moisture function goes to 0 at 20 % (wind < 10 km/h) or 24 % (wind ≥ 10 km/h) [K, D];
-    - US litter fuel models have Mx = 25–30 % [K].
-    - Treat 20–25 % as marginal and > 25 % as no sustained spread in litter [H].
+10. **Extinction.** Useful values (CORRECTED):
+    - The AFDRS Technical Guide gives the sustained-fire threshold of eucalyptus litter as **16–20 %**, against 30 % for pine needles and 70 % (bulk live+dead) for buttongrass (verified: FBI Technical Guide §3.3.4).
+    - The AFDRS forest moisture function is 0 above 20 % (verified: eq. 3.47).
+    - The Vesta Mk 2 moisture function goes to 0 above 24 % (verified: PyroXL code).
+    - The CSIRO grass moisture function reaches 0 at 20 % (wind < 10 km/h) or 24 % (wind > 10 km/h). AFDRS applies it within bounds of 2–24 % (verified: FBI Technical Guide eqs 3.14–3.16; zero points [D]).
+    - US litter fuel models have Mx = 25–30 % (verified: `behave/fuelModels.cpp`).
+    - FireSim default: fully free spread below 16 %; marginal, wind- or slope-assisted spread only at 16–20 %; no sustained litter spread above about 20–24 % [H, anchored on the AFDRS values].
 11. **Belt weather kit.** Wet/dry bulb readings must be converted with station pressure from elevation. At 2,000 m (795 hPa) the same readings give RH about 4–5 points higher than at sea level [D].
-12. **Forecasting.** Run the cell model forward over hourly forecast T, RH, rain, shortwave and cloud after at least a 3–7 day spin-up, so recent rain and dew are remembered [H].
-    - Expect about ±2 points of FMC skill in dry weather and much worse around rain and dew [K; Matthews 2014 review].
+    - Beware: some Australian field workbooks hard-code sea-level pressure (101.3 kPa). The Tolhurst workbook port does (verified: FireBehaviourCalcsR `rh_from_wetbulb`). That is wrong on the Kosciuszko main range or Barrington plateau.
+12. **Heath and sandstone shrubland** (Blue Mountains plateau heath, Budawangs, Wollemi ridgetops) use a different AFDRS moisture model (verified: FBI Technical Guide eqs 3.75–3.77):
+    - MC = 4.37 + 0.161·RH − 0.1·(T − 25) − 0.027·RH·Δ, plus a rain/dew memory term 67.128·(1 − e^(−3.132·rain₄₈))·e^(−0.0858·t).
+    - Heath fire also has a go/no-go spread factor (eq. 3.74), which gives about 50 % spread probability at MC ≈ 10.5 % with a 10 km/h wind [D].
+13. **Forecasting.** Run the cell model forward over hourly forecast T, RH, rain, shortwave and cloud after at least a 3–7 day spin-up, so recent rain and dew are remembered [H].
+    - Expect about ±2 points of FMC skill in dry weather and much worse around rain and dew (UNVERIFIED — recalled from the Matthews 2014 review; the PDF was not opened).
 
 ---
 
@@ -178,12 +214,14 @@ Byram & Jemison (1943) established the solar-radiation/fuel-temperature/fuel-moi
    - Compute horizon angles from the DEM. Self-shading from slope alone is not enough [H].
 4. **Elevation.**
    - By day in a mixed boundary layer, temperature falls with height (6.5–9.8 K km⁻¹) and the dew point falls about 1.8 K km⁻¹ [K; companion note 02]. RH therefore rises with height, and FMC rises about 0.5–1 point per 300 m [D, from the Vesta slopes].
+   - Cross-check (verified: Rothermel 1983 tables in `behave/fineDeadFuelMoistureTool.cpp`; NWCG IRPG). The US daytime correction adds **+1 point** when the fuel is 1,000–2,000 ft (300–600 m) above the weather site and subtracts **1 point** when it is that far below. This holds for daytime only; at night the sign can flip because of inversions.
    - Alpine and subalpine Kosciuszko is cooler and moister, with snow cover into spring, but its fuels burn in drought years (2003, 2019–20) [K].
 5. **Night inversions, cold-air pools and the thermal belt** [S, companion note 02].
    - Cold moist air drains into valleys: RH near 100 %, dew and fog, so fuel recovers well.
    - The mid-slope thermal belt stays warm and dry.
    - Ridges above the inversion sit in dry free-atmosphere air, often windy, with little recovery.
-   - The State Mine fire (Oct 2013) is a documented example of limited overnight recovery on an elevated fireground [S, companion note 02].
+   - The thermal belt is characteristically the middle third of the slope, where the top of the radiation inversion meets the slope. It has "higher night time temperatures, lower relative humidities, and lower fuel moistures", and fires there "can remain active throughout the night" (verified via companion note 02: NWCG glossary, Schroeder & Buck 1970).
+   - CORRECTED: the documented example of limited overnight recovery on an elevated fireground is the **Aberfeldy fire (Victoria, January 2013)**, not the State Mine fire. Being "elevated in the warm, dry air above the nocturnal inversion would have limited overnight recovery of the fuel moisture" (verified via companion note 02: BNHCRC 2017; Kepert et al. 2016 Hazard Note 24). The State Mine fire (Blue Mountains, 17 Oct 2013) was a daytime mountain-wave case.
 6. **Wind exposure.**
    - Exposed ridges have higher near-surface wind, which speeds drying (the time-lag model's wind term) but also limits radiative heating of the fuel.
    - Sheltered gullies have calm air, high humidity from evapotranspiration, little solar input and low evaporation.
@@ -217,46 +255,67 @@ Byram & Jemison (1943) established the solar-radiation/fuel-temperature/fuel-moi
 
 ### 3.1 McArthur Mk5 (Noble, Bary & Gill 1980)
 
-**Forest Fire Danger Index** [K]:
+**Forest Fire Danger Index**:
 `FFDI = 2·exp(−0.450 + 0.987·ln DF − 0.0345·H + 0.0338·T + 0.0234·U₁₀)`
+- (verified: identical in xclim `mcarthur_forest_fire_danger_index`, written as DF^0.987·exp(… + 0.243147), where 0.243147 = ln 2 − 0.45; RISICO `mark5/functions.rs`; PyroXL `Mk5.bas`; Arndt 2018 note, all citing Noble et al. 1980.)
 - Check value [D]: T = 30, H = 20, U₁₀ = 30, DF = 10 gives FFDI 34.5.
-- The companion Mk5 forest ROS on flat ground is R = 0.0012·FFDI·w (km/h, w fuel load in t/ha) [K].
+- The companion Mk5 forest ROS on flat ground is R = 0.0012·FFDI·w (km/h, w fuel load in t/ha). (Verified: PyroXL `ROS_Mk5 = 1.2·FFDI·load`, in m/h.)
 
-**Mk5 forest-meter fine fuel moisture** (regression reproducing the meter's moisture scale; Viney 1991, used in later comparisons) [K; verify coefficient 0.1854]:
+**Mk5 forest-meter fine fuel moisture** (a regression reproducing the meter's moisture scale):
 `M = 5.658 + 0.04651·H + 0.0003151·H³/T − 0.1854·T^0.77`
+- (verified in code, with two transcriptions: firebehavioR `ffm_function.R` uses **0.1854**, citing Viney 1991; PyroXL `Mk5.bas` and Bushfire Toolkit use **0.184**, citing McArthur 1967/1973. The two differ by at most 0.03 points for T ≤ 45 °C [D]. The primary source was not opened.)
 - Behaves reasonably for H ≤ ~70 %. The cubic term blows up at high RH (27.7 % at 12 °C / 90 %) [D], so do not use it for night or wet conditions.
 
-**McArthur drought factor** (original Mk5 form, Noble et al. 1980) [K]:
+**McArthur drought factor** (original Mk5 form, Noble et al. 1980):
 `DF = 0.191·(I + 104)·(N + 1)^1.5 / [3.52·(N + 1)^1.5 + P − 1]`, capped at 10.
 - N = days since rain; P = rain amount (mm); I = KBDI (mm).
+- (verified: FireBehaviourCalcsR `drought.R`, a port of the Tolhurst/NSW RFS workbook.)
 
-**Grass** (McArthur 1966; CSIRO grassland model, Cheney, Gould & Catchpole 1998) [K]:
-- Grass moisture: `M = (97.7 + 4.06·H)/(T + 6.0) − 0.00854·H`
-- Moisture function φ_M:
+**Grass**:
+- **McArthur Mk5 grassland meter moisture** (Noble et al. 1980, from McArthur 1966): `M = (97.7 + 4.06·H)/(T + 6.0) − 0.00854·H + 3000/C − 30`, with C = curing (%). With C = 100 the curing term is 0. (Verified: PyroXL `Mk5.bas`, Bushfire Toolkit; primary source not opened.) CORRECTED: an earlier draft omitted the curing term.
+- **AFDRS grassland dead FMC** (CORRECTED): `MC = 9.58 − 0.205·T + 0.138·RH`, "based on McArthur (1966)" (verified: FBI Technical Guide eq. 3.13). PyroXL floors it at 5 %. Example [D]: 30 °C / 20 % gives 6.2 % (the Mk5 form gives 4.8 %). Earlier drafts wrongly called the hyperbolic form the AFDRS equation.
+- **CSIRO grass moisture function φ_M** (Cheney, Gould & Catchpole 1998, used by AFDRS with "application bounds of 2–24 %") (verified: FBI Technical Guide eqs 3.14–3.16):
   - M < 12 %: φ_M = e^(−0.108·M)
-  - M ≥ 12 % and U₁₀ < 10 km/h: φ_M = 0.684 − 0.0342·M, which reaches zero at M = 20.0 % [D]
-  - M ≥ 12 % and U₁₀ ≥ 10 km/h: φ_M = 0.547 − 0.0228·M, which reaches zero at M = 24.0 % [D]
-- The grass MC equation is widely reported as the AFDRS grassland dead-FMC equation [K; verify in the AFDRS FBI Technical Guide].
+  - M > 12 % and U₁₀ < 10 km/h: φ_M = 0.684 − 0.0342·M, which reaches zero at M = 20.0 % [D]
+  - M > 12 % and U₁₀ > 10 km/h: φ_M = 0.547 − 0.0228·M, which reaches zero at M = 24.0 % [D]
+  - The Technical Guide PDF prints the last coefficient as "0.228", a typo. It must be 0.0228 for continuity at 12 %: 0.547 − 0.0228·12 = 0.2734 = e^(−1.296) [D]. PyroXL codes 0.0228, uses U ≤ 10 for the middle branch, and floors φ at 0.001.
+- **AFDRS grass curing** (Cruz et al. 2015c): φ_C = 1.036/(1 + 103.989·e^(−0.0996·(C − 20))) (verified: FBI Technical Guide eq. 3.17). This matters for Monaro and New England grassland and for cleared valley floors.
 
 ### 3.2 Vesta / AFDRS dry eucalypt forest (Gould et al. 2007; Cheney et al. 2012; Cruz et al. 2021/2022)
 
-**Fine dead surface-fuel moisture** (%) [S: equations and period logic as coded in PyroXL `Vesta2.bas`, companion note 01, citing Cruz et al. 2021; originally Gould et al. 2007]:
+**Fine dead surface-fuel moisture** (%) (verified: FBI Technical Guide eqs 3.48–3.50, which cite Matthews et al. 2010. Also identical in PyroXL `Vesta2.bas` and `AFDRS_forest.bas`, the Bushfire Toolkit port of the AFDRS spreadsheet, and the Spark `fc_sclerophyll_wet` script.)
 
-| Period | Equation |
+| Period (Technical Guide wording) | Equation |
 |---|---|
-| Peak: Oct–Mar, 12:00–17:00, sunny ("dry" submodel) | M = 2.76 + 0.124·RH − 0.0187·T |
-| Night: hour ≤ 06 or ≥ 19 | M = 3.08 + 0.198·RH − 0.0483·T |
-| Other daytime | M = 3.60 + 0.169·RH − 0.045·T |
+| 1: "sunny afternoon (clear skies), 12:00 – 17:00, October to March" | M = 2.76 + 0.124·RH − 0.0187·T |
+| 2: "overcast, day light hours" | M = 3.60 + 0.169·RH − 0.045·T |
+| 3: "night time hours" | M = 3.08 + 0.198·RH − 0.0483·T |
 
 Caveats:
-- **Period boundaries.** The Field Guide defines the periods in words (afternoon of sunny days, day, night). The printed guide may use sunrise/sunset or "09:00–20:00". Confirm, and confirm whether the times are standard time; NSW daylight saving (AEDT) runs Oct–Apr [K].
+- **Period boundaries differ between implementations** (verified in each code base):
+
+  | Implementation | Period 1 | Night | Cloud test? |
+  |---|---|---|---|
+  | FBI Technical Guide | 12:00–17:00, Oct–Mar, sunny/clear | "night time hours" | yes (in words) |
+  | PyroXL / Bushfire Toolkit (AFDRS spreadsheet ports) | hour 12–17 inclusive, Oct–Mar, dry forest only | hour ≤ 06 or ≥ 19 | no |
+  | Spark `fc_sclerophyll_wet` (2020) | 12:00–16:59, all months | 20:00–08:59 | no |
+  | Tolhurst workbook (FireBehaviourCalcsR), curve fits to Field Guide tables M1–M3 | 13:00–17:00, Nov–Feb | < 06 or ≥ 20 | no |
+
+  - Whether AFDRS clock times are standard or daylight time is **UNVERIFIED**. NSW daylight saving (AEDT) runs October to April.
+  - FireSim should classify by physics: sun below the horizon → night; direct beam at the fuel present and GHI above about 500 W m⁻² in Oct–Mar, 12–17 h local → period 1; otherwise period 2 [H]. The 500 W m⁻² criterion is the one the Technical Guide uses for the heath Δ.
+- **Wet forest.** The spreadsheet ports never apply the period-1 equation to the wet-forest submodel. Wet forest uses the "day" equation in the afternoon (verified: PyroXL `FMC_forest(..., submodel)`).
+- **Spark wet-eucalypt adjustment** "as per Amicus" (verified: Spark `fc_sclerophyll_wet.c`, Goldrick 2020; the primary source is UNVERIFIED). It raises Vesta M by understorey height:
+  - shrubs < 2 m: M′ = 1.2052·M + 0.8554;
+  - shrubs 2–5 m: M′ = 1.5248·M − 0.0568;
+  - shrubs > 5 m: M′ = 1.5923·M + 1.9565.
+  - It also divides the wind by 2, 2.3 or 3 respectively. Treat it as an optional "wet gully" modifier, not as a validated model.
 - **Domain.** Fitted to dry eucalypt forest litter data, largely from south-west WA (Project Vesta) [K]. Valid for "surface litter under canopy on flat or gentle ground". It has no rain, dew or terrain terms.
 
-Reference values [D]:
+Reference values [D] (CORRECTED: day at 15 °C / 80 % is 16.4, not 16.5):
 
 | T (°C), RH (%) | Peak | Day | Night | Mk5 regression |
 |---|---|---|---|---|
-| 15, 80 | 12.4 | 16.5 | 18.2 | 18.6 |
+| 15, 80 | 12.4 | 16.4 | 18.2 | 18.6 |
 | 20, 60 | 9.8 | 12.8 | 14.0 | 10.0 |
 | 25, 40 | 7.3 | 9.2 | 9.8 | 6.1 |
 | 30, 30 | 5.9 | 7.3 | 7.6 | 4.8 |
@@ -270,61 +329,132 @@ Sensitivities [D]:
 - ∂M/∂T = −0.019 to −0.048 %/°C.
 
 **Moisture functions.**
-- **Vesta Mk 1** (Gould et al. 2007; Cheney et al. 2012) [K]: `φ_M = 18.35·M^−1.495`. It equals 1 at M ≈ 7 %.
-- **Vesta Mk 2** (as coded) [S]:
+- **Vesta Mk 1** (Gould et al. 2007; Cheney et al. 2012): `φ_M = 18.35·M^−1.495`. It equals 1 at M ≈ 7 %.
+  - (verified: FBI Technical Guide eq. 3.47. The Tolhurst workbook writes the same function as M^−1.495/0.0545, and 1/0.0545 = 18.35.)
+  - **AFDRS bounds** (CORRECTED; verified: eq. 3.47, "upper and lower limits estimated from Cruz et al. (2021)"): φ_M = 2.31 for M ≤ 4 %; 18.35·M^−1.495 for 4 < M ≤ 20 %; **0 for M > 20 %**. The PyroXL and Bushfire Toolkit ports use 0.05 above 20 % instead of 0.
+- **Vesta Mk 2** (verified: PyroXL `Vesta2.bas`, which cites Cruz et al. 2021; UNVERIFIED against the Cruz et al. 2021/2022 PDF):
   - `φ_M = 0.9082 + 0.1206M − 0.03106M² + 0.001853M³ − 0.00003467M⁴`
   - φ_M = 1 for M ≤ 4.1 and φ_M = 0 for M > 24.
-  - The polynomial is continuous at both ends: 0.998 at 4.1 and 0.025 at 24 [D].
+  - The polynomial is continuous at the lower end (0.998 at 4.1) and nearly so at the upper end (0.025 at 24) [D].
+  - It decreases monotonically but is almost flat between 16 % and 21 % (0.20 → 0.16) before falling steeply to 24 % [D].
+
+CORRECTED values [D]: Mk 1 at 5 % is 1.65 (was 1.66); Mk 2 at 5 % is 0.94 (was 0.95). The "Mk 1 AFDRS" row applies the AFDRS clamps.
 
 | M (%) | 4 | 5 | 6 | 7 | 8 | 10 | 12 | 16 | 20 | 24 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Mk 1 φ_M | 2.31 | 1.66 | 1.26 | 1.00 | 0.82 | 0.59 | 0.45 | 0.29 | 0.21 | 0.16 |
-| Mk 2 φ_M | 1.00 | 0.95 | 0.87 | 0.78 | 0.69 | 0.51 | 0.37 | 0.20 | 0.17 | 0.03 |
+| Mk 1 φ_M (raw) | 2.31 | 1.65 | 1.26 | 1.00 | 0.82 | 0.59 | 0.45 | 0.29 | 0.21 | 0.16 |
+| Mk 1 φ_M (AFDRS clamps) | 2.31 | 1.65 | 1.26 | 1.00 | 0.82 | 0.59 | 0.45 | 0.29 | 0.21 | 0 |
+| Mk 2 φ_M | 1.00 | 0.94 | 0.87 | 0.78 | 0.69 | 0.51 | 0.37 | 0.20 | 0.17 | 0.03 |
 
-**Fuel availability** (Vesta Mk 2 / AFDRS) [S]:
-`FA = 1.008/(1 + 104.9·exp(−0.9306·DF))`
-- Values [D]: DF 3 → 0.14; 5 → 0.50; 7 → 0.87; 8 → 0.95; 10 → 1.00.
-- Fuel moisture effect: FME = φ_M·FA [S].
-- The wet-forest submodel adds a drought-index and slope/aspect term. It was not implemented in the code reviewed [S]. **Get it from the AFDRS FBI Technical Guide.** It is directly relevant to NSW south-slope and gully wet sclerophyll.
+**Fuel availability** (CORRECTED; three different functions):
 
-**Heath / shrubland dead FMC** (AFDRS uses a shrubland-specific equation from the mallee-heath work of Cruz et al. 2010 and Anderson et al. 2015).
+| Model | Equation | Source |
+|---|---|---|
+| AFDRS dry forest | `FA = 0.1·DF` | verified: FBI Technical Guide eq. 3.1; PyroXL, Bushfire Toolkit |
+| Vesta Mk 2 (dry) | `FA = 1.008/(1 + 104.9·exp(−0.9306·DF))` | verified: PyroXL `Vesta2.bas` (Cruz et al. 2021) |
+| AFDRS wet forest, and pine | `C1 = 0.1·[KBDI·(0.0046W² − 0.0079W − 0.0175) − 0.9167W² + 1.5833W + 13.5]`, clamped to [0, 1]; `FA = 1.008/(1 + 104.9·exp(−0.9306·C1·DF))` | verified: FBI Technical Guide eqs 3.2–3.3 (citing Cruz et al. 2021) |
 
-I recall the form `M = 4.37 + 0.161·RH − 0.1·(T − 25) − Δ·0.027·RH`, with Δ = 1 on sunny afternoons (12–17 h, Oct–Mar) and 0 otherwise.
+- In the wet-forest row, W is the wind reduction factor (3–5) and KBDI is in mm.
+- The Technical Guide PDF prints "0.0079W = 0.0175". The minus sign is confirmed by `AFDRS_forest.bas` and the Bushfire Toolkit.
+- PyroXL's `Vesta2.bas` wet branch has **−0.175**, which is a typo. It would make wet forest *less* available as drought increases.
+- The spreadsheet ports also cap the wet-forest FA at 0.1·DF.
+- AFDRS multiplies both the fuel hazard scores and the fuel loads by FA, but not the fuel heights (verified: Technical Guide §3.2.1.1).
+- Values [D]:
+  - Vesta Mk 2 logistic: DF 3 → 0.14; 5 → 0.50; 7 → 0.87; 8 → 0.95; 10 → 1.00.
+  - AFDRS wet forest at DF 10:
 
-**[K, low confidence — do not ship without checking the AFDRS FBI Technical Guide.]** Until checked, use Vesta for sandstone heath with a flagged note [H].
+    | W | KBDI 0 | 50 | 100 | 150 | 200 |
+    |---|---|---|---|---|---|
+    | 3 | C1 = 1, FA 1.0 at all KBDI | | | | |
+    | 4 | C1 0.52, FA 0.54 | 0.79 | 0.93 | 0.98 | 1.0 |
+    | 5 | C1 0, FA 0.01 | 0.03 | 0.35 | 0.89 | 1.0 |
+
+  - This is the physically meaningful NSW result: dense, tall wet sclerophyll and rainforest-margin gullies (high W) contribute almost nothing until KBDI passes about 100–150 mm.
+- Fuel moisture effect in Vesta Mk 2: FME = φ_M·FA (verified: PyroXL, "Cruz 2021 Eq 8").
+- The Technical Guide states that these availability curves were "loosely based on fire occurrence observations presented by Cawson et al. (2017)". It also says "some of the modifications have been made without a proper scientific foundation". Show them as operational conventions, not physics.
+
+**Heath / shrubland dead FMC** (CORRECTED from "low confidence" to verified: FBI Technical Guide eqs 3.75–3.77, citing Cruz et al. 2015a and Marsden-Smedley et al. 1999; AFDRS Research Prototype eq. 13.8, citing Cruz et al. 2010):
+- `MC = MC1 + MC2`
+- `MC1 = 4.37 + 0.161·RH − 0.1·(T − 25) − 0.027·RH·Δ`
+- `MC2 = 67.128·(1 − e^(−3.132·rain)) · e^(−0.0858·hours)`
+- Variables:
+  - Δ is "the radiation factor": 1.0 for solar radiation above 500 W m⁻² (sunny days, 12:00–17:00, October–March), otherwise 0. Operationally, "as the cloud cover is not always known, δ was set to be 1.0 if RH ≤ 60 %" (verified: Technical Guide; coded that way in PyroXL `AFDRS_heath.bas`).
+  - rain = precipitation (or dewfall) in the last 48 h (mm).
+  - hours = time since rain or dewfall stopped (h).
+- MC2 comes from the Tasmanian buttongrass model. The Technical Guide notes its response time of 1–2 days is "suitable for fuel types with a large near-surface and elevated fuel component".
+- Examples [D]:
+  - 30 °C / 20 %, sunny: MC1 = 6.55 %.
+  - 1 mm of rain that stopped 12 h ago adds MC2 = +22.9 points; after 24 h it adds +8.2.
+- Heath moisture function: `φ = e^(−0.0762·MC)`, used between 4 % and 20 % (PyroXL clamps it and uses 0.05 above 20 %) (verified: Technical Guide eq. 3.73 exponent; PyroXL `Mf_heath`).
+- Heath go/no-go (spread-probability) multiplier: `ROS_adj = ROS/(1 + e^(−(16.57 + 1.188·U₁₀ − 2.705·MC)))` (verified: Technical Guide eq. 3.74, "based on results from Cruz et al. 2010"). The 50 % point is MC = (16.57 + 1.188·U₁₀)/2.705 [D]:
+
+  | U₁₀ (km/h) | 0 | 10 | 20 | 30 |
+  |---|---|---|---|---|
+  | MC at 50 % spread probability (%) | 6.1 | 10.5 | 14.9 | 19.3 |
+
+  This is the clearest quantitative "why" for heath: a heath patch that will not carry fire in the calm morning can carry it at the same moisture once the afternoon wind reaches 20 km/h.
+- **Use this model for NSW sandstone heath and shrubland** (Blue Mountains plateau, Budawangs, Wollemi, Kanangra tops) instead of Vesta.
+
+**Other AFDRS dead-fuel moisture equations** (verified: FBI Technical Guide):
+- **Mallee-heath** (eq. 3.61; not NSW mountain relevant): MC1 = 4.79 + 0.173·RH − 0.1·(T − 25) − Δ·0.027·RH, plus the same MC2.
+  - Discrepancy: the Bushfire Toolkit codes 4.74 + 0.108·RH − 0.1·(T − 25) − Δ·(1.68 + 0.028·RH), and the source of that difference is UNVERIFIED.
+- **Pine litter** (eq. 3.81, relevant to NSW plantation edges such as Oberon and Tumut): m = 4.3426 + 0.1188·RH − 0.0211·T. Pine foliar moisture is 150 − 5·DF (eq. 3.4).
+- **Buttongrass / moorland** (eqs 3.35–3.37; Tasmanian, but the functional form suits wet heath swamps): MC = 67.128·(1 − e^(−3.132·rain))·e^(−0.0858·t) + e^(1.660 + 0.0214·RH − 0.0292·T_dew).
 
 ### 3.3 Simple indices
 
-**Sharples et al. (2009) Fuel Moisture Index** [K]:
-`FMI = 10 − 0.25·(T − H)`
-- It tracks FMC (%) roughly. Examples [D]: 30 °C / 20 % → 7.5; 40 °C / 8 % → 2.0.
-- It is the basis of the "temperature higher than humidity" crossover rule of thumb (FMI < 10 when T > H) [D].
+**Sharples et al. (2009) Fuel Moisture Index**:
+`FMI = 10 − 0.25·(T − H)` (T in °C, H in %)
+- (verified: FireDanger `indices.py`, `fuel_moisture_index`, citing Sharples et al. 2009a,b. The companion danger index there is F = max(U₀, U)/FMI, with U in km/h.)
+- FMI is a dimensionless index that tracks FMC (%) roughly. Examples [D]: 30 °C / 20 % → 7.5; 40 °C / 8 % → 2.0.
+- FMI < 10 exactly when T (°C) > H (%) [D].
+  - Caution: the familiar US "crossover" rule compares °F with %RH, which is a much milder condition. The °C version used in card 15 is an informal Australian field sign, not a published threshold [H].
+  - At T = RH (°C = %), the Vesta period-1 FMC is 5.4–7.0 % for T = 25–40 °C [D]. That is "very dry litter".
 
-**VPD model** (Resco de Dios et al. 2015, semi-mechanistic fine-litter model) [S, existence]:
+**VPD model** (Resco de Dios et al. 2015, semi-mechanistic fine-litter model) (UNVERIFIED — existence confirmed by search in the first pass; coefficients not seen in any readable source or code):
 - Form: `M = a + b·exp(−c·D)`, with D = vapour pressure deficit (kPa).
-- The regional calibration I recall (Nolan et al. 2016, Remote Sensing of Environment) is a = 6.79, b = 27.43, c = 1.05, for daily-mean D [K, moderate confidence].
-- Values [D]: D = 1 kPa → 16.4 %; 2 → 10.2 %; 3 → 8.0 %.
-- Useful as a cross-check and as the basis for gridded daily DFMC in NSW research [K].
+- The regional calibration I recall (Nolan et al. 2016, Remote Sensing of Environment) is a = 6.79, b = 27.43, c = 1.05, for daily-mean D. This is from memory only. Do not hard-code it before checking the paper, including whether D is the daily mean or the daily maximum.
+- Values [D]: D = 1 kPa → 16.4 %; 2 → 10.1 %; 3 → 8.0 %.
+- Useful as a cross-check. Open-Meteo serves `vapour_pressure_deficit` (kPa) hourly, so this is cheap to add (§4.2) [H].
 
 ### 3.4 Equilibrium moisture content (EMC)
 
-**Simard (1968)** (as used in US NFDRS; Cohen & Deeming 1985) [K]. T_F is in °F.
+**Simard (1968)** (as used in US NFDRS; Cohen & Deeming 1985). T_F is in °F.
 
 | RH range | EMC |
 |---|---|
 | RH < 10 % | 0.03229 + 0.281073·RH − 0.000578·RH·T_F |
-| 10 ≤ RH < 50 % | 2.22749 + 0.160107·RH − 0.01478·T_F |
+| 10 ≤ RH < 50 % | 2.22749 + 0.160107·RH − 0.014784·T_F |
 | RH ≥ 50 % | 21.0606 + 0.005565·RH² − 0.00035·RH·T_F − 0.483199·RH |
 
-**Van Wagner (1987) FFMC** (desorption E_d, adsorption E_w; H %, T °C) [K]:
+- (Partly verified. The middle-branch coefficients 0.160107 and 0.014784 appear verbatim in the FBI Technical Guide eq. 3.30, which AFDRS uses for spinifex dead material: "FMC = 2.279 + 0.160107RH − 0.014784T + 7", an adjusted Simard "model B". The other two branches are UNVERIFIED; they are from memory of Cohen & Deeming 1985.)
+- A °C version is coded in firebehavioR `ffm_function.R` (after Viney 1991):
+  - 0.03 + 0.2626·RH − 0.00104·RH·T for RH < 10 %;
+  - 1.76 + 0.1601·RH − 0.0266·T for 10–49 %;
+  - 21.06 − 0.4944·RH + 0.005565·RH² − 0.00063·RH·T for RH ≥ 50 %.
+  - This is consistent with the °F form: 2.22749 − 0.014784·32 = 1.754, and 0.014784 × 1.8 = 0.0266 [D].
+
+**Van Wagner (1987) FFMC** (desorption E_d, adsorption E_w; H %, T °C):
 - `E_d = 0.942·H^0.679 + 11·e^((H−100)/10) + 0.18·(21.1 − T)·(1 − e^(−0.115·H))`
 - `E_w = 0.618·H^0.753 + 10·e^((H−100)/10) + 0.18·(21.1 − T)·(1 − e^(−0.115·H))`
-- Cross-check [D]: WRF-SFIRE writes the exponential term as 0.000499·e^(0.1H). Since 11·e^(−10) = 0.000499, the two forms agree. WRF-SFIRE's 0.924 leading coefficient appears to be a transposition of Van Wagner's 0.942.
+- (verified: cffdrs `fine_fuel_moisture_code.r` and `hourly_fine_fuel_moisture_code.r`, eqs 2a/2b, 4, 5; WRF-SFIRE `module_fr_fire_phys.F`; firebehavioR "wagner".)
+- CORRECTED cross-check: WRF-SFIRE codes the exponential terms as 0.000499·e^(0.1H) (drying) and 0.000454·e^(0.1H) (wetting). These equal 11·e^(−10) and 10·e^(−10) [D]. The **leading coefficient in the WRF-SFIRE code is 0.942**; the earlier note of "0.924" was wrong. WRF-SFIRE writes (21.1 + 273.15 − T) with T in kelvin, which is the same thing.
 
 **Comparison with Vesta** [D]:
 - At air conditions, Van Wagner E_d is close to the Vesta night and day equations at moderate RH: 30 °C / 30 % gives E_d 7.9 against night 7.6.
 - It is lower in extreme dryness: 40 °C / 10 % gives E_d 2.2 against Vesta 3.1–3.5. Vesta was fitted to field litter that rarely falls below about 2.5–3 %.
-- Litter heated 3–8 °C above air reproduces the Vesta peak equation from E_d at moderate conditions. This matches the measured north-aspect excess of about 5 °C [S]. **This is the calibration anchor for FireSim's fuel-temperature model.**
+- Evaluating E_d at fuel temperature T + ΔT and fuel-surface RH reproduces the Vesta period-1 equation with these excesses [D]:
+
+  | Air | Vesta P1 | Litter excess that matches |
+  |---|---|---|
+  | 20 °C / 60 % | 9.8 % | about 8 K |
+  | 25 °C / 40 % | 7.3 % | 6–7 K |
+  | 30 °C / 30 % | 5.9 % | about 4 K |
+  | 30 °C / 20 % | 4.7 % | about 3 K |
+  | 35 °C / 15 % | 4.0 % | about 0 K |
+
+  - So the "3–8 K" rule holds for moderate conditions. At the hot, dry end the Van Wagner isotherm is already as dry as Vesta without any heating. Any fuel-temperature excess there drives E below field values, so apply the 2 % floor and cap the calibrated excess [H].
+  - Moderate conditions match the measured north-aspect excess of about 5 °C [S]. **This is the calibration anchor for FireSim's fuel-temperature model.**
 
 **Nelson (1984) Gibbs-energy isotherm** (used inside Nelson 2000 and Matthews 2006) [K]:
 - `ΔG = −(R·T_K / W)·ln(H/100)`, with R = 8.314 J mol⁻¹ K⁻¹ and W = 0.018 kg mol⁻¹.
@@ -343,26 +473,33 @@ else:            no vapour exchange (inside the hysteresis band)
 M(t+Δt) = E + (M(t) − E)·exp(−Δt/τ)
 ```
 
-**Van Wagner drying rate, hourly FFMC form** (Van Wagner 1977; the hourly factor is 0.0579 against 0.581 in the daily FFMC) [K]:
+**Van Wagner drying rate, hourly FFMC form** (Van Wagner 1977; the hourly factor is 0.0579 against 0.581 in the daily FFMC):
 - `k₀ = 0.424·[1 − (H/100)^1.7] + 0.0694·√W·[1 − (H/100)^8]`, with W = wind (km/h).
-- `k_d = k₀ · 0.0579·e^(0.0365·T)` (log₁₀ units h⁻¹), so τ = 1/(k_d·ln 10).
-- Example [D]: H 30 %, W 10 km/h, T 30 °C gives τ ≈ 4.3 h for the FFMC reference layer (about 1.2 cm deep, 0.25 kg m⁻²).
-- Wetting uses the same form with (100 − H) in place of H.
+- `k_d = k₀ · 0.0579·e^(0.0365·T)` (log₁₀ units h⁻¹). The update is m = E_d + (m₀ − E_d)·10^(−k_d·Δt), so τ = 1/(k_d·ln 10).
+- Wetting uses the same form with (100 − H) in place of H, and E_w.
+- In the band E_w ≤ m ≤ E_d there is no change.
+- (verified: cffdrs `hourly_fine_fuel_moisture_code.r`, eqs 3a/3b/7a/4b/8; daily `fine_fuel_moisture_code.r` uses 0.581.)
+- Example [D]: H 30 %, W 10 km/h, T 30 °C gives τ ≈ 4.3 h for the FFMC reference layer. That layer is about 1.2 cm deep with 0.25 kg m⁻² (UNVERIFIED — the layer depth and load are from memory of Van Wagner 1987).
 
-**WRF-SFIRE fuel-moisture model** (Mandel et al. 2014; Vejmelka et al. 2016) [K; values to verify]:
-- Classes: 1-h, 10-h and 100-h fuels, each with dM/dt = (E − M)/τ and Van Wagner & Pickett EMCs.
+**WRF-SFIRE fuel-moisture model** (Mandel et al. 2014; Vejmelka et al. 2016). CORRECTED values (verified: WRF-SFIRE `phys/module_fr_fire_phys.F`, openwfm master, `data` statements and `advance_moisture`):
+- Five classes: 1-h, 10-h, 100-h, 1000-h and live.
+  - Drying lags are 1, 10, 100 and 1000 h.
+  - **Wetting lags are 1.4, 14, 140 and 1400 h.**
+  - Each class obeys dM/dt = (E − M)/τ. The equilibrium is clamped between the Van Wagner E_w and E_d, exactly as in the hysteresis logic above.
 - Rain: if r > r₀, then `dM/dt = (S − M)/T_r · (1 − e^(−(r − r₀)/r_s))`, with:
-  - S = 250 % (saturation);
-  - T_r = 14 h;
+  - S = 2.5 kg/kg = 250 % (saturation);
+  - T_r = the class wetting lag (14 h for 10-h fuel, **1.4 h for 1-h fuel**). The earlier draft gave only 14 h. The code comment says 14 h was "calibrated to VanWagner&Pickett 1985 per 24 hours";
   - r₀ = 0.05 mm h⁻¹;
-  - r_s = 8 mm h⁻¹.
+  - r_s = 8 mm h⁻¹ ("stronger rain matters only in duration").
+- The time integration is exact-exponential, with a second-order Taylor step for small changes. This matches the recommendation here.
 - A data-assimilation version exists: arXiv 1309.0159 and 1406.4480 [S, titles].
 
-**Daily FFMC rain** (Van Wagner 1987) [K]:
-- For rainfall r₀ > 0.5 mm, r_f = r₀ − 0.5.
+**Daily FFMC rain** (Van Wagner 1987):
+- For rainfall r₀ > 0.5 mm, r_f = r₀ − 0.5. The 0.5 mm is canopy interception.
 - `m ← m + 42.5·r_f·e^(−100/(251 − m))·(1 − e^(−6.93/r_f))`
 - If m > 150, add `0.0015·(m − 150)²·r_f^0.5`.
 - Cap m at 250.
+- (verified: cffdrs `fine_fuel_moisture_code.r`, eqs 2–3b.) The **hourly** FFMC applies the same rain equation to each hour's rain *without* the 0.5 mm deduction (verified: cffdrs `hourly_fine_fuel_moisture_code.r`).
 
 **Suggested eucalypt litter time lags for FireSim** [H; bracketed by K ranges]:
 
@@ -396,6 +533,9 @@ M(t+Δt) = E + (M(t) − E)·exp(−Δt/τ)
 - Slijepcevic et al. (2013, 2015) tested existing hourly and daily models in eucalypt forest [K].
 - In general, process and time-lag models beat the static regressions after rain and at night. Static regressions are adequate on dry afternoons, with errors of about 1–3 points [K; Matthews 2014 review].
 - The 2024 seven-day below-canopy forecasting system (Agricultural and Forest Meteorology) is the closest analogue to FireSim's forecast mode [S title; methods not read].
+- **Why AFDRS does not yet use a process model** (verified: FBI Technical Guide §3.2.1.1). "While a model exists which can be used for forest fuel moisture (e.g. Matthews 2006) implementation of a system of this complexity is not currently feasible and the model requires more work to improve accuracy across a range of conditions (Zhao et al. 2021, 2022)."
+  - Zhao et al. (2021, AFM 298, 108282) and Zhao et al. (2022, AFM 314, 108782) studied the soil-moisture influence on surface and sub-surface litter moisture.
+  - FireSim's cell model is therefore *beyond* current operational practice. Present its outputs as "educational estimate", with the AFDRS-equivalent value alongside.
 
 ### 3.7 Radiation, slope, aspect, shading and fuel temperature
 

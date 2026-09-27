@@ -14,7 +14,7 @@
  *     undulate, forming saddles between knolls.
  */
 import type { GridSpec } from '../core/grid';
-import { clamp, smoothstep } from '../core/units';
+import { smoothstep } from '../core/units';
 
 export type SyntheticTerrainKind = 'escarpment' | 'gorge' | 'ridges';
 
@@ -75,11 +75,37 @@ function ridged(x: number, y: number, wavelength: number, octaves: number, seed:
   return sum / norm;
 }
 
-/** Deterministic gully centres along a line: one per `spacing` metres, jittered, with a random length and depth. */
-function gullyInfluence(along: number, into: number, spacing: number, width: number, length: number, seed: number): number {
-  // Returns 0..1: how much the surface is lowered by the nearest gully (1 = on the gully axis at its mouth).
+/** Distance (m) below a gully mouth over which the carving fades in, so the surface stays continuous there. */
+const GULLY_FADE = 120;
+/** Gradient of the gully floor continued below its mouth (gentler than the slopes it runs onto, so it daylights). */
+const GULLY_BELOW_MOUTH_GRADIENT = 0.15;
+
+/**
+ * Carve jittered gullies into the surface height `z`.
+ *
+ * Gullies are spaced `spacing` m apart along the `along` coordinate (one per interval, jittered), have their mouth at
+ * `into = 0` and cut back to a head at `into ≈ len` (random per gully, around `length`). Along each axis the gully floor
+ * follows a concave-up longitudinal profile from `zMouth` to `zHead` (steepest near the head, like a real creek); it
+ * continues gently downhill below the mouth and keeps rising beyond the head, where it soon exceeds the surface.
+ * The surface is only ever LOWERED towards that floor, weighted by a Gaussian cross-profile and a fade-in below the
+ * mouth, so the result is continuous everywhere (no steps at the mouth or the head) and the axis descends
+ * monotonically to the mouth instead of ending in a pit.
+ */
+function carveGullies(
+  z: number,
+  along: number,
+  into: number,
+  spacing: number,
+  width: number,
+  length: number,
+  seed: number,
+  zMouth: number,
+  zHead: number,
+): number {
+  if (into <= -GULLY_FADE) return z;
   const cell = Math.floor(along / spacing);
-  let best = 0;
+  const fade = into >= 0 ? 1 : smoothstep(-GULLY_FADE, 0, into);
+  let out = z;
   for (let c = cell - 1; c <= cell + 1; c++) {
     const centre = (c + 0.2 + 0.6 * hash2(c, 7, seed)) * spacing;
     const len = length * (0.5 + 0.8 * hash2(c, 13, seed));
@@ -87,13 +113,13 @@ function gullyInfluence(along: number, into: number, spacing: number, width: num
     // Gullies wiggle a little as they cut back.
     const axis = centre + 0.35 * w * Math.sin(into / (0.3 * len + 1) + c);
     const across = (along - axis) / w;
-    if (into < 0 || into > len) continue;
-    const lateral = Math.exp(-across * across);
-    // Depth fades towards the gully head (V-shaped headward erosion).
-    const g = lateral * (1 - into / len) ** 0.8;
-    if (g > best) best = g;
+    if (across > 4 || across < -4) continue; // exp(-16) ≈ 1e-7: negligible
+    const t = into / len;
+    const floor = t >= 0 ? zMouth + (zHead - zMouth) * t ** 1.3 : zMouth + GULLY_BELOW_MOUTH_GRADIENT * into;
+    if (floor >= out) continue;
+    out -= (out - floor) * Math.exp(-across * across) * fade;
   }
-  return best;
+  return out;
 }
 
 function escarpment(x: number, y: number, seed: number): number {
@@ -109,17 +135,13 @@ function escarpment(x: number, y: number, seed: number): number {
   // Dissected valley floor: ridged noise makes spurs and creek lines, strongest far from the cliff.
   const valleyMask = smoothstep(-300, -1500, d);
   const dissection = valleyMask * (70 * ridged(x, y, 1400, 4, seed + 3) - 35) + 15 * fbm(x, y, 600, 3, seed + 4) * (1 - valleyMask);
-  let z = plateau - cliffDrop - slopeDrop + dissection;
-  // Gullies (chimneys) cutting back into the plateau from the cliff line: lower the plateau surface down towards
-  // the cliff-base level along narrow V-shaped channels.
-  if (d > -200) {
-    const g = gullyInfluence(y, d + 60, 850, 90, 900, seed + 5);
-    if (g > 0) {
-      const floor = plateau - 250 - 40; // the gully mouth reaches below the cliff base
-      z = Math.min(z, z - (z - floor) * g * 0.9);
-    }
-  }
-  return z;
+  const z = plateau - cliffDrop - slopeDrop + dissection;
+  // Gullies (chimneys) cutting back into the plateau from the cliff line: narrow V-shaped ravines whose floor runs
+  // from the talus below the cliff (mouth 150 m out from the rim, a little below the undisturbed slope there) up
+  // through a deep notch in the cliff line to the plateau surface at the gully head.
+  const mouthD = -150;
+  const zMouth = plateau - 250 - 260 * (1 - Math.exp(-(-mouthD - 70) / 700)) - 8;
+  return carveGullies(z, y, d - mouthD, 850, 90, 900, seed + 5, zMouth, plateau);
 }
 
 function gorge(x: number, y: number, seed: number): number {
@@ -141,14 +163,17 @@ function gorge(x: number, y: number, seed: number): number {
     z = floor + lower * (0.3 * t + 0.7 * t * t); // concave foot, steepening upward
   } else if (s <= cliffEnd) z = floor + lower + cliff * smoothstep(slopeEnd, cliffEnd, s);
   else z = plateau;
-  // Ridge-and-gully texture on the walls (spurs and side gullies running down-slope).
-  const wall = s > 60 && s < cliffEnd + 200 ? 1 : 0;
+  // Ridge-and-gully texture on the walls (spurs and side gullies running down-slope), tapered smoothly in from the
+  // creek flat and out onto the plateau so it does not leave steps along the gorge.
+  const wall = smoothstep(60, 150, s) * (1 - smoothstep(cliffEnd + 60, cliffEnd + 260, s));
   z += wall * 25 * fbm(x, s, 500, 3, seed + 14);
-  // Side canyons entering from the north and south, cut back into the plateau.
+  // Side canyons entering from the north and south: mouth half-way up the wall, cut back through the cliff band into
+  // the plateau. (The side switch at the creek line is harmless: carving has faded out long before s = 0.)
   const side = y > axisY ? 1 : -1;
-  const g = gullyInfluence(x + side * 400, s - cliffEnd * 0.5, 1300, 120, 1400, seed + (side > 0 ? 15 : 16));
-  if (g > 0) z -= (z - (floor + 0.25 * depth)) * clamp(g, 0, 1) * 0.85;
-  return z;
+  const sMouth = 0.5 * cliffEnd;
+  const tm = (sMouth - 60) / (slopeEnd - 60);
+  const zMouth = floor + lower * (0.3 * tm + 0.7 * tm * tm) - 5;
+  return carveGullies(z, x + side * 400, s - sMouth, 1300, 120, 1400, seed + (side > 0 ? 15 : 16), zMouth, plateau);
 }
 
 function ridges(x: number, y: number, seed: number): number {

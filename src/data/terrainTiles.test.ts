@@ -5,7 +5,7 @@ import { gradient, makeGridSpec, type GridSpec } from '../core/grid';
 import { LocalProjection, lonLatToTileFrac } from '../core/geo';
 import { DEMO_SITES } from './demoSites';
 import { setAssetLoader } from './assets';
-import { createMemoryKV } from './cache';
+import { createMemoryKV, saveAreaPack } from './cache';
 import { resetHttpConfig, setHttpConfig } from './http';
 import {
   clearDemoManifestCache,
@@ -232,13 +232,100 @@ describe('loadElevation', () => {
   });
 
   it('throws ElevationUnavailableError listing the tiles when offline with nothing cached', async () => {
-    const err = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 10, cache: createMemoryKV(), offline: true }).catch((e) => e);
+    // An explicit zoom never falls back.
+    const err = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 10, zoom: 14, cache: createMemoryKV(), offline: true }).catch((e) => e);
     expect(err).toBeInstanceOf(ElevationUnavailableError);
     expect((err as ElevationUnavailableError).missing.every((t) => t.z === 14)).toBe(true);
     // Far from any demo site, network failing → also unavailable.
     setHttpConfig({ fetch: (async () => { throw new TypeError('fetch failed'); }) as typeof fetch, retryDelayMs: 1 });
     const err2 = await loadElevation({ centre: { lat: -30.5, lon: 152.0 }, extent: 2000, cellSize: 30, cache: null }).catch((e) => e);
     expect(err2).toBeInstanceOf(ElevationUnavailableError);
+  });
+
+  it('falls back to the bundled zoom-13 tiles when fine cells (default zoom 14) are requested offline', async () => {
+    // Regression: at a demo site with < 20 m cells and no network this used to fail outright.
+    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 10, cache: createMemoryKV(), offline: true });
+    expect(r.zoom).toBe(13);
+    expect(r.grid.cellSize).toBe(10);
+    expect(r.grid.nx).toBe(300);
+    expect(r.source).toContain('bundled (katoomba)');
+    expect(r.source).toContain('zoom 14 unavailable');
+    const s = stats(r.elevation);
+    expect(s.nan).toBe(0);
+    expect(s.min).toBeGreaterThan(250);
+  });
+
+  it('interpolates around isolated no-data pixels instead of dropping cells to sea level', async () => {
+    // Regression: one void pixel made every cell touching it NaN → 0 m, a 800 m deep pit in the surface.
+    setAssetLoader(async (p) => (p.endsWith('.png') ? makeTile((c, r) => ((c + r) % 37 === 0 ? -32768 : 800 + c * 0.5)) : null));
+    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 3000, cellSize: 30, cache: null, offline: true });
+    const s = stats(r.elevation);
+    expect(r.seaOrNoDataCells).toBe(0);
+    expect(s.nan).toBe(0);
+    expect(s.min).toBeGreaterThanOrEqual(800);
+    expect(s.max).toBeLessThanOrEqual(800 + 255 * 0.5);
+  });
+
+  it('uses Terrarium tiles stored in an overlapping area pack (offline)', async () => {
+    const tiles = elevationTilesFor({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30 });
+    const items: Record<string, ArrayBuffer | Uint8Array> = {};
+    tiles.forEach((t, n) => {
+      const png = readPublic(`demo/katoomba/terrarium/${t.z}/${t.x}/${t.y}.png`);
+      // Packs may hold raw ArrayBuffers or typed arrays.
+      items[t.key] = n % 2 ? png : png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+    });
+    const kv = createMemoryKV();
+    await saveAreaPack({ id: 'nn', name: 'Narrow Neck', centre: KATOOMBA.centre, extent: 5000, createdAt: 1, items }, kv);
+    setAssetLoader(async () => null); // nothing bundled
+    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: kv, offline: true });
+    expect(r.source).toContain(`${tiles.length} from area pack 'Narrow Neck'`);
+    setAssetLoader(null);
+    const bundled = await loadElevation({ centre: KATOOMBA.centre, extent: 4000, cellSize: 30, cache: null, offline: true });
+    expect(r.elevation).toEqual(bundled.elevation);
+  });
+
+  it('falls through a corrupt bundled tile to the network, and never caches a non-PNG download', async () => {
+    const corrupt = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]); // PNG signature + junk
+    setAssetLoader(async (p) => (p.endsWith('.png') ? corrupt : null));
+    let html = true;
+    setHttpConfig({
+      retryDelayMs: 1,
+      fetch: (async (input: RequestInfo | URL) => {
+        if (html) return new Response('<!doctype html><title>proxy error</title>', { headers: { 'content-type': 'text/html' } });
+        const m = /terrarium\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(String(input))!;
+        return new Response(readPublic(`demo/katoomba/terrarium/${m[1]}/${m[2]}/${m[3]}.png`));
+      }) as typeof fetch,
+    });
+    const kv = createMemoryKV();
+    const req = { centre: KATOOMBA.centre, extent: 2000, cellSize: 30, cache: kv };
+    const err = await loadElevation(req).catch((e) => e);
+    expect(err).toBeInstanceOf(ElevationUnavailableError);
+    expect(await kv.keys('terrarium/')).toEqual([]); // the HTML page was not cached
+    html = false;
+    const r = await loadElevation(req);
+    expect(r.source).toContain('downloaded');
+    expect(stats(r.elevation).min).toBeGreaterThan(250);
+  });
+
+  it('drops a corrupt cached tile and downloads it again', async () => {
+    setAssetLoader(async () => null);
+    const tiles = elevationTilesFor({ centre: KATOOMBA.centre, extent: 1000, cellSize: 30 });
+    const kv = createMemoryKV();
+    for (const t of tiles) await kv.put(t.key, { t: Date.now(), url: t.url, v: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]).buffer });
+    let calls = 0;
+    setHttpConfig({
+      fetch: (async (input: RequestInfo | URL) => {
+        calls++;
+        const m = /terrarium\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(String(input))!;
+        return new Response(readPublic(`demo/katoomba/terrarium/${m[1]}/${m[2]}/${m[3]}.png`));
+      }) as typeof fetch,
+    });
+    const r = await loadElevation({ centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv });
+    expect(calls).toBe(tiles.length);
+    expect(r.source).toContain(`${tiles.length} downloaded`);
+    // The good copy replaced the corrupt one: the next load is served from the cache.
+    const again = await loadElevation({ centre: KATOOMBA.centre, extent: 1000, cellSize: 30, cache: kv, offline: true });
+    expect(again.source).toContain(`${tiles.length} cached`);
   });
 
   it('clamps sea / no-data to 0 m and counts it', async () => {
@@ -295,6 +382,21 @@ describe('syntheticElevation', () => {
       const f = syntheticElevation(fine, kind);
       const c = syntheticElevation(coarse, kind);
       for (let j = 0; j < 101; j += 10) for (let i = 0; i < 101; i += 10) expect(c[j * 101 + i]).toBeCloseTo(f[2 * j * 201 + 2 * i]!, 3);
+    }
+  });
+
+  it('is continuous: no steps between points 1 m apart (gully mouths, canyon mouths, wall-texture edges)', () => {
+    // Regression: gully mouths used to end in ~50 m steps (with pits behind them) and the gorge's wall texture and
+    // side canyons switched on abruptly (~20 m steps). The steepest real feature is the escarpment cliff
+    // (250 m over 70 m with a smoothstep profile → 5.4 m per metre at most).
+    for (const kind of ['escarpment', 'gorge', 'ridges'] as const) {
+      let worst = 0;
+      for (let line = -4500; line <= 4500; line += 150) {
+        const ew = syntheticElevation({ nx: 9001, ny: 1, cellSize: 1, x0: -4500, y0: line, origin }, kind);
+        const ns = syntheticElevation({ nx: 1, ny: 9001, cellSize: 1, x0: line, y0: -4500, origin }, kind);
+        for (let k = 1; k < 9001; k++) worst = Math.max(worst, Math.abs(ew[k]! - ew[k - 1]!), Math.abs(ns[k]! - ns[k - 1]!));
+      }
+      expect(worst, kind).toBeLessThan(6);
     }
   });
 

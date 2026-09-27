@@ -23,6 +23,37 @@ field, running in a Web Worker on a phone).
 > I have not invented any number. Where a value is unknown I say so. Section 6 lists what must be read
 > from the originals before release.
 
+> **Adversarial fact-check pass (2026-09-27).** A second reviewer tried to refute every equation, constant
+> and threshold. Web search was exhausted and WebFetch was blocked for every publisher domain tried
+> (CSIRO Publishing, Crossref, OpenAlex, archive.org, nature.com), so the checks were made against
+> **independent machine-readable transcriptions**. Each check is tagged inline as
+> **(verified: …)** or **(UNVERIFIED — reason)**. The sources used were:
+> * the USFS Missoula Fire Lab **BehavePlus `behave` C++ library** (`ignite.cpp`, `spot.cpp`,
+>   `CrownFirebrandProcessor.cpp`);
+> * the **FARSITE** spotting source (`fsxwspot.cpp`, an Albini 1979 implementation);
+> * **ELMFIRE** (`elmfire_spotting.f90`) for the Sardoy lognormal constants;
+> * the Canadian **cffdrs** R package for FBP acceleration;
+> * the **AFDRS Research Prototype** (Matthews et al. 2019) and the **AFDRS Fire Behaviour Index Technical
+>   Guide** (v1.0, 2022), both read as full text;
+> * the NSW RFS-derived **PyroXL** VBA and **FireBehaviourCalcsR** code;
+> * the EarthSciML Sofiev (2012) implementation;
+> * the **WRF-Fire firebrand-spotting module** (NCAR);
+> * the full text of the Manzello et al. (2020) review.
+>
+> A code match confirms the transcription of a formula. It does not confirm that the primary paper's
+> fit is right. **Main corrections**:
+> 1. The Albini-law bark lifetime was 2× too short. The mis-statement "wood law gives 2–7× too short"
+>    is corrected to "Albini matches Hall's simple cylinders and under-predicts convoluted strips about 3×".
+> 2. Added the verified AFDRS/Vesta maximum-spotting-distance equation. It was previously listed as
+>    "not retrievable".
+> 3. Added the verified Albini/BehavePlus flat-terrain and mountain-terrain spotting equations.
+> 4. The State Mine fire "firebrand transport" quote belongs to the **Aberfeldy** fire (Vic, 2013), as doc
+>    02 already corrected.
+> 5. Kilmore East 33 km spotting is now verified. So are the ≈ 1000 kW/m ember-production onset and the
+>    AFDRS bark-FHS ≥ 3 long-range flag.
+> 6. The Manzello et al. glowing-brand result was mis-stated (see §2.7).
+> 7. Minor numeric fixes: a Schroeder table cell, the Briggs night-inversion case, and the cost range.
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
@@ -49,7 +80,14 @@ field, running in a Web Worker on a phone).
    wind over the fall. It stays alive only for a burnout time τ_b, so X_max ≈ Ū·τ_b, and only if the
    plume can loft it to z* ≈ v_t·τ_b [D].
    * For a ribbon-bark strip (v_t ≈ 5.8 m/s, τ_b ≈ 1200 s) that means lofting to about 7 km and
-     travelling about 20 km [D]. This is consistent with Hall et al. [V].
+     travelling about 20 km [D]. This is consistent with Hall et al. [V]. The 1200 s is a *derived
+     tail* value: 20 km ÷ 16.7 m/s. It is not a measured mean.
+   * **Operational cross-check (verified: AFDRS FBI Technical Guide 2022 eq. 3.51; PyroXL and
+     FireBehaviourCalcsR code).** AFDRS computes a forest "maximum spotting distance" from ROS, U10
+     and surface fuel hazard score, using a fit to the Vesta spotting model (§3.6, eq. 18a). It gives
+     about 1.6 km at ROS 1000 m/h and about 3.5 km at 2000 m/h (U10 = 40 km/h, FHS_s = 3.5).
+     Black Saturday's Kilmore East fire spotted up to **33 km** (verified: Matthews et al. 2019
+     AFDRS Research Prototype §9.3, citing Cruz et al. 2012).
    * Long-range spotting therefore needs **both** a deep, strong convection column (very intense fire,
      unstable air, pyroCu/pyroCb) **and** strong winds aloft.
 5. **The plume, not the surface wind, does the lofting.**
@@ -58,7 +96,9 @@ field, running in a Web Worker on a phone).
      * *plume-dominated* fires (N_c > 10): embers go high but fall around the fire, including onto the
        flanks;
      * *wind-driven* fires (N_c < 2): embers are carried low and far in a narrow downwind cone
-       (thresholds from Morvan & Frangieh 2018) [P].
+       (thresholds from Morvan & Frangieh 2018) [P]. (Verified in doc 02 §2.6 "as commonly cited":
+       the < 2 / > 10 bands. UNVERIFIED against the paper's own text: the bands come from idealised
+       grassland CFD, not eucalypt forest.)
    * Winds aloft often differ in direction from surface winds, so spot fires can land off the
      surface-wind axis [D].
 6. **Landing is not ignition. Fuel moisture decides.**
@@ -94,13 +134,22 @@ field, running in a Web Worker on a phone).
 10. **Recommended FireSim design:**
     * **Transport:** a stratified, weighted ("super-particle") Lagrangian model of five ember classes
       in the resolved 3-D wind. It adds a sub-grid near-source plume updraft, an Ornstein–Uhlenbeck
-      turbulence model enhanced inside the plume, class-specific empirical burnout (not Albini's wood
-      law, which gives bark lifetimes 2–7× too short [D]), and pressure-level winds above the model top.
+      turbulence model enhanced inside the plume, class-specific empirical burnout, and pressure-level
+      winds above the model top. Burnout is *not* Albini's wood law: with its fall-speed coupling done
+      correctly, that law matches Hall's simple cylinders (about 127 s against 122 s measured) but
+      under-predicts flat plates about 2× and convoluted strips about 3× [D; law verified: FARSITE
+      source].
+    * **Emission:** near zero below about 1000 kW/m ("very little ember production and spot fire
+      activity at less than 1,000 kW/m", Gould et al. 2007a; verified: quoted in Matthews et al. 2019
+      AFDRS-RP readiness table). Long-range potential is flagged where bark FHS ≥ 3 (verified: AFDRS-RP
+      §4.4.1).
     * **Landing:** a moisture-, state- and wind-dependent ignition probability, an exclusion zone just
       ahead of the front (short-range spotting is already inside Vesta ROS), an ignition delay, an
       acceleration ramp, and full *provenance* on every spot fire so the app can say *why* it
       happened.
-    * **Cost:** about 4000 active super-particles cost about 5–15 s per 6 h scenario [D estimate].
+    * **Cost:** about 4000 active super-particles cost about 4–9 s per 6 h scenario (§4.7), or up to
+      about 15 s with worst-case overheads [D estimate]. (Corrected: an earlier line said 5–15 s,
+      which did not match §4.7.)
 
 ---
 
@@ -150,9 +199,9 @@ override them.
 | Class | Typical sources in NSW mountains | Physical form | Behaviour | Evidence |
 |---|---|---|---|---|
 | **E1 Stringybark flake / fibrous wad** | Messmate *E. obliqua* (tablelands, Barrington, New England); stringybarks (*E. eugenioides*, *E. macrorhyncha*, *E. globoidea*, *E. caliginosa*, *E. laevopinea*, *E. blaxlandii*); peppermints and boxes (smaller, sub-fibrous) | Loosely attached, weathered flakes. Wind-tunnel samples weighed 0.4–8.3 g | Very numerous. Burns in flight with internal combustion. Re-flaming seen during the glowing phase (18 samples). Short to medium range, several km at most | Ellis 2013 [V]; Ellis 2011 bark-fuelbed ignition [P] |
-| **E2 Ribbon / candle bark strip** | Ribbon/manna gum *E. viminalis*, candlebark *E. rubida*, mountain gum *E. dalrympleana* (Snowy, Kanangra-Boyd, tablelands); Blue Mountains ash *E. oreades*; snow gum *E. pauciflora* and alpine ash *E. delegatensis* shed strips | Long curled strips: flat plates, simple cylinders, internally convoluted cylinders | v_t 5.4 / 5.2 / 5.8 m/s and mean burnout 251 / 122 / 429 s for the three forms. The longest burnouts imply more than 20 km at 60 km/h | Hall et al. 2015 [V] |
+| **E2 Ribbon / candle bark strip** | Ribbon/manna gum *E. viminalis*, candlebark *E. rubida*, mountain gum *E. dalrympleana* (Snowy, Kanangra-Boyd, tablelands); Blue Mountains ash *E. oreades*; alpine ash *E. delegatensis* (upper-trunk ribbons). Snow gum *E. pauciflora* is mostly smooth-barked and sheds small strips, so treat it as minor (doc 05 rates it "Low") | Long curled strips: flat plates, simple cylinders, internally convoluted cylinders | v_t 5.4 / 5.2 / 5.8 m/s and mean burnout 251 / 122 / 429 s for the three forms. The longest burnouts imply more than 20 km at 60 km/h | Hall et al. 2015 [V] |
 | **E3 Leaf** | Crown fire in any eucalypt; scorched crowns | Thin plate, about 0.3–0.5 mm thick | Low v_t, about 1.5–2 m/s by calculation [D]. Burns out fast. Short range, but huge numbers in crown fires | Physics only; no eucalypt leaf flight data retrieved |
-| **E4 Twig / fine branch** | Elevated and near-surface shrubs, crown fine fuel | Cylinder, 3–10 mm | v_t about 4–7 m/s [D]. Lifetime about 1 min [D, Albini law]. Short to medium range | Tarifa et al. 1965 [P]; Manzello et al. 2007 [P]; Tohidi et al. 2015 [P] |
+| **E4 Twig / fine branch** | Elevated and near-surface shrubs, crown fine fuel | Cylinder, 3–10 mm | v_t about 4–7 m/s [D]. Lifetime about 1.5–3 min: Albini law τ ≈ 24·v_t0 s, eq. 7 corrected [D; law verified: FARSITE source]. Short to medium range | Tarifa et al. 1965 [P]; Manzello et al. 2007 [P]; Tohidi et al. 2015 [P] |
 | **E5 Heavy / compact** | Gumnut capsules, *Banksia* and *Allocasuarina* cones, bark chunks, grass-tree spikes, logs | Compact, dense | High v_t, rarely lofted far. Long smouldering life. **Rolls downslope** on steep ground | Qualitative; rolling-debris heuristic in doc 01 §4.6 [S01] |
 
 Bark type also controls *ease of bark ignition*. Ellis (2011) explained messmate's notoriety by the
@@ -180,6 +229,24 @@ bark-hazard scoring philosophy of Hines et al. 2010 [P]].
   grows with plume strength, and the model handles that explicitly (§4.3) [A, physically motivated].
 * No primary Australian source was found that gives firebrands per metre of front per second as a
   function of I. **This is the single largest quantitative gap** (§6).
+* **Onset threshold (verified: Matthews et al. 2019, AFDRS Research Prototype readiness-level table,
+  quoting Gould et al. 2007a).**
+  * The 500–2000 kW/m band is "where ember production and spotting commences".
+  * There is "very little ember production and spot fire activity at less than 1,000 kW/m".
+  * The same report records that unsupported retardant drops in **stringybark** forest were
+    ineffective at holding a fire above **2000 kW/m** "due to heavy spotting across the drop zone".
+    With ground crews following up within an hour the limit was about 3000 kW/m (Loane & Gould 1986,
+    J. Gould pers. comm. 2019, as quoted there).
+  * This is a strong teaching point, and a calibration anchor for the emission onset in §4.2.
+* **Operational long-range flag (verified: AFDRS-RP §4.4.1).** "Potential for long range spotting was
+  recorded as a yes/no value based on bark FHS, where FHS ≥ 3 = 1 (yes) and FHS < 3 = 0 (no)".
+  * The NSW RFS fuel table (via doc 03, [S03]) gives a bark-hazard rating and a spotting-distance class
+    for each NSW vegetation class.
+  * Mountain examples: Sydney montane DSF "Very High / Long"; Northern tableland DSF "Extreme / Long";
+    Central gorge DSF "Extreme / Long"; Montane wet sclerophyll "Very High / Long"; Subalpine woodland
+    "High / Long".
+  * Bark load re-accumulates slowly: Olson k_b ≈ 0.1 yr⁻¹, about 30 years to 95 % (doc 05, [S05]).
+    This is the link between fire history and ember supply.
 
 **Residence.** Trunk bark keeps burning and shedding for minutes after the front passes, so emission
 must come from the whole flaming zone, not only the front line [A].
@@ -200,8 +267,9 @@ the regime of 20–35 km spotting [D from §3.5, consistent with Hall et al. 201
 **Pyroconvection.**
 * When the plume reaches its condensation level, released latent heat boosts the updraft. Plume tops
   can then reach the upper troposphere.
-* Peterson et al. (2021) documented 38 pyroCbs from 29 Dec 2019 to 4 Jan 2020, during Black Summer
-  [S02].
+* Peterson et al. (2021) documented 38 pyroCb events in the Black Summer "super outbreak", concentrated
+  on 29–31 December 2019 and 4 January 2020 [S02]. (Corrected wording to match doc 02, which verified
+  this against *npj Clim. Atmos. Sci.* 4:38.)
 * Radar studies of US fires show plume-coupled long-range spotting: embers detrain from the column
   aloft, so the plume's own dynamics, not just the ambient wind, controlled where spot fires started
   (Lareau et al. 2025, Dixie Fire; Lareau et al. 2026, Camp Fire) [V titles; findings recalled, P].
@@ -254,7 +322,10 @@ model is a simplification that tends to under-predict the far tail slightly [P/A
     glowing phase (Ellis 2013) [V].
   * Ribbon-gum strips had mean burnouts of 122–429 s depending on morphology, with the convoluted
     strips longest (Hall et al. 2015) [V].
-  * Albini's constant applied to Hall's strips gives only about 63–71 s (§3.2) [D].
+  * Albini's law applied to Hall's strips gives about 127–141 s (§3.2) [D]. (Corrected: an earlier
+    draft held the fall speed constant and got 63–71 s, which is 2× too short.) That matches the
+    simple cylinders (122 s), but under-predicts flat plates (251 s) about 2× and convoluted strips
+    (429 s) about 3×.
   * **Use measured bark lifetimes, not the wood law.**
 * **Teaching point:** a stringybark ember that lands glowing can re-flame, and so can a long-range
   ribbon strip [V, Ellis 2013 for flakes].
@@ -270,9 +341,30 @@ model is a simplification that tends to under-predict the far tail slightly [P/A
 * The logistic coefficients were not retrievable here (§6).
 
 **Other work:**
-* Manzello et al. (2006) reported that under their laboratory conditions flaming brands ignited dry
-  grass and pine-needle beds, whereas single glowing brands failed in still air and needed airflow [P:
-  qualitative recollection; verify].
+* **Manzello and co-workers (2006 and later).** (Corrected, verified: Manzello et al. 2020 PECS review
+  §5.3, which summarises the work.)
+  * They dropped flaming or glowing brands on pine straw, hardwood mulch and cut grass, at two fuel
+    moisture contents and two wind speeds.
+  * *Glowing* brands: "it is unlikely for glowing firebrands to ignite the fuels tested even when they
+    were very dry".
+  * *Flaming* brands ignited the finer fuels at 11 % moisture. They never ignited hardwood mulch, and
+    ignited cut grass about half the time.
+  * The earlier wording, "glowing brands failed in still air and needed airflow", was a recollection and
+    overstated the role of airflow for single glowing brands.
+* **Ember piles and wind** (verified: Manzello et al. 2020 review, summarising Hakes et al. 2019).
+  * Piles of glowing cylindrical brands heat the surface below far more than single brands. Peak
+    heating rose with pile mass, then plateaued.
+  * In still air the peak heat flux was about 10 kW/m². With a 1.84 m/s wind it exceeded 25 kW/m²,
+    but the brands burnt out faster.
+  * Hayashi's bamboo-leaf tests (same review): 1 cm glowing cubes hardly ignited 4.3 %-moisture leaves
+    without wind, but did with 1 m/s wind.
+  * Urban et al. (same review; sawdust smoulder, not eucalypt litter): brands < 4 mm could not start a
+    smoulder even below 1 % moisture. Brands > 9.5 mm could, up to about 40 % moisture, but rarely.
+  * **Consequences for FireSim:**
+    * glowing brands need wind and/or accumulation;
+    * **mass spotting ignites where single embers would not**, so treating landings as independent
+      (1 − e^{−Wp}) under-states pile synergy;
+    * brand size matters.
 * Ganteaume et al. (2009, 2011) characterised Mediterranean firebrands (including *Eucalyptus globulus*
   bark) and fuel-bed receptivity. Flaming brands and fine, dry, low-density beds had the highest
   ignition frequencies [P].
@@ -291,7 +383,10 @@ model is a simplification that tends to under-predict the far tail slightly [P/A
 **Growth from a point.**
 * A spot fire begins as a point. Its spread rate rises towards the quasi-steady rate of a wide head fire.
 * The Canadian FBP System models this as R(t) = R_eq(1 − e^{−αt}) with α = 0.115 min⁻¹ for point
-  ignitions (Forestry Canada 1992) [P]. That gives 50 % of R_eq after 6 min and 90 % after 20 min [D].
+  ignitions (Forestry Canada 1992). That gives 50 % of R_eq after 6 min and 90 % after 20 min [D].
+  (Verified: cffdrs R package `distance_at_time.r`, FCFDG 1992 eqs. 70–72, t in minutes. α = 0.115
+  applies to the open fuel types C1, O1a/b, S1–S3 and D1. For closed-canopy types,
+  α = 0.115 − 18.8·CFB^{2.5}·e^{−8·CFB}, which is lower when crowning occurs.)
 * An equivalent eucalypt-litter laboratory study exists ("Initial growth of fires in eucalypt litter,
   from ignition to steady-state rate of spread", c. 2021) [V existence], but its parameters were not
   retrieved.
@@ -299,9 +394,16 @@ model is a simplification that tends to under-predict the far tail slightly [P/A
 **Mass spotting.**
 * Under extreme conditions eucalypt forest fires shower the area ahead with many short-range spots.
   These coalesce into a deep flaming zone that burns at once rather than as a thin front.
-* The Black Saturday Kilmore East fire (Cruz et al. 2012) is the Australian reference case. Spot fires
-  far ahead of the front, reported up to about 33 km [P: verify exact figure], and dense short-range
-  spotting drove forest spread.
+* The Black Saturday Kilmore East fire (Cruz et al. 2012) is the Australian reference case.
+  * It showed "profuse short range spotting, rates of fire spread up to 9.1 km/h and average fireline
+    intensities up to 88,000 kW/m".
+  * "Strong winds aloft and the development of a strong convection plume led to the transport of
+    firebrands over considerable distances causing the ignition of spotfires up to 33 km ahead of the
+    main fire front".
+  * A wind change then turned the roughly 55 km eastern flank into a head fire, feeding a pyroCb.
+  * (Verified: Matthews et al. 2019, AFDRS Research Prototype §9.3, citing Cruz et al. 2012. That
+    report's case table records observed spotting "up to 40,000–41,000 m" for 14:00–16:00, which
+    conflicts with its text. Use the peer-reviewed 33 km.)
 * Hilton, Garg & Sharples (2019) reproduced VLS-driven deep flaming with Lagrangian firebrands in the
   Spark framework [S02].
 
@@ -322,13 +424,19 @@ These are the key "why" items for trainees.
    * An ember released over a ridge crest that then falls into a valley has extra fall height Δh.
    * Extra range ≈ Ū·Δh/v_t. For 400 m of relief, v_t = 5 m/s and Ū = 12 m/s that is about +1 km [D].
    * Albini's model has explicit ridge/valley terms and a spotting-source position (ridge top,
-     mid-slope windward or leeward, valley bottom) for this reason [P].
+     mid-slope windward or leeward, valley bottom) for this reason. (Verified: BehavePlus `spot.cpp`
+     `spotDistanceMountainTerrain`, with the equation in §3.4.) In that correction, a ridge-top source
+     *gains* distance, a valley-bottom source *loses* distance, and the effect grows with
+     ridge-to-valley relief.
 2. **Ridge-top wind speed-up.** The wind is fastest at the crest, where a fire that has run up the
    windward slope is most intense, so ember lofting and ejection into the lee peak there [S01, S02].
 3. **Lee-slope separation eddy.**
-   * On lee slopes steeper than about 15–25°, facing within about 30–40° of the downwind direction, in
-     ridge winds above about 20–30 km/h, the flow separates. Near-surface flow on the lee face runs
-     *upslope*, back towards the ridge [S01].
+   * The flow separates on lee slopes steeper than about 15–20°, with crest winds above about
+     15 km/h. Near-surface flow on the lee face then runs *upslope*, back towards the ridge, at about
+     0.2–0.4 × the crest wind [S01: doc 01 §4 diagnostic; the magnitude is heuristic].
+   * The stronger **VLS/fire-channelling** trigger quoted for the 2003 Canberra fires needs more:
+     lee slopes of about 20–25°+, aspect within about 30–40° of the downwind direction, and winds
+     above about 20–30 km/h [S01]. Keep the two thresholds separate.
    * Embers that drop into this zone are held near the lee slope and recirculated. Spot fires they
      start run **up** the lee slope, and laterally, not downwind.
    * This is counter-intuitive and dangerous for crews positioned "safely" behind a ridge.
@@ -357,17 +465,58 @@ These are the key "why" items for trainees.
 10. **Inversions, thermal belts and mountain waves.**
     * Night inversions cap plumes (shorter spotting) and raise valley-floor moisture (spots fail).
     * Thermal belts and ridges above the inversion remain receptive.
-    * Overnight mountain waves and downslope winds can drive firebrand transport. At the State Mine fire
-      in October 2013 they "contributed to firebrand transport" [S02].
+    * Overnight mountain waves and downslope winds can drive firebrand transport.
+      * At the **Aberfeldy fire (Victoria, 17 January 2013)**, overnight mountain waves and strong
+        downslope winds "would have directly increased the fire intensity and spread, as well as
+        contributed to firebrand transport" [S02, verified there: BNHCRC 2017].
+      * (CORRECTED: an earlier draft attributed this quote to the State Mine fire, repeating an error
+        doc 02 has since fixed.)
+      * In NSW, at the **State Mine fire (Blue Mountains, 17 October 2013)**, a *daytime* mountain-wave
+        band of strong winds reached down towards the surface near the fire as it grew from about
+        1,000 ha to 12,400 ha in about 10 h [S02].
     * Morning inversion break-up is when spotting "wakes up" [S02].
 11. **Aspect-driven moisture.** North- and west-facing slopes are drier in the afternoon, so landing
     embers succeed there more often. The moisture module supplies this per cell.
+12. **Night drainage flows move low embers downhill.** Weakly lofted embers released after sunset
+    travel in the cold-air drainage (katabatic) layer. That layer is often only tens of metres deep
+    and flows down gullies towards the valley floor [D from doc 02 drainage-flow physics].
+    * They usually land on damp valley-floor fuel and fail.
+    * But they explain why spots can appear *downhill and down-valley* of a quiet night fire, against
+      the gradient wind. Resolve this through the atmosphere's near-surface levels.
+13. **Smouldering holdovers.** Glowing brands that land in logs, stumps, stringybark crevices or deep
+    litter can smoulder for hours. They flare when the morning inversion breaks and the relative
+    humidity falls [A/P: consistent with the smoulder-to-flame transition discussed in Manzello et al.
+    2020 §5.3; no Australian holdover-duration data retrieved]. Teach "patrol the spot-fire zone at
+    first light".
+14. **Fire whirls and pyro-tornadoes loft embers.** Strong circulation raises vertical velocities and
+    can increase both fragmentation and lofting (verified qualitatively: Manzello et al. 2020 §4,
+    citing Muraszew et al.).
+    * Lee-slope and gully fires in rugged terrain favour whirls.
+    * The first confirmed Australian pyro-tornado formed over the ranges west of Canberra on
+      18 January 2003 [S01].
+    * FireSim cannot resolve whirls at 100–200 m. Treat a diagnosed intense lee-slope/VLS burning
+      cell as having extra lofting (§4.5 item 2).
 
 ### 2.10 Case evidence and scale of the problem
 
 * **Historical Australian extremes.** Spotting of about 29–30 km has been reported in Victorian
-  eucalypt forests (McArthur; Cheney & Bary 1969; cited in reviews such as Koo et al. 2010) [P].
-  Black Saturday 2009 (Kilmore East) produced spot fires reported at more than 30 km (about 33 km) [P].
+  eucalypt forests (McArthur; Cheney & Bary 1969; cited in reviews such as Koo et al. 2010).
+  (UNVERIFIED: recalled attribution; the exact figure and fire were not re-checked.)
+  Black Saturday 2009 (Kilmore East) produced spot fires up to 33 km ahead of the main front
+  (verified: AFDRS-RP 2019 §9.3, citing Cruz et al. 2012).
+* **Operational spotting descriptors by old FDR category** (verified: AEMC National Bushfire Warnings
+  Taskforce 2009 table, reproduced in AFDRS-RP 2019 Table 2.4; "Bushfire" = forest). These are
+  public-messaging bands, not model output. They are useful as a sanity check on FireSim's P95
+  ranges:
+
+  | FFDI category | Forest ROS | Spotting | Intensity (kW/m) |
+  |---|---|---|---|
+  | Low–Moderate (0–11) | 0.1–0.5 km/h | < 1 km | 100–3,000 |
+  | High (12–24) | 0.5–1 km/h | > 1 km | 4,000–10,000 |
+  | Very High (25–49) | 1–2 km/h | > 2 km | 10,000–20,000 |
+  | Severe (50–74) | 2–3 km/h | > 4 km | 20,000–40,000 |
+  | Extreme (75–99) | 3–6 km/h | > 6 km | 30,000–60,000 |
+  | Catastrophic (100+) | 10+ km/h | 8–20 km | 50,000+ |
   The CSIRO science news article "Spotting the danger of long-distance firebrands" (2017) summarises
   the ribbon-bark findings [V existence].
 * **Black Summer 2019–20.**
@@ -388,7 +537,8 @@ is ambient temperature (K).
 
 ### 3.1 Aerodynamics
 
-**(1) Terminal velocity (Newton drag regime)** [standard physics]
+**(1) Terminal velocity (Newton drag regime)** [standard physics] (verified: force balance; the
+table below was recomputed in this pass and all seven rows match)
 
 ```
 v_t = sqrt( 2 m g / (ρ_a C_d A_p) )            [m/s]
@@ -406,11 +556,18 @@ v_t = sqrt( 2 m g / (ρ_a C_d A_p) )            [m/s]
 v_t = sqrt( 2 ρ_s δ g / (ρ_a C_d) )
 ```
 
-**(3) Cylinder falling broadside** (diameter D), the form used by Albini with C_d ≈ 1.2 [P]:
+**(3) Cylinder falling broadside** (diameter D), the form used by Albini with C_d ≈ 1.2:
 
 ```
 v_t = sqrt( π ρ_s D g / (2 C_d ρ_a) )
 ```
+
+(Verified: FARSITE `fsxwspot.cpp` implements Albini's `voo = sqrt(1910.087·D/0.18)` in ft/s, with
+D in ft. The source comment reads "g = 32 ft/s², particle density 19 lb/ft³, drag coef 1.2". Here
+1910.087 = π·32·19, and 0.18 = 2·1.2·ρ_a with ρ_a ≈ 0.075 lb/ft³ ≈ 1.2 kg/m³. So Albini's wood brand
+has ρ_s ≈ 304 kg/m³ and C_d = 1.2. For comparison, the WRF-Fire spotting module uses spheres, with
+v_t = sqrt(4ρ_s D g/(3ρ_a C_d)), C_d = 0.45, wood 513 kg/m³ and char 299 kg/m³ (verified: WRF
+`module_firebrand_spotting.F`).)
 
 Evaluated with ρ_a = 1.1 and C_d = 1.2 [D]:
 
@@ -436,7 +593,8 @@ ribbon-bark strips fall at 5.2–5.8 m/s [V]. Calibrate class defaults to measur
 The relaxation length v_t·τ_p is about 1–4 m, far smaller than the grid, so use ember velocity = air
 velocity − v_t·ẑ.
 
-**(5) Tachikawa number** (Tachikawa 1983, flat-plate debris flight) [P]
+**(5) Tachikawa number** (Tachikawa 1983, flat-plate debris flight) [P] (the definition is standard.
+UNVERIFIED against the paper; the algebraic reduction was checked)
 
 ```
 K = ρ_a U² A / (2 m g) = U² / (C_d v_t²)        [D, using (1)]
@@ -444,8 +602,10 @@ K = ρ_a U² A / (2 m g) = U² / (C_d v_t²)        [D, using (1)]
 
 When K ≫ 1 the brand is essentially wind-borne.
 
-**(6) Altitude.** v_t ∝ ρ_a^{−1/2}. With ISA densities, v_t is about 5 % higher at 1000 m and about
-10 % higher at 2000 m (Kosciuszko) than at sea level [D]. Use the local ρ_a from the atmosphere.
+**(6) Altitude.** v_t ∝ ρ_a^{−1/2}. With ISA densities (1.225, 1.112 and 1.007 kg/m³), v_t is about
+5 % higher at 1000 m and about 10 % higher at 2000 m (Kosciuszko) than at sea level [D] (verified:
+arithmetic). Use the local ρ_a from the atmosphere. On a 40 °C day at 1000 m, ρ_a ≈ 1.0 kg/m³, so
+temperature matters as much as altitude.
 
 ### 3.2 Burning in flight
 

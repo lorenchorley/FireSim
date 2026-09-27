@@ -209,26 +209,31 @@ function resampleMapped(src: GridSpec, f: Float32Array, dst: GridSpec, m: GridMa
     }
   }
   if (!usesBox(m)) {
-    // Bilinear, clamped to the source edge.
+    // Bilinear, clamped to the source edge. `i1`/`r1` are clamped separately so a source only one cell wide or tall
+    // (a tiny remote work grid) degenerates to linear / constant instead of reading out of bounds.
     const i0 = new Int32Array(dst.nx);
+    const i1 = new Int32Array(dst.nx);
     const tx = new Float32Array(dst.nx);
     for (let i = 0; i < dst.nx; i++) {
       const u = Math.max(0, Math.min(snx - 1, m.fi[i]!));
-      i0[i] = Math.min(snx - 2, Math.floor(u));
-      tx[i] = u - i0[i]!;
+      i0[i] = Math.max(0, Math.min(snx - 2, Math.floor(u)));
+      i1[i] = Math.min(snx - 1, i0[i]! + 1);
+      tx[i] = i1[i] === i0[i] ? 0 : u - i0[i]!;
     }
     for (let j = 0; j < dst.ny; j++) {
       const v = Math.max(0, Math.min(sny - 1, m.fj[j]!));
-      const j0 = Math.min(sny - 2, Math.floor(v));
-      const ty = v - j0;
+      const j0 = Math.max(0, Math.min(sny - 2, Math.floor(v)));
+      const j1 = Math.min(sny - 1, j0 + 1);
+      const ty = j1 === j0 ? 0 : v - j0;
       const r0 = j0 * snx;
-      const r1 = r0 + snx;
+      const r1 = j1 * snx;
       const row = j * dst.nx;
       for (let i = 0; i < dst.nx; i++) {
         const a = i0[i]!;
+        const b = i1[i]!;
         const t = tx[i]!;
-        const top = f[r0 + a]! + (f[r0 + a + 1]! - f[r0 + a]!) * t;
-        const bot = f[r1 + a]! + (f[r1 + a + 1]! - f[r1 + a]!) * t;
+        const top = f[r0 + a]! + (f[r0 + b]! - f[r0 + a]!) * t;
+        const bot = f[r1 + a]! + (f[r1 + b]! - f[r1 + a]!) * t;
         out[row + i] = top + (bot - top) * ty;
       }
     }
@@ -362,6 +367,8 @@ interface RemoteCanopyRecord {
   cover: Float32Array;
   valid: Uint8Array;
   source: string;
+  /** False when some COG could not be read (the result is partial and must not be cached). */
+  complete: boolean;
 }
 
 /** Cache key under which a remote canopy result for exactly this grid is stored. */
@@ -388,7 +395,8 @@ export async function loadRemoteCanopy(grid: GridSpec, opts: Pick<CanopyOptions,
   try {
     const rec = await readRemote(grid, opts.signal);
     if (!rec) return null;
-    if (kv) await kv.put(key, rec).catch(() => undefined);
+    // Only complete results are cached: a COG that failed transiently must not leave a permanent hole offline.
+    if (kv && rec.complete) await kv.put(key, rec).catch(() => undefined);
     return finish(rec.height, rec.meanHeight, rec.cover, rec.valid, rec.source);
   } catch (e) {
     if (opts.signal?.aborted) throw e;
@@ -424,6 +432,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
 
   const qks = new Set([quadkey(ne.lat, sw.lon, 9), quadkey(ne.lat, ne.lon, 9), quadkey(sw.lat, sw.lon, 9), quadkey(sw.lat, ne.lon, 9)]);
   let read = 0;
+  let failed = 0;
   for (const qk of qks) {
     const url = serviceUrl('chm', `${CHM_PATH}${qk}.tif`);
     let img: GeoTIFFImage;
@@ -433,6 +442,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
     } catch (e) {
       if (signal?.aborted) throw e;
       console.warn(`[canopy] CHM tile ${qk} unavailable:`, e);
+      failed++;
       continue;
     }
     read += await aggregateTile(img, work, proj, sw, ne, { hist, sum, cnt, cov }, signal);
@@ -464,8 +474,9 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
   fillInvalidNearest(work, validW, [height, meanHeight, cover]);
 
   const source = `${CHM_SOURCE}; remote COG ${[...qks].join(',')}, aggregated at ${workCell} m`;
+  const complete = failed === 0;
   if (work.nx === grid.nx && work.ny === grid.ny && Math.abs(work.cellSize - grid.cellSize) < 1e-9) {
-    return { height, meanHeight, cover, valid: validW, source };
+    return { height, meanHeight, cover, valid: validW, source, complete };
   }
   const map = mapGrids(work, grid);
   const validF = new Float32Array(nCells);
@@ -479,6 +490,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
     cover: resampleMapped(work, cover, grid, map),
     valid,
     source,
+    complete,
   };
 }
 
@@ -568,24 +580,34 @@ async function aggregateTile(
   return pixels;
 }
 
-/** Fill invalid cells of each field from the nearest valid cell (iterative 4-neighbour dilation). */
-function fillInvalidNearest(g: GridSpec, valid: Uint8Array, fields: Float32Array[]): void {
+/**
+ * Fill invalid cells of each field from the nearest valid cell (4-neighbour / Manhattan metric), by a multi-source
+ * breadth-first search: O(cells), one queue allocation.
+ */
+export function fillInvalidNearest(g: Pick<GridSpec, 'nx' | 'ny'>, valid: Uint8Array, fields: Float32Array[]): void {
   const { nx, ny } = g;
+  const n = nx * ny;
   const known = valid.slice();
-  let frontier = true;
-  for (let pass = 0; frontier && pass < nx + ny; pass++) {
-    frontier = false;
-    const next = known.slice();
-    for (let j = 0; j < ny; j++)
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        if (known[k]) continue;
-        const nb = i > 0 && known[k - 1] ? k - 1 : i < nx - 1 && known[k + 1] ? k + 1 : j > 0 && known[k - nx] ? k - nx : j < ny - 1 && known[k + nx] ? k + nx : -1;
-        if (nb < 0) continue;
-        for (const f of fields) f[k] = f[nb]!;
-        next[k] = 1;
-        frontier = true;
-      }
-    known.set(next);
+  const queue = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
+  for (let k = 0; k < n; k++) if (known[k]) queue[tail++] = k;
+  if (tail === 0 || tail === n) return;
+  const nf = fields.length;
+  while (head < tail) {
+    const k = queue[head++]!;
+    const i = k % nx;
+    // Visit the four neighbours; each newly reached cell copies the values of the cell that reached it.
+    for (let q = 0; q < 4; q++) {
+      let nb: number;
+      if (q === 0) nb = i > 0 ? k - 1 : -1;
+      else if (q === 1) nb = i < nx - 1 ? k + 1 : -1;
+      else if (q === 2) nb = k >= nx ? k - nx : -1;
+      else nb = k < n - nx ? k + nx : -1;
+      if (nb < 0 || known[nb]) continue;
+      known[nb] = 1;
+      for (let f = 0; f < nf; f++) fields[f]![nb] = fields[f]![k]!;
+      queue[tail++] = nb;
+    }
   }
 }

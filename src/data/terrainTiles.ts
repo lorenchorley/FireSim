@@ -4,17 +4,20 @@
  * Each 256 × 256 Web-Mercator tile stores elevation as RGB: h = R·256 + G + B/256 − 32768 (m).
  * {@link loadElevation} works out which tiles cover the requested square, obtains each from
  *   1. the tiles bundled with the app for the NSW demo sites (`public/demo/<id>/terrarium/<z>/<x>/<y>.png`),
- *   2. the offline cache (IndexedDB),
- *   3. the network (then caches it),
- * mosaics them and samples the local grid by bilinear interpolation in Mercator pixel space.
+ *   2. user-downloaded area packs overlapping the area (items named `terrarium/<z>/<x>/<y>`, see cache.ts),
+ *   3. the offline cache (IndexedDB),
+ *   4. the network (validated as a PNG, then cached),
+ * mosaics them and samples the local grid by bilinear interpolation in Mercator pixel space. A source whose bytes do
+ * not decode falls through to the next one. If the default zoom for fine cells (14) cannot be obtained — typically
+ * offline at a demo site, whose tiles are bundled at zoom 13 only — it falls back to zoom 13.
  */
 import { decode, hasPngSignature, convertIndexedToRgb } from 'fast-png';
 import { LocalProjection, lonLatToTileFrac, type LatLon, type TileXYZ } from '../core/geo';
 import { makeGridSpec, type GridSpec } from '../core/grid';
-import { DEMO_EXTENT_M, DEMO_SITES } from './demoSites';
+import { DEMO_EXTENT_M, DEMO_SITES, DEMO_TILE_ZOOM } from './demoSites';
 import { loadAssetJson, loadAsset } from './assets';
-import { cachedFetch, openCache, type KV, type CacheOrigin } from './cache';
-import { fetchBinary, serviceUrl } from './http';
+import { cachedFetch, listAreaPacks, loadAreaPackItem, openCache, type KV, type CacheOrigin } from './cache';
+import { fetchBinary, HttpError, serviceUrl, type RequestOptions } from './http';
 
 export { syntheticElevation, syntheticSource, type SyntheticTerrainKind } from './syntheticTerrain';
 
@@ -94,10 +97,13 @@ export interface ElevationRequest {
   cellSize: number;
   /** Bundled demo site to use first (sites overlapping the area are also searched automatically). */
   demoSiteId?: string;
-  /** Tile zoom (default 13 for cells ≥ 20 m, else 14; max 15). */
+  /**
+   * Tile zoom (default 13 for cells ≥ 20 m, else 14; max 15). With the default, a zoom-14 request whose tiles cannot
+   * all be obtained falls back to zoom 13 (bundled / previously cached); an explicit zoom never falls back.
+   */
   zoom?: number;
   signal?: AbortSignal;
-  /** Cache to read/write tiles (default: the shared cache; null disables caching). */
+  /** Cache to read/write tiles and look up area packs in (default: the shared cache; null disables both). */
   cache?: KV | null;
   /** Skip the network (only bundled + cached tiles). */
   offline?: boolean;
@@ -224,16 +230,18 @@ export function clearDemoManifestCache(): void {
   manifestCache.clear();
 }
 
+/** True when two squares (centre, side in m) overlap. Flat-earth approximation, fine for domain-sized squares. */
+function squaresOverlap(a: LatLon, sideA: number, b: LatLon, sideB: number): boolean {
+  const reach = (sideA + sideB) / 2;
+  const dy = Math.abs(a.lat - b.lat) * 111195;
+  const dx = Math.abs(a.lon - b.lon) * 111195 * Math.cos((b.lat * Math.PI) / 180);
+  return dx < reach && dy < reach;
+}
+
 /** Demo sites whose bundled square overlaps the requested square (the named site first). */
 function candidateDemoSites(centre: LatLon, extent: number, preferred?: string): string[] {
   const out: string[] = preferred ? [preferred] : [];
-  const reach = (DEMO_EXTENT_M + extent) / 2;
-  for (const s of DEMO_SITES) {
-    if (s.id === preferred) continue;
-    const dy = Math.abs(s.centre.lat - centre.lat) * 111195;
-    const dx = Math.abs(s.centre.lon - centre.lon) * 111195 * Math.cos((centre.lat * Math.PI) / 180);
-    if (dx < reach && dy < reach) out.push(s.id);
-  }
+  for (const s of DEMO_SITES) if (s.id !== preferred && squaresOverlap(s.centre, DEMO_EXTENT_M, centre, extent)) out.push(s.id);
   return out;
 }
 
@@ -244,6 +252,49 @@ async function loadDemoTile(sites: string[], t: TileXYZ, signal?: AbortSignal): 
     if (set && !set.has(key)) continue; // manifest says it is not bundled: skip the request
     const bytes = await loadAsset(`demo/${site}/terrarium/${key}.png`, signal);
     if (bytes && hasPngSignature(bytes)) return { bytes, site };
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Area packs
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PackRef {
+  id: string;
+  name: string;
+  /** Terrarium item names stored in the pack. */
+  tiles: Set<string>;
+}
+
+/** Area packs overlapping the request that contain Terrarium tiles (newest first). Never throws. */
+async function tilePacks(kv: KV, centre: LatLon, extent: number): Promise<PackRef[]> {
+  try {
+    const out: PackRef[] = [];
+    for (const m of await listAreaPacks(kv)) {
+      if (!squaresOverlap(m.centre, m.extent, centre, extent)) continue;
+      const tiles = new Set(m.itemNames.filter((n) => n.startsWith('terrarium/')));
+      if (tiles.size) out.push({ id: m.id, name: m.name, tiles });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Bytes of a pack item stored as an ArrayBuffer, a typed array, or a cache record `{ v }` copied into the pack. */
+function itemBytes(v: unknown): Uint8Array | null {
+  if (v instanceof ArrayBuffer) return new Uint8Array(v);
+  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer as ArrayBuffer, v.byteOffset, v.byteLength);
+  if (v && typeof v === 'object' && 'v' in v) return itemBytes((v as { v: unknown }).v);
+  return null;
+}
+
+async function loadPackTile(kv: KV, packs: PackRef[], key: string): Promise<{ bytes: Uint8Array; pack: string } | null> {
+  for (const p of packs) {
+    if (!p.tiles.has(key)) continue;
+    const bytes = itemBytes(await loadAreaPackItem<unknown>(p.id, key, kv).catch(() => undefined));
+    if (bytes && hasPngSignature(bytes)) return { bytes, pack: p.name };
   }
   return null;
 }
@@ -263,7 +314,7 @@ export class ElevationUnavailableError extends Error {
   }
 }
 
-type TileOrigin = 'bundled' | CacheOrigin;
+type TileOrigin = 'bundled' | 'pack' | CacheOrigin;
 
 /**
  * Load elevation for a square around `centre` on a local grid (makeGridSpec(centre, extent, cellSize)).
@@ -271,8 +322,26 @@ type TileOrigin = 'bundled' | CacheOrigin;
  * back to {@link syntheticElevation}.
  */
 export async function loadElevation(req: ElevationRequest): Promise<ElevationResult> {
-  const grid = makeGridSpec(req.centre, req.extent, req.cellSize);
   const z = resolveZoom(req.cellSize, req.zoom);
+  try {
+    return await loadElevationAtZoom(req, z);
+  } catch (e) {
+    // Bundled demo tiles, and tiles cached by earlier ≥ 20 m runs, exist at DEMO_TILE_ZOOM only. When the finer default
+    // zoom for small cells cannot be obtained (typically offline on a fire ground) use them rather than fail: the
+    // source data is SRTM 1″ (≈ 30 m) either way.
+    if (!(e instanceof ElevationUnavailableError) || req.zoom !== undefined || z <= DEMO_TILE_ZOOM || req.signal?.aborted) throw e;
+    try {
+      const r = await loadElevationAtZoom(req, DEMO_TILE_ZOOM);
+      return { ...r, source: `${r.source} (zoom ${z} unavailable)` };
+    } catch (e2) {
+      if (req.signal?.aborted) throw e2;
+      throw e;
+    }
+  }
+}
+
+async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<ElevationResult> {
+  const grid = makeGridSpec(req.centre, req.extent, req.cellSize);
   const plan = planSampling(grid, z);
   if (plan.tilesX * plan.tilesY > MAX_TILES) {
     throw new RangeError(`loadElevation: ${plan.tilesX * plan.tilesY} tiles needed at zoom ${z} (max ${MAX_TILES}); use a larger cell size or lower zoom`);
@@ -287,28 +356,63 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
   const tiles: TileXYZ[] = [];
   for (let ty = 0; ty < plan.tilesY; ty++) for (let tx = 0; tx < plan.tilesX; tx++) tiles.push({ z, x: plan.tx0 + tx, y: plan.ty0 + ty });
 
-  const origins: Record<TileOrigin, number> = { bundled: 0, cache: 0, network: 0, stale: 0 };
+  const packs = kv ? await tilePacks(kv, req.centre, req.extent) : [];
+  const origins: Record<TileOrigin, number> = { bundled: 0, pack: 0, cache: 0, network: 0, stale: 0 };
   const usedSites = new Set<string>();
+  const usedPacks = new Set<string>();
   const missing: TileXYZ[] = [];
   const causes: unknown[] = [];
   let done = 0;
 
   const getTile = async (t: TileXYZ): Promise<void> => {
-    let bytes: Uint8Array | null = null;
+    const key = terrariumTileKey(t);
+    /** Decode into the mosaic; false (and the cause recorded) if the bytes are not a valid Terrarium tile. */
+    const place = (bytes: Uint8Array): boolean => {
+      try {
+        // No-data stays NaN in the mosaic so the sampler can interpolate around it (or set it to sea level).
+        blit(decodeTerrarium(bytes, { noData: NaN }), mosaic, mw, (t.x - plan.tx0) * S, (t.y - plan.ty0) * S);
+        return true;
+      } catch (e) {
+        causes.push(e);
+        return false;
+      }
+    };
+    let ok = false;
+    // 1. Bundled with the app.
     const demo = await loadDemoTile(sites, t, req.signal);
-    if (demo) {
-      bytes = demo.bytes;
+    if (demo && place(demo.bytes)) {
+      ok = true;
       origins.bundled++;
       usedSites.add(demo.site);
-    } else {
+    }
+    // 2. Area packs downloaded for offline use.
+    if (!ok && kv && packs.length) {
+      const hit = await loadPackTile(kv, packs, key);
+      if (hit && place(hit.bytes)) {
+        ok = true;
+        origins.pack++;
+        usedPacks.add(hit.pack);
+      }
+    }
+    // 3./4. Cache, then network.
+    if (!ok) {
       try {
         const url = terrariumTileUrl(t.z, t.x, t.y);
         if (kv) {
-          const r = await cachedFetch(url, terrariumTileKey(t), req.offline ? offlineFetch : fetchBinary, { kv, signal: req.signal }, 'cache-first');
-          bytes = new Uint8Array(r.data);
-          origins[r.from]++;
-        } else if (!req.offline) {
-          bytes = new Uint8Array(await fetchBinary(url, { signal: req.signal }));
+          for (let pass = 0; pass < 2 && !ok; pass++) {
+            const r = await cachedFetch(url, key, req.offline ? offlineFetch : fetchTilePng, { kv, signal: req.signal }, 'cache-first');
+            if (place(new Uint8Array(r.data))) {
+              ok = true;
+              origins[r.from]++;
+            } else {
+              if (r.from === 'network') break; // a fresh download that does not decode: give up on this tile
+              // A corrupt cached copy would otherwise be served forever (cache-first): drop it and try the network.
+              await kv.del(key).catch(() => undefined);
+              if (req.offline) break;
+            }
+          }
+        } else if (!req.offline && place(new Uint8Array(await fetchTilePng(url, { signal: req.signal })))) {
+          ok = true;
           origins.network++;
         }
       } catch (e) {
@@ -316,16 +420,7 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
         causes.push(e);
       }
     }
-    if (bytes) {
-      try {
-        // No-data stays NaN in the mosaic so the sampler can count it (and set it to sea level).
-        blit(decodeTerrarium(bytes, { noData: NaN }), mosaic, mw, (t.x - plan.tx0) * S, (t.y - plan.ty0) * S);
-      } catch (e) {
-        causes.push(e);
-        bytes = null;
-      }
-    }
-    if (!bytes) missing.push(t);
+    if (!ok) missing.push(t);
     req.onProgress?.(++done, tiles.length);
   };
 
@@ -336,6 +431,7 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
   const { elevation, clamped } = sampleMosaic(grid, plan, mosaic, mw, mh);
   const parts: string[] = [];
   if (origins.bundled) parts.push(`${origins.bundled} bundled${usedSites.size ? ` (${[...usedSites].join(', ')})` : ''}`);
+  if (origins.pack) parts.push(`${origins.pack} from area pack${usedPacks.size > 1 ? 's' : ''} ${[...usedPacks].map((n) => `'${n}'`).join(', ')}`);
   if (origins.cache) parts.push(`${origins.cache} cached`);
   if (origins.stale) parts.push(`${origins.stale} cached (stale)`);
   if (origins.network) parts.push(`${origins.network} downloaded`);
@@ -346,6 +442,13 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
 const offlineFetch = async (): Promise<ArrayBuffer> => {
   throw new Error('offline: tile not cached');
 };
+
+/** Download a tile, rejecting anything that is not a PNG (e.g. an HTML error page) so it is never cached. */
+async function fetchTilePng(url: string, opts: RequestOptions): Promise<ArrayBuffer> {
+  const buf = await fetchBinary(url, opts);
+  if (!hasPngSignature(new Uint8Array(buf))) throw new HttpError('parse', url, `Not a PNG tile: ${url}`, 200);
+  return buf;
+}
 
 /** Copy a decoded 256² tile into the mosaic at pixel offset (ox, oy). */
 function blit(tile: DecodedTerrarium, mosaic: Float32Array, mw: number, ox: number, oy: number): void {
@@ -382,15 +485,40 @@ function sampleMosaic(grid: GridSpec, plan: SamplePlan, mosaic: Float32Array, mw
       const d = mosaic[bot + c]!;
       const e = mosaic[bot + c + 1]!;
       let h = (a + (b - a) * tx) * (1 - wy) + (d + (e - d) * tx) * wy;
-      // Sea (negative bathymetry) or no-data (NaN): the fire and wind models need a real surface → sea level.
       if (!(h >= 0)) {
-        h = 0;
-        clamped++;
+        // NaN: at least one neighbour is no-data. Interpolate from the valid ones only, so an isolated void does not
+        // punch a hole to sea level into a mountain.
+        if (h !== h) h = bilinearValid(a, b, d, e, tx, wy);
+        // Sea (negative bathymetry) or no data at all: the fire and wind models need a real surface → sea level.
+        if (!(h >= 0)) {
+          h = 0;
+          clamped++;
+        }
       }
       out[row + i] = h;
     }
   }
   return { elevation: out, clamped };
+}
+
+/**
+ * Bilinear interpolation over the non-NaN corners only (a, b = upper row; c, d = lower row), renormalising the weights.
+ * Falls back to the plain mean of the valid corners when their weights vanish; NaN when all four are no-data.
+ */
+function bilinearValid(a: number, b: number, c: number, d: number, tx: number, ty: number): number {
+  const wa = (1 - tx) * (1 - ty);
+  const wb = tx * (1 - ty);
+  const wc = (1 - tx) * ty;
+  const wd = tx * ty;
+  let s = 0;
+  let w = 0;
+  let sum = 0;
+  let n = 0;
+  if (a === a) (s += a * wa), (w += wa), (sum += a), n++;
+  if (b === b) (s += b * wb), (w += wb), (sum += b), n++;
+  if (c === c) (s += c * wc), (w += wc), (sum += c), n++;
+  if (d === d) (s += d * wd), (w += wd), (sum += d), n++;
+  return w > 1e-6 ? s / w : n ? sum / n : NaN;
 }
 
 /** Run `fn` over items with at most `limit` in flight. */
