@@ -1,0 +1,553 @@
+# 08 — Data Sources and APIs for NSW (weather, terrain, imagery, fuel, fire history, incidents)
+
+FireSim research series, document 08. This document covers where FireSim gets its data for a point in the NSW ranges, how each service is called, what comes back, whether a phone can call it (CORS, rate limits, keys), whether we may cache it offline (licence), and how to package it into offline **area packs** for fire grounds without mobile coverage. The worked example is a point near Katoomba, **(−33.71, 150.31)**, in the upper Blue Mountains.
+
+Date of research: **2026‑09‑27**.
+
+---
+
+## 0. Provenance and verification tags (read first)
+
+**Research environment.** The sandbox's egress proxy **blocked** these hosts: `api.open-meteo.com`, `open-meteo.com`, `www.bom.gov.au`, `reg.bom.gov.au`, `api.weather.bom.gov.au`, `www.rfs.nsw.gov.au`, `maps.six.nsw.gov.au`, `portal.spatial.nsw.gov.au`, `mapprod3.environment.nsw.gov.au`, `hotspots.dea.ga.gov.au`, `firms.modaps.eosdis.nasa.gov`, `elevation.fsdf.org.au`, `server.arcgisonline.com`, `api.mapbox.com`, `tiles.mapterhorn.com`, `share.phys.ethz.ch` and `data.tern.org.au`. The session's web-search budget was already used up when this task started.
+
+These hosts **were** reachable: AWS S3 (`elevation-tiles-prod`, `dataforgood-fb-data`, `esa-worldcover`, `dea-public-data`, `copernicus-dem-30m`, `elevation-direct-downloads`), `raw.githubusercontent.com`, and GitHub code search.
+
+So I did three things:
+
+1. I **ran live requests** against every S3-hosted dataset and decoded the actual bytes: tiles, COG headers, pixel values at Katoomba, and CORS headers with an `Origin:` header and pre-flight.
+2. I read the **provider's own documentation source**. The Open-Meteo website and server are open source on GitHub, so I read the docs pages, the pricing and terms pages, and the Swift code that does CORS and elevation downscaling.
+3. I read **recent third-party client code** (2024–2026) for the services I could not reach, and cited the repository and date.
+
+| Tag | Meaning |
+|---|---|
+| **[V]** | Verified **live** this session: a request from the sandbox and inspection of the real response bytes or headers. |
+| **[S]** | Verified from the provider's own documentation or source code, via its GitHub mirror. |
+| **[3P]** | Reported by third-party code or docs, with repo and date given. The endpoint pattern is very likely right, but check it on device. |
+| **[K]** | Domain knowledge I could not re-verify this session. Check it before hard-coding. |
+| **[H]** | A FireSim design choice or heuristic. It is not a property of the data source. |
+
+---
+
+## 1. Executive summary: what matters most for FireSim
+
+1. **Weather comes from Open-Meteo. Pick the model explicitly and do our own terrain downscaling.**
+   - One keyless JSON API (`/v1/forecast`) gives current conditions, past data (`past_days` 0–92) and forecast data (up to 16 days) [S].
+   - Pressure-level profiles (T, RH, wind, geopotential height at 1000…30 hPa) initialise the 3-D atmosphere [S].
+   - **BoM ACCESS-G via Open-Meteo has no pressure levels, CAPE or PBL height**. Open-Meteo's BoM page also says *"BOM … open-data delivery has been temporarily suspended"* [S].
+   - Use **ECMWF IFS HRES 9 km (`models=ecmwf_ifs`)** as the primary source. It has been open data (CC BY 4.0) since 1 Oct 2025, provides `boundary_layer_height`, `cape` and pressure levels 1000/925/850/700/…, and has 100 m/200 m winds [S]. Use **GFS 0.25°** for a finer-spaced vertical profile (25 hPa steps) and **ICON global** for 80/120/180 m winds [S].
+   - Open-Meteo corrects **only 2 m temperature (and surface temperature)** for elevation, using a fixed **0.0065 K m⁻¹** lapse rate (see `GenericReader.swift`). **RH is not corrected** [S]. In mountains with inversions that is wrong, so FireSim must downscale from the pressure levels itself (§5.3).
+   - CORS is open to all origins, verified in the server's `configure.swift` [S]. Free use is limited to non-commercial use: under 10 000 calls/day, 5 000/hour and 600/minute; data is CC BY 4.0 [S]. Education counts as non-commercial [S].
+2. **Past weather:**
+   - **Historical Forecast API**: IFS HRES 9 km from **2017‑01‑01**, most other models from 2021–22 [S].
+   - **Archive API**: ERA5 from 1940, ERA5‑Land from 1950, IFS 9 km from 2017, with a **5-day delay** for ERA5 and **no pressure levels** [S].
+   - **Single Runs API**: re-play a forecast exactly as issued (`run=`); IFS HRES from March 2024 [S].
+3. **BoM station observations are the ground truth, but they are awkward to get.**
+   - The `fwo/IDN60801/IDN60801.<WMO>.json` feed is the easy route: 72 h of half-hourly observations with `air_temp`, `dewpt`, `rel_hum`, `wind_dir`, `wind_spd_kmh`, `gust_kmh` and `delta_t` [3P].
+   - The feed has **no CORS** [3P]. BoM **blocks non-browser clients** and states *"The Bureau of Meteorology website does not support web scraping"*, pointing to the anonymous FTP or the paid Registered User service [3P].
+   - Use it only through native HTTP, on the user's explicit request, rate-limited, and never as a background poller [H].
+   - Katoomba (Farnells Rd) is **WMO 94744**; Mount Boyce AWS is **94743** [3P].
+4. **Terrain.** Use **three sources**, in order of preference:
+   - **(a) NSW Spatial Services statewide 5 m DEM** (`NSW_5M_Elevation/ImageServer/exportImage`, Float32 GeoTIFF, LiDAR-derived bare earth, CC BY 4.0) [3P, verified by third parties in 2026]. Cold responses can take about 28 s [3P].
+   - **(b) Geoscience Australia 1″ SRTM-derived DEM/DEM‑S** as a **CORS-enabled, 512-px-tiled Float32 COG** for all of Australia on `dea-public-data`. It is bare-earth corrected [V]. It sits **2.5–8 m below raw SRTM** at our four Blue Mountains sample sites. That matches the removal of the vegetation offset [V].
+   - **(c) AWS Terrain Tiles (Terrarium)**: `h = R·256 + G + B/256 − 32768`. Verified **1021–1022 m at Katoomba**; the header shows the source is `srtm/S34E150.tif`, so over NSW this is **SRTM 1″ (~30 m)** [V]. Zoom 13–15 tiles are only interpolated SRTM [V, S].
+   - **Resolution matters for slope**. We measured this on SRTM around Katoomba. The 99th-percentile slope is **58.6° at 30 m, 48.3° at 90 m and 37.8° at 180 m** [V]. The fire model must use the finest DEM available, and the atmosphere model a separately smoothed one.
+5. **Fuel structure layers** are all CC BY 4.0 and cacheable:
+   - **Meta/WRI 1 m canopy height**: uint8 metres in EPSG:3857 tiles named by zoom-9 quadkey (Katoomba = `311230121`). The files are **1-row strips with no overviews and no CORS** [V], so pre-process them off-device.
+   - **ESA WorldCover 10 m v200 (2021)**: 3°×3° COGs, tiled 1024, 6 overviews, **no CORS** [V].
+   - **NSW SVTM PCT map** (`VIS/SVTM_NSW_Extant_PCT/MapServer`) [3P].
+   - **DEA Sentinel‑2 live fuel moisture content (`ga_s2_fmc_3_v1`)**: 20 m COG in %, **CORS \***, current to 2026‑09‑10 for tile 56HKH [V]. This is a bonus layer for live FMC in the elevated and near-surface fuels.
+6. **Fire history comes from NPWS Fire History** (`Fire/NPWS_Fire_History/MapServer/0`). Fields are `FireName`, `FireNo`, `FireType` (**1 = wildfire, 2 = prescribed burn**), `FireYear` (season code such as `201920`), `StartDate`, `EndDate`, `AreaHa` and `PerimeterM` [3P]. It includes Black Summer [3P]. Rasterise it to *time since fire* for fuel accumulation.
+7. **Incidents and hotspots**:
+   - **NSW RFS `majorIncidents.json`**: GeoJSON with GeometryCollections (point plus fire-extent polygons). `category` is one of Emergency Warning, Watch and Act, Advice, Not Applicable or Planned Burn. The fields STATUS, TYPE, SIZE, COUNCIL AREA, LOCATION, FIRE and RESPONSIBLE AGENCY are packed into an HTML `description` string [3P]. CC BY 4.0, **no CORS** [3P].
+   - **DEA Hotspots WFS** (`public:hotspots`, `public:hotspots_three_days`; CC BY 4.0; updated about every 10 min) [S, 3P].
+   - **NASA FIRMS** needs a free MAP_KEY. The area API accepts `DAY_RANGE` 1–5 only, with a limit of 5 000 transactions per 10 min [3P].
+8. **Transport rule for the app** [S, from our `src/data/http.ts`, and H]:
+   - All network I/O runs on the **main thread** through `CapacitorHttp`. The Web Worker has no native bridge.
+   - Binary data is fetched as base64 or through `Filesystem.downloadFile`, then handed to the worker as transferable `ArrayBuffer`s.
+   - Imagery for Three.js textures must arrive as bytes and then go through `createImageBitmap`. A cross-origin `<img>` without CORS would taint WebGL.
+9. **Area packs are mandatory.** A 10 km × 10 km pack is about **15–40 MB** (§5.5):
+   - 5 m DEM resampled to 10 m;
+   - SRTM fallback;
+   - imagery at z16 (400 tiles at 1.99 m/px);
+   - canopy height, WorldCover, SVTM and fire history rasterised to 10 m;
+   - 16 days of forecast plus 92 days of past weather;
+   - a licence and attribution manifest.
+
+   Everything in the recommended pack is CC BY 4.0 or public domain. **Do not cache Esri World Imagery or Mapbox tiles**: they are proprietary and require keys and terms [K].
+
+---
+
+## 2. Why data choices change mountain fire behaviour (mechanisms)
+
+### 2.1 Terrain: bare earth vs surface models, and resolution
+
+- **Fire needs the ground surface (DTM), not the canopy surface (DSM).**
+  - SRTM C-band radar returns a surface partly inside the canopy. GA's DEM product removes this vegetation offset (Gallant et al. 2011).
+  - In our Blue Mountains sample, GA DEM was lower than raw SRTM by **2.5 m** (Katoomba town), **6.0 m** (Jamison Valley forest), **5.9 m** (Leura forest) and **8.1 m** (Mt Boyce), as means of 30 × 30 cells [V].
+  - Copernicus GLO‑30 is also a DSM. Its tall-forest edges create false 10–40 m steps [K]. Those steps become false slopes, and slope is the variable that most affects rate of spread: ROS about doubles per 10° upslope (see document 01).
+- **Resolution smooths the landform that drives mountain fire.** The Blue Mountains are sandstone plateaux cut by vertical cliffs and steep gullies. We computed Horn (1981) slopes in a 10 km box at Katoomba from SRTM 1″ and from block-averaged copies [V]:
+
+| DEM cell | median slope | p90 | p99 | max | % area > 20° | % > 30° | % > 40° |
+|---|---|---|---|---|---|---|---|
+| ~30 m (SRTM 1″) | 11.9° | 27.4° | 58.6° | 76.3° | 23.3 | 7.3 | 3.3 |
+| ~90 m | 9.7° | 25.7° | 48.3° | 57.8° | 18.0 | 6.9 | 3.2 |
+| ~180 m | 7.4° | 24.7° | 37.8° | 43.6° | 15.4 | 5.3 | 0.4 |
+
+  Consequences:
+  - At the 100–200 m atmosphere grid, **the cliff lines disappear**: cells steeper than 40° fall from 3.3 % to 0.4 %.
+  - At 30 m the slopes still under-represent LiDAR cliffs. SRTM itself is roughly 30 m and smooths vertical walls [K].
+  - So FireSim should derive **fire-grid slope from the 5 m NSW DTM, aggregated to the 10–30 m fire cell**. The atmosphere should use a **deliberately smoothed** DEM, because terrain-following coordinates become unstable on very steep cells [K] (see document on atmosphere numerics).
+- **Aspect and insolation.** A 5–30 m DEM resolves gully walls. Their solar exposure controls dead fuel moisture differences between north-west and south-east facing slopes (document 04).
+- **Datums.** SRTM heights are on the EGM96 geoid [K]. NSW DEMs are on AHD [K]. The offset is small relative to fire-relevant relief [K] and can be ignored for slope, but not when merging tiles from different sources without blending.
+
+### 2.2 Weather: global models see a smoothed mountain
+
+- **Grid size.** IFS HRES has 9 km cells, ICON global 11 km, ACCESS-G 15 km and GFS 13 km (0.25° for pressure levels) [S]. The Jamison Valley (about 400 m deep, 3–5 km wide) is **sub-grid** in all of them. Model output represents a smoothed "grid-cell mountain", and valley–ridge differences must be reconstructed.
+- **Open-Meteo "downscaling".**
+  - Open-Meteo chooses a land grid cell with similar elevation, using a 90 m DEM (`cell_selection=land`, the default).
+  - It then shifts **temperature only** by `ΔT = (z_model − z_target)·0.0065 K/m` [S].
+  - Humidity, wind and pressure are **not** adjusted [S].
+  - In the evening and at night, cold air pools in NSW valleys (document 02), so a lapse-rate adjustment warms valley floors that are really colder and moister. By day on a dry, well-mixed afternoon it is about right [K].
+  - FireSim should ask for `elevation=nan` (raw grid-cell values) plus pressure levels, then build its own vertical profile (§5.3).
+- **Time semantics differ by variable.**
+  - Temperature, RH and wind are **instantaneous** at the hour.
+  - `wind_gusts_10m` is the **maximum over the preceding hour**. `precipitation` is the **sum** over the preceding hour. `shortwave_radiation` is the **mean** over the preceding hour [S].
+  - BoM observations are half-hourly snapshots [3P].
+  - Mixing these without care shifts gusts and solar forcing by half an hour to an hour.
+- **Dry air aloft.** `relative_humidity_700hPa`/`850hPa` together with `boundary_layer_height` show whether afternoon mixing will bring dry upper air down onto ridges. This is one of the main mountain-specific drivers of sudden RH drops (document 02). Only models with pressure levels give this; ACCESS-G via Open-Meteo does not [S].
+
+### 2.3 Fuel: structure, history and live moisture
+
+- **Canopy height and cover** (Meta 1 m, ETH 10 m) and **land cover** (WorldCover) tell us *where* forest, shrub and grass are. **SVTM PCTs** tell us *what* community it is, which maps to AFDRS fuel types and hazard scores (document on fuels).
+- **Fire history → time since fire → fuel load.** An Olson-type accumulation `w(t) = w_ss (1 − e^{−k t})` (Olson 1963) turns NPWS polygons into load. Here `w` is fuel load (t ha⁻¹), `w_ss` is the steady-state load, `k` is a decomposition constant (yr⁻¹) and `t` is the time since fire (yr). Parameter values per fuel type are in the fuels document [K]. FireType = 2 (prescribed burn) usually reduces surface and near-surface fuel but may leave elevated fuel and bark partly intact [K]. Keep FireType, because the insight cards should say so.
+- **Live fuel moisture.** DEA's Sentinel‑2 LFMC (%) product (Yebra et al. 2018 method, the Australian Flammability Monitoring System [K]) gives 20 m live moisture about every 5 days, where there is no cloud. Around Katoomba on 2026‑08‑31 it read p10 48 %, median 98 % and p90 166 % [V]. On cloudy dates it is entirely no-data (−999) [V]. It is **live** moisture, not the leaf-litter (dead) moisture, which must come from the weather-driven model (document 04).
+
+### 2.4 Incidents and hotspots: approximate by nature
+
+Hotspots are **pixel detections**, not fire-edge positions. The nominal footprints are about 375 m for VIIRS I-band and about 1 km for MODIS at nadir, and larger off-nadir [K]. Latency is minutes to hours [K]. The app should show them as "somewhere in this pixel, some time in the last N hours" and never auto-ignite a single cell from one hotspot [H].
+
+---
+
+## 3. Source-by-source reference
+
+Each entry gives the endpoint, an example for Katoomba, the response, CORS, limits, the licence and caching rules, and the status.
+
+### 3.1 Open-Meteo Forecast API (`/v1/forecast`) [S unless stated]
+
+- **Endpoint.** `https://api.open-meteo.com/v1/forecast`. Commercial use is at `customer-api.open-meteo.com` with `&apikey=`.
+- **Parameters:**
+  - `latitude` and `longitude` (comma lists allowed; output becomes a list and each location counts toward the limits);
+  - `elevation` (float, comma list, or `nan` to disable downscaling);
+  - `hourly`, `daily`, `current`, `minutely_15`;
+  - `timezone` (`Australia/Sydney` or `auto`);
+  - `past_days` (0–92), `forecast_days` (0–16), `past_hours`, `forecast_hours`, `start_date`/`end_date` (yyyy‑mm‑dd), `start_hour`/`end_hour` (yyyy‑mm‑ddThh:mm);
+  - `models` (comma list);
+  - `cell_selection` (`land` default, `sea`, `nearest`);
+  - `wind_speed_unit` (`kmh` default, `ms`, `mph`, `kn`), `temperature_unit`, `precipitation_unit`;
+  - `timeformat` (`iso8601` or `unixtime`, where unixtime is UTC).
+- **Hourly variables relevant to FireSim** (exact names, units):
+  - `temperature_2m` °C, `relative_humidity_2m` %, `dew_point_2m` °C, `vapour_pressure_deficit` kPa;
+  - `wind_speed_10m|80m|120m|180m`, `wind_direction_10m|80m|120m|180m` °, `wind_gusts_10m` (max over the preceding hour);
+  - `shortwave_radiation`, `direct_radiation`, `diffuse_radiation` W m⁻² (mean over the preceding hour);
+  - `cloud_cover`, `cloud_cover_low|mid|high` %, `precipitation` mm (sum over the preceding hour);
+  - `soil_moisture_0_to_1cm|1_to_3cm|3_to_9cm|9_to_27cm|27_to_81cm` m³ m⁻³;
+  - `cape` J kg⁻¹, `lifted_index`, `convective_inhibition`, `boundary_layer_height` m, `freezing_level_height` m, `is_day`;
+  - pressure-level variables `temperature_<L>hPa`, `relative_humidity_<L>hPa`, `dew_point_<L>hPa`, `cloud_cover_<L>hPa`, `wind_speed_<L>hPa`, `wind_direction_<L>hPa`, `vertical_velocity_<L>hPa`, `geopotential_height_<L>hPa` (m above MSL). Generic levels are L ∈ {1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30}.
+- **Variables differ per model** (from each model's docs options) [S]:
+
+| Model id | Grid | Near-surface winds | Pressure levels (≤ 700 hPa) | CAPE / PBL | Notes |
+|---|---|---|---|---|---|
+| `ecmwf_ifs` | 9 km, hourly to +90 h, 3-hourly to +144 h, 6-hourly to 15 d | 10, 100, 200 m | 1000, 925, 850, 700 (+600…50) | cape ✔, boundary_layer_height ✔ | levels carry vertical velocity but **no dew point** (derive it from RH); open data since 1 Oct 2025 |
+| `ncep_gfs_global` | 0.11°/0.25° (pressure levels 0.25°) | 10, 80 m | 1000, 975, 950, …, 700 in 25 hPa steps | cape, lifted_index, CIN, PBL ✔ | dew point and vertical velocity on levels |
+| `dwd_icon_global` | ~11 km | 10, 80, 120, 180 m | yes [K] (level list not checked) | cape ✔ | soil moisture 0–1 cm … 27–81 cm |
+| `bom_access_global` | 0.15° (~15 km), 10 d, 4 runs/day | 10, 40, 80, 120 m | **none** | **no CAPE**, no PBL | *"open-data delivery … temporarily suspended"* |
+
+- **Katoomba examples** (my URLs, built from the docs; not fetched because the host was blocked):
+  - (A) now + 3 days back + 3 days ahead, surface, ECMWF, raw grid cell:
+    ```
+    https://api.open-meteo.com/v1/forecast?latitude=-33.71&longitude=150.31&elevation=nan&models=ecmwf_ifs&timezone=Australia%2FSydney&wind_speed_unit=ms&past_days=3&forecast_days=3&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,vapour_pressure_deficit,precipitation,cloud_cover,shortwave_radiation,direct_radiation,diffuse_radiation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,wind_speed_100m,wind_direction_100m,wind_speed_200m,wind_direction_200m,boundary_layer_height,cape,soil_moisture_0_to_7cm
+    ```
+  - (B) vertical profile, ECMWF:
+    ```
+    …&models=ecmwf_ifs&hourly=temperature_1000hPa,temperature_925hPa,temperature_850hPa,temperature_700hPa,relative_humidity_1000hPa,relative_humidity_925hPa,relative_humidity_850hPa,relative_humidity_700hPa,wind_speed_925hPa,wind_speed_850hPa,wind_speed_700hPa,wind_direction_925hPa,wind_direction_850hPa,wind_direction_700hPa,geopotential_height_1000hPa,geopotential_height_925hPa,geopotential_height_850hPa,geopotential_height_700hPa
+    ```
+  - (C) denser profile, GFS: the same pattern with `models=ncep_gfs_global` and levels `975,950,925,900,875,850,825,800,775,750,725,700`, plus `dew_point_<L>hPa` and `vertical_velocity_<L>hPa`.
+  - (D) boundary-layer winds, ICON: `models=dwd_icon_global&hourly=wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_80m,wind_direction_120m,wind_direction_180m,temperature_80m,temperature_120m,temperature_180m`.
+  - (E) spread across models: `models=ecmwf_ifs,ncep_gfs_global,dwd_icon_global`. With several models the response keys carry the model name, e.g. `temperature_2m_ecmwf_ifs` [K]; check this on first use.
+  - (F) 3 × 3 points across the domain in one call, e.g. `latitude=-33.665,-33.665,-33.665,-33.71,…&longitude=150.256,150.31,150.364,…&elevation=nan,…`. With 9 km cells this mostly samples 1–4 distinct cells, but it captures model gradients [H].
+- **Response.** JSON with `latitude`/`longitude` (the grid-cell centre used, possibly several km away), `elevation` (90 m DEM, used for downscaling), `generationtime_ms`, `utc_offset_seconds`, `timezone`, `timezone_abbreviation`, `current{time,interval,…}`, `hourly{time[],<var>[]}`, `hourly_units{}`, `daily{}` and `daily_units{}`. Errors return HTTP 400 with a JSON body. Unavailable variables return `null` arrays [K].
+- **CORS.** Allowed from every origin. The server source has `CORSMiddleware.Configuration(allowedOrigin: .all, allowedMethods: [.GET, .POST, .OPTIONS], …)` [S].
+- **Limits (free).** Under 10 000 calls/day, 5 000/hour, 600/minute and 300 000/month [S]. **Call weight** (pricing page source) [S]:
+  `w = max(1, max(nV·nM/10, (T/14)·nV·nM/10)) × nLoc`,
+  where `nV` is the number of variables, `nM` the number of models, `T` the number of days and `nLoc` the number of locations.
+  Example: 40 variables × 1 model × 7 days gives `w = max(4, 2) = 4` calls. A full FireSim refresh (surface 20 variables + profile 40 variables, 3 models, 9 points) is about 162 weighted calls. That is fine per device, but not something to repeat every minute [H].
+- **Licence and caching.** API data is **CC BY 4.0**; a link next to the displayed data is required [S]. Caching and redistributing inside area packs is allowed with attribution [S]. The free tier is for **non-commercial** use: *"Incorporating our service into educational content"* is listed as non-commercial, while apps with subscriptions or ads are commercial [S]. The server code is AGPLv3, which is irrelevant for API use [S]. Logs hold coordinates for up to 90 days [S], which matters for privacy notes.
+
+### 3.2 Open-Meteo past weather [S]
+
+| API | Endpoint | Coverage | Use in FireSim |
+|---|---|---|---|
+| `past_days` on the forecast API | `api.open-meteo.com/v1/forecast?past_days=N` | up to 92 days | spin up the dead fuel moisture model and drought factor for the last 1–92 days |
+| Historical Forecast | `https://historical-forecast-api.open-meteo.com/v1/forecast?start_date=…&end_date=…` | stitched first hours of each run; IFS HRES 9 km from **2017‑01‑01**, GFS from 2021‑03‑23, ACCESS-G from 2024‑01‑18; "including atmospheric pressure levels" | replay past fires (e.g. Dec 2019) with the same variables as the forecast API; check that pressure levels exist for IFS before 2021 [K] |
+| Single Runs | `https://single-runs-api.open-meteo.com/v1/forecast?run=2025-09-01T00:00` | most models from 2 Apr 2026; IFS HRES from Mar 2024 | "what did the forecast say that morning" teaching scenarios |
+| Archive (reanalysis) | `https://archive-api.open-meteo.com/v1/archive?start_date=…&end_date=…&models=era5_land` | ERA5 0.25° from 1940, ERA5‑Land 0.1° from 1950, IFS 9 km from 2017; ERA5 **5-day delay**; **no pressure levels**; has `boundary_layer_height`, `vapour_pressure_deficit`, 100 m wind | long drought and KBDI series (365 days of `precipitation_sum`, `temperature_2m_max`) |
+
+Katoomba example (antecedent rain for KBDI):
+`https://archive-api.open-meteo.com/v1/archive?latitude=-33.71&longitude=150.31&start_date=2025-09-01&end_date=2026-09-21&daily=precipitation_sum,temperature_2m_max&models=era5_land&timezone=Australia%2FSydney`
+Fill the last 5–6 days from the forecast API `past_days`.
+
+### 3.3 Bureau of Meteorology observations
+
+- **JSON feed [3P].** `https://www.bom.gov.au/fwo/IDN60801/IDN60801.<WMO>.json`. `IDN60801` is the NSW/ACT product, `IDV60801` Victoria, and so on.
+  - Near Katoomba: **94744** KATOOMBA (FARNELLS RD), station 063039, 1017 m; **94743** MOUNT BOYCE AWS, 063292, 1080 m; **94741** LITHGOW (COOERWULL), 900 m; **95744** SPRINGWOOD (VALLEY HEIGHTS), 320 m. The list comes from the OpenNEM `bom_stations.json` [3P].
+  - Structure is `observations.notice`, `observations.header[0].state_time_zone`, and `observations.data[]`, newest first, about 72 h at 30-minute steps.
+  - Fields include `sort_order`, `wmo`, `name`, `history_product`, `local_date_time_full` (yyyymmddhhmmss local), `aifstime_utc`, `lat`, `lon`, `air_temp`, `apparent_t`, `dewpt`, `rel_hum`, `delta_t`, `wind_dir` (16-point text such as "NW"), `wind_spd_kmh`, `wind_spd_kt`, `gust_kmh`, `gust_kt`, `press`, `press_msl`, `press_qnh`, `rain_trace` (mm since 9 am, as a string), `cloud`, `cloud_oktas` and `vis_km` [3P].
+- **CORS: none.** Several apps note *"BOM blocks CORS"* and use Capacitor native requests or a proxy [3P].
+- **Bot blocking.** BoM returns 403 to bare HTTP clients; code from Aug 2026 needs a browser-like User-Agent [3P]. The block page reads [3P]:
+
+  > *"The Bureau of Meteorology website does not support web scraping: if you are trying to access Bureau data through automated means, you should stop … An anonymous FTP channel … free to access, but use is subject to the default terms of the Bureau's copyright notice … A Registered User service … charges apply to most data products."*
+- **Unofficial app API [3P].** `https://api.weather.bom.gov.au/v1/locations/{geohash}/observations`, `…/forecasts/hourly` and `…/forecasts/daily`. The geohash for Katoomba is `r64bhr` (6 characters, computed). This API was reverse-engineered from the BoM website and has *"no information about future access arrangements"*. Do not build on it [H].
+- **Licence.** The default terms are at `http://www.bom.gov.au/other/copyright.shtml` [3P]. I could not read them this session [K]. Treat BoM data as **not cacheable for redistribution in area packs** until reviewed. Cache only on the device for the user's own session [H].
+- **Recommendation.** Offer "Nearest BoM station" as an **on-demand comparison**: one request when the user taps, never polled. Use it for *nudging* the initial conditions and for insight cards such as "model says 25 % RH, Katoomba AWS says 14 %".
+
+### 3.4 AWS Terrain Tiles (Mapzen/Tilezen "Joerd") [V, S]
+
+- **URL patterns.**
+  - `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png` (256², z 0–15)
+  - `https://elevation-tiles-prod.s3.amazonaws.com/normal/{z}/{x}/{y}.png`
+  - `https://elevation-tiles-prod.s3.amazonaws.com/geotiff/{z}/{x}/{y}.tif` (512²)
+  - `https://elevation-tiles-prod.s3.amazonaws.com/skadi/{N|S}{yy}/{N|S}{yy}{E|W}{xxx}.hgt.gz`
+  - There is also a replica bucket in `eu-central-1`.
+- **Katoomba.** z12 → `terrarium/12/3758/2455.png`; z14 → `14/15032/9823`; z15 → `15/30065/19646`. Pixel RGB (131, 253, 0) decodes to **1021.0 m** at z12, 1022.09 m at z14 and 1022.15 m at z15. The skadi tile `S34/S34E150.hgt.gz` (14.0 MB gzip, 3601 × 3601 int16 big-endian = **1″ SRTM**) gives **1022 m** [V].
+- **Sources.** The response header `x-amz-meta-x-imagery-sources: srtm/S34E150.tif` (plus GMTED at z12) shows the tiles are built from SRTM. Joerd lists GA's 5 m DEM only for "coastal regions in South Australia, Victoria, and Northern Territory", not the NSW ranges [V, S]. At z12 the values are integer metres (SRTM quantisation). At z14–15 they are resampled, carrying fractional bits but no new information [V].
+- **Encoding.** `h = (R·256 + G + B/256) − 32768` m, with 1/256 m precision [S].
+- **Ground resolution.** `res = cos φ · 2π · 6378137 / (256 · 2^z)` m/px [S]. At −33.71° this gives 31.8 m (z12), 15.9 m (z13), 7.95 m (z14) and 3.97 m (z15) [V].
+- **CORS.** `Access-Control-Allow-Origin: *`, GET, `Max-Age 3000`, and `x-amz-meta-x-imagery-sources` is exposed [V].
+- **Licence.** Attribution per the Joerd attribution list: *"… SRTM terrain data courtesy of the U.S. Geological Survey"*, and *"Australia terrain data © Commonwealth of Australia (Geoscience Australia) 2017"* where GA data is used [S]. Caching is permitted [S].
+- **Alternative.** Mapterhorn (`https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`, Terrarium encoding, 512 px) includes GA's LiDAR-derived 5 m DEM mosaics (`au5*` sources, from `elevation-direct-downloads.s3-ap-southeast-2.amazonaws.com/5m-dem/national_utm_mosaics/…`, 2026) [3P]. It could not be reached from the sandbox. Whether the Blue Mountains fall inside GA's 5 m coverage is **unknown** [K].
+
+### 3.5 NSW Spatial Services elevation and ELVIS
+
+- **NSW 5 m statewide DEM, ImageServer [3P, checked by two independent projects in 2026].**
+  - Service: `https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_5M_Elevation/ImageServer`. `terrain-viewer` describes it as *"1m/2m LiDAR resampled to a 5m statewide grid … Verified Kosciuszko 2227.4 m against 2228 true. SLOW cold: 28 s"*. `property-scores` uses it as a *"statewide 5 m bare-earth DTM"*.
+  - Katoomba 10 km box in EPSG:3857, 2000 × 2000 px at 5 m:
+    ```
+    https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_5M_Elevation/ImageServer/exportImage?bbox=16726422.0,-3995940.5,16738443.3,-3983919.2&bboxSR=3857&imageSR=3857&size=2000,2000&format=tiff&pixelType=F32&noData=-9999&noDataInterpretation=esriNoDataMatchAny&interpolation=RSP_BilinearInterpolation&f=image
+    ```
+    **Tile it** into 4–16 requests of ≤ 1024 px. ArcGIS services commonly cap export size (`maxImageWidth/Height`, see `?f=json`) [K], and SIX's *imagery* MapServer returns HTTP 500 above 1024 px [3P].
+  - Point query: `…/identify?geometry={"x":150.31,"y":-33.71,"spatialReference":{"wkid":4326}}&geometryType=esriGeometryPoint&returnGeometry=false&f=json`.
+  - Contour fallback: `https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Elevation_and_Depth_Theme/FeatureServer/2/query` [3P].
+- **CORS.** Not verified. ArcGIS Server enables CORS for all origins by default [K], and the 5 m service and SIX imagery are consumed directly by browser WebGL map apps [3P]. We still go through CapacitorHttp.
+- **Licence.** CC BY 4.0, *"© State of New South Wales (Spatial Services …)"* [3P].
+- **ELVIS** (`https://elevation.fsdf.org.au/`) is the national portal for 1 m/2 m/5 m LiDAR DEMs and point clouds. It is interactive and **order-based**, with no simple tile API [3P]. Use it **offline, in the pack-builder**, for sites where the 5 m product is not enough.
+- **Geoscience Australia services.** `services.ga.gov.au/gis/...` DEM services are reported **decommissioned (404) or 403 to scripted clients** (2026) [3P]. **Use the GA 1″ DEM COGs on the DEA bucket instead [V]:**
+  - `https://dea-public-data.s3.ap-southeast-2.amazonaws.com/projects/elevation/ga_srtm_dem1sv1_0/dem1sv1_0.tif` (bare earth), `…/dems1sv1_0.tif` (smoothed DEM‑S) and `…/demh1sv1_0.tif` (hydrologically enforced).
+  - Each is about 34–38 GB, 147 600 × 122 400 Float32, 512² tiles, 8 overview levels, EPSG:4326, 1″, nodata −3.4e38, **CORS \***, CC BY 4.0, citing Gallant et al. 2011.
+  - Katoomba centre pixel: **1022.0 m** (DEM) and 1020.4 m (DEM‑S).
+  - Range reads with `geotiff.js` work directly from the browser or worker, with no proxy.
+
+### 3.6 Other DEMs (for completeness)
+
+- **Mapbox Terrain-DEM v1.** `https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/{z}/{x}/{y}.pngraw?access_token=…`, with `h = −10000 + 0.1·(R·65536 + G·256 + B)` m [3P]. It needs a token, and Mapbox terms restrict caching outside their SDKs [K]. **Not recommended.**
+- **Copernicus GLO‑30 DSM.** `https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_S34_00_E150_00_DEM/Copernicus_DSM_COG_10_S34_00_E150_00_DEM.tif` responds 206 to range requests but has **no CORS header** [V]. It is a surface model (canopy included) [K].
+- **Open-Meteo Elevation API.** `https://api.open-meteo.com/v1/elevation?latitude=…&longitude=…` returns Copernicus GLO‑90 point values [S]. Use it only to learn which elevation Open-Meteo used.
+
+### 3.7 Imagery
+
+- **NSW SIX Maps imagery [3P].**
+  - XYZ tiles: `https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{y}/{x}`. **Note the y/x order.** Max zoom is 21. For Katoomba at z16 the tile range is x 60121–60140 and y 39283–39302 (400 tiles, 1.99 m/px) [V‑computed].
+  - WMS: `http://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WmsServer`.
+  - Export: `…/NSW_Imagery/MapServer/export?bbox=150.256,-33.7549,150.364,-33.6651&bboxSR=4326&imageSR=4326&size=1024,1024&format=jpg&f=image`. Exports **above 1024 px return HTTP 500** [3P].
+  - Licence: attribution is required: *"© State of New South Wales (Spatial Services, a business unit of the Department of Customer Service NSW)"* [3P]. The data is described as CC BY 4.0 [3P].
+  - CORS: likely enabled (it is used directly as a MapLibre raster source) [3P]. Not verified.
+- **Esri World Imagery.** `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}` [K]. It is proprietary. Esri's terms require an ArcGIS account or key and restrict offline use to Esri's export-tile workflows [K]. **Online-only fallback outside NSW coverage gaps, never cached in packs** [H].
+
+### 3.8 Canopy height
+
+- **Meta/WRI 1 m CHM (Tolan et al. 2024) [V].**
+  - Bucket prefix: `s3://dataforgood-fb-data/forests/v1/alsgedi_global_v6_float/`, containing `chm/{quadkey}.tif`, `msk/`, `metadata/{quadkey}.geojson` (observation dates), `tiles.geojson` (15 MB index) and `CHM_acquisition_date.tif`.
+  - The tile name is the **zoom-9 Bing quadkey**. Katoomba (−33.71, 150.31) → `311230121` (824 MB), which covers lat −33.724…−33.138 and lon 149.766…150.469. The valley just south (−33.735) is `311230123`, so **a 10 km Katoomba box spans two tiles** [V].
+  - Format: 65 536 × 65 536 px, EPSG:3857, 1.194 m pixels (about 0.99 m on the ground at 33.7°S), uint8 metres, Deflate with predictor 2, **1-row strips (RowsPerStrip = 1), no overviews** [V].
+  - Reading 100 rows took 1.9 s. A 5 km window needs about 5 000 rows ≈ **60 MB** transfer (824 MB/65 536 rows ≈ 12.6 KB/row) [V‑derived].
+  - **No CORS**: GET has no ACAO and the pre-flight returns 403 [V].
+  - Sample: a forested 100 × 100 m block near Leura (−33.700, 150.345) read mean 7.5 m, max 16 m [V]. Treat the absolute heights of tall eucalypt forest with caution. This is a model trained on GEDI and airborne LiDAR data [K].
+  - Licence: CC BY 4.0. Citation: *"Meta and World Resources Institute (WRI) – 2024. High Resolution Canopy Height Maps (CHM). Source imagery for CHM © 2016 Maxar"* [S].
+- **ETH Global Canopy Height 10 m 2020** (Lang et al. 2023, *Nature Ecology & Evolution*). Data is in the ETH Research Collection (doi:10.3929/ethz-b-000609802) and on the GEE app; CC BY 4.0 [S, README]. The 3° tiles are named like WorldCover (`…_S36E150_Map.tif`) [K]. The host could not be reached. Its per-pixel standard-deviation layer is useful for flagging uncertainty.
+- **TERN** (`data.tern.org.au`) hosts Australian vegetation-structure and height products [K]. Not reachable; not evaluated.
+
+### 3.9 ESA WorldCover 10 m [V]
+
+- URL: `https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_S36E150_Map.tif`. The tile name is its **SW corner**; the tile covers lon 150…153 and lat −36…−33, and contains Katoomba.
+- Format: 36 000², uint8, 1024² tiles, 6 overviews, EPSG:4326, 8.33e‑5° pixels, nodata 0, no CORS [V].
+- Classes: 10 tree cover, 20 shrubland, 30 grassland, 40 cropland, 50 built-up, 60 bare/sparse, 70 snow and ice, 80 water, 90 herbaceous wetland, 95 mangroves, 100 moss and lichen [K]. A 1 km box at Katoomba read 97 % class 10, plus 30, 50 and 60 [V].
+- Licence: CC BY 4.0, *"© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium"* [S; 2020 wording in the readme].
+
+### 3.10 NSW State Vegetation Type Map (SVTM) [3P]
+
+- Service: `https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/VIS/SVTM_NSW_Extant_PCT/MapServer`. Layers 0–3 are zoom-banded: 0 = PCT labels, 1 = PCT (5 m), 2 = vegetation class, 3 = vegetation formation. Layer 3 is used as a vector clip source [3P]. A WMS is at `/arcgis/services/…/WMSServer` [3P].
+- Query (vector):
+  ```
+  …/MapServer/3/query?geometry=150.256,-33.7549,150.364,-33.6651&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=true&outSR=4326&f=geojson&resultOffset=0&resultRecordCount=1000
+  ```
+  Page with `resultOffset` until `exceededTransferLimit` is false [K].
+- **Field names were not verified.** Read `…/MapServer/1?f=json` once and map the PCT id field to the AFDRS fuel type through the NSW fuel lookup table (document on fuels).
+- **No CORS** is assumed; the project's `http.ts` routes `nswenv` through native HTTP or a proxy.
+- Licence: CC BY 4.0 on SEED [K].
+
+### 3.11 NPWS Fire History (wildfires and prescribed burns) [3P]
+
+- Service: `https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0`.
+- Fields: `FireName`, `FireNo`, `FireType` (1 wildfire, 2 prescribed burn), `FireYear` (season, e.g. `201920` → 2019‑20), `Label`, `StartDate`, `EndDate`, `AreaHa`, `PerimeterM`, `NPWSBranch` and `NPWSArea`.
+- Katoomba query (polygons, all types):
+  ```
+  https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0/query?geometry=150.256,-33.7549,150.364,-33.6651&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&spatialRel=esriSpatialRelIntersects&where=1%3D1&outFields=FireName,FireNo,FireType,FireYear,StartDate,EndDate,AreaHa&returnGeometry=true&f=geojson
+  ```
+  A canary query used by `property-scores` asserts that `max(FireYear) ≥ 201920` at Bilpin (150.532, −33.499), so the 2019‑20 fires are present [3P].
+- Dates are ArcGIS epoch milliseconds when requested as JSON [K]. Use `geometryPrecision=5` and `maxAllowableOffset` (in degrees) to thin polygons.
+- The **old Crown Lands fire layer froze at 2017**. Do not use it [3P].
+- Coverage: NPWS estate plus the fires NPWS mapped [K]. Hazard reductions on RFS and private land may be missing. The RFS hazard-reduction feed `https://www.rfs.nsw.gov.au/funnelback/hr-map-data?collection=nsw-rfs-hazard-xml-new` lists planned and current burns [3P]. The user must be able to add "burnt in year X" manually [H].
+
+### 3.12 DEA Sentinel-2 live fuel moisture and burnt area (bonus) [V]
+
+- **LFMC.** Path pattern: `https://dea-public-data.s3.ap-southeast-2.amazonaws.com/derivative/ga_s2_fmc_3_v1/{UTMzone}/{band+square}/{YYYY}/{MM}/{DD}/{datatakeUTC}/ga_s2_fmc_3_v1-0-0_{tile}_{YYYY-MM-DD}_final_fmc.tif`. A STAC item sits alongside as `.stac-item.json`.
+  - Katoomba is MGRS tile **56HKH**, at MGA56 E 250 708, N 6 266 749 [V‑computed].
+  - Latest scenes: 2026‑09‑10 (two datatakes) [V].
+  - Format: COG, 5490² (partial swaths are smaller), 20 m, EPSG:32756, int16 LFMC in %, nodata −999, 512² tiles, 6 overviews. **CORS \*** on objects **and on the bucket listing** (ListObjectsV2) [V].
+  - STAC properties include `eo:cloud_cover` and `fmask:clear`, so you can pick the clearest recent scene [V].
+- **Burnt area (provisional).** `derivative/ga_s2_ba_provisional_3/1-6-0/56/HKH/…` holds delta-NBR/NDVI/BSI files; the latest listed folder for 56HKH is 2023 [V]. The product looks discontinued for this tile. It is not recommended.
+
+### 3.13 Current incidents and hotspots
+
+- **NSW RFS Major Incidents [3P].**
+  - Feed: `https://www.rfs.nsw.gov.au/feeds/majorIncidents.json`, a GeoJSON FeatureCollection that was *"confirmed live 2026‑08‑26"*. Related feeds are `majorIncidentsCAP.xml`, `IncidentAlerts.xml` and `fdrToban.xml` (fire danger ratings and total fire bans).
+  - Properties: `title`, `link`, `category`, `guid`, `pubDate` (e.g. `15/09/2018 9:31:00 AM`, local time) and `description`. The description is *"ALERT LEVEL: … <br />LOCATION: … <br />COUNCIL AREA: … <br />STATUS: … <br />TYPE: … <br />FIRE: … <br />SIZE: 10 ha <br />RESPONSIBLE AGENCY: … <br />UPDATED: …"*.
+  - `category` values: Emergency Warning, Watch and Act, Advice, Not Applicable, Planned Burn.
+  - TYPE includes "Bush Fire" and "Hazard Reduction".
+  - Geometry is a **GeometryCollection**, sometimes nested, holding a Point and one or more Polygons for the fire extent. Coordinates have 14 decimals, and some extents are split into several polygons with shared borders.
+  - **No `Access-Control-Allow-Origin`** (reported to RFS in 2015, still absent in 2019).
+  - Licence: *"© State of New South Wales (NSW Rural Fire Service) … CC BY 4.0"*.
+  - Use the extent polygons to pre-populate the "fire is here" marking, and let the user confirm it [H].
+- **DEA Hotspots [S, 3P].**
+  - WFS: `https://hotspots.dea.ga.gov.au/geoserver/public/wfs` (WFS 1.1.0; outputs GeoJSON, CSV, KML and SHAPE‑ZIP), no auth, CC BY 4.0. Data runs from 27 Aug 2002, updated every 10 minutes. The KML covers the last 3 days, and there is a `…/data/recent-hotspots.json` GeoJSON (3 days).
+  - Layers: `public:hotspots`, `public:hotspots_three_days`, `public:satellite_pass_last_hotspot` and `public:satellite_pass_next_hotspot`.
+  - Katoomba query, 24 h. CQL POLYGON coordinates are in **lat lon** order, as in working code:
+    ```
+    https://hotspots.dea.ga.gov.au/geoserver/public/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=public:hotspots_three_days&outputFormat=application/json&CQL_FILTER=INTERSECTS(location,%20POLYGON((-33.6651%20150.256,%20-33.6651%20150.364,%20-33.7549%20150.364,%20-33.7549%20150.256,%20-33.6651%20150.256)))&maxFeatures=500
+    ```
+  - Properties seen in client code: `datetime`, `start_dt`, `satellite`, `sensor`, `product`, `confidence` and FRP (`power`) [3P]. Verify them with `DescribeFeatureType`. The service can be slow [3P]. CORS is unknown, so use native HTTP.
+- **NASA FIRMS [3P].**
+  - Endpoint: `https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/{SOURCE}/{west,south,east,north}/{DAY_RANGE}[/{YYYY-MM-DD}]`, for example:
+    ```
+    https://firms.modaps.eosdis.nasa.gov/api/area/csv/<KEY>/VIIRS_NOAA20_NRT/150.2,-33.8,150.4,-33.6/1
+    ```
+  - Sources: `VIIRS_SNPP_NRT`, `VIIRS_NOAA20_NRT`, `VIIRS_NOAA21_NRT` and `MODIS_NRT`.
+  - `DAY_RANGE` must be 1–5. Anything else returns *"Invalid day range. Expects [1..5]."* **with HTTP 200**. `DAY_RANGE=1` means the current UTC day, which is nearly empty just after 00Z; use 2 and filter.
+  - Limit: 5 000 transactions per 10 minutes per MAP_KEY. The key is free (`/api/map_key/`).
+  - Licence: NASA open data with attribution [K]. Do not ship a shared key in the app; either ask the user for a key or use DEA Hotspots, which needs none [H].
+
+---
+
+## 4. Equations, formulas and constants (with units and sources)
+
+| # | Quantity | Formula | Units / valid range | Source |
+|---|---|---|---|---|
+| E1 | Terrarium decode | `h = R·256 + G + B/256 − 32768` | m; 1/256 m precision; −11 000…8 900 m spans rgb(85,8,0)…rgb(162,198,0) | Tilezen Joerd `docs/formats.md` [S]; checked 1021–1022 m at Katoomba [V] |
+| E2 | Terrarium encode | `v' = v + 32768; R = ⌊v'/256⌋; G = ⌊v' mod 256⌋; B = ⌊(v' − ⌊v'⌋)·256⌋` | — | same [S] |
+| E3 | Mapbox Terrain-DEM decode | `h = −10000 + 0.1·(R·65536 + G·256 + B)` | m; 0.1 m steps | third-party implementations (2025–26) [3P] |
+| E4 | Slippy tile index | `x = ⌊(λ+180)/360 · 2^z⌋`, `y = ⌊(1 − asinh(tan φ)/π)/2 · 2^z⌋` | λ, φ in degrees | OSM "Slippy map tilenames" [K]; checked by fetching the correct tiles [V] |
+| E5 | Web-Mercator ground resolution | `res = cos φ · 2π·6378137 / (256·2^z)` | m px⁻¹ | Joerd `data-sources.md` [S] |
+| E6 | Quadkey (Meta CHM tile) | for i = z…1: `digit = bit_i(x) + 2·bit_i(y)` | z = 9 | Bing Maps Tile System [K]; checked that `311230121` exists [V] |
+| E7 | Open-Meteo T downscaling | `T_target = T_model + (z_model − z_target)·0.0065` | K; only `temperature_2m` and `surface_temperature` | `GenericReader.swift`, `KmaVariable.swift` [S] |
+| E8 | Open-Meteo call weight | `w = max(1, max(nV·nM/10, (T/14)·nV·nM/10))·nLoc` | calls; free limits 600/min, 5 000/h, 10 000/day, 300 000/month | pricing page source [S] |
+| E9 | Saturation vapour pressure (Magnus, over water) | `e_s(T) = 6.112·exp(17.62·T/(243.12+T))` | hPa; T in °C; −45…60 °C | WMO CIMO Guide (WMO‑No. 8), Annex 4.B [K] |
+| E10 | RH from T and T_d | `RH = 100·e_s(T_d)/e_s(T)` | % | follows from E9 [K] |
+| E11 | Vapour pressure deficit | `VPD = e_s(T)·(1 − RH/100)` | kPa (divide hPa by 10); matches Open-Meteo `vapour_pressure_deficit` in kPa | [K]; unit [S] |
+| E12 | Wind components | `u = −V·sin θ`, `v = −V·cos θ` (θ = direction the wind blows *from*, clockwise from north) | m s⁻¹ | standard meteorology [K] |
+| E13 | Log wind profile (neutral) | `U(z) = (u*/κ)·ln((z−d)/z₀)`, κ ≈ 0.40 | m s⁻¹; neutral surface layer only | Stull 1988 [K]; used to blend 10/80/100/120/180/200 m winds |
+| E14 | Horn slope | `∂z/∂x = [(c+2f+i) − (a+2d+g)]/(8Δx)`, `∂z/∂y = [(g+2h+i) − (a+2b+c)]/(8Δy)`, `S = atan√(∂z/∂x² + ∂z/∂y²)` | degrees; 3×3 window a…i in row order | Horn 1981 [K]; used for the table in §2.1 [V] |
+| E15 | Olson fuel accumulation | `w(t) = w_ss·(1 − e^{−k t})` | t ha⁻¹; t in years since fire | Olson 1963 [K]; parameters in the fuels document |
+| E16 | McArthur slope factor (context) | `ROS_θ = ROS_0·exp(0.069 θ)` (doubles per 10°) | θ upslope in degrees; commonly applied up to ~20° [K] | Noble et al. 1980 [K]; document 01 |
+| E17 | Pack imagery size | `N_tiles(z) = (x₁−x₀+1)(y₁−y₀+1)`; Katoomba 10 km: z15 121, z16 400, z17 1 600, z18 6 241 | tiles | computed [V] |
+| E18 | MGRS tile | UTM zone `⌊(λ+180)/6⌋+1`; 100 km column/row letters from E and N | — | computed; Katoomba = 56HKH, E 250 708, N 6 266 749 [V] |
+
+---
+
+## 5. Implementation recommendations
+
+### 5.1 Transport and threading (fits the existing `src/data/http.ts`)
+
+- **Main thread fetches, the worker computes.** Capacitor's native bridge exists only in the WebView's main context. Fetch inside a Web Worker is **not** patched, and non-CORS services fail there. `http.ts` already says so [S]. The scenario builder on the main thread fetches everything, decodes it (PNG, GeoTIFF), assembles `ScenarioData` typed arrays and `postMessage`s them to the worker **as transferables**, so there is no copying.
+- **Binary over the bridge.**
+  - `CapacitorHttp` returns binary data as base64. That adds about 33 % size overhead and a decode step [S, from the `@capacitor/core` 8.5 types and our `http.ts` notes].
+  - For **large files** (area packs, CHM chunks) use **`Filesystem.downloadFile({url, path, directory, progress:true})`**, which streams to disk with progress events [S, `@capacitor/filesystem` 8.1.3]. Then read the file in slices.
+- **GeoTIFF range reads on device.** `geotiff.js` `fromCustomClient` with a client that calls `CapacitorHttp` with a `Range` header. This works for the GA DEM, WorldCover and DEA LFMC. For CORS-enabled COGs (GA DEM, DEA LFMC, Terrarium), a PWA or browser build can read directly [V].
+- **WebGL textures.** Fetch imagery bytes, then `createImageBitmap(new Blob([bytes]))`, then `THREE.Texture`. Do not set `img.src` to a remote URL for services whose CORS is unknown [K].
+- **Etiquette.**
+  - Send an honest `User-Agent` such as `FireSim/<ver> (+contact)`. ArcGIS services throttle or deny requests without a UA under load [3P].
+  - Allow at most 4 concurrent requests per host, with exponential back-off on 429/5xx.
+  - Cache every response with its `fetchedAt` time and source.
+
+### 5.2 Layer priority and fallbacks (per scenario build)
+
+| Layer | 1st | 2nd | 3rd | Fallback |
+|---|---|---|---|---|
+| Fire-grid DEM (10–30 m) | NSW 5 m ImageServer, aggregate by block mean | GA DEM 1″ COG (bare earth) | Terrarium z12 (SRTM 1″) | bundled demo terrain or synthetic |
+| Atmosphere DEM (100–200 m) | the fire DEM, low-pass filtered (e.g. Gaussian σ ≈ 1 cell), and slope-limited [H] | — | — | — |
+| Canopy height and cover | pack (pre-processed Meta CHM → 10 m p90 height, mean, cover ≥ 2 m) | ETH 10 m | WorldCover class → default heights | fuel-type defaults |
+| Vegetation type | SVTM PCT → AFDRS fuel type | WorldCover class | terrain-rule inference (`inferFuelTypes`) | user paint |
+| Fire history | NPWS polygons → time since fire, last type, count | RFS HR feed and incident polygons | user "burnt in year X" | "long unburnt" default flagged as an assumption |
+| Live FMC | DEA S2 LFMC, clearest scene within 20 days | seasonal default | — | user slider |
+| Weather | Open-Meteo `ecmwf_ifs` + profile | `ncep_gfs_global` | `best_match` | presets / belt-weather kit entry |
+| Observations | BoM nearest AWS (user tap) | user belt-kit reading | — | — |
+| Incidents | RFS majorIncidents polygons | DEA Hotspots (3 days) | FIRMS (user key) | user marks fire |
+
+### 5.3 Weather ingestion and downscaling to the 3-D grid
+
+1. **Request.** Make one call per model: (A) + (B) for ECMWF 9 km and (C) for GFS, with `elevation=nan`, `past_days` = spin-up length (≥ 3 days for dead FMC, up to 92 for drought) and `forecast_days` = scenario length (≤ 3 days is plenty for a 2–6 h run). Cache the raw JSON.
+2. **Vertical profile at time t.**
+   - Take the pressure levels with `geopotential_height_<L>hPa` (m MSL) and interpolate T, RH (via T_d and E9/E10) and u, v (E12) linearly in `ln p` or in height onto the 20–30 atmosphere levels up to about 3 km.
+   - Near-surface layers (terrain height + 10…200 m) come from the 10/80/100/120/180/200 m winds and 2 m T/RH, blended with E13.
+   - Below the lowest pressure level above ground, as happens in valleys, extrapolate using the model's 2 m values rather than the 0.0065 K/m standard lapse rate [H].
+3. **Terrain-following initial state.**
+   - Initialise each column from the profile at its own height (z = terrain + η).
+   - At night and at dawn, apply a **cold-pool option**: a stable layer of configurable depth and strength over valley floors (document 02). By day, apply a well-mixed boundary layer up to `boundary_layer_height` [H].
+   - The user can override any of these from the belt-weather kit.
+4. **Nudging to observations.** If the user fetches a BoM AWS reading or enters belt-kit readings, shift the surface layer (T, T_d, wind) toward the observation with a Gaussian weight in horizontal distance (radius ~5 km) and height (~200 m) [H]. The weather card shows both "model" and "observed".
+5. **Time interpolation.**
+   - Interpolate hourly values linearly: wind as vectors, RH via T_d.
+   - Radiation is the mean over the preceding hour, so assign it to the middle of that hour.
+   - Gusts are the maximum over the preceding hour, so use them only for the gust factor, not the mean wind.
+6. **Budget.** Parsing 3 models × 7 days × about 60 variables of JSON is about 1–2 MB and takes < 100 ms on a phone [K]. That is negligible against the 1–2 minute simulation budget.
+
+### 5.4 Terrain and fuel preprocessing on device
+
+- **DEM.** For the 5 m ImageServer, request 4 × 4 chunks of 500 × 500 px Float32 (1 MB each). Mosaic them and block-average to the fire cell (10 m = 2 × 2, 30 m = 6 × 6). Also compute the within-cell maximum slope, so a cell can be flagged "contains cliff". The insight cards use this, and the fire model can use it for barrier and spotting logic [H].
+- **Slope/aspect.** Apply Horn (E14) on the fire grid, and again on the smoothed atmosphere DEM. Store both. The insight engine should use fire-grid slope.
+- **Canopy (Meta CHM).** Do this in the pack builder, not live: 5 000 row requests, about 60 MB per 5 km, across two tiles at Katoomba. Output a 10 m raster of p90 height (uint8), mean height (uint8) and cover fraction (uint8 × 255), in the same format as the demo `canopy.png` [S, `src/data/canopy.ts`].
+- **SVTM, NPWS and RFS polygons.** Clip to the bbox. Rasterise to the fire grid with a polygon scan-line fill. Keep the vectors, simplified to 5 m, in the pack for display.
+
+### 5.5 Offline area packs (strategy)
+
+**Why.** Fire grounds in the Blue Mountains, Wollemi, Kanangra‑Boyd and Kosciuszko often lack coverage [K]. Everything the simulation needs must be downloadable in advance over Wi-Fi.
+
+**Pack contents, 10 km × 10 km (sizes estimated from verified formats [V‑derived]):**
+
+| Item | Resolution / format | Size (approx.) |
+|---|---|---|
+| DEM (NSW 5 m → 10 m Float32, or int16 decimetres + deflate) | 1000 × 1000 | 1.5–4 MB |
+| SRTM fallback (Terrarium z12 tiles) | 4 tiles | 0.2 MB |
+| Imagery NSW z16 JPEG (+ z13–15 overview pyramid) | 400 + ~130 tiles | 10–15 MB (z17 adds ~40 MB, optional) |
+| Canopy p90/mean/cover | 10 m, PNG | 1–2 MB |
+| WorldCover | 10 m uint8 | < 0.5 MB |
+| SVTM PCT raster + simplified vectors | 10 m uint16 + GeoJSON | 1–5 MB |
+| NPWS fire history polygons + time-since-fire raster | GeoJSON + 10 m | < 1 MB |
+| DEA LFMC latest clear scene (clipped) | 20 m int16 | < 0.5 MB |
+| Weather: `past_days=92` daily + 7 days hourly + 16 days forecast, 3 models | JSON | 0.3–1 MB |
+| Manifest: bbox, created, per-layer source, licence, attribution text, expiry | JSON | < 10 KB |
+| **Total** | | **≈ 15–40 MB** |
+
+**Rules:**
+
+- **Two ways to build a pack [H].**
+  - **On device:** DEM, WorldCover, LFMC, fire history, incidents and weather are all feasible live.
+  - **Pack builder (script or CI):** pre-builds packs for the listed NSW mountain regions, including the CHM and SVTM rasterisation, and publishes them as static files. A static-file CDN is enough for area packs. The licences allow this because every layer is CC BY 4.0 or public domain; exclude BoM, Esri and Mapbox. The manifest carries all required attribution strings.
+- **Freshness.**
+  - Terrain, canopy, vegetation and land cover: no expiry. Show the capture date: Meta CHM uses its `metadata` geojson, WorldCover is 2021.
+  - Fire history: refresh each season. Show "history current to <date>".
+  - Weather: stale after 6 h (forecast) or 24 h (past). When stale, show "Using forecast issued <time>, <n> h old" and invite belt-kit entry.
+  - Incidents and hotspots: **never offline-authoritative**. Display the fetch time in large type.
+- **Storage.**
+  - Put large rasters in the Capacitor `Filesystem` `Directory.Data` directory, so they are not evicted like `Cache` [K]. Put the index and small JSON in IndexedDB (existing `cache.ts`).
+  - Show the per-pack size and a delete button. Warn above 500 MB total [H].
+- **Pre-download UI.** "Download area for offline" draws a 10 km square (5, 10 or 20 km options) around the current location or a map pick. Estimate the size first using E17 and the table above.
+
+### 5.6 What the user should be able to edit (data layer)
+
+- **Location and extent:** centre, domain size 3–10 km, fire cell 10/20/30 m.
+- **Weather:**
+  - model choice, and "use observed" (BoM or belt kit);
+  - surface T, RH or T_d, wind speed and direction at 10 m;
+  - the time-offset to a forecast hour;
+  - inversion or cold-pool depth and strength;
+  - mixing height.
+- **Fuel:** fuel type paint; time since fire, where "last burnt: year / wildfire or HR" overrides NPWS; surface, near-surface and elevated hazard and bark sliders; live FMC.
+- **Fire:** mark the ignition or fire line (pre-filled from RFS polygons or hotspots); mark "fire jumped here" spot fires.
+- **Data provenance panel:** each layer's source, date and licence, and whether it came from a pack or live.
+
+---
+
+## 6. Explaining it to a beginner firefighter (insight cards tied to data)
+
+These cards explain **what the data can and cannot tell you**. All thresholds are **[H] FireSim design values** unless a source is given, and they are tunable in config.
+
+| Card | Detection criterion | Text |
+|---|---|---|
+| **"The forecast sees a smoother mountain"** | the site elevation differs from `elevation` in the Open-Meteo response, or from the model grid cell, by more than 150 m; or the local DEM relief in 5 km is more than 300 m [H] | "The weather forecast is for a 9 km square. It can't see this valley. Up on the ridge it may be windier and drier. Down in the gully it may be calmer and cooler at night. Check with your belt-weather kit." |
+| **"Why your valley may be colder tonight"** | local time 18:00–09:00, 10 m wind < 3 m s⁻¹, cloud_cover < 30 %, and the site is in the lowest third of domain elevations [H] | "On clear, calm nights cold air drains downhill and pools in valleys. The forecast's standard temperature correction assumes it always gets cooler as you go up. Tonight the valley floor may be colder and damper than the ridge." (document 02) |
+| **"Dry air waiting upstairs"** | `relative_humidity_700hPa` or `_850hPa` < 25 %, `boundary_layer_height` rising above the ridge by 12:00–15:00, and surface RH > 35 % [H] | "Very dry air sits above us. When the sun heats the ground, the air mixes deeper and can bring that dry air down onto the ridge. Humidity can fall fast in the early afternoon." |
+| **"Observed vs forecast"** | a BoM AWS or belt-kit reading differs from the model by more than 5 °C in T, more than 15 percentage points in RH, or more than 30° and more than 3 m s⁻¹ in wind [H] | "The nearest weather station disagrees with the forecast (station 14 % RH vs forecast 25 %). FireSim is now using the station's value near the ground." |
+| **"Steep ground the map can blur"** | the within-cell max slope from the 5 m DEM exceeds the fire-cell slope by more than 15°, or cliff cells are present (max slope > 45°) [H] | "There's a cliff or very steep bank here. Fire runs much faster uphill, roughly doubling for each 10° of slope (McArthur). Cliffs can also throw embers well out ahead." |
+| **"Coarse terrain in use"** | the DEM source is SRTM or GA 1″ because the 5 m source is not available [H] | "We're using 30 m satellite terrain. Small gullies and cliffs are smoothed out, so the real slopes are steeper than shown." |
+| **"Old fuel here"** | NPWS time since fire > 15 years, or no record [H]; fuel-accumulation rationale from Olson (E15) | "No fire recorded here for 15+ years. Leaf litter and bark have had time to build up, so expect a hotter fire and more embers." |
+| **"Recent burn, but not fireproof"** | FireType = 2 (prescribed burn) within 0–3 years [H] | "This area was hazard-reduced in 2024. That reduces the ground fuel, but shrubs and stringy bark can still carry fire and embers on a bad day." |
+| **"Plants are thirsty"** | DEA LFMC median in the domain < 80 % from a scene less than 20 days old [H] | "Satellite data shows the living plants are dry (about 70 % moisture). Dry shrubs catch and carry fire more easily." |
+| **"Hotspot is approximate"** | a hotspot is shown | "A satellite saw heat somewhere in this box (about 400 m to 1 km across), at <time>. It is not the exact fire edge, and the fire has probably moved since." |
+| **"Data is old"** | forecast more than 6 h old, or incidents more than 30 min old, when offline | "You're offline. This weather is from <time>, <n> hours ago. Enter your own belt-weather readings to update the simulation." |
+
+Every card has a **"Where does this come from?"** link to the provenance panel (§5.6) and cites the source layer.
+
+---
+
+## 7. Open questions and uncertainties
+
+1. **CORS for NSW services.** `maps.six.nsw.gov.au` (5 m DEM, imagery) and `mapprod3.environment.nsw.gov.au` (SVTM, NPWS) could not be tested. We route both through native HTTP. Test them on device and in the PWA.
+2. **NSW 5 m DEM limits.** `maxImageWidth/Height`, the cold latency (~28 s reported) and any throttling for pack-building bursts are unknown. Read `…/ImageServer?f=json`. If bulk extraction is heavy, ask NSW Spatial Services about the preferred bulk route (ELVIS downloads).
+3. **GA 5 m LiDAR mosaic coverage** (zone 56 zip is 10.6 GB) over the Blue Mountains, Barrington and Kosciuszko is not verified.
+4. **SVTM field names and layer numbering** at the current service version need a `?f=json` read.
+5. **Open-Meteo multi-model key suffixes, null-array behaviour and IFS pressure levels before 2021** in the Historical Forecast API need checking with one call each.
+6. **BoM copyright default terms** are unread. The status of the `fwo` JSON after BoM's platform upgrade is reported live in Aug 2026 [3P] but should be re-checked. BoM open data to Open-Meteo is "temporarily suspended" [S].
+7. **DEA Hotspots** property names and CORS need a `DescribeFeatureType` read and a test.
+8. **Meta CHM accuracy in tall NSW eucalypt forest.** Sample values (mean 7.5 m, max 16 m near Leura) look low for the upper Blue Mountains' tall open forest [K]. Validate against NSW LiDAR-derived canopy heights before relying on absolute heights.
+9. **Esri and Mapbox terms** were not re-read this session. Both are excluded from packs as a precaution.
+
+---
+
+## 8. References
+
+**Weather**
+- Open-Meteo. *Weather Forecast API docs* (source of https://open-meteo.com/en/docs), including per-model pages `ecmwf-api`, `gfs-api`, `dwd-api` and `bom-api`. https://github.com/open-meteo/open-meteo-website/tree/main/src/routes/en/docs (read 2026‑09‑27).
+- Open-Meteo. *Historical Forecast API*, *Single Runs API*, *Historical Weather API*: https://open-meteo.com/en/docs/historical-forecast-api ; https://open-meteo.com/en/docs/single-runs-api ; https://open-meteo.com/en/docs/historical-weather-api .
+- Open-Meteo. *Terms*, *Licence* and *Pricing* (call-weight formula): https://open-meteo.com/en/terms ; https://open-meteo.com/en/licence ; https://open-meteo.com/en/pricing .
+- Open-Meteo server source: `Sources/App/configure.swift` (CORS), `Sources/App/Helper/Reader/GenericReader.swift` (0.0065 K/m correction). https://github.com/open-meteo/open-meteo .
+- ECMWF open data (IFS 9 km open since 1 Oct 2025, as stated on Open-Meteo's ECMWF page). https://www.ecmwf.int/en/forecasts/datasets/open-data [K].
+- Bureau of Meteorology. Observation JSON feeds `https://www.bom.gov.au/fwo/IDN60801/IDN60801.<WMO>.json`; data feeds catalogue http://www.bom.gov.au/catalogue/data-feeds.shtml ; anonymous FTP http://www.bom.gov.au/catalogue/anon-ftp.shtml ; copyright http://www.bom.gov.au/other/copyright.shtml ; Registered User charges http://reg.bom.gov.au/other/charges.shtml . Station list from OpenNEM `opennem/data/bom_stations.json` https://github.com/opennem/opennem ; block-page text from https://github.com/eyeballcode/snow-watcher (test/mock/blocked.html) and https://github.com/raei-2748/AUSSEF ; UA requirement from https://github.com/timjardenross/TJRHQ (bom_warnings.py, Aug 2026); field list from https://github.com/claws/txBOM .
+- Unofficial BoM API: https://github.com/tonyallan/weather-au ; https://github.com/bremor/bureau_of_meteorology .
+- WMO (2008, updated). *Guide to Meteorological Instruments and Methods of Observation* (WMO‑No. 8), Annex 4.B (Magnus formula). https://library.wmo.int/ [K].
+- Stull, R.B. (1988). *An Introduction to Boundary Layer Meteorology*. Kluwer. doi:10.1007/978-94-009-3027-8 [K].
+
+**Terrain**
+- Tilezen/Mapzen Joerd docs: `formats.md`, `data-sources.md`, `attribution.md`. https://github.com/tilezen/joerd/tree/master/docs ; AWS Registry entry https://registry.opendata.aws/terrain-tiles/ ; bucket `s3://elevation-tiles-prod`.
+- Gallant, J., Wilson, N., Dowling, T., Read, A., Inskeep, C. (2011). *SRTM-derived 1 Second Digital Elevation Models Version 1.0*. Geoscience Australia. http://pid.geoscience.gov.au/dataset/ga/72759 ; COGs at `s3://dea-public-data/projects/elevation/ga_srtm_dem1sv1_0/`.
+- NSW Spatial Services, NSW 5 m Elevation ImageServer: https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_5M_Elevation/ImageServer ; dataset page https://www.data.nsw.gov.au/data/dataset/1-437c0697e6524d8ebf10ad0d915bc219 . Third-party verification: https://github.com/jo-chemla/terrain-viewer (`lib/custom-sources.json`, Sept 2026); https://github.com/resuly/property-scores (`property_scores/flood/lidar.py`).
+- Geoscience Australia ELVIS: https://elevation.fsdf.org.au/ ; GA 5 m LiDAR DEM https://pid.geoscience.gov.au/dataset/ga/89644 ; Mapterhorn https://github.com/mapterhorn/mapterhorn (source-catalog `au5*`).
+- Horn, B.K.P. (1981). Hill shading and the reflectance map. *Proceedings of the IEEE* 69(1): 14–47. doi:10.1109/PROC.1981.11918 [K].
+- Mapbox Terrain-DEM v1: https://docs.mapbox.com/data/tilesets/reference/mapbox-terrain-dem-v1/ [K].
+
+**Imagery, canopy, land cover, vegetation**
+- NSW SIX Maps imagery: https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer ; attribution per the OSM editor-layer-index `NSW-WebServices-Imagery.geojson` https://github.com/osmlab/editor-layer-index ; export limit per https://github.com/aussiewaska-coder/OpenStrike (`scripts/terrain/tile_client.gd`).
+- Tolan, J. et al. (2024). Very high resolution canopy height maps from RGB imagery using self-supervised vision transformer and convolutional decoder trained on aerial lidar. *Remote Sensing of Environment* 300: 113888. doi:10.1016/j.rse.2023.113888 ; data https://registry.opendata.aws/dataforgood-fb-forests/ (bucket `dataforgood-fb-data/forests/v1/alsgedi_global_v6_float/`).
+- Lang, N., Jetz, W., Schindler, K., Wegner, J.D. (2023). A high-resolution canopy height model of the Earth. *Nature Ecology & Evolution* 7: 1778–1789. doi:10.1038/s41559-023-02206-6 ; data doi:10.3929/ethz-b-000609802 ; https://github.com/langnico/global-canopy-height-model .
+- Zanaga, D. et al. (2022). *ESA WorldCover 10 m 2021 v200*. doi:10.5281/zenodo.7254221 [K]; bucket readme https://esa-worldcover.s3.eu-central-1.amazonaws.com/readme.html .
+- NSW DCCEEW, State Vegetation Type Map: https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/VIS/SVTM_NSW_Extant_PCT/MapServer ; SEED portal https://datasets.seed.nsw.gov.au/ [K].
+- Olson, J.S. (1963). Energy storage and the balance of producers and decomposers in ecological systems. *Ecology* 44(2): 322–331. doi:10.2307/1932179 [K].
+- Geoscience Australia / DEA, Sentinel-2 Fuel Moisture Content `ga_s2_fmc_3_v1`: https://explorer.dea.ga.gov.au/product/product/ga_s2_fmc_3_v1 ; bucket `s3://dea-public-data/derivative/ga_s2_fmc_3_v1/`. Method: Yebra, M. et al. (2018). A fuel moisture content and flammability monitoring methodology for continental Australia based on optical remote sensing. *Remote Sensing of Environment* 212: 260–272. doi:10.1016/j.rse.2018.04.053 [K].
+
+**Fire history, incidents, hotspots**
+- NPWS Fire History: https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0 ; field usage from https://github.com/resuly/property-scores (`bushfire/score.py`, `data/truth_anchors/canaries.json`) and https://github.com/chulund/redbackfire-static (`MapView.jsx`).
+- NSW RFS feeds: https://www.rfs.nsw.gov.au/feeds/majorIncidents.json ; feed info https://www.rfs.nsw.gov.au/news-and-media/stay-up-to-date/feeds ; format notes https://github.com/beyondtracks/nsw-rfs-geojson-feeds ; https://github.com/exxamalte/python-aio-geojson-nsw-rfs-incidents ; live confirmation Aug 2026 https://github.com/timjardenross/TJRHQ .
+- Geoscience Australia (2020). *Digital Earth Australia Hotspots*. https://pid.geoscience.gov.au/dataset/ga/111881 ; product metadata https://github.com/GeoscienceAustralia/dea-knowledge-hub (`docs/data/product/dea-hotspots/_data.yaml`); WFS notes https://github.com/clemensv/real-time-sources (`tools/candidates/wildfire/dea-hotspots-australia.md`).
+- NASA FIRMS Area API: https://firms.modaps.eosdis.nasa.gov/api/area/ ; MAP_KEY https://firms.modaps.eosdis.nasa.gov/api/map_key/ ; limits and day range from https://github.com/api-evangelist/nasa-firms (OpenAPI) and https://github.com/noelthomas-dev/TERSAGE .
+- Noble, I.R., Bary, G.A.V., Gill, A.M. (1980). McArthur's fire-danger meters expressed as equations. *Australian Journal of Ecology* 5: 201–203. doi:10.1111/j.1442-9993.1980.tb01243.x [K].
+
+**Platform**
+- Capacitor 8 `CapacitorHttp` (`@capacitor/core` 8.5.2 types) and `@capacitor/filesystem` 8.1.3 `downloadFile` (installed in this repo); FireSim `src/data/http.ts`, `src/data/canopy.ts`, `capacitor.config.ts`.

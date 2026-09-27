@@ -18,6 +18,18 @@ Each quantitative item carries a tag:
 - **[D]**: derived here from first principles (the working is shown).
 - **[H]**: heuristic or engineering choice made for FireSim. It is not a published threshold, so make it user-tunable.
 
+**Adversarial fact-check pass (2026-09-27).** A second reviewer re-checked every equation, coefficient, threshold and case-study number against primary-source abstracts, publisher pages and search-engine extracts of the original papers. Direct PDF fetching was again blocked by the sandbox egress proxy, so "verified" below means the number was seen in an abstract or extract of the cited source, or re-derived. Tags added in this pass:
+
+- **(verified: source)**: number or equation confirmed against the named source.
+- **(UNVERIFIED: reason)**: could not be confirmed; treat as a placeholder.
+- **(CORRECTED: …)**: the earlier text was wrong and has been fixed here.
+
+Main corrections in this pass:
+1. The overnight mountain-wave quotes had been attributed to the State Mine fire. They belong to the **Aberfeldy fire (Victoria, January 2013)**.
+2. Stull's width-based Froude number had been conflated with the height-based Fr = U/(N·h).
+3. The 0.4–5 km/h oscillating VLS rates, and the "no VLS at 2.5 m/s" result, come from Sharples, Simpson & Evans (2013, MODSIM), not Simpson et al. (2016).
+4. Several findings were added: the coupled-model VLS wind threshold of about 5 m/s (Sharples et al. 2015 BNHCRC report); the WRF-Fire resolution result that VLS is not resolved at 90 m and needs ≤ 30 m (Simpson et al. 2014); the first landscape-scale VLS observations (Airport Fire, California, 2024; *Fire* 2026); Di Virgilio et al. (2019) C-Haines/FFDI pyroCb thresholds; the AS/NZS 1170.2 separation provision; canopy-enhanced separation (Ross & Vosper 2005); Australian high-country drying events (Sharples, Mills & McRae 2012); and NSW Hunter Valley channelling (Webb & Park 2023).
+
 ---
 
 ## 1. Executive summary: what matters most for FireSim
@@ -26,25 +38,32 @@ Each quantitative item carries a tag:
    - FireSim must never just interpolate one station's weather across ridges.
    - FireSim needs separate terrain-aware sub-models for wind, temperature and humidity.
 2. **Vorticity-driven lateral spread (VLS, "fire channelling") is the single most important mountain-specific dynamic behaviour for NSW crews.**
-   - *Conditions*: a lee slope steeper than about 20–25°, with its aspect within about 30–40° of the direction the wind is blowing towards, and ridge-level winds above about 20 km/h [V] (Sharples & Hilton 2020, summarising Sharples et al. 2012 and Simpson et al. 2013, 2016).
-   - *What happens*: the fire runs sideways along the lee slope just below the ridge, at modelled rates of up to about 3.6–5 km/h [V]. It casts embers downwind, which produces "deep flaming" [V]. It has been linked to pyroCb development, for example in the Grose Valley in November 2006 [V].
-   - *Consequence*: it cannot be resolved on a 100–200 m atmosphere grid, so it must be parameterised.
+   - *Conditions*: a lee slope steeper than about 20–25°, with its aspect within about 30–40° of the direction the wind is blowing towards, and ridge-level winds above about 20 km/h [V] (Sharples & Hilton 2020, summarising Sharples et al. 2012 and Simpson et al. 2013, 2016) (verified: Sharples & Hilton 2020 text; Sharples Ginninderry report).
+     - Coupled fire–atmosphere simulations put the wind threshold at about **5 m/s (18 km/h)**. Below that the flow "does not possess enough momentum to separate from the surface in the lee of the ridge line" (verified: Sharples et al. 2015, BNHCRC Report 2015.018).
+     - The terrain-filter fit to the Canberra 2003 events gave a slope threshold σ ≈ 25° and an aspect-discrepancy threshold δ ≈ 40° (verified: same report). The slope threshold depends on DEM resolution: another application of the same filter used σ = 10.5° (verified: Sharples & Hilton 2020).
+   - *What happens*: the fire runs sideways along the lee slope just below the ridge.
+     - Modelled rates: up to 3.6 km/h in LES, pulsing between 0.4 and 5 km/h in WRF-SFire (verified: Simpson et al. 2013; Sharples, Simpson & Evans 2013).
+     - Observed rates: the first landscape-scale time series (Airport Fire, California, 2024) gave a mean lateral spread of 1.9 km/h, about 4 km/h around plume touch-down and brief peaks of 20 km/h (verified: *Fire* 9(2):79, 2026).
+     - It casts embers downwind, which produces "deep flaming" [V]. It has been linked to pyroCb development, for example in the Grose Valley in November 2006 (verified: McRae, Sharples & Fromm 2015).
+   - *Consequence*: WRF-Fire does not reproduce VLS at 90 m grid spacing and needs about 30 m or finer (verified: Simpson et al. 2014). It therefore cannot be resolved on our 100–200 m atmosphere grid and must be parameterised.
 3. **Diurnal wind reversals** (upslope/up-valley by day, downslope/down-valley by night) change the fire's direction without any synoptic change.
-   - *Typical speeds*: upslope 3–8 mph (1.3–3.6 m/s), downslope 2–5 mph (0.9–2.2 m/s), valley winds peaking at 10–15 mph (4.5–6.7 m/s).
-   - *Timing*: valley winds lag slope winds by 1–3 h [V] (NWCG PMS 437).
+   - *Typical speeds*: upslope 3–8 mph (1.3–3.6 m/s), downslope 2–5 mph (0.9–2.2 m/s), valley winds peaking at 10–15 mph (4.5–6.7 m/s) in larger valleys.
+   - *Timing*: valley winds lag slope winds by 1–3 h [V] (NWCG PMS 437) (verified: NWCG PMS 437 and PMS 425-1 ch. 7). These are US (Rocky Mountain) handbook values. No NSW-specific climatology of slope-wind speeds was found (UNVERIFIED for NSW).
 4. **Nights are not safe everywhere.**
    - The **thermal belt** (roughly the middle third of the slope, where the top of the valley inversion meets the slope) has the highest night temperatures, the lowest RH and the lowest fuel moisture. Fires there can stay active all night [V] (Schroeder & Buck 1970).
-   - Ridges above the inversion can be hit by overnight **mountain-wave downslope winds**. In the Blue Mountains State Mine fire (October 2013) the fire grew from 1,036 ha to 12,436 ha in about 10 h this way [V].
-5. **Morning inversion break-up is when the fire "wakes up".** In deep valleys it usually happens 3.5–5 h after sunrise (Whiteman 1982, Colorado) [V]. At that moment ridge-top winds and dry air mix down to the fire.
+   - Ridges and elevated firegrounds above the inversion can be hit by overnight **mountain-wave downslope winds**. The documented Australian case is the **Aberfeldy fire (Victoria, 17 January 2013)**. Modelling "showed clear evidence that mountain waves and strong downslope winds developed overnight", and the elevated fireground sat in warm, dry air above the nocturnal inversion, which limited fuel-moisture recovery (verified: BNHCRC 2017; Kepert et al. 2016, Hazard Note 24).
+   - In NSW, mountain waves were also identified as a factor in the **State Mine fire (Blue Mountains, 17 October 2013)**. That day the fire grew from 1,036 ha to 12,436 ha in about 10 h, and ACCESS modelling at about 440 m showed "a band of strong winds extended downwards towards the surface" near the fire (verified: BNHCRC 2017; BoM blog).
+   - (CORRECTED: an earlier draft described the State Mine growth as overnight and attributed the Aberfeldy quotes to it.)
+5. **Morning inversion break-up is when the fire "wakes up".** In deep valleys it "begins at sunrise and is generally completed in 3½–5 h, unless the valley is snow covered or the ground is wet" (verified: Whiteman 1982 abstract; Colorado valleys). At that moment ridge-top winds and dry air mix down to the fire.
 6. **Foehn / isentropic drawdown in the lee of the Great Dividing Range (GDR).**
    - *What*: under W–NW flow, air from above ridge-top is drawn down the eastern side, causing abrupt warming and drying [V] (Sharples et al. 2010).
-   - *How common*: foehn-driven fires made up about half of the major events of 2019–20 [V] (McRae, AJEM 2023, as reported by UNSW).
-7. **Wind changes turn flanks into head fires.** On Black Saturday the SW change turned the roughly 55 km long eastern flank of the Kilmore East fire into a head fire [V] (Cruz et al. 2012). In NSW this is the pre-frontal NW followed by a SW/S change or a coastal southerly buster.
+   - *How common*: foehn-driven fires made up about half of the major events of 2019–20 [V] (McRae, AJEM 2023, as reported by UNSW) (verified: AIDR AJEM page and UNSW release). In McRae's trial, early-season misses north of Sydney were "largely due to underestimation of the role of the foehn effect" (verified: AJEM 2023).
+7. **Wind changes turn flanks into head fires.** On Black Saturday the change between 17:30 and 18:30 turned the roughly 55 km long eastern flank of the Kilmore East fire into a head fire. Spot fires landed up to 33 km ahead (verified: Cruz et al. 2012 abstract). In NSW this is the pre-frontal NW followed by a SW/S change or a coastal southerly buster.
 8. **Atmospheric instability.** The Continuous Haines index (C-Haines) and the Pyrocumulonimbus Firepower Threshold (PFT) are cheap indices we can compute from 850/700 hPa data and a sounding. They tell the trainee when the plume may "take over" (pyroCb, erratic winds, long-range spotting).
 9. **Ridges accelerate wind.**
-   - Fractional speed-up ≈ B·H/L, with B ≈ 2 for 2-D ridges [L] (Jackson & Hunt 1975; Taylor & Lee 1984).
-   - Mountaintop winds were often twice those on the surrounding plain at Big Southern Butte [V] (Butler et al. 2015).
-   - Lee slopes steeper than about 20° separate, giving reversed, gusty, direction-variable near-surface flow [V/L] (Wood 1995; Sharples et al. 2012).
+   - Fractional speed-up ≈ B·H/L, with B ≈ 2 for 2-D ridges [L] (Jackson & Hunt 1975; Taylor & Lee 1984) (UNVERIFIED: the B and A coefficients could not be read in the original *Climatol. Bull.* paper; they are consistent with the ASCE 7 K_zt height-decay constants 3 / 2.5 / 4 derived from the same guidelines).
+   - Mountaintop winds were often twice those on the surrounding plain at Big Southern Butte, a cinder cone about 5 km across with 800 m relief (verified: Butler et al. 2015).
+   - Lee slopes steeper than about 20° separate, giving reversed, gusty, direction-variable near-surface flow [V/L] (Wood 1995; Sharples et al. 2012). A forest canopy enhances separation (verified: Ross & Vosper 2005). The Australian wind code switches to a separation-zone multiplier once the upwind average slope H/(2L_u) exceeds 0.45, about 24° (AS/NZS 1170.2; UNVERIFIED against the 2021 edition).
 10. **Recommended architecture.** A cheap layered model, not an LES:
     - a mass-consistent terrain wind;
     - parameterised slope/valley flows driven by computed insolation or cooling;
@@ -61,7 +80,7 @@ Each quantitative item carries a tag:
 
 ### 2.1 Why mountains break flat-land intuition (Sharples 2009)
 
-Sharples (2009, IJWF 18:737–754) reviews these topics [V]:
+Sharples (2009, IJWF 18:737–754, DOI 10.1071/WF08041) (verified: CSIRO Publishing / ConnectSci listing) reviews these topics [V]:
 - temperature and RH changes with elevation and exposure (aspect);
 - diurnal mountain wind systems (along-slope, along-valley, cross-valley, mountain–plain);
 - inversions and thermal belts;
@@ -85,7 +104,15 @@ Flat-land models assume one wind vector modified only by fuel and slope. In NSW 
 - Dew-point lapse ≈ 1.8 K km⁻¹ at constant mixing ratio [L] (standard; e.g. Stull 1988).
 - So the dew-point depression shrinks by about 8 K km⁻¹. **RH rises with height inside the mixed layer**, reaching 100 % at the lifting condensation level. The LCL height is approximately z_LCL ≈ 125 m × (T − T_d) [L] (Espy approximation).
 
+  (verified: standard results; the dry adiabatic lapse follows from g = 9.81 m s⁻² and c_p = 1004 J kg⁻¹ K⁻¹. The dew-point lapse of about 1.7–1.8 K km⁻¹ and the Espy factor of 122–125 m K⁻¹ are textbook values.)
+
   Implication: in the afternoon, valley floors and lower slopes are hotter and drier than ridge tops. But ridge tops are windier (see §2.5).
+
+  *High-country drying events (NSW/ACT/Vic alps).* Sharples, Mills & McRae (2012, AMOJ 62) compared dew-point anomalies between lowland and high-country stations. They documented **extreme drying events in the Australian high country**, where dry air aloft reaches the elevated terrain and humidity there drops far below lowland values (verified: title and approach from abstract; UNVERIFIED: event magnitudes not extracted). Badlan et al. (2012, AMOJ 62:143–156) modelled two Gippsland drying events in the lee of the GDR with 1.5 km WRF (verified: abstract):
+  - 29 December 2001: a transition from blocked to unblocked flow, with cross-mountain flow bringing warmer, drier air;
+  - 29 May 2007: enhanced downslope flow.
+
+  So the "RH rises with height" rule of the mixed layer can be **inverted** on ridges when dry air aloft is tapped.
 
 **Night / stable conditions.** Radiative cooling makes an inversion in which T increases with height while T_d is roughly constant or decreasing, so **RH falls sharply with height**:
 - valley floors approach saturation;
@@ -97,12 +124,16 @@ Saturation vapour pressure (Bolton 1980) [L]:
 e_s(T) = 6.112 · exp(17.67·T / (T + 243.5))      [hPa], T in °C, valid ≈ −30…+35 °C
 RH     = 100 · e_s(T_d) / e_s(T)                  [%]
 ```
+(verified: Bolton 1980 constants 6.112 hPa, 17.67, 243.5 °C. Bolton quotes accuracy of about 0.1 % over −30 to +35 °C.)
 
 **Aspect and insolation.** In the Southern Hemisphere, N- and NW-facing slopes receive the most afternoon energy. They are warmest and driest, and they drive the strongest anabatic flow. E-facing slopes heat first in the morning; W-facing slopes heat last and reverse to downslope flow latest. The incidence angle on a slope of inclination α and aspect β, for a sun at zenith angle Z and azimuth φ_s, is [L] (Iqbal 1983):
 
 ```
 cos(i) = cos(α)·cos(Z) + sin(α)·sin(Z)·cos(φ_s − β)     (cell is sunlit if cos i > 0 and not topographically shaded)
 ```
+(verified: standard sloping-surface geometry; φ_s and β must use the same azimuth convention, e.g. both clockwise from true north.)
+
+South-facing (polar-facing) slopes in NSW get the least insolation, especially in winter and spring. They are the coolest and moistest, with the wettest fuels and the weakest anabatic flow. North-facing slopes are the reverse. This matters for the fuel note and for the "why" text.
 
 FireSim should compute cos(i) and cast shadows (horizon angle) per cell each simulated 10–15 min. This drives:
 - the timing and strength of slope winds;
@@ -121,6 +152,8 @@ Timing:
 - Upslope flow starts within minutes of sunlight reaching the slope [V].
 - Reversal begins soon after the slope goes into afternoon shadow [V].
 - Downslope flow persists until shortly after sunrise [V].
+
+(verified: NWCG PMS 437 "Estimating winds" and Schroeder & Buck 1970 ch. 7: upslope "generally range from 3–8 mph"; downslope "very shallow and of a slower speed… generally 2–5 mph"; "downslope winds begin as soon as slopes go into shadow". Note that 1 mph = 0.447 m/s = 1.609 km/h.)
 
 *Idealised steady slope-flow profile (Prandtl 1942).* This is useful as a parameterisation shape [D, standard result; see Zardi & Whiteman 2013]. Coordinates: n is normal to the slope, u is along-slope (positive upslope), α is the slope angle, γ = dθ/dz is the background stratification (K m⁻¹), K and K_h are eddy viscosity and diffusivity, and C is the surface potential-temperature anomaly (K, positive for a heated slope).
 
@@ -141,11 +174,19 @@ u_max ≈ 0.32 · g·C/(θ0·N·√Pr)   at  n = π·l/4
   - Prandtl's u_max does not depend on slope angle. Real slope flows also depend on slope length, the upstream fetch and synoptic interference.
   - Treat Prandtl as a shape function and cap speeds using the NWCG ranges above.
   - Daytime convective anabatic flows are less well described by this model.
+- (verified: re-derived. Prandtl's solution gives θ' = C e^(−n/l) cos(n/l) and u = C·√(g/(θ0·γ·Pr))·e^(−n/l) sin(n/l); the maximum of e^(−x) sin x is 0.3224 at x = π/4. The worked example reproduces 2.63 m/s, l = 12.1 m and a jet at 9.5 m.)
+- *Operational alternative* (verified: Forthofer, Shannon & Butler 2009): WindNinja's diurnal slope-flow add-on computes the slope wind from four inputs, then adds it vectorially to the mass-consistent ambient wind:
+  - surface sensible heat flux;
+  - distance to the ridge top or valley bottom;
+  - slope steepness;
+  - surface and entrainment drag coefficients.
+
+  This is a good template for FireSim layer D (§4.1), because slope length and fetch are explicit inputs.
 
 **Valley winds (up-valley by day, down-valley by night).** These are driven by the along-valley pressure gradient that forms because a valley heats or cools faster than the plain.
 
 - *Valley volume effect*: the topographic amplification factor TAF = (A/V)_valley / (A/V)_plain [V] (Wagner 1938; Steinacker 1984; AMS Glossary). The same energy input heats a smaller air volume in the valley, so a V-shaped gorge amplifies heating and cooling more than a broad valley.
-- *Timing*: valley winds lag slope winds by 1–3 h and peak at 10–15 mph (4.5–6.7 m/s) [V] (NWCG PMS 437). The up-valley to down-valley transition happens in the early night, gradually, depending on valley size [V] (Schroeder & Buck 1970). Down-valley winds are usually somewhat weaker and shallower than up-valley winds, "but there are exceptions in which the downvalley wind may be quite strong" [V].
+- *Timing*: valley winds lag slope winds by 1–3 h and peak at 10–15 mph (4.5–6.7 m/s) [V] (NWCG PMS 437) (verified: PMS 425-1 ch. 7 says "upvalley wind speeds in larger valleys are ordinarily from 10 to 15 mph". The up-valley wind "does not start until the whole mass of air within the valley becomes warmed, usually in middle or late forenoon". It peaks in early afternoon and continues into the evening). The up-valley to down-valley transition happens in the early night, gradually, depending on valley size [V] (Schroeder & Buck 1970). Down-valley winds are usually somewhat weaker and shallower than up-valley winds, "but there are exceptions in which the downvalley wind may be quite strong" [V].
 
 **The daily cycle.** Defant's classical phase sequence is summarised in Zardi & Whiteman (2013) [L]:
 
@@ -166,18 +207,21 @@ u_max ≈ 0.32 · g·C/(θ0·N·√Pr)   at  n = π·l/4
   - valley-floor RH approaches 100 %;
   - fire activity below the inversion is suppressed;
   - smoke is trapped, reducing visibility and grounding aircraft [V] (general literature; Utah "fire inversions" work).
-  - Smoke shading can itself strengthen the inversion, a positive feedback over multiple days [L] (Kochanski et al. 2019).
+  - Smoke shading can itself strengthen the inversion, a positive feedback over multiple days [L] (Kochanski et al. 2019) (verified: Kochanski et al. 2019, JGR 124:9099–9116. Smoke reduced surface insolation and warmed the air aloft, "increased inversion-like conditions" trapped smoke in mountain valleys next to active fires).
 - **Thermal belt.** "An area of mountainous slope (characteristically the middle third), where the top of the radiation inversion intersects the slope." It has "higher night time temperatures, lower relative humidities, and lower fuel moistures" than other slope positions, and fires "can remain active throughout the night" [V] (NWCG glossary / Schroeder & Buck 1970). Sharples (2009) discusses thermal-belt formation as an Australian bushfire-risk factor [V].
+  - (verified: NWCG PMS 205 glossary gives "characteristically the middle third" and "the least variation in diurnal temperatures… highest average temperatures and… lowest relative humidity". Schroeder & Buck 1970 ch. 2: "higher night time temperatures, lower relative humidities, and lower fuel moistures"; fires in the belt "can remain quite active during the night". The belt is most evident in clear weather with light wind.)
   - For NSW valleys, published local thermal-belt heights were not found; treat the inversion depth as an input [H].
 - **Ridges above the inversion.** They sit in the free-atmosphere flow: often windy (the nocturnal low-level jet), with little RH recovery. Two examples:
-  - At the State Mine fire, "the fireground being elevated in the warm, dry air above the nocturnal inversion would have limited overnight recovery of the fuel moisture" [V] (BNHCRC/BoM mountain-wave research, 2017).
-  - Night-time fire activity is increasing globally as nights become hotter and drier, measured by vapour-pressure-deficit thresholds [V] (Balch et al. 2022).
+  - At the **Aberfeldy fire (Victoria, January 2013)**, the fireground was high on the southern slopes of the Great Divide overlooking the Latrobe Valley. Being "elevated in the warm, dry air above the nocturnal inversion would have limited overnight recovery of the fuel moisture", and mountain waves with strong downslope winds developed overnight (verified: BNHCRC 2017 news item; Kepert et al. 2016 Hazard Note 24). (CORRECTED: an earlier draft attributed this quote to the State Mine fire.)
+  - Night-time fire activity is increasing globally as nights become hotter and drier, measured by vapour-pressure-deficit thresholds [V] (Balch et al. 2022) (verified: *Nature* 602:442–448 abstract. Low night-time VPD is the "night-time barrier", and it is weakening).
 - **Inversion break-up.** Whiteman (1982) described three patterns from tethered-balloon soundings in deep Colorado valleys [V]:
   1. upward growth of the convective boundary layer (CBL) with the inversion top stationary (wide valleys and basins);
   2. descent of the inversion top;
   3. a combination of both.
 
-  Break-up usually occurs **within 3.5–5 h after sunrise** in those valleys [V]. Breakup is faster in shallow or narrow valleys with strong sunshine, and slower in wide, deep, snow- or shade-affected basins [L].
+  Break-up "begins at sunrise and is generally completed in 3½–5 h, unless the valley is snow covered or the ground is wet" (verified: Whiteman 1982 abstract, 21 case studies). The abstract also notes that warming of the inversion layer is consistent with subsidence heating. Breakup is faster in shallow or narrow valleys with strong sunshine, and slower in wide, deep, snow- or shade-affected basins [L]. Assigning pattern 1 specifically to wide valleys is UNVERIFIED (not in the abstract).
+
+  *NSW application*: a wet valley floor after rain slows break-up, because more of the energy goes into evaporation. So the day after rain the fire may "wake up" later.
 
   *Why it matters for fire*: once the stable layer is destroyed, the valley atmosphere couples to the ridge-top flow. Surface winds jump in speed and turn toward the upper-wind direction, and dry air mixes down. This is the physical basis of "the fire wakes up mid-morning".
 
@@ -188,25 +232,46 @@ u_max ≈ 0.32 · g·C/(θ0·N·√Pr)   at  n = π·l/4
   ```
 
   Break-up happens when the accumulated sensible heat delivered to the valley atmosphere, ∫ TAF · Q_H(t) dt (Q_H in W m⁻²), reaches H_def. Taking all of the surface sensible heat as delivered to the valley air (f ≈ 1) is a simplification [H].
+
+  (verified form: the heat-deficit integral is the standard cold-pool metric. Using TAF to convert sidewall flux into flux per unit horizontal area is a FireSim approximation [D/H]. Whiteman & McKee (1982) also remove energy by subsidence and export by up-slope flows, and those terms are omitted here.)
 - **Mixed-layer growth** (encroachment model, used for flat or broad terrain and after break-up) [L] (Tennekes 1973; Stull 1988):
 
   ```
   h(t)² = h0² + 2·(1+2β)·∫ (Q_H/(ρ c_p)) dt / γ           β ≈ 0.2 (entrainment), γ = dθ/dz above h
   ```
 
-  A deep afternoon mixed layer (> 2–3 km) with strong winds aloft mixes gusts and dry air down to the surface. Abrupt surface drying is associated with deep mixed layers and only weakly stable entrainment layers, which allow mid-tropospheric dry air to mix to the surface [V] (Mills 2008b).
+  (verified form: zero-order jump model dh/dt = (1+2β)·(w'θ')_s/(γ·h), integrated at constant γ. Tennekes (1973) gives an entrainment ratio β ≈ 0.2, with a reported range of about 0.1–0.3 without mechanical turbulence.)
+
+  A deep afternoon mixed layer (> 2–3 km) with strong winds aloft mixes gusts and dry air down to the surface. Abrupt surface drying is associated with deep mixed layers and only weakly stable entrainment layers, which allow mid-tropospheric dry air to mix to the surface [V] (Mills 2008a, b) (verified: as summarised in the Ayat et al. 2025 and Sharples et al. 2016 literature reviews).
 
 ### 2.5 Synoptic flow over terrain
 
 **Blocking vs flow-over (Froude number)** [L] (Durran 1990; Whiteman 2000):
 
+Two different Froude numbers are used in the literature, and they must not be mixed up (CORRECTED: the earlier draft quoted Stull's width-based criterion as if it applied to the height-based Fr).
+
 ```
-Fr = U / (N · h)        N = sqrt((g/θ)·dθ/dz)   (typ. 0.01 s⁻¹ neutral-ish, 0.02+ s⁻¹ in inversions)
+(a) Height-based (blocking / flow-over / hydraulic regime):
+    Fr_h = U / (N · h)      h = ridge height above the upstream valley/plain [m]
+                            U = cross-ridge wind [m s⁻¹],  N = sqrt((g/θ)·dθ/dz) [s⁻¹]
+                            (typical N: 0.01 s⁻¹ in a weakly stable layer, 0.02+ s⁻¹ in inversions)
+    The inverse, Nh/U, is the "non-dimensional mountain height" (Smith 1989).
+
+(b) Width-based (wave resonance; Stull, Practical Meteorology ch. 17):
+    Fr_w = λ / (2·W)        λ = 2π·U / N   (natural wavelength), W = hill width [m]
+                           → Fr_w = π·U / (N·W)
 ```
 
-- Fr ≫ 1: air flows over ridges (typical daytime, well mixed).
-- Fr ≪ 1: stable low-level air is blocked and flows around or along ranges. This is typical at night and during coastal southerly surges trapped against the GDR.
-- Fr ≈ 1: strong mountain-wave response. "When the natural wavelength is nearly equal to twice the hill width (Fr ≈ 1) … extremely fast near-surface winds on the lee side … cause downslope wind storms" [V] (Stull, Practical Meteorology).
+Interpreting (a):
+- Fr_h ≫ 1: air flows over ridges (typical daytime, well mixed).
+- Fr_h ≪ 1: stable low-level air is blocked and flows around or along ranges. This is typical at night and during coastal southerly surges trapped against the GDR.
+- Fr_h of order 1 (Nh/U ≈ 1): nonlinear regime with wave breaking, lee hydraulic jumps and severe downslope winds. In idealised 2-D simulations, Lin & Wang (1996) reported a significant lee jump and a severe downslope windstorm for Fr_h ≈ 0.6–1.12 (verified: search extract of Lin & Wang 1996, as cited in a later windstorm study; exact bounds depend on ridge shape).
+
+Interpreting (b):
+- Fr_w ≈ 1: "for moderate stabilities where the natural wavelength is nearly equal to twice the hill width… the air resonates with the terrain, causing very intense waves". Stull links these to downslope wind storms (verified: Stull, *Practical Meteorology* §17.7).
+- Fr_w ≪ 1 (strong stability or weak wind): only small waves.
+
+For a Blue Mountains escarpment (h ≈ 600 m, U = 12 m/s, N = 0.015 s⁻¹): Fr_h = 12/(0.015·600) ≈ 1.3, and λ = 2π·12/0.015 ≈ 5 km [D]. A 2–3 km wide escarpment-and-gorge feature is then near width-resonance (Fr_w ≈ 0.8–1.3). This is an illustration, not a forecast rule.
 
 **Speed-up over ridges and hills.** For low hills, linear theory predicts the fractional speed-up at the crest [L]:
 
@@ -216,10 +281,17 @@ Taylor & Lee (1984) guideline:  ΔS_max = B · H/L ;  ΔS(z) = ΔS_max · exp(�
    2-D ridge: B = 2.0, A = 3 ;  3-D hill: B = 1.6, A = 4 ;  2-D escarpment: B = 0.8, A = 2.5
    ΔS = (U_crest(z) − U_upstream(z)) / U_upstream(z)
 ```
+Tags for this block:
+- Jackson–Hunt inner-layer relation: (verified: JH75 validity conditions are stated in terms of 2κ²/ln(δ/z0), and the form l/L·ln(l/z0) = 2κ² is the standard statement of the JH75 inner layer. The ln² variant belongs to later refinements, Hunt, Leibovich & Richards 1988 and others; that attribution is UNVERIFIED).
+- Taylor & Lee coefficients: (UNVERIFIED: B = 2.0/1.6/0.8 and A = 3/4/2.5 could not be read in Taylor & Lee 1984. The height-decay constants match the ASCE 7 K_zt γ values of 3, 4 and 2.5 for ridge, hill and escarpment, which derive from the same guideline.)
+- JH75 predicts the maximum speed-up at about one tenth of the inner-layer depth (verified: review extract).
 
 Validity:
 - The formulas hold for gentle slopes. They overpredict once flow separates (H/L ≳ 0.3–0.5).
-- Engineering codes cap the effect for steep features. The Australian wind code uses a hill-shape multiplier, Mh = 1 + [H/(3.5(z + L1))]·[1 − |x|/L2] [V] (AS/NZS 1170.2), with separate provisions for steep features [L].
+- Engineering codes cap the effect for steep features. The Australian wind code uses a hill-shape multiplier, Mh = 1 + [H/(3.5(z + L1))]·[1 − |x|/L2] [V] (AS/NZS 1170.2, eq. 4.4(2)) (verified: equation text).
+  - L_u is the horizontal distance from the crest to half-height on the upwind side.
+  - L1 = max(0.36 L_u, 0.4 H); L2 = 4 L1 upwind of the crest (UNVERIFIED: L1/L2 definitions quoted from memory of the 2011 edition).
+  - For steep features, H/(2L_u) > 0.45, the code switches to a separation-zone value Mh = 1 + 0.71·(1 − |x|/L2) (UNVERIFIED against the 2021 edition).
 - Askervein Hill (116 m) is the classic validation dataset [V] (Taylor & Teunissen 1987).
 - On a larger, steep, isolated mountain (Big Southern Butte, about 800 m relief), "mountaintop winds were often twice as high as wind speeds measured on the surrounding plain" [V] (Butler et al. 2015).
 
@@ -227,9 +299,11 @@ Validity:
 
 **Lee-slope flow separation and eddies.** "For a neutral, turbulent flow, separation will generally occur when the lee-slope exceeds a critical value of approximately 20°" [V] (Sharples et al. 2012, citing Wood 1995).
 - Wood (1995) found the critical slope for separation decreases with increasing surface roughness [V]. Forests are rough, so separation over forested NSW ridges should be expected at or below about 20° [L].
+  - (verified: Wood 1995 abstract. The critical slope Θ_crit is the lowest slope giving zero surface stress, and his analytic expression depends on inner- and middle-layer heights and on roughness. The direction "rougher → lower Θ_crit" is from secondary summaries.)
+  - (verified: Ross & Vosper 2005, QJRMS 131:1841–1862. Canopy simulations "show enhanced flow separation in the presence of a canopy".)
 - Under separation, a recirculating eddy forms on the lee slope. Near the ground, the wind blows up the lee slope, *against* the synoptic wind, and is gusty and direction-variable.
 - In the ACT/Brindabella region, joint wind speed/direction distributions identified "thermally-driven winds, lee-slope eddies and dynamic channelling" as the dominant wind–terrain states [V] (Sharples, McRae & Weber 2010).
-- Reattachment typically occurs a few hill-heights downstream. One wind-tunnel case gave 6.4 H, with longer bubbles for rough hills and smaller ones behind 3-D hills [V] (wind-tunnel literature summary).
+- Reattachment typically occurs a few hill-heights downstream. One wind-tunnel case gave 6.4 H, with longer bubbles for rough hills and smaller ones behind 3-D hills (UNVERIFIED: the primary wind-tunnel paper is not identified. Use the value only as an order of magnitude for the lee-eddy mask length, about 3–7 H.)
 - *Fire relevance*:
   - a fire on a lee slope may *back up* toward the ridge instead of running downwind;
   - embers from the ridge are recirculated;
@@ -242,6 +316,8 @@ Validity:
 4. pressure-driven channelling (the wind blows along the axis from high to low pressure).
 
 Mechanism 4 can produce valley winds nearly *opposite* to the ridge-top wind. "The valley wind direction depends strongly on the component of the synoptic-scale pressure gradient … superimposed along the valley's axis" [V].
+- (verified: Whiteman & Doran 1993, JAM 32:1669–1682. The data were from the Tennessee Valley, where pressure-driven channelling was most common at night and in stable conditions.)
+- *NSW evidence* (verified: Webb & Park 2023, JSHESS 73:194–211): a 10-year climatology (2010–2020) of AWS, sounding and ERA5 data in the **Hunter Valley** identified the dominant channelling types there. Pressure-driven channelling blows from high to low pressure along the axis. Forced channelling follows the geostrophic wind, through downward momentum transport, and is aligned by the valley walls. The valley is known for strong winter westerlies and hot, dry summer north-westerlies, and its elevated fire danger is linked to this channelling.
 - *Gaps and saddles*: flow is concentrated through low points in ridgelines (mass continuity: U₂ ≈ U₁·A₁/A₂ [D]), so saddles are preferential paths for fire and embers.
 
 **Mountain waves, trapped lee waves and downslope windstorms** [L] (Scorer 1949; Durran 1990):
@@ -252,33 +328,50 @@ Trapped lee waves when l² decreases strongly with height (e.g. stable layer nea
 two-layer criterion: l_lower² − l_upper² > π²/(4·H_lower²)
 Trapped-wave horizontal wavelengths ≈ 5–35 km [V, EUMeTrain]
 ```
+Tags for this block:
+- Scorer parameter and two-layer criterion: (verified: Scorer 1949 as restated in later papers. Trapping needs l₁² > k² > l₂² and l₁² − l₂² > π²/(4h²), with h the depth of the lower layer.)
+- Wavelengths: (verified: EUMeTrain says "5–35 km", trapped in a layer of high static stability and moderate wind, usually in the lowest 1–5 km). Trapping is favoured "when wind speed above the mountain increases sharply with height and when stability decreases in the layer just above the mountain top".
 
-NSW evidence:
-- **State Mine fire, Blue Mountains, October 2013.** ACCESS simulations at about 440 m grid spacing showed "clear evidence that mountain waves and strong downslope winds developed overnight". These "would have directly increased the fire intensity and spread, as well as contributed to firebrand transport". The fire grew from 1,036 to 12,436 ha in about 10 h [V] (BNHCRC 2017; BoM blog).
-- **Tathra (Reedy Swamp fire), 18 March 2018.** Simulations at 100 m and 400 m found [V] (Wilke, Kepert & Tory 2022):
+Australian evidence (BoM/BNHCRC ACCESS case studies at about 440 m grid spacing; Kepert et al. 2016, Hazard Note 24). Mountain waves were identified as a factor in three fires, which "suggests that the impact of mountain waves on fire is a reasonably common problem" (verified):
+- **State Mine fire, Blue Mountains, NSW, 17 October 2013.** The fire grew from 1,036 to 12,436 ha in about 10 h. Modelling showed that "a band of strong winds extended downwards towards the surface in the vicinity of the fire" (verified: BNHCRC 2017; BoM blog).
+- **Aberfeldy fire, Victoria, 17 January 2013 (night).** The fireground was high on the southern slopes of the Great Divide. Modelling "showed clear evidence that mountain waves and strong downslope winds developed overnight". These "would have directly increased the fire intensity and spread, as well as contributed to firebrand transport" (verified: BNHCRC 2017).
+- **Margaret River fire, WA, 2011.** The ingredients were "nocturnal cooling, reasonably strong synoptic flow, gentle upwind slope and steeper downwind" (verified: BNHCRC 2017 / Hazard Note 24).
+  - The BoM summary adds that "in contrast to the State Mine fire, strong near-surface atmospheric stability due to a nocturnal temperature inversion" was crucial to wave development in another of the cases.
+  - So mountain-wave wind can occur **both** with a night-time surface inversion (Margaret River, Aberfeldy) **and** by day without one (State Mine).
+  - (UNVERIFIED: the extract does not name which case the stability statement refers to.)
+  - This recipe is directly usable as a FireSim detection rule (card 13).
+- (CORRECTED: the earlier draft attributed the Aberfeldy "overnight" quotes to the State Mine fire.)
+
+NSW evidence (continued):
+- **Tathra (Reedy Swamp fire), 18 March 2018.** Simulations at 100 m and 400 m found [V] (Wilke, Kepert & Tory 2022, WAF 37:581–600) (verified: abstract):
   - horizontal convective rolls interacting with terrain, producing strong ascent and descent, accelerated ember lofting and likely lee-slope fire behaviour;
   - trapped lee waves hypothesised to have contributed to the strong winds;
-  - Bega: maximum temperature 38.6 °C, NW gust of 76 km/h.
+  - the abstract also cites "complex interactions between mountain waves, organised convection and the passage of a frontal system";
+  - Bega (14 km NW of Tathra): maximum temperature 38.6 °C, NW gust of 76 km/h at 13:37 (verified: AIDR Knowledge Hub / Wikipedia summary of the event; not from the paper itself);
+  - the fire's spread slowed late in the afternoon when a southerly change arrived.
 
 *Fire relevance*: wave-induced downslope winds can arrive at night, in the lee, when crews expect calm. Their existence and amplitude are "sensitive to the atmospheric temperature structure and vertical variation of the wind" [V], so they are hard to forecast.
 
 **Foehn / isentropic drawdown in the lee of the GDR.** Sharples et al. (2010, JAMC 49:1067–1095) confirmed "the existence of a foehn effect over parts of southeastern Australia" [V]:
 - It is "primarily due to the partial orographic blocking of relatively moist low-level air and the subsidence of drier upper-level air in the lee of the mountains".
 - It is mechanically driven isentropic drawdown during pre-frontal NW–W gradient winds [V].
-- Seasonality: autumn, winter and spring, when westerly/north-westerly flows cross the ranges [V] (Sharples & Ma 2026).
-- Scale: foehn-driven fires accounted for about half of the major 2019–20 events [V] (McRae 2023, via UNSW).
+- Seasonality: autumn, winter and spring, when westerly/north-westerly flows cross the ranges [V] (Sharples & Ma 2026) (verified: UNSW "Ask an Expert", 27 January 2026). A field cue from the same article: cloud on the windward side of the range with clear skies on the lee side is "a good indicator of Foehn winds". This makes a useful observation prompt for the app.
+- Scale: foehn-driven fires accounted for about half of the major 2019–20 events [V] (McRae 2023, via UNSW) (verified).
+- (verified: Sharples et al. 2010 abstract for the mechanism quotes above. UNVERIFIED: foehn frequency and typical ΔT/ΔRH statistics from that paper were not extracted.)
 
 *Worked example* [D]: dry air at θ = 312 K with mixing ratio r = 2 g kg⁻¹ (typical of about 700 hPa on a hot day) is drawn down to 980 hPa.
 - T = θ·(p/1000)^0.286 ≈ 310.2 K ≈ 37 °C;
 - vapour pressure e = r·p/(0.622 + r) ≈ 3.1 hPa, so T_d ≈ −9 °C;
 - **RH ≈ 5 %.**
 
+(verified: re-computed. T = 312 × 0.98^0.286 = 310.2 K; e = 0.002 × 980/0.624 = 3.14 hPa; T_d = −8.9 °C; e_s(37 °C) = 62.9 hPa; RH = 5.0 %. For context, θ = 312 K at 700 hPa means T700 ≈ 8.6 °C, which is plausible on a hot pre-frontal day.)
+
 This is why foehn afternoons in the lee (for example the Monaro, the Bega and Shoalhaven lee slopes, and the Sydney basin under westerlies) produce extreme dead-fuel dryness within hours.
 
 **Dry slots and abrupt surface drying.**
 - Mills (2008a, b) describes abrupt surface drying events in southern Australian forests. They are linked to dry convective mixing of mid-tropospheric dry air into deep mixed layers [V].
-- For 29 December 2019 to 2 January 2020, 2.2 km Unified Model runs show near-surface dry air that originated in the upper troposphere. It descended "as a dry slot onto a deep mixed layer" and reached the surface "rapidly … through convective rolls", producing FFDI > 100 [V] (Ayat et al. 2025).
-- Mills (2005) analysed the sub-synoptic meteorology of the January 2003 extreme days [L].
+- For 29 December 2019 to 2 January 2020, 2.2 km Unified Model runs show near-surface dry air that originated in the upper atmosphere over the Indian and Southern Oceans. It circulated around an anticyclone, descended "as a dry slot onto a deep mixed layer" and reached the surface "rapidly … through convective rolls", producing FFDI > 100. The dry region formed ahead of a strong front (verified: Ayat, Lane, Wales, Reeder & Huang 2025, JGR 130(6) e2024JD041706, abstract).
+- Mills (2005, AMM 54:265–290) analysed the sub-synoptic meteorology of the January 2003 extreme days (verified: citation).
 
 **Turbulence, gustiness and direction variability.** In complex terrain the wind direction at lee and valley sites is multi-modal, not a Gaussian scatter around the synoptic direction [V] (Sharples et al. 2010 EMS; Sharples et al. MODSIM 2009, "An empirical probabilistic study of wind direction over complex terrain"). FireSim should represent this as a probability distribution, not as one arrow [H].
 
@@ -298,20 +391,37 @@ This is why foehn afternoons in the lee (for example the Monaro, the Bega and Sh
   - "wind speeds in excess of about 20 km h⁻¹".
 
   Sharples et al. (2012) used a terrain filter of steep plus lee-facing cells and showed that it "consistently identified" the parts of the 2003 landscape where channelling was observed [V].
-- **Interdependence** [V]: Simpson et al. (2016) found lateral spread "highly sensitive" to background wind speed, to wind direction relative to aspect and to lee-slope steepness. The idealised thresholds agreed broadly with the empirical Canberra thresholds, and they present "a theory to explain these thresholds and their apparent interdependency".
-  - Their tests used a 35° lee slope with reference winds U₀ = 2.5, 5, 7.5, 10 and 15 m/s [V].
+  - (verified: Sharples & Hilton 2020 and the Sharples Ginninderry report for the three criteria.)
+  - The terrain filter has two parameters: a slope threshold σ, applied to the first-order terrain gradient, and an aspect-discrepancy threshold δ, the difference between aspect and wind direction.
+  - For the Canberra 2003 events σ ≈ 25° and δ ≈ 40° (verified: Sharples et al. 2015, BNHCRC Report 2015.018).
+  - Sharples & Hilton (2020) applied the filter elsewhere with θ_w = 125°, σ = 10.5° and δ = 40° (verified). The thresholds are applied "depending on the spatial resolution under consideration", so **σ must be recalibrated to the DEM resolution FireSim uses**.
+- **Interdependence** [V]: Simpson et al. (2016, GRL 43:1744–1751) found lateral spread "highly sensitive" to background wind speed, to wind direction relative to aspect and to lee-slope steepness. The idealised thresholds agreed broadly with the empirical Canberra thresholds, and they present "a theory to explain these thresholds and their apparent interdependency". Rapid lateral spread occurs only in a relatively narrow band of the lee slope near the top of the hill (verified: secondary summary).
+  - Wind threshold (verified: Sharples, Simpson & Evans 2013, MODSIM pp. 263–269; Sharples et al. 2015 report):
+    - with a reference wind of 2.5 m/s there was "no lateral fire spread beyond that expected from only the background wind and slope effects";
+    - the coupled-model threshold is about 5 m/s (18 km/h), "in general agreement with the value of 20 km h⁻¹ suggested by Sharples et al. (2012)".
+  - The transition from quasi-steady to dynamic spread "can be quite abrupt, requiring only minimal changes in wind speed and direction [or slope] for onset" (verified: same sources).
+  - (CORRECTED: the wind set U₀ = 2.5, 5, 7.5, 10, 15 m/s and the 35° idealised slope had been attributed to Simpson et al. 2016. The 2.5 m/s null result is from the 2013 MODSIM study. The exact wind set and slope of each study are UNVERIFIED.)
   - Steeper slopes appear to lower the wind threshold. The exact threshold pairs could not be read in full here [L]. FireSim therefore uses a smooth joint score, not hard cut-offs (§4.5).
 - **Rates**:
-  - In LES, spread was first "upslope … to the mountain ridge line at an average rate of 2.0 km h⁻¹, followed by predominantly lateral spread close to the ridge line at a maximum rate of 3.6 km h⁻¹" [V] (Simpson et al. 2013).
-  - For the two highest wind cases in the 2016 sensitivity runs, the rate of spread "oscillated between 0.4 km h⁻¹ and 5 km h⁻¹" [V]. The lateral spread is pulsating, not steady.
+  - In LES, spread was first "upslope … to the mountain ridge line at an average rate of 2.0 km h⁻¹, followed by predominantly lateral spread close to the ridge line at a maximum rate of 3.6 km h⁻¹" [V] (Simpson et al. 2013) (verified: IJWF 22:599–614 abstract).
+  - For the two highest reference-wind cases in the WRF-SFire runs of Sharples, Simpson & Evans (2013), the lateral rate of spread "oscillated between 0.4 km h⁻¹ and 5 km h⁻¹". The oscillations were quasi-periodic, with peaks about **10–15 min apart** (verified: MODSIM 2013 / AMS 10th Fire & Forest Met. Symposium abstract). (CORRECTED: previously attributed to the 2016 GRL paper.) The lateral spread pulses; it is not steady.
+  - *Coupling matters*: at high resolution, switching on fire-to-atmosphere coupling increased the upslope rate of spread by up to 2.7× and the lateral rate by up to **9.5×** (verified: Simpson et al. 2014 abstract). An uncoupled model with ambient wind alone will badly under-predict VLS.
+  - *First landscape-scale observations* (verified: "Observations of Vorticity-Driven Lateral Spread in a Wildfire", *Fire* 9(2):79, February 2026). HPWREN cameras on Santiago Peak, California, recorded the 2024 Airport Fire spreading by VLS on two consecutive days:
+    - overall lateral ROS averaged **1.9 km/h**;
+    - it rose to about 4 km/h around plume touch-down events, with peaks of 20 km/h;
+    - the effective downwind spread of the whole fire envelope was 45 km/h, through dense spot fires downwind of the ridge line.
+    - This is outside NSW but is the best field calibration available. Authors not confirmed here.
 - **Embers / "deep flaming"** [V] (Hilton, Garg & Sharples 2019): as the fire spreads laterally it "casts off" embers downwind, producing large areal flaming zones ("deep flaming").
-  - Their Lagrangian firebrand extension to the Spark VLS model reproduced this.
-  - The NSW example is the Yankees Gap fire (Bega Valley, 15 September 2018).
+  - Their Lagrangian firebrand extension to the Spark VLS model reproduced this (verified: MODSIM2019 pp. 761–767, doi:10.36334/modsim.2019.H7.hilton2).
+  - The NSW example is the Yankees Gap fire (Bega Valley, 15 September 2018). A small fire ignited at 13:20, burned back against the wind, then spread laterally across the wind to the SW, consistent with VLS, and "spilled out" downwind as a mass of spot fires (verified: figure caption in Hilton et al. 2019). The fire eventually burned about 20,000 ha (verified: ABC coronial-inquiry report).
 - **Escalation**: in the Grose Valley (Blue Mountains, November 2006), line-scan showed that "deep flaming in numerous locations was primarily caused by the lateral spread associated with fire channelling", linked to pyroCb formation [V] (McRae, Sharples & Fromm 2015).
-- **Resolution warning** [V]: whether WRF-Fire resolves VLS is sensitive to horizontal and vertical grid spacing, tested between 25 and 90 m, and to fire–atmosphere coupling (Simpson et al. 2014). **Our 100–200 m atmosphere grid cannot produce VLS explicitly**, so we parameterise it (§4.5).
+- **Resolution warning** [V]: whether WRF-Fire resolves VLS is sensitive to horizontal and vertical grid spacing, tested between 25 and 90 m, and to fire–atmosphere coupling (Simpson et al. 2014). "VLS is not modelled for a horizontal and vertical grid spacing of 90 m", and about **30 m or finer is optimal** (verified: Simpson et al. 2014 abstract). **Our 100–200 m atmosphere grid cannot produce VLS explicitly**, so we parameterise it (§4.5).
 - **Cheap models exist** [V]: Sharples & Hilton (2020) reproduced VLS in a 2-D level-set model (Spark) using "near-field" pyrogenic-potential techniques. These models are much cheaper than coupled LES, which can take days on supercomputers, while pyrogenic potential runs in seconds (Hilton et al. 2018).
+  - (verified: Hilton et al. 2018, EMS 107:12–24. The pyrogenic-potential model is "orders of magnitude faster than a full CFD model". It reproduces parabolic head-fire shapes, attraction between nearby fires and closure of V-shaped fires. "Days on supercomputers" is UNVERIFIED wording.)
 
-**Eruptive (blow-up) fire in canyons and gullies.** Covered in detail in the fire-behaviour note. The meteorological point: in steep drainage lines, the fire-induced flow attaches to the slope and the flame lies down on the fuel. Laboratory and simulation work reports attachment for slopes of roughly 20–35° depending on trench geometry [V/L] (Viegas & Simeoni 2011; Dold & Zinoviev 2009; trench-fire studies). Spread then accelerates with no change in ambient wind: the "chimney effect".
+**Eruptive (blow-up) fire in canyons and gullies.** Covered in detail in the fire-behaviour note. The meteorological point: in steep drainage lines, the fire-induced flow attaches to the slope and the flame lies down on the fuel. Laboratory and simulation work reports attachment for slopes of roughly 20–35° depending on trench geometry [V/L] (Viegas & Simeoni 2011; Dold & Zinoviev 2009; trench-fire studies).
+- (verified: Dold & Zinoviev 2009, CTM 13:763–793. Attachment versus separation of the flow is what distinguishes eruptive from steady spread. The eruption is controlled mainly by burnout time and the Byram number. In one cited experiment the flow changed between a 25° and a 30° incline.)
+- (UNVERIFIED: a single universal attachment angle; it depends on geometry.) Spread then accelerates with no change in ambient wind: the "chimney effect".
 
 **Pyroconvection and pyrocumulonimbus (pyroCb).**
 
@@ -319,17 +429,23 @@ Events in and near NSW:
 - **Canberra, 18 January 2003**:
   - pyroCb "eruptions" with stratospheric smoke injection;
   - suppressed precipitation, black hail and an F2 tornado;
-  - at least 500 buildings destroyed and 4 lives lost [V] (Fromm et al. 2006).
-  - It was the first confirmed Australian pyro-tornadogenesis, "not a fire whirl" [V] (McRae et al. 2013).
+  - at least 500 buildings destroyed and 4 lives lost [V] (Fromm et al. 2006) (verified: GRL 33:L05815 abstract. The pyroCb lifetime was about 3 h).
+  - It was the first confirmed Australian pyro-tornadogenesis, "not a fire whirl" [V] (McRae et al. 2013) (verified: abstract).
+    - The tornado was at least F2 intensity, moved at over 30 km/h and had a basal diameter of nearly 0.5 km at Chapman.
 - **Black Summer 2019–20**:
-  - Peterson et al. (2021) documented **38 pyroCbs** in the 29 December 2019 to 4 January 2020 "super outbreak". More than half injected smoke into the stratosphere [V].
-  - Season totals of more than 50 have been reported in secondary sources [L].
-- **Black Saturday (Victoria, 2009)**, the analogue for lightning: pyroCbs reached about 15 km, generated hundreds of lightning strokes and could ignite new fires downwind [V] (Dowdy et al. 2017).
+  - Peterson et al. (2021) documented **38 pyroCb pulses** in the "super outbreak" of 29–31 December 2019 and 4 January 2020 (verified: *npj Clim. Atmos. Sci.* 4:38).
+    - Radar echo tops showed that 20 of the 38 (53 %) reached the lower stratosphere.
+    - (CORRECTED: the date range is not continuous to 4 January.)
+  - Season totals of more than 50 have been reported in secondary sources (UNVERIFIED: no primary count confirmed).
+- **Black Saturday (Victoria, 2009)**, the analogue for lightning: pyroCbs reached about 15 km, generated hundreds of lightning strokes and could ignite new fires downwind [V] (Dowdy et al. 2017) (verified: JGR 122:7342–7354 abstract).
+  - Six fire complexes produced three distinct pyroCbs.
+  - The first pyroCb lightning came about 5 h after ignition of the largest complex.
 
 Climatology of pyroCb days (southeast mainland, 1991–2020) [V] (Wilson, Sharples & Evans 2025):
 - hot, relatively dry, very unstable and moderately windy near-surface and low-level conditions;
 - steep mid-level lapse rates and significant diurnal mid-level moisture advection;
 - the majority of recorded events in the last 20 years.
+- (verified: Wilson, Sharples & Evans 2025, *Sci. Rep.* 15:38538 abstract. The conditions are "at least conditionally favourable for high-based thunderstorm development".)
 
 **C-Haines** (Mills & McCaw 2010, CAWCR Tech. Rep. 20) [V for form and cap; L for exact coefficients as reproduced in secondary sources]:
 
@@ -340,9 +456,14 @@ CB = 0.3333·DD850 − 1 ;  if CB > 5 then CB = 5 + (CB − 5)/2        (moistur
 CH = CA + CB
 ```
 
+- (verified: component structure, "a stability component based on the 850–700 hPa temperature difference (CA) and a dryness component based on the 850 hPa dew point depression (CB)", with two conditional caps on CB. UNVERIFIED: the numeric constants −2, 0.3333, −1, 30 and 5 + (CB − 5)/2 could not be read in the CAWCR PDF. They match the widely used operational formulation. Cross-check against CTR_020 before hard-coding.)
 - *Range*: typically 0–13, and values above 13 are possible.
+  - The upper limit follows from the caps: DD850 ≤ 30 gives CB ≤ 7, so CH exceeds 13 only when T850 − T700 > 16 K.
 - *Percentiles*: the 95th percentile is about 7–10, depending on location in southeast Australia [V].
+  - (verified: Tasmanian work uses CH = 9 as the local 95th percentile. Other regions are UNVERIFIED. Use a location-specific climatology from reanalysis if possible.)
 - *PyroCb cases*: CH of about 10–11 has been associated with pyroCb development [V].
+  - (verified: Di Virgilio et al. 2019, GRL 46:8517 ff. used two joint threshold sets for pyroCb-conducive days: **CH ≥ 8 with FFDI ≥ 25**, and the stricter **CH ≥ 10 with FFDI ≥ 50**. Conditions conducive to pyroCb are described as "extreme C-Haines conditions (10–13.7)" with very high to catastrophic FFDI over forested, rugged landscapes.)
+  - CH alone is not sufficient. Always pair it with surface fire danger and an active large fire.
 - *Worked example* [D]: T850 = 20 °C, T700 = 6 °C, Td850 = −5 °C.
   - CA = 0.5·14 − 2 = 5;
   - CB = 25/3 − 1 = 7.33, which the cap reduces to 6.17;
@@ -358,6 +479,10 @@ PFT ≈ 0.3 · z_fc² · U_ML · Δθ_fc          [GW]  with z_fc in km (height 
 
 The 0.3 comes from constants with ρ₀ = 0.755 kg m⁻³ [V]. Stronger wind means more firepower is required, because the wind bends and dilutes the plume [V]. For example, z_fc = 3 km, U = 10 m/s and Δθ = 1 K give about 27 GW [D].
 
+Tags for PFT:
+- (verified: Tory & Kepert 2021 abstract. The PFT uses Briggs plume-rise equations to convert Δθ, z_fc and the mean mixed-layer wind U into "the minimum heat flux entering the base of the plume". It is "proportional to the product of U, Δθ, and the square of z_fc". The simplified PFT₁ takes z_fc in km, U in m/s and Δθ in K, and gives GW.)
+- (UNVERIFIED: the leading constant 0.3. It is consistent with ρ₀ ≈ p_fc/(R_d·θ_fc) ≈ 0.76 kg m⁻³ at about 700 hPa, and with a Briggs-type prefactor π·c_p·ρ₀·[β/(1+αβ)]² × 10⁶ m² km⁻² ≈ 0.3 GW for β ≈ 0.4. Confirm it against the paper, or better, implement the full expression, which uses p_fc and θ_fc, as in the open-source `metfor::pft` Rust function.)
+
 Compare with the simulated convective heat release P ≈ Σ(I·Δs) over the active front [D], where I is Byram intensity (W/m) and Δs is front length. The fraction of P that is convective, and so enters the plume, is uncertain [H].
 
 **Byram convection number** (plume-dominated vs wind-driven) [V for form and thresholds] (Byram 1959; Nelson 1993; Morvan & Frangieh 2018):
@@ -367,9 +492,14 @@ Nc = 2·g·I / (ρ·c_p·T_a·(U − R)³)     I in W m⁻¹, U wind and R sprea
 Nc > 10 → plume-dominated;  Nc < 2 → wind-driven
 ```
 
-Worked examples [D]:
-- I = 20 MW m⁻¹, U = 5 m/s, R = 0.5 m/s gives Nc ≈ 13 (plume-dominated).
+Worked examples [D], assuming ρ = 1.1 kg m⁻³, c_p = 1005 J kg⁻¹ K⁻¹ and T_a = 300 K:
+- I = 20 MW m⁻¹, U = 5 m/s, R = 0.5 m/s gives Nc ≈ 13 (plume-dominated). With ρ = 1.2 it is ≈ 12.
 - The same fire at U = 15 m/s gives Nc ≈ 0.4 (wind-driven).
+- For 2 < Nc < 10 the regime is mixed or transitional.
+
+Tags for Nc:
+- (verified: the formula and the < 2 / > 10 bands as commonly cited; Morvan & Frangieh 2018 relate Nc to the ratio R/U_w.)
+- U in Nc is the wind at mid-flame or 10 m height, depending on the author (UNVERIFIED which). FireSim should use the 10 m open wind and label Nc as indicative.
 
 ### 2.7 NSW synoptic fire-weather patterns
 
@@ -377,16 +507,22 @@ Worked examples [D]:
    - Winds are strongest and driest just ahead of the change.
    - Crossing the GDR adds foehn and drawdown drying on the eastern side (§2.5).
    - This is the classic "Red October / Black Summer" day for the Blue Mountains and the south and mid-north coast hinterland.
-2. **SW (or S) wind change / cold front.** "The worst fire days on record have happened when cold fronts have moved over active bushfires… hot, gusty north-east to north-west winds turning to cooler south-westerly winds… causing long fire-fronts to expand rapidly" [V] (BoM).
-   - Kilmore East: the change between 17:30 and 18:30 turned the roughly 55 km eastern flank into a head fire [V] (Cruz et al. 2012).
+2. **SW (or S) wind change / cold front.** "The worst fire days on record have happened when cold fronts have moved over active bushfires… hot, gusty north-east to north-west winds turning to cooler south-westerly winds… causing long fire-fronts to expand rapidly" [V] (BoM) (verified: BoM Fire Weather Knowledge Centre, "How weather affects fires"; "in southern Australia", with the change typically in the afternoon or evening).
+   - Kilmore East: the change between 17:30 and 18:30 turned the roughly 55 km eastern flank into a head fire [V] (Cruz et al. 2012) (verified: abstract. The fire burned about 100,000 ha in under 12 h; spot fires reached up to 33 km ahead).
    - The new head-fire width equals the flank length at the time of the change [D].
    - In mountains the change is distorted: channelled up some valleys, delayed or blocked by ranges, and arriving first on ridges [H].
 3. **Southerly buster** (NSW coast and escarpment). It is a coastally trapped disturbance: cool air is trapped against the GDR, and the front distorts into an "S" shape [V] (BoM).
    - *Definition*: southerly gusts > 54 km/h with a temperature fall ≥ 5 °C in 3 h. Falls of 10–15 °C in under an hour are common and up to 20 °C within minutes can occur [V].
-   - *Travel*: typically about 530 km from Cape Howe to the Nowra–Newcastle section in 12–15 h. It peaks between Nowra and Newcastle [V].
-   - *Depth*: generally < 1 km [V] (Colquhoun et al. 1985; BoM). Coastal fires turn north and escarpment fires can be driven upslope. Tableland fires may be unaffected, because the surge is shallow and blocked.
-4. **Spring westerlies** (September–November) after cold fronts. These are dry, gusty downslope flows over the escarpment toward the coast. Mountain-wave events are possible, as at the State Mine fire in October 2013 [V] and at Tathra, where W–NW flow crossed the escarpment [V].
-5. **Dry lightning and pyroCb days.** Instability plus mid-level moisture (§2.6). For example, Dunns Road was ignited by lightning on 27 December 2019 [V].
+     - (verified: BoM "The big bust" blog, "southerly winds gusting in excess of 29 knots (54 km/h) and a 3-hour temperature drop of at least 5 °C"; the strongest have gusted past 60 kn.)
+     - (UNVERIFIED: the 20 °C figure appears only in media summaries.)
+     - Busters occur mostly between October and February.
+   - *Travel*: typically about 530 km from Cape Howe to the Nowra–Newcastle section in 12–15 h. It peaks between Nowra and Newcastle [V] (verified: BoM blog). That is a mean speed of about 35–45 km/h, so the app can estimate arrival time along the coast [D].
+   - *Depth*: generally < 1 km [V] (Colquhoun et al. 1985; BoM) (verified: EUMeTrain / BoM conceptual model of shallow cold fronts. The depth is "generally less than 1 km and is below the average height of the Great Dividing Range"; a typical buster is 30–100 km wide).
+     - Coastal fires turn north and escarpment fires can be driven upslope.
+     - Tableland fires may be unaffected, because the surge is shallow and blocked.
+     - Colquhoun et al. (1985) analysed 17 busters from 1972–78. Most developed ahead of Southern Ocean fronts rather than being those fronts (verified: MWR 113:2090–2107 abstract).
+4. **Spring westerlies** (September–November) after cold fronts. These are dry, gusty downslope flows over the escarpment toward the coast. Mountain-wave events are possible, as at the State Mine fire on 17 October 2013 [V] and at Tathra (March 2018, late summer), where W–NW flow crossed the escarpment [V].
+5. **Dry lightning and pyroCb days.** Instability plus mid-level moisture (§2.6). For example, Dunns Road was ignited by lightning on 27 December 2019 [V] (verified: coronial evidence puts the strike at about 23:50 on 27 December 2019 on the Ellerslie Range east of Tarcutta; many sources give 28 December).
 
 ---
 
@@ -399,28 +535,33 @@ Worked examples [D]:
 | LCL height | ≈ 125·(T − T_d) | m | rule of thumb | Espy [L] |
 | Saturation vapour pressure | 6.112·exp(17.67T/(T+243.5)) | hPa | −30…35 °C | Bolton 1980 [L] |
 | Brunt–Väisälä | N² = (g/θ)·dθ/dz | s⁻² | N ≈ 0.01–0.02 | textbook [D] |
-| Froude number | Fr = U/(N·h) | – | ≈1 wave resonance | Durran 1990 [L] |
-| Scorer parameter | l² = N²/U² − U''/U | m⁻² | trapped waves if l² ↓ with z | Scorer 1949 [L] |
-| Upslope wind | 1.3–3.6 (3–8 mph) | m s⁻¹ | clear, weak synoptic | NWCG PMS 437 [V] |
-| Downslope wind | 0.9–2.2 (2–5 mph) | m s⁻¹ | shallow, laminar | NWCG PMS 437 [V] |
-| Valley wind peak | 4.5–6.7 (10–15 mph) | m s⁻¹ | lags slope winds 1–3 h | NWCG PMS 437 [V] |
+| Froude number (height) | Fr_h = U/(N·h) | – | ≪1 blocked; ~0.6–1.1 lee jump / windstorm (2-D idealised) | Durran 1990; Lin & Wang 1996 [L] |
+| Froude number (width, Stull) | Fr_w = λ/(2W), λ = 2πU/N | – | ≈1 wave resonance | Stull ch. 17 (verified) |
+| Scorer parameter | l² = N²/U² − U''/U | m⁻² | trapped waves if l² ↓ with z; λ ≈ 5–35 km | Scorer 1949 (verified) |
+| Upslope wind | 1.3–3.6 (3–8 mph) | m s⁻¹ | clear, weak synoptic | NWCG PMS 437 (verified; US values) |
+| Downslope wind | 0.9–2.2 (2–5 mph) | m s⁻¹ | shallow, laminar | NWCG PMS 437 (verified; US values) |
+| Valley wind peak | 4.5–6.7 (10–15 mph) | m s⁻¹ | larger valleys; lags slope winds 1–3 h | NWCG PMS 425-1/437 (verified; US values) |
 | Prandtl slope-flow profile | §2.3 | – | shape function | Prandtl 1942 [D] |
 | Topographic amplification | TAF = (A/V)_valley/(A/V)_plain | – | ≥1 | Steinacker 1984 [V] |
-| Inversion break-up | 3.5–5 h after sunrise | h | deep Colorado valleys | Whiteman 1982 [V] |
+| Inversion break-up | 3.5–5 h after sunrise | h | deep Colorado valleys; longer if snow or wet ground | Whiteman 1982 (verified) |
 | Heat deficit | c_p∫ρ(θ_h − θ)dz | J m⁻² | bulk | Whiteman et al. 2004 [L] |
 | Mixed-layer growth | h² = h0² + 2(1+2β)∫w'θ'dt/γ | m² | β ≈ 0.2 | Tennekes 1973 [L] |
-| Hill speed-up | ΔS = B·H/L, B = 2/1.6/0.8 | – | H/L ≲ 0.3–0.5 | Taylor & Lee 1984 [L] |
-| Height decay of speed-up | exp(−A·z/L), A = 3/4/2.5 | – | ridge/hill/escarpment | Taylor & Lee 1984 [L] |
-| Separation slope | ≈ 20° (lower if rough) | ° | neutral flow | Wood 1995; Sharples 2012 [V] |
-| VLS slope | > 20–25° | ° | lee-facing | Sharples & Hilton 2020 [V] |
-| VLS aspect tolerance | within 30–40° of wind direction | ° | aspect ≈ downwind | Sharples & Hilton 2020 [V] |
-| VLS wind | > ~20 km h⁻¹ (~5.6 m s⁻¹) | km h⁻¹ | ridge-level | Sharples & Hilton 2020 [V] |
-| VLS lateral ROS | 3.6 max (LES); 0.4–5 oscillating | km h⁻¹ | idealised 35° slope | Simpson 2013, 2016 [V] |
-| C-Haines | CA + CB (§2.6) | – | 0–13+; 95th pct ≈ 7–10 | Mills & McCaw 2010 [V/L] |
-| PFT | 0.3·z_fc²·U·Δθ_fc | GW | – | Tory & Kepert 2021 [V/L] |
-| Byram Nc | 2gI/(ρc_pT(U−R)³) | – | >10 plume; <2 wind | Nelson 1993 [V] |
-| Southerly buster | gust >54 km h⁻¹, ΔT ≥ 5 °C/3 h | – | depth <1 km | BoM / Colquhoun 1985 [V] |
-| Long-distance spotting (SE Aus.) | most < 5 km; occasional to 14 km | km | 338 line-scan obs. | Storey et al. 2020 [V] |
+| Hill speed-up | ΔS = B·H/L, B = 2/1.6/0.8 | – | H/L ≲ 0.3–0.5 | Taylor & Lee 1984 (UNVERIFIED coefficients) |
+| Height decay of speed-up | exp(−A·z/L), A = 3/4/2.5 | – | ridge/hill/escarpment | Taylor & Lee 1984; matches ASCE 7 γ [L] |
+| Separation slope | ≈ 20° (lower if rough or forested) | ° | neutral flow | Wood 1995; Sharples 2012; Ross & Vosper 2005 (verified) |
+| AS/NZS separation switch | H/(2L_u) > 0.45 (≈ 24° mean upwind slope) | – | engineering code | AS/NZS 1170.2 (UNVERIFIED for 2021 edition) |
+| VLS slope | > 20–25° (Canberra fit σ ≈ 25°; DEM-dependent) | ° | lee-facing | Sharples & Hilton 2020; Sharples et al. 2015 (verified) |
+| VLS aspect tolerance | within 30–40° of wind direction (δ ≈ 40°) | ° | aspect ≈ downwind | Sharples & Hilton 2020; Sharples et al. 2015 (verified) |
+| VLS wind | > ~20 km h⁻¹ empirical; ≈ 5 m s⁻¹ (18 km h⁻¹) in coupled sims; none at 2.5 m s⁻¹ | km h⁻¹ | ridge-level / reference wind | Sharples 2012; Sharples, Simpson & Evans 2013; Sharples et al. 2015 (verified) |
+| VLS lateral ROS | 3.6 max (LES); 0.4–5 oscillating, ~10–15 min period (WRF-SFire); 1.9 mean, 4 near touch-down, 20 peak (observed) | km h⁻¹ | idealised / Airport Fire 2024 | Simpson 2013; Sharples 2013; *Fire* 2026 (verified) |
+| WRF-Fire resolution for VLS | not resolved at 90 m; ≤ 30 m optimal | m | coupled model | Simpson et al. 2014 (verified) |
+| C-Haines | CA + CB (§2.6) | – | 0–13+; 95th pct ≈ 7–10 (Tas ≈ 9) | Mills & McCaw 2010 [V/L] |
+| PyroCb-conducive days | CH ≥ 8 & FFDI ≥ 25; stricter CH ≥ 10 & FFDI ≥ 50 | – | SE Australia | Di Virgilio et al. 2019 (verified) |
+| PFT | 0.3·z_fc²·U·Δθ_fc | GW | – | Tory & Kepert 2021 (form verified; constant UNVERIFIED) |
+| Byram Nc | 2gI/(ρc_pT(U−R)³) | – | >10 plume; <2 wind; 2–10 mixed | Byram 1959; Nelson 1993; Morvan & Frangieh 2018 (verified) |
+| Southerly buster | gust >54 km h⁻¹, ΔT ≥ 5 °C/3 h | – | depth <1 km; ~530 km in 12–15 h | BoM / Colquhoun 1985 (verified) |
+| Long-distance spotting (SE Aus.) | most < 5 km; occasional to 14 km | km | 338 line-scan obs., 2002–2018 | Storey et al. 2020 (verified) |
+| Mountain-wave recipe | nocturnal cooling + reasonably strong synoptic flow + gentle upwind slope + steeper lee slope | – | qualitative | Kepert et al. 2016 / BNHCRC 2017 (verified) |
 
 ---
 
@@ -457,10 +598,15 @@ Implementation notes:
 ### 4.2 Wind: details and simplifications
 
 1. **Background wind.** Take the ridge-level forecast wind (for example 850 hPa, or model levels 500–1,500 m AGL) as the "free" wind. Use the surface forecast only to set the near-surface stability class.
-2. **Stability switch.** Compute Fr from the column (N from layer B, h = local relief).
-   - If Fr < 0.5, weight horizontal adjustment strongly: the flow goes around and is channelled.
-   - If Fr > 1.5, allow vertical adjustment: the flow goes over.
-   - If 0.7 < Fr < 1.3 *and* the Scorer parameter decreases strongly with height, raise a **mountain-wave / downslope-wind flag** on lee slopes and add a downslope acceleration term. This is simplified and flagged as uncertain in the UI.
+2. **Stability switch.** Compute the height-based Fr_h = U/(N·h) from the column (N from layer B, h = local relief, U = cross-ridge component). Do not use Stull's width-based Fr_w here (§2.5).
+   - If Fr_h < 0.5, weight horizontal adjustment strongly: the flow goes around and is channelled.
+   - If Fr_h > 1.5, allow vertical adjustment: the flow goes over.
+   - These two cut-offs are [H].
+   - Raise a **mountain-wave / downslope-wind flag** on lee slopes, and add a downslope acceleration term, when all of the following hold. This is simplified and flagged as uncertain in the UI.
+     - 0.6 ≲ Fr_h ≲ 1.2, the band where 2-D idealised runs give lee jumps and windstorms (Lin & Wang 1996 [L]).
+     - The Scorer parameter decreases strongly with height (two-layer test §2.5), **or** there is a surface-based nocturnal inversion under reasonably strong cross-ridge flow.
+     - The terrain matches the Margaret River recipe: gentle upwind slope, steeper lee slope (Kepert et al. 2016, verified qualitatively).
+   - Also compute Fr_w = πU/(N·W) for the ridge width W, and raise the flag's confidence when Fr_w ≈ 0.7–1.3 [H].
 3. **Channelling.** In valleys deeper than about 150 m (from DEM relief within 1 km) [H], project the wind onto the valley axis.
    - Magnitude: use the along-axis component of the ridge wind (forced channelling), or the along-axis pressure-gradient direction (pressure-driven channelling) when stable.
    - The pressure-gradient direction comes from the forecast MSLP gradient. This lets the app show counter-current valley winds.
@@ -500,17 +646,20 @@ For each fire-grid cell c, compute:
 lee(c)   = cos(aspect(c) − dir_to(U_ridge))              (1 = perfectly lee-facing; wind "dir_to" = direction wind blows towards)
 S_slope  = smoothstep(18°, 28°, slope_250m(c))            slope from DEM smoothed to ~100–250 m (see Open Questions)
 S_aspect = smoothstep(cos 45°, cos 25°, lee(c))           ≈ within 30–40° tolerance
-S_wind   = smoothstep(4 m/s, 8 m/s, |U_ridge|)            ≈ 20 km/h threshold, softened
+S_wind   = smoothstep(4 m/s, 7 m/s, |U_ridge|)            ≈ 5 m/s (18 km/h) coupled-model threshold, ~20 km/h empirical; nothing at 2.5 m/s
 S_ridge  = 1 if a ridge crest (break of slope) lies within ~300 m upwind, else 0     [H]
 S_fuel   = smoothstep(12 %, 8 %, dead fine fuel moisture) [H]
 VLS(c)   = S_slope · S_aspect · S_wind · S_ridge · S_fuel
 ```
 
 The thresholds come from §2.6 [V]. The smoothing widths, ridge distance and fuel factor are [H].
+- (CORRECTED: the S_wind upper edge was lowered from 8 to 7 m/s so that the score is about 0.5 at the ≈5 m/s coupled-model threshold. The edges remain [H].)
+- The S_slope edges of 18–28° assume a DEM of about 25–30 m. Sharples's own terrain filter needed σ = 10.5° in one application versus σ ≈ 25° for Canberra, so **recalibrate S_slope for the DEM actually used**. One way: compute the terrain filter on the 2003 Canberra and 2006 Grose Valley DEMs and match the published VLS-prone areas.
 
 When a burning cell has VLS > 0.5 [H]:
-- add a lateral spread vector along the slope contour, in both directions, just below the crest, at 0.4–3.6 km/h scaled by VLS [V for range];
-- pulse it (it oscillates) [V];
+- add a lateral spread vector along the slope contour, in both directions, just below the crest, at 0.4–5 km/h scaled by VLS. The time-mean should be about 2 km/h, near the observed 1.9 km/h, with short peaks to about 4–5 km/h (verified range: Simpson 2013; Sharples, Simpson & Evans 2013; Airport Fire observations 2026);
+- pulse it with a quasi-period of about 10–15 min (verified: Sharples, Simpson & Evans 2013), for example R_lat(t) = R̄·[1 + 0.8·sin(2πt/T)] with T drawn from 10–15 min. The waveform is [H];
+- restrict it to the upper band of the lee slope, roughly the top third below the crest. The idealised runs confine rapid lateral spread to "a relatively narrow portion of the leeward slope near the top" (verified qualitatively: Simpson et al. 2016). The one-third figure is [H];
 - boost ember release into the lee eddy and downwind (deep flaming) [V qualitatively; H quantitatively];
 - raise the "pyroconvection escalation" score (McRae et al. 2015) [V qualitatively].
 
@@ -536,7 +685,8 @@ Before the fire gets there, show pre-computed VLS-prone terrain as an overlay: "
 
 - Canberra / Brindabellas, 18 January 2003 (VLS, pyroCb, pyro-tornado).
 - Grose Valley, November 2006 (VLS leading to pyroCb).
-- State Mine fire, October 2013 (overnight mountain-wave downslope winds).
+- State Mine fire, 17 October 2013 (mountain-wave band of strong winds descending to the surface; 1,036 → 12,436 ha in about 10 h).
+- Aberfeldy fire (Victoria), 17 January 2013. This is outside NSW but is the reference case for **overnight** mountain-wave downslope winds on an elevated fireground above the inversion.
 - Tathra, March 2018 (rolls, lee waves, escarpment).
 - Yankees Gap, September 2018 (VLS with spotting).
 - Black Summer, 29 December 2019 to 4 January 2020: Badja Forest Road and Dunns Road (pyroCb outbreak, dry slot, foehn).
