@@ -36,6 +36,26 @@ import { cellMoisture, directionalRos, isBurnable, solveArrival, windAt, type Mo
 import { pointInRing, strokeToPolygon, type Pt } from './brushGeometry';
 import { DRIVER_LABELS, FUEL_LABELS, LANDFORM_LABELS } from './labels';
 
+/** Confidence badge per kind (synthesis §10.2 registry). */
+const MOCK_CONFIDENCE: Partial<Record<InsightKind, NonNullable<Insight['confidence']>>> = {
+  'upslope-run': 'physics',
+  'downslope-backing': 'physics',
+  'gully-chimney': 'rule-of-thumb',
+  'eruptive-slope': 'model-estimate',
+  'ridge-crest': 'rule-of-thumb',
+  'lee-slope-eddy': 'sub-grid',
+  'vorticity-lateral-spread': 'sub-grid',
+  spotting: 'model-estimate',
+  'spot-fire': 'model-estimate',
+  'mass-spotting': 'model-estimate',
+  'wind-change': 'rule-of-thumb',
+  'moist-gully': 'rule-of-thumb',
+  'aspect-dry-fuel': 'physics',
+  'heavy-fuel': 'physics',
+  'recent-burn': 'physics',
+  'crown-fire': 'rule-of-thumb',
+};
+
 const RESIDENCE_S = 20 * 60;
 const TICK_MS = 70;
 
@@ -457,6 +477,9 @@ export class MockSimController implements SimController {
     const ins: Insight = { id: `mock-${kind}-${Math.round(time)}-${this.insightSeq}`, kind, severity, time, x, y, title, body, factors };
     if (safety) ins.safety = safety;
     if (source) ins.source = source;
+    ins.confidence = MOCK_CONFIDENCE[kind] ?? 'model-estimate';
+    // Detector key as in the spec: spatial cards on 500 m tiles, domain cards once per domain.
+    ins.key = kind === 'wind-change' || kind === 'high-drought' || kind === 'general' ? `${kind}:domain:${Math.round(time / 3600)}` : `${kind}:${Math.floor(x / 500)}:${Math.floor(y / 500)}`;
     return ins;
   }
 

@@ -288,6 +288,8 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
     warnings.push('Offline: using stored/synthetic weather. Enter belt weather kit readings for local conditions.');
   }
   await sleep(150, signal);
+  report('drought', 0.88, 'Working out the drought factor…');
+  await sleep(60, signal);
   report('moisture', 0.92, 'Spinning up fuel moisture…');
   await sleep(150, signal);
 

@@ -1,7 +1,7 @@
 /**
  * Tests for behaviour fixed in review: marker pushes only on change, no double-drawn spot fires, de-duplicated
  * insights after a rewind, NSW-time date inputs, the camera-independent wind glyph, the replay memory budget and
- * the "Why here?" factor notes, and the fuel-brush display copy.
+ * the "Why here?" factor notes, the fuel-brush display copy, "Show me" layers and worker-initiated rewinds.
  */
 import { describe, expect, it } from 'vitest';
 import { FuelType, type CellExplanation, type FuelEdit, type FuelMap, type Ignition, type Insight, type ScenarioData, type ScenarioEdit, type SimSnapshot, type SpotFire } from '../core/types';
@@ -10,6 +10,7 @@ import type { SimController, SimEvents } from '../sim/protocol';
 import { windScreenRotation, type Pt } from './brushGeometry';
 import { fromZonedInput, toZonedInput } from './format';
 import { fuelWithEdits } from './fuelDisplay';
+import { showMePatch } from './showMe';
 import { defaultSnapshotBudget, insightSignature, SimSession } from './session';
 import { Emitter } from './store';
 import { factorRows } from './screens/sim/whyPanel';
@@ -232,5 +233,54 @@ describe('fuel-brush display copy', () => {
     const f = base();
     expect(fuelWithEdits(f, [{ kind: 'wind', id: 'w', x: 0, y: 0, radius: 100, speed: 5, dir: 90, time: 0 }])).toBe(f);
     expect(fuelWithEdits({ ...f, type: new Uint8Array(0) }, [])).toBeNull();
+  });
+});
+
+describe('"Show me" layers', () => {
+  const base = { kind: 'spotting' as const, x: 100, y: 200 };
+  it('maps engine layer ids to the display (first overlay wins; plume adds a cross-section along the wind)', () => {
+    expect(showMePatch({ ...base, showLayers: ['slope', 'spread'] }, 90)).toEqual({ overlay: 'slope' });
+    expect(showMePatch({ ...base, showLayers: ['embers'] }, 90)).toEqual({ overlay: 'landing', embers: true });
+    expect(showMePatch({ ...base, showLayers: ['wind', 'dmz'] }, 90)).toEqual({ wind: 'surface', overlay: 'dmz' });
+    expect(showMePatch({ ...base, showLayers: ['plume'] }, 135)).toEqual({ wind: 'volume', crossSection: { enabled: true, azimuth: 135, centre: [100, 200] } });
+  });
+  it('falls back to a per-kind default without showLayers', () => {
+    expect(showMePatch({ ...base, kind: 'upslope-run' }, 0)).toEqual({ overlay: 'slope' });
+    expect(showMePatch({ ...base, kind: 'general' }, 0)).toEqual({});
+  });
+});
+
+describe('worker-initiated rewind and detector keys', () => {
+  class RewindingController extends FakeController {
+    rewindTo(t: number): void {
+      this.emit('rewound', t);
+    }
+  }
+  it('drops results after the view time on "rewound", keeps what is on screen', async () => {
+    const c = new RewindingController();
+    const { view } = recordingView();
+    const s = new SimSession(scenario(), c, view, { maxBytes: 1e9 });
+    await s.start();
+    for (let t = 0; t <= 1800; t += 300) c.emit('snapshot', snap(t, [card(`c${t}`, t - 10, t * 10)]));
+    s.seek(900);
+    c.rewindTo(300);
+    expect(s.snapshots.range()!.end).toBe(900);
+    expect(s.state.get().headTime).toBe(900);
+    expect(s.state.get().insights.map((i) => i.id)).toEqual(['c0', 'c300', 'c600', 'c900']);
+    s.dispose();
+  });
+  it('treats a re-report of the same detector key within 30 min as the same card, unless it escalates', async () => {
+    const c = new FakeController();
+    const { view } = recordingView();
+    const s = new SimSession(scenario(), c, view, { maxBytes: 1e9 });
+    await s.start();
+    const keyed = (id: string, time: number, severity: Insight['severity'] = 'watch'): Insight => ({ ...card(id, time, time * 7), key: 'spotting:3:4', severity });
+    c.emit('snapshot', snap(300, [keyed('k1', 290)]));
+    c.emit('snapshot', snap(600, [keyed('k2', 590)]));
+    expect(s.state.get().insights.map((i) => i.id)).toEqual(['k1']);
+    c.emit('snapshot', snap(900, [keyed('k3', 890, 'danger')]));
+    c.emit('snapshot', snap(2700, [keyed('k4', 2690)]));
+    expect(s.state.get().insights.map((i) => i.id)).toEqual(['k1', 'k3', 'k4']);
+    s.dispose();
   });
 });

@@ -128,6 +128,7 @@ export class SimSession {
       controller.on('status', (st) => this.state.set({ computing: st.running, workerSpeed: st.speed })),
       controller.on('error', (message) => this.state.set({ error: message, computing: false })),
       controller.on('ready', (ins) => this.state.set({ forecastInsights: ins })),
+      controller.on('rewound', (t) => this.onRewound(t)),
     );
   }
 
@@ -296,6 +297,24 @@ export class SimSession {
     }
   }
 
+  /**
+   * The worker rewound to a checkpoint at `time` (FromWorker 'rewound'; e.g. an edit it had to replay). Results after
+   * the displayed time are stale and dropped. Results between the checkpoint and the displayed time are kept: every
+   * UI edit applies from the view time, so the replay reproduces them, and dropping them would make visible cards
+   * vanish and pop up again (re-emitted duplicates are filtered in onSnapshot).
+   */
+  private onRewound(time: number): void {
+    if (this.disposed) return;
+    const s = this.state.get();
+    const keep = Math.max(time, s.viewTime);
+    if (s.headTime <= keep && s.insights.every((i) => i.time <= keep)) return;
+    this.snapshots.truncateAfter(keep);
+    this.requestedUntil = Math.min(this.requestedUntil, time);
+    this.state.set({ headTime: this.snapshots.latest()?.time ?? time, insights: s.insights.filter((i) => i.time <= keep) });
+    this.syncView();
+    if (s.playing) this.ensureRunning(true);
+  }
+
   private onSnapshot(snap: SimSnapshot): void {
     if (this.disposed) return;
     this.snapshots.push(snap);
@@ -304,11 +323,20 @@ export class SimSession {
     // UI kept (it only drops those after the rewind time). Skip those by id, and by what they say, in case the
     // worker gives re-generated cards new ids.
     const known = new Set<string>();
-    for (const i of s.insights) known.add(i.id).add(insightSignature(i));
+    const lastByKey = new Map<string, number>();
+    for (const i of s.insights) {
+      known.add(i.id).add(insightSignature(i));
+      if (i.key) lastByKey.set(i.key, Math.max(lastByKey.get(i.key) ?? -Infinity, i.time));
+    }
     const fresh = snap.insights.filter((i) => {
       const sig = insightSignature(i);
       if (known.has(i.id) || known.has(sig)) return false;
+      // The engine's detector key is stable across snapshots: the same phenomenon re-reported within its cooldown
+      // (15 min in the spec; 30 min allowed here) is the same card. Severity escalations are kept.
+      const last = i.key ? lastByKey.get(i.key) : undefined;
+      if (last !== undefined && Math.abs(i.time - last) < DUPLICATE_KEY_WINDOW_S && !s.insights.some((o) => o.key === i.key && severityRank(i.severity) > severityRank(o.severity))) return false;
       known.add(i.id).add(sig);
+      if (i.key) lastByKey.set(i.key, i.time);
       return true;
     });
     const insights = fresh.length ? [...s.insights, ...fresh].sort((a, b) => a.time - b.time) : s.insights;
@@ -355,8 +383,8 @@ export class SimSession {
     // Reveal events only when moving forward past new insights (not when scrubbing back over old ones).
     if (vt > this.revealedUpTo) {
       for (const i of this.state.get().insights) {
-        if (i.time <= vt && i.time > this.revealedUpTo - 1 && !this.revealed.has(i.id)) {
-          this.revealed.add(i.id);
+        if (i.time <= vt && i.time > this.revealedUpTo - 1 && !this.revealed.has(i.id) && !this.revealed.has(insightSignature(i))) {
+          this.revealed.add(i.id).add(insightSignature(i));
           this.events.emit('reveal', i);
         }
       }
@@ -426,6 +454,11 @@ export class SimSession {
 }
 
 const NO_SPOTS: SpotFire[] = [];
+
+/** Re-reports of the same detector key within this window are the same card (s). */
+const DUPLICATE_KEY_WINDOW_S = 1800;
+
+const severityRank = (s: Insight['severity']): number => (s === 'danger' ? 2 : s === 'watch' ? 1 : 0);
 
 /** Identity of an insight by content: kind, place (100 m) and time (minute). */
 export function insightSignature(i: Pick<Insight, 'kind' | 'x' | 'y' | 'time'>): string {

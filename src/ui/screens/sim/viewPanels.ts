@@ -5,7 +5,7 @@
 import { h, setChildren } from '../../dom';
 import { icon } from '../../icons';
 import { formatClock } from '../../format';
-import { OVERLAY_OPTIONS, fromExternalLegend, legendFor, rampGradient, type Legend } from '../../legends';
+import { OVERLAY_OPTIONS, SNAPSHOT_LAYER_OVERLAYS, fromExternalLegend, legendFor, rampGradient, type Legend } from '../../legends';
 import type { LayerState } from '../../../render/layers';
 import { button, compassRose, segmented, slider, toggle } from '../../widgets';
 import type { SimContext } from './context';
@@ -149,7 +149,11 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
         console.warn('[FireSim] renderer legend failed; using the built-in one', e);
       }
     }
-    setChildren(legendHost, l ? legendElement(l) : h('p', { class: 'hint' }, 'Choose an overlay to colour the terrain. Tap again to turn it off.'));
+    const missing = SNAPSHOT_LAYER_OVERLAYS.has(s.overlay) && !ctx.session.state.get().snapshot?.layers?.[s.overlay];
+    setChildren(legendHost, [
+      l ? legendElement(l) : h('p', { class: 'hint' }, 'Choose an overlay to colour the terrain. Tap again to turn it off.'),
+      missing ? h('p', { class: 'callout callout-info' }, [icon('info'), h('span', null, 'The simulation computes this layer as the fire runs; it appears once there is fire and the engine provides it (not in the demo engine).')]) : null,
+    ]);
     opacity.el.hidden = s.overlay === 'none';
     iso.el.hidden = s.overlay !== 'arrival';
   };

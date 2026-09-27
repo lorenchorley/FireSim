@@ -626,6 +626,22 @@
   color: var(--on-info);
 }
 
+/* Confidence of the card (physics / rule of thumb / model estimate / below model detail). */
+.conf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 8px;
+  border: 2px solid var(--border-soft);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.insight-head .insight-time {
+  margin-left: auto;
+}
+
 .insight-time {
   font-weight: 700;
   color: var(--muted);
@@ -1706,9 +1722,6 @@
     font-size: 16px;
     padding-left: 8px;
     padding-right: 6px;
-  }
-  .wx-wind {
-    gap: 2px;
   }
   .weather-chip .rating-pill {
     padding: 0 6px;

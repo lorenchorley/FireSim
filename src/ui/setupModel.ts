@@ -248,7 +248,7 @@ export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now 
     weather,
     duration: hours * 3600,
     online: s.online,
-    options: { fireCellSize: DETAIL_CELL[s.detail], maxEmbers: prof.maxEmbers, snapshotInterval: prof.snapshotInterval },
+    options: { fireCellSize: DETAIL_CELL[s.detail], maxEmbers: prof.maxEmbers, snapshotInterval: prof.snapshotInterval, tier: prof.tier },
   };
   if (c.demoSiteId) req.demoSiteId = c.demoSiteId;
   return req;

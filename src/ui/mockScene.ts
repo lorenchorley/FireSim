@@ -10,7 +10,7 @@ import { DEG, msToKmh, windToUV } from '../core/units';
 import { multiHillshade, insolation } from '../terrain';
 import type { SceneImagery, SceneViewApi } from '../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
-import { driverColour, fuelColour, legendFor } from './legends';
+import { driverColour, fuelColour, legendFor, SNAPSHOT_LAYER_OVERLAYS } from './legends';
 
 type Rgb = [number, number, number];
 
@@ -127,7 +127,7 @@ export class MockSceneView implements SceneViewApi {
   update(snapshot: SimSnapshot): void {
     this.snapshot = snapshot;
     this.buildFire();
-    if (['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation'].includes(this.layers.overlay)) this.buildOverlay();
+    if (['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation'].includes(this.layers.overlay) || SNAPSHOT_LAYER_OVERLAYS.has(this.layers.overlay)) this.buildOverlay();
     this.invalidate();
   }
 
@@ -327,7 +327,10 @@ export class MockSceneView implements SceneViewApi {
     }
     const f = this.fuel;
     const s = this.snapshot;
-    const g = kind === 'arrival' || kind === 'ros' || kind === 'intensity' || kind === 'driver' ? (s?.fire.grid ?? t.grid) : t.grid;
+    const onFireGrid = kind === 'arrival' || kind === 'ros' || kind === 'intensity' || kind === 'driver' || SNAPSHOT_LAYER_OVERLAYS.has(kind);
+    const g = onFireGrid ? (s?.fire.grid ?? t.grid) : t.grid;
+    // Engine rasters (VLS, attachment, trench, dead man zone, ember landings) travel in SimSnapshot.layers.
+    const engineLayer = SNAPSHOT_LAYER_OVERLAYS.has(kind) ? (s?.layers?.[kind] ?? null) : null;
     const { nx, ny } = g;
     const [c, ctx, img] = this.gridCanvas(nx, ny);
     const cols = legendColours(kind);
@@ -366,6 +369,15 @@ export class MockSceneView implements SceneViewApi {
             break;
           case 'moisture':
             if (s && s.moisture.length === nx * ny && s.moisture[k]! > 0) rgb = ramp([3, 6, 9, 13, 18, 25], cols, s.moisture[k]!);
+            break;
+          case 'vls':
+          case 'attach':
+          case 'trench':
+          case 'dmz':
+            if (engineLayer && engineLayer.length === nx * ny && engineLayer[k]! > 0.02) rgb = ramp([0, 0.25, 0.5, 0.75, 1], cols, engineLayer[k]!);
+            break;
+          case 'landing':
+            if (engineLayer && engineLayer.length === nx * ny && engineLayer[k]! >= 0.1) rgb = ramp([0.1, 1, 10, 100], cols, engineLayer[k]!, true);
             break;
           case 'fuelLoad':
             if (f) rgb = ramp([0, 5, 10, 15, 20, 25, 30, 40], cols, f.surfaceLoad[k]! + f.nearSurfaceLoad[k]! + f.elevatedLoad[k]! + f.barkLoad[k]!);

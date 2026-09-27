@@ -196,6 +196,7 @@ export function estimateSnapshotBytes(s: SimSnapshot): number {
   b += typedBytes(s.embers?.data);
   const a = s.atmosphere;
   if (a) for (const k of ['levels', 'terrainHeight', 'surfaceU', 'surfaceV', 'u', 'v', 'w', 'thetaAnomaly', 'smoke'] as const) b += typedBytes(a[k]);
+  if (s.layers) for (const v of Object.values(s.layers)) b += typedBytes(v);
   b += (s.spotFires?.length ?? 0) * 64 + (s.insights?.length ?? 0) * 1024;
   return b;
 }

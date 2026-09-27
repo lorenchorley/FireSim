@@ -10,6 +10,14 @@ import { SEVERITY_LABELS } from '../../labels';
 
 const SEVERITY_ICON: Record<Insight['severity'], IconName> = { danger: 'danger', watch: 'warning', info: 'info' };
 
+/** How much to trust a card (Insight.confidence), in plain words. */
+export const CONFIDENCE_LABELS: Record<NonNullable<Insight['confidence']>, { label: string; about: string }> = {
+  physics: { label: 'Physics', about: 'Well-understood physics the model computes directly.' },
+  'rule-of-thumb': { label: 'Rule of thumb', about: 'Field experience and case studies; the model flags where it applies.' },
+  'model-estimate': { label: 'Model estimate', about: 'The model’s best estimate; real fires can differ a lot.' },
+  'sub-grid': { label: 'Below model detail', about: 'Smaller than the model grid, so the model can’t see this precisely.' },
+};
+
 export function insightCard(ins: Insight, opts: { tz: string; absTime: (t: number) => number; onShow: (i: Insight) => void; compact?: boolean; forecast?: boolean }): HTMLElement {
   const when = opts.forecast ? `Forecast · ${formatClock(opts.absTime(ins.time), opts.tz)}` : `${formatClock(opts.absTime(ins.time), opts.tz)} · ${formatElapsedShort(ins.time)}`;
   const show = h(
@@ -20,6 +28,9 @@ export function insightCard(ins: Insight, opts: { tz: string; absTime: (t: numbe
   const body = [
     h('div', { class: 'insight-head' }, [
       h('span', { class: 'sev-badge' }, [icon(SEVERITY_ICON[ins.severity], { size: 18 }), SEVERITY_LABELS[ins.severity]]),
+      ins.confidence && CONFIDENCE_LABELS[ins.confidence]
+        ? h('span', { class: 'conf-badge', attrs: { title: CONFIDENCE_LABELS[ins.confidence].about }, aria: { label: `Confidence: ${CONFIDENCE_LABELS[ins.confidence].label}. ${CONFIDENCE_LABELS[ins.confidence].about}` } }, CONFIDENCE_LABELS[ins.confidence].label)
+        : null,
       h('span', { class: 'insight-time' }, when),
     ]),
     h('h3', { class: 'insight-title' }, ins.title),

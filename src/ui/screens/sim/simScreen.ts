@@ -3,7 +3,7 @@
  * panels, draggable bottom sheet, time scrubber and danger toasts. Owns the map gesture layer that turns taps and
  * finger strokes into "Why here?" queries, fire marks, fuel brush strokes and local wind observations.
  */
-import type { Insight, InsightKind, ScenarioData } from '../../../core/types';
+import type { Insight, ScenarioData } from '../../../core/types';
 import { BurnState } from '../../../core/types';
 import type { SceneImagery, SceneViewApi } from '../../../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
@@ -12,6 +12,8 @@ import { icon, type IconName } from '../../icons';
 import { thinPath, windScreenRotation, type Pt } from '../../brushGeometry';
 import { presetById } from '../../fuelPresets';
 import { fuelWithEdits } from '../../fuelDisplay';
+import { showMePatch } from '../../showMe';
+import { weatherAt } from '../../weatherSeries';
 import type { Services } from '../../modules';
 import { SimSession } from '../../session';
 import { performanceProfile, settingsStore } from '../../settings';
@@ -54,24 +56,6 @@ const TOOLS: { id: ToolId; label: string; icon: IconName }[] = [
   { id: 'layers', label: 'Layers', icon: 'layers' },
   { id: 'whatif', label: 'What if', icon: 'whatif' },
 ];
-
-/** Overlay / layer changes that make an insight's mechanism visible ("Show me", doc 09 §11.4). */
-const SHOW_ME: Partial<Record<InsightKind, Partial<LayerState>>> = {
-  'upslope-run': { overlay: 'slope' },
-  'eruptive-slope': { overlay: 'slope' },
-  'gully-chimney': { overlay: 'slope' },
-  'ridge-crest': { overlay: 'slope' },
-  'moist-gully': { overlay: 'moisture' },
-  'aspect-dry-fuel': { overlay: 'moisture' },
-  'spotting': { embers: true },
-  'spot-fire': { embers: true },
-  'wind-change': { wind: 'surface' },
-  'dead-man-zone': { overlay: 'arrival', wind: 'surface' },
-  'plume-dominated': { wind: 'volume' },
-  'fire-induced-wind': { wind: 'volume' },
-  'recent-burn': { overlay: 'timeSinceFire' },
-  'heavy-fuel': { overlay: 'fuelLoad' },
-};
 
 export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const { scenario, services } = o;
@@ -127,8 +111,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const topBar = createTopBar(ctx);
   const showInsight = (i: Insight): void => {
     view.focusInsight(i, true);
-    const patch = SHOW_ME[i.kind];
-    if (patch) {
+    const w = weatherAt(scenario.weather, ctx.absTime(i.time));
+    const patch = showMePatch(i, (w.windDir10 + 180) % 360);
+    if (Object.keys(patch).length) {
       layers.set(patch);
       view.setLayers(patch);
     }
@@ -187,10 +172,16 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   // so every tool stays reachable above the sheet instead of disappearing under it.
   const layoutRail = (): void => {
     if (!rail.isConnected || getComputedStyle(rail).display === 'none') return;
-    const top = rail.getBoundingClientRect().top;
+    const r = rail.getBoundingClientRect();
     const limits = [scrubber.el.getBoundingClientRect().top];
-    if (!sheet.el.hidden) limits.push(sheet.el.getBoundingClientRect().top);
-    const avail = Math.min(...limits) - top - 8;
+    if (!sheet.el.hidden) {
+      // Use the sheet's target height (not its animated one) and only when it sits under the rail (in landscape it
+      // is a side column).
+      const sr = sheet.el.getBoundingClientRect();
+      const target = Number.parseFloat(sheet.el.style.height) || sr.height;
+      if (sr.left < r.right && sr.right > r.left) limits.push(sr.bottom - target);
+    }
+    const avail = Math.min(...limits) - r.top - 8;
     const n = TOOLS.length;
     const gap = 6;
     const one = Math.floor((avail - (n - 1) * gap) / n);
@@ -206,7 +197,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   };
   const railRo = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleRail) : null;
   railRo?.observe(root);
-  railRo?.observe(sheet.el);
   unsubs.push(
     () => {
       railRo?.disconnect();

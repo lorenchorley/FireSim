@@ -64,6 +64,7 @@ export const BUILD_STEPS: { step: BuildProgress['step']; label: string }[] = [
   { step: 'fireHistory', label: 'Fire history' },
   { step: 'fuel', label: 'Fuel model' },
   { step: 'weather', label: 'Weather' },
+  { step: 'drought', label: 'Drought (rain history)' },
   { step: 'moisture', label: 'Fuel moisture spin-up' },
   { step: 'done', label: 'Ready' },
 ];

@@ -5,6 +5,7 @@
  * 'dark' is the "night" theme (dark UI, dimmed map, no pure-white panels). 'system' follows the OS setting and
  * updates live when it changes (doc 09 §9).
  */
+import type { QualityTier } from '../core/types';
 import type { SpeedUnit } from './format';
 import { getPref, PREF_KEYS, setPref } from './prefs';
 import { Store } from './store';
@@ -84,14 +85,17 @@ export function startThemeSync(root: HTMLElement = document.documentElement): ()
   };
 }
 
-/** Rendering/simulation detail implied by the performance mode. */
-export function performanceProfile(mode: PerformanceMode): { maxEmbers: number; snapshotInterval: number; smoke: boolean; vegetation: boolean } {
+/**
+ * Rendering/simulation detail implied by the performance mode; `tier` is the engine quality tier (SimOptions.tier:
+ * 'auto' lets the engine pick from the device).
+ */
+export function performanceProfile(mode: PerformanceMode): { maxEmbers: number; snapshotInterval: number; smoke: boolean; vegetation: boolean; tier: 'auto' | QualityTier } {
   switch (mode) {
     case 'battery':
-      return { maxEmbers: 1500, snapshotInterval: 600, smoke: false, vegetation: false };
+      return { maxEmbers: 1500, snapshotInterval: 600, smoke: false, vegetation: false, tier: 'fast' };
     case 'quality':
-      return { maxEmbers: 4000, snapshotInterval: 300, smoke: true, vegetation: true };
+      return { maxEmbers: 4000, snapshotInterval: 300, smoke: true, vegetation: true, tier: 'high' };
     default:
-      return { maxEmbers: 3000, snapshotInterval: 300, smoke: true, vegetation: true };
+      return { maxEmbers: 3000, snapshotInterval: 300, smoke: true, vegetation: true, tier: 'auto' };
   }
 }
