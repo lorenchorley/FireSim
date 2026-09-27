@@ -7,3 +7,5 @@ playwright-report/
 .DS_Store
 /android/app/build/
 /ios/App/Pods/
+# agent scratch files
+**/zz_*
