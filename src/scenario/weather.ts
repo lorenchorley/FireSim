@@ -4,7 +4,8 @@
  * - Instantaneous fields (T, RH, T_d, cloud, BLH, pressure, CAPE, VPD, profile and level values) interpolate
  *   linearly between stamps; winds as u/v vectors (speed = |mean vector|), also for the profile and the levels.
  * - Precipitation is piecewise-constant over the preceding hour: for t in (stamp − 1 h, stamp] the value is the
- *   stamp's hourly amount (mm in that hour, i.e. the rate in mm/h).
+ *   stamp's hourly amount (mm in that hour, i.e. the rate in mm/h). A stamp closer than 1 h to the previous one
+ *   holds the rain since that stamp (rate = amount / interval), so stamp sums stay exact.
  * - Radiation: the clearness k_t (stamped at hour − 30 min by the parser) interpolates linearly between its
  *   mid-hour stamps and `ghi(t) = k_t(t)·GHI_clear(t)` ({@link ghiAt}), which sim passes to
  *   `insolation(terrain, t, { ghi, cloudCover })`. Hourly-mean radiation fields are returned as the stamp values.
@@ -69,13 +70,26 @@ function levelsMix(a: PressureLevelData[] | undefined, b: PressureLevelData[] | 
   return out.length ? out : undefined;
 }
 
-/** Precipitation (mm in the hour ending at the next stamp) for t: piecewise-constant over each stamp's preceding hour. */
+/**
+ * Accumulation window (ms) of stamp j's precipitation: the preceding hour, or the interval since the previous stamp
+ * when that is shorter (sub-hourly stamps, e.g. those inserted by {@link insertStamp}), so that summing the stamps
+ * (rainBetween, the moisture rain memory, the daily aggregates) never counts an hour twice.
+ */
+function precipWindow(hs: readonly WeatherHour[], j: number): number {
+  return j > 0 ? Math.min(H, Math.max(1, hs[j]!.time - hs[j - 1]!.time)) : H;
+}
+
+/**
+ * Precipitation rate (mm/h) at t: piecewise-constant over each stamp's accumulation window (the preceding hour for
+ * hourly data, so the value is the stamp's hourly amount).
+ */
 function precipAt(hs: readonly WeatherHour[], i: number, t: number): number {
   // The first stamp at or after t.
   const j = i >= 0 && hs[i]!.time === t ? i : i + 1;
   const h = hs[j];
   if (!h || h.precipitation === undefined) return 0;
-  return h.time - t < H ? h.precipitation : 0;
+  const win = precipWindow(hs, j);
+  return h.time - t < win ? (h.precipitation * H) / win : 0;
 }
 
 /** Clearness k_t at t from the mid-hour stamps (hour.time − 30 min); undefined when the series has none. */
@@ -153,6 +167,33 @@ export function weatherAt(series: WeatherSeries, t: number): WeatherHour {
   return out;
 }
 
+/**
+ * A new stamp at t for insertion into `series` (e.g. the belt-kit offset shape, §11.5) that keeps the series'
+ * semantics: instantaneous fields from {@link weatherAt}; hourly-mean radiation of the hour containing t; the clearness
+ * of t − 30 min (the parser's mid-hour stamping, so {@link clearnessAt} is unchanged); and the precipitation of the
+ * stamp that follows t split in time, so accumulated rain is unchanged. Returns the stamp and, when a following stamp
+ * shares its accumulation window, that stamp's reduced precipitation (the caller applies it after inserting).
+ */
+export function insertStamp(series: WeatherSeries, t: number): { hour: WeatherHour; nextIndex: number; nextPrecipitation?: number } {
+  const hs = series.hours;
+  const h = weatherAt(series, t);
+  const k = clearnessAt(series, t - 1.8e6);
+  if (k !== undefined) h.clearness = k;
+  else delete h.clearness;
+  const i = stampIndex(hs, t);
+  const j = i + 1; // the stamp after t (t is not an existing stamp)
+  const next = hs[j];
+  delete h.precipitation;
+  if (next && next.precipitation !== undefined) {
+    const winStart = next.time - precipWindow(hs, j);
+    const share = t > winStart ? (t - winStart) / (next.time - winStart) : 0;
+    h.precipitation = next.precipitation * share;
+    return { hour: h, nextIndex: j, nextPrecipitation: next.precipitation - h.precipitation };
+  }
+  if (!next && i >= 0 && hs[i]!.precipitation !== undefined) h.precipitation = 0;
+  return { hour: h, nextIndex: j };
+}
+
 /** First and last stamp times of a series (NaN when empty). */
 export function seriesSpan(series: WeatherSeries): { start: number; end: number } {
   const hs = series.hours;
@@ -175,7 +216,7 @@ export function trimSeries(series: WeatherSeries, from: number, to: number): Wea
   return { ...series, hours: hs.slice(a, b + 1) };
 }
 
-/** Sum of precipitation (mm) in (from, to] from the hourly stamps. */
+/** Sum of precipitation (mm) in (from, to] from the stamps (each holds the rain of its accumulation window). */
 export function rainBetween(series: WeatherSeries, from: number, to: number): number {
   let s = 0;
   for (const h of series.hours) if (h.time > from && h.time <= to) s += h.precipitation ?? 0;

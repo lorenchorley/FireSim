@@ -178,12 +178,25 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   addWarnings(fh.warnings);
   const parsedHistory = fh.geojson ? parseFireHistoryWithMeta(fh.geojson) : null;
   if (!parsedHistory) addWarnings([MESSAGES.fireHistoryUnavailable]);
+  else if (fh.partial) addWarnings([MESSAGES.fireHistoryPartial]);
   check();
 
   // ── weather ──
   report('weather', 0.55, 'Weather…');
+  // Belt-kit readings (§11.5): the station pressure defaults to ISA at the site (domain centre) elevation. A reading
+  // that cannot be converted (wet bulb warmer than the dry bulb) is skipped with a warning, not a failed build.
   let belt: BeltKitReading[] | undefined;
-  if (req.beltKit?.length) belt = req.beltKit.map((b) => beltKitReading({ ...b, elevation: b.elevation ?? zCentre }));
+  if (req.beltKit?.length) {
+    belt = [];
+    for (const b of req.beltKit) {
+      try {
+        belt.push(beltKitReading({ ...b, elevation: b.elevation ?? zCentre }));
+      } catch (e) {
+        addWarnings([MESSAGES.beltKitRejected(e instanceof Error ? e.message : String(e))]);
+      }
+    }
+    if (!belt.length) belt = undefined;
+  }
   const wctx: WeatherContext = {
     centre: rr.centre,
     online: req.online,
@@ -192,6 +205,7 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
     duration: rr.duration,
     medianElevation: zMedian,
     centreElevation: zCentre,
+    relief: terrain.maxElevation - terrain.minElevation,
     onStatus: (m) => report('weather', 0.6, m),
     ...(rr.demoSiteId ? { siteId: rr.demoSiteId } : {}),
     ...(signal ? { signal } : {}),
@@ -203,7 +217,7 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   const t0 = weather.t0;
   let duration = rr.duration;
   if (weather.maxDuration < duration) {
-    duration = Math.max(3600, Math.floor(weather.maxDuration / 600) * 600);
+    duration = Math.max(SCENARIO_PARAMS.minWeatherAfterStartH * 3600, Math.floor(weather.maxDuration / 600) * 600);
     addWarnings([MESSAGES.durationClamped(duration / 3600)]);
   }
 
@@ -240,7 +254,11 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   // ── options, assembly ──
   const options = resolveOptions(req, rr.extent, rr.fireCellSize);
   const series = weather.series;
-  series.warnings = [...(series.warnings ?? []), ...weather.warnings, ...drought.warnings].filter((w, i, a) => a.indexOf(w) === i);
+  // Every build warning (terrain, layers, weather, drought, fuel) travels with the scenario on weather.warnings, the
+  // only warning slot of ScenarioData, so a saved or re-opened scenario still explains its fallbacks.
+  addWarnings(weather.warnings);
+  addWarnings(drought.warnings);
+  series.warnings = [...(series.warnings ?? []), ...warnings].filter((w, i, a) => a.indexOf(w) === i);
   const idPlace = rr.demoSiteId ?? `${rr.centre.lat.toFixed(3)},${rr.centre.lon.toFixed(3)}`;
   const scenario: ScenarioData = {
     id: `${idPlace}-${new Date(t0).toISOString().slice(0, 16).replace(/[-:]/g, '')}Z-${req.weather.kind}`,
@@ -263,5 +281,5 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   return scenario;
 }
 
-/** Warnings a built scenario carries (weather + the ones reported during the build are on `weather.warnings`). */
+/** Warnings a built scenario carries (all build warnings are copied onto `weather.warnings`). */
 export const scenarioWarnings = (s: ScenarioData): string[] => s.weather.warnings ?? [];

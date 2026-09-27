@@ -114,22 +114,28 @@ export async function downloadAreaPack(req: AreaPackRequest, onProgress?: (p: Ar
   else warnings.push('Canopy not stored (not available for this area).');
 
   // Vegetation and fire history (bundled when a demo site covers the square, else live).
+  // A layer served from an existing pack (re-download / refresh of the same area) is re-queried live so the new pack
+  // is current, and kept from the old pack when the query fails: a refreshed pack never loses a layer.
   report(0.5, 'Vegetation map…');
   const veg = await loadVegetationLayer(ctx).catch(() => null);
   check();
   if (veg?.geojson && veg.origin !== 'pack') items['vegetation'] = veg.geojson;
-  else if (!veg?.geojson) {
+  else {
     const g = await fetchSvtm(ctx).catch(() => null);
+    check();
     if (g) items['vegetation'] = g;
+    else if (veg?.geojson) items['vegetation'] = veg.geojson;
     else warnings.push('Vegetation map not stored.');
   }
   report(0.65, 'Fire history…');
   const fh = await loadFireHistoryLayer(ctx).catch(() => null);
   check();
   if (fh?.geojson && fh.origin !== 'pack') items['fireHistory'] = fh.geojson;
-  else if (!fh?.geojson) {
+  else {
     const g = await fetchNpwsFireHistory(ctx).catch(() => null);
+    check();
     if (g) items['fireHistory'] = g;
+    else if (fh?.geojson) items['fireHistory'] = fh.geojson;
     else warnings.push('Fire history not stored.');
   }
 
@@ -139,9 +145,10 @@ export async function downloadAreaPack(req: AreaPackRequest, onProgress?: (p: Ar
     const wctx: WeatherContext = { centre: req.centre, online: true, kv, now, duration: 0, medianElevation: 0, centreElevation: 0, ...(signal ? { signal } : {}), ...(req.demoSiteId ? { siteId: req.demoSiteId } : {}) };
     try {
       const r = await omFetch(forecastUrl(req.centre, { pastDays: P.forecastPastDays, forecastDays: P.maxForecastDays }), wctx);
-      if (parseOpenMeteoHourly(r.data).missingRequired.length === 0) items['weather'] = r.data as unknown as AreaPackItem;
+      const pr = parseOpenMeteoHourly(r.data);
+      if (pr.missingRequired.length === 0) items['weather'] = r.data as unknown as AreaPackItem;
       else warnings.push('Weather forecast incomplete: not stored.');
-      const parsed = parseOpenMeteoHourly(r.data).series;
+      const parsed = pr.series;
       report(0.9, 'Rainfall history…');
       const hist = await dailyHistory(req.centre, now, wctx, parsed);
       const rain = await annualRainfall(req.centre, req.demoSiteId, now, wctx);

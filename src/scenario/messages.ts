@@ -8,6 +8,7 @@ export const MESSAGES = Object.freeze({
   vegetationPartial: 'The vegetation map covers only part of the area; fuel elsewhere is inferred from terrain.',
   noFireRecord: 'No fire record: steady-state fuel assumed',
   fireHistoryUnavailable: 'Fire history unavailable: steady-state fuel assumed (no recent burns).',
+  fireHistoryPartial: 'Fire history covers only part of the area; elsewhere steady-state fuel is assumed.',
   syntheticUpperAir: 'No upper-air data for this weather: a synthetic temperature profile is used and C-Haines is unavailable.',
   weatherModelFallback: (model: string): string => `Weather model fallback used: ${model}.`,
   pressureLevelFallback: (model: string): string => `Upper-air (pressure-level) data from ${model}.`,
@@ -26,6 +27,8 @@ export const MESSAGES = Object.freeze({
   cellCoarsened: (m: number): string => `Fire grid ${m} m (20 m detail needs an area of 6 km or less).`,
   offlineWeather: 'offline: choose a preset, manual entry or a replay',
   offlineWeatherFallback: (preset: string): string => `Offline and no stored weather covers this time: using the '${preset}' preset instead (choose a preset, manual entry or a replay).`,
+  weatherUnavailableFallback: (preset: string): string =>
+    `No usable forecast from the weather service for this time and nothing stored: using the '${preset}' preset instead (choose a preset, manual entry or a replay).`,
   staleWeather: (hoursOld: number): string => `Offline: using weather stored ${hoursOld.toFixed(0)} h ago.`,
   shortSpinup: (hours: number): string => `Only ${hours.toFixed(0)} h of weather before the start (moisture spin-up shortened).`,
   durationClamped: (hours: number): string => `Duration limited to ${hours.toFixed(1)} h by the available weather.`,
@@ -33,6 +36,7 @@ export const MESSAGES = Object.freeze({
   manualNoCloud: 'No cloud cover entered: clear sky assumed.',
   networkFailed: (layer: string): string => `${layer}: network unavailable, using the next source.`,
   rateLimited: (s: number): string => `Weather service busy (rate limit): retrying in ${s} s.`,
+  beltKitRejected: (why: string): string => `Belt-kit reading ignored: ${why}`,
   forecastBeltOffset: (dT: number, dTd: number): string =>
     `Belt-kit reading applied: forecast adjusted by ${dT >= 0 ? '+' : ''}${dT.toFixed(1)} °C, dew point ${dTd >= 0 ? '+' : ''}${dTd.toFixed(1)} °C (fading over 3 h).`,
 });

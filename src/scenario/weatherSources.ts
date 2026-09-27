@@ -63,10 +63,14 @@ export interface WeatherContext {
   medianElevation: number;
   /** Elevation at the domain centre (manual readings' site). */
   centreElevation: number;
+  /** Domain relief (max − min elevation, m): the D43 lapse rate of the belt-kit offset (§5.2, §11.5). */
+  relief?: number;
   /** Belt-kit readings to blend into a forecast (§11.5). */
   beltKit?: BeltKitReading[];
   /** Status messages (rate-limit waits). */
   onStatus?: (message: string) => void;
+  /** Override of the 429 back-off (ms), tests. */
+  rateLimitBackoffMs?: number;
 }
 
 export interface ResolvedWeather {
@@ -123,7 +127,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * GET an Open-Meteo JSON document through the cache: network-first (online) with the 429 back-off of §11.1, cache only
  * (offline). Throws {@link OfflineError} offline with nothing cached.
  */
-export async function omFetch(url: string, ctx: Pick<WeatherContext, 'online' | 'signal' | 'kv' | 'onStatus'>): Promise<{ data: OpenMeteoResponse; from: CacheOrigin; fetchedAt: number }> {
+export async function omFetch(url: string, ctx: Pick<WeatherContext, 'online' | 'signal' | 'kv' | 'onStatus' | 'rateLimitBackoffMs'>): Promise<{ data: OpenMeteoResponse; from: CacheOrigin; fetchedAt: number }> {
   const kv = ctx.kv ?? openCache();
   const key = omCacheKey(url);
   if (!ctx.online) {
@@ -140,8 +144,9 @@ export async function omFetch(url: string, ctx: Pick<WeatherContext, 'online' | 
         return j;
       } catch (e) {
         if (isHttpError(e) && e.status === 429 && attempt < P.rateLimitRetries && !ctx.signal?.aborted) {
-          ctx.onStatus?.(MESSAGES.rateLimited(Math.round(P.rateLimitBackoffMs / 1000)));
-          await sleep(P.rateLimitBackoffMs, ctx.signal);
+          const wait = ctx.rateLimitBackoffMs ?? P.rateLimitBackoffMs;
+          ctx.onStatus?.(MESSAGES.rateLimited(Math.round(wait / 1000)));
+          await sleep(wait, ctx.signal);
           continue;
         }
         throw e;
@@ -160,7 +165,7 @@ type LiveKind = 'forecast' | 'historical';
 interface LivePlan {
   kind: LiveKind;
   /** Surface requests in fallback order: [model, url]. */
-  surface: [string, string][];
+  surface: [model: string, url: string, label?: string][];
   /** Pressure-level fallback requests. */
   levels: [string, string][];
   label: string;
@@ -171,13 +176,28 @@ const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 /** Surface variables requested with the pressure-level fallbacks (so the parser's required checks pass). */
 const REQUIRED_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'wind_direction_10m'];
 
-/** The request plan of a live mode (§11.1). */
+/**
+ * past_days needed so the forecast API's data (which start at 00:00 UTC `past_days` days before today, UTC) reach back
+ * to t0 − 7 days (the §5.6 spin-up window): 7 for now / forecast starts (spec §11.1 `past_days=7`), more for a recent
+ * past start.
+ */
+export function forecastPastDaysFor(t0: number, now: number): number {
+  const P = SCENARIO_PARAMS;
+  const sinceUtcMidnight = now - Math.floor(now / DAY) * DAY;
+  return P.forecastPastDays + Math.max(0, Math.ceil((now - t0 - sinceUtcMidnight) / DAY));
+}
+
+/**
+ * The request plan of a live mode (§11.1). A past start uses the forecast API (past_days ≤ 92) while its 7-day
+ * spin-up window is inside the last 92 days, else the historical-forecast API (2016+) or the ERA5 archive.
+ */
 export function livePlan(loc: LatLon, t0: number, durationS: number, now: number, isPast: boolean): LivePlan {
   const P = SCENARIO_PARAMS;
   const end = t0 + durationS * 1000;
-  const recent = t0 >= now - P.maxPastDays * DAY + 2 * DAY;
+  const needPast = forecastPastDaysFor(t0, now);
+  const recent = needPast <= P.maxPastDays;
   if (!isPast || recent) {
-    const pastDays = Math.min(P.maxPastDays, Math.max(P.forecastPastDays, Math.ceil((now - t0) / DAY) + P.forecastPastDays + 1));
+    const pastDays = Math.min(P.maxPastDays, needPast);
     const forecastDays = Math.min(P.maxForecastDays, Math.max(isPast ? 1 : P.forecastDays, Math.ceil((end - now) / DAY) + 1));
     return {
       kind: 'forecast',
@@ -191,7 +211,12 @@ export function livePlan(loc: LatLon, t0: number, durationS: number, now: number
   if (t0 >= P.historicalForecastFromMs) {
     return {
       kind: 'historical',
-      surface: (['ecmwf_ifs', 'best_match'] as const).map((m) => [m, historicalForecastUrl(loc, startDate, endDate, m)]),
+      // ERA5 (no upper air) is the last resort when the historical-forecast archive has no usable data (e.g. its
+      // early years): first available wins, with the model-fallback warning (§11.6).
+      surface: [
+        ...(['ecmwf_ifs', 'best_match'] as const).map((m): [string, string] => [m, historicalForecastUrl(loc, startDate, endDate, m)]),
+        ['era5', archiveHourlyUrl(loc, startDate, endDate), 'ERA5 reanalysis'],
+      ],
       levels: LEVEL_MODELS.map((m) => [m, historicalForecastUrl(loc, startDate, endDate, m, [...REQUIRED_VARS, ...OM_LEVEL_VARS])]),
       label: 'historical forecast',
     };
@@ -250,15 +275,19 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
   const warnings: string[] = [];
   const from = t0 - P.minCachedSpinupHours * H;
   const to = t0 + ctx.duration * 1000;
+  // Every accepted response must hold at least min(duration, 1 h) of weather after t0 (a shorter tail clamps the
+  // duration with a warning, see build.ts); stored responses also need the 24 h spin-up before t0.
+  const minTo = t0 + Math.min(ctx.duration * 1000, P.minWeatherAfterStartH * H);
   let series: WeatherSeries | null = null;
   let origin: ResolvedWeather['origin'] = 'network';
   let fetchedAt = ctx.now;
   if (ctx.online) {
     for (let i = 0; i < plan.surface.length && !series; i++) {
-      const [model, url] = plan.surface[i]!;
+      const [model, url, label] = plan.surface[i]!;
       try {
         const r = await omFetch(url, ctx);
-        series = usable(r.data, plan.kind, `Open-Meteo ${model} ${plan.label}`, from, t0);
+        // A fresh response only has to start by t0 (a short spin-up is warned about below); stored ones need 24 h.
+        series = usable(r.data, plan.kind, `Open-Meteo ${model} ${label ?? plan.label}`, r.from === 'network' ? t0 : from, minTo);
         if (series) {
           origin = r.from;
           fetchedAt = r.fetchedAt;
@@ -270,7 +299,7 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
     }
   }
   if (!series) {
-    const st = await storedWeather(loc, from, t0, ctx);
+    const st = await storedWeather(loc, from, minTo, ctx);
     if (st) {
       series = st.series;
       origin = st.origin;
@@ -308,6 +337,21 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
 // ─────────────────────────────────────────────────────────────────────────────
 
 const round10min = (ms: number): number => Math.floor(ms / 600_000) * 600_000;
+
+/** Belt-kit readings (already converted by beltKitReading) as manual-series stamps. */
+function beltKitHours(readings: BeltKitReading[]): WeatherSeries['hours'] {
+  return [...readings]
+    .sort((a, b) => a.time - b.time)
+    .map((r) => ({
+      time: r.time,
+      temperature: r.temperature,
+      relativeHumidity: r.relativeHumidity,
+      dewPoint: r.dewPoint,
+      windSpeed10: r.windSpeed10,
+      windDir10: r.windDir10,
+      ...(r.cloudCover !== undefined ? { cloudCover: r.cloudCover } : {}),
+    }));
+}
 
 /** Build a preset series for the context. */
 function presetWeather(id: string, t0: number, ctx: WeatherContext): ResolvedWeather {
@@ -347,10 +391,15 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       return { series: rp.series, t0, maxDuration: (span.end - t0) / 1000, warnings, edits: [], origin: 'bundled', daily: rp.daily, replay: rp.info };
     }
     case 'manual': {
-      const hs = [...mode.series.hours].sort((a, b) => a.time - b.time);
+      // Belt-kit readings given with a manual run ARE its readings (psychrometer D38, 2 m → 10 m wind D39); the
+      // series then only contributes drought, annual rainfall and the night template.
+      const kitHours = ctx.beltKit?.length ? beltKitHours(ctx.beltKit) : null;
+      const hs = kitHours ?? [...mode.series.hours].sort((a, b) => a.time - b.time);
       if (!hs.length) throw new Error('Manual weather: no readings');
-      const t0 = mode.start ?? hs.find((h) => h.time >= hs[0]!.time + H)?.time ?? hs[0]!.time;
-      const input: WeatherSeries = { ...mode.series };
+      const t0 = mode.start ?? (kitHours ? hs[0]!.time : (hs.find((h) => h.time >= hs[0]!.time + H)?.time ?? hs[0]!.time));
+      const input: WeatherSeries = kitHours
+        ? { ...mode.series, kind: 'belt-kit', source: 'Belt weather kit readings', hours: kitHours, ...(ctx.beltKit![0]!.elevation !== undefined ? { sourceElevation: ctx.beltKit![0]!.elevation } : {}) }
+        : { ...mode.series };
       if (input.kbdi === undefined && mode.kbdi !== undefined) input.kbdi = mode.kbdi;
       const r = normaliseManualSeries(input, {
         from: t0 - P.minCachedSpinupHours * H,
@@ -358,7 +407,8 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
         sourceElevation: ctx.centreElevation,
         ...(mode.cloudCover !== undefined ? { cloudCover: mode.cloudCover } : {}),
       });
-      return { series: r.series, t0, maxDuration: Infinity, warnings: r.warnings, edits: [], origin: 'manual' };
+      // No upper air in a manual run: synthetic profile, C-Haines unavailable (§11.5, §8.2).
+      return { series: r.series, t0, maxDuration: Infinity, warnings: [...r.warnings, MESSAGES.syntheticUpperAir], edits: [], origin: 'manual' };
     }
     case 'now':
     case 'forecast':
@@ -367,7 +417,12 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       const live = await liveWeather(t0, mode.kind === 'past', ctx);
       if (live) {
         if (ctx.beltKit?.length && mode.kind !== 'past') {
-          const b = applyBeltKitToForecast(live.series, ctx.beltKit, { origin: ctx.centre, t0, siteElevation: ctx.centreElevation });
+          const b = applyBeltKitToForecast(live.series, ctx.beltKit, {
+            origin: ctx.centre,
+            t0,
+            siteElevation: ctx.centreElevation,
+            ...(ctx.relief !== undefined ? { relief: ctx.relief } : {}),
+          });
           live.series = b.series;
           live.edits.push(...b.edits);
           live.warnings.push(...b.warnings);
@@ -378,7 +433,8 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       if (!fb) throw new OfflineError(MESSAGES.offlineWeather);
       const r = presetWeather(fb, t0, ctx);
       r.origin = 'fallback';
-      r.warnings.push(MESSAGES.offlineWeatherFallback(WEATHER_PRESETS[fb as keyof typeof WEATHER_PRESETS]?.name ?? fb));
+      const fbName = WEATHER_PRESETS[fb as keyof typeof WEATHER_PRESETS]?.name ?? fb;
+      r.warnings.push(ctx.online ? MESSAGES.weatherUnavailableFallback(fbName) : MESSAGES.offlineWeatherFallback(fbName));
       return r;
     }
   }
@@ -439,8 +495,7 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
   if (byDate.size === 0) return { daily: [], source: 'none', warnings };
   if (filled) {
     warnings.push(MESSAGES.dailyGapFilled(filled));
-    source += source === 'none' ? '' : ' + ';
-    source = (source === 'none' ? '' : source) + 'forecast hourly (gap-fill)';
+    source = source === 'none' ? 'forecast hourly (local-day aggregates)' : `${source} + forecast hourly (gap-fill)`;
   }
   // Assemble the consecutive range from the first known day to yesterday, assuming missing days dry.
   const dates = [...byDate.keys()].sort();
@@ -581,7 +636,15 @@ export async function resolveDrought(w: ResolvedWeather, ctx: WeatherContext): P
   }
   const hist = await dailyHistory(ctx.centre, w.t0, ctx, w.untrimmed ?? s);
   const R = await annualRainfall(ctx.centre, ctx.siteId, w.t0, ctx);
-  const d = droughtFromDaily(hist.daily, R.mm, rainToday);
+  const enough = hist.daily.length >= SCENARIO_PARAMS.minHistoryDays;
+  const d = droughtFromDaily(enough ? hist.daily : [], R.mm, rainToday);
+  // A short history still gives the moisture spin-up its recent rain (P48, hours since rain; §5.6).
+  if (!enough && hist.daily.length) {
+    d.daily = hist.daily;
+    const last20 = hist.daily.slice(-20).map((x) => x.rain);
+    while (last20.length < 20) last20.unshift(0);
+    d.rainLast20 = last20;
+  }
   d.warnings.unshift(...hist.warnings);
   d.source = `${hist.source}; annual rainfall: ${R.source}`;
   return d;

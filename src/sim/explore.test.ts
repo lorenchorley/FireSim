@@ -1,0 +1,21 @@
+import { it } from 'vitest';
+import { demoScenario, withIgnitions, pointIgnition } from './testing/scenarios';
+import { Simulation } from './simulation';
+import type { SimSnapshot } from '../core/types';
+it('katoomba 3h', async () => {
+  const tier = (process.env.TIER as 'fast') ?? 'fast';
+  const base = await demoScenario({ startCivil: [2025, 12, 20, 13] });
+  const s = withIgnitions(base, [pointIgnition('esc', -2170, 900, 0, 60)]);
+  const kinds = new Map<string, number>();
+  let last: SimSnapshot | null = null;
+  const t0 = performance.now();
+  const sim = new Simulation(s, { tier, hooks: { snapshot: (sn) => { last = sn; for (const i of sn.insights) kinds.set(i.kind, (kinds.get(i.kind) ?? 0) + 1); if (sn.time % 1800 === 0) { const st = sn.stats; process.stderr.write(`t=${sn.time/3600}h area=${st.burntAreaHa.toFixed(0)} per=${st.perimeterKm.toFixed(1)} head=${(st.headRos*3.6).toFixed(1)}km/h dir=${st.headDir.toFixed(0)} I=${(st.maxIntensity/1000).toFixed(0)}MW/m Nc=${st.convectiveNumber.toFixed(1)} emb=${st.activeEmbers} spots=${st.spotFires} left=${st.embersLeftDomain} M=${st.deadFuelMoistureMean.toFixed(1)} ffdi=${st.ffdi.toFixed(0)} ${st.fireDangerRating} wind=${(st.weather.windSpeed10*3.6).toFixed(0)}@${st.weather.windDir10.toFixed(0)}\n`); } } } });
+  process.stderr.write(`forecast: ${sim.forecastInsights.map(i => `${i.kind}@${(i.time/3600).toFixed(1)}`).join(', ')}\n`);
+  sim.advance(3 * 3600);
+  process.stderr.write(`wall ${((performance.now()-t0)/1000).toFixed(1)} s; perf ${JSON.stringify(sim.perf().modules, (k,x)=>typeof x==='number'?Math.round(x):x)}\n`);
+  process.stderr.write(`insight kinds: ${[...kinds].map(([k, n]) => `${k}×${n}`).join(', ')}\n`);
+  const spots = last!.spotFires;
+  process.stderr.write(`spots ${spots.length}: ${spots.slice(0, 12).map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)}) t=${(p.time/60).toFixed(0)}m d=${p.distance.toFixed(0)} tr=${p.travel.toFixed(0)} src=(${p.sourceX?.toFixed(0)},${p.sourceY?.toFixed(0)}) ${p.emberClass}`).join('; ')}\n`);
+  const ex = sim.explain(-2000, 900);
+  process.stderr.write(`explain: ${JSON.stringify({ ros: ex.ros, driver: ex.driver, slope: ex.slopeDeg, M: ex.deadFuelMoisture, arr: ex.arrivalTime })}\n${ex.narrative.join('\n')}\n`);
+}, 900000);

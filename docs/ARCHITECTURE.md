@@ -203,20 +203,35 @@ export class InsightEngine {
 ```
 
 ### sim/
+Normative: spec §12 (coupling order §12.2, stats §12.3, checkpoints §12.4, determinism §12.5, tiers §12.6) and the
+protocol in `src/sim/protocol.ts` (§2.3).
 ```ts
-export type ToWorker =
-  | { type: 'init'; scenario: ScenarioData }
-  | { type: 'run'; until: number } | { type: 'pause' }
-  | { type: 'ignite'; ignition: Ignition } | { type: 'edit'; edit: ScenarioEdit }
-  | { type: 'explain'; x: number; y: number; reqId: number }
-  | { type: 'rewind'; time: number };
-export type FromWorker =
-  | { type: 'ready' } | { type: 'snapshot'; snapshot: SimSnapshot }
-  | { type: 'explain'; reqId: number; explanation: CellExplanation }
-  | { type: 'status'; time: number; running: boolean } | { type: 'error'; message: string };
-export class Simulation { constructor(s: ScenarioData); advance(until: number, onSnapshot: (s: SimSnapshot) => void, shouldStop?: () => boolean): void; ... }
-export class SimClient { constructor(); init(s: ScenarioData): Promise<void>; run(until: number): void; pause(): void; ... on(event, cb) }
+// simulation.ts — synchronous orchestrator (worker or Node)
+export class Simulation {
+  constructor(scenario: ScenarioData, opts?: { tier?: 'auto' | QualityTier; hooks?: { snapshot?(s: SimSnapshot): void;
+    rewound?(time: number): void }; clock?: () => number; skipSpinUp?: boolean });
+  readonly forecastInsights: Insight[];                   // 'ready' payload (§10.3)
+  spinUp(deadlineMs?: number): boolean;                    // 3-D spin-up 900 s + auto-tune; t0 checkpoint when done
+  advance(until: number, deadlineMs?: number, shouldStop?: () => boolean): boolean;   // whole Δt_a steps
+  ignite(i: Ignition): void; edit(e: ScenarioEdit, time: number): void; removeEdit(id: string): void;   // timed records
+  setOption(key: SimOptionKey, value: number | boolean): void; setQuality(tier: QualityTier): void;
+  rewind(time: number): number;                            // restores the latest checkpoint ≤ time; returns its time
+  explain(x: number, y: number, time?: number): CellExplanation;
+  snapshot(): SimSnapshot; stats(): SimStats; perf(): SimPerf;
+  readonly time: number; readonly tier: QualityTier; readonly isReady: boolean;
+}
+// host.ts — chunked message loop (≤ 40 ms chunks, yields between them) shared by the worker and LocalSimController
+export class SimHost { constructor(port: { post(msg: FromWorker, transfer?: Transferable[]): void }, opts?); handle(msg: ToWorker): void; }
+// worker.ts — Web Worker entry (MessageChannel yield, transferable snapshot buffers)
+// client.ts
+export class SimClient implements SimController { constructor(worker?: Worker); }   // in-thread fallback without Worker
+export class LocalSimController implements SimController { }                        // same host in the calling thread
 ```
+Every user action (ignition, fuel/wind edit, edit removal, option, quality tier) is a *record* with a simulation time,
+applied at the start of the first atmosphere step at or after that time in (time, insertion) order; a record in the
+past rewinds to it (posting `rewound`). `rewind(t)` restores the latest checkpoint ≤ t (ring of 8 every 1800 s + the
+permanent t0 one), re-runs silently to t and then streams again, so a re-run is bitwise identical. `explain` accepts
+an optional view time (extra `time` field of the 'explain' message).
 
 ### render/
 ```ts

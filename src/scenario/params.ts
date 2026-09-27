@@ -61,11 +61,14 @@ export const SCENARIO_PARAMS = Object.freeze({
   rateLimitBackoffMs: 60_000,
   rateLimitRetries: 3,
   /**
-   * A cached response is accepted offline when it covers [t0 − minCachedSpinupHours, t0 + duration]. [H] The spec asks
-   * for [t0 − 7 d, …]; a forecast cached a day earlier would never qualify, so 24 h (stable-night spin-up) is required
-   * and a warning is added when fewer than 7 days precede t0.
+   * A cached response is accepted offline when it covers [t0 − minCachedSpinupHours, t0 + min(duration,
+   * minWeatherAfterStartH)]. [H] DEVIATION: the spec asks for [t0 − 7 d, t0 + duration]; a forecast cached a day earlier
+   * would never qualify, so 24 h (stable-night spin-up) is required and a warning is added when fewer than 7 days
+   * precede t0; a response ending before t0 + duration clamps the duration (warning) instead of being rejected.
    */
   minCachedSpinupHours: 24,
+  /** Least weather (h) any accepted live / cached response must hold after t0 (and the shortest clamped duration). [H] */
+  minWeatherAfterStartH: 1,
   /**
    * Preset used when a live-weather mode (now / forecast / past) cannot get any weather offline. [H] DEVIATION: the spec
    * fails with "offline: choose a preset, manual entry or a replay"; the orchestration brief requires offline builds to
@@ -78,6 +81,8 @@ export const SCENARIO_PARAMS = Object.freeze({
   annualRainfallYears: 10,
   /** Rounding (deg) of the site key under which the 10-year rainfall is cached. [H] */
   annualRainfallKeyDeg: 0.05,
+  /** Below this many days of daily history KBDI / DF are not computed from it (drought defaults instead). [H] */
+  minHistoryDays: 60,
   /** Drought defaults when no history is available (§11.5, §11.6). [H] */
   defaultDf: 7,
   defaultKbdi: 60,
@@ -105,8 +110,9 @@ export const SCENARIO_PARAMS = Object.freeze({
   presetChangeTauMin: 7.5,
   /**
    * Half-width W of the change blend: f is renormalised so it is exactly 0 at t_c − W and 1 at t_c + W. [H] DEVIATION
-   * (tiny): the plain logistic still mixes 1.8 % of the post-change wind in 30 min before t_c, which lowers the
-   * hot-nw 14:30 "pre-change" chip wind from the stated 10.96 m/s to 10.80 m/s. 10–90 % takes 31 min instead of 33.
+   * (tiny): the plain logistic still mixes 1.8 % of the post-change wind 30 min before t_c, which would raise the
+   * hot-nw 14:30 "pre-change" chip wind from the stated 10.96 to 10.98 m/s, veer it 1.4° and move its FFDI from 62.6 to
+   * 62.7. With W = 30 min the chip hour is exactly pre-change; 10–90 % takes 31 min instead of 33.
    */
   presetChangeHalfWidthMin: 30,
   /** Extra stamps every 10 min inside [t_c − 1 h, t_c + 2 h] (§11.3). [D] */
@@ -143,7 +149,10 @@ export const SCENARIO_PARAMS = Object.freeze({
   beltOffsetLeadH: 1,
   /** Radius of the WindEdit created from a belt-kit reading (m) (§11.5). [D] */
   beltWindEditRadiusM: 1000,
-  /** Lapse rates used to bring the forecast to the reading's elevation (K/km). [K verify: ISA 6.5, dew point ≈ 1.8] */
+  /**
+   * Lapse rates used to bring the forecast to the reading's elevation (K/km) [K verify: ISA 6.5, dew point ≈ 1.8 (§5.2)].
+   * The T rate is the fallback when the domain relief is unknown; builds use the D43 rate of fuel/moisture.
+   */
   lapseTKPerKm: 6.5,
   lapseTdKPerKm: 1.8,
 

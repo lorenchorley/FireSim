@@ -10,8 +10,8 @@
  * - Drought for manual entry: DF only → KBDI = kbdiFromDf(DF) (no recent rain); KBDI only → DF at x_lim; neither →
  *   DF 7 / KBDI 60 with a warning.
  * - Belt-kit readings in a forecast run: a domain offset on T and T_d (reading − lapse-corrected forecast at the
- *   reading's elevation) that is full at the reading and decays linearly to 0 over 3 h, plus a WindEdit of radius
- *   1 km at the reading location.
+ *   reading's elevation, Γ of D43 as in fuel/moisture) that is full at the reading and decays linearly to 0 over 3 h,
+ *   plus a WindEdit of radius 1 km at the reading location.
  */
 import type { LatLon, WeatherHour, WeatherSeries, WeatherSourceKind, WindEdit } from '../core/types';
 import { LocalProjection } from '../core/geo';
@@ -20,7 +20,9 @@ import { clamp, wrapDeg } from '../core/units';
 import { droughtFactorFromX, droughtXLimit, kbdiFromDf } from '../fuel/moisture/drought';
 import { MESSAGES } from './messages';
 import { SCENARIO_PARAMS, type BeltExposure } from './params';
-import { weatherAt } from './weather';
+import { solarPosition } from '../terrain';
+import { lapseRate } from '../fuel/moisture/air';
+import { insertStamp, weatherAt } from './weather';
 
 const H = 3.6e6;
 
@@ -275,15 +277,27 @@ export function beltOffsetWeight(t: number, tr: number): number {
 }
 
 /**
+ * Lapse rate (K/km) that brings the forecast to the reading's elevation: the §5.2 / D43 rate the moisture model uses
+ * (6.5 K/km, rising to 9.8 K/km by day when the mixed layer spans the relief) when `relief` is known, else the
+ * standard 6.5 K/km. Using the same Γ as fuel/moisture makes the adjusted run reproduce the reading at its elevation.
+ */
+export function beltLapseRate(series: WeatherSeries, fc: WeatherHour, t: number, relief?: number): number {
+  if (relief === undefined || !Number.isFinite(relief)) return SCENARIO_PARAMS.lapseTKPerKm;
+  const sun = solarPosition(t, series.location.lat, series.location.lon);
+  return lapseRate(sun.elevation, relief, fc.boundaryLayerHeight);
+}
+
+/**
  * Apply belt-kit readings to a forecast series (§11.5): per reading, the T and T_d offset against the lapse-corrected
- * forecast at the reading's elevation, blended in by {@link beltOffsetWeight} (stamps are added at t_r − lead, t_r and
- * t_r + 3 h so the shape is represented exactly), and a WindEdit of radius 1 km at the reading location.
- * Returns a new series (the input is not modified).
+ * forecast at the reading's elevation (Γ of D43 when `ctx.relief` is given, T_d 1.8 K/km as §5.2), blended in by
+ * {@link beltOffsetWeight} (stamps are inserted at t_r − lead, t_r and t_r + 3 h with {@link insertStamp}, which keeps
+ * the rain totals and the clearness stamping, so the shape is represented exactly), and a WindEdit of radius 1 km at
+ * the reading location. Returns a new series (the input is not modified).
  */
 export function applyBeltKitToForecast(
   series: WeatherSeries,
   readings: BeltKitReading[],
-  ctx: { origin: LatLon; t0: number; siteElevation: number },
+  ctx: { origin: LatLon; t0: number; siteElevation: number; relief?: number },
 ): { series: WeatherSeries; edits: WindEdit[]; warnings: string[] } {
   const P = SCENARIO_PARAMS;
   let hours = series.hours.map((h) => ({ ...h }));
@@ -295,15 +309,17 @@ export function applyBeltKitToForecast(
     const zr = r.elevation ?? ctx.siteElevation;
     const fc = weatherAt({ ...series, hours }, r.time);
     const dz = (zr - zSrc) / 1000;
-    const tFc = fc.temperature - P.lapseTKPerKm * dz;
+    const tFc = fc.temperature - beltLapseRate(series, fc, r.time, ctx.relief) * dz;
     const tdFc = (fc.dewPoint ?? dewPointC(fc.temperature, fc.relativeHumidity)) - P.lapseTdKPerKm * dz;
     const dT = r.temperature - tFc;
     const dTd = r.dewPoint - tdFc;
-    // Insert the shape stamps.
-    const extra = [r.time - P.beltOffsetLeadH * H, r.time, r.time + P.beltOffsetDecayH * H];
-    const cur: WeatherSeries = { ...series, hours };
-    for (const t of extra) if (!hours.some((h) => h.time === t)) hours.push(weatherAt(cur, t));
-    hours.sort((a, b) => a.time - b.time);
+    // Insert the shape stamps (sorted insertion; rain and clearness semantics preserved).
+    for (const t of [r.time - P.beltOffsetLeadH * H, r.time, r.time + P.beltOffsetDecayH * H]) {
+      if (hours.some((h) => h.time === t)) continue;
+      const ins = insertStamp({ ...series, hours }, t);
+      if (ins.nextPrecipitation !== undefined) hours[ins.nextIndex] = { ...hours[ins.nextIndex]!, precipitation: ins.nextPrecipitation };
+      hours.splice(ins.nextIndex, 0, ins.hour);
+    }
     hours = hours.map((h) => {
       const w = beltOffsetWeight(h.time, r.time);
       if (w <= 0) return h;

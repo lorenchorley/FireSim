@@ -37,7 +37,7 @@ export {
   type ParseHourlyOptions,
   type ParseHourlyResult,
 } from './openMeteo';
-export { weatherAt, ghiAt, clearnessAt, stampIndex, seriesSpan, seriesCovers, trimSeries, rainBetween } from './weather';
+export { weatherAt, ghiAt, clearnessAt, stampIndex, seriesSpan, seriesCovers, trimSeries, rainBetween, insertStamp } from './weather';
 export {
   resolveWeather,
   resolveDrought,
@@ -47,6 +47,7 @@ export {
   droughtFromDaily,
   rainTodayBefore,
   livePlan,
+  forecastPastDaysFor,
   omFetch,
   omCacheKey,
   OfflineError,
@@ -83,6 +84,7 @@ export {
   manualDrought,
   applyBeltKitToForecast,
   beltOffsetWeight,
+  beltLapseRate,
   kbdiFromDf,
   type BeltKitInput,
   type BeltKitReading,

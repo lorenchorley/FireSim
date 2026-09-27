@@ -30,8 +30,10 @@ export interface ScenarioRequest {
   /** Allow network requests (false = offline: bundled data, area packs and cache only). */
   online: boolean;
   /**
-   * Belt-kit readings taken on the fire ground during a now / forecast run (spec §11.5): they become a fading domain
-   * offset on the forecast T / T_d and a 1 km WindEdit at the reading location.
+   * Belt-kit readings taken on the fire ground (spec §11.5), converted by the builder (psychrometer D38 at the site's
+   * station pressure, kit wind at ~2 m → 10 m open D39). In a now / forecast run they become a fading domain offset on
+   * the forecast T / T_d and a 1 km WindEdit at the reading location; in a manual run they ARE the readings (the
+   * manual series then supplies only the drought inputs). Ignored for past, preset and replay runs.
    */
   beltKit?: BeltKitInput[];
   /** Clock override (unix ms) for 'now' and the past/forecast split (tests, replays of a saved session). */
