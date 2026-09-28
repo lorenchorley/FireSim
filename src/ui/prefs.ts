@@ -18,18 +18,47 @@ type PreferencesApi = {
 
 let nativePrefs: Promise<PreferencesApi | null> | null = null;
 
+/** Longest a native Preferences call may take before the local copy is used instead (ms). */
+export const NATIVE_PREFS_TIMEOUT_MS = 3000;
+
 /** The Capacitor Preferences plugin on native platforms only (the web shim would just wrap localStorage). */
 function native(): Promise<PreferencesApi | null> {
   nativePrefs ??= (async () => {
     try {
       if (!Capacitor.isNativePlatform()) return null;
-      const m = await import('@capacitor/preferences');
-      return m.Preferences as PreferencesApi;
+      const { Preferences } = await import('@capacitor/preferences');
+      // Capacitor plugin objects are Proxies that answer EVERY property with a method wrapper — including `then`.
+      // Returning one from an async function (or awaiting it) makes the promise machinery call Preferences.then(),
+      // which is not a native method: the promise never settles and the app hung on "Loading FireSim…" on
+      // Android. Hand out a plain object that only forwards the three methods we use.
+      const api: PreferencesApi = {
+        get: (o) => Preferences.get(o),
+        set: (o) => Preferences.set(o),
+        remove: (o) => Preferences.remove(o),
+      };
+      return api;
     } catch {
       return null;
     }
   })();
   return nativePrefs;
+}
+
+/** Resolve with `p`, or reject after `ms` so a stalled native call can never block the UI. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`native Preferences call timed out after ${ms} ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }
 
 function localGet(key: string): string | null {
@@ -59,7 +88,7 @@ export async function getPref<T>(key: string, fallback: T): Promise<T> {
   const p = await native();
   if (p) {
     try {
-      raw = (await p.get({ key: PREFIX + key })).value;
+      raw = (await withTimeout(p.get({ key: PREFIX + key }), NATIVE_PREFS_TIMEOUT_MS)).value;
     } catch {
       raw = null;
     }
@@ -80,8 +109,8 @@ export async function setPref(key: string, value: unknown): Promise<void> {
   const p = await native();
   if (!p) return;
   try {
-    if (raw === null) await p.remove({ key: PREFIX + key });
-    else await p.set({ key: PREFIX + key, value: raw });
+    if (raw === null) await withTimeout(p.remove({ key: PREFIX + key }), NATIVE_PREFS_TIMEOUT_MS);
+    else await withTimeout(p.set({ key: PREFIX + key, value: raw }), NATIVE_PREFS_TIMEOUT_MS);
   } catch {
     /* keep the local copy */
   }

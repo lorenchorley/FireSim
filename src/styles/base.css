@@ -167,6 +167,40 @@ img {
   padding: 24px;
 }
 
+.boot-stuck {
+  margin: 20px auto 0;
+  max-width: 34rem;
+  padding: 0 16px;
+  color: var(--text, inherit);
+}
+
+.boot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.boot-actions .btn,
+.boot-error .btn {
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+.boot-details {
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+}
+
 .spinner {
   display: inline-block;
   width: 22px;
