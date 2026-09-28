@@ -142,29 +142,40 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
 - `e2e/sim.spec.ts` — the real engine in its Web Worker, compact.
 - `e2e/ui.spec.ts` — the UI on the mock engine (`?mock=1`), settings and the belt weather kit.
 
+## Try it on an Android phone
+
+The quickest way is the **debug APK** (about 27 MB, works offline with the eight demo sites):
+
+1. Build it with `scripts/build-android-apk.sh` (installs the Android command-line SDK if needed, no Android Studio
+   required), or use a copy someone has built for you. The file is `android/app/build/outputs/apk/debug/app-debug.apk`.
+2. Copy it to the phone (download it, or `adb install -r app-debug.apk` over USB with developer mode on).
+3. Open it on the phone. Android asks you to allow installing apps from that source (Chrome, Files, Drive…) — allow it
+   for this install. Play Protect may warn that the app is from an unknown developer: it is signed with the Android
+   *debug* key, so choose *Install anyway* (or *More details → Install anyway*).
+4. Launch **FireSim**, accept the training notice, pick a demo site (e.g. Katoomba) and a preset weather, build, then
+   mark a fire and press Play. "Use my location" asks for location permission the first time.
+
+To update, install a newer APK over the old one. A debug APK is for testing only; see below for release builds.
+
 ## Build the phone apps (Capacitor 8)
 
-The repository is Capacitor-ready (`capacitor.config.ts`, `@capacitor/android` and `@capacitor/ios` installed); the
-native projects are not committed (they were not generated here: no Android or iOS SDK in this environment). You
-need a current Android Studio (with its bundled JDK and the Android SDK) and/or Xcode on macOS — see the Capacitor 8
+The repository is Capacitor-ready (`capacitor.config.ts`, `@capacitor/android` and `@capacitor/ios` installed). The
+Android project is committed in `android/` (location permissions and a FireSim launcher icon already added); the iOS
+project is not (it needs Xcode on macOS). For Android, `scripts/build-android-apk.sh` builds a debug APK with just the
+command-line SDK; for release builds and debugging use Android Studio (and Xcode on macOS for iOS) — see the Capacitor 8
 documentation for the exact minimum versions.
 
 ```bash
 npm run build:cap            # production build without source maps (vite build --mode capacitor)
-npx cap add android          # once: creates android/
-npx cap add ios              # once, on macOS: creates ios/
 npx cap sync                 # copy dist/ and the plugins into the native projects (after every build)
-npx cap open android         # or: npm run cap:android  (build + sync + open)
+npx cap open android         # or: npm run cap:android  (build + sync + open in Android Studio)
+npx cap add ios              # once, on macOS: creates ios/
 npx cap open ios             # or: npm run cap:ios
 ```
 
-After `cap add`, add the location permission the "Use my location" button needs:
-
-- Android `android/app/src/main/AndroidManifest.xml`:
-  `<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />` and
-  `<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />`.
-- iOS `ios/App/App/Info.plist`: `NSLocationWhenInUseUsageDescription` = "FireSim centres the 3-D model on where
-  you are."
+For iOS, after `cap add ios`, add the location permission the "Use my location" button needs to
+`ios/App/App/Info.plist`: `NSLocationWhenInUseUsageDescription` = "FireSim centres the 3-D model on where you are."
+(The Android manifest already has `ACCESS_COARSE_LOCATION` and `ACCESS_FINE_LOCATION`.)
 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and

@@ -18,10 +18,7 @@ const config: CapacitorConfig = {
     // https (the default since Capacitor 6) gives a secure context for module workers, IndexedDB and geolocation.
     androidScheme: 'https',
   },
-  android: {
-    // WebView content debugging (chrome://inspect) only in debug builds.
-    webContentsDebuggingEnabled: false,
-  },
+  // WebView content debugging (chrome://inspect) follows Capacitor's default: on in debug builds, off in release builds.
   ios: {
     // Let the app draw under the notch; the CSS uses env(safe-area-inset-*).
     contentInset: 'never',

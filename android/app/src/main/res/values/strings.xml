@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FireSim</string>
+    <string name="title_activity_main">FireSim</string>
+    <string name="package_name">au.firesim.app</string>
+    <string name="custom_url_scheme">au.firesim.app</string>
+</resources>
