@@ -169,8 +169,14 @@ export const EXPLAIN_PARAMS = Object.freeze({
   /** pyroconvection-risk [V Di Virgilio 2019 thresholds; H plume-top margin]. */
   pyro: Object.freeze({ watchCH: 8, watchFfdi: 25, dangerCH: 10, dangerFfdi: 50, lclMarginM: 500 }),
 
-  /** fire-induced-wind (P1) [H doc 07]. */
-  fireWind: Object.freeze({ minShare: 0.3, minAbsMs: 1.5, relBg: 0.3, persistence: 5 }),
+  /**
+   * fire-induced-wind (P1) [H doc 07]. minAbsMs 1.0 (registry 1.5) [H, deviation]: with the §8.8 pyrogenic calibration
+   * (u_in = k·I/2, k 6e-4) 1.5 m/s is the indraft beside an infinite 5 MW/m strip, so V15's plume-dominated
+   * 5–7 MW/m fronts (1.0–1.6 m/s at a 1.4 km line) never reached it on 30 % of the front. minAgeS: front cells that
+   * arrived within this time are skipped, their U_fireInd dates from before arrival (the head correction of the
+   * unburnt cells ahead of the front, §8.8).
+   */
+  fireWind: Object.freeze({ minShare: 0.3, minAbsMs: 1.0, relBg: 0.3, persistence: 5, minAgeS: 60 }),
 
   /** anabatic-wind [H doc 02 card 3]. */
   anabatic: Object.freeze({

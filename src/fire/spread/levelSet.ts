@@ -9,8 +9,9 @@
  *   Δt_f ≤ bound = 0.9 / max[R((|n_x| + 2ν)/Δx + (|n_y| + 2ν)/Δy)]         (corrected CFL, D1)
  * ```
  * with the normal speed of the convex offset ellipse (§7.4) evaluated inline from per-cell coefficients (a², b_F², c
- * in m/s, head unit vector ê, VLS lateral rate with the contour tangent t̂, junction boost), capped at 6 m/s, and the
- * normal from central differences (fallback ê).
+ * in m/s, head unit vector ê, VLS lateral rate with the contour tangent t̂ as max(R_ell, R_VLS|n·t̂|), junction boost),
+ * capped at 6 m/s, and the normal from central differences (fallback ê; one-sided upwind differences in active VLS
+ * cells).
  *
  * **Burnt-side extension** (FireSim numerics, `SPREAD_PARAMS.levelSet.burntExtension`, a deviation from applying the
  * same equation to every band cell): a cell reached by the front evolves as φ_t = −R_arrival (so φ = −R·(t − t_arr)
@@ -285,9 +286,23 @@ export class LevelSetCore {
         }
         continue;
       }
-      // Normal from central differences (fallback ê).
-      const cx = (pr - pl) * half;
-      const cy = (pu - pd) * half;
+      // Normal from central differences (fallback ê). In an active VLS zone (vr > 0) from the one-sided differences
+      // the upwind |∇φ| below uses instead: there the lateral finger is 1–5 cells wide and the lee-eddy ellipse is
+      // extremely eccentric (R_H ≈ 7.7, R_F ≈ 0.2, R_B ≈ 0.02 km/h on V10's 28° lee), so the central normal's
+      // smoothing across the finger tilts it toward the upslope head and R(ψ) jumps (0.2 → 1.4 km/h for a 10° tilt).
+      let cx: number;
+      let cy: number;
+      if (vr > 0) {
+        const dmx = (p - pl) * inv;
+        const dpx = (pr - p) * inv;
+        const dmy = (p - pd) * inv;
+        const dpy = (pu - p) * inv;
+        cx = dmx > 0 && dmx >= -dpx ? dmx : dpx < 0 ? dpx : 0;
+        cy = dmy > 0 && dmy >= -dpy ? dmy : dpy < 0 ? dpy : 0;
+      } else {
+        cx = (pr - pl) * half;
+        cy = (pu - pd) * half;
+      }
       const cn = Math.sqrt(cx * cx + cy * cy);
       const ex = sEx[k]!;
       const ey = sEy[k]!;
@@ -305,8 +320,12 @@ export class LevelSetCore {
       const s2 = 1 - c2;
       let R = sC[k]! * cosp + Math.sqrt(a2 * c2 + (s2 > 0 ? b2 * s2 : 0));
       if (vr > 0) {
+        // VLS is an absolute lateral rate (D23): the support function of the convex hull of the ellipse and the
+        // segment ±R_VLS·t̂, max(R_ell, R_VLS|n·t̂|) — still convex; the spec's sum R_ell + R_VLS|n·t̂| (§7.4) put the
+        // flank on top of the observed lateral rate.
         const tt = nxv * sTx[k]! + nyv * sTy[k]!;
-        R += vr * (tt < 0 ? -tt : tt);
+        const rv = vr * (tt < 0 ? -tt : tt);
+        if (rv > R) R = rv;
       }
       R *= sJun[k]!;
       if (R > rMax) R = rMax;

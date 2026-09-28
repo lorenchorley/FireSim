@@ -21,9 +21,13 @@ export interface FactorRow {
 /** Rows of the factor breakdown (pure). */
 export function factorRows(e: CellExplanation): FactorRow[] {
   const f = e.factors;
+  // The wind multiplier applies to the near-zero still-air rate of the row above (×52 reads as absurd on its own), so
+  // its note says what it does to that rate on flat ground: "NW 32 km/h: 300 m/h → 16 km/h".
+  const wind = `${compassName(e.windDir10)} ${Math.round(e.windSpeed10 * 3.6)} km/h`;
+  const windNote = f.base > 0 && f.wind >= 1.5 ? `${wind}: ${formatRos(f.base)} → ${formatRos(f.base * f.wind)}` : wind;
   return [
-    { label: 'Wind', factor: f.wind, note: `${compassName(e.windDir10)} ${Math.round(e.windSpeed10 * 3.6)} km/h` },
-    { label: 'Slope', factor: f.slope, note: e.slopeDeg < 2 ? 'flat' : Math.abs(f.slope - 1) < 0.03 ? `${Math.round(e.slopeDeg)}° across the slope` : `${Math.round(e.slopeDeg)}° ${f.slope > 1 ? 'uphill' : 'downhill'}` },
+    { label: 'Wind', factor: f.wind, note: windNote },
+    { label: 'Slope', factor: f.slope, note: e.slopeDeg < 2 ? 'flat' : Math.abs(f.slope - 1) < 0.03 ? `${Math.round(e.slopeDeg)}° across the slope` : f.slope > 1 ? `${Math.round(e.slopeDeg)}° uphill · doubles every 10°` : `${Math.round(e.slopeDeg)}° downhill` },
     { label: 'Litter moisture', factor: f.moisture, note: `${e.deadFuelMoisture.toFixed(1)}%` },
     { label: 'Fuel', factor: f.fuel, note: 'load and structure' },
     { label: 'Terrain effects', factor: f.terrain, note: f.terrain > 1.05 ? 'eruptive / channelling' : 'none' },

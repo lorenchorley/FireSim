@@ -7,7 +7,8 @@
  *      1.2–3.5 pp wetter than NW-facing;
  *  V8  S/SE gullies wetter than N/NW slopes by day; the thermal belt drier (and warmer) than the valley floor at 05:00.
  * The "thermal wind" is the spec's detector quantity (§10.2 anabatic-wind): the resolved U_dyn − U_bg component along
- * the fall line (3-D tiers; 0 in the fast tier) plus the sub-grid slope-flow speed S_top (`slopeFlowS`).
+ * the fall line (3-D tiers; 0 in the fast tier) plus the sub-grid slope-flow speed S_top (`slopeFlowS`, signed along the
+ * fall line: + upslope where Q_h ≥ 0, − downslope where Q_h < 0).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Landform, type ScenarioData } from '../../core/types';
@@ -177,9 +178,9 @@ describe('V7 anabatic by day (mild-spring-hr, 15 Oct, Grose demo, 11:00–15:00,
     }
   });
 
-  // Known inaccuracy: the cube-root slope-flow law (§8.6) keeps ≈ 0.5–0.6 m/s on slopes lit only by diffuse sky light
-  // (Q_h ≈ 10–50 W/m²); the spec asks < 0.5 m/s.
-  it.fails('shaded slopes (cast shadow or cos i < 0.1) < 0.5 m/s [known inaccuracy]', () => {
+  // Regression: slopeFlowS was the unsigned S_top, so the katabatic drainage of cast-shadow slopes (Q_h < 0 by net
+  // long-wave loss) read as 0.5–0.6 m/s upslope; signed (− downslope) the shaded median is −0.55 to 0.2 m/s.
+  it('shaded slopes (cast shadow or cos i < 0.1) < 0.5 m/s', () => {
     for (const v of at.values()) expect(v.th.shade).toBeLessThan(0.5);
   });
 });
@@ -213,10 +214,10 @@ describe.skipIf(!SLOW)('V7 3-D tier: anabatic by day (Grose, 11:00–15:00, stan
         if (!(sl > 10) || !Number.isFinite(asp)) continue;
         const cosi = Math.cos(sl * DEG) * Math.cos(Z) + Math.sin(sl * DEG) * Math.sin(Z) * Math.cos((sp.azimuth - asp) * DEG);
         const [ax, ay] = azimuthToUnit(asp);
-        // Resolved heating response (on − off, minus the day top-up added to U_fire, max(0, S_top − 1.5)) + S_top:
-        // the anabatic detector's thermal wind (§10.2).
+        // Resolved heating response (on − off, minus the top-up added to U_fire: max(0, S_top − 1.5) upslope by day,
+        // S_top in full downslope) + S_top: the anabatic detector's thermal wind (§10.2; slopeFlowS − = downslope).
         const sTop = on.s[k]!;
-        const th = -((on.u[k]! - off.u[k]!) * ax + (on.v[k]! - off.v[k]!) * ay) - Math.max(0, sTop - 1.5) + sTop;
+        const th = -((on.u[k]! - off.u[k]!) * ax + (on.v[k]! - off.v[k]!) * ay) - (sTop >= 0 ? Math.max(0, sTop - 1.5) : sTop) + sTop;
         if (cosi > 0.5 && !ins.shaded[k]) sun.push(th);
         else if (ins.shaded[k] || cosi < 0.1) shade.push(th);
       }
@@ -229,10 +230,10 @@ describe.skipIf(!SLOW)('V7 3-D tier: anabatic by day (Grose, 11:00–15:00, stan
 });
 
 describe('V8 moisture pattern (Katoomba demo)', () => {
-  it.fails('S/SE gully cells ≥ N/NW slopes + 2 pp at 14:00 LMST on 15 Oct (mild-spring-hr) [known inaccuracy]', async () => {
-    // Model: +0.2–0.6 pp over all fuel types (+1.1 pp in dry shrubby forest). The aspect term is right (A(SE 30°) −
-    // A(NW 30°) = 1.9 pp) but the demo's closed canopy damps it, the §5.4 gully offset applies to vesta2 families
-    // only (45 % of these gullies are wet forest / rainforest) and the litter still lags the morning wetting.
+  it('S/SE gully cells ≥ N/NW slopes + 2 pp at 14:00 LMST on 15 Oct (mild-spring-hr)', async () => {
+    // Regression: the moisture canopy used the CHM cover (share of 1 m pixels ≥ 2 m, 1.00 in any demo forest and
+    // ≈ 0 on steep slopes shaded in the source imagery) as crown cover, which shaded the sunny N/NW slopes and opened
+    // the S/SE gullies: +0.8 pp. With the CHM mapped onto the crown-cover scale of c_ref (§5.4): ≈ +2.5 pp.
     const s = await demoScenario({ preset: 'mild-spring-hr', startCivil: [2025, 10, 15, 15], duration: 3600 });
     const r = runSim({ ...s, options: { ...s.options, embers: false } }, { tier: 'fast', until: 600, every: 600 });
     const v = r.sim.stateView();

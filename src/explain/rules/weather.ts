@@ -259,8 +259,9 @@ function detectKatabatic(ctx: CycleContext): Candidate[] {
       for (let r = 0; r < n; r++) {
         const k = acc.cell(t, r);
         const asp = ctx.terrain.aspectDeg[k]!;
-        const sfv = s.slopeFlowS.length === ctx.N ? s.slopeFlowS[k]! : 0;
-        ds += (asp === asp ? along(s.windU[k]!, s.windV[k]!, asp) : 0) + Math.max(0, -sfv);
+        // The near-surface wind already carries the sub-grid katabatic top-up in full (§8.6), so slopeFlowS
+        // (signed, − downslope) is not added again.
+        ds += asp === asp ? along(s.windU[k]!, s.windV[k]!, asp) : 0;
       }
       const k0 = acc.cell(t, 0);
       out.push(cand(ctx.tiles.key('katabatic-wind', t), ctx.x(k0), ctx.y(k0), sc, 'info', { downslope: Math.max(0, ds / n) }));

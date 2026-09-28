@@ -21,11 +21,17 @@ interface DiagCheckpoint {
   up: Float32Array;
   vp: Float32Array;
   lastPyro: number;
+  /** Plume-smoothed heat flux of the pyrogenic source (kW/m², fire grid) and the time of its last update. */
+  pyroSrc?: Float32Array;
+  pyroSrcT?: number;
 }
 
 export class DiagnosticWind extends AtmosBase {
   private readonly pyro: PyrogenicPotential;
   private lastPyro = -Infinity;
+  /** Pyrogenic source: heat flux smoothed over ATMOS_PARAMS.pyroSourceTauS (fire grid, kW/m²), last update time. */
+  private readonly pyroSrc: Float32Array;
+  private pyroSrcT = -Infinity;
   private readonly tmp3 = new Float64Array(2);
 
   constructor(
@@ -42,6 +48,7 @@ export class DiagnosticWind extends AtmosBase {
     // The fast tier uses the standard-tier grid for its mass-consistent solve (tier table §12.6).
     super(terrain, hiRes, fuel, features, tier === 'fast' ? 'fast' : tier, extent, series, rng, opts);
     this.pyro = new PyrogenicPotential(terrain.grid);
+    this.pyroSrc = new Float32Array(terrain.grid.nx * terrain.grid.ny);
   }
 
   override get spunUp(): boolean {
@@ -135,9 +142,20 @@ export class DiagnosticWind extends AtmosBase {
   addFireHeat(fireGrid: GridSpec, heatKwM2: Float32Array, _crownShare: Float32Array): void {
     this.checkFireGrid(fireGrid);
     this.fireTotals(heatKwM2);
-    // Pyrogenic potential every 60 s of simulated time (deterministic cadence on the step clock).
+    // Pyrogenic potential every 60 s of simulated time (deterministic cadence on the step clock), driven by the heat
+    // flux smoothed over the plume response time τ_s (exact exponential over each step's duration) [H, deviation from
+    // §8.8's instantaneous q]. The front's heat is pulsed: the cells of a straight front ignite together and with
+    // τ_f ≈ 45 s against 100–300 s per 30 m cell the fire power swung ×5–20 between rows (V15: 1–28 GW around a
+    // mean of 8.5 GW), so the induced wind at the front swung 0.2 ↔ 3 m/s from one solve to the next and the
+    // fire-induced-wind card never held its 5 min. The plume that draws the indraft integrates its heat source
+    // over minutes, as the resolved θ′ of the 3-D tiers does.
+    const src = this.pyroSrc;
+    const dtPrev = this.simTime - this.pyroSrcT; // the step whose heat this is
+    const w = dtPrev > 0 ? 1 - Math.exp(-dtPrev / ATMOS_PARAMS.pyroSourceTauS) : 0;
+    if (w > 0) for (let k = 0; k < src.length; k++) src[k] = src[k]! + (heatKwM2[k]! - src[k]!) * w;
+    this.pyroSrcT = this.simTime;
     if (this.simTime - this.lastPyro >= ATMOS_PARAMS.pyroIntervalS) {
-      this.pyro.solve(heatKwM2);
+      this.pyro.solve(src);
       this.lastPyro = this.simTime;
     }
   }
@@ -256,6 +274,8 @@ export class DiagnosticWind extends AtmosBase {
       up: this.pyro.up.slice(),
       vp: this.pyro.vp.slice(),
       lastPyro: this.lastPyro,
+      pyroSrc: this.pyroSrc.slice(),
+      pyroSrcT: this.pyroSrcT,
     };
     return c;
   }
@@ -268,5 +288,8 @@ export class DiagnosticWind extends AtmosBase {
     this.pyro.up.set(c.up);
     this.pyro.vp.set(c.vp);
     this.lastPyro = c.lastPyro;
+    if (c.pyroSrc && c.pyroSrc.length === this.pyroSrc.length) this.pyroSrc.set(c.pyroSrc);
+    else this.pyroSrc.fill(0);
+    this.pyroSrcT = c.pyroSrcT ?? -Infinity;
   }
 }

@@ -10,7 +10,7 @@
 import { FuelType, type CellFuelParams, type FuelFamily, type FuelMap, type MoistureFamily } from '../../core/types';
 
 /** What the moisture model reads per cell. `CellFuelParams` satisfies it. */
-export type MoistureCellParams = Pick<CellFuelParams, 'type' | 'family' | 'moistureFamily' | 'cover' | 'lai' | 'wrf' | 'cRef' | 'moistureOffset'>;
+export type MoistureCellParams = Pick<CellFuelParams, 'type' | 'family' | 'moistureFamily' | 'cover' | 'lai' | 'wrf' | 'cRef' | 'moistureOffset' | 'coverFromChm'>;
 
 /** Resolver of a cell's parameters (normally `fuelParamsAt` from fuel/). */
 export type MoistureCellResolver = (fuel: FuelMap, k: number) => MoistureCellParams;

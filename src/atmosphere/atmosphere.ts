@@ -937,7 +937,7 @@ export class Atmosphere extends AtmosBase {
     outBgV: Float32Array,
     outIndU: Float32Array,
     outIndV: Float32Array,
-    _ctx: FireWindContextExt,
+    ctx: FireWindContextExt,
     cf: number,
   ): { resolvedU: Float32Array | null; resolvedV: Float32Array | null } {
     if (!this.initialised) this.initialiseState();
@@ -954,6 +954,14 @@ export class Atmosphere extends AtmosBase {
     const bi = B.fireKim!;
     const mfA = this.fireInfluence;
     const coupled = cf > 0;
+    // Resolved head correction (§8.8 D31/D32 analogue, [H]): at head cells (mask + outward front normal n̂ from sim)
+    // the component of U_fireInd along n̂ is removed, both signs. The empirical head ROS already contains the fire's
+    // near-field interaction; at Δx_a 130–270 m the resolved convergence sits downwind of the front (heat injected in
+    // the lowest ~50 m is advected before it rises), so it pushed the head (+66 % ROS at 20 km/h, coupling 1 vs 0).
+    // Flanks, back, burning cells (cards, "Why here?") and the plume keep the resolved fire-induced wind.
+    const hm = coupled && ATMOS_PARAMS.resolvedHeadCorrection && ctx.headMask && ctx.headDirX && ctx.headDirY ? ctx.headMask : null;
+    const hx = ctx.headDirX;
+    const hy = ctx.headDirY;
     for (let k = 0; k < this.nf; k++) {
       const re = ar[k]! + (br[k]! - ar[k]!) * a;
       const im = ai[k]! + (bi[k]! - ai[k]!) * a;
@@ -969,10 +977,23 @@ export class Atmosphere extends AtmosBase {
         const mf = mfA[k]!;
         const f = 1 - mf + cf * mf;
         const g = cf * mf;
-        outU[k] = bu + (dyU - bu) * f;
-        outV[k] = bv + (dyV - bv) * f;
-        outIndU[k] = g * (dyU - bu);
-        outIndV[k] = g * (dyV - bv);
+        let iu = g * (dyU - bu);
+        let iv = g * (dyV - bv);
+        let wu = bu + (dyU - bu) * f;
+        let wv = bv + (dyV - bv) * f;
+        if (hm !== null && hm[k] === 1) {
+          const nX = hx![k]!;
+          const nY = hy![k]!;
+          const d = iu * nX + iv * nY;
+          iu -= d * nX;
+          iv -= d * nY;
+          wu -= d * nX;
+          wv -= d * nY;
+        }
+        outU[k] = wu;
+        outV[k] = wv;
+        outIndU[k] = iu;
+        outIndV[k] = iv;
       } else {
         outU[k] = dyU;
         outV[k] = dyV;

@@ -38,6 +38,11 @@ export interface MoistureParams {
   sinSunFloor: number;
   /** Litter-level wind u_f = U10 / (uFDivisor·WRF) (m/s) [H]. */
   uFDivisor: number;
+  /**
+   * Moisture canopy from a CHM cover c_CHM (share of 1 m pixels ≥ 2 m): c = clamp(c_CHM, chmCoverFloor·c_type,
+   * c_type) with c_type the FuelType crown cover (the scale of c_ref) [H, mirrors H_o,eff = max(CHM, 0.8·H_o)].
+   */
+  chmCoverFloor: number;
   /** Night long-wave fuel cooling in the open / under full canopy (K), × (1 − cloud) [H doc 04 §3.7]. */
   lwCoolOpen: number;
   lwCoolCanopy: number;
@@ -121,6 +126,7 @@ export const MOISTURE_PARAMS: Readonly<MoistureParams> = Object.freeze({
   diffuseExtinction: 0.8,
   sinSunFloor: 0.1,
   uFDivisor: 2,
+  chmCoverFloor: 0.8,
   lwCoolOpen: 3,
   lwCoolCanopy: 0.5,
   droughtDampMax: 0.5,

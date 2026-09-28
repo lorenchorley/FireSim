@@ -373,7 +373,7 @@ export function makeCellFuelParams(): CellFuelParams {
     type: FuelType.NonFuel, fuelClass: 0, family: 'none', moistureFamily: 'none',
     surfaceLoad: 0, nearSurfaceLoad: 0, elevatedLoad: 0, barkLoad: 0, canopyLoad: 0,
     fhsS: 0, fhsNs: 0, fhsEl: 0, barkHazard: 0, hNs: 0, hEl: 0, hO: 0, hOEff: 0,
-    cover: 0, lai: 0, wrf: 1, grassState: 'natural', grassWaf: 1, curing: 0,
+    cover: 0, coverFromChm: false, lai: 0, wrf: 1, grassState: 'natural', grassWaf: 1, curing: 0,
     underWoodland: false, wetSubmodel: false, spotting: false, barkClass: 'none',
     tauF: 0, receptivity: 0, cRef: 0, faBlendW: 0, moistureOffset: 0, flags: 0, timeSinceFire: NaN,
   };
@@ -411,6 +411,7 @@ export function fuelParamsInto(fuel: FuelMap, k: number, out: CellFuelParams, pa
   out.hO = fin(fuel.canopyHeight[k], cls.canopyHeight);
   out.cover = clamp(fin(fuel.canopyCover[k], cls.canopyCover), 0, 1);
   const chmValid = (ctx & CTX_CHM_VALID) !== 0;
+  out.coverFromChm = chmValid && Number.isFinite(fuel.canopyCover[k]);
   out.underWoodland = (flags & FuelFlag.UnderWoodland) !== 0;
   out.hOEff = fin(f.canopyHeightEff?.[k], canopyHeightEffFor(cls, chmValid, out.hO, out.underWoodland, P));
   out.lai = chmValid && cls.canopyCover > 0 ? cls.lai * clamp(out.cover / cls.canopyCover, 0, P.laiCoverRatioMax) : cls.lai;

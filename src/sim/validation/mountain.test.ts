@@ -108,11 +108,10 @@ describe('V10 VLS on a lee slope (28°, W wind, M 6 %)', () => {
     expect(kindsOf(off.r.insights).has('vorticity-lateral-spread')).toBe(false);
   });
 
-  // Known inaccuracy: the lateral run is 4.5–4.8 km/h (R̄ = 2.8 km/h at VLS 1 plus R_F 0.2). The lateral finger is one
-  // cell wide next to the crest; the level set's burnt-side extension and the central-difference normal tilted toward
-  // the strong eddy-driven upslope head (R_H 6–7 km/h) speed its tip up (3.8 km/h with the extension off). A uniform
-  // medium with the same speeds spreads at the analytic 3.0 km/h.
-  it.fails('40 km/h: lateral mean ≤ 3 km/h (spec 1.5–3) [known inaccuracy]', () => {
+  // Regression: the lateral run was 4.3–4.8 km/h (R̄ = 2.8 km/h at VLS 1): R_ell + R_VLS|n·t̂| with the central-difference
+  // normal leaked the eddy-driven upslope head (R_H ≈ 7.7 km/h) into the thin lateral finger. Now max(R_ell,
+  // R_VLS|n·t̂|) with the upwind normal in active VLS cells (levelSet.ts): ≈ 2.9 km/h.
+  it('40 km/h: lateral mean ≤ 3 km/h (spec 1.5–3)', () => {
     expect(lateralKmh(strong.r, 300, 2400)).toBeLessThanOrEqual(3);
   });
 

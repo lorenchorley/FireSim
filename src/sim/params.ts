@@ -77,6 +77,12 @@ export const SIM_PARAMS = Object.freeze({
    * unchanged.
    */
   pyroCorrectionMinDirection: 0,
+  /**
+   * 3-D tiers: head cells of the resolved head correction (atmosphere `resolvedHeadCorrection`) = prepared cells whose
+   * ellipse speed along the local front normal is ≥ this fraction of R_H (the spec's head, as `headDirection`), so the
+   * resolved indraft still acts on the flanks and back [H].
+   */
+  resolvedHeadMinDirection: 0.8,
   // ── snapshots ──
   /** Maximum cells (nx·ny·nz) of the atmosphere view in a snapshot; larger views are decimated horizontally ×2. */
   atmosViewMaxCells: 150000,

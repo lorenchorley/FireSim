@@ -44,10 +44,13 @@ describe('V15 plume-dominated fire (catastrophic air mass, light wind 10 km/h, f
     expect(r.kinds.has('plume-dominated')).toBe(true);
   }, 600000);
 
-  // Known inaccuracy: at V15's 5–7 MW/m the induced wind at the front (fast: pyrogenic k·I/2 ≈ 1.6 m/s at the head
-  // only; standard: resolved at Δx_a 133 m, weaker) stays below the card's max(1.5 m/s, 0.3·U_bg10) on 30 % of the
-  // front, so the fire-induced-wind card does not appear (it does for FFDI ≥ 50 wind-driven runs, V9).
-  it.fails('fast tier: fire-induced-wind card at V15 intensity [known inaccuracy]', () => {
+  // Regression: no fire-induced-wind card at V15's 5–7 MW/m. The pyrogenic indraft beside the front (k·I/2 ≈ 1.6 m/s
+  // for an infinite strip, 1.0–1.6 m/s along this 1.4 km line) sat below the registry's 1.5 m/s floor; it swung
+  // 0.2 ↔ 3 m/s between solves with the pulsed heat of a grid-aligned front (the card's 5 min never held); and the
+  // freshly arrived front cells still carried the head-corrected (zero) indraft of the cells ahead of the front.
+  // Now: floor 1.0 m/s, pyrogenic source smoothed over 300 s, front cells younger than 60 s skipped (share ≥ 0.3 in
+  // 106 of 120 cycles).
+  it('fast tier: fire-induced-wind card at V15 intensity', () => {
     expect(run('fast').kinds.has('fire-induced-wind')).toBe(true);
   }, 180000);
 });
@@ -118,17 +121,41 @@ describe('V22 coupled head (fast tier, 2 km line fire, flat, U10 20 km/h, M 8 %)
     expect(inward / Math.max(1, fronts)).toBeGreaterThan(0.6);
   }, 180000);
 
-  // Known inaccuracy (3-D tier, not a spec criterion): the resolved fire-induced flow at Δx_a ≈ 200 m accelerates the
-  // wind ahead of the head (the heat injected in the lowest ~50 m is advected downwind before it rises, so the
-  // convergence sits downwind of the front): +66 % head ROS at 20 km/h, +18 % at 37 km/h (coupling 1 vs 0).
-  it.skipIf(!SLOW).fails('standard tier: coupled head ROS = uncoupled ± 5 % [known inaccuracy, SLOW]', () => {
+  // Regression (3-D tier, not a spec criterion): the resolved fire-induced flow at Δx_a ≈ 200 m accelerated the wind
+  // ahead of the head (the heat injected in the lowest ~50 m is advected downwind before it rises, so the convergence
+  // sits downwind of the front): 2.56 vs 1.54 km/h (+66 %). The resolved head correction (atmosphere
+  // resolvedHeadCorrection: U_fireInd along the front normal removed at head cells) gives +1 %; the flanks and back
+  // still see the resolved indraft.
+  it.skipIf(!SLOW)('standard tier: coupled head ROS = uncoupled ± 5 %; resolved indraft kept off the head [SLOW]', () => {
     const res: number[] = [];
+    let flank = 0;
+    let flankIn = 0;
+    let headAlong = 0;
     for (const coupling of [0, 1]) {
       const s = synth({ extent: 9000, windKmh: 20, temperature: 34, rh: 18, duration: 2 * 3600, ignitions: [line([[-4000, -1000], [-4000, 1000]])], options: { coupling } });
       const r = runSim(s, { tier: 'standard', until: 3600, every: 1800 });
-      res.push(rosAlong(s.terrain.grid, r.sim.stateView().fire.arrivalTime, -4000, 0, 90, 1000, 2500));
+      const v = r.sim.stateView();
+      res.push(rosAlong(s.terrain.grid, v.fire.arrivalTime, -4000, 0, 90, 1000, 2500));
+      if (coupling === 1) {
+        const a = v.aux;
+        for (let q = 0; q < a.front.length; q++) {
+          const k = a.front[q]!;
+          const du = v.fireIndU[k]!;
+          const dv = v.fireIndV[k]!;
+          const nX = a.frontNormalX[k]!;
+          const nY = a.frontNormalY[k]!;
+          const along = du * nX + dv * nY;
+          if (nX > 0.9) headAlong = Math.max(headAlong, along); // head (wind from the west)
+          else if (Math.abs(nX) < 0.5 && Math.hypot(du, dv) >= 0.05) {
+            flank++;
+            if (along < 0) flankIn++;
+          }
+        }
+      }
     }
-    log(`V22 standard: head ROS c0 ${(res[0]! * 3.6).toFixed(2)} km/h, c1 ${(res[1]! * 3.6).toFixed(2)} km/h`);
+    log(`V22 standard: head ROS c0 ${(res[0]! * 3.6).toFixed(2)} km/h, c1 ${(res[1]! * 3.6).toFixed(2)} km/h; flank front cells with inward U_fireInd ${flankIn}/${flank}; aiding U_fireInd kept at the burning head (cards) up to ${headAlong.toFixed(2)} m/s`);
     expect(Math.abs(res[1]! / res[0]! - 1)).toBeLessThanOrEqual(0.05);
+    expect(flank).toBeGreaterThan(0);
+    expect(flankIn / flank).toBeGreaterThan(0.5);
   }, 600000);
 });

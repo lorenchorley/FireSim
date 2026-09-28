@@ -207,3 +207,34 @@ describe('merging fronts (spec §7.13)', () => {
     expect(neck).toBeGreaterThan(0.9 * Math.sqrt(R * R - (d / 2) * (d / 2)));
   });
 });
+
+describe('VLS lateral finger on a lee strip (spec §7.9, V10)', () => {
+  it('a 150 m strip with the V10 lee-eddy ellipse (R_H 7.7, R_F 0.19, R_B 0.02 km/h upslope) runs sideways at R_VLS', () => {
+    // Regression: R_ell + R_VLS|n·t̂| with the central-difference normal ran the finger at ≈ 1.6 × R_VLS (V10 4.3
+    // km/h): the smoothing of the normal across the thin finger leaked the upslope head lobe into the lateral front.
+    const g = makeGridSpec(ORIGIN, 3000, 30);
+    const kmh = 1 / 3.6;
+    const rH = 7.7 * kmh;
+    const rB = 0.02 * kmh;
+    const vls = 2.8 * kmh;
+    const ls = setup(g, [[75, -1200, 25]], { a: 0.5 * (rH + rB), c: 0.5 * (rH - rB), b: 0.19 * kmh, ex: -1, ey: 0 });
+    for (let k = 0; k < ls.n; k++) {
+      const x = g.x0 + (k % g.nx) * g.cellSize;
+      if (x < 15 || x > 150) {
+        ls.sA2[k] = 0;
+        ls.sB2[k] = 0;
+        ls.sC[k] = 0;
+      } else {
+        ls.sVls[k] = vls;
+        ls.sTx[k] = 0;
+        ls.sTy[k] = 1;
+      }
+    }
+    const T = 1800;
+    run(ls, T);
+    const tip = crossing(ls, g, 75, -1200, 0, 1, 2500) - 25;
+    const rate = tip / T / kmh;
+    expect(rate).toBeGreaterThan(2.8 * 0.9);
+    expect(rate).toBeLessThan(2.8 * 1.1);
+  });
+});

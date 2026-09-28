@@ -224,6 +224,9 @@ export const ATMOS_PARAMS = {
   pyroK: 6e-4,
   pyroMax: 5,
   pyroIntervalS: 60,
+  /** Plume response time (s): the pyrogenic source is the heat flux smoothed exponentially over it [H, see
+   *  DiagnosticWind.addFireHeat; spec §8.8 uses the instantaneous q]. */
+  pyroSourceTauS: 300,
   /** Head-correction fallback without a head mask: cells with |U_bg10| above this (m/s) count as head cells [H]. */
   pyroHeadMinWind: 0.1,
   /**
@@ -235,6 +238,14 @@ export const ATMOS_PARAMS = {
    * switched the §7.3 hybrid rule from R_w·SF(θ) to the additive cross-slope branch. false = the spec rule.
    */
   pyroHeadAlongOnly: true,
+  /**
+   * 3-D tiers: at the head cells sim passes (FireWindContext headMask/headDirX/headDirY, SIM_PARAMS
+   * resolvedHeadMinDirection) remove the component of U_fireInd along the outward front normal, both signs [H,
+   * extension of D32 to the resolved fire wind]: the empirical head ROS already contains the near-field indraft and
+   * the resolved convergence at Δx_a ≥ 130 m sits downwind of the front (V22 standard tier: +66 % head ROS). false =
+   * the spec (U_fire = U_dyn at the front with c_f 1).
+   */
+  resolvedHeadCorrection: true,
 
   // ── §8.10 diagnostics ────────────────────────────────────────────────────────────────────────────
   inversionPresentK: 3,

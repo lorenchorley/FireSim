@@ -266,9 +266,12 @@ function detectFireWind(ctx: CycleContext): Candidate[] {
   let n = 0;
   let m = 0;
   let sum = 0;
+  const tArr = s.fire.arrivalTime;
+  const fresh = ctx.t - F.minAgeS;
   for (let a = 0; a < ctx.nFront; a += ctx.fStride) {
-    m++;
     const k = ctx.front[a]!;
+    if (tArr[k]! > fresh) continue; // U_fireInd still from before arrival (head-corrected unburnt cell)
+    m++;
     const fu = s.fireIndU[k]!;
     const fv = s.fireIndV[k]!;
     const fi2 = fu * fu + fv * fv;

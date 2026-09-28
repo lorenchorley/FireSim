@@ -335,7 +335,8 @@ describe('legends and why-here helpers', () => {
     } as unknown as CellExplanation;
     const rows = factorRows(e);
     expect(rows.map((r) => r.label)).toEqual(['Wind', 'Slope', 'Litter moisture', 'Fuel', 'Terrain effects']);
-    expect(rows[0]!.note).toBe('NW 36 km/h');
+    expect(rows[0]!.note).toBe('NW 36 km/h: 110 m/h → 860 m/h'); // what the ×8 does to the still-air rate
+    expect(rows[1]!.note).toBe('20° uphill · doubles every 10°');
     expect(barGeometry(16)).toEqual({ left: 50, width: 50, up: true });
     expect(barGeometry(0.25)).toEqual({ left: 25, width: 25, up: false });
     expect(barGeometry(1).width).toBeCloseTo(0.8);

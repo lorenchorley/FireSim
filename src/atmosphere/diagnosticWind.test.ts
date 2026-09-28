@@ -118,6 +118,39 @@ describe('fast tier: pyrogenic potential and head correction (§8.8, D32, V22)',
     expect(uE).toBeLessThan(-2.4);
     expect(uE).toBeGreaterThan(-3.3);
   });
+  it('pyrogenic source smoothed over the plume response time: a pulsed strip gives a steady ≈ k·Ī/2 indraft; checkpointed', () => {
+    // Regression (V15): the cells of a straight front ignite together, so its heat comes in pulses; solved from the
+    // instantaneous flux the indraft swung 0.2 ↔ 3 m/s between solves. Here the strip burns 1 step in 4 at 4 × q.
+    const a = makeFast(t, s);
+    a.setAmbient(s.hours[0]!, s.hours[1]!);
+    a.setTime(s.hours[0]!.time);
+    const pyro = (x: DiagnosticWind): Float32Array => (x as unknown as { pyro: { up: Float32Array } }).pyro.up;
+    const kW = (t.grid.ny >> 1) * t.grid.nx + Math.round((-300 - t.grid.x0) / 30);
+    const pulse = new Float32Array(n);
+    for (let k = 0; k < n; k++) pulse[k] = 4 * q[k]!;
+    const zero = new Float32Array(n);
+    const samples: number[] = [];
+    let b: DiagnosticWind | null = null;
+    for (let st = 0; st < 240; st++) {
+      const heat = st % 4 === 0 ? pulse : zero;
+      a.addFireHeat(t.grid, heat, zero);
+      b?.addFireHeat(t.grid, heat, zero);
+      a.step(10);
+      b?.step(10);
+      if (st >= 180 && st % 6 === 0) samples.push(pyro(a)[kW]!);
+      if (st === 150) {
+        b = makeFast(t, s);
+        b.setAmbient(s.hours[0]!, s.hours[1]!);
+        b.setTime(s.hours[0]!.time);
+        b.restore(a.checkpoint());
+      }
+    }
+    const mean = samples.reduce((x, y) => x + y, 0) / samples.length;
+    expect(mean).toBeGreaterThan(2.4);
+    expect(mean).toBeLessThan(3.3);
+    expect(Math.max(...samples) - Math.min(...samples)).toBeLessThan(0.25 * mean);
+    expect(Buffer.from(pyro(b!).buffer).equals(Buffer.from(pyro(a).buffer))).toBe(true);
+  });
   it('head correction: downwind (head side) along-wind speed unchanged by coupling; upwind side gains indraft', () => {
     const a = makeFast(t, s);
     a.setAmbient(s.hours[0]!, s.hours[1]!);

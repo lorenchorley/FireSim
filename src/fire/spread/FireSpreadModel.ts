@@ -941,7 +941,7 @@ export class FireSpreadModel {
     const ey = s.hyb.ey;
     const tt = ex * this.ls.sTx[k]! + ey * this.ls.sTy[k]!;
     const vlsTerm = s.vlsR * Math.abs(tt);
-    let ros = (s.ell.rH / 3600 + vlsTerm) * this.ls.sJun[k]!;
+    let ros = Math.max(s.ell.rH / 3600, vlsTerm) * this.ls.sJun[k]!; // VLS: absolute lateral rate (levelSet.ts)
     if (ros > this.P.levelSet.rosMaxMs) ros = this.P.levelSet.rosMaxMs;
     const p = this.fc.load(k, this.pScratch);
     intensityKernel(p, ros * 3600, s.fa, this.IO, env.droughtFactor, s.rs);

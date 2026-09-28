@@ -244,8 +244,11 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   [H]/UNVERIFIED in the spec (§16). Real fires on steep slopes and in extreme weather are often faster.
 - On most phones the auto-tune picks the fast surface-wind tier; the plume, cold-air pools and the cross-section need
   the 3-D atmosphere (one tap in Layers, or *Best quality*), which is 3–4× slower.
-- Validation gaps are listed in `src/sim/validation/` as expected failures (e.g. shaded-slope winds in the fast tier,
-  gully moisture contrast, lateral VLS rate, the fire-induced-wind card, the V20 speed gates for very large fires).
+- Validation (`src/sim/validation/`): the spec's §15 scenarios pass, including gully-vs-sunny-slope litter moisture
+  (V8), lateral spread rate on lee slopes (V10), the fire-induced-wind card (V15) and coupled head ROS in both tiers
+  (V22). Remaining gaps: the V20 speed gates are missed for very large (≈ 3 000–5 000 ha) fires, the standard tier
+  reproduces the forecast 10 m wind on flat ground to ≈ 1 % on average but up to ≈ 4 % in single cells (V21), and one
+  long forecast-fixture scenario is still an expected failure.
 - Weather and live data need the network (or an area pack). On device, requests go through CapacitorHttp; in the
   browser (including an installed PWA) the NSW, RFS and Open-Meteo services are called directly — all send CORS headers
   (verified live, doc 08b). Only the remote canopy-height bucket needs the dev-server proxy (or a deployment proxy).

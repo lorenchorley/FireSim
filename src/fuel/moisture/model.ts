@@ -299,8 +299,20 @@ export class MoistureModel {
     const c = this.cells;
     const p: MoistureCellParams = this.resolve(this.fuel, k);
     const fam = familyCode(p.moistureFamily);
-    const cover = Math.min(1, Math.max(0, p.cover || 0));
-    const lai = Math.max(0, p.lai || 0);
+    const ft = FUEL_TYPES[p.type as FuelType];
+    const cRaw = Math.min(1, Math.max(0, p.cover || 0));
+    const cType = ft ? ft.canopyCover : cRaw;
+    // Litter-shading canopy on the scale of the family reference canopy c_ref (the FuelType crown cover c_type).
+    // A CHM cover is the share of 1 m pixels ≥ 2 m tall: it saturates at 1 in any forest (demo median 1.00 for dry,
+    // wet and rainforest: the shrub and sub-canopy layers count too) and drops out on steep shaded slopes of the
+    // source imagery (forest cells with CHM cover < 0.3: 38–43 % of S-facing slopes > 30° against 1–9 % of N-facing
+    // ones). Used raw it closed every sunny forest slope (τ_b 0.31 instead of the reference 0.67, +2 pp against
+    // AFDRS on flat ground) and opened the shaded gullies, erasing the aspect contrast (V8). So a CHM cover may thin
+    // the type's canopy by at most (1 − chmCoverFloor), never densify it, and LAI keeps LAI_type·c/c_type (§5.4); a
+    // cell repainted to an open type (c_type 0) is open whatever the CHM says. Other covers are crown covers as given.
+    const chm = p.coverFromChm === true && ft !== undefined;
+    const cover = chm ? Math.min(cType, Math.max(P.chmCoverFloor * cType, cRaw)) : cRaw;
+    const lai = chm ? (cType > 1e-3 ? (ft.lai * cover) / cType : ft.lai) : Math.max(0, p.lai || 0);
     const cRef = Math.min(1, Math.max(0, p.cRef || 0));
     this.moistureFamilies[k] = p.moistureFamily;
     c.fam[k] = fam;
@@ -311,9 +323,7 @@ export class MoistureModel {
     // LAI_ref = LAI_type·c_ref/c_type (FUEL_TYPES, §4.1). It must not be derived from the cell's own lai/cover: the
     // cell LAI is CHM-scaled only where the CHM is valid, so lai/cover ≠ LAI_type/c_type elsewhere (and where the
     // §4.7 LAI ratio clamp applies), which would bias E_ref and hence the anomaly of every such cell.
-    const ft = FUEL_TYPES[p.type as FuelType];
     const laiType = ft ? ft.lai : lai;
-    const cType = ft ? ft.canopyCover : cover;
     c.laiRef[k] = cType > 1e-3 ? (laiType * cRef) / cType : laiType;
     c.wrf[k] = p.wrf > 0 ? p.wrf : 1;
     c.uFac[k] = 1 / (P.uFDivisor * c.wrf[k]!);

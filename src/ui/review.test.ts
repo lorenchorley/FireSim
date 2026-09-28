@@ -176,7 +176,8 @@ describe('Why here? factor notes', () => {
   it('describes flat ground and cross-slope spread without claiming uphill', () => {
     expect(factorRows({ ...base, slopeDeg: 0.5 } as unknown as CellExplanation)[1]!.note).toBe('flat');
     expect(factorRows({ ...base, slopeDeg: 12 } as unknown as CellExplanation)[1]!.note).toBe('12° across the slope');
-    expect(factorRows({ ...base, slopeDeg: 12, factors: { ...base.factors, slope: 2 } } as unknown as CellExplanation)[1]!.note).toBe('12° uphill');
+    expect(factorRows({ ...base, slopeDeg: 12, factors: { ...base.factors, slope: 2 } } as unknown as CellExplanation)[1]!.note).toBe('12° uphill · doubles every 10°');
+    expect(factorRows({ ...base, slopeDeg: 12, factors: { ...base.factors, slope: 0.6 } } as unknown as CellExplanation)[1]!.note).toBe('12° downhill');
   });
 });
 

@@ -282,6 +282,8 @@ export interface CellFuelParams {
   /** max(CHM p90, 0.8·type H_o): intensity gating, crown cards, ember launch, z_ref (m). */
   hOEff: number;
   cover: number;
+  /** True when `cover` is the CHM share of 1 m pixels ≥ 2 m tall (canopy raster valid), not the type crown cover. */
+  coverFromChm?: boolean;
   lai: number;
   wrf: number;
   grassState: GrassState;

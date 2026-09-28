@@ -23,8 +23,11 @@ import { demoScenario, withIgnitions } from '../testing/scenarios';
 import { ORIGIN, SLOW, log, point, runSim, synth } from './harness';
 
 describe('V18 determinism & rewind (synthetic 15° slope, embers on, fast tier)', () => {
+  // Spotting here is a single ember ignition per 1–2 h (seeds 1–12: 0 or 1 spot fire by 2 h), which flips with any
+  // physics change (seed 7: 1 spot with the instantaneous pyrogenic source, 0 with the 300 s smoothed one, for the same
+  // ember landings); seed 5 puts a spot fire before the 1 h checkpoint, so the rewind carries spot-fire state.
   const scenario = (): ReturnType<typeof synth> =>
-    synth({ extent: 4000, elevation: (x) => 500 + Math.max(0, x) * Math.tan((15 * Math.PI) / 180), windKmh: 30, duration: 6 * 3600, ignitions: [point(-900, 0, 0, 45)], options: { embers: true, maxEmbers: 1500 } });
+    synth({ extent: 4000, elevation: (x) => 500 + Math.max(0, x) * Math.tan((15 * Math.PI) / 180), windKmh: 30, duration: 6 * 3600, ignitions: [point(-900, 0, 0, 45)], options: { embers: true, maxEmbers: 1500, seed: 5 } });
 
   /** A simulation whose snapshot hook writes hashes into `sink.map` (swap the map to record a re-run separately). */
   function make(sink: { map: Map<number, number> }): Simulation {

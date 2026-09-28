@@ -207,18 +207,21 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
     const pos = !burnt ? 'head' : d >= 0.8 ? 'head' : d >= 0.2 ? 'flank' : 'back';
     const shares = factorShares(factors, pos !== 'head').filter((f) => f.share >= 0.05 && Math.abs(Math.log(Math.max(1e-9, f.value))) >= 0.05);
     const top = shares.slice(0, 3);
-    const why = top.map((f) => phrase(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos }));
+    // Flat-ground rate of this fuel and litter without wind (m/s): the "still air" reference of the wind line.
+    const still = factors.base * factors.fuel * factors.moisture;
+    const windTop = top[0]?.key === 'wind';
+    const why = top.map((f) => phrase(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos, still, windTop }));
     const lead = leadText(driver, th, burnt, pos, ros);
     let summary = why.length ? `${lead} because: ${joinAnd(why)}.` : `${lead}.`;
     if (th > P.notes.steepDeg) summary += ` ${STEEP_NOTE}`;
     narrative.push(summary);
     const parts = opts.moistureBreakdown ? opts.moistureBreakdown(k) : null;
-    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos, fuelSummary, nowMs, parts }));
+    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos, still, windTop, fuelSummary, nowMs, parts }));
   }
   // Validity + wind decomposition.
   const Ua = s.weather.windSpeed10 * 3.6;
   const Ut = Math.hypot(s.windBgU[k]!, s.windBgV[k]!) * 3.6 - Ua;
-  const Us = (s.slopeFlowS[k] ?? 0) * 3.6;
+  const Us = Math.abs(s.slopeFlowS[k] ?? 0) * 3.6; // signed along the fall line (− downslope); a speed here
   const Uf = fw * 3.6;
   const sg = (x: number): string => (x < -0.5 ? `− ${int(-x)}` : `+ ${int(Math.max(0, x))}`);
   const valid = validated ? 'Model check: inside the tested range.' : `Model check: outside the tested range here (${reasons.join(', ') || 'model limits'}), so treat the numbers as a rough guide.`;
@@ -258,6 +261,34 @@ interface PhraseCtx {
   s: SimStateView;
   k: number;
   dir: number;
+  /** Flat-ground, still-air rate of this fuel and litter (m/s): base × fuel × moisture. */
+  still: number;
+  /** The wind is the top-ranked factor. */
+  windTop: boolean;
+}
+
+/** A rate of spread (m/s) as a kind of fire a beginner can picture. */
+function fireKind(ms: number): string {
+  const kmh = ms * 3.6;
+  if (kmh < 0.2) return 'a creeping fire';
+  if (kmh < 1) return 'a slow fire';
+  if (kmh < 4) return 'a running fire';
+  return 'a fast-running fire';
+}
+
+/**
+ * The wind factor in plain words. It multiplies a near-zero still-air rate, so a bare "×52" reads as absurd to a
+ * beginner; say what it does to the fire instead: "turns a creeping fire (about 300 m/h in still air) into a
+ * fast-running fire (about 15 km/h)". Light winds keep the (small, intuitive) multiplier.
+ */
+function windEffect(f: number, c: PhraseCtx): string {
+  const still = c.still;
+  if (!(still > 0) || !Number.isFinite(f)) return `→ ${times(f)}`;
+  if (f < 1.5) return `is light: it only nudges the spread (about ${times(f)}, ${rate(still)} → ${rate(still * f).replace(/^about /, '')} on flat ground)`;
+  const a = fireKind(still);
+  const b = fireKind(still * f);
+  const move = a === b ? `speeds ${a} up from ${rate(still)} in still air to ${rate(still * f)}` : `turns ${a} (${rate(still)} in still air) into ${b} (${rate(still * f)})`;
+  return `${move}${c.pos !== 'head' ? ' at the head fire' : ''}${c.windTop && f >= 3 && c.pos === 'head' ? ' — the main reason it is fast here' : ''}`;
 }
 
 function leadText(driver: SpreadDriver, th: number, burnt: boolean, pos: string, ros: number): string {
@@ -337,7 +368,7 @@ function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; n
       return `Slope: ${int(Math.abs(c.th))}° ${c.th >= 0 ? 'uphill' : 'downhill'} along the spread → about ${times(f)} (doubles every 10° uphill).`;
     case 'wind': {
       const drawn = c.fw * 3.6 >= 1 ? `; about ${int(c.fw * 3.6)} km/h of it is air drawn in by the fire` : '';
-      return `Wind: ${int(c.U * 3.6)} km/h from the ${compassWord(c.windFrom) || 'variable directions'} → ${times(f)}${c.pos !== 'head' ? ' at the head fire' : ''}${drawn}.`;
+      return `Wind: ${int(c.U * 3.6)} km/h from the ${compassWord(c.windFrom) || 'variable directions'} ${windEffect(f, c)}${drawn}.`;
     }
     case 'moisture':
       return `Litter moisture ${int(c.M)} % (${int(s.moistureAfdrs[k]!)} % by the AFDRS equations; ${moistureReason(s, k, c.nowMs, c.parts)}) → ${times(f)}.`;

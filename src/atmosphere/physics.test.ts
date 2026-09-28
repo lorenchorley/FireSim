@@ -30,6 +30,7 @@ import {
   seriesOf,
 } from './testUtils';
 import type { GridSpec } from '../core/grid';
+import type { FireWindContextExt } from './base';
 
 type HiRes = { grid: GridSpec; elevation: Float32Array };
 const grass = (t: Terrain) => fuelDouble(t.grid, FuelType.Grassland, 0, 0);
@@ -209,6 +210,19 @@ describe('§8.11 warm bubble and fire plume', () => {
     expect(r.iu[kW]!).toBeGreaterThan(0.1); // upwind side: indraft eastward, toward the fire
     expect(r.iv[kN]!).toBeLessThan(-0.1); // north side: southward
     expect(r.iv[kS]!).toBeGreaterThan(0.1); // south side: northward
+    // Resolved head correction (V22 3-D tier): at a head cell the component along the outward normal is removed
+    // (both signs, from U_fire and U_fireInd); the cross-normal part and the other cells are untouched.
+    const head = new Uint8Array(n);
+    const hx = new Float32Array(n);
+    const hy = new Float32Array(n);
+    head[kW] = 1;
+    hx[kW] = -1; // outward normal of the fire's west edge
+    const hctx: FireWindContextExt = { ...ctxFor(t, { firePowerW: P, frontDist: fd, slopeFlowOn: false }), headMask: head, headDirX: hx, headDirY: hy };
+    const rh = fireWinds(a, t, hctx);
+    expect(Math.abs(rh.iu[kW]!)).toBeLessThan(1e-6);
+    expect(rh.iv[kW]).toBeCloseTo(r.iv[kW]!, 6);
+    expect(rh.u[kW]).toBeCloseTo(r.u[kW]! - r.iu[kW]!, 5);
+    expect(rh.iv[kN]).toBe(r.iv[kN]);
     // Coupling off: the fire-induced part vanishes (one-way coupling).
     a.setCoupling(0);
     const r0 = fireWinds(a, t, ctxFor(t, { firePowerW: P, frontDist: fd, slopeFlowOn: false }));

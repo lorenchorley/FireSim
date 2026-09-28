@@ -244,6 +244,8 @@ export class Simulation {
   private readonly headDirY: Float32Array;
   private readonly u10: Float32Array;
   private u10Valid = false;
+  /** Sub-grid slope-flow speed signed along the fall line for the view (+ upslope, Q_h ≥ 0; − downslope, Q_h < 0). */
+  private readonly slopeFlowSigned: Float32Array;
   private night: StableNightState;
   private lastNightMs: number;
   private stampIdx = 0;
@@ -412,6 +414,7 @@ export class Simulation {
     this.headDirX = f32();
     this.headDirY = f32();
     this.u10 = f32();
+    this.slopeFlowSigned = f32();
     const aux = this.fire.aux();
     this.windCtx = { sep: aux.sep, frontDist: aux.frontDist, firePowerW: 0, plumeTopAGL: 1000, slopeFlowOn: this.heatingOn, time: 0, coupling: this.opts.coupling };
     const B = SIM_PARAMS.frontRosBlock;
@@ -1135,11 +1138,13 @@ export class Simulation {
     ctx.plumeTopAGL = Number.isFinite(this.plumeTopAGL) && this.plumeTopAGL > 0 ? this.plumeTopAGL : 1000;
     ctx.time = env.time;
     ctx.coupling = this.opts.coupling;
-    if (this.tierNow === 'fast' && this.opts.coupling > 0) {
+    if (this.opts.coupling > 0) {
       // §8.8 pyrogenic correction on the prepared cells of the last prepare with their local front normal (see
       // SIM_PARAMS.pyroCorrectionMinDirection), not the atmosphere's fallback (ê = background wind direction), which
       // removes nothing in calm air and the wrong component when the head is not downwind (calm or cross-wind slopes).
-      this.fire.headCells(this.headMask, this.headDirX, this.headDirY, SIM_PARAMS.pyroCorrectionMinDirection);
+      // 3-D tiers: the head cells of the resolved head correction (ATMOS_PARAMS.resolvedHeadCorrection).
+      const fast = this.tierNow === 'fast';
+      this.fire.headCells(this.headMask, this.headDirX, this.headDirY, fast ? SIM_PARAMS.pyroCorrectionMinDirection : SIM_PARAMS.resolvedHeadMinDirection);
       ctx.headMask = this.headMask;
       ctx.headDirX = this.headDirX;
       ctx.headDirY = this.headDirY;
@@ -1315,6 +1320,20 @@ export class Simulation {
   // View, stats, snapshots
   // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+  /**
+   * `slopeFlowS` of the view: the atmosphere's S_top (a speed, §8.6) signed along the fall line — + upslope
+   * (anabatic, Q_h ≥ 0), − downslope (katabatic, Q_h < 0) — so the §10.2 "upslope component of the thermal wind"
+   * (resolved U_dyn − U_bg along ψ_up plus slopeFlowS) does not count a shaded slope's drainage flow as upslope.
+   */
+  private signedSlopeFlow(d: AtmosDiagnostics): Float32Array {
+    const sf = d.slopeFlow;
+    const qh = d.heatFlux;
+    const out = this.slopeFlowSigned;
+    if (sf.length !== out.length || qh.length !== out.length) return sf;
+    for (let k = 0; k < out.length; k++) out[k] = qh[k]! < 0 ? -sf[k]! : sf[k]!;
+    return out;
+  }
+
   private view(time: number): SimStateView {
     const env = this.env;
     const fire = this.fire;
@@ -1341,7 +1360,7 @@ export class Simulation {
       fireIndV: env.fireIndV,
       uRidge: env.uRidge,
       surfaceHeatFlux: d.heatFlux,
-      slopeFlowS: d.slopeFlow,
+      slopeFlowS: this.signedSlopeFlow(d),
       airT: env.airT,
       airRH: this.moisture.airRH,
       weather: env.weather,

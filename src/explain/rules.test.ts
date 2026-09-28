@@ -325,12 +325,29 @@ describe('fire and ember cards', () => {
     expect(p[0]?.severity).toBe('watch');
   });
 
-  it('fire-induced-wind (P1): |U_fireInd| ≥ 1.5 m/s on ≥ 30 % of the front for 5 cycles; not with coupling 0', () => {
+  it('fire-induced-wind (P1): |U_fireInd| ≥ 1.0 m/s on ≥ 30 % of the front for 5 cycles; not with coupling 0', () => {
     const w = neutral();
     w.view.fireIndU.fill(2.5);
     expect(of(run(w, 6).all, 'fire-induced-wind')[0]?.severity).toBe('watch');
     w.view.coupling = 0;
     expect(kinds(run(w, 6).all)).not.toContain('fire-induced-wind');
+    // V15 intensity (5–7 MW/m: 1.0–1.6 m/s beside the front) fires the card; a weak 0.8 m/s indraft does not.
+    const v15 = neutral();
+    v15.view.fireIndU.fill(1.2);
+    expect(kinds(run(v15, 6).all)).toContain('fire-induced-wind');
+    const weak = neutral();
+    weak.view.fireIndU.fill(0.8);
+    expect(kinds(run(weak, 6).all)).not.toContain('fire-induced-wind');
+  });
+
+  it('fire-induced-wind: front cells that arrived within the last minute are skipped (U_fireInd from before arrival)', () => {
+    const w = neutral();
+    w.view.fireIndU.fill(2.5);
+    // The whole front re-arrives every cycle (its stored U_fireInd would be the head-corrected value of the unburnt
+    // cell ahead of the front): no evidence, no card.
+    const front = (): number[] => Array.from({ length: w.N }, (_, k) => k).filter((k) => w.view.fire.arrivalTime[k]! < Infinity);
+    const cells = front();
+    expect(kinds(run(w, 6, {}, (c) => cells.forEach((k) => (w.view.fire.arrivalTime[k] = 60 + 60 * c - 5))).all)).not.toContain('fire-induced-wind');
   });
 
   it('crown-fire: I ≥ 10 000 kW/m on the front → danger; FH > 0.66·H_o,eff with I ≥ 4000 → danger', () => {

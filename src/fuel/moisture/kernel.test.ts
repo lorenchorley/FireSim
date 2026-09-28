@@ -206,6 +206,31 @@ describe('physical validation of the anomaly (spec §5.4)', () => {
     expect(openNight.anomaly[k]).toBeGreaterThan(closedNight.anomaly[k]!);
   });
 
+  it('CHM cover (share of pixels ≥ 2 m) is mapped onto the crown-cover scale: saturated forest = reference column', () => {
+    // V8 root cause: a CHM cover of 1 (every forest cell of the demo sites) used as crown cover shaded every sunny
+    // slope (+2 pp against AFDRS on flat ground) and CHM drop-outs on shaded slopes opened the gullies.
+    const flat = makeTerrain(600, 30, (g) => plane(g, 0, 0, 650));
+    const k = 110;
+    const run = (type: FuelType, cover: number, chm: boolean) => {
+      const resolve = (f: FuelMap, q: number) => ({ ...fuelParamsAt(f, q), coverFromChm: chm });
+      const m = new MoistureModel(flat, uniformFuel(flat, type, cover), terrainDerived(flat), undefined, resolve);
+      m.initialise(series, t14, { kbdi: 60, df: 7 }, initialStableNight(null));
+      return m;
+    };
+    const chmFull = run(FuelType.DryForestShrubby, 1, true);
+    const crownFull = run(FuelType.DryForestShrubby, 1, false);
+    expect(Math.abs(chmFull.anomaly[k]!)).toBeLessThan(0.03); // c = c_type = c_ref: AFDRS parity on flat ground
+    expect(crownFull.anomaly[k]).toBeGreaterThan(1); // a real crown cover of 1 still shades the litter
+    // A CHM drop-out thins the canopy by at most 20 % (c = 0.8·c_type), far from the open-litter value.
+    const chmGap = run(FuelType.DryForestShrubby, 0, true);
+    const crownOpen = run(FuelType.DryForestShrubby, 0, false);
+    expect(chmGap.anomaly[k]).toBeLessThan(0);
+    expect(chmGap.anomaly[k]).toBeGreaterThan(-0.6);
+    expect(crownOpen.anomaly[k]).toBeLessThan(chmGap.anomaly[k]! - 0.5);
+    // Repainted to grass under a CHM canopy: open litter (c_type 0).
+    expect(run(FuelType.Grassland, 1, true).fuelTemp[k]).toBeCloseTo(run(FuelType.Grassland, 0, false).fuelTemp[k]!, 6);
+  });
+
   it('wind cools sunlit litter: a windier cell has a smaller fuel-temperature excess and less negative anomaly', () => {
     const R = 900;
     const terrain = makeTerrain(2400, 30, (g) => cone(g, R * Math.tan((30 * Math.PI) / 180), R, 0, 0, 500));

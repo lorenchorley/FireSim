@@ -304,6 +304,7 @@ export interface SimStateView {
   fireIndV: Float32Array;
   uRidge: Float32Array;
   surfaceHeatFlux: Float32Array;
+  /** Sub-grid slope-flow speed S_top (m/s, §8.6) signed along the fall line: + upslope (Q_h ≥ 0), − downslope. */
   slopeFlowS: Float32Array;
   airT: Float32Array;
   airRH: Float32Array;

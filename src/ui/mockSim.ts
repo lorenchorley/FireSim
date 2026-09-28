@@ -774,7 +774,11 @@ export class MockSimController implements SimController {
     const upAz = wrapDeg((Number.isFinite(aspect) ? aspect : 0) + 180);
     const narrative: string[] = [];
     if (slope >= 5) narrative.push(`Uphill is towards the ${compassName(upAz)}. A fire running up this slope would spread about ${formatMultiplier(Math.exp(0.069 * Math.min(45, slope)))} faster than on flat ground${slope > 20 ? ' — and on slopes this steep real fires often go faster than any model' : ''}.`);
-    narrative.push(`The ${Math.round(kmh)} km/h ${compassName(wind.dir)} wind pushes a head fire towards the ${compassName(wrapDeg(wind.dir + 180))}: ${formatMultiplier(factors.wind)} on its own.`);
+    const still = factors.base * factors.fuel * factors.moisture;
+    narrative.push(
+      `The ${Math.round(kmh)} km/h ${compassName(wind.dir)} wind pushes a head fire towards the ${compassName(wrapDeg(wind.dir + 180))}` +
+        (still > 0 && factors.wind >= 1.5 ? `: on flat ground it goes from ${formatRos(still)} in still air to ${formatRos(still * factors.wind)}.` : `: ${formatMultiplier(factors.wind)} on its own.`),
+    );
     if (isBurnable(type)) {
       narrative.push(`Litter moisture is about ${moisture.toFixed(0)}% — ${moisture < 7 ? 'very dry: embers will catch easily' : moisture < 12 ? 'dry enough to carry fire well' : moisture < 20 ? 'moist: fire spreads slowly' : 'wet: fire struggles to spread'}.`);
       narrative.push(`${formatYears(tsf) === 'No record' ? 'No recorded fire here' : `Last burnt ${formatYears(tsf)} ago`}; ${fuel.barkHazard[k]! >= 3 ? 'stringy bark makes this a strong ember source' : 'bark is not a major ember source'}.`);

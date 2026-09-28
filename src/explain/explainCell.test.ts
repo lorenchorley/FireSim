@@ -63,7 +63,7 @@ describe('explainAt', () => {
     );
     expect(e.narrative.length).toBe(5);
     expect(e.narrative[1]).toBe('Slope: 28° uphill along the spread → about ×7.0 (doubles every 10° uphill).');
-    expect(e.narrative[2]).toBe('Wind: 25 km/h from the south → ×5.0; about 7 km/h of it is air drawn in by the fire.');
+    expect(e.narrative[2]).toBe('Wind: 25 km/h from the south speeds a creeping fire up from about 28 m/h in still air to about 139 m/h; about 7 km/h of it is air drawn in by the fire.');
     expect(e.narrative[3]).toMatch(/^Litter moisture 6 % \(7 % by the AFDRS equations; .+\) → ×1\.8\.$/);
     // Validity (θ > 20°) and the wind decomposition line.
     expect(e.narrative[4]).toMatch(/^Model check: outside the tested range here \(slope over 20°\)/);
@@ -74,6 +74,22 @@ describe('explainAt', () => {
     expect(e.windSpeed10 * 3.6).toBeCloseTo(25, 4);
     expect(e.windDir10).toBeCloseTo(180, 4);
     expect(e.factors.slope).toBe(7);
+  });
+
+  it('wind in plain words: a ×52 wind factor reads as "turns a slow fire into a fast-running fire", not "×52"', () => {
+    // Beginners read "→ ×52" as absurd: the factor multiplies a near-zero still-air rate.
+    const { w } = exampleWorld();
+    w.setWind(32 / 3.6, 315);
+    w.view.fireIndV.fill(0);
+    w.factors = { base: 300 / 3600, wind: 52, slope: 1.2, moisture: 1, fuel: 1, terrain: 1, build: 1, fireWindShare: 0, direction: 1 };
+    const e = explainCell(0, 0, w.view, { startMs: w.startMs });
+    const wind = e.narrative.find((l) => l.startsWith('Wind:'))!;
+    expect(wind).toBe('Wind: 32 km/h from the north-west turns a slow fire (about 300 m/h in still air) into a fast-running fire (about 16 km/h) — the main reason it is fast here.');
+    expect(e.narrative.join(' ')).not.toMatch(/×52/);
+    // A light wind keeps its small multiplier.
+    w.factors = { ...w.factors, wind: 1.2, slope: 3 };
+    const light = explainCell(0, 0, w.view, { startMs: w.startMs }).narrative.find((l) => l.startsWith('Wind:'))!;
+    expect(light).toMatch(/is light: it only nudges the spread \(about ×1\.2, about 300 m\/h → 360 m\/h on flat ground\)\.$/);
   });
 
   it('unburnt cell: uses evaluateCell (the fire module), "If the fire reaches here …"', () => {
