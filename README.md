@@ -32,7 +32,7 @@ The screenshots are produced by the end-to-end test (`e2e/app.spec.ts`) on a Pix
 
 - **Where**: GPS, typed coordinates, or eight bundled **demo sites** with LiDAR terrain (10 m from the 5 m DTM),
   canopy height (from Meta's 1 m map), aerial imagery, vegetation and fire history — they work fully offline. 3–12 km square, 20 or 30 m fire grid.
-- **Weather**: live (Open-Meteo: BOM ACCESS-G, ECMWF, GFS), a past date (historical forecasts / ERA5), the forecast
+- **Weather**: live (Open-Meteo best-match models incl. ECMWF IFS and GFS; BOM ACCESS-G is not used because its Open-Meteo feed returned no data), a past date (historical forecasts / ERA5), the forecast
   (up to 16 days), four designed **presets** (hot NW wind ahead of a SW change; calm night with katabatic drainage;
   mild spring hazard-reduction day; catastrophic Black-Summer-like day), seven **historic fire days** bundled offline
   (Blue Mountains Oct 2013, Grose / Gospers Mountain / Kanangra Dec 2019, Currowan 30 Dec 2019, Snowy Jan 2020,
@@ -91,7 +91,7 @@ plume regimes, determinism and rewind) runs headless in `src/sim/validation/`.
 | NSW Spatial Services | 5 m LiDAR elevation (DTM) and aerial imagery of the demo sites | © Spatial Services NSW, CC BY 4.0 |
 | Meta & World Resources Institute | High Resolution Canopy Height Maps (Tolan et al. 2024) | CC BY 4.0 |
 | SRTM via AWS Terrain Tiles (Mapzen Terrarium) | elevation outside the demo sites | public domain (NASA SRTM), AWS Open Data |
-| Open-Meteo | forecasts, archive and historical forecasts (BOM ACCESS-G, ECMWF, GFS, ERA5) | CC BY 4.0; data © the national services |
+| Open-Meteo | forecasts, archive and historical forecasts (ECMWF IFS, GFS, ERA5) | CC BY 4.0; data © the national services |
 | NSW National Parks and Wildlife Service | fire history (wildfires, prescribed burns) | © State of NSW and DCCEEW, CC BY 4.0 |
 | NSW State Vegetation Type Map (SVTM) | vegetation formations and classes → fuel types | © State of NSW and DCCEEW, CC BY 4.0 |
 | NSW Rural Fire Service | current incidents and fire danger ratings (when online) | © NSW RFS, for information only |
@@ -105,7 +105,7 @@ Requirements: Node 20+ (22 used here), npm.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 — the dev server proxies the non-CORS government services
+npm run dev          # http://localhost:5173 — the dev server also proxies the canopy-height bucket (no CORS)
 npm run build        # typecheck + production build into dist/ (relative URLs, module worker bundled)
 npm run preview      # serve dist/ on http://localhost:4173
 ```
@@ -167,8 +167,8 @@ After `cap add`, add the location permission the "Use my location" button needs:
   you are."
 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
-`fetch` through the native stack so the NSW, BoM and Open-Meteo services work without CORS (in the browser the dev
-server proxies them). The simulation runs in an ES-module Web Worker (Android System WebView 80+, iOS 15+). The bundle
+`fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
+Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 80+, iOS 15+). The bundle
 is ~32 MB, of which ~29 MB are the demo sites; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
@@ -246,8 +246,9 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   the 3-D atmosphere (one tap in Layers, or *Best quality*), which is 3–4× slower.
 - Validation gaps are listed in `src/sim/validation/` as expected failures (e.g. shaded-slope winds in the fast tier,
   gully moisture contrast, lateral VLS rate, the fire-induced-wind card, the V20 speed gates for very large fires).
-- Weather and live data need the network (or an area pack); in-app network use goes through CapacitorHttp on device
-  and the dev-server proxy in the browser — a plain static web deployment cannot reach the non-CORS NSW services.
+- Weather and live data need the network (or an area pack). On device, requests go through CapacitorHttp; in the
+  browser (including an installed PWA) the NSW, RFS and Open-Meteo services are called directly — all send CORS headers
+  (verified live, doc 08b). Only the remote canopy-height bucket needs the dev-server proxy (or a deployment proxy).
 - Snapshots are dense (≈ 2 MB each); long runs are thinned in the replay store to fit its memory budget.
 
 ## Licence

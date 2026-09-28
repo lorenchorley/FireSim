@@ -8,10 +8,10 @@
  *     NOTE: inside a Web Worker on device there is no native bridge and fetch is NOT patched; data loading should run on
  *     the main thread (the scenario builder does this), or the worker must be told the platform via
  *     {@link setHttpConfig} and accept that non-CORS services will fail there.
- *  2. **Browser (Vite dev server / preview / PWA)**: CORS-enabled services (Open-Meteo, AWS Terrain Tiles) are called
- *     directly; services without CORS headers (NSW Environment ArcGIS, NSW RFS feeds, the Meta canopy-height bucket) are
- *     routed through the dev-server proxy at `/proxy/<service>` (see vite.config.ts), or a deployment proxy configured
- *     with `setHttpConfig({ proxyBase })`.
+ *  2. **Browser (Vite dev server / preview / PWA)**: CORS-enabled services (Open-Meteo, AWS Terrain Tiles, NSW
+ *     Environment ArcGIS, NSW RFS feeds — all verified live, doc 08b) are called directly; the one service without CORS
+ *     headers (the Meta canopy-height bucket) is routed through the dev-server proxy at `/proxy/<service>` (see
+ *     vite.config.ts), or a deployment proxy configured with `setHttpConfig({ proxyBase })`.
  *  3. **Node (Vitest, scripts)**: direct absolute URLs through the global fetch (set `NODE_USE_ENV_PROXY=1` to use an
  *     HTTPS proxy).
  *
@@ -38,8 +38,11 @@ interface ServiceInfo {
 export const SERVICES: Readonly<Record<Exclude<ServiceId, 'generic'>, ServiceInfo>> = {
   openmeteo: { base: 'https://api.open-meteo.com', cors: true },
   'openmeteo-archive': { base: 'https://archive-api.open-meteo.com', cors: true },
-  nswenv: { base: 'https://mapprod3.environment.nsw.gov.au', cors: false },
-  rfs: { base: 'https://www.rfs.nsw.gov.au', cors: false },
+  // NSW Environment ArcGIS (NPWS fire history, SVTM) and NSW RFS feeds: live checks on 2026-09-27 found
+  // `Access-Control-Allow-Origin: *` on both (docs/research/08b-live-endpoint-verification.md §3, §4, §8), so browsers
+  // (dev server, preview, installed PWA) call them directly; the dev proxy is only needed for the canopy bucket.
+  nswenv: { base: 'https://mapprod3.environment.nsw.gov.au', cors: true },
+  rfs: { base: 'https://www.rfs.nsw.gov.au', cors: true },
   // AWS Open Data Terrain Tiles: S3 bucket with a permissive CORS policy (verified: ACAO * on GET).
   terrarium: { base: 'https://s3.amazonaws.com/elevation-tiles-prod', cors: true },
   // Meta/WRI canopy height COGs: the bucket has no CORS policy (pre-flight returns 403), so browsers need the proxy.

@@ -56,8 +56,9 @@ describe('platform detection and URL routing', () => {
 
   it('routes non-CORS services through the dev proxy in the browser, CORS services direct', () => {
     setHttpConfig({ platform: 'browser' });
-    expect(serviceUrl('nswenv', '/arcgis/x?f=json')).toBe('/proxy/nswenv/arcgis/x?f=json');
-    expect(serviceUrl('rfs', '/feeds/majorIncidents.json')).toBe('/proxy/rfs/feeds/majorIncidents.json');
+    // NSW Environment and RFS send ACAO * (doc 08b): direct in the browser, so an installed PWA works without a proxy.
+    expect(serviceUrl('nswenv', '/arcgis/x?f=json')).toBe('https://mapprod3.environment.nsw.gov.au/arcgis/x?f=json');
+    expect(serviceUrl('rfs', '/feeds/majorIncidents.json')).toBe('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
     expect(serviceUrl('chm', '/forests/a.tif')).toBe('/proxy/chm/forests/a.tif');
     expect(serviceUrl('openmeteo', '/v1/forecast')).toBe('https://api.open-meteo.com/v1/forecast');
     expect(serviceUrl('openmeteo-archive', '/v1/archive')).toBe('https://archive-api.open-meteo.com/v1/archive');
@@ -66,7 +67,7 @@ describe('platform detection and URL routing', () => {
 
   it('honours proxyBase (trailing slash stripped) and forceDirect', () => {
     setHttpConfig({ platform: 'browser', proxyBase: 'https://proxy.example.org/' });
-    expect(serviceUrl('rfs', '/feeds/a.json')).toBe('https://proxy.example.org/proxy/rfs/feeds/a.json');
+    expect(serviceUrl('chm', '/forests/a.tif')).toBe('https://proxy.example.org/proxy/chm/forests/a.tif');
     setHttpConfig({ forceDirect: true });
     expect(serviceUrl('rfs', '/feeds/a.json')).toBe('https://www.rfs.nsw.gov.au/feeds/a.json');
   });
@@ -79,7 +80,8 @@ describe('platform detection and URL routing', () => {
 
   it('routeUrl rewrites absolute URLs of known services only', () => {
     setHttpConfig({ platform: 'browser' });
-    expect(routeUrl('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json')).toBe('/proxy/rfs/feeds/majorIncidents.json');
+    expect(routeUrl('https://dataforgood-fb-data.s3.amazonaws.com/forests/a.tif')).toBe('/proxy/chm/forests/a.tif');
+    expect(routeUrl('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json')).toBe('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
     expect(routeUrl('https://api.open-meteo.com/v1/forecast?x=1')).toBe('https://api.open-meteo.com/v1/forecast?x=1');
     expect(routeUrl('https://example.org/x')).toBe('https://example.org/x');
     expect(routeUrl('/proxy/rfs/x')).toBe('/proxy/rfs/x');
@@ -193,10 +195,10 @@ describe('fetch transport', () => {
   it('auto-routes absolute URLs of non-CORS services through the proxy in the browser', async () => {
     const { fn, calls } = scriptedFetch([json([])]);
     setHttpConfig({ fetch: fn, platform: 'browser' });
-    await fetchJson('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
-    expect(calls[0]!.url).toBe('/proxy/rfs/feeds/majorIncidents.json');
-    await fetchJson('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json', { route: false });
-    expect(calls[1]!.url).toBe('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
+    await fetchJson('https://dataforgood-fb-data.s3.amazonaws.com/forests/tiles.json');
+    expect(calls[0]!.url).toBe('/proxy/chm/forests/tiles.json');
+    await fetchJson('https://dataforgood-fb-data.s3.amazonaws.com/forests/tiles.json', { route: false });
+    expect(calls[1]!.url).toBe('https://dataforgood-fb-data.s3.amazonaws.com/forests/tiles.json');
   });
 
   it('httpRequest returns any status with lower-cased headers and no retry', async () => {

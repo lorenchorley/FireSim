@@ -8,6 +8,8 @@ const proxy = {
   '/proxy/openmeteo-archive': { target: 'https://archive-api.open-meteo.com', changeOrigin: true, rewrite: (p: string) => p.replace(/^\/proxy\/openmeteo-archive/, '') },
   '/proxy/nswenv': { target: 'https://mapprod3.environment.nsw.gov.au', changeOrigin: true, rewrite: (p: string) => p.replace(/^\/proxy\/nswenv/, '') },
   '/proxy/rfs': { target: 'https://www.rfs.nsw.gov.au', changeOrigin: true, rewrite: (p: string) => p.replace(/^\/proxy\/rfs/, '') },
+  // Meta/WRI canopy-height COGs: the S3 bucket sends no CORS headers (range requests must be proxied in the browser).
+  '/proxy/chm': { target: 'https://dataforgood-fb-data.s3.amazonaws.com', changeOrigin: true, rewrite: (p: string) => p.replace(/^\/proxy\/chm/, '') },
 };
 
 // `base: './'` keeps every URL relative (assets, the module worker, public/demo and public/replays), so the same
