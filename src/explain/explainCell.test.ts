@@ -91,6 +91,16 @@ describe('explainAt', () => {
     expect(e.narrative.some((l) => l.startsWith('Dry forest'))).toBe(true); // fuel line from the fuel summary
   });
 
+  it('a head capped at the forest speed limit (terrain factor < 1, built up) is called a speed limit, not a steep-country effect', () => {
+    const { w } = exampleWorld();
+    w.factors = { base: 15.43 / 3600, wind: 62, slope: 16, moisture: 1.8, fuel: 1, terrain: 0.2, build: 1, fireWindShare: 0.1, direction: 1 };
+    const e = explainCell(0, 0, w.view, { startMs: w.startMs });
+    const text = e.narrative.join(' ');
+    expect(text).not.toMatch(/steep-country/);
+    expect(e.narrative[0]).toMatch(/top-speed limit \(about ×0\.2; the real fire could be faster\)/);
+    expect(e.narrative.some((l) => l.startsWith('Speed limit:'))).toBe(true);
+  });
+
   it('flank / back position and downhill slope wording; terrain line flagged "model indicative"', () => {
     const w = new TestWorld({ elevation: (_x, y) => 600 + tan(15) * y });
     const k = w.cell(0, 0);
@@ -104,9 +114,13 @@ describe('explainAt', () => {
     w.view.aux.attach[k] = 0.6;
     w.factors = { base: 15.43 / 3600, wind: 1.2, slope: 0.6, moisture: 1, fuel: 1, terrain: 1.8, build: 1, direction: 0.1 };
     const e = explainCell(0, 0, w.view, { startMs: w.startMs });
-    expect(e.narrative[0]).toMatch(/^Backing slowly here because: .*slope 15° downslope/);
+    // At the back the §6.12 wind / slope factors are the head fire's (fire/ factorsFor): the position (direction
+    // factor 0.1) is the main reason, and the local 15° downhill is mentioned as the edge's own slope.
+    expect(e.narrative[0]).toMatch(/^Backing slowly here because: being the back of the fire, creeping against the wind \(about 10 % of the head-fire speed\)/);
+    expect(e.narrative.some((l) => l.startsWith('Position: the back of the fire'))).toBe(true);
     expect(e.narrative.some((l) => l.includes('eruptive regime') && l.includes('(model indicative)'))).toBe(true);
-    expect(e.narrative.some((l) => l.startsWith('Slope: 15° downhill along the spread'))).toBe(true);
+    const slope = e.narrative.find((l) => l.startsWith('Slope:'));
+    if (slope) expect(slope).toMatch(/head fire runs downhill .*this edge itself burns 15° downhill/);
   });
 
   it('non-fuel cell: explains that nothing can carry the fire; engine.explainAt delegates', () => {

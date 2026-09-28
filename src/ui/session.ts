@@ -15,6 +15,7 @@
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
+import { groupInsights } from './insightGroups';
 import { SnapshotStore } from './snapshotStore';
 import { Emitter, Store } from './store';
 
@@ -90,6 +91,8 @@ export class SimSession {
   private revealedUpTo = -Infinity;
   private revealed = new Set<string>();
   private disposed = false;
+  /** Time of a removed ignition whose 'rewound' reply is pending (results after it are stale). */
+  private rewindFloor: number | null = null;
   /** What was last pushed to the view (see syncView). */
   private shownInsightKey = '';
   private shownIgnitions: readonly Ignition[] | null = null;
@@ -267,12 +270,34 @@ export class SimSession {
   }
 
   /**
-   * Explain a point at the view time. The SimController contract has no time argument yet (requested); the view time
-   * is passed as an extra argument, which implementations that support it use and others ignore.
+   * Undo a marked ignition (a wrong mark): the worker rewinds to its time and re-runs without it, so every result
+   * after that time is dropped here (they are re-computed and streamed again); the view time stays where it is.
    */
+  removeIgnition(id: string): void {
+    const s = this.state.get();
+    const ign = s.ignitions.find((i) => i.id === id);
+    if (!ign) return;
+    this.controller.removeIgnition(id);
+    const t = ign.time;
+    this.rewindFloor = t;
+    if (t < s.headTime) {
+      this.snapshots.truncateAfter(t);
+      this.requestedUntil = Math.min(this.requestedUntil, t);
+    }
+    this.state.set((st) => ({
+      ignitions: st.ignitions.filter((i) => i.id !== id),
+      insights: st.insights.filter((i) => i.time <= t),
+      headTime: t < st.headTime ? (this.snapshots.latest()?.time ?? t) : st.headTime,
+      reviewing: false,
+    }));
+    this.afterEdit();
+    // Paused: still re-compute up to the view time, so the picture on screen is right without pressing Play.
+    if (!this.state.get().playing && this.state.get().viewTime > this.state.get().headTime) this.controller.run(this.state.get().viewTime);
+  }
+
+  /** Explain a point at the view time. */
   explain(x: number, y: number): Promise<CellExplanation> {
-    const explainAt = this.controller.explain as (x: number, y: number, time?: number) => Promise<CellExplanation>;
-    return explainAt.call(this.controller, x, y, this.state.get().viewTime);
+    return this.controller.explain(x, y, this.state.get().viewTime);
   }
 
   private afterEdit(): void {
@@ -284,6 +309,8 @@ export class SimSession {
 
   private ensureRunning(force = false): void {
     const s = this.state.get();
+    // Never restart the worker once playback stopped (e.g. a Danger card paused it from inside syncView).
+    if (!s.playing) return;
     const target = runTarget(s.viewTime, s.speed, this.duration, this.scenario.options.snapshotInterval);
     if (target <= s.headTime && !force) return;
     const now = performance.now();
@@ -306,7 +333,10 @@ export class SimSession {
   private onRewound(time: number): void {
     if (this.disposed) return;
     const s = this.state.get();
-    const keep = Math.max(time, s.viewTime);
+    // After removing an ignition everything after its time is stale, even before the view time.
+    const floor = this.rewindFloor;
+    this.rewindFloor = null;
+    const keep = floor !== null && floor <= time + 1e-6 ? time : Math.max(time, s.viewTime);
     if (s.headTime <= keep && s.insights.every((i) => i.time <= keep)) return;
     this.snapshots.truncateAfter(keep);
     this.requestedUntil = Math.min(this.requestedUntil, time);
@@ -365,7 +395,7 @@ export class SimSession {
     const insightKey = this.visibleInsightKey(cur);
     if (insightKey !== this.shownInsightKey) {
       this.shownInsightKey = insightKey;
-      this.view.setInsights(this.visibleInsights(cur));
+      this.view.setInsights(this.mapInsights(cur));
     }
     // Simulated spot fires travel with the snapshot (SceneView.update draws them); the `spots` argument is for
     // user-marked SpotFire objects, of which the UI has none (a spot fire the user sees is an Ignition with
@@ -408,6 +438,16 @@ export class SimSession {
     return `${this.keyGeneration}:${n}`;
   }
 
+  /**
+   * Insights marked on the map: the forecast cards plus one marker per kind (the card the Insights tab shows for that
+   * kind, see insightGroups), so a large fire's hundreds of reports do not bury the terrain in icons.
+   */
+  mapInsights(s: Readonly<SessionState> = this.state.get()): Insight[] {
+    const vt = s.viewTime;
+    const past = s.insights.filter((i) => i.time <= vt + 1);
+    return [...s.forecastInsights, ...groupInsights(past).map((g) => g.lead)];
+  }
+
   /** Insights visible at the view time (forecast cards are always visible), newest first. */
   visibleInsights(s: Readonly<SessionState> = this.state.get()): Insight[] {
     const vt = s.viewTime;
@@ -427,6 +467,7 @@ export class SimSession {
       const vt = advanceClock(s.viewTime, s.headTime, s.speed, dt, this.duration);
       if (vt !== s.viewTime) this.state.set({ viewTime: vt, ...(s.reviewing && vt >= s.headTime - 1 ? { reviewing: false } : {}) });
       this.syncView();
+      if (!this.state.get().playing) return; // paused while revealing (pause on danger)
       this.ensureRunning();
       if (vt >= this.duration - 1e-6) {
         this.pause();

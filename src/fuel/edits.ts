@@ -25,6 +25,8 @@ import {
   classMoistureOffset,
   CTX_INFERRED,
   ensureFuelArrays,
+  fuelParamsInto,
+  makeCellFuelParams,
   writeCell,
   type CellWriteEnv,
   type FuelBuildContext,
@@ -33,6 +35,8 @@ import {
 import { loadFromFhs } from './hazard';
 import { resolveFuelParams, YEAR_MS } from './params';
 import { cellCentreLattice, pointInRings, ScanlineRasteriser } from './polygon';
+
+const effScratch = makeCellFuelParams();
 
 /** Cell indices whose centres lie inside a brush shape (circle: distance ≤ r; polygon: even-odd). */
 export function cellsInBrush(grid: FuelMap['grid'], shape: BrushShape): Int32Array {
@@ -139,6 +143,16 @@ export function applyFuelEdit(fuel: FuelMap, edit: FuelEdit, base: FuelMap, hist
     const fuelEdit = burnable && (dS !== 0 || dNs !== 0 || dEl !== 0 || dB !== 0 || hEl !== undefined);
     if (!recompute && !fuelEdit && !dM) continue;
     if (fuelEdit) {
+      // A NaN hazard means "the type's steady-state row" (fuelParamsAt convention, e.g. maps without per-cell
+      // values): start the delta from that effective value. Without this, NaN + Δ stayed NaN and loadFromFhs(NaN)
+      // wrote a zero load — "+1 surface hazard" removed the litter and slowed the fire ×12.
+      if ((dS && !Number.isFinite(f.surfaceHazard[k]!)) || (dNs && !Number.isFinite(f.nearSurfaceHazard[k]!)) || (dEl && !Number.isFinite(f.elevatedHazard[k]!)) || (dB && !Number.isFinite(f.barkHazard[k]!))) {
+        const eff = fuelParamsInto(f, k, effScratch);
+        if (!Number.isFinite(f.surfaceHazard[k]!)) f.surfaceHazard[k] = eff.fhsS;
+        if (!Number.isFinite(f.nearSurfaceHazard[k]!)) f.nearSurfaceHazard[k] = eff.fhsNs;
+        if (!Number.isFinite(f.elevatedHazard[k]!)) f.elevatedHazard[k] = eff.fhsEl;
+        if (!Number.isFinite(f.barkHazard[k]!)) f.barkHazard[k] = eff.barkHazard;
+      }
       if (dS) {
         const v = clamp(f.surfaceHazard[k]! + dS, 0, 4);
         f.surfaceHazard[k] = v;

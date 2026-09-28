@@ -10,16 +10,20 @@ const proxy = {
   '/proxy/rfs': { target: 'https://www.rfs.nsw.gov.au', changeOrigin: true, rewrite: (p: string) => p.replace(/^\/proxy\/rfs/, '') },
 };
 
-export default defineConfig({
+// `base: './'` keeps every URL relative (assets, the module worker, public/demo and public/replays), so the same
+// build works from a web server sub-path, `vite preview` and inside Capacitor (https://localhost / capacitor://localhost).
+// `vite build --mode capacitor` (npm run build:cap) leaves out the source maps (~12 MB) from the app bundle.
+export default defineConfig(({ mode }) => ({
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: { host: true, port: 5173, proxy },
   preview: { port: 4173, proxy },
-  worker: { format: 'es' },
-  build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 2000 },
+  // The simulation worker (src/sim/worker.ts) is an ES module worker, bundled with its own chunk.
+  worker: { format: 'es' as const },
+  build: { target: 'es2022', sourcemap: mode !== 'capacitor', chunkSizeWarningLimit: 2000 },
   test: {
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
     testTimeout: 60000,
   },
-});
+}));

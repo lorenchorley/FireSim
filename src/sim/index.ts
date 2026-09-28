@@ -8,7 +8,7 @@
  *   LocalSimController  SimController running the same host in the calling thread.
  *   SimHost             the chunked message loop shared by the worker and LocalSimController.
  */
-export { Simulation, type SimulationOptions, type SimulationHooks, type SimPerf } from './simulation';
+export { Simulation, type SimulationOptions, type SimulationHooks, type SimulationTestHooks, type SimPerf } from './simulation';
 export { SimClient, LocalSimController } from './client';
 export { SimHost, snapshotTransferables, type HostPort, type SimHostOptions } from './host';
 export { SIM_PARAMS, type SimParams } from './params';

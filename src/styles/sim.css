@@ -53,7 +53,7 @@
 }
 
 .mock-banner {
-  margin: 4px 0 0;
+  margin: 0;
   width: 58px;
   text-align: center;
   line-height: 1.1;
@@ -345,6 +345,51 @@
   line-height: 1;
 }
 
+.view-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.nav-btn {
+  min-height: 50px;
+}
+
+.compass-needle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  transition: transform 0.2s var(--ease);
+}
+
+.compass-n {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--danger);
+}
+
+.compass-needle svg {
+  margin-top: -1px;
+}
+
+.needle-n {
+  fill: var(--danger);
+}
+
+.needle-s {
+  fill: currentColor;
+  opacity: 0.45;
+}
+
+/* Short screens: keep the compass, drop the zoom buttons (pinch still zooms). */
+@media (max-height: 760px) and (orientation: portrait) {
+  .view-nav .nav-btn:not(.compass-btn) {
+    display: none;
+  }
+}
+
 .view-btn[aria-pressed='true'] {
   background: var(--primary);
   color: var(--on-primary);
@@ -359,6 +404,96 @@
 }
 
 .drawing .view-controls {
+  display: none;
+}
+
+/* ── Compact overlay legend on the map (tap → Layers) ── */
+.map-legend {
+  position: absolute;
+  top: calc(var(--topbar-h) + 10px);
+  left: calc(78px + var(--safe-left));
+  right: calc(96px + var(--safe-right));
+  max-width: 300px;
+  margin: 0 auto;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 5px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-glass);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.map-legend[hidden] {
+  display: none;
+}
+
+.hand-left .map-legend {
+  left: calc(96px + var(--safe-left));
+  right: calc(78px + var(--safe-right));
+}
+
+.ml-title {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.ml-unit {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ml-ramp {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.ml-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.ml-classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ml-class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ml-class .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.ml-more {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.panel-open .map-legend,
+.sheet-open .map-legend,
+.drawing .map-legend {
   display: none;
 }
 
@@ -652,6 +787,16 @@
 .insight-title {
   font-size: 19px;
   margin: 6px 0 4px;
+}
+
+.insight-repeats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .insight-body {

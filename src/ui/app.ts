@@ -178,8 +178,8 @@ export class App {
       sim.view.resize();
       history.pushState({ firesim: 'sim' }, '');
       this.announce(`Model ready: ${scenario.name}. Mark where the fire is with the Fire tool, then press Play.`);
-      // Debug handle for development and automated tests only.
-      if (import.meta.env.DEV || this.params.has('mock')) (window as unknown as { __firesim?: unknown }).__firesim = { session: sim.session, view: sim.view, scenario };
+      // Debug handle for development and automated tests only (?debug=1 exposes it in a production build).
+      if (import.meta.env.DEV || this.params.has('mock') || this.params.has('debug')) (window as unknown as { __firesim?: unknown }).__firesim = { session: sim.session, view: sim.view, scenario, services: this.services };
     } catch (e) {
       console.error(e);
       building.fail(`Could not start the simulation: ${(e as Error).message}`);

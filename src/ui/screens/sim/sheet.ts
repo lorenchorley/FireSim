@@ -30,6 +30,8 @@ import { sampleSeries } from '../../weatherSeries';
 import { BurnState } from '../../../core/types';
 import type { SheetDetent, SheetTab, SimContext } from './context';
 import { insightCard } from './insightCard';
+import { has3dAtmosphere } from './context';
+import { groupInsights, type InsightGroup } from '../../insightGroups';
 import { chartHeight, drawWeatherChart, litterEstimate } from './weatherChart';
 
 const TABS: { id: SheetTab; label: string; icon: 'list' | 'chart' | 'stats' | 'help' }[] = [
@@ -170,7 +172,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const s = session.state.get();
     const list = session.visibleInsights(s);
     const key = `${list.map((i) => i.id).join('|')}|${s.compare ? Math.round(s.viewTime / 300) : ''}`;
-    const n = list.filter((i) => !s.forecastInsights.includes(i)).length;
+    const n = groupInsights(list.filter((i) => !s.forecastInsights.includes(i))).length;
     badge.hidden = n === 0;
     text(badge, String(n));
     renderPeek(list);
@@ -199,8 +201,13 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
             h('p', null, 'Mark where the fire is with the Fire tool, then press Play. Cards explaining what the fire is doing will appear here.'),
           ])
         : [
-            groupOf(list.filter((i) => forecast.has(i)), 'Coming up', true),
-            groupOf(list.filter((i) => !forecast.has(i)), 'What the fire did — newest first', false),
+            groupOf(
+              list.filter((i) => forecast.has(i)).map((i) => ({ kind: i.kind, lead: i, count: 1, first: i.time, last: i.time })),
+              'Coming up',
+              true,
+            ),
+            // Repeats of the same phenomenon (e.g. junction zones all along a big fire's edge) share one card.
+            groupOf(groupInsights(list.filter((i) => !forecast.has(i))), 'What the fire did — newest first', false),
           ],
     ]);
     // Forget cards that are no longer listed (after a rewind or a what-if re-run).
@@ -209,21 +216,22 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   };
   // Cards are cached by insight, so re-rendering the list when a new card arrives keeps the others' DOM (an open
   // "Learn more", focus) instead of rebuilding every card.
-  const cardCache = new Map<Insight, HTMLElement>();
-  const groupOf = (items: Insight[], title: string, forecast: boolean): HTMLElement | null => {
+  const cardCache = new Map<Insight, { el: HTMLElement; count: number }>();
+  const groupOf = (items: InsightGroup[], title: string, forecast: boolean): HTMLElement | null => {
     if (!items.length) return null;
     return h('div', { class: 'insight-group' }, [
       h('h3', { class: 'group-title' }, title),
       h(
         'div',
         { class: 'insight-list' },
-        items.map((i) => {
-          let card = cardCache.get(i);
-          if (!card) {
-            card = insightCard(i, { tz: ctx.tz, absTime: ctx.absTime, onShow: onShowInsight, forecast });
-            cardCache.set(i, card);
+        items.map((g) => {
+          const i = g.lead;
+          let c = cardCache.get(i);
+          if (!c || c.count !== g.count) {
+            c = { el: insightCard(i, { tz: ctx.tz, absTime: ctx.absTime, onShow: onShowInsight, forecast, repeats: g.count > 1 ? { count: g.count, first: g.first } : undefined }), count: g.count };
+            cardCache.set(i, c);
           }
-          return card;
+          return c.el;
         }),
       ),
     ]);
@@ -354,6 +362,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       ]),
       h('h3', { class: 'sub-title' }, 'Performance'),
       h('div', { class: 'stat-grid' }, [
+        tile('Wind model', has3dAtmosphere(s.snapshot) ? '3-D atmosphere' : 'Fast (surface)', has3dAtmosphere(s.snapshot) ? 'plume, cold air and slope winds in 3-D' : 'terrain-adjusted surface wind; chosen for speed'),
         tile('Simulation', Number.isFinite(st.msPerSimMinute) ? `${formatNumber(st.msPerSimMinute, 1)} ms` : '–', 'per simulated minute'),
         tile('Worker speed', s.workerSpeed > 0 ? `${formatNumber(s.workerSpeed)}×` : 'idle', 'simulated / real time'),
         tile('3-D view', `${perf.fps} fps`, `${formatNumber(perf.drawCalls)} draw calls · ${formatNumber(perf.triangles)} triangles`),

@@ -79,6 +79,7 @@ export class DiagnosticWind extends AtmosBase {
     const vp = this.pyro.vp;
     const cp = cf; // D32: c_p = c_f
     const pyroOn = cp > 0 && this.firePowerW > 0;
+    const alongOnly = P.pyroHeadAlongOnly && !!(ctx.headMask && ctx.headDirX && ctx.headDirY);
     for (let k = 0; k < this.nf; k++) {
       let bu = outBgU[k]!;
       let bv = outBgV[k]!;
@@ -110,7 +111,12 @@ export class DiagnosticWind extends AtmosBase {
         }
         if (isHead) {
           const d = iu * ex + iv * ey;
-          if (d < 0) {
+          if (alongOnly) {
+            // Head mask given: keep only the aiding component (P.pyroHeadAlongOnly).
+            const a = d > 0 ? d : 0;
+            iu = a * ex;
+            iv = a * ey;
+          } else if (d < 0) {
             iu -= d * ex;
             iv -= d * ey;
           }

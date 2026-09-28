@@ -27,8 +27,9 @@ describe('setup model', () => {
     expect(r.duration).toBe(6 * 3600);
     expect(r.options?.fireCellSize).toBe(30);
     expect(r.weather.kind).toBe('preset');
-    // Presets start at their teaching hour on today's local date (11:00 AEDT for the NW-wind day).
-    if (r.weather.kind === 'preset') expect(r.weather.start).toBe(Date.UTC(2026, 0, 10, 0, 0));
+    // Presets start on their canonical day at their teaching hour (20 Dec 11:00 LMST for the NW-wind day, spec
+    // §11.3), rounded to 10 min: 12:00 AEDT at Katoomba.
+    if (r.weather.kind === 'preset') expect(r.weather.start).toBe(Date.UTC(2026, 11, 20, 1, 0));
   });
 
   it('maps detail to fire cell size and performance to snapshot rate', () => {
@@ -138,6 +139,9 @@ class FakeController implements SimController {
   edit(e: ScenarioEdit, t: number): void {
     this.calls.push({ name: 'edit', args: [e, t] });
   }
+  removeIgnition(id: string): void {
+    this.calls.push({ name: 'removeIgnition', args: [id] });
+  }
   removeEdit(id: string): void {
     this.calls.push({ name: 'removeEdit', args: [id] });
   }
@@ -225,6 +229,44 @@ describe('SimSession', () => {
     ]);
     expect(s.state.get().compare!.baseline.map((b) => b.time)).toEqual([900, 1200, 1500, 1800]);
     expect(c.calls.some((x) => x.name === 'run')).toBe(true);
+    s.dispose();
+  });
+});
+
+describe('SimSession playback control', () => {
+  it('a pause from a reveal listener (pause on danger) does not restart the worker', async () => {
+    (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= () => 0;
+    (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ??= () => undefined;
+    const c = new FakeController();
+    const s = new SimSession(fakeScenario(), c, nullView, { maxBytes: 1e9 });
+    await s.start();
+    s.setSpeed(Infinity);
+    s.events.on('reveal', (i) => {
+      if (i.severity === 'danger') s.pause();
+    });
+    s.play();
+    c.emit('snapshot', snap(300, [insight('d', 250)]));
+    expect(s.state.get().playing).toBe(false);
+    const names = c.calls.map((x) => x.name);
+    expect(names.at(-1)).toBe('pause');
+    s.dispose();
+  });
+
+  it('removing an ignition drops every result after its time and asks the worker to undo it', async () => {
+    const c = new FakeController();
+    const s = new SimSession(fakeScenario(), c, nullView, { maxBytes: 1e9 });
+    await s.start();
+    for (let t = 0; t <= 600; t += 300) c.emit('snapshot', snap(t));
+    s.seek(600);
+    const a = s.ignite({ id: 'a', kind: 'point', points: [[0, 0]], origin: 'observed' });
+    for (let t = 900; t <= 1800; t += 300) c.emit('snapshot', snap(t, [insight(`i${t}`, t - 10, 'watch')]));
+    s.seek(1800);
+    s.removeIgnition(a.id);
+    expect(c.calls.some((x) => x.name === 'removeIgnition' && x.args[0] === 'a')).toBe(true);
+    expect(s.state.get().ignitions).toEqual([]);
+    expect(s.snapshots.range()!.end).toBe(600);
+    expect(s.state.get().insights).toEqual([]);
+    expect(s.state.get().viewTime).toBe(1800);
     s.dispose();
   });
 });

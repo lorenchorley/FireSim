@@ -34,6 +34,9 @@ class FakeController implements SimController {
     this.calls.push('edit');
   }
   removeEdit(): void {}
+  removeIgnition(): void {
+    this.calls.push('removeIgnition');
+  }
   rewind(): void {
     this.calls.push('rewind');
   }

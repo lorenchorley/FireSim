@@ -146,6 +146,14 @@ export class MockSimController implements SimController {
     this.dirty = true;
   }
 
+  removeIgnition(id: string): void {
+    const ign = this.ignitions.find((i) => i.id === id);
+    if (!ign) return;
+    this.ignitions = this.ignitions.filter((i) => i.id !== id);
+    this.dirty = true;
+    if (ign.time < this.time) this.rewindTo(ign.time);
+  }
+
   rewind(time: number): void {
     this.rewindTo(time);
     this.status(this.timer !== null);
@@ -171,7 +179,7 @@ export class MockSimController implements SimController {
     this.quality = tier;
   }
 
-  /** `time` (s) is an optional extension of the contract: explain at that time instead of the worker's clock. */
+  /** `time` (s): explain at that view time instead of the worker's clock. */
   async explain(x: number, y: number, time?: number): Promise<CellExplanation> {
     await new Promise((r) => setTimeout(r, 40));
     return this.explainNow(x, y, time ?? this.time);

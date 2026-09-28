@@ -604,12 +604,41 @@ export class Atmosphere extends AtmosBase {
     for (let c = 0; c < plane; c++) w[nz * plane + c] = 0;
     setGroundW(g, u, v, w);
 
-    // 2 buoyancy (first), 3 stratification with the new w
+    // 2 buoyancy (first), 3 stratification with the new w.
+    //   [H, FireSim] The buoyancy uses θ′ minus the (positive part of the) horizontal mean of (θ′ − θ′_cp) on its 50 m
+    //   ASL band (ATMOS_PARAMS.buoyancyBandAnomaly): the forecast θ_env already contains the area-mean diurnal warming, and a
+    //   horizontally uniform buoyancy can only be balanced by a hydrostatic p′(z) that the p′ = 0 outflow faces do not
+    //   admit — on flat terrain under 500 W/m² it drove a domain-scale inflow and near-surface winds of 2.5× (up to
+    //   5×) the forecast within 2 h. Horizontal contrasts at a given height (slope and valley winds, the cold pool,
+    //   the fire plume) keep their full buoyancy.
     const gth = this.gth;
+    // By day only (domain-mean Q_h > 0) and only the warming part: at night the cold-pool template θ′_cp is the
+    // reference, and removing the (eroded-pool) band anomaly there sped up valley drainage (3.0 vs 2.7 m/s max in
+    // the §8.11 cold-pool test) and calm flat-night winds (1.7× vs 1.3× the forecast at worst).
+    let bandAnom = false;
+    if (P.buoyancyBandAnomaly && this.heatingOn) {
+      let q = 0;
+      const qc = this.qhCol;
+      for (let c = 0; c < plane; c++) q += qc[c]!;
+      bandAnom = q > 0;
+    }
+    if (bandAnom) {
+      this.bandMeans();
+      const bs = this.binSum;
+      for (let b = 0; b < bs.length; b++) if (bs[b]! < 0) bs[b] = 0;
+    }
+    const bm = this.binSum;
+    const bin = this.bin;
     for (let m = 1; m < nz; m++) {
       const o = m * plane;
       const ob = (m - 1) * plane;
-      for (let c = 0; c < plane; c++) w[o + c] = w[o + c]! + dt * 0.5 * (gth[ob + c]! * th[ob + c]! + gth[o + c]! * th[o + c]!);
+      if (bandAnom) {
+        for (let c = 0; c < plane; c++) {
+          w[o + c] = w[o + c]! + dt * 0.5 * (gth[ob + c]! * (th[ob + c]! - bm[bin[ob + c]!]!) + gth[o + c]! * (th[o + c]! - bm[bin[o + c]!]!));
+        }
+      } else {
+        for (let c = 0; c < plane; c++) w[o + c] = w[o + c]! + dt * 0.5 * (gth[ob + c]! * th[ob + c]! + gth[o + c]! * th[o + c]!);
+      }
     }
     const dth = this.dth;
     for (let k = 0; k < nz; k++) {

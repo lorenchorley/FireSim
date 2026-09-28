@@ -112,17 +112,25 @@ export function moistureReason(s: SimStateView, k: number, nowMs: number, parts?
 }
 
 const FACTOR_KEYS = ['wind', 'slope', 'moisture', 'fuel', 'terrain'] as const;
-type FactorKey = (typeof FACTOR_KEYS)[number];
+type FactorKey = (typeof FACTOR_KEYS)[number] | 'direction';
 
-/** Factor shares s_i = |ln f_i| / Σ|ln f_j| (spec §10.4, doc 10 §9.1), sorted descending. */
-export function factorShares(f: SpreadFactors): { key: FactorKey; value: number; share: number }[] {
-  const ls = FACTOR_KEYS.map((key) => {
-    const v = f[key];
+/**
+ * Factor shares s_i = |ln f_i| / Σ|ln f_j| (spec §10.4, doc 10 §9.1), sorted descending. With `withDirection` the
+ * ellipse factor R(ψ)/R_H (SpreadFactors.direction) takes part: the wind and slope factors of the §6.12 decomposition
+ * are those of the head fire (fire/ factorsFor), so on a flank or at the back of the fire its position is what slows it.
+ */
+export function factorShares(f: SpreadFactors, withDirection = false): { key: FactorKey; value: number; share: number }[] {
+  const keys: FactorKey[] = withDirection ? [...FACTOR_KEYS, 'direction'] : [...FACTOR_KEYS];
+  const ls = keys.map((key) => {
+    const v = (key === 'direction' ? (f.direction ?? 1) : f[key]) as number;
     return { key, value: v, l: Number.isFinite(v) && v > 0 ? Math.abs(Math.log(v)) : 0 };
   });
   const sum = ls.reduce((a, b) => a + b.l, 0);
-  return ls.map((x) => ({ key: x.key, value: x.value, share: sum > 0 ? x.l / sum : 0 })).sort((a, b) => b.share - a.share || FACTOR_KEYS.indexOf(a.key) - FACTOR_KEYS.indexOf(b.key));
+  return ls.map((x) => ({ key: x.key, value: x.value, share: sum > 0 ? x.l / sum : 0 })).sort((a, b) => b.share - a.share || keys.indexOf(a.key) - keys.indexOf(b.key));
 }
+
+/** A fraction of the head-fire rate in plain words: "2 %", "35 %" (never "×0.0"). */
+const pctOf = (f: number): string => `${Math.max(1, Math.round(100 * f))} %`;
 
 const joinAnd = (xs: string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')}, and ${xs[xs.length - 1]}`);
 
@@ -194,18 +202,18 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
   if (nonFuel || fam === 'none') {
     narrative.push(`${fuelNameAt(s.fuel, k)}: nothing here can carry the fire, although embers can fly over it.`);
   } else {
-    const shares = factorShares(factors).filter((f) => f.share >= 0.05 && Math.abs(Math.log(Math.max(1e-9, f.value))) >= 0.05);
-    const top = shares.slice(0, 3);
     // Position on the fire.
     const d = factors.direction ?? 1;
     const pos = !burnt ? 'head' : d >= 0.8 ? 'head' : d >= 0.2 ? 'flank' : 'back';
-    const why = top.map((f) => phrase(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir }));
+    const shares = factorShares(factors, pos !== 'head').filter((f) => f.share >= 0.05 && Math.abs(Math.log(Math.max(1e-9, f.value))) >= 0.05);
+    const top = shares.slice(0, 3);
+    const why = top.map((f) => phrase(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos }));
     const lead = leadText(driver, th, burnt, pos, ros);
     let summary = why.length ? `${lead} because: ${joinAnd(why)}.` : `${lead}.`;
     if (th > P.notes.steepDeg) summary += ` ${STEEP_NOTE}`;
     narrative.push(summary);
     const parts = opts.moistureBreakdown ? opts.moistureBreakdown(k) : null;
-    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, fuelSummary, nowMs, parts }));
+    for (const f of top) narrative.push(line(f.key, f.value, { th, U, windFrom, fw, M, s, k, dir, pos, fuelSummary, nowMs, parts }));
   }
   // Validity + wind decomposition.
   const Ua = s.weather.windSpeed10 * 3.6;
@@ -240,6 +248,8 @@ export function explainCell(x: number, y: number, s: SimStateView, opts: Explain
 }
 
 interface PhraseCtx {
+  /** Where the cell is on the fire (from SpreadFactors.direction). */
+  pos: 'head' | 'flank' | 'back';
   th: number;
   U: number;
   windFrom: number;
@@ -281,7 +291,12 @@ function leadText(driver: SpreadDriver, th: number, burnt: boolean, pos: string,
 
 function phrase(key: FactorKey, f: number, c: PhraseCtx): string {
   switch (key) {
+    case 'direction':
+      return c.pos === 'back' ? `being the back of the fire, creeping against the wind (about ${pctOf(f)} of the head-fire speed)` : `being a flank of the fire (about ${pctOf(f)} of the head-fire speed)`;
     case 'slope':
+      // The slope factor is the head fire's (hybrid wind–slope head vector, spec §7.3); on a flank or at the back
+      // the local edge can run the other way, so do not pair it with the local slope angle.
+      if (c.pos !== 'head') return `the slope the head fire runs ${f >= 1 ? 'up' : 'down'} (about ${times(f)})`;
       return `slope ${int(Math.abs(c.th))}° ${c.th >= 0 ? 'upslope' : 'downslope'} (about ${times(f)})`;
     case 'wind': {
       const ax = c.s.features.gullyAxis[c.k]!;
@@ -297,8 +312,14 @@ function phrase(key: FactorKey, f: number, c: PhraseCtx): string {
       if (f >= 1) return `heavy fuel (about ${times(f)})`;
       return tsf <= 5 ? `light fuel after a recent burn (about ${times(f)})` : `light fuel (about ${times(f)})`;
     }
-    case 'terrain':
+    case 'terrain': {
+      // f < 1 is never a terrain phenomenon (G, VLS and junctions only speed the fire up): it is the build-up of a
+      // young fire or the model's head-speed cap (forest 15 km/h, §7.4 D4). Calling it "steep-country effects" taught
+      // that steep ground slowed a capped upslope run ×0.2.
+      const b = c.s.factorsAt(c.k).build ?? c.s.aux.build[c.k] ?? 1;
+      if (f < 1) return b < 0.95 ? `the fire still building up to full speed (about ${times(f)})` : `the model's top-speed limit (about ${times(f)}; the real fire could be faster)`;
       return `the steep-country effects (about ${times(f)}, model indicative)`;
+    }
   }
 }
 
@@ -306,11 +327,17 @@ function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; n
   const s = c.s;
   const k = c.k;
   switch (key) {
+    case 'direction':
+      return c.pos === 'back'
+        ? `Position: the back of the fire, burning into the wind → about ${pctOf(f)} of the head-fire rate. The wind and slope numbers are what drive the head fire.`
+        : `Position: a flank of the fire, burning across the wind → about ${pctOf(f)} of the head-fire rate. A wind change can turn this flank into a head fire.`;
     case 'slope':
+      if (c.pos !== 'head')
+        return `Slope: the head fire runs ${f >= 1 ? 'uphill' : 'downhill'} → about ${times(f)} (doubles every 10° uphill); this edge itself burns ${int(Math.abs(c.th))}° ${c.th >= 0 ? 'uphill' : 'downhill'}.`;
       return `Slope: ${int(Math.abs(c.th))}° ${c.th >= 0 ? 'uphill' : 'downhill'} along the spread → about ${times(f)} (doubles every 10° uphill).`;
     case 'wind': {
       const drawn = c.fw * 3.6 >= 1 ? `; about ${int(c.fw * 3.6)} km/h of it is air drawn in by the fire` : '';
-      return `Wind: ${int(c.U * 3.6)} km/h from the ${compassWord(c.windFrom) || 'variable directions'} → ${times(f)}${drawn}.`;
+      return `Wind: ${int(c.U * 3.6)} km/h from the ${compassWord(c.windFrom) || 'variable directions'} → ${times(f)}${c.pos !== 'head' ? ' at the head fire' : ''}${drawn}.`;
     }
     case 'moisture':
       return `Litter moisture ${int(c.M)} % (${int(s.moistureAfdrs[k]!)} % by the AFDRS equations; ${moistureReason(s, k, c.nowMs, c.parts)}) → ${times(f)}.`;
@@ -325,6 +352,7 @@ function line(key: FactorKey, f: number, c: PhraseCtx & { fuelSummary: string; n
       if ((aux.junction[k] ?? 1) > 1.05) return `Terrain: two fire lines closing in → ${times(f)} (model indicative).`;
       const b = s.factorsAt(k).build ?? aux.build[k] ?? 1;
       if (b < 0.95) return `Build-up: the fire is still growing to its full speed (about ${int(100 * b)} %) → ${times(f)} (model indicative).`;
+      if (f < 1) return `Speed limit: the fire models are not tested beyond about 15 km/h in forest, so the head rate is capped here → ${times(f)}; the real fire could be faster.`;
       return `Terrain and fire dynamics → ${times(f)} (model indicative).`;
     }
   }

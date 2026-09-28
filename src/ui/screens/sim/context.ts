@@ -72,6 +72,8 @@ export interface SimContext {
   absTime(t: number): number;
   /** Renderer legends (preferred when present). */
   legendProvider: LegendProvider | null;
+  /** Renderer legends of the cross-section and the wind particles (null with the 2-D map). */
+  sceneLegends: import('../../modules').SceneLegends | null;
   /** Non-fatal warnings from building the scenario (shown with the data sources). */
   buildWarnings: string[];
 }
@@ -92,3 +94,11 @@ export const DEFAULT_UI: UiState = {
   wind: { dir: 225, kmh: 25, radius: 500 },
   viewMode: 'orbit',
 };
+
+/**
+ * True when the snapshot carries the 3-D atmosphere (standard / high tier). The fast tier's view has surface winds
+ * only (nz = 0): no plume volume, cross-section or through-the-plume wind particles.
+ */
+export function has3dAtmosphere(snap: { atmosphere?: { nz: number } } | null | undefined): boolean {
+  return !!snap?.atmosphere && snap.atmosphere.nz > 0;
+}

@@ -59,7 +59,8 @@ function defaultLoader(): AssetLoader {
 export function resolveAssetBase(): string {
   if (assetBase) return assetBase.endsWith('/') ? assetBase : assetBase + '/';
   const g = globalThis as { document?: { baseURI?: string }; location?: { href: string } };
-  if (g.document?.baseURI) return g.document.baseURI;
+  // The directory of the document (baseURI includes the page name and query string, e.g. index.html?mock=1).
+  if (g.document?.baseURI) return new URL('./', g.document.baseURI).href;
   const href = g.location?.href;
   if (href) {
     // A built Vite worker lives at <base>/assets/<name>.js: the app root is the parent of /assets/.

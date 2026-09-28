@@ -12,7 +12,7 @@ import { describeFix, getLocation, LocationError } from '../location';
 import { demoImageryUrl } from '../imagery';
 import { parseLatLon } from '../nsw';
 import { getPref, PREF_KEYS, setPref } from '../prefs';
-import { approxElevation, beltRh, detailHint, persistable, restoreSetup, validateSetup, type SetupState, type WeatherChoice } from '../setupModel';
+import { approxElevation, beltRh, detailHint, persistable, presetStart, resolveCentre, restoreSetup, validateSetup, type SetupState, type WeatherChoice } from '../setupModel';
 import { Store } from '../store';
 import { BEAUFORT, beaufortFromKmh, beaufortRepresentativeKmh, dewPoint, ffdi, ratingFromIndex } from '../weatherCalc';
 import { button, compassRose, numberField, section, segmented, slider, toggle } from '../widgets';
@@ -244,7 +244,7 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
   });
   const weatherPanel = h('div', { class: 'weather-panel' });
 
-  function radioCards<T extends { id: string }>(items: T[], selected: string, render: (it: T) => HTMLElement[], onPick: (id: string) => void, label: string, testPrefix: string): HTMLElement {
+  function radioCards<T extends { id: string }>(items: T[], selected: string, render: (it: T) => (HTMLElement | null)[], onPick: (id: string) => void, label: string, testPrefix: string): HTMLElement {
     return h(
       'div',
       { class: 'choice-list', attrs: { role: 'radiogroup', 'aria-label': label } },
@@ -311,7 +311,15 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
           radioCards(
             WEATHER_PRESETS,
             s.presetId,
-            (p) => [h('span', { class: 'choice-head' }, [h('span', { class: 'choice-name' }, p.name), ratingChip(p.rating)]), h('span', { class: 'choice-desc' }, p.description)],
+            (p) => {
+              const lon = s.where === 'demo' ? (DEMO_SITES.find((x) => x.id === s.demoSiteId)?.centre.lon ?? 150.3) : (s.gps?.position.lon ?? 150.3);
+              const start = presetStart(p.id, lon, now);
+              return [
+                h('span', { class: 'choice-head' }, [h('span', { class: 'choice-name' }, p.name), ratingChip(p.rating)]),
+                h('span', { class: 'choice-desc' }, p.description),
+                start !== null ? h('span', { class: 'choice-desc choice-when' }, [icon('clock', { size: 16 }), h('span', null, `Starts ${formatDateTime(start)}`)]) : null,
+              ];
+            },
             (id) => {
               update({ presetId: id });
               renderWeatherPanel();
@@ -488,7 +496,54 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
       renderWeatherPanel();
     },
   });
-  const runCard = section('Run', [durSlider.el, onlineToggle.el], { icon: 'clock', id: 'run' });
+  // Offline area pack (spec §11.6): terrain, canopy, vegetation, fire history, forecast and the daily history of the
+  // chosen square, stored on the device so a later build works without signal on the fire ground.
+  const packOut = h('p', { class: 'hint pack-status', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'pack-status' } });
+  let packAbort: AbortController | null = null;
+  const packBtn = button({
+    label: 'Save this area for offline use',
+    icon: 'offline',
+    variant: 'secondary',
+    testId: 'save-pack',
+    onClick: () => void savePack(),
+  });
+  async function savePack(): Promise<void> {
+    const s = store.get();
+    const c = resolveCentre(s);
+    if ('error' in c) {
+      text(packOut, c.error);
+      return;
+    }
+    if (!s.online) {
+      text(packOut, 'Turn on “Use the network” to download an area.');
+      return;
+    }
+    packAbort?.abort();
+    const ctrl = new AbortController();
+    packAbort = ctrl;
+    packBtn.disabled = true;
+    try {
+      const { downloadAreaPack } = await import('../../scenario/areaPack');
+      const r = await downloadAreaPack(
+        { name: c.name, centre: c.centre, extent: s.extentKm * 1000, ...(c.demoSiteId ? { demoSiteId: c.demoSiteId } : {}) },
+        (p) => text(packOut, `${Math.round(p.fraction * 100)} % · ${p.message}`),
+        ctrl.signal,
+      );
+      const mb = r.meta.bytes ? ` (${(r.meta.bytes / 1048576).toFixed(1)} MB)` : '';
+      text(packOut, `Saved “${r.meta.name}”${mb} for offline use.${r.warnings.length ? ` ${r.warnings.length} layer(s) could not be downloaded.` : ''}`);
+    } catch (e) {
+      if (!ctrl.signal.aborted) text(packOut, `Could not save the area: ${(e as Error).message || e}`);
+    } finally {
+      packBtn.disabled = false;
+    }
+  }
+  void import('../../data')
+    .then((d) => d.listAreaPacks())
+    .then((packs) => {
+      if (packs.length && !packOut.textContent) text(packOut, `${packs.length} area${packs.length > 1 ? 's' : ''} saved for offline use: ${packs.map((p) => p.name).join(', ')}.`);
+    })
+    .catch(() => undefined);
+  const runCard = section('Run', [durSlider.el, onlineToggle.el, packBtn, packOut], { icon: 'clock', id: 'run' });
 
   // ───────────── Footer ─────────────
   const errorsEl = h('div', { class: 'footer-errors', attrs: { 'aria-live': 'polite' } });
@@ -551,5 +606,11 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
   }
   renderAll();
 
-  return { el, destroy: () => el.remove() };
+  return {
+    el,
+    destroy: () => {
+      packAbort?.abort();
+      el.remove();
+    },
+  };
 }

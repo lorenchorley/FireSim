@@ -42,6 +42,13 @@ export class CameraRig {
    * update both are shifted back to keep the eye still (a first-person look-around).
    */
   private eye: THREE.Vector3 | null = null;
+  /** Vertical field of view (deg) of the unobscured canvas; the camera's own fov grows with the view insets. */
+  private readonly baseFov = 50;
+  private viewW = 1;
+  private viewH = 1;
+  /** Screen areas covered by UI (CSS px): the optical centre is moved to the middle of the rest (animated). */
+  private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  private insetsShown = { top: 0, right: 0, bottom: 0, left: 0 };
 
   constructor(dom: HTMLElement, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(50, aspect, 2, 200000);
@@ -278,7 +285,9 @@ export class CameraRig {
     }
     this.clamp();
     this.updateNear();
+    const insetsMoving = this.stepInsets(now);
     const moved =
+      insetsMoving ||
       Math.abs(this.camera.position.x - bx) + Math.abs(this.camera.position.y - by) + Math.abs(this.camera.position.z - bz) > 1e-3 ||
       tb.distanceToSquared(this.controls.target) > 1e-6;
     return moved;
@@ -333,9 +342,134 @@ export class CameraRig {
     if (cam.y < ground + clearance) cam.y = ground + clearance;
   }
 
-  resize(aspect: number): void {
-    this.camera.aspect = aspect;
-    this.camera.updateProjectionMatrix();
+  resize(aspect: number, width?: number, height?: number): void {
+    if (width && height) {
+      this.viewW = width;
+      this.viewH = height;
+    } else {
+      this.viewH = 1000;
+      this.viewW = 1000 * aspect;
+    }
+    this.applyViewOffset();
+  }
+
+  /**
+   * Screen areas (CSS px from each canvas edge) covered by panels and bars. The projection's centre moves to the
+   * middle of the rest (camera.setViewOffset), so fly-to targets, the orbit pivot and "Fly to the fire" land in the part
+   * of the map the user can see — above an open tool panel, not behind it. The canvas keeps its angular size.
+   */
+  setViewInsets(insets: { top?: number; right?: number; bottom?: number; left?: number }, animate = true): void {
+    const c = (v: number | undefined): number => Math.max(0, Number.isFinite(v) ? (v as number) : 0);
+    this.insets = { top: c(insets.top), right: c(insets.right), bottom: c(insets.bottom), left: c(insets.left) };
+    if (!animate) {
+      this.insetsShown = { ...this.insets };
+      this.applyViewOffset();
+    }
+  }
+
+  /** Vertical field of view (deg) and aspect of the canvas itself (the camera's fov/aspect include the insets). */
+  get viewFov(): number {
+    return this.baseFov;
+  }
+  get viewAspect(): number {
+    return Math.max(1, this.viewW) / Math.max(1, this.viewH);
+  }
+
+  /** Current optical centre in canvas CSS px (the middle of the unobscured area once the insets have settled). */
+  get viewCentre(): [number, number] {
+    const i = this.insets;
+    return [(i.left + this.viewW - i.right) / 2, (i.top + this.viewH - i.bottom) / 2];
+  }
+
+  private insetT = -1;
+
+  /** Ease the shown insets towards the requested ones (time constant 70 ms, frame-rate independent); true while moving. */
+  private stepInsets(now: number): boolean {
+    const a = this.insetsShown;
+    const b = this.insets;
+    const dt = this.insetT < 0 ? 16 : Math.max(0, now - this.insetT);
+    this.insetT = now;
+    const f = 1 - Math.exp(-dt / 70);
+    let moving = false;
+    for (const k of ['top', 'right', 'bottom', 'left'] as const) {
+      const d = b[k] - a[k];
+      if (Math.abs(d) < 0.5 || f > 0.999) {
+        if (a[k] !== b[k]) moving = true;
+        a[k] = b[k];
+      } else {
+        a[k] += d * f;
+        moving = true;
+      }
+    }
+    if (moving) this.applyViewOffset();
+    return moving;
+  }
+
+  private applyViewOffset(): void {
+    const w = Math.max(1, this.viewW);
+    const h = Math.max(1, this.viewH);
+    const i = this.insetsShown;
+    // Keep the unobscured area at least a third of the canvas so the frustum never degenerates.
+    const dx = THREE.MathUtils.clamp((i.left - i.right) / 2, -w / 3, w / 3);
+    const dy = THREE.MathUtils.clamp((i.top - i.bottom) / 2, -h / 3, h / 3);
+    const cam = this.camera;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+      cam.clearViewOffset();
+      cam.fov = this.baseFov;
+      cam.aspect = w / h;
+    } else {
+      // A virtual frame, larger than the canvas, whose centre (the optical axis) sits at the canvas point (w/2 + dx,
+      // h/2 + dy); the canvas is the window of it at (|dx| − dx, |dy| − dy).
+      const fw = w + 2 * Math.abs(dx);
+      const fh = h + 2 * Math.abs(dy);
+      cam.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2)) * (fh / h)));
+      cam.aspect = fw / fh;
+      cam.setViewOffset(fw, fh, Math.abs(dx) - dx, Math.abs(dy) - dy, w, h);
+    }
+    cam.updateProjectionMatrix();
+  }
+
+  /** Dolly towards (factor < 1) or away from (> 1) the target, within the mode's distance limits (animated). */
+  zoomBy(factor: number): void {
+    if (!(factor > 0) || this._mode === 'ground') return;
+    const c = this.controls;
+    const t = this.flight ? this.flight.toTarget : c.target;
+    const p = this.flight ? this.flight.toPos : this.camera.position;
+    const off = this.tmp2.copy(p).sub(t);
+    const d = THREE.MathUtils.clamp(off.length() * factor, c.minDistance, c.maxDistance);
+    this.goTo(t.clone(), t.clone().addScaledVector(off.normalize(), d), 0.35);
+  }
+
+  /** Compass heading (deg, clockwise from north) the camera looks towards. */
+  get heading(): number {
+    const v = this.tmp.copy(this.controls.target).sub(this.camera.position);
+    if (Math.hypot(v.x, v.z) < 1e-6) {
+      // Straight down (top view): the screen's up direction.
+      const up = this.tmp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+      return (THREE.MathUtils.radToDeg(Math.atan2(up.x, -up.z)) + 360) % 360;
+    }
+    return (THREE.MathUtils.radToDeg(Math.atan2(v.x, -v.z)) + 360) % 360;
+  }
+
+  /** Turn the view to face `deg` (clockwise from north) around the current target, keeping distance and tilt. */
+  setHeading(deg: number): void {
+    if (!this.hf) return;
+    const c = this.controls;
+    const t = c.target.clone();
+    if (this._mode === 'ground') {
+      const eye = this.camera.position.clone();
+      const dir = t.clone().sub(eye);
+      const hLen = Math.hypot(dir.x, dir.z);
+      const a = THREE.MathUtils.degToRad(deg);
+      const nt = eye.clone().add(new THREE.Vector3(Math.sin(a) * hLen, dir.y, -Math.cos(a) * hLen));
+      this.goTo(nt, eye, 0.6);
+      return;
+    }
+    const off = this.camera.position.clone().sub(t);
+    const d = off.length();
+    const polar = Math.max(1e-3, Math.acos(THREE.MathUtils.clamp(off.y / Math.max(d, 1e-9), -1, 1)));
+    // The camera sits opposite the viewing direction.
+    this.goTo(t, this.offsetFrom(t, d, THREE.MathUtils.degToRad(deg + 180), polar), 0.6);
   }
 
   dispose(): void {

@@ -15,7 +15,10 @@ export type ToWorker =
   | { type: 'ignite'; ignition: Ignition }
   | { type: 'edit'; edit: ScenarioEdit; /** simulation time from which the edit applies (s) */ time: number }
   | { type: 'removeEdit'; id: string }
-  | { type: 'explain'; x: number; y: number; reqId: number }
+  /** Remove a marked ignition as if it had never been marked (the worker rewinds to its time and re-runs). */
+  | { type: 'removeIgnition'; id: string }
+  /** "Why here?" at (x, y); `time` (s, optional) is the view time: arrival state is evaluated at min(time, now). */
+  | { type: 'explain'; x: number; y: number; reqId: number; time?: number }
   /** Rewind to the nearest checkpoint at or before `time` and discard later results. */
   | { type: 'rewind'; time: number }
   | { type: 'setOption'; key: SimOptionKey; value: number | boolean }
@@ -47,10 +50,13 @@ export interface SimController {
   ignite(ignition: Ignition): void;
   edit(edit: ScenarioEdit, time: number): void;
   removeEdit(id: string): void;
+  /** Undo a marked ignition (results after its time are re-computed; a 'rewound' event reports its time). */
+  removeIgnition(id: string): void;
   rewind(time: number): void;
   setOption(key: SimOptionKey, value: number | boolean): void;
   setQuality(tier: QualityTier): void;
-  explain(x: number, y: number): Promise<CellExplanation>;
+  /** Explain a point; `time` is the view time (default: the simulation's current time). */
+  explain(x: number, y: number, time?: number): Promise<CellExplanation>;
   on<K extends keyof SimEvents>(event: K, cb: SimEvents[K]): () => void;
   dispose(): void;
 }

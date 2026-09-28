@@ -146,6 +146,17 @@ export function createFirePanel(ctx: SimContext, onClose: () => void): { el: HTM
                 h('li', { class: 'edit-item' }, [
                   h('span', { class: ['dot', `dot-${i.origin}`] }),
                   h('span', null, `${ORIGIN_LABEL[i.origin]} · ${i.kind === 'line' ? `line ${formatDistance(polylineLength(i.points))}` : 'point'} · ${formatClock(ctx.absTime(i.time), ctx.tz)} (${formatElapsedShort(i.time)})`),
+                  button({
+                    label: `Remove this ${ORIGIN_LABEL[i.origin].toLowerCase()}`,
+                    icon: 'trash',
+                    variant: 'ghost',
+                    iconOnly: true,
+                    testId: 'remove-ignition',
+                    onClick: () => {
+                      session.removeIgnition(i.id);
+                      ctx.announce(`${ORIGIN_LABEL[i.origin]} removed. The simulation re-runs from ${formatClock(ctx.absTime(i.time), ctx.tz)} without it.`);
+                    },
+                  }),
                 ]),
               ),
             ),

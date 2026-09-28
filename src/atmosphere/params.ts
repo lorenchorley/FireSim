@@ -138,6 +138,13 @@ export const ATMOS_PARAMS = {
    * 0 disables it.
    */
   meanThetaTauS: 1800,
+  /**
+   * [H, FireSim] Buoyancy from θ′ minus the positive part of the band mean of (θ′ − θ′_cold-pool) (atmosphere.ts step 2;
+   * the band means are recomputed before the buoyancy, and bandMeans() runs again for Davies/mean control): the uniform
+   * part of the surface warming is the forecast's, and its buoyancy drove spurious domain-scale inflow (flat terrain,
+   * 500 W/m²: U10_fire 2.5× the forecast after 2 h). false = b = gθ′/θ_env as written in §8.4.
+   */
+  buoyancyBandAnomaly: true,
   meanThetaBandM: 50,
   /** Vorticity confinement ε (visual only, never fed to ROS) — 0 by spec. */
   vorticityConfinement: 0,
@@ -219,6 +226,15 @@ export const ATMOS_PARAMS = {
   pyroIntervalS: 60,
   /** Head-correction fallback without a head mask: cells with |U_bg10| above this (m/s) count as head cells [H]. */
   pyroHeadMinWind: 0.1,
+  /**
+   * With a head mask (FireWindContext headMask/headDirX/headDirY; sim passes the fire's prepared cells and their
+   * outward front normal n̂): keep only the component of u_p along the given direction, u_p ← max(0, u_p·n̂)·n̂, instead
+   * of the spec's "remove the opposing component" [H, deviation from §8.8 / D32]. The empirical spread rates (Mk2 wind
+   * and slope factors, ellipse) already contain the fire's own near-field indraft, which at a narrow head also
+   * converges from the sides: a lateral u_p of 0.1–0.2 m/s turned a calm or anabatic upslope head wind by ~60° and
+   * switched the §7.3 hybrid rule from R_w·SF(θ) to the additive cross-slope branch. false = the spec rule.
+   */
+  pyroHeadAlongOnly: true,
 
   // ── §8.10 diagnostics ────────────────────────────────────────────────────────────────────────────
   inversionPresentK: 3,

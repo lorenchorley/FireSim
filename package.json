@@ -12,9 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "cap:sync": "npm run build && cap sync",
-    "cap:android": "npm run build && cap sync android && cap open android",
-    "cap:ios": "npm run build && cap sync ios && cap open ios"
+    "cap:sync": "npm run build:cap && cap sync",
+    "cap:android": "npm run build:cap && cap sync android && cap open android",
+    "cap:ios": "npm run build:cap && cap sync ios && cap open ios",
+    "build:cap": "tsc --noEmit && vite build --mode capacitor",
+    "test:fast": "FIRESIM_SKIP_SLOW=1 vitest run"
   },
   "license": "MIT",
   "dependencies": {

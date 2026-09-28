@@ -18,8 +18,20 @@ export const CONFIDENCE_LABELS: Record<NonNullable<Insight['confidence']>, { lab
   'sub-grid': { label: 'Below model detail', about: 'Smaller than the model grid, so the model can’t see this precisely.' },
 };
 
-export function insightCard(ins: Insight, opts: { tz: string; absTime: (t: number) => number; onShow: (i: Insight) => void; compact?: boolean; forecast?: boolean }): HTMLElement {
+export function insightCard(
+  ins: Insight,
+  opts: {
+    tz: string;
+    absTime: (t: number) => number;
+    onShow: (i: Insight) => void;
+    compact?: boolean;
+    forecast?: boolean;
+    /** The card stands for several reports of the same phenomenon (see insightGroups). */
+    repeats?: { count: number; first: number };
+  },
+): HTMLElement {
   const when = opts.forecast ? `Forecast · ${formatClock(opts.absTime(ins.time), opts.tz)}` : `${formatClock(opts.absTime(ins.time), opts.tz)} · ${formatElapsedShort(ins.time)}`;
+  const rep = opts.repeats && opts.repeats.count > 1 ? opts.repeats : null;
   const show = h(
     'button',
     { type: 'button', class: 'btn btn-secondary insight-show', aria: { label: `Show “${ins.title}” on the map` }, on: { click: () => opts.onShow(ins) } },
@@ -34,6 +46,12 @@ export function insightCard(ins: Insight, opts: { tz: string; absTime: (t: numbe
       h('span', { class: 'insight-time' }, when),
     ]),
     h('h3', { class: 'insight-title' }, ins.title),
+    rep
+      ? h('p', { class: 'insight-repeats', dataset: { testid: 'insight-repeats' } }, [
+          icon('replay', { size: 16 }),
+          ` Seen ${rep.count} times since ${formatClock(opts.absTime(rep.first), opts.tz)} · showing the latest`,
+        ])
+      : null,
     opts.compact ? null : h('p', { class: 'insight-body' }, ins.body),
     !opts.compact && ins.safety ? h('p', { class: 'insight-safety' }, [icon('lock', { size: 18 }), h('span', null, ins.safety)]) : null,
     !opts.compact && ins.factors.length

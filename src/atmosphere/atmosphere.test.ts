@@ -64,6 +64,28 @@ describe('3-D tier: flat terrain keeps the forecast U10 (V21, D30)', () => {
   });
 });
 
+describe('3-D tier: daytime surface heating over flat terrain keeps the forecast U10 (V21 with heating)', () => {
+  it('500 W/m² for 2 h: U_fire within 3 % of the forecast everywhere (regression: uniform buoyancy drove 2.5×)', () => {
+    const t = flatTerrain(6000, 30, 500);
+    const t0 = Date.UTC(2025, 11, 20, 2); // 13:00 AEDT, sun ≈ 75°
+    const hrs: WeatherHour[] = [0, 1, 2].map((q) => hour(t0 + q * 3.6e6, 5.6, 270, { temperature: 34, relativeHumidity: 18 }));
+    const s = seriesOf(hrs, { sourceElevation: 500 });
+    const a = make(t, s, 6000);
+    a.setAmbient(hrs[0]!, hrs[1]!);
+    a.setTime(t0);
+    a.setSurfaceHeating(insolation(t, t0), hrs[0]!, 100, nightState(0));
+    const [fu, fv] = windToUV(5.6, 270);
+    let worst = 0;
+    for (let q = 0; q < 4; q++) {
+      spin(a, 1800);
+      a.setTime(t0 + (q + 1) * 1800e3);
+      const r = fireWinds(a, t);
+      for (let k = 0; k < r.u.length; k += 17) worst = Math.max(worst, Math.hypot(r.u[k]! - fu, r.v[k]! - fv) / 5.6);
+    }
+    expect(worst).toBeLessThan(0.03);
+  }, 120000);
+});
+
 describe('3-D tier: projection and determinism', () => {
   it('projection leaves max|∇·u|·Δx/|u| < 1e-3 over the Katoomba DEM; restore then step is bitwise equal', async () => {
     const { terrain, hiRes } = await katoombaTerrain(6000, 30);

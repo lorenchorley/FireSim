@@ -136,6 +136,9 @@ export class SimHost {
       case 'removeEdit':
         sim.removeEdit(msg.id);
         break;
+      case 'removeIgnition':
+        sim.removeIgnition(msg.id);
+        break;
       case 'setOption':
         sim.setOption(msg.key, msg.value);
         break;
@@ -148,7 +151,7 @@ export class SimHost {
         this.until = Math.max(sim.time, msg.time);
         break;
       case 'explain': {
-        const ex = sim.explain(msg.x, msg.y, (msg as { time?: number }).time);
+        const ex = sim.explain(msg.x, msg.y, msg.time);
         this.port.post({ type: 'explain', reqId: msg.reqId, explanation: ex });
         return;
       }

@@ -12,8 +12,10 @@
  * Contract change requests (implemented here as local adapters; see FireWindContextExt / AtmosphereOptions):
  *  1. FireWindContext.coupling?: number — c_f (SimOptions.coupling) for §8.8. Until then sim/ calls
  *     `setCoupling(c_f)` (or passes it in the extended context); default 1.
- *  2. FireWindContext.headMask?: Uint8Array, headDirX/Y?: Float32Array — head cells and head direction ê for the
- *     §8.8 pyrogenic head correction (fast tier). Fallback: the component opposing the background wind is removed.
+ *  2. FireWindContext.headMask?: Uint8Array, headDirX/Y?: Float32Array — head cells and head direction for the
+ *     §8.8 pyrogenic head correction (fast tier; sim passes every prepared cell with its outward front normal, and
+ *     u_p keeps only its component along it, ATMOS_PARAMS.pyroHeadAlongOnly). Fallback without a mask: the
+ *     component opposing the background wind is removed.
  *  3. AtmosphereLike.setWindEdits?(edits, scenarioStartMs) — user wind edits (§8.3/§11.5) re-solve u_bg; today an
  *     extra method on both classes.
  *  4. AtmosDiagnostics.cHainesSurfaceSubstituted?: boolean — §8.10 "flag it" when 850 hPa lies below the grid-point

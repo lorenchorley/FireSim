@@ -8,8 +8,9 @@ import { manualSeries } from './weatherSeries';
 import { pressureAtElevation, relativeHumidityFromWetBulb } from './weatherCalc';
 import { parseLatLon } from './nsw';
 import { REPLAYS, WEATHER_PRESETS } from './content';
+import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
+import type { BeltKitInput } from '../scenario/beltKit';
 import type { PerformanceMode } from './settings';
-import { zonedDate, zonedTime } from './format';
 import { performanceProfile } from './settings';
 
 export type WhereMode = 'demo' | 'gps' | 'manual';
@@ -173,6 +174,13 @@ export function validateSetup(s: SetupState, now = Date.now()): string[] {
   return errs;
 }
 
+/** Start (unix ms) of a preset's canonical day and hour in the year of `now`, at longitude `lon` (null if unknown). */
+export function presetStart(presetId: string, lon: number, now = Date.now()): number | null {
+  if (!isPresetId(presetId)) return null;
+  // Rounded to 10 min so the clock starts on a round local time (11:00 LMST at Katoomba is 11:59 AEDT → 12:00).
+  return Math.round(SCENARIO_PRESETS[presetId].canonicalStart(lon, new Date(now).getUTCFullYear()) / 600_000) * 600_000;
+}
+
 /** Convert the form to a scenario request (call {@link validateSetup} first). */
 export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now = Date.now()): ScenarioRequest {
   const c = resolveCentre(s);
@@ -190,9 +198,9 @@ export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now 
       weather = { kind: 'forecast', start: s.forecastTime };
       break;
     case 'preset': {
-      // Presets start at their teaching hour (e.g. 11:00 for the NW-wind day) on today's local date.
-      const p = WEATHER_PRESETS.find((x) => x.id === s.presetId);
-      const start = p ? zonedTime(zonedDate(now), p.startHour) : s.presetStart || roundTo10(now);
+      // Presets start on their canonical day and teaching hour (spec §11.3: e.g. 20 Dec 11:00 LMST for the NW-wind
+      // day) in the current year, so the sun angle, curing and the rating chip match what the preset was designed for.
+      const start = presetStart(s.presetId, c.centre.lon, now) ?? (s.presetStart || roundTo10(now));
       weather = { kind: 'preset', presetId: s.presetId, start };
       break;
     }
@@ -241,6 +249,10 @@ export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now 
     }
   }
   const prof = performanceProfile(perf);
+  // Belt kit: the builder converts the readings itself (psychrometer at the site's station pressure from the real
+  // terrain, kit wind at ~2 m → 10 m open wind, spec §11.5); the manual series above supplies the drought inputs.
+  const beltKit: BeltKitInput[] | undefined =
+    s.weather === 'belt' ? [{ dryBulb: s.belt.dry, wetBulb: s.belt.wet, windKmh: s.belt.windKmh, windDir: s.belt.windDir, time: s.belt.time || roundTo10(now) }] : undefined;
   const req: ScenarioRequest = {
     name: c.name,
     centre: c.centre,
@@ -251,6 +263,7 @@ export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now 
     options: { fireCellSize: DETAIL_CELL[s.detail], maxEmbers: prof.maxEmbers, snapshotInterval: prof.snapshotInterval, tier: prof.tier },
   };
   if (c.demoSiteId) req.demoSiteId = c.demoSiteId;
+  if (beltKit) req.beltKit = beltKit;
   return req;
 }
 

@@ -16,6 +16,7 @@ import { showMePatch } from '../../showMe';
 import { weatherAt } from '../../weatherSeries';
 import type { Services } from '../../modules';
 import { SimSession } from '../../session';
+import { DangerGate } from '../../insightGroups';
 import { performanceProfile, settingsStore } from '../../settings';
 import { Store } from '../../store';
 import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './context';
@@ -24,7 +25,7 @@ import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
 import { createToasts } from './toasts';
 import { createTopBar } from './topBar';
-import { createLayersPanel, createWhatIfPanel } from './viewPanels';
+import { createLayersPanel, createMapLegend, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
 
 export interface SimScreenOptions {
@@ -75,7 +76,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const view = services.createSceneView(sceneHost);
   const prof = performanceProfile(settingsStore.get().performance);
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, smoke: prof.smoke, vegetation: prof.vegetation, imagery: !!o.imagery });
-  view.setScenario(scenario.terrain, scenario.fuel, { imagery: o.imagery });
+  view.setScenario(scenario.terrain, scenario.fuel, { imagery: o.imagery, hiRes: scenario.terrainHiRes ?? null });
+  view.setStartTime?.(scenario.startTime);
   view.setLayers(layers.get());
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
   const controller = services.createController();
@@ -101,6 +103,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     get legendProvider() {
       return services.sources.scene === 'real' ? services.legendProvider : null;
     },
+    get sceneLegends() {
+      return services.sources.scene === 'real' ? services.sceneLegends : null;
+    },
     pickCrosshair: () => {
       const r = crosshair.getBoundingClientRect();
       return view.pickGround(r.left + r.width / 2, r.top + r.height / 2);
@@ -124,6 +129,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const sheet = createSheet(ctx, showInsight);
   const scrubber = createScrubber(ctx);
   const toasts = createToasts(ctx, showInsight);
+  const dangerGate = new DangerGate();
 
   const rail = h(
     'nav',
@@ -161,10 +167,101 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     h('button', { type: 'button', class: 'view-btn', aria: { label: 'Fly to the fire' }, on: { click: () => flyToFire() } }, [icon('flame', { size: 22 }), h('span', { class: 'view-label' }, 'Fire')]),
     o.user ? h('button', { type: 'button', class: 'view-btn', aria: { label: 'Fly to my position' }, on: { click: () => view.flyTo(o.user!.x, o.user!.y, 1500) } }, [icon('gps', { size: 22 }), h('span', { class: 'view-label' }, 'Me')]) : null,
   ]);
+  // Map navigation for gloved hands (pinch and two-finger rotate still work): compass (tap = north up) and zoom.
+  const needle = h('span', { class: 'compass-needle', aria: { hidden: true } }, [
+    h('span', { class: 'compass-n' }, 'N'),
+    svg('svg', { viewBox: '0 0 24 24', width: '20', height: '20' }, [
+      svg('path', { d: 'M12 1.5 L17 12 L7 12 Z', class: 'needle-n' }),
+      svg('path', { d: 'M12 22.5 L17 12 L7 12 Z', class: 'needle-s' }),
+    ]),
+  ]);
+  const compassBtn = h('button', { type: 'button', class: 'view-btn nav-btn compass-btn', dataset: { testid: 'compass' }, aria: { label: 'Turn the map north up' }, on: { click: () => view.setHeading(0) } }, needle);
+  const zoomBtn = (dir: 'in' | 'out'): HTMLButtonElement =>
+    h('button', { type: 'button', class: 'view-btn nav-btn', dataset: { testid: `zoom-${dir}` }, aria: { label: dir === 'in' ? 'Zoom in' : 'Zoom out' }, on: { click: () => view.zoomBy(dir === 'in' ? 0.6 : 1 / 0.6) } }, icon(dir === 'in' ? 'plus' : 'minus', { size: 24 }));
+  viewControls.append(h('div', { class: 'view-nav', attrs: { role: 'group', 'aria-label': 'Map navigation' } }, [compassBtn, zoomBtn('in'), zoomBtn('out')]));
+  let shownHeading = NaN;
+  const compassTimer = setInterval(() => {
+    const hd = Math.round(view.heading);
+    if (hd === shownHeading) return;
+    shownHeading = hd;
+    needle.style.transform = `rotate(${-hd}deg)`;
+    compassBtn.setAttribute('aria-label', `Map faces ${hd}°. Turn the map north up`);
+  }, 200);
+  unsubs.push(() => clearInterval(compassTimer));
   const simNotice = services.sources.sim === 'mock' || services.sources.scene === 'mock' ? h('p', { class: 'mock-banner' }, services.sources.sim === 'mock' ? 'Demo engine' : '2-D map') : null;
-  if (simNotice) viewControls.append(simNotice);
+  if (simNotice) viewControls.prepend(simNotice);
 
-  root.append(topBar.el, viewControls, rail, toasts.el, panelHost, sheet.el, scrubber.el);
+  const mapLegend = createMapLegend(ctx, () => selectTool('layers'));
+  root.append(topBar.el, viewControls, rail, mapLegend.el, toasts.el, panelHost, sheet.el, scrubber.el);
+  unsubs.push(() => mapLegend.destroy());
+
+  // ───────────── visible map area ─────────────
+  // The top bar, the scrubber, an open tool panel and the sheet cover parts of the full-screen 3-D view. Tell the view
+  // (so fly-to targets and the orbit pivot land in the visible part) and centre the crosshair there too, so "Mark at
+  // crosshair" marks the point the view centres on.
+  const layoutInsets = (): void => {
+    const host = sceneHost.getBoundingClientRect();
+    if (!host.width || !host.height) return;
+    const top = Math.max(0, topBar.el.getBoundingClientRect().bottom - host.top);
+    let bottom = Math.max(0, host.bottom - scrubber.el.getBoundingClientRect().top);
+    let left = 0;
+    let right = 0;
+    const cover = (r: { left: number; right: number; top: number; width: number; height: number }): void => {
+      if (r.width <= 0 || r.height <= 0) return;
+      if (r.width >= host.width * 0.6) bottom = Math.max(bottom, host.bottom - r.top);
+      else if (r.left + r.width / 2 < host.left + host.width / 2) left = Math.max(left, r.right - host.left);
+      else right = Math.max(right, host.right - r.left);
+    };
+    const panelEl = panelHost.firstElementChild as HTMLElement | null;
+    if (panelEl) cover(panelEl.getBoundingClientRect());
+    else if (!sheet.el.hidden) {
+      const sr = sheet.el.getBoundingClientRect();
+      const target = Number.parseFloat(sheet.el.style.height) || sr.height;
+      cover({ left: sr.left, right: sr.right, top: sr.bottom - target, width: sr.width, height: target });
+    }
+    view.setViewInsets({ top, bottom, left, right });
+    // The crosshair marks the view's optical centre: the middle of the uncovered area (the view limits the shift to a
+    // third of its size, and so does the crosshair).
+    const cx = host.width / 2 + Math.max(-host.width / 3, Math.min(host.width / 3, (left - right) / 2));
+    const cy = host.height / 2 + Math.max(-host.height / 3, Math.min(host.height / 3, (top - bottom) / 2));
+    crosshair.style.left = `${Math.round(cx)}px`;
+    crosshair.style.top = `${Math.round(cy)}px`;
+    // The overlay legend sits at the bottom of the visible map, between the two button columns.
+    let colL = left;
+    let colR = host.width - right;
+    for (const c of [viewControls, rail]) {
+      const r = c.getBoundingClientRect();
+      if (!r.width || getComputedStyle(c).display === 'none') continue;
+      if (r.left + r.width / 2 < host.left + host.width / 2) colL = Math.max(colL, r.right - host.left);
+      else colR = Math.min(colR, r.left - host.left);
+    }
+    const ls = mapLegend.el.style;
+    ls.top = 'auto';
+    ls.bottom = `${Math.round(bottom + 10)}px`;
+    ls.left = `${Math.round(colL + 8)}px`;
+    ls.right = `${Math.round(host.width - colR + 8)}px`;
+  };
+  let insetRaf = 0;
+  let insetTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleInsets = (): void => {
+    cancelAnimationFrame(insetRaf);
+    insetRaf = requestAnimationFrame(layoutInsets);
+    // Once more after the panel / sheet animations (0.2–0.25 s) have settled.
+    clearTimeout(insetTimer);
+    insetTimer = setTimeout(layoutInsets, 320);
+  };
+  const insetRo = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleInsets) : null;
+  insetRo?.observe(root);
+  insetRo?.observe(panelHost);
+  insetRo?.observe(sheet.el);
+  unsubs.push(
+    () => {
+      insetRo?.disconnect();
+      cancelAnimationFrame(insetRaf);
+      clearTimeout(insetTimer);
+    },
+    ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool']),
+  );
 
   // ───────────── adaptive tool rail ─────────────
   // Six tools at the full 68 px need ~440 px between the top bar and the peeking sheet: more than a 390 × 844 or
@@ -206,19 +303,42 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   );
   scheduleRail();
 
+  /** Fly to the fire, far enough back to see the whole burnt area (1.5–12 km). */
   function flyToFire(): void {
     const snap = session.state.get().snapshot;
     let sx = 0;
     let sy = 0;
     let n = 0;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
     if (snap) {
       const g = snap.fire.grid;
-      for (let k = 0; k < snap.fire.burnState.length; k++)
+      const t = snap.time;
+      for (let k = 0; k < snap.fire.burnState.length; k++) {
+        const a = snap.fire.arrivalTime[k]!;
+        if (!(a <= t)) continue;
+        const x = g.x0 + (k % g.nx) * g.cellSize;
+        const y = g.y0 + Math.floor(k / g.nx) * g.cellSize;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
         if (snap.fire.burnState[k] === BurnState.Burning) {
-          sx += g.x0 + (k % g.nx) * g.cellSize;
-          sy += g.y0 + Math.floor(k / g.nx) * g.cellSize;
+          sx += x;
+          sy += y;
           n++;
         }
+      }
+    }
+    // Frame the burnt area: its centre, pulled a third of the way towards the burning edge.
+    if (Number.isFinite(x0)) {
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      sx = n ? cx + (sx / n - cx) / 3 : cx;
+      sy = n ? cy + (sy / n - cy) / 3 : cy;
+      n = 1;
     }
     if (!n) {
       const ign = session.state.get().ignitions.at(-1);
@@ -227,7 +347,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         n = 1;
       }
     }
-    if (n) view.flyTo(sx / n, sy / n, 2500);
+    const span = Number.isFinite(x0) ? Math.max(x1 - x0, y1 - y0) : 0;
+    if (n) view.flyTo(sx / n, sy / n, Math.min(12000, Math.max(1500, 1.6 * span)));
     else o.announce('No fire marked yet.');
   }
 
@@ -469,18 +590,30 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   // ───────────── insights → toasts ─────────────
   unsubs.push(
     session.events.on('reveal', (i) => {
-      if (i.severity !== 'danger') return;
-      toasts.push(i);
-      if (settingsStore.get().pauseOnDanger && session.state.get().playing) {
+      // A big fire reports the same danger all along its edge: toast a kind at most once an hour (simulated) and
+      // pause only the first time it appears, so "pause on danger" teaches without stopping playback every minute.
+      const d = dangerGate.decide(i);
+      if (d.toast) toasts.push(i);
+      if (d.pause && settingsStore.get().pauseOnDanger && session.state.get().playing) {
         session.pause();
         o.announce(`Danger: ${i.title}. Playback paused.`);
       }
     }),
+    session.controller.on('rewound', (t) => dangerGate.reset(t)),
     session.events.on('ended', () => o.announce('End of the simulated period.')),
     settingsStore.subscribe((st) => {
       root.classList.toggle('hand-left', st.handedness === 'left');
       root.classList.toggle('hand-right', st.handedness === 'right');
     }, ['handedness']),
+    // Performance mode changed during a run: switch the engine tier from now on (the worker restores the latest
+    // checkpoint and re-runs with the new atmosphere) and the heavy render layers.
+    settingsStore.subscribe((st) => {
+      const tier = st.performance === 'battery' ? 'fast' : st.performance === 'quality' ? 'high' : 'standard';
+      session.controller.setQuality(tier);
+      const p = performanceProfile(st.performance);
+      layers.set({ smoke: p.smoke, vegetation: p.vegetation });
+      view.setLayers({ smoke: p.smoke, vegetation: p.vegetation });
+    }, ['performance']),
     listen(window, 'resize', () => view.resize()),
     // Backgrounded (screen locked, app switched): stop the worker too, not just the frame loop, so it does not burn
     // battery computing hours ahead in the pocket. Playback stays paused until the user presses Play again.

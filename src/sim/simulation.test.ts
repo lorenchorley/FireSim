@@ -51,8 +51,10 @@ describe('Simulation on a synthetic slope (fast tier)', () => {
     const last = c.snaps.get(3600)!;
     expect(last.stats.burntAreaHa).toBeGreaterThan(5);
     expect(last.stats.perimeterKm).toBeGreaterThan(0.5);
-    // Westerly wind + slope rising east: the head runs east (towards ~90°) and far faster than the back.
-    expect(Math.abs(((last.stats.headDir - 90 + 540) % 360) - 180)).toBeLessThan(50);
+    // Westerly wind + slope rising east: the head runs east (towards ~90°) and far faster than the back. Checked at
+    // 50 min: by 60 min the head has reached the east edge of the 3 km domain and the fastest front cell is a flank.
+    const s50 = c.snaps.get(3000)!;
+    expect(Math.abs(((s50.stats.headDir - 90 + 540) % 360) - 180)).toBeLessThan(50);
     const g = scenario.terrain.grid;
     let east = -Infinity;
     let west = Infinity;
@@ -143,6 +145,25 @@ describe('Simulation on a synthetic slope (fast tier)', () => {
     for (const t of [1500, 1800, 2100, 2400]) expect(diffParts(c2.snaps.get(t)!, c1.snaps.get(t)!), `t=${t}`).toEqual([]);
   }, 180000);
 
+  it('removeIgnition undoes a marked fire: the re-run equals a run that never had it, from its time on', () => {
+    const extra = pointIgnition('wrong', 600, 600, 900, 40);
+    const c1 = collect();
+    const sim = new Simulation(scenario, { hooks: c1.hooks });
+    sim.ignite(extra);
+    sim.advance(2400);
+    expect(sim.removeIgnition('nope')).toBe(false);
+    expect(sim.removeIgnition('wrong')).toBe(true);
+    expect(c1.rewound).toEqual([900]);
+    expect(sim.logicalNow).toBe(2400); // re-runs to where the user was
+    c1.snaps.clear();
+    sim.advance(2400);
+    expect([...c1.snaps.keys()]).toEqual([1200, 1500, 1800, 2100, 2400]); // everything after the ignition time again
+    const c2 = collect();
+    const clean = new Simulation(scenario, { hooks: c2.hooks });
+    clean.advance(2400);
+    for (const t of [1200, 1800, 2400]) expect(diffParts(c2.snaps.get(t)!, c1.snaps.get(t)!), `t=${t}`).toEqual([]);
+  }, 180000);
+
   it('removeEdit restores the base fuel from its time on; options apply from the next step', () => {
     const sim = new Simulation(scenario);
     const road: FuelEdit = { kind: 'fuel', id: 'road', shape: { kind: 'circle', x: 900, y: 0, radius: 120 }, setType: FuelType.NonFuel };
@@ -188,13 +209,44 @@ describe('Simulation on a synthetic slope (fast tier)', () => {
     sim.advance(1800 + 600);
     expect(sim.tier).toBe('standard');
     expect(c.snaps.has(2100)).toBe(true); // re-run results are emitted (they changed)
-    expect(sim.snapshot().atmosphere!.nz).toBeGreaterThan(0);
-    // Rewinding to before the switch goes back to the fast tier and replays the switch.
+    const afterSwitch = new Map(c.snaps);
+    expect(afterSwitch.get(2400)!.atmosphere!.nz).toBeGreaterThan(0);
+    // Rewinding to before the switch goes back to the fast tier and replays the switch bitwise.
+    c.snaps.clear();
     sim.rewind(900);
     expect(sim.tier).toBe('fast');
-    sim.advance(2100);
+    sim.advance(2400);
     expect(sim.tier).toBe('standard');
+    for (const t of [2100, 2400]) expect(diffParts(afterSwitch.get(t)!, c.snaps.get(t)!), `t=${t}`).toEqual([]);
   }, 240000);
+
+  it('rewind at or after the current time restores nothing (what-if at the head) and moves later option records to it', () => {
+    const c = collect();
+    const sim = new Simulation(scenario, { hooks: c.hooks });
+    sim.advance(1200);
+    sim.setOption('coupling', 0.5);
+    expect(sim.rewind(1200)).toBe(1200);
+    expect(sim.time).toBe(1200);
+    expect(c.rewound).toEqual([1200]);
+    sim.advance(1260);
+    expect(sim.options.coupling).toBe(0.5);
+  }, 120000);
+
+  it('line, area and backburn ignitions light their geometry at their times', () => {
+    const sim = new Simulation(syntheticScenario({ extent: 2400, options: { embers: false } }));
+    sim.ignite({ id: 'line', kind: 'line', points: [[-600, -600], [-600, 600]], time: 0, origin: 'observed' });
+    sim.ignite({ id: 'area', kind: 'area', points: [[300, -900], [600, -900], [600, -600], [300, -600]], time: 120, origin: 'backburn' });
+    sim.advance(180);
+    const f = sim.stateView().fire;
+    const g = sim.stateView().terrain.grid;
+    for (let y = -540; y <= 540; y += 90) expect(f.arrivalTime[cellAt(g, -600, y)]).toBeLessThanOrEqual(1e-3);
+    for (const [x, y] of [[450, -750], [330, -870], [570, -630]] as const) {
+      const ta = f.arrivalTime[cellAt(g, x, y)]!;
+      expect(ta).toBeLessThanOrEqual(120 + 1e-3);
+      expect(ta).toBeGreaterThan(0);
+    }
+    expect(f.arrivalTime[cellAt(g, 450, 300)]).toBe(Infinity);
+  }, 120000);
 
   it('the minute cadence is exact: steps land on every 60 s boundary in the 3-D tier', () => {
     const sim = new Simulation(syntheticScenario({ extent: 2400 }), { tier: 'standard' });

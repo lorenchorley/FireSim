@@ -80,7 +80,7 @@ import { applyFuelEdit, cellsInBrush, cloneFuelMap, fuelParamsInto, makeCellFuel
 import { ensureFuelArrays, type FuelMapExt } from '../fuel/fuelMap';
 import { MoistureModel, droughtState, spinUpStableNight, stableNightInputAt, rainBefore } from '../fuel/moisture';
 import { createAtmosphere, type Atmosphere, type DiagnosticWind, type FireWindContextExt } from '../atmosphere';
-import { EmberModel } from '../embers';
+import { EmberModel, type EmberLandingEvent } from '../embers';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
 import { SIM_PARAMS } from './params';
@@ -105,6 +105,24 @@ export interface SimulationOptions {
   clock?: () => number;
   /** Skip the 3-D spin-up (tests of the loop only). */
   skipSpinUp?: boolean;
+  /** Test-only hooks (spec §15 validation set-ups); never set by the app. */
+  testHooks?: SimulationTestHooks;
+}
+
+/**
+ * Test-only hooks of the §15 validation scenarios.
+ *   moisture(M, FA, t): the "moisture hook" — called after the moisture spin-up and after every moisture update,
+ *     before the fire's moisture cache is refreshed; may overwrite the dead fine fuel moisture (%) and the fuel
+ *     availability fields in place (e.g. a constant M = 8 %).
+ *   surfaceHeating: false → "surface heating off": the atmosphere never receives surface heating (no sensible heat
+ *     flux, no anabatic/katabatic slope flows); moisture still sees the sun.
+ *   emberLanding(ev): every ember landing inside the domain.
+ */
+export interface SimulationTestHooks {
+  moisture?: (moisture: Float32Array, availability: Float32Array, t: number) => void;
+  surfaceHeating?: boolean;
+  /** Every ember landing inside the domain (EmberModel `onLanding`; V9 landing-distance statistics). */
+  emberLanding?: (ev: EmberLandingEvent) => void;
 }
 
 /** Wall time per module (ms, cumulative) and counters of the performance monitor (§13 breakdown). */
@@ -135,6 +153,8 @@ interface SimOpts {
 
 interface Checkpoint {
   time: number;
+  /** Typed-array bytes held (memory cap of the ring). */
+  bytes: number;
   tier: QualityTier;
   fire: unknown;
   moisture: unknown;
@@ -150,6 +170,8 @@ interface Checkpoint {
   nextSnapshot: number;
   nextCheckpoint: number;
   lastSector: number;
+  nextWind: number;
+  windDirty: boolean;
   lastSunMs: number;
   lastSolarT: number;
   opts: SimOpts;
@@ -192,6 +214,8 @@ export class Simulation {
   private readonly history: FuelHistoryCompact;
   private readonly simOptions: SimOptions;
   private readonly hooks: SimulationHooks;
+  private readonly testHooks: SimulationTestHooks;
+  private readonly heatingOn: boolean;
   private readonly clock: () => number;
   /** Independent streams (§12.5): embers seed, fire seed + 1, explain seed + 2 (reserved), atmosphere seed + 3. */
   readonly rngs: { readonly embers: Rng; readonly fire: Rng; readonly explain: Rng; readonly atmosphere: Rng };
@@ -214,6 +238,10 @@ export class Simulation {
   private readonly heatPrev: Float32Array;
   private readonly crownPrev: Float32Array;
   private readonly burntMask: Uint8Array;
+  /** Head cells and head directions of the last prepare (fast-tier pyrogenic head correction, §8.8). */
+  private readonly headMask: Uint8Array;
+  private readonly headDirX: Float32Array;
+  private readonly headDirY: Float32Array;
   private readonly u10: Float32Array;
   private u10Valid = false;
   private night: StableNightState;
@@ -240,6 +268,9 @@ export class Simulation {
   private nextSnapshot: number;
   private nextCheckpoint: number = SIM_PARAMS.checkpointIntervalS;
   private lastSector = -1;
+  /** Fast tier: next surface-wind recomputation (s) and the "inputs changed" flag (see SIM_PARAMS.fastWindIntervalS). */
+  private nextWind = 0;
+  private windDirty = true;
 
   // ── records, spots, insights ──
   private readonly records = new Map<number, SimRecord>();
@@ -277,6 +308,8 @@ export class Simulation {
   constructor(scenario: ScenarioData, o: SimulationOptions = {}) {
     this.clock = o.clock ?? (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
     this.hooks = o.hooks ?? {};
+    this.testHooks = o.testHooks ?? {};
+    this.heatingOn = this.testHooks.surfaceHeating !== false;
     const c0 = this.clock();
     let c = c0;
     const mark = (name: string): void => {
@@ -351,6 +384,7 @@ export class Simulation {
     this.lastNightMs = this.startMs;
     this.moisture = new MoistureModel(terrain, this.fuel, this.derived);
     this.moisture.initialise(series, this.startMs, { kbdi: this.kbdi, df: this.droughtFactor }, this.night);
+    this.testHooks.moisture?.(this.moisture.field, this.moisture.availability, 0);
     this.warnings.push(...this.moisture.warnings);
     mark('moistureSpinUp');
 
@@ -374,9 +408,12 @@ export class Simulation {
     this.heatPrev = f32();
     this.crownPrev = f32();
     this.burntMask = new Uint8Array(n);
+    this.headMask = new Uint8Array(n);
+    this.headDirX = f32();
+    this.headDirY = f32();
     this.u10 = f32();
     const aux = this.fire.aux();
-    this.windCtx = { sep: aux.sep, frontDist: aux.frontDist, firePowerW: 0, plumeTopAGL: 1000, slopeFlowOn: true, time: 0, coupling: this.opts.coupling };
+    this.windCtx = { sep: aux.sep, frontDist: aux.frontDist, firePowerW: 0, plumeTopAGL: 1000, slopeFlowOn: this.heatingOn, time: 0, coupling: this.opts.coupling };
     const B = SIM_PARAMS.frontRosBlock;
     this.frbNx = Math.ceil(g.nx / B);
     this.frbNy = Math.ceil(g.ny / B);
@@ -454,7 +491,7 @@ export class Simulation {
     if (this.spinDone === 0) {
       const sun = this.solarAt(this.startMs);
       this.atm.setNightState(this.night);
-      this.atm.setSurfaceHeating(sun, this.env.weather, this.kbdi, this.night);
+      if (this.heatingOn) this.atm.setSurfaceHeating(sun, this.env.weather, this.kbdi, this.night);
     }
     while (this.spinDone < this.spinTotal - EPS) {
       const dt = Math.min(this.atm.maxStableDt(), P.dtMaxS, this.spinTotal - this.spinDone);
@@ -510,6 +547,44 @@ export class Simulation {
     this.addUserRecord({ kind: 'removeEdit', id }, this.logicalNow);
   }
 
+  /**
+   * Remove a marked ignition as if it had never been marked (undo a wrong mark): its record is deleted; when it had
+   * already burnt, the latest checkpoint ≤ its time is restored and the run is repeated to the current logical time
+   * without it. Snapshots and insights after the ignition time are emitted again (the rewound hook reports that time).
+   * Returns false for an unknown id.
+   */
+  removeIgnition(id: string): boolean {
+    let t = Infinity;
+    let applied = false;
+    for (const [seq, r] of [...this.records]) {
+      if (r.body.kind !== 'ignite' || r.body.ignition.id !== id) continue;
+      t = Math.min(t, r.time);
+      if (this.appliedSet.has(seq)) applied = true;
+      this.records.delete(seq);
+    }
+    if (!Number.isFinite(t)) return false;
+    if (!this.ready) return true;
+    const now = this.logicalNow;
+    if (!applied) {
+      // Not applied yet. If a replay is under way the results the receiver holds after t were computed with it.
+      if (t < now - EPS) {
+        this.dropCheckpointsAfter(t);
+        this.suppressUntil = Math.min(this.suppressUntil, t);
+        this.hooks.rewound?.(t);
+      }
+      return true;
+    }
+    const cp = this.checkpointAtOrBefore(t);
+    if (!cp) return true;
+    const pending = this.suppressUntil > this.t + EPS ? this.suppressUntil : Infinity;
+    this.dropCheckpointsAfter(cp.time);
+    this.restore(cp);
+    this.replayTarget = now > this.t + EPS ? now : -Infinity;
+    this.suppressUntil = Math.min(pending, t);
+    this.hooks.rewound?.(t);
+    return true;
+  }
+
   /** Change an option from the next step (recorded at the current simulation time, §12.6). */
   setOption(key: SimOptionKey, value: number | boolean): void {
     this.addUserRecord({ kind: 'option', key, value }, this.logicalNow);
@@ -557,13 +632,24 @@ export class Simulation {
    */
   rewind(time: number): number {
     const target = Math.max(0, Math.min(Number.isFinite(time) ? time : 0, this.duration));
+    for (const r of this.records.values()) if (r.body.kind === 'option' && r.time > target) r.time = target;
+    if (target >= this.t - EPS || !this.ready) {
+      // Nothing after `target` has been computed (e.g. the UI's what-if at the head, or a second rewind during a
+      // replay): no restore. The receiver keeps its results up to `target`; the ones up to the earlier suppression
+      // point were already sent.
+      if (this.replayTarget > target) this.replayTarget = target > this.t + EPS ? target : -Infinity;
+      if (this.suppressUntil > target) this.suppressUntil = target;
+      this.hooks.rewound?.(target);
+      return this.t;
+    }
     const cp = this.checkpointAtOrBefore(target);
     if (!cp) return this.t;
-    for (const r of this.records.values()) if (r.body.kind === 'option' && r.time > target) r.time = target;
+    // The receiver holds everything up to the target, except what an unfinished earlier replay has not re-sent yet.
+    const pending = this.suppressUntil > this.t + EPS ? this.suppressUntil : Infinity;
     this.dropCheckpointsAfter(cp.time);
     this.restore(cp);
     this.replayTarget = target;
-    this.suppressUntil = target;
+    this.suppressUntil = Math.min(pending, target);
     this.hooks.rewound?.(target);
     return cp.time;
   }
@@ -599,17 +685,7 @@ export class Simulation {
 
   /** Approximate bytes held by checkpoints (memory budget, §13). */
   checkpointBytes(): number {
-    let b = 0;
-    const walk = (v: unknown, depth: number): void => {
-      if (depth > 6 || v === null || typeof v !== 'object') return;
-      if (ArrayBuffer.isView(v)) {
-        b += (v as ArrayBufferView).byteLength;
-        return;
-      }
-      for (const x of Array.isArray(v) ? v : Object.values(v as object)) walk(x, depth + 1);
-    };
-    for (const cp of [this.cp0, ...this.ring]) walk(cp, 0);
-    return b;
+    return (this.cp0?.bytes ?? 0) + this.ring.reduce((a, c) => a + c.bytes, 0);
   }
 
   /** Read-only state view for tests and the developer panel. */
@@ -704,6 +780,7 @@ export class Simulation {
     if (key === this.atmWindKey) return;
     this.atmWindKey = key;
     this.atm.setWindEdits(list as WindEdit[], this.startMs);
+    this.windDirty = true;
   }
 
   private applyOption(key: SimOptionKey, value: number | boolean): void {
@@ -735,6 +812,7 @@ export class Simulation {
   }
 
   private updatePyrogenic(): void {
+    this.windDirty = true;
     this.env.coupling = this.opts.coupling;
     this.env.pyrogenicOn = this.tierNow === 'fast' && this.opts.coupling > 0;
     this.windCtx.coupling = this.opts.coupling;
@@ -800,7 +878,8 @@ export class Simulation {
   }
 
   private buildEmbers(tier: QualityTier): EmberModel {
-    const m = new EmberModel(this.terrain, this.fuel, { maxEmbers: this.opts.maxEmbersUser ?? SIM_PARAMS.maxEmbersByTier[tier], tier }, this.rngEmbers);
+    const onLanding = this.testHooks.emberLanding;
+    const m = new EmberModel(this.terrain, this.fuel, { maxEmbers: this.opts.maxEmbersUser ?? SIM_PARAMS.maxEmbersByTier[tier], tier, loft: SIM_PARAMS.emberLoft, ...(onLanding ? { onLanding } : {}) }, this.rngEmbers);
     m.setEnvironment(this.emberEnv());
     return m;
   }
@@ -858,8 +937,10 @@ export class Simulation {
     if (this.opts.maxEmbersUser === null) this.embers.setMaxEmbers(SIM_PARAMS.maxEmbersByTier[tier]);
     this.updatePyrogenic();
     if (tier !== 'fast') {
-      const sun = this.lastSun ?? this.solarAt(this.startMs + t * 1000);
-      this.atm.setSurfaceHeating(sun, this.env.weather, this.kbdi, this.night);
+      // The insolation of the last solar update (recomputed identically after a restore, when lastSun is null).
+      const sunMs = Number.isFinite(this.lastSunMs) ? this.lastSunMs : this.startMs + t * 1000;
+      const sun = this.lastSun ?? this.solarAt(sunMs, false);
+      if (this.heatingOn) this.atm.setSurfaceHeating(sun, this.env.weather, this.kbdi, this.night);
       let s = 0;
       while (s < SIM_PARAMS.spinUpS - EPS) {
         const dt = Math.min(this.atm.maxStableDt(), SIM_PARAMS.dtMaxS, SIM_PARAMS.spinUpS - s);
@@ -899,6 +980,7 @@ export class Simulation {
     while (this.stampIdx < hs.length - 2 && tMs >= hs[this.stampIdx + 1]!.time) {
       this.stampIdx++;
       this.atm.setAmbient(hs[this.stampIdx]!, hs[this.stampIdx + 1]!);
+      this.windDirty = true;
     }
     this.atm.setTime(tMs);
     lap('stamps');
@@ -922,9 +1004,10 @@ export class Simulation {
     // 3 insolation, surface heating, moisture (every 600 s and at t0)
     if (solarDue) {
       const sun = this.solarAt(tMs);
-      this.atm.setSurfaceHeating(sun, w, this.kbdi, this.night);
+      if (this.heatingOn) this.atm.setSurfaceHeating(sun, w, this.kbdi, this.night);
       const dtM = Number.isFinite(this.lastSolarT) ? t - this.lastSolarT : 0;
       this.moisture.update(w, sun, Math.max(0, dtM), this.moistureCtx(tMs, sunPos.elevation, w));
+      this.testHooks.moisture?.(this.moisture.field, this.moisture.availability, t);
       this.fire.refreshMoistureCache(env);
       this.lastSolarT = t;
       this.nextSolar = (Math.floor(t / P.solarIntervalS + EPS) + 1) * P.solarIntervalS;
@@ -933,6 +1016,7 @@ export class Simulation {
       // Fuel edit (moisture offsets, new fuel): re-diagnose the outputs without advancing the state (Δt = 0).
       const sun = this.lastSun ?? this.solarAt(Number.isFinite(this.lastSunMs) ? this.lastSunMs : tMs, false);
       this.moisture.update(w, sun, 0, this.moistureCtx(tMs, sunPos.elevation, w));
+      this.testHooks.moisture?.(this.moisture.field, this.moisture.availability, t);
       this.fire.refreshMoistureCache(env);
       this.moistureDirty = false;
     }
@@ -946,10 +1030,19 @@ export class Simulation {
       if (t >= this.nextMask - EPS) this.nextMask = (Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS;
       lap('fireMasks');
     }
-    this.fireWinds();
+    const fastWind = this.tierNow === 'fast' && P.fastWindIntervalS > 0;
+    // Also on every checkpoint boundary: the step after a restore starts there, so both runs recompute it.
+    const cpBoundary = Math.abs(t / P.checkpointIntervalS - Math.round(t / P.checkpointIntervalS)) < 1e-9;
+    if (!fastWind || this.windDirty || cpBoundary || t >= this.nextWind - EPS) {
+      this.fireWinds();
+      if (fastWind) {
+        // Next: the step after the next pyrogenic solve (which runs in the step starting on an interval boundary).
+        this.nextWind = (Math.floor(t / P.fastWindIntervalS + EPS) + 1) * P.fastWindIntervalS + 1e-3;
+      }
+      this.windDirty = false;
+    }
     lap('surfaceWind');
 
-    // Δt_a: the tier bound, clipped so t lands on the next 60 s boundary.
     // Δt_a: the tier bound; the rest of the minute is split into equal steps so t lands on the 60 s boundary.
     const dtMax = this.tierNow === 'fast' ? this.atm.maxStableDt() : Math.min(this.atm.maxStableDt(), P.dtMaxS);
     const boundary = (Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS;
@@ -1002,11 +1095,11 @@ export class Simulation {
     this.t = tEnd;
     this.perfSteps++;
     this.perfSim += dt;
-    if (this.replayTarget > -Infinity && this.t >= this.replayTarget - EPS) {
-      // Replay finished: the insights up to the target were kept by the receiver.
-      const rt = this.replayTarget;
-      this.pendingInsights = this.pendingInsights.filter((i) => i.time > rt + EPS);
-      this.replayTarget = -Infinity;
+    if (this.replayTarget > -Infinity && this.t >= this.replayTarget - EPS) this.replayTarget = -Infinity;
+    if (this.suppressUntil > -Infinity && this.t >= this.suppressUntil - EPS) {
+      // The receiver kept the insights up to the suppression horizon (rewind target): do not send them twice.
+      const keep = this.suppressUntil;
+      if (this.pendingInsights.some((i) => i.time <= keep + EPS)) this.pendingInsights = this.pendingInsights.filter((i) => i.time > keep + EPS);
     }
     const interval = this.simOptions.snapshotInterval > 0 ? this.simOptions.snapshotInterval : 300;
     if (this.t >= this.nextSnapshot - EPS) {
@@ -1019,10 +1112,13 @@ export class Simulation {
       } else this.hooks.snapshot(this.makeSnapshot());
       lap('snapshot');
     }
+    if (this.suppressUntil > -Infinity && this.t > this.suppressUntil + EPS) this.suppressUntil = -Infinity;
     if (this.t >= this.nextCheckpoint - EPS) {
       this.nextCheckpoint = (Math.floor(this.t / P.checkpointIntervalS + EPS) + 1) * P.checkpointIntervalS;
       this.ring.push(this.makeCheckpoint());
       while (this.ring.length > P.checkpointRing) this.ring.shift();
+      let bytes = this.ring.reduce((a, c) => a + c.bytes, 0);
+      while (this.ring.length > 1 && bytes > P.checkpointMaxBytes) bytes -= this.ring.shift()!.bytes;
       lap('checkpoint');
     }
     this.perfWall += this.clock() - c0;
@@ -1039,6 +1135,19 @@ export class Simulation {
     ctx.plumeTopAGL = Number.isFinite(this.plumeTopAGL) && this.plumeTopAGL > 0 ? this.plumeTopAGL : 1000;
     ctx.time = env.time;
     ctx.coupling = this.opts.coupling;
+    if (this.tierNow === 'fast' && this.opts.coupling > 0) {
+      // §8.8 pyrogenic correction on the prepared cells of the last prepare with their local front normal (see
+      // SIM_PARAMS.pyroCorrectionMinDirection), not the atmosphere's fallback (ê = background wind direction), which
+      // removes nothing in calm air and the wrong component when the head is not downwind (calm or cross-wind slopes).
+      this.fire.headCells(this.headMask, this.headDirX, this.headDirY, SIM_PARAMS.pyroCorrectionMinDirection);
+      ctx.headMask = this.headMask;
+      ctx.headDirX = this.headDirX;
+      ctx.headDirY = this.headDirY;
+    } else {
+      delete ctx.headMask;
+      delete ctx.headDirX;
+      delete ctx.headDirY;
+    }
     const g = this.terrain.grid;
     this.atm.surfaceWindForFire(g, env.windU, env.windV, env.windBgU, env.windBgV, env.fireIndU, env.fireIndV, env.uRidge, ctx as FireWindContext);
     const c1 = this.clock();
@@ -1349,8 +1458,9 @@ export class Simulation {
 
   private makeCheckpoint(): Checkpoint {
     const env = this.env;
-    return {
+    const cp: Checkpoint = {
       time: this.t,
+      bytes: 0,
       tier: this.tierNow,
       fire: this.fire.checkpoint(),
       moisture: this.moisture.checkpoint(),
@@ -1366,6 +1476,8 @@ export class Simulation {
       nextSnapshot: this.nextSnapshot,
       nextCheckpoint: this.nextCheckpoint,
       lastSector: this.lastSector,
+      nextWind: this.nextWind,
+      windDirty: this.windDirty,
       lastSunMs: this.lastSunMs,
       lastSolarT: this.lastSolarT,
       opts: { ...this.opts },
@@ -1384,6 +1496,8 @@ export class Simulation {
         frontRos: this.frontRos.slice(),
       },
     };
+    cp.bytes = typedBytes(cp);
+    return cp;
   }
 
   private checkpointAtOrBefore(time: number): Checkpoint | null {
@@ -1426,6 +1540,7 @@ export class Simulation {
     this.nextSnapshot = cp.nextSnapshot;
     this.nextCheckpoint = cp.nextCheckpoint;
     this.lastSector = cp.lastSector;
+    this.nextWind = cp.nextWind;
     this.lastSolarT = cp.lastSolarT;
     this.lastSunMs = cp.lastSunMs;
     this.lastSun = null;
@@ -1452,11 +1567,21 @@ export class Simulation {
     env.time = this.t;
     env.weather = weatherAt(this.scenario.weather, this.startMs + this.t * 1000);
     this.updatePyrogenic();
+    this.windDirty = cp.windDirty;
     if (this.opts.maxEmbersUser !== null) this.embers.setMaxEmbers(this.opts.maxEmbersUser);
     this.diag = null;
     this.replayTarget = -Infinity;
     this.suppressUntil = -Infinity;
   }
+}
+
+/** Bytes of every typed array reachable from a value (checkpoint memory accounting). */
+function typedBytes(v: unknown, depth = 0): number {
+  if (depth > 8 || v === null || typeof v !== 'object') return 0;
+  if (ArrayBuffer.isView(v)) return v.byteLength;
+  let b = 0;
+  for (const x of Array.isArray(v) ? v : Object.values(v as object)) b += typedBytes(x, depth + 1);
+  return b;
 }
 
 /** Sparse copy of the previous step's heat release and crown share (non-zero heat cells only). */

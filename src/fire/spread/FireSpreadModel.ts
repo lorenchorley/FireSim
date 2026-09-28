@@ -851,6 +851,55 @@ export class FireSpreadModel {
     return this.firePower;
   }
 
+  /**
+   * Head cells and head directions for the pyrogenic head correction of the fast-tier fire wind (spec §8.8: "head
+   * cells = prepared cells with direction ≥ 0.8 of the local front normal"; atmosphere/ contract addition
+   * `FireWindContext.headMask/headDirX/headDirY`). From the last prepare: every unburnt band cell with 0 < φ ≤
+   * prepareCells·Δx and R_H > 0 whose offset-ellipse speed along the local outward front normal n̂ (central
+   * differences of φ, fallback ê) is ≥ `minDirection`·R_H gets mask 1 and n̂ in (dirX, dirY); all other cells mask 0
+   * (dirX/dirY untouched). n̂ rather than ê: in calm air ê itself follows the indraft (it points into the fire), so a
+   * correction along ê would keep the fire's own indraft. Returns the number of head cells.
+   */
+  headCells(mask: Uint8Array, dirX: Float32Array, dirY: Float32Array, minDirection = 0.8): number {
+    mask.fill(0);
+    const ls = this.ls;
+    const phi = ls.phi;
+    const nx = this.grid.nx;
+    const ny = this.grid.ny;
+    const prepH = this.P.levelSet.prepareCells * this.h;
+    const band = ls.band;
+    let count = 0;
+    for (let a = 0; a < ls.bandCount; a++) {
+      const k = band[a]!;
+      const p = phi[k]!;
+      if (!(p > 0 && p <= prepH)) continue;
+      const rH = this.pRH[k]!;
+      if (!(rH > 0)) continue;
+      const ex = ls.sEx[k]!;
+      const ey = ls.sEy[k]!;
+      const i = k % nx;
+      const j = (k - i) / nx;
+      let nX = ex;
+      let nY = ey;
+      if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1) {
+        const cx = phi[k + 1]! - phi[k - 1]!;
+        const cy = phi[k + nx]! - phi[k - nx]!;
+        const cn = Math.sqrt(cx * cx + cy * cy);
+        if (cn > 1e-9) {
+          nX = cx / cn;
+          nY = cy / cn;
+        }
+      }
+      if (offsetEllipseSpeed(rH, this.pRB[k]!, this.pRF[k]!, nX * ex + nY * ey) >= minDirection * rH) {
+        mask[k] = 1;
+        dirX[k] = nX;
+        dirY[k] = nY;
+        count++;
+      }
+    }
+    return count;
+  }
+
   /** Debris ignitions applied since the last call (spec §7.11); the sim may list them as spot fires. */
   takeDebrisIgnitions(): DebrisIgnition[] {
     const out = this.debrisOut;

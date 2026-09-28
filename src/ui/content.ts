@@ -3,6 +3,9 @@
  * tab), data attributions & licences and research references (About). Wording follows doc 10 §10.1: plain words,
  * "about" for numbers, never "you are safe".
  */
+import { PRESET_IDS, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
+import { REPLAYS as SCENARIO_REPLAYS } from '../scenario/replays';
+
 
 /** Bump when the safety notice wording changes, so users see and accept it again. */
 export const NOTICE_VERSION = 1;
@@ -23,43 +26,23 @@ export interface PresetOption {
   id: string;
   name: string;
   description: string;
-  /** Local start hour suggested for the preset (24 h). */
+  /** Local (LMST) start hour of the preset's canonical day (24 h). */
   startHour: number;
-  /** Rough rating the preset produces, for the card chip. */
+  /** Canonical local month (1–12) and day the preset is designed for (sun angle, curing; the FBI chip is defined there). */
+  month: number;
+  day: number;
+  /** Rating the preset produces at its chip time, for the card chip. */
   rating: 'Moderate' | 'High' | 'Extreme' | 'Catastrophic' | 'No rating';
 }
 
-/** Weather presets. Ids are resolved by the scenario builder (WeatherMode { kind: 'preset' }). */
-export const WEATHER_PRESETS: PresetOption[] = [
-  {
-    id: 'hot-nw-sw-change',
-    name: 'Hot NW wind ahead of a SW change',
-    description: '36 °C, 12 % RH, NW 35–45 km/h; a gusty south-westerly change arrives mid-afternoon. The classic NSW entrapment day.',
-    startHour: 11,
-    rating: 'Extreme',
-  },
-  {
-    id: 'calm-night-katabatic',
-    name: 'Calm night – katabatic drainage',
-    description: 'Clear, still night: cold air drains down slopes and valleys, a thermal belt forms mid-slope, smoke pools in the valleys.',
-    startHour: 19,
-    rating: 'No rating',
-  },
-  {
-    id: 'mild-spring-hr',
-    name: 'Mild spring hazard-reduction day',
-    description: '20 °C, 45 % RH, light SE breeze. Typical prescribed-burn weather: slow, patchy fire that backs down slopes.',
-    startHour: 10,
-    rating: 'Moderate',
-  },
-  {
-    id: 'catastrophic-black-summer',
-    name: 'Catastrophic Black-Summer-like day',
-    description: '42 °C, 6 % RH, NW 50–60 km/h in long drought (DF 10): mass spotting, pyroconvection and a late SW change.',
-    startHour: 10,
-    rating: 'Catastrophic',
-  },
-];
+/**
+ * Weather presets offered in Setup: the scenario builder's catalogue (src/scenario/presets, spec §11.3), so ids,
+ * names and the rating chip always match what the builder runs.
+ */
+export const WEATHER_PRESETS: PresetOption[] = PRESET_IDS.map((id) => {
+  const p = SCENARIO_PRESETS[id];
+  return { id, name: p.name, description: p.description, startHour: p.canonical.startLmst, month: p.canonical.month, day: p.canonical.day, rating: p.chip.rating };
+});
 
 export interface ReplayOption {
   /** Replay id resolved by the scenario builder (WeatherMode { kind: 'replay' }): `<siteId>-<yyyy-mm-dd>`. */
@@ -70,58 +53,8 @@ export interface ReplayOption {
   description: string;
 }
 
-/** Historic fire days with bundled hourly weather (tests/fixtures/live/replay-*.json). */
-export const REPLAYS: ReplayOption[] = [
-  {
-    id: 'katoomba-2013-10-16',
-    siteId: 'katoomba',
-    date: '2013-10-16',
-    name: 'Blue Mountains fires, Oct 2013',
-    description: 'Hot, dry westerlies before the State Mine and Mount Victoria fires ran through the upper Blue Mountains.',
-  },
-  {
-    id: 'grose-2019-12-19',
-    siteId: 'grose',
-    date: '2019-12-19',
-    name: 'Grose Valley, Dec 2019',
-    description: 'Black Summer: the Gospers Mountain fire approaching the Grose Valley and Blackheath.',
-  },
-  {
-    id: 'gospers-2019-12-19',
-    siteId: 'gospers',
-    date: '2019-12-19',
-    name: 'Gospers Mountain, Dec 2019',
-    description: 'The mega-fire’s run through remote Wollemi sandstone country on a catastrophic-rated week.',
-  },
-  {
-    id: 'kanangra-2019-12-17',
-    siteId: 'kanangra',
-    date: '2019-12-17',
-    name: 'Kanangra-Boyd, Dec 2019',
-    description: 'Green Wattle Creek / Ruined Castle fires spreading through the dissected plateau country.',
-  },
-  {
-    id: 'budawangs-2019-12-30',
-    siteId: 'budawangs',
-    date: '2019-12-30',
-    name: 'Currowan fire, 30 Dec 2019',
-    description: 'Eve of the New Year’s Eve run to the coast: hot NW flow down the escarpment ahead of a southerly.',
-  },
-  {
-    id: 'thredbo-2020-01-02',
-    siteId: 'thredbo',
-    date: '2020-01-02',
-    name: 'Snowy Mountains, Jan 2020',
-    description: 'Dunns Road fire weather in the alpine valleys: very dry air, strong winds on the ranges.',
-  },
-  {
-    id: 'warrumbungles-2013-01-12',
-    siteId: 'warrumbungles',
-    date: '2013-01-12',
-    name: 'Wambelong fire, Jan 2013',
-    description: 'The day the Wambelong fire started: record heat, then the run through the park and Siding Spring.',
-  },
-];
+/** Historic fire days with bundled hourly weather (public/replays/): the scenario builder's catalogue (§11.4). */
+export const REPLAYS: ReplayOption[] = SCENARIO_REPLAYS.map((r) => ({ id: r.id, siteId: r.site, date: r.date, name: r.name, description: r.story }));
 
 export interface GlossaryEntry {
   term: string;

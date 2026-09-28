@@ -188,6 +188,14 @@
   line-height: 1.3;
 }
 
+.choice-when {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-weight: 700;
+}
+
 .site-teach {
   display: -webkit-box;
   -webkit-line-clamp: 3;

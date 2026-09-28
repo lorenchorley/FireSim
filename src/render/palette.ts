@@ -393,14 +393,17 @@ export const LANDING_RAMP = makeRamp(
   { log: true },
 );
 
-/** Wind speed (m/s) for particles and arrows: calm blue → white → yellow → orange → magenta. */
+/**
+ * Wind speed (m/s) for particles and arrows: calm grey-blue → white → cyan → blue → violet. Deliberately cool colours:
+ * yellow–orange streaks over a burning landscape read as fire or embers (integration review).
+ */
 export const WIND_RAMP = makeRamp([
-  { at: 0, colour: '#8fc3e8' },
-  { at: 4, colour: '#e8f4ff' },
-  { at: 8, colour: '#fff08a' },
-  { at: 12, colour: '#ffb347' },
-  { at: 17, colour: '#ff6b3d' },
-  { at: 25, colour: '#e0218a' },
+  { at: 0, colour: '#a7b8c8' },
+  { at: 4, colour: '#f4f9ff' },
+  { at: 8, colour: '#a8ecff' },
+  { at: 12, colour: '#4cc3ff' },
+  { at: 17, colour: '#4f7bff' },
+  { at: 25, colour: '#b25cff' },
 ]);
 
 /** Potential-temperature anomaly (K): cold air blue, neutral white, warm plume red. */

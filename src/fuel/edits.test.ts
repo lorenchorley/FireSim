@@ -225,3 +225,29 @@ describe('applyFuelEdit (spec §4.8)', () => {
     expect(b.syntheticBurnTime).toBeUndefined();
   });
 });
+
+describe('applyFuelEdit on maps without per-cell values (NaN = the type steady-state row, fuelParamsAt convention)', () => {
+  it('a hazard delta starts from the type row: +1 surface hazard raises FHS_s and the load (regression: it zeroed the litter)', () => {
+    const nan = (): Float32Array => new Float32Array(n).fill(NaN);
+    const fuel = {
+      grid, type: new Uint8Array(n).fill(FuelType.DryForestShrubby), surfaceHazard: nan(), nearSurfaceHazard: nan(), nearSurfaceHeight: nan(), elevatedHazard: nan(),
+      elevatedHeight: nan(), barkHazard: nan(), surfaceLoad: nan(), nearSurfaceLoad: nan(), elevatedLoad: nan(), barkLoad: nan(), canopyHeight: nan(),
+      canopyCover: nan(), curing: nan(), timeSinceFire: nan(), lastFireKind: new Uint8Array(n), sources: ['test'],
+    };
+    const baseMap = cloneFuelMap(fuel as FuelMapExt);
+    const work = cloneFuelMap(baseMap);
+    const k = cellAt(grid, 0, 0);
+    const before = fuelParamsAt(work, k);
+    const empty = { recStart: new Uint32Array(n + 1), recIndex: new Uint32Array(0), tb: new Float64Array(0), kind: new Uint8Array(0) };
+    const edit: FuelEdit = { kind: 'fuel', id: 'litter', shape: { kind: 'circle', x: 0, y: 0, radius: 100 }, surfaceHazardDelta: 0.5, barkHazardDelta: 1 };
+    expect(applyFuelEdit(work, edit, baseMap, empty, T0)).toBeGreaterThan(0);
+    const after = fuelParamsAt(work, k);
+    expect(after.fhsS).toBeCloseTo(Math.min(4, before.fhsS + 0.5), 6);
+    expect(after.surfaceLoad).toBeCloseTo(loadFromFhs('surface', Math.min(4, before.fhsS + 0.5)), 4); // Float32 storage
+    expect(after.surfaceLoad).toBeGreaterThan(before.surfaceLoad);
+    expect(after.barkHazard).toBeCloseTo(Math.min(4, before.barkHazard + 1), 6);
+    // Untouched layers keep their type-row values.
+    expect(after.nearSurfaceLoad).toBeCloseTo(before.nearSurfaceLoad, 6);
+    expect(after.elevatedLoad).toBeCloseTo(before.elevatedLoad, 6);
+  });
+});

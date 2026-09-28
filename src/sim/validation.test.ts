@@ -299,8 +299,8 @@ d('C. Calm night with katabatic drainage (15 Mar)', () => {
     fast = await run(withIgnitions(night, [pointIgnition('night', IGN_X, IGN_Y, 0, 60)]), 'fast', 7 * 3600);
     perfTable('calm night fast', fast);
     const late = await demoScenario({ preset: 'calm-night-katabatic', startCivil: [2025, 3, 16, 1], duration: 2 * 3600 });
-    std = await run(late, 'standard', 2 * 3600);
-    perfTable('calm night standard (no fire)', std);
+    std = await run(withIgnitions(late, [pointIgnition('night-std', IGN_X, IGN_Y, 0, 60)]), 'standard', 2 * 3600);
+    perfTable('calm night standard', std);
   }, 900000);
 
   /** Share of slopes > 10° whose background 10 m wind points downslope (within 60°) at 0.5–3 m/s; valley-floor speed. */

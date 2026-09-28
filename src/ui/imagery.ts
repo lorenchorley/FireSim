@@ -1,41 +1,23 @@
 /**
  * Aerial imagery for the terrain texture. The demo sites bundle NSW Spatial Services imagery at 8 m
- * (public/demo/<site>/imagery.jpg + imagery.json) on a 9 km square centred on the site, row 0 = north, with cell
- * (col, row) centred at x = −E/2 + (col + 0.5)·cell, y = E/2 − (row + 0.5)·cell in the site's local frame.
+ * (public/demo/<site>/imagery.jpg + imagery.json) on a 9 km square centred on the site, row 0 = north.
  *
- * {@link loadScenarioImagery} crops (and if needed shifts) that image to exactly cover a scenario's terrain grid, as
- * SceneViewApi expects ("image covering the scenario domain exactly; row 0 = north"). src/data has no imagery
- * loader yet, so it lives here.
+ * src/data locates it (loadDemoImageryInfo) and computes the pixel window of a scenario grid (imageryWindow);
+ * {@link loadScenarioImagery} picks the named demo site or any demo site whose bundled square contains the domain (a
+ * GPS / typed location next to a demo site), crops the window and hands the view a canvas covering exactly the
+ * scenario domain, as SceneViewApi expects. The crop is capped at 2048 px for mobile GPUs.
  */
-import { LocalProjection, type LatLon } from '../core/geo';
 import type { GridSpec } from '../core/grid';
-import { DEMO_SITES, loadAssetJson, resolveAssetBase } from '../data';
+import { DEMO_SITES, imageryWindow, loadDemoImageryInfo, resolveAssetBase, type DemoRasterMeta } from '../data';
 import type { SceneImagery } from '../render/api';
 
-interface ImageryMeta {
-  id: string;
-  cellSize: number;
-  n: number;
-  centre: LatLon;
-  extent: number;
-  attribution?: string;
-  source?: string;
-}
-
-/** Pixel rectangle (in the site image) covering a grid's cell-edge bounds, or null if not fully covered. */
-export function imageryCrop(meta: Pick<ImageryMeta, 'cellSize' | 'n' | 'centre' | 'extent'>, grid: GridSpec): { sx: number; sy: number; sw: number; sh: number } | null {
-  const proj = new LocalProjection(meta.centre);
-  const [ox, oy] = proj.toLocal(grid.origin);
-  const half = meta.extent / 2;
-  const xMin = ox + grid.x0 - grid.cellSize / 2;
-  const xMax = ox + grid.x0 + (grid.nx - 0.5) * grid.cellSize;
-  const yMin = oy + grid.y0 - grid.cellSize / 2;
-  const yMax = oy + grid.y0 + (grid.ny - 0.5) * grid.cellSize;
-  const tol = meta.cellSize;
-  if (xMin < -half - tol || xMax > half + tol || yMin < -half - tol || yMax > half + tol) return null;
-  const px = (x: number): number => (x + half) / meta.cellSize;
-  const py = (y: number): number => (half - y) / meta.cellSize;
-  return { sx: px(xMin), sy: py(yMax), sw: px(xMax) - px(xMin), sh: py(yMin) - py(yMax) };
+/** Pixel rectangle (in the site image) covering a grid's cell-edge bounds, or null if the image does not cover it. */
+export function imageryCrop(meta: Pick<DemoRasterMeta, 'cellSize' | 'n' | 'centre' | 'extent'>, grid: GridSpec): { sx: number; sy: number; sw: number; sh: number } | null {
+  const w = imageryWindow(meta as DemoRasterMeta, grid);
+  const n = meta.n || Math.round(meta.extent / meta.cellSize);
+  const tol = 1; // one image pixel of slack for projection round-off
+  if (w.sx < -tol || w.sy < -tol || w.sx + w.sw > n + tol || w.sy + w.sh > n + tol) return null;
+  return w;
 }
 
 function loadImage(url: string, signal?: AbortSignal): Promise<HTMLImageElement> {
@@ -61,13 +43,12 @@ export function demoImageryUrl(siteId: string): string {
 export async function loadScenarioImagery(grid: GridSpec, demoSiteId?: string, signal?: AbortSignal): Promise<SceneImagery | null> {
   const ids = [demoSiteId, ...DEMO_SITES.map((s) => s.id)].filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
   for (const id of ids) {
-    const meta = await loadAssetJson<ImageryMeta>(`demo/${id}/imagery.json`, signal).catch(() => null);
-    if (!meta) continue;
-    const crop = imageryCrop(meta, grid);
+    const info = await loadDemoImageryInfo(id, signal).catch(() => null);
+    if (!info) continue;
+    const crop = imageryCrop(info.meta, grid);
     if (!crop) continue;
     try {
-      const img = await loadImage(demoImageryUrl(id), signal);
-      // Native resolution of the crop (8 m pixels), capped at 2048 px for mobile GPUs; aspect follows the grid.
+      const img = await loadImage(new URL(info.url, location.href).href, signal);
       const scale = Math.min(1, 2048 / Math.max(crop.sw, crop.sh));
       const w = Math.max(64, Math.round(crop.sw * scale));
       const hgt = Math.max(64, Math.round(crop.sh * scale));
@@ -78,7 +59,7 @@ export async function loadScenarioImagery(grid: GridSpec, demoSiteId?: string, s
       if (!ctx) return null;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, w, hgt);
-      return { image: canvas, attribution: meta.attribution ?? '© Spatial Services NSW (CC BY 4.0)' };
+      return { image: canvas, attribution: info.meta.attribution || '© Spatial Services NSW (CC BY 4.0)' };
     } catch (e) {
       if (signal?.aborted) throw e;
       console.warn('[FireSim] imagery load failed', e);

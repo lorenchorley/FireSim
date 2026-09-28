@@ -76,6 +76,9 @@ export class MockSceneView implements SceneViewApi {
   private cx = 0;
   private cy = 0;
   private scale = 0.05;
+  /** Optical-centre shift (CSS px) from the view insets. */
+  private offX = 0;
+  private offY = 0;
   private anim: { from: [number, number, number]; to: [number, number, number]; t0: number; dur: number } | null = null;
   private raf = 0;
   private dirty = true;
@@ -162,8 +165,8 @@ export class MockSceneView implements SceneViewApi {
     const sx = clientX - r.left;
     const sy = clientY - r.top;
     if (sx < 0 || sy < 0 || sx > r.width || sy > r.height) return null;
-    const x = this.cx + (sx - r.width / 2) / this.scale;
-    const y = this.cy - (sy - r.height / 2) / this.scale;
+    const x = this.cx + (sx - r.width / 2 - this.offX) / this.scale;
+    const y = this.cy - (sy - r.height / 2 - this.offY) / this.scale;
     const half = this.halfExtent();
     if (Math.abs(x) > half || Math.abs(y) > half) return null;
     return [x, y];
@@ -171,8 +174,8 @@ export class MockSceneView implements SceneViewApi {
 
   projectToScreen(x: number, y: number): [number, number] | null {
     const r = this.canvas.getBoundingClientRect();
-    const sx = r.width / 2 + (x - this.cx) * this.scale;
-    const sy = r.height / 2 - (y - this.cy) * this.scale;
+    const sx = r.width / 2 + this.offX + (x - this.cx) * this.scale;
+    const sy = r.height / 2 + this.offY - (y - this.cy) * this.scale;
     if (sx < -50 || sy < -50 || sx > r.width + 50 || sy > r.height + 50) return null;
     return [r.left + sx, r.top + sy];
   }
@@ -194,6 +197,27 @@ export class MockSceneView implements SceneViewApi {
     // The 2-D view is always top-down; 'top' re-fits the domain, 'ground' centres on the user.
     if (mode === 'top') this.fit(true);
     if (mode === 'ground' && this.user) this.flyTo(this.user.x, this.user.y, 1500);
+  }
+
+  setViewInsets(insets: { top?: number; right?: number; bottom?: number; left?: number }): void {
+    this.offX = ((insets.left ?? 0) - (insets.right ?? 0)) / 2;
+    this.offY = ((insets.top ?? 0) - (insets.bottom ?? 0)) / 2;
+    this.invalidate();
+  }
+
+  zoomBy(factor: number): void {
+    if (!(factor > 0)) return;
+    this.scale = this.clampScale(this.scale / factor);
+    this.invalidate();
+  }
+
+  /** The 2-D map is always north up. */
+  get heading(): number {
+    return 0;
+  }
+
+  setHeading(_deg: number): void {
+    /* always north up */
   }
 
   setUserLocation(x: number, y: number, headingDeg?: number | null): void {
@@ -488,7 +512,7 @@ export class MockSceneView implements SceneViewApi {
   };
 
   private toScreen(x: number, y: number, W: number, H: number): [number, number] {
-    return [W / 2 + (x - this.cx) * this.scale, H / 2 - (y - this.cy) * this.scale];
+    return [W / 2 + this.offX + (x - this.cx) * this.scale, H / 2 + this.offY - (y - this.cy) * this.scale];
   }
 
   private draw(now: number): void {

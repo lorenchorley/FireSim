@@ -7,8 +7,8 @@
  * - {@link LocalSimController}: the same host running in the calling thread (chunks yield with setTimeout), for
  *   environments without Worker and for tests. Snapshot arrays are handed over without copying.
  *
- * `explain(x, y, time?)`: the optional view time (the UI passes it as an extra argument) travels as an extra `time`
- * field of the 'explain' message; the worker evaluates arrival state at min(time, now).
+ * `explain(x, y, time?)`: the optional view time travels as the `time` field of the 'explain' message; the worker
+ * evaluates arrival state at min(time, now).
  */
 import type { CellExplanation, Ignition, Insight, QualityTier, ScenarioData, ScenarioEdit } from '../core/types';
 import { SimHost, type SimHostOptions } from './host';
@@ -112,6 +112,9 @@ abstract class ProtocolController implements SimController {
   removeEdit(id: string): void {
     this.send({ type: 'removeEdit', id });
   }
+  removeIgnition(id: string): void {
+    this.send({ type: 'removeIgnition', id });
+  }
   rewind(time: number): void {
     this.send({ type: 'rewind', time });
   }
@@ -121,12 +124,12 @@ abstract class ProtocolController implements SimController {
   setQuality(tier: QualityTier): void {
     this.send({ type: 'setQuality', tier });
   }
-  /** `time` (s, optional extension): explain the state at that view time (≤ the simulation time). */
+  /** `time` (s, optional): explain the state at that view time (≤ the simulation time). */
   explain(x: number, y: number, time?: number): Promise<CellExplanation> {
     const reqId = this.reqId++;
     return new Promise<CellExplanation>((resolve, reject) => {
       this.pendingExplain.set(reqId, { resolve, reject });
-      const msg = { type: 'explain', x, y, reqId, ...(time !== undefined && Number.isFinite(time) ? { time } : {}) } as ToWorker;
+      const msg: ToWorker = { type: 'explain', x, y, reqId, ...(time !== undefined && Number.isFinite(time) ? { time } : {}) };
       this.send(msg);
     });
   }
@@ -238,6 +241,10 @@ export class SimClient extends ProtocolController {
   override removeEdit(id: string): void {
     if (this.local) this.local.removeEdit(id);
     else super.removeEdit(id);
+  }
+  override removeIgnition(id: string): void {
+    if (this.local) this.local.removeIgnition(id);
+    else super.removeIgnition(id);
   }
   override rewind(time: number): void {
     if (this.local) this.local.rewind(time);

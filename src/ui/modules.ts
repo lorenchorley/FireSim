@@ -10,7 +10,7 @@ import type { ScenarioData } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import type { SimController } from '../sim/protocol';
-import type { LegendProvider } from './legends';
+import type { ExternalLegend, LegendProvider } from './legends';
 
 export type BuildScenarioFn = (req: ScenarioRequest, onProgress: (p: BuildProgress) => void, signal?: AbortSignal) => Promise<ScenarioData>;
 
@@ -24,6 +24,13 @@ export interface Services {
   readonly sources: { scenario: ModuleSource; sim: ModuleSource; scene: ModuleSource };
   /** Overlay legends from the renderer, when it provides them (the UI falls back to its own). */
   legendProvider: LegendProvider | null;
+  /** Legends of the renderer's cross-section curtain and wind particles (null with the 2-D map). */
+  sceneLegends: SceneLegends | null;
+}
+
+export interface SceneLegends {
+  crossSection(): ExternalLegend;
+  wind(mode: 'surface' | 'volume'): ExternalLegend;
 }
 
 interface SimModule {
@@ -32,6 +39,8 @@ interface SimModule {
 interface RenderModule {
   SceneView: new (container: HTMLElement) => SceneViewApi;
   legendFor?: LegendProvider;
+  crossSectionLegend?: () => ExternalLegend;
+  windLegend?: (mode: 'surface' | 'volume') => ExternalLegend;
 }
 interface ScenarioModule {
   buildScenario: BuildScenarioFn;
@@ -80,6 +89,10 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
   const services: Services = {
     sources,
     legendProvider: render && typeof render.legendFor === 'function' ? render.legendFor : null,
+    sceneLegends:
+      render && typeof render.crossSectionLegend === 'function' && typeof render.windLegend === 'function'
+        ? { crossSection: render.crossSectionLegend, wind: render.windLegend }
+        : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
     createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),
     createSceneView(container: HTMLElement): SceneViewApi {
@@ -90,6 +103,7 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
           console.warn('[FireSim] 3-D view unavailable on this device — showing the 2-D map instead.', e);
           sources.scene = 'mock';
           services.legendProvider = null;
+          services.sceneLegends = null;
           container.replaceChildren();
         }
       }

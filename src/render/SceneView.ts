@@ -86,6 +86,15 @@ function guessQuality(): RenderQuality {
   return 'medium';
 }
 
+/** True if the fine grid spans the coarse grid's domain (cell edges, within one fine cell). */
+function coversDomain(fine: GridSpec, coarse: GridSpec): boolean {
+  const edge = (g: GridSpec): [number, number, number, number] => [g.x0 - g.cellSize / 2, g.y0 - g.cellSize / 2, g.x0 + (g.nx - 0.5) * g.cellSize, g.y0 + (g.ny - 0.5) * g.cellSize];
+  const [a0, b0, a1, b1] = edge(fine);
+  const [c0, d0, c1, d1] = edge(coarse);
+  const tol = fine.cellSize * 1.01;
+  return Math.abs(a0 - c0) <= tol && Math.abs(b0 - d0) <= tol && Math.abs(a1 - c1) <= tol && Math.abs(b1 - d1) <= tol;
+}
+
 const FIRE_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver']);
 /** Overlays whose values change with every snapshot. */
 const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation']);
@@ -268,7 +277,7 @@ export class SceneView implements SceneViewApi {
   // Scenario
   // ───────────────────────────────────────────────────────────────────────────
 
-  setScenario(terrain: Terrain, fuel: FuelMap, opts: { imagery?: SceneImagery | null } = {}): void {
+  setScenario(terrain: Terrain, fuel: FuelMap, opts: { imagery?: SceneImagery | null; hiRes?: { grid: GridSpec; elevation: Float32Array } | null } = {}): void {
     this.terrainLayer?.dispose();
     this.vegetation?.dispose();
     if (this.terrainLayer) this.scene.remove(this.terrainLayer.group);
@@ -288,7 +297,11 @@ export class SceneView implements SceneViewApi {
     this.insolField = null;
     this.maxArrival = 0;
 
-    const rg = decimateGrid(terrain.grid, terrain.elevation, this.opts.meshResolution ?? this.quality.mesh);
+    // Mesh from the finer DEM when the scenario has one of the same domain (10 m bundled LiDAR / tiles).
+    const hi = opts.hiRes;
+    const useHi = !!hi && hi.grid.cellSize < terrain.grid.cellSize && hi.elevation.length === hi.grid.nx * hi.grid.ny && coversDomain(hi.grid, terrain.grid);
+    const src = useHi ? hi! : terrain;
+    const rg = decimateGrid(src.grid, src.elevation, this.opts.meshResolution ?? this.quality.mesh);
     this.rg = rg;
     this.hf = new HeightField(rg.grid, rg.elevation, this.vex);
     const b = gridBounds(rg.grid);
@@ -683,9 +696,31 @@ export class SceneView implements SceneViewApi {
     this.dirty = true;
   }
 
+  setViewInsets(insets: { top?: number; right?: number; bottom?: number; left?: number }): void {
+    this.rig.setViewInsets(insets, this.hf !== null);
+    this.dirty = true;
+  }
+
+  zoomBy(factor: number): void {
+    this.rig.zoomBy(factor);
+    this.dirty = true;
+  }
+
+  get heading(): number {
+    return this.rig.heading;
+  }
+
+  setHeading(deg: number): void {
+    this.rig.setHeading(deg);
+    this.dirty = true;
+  }
+
   setViewMode(mode: 'orbit' | 'top' | 'ground'): void {
     const c = this.fire && this.snap ? fireCentroid(this.fire, this.displayTime, 3 * 3600) : null;
-    this.rig.setMode(mode as ViewMode, { user: this.user ? [this.user.x, this.user.y] : null, lookAt: c ? [c.x, c.y] : null });
+    // Eye level stands at the user's GPS position, else at the point the view is centred on ("stand here").
+    const t = this.rig.controls.target;
+    const stand: [number, number] = this.user ? [this.user.x, this.user.y] : [t.x, -t.z];
+    this.rig.setMode(mode as ViewMode, { user: stand, lookAt: c ? [c.x, c.y] : null });
     this.updateViewDependentLayers();
     // Eye level: clear the few trees right in front of the viewer's face.
     this.vegetation?.setNearCull(mode === 'ground' ? 45 : 0);
@@ -723,9 +758,11 @@ export class SceneView implements SceneViewApi {
   viewSection(animate = true): void {
     const cs = this.layers.crossSection;
     if (!this.hf) return;
+    // A side view needs the oblique camera (the top view locks the tilt, eye level the position).
+    if (this.rig.mode !== 'orbit') this.rig.setMode('orbit');
     const cam = this.rig.camera;
-    const vfov = THREE.MathUtils.degToRad(cam.fov);
-    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * cam.aspect);
+    const vfov = THREE.MathUtils.degToRad(this.rig.viewFov);
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.rig.viewAspect);
     // Frame ~3 km of the section across and its lowest ~2.5 km (where the fire, the plume base and the drainage
     // flows are) top to bottom: portrait phones are limited by the width, landscape by the height.
     const span = Math.min(3000, this.section.line?.length ?? 3000);
@@ -910,7 +947,7 @@ export class SceneView implements SceneViewApi {
 
     const cam = this.rig.camera;
     const vpH = (this.u.uViewport!.value as THREE.Vector2).y;
-    const fovRad = THREE.MathUtils.degToRad(cam.fov);
+    const fovRad = THREE.MathUtils.degToRad(this.rig.viewFov);
     const pxPerRad = vpH / fovRad;
     if (this.terrainLayer) this.terrainLayer.uniforms.uPixelMetres!.value = (2 * Math.tan(fovRad / 2)) / Math.max(1, vpH);
     this.vegetation?.setProjection(pxPerRad, 2600);
@@ -983,7 +1020,7 @@ export class SceneView implements SceneViewApi {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(w, h, false);
-    this.rig.resize(w / h);
+    this.rig.resize(w / h, w, h);
     this.updateViewport();
     this.dirty = true;
   }
