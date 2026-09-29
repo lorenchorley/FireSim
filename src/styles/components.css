@@ -320,6 +320,15 @@ select.input {
   margin: 0;
 }
 
+.input-wrap input:disabled,
+.input-wrap select:disabled,
+.input-wrap textarea:disabled,
+.input:disabled {
+  background: var(--surface-2);
+  border-color: var(--outline-variant);
+  color: var(--muted);
+}
+
 .input-wrap.has-error input,
 .input-wrap.has-error select,
 .input.has-error {

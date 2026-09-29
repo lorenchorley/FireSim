@@ -549,6 +549,7 @@ button.search-bar-text {
  */
 .tile-grid {
   display: grid;
+  width: 100%;
   grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
   gap: var(--sp-3) var(--sp-2);
   padding: var(--sp-2) var(--sp-3);

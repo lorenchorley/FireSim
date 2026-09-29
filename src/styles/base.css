@@ -74,6 +74,11 @@ p {
   margin: 0 0 var(--sp-2);
 }
 
+strong,
+b {
+  font-weight: var(--fw-medium);
+}
+
 button,
 input,
 select,

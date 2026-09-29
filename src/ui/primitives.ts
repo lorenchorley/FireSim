@@ -291,9 +291,9 @@ export function stat(o: { value: string | number; unit?: string; caption: string
   ]);
 }
 
-/** Several stats in equal columns. */
-export function statRow(stats: readonly HTMLElement[]): HTMLElement {
-  return h('div', { class: 'stat-row' }, stats);
+/** Several stats in equal columns (3 by default, 2 or 4 when asked). */
+export function statRow(stats: readonly HTMLElement[], cols: 2 | 3 | 4 = 3): HTMLElement {
+  return h('div', { class: 'stat-row', style: `--cols:${cols}` }, stats);
 }
 
 export type BarColour = 'neutral' | 'ok' | 'watch' | 'danger' | 'fire' | 's1' | 's2' | 's3' | 's4' | 's5';

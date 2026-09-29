@@ -331,21 +331,7 @@
   margin: 18px 0 8px;
 }
 
-.progress {
-  flex: 1;
-  height: 16px;
-  border-radius: 8px;
-  border: 2px solid var(--border);
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width 0.25s var(--ease);
-}
+/* .progress and .progress-fill are shared primitives now (components.css); the building screen uses them as they are. */
 
 .progress-pct {
   font-weight: 900;

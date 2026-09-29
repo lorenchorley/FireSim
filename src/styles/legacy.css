@@ -3,3 +3,14 @@
  * comfortably on the new flat design tokens. Loaded LAST. Every block names the screen that owns it; when that screen is
  * restyled onto the shared primitives its block is deleted (see docs/DESIGN.md "Migration checklist").
  */
+
+/* Building screen: the progress bar is the main thing on it, so it is taller than the 4 px primitive. */
+.progress-row .progress {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.progress-row .progress-fill {
+  border-radius: 4px;
+}

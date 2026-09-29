@@ -74,6 +74,12 @@
   text-align: left;
 }
 
+/* A bar beside a value takes a fixed width instead of the whole line. */
+.kv-val .bar,
+.list-trail .bar {
+  width: 64px;
+}
+
 /* Dense variant for long lists. */
 .kv-dense .kv-row {
   min-height: 28px;
@@ -82,7 +88,7 @@
 
 /* ───────────────────────── Stat (big number + caption) ─────────────────────────
  * <div class="stat"><span class="stat-num">1.2<span class="stat-unit">GB</span></span><span class="stat-cap">Total on device</span></div>
- * .stat-row lays several stats out in equal columns; .stat-lg uses the 32 px display size.
+ * .stat-row lays stats out in equal columns (3 by default; style="--cols:2" for two); .stat-lg uses the 32 px display size.
  */
 .stat {
   display: flex;
@@ -119,7 +125,7 @@
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
   gap: var(--sp-3) var(--sp-4);
 }
 
