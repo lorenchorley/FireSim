@@ -279,12 +279,3 @@ export const FOLIAGE = {
   grassGreen: hexToRgb('#7f9a45'),
   grassCured: hexToRgb('#c9b06a'),
 };
-
-/** The restrained palette of the simple style (one calm tone per shape). */
-export const SIMPLE = {
-  crown: hexToRgb('#5f8f56'),
-  cone: hexToRgb('#3d6b45'),
-  shrub: hexToRgb('#7ea060'),
-  grass: hexToRgb('#a2b56a'),
-  trunk: hexToRgb('#6b5a48'),
-};

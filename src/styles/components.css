@@ -1,41 +1,121 @@
-/* Reusable controls: buttons, segmented, toggles, sliders, fields, cards, chips, callouts, compass rose, modals. */
+/*
+ * Shared controls of the flat "Maps" look: buttons, fields, segmented, switches, checkboxes, sliders, steppers, cards,
+ * lists, chips, badges, callouts, progress, skeletons, details, the compass rose.
+ * Overlays and navigation (top bar, FABs, sheets, dialogs, popovers, snackbar, bottom nav, tile grid) live in overlays.css;
+ * data-sheet primitives (kv, stat, bar, meter, sparkbar, origin chips, tables, code) in data.css.
+ *
+ * TAP RULE: a control may LOOK 32-40 px tall but its hit area is always >= var(--tap) x var(--tap) (44 px):
+ * interactive primitives carry an invisible ::after that grows the hit area to 44 px. Keep at least 4 px between two
+ * neighbouring small controls so their hit areas do not fight.
+ * Full guide with markup for every block: docs/DESIGN.md. Live gallery: src/ui/styleguide.html.
+ */
 
-/* ── Buttons ── */
+/* ───────────────────────── Buttons ─────────────────────────
+ * <button class="btn">Outlined (default)</button>  .btn-primary (filled blue)  .btn-tonal  .btn-ghost / .btn-text  .btn-danger
+ * sizes .btn-sm (32) / default (40) / .btn-lg (48); .btn-block full width; .btn-icon round icon-only (widgets.button iconOnly).
+ * Legacy variants still work: .btn-secondary = outlined, .btn-accent = tonal.
+ */
 .btn {
-  min-height: var(--tap);
-  min-width: var(--tap);
-  padding: 0 18px;
+  --btn-h: var(--ctl-h);
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border-radius: 12px;
-  border: var(--control-border);
+  gap: var(--sp-2);
+  min-height: var(--btn-h);
+  min-width: var(--btn-h);
+  padding: 0 var(--sp-4);
+  border: var(--bw) solid var(--outline-variant);
+  border-radius: var(--r-pill);
   background: var(--surface);
-  color: var(--text);
-  font-weight: 800;
-  font-size: 17px;
-  line-height: 1.1;
+  color: var(--primary-ink);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
   text-align: center;
   touch-action: manipulation;
-  transition: transform 0.08s var(--ease), background 0.15s;
   user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
 }
 
-.btn:active {
-  transform: scale(0.97);
+/* State layer: a currentColor veil that shows hover (pointer devices) and pressed. */
+.btn::before,
+.icon-btn::before,
+.fab::before,
+.chip::before,
+.tile-thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease);
+}
+
+.btn:active::before,
+.icon-btn:active::before,
+.fab:active::before,
+button.chip:active::before,
+label.chip:active::before,
+button.tile:active .tile-thumb::before {
+  opacity: 0.14;
+}
+
+@media (hover: hover) {
+  .btn:hover::before,
+  .icon-btn:hover::before,
+  .fab:hover::before,
+  button.chip:hover::before,
+  button.tile:hover .tile-thumb::before {
+    opacity: 0.08;
+  }
+}
+
+/* Hit area: at least 44 x 44 around the centre, whatever the visual size. */
+.btn::after,
+.icon-btn::after,
+.fab::after,
+button.chip::after,
+label.chip::after,
+a.chip::after,
+.tap::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--tap));
+  height: max(100%, var(--tap));
+  transform: translate(-50%, -50%);
+}
+
+.tap {
+  position: relative;
+}
+
+.btn .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 .btn:disabled,
-.btn.is-disabled {
-  opacity: 0.55;
+.btn.is-disabled,
+.icon-btn:disabled,
+.fab:disabled,
+.chip:disabled,
+.tile:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
-.btn-lg {
-  min-height: var(--tap-lg);
-  font-size: 19px;
-  padding: 0 22px;
-  border-radius: 14px;
+.btn:disabled::before,
+.btn:disabled::after {
+  display: none;
 }
 
 .btn-primary {
@@ -44,10 +124,11 @@
   color: var(--on-primary);
 }
 
+.btn-tonal,
 .btn-accent {
-  background: var(--accent);
-  border-color: var(--border);
-  color: var(--on-accent);
+  background: var(--primary-container);
+  border-color: transparent;
+  color: var(--on-primary-container);
 }
 
 .btn-danger {
@@ -56,44 +137,117 @@
   color: var(--on-danger);
 }
 
-.btn-ghost {
+.btn-secondary,
+.btn-outlined {
+  background: var(--surface);
+}
+
+.btn-ghost,
+.btn-text {
   background: transparent;
   border-color: transparent;
+  padding: 0 var(--sp-3);
 }
 
-.btn-ghost:active {
-  background: var(--surface-2);
+.btn-sm {
+  --btn-h: var(--ctl-h-sm);
+  padding: 0 var(--sp-3);
 }
 
+.btn-lg {
+  --btn-h: var(--ctl-h-lg);
+  padding: 0 var(--sp-5);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+/* Icon-only button made with .btn (widgets.button iconOnly): round, no padding. */
 .btn-icon {
   padding: 0;
-  width: var(--tap);
+  width: var(--btn-h);
+  border-radius: 50%;
+}
+
+.btn-icon.btn-ghost {
+  color: var(--text);
+}
+
+.btn-icon .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
 }
 
 .row-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin: 10px 0;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
 }
 
 .row-actions .btn-lg {
   flex: 1 1 auto;
 }
 
-/* ── Fields ── */
+/* ── Icon button: 40 px round, 24 px icon, 44 px hit area. .is-selected = blue; -tonal / -filled variants. ── */
+.icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.icon-btn .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.icon-btn.is-selected,
+.icon-btn[aria-pressed='true'] {
+  color: var(--primary-ink);
+}
+
+.icon-btn-tonal {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.icon-btn-filled {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ───────────────────────── Fields ─────────────────────────
+ * <div class="field"><label class="field-label" for="x">Label</label><div class="input-wrap"><input id="x" ...><span class="input-unit">km</span></div></div>
+ * Text input / select / textarea: 44 px, 8 px radius, outline >= 3:1, blue 2 px on focus.
+ */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 10px 0;
+  gap: var(--sp-1);
+  margin: var(--sp-3) 0;
   min-width: 0;
 }
 
 .field-label {
   display: block;
-  font-weight: 800;
-  font-size: 16px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   color: var(--text);
 }
 
@@ -104,46 +258,96 @@
 }
 
 .input-wrap input,
-.input-wrap select {
+.input-wrap select,
+.input-wrap textarea,
+.input {
   width: 100%;
-  min-height: 54px;
-  padding: 0 14px;
-  border: var(--control-border);
-  border-radius: 12px;
+  min-width: 0;
+  min-height: var(--field-h);
+  padding: 0 var(--sp-3);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-sm);
   background: var(--surface);
-  font-size: 19px;
-  font-weight: 700;
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
   appearance: none;
   -webkit-appearance: none;
-  min-width: 0;
 }
 
-.input-wrap select {
-  font-size: 16px;
-  font-weight: 600;
-  padding-right: 36px;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
-  background-size: 6px 6px;
+.input-wrap textarea,
+textarea.input {
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 88px;
+  resize: vertical;
+}
+
+.input-wrap input::placeholder,
+.input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.input-wrap input:focus,
+.input-wrap select:focus,
+.input-wrap textarea:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.input-wrap select,
+select.input {
+  padding-right: 40px;
+  background-image: var(--chev-down);
   background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 20px;
 }
 
 .input-wrap input[type='number'] {
-  padding-right: 56px;
+  padding-right: 52px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input-wrap input[type='number']::-webkit-inner-spin-button,
+.input-wrap input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input-wrap.has-error input,
+.input-wrap.has-error select,
+.input.has-error {
+  border-color: var(--danger-ink);
 }
 
 .input-unit {
   position: absolute;
-  right: 14px;
+  right: var(--sp-3);
   color: var(--muted);
-  font-weight: 800;
+  font-weight: var(--fw-medium);
   pointer-events: none;
+}
+
+.field-error {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .grid-2,
 .grid-3 {
   display: grid;
-  gap: 10px;
+  gap: var(--sp-2);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -151,16 +355,81 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* ── Segmented ── */
+/* ── Number stepper: [-] 12 [+] ; 44 px tall, both buttons 44 px wide ──
+ * <div class="stepper"><button class="stepper-btn" aria-label="Less">-</button><input class="stepper-input" type="number"><button class="stepper-btn" aria-label="More">+</button></div>
+ */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  height: var(--field-h);
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+}
+
+.stepper-btn {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--primary-ink);
+  touch-action: manipulation;
+}
+
+.stepper-btn:active {
+  background: var(--state-press);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.38;
+}
+
+.stepper-input {
+  width: 64px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: center;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.stepper-input::-webkit-inner-spin-button,
+.stepper-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.stepper-input:focus {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+/* ───────────────────────── Segmented control ─────────────────────────
+ * Radio group made of joined outlined pills (widgets.segmented builds it). The selected segment is tinted blue and shows a
+ * check, so selection is never colour alone. With `columns` (.segmented-grid) the options become separate rounded tiles.
+ */
 .segmented {
   border: 0;
-  margin: 12px 0;
+  margin: var(--sp-3) 0;
   padding: 0;
   min-width: 0;
 }
 
 .segmented legend {
-  margin-bottom: 6px;
+  margin-bottom: var(--sp-1);
   padding: 0;
 }
 
@@ -169,31 +438,19 @@
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: 0;
-  border: var(--control-border);
-  border-radius: 12px;
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-pill);
   overflow: hidden;
+  background: var(--surface);
 }
 
 .segmented-grid {
   grid-auto-flow: row;
-  gap: 8px;
+  gap: var(--sp-2);
   border: 0;
   border-radius: 0;
   overflow: visible;
-}
-
-.segmented-grid .segmented-option .segmented-face {
-  border: var(--control-border);
-  border-radius: 12px;
-  justify-content: flex-start;
-  text-align: left;
-  padding: 8px 12px;
-  /* Grid cells are wide enough: keep the icon beside its label ("Historic fire"); long labels wrap as text. */
-  flex-wrap: nowrap;
-}
-
-.segmented-grid .segmented-text {
-  min-width: 0;
+  background: transparent;
 }
 
 .segmented-option {
@@ -212,25 +469,38 @@
 
 .segmented-face {
   flex: 1;
-  min-height: 52px;
+  min-height: var(--tap); /* a segment is a tap target: 44 px */
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
   background: var(--surface);
-  font-weight: 800;
+  color: var(--text);
+  font-weight: var(--fw-medium);
   text-align: center;
-  line-height: 1.15;
+  line-height: var(--lh-sm);
   cursor: pointer;
-  border-left: 2px solid var(--border-soft);
-  /* In a narrow option the label drops below its icon instead of being clipped ("Sunlight" at 360 px). */
-  flex-wrap: wrap;
-  row-gap: 2px;
+  border-left: var(--bw) solid var(--outline);
+  flex-wrap: nowrap;
+  transition: background-color var(--dur-1) var(--ease);
 }
 
 .segmented-option:first-child .segmented-face {
   border-left: 0;
+}
+
+.segmented-option input:active + .segmented-face {
+  background: var(--state-press);
+}
+
+.segmented-face .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.segmented-check {
+  display: none;
 }
 
 .segmented-text {
@@ -240,33 +510,77 @@
 }
 
 .segmented-sub {
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   color: var(--muted);
 }
 
 .segmented-option input:checked + .segmented-face {
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.segmented-option input:checked + .segmented-face .segmented-check {
+  display: block;
+}
+
+/* The check REPLACES the segment's own icon while it is selected (Material 3), so a narrow segment never wraps. */
+.segmented-option input:checked + .segmented-face .icon:not(.segmented-check) {
+  display: none;
 }
 
 .segmented-option input:checked + .segmented-face .segmented-sub {
   color: inherit;
-  opacity: 0.9;
 }
 
 .segmented-option input:focus-visible + .segmented-face {
-  outline: 3px solid var(--focus);
-  outline-offset: -5px;
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
 }
 
-/* ── Toggle ── */
+.segmented-grid .segmented-option .segmented-face {
+  border: var(--bw) solid var(--outline-variant);
+  border-radius: var(--r-md);
+  justify-content: flex-start;
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  flex-wrap: nowrap;
+}
+
+.segmented-grid .segmented-option:first-child .segmented-face {
+  border-left: var(--bw) solid var(--outline-variant);
+}
+
+.segmented-grid .segmented-option input:checked + .segmented-face {
+  border: 2px solid var(--primary);
+  padding: calc(var(--sp-2) - 1px) calc(var(--sp-3) - 1px);
+}
+
+/* Tiles show selection by a thicker blue frame, not a check: their own icon stays. */
+.segmented-grid .segmented-option input:checked + .segmented-face .segmented-check {
+  display: none;
+}
+
+.segmented-grid .segmented-option input:checked + .segmented-face .icon:not(.segmented-check) {
+  display: block;
+}
+
+.segmented-grid .segmented-text {
+  min-width: 0;
+}
+
+/* ───────────────────────── Switch (M3) ─────────────────────────
+ * <label class="toggle"><span class="toggle-text"><span class="toggle-label">Title</span><span class="toggle-desc">Secondary</span></span>
+ *   <input type="checkbox" role="switch"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>   (widgets.toggle)
+ * The whole row is the tap target (>= 48 px). Blue track + white thumb when on; outlined track + small grey thumb when off.
+ */
 .toggle {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 60px;
-  padding: 8px 0;
+  gap: var(--sp-3);
+  min-height: var(--row-h);
+  padding: var(--sp-1) 0;
   cursor: pointer;
   position: relative;
 }
@@ -279,7 +593,7 @@
 }
 
 .toggle-icon {
-  color: var(--muted);
+  color: var(--icon);
 }
 
 .toggle-text {
@@ -290,35 +604,44 @@
 }
 
 .toggle-label {
-  font-weight: 800;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
 }
 
 .toggle-desc {
   color: var(--muted);
-  font-size: 16px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .toggle-track {
   flex: 0 0 auto;
-  width: 60px;
-  height: 36px;
-  border-radius: 18px;
-  border: var(--control-border);
-  background: var(--surface-3);
   position: relative;
-  transition: background 0.15s;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  border: 2px solid var(--outline);
+  background: var(--surface-2);
+  transition:
+    background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
 }
 
 .toggle-thumb {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 26px;
-  height: 26px;
+  top: 50%;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
   border-radius: 50%;
-  background: var(--surface);
-  border: 2px solid var(--border);
-  transition: transform 0.15s var(--ease);
+  background: var(--outline);
+  transition:
+    transform var(--dur-1) var(--ease),
+    width var(--dur-1) var(--ease),
+    height var(--dur-1) var(--ease),
+    margin-top var(--dur-1) var(--ease),
+    background-color var(--dur-1) var(--ease);
 }
 
 .toggle input:checked ~ .toggle-track {
@@ -327,33 +650,97 @@
 }
 
 .toggle input:checked ~ .toggle-track .toggle-thumb {
-  transform: translateX(24px);
-  border-color: var(--primary);
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  background: var(--on-primary);
+  transform: translateX(18px);
+}
+
+.toggle input:disabled ~ .toggle-track {
+  opacity: 0.38;
 }
 
 .toggle input:focus-visible ~ .toggle-track {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
 .toggle-list .toggle + .toggle {
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--divider);
 }
 
-/* ── Slider ── */
+/* ───────────────────────── Checkbox and radio ─────────────────────────
+ * <label class="check"><input type="checkbox"><span>Label</span></label>   <label class="radio"><input type="radio" name="g"><span>Label</span></label>
+ * The label row is the tap target (>= 44 px).
+ */
+.check,
+.radio {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  cursor: pointer;
+}
+
+.check input,
+.radio input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 2px solid var(--outline);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.check input {
+  border-radius: var(--r-xs);
+}
+
+.radio input {
+  border-radius: 50%;
+}
+
+.check input:checked {
+  background: var(--primary) var(--check-mark) center / 16px 16px no-repeat;
+  border-color: var(--primary);
+}
+
+.radio input:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 3px var(--surface);
+}
+
+.check input:disabled,
+.radio input:disabled {
+  opacity: 0.38;
+}
+
+/* ───────────────────────── Slider ─────────────────────────
+ * 4 px track, blue active part, 20 px thumb, 44 px tall touch area. The active part is drawn from --pct, which
+ * widgets.slider (and rangeFill() in primitives.ts) keeps in step with the value.
+ */
 .slider {
-  margin: 12px 0;
+  margin: var(--sp-3) 0;
 }
 
 .slider-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .slider-value {
-  font-weight: 800;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
@@ -361,226 +748,762 @@ input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 48px;
+  height: var(--tap);
   background: transparent;
   margin: 0;
   touch-action: pan-y;
 }
 
 input[type='range']::-webkit-slider-runnable-track {
-  height: 10px;
-  border-radius: 5px;
-  background: var(--surface-3);
-  border: 2px solid var(--border);
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--primary) var(--pct, 0%), var(--outline-variant) var(--pct, 0%));
 }
 
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 34px;
-  height: 34px;
-  margin-top: -14px;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
   border-radius: 50%;
   background: var(--primary);
-  border: 3px solid var(--surface);
-  box-shadow: 0 0 0 2px var(--border);
+  border: 0;
+  box-shadow: 0 0 0 2px var(--surface);
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 10px var(--state-press);
 }
 
 input[type='range']::-moz-range-track {
-  height: 10px;
-  border-radius: 5px;
-  background: var(--surface-3);
-  border: 2px solid var(--border);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--outline-variant);
+}
+
+input[type='range']::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--primary);
 }
 
 input[type='range']::-moz-range-thumb {
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--primary);
-  border: 3px solid var(--surface);
-  box-shadow: 0 0 0 2px var(--border);
+  border: 0;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
-/* ── Cards ── */
+input[type='range']:disabled {
+  opacity: 0.38;
+}
+
+/* ───────────────────────── Cards ─────────────────────────
+ * Flat: white on the grey app background, 12 px radius, 12 px padding, no border, no shadow (2 px outline in high contrast).
+ * <section class="card"><h2 class="card-title">Title</h2> ...</section>
+ * .card-flush (no padding, for lists inside)  .card-outlined (1 px divider)  .card-elevated (floating)  .card-tap (button-like card)
+ */
 .card {
   background: var(--surface);
-  border: 2px solid var(--border-soft);
-  border-radius: 18px;
-  padding: 16px;
-  margin: 0 0 16px;
+  border: var(--card-bw) solid var(--outline);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  margin: 0 0 var(--sp-2);
 }
 
 .card-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  margin-bottom: 8px;
+  gap: var(--sp-2);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  margin-bottom: var(--sp-2);
 }
 
 .sub-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 18px;
-  font-weight: 800;
-  margin: 18px 0 8px;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  margin: var(--sp-3) 0 var(--sp-1);
 }
 
-/* ── Chips / pills ── */
+.card-flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-outlined {
+  border: 1px solid var(--divider);
+}
+
+.card-elevated {
+  box-shadow: var(--elev-1);
+}
+
+.card-tap {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.card-tap:active {
+  background: var(--state-press);
+}
+
+/* ───────────────────────── Lists ─────────────────────────
+ * <ul class="list">
+ *   <li><button class="list-row"><span class="list-lead">[icon]</span><span class="list-body"><span class="list-title">Title</span><span class="list-sub">Secondary</span></span><span class="list-trail">12 MB [chevron]</span></button></li>
+ * </ul>
+ * Rows: 1 line 48 px, 2 lines 52 px (.two-line), 3 lines 72 px (.three-line). 24 px leading icon, 1 px inset dividers.
+ * A row without a leading icon takes .no-lead (the divider then starts at the text). Interactive rows are <button> or <a>.
+ */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+}
+
+.list > li {
+  position: relative;
+}
+
+.list > li + li::before,
+.list > .list-row + .list-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--row-inset, calc(var(--sp-3) + var(--icon-size) + var(--sp-3)));
+  right: 0;
+  height: 1px;
+  background: var(--divider);
+  pointer-events: none;
+}
+
+.list.no-lead > li + li::before,
+.list.no-lead > .list-row + .list-row::before {
+  --row-inset: var(--sp-3);
+}
+
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--row-h);
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.list-row,
+a.list-row,
+.list-row.is-tap {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button.list-row:active,
+a.list-row:active,
+.list-row.is-tap:active {
+  background: var(--state-press);
+}
+
+@media (hover: hover) {
+  button.list-row:hover,
+  a.list-row:hover,
+  .list-row.is-tap:hover {
+    background: var(--state-hover);
+    text-decoration: none;
+  }
+}
+
+.list-row.two-line {
+  min-height: var(--row-h-2);
+}
+
+.list-row.three-line {
+  min-height: var(--row-h-3);
+  align-items: flex-start;
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+
+.list-lead {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--icon);
+}
+
+.list-lead .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.list-row.three-line .list-lead {
+  margin-top: var(--sp-1);
+}
+
+.list-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-title {
+  font-size: var(--fs-md);
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.list-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.list-title.is-truncate,
+.list-sub.is-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-trail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.list-trail .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.list .toggle {
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/* Section header above a group of rows: 14 px medium grey, sentence case. */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+}
+
+/* ───────────────────────── Divider ───────────────────────── */
+.divider {
+  height: 1px;
+  margin: var(--sp-2) 0;
+  border: 0;
+  background: var(--divider);
+}
+
+.divider-inset {
+  margin-left: calc(var(--sp-3) + var(--icon-size) + var(--sp-3));
+}
+
+.divider-v {
+  width: 1px;
+  align-self: stretch;
+  background: var(--divider);
+}
+
+/* ───────────────────────── Chips ─────────────────────────
+ * 32 px pills. <button class="chip" aria-pressed="false">Roads</button>. Selected (aria-pressed="true" or .is-selected):
+ * blue-tint fill, blue text and a check (the .chip-check icon appears). Static label chips are <span class="chip">.
+ * Tinted status chips: .chip-ok .chip-warn .chip-danger .chip-info .chip-neutral. .chip-float sits over the map (elevation).
+ * <div class="chips"> wraps; <div class="chips chips-scroll"> is one horizontally scrolling row.
+ */
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+
+.chips-scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 var(--sp-3);
+  margin-left: calc(var(--sp-3) * -1);
+  margin-right: calc(var(--sp-3) * -1);
+}
+
+.chips-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.chips-scroll > .chip {
+  flex: 0 0 auto;
 }
 
 .chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 2px 12px;
-  border-radius: 16px;
-  border: 2px solid var(--border-soft);
-  font-weight: 800;
-  font-size: 16px;
-  background: var(--surface-2);
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-3);
+  border: var(--bw) solid var(--outline-variant);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+button.chip,
+a.chip,
+label.chip {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chip .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.chip .chip-check {
+  display: none;
+}
+
+.chip.is-selected,
+.chip[aria-pressed='true'],
+.chip[aria-checked='true'] {
+  background: var(--primary-container);
+  border-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.chip.is-selected .chip-check,
+.chip[aria-pressed='true'] .chip-check,
+.chip[aria-checked='true'] .chip-check {
+  display: block;
+}
+
+.chip.chip-float {
+  border-color: transparent;
+  box-shadow: var(--elev-1);
+  color: var(--text);
+}
+
+.chip.chip-float.is-selected,
+.chip.chip-float[aria-pressed='true'] {
+  border-color: transparent;
 }
 
 .chip-ok {
   background: var(--ok-bg);
-  border-color: var(--ok);
-  color: var(--text);
+  border-color: transparent;
+  color: var(--ok-ink);
 }
 
 .chip-warn {
   background: var(--watch-bg);
-  border-color: var(--watch);
-  color: var(--text);
+  border-color: transparent;
+  color: var(--watch-ink);
+}
+
+.chip-danger {
+  background: var(--danger-bg);
+  border-color: transparent;
+  color: var(--danger-ink);
 }
 
 .chip-info {
   background: var(--info-bg);
-  border-color: var(--info);
+  border-color: transparent;
+  color: var(--info-ink);
+}
+
+.chip-neutral {
+  background: var(--surface-3);
+  border-color: transparent;
   color: var(--text);
 }
 
+.chip:disabled {
+  color: var(--muted);
+}
+
+/* ───────────────────────── Badges and status pills ─────────────────────────
+ * 20 px, 12 px medium. <span class="badge badge-ok">Loaded</span>. Variants: -ok -watch -danger -info -fire (default neutral).
+ * .badge-dot adds a coloured dot; .badge-caps for the rare uppercase badge. The fire-danger rating is .rating-pill.
+ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.badge .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.badge-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.badge-caps {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.badge-ok {
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+}
+
+.badge-watch {
+  background: var(--watch-bg);
+  color: var(--watch-ink);
+}
+
+.badge-danger {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.badge-info {
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+
+.badge-fire {
+  background: var(--fire-bg);
+  color: var(--fire-ink);
+}
+
+/* Fire-danger rating (AFDRS colours are data: the same in both themes). 700 weight is allowed here. */
 .rating-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-weight: 900;
-  font-size: 16px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  border: 2px solid rgba(0, 0, 0, 0.55);
+  min-height: 24px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--rating-ink);
   white-space: nowrap;
 }
 
 .rating-none,
 .rating-no-rating {
-  background: #e8eaed;
-  color: #111418;
+  background: var(--rating-none);
 }
 
 .rating-moderate {
-  background: #62b346;
-  color: #0b1a05;
+  background: var(--rating-moderate);
 }
 
 .rating-high {
-  background: #ffd23f;
-  color: #1a1400;
+  background: var(--rating-high);
 }
 
 .rating-extreme {
-  background: #f47b20;
-  color: #1a0a00;
+  background: var(--rating-extreme);
 }
 
 .rating-catastrophic {
-  background: #9e1b1b;
-  color: #ffffff;
+  background: var(--rating-catastrophic);
+  color: var(--rating-ink-catastrophic);
 }
 
 .swatch {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border-radius: 5px;
-  border: 2px solid rgba(0, 0, 0, 0.55);
+  border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
   flex: 0 0 auto;
 }
 
-/* ── Callouts ── */
-.callout {
+/* ───────────────────────── Callouts and banners ─────────────────────────
+ * Tinted, borderless (2 px outline in high contrast), leading icon in the status colour, text in the normal text colour.
+ * <div class="callout callout-warn" role="note">[icon]<div>Text</div></div>   variants: -warn -danger -info -ok
+ * <div class="banner banner-warn" role="status">[icon]<span class="banner-text">Text</span><button class="btn btn-text btn-sm">Action</button></div>
+ * A banner is full width (no radius) and sits at the top of a screen or panel.
+ */
+.callout,
+.banner {
   display: flex;
-  gap: 10px;
+  gap: var(--sp-3);
   align-items: flex-start;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 2px solid;
-  margin: 10px 0;
-  font-weight: 600;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.callout {
+  border-radius: var(--r-md);
+  margin: var(--sp-2) 0;
 }
 
 .callout p {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
 }
 
-.callout-warn {
+.banner {
+  align-items: center;
+  border-radius: 0;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.callout-warn,
+.banner-warn {
   background: var(--watch-bg);
-  border-color: var(--watch);
 }
 
-.callout-warn .icon {
+.callout-warn .icon,
+.banner-warn .icon {
   color: var(--watch-ink);
 }
 
-.callout-danger {
+.callout-danger,
+.banner-danger {
   background: var(--danger-bg);
-  border-color: var(--danger);
 }
 
-.callout-danger .icon {
-  color: var(--danger);
+.callout-danger .icon,
+.banner-danger .icon {
+  color: var(--danger-ink);
 }
 
-.callout-info {
+.callout-info,
+.banner-info {
   background: var(--info-bg);
-  border-color: var(--info);
 }
 
-.callout-info .icon {
-  color: var(--info);
+.callout-info .icon,
+.banner-info .icon {
+  color: var(--info-ink);
+}
+
+.callout-ok,
+.banner-ok {
+  background: var(--ok-bg);
+}
+
+.callout-ok .icon,
+.banner-ok .icon {
+  color: var(--ok-ink);
+}
+
+:root[data-contrast='high'] .callout,
+:root[data-contrast='high'] .banner {
+  border: 2px solid var(--outline);
 }
 
 .status-line {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 700;
+  gap: var(--sp-2);
+  font-weight: var(--fw-medium);
 }
 
 .error-line {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
-  color: var(--danger);
-  font-weight: 800;
-  margin: 0 0 6px;
+  color: var(--danger-ink);
+  font-weight: var(--fw-medium);
+  margin: 0 0 var(--sp-1);
 }
 
-/* ── Compass rose ── */
+/* ───────────────────────── Progress ─────────────────────────
+ * <div class="progress" role="progressbar" aria-valuenow="40"><div class="progress-fill" style="width:40%"></div></div>
+ * .progress-indeterminate: a bar sliding along the track (static half bar under reduced motion).
+ */
+.progress {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--outline-variant);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--primary);
+  transition: width 0.25s var(--ease);
+}
+
+.progress-indeterminate .progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  animation: progress-slide 1.4s var(--ease) infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate .progress-fill {
+    animation: none;
+    transform: translateX(75%);
+  }
+}
+
+/* ───────────────────────── Skeleton (flat, opacity pulse) ─────────────────────────
+ * <span class="skeleton skeleton-line" style="width:60%"></span>  .skeleton-block for a box (set width/height)
+ */
+.skeleton {
+  display: block;
+  background: var(--surface-3);
+  border-radius: var(--r-xs);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 12px;
+  margin: var(--sp-2) 0;
+}
+
+.skeleton-block {
+  border-radius: var(--r-sm);
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* ───────────────────────── Details (accordion) ───────────────────────── */
+details > summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  list-style: none;
+  gap: var(--sp-2);
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details > summary::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-1) var(--ease);
+  flex: 0 0 auto;
+}
+
+details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: var(--sp-5) var(--sp-3);
+}
+
+.empty .icon {
+  margin: 0 auto var(--sp-2);
+  color: var(--icon);
+}
+
+.empty-title {
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+
+/* ───────────────────────── Compass rose (the wind-direction dial) ───────────────────────── */
 .rose-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  margin: 12px 0;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
 }
 
 .rose-wrap .field-label {
@@ -601,8 +1524,8 @@ input[type='range']::-moz-range-thumb {
 
 .rose-face {
   fill: var(--surface-2);
-  stroke: var(--border);
-  stroke-width: 3;
+  stroke: var(--outline);
+  stroke-width: 2;
 }
 
 .rose-tick {
@@ -612,24 +1535,24 @@ input[type='range']::-moz-range-thumb {
 
 .rose-tick.major {
   stroke: var(--text);
-  stroke-width: 3.5;
+  stroke-width: 3;
 }
 
 .rose-label {
   fill: var(--muted);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: var(--fw-medium);
 }
 
 .rose-label.major {
   fill: var(--text);
-  font-size: 19px;
-  font-weight: 900;
+  font-size: 18px;
+  font-weight: var(--fw-bold);
 }
 
 .rose-arrow-shape {
-  fill: var(--accent);
-  stroke: var(--border);
+  fill: var(--primary);
+  stroke: var(--primary);
   stroke-width: 3;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -637,170 +1560,16 @@ input[type='range']::-moz-range-thumb {
 
 .rose-hub {
   fill: var(--surface);
-  stroke: var(--border);
-  stroke-width: 2.5;
+  stroke: var(--outline);
+  stroke-width: 2;
 }
 
 .rose-readout-text {
-  font-size: 19px;
-  font-weight: 900;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
 .wind-arrow {
   flex: 0 0 auto;
-}
-
-/* ── Modal / notice ── */
-.modal-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: rgba(0, 0, 0, 0.62);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 16px;
-  padding-bottom: calc(16px + var(--safe-bottom));
-  animation: fade 0.18s ease-out;
-}
-
-.modal-scrim.closing {
-  opacity: 0;
-  transition: opacity 0.16s;
-}
-
-.modal {
-  width: 100%;
-  max-width: 560px;
-  max-height: 100%;
-  overflow: auto;
-  background: var(--surface);
-  border: 2px solid var(--border);
-  border-radius: 22px;
-  padding: 22px 20px 20px;
-  box-shadow: var(--shadow-strong);
-}
-
-.notice-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--badge-bg);
-  color: #111;
-  border: 2px solid #111;
-  margin-bottom: 10px;
-}
-
-.notice-kicker {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 900;
-  font-size: 16px;
-  color: var(--muted);
-  margin: 0;
-}
-
-.notice-title {
-  font-size: 30px;
-  margin: 2px 0 8px;
-}
-
-.notice-lead {
-  font-size: 19px;
-  font-weight: 600;
-}
-
-.notice-points {
-  margin: 8px 0 18px;
-  padding-left: 22px;
-}
-
-.notice-points li {
-  margin: 0 0 10px;
-}
-
-.notice .btn {
-  width: 100%;
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-
-/* ── Tables ── */
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-
-.data-table th,
-.data-table td {
-  text-align: left;
-  padding: 8px 6px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.data-table thead th {
-  border-bottom: 2px solid var(--border);
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-details > summary {
-  min-height: var(--tap);
-  display: flex;
-  align-items: center;
-  font-weight: 800;
-  cursor: pointer;
-  list-style: none;
-  gap: 8px;
-}
-
-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-details > summary::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-right: 3px solid currentColor;
-  border-bottom: 3px solid currentColor;
-  transform: rotate(-45deg);
-  transition: transform 0.15s;
-  flex: 0 0 auto;
-}
-
-details[open] > summary::before {
-  transform: rotate(45deg);
-}
-
-.empty {
-  text-align: center;
-  color: var(--muted);
-  padding: 18px 12px;
-}
-
-.empty .icon {
-  margin: 0 auto 6px;
-  color: var(--accent);
-}
-
-.empty-title {
-  font-weight: 800;
-  color: var(--text);
-  font-size: 19px;
-}
-
-/* Grid segmented controls: every tile keeps its full border (overrides the first-child rule above). */
-.segmented-grid .segmented-option:first-child .segmented-face {
-  border-left: var(--control-border);
 }

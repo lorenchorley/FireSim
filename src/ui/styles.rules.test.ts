@@ -1,7 +1,10 @@
 /**
  * Guard rails for the field-UI rules of the stylesheets (no DOM needed: the CSS is read as text). A firefighter uses the
- * phone with wet hands in sunlight, so: no text under 14 px, every tap target at least 44 px, and the numbers the layout
- * code uses (DOCK_H, GRIP_H) must stay in step with the CSS that draws the same rows.
+ * phone with wet hands in sunlight, so: no literal text size under 14 px (the 12 px caption size only exists as the
+ * --fs-xs token), every tap target at least 44 px, and the numbers the layout code uses (DOCK_H, GRIP_H) must stay in step
+ * with the CSS that draws the same rows. The design-system files (base, components, overlays, data) additionally stay flat:
+ * no gradients (bar the slider track), no shadows except through the --elev tokens, no uppercase or weights above 500 outside
+ * the few sanctioned places. Docs: docs/DESIGN.md.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -47,12 +50,85 @@ describe('stylesheets: text size', () => {
   });
 });
 
+/** Every rule of the design-system files: [file, selector list, declarations]. */
+const DS_FILES = ['base.css', 'components.css', 'overlays.css', 'data.css'];
+function dsRules(): { f: string; sel: string; body: string }[] {
+  const out: { f: string; sel: string; body: string }[] = [];
+  for (const f of DS_FILES) {
+    const clean = css(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    for (let m = re.exec(clean); m; m = re.exec(clean)) out.push({ f, sel: m[1]!.replace(/\s+/g, ' ').trim(), body: m[2]! });
+  }
+  return out;
+}
+
+describe('stylesheets: type scale tokens', () => {
+  const tokens = (): string => css('tokens.css');
+  const tokenPx = (name: string, from: string): number => Number(new RegExp(`${name}:\\s*([0-9.]+)px`).exec(from)![1]);
+
+  it('sizes are 12 / 14 / 16 / 20 / 24 and the caption size is never below 12', () => {
+    const scale = tokens().slice(tokens().lastIndexOf('/* ───────────────────────────── Scales'));
+    expect([tokenPx('--fs-xs', scale), tokenPx('--fs-sm', scale), tokenPx('--fs-md', scale), tokenPx('--fs-lg', scale), tokenPx('--fs-xl', scale)]).toEqual([12, 14, 16, 20, 24]);
+  });
+
+  it('high contrast adds 1 px to every size', () => {
+    const t = tokens();
+    const hc = t.slice(t.indexOf(":root[data-contrast='high'] {"));
+    const scale = t.slice(t.lastIndexOf('/* ───────────────────────────── Scales'));
+    for (const n of ['--fs-xs', '--fs-sm', '--fs-md', '--fs-lg', '--fs-xl']) expect(tokenPx(n, hc)).toBe(tokenPx(n, scale) + 1);
+  });
+});
+
+describe('stylesheets: the flat design system', () => {
+  it('no gradients except the two-colour slider track', () => {
+    const bad = dsRules().filter((r) => /gradient\(/.test(r.body) && !r.sel.includes('slider-runnable-track'));
+    expect(bad.map((r) => `${r.f}: ${r.sel}`)).toEqual([]);
+  });
+
+  it('shadows come only from the elevation tokens (or a 1 px ring / inset used as a border)', () => {
+    const bad = dsRules().filter((r) => {
+      const m = /box-shadow:\s*([^;]+)/.exec(r.body);
+      if (!m) return false;
+      const v = m[1]!.trim();
+      if (v === 'none' || /^var\(--elev-[1-4]\)/.test(v)) return false;
+      return !/^(inset\s+)?0 0 0 (\d+px|var\(--[a-z-]+\))/.test(v) && !/^(inset\s+)?0 -?\d+px 0 (var|\d)/.test(v) && !/^var\(--elev/.test(v) && !/^0 0 0 2px var\(--surface\)/.test(v) && !/^inset 0/.test(v);
+    });
+    expect(bad.map((r) => `${r.f}: ${r.sel} { ${/box-shadow:[^;]+/.exec(r.body)![0]} }`)).toEqual([]);
+  });
+
+  it('uppercase only on the safety strip and explicit caps badges', () => {
+    const bad = dsRules().filter((r) => /text-transform:\s*uppercase/.test(r.body) && !/\.training-badge|\.badge-caps/.test(r.sel));
+    expect(bad.map((r) => r.sel)).toEqual([]);
+  });
+
+  it('weights above 500 only for the sanctioned bold numbers and ratings', () => {
+    const ok = /\.rating-pill|\.t-display|\.stat-lg|\.rose-label\.major|\.training-badge|\.spinner/;
+    const bad = dsRules().filter((r) => /font-weight:\s*(var\(--fw-bold\)|[6-9]00)/.test(r.body) && !ok.test(r.sel));
+    expect(bad.map((r) => `${r.f}: ${r.sel}`)).toEqual([]);
+  });
+
+  it('every interactive primitive grows its hit area to the tap size', () => {
+    const all = (css('components.css') + css('overlays.css')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const grower = [...all.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => /width:\s*max\(100%,\s*var\(--tap\)\)/.test(m[2]!));
+    expect(grower).toBeTruthy();
+    for (const s of ['.btn::after', '.icon-btn::after', '.fab::after', 'button.chip::after']) expect(grower![1]).toContain(s);
+    // Segments, list rows, toggles, checkboxes, tiles, nav items and the stepper are tap-sized by their own min-height / width.
+    expect(rule('components.css', '.segmented-face')).toContain('min-height: var(--tap)');
+    expect(rule('components.css', '.stepper-btn')).toContain('width: var(--tap)');
+    expect(rule('components.css', '.check')).toContain('min-height: var(--tap)');
+    expect(rule('overlays.css', '.tile')).toContain('min-height: var(--tap)');
+    expect(rule('overlays.css', '.nav-item')).toContain('min-height: var(--nav-h)');
+    expect(rule('overlays.css', '.snackbar-action')).toContain('min-height: var(--tap)');
+  });
+});
+
 describe('stylesheets: tap targets', () => {
   it('the tap size tokens are at least 44 px', () => {
     const tokens = css('tokens.css');
     expect(Number(/--tap:\s*([0-9]+)px/.exec(tokens)![1])).toBeGreaterThanOrEqual(44);
     expect(Number(/--tap-lg:\s*([0-9]+)px/.exec(tokens)![1])).toBeGreaterThanOrEqual(44);
     expect(Number(/--fab:\s*([0-9]+)px/.exec(tokens)![1])).toBeGreaterThanOrEqual(44);
+    expect(Number(/--field-h:\s*([0-9]+)px/.exec(tokens)![1])).toBeGreaterThanOrEqual(44);
   });
 
   it('the dock row is DOCK_H tall: 44 px tabs under the 2 px border', () => {

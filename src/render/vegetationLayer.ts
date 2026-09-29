@@ -58,13 +58,13 @@ interface GroupSpec {
 
 const PALE = '#a99f8b';
 const SPEC: Record<VegGroup, GroupSpec> = {
-  // Stringybark: near-black fibrous trunk. Ribbon bark: pale grey. Smooth gum: pale cream.
-  [VegGroup.Stringybark]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#8a806b', '#8a806b', '#3a2a20'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
-  [VegGroup.Ribbonbark]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#b6ad9a', '#b6ad9a', '#8a806b'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
-  [VegGroup.SmoothGum]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#cfc8b6', '#cfc8b6', '#b6ad9a'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
-  [VegGroup.TallWetGum]: { kind: 1, consumable: 0, lobeJit: 0.14, lobeHide: 0.3, bark: ['#b7ad99', '#9d9482', '#4a3a2c'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
-  [VegGroup.Rainforest]: { kind: 2, consumable: 0, lobeJit: 0.12, lobeHide: 0.25, bark: ['#5b4f42', '#5b4f42', '#5b4f42'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
-  [VegGroup.SnowGum]: { kind: 3, consumable: 0, lobeJit: 0.14, lobeHide: 0.3, bark: ['#e0d9c8', '#d4ccb8', '#bfb5a0'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  // Stringybark: near-black fibrous trunk. Ribbon bark: pale grey. Smooth gum: pale cream. (linear = sRGB hex → linear below)
+  [VegGroup.Stringybark]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#7a715e', '#7a715e', '#33261d'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  [VegGroup.Ribbonbark]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#a39a86', '#a39a86', '#7a715e'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  [VegGroup.SmoothGum]: { kind: 0, consumable: 0, lobeJit: 0.15, lobeHide: 0.35, bark: ['#bdb6a3', '#bdb6a3', '#a39a86'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  [VegGroup.TallWetGum]: { kind: 1, consumable: 0, lobeJit: 0.14, lobeHide: 0.3, bark: ['#a69d89', '#8d8571', '#43352a'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  [VegGroup.Rainforest]: { kind: 2, consumable: 0, lobeJit: 0.12, lobeHide: 0.25, bark: ['#54493d', '#54493d', '#54493d'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
+  [VegGroup.SnowGum]: { kind: 3, consumable: 0, lobeJit: 0.14, lobeHide: 0.3, bark: ['#cfc8b5', '#c4bda9', '#b1a992'], simpleCrown: '#5f8f56', simpleTrunk: '#6b5a48' },
   [VegGroup.Conifer]: { kind: 4, consumable: 0, lobeJit: 0, lobeHide: 0, bark: ['#4a3a2c', '#4a3a2c', '#4a3a2c'], simpleCrown: '#3d6b45', simpleTrunk: '#5a4a3a' },
   [VegGroup.Heath]: { kind: 5, consumable: 1, lobeJit: 0.1, lobeHide: 0, bark: [PALE, PALE, PALE], simpleCrown: '#7ea060', simpleTrunk: '#6b5a48' },
   [VegGroup.Understorey]: { kind: 6, consumable: 1, lobeJit: 0.1, lobeHide: 0, bark: [PALE, PALE, PALE], simpleCrown: '#7ea060', simpleTrunk: '#6b5a48' },
@@ -135,6 +135,8 @@ const SHARED_KEYS = [
 
 /** Sine of the view elevation between which the canopy fades out (≈ 60° … 82° above the horizon). */
 export const TOP_FADE: [number, number] = [0.87, 0.99];
+/** From this view steepness on, every instance is faded out: nothing is drawn. */
+const TOP_HIDDEN = 0.992;
 
 export class VegetationLayer {
   readonly group = new THREE.Group();
@@ -177,6 +179,9 @@ export class VegetationLayer {
     solo: true,
   };
   private overlayOn = false;
+  /** Sine of how steeply the camera looks down (1 = straight down); the canopy is fully faded out from {@link TOP_FADE}[1] on. */
+  private viewDown = 0;
+  private layerVisible = true;
   private windSpeed = 0;
   private disposed = false;
 
@@ -217,14 +222,6 @@ export class VegetationLayer {
     this.planSig = '';
   }
 
-  /** The near-LOD instance cap (kept for the old API; the quality tier sets it through {@link setBudget}). */
-  set lodMax(n: number) {
-    this.budget = { ...this.budget, near: n };
-  }
-  get lodMax(): number {
-    return this.budget.near;
-  }
-
   /**
    * Apply the layer switches. Style, code, sway and the understorey take effect on the next frame; the 3-D canopy is hidden
    * while a heat map is solo (`soloHeat` with an active overlay).
@@ -234,7 +231,8 @@ export class VegetationLayer {
     const next = { vegetation: l.vegetation, understorey: l.understorey, style: l.canopyStyle, code: l.canopyCode, sway: l.windSway, solo: l.soloHeat };
     this.layers = next;
     this.overlayOn = l.overlay !== 'none';
-    this.group.visible = next.vegetation && !(next.solo && this.overlayOn);
+    this.layerVisible = next.vegetation && !(next.solo && this.overlayOn);
+    this.group.visible = this.layerVisible && this.viewDown < TOP_HIDDEN;
     this.uniforms.uStyle!.value = next.style === 'natural' ? 0 : next.style === 'simple' ? 1 : 2;
     this.uniforms.uSway!.value = next.sway ? 1 : 0;
     if (next.style === 'coded' && (next.code !== prev.code || prev.style !== 'coded')) this.applyCode(next.code);
@@ -244,9 +242,9 @@ export class VegetationLayer {
     }
   }
 
-  /** True when the canopy is drawn. */
+  /** True when the canopy is switched on (and not hidden by a solo heat map); it is also not drawn in a straight-down top view. */
   get visible(): boolean {
-    return this.group.visible;
+    return this.layerVisible;
   }
 
   /** The style now in force. */
@@ -256,7 +254,7 @@ export class VegetationLayer {
 
   /** Legend of the colour coding while the 'coded' style is shown, else null. */
   legend(): LegendSpec | null {
-    return this.layers.style === 'coded' && this.group.visible ? canopyCodeLegend(this.layers.code) : null;
+    return this.layers.style === 'coded' && this.layerVisible ? canopyCodeLegend(this.layers.code) : null;
   }
 
   private makeCodeTexture(code: CanopyCode): THREE.DataTexture {
@@ -305,6 +303,15 @@ export class VegetationLayer {
     this.uniforms.uPxPerRad!.value = pxPerRad;
     this.uniforms.uThinStart!.value = thinStart;
     this.lodPx = pxPerRad;
+  }
+
+  /**
+   * How steeply the camera looks down (sine of the pitch, 1 = straight down). In a top view every tree has faded out, so
+   * the canopy is not drawn at all (the map below stays readable and the frame is cheaper). Call once per frame.
+   */
+  setViewDown(sinDown: number): void {
+    this.viewDown = sinDown;
+    this.group.visible = this.layerVisible && sinDown < TOP_HIDDEN;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

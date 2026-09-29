@@ -229,6 +229,12 @@ void main() {
       }
     }
   }
+  // Regrowth after an old fire: crowns carry bright epicormic leaves, shrubs resprout lush, both fading to normal over ~5 years.
+  if (uStyle < 0.5 && uKind < 6.5) {
+    float young = 1.0 - smoothstep(0.4, 5.0, years);
+    bool shrub = uKind > 4.5;
+    tint = mix(tint, shrub ? vec3(0.05, 0.22, 0.03) : vec3(0.11, 0.3, 0.05), (shrub ? 0.55 : 0.4) * young);
+  }
   // Charred trunk and scorched crown (fire in this run, or an old fire from the fuel map).
   float charTop = burnt > 0.5 ? (phase >= 2.5 ? 1.12 : phase >= 1.5 ? 0.62 : 0.3) : 0.0;
   charTop = max(charTop, oldChar);

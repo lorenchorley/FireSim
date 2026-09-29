@@ -100,7 +100,7 @@ export interface PlacementOptions {
   focus?: [number, number];
   /** Radius (m) of full density around the focus (default 1500). */
   focusRadius?: number;
-  /** Minimum density multiplier far from the focus (default 0.12). */
+  /** Minimum density multiplier far from the focus (default 0.12; a close camera can go down to 0.02). */
   farDensity?: number;
   /** Multiplier on every group's density (e.g. 0.4 when a heat map is shown). */
   densityScale?: number;
@@ -152,11 +152,11 @@ const SHARE: Record<Fam, number> = {
  * concentrated there and the budget goes to the trees that carry the view from afar.
  */
 const FALLOFF: Record<Fam, { radius: number; minR: number; exp: number; floor: number }> = {
-  [Fam.Eucalypt]: { radius: 1, minR: 0, exp: 2, floor: -1 },
-  [Fam.TallWet]: { radius: 1, minR: 0, exp: 2, floor: -1 },
-  [Fam.Rainforest]: { radius: 1, minR: 0, exp: 2, floor: -1 },
-  [Fam.SnowGum]: { radius: 1, minR: 0, exp: 2, floor: -1 },
-  [Fam.Conifer]: { radius: 1, minR: 0, exp: 2, floor: -1 },
+  [Fam.Eucalypt]: { radius: 1, minR: 0, exp: 2.5, floor: -1 },
+  [Fam.TallWet]: { radius: 1, minR: 0, exp: 2.5, floor: -1 },
+  [Fam.Rainforest]: { radius: 1, minR: 0, exp: 2.5, floor: -1 },
+  [Fam.SnowGum]: { radius: 1, minR: 0, exp: 2.5, floor: -1 },
+  [Fam.Conifer]: { radius: 1, minR: 0, exp: 2.5, floor: -1 },
   [Fam.Heath]: { radius: 0.5, minR: 250, exp: 3, floor: 0 },
   [Fam.Understorey]: { radius: 0.3, minR: 180, exp: 4, floor: 0 },
   [Fam.Grass]: { radius: 0.2, minR: 120, exp: 4, floor: 0 },
@@ -323,6 +323,9 @@ export function foliageTint(group: VegGroup, elevatedHazard: number, curing: num
 // ─────────────────────────────────────────────────────────────────────────────
 // The job
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Widest a crown is drawn relative to its true width when the forest is thinned (heights are never scaled). */
+export const GROW_MAX = 1.7;
 
 /** Rows of a pine plantation: direction (rad, from east) and spacing across / along the rows (m). */
 const ROW_ANGLE = 0.35;
@@ -615,7 +618,7 @@ export class PlacementJob {
       if (c === 0) continue;
       // Thinned (by the budget or by distance) → slightly wider crowns keep the canopy looking continuous (max ×1.8): each
       // crown then stands for a small clump of trees. Heights are never scaled.
-      const grow = Math.min(2.2, 1 / Math.sqrt(Math.max(this.w[k * FAM_COUNT + f]! * this.scale[f]!, 0.05)));
+      const grow = Math.min(GROW_MAX, 1 / Math.sqrt(Math.max(this.w[k * FAM_COUNT + f]! * this.scale[f]!, 0.05)));
       for (let s = 0; s < c; s++) {
         const base = seed * 977 + f * 53 + s * 7;
         const rx = hash01(i, j, base + 1);
@@ -636,7 +639,7 @@ export class PlacementJob {
             group = bark === 'stringy' ? VegGroup.Stringybark : bark === 'ribbon' ? VegGroup.Ribbonbark : VegGroup.SmoothGum;
             const ch = Math.max(4, canopyH);
             height = ch * (0.86 + 0.24 * r3);
-            const wr = bark === 'stringy' ? 0.5 + 0.2 * r4 : bark === 'ribbon' ? 0.48 + 0.2 * r4 : 0.45 + 0.18 * r4;
+            const wr = bark === 'stringy' ? 0.44 + 0.16 * r4 : bark === 'ribbon' ? 0.42 + 0.16 * r4 : 0.4 + 0.14 * r4;
             width = clamp(height * wr, 3.5, 16) * grow;
             break;
           }

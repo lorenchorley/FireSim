@@ -1,0 +1,5 @@
+/*
+ * Legacy bridge: small overrides that let the not-yet-migrated screen CSS (screens.css, sim.css, transport.css) sit
+ * comfortably on the new flat design tokens. Loaded LAST. Every block names the screen that owns it; when that screen is
+ * restyled onto the shared primitives its block is deleted (see docs/DESIGN.md "Migration checklist").
+ */

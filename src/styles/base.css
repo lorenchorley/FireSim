@@ -1,4 +1,8 @@
-/* Base elements, typography, focus and motion. Text is ≥ 16 px everywhere except the tiny TRAINING badge. */
+/*
+ * Base elements, typography, focus, the training strip and motion.
+ * Body text is 14 px; list titles and inputs 16 px; captions 12 px. Weights 400 / 500 (700 for numbers and ratings only).
+ * Everything reads tokens from tokens.css; see docs/DESIGN.md.
+ */
 *,
 *::before,
 *::after {
@@ -12,10 +16,12 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 17px;
-  line-height: 1.4;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-sm);
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
 
@@ -38,15 +44,34 @@ body {
 
 h1,
 h2,
-h3 {
+h3,
+h4 {
   margin: 0;
-  line-height: 1.2;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-medium);
+}
+
+h1 {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+}
+
+h2 {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+}
+
+h3 {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+h4 {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 p {
-  margin: 0 0 0.6em;
+  margin: 0 0 var(--sp-2);
 }
 
 button,
@@ -65,10 +90,19 @@ img {
   max-width: 100%;
 }
 
+a {
+  color: var(--primary-ink);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* One focus ring for everything: 2 px blue, offset so it never touches the control's own outline. */
 :focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 6px;
 }
 
 [hidden] {
@@ -92,14 +126,96 @@ img {
   display: block;
 }
 
+/* ── Type roles (use these instead of one-off font sizes) ── */
+.t-headline {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--fw-medium);
+}
+
+.t-title {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--fw-medium);
+}
+
+.t-subtitle {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.t-list {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+.t-body {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.t-secondary,
 .hint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   color: var(--muted);
-  font-size: 16px;
-  margin: 6px 0 0;
+}
+
+.t-caption {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  color: var(--muted);
+}
+
+.t-display {
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--fw-bold);
+}
+
+/* Times and numbers line up in columns. */
+.t-num,
+output,
+time {
+  font-variant-numeric: tabular-nums;
+}
+
+.t-medium {
+  font-weight: var(--fw-medium);
+}
+
+.hint {
+  margin: var(--sp-1) 0 0;
 }
 
 .muted {
   color: var(--muted);
+}
+
+/* ── Layout helpers ── */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, var(--sp-3));
+  min-width: 0;
+}
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap, var(--sp-2));
+  min-width: 0;
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.spacer {
+  flex: 1 1 0;
 }
 
 /* Screens fill the stage and scroll internally. */
@@ -111,42 +227,52 @@ img {
   background: var(--bg);
 }
 
-/* TRAINING badge: always visible, above everything. */
+/*
+ * Training strip: MANDATORY, visible on every screen, above everything. Flat amber with dark text (not striped).
+ * Its height is --strip-h (24 px) plus the status-bar inset; the status bar sits on top of it, so its colour is the
+ * Android status-bar colour (THEME_CHROME in src/ui/settings.ts).
+ */
 .training-badge {
   flex: 0 0 auto;
-  height: calc(var(--badge-h) + var(--safe-top));
-  padding: var(--safe-top) 12px 0;
+  height: calc(var(--strip-h) + var(--safe-top));
+  padding: var(--safe-top) var(--sp-3) 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: repeating-linear-gradient(135deg, var(--badge-bg) 0 14px, #f7c400 14px 28px);
+  background: var(--badge-bg);
   color: var(--badge-ink);
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-caps);
   line-height: 1;
   text-transform: uppercase;
-  z-index: 100;
+  white-space: nowrap;
+  z-index: var(--z-strip);
   user-select: none;
+}
+
+:root[data-contrast='high'] .training-badge {
+  font-weight: var(--fw-bold);
+}
+
+.training-badge .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .training-badge .badge-short {
   display: none;
 }
 
-/* The full wording needs ~440 px at 14 px uppercase with tracking. */
-@media (max-width: 480px) {
+/* The full wording needs about 340 px at 12 px uppercase with tracking. */
+@media (max-width: 359px) {
   .training-badge .badge-full {
     display: none;
   }
   .training-badge .badge-short {
     display: inline;
   }
-}
-
-:root[data-theme='dark'] .training-badge {
-  background: repeating-linear-gradient(135deg, var(--badge-bg) 0 14px, #b39200 14px 28px);
 }
 
 .boot-splash {
@@ -159,47 +285,48 @@ img {
   display: block;
   width: 56px;
   height: 56px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  background: var(--accent);
+  margin: 0 auto var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--fire);
 }
 
 .boot-error {
-  padding: 24px;
+  padding: var(--sp-5);
 }
 
 .boot-stuck {
   margin: 20px auto 0;
   max-width: 34rem;
-  padding: 0 16px;
+  padding: 0 var(--sp-4);
   color: var(--text, inherit);
 }
 
 .boot-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
   justify-content: center;
-  margin: 12px 0;
+  margin: var(--sp-3) 0;
 }
 
 .boot-actions .btn,
 .boot-error .btn {
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: var(--ctl-h-lg);
+  padding: 0 var(--sp-4);
 }
 
 .boot-details {
   text-align: left;
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
   max-height: 50vh;
   overflow: auto;
-  padding: 12px;
-  border-radius: 8px;
-  background: rgba(127, 127, 127, 0.12);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
 }
 
 .spinner {

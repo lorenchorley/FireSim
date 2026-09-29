@@ -56,6 +56,8 @@ export interface LodPlan {
 
 export const DEFAULT_NEAR_RATIO = 14;
 export const DEFAULT_MID_RATIO = 55;
+/** Low plants (heath, understorey, grass) keep each level this much further out, relative to their height. */
+export const LOW_PLANT_RANGE = 1.6;
 /** Share of the triangle budget the near and mid levels may use at most (the far level gets the rest). */
 export const NEAR_TRI_SHARE = 0.4;
 export const MID_TRI_SHARE = 0.32;
@@ -162,8 +164,10 @@ export function planLod(sets: VegInstances[], p: LodParams): LodPlan {
       if ((h / d) * p.pxPerRad < minPx) continue;
       const ratio = d / h;
       key[f] = ratio;
-      if (ratio < nearR) near.push(f);
-      else if (ratio < midR) mid.push(f);
+      // Low plants stay detailed a little further (the ladder fuel under the canopy is worth seeing from a low view).
+      const k = isLowPlant(s.group) ? LOW_PLANT_RANGE : 1;
+      if (ratio < nearR * k) near.push(f);
+      else if (ratio < midR * k) mid.push(f);
       else if (farOk) far.push(f);
     }
   });

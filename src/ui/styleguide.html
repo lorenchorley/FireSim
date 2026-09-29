@@ -1,0 +1,270 @@
+<!doctype html>
+<!--
+  FireSim style guide (DEV ONLY: it is not part of the production build, which only bundles index.html).
+  Open it from the dev server:  /src/ui/styleguide.html?theme=light|dark&contrast=high
+  It shows every design-system primitive in every state, a mock map screen, and the type / colour / spacing scales.
+  See docs/DESIGN.md.
+-->
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fbbc04" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <title>FireSim style guide</title>
+    <script>
+      // Same pre-paint step as index.html: theme and contrast from the query string (or the system).
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search);
+          var t = p.get('theme');
+          if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = t;
+          if (p.get('contrast') === 'high') document.documentElement.dataset.contrast = 'high';
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Style-guide-only layout (the primitives themselves come from src/styles). */
+      html body.sg-body {
+        height: auto;
+        min-height: 100%;
+        overflow: auto;
+      }
+      .sg-page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 0 12px 48px;
+      }
+      .sg-head {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        margin: 0 -12px 12px;
+        padding: 8px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--divider);
+      }
+      .sg-head h1 {
+        font-size: var(--fs-lg);
+        line-height: var(--lh-lg);
+      }
+      .sg-section {
+        margin: 24px 0;
+      }
+      .sg-section > h2 {
+        margin: 0 0 4px;
+        font-size: var(--fs-lg);
+        line-height: var(--lh-lg);
+      }
+      .sg-section > p {
+        margin: 0 0 8px;
+      }
+      .sg-demo {
+        margin: 12px 0 0;
+      }
+      .sg-label {
+        margin: 0 0 4px;
+        color: var(--muted);
+        font-family: var(--font-mono);
+        font-size: var(--fs-xs);
+        line-height: var(--lh-xs);
+      }
+      .sg-stage {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        border-radius: var(--r-md);
+        background: var(--surface);
+      }
+      .sg-stage.sg-col {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .sg-stage.sg-flush {
+        padding: 0;
+        overflow: hidden;
+      }
+      .sg-stage.sg-bg {
+        background: var(--bg);
+        border: 1px solid var(--divider);
+      }
+      .sg-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .sg-sw {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        font-size: var(--fs-xs);
+        line-height: var(--lh-xs);
+      }
+      .sg-sw > i {
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        border-radius: var(--r-sm);
+        box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.45);
+      }
+      .sg-sw code {
+        display: block;
+        padding: 0;
+        background: none;
+        font-size: var(--fs-xs);
+      }
+      .sg-sw span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .sg-sw small {
+        color: var(--muted);
+      }
+      .sg-space {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sg-space > i {
+        display: block;
+        height: 12px;
+        background: var(--series-1);
+        border-radius: 2px;
+      }
+      .sg-box {
+        display: grid;
+        place-items: center;
+        width: 72px;
+        height: 56px;
+        background: var(--surface-2);
+        border: 1px solid var(--divider);
+        font-size: var(--fs-xs);
+      }
+      .sg-elev {
+        display: grid;
+        place-items: center;
+        width: 72px;
+        height: 56px;
+        border-radius: var(--r-md);
+        background: var(--surface);
+        font-size: var(--fs-xs);
+      }
+      /* Forced states so pressed / focused can be shown next to the resting one. */
+      .sg-pressed::before {
+        opacity: 0.14 !important;
+      }
+      .sg-focus {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .sg-ct {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 4px 8px;
+        align-items: center;
+        font-size: var(--fs-xs);
+        line-height: var(--lh-xs);
+      }
+      /* The mock map screen */
+      .sg-phone {
+        position: relative;
+        flex: 1 1 100%;
+        width: 100%;
+        height: 640px;
+        overflow: hidden;
+        border-radius: var(--r-lg);
+        background: #4a5a3c;
+        isolation: isolate;
+      }
+      .sg-phone > svg.sg-map {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .sg-phone .top-bar {
+        top: 8px;
+      }
+      .sg-phone .sg-chips {
+        position: absolute;
+        z-index: 20;
+        top: 84px;
+        left: 0;
+        right: 0;
+        margin: 0;
+      }
+      .sg-phone .fab-stack {
+        position: absolute;
+        z-index: 20;
+        right: 8px;
+        bottom: 348px;
+      }
+      .sg-phone .sg-fabext {
+        position: absolute;
+        z-index: 20;
+        left: 8px;
+        bottom: 348px;
+      }
+      .sg-phone .bottom-sheet {
+        position: absolute;
+        z-index: 30;
+        left: 0;
+        right: 0;
+        bottom: 56px;
+        max-height: 280px;
+      }
+      .sg-phone .bottom-nav {
+        position: absolute;
+        z-index: 40;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+      .sg-static {
+        position: static !important;
+        transform: none !important;
+        margin: 0 auto;
+        animation: none !important;
+      }
+      .sg-icons {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+      }
+      .sg-icons > div {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 2px;
+        border-radius: var(--r-sm);
+        background: var(--surface);
+        font-family: var(--font-mono);
+        font-size: var(--fs-xs);
+        line-height: var(--lh-xs);
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+      .sg-icons > div small {
+        color: var(--muted);
+      }
+      @media (min-width: 600px) {
+        .sg-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .sg-icons {
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body class="sg-body">
+    <div id="sg" class="sg-page"></div>
+    <script type="module" src="/src/ui/styleguide.ts"></script>
+  </body>
+</html>

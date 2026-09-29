@@ -4,6 +4,7 @@
  * URL parameters (for development, demos and tests):
  *   ?mock=1          use the mock simulation, 2-D map and mock scenario builder
  *   ?theme=light|dark force a theme for this session (not saved)
+ *   ?contrast=high   force the high-contrast (bright sun) variant for this session (not saved)
  *   ?notice=1        show the safety notice even if it was accepted
  * The real modules (src/sim, src/render, src/scenario) are loaded dynamically; if any is missing or fails to load
  * the matching mock is used and a warning is logged (see src/ui/modules.ts).
@@ -19,7 +20,10 @@ async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const theme = params.get('theme');
   bootStep('settings');
-  await initSettings(theme === 'light' || theme === 'dark' ? { theme } : {});
+  await initSettings({
+    ...(theme === 'light' || theme === 'dark' ? { theme } : {}),
+    ...(params.get('contrast') === 'high' ? { highContrast: true } : {}),
+  });
   startThemeSync();
   const root = document.getElementById('app');
   if (!root) throw new Error('#app missing');

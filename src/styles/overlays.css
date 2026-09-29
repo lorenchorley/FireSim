@@ -1,0 +1,665 @@
+/*
+ * Bars, floating controls, sheets, dialogs, popovers, snackbar, bottom navigation and the tile grid.
+ * Only things that FLOAT over the map or over content carry elevation (--elev-1..4); everything else is flat.
+ * Every interactive item keeps a >= 44 x 44 px hit area (see the TAP RULE in components.css).
+ * Full guide with markup: docs/DESIGN.md. Live gallery: src/ui/styleguide.html.
+ */
+
+/* ───────────────────────── Top app bar (full screens: settings, data sheet) ─────────────────────────
+ * <header class="app-bar"><button class="icon-btn" aria-label="Back">[icon]</button><h1 class="app-bar-title">Title</h1><button class="icon-btn">[icon]</button></header>
+ * 48 px, flat, hairline under it.
+ */
+.app-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--bar-h);
+  padding: 0 var(--sp-2);
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+}
+
+.app-bar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ───────────────────────── Floating top bar (over the map) ─────────────────────────
+ * <div class="top-bar"><div class="search-bar">[icon-btn][.search-bar-text][icon-btn]</div><div class="top-bar-sub">weather line</div></div>
+ * The pill is 48 px with a 28 px radius and --elev-2. The optional compact line under it is --weather-h (20 px).
+ */
+.top-bar {
+  position: absolute;
+  z-index: var(--z-float);
+  top: var(--sp-2);
+  left: max(var(--sp-2), var(--safe-left));
+  right: max(var(--sp-2), var(--safe-right));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  pointer-events: none;
+}
+
+.top-bar > * {
+  pointer-events: auto;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--bar-h);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-bar);
+  background: var(--surface);
+  box-shadow: var(--elev-2);
+  color: var(--text);
+}
+
+.search-bar-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.search-bar-text {
+  min-height: var(--tap);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.search-bar-text.is-placeholder {
+  color: var(--muted);
+}
+
+.top-bar-sub {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 100%;
+  min-height: var(--weather-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--surface-glass);
+  box-shadow: var(--elev-1);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ───────────────────────── FABs (round map controls) ─────────────────────────
+ * <button class="fab" aria-label="My location">[icon]</button>  48 px, white, 24 px icon, --elev-2. .fab-sm = 40 px.
+ * .is-active = blue icon (mode on). Primary action: .fab-primary (blue). Extended pill: .fab-ext (+ .fab-primary), the Play/Directions pattern.
+ * <button class="fab fab-ext fab-primary">[icon]<span>Play</span></button>
+ * <div class="fab-stack"> stacks FABs with 8 px gaps.
+ */
+.fab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: var(--sp-2);
+  width: var(--fab);
+  height: var(--fab);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--icon);
+  box-shadow: var(--elev-2);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.fab .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.fab-sm {
+  width: var(--fab-sm);
+  height: var(--fab-sm);
+}
+
+.fab.is-active,
+.fab[aria-pressed='true'] {
+  color: var(--primary-ink);
+}
+
+.fab-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.fab-ext {
+  width: auto;
+  min-width: var(--fab);
+  padding: 0 var(--sp-5) 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  color: var(--primary-ink);
+}
+
+.fab-ext.fab-primary {
+  color: var(--on-primary);
+}
+
+.fab-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ───────────────────────── Scrim ───────────────────────── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scrim);
+  background: var(--scrim);
+  animation: fade var(--dur-2) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ───────────────────────── Bottom sheet ─────────────────────────
+ * <div class="bottom-sheet" role="dialog" aria-label="Layers"><button class="bottom-sheet-grab" aria-label="Drag or tap to resize"></button>
+ *   <div class="bottom-sheet-head"><h2 class="bottom-sheet-title">Title</h2>[icon-btn close]</div><div class="bottom-sheet-body">...</div></div>
+ * White, 20 px top radius, 32 x 4 px grab handle (44 px hit area), --elev-3. Position it (absolute/fixed, bottom: 0) where it is used;
+ * the shell only draws it. (The sim screen's own dock, .sheet in sim.css, is being migrated onto this.)
+ */
+.bottom-sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+  padding-bottom: var(--safe-bottom);
+  overflow: hidden;
+}
+
+.bottom-sheet-grab {
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.bottom-sheet-grab::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 32px;
+  height: 4px;
+  margin-left: -16px;
+  border-radius: 2px;
+  background: var(--outline-variant);
+}
+
+:root[data-contrast='high'] .bottom-sheet-grab::before {
+  background: var(--outline);
+}
+
+.bottom-sheet-grab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--tap);
+  transform: translateY(-50%);
+}
+
+.bottom-sheet-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) var(--sp-1) var(--sp-4);
+}
+
+.bottom-sheet-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.bottom-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 var(--sp-3);
+}
+
+/* ───────────────────────── Dialog / modal ─────────────────────────
+ * The safety notice and confirmations. Centred, 28 px radius, --elev-4, on a scrim. Actions are text buttons on the right
+ * (the first tab stop is the primary one). Nothing pops up on its own: dialogs open from a tap.
+ * <div class="modal-scrim"><div class="modal" role="dialog" aria-modal="true"><h2 class="dialog-title">..</h2><div class="dialog-body">..</div><div class="dialog-actions">[btn][btn]</div></div></div>
+ */
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
+  animation: fade var(--dur-2) var(--ease);
+}
+
+.modal-scrim.closing {
+  opacity: 0;
+  transition: opacity var(--dur-1);
+}
+
+.modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 100%;
+  overflow: auto;
+  background: var(--surface);
+  border: var(--card-bw) solid var(--outline);
+  border-radius: 28px;
+  padding: var(--sp-5);
+  box-shadow: var(--elev-4);
+}
+
+.dialog-title {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--fw-medium);
+}
+
+.dialog-body {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+
+/* Safety notice (first run) is a dialog with a lead paragraph and a short list. */
+.notice-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--badge-bg);
+  color: var(--badge-ink);
+  margin-bottom: var(--sp-3);
+}
+
+.notice-kicker {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin: 0;
+}
+
+.notice-title {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.notice-lead {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-regular);
+}
+
+.notice-points {
+  margin: var(--sp-2) 0 var(--sp-4);
+  padding-left: var(--sp-5);
+}
+
+.notice-points li {
+  margin: 0 0 var(--sp-2);
+}
+
+.notice .btn {
+  width: 100%;
+}
+
+/* ───────────────────────── Popover ─────────────────────────
+ * A small floating panel anchored to a control: <div class="popover" role="menu">..rows..</div>. Position it with
+ * absolute/fixed offsets where it is used. Put a .list (rows of 48 px) or a few controls inside. Dismiss with a tap outside / Escape.
+ */
+.popover {
+  position: absolute;
+  z-index: var(--z-sheet);
+  min-width: 200px;
+  max-width: calc(100vw - var(--sp-4));
+  padding: var(--sp-2) 0;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+}
+
+.popover.is-padded {
+  padding: var(--sp-3);
+}
+
+.popover .list {
+  background: transparent;
+}
+
+/* ───────────────────────── Snackbar (toast) ─────────────────────────
+ * Android style: flat dark #323232, white 14 px text, optional blue text action, bottom centre. Use ONLY as feedback to something
+ * the user just did ("Saved on device"); the simulation never pops anything up on its own (project rule).
+ * <div class="snackbar" role="status"><span class="snackbar-text">Saved on device</span><button class="snackbar-action">Undo</button></div>
+ */
+.snackbar {
+  position: fixed;
+  z-index: var(--z-toast);
+  left: 50%;
+  bottom: calc(var(--snackbar-bottom, var(--sp-3)) + var(--safe-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: min(560px, calc(100vw - var(--sp-4)));
+  min-height: var(--row-h);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--surface-inverse);
+  color: var(--on-surface-inverse);
+  box-shadow: var(--elev-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  animation: snackbar-in var(--dur-2) var(--ease);
+}
+
+:root[data-theme='dark'] .snackbar {
+  box-shadow: var(--elev-3), 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.snackbar-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.snackbar-action {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: #8ab4f8;
+  font-weight: var(--fw-medium);
+  text-transform: none;
+}
+
+@keyframes snackbar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* ───────────────────────── Bottom navigation (M3) ─────────────────────────
+ * <nav class="bottom-nav"><button class="nav-item" aria-current="page"><span class="nav-icon">[icon]</span><span class="nav-label">Explore</span></button>...</nav>
+ * 56 px, icon over label; the selected item has a blue icon + label and a pale-blue pill behind the icon (aria-current="page" or aria-selected="true").
+ */
+.bottom-nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: calc(var(--nav-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+}
+
+.nav-item {
+  position: relative;
+  flex: 1 1 0;
+  min-width: var(--tap);
+  min-height: var(--nav-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nav-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 28px;
+  border-radius: 14px;
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.nav-icon .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.nav-item:active .nav-icon {
+  background: var(--state-press);
+}
+
+.nav-item[aria-current='page'],
+.nav-item[aria-selected='true'],
+.nav-item.is-selected {
+  color: var(--primary-ink);
+}
+
+.nav-item[aria-current='page'] .nav-icon,
+.nav-item[aria-selected='true'] .nav-icon,
+.nav-item.is-selected .nav-icon {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+/* Count on the icon (unseen items): red dot with number, 16 px. */
+.nav-badge {
+  position: absolute;
+  top: -2px;
+  right: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  text-align: center;
+}
+
+/* ───────────────────────── Tile grid (layer picker, Maps "Map type / Map details") ─────────────────────────
+ * <div class="tile-grid" style="--cols:4" role="group" aria-label="Map details">
+ *   <button class="tile" aria-pressed="true"><span class="tile-thumb">[icon or image]</span><span class="tile-label">Roads</span><span class="tile-cap">Saved on device</span></button>
+ * </div>
+ * Selected tile (aria-pressed / aria-checked / .is-selected): 2 px blue frame, blue label and a check on the thumb (never colour alone).
+ * Disabled tile ([disabled] / aria-disabled="true" / .is-disabled): faded and inert. .tile-cap is the small status line
+ * ("Loaded", "Not downloaded", "Not available"). Use 3 or 4 columns (--cols); the thumb fills the column up to 64 px.
+ */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.tile-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 64px;
+  aspect-ratio: 1;
+  border: 2px solid var(--outline-variant);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--icon);
+  overflow: hidden;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.tile-thumb .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.tile-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile-label {
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tile-cap {
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tile[aria-pressed='true'] .tile-thumb,
+.tile[aria-checked='true'] .tile-thumb,
+.tile.is-selected .tile-thumb {
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
+
+.tile[aria-pressed='true'] .tile-thumb::after,
+.tile[aria-checked='true'] .tile-thumb::after,
+.tile.is-selected .tile-thumb::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary) var(--check-mark) center / 12px 12px no-repeat;
+}
+
+.tile[aria-pressed='true'] .tile-label,
+.tile[aria-checked='true'] .tile-label,
+.tile.is-selected .tile-label {
+  color: var(--primary-ink);
+}
+
+.tile:disabled,
+.tile[aria-disabled='true'],
+.tile.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ───────────────────────── High contrast: floating surfaces get an outline ───────────────────────── */
+:root[data-contrast='high'] .fab,
+:root[data-contrast='high'] .search-bar,
+:root[data-contrast='high'] .top-bar-sub,
+:root[data-contrast='high'] .popover,
+:root[data-contrast='high'] .bottom-sheet,
+:root[data-contrast='high'] .chip.chip-float {
+  border: 2px solid var(--outline);
+}
+
+:root[data-contrast='high'] .bottom-sheet {
+  border-bottom: 0;
+}

@@ -150,6 +150,27 @@ describe('VegetationLayer', () => {
     l.dispose();
   });
 
+  it('is not drawn at all in a straight-down top view, where every tree has faded out anyway', () => {
+    const l = layer();
+    l.updateLod([0, 0, 505], 1, 700, true);
+    l.setInstances(sets);
+    l.setLayers({ ...onLayers });
+    expect(l.group.visible).toBe(true);
+    l.setViewDown(0.6); // an ordinary oblique view
+    expect(l.group.visible).toBe(true);
+    l.setViewDown(0.95); // steep: fading, still drawn
+    expect(l.group.visible).toBe(true);
+    l.setViewDown(0.999); // top view
+    expect(l.group.visible).toBe(false);
+    expect(l.visible).toBe(true); // still switched on: the legend and the layer switch are unchanged
+    l.setViewDown(0.3);
+    expect(l.group.visible).toBe(true);
+    l.setLayers({ ...onLayers, vegetation: false });
+    l.setViewDown(0.1);
+    expect(l.group.visible).toBe(false); // the switch wins
+    l.dispose();
+  });
+
   it('takes the sway from the wind: direction, lean and oscillation follow the speed; it only animates when it matters', () => {
     const l = layer();
     l.updateLod([0, 0, 505], 1, 700, true);

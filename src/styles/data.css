@@ -1,0 +1,435 @@
+/*
+ * Data-sheet primitives: key-value lists, big numbers, inline bars, meters, sparkbars, provenance ("origin") chips,
+ * dense tables, code spans and legend chips. Built for the data-set information screens but usable anywhere numbers
+ * and their sources are shown. Colour rule: bars, meters and sparkbars are DATA, so they never use the interactive blue;
+ * they default to a neutral grey and take a status or series colour through --bar-color / .bar-* classes.
+ * Full guide with markup: docs/DESIGN.md. Live gallery: src/ui/styleguide.html.
+ */
+
+/* ───────────────────────── Key-value rows ─────────────────────────
+ * <dl class="kv"><div class="kv-row"><dt class="kv-key">Resolution</dt><dd class="kv-val">1 m</dd></div>...</dl>
+ * Dense (min 36 px), hairline between rows, key grey on the left, value right-aligned with tabular numerals.
+ * .kv-left puts the value on the left (long text); .kv-stack puts the value under its key.
+ */
+.kv {
+  margin: 0;
+  padding: 0;
+}
+
+.kv-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 36px;
+  padding: var(--sp-2) 0;
+}
+
+.kv-row + .kv-row {
+  border-top: 1px solid var(--divider);
+}
+
+.kv-key {
+  flex: 0 1 45%;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.kv-val {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.kv-val .icon {
+  display: inline-block;
+  vertical-align: -4px;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.kv-left .kv-val {
+  text-align: left;
+}
+
+.kv-stack .kv-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.kv-stack .kv-key {
+  flex: none;
+}
+
+.kv-stack .kv-val {
+  text-align: left;
+}
+
+/* Dense variant for long lists. */
+.kv-dense .kv-row {
+  min-height: 28px;
+  padding: var(--sp-1) 0;
+}
+
+/* ───────────────────────── Stat (big number + caption) ─────────────────────────
+ * <div class="stat"><span class="stat-num">1.2<span class="stat-unit">GB</span></span><span class="stat-cap">Total on device</span></div>
+ * .stat-row lays several stats out in equal columns; .stat-lg uses the 32 px display size.
+ */
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-num {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stat-lg .stat-num {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-bold);
+}
+
+.stat-unit {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+}
+
+.stat-cap {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: var(--sp-3) var(--sp-4);
+}
+
+/* ───────────────────────── Bar (inline proportion) ─────────────────────────
+ * <span class="bar" style="--v:42%" role="img" aria-label="42 % of the total"><span class="bar-fill"></span></span>
+ * Small (6 px) and inline: fits in a table cell or beside a size. Colour: --bar-color or .bar-ok/.bar-watch/.bar-danger/.bar-fire/.bar-s1..s5.
+ * Stacked: <span class="bar bar-stack"><span class="bar-seg bar-s1" style="--v:40"></span><span class="bar-seg bar-s2" style="--v:25"></span></span>
+ * (segment --v is a flex weight; the segments share the track proportionally).
+ */
+.bar {
+  --bar-color: var(--muted);
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  width: 100%;
+  min-width: 48px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  width: var(--v, 0%);
+  height: 100%;
+  border-radius: 3px;
+  background: var(--bar-color);
+}
+
+.bar-stack {
+  display: flex;
+  gap: 1px;
+}
+
+.bar-seg {
+  flex: var(--v, 1) 1 0;
+  min-width: 2px;
+  height: 100%;
+  background: var(--bar-color);
+}
+
+.bar-lg {
+  height: 10px;
+  border-radius: 5px;
+}
+
+.bar-ok {
+  --bar-color: var(--ok);
+}
+
+.bar-watch {
+  --bar-color: var(--watch);
+}
+
+.bar-danger {
+  --bar-color: var(--danger);
+}
+
+.bar-fire {
+  --bar-color: var(--fire);
+}
+
+.bar-s1 {
+  --bar-color: var(--series-1);
+}
+
+.bar-s2 {
+  --bar-color: var(--series-2);
+}
+
+.bar-s3 {
+  --bar-color: var(--series-3);
+}
+
+.bar-s4 {
+  --bar-color: var(--series-4);
+}
+
+.bar-s5 {
+  --bar-color: var(--series-5);
+}
+
+/* ───────────────────────── Meter (labelled gauge) ─────────────────────────
+ * <div class="meter meter-ok" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="62" aria-label="Cache used" style="--v:62%">
+ *   <div class="meter-head"><span>Cache</span><span class="meter-value">62 %</span></div><div class="meter-track"><div class="meter-fill"></div></div></div>
+ * Block-level and taller (8 px) than .bar, with a label row. Status classes -ok -watch -danger set the fill colour.
+ */
+.meter {
+  --bar-color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.meter-value {
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.meter-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.meter-fill {
+  width: var(--v, 0%);
+  height: 100%;
+  border-radius: 4px;
+  background: var(--bar-color);
+  transition: width var(--dur-2) var(--ease);
+}
+
+.meter-ok {
+  --bar-color: var(--ok);
+}
+
+.meter-watch {
+  --bar-color: var(--watch);
+}
+
+.meter-danger {
+  --bar-color: var(--danger);
+}
+
+/* ───────────────────────── Sparkbar (tiny histogram) ─────────────────────────
+ * <span class="sparkbar" role="img" aria-label="Sizes of 8 tiles"><i style="--h:40%"></i><i style="--h:100%"></i>...</span>
+ * Inline-block bars, 24 px high, 4 px wide, 2 px apart. --spark-color recolours it. primitives.sparkbar() builds one from numbers.
+ */
+.sparkbar {
+  --spark-color: var(--muted);
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+  vertical-align: middle;
+}
+
+.sparkbar > i {
+  display: block;
+  width: 4px;
+  height: var(--h, 10%);
+  min-height: 2px;
+  border-radius: 1px;
+  background: var(--spark-color);
+}
+
+/* ───────────────────────── Origin chips (data provenance) ─────────────────────────
+ * <span class="origin-chip origin-live">[icon]Live</span>
+ *   -live       fetched from the internet just now                          (green)
+ *   -saved      saved on this device from an earlier download               (neutral, solid)
+ *   -bundled    shipped inside the app                                      (neutral, outlined)
+ *   -synthetic  generated or estimated by the app, not measured             (amber, dashed outline)
+ *   -user       entered or drawn by the user                                (violet)
+ * Small (22 px), non-interactive. The meaning is carried by the word (and icon) as well as the colour.
+ */
+.origin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 22px;
+  padding: 0 var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.origin-chip .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.origin-live {
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+}
+
+.origin-saved {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.origin-bundled {
+  background: transparent;
+  border-color: var(--outline);
+  color: var(--text);
+}
+
+.origin-synthetic {
+  background: var(--watch-bg);
+  border: 1px dashed var(--watch-ink);
+  color: var(--watch-ink);
+}
+
+.origin-user {
+  background: var(--violet-bg);
+  color: var(--violet-ink);
+}
+
+/* ───────────────────────── Tables ─────────────────────────
+ * Dense: 12 px header, 14 px cells, 36 px rows, hairlines. Wrap wide tables in .table-wrap (scrolls sideways).
+ * <div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th class="num">Size</th></tr></thead><tbody>...</tbody></table></div>
+ * Numbers: class="num" (right-aligned, tabular).
+ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-2);
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  vertical-align: baseline;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+  padding-left: 0;
+}
+
+.data-table th:last-child,
+.data-table td:last-child {
+  padding-right: 0;
+}
+
+.data-table thead th {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
+  border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap;
+}
+
+.data-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* ───────────────────────── Code and mono spans ─────────────────────────
+ * <code class="code">tile_-33.7_150.3.png</code>  <pre class="code-block">...</pre>
+ */
+.code,
+code {
+  padding: 1px 4px;
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.code-block {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-sm);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ───────────────────────── Legend chips ─────────────────────────
+ * <span class="legend-chip"><span class="swatch" style="background:#62b346"></span>Moderate</span>
+ * A colour key entry: swatch + label, 24 px, no border. Wrap several in .chips.
+ */
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  white-space: nowrap;
+}
+
+.legend-chip .swatch {
+  width: 14px;
+  height: 14px;
+}

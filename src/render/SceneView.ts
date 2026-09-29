@@ -371,6 +371,8 @@ export class SceneView implements SceneViewApi {
 
   private placeVegetation(force = false): void {
     if (!this.fuel || !this.hf || !this.vegetation) return;
+    // Canopy switched off (battery saver): nothing to place; it is placed when it is switched on again.
+    if (!this.layers.vegetation && this.vegFocus) return;
     const t = this.rig.controls.target;
     const focus: [number, number] = [t.x, -t.z];
     // Full density within a radius that follows the zoom (close views get dense forest, wide views spread out).
@@ -388,6 +390,8 @@ export class SceneView implements SceneViewApi {
         heightAt: (x, y) => hf.heightAt(x, y),
         focus,
         focusRadius: radius,
+        // A close camera sees nothing far away: keep the budget near the focus (a wide view needs the far forest too).
+        farDensity: THREE.MathUtils.clamp(0.02 + (0.1 * (radius - 500)) / 3000, 0.02, 0.12),
         // Trees over a heat map that is not solo are thinned so the colours below stay readable.
         densityScale: this.layers.overlay !== 'none' && !this.layers.soloHeat ? 0.4 : 1,
         understorey: this.layers.understorey,
@@ -416,6 +420,7 @@ export class SceneView implements SceneViewApi {
   }
 
   private readonly vegCam: [number, number, number] = [0, 0, 0];
+  private readonly vegDir = new THREE.Vector3();
 
   /**
    * Put the camera position in local coordinates (x, y, z m ASL) into {@link vegCam} for the canopy levels of detail and
@@ -583,7 +588,7 @@ export class SceneView implements SceneViewApi {
     // understorey's share of the budget goes to the other groups when it is off: both need a new placement.
     this.vegetation?.setLayers(l);
     const thinTrees = (s: LayerState): boolean => s.overlay !== 'none' && !s.soloHeat;
-    if (prev && (thinTrees(prev) !== thinTrees(l) || prev.understorey !== l.understorey)) this.placeVegetation(true);
+    if (prev && (thinTrees(prev) !== thinTrees(l) || prev.understorey !== l.understorey || (!prev.vegetation && l.vegetation))) this.placeVegetation(true);
     this.updateViewDependentLayers();
     this.section.visible = l.crossSection.enabled;
     if (l.crossSection.enabled && (!prev || !prev.crossSection.enabled || prev.crossSection.azimuth !== l.crossSection.azimuth || prev.crossSection.centre[0] !== l.crossSection.centre[0] || prev.crossSection.centre[1] !== l.crossSection.centre[1] || prev.verticalExaggeration !== l.verticalExaggeration)) {
@@ -1075,6 +1080,7 @@ export class SceneView implements SceneViewApi {
     const pxPerRad = vpH / fovRad;
     if (this.terrainLayer) this.terrainLayer.uniforms.uPixelMetres!.value = (2 * Math.tan(fovRad / 2)) / Math.max(1, vpH);
     this.vegetation?.setProjection(pxPerRad, 2600);
+    this.vegetation?.setViewDown(-cam.getWorldDirection(this.vegDir).y);
     // Both in drawing-buffer pixels: flames stay ≥ 13 CSS px tall.
     this.flames.setView(pxPerRad, this.flameSpacing, 13 * this.dpr.dpr);
     this.embers.setProjection(pxPerRad, this.dpr.dpr);

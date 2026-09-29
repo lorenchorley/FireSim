@@ -1,18 +1,26 @@
 /**
- * Reusable, accessible field-UI controls. Every control is at least 48 px tall (primary actions 56–64 px), keyboard
- * operable, labelled, and never relies on hover or on colour alone.
+ * Reusable, accessible field-UI controls. Every control has a hit area of at least 44 x 44 px (see the TAP RULE in
+ * src/styles/components.css; the visual size is 32-48 px), is keyboard operable, labelled, and never relies on hover or
+ * on colour alone. The newer primitives (chips, list rows, tiles, key-value lists...) are in ./primitives.ts.
  */
 import { compassName, wrapDeg } from '../core/units';
 import { h, svg, uniqueId, type Child } from './dom';
 import { icon, type IconName } from './icons';
+import { rangeFill } from './primitives';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
+/**
+ * primary = filled blue; tonal (alias accent) = blue tint; secondary (alias outlined, the default) = outlined pill;
+ * ghost (alias text) = text button; danger = filled red.
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'tonal' | 'outlined' | 'text';
 
 export interface ButtonOptions {
   label: string;
   icon?: IconName;
   variant?: ButtonVariant;
-  size?: 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg';
+  /** Full width. */
+  block?: boolean;
   /** Hide the text visually (it stays as the accessible name). */
   iconOnly?: boolean;
   onClick?: (ev: MouseEvent) => void;
@@ -26,7 +34,7 @@ export function button(o: ButtonOptions): HTMLButtonElement {
     'button',
     {
       type: 'button',
-      class: ['btn', `btn-${o.variant ?? 'secondary'}`, o.size === 'lg' && 'btn-lg', o.iconOnly && 'btn-icon', o.class],
+      class: ['btn', `btn-${o.variant ?? 'secondary'}`, o.size === 'lg' && 'btn-lg', o.size === 'sm' && 'btn-sm', o.block && 'btn-block', o.iconOnly && 'btn-icon', o.class],
       disabled: o.disabled ?? false,
       aria: o.iconOnly ? { label: o.label } : undefined,
       dataset: o.testId ? { testid: o.testId } : undefined,
@@ -87,6 +95,7 @@ export function segmented<T extends string>(o: {
           return h('label', { class: 'segmented-option', dataset: { value: opt.value } }, [
             input,
             h('span', { class: 'segmented-face' }, [
+              icon('check', { class: 'segmented-check', size: 18 }),
               opt.icon ? icon(opt.icon) : null,
               h('span', { class: 'segmented-text' }, [h('span', { class: 'segmented-main' }, opt.label), opt.sub ? h('span', { class: 'segmented-sub' }, opt.sub) : null]),
             ]),
@@ -165,12 +174,14 @@ export function slider(o: {
         const v = Number(input.value);
         out.textContent = o.format(v);
         input.setAttribute('aria-valuetext', o.format(v));
+        rangeFill(input);
         o.onInput?.(v);
       },
       change: () => o.onChange?.(Number(input.value)),
     },
   });
   input.setAttribute('aria-valuetext', o.format(o.value));
+  rangeFill(input);
   const el = h('div', { class: 'slider' }, [
     h('div', { class: 'slider-head' }, [h('label', { class: 'field-label', htmlFor: id }, o.label), out]),
     input,
@@ -184,6 +195,7 @@ export function slider(o: {
       input.value = String(v);
       out.textContent = o.format(v);
       input.setAttribute('aria-valuetext', o.format(v));
+      rangeFill(input);
     },
   };
 }

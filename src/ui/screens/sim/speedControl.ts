@@ -5,6 +5,7 @@
  */
 import { h, text } from '../../dom';
 import { icon } from '../../icons';
+import { rangeFill } from '../../primitives';
 import { formatPlaybackSpeed, formatSpeedHint, formatSpeedMultiple, formatSpeedRate } from '../../format';
 import { speedFromStored, speedToStored } from '../../settings';
 import type { SimContext } from './context';
@@ -71,6 +72,7 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
   const applySlider = frameThrottle<number>((pos) => session.setSpeed(sliderToSpeed(pos)));
   slider.addEventListener('input', () => {
     sliding = true;
+    rangeFill(slider);
     applySlider.push(Number(slider.value));
   });
   slider.addEventListener('change', () => {
@@ -167,6 +169,7 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
     for (const b of presets) b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === sp));
     if (!sliding) {
       slider.value = String(speedToSlider(sp));
+      rangeFill(slider);
       slider.setAttribute('aria-valuetext', `${formatPlaybackSpeed(sp)}, ${formatSpeedHint(sp)}`);
     }
     if (document.activeElement !== customInput) customInput.value = customFieldValue(sp, unit);

@@ -1,115 +1,414 @@
 /*
- * Design tokens. Two themes (doc 09 §9):
- *  - light = "Sunlight": near-black on white, 7:1+ text contrast, heavy weights, 2 px dark outlines, no thin lines;
- *  - dark  = "Night": dark UI, dimmed map, no pure-white panels.
- * The theme is chosen by <html data-theme> (set from the setting / OS preference in src/ui/settings.ts).
+ * Design tokens: the single source of colour, type, spacing, shape, elevation and size for the whole app.
+ * Read docs/DESIGN.md first; it explains the language and lists every primitive that uses these tokens.
+ *
+ * Look: flat, Google-Maps-for-Android-flavoured (Material 3 leaning), slightly denser than stock.
+ *   - light  = "Maps light": white surfaces on a very light grey app background, hairline dividers.
+ *   - dark   = "Maps night": #202124 background, #303134 surface, #3c4043 raised.
+ *   - high   = "Bright sun" accessibility variant (<html data-contrast="high">, works on top of either theme):
+ *              near-black on white (or white on black), 2 px outlines, heavier weights, +1 px type, >= 7:1 text.
+ *
+ * Selected by <html data-theme="light|dark"> and <html data-contrast="high"> (src/ui/settings.ts sets both).
+ *
+ * Naming: NEW tokens are grouped below (surfaces, text, lines, interactive, fire semantics, elevation, type, space,
+ * shape, size, motion). The LEGACY block at the top of each theme keeps the old names the screen CSS still uses
+ * (--bg, --surface, --border, --primary, --accent ...) with remapped values; see docs/DESIGN.md "Old -> new token map".
+ *
+ * Colour rules: one interactive accent (blue); fire semantics (orange/red/yellow) are reserved for fire, danger and the
+ * fire-danger ratings; green means OK; the interactive blue is never used for data (charts, map layers, legends).
+ * Every text/background pair is checked against WCAG in src/ui/tokens.contrast.test.ts.
  */
+
+/* ───────────────────────────── Light: "Maps light" ───────────────────────────── */
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
+
+  /* Surfaces */
+  --bg: #f1f3f4; /* app background behind cards and lists */
+  --surface: #ffffff; /* cards, sheets, bars, dialogs, popovers */
+  --surface-2: #f1f3f4; /* subtle step on a surface: inputs' resting fill, list pressed, tonal areas */
+  --surface-3: #e8eaed; /* tracks, disabled fills, skeletons, "raised" step */
+  --surface-glass: rgba(255, 255, 255, 0.96); /* floating map overlays (near-opaque: no blur, no gloss) */
+  --surface-inverse: #323232; /* snackbars (Android style) */
+  --on-surface-inverse: #ffffff;
+  --scrim: rgba(32, 33, 36, 0.5);
+
+  /* Text and icons */
+  --text: #202124;
+  --muted: #5f6368; /* secondary text, captions, inactive icons */
+  --icon: var(--muted);
+
+  /* Lines */
+  --divider: #dadce0; /* 1 px hairlines between rows and around resting chips (decorative, not a boundary) */
+  --outline: #80868b; /* boundary of text fields, checkboxes, switches, segmented buttons: >= 3:1 on --surface and --bg */
+  --outline-variant: #dadce0; /* boundary of buttons and chips that carry a text label (the label identifies them) */
+  --border: var(--outline); /* LEGACY name */
+  --border-soft: var(--divider); /* LEGACY name */
+
+  /* Interactive accent (blue). Fills and icons use --primary; TEXT on white/grey uses --primary-ink (>= 4.5:1 everywhere) */
+  --primary: #1a73e8;
+  --on-primary: #ffffff;
+  --primary-ink: #1967d2;
+  --primary-container: #e8f0fe; /* selected chip, tonal button, selected tile, nav pill */
+  --on-primary-container: #174ea6;
+  --accent: var(--primary); /* LEGACY: the old orange accent is now the interactive blue; fire orange is --fire */
+  --on-accent: var(--on-primary);
+  --accent-soft: var(--primary-container);
+  --focus: #1a73e8;
+
+  /* Status: danger (red), watch (amber), ok (green), info (blue), fire (orange). x = fill/icon, on-x = text on fill, x-bg = tint, x-ink = text on tint/surface */
+  --danger: #d93025;
+  --on-danger: #ffffff;
+  --danger-bg: #fce8e6;
+  --danger-ink: #c5221f;
+  --watch: #f9ab00;
+  --on-watch: #202124;
+  --watch-bg: #fef7e0;
+  --watch-ink: #a05a00;
+  --ok: #188038;
+  --on-ok: #ffffff;
+  --ok-bg: #e6f4ea;
+  --ok-ink: #137333;
+  --info: #1967d2;
+  --on-info: #ffffff;
+  --info-bg: #e8f0fe;
+  --info-ink: #174ea6;
+  --fire: #e8710a;
+  --on-fire: #202124;
+  --fire-bg: #fef0e0;
+  --fire-ink: #b3400b;
+
+  /* Fire-danger ratings (AFDRS colours; the same in both themes; text on them is --rating-ink-*) */
+  --rating-none: #e8eaed;
+  --rating-moderate: #62b346;
+  --rating-high: #ffd23f;
+  --rating-extreme: #f47b20;
+  --rating-catastrophic: #9e1b1b;
+  --rating-ink: #202124;
+  --rating-ink-catastrophic: #ffffff;
+
+  /* Data colours for charts (never the interactive blue) */
+  --chart-wind: #7b1fa2;
+  --chart-temp: #c2410c;
+  --chart-rh: #0b7285;
+  --chart-moist: #8a5a14;
+  --grid: rgba(32, 33, 36, 0.12);
+  --band-dry: rgba(217, 48, 37, 0.1);
+  /* Categorical series for bars and stacked sizes (teal, purple, brown, slate, magenta): none is the interactive blue or a fire colour */
+  --series-1: #0b7285;
+  --series-2: #7b1fa2;
+  --series-3: #8a5a14;
+  --series-4: #546e7a;
+  --series-5: #ad1457;
+  /* Violet: user-entered data (origin chip) */
+  --violet-bg: #f3e8fd;
+  --violet-ink: #7b1fa2;
+
+  /* Interaction state layers (pressed rows, hovered rows on pointer devices) */
+  --state-hover: rgba(60, 64, 67, 0.06);
+  --state-press: rgba(60, 64, 67, 0.12);
+
+  /* Elevation: soft, for things that float over the map or over content. Flat surfaces use none. */
+  --elev-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15); /* chips, small floating controls */
+  --elev-2: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15); /* search pill, FABs, popovers */
+  --elev-3: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15); /* bottom sheets, menus */
+  --elev-4: 0 2px 3px rgba(60, 64, 67, 0.3), 0 6px 10px 4px rgba(60, 64, 67, 0.15); /* dialogs */
+  --shadow: var(--elev-2); /* LEGACY */
+  --shadow-strong: var(--elev-4); /* LEGACY */
+
+  --map-dim: transparent;
+
+  /* Mandatory safety strip: flat amber, dark text (7.8:1). Also the Android status-bar colour (see THEME_CHROME in settings.ts). */
+  --badge-bg: #fbbc04;
+  --badge-ink: #3c2e00;
+
+  /* Small glyphs used as CSS backgrounds (a data URI cannot read variables, so they are themed here) */
+  --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E");
+}
+
+/* ───────────────────────────── Dark: "Maps night" ───────────────────────────── */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #202124;
+  --surface: #303134;
+  --surface-2: #3c4043; /* "raised" */
+  --surface-3: #4a4d51;
+  --surface-glass: rgba(48, 49, 52, 0.96);
+  --surface-inverse: #323232;
+  --on-surface-inverse: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --text: #e8eaed;
+  --muted: #aab0b6; /* the Maps grey #9aa0a6 is only 3.96:1 on --surface-2 (raised); this is 4.78:1 there */
+  --icon: var(--muted);
+
+  --divider: #3c4043;
+  --outline: #969ba1;
+  --outline-variant: #5f6368;
+  --border: var(--outline);
+  --border-soft: var(--divider);
+
+  --primary: #8ab4f8;
+  --on-primary: #202124;
+  --primary-ink: #8ab4f8;
+  --primary-container: #2f3b52;
+  --on-primary-container: #d2e3fc;
+  --accent: var(--primary);
+  --on-accent: var(--on-primary);
+  --accent-soft: var(--primary-container);
+  --focus: #8ab4f8;
+
+  --danger: #f28b82;
+  --on-danger: #202124;
+  --danger-bg: #42302f;
+  --danger-ink: #f28b82;
+  --watch: #fdd663;
+  --on-watch: #202124;
+  --watch-bg: #3d3520;
+  --watch-ink: #fdd663;
+  --ok: #81c995;
+  --on-ok: #202124;
+  --ok-bg: #263a2c;
+  --ok-ink: #81c995;
+  --info: #8ab4f8;
+  --on-info: #202124;
+  --info-bg: #2f3b52;
+  --info-ink: #aecbfa;
+  --fire: #ff9a5c;
+  --on-fire: #202124;
+  --fire-bg: #40291a;
+  --fire-ink: #ffb27f;
+
+  --chart-wind: #d7aefb;
+  --chart-temp: #ff9a5c;
+  --chart-rh: #4fd1e0;
+  --chart-moist: #e0b060;
+  --grid: rgba(232, 234, 237, 0.14);
+  --band-dry: rgba(242, 139, 130, 0.14);
+  --series-1: #4fd1e0;
+  --series-2: #d7aefb;
+  --series-3: #e0b060;
+  --series-4: #b0bec5;
+  --series-5: #f48fb1;
+  --violet-bg: #3b2a4a;
+  --violet-ink: #d7aefb;
+
+  --state-hover: rgba(232, 234, 237, 0.08);
+  --state-press: rgba(232, 234, 237, 0.14);
+
+  /* Shadows are darker and carry a faint ring so a floating control keeps its edge over dark imagery. */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(232, 234, 237, 0.08);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(232, 234, 237, 0.08);
+  --elev-3: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(232, 234, 237, 0.08);
+  --elev-4: 0 2px 3px rgba(0, 0, 0, 0.6), 0 6px 10px 4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(232, 234, 237, 0.1);
+  --shadow: var(--elev-2);
+  --shadow-strong: var(--elev-4);
+
+  --map-dim: rgba(0, 0, 0, 0.2);
+
+  --badge-bg: #e0a100;
+  --badge-ink: #241a00;
+
+  --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23aab0b6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23202124' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E");
+}
+
+/* ─────────────── High contrast ("bright sun"): <html data-contrast="high">, on top of either theme ─────────────── */
+
+/* Theme-independent parts: heavier lines, heavier weights, +1 px type. */
+:root[data-contrast='high'] {
+  --bw: 2px;
+  --card-bw: 2px;
+  --fw-regular: 500;
+  --fw-medium: 700;
+  --fs-xs: 13px;
+  --fs-sm: 15px;
+  --fs-md: 17px;
+  --fs-lg: 21px;
+  --fs-xl: 25px;
+  --fs-2xl: 33px;
+  --outline-variant: var(--outline);
+  --rating-ink: #000000;
+  --elev-1: none;
+  --elev-2: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --elev-3: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --elev-4: 0 3px 10px rgba(0, 0, 0, 0.4);
+  --shadow: var(--elev-2);
+  --shadow-strong: var(--elev-4);
+}
+
+/* Light + high contrast: today's "Sunlight" look built from the same tokens. */
+:root[data-contrast='high']:not([data-theme='dark']) {
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-2: #f1f3f5;
   --surface-3: #e3e7eb;
-  --surface-glass: rgba(255, 255, 255, 0.96);
+  --surface-glass: rgba(255, 255, 255, 1);
   --text: #0b0d10;
   --muted: #3a414b;
-  --border: #1d232b;
-  --border-soft: #bfc6ce;
-  --primary: #111418;
-  --on-primary: #ffffff;
-  --accent: #ff6a13;
-  --on-accent: #111111;
-  --accent-soft: #fff1e6;
-  --danger: #c92a2a;
-  --on-danger: #ffffff;
-  --danger-bg: #fff0f0;
-  --watch: #f2a900;
-  --on-watch: #1a1400;
-  --watch-ink: #7a4d00;
-  --watch-bg: #fff7e0;
-  --info: #1c5fd0;
-  --on-info: #ffffff;
-  --info-bg: #edf3ff;
-  --ok: #237a36;
-  --ok-bg: #eaf7ed;
-  --focus: #1c5fd0;
-  --grid: rgba(11, 13, 16, 0.14);
-  --chart-wind: #1c5fd0;
-  --chart-temp: #c2410c;
-  --chart-rh: #0b7285;
-  --chart-moist: #8a5a14;
-  --band-dry: rgba(201, 42, 42, 0.1);
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
-  --shadow-strong: 0 6px 28px rgba(0, 0, 0, 0.32);
-  --map-dim: transparent;
-  --badge-bg: #ffd400;
-  --badge-ink: #111111;
-  --control-border: 2px solid var(--border);
+  --divider: #8a929c;
+  --outline: #1d232b;
+  --primary: #0842a0;
+  --primary-ink: #0842a0;
+  --primary-container: #e3edfd;
+  --on-primary-container: #0842a0;
+  --focus: #0842a0;
+  --danger: #a50e0e;
+  --danger-bg: #fce8e6;
+  --danger-ink: #8c0b0b;
+  --watch: #f9ab00;
+  --watch-bg: #fff8e1;
+  --watch-ink: #7a4400;
+  --ok: #0d652d;
+  --ok-bg: #e6f4ea;
+  --ok-ink: #0a5224;
+  --info: #0842a0;
+  --info-bg: #e3edfd;
+  --info-ink: #0842a0;
+  --fire: #e8710a;
+  --on-fire: #000000;
+  --fire-bg: #fff0e0;
+  --fire-ink: #8a3600;
+  --grid: rgba(11, 13, 16, 0.2);
+  --violet-ink: #4a148c;
+  --state-hover: rgba(11, 13, 16, 0.08);
+  --state-press: rgba(11, 13, 16, 0.16);
+  --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d232b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #0e1116;
-  --surface: #161b22;
-  --surface-2: #1f2630;
-  --surface-3: #2b333e;
-  --surface-glass: rgba(22, 27, 34, 0.96);
-  --text: #eef1f4;
-  --muted: #b6bfcb;
-  --border: #6b7788;
-  --border-soft: #353e4a;
-  --primary: #ff8a3d;
-  --on-primary: #111111;
-  --accent: #ff8a3d;
-  --on-accent: #111111;
-  --accent-soft: #3a2415;
-  --danger: #ff6b6b;
-  --on-danger: #1a0505;
-  --danger-bg: #3a1618;
-  --watch: #ffc94d;
-  --on-watch: #1a1400;
-  --watch-ink: #ffd772;
-  --watch-bg: #33290f;
-  --info: #7cb0ff;
-  --on-info: #0a1428;
-  --info-bg: #15223a;
-  --ok: #69d47e;
-  --ok-bg: #12301a;
-  --focus: #9cc2ff;
-  --grid: rgba(255, 255, 255, 0.14);
-  --chart-wind: #7cb0ff;
-  --chart-temp: #ff9a5c;
-  --chart-rh: #4fd1e0;
-  --chart-moist: #e0b060;
-  --band-dry: rgba(255, 107, 107, 0.14);
-  --shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
-  --shadow-strong: 0 8px 30px rgba(0, 0, 0, 0.65);
-  --map-dim: rgba(0, 0, 0, 0.2);
-  --badge-bg: #c9a400;
-  --badge-ink: #0e0e0e;
-  --control-border: 2px solid var(--border);
+/* Dark + high contrast: white on black. */
+:root[data-theme='dark'][data-contrast='high'] {
+  --bg: #000000;
+  --surface: #121314;
+  --surface-2: #1f2123;
+  --surface-3: #33363a;
+  --surface-glass: rgba(18, 19, 20, 1);
+  --text: #ffffff;
+  --muted: #dadce0;
+  --divider: #80868b;
+  --outline: #e8eaed;
+  --primary: #aecbfa;
+  --on-primary: #000000;
+  --primary-ink: #aecbfa;
+  --primary-container: #1e3a6e;
+  --on-primary-container: #ffffff;
+  --focus: #aecbfa;
+  --danger: #ffb4ab;
+  --danger-bg: #4a1613;
+  --danger-ink: #ffb4ab;
+  --watch: #ffe082;
+  --watch-bg: #4a3a00;
+  --watch-ink: #ffe082;
+  --ok: #a8dab5;
+  --ok-bg: #12351f;
+  --ok-ink: #a8dab5;
+  --info: #aecbfa;
+  --info-bg: #1e3a6e;
+  --info-ink: #d2e3fc;
+  --fire: #ffb27f;
+  --fire-bg: #4a2410;
+  --fire-ink: #ffcfb0;
+  --grid: rgba(255, 255, 255, 0.24);
+  --violet-bg: #3b2a4a;
+  --violet-ink: #ebd7fd;
+  --state-hover: rgba(255, 255, 255, 0.1);
+  --state-press: rgba(255, 255, 255, 0.2);
+  --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e8eaed' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
+/* ───────────────────────────── Scales (theme independent) ───────────────────────────── */
 :root {
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --tap: 48px;
-  --tap-lg: 60px;
-  --badge-h: 20px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; /* Roboto on Android */
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Roboto Mono', monospace;
+
+  /* Type: sizes 12 / 14 / 16 / 20 / 24 (+32 for big numbers); weights 400 and 500 (700 for clock digits and ratings only) */
+  --fs-xs: 12px; /* captions, badges, the safety strip */
+  --fs-sm: 14px; /* body, secondary text, buttons, chips */
+  --fs-md: 16px; /* list titles, inputs, sub-headings */
+  --fs-lg: 20px; /* section and dialog titles */
+  --fs-xl: 24px; /* screen titles, stat numbers */
+  --fs-2xl: 32px; /* display numbers (big readouts) */
+  --lh-xs: 16px;
+  --lh-sm: 20px;
+  --lh-md: 24px;
+  --lh-lg: 28px;
+  --lh-xl: 32px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-bold: 700;
+  --tracking-caps: 0.06em; /* only for the safety strip and badges */
+
+  /* Space (4 px base). Density: card padding = --sp-3, gaps between sections = --sp-2..--sp-3. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Shape */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px; /* top corners of bottom sheets */
+  --r-bar: 28px; /* the floating top bar */
+  --r-pill: 999px;
+  --radius: var(--r-md); /* LEGACY */
+  --radius-sm: var(--r-sm); /* LEGACY */
+
+  /* Lines */
+  --bw: 1px; /* control outline width: 1 px, 2 px in high contrast */
+  --card-bw: 0px; /* card outline: none (flat), 2 px in high contrast */
+  --control-border: var(--bw) solid var(--outline); /* LEGACY name; input-like controls */
+
+  /* Sizes. HARD RULE: every interactive control has a hit area of at least --tap x --tap, whatever its visual size. */
+  --icon-size: 24px;
+  --icon-size-sm: 18px;
+  --tap: 44px; /* minimum hit area (gloves, shaky hands) */
+  --tap-lg: 52px;
+  --ctl-h: 40px; /* buttons, icon buttons, inputs' inner controls: visual height */
+  --ctl-h-sm: 32px; /* chips, small buttons */
+  --ctl-h-lg: 48px; /* big call-to-action buttons */
+  --field-h: 44px; /* text fields, selects, steppers */
+  --row-h: 48px; /* list row, one line */
+  --row-h-2: 52px; /* two lines */
+  --row-h-3: 72px; /* three lines */
+  --fab: 48px; /* round map controls (menu buttons, my-location); also the layout token the sim screen uses */
+  --fab-sm: 40px;
+  --bar-h: 48px; /* target height of the top bar (weather line comes on top: --weather-h) */
+  --weather-h: 20px;
+  --nav-h: 56px; /* bottom navigation */
+  --timeline-h: 64px; /* timeline strip */
+  --strip-h: 24px; /* the training strip (must not grow past this) */
+  --badge-h: var(--strip-h); /* LEGACY name of --strip-h: the sim layout subtracts it */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
-  /* Chrome sizes (px), stacked from the top: the top bar (a 54 px row + a 28 px weather line + its 2 px border), the map,
-     the dock's tab row, the timeline strip. --scrub-h INCLUDES the bottom safe-area inset. Landscape phones fold the weather
-     line into the single row (see the media query below). The round menu buttons are --fab. */
+
+  /* Sim-screen chrome, LEGACY values: the sim CSS (sim.css, transport.css) still draws rows of exactly these sizes.
+     The screen builders change these to --bar-h + --weather-h, --timeline-h and so on when they restyle the chrome.
+     --scrub-h INCLUDES the bottom safe-area inset. Landscape phones fold the weather line into one row (media query below). */
   --topbar-h: 84px;
   --scrub-h: calc(84px + var(--safe-bottom));
   --dock-h: 46px; /* the tab row: a 2 px border + 44 px tabs (the smallest tap target we allow) */
-  --fab: 56px;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Motion: 150-200 ms; prefers-reduced-motion switches it off in base.css */
+  --dur-1: 150ms;
+  --dur-2: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layers */
+  --z-float: 20; /* floating bars, FABs, chips */
+  --z-sheet: 30;
+  --z-scrim: 80;
+  --z-dialog: 90;
+  --z-toast: 95;
+  --z-strip: 100; /* the training strip is above everything */
 }
 
 @media (orientation: landscape) and (max-height: 540px) {

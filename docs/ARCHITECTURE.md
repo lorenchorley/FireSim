@@ -351,13 +351,18 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   since fire: charred trunk with green epicormic shoots, thin crowns that thicken over ~5 years. Wind sway
   (`LayerState.windSway`): two uniforms per snapshot (`setWind(u, v)` from the near-surface wind at the view target,
   `swayParams` maps speed to lean / oscillation / flutter), bending grows with height. Readability: instances fade out with
-  a screen-door dither as the camera looks down steeply (top view), around active flames (foliage only; torching crowns
-  stay), and near an eye-level camera; a solo heat map hides the canopy (`LayerState.soloHeat`).
+  a screen-door dither as the camera looks down steeply (in a straight-down top view nothing is drawn at all), around active
+  flames (foliage only; torching crowns stay), and near an eye-level camera; a solo heat map hides the canopy
+  (`LayerState.soloHeat`).
   Styles (`LayerState.canopyStyle`): `natural`; `simple` (clean uniform low-poly shapes in one restrained palette,
   cheapest); `coded` (the simple shapes coloured by `canopyCode` = height / cover / bark / understorey with the ramps of the
   matching heat map: `canopyCodeScale(code)` returns the heat map's own LUT once `legendFor` has one, and
   `canopyCodeLegend(code)` (also `SceneView.canopyLegend()`) its legend). `canopy*.ts` and `tree*.ts` are pure (Node-testable);
   `devTrees.html` (dev page) shows every species, level, style and fire response (`window.__trees.showcase / eye / forceLod`).
+  Measured (SwiftShader, 412 × 915, `high`, Katoomba): the canopy costs 528 / 417 / 403 ms per frame at 700 m / 3.5 km / eye
+  level against 765 / 789 / 714 ms for the previous layer, and nothing in the top view (previous: 783 ms); triangles in the
+  scene fell from 1.66 M to 0.4–0.5 M (the canopy itself 75–206 k), draw calls are 13–19 (were 9–10). The canopy code is
+  85 kB minified (+58 kB over the previous layer, 27 kB gzipped); textures are generated at start-up (≈ 1 MB of memory).
 
 ## Performance
 

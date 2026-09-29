@@ -1,9 +1,11 @@
 /**
- * User settings (persisted) and the theme applier.
+ * User settings (persisted) and the appearance applier.
  *
- * Themes: 'light' is the high-contrast "sunlight" theme (near-black on white, heavy weights, 7:1 text contrast);
- * 'dark' is the "night" theme (dark UI, dimmed map, no pure-white panels). 'system' follows the OS setting and
- * updates live when it changes (doc 09 §9).
+ * Themes: 'light' is "Maps light" (flat white surfaces on light grey, one blue accent); 'dark' is "Maps night"
+ * (#202124 background, dimmed map, no pure-white panels). 'system' follows the OS setting and updates live when it
+ * changes (doc 09 §9). On top of either theme, `highContrast` selects the "bright sun" variant (near-black on white,
+ * 2 px outlines, heavier weights, +1 px type, 7:1 text); it is applied as <html data-contrast="high">.
+ * The design language is documented in docs/DESIGN.md; the tokens live in src/styles/tokens.css.
  */
 import type { QualityTier } from '../core/types';
 import type { SpeedUnit } from './format';
@@ -27,6 +29,11 @@ export interface Settings {
   pauseOnDanger: boolean;
   /** Vibrate on new Danger cards (opt-in, off by default). */
   haptics: boolean;
+  /**
+   * "High contrast (bright sun)": the accessibility variant of the flat design (near-black on white, 2 px dark outlines,
+   * bolder weights, +1 px type, >= 7:1 text) for reading in direct sunlight. OFF by default. Applied as <html data-contrast="high">.
+   */
+  highContrast: boolean;
   /** Display step (s): how often the engine produces a new picture and how finely the timeline can be stepped. */
   timeStep: number;
   /** Solver step limit (s); 0 = automatic. Smaller is finer and slower (advanced). */
@@ -55,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   handedness: 'right',
   pauseOnDanger: false,
   haptics: false,
+  highContrast: false,
   timeStep: 60,
   solverStep: 0,
   defaultSpeed: 60,
@@ -75,6 +83,11 @@ export async function initSettings(overrides: Partial<Settings> = {}): Promise<v
   });
 }
 
+/** Validate a saved settings object: unknown or malformed fields are dropped (the defaults then apply). */
+export function sanitiseSettings(s: Partial<Settings>): Partial<Settings> {
+  return sanitise(s);
+}
+
 function sanitise(s: Partial<Settings>): Partial<Settings> {
   const out: Partial<Settings> = {};
   if (s.theme === 'system' || s.theme === 'light' || s.theme === 'dark') out.theme = s.theme;
@@ -85,6 +98,7 @@ function sanitise(s: Partial<Settings>): Partial<Settings> {
   const current = s.settingsVersion === SETTINGS_VERSION;
   if (current && typeof s.pauseOnDanger === 'boolean') out.pauseOnDanger = s.pauseOnDanger;
   if (current && typeof s.haptics === 'boolean') out.haptics = s.haptics;
+  if (typeof s.highContrast === 'boolean') out.highContrast = s.highContrast;
   if (typeof s.timeStep === 'number' && TIME_STEPS.includes(s.timeStep)) out.timeStep = s.timeStep;
   if (typeof s.solverStep === 'number' && SOLVER_STEPS.includes(s.solverStep)) out.solverStep = s.solverStep;
   if (typeof s.defaultSpeed === 'number' && s.defaultSpeed >= 0 && s.defaultSpeed <= 86400) out.defaultSpeed = s.defaultSpeed;
@@ -96,19 +110,56 @@ export function resolveTheme(setting: ThemeSetting, systemDark: boolean): 'light
   return setting === 'system' ? (systemDark ? 'dark' : 'light') : setting;
 }
 
-const THEME_COLOURS = { light: '#ffffff', dark: '#0e1116' } as const;
+/**
+ * Colours of the system bars per theme (the same values the native Android theme should use; android/ is handled separately).
+ *  - statusBar: the top edge of the screen is the amber TRAINING strip (it extends under the status bar), so the status bar takes
+ *    the strip colour, with dark icons. This is also what <meta name="theme-color"> is set to.
+ *  - navigationBar: the bottom edge is the timeline / bottom navigation surface, so it takes the surface colour; icons dark on
+ *    light, light on dark.
+ *  - background: the app background (window background, splash, overscroll).
+ * Keep in step with --badge-bg / --surface / --bg in src/styles/tokens.css.
+ */
+export const THEME_CHROME = {
+  light: { statusBar: '#fbbc04', statusBarIcons: 'dark', navigationBar: '#ffffff', navigationBarIcons: 'dark', background: '#f1f3f4' },
+  dark: { statusBar: '#e0a100', statusBarIcons: 'dark', navigationBar: '#303134', navigationBarIcons: 'light', background: '#202124' },
+} as const;
 
-/** Apply the theme to <html data-theme> and the browser/status bar colour, and follow OS changes. */
+/** What the page shows for a set of settings. */
+export interface Appearance {
+  theme: 'light' | 'dark';
+  highContrast: boolean;
+  /** Value of <meta name="theme-color"> (the status-bar colour of the theme). */
+  themeColor: string;
+}
+
+export function resolveAppearance(s: Pick<Settings, 'theme' | 'highContrast'>, systemDark: boolean): Appearance {
+  const theme = resolveTheme(s.theme, systemDark);
+  return { theme, highContrast: s.highContrast, themeColor: THEME_CHROME[theme].statusBar };
+}
+
+/** What {@link applyAppearance} writes to: <html> and the theme-color <meta> (or stand-ins in tests). */
+export interface AppearanceTarget {
+  root: { dataset: Record<string, string | undefined>; style: { colorScheme: string } };
+  meta: { setAttribute(name: string, value: string): void } | null;
+}
+
+/** Write the appearance to the page: data-theme, data-contrast (only when high), color-scheme and theme-color. */
+export function applyAppearance(a: Appearance, target: AppearanceTarget): void {
+  target.root.dataset['theme'] = a.theme;
+  target.root.style.colorScheme = a.theme;
+  if (a.highContrast) target.root.dataset['contrast'] = 'high';
+  else delete target.root.dataset['contrast'];
+  target.meta?.setAttribute('content', a.themeColor);
+}
+
+/** Apply the theme and contrast to <html> and the browser/status bar colour, and follow OS changes. */
 export function startThemeSync(root: HTMLElement = document.documentElement): () => void {
   const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
   const apply = (): void => {
-    const theme = resolveTheme(settingsStore.get().theme, mq?.matches ?? false);
-    root.dataset.theme = theme;
-    root.style.colorScheme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOURS[theme]);
+    applyAppearance(resolveAppearance(settingsStore.get(), mq?.matches ?? false), { root, meta: document.querySelector('meta[name="theme-color"]') });
   };
   apply();
-  const unsub = settingsStore.subscribe(apply, ['theme']);
+  const unsub = settingsStore.subscribe(apply, ['theme', 'highContrast']);
   mq?.addEventListener('change', apply);
   return () => {
     unsub();
