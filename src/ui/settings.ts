@@ -20,19 +20,45 @@ export interface Settings {
   performance: PerformanceMode;
   /** Side of the screen the tool rail sits on (for one-handed use). */
   handedness: 'right' | 'left';
-  /** Pause playback when a Danger card appears (doc 10 §9.1: Danger interrupts playback). */
+  /**
+   * Pause playback when a Danger card appears. OFF by default and opt-in only: when the user runs the simulation they
+   * want it to run; cards are read when the user chooses to open the Insights.
+   */
   pauseOnDanger: boolean;
-  /** Vibrate on Danger cards. */
+  /** Vibrate on new Danger cards (opt-in, off by default). */
   haptics: boolean;
+  /** Display step (s): how often the engine produces a new picture and how finely the timeline can be stepped. */
+  timeStep: number;
+  /** Solver step limit (s); 0 = automatic. Smaller is finer and slower (advanced). */
+  solverStep: number;
+  /** Playback speed last used, simulated seconds per second; 0 = as fast as possible (JSON cannot store Infinity). */
+  defaultSpeed: number;
+  /** Schema version of the saved settings (see {@link SETTINGS_VERSION}). */
+  settingsVersion: number;
 }
+
+/** Version 2: pause/vibrate became opt-in (saved `true` values from version 1 were only the old defaults). */
+export const SETTINGS_VERSION = 2;
+
+/** Selectable display steps (s) and solver step limits (s, 0 = automatic). */
+export const TIME_STEPS: readonly number[] = [10, 30, 60, 120, 300, 600];
+
+/** Playback speed (Infinity = as fast as possible) ⇄ its stored form in {@link Settings.defaultSpeed} (0 = as fast as possible). */
+export const speedToStored = (speed: number): number => (Number.isFinite(speed) ? speed : 0);
+export const speedFromStored = (stored: number): number => (stored > 0 ? stored : Infinity);
+export const SOLVER_STEPS: readonly number[] = [0, 5, 2, 1];
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   units: 'kmh',
   performance: 'auto',
   handedness: 'right',
-  pauseOnDanger: true,
-  haptics: true,
+  pauseOnDanger: false,
+  haptics: false,
+  timeStep: 60,
+  solverStep: 0,
+  defaultSpeed: 60,
+  settingsVersion: SETTINGS_VERSION,
 };
 
 export const settingsStore = new Store<Settings>(DEFAULT_SETTINGS);
@@ -55,8 +81,13 @@ function sanitise(s: Partial<Settings>): Partial<Settings> {
   if (s.units === 'kmh' || s.units === 'ms') out.units = s.units;
   if (s.performance === 'auto' || s.performance === 'battery' || s.performance === 'quality') out.performance = s.performance;
   if (s.handedness === 'left' || s.handedness === 'right') out.handedness = s.handedness;
-  if (typeof s.pauseOnDanger === 'boolean') out.pauseOnDanger = s.pauseOnDanger;
-  if (typeof s.haptics === 'boolean') out.haptics = s.haptics;
+  // Settings saved before version 2 hold the old defaults (pause and vibrate ON), not a choice the user made.
+  const current = s.settingsVersion === SETTINGS_VERSION;
+  if (current && typeof s.pauseOnDanger === 'boolean') out.pauseOnDanger = s.pauseOnDanger;
+  if (current && typeof s.haptics === 'boolean') out.haptics = s.haptics;
+  if (typeof s.timeStep === 'number' && TIME_STEPS.includes(s.timeStep)) out.timeStep = s.timeStep;
+  if (typeof s.solverStep === 'number' && SOLVER_STEPS.includes(s.solverStep)) out.solverStep = s.solverStep;
+  if (typeof s.defaultSpeed === 'number' && s.defaultSpeed >= 0 && s.defaultSpeed <= 86400) out.defaultSpeed = s.defaultSpeed;
   return out;
 }
 

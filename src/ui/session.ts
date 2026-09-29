@@ -44,8 +44,19 @@ export interface SessionState {
   /** Worker throughput (simulated s per wall s). */
   workerSpeed: number;
   snapshot: SimSnapshot | null;
-  /** The user scrubbed back to review earlier results (cleared by "Live", edits, or catching up with the head). */
+  /** The user scrubbed back to review earlier results (cleared by edits, or by playing on to the newest time). */
   reviewing: boolean;
+  /**
+   * A timeline jump beyond the newest computed time is in progress: the engine is computing at full speed to this
+   * simulation time (s) and the view follows; null when idle. See {@link SimSession.seek}.
+   */
+  seekTarget: number | null;
+  /** Progress of that jump, 0–1 (0 when idle). */
+  seekProgress: number;
+  /** Display step (s): how often the engine produces a new picture. Mirrors Settings.timeStep. */
+  timeStep: number;
+  /** Solver step limit (s); 0 = automatic. Mirrors Settings.solverStep. */
+  solverStep: number;
   /** All insights received (chronological), including ones not yet revealed. */
   insights: Insight[];
   forecastInsights: Insight[];
@@ -91,6 +102,8 @@ export class SimSession {
   private revealedUpTo = -Infinity;
   private revealed = new Set<string>();
   private disposed = false;
+  /** Whether the timeline drag in progress began while playing (see beginScrub). */
+  private scrubResume = false;
   /** Time of a removed ignition whose 'rewound' reply is pending (results after it are stale). */
   private rewindFloor: number | null = null;
   /** What was last pushed to the view (see syncView). */
@@ -118,6 +131,10 @@ export class SimSession {
       workerSpeed: 0,
       snapshot: null,
       reviewing: false,
+      seekTarget: null,
+      seekProgress: 0,
+      timeStep: scenario.options.snapshotInterval,
+      solverStep: scenario.options.maxStepS ?? 0,
       insights: [],
       forecastInsights: [],
       ignitions: [...scenario.ignitions],
@@ -177,21 +194,78 @@ export class SimSession {
     else this.play();
   }
 
+  /** Any positive speed (simulated s per wall s, e.g. 0.5, 45, 3600) or Infinity = as fast as possible. */
   setSpeed(speed: number): void {
+    if (!(speed > 0)) return;
     this.state.set({ speed });
     if (this.state.get().playing) this.ensureRunning(true);
   }
 
-  /** Show time t (clamped to the computed range); pauses playback. */
-  seek(t: number): void {
+  // ── timeline (CONTRACT for the UI; the engine agent implements the real behaviour, this is the placeholder) ──
+
+  /**
+   * Jump to simulation time t ∈ [0, duration] (clamped). One-shot form of beginScrub / endScrub, for buttons and typed
+   * times.
+   *  - t ≤ newest computed time: the view shows t immediately (exact fire front, see the history store).
+   *  - t > newest computed time: fast-forward — `seekTarget = t`, the engine computes at full speed, the view follows
+   *    the newest result (progress in `seekProgress`), and it stops exactly at t. Afterwards playback continues if
+   *    `opts.resume` (default: whether it was playing when the jump began), else it is paused at t.
+   *  - A new seek, `pause()`, an edit or {@link cancelSeek} ends a jump in progress.
+   */
+  seek(t: number, opts: { resume?: boolean } = {}): void {
     const s = this.state.get();
+    const resume = opts.resume ?? s.playing;
     if (s.playing) this.pause();
+    const vt = Math.max(0, Math.min(s.headTime, t));
+    this.state.set({ viewTime: vt, reviewing: vt < s.headTime - 1 });
+    this.syncView();
+    if (resume) this.play();
+  }
+
+  /** A drag on the timeline begins: remember whether it was playing and pause. Pair with {@link scrub} and {@link endScrub}. */
+  beginScrub(): void {
+    this.scrubResume = this.state.get().playing;
+    if (this.scrubResume) this.pause();
+  }
+
+  /** Dragging: preview time t (never starts the engine; shows at most the newest computed time). */
+  scrub(t: number): void {
+    const s = this.state.get();
     const vt = Math.max(0, Math.min(s.headTime, t));
     this.state.set({ viewTime: vt, reviewing: vt < s.headTime - 1 });
     this.syncView();
   }
 
-  /** Jump to the newest computed time and resume playback. */
+  /** The drag ends at t: commit with {@link seek}, resuming playback if it was playing when the drag began. */
+  endScrub(t: number): void {
+    const resume = this.scrubResume;
+    this.scrubResume = false;
+    this.seek(t, { resume });
+  }
+
+  /** Stop a fast-forward in progress and stay where the view is (paused). No-op when idle. */
+  cancelSeek(): void {
+    if (this.state.get().seekTarget !== null) this.state.set({ seekTarget: null, seekProgress: 0 });
+  }
+
+  /** Move the view by dt seconds (negative = back), e.g. the ±1 min / ±1 h buttons. */
+  stepBy(dt: number): void {
+    this.seek(this.state.get().viewTime + dt);
+  }
+
+  /** Change the display step (s) now: applies to results computed from here on (no re-run). */
+  setTimeStep(seconds: number): void {
+    this.state.set({ timeStep: seconds });
+    this.controller.setOption('snapshotInterval', seconds);
+  }
+
+  /** Change the solver step limit (s, 0 = automatic): re-runs from the view time like other what-ifs. */
+  setSolverStep(seconds: number): void {
+    this.state.set({ solverStep: seconds });
+    this.controller.setOption('maxStepS', seconds);
+  }
+
+  /** @deprecated Redundant with play(); removed with the "Live" button (kept until the UI no longer calls it). */
   goLive(): void {
     this.state.set({ viewTime: this.state.get().headTime, reviewing: false });
     this.syncView();

@@ -619,8 +619,10 @@ export interface SimOptions {
   maxEmbers: number;
   /** Enable parameterised mountain phenomena (vorticity-driven lateral spread, eruptive slope/chimney fire). */
   mountainPhenomena: boolean;
-  /** Simulated seconds between snapshots sent to the UI. */
+  /** Simulated seconds between snapshots sent to the UI (the display step; default 60 s). */
   snapshotInterval: number;
+  /** Upper bound (s) on the solver step Δt_a; 0 / undefined = automatic (stability limit, ≤ 12 s). Smaller = finer and slower. */
+  maxStepS?: number;
   /** Quality tier; default 'auto' (spec §12.6). */
   tier?: 'auto' | QualityTier;
   /** First-level thickness Δζ₁ (m); tier default. */
@@ -641,7 +643,8 @@ export const DEFAULT_SIM_OPTIONS: SimOptions = {
   embers: true,
   maxEmbers: 4000,
   mountainPhenomena: true,
-  snapshotInterval: 300,
+  snapshotInterval: 60,
+  maxStepS: 0,
 };
 
 /** Everything the simulation worker needs. Serialisable via structured clone (typed arrays are transferred). */

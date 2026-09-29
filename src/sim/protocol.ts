@@ -4,7 +4,14 @@
  */
 import type { CellExplanation, Ignition, Insight, QualityTier, ScenarioData, ScenarioEdit, SimSnapshot } from '../core/types';
 
-export type SimOptionKey = 'coupling' | 'embers' | 'mountainPhenomena' | 'maxEmbers';
+/**
+ * Options the UI can change while a run is in progress.
+ *  - 'snapshotInterval' (s): display step — how often the engine emits a picture. Applies from now on; does not
+ *    change the simulation (no rewind).
+ *  - 'maxStepS' (s, 0 = automatic): cap on the solver step Δt_a. Changes the trajectory, so it is a timed record
+ *    applied from the current simulation time (like 'coupling').
+ */
+export type SimOptionKey = 'coupling' | 'embers' | 'mountainPhenomena' | 'maxEmbers' | 'snapshotInterval' | 'maxStepS';
 
 export type ToWorker =
   | { type: 'init'; scenario: ScenarioData }

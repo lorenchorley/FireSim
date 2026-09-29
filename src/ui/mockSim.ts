@@ -170,6 +170,7 @@ export class MockSimController implements SimController {
   setOption(key: SimOptionKey, value: number | boolean): void {
     if (key === 'coupling') this.options.coupling = Number(value);
     else if (key === 'maxEmbers') this.maxEmbers = Math.max(0, Number(value));
+    else if (key === 'snapshotInterval' || key === 'maxStepS') return; // TODO(engine agent): mock honours the display step
     else this.options[key] = Boolean(value);
     this.dirty = true;
   }
