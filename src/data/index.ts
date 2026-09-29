@@ -106,3 +106,12 @@ export {
   type NpwsFireProps,
   type SvtmProps,
 } from './demoRasters';
+
+export {
+  decodeContext,
+  decodeLine,
+  demoSiteCovering,
+  loadBundledContext,
+  roadLengthByClass,
+  type ContextFileV1,
+} from './contextLayers';
