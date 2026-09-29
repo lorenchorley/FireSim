@@ -25,7 +25,7 @@ import type { HttpOptions, HttpResponse } from '@capacitor/core';
 // Services and URL routing
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ServiceId = 'openmeteo' | 'openmeteo-archive' | 'nswenv' | 'rfs' | 'terrarium' | 'chm' | 'generic';
+export type ServiceId = 'openmeteo' | 'openmeteo-archive' | 'nswenv' | 'nswspatial' | 'rfs' | 'terrarium' | 'chm' | 'generic';
 
 interface ServiceInfo {
   /** Absolute base URL (no trailing slash). */
@@ -43,6 +43,10 @@ export const SERVICES: Readonly<Record<Exclude<ServiceId, 'generic'>, ServiceInf
   // (dev server, preview, installed PWA) call them directly; the dev proxy is only needed for the canopy bucket.
   nswenv: { base: 'https://mapprod3.environment.nsw.gov.au', cors: true },
   rfs: { base: 'https://www.rfs.nsw.gov.au', cors: true },
+  // NSW Spatial Services ArcGIS portal (roads, fire trails, addresses, place and suburb names; data/nswContext.ts).
+  // Verified live on 2026-09-29: GET and POST answer with `Access-Control-Allow-Origin` (the request's origin), and the
+  // pre-flight OPTIONS of a form POST succeeds, so browsers call it directly. NSW Planning's land zoning is on `nswenv`.
+  nswspatial: { base: 'https://portal.spatial.nsw.gov.au', cors: true },
   // AWS Open Data Terrain Tiles: S3 bucket with a permissive CORS policy (verified: ACAO * on GET).
   terrarium: { base: 'https://s3.amazonaws.com/elevation-tiles-prod', cors: true },
   // Meta/WRI canopy height COGs: the bucket has no CORS policy (pre-flight returns 403), so browsers need the proxy.
@@ -189,6 +193,12 @@ export interface RequestOptions {
   retries?: number;
   /** Rewrite absolute URLs of known services for the current platform (default true). */
   route?: boolean;
+  /**
+   * POST these fields as `application/x-www-form-urlencoded` instead of a GET (the ArcGIS REST `query` with a long
+   * list of object ids does not fit in a URL). A "simple" CORS request, so browsers send no pre-flight. On device the
+   * plugin encodes the object; the response is read the same way as for a GET.
+   */
+  form?: Record<string, string>;
 }
 
 type BodyKind = 'binary' | 'text' | 'json';
@@ -245,9 +255,11 @@ async function attempt(url: string, kind: BodyKind, opts: RequestOptions, raw: b
   if (opts.signal?.aborted) throw new HttpError('aborted', url, `Request aborted: ${url}`);
   const timeoutMs = opts.timeoutMs ?? config.timeoutMs;
   return detectPlatform() === 'native'
-    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw)
-    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw);
+    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form)
+    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form);
 }
+
+const FORM_TYPE = 'application/x-www-form-urlencoded';
 
 async function fetchAttempt(
   url: string,
@@ -256,6 +268,7 @@ async function fetchAttempt(
   timeoutMs: number,
   signal: AbortSignal | undefined,
   raw: boolean,
+  form?: Record<string, string>,
 ): Promise<unknown> {
   const doFetch = config.fetch ?? globalThis.fetch;
   if (typeof doFetch !== 'function') throw new HttpError('network', url, 'fetch is not available in this environment');
@@ -269,7 +282,9 @@ async function fetchAttempt(
   const onAbort = (): void => ctrl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
   try {
-    const res = await doFetch(url, { method: 'GET', headers, signal: ctrl.signal });
+    const res = form
+      ? await doFetch(url, { method: 'POST', headers: { ...headers, 'content-type': FORM_TYPE }, body: new URLSearchParams(form).toString(), signal: ctrl.signal })
+      : await doFetch(url, { method: 'GET', headers, signal: ctrl.signal });
     if (raw) {
       const data = await res.arrayBuffer();
       const h: Record<string, string> = {};
@@ -299,6 +314,7 @@ async function nativeAttempt(
   timeoutMs: number,
   signal: AbortSignal | undefined,
   raw: boolean,
+  form?: Record<string, string>,
 ): Promise<unknown> {
   const req = config.nativeRequest ?? ((o: HttpOptions) => CapacitorHttp.request(o));
   let timedOut = false;
@@ -317,8 +333,9 @@ async function nativeAttempt(
     const res = await Promise.race([
       req({
         url,
-        method: 'GET',
-        headers: headers ?? {},
+        method: form ? 'POST' : 'GET',
+        headers: form ? { ...headers, 'content-type': FORM_TYPE } : (headers ?? {}),
+        ...(form ? { data: form } : {}),
         responseType: kind === 'binary' ? 'arraybuffer' : kind === 'json' ? 'json' : 'text',
         ...(hasTimeout(timeoutMs) ? { connectTimeout: timeoutMs, readTimeout: timeoutMs } : {}),
       }),

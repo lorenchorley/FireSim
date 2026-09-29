@@ -5,8 +5,8 @@
  */
 import type { MenuId, SheetDetent, SheetTab } from './context';
 
-/** Height (px) of the slim dock row that holds the four tab buttons. */
-export const DOCK_H = 44;
+/** Height (px) of the slim dock row that holds the four tab buttons: 44 px tabs (the smallest tap target) under a 2 px border. Keep in step with --dock-h in tokens.css. */
+export const DOCK_H = 46;
 /** Height (px) of the grip row that tops an open panel. */
 export const GRIP_H = 24;
 

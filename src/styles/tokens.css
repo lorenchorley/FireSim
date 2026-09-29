@@ -107,7 +107,7 @@
      line into the single row (see the media query below). The round menu buttons are --fab. */
   --topbar-h: 84px;
   --scrub-h: calc(84px + var(--safe-bottom));
-  --dock-h: 44px;
+  --dock-h: 46px; /* the tab row: a 2 px border + 44 px tabs (the smallest tap target we allow) */
   --fab: 56px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
