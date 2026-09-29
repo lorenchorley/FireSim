@@ -10,6 +10,7 @@
  * The device pixel ratio adapts to the measured frame rate (perf.ts). Everything is disposed in dispose(), and a lost
  * WebGL context (common when a phone backgrounds the app) pauses rendering until it is restored.
  */
+import type { ContextLayers } from '../core/places';
 import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
@@ -596,6 +597,16 @@ export class SceneView implements SceneViewApi {
     this.userSpots = spots.slice();
     this.refreshMarkers();
   }
+
+  /** Roads, fire trails, homes, zones and place names (layers rework: the places-layer builder implements the drawing). */
+  setContext(context: ContextLayers | null): void {
+    this.contextLayers = context;
+  }
+  /** The places data as last set (read by the places layer once implemented). */
+  get places(): ContextLayers | null {
+    return this.contextLayers;
+  }
+  private contextLayers: ContextLayers | null = null;
 
   setInsights(insights: Insight[]): void {
     this.insights = insights.slice();

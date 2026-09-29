@@ -670,6 +670,8 @@ export interface ScenarioData {
   fuelHistory?: FuelHistoryCompact;
   /** Fires burning at t0 (spec §4.4), display only. */
   activeFires?: FireHistoryRecord[];
+  /** Roads, fire trails, homes, residential zones and place names to help users situate themselves (display only). */
+  context?: import('./places').ContextLayers;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -322,6 +322,21 @@ export function legendFor(overlay: OverlayKind, ctx: LegendContext = {}): Legend
         gradient: gradientCss(LANDING_RAMP, 0.1, 100),
         note: 'Spot fires start where embers land in dry, fine fuel. Dense landings ahead of the front can merge into a new fire front.',
       };
+    case 'elevation':
+    case 'landform':
+    case 'canopyHeight':
+    case 'canopyCover':
+    case 'elevatedHazard':
+    case 'elevatedHeight':
+    case 'surfaceHazard':
+    case 'nearSurfaceHazard':
+    case 'barkHazard':
+    case 'grassCuring':
+    case 'fireHistoryKind':
+    case 'homeDensity':
+    case 'roadAccess':
+    case 'windSpeed':
+      return null; // layers rework: implemented by the heat-field builder
   }
 }
 
@@ -519,6 +534,10 @@ export function overlayScale(overlay: OverlayKind, ctx: LegendContext = {}): Ove
       break;
     case 'landing':
       s = continuousScale(LANDING_RAMP, 0.1, 100);
+      break;
+    default:
+      // Layers rework: implemented by the heat-field builder; until then a neutral ramp so nothing throws.
+      s = continuousScale(HAZARD_RAMP, 0, 1);
       break;
   }
   lutCache.set(overlay, s);

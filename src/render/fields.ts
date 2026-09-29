@@ -302,6 +302,22 @@ export function overlayField(kind: OverlayKind, s: OverlaySources): OverlayField
       // Scores below 2 % (or no landings) are transparent so the terrain stays readable.
       return map(g, (k) => (r[k]! > (kind === 'landing' ? 0 : 0.02) ? r[k]! : NO_DATA));
     }
+    // Layers rework (placeholders until the heat-field builder implements them):
+    case 'elevation':
+    case 'landform':
+    case 'canopyHeight':
+    case 'canopyCover':
+    case 'elevatedHazard':
+    case 'elevatedHeight':
+    case 'surfaceHazard':
+    case 'nearSurfaceHazard':
+    case 'barkHazard':
+    case 'grassCuring':
+    case 'fireHistoryKind':
+    case 'homeDensity':
+    case 'roadAccess':
+    case 'windSpeed':
+      return null;
   }
 }
 

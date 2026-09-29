@@ -148,6 +148,8 @@ export class MockSceneView implements SceneViewApi {
     this.invalidate();
   }
 
+  setContext(_context: import('../core/places').ContextLayers | null): void {}
+
   setInsights(insights: Insight[]): void {
     this.insights = insights;
     this.invalidate();

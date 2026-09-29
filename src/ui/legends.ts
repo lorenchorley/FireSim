@@ -91,7 +91,7 @@ const DRIVER_COLOURS: Record<SpreadDriver, string> = {
 export const fuelColour = (t: FuelType): string => FUEL_COLOURS[t] ?? '#999999';
 export const driverColour = (d: SpreadDriver): string => DRIVER_COLOURS[d] ?? '#9e9e9e';
 
-const LEGENDS: Record<Exclude<OverlayKind, 'none'>, Legend> = {
+const LEGENDS: Partial<Record<Exclude<OverlayKind, 'none'>, Legend>> = {
   arrival: {
     kind: 'ramp',
     title: 'Fire arrival time',
@@ -287,7 +287,7 @@ const LEGENDS: Record<Exclude<OverlayKind, 'none'>, Legend> = {
 };
 
 export function legendFor(kind: OverlayKind): Legend | null {
-  return kind === 'none' ? null : LEGENDS[kind];
+  return kind === 'none' ? null : (LEGENDS[kind] ?? null);
 }
 
 /** CSS linear-gradient for a ramp legend. */

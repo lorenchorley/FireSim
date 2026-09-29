@@ -1,4 +1,5 @@
 /** Public interface of the 3-D view, so the UI can be built and tested independently of the Three.js implementation. */
+import type { ContextLayers } from '../core/places';
 import type { GridSpec } from '../core/grid';
 import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import type { LayerState } from './layers';
@@ -31,6 +32,12 @@ export interface SceneViewApi {
   /** Ignitions / spot fires the user has marked (drawn as markers). */
   setIgnitions(ignitions: Ignition[], spots: SpotFire[]): void;
   setInsights(insights: Insight[]): void;
+  /**
+   * Roads, fire trails, homes, zones and place names for the scenario (local metres about the scenario origin), or null.
+   * Shown according to LayerState.{roads, fireTrails, homes, zones, placeNames}; also feeds the 'homeDensity' and
+   * 'roadAccess' heat maps.
+   */
+  setContext(context: ContextLayers | null): void;
   /** Highlight one insight location (pulsing ring) and optionally fly to it. */
   focusInsight(insight: Insight | null, fly?: boolean): void;
   /** Local (x, y) metres of the terrain point under a screen position, or null. */

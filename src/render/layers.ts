@@ -18,7 +18,23 @@ export type OverlayKind =
   | 'attach' // flame attachment / eruptive potential
   | 'trench' // gully / chimney (trench) score
   | 'dmz' // dead man zone (flank that becomes a head after the forecast wind change)
-  | 'landing'; // ember landing density
+  | 'landing' // ember landing density
+  // ── Data layers that can be shown as a heat map on their own (CONTRACT for the layers rework; implemented in
+  //    fields.ts / legends.ts / palette.ts, see layerCatalog.ts for titles, units and descriptions) ──
+  | 'elevation' // ground height (m)
+  | 'landform' // ridge / spur / slope / gully / valley / saddle / cliff classes (categorical)
+  | 'canopyHeight' // tree canopy height (m), from the Meta/WRI canopy-height map
+  | 'canopyCover' // tree canopy cover (%)
+  | 'elevatedHazard' // understorey (shrub) fuel hazard 0–4
+  | 'elevatedHeight' // understorey height (m)
+  | 'surfaceHazard' // leaf-litter / surface fuel hazard 0–4
+  | 'nearSurfaceHazard' // near-surface (grass, low shrubs, bark on ground) fuel hazard 0–4
+  | 'barkHazard' // bark hazard 0–4: how many embers the trees can throw (stringybark high, smooth gums low)
+  | 'grassCuring' // grass curing (%), grass and grassy fuel types only
+  | 'fireHistoryKind' // last recorded fire: wildfire vs prescribed burn vs none (categorical)
+  | 'homeDensity' // homes per hectare (from address points)
+  | 'roadAccess' // distance to the nearest road or fire trail (m)
+  | 'windSpeed'; // near-surface wind speed now (m/s), from the simulation snapshot
 
 export interface LayerState {
   overlay: OverlayKind;
@@ -41,6 +57,31 @@ export interface LayerState {
   verticalExaggeration: number;
   /** Show the fire-behaviour legend for the active overlay. */
   legend: boolean;
+
+  // ── layers rework (CONTRACT; each is an independent on/off layer, see layerCatalog.ts) ──
+  /** Roads and tracks, styled by class (highway … track, path). */
+  roads: boolean;
+  /** RFS-classified fire trails, highlighted on top of the roads. */
+  fireTrails: boolean;
+  /** Home addresses (one small house marker per dwelling address). */
+  homes: boolean;
+  /** Residential and built-up land-use zones (filled areas). */
+  zones: boolean;
+  /** Suburb / town names and major road names. */
+  placeNames: boolean;
+  /** Understorey shrubs drawn among the trees (the ladder fuel), at their real height. */
+  understorey: boolean;
+  /**
+   * How the 3-D canopy is drawn: 'natural' = species-shaped trees and bark; 'simple' = clean uniform shapes (easiest to
+   * read); 'coded' = simple shapes coloured by the attribute in {@link canopyCode}.
+   */
+  canopyStyle: 'natural' | 'simple' | 'coded';
+  /** Attribute that colours the trees when canopyStyle is 'coded'. */
+  canopyCode: 'height' | 'cover' | 'bark' | 'understorey';
+  /** Trees sway with the wind (amplitude follows the wind speed). */
+  windSway: boolean;
+  /** A heat map hides the aerial photo and the 3-D canopy so its colours stand alone (places layers stay as toggled). */
+  soloHeat: boolean;
 }
 
 export const DEFAULT_LAYERS: LayerState = {
@@ -57,4 +98,14 @@ export const DEFAULT_LAYERS: LayerState = {
   insightMarkers: true,
   verticalExaggeration: 1,
   legend: true,
+  roads: true,
+  fireTrails: true,
+  homes: false,
+  zones: false,
+  placeNames: true,
+  understorey: true,
+  canopyStyle: 'natural',
+  canopyCode: 'height',
+  windSway: true,
+  soloHeat: true,
 };
