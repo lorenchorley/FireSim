@@ -97,12 +97,24 @@
   --radius-sm: 10px;
   --tap: 48px;
   --tap-lg: 60px;
-  --badge-h: 22px;
+  --badge-h: 20px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
-  --topbar-h: 128px;
-  --scrub-h: 78px;
+  /* Chrome sizes (px), stacked from the top: the top bar (a 54 px row + a 28 px weather line + its 2 px border), the map,
+     the dock's tab row, the timeline strip. --scrub-h INCLUDES the bottom safe-area inset. Landscape phones fold the weather
+     line into the single row (see the media query below). The round menu buttons are --fab. */
+  --topbar-h: 84px;
+  --scrub-h: calc(84px + var(--safe-bottom));
+  --dock-h: 44px;
+  --fab: 56px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  :root {
+    --topbar-h: 56px;
+    --scrub-h: calc(72px + var(--safe-bottom));
+  }
 }

@@ -64,7 +64,7 @@ abstract class ProtocolController implements SimController {
         this.events.emit('snapshot', msg.snapshot);
         break;
       case 'status':
-        this.events.emit('status', { time: msg.time, running: msg.running, speed: msg.speed });
+        this.events.emit('status', { time: msg.time, running: msg.running, speed: msg.speed, ...(msg.until !== undefined ? { until: msg.until } : {}) });
         break;
       case 'rewound':
         this.events.emit('rewound', msg.time);

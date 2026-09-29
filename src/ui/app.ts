@@ -116,7 +116,7 @@ export class App {
 
   private async buildAndRun(setup: SetupState): Promise<void> {
     this.lastSetup = setup;
-    const req = buildRequest(setup, settingsStore.get().performance);
+    const req = buildRequest(setup, settingsStore.get());
     this.build?.abort();
     const ctrl = new AbortController();
     this.build = ctrl;

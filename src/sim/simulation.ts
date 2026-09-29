@@ -10,8 +10,10 @@
  *                              pool; tier 'auto' times the first 20 steps and may switch to the fast tier (§12.6).
  *                              Then the permanent t0 checkpoint is taken. Returns true when finished.
  *   advance(until, deadline) → whole atmosphere steps while t < until (never clipped to `until`, so the step sequence
- *                              does not depend on how the run is chunked); snapshots every snapshotInterval,
- *                              checkpoints every 1800 s (ring of 8 + t0).
+ *                              does not depend on how the run is chunked); snapshots every snapshotInterval (the
+ *                              display step, live-changeable, default 60 s), checkpoints every 1800 s (ring of 8 + t0).
+ *   emitRunEnd()             → the host calls it when a run completes or pauses: a snapshot at exactly the time
+ *                              reached when the last one is older (the UI can then stop a jump exactly there).
  *
  * One atmosphere step (normative order §12.2 — never reorder, the determinism test depends on it):
  *   1  due records (ignitions, edits, removals, options, quality) in (time, seq) order; ember spot ignitions
@@ -24,7 +26,9 @@
  *   8  embers.emit + embers.step(atm.sample, atm.sampleTurb, landing, onIgnite) (spots applied in step 1 next step)
  *   9  every 60 s: fire.minuteTasks; atm.diagnostics; explain.update(view)
  *  10  t += Δt_a; snapshot / checkpoint cadences
- * Δt_a = min(atm.maxStableDt(), 12 s) (fast tier: 10 s), clipped so t lands on every 60 s boundary.
+ * Δt_a = min(atm.maxStableDt(), 12 s) (fast tier: 10 s), further limited by the user's solver step (option maxStepS,
+ * 0 = automatic) and by the display step when that is smaller (never below 1 s); the step is clipped so t lands on
+ * every 60 s boundary and on every display-step boundary.
  *
  * Determinism (§12.5): independent Rng streams (embers seed, fire seed+1, explain seed+2, atmosphere seed+3), no
  * wall clock in physics (wall time only for the auto-tune decision at init and the performance monitor), Float64
@@ -105,6 +109,12 @@ export interface SimulationOptions {
   clock?: () => number;
   /** Skip the 3-D spin-up (tests of the loop only). */
   skipSpinUp?: boolean;
+  /**
+   * Snapshot coalescing: cadence snapshots closer than this many wall-clock ms to the previous emitted one are skipped
+   * (their side effects are kept, their insights carried to the next one), except the first of every keyframe window
+   * ({@link SIM_PARAMS.keyframeIntervalS}) and run-end snapshots. 0 (default) = never skip. The host sets 40 ms (~25/s).
+   */
+  minSnapshotWallMs?: number;
   /** Test-only hooks (spec §15 validation set-ups); never set by the app. */
   testHooks?: SimulationTestHooks;
 }
@@ -149,6 +159,8 @@ interface SimOpts {
   mountainPhenomena: boolean;
   /** maxEmbers set by the user (setOption / scenario), null = tier default. */
   maxEmbersUser: number | null;
+  /** Solver step limit (s) set by the user; 0 = automatic (a timed record: it is part of the trajectory). */
+  maxStepS: number;
 }
 
 interface Checkpoint {
@@ -268,6 +280,11 @@ export class Simulation {
   private nextMask = 0;
   private nextMinute: number = SIM_PARAMS.minuteS;
   private nextSnapshot: number;
+  /** Time of the newest snapshot the receiver holds from the current trajectory (emitted, or kept from before a rewind). */
+  private lastSnapT = -Infinity;
+  /** Wall clock (ms) of the last emitted snapshot (coalescing). */
+  private lastSnapWall = -Infinity;
+  private readonly minSnapshotWallMs: number;
   private nextCheckpoint: number = SIM_PARAMS.checkpointIntervalS;
   private lastSector = -1;
   /** Fast tier: next surface-wind recomputation (s) and the "inputs changed" flag (see SIM_PARAMS.fastWindIntervalS). */
@@ -332,12 +349,14 @@ export class Simulation {
     this.lon = g.origin.lon;
     this.simOptions = { ...DEFAULT_SIM_OPTIONS, ...scenario.options };
     const so = this.simOptions;
-    this.nextSnapshot = so.snapshotInterval > 0 ? so.snapshotInterval : 300;
+    this.nextSnapshot = this.snapshotStep();
+    this.minSnapshotWallMs = o.minSnapshotWallMs ?? 0;
     this.opts = {
       coupling: so.coupling,
       embers: so.embers,
       mountainPhenomena: so.mountainPhenomena,
       maxEmbersUser: null,
+      maxStepS: so.maxStepS !== undefined && so.maxStepS > 0 ? so.maxStepS : 0,
     };
     this.tierReq = o.tier ?? so.tier ?? 'auto';
     const buildTier: QualityTier = this.tierReq === 'auto' ? 'standard' : this.tierReq;
@@ -588,9 +607,39 @@ export class Simulation {
     return true;
   }
 
-  /** Change an option from the next step (recorded at the current simulation time, §12.6). */
+  /**
+   * Change an option from the next step (recorded at the current simulation time, §12.6). Exception: 'snapshotInterval'
+   * (the display step) is not part of the trajectory's physics, so it applies at once, without a record or a rewind;
+   * the snapshot cadence continues from the next multiple of the new step.
+   */
   setOption(key: SimOptionKey, value: number | boolean): void {
+    if (key === 'snapshotInterval') {
+      this.setSnapshotInterval(Number(value));
+      return;
+    }
     this.addUserRecord({ kind: 'option', key, value }, this.logicalNow);
+  }
+
+  /** The display step (s) in force. */
+  get snapshotInterval(): number {
+    return this.snapshotStep();
+  }
+
+  private snapshotStep(): number {
+    const i = this.simOptions.snapshotInterval;
+    return i > 0 ? i : DEFAULT_SIM_OPTIONS.snapshotInterval;
+  }
+
+  /** First multiple of the display step after t (float-safe). */
+  private nextSnapshotAfter(t: number): number {
+    const i = this.snapshotStep();
+    return (Math.floor(t / i + EPS) + 1) * i;
+  }
+
+  private setSnapshotInterval(seconds: number): void {
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    this.simOptions.snapshotInterval = Math.max(1, Math.min(3600, seconds));
+    this.nextSnapshot = this.nextSnapshotAfter(this.t);
   }
 
   /**
@@ -663,9 +712,14 @@ export class Simulation {
     return this.explainEngine.explainAt(x, y, this.view(tv));
   }
 
-  /** A snapshot of the current state (copies). Includes the pending new insights (and clears them). */
+  /**
+   * A snapshot of the current state (copies). Includes the pending new insights (and clears them). The caller is taken
+   * to hand it to the receiver (the host posts the t0 snapshot this way), so no run-end snapshot repeats this time.
+   */
   snapshot(): SimSnapshot {
-    return this.makeSnapshot();
+    const snap = this.makeSnapshot();
+    this.lastSnapT = Math.max(this.lastSnapT, snap.time);
+    return snap;
   }
 
   /** Current stats (§12.3). */
@@ -811,6 +865,15 @@ export class Simulation {
         }
         break;
       }
+      case 'maxStepS': {
+        const m = Number(value);
+        this.opts.maxStepS = Number.isFinite(m) && m > 0 ? m : 0;
+        break;
+      }
+      case 'snapshotInterval':
+        // Normally applied at once by setOption; a stored record (never created by this class) is honoured too.
+        this.setSnapshotInterval(Number(value));
+        break;
     }
   }
 
@@ -1046,9 +1109,13 @@ export class Simulation {
     }
     lap('surfaceWind');
 
-    // Δt_a: the tier bound; the rest of the minute is split into equal steps so t lands on the 60 s boundary.
-    const dtMax = this.tierNow === 'fast' ? this.atm.maxStableDt() : Math.min(this.atm.maxStableDt(), P.dtMaxS);
-    const boundary = (Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS;
+    // Δt_a: the tier bound, limited by the user's solver step (maxStepS) and by the display step when that is smaller
+    // (never below 1 s); the interval to the next boundary — the next 60 s mark or the next display-step mark, so t
+    // lands on both — is split into equal steps. With a display step ≥ 60 s the sequence is the classic one.
+    const interval = this.snapshotStep();
+    const userCap = Math.max(1, Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval));
+    const dtMax = Math.min(this.tierNow === 'fast' ? this.atm.maxStableDt() : Math.min(this.atm.maxStableDt(), P.dtMaxS), userCap);
+    const boundary = Math.min((Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS, (Math.floor(t / interval + EPS) + 1) * interval);
     const rem = boundary - t;
     const nSteps = Math.max(1, Math.ceil(rem / dtMax - 1e-9));
     const dt = nSteps === 1 ? rem : rem / nSteps;
@@ -1104,15 +1171,23 @@ export class Simulation {
       const keep = this.suppressUntil;
       if (this.pendingInsights.some((i) => i.time <= keep + EPS)) this.pendingInsights = this.pendingInsights.filter((i) => i.time > keep + EPS);
     }
-    const interval = this.simOptions.snapshotInterval > 0 ? this.simOptions.snapshotInterval : 300;
     if (this.t >= this.nextSnapshot - EPS) {
-      this.nextSnapshot = (Math.floor(this.t / interval + EPS) + 1) * interval;
+      this.nextSnapshot = this.nextSnapshotAfter(this.t);
       if (this.t <= this.suppressUntil + EPS || !this.hooks.snapshot) {
         // Not emitted (replay of results the receiver kept): keep the side effects of a snapshot (the ember overlay
         // rasters decay lazily when read) so later snapshots stay bitwise identical to an uninterrupted run.
         if (this.opts.embers) this.embers.overlays();
-        if (this.t <= this.suppressUntil + EPS) this.pendingInsights = [];
-      } else this.hooks.snapshot(this.makeSnapshot());
+        if (this.t <= this.suppressUntil + EPS) {
+          this.pendingInsights = [];
+          this.lastSnapT = Math.max(this.lastSnapT, this.t);
+        }
+      } else if (this.coalesceNow()) {
+        // Too many pictures per wall second (a fast run with a small display step): skip this one. Its side effect is
+        // kept and its insights stay pending for the next picture, so every later snapshot is unchanged.
+        if (this.opts.embers) this.embers.overlays();
+      } else {
+        this.emitSnapshot(this.makeSnapshot(false));
+      }
       lap('snapshot');
     }
     if (this.suppressUntil > -Infinity && this.t > this.suppressUntil + EPS) this.suppressUntil = -Infinity;
@@ -1416,7 +1491,37 @@ export class Simulation {
     };
   }
 
-  private makeSnapshot(): SimSnapshot {
+  /** Hand a snapshot to the receiver (bookkeeping for run-end snapshots and coalescing). */
+  private emitSnapshot(snap: SimSnapshot): void {
+    this.lastSnapT = snap.time;
+    this.lastSnapWall = this.clock();
+    this.hooks.snapshot?.(snap);
+  }
+
+  /** Skip this cadence snapshot? (more than ~25 per wall second; the first of every keyframe window is always kept). */
+  private coalesceNow(): boolean {
+    if (this.minSnapshotWallMs <= 0) return false;
+    const K = SIM_PARAMS.keyframeIntervalS;
+    if (Math.floor(this.t / K + EPS) > Math.floor(Math.max(this.lastSnapT, 0) / K + EPS)) return false;
+    return this.clock() - this.lastSnapWall < this.minSnapshotWallMs;
+  }
+
+  /**
+   * Run-end snapshot: the host calls this when a run completes or is paused. If the newest snapshot the receiver holds
+   * is older than the time reached (a run to a time between two display steps, or a snapshot skipped by coalescing),
+   * one is emitted for exactly that time, so the UI can stop a timeline jump there and show the true state. It has no
+   * side effect on the simulation (the ember overlays are read without decaying them) and takes the pending insights,
+   * so every later snapshot is unchanged apart from which of them carries an insight. Returns true if emitted.
+   */
+  emitRunEnd(): boolean {
+    if (!this.ready || !this.hooks.snapshot) return false;
+    // Nothing to add when the receiver has this time already, or in the middle of a silent replay (it holds later results).
+    if (this.t <= this.lastSnapT + EPS || this.t < this.suppressUntil - EPS) return false;
+    this.emitSnapshot(this.makeSnapshot(true));
+    return true;
+  }
+
+  private makeSnapshot(runEnd = false): SimSnapshot {
     const P = SIM_PARAMS;
     // Wall time per simulated minute over the last snapshot interval.
     const wall = this.perfWall;
@@ -1441,7 +1546,7 @@ export class Simulation {
       vls: aux.vls.slice(),
       attach: aux.attach.slice(),
       trench: this.features.trench.slice(),
-      landing: this.opts.embers ? this.embers.overlays().landing.slice() : new Float32Array(this.n),
+      landing: this.opts.embers ? (runEnd ? this.embers.peekLanding() : this.embers.overlays().landing.slice()) : new Float32Array(this.n),
     };
     const dmz = this.explainEngine.layers()['dmz'];
     if (dmz) layers['dmz'] = dmz.slice();
@@ -1556,7 +1661,9 @@ export class Simulation {
     this.nextSolar = cp.nextSolar;
     this.nextMask = cp.nextMask;
     this.nextMinute = cp.nextMinute;
-    this.nextSnapshot = cp.nextSnapshot;
+    // Re-based on the display step in force now (it is a live setting, not part of the checkpoint's trajectory).
+    this.nextSnapshot = this.nextSnapshotAfter(cp.time);
+    this.lastSnapT = Math.min(this.lastSnapT, cp.time);
     this.nextCheckpoint = cp.nextCheckpoint;
     this.lastSector = cp.lastSector;
     this.nextWind = cp.nextWind;

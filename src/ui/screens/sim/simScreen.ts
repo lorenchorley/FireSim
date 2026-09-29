@@ -1,13 +1,16 @@
 /**
- * Main simulation screen (C): full-screen 3-D view with the top bar, floating tool rail, view controls, tool
- * panels, draggable bottom sheet, time scrubber and danger toasts. Owns the map gesture layer that turns taps and
- * finger strokes into "Why here?" queries, fire marks, fuel brush strokes and local wind observations.
+ * Main simulation screen (C): full-screen 3-D view with the top bar, two collapsed round menus (tools, view), tool
+ * panels, the slim bottom dock (Insights / Weather / Stats / Help), the time scrubber and, only when the engine fails,
+ * a thin error chip. Nothing pops up over the map because of a simulation event: new insight cards only raise a badge
+ * on the dock, and playback stops only when the user, the end of the scenario or the app going to the background says so.
+ * Owns the map gesture layer that turns taps and finger strokes into "Why here?" queries, fire marks, fuel brush
+ * strokes and local wind observations.
  */
 import type { Insight, ScenarioData } from '../../../core/types';
 import { BurnState } from '../../../core/types';
 import type { SceneImagery, SceneViewApi } from '../../../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
-import { h, listen, setChildren, svg } from '../../dom';
+import { h, listen, setChildren, svg, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { thinPath, windScreenRotation, type Pt } from '../../brushGeometry';
 import { presetById } from '../../fuelPresets';
@@ -23,7 +26,8 @@ import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './contex
 import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels';
 import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
-import { createToasts } from './toasts';
+import { createMapMenu } from './mapMenu';
+import { reduceMenu } from './layoutModel';
 import { createTopBar } from './topBar';
 import { createLayersPanel, createMapLegend, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
@@ -122,93 +126,127 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       layers.set(patch);
       view.setLayers(patch);
     }
-    if (session.state.get().playing) session.pause();
-    ui.set({ sheet: 'peek' });
+    // Playback is never touched: the user asked to see the place, not to stop the simulation. The dock closes so the
+    // map (and the place) is fully visible.
+    ui.set({ sheet: 'closed' });
     o.announce(`Showing ${i.title} on the map.`);
   };
   const sheet = createSheet(ctx, showInsight);
   const scrubber = createScrubber(ctx);
-  const toasts = createToasts(ctx, showInsight);
   const dangerGate = new DangerGate();
 
-  const rail = h(
-    'nav',
-    { class: 'tool-rail', aria: { label: 'Tools' } },
-    TOOLS.map((t) =>
-      h(
-        'button',
-        { type: 'button', class: 'tool-btn', dataset: { tool: t.id, testid: `tool-${t.id}` }, attrs: { 'aria-pressed': 'false' }, on: { click: () => selectTool(t.id) } },
-        [icon(t.icon, { size: 26 }), h('span', { class: 'tool-label' }, t.label)],
-      ),
-    ),
-  );
-  const viewBtn = (mode: UiState['viewMode'], label: string, iconName: IconName): HTMLButtonElement =>
-    h(
-      'button',
-      {
-        type: 'button',
-        class: 'view-btn',
-        dataset: { mode },
-        attrs: { 'aria-pressed': 'false' },
-        aria: { label },
-        on: {
-          click: () => {
-            ui.set({ viewMode: mode });
-            view.setViewMode(mode);
-          },
-        },
-      },
-      [icon(iconName, { size: 22 }), h('span', { class: 'view-label' }, label.split(' ')[0]!)],
-    );
-  const viewControls = h('div', { class: 'view-controls', attrs: { role: 'group', 'aria-label': 'Camera' } }, [
-    viewBtn('orbit', '3D view', 'cube'),
-    viewBtn('top', 'Top view', 'top'),
-    viewBtn('ground', 'Eye level', 'person'),
-    h('button', { type: 'button', class: 'view-btn', aria: { label: 'Fly to the fire' }, on: { click: () => flyToFire() } }, [icon('flame', { size: 22 }), h('span', { class: 'view-label' }, 'Fire')]),
-    o.user ? h('button', { type: 'button', class: 'view-btn', aria: { label: 'Fly to my position' }, on: { click: () => view.flyTo(o.user!.x, o.user!.y, 1500) } }, [icon('gps', { size: 22 }), h('span', { class: 'view-label' }, 'Me')]) : null,
-  ]);
-  // Map navigation for gloved hands (pinch and two-finger rotate still work): compass (tap = north up) and zoom.
+  // Tools menu: one round button showing the active tool; expands to the six tools.
+  const toolsMenu = createMapMenu({
+    id: 'tools',
+    label: 'Tools',
+    testId: 'tools-menu',
+    ui,
+    current: { icon: TOOLS[0]!.icon, label: TOOLS[0]!.label },
+    entries: TOOLS.map((t) => ({ id: t.id, label: t.label, icon: t.icon, toggle: true, testId: `tool-${t.id}`, data: { tool: t.id }, class: 'tool-btn', onSelect: () => selectTool(t.id) })),
+  });
+
+  // View menu: one round button showing the camera mode; expands to the camera modes, fly-to, compass and zoom.
+  const VIEW_MODES: { mode: UiState['viewMode']; label: string; icon: IconName }[] = [
+    { mode: 'orbit', label: '3D view', icon: 'cube' },
+    { mode: 'top', label: 'Top view', icon: 'top' },
+    { mode: 'ground', label: 'Eye level', icon: 'person' },
+  ];
   const needle = h('span', { class: 'compass-needle', aria: { hidden: true } }, [
     h('span', { class: 'compass-n' }, 'N'),
-    svg('svg', { viewBox: '0 0 24 24', width: '20', height: '20' }, [
-      svg('path', { d: 'M12 1.5 L17 12 L7 12 Z', class: 'needle-n' }),
-      svg('path', { d: 'M12 22.5 L17 12 L7 12 Z', class: 'needle-s' }),
-    ]),
+    svg('svg', { viewBox: '0 0 24 24', width: '20', height: '20' }, [svg('path', { d: 'M12 1.5 L17 12 L7 12 Z', class: 'needle-n' }), svg('path', { d: 'M12 22.5 L17 12 L7 12 Z', class: 'needle-s' })]),
   ]);
-  const compassBtn = h('button', { type: 'button', class: 'view-btn nav-btn compass-btn', dataset: { testid: 'compass' }, aria: { label: 'Turn the map north up' }, on: { click: () => view.setHeading(0) } }, needle);
   const zoomBtn = (dir: 'in' | 'out'): HTMLButtonElement =>
-    h('button', { type: 'button', class: 'view-btn nav-btn', dataset: { testid: `zoom-${dir}` }, aria: { label: dir === 'in' ? 'Zoom in' : 'Zoom out' }, on: { click: () => view.zoomBy(dir === 'in' ? 0.6 : 1 / 0.6) } }, icon(dir === 'in' ? 'plus' : 'minus', { size: 24 }));
-  viewControls.append(h('div', { class: 'view-nav', attrs: { role: 'group', 'aria-label': 'Map navigation' } }, [compassBtn, zoomBtn('in'), zoomBtn('out')]));
+    h(
+      'button',
+      { type: 'button', class: 'menu-zoom-btn', dataset: { testid: `zoom-${dir}` }, aria: { label: dir === 'in' ? 'Zoom in' : 'Zoom out' }, on: { click: () => view.zoomBy(dir === 'in' ? 0.6 : 1 / 0.6) } },
+      icon(dir === 'in' ? 'plus' : 'minus', { size: 24 }),
+    );
+  const zoomRow = h('div', { class: 'menu-row menu-zoom', attrs: { role: 'group' }, aria: { label: 'Zoom' } }, [zoomBtn('out'), h('span', { class: 'menu-item-label' }, 'Zoom'), zoomBtn('in')]);
+  const viewMenu = createMapMenu({
+    id: 'view',
+    label: 'View',
+    testId: 'view-menu',
+    ui,
+    current: { icon: VIEW_MODES[0]!.icon, label: VIEW_MODES[0]!.label },
+    entries: [
+      ...VIEW_MODES.map((m) => ({
+        id: m.mode,
+        label: m.label,
+        icon: m.icon,
+        toggle: true,
+        class: 'view-btn',
+        data: { mode: m.mode },
+        onSelect: () => {
+          ui.set({ viewMode: m.mode });
+          view.setViewMode(m.mode);
+        },
+      })),
+      { id: 'fly-fire', label: 'Fly to the fire', icon: 'flame' as const, testId: 'fly-fire', onSelect: () => flyToFire() },
+      ...(o.user ? [{ id: 'fly-me', label: 'My position', icon: 'gps' as const, testId: 'fly-me', onSelect: () => view.flyTo(o.user!.x, o.user!.y, 1500) }] : []),
+      { id: 'compass', label: 'North up', iconEl: needle, testId: 'compass', onSelect: () => view.setHeading(0) },
+      { id: 'zoom', el: zoomRow },
+    ],
+  });
+  const compassBtn = viewMenu.items.get('compass')!;
   let shownHeading = NaN;
-  const compassTimer = setInterval(() => {
+  const syncCompass = (): void => {
     const hd = Math.round(view.heading);
     if (hd === shownHeading) return;
     shownHeading = hd;
     needle.style.transform = `rotate(${-hd}deg)`;
     compassBtn.setAttribute('aria-label', `Map faces ${hd}°. Turn the map north up`);
-  }, 200);
-  unsubs.push(() => clearInterval(compassTimer));
+  };
+  // The compass needle follows the live heading, but only while the view menu is open (nothing to update otherwise).
+  const compassTimer = setInterval(() => viewMenu.isOpen() && syncCompass(), 200);
+  unsubs.push(
+    () => clearInterval(compassTimer),
+    ui.subscribe(() => {
+      shownHeading = NaN;
+      if (viewMenu.isOpen()) syncCompass();
+    }, ['menu']),
+  );
+
   const simNotice = services.sources.sim === 'mock' || services.sources.scene === 'mock' ? h('p', { class: 'mock-banner' }, services.sources.sim === 'mock' ? 'Demo engine' : '2-D map') : null;
-  if (simNotice) viewControls.prepend(simNotice);
+
+  // Simulation failure: the only thing that ever appears uninvited, as a thin strip under the top bar (never a modal).
+  const errorChip = h('div', { class: 'error-chip', hidden: true, attrs: { role: 'alert' }, dataset: { testid: 'error-chip' } }, [
+    icon('warning', { size: 18 }),
+    h('span', { class: 'error-chip-text' }, 'Simulation problem'),
+    h(
+      'button',
+      { type: 'button', class: 'error-chip-btn', dataset: { testid: 'error-details' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half', panelOpen: false, menu: null }) } },
+      'Details',
+    ),
+  ]);
 
   const mapLegend = createMapLegend(ctx, () => selectTool('layers'));
-  root.append(topBar.el, viewControls, rail, mapLegend.el, toasts.el, panelHost, sheet.el, scrubber.el);
-  unsubs.push(() => mapLegend.destroy());
+  root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, viewMenu.el, toolsMenu.el, mapLegend.el, panelHost, sheet.el, scrubber.el);
+  unsubs.push(() => mapLegend.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────
-  // The top bar, the scrubber, an open tool panel and the sheet cover parts of the full-screen 3-D view. Tell the view
-  // (so fly-to targets and the orbit pivot land in the visible part) and centre the crosshair there too, so "Mark at
-  // crosshair" marks the point the view centres on.
+  // The top bar, the error chip, the scrubber, the dock and an open tool panel cover parts of the full-screen 3-D view.
+  // Tell the view (so fly-to targets and the orbit pivot land in the visible part) and centre the crosshair there too,
+  // so "Mark at crosshair" marks the point the view centres on. The same measurements place the two round menus just
+  // above whatever covers the bottom, fit their lists to the room, and keep the legend between them.
   const layoutInsets = (): void => {
     const host = sceneHost.getBoundingClientRect();
     if (!host.width || !host.height) return;
-    const top = Math.max(0, topBar.el.getBoundingClientRect().bottom - host.top);
-    let bottom = Math.max(0, host.bottom - scrubber.el.getBoundingClientRect().top);
+    let top = Math.max(0, topBar.el.getBoundingClientRect().bottom - host.top);
+    errorChip.style.top = `${Math.round(top)}px`;
+    if (!errorChip.hidden) top = Math.max(top, errorChip.getBoundingClientRect().bottom - host.top);
+    const strip = Math.max(0, host.bottom - scrubber.el.getBoundingClientRect().top);
+    let bottom = strip;
+    /** Bottom cover that spans the screen (the round menus sit above it); side columns and short strips do not raise them. */
+    let band = strip;
     let left = 0;
     let right = 0;
     const cover = (r: { left: number; right: number; top: number; width: number; height: number }): void => {
       if (r.width <= 0 || r.height <= 0) return;
-      if (r.width >= host.width * 0.6) bottom = Math.max(bottom, host.bottom - r.top);
+      const fromBottom = host.bottom - r.top;
+      if (r.width >= host.width * 0.6) {
+        bottom = Math.max(bottom, fromBottom);
+        band = Math.max(band, fromBottom);
+      } else if (r.height < host.height * 0.4) bottom = Math.max(bottom, fromBottom); // a slim strip (the closed dock in a side column)
       else if (r.left + r.width / 2 < host.left + host.width / 2) left = Math.max(left, r.right - host.left);
       else right = Math.max(right, host.right - r.left);
     };
@@ -216,7 +254,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     if (panelEl) cover(panelEl.getBoundingClientRect());
     else if (!sheet.el.hidden) {
       const sr = sheet.el.getBoundingClientRect();
-      const target = Number.parseFloat(sheet.el.style.height) || sr.height;
+      const target = sheet.targetHeight();
       cover({ left: sr.left, right: sr.right, top: sr.bottom - target, width: sr.width, height: target });
     }
     view.setViewInsets({ top, bottom, left, right });
@@ -226,15 +264,20 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const cy = host.height / 2 + Math.max(-host.height / 3, Math.min(host.height / 3, (top - bottom) / 2));
     crosshair.style.left = `${Math.round(cx)}px`;
     crosshair.style.top = `${Math.round(cy)}px`;
-    // The overlay legend sits at the bottom of the visible map, between the two button columns.
+    // Round menus: just above the full-width cover; their lists fit the room above and beside them.
+    root.style.setProperty('--menu-bottom', `${Math.round(band + 12)}px`);
+    root.style.setProperty('--map-top', `${Math.round(top)}px`);
     let colL = left;
     let colR = host.width - right;
-    for (const c of [viewControls, rail]) {
-      const r = c.getBoundingClientRect();
-      if (!r.width || getComputedStyle(c).display === 'none') continue;
-      if (r.left + r.width / 2 < host.left + host.width / 2) colL = Math.max(colL, r.right - host.left);
+    for (const m of [viewMenu, toolsMenu]) {
+      const r = m.fab.getBoundingClientRect();
+      if (!r.width || getComputedStyle(m.el).display === 'none') continue;
+      const onLeft = r.left + r.width / 2 < host.left + host.width / 2;
+      m.fit(r.bottom - host.top - top - 4, onLeft ? host.right - r.right - 16 : r.left - host.left - 16);
+      if (onLeft) colL = Math.max(colL, r.right - host.left);
       else colR = Math.min(colR, r.left - host.left);
     }
+    // The overlay legend sits at the bottom of the visible map, between the two round buttons.
     const ls = mapLegend.el.style;
     ls.top = 'auto';
     ls.bottom = `${Math.round(bottom + 10)}px`;
@@ -246,62 +289,22 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const scheduleInsets = (): void => {
     cancelAnimationFrame(insetRaf);
     insetRaf = requestAnimationFrame(layoutInsets);
-    // Once more after the panel / sheet animations (0.2–0.25 s) have settled.
+    // Once more after the panel / dock animations (0.2–0.25 s) have settled.
     clearTimeout(insetTimer);
     insetTimer = setTimeout(layoutInsets, 320);
   };
   const insetRo = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleInsets) : null;
-  insetRo?.observe(root);
-  insetRo?.observe(panelHost);
-  insetRo?.observe(sheet.el);
+  for (const e of [root, panelHost, sheet.el, topBar.el, scrubber.el, errorChip]) insetRo?.observe(e);
   unsubs.push(
     () => {
       insetRo?.disconnect();
       cancelAnimationFrame(insetRaf);
       clearTimeout(insetTimer);
     },
-    ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool']),
+    ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool', 'menu']),
+    session.state.subscribe(scheduleInsets, ['error']),
   );
-
-  // ───────────── adaptive tool rail ─────────────
-  // Six tools at the full 68 px need ~440 px between the top bar and the peeking sheet: more than a 390 × 844 or
-  // 360 × 740 phone has. Measure the room and shrink the buttons (never below 52 px), or fall back to two columns,
-  // so every tool stays reachable above the sheet instead of disappearing under it.
-  const layoutRail = (): void => {
-    if (!rail.isConnected || getComputedStyle(rail).display === 'none') return;
-    const r = rail.getBoundingClientRect();
-    const limits = [scrubber.el.getBoundingClientRect().top];
-    if (!sheet.el.hidden) {
-      // Use the sheet's target height (not its animated one) and only when it sits under the rail (in landscape it
-      // is a side column).
-      const sr = sheet.el.getBoundingClientRect();
-      const target = Number.parseFloat(sheet.el.style.height) || sr.height;
-      if (sr.left < r.right && sr.right > r.left) limits.push(sr.bottom - target);
-    }
-    const avail = Math.min(...limits) - r.top - 8;
-    const n = TOOLS.length;
-    const gap = 6;
-    const one = Math.floor((avail - (n - 1) * gap) / n);
-    const two = Math.floor((avail - (Math.ceil(n / 2) - 1) * gap) / Math.ceil(n / 2));
-    const mode = one >= 68 ? 'full' : one >= 52 ? 'compact' : 'two';
-    rail.dataset.layout = mode;
-    rail.style.setProperty('--tool-h', `${mode === 'full' ? 68 : mode === 'compact' ? one : Math.max(48, Math.min(68, two))}px`);
-  };
-  let railRaf = 0;
-  const scheduleRail = (): void => {
-    cancelAnimationFrame(railRaf);
-    railRaf = requestAnimationFrame(layoutRail);
-  };
-  const railRo = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleRail) : null;
-  railRo?.observe(root);
-  unsubs.push(
-    () => {
-      railRo?.disconnect();
-      cancelAnimationFrame(railRaf);
-    },
-    ui.subscribe(scheduleRail, ['sheet', 'panelOpen']),
-  );
-  scheduleRail();
+  scheduleInsets();
 
   /** Fly to the fire, far enough back to see the whole burnt area (1.5–12 km). */
   function flyToFire(): void {
@@ -357,9 +360,10 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const s = ui.get();
     if (s.tool === id && (s.panelOpen || id === 'why')) {
       closePanel();
+      if (id === 'why') o.announce('Tap anywhere on the map to see why the fire behaves as it does there.');
       return;
     }
-    ui.set({ tool: id, panelOpen: id !== 'why' || s.why !== null, pending: null, drawing: id === 'fire' ? s.fireInput === 'line' : false });
+    ui.set({ tool: id, panelOpen: id !== 'why' || s.why !== null, pending: null, drawing: id === 'fire' ? s.fireInput === 'line' : false, menu: reduceMenu(s.menu, { type: 'pick' }) });
   }
   function closePanel(): void {
     ui.set({ tool: 'why', panelOpen: false, pending: null, drawing: false, why: null });
@@ -369,7 +373,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const renderPanel = (): void => {
     const s = ui.get();
     const key = s.panelOpen ? s.tool : '';
-    for (const b of rail.querySelectorAll<HTMLButtonElement>('.tool-btn')) b.setAttribute('aria-pressed', String(b.dataset.tool === s.tool));
+    toolsMenu.setPressed(s.tool);
+    const t = TOOLS.find((x) => x.id === s.tool)!;
+    toolsMenu.setCurrent(t.icon, t.label);
     root.dataset.tool = s.tool;
     root.classList.toggle('panel-open', s.panelOpen);
     if (key === panelKey) return;
@@ -391,7 +397,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const wantsCrosshair = s.panelOpen && ((s.tool === 'fire' && s.fireInput === 'point') || (s.tool === 'fuel' && !s.drawing) || s.tool === 'wind');
     crosshair.hidden = !wantsCrosshair;
     root.classList.toggle('drawing', s.drawing);
-    for (const b of viewControls.querySelectorAll<HTMLButtonElement>('[data-mode]')) b.setAttribute('aria-pressed', String(b.dataset.mode === s.viewMode));
+    viewMenu.setPressed(s.viewMode);
+    const vm = VIEW_MODES.find((x) => x.mode === s.viewMode)!;
+    viewMenu.setCurrent(vm.icon, vm.label);
     // Brush preview for a pending brush tap.
     const p = s.pending;
     if (s.tool === 'fuel' && p?.kind === 'brush' && p.points.length === 1) view.setBrushPreview({ x: p.points[0]![0], y: p.points[0]![1], radius: p.radius, colour: presetById(s.fuelPreset).colour });
@@ -402,8 +410,25 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 
   // ───────────── map taps ─────────────
   const downs = new Map<number, { x: number; y: number; t: number }>();
+  /** Pointers whose press only dismissed an open menu (that tap is not also a map tap). */
+  const dismissing = new Set<number>();
   let multi = false;
   unsubs.push(
+    // A press anywhere but inside the open menu collapses it (tap on the map, the dock, the top bar…).
+    listen(
+      root,
+      'pointerdown',
+      (e) => {
+        const open = ui.get().menu;
+        if (!open) return;
+        const t = e.target as Node | null;
+        // The menus handle their own presses (the other menu's button toggles, which also collapses this one).
+        if (t && (toolsMenu.el.contains(t) || viewMenu.el.contains(t))) return;
+        ui.set({ menu: reduceMenu(open, { type: 'map-tap' }) });
+        if (t && sceneHost.contains(t)) dismissing.add(e.pointerId);
+      },
+      { capture: true },
+    ),
     listen(
       sceneHost,
       'pointerdown',
@@ -421,20 +446,24 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         downs.delete(e.pointerId);
         const wasMulti = multi;
         if (downs.size === 0) multi = false;
-        if (!d || wasMulti) return;
+        const dismissed = dismissing.delete(e.pointerId);
+        if (!d || wasMulti || dismissed) return;
         if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12 || performance.now() - d.t > 700) return;
         onTap(e.clientX, e.clientY);
       },
       { capture: true },
     ),
     listen(sceneHost, 'pointercancel', (e) => void downs.delete(e.pointerId), { capture: true }),
+    // A dismissing press that ends off the map must not swallow the next real tap.
+    listen(window, 'pointerup', (e) => void dismissing.delete(e.pointerId)),
+    listen(window, 'pointercancel', (e) => void dismissing.delete(e.pointerId)),
   );
 
   function onTap(cx: number, cy: number): void {
     const p = view.pickGround(cx, cy);
     if (!p) return;
-    // Touching the map brings the map back: collapse an expanded sheet (the tool rail reappears).
-    if (ui.get().sheet !== 'peek') ui.set({ sheet: 'peek' });
+    // Touching the map brings the map back: collapse an open dock panel.
+    if (ui.get().sheet !== 'closed') ui.set({ sheet: 'closed' });
     const s = ui.get();
     switch (s.panelOpen ? s.tool : 'why') {
       case 'why':
@@ -587,13 +616,14 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   }
 
 
-  // ───────────── insights → toasts ─────────────
+  // ───────────── new insight cards ─────────────
+  // Cards never interrupt: the dock's Insights badge counts them (sheet.ts). The only reactions are opt-in settings: a
+  // vibration and/or a pause on the first Danger card of a kind ("pause on danger" is OFF by default: when the user runs
+  // the simulation they want it to run).
   unsubs.push(
     session.events.on('reveal', (i) => {
-      // A big fire reports the same danger all along its edge: toast a kind at most once an hour (simulated) and
-      // pause only the first time it appears, so "pause on danger" teaches without stopping playback every minute.
       const d = dangerGate.decide(i);
-      if (d.toast) toasts.push(i);
+      if (d.notify && settingsStore.get().haptics) vibrate([220, 90, 220]);
       if (d.pause && settingsStore.get().pauseOnDanger && session.state.get().playing) {
         session.pause();
         o.announce(`Danger: ${i.title}. Playback paused.`);
@@ -604,6 +634,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     settingsStore.subscribe((st) => {
       root.classList.toggle('hand-left', st.handedness === 'left');
       root.classList.toggle('hand-right', st.handedness === 'right');
+      scheduleInsets();
     }, ['handedness']),
     // Performance mode changed during a run: switch the engine tier from now on (the worker restores the latest
     // checkpoint and re-runs with the new atmosphere) and the heavy render layers.
@@ -629,7 +660,13 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       if (e.key === ' ' && !(t instanceof HTMLButtonElement)) {
         e.preventDefault();
         session.toggle();
-      } else if (e.key === 'Escape') closePanel();
+      } else if (e.key === 'Escape') {
+        // One layer per press: an open menu, else the tool panel, else the dock.
+        const u = ui.get();
+        if (u.menu) ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
+        else if (u.panelOpen || u.pending) closePanel();
+        else if (u.sheet !== 'closed') ui.set({ sheet: 'closed' });
+      }
     }),
   );
   // Fuel-brush edits: show them in the 3-D view straight away (a display copy of the fuel map; the worker applies the
@@ -647,9 +684,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   );
 
   const unsubErr = session.state.subscribe((s) => {
-    if (!s.error) return;
-    o.announce(`Simulation error: ${s.error}`);
-    toasts.pushSystem(`Simulation problem: ${s.error}`);
+    errorChip.hidden = !s.error;
+    if (s.error) o.announce(`Simulation error: ${s.error}`);
   }, ['error']);
   unsubs.push(unsubErr);
 
@@ -666,7 +702,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     topBar.destroy();
     sheet.destroy();
     scrubber.destroy();
-    toasts.destroy();
     session.dispose();
     view.dispose();
     root.remove();

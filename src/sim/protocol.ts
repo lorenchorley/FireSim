@@ -15,8 +15,13 @@ export type SimOptionKey = 'coupling' | 'embers' | 'mountainPhenomena' | 'maxEmb
 
 export type ToWorker =
   | { type: 'init'; scenario: ScenarioData }
-  /** Simulate forward until `until` seconds after scenario start (runs in chunks; snapshots stream back). */
+  /**
+   * Simulate forward until `until` seconds after scenario start (runs in chunks; snapshots stream back). When the run
+   * completes the worker posts a snapshot for exactly the time reached if the last one is older (the UI can stop a
+   * timeline jump there), then `status` with running = false.
+   */
   | { type: 'run'; until: number }
+  /** Stop after the current chunk; a snapshot for the time reached is posted if the last one is older. */
   | { type: 'pause' }
   /** Add fire observed on the ground (applies at `ignition.time`; if in the past the worker rewinds and replays). */
   | { type: 'ignite'; ignition: Ignition }
@@ -36,7 +41,15 @@ export type FromWorker =
   | { type: 'ready'; forecastInsights: Insight[] }
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'explain'; reqId: number; explanation: CellExplanation }
-  | { type: 'status'; time: number; running: boolean; /** simulated seconds per wall-clock second */ speed: number }
+  | {
+      type: 'status';
+      time: number;
+      running: boolean;
+      /** simulated seconds per wall-clock second */
+      speed: number;
+      /** The time the current run is heading for (the last 'run' target), so the UI can tell its own run's reports from stale ones. */
+      until?: number;
+    }
   | { type: 'error'; message: string }
   /** The worker rewound: the UI drops insights and spot fires with time > `time`. */
   | { type: 'rewound'; time: number };
@@ -44,7 +57,7 @@ export type FromWorker =
 export interface SimEvents {
   ready: (forecastInsights: Insight[]) => void;
   snapshot: (s: SimSnapshot) => void;
-  status: (st: { time: number; running: boolean; speed: number }) => void;
+  status: (st: { time: number; running: boolean; speed: number; until?: number }) => void;
   error: (message: string) => void;
   rewound: (time: number) => void;
 }

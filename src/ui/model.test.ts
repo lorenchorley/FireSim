@@ -6,12 +6,12 @@ import type { SceneViewApi } from '../render/api';
 import type { SimController, SimEvents } from '../sim/protocol';
 import { OVERLAY_OPTIONS, legendFor, rampGradient } from './legends';
 import { buildRequest, beltRh, defaultSetup, detailHint, persistable, restoreSetup, validateSetup } from './setupModel';
-import { SimSession, advanceClock, baselineAt, runTarget } from './session';
+import { MAX_REPLAY_SPEED, SimSession, advanceClock, baselineAt, runTarget } from './session';
 import { FUEL_PRESETS, fuelEditFor } from './fuelPresets';
 import { imageryCrop } from './imagery';
 import { barGeometry, factorRows } from './screens/sim/whyPanel';
 import { tzOffsetHours, zonedDate, zonedTime } from './format';
-import { performanceProfile, resolveTheme } from './settings';
+import { DEFAULT_SETTINGS, performanceProfile, resolveTheme } from './settings';
 import { Emitter } from './store';
 import { detectWindChanges } from './weatherCalc';
 
@@ -32,11 +32,17 @@ describe('setup model', () => {
     if (r.weather.kind === 'preset') expect(r.weather.start).toBe(Date.UTC(2026, 11, 20, 1, 0));
   });
 
-  it('maps detail to fire cell size and performance to snapshot rate', () => {
+  it('maps detail to fire cell size, performance to the engine tier, and the step settings to the engine options', () => {
     const s = { ...defaultSetup(NOW), detail: 'detailed' as const, extentKm: 9 as const };
     const r = buildRequest(s, 'battery', NOW);
     expect(r.options?.fireCellSize).toBe(20);
-    expect(r.options?.snapshotInterval).toBe(600);
+    expect(r.options?.tier).toBe('fast');
+    // A bare mode no longer ties the display step to the performance mode: the engine default (60 s) applies.
+    expect(r.options?.snapshotInterval).toBeUndefined();
+    const u = buildRequest(s, { performance: 'quality', timeStep: 10, solverStep: 2 }, NOW);
+    expect(u.options).toMatchObject({ tier: 'high', snapshotInterval: 10, maxStepS: 2, fireCellSize: 20 });
+    const d = buildRequest(s, { ...DEFAULT_SETTINGS }, NOW);
+    expect(d.options).toMatchObject({ snapshotInterval: 60, maxStepS: 0, tier: 'auto' });
     expect(detailHint(9, 'detailed')).toMatch(/20 m cells · 203k cells/);
   });
 
@@ -94,13 +100,23 @@ describe('session clock helpers', () => {
     expect(runTarget(0, 600, 21600, 300)).toBe(18000);
     expect(runTarget(20000, 600, 21600, 300)).toBe(21600);
     expect(runTarget(100, Infinity, 21600, 300)).toBe(21600);
+    // Any speed: a slow one still looks half an hour ahead; a display step of 10 s does not shrink the look-ahead.
+    expect(runTarget(0, 0.5, 21600, 10)).toBe(1800);
+    expect(runTarget(0, 45, 21600, 10)).toBe(1800);
+    expect(runTarget(0, 3600, 21600, 10)).toBe(21600);
   });
 
   it('advances at the playback speed, waits for the worker and never goes back', () => {
     expect(advanceClock(0, 3600, 60, 0.5, 21600)).toBe(30);
     expect(advanceClock(3590, 3600, 60, 1, 21600)).toBe(3600);
     expect(advanceClock(3700, 3600, 60, 1, 21600)).toBe(3700);
-    expect(advanceClock(100, 5000, Infinity, 0.016, 21600)).toBe(5000);
+    // As fast as possible: follows the newest result; replays history very fast (not instantly) after a jump back.
+    expect(advanceClock(5000, 5000, Infinity, 0.016, 21600)).toBe(5000);
+    expect(advanceClock(4990, 5000, Infinity, 0.016, 21600)).toBe(5000);
+    expect(advanceClock(100, 5000, Infinity, 0.016, 21600)).toBeCloseTo(100 + MAX_REPLAY_SPEED * 0.016, 6);
+    // Any positive speed works.
+    expect(advanceClock(0, 3600, 0.5, 1, 21600)).toBe(0.5);
+    expect(advanceClock(0, 90000, 3600, 0.25, 21600)).toBe(900);
   });
 
   it('interpolates the what-if baseline', () => {

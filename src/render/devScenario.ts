@@ -243,7 +243,7 @@ export class SyntheticFire {
       windDir: o.windDir ?? 295,
       startTime: o.startTime,
       duration: o.duration ?? 6 * 3600,
-      snapshotInterval: o.snapshotInterval ?? 300,
+      snapshotInterval: o.snapshotInterval ?? 60,
       temperature: o.temperature ?? 34,
       relativeHumidity: o.relativeHumidity ?? 14,
     };

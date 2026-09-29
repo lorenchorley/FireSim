@@ -32,9 +32,10 @@ function fmt(tz: string, opts: Intl.DateTimeFormatOptions, key: string): Intl.Da
   return f;
 }
 
-/** "14:35" in the scenario's time zone. */
-export function formatClock(ms: number, tz = DEFAULT_TZ): string {
+/** "14:35" in the scenario's time zone, or "14:35:07" with `withSeconds` (for fine display steps and slow playback). */
+export function formatClock(ms: number, tz = DEFAULT_TZ, withSeconds = false): string {
   if (!Number.isFinite(ms)) return '–';
+  if (withSeconds) return fmt(tz, { hour: '2-digit', minute: '2-digit', second: '2-digit' }, 'hms').format(ms);
   return fmt(tz, { hour: '2-digit', minute: '2-digit' }, 'hm').format(ms);
 }
 
@@ -120,11 +121,27 @@ export function formatElapsed(seconds: number): string {
   return `${seconds < 0 ? '−' : '+'}${formatDuration(seconds)}`;
 }
 
-/** Compact elapsed "+2:35" (h:mm), for tight spaces. */
-export function formatElapsedShort(seconds: number): string {
+/** Compact elapsed "+2:35" (h:mm), or "+2:35:07" (h:mm:ss) with `withSeconds`, for tight spaces. */
+export function formatElapsedShort(seconds: number, withSeconds = false): string {
   if (!Number.isFinite(seconds)) return '–';
+  const sign = seconds < 0 ? '−' : '+';
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  if (withSeconds) {
+    const total = Math.round(Math.abs(seconds));
+    return `${sign}${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  }
   const totalMin = Math.round(Math.abs(seconds) / 60);
-  return `${seconds < 0 ? '−' : '+'}${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, '0')}`;
+  return `${sign}${Math.floor(totalMin / 60)}:${pad(totalMin % 60)}`;
+}
+
+/** A step or interval "10 s", "1 min", "10 min", "1 h" (seconds in; whole units only, otherwise "1 min 30 s"). */
+export function formatStepLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '–';
+  const s = Math.round(seconds);
+  if (s < 60) return `${s} s`;
+  if (s % 3600 === 0) return `${s / 3600} h`;
+  if (s % 60 === 0) return `${s / 60} min`;
+  return `${Math.floor(s / 60)} min ${s % 60} s`;
 }
 
 /** Relative "in 45 min" / "35 min ago" / "now". */
@@ -241,9 +258,46 @@ export function formatYears(y: number): string {
   return r === 1 ? '1 year' : `${r} years`;
 }
 
-/** Playback speed label: "1×", "60×", "Max". */
+/** A speed as a plain number: "0.25", "1.5", "60" (no grouping, no trailing zeros). */
+function speedNumber(v: number): string {
+  if (v >= 10) return String(Math.round(v));
+  return String(Number(v.toFixed(2)));
+}
+
+/** A speed as a multiple: "0.25×", "60×", "1800×" ("Max" for as fast as possible). */
+export function formatSpeedMultiple(speed: number): string {
+  return Number.isFinite(speed) ? `${speedNumber(speed)}×` : 'Max';
+}
+
+/**
+ * Playback speed label (simulated seconds per second) for the speed button: "0.25×", "1×", "60×", "600×", then whole
+ * minutes / hours of fire per second when that is shorter ("30 min/s", "1 h/s"), and "Max" for as fast as possible.
+ */
 export function formatPlaybackSpeed(speed: number): string {
-  return Number.isFinite(speed) ? `${formatNumber(speed)}×` : 'Max';
+  if (!Number.isFinite(speed)) return 'Max';
+  if (speed >= 1800 && speed % 3600 === 0) return `${speed / 3600} h/s`;
+  if (speed >= 1800 && speed % 60 === 0) return `${speed / 60} min/s`;
+  return formatSpeedMultiple(speed);
+}
+
+/** The same speed in words for a hint line: "1 min of fire per second", "Real time", "Slow motion: 1 s of fire takes 4 s". */
+export function formatSpeedHint(speed: number): string {
+  if (!Number.isFinite(speed)) return 'As fast as the phone can compute';
+  if (speed === 1) return 'Real time: 1 s of fire per second';
+  if (speed < 1) return `Slow motion: 1 s of fire takes ${speedNumber(1 / speed)} s`;
+  if (speed < 60) return `${speedNumber(speed)} s of fire per second`;
+  if (speed < 3600) return `${speedNumber(speed / 60)} min of fire per second`;
+  return `${speedNumber(speed / 3600)} h of fire per second`;
+}
+
+/** Very short form of {@link formatSpeedHint} for the speed presets: "real time", "1 min/s", "1 h/s", "slow". */
+export function formatSpeedRate(speed: number): string {
+  if (!Number.isFinite(speed)) return 'As fast as possible';
+  if (speed === 1) return 'real time';
+  if (speed < 1) return 'slow';
+  if (speed < 60) return `${speedNumber(speed)} s/s`;
+  if (speed < 3600) return `${speedNumber(speed / 60)} min/s`;
+  return `${speedNumber(speed / 3600)} h/s`;
 }
 
 /** Bytes → "12 MB". */

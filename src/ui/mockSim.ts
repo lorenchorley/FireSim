@@ -58,6 +58,8 @@ const MOCK_CONFIDENCE: Partial<Record<InsightKind, NonNullable<Insight['confiden
 
 const RESIDENCE_S = 20 * 60;
 const TICK_MS = 70;
+/** Simulated seconds the mock computes per tick at least (so a jump across hours is quick, like a fast engine). */
+const TICK_SIM_S = 600;
 
 type Opts = { coupling: number; embers: boolean; mountainPhenomena: boolean };
 
@@ -82,6 +84,8 @@ export class MockSimController implements SimController {
   private insightSeq = 0;
   private disposed = false;
   private maxEmbers = 4000;
+  /** Display step (s): snapshots are produced at its multiples (setOption 'snapshotInterval'). */
+  private step = 60;
   /** Last quality tier requested (recorded only). */
   quality: QualityTier | null = null;
 
@@ -94,6 +98,7 @@ export class MockSimController implements SimController {
     this.edits = scenario.edits.map((edit) => ({ edit, time: 0 }));
     this.options = { coupling: scenario.options.coupling, embers: scenario.options.embers, mountainPhenomena: scenario.options.mountainPhenomena };
     this.maxEmbers = scenario.options.maxEmbers ?? 4000;
+    this.step = Math.max(1, scenario.options.snapshotInterval || 60);
     this.time = 0;
     this.target = 0;
     this.lastInsight.clear();
@@ -170,7 +175,12 @@ export class MockSimController implements SimController {
   setOption(key: SimOptionKey, value: number | boolean): void {
     if (key === 'coupling') this.options.coupling = Number(value);
     else if (key === 'maxEmbers') this.maxEmbers = Math.max(0, Number(value));
-    else if (key === 'snapshotInterval' || key === 'maxStepS') return; // TODO(engine agent): mock honours the display step
+    else if (key === 'snapshotInterval') {
+      // Live, like the engine: the next snapshots come at multiples of the new step; nothing is recomputed.
+      const v = Number(value);
+      if (Number.isFinite(v) && v > 0) this.step = Math.max(1, Math.min(3600, v));
+      return;
+    } else if (key === 'maxStepS') return; // the mock has no solver step
     else this.options[key] = Boolean(value);
     this.dirty = true;
   }
@@ -200,19 +210,20 @@ export class MockSimController implements SimController {
 
   // ───────────────────────────── internals ─────────────────────────────
 
-  private get interval(): number {
-    return this.scenario?.options.snapshotInterval ?? 300;
-  }
-
   private snapTime(t: number): number {
-    return Math.floor(t / this.interval) * this.interval;
+    return Math.floor(t / this.step + 1e-9) * this.step;
   }
 
   private status(running: boolean): void {
     if (this.disposed) return;
-    this.events.emit('status', { time: this.time, running, speed: running ? this.interval / (TICK_MS / 1000) : 0 });
+    this.events.emit('status', { time: this.time, running, speed: running ? Math.max(this.step, TICK_SIM_S) / (TICK_MS / 1000) : 0, until: this.target });
   }
 
+  /**
+   * One tick computes at least {@link TICK_SIM_S} of simulated time (a jump across hours is quick) and emits ONE
+   * snapshot: at the last multiple of the display step reached, or, when the run ends, at exactly the target (the
+   * run-end snapshot the real engine also gives, so a jump can stop exactly there).
+   */
   private tick(): void {
     if (!this.scenario) return;
     if (this.time >= this.target) {
@@ -220,10 +231,11 @@ export class MockSimController implements SimController {
       return;
     }
     const prev = this.time;
-    this.time = Math.min(this.target, this.time + this.interval);
+    const reach = Math.min(this.target, prev + Math.max(this.step, TICK_SIM_S));
+    this.time = reach >= this.target ? this.target : Math.max(prev + 1, this.snapTime(reach));
     this.emitSnapshot(prev, this.time);
-    this.status(this.time < this.target);
     if (this.time >= this.target) this.pause();
+    else this.status(true);
   }
 
   private rebuildFuel(): void {

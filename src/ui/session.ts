@@ -5,12 +5,18 @@
  *  - headTime: time of the newest snapshot received (end of the computed range).
  *  - viewTime: the displayed simulation clock. While playing it advances at `speed` simulated seconds per wall
  *    second (never past headTime — if the worker is slower the clock waits: "computing…"); with speed = Infinity
- *    ("as fast as possible") it follows headTime.
+ *    ("as fast as possible") it follows headTime (and replays history at {@link MAX_REPLAY_SPEED}).
  *  - The worker is asked to compute a bounded look-ahead beyond viewTime (see {@link runTarget}) so pausing,
  *    editing or rewinding wastes little work.
- *  - Scrubbing back shows stored snapshots (SnapshotStore, memory-capped). An ignition or edit made while viewing
- *    the past first calls controller.rewind(viewTime) and drops later results and insights.
- *  - Insights are revealed when the clock passes their time, so future cards never leak ahead of the view.
+ *  - Any time up to headTime can be shown at once and exactly (SnapshotStore rebuilds the fire front for that time).
+ *    A time beyond headTime is a FAST-FORWARD (see {@link SimSession.seek}): the engine runs at full speed to the
+ *    target, the view follows each newest snapshot and stops exactly at the target.
+ *  - An ignition or edit made while viewing the past first calls controller.rewind(viewTime) and drops later results
+ *    and insights. Edits, ignitions and what-ifs cancel a fast-forward in progress.
+ *  - Insights are revealed when the clock passes their time (also during a fast-forward, in order), so future cards
+ *    never leak ahead of the view.
+ *  - Only the user (pause, the timeline, menus), the end of the scenario, or the app going to the background stops
+ *    playback: nothing else in here pauses it (a worker error does, since there is nothing to play).
  */
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire } from '../core/types';
 import type { SceneViewApi } from '../render/api';
@@ -48,10 +54,11 @@ export interface SessionState {
   reviewing: boolean;
   /**
    * A timeline jump beyond the newest computed time is in progress: the engine is computing at full speed to this
-   * simulation time (s) and the view follows; null when idle. See {@link SimSession.seek}.
+   * simulation time (s) and the view follows; null when idle. `playing` is false meanwhile (the clock does not run).
+   * See {@link SimSession.seek}.
    */
   seekTarget: number | null;
-  /** Progress of that jump, 0–1 (0 when idle). */
+  /** Progress of that jump, 0–1: (min(head, target) − seekFrom) / (target − seekFrom), 0 when idle. */
   seekProgress: number;
   /** Display step (s): how often the engine produces a new picture. Mirrors Settings.timeStep. */
   timeStep: number;
@@ -68,12 +75,15 @@ export interface SessionState {
 }
 
 export interface SessionEvents {
-  /** An insight became visible because the clock passed its time (for toasts). */
+  /** An insight became visible because the clock passed its time (counted by the dock's badge; never shown as a pop-up). */
   reveal: (insight: Insight) => void;
   ended: () => void;
 }
 
 export const SPEEDS: readonly number[] = [1, 10, 60, 120, 300, 600, Infinity];
+
+/** Fastest the view clock replays already computed history at speed = Infinity (simulated s per wall s). */
+export const MAX_REPLAY_SPEED = 10800;
 
 /** Look-ahead the worker should compute to, given the view time and playback speed (pure). */
 export function runTarget(viewTime: number, speed: number, duration: number, interval: number): number {
@@ -82,9 +92,18 @@ export function runTarget(viewTime: number, speed: number, duration: number, int
   return Math.min(duration, viewTime + ahead);
 }
 
+/** Rounding (simulated s) of the picture shown while playing at `speed`: about six pictures per wall second, at least 1 s apart (pure). */
+export function playQuantum(speed: number): number {
+  return Math.max(1, (Number.isFinite(speed) ? speed : MAX_REPLAY_SPEED) / 6);
+}
+
 /** Advance the view clock by a wall-clock step (pure). */
 export function advanceClock(viewTime: number, headTime: number, speed: number, dtWall: number, duration: number): number {
-  if (!Number.isFinite(speed)) return Math.min(Math.max(viewTime, headTime), duration);
+  if (!Number.isFinite(speed)) {
+    // As fast as possible: at the newest result, follow it; behind it (after a jump back), replay very fast.
+    if (viewTime >= headTime) return Math.min(Math.max(viewTime, headTime), duration);
+    return Math.min(duration, headTime, viewTime + MAX_REPLAY_SPEED * dtWall);
+  }
   if (viewTime >= headTime) return viewTime; // waiting for the worker (never jump backwards)
   return Math.min(duration, headTime, viewTime + speed * dtWall);
 }
@@ -104,6 +123,12 @@ export class SimSession {
   private disposed = false;
   /** Whether the timeline drag in progress began while playing (see beginScrub). */
   private scrubResume = false;
+  /** Fast-forward in progress: where the view was when it began (progress base), whether to play on landing, and whether the worker has reported running since. */
+  private seekFrom = 0;
+  private seekResume = false;
+  private seekSawRunning = false;
+  /** Counts pause() calls, so a pause made by a reveal listener during a jump's landing is not undone. */
+  private pauses = 0;
   /** Time of a removed ignition whose 'rewound' reply is pending (results after it are stale). */
   private rewindFloor: number | null = null;
   /** What was last pushed to the view (see syncView). */
@@ -121,7 +146,7 @@ export class SimSession {
     opts: { maxBytes?: number } = {},
   ) {
     this.scenario = scenario;
-    this.snapshots = new SnapshotStore({ minInterval: Math.max(60, scenario.options.snapshotInterval), maxBytes: opts.maxBytes ?? defaultSnapshotBudget() });
+    this.snapshots = new SnapshotStore({ minInterval: scenario.options.snapshotInterval, maxBytes: opts.maxBytes ?? defaultSnapshotBudget() });
     this.state = new Store<SessionState>({
       viewTime: 0,
       headTime: 0,
@@ -145,8 +170,8 @@ export class SimSession {
     });
     this.unsubs.push(
       controller.on('snapshot', (s) => this.onSnapshot(s)),
-      controller.on('status', (st) => this.state.set({ computing: st.running, workerSpeed: st.speed })),
-      controller.on('error', (message) => this.state.set({ error: message, computing: false })),
+      controller.on('status', (st) => this.onStatus(st.running, st.speed, st.until)),
+      controller.on('error', (message) => this.onError(message)),
       controller.on('ready', (ins) => this.state.set({ forecastInsights: ins })),
       controller.on('rewound', (t) => this.onRewound(t)),
     );
@@ -174,23 +199,36 @@ export class SimSession {
 
   // ───────────────────────────── playback ─────────────────────────────
 
+  /** Start (or resume) playback from the view time. During a fast-forward it means "and play on when you get there". */
   play(): void {
     const s = this.state.get();
+    if (s.seekTarget !== null) {
+      this.seekResume = true;
+      return;
+    }
     if (s.viewTime >= this.duration - 1) return;
     this.state.set({ playing: true });
     this.ensureRunning(true);
     this.startLoop();
   }
 
+  /**
+   * Stop playback (the user's pause; also the end of the scenario and the app going to the background). A fast-forward
+   * in progress is cancelled: the view stays where it is.
+   */
   pause(): void {
+    this.pauses++;
+    if (this.state.get().seekTarget !== null) this.clearSeek();
     this.state.set({ playing: false });
     this.controller.pause();
     this.requestedUntil = this.state.get().headTime;
     this.stopLoop();
   }
 
+  /** Play / pause; while a fast-forward runs it cancels it (the button shows Pause meanwhile). */
   toggle(): void {
-    if (this.state.get().playing) this.pause();
+    const s = this.state.get();
+    if (s.playing || s.seekTarget !== null) this.pause();
     else this.play();
   }
 
@@ -201,31 +239,50 @@ export class SimSession {
     if (this.state.get().playing) this.ensureRunning(true);
   }
 
-  // ── timeline (CONTRACT for the UI; the engine agent implements the real behaviour, this is the placeholder) ──
+  // ───────────────────────────── timeline ─────────────────────────────
 
   /**
    * Jump to simulation time t ∈ [0, duration] (clamped). One-shot form of beginScrub / endScrub, for buttons and typed
    * times.
-   *  - t ≤ newest computed time: the view shows t immediately (exact fire front, see the history store).
-   *  - t > newest computed time: fast-forward — `seekTarget = t`, the engine computes at full speed, the view follows
-   *    the newest result (progress in `seekProgress`), and it stops exactly at t. Afterwards playback continues if
-   *    `opts.resume` (default: whether it was playing when the jump began), else it is paused at t.
-   *  - A new seek, `pause()`, an edit or {@link cancelSeek} ends a jump in progress.
+   *  - t ≤ newest computed time: the view shows t immediately and exactly (the history rebuilds the fire front for
+   *    that very time, see SnapshotStore).
+   *  - t > newest computed time: FAST-FORWARD. `seekTarget = t`, `playing` is false, the engine computes at full speed
+   *    (controller.run(t)), the view follows each newest snapshot (never beyond the target or what is computed;
+   *    `seekProgress` = (min(head, t) − seekFrom) / (t − seekFrom)) and stops exactly at t. Then playback continues at
+   *    the same speed if `opts.resume` (default: whether it was playing when the jump began, or a fast-forward that
+   *    was to play on), else the view stays paused at t. Insight cards are revealed in order on the way.
+   *  - A new seek retargets a jump in progress. `pause()`, `cancelSeek()`, an edit, an ignition or a what-if ends it,
+   *    staying where the view is; so does a worker error or the worker going idle before the target.
    */
   seek(t: number, opts: { resume?: boolean } = {}): void {
+    if (this.disposed || !Number.isFinite(t)) return;
     const s = this.state.get();
-    const resume = opts.resume ?? s.playing;
-    if (s.playing) this.pause();
-    const vt = Math.max(0, Math.min(s.headTime, t));
-    this.state.set({ viewTime: vt, reviewing: vt < s.headTime - 1 });
-    this.syncView();
-    if (resume) this.play();
+    const target = Math.max(0, Math.min(this.duration, t));
+    const seeking = s.seekTarget !== null;
+    const resume = opts.resume ?? (s.playing || (seeking && this.seekResume));
+    if (target <= s.headTime + 1e-6) {
+      if (seeking) this.clearSeek();
+      this.state.set({ viewTime: target, reviewing: target < s.headTime - 1 });
+      const pauses = this.pauses;
+      this.syncView();
+      if (this.pauses !== pauses) return; // a reveal listener paused (pause on Danger): respect it
+      if (resume && target < this.duration - 1) {
+        if (this.state.get().playing) this.ensureRunning(true);
+        else this.play();
+      } else {
+        if (s.playing || seeking) this.pause();
+        if (resume) this.events.emit('ended');
+      }
+      return;
+    }
+    this.startSeek(target, resume);
   }
 
   /** A drag on the timeline begins: remember whether it was playing and pause. Pair with {@link scrub} and {@link endScrub}. */
   beginScrub(): void {
-    this.scrubResume = this.state.get().playing;
-    if (this.scrubResume) this.pause();
+    const s = this.state.get();
+    this.scrubResume = s.playing || (s.seekTarget !== null && this.seekResume);
+    if (s.playing || s.seekTarget !== null) this.pause();
   }
 
   /** Dragging: preview time t (never starts the engine; shows at most the newest computed time). */
@@ -245,44 +302,134 @@ export class SimSession {
 
   /** Stop a fast-forward in progress and stay where the view is (paused). No-op when idle. */
   cancelSeek(): void {
-    if (this.state.get().seekTarget !== null) this.state.set({ seekTarget: null, seekProgress: 0 });
+    if (this.state.get().seekTarget !== null) this.pause();
   }
 
-  /** Move the view by dt seconds (negative = back), e.g. the ±1 min / ±1 h buttons. */
+  /** Move the view by dt seconds (negative = back), e.g. the ±1 min / ±1 h buttons. Keeps playing if it was playing. */
   stepBy(dt: number): void {
     this.seek(this.state.get().viewTime + dt);
   }
 
   /** Change the display step (s) now: applies to results computed from here on (no re-run). */
   setTimeStep(seconds: number): void {
+    if (!(seconds > 0)) return;
     this.state.set({ timeStep: seconds });
+    this.snapshots.setStep(seconds);
     this.controller.setOption('snapshotInterval', seconds);
   }
 
-  /** Change the solver step limit (s, 0 = automatic): re-runs from the view time like other what-ifs. */
+  /**
+   * Change the solver step limit (s, 0 = automatic). It changes the trajectory, so the engine re-runs from the view
+   * time like other what-ifs: later results are dropped here and streamed again ('rewound'). A fast-forward ends.
+   */
   setSolverStep(seconds: number): void {
+    if (!(seconds >= 0)) return;
+    this.cancelSeek();
     this.state.set({ solverStep: seconds });
     this.controller.setOption('maxStepS', seconds);
+    this.rerunFromView();
   }
 
-  /** @deprecated Redundant with play(); removed with the "Live" button (kept until the UI no longer calls it). */
-  goLive(): void {
-    this.state.set({ viewTime: this.state.get().headTime, reviewing: false });
+  // ── fast-forward internals ──
+
+  private startSeek(target: number, resume: boolean): void {
+    const s = this.state.get();
+    if (s.playing) {
+      // The clock does not run during a jump: the view follows the engine.
+      this.stopLoop();
+      this.state.set({ playing: false });
+    }
+    this.seekFrom = s.viewTime;
+    this.seekResume = resume;
+    this.seekSawRunning = false;
+    this.state.set({ seekTarget: target, seekProgress: 0, reviewing: false });
+    this.requestedUntil = target;
+    this.lastRunCall = performance.now();
+    this.controller.run(target);
+    this.followSeek();
+  }
+
+  /** Move the view to the newest result (never past the target) and land when the target is computed. */
+  private followSeek(): void {
+    const s = this.state.get();
+    const target = s.seekTarget;
+    if (target === null) return;
+    if (s.headTime >= target - 1e-6) {
+      this.finishSeek(target);
+      return;
+    }
+    const span = Math.max(1e-6, target - this.seekFrom);
+    const reached = Math.min(s.headTime, target);
+    this.state.set({ viewTime: Math.max(s.viewTime, reached), seekProgress: Math.max(0, Math.min(1, (reached - this.seekFrom) / span)) });
     this.syncView();
-    this.play();
+  }
+
+  private finishSeek(target: number): void {
+    const resume = this.seekResume;
+    this.clearSeek();
+    this.state.set({ viewTime: target, reviewing: false });
+    const pauses = this.pauses;
+    this.syncView();
+    if (this.pauses !== pauses) return; // a reveal listener paused (pause on Danger): respect it
+    const atEnd = target >= this.duration - 1;
+    if (resume && !atEnd) {
+      this.play();
+    } else {
+      this.requestedUntil = this.state.get().headTime;
+      if (resume) this.events.emit('ended');
+    }
+  }
+
+  /** Forget the jump (state only). */
+  private clearSeek(): void {
+    this.seekSawRunning = false;
+    this.state.set({ seekTarget: null, seekProgress: 0 });
+  }
+
+  /** The worker stopped (or failed) before the target was computed: stay at the newest result. */
+  private abortSeek(): void {
+    if (this.state.get().seekTarget === null) return;
+    this.clearSeek();
+    this.requestedUntil = this.state.get().headTime;
+    this.state.set({ viewTime: Math.min(this.state.get().viewTime, this.state.get().headTime) });
+    this.syncView();
+  }
+
+  private onStatus(running: boolean, speed: number, until?: number): void {
+    if (this.disposed) return;
+    this.state.set({ computing: running, workerSpeed: speed });
+    const s = this.state.get();
+    if (s.seekTarget === null) return;
+    // Reports of the worker's earlier runs (the echo of a pause, a look-ahead) can still be in flight when a jump
+    // starts: only those of a run heading for this target count, and only a 'not running' after a 'running'.
+    if (until !== undefined && Math.abs(until - Math.min(s.seekTarget, this.duration)) > 1e-6) return;
+    if (running) this.seekSawRunning = true;
+    // The run stopped short of the target (paused elsewhere, replay interrupted): stay at the newest result.
+    else if (this.seekSawRunning && s.headTime < s.seekTarget - 1e-6) this.abortSeek();
+  }
+
+  private onError(message: string): void {
+    if (this.disposed) return;
+    this.state.set({ error: message, computing: false });
+    this.abortSeek();
+    if (this.state.get().playing) {
+      this.state.set({ playing: false });
+      this.stopLoop();
+    }
   }
 
   // ───────────────────────────── edits ─────────────────────────────
 
   /** Rewind the worker to the view time if the view is in the past; returns the time edits apply from. */
   private prepareEditAt(): number {
+    this.cancelSeek(); // an edit ends a fast-forward in progress: it applies at the view time
     const s = this.state.get();
     const t = s.viewTime;
     if (t < s.headTime - 1e-3) {
       this.controller.rewind(t);
       this.snapshots.truncateAfter(t);
       this.state.set({
-        headTime: this.snapshots.latest()?.time ?? t,
+        headTime: this.snapshots.headTime() ?? t,
         insights: s.insights.filter((i) => i.time <= t),
       });
       this.requestedUntil = t;
@@ -319,6 +466,7 @@ export class SimSession {
 
   /** What-if: change coupling / embers / mountain phenomena and re-run from the view time. */
   rerunWith(options: WhatIfOptions, label: string): void {
+    this.cancelSeek();
     const before = this.state.get();
     const since = before.viewTime;
     const baseline = this.snapshots
@@ -335,7 +483,7 @@ export class SimSession {
     this.state.set({
       options,
       reviewing: false,
-      headTime: this.snapshots.latest()?.time ?? since,
+      headTime: this.snapshots.headTime() ?? since,
       insights: before.insights.filter((i) => i.time <= since),
       compare: baseline.length ? { label, since, baseline } : null,
     });
@@ -344,10 +492,29 @@ export class SimSession {
   }
 
   /**
+   * Re-run from the view time (options already sent): the worker rewinds there, so every later result is dropped here
+   * and streamed again; the view time stays where it is. Keeps playing if it was playing.
+   */
+  private rerunFromView(): void {
+    const s = this.state.get();
+    const since = s.viewTime;
+    this.controller.rewind(since);
+    this.snapshots.truncateAfter(since);
+    this.requestedUntil = since;
+    this.state.set({
+      reviewing: false,
+      headTime: this.snapshots.headTime() ?? since,
+      insights: s.insights.filter((i) => i.time <= since),
+    });
+    this.afterEdit();
+  }
+
+  /**
    * Undo a marked ignition (a wrong mark): the worker rewinds to its time and re-runs without it, so every result
    * after that time is dropped here (they are re-computed and streamed again); the view time stays where it is.
    */
   removeIgnition(id: string): void {
+    this.cancelSeek();
     const s = this.state.get();
     const ign = s.ignitions.find((i) => i.id === id);
     if (!ign) return;
@@ -361,7 +528,7 @@ export class SimSession {
     this.state.set((st) => ({
       ignitions: st.ignitions.filter((i) => i.id !== id),
       insights: st.insights.filter((i) => i.time <= t),
-      headTime: t < st.headTime ? (this.snapshots.latest()?.time ?? t) : st.headTime,
+      headTime: t < st.headTime ? (this.snapshots.headTime() ?? t) : st.headTime,
       reviewing: false,
     }));
     this.afterEdit();
@@ -385,13 +552,13 @@ export class SimSession {
     const s = this.state.get();
     // Never restart the worker once playback stopped (e.g. a Danger card paused it from inside syncView).
     if (!s.playing) return;
-    const target = runTarget(s.viewTime, s.speed, this.duration, this.scenario.options.snapshotInterval);
+    const target = runTarget(s.viewTime, s.speed, this.duration, s.timeStep);
     if (target <= s.headTime && !force) return;
     const now = performance.now();
     // Re-issue a run if the look-ahead moved on, or if the worker looks idle short of the target — but not every
     // frame while its 'status' reply is still in flight.
     const stalled = !s.computing && s.headTime < target && now - this.lastRunCall > 1000;
-    if (force || target > this.requestedUntil + this.scenario.options.snapshotInterval || stalled) {
+    if (force || target > this.requestedUntil + Math.max(60, s.timeStep) || stalled) {
       this.requestedUntil = target;
       this.lastRunCall = now;
       this.controller.run(target);
@@ -414,9 +581,10 @@ export class SimSession {
     if (s.headTime <= keep && s.insights.every((i) => i.time <= keep)) return;
     this.snapshots.truncateAfter(keep);
     this.requestedUntil = Math.min(this.requestedUntil, time);
-    this.state.set({ headTime: this.snapshots.latest()?.time ?? time, insights: s.insights.filter((i) => i.time <= keep) });
+    this.state.set({ headTime: this.snapshots.headTime() ?? time, insights: s.insights.filter((i) => i.time <= keep) });
     this.syncView();
     if (s.playing) this.ensureRunning(true);
+    else if (s.seekTarget !== null) this.followSeek(); // the jump goes on from the earlier result
   }
 
   private onSnapshot(snap: SimSnapshot): void {
@@ -446,8 +614,13 @@ export class SimSession {
     const insights = fresh.length ? [...s.insights, ...fresh].sort((a, b) => a.time - b.time) : s.insights;
     // The newest snapshot is the head (after a rewind the worker re-emits from a checkpoint, so it can move back).
     const patch: Partial<SessionState> = { headTime: snap.time, insights };
-    if (s.playing && !Number.isFinite(s.speed)) patch.viewTime = Math.max(s.viewTime, snap.time);
+    // As fast as possible: the view follows the newest result (unless it is replaying history after a jump back).
+    if (s.playing && !Number.isFinite(s.speed) && s.viewTime >= s.headTime - 1e-6) patch.viewTime = Math.max(s.viewTime, snap.time);
     this.state.set(patch);
+    if (s.seekTarget !== null) {
+      this.followSeek();
+      return;
+    }
     this.syncView();
     if (s.playing) this.ensureRunning();
   }
@@ -459,7 +632,10 @@ export class SimSession {
    */
   private syncView(): void {
     const s = this.state.get();
-    const snap = this.snapshots.atOrBefore(s.viewTime);
+    // While playing, the picture is rounded down to a quantum (about six pictures per wall second: the renderer
+    // interpolates between them) so the view is only updated when something changed; paused or scrubbing, it is the
+    // exact view time.
+    const snap = this.snapshots.at(s.viewTime, s.playing ? playQuantum(s.speed) : 0);
     if (snap && snap !== s.snapshot) {
       this.view.update(snap);
       this.state.set({ snapshot: snap });

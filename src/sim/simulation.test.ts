@@ -24,7 +24,8 @@ function collect(): { snaps: Map<number, SimSnapshot>; rewound: number[]; hooks:
 }
 
 describe('Simulation on a synthetic slope (fast tier)', () => {
-  const scenario = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)] });
+  // A 300 s display step (the default is 60 s) keeps these expectations short.
+  const scenario = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], options: { snapshotInterval: 300 } });
 
   it('initialises, gives a t0 snapshot and runs in the §12.2 cadences with sane stats', () => {
     const c = collect();

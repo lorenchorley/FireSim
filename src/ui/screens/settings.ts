@@ -1,12 +1,14 @@
 /**
- * Settings & About (D): theme, units, handedness, performance mode, pause-on-danger, haptics; data attributions and
- * licences; research references; module status (real engine vs demo/mock).
+ * Settings & About (D): theme, units, handedness, performance mode, the picture interval and solver step, the optional
+ * reactions to Danger cards (pause, vibrate; both off unless chosen); data attributions and licences; research
+ * references; module status (real engine vs demo/mock).
  */
 import { h } from '../dom';
 import { icon } from '../icons';
 import { ATTRIBUTIONS, REFERENCES } from '../content';
 import type { Services } from '../modules';
-import { settingsStore, type PerformanceMode, type ThemeSetting } from '../settings';
+import { formatStepLabel } from '../format';
+import { settingsStore, SOLVER_STEPS, TIME_STEPS, type PerformanceMode, type ThemeSetting } from '../settings';
 import { button, section, segmented, toggle } from '../widgets';
 
 export function createSettingsScreen(opts: { services: Services; onClose: () => void; onNotice: () => void }): { el: HTMLElement; destroy(): void } {
@@ -37,7 +39,7 @@ export function createSettingsScreen(opts: { services: Services; onClose: () => 
         onChange: (v) => set({ units: v }),
       }).el,
       segmented<'right' | 'left'>({
-        label: 'Tool rail for',
+        label: 'Tools menu for',
         options: [
           { value: 'right', label: 'Right hand' },
           { value: 'left', label: 'Left hand' },
@@ -61,9 +63,49 @@ export function createSettingsScreen(opts: { services: Services; onClose: () => 
         value: s.performance,
         onChange: (v) => set({ performance: v }),
       }).el,
-      h('p', { class: 'hint' }, 'Saver: fewer embers, no smoke, slower snapshots — for long runs on battery. Detail: everything on (the phone gets warmer). Applies to the next model you build.'),
-      toggle({ label: 'Pause on Danger cards', description: 'Stop playback so you can read what is happening.', checked: s.pauseOnDanger, onChange: (v) => set({ pauseOnDanger: v }) }).el,
-      toggle({ label: 'Vibrate on Danger cards', checked: s.haptics, onChange: (v) => set({ haptics: v }) }).el,
+      h('p', { class: 'hint' }, 'Saver: fewer embers, no smoke and a lighter model — for long runs on battery. Detail: everything on (the phone gets warmer). Applies to the next model you build.'),
+      segmented<string>({
+        label: 'Picture interval (time step)',
+        options: TIME_STEPS.map((sec) => ({ value: String(sec), label: formatStepLabel(sec) })),
+        value: String(s.timeStep),
+        columns: 3,
+        testId: 'time-step',
+        onChange: (v) => set({ timeStep: Number(v) }),
+      }).el,
+      h(
+        'p',
+        { class: 'hint' },
+        'How much fire time each new picture covers, and how finely the timeline can be stepped. Shorter shows more detail and gives the model more to compute. Also in the time menu (tap the clock). Applies from the current time on.',
+      ),
+      segmented<string>({
+        label: 'Solver step limit (advanced)',
+        options: SOLVER_STEPS.map((sec) => ({ value: String(sec), label: sec === 0 ? 'Automatic' : formatStepLabel(sec) })),
+        value: String(s.solverStep),
+        columns: 2,
+        testId: 'solver-step',
+        onChange: (v) => set({ solverStep: Number(v) }),
+      }).el,
+      h(
+        'p',
+        { class: 'hint' },
+        'The longest step the fire and wind solvers may take inside one picture. Automatic is safe and fastest. A smaller limit is finer but slower, and it changes the result a little. When a run is open it is recomputed from the time you are viewing.',
+      ),
+      h('h3', { class: 'field-label settings-sub' }, 'Danger cards'),
+      h('p', { class: 'hint' }, 'Nothing pops up over the map and nothing stops the simulation by itself: cards wait in the Insights tab until you open it. These two reactions are optional.'),
+      toggle({
+        label: 'Pause when a Danger card appears',
+        description: 'Off by default. When on, playback stops each time a new Danger card is revealed.',
+        checked: s.pauseOnDanger,
+        testId: 'pause-on-danger',
+        onChange: (v) => set({ pauseOnDanger: v }),
+      }).el,
+      toggle({
+        label: 'Vibrate on new Danger cards',
+        description: 'Off by default. A short buzz, without pausing.',
+        checked: s.haptics,
+        testId: 'haptics',
+        onChange: (v) => set({ haptics: v }),
+      }).el,
     ],
     { icon: 'speed', id: 'simulation' },
   );

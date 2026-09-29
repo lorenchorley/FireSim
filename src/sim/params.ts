@@ -86,6 +86,14 @@ export const SIM_PARAMS = Object.freeze({
   // ── snapshots ──
   /** Maximum cells (nx·ny·nz) of the atmosphere view in a snapshot; larger views are decimated horizontally ×2. */
   atmosViewMaxCells: 150000,
+  /**
+   * Cadence (s) of the UI's full pictures ("keyframes": moisture, overlay rasters, atmosphere view). Snapshot coalescing
+   * always keeps the first snapshot of every such window; the UI's history keeps a full picture per window and light
+   * frames in between (the fire is reconstructed exactly from the newest arrival times).
+   */
+  keyframeIntervalS: 300,
+  /** Coalescing: at most one cadence snapshot per this many wall-clock ms (~25 per second) when the worker runs fast. */
+  snapshotMinWallMs: 40,
   // ── worker (§12.1) ──
   /** Wall-time budget of one run chunk (ms) before yielding to the message queue. */
   chunkMs: 40,

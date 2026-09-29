@@ -9,7 +9,10 @@ import type { Pt } from '../../brushGeometry';
 import type { LegendProvider } from '../../legends';
 
 export type ToolId = 'why' | 'fire' | 'fuel' | 'wind' | 'layers' | 'whatif';
-export type SheetDetent = 'peek' | 'half' | 'full';
+/** Bottom dock: 'closed' = only the slim tab row (the default), then three heights of open panel. */
+export type SheetDetent = 'closed' | 'peek' | 'half' | 'full';
+/** The floating menus over the map (tools and view); at most one is open. */
+export type MenuId = 'tools' | 'view';
 export type SheetTab = 'insights' | 'weather' | 'stats' | 'help';
 
 /** Something the user is placing on the map but has not confirmed yet. */
@@ -35,6 +38,8 @@ export interface UiState {
   panelOpen: boolean;
   sheet: SheetDetent;
   tab: SheetTab;
+  /** The open floating menu (tools / view), or null when both are collapsed. */
+  menu: MenuId | null;
   why: WhyState | null;
   pending: Pending;
   /** Finger-drawing mode for lines / fuel painting (camera gestures disabled). */
@@ -81,8 +86,9 @@ export interface SimContext {
 export const DEFAULT_UI: UiState = {
   tool: 'why',
   panelOpen: false,
-  sheet: 'peek',
+  sheet: 'closed',
   tab: 'insights',
+  menu: null,
   why: null,
   pending: null,
   drawing: false,

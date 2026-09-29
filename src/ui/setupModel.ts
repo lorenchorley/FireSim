@@ -10,7 +10,7 @@ import { parseLatLon } from './nsw';
 import { REPLAYS, WEATHER_PRESETS } from './content';
 import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import type { BeltKitInput } from '../scenario/beltKit';
-import type { PerformanceMode } from './settings';
+import type { PerformanceMode, ScenarioSettings } from './settings';
 import { performanceProfile } from './settings';
 
 export type WhereMode = 'demo' | 'gps' | 'manual';
@@ -181,8 +181,13 @@ export function presetStart(presetId: string, lon: number, now = Date.now()): nu
   return Math.round(SCENARIO_PRESETS[presetId].canonicalStart(lon, new Date(now).getUTCFullYear()) / 600_000) * 600_000;
 }
 
-/** Convert the form to a scenario request (call {@link validateSetup} first). */
-export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now = Date.now()): ScenarioRequest {
+/**
+ * Convert the form to a scenario request (call {@link validateSetup} first). `settings` is a performance mode or the
+ * user's settings: their display step (`timeStep`) becomes the engine's snapshotInterval and their solver step limit
+ * (`solverStep`, 0 = automatic) its maxStepS; a bare mode leaves both at the engine defaults (60 s, automatic).
+ */
+export function buildRequest(s: SetupState, settings: PerformanceMode | ScenarioSettings = 'auto', now = Date.now()): ScenarioRequest {
+  const perf: PerformanceMode = typeof settings === 'string' ? settings : settings.performance;
   const c = resolveCentre(s);
   if ('error' in c) throw new Error(c.error);
   const hours = s.durationH;
@@ -260,7 +265,12 @@ export function buildRequest(s: SetupState, perf: PerformanceMode = 'auto', now 
     weather,
     duration: hours * 3600,
     online: s.online,
-    options: { fireCellSize: DETAIL_CELL[s.detail], maxEmbers: prof.maxEmbers, snapshotInterval: prof.snapshotInterval, tier: prof.tier },
+    options: {
+      fireCellSize: DETAIL_CELL[s.detail],
+      maxEmbers: prof.maxEmbers,
+      tier: prof.tier,
+      ...(typeof settings === 'string' ? {} : { snapshotInterval: settings.timeStep, maxStepS: settings.solverStep }),
+    },
   };
   if (c.demoSiteId) req.demoSiteId = c.demoSiteId;
   if (beltKit) req.beltKit = beltKit;

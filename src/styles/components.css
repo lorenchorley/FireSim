@@ -70,23 +70,6 @@
   width: var(--tap);
 }
 
-.btn-round {
-  border-radius: 50%;
-  padding: 0;
-}
-
-.btn-inverse {
-  background: #ffffff;
-  color: #111;
-  border-color: #ffffff;
-}
-
-.btn-ghost-inverse {
-  background: transparent;
-  color: #ffffff;
-  border-color: transparent;
-}
-
 .row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -483,11 +466,6 @@ input[type='range']::-moz-range-thumb {
   color: var(--text);
 }
 
-.chip-actions .btn {
-  min-height: 44px;
-  border: 2px solid var(--border-soft);
-}
-
 .rating-pill {
   display: inline-flex;
   align-items: center;
@@ -671,53 +649,6 @@ input[type='range']::-moz-range-thumb {
 
 .wind-arrow {
   flex: 0 0 auto;
-}
-
-/* ── Popovers ── */
-.popover {
-  position: absolute;
-  z-index: 40;
-  background: var(--surface);
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-strong);
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  min-width: 250px;
-}
-
-.popover-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  text-align: left;
-  flex-wrap: wrap;
-}
-
-.popover-item:active,
-.popover-item[aria-selected='true'] {
-  background: var(--surface-3);
-}
-
-.popover-item[aria-selected='true'] .popover-main::after {
-  content: ' ✓';
-}
-
-.popover-main {
-  font-weight: 800;
-}
-
-.popover-sub {
-  width: 100%;
-  color: var(--muted);
-  font-size: 16px;
-  margin-top: -2px;
 }
 
 /* ── Modal / notice ── */

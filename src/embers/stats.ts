@@ -164,6 +164,23 @@ export class DecayRaster {
     return v;
   }
 
+  /** A copy of the raster decayed to time t, without changing the live state (unlike {@link at}). */
+  peek(t: number): Float32Array {
+    const v = this.value;
+    const l = this.last;
+    const out = new Float32Array(v.length);
+    for (let k = 0; k < v.length; k++) {
+      const x = v[k]!;
+      if (x === 0) continue;
+      const dt = t - l[k]!;
+      if (dt > 0) {
+        const y = x * Math.exp(-dt / this.tau);
+        out[k] = y < 1e-12 ? 0 : y;
+      } else out[k] = x;
+    }
+    return out;
+  }
+
   /** Sparse checkpoint (indices, values, times of non-zero cells). */
   checkpoint(): { idx: Int32Array; val: Float32Array; last: Float64Array } {
     let n = 0;

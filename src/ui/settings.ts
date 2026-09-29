@@ -16,9 +16,9 @@ export type PerformanceMode = 'auto' | 'battery' | 'quality';
 export interface Settings {
   theme: ThemeSetting;
   units: SpeedUnit;
-  /** 'battery' lowers render/ember detail and snapshot rate; 'quality' raises them. */
+  /** 'battery' lowers render/ember detail and the engine tier; 'quality' raises them. */
   performance: PerformanceMode;
-  /** Side of the screen the tool rail sits on (for one-handed use). */
+  /** Side of the screen the Tools menu button sits on (for one-handed use); the View menu takes the other side. */
   handedness: 'right' | 'left';
   /**
    * Pause playback when a Danger card appears. OFF by default and opt-in only: when the user runs the simulation they
@@ -118,15 +118,41 @@ export function startThemeSync(root: HTMLElement = document.documentElement): ()
 
 /**
  * Rendering/simulation detail implied by the performance mode; `tier` is the engine quality tier (SimOptions.tier:
- * 'auto' lets the engine pick from the device).
+ * 'auto' lets the engine pick from the device). The display step and solver step are the user's own settings
+ * ({@link Settings.timeStep}, {@link Settings.solverStep}), no longer tied to the mode.
  */
-export function performanceProfile(mode: PerformanceMode): { maxEmbers: number; snapshotInterval: number; smoke: boolean; vegetation: boolean; tier: 'auto' | QualityTier } {
+export function performanceProfile(mode: PerformanceMode): { maxEmbers: number; smoke: boolean; vegetation: boolean; tier: 'auto' | QualityTier } {
   switch (mode) {
     case 'battery':
-      return { maxEmbers: 1500, snapshotInterval: 600, smoke: false, vegetation: false, tier: 'fast' };
+      return { maxEmbers: 1500, smoke: false, vegetation: false, tier: 'fast' };
     case 'quality':
-      return { maxEmbers: 4000, snapshotInterval: 300, smoke: true, vegetation: true, tier: 'high' };
+      return { maxEmbers: 4000, smoke: true, vegetation: true, tier: 'high' };
     default:
-      return { maxEmbers: 3000, snapshotInterval: 300, smoke: true, vegetation: true, tier: 'auto' };
+      return { maxEmbers: 3000, smoke: true, vegetation: true, tier: 'auto' };
   }
+}
+
+/** The settings a scenario request takes: the performance mode and the two step settings. */
+export type ScenarioSettings = Pick<Settings, 'performance' | 'timeStep' | 'solverStep'>;
+
+/** What {@link bindStepSettings} needs from a SimSession. */
+export interface StepTarget {
+  state: { get(): Readonly<{ timeStep: number; solverStep: number }> };
+  setTimeStep(seconds: number): void;
+  setSolverStep(seconds: number): void;
+}
+
+/**
+ * Keep a running session's display step and solver step equal to the settings: applies them now if they differ and on
+ * every later change (the display step live, the solver step as a what-if from the view time). Returns the unsubscribe.
+ * The values in force at build time come from {@link buildRequest}'s request options, so a fresh session is in sync.
+ */
+export function bindStepSettings(session: StepTarget, store: Pick<Store<Settings>, 'get' | 'subscribe'> = settingsStore): () => void {
+  const apply = (s: Readonly<Settings>): void => {
+    const cur = session.state.get();
+    if (s.timeStep !== cur.timeStep) session.setTimeStep(s.timeStep);
+    if (s.solverStep !== cur.solverStep) session.setSolverStep(s.solverStep);
+  };
+  apply(store.get());
+  return store.subscribe(apply, ['timeStep', 'solverStep']);
 }

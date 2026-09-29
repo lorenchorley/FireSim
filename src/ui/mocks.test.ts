@@ -59,4 +59,49 @@ describe('mock scenario + controller', () => {
     expect(Number.isFinite(ex.arrivalTime)).toBe(true);
     sim.dispose();
   }, 60_000);
+
+  it('honours the display step live, ends a run with a snapshot at exactly the target, and computes hours in seconds', async () => {
+    const scenario = await mockBuildScenario({
+      centre: { lat: -33.715, lon: 150.285 },
+      extent: 3000,
+      demoSiteId: 'katoomba',
+      weather: { kind: 'preset', presetId: 'hot-nw-sw-change', start: Date.UTC(2026, 0, 10, 0) },
+      duration: 6 * 3600,
+      options: { fireCellSize: 60, snapshotInterval: 60 },
+      online: false,
+    }, () => undefined);
+    const sim = new MockSimController();
+    const times: number[] = [];
+    let last: { time: number; running: boolean; until?: number } | null = null;
+    sim.on('snapshot', (s) => times.push(s.time));
+    sim.on('status', (st) => (last = st));
+    await sim.init(scenario);
+    sim.ignite({ id: 'a', kind: 'point', points: [[-300, -200]], time: 0, radius: 60, origin: 'observed' });
+    const runTo = (t: number): Promise<void> =>
+      new Promise((resolve) => {
+        const off = sim.on('status', (st) => {
+          if (!st.running && st.time >= t) {
+            off();
+            resolve();
+          }
+        });
+        sim.run(t);
+      });
+    await runTo(1237);
+    expect(times.at(-1)).toBe(1237); // the run-end snapshot, at exactly the target
+    expect(last!.until).toBe(1237);
+    sim.setOption('snapshotInterval', 30);
+    times.length = 0;
+    await runTo(2000);
+    expect(times.at(-1)).toBe(2000);
+    for (const t of times.slice(0, -1)) expect(t % 30).toBe(0);
+    // A jump across hours is one run: well under a second per simulated hour.
+    times.length = 0;
+    const t0 = Date.now();
+    await runTo(6 * 3600);
+    expect(Date.now() - t0).toBeLessThan(15_000);
+    expect(times.at(-1)).toBe(6 * 3600);
+    sim.dispose();
+  }, 60_000);
 });
+

@@ -734,6 +734,11 @@ export class EmberModel {
     return { landing: this.ovLanding.at(this.time), ignitions: this.ovIgnition.at(this.time) };
   }
 
+  /** The landing-density raster decayed to now as a fresh copy, leaving the model state untouched (run-end snapshots). */
+  peekLanding(): Float32Array {
+    return this.ovLanding.peek(this.time);
+  }
+
   /** Add one particle directly (tests; back-tracking an observed spot). Not lofted; no emission bookkeeping. */
   injectParticle(p: EmberInjection): boolean {
     const c = EMBER_CLASSES.indexOf(p.emberClass);

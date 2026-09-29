@@ -52,17 +52,20 @@
   z-index: 4;
 }
 
+/* "Demo engine" / "2-D map" label: a small chip at the top-left of the visible map. */
 .mock-banner {
+  position: absolute;
+  left: calc(10px + var(--safe-left));
+  top: calc(var(--map-top, var(--topbar-h)) + 8px);
+  z-index: 11;
   margin: 0;
-  width: 58px;
-  text-align: center;
-  line-height: 1.1;
-  padding: 4px 2px;
-  border-radius: 8px;
+  padding: 2px 10px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.62);
   color: #fff;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
+  line-height: 1.3;
   pointer-events: none;
 }
 
@@ -70,194 +73,39 @@
   display: none;
 }
 
-/* ── Top bar ── */
-.sim-topbar {
+/* ── Round menus (tools, view): collapsed by default; the list opens beside the button ── */
+.map-menu {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 35;
-  padding: 6px max(10px, var(--safe-right)) 8px max(10px, var(--safe-left));
-  background: var(--surface-glass);
-  border-bottom: 2px solid var(--border-soft);
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  bottom: var(--menu-bottom, calc(var(--scrub-h) + var(--dock-h) + 12px));
+  z-index: 20;
+  width: var(--fab);
+  height: var(--fab);
+  transition: bottom 0.22s var(--ease);
 }
 
-.topbar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Tools on the handed side (one-handed thumb reach), view on the other. */
+.hand-right .map-menu[data-menu='tools'],
+.hand-left .map-menu[data-menu='view'] {
+  right: calc(12px + var(--safe-right));
 }
 
-.clock {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.05;
+.hand-right .map-menu[data-menu='view'],
+.hand-left .map-menu[data-menu='tools'] {
+  left: calc(12px + var(--safe-left));
 }
 
-.clock-time {
-  font-size: 30px;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+.dragging-dock .map-menu {
+  transition: none;
 }
 
-.clock-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--muted);
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.state-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
-  border-radius: 7px;
-  font-weight: 900;
-  font-size: 16px;
-}
-
-.state-past {
-  background: var(--info);
-  color: var(--on-info);
-}
-
-.state-busy {
-  background: var(--surface-3);
-  color: var(--text);
-}
-
-.play-btn {
-  width: 60px;
-  height: 60px;
-  flex: 0 0 auto;
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
-}
-
-.play-btn .icon {
-  margin-left: 0;
-}
-
-.play-btn[aria-pressed='false'] .icon {
-  margin-left: 4px;
-}
-
-.speed-btn {
-  flex: 0 0 auto;
-  min-width: 78px;
-  padding: 0 10px;
-  gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.speed-menu {
-  top: 70px;
-  right: 10px;
-}
-
-.main-menu {
-  top: 70px;
-  left: 10px;
-}
-
-.weather-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 4px 8px 4px 12px;
-  border: 2px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--surface);
-  font-weight: 800;
-  font-size: 17px;
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-}
-
-.wx-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.wx-unit {
-  color: var(--muted);
-  margin-right: 3px;
-}
-
-.wx-dir {
-  font-weight: 900;
-}
-
-.wx-wind {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.wx-wind span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.weather-chip .rating-pill {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: 0 8px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.wx-icon {
-  color: var(--chart-rh);
-}
-
-/* ── Tool rail ── */
-.tool-rail {
-  position: absolute;
-  top: calc(var(--topbar-h) + 10px);
-  right: calc(8px + var(--safe-right));
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.hand-left .tool-rail {
-  right: auto;
-  left: calc(8px + var(--safe-left));
-}
-
-.hand-left .view-controls {
-  left: auto;
-  right: calc(8px + var(--safe-right));
-}
-
-.tool-btn {
-  width: 76px;
-  min-height: 68px;
-  padding: 6px 4px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  border-radius: 16px;
+.menu-fab {
+  position: relative;
+  width: var(--fab);
+  height: var(--fab);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
   border: 2px solid var(--border);
   background: var(--surface-glass);
   color: var(--text);
@@ -265,95 +113,155 @@
   touch-action: manipulation;
 }
 
-.tool-label {
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.05;
-  text-align: center;
+.menu-fab:active {
+  transform: scale(0.95);
 }
 
-/*
- * Adaptive rail (layout measured in simScreen.ts): 'compact' shrinks the buttons to the room above the sheet (≥ 52 px,
- * one-line labels, smaller icons); 'two' uses two columns on very short screens.
- */
-.tool-rail[data-layout='compact'] .tool-btn,
-.tool-rail[data-layout='two'] .tool-btn {
-  /* As wide as the longest one-line label ("Why here?"), all buttons the same width. */
-  width: auto;
-  min-width: 84px;
-  min-height: var(--tool-h, 56px);
-  padding: 3px 2px;
-  gap: 1px;
-}
-
-.tool-rail[data-layout='compact'] .tool-btn .icon,
-.tool-rail[data-layout='two'] .tool-btn .icon {
-  width: 22px;
-  height: 22px;
-}
-
-.tool-rail[data-layout='compact'] .tool-label,
-.tool-rail[data-layout='two'] .tool-label {
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-
-.tool-rail[data-layout='two'] {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(84px, max-content));
-}
-
-.tool-btn[aria-pressed='true'] {
+.menu-fab[aria-expanded='true'] {
   background: var(--primary);
   color: var(--on-primary);
   border-color: var(--primary);
 }
 
-.tool-btn:active {
-  transform: scale(0.96);
+.fab-icon {
+  display: grid;
+  place-items: center;
 }
 
-.view-controls {
+/* A small chevron says "this opens a menu"; it flips while the list is open. */
+.fab-caret {
   position: absolute;
-  top: calc(var(--topbar-h) + 10px);
-  left: calc(8px + var(--safe-left));
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  right: -5px;
+  top: -5px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--primary);
+  color: var(--on-primary);
+  pointer-events: none;
 }
 
-.view-btn {
-  width: 58px;
-  min-height: 58px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  border-radius: 14px;
+.menu-fab[aria-expanded='true'] .fab-caret {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--primary);
+  transform: rotate(180deg);
+}
+
+.menu-list {
+  position: absolute;
+  bottom: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--rows, 6), 48px);
+  grid-auto-columns: max-content;
+  gap: 4px;
+  overscroll-behavior: contain;
+  animation: menu-in 0.14s var(--ease);
+}
+
+.menu-list[hidden] {
+  display: none;
+}
+
+.menu-list.is-scroll {
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+/* The list opens towards the middle of the screen: to the left of a right-hand button, to the right of a left-hand one. */
+.hand-right .map-menu[data-menu='tools'] .menu-list,
+.hand-left .map-menu[data-menu='view'] .menu-list {
+  right: calc(100% + 8px);
+}
+
+.hand-right .map-menu[data-menu='view'] .menu-list,
+.hand-left .map-menu[data-menu='tools'] .menu-list {
+  left: calc(100% + 8px);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.menu-item,
+.menu-row {
+  min-height: 48px;
+  border-radius: 24px;
   border: 2px solid var(--border);
   background: var(--surface-glass);
   color: var(--text);
   box-shadow: var(--shadow);
-  padding: 4px 2px;
 }
 
-.view-label {
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.view-nav {
+.menu-item {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 12px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-align: left;
+  touch-action: manipulation;
 }
 
-.nav-btn {
-  min-height: 50px;
+.menu-item:active {
+  transform: scale(0.97);
+}
+
+.menu-item[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+
+.menu-item-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  display: grid;
+  place-items: center;
+}
+
+/* Zoom out / label / zoom in in one row; the two buttons are full 48 px targets. */
+.menu-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  box-shadow: inset 0 0 0 2px var(--border), var(--shadow);
+  font-size: 17px;
+  font-weight: 800;
+  overflow: hidden;
+}
+
+.menu-row .menu-item-label {
+  align-self: center;
+  padding: 0 4px;
+}
+
+.menu-zoom-btn {
+  width: 56px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+.menu-zoom-btn:active {
+  background: var(--surface-3);
 }
 
 .compass-needle {
@@ -365,13 +273,20 @@
 }
 
 .compass-n {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 900;
   color: var(--danger);
 }
 
 .compass-needle svg {
+  width: 18px;
+  height: 18px;
   margin-top: -1px;
+}
+
+.menu-item[aria-pressed='true'] .compass-n,
+.menu-item[aria-pressed='true'] .needle-n {
+  color: inherit;
 }
 
 .needle-n {
@@ -383,36 +298,19 @@
   opacity: 0.45;
 }
 
-/* Short screens: keep the compass, drop the zoom buttons (pinch still zooms). */
-@media (max-height: 760px) and (orientation: portrait) {
-  .view-nav .nav-btn:not(.compass-btn) {
-    display: none;
-  }
-}
-
-.view-btn[aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--on-primary);
-  border-color: var(--primary);
-}
-
-.panel-open .tool-rail,
-.panel-open .view-controls,
-.sheet-open .tool-rail,
-.sheet-open .view-controls {
-  display: none;
-}
-
-.drawing .view-controls {
+/* Portrait phones: the round buttons step aside for a tool panel, a full-height dock and finger drawing. */
+.panel-open .map-menu,
+.sheet-full .map-menu,
+.drawing .map-menu[data-menu='view'] {
   display: none;
 }
 
 /* ── Compact overlay legend on the map (tap → Layers) ── */
 .map-legend {
   position: absolute;
-  top: calc(var(--topbar-h) + 10px);
-  left: calc(78px + var(--safe-left));
-  right: calc(96px + var(--safe-right));
+  bottom: var(--menu-bottom, calc(var(--scrub-h) + var(--dock-h) + 12px));
+  left: calc(80px + var(--safe-left));
+  right: calc(80px + var(--safe-right));
   max-width: 300px;
   margin: 0 auto;
   z-index: 9;
@@ -431,11 +329,6 @@
 
 .map-legend[hidden] {
   display: none;
-}
-
-.hand-left .map-legend {
-  left: calc(96px + var(--safe-left));
-  right: calc(78px + var(--safe-right));
 }
 
 .ml-title {
@@ -497,120 +390,112 @@
   display: none;
 }
 
-/* ── Toasts ── */
-.toasts {
-  position: absolute;
-  left: calc(10px + var(--safe-left));
-  right: calc(10px + var(--safe-right));
-  top: calc(var(--topbar-h) + 8px);
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: none;
-}
-
-.toast {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 6px 8px 10px;
-  border-radius: 16px;
-  background: #b3261e;
-  color: #ffffff;
-  border: 3px solid #ffffff;
-  box-shadow: var(--shadow-strong);
-}
-
-.toast-in {
-  animation: toast-in 0.28s var(--ease);
-}
-
-@keyframes toast-in {
-  from {
-    transform: translateY(-16px);
-    opacity: 0;
-  }
-}
-
-.toast-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.toast-kicker {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.95;
-}
-
-.toast-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1.2;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.toast-body {
-  margin: 2px 0 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.toast-show {
-  flex: 0 0 auto;
-  padding: 0 14px;
-}
-
-/* ── Bottom sheet ── */
-.sheet {
+/* ── Simulation failure: a thin strip under the top bar (never a modal, never over the map) ── */
+.error-chip {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--scrub-h) + var(--safe-bottom));
+  top: var(--topbar-h);
+  z-index: 34;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 max(12px, var(--safe-left));
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.error-chip[hidden] {
+  display: none;
+}
+
+.error-chip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-chip-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 96px;
+  padding: 0 max(14px, var(--safe-right)) 0 14px;
+  border: 0;
+  border-left: 2px solid currentColor;
+  background: rgba(0, 0, 0, 0.16);
+  color: inherit;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sim-error p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Bottom dock: a slim tab row above the timeline; a tab opens the panel above the row ── */
+.dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--scrub-h);
   z-index: 15;
-  height: 128px;
+  height: var(--dock-h);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  container: dock / inline-size;
   background: var(--surface);
-  border-top: 2px solid var(--border-soft);
-  border-radius: 20px 20px 0 0;
+  border-radius: 18px 18px 0 0;
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
   transition: height 0.22s var(--ease);
 }
 
-.sheet.dragging {
+.dock[hidden] {
+  display: none;
+}
+
+.dock.dragging {
   transition: none;
 }
 
-.sheet-handle {
+.dock[data-detent='closed'] {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 2px solid var(--border-soft);
+  border-radius: 18px 18px 0 0;
+}
+
+.dock[data-detent='closed'] .sheet {
+  visibility: hidden;
+  transition: visibility 0s linear 0.22s;
+}
+
+.sheet-head {
   flex: 0 0 auto;
   height: 26px;
+  display: grid;
+}
+
+.sheet-grip-btn {
   border: 0;
   background: transparent;
   display: grid;
   place-items: center;
   touch-action: none;
   cursor: grab;
-  position: relative;
-}
-
-/* The grip looks slim but its touch target is 48 px tall (it extends over the map edge above the sheet). */
-.sheet-handle::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -22px;
-  bottom: 0;
 }
 
 .sheet-grip {
@@ -620,70 +505,145 @@
   background: var(--border);
 }
 
-.sheet-tabs {
-  flex: 0 0 auto;
+.sheet-handle {
+  flex: 0 0 var(--dock-h);
+  height: var(--dock-h);
+  box-sizing: border-box;
+  position: relative;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 0 8px 6px;
-  border-bottom: 2px solid var(--border-soft);
+  padding: 0 var(--safe-right) 0 var(--safe-left);
+  border-top: 2px solid var(--border-soft);
+  background: var(--surface);
+  touch-action: none;
+  cursor: grab;
 }
 
 .sheet-tab {
   position: relative;
-  min-height: 56px;
+  min-width: 0;
+  height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  border: 2px solid transparent;
-  border-radius: 12px;
+  gap: 4px;
+  padding: 0 2px;
+  border: 0;
   background: transparent;
-  font-weight: 800;
-  font-size: 16px;
   color: var(--muted);
-  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.tab-icon {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+}
+
+/* The Insights tab keeps room on its right for the count ("9+" is the widest), so the badge never covers the label. */
+.sheet-tab.has-badge {
+  padding-right: 27px;
+}
+
+/* Narrow docks (phones, or a side column): four labelled tabs need the width, so the (decorative) icons give way. */
+@media (max-width: 520px) {
+  .sheet-tab {
+    font-size: clamp(13px, 3.9vw, 16px);
+  }
+  .tab-icon {
+    display: none;
+  }
+}
+
+@container dock (max-width: 480px) {
+  .sheet-tab {
+    font-size: clamp(13px, 3.9cqw, 16px);
+  }
+  .tab-icon {
+    display: none;
+  }
 }
 
 .sheet-tab[aria-selected='true'] {
   color: var(--text);
   background: var(--surface-2);
-  border-color: var(--border);
-}
-
-.tab-icon {
-  position: relative;
-  display: block;
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 
 .tab-label {
   line-height: 1.1;
+  white-space: nowrap;
 }
 
+/* Unseen-cards count: no layout shift (it sits in the room the tab keeps for it), no sound; red with one pulse when a Danger card is waiting. */
 .tab-badge {
   position: absolute;
-  left: 16px;
-  top: -6px;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 12px;
-  border: 2px solid var(--surface);
+  right: 2px;
+  top: 4px;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 3px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--surface); /* a ring in the dock's colour, outside the box, so the box stays narrow */
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 900;
-  line-height: 24px;
+  line-height: 16px;
   text-align: center;
+  pointer-events: none;
+}
+
+.tab-badge[hidden] {
+  display: none;
+}
+
+.tab-badge.is-danger {
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
+.tab-badge.pulse {
+  animation: badge-pulse 0.9s var(--ease) 1;
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 2px var(--danger);
+  }
+  40% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 14px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-badge.pulse {
+    animation: none;
+  }
+  .dock,
+  .map-menu {
+    transition: none;
+  }
+  .menu-list {
+    animation: none;
+  }
 }
 
 .sheet-body {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 10px max(12px, var(--safe-right)) 16px max(12px, var(--safe-left));
+  padding: 6px max(12px, var(--safe-right)) 16px max(12px, var(--safe-left));
   touch-action: pan-y;
 }
 
@@ -999,7 +959,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--scrub-h) + var(--safe-bottom));
+  bottom: var(--scrub-h);
   z-index: 16;
   pointer-events: none;
 }
@@ -1465,121 +1425,6 @@
   gap: 4px;
 }
 
-/* ── Scrubber ── */
-.scrubber {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 18;
-  height: calc(var(--scrub-h) + var(--safe-bottom));
-  padding: 6px max(10px, var(--safe-right)) calc(6px + var(--safe-bottom)) max(10px, var(--safe-left));
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--surface);
-  border-top: 2px solid var(--border-soft);
-}
-
-.live-btn {
-  flex: 0 0 auto;
-  min-width: 84px;
-  height: 56px;
-  gap: 4px;
-  padding: 0 10px;
-}
-
-.live-btn.is-live {
-  opacity: 1;
-  background: var(--ok-bg);
-  border-color: var(--ok);
-}
-
-.live-btn:disabled {
-  opacity: 1;
-}
-
-.scrub-track-wrap {
-  flex: 1;
-  min-width: 0;
-}
-
-.scrub-labels {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 800;
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-.scrub-end {
-  color: var(--muted);
-}
-
-.scrub-rail {
-  position: relative;
-}
-
-.scrub-input {
-  position: relative;
-  z-index: 1;
-  height: 44px;
-}
-
-.scrub-input::-webkit-slider-runnable-track {
-  height: 14px;
-  border-radius: 7px;
-  border: 2px solid var(--border);
-  background: linear-gradient(to right, var(--accent) 0 var(--head, 0%), var(--surface-3) var(--head, 0%) 100%);
-}
-
-.scrub-input::-webkit-slider-thumb {
-  width: 38px;
-  height: 38px;
-  margin-top: -14px;
-  background: var(--primary);
-}
-
-.scrub-input::-moz-range-track {
-  height: 14px;
-  border-radius: 7px;
-  border: 2px solid var(--border);
-  background: linear-gradient(to right, var(--accent) 0 var(--head, 0%), var(--surface-3) var(--head, 0%) 100%);
-}
-
-.scrub-ticks {
-  position: absolute;
-  left: 19px;
-  right: 19px;
-  top: 2px;
-  height: 8px;
-  pointer-events: none;
-}
-
-.tick {
-  position: absolute;
-  top: 0;
-  width: 4px;
-  height: 9px;
-  margin-left: -2px;
-  border-radius: 2px;
-}
-
-.tick-danger {
-  background: var(--danger);
-}
-
-.tick-watch {
-  background: var(--watch);
-}
-
-.tick-change {
-  width: 6px;
-  margin-left: -3px;
-  background: var(--text);
-}
-
 /* ── Map annotations ── */
 .ann-stroke {
   fill: none;
@@ -1648,103 +1493,6 @@
   stroke-linejoin: round;
 }
 
-/* Wide screens (tablets / landscape): panels become a side column. */
-@media (min-width: 820px) {
-  .sheet,
-  .panel-host {
-    left: auto;
-    width: 440px;
-    right: calc(96px + var(--safe-right));
-  }
-  .tool-panel {
-    border-radius: 20px 20px 0 0;
-  }
-  .panel-open .tool-rail {
-    display: flex;
-  }
-  .wx-now {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-height: 640px) {
-  :root {
-    --topbar-h: 116px;
-  }
-  .tool-btn {
-    min-height: 58px;
-  }
-}
-
-/* Peek line: newest insight in one row (only in the peek detent). */
-.peek-line {
-  display: none;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 50px;
-  margin: 6px 10px 0;
-  padding: 0 12px;
-  border-radius: 12px;
-  border: 2px solid var(--border-soft);
-  border-left-width: 8px;
-  background: var(--surface);
-  text-align: left;
-  font-weight: 800;
-}
-
-.sheet[data-detent='peek'] .peek-line {
-  display: flex;
-}
-
-/* Short portrait screens: peek = handle + newest-insight line only (tabs show when expanded). */
-.sheet.peek-compact[data-detent='peek'] .sheet-tabs {
-  display: none;
-}
-
-.sheet[data-detent='peek'] .sheet-body {
-  display: none;
-}
-
-.peek-line.sev-danger {
-  border-color: var(--danger);
-  background: var(--danger-bg);
-}
-
-.peek-line.sev-danger .icon {
-  color: var(--danger);
-}
-
-.peek-line.sev-watch {
-  border-color: var(--watch);
-  background: var(--watch-bg);
-}
-
-.peek-line.sev-watch .icon {
-  color: var(--watch-ink);
-}
-
-.peek-line.sev-info {
-  border-left-color: var(--info);
-}
-
-.peek-line.sev-info .icon {
-  color: var(--info);
-}
-
-.peek-title {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.peek-time {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .group-title {
   font-size: 16px;
   font-weight: 900;
@@ -1758,21 +1506,6 @@
   margin-top: 16px;
 }
 
-.sheet-full .toasts {
-  display: none;
-}
-
-.toast-body {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.toast-system {
-  background: #3b3f45;
-}
-
 .data-list li {
   padding: 6px 0;
   border-bottom: 1px solid var(--border-soft);
@@ -1780,95 +1513,44 @@
 }
 
 /*
- * Landscape phones (e.g. mounted on a vehicle dash): the portrait layout leaves no room between the top bar and the
- * time scrubber, so the top bar becomes one row, the tool rail and camera buttons become two-column grids, and the
- * tool panels and the sheet become a side column opposite the tool rail. The crosshair is centred in the map area
- * that stays visible.
+ * Side-column layout (tablets, and landscape phones e.g. mounted on a vehicle dash): the dock and the tool panels become a
+ * column beside the view button, opposite the tools button, so the middle of the map stays visible. The round buttons keep
+ * to the bottom corners; the crosshair is centred in the uncovered map (simScreen.ts sets it from the measured insets).
  */
-@media (orientation: landscape) and (max-height: 540px) {
+@media (min-width: 820px), (orientation: landscape) and (max-height: 540px) {
   :root {
-    --topbar-h: 68px;
-    --scrub-h: 64px;
-    --side-w: min(420px, 46vw);
-    --rail-w: 174px;
+    --side-w: min(440px, 46vw);
   }
-  .sim-topbar {
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-  .topbar-row {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-  .clock {
-    flex: 0 0 auto;
-    min-width: 96px;
-  }
-  .clock-time {
-    font-size: 26px;
-  }
-  .play-btn {
-    width: 54px;
-    height: 54px;
-  }
-  .weather-chip {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  /* The rail's two-column layout is chosen by the measured layout (simScreen.ts, data-layout='two'). */
-  /* Camera buttons in one row, clear of the side sheet's peek height. */
-  .view-controls {
-    flex-direction: row;
-    align-items: flex-start;
-  }
-  .view-btn {
-    min-height: 52px;
-  }
-  .sheet,
+  .dock,
   .panel-host {
-    left: calc(8px + var(--safe-left));
+    left: calc(var(--fab) + 20px + var(--safe-left));
     right: auto;
     width: var(--side-w);
   }
-  .hand-left .sheet,
+  .hand-left .dock,
   .hand-left .panel-host {
     left: auto;
-    right: calc(8px + var(--safe-right));
+    right: calc(var(--fab) + 20px + var(--safe-right));
   }
-  .tool-panel {
-    max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - var(--scrub-h) - var(--safe-bottom) - 10px);
-    border-radius: 16px 16px 0 0;
+  .panel-open .map-menu,
+  .sheet-full .map-menu {
+    display: block;
   }
-  /* The rail stays usable while a panel or the sheet is open (they sit beside it, not over it). */
-  .panel-open .tool-rail,
-  .sheet-open .tool-rail {
-    display: grid;
+  .drawing .map-menu[data-menu='view'] {
+    display: none;
   }
-  .crosshair {
-    top: calc(var(--topbar-h) + (100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - var(--scrub-h) - var(--safe-bottom)) / 2);
-    left: calc(8px + var(--side-w) + (100vw - var(--side-w) - var(--rail-w) - 24px) / 2);
+  .dock[data-detent='closed'] {
+    border-radius: 14px 14px 0 0;
+    box-shadow: var(--shadow);
   }
-  .hand-left .crosshair {
-    left: calc(var(--rail-w) + 16px + (100vw - var(--side-w) - var(--rail-w) - 24px) / 2);
-  }
-  .toasts {
-    left: auto;
-    width: min(520px, 60vw);
+  .wx-now {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-/* Narrow phones (≤ 380 px): tighten the weather chip so the wind speed is never cut off. */
-@media (max-width: 380px) {
-  .weather-chip {
-    gap: 5px;
-    font-size: 16px;
-    padding-left: 8px;
-    padding-right: 6px;
-  }
-  .weather-chip .rating-pill {
-    padding: 0 6px;
+@media (orientation: landscape) and (max-height: 540px) {
+  .tool-panel {
+    max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - var(--scrub-h) - 10px);
+    border-radius: 16px 16px 0 0;
   }
 }

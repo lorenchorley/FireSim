@@ -1,0 +1,1019 @@
+/*
+ * Transport controls of the simulation screen: the top bar (menu, clock, play, speed, weather line), its popovers (menu,
+ * time, speed) and the timeline strip. Everything here is collapsed until asked for and uses the theme tokens only, so the
+ * "sunlight" and "night" themes both apply. Loaded after sim.css.
+ *
+ * Sizes other files rely on (--topbar-h, --scrub-h) are defined in tokens.css.
+ */
+/* ───────────────────────────── top bar ───────────────────────────── */
+.sim-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  height: var(--topbar-h);
+  padding: 0 max(8px, var(--safe-right)) 0 max(8px, var(--safe-left));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  background: var(--surface-glass);
+  border-bottom: 2px solid var(--border-soft);
+  box-shadow: var(--shadow);
+}
+
+.tb-row {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tb-btn {
+  flex: 0 0 auto;
+  min-width: var(--tap);
+  height: var(--tap);
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: var(--control-border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.tb-btn:active {
+  background: var(--surface-3);
+}
+
+.tb-play {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.tb-play:active {
+  background: var(--accent);
+  filter: brightness(0.9);
+}
+
+.tb-play[aria-pressed='false'] .icon {
+  margin-left: 3px;
+}
+
+.tb-speed {
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-speed-label {
+  white-space: nowrap;
+}
+
+/* The clock: a button (tap = jump to a time). */
+.tb-clock {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 54px;
+  margin: 0;
+  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  line-height: 1.05;
+  touch-action: manipulation;
+}
+
+.tb-clock:active {
+  background: var(--surface-3);
+}
+
+.clock-time {
+  font-size: 28px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.tb-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.clock-elapsed {
+  flex: 0 0 auto;
+}
+
+.tb-state {
+  min-width: 0;
+  display: inline-flex;
+}
+
+.tb-clock.is-busy .clock-elapsed {
+  display: none;
+}
+
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-chip-past {
+  background: var(--info);
+  color: var(--on-info);
+}
+
+.tb-chip-busy {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* The weather line: one slim row (tap = the weather tab). */
+.tb-wx {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+.tb-wx:active {
+  background: var(--surface-3);
+}
+
+.tb-wx .wx-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.tb-wx .wx-wind {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 5px;
+}
+
+.tb-wx .wx-wind span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-wx .wx-dir {
+  font-weight: 900;
+}
+
+.tb-wx .wx-icon {
+  color: var(--chart-rh);
+}
+
+.tb-wx .rating-pill {
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 0 8px;
+  border-width: 1.5px;
+  border-radius: 7px;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ───────────────────────────── popovers ───────────────────────────── */
+/* While one is open a transparent scrim below the bar swallows the tap that dismisses it. */
+.tb-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: transparent;
+}
+
+.tb-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 3;
+  width: min(380px, calc(100vw - 16px));
+  max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - 16px);
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-strong);
+}
+
+.tb-pop-left {
+  left: max(8px, var(--safe-left));
+}
+
+.tb-pop-right {
+  right: max(8px, var(--safe-right));
+}
+
+.tb-menu-pop {
+  width: min(280px, calc(100vw - 16px));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-menu-item {
+  min-height: 52px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.tb-menu-item:active {
+  background: var(--surface-3);
+}
+
+.tb-pop:focus {
+  outline: none;
+}
+
+.tp-col + .tp-col > :first-child {
+  margin-top: 12px;
+}
+
+.tp-title {
+  margin: 0 0 6px;
+  font-size: 19px;
+}
+
+.tp-hint {
+  margin: 10px 0 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.tp-label,
+legend.tp-label {
+  padding: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.tp-block {
+  margin-top: 12px;
+}
+
+.tp-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tp-value {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-ends {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tp-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.tp-speeds {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tp-rel {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.tp-rel .tp-chip {
+  padding: 0;
+  font-size: 16px;
+}
+
+.tp-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+}
+
+.tp-chip {
+  min-height: 52px;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: var(--control-border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.tp-chip-flat {
+  min-height: 48px;
+  flex-direction: row;
+  white-space: nowrap;
+}
+
+.tp-chip-main {
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-chip-sub {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tp-chip-max {
+  grid-column: span 3;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.tp-chip:active {
+  background: var(--surface-3);
+}
+
+.tp-chip[aria-pressed='true'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.tp-chip[aria-pressed='true'] .tp-chip-sub {
+  color: inherit;
+  opacity: 0.9;
+}
+
+.tp-chip:disabled {
+  opacity: 0.45;
+}
+
+.tp-custom,
+.tp-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tp-jump {
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+
+.tp-input {
+  flex: 1 1 96px;
+  min-width: 0;
+  height: 48px;
+  padding: 0 10px;
+  border: var(--control-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-segs {
+  display: flex;
+  overflow: hidden;
+  border: var(--control-border);
+  border-radius: 10px;
+}
+
+.tp-seg {
+  min-width: 52px;
+  height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.tp-seg + .tp-seg {
+  border-left: 2px solid var(--border-soft);
+}
+
+.tp-seg[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.tp-go {
+  flex: 0 0 auto;
+  min-width: 64px;
+  height: 48px;
+  padding: 0 18px;
+  border: var(--control-border);
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.tp-go:active {
+  filter: brightness(0.9);
+}
+
+.tp-msg {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--watch-bg);
+  border: 2px solid var(--watch);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tp-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tp-card {
+  flex-direction: row;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.tp-fieldset {
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.tp-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.tp-readout {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────────────────────────── timeline strip ───────────────────────────── */
+.scrubber {
+  --tl-cy: 26px; /* y of the rail's centre inside the slider */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 18;
+  height: var(--scrub-h);
+  padding: 4px max(6px, var(--safe-right)) var(--safe-bottom) max(6px, var(--safe-left));
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: stretch;
+  column-gap: 4px;
+  background: var(--surface);
+  border-top: 2px solid var(--border-soft);
+}
+
+/* While dragging, the value bubble (above the strip) must show over the dock and the panels. */
+.scrubber.is-scrubbing {
+  z-index: 33;
+}
+
+.tl-step {
+  align-self: start;
+  margin: calc(var(--tl-cy) - 24px) 0 0;
+  width: 44px;
+  height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tl-step:active {
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+
+.tl-step:disabled {
+  opacity: 0.35;
+}
+
+.tl-mid {
+  position: relative;
+  min-width: 0;
+}
+
+.tl-slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tl-slider:focus-visible {
+  outline: none;
+}
+
+.tl-slider:focus-visible .tl-thumb {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* The track: 16 px in from each side so the 32 px thumb never overhangs the slider. */
+.tl-area {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  bottom: 0;
+}
+
+.tl-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tl-cy) - 7px);
+  height: 14px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-3);
+}
+
+.tl-head,
+.tl-played,
+.tl-seek-done,
+.tl-seek-todo {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+/* The computed range (lightly shaded) and the part already played (solid). */
+.tl-head {
+  width: var(--head, 0%);
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+.tl-played {
+  width: var(--view, 0%);
+  background: var(--accent);
+}
+
+/* A jump beyond the computed range: what has been computed on the way (solid) and what is still to do (striped). */
+.tl-seek-done {
+  left: var(--seek-from, 0%);
+  width: calc(var(--seek-reached, 0%) - var(--seek-from, 0%));
+  background: var(--info);
+}
+
+.tl-seek-todo {
+  left: var(--seek-reached, 0%);
+  width: calc(var(--seek-target, 0%) - var(--seek-reached, 0%));
+  background: repeating-linear-gradient(135deg, var(--info) 0 4px, transparent 4px 9px);
+  background-size: 12.73px 12.73px;
+  animation: tl-stripes 0.9s linear infinite;
+}
+
+.scrubber:not(.is-seeking) .tl-seek-done,
+.scrubber:not(.is-seeking) .tl-seek-todo {
+  display: none;
+}
+
+@keyframes tl-stripes {
+  to {
+    background-position: 12.73px 0;
+  }
+}
+
+.tl-hours {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tl-cy) + 8px);
+  height: 10px;
+  pointer-events: none;
+}
+
+.tl-hour {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
+.tl-hour-major {
+  height: 9px;
+  background: var(--text);
+}
+
+.tl-labels {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tl-cy) + 20px);
+  height: 20px;
+  pointer-events: none;
+}
+
+.scrubber.is-seeking .tl-labels {
+  visibility: hidden;
+}
+
+.tl-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tl-label-start {
+  transform: translateX(-16px);
+}
+
+.tl-label-end {
+  transform: translateX(calc(-100% + 16px));
+}
+
+/* Revealed cards: short bars above the rail (Danger taller than Watch), and the forecast wind changes: diamonds above them. */
+.tl-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tl-mark {
+  position: absolute;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+}
+
+.tl-mark-danger {
+  top: calc(var(--tl-cy) - 21px);
+  height: 13px;
+  background: var(--danger);
+}
+
+.tl-mark-watch {
+  top: calc(var(--tl-cy) - 16px);
+  height: 8px;
+  background: var(--watch);
+  box-shadow: 0 0 0 1px var(--watch-ink);
+}
+
+.tl-mark-change {
+  top: calc(var(--tl-cy) - 26px);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border: 2px solid var(--surface);
+  border-radius: 2px;
+  background: var(--info);
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px var(--info);
+}
+
+.tl-target {
+  position: absolute;
+  left: var(--seek-target, 0%);
+  top: calc(var(--tl-cy) - 17px);
+  height: 34px;
+  border-left: 3px solid var(--text);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.tl-thumb {
+  position: absolute;
+  left: var(--view, 0%);
+  top: var(--tl-cy);
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow:
+    0 0 0 2px var(--border),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  transition: transform 0.1s var(--ease);
+}
+
+.tl-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: var(--on-primary);
+  opacity: 0.9;
+}
+
+.scrubber.is-scrubbing .tl-thumb {
+  transform: scale(1.18);
+}
+
+.tl-bubble {
+  position: absolute;
+  left: var(--view, 0%);
+  bottom: calc(100% + 14px);
+  transform: translateX(calc(-50% + var(--bubble-dx, 0px)));
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: var(--shadow-strong);
+  font-size: 19px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tl-bubble-sub {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* Fast-forward status: takes the place of the hour labels, across the whole strip, while a jump computes. */
+.tl-status {
+  position: absolute;
+  left: max(6px, var(--safe-left));
+  right: max(6px, var(--safe-right));
+  bottom: var(--safe-bottom);
+  z-index: 2;
+  height: 28px;
+  padding: 0 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.tl-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-status-pct {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-cancel {
+  position: relative;
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 12px;
+  border: 2px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+  touch-action: manipulation;
+}
+
+/* A 44 px touch area around the slim button. */
+.tl-cancel::before {
+  content: '';
+  position: absolute;
+  inset: -8px -6px;
+}
+
+/* Sub-heading inside a settings card (the Danger card reactions). */
+.settings-sub {
+  margin: 18px 0 0;
+  font-size: 17px;
+}
+
+/* ───────────────────────────── narrow and landscape ───────────────────────────── */
+@media (max-width: 400px) {
+  .tb-wx {
+    gap: 9px;
+  }
+  .tb-wx .rating-pill {
+    padding: 0 6px;
+  }
+}
+
+@media (max-width: 380px) {
+  .tb-speed .icon {
+    display: none;
+  }
+  .tp-rel .tp-chip {
+    font-size: 15px;
+  }
+}
+
+/* Landscape phones: the weather line moves into the single row (56 px), the strip is 72 px, the popovers use two columns. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .tp-2col {
+    width: min(780px, calc(100vw - 16px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 16px;
+    align-items: start;
+  }
+  .tp-col + .tp-col > :first-child {
+    margin-top: 0;
+  }
+  .tp-2col .tp-cards {
+    margin-top: 0;
+  }
+  .tp-2col .tp-chip {
+    min-height: 44px;
+  }
+  .tp-2col .tp-grid {
+    gap: 6px;
+  }
+  .tp-2col .tp-title {
+    margin-bottom: 4px;
+  }
+  .tp-2col .tp-hint {
+    margin-top: 2px;
+  }
+  .tp-2col .tp-fieldset {
+    margin-top: 10px;
+  }
+  .sim-topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+  .tb-row {
+    display: contents;
+  }
+  /* With the row gone the buttons are the flex items: keep them above the scrim of an open popover. */
+  .tb-menu,
+  .tb-clock,
+  .tb-play,
+  .tb-speed {
+    position: relative;
+    z-index: 2;
+  }
+  .tb-menu {
+    order: 0;
+  }
+  .tb-clock {
+    order: 1;
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+  .tb-wx {
+    order: 2;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    height: 44px;
+  }
+  .tb-play {
+    order: 3;
+  }
+  .tb-speed {
+    order: 4;
+  }
+  .scrubber {
+    --tl-cy: 22px;
+  }
+  .tl-status {
+    left: 54px;
+    right: 54px;
+  }
+  .tb-pop {
+    max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-seek-todo {
+    animation: none;
+  }
+  .tl-thumb {
+    transition: none;
+  }
+  .scrubber.is-scrubbing .tl-thumb {
+    transform: none;
+  }
+}

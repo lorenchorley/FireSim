@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SimSnapshot, WeatherHour } from '../core/types';
+import type { WeatherHour } from '../core/types';
 import { kmhToMs } from '../core/units';
 import {
   beaufortFromKmh,
@@ -35,7 +35,6 @@ import {
   formatYears,
   localHour,
 } from './format';
-import { SnapshotStore } from './snapshotStore';
 import { isInNsw, parseLatLon } from './nsw';
 import { circlePolygon, polygonArea, pointInRing, simplifyPolyline, strokeToPolygon, thinPath, traceOuterBoundary } from './brushGeometry';
 import { manualSeries, weatherAt } from './weatherSeries';
@@ -220,75 +219,6 @@ describe('formatters', () => {
     expect(formatDirFrom(-45)).toBe('NW (315°)');
     expect(formatDirFrom(359.8)).toBe('N (0°)');
     expect(formatLatLon(-33.715, 150.285)).toBe('33.7150° S, 150.2850° E');
-  });
-});
-
-// ───────────────────────────── snapshot store ─────────────────────────────
-
-function snap(time: number, bytes = 1000): SimSnapshot {
-  return { time, __bytes: bytes } as unknown as SimSnapshot;
-}
-const sizeOf = (s: SimSnapshot): number => (s as unknown as { __bytes: number }).__bytes;
-
-describe('SnapshotStore', () => {
-  it('keeps one snapshot per interval plus the head', () => {
-    const st = new SnapshotStore({ minInterval: 300, sizeOf });
-    for (let t = 0; t <= 900; t += 60) st.push(snap(t));
-    expect(st.times()).toEqual([0, 300, 600, 900]);
-    st.push(snap(960));
-    expect(st.times()).toEqual([0, 300, 600, 900, 960]);
-    st.push(snap(1020));
-    expect(st.times()).toEqual([0, 300, 600, 900, 1020]);
-  });
-
-  it('finds the snapshot at or before a time', () => {
-    const st = new SnapshotStore({ minInterval: 300, sizeOf });
-    for (const t of [0, 300, 600, 900]) st.push(snap(t));
-    expect(st.atOrBefore(-5)!.time).toBe(0);
-    expect(st.atOrBefore(299)!.time).toBe(0);
-    expect(st.atOrBefore(300)!.time).toBe(300);
-    expect(st.atOrBefore(1e9)!.time).toBe(900);
-    expect(st.nearest(820)!.time).toBe(900);
-    expect(st.range()).toEqual({ start: 0, end: 900 });
-  });
-
-  it('invalidates later snapshots on re-simulation and truncation', () => {
-    const st = new SnapshotStore({ minInterval: 300, sizeOf });
-    for (const t of [0, 300, 600, 900, 1200]) st.push(snap(t));
-    st.push(snap(600)); // worker rewound to 600 and re-emitted
-    expect(st.times()).toEqual([0, 300, 600]);
-    st.truncateAfter(300);
-    expect(st.times()).toEqual([0, 300]);
-    expect(st.totalBytes).toBe(2000);
-  });
-
-  it('ring mode drops the oldest when over budget', () => {
-    const st = new SnapshotStore({ minInterval: 300, sizeOf, maxBytes: 3500, mode: 'ring' });
-    for (const t of [0, 300, 600, 900, 1200]) st.push(snap(t));
-    expect(st.times()).toEqual([600, 900, 1200]);
-    expect(st.totalBytes).toBeLessThanOrEqual(3500);
-  });
-
-  it('thin mode keeps the first and newest and spreads the rest evenly', () => {
-    const st = new SnapshotStore({ minInterval: 300, sizeOf, maxBytes: 5000, mode: 'thin' });
-    for (let t = 0; t <= 3000; t += 300) {
-      st.push(snap(t));
-      expect(st.totalBytes).toBeLessThanOrEqual(5000);
-    }
-    const ts = st.times();
-    expect(ts[0]).toBe(0);
-    expect(ts[ts.length - 1]).toBe(3000);
-    expect(ts.length).toBeGreaterThanOrEqual(3);
-    // Uniform spacing (the stride) except for the gap to the head, which is never longer than one stride.
-    const gaps = ts.slice(1).map((v, i) => v - ts[i]!);
-    const stride = st.spacing;
-    for (const g of gaps.slice(0, -1)) expect(g).toBe(stride);
-    expect(gaps[gaps.length - 1]).toBeLessThanOrEqual(stride);
-    // Keeps working for a long run at bounded memory.
-    for (let t = 3300; t <= 36_000; t += 300) st.push(snap(t));
-    expect(st.totalBytes).toBeLessThanOrEqual(5000);
-    expect(st.times()[0]).toBe(0);
-    expect(st.atOrBefore(20_000)!.time).toBeLessThanOrEqual(20_000);
   });
 });
 

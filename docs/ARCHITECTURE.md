@@ -69,7 +69,7 @@ public/replays/  bundled hourly + 365-day daily weather of the 7 historic fire d
      │   └─ run / pause / ignite / edit / removeEdit / removeIgnition / rewind / setOption / setQuality / explain
      │                                              ▼
      └── snapshot (transferable buffers) · status · rewound · explain · error
- ui/SnapshotStore (memory-capped, thinning) ──► render/SceneView.update(snapshot) (interpolates between snapshots)
+ ui/SnapshotStore (compact exact history) ──► render/SceneView.update(snapshot) (interpolates between snapshots)
 ```
 
 `ui/modules.ts` resolves the implementations: `buildScenario` (src/scenario), `SimClient` (src/sim, Web Worker) and
@@ -90,9 +90,29 @@ banner.
 7. coupling > 0: `atm.addFireHeat` (previous step's heat); `atm.step(Δt_a)`.
 8. `embers.emit` + `embers.step(atm.sample, atm.sampleTurb, landing, onIgnite)`.
 9. Every 60 s: `fire.minuteTasks`; `atm.diagnostics`; `explain.update(view)`.
-10. `t += Δt_a`; snapshots every `snapshotInterval` (300 s), checkpoints every 1800 s (ring of 8 + t0).
+10. `t += Δt_a`; snapshots every `snapshotInterval` (the *display step*, default 60 s), checkpoints every 1800 s (ring of 8 + t0).
 
-Δt_a = min(atm.maxStableDt(), 12 s) (fast tier 10 s), clipped so t lands on every minute.
+Δt_a = min(atm.maxStableDt(), 12 s) (fast tier 10 s), further limited by the *solver step* option `maxStepS` (0 =
+automatic) and by the display step when that is smaller (never below 1 s); the interval to the next boundary — the next
+minute mark or the next display-step mark, so t lands on both — is split into equal steps. With a display step ≥ 60 s
+the sequence is the classic one (a 10 s display step means 10 s steps; 30 s means 3 × 10 s).
+
+**Display step vs solver step.** The display step (`Settings.timeStep` → `SimOptions.snapshotInterval`, 10 s … 10 min)
+is how often the engine produces a picture. It is applied live (`setOption('snapshotInterval', s)` is not a record and
+never rewinds; the cadence continues from the next multiple) and does not change the physics for steps ≥ 12 s. The
+solver step (`Settings.solverStep` → `maxStepS`: automatic / 5 / 2 / 1 s) caps Δt_a: it changes the trajectory, so it
+is a *timed record* like `coupling` (the UI session re-runs from the view time, see below).
+
+**Snapshots on the wire.** Besides the cadence, the host asks the simulation for a *run-end snapshot*
+(`Simulation.emitRunEnd()`) when a run completes or is paused: if the newest snapshot the receiver holds is older than
+the time reached (a run to a time between two display steps, or a snapshot skipped by coalescing), one is emitted for
+exactly that time, so the UI can stop a timeline jump there. It has no side effect on the simulation (the ember
+overlay is read with `peekLanding`, without decaying it) — a test chunks a run in many ways and later snapshots stay
+bitwise identical (`src/sim/cadence.test.ts`). *Coalescing*: when the worker produces cadence snapshots faster than
+~25 per wall second (`SIM_PARAMS.snapshotMinWallMs`, e.g. a 10 s step at maximum speed) it skips the intermediate ones
+(keeping their side effects and carrying their insights to the next), except the first of every 300 s window
+(`keyframeIntervalS`); `status` reports carry `until`, the target of the current run, so the UI can tell its own run's
+reports from stale ones.
 
 ## Module contracts
 
@@ -135,13 +155,15 @@ protocol in `src/sim/protocol.ts` (§2.3, with two additions below).
 export class Simulation {
   constructor(scenario: ScenarioData, opts?: { tier?: 'auto' | QualityTier; hooks?: { snapshot?(s: SimSnapshot): void;
     rewound?(time: number): void }; clock?: () => number; skipSpinUp?: boolean;
-    testHooks?: { moisture?(M, FA, t): void; surfaceHeating?: boolean; emberLanding?(ev): void } });  // §15 set-ups only
+    testHooks?: { moisture?(M, FA, t): void; surfaceHeating?: boolean; emberLanding?(ev): void };   // §15 set-ups only
+    minSnapshotWallMs?: number });                        // coalescing (host: 40 ms; default 0 = never skip)
   readonly forecastInsights: Insight[];                   // 'ready' payload (§10.3)
   spinUp(deadlineMs?: number): boolean;                    // 3-D spin-up 900 s + auto-tune; t0 checkpoint when done
   advance(until: number, deadlineMs?: number, shouldStop?: () => boolean): boolean;   // whole Δt_a steps
   ignite(i: Ignition): void; edit(e: ScenarioEdit, time: number): void; removeEdit(id: string): void;   // timed records
   removeIgnition(id: string): boolean;                     // undo a mark: delete its record, rewind to it, re-run
   setOption(key: SimOptionKey, value: number | boolean): void; setQuality(tier: QualityTier): void;
+  emitRunEnd(): boolean;                                   // snapshot at exactly the time reached, if the last is older
   rewind(time: number): number;                            // restores the latest checkpoint ≤ time; returns its time
   explain(x: number, y: number, time?: number): CellExplanation;
   snapshot(): SimSnapshot; stats(): SimStats; perf(): SimPerf;
@@ -166,6 +188,8 @@ Protocol additions of the integration (both backwards compatible):
   marked. The record is deleted; if it had burnt, the latest checkpoint ≤ its time is restored and the run repeated to
   the user's logical time; `rewound(ignitionTime)` is posted and every snapshot / insight after that time is emitted
   again. The UI session drops its results after that time at once.
+* `setOption` keys `snapshotInterval` (display step, live, no rewind) and `maxStepS` (solver step, a timed record);
+  `status` carries `until`; a run-end snapshot follows every completed or paused run (see the coupling loop above).
 
 Coupling choices that deviate from the spec text (validation of §15, `src/sim/validation/`; parameters in
 `SIM_PARAMS` / `ATMOS_PARAMS`):
@@ -219,12 +243,47 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 ### ui/
 
 * `ui/session.ts` (`SimSession`) owns the time model: view time vs the newest computed time, a bounded look-ahead
-  (`runTarget`), playback, scrubbing through `SnapshotStore`, edits at the view time (rewinding the worker when the
-  view is in the past), `removeIgnition`, what-if re-runs with a baseline, insight reveal as the clock passes them.
+  (`runTarget`), playback at any speed (a positive number of simulated s per s, or Infinity; `MAX_REPLAY_SPEED` for
+  history), edits at the view time (rewinding the worker when the view is in the past), `removeIgnition`, what-if
+  re-runs with a baseline, insight reveal as the clock passes them. Nothing but the user, the end of the scenario, the
+  app going to the background (and a worker error) stops playback.
+* **Jumping to any time** (`seek`, `beginScrub` / `scrub` / `endScrub`, `stepBy`, `cancelSeek`). A time up to the newest
+  computed one is shown at once and *exactly* (the history rebuilds the fire front for that very time). A later time is
+  a **fast-forward**: `seekTarget` is set, `playing` is false, the engine runs at full speed (`run(target)`), the view
+  follows each newest snapshot (`seekProgress` = (min(head, target) − seekFrom) / (target − seekFrom)) and stops
+  exactly at the target (the run-end snapshot guarantees a result at or after it, the store gives the picture for the
+  exact time); then playback resumes at the same speed if it was playing (or `resume`), else it stays paused. A new
+  seek retargets; `pause()`, an edit, an ignition, a what-if, a worker error, or the worker going idle short of the
+  target ends it, staying where the view is. Insight cards are revealed once, in order, also on the way, never beyond
+  the view. `setTimeStep` changes the display step live; `setSolverStep` re-runs from the view time like a what-if.
+* **History store** (`ui/snapshotStore.ts`). With a 10–60 s display step a run makes thousands of multi-MB snapshots, so
+  it keeps a compact, exact history instead: the *fire* of any earlier time t is rebuilt from the NEWEST fire arrays
+  (arrival time, ros, intensity, … are fixed at ignition: a cell arriving after t is unburnt, the rest is shared by
+  reference; the burn state comes from one per-cell burn-out time noted when a cell is first seen burnt out), so
+  scrubbing shows the exact front at any time whatever the cadence, and after a rewind the re-simulated newest arrays are
+  authoritative for earlier times too. Moisture, overlay rasters and the atmosphere view are kept at *keyframes* (every
+  300 s, or the display step if larger); every step keeps a light frame (time, stats, spot-fire count into one shared
+  log) and its embers. `at(t)` returns the real newest snapshot at or after its time, else a composition (keyframe +
+  light frame + rebuilt fire) for exactly t; `at(t, quantum)` rounds t down to a *quantum* and the same object comes
+  back within it (`atOrBefore` uses min(display step, 30 s)). While playing the session uses `playQuantum(speed)` =
+  speed / 6 s (≥ 1 s: about six pictures per wall second, the renderer interpolates between them), paused or
+  scrubbing the exact time, so the view is updated only when something changed. The rebuilt arrays live in two rotating buffers (a composed picture is valid until the second next one;
+  `SceneView.update` copies what it needs synchronously). Over budget (48–160 MB), older history is thinned first
+  (an entry survives when it is at least age / R after the previous kept one, R shrinking until each list fits its share);
+  the first keyframe and the newest snapshot are never dropped. Measured with real Katoomba snapshots (40 k fire cells)
+  for 6 h under a 64 MB budget: 56 / 56 / 53 MB at 10 / 30 / 60 s steps (`src/ui/snapshotStore.sim.test.ts`).
 * Insight flood control (`ui/insightGroups.ts`): a large fire reports the same phenomenon along its whole edge
   (hundreds of cards in 6 h). The Insights tab and the map show one card / marker per kind (the newest of the most
-  severe instances, "seen N times since …"); `DangerGate` toasts a kind at most once per simulated hour and "pause on
-  danger" pauses only the first time a kind is dangerous.
+  severe instances, "seen N times since …"). Nothing pops up over the map: `UnseenTracker` counts the cards revealed since
+  the Insights tab was last open (one per kind) for the dock badge, which turns red with one pulse for a Danger card.
+  `DangerGate` only serves the opt-in settings: vibration (at most once per kind per simulated hour) and "pause on
+  danger" (only the first time a kind is dangerous); both are OFF by default.
+* Simulation-screen chrome (`ui/screens/sim`): collapsed by default. Two 56 px round menus over the map (`mapMenu.ts`: tools
+  on the handed side, view on the other; the list opens beside the button, at most one open, the open state is
+  `UiState.menu`), a slim 44 px dock of four tabs above the timeline (`sheet.ts`; `UiState.sheet` is `closed | peek |
+  half | full`, default `closed`) and a thin error chip under the top bar that appears only if the engine fails. The pure
+  rules (menu reducer, dock taps and detent heights, list fitting) are in `layoutModel.ts`; `simScreen.ts` measures the
+  covered edges (`layoutInsets`) and gives the camera, the crosshair, the round buttons and the legend the visible map.
 * Setup catalogues come from `src/scenario` (`WEATHER_PRESETS` / `PRESET_IDS`, `REPLAYS`); a preset starts on its
   canonical day and hour (e.g. 20 Dec 11:00 LMST), rounded to 10 min. Belt-kit readings are sent as
   `ScenarioRequest.beltKit` so the builder applies the psychrometer at the real station pressure and the 2 m → 10 m
@@ -247,7 +306,11 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 Measured in headless Chromium, one 2.1 GHz Xeon core, Katoomba 6 km at 30 m, extreme preset, 4 simulated hours:
 fast tier ≈ 900 simulated s per wall s, standard (3-D 45 × 45 × 20) ≈ 220 s/s; the first snapshot 1.1–1.2 s after
 `init`; the 3-D spin-up (≈ 3 s) runs while the user marks the fire. Snapshots are 1.8 MB (fast) / 2.6 MB (standard)
-and transferred, not copied. On the main thread no long task (> 50 ms) was observed while playing at maximum speed;
+and transferred, not copied. Snapshot overhead in the worker (Node, same hardware, Katoomba 6 km, hot NW, 20 simulated
+minutes, no coalescing): fast tier 40 ms per simulated minute without snapshots, +11.2 / +3.9 / +2.0 / +0.4 ms at
+10 / 30 / 60 / 300 s steps (10.1 / 3.4 / 1.7 / 0.3 MB per simulated minute); standard tier 240 ms/min, +22.4 / +7.5 / +3.7 /
++0.7 ms (14.9 / 5.0 / 2.5 / 0.5 MB/min). At maximum speed the fast tier would make 130 pictures per second at a 10 s step;
+coalescing to 25/s cuts that overhead to +3.0 ms/min (43 MB per wall second instead of 223). On the main thread no long task (> 50 ms) was observed while playing at maximum speed;
 `SceneView.update` takes ≈ 4 ms median, 9 ms p95. Phones are 2–3× slower (spec §13); the spec's auto-tune (§12.6)
 therefore usually picks the fast tier on phones. Spec budgets and CI gates: §13 (V20).
 

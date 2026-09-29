@@ -1,84 +1,73 @@
 /**
- * Top bar: menu, local simulation clock (+ elapsed, "viewing past" / "computing" states), play/pause, playback
- * speed, and the current-weather chip (temperature, RH, wind arrow + speed, fire danger rating).
+ * Top bar: ONE row [menu] [clock + elapsed + state] [play / pause] [speed], and under it a slim one-line weather strip.
+ * Everything else is collapsed until asked for: the menu (new scenario, settings, safety notice), the time popover (tap
+ * the clock) and the speed popover. Nothing in here pops up by itself and nothing stops the simulation.
  */
 import { msToKmh } from '../../../core/units';
-import { h, listen, setChildren, text } from '../../dom';
+import { h, setChildren, text } from '../../dom';
 import { icon } from '../../icons';
-import { formatClock, formatElapsedShort, formatPlaybackSpeed, formatRH, formatTemp, formatWind, compassName } from '../../format';
-import { SPEEDS } from '../../session';
+import { compassName, formatClock, formatElapsedShort, formatRH, formatTemp, formatWind } from '../../format';
+import { bindStepSettings } from '../../settings';
 import { ffdi, ratingFromIndex, ratingStyle } from '../../weatherCalc';
 import { weatherAt } from '../../weatherSeries';
-import { button, windArrow } from '../../widgets';
+import { windArrow } from '../../widgets';
 import type { SimContext } from './context';
+import { createSpeedControl } from './speedControl';
+import { clockShowsSeconds } from './timelineModel';
+import { createTimePopover } from './timePopover';
+import { createPopoverGroup, glyph, GLYPHS } from './transportKit';
+
+/** The clock waits for the engine this long before "Computing" is shown, so it does not flicker at the head. */
+const WAIT_BEFORE_BUSY_MS = 800;
 
 export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): void } {
   const { session } = ctx;
+
+  // ── menu ──
+  const menuBtn = h(
+    'button',
+    { type: 'button', class: 'tb-btn tb-menu', dataset: { testid: 'menu' }, aria: { label: 'Menu', haspopup: 'menu', expanded: false } },
+    glyph(GLYPHS.menu, 26),
+  );
+  const menuItem = (ic: Parameters<typeof icon>[0], label: string, testid: string, act: () => void): HTMLButtonElement =>
+    h('button', { type: 'button', class: 'tb-menu-item', attrs: { role: 'menuitem' }, dataset: { testid }, on: { click: () => (popovers.closeAll(), act()) } }, [
+      icon(ic),
+      h('span', null, label),
+    ]);
+  const menuPanel = h('div', { class: 'tb-pop tb-pop-left tb-menu-pop', attrs: { role: 'menu' }, aria: { label: 'Menu' }, hidden: true }, [
+    menuItem('back', 'New scenario', 'menu-new', () => ctx.exit()),
+    menuItem('settings', 'Settings & about', 'menu-settings', () => ctx.openSettings()),
+    menuItem('warning', 'Safety notice', 'menu-notice', () => ctx.showNotice()),
+  ]);
+
+  // ── clock (opens the time popover) ──
   const clock = h('span', { class: 'clock-time', dataset: { testid: 'clock' } }, '--:--');
   const elapsed = h('span', { class: 'clock-elapsed' });
-  const state = h('span', { class: 'clock-state', attrs: { 'aria-live': 'polite' } });
+  const state = h('span', { class: 'tb-state', attrs: { 'aria-live': 'polite' } });
+  const clockBtn = h(
+    'button',
+    { type: 'button', class: 'tb-clock', dataset: { testid: 'time-btn' }, aria: { haspopup: 'dialog', expanded: false, label: 'Simulation time' } },
+    [clock, h('span', { class: 'tb-sub' }, [elapsed, state])],
+  );
+  const timePop = createTimePopover(ctx, { close: () => popovers.closeAll() });
+
+  // ── play / pause ──
   const playBtn = h(
     'button',
-    { type: 'button', class: 'btn btn-accent btn-round play-btn', dataset: { testid: 'play' }, aria: { label: 'Play' }, on: { click: () => session.toggle() } },
+    { type: 'button', class: 'tb-btn tb-play', dataset: { testid: 'play' }, aria: { label: 'Play' }, on: { click: () => onPlay() } },
     icon('play', { size: 30 }),
   );
-  const speedLabel = h('span', { class: 'speed-label' }, '60×');
-  const speedBtn = h(
-    'button',
-    { type: 'button', class: 'btn btn-secondary speed-btn', dataset: { testid: 'speed' }, aria: { haspopup: 'listbox', expanded: false, label: 'Playback speed' }, on: { click: () => toggleMenu() } },
-    [icon('speed', { size: 20 }), speedLabel],
-  );
-  const menu = h(
-    'div',
-    { class: 'popover speed-menu', attrs: { role: 'listbox', 'aria-label': 'Playback speed' }, hidden: true },
-    SPEEDS.map((sp) =>
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'popover-item',
-          attrs: { role: 'option' },
-          dataset: { speed: String(sp) },
-          on: {
-            click: () => {
-              session.setSpeed(sp);
-              toggleMenu(false);
-            },
-          },
-        },
-        [h('span', { class: 'popover-main' }, Number.isFinite(sp) ? `${sp}×` : 'As fast as possible'), h('span', { class: 'popover-sub' }, speedHint(sp))],
-      ),
-    ),
-  );
-  function toggleMenu(open = menu.hidden): void {
-    menu.hidden = !open;
-    speedBtn.setAttribute('aria-expanded', String(open));
-    if (open) (menu.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus();
+  function onPlay(): void {
+    const s = session.state.get();
+    // At the end of the scenario Play starts it again from the beginning.
+    if (!s.playing && s.seekTarget === null && s.viewTime >= ctx.scenario.duration - 1) session.seek(0, { resume: true });
+    else session.toggle();
   }
-  const offs: (() => void)[] = [];
-  offs.push(
-    listen(document, 'pointerdown', (e) => {
-      if (!menu.hidden && !menu.contains(e.target as Node) && !speedBtn.contains(e.target as Node)) toggleMenu(false);
-    }),
-  );
 
-  const menuBtn = button({ label: 'Menu', icon: 'list', variant: 'ghost', iconOnly: true, testId: 'menu', onClick: () => toggleMain() });
-  const mainMenu = h('div', { class: 'popover main-menu', hidden: true, attrs: { role: 'menu' } }, [
-    h('button', { type: 'button', class: 'popover-item', attrs: { role: 'menuitem' }, on: { click: () => (toggleMain(false), ctx.exit()) } }, [icon('back'), h('span', { class: 'popover-main' }, 'New scenario')]),
-    h('button', { type: 'button', class: 'popover-item', attrs: { role: 'menuitem' }, on: { click: () => (toggleMain(false), ctx.openSettings()) } }, [icon('settings'), h('span', { class: 'popover-main' }, 'Settings & about')]),
-    h('button', { type: 'button', class: 'popover-item', attrs: { role: 'menuitem' }, on: { click: () => (toggleMain(false), ctx.showNotice()) } }, [icon('warning'), h('span', { class: 'popover-main' }, 'Safety notice')]),
-  ]);
-  function toggleMain(open = mainMenu.hidden): void {
-    mainMenu.hidden = !open;
-    menuBtn.setAttribute('aria-expanded', String(open));
-  }
-  offs.push(
-    listen(document, 'pointerdown', (e) => {
-      if (!mainMenu.hidden && !mainMenu.contains(e.target as Node) && !menuBtn.contains(e.target as Node)) toggleMain(false);
-    }),
-  );
+  // ── speed ──
+  const speed = createSpeedControl(ctx);
 
-  // Weather chip.
+  // ── weather strip ──
   const wTemp = h('span', { class: 'wx-item' });
   const wRh = h('span', { class: 'wx-item' });
   const wWind = h('span', { class: 'wx-item wx-wind' });
@@ -87,31 +76,38 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
     'button',
     {
       type: 'button',
-      class: 'weather-chip',
+      class: 'tb-wx',
       dataset: { testid: 'weather-chip' },
       aria: { label: 'Current weather — open the weather timeline' },
-      on: { click: () => ctx.ui.set({ tab: 'weather', sheet: 'half', panelOpen: false }) },
+      on: { click: () => (popovers.closeAll(), ctx.ui.set({ tab: 'weather', sheet: 'half', panelOpen: false })) },
     },
     [wTemp, wRh, wWind, wRating],
   );
 
   const el = h('header', { class: 'sim-topbar' }, [
-    h('div', { class: 'topbar-row' }, [
-      menuBtn,
-      h('div', { class: 'clock' }, [clock, h('span', { class: 'clock-sub' }, [elapsed, state])]),
-      playBtn,
-      speedBtn,
-    ]),
+    h('div', { class: 'tb-row' }, [menuBtn, clockBtn, playBtn, speed.button]),
     chip,
-    menu,
-    mainMenu,
+    menuPanel,
+    timePop.panel,
+    speed.panel,
   ]);
 
-  // render() runs on every view-clock change (every animation frame while playing), so each part is only rebuilt
-  // when what it shows changes: no per-frame DOM churn, and the aria-live state line is not re-announced.
+  const popovers = createPopoverGroup(el, [
+    { id: 'menu', button: menuBtn, panel: menuPanel },
+    { id: 'time', button: clockBtn, panel: timePop.panel, onOpen: () => timePop.refresh() },
+    { id: 'speed', button: speed.button, panel: speed.panel },
+  ]);
+  menuBtn.addEventListener('click', () => popovers.toggle('menu'));
+  clockBtn.addEventListener('click', () => popovers.toggle('time'));
+  speed.button.addEventListener('click', () => popovers.toggle('speed'));
+
+  // The settings screen changes the picture interval and the solver step: pass them on to the running session.
+  const offSteps = bindStepSettings(session, ctx.settings);
+
+  // render() runs on every view-clock change (every animation frame while playing), so each part is only rebuilt when
+  // what it shows changes: no per-frame DOM churn, and the aria-live state line is not re-announced.
   let stateKey = '';
   let playKey = '';
-  let speedKey = -1;
   let wxKey = '';
   let ratingKey = '';
   let waitingSince = 0;
@@ -119,11 +115,17 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
   const render = (): void => {
     const s = session.state.get();
     const abs = ctx.absTime(s.viewTime);
-    text(clock, formatClock(abs, ctx.tz));
-    text(elapsed, formatElapsedShort(s.viewTime));
-    const live = session.isLive(s);
+    const secs = clockShowsSeconds(s.timeStep, s.speed);
+    const clockText = formatClock(abs, ctx.tz, secs);
+    const elapsedText = formatElapsedShort(s.viewTime);
+    if (clockText !== clock.textContent || elapsedText !== elapsed.textContent) {
+      text(clock, clockText);
+      text(elapsed, elapsedText);
+      clockBtn.setAttribute('aria-label', `Simulation time ${clockText}, ${elapsedText} after the start. Jump to another time.`);
+    }
+    const seeking = s.seekTarget !== null;
     // "Computing" only after the clock has waited for the worker for a moment, so it does not flicker (and is not
-    // re-announced) each time the view briefly catches up with the newest snapshot.
+    // re-announced) each time the view briefly catches up with the newest snapshot; a jump ahead shows it at once.
     const waiting = s.playing && s.viewTime >= s.headTime - 1 && s.computing;
     const now = performance.now();
     if (!waiting) waitingSince = 0;
@@ -132,30 +134,28 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       clearTimeout(waitTimer);
       waitTimer = window.setTimeout(render, WAIT_BEFORE_BUSY_MS + 20);
     }
-    const busy = waiting && now - waitingSince >= WAIT_BEFORE_BUSY_MS;
-    const sk = !live ? 'past' : busy ? 'busy' : '';
+    const busy = seeking || (waiting && now - waitingSince >= WAIT_BEFORE_BUSY_MS);
+    const sk = busy ? 'busy' : !session.isLive(s) ? 'past' : '';
     if (sk !== stateKey) {
       stateKey = sk;
+      clockBtn.classList.toggle('is-busy', sk === 'busy'); // "Computing" takes the elapsed time's place
       setChildren(
         state,
         sk === 'past'
-          ? h('span', { class: 'state-chip state-past' }, 'Replay')
+          ? h('span', { class: 'tb-chip tb-chip-past' }, 'Replay')
           : sk === 'busy'
-            ? h('span', { class: 'state-chip state-busy' }, [h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }), 'Computing'])
+            ? h('span', { class: 'tb-chip tb-chip-busy' }, [h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }), 'Computing'])
             : null,
       );
     }
-    const pk = s.playing ? 'pause' : 'play';
+    const shownPlaying = s.playing || seeking;
+    const atEnd = !shownPlaying && s.viewTime >= ctx.scenario.duration - 1;
+    const pk = shownPlaying ? 'pause' : atEnd ? 'again' : 'play';
     if (pk !== playKey) {
       playKey = pk;
-      playBtn.setAttribute('aria-label', s.playing ? 'Pause' : 'Play');
-      playBtn.setAttribute('aria-pressed', String(s.playing));
-      setChildren(playBtn, icon(s.playing ? 'pause' : 'play', { size: 30 }));
-    }
-    if (s.speed !== speedKey) {
-      speedKey = s.speed;
-      text(speedLabel, formatPlaybackSpeed(s.speed));
-      for (const b of menu.querySelectorAll<HTMLElement>('[data-speed]')) b.setAttribute('aria-selected', String(Number(b.dataset.speed) === s.speed));
+      playBtn.setAttribute('aria-label', pk === 'pause' ? 'Pause' : pk === 'again' ? 'Play again from the start' : 'Play');
+      playBtn.setAttribute('aria-pressed', String(shownPlaying));
+      setChildren(playBtn, icon(pk === 'pause' ? 'pause' : pk === 'again' ? 'replay' : 'play', { size: 30 }));
     }
     // Weather: interpolated from the scenario series at the view time; rating from the snapshot when available.
     const w = weatherAt(ctx.scenario.weather, abs);
@@ -169,8 +169,8 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
     if (wk !== wxKey) {
       wxKey = wk;
       setChildren(wTemp, h('span', null, `${t}°`));
-      setChildren(wRh, [icon('droplet', { size: 18, class: 'wx-icon' }), h('span', null, rh)]);
-      setChildren(wWind, [windArrow(arrowDeg, 22), h('span', { class: 'wx-dir' }, dirName), h('span', { class: 'wx-speed' }, windTxt)]);
+      setChildren(wRh, [icon('droplet', { size: 16, class: 'wx-icon' }), h('span', null, rh)]);
+      setChildren(wWind, [windArrow(arrowDeg, 18), h('span', { class: 'wx-dir' }, dirName), h('span', { class: 'wx-speed' }, windTxt)]);
       chip.setAttribute('aria-label', `Weather now: ${formatTemp(w.temperature)}, humidity ${rh}, wind from ${dirName} at ${windTxt}. Open the weather timeline.`);
     }
     const st = s.snapshot?.stats;
@@ -186,28 +186,23 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       wRating.setAttribute('aria-label', `Fire danger ${r.label}, FFDI about ${Math.round(fi)}`);
     }
   };
-  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing']);
+  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep']);
   const unsub2 = ctx.settings.subscribe(() => {
     wxKey = '';
     render();
   }, ['units']);
   render();
+
   return {
     el,
     destroy() {
       unsub();
       unsub2();
+      offSteps();
       clearTimeout(waitTimer);
-      for (const o of offs) o();
+      popovers.destroy();
+      timePop.destroy();
+      speed.destroy();
     },
   };
-}
-
-const WAIT_BEFORE_BUSY_MS = 800;
-
-function speedHint(sp: number): string {
-  if (!Number.isFinite(sp)) return 'Results as soon as they are computed';
-  if (sp === 1) return 'Real time';
-  const minPerSec = sp / 60;
-  return minPerSec >= 1 ? `${minPerSec} min of fire per second` : `${sp} s per second`;
 }

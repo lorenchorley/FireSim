@@ -1,14 +1,37 @@
 /**
  * End-to-end test of the whole app with the REAL modules (scenario builder on the bundled Katoomba demo data,
  * simulation in its Web Worker, Three.js view) against the production build on the Pixel 7 profile:
- *   notice → Katoomba demo → preset weather → build → mark a fire on the Megalong escarpment → play at the highest
- *   speed → the fire grows, insight cards appear, "Why here?" explains → arrival overlay → rewind with the scrubber →
- *   a fuel brush edit and a spot fire in the past → play on.
+ *   notice → Katoomba demo → preset weather → build → mark a fire on the Megalong escarpment (Tools menu) → play at the
+ *   highest speed → the fire grows, insight cards wait in the dock, nothing pops up and playback never stops by itself →
+ *   "Why here?" explains → arrival overlay → jump back in time → a fuel brush edit and a spot fire in the past → play on →
+ *   a jump far beyond the computed range (its progress on the timeline) that is cancelled, then an exact jump.
  * Screenshots of the main views go to docs/screenshots/ (README). `?debug=1` exposes window.__firesim, used only to
  * read the session state and to aim the camera at the escarpment (the fire is then marked with the UI's crosshair).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import {
+  acceptNotice,
+  animationsDone,
+  armPopupWatch,
+  composeSideBySide,
+  expectStillPlaying,
+  jumpWithPopover,
+  openMenu,
+  pickTool,
+  pickViewMode,
+  popups,
+  scenarioDuration,
+  session,
+  setDock,
+  setSpeed,
+  tapTimeline,
+  viewMenuAction,
+  waitForSeekEnd,
+  watchPopups,
+  zoomView,
+  type SessionView,
+} from './helpers';
 
 const SHOTS = 'docs/screenshots';
 mkdirSync(SHOTS, { recursive: true });
@@ -16,59 +39,17 @@ mkdirSync(SHOTS, { recursive: true });
 /** The escarpment ignition of the headless validation (src/sim/validation.test.ts): 688 m, 23° slope. */
 const ESCARPMENT: [number, number] = [-2170, 900];
 
-interface SessionView {
-  playing: boolean;
-  viewTime: number;
-  headTime: number;
-  area: number;
-  insights: number;
-  ignitions: string[];
-  fuelEdits: number;
-}
-
-async function session(page: Page): Promise<SessionView> {
-  return page.evaluate(() => {
-    const fs = (window as unknown as { __firesim: { session: { state: { get(): Record<string, unknown> } } } }).__firesim;
-    const s = fs.session.state.get() as {
-      playing: boolean;
-      viewTime: number;
-      headTime: number;
-      snapshot: { stats: { burntAreaHa: number } } | null;
-      insights: unknown[];
-      ignitions: { origin: string }[];
-      edits: { edit: { kind: string } }[];
-    };
-    return {
-      playing: s.playing,
-      viewTime: s.viewTime,
-      headTime: s.headTime,
-      area: s.snapshot?.stats.burntAreaHa ?? 0,
-      insights: s.insights.length,
-      ignitions: s.ignitions.map((i) => i.origin),
-      fuelEdits: s.edits.filter((e) => e.edit.kind === 'fuel').length,
-    };
-  });
-}
-
-async function dismissToasts(page: Page): Promise<void> {
-  for (let i = 0; i < 4; i++) {
-    const close = page.getByTestId('toast').getByRole('button', { name: 'Dismiss' });
-    if (!(await close.count())) return;
-    await close.first().click().catch(() => undefined);
-  }
-}
-
-/** Play until the view time reaches `t` (s). "Pause on danger" stops playback the first time a danger appears. */
-async function playUntil(page: Page, t: number, timeoutMs = 150_000): Promise<SessionView> {
+/**
+ * Play until the view time reaches `t` (s). Play is pressed once (when it is not already playing); after that the run must
+ * keep going by itself - no card, however dangerous, may stop it - so a stop before `t` fails the test.
+ */
+async function playUntil(page: Page, t: number, duration: number, timeoutMs = 150_000): Promise<SessionView> {
+  if (!(await session(page)).playing) await page.getByTestId('play').click();
   const end = Date.now() + timeoutMs;
   for (;;) {
-    const s = await session(page);
+    const s = await expectStillPlaying(page, duration);
     if (s.viewTime >= t) return s;
     if (Date.now() > end) throw new Error(`timed out at view time ${s.viewTime} s (head ${s.headTime} s)`);
-    if (!s.playing) {
-      await dismissToasts(page);
-      await page.getByTestId('play').click();
-    }
     await page.waitForTimeout(500);
   }
 }
@@ -76,7 +57,6 @@ async function playUntil(page: Page, t: number, timeoutMs = 150_000): Promise<Se
 async function pause(page: Page): Promise<void> {
   if ((await session(page)).playing) await page.getByTestId('play').click();
   await expect.poll(async () => (await session(page)).playing).toBe(false);
-  await dismissToasts(page);
 }
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -90,17 +70,8 @@ async function flyTo(page: Page, x: number, y: number, distance: number): Promis
   await page.waitForTimeout(1500);
 }
 
-async function setScrubber(page: Page, t: number): Promise<void> {
-  await page.getByTestId('scrubber').evaluate((el, v) => {
-    const input = el as HTMLInputElement;
-    input.value = String(v);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, t);
-}
-
 test('real engine end to end: build → escarpment fire → play → insights → why here → overlays → rewind → edits', async ({ page }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(600_000);
   const errors: string[] = [];
   const fallbacks: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -108,13 +79,12 @@ test('real engine end to end: build → escarpment fire → play → insights �
     if (m.type() === 'error') errors.push(m.text());
     if (m.type() === 'warning' && /using the mock|2-D map instead|imagery load failed/.test(m.text())) fallbacks.push(m.text());
   });
+  await watchPopups(page);
 
   // ── Setup ──
   await page.goto('/?debug=1');
   await expect(page.getByTestId('training-badge')).toBeVisible();
-  await expect(page.getByTestId('notice')).toBeVisible();
-  await page.getByTestId('accept-notice').click();
-  await expect(page.getByTestId('notice')).toHaveCount(0);
+  await acceptNotice(page);
   await page.getByTestId('site-katoomba').click();
   await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
   await page.getByTestId('preset-hot-nw-sw-change').click();
@@ -132,9 +102,17 @@ test('real engine end to end: build → escarpment fire → play → insights �
   test.info().annotations.push({ type: 'build', description: `${Date.now() - buildStart} ms to the simulation screen` });
   await expect(page.locator('.mock-banner')).toHaveCount(0); // the real engine and 3-D view, not the mocks
   await expect(page.getByTestId('clock')).toHaveText(/12:00/); // the preset's canonical start, 20 Dec 11:00 LMST
+  await armPopupWatch(page); // from here on nothing may pop up over the simulation
+  const D = await scenarioDuration(page);
+
+  // ── The chrome starts collapsed: two round buttons, the dock's tab row, the timeline; no Live button ──
+  await expect(page.getByTestId('tools-menu')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('view-menu')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('dock')).toHaveAttribute('data-detent', 'closed');
+  await expect(page.getByTestId('live')).toHaveCount(0);
 
   // ── Mark the fire on the escarpment with the crosshair ──
-  await page.getByTestId('tool-fire').click();
+  await pickTool(page, 'fire');
   await expect(page.getByTestId('fire-panel')).toBeVisible();
   await flyTo(page, ESCARPMENT[0], ESCARPMENT[1], 2500);
   await page.getByTestId('use-crosshair').click();
@@ -154,14 +132,19 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
 
   // ── Play as fast as possible: the fire grows, cards appear ──
-  await page.getByTestId('speed').click();
-  await page.locator('[data-speed="Infinity"]').click();
+  await setSpeed(page, Infinity);
   await page.getByTestId('play').click();
-  const at1h = await playUntil(page, 3600);
-  const at2h = await playUntil(page, 7200);
+  const at1h = await playUntil(page, 3600, D);
+  const at2h = await playUntil(page, 7200, D);
   expect(at1h.area).toBeGreaterThan(5);
   expect(at2h.area).toBeGreaterThan(at1h.area * 1.3);
   await pause(page);
+  // The speed options, open (for the README): presets from slow motion to an hour per second, a slider, a custom value.
+  await page.getByTestId('speed').click();
+  await expect(page.getByTestId('speed-popover')).toBeVisible();
+  await shot(page, '11-speed-popover');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('speed-popover')).toBeHidden();
   await page.getByTestId('tab-stats').click();
   await expect(page.getByTestId('sheet')).toContainText('Area burnt');
   await page.getByTestId('tab-insights').click();
@@ -171,25 +154,44 @@ test('real engine end to end: build → escarpment fire → play → insights �
   expect(cards).toBeGreaterThan(1);
   expect(cards).toBeLessThan(40); // repeats of one phenomenon share a card
   await expect(page.getByTestId('insight-repeats').first()).toBeVisible();
+  await setDock(page, 'half'); // drag the tab row up: half-height panel
   await fireCard.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await shot(page, '06-insights');
-  await page.getByTestId('sheet-handle').click(); // half → full
-  await page.getByTestId('sheet-handle').click(); // full → peek
+  await setDock(page, 'full');
+  await setDock(page, 'peek');
+  await page.getByTestId('tab-insights').click(); // the same tab again gives the whole map back
+  await expect(page.getByTestId('dock')).toHaveAttribute('data-detent', 'closed');
 
   // ── 3-D orbit view of the running fire ──
-  await page.locator('.view-btn[data-mode="orbit"]').click();
-  await page.getByRole('button', { name: 'Fly to the fire' }).click();
+  await pickViewMode(page, 'orbit');
+  await viewMenuAction(page, 'fly-fire');
   await page.waitForTimeout(1500);
   const h0 = await page.evaluate(() => (window as unknown as { __firesim: { view: { heading: number } } }).__firesim.view.heading);
-  await page.getByTestId('zoom-in').click();
-  await page.getByTestId('zoom-out').click();
+  await zoomView(page, 'in');
+  await zoomView(page, 'out');
   // Composition for the screenshot: from the Megalong Valley side, looking up the escarpment at the fire and plume.
   await page.evaluate(() => {
     const fs = (window as unknown as { __firesim: { view: { lookAt(x: number, y: number, d: number, az: number, tilt: number): void } } }).__firesim;
     fs.view.lookAt(-1200, 300, 6500, 235, 66);
   });
   await shot(page, '03-orbit');
-  await page.getByTestId('compass').click(); // north up
+  // The two round menus, expanded (only one is open at a time: tools, then view, side by side in one picture).
+  {
+    const size = page.viewportSize()!;
+    await openMenu(page, 'tools');
+    await expect(page.getByTestId('tool-fire')).toBeVisible();
+    await animationsDone(page);
+    const tools = await page.screenshot();
+    await page.keyboard.press('Escape');
+    await openMenu(page, 'view');
+    await expect(page.getByTestId('compass')).toBeVisible();
+    await animationsDone(page);
+    const view = await page.screenshot();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('view-menu')).toHaveAttribute('aria-expanded', 'false');
+    await composeSideBySide(page, tools, view, `${SHOTS}/09-menus-open.png`, size);
+  }
+  await viewMenuAction(page, 'compass'); // north up
   await expect.poll(async () => Math.round(await page.evaluate(() => (window as unknown as { __firesim: { view: { heading: number } } }).__firesim.view.heading)) % 360, { timeout: 5000 }).toBeLessThan(3);
   expect(Number.isFinite(h0)).toBe(true);
 
@@ -209,20 +211,20 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await why.getByRole('button', { name: 'Close' }).click();
 
   // ── Layers: arrival-time overlay with 30-minute isochrones, from the top ──
-  await page.getByTestId('tool-layers').click();
+  await pickTool(page, 'layers');
   await expect(page.getByTestId('layers-panel')).toBeVisible();
   await page.getByTestId('overlay-arrival').click();
   await expect(page.getByTestId('overlay-arrival')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('legend')).toContainText('arrival');
   await page.getByTestId('layers-panel').getByRole('radio', { name: '30 min' }).check({ force: true });
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
-  await page.locator('.view-btn[data-mode="top"]').click();
-  await page.getByRole('button', { name: 'Fly to the fire' }).click();
+  await pickViewMode(page, 'top');
+  await viewMenuAction(page, 'fly-fire');
   await expect(page.getByTestId('map-legend')).toContainText('arrival');
   await shot(page, '04-top-arrival');
 
   // ── Vertical cross-section through the plume, seen from the side ──
-  await page.getByTestId('tool-layers').click();
+  await pickTool(page, 'layers');
   await page.getByTestId('overlay-arrival').click(); // toggles the overlay off
   await expect(page.getByTestId('overlay-arrival')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('cross-section').click();
@@ -238,7 +240,7 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await page.getByTestId('cs-view').click();
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
   await shot(page, '05-cross-section');
-  await page.getByTestId('tool-layers').click();
+  await pickTool(page, 'layers');
   await page.getByTestId('cross-section').click();
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
 
@@ -274,23 +276,24 @@ test('real engine end to end: build → escarpment fire → play → insights �
     return best;
   });
   await flyTo(page, vantage[0], vantage[1], 1500);
-  await page.locator('.view-btn[data-mode="ground"]').click();
+  await pickViewMode(page, 'ground');
   await shot(page, '08-eye-level');
-  await page.locator('.view-btn[data-mode="orbit"]').click();
+  await pickViewMode(page, 'orbit');
 
-  // ── Rewind with the scrubber ──
+  // ── Jump back to 13:00 (1 h) in one step: the timeline can go to any time ──
   const before = await session(page);
-  await setScrubber(page, 3600);
+  await jumpWithPopover(page, 3600);
   await expect.poll(async () => (await session(page)).viewTime).toBe(3600);
+  await expect(page.locator('.tb-state')).toContainText('Replay');
   const rewound = await session(page);
   expect(rewound.area).toBeLessThan(before.area);
   // The stored snapshot of 1 h is shown (at1h was read at the first poll with the clock ≥ 1 h, so it can be later).
   expect(await page.evaluate(() => (window as unknown as { __firesim: { session: { state: { get(): { snapshot: { time: number } } } } } }).__firesim.session.state.get().snapshot.time)).toBe(3600);
   expect(rewound.area).toBeLessThanOrEqual(at1h.area + 0.01);
-  await expect(page.getByTestId('live')).toBeEnabled();
+  await expect(page.getByTestId('live')).toHaveCount(0); // there is no Live button: Play carries on from anywhere
 
   // ── A fuel brush edit (a fresh bulldozer line: no fuel) ahead of the fire, in the past → the worker rewinds ──
-  await page.getByTestId('tool-fuel').click();
+  await pickTool(page, 'fuel');
   await page.getByTestId('fuel-nofuel').click();
   await flyTo(page, ESCARPMENT[0] + 900, ESCARPMENT[1] - 500, 2500);
   await page.getByTestId('use-crosshair').click();
@@ -300,7 +303,7 @@ test('real engine end to end: build → escarpment fire → play → insights �
   expect((await session(page)).fuelEdits).toBe(1);
 
   // ── A spot fire ahead of the main fire ──
-  await page.getByTestId('tool-fire').click();
+  await pickTool(page, 'fire');
   await page.getByTestId('fire-origin').getByRole('radio', { name: 'Spot fire' }).check({ force: true });
   await flyTo(page, ESCARPMENT[0] + 1500, ESCARPMENT[1] - 1200, 2500);
   await page.getByTestId('use-crosshair').click();
@@ -310,18 +313,45 @@ test('real engine end to end: build → escarpment fire → play → insights �
   expect((await session(page)).ignitions).toEqual(['observed', 'spot']);
 
   // ── Play on from the edit: the re-run passes the old head and the fire keeps growing ──
-  const after = await playUntil(page, 7800);
+  const after = await playUntil(page, 7800, D);
   expect(after.area).toBeGreaterThan(rewound.area);
   await pause(page);
 
   // ── Undo the spot fire (a wrong mark): the worker re-runs from its time without it ──
-  await page.getByTestId('tool-fire').click();
+  await pickTool(page, 'fire');
   await page.getByTestId('fire-panel').getByTestId('remove-ignition').last().click();
   await expect(page.getByTestId('fire-panel')).not.toContainText('Spot fire ahead');
   expect((await session(page)).ignitions).toEqual(['observed']);
   await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
   await expect.poll(async () => (await session(page)).headTime, { timeout: 60_000 }).toBeGreaterThanOrEqual(7800);
 
+  // ── A jump far beyond the computed range: one tap on the timeline; its progress shows on the track (for the README) ──
+  const head0 = (await session(page)).headTime;
+  await pickViewMode(page, 'top');
+  await viewMenuAction(page, 'fly-fire');
+  await tapTimeline(page, D * 0.92);
+  await expect(page.getByTestId('seek-status')).toBeVisible();
+  await expect.poll(async () => (await session(page)).seekProgress, { timeout: 90_000 }).toBeGreaterThan(0.3);
+  await shot(page, '10-timeline-jump');
+  expect((await session(page)).seekTarget).not.toBeNull();
+  expect((await session(page)).playing).toBe(false); // the clock waits while the jump computes
+  // Cancel it part-way: the view stays where the computation had got to, and the session is still fully usable.
+  await page.getByTestId('seek-cancel').click();
+  const stopped = await session(page);
+  expect(stopped.seekTarget).toBeNull();
+  expect(stopped.playing).toBe(false);
+  expect(stopped.viewTime).toBeGreaterThan(head0);
+  expect(stopped.viewTime).toBeLessThan(D * 0.92);
+  // Then an exact jump: 16:00 (4 h), typed. It lands precisely there.
+  await jumpWithPopover(page, 4 * 3600);
+  const exact = await waitForSeekEnd(page, 150_000);
+  expect(exact.viewTime).toBe(4 * 3600);
+  expect(exact.playing).toBe(false);
+  expect(exact.area).toBeGreaterThan(after.area);
+  await expect(page.getByTestId('clock')).toHaveText(/16:00/);
+
+  // Nothing popped up over the simulation in all of this, and no card stopped playback.
+  expect(await popups(page)).toEqual([]);
   expect(fallbacks).toEqual([]);
   expect(errors).toEqual([]);
 });

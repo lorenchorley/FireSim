@@ -25,6 +25,8 @@ incidents, or a guarantee that anywhere is safe.
 | Setup: demo site, preset weather | Mark the fire with the crosshair | 3-D view of the running fire | Top view, arrival-time overlay |
 | ![Cross-section](docs/screenshots/05-cross-section.png) | ![Insights](docs/screenshots/06-insights.png) | ![Why here?](docs/screenshots/07-why-here.png) | ![Eye level](docs/screenshots/08-eye-level.png) |
 | Vertical cross-section (3-D atmosphere) | Insight cards | "Why here?" explanation | Eye level from a lookout |
+| ![Menus](docs/screenshots/09-menus-open.png) | ![Timeline jump](docs/screenshots/10-timeline-jump.png) | ![Speed](docs/screenshots/11-speed-popover.png) | |
+| The two round menus, expanded (tools, view) | A jump far ahead computing, with Cancel | Playback speed options | |
 
 The screenshots are produced by the end-to-end test (`e2e/app.spec.ts`) on a Pixel 7 profile with the real engine.
 
@@ -57,10 +59,15 @@ The screenshots are produced by the end-to-end test (`e2e/app.spec.ts`) on a Pix
   spread rate, intensity, spread driver, litter moisture, fuel load/type, time since fire, slope, aspect, sunlight,
   gullies, flame attachment, VLS, dead man zone, ember landings), wind particles (surface or through the plume),
   vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands.
-- **Time**: play at 1×–600× or as fast as the phone can, scrub back through the run, jump to "Live", **What if**
-  (fire–atmosphere feedback, embers, mountain phenomena on/off → re-run from now and compare).
-- **Field UX**: big targets, crosshair placement for gloves and wet screens, high-contrast day and night themes,
-  left/right-handed layout, vibration on danger cards, pause on the first danger of each kind, screen-reader labels.
+- **Time**: play at 0.25×–3600× (presets, a slider, or your own number), or as fast as the phone can; tap or drag the
+  timeline, or type a time, to jump to ANY moment of the scenario: back is instant, and a time not yet computed becomes a
+  fast-forward with its progress on the track (Cancel stops it, the view lands exactly on the time). Pictures are 60 s
+  apart by default and can be 10 s to 10 min (Settings or the clock menu), with the solver step configurable too.
+  **What if** (fire–atmosphere feedback, embers, mountain phenomena on/off → re-run from now and compare).
+- **Field UX**: the map is the star: two collapsed round menus (tools, view) and a slim tab dock, nothing ever pops up
+  over the simulation (new insight cards raise a badge on the Insights tab), big targets, crosshair placement for gloves
+  and wet screens, high-contrast day and night themes, left/right-handed layout, opt-in vibration and pause on the first
+  danger of each kind, screen-reader labels.
 
 ## The science
 
@@ -137,10 +144,15 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
 - `e2e/app.spec.ts` — the whole app with the **real modules**: safety notice → Katoomba demo (offline) → preset
   weather → build → mark a fire on the Megalong escarpment with the crosshair → play at maximum speed → the fire grows,
   grouped insight cards appear, "Why here?" explains, arrival overlay with its map legend, cross-section in the 3-D
-  atmosphere, eye level, rewind with the scrubber, a fuel brush edit and a spot fire in the past, undoing the spot
-  fire. Writes the screenshots in `docs/screenshots/`.
-- `e2e/sim.spec.ts` — the real engine in its Web Worker, compact.
-- `e2e/ui.spec.ts` — the UI on the mock engine (`?mock=1`), settings and the belt weather kit.
+  atmosphere, eye level, a jump back with the time menu, a fuel brush edit and a spot fire in the past, undoing the spot
+  fire, then a jump far beyond the computed range that is cancelled part-way and an exact jump. Checks that nothing
+  pops up over the simulation and playback never stops by itself. Writes the screenshots in `docs/screenshots/`.
+- `e2e/sim.spec.ts` — the real engine in its Web Worker: timeline jumps (forward beyond the computed range, cancel,
+  exact landing, a 10 s picture interval) and a whole scenario at maximum speed without a pop-up or a pause.
+- `e2e/ui.spec.ts` — the UI on the mock engine (`?mock=1`): the collapsed menus and dock, the speed options, the
+  timeline, the opt-in pause on Danger cards, settings and the belt weather kit.
+- `e2e/android.spec.ts` — the app under an emulated Capacitor Android runtime.
+- `e2e/helpers.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher).
 
 ## Try it on an Android phone
 

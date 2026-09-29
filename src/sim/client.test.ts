@@ -25,7 +25,7 @@ function waitFor(_c: SimController, pred: (snaps: SimSnapshot[], st: { time: num
 
 describe('LocalSimController (in-thread host)', () => {
   it('init → ready + t0 snapshot; run streams snapshots and status; explain; rewind re-runs without duplicates', async () => {
-    const c = new LocalSimController({ chunkMs: 15 });
+    const c = new LocalSimController({ chunkMs: 15, simulation: { minSnapshotWallMs: 0 } });
     const snaps: SimSnapshot[] = [];
     const st: { time: number; running: boolean }[] = [];
     const rewound: number[] = [];
@@ -39,7 +39,7 @@ describe('LocalSimController (in-thread host)', () => {
     c.on('rewound', (t) => rewound.push(t));
     const errors: string[] = [];
     c.on('error', (m) => errors.push(m));
-    const scenario = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], extent: 2400 });
+    const scenario = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], extent: 2400, options: { snapshotInterval: 300 } });
     const forecast = await c.init(scenario);
     expect(Array.isArray(forecast)).toBe(true);
     await waitFor(c, (s) => s.length >= 1, snaps, st);

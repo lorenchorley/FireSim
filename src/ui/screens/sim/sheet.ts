@@ -1,10 +1,12 @@
 /**
- * Draggable bottom sheet with three detents (peek / half / full) and tabs: Insights, Weather, Stats, Help.
- * The handle is also a button (tap cycles the detents) so nothing depends on a drag gesture.
+ * The bottom dock: a slim (44 px) row of four tab buttons — Insights (with an unseen-cards badge), Weather, Stats, Help —
+ * directly above the timeline. Collapsed by default; a tab opens the panel above the row at "peek", which can be dragged
+ * to half / full height or closed again (tap the same tab, the grip, or the map). Nothing here ever pops up on its own:
+ * new cards only change the badge. Taps work everywhere a drag does, so nothing depends on a gesture.
  */
 import type { Insight } from '../../../core/types';
 import { msToKmh } from '../../../core/units';
-import { h, listen, setChildren, text } from '../../dom';
+import { h, listen, prefersReducedMotion, setChildren, text } from '../../dom';
 import { icon } from '../../icons';
 import { GLOSSARY } from '../../content';
 import {
@@ -28,10 +30,11 @@ import { baselineAt } from '../../session';
 import { detectWindChanges, plumeRegime, ratingStyle } from '../../weatherCalc';
 import { sampleSeries } from '../../weatherSeries';
 import { BurnState } from '../../../core/types';
-import type { SheetDetent, SheetTab, SimContext } from './context';
+import type { SheetTab, SimContext } from './context';
 import { insightCard } from './insightCard';
 import { has3dAtmosphere } from './context';
-import { groupInsights, type InsightGroup } from '../../insightGroups';
+import { groupInsights, UnseenTracker, type InsightGroup } from '../../insightGroups';
+import { badgeText, detentHeights, DOCK_H, pressTab, snapDetent, tapHandle } from './layoutModel';
 import { chartHeight, drawWeatherChart, litterEstimate } from './weatherChart';
 
 const TABS: { id: SheetTab; label: string; icon: 'list' | 'chart' | 'stats' | 'help' }[] = [
@@ -41,36 +44,41 @@ const TABS: { id: SheetTab; label: string; icon: 'list' | 'chart' | 'stats' | 'h
   { id: 'help', label: 'Help', icon: 'help' },
 ];
 
-export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void): { el: HTMLElement; destroy(): void } {
+export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void): { el: HTMLElement; destroy(): void; targetHeight(): number } {
   const { session, ui } = ctx;
   const unsubs: (() => void)[] = [];
 
-  const handle = h(
-    'button',
-    { type: 'button', class: 'sheet-handle', dataset: { testid: 'sheet-handle' }, aria: { label: 'Resize panel' }, on: { click: () => cycle() } },
-    h('span', { class: 'sheet-grip' }),
-  );
-  const badge = h('span', { class: 'tab-badge', hidden: true });
+  // ── tab row (the collapsed dock) ──
+  const badge = h('span', { class: 'tab-badge', hidden: true, dataset: { testid: 'insights-badge' } });
   const tabBtns = TABS.map((t) =>
     h(
       'button',
       {
         type: 'button',
-        class: 'sheet-tab',
+        class: ['sheet-tab', t.id === 'insights' && 'has-badge'],
         id: `tab-${t.id}`,
         attrs: { role: 'tab', 'aria-controls': `panel-${t.id}` },
         dataset: { testid: `tab-${t.id}` },
-        on: {
-          click: () => {
-            const s = ui.get();
-            ui.set({ tab: t.id, sheet: s.sheet === 'peek' || s.tab !== t.id ? (s.sheet === 'full' ? 'full' : 'half') : s.sheet });
-          },
-        },
+        on: { click: () => ui.set(pressTab({ sheet: ui.get().sheet, tab: ui.get().tab }, t.id)) },
       },
-      [h('span', { class: 'tab-icon' }, [icon(t.icon, { size: 22 }), t.id === 'insights' ? badge : null]), h('span', { class: 'tab-label' }, t.label)],
+      [h('span', { class: 'tab-icon' }, icon(t.icon, { size: 20 })), h('span', { class: 'tab-label' }, t.label), t.id === 'insights' ? badge : null],
     ),
   );
-  const tabBar = h('div', { class: 'sheet-tabs', attrs: { role: 'tablist', 'aria-label': 'Panels' } }, tabBtns);
+  // The row is the handle: tapping its gaps opens / closes, dragging it resizes the panel.
+  const handle = h(
+    'div',
+    {
+      class: 'sheet-handle',
+      dataset: { testid: 'sheet-handle' },
+      attrs: { role: 'tablist', 'aria-label': 'Panels' },
+      on: { click: (e) => e.target === handle && ui.set({ sheet: tapHandle(ui.get().sheet) }) },
+    },
+    tabBtns,
+  );
+
+  // ── panel (above the row) ──
+  const grip = h('button', { type: 'button', class: 'sheet-grip-btn', dataset: { testid: 'sheet-grip' }, aria: { label: 'Close panel' }, on: { click: () => ui.set({ sheet: 'closed' }) } }, h('span', { class: 'sheet-grip' }));
+  const head = h('div', { class: 'sheet-head' }, grip);
   const panels: Record<SheetTab, HTMLElement> = {
     insights: h('div', { class: 'tab-panel', id: 'panel-insights', attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-insights' } }),
     weather: h('div', { class: 'tab-panel', id: 'panel-weather', attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-weather' } }),
@@ -78,86 +86,92 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     help: h('div', { class: 'tab-panel', id: 'panel-help', attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-help' } }),
   };
   const body = h('div', { class: 'sheet-body' }, Object.values(panels));
-  // One-line summary of the newest card, shown only in the peek detent (tap to expand).
-  const peekLine = h('button', { type: 'button', class: 'peek-line', dataset: { testid: 'peek-line' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half' }) } });
-  const el = h('section', { class: 'sheet', dataset: { testid: 'sheet' }, aria: { label: 'Insights, weather, statistics and help' } }, [handle, tabBar, peekLine, body]);
+  const sheet = h('section', { class: 'sheet', dataset: { testid: 'sheet' }, aria: { label: 'Insights, weather, statistics and help' } }, [head, body]);
+  const el = h('div', { class: 'dock', dataset: { testid: 'dock', detent: 'closed' } }, [sheet, handle]);
 
   // ───────────── detents & drag ─────────────
-  const detentHeight = (d: SheetDetent): number => {
+  /** Vertical room (px) between the top chrome and the timeline strip, for the dock's detents. */
+  const room = (): number => {
     const parent = el.parentElement;
-    const avail = parent ? parent.getBoundingClientRect().height : window.innerHeight;
-    const topbar = parent?.querySelector('.sim-topbar')?.getBoundingClientRect().bottom ?? 120;
-    const parentTop = parent?.getBoundingClientRect().top ?? 0;
-    const scrub = parent?.querySelector('.scrubber')?.getBoundingClientRect().height ?? 80;
-    const full = avail - (topbar - parentTop) - scrub - 8;
-    if (d === 'peek') return Math.min(full, compactPeek() ? PEEK_COMPACT : PEEK_FULL);
-    if (d === 'half') return Math.min(full, Math.round(avail * 0.48));
-    return full;
+    if (!parent) return window.innerHeight - 200;
+    const pr = parent.getBoundingClientRect();
+    let top = parent.querySelector('.sim-topbar')?.getBoundingClientRect().bottom ?? pr.top + 100;
+    const chip = parent.querySelector('.error-chip');
+    if (chip && !(chip as HTMLElement).hidden) top = Math.max(top, chip.getBoundingClientRect().bottom);
+    const scrubTop = parent.querySelector('.scrubber')?.getBoundingClientRect().top ?? pr.bottom - 84;
+    return Math.max(DOCK_H, scrubTop - top);
   };
-  // On shorter portrait phones the peek shows only the handle and the newest-insight line (the tabs appear once the
-  // sheet is expanded), leaving the map and the whole tool rail above it.
-  const compactPeek = (): boolean => window.innerHeight < 820 && window.innerHeight > window.innerWidth;
+  const heights = () => detentHeights(room());
+  const targetHeight = (): number => heights()[ui.get().sheet];
   const applyDetent = (): void => {
-    el.classList.toggle('peek-compact', compactPeek());
-    el.style.height = `${detentHeight(ui.get().sheet)}px`;
-    el.dataset.detent = ui.get().sheet;
-    handle.setAttribute('aria-label', ui.get().sheet === 'full' ? 'Collapse panel' : 'Expand panel');
+    const d = ui.get().sheet;
+    el.style.height = `${heights()[d]}px`;
+    el.dataset.detent = d;
+    grip.setAttribute('aria-label', 'Close panel');
   };
-  const cycle = (): void => {
-    const s = ui.get().sheet;
-    ui.set({ sheet: s === 'peek' ? 'half' : s === 'half' ? 'full' : 'peek' });
-  };
-  let drag: { y: number; h: number; moved: boolean } | null = null;
+  let drag: { y: number; h: number; moved: boolean; id: number; src: HTMLElement } | null = null;
+  let stopTracking: (() => void) | null = null;
   const onDown = (e: PointerEvent): void => {
-    if ((e.target as HTMLElement).closest('.sheet-tab')) return;
-    drag = { y: e.clientY, h: el.getBoundingClientRect().height, moved: false };
-    el.classList.add('dragging');
-    handle.setPointerCapture?.(e.pointerId);
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    drag = { y: e.clientY, h: el.getBoundingClientRect().height, moved: false, id: e.pointerId, src: e.currentTarget as HTMLElement };
+    // Follow the pointer on the window (a mouse leaves the small handle at once; touches are captured implicitly), and
+    // do not capture it explicitly: a plain tap must still reach the tab button under the finger.
+    stopTracking?.();
+    const offs = [listen(window, 'pointermove', onMove), listen(window, 'pointerup', onUp), listen(window, 'pointercancel', onUp)];
+    stopTracking = () => {
+      for (const o of offs) o();
+      stopTracking = null;
+    };
   };
   const onMove = (e: PointerEvent): void => {
-    if (!drag) return;
+    if (!drag || e.pointerId !== drag.id) return;
     const dy = e.clientY - drag.y;
-    if (Math.abs(dy) > 6) drag.moved = true;
-    if (drag.moved) el.style.height = `${Math.max(detentHeight('peek') - 20, Math.min(detentHeight('full'), drag.h - dy))}px`;
-  };
-  const onUp = (): void => {
-    if (!drag) return;
-    el.classList.remove('dragging');
-    if (drag.moved) {
-      const hNow = el.getBoundingClientRect().height;
-      const ds: SheetDetent[] = ['peek', 'half', 'full'];
-      const best = ds.reduce((a, b) => (Math.abs(detentHeight(b) - hNow) < Math.abs(detentHeight(a) - hNow) ? b : a));
-      ui.set({ sheet: best });
-      applyDetent();
-      // Swallow the click that follows a drag on the handle.
-      const stop = (ev: Event): void => ev.stopPropagation();
-      handle.addEventListener('click', stop, { capture: true, once: true });
-      setTimeout(() => handle.removeEventListener('click', stop, { capture: true }), 50);
+    if (!drag.moved && Math.abs(dy) > 8) {
+      drag.moved = true;
+      el.classList.add('dragging');
+      el.parentElement?.classList.add('dragging-dock');
     }
+    if (drag.moved) el.style.height = `${Math.max(DOCK_H, Math.min(heights().full, drag.h - dy))}px`;
+  };
+  const onUp = (e: PointerEvent): void => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
     drag = null;
+    stopTracking?.();
+    el.classList.remove('dragging');
+    el.parentElement?.classList.remove('dragging-dock');
+    if (!d.moved) return;
+    const next = e.type === 'pointercancel' ? ui.get().sheet : snapDetent(el.getBoundingClientRect().height, heights());
+    ui.set({ sheet: next });
+    applyDetent();
+    // Swallow the click that follows a drag.
+    const stop = (ev: Event): void => ev.stopPropagation();
+    d.src.addEventListener('click', stop, { capture: true, once: true });
+    setTimeout(() => d.src.removeEventListener('click', stop, { capture: true }), 60);
   };
   handle.addEventListener('pointerdown', onDown);
-  handle.addEventListener('pointermove', onMove);
-  handle.addEventListener('pointerup', onUp);
-  handle.addEventListener('pointercancel', onUp);
+  head.addEventListener('pointerdown', onDown);
   unsubs.push(listen(window, 'resize', applyDetent));
 
   // ───────────── tabs ─────────────
   const renderTabs = (): void => {
     const s = ui.get();
+    const open = s.sheet !== 'closed';
     for (const b of tabBtns) {
-      const on = b.id === `tab-${s.tab}`;
+      const on = open && b.id === `tab-${s.tab}`;
       b.setAttribute('aria-selected', String(on));
-      b.tabIndex = on ? 0 : -1;
+      b.setAttribute('aria-expanded', String(on));
+      b.tabIndex = b.id === `tab-${s.tab}` ? 0 : -1;
     }
     for (const [id, p] of Object.entries(panels)) p.hidden = id !== s.tab;
     el.hidden = s.panelOpen;
     el.parentElement?.classList.toggle('sheet-full', s.sheet === 'full' && !s.panelOpen);
-    el.parentElement?.classList.toggle('sheet-open', s.sheet !== 'peek' && !s.panelOpen);
+    el.parentElement?.classList.toggle('sheet-open', open && !s.panelOpen);
     applyDetent();
+    renderBadge();
     renderActive();
   };
-  tabBar.addEventListener('keydown', (e) => {
+  handle.addEventListener('keydown', (e) => {
     const i = TABS.findIndex((t) => t.id === ui.get().tab);
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const n = (i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
@@ -166,16 +180,52 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     }
   });
 
+  // ───────────── the unseen-cards badge ─────────────
+  // New cards never interrupt: they only raise this number (red, with one short pulse, when one is a Danger card).
+  const unseen = new UnseenTracker();
+  const insightsShown = (): boolean => {
+    const s = ui.get();
+    return s.sheet !== 'closed' && s.tab === 'insights' && !s.panelOpen;
+  };
+  let lastDanger = 0;
+  let badgeKey = '';
+  const renderBadge = (): void => {
+    if (insightsShown()) unseen.markSeen();
+    const vt = session.state.get().viewTime;
+    const n = unseen.count(vt);
+    const d = unseen.dangerCount(vt);
+    const key = `${n}|${d}`;
+    if (key === badgeKey) return;
+    badgeKey = key;
+    badge.hidden = n === 0;
+    text(badge, badgeText(n));
+    badge.classList.toggle('is-danger', d > 0);
+    tabBtns[0]!.setAttribute('aria-label', n === 0 ? 'Insights' : `Insights, ${n} new${d > 0 ? `, ${d} of them danger` : ''}`);
+    if (d > lastDanger && !prefersReducedMotion()) {
+      badge.classList.remove('pulse');
+      void badge.offsetWidth; // restart the one-shot animation
+      badge.classList.add('pulse');
+    }
+    lastDanger = d;
+  };
+  badge.addEventListener('animationend', () => badge.classList.remove('pulse'));
+  unsubs.push(
+    session.events.on('reveal', (i) => {
+      if (!insightsShown()) unseen.add(i);
+      renderBadge();
+    }),
+    session.controller.on('rewound', (t) => {
+      unseen.reset(t);
+      renderBadge();
+    }),
+  );
+
   // ───────────── Insights ─────────────
   let lastInsightKey = '';
   const renderInsights = (): void => {
     const s = session.state.get();
     const list = session.visibleInsights(s);
-    const key = `${list.map((i) => i.id).join('|')}|${s.compare ? Math.round(s.viewTime / 300) : ''}`;
-    const n = groupInsights(list.filter((i) => !s.forecastInsights.includes(i))).length;
-    badge.hidden = n === 0;
-    text(badge, String(n));
-    renderPeek(list);
+    const key = `${list.map((i) => i.id).join('|')}|${s.compare ? Math.round(s.viewTime / 300) : ''}|${s.error ?? ''}`;
     if (key === lastInsightKey) return;
     lastInsightKey = key;
     const forecast = new Set(s.forecastInsights);
@@ -183,6 +233,16 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const b = compare ? baselineAt(compare, s.viewTime) : null;
     const cur = s.snapshot?.stats;
     setChildren(panels.insights, [
+      s.error
+        ? h('div', { class: 'callout callout-danger sim-error', attrs: { role: 'alert' }, dataset: { testid: 'sim-error' } }, [
+            icon('warning'),
+            h('div', null, [
+              h('strong', null, 'The simulation stopped with a problem'),
+              h('p', null, s.error),
+              h('p', { class: 'hint' }, 'The view keeps what was already computed. Go back with the menu (top left) and start a new scenario, or try Play again.'),
+            ]),
+          ])
+        : null,
       compare
         ? h('div', { class: 'callout callout-info compare' }, [
             icon('whatif'),
@@ -236,23 +296,6 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       ),
     ]);
   };
-  let peekKey = '';
-  const renderPeek = (list: Insight[]): void => {
-    const s = session.state.get();
-    const newest = list.find((i) => !s.forecastInsights.includes(i)) ?? list[0];
-    const key = newest ? newest.id : '';
-    if (key === peekKey) return;
-    peekKey = key;
-    peekLine.className = `peek-line ${newest ? `sev-${newest.severity}` : ''}`;
-    setChildren(
-      peekLine,
-      newest
-        ? [icon(newest.severity === 'danger' ? 'danger' : newest.severity === 'watch' ? 'warning' : 'info', { size: 22 }), h('span', { class: 'peek-title' }, newest.title), h('span', { class: 'peek-time' }, formatClock(ctx.absTime(newest.time), ctx.tz))]
-        : [icon('flame', { size: 22 }), h('span', { class: 'peek-title muted' }, 'Mark a fire, then press Play')],
-    );
-    peekLine.setAttribute('aria-label', newest ? `Latest insight: ${newest.title}. Open insights.` : 'No insights yet. Open insights.');
-  };
-
   // ───────────── Weather ─────────────
   const canvas = h('canvas', { class: 'weather-canvas', attrs: { role: 'img', 'aria-label': 'Weather timeline: wind, temperature, humidity and litter moisture' } });
   const wxSummary = h('div', { class: 'wx-summary' });
@@ -392,9 +435,11 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     h('div', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Training aid only — not an operational prediction. Follow your IC, your Crew Leader and NSW RFS procedures. LACES first.')]),
     h('h3', { class: 'sub-title' }, 'How to use'),
     h('ol', { class: 'howto' }, [
+      h('li', null, [h('strong', null, 'Tools: '), 'the round button by the screen edge opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything.']),
       h('li', null, [h('strong', null, 'Fire: '), 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.']),
-      h('li', null, [h('strong', null, 'Play: '), 'choose a speed; drag the timeline back to replay, “Live” to return.']),
-      h('li', null, [h('strong', null, 'Why here?: '), 'tap anywhere to see what drives the fire at that spot.']),
+      h('li', null, [h('strong', null, 'Play: '), 'press Play and pick a speed; drag or tap the timeline to jump to any time.']),
+      h('li', null, [h('strong', null, 'View: '), 'the round button on the other side turns, zooms and flies the camera.']),
+      h('li', null, [h('strong', null, 'Insights: '), 'new cards never pop up; a number on the Insights tab tells you how many are waiting.']),
       h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see — more litter, a road, the wind here.']),
       h('li', null, [h('strong', null, 'Layers / What if: '), 'colour the map by arrival time, slope, moisture…; switch physics on/off and compare.']),
     ]),
@@ -407,8 +452,8 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   ]);
 
   const renderActive = (): void => {
-    const tab = ui.get().tab;
-    if (el.hidden) return;
+    const { tab, sheet } = ui.get();
+    if (el.hidden || sheet === 'closed') return; // nothing to draw while the dock is collapsed
     if (tab === 'insights') renderInsights();
     else if (tab === 'weather') renderWeather();
     else if (tab === 'stats') renderStats();
@@ -419,28 +464,36 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     if (pending) return;
     pending = window.setTimeout(() => {
       pending = 0;
+      renderBadge();
       renderActive();
-      if (ui.get().tab !== 'insights') renderInsights();
     }, 250);
   };
-  unsubs.push(session.state.subscribe(schedule, ['viewTime', 'snapshot', 'insights', 'forecastInsights', 'compare', 'workerSpeed']));
+  unsubs.push(session.state.subscribe(schedule, ['viewTime', 'snapshot', 'insights', 'forecastInsights', 'compare', 'workerSpeed', 'error']));
   unsubs.push(ui.subscribe(renderTabs, ['tab', 'sheet', 'panelOpen']));
   unsubs.push(ctx.settings.subscribe(renderActive, ['units', 'theme']));
-  requestAnimationFrame(renderTabs);
+  // Re-fit the detent heights when the chrome above or below the dock changes size (top bar, timeline, error chip, rotation).
+  let chromeRo: ResizeObserver | null = null;
+  requestAnimationFrame(() => {
+    const parent = el.parentElement;
+    if (parent && typeof ResizeObserver === 'function') {
+      chromeRo = new ResizeObserver(() => applyDetent());
+      for (const t of [parent, ...parent.querySelectorAll('.sim-topbar, .scrubber, .error-chip')]) chromeRo.observe(t);
+    }
+    renderTabs();
+  });
   renderInsights();
 
   return {
     el,
+    targetHeight,
     destroy() {
       for (const u of unsubs) u();
+      stopTracking?.();
+      chromeRo?.disconnect();
       clearTimeout(pending);
     },
   };
 }
-
-/** Peek detent heights (px): handle + tabs + newest-insight line, or handle + line on short screens. */
-const PEEK_FULL = 158;
-const PEEK_COMPACT = 96;
 
 function stat(label: string, value: string): HTMLElement {
   return h('div', { class: 'wx-stat' }, [h('span', { class: 'wx-stat-label' }, label), h('span', { class: 'wx-stat-value' }, value)]);

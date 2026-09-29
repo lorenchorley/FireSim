@@ -9,6 +9,9 @@
  *   (`schedule`, a MessageChannel post-to-self in the worker), so pause / explain / edit / setOption / setQuality
  *   are handled between chunks. Snapshots stream out as they are produced; 'status' reports progress (time, running,
  *   simulated seconds per wall second) at most every `statusIntervalMs` and whenever running starts or stops.
+ * - When a run completes or is paused the host asks the simulation for a run-end snapshot (exactly the time reached, if
+ *   the newest one is older), so the UI can stop a timeline jump exactly there. Cadence snapshots are coalesced to at
+ *   most ~25 per wall second (SIM_PARAMS.snapshotMinWallMs; `simulation.minSnapshotWallMs` overrides, 0 = never skip).
  * - `rewind(time)` restores the latest checkpoint ≤ time, posts 'rewound' and re-runs to `time` (no duplicate
  *   snapshots); edits / ignitions in the past do the same.
  * - Every handler is guarded: an exception becomes an 'error' message and stops the run.
@@ -111,6 +114,8 @@ export class SimHost {
         return;
       case 'pause':
         this.running = false;
+        // Idle now: make sure the UI holds a picture of exactly the time reached.
+        this.sim?.emitRunEnd();
         if (this.sim) this.status(true);
         return;
       default:
@@ -168,6 +173,7 @@ export class SimHost {
     this.queue = [];
     this.sim = null;
     const sim = new Simulation(scenario, {
+      minSnapshotWallMs: SIM_PARAMS.snapshotMinWallMs,
       ...(this.o.simulation ?? {}),
       clock: this.clock,
       hooks: {
@@ -219,6 +225,7 @@ export class SimHost {
     if (!active) {
       if (this.running && sim.time >= Math.min(this.until, sim.duration) - 1e-6) {
         this.running = false;
+        sim.emitRunEnd();
         this.status(true);
       }
       return;
@@ -230,6 +237,7 @@ export class SimHost {
     this.speed = this.speed > 0 ? 0.7 * this.speed + 0.3 * sp : sp;
     if (reached && sim.time >= Math.min(this.until, sim.duration) - 1e-6 && sim.time >= sim.logicalNow - 1e-6) {
       this.running = false;
+      sim.emitRunEnd();
       this.status(true);
       return;
     }
@@ -244,7 +252,7 @@ export class SimHost {
     if (!force && now - this.lastStatus < SIM_PARAMS.statusIntervalMs) return;
     this.lastStatus = now;
     const replaying = sim.time < sim.logicalNow - 1e-6;
-    this.port.post({ type: 'status', time: sim.time, running: this.running || replaying, speed: this.speed });
+    this.port.post({ type: 'status', time: sim.time, running: this.running || replaying, speed: this.speed, until: this.until });
   }
 
   private fail(e: unknown): void {
