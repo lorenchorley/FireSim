@@ -209,6 +209,26 @@ describe('SnapshotStore after a rewind', () => {
     expect(st.at(500)!.fire.arrivalTime[50]).toBe(Infinity);
     expect(Array.from(st.at(500)!.fire.arrivalTime)).toEqual(before);
   });
+
+  it('shows the re-run\'s moisture / layers / atmosphere straight after a rewind, not a keyframe of the old run', () => {
+    // 20 min of the old run: keyframes at 0, 300, 600, 900 (the newest snapshot, 1200, is whole and not yet demoted).
+    const st = filled(1200, 60, { moisture: new Float32Array(N).fill(1) });
+    expect(st.keyframeTimes()).toEqual([0, 300, 600, 900]);
+    // A rewind to 700 (an atmosphere tier change, an edit): the worker re-runs from there with different data (moisture 2).
+    st.truncateAfter(700);
+    for (let t = 720; t <= 1020; t += 60) st.push(snap(t, { moisture: new Float32Array(N).fill(2) }));
+    // The first re-run picture became a keyframe at once, although the last old one (600) is less than 300 s older.
+    expect(st.keyframeTimes()).toEqual([0, 300, 600, 720]);
+    // A time inside the re-run shows the new data (before the fix it came from the old keyframe at 600 until 900).
+    expect(st.at(780)!.moisture![0]).toBe(2);
+    expect(st.at(1000)!.moisture![0]).toBe(2);
+    // The kept part of the old run is untouched.
+    expect(st.at(650)!.moisture![0]).toBe(1);
+    expect(st.at(300)!.moisture![0]).toBe(1);
+    // Later keyframes keep their usual spacing.
+    for (let t = 1080; t <= 1500; t += 60) st.push(snap(t, { moisture: new Float32Array(N).fill(2) }));
+    expect(st.keyframeTimes()).toEqual([0, 300, 600, 720, 1020, 1320]);
+  });
 });
 
 describe('SnapshotStore spot fires', () => {

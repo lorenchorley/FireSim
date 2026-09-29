@@ -109,6 +109,12 @@ export class SnapshotStore {
   private step: number;
   private keyEvery: number;
   private keyBase: number;
+  /**
+   * History was just cut (a rewind: an edit, a what-if, an atmosphere tier change): the next snapshot to be demoted
+   * becomes a keyframe whatever the spacing, so the moisture, layers and atmosphere shown for the times just re-run come
+   * from the new run and not from a keyframe of the old one that is up to a whole key interval earlier.
+   */
+  private keyDue = false;
   readonly maxBytes: number;
 
   constructor(opts: SnapshotStoreOptions = {}) {
@@ -353,7 +359,8 @@ export class SnapshotStore {
       this.embBytes += bytes;
     }
     const lastKey = this.keys[this.keys.length - 1];
-    if (!lastKey || h.time - lastKey.time >= this.keyEvery - EPS) {
+    if (!lastKey || this.keyDue || h.time - lastKey.time >= this.keyEvery - EPS) {
+      this.keyDue = false;
       const k: Keyframe = { time: h.time, moisture: h.moisture, atmosphere: h.atmosphere, layers: h.layers, bytes: keyframeBytes(h) };
       this.keys.push(k);
       this.keyBytes += k.bytes;
@@ -381,6 +388,7 @@ export class SnapshotStore {
       changed = true;
     }
     while (this.keys.length && pred(this.keys[this.keys.length - 1]!.time)) this.keyBytes -= this.keys.pop()!.bytes;
+    if (changed) this.keyDue = true;
     while (this.embs.length && pred(this.embs[this.embs.length - 1]!.time)) this.embBytes -= this.embs.pop()!.bytes;
     if (this.head && pred(this.head.time)) {
       // The newest snapshot is gone but its fire arrays stay valid for every time up to the truncation point.

@@ -262,7 +262,8 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   reference; the burn state comes from one per-cell burn-out time noted when a cell is first seen burnt out), so
   scrubbing shows the exact front at any time whatever the cadence, and after a rewind the re-simulated newest arrays are
   authoritative for earlier times too. Moisture, overlay rasters and the atmosphere view are kept at *keyframes* (every
-  300 s, or the display step if larger); every step keeps a light frame (time, stats, spot-fire count into one shared
+  300 s, or the display step if larger, plus one at once for the first picture after history was cut — a rewind, an edit,
+  an atmosphere tier change — so the re-run's data shows immediately and not the old run's up to 300 s later); every step keeps a light frame (time, stats, spot-fire count into one shared
   log) and its embers. `at(t)` returns the real newest snapshot at or after its time, else a composition (keyframe +
   light frame + rebuilt fire) for exactly t; `at(t, quantum)` rounds t down to a *quantum* and the same object comes
   back within it (`atOrBefore` uses min(display step, 30 s)). While playing the session uses `playQuantum(speed)` =

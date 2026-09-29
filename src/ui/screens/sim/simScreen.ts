@@ -269,11 +269,26 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     root.style.setProperty('--map-top', `${Math.round(top)}px`);
     let colL = left;
     let colR = host.width - right;
+    // In a side-column layout (landscape) the closed dock is a slim tab strip beside the round buttons: an open list must
+    // clear it instead of covering its tabs.
+    const dockR = sheet.el.hidden ? null : sheet.el.getBoundingClientRect();
+    const slimDock = !!dockR && dockR.width > 0 && dockR.width < host.width * 0.6 && dockR.height < host.height * 0.4 ? dockR : null;
     for (const m of [viewMenu, toolsMenu]) {
       const r = m.fab.getBoundingClientRect();
       if (!r.width || getComputedStyle(m.el).display === 'none') continue;
       const onLeft = r.left + r.width / 2 < host.left + host.width / 2;
-      m.fit(r.bottom - host.top - top - 4, onLeft ? host.right - r.right - 16 : r.left - host.left - 16);
+      const availH = r.bottom - host.top - top - 4;
+      const availW = onLeft ? host.right - r.right - 16 : r.left - host.left - 16;
+      m.fit(availH, availW);
+      m.list.style.bottom = '';
+      if (slimDock && m.isOpen()) {
+        const lr = m.list.getBoundingClientRect();
+        if (lr.width > 0 && lr.right > slimDock.left && lr.left < slimDock.right && lr.bottom > slimDock.top) {
+          const lift = Math.round(lr.bottom - slimDock.top + 6);
+          m.list.style.bottom = `${lift}px`;
+          m.fit(availH - lift, availW);
+        }
+      }
       if (onLeft) colL = Math.max(colL, r.right - host.left);
       else colR = Math.min(colR, r.left - host.left);
     }
@@ -303,6 +318,14 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     },
     ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool', 'menu']),
     session.state.subscribe(scheduleInsets, ['error']),
+    // Portrait: a menu list rises above an open dock. Landscape: the dock is a panel beside the round buttons, right where
+    // the lists open, so opening a menu puts the dock away (one tap on a tab brings it back).
+    ui.subscribe((s) => {
+      if (!s.menu || s.sheet === 'closed') return;
+      const host = sceneHost.getBoundingClientRect();
+      const dockW = sheet.el.getBoundingClientRect().width;
+      if (host.width && dockW > 0 && dockW < host.width * 0.6) ui.set({ sheet: 'closed' });
+    }, ['menu']),
   );
   scheduleInsets();
 
