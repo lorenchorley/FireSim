@@ -172,6 +172,15 @@ export const SCENARIO_PARAMS = Object.freeze({
   hotspotsMaxFeatures: 500,
   /** Grid of the canopy stored in an area pack (m). [H] */
   packCanopyCellM: 20,
+  /**
+   * Places context (roads, fire trails, homes, zones, place names; scenario/context.ts). A cached live result is used
+   * without asking the services again for this many days [D, spec brief]; an older one is used only when the services
+   * cannot be reached. The live query stops waiting after `contextLiveTimeoutMs` and keeps the layers that have arrived
+   * (measured 2026-09-29: the zoning server needs 10-20 s for a 6 km area, the others 1-3 s); the build carries on with
+   * a warning naming what is missing. [H]
+   */
+  contextFreshDays: 7,
+  contextLiveTimeoutMs: 45_000,
   /** The slow remote canopy (CHM COG) path is tried only for extents up to this (m) (data/ MAX_REMOTE_CANOPY_EXTENT). [D] */
   remoteCanopyMaxExtentM: 3000,
 });

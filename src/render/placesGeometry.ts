@@ -14,6 +14,13 @@ export interface Bounds {
   yMax: number;
 }
 
+/** True when two projection origins are within `tolM` metres (context coordinates are only valid about their own origin). */
+export function sameOrigin(a: { lat: number; lon: number }, b: { lat: number; lon: number }, tolM = 20): boolean {
+  const dy = (a.lat - b.lat) * 111320;
+  const dx = (a.lon - b.lon) * 111320 * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
+  return Math.hypot(dx, dy) <= tolM;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles (colours are sRGB hex "as seen in daylight"; the shaders dim them with the scene light at night)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,13 +82,13 @@ const road = (fill: string, casing: string, minFillPx: number, casingM: number, 
 
 /** Zone fill (sRGB 0–1 + opacity) and the darker outline colour per zone kind. */
 export const ZONE_PAINT: Record<ZoneKind, { rgb: [number, number, number]; alpha: number; edge: string }> = {
-  residential: { rgb: [0.96, 0.62, 0.15], alpha: 0.46, edge: '#d97a00' },
-  village: { rgb: [0.98, 0.78, 0.36], alpha: 0.42, edge: '#d6a020' },
-  envLiving: { rgb: [0.62, 0.72, 0.22], alpha: 0.3, edge: '#7f9a1a' },
-  ruralSmall: { rgb: [0.94, 0.88, 0.32], alpha: 0.34, edge: '#c2b420' },
-  commercial: { rgb: [0.42, 0.62, 0.86], alpha: 0.5, edge: '#3a6ea8' },
-  industrial: { rgb: [0.62, 0.62, 0.64], alpha: 0.5, edge: '#6a6a70' },
-  tourist: { rgb: [0.66, 0.42, 0.88], alpha: 0.5, edge: '#7a45b0' },
+  residential: { rgb: [0.96, 0.62, 0.15], alpha: 0.36, edge: '#c86400' },
+  village: { rgb: [0.98, 0.78, 0.36], alpha: 0.34, edge: '#c48a10' },
+  envLiving: { rgb: [0.62, 0.72, 0.22], alpha: 0.26, edge: '#6f8a10' },
+  ruralSmall: { rgb: [0.94, 0.88, 0.32], alpha: 0.28, edge: '#a89a10' },
+  commercial: { rgb: [0.42, 0.62, 0.86], alpha: 0.42, edge: '#2d5f9c' },
+  industrial: { rgb: [0.62, 0.62, 0.64], alpha: 0.42, edge: '#55555c' },
+  tourist: { rgb: [0.66, 0.42, 0.88], alpha: 0.42, edge: '#6b34a4' },
 };
 
 /** All ribbon styles, indexed by style id (uploaded as shader uniform arrays). */
@@ -97,10 +104,11 @@ export const STYLES: RibbonStyle[] = [
   road('#22190f', '#f6f1e4', 1.5, 0.2, 0.7, 0.42, 7), // path (dark dots)
   // Fire trail: a colour that appears nowhere else in the scene (hot magenta), bold, white halo, always dashed.
   road('#ff2a9d', '#ffffff', 3.6, 0.7, 1.5, 0.66, 16),
-  ...ZONE_KINDS.map((k) => road(ZONE_PAINT[k].edge, '#ffffff', 1.3, 0.15, 0.55, 1, 9)),
+  // Zone outlines: thin, in the zone's own darker colour (no white casing, so they are never mistaken for roads).
+  ...ZONE_KINDS.map((k) => road(ZONE_PAINT[k].edge, ZONE_PAINT[k].edge, 1.2, 0.1, 0.3, 1, 9)),
 ];
 // Zone outlines are translucent so they never shout over the fire or the photo.
-for (let i = ZONE_STYLE_BASE; i < STYLE_COUNT; i++) STYLES[i]!.alpha = 0.85;
+for (let i = ZONE_STYLE_BASE; i < STYLE_COUNT; i++) STYLES[i]!.alpha = 0.8;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Polylines: clipping, resampling, ribbons

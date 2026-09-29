@@ -3,7 +3,7 @@
  *
  * One WebGL2 renderer, ~10–20 draw calls in a typical frame:
  *   sky dome · terrain + skirt (one material compositing imagery/palette, lighting, fire, overlays, decals) ·
- *   5 instanced vegetation groups (+ ≤ 2 near-LOD meshes in low views) · flames · embers (points + trails) ·
+ *   instanced canopy (10 species groups × 3 levels of detail, ≤ 250 k triangles) · flames · embers (points + trails) ·
  *   wind streaks · smoke puffs · cross-section curtain + arrows (+ halo) · icons.
  * Rendering is on demand: the loop only draws when the camera moves, data changes or something is animating
  * (flames, embers, wind, pulses, playback), capped at 30 fps for pure playback and 60 fps while interacting.
@@ -39,12 +39,14 @@ import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
 import { AdaptiveDpr, FrameMeter } from './perf';
+import { sameOrigin } from './placesGeometry';
+import { PlacesLayer } from './placesLayer';
 import { skyLighting } from './sky';
 import { SkyDome } from './skyDome';
 import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
-import { VegetationLayer } from './vegetationLayer';
-import { placeVegetation, type PlacementCache } from './vegetationPlacement';
+import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
+import type { PlacementCache } from './vegetationPlacement';
 import { WindArrows, WindLayer, type WindDomain } from './windLayer';
 
 export type RenderQuality = 'low' | 'medium' | 'high';
@@ -69,13 +71,13 @@ export interface SceneViewOptions {
 }
 
 /**
- * Quality tiers. Triangle budget (doc 09 §8.1: ≤ 1–1.5 M): terrain 2·mesh² + vegetation ≈ 30 triangles per tree,
- * 16 per shrub; distant/tiny instances are culled in the vertex shader so the rasterised count is far lower.
+ * Quality tiers. Triangle budget (doc 09 §8.1: ≤ 1–1.5 M): terrain 2·mesh² + the canopy, which is planned to at most
+ * 250 k triangles (high) / 170 k (medium) / 100 k (low) over three levels of detail (see CANOPY_BUDGETS in vegetationLayer.ts).
  */
-const QUALITY: Record<RenderQuality, { mesh: number; veg: number; dpr: number; lod: number }> = {
-  low: { mesh: 224, veg: 16000, dpr: 1.25, lod: 700 },
-  medium: { mesh: 320, veg: 32000, dpr: 1.75, lod: 1500 },
-  high: { mesh: 400, veg: 48000, dpr: 2, lod: 2500 },
+const QUALITY: Record<RenderQuality, { mesh: number; veg: number; dpr: number; canopy: keyof typeof CANOPY_BUDGETS }> = {
+  low: { mesh: 224, veg: 16000, dpr: 1.25, canopy: 'low' },
+  medium: { mesh: 320, veg: 32000, dpr: 1.75, canopy: 'medium' },
+  high: { mesh: 400, veg: 48000, dpr: 2, canopy: 'high' },
 };
 
 function guessQuality(): RenderQuality {
@@ -98,7 +100,7 @@ function coversDomain(fine: GridSpec, coarse: GridSpec): boolean {
 
 const FIRE_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver']);
 /** Overlays whose values change with every snapshot. */
-const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation']);
+const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation', 'windSpeed']);
 
 export class SceneView implements SceneViewApi {
   private readonly container: HTMLElement;
@@ -118,6 +120,8 @@ export class SceneView implements SceneViewApi {
   private readonly icons: IconLayer;
   private terrainLayer: TerrainLayer | null = null;
   private vegetation: VegetationLayer | null = null;
+  /** Roads, fire trails, homes, zones and names (built from {@link setContext}). */
+  private placesLayer: PlacesLayer | null = null;
 
   private terrain: Terrain | null = null;
   private fuel: FuelMap | null = null;
@@ -173,7 +177,9 @@ export class SceneView implements SceneViewApi {
   private readonly meter = new FrameMeter();
   private readonly dpr: AdaptiveDpr;
   private readonly lastCam = new THREE.Vector3(Infinity, 0, 0);
+  private viewInsets: { top?: number; right?: number; bottom?: number; left?: number } = {};
   private readonly tmpO = new THREE.Vector3();
+  private readonly tmpSize = new THREE.Vector2();
   private readonly tmpD = new THREE.Vector3();
   private readonly lastTarget = new THREE.Vector3();
   private vegFocus: [number, number] | null = null;
@@ -278,11 +284,21 @@ export class SceneView implements SceneViewApi {
   // Scenario
   // ───────────────────────────────────────────────────────────────────────────
 
-  setScenario(terrain: Terrain, fuel: FuelMap, opts: { imagery?: SceneImagery | null; hiRes?: { grid: GridSpec; elevation: Float32Array } | null } = {}): void {
+  setScenario(terrain: Terrain, fuel: FuelMap, opts: { imagery?: SceneImagery | null; hiRes?: { grid: GridSpec; elevation: Float32Array } | null; context?: ContextLayers | null } = {}): void {
+    // The places layer feeds the terrain (zone tint) and shares its uniforms: dispose it before the terrain.
+    this.placesLayer?.dispose();
+    if (this.placesLayer) this.scene.remove(this.placesLayer.group);
+    this.placesLayer = null;
+    if (opts.context !== undefined) this.contextLayers = opts.context;
     this.terrainLayer?.dispose();
     this.vegetation?.dispose();
     if (this.terrainLayer) this.scene.remove(this.terrainLayer.group);
     if (this.vegetation) this.scene.remove(this.vegetation.group);
+    // Context coordinates are only valid about their own projection origin: never draw another site's roads here.
+    if (this.contextLayers && !sameOrigin(this.contextLayers.projectionOrigin, terrain.grid.origin)) {
+      console.warn('SceneView: the places context belongs to another projection origin and is ignored for this scenario');
+      this.contextLayers = null;
+    }
     this.terrain = terrain;
     this.fuel = fuel;
     this.vegCache = {};
@@ -318,12 +334,20 @@ export class SceneView implements SceneViewApi {
     this.scene.add(tl.group);
 
     this.vegetation = new VegetationLayer(tl.uniforms);
-    // Near LOD: detailed trees for the closest few thousand (≈ 180 triangles each), within 280 m of the camera.
-    this.vegetation.lodMax = this.quality.lod;
+    // Three levels of detail within a triangle budget per quality tier (see CANOPY_BUDGETS).
+    this.vegetation.setBudget(CANOPY_BUDGETS[this.quality.canopy]);
+    this.vegetation.staged = true; // placement, planning and buffer building take one frame each (no hitch)
+    this.vegetation.setLayers(this.layers);
     this.scene.add(this.vegetation.group);
+    this.placesLayer = new PlacesLayer(tl.uniforms, hf, tl);
+    this.scene.add(this.placesLayer.group);
+    this.placesLayer.setLayers(this.layers);
+    this.placesLayer.setInsets(this.viewInsets);
+    this.placesLayer.setContext(this.contextLayers);
     this.rig.setHeightField(hf);
     this.rig.home(false);
     this.placeVegetation(true);
+    this.vegetation.pump(Infinity); // the first placement is finished before the scenario is shown
 
     this.flames.setSites([], () => 0);
     this.embers.setParticles({ count: 0, data: new Float32Array(0) }, true);
@@ -354,27 +378,63 @@ export class SceneView implements SceneViewApi {
     if (!force && this.vegFocus && Math.hypot(focus[0] - this.vegFocus[0], focus[1] - this.vegFocus[1]) < Math.max(250, radius * 0.4) && Math.abs(radius - this.vegRadius) < radius * 0.35) return;
     this.vegFocus = focus;
     this.vegRadius = radius;
-    const overlayOn = this.layers.overlay !== 'none';
+    // Placement runs a few ms per frame (VegetationLayer.pump in the render loop); the current trees stay until it is done.
     const hf = this.hf;
-    const sets = placeVegetation(this.fuel, {
-      budget: this.opts.vegetationBudget ?? this.quality.veg,
-      heightAt: (x, y) => hf.heightAt(x, y),
-      focus,
-      focusRadius: radius,
-      densityScale: overlayOn ? 0.4 : 1,
-      seed: 7,
-      cache: this.vegCache,
-    });
-    this.vegetation.setInstances(sets);
+    const vex = this.vegCamera();
+    this.vegetation.startPlacement(
+      this.fuel,
+      {
+        budget: this.opts.vegetationBudget ?? this.quality.veg,
+        heightAt: (x, y) => hf.heightAt(x, y),
+        focus,
+        focusRadius: radius,
+        // Trees over a heat map that is not solo are thinned so the colours below stay readable.
+        densityScale: this.layers.overlay !== 'none' && !this.layers.soloHeat ? 0.4 : 1,
+        understorey: this.layers.understorey,
+        seed: 7,
+        cache: this.vegCache,
+      },
+      this.vegCam,
+      vex,
+    );
     this.dirty = true;
   }
 
-  /** Re-centre the vegetation near LOD on the camera (local coordinates). */
-  private updateVegLod(): void {
-    if (!this.vegetation) return;
+  private readonly tmpWind = new Float32Array(2);
+
+  /** Trees lean and sway with the near-surface wind at the view target (two uniforms; ambient wind without an atmosphere). */
+  private updateVegWind(): void {
+    if (!this.vegetation || !this.sampler) return;
+    const t = this.rig.controls.target;
+    this.sampler.surfaceWind(t.x, -t.z, this.tmpWind);
+    this.vegetation.setWind(this.tmpWind[0]!, this.tmpWind[1]!);
+  }
+
+  /** Colour-coding legend of the canopy while the 'coded' style is shown (title, unit, stops), else null. */
+  canopyLegend(): LegendSpec | null {
+    return this.vegetation?.legend() ?? null;
+  }
+
+  private readonly vegCam: [number, number, number] = [0, 0, 0];
+
+  /**
+   * Put the camera position in local coordinates (x, y, z m ASL) into {@link vegCam} for the canopy levels of detail and
+   * return the vertical exaggeration (no allocation: called every frame while the camera moves).
+   */
+  private vegCamera(): number {
     const p = this.rig.camera.position;
     const vex = this.hf?.vex ?? 1;
-    this.vegetation.updateLod([p.x, -p.z, p.y / Math.max(vex, 1e-6)], vex);
+    this.vegCam[0] = p.x;
+    this.vegCam[1] = -p.z;
+    this.vegCam[2] = p.y / Math.max(vex, 1e-6);
+    return vex;
+  }
+
+  /** Re-plan the canopy levels of detail around the camera (cheap when the camera has not moved). */
+  private updateVegLod(force = false): void {
+    if (!this.vegetation) return;
+    const vex = this.vegCamera();
+    this.vegetation.updateLod(this.vegCam, vex, this.cameraDistance(), force);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -426,6 +486,7 @@ export class SceneView implements SceneViewApi {
     this.sampler = new AtmosphereSampler(snapshot.atmosphere ?? null, this.atmBase, snapshot.stats?.weather ?? null);
     const [lu, lv] = this.sampler.ambient;
     this.flames.setLean(lu, lv);
+    this.updateVegWind();
 
     // Embers morph from snapshot to snapshot, except after a jump in time (rewind, scrub, new run).
     this.embers.setParticles(snapshot.embers, jump);
@@ -509,6 +570,7 @@ export class SceneView implements SceneViewApi {
       tl.setUseImagery(l.imagery);
       tl.uniforms.uOverlayOpacity!.value = l.overlayOpacity;
     }
+    this.placesLayer?.setLayers(l);
     this.flames.mesh.visible = l.flames;
     this.embers.group.visible = l.embers;
     this.smoke.mesh.visible = l.smoke;
@@ -517,7 +579,11 @@ export class SceneView implements SceneViewApi {
     this.updateWindArrows();
     const overlayChanged = !prev || prev.overlay !== l.overlay;
     if (overlayChanged || !prev || prev.isochroneMinutes !== l.isochroneMinutes) this.updateOverlay();
-    if (overlayChanged && prev && (prev.overlay === 'none') !== (l.overlay === 'none')) this.placeVegetation(true);
+    // Canopy: style, colour code, sway, understorey, solo heat map. Trees thin out under a heat map that is not solo, and the
+    // understorey's share of the budget goes to the other groups when it is off: both need a new placement.
+    this.vegetation?.setLayers(l);
+    const thinTrees = (s: LayerState): boolean => s.overlay !== 'none' && !s.soloHeat;
+    if (prev && (thinTrees(prev) !== thinTrees(l) || prev.understorey !== l.understorey)) this.placeVegetation(true);
     this.updateViewDependentLayers();
     this.section.visible = l.crossSection.enabled;
     if (l.crossSection.enabled && (!prev || !prev.crossSection.enabled || prev.crossSection.azimuth !== l.crossSection.azimuth || prev.crossSection.centre[0] !== l.crossSection.centre[0] || prev.crossSection.centre[1] !== l.crossSection.centre[1] || prev.verticalExaggeration !== l.verticalExaggeration)) {
@@ -544,8 +610,7 @@ export class SceneView implements SceneViewApi {
     // Plan view is a map: keep smoke translucent so the ground stays readable; likewise thin it while the
     // cross-section is shown (the section already shows the plume, and puffs are drawn over it).
     this.smoke.uniforms.uAlphaScale!.value = this.rig.mode === 'top' ? 0.35 : this.layers.crossSection.enabled ? 0.45 : 1;
-    if (!this.vegetation) return;
-    this.vegetation.group.visible = this.layers.vegetation && !(this.rig.mode === 'top' && this.layers.overlay !== 'none');
+    // (The canopy fades out with the view angle in its own vertex shader, and hides itself under a solo heat map.)
   }
 
   private updateOverlay(): void {
@@ -562,9 +627,20 @@ export class SceneView implements SceneViewApi {
     }
     let field: OverlayField | null;
     if (kind === 'insolation') field = this.insolationField();
-    else field = overlayField(kind, { terrain: this.terrain, fuel: this.fuel, fire: this.fire, moisture: this.snap?.moisture ?? null, layers: this.snap?.layers ?? null });
+    else {
+      // `context` feeds the 'homeDensity' / 'roadAccess' heat maps (contextFields.ts), `atmosphere` the 'windSpeed' one.
+      field = overlayField(kind, {
+        terrain: this.terrain,
+        fuel: this.fuel,
+        fire: this.fire,
+        moisture: this.snap?.moisture ?? null,
+        layers: this.snap?.layers ?? null,
+        context: this.contextLayers,
+        atmosphere: this.snap?.atmosphere ?? null,
+      });
+    }
     const arrivalMax = Math.max(this.snap?.time ?? 0, this.maxArrival, 1800);
-    const scale = overlayScale(kind, { arrivalMaxSeconds: arrivalMax });
+    const scale = overlayScale(kind, { arrivalMaxSeconds: arrivalMax, elevationRange: [this.terrain.minElevation, this.terrain.maxElevation] });
     tl.setOverlay(field, scale, fireOv);
   }
 
@@ -585,6 +661,7 @@ export class SceneView implements SceneViewApi {
     return legendFor(this.layers.overlay, {
       arrivalMaxSeconds: Math.max(this.snap?.time ?? 0, this.maxArrival, 1800),
       isochroneMinutes: this.layers.isochroneMinutes,
+      ...(this.terrain ? { elevationRange: [this.terrain.minElevation, this.terrain.maxElevation] as const } : {}),
     });
   }
 
@@ -598,15 +675,37 @@ export class SceneView implements SceneViewApi {
     this.refreshMarkers();
   }
 
-  /** Roads, fire trails, homes, zones and place names (layers rework: the places-layer builder implements the drawing). */
+  /**
+   * Roads, fire trails, homes, zones and place names (local metres about the scenario origin), or null. Drawn according to
+   * LayerState.{roads, fireTrails, homes, zones, placeNames}; the geometry is built in small time slices over the next
+   * frames. May be called before or after setScenario (or passed as its `context` option); feeds the 'homeDensity' and
+   * 'roadAccess' heat maps too.
+   */
   setContext(context: ContextLayers | null): void {
     this.contextLayers = context;
+    this.placesLayer?.setContext(context);
+    if (this.layers.overlay === 'homeDensity' || this.layers.overlay === 'roadAccess') this.updateOverlay();
+    this.dirty = true;
   }
-  /** The places data as last set (read by the places layer once implemented). */
+  /** The places data as last set. */
   get places(): ContextLayers | null {
     return this.contextLayers;
   }
   private contextLayers: ContextLayers | null = null;
+
+  /** Build every pending places slice now (tests, screenshots); normally the render loop does it a few ms per frame. */
+  flushPlaces(): void {
+    this.placesLayer?.flush();
+    this.dirty = true;
+  }
+  /** Statistics of the places layer (draw calls, GPU bytes, labels shown …) or null before setScenario. */
+  placesStats(): ReturnType<PlacesLayer['stats']> | null {
+    return this.placesLayer?.stats() ?? null;
+  }
+  /** Names currently drawn on the map (tests, dev HUD). */
+  shownPlaceNames(): string[] {
+    return this.placesLayer?.shownLabels() ?? [];
+  }
 
   setInsights(insights: Insight[]): void {
     this.insights = insights.slice();
@@ -709,6 +808,8 @@ export class SceneView implements SceneViewApi {
 
   setViewInsets(insets: { top?: number; right?: number; bottom?: number; left?: number }): void {
     this.rig.setViewInsets(insets, this.hf !== null);
+    this.placesLayer?.setInsets(insets);
+    this.viewInsets = { ...insets };
     this.dirty = true;
   }
 
@@ -734,7 +835,7 @@ export class SceneView implements SceneViewApi {
     this.rig.setMode(mode as ViewMode, { user: stand, lookAt: c ? [c.x, c.y] : null });
     this.updateViewDependentLayers();
     // Eye level: clear the few trees right in front of the viewer's face.
-    this.vegetation?.setNearCull(mode === 'ground' ? 45 : 0);
+    this.vegetation?.setNearCull(mode === 'ground' ? 32 : 0);
     this.refreshMarkers();
     this.dirty = true;
   }
@@ -905,6 +1006,12 @@ export class SceneView implements SceneViewApi {
     const moved = cp.distanceToSquared(this.lastCam) > 1e-4 || ct.distanceToSquared(this.lastTarget) > 1e-4;
     this.lastCam.copy(cp);
     this.lastTarget.copy(ct);
+    // Places: build pending geometry a few ms at a time; choose which names fit on screen (≤ 4×/s).
+    if (this.placesLayer) {
+      if (this.placesLayer.pump(4)) this.dirty = true;
+      const sz = this.renderer.getSize(this.tmpSize);
+      if (this.placesLayer.updateLabels(this.rig.camera, sz.x, sz.y, now)) this.dirty = true;
+    }
     // Display-time interpolation between snapshots.
     let playing = false;
     if (this.snap && this.displayTime !== this.timeTo) {
@@ -925,6 +1032,8 @@ export class SceneView implements SceneViewApi {
       this.wind.currentMode !== 'off' ||
       this.focus !== null ||
       this.user !== null ||
+      (this.vegetation?.placing ?? false) || // the forest is being re-placed a few ms per frame
+      (this.vegetation?.animating ?? false) || // trees sway in the wind
       this.userSpots.length + (this.snap?.spotFires.length ?? 0) > 0;
     if (!this.dirty && !moved && !animating) {
       this.meter.tick(-1e9); // break the frame-interval chain while idle
@@ -938,14 +1047,18 @@ export class SceneView implements SceneViewApi {
     this.dirty = false;
 
     if (moved) {
-      // Re-place vegetation around the new focus once the camera settles.
+      // Re-place vegetation around the new focus once the camera settles; meanwhile keep the levels of detail current
+      // (this does nothing until the camera has moved by a tenth of its distance).
       this.vegPending = now;
-    } else if (this.vegPending && now - this.vegPending > 350 && !this.rig.flying) {
+      this.updateVegLod();
+    } else if (this.vegPending && (this.settleNow || now - this.vegPending > 350) && !this.rig.flying) {
       this.vegPending = 0;
       this.placeVegetation(false);
       this.updateVegLod();
+      this.updateVegWind();
       this.refreshMarkers();
     }
+    if (this.vegetation?.pump(this.settleNow ? Infinity : 4)) this.dirty = true;
 
     const vex = this.vex;
     if (this.hf && this.domain) {
@@ -1004,28 +1117,40 @@ export class SceneView implements SceneViewApi {
       dpr: this.dpr.dpr,
       vegetation: this.vegetation?.instanceCount ?? 0,
       vegNear: this.vegetation?.nearInstanceCount ?? 0,
+      vegLod: this.vegetation ? `${this.vegetation.stats().near}/${this.vegetation.stats().mid}/${this.vegetation.stats().far} · ${Math.round(this.vegetation.stats().triangles / 1000)}k tris` : '-',
       flames: this.flames.count,
       embers: this.embers.active,
       puffs: this.smoke.count,
       mesh: this.rg ? `${this.rg.grid.nx}×${this.rg.grid.ny}` : '-',
       displayTime: Math.round(this.displayTime),
+      places: this.placesLayer ? `${this.placesLayer.stats().drawCalls} draws · ${this.placesLayer.stats().labelsShown} names` : '-',
     };
   }
 
   /** Render one frame immediately (tests / screenshots). */
   renderNow(): void {
+    this.placesLayer?.flush();
+    if (this.placesLayer) {
+      const sz = this.renderer.getSize(this.tmpSize);
+      this.placesLayer.updateLabels(this.rig.camera, sz.x, sz.y, performance.now(), true);
+    }
     this.dirty = true;
     this.lastRender = 0;
     // Out-of-band frames must not feed the frame-rate meter (back-to-back calls would read as hundreds of fps and
     // make the adaptive DPR raise the resolution).
     this.measuring = false;
+    // Screenshots and tests get the settled canopy: placement and levels of detail are finished in this frame instead of
+    // being spread over several.
+    this.settleNow = true;
     try {
       this.frame(performance.now());
     } finally {
       this.measuring = true;
+      this.settleNow = false;
     }
   }
   private measuring = true;
+  private settleNow = false;
 
   resize(): void {
     const w = Math.max(1, this.container.clientWidth);
@@ -1054,6 +1179,7 @@ export class SceneView implements SceneViewApi {
     this.rig.controls.removeEventListener('end', this.onEnd);
     this.rig.controls.removeEventListener('change', this.onChange);
     this.rig.dispose();
+    this.placesLayer?.dispose();
     this.terrainLayer?.dispose();
     this.vegetation?.dispose();
     this.sky.dispose();

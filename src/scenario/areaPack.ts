@@ -6,6 +6,7 @@
  *   - `terrarium/<z>/<x>/<y>`: the Terrarium tiles used (terrainTiles.ts reads these item names directly),
  *   - `canopy`: canopy height / cover on a 20 m grid (bundled raster, or the remote CHM for areas ≤ 3 km),
  *   - `vegetation`, `fireHistory`: SVTM and NPWS GeoJSON of the square (+ margin),
+ *   - `context`: roads, fire trails, homes, residential zones and place names (version-1 file, context.ts),
  *   - `weather`: the latest Open-Meteo forecast response (7 past + 16 forecast days),
  *   - `daily`: the 365-day daily history and the annual rainfall (KBDI / DF offline).
  * Each layer is optional: a layer that cannot be fetched is skipped with a warning.
@@ -22,6 +23,7 @@ import {
   type AreaPackMeta,
   type KV,
 } from '../data';
+import { contextForPack, CONTEXT_PACK_ITEM } from './context';
 import { fetchNpwsFireHistory, fetchSvtm, loadFireHistoryLayer, loadVegetationLayer, type LayerContext, type PackCanopy } from './layers';
 import { forecastUrl, parseOpenMeteoHourly } from './openMeteo';
 import { SCENARIO_PARAMS } from './params';
@@ -138,6 +140,15 @@ export async function downloadAreaPack(req: AreaPackRequest, onProgress?: (p: Ar
     else if (fh?.geojson) items['fireHistory'] = fh.geojson;
     else warnings.push('Fire history not stored.');
   }
+
+  // Roads, homes and place names: the bundled demo file, else a fresh live query (kept from an older pack / the cache
+  // when the services do not answer), so the pack works offline on the fire ground.
+  report(0.72, 'Roads, homes and place names…');
+  const places = await contextForPack({ ...ctx, now });
+  check();
+  if (places.file) items[CONTEXT_PACK_ITEM] = places.file;
+  else warnings.push('Roads, homes and place names not stored.');
+  for (const w of places.warnings) if (!warnings.includes(w)) warnings.push(w);
 
   // Weather: the latest forecast (16 days) and the daily history.
   if (req.weather !== false) {

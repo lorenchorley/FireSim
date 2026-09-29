@@ -174,6 +174,17 @@ export class LocalSimController extends ProtocolController {
   }
 }
 
+/**
+ * The scenario as the worker needs it: without the display-only places context (roads, homes, zones, place names),
+ * which can be hundreds of KB of typed arrays the simulation never reads and postMessage would clone for nothing.
+ * The caller's object is left intact (the render layer still reads `context`).
+ */
+export function withoutContext(scenario: ScenarioData): ScenarioData {
+  if (scenario.context === undefined) return scenario;
+  const { context: _display, ...rest } = scenario;
+  return rest;
+}
+
 /** Worker-backed controller (spec §2.3). Falls back to an in-thread host when `Worker` is unavailable. */
 export class SimClient extends ProtocolController {
   private readonly worker: Worker | null;
@@ -215,7 +226,7 @@ export class SimClient extends ProtocolController {
 
   protected send(msg: ToWorker): void {
     if (this.disposed) return;
-    if (this.worker) this.worker.postMessage(msg);
+    if (this.worker) this.worker.postMessage(msg.type === 'init' ? { ...msg, scenario: withoutContext(msg.scenario) } : msg);
   }
 
   override init(scenario: ScenarioData): Promise<Insight[]> {

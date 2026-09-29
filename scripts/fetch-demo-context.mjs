@@ -28,10 +28,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { CONTEXT_MARGIN_M, CONTEXT_QUERIES, CONTEXT_QUERY_IDS, buildContextFile, contextBBox, contextLayerUrl, featuresQueryForm, idsQueryForm } from '../src/data/nswContextCore.ts';
 
-async function post(fetchImpl, url, body, tries = 4, delayMs = 1500) {
+async function post(fetchImpl, url, body, timeoutMs, tries = 4, delayMs = 1500) {
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) });
+      const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body), signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
       if (j.error) throw new Error(`${j.error.code} ${j.error.message}`);
@@ -47,10 +47,11 @@ async function post(fetchImpl, url, body, tries = 4, delayMs = 1500) {
 export async function queryLayer(id, bbox, { fetchImpl = globalThis.fetch, delayMs = 1500 } = {}) {
   const q = CONTEXT_QUERIES[id];
   const url = `${contextLayerUrl(q)}/query`;
-  const ids = (await post(fetchImpl, url, idsQueryForm(q, bbox), 4, delayMs)).objectIds ?? [];
+  const timeoutMs = q.timeoutMs * 3; // a demo site is a bigger area than a scenario: allow for it
+  const ids = (await post(fetchImpl, url, idsQueryForm(q, bbox), timeoutMs, 4, delayMs)).objectIds ?? [];
   const out = [];
   for (let i = 0; i < ids.length; i += q.chunk) {
-    const j = await post(fetchImpl, url, featuresQueryForm(q, ids.slice(i, i + q.chunk)), 4, delayMs);
+    const j = await post(fetchImpl, url, featuresQueryForm(q, ids.slice(i, i + q.chunk)), timeoutMs, 4, delayMs);
     out.push(...(j.features ?? []));
   }
   return out;

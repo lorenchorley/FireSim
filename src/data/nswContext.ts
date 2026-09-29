@@ -13,14 +13,17 @@
  *      generalisation (`maxAllowableOffset`, `geometryPrecision=5`);
  *   3. classify and pack as the version-1 file (`buildContextFile`) and project with `decodeContext`.
  * The six layers run concurrently (at most `concurrency` requests in flight); transient failures (network, timeout,
- * HTTP 408 / 429 / 5xx, ArcGIS error bodies) are retried with exponential back-off. A layer that keeps failing is left
- * out and reported in `failed` (the others are still returned); only when EVERY layer fails does the query throw.
+ * HTTP 408 / 429 / 5xx, ArcGIS error bodies) are retried with exponential back-off. A layer that keeps failing, or is
+ * still running when `deadlineMs` passes, is left out and reported in `failed` (the others are still returned); only
+ * when EVERY layer fails does the query throw ({@link NswContextUnavailableError}). The services differ a lot in speed
+ * (the zoning server can take 10-20 s for one request on a 6 km area, the address server well under a second), which
+ * is why one slow layer must not cost the fast ones.
  * Requests go through data/http.ts (browser fetch, or CapacitorHttp on device), so `signal` cancels them all.
  */
 import type { LatLon } from '../core/geo';
 import type { ContextLayers } from '../core/places';
 import { decodeContext, type ContextFileV1 } from './contextLayers';
-import { HttpError, fetchJson, serviceUrl } from './http';
+import { HttpError, fetchJson, getHttpConfig, serviceUrl } from './http';
 import {
   CONTEXT_MARGIN_M,
   CONTEXT_QUERIES,
@@ -59,18 +62,35 @@ export interface NswContextOptions {
   now?: number;
   /** Retries of a transient failure per request (default 3). */
   retries?: number;
-  /** First back-off delay (ms); doubles each retry (default 1500). */
+  /** First back-off delay (ms); doubles each retry (default 3 × the HTTP layer's retry delay = 1.5 s). */
   retryDelayMs?: number;
   /** Requests in flight at once (default 4). */
   concurrency?: number;
-  /** Timeout of one request (ms, default 30 000). */
+  /** Timeout of one request (ms); default per layer, see `ContextQuery.timeoutMs`. */
   timeoutMs?: number;
+  /**
+   * Stop waiting after this long (ms, default: never): the layers that have finished are returned, the others are
+   * listed in `failed` (and `timedOut` is set).
+   */
+  deadlineMs?: number;
 }
 
 export interface NswContextFileResult {
   file: ContextFileV1;
-  /** Layers that could not be read even after retries (their part of the file is empty). */
+  /** Layers that could not be read even after retries, or were still running at the deadline (their part is empty). */
   failed: ContextQueryId[];
+  /** True when the deadline cut the query short. */
+  timedOut: boolean;
+}
+
+/** Every layer failed (or the deadline passed before any finished): there is no file to return. */
+export class NswContextUnavailableError extends Error {
+  override readonly name = 'NswContextUnavailableError';
+  readonly timedOut: boolean;
+  constructor(message: string, timedOut: boolean, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.timedOut = timedOut;
+  }
 }
 
 /**
@@ -161,11 +181,26 @@ function limiter(n: number): <T>(task: () => Promise<T>) => Promise<T> {
  * @param id  file id (default 'live')
  */
 export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & { id?: string } = {}): Promise<NswContextFileResult> {
-  const { signal } = opts;
   const retries = opts.retries ?? 3;
-  const retryDelayMs = opts.retryDelayMs ?? 1500;
-  const timeoutMs = opts.timeoutMs ?? 30_000;
+  const retryDelayMs = opts.retryDelayMs ?? getHttpConfig().retryDelayMs * 3; // 1.5 s by default, then doubling
   const run = limiter(Math.max(1, opts.concurrency ?? 4));
+
+  // `caller` is the caller's cancellation; `work` is what the requests listen to: it also fires at the deadline.
+  const caller = opts.signal;
+  const work = new AbortController();
+  const signal = work.signal;
+  const onCallerAbort = (): void => work.abort(abortError(caller));
+  if (caller?.aborted) onCallerAbort();
+  else caller?.addEventListener('abort', onCallerAbort, { once: true });
+  let timedOut = false;
+  const timer =
+    opts.deadlineMs !== undefined && opts.deadlineMs > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          work.abort(new DOMException('Timed out', 'TimeoutError'));
+        }, opts.deadlineMs)
+      : undefined;
+
   let done = 0;
   let total = CONTEXT_QUERY_IDS.length * 2; // one id query and (at least) one feature request per layer, refined below
   let shown = 0;
@@ -179,15 +214,19 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
   const post = async (id: ContextQueryId, form: Record<string, string>): Promise<ArcGisBody> => {
     const q = CONTEXT_QUERIES[id];
     const url = serviceUrl(q.service, `${q.path}/query`);
+    const timeoutMs = opts.timeoutMs ?? q.timeoutMs;
     for (let attempt = 0; ; attempt++) {
-      if (signal?.aborted) throw abortError(signal);
+      if (signal.aborted) throw abortError(signal);
       try {
-        const body = await run(() => fetchJson<ArcGisBody>(url, { form, retries: 0, timeoutMs, ...(signal ? { signal } : {}) }));
+        const body = await run(() => fetchJson<ArcGisBody>(url, { form, retries: 0, timeoutMs, signal }));
         if (body.error) throw new ArcGisError(url, body.error.code ?? 500, body.error.message ?? 'error');
         return body;
       } catch (e) {
         if (isAbort(e, signal)) throw abortError(signal);
-        if (attempt >= retries || !isTransient(e)) throw e;
+        // A connection that fails outright (no signal, DNS) is retried once, not for 10 s: offline should be found out
+        // quickly. A request that merely stalls (kind 'timeout') is retried fully: the retry usually answers at once.
+        const limit = e instanceof HttpError && e.kind === 'network' ? Math.min(retries, 1) : retries;
+        if (attempt >= limit || !isTransient(e)) throw e;
         await sleep(retryDelayMs * 2 ** attempt, signal);
       }
     }
@@ -213,20 +252,27 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
   const features: ContextFeatures = {};
   const failed: ContextQueryId[] = [];
   let lastError: unknown;
-  await Promise.all(
-    CONTEXT_QUERY_IDS.map(async (id) => {
-      try {
-        features[id] = await queryLayer(id);
-      } catch (e) {
-        if (isAbort(e, signal)) throw abortError(signal);
-        failed.push(id);
-        lastError = e;
-      }
-    }),
-  );
-  if (signal?.aborted) throw abortError(signal);
+  try {
+    await Promise.all(
+      CONTEXT_QUERY_IDS.map(async (id) => {
+        try {
+          features[id] = await queryLayer(id);
+        } catch (e) {
+          if (caller?.aborted) throw abortError(caller);
+          failed.push(id); // an error, or the deadline
+          lastError = e;
+        }
+      }),
+    );
+  } finally {
+    clearTimeout(timer);
+    caller?.removeEventListener('abort', onCallerAbort);
+    work.abort(new DOMException('Finished', 'AbortError')); // stop anything still running (after a deadline)
+  }
+  if (caller?.aborted) throw abortError(caller);
   if (failed.length === CONTEXT_QUERY_IDS.length) {
-    throw new Error(`NSW place services unavailable: ${lastError instanceof Error ? lastError.message : String(lastError)}`, { cause: lastError });
+    const why = timedOut ? 'timed out' : lastError instanceof Error ? lastError.message : String(lastError);
+    throw new NswContextUnavailableError(`NSW place services unavailable: ${why}`, timedOut, lastError);
   }
   failed.sort((a, b) => CONTEXT_QUERY_IDS.indexOf(a) - CONTEXT_QUERY_IDS.indexOf(b));
   const fetched = new Date(opts.now ?? Date.now()).toISOString().slice(0, 10);
@@ -235,7 +281,7 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
   const read = new Set(CONTEXT_QUERY_IDS.filter((q) => !failed.includes(q)).map(sourceOfQuery));
   file.sources = file.sources.filter((src) => read.has(src.id));
   opts.onProgress?.(1, 'Roads, homes and place names ready');
-  return { file, failed };
+  return { file, failed, timedOut: timedOut && failed.length > 0 };
 }
 
 /**

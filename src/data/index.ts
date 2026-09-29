@@ -115,3 +115,19 @@ export {
   roadLengthByClass,
   type ContextFileV1,
 } from './contextLayers';
+
+export {
+  fetchNswContext,
+  fetchNswContextFile,
+  NswContextUnavailableError,
+  contextQueryBBox,
+  contextCacheKey,
+  CONTEXT_QUERY_LABELS,
+  CONTEXT_BBOX_GRID_DEG,
+  CONTEXT_MARGIN_M,
+  type NswContextOptions,
+  type NswContextFileResult,
+  type ContextQueryId,
+  type BBox,
+} from './nswContext';
+export { buildContextFile, CONTEXT_QUERIES, CONTEXT_QUERY_IDS, zoneKind, roadClassOf, surfaceOf, roadName, titleCase, placeKindOf, type EsriFeature, type ContextFeatures } from './nswContextCore';

@@ -171,6 +171,10 @@ export const ATTRIBUTIONS: Attribution[] = [
   { name: 'SRTM / AWS Terrain Tiles (Mapzen Terrarium)', use: 'Elevation outside the demo sites', licence: 'Public domain (NASA SRTM); tiles via AWS Open Data' },
   { name: 'Open-Meteo', use: 'Weather forecasts, archive and historical forecasts (BOM ACCESS-G, ECMWF, GFS)', licence: 'CC BY 4.0; weather data © the national services' },
   { name: 'NSW National Parks and Wildlife Service', use: 'Fire history (wildfires and prescribed burns)', licence: '© State of NSW and DCCEEW, CC BY 4.0' },
+  { name: 'NSW Spatial Services (roads and fire trails)', use: 'Roads and tracks (Transport Theme) and RFS-classified fire trails for the Roads layer', licence: '© Spatial Services NSW, CC BY 4.0' },
+  { name: 'NSW Spatial Services (addresses)', use: 'Home address points (Geocoded Addressing Theme) for the Homes layer', licence: '© Spatial Services NSW, CC BY 4.0' },
+  { name: 'NSW Spatial Services (place names)', use: 'Place and suburb names (Features of Interest, Administrative Boundaries) to help you find your way', licence: '© Spatial Services NSW, CC BY 4.0' },
+  { name: 'NSW Planning (land zoning)', use: 'Residential, village and other built-up land-use zones (ePlanning Land Zoning Map)', licence: '© State of NSW and Department of Planning, Housing and Infrastructure, CC BY 4.0' },
   { name: 'NSW State Vegetation Type Map (SVTM)', use: 'Vegetation formations and classes → fuel types', licence: '© State of NSW and DCCEEW, CC BY 4.0' },
   { name: 'NSW Rural Fire Service', use: 'Current incidents feed (when online)', licence: '© NSW RFS, used for information only' },
 ];

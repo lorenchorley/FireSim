@@ -68,7 +68,8 @@ export function createPopoverGroup(host: HTMLElement, entries: readonly PopoverE
     e.button.setAttribute('aria-expanded', 'false');
     e.onClose?.();
   }
-  function closeAll(returnFocus = false): void {
+  /** Close whatever is open. Focus goes back to the button that opened it (unless `returnFocus` is false), so a keyboard or screen-reader user is not dropped on the page. */
+  function closeAll(returnFocus = true): void {
     const was = current;
     current = null;
     scrim.hidden = true;
@@ -89,6 +90,13 @@ export function createPopoverGroup(host: HTMLElement, entries: readonly PopoverE
     // Keyboard and screen-reader users continue inside the popover (Tab reaches its controls next).
     e.panel.focus({ preventScroll: true });
   }
+  // Tabbing out of the bar (past the last control of an open popover) closes it, like the round menus do: focus is never
+  // left on a control hidden behind the scrim while the popover stays open.
+  const onFocusOut = (ev: FocusEvent): void => {
+    const to = ev.relatedTarget as Node | null;
+    if (current && to && !host.contains(to)) closeAll(false);
+  };
+  host.addEventListener('focusout', onFocusOut);
   // In the capture phase, so that one Escape closes the popover and does not also close the panels behind it.
   const off = listen(
     document,
@@ -108,6 +116,7 @@ export function createPopoverGroup(host: HTMLElement, entries: readonly PopoverE
     openId: () => current?.id ?? null,
     destroy() {
       off();
+      host.removeEventListener('focusout', onFocusOut);
       current = null;
       scrim.remove();
     },

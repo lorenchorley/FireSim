@@ -264,6 +264,55 @@ describe('native transport (CapacitorHttp)', () => {
   });
 });
 
+describe('form POST (ArcGIS object-id queries)', () => {
+  const form = { objectIds: '1,2,3', outFields: 'a,b', f: 'json' };
+
+  it('nswspatial is a CORS service: direct in the browser, on device and in Node', () => {
+    for (const platform of ['browser', 'native', 'node'] as const) {
+      setHttpConfig({ platform });
+      expect(serviceUrl('nswspatial', '/server/rest/services/x/FeatureServer/5/query')).toBe('https://portal.spatial.nsw.gov.au/server/rest/services/x/FeatureServer/5/query');
+    }
+    expect(routeUrl('https://portal.spatial.nsw.gov.au/a?b=1')).toBe('https://portal.spatial.nsw.gov.au/a?b=1');
+  });
+
+  it('fetch: sends application/x-www-form-urlencoded in the body of a POST', async () => {
+    const { fn, calls } = scriptedFetch([json({ ok: true })]);
+    setHttpConfig({ fetch: fn, platform: 'node' });
+    expect(await fetchJson('https://portal.spatial.nsw.gov.au/q', { form, headers: { accept: 'application/json' } })).toEqual({ ok: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.init?.method).toBe('POST');
+    expect(calls[0]!.init?.body).toBe('objectIds=1%2C2%2C3&outFields=a%2Cb&f=json');
+    expect(calls[0]!.init?.headers).toEqual({ accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' });
+    // A plain GET is unchanged.
+    await fetchJson('https://portal.spatial.nsw.gov.au/q');
+    expect(calls[1]!.init?.method).toBe('GET');
+    expect(calls[1]!.init?.body).toBeUndefined();
+  });
+
+  it('native: CapacitorHttp gets POST with the form object as data', async () => {
+    const calls: HttpOptions[] = [];
+    setHttpConfig({
+      platform: 'native',
+      nativeRequest: async (o) => {
+        calls.push(o);
+        return { data: { features: [] }, status: 200, headers: {}, url: o.url };
+      },
+    });
+    expect(await fetchJson('https://portal.spatial.nsw.gov.au/q', { form })).toEqual({ features: [] });
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.data).toEqual(form);
+    expect(calls[0]!.headers).toEqual({ 'content-type': 'application/x-www-form-urlencoded' });
+    expect(calls[0]!.responseType).toBe('json');
+  });
+
+  it('a POST is retried like a GET on HTTP 429', async () => {
+    const { fn, calls } = scriptedFetch([new Response('slow down', { status: 429 }), json({ ok: 1 })]);
+    setHttpConfig({ fetch: fn, platform: 'node', retryDelayMs: 1 });
+    expect(await fetchJson('https://portal.spatial.nsw.gov.au/q', { form })).toEqual({ ok: 1 });
+    expect(calls.map((c) => c.init?.method)).toEqual(['POST', 'POST']);
+  });
+});
+
 describe('binary helpers', () => {
   it('base64 decoding matches Buffer for random data (standard, url-safe, data: URI)', () => {
     for (const len of [0, 1, 2, 3, 4, 5, 255, 1000]) {

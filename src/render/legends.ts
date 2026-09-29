@@ -7,13 +7,20 @@
  * Overlay values are stored in the units shown in the legend (km/h, kW/m, %, t/ha, years, degrees, W/m², seconds for
  * arrival) — conversion from the SI simulation fields happens once, when the overlay field is built (fields.ts).
  */
-import { FuelType, SpreadDriver, FUEL_TYPE_COUNT } from '../core/types';
+import { FireHistoryKind, FuelType, Landform, SpreadDriver, FUEL_TYPE_COUNT } from '../core/types';
 import type { OverlayKind } from './layers';
 import {
   ARRIVAL_RAMP,
   ASPECT_RAMP,
+  CANOPY_COVER_RAMP,
+  CANOPY_HEIGHT_RAMP,
+  CURING_RAMP,
   DRIVER_COLOURS,
   DRIVER_LABELS,
+  ELEVATED_HEIGHT_RAMP,
+  ELEVATION_RAMP,
+  FIRE_HISTORY_COLOURS,
+  FIRE_HISTORY_LABELS,
   FLAT_COLOUR,
   FUEL_LOAD_RAMP,
   FUEL_TYPE_COLOURS,
@@ -21,7 +28,12 @@ import {
   INSOLATION_RAMP,
   INTENSITY_CLASSES,
   MOISTURE_RAMP,
+  HAZARD_NONE_COLOUR,
   HAZARD_RAMP,
+  HAZARD_RATING_COLOURS,
+  HAZARD_RATING_LABELS,
+  LANDFORM_COLOURS,
+  LANDFORM_LABELS,
   LANDING_RAMP,
   ROS_RAMP,
   SLOPE_CLASSES,
@@ -30,6 +42,8 @@ import {
   TSF_RAMP,
   UPDRAFT_RAMP,
   WIND_RAMP,
+  WIND_SPEED_RAMP,
+  amountClassColours,
   hexToRgb,
   makeRamp,
   rgbToHex,
@@ -49,6 +63,8 @@ export interface LegendEntry {
   /** sRGB hex colour. */
   colour: string;
   label: string;
+  /** Optional plain-English gloss of this stop or class (e.g. "fresh breeze", "thin litter, little to burn"). */
+  words?: string;
 }
 
 export interface LegendSpec {
@@ -75,6 +91,12 @@ export interface LegendContext {
   arrivalMaxSeconds?: number;
   /** Isochrone spacing (min) to mention in the arrival legend. */
   isochroneMinutes?: number;
+  /**
+   * Lowest and highest ground (m) of the scenario: the 'elevation' heat map stretches its colours over this range
+   * (rounded outwards to nice numbers, see {@link niceElevationRange}). The scale and the legend must be given the same
+   * range; SceneView.legend() does. Without it the legend only says "lowest … highest" and the scale spans 0 – 1 000 m.
+   */
+  elevationRange?: readonly [number, number];
 }
 
 const DEFAULT_ARRIVAL_MAX = 6 * 3600;
@@ -336,7 +358,324 @@ export function legendFor(overlay: OverlayKind, ctx: LegendContext = {}): Legend
     case 'homeDensity':
     case 'roadAccess':
     case 'windSpeed':
-      return null; // layers rework: implemented by the heat-field builder
+      return dataLegend(overlay, ctx);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data layers as heat maps (layers rework)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The data-layer heat maps of the layers rework (everything {@link legendFor} does not describe above). */
+export type DataOverlayKind = Extract<
+  OverlayKind,
+  | 'elevation'
+  | 'landform'
+  | 'canopyHeight'
+  | 'canopyCover'
+  | 'elevatedHazard'
+  | 'elevatedHeight'
+  | 'surfaceHazard'
+  | 'nearSurfaceHazard'
+  | 'barkHazard'
+  | 'grassCuring'
+  | 'fireHistoryKind'
+  | 'homeDensity'
+  | 'roadAccess'
+  | 'windSpeed'
+>;
+
+/** Thousands separated by a plain space, like the intensity legend ("2 000"). */
+export const fmtThousands = (v: number): string => {
+  const r = Math.round(v);
+  const a = String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return r < 0 ? `−${a}` : a;
+};
+
+const TRANSPARENT = '#00000000';
+
+const NICE_STEPS = [5, 10, 20, 25, 50, 100, 150, 200, 250, 300, 400, 500, 1000, 2000, 5000];
+
+/**
+ * Rounds the height range of a site outwards to a tight scale with four equal round steps
+ * (e.g. 312 – 1 047 m → 300 – 1 100 m in steps of 200 m). The scale and the legend both use this.
+ */
+export function niceElevationRange(min: number, max: number): { lo: number; hi: number; step: number } {
+  const lo0 = Number.isFinite(min) ? min : 0;
+  const hi0 = Number.isFinite(max) && max > lo0 ? max : lo0 + 1;
+  const span = hi0 - lo0;
+  const grid = span < 50 ? 5 : span < 200 ? 10 : span < 600 ? 25 : span < 2000 ? 50 : 100;
+  const lo = Math.floor(lo0 / grid) * grid;
+  for (const step of NICE_STEPS) {
+    if (step * 4 >= span && lo + 4 * step >= hi0) return { lo, hi: lo + 4 * step, step };
+  }
+  const step = Math.ceil((hi0 - lo) / 4 / 1000) * 1000;
+  return { lo, hi: lo + 4 * step, step };
+}
+
+const DEFAULT_ELEVATION_RANGE = { lo: 0, hi: 1000, step: 250 } as const;
+
+/** A continuous legend for a ramp with a numeric label and a gloss at every stop. */
+function rampSpec(
+  overlay: DataOverlayKind,
+  title: string,
+  units: string,
+  ramp: Ramp,
+  labels: readonly string[],
+  words: readonly string[],
+  note: string,
+  noData?: { colour: string; label: string },
+): LegendSpec {
+  const lo = ramp.stops[0]!.at;
+  const hi = ramp.stops[ramp.stops.length - 1]!.at;
+  const spec: LegendSpec = {
+    overlay,
+    title,
+    units,
+    kind: 'continuous',
+    entries: ramp.stops.map((st, i) => ({ value: st.at, colour: st.colour, label: labels[i]!, words: words[i]! })),
+    gradient: gradientCss(ramp, lo, hi),
+    note,
+  };
+  if (noData) spec.noData = noData;
+  return spec;
+}
+
+/** Class boundaries (lower bounds of each class) of the hazard layers, from the fuel module's OFHAG rating scale (fuel/hazard.ts ratingFromFhs). */
+export const HAZARD_CLASS_BOUNDS = {
+  /** Surface, near-surface and elevated: None below 0.5, then the nearest of Low = 1, Moderate = 2, High = 3, Very high = 3.5, Extreme = 4. */
+  fuel: [0, 0.5, 1.5, 2.5, 3.25, 3.75],
+  /** Bark has its own scale: Low = 0, Moderate = 1, High = 2, Very high = 3, Extreme = 4. */
+  bark: [0, 0.5, 1.5, 2.5, 3.5],
+} as const;
+
+interface HazardSpec {
+  title: string;
+  bounds: readonly number[];
+  labels: readonly string[];
+  colours: readonly string[];
+  words: readonly string[];
+  note: string;
+}
+
+const FUEL_HAZARD_LABELS = ['None', ...HAZARD_RATING_LABELS] as const;
+const FUEL_HAZARD_COLOURS = [HAZARD_NONE_COLOUR, ...HAZARD_RATING_COLOURS] as const;
+
+const HAZARD_SPECS: Record<'surfaceHazard' | 'nearSurfaceHazard' | 'elevatedHazard' | 'barkHazard', HazardSpec> = {
+  surfaceHazard: {
+    title: 'Leaf litter hazard',
+    bounds: HAZARD_CLASS_BOUNDS.fuel,
+    labels: FUEL_HAZARD_LABELS,
+    colours: FUEL_HAZARD_COLOURS,
+    words: ['bare ground', 'thin litter, little to burn', 'patchy litter', 'a good cover of litter', 'deep litter', 'very deep litter that burns fiercely'],
+    note: 'Fallen leaves, bark and twigs are what a fire burns first: the deeper the litter, the hotter and faster the flaming edge.',
+  },
+  nearSurfaceHazard: {
+    title: 'Grass and low shrub hazard',
+    bounds: HAZARD_CLASS_BOUNDS.fuel,
+    labels: FUEL_HAZARD_LABELS,
+    colours: FUEL_HAZARD_COLOURS,
+    words: ['nothing near the ground', 'sparse and short', 'patchy', 'a continuous cover', 'dense and deep', 'very dense: flames climb easily'],
+    note: 'Grass, bracken and low shrubs up to about knee height carry a fire quickly and make its flames taller.',
+  },
+  elevatedHazard: {
+    title: 'Shrub (ladder fuel) hazard',
+    bounds: HAZARD_CLASS_BOUNDS.fuel,
+    labels: FUEL_HAZARD_LABELS,
+    colours: FUEL_HAZARD_COLOURS,
+    words: ['no shrubs', 'few or small shrubs', 'scattered shrubs', 'continuous shrubs', 'dense, tall shrubs', 'thick, tall, dry shrubs'],
+    note: 'Shrubs are the ladder that lets flames climb from the ground into the tree crowns: the higher the hazard, the taller and hotter the fire.',
+  },
+  barkHazard: {
+    title: 'Bark hazard (embers)',
+    bounds: HAZARD_CLASS_BOUNDS.bark,
+    labels: HAZARD_RATING_LABELS,
+    colours: HAZARD_RATING_COLOURS,
+    words: ['smooth bark: few embers', 'some loose bark', 'rough or ribbon bark', 'heavy loose bark', 'heavy stringybark or ribbon bark: showers of embers'],
+    note: 'Stringybark and ribbon bark launch burning embers far ahead of the fire, so high bark hazard means spot fires are likely.',
+  },
+};
+
+/** Ramp of the hazard classes (stops at the class lower bounds) for the shader LUT. */
+function hazardRamp(spec: HazardSpec): Ramp {
+  return makeRamp(spec.bounds.map((at, i) => ({ at, colour: spec.colours[i]! })));
+}
+
+/** Home density classes (homes per hectare within about 150 m): lower bounds, labels and colours. */
+export const HOME_DENSITY_CLASSES = {
+  bounds: [0.05, 0.3, 1, 3, 8],
+  labels: ['under 0.3 · a few scattered homes', '0.3–1 · rural homes on big blocks', '1–3 · rural residential', '3–8 · large suburban blocks', '8 or more · suburban streets and town centres'],
+} as const;
+
+/** Distance to the nearest road or trail (m): lower bounds, labels. */
+export const ROAD_ACCESS_CLASSES = {
+  bounds: [0, 50, 150, 300, 600, 1200],
+  labels: ['under 50 m · right beside it', '50–150 m · a short walk', '150–300 m · a walk in', '300–600 m · well off the road', '600–1 200 m · remote', 'over 1 200 m · very remote'],
+} as const;
+
+function classRamp(bounds: readonly number[], colours: readonly string[], log = false): Ramp {
+  return makeRamp(
+    bounds.map((at, i) => ({ at, colour: colours[i]! })),
+    { log },
+  );
+}
+
+const HOME_RAMP = classRamp(HOME_DENSITY_CLASSES.bounds, amountClassColours(HOME_DENSITY_CLASSES.bounds.length), true);
+const ROAD_RAMP = classRamp(ROAD_ACCESS_CLASSES.bounds, amountClassColours(ROAD_ACCESS_CLASSES.bounds.length));
+
+/** Order in which the landform classes are listed (high and exposed first). */
+const LANDFORM_ORDER: Landform[] = [
+  Landform.Peak,
+  Landform.Ridge,
+  Landform.Spur,
+  Landform.UpperSlope,
+  Landform.MidSlope,
+  Landform.LowerSlope,
+  Landform.Gully,
+  Landform.ValleyFloor,
+  Landform.Saddle,
+  Landform.Cliff,
+  Landform.Flat,
+];
+
+const NOT_FUEL: { colour: string; label: string } = { colour: TRANSPARENT, label: 'Not fuel (rock, water, cleared ground)' };
+
+function dataLegend(overlay: DataOverlayKind, ctx: LegendContext): LegendSpec {
+  switch (overlay) {
+    case 'elevation': {
+      const note = 'Fire runs faster uphill, ridges catch the wind first, and on a still night cold air drains down into the low ground.';
+      if (!ctx.elevationRange) {
+        // No range known: say where the ends are rather than print heights that might be wrong.
+        const stops = [0, 0.5, 1];
+        const c: Rgb = [0, 0, 0];
+        const words = ['lowest ground', 'in between', 'highest ground'];
+        return {
+          overlay,
+          title: 'Ground height above sea level',
+          units: 'm',
+          kind: 'continuous',
+          entries: stops.map((v, i) => ({ value: v, colour: rgbToHex(sampleRamp(ELEVATION_RAMP, v, c)), label: ['Lowest', 'Middle', 'Highest'][i]!, words: words[i]! })),
+          gradient: gradientCss(ELEVATION_RAMP, 0, 1),
+          note,
+        };
+      }
+      const { lo, step } = niceElevationRange(ctx.elevationRange[0], ctx.elevationRange[1]);
+      const c: Rgb = [0, 0, 0];
+      const entries: LegendEntry[] = [];
+      for (let i = 0; i <= 4; i++) {
+        const v = lo + i * step;
+        entries.push({ value: v, colour: rgbToHex(sampleRamp(ELEVATION_RAMP, i / 4, c)), label: fmtThousands(v), words: ['valley floors and low ground', 'lower slopes', 'mid height', 'upper slopes', 'ridge tops and high ground'][i]! });
+      }
+      return { overlay, title: 'Ground height above sea level', units: 'm', kind: 'continuous', entries, gradient: gradientCss(ELEVATION_RAMP, 0, 1), note };
+    }
+    case 'landform':
+      return {
+        overlay,
+        title: 'Landform (ridge, slope, gully)',
+        units: '',
+        kind: 'categorical',
+        entries: LANDFORM_ORDER.map((l) => ({ value: l, colour: LANDFORM_COLOURS[l], label: LANDFORM_LABELS[l] })),
+        note: 'Gullies act like chimneys that fire races up, ridge tops and spurs are exposed to the wind, and cliffs and flat ground slow a fire down.',
+      };
+    case 'canopyHeight':
+      return rampSpec(
+        overlay,
+        'Tree height',
+        'm',
+        CANOPY_HEIGHT_RAMP,
+        ['0', '10', '20', '30', '40+'],
+        ['low scrub and young trees', 'low woodland', 'forest', 'tall forest', 'very tall forest'],
+        'Tall trees loft embers higher and further, and flames that reach the crowns make a crown fire that is far harder to stop.',
+        { colour: TRANSPARENT, label: 'No trees (under 2 m)' },
+      );
+    case 'canopyCover':
+      return rampSpec(
+        overlay,
+        'Tree cover',
+        '%',
+        CANOPY_COVER_RAMP,
+        ['0', '25', '50', '75', '100'],
+        ['open ground', 'scattered trees', 'open woodland', 'closed forest', 'crowns touching'],
+        'Dense tree cover shades and dampens the fuel below, but touching crowns can carry a crown fire from tree to tree.',
+      );
+    case 'elevatedHazard':
+    case 'surfaceHazard':
+    case 'nearSurfaceHazard':
+    case 'barkHazard': {
+      const h = HAZARD_SPECS[overlay];
+      return {
+        overlay,
+        title: h.title,
+        units: 'score 0–4',
+        kind: 'classes',
+        entries: h.bounds.map((v, i) => ({ value: v, colour: h.colours[i]!, label: h.labels[i]!, words: h.words[i]! })),
+        noData: NOT_FUEL,
+        note: h.note,
+      };
+    }
+    case 'elevatedHeight':
+      return rampSpec(
+        overlay,
+        'Shrub height',
+        'm',
+        ELEVATED_HEIGHT_RAMP,
+        ['0', '0.5', '1', '1.5', '2', '2.5', '3+'],
+        ['ground level', 'knee height', 'waist height', 'chest height', 'head height', 'above head height', 'taller than a person'],
+        'Flames are at least as tall as the shrubs, and shrubs that reach the tree crowns let a fire climb into the canopy.',
+        { colour: TRANSPARENT, label: 'No shrub layer' },
+      );
+    case 'grassCuring':
+      return rampSpec(
+        overlay,
+        'Grass curing (dryness)',
+        '%',
+        CURING_RAMP,
+        ['0', '25', '50', '75', '100'],
+        ['fresh and green', 'mostly green', 'half dry', 'mostly dry', 'fully dry and golden'],
+        'Dry, golden (cured) grass burns fast and fiercely, while green grass hardly burns at all.',
+        { colour: TRANSPARENT, label: 'Not grass' },
+      );
+    case 'fireHistoryKind': {
+      const order = [FireHistoryKind.Wildfire, FireHistoryKind.PrescribedBurn, FireHistoryKind.Unknown];
+      return {
+        overlay,
+        title: 'Last fire: wildfire or planned burn',
+        units: '',
+        kind: 'categorical',
+        entries: order.map((k) => ({ value: k, colour: FIRE_HISTORY_COLOURS[k], label: FIRE_HISTORY_LABELS[k] })),
+        noData: { colour: TSF_NO_RECORD, label: 'No fire on record' },
+        note: 'A recent planned burn has already used up the fuel and can anchor a control line; the years-since-fire layer shows how long ago each place burnt.',
+      };
+    }
+    case 'homeDensity':
+      return {
+        overlay,
+        title: 'Homes nearby',
+        units: 'homes/ha',
+        kind: 'classes',
+        entries: HOME_DENSITY_CLASSES.bounds.map((v, i) => ({ value: v, colour: HOME_RAMP.stops[i]!.colour, label: HOME_DENSITY_CLASSES.labels[i]! })),
+        noData: { colour: TRANSPARENT, label: 'No homes within about 150 m' },
+        note: 'Homes are what most needs protecting: the denser the houses, the more people at risk and the more places an ember can start a fire.',
+      };
+    case 'roadAccess':
+      return {
+        overlay,
+        title: 'Distance to nearest road or trail',
+        units: 'm',
+        kind: 'classes',
+        entries: ROAD_ACCESS_CLASSES.bounds.map((v, i) => ({ value: v, colour: ROAD_RAMP.stops[i]!.colour, label: ROAD_ACCESS_CLASSES.labels[i]! })),
+        note: 'Roads and fire trails are where trucks can reach, make a stand or get out: the further from one, the longer the walk and the harder the retreat.',
+      };
+    case 'windSpeed':
+      return rampSpec(
+        overlay,
+        'Wind speed near the ground',
+        'km/h',
+        WIND_SPEED_RAMP,
+        ['0', '10', '20', '30', '40', '50', '60+'],
+        ['calm', 'light breeze', 'moderate breeze', 'fresh breeze', 'strong breeze', 'near gale', 'gale'],
+        'Wind is the biggest driver of a fire: it speeds the fire up sharply, and ridges and gaps funnel it hardest.',
+      );
   }
 }
 
@@ -489,7 +828,7 @@ export function overlayScale(overlay: OverlayKind, ctx: LegendContext = {}): Ove
     return { mode: 'ramp', lo: 0, hi: max, log: false, lut, noData: [0, 0, 0, 0] };
   }
   const hit = lutCache.get(overlay);
-  if (hit) return hit;
+  if (hit) return overlay === 'elevation' ? elevationScale(hit, ctx) : hit;
   let s: OverlayScale;
   switch (overlay) {
     case 'ros':
@@ -535,13 +874,55 @@ export function overlayScale(overlay: OverlayKind, ctx: LegendContext = {}): Ove
     case 'landing':
       s = continuousScale(LANDING_RAMP, 0.1, 100);
       break;
-    default:
-      // Layers rework: implemented by the heat-field builder; until then a neutral ramp so nothing throws.
-      s = continuousScale(HAZARD_RAMP, 0, 1);
+    case 'elevation': {
+      // One shared LUT over 0 … 1; the value range of the site is applied through lo / hi (never cached: it changes per site).
+      const base = continuousScale(ELEVATION_RAMP, 0, 1);
+      lutCache.set(overlay, base);
+      return elevationScale(base, ctx);
+    }
+    case 'landform':
+      s = categoricalScale(LANDFORM_COLOURS as Record<number, string>, 11);
+      break;
+    case 'canopyHeight':
+      s = continuousScale(CANOPY_HEIGHT_RAMP, 0, 40);
+      break;
+    case 'canopyCover':
+      s = continuousScale(CANOPY_COVER_RAMP, 0, 100);
+      break;
+    case 'surfaceHazard':
+    case 'nearSurfaceHazard':
+    case 'elevatedHazard':
+    case 'barkHazard':
+      s = classScale(hazardRamp(HAZARD_SPECS[overlay]), 0, 4);
+      break;
+    case 'elevatedHeight':
+      s = continuousScale(ELEVATED_HEIGHT_RAMP, 0, 3);
+      break;
+    case 'grassCuring':
+      s = continuousScale(CURING_RAMP, 0, 100);
+      break;
+    case 'fireHistoryKind':
+      s = categoricalScale(FIRE_HISTORY_COLOURS as Record<number, string>, 3);
+      s.noData = noDataOf(TSF_NO_RECORD);
+      break;
+    case 'homeDensity':
+      s = classScale(HOME_RAMP, 0.03, 30, true);
+      break;
+    case 'roadAccess':
+      s = classScale(ROAD_RAMP, 0, 1500);
+      break;
+    case 'windSpeed':
+      s = continuousScale(WIND_SPEED_RAMP, 0, 60);
       break;
   }
   lutCache.set(overlay, s);
   return s;
+}
+
+/** The elevation scale for a site: the shared LUT stretched over the nice height range of the legend context. */
+function elevationScale(base: OverlayScale, ctx: LegendContext): OverlayScale {
+  const { lo, hi } = ctx.elevationRange ? niceElevationRange(ctx.elevationRange[0], ctx.elevationRange[1]) : DEFAULT_ELEVATION_RANGE;
+  return { ...base, lo, hi };
 }
 
 /**

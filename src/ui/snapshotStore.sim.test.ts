@@ -106,6 +106,48 @@ describe('history store vs the real simulation', () => {
     expect(burning).toBeGreaterThan(0);
   }, 600000);
 
+  it('at a 10 s display step every rebuilt array equals the live capture (only ember spot cells landing inside the last step differ)', async () => {
+    const sc = await scenario(10, 0.5);
+    const store = new SnapshotStore({ maxBytes: 2e9, minInterval: 10 });
+    const truth = new Map<number, FireField>();
+    const sim = new Simulation(sc, {
+      tier: 'fast',
+      hooks: {
+        snapshot: (s: SimSnapshot) => {
+          const f = s.fire;
+          truth.set(s.time, { ...f, arrivalTime: f.arrivalTime.slice(), burnState: f.burnState.slice(), ros: f.ros.slice(), intensity: f.intensity.slice(), flameHeight: f.flameHeight.slice(), spreadDir: f.spreadDir.slice(), driver: f.driver.slice(), phase: f.phase.slice() });
+          store.push(s);
+        },
+      },
+    });
+    sim.advance(0.5 * 3600);
+    const newest = store.latest()!.fire.arrivalTime;
+    const head = store.latest()!.time;
+    let compared = 0;
+    let differing = 0;
+    for (const [t, tr] of truth) {
+      if (t >= head) continue;
+      const s = store.at(t)!;
+      expect(s.time).toBe(t);
+      for (let k = 0; k < tr.arrivalTime.length; k++) {
+        const same = Object.is(s.fire.arrivalTime[k], tr.arrivalTime[k]) && s.fire.burnState[k] === tr.burnState[k];
+        if (!same) {
+          // a spot fire whose ember landed inside the last step: the live picture showed it one step later
+          differing++;
+          expect(newest[k]!).toBeGreaterThan(t - 10 - 1e-6);
+          expect(newest[k]!).toBeLessThanOrEqual(t + 1e-6);
+          continue;
+        }
+        if (tr.arrivalTime[k]! <= t) {
+          compared++;
+          for (const key of ['ros', 'intensity', 'flameHeight', 'spreadDir', 'driver', 'phase'] as const) if (!Object.is(s.fire[key][k], tr[key][k])) throw new Error(`${key} differs at t=${t} cell ${k}`);
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(20000);
+    expect(differing).toBeLessThan(compared / 2000);
+  }, 300000);
+
   it('after a rewind and re-simulation the new newest arrays are authoritative for earlier times too', async () => {
     const sc = await scenario(60, 1.5);
     const store = new SnapshotStore({ maxBytes: 600e6, minInterval: 60 });

@@ -1,4 +1,9 @@
-/** Display options for the 3-D scene. The UI owns a LayerState and passes partial updates to SceneView.setLayers. */
+/**
+ * Display options for the 3-D scene. The UI owns a LayerState and passes partial updates to SceneView.setLayers.
+ * Each key is either a layer switch (roads, imagery, flames, wind, ...) or a display setting (overlay, overlayOpacity,
+ * canopyStyle, ...); layerCatalog.ts describes every layer and heat map in plain English and lists the settings
+ * (LAYER_CATALOG, LAYER_SETTING_KEYS), and its test fails if a key or an OverlayKind is added without an entry.
+ */
 
 export type OverlayKind =
   | 'none'
@@ -19,8 +24,8 @@ export type OverlayKind =
   | 'trench' // gully / chimney (trench) score
   | 'dmz' // dead man zone (flank that becomes a head after the forecast wind change)
   | 'landing' // ember landing density
-  // ── Data layers that can be shown as a heat map on their own (CONTRACT for the layers rework; implemented in
-  //    fields.ts / legends.ts / palette.ts, see layerCatalog.ts for titles, units and descriptions) ──
+  // ── Data layers that can be shown as a heat map on their own (layers rework; values in fields.ts, legends in legends.ts,
+  //    colours in palette.ts, titles / units / plain-English descriptions in layerCatalog.ts) ──
   | 'elevation' // ground height (m)
   | 'landform' // ridge / spur / slope / gully / valley / saddle / cliff classes (categorical)
   | 'canopyHeight' // tree canopy height (m), from the Meta/WRI canopy-height map

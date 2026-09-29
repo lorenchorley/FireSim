@@ -112,7 +112,10 @@ bitwise identical (`src/sim/cadence.test.ts`). *Coalescing*: when the worker pro
 ~25 per wall second (`SIM_PARAMS.snapshotMinWallMs`, e.g. a 10 s step at maximum speed) it skips the intermediate ones
 (keeping their side effects and carrying their insights to the next), except the first of every 300 s window
 (`keyframeIntervalS`); `status` reports carry `until`, the target of the current run, so the UI can tell its own run's
-reports from stale ones.
+reports from stale ones. Reports are throttled (250 ms) except starts and stops, and whenever the worker goes idle the
+last report is forced to say `running: false` (a replay that ends inside the throttle window used to leave the UI's
+`computing` flag stuck on). A replay nobody asked to run on (an edit or rewind while paused) stops at the logical now
+and does not compute on to a stale `until` (`src/sim/host.status.test.ts`).
 
 ## Module contracts
 
@@ -239,6 +242,27 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 * Wind particles use a cool palette (grey-blue → white → cyan → blue → violet) so they never read as fire.
 * Legends: `legendFor(overlay)`, `crossSectionLegend()`, `windLegend(mode)`; the UI shows them in the Layers panel
   and as a compact legend on the map.
+* **Heat maps and the layer catalog** (layers rework). One heat map at a time (`LayerState.overlay`), any number of scene
+  layers on or off independently. Every data layer is also a heat map: ground height, landform, tree height and cover,
+  the four fuel hazards (leaf litter, grass and low shrubs, shrubs, bark), shrub height, grass curing, wildfire vs
+  prescribed burn, homes per hectare, distance to a road or trail, and wind speed (`fields.ts` `overlayField`, legends in
+  `legends.ts`, colours in `palette.ts`). All of them use one colour language, **cool = little, warm = much** (blue →
+  teal → green → yellow → orange → red → plum; `HEAT_COLOURS`, `AMOUNT_RAMP`), with the hazard ratings (Low, Moderate,
+  High, Very high, Extreme) in the same colours in every hazard layer; `colourVision.ts` simulates protan / deutan /
+  tritan vision and `palette.test.ts` fails if a palette becomes ambiguous. `NO_DATA` cells are transparent (or the
+  grey "no fire on record"): non-fuel for the hazards, no trees for tree height, not grass for curing, no home nearby.
+  The shader LUT path is reused (no new shaders); the legend and the ground colours come from the same ramps.
+  `OverlaySources` gained `context` (roads / homes for `homeDensity`, `roadAccess`) and `atmosphere` (`windSpeed`, km/h from
+  the 10 m surface winds; a snapshot overlay). The elevation ramp stretches over the site's height range: pass the same
+  `LegendContext.elevationRange` to `overlayScale` and `legendFor` (`SceneView.legend()` does; without a range the legend
+  only says "lowest … highest").
+* `layerCatalog.ts` is the one description of every layer (`LAYER_GROUPS`, `LAYER_CATALOG`): plain title, what it shows,
+  why it matters, scene / heat / both, the LayerState key or OverlayKind, `available(ctx)` with a plain reason
+  ("Needs a fire: mark one first"), data source and resolution as functions of the scenario, and its dimension. The Layers
+  panel and the model card are built from it; `layerCatalog.test.ts` fails when a LayerState key or an OverlayKind is
+  added without an entry. `sceneLayerOn` / `sceneLayerPatch` read and write the switches, `availabilityContext(...)`
+  builds the availability flags from the fuel map, snapshot and context. `legendGallery.html` (dev page) shows every
+  legend chip and catalog row in both themes (`?cvd=deutan` for colour blindness).
 
 ### ui/
 
@@ -255,7 +279,10 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   exact time); then playback resumes at the same speed if it was playing (or `resume`), else it stays paused. A new
   seek retargets; `pause()`, an edit, an ignition, a what-if, a worker error, or the worker going idle short of the
   target ends it, staying where the view is. Insight cards are revealed once, in order, also on the way, never beyond
-  the view. `setTimeStep` changes the display step live; `setSolverStep` re-runs from the view time like a what-if.
+  the view. Backgrounding the app pauses a jump too (the UI calls `pause()`), so the engine does not go on computing
+  hours in the pocket. The clock can run ahead of the results for a moment (an edit or re-run dropped them and the
+  engine is catching up; playback simply waits); `pause()` then shows the newest computed time, so a stopped view
+  never shows more than what is computed. `setTimeStep` changes the display step live; `setSolverStep` re-runs from the view time like a what-if.
 * **History store** (`ui/snapshotStore.ts`). With a 10–60 s display step a run makes thousands of multi-MB snapshots, so
   it keeps a compact, exact history instead: the *fire* of any earlier time t is rebuilt from the NEWEST fire arrays
   (arrival time, ros, intensity, … are fixed at ignition: a cell arriving after t is unburnt, the rest is shared by
@@ -281,10 +308,13 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   danger" (only the first time a kind is dangerous); both are OFF by default.
 * Simulation-screen chrome (`ui/screens/sim`): collapsed by default. Two 56 px round menus over the map (`mapMenu.ts`: tools
   on the handed side, view on the other; the list opens beside the button, at most one open, the open state is
-  `UiState.menu`), a slim 44 px dock of four tabs above the timeline (`sheet.ts`; `UiState.sheet` is `closed | peek |
+  `UiState.menu`), a slim 46 px dock of four 44 px tabs above the timeline (`sheet.ts`; `UiState.sheet` is `closed | peek |
   half | full`, default `closed`) and a thin error chip under the top bar that appears only if the engine fails. The pure
   rules (menu reducer, dock taps and detent heights, list fitting) are in `layoutModel.ts`; `simScreen.ts` measures the
-  covered edges (`layoutInsets`) and gives the camera, the crosshair, the round buttons and the legend the visible map.
+  covered edges (`layoutInsets`) and gives the camera, the crosshair, the round buttons and the legend the visible map (the legend steps
+  aside while a round menu is open). Field-use rules, guarded by `ui/styles.rules.test.ts`: every tap target is at least 44 px (the weather
+  line under the top bar is a read-out, not a button), no text is under 14 px (dock tabs 16 px), and behind a full-screen dialog (Settings)
+  the stage is `inert`, so keyboard focus never walks into hidden controls.
 * Setup catalogues come from `src/scenario` (`WEATHER_PRESETS` / `PRESET_IDS`, `REPLAYS`); a preset starts on its
   canonical day and hour (e.g. 20 Dec 11:00 LMST), rounded to 10 min. Belt-kit readings are sent as
   `ScenarioRequest.beltKit` so the builder applies the psychrometer at the real station pressure and the 2 m → 10 m
@@ -301,6 +331,33 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   (`resolveAssetBase` works from the page and from the worker).
 * `capacitor.config.ts`: `webDir: 'dist'`, https scheme on Android, CapacitorHttp for CORS-free requests. Steps to
   create and run the native projects are in the README.
+
+* **The 3-D canopy** (`vegetationLayer.ts`, `vegetationPlacement.ts`, `vegetationLod.ts`, `treeModels.ts`, `treeTextures.ts`,
+  `treeShaders.ts`, `canopyStyle.ts`). Trees are species-shaped and procedural (no assets; the APK does not grow):
+  stringybark (thick dark fibrous trunk), ribbon bark (pale trunk with hanging streamers), smooth gum (pale smooth trunk),
+  tall wet-forest gum, rainforest, snow gum, pine in rows, heath mounds, **understorey shrubs at the cell's real
+  elevated-fuel height** (more and lusher with a higher hazard, so the ladder fuel is visible), grass tufts (colour follows
+  the curing) and a ground decal (contact shadow + leaf-litter tint by surface hazard). The bark of a eucalypt comes from
+  `FuelFlag.Stringybark` / `RibbonBark` and the bark hazard (`barkKindOf`): the trunk teaches the ember-source hazard. Tree
+  HEIGHTS are the canopy-height data (±14 % natural variation); only distant crowns are drawn a little wider to keep the
+  canopy continuous.
+  Three levels of detail per species (near ≈ 150–360 triangles of trunk, limbs and 4–7 lobes of alpha-tested leaf-cluster
+  cards; mid ≈ 60–100; far = one camera-facing billboard with a procedural silhouette), planned by `planLod` from
+  distance / height with hard budgets (≤ 250 k triangles on `high`, 170 k `medium`, 100 k `low`; ≤ 60 k instances),
+  nearest first. Placement is a resumable `PlacementJob` pumped 4 ms per frame (`VegetationLayer.pump`), so re-placing
+  the forest when the camera settles never blocks a frame; a `renderNow()` finishes it at once (screenshots, tests).
+  Fire state stays on the GPU (arrival / aux / glow textures, as before): scorch (copper-brown), torching crowns (flame
+  tint), consumed crowns with charred trunks and bare limbs, shrubs and grass consumed; old fires from the fuel map's time
+  since fire: charred trunk with green epicormic shoots, thin crowns that thicken over ~5 years. Wind sway
+  (`LayerState.windSway`): two uniforms per snapshot (`setWind(u, v)` from the near-surface wind at the view target,
+  `swayParams` maps speed to lean / oscillation / flutter), bending grows with height. Readability: instances fade out with
+  a screen-door dither as the camera looks down steeply (top view), around active flames (foliage only; torching crowns
+  stay), and near an eye-level camera; a solo heat map hides the canopy (`LayerState.soloHeat`).
+  Styles (`LayerState.canopyStyle`): `natural`; `simple` (clean uniform low-poly shapes in one restrained palette,
+  cheapest); `coded` (the simple shapes coloured by `canopyCode` = height / cover / bark / understorey with the ramps of the
+  matching heat map: `canopyCodeScale(code)` returns the heat map's own LUT once `legendFor` has one, and
+  `canopyCodeLegend(code)` (also `SceneView.canopyLegend()`) its legend). `canopy*.ts` and `tree*.ts` are pure (Node-testable);
+  `devTrees.html` (dev page) shows every species, level, style and fire response (`window.__trees.showcase / eye / forceLod`).
 
 ## Performance
 

@@ -5,7 +5,7 @@
  * Colours are sRGB hex strings. Ramps are piecewise-linear in sRGB between stops at increasing positions. Sequential
  * ramps are ordered by luminance so they stay readable with red–green colour-vision deficiency (doc 09 §9).
  */
-import { FuelType, SpreadDriver, type InsightSeverity } from '../core/types';
+import { FireHistoryKind, FuelType, Landform, SpreadDriver, type InsightSeverity } from '../core/types';
 
 /** sRGB colour with components 0–1. */
 export type Rgb = [number, number, number];
@@ -436,3 +436,112 @@ export const EMBER_RAMP = makeRamp([
   { at: 0.75, colour: '#ffbe45' },
   { at: 1, colour: '#fff6d8' },
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Heat maps of the data layers (layers rework)
+//
+// One colour language for every measure that can be shown as a heat map: COOL = LITTLE, WARM = MUCH. Blue is the lowest
+// value, then teal, green, yellow, orange, red and a deep plum for the most. There is no green-versus-red pairing (it
+// is the one that red-green colour-blind people cannot separate) and the hazard ratings keep the same colours in every
+// hazard layer, so "orange" means "High" whether it is leaf litter, shrubs or bark. palette.test.ts checks the ramps
+// with colour-blindness simulations (protan / deutan / tritan).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Anchor colours of the heat-map language, lowest to highest. */
+export const HEAT_COLOURS = {
+  blue: '#3f82c8',
+  teal: '#4bb3c4',
+  green: '#a8d98a',
+  yellow: '#f4e04d',
+  orange: '#f28c28',
+  red: '#cf2f2f',
+  plum: '#6a1150',
+} as const;
+
+/** The master sequential ramp on 0 … 1 (blue → teal → green → yellow → orange → red → plum). */
+export const AMOUNT_RAMP = makeRamp([
+  { at: 0, colour: HEAT_COLOURS.blue },
+  { at: 1 / 6, colour: HEAT_COLOURS.teal },
+  { at: 2 / 6, colour: HEAT_COLOURS.green },
+  { at: 3 / 6, colour: HEAT_COLOURS.yellow },
+  { at: 4 / 6, colour: HEAT_COLOURS.orange },
+  { at: 5 / 6, colour: HEAT_COLOURS.red },
+  { at: 1, colour: HEAT_COLOURS.plum },
+]);
+
+/**
+ * A ramp over the given increasing values (any units) whose colours are the master ramp sampled at evenly spaced
+ * fractions: the first value is the coolest colour, the last the warmest. `log` interpolates in log10.
+ */
+export function amountRamp(values: readonly number[], opts: { log?: boolean } = {}): Ramp {
+  if (values.length < 2) throw new Error('amountRamp: needs at least two values');
+  const c: Rgb = [0, 0, 0];
+  return makeRamp(
+    values.map((at, i) => ({ at, colour: rgbToHex(sampleRamp(AMOUNT_RAMP, i / (values.length - 1), c)) })),
+    opts,
+  );
+}
+
+/** Colours of `n` classes, coolest first, sampled evenly from the master ramp. */
+export function amountClassColours(n: number): string[] {
+  const c: Rgb = [0, 0, 0];
+  return Array.from({ length: n }, (_, i) => rgbToHex(sampleRamp(AMOUNT_RAMP, n === 1 ? 0 : i / (n - 1), c)));
+}
+
+/** Standard hazard ratings (Overall Fuel Hazard Assessment Guide), lowest to highest. */
+export const HAZARD_RATING_LABELS = ['Low', 'Moderate', 'High', 'Very high', 'Extreme'] as const;
+
+/** Colour of each hazard rating (same in every hazard layer) and of "none" (no fuel of that layer at all). */
+export const HAZARD_RATING_COLOURS: readonly string[] = [HEAT_COLOURS.blue, HEAT_COLOURS.yellow, HEAT_COLOURS.orange, HEAT_COLOURS.red, HEAT_COLOURS.plum];
+export const HAZARD_NONE_COLOUR = '#c9d6e2';
+
+/** Ground height (m): the master ramp stretched over the height range of the site (the range comes from the legend context). */
+export const ELEVATION_RAMP = AMOUNT_RAMP;
+
+/** Tree canopy height (m) and cover (%), shrub height (m), grass curing (%) and near-surface wind speed (km/h); stops are evenly spaced so legend labels line up with the colour bar. */
+export const CANOPY_HEIGHT_RAMP = amountRamp([0, 10, 20, 30, 40]);
+export const CANOPY_COVER_RAMP = amountRamp([0, 25, 50, 75, 100]);
+export const ELEVATED_HEIGHT_RAMP = amountRamp([0, 0.5, 1, 1.5, 2, 2.5, 3]);
+export const CURING_RAMP = amountRamp([0, 25, 50, 75, 100]);
+export const WIND_SPEED_RAMP = amountRamp([0, 10, 20, 30, 40, 50, 60]);
+
+/** Landform classes (Terrain.landform codes) by position on the slope: high and exposed = warm, low and sheltered = cool. */
+export const LANDFORM_LABELS: Record<Landform, string> = {
+  [Landform.Flat]: 'Flat ground',
+  [Landform.Ridge]: 'Ridge top',
+  [Landform.Spur]: 'Spur (a ridge running downhill)',
+  [Landform.UpperSlope]: 'Upper slope',
+  [Landform.MidSlope]: 'Mid slope',
+  [Landform.LowerSlope]: 'Lower slope',
+  [Landform.Gully]: 'Gully (creek line or draw)',
+  [Landform.ValleyFloor]: 'Valley floor',
+  [Landform.Saddle]: 'Saddle (low point on a ridge)',
+  [Landform.Peak]: 'Peak',
+  [Landform.Cliff]: 'Cliff',
+};
+
+export const LANDFORM_COLOURS: Record<Landform, string> = {
+  [Landform.Flat]: '#d9d9d9',
+  [Landform.Ridge]: '#e0523a',
+  [Landform.Spur]: '#f39c4a',
+  [Landform.UpperSlope]: '#f7d774',
+  [Landform.MidSlope]: '#b8d98a',
+  [Landform.LowerSlope]: '#6fc0a0',
+  [Landform.Gully]: '#3a8fb7',
+  [Landform.ValleyFloor]: '#1f4e9c',
+  [Landform.Saddle]: '#b38b5d',
+  [Landform.Peak]: '#8c1c13',
+  [Landform.Cliff]: '#3b3b3b',
+};
+
+/** Last recorded fire (FireHistoryKind codes) for the fire-history heat map. "No record" is the shared grey of the years-since-fire map. */
+export const FIRE_HISTORY_LABELS: Record<FireHistoryKind, string> = {
+  [FireHistoryKind.Unknown]: 'Fire of unrecorded type',
+  [FireHistoryKind.Wildfire]: 'Wildfire',
+  [FireHistoryKind.PrescribedBurn]: 'Prescribed burn or back burn',
+};
+export const FIRE_HISTORY_COLOURS: Record<FireHistoryKind, string> = {
+  [FireHistoryKind.Unknown]: '#e0b23c',
+  [FireHistoryKind.Wildfire]: '#d1462f',
+  [FireHistoryKind.PrescribedBurn]: '#2b6cb0',
+};

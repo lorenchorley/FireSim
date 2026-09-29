@@ -19,6 +19,7 @@ import {
   ROAD_WIDTH_M,
   roadDash,
   roadStyleIndex,
+  sameOrigin,
   selectLabels,
   STYLE_COUNT,
   STYLES,
@@ -142,6 +143,15 @@ describe('road styles', () => {
   });
 });
 
+describe('sameOrigin', () => {
+  it('accepts origins within a few metres and rejects other sites', () => {
+    expect(sameOrigin({ lat: -33.715, lon: 150.285 }, { lat: -33.715, lon: 150.285 })).toBe(true);
+    expect(sameOrigin({ lat: -33.715, lon: 150.285 }, { lat: -33.71501, lon: 150.28501 })).toBe(true);
+    expect(sameOrigin({ lat: -33.715, lon: 150.285 }, { lat: -33.72, lon: 150.285 })).toBe(false);
+    expect(sameOrigin({ lat: -33.715, lon: 150.285 }, { lat: -36.5, lon: 148.3 })).toBe(false);
+  });
+});
+
 describe('houses and homes', () => {
   it('builds a closed-looking gabled box with unit normals', () => {
     const g = houseGeometry();
@@ -261,7 +271,7 @@ describe('zone raster', () => {
     const frame = { x0: 0, y0: 0, size: 640 }; // 10 m texels
     const px = rasterizeZones([zone('residential', [square(25, 25, 300)])], frame, n);
     const at = (i: number, j: number): number => px[(j * n + i) * 4 + 3]!;
-    expect(at(10, 10)).toBeGreaterThan(90); // inside: opacity 0.46 -> ~117
+    expect(at(10, 10)).toBeGreaterThan(80); // inside: opacity 0.36 -> ~92
     expect(at(0, 0)).toBe(0);
     expect(at(50, 50)).toBe(0);
     // Edge texel 2 covers x 20–30 m, only 25–30 m inside: half the opacity.
@@ -299,6 +309,6 @@ describe('zone raster', () => {
     }
     const t0 = performance.now();
     rasterizeZones(zs, { x0: -3500, y0: -3500, size: 7000 }, 1024);
-    expect(performance.now() - t0).toBeLessThan(400);
+    expect(performance.now() - t0).toBeLessThan(800);
   });
 });

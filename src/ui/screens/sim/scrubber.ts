@@ -64,7 +64,7 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const statusPct = h('span', { class: 'tl-status-pct', aria: { hidden: true } });
   const cancelBtn = h(
     'button',
-    { type: 'button', class: 'tl-cancel', dataset: { testid: 'seek-cancel' }, on: { click: () => session.cancelSeek() } },
+    { type: 'button', class: 'tl-cancel', dataset: { testid: 'seek-cancel' }, aria: { label: 'Cancel the fast-forward' }, on: { click: () => session.cancelSeek() } },
     'Cancel',
   );
   const status = h('div', { class: 'tl-status', hidden: true, dataset: { testid: 'seek-status' }, attrs: { role: 'status' } }, [

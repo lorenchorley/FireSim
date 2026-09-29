@@ -63,6 +63,8 @@ export class SimHost {
   private scheduled = false;
   private disposed = false;
   private lastStatus = -Infinity;
+  /** Whether the last 'status' posted said the worker was busy (so an idle report is owed when it stops). */
+  private postedBusy = false;
   private speed = 0;
   private readonly schedule: (fn: () => void) => void;
   private readonly clock: () => number;
@@ -220,9 +222,13 @@ export class SimHost {
     }
     while (this.queue.length && sim.isReady) this.apply(sim, this.queue.shift()!);
     const replaying = sim.time < sim.logicalNow - 1e-6;
-    const target = Math.min(sim.duration, replaying ? Math.max(this.until, sim.logicalNow) : this.until);
+    // A replay that nobody asked to run on (paused: an edit or rewind in the past) stops at the logical now; a stale
+    // `until` from an earlier run must not make it compute on.
+    const target = Math.min(sim.duration, this.running ? (replaying ? Math.max(this.until, sim.logicalNow) : this.until) : sim.logicalNow);
     const active = (this.running || replaying) && sim.time < target - 1e-6;
     if (!active) {
+      // Throttled reports can drop the one that says "stopped": make sure the UI's last report is the idle one.
+      if (this.postedBusy && !this.running && !replaying) this.status(true);
       if (this.running && sim.time >= Math.min(this.until, sim.duration) - 1e-6) {
         this.running = false;
         sim.emitRunEnd();
@@ -252,7 +258,8 @@ export class SimHost {
     if (!force && now - this.lastStatus < SIM_PARAMS.statusIntervalMs) return;
     this.lastStatus = now;
     const replaying = sim.time < sim.logicalNow - 1e-6;
-    this.port.post({ type: 'status', time: sim.time, running: this.running || replaying, speed: this.speed, until: this.until });
+    this.postedBusy = this.running || replaying;
+    this.port.post({ type: 'status', time: sim.time, running: this.postedBusy, speed: this.speed, until: this.until });
   }
 
   private fail(e: unknown): void {

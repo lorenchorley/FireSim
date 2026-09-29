@@ -27,6 +27,7 @@ export class App {
   private settings: Screen | null = null;
   private readonly live: HTMLElement;
   private readonly stage: HTMLElement;
+  private settingsOpener: HTMLElement | null = null;
   private build: AbortController | null = null;
   private lastSetup: SetupState | null = null;
   private leavingSim = false;
@@ -84,6 +85,10 @@ export class App {
       onClose: () => history.back(),
       onNotice: () => void showNotice(this.root, { review: true }),
     });
+    this.settingsOpener = document.activeElement as HTMLElement | null;
+    // Settings cover the screen: what is behind must not take keyboard focus or be read out (Tab would otherwise walk into
+    // the simulation's hidden controls after the last setting).
+    this.stage.inert = true;
     this.root.append(this.settings.el);
     (this.settings.el.querySelector('button') as HTMLButtonElement | null)?.focus();
   }
@@ -91,6 +96,10 @@ export class App {
   private closeSettings(): void {
     this.settings?.destroy();
     this.settings = null;
+    this.stage.inert = false;
+    const back = this.settingsOpener;
+    this.settingsOpener = null;
+    if (back?.isConnected) back.focus({ preventScroll: true });
   }
 
   private onBack(): void {

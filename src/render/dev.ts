@@ -9,10 +9,15 @@
  *   wind=off|surface|volume  cross=1  crossAz=<deg>  imagery=0|1  veg=0|1  vex=1  iso=30  hud=0  play=1
  *   cam=x,y,dist,az,tilt (camera target & pose)  user=x,y,heading  quality=low|medium|high  focus=1
  *   smoke=0 flames=0 embers=0 legend=0 dpr=<fixed dpr>  arrows=1  brush=x,y,radius  crossAt=x,y
+ *   Places layers (bundled NSW context, see src/data/contextLayers.ts): context=1 loads them (also implied by any of
+ *   roads= fireTrails= homes= zones= names= being given), each 0|1 switches a layer (defaults: roads, fireTrails and
+ *   names on, homes and zones off); town=<place name> aims the camera at a place, with d=<distance m> az=<deg>
+ *   tilt=<deg> (defaults 1800, 200, 55); start=22 gives the night theme.
  */
 import { makeGridSpec } from '../core/grid';
 import type { SimSnapshot } from '../core/types';
-import { DEMO_SITES, loadCanopy, loadElevation, setAssetBase } from '../data';
+import { DEMO_SITES, loadBundledContext, loadCanopy, loadElevation, setAssetBase } from '../data';
+import type { ContextLayers } from '../core/places';
 import { buildTerrain } from '../terrain';
 import { loadDemoImagery } from './demoAssets';
 import { fabricateFuel, SyntheticFire } from './devScenario';
@@ -47,6 +52,10 @@ async function main(): Promise<void> {
   const canopy = await loadCanopy(fuelGrid, { demoSiteId: site.id });
   const fuel = fabricateFuel(terrain, fuelGrid, canopy);
   const imagery = await loadDemoImagery(site.id, { grid: terrain.grid }).catch(() => null);
+  // Places context (roads, fire trails, homes, zones, names) for the site.
+  const wantContext = q.get('context') === '1' || ['roads', 'fireTrails', 'homes', 'zones', 'names'].some((k) => q.has(k));
+  const context: ContextLayers | null = wantContext ? await loadBundledContext(site.id, terrain.grid.origin).catch(() => null) : null;
+  const flag = (k: string, d: boolean): boolean => (q.has(k) ? q.get(k) !== '0' : d);
 
   // Start: 21 Dec 2019 at `start` local (AEDT = UTC+11).
   const startHour = num('start', 13);
@@ -61,7 +70,7 @@ async function main(): Promise<void> {
     maxDpr: q.has('dpr') ? num('dpr', 1) : undefined,
     windArrows: q.get('arrows') === '1',
   });
-  view.setScenario(terrain, fuel, { imagery });
+  view.setScenario(terrain, fuel, { imagery, context });
   view.setStartTime(startTime);
   $('loading').classList.add('hidden');
 
@@ -76,6 +85,11 @@ async function main(): Promise<void> {
     flames: q.get('flames') !== '0',
     embers: q.get('embers') !== '0',
     verticalExaggeration: num('vex', 1),
+    roads: flag('roads', true),
+    fireTrails: flag('fireTrails', true),
+    homes: flag('homes', false),
+    zones: flag('zones', false),
+    placeNames: flag('names', true),
     // Section along the wind through the fire (downwind of the ignition).
     crossSection: {
       enabled: q.get('cross') === '1',
@@ -117,7 +131,11 @@ async function main(): Promise<void> {
   setTime(t);
 
   // Camera.
-  if (q.has('cam')) {
+  const townName = q.get('town');
+  const town = townName && context ? context.places.find((p) => p.name.toLowerCase() === townName.toLowerCase()) : undefined;
+  if (town) {
+    view.lookAt(town.x, town.y, num('d', 1800), num('az', 200), num('tilt', 55));
+  } else if (q.has('cam')) {
     const [cx, cy, d, az, tilt] = q.get('cam')!.split(',').map(Number);
     view.lookAt(cx!, cy!, d!, az ?? 200, tilt ?? 55);
   } else {
@@ -167,6 +185,11 @@ async function main(): Promise<void> {
   });
   toggle('imagery', () => view.getLayers().imagery, (v) => view.setLayers({ imagery: v }));
   toggle('veg', () => view.getLayers().vegetation, (v) => view.setLayers({ vegetation: v }));
+  toggle('roads', () => view.getLayers().roads, (v) => view.setLayers({ roads: v }));
+  toggle('trails', () => view.getLayers().fireTrails, (v) => view.setLayers({ fireTrails: v }));
+  toggle('homes', () => view.getLayers().homes, (v) => view.setLayers({ homes: v }));
+  toggle('zones', () => view.getLayers().zones, (v) => view.setLayers({ zones: v }));
+  toggle('names', () => view.getLayers().placeNames, (v) => view.setLayers({ placeNames: v }));
   timeInput.oninput = () => setTime(Number(timeInput.value));
   const play = $<HTMLButtonElement>('play');
   const setPlay = (p: boolean): void => {
@@ -181,7 +204,7 @@ async function main(): Promise<void> {
   setInterval(() => {
     const s = view.stats();
     const d = view.diagnostics();
-    $('stats').textContent = `${s.fps} fps · ${s.drawCalls} draws · ${(s.triangles / 1000).toFixed(0)}k tris · dpr ${d.dpr} · trees ${d.vegetation} · flames ${d.flames} · embers ${d.embers} · puffs ${d.puffs} · mesh ${d.mesh}`;
+    $('stats').textContent = `${s.fps} fps · ${s.drawCalls} draws · ${(s.triangles / 1000).toFixed(0)}k tris · dpr ${d.dpr} · trees ${d.vegetation} · flames ${d.flames} · embers ${d.embers} · puffs ${d.puffs} · mesh ${d.mesh} · places ${d.places}`;
   }, 500);
 
   // Tap: log the picked ground point (checks picking).
@@ -190,6 +213,7 @@ async function main(): Promise<void> {
     if (p) console.log('picked', p.map((v) => v.toFixed(0)).join(', '));
   });
 
+  if (q.get('flush') !== '0') view.flushPlaces(); // flush=0 leaves the sliced build to the render loop (timing checks)
   window.__fs = { view, fire, ready: true, setTime };
 }
 

@@ -122,9 +122,9 @@ img {
   gap: 6px;
   background: repeating-linear-gradient(135deg, var(--badge-bg) 0 14px, #f7c400 14px 28px);
   color: var(--badge-ink);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   line-height: 1;
   text-transform: uppercase;
   z-index: 100;
@@ -135,8 +135,8 @@ img {
   display: none;
 }
 
-/* The full wording needs ~360 px at 12 px uppercase with tracking. */
-@media (max-width: 400px) {
+/* The full wording needs ~440 px at 14 px uppercase with tracking. */
+@media (max-width: 480px) {
   .training-badge .badge-full {
     display: none;
   }

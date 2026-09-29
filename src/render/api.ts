@@ -16,7 +16,11 @@ export interface SceneViewApi {
    * DEM the fire grid was block-averaged from) makes the terrain mesh finer than the fire grid: cliffs and gullies are
    * drawn at the mesh budget (≈ 15 m for 6 km) instead of 30 m.
    */
-  setScenario(terrain: Terrain, fuel: FuelMap, opts?: { imagery?: SceneImagery | null; hiRes?: { grid: GridSpec; elevation: Float32Array } | null }): void;
+  setScenario(
+    terrain: Terrain,
+    fuel: FuelMap,
+    opts?: { imagery?: SceneImagery | null; hiRes?: { grid: GridSpec; elevation: Float32Array } | null; context?: ContextLayers | null },
+  ): void;
   /**
    * Scenario start (unix ms): the sun, shadows and sky follow the simulation clock exactly from the first frame
    * (without it the view derives the start from the snapshots' hourly weather record). Call after setScenario.
@@ -35,7 +39,8 @@ export interface SceneViewApi {
   /**
    * Roads, fire trails, homes, zones and place names for the scenario (local metres about the scenario origin), or null.
    * Shown according to LayerState.{roads, fireTrails, homes, zones, placeNames}; also feeds the 'homeDensity' and
-   * 'roadAccess' heat maps.
+   * 'roadAccess' heat maps. May be called before or after setScenario; `setScenario(…, { context })` does the same in one
+   * call. The geometry is built in small slices over the next frames (a few milliseconds each).
    */
   setContext(context: ContextLayers | null): void;
   /** Highlight one insight location (pulsing ring) and optionally fly to it. */

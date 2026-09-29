@@ -114,6 +114,9 @@ export {
   type PackCanopy,
 } from './layers';
 
+// Places context: roads, fire trails, homes, residential zones, place names (bundled → area pack → cache → live NSW services).
+export { loadContext, resolveContextFile, contextForPack, isContextFile, CONTEXT_PACK_ITEM, type ContextRequest, type ContextResult, type ContextOrigin } from './context';
+
 // Offline area packs and live context feeds.
 export { downloadAreaPack, type AreaPackRequest, type AreaPackResult, type AreaPackProgress, type PackDaily } from './areaPack';
 export {

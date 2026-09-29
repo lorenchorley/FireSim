@@ -123,7 +123,7 @@ export function distanceToLines(lines: readonly Float32Array[], grid: GridSpec):
     const t = inv > 0 ? Math.max(0, Math.min(1, (px * vx + py * vy) * inv)) : 0;
     const ex = px - vx * t;
     const ey = py - vy * t;
-    const dist = Math.hypot(ex, ey);
+    const dist = Math.sqrt(ex * ex + ey * ey);
     const k = j * nx + i;
     if (dist < d[k]!) d[k] = dist;
   };
@@ -147,8 +147,8 @@ export function distanceToLines(lines: readonly Float32Array[], grid: GridSpec):
       const l2 = vx * vx + vy * vy;
       const inv = l2 > 0 ? 1 / l2 : 0;
       const len = Math.sqrt(l2);
-      // Walk the segment in half-cell steps; seed the 3 × 3 cells around each sample.
-      const steps = Math.max(1, Math.ceil(len / (h * 0.5)));
+      // Walk the segment in cell-sized steps; seed the 3 × 3 cells around each sample (exact distance to the segment).
+      const steps = Math.max(1, Math.ceil(len / h));
       let lastI = NaN;
       let lastJ = NaN;
       for (let q = 0; q <= steps; q++) {

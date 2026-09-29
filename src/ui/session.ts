@@ -223,6 +223,14 @@ export class SimSession {
     this.controller.pause();
     this.requestedUntil = this.state.get().headTime;
     this.stopLoop();
+    // The clock can be ahead of the results while it waits for the engine (after an edit or a re-run dropped them):
+    // stopped, it shows the newest computed time, so the clock and the picture agree and nothing beyond the computed
+    // range is ever displayed.
+    const s = this.state.get();
+    if (s.snapshot && s.viewTime > s.headTime + 1e-6) {
+      this.state.set({ viewTime: s.headTime, reviewing: false });
+      this.syncView();
+    }
   }
 
   /** Play / pause; while a fast-forward runs it cancels it (the button shows Pause meanwhile). */

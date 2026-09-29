@@ -68,21 +68,16 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
   const speed = createSpeedControl(ctx);
 
   // ── weather strip ──
+  // A read-out, not a button: at 28 px tall it was a target too small for a wet, gloved thumb, and a slip from the play row
+  // opened the dock over the map. The Weather tab in the dock is the one way in to the weather timeline.
   const wTemp = h('span', { class: 'wx-item' });
   const wRh = h('span', { class: 'wx-item' });
   const wWind = h('span', { class: 'wx-item wx-wind' });
   const wRating = h('span', { class: 'rating-pill' });
-  const chip = h(
-    'button',
-    {
-      type: 'button',
-      class: 'tb-wx',
-      dataset: { testid: 'weather-chip' },
-      aria: { label: 'Current weather — open the weather timeline' },
-      on: { click: () => (popovers.closeAll(), ctx.ui.set({ tab: 'weather', sheet: 'half', panelOpen: false })) },
-    },
-    [wTemp, wRh, wWind, wRating],
-  );
+  const chip = h('div', { class: 'tb-wx', dataset: { testid: 'weather-chip' }, attrs: { role: 'img' } }, [wTemp, wRh, wWind, wRating]);
+  let wxLabel = '';
+  let ratingLabel = '';
+  const setChipLabel = (): void => chip.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
 
   const el = h('header', { class: 'sim-topbar' }, [
     h('div', { class: 'tb-row' }, [menuBtn, clockBtn, playBtn, speed.button]),
@@ -153,8 +148,10 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
     const pk = shownPlaying ? 'pause' : atEnd ? 'again' : 'play';
     if (pk !== playKey) {
       playKey = pk;
+      // The name changes with the action ("Play" / "Pause"), so the button is not also a pressed/unpressed toggle (a screen
+      // reader would say "Pause, pressed"): the state is only exposed to the stylesheet.
       playBtn.setAttribute('aria-label', pk === 'pause' ? 'Pause' : pk === 'again' ? 'Play again from the start' : 'Play');
-      playBtn.setAttribute('aria-pressed', String(shownPlaying));
+      playBtn.dataset.state = pk;
       setChildren(playBtn, icon(pk === 'pause' ? 'pause' : pk === 'again' ? 'replay' : 'play', { size: 30 }));
     }
     // Weather: interpolated from the scenario series at the view time; rating from the snapshot when available.
@@ -171,7 +168,8 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       setChildren(wTemp, h('span', null, `${t}°`));
       setChildren(wRh, [icon('droplet', { size: 16, class: 'wx-icon' }), h('span', null, rh)]);
       setChildren(wWind, [windArrow(arrowDeg, 18), h('span', { class: 'wx-dir' }, dirName), h('span', { class: 'wx-speed' }, windTxt)]);
-      chip.setAttribute('aria-label', `Weather now: ${formatTemp(w.temperature)}, humidity ${rh}, wind from ${dirName} at ${windTxt}. Open the weather timeline.`);
+      wxLabel = `Weather now: ${formatTemp(w.temperature)}, humidity ${rh}, wind from ${dirName} at ${windTxt}`;
+      setChipLabel();
     }
     const st = s.snapshot?.stats;
     const df = ctx.scenario.weather.droughtFactor ?? 8;
@@ -183,7 +181,8 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       ratingKey = rk;
       wRating.className = `rating-pill rating-${r.key}`;
       text(wRating, r.key === 'none' ? `FFDI ${Math.round(fi)}` : r.label);
-      wRating.setAttribute('aria-label', `Fire danger ${r.label}, FFDI about ${Math.round(fi)}`);
+      ratingLabel = `Fire danger ${r.label}, FFDI about ${Math.round(fi)}`;
+      setChipLabel();
     }
   };
   const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep']);

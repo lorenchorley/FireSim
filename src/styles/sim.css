@@ -273,14 +273,14 @@
 }
 
 .compass-n {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 900;
   color: var(--danger);
 }
 
 .compass-needle svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin-top: -1px;
 }
 
@@ -352,7 +352,7 @@
 .ml-ends {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--muted);
 }
@@ -361,7 +361,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 2px 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -380,7 +380,7 @@
 }
 
 .ml-more {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -388,6 +388,11 @@
 .sheet-open .map-legend,
 .drawing .map-legend {
   display: none;
+}
+
+/* A round menu's list opens over the strip the legend occupies: the legend steps aside while a menu is open. */
+.menu-open .map-legend {
+  visibility: hidden;
 }
 
 /* ── Simulation failure: a thin strip under the top bar (never a modal, never over the map) ── */
@@ -485,7 +490,7 @@
 
 .sheet-head {
   flex: 0 0 auto;
-  height: 26px;
+  height: 44px; /* a full-width close/drag strip a gloved thumb can hit; the panel's own top padding is 0 to pay for it */
   display: grid;
 }
 
@@ -510,8 +515,7 @@
   height: var(--dock-h);
   box-sizing: border-box;
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   padding: 0 var(--safe-right) 0 var(--safe-left);
   border-top: 2px solid var(--border-soft);
   background: var(--surface);
@@ -521,7 +525,8 @@
 
 .sheet-tab {
   position: relative;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 44px;
   height: 100%;
   display: flex;
   align-items: center;
@@ -531,7 +536,7 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
   touch-action: manipulation;
 }
@@ -544,23 +549,17 @@
 
 /* The Insights tab keeps room on its right for the count ("9+" is the widest), so the badge never covers the label. */
 .sheet-tab.has-badge {
-  padding-right: 27px;
+  padding-right: 30px;
 }
 
 /* Narrow docks (phones, or a side column): four labelled tabs need the width, so the (decorative) icons give way. */
 @media (max-width: 520px) {
-  .sheet-tab {
-    font-size: clamp(13px, 3.9vw, 16px);
-  }
   .tab-icon {
     display: none;
   }
 }
 
 @container dock (max-width: 480px) {
-  .sheet-tab {
-    font-size: clamp(13px, 3.9cqw, 16px);
-  }
   .tab-icon {
     display: none;
   }
@@ -580,19 +579,19 @@
 /* Unseen-cards count: no layout shift (it sits in the room the tab keeps for it), no sound; red with one pulse when a Danger card is waiting. */
 .tab-badge {
   position: absolute;
-  right: 2px;
-  top: 4px;
-  min-width: 20px;
-  height: 20px;
+  right: 3px;
+  top: 5px;
+  min-width: 24px;
+  height: 22px;
   box-sizing: border-box;
-  padding: 0 3px;
-  border-radius: 10px;
+  padding: 0 4px;
+  border-radius: 11px;
   box-shadow: 0 0 0 2px var(--surface); /* a ring in the dock's colour, outside the box, so the box stays narrow */
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
-  line-height: 16px;
+  line-height: 18px;
   text-align: center;
   pointer-events: none;
 }
@@ -643,7 +642,7 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 6px max(12px, var(--safe-right)) 16px max(12px, var(--safe-left));
+  padding: 0 max(12px, var(--safe-right)) 16px max(12px, var(--safe-left));
   touch-action: pan-y;
 }
 

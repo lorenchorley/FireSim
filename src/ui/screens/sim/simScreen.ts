@@ -430,6 +430,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     scheduleAnnotations();
   };
   unsubs.push(ui.subscribe(renderModes, ['drawing', 'tool', 'panelOpen', 'fireInput', 'pending', 'viewMode', 'why', 'wind', 'fuelPreset']));
+  // A round menu's list opens over the strip of map the legend occupies: the legend steps aside while a menu is open.
+  const renderMenuOpen = (): void => {
+    root.classList.toggle('menu-open', ui.get().menu !== null);
+  };
+  unsubs.push(ui.subscribe(renderMenuOpen, ['menu']));
+  renderMenuOpen();
 
   // ───────────── map taps ─────────────
   const downs = new Map<number, { x: number; y: number; t: number }>();
@@ -672,7 +678,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     // Backgrounded (screen locked, app switched): stop the worker too, not just the frame loop, so it does not burn
     // battery computing hours ahead in the pocket. Playback stays paused until the user presses Play again.
     listen(document, 'visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && session.state.get().playing) {
+      if (document.visibilityState === 'hidden' && (session.state.get().playing || session.state.get().seekTarget !== null)) {
         session.pause();
         o.announce('Paused while FireSim was in the background.');
       }

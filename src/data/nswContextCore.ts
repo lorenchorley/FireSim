@@ -35,6 +35,13 @@ export interface ContextQuery {
   offset: number;
   /** Object ids per feature request (servers cap the records and the size of one response; polygons are heavy). */
   chunk: number;
+  /**
+   * How long one request may take before it is abandoned and retried (ms). Measured 2026-09-29: the portal answers in
+   * 0.5-2 s but about one request in three STALLS (no answer for 25-60 s, then HTTP 504) and the same request answers at
+   * once when repeated, so a short timeout with retries is much faster than waiting; the zoning server really needs
+   * 4-10 s for a 2-7 km area.
+   */
+  timeoutMs: number;
 }
 
 const SS = '/server/rest/services';
@@ -49,12 +56,13 @@ export const CONTEXT_QUERIES: Readonly<Record<ContextQueryId, ContextQuery>> = {
     where: 'operationalstatus=1',
     offset: 0.00002,
     chunk: 400,
+    timeoutMs: 10_000,
   },
-  fireTrails: { id: 'fireTrails', service: 'nswspatial', path: `${SS}/NSW_Transport_Theme/FeatureServer/9`, outFields: 'objectid', where: '1=1', offset: 0.00002, chunk: 400 },
-  homes: { id: 'homes', service: 'nswspatial', path: `${SS}/NSW_Geocoded_Addressing_Theme/FeatureServer/1`, outFields: 'rid', where: '1=1', offset: 0, chunk: 800 },
-  zones: { id: 'zones', service: 'nswenv', path: `${PLAN}/19`, outFields: 'SYM_CODE,LAY_CLASS,LGA_NAME', where: '1=1', offset: 0.00005, chunk: 100 },
-  places: { id: 'places', service: 'nswspatial', path: `${SS}/NSW_Features_of_Interest_Category/FeatureServer/1`, outFields: 'generalname,placetype', where: '1=1', offset: 0, chunk: 400 },
-  suburbs: { id: 'suburbs', service: 'nswspatial', path: `${SS}/NSW_Administrative_Boundaries_Theme/FeatureServer/2`, outFields: 'suburbname', where: '1=1', offset: 0.0005, chunk: 50 },
+  fireTrails: { id: 'fireTrails', service: 'nswspatial', path: `${SS}/NSW_Transport_Theme/FeatureServer/9`, outFields: 'objectid', where: '1=1', offset: 0.00002, chunk: 400, timeoutMs: 10_000 },
+  homes: { id: 'homes', service: 'nswspatial', path: `${SS}/NSW_Geocoded_Addressing_Theme/FeatureServer/1`, outFields: 'rid', where: '1=1', offset: 0, chunk: 800, timeoutMs: 10_000 },
+  zones: { id: 'zones', service: 'nswenv', path: `${PLAN}/19`, outFields: 'SYM_CODE,LAY_CLASS,LGA_NAME', where: '1=1', offset: 0.00005, chunk: 100, timeoutMs: 20_000 },
+  places: { id: 'places', service: 'nswspatial', path: `${SS}/NSW_Features_of_Interest_Category/FeatureServer/1`, outFields: 'generalname,placetype', where: '1=1', offset: 0, chunk: 400, timeoutMs: 10_000 },
+  suburbs: { id: 'suburbs', service: 'nswspatial', path: `${SS}/NSW_Administrative_Boundaries_Theme/FeatureServer/2`, outFields: 'suburbname', where: '1=1', offset: 0.0005, chunk: 50, timeoutMs: 10_000 },
 };
 
 export const CONTEXT_QUERY_IDS: readonly ContextQueryId[] = ['roads', 'fireTrails', 'homes', 'zones', 'places', 'suburbs'];

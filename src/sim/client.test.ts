@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { CellExplanation, SimSnapshot } from '../core/types';
-import { LocalSimController, SimClient } from './client';
+import { EMPTY_CONTEXT } from '../core/places';
+import { LocalSimController, SimClient, withoutContext } from './client';
 import { SimHost, snapshotTransferables } from './host';
 import type { FromWorker, SimController } from './protocol';
 import { snapshotHash } from './testing/hash';
@@ -134,5 +135,33 @@ describe('SimHost transfer lists', () => {
     expect(new Set(snap.transfer).size).toBe(snap.transfer!.length);
     const s = (snap.msg as { snapshot: SimSnapshot }).snapshot;
     expect(snapshotTransferables(s).length).toBe(snap.transfer!.length);
+  });
+});
+
+describe('SimClient → worker: the display-only places context stays on the main thread', () => {
+  it('posts the scenario without `context` and leaves the caller\'s object intact', async () => {
+    const posted: { type: string; scenario?: Record<string, unknown> }[] = [];
+    const fake = { postMessage: (m: never) => posted.push(m), terminate: () => {}, onmessage: null, onerror: null, onmessageerror: null } as unknown as Worker;
+    const client = new SimClient(fake);
+    const base = syntheticScenario({ extent: 1500 });
+    const context = { ...EMPTY_CONTEXT({ lat: -33.7, lon: 150.3 }), homes: new Float32Array(200_000) };
+    const scenario = { ...base, context };
+    const ready = client.init(scenario).catch(() => undefined); // never answered by the fake; rejected by dispose
+    expect(posted).toHaveLength(1);
+    const sent = posted[0]!;
+    expect(sent.type).toBe('init');
+    expect('context' in sent.scenario!).toBe(false);
+    expect(sent.scenario!['terrain']).toBe(base.terrain); // everything else is passed as it was, not copied
+    expect(sent.scenario!['fuel']).toBe(base.fuel);
+    expect(sent.scenario!['options']).toBe(base.options);
+    expect(scenario.context).toBe(context); // the render layer still reads it
+    // What postMessage would clone is now small.
+    expect(structuredClone(sent).scenario).not.toHaveProperty('context');
+    client.dispose();
+    await ready;
+  });
+  it('withoutContext returns a scenario that has none unchanged', () => {
+    const base = syntheticScenario({ extent: 1500 });
+    expect(withoutContext(base)).toBe(base);
   });
 });

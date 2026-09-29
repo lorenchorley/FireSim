@@ -59,6 +59,12 @@ The screenshots are produced by the end-to-end test (`e2e/app.spec.ts`) on a Pix
   spread rate, intensity, spread driver, litter moisture, fuel load/type, time since fire, slope, aspect, sunlight,
   gullies, flame attachment, VLS, dead man zone, ember landings), wind particles (surface or through the plume),
   vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands.
+- **The trees**: the 3-D canopy is drawn from the data, at the real canopy height: stringybark has a thick dark fibrous
+  trunk, ribbon bark a pale trunk with hanging streamers, smooth gums a pale smooth trunk (the ember-source hazard you can
+  see); tall wet forest, rainforest, snow gum, pine rows, heath, understorey shrubs at their real height (the ladder fuel)
+  and grass that turns straw with curing. Trees scorch, torch and burn out with the fire, old burns show epicormic shoots,
+  and they lean in the wind. Three styles: natural, simple (clean shapes) or colour-coded by height, cover, bark or
+  understorey hazard. Trees fade out in the top view and around the flames, so nothing hides the fire.
 - **Time**: play at 0.25×–3600× (presets, a slider, or your own number), or as fast as the phone can; tap or drag the
   timeline, or type a time, to jump to ANY moment of the scenario: back is instant, and a time not yet computed becomes a
   fast-forward with its progress on the track (Cancel stops it, the view lands exactly on the time). Pictures are 60 s
@@ -101,6 +107,8 @@ plume regimes, determinism and rewind) runs headless in `src/sim/validation/`.
 | Open-Meteo | forecasts, archive and historical forecasts (ECMWF IFS, GFS, ERA5) | CC BY 4.0; data © the national services |
 | NSW National Parks and Wildlife Service | fire history (wildfires, prescribed burns) | © State of NSW and DCCEEW, CC BY 4.0 |
 | NSW State Vegetation Type Map (SVTM) | vegetation formations and classes → fuel types | © State of NSW and DCCEEW, CC BY 4.0 |
+| NSW Spatial Services (roads, fire trails, addresses, place names) | the Roads, Fire trails, Homes and Place-names layers | © Spatial Services NSW, CC BY 4.0 |
+| NSW Planning (land zoning) | residential, village and other built-up zones | © State of NSW and Department of Planning, Housing and Infrastructure, CC BY 4.0 |
 | NSW Rural Fire Service | current incidents and fire danger ratings (when online) | © NSW RFS, for information only |
 
 The same list is in the app (Settings → About). The bundled demo data are in `public/demo/<site>/` (each file's
@@ -198,12 +206,55 @@ smaller app.
 ## Offline use and area packs
 
 Mountain firegrounds often have no signal. FireSim works fully offline for the demo sites (terrain, canopy,
-imagery, vegetation, fire history), the presets, the historic replays, the belt weather kit and manual weather.
+imagery, vegetation, fire history, roads, homes and place names), the presets, the historic replays, the belt weather kit and manual weather.
 Elsewhere, **save an area pack** before you go: Setup → Run → *Save this area for offline use* (with the network
-on) downloads the 10 m terrain, canopy, SVTM vegetation, NPWS fire history, the latest forecast and a year of daily
-rain for the chosen square into the device's IndexedDB (`src/scenario/areaPack.ts`, `src/data/cache.ts`). With
+on) downloads the 10 m terrain, canopy, SVTM vegetation, NPWS fire history, roads, homes and place names, the latest
+forecast and a year of daily rain for the chosen square into the device's IndexedDB (`src/scenario/areaPack.ts`, `src/data/cache.ts`). With
 *Use the network* off, the builder uses bundled data, then area packs, then the cache, then inference and
 synthetic fallbacks — each fallback is listed as a warning on the build screen and in Stats → Data used.
+
+## Roads, homes and place names
+
+So that you can find yourself on the map, every scenario can carry five *places* layers, all official NSW open data
+(CC BY 4.0, cross-origin enabled, queried with plain ArcGIS REST `query` requests):
+
+| Layer | What it is | Source service (`portal.spatial.nsw.gov.au/server/rest/services/…` unless stated) |
+|---|---|---|
+| Roads and tracks | every open road, track and path, with its class (motorway … local, service, track, path), surface (sealed, unsealed, 4WD only) and name; tunnels left out | `NSW_Transport_Theme/FeatureServer/5` (RoadSegment) |
+| Fire trails | vehicle tracks classified by the NSW RFS for firefighting access | `NSW_Transport_Theme/FeatureServer/9` (ClassifiedFireTrail) |
+| Homes | one point per dwelling address (units in one building share a point) | `NSW_Geocoded_Addressing_Theme/FeatureServer/1` (AddressPoint) |
+| Residential and built-up zones | land-use zones R1–R5 (residential), RU5 (village), C4 (environmental living), RU4 and RU6 (small rural lots), B*, E1, E2, MU1 (commercial), IN*, E3–E5 (industrial), SP3 (tourist) | `mapprod3.environment.nsw.gov.au/arcgis/rest/services/ePlanning/Planning_Portal_Principal_Planning/MapServer/19` |
+| Place names | towns, villages and localities (points) and suburb names (labelled at the centre of the suburb, only where the label will be seen) | `NSW_Features_of_Interest_Category/FeatureServer/1` (PlacePoint) and `NSW_Administrative_Boundaries_Theme/FeatureServer/2` (Suburb) |
+
+Attribution: © Spatial Services NSW; © State of NSW and Department of Planning, Housing and Infrastructure (both
+CC BY 4.0). The strings travel with the data (`ContextLayers.sources`) and are listed in Settings → About.
+
+**Where the data come from, in order** (`src/scenario/context.ts`, `loadContext`):
+
+1. **Demo sites: bundled, works offline.** `public/demo/<site>/context.json` holds the layers for each demo site's
+   9 km square plus a 400 m margin, delta-coded to about 1 m and 13-280 KB per site. Loading takes a few
+   milliseconds. Re-create the files with `NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-context.mjs [--out=dir] [siteId ...]`
+   (needs Node 22.18 or newer; the script imports the app's own classification code, so the two cannot drift apart).
+2. **An area pack** that covers the area (item `context`, saved with the pack in Setup while you have signal).
+3. **The cache**, when the entry is at most 7 days old. The key is the query envelope rounded outward to about 500 m,
+   so a slightly different centre reuses the entry; the 10 most recent entries are kept.
+4. **A live query** of the six services (`src/data/nswContext.ts`, `fetchNswContext`) when the network is on: the
+   domain plus 400 m, object-id chunked POSTs, concurrent per layer, retried with back-off (including HTTP 429), and
+   cancelled with the build. It runs **in parallel** with the rest of the build; after 45 s it stops waiting and keeps
+   the layers that have arrived (the zoning server is the slow one: 10-20 s for a 6 km area), naming what is missing
+   in a warning. A complete result is cached. On a device the requests go through CapacitorHttp; in a browser they are direct (the services
+   send CORS headers).
+5. **An older cache entry**, or the part of a neighbouring demo site that overlaps the area, each with a warning.
+6. **Nothing**, with the warning *"Roads and homes are not available offline for this place — save an area pack in
+   Setup while you have signal"*.
+
+This step never fails a build: every problem becomes a warning on the build screen and in the scenario's warnings
+(a layer the services would not answer for is reported by name and left empty). In the **Setup** screen, *Save this
+area for offline use* now stores the roads, homes and place names with the terrain and the weather.
+
+Tests replay real ArcGIS responses recorded for a 2 km box in Blackheath (`tests/fixtures/nsw-context/`, re-recorded
+with `record.sh`) through a fake server, so no test needs the network. `NET=1 NODE_USE_ENV_PROXY=1 npx vitest run
+src/scenario/context.live.test.ts` runs the one real check against the live services (Bilpin, outside the demo sites).
 
 ## Performance
 

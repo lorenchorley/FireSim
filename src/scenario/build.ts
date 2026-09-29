@@ -1,10 +1,14 @@
 /**
  * `buildScenario(req, onProgress, signal)` — the scenario build pipeline (spec §11.6, §2.3 entry point).
  *
- * Order (BuildProgress.step): terrain → canopy → vegetation → fire history → weather → drought → fuel → done
+ * Order (BuildProgress.step): terrain → canopy → vegetation → fire history → weather → drought → fuel → places → done
  * (fuel needs DF, KBDI and the month for curing and the class-34 offset; the moisture spin-up runs in the worker).
+ * The places context (roads, fire trails, homes, residential zones, place names; context.ts) is started FIRST and runs
+ * in parallel with everything else (bundled: a few ms; live: a few seconds of network), then collected in the 'places'
+ * step; it is aborted when the build is cancelled or fails.
  *  - terrain: 10 m DEM (bundled LiDAR → area pack → Terrarium tiles → synthetic with a warning) = `terrainHiRes`,
  *    block-averaged to the fire grid (3×3 at 30 m, 2×2 at 20 m), `buildTerrain`, slopeP90Deg / cliffFraction.
+ *  - places (context.ts): bundled demo site → area pack → cache → live NSW services → warning; never fails the build.
  *  - canopy, vegetation (SVTM → fuel/ rasteriseVegetation, else inference), fire history (NPWS → fuel/
  *    parseFireHistory + rasteriseFireHistory → fuelHistory, activeFires), weather (§11.1–11.5), drought (§5.7–5.8),
  *    fuel (fuel/ buildFuelMap), options (§12.6: 20 m only when High was requested and the extent is ≤ 6 km).
@@ -21,6 +25,7 @@ import { emptyHistory, parseFireHistoryWithMeta, rasteriseFireHistory, type Hist
 import { parseVegetation, rasteriseVegetation } from '../fuel/svtm';
 import { terrainDerived } from '../terrain';
 import { beltKitReading, type BeltKitReading } from './beltKit';
+import { loadContext } from './context';
 import { loadCanopyLayer, loadFireHistoryLayer, loadVegetationLayer, type LayerContext } from './layers';
 import { MESSAGES } from './messages';
 import { SCENARIO_PARAMS } from './params';
@@ -107,6 +112,21 @@ export function resolveOptions(req: ScenarioRequest, extent: number, fireCellSiz
  * cancels (rejects with an AbortError). Never fails for missing data: each fallback adds a warning.
  */
 export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildProgress) => void = () => {}, signal?: AbortSignal): Promise<ScenarioData> {
+  // The places query runs in the background under its own signal: it stops with the caller's, and also when the build
+  // fails or finishes, so no request is left running.
+  const background = new AbortController();
+  const stop = (): void => background.abort(signal?.reason ?? new BuildCancelledError());
+  if (signal?.aborted) stop();
+  else signal?.addEventListener('abort', stop, { once: true });
+  try {
+    return await runBuild(req, onProgress, signal, background.signal);
+  } finally {
+    signal?.removeEventListener('abort', stop);
+    background.abort(new BuildCancelledError());
+  }
+}
+
+async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => void, signal: AbortSignal | undefined, backgroundSignal: AbortSignal): Promise<ScenarioData> {
   const warnings: string[] = [];
   const addWarnings = (ws: readonly string[]): void => {
     for (const w of ws) if (!warnings.includes(w)) warnings.push(w);
@@ -127,6 +147,20 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   addWarnings(rr.warnings);
   const layerCtx: LayerContext = { centre: rr.centre, extent: rr.extent, online: req.online, kv, ...(rr.demoSiteId ? { demoSiteId: rr.demoSiteId } : {}), ...(signal ? { signal } : {}) };
   check();
+
+  // ── places (roads, homes, place names): started now, collected after the fuel step ──
+  let placesActive = false;
+  let placesNote = 'Roads, homes and place names…';
+  const placesTask = loadContext({
+    ...layerCtx,
+    signal: backgroundSignal,
+    now,
+    onProgress: (f, m) => {
+      placesNote = m;
+      if (placesActive) report('places', 0.9 + 0.08 * f, m);
+    },
+  });
+  placesTask.catch(() => {}); // a cancelled build must not leave an unhandled rejection; the await below re-throws
 
   // ── terrain ──
   report('terrain', 0.02, 'Loading terrain…');
@@ -251,6 +285,13 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
   });
   check();
 
+  // ── places ──
+  report('places', 0.9, placesNote);
+  placesActive = true;
+  const places = await placesTask;
+  check();
+  addWarnings(places.warnings);
+
   // ── options, assembly ──
   const options = resolveOptions(req, rr.extent, rr.fireCellSize);
   const series = weather.series;
@@ -276,6 +317,7 @@ export async function buildScenario(req: ScenarioRequest, onProgress: (p: BuildP
     terrainHiRes: { grid: hi.dem.grid, elevation: hi.dem.elevation },
     fuelHistory: history.compact,
     activeFires: history.activeFires,
+    ...(places.context ? { context: places.context } : {}),
   };
   report('done', 1, 'Scenario ready');
   return scenario;

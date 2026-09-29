@@ -4,8 +4,10 @@
  * burn-state / phase / driver bytes, fire glow). Everything here is unit-testable in Node.
  */
 import { boxBlur, resample, type GridSpec } from '../core/grid';
-import { BurnState, FuelType, type FireField, type FuelMap, type Terrain } from '../core/types';
+import type { ContextLayers } from '../core/places';
+import { BurnState, FireHistoryKind, FuelType, type AtmosphereView, type FireField, type FuelMap, type Terrain } from '../core/types';
 import { clamp } from '../core/units';
+import { contextFieldValues } from './contextFields';
 import type { OverlayKind } from './layers';
 import { NO_DATA, NOT_BURNT } from './legends';
 import { CURED_GRASS, FUEL_GROUND, LITTER, ROCK, ROCK_DARK, hexToRgb, mixRgb, type Rgb } from './palette';
@@ -214,6 +216,10 @@ export interface OverlaySources {
   insolation?: Float32Array | null;
   /** Extra rasters from SimSnapshot.layers (fire grid), keyed by overlay kind ('vls', 'attach', 'trench', 'dmz', 'landing'). */
   layers?: Record<string, Float32Array> | null;
+  /** Roads, fire trails and home addresses, for the 'homeDensity' and 'roadAccess' heat maps (NO_DATA everywhere without it). */
+  context?: ContextLayers | null;
+  /** The latest snapshot's atmosphere view, for the 'windSpeed' heat map (null when the 3-D atmosphere is off: no field). */
+  atmosphere?: AtmosphereView | null;
 }
 
 export interface OverlayField {
@@ -302,23 +308,83 @@ export function overlayField(kind: OverlayKind, s: OverlaySources): OverlayField
       // Scores below 2 % (or no landings) are transparent so the terrain stays readable.
       return map(g, (k) => (r[k]! > (kind === 'landing' ? 0 : 0.02) ? r[k]! : NO_DATA));
     }
-    // Layers rework (placeholders until the heat-field builder implements them):
+    // ── Data layers as heat maps (layers rework) ──
     case 'elevation':
+      return map(s.terrain.grid, (k) => s.terrain.elevation[k]!);
     case 'landform':
-    case 'canopyHeight':
-    case 'canopyCover':
+      return map(s.terrain.grid, (k) => s.terrain.landform[k]!, true);
+    case 'canopyHeight': {
+      // Trees only: the canopy map counts 2 m and taller (CANOPY_MIN_HEIGHT); open ground and water have no tree height.
+      const u = s.fuel;
+      return map(u.grid, (k) => (u.type[k] !== FuelType.Water && u.canopyHeight[k]! >= CANOPY_MIN_HEIGHT ? u.canopyHeight[k]! : NO_DATA));
+    }
+    case 'canopyCover': {
+      const u = s.fuel;
+      return map(u.grid, (k) => (u.type[k] === FuelType.Water ? NO_DATA : clamp(u.canopyCover[k]!, 0, 1) * 100));
+    }
     case 'elevatedHazard':
-    case 'elevatedHeight':
+      return fuelScore(s.fuel, s.fuel.elevatedHazard, map);
     case 'surfaceHazard':
+      return fuelScore(s.fuel, s.fuel.surfaceHazard, map);
     case 'nearSurfaceHazard':
+      return fuelScore(s.fuel, s.fuel.nearSurfaceHazard, map);
     case 'barkHazard':
-    case 'grassCuring':
-    case 'fireHistoryKind':
-    case 'homeDensity':
-    case 'roadAccess':
-    case 'windSpeed':
-      return null;
+      return fuelScore(s.fuel, s.fuel.barkHazard, map);
+    case 'elevatedHeight': {
+      const u = s.fuel;
+      return map(u.grid, (k) => (isBurnable(u.type[k]!) && u.elevatedHeight[k]! > 0 && u.elevatedHazard[k]! > 0 ? u.elevatedHeight[k]! : NO_DATA));
+    }
+    case 'grassCuring': {
+      const u = s.fuel;
+      return map(u.grid, (k) => (GRASSY.has(u.type[k]! as FuelType) ? clamp(u.curing[k]!, 0, 100) : NO_DATA));
+    }
+    case 'fireHistoryKind': {
+      // A fire on record is coloured by its kind; cells without a record are NO_DATA ("no fire on record").
+      const u = s.fuel;
+      return map(
+        u.grid,
+        (k) => {
+          if (!Number.isFinite(u.timeSinceFire[k]!)) return NO_DATA;
+          const kind = u.lastFireKind[k]!;
+          return kind === FireHistoryKind.Wildfire || kind === FireHistoryKind.PrescribedBurn ? kind : FireHistoryKind.Unknown;
+        },
+        true,
+      );
+    }
+    case 'homeDensity': {
+      const c = s.context;
+      if (!c) return null;
+      const v = contextFieldValues('homeDensity', c, s.fuel.grid);
+      // Cells with no home nearby stay clear so the settled areas stand out.
+      return map(s.fuel.grid, (k) => (v[k]! > 0 ? v[k]! : NO_DATA));
+    }
+    case 'roadAccess': {
+      const c = s.context;
+      if (!c) return null;
+      const v = contextFieldValues('roadAccess', c, s.fuel.grid);
+      return map(s.fuel.grid, (k) => v[k]!);
+    }
+    case 'windSpeed': {
+      const a = s.atmosphere;
+      if (!a || a.surfaceU.length !== a.grid.nx * a.grid.ny) return null;
+      return map(a.grid, (k) => Math.hypot(a.surfaceU[k]!, a.surfaceV[k]!) * 3.6);
+    }
   }
+}
+
+/** Tree canopy height (m) at and above which the canopy map counts a tree (same as data/canopy.ts CANOPY_COVER_THRESHOLD). */
+export const CANOPY_MIN_HEIGHT = 2;
+
+/** Fuel types that can burn as bush or grass (everything except bare rock / cleared ground and water). */
+const isBurnable = (t: number): boolean => t !== FuelType.NonFuel && t !== FuelType.Water;
+
+/** A 0–4 fuel hazard score per fuel-grid cell; NO_DATA where nothing can burn. */
+function fuelScore(
+  fuel: FuelMap,
+  score: Float32Array,
+  map: (g: GridSpec, fn: (k: number) => number, categorical?: boolean) => OverlayField,
+): OverlayField {
+  return map(fuel.grid, (k) => (isBurnable(fuel.type[k]!) ? clamp(score[k]!, 0, 4) : NO_DATA));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

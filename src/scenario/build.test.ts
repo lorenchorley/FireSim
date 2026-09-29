@@ -108,9 +108,9 @@ describe('Katoomba offline (demo site): LiDAR terrain, real fuel and history, pr
     expect(n.calls).toHaveLength(0);
     checkScenario(s);
   });
-  it('progress follows terrain → canopy → vegetation → fire history → weather → drought → fuel → done', () => {
+  it('progress follows terrain → canopy → vegetation → fire history → weather → drought → fuel → places → done', () => {
     const steps = progress.map((p) => p.step).filter((x, i, a) => a.indexOf(x) === i);
-    expect(steps).toEqual(['terrain', 'canopy', 'vegetation', 'fireHistory', 'weather', 'drought', 'fuel', 'done']);
+    expect(steps).toEqual(['terrain', 'canopy', 'vegetation', 'fireHistory', 'weather', 'drought', 'fuel', 'places', 'done']);
     for (let i = 1; i < progress.length; i++) expect(progress[i]!.fraction).toBeGreaterThanOrEqual(progress[i - 1]!.fraction);
     expect(progress[progress.length - 1]!.fraction).toBe(1);
   });

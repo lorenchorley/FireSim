@@ -53,6 +53,7 @@ uniform sampler2D uShade;    uniform vec4 uShadeXf;
 uniform sampler2D uArrival;  uniform sampler2D uFireAux; uniform vec4 uFireXf; uniform float uHasFire;
 uniform sampler2D uGlow;     uniform vec4 uGlowXf; uniform float uGlowGain;
 uniform sampler2D uOverlay;  uniform vec4 uOverlayXf; uniform sampler2D uLut;
+uniform sampler2D uZones;    uniform vec4 uZonesXf; uniform float uZonesOn;
 uniform vec4 uOverlayScale;  // lo, hi, mode (0 off, 1 ramp, 2 classes, 3 categorical, 4 cyclic), log
 uniform vec4 uOverlayNoData; uniform float uOverlayOpacity; uniform float uOverlayFire;
 uniform float uTime; uniform float uClock; uniform float uIsoMinutes; uniform float uIsoStrong; uniform float uBurnBand;
@@ -185,6 +186,15 @@ void main() {
     }
   }
 
+  // ── Land-use zones (residential, village, …): a translucent tint, premultiplied linear RGBA, so the photo, the
+  // lighting, the fire and the heat maps all still work on top of it.
+  vec3 zoneTint = vec3(0.0);
+  if (uZonesOn > 0.5) {
+    vec4 zn = texture(uZones, fsGridUv(p, uZonesXf));
+    base = base * (1.0 - zn.a) + zn.rgb;
+    zoneTint = zn.rgb;
+  }
+
   // ── Lighting ─────────────────────────────────────────────────────────────
   float ndl = max(dot(n, uSunDir), 0.0);
   float shadow = shade.b;
@@ -207,6 +217,8 @@ void main() {
     glowLight = vec3(1.0, 0.36, 0.09) * g * g * uGlowGain / LIGHT_REF;
   }
   vec3 col = base * (light + glowLight);
+  // At night the zone colours keep a faint glow of their own (street lighting) so the kinds stay tellable apart.
+  col += zoneTint * uNight * 0.14;
   vec3 emit = vec3(0.0);
   float burntMask = 0.0;
 
@@ -428,6 +440,7 @@ export class TerrainLayer {
     const dG = dummyRgba(0, 0, 0, 0);
     const dL = dummyRgba(0, 0, 0, 0, true);
     for (const t of [dF, dA, dG, dL]) this.textures.add(t);
+    this.zonesDummy = dA;
     this.uniforms = {
       uVex: { value: 1 },
       uAlbedo: { value: dL },
@@ -451,6 +464,9 @@ export class TerrainLayer {
       uOverlayXf: { value: new THREE.Vector4(0, 0, 1, 1) },
       uLut: { value: dL },
       uOverlayScale: { value: new THREE.Vector4(0, 1, 0, 0) },
+      uZones: { value: dA },
+      uZonesXf: { value: new THREE.Vector4(0, 0, 1, 1) },
+      uZonesOn: { value: 0 },
       uOverlayNoData: { value: new THREE.Vector4(0, 0, 0, 0) },
       uOverlayOpacity: { value: 0.7 },
       uOverlayFire: { value: 0 },
@@ -651,6 +667,28 @@ export class TerrainLayer {
     (this.uniforms.uOverlayNoData!.value as THREE.Vector4).set(c.r, c.g, c.b, nd[3]);
     this.uniforms.uOverlayFire!.value = fireDerived ? 1 : 0;
   }
+
+  /**
+   * Land-use zone tint: `tex` is the premultiplied linear RGBA8 raster from placesGeometry.rasterizeZones covering the
+   * square `frame` (south-west corner + side, local metres). The caller owns and disposes the texture; pass null to
+   * remove it. `visible` switches the tint without touching the texture.
+   */
+  setZones(tex: THREE.Texture | null, frame: { x0: number; y0: number; size: number } | null, visible = true): void {
+    this.zonesReady = !!tex && !!frame;
+    if (tex && frame) {
+      this.uniforms.uZones!.value = tex;
+      (this.uniforms.uZonesXf!.value as THREE.Vector4).set(frame.x0, frame.y0, frame.size, frame.size);
+    } else {
+      this.uniforms.uZones!.value = this.zonesDummy;
+    }
+    this.uniforms.uZonesOn!.value = this.zonesReady && visible ? 1 : 0;
+  }
+
+  setZonesVisible(visible: boolean): void {
+    this.uniforms.uZonesOn!.value = this.zonesReady && visible ? 1 : 0;
+  }
+  private zonesReady = false;
+  private zonesDummy: THREE.Texture | null = null;
 
   setDecals(d: TerrainDecals): void {
     const u = this.uniforms;
