@@ -357,7 +357,7 @@ void main() {
     trunkMask = step(0.5, tx.g);
     // The crown of a burnt-out tree (crown fire) is gone: only its trunk is left.
     if (charTop > 1.1 && trunkMask < 0.5) discard;
-    vec3 crown = vTint.rgb * (0.5 + 1.0 * tx.r) * (0.78 + 0.3 * tx.b);
+    vec3 crown = vTint.rgb * (0.42 + 0.85 * tx.r) * (0.78 + 0.28 * tx.b);
     // Far away, pale trunks would speckle the forest with white dots: blend them into the crown colour.
     vec3 trunk = mix(vTrunk * (0.6 + 0.9 * tx.r), crown * 0.75, smoothstep(250.0, 1500.0, vState.w));
     albedo = mix(crown, trunk, trunkMask);

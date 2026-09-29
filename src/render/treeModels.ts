@@ -672,8 +672,22 @@ export const HAS_FAR_LOD: Record<VegGroup, boolean> = {
   [VegGroup.Grass]: false,
 };
 
-/** Width of the far billboard in units of the crown width (the silhouettes fill ≈ 80 % of their slot). */
-const BILLBOARD_W = 1.28;
+/**
+ * Width of the far billboard in units of the crown width: the silhouettes fill 60–95 % of their 64 px slot, so the drawn
+ * crown is as wide as the crown data says.
+ */
+const BILLBOARD_W: Record<VegGroup, [natural: number, flat: number]> = {
+  [VegGroup.Stringybark]: [1.45, 1.3],
+  [VegGroup.Ribbonbark]: [1.45, 1.3],
+  [VegGroup.SmoothGum]: [1.45, 1.3],
+  [VegGroup.TallWetGum]: [1.6, 1.3],
+  [VegGroup.Rainforest]: [1.1, 1.3],
+  [VegGroup.SnowGum]: [1.2, 1.3],
+  [VegGroup.Conifer]: [1.07, 1.1],
+  [VegGroup.Heath]: [1.1, 1.15],
+  [VegGroup.Understorey]: [1.7, 1.15],
+  [VegGroup.Grass]: [1.1, 1.15],
+};
 
 const cache = new Map<string, MeshData>();
 
@@ -685,7 +699,8 @@ export function treeModel(group: VegGroup, family: ModelFamily, lod: Lod): MeshD
   let m: MeshData;
   if (lod === 2) {
     m = newMesh();
-    billboard(m, IMPOSTOR_OF[group][family === 'natural' ? 0 : 1], BILLBOARD_W);
+    const fi = family === 'natural' ? 0 : 1;
+    billboard(m, IMPOSTOR_OF[group][fi], BILLBOARD_W[group][fi]);
   } else if (family === 'flat') {
     switch (group) {
       case VegGroup.Conifer:

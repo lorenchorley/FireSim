@@ -266,16 +266,16 @@ export function swayParams(speed: number): SwayParams {
 
 /** Foliage tints (sRGB) of the natural style. */
 export const FOLIAGE = {
-  stringy: hexToRgb('#4f6238'),
-  ribbon: hexToRgb('#66794a'),
-  smooth: hexToRgb('#6f8b66'),
-  tallGum: hexToRgb('#436b3c'),
-  rainforest: hexToRgb('#2b5a34'),
-  snowGum: hexToRgb('#7d9270'),
-  conifer: hexToRgb('#28492d'),
-  heath: hexToRgb('#77815a'),
-  understoreyDry: hexToRgb('#6e7a4a'),
-  understoreyLush: hexToRgb('#3b7a36'),
+  stringy: hexToRgb('#43562f'),
+  ribbon: hexToRgb('#5a6f3b'),
+  smooth: hexToRgb('#5f7b55'),
+  tallGum: hexToRgb('#3a5f34'),
+  rainforest: hexToRgb('#24502c'),
+  snowGum: hexToRgb('#6f866a'),
+  conifer: hexToRgb('#213f27'),
+  heath: hexToRgb('#6b7550'),
+  understoreyDry: hexToRgb('#5f6c3f'),
+  understoreyLush: hexToRgb('#34702f'),
   grassGreen: hexToRgb('#7f9a45'),
   grassCured: hexToRgb('#c9b06a'),
 };

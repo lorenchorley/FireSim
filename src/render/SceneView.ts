@@ -835,7 +835,7 @@ export class SceneView implements SceneViewApi {
     this.rig.setMode(mode as ViewMode, { user: stand, lookAt: c ? [c.x, c.y] : null });
     this.updateViewDependentLayers();
     // Eye level: clear the few trees right in front of the viewer's face.
-    this.vegetation?.setNearCull(mode === 'ground' ? 32 : 0);
+    this.vegetation?.setNearCull(mode === 'ground' ? 24 : 0);
     this.refreshMarkers();
     this.dirty = true;
   }

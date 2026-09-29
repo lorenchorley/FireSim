@@ -368,51 +368,52 @@ function paintImpostor(slot: Impostor, c: Canvas): void {
   const g = IMP_H; // ground line at the bottom (image y = IMP_H - 1)
   switch (slot) {
     case Impostor.Eucalypt:
-      trunkLine(s, 33, g - 1, 32, g * 0.5, 3.4, 2, 0.6);
-      trunkLine(s, 32.5, g * 0.6, 17, g * 0.42, 1.6, 1, 0.6);
-      trunkLine(s, 32.5, g * 0.57, 48, g * 0.4, 1.6, 1, 0.6);
-      crownBlob(s, 0, 32, 28, 27, 20, 3, 0.4);
-      crownBlob(s, 0, 15, 47, 16, 14, 5, 0.36);
-      crownBlob(s, 0, 49, 45, 16, 14, 7, 0.36);
-      crownBlob(s, 0, 31, 55, 19, 11, 9, 0.36);
+      // Crown ≈ 44 px wide × 56 px deep (width : depth ≈ 1.2 : 1, as a eucalypt's), trunk to the ground.
+      trunkLine(s, 33, g - 1, 32, g * 0.52, 3.4, 2, 0.6);
+      trunkLine(s, 32.5, g * 0.6, 20, g * 0.42, 1.6, 1, 0.6);
+      trunkLine(s, 32.5, g * 0.57, 45, g * 0.4, 1.6, 1, 0.6);
+      crownBlob(s, 0, 32, 26, 19, 18, 3, 0.4);
+      crownBlob(s, 0, 20, 43, 13, 14, 5, 0.36);
+      crownBlob(s, 0, 44, 42, 13, 14, 7, 0.36);
+      crownBlob(s, 0, 32, 50, 15, 12, 9, 0.36);
       break;
     case Impostor.TallGum:
-      trunkLine(s, 32, g - 1, 32.5, 34, 2.6, 1.3, 0.72);
-      crownBlob(s, 0, 32.5, 20, 20, 17, 11, 0.36);
-      crownBlob(s, 0, 21, 36, 12, 10, 13, 0.34);
-      crownBlob(s, 0, 44, 34, 13, 10, 15, 0.34);
+      trunkLine(s, 32, g - 1, 32.5, 32, 2.6, 1.3, 0.72);
+      crownBlob(s, 0, 32.5, 20, 16, 17, 11, 0.36);
+      crownBlob(s, 0, 24, 34, 10, 10, 13, 0.34);
+      crownBlob(s, 0, 41, 33, 10, 10, 15, 0.34);
       break;
     case Impostor.Rainforest:
-      trunkLine(s, 32, g - 1, 32, g * 0.6, 3.6, 2.4, 0.4);
-      crownBlob(s, 0, 32, 50, 30, 32, 17, 0.06, 0.2);
-      crownBlob(s, 0, 17, 70, 17, 17, 19, 0.08, 0.2);
-      crownBlob(s, 0, 47, 68, 17, 17, 21, 0.08, 0.2);
+      trunkLine(s, 32, g - 1, 32, g * 0.62, 3.6, 2.4, 0.4);
+      crownBlob(s, 0, 32, 46, 28, 28, 17, 0.06, 0.2);
+      crownBlob(s, 0, 18, 64, 16, 16, 19, 0.08, 0.2);
+      crownBlob(s, 0, 46, 62, 16, 16, 21, 0.08, 0.2);
       break;
     case Impostor.SnowGum:
-      trunkLine(s, 27, g - 1, 24, g * 0.66, 2.6, 1.8, 0.86);
-      trunkLine(s, 37, g - 1, 41, g * 0.66, 2.6, 1.8, 0.86);
-      trunkLine(s, 32, g - 1, 32, g * 0.6, 2.4, 1.6, 0.86);
-      crownBlob(s, 0, 32, 70, 28, 22, 23, 0.22);
-      crownBlob(s, 0, 18, 78, 15, 13, 25, 0.2);
-      crownBlob(s, 0, 47, 78, 15, 13, 27, 0.2);
+      trunkLine(s, 27, g - 1, 24, g * 0.68, 2.6, 1.8, 0.86);
+      trunkLine(s, 37, g - 1, 41, g * 0.68, 2.6, 1.8, 0.86);
+      trunkLine(s, 32, g - 1, 32, g * 0.62, 2.4, 1.6, 0.86);
+      crownBlob(s, 0, 32, 66, 26, 22, 23, 0.2);
+      crownBlob(s, 0, 19, 74, 14, 13, 25, 0.18);
+      crownBlob(s, 0, 46, 74, 14, 13, 27, 0.18);
       break;
     case Impostor.Conifer:
-      trunkLine(s, 32, g - 1, 32, g * 0.78, 1.8, 1.2, 0.35);
+      trunkLine(s, 32, g - 1, 32, g * 0.8, 1.8, 1.2, 0.35);
       for (let k = 0; k < 8; k++) {
         const y = g * (0.08 + k * 0.1);
-        const w = 6 + k * 3.4;
+        const w = 5 + k * 3.5;
         crownBlob(s, 0, 32, y + 8, w, 11, 30 + k, 0.1, 0.2);
       }
       break;
     case Impostor.Heath:
-      crownBlob(s, 0, 32, g - 30, 29, 25, 41, 0.12);
-      crownBlob(s, 0, 17, g - 20, 16, 16, 43, 0.12);
-      crownBlob(s, 0, 47, g - 20, 16, 16, 45, 0.12);
+      crownBlob(s, 0, 32, g - 30, 28, 25, 41, 0.12);
+      crownBlob(s, 0, 17, g - 20, 15, 16, 43, 0.12);
+      crownBlob(s, 0, 47, g - 20, 15, 16, 45, 0.12);
       break;
     case Impostor.Understorey:
-      crownBlob(s, 0, 32, g - 38, 18, 30, 51, 0.16);
-      crownBlob(s, 0, 22, g - 22, 14, 19, 53, 0.16);
-      crownBlob(s, 0, 43, g - 24, 14, 20, 55, 0.16);
+      crownBlob(s, 0, 32, g - 38, 15, 30, 51, 0.16);
+      crownBlob(s, 0, 24, g - 22, 12, 19, 53, 0.16);
+      crownBlob(s, 0, 41, g - 24, 12, 20, 55, 0.16);
       break;
     case Impostor.SimpleRound:
       trunkLine(s, 32, g - 1, 32, g * 0.5, 2.2, 1.6, 0.6);
