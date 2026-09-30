@@ -20,6 +20,7 @@
 import { formatBytes, type DatasetOrigin, type DatasetPlan, type DatasetRecord, type DatasetRole, type DatasetStatus } from '../core/datasets';
 import type { LatLon } from '../core/types';
 import {
+  CONTEXT_MARGIN_M,
   contextCacheKey,
   contextQueryBBox,
   DEMO_SITES,
@@ -294,8 +295,11 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
     else {
       const k = PER_KM2(m, file);
       const qKm2 = (((extentM + 2 * SCENARIO_PARAMS.queryMarginM) / 1000) ** 2);
-      const r = k ? { low: k.low * qKm2, mid: k.mid * qKm2, high: k.high * qKm2 } : { low: 0, mid: 0, high: 0 };
-      const basis = k ? `${qKm2.toFixed(0)} km² queried x ${formatBytes(k.mid)} per km² (median of the 8 bundled demo areas, ${formatBytes(k.low)} to ${formatBytes(k.high)} per km², same queries, fetched 2026-09-27)` : 'no bundled areas to compare with';
+      const U = TYPICAL.vectorUnclipped;
+      const r = k ? { low: k.low * qKm2 * U.low, mid: k.mid * qKm2 * U.mid, high: k.high * qKm2 * U.high } : { low: 0, mid: 0, high: 0 };
+      const basis = k
+        ? `${qKm2.toFixed(0)} km² queried x ${formatBytes(k.mid)} per km² (median of the 8 bundled demo areas, ${formatBytes(k.low)} to ${formatBytes(k.high)} per km², same queries, fetched 2026-09-27), x ${U.low} to ${U.high} because ${U.basis}`
+        : 'no bundled areas to compare with';
       if (cached) add({ ...base, id, format: 'GeoJSON pages (stored copy)', status: 'used', origin: 'cache', originDetail: 'stored copy', ...r, network: 0, requests: 1, basis, offlineOk: true, offlineNote: 'A stored copy is on this device.', onDevice: true });
       else if (online) add({ ...base, id, format: 'GeoJSON pages (ArcGIS REST query)', status: 'used', origin: 'live', ...r, network: r.mid, requests: Math.max(1, Math.ceil(r.mid / 1_000_000)), basis, offlineOk: false, offlineNote: noSignal('it is queried from the NSW service'), onDevice: false });
       else add({ ...base, id, format: '-', status: id === 'vegetation-svtm' ? 'fallback' : 'unavailable', origin: 'none', fallbackReason: fallbackText, low: 0, mid: 0, high: 0, network: 0, requests: 0, basis: 'offline and not stored', offlineOk: true, offlineNote: 'The substitute needs no download.', onDevice: false, coverage: 0, filledBy: id === 'vegetation-svtm' ? 'vegetation inferred from terrain and canopy' : 'steady-state fuel (no fire record)' });
@@ -335,7 +339,11 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
         const packD = pack('daily');
         add({ ...dBase, ...(packD ? om : app), format: packD ? 'JSON (area pack)' : 'Defaults', status: packD ? 'used' : 'fallback', origin: packD ? 'area-pack' : 'none', ...(packD ? {} : { fallbackReason: 'Offline: default drought values unless a stored rainfall history is found.' }), ...(packD ? exact(packBytes(packD, 'daily')) : none), network: 0, requests: packD ? 1 : 0, basis: packD ? 'size of the stored pack item' : 'offline', offlineOk: true, offlineNote: 'No download.', onDevice: !!packD });
       } else {
-        add({ ...wBase, ...om, format: 'JSON (Open-Meteo)', status: 'used', origin: 'live', low: T.low, mid: T.mid, high: T.high * 2, network: T.mid, requests: 1, basis: `one ${past ? 'historical' : 'forecast'} request; ${T.basis} (a second request if the first model fails)`, offlineOk: false, offlineNote: noSignal('the weather is downloaded'), onDevice: false });
+        // The built records split one download between the weather and the upper air by variables; plan the same.
+        const S: TypicalSize = past ? { low: 0, mid: 0, high: 0, basis: '' } : TYPICAL.upperAirShare;
+        add({ ...wBase, ...om, format: 'JSON (Open-Meteo)', status: 'used', origin: 'live', low: T.low * (1 - S.high), mid: T.mid * (1 - S.mid), high: T.high * 2 * (1 - S.low), network: T.mid * (1 - S.mid), requests: 1, basis: `one ${past ? 'historical' : 'forecast'} request; ${T.basis}${past ? '' : `; ${Math.round((1 - S.mid) * 100)} % of it is the surface weather (${S.basis})`} (a second request if the first model fails)`, offlineOk: false, offlineNote: noSignal('the weather is downloaded'), onDevice: false });
+        if (!past)
+          add({ id: 'upper-air', role: 'upperAir', title: 'Upper-air profile', what: 'Temperature, humidity and wind at pressure levels above the site.', why: 'Stability, the wind above the ridges and how high smoke rises.', kind: 'timeseries', ...om, format: 'JSON (pressure-level variables of the weather download)', status: 'used', origin: 'live', low: T.low * S.low, mid: T.mid * S.mid, high: T.high * 2 * S.high, network: T.mid * S.mid, requests: 0, basis: `part of the same download (${Math.round(S.mid * 100)} %); ${S.basis}`, offlineOk: false, offlineNote: noSignal('it comes with the weather download'), onDevice: false });
         const a = TYPICAL.annualRainfall10y;
         const d = TYPICAL.daily365;
         const rainKey = [...facts.cachedKeys].some((k) => k.startsWith('annualRainfall/'));
@@ -359,12 +367,13 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
     const total = layers.reduce((a, l) => a + (l.count ?? 0), 0);
     const packC = pack('context');
     const cached = facts.cachedKeys.has(contextCacheKey(contextQueryBBox(centre, extentM)));
-    const T = TYPICAL.contextPerKm2;
+    const qKm2 = ((extentM + 2 * CONTEXT_MARGIN_M) / 1000) ** 2;
     for (const l of layers) {
+      const T = CONTEXT_PER_KM2[l.id as keyof typeof CONTEXT_PER_KM2];
       const share = total > 0 ? (l.count ?? 0) / total : 1 / layers.length;
       if (site && ctxFile !== undefined) add({ ...common, id: l.id, title: l.title, format: 'delta-coded JSON, bundled (one file for all five layers)', status: 'used', origin: 'bundled', originDetail: siteNote, ...exact(Math.round(ctxFile * share)), network: 0, requests: l.id === 'roads' ? 1 : 0, basis: `share of the bundled context.json (${formatBytes(ctxFile)}) by feature count`, offlineOk: true, offlineNote: 'Shipped with the app.', onDevice: true });
       else if (packC || cached) add({ ...common, id: l.id, title: l.title, format: 'delta-coded JSON (stored)', status: 'used', origin: packC ? 'area-pack' : 'cache', ...(packC ? exact(Math.round(packBytes(packC, 'context') / layers.length)) : { low: 0, mid: 0, high: 0 }), network: 0, requests: 0, basis: packC ? 'share of the stored pack item' : 'stored copy', offlineOk: true, offlineNote: 'Saved on this device.', onDevice: true });
-      else if (online) add({ ...common, id: l.id, title: l.title, format: 'ArcGIS REST JSON', status: 'used', origin: 'live', low: (T.low * km2) / layers.length, mid: (T.mid * km2) / layers.length, high: (T.high * km2) / layers.length, network: (T.mid * km2) / layers.length, requests: 2, basis: `${km2.toFixed(0)} km² x ${formatBytes(T.mid)} per km² for the five layers together; ${T.basis}`, offlineOk: false, offlineNote: noSignal('queried from the NSW services'), onDevice: false });
+      else if (online) add({ ...common, id: l.id, title: l.title, format: 'ArcGIS REST JSON', status: 'used', origin: 'live', low: T.low * qKm2, mid: T.mid * qKm2, high: T.high * qKm2, network: T.mid * qKm2, requests: 2, basis: `${qKm2.toFixed(0)} km² queried x ${formatBytes(T.mid)} per km²; ${T.basis}`, offlineOk: false, offlineNote: noSignal('queried from the NSW services'), onDevice: false });
       else add({ ...common, id: l.id, title: l.title, format: '-', status: 'unavailable', origin: 'none', fallbackReason: 'Offline and not stored: the layer is left off the map.', low: 0, mid: 0, high: 0, network: 0, requests: 0, basis: 'offline', offlineOk: true, offlineNote: 'Display only; the run works without it.', onDevice: false });
     }
   }
