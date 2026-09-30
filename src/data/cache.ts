@@ -28,8 +28,30 @@ export interface KV {
    * Approximate stored size of every entry whose key starts with `prefix` (see {@link storedBytes}). Optional: a store
    * without it is sized by reading each entry (storage report, data/storage.ts).
    */
-  sizes?(prefix?: string): Promise<{ key: string; bytes: number }[]>;
+  sizes?(prefix?: string): Promise<KVSize[]>;
 }
+
+/** One entry of {@link KV.sizes}: its key, approximate stored bytes and, for cached-fetch records, when it was stored. */
+export interface KVSize {
+  key: string;
+  bytes: number;
+  /** Epoch ms the entry was stored (cached-fetch records `{ t, url, v }`, area-pack metadata `createdAt`). */
+  t?: number;
+}
+
+/** When an entry was stored, if it says (cached-fetch record `t`, area-pack meta `createdAt`). */
+export function storedAt(v: unknown): number | undefined {
+  if (!v || typeof v !== 'object' || ArrayBuffer.isView(v) || v instanceof ArrayBuffer) return undefined;
+  const r = v as { t?: unknown; createdAt?: unknown };
+  if (typeof r.t === 'number' && Number.isFinite(r.t)) return r.t;
+  if (typeof r.createdAt === 'number' && Number.isFinite(r.createdAt)) return r.createdAt;
+  return undefined;
+}
+
+const sizeEntry = (key: string, v: unknown): KVSize => {
+  const t = storedAt(v);
+  return t !== undefined ? { key, bytes: storedBytes(v), t } : { key, bytes: storedBytes(v) };
+};
 
 export const CACHE_DB_NAME = 'firesim';
 export const CACHE_STORE_NAME = 'kv';
@@ -84,8 +106,8 @@ export function createMemoryKV(): KV {
       return out.sort();
     },
     async sizes(prefix = '') {
-      const out: { key: string; bytes: number }[] = [];
-      for (const [k, v] of map) if (k.startsWith(prefix)) out.push({ key: k, bytes: storedBytes(v) });
+      const out: KVSize[] = [];
+      for (const [k, v] of map) if (k.startsWith(prefix)) out.push(sizeEntry(k, v));
       return out.sort((a, b) => (a.key < b.key ? -1 : 1));
     },
   };
@@ -175,20 +197,20 @@ export function createIndexedDbKV(dbName = CACHE_DB_NAME, storeName = CACHE_STOR
     async sizes(prefix = '') {
       const db = await open();
       if (!db) return (fallback ??= createMemoryKV()).sizes!(prefix);
-      return new Promise<{ key: string; bytes: number }[]>((resolve, reject) => {
+      return new Promise<KVSize[]>((resolve, reject) => {
         let tx: IDBTransaction;
         try {
           tx = db.transaction(storeName, 'readonly');
         } catch (e) {
           return reject(e);
         }
-        const out: { key: string; bytes: number }[] = [];
+        const out: KVSize[] = [];
         const range = prefix && typeof IDBKeyRange !== 'undefined' ? IDBKeyRange.bound(prefix, prefix + '￿') : undefined;
         const cur = tx.objectStore(storeName).openCursor(range);
         cur.onsuccess = () => {
           const c = cur.result;
           if (!c) return;
-          if (typeof c.key === 'string' && c.key.startsWith(prefix)) out.push({ key: c.key, bytes: storedBytes(c.value) });
+          if (typeof c.key === 'string' && c.key.startsWith(prefix)) out.push(sizeEntry(c.key, c.value));
           c.continue();
         };
         tx.oncomplete = () => resolve(out.sort((a, b) => (a.key < b.key ? -1 : 1)));

@@ -7,12 +7,14 @@
  * Where the numbers come from
  *  - The scenario's own arrays (terrain, fuel, the 10 m DEM, fire history, places) are MEASURED: every typed array of the
  *    ScenarioData counted once ({@link scenarioArrayBytes}). The worker receives a structured-clone copy (sim/client.ts
- *    posts it without a transfer list), so the same bytes are held twice: main thread and worker.
+ *    posts it without a transfer list) WITHOUT the display-only places context ({@link workerScenarioArrayBytes}), so
+ *    the grids are held twice (main thread and worker) and the roads, homes and names once. The worker's two fuel-map
+ *    copies (base and edited) are measured from the scenario's fuel map too (2 x its bytes).
  *  - The engine's arrays (fire spread, insight engine, fuel moisture, fuel copies, atmosphere, embers, checkpoints,
  *    per-cell rasters) are MODELLED from grid sizes with the coefficients in {@link ENGINE_BYTES}. The coefficients were
  *    measured on 2026-09-30 by walking every typed array of real `Simulation` instances (3 tiers x 6 grids of 10 000 to
  *    90 000 fire cells, 400 to 3 600 atmosphere columns, 1 000 to 4 000 embers) and fitted per part; the fits reproduce
- *    those runs within 2.5 % per part. memoryModel.test.ts re-measures a tiny run against `Simulation.memoryReport()` so
+ *    those runs within 6 % per part (most within 1 %). memoryModel.test.ts re-measures a tiny run against `Simulation.memoryReport()` so
  *    the model cannot silently drift from the allocation code.
  *  - The snapshot history of the time scrubber (ui/snapshotStore.ts) is modelled from the keyframe and fire-array sizes
  *    of a snapshot and capped by the store's budget (ui/session.ts `defaultSnapshotBudget`: 6 % of device memory,
@@ -46,42 +48,45 @@ interface PartCoeffs {
 const C = (perCell: number, perColumn = 0, fixed = 0, perEmber = 0): PartCoeffs => ({ perCell, perColumn, perEmber, fixed });
 
 /**
- * Engine bytes per part and tier. Per fire cell: fire spread 359 B (about 90 four-byte values: level set, arrival and
- * burn-out times, ROS, intensity, flame, spread direction, driver, masks and caches), insight engine 357 B, fuel moisture
- * 77 B, the worker's fuel copies 79 B, per-cell rasters of the orchestrator 107 B (wind, environment, sun, masks).
- * Atmosphere per column: fast 4.5 kB (the 20-level mass-consistent wind solver, about 56 values per level), standard
- * 11.9 kB (the 3-D model: winds, pressure, temperature, smoke, metric terms and multigrid levels, about 149 values per
- * level at 20 levels), high 14.2 kB (24 levels). Embers 107 B per particle of the budget. The t0 checkpoint keeps the
- * fire, moisture, atmosphere, ember and insight state: 95-105 B per cell plus 0.3-1.1 kB per column.
+ * Engine bytes per part and tier, as `Simulation.memoryReport()` splits them (each buffer counted once, under the first
+ * owner in the order fuel, fire, moisture, atmosphere, embers, insight engine, checkpoints, the rest). Per fire cell:
+ * the worker's two fuel copies 158 B (79 B each: the base map and the edited one), fire spread 548 B (about 137
+ * four-byte values: level set, arrival and burn-out times, ROS, intensity, flame, spread direction, driver, the
+ * regime and front caches, masks), fuel moisture 121 B, insight engine 105 B (plus 60 B per atmosphere column), the
+ * orchestrator's own rasters 35 B. Atmosphere per column (all levels): fast 4.5 kB (the 20-level mass-consistent wind
+ * solver, about 56 values per level), standard 11.9 kB (the 3-D model: winds, pressure, temperature, smoke, metric
+ * terms and multigrid levels, about 149 values per level at 20 levels), high 14.2 kB (24 levels); plus 218-261 B per
+ * fire cell of coupling rasters. Embers 107 B per particle of the budget. The t0 checkpoint keeps the fire, moisture,
+ * atmosphere, ember and insight state: 95-105 B per cell plus 0.3-1.1 kB per column.
  */
 export const ENGINE_BYTES: Readonly<Record<QualityTier, Readonly<Record<'fire' | 'explain' | 'moisture' | 'fuel' | 'rasters' | 'atmosphere' | 'embers' | 'checkpoint', PartCoeffs>>>> = Object.freeze({
   fast: {
-    fire: C(359.4, 0, 57_000),
-    explain: C(357.4, 60),
-    moisture: C(77, 0, 8016),
-    fuel: C(79),
-    rasters: C(107),
-    atmosphere: C(206.3, 4515.6, 16_200),
+    fire: C(548.4, 0, 57_000),
+    explain: C(105.4, 60),
+    moisture: C(121, 0, 8016),
+    fuel: C(158),
+    rasters: C(35.1, 0, 33),
+    atmosphere: C(218.3, 4515.6, 16_200),
     embers: C(37, 20.7, 37_600, 107),
     checkpoint: C(105.1, 328, 3300),
   },
   standard: {
-    fire: C(359.4, 0, 57_000),
-    explain: C(357.4, 60),
-    moisture: C(77, 0, 8016),
-    fuel: C(79),
-    rasters: C(107),
-    atmosphere: C(248.5, 11_928.3, 31_700),
+    fire: C(548.4, 0, 57_000),
+    explain: C(105.4, 60),
+    moisture: C(121, 0, 8016),
+    fuel: C(158),
+    rasters: C(35.1, 0, 33),
+    atmosphere: C(260.5, 11_928.3, 31_700),
     embers: C(37, 20.7, 37_600, 107),
     checkpoint: C(95.1, 918.6, 5800),
   },
   high: {
-    fire: C(359.4, 0, 57_000),
-    explain: C(354.1, 121),
-    moisture: C(77, 0, 8016),
-    fuel: C(79),
-    rasters: C(107),
-    atmosphere: C(247.7, 14_230.5, 70_100),
+    fire: C(548.4, 0, 57_000),
+    explain: C(105.4, 60),
+    moisture: C(121, 0, 8016),
+    fuel: C(158),
+    rasters: C(35.1, 0, 33),
+    atmosphere: C(259.7, 14_230.5, 70_100),
     embers: C(37, 20.6, 37_800, 107),
     checkpoint: C(95.1, 1094.6, 6800),
   },
@@ -125,6 +130,13 @@ export interface MemoryModelInput {
   snapshotIntervalS?: number;
   /** Measured typed-array bytes of the ScenarioData ({@link scenarioArrayBytes}); modelled from the grids when absent. */
   scenarioBytes?: number;
+  /**
+   * Measured bytes of the copy the worker receives: the scenario WITHOUT the display-only places layers (roads, homes,
+   * zones, names), which sim/client.ts strips before posting ({@link workerScenarioArrayBytes}). Default `scenarioBytes`.
+   */
+  workerScenarioBytes?: number;
+  /** Measured typed-array bytes of the scenario's fuel map: the worker holds two copies (the base and the edited one). Default: modelled per cell. */
+  fuelMapBytes?: number;
   /** 10 m grid (render mesh). */
   hiResNx?: number;
   hiResNy?: number;
@@ -150,6 +162,9 @@ export function atmosphereGrid(extentM: number, tier: QualityTier): { cellM: num
 
 /** Typed-array bytes of a scenario (every buffer once: terrain, fuel, the 10 m DEM, fire history, places). */
 export const scenarioArrayBytes = (s: ScenarioData): number => typedArrayFootprint(s).bytes;
+
+/** Typed-array bytes of the worker's copy: the scenario without its places context (sim/client.ts `withoutContext`). */
+export const workerScenarioArrayBytes = (s: ScenarioData): number => typedArrayFootprint(s, s.context ? { skip: [s.context] } : {}).bytes;
 
 /** Checkpoints a run of this length holds: the permanent t0 one plus one per 30 simulated minutes, up to the ring of 8. */
 export const checkpointCount = (durationS: number): number => 1 + Math.min(SIM_PARAMS.checkpointRing, Math.max(0, Math.floor(durationS / SIM_PARAMS.checkpointIntervalS)));
@@ -178,10 +193,20 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   const colsText = `${atm.columns.toLocaleString('en-AU')} columns x ${atm.nz} levels`;
 
   // ── the scenario (measured when given): main thread + the worker's copy ──
-  const scenarioBytes = i.scenarioBytes ?? Math.round(cells * 230 + (i.hiResNx ?? 0) * (i.hiResNy ?? 0) * 4);
+  // Unmeasured: 135 B per fire cell (terrain, fuel, fire history; measured on the Katoomba build) + the 10 m grid.
+  const scenarioBytes = i.scenarioBytes ?? Math.round(cells * 135 + (i.hiResNx ?? 0) * (i.hiResNy ?? 0) * 4);
   const measuredScenario = i.scenarioBytes !== undefined;
-  add('scenario-main', 'Scenario data (terrain, fuel, 10 m ground, fire history, places)', 'main', scenarioBytes, measuredScenario ? `measured: every typed array of the scenario, ${kb(scenarioBytes)}` : `estimated: ${cellsText} x about 230 B + the 10 m grid x 4 B`, { perCellBytes: cells ? scenarioBytes / cells : 0 });
-  add('scenario-worker', "The simulation worker's copy of the scenario", 'worker', scenarioBytes, 'the same bytes again: the scenario is copied (not moved) to the worker so the screen keeps its own');
+  add('scenario-main', 'Scenario data (terrain, fuel, 10 m ground, fire history, places)', 'main', scenarioBytes, measuredScenario ? `measured: every typed array of the scenario, ${kb(scenarioBytes)}` : `estimated: ${cellsText} x about 135 B + the 10 m grid x 4 B`, { perCellBytes: cells ? scenarioBytes / cells : 0 });
+  const workerScenario = i.workerScenarioBytes ?? scenarioBytes;
+  add(
+    'scenario-worker',
+    "The simulation worker's copy of the scenario",
+    'worker',
+    workerScenario,
+    workerScenario < scenarioBytes
+      ? `measured: ${kb(workerScenario)}, the scenario is copied (not moved) to the worker, without the roads, homes and place names that only the map uses`
+      : 'the same bytes again: the scenario is copied (not moved) to the worker so the screen keeps its own',
+  );
 
   // ── engine (worker) ──
   const fire = part(E.fire, cells, atm.columns, embers);
@@ -190,8 +215,10 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   add('explain', 'Insight engine (why the fire does what it does)', 'worker', explain, `${cellsText} x ${E.explain.perCell} B + ${colsText.split(' x ')[0]} x ${E.explain.perColumn} B`, { perCellBytes: E.explain.perCell });
   const moisture = part(E.moisture, cells, atm.columns, embers);
   add('moisture', 'Fuel moisture model', 'worker', moisture, `${cellsText} x ${E.moisture.perCell} B`, { perCellBytes: E.moisture.perCell });
-  const fuel = part(E.fuel, cells, atm.columns, embers);
-  add('fuel', 'Working copies of the fuel map (edits apply to them)', 'worker', fuel, `${cellsText} x ${E.fuel.perCell} B`, { perCellBytes: E.fuel.perCell });
+  // Two copies of the scenario's fuel map (the base and the edited one): measured from the scenario when given.
+  const fuelMeasured = i.fuelMapBytes !== undefined && i.fuelMapBytes > 0;
+  const fuel = fuelMeasured ? 2 * i.fuelMapBytes! : part(E.fuel, cells, atm.columns, embers);
+  add('fuel', 'Working copies of the fuel map (edits apply to them)', 'worker', fuel, fuelMeasured ? `measured: 2 copies of the ${kb(i.fuelMapBytes!)} fuel map (the base and the edited one)` : `${cellsText} x ${E.fuel.perCell} B`, { perCellBytes: fuelMeasured ? (cells ? fuel / cells : 0) : E.fuel.perCell });
   const rasters = part(E.rasters, cells, atm.columns, embers);
   add('rasters', 'Wind, sun and environment rasters on the fire grid', 'worker', rasters, `${cellsText} x ${E.rasters.perCell} B`, { perCellBytes: E.rasters.perCell });
   const atmosphere = part(E.atmosphere, cells, atm.columns, embers);
@@ -204,7 +231,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
     { perCellBytes: cells ? atmosphere / cells : 0 },
   );
   const emberBytes = part(E.embers, cells, atm.columns, embers);
-  add('embers', 'Ember particles and landing maps', 'worker', emberBytes, `${embers.toLocaleString('en-AU')} embers x ${E.embers.perEmber} B + ${cellsText} x ${E.embers.perCell} B`);
+  add('embers', 'Ember particles and landing maps', 'worker', emberBytes, `${embers.toLocaleString('en-AU')} embers x ${E.embers.perEmber} B + ${cellsText} x ${E.embers.perCell} B`, { note: 'Grows with the burning front (its lists of burning cells).' });
   const nCp = checkpointCount(i.durationS);
   const cp0 = part(E.checkpoint, cells, atm.columns, embers);
   const ring = Math.min(SIM_PARAMS.checkpointMaxBytes, (nCp - 1) * (cp0 + RING_CHECKPOINT_GROWTH_BYTES));
@@ -259,8 +286,8 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   const workerBytes = sum('worker');
   const gpuBytes = sum('gpu');
   const notes: string[] = [
-    measuredScenario ? 'The scenario data are measured; the engine, the scrubber history and the GPU are modelled from the grid sizes.' : 'Every figure is modelled from the grid sizes.',
-    `Engine figures reproduce measured runs within about 3 % (coefficients measured 2026-09-30 from the engine's own arrays).`,
+    measuredScenario ? `The scenario data${fuelMeasured ? ' and the fuel copies' : ''} are measured; the rest of the engine, the scrubber history and the GPU are modelled from the grid sizes.` : 'Every figure is modelled from the grid sizes.',
+    `Engine figures reproduce measured runs within a few per cent (coefficients measured 2026-09-30 from the engine's own arrays).`,
     'GPU figures are estimates: WebGL does not report how much memory it uses.',
     'JavaScript objects (feature lists, labels, closures) are not counted: typed arrays hold nearly all the data.',
   ];
@@ -284,6 +311,8 @@ export function workingMemoryForScenario(s: ScenarioData, o: Partial<Pick<Memory
     durationS: s.duration,
     snapshotIntervalS: s.options.snapshotInterval,
     scenarioBytes: scenarioArrayBytes(s),
+    workerScenarioBytes: workerScenarioArrayBytes(s),
+    fuelMapBytes: typedArrayFootprint(s.fuel).bytes,
     ...(s.terrainHiRes ? { hiResNx: s.terrainHiRes.grid.nx, hiResNy: s.terrainHiRes.grid.ny } : {}),
     ...(o.imagery !== undefined ? { imagery: o.imagery } : {}),
     ...(o.renderQuality ? { renderQuality: o.renderQuality } : {}),

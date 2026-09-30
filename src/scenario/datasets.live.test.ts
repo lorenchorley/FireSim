@@ -36,7 +36,7 @@ describe.skipIf(!process.env.NET)('live scenario build (NET=1)', () => {
     for (const r of ds) {
       const p = plan.find((x) => x.id === r.id);
       const est = p?.plan ? `${formatBytes(p.plan.lowBytes)}-${formatBytes(p.plan.highBytes)}` : '-';
-      lines.push(`${r.id.padEnd(16)} ${r.status.padEnd(11)} ${r.origin.padEnd(9)} net ${formatBytes(r.sizes.networkBytes).padStart(9)} all ${formatBytes(r.sizes.transferredBytes).padStart(9)} req ${String(r.sizes.requests).padStart(3)}  estimate ${est}`);
+      lines.push(`${r.id.padEnd(16)} ${r.status.padEnd(11)} ${r.origin.padEnd(9)} net ${formatBytes(r.sizes.networkBytes).padStart(9)} uncompressed ${formatBytes(r.sizes.networkDecodedBytes ?? r.sizes.networkBytes).padStart(9)}${r.sizes.networkUnmeasuredBytes ? ' (wire size not reported)' : ''} all ${formatBytes(r.sizes.transferredBytes).padStart(9)} req ${String(r.sizes.requests).padStart(3)}  estimate ${est}`);
     }
     const report = `Bilpin live build ${secs.toFixed(1)} s, ${formatBytes(s.datasetSummary!.totals.networkBytes)} over the network\n${lines.join('\n')}`;
     console.log(report);
@@ -47,9 +47,11 @@ describe.skipIf(!process.env.NET)('live scenario build (NET=1)', () => {
     // The estimate of each downloaded data set brackets the real bytes within a factor of 3 either way.
     for (const r of ds) {
       const p = plan.find((x) => x.id === r.id)?.plan;
-      if (!p || r.sizes.networkBytes < 20_000) continue;
-      expect(r.sizes.networkBytes, `${r.id}`).toBeGreaterThan(p.lowBytes / 3);
-      expect(r.sizes.networkBytes, `${r.id}`).toBeLessThan(p.highBytes * 3);
+      // Plans are uncompressed sizes: compare with what the answers decompressed to.
+      const got = r.sizes.networkDecodedBytes ?? r.sizes.networkBytes;
+      if (!p || got < 20_000) continue;
+      expect(got, `${r.id}`).toBeGreaterThan(p.lowBytes / 3);
+      expect(got, `${r.id}`).toBeLessThan(p.highBytes * 3);
     }
     if (process.env.WRITE_FIXTURES) {
       mkdirSync(OUT, { recursive: true });

@@ -27,7 +27,7 @@ export const DETAIL_CELL: Record<Detail, number> = { fast: 30, normal: 30, detai
 
 /** Labels of the detail picker: exactly what each option builds. */
 export const DETAIL_OPTIONS: Record<Detail, { label: string; sub: string }> = {
-  fast: { label: 'Fast', sub: '30 m · simple wind' },
+  fast: { label: 'Fast', sub: '30 m · 2-D' },
   normal: { label: 'Normal', sub: '30 m' },
   detailed: { label: 'Detailed', sub: '20 m' },
 };

@@ -158,23 +158,20 @@ export interface StatsResult<F> {
   facts: F;
 }
 
-/**
- * Statistics of the fire-grid terrain. Slope percentiles come from 0.25 degree bins. `localRelief` (TerrainDerived, m,
- * ~1 km window) is optional: with it the median local relief and the Hammond relief class are added.
- */
-export function terrainStats(t: Terrain, opts: { localRelief?: Float32Array; seaOrNoDataCells?: number } = {}): StatsResult<TerrainFacts> {
-  const n = t.grid.nx * t.grid.ny;
+/** One pass over the fire-grid terrain (its own small function, so the engine optimises the loop at once). */
+function accumulateTerrain(t: Terrain, n: number, slopeH: Hist, relH: Hist | null, relief: Float32Array | undefined) {
   const z = t.elevation;
   const sl = t.slopeDeg;
+  const aspect = t.aspectDeg;
+  const landform = t.landform;
   let zMin = Infinity;
   let zMax = -Infinity;
   let zSum = 0;
-  const slopeH = new Hist(0, 0.25, 400);
   let s20 = 0;
   let s25 = 0;
   let s30 = 0;
   let flat = 0;
-  const lf = new Array<number>(11).fill(0);
+  const lfCounts = new Uint32Array(11);
   for (let k = 0; k < n; k++) {
     const v = z[k]!;
     if (v < zMin) zMin = v;
@@ -185,16 +182,31 @@ export function terrainStats(t: Terrain, opts: { localRelief?: Float32Array; sea
     if (s > 20) s20++;
     if (s > 25) s25++;
     if (s > 30) s30++;
-    if (!(t.aspectDeg[k]! === t.aspectDeg[k]!)) flat++;
-    const c = t.landform[k]!;
-    if (c < lf.length) lf[c]!++;
+    const a = aspect[k]!;
+    if (!(a === a)) flat++;
+    const c = landform[k]!;
+    if (c < lfCounts.length) lfCounts[c]!++;
   }
   let cliffSum = 0;
   let p90Over45 = 0;
-  if (t.cliffFraction) for (let k = 0; k < n; k++) cliffSum += t.cliffFraction[k]!;
-  if (t.slopeP90Deg) for (let k = 0; k < n; k++) if (t.slopeP90Deg[k]! > 45) p90Over45++;
+  const cliffFraction = t.cliffFraction;
+  const slopeP90 = t.slopeP90Deg;
+  if (cliffFraction) for (let k = 0; k < n; k++) cliffSum += cliffFraction[k]!;
+  if (slopeP90) for (let k = 0; k < n; k++) if (slopeP90[k]! > 45) p90Over45++;
+  if (relH && relief) for (let k = 0; k < n; k++) relH.add(relief[k]!);
+  return { zMin, zMax, zSum, s20, s25, s30, flat, lf: Array.from(lfCounts), cliffSum, p90Over45 };
+}
+
+/**
+ * Statistics of the fire-grid terrain. Slope percentiles come from 0.25 degree bins. `localRelief` (TerrainDerived, m,
+ * ~1 km window) is optional: with it the median local relief and the Hammond relief class are added.
+ */
+export function terrainStats(t: Terrain, opts: { localRelief?: Float32Array; seaOrNoDataCells?: number } = {}): StatsResult<TerrainFacts> {
+  const n = t.grid.nx * t.grid.ny;
+  const z = t.elevation;
+  const slopeH = new Hist(0, 0.25, 400);
   const relH = opts.localRelief ? new Hist(0, 5, 400) : null;
-  if (relH && opts.localRelief) for (let k = 0; k < n; k++) relH.add(opts.localRelief[k]!);
+  const { zMin, zMax, zSum, s20, s25, s30, flat, lf, cliffSum, p90Over45 } = accumulateTerrain(t, n, slopeH, relH, opts.localRelief);
   const medRelief = relH ? relH.quantile(0.5) : undefined;
   const reliefClass = medRelief === undefined ? undefined : medRelief < 30 ? 'flat' : medRelief < 90 ? 'undulating' : medRelief < 300 ? 'hilly' : 'mountainous';
   const facts: TerrainFacts = {
@@ -277,68 +289,68 @@ export interface FuelFacts {
   cliffShare: number;
 }
 
-/** Statistics of the derived fuel map: type shares, hazard and load, curing, cover, flags. */
-export function fuelStats(f: FuelMap): StatsResult<FuelFacts> {
+/** One pass over the fuel map (a small function of its own, so the engine optimises the 90 000-cell loop at once). */
+function accumulateFuel(f: FuelMap, ctx: Uint8Array | undefined, hazH: Hist) {
   const n = f.grid.nx * f.grid.ny;
-  const ctx = cellContext(f);
-  const types = new Array<number>(13).fill(0);
-  const hazH = new Hist(0, 0.05, 80);
-  let sH = 0;
-  let nsH = 0;
-  let eH = 0;
-  let bH = 0;
-  let loadSum = 0;
-  let loadMax = 0;
-  let curSum = 0;
-  let curN = 0;
-  let coverSum = 0;
-  let wMin = Infinity;
-  let wMax = -Infinity;
-  let inferred = 0;
-  let minority = 0;
-  let heavy = 0;
-  let stringy = 0;
-  let post = 0;
-  let road = 0;
-  let cliff = 0;
-  const flags = f.flags;
+  const a = { types: new Uint32Array(13), sH: 0, nsH: 0, eH: 0, bH: 0, loadSum: 0, loadMax: 0, curSum: 0, curN: 0, coverSum: 0, wMin: Infinity, wMax: -Infinity, inferred: 0, minority: 0, heavy: 0, stringy: 0, post: 0, road: 0, cliff: 0 };
+  const { type, surfaceHazard, nearSurfaceHazard, elevatedHazard, barkHazard, surfaceLoad, curing, canopyCover, wrf, flags } = f;
+  const types = a.types;
+  let sH = 0, nsH = 0, eH = 0, bH = 0, loadSum = 0, loadMax = 0, curSum = 0, curN = 0, coverSum = 0, wMin = Infinity, wMax = -Infinity;
+  let inferred = 0, minority = 0, heavy = 0, stringy = 0, post = 0, road = 0, cliff = 0;
+  const F_INFERRED = FuelFlag.InferredVegetation;
+  const F_HEAVY = FuelFlag.HeavyFuel;
+  const F_STRINGY = FuelFlag.Stringybark;
+  const F_POST = FuelFlag.PostFire;
+  const F_ROAD = FuelFlag.Road;
+  const F_CLIFF = FuelFlag.Cliff;
+  const F_MINORITY = FuelFlag.WetGullyMinority;
   for (let k = 0; k < n; k++) {
-    types[f.type[k]!]!++;
-    const sh = f.surfaceHazard[k]!;
+    types[type[k]!]!++;
+    const sh = surfaceHazard[k]!;
     sH += sh;
     hazH.add(sh);
-    nsH += f.nearSurfaceHazard[k]!;
-    eH += f.elevatedHazard[k]!;
-    bH += f.barkHazard[k]!;
-    const ld = f.surfaceLoad[k]!;
+    nsH += nearSurfaceHazard[k]!;
+    eH += elevatedHazard[k]!;
+    bH += barkHazard[k]!;
+    const ld = surfaceLoad[k]!;
     loadSum += ld;
     if (ld > loadMax) loadMax = ld;
-    const cu = f.curing[k]!;
+    const cu = curing[k]!;
     if (cu > 0) {
       curSum += cu;
       curN++;
     }
-    coverSum += f.canopyCover[k]!;
-    if (f.wrf) {
-      const w = f.wrf[k]!;
+    coverSum += canopyCover[k]!;
+    if (wrf) {
+      const w = wrf[k]!;
       if (w < wMin) wMin = w;
       if (w > wMax) wMax = w;
     }
     if (flags) {
       const fl = flags[k]!;
-      if (fl & FuelFlag.InferredVegetation) inferred++;
-      if (fl & FuelFlag.HeavyFuel) heavy++;
-      if (fl & FuelFlag.Stringybark) stringy++;
-      if (fl & FuelFlag.PostFire) post++;
-      if (fl & FuelFlag.Road) road++;
-      if (fl & FuelFlag.Cliff) cliff++;
-      if (fl & FuelFlag.WetGullyMinority) minority++;
-    }
-    if (ctx && !flags) {
+      if (fl & F_INFERRED) inferred++;
+      if (fl & F_HEAVY) heavy++;
+      if (fl & F_STRINGY) stringy++;
+      if (fl & F_POST) post++;
+      if (fl & F_ROAD) road++;
+      if (fl & F_CLIFF) cliff++;
+      if (fl & F_MINORITY) minority++;
+    } else if (ctx) {
       if (ctx[k]! & CTX_INFERRED) inferred++;
       if (ctx[k]! & CTX_MINORITY_WET) minority++;
     }
   }
+  Object.assign(a, { sH, nsH, eH, bH, loadSum, loadMax, curSum, curN, coverSum, wMin, wMax, inferred, minority, heavy, stringy, post, road, cliff });
+  return a;
+}
+
+/** Statistics of the derived fuel map: type shares, hazard and load, curing, cover, flags. */
+export function fuelStats(f: FuelMap): StatsResult<FuelFacts> {
+  const n = f.grid.nx * f.grid.ny;
+  const ctx = cellContext(f);
+  const hazH = new Hist(0, 0.05, 80);
+  const { sH, nsH, eH, bH, loadSum, loadMax, curSum, curN, coverSum, wMin, wMax, inferred, minority, heavy, stringy, post, road, cliff, types: typeCounts } = accumulateFuel(f, ctx, hazH);
+  const types = Array.from(typeCounts);
   const facts: FuelFacts = {
     cells: n,
     typeShares: types.map((c) => c / n),
@@ -408,6 +420,22 @@ export interface VegetationFacts {
   topClasses: { name: string; share: number }[];
 }
 
+/** Cells per vegetation class, leaving out the inferred ones (a small function, optimised at once). */
+function accumulateClasses(n: number, cls: Uint8Array, flags: Uint16Array | undefined, ctx: Uint8Array | undefined): { byClass: Uint32Array; inferred: number } {
+  const byClass = new Uint32Array(256);
+  const INF = FuelFlag.InferredVegetation;
+  let inferred = 0;
+  for (let k = 0; k < n; k++) {
+    const inf = flags ? (flags[k]! & INF) !== 0 : ctx ? (ctx[k]! & CTX_INFERRED) !== 0 : false;
+    if (inf) {
+      inferred++;
+      continue;
+    }
+    byClass[cls[k]!]!++;
+  }
+  return { byClass, inferred };
+}
+
 /** Vegetation classes of the cells the vegetation map covers, and the share filled by inference. */
 export function vegetationStats(f: FuelMap): StatsResult<VegetationFacts> {
   const n = f.grid.nx * f.grid.ny;
@@ -415,16 +443,8 @@ export function vegetationStats(f: FuelMap): StatsResult<VegetationFacts> {
   const flags = f.flags;
   const ctx = cellContext(f);
   const counts = new Map<number, number>();
-  let inferred = 0;
-  for (let k = 0; k < n; k++) {
-    const inf = flags ? (flags[k]! & FuelFlag.InferredVegetation) !== 0 : ctx ? (ctx[k]! & CTX_INFERRED) !== 0 : false;
-    if (inf) {
-      inferred++;
-      continue;
-    }
-    const c = cls ? cls[k]! : f.type[k]!;
-    counts.set(c, (counts.get(c) ?? 0) + 1);
-  }
+  const { byClass, inferred } = accumulateClasses(n, cls ?? f.type, flags, ctx);
+  for (let c = 0; c < 256; c++) if (byClass[c]) counts.set(c, byClass[c]!);
   const ranked = [...counts.entries()].map(([c, cnt]) => ({ c, share: cnt / n })).sort((a, b) => b.share - a.share);
   const nameOf = (c: number): string => FUEL_CLASSES[c]?.name ?? `Class ${c}`;
   const top = ranked.slice(0, 5);
@@ -454,19 +474,39 @@ export interface CanopyFacts {
   shareOver30: number;
 }
 
-/** Canopy height and cover on the cells the canopy map measured (CTX_CHM_VALID); the rest use type defaults. */
-export function canopyStats(f: FuelMap): StatsResult<CanopyFacts> {
-  const n = f.grid.nx * f.grid.ny;
-  const ctx = cellContext(f);
-  const h = new Hist(0, 0.5, 200);
+/** One pass over the canopy arrays: the height histogram, the cover sum and the counts per height band (a small function, optimised at once). */
+function accumulateCanopy(f: FuelMap, n: number, ctx: Uint8Array | undefined, h: Hist, edges: readonly number[]): { cover: number; valid: number; counts: number[] } {
+  const height = f.canopyHeight;
+  const coverArr = f.canopyCover;
+  const bands = edges.length - 1;
+  const counts = new Uint32Array(bands);
   let cover = 0;
   let valid = 0;
   for (let k = 0; k < n; k++) {
     if (ctx && !(ctx[k]! & CTX_CHM_VALID)) continue;
     valid++;
-    h.add(f.canopyHeight[k]!);
-    cover += f.canopyCover[k]!;
+    const v = height[k]!;
+    h.add(v);
+    cover += coverArr[k]!;
+    let b = bands - 1;
+    for (let i = 0; i < bands; i++) {
+      if (v < edges[i + 1]!) {
+        b = i;
+        break;
+      }
+    }
+    counts[b]!++;
   }
+  return { cover, valid, counts: Array.from(counts) };
+}
+
+/** Canopy height and cover on the cells the canopy map measured (CTX_CHM_VALID); the rest use type defaults. */
+export function canopyStats(f: FuelMap): StatsResult<CanopyFacts> {
+  const n = f.grid.nx * f.grid.ny;
+  const ctx = cellContext(f);
+  const h = new Hist(0, 0.5, 200);
+  const edges = [0, 2, 5, 10, 15, 20, 30, 45];
+  const { cover, valid, counts } = accumulateCanopy(f, n, ctx, h, edges);
   const facts: CanopyFacts = {
     cells: n,
     measuredShare: ctx ? valid / n : NaN,
@@ -489,20 +529,6 @@ export function canopyStats(f: FuelMap): StatsResult<CanopyFacts> {
       shareStat('Cells with trees over 15 m', facts.shareOver15),
       shareStat('Cells with trees over 30 m', facts.shareOver30),
     );
-  }
-  const edges = [0, 2, 5, 10, 15, 20, 30, 45];
-  const counts = new Array<number>(edges.length - 1).fill(0);
-  for (let k = 0; k < n; k++) {
-    if (ctx && !(ctx[k]! & CTX_CHM_VALID)) continue;
-    const v = f.canopyHeight[k]!;
-    let b = edges.length - 2;
-    for (let i = 0; i < edges.length - 1; i++) {
-      if (v < edges[i + 1]!) {
-        b = i;
-        break;
-      }
-    }
-    counts[b]!++;
   }
   const total = counts.reduce((s, c) => s + c, 0);
   return { stats, ...(total ? { distribution: { kind: 'histogram' as const, title: 'Canopy height', unit: 'm', values: counts.map((c) => round(c / total, 5)), edges, count: total } } : {}), facts };
@@ -528,13 +554,8 @@ export interface FireHistoryFacts {
   activeFires: string[];
 }
 
-/**
- * Time-since-fire statistics (0.25 year bins). `included` are the fire polygons that entered the fuel model,
- * `activeFires` those burning at the start.
- */
-export function fireHistoryStats(f: FuelMap, opts: { included?: readonly FireHistoryRecord[]; activeFires?: readonly FireHistoryRecord[]; rawFeatures?: number; skipped?: number; verDate?: number | null } = {}): StatsResult<FireHistoryFacts> {
-  const n = f.grid.nx * f.grid.ny;
-  const h = new Hist(0, 0.25, 800);
+/** One pass over the fire-history arrays of the fuel map (a small function, optimised at once). */
+function accumulateHistory(f: FuelMap, n: number, h: Hist) {
   let none = 0;
   let u5 = 0;
   let u10 = 0;
@@ -542,8 +563,14 @@ export function fireHistoryStats(f: FuelMap, opts: { included?: readonly FireHis
   let presc = 0;
   let c30 = 0;
   let tfi = 0;
+  const tsf = f.timeSinceFire;
+  const lastKind = f.lastFireKind;
+  const count30 = f.fireCount30;
+  const countTfi = f.fireCountTfi;
+  const WILD = FireHistoryKind.Wildfire;
+  const PRESC = FireHistoryKind.PrescribedBurn;
   for (let k = 0; k < n; k++) {
-    const t = f.timeSinceFire[k]!;
+    const t = tsf[k]!;
     if (!(t === t)) {
       none++;
       continue;
@@ -551,12 +578,23 @@ export function fireHistoryStats(f: FuelMap, opts: { included?: readonly FireHis
     h.add(t);
     if (t < 5) u5++;
     if (t < 10) u10++;
-    const kind = f.lastFireKind[k]!;
-    if (kind === FireHistoryKind.Wildfire) wild++;
-    else if (kind === FireHistoryKind.PrescribedBurn || kind === 3) presc++;
-    if (f.fireCount30 && f.fireCount30[k]! > 0) c30++;
-    if (f.fireCountTfi && f.fireCountTfi[k]! > 0) tfi++;
+    const kind = lastKind[k]!;
+    if (kind === WILD) wild++;
+    else if (kind === PRESC || kind === 3) presc++;
+    if (count30 && count30[k]! > 0) c30++;
+    if (countTfi && countTfi[k]! > 0) tfi++;
   }
+  return { none, u5, u10, wild, presc, c30, tfi };
+}
+
+/**
+ * Time-since-fire statistics (0.25 year bins). `included` are the fire polygons that entered the fuel model,
+ * `activeFires` those burning at the start.
+ */
+export function fireHistoryStats(f: FuelMap, opts: { included?: readonly FireHistoryRecord[]; activeFires?: readonly FireHistoryRecord[]; rawFeatures?: number; skipped?: number; verDate?: number | null } = {}): StatsResult<FireHistoryFacts> {
+  const n = f.grid.nx * f.grid.ny;
+  const h = new Hist(0, 0.25, 800);
+  const { none, u5, u10, wild, presc, c30, tfi } = accumulateHistory(f, n, h);
   const included = opts.included ?? [];
   let latest = -Infinity;
   for (const r of included) latest = Math.max(latest, r.endTime ?? r.startTime);

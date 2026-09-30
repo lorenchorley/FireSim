@@ -1,65 +1,70 @@
 {
   "datasets": [
     {
-      "attribution": "Terrain: SRTM data courtesy of the U.S. Geological Survey, tiles by Mapzen on AWS Open Data",
+      "attribution": "© Spatial Services NSW (CC BY 4.0)",
       "coverage": {
         "fraction": 1
       },
       "crs": {
-        "native": "EPSG:3857 (Web Mercator) tiles, about 8.0 m per pixel at zoom 14",
-        "toModel": "Bilinear sampling of the tile mosaic onto the 10 m local grid (metres east and north of the site centre), then block-averaged to the fire grid."
+        "native": "EPSG:3857 (Web Mercator), 5 m post spacing",
+        "toModel": "Resampled (bilinear) to a 10 m grid of metres east and north of the site centre (an equirectangular projection), then block-averaged to the fire grid."
       },
       "distribution": {
-        "count": 40000,
+        "count": 90000,
         "edges": [
-          477.228,
-          532.2424,
-          587.2569,
-          642.2714,
-          697.2859,
-          752.3003,
-          807.3148,
-          862.3293,
-          917.3437,
-          972.3582,
-          1027.3727
+          249.4154,
+          332.0656,
+          414.7159,
+          497.3661,
+          580.0164,
+          662.6667,
+          745.3169,
+          827.9672,
+          910.6174,
+          993.2677,
+          1075.918
         ],
         "kind": "histogram",
         "title": "Ground height",
         "unit": "m",
         "values": [
-          0.00745,
-          0.0192,
-          0.0404,
-          0.09865,
-          0.18888,
-          0.20958,
-          0.17648,
-          0.1353,
-          0.07483,
-          0.04925
+          0.01044,
+          0.02852,
+          0.03677,
+          0.06984,
+          0.20758,
+          0.14757,
+          0.05967,
+          0.0463,
+          0.24314,
+          0.15017
         ]
       },
       "endpoints": [
         {
-          "host": "s3.amazonaws.com",
-          "path": "/elevation-tiles-prod/terrarium/14/{n}/{n}.png",
-          "requests": 16
+          "host": "bundled",
+          "path": "/demo/katoomba/dem5m.png",
+          "requests": 1
+        },
+        {
+          "host": "bundled",
+          "path": "/demo/katoomba/dem5m.json",
+          "requests": 1
         }
       ],
       "evidence": {
         "level": "measured",
-        "note": "Radar-measured heights at about 30 m; coarse for mountain terrain.",
-        "specRef": "docs/research/08-data-sources-apis.md §3.4"
+        "note": "Heights come from the NSW statewide 5 m elevation model. The service describes it as 'derived from stereo imagery' (not LiDAR), so under tall forest it can follow the treetops and understate how deep gullies are.",
+        "specRef": "docs/research/08-data-sources-apis.md §3.5"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "format": "Terrarium PNG tiles, 256 x 256 pixels, zoom 14 (height = red x 256 + green + blue / 256 - 32768 m)",
+      "format": "PNG image, height stored in the red, green and blue channels (Terrarium encoding), 900 x 900 pixels",
       "id": "terrain",
       "kind": "raster",
       "layer": {
@@ -67,179 +72,215 @@
         "overlay": "elevation"
       },
       "licence": {
-        "name": "Public domain (SRTM); tiles distributed under AWS Open Data terms",
-        "url": "https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
       },
       "limitations": [
-        "SRTM (radar, flown in February 2000) has about 30 m detail: it smooths gullies, ridges and cliffs, so slopes read gentler than the real ground.",
-        "Radar heights can include some tree canopy.",
-        "Tiles are cut at a fixed zoom: finer tiles add no new detail beyond the 30 m of the source."
+        "The NSW_5M_Elevation service says its heights are 'derived from stereo imagery'. This app once called them LiDAR bare earth; the service does not say that.",
+        "Averaged into 30 m cells, so cliffs and narrow gullies are softened. The 'very steep ground inside cells' figures show how much is hidden.",
+        "Bundled at 10 m: the 5 m detail of the source is not in the app."
       ],
       "model": {
-        "cells": 40000,
-        "height": 200,
-        "note": "A 10 m grid (600 x 600) drives the 3-D view and is averaged 3 x 3 into each fire cell; slope, aspect and landforms are worked out on the fire grid.",
+        "cells": 90000,
+        "height": 300,
+        "note": "A 10 m grid (900 x 900) drives the 3-D view and is averaged 3 x 3 into each fire cell; slope, aspect and landforms are worked out on the fire grid.",
         "resampling": "block-average",
         "resolutionM": 30,
-        "width": 200
+        "width": 300
       },
       "native": {
-        "height": 256,
-        "note": "The source data (SRTM) are about 30 m.",
-        "resolutionM": 8,
-        "width": 256
+        "note": "Published on a 5 m grid; the copy shipped with the app was resampled to 10 m (900 x 900 pixels).",
+        "resolutionM": 5
       },
-      "origin": "live",
-      "originDetail": "16 downloaded",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
       "parts": [
         {
-          "count": 16,
-          "label": "Tiles downloaded now",
-          "origin": "live"
+          "bytes": 1411059,
+          "label": "dem5m.png (height image)",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 720,
+          "label": "dem5m.json (details)",
+          "origin": "bundled"
         }
       ],
       "provider": {
-        "name": "Mapzen Terrain Tiles on AWS Open Data (SRTM, U.S. Geological Survey)",
-        "url": "https://registry.opendata.aws/terrain-tiles/"
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
       },
       "role": "terrain",
       "sizes": {
         "cachedBytes": 0,
-        "decodedBytes": 4194304,
-        "durationMs": 1241,
-        "memoryBytes": 5840000,
-        "networkBytes": 1799652,
-        "requests": 16,
-        "storedOnDeviceBytes": 1799652,
-        "tiles": 16,
-        "transferredBytes": 1799652
+        "decodedBytes": 3240000,
+        "durationMs": 284,
+        "memoryBytes": 13140000,
+        "networkBytes": 0,
+        "requests": 2,
+        "tiles": 0,
+        "transferredBytes": 1411779
       },
       "sourceServices": [
         {
-          "host": "s3.amazonaws.com",
-          "note": "AWS Open Data Terrain Tiles",
-          "path": "/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+          "host": "maps.six.nsw.gov.au",
+          "note": "exportImage, F32 GeoTIFF in EPSG:3857",
+          "path": "/arcgis/rest/services/public/NSW_5M_Elevation/ImageServer"
         }
       ],
       "stats": [
         {
           "label": "Lowest ground",
-          "raw": 477.228,
+          "raw": 249.415,
           "unit": "m",
-          "value": "477 m"
+          "value": "249 m"
         },
         {
           "label": "Highest ground",
-          "raw": 1027.373,
+          "raw": 1075.918,
           "unit": "m",
-          "value": "1 027 m"
+          "value": "1 076 m"
         },
         {
           "label": "Average height",
-          "raw": 793.215,
+          "raw": 775.296,
           "unit": "m",
-          "value": "793 m"
+          "value": "775 m"
         },
         {
           "label": "Relief (highest minus lowest)",
-          "raw": 550.145,
+          "raw": 826.503,
           "unit": "m",
-          "value": "550 m"
+          "value": "827 m"
         },
         {
           "label": "Typical slope (median)",
-          "raw": 16.768,
+          "raw": 11.286,
           "unit": "°",
-          "value": "16.8°"
+          "value": "11.3°"
         },
         {
           "hint": "Nine tenths of the ground is gentler than this.",
           "label": "Steep slope (90th percentile)",
-          "raw": 30.21,
+          "raw": 29.68,
           "unit": "°",
-          "value": "30.2°"
+          "value": "29.7°"
         },
         {
           "label": "Steepest cell",
-          "raw": 64.03,
+          "raw": 72.861,
           "unit": "°",
-          "value": "64.0°"
+          "value": "72.9°"
         },
         {
           "hint": "Fire runs much faster uphill on steep ground.",
           "label": "Ground steeper than 25°",
-          "raw": 20.78,
+          "raw": 16.46,
           "unit": "%",
-          "value": "21 %"
+          "value": "16 %"
         },
         {
           "label": "Ground steeper than 30°",
-          "raw": 10.29,
+          "raw": 9.65,
           "unit": "%",
-          "value": "10 %"
+          "value": "9.6 %"
         },
         {
           "hint": "Share of 10 m squares; a 30 m cell can hide a cliff.",
           "label": "Cliff (steeper than 60° at 10 m)",
-          "raw": 0.15,
+          "raw": 1.36,
           "unit": "%",
-          "value": "0.1 %"
+          "value": "1.4 %"
         },
         {
           "label": "Cells with very steep ground inside (over 45°)",
-          "raw": 2.91,
+          "raw": 4.77,
           "unit": "%",
-          "value": "2.9 %"
+          "value": "4.8 %"
         },
         {
           "label": "Flat cells (no slope direction)",
-          "raw": 0.06,
+          "raw": 0.34,
           "unit": "%",
-          "value": "<0.1 %"
+          "value": "0.3 %"
         },
         {
           "label": "Relief class (median relief within about 1 km)",
-          "value": "mountainous (324 m)"
+          "value": "mountainous (384 m)"
         },
         {
           "label": "Most common landforms",
-          "value": "spur 21 %, gully 20 %, mid slope 17 %"
+          "value": "lower slope 20 %, upper slope 14 %, gully 14 %"
         },
         {
-          "hint": "Zoom 14",
-          "label": "Tiles",
-          "raw": 16,
+          "label": "Published resolution",
+          "value": "5 m posts, bundled at 10 m"
+        },
+        {
+          "label": "Bundled image",
+          "value": "900 x 900 pixels, 1.4 MB"
+        },
+        {
+          "label": "Range in the bundled image",
+          "value": "247 to 1 076 m (whole 9 km square)"
+        },
+        {
+          "label": "No-data pixels in the bundled image",
+          "raw": 0,
           "unit": "",
-          "value": "16"
+          "value": "0"
         },
         {
           "label": "Model source text",
-          "value": "AWS Terrain Tiles (Terrarium, SRTM 1″ ≈ 30 m), zoom 14, 16 tiles: 16 downloaded (block-averaged 3×3 to 30 m)"
+          "value": "NSW Spatial Services 5 m elevation model (NSW_5M_Elevation, © Spatial Services NSW, CC BY 4.0); bundled demo 'katoomba' at 10 m (block-averaged 3×3 to 30 m)"
         }
       ],
       "status": "used",
       "title": "Ground height",
       "vintage": {
-        "capturedNote": "SRTM flew in February 2000. The tiles carry no newer survey.",
-        "retrievedAt": 1790756073572,
-        "retrievedBasis": "this-build"
+        "capturedNote": "The service's copyright notice reads 'DFSI 2019'. Survey dates are not part of the bundled data.",
+        "retrievedAt": 1790467200000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
-      "what": "Satellite (SRTM, about 30 m) ground heights, cut into map tiles by Mapzen and hosted on AWS Open Data.",
+      "what": "A 5 m elevation model of New South Wales from NSW Spatial Services, bundled with the app for the demo site 'katoomba' and resampled to a 10 m grid.",
       "why": "Gives every fire cell its slope and the direction it faces (fire runs much faster uphill), shelters and channels the wind, and decides which slopes the sun reaches."
     },
     {
       "attribution": "© State of New South Wales (Spatial Services, a business unit of the Department of Customer Service NSW), CC BY 4.0",
       "coverage": {
-        "fraction": 0
+        "fraction": 1
       },
-      "endpoints": [],
+      "crs": {
+        "native": "EPSG:3857 (Web Mercator) tiles at zoom 15",
+        "toModel": "Area-averaged 2 x 2, then resampled (bilinear) onto an 8 m local grid; cropped to the model area."
+      },
+      "endpoints": [
+        {
+          "host": "bundled",
+          "path": "/demo/katoomba/imagery.json",
+          "requests": 1
+        },
+        {
+          "host": "bundled",
+          "note": "the photo, decoded by the 3-D view",
+          "path": "/demo/katoomba/imagery.jpg",
+          "requests": 1
+        }
+      ],
       "evidence": {
         "level": "measured",
-        "note": "Not used in this scenario."
+        "note": "Photographs, not a model. Capture dates vary across the image.",
+        "specRef": "docs/research/08-data-sources-apis.md §3.7"
       },
-      "fallbackReason": "Aerial photos are bundled only for the eight demo sites; none covers this place. The ground is drawn with the height colours instead.",
-      "format": "JPEG image",
+      "extent": {
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
+      },
+      "format": "Progressive JPEG (quality 82), 1125 x 1125 pixels",
       "id": "imagery",
       "kind": "raster",
       "layer": {
@@ -250,9 +291,37 @@
         "url": "https://creativecommons.org/licenses/by/4.0/"
       },
       "limitations": [
-        "Photos are not downloaded for other places; they are display only, so fire behaviour is unaffected."
+        "Display only: the photo does not change the simulation.",
+        "Photos show the ground as it was when flown, which can be years ago; bushfires and clearing since then are not shown.",
+        "Only the eight demo sites carry photos; other places show height colours instead."
       ],
-      "origin": "none",
+      "model": {
+        "height": 1125,
+        "note": "Cropped to the model area and drawn at up to 1125 x 1125 pixels.",
+        "resampling": "bilinear",
+        "resolutionM": 8,
+        "width": 1125
+      },
+      "native": {
+        "height": 256,
+        "note": "Zoom-15 tiles of 256 x 256 pixels, about 4.0 m per pixel here; the bundled image is 1125 x 1125 pixels of 8 m.",
+        "resolutionM": 4,
+        "width": 256
+      },
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 271203,
+          "label": "imagery.jpg (the photo)",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 485,
+          "label": "imagery.json (details)",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "NSW Spatial Services (Department of Customer Service)",
         "url": "https://www.spatial.nsw.gov.au/"
@@ -260,10 +329,11 @@
       "role": "imagery",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 0,
+        "decodedBytes": 5062500,
+        "durationMs": 3,
         "networkBytes": 0,
-        "requests": 0,
-        "transferredBytes": 0
+        "requests": 2,
+        "transferredBytes": 271688
       },
       "sourceServices": [
         {
@@ -272,15 +342,36 @@
           "path": "/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{y}/{x}"
         }
       ],
-      "stats": [],
-      "status": "unavailable",
+      "stats": [
+        {
+          "label": "Photo size",
+          "value": "1125 x 1125 pixels of 8 m"
+        },
+        {
+          "label": "Shown",
+          "value": "1125 x 1125 pixels (the model area only)"
+        },
+        {
+          "label": "Share of the bundled photo used",
+          "raw": 100,
+          "unit": "%",
+          "value": "100 %"
+        },
+        {
+          "label": "Files",
+          "value": "271.7 KB"
+        }
+      ],
+      "status": "used",
       "title": "Aerial photo",
       "vintage": {
-        "retrievedAt": 0,
-        "retrievedBasis": "unknown"
+        "captureSummary": "a mosaic of several capture dates (service © Department of Customer Service 2020)",
+        "capturedNote": "A mosaic of flights from several years: the service credits AAM 2011-12, Jacobs Group Ausimage 2002-2014 and Landsat 2014 among its sources, with a service copyright of '© Department of Customer Service 2020'. The newest imagery overlays the oldest, so parts of the photo may be years out of date.",
+        "retrievedAt": 1790467200000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
-      "what": "Aerial photographs of the area from NSW Spatial Services.",
+      "what": "Aerial photographs (an 8 m mosaic) of the demo site 'katoomba', bundled with the app.",
       "why": "Draped over the ground so you can recognise the place (display only: it does not change fire behaviour)."
     },
     {
@@ -288,40 +379,40 @@
       "coverage": {
         "filledBy": "vegetation inferred from terrain and canopy",
         "filledOrigin": "derived",
-        "fraction": 0.942825
+        "fraction": 0.8279888888888889
       },
       "crs": {
         "native": "EPSG:4326 (longitude and latitude) polygons",
         "toModel": "Projected to metres east and north of the site centre and rasterised onto the fire grid."
       },
       "distribution": {
-        "count": 40000,
+        "count": 90000,
         "kind": "categorical",
         "labels": [
           "Sydney Hinterland Dry Sclerophyll Forests",
-          "Rainforests",
-          "Southern Escarpment Wet Sclerophyll Forests",
           "Sydney Montane Dry Sclerophyll Forests",
+          "Central Gorge Dry Sclerophyll Forests",
+          "North Coast Wet Sclerophyll Forests",
           "Sydney Montane Heaths",
           "Other mapped classes",
           "Inferred"
         ],
         "title": "Vegetation classes",
         "values": [
-          0.33545,
-          0.14,
-          0.13458,
-          0.11375,
-          0.08185,
-          0.1372,
-          0.05718
+          0.3357,
+          0.22634,
+          0.08006,
+          0.07412,
+          0.05696,
+          0.05481,
+          0.17201
         ]
       },
       "endpoints": [
         {
-          "host": "mapprod3.environment.nsw.gov.au",
-          "path": "/arcgis/rest/services/VIS/SVTM_NSW_Extant_PCT/MapServer/3/query",
-          "requests": 2
+          "host": "bundled",
+          "path": "/demo/katoomba/vegetation.geojson",
+          "requests": 1
         }
       ],
       "evidence": {
@@ -330,14 +421,14 @@
         "specRef": "docs/research/00-synthesis.md §4.2, §4.3"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "fallbackReason": "5.7 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
-      "format": "ArcGIS REST query answered as GeoJSON polygons, paged by 1000",
+      "fallbackReason": "17 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
+      "format": "GeoJSON polygons (PCTID, PCTName, vegClass, vegForm)",
       "id": "vegetation-svtm",
       "kind": "vector",
       "layer": {
@@ -355,20 +446,28 @@
         "It shows what grows there, not how much fuel there is now: fuel load also depends on the time since the last fire (fire history)."
       ],
       "model": {
-        "cells": 40000,
-        "height": 200,
+        "cells": 90000,
+        "height": 300,
         "note": "Nine sample points per cell; the most common class wins.",
         "resampling": "rasterise",
         "resolutionM": 30,
-        "width": 200
+        "width": 300
       },
       "native": {
-        "features": 1516,
+        "features": 3059,
         "note": "Polygons; the service generalises them to about 20 m.",
-        "records": 1518
+        "records": 3147
       },
-      "origin": "live",
-      "originDetail": "live query",
+      "origin": "bundled",
+      "originDetail": "bundled demo 'katoomba'",
+      "parts": [
+        {
+          "bytes": 1491893,
+          "count": 3059,
+          "label": "vegetation.geojson",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "NSW Department of Climate Change, Energy, the Environment and Water (DCCEEW)",
         "url": "https://www.environment.nsw.gov.au/"
@@ -376,15 +475,13 @@
       "role": "vegetation",
       "sizes": {
         "cachedBytes": 0,
-        "decodedBytes": 957361,
-        "durationMs": 2570,
-        "features": 1516,
-        "networkBytes": 140315,
-        "networkDecodedBytes": 957361,
-        "records": 1518,
-        "requests": 2,
-        "storedOnDeviceBytes": 957361,
-        "transferredBytes": 140315
+        "decodedBytes": 1491893,
+        "durationMs": 86,
+        "features": 3059,
+        "networkBytes": 0,
+        "records": 3147,
+        "requests": 1,
+        "transferredBytes": 1491893
       },
       "sourceServices": [
         {
@@ -396,66 +493,70 @@
       "stats": [
         {
           "label": "Vegetation polygons in the data",
-          "raw": 1516,
+          "raw": 3059,
           "unit": "",
-          "value": "1 516"
+          "value": "3 059"
         },
         {
           "hint": "A polygon with several parts counts once as a polygon and once per part here.",
           "label": "Polygon parts mapped",
-          "raw": 1518,
+          "raw": 3147,
           "unit": "",
-          "value": "1 518"
+          "value": "3 147"
         },
         {
           "label": "Sydney Hinterland Dry Sclerophyll Forests",
-          "raw": 33.55,
+          "raw": 33.57,
           "unit": "%",
           "value": "34 %"
         },
         {
-          "label": "Rainforests",
-          "raw": 14,
-          "unit": "%",
-          "value": "14 %"
-        },
-        {
-          "label": "Southern Escarpment Wet Sclerophyll Forests",
-          "raw": 13.46,
-          "unit": "%",
-          "value": "13 %"
-        },
-        {
           "label": "Sydney Montane Dry Sclerophyll Forests",
-          "raw": 11.38,
+          "raw": 22.63,
           "unit": "%",
-          "value": "11 %"
+          "value": "23 %"
+        },
+        {
+          "label": "Central Gorge Dry Sclerophyll Forests",
+          "raw": 8.01,
+          "unit": "%",
+          "value": "8.0 %"
+        },
+        {
+          "label": "North Coast Wet Sclerophyll Forests",
+          "raw": 7.41,
+          "unit": "%",
+          "value": "7.4 %"
         },
         {
           "label": "Sydney Montane Heaths",
-          "raw": 8.19,
+          "raw": 5.7,
           "unit": "%",
-          "value": "8.2 %"
+          "value": "5.7 %"
         },
         {
           "label": "All other mapped classes",
-          "raw": 13.72,
+          "raw": 5.48,
           "unit": "%",
-          "value": "14 %"
+          "value": "5.5 %"
         },
         {
           "hint": "Fuel type guessed from terrain and canopy where the vegetation map has nothing.",
           "label": "Filled in by the app (no map data)",
-          "raw": 5.72,
+          "raw": 17.2,
           "unit": "%",
-          "value": "5.7 %"
+          "value": "17 %"
+        },
+        {
+          "label": "Bundled polygons clipped to",
+          "value": "150.2353, -33.7564, 150.3347, -33.6736 (west, south, east, north)"
         }
       ],
       "status": "partial",
       "title": "Vegetation map",
       "vintage": {
-        "retrievedAt": 1790756075002,
-        "retrievedBasis": "this-build",
+        "retrievedAt": 1790467200000,
+        "retrievedBasis": "bundle-capture",
         "version": "C2.0",
         "versionNote": "A label kept by the app, not read from the service (the service publishes no version)."
       },
@@ -466,25 +567,62 @@
     {
       "attribution": "Meta and World Resources Institute (WRI) – 2024. High Resolution Canopy Height Maps (CHM). Source imagery for CHM © 2016 Maxar (CC BY 4.0)",
       "coverage": {
-        "filledBy": "typical canopy height of the vegetation type",
-        "filledOrigin": "derived",
-        "fraction": 0
+        "fraction": 1
       },
-      "endpoints": [],
+      "crs": {
+        "native": "EPSG:3857 (Web Mercator), 1.19 m pixels",
+        "toModel": "Aggregated on a 20 m local grid (90th percentile height, mean height and cover of the 1 m pixels), then resampled onto the fire grid."
+      },
+      "distribution": {
+        "count": 90000,
+        "edges": [
+          0,
+          2,
+          5,
+          10,
+          15,
+          20,
+          30,
+          45
+        ],
+        "kind": "histogram",
+        "title": "Canopy height",
+        "unit": "m",
+        "values": [
+          0.12887,
+          0.082,
+          0.14806,
+          0.24333,
+          0.25148,
+          0.14541,
+          0.00086
+        ]
+      },
+      "endpoints": [
+        {
+          "host": "bundled",
+          "path": "/demo/katoomba/canopy.png",
+          "requests": 1
+        },
+        {
+          "host": "bundled",
+          "path": "/demo/katoomba/canopy.json",
+          "requests": 1
+        }
+      ],
       "evidence": {
         "level": "modelled",
         "note": "Predicted from imagery by a neural network trained on airborne LiDAR; not a direct measurement of your trees.",
         "specRef": "docs/research/08-data-sources-apis.md §3.8"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "fallbackReason": "No canopy map could be read (area above 3 km). Each cell uses the typical tree height of its vegetation type.",
-      "format": "PNG image (canopy heights)",
+      "format": "PNG image: red = 90th percentile height (m), green = mean height (m), blue = cover x 255",
       "id": "canopy-height",
       "kind": "raster",
       "layer": {
@@ -496,10 +634,35 @@
         "url": "https://creativecommons.org/licenses/by/4.0/"
       },
       "limitations": [
-        "Without a canopy map, tree height and cover come from a table of typical values for each vegetation class.",
-        "Canopy is downloaded live only for areas of 3 km or less (the source is read a row at a time and is slow); larger areas need a demo site or a saved area pack."
+        "A model prediction: heights of tall eucalypt forest can be off by several metres.",
+        "Built from imagery of about 2016: it does not show fires, logging or growth since.",
+        "Cover is the share of 1 m pixels 2 m or taller, not a count of trees."
       ],
-      "origin": "none",
+      "model": {
+        "cells": 90000,
+        "channels": [
+          "90th percentile height (m)",
+          "mean height (m)",
+          "cover (share of 1 m pixels 2 m or taller)"
+        ],
+        "height": 300,
+        "resampling": "area-average",
+        "resolutionM": 30,
+        "width": 300
+      },
+      "native": {
+        "note": "Source pixels about 1.19 m. Bundled pre-aggregated to 20 m.",
+        "resolutionM": 1.19
+      },
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba' (20 m)",
+      "parts": [
+        {
+          "bytes": 290939,
+          "label": "canopy.png",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "Meta and World Resources Institute (WRI)",
         "url": "https://registry.opendata.aws/dataforgood-fb-forests/"
@@ -507,10 +670,11 @@
       "role": "canopy",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 1,
+        "decodedBytes": 607500,
+        "durationMs": 60,
         "networkBytes": 0,
-        "requests": 0,
-        "transferredBytes": 0
+        "requests": 2,
+        "transferredBytes": 291290
       },
       "sourceServices": [
         {
@@ -523,20 +687,61 @@
         {
           "hint": "The rest use the typical height of their vegetation type.",
           "label": "Cells with measured canopy",
-          "raw": 0,
+          "raw": 100,
           "unit": "%",
-          "value": "0 %"
+          "value": "100 %"
+        },
+        {
+          "label": "Canopy height, typical (median)",
+          "raw": 13.078,
+          "unit": "m",
+          "value": "13.1 m"
+        },
+        {
+          "label": "Canopy height, tall trees (90th percentile)",
+          "raw": 21.227,
+          "unit": "m",
+          "value": "21.2 m"
+        },
+        {
+          "label": "Canopy height, tallest",
+          "raw": 36.111,
+          "unit": "m",
+          "value": "36.1 m"
+        },
+        {
+          "label": "Tree cover, average of measured cells",
+          "raw": 77.94,
+          "unit": "%",
+          "value": "78 %"
+        },
+        {
+          "label": "Cells with trees over 15 m",
+          "raw": 39.77,
+          "unit": "%",
+          "value": "40 %"
+        },
+        {
+          "label": "Cells with trees over 30 m",
+          "raw": 0.09,
+          "unit": "%",
+          "value": "<0.1 %"
+        },
+        {
+          "label": "Native cell of the data used",
+          "value": "20 m"
         }
       ],
-      "status": "fallback",
+      "status": "used",
       "title": "Tree canopy height",
       "vintage": {
-        "retrievedAt": 0,
-        "retrievedBasis": "unknown"
+        "capturedNote": "Built from Maxar imagery of about 2016 (per the map’s citation); trees may have grown, burnt or been cleared since.",
+        "capturedOn": "2016",
+        "retrievedAt": 1790467200000,
+        "retrievedBasis": "bundle-capture",
+        "version": "v1 (2024)"
       },
-      "warnings": [
-        "Canopy unavailable (type defaults)"
-      ],
+      "warnings": [],
       "what": "How tall the trees are, from the Meta and WRI High Resolution Canopy Height Maps (a 1 m map made from satellite imagery by a machine-learning model).",
       "why": "Sets how much wind the trees take out of the air near the ground, how far embers loft, and whether a fire can climb into the crowns."
     },
@@ -548,24 +753,39 @@
       "distribution": {
         "colours": [
           "#6b8e3a",
+          "#b07aa1",
+          "#9aa84a",
           "#2f7a4f",
+          "#e3c565",
           "#1b4d3e",
-          "#b07aa1"
+          "#b9c46a",
+          "#c9a0dc",
+          "#9e9e9e"
         ],
-        "count": 40000,
+        "count": 90000,
         "kind": "categorical",
         "labels": [
           "Dry forest (shrubby)",
+          "Heath",
+          "Dry forest (grassy)",
           "Wet forest",
+          "Grassland",
           "Rainforest",
-          "Heath"
+          "Grassy woodland",
+          "Alpine heath and grass",
+          "Non-fuel (rock, cliff, road)"
         ],
         "title": "Fuel types",
         "values": [
-          0.56675,
-          0.19805,
-          0.14,
-          0.0952
+          0.60886,
+          0.12728,
+          0.08006,
+          0.07633,
+          0.07324,
+          0.02321,
+          0.00918,
+          0.00143,
+          0.00041
         ]
       },
       "endpoints": [],
@@ -575,13 +795,13 @@
         "specRef": "docs/research/00-synthesis.md §4.5, §4.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "fallbackReason": "Built partly from substitutes: vegetation map (partly real), tree canopy height (substitute), rainfall history and drought (substitute).",
+      "fallbackReason": "Built partly from substitutes: vegetation map (partly real).",
       "format": "Typed arrays on the fire grid (about 20 Float32 and 6 Uint8 arrays plus flags)",
       "id": "fuel-derived",
       "kind": "derived",
@@ -599,11 +819,11 @@
         "Your fuel edits are applied to a copy during the run and listed under Your input."
       ],
       "model": {
-        "cells": 40000,
-        "height": 200,
+        "cells": 90000,
+        "height": 300,
         "resampling": "none",
         "resolutionM": 30,
-        "width": 200
+        "width": 300
       },
       "origin": "derived",
       "originDetail": "Computed on this device from the data sets it lists",
@@ -611,27 +831,27 @@
         {
           "label": "Ground height",
           "note": "real data",
-          "origin": "live"
+          "origin": "bundled"
         },
         {
           "label": "Vegetation map",
-          "note": "5.7 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
-          "origin": "live"
+          "note": "17 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
+          "origin": "bundled"
         },
         {
           "label": "Tree canopy height",
-          "note": "No canopy map could be read (area above 3 km). Each cell uses the typical tree height of its vegetation type.",
-          "origin": "none"
+          "note": "real data",
+          "origin": "bundled"
         },
         {
           "label": "Fire history",
           "note": "real data",
-          "origin": "live"
+          "origin": "bundled"
         },
         {
           "label": "Rainfall history and drought",
-          "note": "Only 6 days of rainfall history could be read (the drought index needs at least 60), so the defaults are used: drought factor 7, KBDI 60. The days read still set the recent rain for fuel moisture. The year of daily rain could not be downloaded: the weather service's daily request limit was reached (HTTP 429).",
-          "origin": "synthetic"
+          "note": "real data",
+          "origin": "preset"
         }
       ],
       "provider": {
@@ -640,8 +860,8 @@
       "role": "fuel",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 116,
-        "memoryBytes": 7040000,
+        "durationMs": 108,
+        "memoryBytes": 15840000,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -650,100 +870,106 @@
       "stats": [
         {
           "label": "Dry forest (shrubby)",
-          "raw": 56.68,
+          "raw": 60.89,
           "unit": "%",
-          "value": "57 %"
-        },
-        {
-          "label": "Wet forest",
-          "raw": 19.81,
-          "unit": "%",
-          "value": "20 %"
-        },
-        {
-          "label": "Rainforest",
-          "raw": 14,
-          "unit": "%",
-          "value": "14 %"
+          "value": "61 %"
         },
         {
           "label": "Heath",
-          "raw": 9.52,
+          "raw": 12.73,
           "unit": "%",
-          "value": "9.5 %"
+          "value": "13 %"
+        },
+        {
+          "label": "Dry forest (grassy)",
+          "raw": 8.01,
+          "unit": "%",
+          "value": "8.0 %"
+        },
+        {
+          "label": "Wet forest",
+          "raw": 7.63,
+          "unit": "%",
+          "value": "7.6 %"
+        },
+        {
+          "label": "All other fuel types",
+          "raw": 10.75,
+          "unit": "%",
+          "value": "11 %"
         },
         {
           "hint": "Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 4 very high.",
           "label": "Litter fuel hazard, average (0 to 4)",
-          "raw": 2.282,
+          "raw": 2.773,
           "unit": "",
-          "value": "2.28"
+          "value": "2.77"
         },
         {
           "label": "Near-surface fuel hazard, average",
-          "raw": 2.818,
+          "raw": 2.904,
           "unit": "",
-          "value": "2.82"
+          "value": "2.90"
         },
         {
           "label": "Understorey (shrub) fuel hazard, average",
-          "raw": 2.819,
+          "raw": 2.967,
           "unit": "",
-          "value": "2.82"
+          "value": "2.97"
         },
         {
           "label": "Bark hazard, average",
-          "raw": 1.164,
+          "raw": 2.163,
           "unit": "",
-          "value": "1.16"
+          "value": "2.16"
         },
         {
           "label": "Litter load, average",
-          "raw": 9.384,
+          "raw": 11.188,
           "unit": "t/ha",
-          "value": "9.4 t/ha"
+          "value": "11.2 t/ha"
         },
         {
           "label": "Litter load, heaviest cell",
-          "raw": 15.334,
+          "raw": 17,
           "unit": "t/ha",
-          "value": "15.3 t/ha"
+          "value": "17.0 t/ha"
         },
         {
           "hint": "How much of the grass has dried off.",
           "label": "Grass curing, average over grassy cells",
-          "raw": 56,
+          "raw": 97,
           "unit": "%",
-          "value": "56 %"
+          "value": "97 %"
         },
         {
           "label": "Tree canopy cover, average",
-          "raw": 64.1,
+          "raw": 77.94,
           "unit": "%",
-          "value": "64 %"
+          "value": "78 %"
         },
         {
           "label": "Wind reduction inside the fuel (open wind / wind at the flames)",
-          "value": "1.5 to 5.0"
+          "value": "1.0 to 5.0"
         },
         {
           "label": "Heavy fuel (flag)",
-          "raw": 6.13,
+          "raw": 66.78,
           "unit": "%",
-          "value": "6.1 %"
+          "value": "67 %"
         },
         {
           "hint": "Stringybark throws embers a long way.",
           "label": "Stringybark (flag)",
-          "raw": 56.68,
+          "raw": 60.89,
           "unit": "%",
-          "value": "57 %"
+          "value": "61 %"
         },
         {
           "label": "Recently burnt (flag)",
-          "raw": 56.68,
+          "raw": 7.79,
           "unit": "%",
-          "value": "57 %"
+          "value": "7.8 %"
         },
         {
           "label": "Road or fire-break cells (flag)",
@@ -753,9 +979,9 @@
         },
         {
           "label": "Cliff cells (flag)",
-          "raw": 0.21,
+          "raw": 1.94,
           "unit": "%",
-          "value": "0.2 %"
+          "value": "1.9 %"
         },
         {
           "label": "Source line",
@@ -763,7 +989,7 @@
         },
         {
           "label": "Source line",
-          "value": "Vegetation inferred from terrain for 6 % of cells (unmapped or \"Not classified\")"
+          "value": "Vegetation inferred from terrain and canopy for 17 % of cells (unmapped or \"Not classified\")"
         },
         {
           "label": "Source line",
@@ -771,25 +997,29 @@
         },
         {
           "label": "Source line",
-          "value": "AWS Terrain Tiles (Terrarium, SRTM 1″ ≈ 30 m), zoom 14, 16 tiles: 16 downloaded"
+          "value": "Meta/WRI CHM (Tolan et al. 2024, CC BY 4.0)"
         },
         {
           "label": "Source line",
-          "value": "Vegetation (NSW SVTM): live query"
+          "value": "NSW Spatial Services 5 m elevation model (NSW_5M_Elevation, © Spatial Services NSW, CC BY 4.0); bundled demo 'katoomba' at 10 m"
         },
         {
           "label": "Source line",
-          "value": "Fire history (NPWS): live query"
+          "value": "Vegetation (NSW SVTM): bundled demo 'katoomba'"
         },
         {
           "label": "Source line",
-          "value": "Canopy: type defaults"
+          "value": "Fire history (NPWS): bundled demo 'katoomba'"
+        },
+        {
+          "label": "Source line",
+          "value": "Meta & WRI High Resolution Canopy Height Maps v1 (Tolan et al. 2024), CC BY 4.0; bundled demo 'katoomba' area-averaged from 20 m"
         }
       ],
       "status": "partial",
       "title": "Fuel map",
       "vintage": {
-        "retrievedAt": 1790756072787,
+        "retrievedAt": 1790756096864,
         "retrievedBasis": "generated",
         "versionNote": "Fuel class and accumulation tables are compiled into the app (Olson curves per class, OFHAG hazard scores, Vesta Mk2 inputs)."
       },
@@ -808,7 +1038,7 @@
         "toModel": "Projected to metres east and north of the site centre and rasterised onto the fire grid at the scenario start time."
       },
       "distribution": {
-        "count": 40000,
+        "count": 44143,
         "edges": [
           0,
           2,
@@ -822,18 +1052,18 @@
         "title": "Years since the last fire (cells with a record)",
         "unit": "years",
         "values": [
-          0,
-          0,
-          1,
-          0,
-          0,
-          0
+          0.00827,
+          0.01563,
+          0.31634,
+          0.10362,
+          0.33258,
+          0.22357
         ]
       },
       "endpoints": [
         {
-          "host": "mapprod3.environment.nsw.gov.au",
-          "path": "/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0/query",
+          "host": "bundled",
+          "path": "/demo/katoomba/fire-history.geojson",
           "requests": 1
         }
       ],
@@ -843,13 +1073,13 @@
         "specRef": "docs/research/08-data-sources-apis.md §3.11"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "format": "ArcGIS REST query answered as GeoJSON polygons",
+      "format": "GeoJSON polygons (whole fire perimeters that touch the area)",
       "id": "fire-history",
       "kind": "vector",
       "layer": {
@@ -864,23 +1094,31 @@
         "Covers the national-park estate and the fires NPWS mapped: hazard-reduction burns on RFS, forestry and private land may be missing.",
         "A burn outline says where fire went, not how severe it was: a patchy burn is treated as a full fuel reset only where the model says so.",
         "Undated fires use the middle of their fire season.",
-        "Counted: wildfires 100 % and prescribed burns 0 % of the cells."
+        "Counted: wildfires 36 % and prescribed burns 13 % of the cells."
       ],
       "model": {
-        "cells": 40000,
-        "height": 200,
+        "cells": 90000,
+        "height": 300,
         "note": "The newest fire before the start covering a cell sets its time since fire; earlier fires count towards fire frequency.",
         "resampling": "rasterise",
         "resolutionM": 30,
-        "width": 200
+        "width": 300
       },
       "native": {
-        "features": 34,
-        "note": "38 fire outlines used.",
-        "records": 38
+        "features": 96,
+        "note": "97 fire outlines used.",
+        "records": 97
       },
-      "origin": "live",
-      "originDetail": "live query",
+      "origin": "bundled",
+      "originDetail": "bundled demo 'katoomba'",
+      "parts": [
+        {
+          "bytes": 290512,
+          "count": 96,
+          "label": "fire-history.geojson",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "NSW National Parks and Wildlife Service (DCCEEW)",
         "url": "https://www.nationalparks.nsw.gov.au/"
@@ -888,16 +1126,14 @@
       "role": "fireHistory",
       "sizes": {
         "cachedBytes": 0,
-        "decodedBytes": 387065,
-        "durationMs": 615,
-        "features": 34,
-        "memoryBytes": 1134212,
-        "networkBytes": 112989,
-        "networkDecodedBytes": 387065,
-        "records": 38,
+        "decodedBytes": 290512,
+        "durationMs": 4,
+        "features": 96,
+        "memoryBytes": 1188794,
+        "networkBytes": 0,
+        "records": 97,
         "requests": 1,
-        "storedOnDeviceBytes": 387065,
-        "transferredBytes": 112989
+        "transferredBytes": 290512
       },
       "sourceServices": [
         {
@@ -910,69 +1146,69 @@
         {
           "hint": "The model assumes fuel has built up to its steady state there.",
           "label": "Cells with no fire on record",
-          "raw": 0,
+          "raw": 50.95,
           "unit": "%",
-          "value": "0 %"
+          "value": "51 %"
         },
         {
           "label": "Typical time since the last fire (median)",
-          "raw": 6.637,
+          "raw": 23.795,
           "unit": "years",
-          "value": "6.6 years"
+          "value": "23.8 years"
         },
         {
           "label": "Long unburnt (90th percentile)",
-          "raw": 6.637,
+          "raw": 46.973,
           "unit": "years",
-          "value": "6.6 years"
+          "value": "47.0 years"
         },
         {
           "label": "Burnt in the last 5 years",
-          "raw": 0,
+          "raw": 1.17,
           "unit": "%",
-          "value": "0 %"
+          "value": "1.2 %"
         },
         {
           "label": "Burnt in the last 10 years",
-          "raw": 100,
+          "raw": 16.69,
           "unit": "%",
-          "value": "100 %"
+          "value": "17 %"
         },
         {
           "label": "Last fire was a wildfire",
-          "raw": 100,
+          "raw": 36.5,
           "unit": "%",
-          "value": "100 %"
+          "value": "36 %"
         },
         {
           "label": "Last fire was a prescribed burn",
-          "raw": 0,
+          "raw": 12.55,
           "unit": "%",
-          "value": "0 %"
+          "value": "13 %"
         },
         {
           "hint": "Repeat fires closer together than the vegetation tolerates.",
           "label": "Burnt again within the minimum fire interval",
-          "raw": 39.85,
+          "raw": 4.39,
           "unit": "%",
-          "value": "40 %"
+          "value": "4.4 %"
         },
         {
           "label": "Fire polygons in the data",
-          "raw": 34,
+          "raw": 96,
           "unit": "",
-          "value": "34"
+          "value": "96"
         },
         {
           "hint": "A fire mapped in several pieces counts once per piece; fires after the start, or still burning at it, are not counted.",
           "label": "Fire outlines used in the model",
-          "raw": 38,
+          "raw": 97,
           "unit": "",
-          "value": "38"
+          "value": "97"
         },
         {
           "label": "Most recent fire in the area",
-          "value": "2020-02-10"
+          "value": "2026-05-04"
         },
         {
           "label": "Data current to",
@@ -987,41 +1223,35 @@
       "title": "Fire history",
       "vintage": {
         "currentTo": "2026-09-07",
-        "retrievedAt": 1790756076600,
-        "retrievedBasis": "this-build"
+        "retrievedAt": 1790467200000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "Outlines of past bushfires and prescribed burns from the NPWS Fire History layer, with the year and type of each.",
       "why": "Sets how long each patch of ground has gone without fire, and so how much litter and shrub fuel has built up (an Olson accumulation curve per fuel class)."
     },
     {
-      "attribution": "Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5",
+      "attribution": "FireSim",
       "coverage": {
         "fraction": 1,
-        "note": "One point series is applied over the whole area."
+        "note": "One designed series applies everywhere."
       },
       "crs": {
-        "native": "Grid point of a global model (latitude and longitude of the nearest point)",
-        "toModel": "A single series applied over the whole model area, corrected for the height difference (lapse rate) and interpolated in time to the simulation steps."
+        "native": "A single point (no grid)",
+        "toModel": "One series applied over the whole model area at the domain median height."
       },
-      "endpoints": [
-        {
-          "host": "api.open-meteo.com",
-          "path": "/v1/forecast",
-          "requests": 1
-        }
-      ],
+      "endpoints": [],
       "evidence": {
-        "level": "modelled",
-        "note": "A numerical weather forecast for a 9 to 25 km grid cell, not an observation.",
-        "specRef": "docs/research/08-data-sources-apis.md §3.1, §3.2, §5.5"
+        "level": "synthetic",
+        "note": "A designed weather day ('Hot NW wind ahead of a SW change') modelled on typical NSW fire-weather patterns; the values are chosen by FireSim, not measured or forecast.",
+        "specRef": "docs/research/00-synthesis.md §11.3"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "JSON (hourly series)",
       "id": "weather",
@@ -1031,99 +1261,67 @@
         "overlay": "windSpeed"
       },
       "licence": {
-        "name": "CC BY 4.0 (Open-Meteo API data; free for non-commercial use, which includes education)",
-        "url": "https://open-meteo.com/en/license"
+        "name": "Generated by FireSim (no third-party data)"
       },
       "limitations": [
-        "The forecast point sits at 602 m while the terrain here has a median of 790 m; a forecast model cell (about 9 to 25 km wide) sees a smoothed mountain, so wind and humidity in gullies and on ridges can differ a lot from the series. Temperature is corrected for height; wind is not.",
-        "No station observations are used: check the series against a belt weather kit reading.",
-        "A forecast is one possible future; it changes with each model run and is only as good as the run it came from. The model run time is not reported in the response, so the app shows when it downloaded the data."
+        "Not a forecast: it shows how fire behaves in this kind of weather, not what the weather will do at this place."
       ],
       "model": {
-        "note": "Height correction of −188 m applied to temperature.",
-        "records": 177,
-        "resampling": "interpolate-in-time"
+        "note": "Interpolated in time to the simulation steps.",
+        "records": 96,
+        "resampling": "generated"
       },
       "native": {
-        "channels": [
-          "temperature_2m",
-          "relative_humidity_2m",
-          "wind_speed_10m",
-          "wind_direction_10m",
-          "wind_gusts_10m",
-          "wind at 80/120/180 m",
-          "cloud_cover",
-          "radiation",
-          "precipitation",
-          "boundary_layer_height",
-          "cape",
-          "surface_pressure"
-        ],
-        "note": "Grid cells of about 9 to 25 km depending on the model; 177 hourly stamps kept (a week before the start, the run and 3 h after).",
-        "records": 177
+        "note": "Hourly stamps plus extra stamps around the wind change.",
+        "records": 96
       },
-      "origin": "live",
-      "originDetail": "Open-Meteo 'best match'",
-      "parts": [
-        {
-          "bytes": 10378,
-          "label": "Upper-air (pressure level) variables: 10.4 KB of the same download are counted under 'Upper air'"
-        }
-      ],
+      "origin": "preset",
+      "originDetail": "Preset 'Hot NW wind ahead of a SW change'",
       "provider": {
-        "name": "Open-Meteo",
-        "url": "https://open-meteo.com/"
+        "name": "FireSim (this app)"
       },
       "role": "weather",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 1018,
-        "networkBytes": 11415,
-        "networkDecodedBytes": 40319,
-        "records": 177,
-        "requests": 1,
-        "storedOnDeviceBytes": 40319,
-        "transferredBytes": 11415
+        "durationMs": 2,
+        "networkBytes": 0,
+        "records": 96,
+        "requests": 0,
+        "transferredBytes": 0
       },
-      "sourceServices": [
-        {
-          "host": "api.open-meteo.com",
-          "note": "forecast",
-          "path": "/v1/forecast"
-        }
-      ],
+      "sourceServices": [],
       "stats": [
         {
           "label": "Temperature during the run",
-          "value": "14 to 15 °C"
+          "value": "30 to 36 °C"
         },
         {
           "label": "Relative humidity during the run",
-          "value": "60 to 67 %"
+          "value": "12 to 16 %"
         },
         {
           "label": "Wind at 10 m, average",
-          "raw": 13.365,
+          "raw": 38.342,
           "unit": "km/h",
-          "value": "13 km/h"
+          "value": "38 km/h"
         },
         {
           "label": "Wind at 10 m, strongest hour",
-          "raw": 14.652,
+          "raw": 41.4,
           "unit": "km/h",
-          "value": "15 km/h"
+          "value": "41 km/h"
         },
         {
           "label": "Gusts, strongest",
-          "raw": 29.16,
+          "raw": 68.31,
           "unit": "km/h",
-          "value": "29 km/h"
+          "value": "68 km/h"
         },
         {
           "label": "Cloud cover, average",
-          "raw": 94.5,
+          "raw": 10,
           "unit": "%",
-          "value": "95 %"
+          "value": "10 %"
         },
         {
           "label": "Rain during the run",
@@ -1134,92 +1332,56 @@
         {
           "hint": "McArthur Forest Fire Danger Index at the hottest, driest, windiest hour of the run.",
           "label": "Peak fire danger index (FFDI)",
-          "raw": 2.543,
+          "raw": 65.903,
           "unit": "",
-          "value": "3"
+          "value": "66"
         },
         {
           "label": "Weather before the start (fuel moisture spin-up)",
-          "raw": 168.167,
+          "raw": 72.981,
           "unit": "h",
-          "value": "168 h"
+          "value": "73 h"
         },
         {
           "label": "Weather after the start",
-          "raw": 7.833,
+          "raw": 6.019,
           "unit": "h",
-          "value": "8 h"
+          "value": "6 h"
         },
         {
           "label": "Stamps with upper-air (pressure level) data",
-          "raw": 177,
+          "raw": 96,
           "unit": "",
-          "value": "177"
-        },
-        {
-          "hint": "Temperatures are corrected for this height difference.",
-          "label": "Weather grid point is lower than the terrain (median) by",
-          "raw": 187.873,
-          "unit": "m",
-          "value": "188 m"
-        },
-        {
-          "hint": "Open-Meteo's automatic 'best match': the best available model for the location, chosen by Open-Meteo (its documentation says it combines the best suitable weather models). The response does not say which model supplied which hours.",
-          "label": "Model",
-          "value": "Open-Meteo 'best match'"
-        },
-        {
-          "label": "Downloaded",
-          "value": "2026-09-30 (1 min old)"
-        },
-        {
-          "hint": "42 asked for; empty ones are dropped.",
-          "label": "Hourly variables in the answer",
-          "raw": 42,
-          "unit": "",
-          "value": "42"
+          "value": "96"
         }
       ],
       "status": "used",
-      "title": "Weather forecast",
+      "title": "Weather",
       "vintage": {
-        "ageHoursAtBuild": 0,
-        "capturedNote": "The dates the series covers; the forecast run behind it is not reported by the service.",
-        "capturedOn": "2026-09-23/2026-09-30",
-        "retrievedAt": 1790756078222,
-        "retrievedBasis": "this-build",
-        "staleAfterHours": 6
+        "retrievedAt": 1790756096864,
+        "retrievedBasis": "generated"
       },
       "warnings": [],
-      "what": "An hourly forecast (temperature, humidity, wind, cloud, rain) for the point nearest the site, from Open-Meteo's automatic best-match model selection.",
+      "what": "A designed weather day ('Hot NW wind ahead of a SW change') generated by the app; it is not a forecast or an observation.",
       "why": "Sets wind, temperature and humidity for the whole run: they drive fuel moisture, fire spread and the mountain wind model. Hourly values are interpolated to the simulation steps."
     },
     {
       "attribution": "FireSim",
       "coverage": {
-        "filledBy": "default drought values",
-        "filledOrigin": "synthetic",
-        "fraction": 0
+        "fraction": 1
       },
-      "endpoints": [
-        {
-          "host": "archive-api.open-meteo.com",
-          "path": "/v1/archive",
-          "requests": 4
-        }
-      ],
+      "endpoints": [],
       "evidence": {
-        "level": "assumed",
-        "note": "Moderate default values; the real drought state is unknown."
+        "level": "synthetic",
+        "note": "Drought values designed with the preset."
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
-      "fallbackReason": "Only 6 days of rainfall history could be read (the drought index needs at least 60), so the defaults are used: drought factor 7, KBDI 60. The days read still set the recent rain for fuel moisture. The year of daily rain could not be downloaded: the weather service's daily request limit was reached (HTTP 429).",
       "format": "JSON (daily series)",
       "id": "drought-history",
       "kind": "timeseries",
@@ -1227,17 +1389,17 @@
         "name": "Generated by FireSim (no third-party data)"
       },
       "limitations": [
-        "Enter the local drought factor if you know it: it changes fuel dryness and the danger index."
+        "No rainfall history is used: the drought values are given, not worked out."
       ],
-      "origin": "synthetic",
+      "origin": "preset",
       "provider": {
         "name": "FireSim (this app)"
       },
       "role": "weather",
       "sizes": {
         "cachedBytes": 0,
-        "networkBytes": 352,
-        "requests": 4,
+        "networkBytes": 0,
+        "requests": 0,
         "transferredBytes": 0
       },
       "sourceServices": [],
@@ -1245,154 +1407,93 @@
         {
           "hint": "How dry the deep soil and litter are after months of weather.",
           "label": "Keetch-Byram Drought Index (0 wet to 203 driest)",
-          "raw": 60,
+          "raw": 120,
           "unit": "",
-          "value": "60"
+          "value": "120"
         },
         {
           "hint": "Feeds the McArthur fire danger index.",
           "label": "Drought factor (0 to 10)",
-          "raw": 7,
+          "raw": 9,
           "unit": "",
-          "value": "7.0"
+          "value": "9.0"
         },
         {
-          "label": "Days of rain and temperature history",
-          "raw": 6,
-          "unit": "days",
-          "value": "6 days"
-        },
-        {
-          "label": "Rain over that history",
-          "raw": 10.2,
+          "label": "Usual yearly rainfall",
+          "raw": 1400,
           "unit": "mm",
-          "value": "10 mm"
-        },
-        {
-          "label": "Rain in the last 20 days",
-          "raw": 10.2,
-          "unit": "mm",
-          "value": "10.2 mm"
-        },
-        {
-          "label": "Days since 1 mm or more of rain",
-          "raw": 2,
-          "unit": "days",
-          "value": "2 days"
-        },
-        {
-          "label": "Hottest day in the history",
-          "value": "28.8 °C on 2026-09-26"
+          "value": "1 400 mm"
         }
       ],
-      "status": "fallback",
+      "status": "used",
       "title": "Rainfall history and drought",
       "vintage": {
-        "retrievedAt": 1790756072787,
+        "retrievedAt": 1790756096864,
         "retrievedBasis": "generated"
       },
-      "warnings": [
-        "Daily rainfall history gap-filled from the forecast for the last 6 days.",
-        "KBDI from 6 days of rainfall history (< 365): drought may be under-read.",
-        "Drought defaults used (drought factor 7, KBDI 60): enter the local drought factor if known."
-      ],
-      "what": "A year of daily rain and maximum temperature before the start, and the usual yearly rainfall, worked into the Keetch-Byram Drought Index and the drought factor.",
+      "warnings": [],
+      "what": "The Keetch-Byram Drought Index and drought factor that come with the designed weather day (no rainfall history is read).",
       "why": "Sets how dry the deep fuel is at the start: it lowers fuel moisture and raises the fire danger index."
     },
     {
-      "attribution": "Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5",
+      "attribution": "FireSim",
       "coverage": {
-        "fraction": 1,
-        "note": "One profile applies over the whole area."
-      },
-      "crs": {
-        "native": "Grid point of a global model, pressure levels",
-        "toModel": "Heights above sea level converted to heights above the ground at the domain centre; interpolated in time."
+        "fraction": 1
       },
       "endpoints": [],
       "evidence": {
-        "level": "modelled",
-        "note": "Model profile for a 9 to 25 km cell; coarse in the vertical (925, 850, 700 and 500 hPa).",
-        "specRef": "docs/research/08-data-sources-apis.md §5.3"
+        "level": "synthetic",
+        "note": "A designed air mass that goes with the preset (850, 700 and 500 hPa)."
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "JSON (hourly pressure-level variables)",
       "id": "upper-air",
       "kind": "timeseries",
       "licence": {
-        "name": "CC BY 4.0 (Open-Meteo API data; free for non-commercial use, which includes education)",
-        "url": "https://open-meteo.com/en/license"
+        "name": "Generated by FireSim (no third-party data)"
       },
       "limitations": [
-        "4 levels only, and a model cell much larger than the mountains: a coarse picture of the air above the ridges.",
-        "Levels below the model’s own ground are ignored."
+        "Designed by the app to match the preset, not measured or forecast."
       ],
-      "model": {
-        "records": 177,
-        "resampling": "interpolate-in-time"
-      },
-      "native": {
-        "note": "4 pressure levels x 5 variables (temperature, humidity, wind speed, wind direction, geopotential height).",
-        "records": 177
-      },
-      "origin": "live",
-      "originDetail": "From the same download as the weather (Open-Meteo 'best match')",
+      "origin": "preset",
       "provider": {
-        "name": "Open-Meteo",
-        "url": "https://open-meteo.com/"
+        "name": "FireSim (this app)"
       },
       "role": "upperAir",
       "sizes": {
         "cachedBytes": 0,
-        "networkBytes": 10378,
-        "networkDecodedBytes": 36654,
-        "records": 177,
+        "networkBytes": 0,
+        "records": 96,
         "requests": 0,
-        "storedOnDeviceBytes": 36654,
-        "transferredBytes": 10378
+        "transferredBytes": 0
       },
-      "sourceServices": [
-        {
-          "host": "api.open-meteo.com",
-          "note": "pressure-level variables of the weather request",
-          "path": "/v1/forecast"
-        }
-      ],
+      "sourceServices": [],
       "stats": [
         {
-          "label": "Pressure levels complete",
-          "raw": 4,
+          "label": "Pressure levels",
+          "raw": 3,
           "unit": "",
-          "value": "4"
+          "value": "3"
         },
         {
           "label": "Levels",
-          "value": "925, 850, 700 and 500 hPa"
-        },
-        {
-          "label": "Where it came from",
-          "value": "The same download as the weather"
-        },
-        {
-          "hint": "The two data sets share one download; the split is by number of variables, so it is an estimate.",
-          "label": "Size",
-          "value": "about 10.4 KB (48 % of the weather download, by variables)"
+          "value": "850, 700 and 500 hPa"
         }
       ],
       "status": "used",
       "title": "Upper-air profile",
       "vintage": {
-        "retrievedAt": 1790756078222,
-        "retrievedBasis": "this-build"
+        "retrievedAt": 1790756096864,
+        "retrievedBasis": "generated"
       },
       "warnings": [],
-      "what": "Temperature, humidity and wind at 925, 850, 700 and 500 hPa (about 0.9 to 5.8 km above sea level).",
+      "what": "A designed profile of temperature, humidity and wind at 850, 700 and 500 hPa (about 1.5 to 5.8 km above sea level).",
       "why": "Sets how stable the air is above the fire, the starting wind above the ridges for the mountain wind model, how high smoke can rise, and the C-Haines index."
     },
     {
@@ -1407,9 +1508,9 @@
       },
       "endpoints": [
         {
-          "host": "portal.spatial.nsw.gov.au",
-          "path": "/server/rest/services/NSW_Transport_Theme/FeatureServer/5/query",
-          "requests": 2
+          "host": "bundled",
+          "note": "shared place file",
+          "path": "/demo/katoomba/context.json"
         }
       ],
       "evidence": {
@@ -1418,11 +1519,11 @@
         "specRef": "docs/research/00-synthesis.md §11.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "ArcGIS REST features, packed as delta-coded JSON (coordinates in 1e-5 degrees)",
       "id": "roads",
@@ -1440,15 +1541,23 @@
         "Being on the map does not mean a vehicle can use it: check trail classification and conditions locally."
       ],
       "model": {
-        "features": 267,
+        "features": 2171,
         "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 267
+        "features": 2171
       },
-      "origin": "live",
-      "originDetail": "Live query of the NSW map services",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 187070,
+          "label": "Share of the shared place file (280.7 KB)",
+          "note": "The five place data sets are read from one file; its size is split by each layer’s share of the content.",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "Spatial Services NSW",
         "url": "https://www.spatial.nsw.gov.au/"
@@ -1456,13 +1565,12 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 22334,
-        "features": 267,
-        "memoryBytes": 18792,
-        "networkBytes": 102387,
-        "requests": 2,
-        "storedOnDeviceBytes": 29765,
-        "transferredBytes": 102387
+        "durationMs": 546,
+        "features": 2171,
+        "memoryBytes": 88032,
+        "networkBytes": 0,
+        "requests": 1,
+        "transferredBytes": 187070
       },
       "sourceServices": [
         {
@@ -1474,48 +1582,48 @@
       "stats": [
         {
           "label": "Road and track segments",
-          "raw": 267,
+          "raw": 2171,
           "unit": "",
-          "value": "267"
+          "value": "2 171"
         },
         {
           "label": "Total length",
-          "raw": 97.454,
+          "raw": 394.076,
           "unit": "km",
-          "value": "97.5 km"
+          "value": "394.1 km"
         },
         {
           "label": "Highways and main roads",
-          "raw": 12.005,
+          "raw": 14.607,
           "unit": "km",
-          "value": "12.0 km"
+          "value": "14.6 km"
         },
         {
           "label": "Local roads",
-          "raw": 31.694,
+          "raw": 196.304,
           "unit": "km",
-          "value": "31.7 km"
+          "value": "196.3 km"
         },
         {
           "label": "Tracks and paths",
-          "raw": 53.756,
+          "raw": 183.164,
           "unit": "km",
-          "value": "53.8 km"
+          "value": "183.2 km"
         },
         {
           "label": "Unsealed (dirt) roads and tracks",
-          "raw": 61.361,
+          "raw": 206.903,
           "unit": "km",
-          "value": "61.4 km"
+          "value": "206.9 km"
         }
       ],
       "status": "used",
       "title": "Roads and tracks",
       "vintage": {
-        "capturedNote": "Read from the live service; the services do not publish an update date.",
-        "capturedOn": "2026-09-30",
-        "retrievedAt": 1790756074032,
-        "retrievedBasis": "this-build"
+        "capturedNote": "Fetched from the service on 2026-09-29; not refreshed since.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "Road and track centre lines, each with a hierarchy class (highway to path) and a surface (sealed or unsealed).",
@@ -1533,9 +1641,9 @@
       },
       "endpoints": [
         {
-          "host": "portal.spatial.nsw.gov.au",
-          "path": "/server/rest/services/NSW_Transport_Theme/FeatureServer/9/query",
-          "requests": 2
+          "host": "bundled",
+          "note": "shared place file",
+          "path": "/demo/katoomba/context.json"
         }
       ],
       "evidence": {
@@ -1544,11 +1652,11 @@
         "specRef": "docs/research/00-synthesis.md §11.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "ArcGIS REST features, packed as delta-coded JSON",
       "id": "fire-trails",
@@ -1565,15 +1673,23 @@
         "Trail condition, gates and closures are not in the data."
       ],
       "model": {
-        "features": 24,
+        "features": 136,
         "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 24
+        "features": 136
       },
-      "origin": "live",
-      "originDetail": "Live query of the NSW map services",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 12985,
+          "label": "Share of the shared place file (280.7 KB)",
+          "note": "The five place data sets are read from one file; its size is split by each layer’s share of the content.",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "Spatial Services NSW",
         "url": "https://www.spatial.nsw.gov.au/"
@@ -1581,13 +1697,12 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 22334,
-        "features": 24,
-        "memoryBytes": 5528,
-        "networkBytes": 16945,
-        "requests": 2,
-        "storedOnDeviceBytes": 5223,
-        "transferredBytes": 16945
+        "durationMs": 546,
+        "features": 136,
+        "memoryBytes": 12960,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 12985
       },
       "sourceServices": [
         {
@@ -1599,25 +1714,25 @@
       "stats": [
         {
           "label": "Fire trails",
-          "raw": 24,
+          "raw": 136,
           "unit": "",
-          "value": "24"
+          "value": "136"
         },
         {
           "hint": "Trails the Rural Fire Service classifies for firefighting access.",
           "label": "Total length",
-          "raw": 29.386,
+          "raw": 63.408,
           "unit": "km",
-          "value": "29.4 km"
+          "value": "63.4 km"
         }
       ],
       "status": "used",
       "title": "Fire trails",
       "vintage": {
-        "capturedNote": "Read from the live service; the services do not publish an update date.",
-        "capturedOn": "2026-09-30",
-        "retrievedAt": 1790756074436,
-        "retrievedBasis": "this-build"
+        "capturedNote": "Fetched from the service on 2026-09-29; not refreshed since.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "Access tracks the NSW Rural Fire Service classifies as fire trails.",
@@ -1635,9 +1750,9 @@
       },
       "endpoints": [
         {
-          "host": "portal.spatial.nsw.gov.au",
-          "path": "/server/rest/services/NSW_Geocoded_Addressing_Theme/FeatureServer/1/query",
-          "requests": 3
+          "host": "bundled",
+          "note": "shared place file",
+          "path": "/demo/katoomba/context.json"
         }
       ],
       "evidence": {
@@ -1646,11 +1761,11 @@
         "specRef": "docs/research/00-synthesis.md §11.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "ArcGIS REST points, packed as delta-coded JSON",
       "id": "homes",
@@ -1669,14 +1784,22 @@
       ],
       "model": {
         "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
-        "points": 193,
+        "points": 7368,
         "resampling": "none"
       },
       "native": {
-        "points": 193
+        "points": 7368
       },
-      "origin": "live",
-      "originDetail": "Live query of the NSW map services",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 50070,
+          "label": "Share of the shared place file (280.7 KB)",
+          "note": "The five place data sets are read from one file; its size is split by each layer’s share of the content.",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "Spatial Services NSW",
         "url": "https://www.spatial.nsw.gov.au/"
@@ -1684,13 +1807,12 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 22334,
-        "features": 193,
-        "memoryBytes": 1544,
-        "networkBytes": 15614,
-        "requests": 3,
-        "storedOnDeviceBytes": 1551,
-        "transferredBytes": 15614
+        "durationMs": 546,
+        "features": 7368,
+        "memoryBytes": 58944,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 50070
       },
       "sourceServices": [
         {
@@ -1703,18 +1825,18 @@
         {
           "hint": "One point per address; a block of units shares a point.",
           "label": "Home address points",
-          "raw": 193,
+          "raw": 7368,
           "unit": "",
-          "value": "193"
+          "value": "7 368"
         }
       ],
       "status": "used",
       "title": "Homes (address points)",
       "vintage": {
-        "capturedNote": "Read from the live service; the services do not publish an update date.",
-        "capturedOn": "2026-09-30",
-        "retrievedAt": 1790756094196,
-        "retrievedBasis": "this-build"
+        "capturedNote": "Fetched from the service on 2026-09-29; not refreshed since.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "One point for every registered address, standing in for a home.",
@@ -1732,9 +1854,9 @@
       },
       "endpoints": [
         {
-          "host": "mapprod3.environment.nsw.gov.au",
-          "path": "/arcgis/rest/services/ePlanning/Planning_Portal_Principal_Planning/MapServer/19/query",
-          "requests": 2
+          "host": "bundled",
+          "note": "shared place file",
+          "path": "/demo/katoomba/context.json"
         }
       ],
       "evidence": {
@@ -1743,11 +1865,11 @@
         "specRef": "docs/research/00-synthesis.md §11.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "ArcGIS REST polygons, packed as delta-coded JSON",
       "id": "zones",
@@ -1764,15 +1886,23 @@
         "Only built-up zone types are kept; national park and rural zones are left out."
       ],
       "model": {
-        "features": 0,
+        "features": 110,
         "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 0
+        "features": 110
       },
-      "origin": "live",
-      "originDetail": "Live query of the NSW map services",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 30299,
+          "label": "Share of the shared place file (280.7 KB)",
+          "note": "The five place data sets are read from one file; its size is split by each layer’s share of the content.",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "State of NSW and Department of Planning, Housing and Infrastructure",
         "url": "https://www.planning.nsw.gov.au/"
@@ -1780,14 +1910,12 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 22334,
-        "features": 0,
-        "memoryBytes": 0,
-        "networkBytes": 55313,
-        "networkDecodedBytes": 211542,
-        "requests": 2,
-        "storedOnDeviceBytes": 2,
-        "transferredBytes": 55313
+        "durationMs": 546,
+        "features": 110,
+        "memoryBytes": 25376,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 30299
       },
       "sourceServices": [
         {
@@ -1799,29 +1927,60 @@
       "stats": [
         {
           "label": "Zones",
-          "raw": 0,
+          "raw": 110,
           "unit": "",
-          "value": "0"
+          "value": "110"
         },
         {
           "label": "Total area",
-          "raw": 0,
+          "raw": 74.319,
           "unit": "km²",
-          "value": "0.00 km²"
+          "value": "74.32 km²"
         },
         {
-          "hint": "Only residential, village, rural-residential, commercial, industrial and tourist zones are kept; the service’s other zone types (rural, parks, water) are left out.",
-          "label": "Note",
-          "value": "No built-up zones here"
+          "label": "Small rural lots",
+          "raw": 63.709,
+          "unit": "km²",
+          "value": "63.71 km²"
+        },
+        {
+          "label": "Environmental living",
+          "raw": 6.96,
+          "unit": "km²",
+          "value": "6.96 km²"
+        },
+        {
+          "label": "Residential",
+          "raw": 2.593,
+          "unit": "km²",
+          "value": "2.59 km²"
+        },
+        {
+          "label": "Industrial",
+          "raw": 0.737,
+          "unit": "km²",
+          "value": "0.74 km²"
+        },
+        {
+          "label": "Commercial",
+          "raw": 0.247,
+          "unit": "km²",
+          "value": "0.25 km²"
+        },
+        {
+          "label": "Tourist",
+          "raw": 0.073,
+          "unit": "km²",
+          "value": "0.07 km²"
         }
       ],
       "status": "used",
       "title": "Residential and built-up zones",
       "vintage": {
-        "capturedNote": "Read from the live service; the services do not publish an update date.",
-        "capturedOn": "2026-09-30",
-        "retrievedAt": 1790756074299,
-        "retrievedBasis": "this-build"
+        "capturedNote": "Fetched from the service on 2026-09-29; not refreshed since.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "Planning zones for residential, village, rural-residential, commercial, industrial and tourist land.",
@@ -1839,14 +1998,9 @@
       },
       "endpoints": [
         {
-          "host": "portal.spatial.nsw.gov.au",
-          "path": "/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2/query",
-          "requests": 2
-        },
-        {
-          "host": "portal.spatial.nsw.gov.au",
-          "path": "/server/rest/services/NSW_Features_of_Interest_Category/FeatureServer/1/query",
-          "requests": 2
+          "host": "bundled",
+          "note": "shared place file",
+          "path": "/demo/katoomba/context.json"
         }
       ],
       "evidence": {
@@ -1855,11 +2009,11 @@
         "specRef": "docs/research/00-synthesis.md §11.7"
       },
       "extent": {
-        "areaKm2": 36,
-        "east": 150.452362,
-        "north": -33.49302,
-        "south": -33.54698,
-        "west": 150.387638
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
       },
       "format": "ArcGIS REST points, packed as delta-coded JSON",
       "id": "place-names",
@@ -1876,14 +2030,22 @@
       ],
       "model": {
         "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
-        "points": 2,
+        "points": 5,
         "resampling": "none"
       },
       "native": {
-        "points": 2
+        "points": 5
       },
-      "origin": "live",
-      "originDetail": "Live query of the NSW map services",
+      "origin": "bundled",
+      "originDetail": "Bundled demo site 'katoomba'",
+      "parts": [
+        {
+          "bytes": 299,
+          "label": "Share of the shared place file (280.7 KB)",
+          "note": "The five place data sets are read from one file; its size is split by each layer’s share of the content.",
+          "origin": "bundled"
+        }
+      ],
       "provider": {
         "name": "Spatial Services NSW",
         "url": "https://www.spatial.nsw.gov.au/"
@@ -1891,12 +2053,11 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 22334,
-        "features": 2,
-        "networkBytes": 28895,
-        "requests": 4,
-        "storedOnDeviceBytes": 132,
-        "transferredBytes": 28895
+        "durationMs": 546,
+        "features": 5,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 299
       },
       "sourceServices": [
         {
@@ -1908,12 +2069,18 @@
       "stats": [
         {
           "label": "Place names",
-          "raw": 2,
+          "raw": 5,
           "unit": "",
-          "value": "2"
+          "value": "5"
         },
         {
           "label": "Localities",
+          "raw": 3,
+          "unit": "",
+          "value": "3"
+        },
+        {
+          "label": "Towns",
           "raw": 2,
           "unit": "",
           "value": "2"
@@ -1922,10 +2089,10 @@
       "status": "used",
       "title": "Place names",
       "vintage": {
-        "capturedNote": "Read from the live service; the services do not publish an update date.",
-        "capturedOn": "2026-09-30",
-        "retrievedAt": 1790756075371,
-        "retrievedBasis": "this-build"
+        "capturedNote": "Fetched from the service on 2026-09-29; not refreshed since.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
       },
       "warnings": [],
       "what": "Suburb, town, village and locality names, and named features such as regions.",
@@ -1996,139 +2163,255 @@
       "status": "skipped",
       "title": "Your input",
       "vintage": {
-        "retrievedAt": 1790756072787,
+        "retrievedAt": 1790756096864,
         "retrievedBasis": "generated"
       },
       "warnings": [],
       "what": "Everything you typed, marked or painted: weather readings, ignitions, fuel and wind edits.",
       "why": "Your changes override the data: they are applied on top of the fuel map, the wind and the weather, and recorded so a run can be reproduced."
+    },
+    {
+      "attribution": "FireSim",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "measured",
+        "note": "The files are copies of the services’ data at the capture date."
+      },
+      "extent": {
+        "areaKm2": 81,
+        "east": 150.333652,
+        "north": -33.674531,
+        "south": -33.755469,
+        "west": 150.236348
+      },
+      "format": "Files under public/demo (PNG, JPEG, GeoJSON, JSON)",
+      "id": "bundled-site",
+      "kind": "table",
+      "licence": {
+        "name": "Each file keeps the licence of the service it came from (CC BY 4.0, see the data sets)"
+      },
+      "limitations": [
+        "Bundled data are a snapshot: fires, roads and buildings since the capture date are not in them.",
+        "The elevation model is a 5 m grid from a 2019-era service resampled to 10 m; the aerial photo is a mosaic of several years."
+      ],
+      "origin": "bundled",
+      "originDetail": "Files captured 2026-09-27 to 2026-09-29 and shipped inside the app",
+      "parts": [
+        {
+          "bytes": 1411059,
+          "label": "katoomba/dem5m.png",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 720,
+          "label": "katoomba/dem5m.json",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 271203,
+          "label": "katoomba/imagery.jpg",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 485,
+          "label": "katoomba/imagery.json",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 290939,
+          "label": "katoomba/canopy.png",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 351,
+          "label": "katoomba/canopy.json",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 1491893,
+          "label": "katoomba/vegetation.geojson",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 290512,
+          "label": "katoomba/fire-history.geojson",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 280723,
+          "label": "katoomba/context.json",
+          "note": "captured 2026-09-29",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 375,
+          "label": "katoomba/manifest.json",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        },
+        {
+          "bytes": 319549,
+          "count": 9,
+          "label": "katoomba/terrarium",
+          "note": "captured 2026-09-27",
+          "origin": "bundled"
+        }
+      ],
+      "provider": {
+        "name": "FireSim (this app)"
+      },
+      "role": "bundle",
+      "sizes": {
+        "cachedBytes": 0,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 0
+      },
+      "sourceServices": [],
+      "stats": [
+        {
+          "label": "Whole bundle for the site",
+          "value": "4.4 MB"
+        },
+        {
+          "hint": "The sizes are counted under the data sets that read them, so they are not added again here.",
+          "label": "Read for this scenario",
+          "value": "4.0 MB"
+        },
+        {
+          "hint": "11 entries; the terrain tiles are one entry",
+          "label": "Files",
+          "raw": 19,
+          "unit": "",
+          "value": "19"
+        }
+      ],
+      "status": "used",
+      "title": "Bundled demo site: katoomba",
+      "vintage": {
+        "capturedNote": "Files were fetched on different days, from 2026-09-27 to 2026-09-29.",
+        "capturedOn": "2026-09-29",
+        "retrievedAt": 1790640000000,
+        "retrievedBasis": "bundle-capture"
+      },
+      "warnings": [],
+      "what": "Terrain, aerial photo, canopy, vegetation, fire history and roads captured from the NSW services and shipped inside the app, so demo sites work with no signal.",
+      "why": "Lets you train offline. The files were captured from the services before the app was built and are shipped as they were: they are never refreshed while you use the app."
     }
   ],
   "schema": 1,
   "summary": {
-    "buildDurationMs": 22334,
-    "builtAt": 1790756095121,
+    "buildDurationMs": 550,
+    "builtAt": 1790756097414,
     "fallbacks": [
       {
-        "id": "imagery",
-        "reason": "Aerial photos are bundled only for the eight demo sites; none covers this place. The ground is drawn with the height colours instead.",
-        "status": "unavailable",
-        "title": "Aerial photo"
-      },
-      {
         "id": "vegetation-svtm",
-        "reason": "5.7 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
+        "reason": "17 % of the cells are unmapped or 'Not classified' and were filled in from terrain and canopy.",
         "status": "partial",
         "title": "Vegetation map"
       },
       {
-        "id": "canopy-height",
-        "reason": "No canopy map could be read (area above 3 km). Each cell uses the typical tree height of its vegetation type.",
-        "status": "fallback",
-        "title": "Tree canopy height"
-      },
-      {
         "id": "fuel-derived",
-        "reason": "Built partly from substitutes: vegetation map (partly real), tree canopy height (substitute), rainfall history and drought (substitute).",
+        "reason": "Built partly from substitutes: vegetation map (partly real).",
         "status": "partial",
         "title": "Fuel map"
-      },
-      {
-        "id": "drought-history",
-        "reason": "Only 6 days of rainfall history could be read (the drought index needs at least 60), so the defaults are used: drought factor 7, KBDI 60. The days read still set the recent rain for fuel moisture. The year of daily rain could not be downloaded: the weather service's daily request limit was reached (HTTP 429).",
-        "status": "fallback",
-        "title": "Rainfall history and drought"
       }
     ],
     "model": {
-      "atmosCellM": 133,
+      "atmosCellM": 200,
       "atmosLevels": 20,
       "cellSizeM": 30,
-      "cells": 40000,
+      "cells": 90000,
       "durationS": 14400,
-      "extentM": 6000,
+      "extentM": 9000,
       "hiResCellM": 10,
-      "hiResNx": 600,
-      "hiResNy": 600,
-      "nx": 200,
-      "ny": 200,
-      "startTime": 1790755800000,
+      "hiResNx": 900,
+      "hiResNy": 900,
+      "nx": 300,
+      "ny": 300,
+      "startTime": 1797728331600,
       "tier": "auto"
     },
     "reproduce": {
       "bbox": [
-        150.387638,
-        -33.54698,
-        150.452362,
-        -33.49302
+        150.236348,
+        -33.755469,
+        150.333652,
+        -33.674531
       ],
       "cellSizeM": 30,
       "centre": {
-        "lat": -33.52,
-        "lon": 150.42
+        "lat": -33.715,
+        "lon": 150.285
       },
+      "demoSiteId": "katoomba",
       "durationS": 14400,
-      "extentM": 6000,
-      "online": true,
-      "scenarioId": "-33.520,150.420-20260930T0810Z-now",
+      "extentM": 9000,
+      "online": false,
+      "scenarioId": "katoomba-20261220T0058Z-preset",
       "seed": 1,
-      "startTime": 1790755800000,
-      "weatherMode": "now"
+      "startTime": 1797728331600,
+      "weatherMode": "preset:hot-nw-sw-change"
     },
-    "scenarioId": "-33.520,150.420-20260930T0810Z-now",
-    "scenarioName": "Bilpin (live test)",
+    "scenarioId": "katoomba-20261220T0058Z-preset",
+    "scenarioName": "Katoomba – Narrow Neck & Megalong escarpment",
     "schema": 1,
     "seed": 1,
     "totals": {
       "byStatus": {
-        "fallback": 2,
+        "fallback": 0,
         "partial": 2,
         "skipped": 1,
-        "unavailable": 1,
-        "used": 9,
+        "unavailable": 0,
+        "used": 13,
         "user": 0
       },
       "cachedBytes": 0,
       "cellShareByOrigin": {
-        "derived": 0.264294,
-        "live": 0.735706
+        "bundled": 0.956997,
+        "derived": 0.043003
       },
-      "count": 15,
-      "memoryBytes": 14040076,
-      "networkBytes": 2294255,
-      "networkDecodedBytes": 3596786,
-      "requests": 37,
-      "storedBytes": 3257724,
-      "transferredBytes": 2293903
+      "count": 16,
+      "memoryBytes": 30354106,
+      "networkBytes": 0,
+      "requests": 9,
+      "storedBytes": 0,
+      "transferredBytes": 4037885
     },
-    "warnings": [
-      "Canopy unavailable (type defaults)",
-      "Daily rainfall history gap-filled from the forecast for the last 6 days.",
-      "KBDI from 6 days of rainfall history (< 365): drought may be under-read.",
-      "Drought defaults used (drought factor 7, KBDI 60): enter the local drought factor if known."
-    ],
+    "warnings": [],
     "workingMemory": {
-      "cells": 40000,
-      "gpuBytes": 7280664,
+      "cells": 90000,
+      "gpuBytes": 14830664,
       "items": [
         {
-          "bytes": 7032970,
-          "formula": "measured: every typed array of the scenario, 7.0 MB",
+          "bytes": 15269709,
+          "formula": "measured: every typed array of the scenario, 15.3 MB",
           "id": "scenario-main",
           "label": "Scenario data (terrain, fuel, 10 m ground, fire history, places)",
-          "perCellBytes": 175.8,
+          "perCellBytes": 169.7,
           "where": "main"
         },
         {
-          "bytes": 7007106,
-          "formula": "measured: 7.0 MB, the scenario is copied (not moved) to the worker, without the roads, homes and place names that only the map uses",
+          "bytes": 15084397,
+          "formula": "measured: 15.1 MB, the scenario is copied (not moved) to the worker, without the roads, homes and place names that only the map uses",
           "id": "scenario-worker",
           "label": "The simulation worker's copy of the scenario",
           "where": "worker"
         },
         {
-          "bytes": 21993000,
-          "formula": "40,000 cells x 548.4 B + 57.0 KB front bookkeeping",
+          "bytes": 49413000,
+          "formula": "90,000 cells x 548.4 B + 57.0 KB front bookkeeping",
           "id": "fire",
           "label": "Fire spread state",
           "note": "Grows a little with the burning front.",
@@ -2136,64 +2419,64 @@
           "where": "worker"
         },
         {
-          "bytes": 4337500,
-          "formula": "40,000 cells x 105.4 B + 2,025 columns x 60 B",
+          "bytes": 9607500,
+          "formula": "90,000 cells x 105.4 B + 2,025 columns x 60 B",
           "id": "explain",
           "label": "Insight engine (why the fire does what it does)",
           "perCellBytes": 105.4,
           "where": "worker"
         },
         {
-          "bytes": 4848016,
-          "formula": "40,000 cells x 121 B",
+          "bytes": 10898016,
+          "formula": "90,000 cells x 121 B",
           "id": "moisture",
           "label": "Fuel moisture model",
           "perCellBytes": 121,
           "where": "worker"
         },
         {
-          "bytes": 7040000,
-          "formula": "measured: 2 copies of the 3.5 MB fuel map (the base and the edited one)",
+          "bytes": 15840000,
+          "formula": "measured: 2 copies of the 7.9 MB fuel map (the base and the edited one)",
           "id": "fuel",
           "label": "Working copies of the fuel map (edits apply to them)",
           "perCellBytes": 176,
           "where": "worker"
         },
         {
-          "bytes": 1404033,
-          "formula": "40,000 cells x 35.1 B",
+          "bytes": 3159033,
+          "formula": "90,000 cells x 35.1 B",
           "id": "rasters",
           "label": "Wind, sun and environment rasters on the fire grid",
           "perCellBytes": 35.1,
           "where": "worker"
         },
         {
-          "bytes": 34606508,
-          "formula": "2,025 columns x 20 levels of 133 m: 11.9 KB per column + 40,000 cells x 260.5 B",
+          "bytes": 47631508,
+          "formula": "2,025 columns x 20 levels of 200 m: 11.9 KB per column + 90,000 cells x 260.5 B",
           "id": "atmosphere",
           "label": "Atmosphere model (3-D, 20 terrain-following levels)",
-          "perCellBytes": 865.2,
+          "perCellBytes": 529.2,
           "where": "worker"
         },
         {
-          "bytes": 1987518,
-          "formula": "4,000 embers x 107 B + 40,000 cells x 37 B",
+          "bytes": 3837518,
+          "formula": "4,000 embers x 107 B + 90,000 cells x 37 B",
           "id": "embers",
           "label": "Ember particles and landing maps",
           "note": "Grows with the burning front (its lists of burning cells).",
           "where": "worker"
         },
         {
-          "bytes": 54229685,
-          "formula": "9 x about 5.7 MB (40,000 cells x 95.1 B + 2,025 columns x 918.6 B), ring capped at 80.0 MB",
+          "bytes": 90424965,
+          "formula": "9 x about 10.4 MB (90,000 cells x 95.1 B + 2,025 columns x 918.6 B), ring capped at 80.0 MB",
           "id": "checkpoints",
           "label": "Checkpoints for rewind (9: the start and every 30 min)",
           "note": "Checkpoints taken while a large fire burns are bigger.",
           "where": "worker"
         },
         {
-          "bytes": 87744632,
-          "formula": "49 keyframes x 1.6 MB + 241 frames x 9.0 KB + fire arrays; kept under 157.3 MB (older history is thinned)",
+          "bytes": 142544632,
+          "formula": "49 keyframes x 2.6 MB + 241 frames x 9.0 KB + fire arrays; kept under 157.3 MB (older history is thinned)",
           "id": "snapshots",
           "label": "Time-scrubber history (fire front, keyframes every 5 min, one frame per step)",
           "where": "main"
@@ -2206,10 +2489,17 @@
           "where": "gpu"
         },
         {
-          "bytes": 640000,
-          "formula": "40,000 cells x about 16 B (about four float textures; estimate)",
+          "bytes": 1440000,
+          "formula": "90,000 cells x about 16 B (about four float textures; estimate)",
           "id": "gpu-data",
           "label": "Fire and heat-map textures on the fire grid",
+          "where": "gpu"
+        },
+        {
+          "bytes": 6750000,
+          "formula": "1125 x 1125 pixels x 4 B, plus a third for mipmaps (estimate)",
+          "id": "gpu-imagery",
+          "label": "Aerial photo texture",
           "where": "gpu"
         },
         {
@@ -2220,7 +2510,7 @@
           "where": "gpu"
         }
       ],
-      "mainBytes": 94777602,
+      "mainBytes": 157814341,
       "notes": [
         "Auto tier: shown for Standard, where every run starts; the app may switch to Fast after timing this device, which uses less.",
         "The scenario data and the fuel copies are measured; the rest of the engine, the scrubber history and the GPU are modelled from the grid sizes.",
@@ -2229,8 +2519,8 @@
         "JavaScript objects (feature lists, labels, closures) are not counted: typed arrays hold nearly all the data."
       ],
       "tier": "standard",
-      "totalBytes": 239511632,
-      "workerBytes": 137453366
+      "totalBytes": 418540942,
+      "workerBytes": 245895937
     }
   }
 }

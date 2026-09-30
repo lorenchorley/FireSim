@@ -79,8 +79,8 @@ export const TYPICAL = Object.freeze({
   forecast: { low: 60_000, mid: 77_000, high: 95_000, basis: 'best_match forecast responses: 76.8 kB for Katoomba (2026-09-27), 76.9 kB for Bilpin (2026-09-30)' },
   /** Share of a forecast response taken by the pressure-level (upper-air) variables, as the built records split it. */
   upperAirShare: { low: 0.4, mid: 0.476, high: 0.5, basis: 'pressure-level variables are 20 of the 42 hourly variables (the built records split the download by variables)' },
-  /** 365 days of daily rain and temperature (ERA5 archive). */
-  daily365: { low: 9_000, mid: 10_400, high: 14_000, basis: '365-day ERA5 daily response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)' },
+  /** 365 days of daily rain and temperature (the Open-Meteo archive's default best match). */
+  daily365: { low: 9_000, mid: 10_400, high: 14_000, basis: '365-day daily archive response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)' },
   /** Ten years of daily rain (usual yearly rainfall). */
   annualRainfall10y: { low: 60_000, mid: 100_000, high: 130_000, basis: 'the 365-day history and the 10-year rain request measured 111.6 kB together at Bilpin (2026-09-30)' },
   /** A historical forecast / ERA5 hourly series for a past day (8 days of hours). */
@@ -347,7 +347,7 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
         const a = TYPICAL.annualRainfall10y;
         const d = TYPICAL.daily365;
         const rainKey = [...facts.cachedKeys].some((k) => k.startsWith('annualRainfall/'));
-        add({ ...dBase, ...om, format: 'JSON (Open-Meteo ERA5 archive)', status: 'used', origin: 'live', low: d.low, mid: d.mid + (rainKey ? 0 : a.mid), high: d.high + a.high, network: d.mid + (rainKey ? 0 : a.mid), requests: rainKey ? 1 : 2, basis: `365 days of daily weather (${formatBytes(d.mid)}; ${d.basis})${rainKey ? '' : ` and 10 years of daily rain for the usual yearly rainfall (${a.basis})`}`, offlineOk: false, offlineNote: noSignal('the rainfall history is downloaded'), onDevice: rainKey });
+        add({ ...dBase, ...om, format: 'JSON (Open-Meteo historical weather archive)', status: 'used', origin: 'live', low: d.low, mid: d.mid + (rainKey ? 0 : a.mid), high: d.high + a.high, network: d.mid + (rainKey ? 0 : a.mid), requests: rainKey ? 1 : 2, basis: `365 days of daily weather (${formatBytes(d.mid)}; ${d.basis})${rainKey ? '' : ` and 10 years of daily rain for the usual yearly rainfall (${a.basis})`}`, offlineOk: false, offlineNote: noSignal('the rainfall history is downloaded'), onDevice: rainKey });
       }
     }
   }
@@ -383,6 +383,11 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
   if (site && m?.sites[site]) {
     const b = m.sites[site]!.totalBytes;
     add({ id: 'bundled-site', role: 'bundle', title: `Bundled demo site: ${DEMO_SITES.find((s) => s.id === site)?.name ?? site}`, what: 'Files shipped inside the app for this demo site.', why: 'Lets you train with no signal.', provider: PROVIDERS.app, licence: { name: 'Each file keeps the licence of its source' }, attribution: ATTRIBUTION.app, format: 'Files under public/demo', kind: 'table', status: 'used', origin: 'bundled', low: b, mid: 0, high: b, network: 0, requests: 0, basis: `the whole bundle for the site is ${formatBytes(b)}; its files are counted under each data set`, offlineOk: true, offlineNote: 'Shipped with the app.', onDevice: true });
+  }
+  const usedPack = facts.packs.find((p) => out.some((r) => r.origin === 'area-pack' && r.originDetail === `area pack '${p.name}'`));
+  if (usedPack) {
+    const b = usedPack.bytes;
+    add({ id: 'area-pack', role: 'pack', title: `Saved area pack: ${usedPack.name}`, what: 'Data you saved on this device for use with no signal.', why: 'Real data instead of substitutes when offline.', provider: PROVIDERS.app, licence: { name: 'Each item keeps the licence of its source' }, attribution: ATTRIBUTION.app, format: 'Items stored in the app database', kind: 'table', status: 'used', origin: 'area-pack', originDetail: `saved ${new Date(usedPack.createdAt).toISOString().slice(0, 10)}`, low: b, mid: 0, high: b, network: 0, requests: 0, basis: `the whole pack is ${formatBytes(b)} (${usedPack.itemNames.length} items); its items are counted under each data set`, offlineOk: true, offlineNote: 'Saved on this device.', onDevice: true });
   }
   return out;
 }

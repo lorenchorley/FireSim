@@ -18,7 +18,7 @@
 import { DEFAULT_SIM_OPTIONS, type LatLon, type ScenarioData, type SimOptions, type Terrain } from '../core/types';
 import { localDate } from '../core/physics';
 import { clamp } from '../core/units';
-import { DatasetLedger, DEMO_SITES, loadBundleManifest, openCache, type KV } from '../data';
+import { DatasetLedger, DEMO_SITES, findAreaPacks, loadBundleManifest, openCache, type KV } from '../data';
 import { CLASS_INFER } from '../fuel/catalogue';
 import { buildFuelMap } from '../fuel/fuelMap';
 import { emptyHistory, parseFireHistoryWithMeta, rasteriseFireHistory, type HistoryRaster } from '../fuel/history';
@@ -319,6 +319,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   const imagery = await describeImagery(terrain.grid, layerCtx).catch(() => null);
   timings.imagery = ledger.now() - tImagery;
   const bundle = await loadBundleManifest(signal).catch(() => null);
+  const packs = await findAreaPacks(rr.centre, rr.extent, kv).catch(() => []);
   check();
 
   // ── options, assembly ──
@@ -376,6 +377,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
       parsedHistory,
       includedFires: history.included,
       activeFires: history.activeFires,
+      fuelHistory: history.compact,
       fuel,
       weather,
       drought,
@@ -389,6 +391,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
       allWarnings: series.warnings ?? [],
       // What the run will hold in memory: the scenario measured, the engine modelled from these grids (memoryModel.ts).
       workingMemory: workingMemoryForScenario(scenario, imagery ? { imagery: { width: imagery.drawnPx.w, height: imagery.drawnPx.h } } : {}),
+      packs,
     });
     scenario.datasets = datasets;
     scenario.datasetSummary = summary;

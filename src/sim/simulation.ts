@@ -767,12 +767,27 @@ export class Simulation {
    * model and, when the WebView exposes it, the main thread's JS heap.)
    */
   memoryReport(): SimMemoryReport {
-    const scenario = typedArrayFootprint(this.scenario).bytes;
-    const own = typedArrayFootprint(this, { skip: [this.scenario] });
+    // Each buffer is counted once, under the first part that reaches it, in this order (owners before the modules
+    // that borrow their arrays); whatever is left is the orchestrator's own rasters.
+    const counted = new Set<unknown>();
+    const self = this as unknown as Record<string, unknown>;
+    const skip = [this.scenario];
+    const walk = (v: unknown): number => typedArrayFootprint(v, { skip, counted }).bytes;
+    const scenario = typedArrayFootprint(this.scenario, { counted }).bytes;
     const parts: Record<SimMemoryPart, number> = { scenario, fire: 0, explain: 0, moisture: 0, fuel: 0, atmosphere: 0, embers: 0, checkpoints: 0, rasters: 0 };
-    const GROUP: Record<string, SimMemoryPart> = { fire: 'fire', explainEngine: 'explain', moisture: 'moisture', fuelBase: 'fuel', fuel: 'fuel', atm: 'atmosphere', embers: 'embers', cp0: 'checkpoints', ring: 'checkpoints' };
-    for (const [k, b] of Object.entries(own.byKey)) parts[GROUP[k] ?? 'rasters'] += b;
-    return { tier: this.tierNow, parts, totalBytes: scenario + own.bytes, checkpoints: this.ring.length + (this.cp0 ? 1 : 0), checkpointBytes: this.checkpointBytes() };
+    const ORDER: [SimMemoryPart, string[]][] = [
+      ['fuel', ['fuelBase', 'fuel']],
+      ['fire', ['fire']],
+      ['moisture', ['moisture']],
+      ['atmosphere', ['atm']],
+      ['embers', ['embers']],
+      ['explain', ['explainEngine']],
+      ['checkpoints', ['cp0', 'ring']],
+    ];
+    for (const [part, keys] of ORDER) parts[part] = walk(keys.map((k) => self[k]));
+    parts.rasters = walk(this);
+    const totalBytes = Object.values(parts).reduce((a, b) => a + b, 0);
+    return { tier: this.tierNow, parts, totalBytes, checkpoints: this.ring.length + (this.cp0 ? 1 : 0), checkpointBytes: this.checkpointBytes() };
   }
 
   /** Read-only state view for tests and the developer panel. */

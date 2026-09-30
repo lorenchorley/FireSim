@@ -27,9 +27,11 @@ recorded in the module's top-of-file notes and summarised below.
 ```
 src/
   main.ts        entry: settings/theme, loadServices (real modules or ?mock=1), App
-  core/          contracts (types.ts, simTypes.ts), grid, geo (LocalProjection), units, rng, shared physics
+  core/          contracts (types.ts, simTypes.ts, datasets.ts = data-set provenance), grid, geo (LocalProjection),
+                 units, rng, shared physics
   data/          assets (bundled files in browser / Node), http, cache + area-pack storage, terrain tiles
-                 (Terrarium), canopy, demo rasters (DEM, imagery window, GeoJSON), demo sites, synthetic terrain
+                 (Terrarium), canopy, demo rasters (DEM, imagery window, GeoJSON), demo sites, synthetic terrain,
+                 ledger.ts (request ledger), storage.ts (storage report), bundleManifest.ts (public/demo/provenance.json)
   terrain/       derived fields (slope, aspect, curvature, TPI, landforms), solar position, insolation + shadows,
                  sky-view factor, hillshade (analysis.ts, solar.ts, hillshade.ts)
   fuel/          catalogue, SVTM mapping, inference, fire history, accumulation, hazard/load, fuel map, edits
@@ -43,7 +45,9 @@ src/
   embers/        EmberModel: emission, lofting, transport, burnout, landing, spot ignition, overlays
   explain/       InsightEngine, rule registry, card texts, forecast cards, explainCell ("Why here?"), safety
   scenario/      buildScenario pipeline, Open-Meteo, weather sources, presets, replays, belt kit, layers, area packs,
-                 live feeds (RFS incidents, fire danger, hotspots)
+                 live feeds (RFS incidents, fire danger, hotspots; not used by the UI yet), data-set records
+                 (datasetAssembly, datasetRecords*, datasetStats, recordKit, imagery), estimate.ts (planned data),
+                 memoryModel.ts (working memory)
   sim/           Simulation (coupling loop), records, stats, SimHost, worker.ts, SimClient / LocalSimController,
                  protocol, validation/ (§15 scenarios), testing/ (scenario builders, hashes)
   render/        SceneView (Three.js) + layers: terrain, vegetation, flames, embers, smoke, wind, cross-section,
@@ -63,8 +67,9 @@ public/replays/  bundled hourly + 365-day daily weather of the 7 historic fire d
 ```
  Setup (ui/setupModel.buildRequest) ──ScenarioRequest──► scenario/buildScenario(req, onProgress, signal)
      terrain (bundled LiDAR → area pack → Terrarium → synthetic) · canopy · SVTM · NPWS history · weather · drought · fuel
+     every read recorded on a per-build DatasetLedger (data/ledger.ts) → DatasetRecord[] + DatasetSummary
                                                    │ ScenarioData (fire-grid Terrain + 10 m terrainHiRes, FuelMap,
-                                                   ▼   WeatherSeries, options, warnings)
+                                                   ▼   WeatherSeries, options, warnings, datasets, datasetSummary)
  ui/SimSession ──init──► SimClient ──postMessage──► sim/worker.ts → SimHost → Simulation
      ▲   │                                              │ ready (forecast cards), t0 snapshot, 3-D spin-up
      │   └─ run / pause / ignite / edit / removeEdit / removeIgnition / rewind / setOption / setQuality / explain
@@ -149,6 +154,88 @@ new InsightEngine(terrain, derived, fuel, features, …)       // update / expla
 buildScenario(req: ScenarioRequest, onProgress, signal?): Promise<ScenarioData>;
 WEATHER_PRESETS[id].build(start, hours, site) / canonicalStart(lon, year);  REPLAYS;  downloadAreaPack(req, onProgress, signal)
 ```
+
+### Data sets and provenance (core/datasets.ts, data/ledger.ts, scenario/dataset*.ts)
+
+Every built scenario carries `datasets: DatasetRecord[]` and `datasetSummary: DatasetSummary` (plain JSON, structured-clone
+safe). The contract, its vocabulary and the pure helpers are in `src/core/datasets.ts` (re-exported from `core/types.ts`):
+
+```ts
+// core/datasets.ts
+DatasetRecord { id, role, title, what, why, provider, licence, attribution, endpoints[], sourceServices[], format, kind,
+  status: 'used'|'partial'|'fallback'|'unavailable'|'skipped'|'user',
+  origin: 'live'|'cache'|'area-pack'|'bundled'|'synthetic'|'preset'|'user'|'derived'|'none', originDetail?, fallbackReason?,
+  vintage { capturedOn?, capturedNote?, captureSummary?, retrievedAt, retrievedBasis, version?, versionNote?, currentTo?,
+            cacheFreshUntil?, ageHoursAtBuild?, staleAfterHours?, stale? },
+  crs?, extent?, coverage { fraction, filledBy?, filledOrigin?, note? }, native?, model? (+ resampling),
+  sizes { transferredBytes, networkBytes (on the wire where reported), networkDecodedBytes? (uncompressed, when it
+          differs), networkUnmeasuredBytes? (part of networkBytes counted uncompressed: wire size not reported),
+          cachedBytes, decodedBytes?, memoryBytes?, requests, tiles?, features?, records?, durationMs?,
+          storedOnDeviceBytes?, estimate? },
+  stats: DatasetStat[] { label, value (formatted), raw?, unit?, hint? }, distribution?, layer? { overlay?, layerId? },
+  evidence { level: 'measured'|'modelled'|'calibrated'|'assumed'|'synthetic', note, specRef? }, warnings[], limitations[],
+  parts?, plan? }
+DatasetSummary { schema, scenarioId, scenarioName, seed, builtAt, buildDurationMs, model {nx, ny, cells, cellSizeM, extentM,
+  hiRes*, atmos*, tier, durationS, startTime}, totals {count, byStatus, transferredBytes, networkBytes, networkDecodedBytes?,
+  networkUnmeasuredBytes?, cachedBytes, requests, memoryBytes, storedBytes, cellShareByOrigin}, fallbacks[], warnings[], reproduce {scenarioId, seed, centre, bbox, …},
+  workingMemory? }
+formatBytes (base 10, 1 decimal, like Android) · formatCount/Percent/Duration/Age · sortDatasets · compareDatasets ·
+groupByRole · findDataset · isSubstitute · creditLines · imageryCredit · weatherStaleness (6 h / 24 h) ·
+summariseDatasets · resummarise · upsertDataset · datasetIssues (validator) · typedArrayFootprint ·
+datasetsToJson (stable) · datasetsToCsv (RFC 4180; per stat with {stats:true}) · datasetsToText
+```
+
+* **Ledger** (`data/ledger.ts`): `new DatasetLedger()` per build (scenario/build.ts), passed in `LayerContext` /
+  `WeatherContext` / `HiResRequest` / `ContextRequest`. `data/http.ts` requests take optional `{ tag, ledger, note }` and
+  record host + path (query, fragment, credentials and token-looking segments dropped), status, bytes on the wire
+  (Content-Length; else the Resource Timing `encodedBodySize`, which Node's fetch and same-origin / Timing-Allow-Origin
+  browser responses report; else the decoded body length, flagged `wireUnknown` and totalled as `networkUnmeasuredBytes`:
+  compressed ArcGIS / Open-Meteo JSON is 4-8x smaller on the wire, and CapacitorHttp and cross-origin browser answers do not
+  report it), decoded bytes, time and retries. EVERY attempt is an entry (a retried HTTP 429 or timeout is a request; the
+  final one carries the retry count). A single file keeps its real path on the endpoint list; two files of the same
+  numeric pattern collapse to it ('/terrarium/14/{n}/{n}.png'). Without a ledger nothing changes. (Open-Meteo HTTP 429:
+  a per-minute limit is backed off 60 s x 3 (spec §11.1); its daily limit, "try again tomorrow", is not waited out, and
+  the rainfall-history record names it as the reason for its defaults, `omFailure`.) `cachedFetch` records stored-copy hits (size, stored-at) and what it writes; `loadAsset` records
+  bundled files; `loadAreaPackItem` records pack reads. It never throws, keeps totals exactly and at most 4 000 entries.
+  Tags = data-set ids (`terrain`, `canopy-height`, `vegetation-svtm`, `fire-history`, `weather`, `upper-air`,
+  `drought-history`, `imagery`, the context file, ...).
+* **Records** are assembled once at the end of the build (`scenario/datasetAssembly.ts assembleDatasets`) from the loaders'
+  reports (terrain origin and tile counts, layer origins and sites, weather `detail`, drought `info`, places `info`),
+  the ledger and the finished grids: `datasetRecords.ts` (terrain, imagery, vegetation, canopy, fire history),
+  `datasetRecordsWeather.ts` (weather, upper air, rainfall history; model wording that claims no unverified model),
+  `datasetRecordsPlaces.ts` (roads, fire trails, homes, zones, place names, the derived fuel map, your input, the bundle,
+  and `describeStartMoisture` for the worker's first snapshot), statistics in `datasetStats.ts` (pure; each hot loop is a
+  small function of its own so the engine optimises it at once: about 2 ms per data set on 300 x 300, the whole inventory
+  15-30 ms per Katoomba build, 60-85 ms on the first, cold build). Memory figures: every typed array counted once; the
+  grids twice (main thread + the worker's copy), the places context once (sim/client.ts does not send it), the fire-record
+  index (`ScenarioData.fuelHistory`) under fire history, the fuel arrays under the fuel map. `withRecord(scenario, record)` adds a later record (start moisture, edits) and re-totals the summary.
+  A failure in the inventory is logged and never costs the user the scenario.
+* **Planned data** (`scenario/estimate.ts`): `estimateScenarioData(request, {kv?, manifest?})` → planned records with
+  `plan { basis, lowBytes, highBytes, likelyOrigin, offlineOk, offlineNote, networkBytes, onDevice }` and
+  `sizes.estimate`; `planScenarioData(request, facts)` is the pure core, `summarisePlan(records)` the totals. It reads only
+  the bundle manifest, the area-pack index and cache keys; the typical sizes (`TYPICAL`, `CONTEXT_PER_KM2`) carry their
+  measurement basis. Planned network bytes are UNCOMPRESSED sizes (an upper bound): compare them with a built record's
+  `networkDecodedBytes ?? networkBytes`.
+* **Working memory** (`scenario/memoryModel.ts`): `workingMemory(input)` / `workingMemoryForScenario(scenario, opts)` →
+  `WorkingMemory { tier, items[] {id, label, where: main|worker|gpu, bytes, perCellBytes?, formula, note?}, totals, notes }`,
+  attached to the summary at build time. Engine coefficients (`ENGINE_BYTES`) were measured by walking every typed array of
+  real `Simulation`s; `Simulation.memoryReport()` measures a running engine by part and `memoryModel.test.ts` keeps the two
+  within 8 % per part and 5 % in total. From a built scenario the worker's scenario copy (without the places context) and
+  its two fuel-map copies are measured, not modelled (`workerScenarioArrayBytes`, `fuelMapBytes`). `liveMemory()` reads `performance.memory` or says it is not available. (The worker
+  protocol does not forward `memoryReport` yet.)
+* **Storage** (`data/storage.ts`): `storage.report()` → bundled data (manifest), stored copies by kind and place with dates,
+  area packs with item sizes, the browser's estimate, a warning above 500 MB; `storage.clearCache(kind)` and
+  `storage.deleteAreaPack(id)` only after the user confirms. `KV.sizes()` returns each entry's size and stored-at time.
+* **Bundle manifest**: `public/demo/provenance.json` (`scripts/build-demo-provenance.mjs`, `npm run provenance`): size and
+  capture date of every bundled file; `data/bundleManifest.ts` loads it (null when missing: numbers are then left out).
+* **Fixtures and mocks**: `tests/fixtures/datasets/{katoomba-bundled,live-nondemo,offline-synthetic}.json` and
+  `live-nondemo.plan.json` (the planned records of the live request) (written by
+  `WRITE_FIXTURES=1` runs of `scenario/datasets.test.ts` and `scenario/datasets.live.test.ts`); `ui/mockDatasets.ts` gives
+  `?mock=1` scenarios an honest inventory (real bundled terrain and canopy, everything fabricated marked `synthetic`).
+* **Tests**: `core/datasets.test.ts` (formatting, sorting, summary, exports, validator), `data/ledger.test.ts` (bytes,
+  cache hits, no secrets, never throws, cost), `data/storage.test.ts`, `scenario/datasetStats.test.ts`,
+  `scenario/estimate.test.ts`, `scenario/memoryModel.test.ts`, `scenario/datasets.test.ts` (Katoomba bundled, a non-demo
+  place on a fake network then from its stored copies, offline synthetic).
 
 ### sim/
 

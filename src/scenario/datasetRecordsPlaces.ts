@@ -6,11 +6,11 @@
 import { formatBytes, formatCount, type DatasetOrigin, type DatasetPart, type DatasetRecord, type DatasetStat } from '../core/datasets';
 import type { ContextLayers, ContextSource } from '../core/places';
 import type { FuelMap, Ignition, LatLon, ScenarioEdit } from '../core/types';
-import type { BundleManifest, DatasetLedger } from '../data';
+import type { AreaPackMeta, BundleManifest, DatasetLedger } from '../data';
 import { CONTEXT_DATASET_ID } from '../data';
 import { CONTEXT_FILE_TAG, type ContextInfo, type ContextResult } from './context';
 import { contextStats, fuelStats, moistureStats, num, stat, textStat, type MoistureFacts } from './datasetStats';
-import { ATTRIBUTION, COPIES, LICENCES, PROVIDERS, dateMs, endpoint, endpointsOf, extentOf, ownArrayBytes, skeleton, sizesOf, sumTotals, typedBytes, vintageFor, day } from './recordKit';
+import { ATTRIBUTION, COPIES, LICENCES, PROVIDERS, dateMs, endpoint, endpointsOf, extentOf, ownArrayBytes, skeleton, sizesOf, sumTotals, vintageFor, day } from './recordKit';
 
 export interface PlacesInputs {
   ledger: DatasetLedger;
@@ -125,6 +125,8 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
   const origin = originOfContext(places.origin);
   const cs = ctx ? contextStats(ctx) : null;
   const shares = origin === 'live' ? null : layerShares(places.file);
+  // What this build stored of the shared place file (a live answer is kept for offline use), split the same way.
+  const storeShares = layerShares(places.file);
   const fileTotals = sumTotals(ledger, [CONTEXT_FILE_TAG]);
   const info: ContextInfo = places.info;
   const failedIds = new Set((info.failed ?? []).map((f) => CONTEXT_DATASET_ID[f]));
@@ -135,7 +137,9 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
     const share = shares?.[L.key] ?? 0;
     // Bundled / pack / stored: the shared file is split by each layer's share of its JSON; live: the layer's own requests.
     const bytes = origin === 'live' ? own.bytes : Math.round(fileTotals.bytes * share);
-    const net = origin === 'live' ? own.networkBytes : 0;
+    // The layer's own network requests crossed the network whatever was used in the end (a live query that failed half
+    // way before the bundled or stored file stood in): they are counted, as the ledger saw them.
+    const net = own.networkBytes;
     const cached = origin === 'live' ? 0 : origin === 'bundled' ? 0 : Math.round((fileTotals.cacheBytes + fileTotals.packBytes) * share);
     const missing = !ctx || failedIds.has(L.id);
     const sourceStats = cs ? (L.key === 'roads' ? cs.roads : L.key === 'fireTrails' ? cs.fireTrails : L.key === 'homes' ? cs.homes : L.key === 'zones' ? cs.zones : cs.places) : [];
@@ -147,7 +151,8 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
       title: L.title,
       what: L.what,
       why: L.why,
-      provider: src ? { name: src.provider, url: PROVIDERS.spatial.url } : PROVIDERS.spatial,
+      // Zoning is published by NSW Planning (the ePlanning service), the other layers by Spatial Services.
+      provider: L.key === 'zones' ? (src ? { name: src.provider, url: PROVIDERS.planning.url } : PROVIDERS.planning) : src ? { name: src.provider, url: PROVIDERS.spatial.url } : PROVIDERS.spatial,
       licence: src ? { name: src.licence, url: LICENCES.ccBy.url } : LICENCES.ccBy,
       attribution: src?.attribution ?? ATTRIBUTION.spatial,
       format: L.format,
@@ -201,14 +206,18 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
           networkBytes: net,
           cachedBytes: cached,
           // The shared file is one read: it is counted once, under the first layer.
-          requests: origin === 'live' ? own.requests : L.key === 'roads' ? fileTotals.requests : 0,
-          memoryBytes: memory,
+          requests: own.requests + (origin !== 'live' && L.key === 'roads' ? fileTotals.requests : 0),
+          ...(fileTotals.storedBytes > 0 && storeShares ? { storedOnDeviceBytes: Math.round(fileTotals.storedBytes * storeShares[L.key]) } : {}),
+          // Place names are plain objects (no typed arrays), so their memory is not measured: left out, not 0.
+          ...(L.key === 'places' ? {} : { memoryBytes: memory }),
           features: count,
-          ...(origin === 'live' && own.storedBytes === 0 ? {} : {}),
           ...(i.timingMs !== undefined ? { durationMs: i.timingMs } : {}),
         }),
-        endpoints: origin === 'live' ? endpointsOf(ledger, [L.id]) : [endpoint('bundled', origin === 'bundled' ? `/demo/${info.siteId ?? ''}/context.json` : `/${origin}`, 'shared place file')],
-        stats: sourceStats,
+        endpoints:
+          origin === 'live'
+            ? endpointsOf(ledger, [L.id])
+            : [origin === 'bundled' ? endpoint('bundled', `/demo/${info.siteId ?? ''}/context.json`, 'shared place file') : endpoint(origin === 'area-pack' ? 'area-pack' : 'cache', '/context', 'shared place file (stored copy)')],
+        stats: count === 0 && L.key === 'zones' ? [...sourceStats, textStat('Note', 'No built-up zones here', 'Only residential, village, rural-residential, commercial, industrial and tourist zones are kept; the service’s other zone types (rural, parks, water) are left out.')] : sourceStats,
         evidence: { level: 'measured', note: 'Official NSW government map data, a snapshot as of the fetch date.', specRef: 'docs/research/00-synthesis.md §11.7' },
         warnings: [...places.warnings],
         limitations: L.limits,
@@ -233,6 +242,8 @@ export interface FuelInputs {
   timingMs?: number;
 }
 
+const STATUS_WORD: Partial<Record<DatasetRecord['status'], string>> = { fallback: 'substitute', unavailable: 'not available', partial: 'partly real' };
+
 export function fuelRecord(i: FuelInputs): DatasetRecord {
   const fs = fuelStats(i.fuel);
   const g = i.fuel.grid;
@@ -240,7 +251,10 @@ export function fuelRecord(i: FuelInputs): DatasetRecord {
   const ins = i.inputs.filter((r) => ids.includes(r.id));
   const parts: DatasetPart[] = ins.map((r) => ({ label: r.title, origin: r.origin, note: r.status === 'used' ? 'real data' : r.fallbackReason ?? r.status }));
   const bad = ins.filter((r) => r.status === 'fallback' || r.status === 'unavailable' || r.status === 'partial');
-  const memory = ownArrayBytes(i.fuel) * COPIES + typedBytes();
+  // Only substitutes among the map inputs (no real terrain, vegetation, canopy or fire history): the fuel is a substitute too.
+  const realMap = ins.filter((r) => r.id !== 'drought-history' && (r.status === 'used' || r.status === 'partial'));
+  const status = !bad.length ? 'used' : realMap.length ? 'partial' : 'fallback';
+  const memory = ownArrayBytes(i.fuel) * COPIES;
   return skeleton({
     id: 'fuel-derived',
     role: 'fuel',
@@ -254,10 +268,10 @@ export function fuelRecord(i: FuelInputs): DatasetRecord {
     sourceServices: [],
     format: 'Typed arrays on the fire grid (about 20 Float32 and 6 Uint8 arrays plus flags)',
     kind: 'derived',
-    status: bad.length ? 'partial' : 'used',
+    status,
     origin: 'derived',
     originDetail: 'Computed on this device from the data sets it lists',
-    ...(bad.length ? { fallbackReason: `Built partly from substitutes: ${bad.map((r) => `${r.title.toLowerCase()} (${r.status})`).join(', ')}.` } : {}),
+    ...(bad.length ? { fallbackReason: `Built ${status === 'fallback' ? 'only' : 'partly'} from substitutes: ${bad.map((r) => `${r.title.toLowerCase()} (${STATUS_WORD[r.status] ?? r.status})`).join(', ')}.` } : {}),
     vintage: { retrievedAt: i.now, retrievedBasis: 'generated', versionNote: 'Fuel class and accumulation tables are compiled into the app (Olson curves per class, OFHAG hazard scores, Vesta Mk2 inputs).' },
     extent: extentOf(i.centre, i.extentM),
     coverage: { fraction: 1 },
@@ -334,7 +348,7 @@ export function userEditsRecord(u: UserInputs): DatasetRecord {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The bundled demo-site files this scenario read, as one record (sizes are counted under the data sets that read them). */
-export function bundleRecord(i: { now: number; centre: LatLon; extentM: number; sites: readonly string[]; bundle: BundleManifest | null; ledger: DatasetLedger; replayId?: string }): DatasetRecord | null {
+export function bundleRecord(i: { now: number; centre: LatLon; extentM: number; sites: readonly string[]; bundle: BundleManifest | null; ledger: DatasetLedger; replayId?: string; extraReadBytes?: number }): DatasetRecord | null {
   const sites = [...new Set(i.sites)].filter((s) => i.bundle?.sites[s]);
   if (!sites.length && !i.replayId) return null;
   const parts: DatasetPart[] = [];
@@ -347,7 +361,16 @@ export function bundleRecord(i: { now: number; centre: LatLon; extentM: number; 
       if (f.capturedOn && f.capturedOn > latest) latest = f.capturedOn;
     }
   }
-  const read = i.ledger.totals().bundledBytes;
+  // Demo-site files read for this scenario (the ledger's bundled reads under /demo/, plus the aerial photo the 3-D view
+  // decodes, `extraReadBytes`); the replay's weather files are listed on their own line.
+  let read = Math.max(0, Math.round(i.extraReadBytes ?? 0));
+  let replayRead = 0;
+  for (const e of i.ledger.entries()) {
+    if (e.source !== 'bundled' || !e.ok) continue;
+    if (e.path.startsWith('/demo/') && !e.path.startsWith('/demo/replays/')) read += e.bytes;
+    else if (/\/replays\//.test(e.path)) replayRead += e.bytes;
+  }
+  const files = parts.reduce((a, p) => a + (p.count ?? 1), 0);
   const earliest = parts.reduce((m, p) => {
     const d = /captured (\d{4}-\d{2}-\d{2})/.exec(p.note ?? '')?.[1];
     return d && (!m || d < m) ? d : m;
@@ -375,11 +398,63 @@ export function bundleRecord(i: { now: number; centre: LatLon; extentM: number; 
     stats: [
       textStat('Whole bundle for the site' + (sites.length > 1 ? 's' : ''), formatBytes(total)),
       textStat('Read for this scenario', formatBytes(read), 'The sizes are counted under the data sets that read them, so they are not added again here.'),
-      stat('Files', parts.length, ''),
+      ...(replayRead ? [textStat('Replay weather files read', formatBytes(replayRead), 'Counted under Weather and Rainfall history.')] : []),
+      stat('Files', files, '', 0, files !== parts.length ? `${parts.length} entries; the terrain tiles are one entry` : undefined),
     ],
     evidence: { level: 'measured', note: 'The files are copies of the services’ data at the capture date.' },
     warnings: [],
     limitations: ['Bundled data are a snapshot: fires, roads and buildings since the capture date are not in them.', 'The elevation model is a 5 m grid from a 2019-era service resampled to 10 m; the aerial photo is a mosaic of several years.'],
+    parts,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Saved area packs
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Item names of an area pack in plain words. */
+const PACK_ITEM_TITLES: Record<string, string> = { dem10: 'ground height (10 m)', canopy: 'tree canopy', vegetation: 'vegetation map', fireHistory: 'fire history', weather: 'weather forecast', daily: 'rainfall history', context: 'roads, homes and places' };
+
+/**
+ * The saved area pack(s) this scenario read, as one record: pack size, what it contains, when it was saved (sizes are
+ * counted under the data sets that read them). Null when no pack was used.
+ */
+export function packRecord(i: { now: number; centre: LatLon; extentM: number; packs: readonly AreaPackMeta[]; used: readonly string[]; ledger: DatasetLedger }): DatasetRecord | null {
+  const packs = i.packs.filter((p) => i.used.includes(p.name));
+  if (!packs.length) return null;
+  const parts: DatasetPart[] = [];
+  const stats: DatasetStat[] = [];
+  for (const p of packs) {
+    const tiles = p.itemNames.filter((n) => n.startsWith('terrarium/'));
+    const other = p.itemNames.filter((n) => !n.startsWith('terrarium/'));
+    for (const n of other) parts.push({ label: `${p.name}: ${PACK_ITEM_TITLES[n] ?? n}`, ...(p.itemBytes?.[n] !== undefined ? { bytes: p.itemBytes[n] } : {}), origin: 'area-pack' });
+    if (tiles.length) parts.push({ label: `${p.name}: terrain tiles`, count: tiles.length, bytes: tiles.reduce((a, n) => a + (p.itemBytes?.[n] ?? 0), 0), origin: 'area-pack' });
+    stats.push(textStat(`Pack '${p.name}'`, `${formatBytes(p.bytes)}, saved ${day(p.createdAt)}, ${(p.extent / 1000).toFixed(p.extent % 1000 ? 1 : 0)} km square`), textStat(`Pack '${p.name}' holds`, [...other.map((n) => PACK_ITEM_TITLES[n] ?? n), ...(tiles.length ? [`${tiles.length} terrain tiles`] : [])].join(', ') || 'nothing'));
+  }
+  const oldest = Math.min(...packs.map((p) => p.createdAt));
+  const t = i.ledger.totals();
+  stats.push(stat('Read from packs for this scenario', t.packBytes / 1000, 'kB', 0));
+  return skeleton({
+    id: 'area-pack',
+    role: 'pack',
+    title: `Saved area pack${packs.length > 1 ? 's' : ''}: ${packs.map((p) => p.name).join(', ')}`,
+    what: 'Data you downloaded earlier and saved on this device for use with no signal.',
+    why: 'Lets the scenario be built offline from real data instead of substitutes.',
+    provider: PROVIDERS.app,
+    licence: { name: 'Each item keeps the licence of the service it came from (see the data sets)' },
+    attribution: ATTRIBUTION.app,
+    format: 'Items stored in the app database (IndexedDB)',
+    kind: 'table',
+    status: 'used',
+    origin: 'area-pack',
+    originDetail: `Saved ${day(oldest)}`,
+    vintage: { retrievedAt: oldest, retrievedBasis: 'stored-copy', capturedNote: 'Each item is a copy of its service as it was on the day the pack was saved; it is not refreshed until you save the pack again.' },
+    extent: extentOf(i.centre, i.extentM),
+    coverage: { fraction: 1 },
+    sizes: { transferredBytes: 0, networkBytes: 0, cachedBytes: 0, requests: 0, storedOnDeviceBytes: packs.reduce((a, p) => a + p.bytes, 0) },
+    stats,
+    evidence: { level: 'measured', note: 'Copies of the services’ data on the day the pack was saved.' },
+    limitations: ['A saved pack ages: a forecast in it is stale after 6 hours, and fires, roads and homes since the save are not in it.'],
     parts,
   });
 }

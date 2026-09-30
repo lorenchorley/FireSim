@@ -57,6 +57,14 @@ export function modelWording(model: string | undefined): { short: string; long: 
 
 const OM_SOURCE = endpoint('api.open-meteo.com', '/v1/forecast', 'forecast, past_days up to 92');
 
+/**
+ * The daily archive request names no model (openMeteo.ts archiveDailyUrl), so Open-Meteo answers with its default: its
+ * documentation (historical-weather-api, read 2026-09-30) says "Best Match combines IFS HRES, ERA5 and ERA5-Land
+ * seamlessly" and that "data from 2017 onwards uses newer weather models with 9 km resolution". Nothing more is claimed.
+ */
+const ARCHIVE_MODEL_NOTE = "Open-Meteo’s historical weather archive, asked without a model, answers with its default ‘best match’, which combines the ECMWF IFS analysis (9 km, from 2017) with the ERA5 (about 25 km) and ERA5-Land reanalyses; the response does not say which one supplied which days.";
+const ARCHIVE_SERVICE_NOTE = "daily rain and temperature, the archive's default 'best match' (IFS HRES, ERA5, ERA5-Land)";
+
 /** Bytes of the pressure-level variables in a shared download: their share of the variables received. */
 export function upperAirShare(w: ResolvedWeather): number {
   const d = w.detail;
@@ -201,7 +209,16 @@ export function weatherRecord(i: WeatherInputs): DatasetRecord {
   else limitations.push('A forecast is one possible future; it changes with each model run and is only as good as the run it came from. The model run time is not reported in the response, so the app shows when it downloaded the data.');
   const base = sizesOf(t, { records: series.hours.length, durationMs: i.timings.weather });
   const upperBytes = Math.round(base.transferredBytes * share);
-  const sizes = { ...base, transferredBytes: base.transferredBytes - upperBytes, networkBytes: Math.max(0, base.networkBytes - Math.round(base.networkBytes * share)), cachedBytes: Math.max(0, base.cachedBytes - Math.round(base.cachedBytes * share)), ...(base.storedOnDeviceBytes ? { storedOnDeviceBytes: Math.round(base.storedOnDeviceBytes * (1 - share)) } : {}) };
+  const keep = (v: number | undefined): number | undefined => (v === undefined ? undefined : Math.max(0, v - Math.round(v * share)));
+  const sizes = {
+    ...base,
+    transferredBytes: base.transferredBytes - upperBytes,
+    networkBytes: keep(base.networkBytes)!,
+    cachedBytes: keep(base.cachedBytes)!,
+    ...(base.networkDecodedBytes !== undefined ? { networkDecodedBytes: keep(base.networkDecodedBytes)! } : {}),
+    ...(base.networkUnmeasuredBytes !== undefined ? { networkUnmeasuredBytes: keep(base.networkUnmeasuredBytes)! } : {}),
+    ...(base.storedOnDeviceBytes ? { storedOnDeviceBytes: Math.round(base.storedOnDeviceBytes * (1 - share)) } : {}),
+  };
   return skeleton({
     ...common,
     title: historical ? 'Weather (past date)' : 'Weather forecast',
@@ -291,12 +308,14 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
     extent: extentOf(i.centre, i.extentM),
   };
   if (u.source === 'preset') {
+    const standIn = w.origin === 'fallback';
     return skeleton({
       ...common,
       provider: PROVIDERS.app,
       licence: LICENCES.app,
       attribution: ATTRIBUTION.app,
-      status: 'used',
+      status: standIn ? 'fallback' : 'used',
+      ...(standIn ? { fallbackReason: 'Comes with the stand-in preset weather: no forecast profile could be had.' } : {}),
       origin: 'preset',
       vintage: { retrievedAt: i.now, retrievedBasis: 'generated' },
       coverage: { fraction: 1 },
@@ -307,8 +326,9 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
     });
   }
   if (u.source === 'model') {
-    const live = w.origin === 'network' || !u.sameResponse;
-    const origin: DatasetOrigin = u.sameResponse ? (w.origin === 'network' ? 'live' : w.origin === 'pack' ? 'area-pack' : 'cache') : live ? 'live' : 'cache';
+    // A separate profile request can itself be answered by a stored copy (offline, or a fresh cache): the ledger says.
+    const sepOrigin: DatasetOrigin = t.newestNetworkAt > 0 ? 'live' : t.bySource.cache + t.bySource.stale > 0 ? 'cache' : t.bySource.pack > 0 ? 'area-pack' : 'live';
+    const origin: DatasetOrigin = u.sameResponse ? (w.origin === 'network' ? 'live' : w.origin === 'pack' ? 'area-pack' : 'cache') : sepOrigin;
     const m = modelWording(u.sameResponse ? d.model : u.model);
     const base = sizesOf(t, { records: series.hours.length });
     return skeleton({
@@ -318,14 +338,24 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
       attribution: ATTRIBUTION.openMeteo,
       status: 'used',
       origin,
-      originDetail: u.sameResponse ? `From the same download as the weather (${m.short})` : `A separate request to ${u.model ?? 'a profile model'}`,
-      vintage: { retrievedAt: u.sameResponse ? d.fetchedAt : t.newestNetworkAt || i.now, retrievedBasis: origin === 'live' ? 'this-build' : 'stored-copy' },
+      originDetail: u.sameResponse ? `From the same download as the weather (${m.short})` : `A separate request to ${u.model ?? 'a profile model'}${origin === 'live' ? '' : ' (stored copy)'}`,
+      vintage: { retrievedAt: u.sameResponse ? d.fetchedAt : origin === 'live' ? t.newestNetworkAt || i.now : t.oldestCachedAt || d.fetchedAt, retrievedBasis: origin === 'live' ? 'this-build' : 'stored-copy' },
       crs: { native: 'Grid point of a global model, pressure levels', toModel: 'Heights above sea level converted to heights above the ground at the domain centre; interpolated in time.' },
       coverage: { fraction: 1, note: 'One profile applies over the whole area.' },
       native: { records: series.hours.length, note: `${u.levels} pressure levels x 5 variables (temperature, humidity, wind speed, wind direction, geopotential height).` },
       model: { records: series.hours.length, resampling: 'interpolate-in-time' },
       sizes: u.sameResponse
-        ? { ...base, transferredBytes: sharedBytes, networkBytes: w.origin === 'network' ? Math.round(shared.networkBytes * share) : 0, cachedBytes: Math.round(shared.cacheBytes * share), requests: 0, records: series.hours.length }
+        ? {
+            ...base,
+            transferredBytes: sharedBytes,
+            networkBytes: w.origin === 'network' ? Math.round(shared.networkBytes * share) : 0,
+            ...(w.origin === 'network' && shared.networkBodyBytes > 0 && shared.networkBodyBytes !== shared.networkBytes ? { networkDecodedBytes: Math.round(shared.networkBodyBytes * share) } : {}),
+            ...(w.origin === 'network' && shared.networkUnmeasuredBytes > 0 ? { networkUnmeasuredBytes: Math.round(shared.networkUnmeasuredBytes * share) } : {}),
+            cachedBytes: Math.round(shared.cacheBytes * share),
+            ...(shared.storedBytes > 0 ? { storedOnDeviceBytes: Math.round(shared.storedBytes * share) } : {}),
+            requests: 0,
+            records: series.hours.length,
+          }
         : base,
       endpoints: u.sameResponse ? [] : endpointsOf(ledger, [UPPER_AIR_TAG]),
       sourceServices: [endpoint('api.open-meteo.com', '/v1/forecast', u.sameResponse ? 'pressure-level variables of the weather request' : `models=${u.model ?? ''}, pressure levels only`)],
@@ -375,13 +405,17 @@ export function droughtRecord(i: WeatherInputs): DatasetRecord {
   };
   const stats = ds.stats;
   if (kind === 'preset' || kind === 'manual') {
+    // With a stand-in preset (a forecast was asked for but none could be had) its drought values are a substitute too.
+    const standIn = kind === 'preset' && i.weather.origin === 'fallback';
     return skeleton({
       ...common,
+      what: kind === 'preset' ? 'The Keetch-Byram Drought Index and drought factor that come with the designed weather day (no rainfall history is read).' : 'The drought factor you entered (the Keetch-Byram Drought Index is inferred from it).',
       provider: kind === 'preset' ? PROVIDERS.app : PROVIDERS.user,
       licence: kind === 'preset' ? LICENCES.app : LICENCES.user,
       attribution: kind === 'preset' ? ATTRIBUTION.app : 'Entered by the user',
-      status: kind === 'preset' ? 'used' : 'user',
+      status: kind === 'preset' ? (standIn ? 'fallback' : 'used') : 'user',
       origin: kind === 'preset' ? 'preset' : 'user',
+      ...(standIn ? { fallbackReason: 'No rainfall history could be read, so the drought values of the stand-in preset are used.' } : {}),
       vintage: { retrievedAt: i.now, retrievedBasis: 'generated' },
       coverage: { fraction: 1 },
       sizes: sizesOf(t),
@@ -401,16 +435,16 @@ export function droughtRecord(i: WeatherInputs): DatasetRecord {
       status: 'used',
       origin: 'bundled',
       originDetail: 'Bundled 365-day rainfall file of the replay',
-      vintage: vintageFor('bundled', t, i.now, { capturedNote: 'ERA5 reanalysis daily values for the 365 days before the fire day.', bundleCapturedOn: f ? i.bundle?.replays.files[f.path.replace(/^.*\//, '')]?.capturedOn : undefined }),
+      vintage: vintageFor('bundled', t, i.now, { capturedNote: `Daily values for the 365 days before the fire day, downloaded by the developers. ${ARCHIVE_MODEL_NOTE}`, bundleCapturedOn: f ? i.bundle?.replays.files[f.path.replace(/^.*\//, '')]?.capturedOn : undefined }),
       coverage: { fraction: 1 },
       native: { records: info?.dailyDays },
       sizes: sizesOf(t, { records: info?.dailyDays }),
-      sourceServices: [endpoint('archive-api.open-meteo.com', '/v1/archive', 'ERA5 daily rain and temperature')],
+      sourceServices: [endpoint('archive-api.open-meteo.com', '/v1/archive', ARCHIVE_SERVICE_NOTE)],
       endpoints: endpointsOf(ledger, [DROUGHT_TAG]),
       stats: [...stats, textStat('Usual yearly rainfall from', 'a table kept by the app (approximate, not from the Bureau of Meteorology)')],
-      evidence: { level: 'modelled', note: 'Reanalysis rainfall (about 25 km) is smooth over mountains; the usual yearly rainfall is a table of approximate values.', specRef: 'docs/research/00-synthesis.md §5.7' },
+      evidence: { level: 'modelled', note: 'Model rainfall (9 to 25 km analysis and reanalysis) is smooth over mountains; the usual yearly rainfall is a table of approximate values.', specRef: 'docs/research/00-synthesis.md §5.7' },
       warnings: [...i.warnings.drought],
-      limitations: ['Reanalysis rain is smoothed over mountains: escarpments can get much more than the series shows.', "The usual yearly rainfall for demo sites is a hand-kept table of approximations of climate averages (marked UNVERIFIED in the spec)."],
+      limitations: ['Model rain (9 to 25 km cells) is smoothed over mountains: escarpments can get much more than the series shows.', "The usual yearly rainfall for demo sites is a hand-kept table of approximations of climate averages (marked UNVERIFIED in the spec)."],
       parts: f ? [{ label: f.path.replace(/^.*\//, ''), bytes: f.bytes, origin: 'bundled' }] : [],
     });
   }
@@ -422,7 +456,12 @@ export function droughtRecord(i: WeatherInputs): DatasetRecord {
       attribution: ATTRIBUTION.app,
       status: 'fallback',
       origin: 'synthetic',
-      fallbackReason: `No rainfall history was available, so the defaults are used: drought factor ${SCENARIO_PARAMS.defaultDf}, KBDI ${SCENARIO_PARAMS.defaultKbdi}.`,
+      fallbackReason: `${
+        info?.dailyDays
+          ? `Only ${info.dailyDays} days of rainfall history could be read (the drought index needs at least ${SCENARIO_PARAMS.minHistoryDays}), so the defaults are used: drought factor ${SCENARIO_PARAMS.defaultDf}, KBDI ${SCENARIO_PARAMS.defaultKbdi}. The days read still set the recent rain for fuel moisture.`
+          : `No rainfall history was available, so the defaults are used: drought factor ${SCENARIO_PARAMS.defaultDf}, KBDI ${SCENARIO_PARAMS.defaultKbdi}.`
+      }${info?.archiveFailure ? ` The year of daily rain could not be downloaded: ${info.archiveFailure}.` : ''}`,
+      endpoints: endpointsOf(ledger, [DROUGHT_TAG]),
       vintage: { retrievedAt: i.now, retrievedBasis: 'generated' },
       coverage: { fraction: 0, filledBy: 'default drought values', filledOrigin: 'synthetic' },
       sizes: sizesOf(t),
@@ -448,20 +487,20 @@ export function droughtRecord(i: WeatherInputs): DatasetRecord {
     vintage: {
       retrievedAt: info.fetchedAt ?? t.newestNetworkAt ?? i.now,
       retrievedBasis: origin === 'live' ? 'this-build' : 'stored-copy',
-      capturedNote: 'ERA5 reanalysis daily values; the archive lags by about 5 days, so the last days come from the forecast.',
+      capturedNote: `${ARCHIVE_MODEL_NOTE} The archive lags by about 5 days, so the last days come from the forecast.`,
     },
-    crs: { native: 'Grid point of the ERA5 reanalysis (about 25 km)', toModel: 'One point series; the drought indices apply over the whole area.' },
+    crs: { native: 'Grid point of Open-Meteo’s historical weather archive (9 to 25 km, see the capture note)', toModel: 'One point series; the drought indices apply over the whole area.' },
     coverage: { fraction: 1, note: 'One point series is applied over the whole area.' },
     native: { records: info.dailyDays, channels: ['precipitation_sum', 'temperature_2m_max', 'temperature_2m_min'] },
     model: { records: info.dailyDays, resampling: 'none', note: 'KBDI is run day by day; the drought factor also uses the last 20 days of rain.' },
     sizes: sizesOf(t, { records: info.dailyDays, durationMs: i.timings.drought }),
     endpoints: endpointsOf(ledger, [DROUGHT_TAG]),
-    sourceServices: [endpoint('archive-api.open-meteo.com', '/v1/archive', 'ERA5 daily rain and temperature')],
+    sourceServices: [endpoint('archive-api.open-meteo.com', '/v1/archive', ARCHIVE_SERVICE_NOTE)],
     stats: [...stats, textStat('Usual yearly rainfall from', info.annualRainfallSource ?? 'n/a')],
-    evidence: { level: 'modelled', note: 'ERA5 reanalysis rainfall (about 25 km); KBDI and the drought factor are calculated from it.', specRef: 'docs/research/00-synthesis.md §5.7, §5.8' },
+    evidence: { level: 'modelled', note: 'Model rainfall from Open-Meteo’s historical archive (analysis and reanalysis, 9 to 25 km); KBDI and the drought factor are calculated from it.', specRef: 'docs/research/00-synthesis.md §5.7, §5.8' },
     warnings: [...i.warnings.drought],
     limitations: [
-      'Reanalysis rain is smooth over mountains: escarpments can get much more than the series shows, so drought may be overstated in a wet gully.',
+      'Model rain (9 to 25 km cells) is smooth over mountains: escarpments can get much more than the series shows, so drought may be overstated in a wet gully.',
       ...(info.annualRainfallKind === 'demo-table' ? ['The usual yearly rainfall comes from a table of approximate values kept by the app.'] : []),
       ...(info.annualRainfallKind === 'estimated' ? ['The usual yearly rainfall is unknown: 1.25 times the last year’s rain is used.'] : []),
     ],

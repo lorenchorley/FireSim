@@ -39,7 +39,9 @@ export type DatasetRole =
   | 'derived'
   | 'user'
   /** The bundled demo-site package as a whole (files shipped with the app). */
-  | 'bundle';
+  | 'bundle'
+  /** A saved area pack as a whole (downloaded by the user for offline use). */
+  | 'pack';
 
 /** The shape of the data. */
 export type DatasetKind = 'raster' | 'vector' | 'points' | 'table' | 'timeseries' | 'synthetic' | 'derived';
@@ -103,13 +105,14 @@ export const DATASET_IDS = [
   'fuel-moisture',
   'user-edits',
   'bundled-site',
+  'area-pack',
 ] as const;
 export type KnownDatasetId = (typeof DATASET_IDS)[number];
 /** A data set id: one of {@link DATASET_IDS} or any other stable lower-case string. */
 export type DatasetId = KnownDatasetId | (string & {});
 
 /** Order of the ROLES on screen and in exports. */
-export const ROLE_ORDER: readonly DatasetRole[] = ['terrain', 'imagery', 'vegetation', 'canopy', 'fuel', 'fireHistory', 'weather', 'upperAir', 'context', 'derived', 'user', 'bundle'];
+export const ROLE_ORDER: readonly DatasetRole[] = ['terrain', 'imagery', 'vegetation', 'canopy', 'fuel', 'fireHistory', 'weather', 'upperAir', 'context', 'derived', 'user', 'bundle', 'pack'];
 
 /** Plain-English group titles. */
 export const ROLE_TITLES: Readonly<Record<DatasetRole, string>> = Object.freeze({
@@ -125,6 +128,7 @@ export const ROLE_TITLES: Readonly<Record<DatasetRole, string>> = Object.freeze(
   derived: 'Worked out by the app',
   user: 'Your input',
   bundle: 'Bundled with the app',
+  pack: 'Saved for offline use',
 });
 
 export const STATUS_TITLES: Readonly<Record<DatasetStatus, string>> = Object.freeze({
@@ -254,8 +258,23 @@ export interface DatasetModelInfo extends DatasetGridInfo {
 export interface DatasetSizes {
   /** Bytes obtained for this build from every source: network + stored copies + packs + bundled files. */
   transferredBytes: number;
-  /** The part of `transferredBytes` that crossed the network in this build (0 for bundled/stored data). */
+  /**
+   * The part of `transferredBytes` that crossed the network in this build (0 for bundled/stored data): the bytes ON THE
+   * WIRE (compressed) where the platform reports them (Content-Length, or the browser's / Node's resource timing), else
+   * the decoded size, counted in {@link DatasetSizes.networkUnmeasuredBytes}.
+   */
   networkBytes: number;
+  /**
+   * Decoded (uncompressed) size of what came over the network, present when it differs from `networkBytes` (the service
+   * compressed its answers, e.g. ArcGIS and Open-Meteo JSON 4 to 8 times). Planned estimates are in these terms.
+   */
+  networkDecodedBytes?: number;
+  /**
+   * Part of `networkBytes` whose size on the wire was NOT reported (a compressed answer without Content-Length on a
+   * platform without resource timing, e.g. the native HTTP plugin on the device, or a cross-origin answer in a browser):
+   * the decoded size is counted instead, so the real download was this much or less.
+   */
+  networkUnmeasuredBytes?: number;
   /** The part of `transferredBytes` read from the app's stored copies (IndexedDB) or a saved area pack. */
   cachedBytes: number;
   /** Bytes after decompression / decoding (JSON text, raster pixels) when measured. */
@@ -335,7 +354,11 @@ export interface DatasetPlan {
   /** The data set can be had with no signal (bundled, saved area pack, stored copy). */
   offlineOk: boolean;
   offlineNote: string;
-  /** Bytes that would have to come over the network (0 when bundled or stored). */
+  /**
+   * Bytes that would have to come over the network (0 when bundled or stored), as the UNCOMPRESSED answers (the typical
+   * sizes were measured decoded): services that compress their answers (ArcGIS, Open-Meteo JSON) send 4 to 8 times fewer
+   * bytes, so this is an upper bound. Compare it with {@link DatasetSizes.networkDecodedBytes} of a built record.
+   */
   networkBytes: number;
   /** A stored copy or area pack for this place already exists. */
   onDevice: boolean;
@@ -488,6 +511,9 @@ export interface DatasetSummary {
     byStatus: Record<DatasetStatus, number>;
     transferredBytes: number;
     networkBytes: number;
+    /** Sums of {@link DatasetSizes.networkDecodedBytes} (falling back to `networkBytes`) and {@link DatasetSizes.networkUnmeasuredBytes}. */
+    networkDecodedBytes?: number;
+    networkUnmeasuredBytes?: number;
     cachedBytes: number;
     requests: number;
     /** Typed-array memory of the data sets (main + worker copies). */
@@ -531,7 +557,7 @@ export function formatBytes(bytes: number | undefined | null): string {
   return `${(Math.round(v * 10) / 10).toFixed(1)} ${units[u]}`;
 }
 
-/** A count with thousands separators ("7 368"). Non-finite gives "0". */
+/** A count with a thin space (U+2009) between thousands, as in Australian style guides ("7 368"). Non-finite gives "0". */
 export function formatCount(n: number | undefined | null): string {
   if (!isNum(n)) return '0';
   const s = Math.round(n).toString();
@@ -542,6 +568,7 @@ export function formatCount(n: number | undefined | null): string {
 export function formatPercent(fraction: number | undefined | null): string {
   if (!isNum(fraction)) return '0 %';
   const p = fraction * 100;
+  if (p === 0) return '0 %';
   if (p !== 0 && Math.abs(p) < 0.1) return '<0.1 %';
   if (Math.abs(p) < 10) return `${(Math.round(p * 10) / 10).toFixed(1)} %`;
   return `${Math.round(p)} %`;
@@ -662,6 +689,7 @@ export function creditLines(records: readonly DatasetRecord[] | undefined, ids?:
     if (ids && !ids.includes(r.id)) continue;
     if (r.status !== 'used' && r.status !== 'partial') continue;
     if (r.origin === 'synthetic' || r.origin === 'preset' || r.origin === 'user' || r.origin === 'derived') continue;
+    if (r.role === 'bundle' || r.role === 'pack' || r.role === 'derived' || r.role === 'user') continue; // the app's own packaging and results
     const a = r.attribution.trim();
     if (a && !out.includes(a)) out.push(a);
   }
@@ -687,12 +715,15 @@ export function imageryCredit(records: readonly DatasetRecord[] | undefined): st
  * arrays, Maps and Sets, depth-first, up to `maxDepth` levels. `skip` holds objects not to enter (and whose buffers are
  * not counted), e.g. the scenario a simulation references. `byKey` adds up the bytes under each own key of the root.
  * Pure and bounded (visits each object once); used for the scenario's memory, the simulation's measured memory
- * (sim/simulation.ts `memoryReport`) and the memory-model tests.
+ * (sim/simulation.ts `memoryReport`) and the memory-model tests. Pass the same `counted` set to several calls to split one
+ * graph into parts (each buffer goes to the first part that reaches it).
  */
-export function typedArrayFootprint(root: unknown, opts: { skip?: Iterable<unknown>; maxDepth?: number } = {}): { bytes: number; buffers: number; byKey: Record<string, number> } {
+export function typedArrayFootprint(root: unknown, opts: { skip?: Iterable<unknown>; maxDepth?: number; counted?: Set<unknown> } = {}): { bytes: number; buffers: number; byKey: Record<string, number> } {
   const skip = new Set<unknown>(opts.skip ?? []);
   const seen = new Set<unknown>();
-  const buffers = new Set<unknown>();
+  // `counted` (shared between calls) lets several walks split one object graph without counting a buffer twice.
+  const buffers = opts.counted ?? new Set<unknown>();
+  const before = buffers.size;
   const skipBuffers = new Set<unknown>();
   const maxDepth = opts.maxDepth ?? 16;
   const byKey: Record<string, number> = {};
@@ -731,17 +762,16 @@ export function typedArrayFootprint(root: unknown, opts: { skip?: Iterable<unkno
     }
     if (seen.has(v) || d > maxDepth) continue;
     seen.add(v);
-    if (v instanceof Map) {
-      for (const [k, x] of v) stack.push([x, key || String(k), d + 1]);
-    } else if (v instanceof Set) {
-      for (const x of v) stack.push([x, key, d + 1]);
-    } else if (Array.isArray(v)) {
-      for (let i = 0; i < v.length; i++) stack.push([v[i], key, d + 1]);
-    } else {
-      for (const k of Object.keys(v)) stack.push([(v as Record<string, unknown>)[k], key || k, d + 1]);
-    }
+    // Children are pushed in reverse so they are visited in their natural order (a shared buffer is counted under the
+    // first key that reaches it).
+    const kids: [unknown, string][] = [];
+    if (v instanceof Map) for (const [k, x] of v) kids.push([x, key || String(k)]);
+    else if (v instanceof Set) for (const x of v) kids.push([x, key]);
+    else if (Array.isArray(v)) for (let i = 0; i < v.length; i++) kids.push([v[i], key]);
+    else for (const k of Object.keys(v)) kids.push([(v as Record<string, unknown>)[k], key || k]);
+    for (let i = kids.length - 1; i >= 0; i--) stack.push([kids[i]![0], kids[i]![1], d + 1]);
   }
-  return { bytes, buffers: buffers.size, byKey };
+  return { bytes, buffers: buffers.size - before, byKey };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,6 +797,8 @@ export function summariseDatasets(records: readonly DatasetRecord[], input: Summ
   const byStatus: Record<DatasetStatus, number> = { used: 0, partial: 0, fallback: 0, unavailable: 0, skipped: 0, user: 0 };
   let transferred = 0;
   let network = 0;
+  let networkDecoded = 0;
+  let unmeasured = 0;
   let cached = 0;
   let requests = 0;
   let memory = 0;
@@ -775,6 +807,8 @@ export function summariseDatasets(records: readonly DatasetRecord[], input: Summ
     byStatus[r.status]++;
     transferred += r.sizes.transferredBytes;
     network += r.sizes.networkBytes;
+    networkDecoded += r.sizes.networkDecodedBytes ?? r.sizes.networkBytes;
+    unmeasured += r.sizes.networkUnmeasuredBytes ?? 0;
     cached += r.sizes.cachedBytes;
     requests += r.sizes.requests;
     memory += r.sizes.memoryBytes ?? 0;
@@ -810,13 +844,91 @@ export function summariseDatasets(records: readonly DatasetRecord[], input: Summ
     builtAt: input.builtAt,
     buildDurationMs: input.buildDurationMs,
     model: input.model,
-    totals: { count: records.length, byStatus, transferredBytes: transferred, networkBytes: network, cachedBytes: cached, requests, memoryBytes: memory, storedBytes: stored, cellShareByOrigin: share },
+    totals: {
+      count: records.length,
+      byStatus,
+      transferredBytes: transferred,
+      networkBytes: network,
+      ...(networkDecoded !== network ? { networkDecodedBytes: networkDecoded } : {}),
+      ...(unmeasured > 0 ? { networkUnmeasuredBytes: unmeasured } : {}),
+      cachedBytes: cached,
+      requests,
+      memoryBytes: memory,
+      storedBytes: stored,
+      cellShareByOrigin: share,
+    },
     fallbacks,
     warnings,
     reproduce: input.reproduce,
   };
   if (input.workingMemory) out.workingMemory = input.workingMemory;
   return out;
+}
+
+/**
+ * Problems with a list of records (empty = sound): missing required fields, negative or fractional byte counts,
+ * transferred bytes smaller than the network + stored parts, a coverage outside 0-1, duplicate ids, a substitute
+ * without a reason, a query string in an endpoint, and 'NaN' / 'undefined' / 'Infinity' in any text. For tests, mock
+ * data and the screen's debug view.
+ */
+export function datasetIssues(records: readonly DatasetRecord[]): string[] {
+  const out: string[] = [];
+  const ids = new Set<string>();
+  const intOk = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  for (const r of records) {
+    const at = `${r?.id ?? '?'}`;
+    if (!r || typeof r !== 'object') {
+      out.push('a record is not an object');
+      continue;
+    }
+    if (ids.has(r.id)) out.push(`${at}: duplicate id`);
+    ids.add(r.id);
+    for (const k of ['id', 'title', 'what', 'why', 'attribution', 'format'] as const) if (typeof r[k] !== 'string' || !(r[k] as string).trim()) out.push(`${at}: '${k}' is empty`);
+    if (!ROLE_ORDER.includes(r.role)) out.push(`${at}: unknown role '${r.role}'`);
+    if (!(r.status in STATUS_TITLES)) out.push(`${at}: unknown status '${r.status}'`);
+    if (!(r.origin in ORIGIN_TITLES)) out.push(`${at}: unknown origin '${r.origin}'`);
+    if (!(r.evidence?.level in EVIDENCE_TITLES) || !r.evidence?.note) out.push(`${at}: evidence missing`);
+    if (!r.provider?.name) out.push(`${at}: provider missing`);
+    if (!r.licence?.name) out.push(`${at}: licence missing`);
+    if (!Array.isArray(r.endpoints) || !Array.isArray(r.sourceServices) || !Array.isArray(r.stats) || !Array.isArray(r.warnings) || !Array.isArray(r.limitations)) out.push(`${at}: a list field is missing`);
+    const z = r.sizes;
+    if (!z) out.push(`${at}: sizes missing`);
+    else {
+      for (const k of ['transferredBytes', 'networkBytes', 'cachedBytes', 'requests'] as const) if (!intOk(z[k])) out.push(`${at}: sizes.${k} = ${String(z[k])}`);
+      for (const k of ['decodedBytes', 'memoryBytes', 'storedOnDeviceBytes', 'networkDecodedBytes', 'networkUnmeasuredBytes'] as const) if (z[k] !== undefined && !intOk(z[k])) out.push(`${at}: sizes.${k} = ${String(z[k])}`);
+      if (intOk(z.networkBytes) && z.networkUnmeasuredBytes !== undefined && z.networkUnmeasuredBytes > z.networkBytes) out.push(`${at}: unmeasured network bytes exceed the network bytes`);
+      // (Network bytes may exceed the transferred bytes: a failed or retried request crossed the network but delivered nothing.)
+      if (intOk(z.transferredBytes) && z.cachedBytes > z.transferredBytes) out.push(`${at}: stored-copy bytes exceed transferred bytes`);
+    }
+    if (!r.coverage || !(r.coverage.fraction >= 0 && r.coverage.fraction <= 1)) out.push(`${at}: coverage outside 0-1`);
+    if (!r.vintage || !(r.vintage.retrievedAt >= 0)) out.push(`${at}: vintage.retrievedAt missing`);
+    if ((r.status === 'fallback' || r.status === 'unavailable' || r.status === 'partial') && !(r.fallbackReason || r.coverage?.note || r.coverage?.filledBy)) out.push(`${at}: ${r.status} without a reason`);
+    for (const e of [...(r.endpoints ?? []), ...(r.sourceServices ?? [])]) if (/[?#&=]/.test(e.path) || /[?#@]/.test(e.host)) out.push(`${at}: endpoint with a query or credentials: ${e.host}${e.path}`);
+    const text = JSON.stringify(r);
+    const bad = /(^|[^A-Za-z])(NaN|undefined|Infinity)([^A-Za-z]|$)/.exec(text);
+    if (bad) out.push(`${at}: text contains '${bad[2]}'`);
+  }
+  return out;
+}
+
+/** The records with `record` added, or replacing the one with the same id (a new array; canonical order). */
+export function upsertDataset(records: readonly DatasetRecord[] | undefined, record: DatasetRecord): DatasetRecord[] {
+  return sortDatasets([...(records ?? []).filter((r) => r.id !== record.id), record]);
+}
+
+/** The summary re-totalled over `records` (same scenario, model, reproduce recipe and working memory). */
+export function resummarise(summary: DatasetSummary, records: readonly DatasetRecord[]): DatasetSummary {
+  return summariseDatasets(records, {
+    scenarioId: summary.scenarioId,
+    scenarioName: summary.scenarioName,
+    seed: summary.seed,
+    builtAt: summary.builtAt,
+    buildDurationMs: summary.buildDurationMs,
+    model: summary.model,
+    warnings: summary.warnings,
+    reproduce: summary.reproduce,
+    ...(summary.workingMemory ? { workingMemory: summary.workingMemory } : {}),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -868,7 +980,7 @@ export function datasetsToCsv(records: readonly DatasetRecord[], opts: { stats?:
   rows.push(
     csvRow([
       'id', 'role', 'title', 'status', 'origin', 'origin_detail', 'provider', 'licence', 'attribution', 'format', 'kind',
-      'transferred_bytes', 'network_bytes', 'cached_bytes', 'decoded_bytes', 'memory_bytes', 'stored_bytes', 'requests',
+      'transferred_bytes', 'network_bytes', 'network_decoded_bytes', 'network_unmeasured_bytes', 'cached_bytes', 'decoded_bytes', 'memory_bytes', 'stored_bytes', 'requests',
       'coverage_percent', 'native_resolution_m', 'model_resolution_m', 'resampling', 'captured_on', 'retrieved_at', 'evidence',
       'fallback_reason', 'warnings', 'endpoints',
     ]),
@@ -877,7 +989,7 @@ export function datasetsToCsv(records: readonly DatasetRecord[], opts: { stats?:
     rows.push(
       csvRow([
         r.id, r.role, r.title, r.status, r.origin, r.originDetail, r.provider.name, r.licence.name, r.attribution, r.format, r.kind,
-        r.sizes.transferredBytes, r.sizes.networkBytes, r.sizes.cachedBytes, r.sizes.decodedBytes, r.sizes.memoryBytes, r.sizes.storedOnDeviceBytes, r.sizes.requests,
+        r.sizes.transferredBytes, r.sizes.networkBytes, r.sizes.networkDecodedBytes, r.sizes.networkUnmeasuredBytes, r.sizes.cachedBytes, r.sizes.decodedBytes, r.sizes.memoryBytes, r.sizes.storedOnDeviceBytes, r.sizes.requests,
         Math.round(r.coverage.fraction * 1000) / 10, r.native?.resolutionM, r.model?.resolutionM, r.model?.resampling, r.vintage.capturedOn,
         r.vintage.retrievedAt > 0 ? new Date(r.vintage.retrievedAt).toISOString() : '', r.evidence.level,
         r.fallbackReason, r.warnings.join(' | '), r.endpoints.map((e) => `${e.host}${e.path}`).join(' | '),
@@ -888,6 +1000,14 @@ export function datasetsToCsv(records: readonly DatasetRecord[], opts: { stats?:
 }
 
 const line = (label: string, value: string | undefined): string => (value ? `   ${label}: ${value}` : '');
+
+/** ' (1.2 MB uncompressed)' / ' (of which 300 KB counted uncompressed: ...)' after a network figure; '' when nothing to say. */
+function networkNote(z: { networkBytes: number; networkDecodedBytes?: number; networkUnmeasuredBytes?: number }): string {
+  const parts: string[] = [];
+  if (z.networkDecodedBytes !== undefined && formatBytes(z.networkDecodedBytes) !== formatBytes(z.networkBytes)) parts.push(`${formatBytes(z.networkDecodedBytes)} uncompressed`);
+  if (z.networkUnmeasuredBytes) parts.push(z.networkUnmeasuredBytes >= z.networkBytes ? 'at most: the compressed size was not reported' : `${formatBytes(z.networkUnmeasuredBytes)} of it counted uncompressed, the compressed size was not reported`);
+  return parts.length ? ` (${parts.join('; ')})` : '';
+}
 
 /** Plain-text report for sharing (no markup). */
 export function datasetsToText(records: readonly DatasetRecord[], summary?: DatasetSummary | null): string {
@@ -901,7 +1021,7 @@ export function datasetsToText(records: readonly DatasetRecord[], summary?: Data
     add(`Scenario ${summary.scenarioId}, seed ${summary.seed}`);
     add(`Built ${isoDateTime(summary.builtAt)} in ${formatDuration(summary.buildDurationMs)}`);
     add(`Model: ${formatCount(m.nx)} x ${formatCount(m.ny)} cells of ${m.cellSizeM} m (${(m.extentM / 1000).toFixed(m.extentM % 1000 ? 1 : 0)} km square)`);
-    add(`Data obtained: ${formatBytes(summary.totals.transferredBytes)} (${formatBytes(summary.totals.networkBytes)} over the network, ${formatBytes(summary.totals.cachedBytes)} from stored copies, the rest from files shipped with the app), ${formatCount(summary.totals.requests)} ${summary.totals.requests === 1 ? 'request' : 'requests or file reads'}`);
+    add(`Data obtained: ${formatBytes(summary.totals.transferredBytes)} (${formatBytes(summary.totals.networkBytes)} over the network${networkNote(summary.totals)}, ${formatBytes(summary.totals.cachedBytes)} from stored copies, the rest from files shipped with the app), ${formatCount(summary.totals.requests)} ${summary.totals.requests === 1 ? 'request' : 'requests or file reads'}`);
     add(`Area: ${summary.reproduce.bbox.map((v) => v.toFixed(4)).join(', ')} (west, south, east, north)`);
     if (summary.fallbacks.length) {
       out.push('', 'Not real data, or only partly:');
@@ -927,7 +1047,7 @@ export function datasetsToText(records: readonly DatasetRecord[], summary?: Data
       add(line('Version', [v.version, v.versionNote].filter(Boolean).join(': ')), line('Current to', v.currentTo));
       const s = r.sizes;
       const bundled = Math.max(0, s.transferredBytes - s.networkBytes - s.cachedBytes);
-      add(line('Size', `${formatBytes(s.transferredBytes)}${s.estimate ? ' (estimate)' : ''} in all: ${formatBytes(s.networkBytes)} over the network, ${formatBytes(s.cachedBytes)} from stored copies or packs, ${formatBytes(bundled)} from files shipped with the app; ${formatCount(s.requests)} ${s.requests === 1 ? 'request' : 'requests'}${s.decodedBytes !== undefined ? `; ${formatBytes(s.decodedBytes)} decoded` : ''}${s.memoryBytes !== undefined ? `; ${formatBytes(s.memoryBytes)} in memory` : ''}${s.storedOnDeviceBytes ? `; ${formatBytes(s.storedOnDeviceBytes)} stored on the device` : ''}`));
+      add(line('Size', `${formatBytes(s.transferredBytes)}${s.estimate ? ' (estimate)' : ''} in all: ${formatBytes(s.networkBytes)} over the network${networkNote(s)}, ${formatBytes(s.cachedBytes)} from stored copies or packs, ${formatBytes(bundled)} from files shipped with the app; ${formatCount(s.requests)} ${s.requests === 1 ? 'request' : 'requests'}${s.decodedBytes !== undefined ? `; ${formatBytes(s.decodedBytes)} decoded` : ''}${s.memoryBytes !== undefined ? `; ${formatBytes(s.memoryBytes)} in memory` : ''}${s.storedOnDeviceBytes ? `; ${formatBytes(s.storedOnDeviceBytes)} stored on the device` : ''}`));
       if (r.origin !== 'none') add(line('Coverage', `${formatPercent(r.coverage.fraction)} of the area${r.coverage.filledBy ? `; the rest: ${r.coverage.filledBy}` : ''}`));
       const dim = (g: { resolutionM?: number; width?: number; height?: number; features?: number; points?: number; records?: number } | undefined): string => {
         if (!g) return '';

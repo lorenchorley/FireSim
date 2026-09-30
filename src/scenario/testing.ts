@@ -37,6 +37,8 @@ export interface FakeRoute {
   status?: number;
   /** Computed JSON body (e.g. paged responses). */
   handler?: (url: string) => unknown;
+  /** Binary body (e.g. a PNG tile), or a function of the URL. */
+  bytes?: Uint8Array | ((url: string) => Uint8Array);
 }
 
 export interface FakeFetch {
@@ -53,6 +55,10 @@ export function fakeFetch(routes: FakeRoute[]): FakeFetch {
     const r = routes.find((x) => x.match.every((m) => url.includes(m)));
     if (!r) throw new TypeError(`fetch failed (no route): ${url}`);
     if (r.status && r.status >= 400) return new Response(JSON.stringify({ error: true, reason: 'test' }), { status: r.status });
+    if (r.bytes !== undefined) {
+      const b = typeof r.bytes === 'function' ? r.bytes(url) : r.bytes;
+      return new Response(b.slice(), { status: 200, headers: { 'content-type': 'application/octet-stream', 'content-length': String(b.byteLength) } });
+    }
     if (r.text !== undefined) return new Response(r.text, { status: 200, headers: { 'content-type': 'text/plain' } });
     if (r.handler) return new Response(JSON.stringify(r.handler(url)), { status: 200, headers: { 'content-type': 'application/json' } });
     return new Response(JSON.stringify(r.body), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -60,9 +66,25 @@ export function fakeFetch(routes: FakeRoute[]): FakeFetch {
   return { fetch: f, calls };
 }
 
-/** Install a fake fetch and a fresh memory cache; returns a restore function. */
-export function withFakeNetwork(routes: FakeRoute[]): { calls: string[]; kv: KV; restore: () => void } {
-  const ff = fakeFetch(routes);
+/**
+ * Install a fake fetch and a fresh memory cache; returns a restore function. `extra` is asked first (e.g. the fake NSW
+ * ArcGIS server of data/nswContextTesting.ts): when it rejects with "no route" the routes answer.
+ */
+export function withFakeNetwork(routes: FakeRoute[], extra?: typeof fetch): { calls: string[]; kv: KV; restore: () => void } {
+  const base = fakeFetch(routes);
+  const ff: FakeFetch = extra
+    ? {
+        calls: base.calls,
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          try {
+            return await extra(input, init);
+          } catch (e) {
+            if (e instanceof TypeError && /no route/.test(e.message)) return base.fetch(input, init);
+            throw e;
+          }
+        }) as typeof fetch,
+      }
+    : base;
   const kv = createMemoryKV();
   setDefaultCache(kv);
   setHttpConfig({ fetch: ff.fetch, platform: 'node', retryDelayMs: 1 });

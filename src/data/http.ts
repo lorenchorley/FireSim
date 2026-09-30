@@ -215,8 +215,10 @@ export interface RequestOptions {
 /** What {@link RequestOptions.onResponse} receives. */
 export interface ResponseInfo {
   status: number;
-  /** Bytes on the wire when known (Content-Length), else the decoded body length. */
+  /** Bytes on the wire when known (Content-Length or resource timing), else the decoded body length (`wireKnown` false). */
   bytes: number;
+  /** False when the wire size was not reported and `bytes` is the decoded length (an upper bound for a compressed answer). */
+  wireKnown: boolean;
   /** Decoded body length. */
   bodyBytes: number;
   durationMs: number;
@@ -226,12 +228,64 @@ export interface ResponseInfo {
 /** Filled by the transport with what it saw (only requested when a ledger or callback wants it). */
 interface Probe {
   status: number;
-  /** Content-Length when the response exposed it (-1 = unknown). */
+  /** Body bytes on the wire: Content-Length when the response exposed it, else the resource-timing encoded size (-1 = unknown). */
   wire: number;
   body: number;
 }
 
 const newProbe = (): Probe => ({ status: 0, wire: -1, body: 0 });
+
+/** Resource-timing entries kept before they are cleared (browsers buffer 250 by default; nothing else in the app reads them). */
+const TIMING_KEEP = 200;
+/** Timing entries already matched to a response (a URL can be asked for several times: POST queries, retries, parallel pages). */
+const usedTimings = new WeakSet<object>();
+
+/**
+ * Bytes of a response body ON THE WIRE (compressed) from its Resource Timing entry, for a response that sent no
+ * Content-Length (a compressed, chunked answer). Browsers report it for same-origin responses (the dev-server proxy) and
+ * for services that send Timing-Allow-Origin; Node's fetch always does; the native plugin never does. Only an entry of
+ * THIS response is taken: same URL, started at or after the request, decoded size equal to the body read, not matched
+ * before (the same query URL is often asked several times, e.g. the ArcGIS POST queries). -1 when none (the caller then
+ * counts the decoded size and marks it unmeasured). Never throws.
+ */
+function wireFromTiming(url: string, startedAt: number, bodyBytes: number): number {
+  try {
+    const perf = (globalThis as { performance?: Performance }).performance;
+    if (!perf || typeof perf.getEntriesByName !== 'function') return -1;
+    let abs = url;
+    try {
+      abs = new URL(url, (globalThis as { location?: { href?: string } }).location?.href).href;
+    } catch {
+      /* keep the URL as given */
+    }
+    const list = perf.getEntriesByName(abs, 'resource') as PerformanceResourceTiming[];
+    let n = -1;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i]!;
+      if (usedTimings.has(e) || e.startTime < startedAt - 1 || e.decodedBodySize !== bodyBytes) continue;
+      if (typeof e.encodedBodySize === 'number' && Number.isFinite(e.encodedBodySize) && e.encodedBodySize > 0) {
+        usedTimings.add(e);
+        n = e.encodedBodySize;
+      }
+      break;
+    }
+    if (typeof perf.getEntriesByType === 'function' && typeof perf.clearResourceTimings === 'function' && perf.getEntriesByType('resource').length > TIMING_KEEP) perf.clearResourceTimings();
+    return n;
+  } catch {
+    return -1;
+  }
+}
+
+/** Fill in the wire size from resource timing when no Content-Length was given (the entry can land a task after the body). */
+async function settleWire(probe: Probe | undefined, url: string, startedAt: number): Promise<void> {
+  if (!probe || probe.wire >= 0 || probe.body <= 0) return;
+  let n = wireFromTiming(url, startedAt, probe.body);
+  if (n < 0) {
+    await new Promise((r) => setTimeout(r, 0));
+    n = wireFromTiming(url, startedAt, probe.body);
+  }
+  if (n >= 0) probe.wire = n;
+}
 const clockMs = (): number => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
 
 /** UTF-8 length of a string. */
@@ -308,10 +362,11 @@ function finishMeasure(opts: RequestOptions, url: string, method: 'GET' | 'POST'
   try {
     const status = statusOverride ?? (error instanceof HttpError ? error.status : probe.status);
     const body = probe.body;
+    const wireKnown = probe.wire >= 0 || body === 0;
     const wire = probe.wire >= 0 ? probe.wire : body;
     if (!error && opts.onResponse) {
       try {
-        opts.onResponse({ status, bytes: wire, bodyBytes: body, durationMs, retries });
+        opts.onResponse({ status, bytes: wire, wireKnown, bodyBytes: body, durationMs, retries });
       } catch {
         /* a callback must not break the request */
       }
@@ -330,6 +385,7 @@ function finishMeasure(opts: RequestOptions, url: string, method: 'GET' | 'POST'
       durationMs,
       retries,
       at,
+      ...(wireKnown ? {} : { wireUnknown: true }),
       ...(opts.note ? { note: opts.note } : {}),
       ...(error ? { error: error instanceof HttpError ? error.kind : 'network' } : {}),
     });
@@ -357,20 +413,21 @@ async function request(url: string, kind: BodyKind, opts: RequestOptions): Promi
   const target = opts.route === false ? url : routeUrl(url);
   const retries = Math.max(0, opts.retries ?? 1);
   const measure = wantsMeasure(opts);
-  const t0 = measure ? clockMs() : 0;
-  const at = opts.ledger ? opts.ledger.now() : 0;
+  // Every attempt is recorded as its own request (a retried HTTP 429 or timeout is a request that was made); the
+  // successful or final one carries the number of retries before it.
   for (let n = 0; ; n++) {
     const probe = measure ? newProbe() : undefined;
+    const t0 = measure ? clockMs() : 0;
+    const at = opts.ledger ? opts.ledger.now() : 0;
     try {
       const out = await attempt(target, kind, opts, false, probe);
       if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, n);
       return out;
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError('network', target, String(e), 0, e);
-      if (n >= retries || !err.transient || opts.signal?.aborted) {
-        if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, n, err);
-        throw err;
-      }
+      const final = n >= retries || !err.transient || !!opts.signal?.aborted;
+      if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, final ? n : 0, err);
+      if (final) throw err;
       await delay(config.retryDelayMs * (n + 1), opts.signal, target);
     }
   }
@@ -399,6 +456,8 @@ async function fetchAttempt(
 ): Promise<unknown> {
   const doFetch = config.fetch ?? globalThis.fetch;
   if (typeof doFetch !== 'function') throw new HttpError('network', url, 'fetch is not available in this environment');
+  // Resource-timing clock at the start (for matching this response's timing entry, see wireFromTiming).
+  const startedAt = probe && typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : 0;
   // Combine the caller's signal with our timeout (AbortSignal.any is missing on older Android WebViews).
   const ctrl = new AbortController();
   let timedOut = false;
@@ -421,6 +480,7 @@ async function fetchAttempt(
       const h: Record<string, string> = {};
       res.headers.forEach((v, k) => (h[k.toLowerCase()] = v));
       if (probe) probe.body = data.byteLength;
+      await settleWire(probe, url, startedAt);
       return { status: res.status, headers: h, data, url } satisfies RawResponse;
     }
     if (!res.ok) {
@@ -432,10 +492,12 @@ async function fetchAttempt(
     if (kind === 'binary') {
       const buf = await res.arrayBuffer();
       if (probe) probe.body = buf.byteLength;
+      await settleWire(probe, url, startedAt);
       return buf;
     }
     const text = await res.text();
     if (probe) probe.body = utf8Length(text);
+    await settleWire(probe, url, startedAt);
     return kind === 'json' ? parseJson(text, url) : text;
   } catch (e) {
     throw classify(e, url, timedOut, signal, timeoutMs);

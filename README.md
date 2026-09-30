@@ -32,9 +32,9 @@ The screenshots are produced by the end-to-end test (`e2e/app.spec.ts`) on a Pix
 
 ## Features
 
-- **Where**: GPS, typed coordinates, or eight bundled **demo sites** with LiDAR terrain (10 m from the 5 m DTM),
+- **Where**: GPS, typed coordinates, or eight bundled **demo sites** with the NSW 5 m elevation model (bundled at 10 m),
   canopy height (from Meta's 1 m map), aerial imagery, vegetation and fire history — they work fully offline. 3–12 km square, 20 or 30 m fire grid.
-- **Weather**: live (Open-Meteo best-match models incl. ECMWF IFS and GFS; BOM ACCESS-G is not used because its Open-Meteo feed returned no data), a past date (historical forecasts / ERA5), the forecast
+- **Weather**: live (Open-Meteo's automatic 'best match' forecast for the location, ECMWF IFS as the fallback, upper-air levels from ECMWF IFS 0.25° or GFS; BOM ACCESS-G is not requested: Open-Meteo reports its open data as suspended), a past date (historical forecasts / ERA5), the forecast
   (up to 16 days), four designed **presets** (hot NW wind ahead of a SW change; calm night with katabatic drainage;
   mild spring hazard-reduction day; catastrophic Black-Summer-like day), seven **historic fire days** bundled offline
   (Blue Mountains Oct 2013, Grose / Gospers Mountain / Kanangra Dec 2019, Currowan 30 Dec 2019, Snowy Jan 2020,
@@ -101,18 +101,80 @@ plume regimes, determinism and rewind) runs headless in `src/sim/validation/`.
 
 | Source | Used for | Licence |
 |---|---|---|
-| NSW Spatial Services | 5 m LiDAR elevation (DTM) and aerial imagery of the demo sites | © Spatial Services NSW, CC BY 4.0 |
-| Meta & World Resources Institute | High Resolution Canopy Height Maps (Tolan et al. 2024) | CC BY 4.0 |
-| SRTM via AWS Terrain Tiles (Mapzen Terrarium) | elevation outside the demo sites | public domain (NASA SRTM), AWS Open Data |
-| Open-Meteo | forecasts, archive and historical forecasts (ECMWF IFS, GFS, ERA5) | CC BY 4.0; data © the national services |
-| NSW National Parks and Wildlife Service | fire history (wildfires, prescribed burns) | © State of NSW and DCCEEW, CC BY 4.0 |
+| NSW Spatial Services (NSW_5M_Elevation) | ground height of the demo sites (a 5 m model the service says is derived from stereo imagery, bundled at 10 m) | © Spatial Services NSW, CC BY 4.0 |
+| NSW Spatial Services (NSW_Imagery) | aerial photos of the demo sites (a mosaic of flights from several years; display only) | © State of NSW (Spatial Services), CC BY 4.0 |
+| SRTM via AWS Terrain Tiles (Mapzen Terrarium) | ground height (about 30 m) outside the demo sites | public domain (NASA/USGS SRTM), AWS Open Data |
+| Meta & World Resources Institute | tree canopy height and cover (High Resolution Canopy Height Maps v1, Tolan et al. 2024) | CC BY 4.0 |
 | NSW State Vegetation Type Map (SVTM) | vegetation formations and classes → fuel types | © State of NSW and DCCEEW, CC BY 4.0 |
+| NSW National Parks and Wildlife Service | fire history (wildfires, prescribed burns) | © State of NSW and DCCEEW, CC BY 4.0 |
 | NSW Spatial Services (roads, fire trails, addresses, place names) | the Roads, Fire trails, Homes and Place-names layers | © Spatial Services NSW, CC BY 4.0 |
 | NSW Planning (land zoning) | residential, village and other built-up zones | © State of NSW and Department of Planning, Housing and Infrastructure, CC BY 4.0 |
-| NSW Rural Fire Service | current incidents and fire danger ratings (when online) | © NSW RFS, for information only |
+| Open-Meteo | forecasts (automatic 'best match': the model Open-Meteo judges best for the location; the answer does not say which), past weather, the drought history | CC BY 4.0 (free for non-commercial use, which includes education) |
+| ECMWF IFS (through Open-Meteo) | forecast fallback, upper-air levels, the 2019/20 historic fire days | CC BY 4.0 (ECMWF open data) |
+| NOAA GFS (through Open-Meteo) | upper-air levels only when the ECMWF levels are missing | public domain |
+| Copernicus ERA5 (through Open-Meteo) | past weather before 2016, the year of daily rain behind the drought index, the 2013 historic fire days | CC BY 4.0 through Open-Meteo; contains modified Copernicus Climate Change Service information |
+| NSW Rural Fire Service feeds, Geoscience Australia DEA Hotspots | **not used yet**: the app can read them (`scenario/feeds.ts`) but shows nothing from them | © NSW RFS (information only); CC BY 4.0 |
 
-The same list is in the app (Settings → About). The bundled demo data are in `public/demo/<site>/` (each file's
-`.json` names its source) and the historic weather in `public/replays/`.
+The same list is in the app (Settings → Data and licences, `ATTRIBUTIONS` in `src/ui/content.ts`); a test
+(`src/scenario/datasets.test.ts`) checks that every credit line a scenario carries appears there. The bundled demo data are in
+`public/demo/<site>/` (each file's `.json` names its source; `public/demo/provenance.json` lists every file's size and capture
+date) and the historic weather in `public/replays/`.
+
+## Data sets and provenance
+
+Every scenario carries an inventory of the data that went into it: `ScenarioData.datasets` (one `DatasetRecord` per data
+set) and `ScenarioData.datasetSummary` (totals, substitutes, the model grid, a reproduction recipe, working memory). The
+contract is `src/core/datasets.ts`; the Data sets screen, the map credits and the exports read it and never guess.
+
+**What is recorded, per data set** (terrain, aerial photo, vegetation, canopy height, fire history, weather, upper air,
+rainfall history, roads, fire trails, homes, zones, place names, the derived fuel map, your input, the bundled demo site):
+what it is and what the simulator uses it for; provider, licence and credit line; the services and files read (host and
+path only, never a query string or key); format and kind; **status** (`used`, `partial`, `fallback`, `unavailable`,
+`skipped`, `user`) and **origin** (`live`, `cache`, `area-pack`, `bundled`, `synthetic`, `preset`, `user`, `derived`) with the
+reason for any substitute; vintage (capture date as published, when this copy was obtained, version, "current to",
+weather age and the 6 h / 24 h staleness rule of docs/research/08 §5.5); coordinate system and how it maps to the model's
+local metres; extent and the share of the model area really covered (and what filled the rest); resolution and size as
+published vs in the model and the resampling; **sizes** (bytes obtained, of which over the network and from stored copies,
+decoded bytes, memory held, requests, tiles/features/records, time, bytes stored on the device); plain-English statistics
+(elevation, slopes, fuel classes, canopy percentiles, time since fire, weather ranges, road km, home counts, zone areas...),
+a distribution for a spark bar, the heat-map layer to show it on, how far to trust it (`measured` → `synthetic`) and its
+limitations.
+
+**Where the numbers come from.** A request ledger (`src/data/ledger.ts`) is created for each build and passed to every
+loader; the HTTP layer, the cache, the asset loader and the area-pack store record each request under the data set it is
+for (every attempt, retries included; bytes on the wire from Content-Length or the platform's resource timing, else the
+uncompressed size flagged as such, because compressed answers on the device do not say how big they were on the wire;
+stored-copy hits with their size and date, bundled file sizes), so sizes are measured, not typed in. Statistics are computed once from the finished grids (`src/scenario/datasetStats.ts`).
+Only documented static facts are typed in (provider and licence names, service copyright text). Bundled files report their
+real byte length and the capture date from `public/demo/provenance.json` (`npm run provenance` regenerates it; a test
+checks it against the files).
+
+**Before a download** `estimateScenarioData(request)` (`src/scenario/estimate.ts`) plans the same records with the likely
+origin, an estimated size range and its basis (exact for bundled files and packs; tile counts x measured tile sizes; bytes
+per km² of the bundled areas; measured response sizes), and whether the scenario works with no signal. Planned sizes are
+the UNCOMPRESSED answers, an upper bound: the services compress JSON 3 to 8 times on the wire. A live build at Bilpin on
+2026-09-30 (`tests/fixtures/datasets/live-nondemo.json`) moved 2.3 MB over the network, 3.6 MB uncompressed: terrain 1.8 MB
+in 16 PNG tiles (not compressible), vegetation 140 kB (957 kB uncompressed), fire history 113 kB (387 kB), zoning 55 kB
+(212 kB), roads 102 kB, forecast with upper-air levels 22 kB (77 kB); that day Open-Meteo's archive refused with its daily
+request limit (HTTP 429), so the rainfall history fell back to the defaults, with that reason on the record. The estimates
+bracket each uncompressed size (`src/scenario/datasets.live.test.ts`, `NET=1 NODE_USE_ENV_PROXY=1`).
+
+**Working memory** (`src/scenario/memoryModel.ts`): what a run holds, from the real grid sizes: the scenario (measured; held
+twice, by the screen and the worker, which does not get the roads, homes and names), the worker's two fuel-map copies
+(measured), the engine's arrays per part (coefficients measured from the engine's allocations
+and re-checked by a test against `Simulation.memoryReport()`), checkpoints, the time-scrubber history (capped by its
+budget) and an estimate of GPU memory. A 9 km Katoomba run at 30 m on the standard tier holds about 420 MB in all.
+`liveMemory()` reads the WebView's JavaScript heap when the device reports it and says so when it does not.
+
+**On the device** `storage.report()` (`src/data/storage.ts`) lists the bundled demo data, the stored copies by kind and
+place with their dates, and the saved area packs with their items; `storage.clearCache(kind)` and
+`storage.deleteAreaPack(id)` are for the screen to call after the user confirms (nothing calls them automatically).
+
+**Exports and fixtures.** `datasetsToText`, `datasetsToCsv` (one row per data set, or per statistic) and `datasetsToJson`
+(stable, sorted) give the same inventory for sharing. `tests/fixtures/datasets/` holds three real inventories for UI work:
+`katoomba-bundled.json` (a demo site offline), `live-nondemo.json` (the live Bilpin build; `live-nondemo.plan.json` is
+its Setup plan) and `offline-synthetic.json` (a non-demo place with no signal: every substitute). `?mock=1` scenarios carry an honest mock inventory
+(`src/ui/mockDatasets.ts`).
 
 ## Run it
 

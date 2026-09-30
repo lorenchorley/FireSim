@@ -7,7 +7,7 @@
  * record describes the photo the view really shows. src/scenario/imagery.test.ts checks the two agree.
  */
 import type { GridSpec } from '../core/grid';
-import { bundleFile, DEMO_SITES, imageryWindow, loadAsset, loadBundleManifest, loadDemoImageryInfo, type DemoRasterMeta, type TraceOptions } from '../data';
+import { bundleFile, DEMO_EXTENT_M, DEMO_SITES, imageryWindow, loadAsset, loadBundleManifest, loadDemoImageryInfo, type DemoRasterMeta, type TraceOptions } from '../data';
 import type { LayerContext } from './layers';
 
 export interface ImageryInfo {
@@ -42,7 +42,20 @@ export const IMAGERY_MAX_PX = 2048;
  * bytes) and takes the photo's size from the bundle manifest, or reads the file when there is no manifest.
  */
 export async function describeImagery(grid: GridSpec, ctx: Pick<LayerContext, 'demoSiteId' | 'signal' | 'ledger'>): Promise<ImageryInfo | null> {
-  const ids = [ctx.demoSiteId, ...DEMO_SITES.map((s) => s.id)].filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
+  // Sites whose bundled square cannot even touch the domain are not asked (their imagery.json would be read for nothing:
+  // eight file reads on every build away from the demo sites). The crop test below still decides for the others.
+  const halfX = (grid.nx * grid.cellSize) / 2;
+  const halfY = (grid.ny * grid.cellSize) / 2;
+  const kLat = 111_195;
+  const kLon = kLat * Math.cos((grid.origin.lat * Math.PI) / 180);
+  const near = (id: string): boolean => {
+    const c = DEMO_SITES.find((s) => s.id === id)?.centre;
+    if (!c) return true; // unknown site: let the crop test decide
+    const dx = Math.abs((c.lon - grid.origin.lon) * kLon);
+    const dy = Math.abs((c.lat - grid.origin.lat) * kLat);
+    return dx <= halfX + DEMO_EXTENT_M / 2 + 1000 && dy <= halfY + DEMO_EXTENT_M / 2 + 1000;
+  };
+  const ids = [ctx.demoSiteId, ...DEMO_SITES.map((s) => s.id)].filter((v, i, a): v is string => !!v && a.indexOf(v) === i && (v === ctx.demoSiteId || near(v)));
   const trace: TraceOptions | undefined = ctx.ledger ? { tag: 'imagery', ledger: ctx.ledger } : undefined;
   const manifest = await loadBundleManifest(ctx.signal);
   for (const id of ids) {

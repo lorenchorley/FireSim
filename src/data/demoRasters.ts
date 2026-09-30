@@ -51,14 +51,23 @@ export function demoRasterGrid(meta: DemoRasterMeta): GridSpec {
 }
 
 /** Decode the bundled LiDAR DTM of a demo site on its own 10 m grid (j = 0 south), or null if the site has none. */
+/** A demo site's elevation metadata (dem5m.json, a few hundred bytes) and its byte length, or null. */
+export async function loadDemoDemMeta(siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<{ meta: DemoRasterMeta; jsonBytes: number } | null> {
+  const metaBytes = await loadAsset(`demo/${siteId}/dem5m.json`, signal, trace);
+  const meta = metaBytes ? parseJsonBytes<DemoRasterMeta>(metaBytes) : null;
+  if (!meta || !meta.cellSize || !meta.n || !meta.centre) return null;
+  return { meta, jsonBytes: metaBytes!.byteLength };
+}
+
 export async function loadDemoDem(
   siteId: string,
   signal?: AbortSignal,
   trace?: TraceOptions,
+  pre?: { meta: DemoRasterMeta; jsonBytes: number },
 ): Promise<{ grid: GridSpec; elevation: Float32Array; meta: DemoRasterMeta; bytes: { png: number; json: number } } | null> {
-  const metaBytes = await loadAsset(`demo/${siteId}/dem5m.json`, signal, trace);
-  const meta = metaBytes ? parseJsonBytes<DemoRasterMeta>(metaBytes) : null;
-  if (!meta || !meta.cellSize || !meta.n || !meta.centre) return null;
+  const m = pre ?? (await loadDemoDemMeta(siteId, signal, trace));
+  if (!m) return null;
+  const meta = m.meta;
   const png = await loadAsset(`demo/${siteId}/dem5m.png`, signal, trace);
   if (!png || !hasPngSignature(png)) return null;
   const img = decode(png);
@@ -75,7 +84,7 @@ export async function loadDemoDem(
       elevation[j * grid.nx + i] = d[o]! * 256 + d[o + 1]! + d[o + 2]! / 256 - 32768;
     }
   }
-  return { grid, elevation, meta, bytes: { png: png.byteLength, json: metaBytes!.byteLength } };
+  return { grid, elevation, meta, bytes: { png: png.byteLength, json: m.jsonBytes } };
 }
 
 function parseJsonBytes<T>(bytes: Uint8Array): T | null {
@@ -107,7 +116,11 @@ export async function loadDemoElevation(
   trace?: TraceOptions,
 ): Promise<{ elevation: Float32Array; source: string; siteId: string; meta: DemoRasterMeta; bytes: { png: number; json: number } } | null> {
   for (const id of siteIds) {
-    const dem = await loadDemoDem(id, signal, trace).catch(() => null);
+    // Coverage is decided from the metadata first, so a site that does not cover the grid costs a few hundred bytes,
+    // not the 1.4 MB height image (and its decoding).
+    const pre = await loadDemoDemMeta(id, signal, trace).catch(() => null);
+    if (!pre || !rasterCovers(pre.meta, grid)) continue;
+    const dem = await loadDemoDem(id, signal, trace, pre).catch(() => null);
     if (!dem || !rasterCovers(dem.meta, grid)) continue;
     const elevation = resampleMapped(dem.grid, dem.elevation, grid, mapGrids(dem.grid, grid));
     return { elevation, source: `${DEM5M_SOURCE}; bundled demo '${id}' at ${dem.meta.cellSize} m`, siteId: id, meta: dem.meta, bytes: dem.bytes };

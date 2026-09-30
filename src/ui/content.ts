@@ -251,9 +251,9 @@ export const ATTRIBUTIONS: Attribution[] = [
   {
     name: 'ECMWF IFS (through Open-Meteo)',
     provider: 'European Centre for Medium-Range Weather Forecasts',
-    use: "Forecast when 'best match' fails, upper-air levels (IFS 0.25°), and the 2019/20 historic fire days (historical forecasts)",
+    use: "Forecast when 'best match' fails, upper-air levels (IFS 0.25°), the 2019/20 historic fire days (historical forecasts), and, from 2017, part of the archive's default 'best match' behind the year of daily rain (IFS HRES analysis, 9 km)",
     licence: 'CC BY 4.0 (ECMWF open data)',
-    status: 'fallback',
+    status: 'used',
   },
   {
     name: 'NOAA GFS (through Open-Meteo)',
@@ -265,7 +265,7 @@ export const ATTRIBUTIONS: Attribution[] = [
   {
     name: 'Copernicus ERA5 (through Open-Meteo)',
     provider: 'Copernicus Climate Change Service / ECMWF',
-    use: 'Past weather before 2016 (and later dates when the historical forecast is missing), the year of daily rain and temperature behind the drought index, the usual yearly rainfall, and the 2013 historic fire days',
+    use: "Past weather before 2016 (and later dates when the historical forecast is missing) and the 2013 historic fire days; with ERA5-Land and the ECMWF IFS analysis, part of the archive's default 'best match' behind the year of daily rain and temperature for the drought index and the usual yearly rainfall",
     licence: 'CC BY 4.0 through Open-Meteo; contains modified Copernicus Climate Change Service information',
     status: 'used',
   },

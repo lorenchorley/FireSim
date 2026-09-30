@@ -3,6 +3,7 @@ import type { Insight, SimSnapshot } from '../core/types';
 import { MockSimController, mockBuildScenario } from './mocks';
 import { slopeFactor } from './mockFire';
 import type { BuildProgress } from '../scenario/request';
+import { datasetIssues } from '../core/datasets';
 
 describe('mock fire physics helpers', () => {
   it('slope factor doubles about every 10° uphill and never halves downhill', () => {
@@ -31,6 +32,14 @@ describe('mock scenario + controller', () => {
     expect(steps.at(-1)!.step).toBe('done');
     expect(scenario.terrain.source).toMatch(/NSW|LiDAR|Terrain|Synthetic/i);
     expect(scenario.terrain.maxElevation - scenario.terrain.minElevation).toBeGreaterThan(200);
+    // The mock carries a data-set inventory like a real build: real bundled terrain, everything fabricated says so.
+    expect(datasetIssues(scenario.datasets!)).toEqual([]);
+    expect(scenario.datasets!.find((r) => r.id === 'terrain')).toMatchObject({ status: 'used', origin: 'bundled' });
+    expect(scenario.datasets!.find((r) => r.id === 'terrain')!.sizes.transferredBytes).toBeGreaterThan(100_000);
+    expect(scenario.datasets!.find((r) => r.id === 'weather')).toMatchObject({ status: 'fallback', origin: 'synthetic' });
+    expect(scenario.datasetSummary!.totals.count).toBe(scenario.datasets!.length);
+    expect(scenario.datasetSummary!.workingMemory!.cells).toBe(scenario.terrain.grid.nx * scenario.terrain.grid.ny);
+    expect(new Set(steps.map((p) => p.step))).not.toContain('moisture' as never);
 
     const sim = new MockSimController();
     const snaps: SimSnapshot[] = [];

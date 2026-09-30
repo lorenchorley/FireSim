@@ -4,7 +4,7 @@
  * ledger that can never throw or change what a request returns.
  */
 import { readFileSync, statSync } from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadAsset, loadAssetJson } from './assets';
 import { cachedFetch, cachedFetchBinary, cachedFetchJson, createMemoryKV, loadAreaPackItem, saveAreaPack, storedBytes } from './cache';
 import { fetchBinary, fetchJson, fetchText, httpRequest, resetHttpConfig, setHttpConfig } from './http';
@@ -92,6 +92,21 @@ describe('DatasetLedger', () => {
     l.record({ tag: 't', url: 'https://user:hunter2@api.x.org/data?access_token=SECRET3' });
     expect(JSON.stringify(l.entries())).not.toMatch(/SECRET|hunter2|apikey|latitude|access_token/i);
   });
+
+  it('costs next to nothing: 20 000 records (100 times a large build) in well under a second, 2 000 in under 100 ms', () => {
+    const l = new DatasetLedger();
+    const t0 = performance.now();
+    let t2k = 0;
+    for (let i = 0; i < 20_000; i++) {
+      if (i === 2000) t2k = performance.now() - t0; l.record({ tag: i % 3 ? 'terrain' : 'weather', url: `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/${15000 + (i % 97)}/${9800 + (i % 89)}.png`, status: 200, bytes: 40_000, durationMs: 12 });
+    }
+    const ms = performance.now() - t0;
+    expect(t2k).toBeLessThan(100);
+    expect(ms).toBeLessThan(1000);
+    expect(l.totals().requests).toBe(20_000);
+    expect(l.endpoints('terrain')).toHaveLength(1); // tiles fold into one pattern
+    expect(l.entries().length).toBe(4000); // bounded
+  });
 });
 
 describe('HTTP layer wiring', () => {
@@ -125,7 +140,11 @@ describe('HTTP layer wiring', () => {
     const l = new DatasetLedger();
     await fetchText('https://x.org/a', { tag: 't', ledger: l });
     expect(calls).toHaveLength(2);
-    expect(l.entries()[0]).toMatchObject({ status: 200, retries: 1, ok: true });
+    // Every HTTP request made is on the ledger: the retried 503 and the successful retry (which counts one retry).
+    expect(l.entries()).toHaveLength(2);
+    expect(l.entries()[0]).toMatchObject({ status: 503, retries: 0, ok: false, error: 'http' });
+    expect(l.entries()[1]).toMatchObject({ status: 200, retries: 1, ok: true });
+    expect(l.totals('t')).toMatchObject({ requests: 2, failures: 1, retries: 1 });
 
     const l2 = new DatasetLedger();
     const bad = scriptedFetch([json({ e: 1 }, 404)]);
@@ -205,7 +224,7 @@ describe('cache, asset and area-pack wiring', () => {
     const rec = await kv.get<{ n?: number }>('terrarium/13/1/1');
     expect(rec?.n).toBe(2048);
     const sizes = await kv.sizes!('terrarium/');
-    expect(sizes).toEqual([{ key: 'terrarium/13/1/1', bytes: storedBytes(await kv.get('terrarium/13/1/1')) }]);
+    expect(sizes).toEqual([{ key: 'terrarium/13/1/1', bytes: storedBytes(await kv.get('terrarium/13/1/1')), t: a.fetchedAt }]);
     expect(sizes[0]!.bytes).toBeGreaterThanOrEqual(2048);
   });
 
@@ -249,5 +268,76 @@ describe('cache, asset and area-pack wiring', () => {
     const v = await loadAreaPackItem<ArrayBuffer>('p1', 'dem10', kv, { tag: 'terrain', ledger: l });
     expect(v!.byteLength).toBe(4000);
     expect(l.entries()[0]).toMatchObject({ source: 'pack', host: 'area-pack', bytes: 4000, tag: 'terrain' });
+  });
+});
+
+describe('audit regressions: bytes on the wire, every attempt, exact single-file paths', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a compressed answer without Content-Length is counted at its decoded size and flagged unmeasured', async () => {
+    const body = JSON.stringify({ features: 'x'.repeat(5000) });
+    const { fn } = scriptedFetch([new Response(body, { status: 200, headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' } })]);
+    setHttpConfig({ fetch: fn, platform: 'node' });
+    vi.spyOn(performance, 'getEntriesByName').mockReturnValue([]);
+    const l = new DatasetLedger();
+    await fetchJson('https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/VIS/SVTM_NSW_Extant_PCT/MapServer/3/query?f=geojson', { tag: 'vegetation-svtm', ledger: l });
+    expect(l.entries()[0]).toMatchObject({ bytes: body.length, bodyBytes: body.length, wireUnknown: true });
+    expect(l.totals('vegetation-svtm')).toMatchObject({ networkBytes: body.length, networkBodyBytes: body.length, networkUnmeasuredBytes: body.length });
+  });
+
+  it('takes the compressed size from resource timing when the platform reports it', async () => {
+    const body = JSON.stringify({ features: 'y'.repeat(8000) });
+    const { fn } = scriptedFetch([new Response(body, { status: 200, headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' } })]);
+    setHttpConfig({ fetch: fn, platform: 'node' });
+    const url = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Fire/NPWS_Fire_History/MapServer/0/query?f=geojson';
+    // An older entry of the same URL (an earlier request) must not be taken: only one that started with this request
+    // and decoded to this body.
+    const t0 = performance.now();
+    const entries = [
+      { encodedBodySize: 99, decodedBodySize: body.length, startTime: t0 - 5000 },
+      { encodedBodySize: 77, decodedBodySize: 12, startTime: t0 + 1 },
+      { encodedBodySize: 1234, decodedBodySize: body.length, startTime: t0 + 1 },
+    ] as PerformanceResourceTiming[];
+    const spy = vi.spyOn(performance, 'getEntriesByName').mockImplementation((name: string) => (name === url ? entries : []));
+    const l = new DatasetLedger();
+    await fetchJson(url, { tag: 'fire-history', ledger: l });
+    expect(spy).toHaveBeenCalled();
+    const e = l.entries()[0]!;
+    expect(e).toMatchObject({ bytes: 1234, bodyBytes: body.length });
+    expect(e.wireUnknown).toBeUndefined();
+    expect(l.totals('fire-history')).toMatchObject({ networkBytes: 1234, networkBodyBytes: body.length, networkUnmeasuredBytes: 0 });
+    // The same URL again: the entry already matched is not reused (no new entry: unmeasured).
+    await fetchJson(url, { tag: 'fire-history', ledger: l });
+    expect(l.entries()[1]).toMatchObject({ bytes: body.length, wireUnknown: true });
+  });
+
+  it('Content-Length wins and is never flagged', async () => {
+    const { fn } = scriptedFetch([new Response(new Uint8Array(4096), { status: 200, headers: { 'content-length': '4096' } })]);
+    setHttpConfig({ fetch: fn, platform: 'node' });
+    const l = new DatasetLedger();
+    await fetchBinary('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/1/2.png', { tag: 'terrain', ledger: l });
+    expect(l.entries()[0]!.wireUnknown).toBeUndefined();
+    expect(l.totals('terrain')).toMatchObject({ networkBytes: 4096, networkUnmeasuredBytes: 0 });
+  });
+
+  it('three HTTP 429 answers then success are four requests (each retry is a request)', async () => {
+    const tooMany = new Response('{"reason":"Too many"}', { status: 429, headers: { 'content-length': '21' } });
+    const { fn, calls } = scriptedFetch([tooMany, tooMany, json({ ok: true })]);
+    setHttpConfig({ fetch: fn, platform: 'node', retryDelayMs: 1 });
+    const l = new DatasetLedger();
+    await expect(fetchJson('https://archive-api.open-meteo.com/v1/archive?a=1', { tag: 'drought-history', ledger: l, retries: 1 })).rejects.toThrow();
+    await fetchJson('https://archive-api.open-meteo.com/v1/archive?a=1', { tag: 'drought-history', ledger: l, retries: 1 });
+    expect(calls).toHaveLength(3);
+    expect(l.totals('drought-history')).toMatchObject({ requests: 3, failures: 2, networkBytes: 21 + 21 + 11 });
+  });
+
+  it('a single file keeps its real path; many tiles collapse to one pattern', () => {
+    const l = new DatasetLedger();
+    l.record({ tag: 'weather', host: 'bundled', path: '/replays/grose-2019-12-19.json', source: 'bundled', bytes: 10 });
+    expect(l.endpoints('weather')).toEqual([{ host: 'bundled', path: '/replays/grose-2019-12-19.json', requests: 1, bytes: 10 }]);
+    l.record({ tag: 'terrain', host: 's3', path: '/terrarium/14/15042/9821.png', status: 200, bytes: 5 });
+    expect(l.endpoints('terrain')[0]!.path).toBe('/terrarium/14/15042/9821.png');
+    l.record({ tag: 'terrain', host: 's3', path: '/terrarium/14/15042/9822.png', status: 200, bytes: 5 });
+    expect(l.endpoints('terrain')).toEqual([{ host: 's3', path: '/terrarium/14/{n}/{n}.png', requests: 2, bytes: 10 }]);
   });
 });

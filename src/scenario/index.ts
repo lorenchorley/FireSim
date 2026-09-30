@@ -5,7 +5,23 @@
  */
 export type { WeatherMode, ScenarioRequest, BuildProgress } from './request';
 export { buildScenario, resolveRequest, resolveOptions, scenarioWarnings, BuildCancelledError, type ResolvedRequest } from './build';
-export { SCENARIO_PARAMS, demoAnnualRainfall, type ScenarioParams, type BeltExposure } from './params';
+export { SCENARIO_PARAMS, demoAnnualRainfall, builtFireCell, type ScenarioParams, type BeltExposure } from './params';
+
+// Data-set provenance (core/datasets.ts contract): records made at build time, records made later, plans, memory.
+export { assembleDatasets, withRecord, type AssembleInputs, type AssembledDatasets } from './datasetAssembly';
+export { describeStartMoisture, userEditsRecord } from './datasetRecordsPlaces';
+export { modelWording, pressureLevelsOf } from './datasetRecordsWeather';
+export { estimateScenarioData, planScenarioData, summarisePlan, TYPICAL, CONTEXT_PER_KM2, type PlanFacts, type TypicalSize } from './estimate';
+export {
+  workingMemory,
+  workingMemoryForScenario,
+  liveMemory,
+  scenarioArrayBytes,
+  atmosphereGrid,
+  checkpointCount,
+  ENGINE_BYTES,
+  type MemoryModelInput,
+} from './memoryModel';
 export { MESSAGES } from './messages';
 
 // Weather: Open-Meteo requests / parsing, interpolation.

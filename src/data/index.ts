@@ -61,9 +61,11 @@ export {
   cachedFetchJson,
   approxBytes,
   storedBytes,
+  storedAt,
   CACHE_DB_NAME,
   CACHE_STORE_NAME,
   type KV,
+  type KVSize,
   type AreaPack,
   type AreaPackItem,
   type AreaPackMeta,
@@ -72,6 +74,21 @@ export {
   type CacheOrigin,
 } from './cache';
 
+export {
+  storage,
+  storageReport,
+  clearCacheKind,
+  removeAreaPack,
+  placeOfKey,
+  placeLabel,
+  STORAGE_KINDS,
+  STORAGE_WARN_BYTES,
+  type StorageKind,
+  type StorageReport,
+  type StorageGroup,
+  type StoragePack,
+  type StoragePlace,
+} from './storage';
 export { loadBundleManifest, clearBundleManifestCache, bundleFile, type BundleManifest, type BundleSite, type BundleFile } from './bundleManifest';
 export { loadAsset, loadAssetJson, setAssetLoader, setAssetBase, resolveAssetBase, setNodePublicDir, type AssetLoader } from './assets';
 
@@ -115,6 +132,7 @@ export {
   LIDAR_DEM_SOURCE,
   demoRasterGrid,
   loadDemoDem,
+  loadDemoDemMeta,
   loadDemoElevation,
   rasterCovers,
   loadDemoImageryInfo,

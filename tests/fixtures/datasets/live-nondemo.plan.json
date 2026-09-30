@@ -8,7 +8,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 16 zoom-14 tiles (0 already stored) x 60.0 KB typical; zoom-14 tiles over NSW mountains measured 2026-09-30 (Bilpin: 42 to 98 kB); flat or sea tiles are smaller."
+        "note": "Planned before download: 16 zoom-14 tiles (0 already stored) x 112.0 KB typical; zoom-14 tiles measured on a live build at Bilpin on 2026-09-30 (16 tiles, 1.80 MB, 112 kB each); flat or sea tiles are smaller."
       },
       "extent": {
         "areaKm2": 36,
@@ -27,11 +27,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "16 zoom-14 tiles (0 already stored) x 60.0 KB typical; zoom-14 tiles over NSW mountains measured 2026-09-30 (Bilpin: 42 to 98 kB); flat or sea tiles are smaller",
-        "highBytes": 1760000,
+        "basis": "16 zoom-14 tiles (0 already stored) x 112.0 KB typical; zoom-14 tiles measured on a live build at Bilpin on 2026-09-30 (16 tiles, 1.80 MB, 112 kB each); flat or sea tiles are smaller",
+        "highBytes": 2400000,
         "likelyOrigin": "live",
-        "lowBytes": 400000,
-        "networkBytes": 960000,
+        "lowBytes": 640000,
+        "networkBytes": 1792000,
         "offlineNote": "Not available with no signal: 16 tiles have to be downloaded.",
         "offlineOk": false,
         "onDevice": false
@@ -44,9 +44,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 960000,
+        "networkBytes": 1792000,
         "requests": 16,
-        "transferredBytes": 960000
+        "transferredBytes": 1792000
       },
       "sourceServices": [],
       "stats": [],
@@ -129,7 +129,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27)."
+        "note": "Planned before download: 44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27), x 1 to 2 because live queries return whole polygons; Bilpin measured 957 kB for 44 km² queried (22 kB per km², 2026-09-30)."
       },
       "extent": {
         "areaKm2": 36,
@@ -148,11 +148,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27)",
-        "highBytes": 802307,
+        "basis": "44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27), x 1 to 2 because live queries return whole polygons; Bilpin measured 957 kB for 44 km² queried (22 kB per km², 2026-09-30)",
+        "highBytes": 1604614,
         "likelyOrigin": "live",
         "lowBytes": 266455,
-        "networkBytes": 544196,
+        "networkBytes": 707454,
         "offlineNote": "Not available with no signal: it is queried from the NSW service.",
         "offlineOk": false,
         "onDevice": false
@@ -165,9 +165,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 544196,
+        "networkBytes": 707454,
         "requests": 1,
-        "transferredBytes": 544196
+        "transferredBytes": 707454
       },
       "sourceServices": [],
       "stats": [],
@@ -309,7 +309,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27)."
+        "note": "Planned before download: 44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27), x 1 to 2 because live queries return whole polygons; Bilpin measured 957 kB for 44 km² queried (22 kB per km², 2026-09-30)."
       },
       "extent": {
         "areaKm2": 36,
@@ -328,11 +328,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27)",
-        "highBytes": 297960,
+        "basis": "44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27), x 1 to 2 because live queries return whole polygons; Bilpin measured 957 kB for 44 km² queried (22 kB per km², 2026-09-30)",
+        "highBytes": 595920,
         "likelyOrigin": "live",
         "lowBytes": 27099,
-        "networkBytes": 228746,
+        "networkBytes": 297370,
         "offlineNote": "Not available with no signal: it is queried from the NSW service.",
         "offlineOk": false,
         "onDevice": false
@@ -345,9 +345,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 228746,
+        "networkBytes": 297370,
         "requests": 1,
-        "transferredBytes": 228746
+        "transferredBytes": 297370
       },
       "sourceServices": [],
       "stats": [],
@@ -369,7 +369,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: one forecast request; best_match forecast response for Katoomba, 76.8 kB (tests/fixtures/live, 2026-09-27) (a second request if the first model fails)."
+        "note": "Planned before download: one forecast request; best_match forecast responses: 76.8 kB for Katoomba (2026-09-27), 76.9 kB for Bilpin (2026-09-30); 52 % of it is the surface weather (pressure-level variables are 20 of the 42 hourly variables (the built records split the download by variables)) (a second request if the first model fails)."
       },
       "extent": {
         "areaKm2": 36,
@@ -388,11 +388,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "one forecast request; best_match forecast response for Katoomba, 76.8 kB (tests/fixtures/live, 2026-09-27) (a second request if the first model fails)",
-        "highBytes": 190000,
+        "basis": "one forecast request; best_match forecast responses: 76.8 kB for Katoomba (2026-09-27), 76.9 kB for Bilpin (2026-09-30); 52 % of it is the surface weather (pressure-level variables are 20 of the 42 hourly variables (the built records split the download by variables)) (a second request if the first model fails)",
+        "highBytes": 114000,
         "likelyOrigin": "live",
-        "lowBytes": 60000,
-        "networkBytes": 77000,
+        "lowBytes": 30000,
+        "networkBytes": 40348,
         "offlineNote": "Not available with no signal: the weather is downloaded.",
         "offlineOk": false,
         "onDevice": false
@@ -405,9 +405,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 77000,
+        "networkBytes": 40348,
         "requests": 1,
-        "transferredBytes": 77000
+        "transferredBytes": 40348
       },
       "sourceServices": [],
       "stats": [],
@@ -429,7 +429,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 365 days of daily weather (10.4 KB; 365-day ERA5 daily response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (about 3 650 daily values, scaled from the 365-day response (10.4 kB))."
+        "note": "Planned before download: 365 days of daily weather (10.4 KB; 365-day daily archive response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (the 365-day history and the 10-year rain request measured 111.6 kB together at Bilpin (2026-09-30))."
       },
       "extent": {
         "areaKm2": 36,
@@ -438,7 +438,7 @@
         "south": -33.54698,
         "west": 150.387638
       },
-      "format": "JSON (Open-Meteo ERA5 archive)",
+      "format": "JSON (Open-Meteo historical weather archive)",
       "id": "drought-history",
       "kind": "timeseries",
       "licence": {
@@ -448,11 +448,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "365 days of daily weather (10.4 KB; 365-day ERA5 daily response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (about 3 650 daily values, scaled from the 365-day response (10.4 kB))",
+        "basis": "365 days of daily weather (10.4 KB; 365-day daily archive response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (the 365-day history and the 10-year rain request measured 111.6 kB together at Bilpin (2026-09-30))",
         "highBytes": 144000,
         "likelyOrigin": "live",
         "lowBytes": 9000,
-        "networkBytes": 100400,
+        "networkBytes": 110400,
         "offlineNote": "Not available with no signal: the rainfall history is downloaded.",
         "offlineOk": false,
         "onDevice": false
@@ -465,9 +465,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 100400,
+        "networkBytes": 110400,
         "requests": 2,
-        "transferredBytes": 100400
+        "transferredBytes": 110400
       },
       "sourceServices": [],
       "stats": [],
@@ -482,6 +482,66 @@
       "why": "Sets the drought factor and KBDI."
     },
     {
+      "attribution": "Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: part of the same download (48 %); pressure-level variables are 20 of the 42 hourly variables (the built records split the download by variables)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "JSON (pressure-level variables of the weather download)",
+      "id": "upper-air",
+      "kind": "timeseries",
+      "licence": {
+        "name": "CC BY 4.0 (Open-Meteo API data; free for non-commercial use, which includes education)",
+        "url": "https://open-meteo.com/en/license"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "part of the same download (48 %); pressure-level variables are 20 of the 42 hourly variables (the built records split the download by variables)",
+        "highBytes": 95000,
+        "likelyOrigin": "live",
+        "lowBytes": 24000,
+        "networkBytes": 36652,
+        "offlineNote": "Not available with no signal: it comes with the weather download.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "Open-Meteo",
+        "url": "https://open-meteo.com/"
+      },
+      "role": "upperAir",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 36652,
+        "requests": 0,
+        "transferredBytes": 36652
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Upper-air profile",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Temperature, humidity and wind at pressure levels above the site.",
+      "why": "Stability, the wind above the ridges and how high smoke rises."
+    },
+    {
       "attribution": "© Spatial Services NSW",
       "coverage": {
         "fraction": 1
@@ -489,7 +549,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+        "note": "Planned before download: 46 km² queried x 2.2 KB per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more."
       },
       "extent": {
         "areaKm2": 36,
@@ -508,11 +568,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
-        "highBytes": 864000,
+        "basis": "46 km² queried x 2.2 KB per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more",
+        "highBytes": 693600,
         "likelyOrigin": "live",
-        "lowBytes": 14400,
-        "networkBytes": 180000,
+        "lowBytes": 13872,
+        "networkBytes": 101728,
         "offlineNote": "Not available with no signal: queried from the NSW services.",
         "offlineOk": false,
         "onDevice": false
@@ -525,9 +585,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 180000,
+        "networkBytes": 101728,
         "requests": 2,
-        "transferredBytes": 180000
+        "transferredBytes": 101728
       },
       "sourceServices": [],
       "stats": [],
@@ -549,7 +609,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+        "note": "Planned before download: 46 km² queried x 370 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more."
       },
       "extent": {
         "areaKm2": 36,
@@ -568,11 +628,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
-        "highBytes": 864000,
+        "basis": "46 km² queried x 370 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more",
+        "highBytes": 138720,
         "likelyOrigin": "live",
-        "lowBytes": 14400,
-        "networkBytes": 180000,
+        "lowBytes": 2312,
+        "networkBytes": 17109,
         "offlineNote": "Not available with no signal: queried from the NSW services.",
         "offlineOk": false,
         "onDevice": false
@@ -585,9 +645,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 180000,
+        "networkBytes": 17109,
         "requests": 2,
-        "transferredBytes": 180000
+        "transferredBytes": 17109
       },
       "sourceServices": [],
       "stats": [],
@@ -609,7 +669,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+        "note": "Planned before download: 46 km² queried x 340 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more."
       },
       "extent": {
         "areaKm2": 36,
@@ -628,11 +688,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
-        "highBytes": 864000,
+        "basis": "46 km² queried x 340 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more",
+        "highBytes": 924800,
         "likelyOrigin": "live",
-        "lowBytes": 14400,
-        "networkBytes": 180000,
+        "lowBytes": 925,
+        "networkBytes": 15722,
         "offlineNote": "Not available with no signal: queried from the NSW services.",
         "offlineOk": false,
         "onDevice": false
@@ -645,9 +705,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 180000,
+        "networkBytes": 15722,
         "requests": 2,
-        "transferredBytes": 180000
+        "transferredBytes": 15722
       },
       "sourceServices": [],
       "stats": [],
@@ -669,7 +729,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+        "note": "Planned before download: 46 km² queried x 4.6 KB per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more."
       },
       "extent": {
         "areaKm2": 36,
@@ -688,11 +748,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
-        "highBytes": 864000,
+        "basis": "46 km² queried x 4.6 KB per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more",
+        "highBytes": 1156000,
         "likelyOrigin": "live",
-        "lowBytes": 14400,
-        "networkBytes": 180000,
+        "lowBytes": 0,
+        "networkBytes": 212704,
         "offlineNote": "Not available with no signal: queried from the NSW services.",
         "offlineOk": false,
         "onDevice": false
@@ -705,9 +765,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 180000,
+        "networkBytes": 212704,
         "requests": 2,
-        "transferredBytes": 180000
+        "transferredBytes": 212704
       },
       "sourceServices": [],
       "stats": [],
@@ -729,7 +789,7 @@
       "endpoints": [],
       "evidence": {
         "level": "assumed",
-        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+        "note": "Planned before download: 46 km² queried x 630 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more."
       },
       "extent": {
         "areaKm2": 36,
@@ -748,11 +808,11 @@
       "limitations": [],
       "origin": "live",
       "plan": {
-        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
-        "highBytes": 864000,
+        "basis": "46 km² queried x 630 B per km²; bytes per km² measured on a live build at Bilpin (semi-rural, 2026-09-30); bush areas have less, towns several times more",
+        "highBytes": 138720,
         "likelyOrigin": "live",
-        "lowBytes": 14400,
-        "networkBytes": 180000,
+        "lowBytes": 4624,
+        "networkBytes": 29131,
         "offlineNote": "Not available with no signal: queried from the NSW services.",
         "offlineOk": false,
         "onDevice": false
@@ -765,9 +825,9 @@
       "sizes": {
         "cachedBytes": 0,
         "estimate": true,
-        "networkBytes": 180000,
+        "networkBytes": 29131,
         "requests": 2,
-        "transferredBytes": 180000
+        "transferredBytes": 29131
       },
       "sourceServices": [],
       "stats": [],

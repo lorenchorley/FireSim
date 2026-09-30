@@ -9,7 +9,8 @@ import { FireHistoryKind, FuelType, Landform, DEFAULT_SIM_OPTIONS, type FuelMap,
 import { makeGridSpec } from '../core/grid';
 import { Rng } from '../core/rng';
 import { kmhToMs } from '../core/units';
-import { loadCanopy, loadElevation, syntheticElevation, syntheticSource, DEMO_SITES } from '../data';
+import { DatasetLedger, loadCanopy, loadElevation, syntheticElevation, syntheticSource, DEMO_SITES } from '../data';
+import { mockDatasets } from './mockDatasets';
 import { buildTerrain } from '../terrain';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import { dewPoint } from './weatherCalc';
@@ -242,11 +243,15 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
   const cellSize = options.fireCellSize;
 
   report('terrain', 0.02, 'Loading elevation…');
+  const startedAt = Date.now();
+  // A request ledger measures the real files the mock reads, for its data-set inventory (mockDatasets.ts).
+  const ledger = new DatasetLedger();
+  let terrainSynthetic = false;
   let grid = makeGridSpec(req.centre, req.extent, cellSize);
   let elevation: Float32Array;
   let source: string;
   try {
-    const r = await loadElevation({ centre: req.centre, extent: req.extent, cellSize, demoSiteId: req.demoSiteId, signal, offline: !req.online });
+    const r = await loadElevation({ centre: req.centre, extent: req.extent, cellSize, demoSiteId: req.demoSiteId, signal, offline: !req.online, trace: { tag: 'terrain', ledger } });
     grid = r.grid;
     elevation = r.elevation;
     source = r.source;
@@ -255,6 +260,7 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
     warnings.push(`Elevation unavailable (${(e as Error).message}); using synthetic terrain.`);
     elevation = syntheticElevation(grid, 'escarpment');
     source = syntheticSource('escarpment');
+    terrainSynthetic = true;
   }
   report('terrain', 0.2, 'Deriving slope, aspect and landforms…');
   await sleep(30, signal);
@@ -263,7 +269,7 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
   report('canopy', 0.35, 'Loading canopy height…');
   let canopy: { height: Float32Array; cover: Float32Array } | null = null;
   try {
-    canopy = await loadCanopy(grid, { demoSiteId: req.demoSiteId, allowRemote: false, signal });
+    canopy = await loadCanopy(grid, { demoSiteId: req.demoSiteId, allowRemote: false, signal, trace: { tag: 'canopy-height', ledger } });
   } catch {
     if (signal?.aborted) throw abortError();
   }
@@ -309,6 +315,13 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
     edits: [],
     options,
   };
+  try {
+    const inv = mockDatasets({ scenario, req, ledger, terrainSynthetic, canopy: !!canopy, startedAt, warnings });
+    scenario.datasets = inv.datasets;
+    scenario.datasetSummary = inv.summary;
+  } catch (e) {
+    console.warn('[mock] data-set inventory failed', e);
+  }
   report('done', 1, 'Model ready');
   return scenario;
 };

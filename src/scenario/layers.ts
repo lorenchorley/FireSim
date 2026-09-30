@@ -14,7 +14,11 @@
 import type { GridSpec, LatLon } from '../core/types';
 import { LocalProjection } from '../core/geo';
 import {
+  approxBytes,
   cachedFetchJson,
+  endpointOf,
+  openCache,
+  traceRead,
   DatasetLedger,
   findAreaPacks,
   loadAreaPackItem,
@@ -146,6 +150,36 @@ export async function fetchArcGisFeatures(
   return { type: 'FeatureCollection', features };
 }
 
+/**
+ * The stored copy of an earlier live query (the pages {@link fetchArcGisFeatures} cached), read from the cache only:
+ * no network. Null when page 1 is not stored. Recorded on the trace as stored-copy reads.
+ */
+export async function storedArcGisFeatures(
+  path: string,
+  bbox: [number, number, number, number],
+  o: { maxPages: number; kv?: KV; trace?: TraceOptions },
+): Promise<{ geojson: GeoJsonFeatureCollection; storedAt: number } | null> {
+  const kv = o.kv ?? openCache();
+  const features: GeoJsonFeatureCollection['features'] = [];
+  let storedAt = 0;
+  for (let page = 0; page < o.maxPages; page++) {
+    const key = `arcgis/${path}/${bbox.join(',')}/${page}`;
+    const t0 = o.trace?.ledger ? o.trace.ledger.now() : 0;
+    const rec = await kv.get<{ t: number; url: string; v: ArcGeoJson; n?: number }>(key).catch(() => undefined);
+    if (!rec || !rec.v) {
+      if (page === 0) return null;
+      break;
+    }
+    traceRead(o.trace, 'cache', rec.url ? endpointOf(rec.url) : { host: 'cache', path: `/${path}` }, rec.n ?? approxBytes(rec.v), { cachedAt: rec.t, at: t0, durationMs: o.trace?.ledger ? o.trace.ledger.now() - t0 : 0 });
+    storedAt = storedAt ? Math.min(storedAt, rec.t) : rec.t;
+    const f = Array.isArray(rec.v.features) ? rec.v.features : [];
+    features.push(...f);
+    const more = rec.v.exceededTransferLimit || rec.v.properties?.exceededTransferLimit || f.length >= SCENARIO_PARAMS.arcgisPageSize;
+    if (!more) break;
+  }
+  return { geojson: { type: 'FeatureCollection', features }, storedAt };
+}
+
 export const fetchSvtm = (ctx: LayerContext): Promise<GeoJsonFeatureCollection> =>
   fetchArcGisFeatures(SVTM_QUERY_PATH, domainBBox(ctx.centre, ctx.extent), {
     outFields: 'OBJECTID,PCTID,PCTName,vegClass,vegForm',
@@ -188,6 +222,8 @@ export interface VectorInfo {
   siteId?: string;
   /** Area pack name (origin 'pack'). */
   packName?: string;
+  /** When the stored copy was downloaded (origin 'cache', read offline). */
+  storedAt?: number;
   /** Wall time of the whole chain for this layer (ms). */
   durationMs: number;
   /** Sources tried and skipped, in order, e.g. ['network unavailable']. */
@@ -214,6 +250,7 @@ async function vectorLayer(
   demo: (site: string, s?: AbortSignal, trace?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>,
   net: (ctx: LayerContext) => Promise<GeoJsonFeatureCollection>,
   label: string,
+  stored?: (ctx: LayerContext) => Promise<{ geojson: GeoJsonFeatureCollection; storedAt: number } | null>,
 ): Promise<VectorLayer> {
   const warnings: string[] = [];
   const skipped: string[] = [];
@@ -238,7 +275,17 @@ async function vectorLayer(
       warnings.push(MESSAGES.networkFailed(label));
       skipped.push('live query failed');
     }
-  } else skipped.push('offline');
+  } else {
+    skipped.push('offline');
+    // Offline: the stored copy of an earlier live query for this same area (a failed live query already fell back to it).
+    const st = stored ? await stored(ctx).catch(() => null) : null;
+    aborted(ctx.signal);
+    if (st && st.geojson.features.length) {
+      const when = new Date(st.storedAt).toISOString().slice(0, 10);
+      return done({ geojson: st.geojson, origin: 'cache', source: `${label}: stored copy (downloaded ${when})`, partial: false, warnings }, { storedAt: st.storedAt });
+    }
+    skipped.push('no stored copy');
+  }
   // Offline or failed: a demo bundle that only partly covers the domain is better than nothing.
   for (const site of cov.partial) {
     const g = await demo(site, ctx.signal, trace).catch(() => null);
@@ -249,11 +296,15 @@ async function vectorLayer(
 
 /** SVTM vegetation polygons for the domain (raw GeoJSON; fuel/ parses and rasterises them). */
 export const loadVegetationLayer = (ctx: LayerContext): Promise<VectorLayer> =>
-  vectorLayer(ctx, 'vegetation', VEGETATION_TAG, loadDemoVegetationGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchSvtm, 'Vegetation (NSW SVTM)');
+  vectorLayer(ctx, 'vegetation', VEGETATION_TAG, loadDemoVegetationGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchSvtm, 'Vegetation (NSW SVTM)', (c) =>
+    storedArcGisFeatures(SVTM_QUERY_PATH, domainBBox(c.centre, c.extent), { maxPages: SCENARIO_PARAMS.svtmMaxPages, ...(c.kv ? { kv: c.kv } : {}), ...(traceOf(c, VEGETATION_TAG) ? { trace: traceOf(c, VEGETATION_TAG)! } : {}) }),
+  );
 
 /** NPWS fire-history polygons for the domain (raw GeoJSON). */
 export const loadFireHistoryLayer = (ctx: LayerContext): Promise<VectorLayer> =>
-  vectorLayer(ctx, 'fireHistory', FIRE_HISTORY_TAG, loadDemoFireHistoryGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchNpwsFireHistory, 'Fire history (NPWS)');
+  vectorLayer(ctx, 'fireHistory', FIRE_HISTORY_TAG, loadDemoFireHistoryGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchNpwsFireHistory, 'Fire history (NPWS)', (c) =>
+    storedArcGisFeatures(NPWS_FIRE_QUERY_PATH, domainBBox(c.centre, c.extent), { maxPages: SCENARIO_PARAMS.fireHistoryMaxPages, ...(c.kv ? { kv: c.kv } : {}), ...(traceOf(c, FIRE_HISTORY_TAG) ? { trace: traceOf(c, FIRE_HISTORY_TAG)! } : {}) }),
+  );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Canopy

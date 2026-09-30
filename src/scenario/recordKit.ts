@@ -67,6 +67,8 @@ export function sumTotals(ledger: DatasetLedger | undefined, tags: readonly stri
     out.bytes += t.bytes;
     out.bodyBytes += t.bodyBytes;
     out.networkBytes += t.networkBytes;
+    out.networkBodyBytes += t.networkBodyBytes;
+    out.networkUnmeasuredBytes += t.networkUnmeasuredBytes;
     out.cacheBytes += t.cacheBytes;
     out.packBytes += t.packBytes;
     out.bundledBytes += t.bundledBytes;
@@ -86,7 +88,7 @@ export function sumTotals(ledger: DatasetLedger | undefined, tags: readonly stri
 
 function emptyTotals(): LedgerTotals {
   return {
-    requests: 0, failures: 0, bytes: 0, bodyBytes: 0, networkBytes: 0, cacheBytes: 0, packBytes: 0, bundledBytes: 0,
+    requests: 0, failures: 0, bytes: 0, bodyBytes: 0, networkBytes: 0, networkBodyBytes: 0, networkUnmeasuredBytes: 0, cacheBytes: 0, packBytes: 0, bundledBytes: 0,
     bySource: { network: 0, cache: 0, stale: 0, pack: 0, bundled: 0 }, retries: 0, sumMs: 0, wallMs: 0, firstAt: 0, lastEndAt: 0,
     oldestCachedAt: 0, newestCachedAt: 0, newestNetworkAt: 0, storedBytes: 0,
   };
@@ -99,6 +101,8 @@ export function sizesOf(t: LedgerTotals, extra: Partial<DatasetSizes> = {}): Dat
     networkBytes: t.networkBytes,
     cachedBytes: t.cacheBytes + t.packBytes,
     requests: t.requests,
+    ...(t.networkBodyBytes > 0 && t.networkBodyBytes !== t.networkBytes ? { networkDecodedBytes: t.networkBodyBytes } : {}),
+    ...(t.networkUnmeasuredBytes > 0 ? { networkUnmeasuredBytes: t.networkUnmeasuredBytes } : {}),
     ...(t.storedBytes > 0 ? { storedOnDeviceBytes: t.storedBytes } : {}),
     ...extra,
   };

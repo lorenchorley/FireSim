@@ -39,8 +39,10 @@ export interface LedgerEntry {
   status: number;
   ok: boolean;
   source: LedgerSource;
-  /** Bytes on the wire (Content-Length if known, else the body length); for stored copies, bundled files and packs the stored size. */
+  /** Bytes on the wire (Content-Length or resource timing if known, else the body length, see `wireUnknown`); for stored copies, bundled files and packs the stored size. */
   bytes: number;
+  /** True when the size on the wire was not reported (no Content-Length, no resource timing): `bytes` is then the decoded length. */
+  wireUnknown?: true;
   /** Decoded body length (UTF-8 bytes of a text body, byte length of a binary one). */
   bodyBytes: number;
   /** Time the request took (ms). */
@@ -72,6 +74,8 @@ export interface LedgerInput {
   retries?: number;
   at?: number;
   cachedAt?: number;
+  /** The wire size was not reported; `bytes` is the decoded body length (network requests only). */
+  wireUnknown?: boolean;
   note?: string;
   error?: string;
 }
@@ -83,6 +87,10 @@ export interface LedgerTotals {
   bytes: number;
   bodyBytes: number;
   networkBytes: number;
+  /** Decoded (uncompressed) body bytes of the successful network requests (what `networkBytes` decompressed to). */
+  networkBodyBytes: number;
+  /** Part of `networkBytes` counted at the decoded size because the wire size was not reported (an upper bound). */
+  networkUnmeasuredBytes: number;
   /** Stored copies (cache hits, including stale ones). */
   cacheBytes: number;
   packBytes: number;
@@ -107,7 +115,11 @@ export interface LedgerTotals {
 
 export interface LedgerEndpoint {
   host: string;
-  /** Path with long numbers replaced by {n} (tiles, quadkeys), so many tiles make one line. */
+  /**
+   * The path of the one file read, or, once two different paths that differ only in their long numbers were read, the
+   * pattern with those numbers replaced by {n} (tiles, quadkeys), so many tiles make one line while a single file keeps
+   * its real name ('/replays/grose-2019-12-19.json').
+   */
   path: string;
   requests: number;
   bytes: number;
@@ -119,6 +131,8 @@ const zeroTotals = (): LedgerTotals => ({
   bytes: 0,
   bodyBytes: 0,
   networkBytes: 0,
+  networkBodyBytes: 0,
+  networkUnmeasuredBytes: 0,
   cacheBytes: 0,
   packBytes: 0,
   bundledBytes: 0,
@@ -229,11 +243,13 @@ export class DatasetLedger {
         at,
       };
       if (input.cachedAt !== undefined && Number.isFinite(input.cachedAt)) entry.cachedAt = input.cachedAt;
+      if (input.wireUnknown && source === 'network') entry.wireUnknown = true;
       if (input.note) entry.note = String(input.note).slice(0, 120);
       if (input.error) entry.error = String(input.error).slice(0, 40);
       if (entry.error) entry.ok = false;
       this.list.push(entry);
-      if (this.list.length > this.max) this.list.splice(0, this.list.length - this.max);
+      // Trim in chunks (not one entry per record) so a very long build stays O(1) per request.
+      if (this.list.length > this.max + Math.max(16, this.max >> 3)) this.list.splice(0, this.list.length - this.max);
       this.add(entry);
     } catch {
       this.swallowed++;
@@ -250,12 +266,16 @@ export class DatasetLedger {
       if (e.ok) {
         t.bytes += e.bytes;
         t.bodyBytes += e.bodyBytes;
-        if (e.source === 'network') t.networkBytes += e.bytes;
-        else if (e.source === 'cache' || e.source === 'stale') t.cacheBytes += e.bytes;
+        if (e.source === 'network') {
+          t.networkBytes += e.bytes;
+          t.networkBodyBytes += e.bodyBytes;
+          if (e.wireUnknown) t.networkUnmeasuredBytes += e.bytes;
+        } else if (e.source === 'cache' || e.source === 'stale') t.cacheBytes += e.bytes;
         else if (e.source === 'pack') t.packBytes += e.bytes;
         else t.bundledBytes += e.bytes;
       } else if (e.source === 'network') {
         t.networkBytes += e.bytes; // a rejected response still crossed the network
+        if (e.wireUnknown) t.networkUnmeasuredBytes += e.bytes;
       }
       t.bySource[e.source]++;
       t.retries += e.retries;
@@ -272,12 +292,13 @@ export class DatasetLedger {
     }
     let m = this.ends.get(e.tag);
     if (!m) this.ends.set(e.tag, (m = new Map()));
-    const k = `${e.host}${pathPattern(e.path)}`;
+    const pattern = pathPattern(e.path);
+    const k = `${e.host}${pattern}`;
     let ep = m.get(k);
     if (!ep) {
       if (m.size >= 40) return; // bounded: a pathological caller cannot grow it
-      m.set(k, (ep = { host: e.host, path: pathPattern(e.path), requests: 0, bytes: 0 }));
-    }
+      m.set(k, (ep = { host: e.host, path: e.path, requests: 0, bytes: 0 }));
+    } else if (ep.path !== e.path) ep.path = pattern; // a second file of the same pattern: show the pattern
     ep.requests++;
     if (e.ok) ep.bytes += e.bytes;
   }
@@ -318,7 +339,8 @@ export class DatasetLedger {
   /** The kept requests (newest last), of one tag or all. */
   entries(tag?: string): readonly LedgerEntry[] {
     try {
-      return tag === undefined ? this.list.slice() : this.list.filter((e) => e.tag === tag);
+      const list = this.list.length > this.max ? this.list.slice(this.list.length - this.max) : this.list;
+      return tag === undefined ? list.slice() : list.filter((e) => e.tag === tag);
     } catch {
       return [];
     }

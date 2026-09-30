@@ -7,7 +7,7 @@
  * loaders' own reports (origin, site, tile counts). The only typed-in text is the documented static facts: provider and
  * licence names, service copyright text, format names and the plain-English explanations.
  */
-import { formatBytes, formatPercent, type DatasetOrigin, type DatasetPart, type DatasetRecord, type DatasetStat } from '../core/datasets';
+import { formatBytes, formatPercent, typedArrayFootprint, type DatasetOrigin, type DatasetPart, type DatasetRecord, type DatasetStat } from '../core/datasets';
 import type { FireHistoryRecord, FuelMap, LatLon, Terrain } from '../core/types';
 import { FireHistoryKind } from '../core/types';
 import type { BundleManifest, DatasetLedger } from '../data';
@@ -18,7 +18,7 @@ import type { ImageryInfo } from './imagery';
 import { CANOPY_TAG, FIRE_HISTORY_TAG, VEGETATION_TAG, type CanopyLayer, type LayerOrigin, type VectorLayer } from './layers';
 import { MESSAGES } from './messages';
 import { canopyStats, fireHistoryStats, fuelStats, num, shareStat, stat, terrainStats, textStat, vegetationStats } from './datasetStats';
-import { ATTRIBUTION, CC_BY_4, COPIES, LICENCES, PROVIDERS, endpoint, endpointsOf, extentOf, overlapShare, ownArrayBytes, skeleton, sizesOf, sumTotals, typedBytes, vintageFor, day } from './recordKit';
+import { ATTRIBUTION, COPIES, LICENCES, PROVIDERS, endpoint, endpointsOf, extentOf, overlapShare, ownArrayBytes, skeleton, sizesOf, sumTotals, typedBytes, vintageFor, day } from './recordKit';
 import { DEMO_EXTENT_M, DEMO_SITES } from '../data';
 import type { HiResResult } from './terrain';
 import { TERRAIN_TAG } from './terrain';
@@ -46,14 +46,13 @@ export interface MapInputs {
   fuel: FuelMap;
   includedFires: readonly FireHistoryRecord[];
   activeFires: readonly FireHistoryRecord[];
+  /** ScenarioData.fuelHistory (the per-cell index of fire records the worker re-reads), for the memory figure. */
+  fuelHistory?: object;
   /** Wall times (ms) of the build steps. */
   timings: Partial<Record<'terrain' | 'imagery' | 'canopy' | 'vegetation' | 'fireHistory', number>>;
   /** Build warnings each loader raised. */
   warnings: { terrain: string[]; canopy: string[]; vegetation: string[]; fireHistory: string[] };
 }
-
-const PROVIDER_ROOT = 'https://creativecommons.org/licenses/by/4.0/';
-void PROVIDER_ROOT;
 
 /** Data-set origin of a loader's layer origin; a 'network' answer that was really a stored copy (download failed) counts as 'cache'. */
 export function originOf(o: LayerOrigin, ledger: DatasetLedger | undefined, tags: readonly string[]): DatasetOrigin {
@@ -67,8 +66,10 @@ export function originOf(o: LayerOrigin, ledger: DatasetLedger | undefined, tags
     case 'none':
       return 'none';
     case 'network': {
+      // Live only when a network request SUCCEEDED (failed attempts are on the ledger too): a failed download answered
+      // from a stale stored copy is a stored copy.
       const t = sumTotals(ledger, tags);
-      return t.bySource.network === 0 && t.bySource.cache + t.bySource.stale > 0 ? 'cache' : 'live';
+      return t.newestNetworkAt === 0 && t.bySource.cache + t.bySource.stale > 0 ? 'cache' : 'live';
     }
   }
 }
@@ -135,7 +136,8 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
       }),
       crs: { native: 'EPSG:3857 (Web Mercator), 5 m post spacing', toModel: `Resampled (bilinear) to a ${m.cellSize} m grid of metres east and north of the site centre (an equirectangular projection), then block-averaged to the fire grid.` },
       coverage: { fraction: 1 },
-      native: { resolutionM: 5, width: m.n, height: m.n, cells: m.n * m.n, note: `Published on a 5 m grid; the copy shipped with the app was resampled to ${m.cellSize} m.` },
+      // As published: 5 m posts. The bundled image (m.n x m.n pixels of m.cellSize m) is described in the stats and the format.
+      native: { resolutionM: 5, note: `Published on a 5 m grid; the copy shipped with the app was resampled to ${m.cellSize} m (${m.n} x ${m.n} pixels).` },
       sizes: sizesOf(t, { decodedBytes: m.n * m.n * 4, memoryBytes: memory, durationMs, tiles: 0 }),
       evidence: {
         level: 'measured',
@@ -207,12 +209,17 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
       ...(st.distribution ? { distribution: st.distribution } : {}),
     });
   } else if (hi.origin === 'pack') {
+    // The pack keeps the source text of what it saved (downloadAreaPack: the bundled 5 m model or Terrarium tiles).
+    const src = info.packSource ?? '';
+    const who = /NSW_5M_Elevation|Spatial Services/i.test(src)
+      ? { provider: PROVIDERS.spatial, licence: LICENCES.ccBy, attribution: ATTRIBUTION.spatial }
+      : /Terrarium|SRTM|Terrain Tiles/i.test(src)
+        ? { provider: PROVIDERS.awsTerrain, licence: LICENCES.publicDomain, attribution: ATTRIBUTION.terrarium }
+        : { provider: PROVIDERS.app, licence: { name: 'As recorded in the pack' }, attribution: src || 'Elevation saved in an area pack' };
     rec = skeleton({
       ...common,
-      what: `A ${i.hiRes.grid.cellSize} m ground-height grid saved in an area pack for offline use.`,
-      provider: PROVIDERS.app,
-      licence: CC_BY_4,
-      attribution: `${info.packSource ?? 'Elevation saved in an area pack'} (from your saved area pack '${info.packName ?? ''}')`,
+      what: `A ${i.hiRes.grid.cellSize} m ground-height grid saved in an area pack for offline use (${src || 'source not recorded'}).`,
+      ...who,
       format: 'Float32 elevation grid saved in an area pack',
       kind: 'raster',
       status: 'used',
@@ -317,7 +324,8 @@ export function imageryRecord(i: MapInputs): DatasetRecord {
     crs: { native: 'EPSG:3857 (Web Mercator) tiles at zoom 15', toModel: 'Area-averaged 2 x 2, then resampled (bilinear) onto an 8 m local grid; cropped to the model area.' },
     extent: extentOf(i.centre, i.extentM),
     coverage: { fraction: 1 },
-    native: { resolutionM: m.cellSize, width: m.n, height: m.n, cells: m.n * m.n, note: 'Zoom-15 tiles are about 4 m per pixel; the bundled image is 8 m.' },
+    // As published: zoom-15 Web Mercator tiles (ground metres per pixel at this latitude); the bundled image is coarser.
+    native: { resolutionM: Math.round(terrariumPixelM(i.centre.lat, 15) * 10) / 10, width: 256, height: 256, note: `Zoom-15 tiles of 256 x 256 pixels, about ${num(terrariumPixelM(i.centre.lat, 15), 1)} m per pixel here; the bundled image is ${m.n} x ${m.n} pixels of ${m.cellSize} m.` },
     model: { resolutionM: m.cellSize, width: im.drawnPx.w, height: im.drawnPx.h, resampling: 'bilinear', note: `Cropped to the model area and drawn at up to ${im.drawnPx.w} x ${im.drawnPx.h} pixels.` },
     sizes: sizesOf(t, {
       transferredBytes: t.bytes + im.jpgBytes,
@@ -531,7 +539,8 @@ export function fireHistoryRecord(i: MapInputs): DatasetRecord {
       fallbackReason: fh.warnings.length || fh.origin === 'none' ? 'No fire history could be read for this area. The model assumes every patch has had no fire for a long time (steady-state fuel).' : 'No fire history is available for this area.',
       vintage: vintageFor('none', t, i.now),
       coverage: { fraction: 0, filledBy: 'steady-state fuel (long unburnt)', filledOrigin: 'derived' },
-      sizes: sizesOf(t, { durationMs: i.timings.fireHistory ?? fh.info.durationMs }),
+      // The (empty) per-cell record index still exists in memory, main thread and worker.
+      sizes: sizesOf(t, { durationMs: i.timings.fireHistory ?? fh.info.durationMs, ...(i.fuelHistory ? { memoryBytes: typedArrayFootprint([i.fuelHistory, i.activeFires]).bytes * COPIES } : {}) }),
       evidence: { level: 'assumed', note: 'With no record, fuel is assumed to have built up to its long-run level: usually the worst case for fuel load.', specRef: 'docs/research/00-synthesis.md §4.4' },
       stats: hs.stats,
       warnings: [...i.warnings.fireHistory, MESSAGES.fireHistoryUnavailable],
@@ -555,7 +564,7 @@ export function fireHistoryRecord(i: MapInputs): DatasetRecord {
     coverage: { fraction: partial ? partialShare : 1, ...(partial ? { filledBy: 'steady-state fuel (long unburnt)', filledOrigin: 'derived' as const } : {}), note: 'Cells with no fire on record are counted as covered: an empty cell is a real answer.' },
     native: { features: fhFeatures, records: pf.records.length, note: `${pf.records.length} fire outlines used${pf.skipped ? `, ${pf.skipped} skipped` : ''}.` },
     model: { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells: g.nx * g.ny, resampling: 'rasterise', note: 'The newest fire before the start covering a cell sets its time since fire; earlier fires count towards fire frequency.' },
-    sizes: sizesOf(t, { durationMs: i.timings.fireHistory ?? fh.info.durationMs, features: fhFeatures, records: pf.records.length, decodedBytes: t.bodyBytes || undefined, memoryBytes: (typedBytes(fuel.timeSinceFire, fuel.lastFireKind, fuel.fireCount30, fuel.fireCountTfi) ) * COPIES }),
+    sizes: sizesOf(t, { durationMs: i.timings.fireHistory ?? fh.info.durationMs, features: fhFeatures, records: pf.records.length, decodedBytes: t.bodyBytes || undefined, ...(i.fuelHistory ? { memoryBytes: typedArrayFootprint([i.fuelHistory, i.activeFires]).bytes * COPIES } : {}) }),
     endpoints: endpointsOf(ledger, [FIRE_HISTORY_TAG]),
     stats: hs.stats,
     ...(hs.distribution ? { distribution: hs.distribution } : {}),
