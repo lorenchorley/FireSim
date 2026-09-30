@@ -14,3 +14,29 @@
 .progress-row .progress-fill {
   border-radius: 4px;
 }
+
+/*
+ * Setup screen (screens.css .site-card / .choice-card / .fix / .manual-box) and the fire panel (sim.css .preset):
+ * the "selected" frame used to be near-black; the interactive colour is blue now, so the frame follows it.
+ * Owner: setup screen and fire/fuel panel builders.
+ */
+.site-card.selected,
+.choice-card.selected,
+.fix.selected,
+.manual-box.selected,
+.preset.selected {
+  border-color: var(--primary);
+  box-shadow: none;
+}
+
+/*
+ * Sentence case everywhere (only the safety strip and real badges are uppercase): the region label on the site cards and the
+ * group titles of the insight and layer panels were uppercase with tracking.
+ * Owner: setup screen, insights panel and layers panel builders.
+ */
+.site-region,
+.overlay-group-title,
+.group-title {
+  text-transform: none;
+  letter-spacing: 0;
+}

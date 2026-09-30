@@ -32,6 +32,7 @@
   --surface-glass: rgba(255, 255, 255, 0.96); /* floating map overlays (near-opaque: no blur, no gloss) */
   --surface-inverse: #323232; /* snackbars (Android style) */
   --on-surface-inverse: #ffffff;
+  --snackbar-action: #8ab4f8; /* action label on --surface-inverse (6.1:1; 7.8:1 in high contrast) */
   --scrim: rgba(32, 33, 36, 0.5);
 
   /* Text and icons */
@@ -139,6 +140,7 @@
   --surface-glass: rgba(48, 49, 52, 0.96);
   --surface-inverse: #323232;
   --on-surface-inverse: #ffffff;
+  --snackbar-action: #8ab4f8;
   --scrim: rgba(0, 0, 0, 0.6);
 
   --text: #e8eaed;
@@ -164,7 +166,7 @@
   --danger: #f28b82;
   --on-danger: #202124;
   --danger-bg: #42302f;
-  --danger-ink: #f28b82;
+  --danger-ink: #f4938b; /* --danger #f28b82 is only 4.38:1 on --surface-2 (raised); this is 4.68:1 */
   --watch: #fdd663;
   --on-watch: #202124;
   --watch-bg: #3d3520;
@@ -231,6 +233,7 @@
   --fs-xl: 25px;
   --fs-2xl: 33px;
   --outline-variant: var(--outline);
+  --snackbar-action: #aecbfa; /* the snackbar stays #323232 in both themes: 7.8:1 */
   --rating-ink: #000000;
   --elev-1: none;
   --elev-2: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -274,6 +277,8 @@
   --fire-ink: #8a3600;
   --grid: rgba(11, 13, 16, 0.2);
   --violet-ink: #4a148c;
+  --series-1: #0a6a7c; /* bar fills sit on --surface-3 (#e3e7eb) here: >= 4.5:1 */
+  --series-4: #4a636e;
   --state-hover: rgba(11, 13, 16, 0.08);
   --state-press: rgba(11, 13, 16, 0.16);
   --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d232b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -292,7 +297,7 @@
   --outline: #e8eaed;
   --primary: #aecbfa;
   --on-primary: #000000;
-  --primary-ink: #aecbfa;
+  --primary-ink: #c2d7fb; /* #aecbfa is 6.7:1 on the tinted containers; this is >= 7.6:1 on all of them */
   --primary-container: #1e3a6e;
   --on-primary-container: #ffffff;
   --focus: #aecbfa;

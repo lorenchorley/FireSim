@@ -20,6 +20,7 @@ import { DEMO_EXTENT_M, DEMO_SITES } from './demoSites';
 import { loadAsset, loadAssetJson } from './assets';
 import { openCache, type KV } from './cache';
 import { httpRequest, serviceUrl, type RawResponse } from './http';
+import { traceFields, traceRead, type TraceOptions } from './ledger';
 
 export const CHM_SOURCE = 'Meta & WRI 1 m canopy height (Tolan et al. 2024, CC BY 4.0)';
 /** Largest extent (m) for which the slow remote COG path is attempted. */
@@ -39,6 +40,18 @@ export interface CanopyResult {
   /** Share of cells with measured values (0–1). */
   coverage: number;
   source: string;
+  /** How the values were obtained: the bundled 20 m raster, a fresh read of the remote COGs, or a stored copy of one. */
+  via?: 'bundled' | 'pack' | 'remote' | 'remote-cache';
+  /** Bundled demo site that supplied the raster. */
+  site?: string;
+  /** Cell size (m) of the source raster: 20 for the bundled one, the working grid for a remote read. */
+  nativeCellM?: number;
+  /** Web-Mercator level-9 COG tiles read (remote). */
+  cogTiles?: string[];
+  /** Capture date of the bundled raster (ISO), when the bundle carries one. */
+  capturedOn?: string;
+  /** For a stored remote copy: when it was downloaded (epoch ms). */
+  storedAt?: number;
 }
 
 export interface CanopyOptions {
@@ -50,15 +63,19 @@ export interface CanopyOptions {
   cache?: KV | null;
   /** Minimum measured share of cells for a bundled raster to be used (default 0.5). */
   minCoverage?: number;
+  /** Record the reads on a request ledger (data/ledger.ts). */
+  trace?: TraceOptions;
 }
 
-interface CanopyMeta {
+export interface CanopyMeta {
   id: string;
   cellSize: number;
   n: number;
   centre: LatLon;
   extent: number;
   source?: string;
+  encoding?: string;
+  capturedOn?: string;
 }
 
 /**
@@ -69,7 +86,7 @@ export async function loadCanopy(grid: GridSpec, opts: CanopyOptions = {}): Prom
   const minCoverage = opts.minCoverage ?? 0.5;
   for (const id of candidateSites(grid, opts.demoSiteId)) {
     try {
-      const r = await loadBundledCanopy(grid, id, opts.signal);
+      const r = await loadBundledCanopy(grid, id, opts.signal, opts.trace);
       if (r && r.coverage >= minCoverage) return r;
     } catch (e) {
       if (opts.signal?.aborted) throw e;
@@ -104,10 +121,11 @@ function candidateSites(grid: GridSpec, preferred?: string): string[] {
 export async function loadBundledCanopyRaster(
   siteId: string,
   signal?: AbortSignal,
+  trace?: TraceOptions,
 ): Promise<{ grid: GridSpec; height: Float32Array; meanHeight: Float32Array; cover: Float32Array; meta: CanopyMeta } | null> {
-  const meta = await loadAssetJson<CanopyMeta>(`demo/${siteId}/canopy.json`, signal);
+  const meta = await loadAssetJson<CanopyMeta>(`demo/${siteId}/canopy.json`, signal, trace);
   if (!meta || !meta.cellSize || !meta.n || !meta.centre) return null;
-  const png = await loadAsset(`demo/${siteId}/canopy.png`, signal);
+  const png = await loadAsset(`demo/${siteId}/canopy.png`, signal, trace);
   if (!png || !hasPngSignature(png)) return null;
   const img = decode(png);
   const ch = img.channels;
@@ -137,8 +155,8 @@ export async function loadBundledCanopyRaster(
   return { grid, height, meanHeight, cover, meta };
 }
 
-async function loadBundledCanopy(grid: GridSpec, siteId: string, signal?: AbortSignal): Promise<CanopyResult | null> {
-  const raster = await loadBundledCanopyRaster(siteId, signal);
+async function loadBundledCanopy(grid: GridSpec, siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<CanopyResult | null> {
+  const raster = await loadBundledCanopyRaster(siteId, signal, trace);
   if (!raster) return null;
   const map = mapGrids(raster.grid, grid);
   const valid = new Uint8Array(grid.nx * grid.ny);
@@ -150,7 +168,7 @@ async function loadBundledCanopy(grid: GridSpec, siteId: string, signal?: AbortS
   const coverage = nValid / valid.length;
   const how = Math.abs(raster.grid.cellSize - grid.cellSize) < 1e-6 ? 'at' : `${usesBox(map) ? 'area-averaged' : 'interpolated'} from`;
   const source = `${raster.meta.source ?? CHM_SOURCE}; bundled demo '${siteId}' ${how} ${raster.meta.cellSize} m${coverage < 0.999 ? `, ${Math.round(coverage * 100)}% of area covered` : ''}`;
-  return { height, meanHeight, cover, valid, coverage, source };
+  return { height, meanHeight, cover, valid, coverage, source, via: 'bundled', site: siteId, nativeCellM: raster.meta.cellSize, ...(raster.meta.capturedOn ? { capturedOn: raster.meta.capturedOn } : {}) };
 }
 
 /**
@@ -349,6 +367,7 @@ class ChmClient extends BaseClient {
   constructor(
     url: string,
     private readonly outerSignal?: AbortSignal,
+    private readonly trace?: TraceOptions,
   ) {
     super(url);
   }
@@ -358,7 +377,7 @@ class ChmClient extends BaseClient {
     const signal = (options.signal ?? undefined) || this.outerSignal;
     for (let attempt = 0; ; attempt++) {
       try {
-        const r = await httpRequest(this.url, { headers, signal, timeoutMs: 60_000, route: false });
+        const r = await httpRequest(this.url, { headers, signal, timeoutMs: 60_000, route: false, ...traceFields(this.trace) });
         if (r.status >= 500 && attempt < 1) continue;
         return new ChmResponse(r);
       } catch (e) {
@@ -376,6 +395,12 @@ interface RemoteCanopyRecord {
   source: string;
   /** False when some COG could not be read (the result is partial and must not be cached). */
   complete: boolean;
+  /** Epoch ms the COGs were read. */
+  storedAt?: number;
+  /** Working-grid cell (m) the 1 m pixels were aggregated on. */
+  nativeCellM?: number;
+  /** Level-9 quadkeys of the COGs read. */
+  cogTiles?: string[];
 }
 
 /** Cache key under which a remote canopy result for exactly this grid is stored. */
@@ -385,7 +410,7 @@ export const remoteCanopyCacheKey = (g: GridSpec): string =>
 /**
  * Read canopy for `grid` from the remote COGs (slow; ≤ 3 km). Returns null on failure or if the area is too large.
  */
-export async function loadRemoteCanopy(grid: GridSpec, opts: Pick<CanopyOptions, 'signal' | 'cache'> = {}): Promise<CanopyResult | null> {
+export async function loadRemoteCanopy(grid: GridSpec, opts: Pick<CanopyOptions, 'signal' | 'cache' | 'trace'> = {}): Promise<CanopyResult | null> {
   const extentX = grid.nx * grid.cellSize;
   const extentY = grid.ny * grid.cellSize;
   if (Math.max(extentX, extentY) > MAX_REMOTE_CANOPY_EXTENT + 1e-6) {
@@ -395,16 +420,28 @@ export async function loadRemoteCanopy(grid: GridSpec, opts: Pick<CanopyOptions,
   const kv = opts.cache === null ? null : (opts.cache ?? openCache());
   const key = remoteCanopyCacheKey(grid);
   if (kv) {
+    const t0 = opts.trace?.ledger ? opts.trace.ledger.now() : 0;
     const hit = await kv.get<RemoteCanopyRecord>(key).catch(() => undefined);
-    if (hit) return finish(hit.height, hit.meanHeight, hit.cover, hit.valid, `${hit.source} (cached)`);
+    if (hit) {
+      const bytes = hit.height.byteLength + hit.meanHeight.byteLength + hit.cover.byteLength + hit.valid.byteLength;
+      traceRead(opts.trace, 'cache', { host: 'dataforgood-fb-data.s3.amazonaws.com', path: '/forests/v1/alsgedi_global_v6_float/chm' }, bytes, { ...(hit.storedAt ? { cachedAt: hit.storedAt } : {}), at: t0, durationMs: opts.trace?.ledger ? opts.trace.ledger.now() - t0 : 0 });
+      const r = finish(hit.height, hit.meanHeight, hit.cover, hit.valid, `${hit.source} (cached)`);
+      return r ? { ...r, via: 'remote-cache', nativeCellM: hit.nativeCellM ?? Math.max(grid.cellSize, 10), ...(hit.storedAt ? { storedAt: hit.storedAt } : {}), ...(hit.cogTiles ? { cogTiles: hit.cogTiles } : {}) } : r;
+    }
   }
   console.warn('[canopy] reading remote canopy COGs: this is slow (1-row strips, one request per sampled row)');
   try {
-    const rec = await readRemote(grid, opts.signal);
+    const rec = await readRemote(grid, opts.signal, opts.trace);
     if (!rec) return null;
+    rec.storedAt = Date.now();
     // Only complete results are cached: a COG that failed transiently must not leave a permanent hole offline.
-    if (kv && rec.complete) await kv.put(key, rec).catch(() => undefined);
-    return finish(rec.height, rec.meanHeight, rec.cover, rec.valid, rec.source);
+    if (kv && rec.complete) {
+      let ok = true;
+      await kv.put(key, rec).catch(() => (ok = false));
+      if (ok) opts.trace?.ledger?.stored(opts.trace.tag ?? 'other', rec.height.byteLength + rec.meanHeight.byteLength + rec.cover.byteLength + rec.valid.byteLength);
+    }
+    const r = finish(rec.height, rec.meanHeight, rec.cover, rec.valid, rec.source);
+    return r ? { ...r, via: 'remote', nativeCellM: rec.nativeCellM ?? Math.max(grid.cellSize, 10), cogTiles: rec.cogTiles ?? [] } : r;
   } catch (e) {
     if (opts.signal?.aborted) throw e;
     console.warn('[canopy] remote canopy failed:', e);
@@ -419,7 +456,7 @@ function finish(height: Float32Array, meanHeight: Float32Array, cover: Float32Ar
   return { height, meanHeight, cover, valid, coverage: n / valid.length, source };
 }
 
-async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteCanopyRecord | null> {
+async function readRemote(grid: GridSpec, signal?: AbortSignal, trace?: TraceOptions): Promise<RemoteCanopyRecord | null> {
   // Aggregate on a working grid no finer than 10 m (memory: histogram of 61 bins per cell), then resample.
   const workCell = Math.max(grid.cellSize, 10);
   const wnx = Math.max(1, Math.round((grid.nx * grid.cellSize) / workCell));
@@ -444,7 +481,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
     const url = serviceUrl('chm', `${CHM_PATH}${qk}.tif`);
     let img: GeoTIFFImage;
     try {
-      const tif = await fromCustomClient(new ChmClient(url, signal), { allowFullFile: false, ...COG_BLOCKS }, signal);
+      const tif = await fromCustomClient(new ChmClient(url, signal, trace), { allowFullFile: false, ...COG_BLOCKS }, signal);
       img = await tif.getImage(0);
     } catch (e) {
       if (signal?.aborted) throw e;
@@ -482,8 +519,9 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
 
   const source = `${CHM_SOURCE}; remote COG ${[...qks].join(',')}, aggregated at ${workCell} m`;
   const complete = failed === 0;
+  const extra = { nativeCellM: workCell, cogTiles: [...qks] };
   if (work.nx === grid.nx && work.ny === grid.ny && Math.abs(work.cellSize - grid.cellSize) < 1e-9) {
-    return { height, meanHeight, cover, valid: validW, source, complete };
+    return { height, meanHeight, cover, valid: validW, source, complete, ...extra };
   }
   const map = mapGrids(work, grid);
   const validF = new Float32Array(nCells);
@@ -498,6 +536,7 @@ async function readRemote(grid: GridSpec, signal?: AbortSignal): Promise<RemoteC
     valid,
     source,
     complete,
+    ...extra,
   };
 }
 

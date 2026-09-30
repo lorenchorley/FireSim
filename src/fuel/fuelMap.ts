@@ -355,7 +355,10 @@ export function buildFuelMap(args: BuildFuelArgs): FuelMap {
   const src: string[] = [];
   if (nInfer < n) src.push(SVTM_SOURCE);
   if (nInfer > 0) src.push(`Vegetation inferred from terrain${canopy ? ' and canopy' : ''} for ${Math.round((100 * nInfer) / n)} % of cells (unmapped or "Not classified")`);
-  if (args.history) src.push(args.history.source ?? 'NPWS Fire History');
+  // Only claim a fire-history source when there is one: the empty history of an area with no data has none.
+  const fireHist = args.history;
+  if (fireHist?.source) src.push(fireHist.source);
+  else if (fireHist && fireHist.compact.tb.length > 0) src.push('Fire history (source not named)');
   else src.push('No fire history: steady-state fuel assumed');
   if (canopy) src.push('Meta/WRI CHM (Tolan et al. 2024, CC BY 4.0)');
   if (args.sources) src.push(...args.sources);

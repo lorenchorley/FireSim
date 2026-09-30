@@ -18,6 +18,7 @@
 
 .kv-row {
   display: flex;
+  flex-wrap: wrap; /* a wide value (a chip, a file name, big text) drops under its key instead of overflowing */
   align-items: baseline;
   justify-content: space-between;
   gap: var(--sp-3);
@@ -408,6 +409,8 @@ code {
 }
 
 .code-block {
+  min-width: 0; /* inside a flex or grid parent it scrolls instead of stretching the page */
+  max-width: 100%;
   margin: var(--sp-2) 0;
   padding: var(--sp-3);
   border-radius: var(--r-sm);

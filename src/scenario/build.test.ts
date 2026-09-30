@@ -115,7 +115,7 @@ describe('Katoomba offline (demo site): LiDAR terrain, real fuel and history, pr
     expect(progress[progress.length - 1]!.fraction).toBe(1);
   });
   it('terrain: bundled LiDAR, 30 m fire grid from 3×3 blocks, cliffs in slopeP90 / cliffFraction', () => {
-    expect(s.terrain.source).toMatch(/LiDAR/);
+    expect(s.terrain.source).toMatch(/NSW_5M_Elevation/);
     expect(s.terrain.source).toMatch(/3×3/);
     expect(s.terrain.grid.nx).toBe(300);
     expect(s.terrainHiRes!.grid.nx).toBe(900);
@@ -300,7 +300,7 @@ describe('area packs (offline field use)', () => {
     const pack = (await loadAreaPack('katoomba-field-pack', n.kv))!;
     const dem = pack.items['dem10'] as { grid: { nx: number }; elevation: Float32Array; source: string };
     expect(dem.grid.nx).toBe(300);
-    expect(dem.source).toMatch(/LiDAR/);
+    expect(dem.source).toMatch(/NSW_5M_Elevation/);
     expect((pack.items['daily'] as { daily: unknown[] }).daily.length).toBe(365);
     // Offline "now" build from the pack alone (response cache cleared).
     await clearCache('openmeteo/', n.kv);

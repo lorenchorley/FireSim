@@ -280,6 +280,14 @@ tier only if a 6-hour run would take ≤ 2 minutes, else the fast tier (spec §1
 resolution to the frame rate and draws only when something changes; snapshots stream every 5 simulated minutes into a
 memory-capped replay store (≈ 6 % of the device memory, 48–160 MB).
 
+## Design system
+
+The UI uses a flat, Google-Maps-for-Android-style design language (white cards on light grey, one blue accent, fire colours reserved for
+fire and danger, slightly tighter spacing than stock Android) with a night theme and a high-contrast "bright sun" variant.
+[`docs/DESIGN.md`](docs/DESIGN.md) documents the tokens, every primitive with its markup, the 44 px tap rule and the migration checklist.
+During development open `/src/ui/styleguide.html?theme=light|dark&contrast=high` on the dev server for the live gallery
+(screenshots in `docs/screenshots/design/`).
+
 ## Architecture
 
 TypeScript + Vite web app in a Capacitor shell; Three.js (WebGL2) for the 3-D view; all numerical code is plain

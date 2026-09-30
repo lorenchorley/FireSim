@@ -15,6 +15,7 @@ import type { GridSpec, LatLon } from '../core/types';
 import { LocalProjection } from '../core/geo';
 import {
   cachedFetchJson,
+  DatasetLedger,
   findAreaPacks,
   loadAreaPackItem,
   loadCanopy,
@@ -25,6 +26,7 @@ import {
   type CanopyResult,
   type GeoJsonFeatureCollection,
   type KV,
+  type TraceOptions,
 } from '../data';
 import { mapGrids, resampleMapped } from '../data/canopy';
 import { DEMO_SITES } from '../data/demoSites';
@@ -40,7 +42,17 @@ export interface LayerContext {
   online: boolean;
   signal?: AbortSignal;
   kv?: KV;
+  /** Records every request of the layers on the build's request ledger (data/ledger.ts); absent = nothing measured. */
+  ledger?: DatasetLedger;
 }
+
+/** Data set ids the layers of this file report under. */
+export const VEGETATION_TAG = 'vegetation-svtm';
+export const FIRE_HISTORY_TAG = 'fire-history';
+export const CANOPY_TAG = 'canopy-height';
+
+const traceOf = (ctx: Pick<LayerContext, 'ledger'>, tag: string, note?: string): TraceOptions | undefined =>
+  ctx.ledger ? { tag, ledger: ctx.ledger, ...(note ? { note } : {}) } : undefined;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geometry helpers
@@ -115,12 +127,16 @@ interface ArcGeoJson extends GeoJsonFeatureCollection {
 export async function fetchArcGisFeatures(
   path: string,
   bbox: [number, number, number, number],
-  o: { outFields: string; maxOffset: number; precision: number; maxPages: number; signal?: AbortSignal; kv?: KV },
+  o: { outFields: string; maxOffset: number; precision: number; maxPages: number; signal?: AbortSignal; kv?: KV; trace?: TraceOptions },
 ): Promise<GeoJsonFeatureCollection> {
   const features: GeoJsonFeatureCollection['features'] = [];
   for (let page = 0; page < o.maxPages; page++) {
     const url = serviceUrl('nswenv', path + arcgisQuery(bbox, o.outFields, o.maxOffset, o.precision, page * SCENARIO_PARAMS.arcgisPageSize));
-    const j = await cachedFetchJson<ArcGeoJson>(url, `arcgis/${path}/${bbox.join(',')}/${page}`, { signal: o.signal, ...(o.kv ? { kv: o.kv } : {}) });
+    const j = await cachedFetchJson<ArcGeoJson>(url, `arcgis/${path}/${bbox.join(',')}/${page}`, {
+      signal: o.signal,
+      ...(o.kv ? { kv: o.kv } : {}),
+      ...(o.trace?.ledger ? { ledger: o.trace.ledger, tag: o.trace.tag ?? 'other', note: `page ${page + 1}` } : {}),
+    });
     if (j?.error) throw new Error(`ArcGIS query failed: ${j.error.message ?? 'error'}`);
     const f = Array.isArray(j?.features) ? j.features : [];
     features.push(...f);
@@ -138,6 +154,7 @@ export const fetchSvtm = (ctx: LayerContext): Promise<GeoJsonFeatureCollection> 
     maxPages: SCENARIO_PARAMS.svtmMaxPages,
     ...(ctx.signal ? { signal: ctx.signal } : {}),
     ...(ctx.kv ? { kv: ctx.kv } : {}),
+    ...(traceOf(ctx, VEGETATION_TAG) ? { trace: traceOf(ctx, VEGETATION_TAG)! } : {}),
   });
 
 export const fetchNpwsFireHistory = (ctx: LayerContext): Promise<GeoJsonFeatureCollection> =>
@@ -148,6 +165,7 @@ export const fetchNpwsFireHistory = (ctx: LayerContext): Promise<GeoJsonFeatureC
     maxPages: SCENARIO_PARAMS.fireHistoryMaxPages,
     ...(ctx.signal ? { signal: ctx.signal } : {}),
     ...(ctx.kv ? { kv: ctx.kv } : {}),
+    ...(traceOf(ctx, FIRE_HISTORY_TAG) ? { trace: traceOf(ctx, FIRE_HISTORY_TAG)! } : {}),
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,13 +179,26 @@ export interface VectorLayer {
   /** True when the data cover only part of the domain. */
   partial: boolean;
   warnings: string[];
+  /** What the loader learnt about where the data came from (for the data set record). */
+  info: VectorInfo;
 }
 
-async function packItem<T>(ctx: LayerContext, name: string): Promise<{ v: T; pack: string } | null> {
+export interface VectorInfo {
+  /** Bundled demo site (origin 'demo'). */
+  siteId?: string;
+  /** Area pack name (origin 'pack'). */
+  packName?: string;
+  /** Wall time of the whole chain for this layer (ms). */
+  durationMs: number;
+  /** Sources tried and skipped, in order, e.g. ['network unavailable']. */
+  skipped: string[];
+}
+
+async function packItem<T>(ctx: LayerContext, name: string, trace?: TraceOptions): Promise<{ v: T; pack: string } | null> {
   try {
     for (const m of await findAreaPacks(ctx.centre, ctx.extent, ctx.kv)) {
       if (!m.itemNames.includes(name)) continue;
-      const v = await loadAreaPackItem<T>(m.id, name, ctx.kv);
+      const v = await loadAreaPackItem<T>(m.id, name, ctx.kv, trace);
       if (v !== undefined) return { v, pack: m.name };
     }
   } catch {
@@ -179,44 +210,50 @@ async function packItem<T>(ctx: LayerContext, name: string): Promise<{ v: T; pac
 async function vectorLayer(
   ctx: LayerContext,
   item: 'vegetation' | 'fireHistory',
-  demo: (site: string, s?: AbortSignal) => Promise<GeoJsonFeatureCollection | null>,
+  tag: string,
+  demo: (site: string, s?: AbortSignal, trace?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>,
   net: (ctx: LayerContext) => Promise<GeoJsonFeatureCollection>,
   label: string,
 ): Promise<VectorLayer> {
   const warnings: string[] = [];
+  const skipped: string[] = [];
+  const t0 = ctx.ledger ? ctx.ledger.now() : Date.now();
+  const trace = traceOf(ctx, tag);
+  const done = (r: Omit<VectorLayer, 'info'>, extra: Omit<VectorInfo, 'durationMs' | 'skipped'> = {}): VectorLayer => ({ ...r, info: { ...extra, durationMs: (ctx.ledger ? ctx.ledger.now() : Date.now()) - t0, skipped } });
   const cov = demoCoverage(ctx);
   for (const site of cov.full) {
-    const g = await demo(site, ctx.signal).catch(() => null);
+    const g = await demo(site, ctx.signal, trace).catch(() => null);
     aborted(ctx.signal);
-    if (g) return { geojson: g, origin: 'demo', source: `${label}: bundled demo '${site}'`, partial: false, warnings };
+    if (g) return done({ geojson: g, origin: 'demo', source: `${label}: bundled demo '${site}'`, partial: false, warnings }, { siteId: site });
   }
-  const pk = await packItem<GeoJsonFeatureCollection>(ctx, item);
-  if (pk?.v && Array.isArray(pk.v.features)) return { geojson: pk.v, origin: 'pack', source: `${label}: area pack '${pk.pack}'`, partial: false, warnings };
+  const pk = await packItem<GeoJsonFeatureCollection>(ctx, item, trace);
+  if (pk?.v && Array.isArray(pk.v.features)) return done({ geojson: pk.v, origin: 'pack', source: `${label}: area pack '${pk.pack}'`, partial: false, warnings }, { packName: pk.pack });
   if (ctx.online) {
     try {
       const g = await net(ctx);
-      return { geojson: g, origin: 'network', source: `${label}: live query`, partial: false, warnings };
+      return done({ geojson: g, origin: 'network', source: `${label}: live query`, partial: false, warnings });
     } catch (e) {
       aborted(ctx.signal);
       if (isHttpError(e) && e.kind === 'aborted') throw e;
       warnings.push(MESSAGES.networkFailed(label));
+      skipped.push('live query failed');
     }
-  }
+  } else skipped.push('offline');
   // Offline or failed: a demo bundle that only partly covers the domain is better than nothing.
   for (const site of cov.partial) {
-    const g = await demo(site, ctx.signal).catch(() => null);
-    if (g) return { geojson: g, origin: 'demo', source: `${label}: bundled demo '${site}' (part of the area)`, partial: true, warnings };
+    const g = await demo(site, ctx.signal, trace).catch(() => null);
+    if (g) return done({ geojson: g, origin: 'demo', source: `${label}: bundled demo '${site}' (part of the area)`, partial: true, warnings }, { siteId: site });
   }
-  return { geojson: null, origin: 'none', source: `${label}: unavailable`, partial: false, warnings };
+  return done({ geojson: null, origin: 'none', source: `${label}: unavailable`, partial: false, warnings });
 }
 
 /** SVTM vegetation polygons for the domain (raw GeoJSON; fuel/ parses and rasterises them). */
 export const loadVegetationLayer = (ctx: LayerContext): Promise<VectorLayer> =>
-  vectorLayer(ctx, 'vegetation', loadDemoVegetationGeoJson as (s: string, sig?: AbortSignal) => Promise<GeoJsonFeatureCollection | null>, fetchSvtm, 'Vegetation (NSW SVTM)');
+  vectorLayer(ctx, 'vegetation', VEGETATION_TAG, loadDemoVegetationGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchSvtm, 'Vegetation (NSW SVTM)');
 
 /** NPWS fire-history polygons for the domain (raw GeoJSON). */
 export const loadFireHistoryLayer = (ctx: LayerContext): Promise<VectorLayer> =>
-  vectorLayer(ctx, 'fireHistory', loadDemoFireHistoryGeoJson as (s: string, sig?: AbortSignal) => Promise<GeoJsonFeatureCollection | null>, fetchNpwsFireHistory, 'Fire history (NPWS)');
+  vectorLayer(ctx, 'fireHistory', FIRE_HISTORY_TAG, loadDemoFireHistoryGeoJson as (s: string, sig?: AbortSignal, t?: TraceOptions) => Promise<GeoJsonFeatureCollection | null>, fetchNpwsFireHistory, 'Fire history (NPWS)');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Canopy
@@ -253,29 +290,42 @@ export interface CanopyLayer {
   canopy: CanopyResult | null;
   origin: LayerOrigin;
   warnings: string[];
+  info: {
+    siteId?: string;
+    packName?: string;
+    /** Wall time of the whole chain (ms). */
+    durationMs: number;
+    /** Why the remote path was not used ('offline', 'area above 3 km', 'no data'). */
+    remoteSkipped?: string;
+  };
 }
 
 /** Canopy on the fire grid with the §11.6 chain. */
 export async function loadCanopyLayer(grid: GridSpec, ctx: LayerContext): Promise<CanopyLayer> {
   const warnings: string[] = [];
+  const t0 = ctx.ledger ? ctx.ledger.now() : Date.now();
+  const trace = traceOf(ctx, CANOPY_TAG);
+  const took = (): number => (ctx.ledger ? ctx.ledger.now() : Date.now()) - t0;
   const cov = demoCoverage(ctx);
   const demoSite = cov.full[0] ?? cov.partial[0];
-  const demo = await loadCanopy(grid, { ...(demoSite ? { demoSiteId: demoSite } : {}), allowRemote: false, ...(ctx.signal ? { signal: ctx.signal } : {}) }).catch(() => null);
+  const demo = await loadCanopy(grid, { ...(demoSite ? { demoSiteId: demoSite } : {}), allowRemote: false, ...(ctx.signal ? { signal: ctx.signal } : {}), ...(trace ? { trace } : {}) }).catch(() => null);
   aborted(ctx.signal);
   if (demo) {
     if (demo.coverage < 0.999) warnings.push(MESSAGES.canopyPartial);
-    return { canopy: demo, origin: 'demo', warnings };
+    return { canopy: demo, origin: 'demo', warnings, info: { ...(demo.site ? { siteId: demo.site } : {}), durationMs: took() } };
   }
-  const pk = await packItem<PackCanopy>(ctx, 'canopy');
+  const pk = await packItem<PackCanopy>(ctx, 'canopy', trace);
   if (pk?.v?.grid && pk.v.height instanceof Float32Array) {
     const c = canopyOnGrid(pk.v, grid);
-    return { canopy: { ...c, source: `${c.source} (area pack '${pk.pack}')` }, origin: 'pack', warnings };
+    return { canopy: { ...c, source: `${c.source} (area pack '${pk.pack}')`, via: 'pack', nativeCellM: pk.v.grid.cellSize }, origin: 'pack', warnings, info: { packName: pk.pack, durationMs: took() } };
   }
+  let remoteSkipped: string | undefined;
   if (ctx.online && ctx.extent <= SCENARIO_PARAMS.remoteCanopyMaxExtentM) {
-    const r = await loadCanopy(grid, { allowRemote: true, ...(ctx.signal ? { signal: ctx.signal } : {}), ...(ctx.kv ? { cache: ctx.kv } : {}) }).catch(() => null);
+    const r = await loadCanopy(grid, { allowRemote: true, ...(ctx.signal ? { signal: ctx.signal } : {}), ...(ctx.kv ? { cache: ctx.kv } : {}), ...(trace ? { trace } : {}) }).catch(() => null);
     aborted(ctx.signal);
-    if (r) return { canopy: r, origin: 'network', warnings };
-  }
+    if (r) return { canopy: r, origin: r.via === 'remote-cache' ? 'cache' : 'network', warnings, info: { durationMs: took() } };
+    remoteSkipped = 'the canopy service did not answer';
+  } else remoteSkipped = ctx.online ? `area above ${SCENARIO_PARAMS.remoteCanopyMaxExtentM / 1000} km` : 'offline';
   warnings.push(MESSAGES.canopyUnavailable);
-  return { canopy: null, origin: 'none', warnings };
+  return { canopy: null, origin: 'none', warnings, info: { durationMs: took(), remoteSkipped } };
 }

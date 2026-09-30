@@ -23,8 +23,25 @@ export {
   type HttpConfig,
   type HttpErrorKind,
   type RequestOptions,
+  type ResponseInfo,
   type RawResponse,
 } from './http';
+
+export {
+  DatasetLedger,
+  endpointOf,
+  pathPattern,
+  traceRead,
+  traceFields,
+  withTrace,
+  type LedgerEntry,
+  type LedgerInput,
+  type LedgerSource,
+  type LedgerTotals,
+  type LedgerEndpoint,
+  type LedgerOptions,
+  type TraceOptions,
+} from './ledger';
 
 export {
   openCache,
@@ -42,6 +59,8 @@ export {
   cachedFetch,
   cachedFetchBinary,
   cachedFetchJson,
+  approxBytes,
+  storedBytes,
   CACHE_DB_NAME,
   CACHE_STORE_NAME,
   type KV,
@@ -53,6 +72,7 @@ export {
   type CacheOrigin,
 } from './cache';
 
+export { loadBundleManifest, clearBundleManifestCache, bundleFile, type BundleManifest, type BundleSite, type BundleFile } from './bundleManifest';
 export { loadAsset, loadAssetJson, setAssetLoader, setAssetBase, resolveAssetBase, setNodePublicDir, type AssetLoader } from './assets';
 
 export {
@@ -91,6 +111,7 @@ export {
 
 export { DEMO_SITES, DEMO_EXTENT_M, DEMO_TILE_ZOOM, type DemoSite } from './demoSites';
 export {
+  DEM5M_SOURCE,
   LIDAR_DEM_SOURCE,
   demoRasterGrid,
   loadDemoDem,
@@ -119,6 +140,7 @@ export {
 export {
   fetchNswContext,
   fetchNswContextFile,
+  CONTEXT_DATASET_ID,
   NswContextUnavailableError,
   contextQueryBBox,
   contextCacheKey,

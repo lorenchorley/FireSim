@@ -676,7 +676,7 @@ function build(): void {
   const strip = h('div', { class: 'training-badge', attrs: { role: 'note' } }, [icon('warning'), h('span', { class: 'badge-full' }, 'Training aid · not for operational use'), h('span', { class: 'badge-short' }, 'Training aid only')]);
   const page = h('div', null, [
     header(),
-    sec('composite', 'Map screen (composite)', 'Floating top bar, chips, FABs, a bottom sheet and bottom navigation over a map. The training strip stays above everything.', demo('390 × 640', mockScreen(), 'sg-flush')),
+    sec('composite', 'Map screen (composite)', 'Floating top bar, chips, FABs, a bottom sheet and bottom navigation over a map. The training strip stays above everything.', demo('Phone width × 640 px', mockScreen(), 'sg-flush')),
     colours(),
     contrastTable(),
     typeScale(),

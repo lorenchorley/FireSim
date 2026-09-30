@@ -270,11 +270,42 @@ time {
   display: none;
 }
 
-/* The full wording needs about 340 px at 12 px uppercase with tracking. */
+/* The full wording needs about 27 em (24 em of text + icon + padding). The strip is a size container so the choice follows the
+ * text SIZE and not only the screen width: at Android font scale 130 % or more the full wording no longer fits a 390 px phone and
+ * the short wording (which always fits) takes over instead of the end of the sentence being cut off. em is the strip's own font
+ * size (12 px, 13 px in high contrast), so it grows with the text. The media query is the fallback for WebViews without
+ * container queries and for the smallest screens. */
+.training-badge {
+  container-type: inline-size;
+  container-name: training-strip;
+}
+
+@container training-strip (max-width: 28em) {
+  .training-badge .badge-full {
+    display: none;
+  }
+
+  .training-badge .badge-short {
+    display: inline;
+  }
+}
+
+/* Bold 13 px caps are wider: ~30 em. */
+@container training-strip (max-width: 30.5em) {
+  :root[data-contrast='high'] .training-badge .badge-full {
+    display: none;
+  }
+
+  :root[data-contrast='high'] .training-badge .badge-short {
+    display: inline;
+  }
+}
+
 @media (max-width: 359px) {
   .training-badge .badge-full {
     display: none;
   }
+
   .training-badge .badge-short {
     display: inline;
   }

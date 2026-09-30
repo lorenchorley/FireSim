@@ -19,7 +19,11 @@ import {
   syntheticElevation,
   syntheticSource,
   DEMO_SITES,
+  type DatasetLedger,
+  type DemoRasterMeta,
+  type ElevationResult,
   type KV,
+  type TraceOptions,
 } from '../data';
 import { mapGrids, resampleMapped } from '../data/canopy';
 import { buildTerrain } from '../terrain';
@@ -149,12 +153,36 @@ export function elevationAtLocal(t: Terrain, x: number, y: number): number {
 
 export type TerrainOrigin = 'lidar' | 'pack' | 'tiles' | 'synthetic';
 
+/** Data set id the terrain loaders report under. */
+export const TERRAIN_TAG = 'terrain';
+
+/** What the loader learnt about where the elevations came from (for the 'terrain' data set record). */
+export interface TerrainInfo {
+  /** Bundled LiDAR: the raster's own metadata (capture date, elevation range, service text) and file sizes. */
+  lidar?: { meta: DemoRasterMeta; pngBytes: number; jsonBytes: number };
+  /** Terrarium tiles: zoom, tile count, where they came from. */
+  tiles?: Pick<ElevationResult, 'zoom' | 'tiles' | 'seaOrNoDataCells' | 'origins' | 'sites' | 'packs' | 'oldestCachedAt' | 'degradedFrom'>;
+  /** Area pack that supplied the 10 m DEM. */
+  packName?: string;
+  /** Source text stored with the pack's DEM. */
+  packSource?: string;
+  /** Kind of synthetic terrain. */
+  syntheticKind?: string;
+  /** Why the chain fell through to synthetic terrain. */
+  syntheticReason?: string;
+  /** Wall time of the whole chain (ms). */
+  durationMs: number;
+  /** Sources tried before the one used ('bundled LiDAR does not cover this area', ...). */
+  skipped: string[];
+}
+
 export interface HiResResult {
   dem: HiResDem;
   origin: TerrainOrigin;
   warnings: string[];
   /** Demo site whose LiDAR was used. */
   siteId?: string;
+  info: TerrainInfo;
 }
 
 export interface HiResRequest {
@@ -165,6 +193,8 @@ export interface HiResRequest {
   signal?: AbortSignal;
   kv?: KV;
   onProgress?: (fraction: number, message: string) => void;
+  /** Records every read on the build's request ledger under the tag 'terrain'. */
+  ledger?: DatasetLedger;
 }
 
 /** Demo sites whose 9 km square contains the domain centre (the named one first). */
@@ -185,32 +215,52 @@ export async function loadHiResDem(req: HiResRequest): Promise<HiResResult> {
   const P = SCENARIO_PARAMS;
   const grid = makeGridSpec(req.centre, req.extent, P.hiResCellM);
   const warnings: string[] = [];
+  const skipped: string[] = [];
+  const clock = (): number => (req.ledger ? req.ledger.now() : Date.now());
+  const t0 = clock();
+  const trace: TraceOptions | undefined = req.ledger ? { tag: TERRAIN_TAG, ledger: req.ledger } : undefined;
   const aborted = (): void => {
     if (req.signal?.aborted) throw req.signal.reason ?? new DOMException('Build cancelled', 'AbortError');
   };
   // 1. Bundled LiDAR (demo sites; works offline).
   const sites = demoSitesNear(req.centre, req.demoSiteId);
   req.onProgress?.(0.1, 'Reading bundled LiDAR terrain…');
-  const lidar = await loadDemoElevation(grid, sites, req.signal).catch(() => null);
+  const lidar = await loadDemoElevation(grid, sites, req.signal, trace).catch(() => null);
   aborted();
-  if (lidar) return { dem: { grid, elevation: lidar.elevation, source: lidar.source }, origin: 'lidar', warnings, siteId: lidar.siteId };
+  if (lidar) {
+    return {
+      dem: { grid, elevation: lidar.elevation, source: lidar.source },
+      origin: 'lidar',
+      warnings,
+      siteId: lidar.siteId,
+      info: { lidar: { meta: lidar.meta, pngBytes: lidar.bytes.png, jsonBytes: lidar.bytes.json }, durationMs: clock() - t0, skipped },
+    };
+  }
+  skipped.push(sites.length ? 'bundled LiDAR does not cover the whole area' : 'no bundled LiDAR here');
   // 2. Area pack with a stored 10 m DEM.
   const kv = req.kv;
   try {
     for (const m of await findAreaPacks(req.centre, req.extent, kv)) {
       if (!m.itemNames.includes('dem10')) continue;
-      const item = await loadAreaPackItem<HiResDem>(m.id, 'dem10', kv);
+      const item = await loadAreaPackItem<HiResDem>(m.id, 'dem10', kv, trace);
       if (!item?.grid || !(item.elevation instanceof Float32Array)) continue;
       const elevation = resampleMapped(item.grid, item.elevation, grid, mapGrids(item.grid, grid));
       warnings.push(MESSAGES.terrainFromPack(m.name));
-      return { dem: { grid, elevation, source: `${item.source} (area pack '${m.name}')` }, origin: 'pack', warnings };
+      return {
+        dem: { grid, elevation, source: `${item.source} (area pack '${m.name}')` },
+        origin: 'pack',
+        warnings,
+        info: { packName: m.name, packSource: item.source, durationMs: clock() - t0, skipped },
+      };
     }
   } catch {
     /* pack store unavailable: continue */
   }
   aborted();
+  skipped.push('no saved area pack with terrain');
   // 3. Terrarium tiles: bundled, area-pack tiles, cache, then the network when online.
   req.onProgress?.(0.3, req.online ? 'Downloading terrain tiles…' : 'Reading stored terrain tiles…');
+  let tileError: unknown;
   try {
     const r = await loadElevation({
       centre: req.centre,
@@ -221,15 +271,38 @@ export async function loadHiResDem(req: HiResRequest): Promise<HiResResult> {
       signal: req.signal,
       ...(req.demoSiteId ? { demoSiteId: req.demoSiteId } : {}),
       ...(kv ? { cache: kv } : {}),
+      ...(trace ? { trace } : {}),
       onProgress: (d, t) => req.onProgress?.(0.3 + (0.6 * d) / Math.max(1, t), `Terrain tiles ${d}/${t}`),
     });
-    return { dem: { grid, elevation: r.elevation, source: r.source }, origin: 'tiles', warnings };
+    const { zoom, tiles, seaOrNoDataCells, origins, sites: tileSites, packs, oldestCachedAt, degradedFrom } = r;
+    return {
+      dem: { grid, elevation: r.elevation, source: r.source },
+      origin: 'tiles',
+      warnings,
+      info: {
+        tiles: { zoom, tiles, seaOrNoDataCells, ...(origins ? { origins } : {}), ...(tileSites ? { sites: tileSites } : {}), ...(packs ? { packs } : {}), ...(oldestCachedAt !== undefined ? { oldestCachedAt } : {}), ...(degradedFrom !== undefined ? { degradedFrom } : {}) },
+        durationMs: clock() - t0,
+        skipped,
+      },
+    };
   } catch (e) {
     aborted();
+    tileError = e;
     if (!P.syntheticTerrainFallback) throw e;
   }
   // 4. Synthetic terrain (never for a silent real-site answer: warned prominently).
   warnings.push(MESSAGES.syntheticTerrain);
   const kind = P.syntheticTerrainKind;
-  return { dem: { grid, elevation: syntheticElevation(grid, kind, 1), source: syntheticSource(kind) }, origin: 'synthetic', warnings };
+  skipped.push(req.online ? 'terrain tiles could not be downloaded' : 'no stored terrain tiles');
+  return {
+    dem: { grid, elevation: syntheticElevation(grid, kind, 1), source: syntheticSource(kind) },
+    origin: 'synthetic',
+    warnings,
+    info: {
+      syntheticKind: kind,
+      syntheticReason: tileError instanceof Error ? tileError.message : 'no elevation source',
+      durationMs: clock() - t0,
+      skipped,
+    },
+  };
 }

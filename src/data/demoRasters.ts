@@ -2,9 +2,9 @@
  * Bundled high-resolution layers for the NSW demo sites, fetched from live services by the fixtures helper
  * (see docs/research/08b-live-endpoint-verification.md):
  *
- *  - `demo/<id>/dem5m.png` + `.json` — NSW Spatial Services 5 m LiDAR-derived bare-earth DTM, bilinear-resampled to a
- *    10 m local grid, Terrarium RGB. Bare earth matters in forest: SRTM is a partial surface model that includes some
- *    canopy, which smooths gullies and raises ridges. © Spatial Services NSW (CC BY 4.0).
+ *  - `demo/<id>/dem5m.png` + `.json` — NSW Spatial Services 5 m elevation model (NSW_5M_Elevation service), bilinear-resampled
+ *    to a 10 m local grid, Terrarium RGB. The service calls it "5 metre post spacing elevation derived from stereo
+ *    imagery" (not LiDAR); it is finer than SRTM's 30 m. © Spatial Services NSW (CC BY 4.0).
  *  - `demo/<id>/imagery.jpg` + `.json` — NSW aerial imagery on an 8 m local grid. © Spatial Services NSW (CC BY 4.0).
  *  - `demo/<id>/fire-history.geojson` — NPWS Fire History polygons (FireType 1 = wildfire, 2 = prescribed burn).
  *  - `demo/<id>/vegetation.geojson` — NSW State Vegetation Type Map (vegForm, vegClass, PCTName).
@@ -17,6 +17,7 @@ import { LocalProjection, type LatLon } from '../core/geo';
 import { makeGridSpec, type GridSpec } from '../core/grid';
 import { loadAsset, loadAssetJson, resolveAssetBase } from './assets';
 import { mapGrids, resampleMapped } from './canopy';
+import type { TraceOptions } from './ledger';
 
 export interface DemoRasterMeta {
   id: string;
@@ -29,9 +30,20 @@ export interface DemoRasterMeta {
   encoding?: string;
   minElevation?: number;
   maxElevation?: number;
+  /** ISO date the bundle was captured from the service (added by scripts/stamp-demo-provenance.mjs and the fetch scripts). */
+  capturedOn?: string;
+  /** Cells of the source raster that had no data (0 at all bundled sites). */
+  nodataCount?: number;
 }
 
-export const LIDAR_DEM_SOURCE = 'NSW Spatial Services 5 m LiDAR bare-earth DTM (© Spatial Services NSW, CC BY 4.0)';
+/**
+ * Source text of the bundled elevation model. The NSW_5M_Elevation service describes itself as "5 metre post spacing
+ * elevation derived from stereo imagery" (service metadata read 2026-09-29, see docs/research/08b section 3.5), so it
+ * is NOT called LiDAR or bare earth here: under tall forest a stereo-imagery surface can follow the treetops.
+ */
+export const DEM5M_SOURCE = 'NSW Spatial Services 5 m elevation model (NSW_5M_Elevation, © Spatial Services NSW, CC BY 4.0)';
+/** @deprecated the old name (the model is not LiDAR); use {@link DEM5M_SOURCE}. */
+export const LIDAR_DEM_SOURCE = DEM5M_SOURCE;
 
 /** Grid of a bundled raster from its metadata (matches the published cell-centre convention). */
 export function demoRasterGrid(meta: DemoRasterMeta): GridSpec {
@@ -42,10 +54,12 @@ export function demoRasterGrid(meta: DemoRasterMeta): GridSpec {
 export async function loadDemoDem(
   siteId: string,
   signal?: AbortSignal,
-): Promise<{ grid: GridSpec; elevation: Float32Array; meta: DemoRasterMeta } | null> {
-  const meta = await loadAssetJson<DemoRasterMeta>(`demo/${siteId}/dem5m.json`, signal);
+  trace?: TraceOptions,
+): Promise<{ grid: GridSpec; elevation: Float32Array; meta: DemoRasterMeta; bytes: { png: number; json: number } } | null> {
+  const metaBytes = await loadAsset(`demo/${siteId}/dem5m.json`, signal, trace);
+  const meta = metaBytes ? parseJsonBytes<DemoRasterMeta>(metaBytes) : null;
   if (!meta || !meta.cellSize || !meta.n || !meta.centre) return null;
-  const png = await loadAsset(`demo/${siteId}/dem5m.png`, signal);
+  const png = await loadAsset(`demo/${siteId}/dem5m.png`, signal, trace);
   if (!png || !hasPngSignature(png)) return null;
   const img = decode(png);
   const ch = img.channels;
@@ -61,7 +75,15 @@ export async function loadDemoDem(
       elevation[j * grid.nx + i] = d[o]! * 256 + d[o + 1]! + d[o + 2]! / 256 - 32768;
     }
   }
-  return { grid, elevation, meta };
+  return { grid, elevation, meta, bytes: { png: png.byteLength, json: metaBytes!.byteLength } };
+}
+
+function parseJsonBytes<T>(bytes: Uint8Array): T | null {
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } catch {
+    return null;
+  }
 }
 
 /** True when every cell centre of `grid` lies inside the raster of `meta` (with half a source cell of tolerance). */
@@ -82,19 +104,20 @@ export async function loadDemoElevation(
   grid: GridSpec,
   siteIds: string[],
   signal?: AbortSignal,
-): Promise<{ elevation: Float32Array; source: string; siteId: string } | null> {
+  trace?: TraceOptions,
+): Promise<{ elevation: Float32Array; source: string; siteId: string; meta: DemoRasterMeta; bytes: { png: number; json: number } } | null> {
   for (const id of siteIds) {
-    const dem = await loadDemoDem(id, signal).catch(() => null);
+    const dem = await loadDemoDem(id, signal, trace).catch(() => null);
     if (!dem || !rasterCovers(dem.meta, grid)) continue;
     const elevation = resampleMapped(dem.grid, dem.elevation, grid, mapGrids(dem.grid, grid));
-    return { elevation, source: `${LIDAR_DEM_SOURCE}; bundled demo '${id}' at ${dem.meta.cellSize} m`, siteId: id };
+    return { elevation, source: `${DEM5M_SOURCE}; bundled demo '${id}' at ${dem.meta.cellSize} m`, siteId: id, meta: dem.meta, bytes: dem.bytes };
   }
   return null;
 }
 
 /** Metadata and URL of a demo site's aerial imagery (the image itself is decoded by the renderer), or null. */
-export async function loadDemoImageryInfo(siteId: string, signal?: AbortSignal): Promise<{ url: string; meta: DemoRasterMeta } | null> {
-  const meta = await loadAssetJson<DemoRasterMeta>(`demo/${siteId}/imagery.json`, signal);
+export async function loadDemoImageryInfo(siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<{ url: string; meta: DemoRasterMeta } | null> {
+  const meta = await loadAssetJson<DemoRasterMeta>(`demo/${siteId}/imagery.json`, signal, trace);
   if (!meta || !meta.cellSize || !meta.n) return null;
   return { url: `${resolveAssetBase()}demo/${siteId}/imagery.jpg`, meta };
 }
@@ -125,6 +148,10 @@ export function imageryWindow(meta: DemoRasterMeta, grid: GridSpec): { sx: numbe
 
 export interface GeoJsonFeatureCollection<P = Record<string, unknown>> {
   type: 'FeatureCollection';
+  /** Bundled SVTM files: the box (west, south, east, north) the polygons were clipped to. */
+  clippedTo?: [number, number, number, number];
+  /** ISO date the bundle was captured (bundled files written after scripts/stamp-demo-provenance.mjs). */
+  capturedOn?: string;
   features: { type: 'Feature'; properties: P; geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown } | null }[];
 }
 
@@ -147,8 +174,8 @@ export interface SvtmProps {
   vegForm: string | null;
 }
 
-export const loadDemoFireHistoryGeoJson = (siteId: string, signal?: AbortSignal): Promise<GeoJsonFeatureCollection<NpwsFireProps> | null> =>
-  loadAssetJson(`demo/${siteId}/fire-history.geojson`, signal);
+export const loadDemoFireHistoryGeoJson = (siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<GeoJsonFeatureCollection<NpwsFireProps> | null> =>
+  loadAssetJson(`demo/${siteId}/fire-history.geojson`, signal, trace);
 
-export const loadDemoVegetationGeoJson = (siteId: string, signal?: AbortSignal): Promise<GeoJsonFeatureCollection<SvtmProps> | null> =>
-  loadAssetJson(`demo/${siteId}/vegetation.geojson`, signal);
+export const loadDemoVegetationGeoJson = (siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<GeoJsonFeatureCollection<SvtmProps> | null> =>
+  loadAssetJson(`demo/${siteId}/vegetation.geojson`, signal, trace);

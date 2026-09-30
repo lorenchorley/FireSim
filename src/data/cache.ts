@@ -11,7 +11,8 @@
  *   the cached copy when the network is unavailable (offline-first).
  */
 import type { LatLon } from '../core/geo';
-import { fetchBinary, fetchJson, HttpError, type RequestOptions } from './http';
+import { fetchBinary, fetchJson, HttpError, type RequestOptions, type ResponseInfo } from './http';
+import { endpointOf, traceRead, type TraceOptions } from './ledger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key/value store
@@ -23,6 +24,11 @@ export interface KV {
   del(key: string): Promise<void>;
   /** Keys (sorted) that start with `prefix` (all keys when omitted). */
   keys(prefix?: string): Promise<string[]>;
+  /**
+   * Approximate stored size of every entry whose key starts with `prefix` (see {@link storedBytes}). Optional: a store
+   * without it is sized by reading each entry (storage report, data/storage.ts).
+   */
+  sizes?(prefix?: string): Promise<{ key: string; bytes: number }[]>;
 }
 
 export const CACHE_DB_NAME = 'firesim';
@@ -76,6 +82,11 @@ export function createMemoryKV(): KV {
       const out: string[] = [];
       for (const k of map.keys()) if (k.startsWith(prefix)) out.push(k);
       return out.sort();
+    },
+    async sizes(prefix = '') {
+      const out: { key: string; bytes: number }[] = [];
+      for (const [k, v] of map) if (k.startsWith(prefix)) out.push({ key: k, bytes: storedBytes(v) });
+      return out.sort((a, b) => (a.key < b.key ? -1 : 1));
     },
   };
 }
@@ -161,6 +172,30 @@ export function createIndexedDbKV(dbName = CACHE_DB_NAME, storeName = CACHE_STOR
       for (const k of ks) if (typeof k === 'string' && k.startsWith(prefix)) out.push(k);
       return out.sort();
     },
+    async sizes(prefix = '') {
+      const db = await open();
+      if (!db) return (fallback ??= createMemoryKV()).sizes!(prefix);
+      return new Promise<{ key: string; bytes: number }[]>((resolve, reject) => {
+        let tx: IDBTransaction;
+        try {
+          tx = db.transaction(storeName, 'readonly');
+        } catch (e) {
+          return reject(e);
+        }
+        const out: { key: string; bytes: number }[] = [];
+        const range = prefix && typeof IDBKeyRange !== 'undefined' ? IDBKeyRange.bound(prefix, prefix + '￿') : undefined;
+        const cur = tx.objectStore(storeName).openCursor(range);
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (!c) return;
+          if (typeof c.key === 'string' && c.key.startsWith(prefix)) out.push({ key: c.key, bytes: storedBytes(c.value) });
+          c.continue();
+        };
+        tx.oncomplete = () => resolve(out.sort((a, b) => (a.key < b.key ? -1 : 1)));
+        tx.onerror = () => reject(tx.error ?? cur.error);
+        tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+      });
+    },
   };
 }
 
@@ -200,13 +235,15 @@ export interface AreaPackMeta {
   itemNames: string[];
   /** Approximate stored size in bytes. */
   bytes: number;
+  /** Approximate stored size of each item (older packs have none). */
+  itemBytes?: Record<string, number>;
 }
 
 const PACK_META = 'pack/meta/';
 const packItemPrefix = (id: string): string => `pack/item/${id}/`;
 
 /** Rough stored size of a structured-cloneable value. Shared / cyclic references are counted once. */
-function approxBytes(v: unknown, seen: Set<object> = new Set()): number {
+export function approxBytes(v: unknown, seen: Set<object> = new Set()): number {
   if (typeof v === 'string') return v.length * 2;
   if (!v || typeof v !== 'object') return 8;
   if (seen.has(v)) return 8;
@@ -218,15 +255,30 @@ function approxBytes(v: unknown, seen: Set<object> = new Set()): number {
   return n;
 }
 
+/**
+ * Approximate bytes a cache entry occupies: a cached-fetch record that knows the size of its body (`n`, written by
+ * {@link cachedFetch}) counts that plus a small overhead; anything else is measured by {@link approxBytes}.
+ */
+export function storedBytes(v: unknown): number {
+  if (v && typeof v === 'object' && !ArrayBuffer.isView(v) && !(v instanceof ArrayBuffer)) {
+    const r = v as { t?: unknown; n?: unknown; url?: unknown };
+    if (typeof r.n === 'number' && Number.isFinite(r.n) && typeof r.t === 'number') return r.n + 64 + (typeof r.url === 'string' ? r.url.length : 0);
+  }
+  return approxBytes(v);
+}
+
 /** Store an area pack, replacing any existing pack with the same id. */
 export async function saveAreaPack(pack: AreaPack, kv: KV = openCache()): Promise<AreaPackMeta> {
   if (!pack.id || /[/]/.test(pack.id)) throw new Error(`Invalid area pack id '${pack.id}'`);
   await deleteAreaPack(pack.id, kv);
   const names = Object.keys(pack.items).sort();
   let bytes = 0;
+  const itemBytes: Record<string, number> = {};
   for (const name of names) {
     const v = pack.items[name]!;
-    bytes += approxBytes(v);
+    const b = approxBytes(v);
+    itemBytes[name] = b;
+    bytes += b;
     await kv.put(packItemPrefix(pack.id) + name, v);
   }
   const meta: AreaPackMeta = {
@@ -237,6 +289,7 @@ export async function saveAreaPack(pack: AreaPack, kv: KV = openCache()): Promis
     createdAt: pack.createdAt,
     itemNames: names,
     bytes,
+    itemBytes,
   };
   // Written last: a pack only becomes visible once all its items are stored.
   await kv.put(PACK_META + pack.id, meta);
@@ -267,8 +320,15 @@ export async function loadAreaPack(id: string, kv: KV = openCache()): Promise<Ar
 }
 
 /** Load a single item of a pack. */
-export async function loadAreaPackItem<T = AreaPackItem>(id: string, name: string, kv: KV = openCache()): Promise<T | undefined> {
-  return kv.get<T>(packItemPrefix(id) + name);
+export async function loadAreaPackItem<T = AreaPackItem>(id: string, name: string, kv: KV = openCache(), trace?: TraceOptions): Promise<T | undefined> {
+  const t0 = trace?.ledger ? trace.ledger.now() : 0;
+  const v = await kv.get<T>(packItemPrefix(id) + name);
+  if (trace?.ledger && v !== undefined) {
+    const ep = endpointOf(`pack://area-pack/${id}/${name}`);
+    const meta = await kv.get<AreaPackMeta>(PACK_META + id).catch(() => undefined);
+    traceRead(trace, 'pack', { host: 'area-pack', path: ep.path }, meta?.itemBytes?.[name] ?? approxBytes(v), { at: t0, durationMs: trace.ledger.now() - t0, ...(meta?.createdAt ? { cachedAt: meta.createdAt } : {}) });
+  }
+  return v;
 }
 
 /** Delete a pack; returns true if it existed. */
@@ -330,9 +390,14 @@ interface CacheRecord<T> {
   t: number;
   url: string;
   v: T;
+  /** Bytes of the response body when it was downloaded (absent on records written by older versions). */
+  n?: number;
 }
 
-/** Generic read-through cached GET; see {@link cachedFetchBinary} and {@link cachedFetchJson}. */
+/**
+ * Generic read-through cached GET; see {@link cachedFetchBinary} and {@link cachedFetchJson}. `tag`/`ledger` in the
+ * options record a stored-copy hit (its size and the time it was stored) and, through the HTTP layer, a download.
+ */
 export async function cachedFetch<T>(
   url: string,
   key: string,
@@ -341,17 +406,43 @@ export async function cachedFetch<T>(
   defaultPolicy: 'cache-first' | 'network-first' = 'cache-first',
 ): Promise<CachedResult<T>> {
   const { policy = defaultPolicy, maxAgeMs = Infinity, kv = openCache(), ...req } = opts;
+  const t0 = req.ledger ? req.ledger.now() : 0;
   const cached = await kv.get<CacheRecord<T>>(key).catch(() => undefined);
-  if (cached && policy === 'cache-first' && Date.now() - cached.t <= maxAgeMs) return { data: cached.v, from: 'cache', fetchedAt: cached.t };
+  const traceHit = (source: 'cache' | 'stale'): void => {
+    if (!req.ledger || !cached) return;
+    const ep = endpointOf(cached.url || url);
+    req.ledger.record({ tag: req.tag ?? 'other', host: ep.host, path: ep.path, source, bytes: cached.n ?? approxBytes(cached.v), bodyBytes: cached.n ?? approxBytes(cached.v), cachedAt: cached.t, at: t0, durationMs: req.ledger.now() - t0, ...(req.note ? { note: req.note } : {}) });
+  };
+  if (cached && policy === 'cache-first' && Date.now() - cached.t <= maxAgeMs) {
+    traceHit('cache');
+    return { data: cached.v, from: 'cache', fetchedAt: cached.t };
+  }
+  let bodyBytes: number | undefined;
+  const userOnResponse = req.onResponse;
+  const fetchOpts: RequestOptions = {
+    ...req,
+    onResponse: (info: ResponseInfo) => {
+      bodyBytes = info.bodyBytes;
+      userOnResponse?.(info);
+    },
+  };
   try {
-    const data = await fetcher(url, req);
+    const data = await fetcher(url, fetchOpts);
     const t = Date.now();
     // A failing cache write must not fail the request.
-    await kv.put(key, { t, url, v: data } satisfies CacheRecord<T>).catch((e) => console.warn('[cache] write failed', key, e));
+    let written = true;
+    await kv.put(key, { t, url, v: data, ...(bodyBytes !== undefined ? { n: bodyBytes } : {}) } satisfies CacheRecord<T>).catch((e) => {
+      written = false;
+      console.warn('[cache] write failed', key, e);
+    });
+    if (written && req.ledger) req.ledger.stored(req.tag ?? 'other', bodyBytes ?? 0);
     return { data, from: 'network', fetchedAt: t };
   } catch (e) {
     const aborted = e instanceof HttpError && e.kind === 'aborted';
-    if (cached && !aborted) return { data: cached.v, from: 'stale', fetchedAt: cached.t };
+    if (cached && !aborted) {
+      traceHit('stale');
+      return { data: cached.v, from: 'stale', fetchedAt: cached.t };
+    }
     throw e;
   }
 }

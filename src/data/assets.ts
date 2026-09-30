@@ -11,6 +11,8 @@
  * A loader resolves to `null` when the asset does not exist, so callers can fall back to cache / network.
  */
 
+import { endpointOf, traceRead, type TraceOptions } from './ledger';
+
 /** Resolves the bytes of a bundled asset (path relative to `public/`, no leading slash), or null if absent. */
 export type AssetLoader = (path: string, signal?: AbortSignal) => Promise<Uint8Array | null>;
 
@@ -27,15 +29,21 @@ export function setAssetBase(base: string | null): void {
   assetBase = base;
 }
 
-/** Load a bundled asset's bytes, or null if it does not exist. Never throws for a missing asset. */
-export async function loadAsset(path: string, signal?: AbortSignal): Promise<Uint8Array | null> {
+/**
+ * Load a bundled asset's bytes, or null if it does not exist. Never throws for a missing asset. With `trace`
+ * ({ tag, ledger }) a found file is recorded on the ledger as a 'bundled' read of its real byte length.
+ */
+export async function loadAsset(path: string, signal?: AbortSignal, trace?: TraceOptions): Promise<Uint8Array | null> {
   const p = path.replace(/^\/+/, '');
-  return (customLoader ?? defaultLoader())(p, signal);
+  const t0 = trace?.ledger ? trace.ledger.now() : 0;
+  const bytes = await (customLoader ?? defaultLoader())(p, signal);
+  if (bytes && trace?.ledger) traceRead(trace, 'bundled', { host: 'bundled', path: endpointOf(`http://bundled/${p}`).path }, bytes.byteLength, { at: t0, durationMs: trace.ledger.now() - t0 });
+  return bytes;
 }
 
 /** Load and parse a bundled JSON asset, or null if absent / invalid. */
-export async function loadAssetJson<T>(path: string, signal?: AbortSignal): Promise<T | null> {
-  const bytes = await loadAsset(path, signal);
+export async function loadAssetJson<T>(path: string, signal?: AbortSignal, trace?: TraceOptions): Promise<T | null> {
+  const bytes = await loadAsset(path, signal, trace);
   if (!bytes) return null;
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as T;

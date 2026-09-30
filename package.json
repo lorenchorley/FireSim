@@ -16,7 +16,8 @@
     "cap:android": "npm run build:cap && cap sync android && cap open android",
     "cap:ios": "npm run build:cap && cap sync ios && cap open ios",
     "build:cap": "tsc --noEmit && vite build --mode capacitor",
-    "test:fast": "FIRESIM_SKIP_SLOW=1 vitest run"
+    "test:fast": "FIRESIM_SKIP_SLOW=1 vitest run",
+    "check:contrast": "node scripts/check-contrast.mjs"
   },
   "license": "MIT",
   "dependencies": {

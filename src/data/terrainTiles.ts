@@ -18,6 +18,7 @@ import { DEMO_EXTENT_M, DEMO_SITES, DEMO_TILE_ZOOM } from './demoSites';
 import { loadAssetJson, loadAsset } from './assets';
 import { cachedFetch, listAreaPacks, loadAreaPackItem, openCache, type KV, type CacheOrigin } from './cache';
 import { fetchBinary, HttpError, serviceUrl, type RequestOptions } from './http';
+import { traceFields, type TraceOptions } from './ledger';
 
 import { loadDemoElevation } from './demoRasters';
 export { syntheticElevation, syntheticSource, type SyntheticTerrainKind } from './syntheticTerrain';
@@ -111,6 +112,8 @@ export interface ElevationRequest {
   onProgress?: (done: number, total: number) => void;
   /** Use a bundled LiDAR DTM when one covers the domain (default true). */
   lidar?: boolean;
+  /** Record every tile read (bundled, area pack, stored copy, download) on a request ledger (data/ledger.ts). */
+  trace?: TraceOptions;
 }
 
 export interface ElevationResult {
@@ -122,6 +125,15 @@ export interface ElevationResult {
   tiles: number;
   /** Cells whose value was no-data or below sea level and were set to 0 m. */
   seaOrNoDataCells: number;
+  /** Tiles by where they came from ('stale' = a stored copy used because the download failed). */
+  origins?: Record<TileOrigin, number>;
+  /** Bundled demo sites and saved area packs that supplied tiles. */
+  sites?: string[];
+  packs?: string[];
+  /** Oldest time (epoch ms) a stored tile copy was downloaded, when any came from the cache. */
+  oldestCachedAt?: number;
+  /** True when zoom 14 was wanted but the coarser bundled zoom 13 was used. */
+  degradedFrom?: number;
 }
 
 /** Default Terrarium zoom for a grid resolution. */
@@ -215,10 +227,10 @@ interface DemoManifest {
 const manifestCache = new Map<string, Promise<Set<string> | null>>();
 
 /** Set of "z/x/y" tiles bundled for a demo site (memoised), or null if the site has no manifest. */
-function demoTileSet(siteId: string, signal?: AbortSignal): Promise<Set<string> | null> {
+function demoTileSet(siteId: string, signal?: AbortSignal, trace?: TraceOptions): Promise<Set<string> | null> {
   let p = manifestCache.get(siteId);
   if (!p) {
-    p = loadAssetJson<DemoManifest>(`demo/${siteId}/manifest.json`, signal).then((m) =>
+    p = loadAssetJson<DemoManifest>(`demo/${siteId}/manifest.json`, signal, trace).then((m) =>
       m && Array.isArray(m.tiles) ? new Set(m.tiles.map(([x, y]) => `${m.zoom}/${x}/${y}`)) : null,
     );
     // Do not memoise failures caused by an abort.
@@ -248,12 +260,12 @@ function candidateDemoSites(centre: LatLon, extent: number, preferred?: string):
   return out;
 }
 
-async function loadDemoTile(sites: string[], t: TileXYZ, signal?: AbortSignal): Promise<{ bytes: Uint8Array; site: string } | null> {
+async function loadDemoTile(sites: string[], t: TileXYZ, signal?: AbortSignal, trace?: TraceOptions): Promise<{ bytes: Uint8Array; site: string } | null> {
   const key = `${t.z}/${t.x}/${t.y}`;
   for (const site of sites) {
-    const set = await demoTileSet(site, signal);
+    const set = await demoTileSet(site, signal, trace);
     if (set && !set.has(key)) continue; // manifest says it is not bundled: skip the request
-    const bytes = await loadAsset(`demo/${site}/terrarium/${key}.png`, signal);
+    const bytes = await loadAsset(`demo/${site}/terrarium/${key}.png`, signal, trace);
     if (bytes && hasPngSignature(bytes)) return { bytes, site };
   }
   return null;
@@ -293,10 +305,10 @@ function itemBytes(v: unknown): Uint8Array | null {
   return null;
 }
 
-async function loadPackTile(kv: KV, packs: PackRef[], key: string): Promise<{ bytes: Uint8Array; pack: string } | null> {
+async function loadPackTile(kv: KV, packs: PackRef[], key: string, trace?: TraceOptions): Promise<{ bytes: Uint8Array; pack: string } | null> {
   for (const p of packs) {
     if (!p.tiles.has(key)) continue;
-    const bytes = itemBytes(await loadAreaPackItem<unknown>(p.id, key, kv).catch(() => undefined));
+    const bytes = itemBytes(await loadAreaPackItem<unknown>(p.id, key, kv, trace).catch(() => undefined));
     if (bytes && hasPngSignature(bytes)) return { bytes, pack: p.name };
   }
   return null;
@@ -317,7 +329,7 @@ export class ElevationUnavailableError extends Error {
   }
 }
 
-type TileOrigin = 'bundled' | 'pack' | CacheOrigin;
+export type TileOrigin = 'bundled' | 'pack' | CacheOrigin;
 
 /**
  * Load elevation for a square around `centre` on a local grid (makeGridSpec(centre, extent, cellSize)).
@@ -329,7 +341,7 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
   if (req.signal?.aborted) throw req.signal.reason ?? new DOMException('Aborted', 'AbortError');
   if (req.lidar !== false) {
     const grid = makeGridSpec(req.centre, req.extent, req.cellSize);
-    const hit = await loadDemoElevation(grid, candidateDemoSites(req.centre, req.extent, req.demoSiteId), req.signal);
+    const hit = await loadDemoElevation(grid, candidateDemoSites(req.centre, req.extent, req.demoSiteId), req.signal, req.trace);
     if (hit) return { grid, elevation: hit.elevation, source: hit.source, zoom: 0, tiles: 0, seaOrNoDataCells: 0 };
   }
   const z = resolveZoom(req.cellSize, req.zoom);
@@ -342,7 +354,7 @@ export async function loadElevation(req: ElevationRequest): Promise<ElevationRes
     if (!(e instanceof ElevationUnavailableError) || req.zoom !== undefined || z <= DEMO_TILE_ZOOM || req.signal?.aborted) throw e;
     try {
       const r = await loadElevationAtZoom(req, DEMO_TILE_ZOOM);
-      return { ...r, source: `${r.source} (zoom ${z} unavailable)` };
+      return { ...r, source: `${r.source} (zoom ${z} unavailable)`, degradedFrom: z };
     } catch (e2) {
       if (req.signal?.aborted) throw e2;
       throw e;
@@ -370,6 +382,7 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
   const origins: Record<TileOrigin, number> = { bundled: 0, pack: 0, cache: 0, network: 0, stale: 0 };
   const usedSites = new Set<string>();
   const usedPacks = new Set<string>();
+  let oldestCached: number | undefined;
   const missing: TileXYZ[] = [];
   const causes: unknown[] = [];
   let done = 0;
@@ -389,7 +402,7 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
     };
     let ok = false;
     // 1. Bundled with the app.
-    const demo = await loadDemoTile(sites, t, req.signal);
+    const demo = await loadDemoTile(sites, t, req.signal, req.trace);
     if (demo && place(demo.bytes)) {
       ok = true;
       origins.bundled++;
@@ -397,7 +410,7 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
     }
     // 2. Area packs downloaded for offline use.
     if (!ok && kv && packs.length) {
-      const hit = await loadPackTile(kv, packs, key);
+      const hit = await loadPackTile(kv, packs, key, req.trace);
       if (hit && place(hit.bytes)) {
         ok = true;
         origins.pack++;
@@ -410,10 +423,11 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
         const url = terrariumTileUrl(t.z, t.x, t.y);
         if (kv) {
           for (let pass = 0; pass < 2 && !ok; pass++) {
-            const r = await cachedFetch(url, key, req.offline ? offlineFetch : fetchTilePng, { kv, signal: req.signal }, 'cache-first');
+            const r = await cachedFetch(url, key, req.offline ? offlineFetch : fetchTilePng, { kv, signal: req.signal, ...traceFields(req.trace) }, 'cache-first');
             if (place(new Uint8Array(r.data))) {
               ok = true;
               origins[r.from]++;
+              if (r.from !== 'network') oldestCached = oldestCached === undefined ? r.fetchedAt : Math.min(oldestCached, r.fetchedAt);
             } else {
               if (r.from === 'network') break; // a fresh download that does not decode: give up on this tile
               // A corrupt cached copy would otherwise be served forever (cache-first): drop it and try the network.
@@ -421,7 +435,7 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
               if (req.offline) break;
             }
           }
-        } else if (!req.offline && place(new Uint8Array(await fetchTilePng(url, { signal: req.signal })))) {
+        } else if (!req.offline && place(new Uint8Array(await fetchTilePng(url, { signal: req.signal, ...traceFields(req.trace) })))) {
           ok = true;
           origins.network++;
         }
@@ -446,7 +460,18 @@ async function loadElevationAtZoom(req: ElevationRequest, z: number): Promise<El
   if (origins.stale) parts.push(`${origins.stale} cached (stale)`);
   if (origins.network) parts.push(`${origins.network} downloaded`);
   const source = `${TERRARIUM_SOURCE}, zoom ${z}, ${tiles.length} tile${tiles.length === 1 ? '' : 's'}: ${parts.join(', ')}`;
-  return { grid, elevation, source, zoom: z, tiles: tiles.length, seaOrNoDataCells: clamped };
+  return {
+    grid,
+    elevation,
+    source,
+    zoom: z,
+    tiles: tiles.length,
+    seaOrNoDataCells: clamped,
+    origins,
+    sites: [...usedSites],
+    packs: [...usedPacks],
+    ...(oldestCached !== undefined ? { oldestCachedAt: oldestCached } : {}),
+  };
 }
 
 const offlineFetch = async (): Promise<ArrayBuffer> => {

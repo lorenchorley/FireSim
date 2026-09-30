@@ -49,7 +49,8 @@ src/
   render/        SceneView (Three.js) + layers: terrain, vegetation, flames, embers, smoke, wind, cross-section,
                  icons, sky, camera rig, heightfield picking, legends, palette, demo imagery
   ui/            App shell, screens (notice, setup, building, sim/*, settings), session, stores, widgets, mocks
-  styles/        tokens, base, components, screens, sim CSS (day / night themes)
+  styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
+                 + screen CSS (screens, sim, transport) + legacy bridge; see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by e2e/app.spec.ts
@@ -321,6 +322,31 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   wind conversion.
 * Performance mode changes during a run call `SimController.setQuality` ('battery' → fast, 'auto' → standard,
   'quality' → high). A fast-tier run offers "Use the 3-D atmosphere" in the Layers panel where it matters.
+
+#### Styles and the design system
+
+The look is a flat, Google-Maps-for-Android-flavoured design language with slightly tighter spacing; the whole contract (tokens,
+primitives with markup, density and tap rules, old -> new token map, migration checklist) is in [`docs/DESIGN.md`](DESIGN.md).
+
+* `src/styles/main.css` imports, in order: `tokens.css` (custom properties: colour, type, space, shape, elevation, size, motion; light
+  "Maps light", dark "Maps night", and the `data-contrast="high"` overrides), `base.css` (reset, type roles, focus, the amber TRAINING
+  strip, reduced motion), `components.css` (buttons, fields, segmented, switch, checkbox, slider, stepper, cards, lists, chips, badges,
+  callouts, progress, skeleton), `overlays.css` (app bar, floating top bar, FABs, bottom sheet, dialog, popover, snackbar, bottom
+  navigation, tile grid), `data.css` (key-value rows, stats, bars, meters, sparkbars, origin chips, tables, code, legend chips), then
+  the not yet migrated screen CSS (`screens.css`, `sim.css`, `transport.css`) and `legacy.css` (temporary overrides, deleted block by
+  block as screens migrate).
+* `<html data-theme="light|dark">` and `<html data-contrast="high">` are set by `ui/settings.ts` (`resolveAppearance` /
+  `applyAppearance` / `startThemeSync`, from `Settings.theme` and `Settings.highContrast`) and, before first paint, by the inline script
+  in `index.html`. `<meta name="theme-color">` follows the theme (`THEME_CHROME`: the status-bar colour is the amber strip, which also
+  documents the navigation-bar colours for the native theme).
+* `ui/icons.ts` is the icon set (24 px, 2 px strokes, `currentColor`, kebab-case names plus aliases); `ui/widgets.ts` and
+  `ui/primitives.ts` are typed builders for the primitives (`button`, `segmented`, `toggle`, `slider`; `chip`, `fab`, `listRow`, `kv`,
+  `stat`, `bar`, `meter`, `sparkbar`, `originChip`, `tile`, `tileGrid`, `bottomNav`, `bottomSheet`, `showSnackbar` ...).
+* `ui/styleguide.html` (dev server only, `/src/ui/styleguide.html?theme=dark&contrast=high`) shows every primitive in every state and
+  a mock map screen; screenshots are in `docs/screenshots/design/`.
+* Guard rails: `ui/styles.rules.test.ts` (tap sizes, no literal text under 14 px, flat rules: no gradients, no uppercase or heavy weights
+  outside the sanctioned places), `ui/tokens.contrast.test.ts` (WCAG contrast of every text and boundary pair in the four modes),
+  `ui/icons.test.ts`, `ui/primitives.test.ts`, `ui/settings.test.ts`.
 
 ## Build and deployment
 

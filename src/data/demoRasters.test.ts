@@ -6,7 +6,7 @@ import { loadElevation } from './terrainTiles';
 
 const katoomba = DEMO_SITES.find((s) => s.id === 'katoomba')!;
 
-describe('bundled LiDAR DTM', () => {
+describe('bundled 5 m elevation model', () => {
   it('decodes the Katoomba DTM with plausible elevations, north at the top', async () => {
     const dem = await loadDemoDem('katoomba');
     expect(dem).not.toBeNull();
@@ -34,8 +34,8 @@ describe('bundled LiDAR DTM', () => {
     const req = { centre: katoomba.centre, extent: 6000, cellSize: 30, cache: null, offline: true } as const;
     const lidar = await loadElevation(req);
     const srtm = await loadElevation({ ...req, lidar: false });
-    expect(lidar.source).toMatch(/LiDAR/);
-    expect(srtm.source).not.toMatch(/LiDAR/);
+    expect(lidar.source).toMatch(/NSW_5M_Elevation/);
+    expect(srtm.source).not.toMatch(/NSW_5M_Elevation/);
     let diff = 0;
     for (let k = 0; k < lidar.elevation.length; k++) diff += Math.abs(lidar.elevation[k]! - srtm.elevation[k]!);
     // Same landscape: mean absolute difference of a few tens of metres at most (SRTM includes some canopy, 30 m data).
@@ -45,7 +45,7 @@ describe('bundled LiDAR DTM', () => {
   it('falls back to tiles when the domain extends beyond the DTM', async () => {
     const r = await loadElevation({ centre: katoomba.centre, extent: 12000, cellSize: 60, cache: null, offline: true }).catch((e) => e);
     // Either SRTM tiles (bundled cover 9 km only, so offline this may be unavailable) — but never the clipped DTM.
-    if (!(r instanceof Error)) expect(r.source).not.toMatch(/LiDAR/);
+    if (!(r instanceof Error)) expect(r.source).not.toMatch(/NSW_5M_Elevation/);
     const grid = makeGridSpec(katoomba.centre, 12000, 60);
     expect(await loadDemoElevation(grid, ['katoomba'])).toBeNull();
   });

@@ -24,6 +24,7 @@ import type { LatLon } from '../core/geo';
 import type { ContextLayers } from '../core/places';
 import { decodeContext, type ContextFileV1 } from './contextLayers';
 import { HttpError, fetchJson, getHttpConfig, serviceUrl } from './http';
+import type { DatasetLedger } from './ledger';
 import {
   CONTEXT_MARGIN_M,
   CONTEXT_QUERIES,
@@ -54,7 +55,19 @@ export const CONTEXT_QUERY_LABELS: Readonly<Record<ContextQueryId, string>> = {
   suburbs: 'suburb names',
 };
 
+/** The data set id (core/datasets.ts) each queried layer belongs to; places and suburbs are one data set. */
+export const CONTEXT_DATASET_ID: Readonly<Record<ContextQueryId, string>> = {
+  roads: 'roads',
+  fireTrails: 'fire-trails',
+  homes: 'homes',
+  zones: 'zones',
+  places: 'place-names',
+  suburbs: 'place-names',
+};
+
 export interface NswContextOptions {
+  /** Record every request (per data set: roads, fire-trails, homes, zones, place-names) on a request ledger. */
+  ledger?: DatasetLedger;
   /** Progress 0-1 with a plain-English message; called after every completed request. */
   onProgress?: (fraction: number, message: string) => void;
   signal?: AbortSignal;
@@ -211,14 +224,16 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
   };
 
   /** One POST with back-off retries; ArcGIS reports many failures as HTTP 200 with an `error` body. */
-  const post = async (id: ContextQueryId, form: Record<string, string>): Promise<ArcGisBody> => {
+  const post = async (id: ContextQueryId, form: Record<string, string>, note: string): Promise<ArcGisBody> => {
     const q = CONTEXT_QUERIES[id];
     const url = serviceUrl(q.service, `${q.path}/query`);
     const timeoutMs = opts.timeoutMs ?? q.timeoutMs;
     for (let attempt = 0; ; attempt++) {
       if (signal.aborted) throw abortError(signal);
       try {
-        const body = await run(() => fetchJson<ArcGisBody>(url, { form, retries: 0, timeoutMs, signal }));
+        const body = await run(() =>
+          fetchJson<ArcGisBody>(url, { form, retries: 0, timeoutMs, signal, ...(opts.ledger ? { ledger: opts.ledger, tag: CONTEXT_DATASET_ID[id], note: `${CONTEXT_QUERY_LABELS[id]}: ${note}${attempt ? `, retry ${attempt}` : ''}` } : {}) }),
+        );
         if (body.error) throw new ArcGisError(url, body.error.code ?? 500, body.error.message ?? 'error');
         return body;
       } catch (e) {
@@ -234,14 +249,14 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
 
   const queryLayer = async (id: ContextQueryId): Promise<EsriFeature[]> => {
     const q = CONTEXT_QUERIES[id];
-    const ids = (await post(id, idsQueryForm(q, bbox))).objectIds ?? [];
+    const ids = (await post(id, idsQueryForm(q, bbox), 'object ids')).objectIds ?? [];
     tick(CONTEXT_QUERY_LABELS[id]);
     const chunks: number[][] = [];
     for (let i = 0; i < ids.length; i += q.chunk) chunks.push(ids.slice(i, i + q.chunk));
     total += chunks.length - 1; // the estimate assumed one feature request
     const parts = await Promise.all(
       chunks.map(async (chunk) => {
-        const body = await post(id, featuresQueryForm(q, chunk));
+        const body = await post(id, featuresQueryForm(q, chunk), `${chunk.length} features`);
         tick(CONTEXT_QUERY_LABELS[id]);
         return body.features ?? [];
       }),

@@ -18,7 +18,7 @@
 import { DEFAULT_SIM_OPTIONS, type LatLon, type ScenarioData, type SimOptions, type Terrain } from '../core/types';
 import { localDate } from '../core/physics';
 import { clamp } from '../core/units';
-import { DEMO_SITES, openCache, type KV } from '../data';
+import { DatasetLedger, DEMO_SITES, loadBundleManifest, openCache, type KV } from '../data';
 import { CLASS_INFER } from '../fuel/catalogue';
 import { buildFuelMap } from '../fuel/fuelMap';
 import { emptyHistory, parseFireHistoryWithMeta, rasteriseFireHistory, type HistoryRaster } from '../fuel/history';
@@ -26,6 +26,8 @@ import { parseVegetation, rasteriseVegetation } from '../fuel/svtm';
 import { terrainDerived } from '../terrain';
 import { beltKitReading, type BeltKitReading } from './beltKit';
 import { loadContext } from './context';
+import { assembleDatasets } from './datasetAssembly';
+import { describeImagery } from './imagery';
 import { loadCanopyLayer, loadFireHistoryLayer, loadVegetationLayer, type LayerContext } from './layers';
 import { MESSAGES } from './messages';
 import { SCENARIO_PARAMS } from './params';
@@ -143,14 +145,25 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   };
   const now = req.now ?? Date.now();
   const kv: KV = openCache();
+  // The request ledger counts the bytes, requests and times of every read of this build, per data set (data/ledger.ts).
+  const ledger = new DatasetLedger();
+  const startedAt = Date.now();
+  const timings: Partial<Record<'terrain' | 'imagery' | 'canopy' | 'vegetation' | 'fireHistory' | 'weather' | 'drought' | 'fuel' | 'places', number>> = {};
+  let stepStart = ledger.now();
+  const lap = (name: keyof typeof timings): void => {
+    const t = ledger.now();
+    timings[name] = t - stepStart;
+    stepStart = t;
+  };
   const rr = resolveRequest(req);
   addWarnings(rr.warnings);
-  const layerCtx: LayerContext = { centre: rr.centre, extent: rr.extent, online: req.online, kv, ...(rr.demoSiteId ? { demoSiteId: rr.demoSiteId } : {}), ...(signal ? { signal } : {}) };
+  const layerCtx: LayerContext = { centre: rr.centre, extent: rr.extent, online: req.online, kv, ledger, ...(rr.demoSiteId ? { demoSiteId: rr.demoSiteId } : {}), ...(signal ? { signal } : {}) };
   check();
 
   // ── places (roads, homes, place names): started now, collected after the fuel step ──
   let placesActive = false;
   let placesNote = 'Roads, homes and place names…';
+  const placesStart = ledger.now();
   const placesTask = loadContext({
     ...layerCtx,
     signal: backgroundSignal,
@@ -164,11 +177,13 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
 
   // ── terrain ──
   report('terrain', 0.02, 'Loading terrain…');
+  stepStart = ledger.now();
   const hi = await loadHiResDem({
     centre: rr.centre,
     extent: rr.extent,
     online: req.online,
     kv,
+    ledger,
     ...(rr.demoSiteId ? { demoSiteId: rr.demoSiteId } : {}),
     ...(signal ? { signal } : {}),
     onProgress: (f, m) => report('terrain', 0.02 + 0.1 * f, m),
@@ -177,14 +192,17 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   addWarnings(hi.warnings);
   report('terrain', 0.13, 'Analysing slopes, aspects and landforms…');
   const terrain: Terrain = fireTerrainFromHiRes(hi.dem, rr.fireCellSize);
+  const derived = terrainDerived(terrain);
   const zMedian = medianOf(terrain.elevation);
   const zCentre = elevationAtLocal(terrain, 0, 0);
+  lap('terrain');
   check();
 
   // ── canopy ──
   report('canopy', 0.2, 'Canopy height…');
   const canopy = await loadCanopyLayer(terrain.grid, layerCtx);
   addWarnings(canopy.warnings);
+  lap('canopy');
   check();
 
   // ── vegetation ──
@@ -204,6 +222,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
     minorityWet = new Uint8Array(n);
     addWarnings([MESSAGES.vegetationInferred]);
   }
+  lap('vegetation');
   check();
 
   // ── fire history (parsed now, rasterised at the final t0 in the fuel step) ──
@@ -213,6 +232,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   const parsedHistory = fh.geojson ? parseFireHistoryWithMeta(fh.geojson) : null;
   if (!parsedHistory) addWarnings([MESSAGES.fireHistoryUnavailable]);
   else if (fh.partial) addWarnings([MESSAGES.fireHistoryPartial]);
+  lap('fireHistory');
   check();
 
   // ── weather ──
@@ -240,6 +260,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
     medianElevation: zMedian,
     centreElevation: zCentre,
     relief: terrain.maxElevation - terrain.minElevation,
+    ledger,
     onStatus: (m) => report('weather', 0.6, m),
     ...(rr.demoSiteId ? { siteId: rr.demoSiteId } : {}),
     ...(signal ? { signal } : {}),
@@ -247,6 +268,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   };
   const weather = await resolveWeather(req.weather, wctx);
   addWarnings(weather.warnings);
+  lap('weather');
   check();
   const t0 = weather.t0;
   let duration = rr.duration;
@@ -260,6 +282,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   const drought = await resolveDrought(weather, wctx);
   applyDrought(weather.series, drought);
   addWarnings(drought.warnings);
+  lap('drought');
   check();
 
   // ── fuel ──
@@ -272,7 +295,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   const sources = [hi.dem.source, veg.source, fh.source, canopy.canopy?.source ?? 'Canopy: type defaults'];
   const fuel = buildFuelMap({
     terrain,
-    derived: terrainDerived(terrain),
+    derived,
     classId,
     minorityWet,
     history,
@@ -283,14 +306,23 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
     month: Number(localDate(t0).slice(5, 7)),
     sources,
   });
+  lap('fuel');
   check();
 
   // ── places ──
   report('places', 0.9, placesNote);
   placesActive = true;
   const places = await placesTask;
+  timings.places = ledger.now() - placesStart;
   check();
   addWarnings(places.warnings);
+
+  // ── imagery (display only: which photo the view will show, and what it is) and the bundled-data manifest ──
+  const tImagery = ledger.now();
+  const imagery = await describeImagery(terrain.grid, layerCtx).catch(() => null);
+  timings.imagery = ledger.now() - tImagery;
+  const bundle = await loadBundleManifest(signal).catch(() => null);
+  check();
 
   // ── options, assembly ──
   const options = resolveOptions(req, rr.extent, rr.fireCellSize);
@@ -319,6 +351,52 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
     activeFires: history.activeFires,
     ...(places.context ? { context: places.context } : {}),
   };
+  // ── the data-set inventory: what went into this scenario, with sizes, origins, dates and licences ──
+  try {
+    const { datasets, summary } = assembleDatasets({
+      ledger,
+      bundle,
+      now,
+      startedAt,
+      builtAt: Date.now(),
+      request: req,
+      rr,
+      options,
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
+      startTime: t0,
+      durationS: duration,
+      terrain,
+      hiRes: { grid: hi.dem.grid, elevation: hi.dem.elevation },
+      hi,
+      localRelief: derived.localRelief,
+      terrainMedianElevation: zMedian,
+      imagery,
+      canopy,
+      veg,
+      vegPolygons: vegRecs.length,
+      fh,
+      parsedHistory,
+      includedFires: history.included,
+      activeFires: history.activeFires,
+      fuel,
+      weather,
+      drought,
+      series,
+      places,
+      edits: scenario.edits,
+      ignitions: scenario.ignitions,
+      beltReadings: belt?.length ?? 0,
+      timings,
+      warnings: { terrain: hi.warnings, canopy: canopy.warnings, vegetation: veg.warnings, fireHistory: [...fh.warnings, ...history.warnings], weather: weather.warnings, drought: drought.warnings },
+      allWarnings: series.warnings ?? [],
+    });
+    scenario.datasets = datasets;
+    scenario.datasetSummary = summary;
+  } catch (e) {
+    // The inventory is documentation: a bug in it must never cost the user their scenario.
+    console.warn('[scenario] data-set inventory failed', e);
+  }
   report('done', 1, 'Scenario ready');
   return scenario;
 }

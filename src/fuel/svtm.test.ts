@@ -32,7 +32,7 @@ const rect = (x0: number, y0: number, x1: number, y1: number): [number, number][
 describe('svtmToClass (spec §4.2)', () => {
   it('is total over every (vegForm, vegClass) pair of the eight demo files; only "Not classified" infers', () => {
     const pairs = new Map<string, [string, string]>();
-    for (const site of readdirSync(DEMO)) {
+    for (const site of readdirSync(DEMO, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)) {
       const gj = JSON.parse(readFileSync(`${DEMO}${site}/vegetation.geojson`, 'utf8')) as { features: { properties: { vegForm: string; vegClass: string } }[] };
       for (const f of gj.features) pairs.set(`${f.properties.vegForm}|${f.properties.vegClass}`, [f.properties.vegForm, f.properties.vegClass]);
     }

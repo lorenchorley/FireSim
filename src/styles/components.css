@@ -370,7 +370,7 @@ select.input {
 .stepper {
   display: inline-flex;
   align-items: center;
-  height: var(--field-h);
+  height: calc(var(--field-h) + 2 * var(--bw)); /* the buttons inside are then a full 44 px tall */
   border: var(--bw) solid var(--outline);
   border-radius: var(--r-pill);
   background: var(--surface);
@@ -1026,7 +1026,7 @@ a.list-row:active,
   justify-content: space-between;
   gap: var(--sp-2);
   margin: 0;
-  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
   color: var(--muted);
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
@@ -1060,17 +1060,17 @@ a.list-row:active,
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
+  gap: var(--sp-3) var(--sp-2); /* 12 px between rows: 32 px chips + 12 px = the 44 px pitch of their hit areas */
   margin: var(--sp-2) 0;
 }
 
+/* One scrolling row. It clips its content, so it carries the 6 px above and below that the chips' 44 px hit areas need. */
 .chips-scroll {
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 0 var(--sp-3);
-  margin-left: calc(var(--sp-3) * -1);
-  margin-right: calc(var(--sp-3) * -1);
+  padding: 6px var(--sp-3);
+  margin: 2px calc(var(--sp-3) * -1);
 }
 
 .chips-scroll::-webkit-scrollbar {
@@ -1581,4 +1581,26 @@ details[open] > summary::before {
 
 .wind-arrow {
   flex: 0 0 auto;
+}
+
+/* ───────────────────────── High contrast ("bright sun") ─────────────────────────
+ * <html data-contrast="high">: tokens already give 2 px outlines, heavier weights and +1 px type. What the tokens cannot do:
+ * a pale tint is too weak in direct sun, so a SELECTED chip or segment becomes a solid fill (today's "black when selected").
+ */
+:root[data-contrast='high'] .segmented-option input:checked + .segmented-face,
+:root[data-contrast='high'] .chip.is-selected,
+:root[data-contrast='high'] .chip[aria-pressed='true'],
+:root[data-contrast='high'] .chip[aria-checked='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+:root[data-contrast='high'] .segmented-option input:checked + .segmented-face .segmented-sub {
+  color: inherit;
+}
+
+:root[data-contrast='high'] .btn-tonal,
+:root[data-contrast='high'] .btn-accent {
+  border-color: var(--primary);
 }

@@ -92,8 +92,10 @@ button.search-bar-text {
 .top-bar-sub {
   align-self: center;
   display: flex;
+  flex-wrap: wrap; /* at large text the line wraps between its items instead of running off both edges of the screen */
   align-items: center;
-  gap: var(--sp-3);
+  justify-content: center;
+  column-gap: var(--sp-3);
   max-width: 100%;
   min-height: var(--weather-h);
   padding: 0 var(--sp-3);
@@ -207,7 +209,7 @@ button.search-bar-text {
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   box-shadow: var(--elev-3);
   padding-bottom: var(--safe-bottom);
-  overflow: hidden;
+  /* Not overflow:hidden: the grab handle's 44 px hit area reaches above the sheet edge. */
 }
 
 .bottom-sheet-grab {
@@ -442,7 +444,7 @@ button.search-bar-text {
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: #8ab4f8;
+  color: var(--snackbar-action);
   font-weight: var(--fw-medium);
   text-transform: none;
 }
@@ -488,6 +490,13 @@ button.search-bar-text {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis; /* at 200 % text a four-item bar cannot hold the whole word */
+  white-space: nowrap;
 }
 
 .nav-icon {
@@ -651,7 +660,14 @@ button.search-bar-text {
   cursor: not-allowed;
 }
 
-/* ───────────────────────── High contrast: floating surfaces get an outline ───────────────────────── */
+/* ───────────────────────── High contrast: solid selection, outlined floating surfaces ───────────────────────── */
+:root[data-contrast='high'] .nav-item[aria-current='page'] .nav-icon,
+:root[data-contrast='high'] .nav-item[aria-selected='true'] .nav-icon,
+:root[data-contrast='high'] .nav-item.is-selected .nav-icon {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
 :root[data-contrast='high'] .fab,
 :root[data-contrast='high'] .search-bar,
 :root[data-contrast='high'] .top-bar-sub,

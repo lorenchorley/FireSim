@@ -20,6 +20,7 @@
  */
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import type { HttpOptions, HttpResponse } from '@capacitor/core';
+import { endpointOf, type DatasetLedger } from './ledger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Services and URL routing
@@ -199,6 +200,59 @@ export interface RequestOptions {
    * plugin encodes the object; the response is read the same way as for a GET.
    */
   form?: Record<string, string>;
+  /**
+   * Data set id this request is for. With `ledger`, the request is recorded (host + path, status, bytes on the wire,
+   * decoded bytes, time, retries; never the query string). Without a ledger nothing is measured and nothing changes.
+   */
+  tag?: string;
+  ledger?: DatasetLedger;
+  /** Plain words kept on the ledger entry ("model best_match", "page 2"). */
+  note?: string;
+  /** Called once with the measurements of a successful request (the cache layer uses it to store the size). Never throws into the request. */
+  onResponse?: (info: ResponseInfo) => void;
+}
+
+/** What {@link RequestOptions.onResponse} receives. */
+export interface ResponseInfo {
+  status: number;
+  /** Bytes on the wire when known (Content-Length), else the decoded body length. */
+  bytes: number;
+  /** Decoded body length. */
+  bodyBytes: number;
+  durationMs: number;
+  retries: number;
+}
+
+/** Filled by the transport with what it saw (only requested when a ledger or callback wants it). */
+interface Probe {
+  status: number;
+  /** Content-Length when the response exposed it (-1 = unknown). */
+  wire: number;
+  body: number;
+}
+
+const newProbe = (): Probe => ({ status: 0, wire: -1, body: 0 });
+const clockMs = (): number => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+
+/** UTF-8 length of a string. */
+function utf8Length(s: string): number {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(s).length;
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c <= 0xdbff ? (i++, 4) : 3;
+  }
+  return n;
+}
+
+function contentLength(h: { get?(k: string): string | null } | Record<string, string> | undefined): number {
+  try {
+    const v = typeof (h as { get?: unknown })?.get === 'function' ? (h as { get(k: string): string | null }).get('content-length') : (h as Record<string, string> | undefined)?.['content-length'];
+    const n = v === null || v === undefined ? NaN : Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : -1;
+  } catch {
+    return -1;
+  }
 }
 
 type BodyKind = 'binary' | 'text' | 'json';
@@ -233,30 +287,102 @@ export async function fetchText(url: string, opts: RequestOptions = {}): Promise
  */
 export async function httpRequest(url: string, opts: RequestOptions = {}): Promise<RawResponse> {
   const target = opts.route === false ? url : routeUrl(url);
-  return attempt(target, 'binary', { ...opts, timeoutMs: opts.timeoutMs ?? config.binaryTimeoutMs }, true) as Promise<RawResponse>;
+  const measure = wantsMeasure(opts);
+  const probe = measure ? newProbe() : undefined;
+  const t0 = measure ? clockMs() : 0;
+  const at = opts.ledger ? opts.ledger.now() : 0;
+  try {
+    const r = (await attempt(target, 'binary', { ...opts, timeoutMs: opts.timeoutMs ?? config.binaryTimeoutMs }, true, probe)) as RawResponse;
+    if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, 0, undefined, r.status);
+    return r;
+  } catch (e) {
+    if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, 0, e);
+    throw e;
+  }
+}
+
+const wantsMeasure = (opts: RequestOptions): boolean => !!opts.ledger || !!opts.onResponse;
+
+/** Record a finished request on the ledger and tell `onResponse`; never throws. */
+function finishMeasure(opts: RequestOptions, url: string, method: 'GET' | 'POST', probe: Probe, at: number, durationMs: number, retries: number, error?: unknown, statusOverride?: number): void {
+  try {
+    const status = statusOverride ?? (error instanceof HttpError ? error.status : probe.status);
+    const body = probe.body;
+    const wire = probe.wire >= 0 ? probe.wire : body;
+    if (!error && opts.onResponse) {
+      try {
+        opts.onResponse({ status, bytes: wire, bodyBytes: body, durationMs, retries });
+      } catch {
+        /* a callback must not break the request */
+      }
+    }
+    if (!opts.ledger) return;
+    const ep = ledgerEndpoint(url);
+    opts.ledger.record({
+      tag: opts.tag ?? 'other',
+      host: ep.host,
+      path: ep.path,
+      method,
+      status,
+      source: 'network',
+      bytes: wire,
+      bodyBytes: body,
+      durationMs,
+      retries,
+      at,
+      ...(opts.note ? { note: opts.note } : {}),
+      ...(error ? { error: error instanceof HttpError ? error.kind : 'network' } : {}),
+    });
+  } catch {
+    /* never throws */
+  }
+}
+
+/** Host and path of the UPSTREAM service for a (possibly proxied) URL. */
+function ledgerEndpoint(url: string): { host: string; path: string } {
+  const ep = endpointOf(url);
+  const m = /^\/proxy\/([a-z0-9-]+)(\/.*)?$/.exec(ep.path);
+  if (m && m[1] && m[1] in SERVICES) {
+    const base = endpointOf(SERVICES[m[1] as keyof typeof SERVICES].base);
+    return { host: base.host, path: `${base.path === '/' ? '' : base.path}${m[2] ?? ''}` };
+  }
+  if (!ep.host) {
+    // A relative or same-origin URL: keep the path; the host is the app's own.
+    return { host: '', path: ep.path };
+  }
+  return ep;
 }
 
 async function request(url: string, kind: BodyKind, opts: RequestOptions): Promise<unknown> {
   const target = opts.route === false ? url : routeUrl(url);
   const retries = Math.max(0, opts.retries ?? 1);
+  const measure = wantsMeasure(opts);
+  const t0 = measure ? clockMs() : 0;
+  const at = opts.ledger ? opts.ledger.now() : 0;
   for (let n = 0; ; n++) {
+    const probe = measure ? newProbe() : undefined;
     try {
-      return await attempt(target, kind, opts, false);
+      const out = await attempt(target, kind, opts, false, probe);
+      if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, n);
+      return out;
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError('network', target, String(e), 0, e);
-      if (n >= retries || !err.transient || opts.signal?.aborted) throw err;
+      if (n >= retries || !err.transient || opts.signal?.aborted) {
+        if (measure) finishMeasure(opts, url, opts.form ? 'POST' : 'GET', probe!, at, clockMs() - t0, n, err);
+        throw err;
+      }
       await delay(config.retryDelayMs * (n + 1), opts.signal, target);
     }
   }
 }
 
 /** One attempt, via the native plugin or fetch. When `raw`, returns a {@link RawResponse} regardless of status. */
-async function attempt(url: string, kind: BodyKind, opts: RequestOptions, raw: boolean): Promise<unknown> {
+async function attempt(url: string, kind: BodyKind, opts: RequestOptions, raw: boolean, probe?: Probe): Promise<unknown> {
   if (opts.signal?.aborted) throw new HttpError('aborted', url, `Request aborted: ${url}`);
   const timeoutMs = opts.timeoutMs ?? config.timeoutMs;
   return detectPlatform() === 'native'
-    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form)
-    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form);
+    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe)
+    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe);
 }
 
 const FORM_TYPE = 'application/x-www-form-urlencoded';
@@ -269,6 +395,7 @@ async function fetchAttempt(
   signal: AbortSignal | undefined,
   raw: boolean,
   form?: Record<string, string>,
+  probe?: Probe,
 ): Promise<unknown> {
   const doFetch = config.fetch ?? globalThis.fetch;
   if (typeof doFetch !== 'function') throw new HttpError('network', url, 'fetch is not available in this environment');
@@ -285,19 +412,30 @@ async function fetchAttempt(
     const res = form
       ? await doFetch(url, { method: 'POST', headers: { ...headers, 'content-type': FORM_TYPE }, body: new URLSearchParams(form).toString(), signal: ctrl.signal })
       : await doFetch(url, { method: 'GET', headers, signal: ctrl.signal });
+    if (probe) {
+      probe.status = res.status;
+      probe.wire = contentLength(res.headers);
+    }
     if (raw) {
       const data = await res.arrayBuffer();
       const h: Record<string, string> = {};
       res.headers.forEach((v, k) => (h[k.toLowerCase()] = v));
+      if (probe) probe.body = data.byteLength;
       return { status: res.status, headers: h, data, url } satisfies RawResponse;
     }
     if (!res.ok) {
       // Drain the body so the connection can be reused; ignore failures.
       const text = await res.text().catch(() => '');
+      if (probe) probe.body = utf8Length(text);
       throw new HttpError('http', url, `HTTP ${res.status} ${res.statusText || ''} for ${url}${text ? `: ${text.slice(0, 200)}` : ''}`.trim(), res.status);
     }
-    if (kind === 'binary') return await res.arrayBuffer();
+    if (kind === 'binary') {
+      const buf = await res.arrayBuffer();
+      if (probe) probe.body = buf.byteLength;
+      return buf;
+    }
     const text = await res.text();
+    if (probe) probe.body = utf8Length(text);
     return kind === 'json' ? parseJson(text, url) : text;
   } catch (e) {
     throw classify(e, url, timedOut, signal, timeoutMs);
@@ -315,6 +453,7 @@ async function nativeAttempt(
   signal: AbortSignal | undefined,
   raw: boolean,
   form?: Record<string, string>,
+  probe?: Probe,
 ): Promise<unknown> {
   const req = config.nativeRequest ?? ((o: HttpOptions) => CapacitorHttp.request(o));
   let timedOut = false;
@@ -344,12 +483,27 @@ async function nativeAttempt(
     const h: Record<string, string> = {};
     for (const [k, v] of Object.entries(res.headers ?? {})) h[k.toLowerCase()] = String(v);
     const ok = res.status >= 200 && res.status < 300;
-    if (raw) return { status: res.status, headers: h, data: toArrayBuffer(res.data), url } satisfies RawResponse;
+    if (probe) {
+      probe.status = res.status;
+      probe.wire = contentLength(h);
+    }
+    if (raw) {
+      const data = toArrayBuffer(res.data);
+      if (probe) probe.body = data.byteLength;
+      return { status: res.status, headers: h, data, url } satisfies RawResponse;
+    }
     if (!ok) {
       const body = typeof res.data === 'string' ? res.data : safeStringify(res.data);
+      if (probe) probe.body = utf8Length(body);
       throw new HttpError('http', url, `HTTP ${res.status} for ${url}${body ? `: ${body.slice(0, 200)}` : ''}`, res.status);
     }
-    if (kind === 'binary') return toArrayBuffer(res.data);
+    if (kind === 'binary') {
+      const buf = toArrayBuffer(res.data);
+      if (probe) probe.body = buf.byteLength;
+      return buf;
+    }
+    // The plugin may already have parsed a JSON body: measure the text it stands for.
+    if (probe) probe.body = utf8Length(typeof res.data === 'string' ? res.data : safeStringify(res.data));
     if (kind === 'json') return typeof res.data === 'string' ? parseJson(res.data, url) : res.data;
     return typeof res.data === 'string' ? res.data : safeStringify(res.data);
   } catch (e) {

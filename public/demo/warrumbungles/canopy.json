@@ -8,5 +8,6 @@
  },
  "extent": 9000,
  "encoding": "RGB: R=p90 canopy height (m), G=mean height (m), B=cover fraction (>=2 m) x255; row 0 = north",
- "source": "Meta & WRI High Resolution Canopy Height Maps v1 (Tolan et al. 2024), CC BY 4.0"
+ "source": "Meta & WRI High Resolution Canopy Height Maps v1 (Tolan et al. 2024), CC BY 4.0",
+ "capturedOn": "2026-09-27"
 }

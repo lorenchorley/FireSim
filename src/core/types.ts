@@ -8,6 +8,7 @@
  */
 import type { LatLon } from './geo';
 import type { GridSpec } from './grid';
+import type { DatasetRecord, DatasetSummary } from './datasets';
 
 export type { LatLon } from './geo';
 export type { GridSpec } from './grid';
@@ -672,6 +673,14 @@ export interface ScenarioData {
   activeFires?: FireHistoryRecord[];
   /** Roads, fire trails, homes, residential zones and place names to help users situate themselves (display only). */
   context?: import('./places').ContextLayers;
+  /**
+   * Inventory of the data sets that went into this scenario (sizes, origins, dates, licences, statistics), measured at
+   * build time by scenario/build.ts; see core/datasets.ts. Absent on scenarios built by older versions or by tests that
+   * assemble a ScenarioData by hand. Plain JSON: structured-clone safe, no typed arrays.
+   */
+  datasets?: DatasetRecord[];
+  /** Totals, fallbacks, model dimensions and the reproduction recipe of `datasets`. */
+  datasetSummary?: DatasetSummary;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -901,3 +910,4 @@ export interface SimSnapshot {
 }
 
 export * from './simTypes';
+export * from './datasets';

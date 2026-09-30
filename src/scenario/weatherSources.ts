@@ -18,7 +18,7 @@
  * annual rainfall from the 10-year archive mean → demo table → 1.25 × the last 365 days.
  */
 import type { DailyWeather, LatLon, WeatherSeries, WindEdit } from '../core/types';
-import { cachedFetch, fetchJson, findAreaPacks, isHttpError, loadAreaPackItem, openCache, type CacheOrigin, type KV } from '../data';
+import { approxBytes, cachedFetch, endpointOf, fetchJson, findAreaPacks, isHttpError, loadAreaPackItem, openCache, traceFields, traceRead, type CacheOrigin, type DatasetLedger, type KV, type RequestOptions, type TraceOptions } from '../data';
 import { droughtFactor, kbdiSeries } from '../fuel/moisture/drought';
 import { applyBeltKitToForecast, normaliseManualSeries, type BeltKitReading } from './beltKit';
 import { MESSAGES } from './messages';
@@ -26,6 +26,8 @@ import {
   LEVEL_MODELS,
   SURFACE_MODELS,
   OM_LEVEL_VARS,
+  OM_ERA5_VARS,
+  OM_HOURLY_VARS,
   annualRainfallFromDaily,
   archiveDailyUrl,
   archiveHourlyUrl,
@@ -39,13 +41,15 @@ import {
 } from './openMeteo';
 import { SCENARIO_PARAMS, demoAnnualRainfall } from './params';
 import { WEATHER_PRESETS, isPresetId } from './presets';
-import { clampReplayStart, loadReplay, type ReplayInfo } from './replays';
+import { clampReplayStart, loadReplay, type ReplayFiles, type ReplayInfo } from './replays';
 import type { WeatherMode } from './request';
 import { addDaysIso, civilDate, civilToUtc, daysBetweenIso } from './time';
 import { rainBetween, seriesCovers, seriesSpan, trimSeries } from './weather';
 
 const H = 3.6e6;
 const DAY = 86.4e6;
+const OM_HOURLY_VAR_COUNT = OM_HOURLY_VARS.length;
+const OM_ERA5_VAR_COUNT = OM_ERA5_VARS.length;
 
 export interface WeatherContext {
   /** Domain centre (request location). */
@@ -71,6 +75,51 @@ export interface WeatherContext {
   onStatus?: (message: string) => void;
   /** Override of the 429 back-off (ms), tests. */
   rateLimitBackoffMs?: number;
+  /** Records every request under the tags 'weather', 'upper-air' and 'drought-history' on the build's request ledger. */
+  ledger?: DatasetLedger;
+}
+
+/** Data set ids the weather loaders report under. */
+export const WEATHER_TAG = 'weather';
+export const UPPER_AIR_TAG = 'upper-air';
+export const DROUGHT_TAG = 'drought-history';
+
+const traceFor = (ctx: Pick<WeatherContext, 'ledger'>, tag: string, note?: string): TraceOptions | undefined => (ctx.ledger ? { tag, ledger: ctx.ledger, ...(note ? { note } : {}) } : undefined);
+/** Number of hourly variables a live request asks for (22 surface + 20 pressure-level) - the basis of the upper-air share of a download. */
+
+/** What the weather step learnt about where the series came from (for the 'weather' and 'upper-air' data set records). */
+export interface WeatherDetail {
+  mode: WeatherMode['kind'];
+  /** 'forecast' = forecast API, 'historical' = historical-forecast API or ERA5 archive. */
+  liveKind?: LiveKind;
+  /** Model that supplied the surface series ('best_match', 'ecmwf_ifs', 'era5'). */
+  model?: string;
+  /** Host and path of the API that answered. */
+  api?: { host: string; path: string };
+  /** Models asked, in order, before the one that answered. */
+  triedModels: string[];
+  /** Epoch ms the series was downloaded (or the stored copy's download time; the clock for generated series). */
+  fetchedAt: number;
+  /** True when a stored copy (cache / area pack) was used instead of a fresh download. */
+  stored: boolean;
+  packName?: string;
+  presetId?: string;
+  presetName?: string;
+  /** Live mode that fell back to a preset: why. */
+  fallbackReason?: string;
+  replay?: ReplayInfo & { files?: ReplayFiles };
+  /** Variables the response held (after dropping empty ones). */
+  variablesPresent?: number;
+  variablesRequested?: number;
+  upperAir: {
+    source: 'model' | 'preset' | 'synthetic';
+    /** Pressure levels complete in the series. */
+    levels: number;
+    /** Model that supplied them when a separate request was needed. */
+    model?: string;
+    /** True when they came in the same response as the surface data. */
+    sameResponse: boolean;
+  };
 }
 
 export interface ResolvedWeather {
@@ -90,6 +139,7 @@ export interface ResolvedWeather {
   replay?: ReplayInfo;
   /** Hourly data before trimming (daily gap-fill). */
   untrimmed?: WeatherSeries;
+  detail: WeatherDetail;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +150,7 @@ interface CacheRecord<T> {
   t: number;
   url: string;
   v: T;
+  n?: number;
 }
 
 export const omCacheKey = (url: string): string => `openmeteo/${url}`;
@@ -125,18 +176,26 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 /**
  * GET an Open-Meteo JSON document through the cache: network-first (online) with the 429 back-off of §11.1, cache only
- * (offline). Throws {@link OfflineError} offline with nothing cached.
+ * (offline). Throws {@link OfflineError} offline with nothing cached. `trace` ({ tag, note }) records it on the ledger.
  */
-export async function omFetch(url: string, ctx: Pick<WeatherContext, 'online' | 'signal' | 'kv' | 'onStatus' | 'rateLimitBackoffMs'>): Promise<{ data: OpenMeteoResponse; from: CacheOrigin; fetchedAt: number }> {
+export async function omFetch(
+  url: string,
+  ctx: Pick<WeatherContext, 'online' | 'signal' | 'kv' | 'onStatus' | 'rateLimitBackoffMs' | 'ledger'>,
+  trace?: { tag: string; note?: string },
+): Promise<{ data: OpenMeteoResponse; from: CacheOrigin; fetchedAt: number }> {
   const kv = ctx.kv ?? openCache();
   const key = omCacheKey(url);
+  const tr: TraceOptions | undefined = ctx.ledger && trace ? { tag: trace.tag, ledger: ctx.ledger, ...(trace.note ? { note: trace.note } : {}) } : undefined;
   if (!ctx.online) {
+    const t0 = ctx.ledger ? ctx.ledger.now() : 0;
     const rec = await kv.get<CacheRecord<OpenMeteoResponse>>(key).catch(() => undefined);
     if (!rec) throw new OfflineError(`offline: not cached: ${url}`);
+    const ep = endpointOf(url);
+    traceRead(tr, 'cache', ep, rec.n ?? approxBytes(rec.v), { cachedAt: rec.t, at: t0, durationMs: ctx.ledger ? ctx.ledger.now() - t0 : 0 });
     return { data: rec.v, from: 'cache', fetchedAt: rec.t };
   }
   const P = SCENARIO_PARAMS;
-  const fetcher = async (u: string, opts: { signal?: AbortSignal }): Promise<OpenMeteoResponse> => {
+  const fetcher = async (u: string, opts: RequestOptions): Promise<OpenMeteoResponse> => {
     for (let attempt = 0; ; attempt++) {
       try {
         const j = await fetchJson<OpenMeteoResponse>(u, opts);
@@ -153,7 +212,7 @@ export async function omFetch(url: string, ctx: Pick<WeatherContext, 'online' | 
       }
     }
   };
-  return cachedFetch<OpenMeteoResponse>(url, key, fetcher, { kv, ...(ctx.signal ? { signal: ctx.signal } : {}), policy: 'network-first' }, 'network-first');
+  return cachedFetch<OpenMeteoResponse>(url, key, fetcher, { kv, ...(ctx.signal ? { signal: ctx.signal } : {}), policy: 'network-first', ...traceFields(tr) }, 'network-first');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,42 +284,51 @@ export function livePlan(loc: LatLon, t0: number, durationS: number, now: number
 }
 
 /** Parse and validate one response for the window; null when unusable. */
-function usable(json: OpenMeteoResponse, kind: LiveKind, source: string, from: number, to: number): WeatherSeries | null {
+function usable(json: OpenMeteoResponse, kind: LiveKind, source: string, from: number, to: number): { series: WeatherSeries; present: number; levels: number } | null {
   try {
     const p = parseOpenMeteoHourly(json, { kind, source });
     if (p.missingRequired.length) return null;
     if (!seriesCovers(p.series, from, to)) return null;
-    return p.series;
+    return { series: p.series, present: p.present.length, levels: p.levels };
   } catch {
     return null;
   }
 }
 
 /** Search the cache and area packs for a stored hourly response covering [from, to] at the location. */
-async function storedWeather(loc: LatLon, from: number, to: number, ctx: WeatherContext): Promise<{ series: WeatherSeries; fetchedAt: number; origin: 'cache' | 'pack' } | null> {
+async function storedWeather(
+  loc: LatLon,
+  from: number,
+  to: number,
+  ctx: WeatherContext,
+): Promise<{ series: WeatherSeries; fetchedAt: number; origin: 'cache' | 'pack'; present: number; levels: number; packName?: string; url?: string } | null> {
   const kv = ctx.kv ?? openCache();
   const tag = `latitude=${loc.lat.toFixed(3)}&longitude=${loc.lon.toFixed(3)}`;
-  let best: { series: WeatherSeries; fetchedAt: number; origin: 'cache' | 'pack' } | null = null;
+  let best: { series: WeatherSeries; fetchedAt: number; origin: 'cache' | 'pack'; present: number; levels: number; url: string; bytes: number } | null = null;
   try {
     for (const key of await kv.keys('openmeteo/')) {
       if (!key.includes(tag) || !key.includes('&hourly=')) continue;
       const rec = await kv.get<CacheRecord<OpenMeteoResponse>>(key);
       if (!rec) continue;
-      const s = usable(rec.v, key.includes('historical') || key.includes('archive') ? 'historical' : 'forecast', `Open-Meteo (stored ${new Date(rec.t).toISOString().slice(0, 16)}Z)`, from, to);
-      if (s && (!best || rec.t > best.fetchedAt)) best = { series: s, fetchedAt: rec.t, origin: 'cache' };
+      const u = usable(rec.v, key.includes('historical') || key.includes('archive') ? 'historical' : 'forecast', `Open-Meteo (stored ${new Date(rec.t).toISOString().slice(0, 16)}Z)`, from, to);
+      if (u && (!best || rec.t > best.fetchedAt)) best = { series: u.series, fetchedAt: rec.t, origin: 'cache', present: u.present, levels: u.levels, url: rec.url || key.slice('openmeteo/'.length), bytes: rec.n ?? approxBytes(rec.v) };
     }
   } catch {
     /* no cache */
   }
-  if (best) return best;
+  if (best) {
+    const tr = traceFor(ctx, WEATHER_TAG, 'stored copy');
+    traceRead(tr, 'cache', endpointOf(best.url), best.bytes, { cachedAt: best.fetchedAt });
+    return { series: best.series, fetchedAt: best.fetchedAt, origin: 'cache', present: best.present, levels: best.levels, url: best.url };
+  }
   try {
     // Weather is point data: any pack whose square contains the domain centre will do.
     for (const m of await findAreaPacks(ctx.centre, 0, kv)) {
       if (!m.itemNames.includes('weather')) continue;
-      const w = await loadAreaPackItem<OpenMeteoResponse>(m.id, 'weather', kv);
+      const w = await loadAreaPackItem<OpenMeteoResponse>(m.id, 'weather', kv, traceFor(ctx, WEATHER_TAG, 'area pack'));
       if (!w) continue;
-      const s = usable(w, 'forecast', `Open-Meteo forecast (area pack '${m.name}')`, from, to);
-      if (s) return { series: s, fetchedAt: m.createdAt, origin: 'pack' };
+      const u = usable(w, 'forecast', `Open-Meteo forecast (area pack '${m.name}')`, from, to);
+      if (u) return { series: u.series, fetchedAt: m.createdAt, origin: 'pack', present: u.present, levels: u.levels, packName: m.name };
     }
   } catch {
     /* no packs */
@@ -268,7 +336,7 @@ async function storedWeather(loc: LatLon, from: number, to: number, ctx: Weather
   return null;
 }
 
-async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Promise<ResolvedWeather | null> {
+async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext, mode: WeatherMode['kind']): Promise<ResolvedWeather | null> {
   const P = SCENARIO_PARAMS;
   const loc = ctx.centre;
   const plan = livePlan(loc, t0, ctx.duration, ctx.now, isPast);
@@ -281,17 +349,29 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
   let series: WeatherSeries | null = null;
   let origin: ResolvedWeather['origin'] = 'network';
   let fetchedAt = ctx.now;
+  let model: string | undefined;
+  let api: { host: string; path: string } | undefined;
+  let present = 0;
+  let levels = 0;
+  let packName: string | undefined;
+  const tried: string[] = [];
   if (ctx.online) {
     for (let i = 0; i < plan.surface.length && !series; i++) {
-      const [model, url, label] = plan.surface[i]!;
+      const [m, url, label] = plan.surface[i]!;
+      tried.push(m);
       try {
-        const r = await omFetch(url, ctx);
+        const r = await omFetch(url, ctx, { tag: WEATHER_TAG, note: `model ${m}, ${label ?? plan.label}` });
         // A fresh response only has to start by t0 (a short spin-up is warned about below); stored ones need 24 h.
-        series = usable(r.data, plan.kind, `Open-Meteo ${model} ${label ?? plan.label}`, r.from === 'network' ? t0 : from, minTo);
-        if (series) {
+        const u = usable(r.data, plan.kind, `Open-Meteo ${m} ${label ?? plan.label}`, r.from === 'network' ? t0 : from, minTo);
+        if (u) {
+          series = u.series;
+          present = u.present;
+          levels = u.levels;
           origin = r.from;
           fetchedAt = r.fetchedAt;
-          if (i > 0) warnings.push(MESSAGES.weatherModelFallback(model));
+          model = m;
+          api = endpointOf(url);
+          if (i > 0) warnings.push(MESSAGES.weatherModelFallback(m));
         }
       } catch (e) {
         if (ctx.signal?.aborted) throw e;
@@ -304,18 +384,26 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
       series = st.series;
       origin = st.origin;
       fetchedAt = st.fetchedAt;
+      present = st.present;
+      levels = st.levels;
+      if (st.url) api = endpointOf(st.url);
+      if (st.packName) packName = st.packName;
     }
   }
   if (!series) return null;
   if (origin !== 'network') warnings.push(MESSAGES.staleWeather(Math.max(0, (ctx.now - fetchedAt) / H)));
+  const sameResponse = series.upperAirSource === 'model';
+  let levelModel: string | undefined;
   // Pressure levels: re-request from the profile models when the surface model had none (§11.1).
   if (series.upperAirSource !== 'model' && ctx.online) {
-    for (const [model, url] of plan.levels) {
+    for (const [lm, url] of plan.levels) {
       try {
-        const r = await omFetch(url, ctx);
+        const r = await omFetch(url, ctx, { tag: UPPER_AIR_TAG, note: `pressure levels, model ${lm}` });
         const lv = parseOpenMeteoHourly(r.data, { kind: plan.kind });
         if (lv.levels >= P.minPressureLevels && mergePressureLevels(series, lv.series) > 0) {
-          warnings.push(MESSAGES.pressureLevelFallback(model));
+          warnings.push(MESSAGES.pressureLevelFallback(lm));
+          levelModel = lm;
+          levels = lv.levels;
           break;
         }
       } catch (e) {
@@ -329,7 +417,20 @@ async function liveWeather(t0: number, isPast: boolean, ctx: WeatherContext): Pr
   const trimmed = trimSeries(series, t0 - P.spinupHours * H, to + P.tailHours * H);
   const before = (t0 - span.start) / H;
   if (before < P.spinupHours - 1) warnings.push(MESSAGES.shortSpinup(before));
-  return { series: trimmed, t0, maxDuration: Math.max(0, (span.end - t0) / 1000), warnings, edits: [], origin, untrimmed };
+  const detail: WeatherDetail = {
+    mode,
+    liveKind: plan.kind,
+    ...(model ? { model } : {}),
+    ...(api ? { api } : {}),
+    triedModels: tried,
+    fetchedAt,
+    stored: origin !== 'network',
+    ...(packName ? { packName } : {}),
+    variablesPresent: present,
+    variablesRequested: plan.kind === 'historical' && plan.surface.length === 1 && plan.surface[0]![0] === 'era5' ? OM_ERA5_VAR_COUNT : OM_HOURLY_VAR_COUNT,
+    upperAir: { source: (series.upperAirSource ?? 'synthetic') as 'model' | 'preset' | 'synthetic', levels, ...(levelModel ? { model: levelModel } : {}), sameResponse },
+  };
+  return { series: trimmed, t0, maxDuration: Math.max(0, (span.end - t0) / 1000), warnings, edits: [], origin, untrimmed, detail };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -353,8 +454,11 @@ function beltKitHours(readings: BeltKitReading[]): WeatherSeries['hours'] {
     }));
 }
 
+/** Number of complete pressure levels in a series' first hour (designed or measured). */
+const levelCount = (s: WeatherSeries): number => s.hours[0]?.pressureLevels?.length ?? 0;
+
 /** Build a preset series for the context. */
-function presetWeather(id: string, t0: number, ctx: WeatherContext): ResolvedWeather {
+function presetWeather(id: string, t0: number, ctx: WeatherContext, mode: WeatherMode['kind'] = 'preset'): ResolvedWeather {
   const preset = isPresetId(id) ? WEATHER_PRESETS[id] : null;
   if (!preset) throw new Error(`Unknown weather preset '${id}'`);
   const rain = demoAnnualRainfall(ctx.siteId);
@@ -363,7 +467,16 @@ function presetWeather(id: string, t0: number, ctx: WeatherContext): ResolvedWea
     sourceElevation: ctx.medianElevation,
     ...(rain !== undefined ? { annualRainfall: rain } : {}),
   });
-  return { series, t0, maxDuration: Infinity, warnings: [], edits: [], origin: 'generated' };
+  const detail: WeatherDetail = {
+    mode,
+    triedModels: [],
+    fetchedAt: ctx.now,
+    stored: false,
+    presetId: id,
+    presetName: preset.name,
+    upperAir: { source: (series.upperAirSource ?? 'preset') as 'model' | 'preset' | 'synthetic', levels: levelCount(series), sameResponse: false },
+  };
+  return { series, t0, maxDuration: Infinity, warnings: [], edits: [], origin: 'generated', detail };
 }
 
 /**
@@ -378,7 +491,7 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       return presetWeather(mode.presetId, t0, ctx);
     }
     case 'replay': {
-      const rp = await loadReplay(mode.replayId, ctx.signal);
+      const rp = await loadReplay(mode.replayId, ctx.signal, traceFor(ctx, WEATHER_TAG, 'replay hourly file'), traceFor(ctx, DROUGHT_TAG, 'replay daily file'));
       const warnings: string[] = [];
       let t0 = rp.defaultStart;
       if (mode.start !== undefined && Number.isFinite(mode.start)) {
@@ -388,7 +501,17 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       }
       warnings.push(MESSAGES.syntheticUpperAir);
       const span = seriesSpan(rp.series);
-      return { series: rp.series, t0, maxDuration: (span.end - t0) / 1000, warnings, edits: [], origin: 'bundled', daily: rp.daily, replay: rp.info };
+      const detail: WeatherDetail = {
+        mode: 'replay',
+        liveKind: 'historical',
+        model: rp.info.model,
+        triedModels: [],
+        fetchedAt: ctx.now,
+        stored: false,
+        replay: { ...rp.info, files: rp.files },
+        upperAir: { source: 'synthetic', levels: 0, sameResponse: false },
+      };
+      return { series: rp.series, t0, maxDuration: (span.end - t0) / 1000, warnings, edits: [], origin: 'bundled', daily: rp.daily, replay: rp.info, detail };
     }
     case 'manual': {
       // Belt-kit readings given with a manual run ARE its readings (psychrometer D38, 2 m → 10 m wind D39); the
@@ -408,13 +531,20 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
         ...(mode.cloudCover !== undefined ? { cloudCover: mode.cloudCover } : {}),
       });
       // No upper air in a manual run: synthetic profile, C-Haines unavailable (§11.5, §8.2).
-      return { series: r.series, t0, maxDuration: Infinity, warnings: [...r.warnings, MESSAGES.syntheticUpperAir], edits: [], origin: 'manual' };
+      const detail: WeatherDetail = {
+        mode: 'manual',
+        triedModels: [],
+        fetchedAt: ctx.now,
+        stored: false,
+        upperAir: { source: 'synthetic', levels: 0, sameResponse: false },
+      };
+      return { series: r.series, t0, maxDuration: Infinity, warnings: [...r.warnings, MESSAGES.syntheticUpperAir], edits: [], origin: 'manual', detail };
     }
     case 'now':
     case 'forecast':
     case 'past': {
       const t0 = mode.kind === 'now' ? round10min(ctx.now) : mode.start;
-      const live = await liveWeather(t0, mode.kind === 'past', ctx);
+      const live = await liveWeather(t0, mode.kind === 'past', ctx, mode.kind);
       if (live) {
         if (ctx.beltKit?.length && mode.kind !== 'past') {
           const b = applyBeltKitToForecast(live.series, ctx.beltKit, {
@@ -431,8 +561,9 @@ export async function resolveWeather(mode: WeatherMode, ctx: WeatherContext): Pr
       }
       const fb = P.offlineWeatherFallbackPreset;
       if (!fb) throw new OfflineError(MESSAGES.offlineWeather);
-      const r = presetWeather(fb, t0, ctx);
+      const r = presetWeather(fb, t0, ctx, mode.kind);
       r.origin = 'fallback';
+      r.detail.fallbackReason = ctx.online ? 'The weather service gave no usable forecast for this time and nothing was stored.' : 'Offline, and no stored weather covers this time.';
       const fbName = WEATHER_PRESETS[fb as keyof typeof WEATHER_PRESETS]?.name ?? fb;
       r.warnings.push(ctx.online ? MESSAGES.weatherUnavailableFallback(fbName) : MESSAGES.offlineWeatherFallback(fbName));
       return r;
@@ -448,6 +579,15 @@ export interface DailyHistory {
   daily: DailyWeather[];
   source: string;
   warnings: string[];
+  /** Days that came from the ERA5 archive (or a pack), gap-filled from the forecast, and assumed dry. */
+  archiveDays?: number;
+  gapFilledDays?: number;
+  defaultedDays?: number;
+  /** True when the archive answer was a stored copy. */
+  stored?: boolean;
+  /** Epoch ms the archive answer was downloaded. */
+  fetchedAt?: number;
+  packName?: string;
 }
 
 /**
@@ -463,10 +603,15 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
   const warnings: string[] = [];
   let archive: DailyWeather[] = [];
   let source = 'none';
+  let stored = false;
+  let fetchedAt: number | undefined;
+  let packName: string | undefined;
   try {
-    const r = await omFetch(archiveDailyUrl(loc, start, end), ctx);
+    const r = await omFetch(archiveDailyUrl(loc, start, end), ctx, { tag: DROUGHT_TAG, note: 'daily rain and temperature, 365 days' });
     archive = parseOpenMeteoDaily(r.data).filter((d) => d.date >= start && d.date <= end);
     source = `Open-Meteo ERA5 archive (daily${r.from !== 'network' ? ', stored' : ''})`;
+    stored = r.from !== 'network';
+    fetchedAt = r.fetchedAt;
   } catch (e) {
     if (ctx.signal?.aborted) throw e;
   }
@@ -474,9 +619,15 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
     const pk = await packDaily(ctx);
     if (pk) {
       archive = pk.daily.daily.filter((d) => d.date >= start && d.date <= end);
-      if (archive.length) source = `daily history (area pack '${pk.pack}')`;
+      if (archive.length) {
+        source = `daily history (area pack '${pk.pack}')`;
+        stored = true;
+        packName = pk.pack;
+        fetchedAt = pk.daily.fetchedAt;
+      }
     }
   }
+  const archiveDays = archive.length;
   const byDate = new Map<string, DailyWeather>();
   for (const d of archive) byDate.set(d.date, d);
   const lastArchive = archive.length ? archive[archive.length - 1]!.date : null;
@@ -492,7 +643,7 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
       }
     }
   }
-  if (byDate.size === 0) return { daily: [], source: 'none', warnings };
+  if (byDate.size === 0) return { daily: [], source: 'none', warnings, archiveDays, gapFilledDays: 0, defaultedDays: 0, stored };
   if (filled) {
     warnings.push(MESSAGES.dailyGapFilled(filled));
     source = source === 'none' ? 'forecast hourly (local-day aggregates)' : `${source} + forecast hourly (gap-fill)`;
@@ -517,15 +668,15 @@ export async function dailyHistory(loc: LatLon, t0: number, ctx: WeatherContext,
   }
   if (missing) warnings.push(MESSAGES.dailyGapDefaulted(missing));
   if (daily.length < P.historyDays) warnings.push(MESSAGES.kbdiShortHistory(daily.length));
-  return { daily, source, warnings };
+  return { daily, source, warnings, archiveDays, gapFilledDays: filled, defaultedDays: missing, stored, ...(fetchedAt !== undefined ? { fetchedAt } : {}), ...(packName ? { packName } : {}) };
 }
 
 /** The `daily` item of an area pack containing the domain centre (see areaPack.ts). */
-async function packDaily(ctx: WeatherContext): Promise<{ daily: { daily: DailyWeather[]; annualRainfall?: number }; pack: string } | null> {
+async function packDaily(ctx: WeatherContext): Promise<{ daily: { daily: DailyWeather[]; annualRainfall?: number; fetchedAt?: number }; pack: string } | null> {
   try {
     for (const m of await findAreaPacks(ctx.centre, 0, ctx.kv)) {
       if (!m.itemNames.includes('daily')) continue;
-      const d = await loadAreaPackItem<{ daily: DailyWeather[]; annualRainfall?: number }>(m.id, 'daily', ctx.kv);
+      const d = await loadAreaPackItem<{ daily: DailyWeather[]; annualRainfall?: number; fetchedAt?: number }>(m.id, 'daily', ctx.kv, traceFor(ctx, DROUGHT_TAG, 'area pack'));
       if (d && Array.isArray(d.daily)) return { daily: d, pack: m.name };
     }
   } catch {
@@ -534,32 +685,55 @@ async function packDaily(ctx: WeatherContext): Promise<{ daily: { daily: DailyWe
   return null;
 }
 
+export type AnnualRainfallKind = 'era5-10y' | 'era5-10y-stored' | 'area-pack' | 'demo-table' | 'estimated' | 'carried';
+
 /** Annual rainfall (mm): cached 10-year archive mean → demo table → undefined (drought then uses 1.25 × 365 d). */
-export async function annualRainfall(loc: LatLon, siteId: string | undefined, t0: number, ctx: WeatherContext): Promise<{ mm?: number; source: string }> {
+export async function annualRainfall(loc: LatLon, siteId: string | undefined, t0: number, ctx: WeatherContext): Promise<{ mm?: number; source: string; kind: AnnualRainfallKind; packName?: string }> {
   const P = SCENARIO_PARAMS;
   const kv = ctx.kv ?? openCache();
   const q = P.annualRainfallKeyDeg;
   const key = `annualRainfall/${(Math.round(loc.lat / q) * q).toFixed(2)},${(Math.round(loc.lon / q) * q).toFixed(2)}`;
   const cached = await kv.get<number>(key).catch(() => undefined);
-  if (typeof cached === 'number' && cached > 0) return { mm: cached, source: 'Open-Meteo ERA5 10-year mean (stored)' };
+  if (typeof cached === 'number' && cached > 0) {
+    traceRead(traceFor(ctx, DROUGHT_TAG, 'annual rainfall, stored'), 'cache', { host: 'annualRainfall', path: `/${key.slice('annualRainfall/'.length)}` }, 8);
+    return { mm: cached, source: 'Open-Meteo ERA5 10-year mean (stored)', kind: 'era5-10y-stored' };
+  }
   if (ctx.online) {
     const y = Number(civilDate(t0).slice(0, 4));
     try {
-      const r = await omFetch(archiveDailyUrl(loc, `${y - P.annualRainfallYears}-01-01`, `${y - 1}-12-31`), ctx);
+      const r = await omFetch(archiveDailyUrl(loc, `${y - P.annualRainfallYears}-01-01`, `${y - 1}-12-31`), ctx, { tag: DROUGHT_TAG, note: `annual rainfall, ${P.annualRainfallYears}-year mean` });
       const mm = annualRainfallFromDaily(parseOpenMeteoDaily(r.data));
       if (Number.isFinite(mm) && mm > 0) {
         await kv.put(key, mm).catch(() => undefined);
-        return { mm, source: `Open-Meteo ERA5 ${P.annualRainfallYears}-year mean` };
+        return { mm, source: `Open-Meteo ERA5 ${P.annualRainfallYears}-year mean`, kind: 'era5-10y' };
       }
     } catch (e) {
       if (ctx.signal?.aborted) throw e;
     }
   }
   const pk = await packDaily(ctx);
-  if (pk?.daily.annualRainfall !== undefined && pk.daily.annualRainfall > 0) return { mm: pk.daily.annualRainfall, source: `area pack '${pk.pack}'` };
+  if (pk?.daily.annualRainfall !== undefined && pk.daily.annualRainfall > 0) return { mm: pk.daily.annualRainfall, source: `area pack '${pk.pack}'`, kind: 'area-pack', packName: pk.pack };
   const table = demoAnnualRainfall(siteId);
-  if (table !== undefined) return { mm: table, source: 'demo-site table' };
-  return { source: 'estimated' };
+  if (table !== undefined) return { mm: table, source: 'demo-site table', kind: 'demo-table' };
+  return { source: 'estimated', kind: 'estimated' };
+}
+
+/** Where the drought inputs came from (for the 'drought-history' data set record). */
+export interface DroughtInfo {
+  kind: 'live' | 'replay' | 'preset' | 'manual' | 'defaults';
+  /** Days of daily rain / temperature history used. */
+  dailyDays: number;
+  archiveDays?: number;
+  gapFilledDays?: number;
+  defaultedDays?: number;
+  /** True when the daily history came from a stored copy or an area pack. */
+  stored?: boolean;
+  fetchedAt?: number;
+  packName?: string;
+  annualRainfallKind?: AnnualRainfallKind;
+  annualRainfallSource?: string;
+  /** Replay: the bundled daily file. */
+  replayFile?: { path: string; bytes: number };
 }
 
 export interface DroughtResult {
@@ -570,6 +744,7 @@ export interface DroughtResult {
   rainLast20: number[];
   warnings: string[];
   source: string;
+  info?: DroughtInfo;
 }
 
 /** Rain (mm) of t0's local day before t0 (counts as a DF event with N = 0.8, §5.8). */
@@ -623,6 +798,11 @@ export async function resolveDrought(w: ResolvedWeather, ctx: WeatherContext): P
     const out: DroughtResult = { kbdi, df, daily: s.daily ?? [], rainLast20: s.rainLast20 ?? new Array<number>(20).fill(0), warnings: [], source: s.kind };
     const R = s.annualRainfall ?? demoAnnualRainfall(ctx.siteId);
     if (R !== undefined) out.annualRainfall = R;
+    out.info = {
+      kind: s.kind === 'preset' ? 'preset' : 'manual',
+      dailyDays: out.daily.length,
+      annualRainfallKind: s.annualRainfall !== undefined ? 'carried' : R !== undefined ? 'demo-table' : 'estimated',
+    };
     if (s.kbdi === undefined || s.droughtFactor === undefined) out.warnings.push(MESSAGES.droughtDefaults);
     return out;
   }
@@ -632,6 +812,13 @@ export async function resolveDrought(w: ResolvedWeather, ctx: WeatherContext): P
     const d = droughtFromDaily(w.daily, R, rainToday);
     if (w.daily.length < SCENARIO_PARAMS.historyDays) d.warnings.push(MESSAGES.kbdiShortHistory(w.daily.length));
     d.source = 'bundled replay history';
+    d.info = {
+      kind: 'replay',
+      dailyDays: w.daily.length,
+      archiveDays: w.daily.length,
+      annualRainfallKind: R !== undefined ? 'demo-table' : 'estimated',
+      ...(w.detail.replay?.files?.daily ? { replayFile: w.detail.replay.files.daily } : {}),
+    };
     return d;
   }
   const hist = await dailyHistory(ctx.centre, w.t0, ctx, w.untrimmed ?? s);
@@ -647,5 +834,17 @@ export async function resolveDrought(w: ResolvedWeather, ctx: WeatherContext): P
   }
   d.warnings.unshift(...hist.warnings);
   d.source = `${hist.source}; annual rainfall: ${R.source}`;
+  d.info = {
+    kind: hist.daily.length ? 'live' : 'defaults',
+    dailyDays: hist.daily.length,
+    ...(hist.archiveDays !== undefined ? { archiveDays: hist.archiveDays } : {}),
+    ...(hist.gapFilledDays !== undefined ? { gapFilledDays: hist.gapFilledDays } : {}),
+    ...(hist.defaultedDays !== undefined ? { defaultedDays: hist.defaultedDays } : {}),
+    ...(hist.stored !== undefined ? { stored: hist.stored } : {}),
+    ...(hist.fetchedAt !== undefined ? { fetchedAt: hist.fetchedAt } : {}),
+    ...(hist.packName ? { packName: hist.packName } : {}),
+    annualRainfallKind: R.kind,
+    annualRainfallSource: R.source,
+  };
   return d;
 }

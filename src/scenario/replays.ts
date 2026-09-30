@@ -9,7 +9,8 @@
  * "burning at this date" outlines by the fuel/ inclusion rule (§4.4); the user places ignitions.
  */
 import type { DailyWeather, WeatherSeries } from '../core/types';
-import { loadAssetJson } from '../data/assets';
+import { loadAsset } from '../data/assets';
+import type { TraceOptions } from '../data/ledger';
 import { parseOpenMeteoDaily, parseOpenMeteoHourly, type OpenMeteoResponse } from './openMeteo';
 import { SCENARIO_PARAMS } from './params';
 import { lmstToUtc } from './time';
@@ -105,10 +106,26 @@ export const replayAssetPaths = (id: string): { hourly: string[]; daily: string[
   daily: [`replays/${id}-daily365.json`, `demo/replays/${id}-daily365.json`],
 });
 
-async function firstJson<T>(paths: string[], signal?: AbortSignal): Promise<T | null> {
+interface ReplayFile {
+  path: string;
+  bytes: number;
+}
+
+/** The bundled files a replay was read from (sizes are the files' real byte lengths). */
+export interface ReplayFiles {
+  hourly: ReplayFile;
+  daily?: ReplayFile;
+}
+
+async function firstJson<T>(paths: string[], signal?: AbortSignal, trace?: TraceOptions): Promise<{ json: T; file: ReplayFile } | null> {
   for (const p of paths) {
-    const j = await loadAssetJson<T>(p, signal);
-    if (j) return j;
+    const bytes = await loadAsset(p, signal, trace);
+    if (!bytes) continue;
+    try {
+      return { json: JSON.parse(new TextDecoder().decode(bytes)) as T, file: { path: p, bytes: bytes.byteLength } };
+    } catch {
+      /* an SPA dev server answering a missing file with index.html: try the next path */
+    }
   }
   return null;
 }
@@ -119,22 +136,26 @@ export interface LoadedReplay {
   daily: DailyWeather[];
   /** Default start: the date at 10:00 LMST at the site (unix ms). */
   defaultStart: number;
+  files: ReplayFiles;
 }
 
-/** Load and parse a bundled replay (offline). Throws for an unknown id or a missing file. */
-export async function loadReplay(id: string, signal?: AbortSignal): Promise<LoadedReplay> {
+/**
+ * Load and parse a bundled replay (offline). Throws for an unknown id or a missing file. `hourlyTrace` / `dailyTrace`
+ * record the two file reads on a request ledger (the hourly file is the 'weather' data set, the daily one 'drought-history').
+ */
+export async function loadReplay(id: string, signal?: AbortSignal, hourlyTrace?: TraceOptions, dailyTrace?: TraceOptions): Promise<LoadedReplay> {
   const info = replayInfo(id);
   if (!info) throw new Error(`Unknown replay '${id}'`);
   const paths = replayAssetPaths(id);
-  const [hourly, daily] = await Promise.all([firstJson<OpenMeteoResponse>(paths.hourly, signal), firstJson<OpenMeteoResponse>(paths.daily, signal)]);
+  const [hourly, daily] = await Promise.all([firstJson<OpenMeteoResponse>(paths.hourly, signal, hourlyTrace), firstJson<OpenMeteoResponse>(paths.daily, signal, dailyTrace)]);
   if (!hourly) throw new Error(`Replay '${id}': weather file missing (public/replays/${id}.json)`);
   const src = info.model === 'era5' ? 'ERA5 reanalysis (Open-Meteo archive)' : 'ECMWF IFS historical forecast (Open-Meteo)';
-  const parsed = parseOpenMeteoHourly(hourly, { kind: 'historical', source: `Replay ${info.name}: ${src}` });
+  const parsed = parseOpenMeteoHourly(hourly.json, { kind: 'historical', source: `Replay ${info.name}: ${src}` });
   if (parsed.missingRequired.length) throw new Error(`Replay '${id}': weather file lacks ${parsed.missingRequired.join(', ')}`);
   const series = parsed.series;
-  const d = daily ? parseOpenMeteoDaily(daily) : [];
+  const d = daily ? parseOpenMeteoDaily(daily.json) : [];
   series.daily = d;
-  return { info, series, daily: d, defaultStart: replayDefaultStart(info, series.location.lon) };
+  return { info, series, daily: d, defaultStart: replayDefaultStart(info, series.location.lon), files: { hourly: hourly.file, ...(daily ? { daily: daily.file } : {}) } };
 }
 
 /** 10:00 LMST on the replay date (rounded to the minute) (§11.4). */
