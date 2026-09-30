@@ -37,9 +37,14 @@
         margin: 0 auto;
         padding: 0 12px 48px;
       }
+      body > .training-badge {
+        position: sticky; /* the safety strip stays on screen while the guide scrolls, as it does in the app */
+        top: 0;
+        z-index: 51;
+      }
       .sg-head {
         position: sticky;
-        top: 0;
+        top: calc(var(--strip-h) + var(--safe-top));
         z-index: 50;
         margin: 0 -12px 12px;
         padding: 8px 12px;
@@ -231,6 +236,9 @@
         transform: none !important;
         margin: 0 auto;
         animation: none !important;
+      }
+      .snackbar.sg-static {
+        max-width: 100%; /* the specimen sits in a padded section, not across the viewport */
       }
       .sg-icons {
         display: grid;

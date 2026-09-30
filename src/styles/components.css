@@ -77,13 +77,16 @@ button.tile:active .tile-thumb::before {
   }
 }
 
-/* Hit area: at least 44 x 44 around the centre, whatever the visual size. */
+/* Hit area: at least 44 x 44 around the centre, whatever the visual size. The expander is a square, so it also fills
+ * the corners of round controls (a 44 px circle alone misses the corners of the 44 px box: stepper, snackbar action). */
 .btn::after,
 .icon-btn::after,
 .fab::after,
 button.chip::after,
 label.chip::after,
 a.chip::after,
+.stepper-btn::after,
+.snackbar-action::after,
 .tap::after {
   content: '';
   position: absolute;
@@ -142,8 +145,9 @@ a.chip::after,
   background: var(--surface);
 }
 
+/* .btn.btn-text, not .btn-text: widgets.button() puts its label in <span class="btn-text">, which must not get this padding. */
 .btn-ghost,
-.btn-text {
+.btn.btn-text {
   background: transparent;
   border-color: transparent;
   padding: 0 var(--sp-3);
@@ -166,8 +170,8 @@ a.chip::after,
   width: 100%;
 }
 
-/* Icon-only button made with .btn (widgets.button iconOnly): round, no padding. */
-.btn-icon {
+/* Icon-only button made with .btn (widgets.button iconOnly): round, no padding (.btn. so it beats .btn.btn-text). */
+.btn.btn-icon {
   padding: 0;
   width: var(--btn-h);
   border-radius: 50%;
@@ -180,6 +184,34 @@ a.chip::after,
 .btn-icon .icon {
   width: var(--icon-size);
   height: var(--icon-size);
+}
+
+/* Disabled (M3): a neutral grey container and label for every variant instead of a 38 % faded blue or red, which in the
+ * sun reads as a tonal (enabled) button. Outlined and text buttons keep a transparent fill. Comes after the variants. */
+.btn:disabled,
+.btn.is-disabled {
+  opacity: 1;
+  background: var(--disabled-bg);
+  border-color: transparent;
+  color: var(--disabled-fg);
+  box-shadow: none;
+}
+
+.btn-secondary:disabled,
+.btn-outlined:disabled,
+.btn-secondary.is-disabled,
+.btn-outlined.is-disabled,
+.btn:not(.btn-primary):not(.btn-tonal):not(.btn-accent):not(.btn-danger):not(.btn-ghost):not(.btn-text):disabled {
+  background: transparent;
+  border-color: var(--disabled-bg);
+}
+
+.btn-ghost:disabled,
+.btn.btn-text:disabled,
+.btn-ghost.is-disabled,
+.btn.btn-text.is-disabled {
+  background: transparent;
+  border-color: transparent;
 }
 
 .row-actions {
@@ -515,7 +547,9 @@ select.input {
 .segmented-text {
   display: flex;
   flex-direction: column;
-  min-width: min-content;
+  min-width: 0; /* at a large Android font scale the label wraps (and a long word breaks) inside its segment instead of being cut off */
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .segmented-sub {
@@ -1603,4 +1637,73 @@ details[open] > summary::before {
 :root[data-contrast='high'] .btn-tonal,
 :root[data-contrast='high'] .btn-accent {
   border-color: var(--primary);
+}
+
+:root[data-contrast='high'] .btn-tonal:disabled,
+:root[data-contrast='high'] .btn-accent:disabled {
+  border-color: transparent;
+}
+
+/* ───────────────────────── Forced colours (Windows high contrast, some accessibility browsers) ─────────────────────────
+ * The UA repaints every background with Canvas, so state that lives only in a fill disappears: a switch thumb, a checked
+ * radio dot, the slider track and thumb. Those controls opt out (forced-color-adjust: none) and are drawn with system
+ * colours. Selected chips and segments need nothing: they carry a check. Bars/nav/floating surfaces: overlays.css, data.css.
+ */
+@media (forced-colors: active) {
+  .toggle-track {
+    forced-color-adjust: none;
+    background: Canvas;
+    border-color: CanvasText;
+  }
+
+  .toggle-thumb {
+    background: CanvasText;
+  }
+
+  .toggle input:checked ~ .toggle-track {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .toggle input:checked ~ .toggle-track .toggle-thumb {
+    background: HighlightText;
+  }
+
+  .toggle input:disabled ~ .toggle-track {
+    border-color: GrayText;
+  }
+
+  .toggle input:disabled ~ .toggle-track .toggle-thumb {
+    background: GrayText;
+  }
+
+  .check input:checked,
+  .radio input:checked {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+
+  .radio input:checked {
+    box-shadow: inset 0 0 0 3px Canvas;
+  }
+
+  input[type='range'] {
+    forced-color-adjust: none;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, Highlight var(--pct, 0%), GrayText var(--pct, 0%));
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    background: Highlight;
+    box-shadow: 0 0 0 2px Canvas;
+  }
+
+  /* Fire-danger ratings keep their colours (they also carry the word). */
+  .rating-pill,
+  .swatch {
+    forced-color-adjust: none;
+  }
 }

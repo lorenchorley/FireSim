@@ -109,6 +109,9 @@
   /* Interaction state layers (pressed rows, hovered rows on pointer devices) */
   --state-hover: rgba(60, 64, 67, 0.06);
   --state-press: rgba(60, 64, 67, 0.12);
+  /* Disabled buttons: neutral grey container and label (not a faded blue that reads as a tonal button in the sun) */
+  --disabled-bg: rgba(32, 33, 36, 0.12);
+  --disabled-fg: rgba(32, 33, 36, 0.38);
 
   /* Elevation: soft, for things that float over the map or over content. Flat surfaces use none. */
   --elev-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15); /* chips, small floating controls */
@@ -200,6 +203,8 @@
 
   --state-hover: rgba(232, 234, 237, 0.08);
   --state-press: rgba(232, 234, 237, 0.14);
+  --disabled-bg: rgba(232, 234, 237, 0.12);
+  --disabled-fg: rgba(232, 234, 237, 0.38);
 
   /* Shadows are darker and carry a faint ring so a floating control keeps its edge over dark imagery. */
   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(232, 234, 237, 0.08);
@@ -281,6 +286,8 @@
   --series-4: #4a636e;
   --state-hover: rgba(11, 13, 16, 0.08);
   --state-press: rgba(11, 13, 16, 0.16);
+  --disabled-bg: rgba(11, 13, 16, 0.12);
+  --disabled-fg: rgba(11, 13, 16, 0.55);
   --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d232b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
@@ -321,6 +328,8 @@
   --violet-ink: #ebd7fd;
   --state-hover: rgba(255, 255, 255, 0.1);
   --state-press: rgba(255, 255, 255, 0.2);
+  --disabled-bg: rgba(255, 255, 255, 0.16);
+  --disabled-fg: rgba(255, 255, 255, 0.6);
   --chev-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e8eaed' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 

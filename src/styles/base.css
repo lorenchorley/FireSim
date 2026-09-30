@@ -404,3 +404,10 @@ time {
     opacity: 0.6;
   }
 }
+
+/* Forced colours: the TRAINING strip keeps its amber and near-black ink (7:1) so the safety wording stays unmistakable. */
+@media (forced-colors: active) {
+  .training-badge {
+    forced-color-adjust: none;
+  }
+}

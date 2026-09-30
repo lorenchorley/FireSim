@@ -75,6 +75,8 @@ Values are for light / dark. "HC" = high contrast (either theme). All names are 
 `--primary-container` (selected chip, tonal button, nav pill, selected tile tint) `#e8f0fe` / `#2f3b52`;
 `--on-primary-container` `#174ea6` / `#d2e3fc`; `--focus` = `--primary`.
 `#1a73e8` itself is only 4.5:1 on white, so text on grey uses `--primary-ink`, and text on the tint uses `--on-primary-container`.
+State layers: `--state-hover` / `--state-press` (veils over rows and buttons); disabled buttons: `--disabled-bg` (12 % of the text
+colour) and `--disabled-fg` (38 %; 55-60 % in high contrast). Disabled pairs are exempt from WCAG and `check:contrast` reports them as info.
 
 ### Status and fire
 
@@ -231,6 +233,16 @@ Primary becomes `#0842a0` (white) or `#aecbfa` (black). It is the boolean settin
 builder adds the switch "High contrast (bright sun)" bound to `settingsStore.set({ highContrast })`; nothing else is needed.
 The default flat look meets WCAG AA in both themes: text >= 4.5:1, boundaries, icons and graphics >= 3:1, safety strip >= 7:1.
 
+### Forced colours and reduced motion
+
+`@media (forced-colors: active)` (Windows high contrast and some accessibility browsers) repaints every background with `Canvas`.
+The state that lives only in a fill is redrawn with system colours: switch track and thumb (`Highlight` / `HighlightText` when on),
+checked checkbox and radio, slider track and thumb, the selected bottom-nav pill. Floating surfaces (search bar, FAB, sheet, dialog,
+popover, snackbar) get a 1 px `CanvasText` edge because their shadows are dropped. Data fills (bars, meters, sparkbars, progress,
+legend swatches, fire-danger rating pills) and the TRAINING strip keep their own colours (`forced-color-adjust: none`). Selected chips and
+segments need nothing: they carry a check. `prefers-reduced-motion` stops animations and transitions (base.css); the indeterminate
+progress bar and the skeleton become static.
+
 ## 7. Icons
 
 `icon(name, { size = 24, filled, class, strokeWidth = 2 })` returns an `<svg>` (`iconMarkup()` returns a string). 24 px grid,
@@ -265,7 +277,10 @@ Each block below has a comment header in the CSS. Class names are stable. "TS" n
 Icon-only: `.icon-btn` (40 px round, 24 px icon; `.is-selected` blue; `.icon-btn-tonal`, `.icon-btn-filled`), TS `iconButton()`.
 `button({ iconOnly: true })` gives `.btn.btn-icon`. FABs: `.fab` (48 px white round, `--elev-2`, `.fab-sm` 40, `.is-active` blue icon,
 `.fab-primary` blue), extended pill `.fab.fab-ext.fab-primary` (Play / Directions), `.fab-stack` (column, 8 px gaps), TS `fab()`.
-States: hover (pointer devices only) and pressed use a `currentColor` veil, disabled is 38 % opacity, focus is the global 2 px ring.
+States: hover (pointer devices only) and pressed use a `currentColor` veil, focus is the global 2 px ring. A disabled `.btn` (any
+variant) is a neutral grey pill, `--disabled-bg` fill with `--disabled-fg` label (Material 3; outlined and text buttons keep a clear
+fill), never a faded blue that reads as a tonal button in the sun. Other disabled controls (icon buttons, FABs, chips, tiles) are 38 %
+opacity. The variant rule is `.btn.btn-text`, not `.btn-text`, because `button()` puts its label in `<span class="btn-text">`.
 
 ### Chips, badges, provenance (`components.css`, `data.css`; TS `chip()`, `badge()`, `originChip()`)
 

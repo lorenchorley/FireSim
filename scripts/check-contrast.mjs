@@ -184,6 +184,16 @@ function ratio(mode, fg, bg) {
   return worst;
 }
 
+/** Contrast of fg on a (possibly translucent) bg that sits on the look's --surface: a state layer or disabled fill, where
+ * both colours are veils over the same card (compositing each over black and white separately would mean nothing). */
+function ratioOnSurface(mode, fg, bg) {
+  const s = parseColor(mode['--surface'] ?? '#ffffff');
+  const f = parseColor(fg.startsWith('--') ? (mode[fg] ?? '') : fg);
+  const b = parseColor(bg.startsWith('--') ? (mode[bg] ?? '') : bg);
+  if (!s || !f || !b) return null;
+  return contrast(f, over(b, s));
+}
+
 const SURFACES = ['--bg', '--surface', '--surface-2', '--surface-glass'];
 const TINTS = ['--primary-container', '--danger-bg', '--watch-bg', '--ok-bg', '--info-bg', '--fire-bg', '--violet-bg'];
 const STATUS = ['danger', 'watch', 'ok', 'info', 'fire'];
@@ -307,6 +317,8 @@ const HC_PREFIX = /^:root\[data-contrast='high'\](?::not\(\[data-theme='dark'\]\
 const DARK_PREFIX = /^:root\[data-theme='dark'\]\s*/;
 /** Selectors whose glyph is an icon or a graphic (3:1) rather than text (4.5:1). */
 const GRAPHIC_SELECTOR = /icon|\.fab|\.tile-thumb|\.toggle-thumb|\.check|\.radio|-mark|\.swatch|spinner|nav-badge|badge-dot/;
+/** Disabled controls: WCAG 1.4.3 exempts them, so they are reported ("info") at their real blended contrast, never failed. */
+const DISABLED_SELECTOR = /:disabled|\.is-disabled|\[disabled\]|aria-disabled/;
 /** Pairs the scan sees that are not text on the fill (their own reason is the value). */
 const SCAN_EXEMPT = new Map([
   // (none today: add "selector" -> "reason" here rather than loosening a token)
@@ -351,12 +363,13 @@ function checkScan(modeName, mode, files) {
   for (const rule of scanRules(files)) {
     const p = pairInMode(rule, modeName);
     if (!p || SCAN_EXEMPT.has(rule.sel)) continue;
-    const r = ratio(mode, p.fg, p.bg);
+    const disabled = DISABLED_SELECTOR.test(rule.sel);
+    const r = disabled ? ratioOnSurface(mode, p.fg, p.bg) : ratio(mode, p.fg, p.bg);
     if (r === null) continue; // literal or non-colour value the scan cannot resolve
-    const kind = GRAPHIC_SELECTOR.test(rule.sel) ? 'ui' : 'text';
+    const kind = disabled ? 'info' : GRAPHIC_SELECTOR.test(rule.sel) ? 'ui' : 'text';
     const [tn, th] = LIMITS[kind];
     const need = high ? th : tn;
-    out.push({ fg: p.fg, bg: p.bg, kind, why: `${rule.file}: ${rule.sel.slice(0, 80)}`, mode: modeName, source: 'scan', ratio: r, need, ok: r + 1e-9 >= need, file: rule.file });
+    out.push({ fg: p.fg, bg: p.bg, kind, why: `${rule.file}: ${rule.sel.slice(0, 80)}`, mode: modeName, source: 'scan', ratio: r, need, ok: kind === 'info' || r + 1e-9 >= need, file: rule.file });
   }
   return out;
 }

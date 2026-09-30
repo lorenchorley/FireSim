@@ -31,7 +31,8 @@
 }
 
 .kv-key {
-  flex: 0 1 45%;
+  flex: 0 1 auto; /* its own width (at most 55 %): a short key ("File") leaves the room to a long value on the same line */
+  max-width: 55%;
   min-width: 0;
   margin: 0;
   color: var(--muted);
@@ -96,6 +97,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  overflow-wrap: anywhere; /* a long caption word ("download") in a narrow column at a large font scale breaks instead of widening the page */
 }
 
 .stat-num {
@@ -441,4 +443,23 @@ code {
 .legend-chip .swatch {
   width: 14px;
   height: 14px;
+}
+
+/* Forced colours: bar, meter, sparkbar and progress fills are the data, so they keep their authored colours; the tracks
+ * get an outline so the empty part still reads as a scale. */
+@media (forced-colors: active) {
+  .bar-fill,
+  .bar-seg,
+  .meter-fill,
+  .sparkbar > i,
+  .progress-fill,
+  .legend-chip .swatch {
+    forced-color-adjust: none;
+  }
+
+  .bar,
+  .meter-track,
+  .progress {
+    outline: 1px solid CanvasText;
+  }
 }

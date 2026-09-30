@@ -531,11 +531,12 @@ button.search-bar-text {
   color: var(--on-primary-container);
 }
 
-/* Count on the icon (unseen items): red dot with number, 16 px. */
+/* Count on the icon (unseen items): red dot with number, 16 px. Anchored by its LEFT edge just right of the icon's centre
+ * (Material 3), so a wider count ("9+") grows to the right instead of covering the icon. */
 .nav-badge {
   position: absolute;
   top: -2px;
-  right: 10px;
+  left: calc(50% + 4px);
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -679,4 +680,25 @@ button.search-bar-text {
 
 :root[data-contrast='high'] .bottom-sheet {
   border-bottom: 0;
+}
+
+/* Forced colours: shadows are dropped, so floating surfaces get a 1 px edge; the selected nav item gets a system-colour
+ * pill (its pale-blue pill is a background and would vanish). The TRAINING strip keeps its amber (base.css). */
+@media (forced-colors: active) {
+  .search-bar,
+  .fab,
+  .bottom-sheet,
+  .modal,
+  .popover,
+  .snackbar {
+    outline: 1px solid CanvasText;
+  }
+
+  .nav-item[aria-current='page'] .nav-icon,
+  .nav-item[aria-selected='true'] .nav-icon,
+  .nav-item.is-selected .nav-icon {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
 }
