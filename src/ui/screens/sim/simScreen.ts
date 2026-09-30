@@ -44,6 +44,10 @@ export interface SimScreenOptions {
   onExit(): void;
   onSettings(): void;
   onNotice(): void;
+  /** Open the Data sets screen (optionally at one data set); the run keeps going underneath. */
+  onOpenDatasets?(datasetId?: string): void;
+  /** Open "How this simulation works"; the run keeps going underneath. */
+  onOpenModelCard?(): void;
 }
 
 export interface SimScreen {
