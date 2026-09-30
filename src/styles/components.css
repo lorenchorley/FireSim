@@ -1016,7 +1016,7 @@ a.list-row:active,
 
 .list-title {
   font-size: var(--fs-md);
-  line-height: 22px;
+  line-height: 1.375; /* 22 px at 16 px, and it grows with the Android font scale */
   overflow-wrap: anywhere;
 }
 
@@ -1706,4 +1706,61 @@ details[open] > summary::before {
   .swatch {
     forced-color-adjust: none;
   }
+}
+
+/* === additions from the screens phase === */
+/* ───────────────────────── Choice chips (widgets.chipChoice) ─────────────────────────
+ * A single-choice radio group drawn as chips: <fieldset class="chip-choice"><legend>..</legend><div class="chips">
+ *   <label class="chip chip-radio [is-selected]"><input type="radio"><svg class="chip-check"/>[icon]<span class="chip-text">6 km</span></label>..</div></fieldset>
+ * The radio input covers the chip (invisible), so a tap anywhere on it (or its 44 px hit area, label.chip::after) selects it.
+ * Selected: the tint and check of a selected filter chip (solid in high contrast); the check replaces the option's own icon.
+ */
+.chip-choice {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.chip-choice legend {
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.chip-choice > .chips {
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.chip-choice > .chips-scroll {
+  margin: 0 calc(var(--sp-3) * -1) var(--sp-1);
+}
+
+.chip-radio input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chip-radio.is-selected .icon:not(.chip-check) {
+  display: none;
+}
+
+.chip-radio:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.chip-radio:not(.is-selected):active {
+  background: var(--state-press);
+}
+
+/* A long label (Android font scale 200 %) wraps inside its chip instead of running out of it. */
+.chip-radio .chip-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

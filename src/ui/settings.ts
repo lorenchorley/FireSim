@@ -117,12 +117,23 @@ export function resolveTheme(setting: ThemeSetting, systemDark: boolean): 'light
  *  - navigationBar: the bottom edge is the timeline / bottom navigation surface, so it takes the surface colour; icons dark on
  *    light, light on dark.
  *  - background: the app background (window background, splash, overscroll).
- * Keep in step with --badge-bg / --surface / --bg in src/styles/tokens.css.
+ * 'light-hc' / 'dark-hc' are the high-contrast ("bright sun") variants: the strip keeps its amber, the surfaces become white
+ * (light) or #121314 on black (dark). Keep in step with --badge-bg / --surface / --bg in src/styles/tokens.css (including the
+ * :root[data-contrast='high'] blocks); pick an entry with {@link themeChrome}.
  */
 export const THEME_CHROME = {
   light: { statusBar: '#fbbc04', statusBarIcons: 'dark', navigationBar: '#ffffff', navigationBarIcons: 'dark', background: '#f1f3f4' },
   dark: { statusBar: '#e0a100', statusBarIcons: 'dark', navigationBar: '#303134', navigationBarIcons: 'light', background: '#202124' },
+  'light-hc': { statusBar: '#fbbc04', statusBarIcons: 'dark', navigationBar: '#ffffff', navigationBarIcons: 'dark', background: '#ffffff' },
+  'dark-hc': { statusBar: '#e0a100', statusBarIcons: 'dark', navigationBar: '#121314', navigationBarIcons: 'light', background: '#000000' },
 } as const;
+
+export type ThemeChrome = (typeof THEME_CHROME)[keyof typeof THEME_CHROME];
+
+/** The system-bar colours of a theme, with or without the high-contrast variant. */
+export function themeChrome(theme: 'light' | 'dark', highContrast = false): ThemeChrome {
+  return THEME_CHROME[highContrast ? (`${theme}-hc` as const) : theme];
+}
 
 /** What the page shows for a set of settings. */
 export interface Appearance {
@@ -130,11 +141,14 @@ export interface Appearance {
   highContrast: boolean;
   /** Value of <meta name="theme-color"> (the status-bar colour of the theme). */
   themeColor: string;
+  /** Status bar, navigation bar and window colours for the native shell ({@link THEME_CHROME}). */
+  chrome: ThemeChrome;
 }
 
 export function resolveAppearance(s: Pick<Settings, 'theme' | 'highContrast'>, systemDark: boolean): Appearance {
   const theme = resolveTheme(s.theme, systemDark);
-  return { theme, highContrast: s.highContrast, themeColor: THEME_CHROME[theme].statusBar };
+  const chrome = themeChrome(theme, s.highContrast);
+  return { theme, highContrast: s.highContrast, themeColor: chrome.statusBar, chrome };
 }
 
 /** What {@link applyAppearance} writes to: <html> and the theme-color <meta> (or stand-ins in tests). */

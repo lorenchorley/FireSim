@@ -98,6 +98,20 @@ function coversDomain(fine: GridSpec, coarse: GridSpec): boolean {
   return Math.abs(a0 - c0) <= tol && Math.abs(b0 - d0) <= tol && Math.abs(a1 - c1) <= tol && Math.abs(b1 - d1) <= tol;
 }
 
+/**
+ * How the ground is drawn for a layer state (pure, unit-tested): the photo only when it is switched on and no heat map
+ * stands on its own (LayerState.soloHeat with an active overlay), and plain grey relief for map type 'Plain' or under a
+ * solo heat map (its no-data cells then show plain terrain, never the photo). The 3-D canopy hides itself under a solo
+ * heat map (VegetationLayer.setLayers); the places layers stay as toggled.
+ */
+export function groundBase(l: Pick<LayerState, 'imagery' | 'soloHeat' | 'overlay'>, plainGround: boolean): { imagery: boolean; plain: boolean; solo: boolean } {
+  const solo = l.soloHeat && l.overlay !== 'none';
+  return { imagery: l.imagery && !solo, plain: plainGround || solo, solo };
+}
+
+/** Half-width (m) of the tree-free corridor along a fire trail: a 4-6 m wide track plus a little verge. */
+const TRAIL_CLEAR_HALF_WIDTH = 4;
+
 const FIRE_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver']);
 /** Overlays whose values change with every snapshot. */
 const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation', 'windSpeed']);
@@ -394,7 +408,10 @@ export class SceneView implements SceneViewApi {
         farDensity: THREE.MathUtils.clamp(0.02 + (0.1 * (radius - 500)) / 3000, 0.02, 0.12),
         // Trees over a heat map that is not solo are thinned so the colours below stay readable.
         densityScale: this.layers.overlay !== 'none' && !this.layers.soloHeat ? 0.4 : 1,
-        understorey: this.layers.understorey,
+        // Always placed: the understorey switch then only hides or shows them (no re-placement on a toggle).
+        understorey: true,
+        // RFS fire trails are cleared corridors: no tree or shrub stands on one, so a trail is never hidden by the canopy.
+        clearings: this.trailClearings(),
         seed: 7,
         cache: this.vegCache,
       },
@@ -417,6 +434,40 @@ export class SceneView implements SceneViewApi {
   /** Colour-coding legend of the canopy while the 'coded' style is shown (title, unit, stops), else null. */
   canopyLegend(): LegendSpec | null {
     return this.vegetation?.legend() ?? null;
+  }
+
+  /** Map type 'Plain' (see {@link groundBase}); a view setting kept across scenarios. */
+  setPlainGround(on: boolean): void {
+    if (this.plainGroundOn === on) return;
+    this.plainGroundOn = on;
+    if (this.terrainLayer) this.terrainLayer.setPlainBase(groundBase(this.layers, on).plain);
+    this.dirty = true;
+  }
+  get plainGround(): boolean {
+    return this.plainGroundOn;
+  }
+  private plainGroundOn = false;
+
+  /** An aerial photo was given for this scenario. */
+  get hasImagery(): boolean {
+    return this.terrainLayer?.hasImagery ?? false;
+  }
+
+  /** The quality tier in use (mesh, canopy budget, maximum DPR). */
+  get renderQuality(): RenderQuality {
+    return (Object.keys(QUALITY) as RenderQuality[]).find((k) => QUALITY[k] === this.quality) ?? 'medium';
+  }
+
+  /** How the ground is drawn now (tests and the dev HUD): photo, plain relief, solo heat map. */
+  groundState(): { imagery: boolean; plain: boolean; solo: boolean; canopyVisible: boolean } {
+    const tl = this.terrainLayer;
+    return { imagery: tl?.usingImagery ?? false, plain: tl?.plainBase ?? false, solo: groundBase(this.layers, this.plainGroundOn).solo, canopyVisible: this.vegetation?.visible ?? false };
+  }
+
+  /** Fire-trail lines the canopy keeps clear of (null without places data). */
+  private trailClearings(): { lines: Float32Array[]; halfWidth: number } | null {
+    const t = this.contextLayers?.fireTrails;
+    return t && t.length ? { lines: t.map((l) => l.xy), halfWidth: TRAIL_CLEAR_HALF_WIDTH } : null;
   }
 
   private readonly vegCam: [number, number, number] = [0, 0, 0];
@@ -572,7 +623,10 @@ export class SceneView implements SceneViewApi {
       }
     }
     if (tl) {
-      tl.setUseImagery(l.imagery);
+      // A heat map shown on its own hides the photo and draws plain relief under it (see groundBase).
+      const g = groundBase(l, this.plainGround);
+      tl.setUseImagery(g.imagery);
+      tl.setPlainBase(g.plain);
       tl.uniforms.uOverlayOpacity!.value = l.overlayOpacity;
     }
     this.placesLayer?.setLayers(l);
@@ -584,11 +638,12 @@ export class SceneView implements SceneViewApi {
     this.updateWindArrows();
     const overlayChanged = !prev || prev.overlay !== l.overlay;
     if (overlayChanged || !prev || prev.isochroneMinutes !== l.isochroneMinutes) this.updateOverlay();
-    // Canopy: style, colour code, sway, understorey, solo heat map. Trees thin out under a heat map that is not solo, and the
-    // understorey's share of the budget goes to the other groups when it is off: both need a new placement.
+    // Canopy: style, colour code, sway, understorey, solo heat map. Switching the understorey (or the canopy style) only
+    // re-plans which already-placed instances are drawn (the shrubs are always placed, so the switch is visibility only);
+    // trees thin out under a heat map that is NOT shown on its own (a new, staged placement at 40 % density).
     this.vegetation?.setLayers(l);
     const thinTrees = (s: LayerState): boolean => s.overlay !== 'none' && !s.soloHeat;
-    if (prev && (thinTrees(prev) !== thinTrees(l) || prev.understorey !== l.understorey || (!prev.vegetation && l.vegetation))) this.placeVegetation(true);
+    if (prev && (thinTrees(prev) !== thinTrees(l) || (!prev.vegetation && l.vegetation))) this.placeVegetation(true);
     this.updateViewDependentLayers();
     this.section.visible = l.crossSection.enabled;
     if (l.crossSection.enabled && (!prev || !prev.crossSection.enabled || prev.crossSection.azimuth !== l.crossSection.azimuth || prev.crossSection.centre[0] !== l.crossSection.centre[0] || prev.crossSection.centre[1] !== l.crossSection.centre[1] || prev.verticalExaggeration !== l.verticalExaggeration)) {
@@ -687,8 +742,11 @@ export class SceneView implements SceneViewApi {
    * 'roadAccess' heat maps too.
    */
   setContext(context: ContextLayers | null): void {
+    const trailsChanged = (this.contextLayers?.fireTrails ?? null) !== (context?.fireTrails ?? null);
     this.contextLayers = context;
     this.placesLayer?.setContext(context);
+    // New fire trails: the canopy clears their corridors (a staged placement, like after a camera move).
+    if (trailsChanged && this.vegetation && this.fuel) this.placeVegetation(true);
     if (this.layers.overlay === 'homeDensity' || this.layers.overlay === 'roadAccess') this.updateOverlay();
     this.dirty = true;
   }

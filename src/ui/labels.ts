@@ -2,8 +2,10 @@
  * Plain-language labels used across the UI (fuel types, spread drivers, landforms, insight severities, build steps).
  * Kept in sync with src/render/palette.ts, which uses the same wording in the 3-D legends.
  */
+import type { DatasetRole } from '../core/datasets';
 import { FuelType, Landform, SpreadDriver, type InsightSeverity } from '../core/types';
-import type { BuildProgress } from '../scenario/request';
+import type { BuildDatasetProgress, BuildProgress } from '../scenario/request';
+import type { IconName } from './icons';
 
 export const FUEL_LABELS: Record<FuelType, string> = {
   [FuelType.NonFuel]: 'Rock / cleared',
@@ -90,3 +92,121 @@ export function buildStepStates(step: BuildProgress['step'], reached = -1): { st
 
 /** Upper-case first letter. */
 export const capitalise = (s: string): string => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/**
+ * Names of the data sets by id (the same titles as the data-set records, scenario/datasetRecords*.ts and estimate.ts), for
+ * the rows that appear on the Building screen while the ledger counts them. 'context-file' is the one bundled or stored
+ * file that holds all five places layers.
+ */
+export const DATASET_TITLES: Readonly<Record<string, string>> = Object.freeze({
+  terrain: 'Ground height',
+  imagery: 'Aerial photo',
+  'vegetation-svtm': 'Vegetation map',
+  'canopy-height': 'Tree canopy height',
+  'fire-history': 'Fire history',
+  weather: 'Weather',
+  'upper-air': 'Upper-air profile',
+  'drought-history': 'Rainfall history and drought',
+  roads: 'Roads and tracks',
+  'fire-trails': 'Fire trails',
+  homes: 'Homes (address points)',
+  zones: 'Residential and built-up zones',
+  'place-names': 'Place names',
+  'context-file': 'Map file of roads, homes and names',
+  'fuel-derived': 'Fuel map',
+  'fuel-moisture': 'Fuel moisture at the start',
+  'user-edits': 'Your input',
+  'bundled-site': 'Bundled demo site',
+  'area-pack': 'Saved area pack',
+});
+
+/** Title of a data set id, or the id in words when it is not a known one. */
+export function datasetTitle(id: string): string {
+  return DATASET_TITLES[id] ?? capitalise(id.replace(/[-_]+/g, ' '));
+}
+
+/** Icon of a data set: by id for the places layers (they share a role), else by role. */
+const DATASET_ID_ICONS: Readonly<Record<string, IconName>> = {
+  roads: 'road',
+  'fire-trails': 'route',
+  homes: 'home',
+  zones: 'polygon',
+  'place-names': 'text',
+  'context-file': 'road',
+  'upper-air': 'cloud',
+  'drought-history': 'droplet',
+  'bundled-site': 'database',
+  'area-pack': 'download',
+  'fuel-moisture': 'droplet',
+  'user-edits': 'edit',
+};
+const DATASET_ROLE_ICONS: Readonly<Record<DatasetRole, IconName>> = {
+  terrain: 'terrain',
+  imagery: 'image',
+  vegetation: 'leaf',
+  canopy: 'tree',
+  fuel: 'flame',
+  fireHistory: 'history',
+  weather: 'thermometer',
+  upperAir: 'cloud',
+  context: 'map',
+  derived: 'tune',
+  user: 'edit',
+  bundle: 'database',
+  pack: 'download',
+};
+const TAG_ROLE: Readonly<Record<string, DatasetRole>> = { terrain: 'terrain', imagery: 'imagery', 'vegetation-svtm': 'vegetation', 'canopy-height': 'canopy', 'fire-history': 'fireHistory', weather: 'weather', 'fuel-derived': 'fuel' };
+
+export function datasetIcon(id: string, role?: DatasetRole): IconName {
+  return DATASET_ID_ICONS[id] ?? DATASET_ROLE_ICONS[role ?? TAG_ROLE[id] ?? 'derived'];
+}
+
+/**
+ * The build step a data set belongs to (for nesting its row under the step on the Building screen): by id, else by role.
+ * The aerial photo sits with the terrain (it is draped on the ground), the whole-bundle and pack records and the user's
+ * input with "Ready".
+ */
+export function datasetStep(id: string, role?: DatasetRole): BuildProgress['step'] {
+  const byId: Record<string, BuildProgress['step']> = {
+    terrain: 'terrain',
+    imagery: 'terrain',
+    'canopy-height': 'canopy',
+    'vegetation-svtm': 'vegetation',
+    'fire-history': 'fireHistory',
+    weather: 'weather',
+    'upper-air': 'weather',
+    'drought-history': 'drought',
+    'fuel-derived': 'fuel',
+    'fuel-moisture': 'fuel',
+    'context-file': 'places',
+  };
+  if (byId[id]) return byId[id]!;
+  const byRole: Partial<Record<DatasetRole, BuildProgress['step']>> = { terrain: 'terrain', imagery: 'terrain', canopy: 'canopy', vegetation: 'vegetation', fireHistory: 'fireHistory', weather: 'weather', upperAir: 'weather', fuel: 'fuel', context: 'places', derived: 'fuel' };
+  return (role && byRole[role]) || (['roads', 'fire-trails', 'homes', 'zones', 'place-names'].includes(id) ? 'places' : 'done');
+}
+
+/** Where the bytes of a data set mostly came from so far (by bytes; a data set may mix sources, e.g. bundled + stored). */
+export type ArrivalOrigin = 'live' | 'saved' | 'bundled' | 'none';
+
+/** One Building-screen row of a data set as counted by the ledger: its main origin, its size text and whether it failed. */
+export interface Arrival {
+  id: string;
+  title: string;
+  origin: ArrivalOrigin;
+  /** '1.8 MB', 'up to 957.0 KB' (network bytes whose wire size was not reported are an upper bound), '' when nothing came. */
+  size: string;
+  bytes: number;
+  requests: number;
+  /** Every request so far failed (nothing arrived). */
+  failed: boolean;
+}
+
+/** The Building screen's view of one ledger entry. `formatBytes` is passed in (core/datasets.ts) so this file stays light. */
+export function arrivalOf(d: BuildDatasetProgress, formatBytes: (b: number) => string): Arrival {
+  const saved = d.cacheBytes + d.packBytes;
+  const top = Math.max(d.networkBytes, saved, d.bundledBytes);
+  const origin: ArrivalOrigin = top <= 0 ? 'none' : top === d.bundledBytes && d.bundledBytes > 0 ? 'bundled' : top === d.networkBytes ? 'live' : 'saved';
+  const upTo = d.networkUnmeasuredBytes > 0;
+  const size = d.bytes > 0 ? `${upTo ? 'up to ' : ''}${formatBytes(d.bytes)}` : '';
+  return { id: d.id, title: datasetTitle(d.id), origin, size, bytes: d.bytes, requests: d.requests, failed: d.requests > 0 && d.failures >= d.requests && d.bytes <= 0 };
+}

@@ -9,6 +9,7 @@ import {
   FuelType,
   SpreadDriver,
   type CellExplanation,
+  type EngineInfo,
   type FireField,
   type FuelEdit,
   type FuelMap,
@@ -460,9 +461,49 @@ export class MockSimController implements SimController {
       fireDangerRating: ratingFromIndex(fi).label,
       msPerSimMinute: this.msPerSimMinute,
     };
-    const snap: SimSnapshot = { time: t, fire, moisture, embers, spotFires: spots, stats, insights: [] };
+    const snap: SimSnapshot = { time: t, fire, moisture, embers, spotFires: spots, stats, insights: [], engine: this.engineInfo(embers.count) };
     snap.insights = this.detectInsights(prevT, t, snap, headK);
     return snap;
+  }
+
+  /**
+   * The demo engine's EngineInfo, flagged `mock: true`: it has NO atmosphere model (the wind is the weather series at the
+   * grid point plus wind edits), no level set (a travel-time search on the terrain grid), no ember physics (particles are
+   * drawn downwind of intense cells) and no tiers, so every atmosphere number is 0 and the transparency card says so.
+   */
+  private engineInfo(activeEmbers: number): EngineInfo {
+    const sc = this.scenario!;
+    const g = sc.terrain.grid;
+    const req = sc.options.tier ?? 'auto';
+    const tier: QualityTier = this.quality ?? (req === 'auto' ? 'standard' : req);
+    const hours = sc.weather.hours;
+    const stamp = hours.length > 1 ? (hours[1]!.time - hours[0]!.time) / 1000 : 3600;
+    return {
+      mock: true,
+      tier,
+      tierRequested: req,
+      tierCause: this.quality ? 'changed' : req === 'auto' ? 'auto-default' : 'requested',
+      tierReason: 'Demo engine: the tier is recorded but changes nothing (there is no atmosphere model).',
+      autoTune: null,
+      tierChangedAt: null,
+      atmosphere: { kind: 'diagnostic', nx: 0, ny: 0, nz: 0, dxM: 0, dzFirstM: 0, topM: 0, stretch: 1, currentStepS: null, meanStepMs: null, spunUp: false, upperAir: 'none', viewDecimated: false },
+      fire: { nx: g.nx, ny: g.ny, cellM: g.cellSize, currentSubStepS: null, maxSpreadRate: 0, forestHeadCapMs: 0, validSlopeDeg: [0, 0] },
+      embers: { on: this.options.embers, active: activeEmbers, max: this.maxEmbers, stepS: null, subStepMinS: 0, subStepMaxS: 0, classes: [] },
+      cadence: {
+        displayStepS: this.step,
+        solverMaxStepS: 0,
+        solverBoundS: 0,
+        solverFloorS: 0,
+        moistureUpdateS: 0,
+        detectorsS: 0,
+        checkpointS: 0,
+        checkpointRing: 0,
+        weatherStampS: Number.isFinite(stamp) && stamp > 0 ? stamp : 3600,
+        weatherInterpolation: 'linear',
+      },
+      run: { seed: sc.options.seed, deterministic: false, simSecondsPerWallSecond: null, steps: 0, meanStepMs: null, checkpoints: 0, checkpointBytes: 0, spinUpS: 0 },
+      models: { spread: [], coupling: this.options.coupling, mountainPhenomena: this.options.mountainPhenomena, embersOn: this.options.embers, pyrogenic: false, heathModel: 'refit2024' },
+    };
   }
 
   private makeEmbers(t: number, burning: number[], windMs: number, windDir: number): { count: number; data: Float32Array } {

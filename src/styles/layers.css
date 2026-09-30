@@ -1,1 +1,591 @@
-/* layers.css — see docs/DESIGN.md; use the design tokens and primitives only. */
+/* layers.css — see docs/DESIGN.md; use the design tokens and primitives only.
+ *
+ * The Layers panel (src/ui/screens/sim/layersPanel.ts): Map type tiles (the design system's .tile-grid), the Map details
+ * layer tiles, the grouped Heat maps list, Trees, Wind and air; and the "Where you are" section of the "Why here?" panel
+ * (whyPanel.ts, which also owns the other .why-* rules). Colours, sizes and shadows come from tokens.css only; the colour
+ * ramps and swatches are data (inline styles from the legends).
+ */
+
+/* ───────────────────────── Panel frame ───────────────────────── */
+.layers-body {
+  padding-top: 0;
+}
+
+.lp-section {
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+
+.lp-section + .lp-section {
+  border-top: 1px solid var(--divider);
+}
+
+/* The section headers sit flush with the panel's own padding (the primitive's side padding is for full-width lists). */
+.layers-body .section-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.lp-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.lp-head .section-header {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lp-hint {
+  margin: 0 0 var(--sp-2);
+}
+
+.lp-maptypes {
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+
+/* ───────────────────────── (i) buttons and expansions ───────────────────────── */
+.lp-info-btn {
+  width: var(--ctl-h-sm);
+  color: var(--icon);
+}
+
+.lp-info-btn[aria-expanded='true'] {
+  color: var(--primary-ink);
+}
+
+.lp-info {
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.lp-info .kv-row + .kv-row {
+  border-top-color: var(--outline-variant);
+}
+
+.lp-info .kv-val {
+  font-variant-numeric: normal;
+}
+
+.lp-info-title {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.lp-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+/* A text button whose label wraps at large text sizes instead of widening the panel. */
+.lp-link {
+  height: auto;
+  min-height: var(--ctl-h-sm);
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
+.lp-legend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-1);
+}
+
+.lp-legend-chips .legend-chip {
+  white-space: normal;
+}
+
+/* Line swatches of the places legend: a bar with the casing colour as its edge. */
+.lp-legend-chips .swatch {
+  border: calc(var(--sp-1) / 2) solid transparent;
+}
+
+.lp-legend-chips .lp-swatch-line,
+.lp-legend-chips .lp-swatch-dashed,
+.lp-legend-chips .lp-swatch-dotted {
+  width: var(--icon-size);
+  height: var(--sp-2);
+  border-radius: var(--r-xs);
+}
+
+.lp-legend-chips .lp-swatch-dashed {
+  border-style: dashed;
+}
+
+.lp-legend-chips .lp-swatch-dotted {
+  border-style: dotted;
+}
+
+/* ───────────────────────── Map details: layer tiles ─────────────────────────
+ * Two columns of flat tiles (one column at large text sizes): [thumb] label + status line, and an (i) button.
+ * Selected = 2 px blue frame, blue label and a check on the thumb (never colour alone). Unavailable = faded thumb and label,
+ * the reason in the status line at full contrast.
+ */
+.lp-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10.5em), 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+
+.lp-tile {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.lp-tile.is-on {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.lp-tile-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--row-h-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-1);
+  border: 0;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lp-tile-main:active {
+  background: var(--state-press);
+}
+
+@media (hover: hover) {
+  .lp-tile-main:hover {
+    background: var(--state-hover);
+  }
+}
+
+.lp-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: calc(var(--icon-size-sm) + var(--sp-2));
+  height: calc(var(--icon-size-sm) + var(--sp-2));
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--icon);
+}
+
+.lp-thumb .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.lp-tile.is-on .lp-thumb {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.lp-tile.is-on .lp-thumb::after {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--sp-1));
+  right: calc(-1 * var(--sp-1));
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: 50%;
+  background: var(--primary) var(--check-mark) center / var(--sp-2) var(--sp-2) no-repeat;
+  box-shadow: 0 0 0 calc(var(--sp-1) / 2) var(--surface);
+}
+
+.lp-tile-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-tile-label {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  /* Words are never broken: when one does not fit two columns, the panel switches to one column (.is-1col, layersPanel.ts). */
+  overflow-wrap: normal;
+}
+
+.lp-tiles.is-1col {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lp-tiles.is-1col .lp-tile-label {
+  overflow-wrap: anywhere;
+}
+
+.lp-tile.is-on .lp-tile-label {
+  color: var(--primary-ink);
+}
+
+.lp-tile-cap {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: break-word;
+}
+
+.lp-tile .lp-info-btn {
+  align-self: center;
+  width: var(--icon-size); /* the 44 px hit area comes from .icon-btn::after */
+  z-index: 1; /* its hit area reaches into the gap: above the neighbouring tile */
+}
+
+.lp-tile.is-unavailable {
+  border-style: dashed;
+}
+
+/* Unavailable: the picture fades, the words stay readable (muted text keeps its AA / 7:1 contrast; a tap explains why). */
+.lp-tile.is-unavailable .lp-thumb {
+  opacity: 0.45;
+}
+
+.lp-tile.is-unavailable .lp-tile-label {
+  color: var(--muted);
+}
+
+.lp-tile.is-unavailable .lp-tile-main {
+  cursor: help;
+}
+
+/* ───────────────────────── Heat maps: groups and rows ───────────────────────── */
+.lp-group + .lp-group {
+  border-top: 1px solid var(--divider);
+}
+
+.lp-group-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--row-h);
+  padding: var(--sp-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lp-group-head:active {
+  background: var(--state-press);
+}
+
+.lp-group-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-group-title {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.lp-group-count {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.lp-group-chev {
+  flex: 0 0 auto;
+  color: var(--icon);
+  transition: transform var(--dur-1) var(--ease);
+}
+
+.lp-group-head[aria-expanded='true'] .lp-group-chev {
+  transform: rotate(180deg);
+}
+
+.lp-group-blurb {
+  margin: 0 0 var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.lp-heat-list {
+  --row-inset: calc(var(--sp-6) + var(--sp-2) + var(--sp-3));
+  margin-bottom: var(--sp-2);
+  background: transparent;
+}
+
+.lp-heat-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-1);
+}
+
+.lp-heat-main {
+  position: relative;
+  flex: 1 1 12em;
+  min-width: 0;
+  min-height: var(--row-h-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+button.lp-heat-main {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button.lp-heat-main:active {
+  background: var(--state-press);
+}
+
+@media (hover: hover) {
+  button.lp-heat-main:hover {
+    background: var(--state-hover);
+  }
+}
+
+.lp-swatch {
+  flex: 0 0 auto;
+  width: calc(var(--sp-6) + var(--sp-2));
+  height: var(--sp-4);
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.lp-heat-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-heat-title {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  overflow-wrap: break-word;
+}
+
+.lp-heat-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: break-word;
+}
+
+.lp-heat-check {
+  flex: 0 0 auto;
+  display: none;
+  color: var(--primary-ink);
+}
+
+.lp-heat.is-on > .lp-heat-row button.lp-heat-main {
+  background: var(--primary-container);
+  padding-left: var(--sp-2);
+}
+
+.lp-heat.is-on > .lp-heat-row .lp-heat-title {
+  color: var(--on-primary-container);
+  font-weight: var(--fw-medium);
+}
+
+.lp-heat.is-on > .lp-heat-row .lp-heat-sub {
+  color: var(--on-primary-container);
+}
+
+.lp-heat.is-on .lp-heat-check {
+  display: inline-grid;
+}
+
+.lp-heat.is-on .lp-heat-main .lp-swatch {
+  box-shadow: inset 0 0 0 1px var(--on-primary-container);
+}
+
+.lp-heat.is-unavailable .lp-swatch {
+  opacity: 0.45;
+}
+
+.lp-heat.is-unavailable .lp-heat-title {
+  color: var(--muted);
+}
+
+.lp-heat.is-unavailable button.lp-heat-main {
+  cursor: help;
+}
+
+/* The Show / Heat map pair of the layers that have both forms: on their own line under the title. */
+.lp-both {
+  order: 3;
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 0 100%;
+  gap: var(--sp-3) var(--sp-2);
+  padding: 0 0 var(--sp-2) calc(var(--sp-6) + var(--sp-2) + var(--sp-3));
+}
+
+.lp-heat .lp-info-btn {
+  order: 2;
+  flex: 0 0 auto;
+}
+
+/* The legend and controls of the heat map on show (full width under its row). */
+.lp-active {
+  margin: 0 0 var(--sp-2);
+  padding: 0 0 var(--sp-1);
+}
+
+.lp-active .legend {
+  margin-top: var(--sp-1);
+}
+
+
+
+/* ───────────────────────── Trees, wind and air ───────────────────────── */
+.lp-code {
+  margin-top: var(--sp-2);
+}
+
+.lp-code-legend .legend {
+  margin-top: var(--sp-2);
+}
+
+.lp-switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.lp-switch-row > .toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lp-section .segmented + .lp-switch,
+.lp-section .segmented + .toggle {
+  margin-top: var(--sp-2);
+}
+
+.lp-foot {
+  display: flex;
+  justify-content: flex-start;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px solid var(--divider);
+}
+
+/* Landscape phones: the panel is a short side column, so the map-type tiles shrink and the sections sit tighter. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .lp-maptypes .tile-thumb {
+    max-width: var(--tap);
+  }
+
+  .lp-maptypes .tile-thumb .icon {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .lp-section {
+    padding: var(--sp-1) 0;
+  }
+}
+
+/* ───────────────────────── High contrast and forced colours ───────────────────────── */
+:root[data-contrast='high'] .lp-tile {
+  border-width: var(--bw);
+  border-color: var(--outline);
+}
+
+:root[data-contrast='high'] .lp-tile.is-on {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 var(--bw) var(--primary);
+}
+
+:root[data-contrast='high'] .lp-tile.is-on .lp-thumb,
+:root[data-contrast='high'] .lp-heat.is-on > .lp-heat-row button.lp-heat-main {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+:root[data-contrast='high'] .lp-heat.is-on > .lp-heat-row .lp-heat-title,
+:root[data-contrast='high'] .lp-heat.is-on > .lp-heat-row .lp-heat-sub,
+:root[data-contrast='high'] .lp-heat.is-on .lp-heat-check {
+  color: var(--on-primary);
+}
+
+:root[data-contrast='high'] .lp-tile.is-unavailable .lp-thumb,
+:root[data-contrast='high'] .lp-heat.is-unavailable .lp-swatch {
+  opacity: 0.7;
+}
+
+:root[data-contrast='high'] .lp-info {
+  border: var(--bw) solid var(--outline);
+}
+
+@media (forced-colors: active) {
+  .lp-swatch,
+  .lp-legend-chips .swatch {
+    forced-color-adjust: none;
+  }
+
+  .lp-tile.is-on,
+  .lp-heat.is-on > .lp-heat-row .lp-heat-main {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* ───────────────────────── "Why here?": where you are (whyPanel.ts) ───────────────────────── */
+.why-where {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-1);
+  border-top: 1px solid var(--divider);
+}
+
+.why-where .section-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.why-where .kv-val {
+  font-variant-numeric: tabular-nums;
+}
+
+.why-where-note {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}

@@ -1,13 +1,14 @@
 /**
- * The bottom dock: a slim (44 px) row of four tab buttons — Insights (with an unseen-cards badge), Weather, Stats, Help —
- * directly above the timeline. Collapsed by default; a tab opens the panel above the row at "peek", which can be dragged
- * to half / full height or closed again (tap the same tab, the grip, or the map). Nothing here ever pops up on its own:
- * new cards only change the badge. Taps work everywhere a drag does, so nothing depends on a gesture.
+ * The bottom dock, Google-Maps style: a bottom navigation row (Insights with an unseen-cards badge, Weather, Stats, Help)
+ * directly above the timeline, and above it a bottom sheet (grab handle, rounded top corners) that a tab opens at
+ * "peek"; drag the handle or the navigation row to "half" / "full", tap the handle to step up, tap the same tab, the
+ * close button or the map to close it. Collapsed by default. Nothing here ever pops up on its own: new cards only change
+ * the badge. Taps work everywhere a drag does, so nothing depends on a gesture.
  */
 import type { Insight } from '../../../core/types';
 import { msToKmh } from '../../../core/units';
 import { h, listen, prefersReducedMotion, setChildren, text } from '../../dom';
-import { icon } from '../../icons';
+import { icon, type IconName } from '../../icons';
 import { GLOSSARY } from '../../content';
 import {
   compassName,
@@ -30,14 +31,16 @@ import { baselineAt } from '../../session';
 import { detectWindChanges, plumeRegime, ratingStyle } from '../../weatherCalc';
 import { sampleSeries } from '../../weatherSeries';
 import { BurnState } from '../../../core/types';
+import { kv, listRow, list, sectionHeader, stackedBar, statRow, type KvRow } from '../../primitives';
 import type { SheetTab, SimContext } from './context';
 import { insightCard } from './insightCard';
 import { has3dAtmosphere } from './context';
 import { groupInsights, UnseenTracker, type InsightGroup } from '../../insightGroups';
-import { badgeText, detentHeights, DOCK_H, pressTab, snapDetent, tapHandle } from './layoutModel';
+import { badgeText, cycleDetent, detentHeights, DOCK_H, pressTab, snapDetent, tapHandle } from './layoutModel';
+import { dataUsed } from './dataSummary';
 import { chartHeight, drawWeatherChart, litterEstimate } from './weatherChart';
 
-const TABS: { id: SheetTab; label: string; icon: 'list' | 'chart' | 'stats' | 'help' }[] = [
+const TABS: { id: SheetTab; label: string; icon: IconName }[] = [
   { id: 'insights', label: 'Insights', icon: 'list' },
   { id: 'weather', label: 'Weather', icon: 'chart' },
   { id: 'stats', label: 'Stats', icon: 'stats' },
@@ -48,27 +51,27 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   const { session, ui } = ctx;
   const unsubs: (() => void)[] = [];
 
-  // ── tab row (the collapsed dock) ──
-  const badge = h('span', { class: 'tab-badge', hidden: true, dataset: { testid: 'insights-badge' } });
+  // ── bottom navigation (the collapsed dock) ──
+  const badge = h('span', { class: 'nav-badge sim-badge', hidden: true, dataset: { testid: 'insights-badge' } });
   const tabBtns = TABS.map((t) =>
     h(
       'button',
       {
         type: 'button',
-        class: ['sheet-tab', t.id === 'insights' && 'has-badge'],
+        class: ['nav-item', 'sheet-tab'],
         id: `tab-${t.id}`,
         attrs: { role: 'tab', 'aria-controls': `panel-${t.id}` },
         dataset: { testid: `tab-${t.id}` },
         on: { click: () => ui.set(pressTab({ sheet: ui.get().sheet, tab: ui.get().tab }, t.id)) },
       },
-      [h('span', { class: 'tab-icon' }, icon(t.icon, { size: 20 })), h('span', { class: 'tab-label' }, t.label), t.id === 'insights' ? badge : null],
+      [h('span', { class: 'nav-icon' }, [icon(t.icon), t.id === 'insights' ? badge : null]), h('span', { class: 'nav-label' }, t.label)],
     ),
   );
-  // The row is the handle: tapping its gaps opens / closes, dragging it resizes the panel.
+  // The row is a handle too: tapping its gaps opens / closes, dragging it resizes the sheet.
   const handle = h(
     'div',
     {
-      class: 'sheet-handle',
+      class: 'bottom-nav sheet-handle',
       dataset: { testid: 'sheet-handle' },
       attrs: { role: 'tablist', 'aria-label': 'Panels' },
       on: { click: (e) => e.target === handle && ui.set({ sheet: tapHandle(ui.get().sheet) }) },
@@ -76,9 +79,11 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     tabBtns,
   );
 
-  // ── panel (above the row) ──
-  const grip = h('button', { type: 'button', class: 'sheet-grip-btn', dataset: { testid: 'sheet-grip' }, aria: { label: 'Close panel' }, on: { click: () => ui.set({ sheet: 'closed' }) } }, h('span', { class: 'sheet-grip' }));
-  const head = h('div', { class: 'sheet-head' }, grip);
+  // ── sheet (above the navigation row) ──
+  const grip = h('button', { type: 'button', class: 'bottom-sheet-grab sheet-grab', dataset: { testid: 'sheet-grip' }, aria: { label: 'Make the panel taller' }, on: { click: () => ui.set({ sheet: cycleDetent(ui.get().sheet) }) } });
+  const title = h('h2', { class: 'bottom-sheet-title sheet-title', attrs: { 'aria-live': 'off' } }, TABS[0]!.label);
+  const closeBtn = h('button', { type: 'button', class: 'icon-btn sheet-close', dataset: { testid: 'sheet-close' }, aria: { label: 'Close panel' }, on: { click: () => ui.set({ sheet: 'closed' }) } }, icon('close'));
+  const head = h('div', { class: 'sheet-head' }, [grip, title, closeBtn]);
   const panels: Record<SheetTab, HTMLElement> = {
     insights: h('div', { class: 'tab-panel', id: 'panel-insights', attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-insights' } }),
     weather: h('div', { class: 'tab-panel', id: 'panel-weather', attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-weather' } }),
@@ -98,7 +103,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     let top = parent.querySelector('.sim-topbar')?.getBoundingClientRect().bottom ?? pr.top + 100;
     const chip = parent.querySelector('.error-chip');
     if (chip && !(chip as HTMLElement).hidden) top = Math.max(top, chip.getBoundingClientRect().bottom);
-    const scrubTop = parent.querySelector('.scrubber')?.getBoundingClientRect().top ?? pr.bottom - 84;
+    const scrubTop = parent.querySelector('.scrubber')?.getBoundingClientRect().top ?? pr.bottom - 64;
     return Math.max(DOCK_H, scrubTop - top);
   };
   const heights = () => detentHeights(room());
@@ -107,7 +112,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const d = ui.get().sheet;
     el.style.height = `${heights()[d]}px`;
     el.dataset.detent = d;
-    grip.setAttribute('aria-label', 'Close panel');
+    grip.setAttribute('aria-label', d === 'full' ? 'Make the panel smaller' : 'Make the panel taller');
   };
   let drag: { y: number; h: number; moved: boolean; id: number; src: HTMLElement } | null = null;
   let stopTracking: (() => void) | null = null;
@@ -164,6 +169,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       b.tabIndex = b.id === `tab-${s.tab}` ? 0 : -1;
     }
     for (const [id, p] of Object.entries(panels)) p.hidden = id !== s.tab;
+    text(title, TABS.find((t) => t.id === s.tab)?.label ?? '');
     el.hidden = s.panelOpen;
     el.parentElement?.classList.toggle('sheet-full', s.sheet === 'full' && !s.panelOpen);
     el.parentElement?.classList.toggle('sheet-open', open && !s.panelOpen);
@@ -181,7 +187,8 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   });
 
   // ───────────── the unseen-cards badge ─────────────
-  // New cards never interrupt: they only raise this number (red, with one short pulse, when one is a Danger card).
+  // New cards never interrupt: they only raise this number (red with a warning mark and one short pulse when one is a
+  // Danger card).
   const unseen = new UnseenTracker();
   const insightsShown = (): boolean => {
     const s = ui.get();
@@ -198,7 +205,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     if (key === badgeKey) return;
     badgeKey = key;
     badge.hidden = n === 0;
-    text(badge, badgeText(n));
+    setChildren(badge, d > 0 ? [icon('danger', { class: 'nav-badge-icon' }), badgeText(n)] : badgeText(n));
     badge.classList.toggle('is-danger', d > 0);
     tabBtns[0]!.setAttribute('aria-label', n === 0 ? 'Insights' : `Insights, ${n} new${d > 0 ? `, ${d} of them danger` : ''}`);
     if (d > lastDanger && !prefersReducedMotion()) {
@@ -224,8 +231,8 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   let lastInsightKey = '';
   const renderInsights = (): void => {
     const s = session.state.get();
-    const list = session.visibleInsights(s);
-    const key = `${list.map((i) => i.id).join('|')}|${s.compare ? Math.round(s.viewTime / 300) : ''}|${s.error ?? ''}`;
+    const items = session.visibleInsights(s);
+    const key = `${items.map((i) => i.id).join('|')}|${s.compare ? Math.round(s.viewTime / 300) : ''}|${s.error ?? ''}`;
     if (key === lastInsightKey) return;
     lastInsightKey = key;
     const forecast = new Set(s.forecastInsights);
@@ -237,9 +244,9 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
         ? h('div', { class: 'callout callout-danger sim-error', attrs: { role: 'alert' }, dataset: { testid: 'sim-error' } }, [
             icon('warning'),
             h('div', null, [
-              h('strong', null, 'The simulation stopped with a problem'),
+              h('p', { class: 'callout-title' }, 'The simulation stopped with a problem'),
               h('p', null, s.error),
-              h('p', { class: 'hint' }, 'The view keeps what was already computed. Go back with the menu (top left) and start a new scenario, or try Play again.'),
+              h('p', { class: 'hint' }, 'The view keeps what was already computed. Open the menu (top left) and start a new scenario, or try Play again.'),
             ]),
           ])
         : null,
@@ -247,40 +254,40 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
         ? h('div', { class: 'callout callout-info compare' }, [
             icon('whatif'),
             h('div', null, [
-              h('strong', null, `What-if from ${formatClock(ctx.absTime(compare.since), ctx.tz)}: ${compare.label}`),
+              h('p', { class: 'callout-title' }, `What-if from ${formatClock(ctx.absTime(compare.since), ctx.tz)}: ${compare.label}`),
               b && cur
                 ? h('p', null, `At ${formatClock(ctx.absTime(s.viewTime), ctx.tz)}: ${formatArea(cur.burntAreaHa)} burnt vs ${formatArea(b.burntAreaHa)} before (${pct(cur.burntAreaHa, b.burntAreaHa)}).`)
                 : h('p', null, 'Play on to compare with the previous run.'),
             ]),
           ])
         : null,
-      list.length === 0
-        ? h('div', { class: 'empty' }, [
-            icon('flame', { size: 36 }),
+      items.length === 0
+        ? h('div', { class: 'empty sheet-empty' }, [
+            icon('flame'),
             h('p', { class: 'empty-title' }, 'No insights yet'),
-            h('p', null, 'Mark where the fire is with the Fire tool, then press Play. Cards explaining what the fire is doing will appear here.'),
+            h('p', null, 'Mark where the fire is (Tools, then Fire), then press Play. Cards explaining what the fire is doing will appear here.'),
           ])
         : [
             groupOf(
-              list.filter((i) => forecast.has(i)).map((i) => ({ kind: i.kind, lead: i, count: 1, first: i.time, last: i.time })),
+              items.filter((i) => forecast.has(i)).map((i) => ({ kind: i.kind, lead: i, count: 1, first: i.time, last: i.time })),
               'Coming up',
               true,
             ),
             // Repeats of the same phenomenon (e.g. junction zones all along a big fire's edge) share one card.
-            groupOf(groupInsights(list.filter((i) => !forecast.has(i))), 'What the fire did — newest first', false),
+            groupOf(groupInsights(items.filter((i) => !forecast.has(i))), 'What the fire did, newest first', false),
           ],
     ]);
     // Forget cards that are no longer listed (after a rewind or a what-if re-run).
-    const listed = new Set(list);
+    const listed = new Set(items);
     for (const k of cardCache.keys()) if (!listed.has(k)) cardCache.delete(k);
   };
-  // Cards are cached by insight, so re-rendering the list when a new card arrives keeps the others' DOM (an open
-  // "Learn more", focus) instead of rebuilding every card.
+  // Cards are cached by insight, so re-rendering the list when a new card arrives keeps the others' DOM (an expanded
+  // reason, focus) instead of rebuilding every card.
   const cardCache = new Map<Insight, { el: HTMLElement; count: number }>();
-  const groupOf = (items: InsightGroup[], title: string, forecast: boolean): HTMLElement | null => {
+  const groupOf = (items: InsightGroup[], heading: string, forecast: boolean): HTMLElement | null => {
     if (!items.length) return null;
     return h('div', { class: 'insight-group' }, [
-      h('h3', { class: 'group-title' }, title),
+      h('h3', { class: 'section-header group-title' }, heading),
       h(
         'div',
         { class: 'insight-list' },
@@ -296,12 +303,13 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       ),
     ]);
   };
+
   // ───────────── Weather ─────────────
   const canvas = h('canvas', { class: 'weather-canvas', attrs: { role: 'img', 'aria-label': 'Weather timeline: wind, temperature, humidity and litter moisture' } });
   const wxSummary = h('div', { class: 'wx-summary' });
   const tableHost = h('div', { class: 'table-wrap' });
   const details = h('details', { class: 'wx-table' }, [h('summary', null, 'Show as a table'), tableHost]);
-  const wxSource = h('p', { class: 'hint' }, `Source: ${ctx.scenario.weather.source}. Tap or drag the chart to read values; wind speed in ${ctx.settings.get().units === 'kmh' ? 'km/h' : 'm/s'} at 10 m.`);
+  const wxSource = h('p', { class: 'hint wx-source' });
   setChildren(panels.weather, [wxSummary, h('div', { class: 'chart-wrap' }, canvas), wxSource, details]);
   const changes = detectWindChanges(ctx.scenario.weather.hours);
   let inspect: number | null = null;
@@ -313,19 +321,23 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const w = sampleSeries(ctx.scenario.weather, abs, abs, 2)[0]!;
     const next = changes.find((c) => c.time > abs);
     setChildren(wxSummary, [
-      h('div', { class: 'wx-now' }, [
-        stat('Temp', formatTemp(w.temperature)),
-        stat('RH', formatRH(w.relativeHumidity)),
-        stat('Wind', `${compassName(w.windDir10)} ${Math.round(unit === 'kmh' ? msToKmh(w.windSpeed10) : w.windSpeed10)}`),
-        stat('Litter', `${litterEstimate(w, ctx.tz).toFixed(1)}%`),
-      ]),
+      statRow(
+        [
+          statTile('Temperature', formatTemp(w.temperature)),
+          statTile('Humidity', formatRH(w.relativeHumidity)),
+          statTile(`Wind (${unit === 'kmh' ? 'km/h' : 'm/s'})`, `${compassName(w.windDir10)} ${formatNumber(unit === 'kmh' ? msToKmh(w.windSpeed10) : w.windSpeed10, unit === 'kmh' ? 0 : 1)}`),
+          statTile('Litter moisture', `${litterEstimate(w, ctx.tz).toFixed(1)}%`),
+        ],
+        4,
+      ),
       next
         ? h('p', { class: 'callout callout-danger' }, [
             icon('wind'),
-            h('span', null, `Wind change ${formatRelative((next.time - abs) / 1000)} (${formatClock(next.time, ctx.tz)}): ${compassName(next.fromDir)} → ${compassName(next.toDir)} ${Math.round(next.speedAfterKmh)} km/h. The flank becomes the head fire.`),
+            h('span', null, `Wind change ${formatRelative((next.time - abs) / 1000)} (${formatClock(next.time, ctx.tz)}): ${compassName(next.fromDir)} → ${compassName(next.toDir)} ${Math.round(next.speedAfterKmh)} km/h. The side of the fire (flank) becomes the head fire.`),
           ])
         : null,
     ]);
+    text(wxSource, `Source: ${ctx.scenario.weather.source}. Tap or drag the chart to read values; wind speed in ${unit === 'kmh' ? 'km/h' : 'm/s'} at 10 m.`);
     const obs = session.snapshots
       .all()
       .filter((sn) => Number.isFinite(sn.stats.deadFuelMoistureMean))
@@ -348,10 +360,10 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
           hrs.map((w) =>
             h('tr', null, [
               h('th', { scope: 'row' }, formatClock(w.time, ctx.tz)),
-              h('td', null, formatTemp(w.temperature)),
-              h('td', null, formatRH(w.relativeHumidity)),
-              h('td', null, `${compassName(w.windDir10)} ${formatWind(w.windSpeed10, unit)}`),
-              h('td', null, `${litterEstimate(w, ctx.tz).toFixed(1)}%`),
+              h('td', { class: 'num' }, formatTemp(w.temperature)),
+              h('td', { class: 'num' }, formatRH(w.relativeHumidity)),
+              h('td', { class: 'num' }, `${compassName(w.windDir10)} ${formatWind(w.windSpeed10, unit)}`),
+              h('td', { class: 'num' }, `${litterEstimate(w, ctx.tz).toFixed(1)}%`),
             ]),
           ),
         ),
@@ -375,12 +387,13 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   });
 
   // ───────────── Stats ─────────────
+  const statsHost = h('div', { class: 'stats-live' });
   const renderStats = (): void => {
     const s = session.state.get();
     const st = s.snapshot?.stats;
     const unit = ctx.settings.get().units;
     if (!st) {
-      setChildren(panels.stats, h('p', { class: 'empty' }, 'Statistics appear once the simulation has produced its first results.'));
+      setChildren(statsHost, h('p', { class: 'hint stats-empty' }, 'Statistics appear once the simulation has produced its first results.'));
       return;
     }
     let maxFlame = 0;
@@ -390,70 +403,140 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const regime = plumeRegime(st.convectiveNumber);
     const perf = ctx.view.stats();
     const b = s.compare ? baselineAt(s.compare, st.time) : null;
-    setChildren(panels.stats, [
+    const g = ctx.scenario.terrain.grid;
+    const perfRows: KvRow[] = [
+      { key: 'Wind model', value: has3dAtmosphere(s.snapshot) ? '3-D atmosphere: plume, cold air and slope winds' : 'Fast: a surface wind shaped by the terrain' },
+      { key: 'Fire grid', value: `${formatNumber(g.nx)} × ${formatNumber(g.ny)} cells of ${formatNumber(g.cellSize)} m` },
+      { key: 'Compute time', value: Number.isFinite(st.msPerSimMinute) ? `${formatNumber(st.msPerSimMinute, 1)} ms per simulated minute` : '–' },
+      { key: 'Worker speed', value: s.workerSpeed > 0 ? `${formatNumber(s.workerSpeed)}× real time` : 'idle' },
+      { key: '3-D view', value: `${perf.fps} frames/s · ${formatNumber(perf.drawCalls)} draw calls` },
+      { key: 'Replay memory', value: `${formatNumber(session.snapshots.totalBytes / 1048576, 0)} MB · ${session.snapshots.size} pictures, every ${formatNumber(session.snapshots.spacing / 60)} min` },
+    ];
+    setChildren(statsHost, [
       h('div', { class: 'stat-grid' }, [
-        tile('Area burnt', formatArea(st.burntAreaHa), b ? `before: ${formatArea(b.burntAreaHa)}` : `${formatNumber(st.burningCells)} cells burning`),
-        tile('Fire edge', `${formatNumber(st.perimeterKm, 1)} km`, 'perimeter'),
-        tile('Head fire', st.headRos > 0 ? formatRos(st.headRos) : '–', Number.isFinite(st.headDir) && st.headRos > 0 ? formatHeading(st.headDir) : 'no active head'),
-        tile('Max intensity', formatIntensity(st.maxIntensity), intensityMeaning(st.maxIntensity)),
-        tile('Flame height', maxFlame > 0 ? formatMetres(maxFlame) : '–', 'tallest burning now'),
-        tile('Spot fires', String(st.spotFires), `${formatNumber(st.activeEmbers)} embers in the air${st.embersLeftDomain ? ` · ${st.embersLeftDomain} left the area` : ''}`),
-        tile('Convective number', Number.isFinite(st.convectiveNumber) ? formatNumber(st.convectiveNumber, 1) : '–', regime === 'wind-driven' ? 'wind-driven fire' : regime === 'mixed' ? 'wind and plume both matter' : 'plume-dominated'),
-        tile('FFDI', formatNumber(st.ffdi), rating.key === 'none' ? 'below moderate' : `${rating.label} (approx.)`),
-        tile('Litter moisture', formatPercent(st.deadFuelMoistureMean, 1), 'mean over the area'),
-        tile('Weather now', `${formatTemp(st.weather.temperature)} · ${formatRH(st.weather.relativeHumidity)}`, `${formatDirFrom(st.weather.windDir10)} ${formatWind(st.weather.windSpeed10, unit)}`),
-      ]),
-      h('h3', { class: 'sub-title' }, 'Performance'),
-      h('div', { class: 'stat-grid' }, [
-        tile('Wind model', has3dAtmosphere(s.snapshot) ? '3-D atmosphere' : 'Fast (surface)', has3dAtmosphere(s.snapshot) ? 'plume, cold air and slope winds in 3-D' : 'terrain-adjusted surface wind; chosen for speed'),
-        tile('Simulation', Number.isFinite(st.msPerSimMinute) ? `${formatNumber(st.msPerSimMinute, 1)} ms` : '–', 'per simulated minute'),
-        tile('Worker speed', s.workerSpeed > 0 ? `${formatNumber(s.workerSpeed)}×` : 'idle', 'simulated / real time'),
-        tile('3-D view', `${perf.fps} fps`, `${formatNumber(perf.drawCalls)} draw calls · ${formatNumber(perf.triangles)} triangles`),
-        tile('Replay memory', `${formatNumber(session.snapshots.totalBytes / 1048576, 0)} MB`, `${session.snapshots.size} snapshots, every ${Math.round(session.snapshots.spacing / 60)} min`),
+        statTile('Area burnt', formatArea(st.burntAreaHa), b ? `before: ${formatArea(b.burntAreaHa)}` : `${formatNumber(st.burningCells)} cells burning`),
+        statTile('Fire edge (perimeter)', `${formatNumber(st.perimeterKm, 1)} km`, 'length of the burning and burnt edge'),
+        statTile('Head fire', st.headRos > 0 ? formatRos(st.headRos) : '–', Number.isFinite(st.headDir) && st.headRos > 0 ? `running ${formatHeading(st.headDir)}` : 'no active head'),
+        statTile('Max intensity', formatIntensity(st.maxIntensity), intensityMeaning(st.maxIntensity)),
+        statTile('Flame height', maxFlame > 0 ? formatMetres(maxFlame) : '–', 'tallest burning now'),
+        statTile('Spot fires', String(st.spotFires), `${formatNumber(st.activeEmbers)} embers in the air${st.embersLeftDomain ? ` · ${st.embersLeftDomain} left the area` : ''}`),
+        statTile('Convective number', Number.isFinite(st.convectiveNumber) ? formatNumber(st.convectiveNumber, 1) : '–', regime === 'wind-driven' ? 'wind drives the fire' : regime === 'mixed' ? 'wind and smoke column both matter' : 'the smoke column drives the fire'),
+        statTile('FFDI (fire danger index)', formatNumber(st.ffdi), rating.key === 'none' ? 'below moderate' : `${rating.label} (approx.)`),
+        statTile('Litter moisture', formatPercent(st.deadFuelMoistureMean, 1), 'mean over the area'),
+        statTile('Weather now', `${formatTemp(st.weather.temperature)} · ${formatRH(st.weather.relativeHumidity)}`, `${formatDirFrom(st.weather.windDir10)} ${formatWind(st.weather.windSpeed10, unit)}`),
       ]),
       h('p', { class: 'hint' }, `Wind ${formatWind(st.weather.windSpeed10, unit)} ≈ ${Math.round(msToKmh(st.weather.windSpeed10))} km/h at 10 m in the open. Spot distances: ${st.spotFires ? formatDistance(Math.max(...(s.snapshot?.spotFires ?? []).map((x) => x.distance), 0)) + ' furthest' : 'none yet'}.`),
-      dataNotes,
+      sectionHeader('How the model runs'),
+      kv(perfRows, { dense: true, label: 'Performance' }),
+      ctx.openModelCard ? list([listRow({ title: 'How this simulation works', sub: 'What is 2-D and what is 3-D, grid sizes and time steps', icon: 'cube', chevron: true, onClick: () => ctx.openModelCard?.(), testId: 'stats-model-card' })]) : null,
     ]);
   };
-  // Where the model's data came from, plus any build warnings (doc 09 §6.4: say what is estimated or stale).
-  const sc = ctx.scenario;
-  const coarse = /SRTM|Terrarium|Synthetic/i.test(sc.terrain.source);
-  const dataNotes = h('div', { class: 'data-notes' }, [
-    h('h3', { class: 'sub-title' }, 'Data used'),
-    h('ul', { class: 'plain-list data-list' }, [
-      h('li', null, [h('strong', null, 'Terrain: '), sc.terrain.source]),
-      h('li', null, [h('strong', null, 'Fuel: '), sc.fuel.sources.join('; ') || '–']),
-      h('li', null, [h('strong', null, 'Weather: '), sc.weather.source]),
-      h('li', null, [h('strong', null, 'Grid: '), `${sc.terrain.grid.nx} × ${sc.terrain.grid.ny} cells of ${sc.terrain.grid.cellSize} m`]),
-    ]),
-    coarse ? h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Coarse terrain: real gully walls and cliffs are likely steeper than shown, so fire may be faster on them.')]) : null,
-    ...ctx.buildWarnings.map((w) => h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w)])),
-  ]);
+  setChildren(panels.stats, [statsHost, dataCard()]);
+
+  /** The "Data used" card: a compact summary of the scenario's data sets that opens the Data sets screen. */
+  function dataCard(): HTMLElement {
+    const sc = ctx.scenario;
+    const d = dataUsed(sc.datasets, sc.datasetSummary);
+    const open = (id?: string): void => ctx.openDatasets?.(id);
+    const coarse = /SRTM|Terrarium|Synthetic/i.test(sc.terrain.source);
+    const warnings = [
+      coarse ? h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Coarse terrain: real gully walls and cliffs are likely steeper than shown, so fire may be faster on them.')]) : null,
+      ...ctx.buildWarnings.map((w) => h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w)])),
+    ];
+    if (!d) {
+      // An older scenario without an inventory: say what the scenario itself records.
+      return h('section', { class: 'data-notes', dataset: { testid: 'data-used' } }, [
+        sectionHeader('Data used'),
+        kv(
+          [
+            { key: 'Terrain', value: sc.terrain.source },
+            { key: 'Fuel', value: sc.fuel.sources.join('; ') || '–' },
+            { key: 'Weather', value: sc.weather.source },
+            { key: 'Grid', value: `${sc.terrain.grid.nx} × ${sc.terrain.grid.ny} cells of ${sc.terrain.grid.cellSize} m` },
+          ],
+          { layout: 'stack', dense: true },
+        ),
+        ...warnings,
+        ctx.openDatasets ? h('button', { type: 'button', class: 'btn btn-tonal data-open', dataset: { testid: 'data-open' }, on: { click: () => open() } }, [icon('database'), 'Data sets']) : null,
+      ]);
+    }
+    return h('section', { class: 'data-notes', dataset: { testid: 'data-used' } }, [
+      sectionHeader(
+        'Data used',
+        ctx.openDatasets ? h('button', { type: 'button', class: 'btn btn-text btn-sm data-open', dataset: { testid: 'data-open' }, on: { click: () => open() } }, 'See all') : undefined,
+      ),
+      statRow(
+        [
+          statTile('Data sets', String(d.count)),
+          statTile('Downloaded', d.download),
+          statTile('From the app and device', d.local),
+          ...(d.memory ? [statTile('In memory', d.memory)] : []),
+        ],
+        d.memory ? 4 : 3,
+      ),
+      h('p', { class: 'hint' }, d.downloadNote),
+      d.origins.length
+        ? h('div', { class: 'data-origins' }, [
+            h('p', { class: 'data-origins-title' }, 'Where the map cells come from'),
+            stackedBar(
+              d.origins.map((o) => ({ weight: o.share, colour: o.colour, label: `${o.label} ${o.percent}` })),
+              { label: d.origins.map((o) => `${o.label} ${o.percent}`).join(', '), large: true },
+            ),
+            h(
+              'div',
+              { class: 'chips data-origin-keys' },
+              d.origins.map((o) => h('span', { class: 'legend-chip' }, [h('span', { class: ['swatch', o.colour !== 'neutral' && `bar-${o.colour}`] }), `${o.label} ${o.percent}`])),
+            ),
+          ])
+        : null,
+      ...d.fallbacks.map((f) =>
+        h('div', { class: 'callout callout-warn data-fallback' }, [icon('warning'), h('div', null, [h('p', { class: 'callout-title' }, `${f.title}: a substitute was used`), f.reason ? h('p', null, f.reason) : null])]),
+      ),
+      d.rows.length
+        ? list(
+            d.rows.map((r) =>
+              listRow({
+                title: r.title,
+                sub: r.origin,
+                trailing: r.size,
+                chevron: !!ctx.openDatasets,
+                truncate: true,
+                testId: `data-row-${r.id}`,
+                onClick: ctx.openDatasets ? () => open(r.id) : undefined,
+              }),
+            ),
+            { noLead: true, label: 'Largest data sets' },
+          )
+        : null,
+      ...warnings,
+    ]);
+  }
 
   // ───────────── Help ─────────────
   setChildren(panels.help, [
-    h('div', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Training aid only — not an operational prediction. Follow your IC, your Crew Leader and NSW RFS procedures. LACES first.')]),
-    h('h3', { class: 'sub-title' }, 'How to use'),
+    h('div', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Training aid only, not an operational prediction. Follow your IC (incident controller), your Crew Leader and NSW RFS procedures. LACES first (Lookouts, Awareness, Communications, Escape routes, Safety zones).')]),
+    sectionHeader('How to use'),
     h('ol', { class: 'howto' }, [
-      h('li', null, [h('strong', null, 'Tools: '), 'the round button by the screen edge opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything.']),
+      h('li', null, [h('strong', null, 'Tools: '), 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything.']),
       h('li', null, [h('strong', null, 'Fire: '), 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.']),
-      h('li', null, [h('strong', null, 'Play: '), 'press Play and pick a speed; drag or tap the timeline to jump to any time.']),
-      h('li', null, [h('strong', null, 'View: '), 'the round button on the other side turns, zooms and flies the camera.']),
+      h('li', null, [h('strong', null, 'Play: '), 'press the blue Play button and pick a speed on the chip beside it; drag or tap the timeline to jump to any time.']),
+      h('li', null, [h('strong', null, 'Map buttons: '), 'the round buttons on the side open the layers, change the camera (top, 3-D, eye level, zoom) and turn the map north up.']),
       h('li', null, [h('strong', null, 'Insights: '), 'new cards never pop up; a number on the Insights tab tells you how many are waiting.']),
-      h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see — more litter, a road, the wind here.']),
-      h('li', null, [h('strong', null, 'Layers / What if: '), 'colour the map by arrival time, slope, moisture…; switch physics on/off and compare.']),
+      h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see: more litter, a road, the wind here.']),
+      h('li', null, [h('strong', null, 'Layers / What if: '), 'colour the map by arrival time, slope, moisture and more; switch physics on or off and compare.']),
+      h('li', null, [h('strong', null, 'Data: '), 'the line at the bottom of the map credits the data you see; tap it (or open the menu) for the size, source and date of every data set.']),
     ]),
-    h('h3', { class: 'sub-title' }, 'Glossary'),
+    sectionHeader('Glossary'),
     h(
       'div',
       { class: 'glossary' },
-      GLOSSARY.map((g) => h('details', { class: 'gloss' }, [h('summary', null, [h('strong', null, g.term), g.short ? h('span', { class: 'gloss-short' }, ` — ${g.short}`) : null]), h('p', null, g.body)])),
+      GLOSSARY.map((g) => h('details', { class: 'gloss' }, [h('summary', null, [h('span', { class: 'gloss-term' }, g.term), g.short ? h('span', { class: 'gloss-short' }, ` · ${g.short}`) : null]), h('p', null, g.body)])),
     ),
   ]);
 
   const renderActive = (): void => {
-    const { tab, sheet } = ui.get();
-    if (el.hidden || sheet === 'closed') return; // nothing to draw while the dock is collapsed
+    const { tab, sheet: detent } = ui.get();
+    if (el.hidden || detent === 'closed') return; // nothing to draw while the dock is collapsed
     if (tab === 'insights') renderInsights();
     else if (tab === 'weather') renderWeather();
     else if (tab === 'stats') renderStats();
@@ -470,7 +553,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   };
   unsubs.push(session.state.subscribe(schedule, ['viewTime', 'snapshot', 'insights', 'forecastInsights', 'compare', 'workerSpeed', 'error']));
   unsubs.push(ui.subscribe(renderTabs, ['tab', 'sheet', 'panelOpen']));
-  unsubs.push(ctx.settings.subscribe(renderActive, ['units', 'theme']));
+  unsubs.push(ctx.settings.subscribe(renderActive, ['units', 'theme', 'highContrast']));
   // Re-fit the detent heights when the chrome above or below the dock changes size (top bar, timeline, error chip, rotation).
   let chromeRo: ResizeObserver | null = null;
   requestAnimationFrame(() => {
@@ -495,12 +578,9 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   };
 }
 
-function stat(label: string, value: string): HTMLElement {
-  return h('div', { class: 'wx-stat' }, [h('span', { class: 'wx-stat-label' }, label), h('span', { class: 'wx-stat-value' }, value)]);
-}
-
-function tile(label: string, value: string, sub: string): HTMLElement {
-  return h('div', { class: 'stat-tile' }, [h('span', { class: 'stat-label' }, label), h('span', { class: 'stat-value' }, value), h('span', { class: 'stat-sub' }, sub)]);
+/** A number with its caption (the .stat primitive) and an optional plain-English note under it. */
+function statTile(label: string, value: string, note?: string): HTMLElement {
+  return h('div', { class: 'stat sim-stat' }, [h('span', { class: 'stat-num' }, value), h('span', { class: 'stat-cap' }, label), note ? h('span', { class: 'stat-note' }, note) : null]);
 }
 
 function pct(a: number, b: number): string {

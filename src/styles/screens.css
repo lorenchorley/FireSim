@@ -1,466 +1,845 @@
-/* Setup, building and settings screens. */
+/*
+ * Setup, Building and Settings screens and the App's full-screen overlays, on the flat design system (docs/DESIGN.md):
+ * cards of list rows on the grey app background, chips for options, one blue action in a bottom bar. Only tokens and
+ * primitives: no colour, font size or shadow is set here that the tokens do not give.
+ */
 
-.app-header {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 6px max(12px, var(--safe-right)) 6px max(16px, var(--safe-left));
-  border-bottom: 2px solid var(--border-soft);
-  background: var(--surface);
-}
+/* ───────────── shared screen layout ───────────── */
 
-.brand {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.brand-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: #111418;
-  color: #ff7a1a;
-  flex: 0 0 auto;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
-}
-
-.brand-name {
-  font-size: 23px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-}
-
-.brand-sub {
-  font-size: 16px;
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.header-title {
-  flex: 1;
-  font-size: 21px;
-  text-align: center;
-}
-
-.header-spacer {
-  width: 90px;
-}
-
-/* ── Setup ── */
-.setup-main,
-.settings-main {
+/* The scrolling body of a full screen: cards 8 px apart, 8 px from the edges (12 px on wide phones). */
+.screen-main {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 16px max(14px, var(--safe-right)) 24px max(14px, var(--safe-left));
   overscroll-behavior: contain;
+  padding: var(--sp-2) max(var(--sp-2), var(--safe-right)) var(--sp-4) max(var(--sp-2), var(--safe-left));
 }
 
-.setup-main > *,
-.settings-main > * {
-  max-width: 720px;
+.screen-main > * {
+  max-width: 44rem;
   margin-left: auto;
   margin-right: auto;
 }
 
-.setup-intro {
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--muted);
-  margin-bottom: 16px;
+@media (min-width: 480px) {
+  .screen-main {
+    padding-left: max(var(--sp-3), var(--safe-left));
+    padding-right: max(var(--sp-3), var(--safe-right));
+  }
 }
 
-.row-actions > .btn-primary.btn-lg {
+/* A list inside a card reaches the card's edges, so its rows' dividers and press veils do too. */
+.card > .list.card-list,
+.card > .card-list {
+  margin-left: calc(var(--sp-3) * -1);
+  margin-right: calc(var(--sp-3) * -1);
+  background: transparent;
+}
+
+.card-list .toggle {
+  padding-left: var(--sp-3);
+  padding-right: var(--sp-3);
+}
+
+.card-list .toggle + .toggle {
+  border-top: 1px solid var(--divider);
+}
+
+.card-text {
+  margin: 0 0 var(--sp-2);
+}
+
+.card .hint {
+  margin: 0 0 var(--sp-2);
+}
+
+.card > .section-header,
+.card .setup-sub {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.card-flush > .section-header {
+  padding-left: var(--sp-3);
+  padding-right: var(--sp-3);
+}
+
+.section-note {
+  font-weight: var(--fw-regular);
+}
+
+/* Bottom action bar of a screen (Setup's Build, Building's Cancel): flat surface with a hairline, no shadow. */
+.bottom-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) max(var(--sp-3), var(--safe-right)) calc(var(--sp-2) + var(--safe-bottom)) max(var(--sp-3), var(--safe-left));
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+}
+
+.bottom-bar > * {
   width: 100%;
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Headings that take the focus when a screen opens (for screen readers) are not controls: no focus ring. */
+h1[tabindex='-1']:focus {
+  outline: none;
+}
+
+/* A list row that cannot be used right now (nothing to clear): greyed like the other disabled controls. */
+button.list-row:disabled {
+  cursor: default;
+  color: var(--disabled-fg);
+}
+
+button.list-row:disabled .list-sub,
+button.list-row:disabled .list-lead {
+  color: var(--disabled-fg);
+}
+
+/* The flame on a dark tile (the app's mark). */
+.brand-mark {
+  flex: 0 0 auto;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  background: var(--surface-inverse);
+  color: var(--fire);
+}
+
+/* Night: the inverse surface is the card colour there, so the tile takes the next step up. */
+:root[data-theme='dark'] .brand-mark {
+  background: var(--surface-3);
+}
+
+/* Bright sun: a white flame (the orange one is only 4.2:1 on the dark tile). */
+:root[data-contrast='high'] .brand-mark {
+  color: var(--on-surface-inverse);
+}
+
+/* Dialogs keep clear of the TRAINING strip, which stays on top of everything (a primitive fix for overlays.css .modal-scrim). */
+.modal-scrim {
+  padding-top: calc(var(--strip-h) + var(--safe-top) + var(--sp-2));
+}
+
+/* ───────────── full-screen overlays (Settings, Data sets, How this simulation works) ───────────── */
+
+/* Below the TRAINING strip (it stays visible), above the simulation, which keeps running underneath. */
+.app-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: calc(var(--strip-h) + var(--safe-top));
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: overlay-in var(--dur-2) var(--ease);
+}
+
+.app-overlay > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.app-overlay > .screen {
+  position: relative;
+  inset: auto;
+}
+
+@keyframes overlay-in {
+  from {
+    transform: translateY(var(--sp-5));
+    opacity: 0;
+  }
+}
+
+/* ───────────── Setup ───────────── */
+
+.setup-bar {
+  gap: var(--sp-3);
+  padding-left: max(var(--sp-3), var(--safe-left));
+  padding-right: max(var(--sp-1), var(--safe-right));
+  min-height: calc(var(--bar-h) + var(--sp-2));
+}
+
+.app-bar-titles {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-bar-titles .app-bar-title {
+  padding: 0;
+  line-height: var(--lh-md);
+}
+
+.app-bar-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-regular);
+}
+
+.setup-intro {
+  color: var(--muted);
+  margin-top: var(--sp-1);
+  margin-bottom: var(--sp-2);
+  padding: 0 var(--sp-1);
 }
 
 .gps-result:empty {
   display: none;
 }
 
+.gps-result .status-line,
+.gps-result .callout {
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
 .fix {
-  border: 2px solid var(--border-soft);
-  border-radius: 14px;
-  padding: 12px;
-  margin: 10px 0;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 
 .fix.selected,
 .manual-box.selected {
-  border-color: var(--border);
-  box-shadow: inset 0 0 0 2px var(--border);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .fix-main {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  font-size: 18px;
+  gap: var(--sp-2);
+  font-size: var(--fs-md);
+}
+
+.fix-main .icon {
+  color: var(--icon);
+}
+
+.fix-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--primary-ink);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.fix-selected .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  color: inherit;
+}
+
+.fix .chips {
+  margin: var(--sp-1) 0;
 }
 
 .manual-box {
-  border: 2px solid transparent;
-  border-radius: 14px;
-  padding: 2px 10px 8px;
-  margin: 4px -10px 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1);
+  margin: var(--sp-1) calc(var(--sp-2) * -1) 0;
 }
 
-.site-list,
-.choice-list {
+.manual-box .field {
+  margin: 0;
+}
+
+.manual-box .hint {
+  margin: var(--sp-1) 0 0;
+}
+
+/* Demo sites: one row of place cards that scrolls sideways (Maps "places" cards). It clips, so it carries the room the
+ * cards' focus ring needs; the next card peeks in at the right edge to show that the row scrolls. */
+.site-scroll {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 var(--sp-3);
+  scrollbar-width: none;
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
+  margin: 0 calc(var(--sp-3) * -1);
+}
+
+.site-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.site-card {
+  position: relative;
+  flex: 0 0 min(72vw, 16rem);
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.site-card,
-.choice-card {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
-  width: 100%;
-  min-height: 96px;
-  padding: 10px;
-  padding-right: 44px;
-  border: 2px solid var(--border-soft);
-  border-radius: 16px;
+  min-height: var(--tap);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-md);
   background: var(--surface);
+  color: var(--text);
   text-align: left;
-  transition: border-color 0.12s;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-.site-card.selected,
-.choice-card.selected {
-  border-color: var(--border);
-  box-shadow: inset 0 0 0 2px var(--border);
-  background: var(--accent-soft);
+.site-card:active {
+  background: var(--state-press);
+}
+
+.site-card.selected {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .site-thumb {
-  width: 92px;
-  height: 92px;
-  flex: 0 0 auto;
-  border-radius: 10px;
-  object-fit: cover;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   background: var(--surface-3);
-  border: 2px solid var(--border-soft);
+  color: var(--text); /* the placeholder icon until the photo is drawn (no muted colour on --surface-3) */
+  overflow: hidden;
 }
 
-.site-body,
-.choice-body {
+.site-thumb canvas,
+.site-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.site-check {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: var(--icon-size);
+  height: var(--icon-size);
+  border-radius: 50%;
+  display: none;
+  place-items: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.site-check .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.site-card.selected .site-check {
+  display: grid;
+}
+
+.site-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
   min-width: 0;
 }
 
+.site-name {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
 .site-region {
-  font-size: 16px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
-}
-
-.site-name,
-.choice-name {
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.site-teach,
-.choice-desc {
-  font-size: 16px;
-  color: var(--muted);
-  line-height: 1.3;
-}
-
-.choice-when {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-weight: 700;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .site-teach {
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.site-card.selected .site-teach {
-  -webkit-line-clamp: unset;
+.site-card.selected .site-name {
+  color: var(--primary-ink);
+}
+
+/* Weather panel: one row of source chips, then the panel of the chosen source. */
+.weather-panel {
+  margin-top: var(--sp-1);
 }
 
 .panel-intro {
-  font-weight: 700;
-  margin: 4px 0 8px;
+  color: var(--muted);
+  margin: 0 0 var(--sp-2);
+}
+
+.weather-panel > .field,
+.weather-panel > .slider,
+.weather-panel > .rose-wrap {
+  margin-bottom: var(--sp-2);
+}
+
+/* Presets and historic days: radio rows; the chosen one is tinted and carries a check (never colour alone). */
+.choice-list {
+  margin: 0 calc(var(--sp-3) * -1);
+  background: transparent;
+}
+
+.choice-row {
+  align-items: flex-start;
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+
+.choice-row.selected {
+  background: var(--primary-container);
+}
+
+.choice-row.selected .list-title {
+  color: var(--on-primary-container);
+  font-weight: var(--fw-medium);
+}
+
+.choice-row.selected .choice-mark {
+  color: var(--primary);
+}
+
+.choice-mark {
+  margin-top: 1px;
 }
 
 .choice-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-1) var(--sp-2);
 }
 
-.site-check {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--border-soft);
-  color: transparent;
+.choice-head .chip {
+  min-height: auto;
 }
 
-.selected > .site-check {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--on-primary);
+.choice-when {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  color: var(--text);
 }
 
-.weather-panel {
-  margin-top: 6px;
+.choice-when .icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  color: var(--icon);
 }
 
 .readout-box {
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  padding: 10px 14px;
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin: var(--sp-2) 0;
   background: var(--surface-2);
+}
+
+.readout-box .hint {
+  margin: 0;
 }
 
 .big-readout {
   display: block;
-  font-size: 30px;
-  font-weight: 900;
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
 .beaufort-readout {
-  font-weight: 700;
-  margin: 4px 0 10px;
+  color: var(--text);
 }
 
 .change-box {
-  border-left: 4px solid var(--danger);
-  padding-left: 12px;
-  margin: 6px 0;
+  border-left: var(--sp-1) solid var(--divider);
+  padding-left: var(--sp-3);
+  margin: var(--sp-1) 0;
 }
 
-.setup-footer {
-  flex: 0 0 auto;
-  padding: 10px max(14px, var(--safe-right)) calc(12px + var(--safe-bottom)) max(14px, var(--safe-left));
-  border-top: 2px solid var(--border-soft);
-  background: var(--surface);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+/* Data for this run. */
+.plan-total {
+  margin: 0 0 var(--sp-2);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
 }
 
-.setup-footer .btn {
-  width: 100%;
+.plan-warnings:empty {
+  display: none;
 }
 
-.footer-summary {
-  font-weight: 700;
-  color: var(--muted);
-  margin: 0 0 8px;
-  text-align: center;
+.plan-warnings .callout {
+  margin: 0 0 var(--sp-2);
+}
+
+/* The chip and size sit on the right; with large text (Android font scale) they move under the name instead of squeezing it. */
+.plan-row,
+.build-data-row {
+  flex-wrap: wrap;
+  row-gap: var(--sp-1);
+}
+
+.plan-row .list-body,
+.build-data-row .list-body {
+  flex: 1 1 9em;
+}
+
+.plan-row .list-trail,
+.build-data-row .list-trail {
+  margin-left: auto;
+}
+
+.plan-trail,
+.build-trail {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.plan-size,
+.build-size {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.plan-row:disabled,
+.plan-row:disabled .list-lead {
+  color: var(--text);
+}
+
+.plan-row:disabled .list-sub {
+  color: var(--muted);
+}
+
+.plan-note {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.pack-status:empty {
+  display: none;
+}
+
+.pack-status {
+  margin: var(--sp-1) 0;
+}
+
+.dialog-list {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+}
+
+/* The bottom bar: summary line, errors, then the Build button. */
+.footer-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  text-align: center;
+}
+
+/* Landscape phones: the summary beside the button, so the bar takes one row of the little height there is. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .setup-footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--sp-3);
+  }
+
+  .setup-footer > .footer-summary {
+    flex: 1 1 12em;
+    width: auto;
+    margin: 0;
+    text-align: left;
+  }
+
+  .setup-footer > .btn {
+    flex: 0 1 auto;
+    width: auto;
+    margin: 0;
+  }
+
+  .setup-footer > .footer-errors {
+    flex: 1 1 100%;
+  }
+
+  .setup-bar {
+    min-height: var(--bar-h);
+  }
+
+  .setup-bar .app-bar-sub {
+    display: none;
+  }
+
+  .setup-intro {
+    display: none;
+  }
 }
 
 .footer-errors:empty {
   display: none;
 }
 
-/* ── Building ── */
-.building-main {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 28px max(20px, var(--safe-right)) 20px max(20px, var(--safe-left));
-  max-width: 620px;
-  width: 100%;
-  margin: 0 auto;
+.footer-errors .error-line {
+  margin: 0;
 }
 
-.building-hero {
-  width: 76px;
-  height: 76px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  background: #111418;
-  color: #ff7a1a;
-  margin-bottom: 14px;
+/* ───────────── Building ───────────── */
+
+.build-card {
+  margin-bottom: var(--sp-2);
+}
+
+.build-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.build-titles {
+  min-width: 0;
 }
 
 .building-title {
-  font-size: 28px;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
 }
 
 .building-sub {
+  margin: 0;
   color: var(--muted);
-  font-weight: 700;
-  margin-top: 4px;
 }
 
 .progress-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 18px 0 8px;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 var(--sp-1);
 }
 
-/* .progress and .progress-fill are shared primitives now (components.css); the building screen uses them as they are. */
+.progress-row .progress {
+  flex: 1 1 auto;
+}
 
 .progress-pct {
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  min-width: 3.2em;
+  min-width: 4ch;
   text-align: right;
+  font-weight: var(--fw-medium);
 }
 
 .build-message {
-  font-weight: 700;
-  min-height: 1.4em;
-}
-
-.step-list {
-  list-style: none;
-  padding: 0;
-  margin: 12px 0;
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 46px;
-  font-weight: 700;
+  min-height: var(--lh-sm);
+  margin: 0;
   color: var(--muted);
 }
 
-.step-icon {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 2px solid var(--border-soft);
-  display: grid;
-  place-items: center;
+.build-steps {
+  background: transparent;
 }
 
-.step.active {
-  color: var(--text);
+/* The data sets a step read, nested under it (no dividers between them, indented to the step's text). */
+.build-step-data {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--sp-1) calc(var(--sp-3) + var(--icon-size));
 }
 
-.step.active .step-icon {
-  border-color: var(--accent);
-  color: var(--accent);
+.build-step-data:empty {
+  display: none;
 }
 
-.step.done {
-  color: var(--text);
+.build-data-row .list-lead {
+  color: var(--icon);
+}
+
+.build-row {
+  min-height: var(--ctl-h);
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.build-row.two-line {
+  min-height: var(--row-h);
+}
+
+.step .list-title {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.step.pending .list-title {
+  color: var(--muted);
+}
+
+.step.active .list-title {
+  font-weight: var(--fw-medium);
 }
 
 .step.done .step-icon {
-  background: var(--ok);
-  border-color: var(--ok);
-  color: #fff;
+  color: var(--ok-ink);
 }
 
-:root[data-theme='dark'] .step.done .step-icon {
-  color: #0e1116;
+.step.active .step-icon {
+  color: var(--primary);
+}
+
+.step-icon .spinner {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.step-dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: 50%;
+  border: 2px solid var(--outline);
+}
+
+.failed .step.active .step-icon {
+  color: var(--danger-ink);
+}
+
+.build-data-row .list-title {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.build-data-row .list-sub {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.build-total {
+  margin: var(--sp-1) 0 0;
+  font-weight: var(--fw-medium);
+}
+
+.build-total:empty {
+  display: none;
+}
+
+.build-warnings:empty {
+  display: none;
+}
+
+.build-warnings .banner {
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-md);
 }
 
 .build-actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 12px;
-  padding: 12px max(16px, var(--safe-right)) calc(14px + var(--safe-bottom)) max(16px, var(--safe-left));
-  border-top: 2px solid var(--border-soft);
-  background: var(--surface);
+  flex-direction: row;
+  gap: var(--sp-2);
 }
 
 .build-actions .btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-/* ── Settings ── */
-.settings-screen {
-  position: fixed;
-  inset: 0;
-  top: calc(var(--badge-h) + var(--safe-top));
-  z-index: 60;
-  animation: slide-in 0.2s var(--ease);
+/* ───────────── Settings ───────────── */
+
+.settings-screen .segmented {
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateY(24px);
-    opacity: 0;
-  }
+.settings-screen .segmented + .hint {
+  margin-top: calc(var(--sp-1) * -1);
 }
 
-.attrib-list,
-.ref-list,
-.module-status {
-  padding-left: 0;
-  list-style: none;
-  margin: 0;
+.settings-sub {
+  padding: var(--sp-3) 0 var(--sp-1);
 }
 
-.attrib-list li {
+.attrib-list > li {
+  padding-bottom: var(--sp-1);
+}
+
+.attrib-list .list-row {
+  padding-bottom: 0;
+}
+
+.attrib-links {
   display: flex;
-  flex-direction: column;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
 }
 
-.attrib-list li span {
-  color: var(--muted);
-  font-size: 16px;
+.attrib-link {
+  max-width: 100%;
+  color: var(--primary-ink);
 }
 
-.attrib-licence {
-  font-weight: 800;
+
+.ref-details > summary {
+  color: var(--primary-ink);
 }
 
-.ref-list li,
-.module-status li {
-  padding: 6px 0;
-}
-
-.ref-file {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 16px;
-  font-weight: 700;
+.ref-details > .card-list {
+  margin-left: calc(var(--sp-3) * -1);
+  margin-right: calc(var(--sp-3) * -1);
 }
 
 .fine-print {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--muted);
   justify-content: center;
+  gap: var(--sp-1);
+  margin: var(--sp-3) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.fine-print .icon {
+  flex: 0 0 auto;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+/* The build's progress bar is the main thing on the Building screen: 8 px instead of the 4 px primitive. */
+.building-progress {
+  height: var(--sp-2);
+  border-radius: var(--r-xs);
+}
+
+.building-progress .progress-fill {
+  border-radius: var(--r-xs);
 }

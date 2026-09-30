@@ -2,6 +2,8 @@
  * Weather timeline (Weather tab): small multiples on a shared time axis — wind speed (with direction arrows),
  * temperature, relative humidity and dead fine fuel (litter) moisture — so each measure has its own single axis.
  * A "now" cursor and any upcoming wind change are drawn across all panels. Tap or drag to read values at a time.
+ * Everything visual comes from the design tokens (font, type sizes and weights, --chart-* series colours, grid, danger,
+ * surface and text), so the chart follows the light, dark and high-contrast themes and the text size.
  */
 import type { WeatherHour, WeatherSeries } from '../../../core/types';
 import { DEG, msToKmh } from '../../../core/units';
@@ -34,22 +36,51 @@ interface PanelDef {
   fixedMax?: number;
 }
 
-const PAD_L = 44;
-const PAD_R = 14;
-/** Layout (CSS px): a row for wind-change labels, then per panel a title row, (wind only) a direction-arrow strip,
- * and the plot; a gap between panels; the time axis at the bottom. */
-const CHANGE_ROW = 26;
-const TITLE_H = 24;
-const ARROW_H = 24;
-const PANEL_H = 64;
-const GAP = 12;
-const AXIS_H = 26;
+const PAD_R = 12;
+/** Plot height of each panel (CSS px). */
+const PANEL_H = 60;
+const GAP = 10;
+const ARROW_H = 22;
 
-/** Top of the plot area of panel `i`. */
-const plotTop = (i: number): number => CHANGE_ROW + TITLE_H + ARROW_H + i * (PANEL_H + GAP + TITLE_H);
+/** Type the chart draws with, read from the tokens (so high contrast and a larger text size apply). */
+interface ChartType {
+  family: string;
+  /** Titles: --fs-sm / --fw-medium. */
+  title: string;
+  /** Axis labels, readouts: --fs-xs / --fw-regular. */
+  small: string;
+  titlePx: number;
+  smallPx: number;
+}
 
-export function chartHeight(): number {
-  return plotTop(3) + PANEL_H + AXIS_H;
+function chartType(el: Element): ChartType {
+  const cs = getComputedStyle(el);
+  const num = (name: string, fallback: number): number => {
+    const v = parseFloat(cs.getPropertyValue(name));
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  const family = cs.getPropertyValue('--font').trim() || 'system-ui, sans-serif';
+  const titlePx = num('--fs-sm', 14);
+  const smallPx = num('--fs-xs', 12);
+  const medium = cs.getPropertyValue('--fw-medium').trim() || '500';
+  const regular = cs.getPropertyValue('--fw-regular').trim() || '400';
+  return { family, title: `${medium} ${titlePx}px ${family}`, small: `${regular} ${smallPx}px ${family}`, titlePx, smallPx };
+}
+
+/** Layout (CSS px) for a type size: a row for wind-change labels, then per panel a title row, (wind only) a direction-arrow
+ * strip, and the plot; a gap between panels; the time axis at the bottom. Rows grow with the text. */
+function chartLayout(t: Pick<ChartType, 'titlePx' | 'smallPx'>): { padL: number; changeRow: number; titleH: number; axisH: number; plotTop(i: number): number; height: number } {
+  const changeRow = Math.ceil(t.smallPx + 12);
+  const titleH = Math.ceil(t.titlePx + 8);
+  const axisH = Math.ceil(t.smallPx + 10);
+  const plotTop = (i: number): number => changeRow + titleH + ARROW_H + i * (PANEL_H + GAP + titleH);
+  return { padL: Math.max(40, Math.ceil(t.smallPx * 3.3)), changeRow, titleH, axisH, plotTop, height: plotTop(3) + PANEL_H + axisH };
+}
+
+/** Height (CSS px) the chart needs with the current type size (read from `el`, else the document root). */
+export function chartHeight(el?: Element): number {
+  const root = el ?? (typeof document !== 'undefined' ? document.documentElement : null);
+  return chartLayout(root ? chartType(root) : { titlePx: 14, smallPx: 12 }).height;
 }
 
 /** Litter-moisture estimate from the hourly weather (Matthews 2010; no terrain/aspect adjustment). */
@@ -73,7 +104,11 @@ function niceStep(range: number, target = 3): number {
 export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { timeAt(clientX: number): number } {
   const rect = canvas.getBoundingClientRect();
   const W = Math.max(280, rect.width);
-  const H = chartHeight();
+  const type = chartType(canvas);
+  const L = chartLayout(type);
+  const PAD_L = L.padL;
+  const plotTop = L.plotTop;
+  const H = L.height;
   const dpr = Math.min(3, globalThis.devicePixelRatio || 1);
   // Only reallocate the backing store when the size changes (the chart redraws a few times a second while playing).
   const bw = Math.round(W * dpr);
@@ -85,13 +120,16 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  const ink = css(canvas, '--text', '#111');
-  const muted = css(canvas, '--muted', '#555');
-  const grid = css(canvas, '--grid', 'rgba(0,0,0,0.12)');
-  const surface = css(canvas, '--surface', '#fff');
-  const danger = css(canvas, '--danger', '#c92a2a');
-  const font = '600 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const fontSmall = '600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const ink = css(canvas, '--text', '#202124');
+  const muted = css(canvas, '--muted', '#5f6368');
+  const grid = css(canvas, '--grid', 'rgba(32,33,36,0.12)');
+  const surface = css(canvas, '--surface', '#ffffff');
+  const outline = css(canvas, '--outline', '#80868b');
+  const danger = css(canvas, '--danger', '#d93025');
+  const dangerInk = css(canvas, '--danger-ink', danger);
+  const onDanger = css(canvas, '--on-danger', '#ffffff');
+  const font = type.title;
+  const fontSmall = type.small;
 
   const t0 = inp.start;
   const t1 = inp.start + inp.duration * 1000;
@@ -110,7 +148,7 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
   panels.forEach((p, pi) => {
     const top = plotTop(pi);
     const bottom = top + PANEL_H;
-    const titleY = (pi === 0 ? top - ARROW_H : top) - 8;
+    const titleY = (pi === 0 ? top - ARROW_H : top) - 7;
     const vals = samples.map((w) => p.value(w, w.time));
     if (p.key === 'moist') for (const o of inp.moistureObs) vals.push(o.value);
     let lo = p.fixedMin ?? Math.min(...vals);
@@ -149,7 +187,8 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
     if (p.key === 'moist') {
       ctx.fillStyle = css(canvas, '--band-dry', 'rgba(201,42,42,0.10)');
       ctx.fillRect(PAD_L, y(Math.min(6, hi)), W - PAD_L - PAD_R, bottom - y(Math.min(6, hi)));
-      ctx.fillStyle = danger;
+      ctx.fillStyle = dangerInk;
+      ctx.font = fontSmall;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText('very dry (< 6 %)', PAD_L + 6, bottom - 5);
@@ -162,7 +201,7 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
     }
     // Series line (2 px).
     ctx.strokeStyle = colour;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
     samples.forEach((w, i) => {
@@ -208,7 +247,7 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
   });
 
   // X axis: hour labels.
-  const axisY = plotTop(3) + PANEL_H + 19;
+  const axisY = plotTop(3) + PANEL_H + L.axisH - 5;
   ctx.fillStyle = muted;
   ctx.font = fontSmall;
   ctx.textAlign = 'center';
@@ -223,7 +262,7 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
   }
 
   // Wind changes.
-  const plotTopY = CHANGE_ROW;
+  const plotTopY = L.changeRow;
   const plotBottom = plotTop(3) + PANEL_H;
   void plotBottom;
   for (const c of inp.changes) {
@@ -244,13 +283,14 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
     ctx.font = fontSmall;
     const tw = ctx.measureText(label).width + 12;
     const lx = Math.min(W - PAD_R - tw, Math.max(PAD_L, xx - tw / 2));
+    const lh = L.changeRow - 4;
     ctx.fillStyle = danger;
-    roundRect(ctx, lx, 2, tw, 20, 5);
+    roundRect(ctx, lx, 2, tw, lh, lh / 2);
     ctx.fill();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = onDanger;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, lx + 6, 12.5);
+    ctx.fillText(label, lx + 6, 2 + lh / 2 + 0.5);
   }
 
   // Now cursor.
@@ -282,20 +322,21 @@ export function drawWeatherChart(canvas: HTMLCanvasElement, inp: ChartInput): { 
       `Litter ≈ ${litterEstimate(w, inp.tz).toFixed(1)}%`,
     ];
     ctx.font = fontSmall;
+    const lh = Math.ceil(type.smallPx * 1.4);
     const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
-    const bh = lines.length * 18 + 10;
+    const bh = lines.length * lh + 10;
     const bx = xx + 10 + bw > W - PAD_R ? xx - 10 - bw : xx + 10;
     const by = plotTop(0) + 8;
     ctx.fillStyle = surface;
-    ctx.strokeStyle = ink;
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 1;
     roundRect(ctx, bx, by, bw, bh, 8);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = ink;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    lines.forEach((l, i) => ctx.fillText(l, bx + 8, by + 6 + i * 18));
+    lines.forEach((l, i) => ctx.fillText(l, bx + 8, by + 5 + i * lh));
   }
 
   return {

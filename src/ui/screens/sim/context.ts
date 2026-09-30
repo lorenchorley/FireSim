@@ -9,9 +9,9 @@ import type { Pt } from '../../brushGeometry';
 import type { LegendProvider } from '../../legends';
 
 export type ToolId = 'why' | 'fire' | 'fuel' | 'wind' | 'layers' | 'whatif';
-/** Bottom dock: 'closed' = only the slim tab row (the default), then three heights of open panel. */
+/** Bottom dock: 'closed' = only the navigation row (the default), then three heights of open sheet. */
 export type SheetDetent = 'closed' | 'peek' | 'half' | 'full';
-/** The floating menus over the map (tools and view); at most one is open. */
+/** The floating menus over the map (the Tools speed dial and the View list); at most one is open. */
 export type MenuId = 'tools' | 'view';
 export type SheetTab = 'insights' | 'weather' | 'stats' | 'help';
 
@@ -73,6 +73,10 @@ export interface SimContext {
   exit(): void;
   openSettings(): void;
   showNotice(): void;
+  /** Open the Data sets screen, optionally at one data set (absent when the app does not offer it). The run keeps going. */
+  openDatasets?: (datasetId?: string) => void;
+  /** Open "How this simulation works" (absent when the app does not offer it). The run keeps going. */
+  openModelCard?: () => void;
   /** Absolute time (unix ms) of a simulation time. */
   absTime(t: number): number;
   /** Renderer legends (preferred when present). */

@@ -1,13 +1,15 @@
 /**
- * The time popover (opened by tapping the clock): jump to a typed local time, step by fixed amounts, go to the previous /
- * next card, choose the picture interval, and see how far the model has computed. Collapsed until asked for.
+ * The time sheet (opened by tapping the clock): jump to a typed local time, step by fixed amounts, go to the previous /
+ * next card, choose the picture interval, and see how far the model has computed. A Maps-style bottom sheet, collapsed
+ * until asked for.
  */
 import { h, text } from '../../dom';
+import { icon } from '../../icons';
 import { formatClock, formatStepLabel } from '../../format';
 import { TIME_STEPS } from '../../settings';
 import type { SimContext } from './context';
 import { clockToSimTime, nearestCardTime, parseTimeOfDay } from './timelineModel';
-import { glyph, GLYPHS } from './transportKit';
+import { transportSheet } from './transportKit';
 
 export interface TimePopover {
   panel: HTMLElement;
@@ -16,15 +18,11 @@ export interface TimePopover {
   destroy(): void;
 }
 
-/** [test id, label, spoken label, change (s)]. */
-const RELATIVE: readonly (readonly [string, string, string, number])[] = [
-  ['m3600', '−1 h', 'Back one hour', -3600],
-  ['m600', '−10 min', 'Back ten minutes', -600],
-  ['m60', '−1 min', 'Back one minute', -60],
-  ['p60', '+1 min', 'Forward one minute', 60],
-  ['p600', '+10 min', 'Forward ten minutes', 600],
-  ['p3600', '+1 h', 'Forward one hour', 3600],
-];
+/** The relative jumps (s); the test id, the label and the spoken label are made from the amount. */
+const RELATIVE: readonly number[] = [-3600, -600, -60, 60, 600, 3600];
+const relId = (dt: number): string => `${dt < 0 ? 'm' : 'p'}${Math.abs(dt)}`;
+const relLabel = (dt: number): string => `${dt < 0 ? '−' : '+'}${formatStepLabel(Math.abs(dt))}`;
+const relSpoken = (dt: number): string => `${dt < 0 ? 'Back' : 'Forward'} ${formatStepLabel(Math.abs(dt))}`;
 
 export function createTimePopover(ctx: SimContext, opts: { close(): void }): TimePopover {
   const { session, scenario } = ctx;
@@ -44,7 +42,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
   const timeInput = h('input', {
     type: 'time',
     id: inputId,
-    class: 'tp-input tp-time',
+    class: 'input tp-input tp-time',
     step: '1',
     dataset: { testid: 'time-input' },
     on: {
@@ -56,7 +54,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
       },
     },
   });
-  const msg = h('p', { class: 'tp-msg', hidden: true, attrs: { role: 'status' }, dataset: { testid: 'time-msg' } });
+  const msg = h('p', { class: 'field-error tp-msg', hidden: true, attrs: { role: 'status' }, dataset: { testid: 'time-msg' } });
   const say = (m: string): void => {
     msg.hidden = m === '';
     text(msg, m);
@@ -73,10 +71,10 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
 
   // ── steps ──
   const chip = (id: string, label: string, spoken: string, onClick: () => void): HTMLButtonElement =>
-    h('button', { type: 'button', class: 'tp-chip tp-chip-flat', dataset: { testid: `time-${id}` }, aria: { label: spoken }, on: { click: onClick } }, label);
+    h('button', { type: 'button', class: 'chip tp-step-chip', dataset: { testid: `time-${id}` }, aria: { label: spoken }, on: { click: onClick } }, label);
   const startChip = chip('start', 'Start', 'Go to the start', () => jump(0));
   const endChip = chip('end', 'End', 'Go to the end of the scenario', () => jump(D));
-  const relChips = RELATIVE.map(([id, label, spoken, dt]) => chip(id, label, spoken, () => jump(base() + dt)));
+  const relChips = RELATIVE.map((dt) => chip(relId(dt), relLabel(dt), relSpoken(dt), () => jump(base() + dt)));
 
   // ── previous / next card ──
   const cardBtn = (dir: -1 | 1): HTMLButtonElement =>
@@ -84,7 +82,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
       'button',
       {
         type: 'button',
-        class: 'tp-chip tp-card',
+        class: 'btn tp-card',
         dataset: { testid: dir < 0 ? 'time-prev-card' : 'time-next-card' },
         on: {
           click: () => {
@@ -93,9 +91,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
           },
         },
       },
-      dir < 0
-        ? [glyph(GLYPHS.chevronLeft, 20), h('span', null, 'Previous card')]
-        : [h('span', null, 'Next card'), glyph(GLYPHS.chevronRight, 20)],
+      dir < 0 ? [icon('chevron-left'), h('span', null, 'Previous card')] : [h('span', null, 'Next card'), icon('chevron-right')],
     );
   const prevCard = cardBtn(-1);
   const nextCard = cardBtn(1);
@@ -106,7 +102,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
       'button',
       {
         type: 'button',
-        class: 'tp-chip tp-chip-flat',
+        class: 'chip tp-step-chip',
         dataset: { testid: `step-${sec}`, step: String(sec) },
         aria: { pressed: false },
         on: {
@@ -116,42 +112,37 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
           },
         },
       },
-      formatStepLabel(sec),
+      [icon('check', { class: 'chip-check' }), formatStepLabel(sec)],
     ),
   );
   const readout = h('p', { class: 'tp-readout', dataset: { testid: 'computed-readout' } });
 
-  const panel = h(
-    'div',
-    {
-      class: 'tb-pop tb-pop-left tp tp-2col',
-      dataset: { testid: 'time-popover' },
-      attrs: { role: 'dialog', tabindex: '-1' },
-      aria: { label: 'Jump to a time' },
-      hidden: true,
-    },
-    [
+  const panel = transportSheet({
+    title: 'Jump to a time',
+    testId: 'time-popover',
+    class: 'tp tp-2col',
+    onClose: opts.close,
+    body: [
       h('div', { class: 'tp-col' }, [
-        h('h2', { class: 'tp-title' }, 'Jump to'),
         h('div', { class: 'tp-jump' }, [
           h('label', { class: 'sr-only', htmlFor: inputId }, 'Local time (hours, minutes, seconds)'),
           timeInput,
-          h('button', { type: 'button', class: 'tp-go', dataset: { testid: 'time-go' }, on: { click: go } }, 'Go'),
+          h('button', { type: 'button', class: 'btn btn-primary tp-go', dataset: { testid: 'time-go' }, on: { click: go } }, 'Go'),
         ]),
         msg,
-        h('div', { class: 'tp-grid tp-rel' }, [startChip, ...relChips, endChip]),
+        h('div', { class: 'chips tp-rel', attrs: { role: 'group' }, aria: { label: 'Jump by' } }, [startChip, ...relChips, endChip]),
+        h('div', { class: 'tp-cards' }, [prevCard, nextCard]),
       ]),
       h('div', { class: 'tp-col' }, [
-        h('div', { class: 'tp-cards' }, [prevCard, nextCard]),
         h('fieldset', { class: 'tp-fieldset' }, [
           h('legend', { class: 'tp-label' }, 'Picture interval'),
-          h('div', { class: 'tp-grid tp-steps' }, stepBtns),
+          h('div', { class: 'chips tp-steps' }, stepBtns),
           h('p', { class: 'tp-note' }, 'How much fire time each new picture covers. Shorter shows more detail.'),
         ]),
         readout,
       ]),
     ],
-  );
+  });
 
   let key = '';
   function update(): void {
@@ -165,14 +156,18 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
     const b = s.seekTarget ?? s.viewTime;
     startChip.disabled = b <= 0;
     endChip.disabled = b >= D;
-    RELATIVE.forEach(([, , , dt], i) => (relChips[i]!.disabled = dt < 0 ? b <= 0 : b >= D));
+    RELATIVE.forEach((dt, i) => (relChips[i]!.disabled = dt < 0 ? b <= 0 : b >= D));
     const prev = nearestCardTime(s.insights, s.viewTime, -1);
     const next = nearestCardTime(s.insights, s.viewTime, 1);
     prevCard.disabled = prev === null;
     nextCard.disabled = next === null;
     prevCard.title = prev === null ? 'No earlier card' : `Go to ${fmtClock(prev)}`;
     nextCard.title = next === null ? 'No later card has been computed yet' : `Go to ${fmtClock(next)}`;
-    for (const sb of stepBtns) sb.setAttribute('aria-pressed', String(Number(sb.dataset.step) === s.timeStep));
+    for (const sb of stepBtns) {
+      const on = Number(sb.dataset.step) === s.timeStep;
+      sb.setAttribute('aria-pressed', String(on));
+      sb.classList.toggle('is-selected', on);
+    }
   }
   const unsub = session.state.subscribe(update, ['viewTime', 'headTime', 'timeStep', 'insights', 'seekTarget']);
 

@@ -3,6 +3,7 @@ import type { ContextLayers } from '../core/places';
 import type { GridSpec } from '../core/grid';
 import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import type { LayerState } from './layers';
+import type { LegendSpec } from './legends';
 
 export interface SceneImagery {
   /** Image covering the scenario domain exactly; row 0 = north. */
@@ -68,6 +69,22 @@ export interface SceneViewApi {
   setBrushPreview(p: { x: number; y: number; radius: number; colour: string } | null): void;
   /** Temporarily disable camera gestures (e.g. while drawing a fire line). */
   setInteractionEnabled(enabled: boolean): void;
+  /**
+   * Colour code of the 3-D canopy while the 'coded' canopy style is shown (title, unit, stops; the same ramps as the heat
+   * map of the same data), else null. The 2-D map has no canopy.
+   */
+  canopyLegend?(): LegendSpec | null;
+  /**
+   * Map type 'Plain': draw the ground as neutral grey relief instead of the vegetation colours whenever the aerial photo is
+   * not shown (a solo heat map uses the same plain ground). A view setting, not a LayerState key; kept across scenarios.
+   */
+  setPlainGround?(on: boolean): void;
+  /** Map type 'Plain' is on. */
+  readonly plainGround?: boolean;
+  /** An aerial photo was given for this scenario (so the 'Aerial photo' map type can be shown). */
+  readonly hasImagery?: boolean;
+  /** The render quality tier in use (the UI keeps the trees' wind sway off by default on 'low'). */
+  readonly renderQuality?: 'low' | 'medium' | 'high';
   /** Render statistics for the performance HUD. */
   stats(): { fps: number; drawCalls: number; triangles: number };
   resize(): void;

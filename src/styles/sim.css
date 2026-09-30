@@ -1,7 +1,20 @@
-/* Simulation screen: full-screen scene with floating chrome. Nothing critical sits only in the top 25 %. */
+/*
+ * Simulation screen, in the Google-Maps-for-Android language (docs/DESIGN.md): the full-screen scene with floating chrome
+ * (the pill top bar lives in transport.css), a right-hand column of round white mini-FABs, the extended Tools FAB and its
+ * speed dial, the bottom navigation with its bottom sheet, the map legend card, the attribution line, the tool panels and
+ * the map annotations. Only things that float over the map carry elevation. Nothing critical sits only in the top 25 %.
+ */
 
 .sim-screen {
-  background: #20251f;
+  /* Chrome sizes of this screen, from the tokens (the layout code measures the real boxes; these are the starting values):
+     top = 8 px margin + 48 px pill + 4 px + 28 px read-out chips; the timeline strip = --timeline-h + the bottom inset;
+     the collapsed dock = the bottom navigation (DOCK_H in layoutModel.ts). */
+  --topbar-h: calc(var(--sp-2) + var(--bar-h) + var(--sp-1) + var(--lh-sm) + var(--sp-2));
+  --scrub-h: calc(var(--timeline-h) + var(--safe-bottom));
+  --dock-h: var(--nav-h);
+  --edge: var(--sp-3); /* floating controls keep 12 px from the screen edges */
+  isolation: isolate; /* the chrome's z-indices stay inside the screen: full-screen overlays (Data sets, Settings) cover all of it */
+  background: var(--bg);
   overflow: hidden;
   touch-action: none;
 }
@@ -38,9 +51,10 @@
   z-index: 5;
   touch-action: none;
   cursor: crosshair;
-  box-shadow: inset 0 0 0 4px var(--accent);
+  box-shadow: inset 0 0 0 4px var(--primary);
 }
 
+/* A map glyph drawn over the aerial photo: white with a dark halo in every theme (it is on the map, not on the chrome). */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -52,75 +66,67 @@
   z-index: 4;
 }
 
-/* "Demo engine" / "2-D map" label: a small chip at the top-left of the visible map. */
+/* "Demo engine" / "2-D map" label: a small dark chip at the top-left of the visible map. */
 .mock-banner {
   position: absolute;
-  left: calc(10px + var(--safe-left));
-  top: calc(var(--map-top, var(--topbar-h)) + 8px);
+  left: calc(var(--edge) + var(--safe-left));
+  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2));
   z-index: 11;
   margin: 0;
-  padding: 2px 10px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.62);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.3;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-inverse);
+  color: var(--on-surface-inverse);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-medium);
   pointer-events: none;
+}
+
+.hand-left .mock-banner {
+  left: auto;
+  right: calc(var(--edge) + var(--safe-right));
 }
 
 .panel-open .mock-banner {
   display: none;
 }
 
-/* ── Round menus (tools, view): collapsed by default; the list opens beside the button ── */
-.map-menu {
+/* ───────────────────────── map controls ───────────────────────── */
+/* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
+.map-fabs {
   position: absolute;
-  bottom: var(--menu-bottom, calc(var(--scrub-h) + var(--dock-h) + 12px));
-  z-index: 20;
-  width: var(--fab);
-  height: var(--fab);
-  transition: bottom 0.22s var(--ease);
+  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2));
+  right: calc(var(--edge) + var(--safe-right));
+  z-index: 14; /* under the dock and the tool panels: an open sheet is what the user is working in */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
-/* Tools on the handed side (one-handed thumb reach), view on the other. */
-.hand-right .map-menu[data-menu='tools'],
-.hand-left .map-menu[data-menu='view'] {
-  right: calc(12px + var(--safe-right));
+.hand-left .map-fabs {
+  right: auto;
+  left: calc(var(--edge) + var(--safe-left));
 }
 
-.hand-right .map-menu[data-menu='view'],
-.hand-left .map-menu[data-menu='tools'] {
-  left: calc(12px + var(--safe-left));
+.map-fabs .fab[aria-pressed='true'] {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
-.dragging-dock .map-menu {
-  transition: none;
-}
-
-.menu-fab {
+.map-menu {
   position: relative;
-  width: var(--fab);
-  height: var(--fab);
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  background: var(--surface-glass);
-  color: var(--text);
-  box-shadow: var(--shadow);
-  touch-action: manipulation;
 }
 
-.menu-fab:active {
-  transform: scale(0.95);
+.map-menu-card {
+  width: var(--fab-sm);
+  height: var(--fab-sm);
 }
 
 .menu-fab[aria-expanded='true'] {
-  background: var(--primary);
-  color: var(--on-primary);
-  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
 .fab-icon {
@@ -128,39 +134,37 @@
   place-items: center;
 }
 
-/* A small chevron says "this opens a menu"; it flips while the list is open. */
-.fab-caret {
+/* The Tools button: an extended FAB (white, blue label) in the bottom corner on the handed side. */
+.map-menu-dial {
   position: absolute;
-  right: -5px;
-  top: -5px;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 2px solid var(--surface);
-  background: var(--primary);
-  color: var(--on-primary);
-  pointer-events: none;
+  bottom: var(--menu-bottom, calc(var(--scrub-h) + var(--dock-h) + var(--sp-3)));
+  right: calc(var(--edge) + var(--safe-right));
+  z-index: 20;
+  transition: bottom var(--dur-2) var(--ease);
 }
 
-.menu-fab[aria-expanded='true'] .fab-caret {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--primary);
-  transform: rotate(180deg);
+.hand-left .map-menu-dial {
+  right: auto;
+  left: calc(var(--edge) + var(--safe-left));
+}
+
+.dragging-dock .map-menu-dial {
+  transition: none;
+}
+
+.tools-fab {
+  padding: 0 var(--sp-4) 0 var(--sp-3);
+}
+
+.tools-fab .fab-label {
+  white-space: nowrap;
 }
 
 .menu-list {
   position: absolute;
-  bottom: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(var(--rows, 6), 48px);
-  grid-auto-columns: max-content;
-  gap: 4px;
+  z-index: 1;
   overscroll-behavior: contain;
-  animation: menu-in 0.14s var(--ease);
+  animation: menu-in var(--dur-1) var(--ease);
 }
 
 .menu-list[hidden] {
@@ -172,17 +176,6 @@
   touch-action: pan-y;
 }
 
-/* The list opens towards the middle of the screen: to the left of a right-hand button, to the right of a left-hand one. */
-.hand-right .map-menu[data-menu='tools'] .menu-list,
-.hand-left .map-menu[data-menu='view'] .menu-list {
-  right: calc(100% + 8px);
-}
-
-.hand-right .map-menu[data-menu='view'] .menu-list,
-.hand-left .map-menu[data-menu='tools'] .menu-list {
-  left: calc(100% + 8px);
-}
-
 @keyframes menu-in {
   from {
     opacity: 0;
@@ -190,78 +183,196 @@
   }
 }
 
-.menu-item,
-.menu-row {
-  min-height: 48px;
-  border-radius: 24px;
-  border: 2px solid var(--border);
-  background: var(--surface-glass);
+/* The speed dial: labelled mini-FABs stacked above the Tools button; more columns grow towards the middle of the screen. */
+.dial-list {
+  bottom: calc(100% + var(--sp-3));
+  right: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--rows, 6), minmax(var(--tap), auto));
+  grid-auto-columns: max-content;
+  gap: var(--sp-2) var(--sp-3);
+  justify-items: end;
+  direction: rtl;
+}
+
+.dial-list > * {
+  direction: ltr;
+}
+
+.hand-left .dial-list {
+  right: auto;
+  left: 0;
+  direction: ltr;
+  justify-items: start;
+}
+
+.dial-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
-  box-shadow: var(--shadow);
+  font: inherit;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hand-left .dial-item {
+  flex-direction: row-reverse;
+}
+
+.dial-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--elev-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.dial-fab {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--fab-sm);
+  height: var(--fab-sm);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--icon);
+  box-shadow: var(--elev-2);
+}
+
+.dial-check {
+  display: none;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.dial-item:active .dial-fab,
+.dial-item:active .dial-label {
+  background: var(--surface-2);
+}
+
+.dial-item[aria-pressed='true'] .dial-fab {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.dial-item[aria-pressed='true'] .dial-label {
+  color: var(--primary-ink);
+}
+
+.dial-item[aria-pressed='true'] .dial-check {
+  display: block;
+}
+
+:root[data-contrast='high'] .dial-label,
+:root[data-contrast='high'] .dial-fab {
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+/* The View card: a small white menu beside the View button, top-aligned with it. */
+.menu-card {
+  top: 0;
+  right: calc(100% + var(--sp-2));
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--rows, 7), minmax(var(--row-h), auto));
+  grid-auto-columns: minmax(196px, max-content);
+  padding: var(--sp-1) 0;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-3);
+}
+
+.hand-left .menu-card {
+  right: auto;
+  left: calc(100% + var(--sp-2));
+}
+
+:root[data-contrast='high'] .menu-card {
+  box-shadow: inset 0 0 0 2px var(--outline);
 }
 
 .menu-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 18px 0 12px;
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
+  gap: var(--sp-3);
+  min-height: var(--row-h);
+  padding: 0 var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
   text-align: left;
+  white-space: nowrap;
   touch-action: manipulation;
 }
 
 .menu-item:active {
-  transform: scale(0.97);
-}
-
-.menu-item[aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--on-primary);
-  border-color: var(--primary);
+  background: var(--state-press);
 }
 
 .menu-item-icon {
   flex: 0 0 auto;
-  width: 28px;
   display: grid;
   place-items: center;
+  width: var(--icon-size);
+  color: var(--icon);
 }
 
-/* Zoom out / label / zoom in in one row; the two buttons are full 48 px targets. */
+.menu-item-label {
+  flex: 1 1 auto;
+}
+
+.menu-check {
+  display: none;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  color: var(--primary-ink);
+}
+
+.menu-item[aria-pressed='true'] {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-weight: var(--fw-medium);
+}
+
+.menu-item[aria-pressed='true'] .menu-item-icon,
+.menu-item[aria-pressed='true'] .menu-check {
+  display: grid;
+  color: var(--on-primary-container);
+}
+
+/* Zoom out / label / zoom in in one row; the two buttons are 44 px targets. */
 .menu-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
-  padding: 0;
-  border: 0;
-  box-shadow: inset 0 0 0 2px var(--border), var(--shadow);
-  font-size: 17px;
-  font-weight: 800;
-  overflow: hidden;
+  gap: var(--sp-1);
+  min-height: var(--row-h);
+  padding: 0 var(--sp-1);
+  border-top: 1px solid var(--divider);
+  color: var(--text);
+  font-size: var(--fs-md);
 }
 
 .menu-row .menu-item-label {
-  align-self: center;
-  padding: 0 4px;
-}
-
-.menu-zoom-btn {
-  width: 56px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  touch-action: manipulation;
-}
-
-.menu-zoom-btn:active {
-  background: var(--surface-3);
+  flex: 0 1 auto;
+  text-align: center;
 }
 
 .compass-needle {
@@ -269,24 +380,19 @@
   flex-direction: column;
   align-items: center;
   line-height: 1;
-  transition: transform 0.2s var(--ease);
+  transition: transform var(--dur-2) var(--ease);
 }
 
 .compass-n {
-  font-size: 14px;
-  font-weight: 900;
-  color: var(--danger);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--danger-ink);
 }
 
 .compass-needle svg {
   width: 16px;
   height: 16px;
   margin-top: -1px;
-}
-
-.menu-item[aria-pressed='true'] .compass-n,
-.menu-item[aria-pressed='true'] .needle-n {
-  color: inherit;
 }
 
 .needle-n {
@@ -298,119 +404,259 @@
   opacity: 0.45;
 }
 
-/* Portrait phones: the round buttons step aside for a tool panel, a full-height dock and finger drawing. */
-.panel-open .map-menu,
-.sheet-full .map-menu,
-.drawing .map-menu[data-menu='view'] {
+.compass-fab[hidden] {
   display: none;
 }
 
-/* ── Compact overlay legend on the map (tap → Layers) ── */
+.compass-fab .compass-needle svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Portrait phones: the controls step aside for a tool panel (Tools), a full-height sheet (all) and finger drawing (camera). */
+.panel-open .map-menu-dial,
+.sheet-full .map-menu-dial,
+.sheet-full .map-fabs,
+.fabs-crowded .map-fabs,
+.fab-crowded .map-menu-dial,
+.drawing .map-fabs {
+  display: none;
+}
+
+/* ───────────────────────── legend card and attribution line ───────────────────────── */
+/* The legend: a small white card at the bottom of the visible map (simScreen.ts places it beside the Tools button); its
+   chevron makes it a chip. */
 .map-legend {
   position: absolute;
-  bottom: var(--menu-bottom, calc(var(--scrub-h) + var(--dock-h) + 12px));
-  left: calc(80px + var(--safe-left));
-  right: calc(80px + var(--safe-right));
-  max-width: 300px;
-  margin: 0 auto;
   z-index: 9;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 10px 5px;
-  text-align: left;
-  font: inherit;
+  align-items: flex-start;
+  width: max-content;
+  max-width: min(320px, calc(100% - 2 * var(--edge)));
   color: var(--text);
-  background: var(--surface-glass);
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-2);
 }
 
 .map-legend[hidden] {
   display: none;
 }
 
+.map-legend[data-state='chip'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-contrast='high'] .map-legend[data-state='card'] {
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+.ml-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.ml-open:active {
+  background: var(--state-press);
+}
+
 .ml-title {
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
 
 .ml-unit {
-  font-weight: 600;
+  font-weight: var(--fw-regular);
   color: var(--muted);
 }
 
 .ml-ramp {
   display: block;
-  height: 10px;
-  border-radius: 5px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  height: var(--sp-2);
+  margin-top: 2px;
+  border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.ml-ends,
+.ml-words {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .ml-ends {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--muted);
+  color: var(--text);
+}
+
+.ml-words > span {
+  max-width: 48%;
+  overflow-wrap: anywhere;
+}
+
+.ml-words > span:last-child {
+  text-align: right;
 }
 
 .ml-classes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 10px;
-  font-size: 14px;
-  font-weight: 600;
+  display: grid;
+  gap: 2px;
 }
 
 .ml-class {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .ml-class .swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  width: 14px;
+  height: 14px;
+}
+
+.ml-class-label {
+  flex: 0 0 auto;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.ml-class-words {
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ml-more {
-  font-size: 14px;
   color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.ml-collapse {
+  margin: 2px 2px 0 0;
+  color: var(--icon);
+}
+
+.ml-chip {
+  max-width: 100%;
+}
+
+.ml-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ml-chip-ramp {
+  flex: 0 0 auto;
+  width: var(--icon-size);
+  height: var(--sp-2);
+  border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.ml-chip-swatches {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ml-chip-swatches .swatch {
+  width: 10px;
+  height: 14px;
 }
 
 .panel-open .map-legend,
-.sheet-open .map-legend,
+.sheet-full .map-legend,
 .drawing .map-legend {
   display: none;
 }
 
-/* A round menu's list opens over the strip the legend occupies: the legend steps aside while a menu is open. */
-.menu-open .map-legend {
+/* A speed dial or view card opens over the strip the legend occupies: the legend steps aside while a menu is open; where
+   the speed dial would meet the column of round buttons (a short screen), the column steps aside while the dial is open. */
+.menu-open .map-legend,
+.dial-over-fabs .map-fabs {
   visibility: hidden;
 }
 
-/* ── Simulation failure: a thin strip under the top bar (never a modal, never over the map) ── */
+/* The attribution line: the credits of what is on screen, one quiet line at the bottom of the map (a tap opens the data sets). */
+.map-credit {
+  position: absolute;
+  z-index: 9;
+  margin: 0;
+  padding: 2px var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--surface-glass);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  text-align: left;
+  touch-action: manipulation;
+}
+
+button.map-credit:active {
+  background: var(--surface-2);
+}
+
+.map-credit[hidden] {
+  display: none;
+}
+
+.map-credit-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-open .map-credit,
+.sheet-full .map-credit,
+.drawing .map-credit {
+  display: none;
+}
+
+/* ───────────────────────── simulation failure strip ───────────────────────── */
+/* A thin danger strip under the top bar (never a modal, never over the middle of the map). */
 .error-chip {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: calc(var(--edge) + var(--safe-left));
+  right: calc(var(--edge) + var(--safe-right));
   top: var(--topbar-h);
   z-index: 34;
-  height: 32px;
+  min-height: var(--ctl-h);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 0 0 max(12px, var(--safe-left));
-  background: var(--danger);
-  color: var(--on-danger);
-  font-size: 15px;
-  font-weight: 800;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1) 0 var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  box-shadow: var(--elev-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
 
 .error-chip[hidden] {
@@ -425,25 +671,22 @@
   text-overflow: ellipsis;
 }
 
-.error-chip-btn {
+.error-chip .error-chip-btn {
   flex: 0 0 auto;
-  height: 32px;
-  min-width: 96px;
-  padding: 0 max(14px, var(--safe-right)) 0 14px;
-  border: 0;
-  border-left: 2px solid currentColor;
-  background: rgba(0, 0, 0, 0.16);
-  color: inherit;
-  font-size: 15px;
-  font-weight: 900;
+  color: var(--danger-ink);
 }
 
 .sim-error p {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   overflow-wrap: anywhere;
 }
 
-/* ── Bottom dock: a slim tab row above the timeline; a tab opens the panel above the row ── */
+.sim-screen .callout-title {
+  margin: 0;
+  font-weight: var(--fw-medium);
+}
+
+/* ───────────────────────── dock: bottom navigation + bottom sheet ───────────────────────── */
 .dock {
   position: absolute;
   left: 0;
@@ -456,9 +699,7 @@
   overflow: hidden;
   container: dock / inline-size;
   background: var(--surface);
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
-  transition: height 0.22s var(--ease);
+  transition: height var(--dur-2) var(--ease);
 }
 
 .dock[hidden] {
@@ -469,9 +710,13 @@
   transition: none;
 }
 
-.dock[data-detent='closed'] {
-  border-radius: 0;
-  box-shadow: none;
+.dock:not([data-detent='closed']) {
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+}
+
+:root[data-contrast='high'] .dock:not([data-detent='closed']) {
+  box-shadow: inset 0 2px 0 var(--outline);
 }
 
 .sheet {
@@ -479,156 +724,124 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-top: 2px solid var(--border-soft);
-  border-radius: 18px 18px 0 0;
 }
 
 .dock[data-detent='closed'] .sheet {
   visibility: hidden;
-  transition: visibility 0s linear 0.22s;
+  transition: visibility 0s linear var(--dur-2);
 }
 
+/* The head of an open sheet: the grab handle (centred; a tap steps it taller), the tab's title and a close button. It is
+   GRIP_H (44 px) tall and is a drag handle too. */
 .sheet-head {
+  position: relative;
+  z-index: 1; /* its buttons' 44 px hit areas stay above content scrolled up under it */
   flex: 0 0 auto;
-  height: 44px; /* a full-width close/drag strip a gloved thumb can hit; the panel's own top padding is 0 to pay for it */
-  display: grid;
-}
-
-.sheet-grip-btn {
-  border: 0;
-  background: transparent;
-  display: grid;
-  place-items: center;
-  touch-action: none;
-  cursor: grab;
-}
-
-.sheet-grip {
-  width: 56px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--border);
-}
-
-.sheet-handle {
-  flex: 0 0 var(--dock-h);
-  height: var(--dock-h);
-  box-sizing: border-box;
-  position: relative;
-  display: flex;
-  padding: 0 var(--safe-right) 0 var(--safe-left);
-  border-top: 2px solid var(--border-soft);
-  background: var(--surface);
-  touch-action: none;
-  cursor: grab;
-}
-
-.sheet-tab {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 44px;
-  height: 100%;
+  height: var(--tap);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-  font-weight: 800;
-  touch-action: manipulation;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) 0 max(var(--sp-4), var(--safe-left));
+  touch-action: none;
+  cursor: grab;
 }
 
-.tab-icon {
-  position: relative;
-  display: inline-grid;
-  flex: 0 0 auto;
+.sheet-grab.bottom-sheet-grab {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(var(--tap) * 1.5);
+  height: var(--tap);
+  margin-left: calc(var(--tap) * -0.75);
+  cursor: grab;
 }
 
-/* The Insights tab keeps room on its right for the count ("9+" is the widest), so the badge never covers the label. */
-.sheet-tab.has-badge {
-  padding-right: 30px;
+.sheet-grab.bottom-sheet-grab::before {
+  top: var(--sp-2);
 }
 
-/* Narrow docks (phones, or a side column): four labelled tabs need the width, so the (decorative) icons give way. */
-@media (max-width: 520px) {
-  .tab-icon {
-    display: none;
-  }
-}
-
-@container dock (max-width: 480px) {
-  .tab-icon {
-    display: none;
-  }
-}
-
-.sheet-tab[aria-selected='true'] {
-  color: var(--text);
-  background: var(--surface-2);
-  box-shadow: inset 0 -3px 0 var(--accent);
-}
-
-.tab-label {
-  line-height: 1.1;
+.sheet-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Unseen-cards count: no layout shift (it sits in the room the tab keeps for it), no sound; red with one pulse when a Danger card is waiting. */
-.tab-badge {
-  position: absolute;
-  right: 3px;
-  top: 5px;
-  min-width: 24px;
-  height: 22px;
+.sheet-close {
+  flex: 0 0 auto;
+}
+
+/* The collapsed dock: the Maps bottom navigation (icon over label), with a hairline above it. */
+.sheet-handle.bottom-nav {
+  flex: 0 0 var(--dock-h);
+  min-height: var(--dock-h);
+  height: var(--dock-h);
   box-sizing: border-box;
-  padding: 0 4px;
-  border-radius: 11px;
-  box-shadow: 0 0 0 2px var(--surface); /* a ring in the dock's colour, outside the box, so the box stays narrow */
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 18px;
-  text-align: center;
+  padding: 0 var(--safe-right) 0 var(--safe-left);
+  touch-action: none;
+  cursor: grab;
+}
+
+.sheet-tab.nav-item {
+  min-width: var(--tap);
+  min-height: 0;
+  height: 100%;
+}
+
+.sheet-tab .nav-label {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+/* Unseen-cards count on the Insights icon: dark for new cards, red with a warning mark and one pulse for a Danger card. */
+.sim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--surface-inverse);
+  color: var(--on-surface-inverse);
   pointer-events: none;
 }
 
-.tab-badge[hidden] {
+.sim-badge[hidden] {
   display: none;
 }
 
-.tab-badge.is-danger {
+.sim-badge.is-danger {
   background: var(--danger);
   color: var(--on-danger);
 }
 
-.tab-badge.pulse {
+.nav-badge-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.sim-badge.pulse {
   animation: badge-pulse 0.9s var(--ease) 1;
 }
 
 @keyframes badge-pulse {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 2px var(--surface), 0 0 0 2px var(--danger);
+    box-shadow: 0 0 0 0 var(--danger);
   }
   40% {
-    transform: scale(1.4);
+    transform: scale(1.3);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 2px var(--surface), 0 0 0 14px transparent;
+    box-shadow: 0 0 0 12px transparent;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab-badge.pulse {
+  .sim-badge.pulse {
     animation: none;
   }
   .dock,
-  .map-menu {
+  .map-menu-dial {
     transition: none;
   }
   .menu-list {
@@ -642,249 +855,275 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 0 max(12px, var(--safe-right)) 16px max(12px, var(--safe-left));
+  padding: 0 max(var(--sp-4), var(--safe-right)) var(--sp-4) max(var(--sp-4), var(--safe-left));
   touch-action: pan-y;
 }
 
-/* ── Insight cards ── */
+.sheet-body .section-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sheet-empty .icon {
+  width: 36px;
+  height: 36px;
+}
+
+/* ── Insight cards: flat list-style cards with hairlines between them ── */
 .insight-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .insight {
+  padding: var(--sp-3) 0;
+  cursor: pointer;
+}
+
+.insight + .insight {
+  border-top: 1px solid var(--divider);
+}
+
+.insight-row {
   display: flex;
-  gap: 8px;
-  padding: 10px 10px 12px 14px;
-  border-radius: 14px;
-  border: 2px solid var(--border-soft);
-  border-left-width: 8px;
-  background: var(--surface);
+  align-items: flex-start;
+  gap: var(--sp-3);
 }
 
-.insight.sev-danger {
-  border-color: var(--danger);
+.insight-lead {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  border-radius: 50%;
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+
+.sev-danger .insight-lead {
   background: var(--danger-bg);
+  color: var(--danger-ink);
 }
 
-.insight.sev-watch {
-  border-color: var(--watch);
+.sev-watch .insight-lead {
   background: var(--watch-bg);
-}
-
-.insight.sev-info {
-  border-color: var(--info);
-  border-top-color: var(--border-soft);
-  border-right-color: var(--border-soft);
-  border-bottom-color: var(--border-soft);
+  color: var(--watch-ink);
 }
 
 .insight-main {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.insight-head {
+.insight-meta {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-}
-
-.sev-badge {
-  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 9px 2px 6px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.sev-danger .sev-badge {
-  background: var(--danger);
-  color: var(--on-danger);
-}
-
-.sev-watch .sev-badge {
-  background: var(--watch);
-  color: var(--on-watch);
-}
-
-.sev-info .sev-badge {
-  background: var(--info);
-  color: var(--on-info);
-}
-
-/* Confidence of the card (physics / rule of thumb / model estimate / below model detail). */
-.conf-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 8px;
-  border-radius: 8px;
-  border: 2px solid var(--border-soft);
-  font-size: 16px;
-  font-weight: 800;
+  gap: 2px var(--sp-2);
   color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
-.insight-head .insight-time {
-  margin-left: auto;
+.sev-word {
+  font-weight: var(--fw-medium);
+  color: var(--info-ink);
+}
+
+.sev-danger .sev-word {
+  color: var(--danger-ink);
+}
+
+.sev-watch .sev-word {
+  color: var(--watch-ink);
 }
 
 .insight-time {
-  font-weight: 700;
-  color: var(--muted);
-  font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
 
 .insight-title {
-  font-size: 19px;
-  margin: 6px 0 4px;
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  line-height: 22px;
+  font-weight: var(--fw-medium);
+}
+
+.insight-body {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+}
+
+.insight.is-open .insight-body {
+  display: block;
+  color: var(--text);
+  -webkit-line-clamp: unset;
+  line-clamp: none;
 }
 
 .insight-repeats {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 700;
+  gap: var(--sp-1);
+  margin: var(--sp-1) 0 0;
   color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
-.insight-body {
-  margin: 0 0 8px;
+.insight-repeats .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.insight-expand {
+  flex: 0 0 auto;
+  color: var(--icon);
+}
+
+.insight-expand .icon {
+  transition: transform var(--dur-1) var(--ease);
+}
+
+.insight.is-open .insight-expand .icon {
+  transform: rotate(180deg);
+}
+
+.insight-more {
+  padding: var(--sp-2) 0 0 calc(var(--ctl-h) + var(--sp-3));
+  cursor: auto;
+}
+
+.insight-more[hidden] {
+  display: none;
 }
 
 .insight-safety {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  font-weight: 700;
-  margin: 0 0 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  margin: 0 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .factor-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-2);
   list-style: none;
-  margin: 0 0 4px;
+  margin: 0 0 var(--sp-2);
   padding: 0;
 }
 
 .factor-chip {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
+  gap: 2px var(--sp-2);
   align-items: baseline;
-  padding: 4px 10px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 2px solid var(--border-soft);
-  font-size: 16px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .fc-label {
   color: var(--muted);
-  font-weight: 700;
 }
 
 .fc-value {
-  font-weight: 900;
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .fc-effect {
-  font-weight: 800;
   color: var(--text);
 }
 
-.insight-source summary {
-  min-height: 40px;
-  font-size: 16px;
+.insight-conf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  margin: 0 0 var(--sp-2);
   color: var(--muted);
-}
-
-.insight-source p {
-  font-size: 16px;
-  color: var(--muted);
-}
-
-.insight-show {
-  margin-left: auto;
-  min-height: 44px;
-  padding: 0 12px;
-  gap: 6px;
-  font-size: 16px;
-  border-width: 2px;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .insight-foot {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--sp-2);
 }
 
-.insight-foot .insight-source {
-  flex: 1;
+.insight-source {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.insight-foot .insight-show {
-  min-height: 48px;
+.insight-source summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  color: var(--primary-ink);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
 }
 
-.compare strong {
+.insight-source p {
+  margin: 0 0 var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+}
+
+.insight-show {
+  margin-left: auto;
+}
+
+.insight-group + .insight-group {
+  margin-top: var(--sp-1);
+}
+
+.compare .callout-title {
   display: block;
 }
 
 /* ── Weather tab ── */
 .wx-summary {
-  margin-bottom: 8px;
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 
-.wx-now {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+.wx-summary .callout {
+  margin-top: var(--sp-3);
 }
 
-.wx-stat {
-  display: flex;
-  flex-direction: column;
-  padding: 6px 8px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+.wx-summary .stat-row {
+  gap: var(--sp-2) var(--sp-3);
 }
 
-.wx-stat-label {
-  font-size: 16px;
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.wx-stat-value {
-  font-size: 19px;
-  white-space: nowrap;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
+/* A narrow sheet (a phone in portrait, a side column) puts four read-outs in two columns so no caption breaks mid-word. */
+@container dock (max-width: 460px) {
+  .wx-summary .stat-row,
+  .data-notes .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .chart-wrap {
-  margin: 8px -4px 0;
+  margin: var(--sp-2) calc(var(--sp-1) * -1) 0;
 }
 
 .weather-canvas {
@@ -893,67 +1132,119 @@
   touch-action: pan-y;
 }
 
-/* ── Stats ── */
+.wx-table summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  color: var(--primary-ink);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+/* ── Stats tab: the .stat primitive, two columns, with a plain-English note under each number ── */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--sp-3) var(--sp-4);
+  margin: var(--sp-2) 0;
 }
 
-.stat-tile {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 2px solid var(--border-soft);
-  background: var(--surface);
-  min-width: 0;
+.sim-stat .stat-num {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
 }
 
-.stat-label {
-  font-size: 16px;
-  font-weight: 800;
+.stat-grid .sim-stat .stat-num {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+}
+
+.stat-note {
   color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
-.stat-value {
-  font-size: 24px;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
+.stats-empty {
+  margin: var(--sp-3) 0;
 }
 
-.stat-sub {
-  font-size: 16px;
-  color: var(--muted);
-  line-height: 1.25;
+.data-notes {
+  margin-top: var(--sp-2);
+}
+
+.data-notes > .callout {
+  margin: var(--sp-2) 0 0;
+}
+
+.data-notes .list {
+  margin: var(--sp-2) calc(var(--sp-3) * -1) 0;
+  background: transparent;
+}
+
+.data-origins {
+  margin: var(--sp-3) 0 0;
+}
+
+.data-origins-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+}
+
+.data-origin-keys {
+  gap: 0 var(--sp-3);
+  margin: var(--sp-1) 0 0;
+}
+
+.data-origin-keys .swatch {
+  background: var(--bar-color, var(--muted));
+}
+
+.data-open.btn-tonal {
+  margin-top: var(--sp-3);
 }
 
 /* ── Help ── */
 .howto {
-  padding-left: 22px;
   margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .howto li {
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
 }
 
 .gloss {
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--divider);
 }
 
-.gloss p {
-  margin: 0 0 12px 18px;
+.gloss summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+
+.gloss-term {
+  font-weight: var(--fw-medium);
 }
 
 .gloss-short {
   color: var(--muted);
-  font-weight: 600;
 }
 
-/* ── Tool panels ── */
+.gloss p {
+  margin: 0 0 var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ───────────────────────── tool panels (bottom sheets over the map) ───────────────────────── */
 .panel-host {
   position: absolute;
   left: 0;
@@ -969,15 +1260,18 @@
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-top: 2px solid var(--border-soft);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.3);
-  animation: panel-in 0.2s var(--ease);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+  animation: panel-in var(--dur-2) var(--ease);
+}
+
+:root[data-contrast='high'] .tool-panel {
+  box-shadow: inset 0 2px 0 var(--outline);
 }
 
 @keyframes panel-in {
   from {
-    transform: translateY(30px);
+    transform: translateY(24px);
     opacity: 0;
   }
 }
@@ -986,31 +1280,39 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 8px 6px 16px;
-  border-bottom: 2px solid var(--border-soft);
+  gap: var(--sp-2);
+  min-height: var(--row-h);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) max(var(--sp-4), var(--safe-left));
+  border-bottom: 1px solid var(--divider);
 }
 
 .panel-title {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 21px;
+  gap: var(--sp-3);
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.panel-title .icon {
+  color: var(--icon);
 }
 
 .panel-body {
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 8px max(14px, var(--safe-right)) 16px max(14px, var(--safe-left));
+  padding: var(--sp-2) max(var(--sp-4), var(--safe-right)) var(--sp-4) max(var(--sp-4), var(--safe-left));
   touch-action: pan-y;
 }
 
 .panel-foot {
   flex: 0 0 auto;
-  padding: 10px max(14px, var(--safe-right)) 12px max(14px, var(--safe-left));
-  border-top: 2px solid var(--border-soft);
+  padding: var(--sp-2) max(var(--sp-4), var(--safe-right)) var(--sp-3) max(var(--sp-4), var(--safe-left));
+  border-top: 1px solid var(--divider);
 }
 
 .panel-foot .btn {
@@ -1019,7 +1321,7 @@
 
 .panel-body > .btn {
   width: 100%;
-  margin: 6px 0;
+  margin: var(--sp-1) 0;
 }
 
 .pending-box:empty {
@@ -1027,7 +1329,7 @@
 }
 
 .pending-box {
-  margin: 8px 0;
+  margin: var(--sp-2) 0;
 }
 
 /* Confirm bar of a tool panel: outside the scroll area so the primary action stays in reach. */
@@ -1035,8 +1337,8 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: var(--surface-2);
+  gap: var(--sp-2);
+  background: var(--surface);
 }
 
 .panel-foot.pending-box .row-actions {
@@ -1062,9 +1364,9 @@
 .pending-text {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 800;
+  gap: var(--sp-2);
   margin: 0;
+  font-weight: var(--fw-medium);
 }
 
 .edit-list:empty {
@@ -1080,22 +1382,25 @@
 .edit-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  border-bottom: 1px solid var(--border-soft);
-  font-weight: 600;
+  gap: var(--sp-3);
+  min-height: var(--row-h);
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .edit-item > span:not(.dot) {
   flex: 1;
 }
 
+/* Fire marks: the same colours as their pins on the map (data colours, the same in every theme). */
 .dot {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 1.5px #000;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px var(--outline);
   flex: 0 0 auto;
 }
 
@@ -1114,26 +1419,30 @@
 .preset-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 6px 0 4px;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
 }
 
+/* Fuel presets: flat outlined tiles; the selected one is tinted with a 2 px blue frame (never colour alone). */
 .preset {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 12px;
-  border: 2px solid var(--border-soft);
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--row-h);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border: var(--bw) solid var(--outline-variant);
   background: var(--surface);
+  color: var(--text);
+  font: inherit;
   text-align: left;
-  min-height: 60px;
 }
 
 .preset.selected {
-  border-color: var(--border);
-  box-shadow: inset 0 0 0 2px var(--border);
-  background: var(--accent-soft);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
 .preset-text {
@@ -1143,20 +1452,21 @@
 }
 
 .preset-name {
-  font-weight: 800;
-  line-height: 1.15;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
 
 .preset-about {
   min-height: 2.6em;
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
 }
 
 .wind-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
+  gap: var(--sp-2) var(--sp-4);
 }
 
 .wind-controls .rose-wrap {
@@ -1170,55 +1480,70 @@
   min-width: 0;
 }
 
-/* Why here */
+/* ── "Why here?" panel (whyPanel.ts; its builder may refine these in layers.css, which loads later) ── */
 .why-place {
-  font-size: 18px;
-  margin: 6px 0 0;
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+.why-place strong {
+  font-weight: var(--fw-medium);
 }
 
 .why-when {
+  margin: 0 0 var(--sp-2);
   color: var(--muted);
-  font-weight: 700;
-  margin: 0 0 6px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .driver-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  border: 2px solid var(--border-soft);
+  gap: var(--sp-2);
+  margin: 2px 0 var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
   background: var(--surface-2);
-  font-weight: 700;
-  margin: 2px 0 8px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.driver-chip strong {
+  font-weight: var(--fw-medium);
 }
 
 .narrative {
-  margin: 4px 0 8px;
-  padding-left: 20px;
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding-left: var(--sp-5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .narrative li {
-  margin: 0 0 8px;
+  margin: 0 0 var(--sp-2);
 }
 
 .factor-table {
   display: flex;
   flex-direction: column;
-  border: 2px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--divider);
   overflow: hidden;
 }
 
 .factor-row {
   display: grid;
   grid-template-columns: minmax(0, 38%) minmax(0, 1fr) 76px;
-  gap: 10px;
+  gap: var(--sp-2);
   align-items: center;
-  min-height: 52px;
-  padding: 4px 10px;
-  border-top: 1px solid var(--border-soft);
+  min-height: var(--row-h);
+  padding: var(--sp-1) var(--sp-3);
+  border-top: 1px solid var(--divider);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .factor-row:first-child {
@@ -1231,26 +1556,25 @@
 }
 
 .factor-row.total {
-  border-top: 2px solid var(--border);
-  font-weight: 900;
+  font-weight: var(--fw-medium);
 }
 
 .factor-label {
   display: flex;
   flex-direction: column;
-  font-weight: 800;
-  line-height: 1.2;
+  font-weight: var(--fw-medium);
 }
 
 .factor-note {
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   color: var(--muted);
 }
 
 .factor-bar {
   position: relative;
-  height: 20px;
+  height: 16px;
 }
 
 .factor-mid {
@@ -1258,54 +1582,52 @@
   left: 50%;
   top: -4px;
   bottom: -4px;
-  width: 2px;
-  background: var(--border);
+  width: 1px;
+  background: var(--outline);
 }
 
 .factor-fill {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  border-radius: 4px;
+  top: 3px;
+  bottom: 3px;
+  border-radius: var(--r-xs);
 }
 
+/* Faster = fire colour, slower = a neutral series colour (data, not the interactive blue). */
 .factor-fill.up {
-  background: #d9480f;
+  background: var(--fire);
 }
 
 .factor-fill.down {
-  background: #1c7ed6;
+  background: var(--series-4);
 }
 
 .factor-value {
   text-align: right;
-  font-weight: 900;
-  font-size: 18px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-md);
   font-variant-numeric: tabular-nums;
-}
-
-.factor-value.up {
-  color: var(--text);
 }
 
 .facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 12px;
-  margin: 12px 0 0;
+  gap: 0 var(--sp-3);
+  margin: var(--sp-3) 0 0;
 }
 
 .facts dt {
-  font-size: 16px;
-  font-weight: 700;
+  margin-top: var(--sp-2);
   color: var(--muted);
-  margin-top: 8px;
-  grid-row: span 1;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .facts dd {
   margin: 0;
-  font-weight: 800;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
 
 .facts dt.wide,
@@ -1313,73 +1635,87 @@
   grid-column: 1 / -1;
 }
 
-/* Layers */
+/* ── Layers panel pieces (viewPanels.ts; its builder may refine these in layers.css, which loads later) ── */
 .overlay-group {
-  margin: 4px 0 10px;
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 
 .overlay-group-title {
   display: block;
-  font-weight: 800;
-  font-size: 16px;
+  margin-bottom: var(--sp-1);
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 6px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-3) var(--sp-2);
 }
 
 .chip-btn {
-  min-height: 48px;
-  padding: 0 13px;
-  font-size: 16px;
-  border-radius: 24px;
-  border: 2px solid var(--border-soft);
+  position: relative;
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  border: var(--bw) solid var(--outline-variant);
   background: var(--surface);
-  font-weight: 800;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.chip-btn::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, var(--tap));
+  height: max(100%, var(--tap));
+  transform: translate(-50%, -50%);
 }
 
 .chip-btn[aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--primary-container);
   border-color: var(--primary);
+  color: var(--on-primary-container);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .legend {
-  border: 2px solid var(--border-soft);
-  border-radius: 14px;
-  padding: 10px 12px;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
   background: var(--surface-2);
-  margin: 6px 0;
 }
 
 .legend-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.legend-title strong {
+  font-weight: var(--fw-medium);
 }
 
 .legend-unit {
   color: var(--muted);
-  font-weight: 700;
 }
 
 .legend-ramp {
-  height: 22px;
-  border-radius: 6px;
-  border: 2px solid var(--border);
+  height: 12px;
+  border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px var(--divider);
 }
 
 .legend-ticks {
   display: flex;
   justify-content: space-between;
-  font-weight: 800;
-  font-size: 16px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   font-variant-numeric: tabular-nums;
-  margin-top: 4px;
 }
 
 .legend-classes {
@@ -1387,44 +1723,48 @@
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 
 .legend-classes li {
   display: grid;
-  grid-template-columns: 22px auto 1fr;
+  grid-template-columns: 20px auto 1fr;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .legend-label {
-  font-weight: 800;
+  font-weight: var(--fw-medium);
 }
 
 .legend-note {
   color: var(--muted);
-  font-size: 16px;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   text-align: right;
 }
 
 .legend-extra {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 
 .legend-about {
-  margin: 8px 0 0;
-  font-size: 16px;
+  margin: var(--sp-2) 0 0;
   color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .cs-box {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
-/* ── Map annotations ── */
+/* ───────────────────────── map annotations (data drawn on the map: the same in every theme) ───────────────────────── */
 .ann-stroke {
   fill: none;
   stroke-width: 6px;
@@ -1470,7 +1810,7 @@
 }
 
 .ann-why-dot {
-  fill: #111418;
+  fill: #202124;
   stroke: #ffffff;
   stroke-width: 2px;
 }
@@ -1492,64 +1832,57 @@
   stroke-linejoin: round;
 }
 
-.group-title {
-  font-size: 16px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  margin: 4px 0 8px;
-}
-
-.insight-group + .insight-group {
-  margin-top: 16px;
-}
-
-.data-list li {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 16px;
-}
-
 /*
  * Side-column layout (tablets, and landscape phones e.g. mounted on a vehicle dash): the dock and the tool panels become a
- * column beside the view button, opposite the tools button, so the middle of the map stays visible. The round buttons keep
- * to the bottom corners; the crosshair is centred in the uncovered map (simScreen.ts sets it from the measured insets).
+ * column at the bottom corner away from the Tools button, so the middle of the map stays visible. The round buttons keep
+ * to their column and corner; the crosshair is centred in the uncovered map (simScreen.ts sets it from the measured insets).
  */
 @media (min-width: 820px), (orientation: landscape) and (max-height: 540px) {
-  :root {
+  .sim-screen {
     --side-w: min(440px, 46vw);
   }
   .dock,
   .panel-host {
-    left: calc(var(--fab) + 20px + var(--safe-left));
+    left: calc(var(--edge) + var(--safe-left));
     right: auto;
     width: var(--side-w);
   }
   .hand-left .dock,
   .hand-left .panel-host {
     left: auto;
-    right: calc(var(--fab) + 20px + var(--safe-right));
+    right: calc(var(--edge) + var(--safe-right));
   }
-  .panel-open .map-menu,
-  .sheet-full .map-menu {
+  .dock {
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    box-shadow: var(--elev-3);
+  }
+  .panel-open .map-menu-dial,
+  .sheet-full .map-menu-dial,
+  .sheet-full .map-fabs {
     display: block;
   }
-  .drawing .map-menu[data-menu='view'] {
+  .sheet-full .map-fabs {
+    display: flex;
+  }
+  .fab-crowded .map-menu-dial,
+  .fabs-crowded .map-fabs {
     display: none;
   }
-  .dock[data-detent='closed'] {
-    border-radius: 14px 14px 0 0;
-    box-shadow: var(--shadow);
+  .sheet-full .map-credit:not([hidden]),
+  .panel-open .map-credit:not([hidden]) {
+    display: block;
   }
-  .wx-now {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .sheet-full .map-legend:not([hidden]) {
+    display: flex;
   }
 }
 
 @media (orientation: landscape) and (max-height: 540px) {
   .tool-panel {
-    max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - var(--scrub-h) - 10px);
-    border-radius: 16px 16px 0 0;
+    max-height: calc(100dvh - var(--strip-h) - var(--safe-top) - var(--map-top, var(--topbar-h)) - var(--scrub-h) - var(--sp-2));
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  .sim-screen {
+    --topbar-h: calc(var(--sp-2) + var(--bar-h));
   }
 }

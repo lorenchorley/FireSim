@@ -52,4 +52,26 @@ export interface BuildProgress {
   message: string;
   /** Non-fatal problems (e.g. "fire history unavailable offline — assuming 10 years since fire"). */
   warnings: string[];
+  /**
+   * What the build's request ledger (data/ledger.ts) has counted so far, one entry per data set (ledger tag), so the
+   * Building screen can show each data set arriving with its size and where it came from. Absent when the builder has
+   * no ledger (the mock builder).
+   */
+  datasets?: BuildDatasetProgress[];
+}
+
+/** One data set as counted by the ledger during a build (all sizes in bytes, so far). */
+export interface BuildDatasetProgress {
+  /** Ledger tag, i.e. the data-set id ('terrain', 'vegetation-svtm', 'weather', 'context-file' ...). */
+  id: string;
+  requests: number;
+  failures: number;
+  /** Bytes obtained from every source (network + stored copies + packs + bundled files). */
+  bytes: number;
+  networkBytes: number;
+  /** Part of networkBytes counted at the uncompressed size because the wire size was not reported: the download was at most this. */
+  networkUnmeasuredBytes: number;
+  cacheBytes: number;
+  packBytes: number;
+  bundledBytes: number;
 }

@@ -1,16 +1,19 @@
 /**
- * Main simulation screen (C): full-screen 3-D view with the top bar, two collapsed round menus (tools, view), tool
- * panels, the slim bottom dock (Insights / Weather / Stats / Help), the time scrubber and, only when the engine fails,
- * a thin error chip. Nothing pops up over the map because of a simulation event: new insight cards only raise a badge
- * on the dock, and playback stops only when the user, the end of the scenario or the app going to the background says so.
- * Owns the map gesture layer that turns taps and finger strokes into "Why here?" queries, fire marks, fuel brush
- * strokes and local wind observations.
+ * Main simulation screen (C), in the Google-Maps-for-Android language (docs/DESIGN.md): the full-screen 3-D view with a
+ * floating pill top bar and its read-out chips, a right-hand column of round white mini-FABs (Layers, View, Compass), an
+ * extended "Tools" FAB in the bottom corner whose speed dial holds the tools, the bottom navigation (Insights / Weather /
+ * Stats / Help) with its bottom sheet, the timeline strip, the map's legend card and attribution line and, only when the
+ * engine fails, a thin error strip. Everything is collapsed by default. Nothing pops up over the map because of a
+ * simulation event: new insight cards only raise a badge on the Insights tab, and playback stops only when the user, the
+ * end of the scenario or the app going to the background says so. Owns the map gesture layer that turns taps and finger
+ * strokes into "Why here?" queries, fire marks, fuel brush strokes and local wind observations.
  */
 import type { Insight, ScenarioData } from '../../../core/types';
 import { BurnState } from '../../../core/types';
 import type { SceneImagery, SceneViewApi } from '../../../render/api';
-import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
-import { h, listen, setChildren, svg, vibrate } from '../../dom';
+import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from '../../../render/layers';
+import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey } from '../../../render/layerCatalog';
+import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { thinPath, windScreenRotation, type Pt } from '../../brushGeometry';
 import { presetById } from '../../fuelPresets';
@@ -27,9 +30,11 @@ import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels'
 import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
 import { createMapMenu } from './mapMenu';
-import { reduceMenu } from './layoutModel';
+import { backLayer, reduceMenu } from './layoutModel';
+import { mapCredits } from './mapCredits';
+import { createMapLegend } from './mapLegend';
 import { createTopBar } from './topBar';
-import { createLayersPanel, createMapLegend, createWhatIfPanel } from './viewPanels';
+import { createLayersPanel, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
 
 export interface SimScreenOptions {
@@ -54,6 +59,16 @@ export interface SimScreen {
   el: HTMLElement;
   session: SimSession;
   view: SceneViewApi;
+  /**
+   * Android Back: close the top-most open layer of the screen (a top-bar sheet, the speed dial or view list, the tool
+   * panel, the bottom sheet), one per press. Returns false when nothing was open, so the app may leave the screen.
+   */
+  back(): boolean;
+  /**
+   * "Show on map" from the Data sets screen: switch that heat map (overlay) or scene layer on, and give the map back
+   * (the sheet and a tool panel close; playback is not touched).
+   */
+  showLayer(t: { overlay?: OverlayKind; sceneKey?: keyof LayerState }): void;
   destroy(): void;
 }
 
@@ -85,6 +100,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const prof = performanceProfile(settingsStore.get().performance);
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, smoke: prof.smoke, vegetation: prof.vegetation, imagery: !!o.imagery });
   view.setScenario(scenario.terrain, scenario.fuel, { imagery: o.imagery, hiRes: scenario.terrainHiRes ?? null });
+  // Roads, fire trails, homes, residential zones and place names (bundled for the demo sites, queried live elsewhere).
+  view.setContext(scenario.context ?? null);
   view.setStartTime?.(scenario.startTime);
   view.setLayers(layers.get());
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
@@ -106,6 +123,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     exit: o.onExit,
     openSettings: o.onSettings,
     showNotice: o.onNotice,
+    ...(o.onOpenDatasets ? { openDatasets: (id?: string) => o.onOpenDatasets?.(id) } : {}),
+    ...(o.onOpenModelCard ? { openModelCard: () => o.onOpenModelCard?.() } : {}),
     absTime: (t) => scenario.startTime + t * 1000,
     buildWarnings: o.buildWarnings ?? [],
     get legendProvider() {
@@ -121,7 +140,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   };
 
   // ───────────── chrome ─────────────
-  const topBar = createTopBar(ctx);
+  const topBar = createTopBar(ctx, {
+    openHelp: () => {
+      if (ui.get().panelOpen || ui.get().pending) closePanel();
+      ui.set({ tab: 'help', sheet: ui.get().sheet === 'closed' || ui.get().sheet === 'peek' ? 'half' : ui.get().sheet, menu: null });
+    },
+  });
   const showInsight = (i: Insight): void => {
     view.focusInsight(i, true);
     const w = weatherAt(scenario.weather, ctx.absTime(i.time));
@@ -139,36 +163,37 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const scrubber = createScrubber(ctx);
   const dangerGate = new DangerGate();
 
-  // Tools menu: one round button showing the active tool; expands to the six tools.
+  // Tools: an extended FAB in the bottom corner (on the handed side) whose speed dial holds the six tools.
   const toolsMenu = createMapMenu({
     id: 'tools',
     label: 'Tools',
+    text: 'Tools',
+    variant: 'dial',
     testId: 'tools-menu',
     ui,
     current: { icon: TOOLS[0]!.icon, label: TOOLS[0]!.label },
     entries: TOOLS.map((t) => ({ id: t.id, label: t.label, icon: t.icon, toggle: true, testId: `tool-${t.id}`, data: { tool: t.id }, class: 'tool-btn', onSelect: () => selectTool(t.id) })),
   });
 
-  // View menu: one round button showing the camera mode; expands to the camera modes, fly-to, compass and zoom.
+  // View: a round mini-FAB showing the camera mode; its card lists the camera modes, fly-to, north up and zoom.
   const VIEW_MODES: { mode: UiState['viewMode']; label: string; icon: IconName }[] = [
     { mode: 'orbit', label: '3D view', icon: 'cube' },
     { mode: 'top', label: 'Top view', icon: 'top' },
     { mode: 'ground', label: 'Eye level', icon: 'person' },
   ];
-  const needle = h('span', { class: 'compass-needle', aria: { hidden: true } }, [
-    h('span', { class: 'compass-n' }, 'N'),
-    svg('svg', { viewBox: '0 0 24 24', width: '20', height: '20' }, [svg('path', { d: 'M12 1.5 L17 12 L7 12 Z', class: 'needle-n' }), svg('path', { d: 'M12 22.5 L17 12 L7 12 Z', class: 'needle-s' })]),
-  ]);
+  const needleSvg = (): SVGElement => svg('svg', { viewBox: '0 0 24 24', width: '20', height: '20', 'aria-hidden': 'true' }, [svg('path', { d: 'M12 1.5 L17 12 L7 12 Z', class: 'needle-n' }), svg('path', { d: 'M12 22.5 L17 12 L7 12 Z', class: 'needle-s' })]);
+  const needle = h('span', { class: 'compass-needle', aria: { hidden: true } }, [h('span', { class: 'compass-n' }, 'N'), needleSvg()]);
   const zoomBtn = (dir: 'in' | 'out'): HTMLButtonElement =>
     h(
       'button',
-      { type: 'button', class: 'menu-zoom-btn', dataset: { testid: `zoom-${dir}` }, aria: { label: dir === 'in' ? 'Zoom in' : 'Zoom out' }, on: { click: () => view.zoomBy(dir === 'in' ? 0.6 : 1 / 0.6) } },
-      icon(dir === 'in' ? 'plus' : 'minus', { size: 24 }),
+      { type: 'button', class: 'icon-btn menu-zoom-btn', dataset: { testid: `zoom-${dir}` }, aria: { label: dir === 'in' ? 'Zoom in' : 'Zoom out' }, on: { click: () => view.zoomBy(dir === 'in' ? 0.6 : 1 / 0.6) } },
+      icon(dir === 'in' ? 'plus' : 'minus'),
     );
   const zoomRow = h('div', { class: 'menu-row menu-zoom', attrs: { role: 'group' }, aria: { label: 'Zoom' } }, [zoomBtn('out'), h('span', { class: 'menu-item-label' }, 'Zoom'), zoomBtn('in')]);
   const viewMenu = createMapMenu({
     id: 'view',
     label: 'View',
+    variant: 'card',
     testId: 'view-menu',
     ui,
     current: { icon: VIEW_MODES[0]!.icon, label: VIEW_MODES[0]!.label },
@@ -192,55 +217,92 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     ],
   });
   const compassBtn = viewMenu.items.get('compass')!;
+
+  // The right-hand column of round white buttons (Maps): Layers, View and, while the map is turned, the Compass.
+  const layersFab = h(
+    'button',
+    { type: 'button', class: 'fab fab-sm layers-fab', dataset: { testid: 'layers-fab' }, attrs: { 'aria-pressed': 'false' }, aria: { label: 'Layers' }, on: { click: () => selectTool('layers') } },
+    icon('layers'),
+  );
+  const fabNeedle = h('span', { class: 'compass-needle', aria: { hidden: true } }, [h('span', { class: 'compass-n' }, 'N'), needleSvg()]);
+  const compassFab = h('button', { type: 'button', class: 'fab fab-sm compass-fab', dataset: { testid: 'compass-fab' }, aria: { label: 'Turn the map north up' }, on: { click: () => view.setHeading(0) } }, fabNeedle);
+  const fabColumn = h('div', { class: 'map-fabs' }, [layersFab, viewMenu.el, compassFab]);
+
   let shownHeading = NaN;
   const syncCompass = (): void => {
     const hd = Math.round(view.heading);
     if (hd === shownHeading) return;
     shownHeading = hd;
     needle.style.transform = `rotate(${-hd}deg)`;
-    compassBtn.setAttribute('aria-label', `Map faces ${hd}°. Turn the map north up`);
+    fabNeedle.style.transform = `rotate(${-hd}deg)`;
+    const deg = ((hd % 360) + 360) % 360;
+    const label = `Map faces ${deg}°. Turn the map north up`;
+    compassBtn.setAttribute('aria-label', label);
+    compassFab.setAttribute('aria-label', label);
+    // Like Google Maps, the compass button shows only while the map is turned away from north (North up stays in the
+    // View menu); it is the user's own turn of the map that brings it, never the simulation.
+    const northUp = deg <= 2 || deg >= 358;
+    if (compassFab.hidden !== northUp) {
+      compassFab.hidden = northUp;
+      scheduleInsets();
+    }
   };
-  // The compass needle follows the live heading, but only while the view menu is open (nothing to update otherwise).
-  const compassTimer = setInterval(() => viewMenu.isOpen() && syncCompass(), 200);
-  unsubs.push(
-    () => clearInterval(compassTimer),
-    ui.subscribe(() => {
-      shownHeading = NaN;
-      if (viewMenu.isOpen()) syncCompass();
-    }, ['menu']),
-  );
+  // The needles follow the live heading (a cheap read; the DOM only changes when the rounded heading does).
+  const compassTimer = setInterval(syncCompass, 200);
+  unsubs.push(() => clearInterval(compassTimer));
 
   const simNotice = services.sources.sim === 'mock' || services.sources.scene === 'mock' ? h('p', { class: 'mock-banner' }, services.sources.sim === 'mock' ? 'Demo engine' : '2-D map') : null;
 
   // Simulation failure: the only thing that ever appears uninvited, as a thin strip under the top bar (never a modal).
   const errorChip = h('div', { class: 'error-chip', hidden: true, attrs: { role: 'alert' }, dataset: { testid: 'error-chip' } }, [
-    icon('warning', { size: 18 }),
+    icon('warning'),
     h('span', { class: 'error-chip-text' }, 'Simulation problem'),
     h(
       'button',
-      { type: 'button', class: 'error-chip-btn', dataset: { testid: 'error-details' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half', panelOpen: false, menu: null }) } },
+      { type: 'button', class: 'btn btn-text btn-sm error-chip-btn', dataset: { testid: 'error-details' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half', panelOpen: false, menu: null }) } },
       'Details',
     ),
   ]);
 
+  // The attribution line (like Maps'): the credits of what is on screen; a tap opens the Data sets screen.
+  const creditText = h('span', { class: 'map-credit-text' });
+  const credit = ctx.openDatasets
+    ? h('button', { type: 'button', class: 'map-credit tap', dataset: { testid: 'map-credit' }, on: { click: () => ctx.openDatasets?.() } }, creditText)
+    : h('p', { class: 'map-credit', dataset: { testid: 'map-credit' } }, creditText);
+  let creditKey = '';
+  const renderCredit = (): void => {
+    // A scenario without an inventory (an older build, the demo engine) still credits its aerial photo.
+    const c = mapCredits(scenario.datasets, layers.get(), { hasImagery: !!o.imagery, hasContext: !!scenario.context, ...(o.imagery?.attribution ? { imageryAttribution: o.imagery.attribution } : {}) });
+    const txt = c.text;
+    if (txt === creditKey) return;
+    creditKey = txt;
+    credit.hidden = !txt;
+    text(creditText, txt);
+    credit.setAttribute('aria-label', ctx.openDatasets ? `Map data: ${txt}. Open the data sets.` : `Map data: ${txt}`);
+    if (ctx.openDatasets) credit.setAttribute('title', txt);
+    scheduleInsets();
+  };
+
   const mapLegend = createMapLegend(ctx, () => selectTool('layers'));
-  root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, viewMenu.el, toolsMenu.el, mapLegend.el, panelHost, sheet.el, scrubber.el);
+  root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, credit, panelHost, sheet.el, scrubber.el);
   unsubs.push(() => mapLegend.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────
-  // The top bar, the error chip, the scrubber, the dock and an open tool panel cover parts of the full-screen 3-D view.
+  // The top bar, the error chip, the timeline, the dock and an open tool panel cover parts of the full-screen 3-D view.
   // Tell the view (so fly-to targets and the orbit pivot land in the visible part) and centre the crosshair there too,
-  // so "Mark at crosshair" marks the point the view centres on. The same measurements place the two round menus just
-  // above whatever covers the bottom, fit their lists to the room, and keep the legend between them.
+  // so "Mark at crosshair" marks the point the view centres on. The same measurements place the Tools button just above
+  // whatever covers the bottom, fit the menus' lists to the room, and keep the legend and the credit line beside it.
+  /** Height of the column of round buttons (px), remembered for when it is hidden. */
+  let colH = 136;
   const layoutInsets = (): void => {
     const host = sceneHost.getBoundingClientRect();
     if (!host.width || !host.height) return;
     let top = Math.max(0, topBar.el.getBoundingClientRect().bottom - host.top);
-    errorChip.style.top = `${Math.round(top)}px`;
+    errorChip.style.top = `${Math.round(top + 4)}px`;
     if (!errorChip.hidden) top = Math.max(top, errorChip.getBoundingClientRect().bottom - host.top);
     const strip = Math.max(0, host.bottom - scrubber.el.getBoundingClientRect().top);
     let bottom = strip;
-    /** Bottom cover that spans the screen (the round menus sit above it); side columns and short strips do not raise them. */
+    /** Bottom cover that spans the screen (the Tools button sits above it); side columns and short strips do not raise it. */
     let band = strip;
     let left = 0;
     let right = 0;
@@ -268,24 +330,50 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const cy = host.height / 2 + Math.max(-host.height / 3, Math.min(host.height / 3, (top - bottom) / 2));
     crosshair.style.left = `${Math.round(cx)}px`;
     crosshair.style.top = `${Math.round(cy)}px`;
-    // Round menus: just above the full-width cover; their lists fit the room above and beside them.
     root.style.setProperty('--menu-bottom', `${Math.round(band + 12)}px`);
     root.style.setProperty('--map-top', `${Math.round(top)}px`);
-    let colL = left;
-    let colR = host.width - right;
-    // In a side-column layout (landscape) the closed dock is a slim tab strip beside the round buttons: an open list must
-    // clear it instead of covering its tabs.
+
+    // The column of round buttons steps aside when a tool panel or a tall sheet reaches up to it (portrait), and the Tools
+    // button gives way when a sheet would push it into the column. (The column's own height is remembered while hidden.)
+    if (fabColumn.offsetHeight) colH = fabColumn.offsetHeight;
+    const colTop = top + 8;
+    const colBottom = colTop + colH;
+    const coverTop = host.height - bottom;
+    const colSide = fabColumn.getBoundingClientRect();
+    const colX = colSide.width ? colSide.left + colSide.width / 2 - host.left : settingsStore.get().handedness === 'left' ? 32 : host.width - 32;
+    const colCovered = coverTop < colBottom + 8 && (colX > left && colX < host.width - right);
+    root.classList.toggle('fabs-crowded', colCovered);
+    const toolsR = toolsMenu.fab.getBoundingClientRect();
+    const toolsTop = host.height - (band + 12) - (toolsR.height || 48);
+    const crowded = !colCovered && toolsTop < colBottom + 8 && Math.abs(toolsR.left + toolsR.width / 2 - host.left - colX) < host.width / 3;
+    root.classList.toggle('fab-crowded', crowded);
+
+    // In a side-column layout (landscape) the closed dock is a slim tab strip at the bottom: a list must not cover its tabs.
     const dockR = sheet.el.hidden ? null : sheet.el.getBoundingClientRect();
     const slimDock = !!dockR && dockR.width > 0 && dockR.width < host.width * 0.6 && dockR.height < host.height * 0.4 ? dockR : null;
-    for (const m of [viewMenu, toolsMenu]) {
+    const menus: { m: typeof toolsMenu; upward: boolean }[] = [
+      { m: toolsMenu, upward: true },
+      { m: viewMenu, upward: false },
+    ];
+    // The speed dial rises along the screen edge where the column of round buttons is: where the two would meet (a short
+    // screen), the column steps aside while the dial is open; otherwise both stay (the View button still opens its card).
+    const dialMeetsColumn = (): boolean => {
+      if (!toolsMenu.isOpen()) return false;
+      const lr = toolsMenu.list.getBoundingClientRect();
+      const cr = fabColumn.getBoundingClientRect();
+      if (!lr.width || !cr.width) return root.classList.contains('dial-over-fabs');
+      return lr.top < cr.bottom + 8 && lr.right > cr.left - 8 && lr.left < cr.right + 8;
+    };
+    for (const { m, upward } of menus) {
       const r = m.fab.getBoundingClientRect();
       if (!r.width || getComputedStyle(m.el).display === 'none') continue;
       const onLeft = r.left + r.width / 2 < host.left + host.width / 2;
-      const availH = r.bottom - host.top - top - 4;
-      const availW = onLeft ? host.right - r.right - 16 : r.left - host.left - 16;
+      // The speed dial rises above its button; the view card hangs beside its button, down to the bottom cover.
+      const availH = upward ? r.top - host.top - top - 12 : host.bottom - bottom - r.top - 12;
+      const availW = onLeft ? host.right - (upward ? r.left : r.right) - 16 : (upward ? r.right : r.left) - host.left - 16;
       m.fit(availH, availW);
       m.list.style.bottom = '';
-      if (slimDock && m.isOpen()) {
+      if (upward && slimDock && m.isOpen()) {
         const lr = m.list.getBoundingClientRect();
         if (lr.width > 0 && lr.right > slimDock.left && lr.left < slimDock.right && lr.bottom > slimDock.top) {
           const lift = Math.round(lr.bottom - slimDock.top + 6);
@@ -293,27 +381,49 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
           m.fit(availH - lift, availW);
         }
       }
-      if (onLeft) colL = Math.max(colL, r.right - host.left);
-      else colR = Math.min(colR, r.left - host.left);
     }
-    // The overlay legend sits at the bottom of the visible map, between the two round buttons.
+
+    root.classList.toggle('dial-over-fabs', dialMeetsColumn());
+
+    // The attribution line and the legend: at the bottom of the visible map, on the side away from the Tools button.
+    const toolsVisible = toolsR.width > 0 && getComputedStyle(toolsMenu.el).display !== 'none' && !crowded;
+    const toolsOnLeft = toolsR.left + toolsR.width / 2 < host.left + host.width / 2;
+    let colL = left;
+    let colR = host.width - right;
+    if (toolsVisible) {
+      if (toolsOnLeft) colL = Math.max(colL, toolsR.right - host.left);
+      else colR = Math.min(colR, toolsR.left - host.left);
+    }
+    if (slimDock) {
+      // The closed dock of a side-column layout: keep beside it, or above it if there is no room beside it.
+      const dl = slimDock.left - host.left;
+      const dr = slimDock.right - host.left;
+      if (dl - colL > colR - dr) colR = Math.min(colR, dl);
+      else colL = Math.max(colL, dr);
+    }
+    const base = slimDock ? strip : bottom;
+    const cs = credit.style;
+    cs.bottom = `${Math.round(base + 12)}px`;
+    cs.left = `${Math.round(colL + 12)}px`;
+    cs.maxWidth = `${Math.max(0, Math.round(colR - colL - 24))}px`;
+    const creditH = credit.hidden ? 0 : credit.getBoundingClientRect().height;
     const ls = mapLegend.el.style;
     ls.top = 'auto';
-    ls.bottom = `${Math.round(bottom + 10)}px`;
-    ls.left = `${Math.round(colL + 8)}px`;
-    ls.right = `${Math.round(host.width - colR + 8)}px`;
+    ls.bottom = `${Math.round(base + 12 + (creditH ? creditH + 8 : 0))}px`;
+    ls.left = `${Math.round(colL + 12)}px`;
+    ls.maxWidth = `${Math.max(0, Math.round(colR - colL - 24))}px`;
   };
   let insetRaf = 0;
   let insetTimer: ReturnType<typeof setTimeout> | undefined;
-  const scheduleInsets = (): void => {
+  function scheduleInsets(): void {
     cancelAnimationFrame(insetRaf);
     insetRaf = requestAnimationFrame(layoutInsets);
     // Once more after the panel / dock animations (0.2–0.25 s) have settled.
     clearTimeout(insetTimer);
     insetTimer = setTimeout(layoutInsets, 320);
-  };
+  }
   const insetRo = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleInsets) : null;
-  for (const e of [root, panelHost, sheet.el, topBar.el, scrubber.el, errorChip]) insetRo?.observe(e);
+  for (const e of [root, panelHost, sheet.el, topBar.el, scrubber.el, errorChip, credit, mapLegend.el]) insetRo?.observe(e);
   unsubs.push(
     () => {
       insetRo?.disconnect();
@@ -322,8 +432,10 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     },
     ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool', 'menu']),
     session.state.subscribe(scheduleInsets, ['error']),
-    // Portrait: a menu list rises above an open dock. Landscape: the dock is a panel beside the round buttons, right where
-    // the lists open, so opening a menu puts the dock away (one tap on a tab brings it back).
+    layers.subscribe(renderCredit, ['imagery', 'vegetation', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'overlay', 'soloHeat']),
+    // Portrait: a menu list rises above an open dock. Side columns (landscape): an open sheet fills the column where the
+    // wide lists (the view card's columns, the dial's second column) spread, so opening a menu puts the sheet away (one
+    // tap on a tab brings it back).
     ui.subscribe((s) => {
       if (!s.menu || s.sheet === 'closed') return;
       const host = sceneHost.getBoundingClientRect();
@@ -331,6 +443,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       if (host.width && dockW > 0 && dockW < host.width * 0.6) ui.set({ sheet: 'closed' });
     }, ['menu']),
   );
+  renderCredit();
+  syncCompass();
   scheduleInsets();
 
   /** Fly to the fire, far enough back to see the whole burnt area (1.5–12 km). */
@@ -403,6 +517,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     toolsMenu.setPressed(s.tool);
     const t = TOOLS.find((x) => x.id === s.tool)!;
     toolsMenu.setCurrent(t.icon, t.label);
+    layersFab.setAttribute('aria-pressed', String(s.tool === 'layers' && s.panelOpen));
     root.dataset.tool = s.tool;
     root.classList.toggle('panel-open', s.panelOpen);
     if (key === panelKey) return;
@@ -436,7 +551,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   unsubs.push(ui.subscribe(renderModes, ['drawing', 'tool', 'panelOpen', 'fireInput', 'pending', 'viewMode', 'why', 'wind', 'fuelPreset']));
   // A round menu's list opens over the strip of map the legend occupies: the legend steps aside while a menu is open.
   const renderMenuOpen = (): void => {
-    root.classList.toggle('menu-open', ui.get().menu !== null);
+    const m = ui.get().menu;
+    root.classList.toggle('menu-open', m !== null);
+    if (m !== 'tools') root.classList.remove('dial-over-fabs');
   };
   unsubs.push(ui.subscribe(renderMenuOpen, ['menu']));
   renderMenuOpen();
@@ -694,11 +811,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         e.preventDefault();
         session.toggle();
       } else if (e.key === 'Escape') {
-        // One layer per press: an open menu, else the tool panel, else the dock.
-        const u = ui.get();
-        if (u.menu) ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
-        else if (u.panelOpen || u.pending) closePanel();
-        else if (u.sheet !== 'closed') ui.set({ sheet: 'closed' });
+        // One layer per press, top-most first (the top-bar sheets handle their own Escape before this).
+        closeTopLayer();
       }
     }),
   );
@@ -725,6 +839,17 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   renderPanel();
   renderModes();
 
+  /** Close the top-most open layer (Back / Escape); false when nothing was open. */
+  function closeTopLayer(): boolean {
+    const u = ui.get();
+    const layer = backLayer({ popover: topBar.popovers.openId(), menu: u.menu, panelOpen: u.panelOpen, pending: !!u.pending, sheet: u.sheet });
+    if (layer === 'popover') topBar.popovers.closeAll(false);
+    else if (layer === 'menu') ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
+    else if (layer === 'panel') closePanel();
+    else if (layer === 'sheet') ui.set({ sheet: 'closed' });
+    return layer !== null;
+  }
+
   let destroyed = false;
   const destroy = (): void => {
     if (destroyed) return;
@@ -747,7 +872,20 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     throw e;
   }
 
-  return { el: root, session, view, destroy };
+  function showLayer(t: { overlay?: OverlayKind; sceneKey?: keyof LayerState }): void {
+    let patch: Partial<LayerState> = {};
+    if (t.overlay) patch.overlay = t.overlay;
+    if (t.sceneKey && (SCENE_LAYER_KEYS as readonly string[]).includes(t.sceneKey)) patch = { ...patch, ...sceneLayerPatch(layers.get(), t.sceneKey as SceneLayerKey, true) };
+    if (!Object.keys(patch).length) return;
+    layers.set(patch);
+    view.setLayers(patch);
+    if (ui.get().panelOpen || ui.get().pending) closePanel();
+    ui.set({ sheet: 'closed', menu: null });
+    const name = t.overlay ? (layerForOverlay(t.overlay)?.title ?? t.overlay) : String(t.sceneKey);
+    o.announce(`Showing ${name} on the map.`);
+  }
+
+  return { el: root, session, view, back: closeTopLayer, showLayer, destroy };
 }
 
 /** A screen-space annotation (pending mark, stroke, "why" point), as plain data so changes can be detected. */

@@ -1,8 +1,11 @@
 /**
- * A collapsed-by-default floating menu over the map: one round 56 px button (showing the current choice) that expands
- * to a labelled list of >= 48 px items beside it. The open state lives in the UI store (`menu`), so at most one menu is
- * open and other components (map taps, Escape, tool panels) can collapse it. Disclosure pattern: the button carries
- * aria-expanded / aria-controls, arrow keys move between items, Escape and Tab-away collapse and return focus.
+ * A collapsed-by-default floating menu over the map, in two Google-Maps flavours:
+ *  - 'dial': an extended FAB ("Tools") whose speed dial opens labelled mini-FABs stacked above it;
+ *  - 'card': a round white mini-FAB (the View button, showing the current camera mode) whose list opens as a small
+ *    white card beside it.
+ * The open state lives in the UI store (`menu`), so at most one menu is open and other components (map taps, Escape,
+ * Back, tool panels) can collapse it. Disclosure pattern: the button carries aria-expanded / aria-controls, arrow keys
+ * move between items, Escape and Tab-away collapse and return focus.
  */
 import { h, setChildren, uniqueId } from '../../dom';
 import { icon, type IconName } from '../../icons';
@@ -37,39 +40,49 @@ export interface MapMenu {
   fab: HTMLButtonElement;
   list: HTMLElement;
   items: ReadonlyMap<string, HTMLElement>;
-  /** Show the current choice on the round button. */
+  /** Show the current choice on the button. */
   setCurrent(name: IconName, label: string): void;
   /** Mark the chosen item (aria-pressed). */
   setPressed(id: string | null): void;
-  /** Re-fit the list to the room (px) beside the button. */
+  /** Re-fit the list to the room (px) beside or above the button. */
   fit(availH: number, availW: number): void;
   isOpen(): boolean;
   destroy(): void;
 }
 
+/** Row height, width and gap of each flavour's list (px): the layout fit and the CSS use the same numbers. */
+export const MENU_METRICS = {
+  dial: { itemH: 44, itemW: 176, gap: 8 },
+  card: { itemH: 48, itemW: 196, gap: 0 },
+} as const;
+
 export function createMapMenu(o: {
   id: MenuId;
-  /** Accessible name of the round button, e.g. "Tools". */
+  /** Accessible name of the button, e.g. "Tools". */
   label: string;
   testId: string;
   ui: Store<UiState>;
   entries: (MenuItem | MenuRow)[];
   current: { icon: IconName; label: string };
+  variant: 'dial' | 'card';
+  /** Visible text of the extended FAB ('dial'). */
+  text?: string;
   /** Called when the list expands or collapses. */
   onOpenChange?: (open: boolean) => void;
 }): MapMenu {
   const { ui } = o;
+  const dial = o.variant === 'dial';
   const listId = uniqueId(`menu-${o.id}`);
   const offs: (() => void)[] = [];
   const items = new Map<string, HTMLElement>();
+  let currentIcon: IconName = o.current.icon;
 
-  const fabIcon = h('span', { class: 'fab-icon', aria: { hidden: true } }, icon(o.current.icon, { size: 28 }));
-  const caret = h('span', { class: 'fab-caret', aria: { hidden: true } }, icon('chevronUp', { size: 14 }));
+  const fabIcon = h('span', { class: 'fab-icon', aria: { hidden: true } }, icon(o.current.icon));
   const fab = h(
     'button',
     {
       type: 'button',
-      class: 'menu-fab',
+      class: dial ? 'fab fab-ext menu-fab tools-fab' : 'fab fab-sm menu-fab view-fab',
       dataset: { testid: o.testId },
       attrs: { 'aria-expanded': 'false', 'aria-controls': listId },
       aria: { label: `${o.label}: ${o.current.label}` },
@@ -82,7 +95,7 @@ export function createMapMenu(o: {
         },
       },
     },
-    [fabIcon, caret],
+    dial ? [fabIcon, h('span', { class: 'fab-label' }, o.text ?? o.label)] : fabIcon,
   );
 
   const rendered = o.entries.map((e) => {
@@ -90,11 +103,12 @@ export function createMapMenu(o: {
       items.set(e.id, e.el);
       return e.el;
     }
+    const glyph = e.iconEl ?? (e.icon ? icon(e.icon) : null);
     const b = h(
       'button',
       {
         type: 'button',
-        class: ['menu-item', e.class],
+        class: [dial ? 'dial-item' : 'menu-item', e.class],
         dataset: { ...(e.data ?? {}), ...(e.testId ? { testid: e.testId } : {}) },
         attrs: { 'aria-pressed': e.toggle ? 'false' : null },
         on: {
@@ -105,14 +119,16 @@ export function createMapMenu(o: {
           },
         },
       },
-      [h('span', { class: 'menu-item-icon', aria: { hidden: true } }, e.iconEl ?? (e.icon ? icon(e.icon, { size: 24 }) : null)), h('span', { class: 'menu-item-label' }, e.label)],
+      dial
+        ? [h('span', { class: 'dial-label' }, [e.toggle ? icon('check', { class: 'dial-check' }) : null, h('span', null, e.label)]), h('span', { class: 'dial-fab', aria: { hidden: true } }, glyph)]
+        : [h('span', { class: 'menu-item-icon', aria: { hidden: true } }, glyph), h('span', { class: 'menu-item-label' }, e.label), e.toggle ? icon('check', { class: 'menu-check' }) : null],
     );
     items.set(e.id, b);
     return b;
   });
-  const list = h('div', { class: 'menu-list', id: listId, hidden: true, attrs: { role: 'group' }, aria: { label: o.label } }, rendered);
+  const list = h('div', { class: ['menu-list', dial ? 'dial-list' : 'menu-card'], id: listId, hidden: true, attrs: { role: 'group' }, aria: { label: o.label } }, rendered);
   // The button comes first in tab order (Tab from it goes into the list); the list is positioned beside it with CSS.
-  const el = h('div', { class: 'map-menu', dataset: { menu: o.id } }, [fab, list]);
+  const el = h('div', { class: ['map-menu', dial ? 'map-menu-dial' : 'map-menu-card'], dataset: { menu: o.id } }, [fab, list]);
 
   const focusable = (): HTMLElement[] => [...list.querySelectorAll<HTMLElement>('button:not([disabled])')].filter((b) => !b.closest('[hidden]'));
   function focusItem(i: number): void {
@@ -150,25 +166,36 @@ export function createMapMenu(o: {
     list.hidden = !open;
     fab.setAttribute('aria-expanded', String(open));
     el.classList.toggle('is-open', open);
+    // An open speed dial shows a close cross on its button (the Material speed-dial pattern); the view button keeps its mode.
+    if (dial) setChildren(fabIcon, icon(open ? 'close' : currentIcon));
     o.onOpenChange?.(open);
   };
   offs.push(ui.subscribe(render, ['menu']));
   render();
 
+  const m = MENU_METRICS[o.variant];
   return {
     el,
     fab,
     list,
     items,
     setCurrent(name, label) {
-      setChildren(fabIcon, icon(name, { size: 28 }));
+      currentIcon = name;
+      if (!(dial && lastOpen)) setChildren(fabIcon, icon(name));
       fab.setAttribute('aria-label', `${o.label}: ${label}`);
     },
     setPressed(id) {
       for (const [k, b] of items) if (b.hasAttribute('aria-pressed')) b.setAttribute('aria-pressed', String(k === id));
     },
     fit(availH, availW) {
-      const f = fitMenu(items.size, { availH, availW });
+      // The rows grow with the text size: measure them while the list is showing (the metrics are the minimum).
+      let itemH: number = m.itemH;
+      let itemW: number = m.itemW;
+      if (!list.hidden) for (const b of items.values()) {
+        itemH = Math.max(itemH, b.offsetHeight);
+        itemW = Math.max(itemW, b.offsetWidth);
+      }
+      const f = fitMenu(items.size, { availH, availW, itemH, itemW, gap: m.gap });
       list.style.setProperty('--rows', String(f.rows));
       list.style.setProperty('--cols', String(f.cols));
       list.style.maxHeight = f.scroll ? `${Math.max(96, Math.floor(availH))}px` : '';

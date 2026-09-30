@@ -33,7 +33,7 @@ import { MESSAGES } from './messages';
 import { workingMemoryForScenario } from './memoryModel';
 import { builtFireCell, SCENARIO_PARAMS } from './params';
 import { replayInfo } from './replays';
-import type { BuildProgress, ScenarioRequest } from './request';
+import type { BuildDatasetProgress, BuildProgress, ScenarioRequest } from './request';
 import { elevationAtLocal, fireTerrainFromHiRes, loadHiResDem, medianOf } from './terrain';
 import { applyDrought, resolveDrought, resolveWeather, type WeatherContext } from './weatherSources';
 
@@ -132,7 +132,7 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
   };
   const report = (step: BuildProgress['step'], fraction: number, message: string): void => {
     try {
-      onProgress({ step, fraction: clamp(fraction, 0, 1), message, warnings: [...warnings] });
+      onProgress({ step, fraction: clamp(fraction, 0, 1), message, warnings: [...warnings], datasets: datasetProgress(ledger) });
     } catch {
       /* a failing progress callback must not break the build */
     }
@@ -405,3 +405,11 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
 
 /** Warnings a built scenario carries (all build warnings are copied onto `weather.warnings`). */
 export const scenarioWarnings = (s: ScenarioData): string[] => s.weather.warnings ?? [];
+
+/** The ledger's per-data-set totals so far, for the progress events (the Building screen lists the data sets as they arrive). */
+function datasetProgress(ledger: DatasetLedger): BuildDatasetProgress[] {
+  return ledger.tags().map((id) => {
+    const t = ledger.totals(id);
+    return { id, requests: t.requests, failures: t.failures, bytes: t.bytes, networkBytes: t.networkBytes, networkUnmeasuredBytes: t.networkUnmeasuredBytes, cacheBytes: t.cacheBytes, packBytes: t.packBytes, bundledBytes: t.bundledBytes };
+  });
+}

@@ -46,8 +46,10 @@ ${TONEMAP}
 ${FOG}
 ${GRID}
 uniform float uVex;
+// Linear albedo of the plain ground (≈ sRGB #aaa): light enough that every heat-map colour and the relief shading read on it.
+const float PLAIN_GROUND = 0.40;
 uniform sampler2D uAlbedo;   uniform vec4 uAlbedoXf;
-uniform sampler2D uImagery;  uniform vec4 uImageryXf; uniform float uUseImagery; uniform float uImageryFlipV;
+uniform sampler2D uImagery;  uniform vec4 uImageryXf; uniform float uUseImagery; uniform float uImageryFlipV; uniform float uPlainBase;
 uniform sampler2D uGrad;     uniform vec4 uGradXf;
 uniform sampler2D uShade;    uniform vec4 uShadeXf;
 uniform sampler2D uArrival;  uniform sampler2D uFireAux; uniform vec4 uFireXf; uniform float uHasFire;
@@ -170,6 +172,9 @@ void main() {
   // Sandstone strata on cliffs.
   float cliff = rock * clamp(slope - 0.6, 0.0, 1.0);
   if (cliff > 0.0) base *= mix(1.0, 0.9 + strataV, cliff);
+  // Plain ground (map type 'Plain', and under a heat map shown on its own): neutral light-grey relief, so the heat map's
+  // colours (and its no-data cells) read against the shape of the land only, never against the photo or the fuel colours.
+  if (uPlainBase > 0.5) base = vec3(PLAIN_GROUND) * (1.0 + (lod > 0.0 ? 0.05 * (fine - 0.5) * lod : 0.0)) * mix(1.0, 0.92 + strataV * 0.5, cliff);
   vec3 img = base;
   if (uUseImagery > 0.5) {
     vec2 iuv = fsGridUv(p, uImageryXf);
@@ -449,6 +454,7 @@ export class TerrainLayer {
       uImageryXf: { value: new THREE.Vector4(0, 0, 1, 1) },
       uUseImagery: { value: 0 },
       uImageryFlipV: { value: 0 },
+      uPlainBase: { value: 0 },
       uGrad: { value: dG },
       uGradXf: { value: new THREE.Vector4(...gridTransform(terrain.grid)) },
       uShade: { value: dA },
@@ -591,6 +597,23 @@ export class TerrainLayer {
 
   setUseImagery(on: boolean): void {
     this.uniforms.uUseImagery!.value = on && this.imageryTex ? 1 : 0;
+  }
+
+  /** True while the photo is drawn (set with {@link setUseImagery}; false when there is none). */
+  get usingImagery(): boolean {
+    return this.uniforms.uUseImagery!.value === 1;
+  }
+
+  /**
+   * Neutral grey relief instead of the vegetation colours where the photo is not drawn (map type 'Plain', and the ground
+   * under a heat map shown on its own, where the no-data cells then show plain terrain). One uniform: costs nothing.
+   */
+  setPlainBase(on: boolean): void {
+    this.uniforms.uPlainBase!.value = on ? 1 : 0;
+  }
+
+  get plainBase(): boolean {
+    return this.uniforms.uPlainBase!.value === 1;
   }
 
   /** Hillshade (R), sky-view factor (G) and cast shadow (B), each 0–1 on the render grid. */

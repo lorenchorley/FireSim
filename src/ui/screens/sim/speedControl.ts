@@ -1,7 +1,7 @@
 /**
- * Playback speed: the button shows the current speed; its popover (collapsed until asked for) has presets from 0.25× to
- * 1 h of fire per second and "as fast as possible", a logarithmic slider for any speed in between, and a custom field
- * (× or minutes per second). The chosen speed is remembered in the settings.
+ * Playback speed: a chip in the top bar shows the current speed; it opens a Maps-style bottom sheet (collapsed until
+ * asked for) with presets from 0.25× to 1 h of fire per second and "as fast as possible", a logarithmic slider for any
+ * speed in between, and a custom field (× or minutes per second). The chosen speed is remembered in the settings.
  */
 import { h, text } from '../../dom';
 import { icon } from '../../icons';
@@ -9,8 +9,8 @@ import { rangeFill } from '../../primitives';
 import { formatPlaybackSpeed, formatSpeedHint, formatSpeedMultiple, formatSpeedRate } from '../../format';
 import { speedFromStored, speedToStored } from '../../settings';
 import type { SimContext } from './context';
-import { customFieldValue, type CustomUnit, parseCustomSpeed, SLIDER_STEPS, SPEED_PRESETS, sliderToSpeed, speedToSlider } from './speedModel';
-import { frameThrottle } from './transportKit';
+import { customFieldValue, type CustomUnit, parseCustomSpeed, SLIDER_STEPS, SPEED_MAX, SPEED_MIN, SPEED_PRESETS, sliderToSpeed, speedToSlider } from './speedModel';
+import { frameThrottle, transportSheet } from './transportKit';
 
 export interface SpeedControl {
   button: HTMLButtonElement;
@@ -18,18 +18,18 @@ export interface SpeedControl {
   destroy(): void;
 }
 
-export function createSpeedControl(ctx: SimContext): SpeedControl {
+export function createSpeedControl(ctx: SimContext, opts: { close(): void } = { close: () => undefined }): SpeedControl {
   const { session } = ctx;
-  const label = h('span', { class: 'tb-speed-label' }, '60×');
+  const label = h('span', { class: 'tb-speed-label' }, formatPlaybackSpeed(session.state.get().speed));
   const button = h(
     'button',
     {
       type: 'button',
-      class: 'tb-btn tb-speed',
+      class: 'chip tb-speed',
       dataset: { testid: 'speed' },
       aria: { haspopup: 'dialog', expanded: false, label: 'Playback speed' },
     },
-    [icon('speed', { size: 18 }), label],
+    [icon('speed'), label],
   );
 
   const choose = (speed: number): void => {
@@ -50,8 +50,8 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
         on: { click: () => choose(sp) },
       },
       sp === Infinity
-        ? [h('span', { class: 'tp-chip-main' }, 'Max'), h('span', { class: 'tp-chip-sub' }, 'As fast as possible')]
-        : [h('span', { class: 'tp-chip-main' }, formatSpeedMultiple(sp)), h('span', { class: 'tp-chip-sub' }, formatSpeedRate(sp))],
+        ? [icon('check', { class: 'tp-check' }), h('span', { class: 'tp-chip-main' }, 'Max'), h('span', { class: 'tp-chip-sub' }, 'As fast as possible')]
+        : [icon('check', { class: 'tp-check' }), h('span', { class: 'tp-chip-main' }, formatSpeedMultiple(sp)), h('span', { class: 'tp-chip-sub' }, formatSpeedRate(sp))],
     );
   const presets = [...SPEED_PRESETS, Infinity].map(presetBtn);
 
@@ -86,7 +86,7 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
   let unit: CustomUnit = 'x';
   const customInput = h('input', {
     type: 'number',
-    class: 'tp-input',
+    class: 'input tp-input',
     inputMode: 'decimal',
     step: 'any',
     min: '0',
@@ -101,10 +101,10 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
       },
     },
   });
-  const customMsg = h('p', { class: 'tp-msg', hidden: true, attrs: { role: 'status' } });
-  const unitBtn = (u: CustomUnit, name: string): HTMLButtonElement =>
-    h('button', { type: 'button', class: 'tp-seg', dataset: { unit: u, testid: `speed-unit-${u}` }, aria: { pressed: u === unit }, on: { click: () => setUnit(u) } }, name);
-  const unitBtns = [unitBtn('x', '×'), unitBtn('minps', 'min/s')];
+  const customMsg = h('p', { class: 'field-error tp-msg', hidden: true, attrs: { role: 'status' } });
+  const unitBtn = (u: CustomUnit, name: string, spoken: string): HTMLButtonElement =>
+    h('button', { type: 'button', class: 'tp-seg', dataset: { unit: u, testid: `speed-unit-${u}` }, aria: { pressed: u === unit, label: spoken }, on: { click: () => setUnit(u) } }, [icon('check', { class: 'tp-check' }), name]);
+  const unitBtns = [unitBtn('x', '×', 'times real time'), unitBtn('minps', 'min/s', 'minutes of fire per second')];
   function setUnit(u: CustomUnit): void {
     unit = u;
     for (const b of unitBtns) b.setAttribute('aria-pressed', String(b.dataset.unit === u));
@@ -126,36 +126,31 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
   }
 
   const hint = h('p', { class: 'tp-hint', attrs: { role: 'status' }, dataset: { testid: 'speed-hint' } });
-  const panel = h(
-    'div',
-    {
-      class: 'tb-pop tb-pop-right tp tp-2col',
-      dataset: { testid: 'speed-popover' },
-      attrs: { role: 'dialog', tabindex: '-1' },
-      aria: { label: 'Playback speed' },
-      hidden: true,
-    },
-    [
-      h('div', { class: 'tp-col' }, [h('h2', { class: 'tp-title' }, 'Playback speed'), h('div', { class: 'tp-grid tp-speeds' }, presets)]),
+  const panel = transportSheet({
+    title: 'Playback speed',
+    testId: 'speed-popover',
+    class: 'tp tp-2col',
+    onClose: opts.close,
+    body: [
+      h('div', { class: 'tp-col' }, [hint, h('div', { class: 'tp-grid tp-speeds', attrs: { role: 'group' }, aria: { label: 'Speed presets' } }, presets)]),
       h('div', { class: 'tp-col' }, [
-        hint,
         h('div', { class: 'tp-block' }, [
           h('div', { class: 'tp-row' }, [h('label', { class: 'tp-label', htmlFor: sliderId }, 'Any speed'), sliderOut]),
           slider,
-          h('div', { class: 'tp-ends', aria: { hidden: true } }, [h('span', null, '0.25×'), h('span', null, '1 h/s')]),
+          h('div', { class: 'tp-ends', aria: { hidden: true } }, [h('span', null, formatPlaybackSpeed(SPEED_MIN)), h('span', null, formatPlaybackSpeed(SPEED_MAX))]),
         ]),
         h('div', { class: 'tp-block' }, [
           h('div', { class: 'tp-label' }, 'Custom'),
           h('div', { class: 'tp-custom' }, [
             customInput,
             h('div', { class: 'tp-segs', attrs: { role: 'group' }, aria: { label: 'Unit' } }, unitBtns),
-            h('button', { type: 'button', class: 'tp-go', dataset: { testid: 'speed-custom-set' }, on: { click: applyCustom } }, 'Set'),
+            h('button', { type: 'button', class: 'btn btn-tonal tp-go', dataset: { testid: 'speed-custom-set' }, on: { click: applyCustom } }, 'Set'),
           ]),
           customMsg,
         ]),
       ]),
     ],
-  );
+  });
 
   let key = Number.NaN;
   function sync(): void {
@@ -164,7 +159,7 @@ export function createSpeedControl(ctx: SimContext): SpeedControl {
     key = sp;
     text(label, formatPlaybackSpeed(sp));
     button.setAttribute('aria-label', `Playback speed ${formatPlaybackSpeed(sp)}, ${formatSpeedHint(sp)}`);
-    text(hint, Number.isFinite(sp) ? `${formatSpeedMultiple(sp)} — ${formatSpeedHint(sp)}` : formatSpeedHint(sp));
+    text(hint, Number.isFinite(sp) ? `${formatSpeedMultiple(sp)}: ${formatSpeedHint(sp)}` : formatSpeedHint(sp));
     text(sliderOut, formatPlaybackSpeed(sp));
     for (const b of presets) b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === sp));
     if (!sliding) {

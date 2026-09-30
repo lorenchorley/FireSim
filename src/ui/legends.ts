@@ -9,6 +9,8 @@ import { DRIVER_LABELS, FUEL_LABELS } from './labels';
 export interface LegendStop {
   colour: string;
   label: string;
+  /** Plain-English gloss of the stop or class ("fresh breeze", "thin litter, little to burn"), when the renderer gives one. */
+  words?: string;
 }
 
 export type Legend =
@@ -472,35 +474,70 @@ export interface ExternalLegend {
   title: string;
   units: string;
   kind: 'continuous' | 'classes' | 'categorical' | 'cyclic';
-  entries: { value: number; colour: string; label: string }[];
+  entries: { value: number; colour: string; label: string; words?: string }[];
   gradient?: string;
   noData?: { colour: string; label: string };
   note?: string;
 }
 
-export type LegendProvider = (overlay: OverlayKind, ctx: { arrivalMaxSeconds?: number; isochroneMinutes?: number }) => ExternalLegend | null;
+/** What makes a legend dynamic: the arrival ramp spans the burnt period so far; the ground-height ramp spans the site. */
+export interface LegendRequest {
+  arrivalMaxSeconds?: number;
+  isochroneMinutes?: number;
+  /** Lowest and highest ground of the scenario (m): the 'elevation' heat map and its legend stretch over it. */
+  elevationRange?: readonly [number, number];
+}
+
+export type LegendProvider = (overlay: OverlayKind, ctx: LegendRequest) => ExternalLegend | null;
 
 /** Convert a renderer legend to the UI format, keeping the UI's teaching text and per-class meanings. */
 export function fromExternalLegend(ext: ExternalLegend, fallback: Legend | null): Legend {
   const about = ext.note ?? fallback?.about ?? '';
   if (ext.kind === 'continuous') {
-    const l: Legend = { kind: 'ramp', title: ext.title, unit: ext.units, about, stops: ext.entries.map((e) => ({ colour: e.colour, label: e.label })) };
+    const l: Legend = { kind: 'ramp', title: ext.title, unit: ext.units, about, stops: ext.entries.map((e) => withWords({ colour: e.colour, label: e.label }, e.words)) };
     if (ext.gradient) l.gradient = ext.gradient;
     if (ext.noData) l.extra = [{ colour: ext.noData.colour, label: ext.noData.label }];
     return l;
   }
   if (ext.kind === 'cyclic') {
-    const classes = ext.entries.map((e) => ({ colour: e.colour, label: e.label }));
+    const classes = ext.entries.map((e) => withWords({ colour: e.colour, label: e.label }, e.words));
     if (ext.noData) classes.push({ colour: ext.noData.colour, label: ext.noData.label });
     return { kind: 'classes', title: ext.title, unit: ext.units, about, classes };
   }
   const notes = fallback?.kind === 'classes' && fallback.classes.length === ext.entries.length ? fallback.classes.map((c) => c.note) : [];
   const classes = ext.entries.map((e, i) => {
-    const c: LegendStop & { note?: string } = { colour: e.colour, label: e.label };
-    const note = notes[i];
+    const c: LegendStop & { note?: string } = withWords({ colour: e.colour, label: e.label }, e.words);
+    const note = notes[i] ?? e.words;
     if (note) c.note = note;
     return c;
   });
   if (ext.noData) classes.push({ colour: ext.noData.colour, label: ext.noData.label });
   return { kind: 'classes', title: ext.title, unit: ext.units, about, classes };
+}
+
+function withWords<T extends LegendStop>(stop: T, words: string | undefined): T {
+  if (words) stop.words = words;
+  return stop;
+}
+
+/**
+ * The legend of a heat map: the renderer's (exact colours, the site's own ground-height range, plain-English words for
+ * each stop) with the UI's teaching text, else the UI's own (the 2-D map paints with those). null for 'none'.
+ */
+export function overlayLegend(overlay: OverlayKind, provider: LegendProvider | null, req: LegendRequest = {}): Legend | null {
+  const own = legendFor(overlay);
+  if (provider && overlay !== 'none') {
+    try {
+      const ext = provider(overlay, req);
+      if (ext) return fromExternalLegend(ext, own);
+    } catch (e) {
+      console.warn('[FireSim] renderer legend failed; using the built-in one', e);
+    }
+  }
+  return own;
+}
+
+/** The plain-English words of a class or stop: its own gloss, else the meaning note of a class. */
+export function stopWords(s: LegendStop & { note?: string }): string {
+  return s.words ?? s.note ?? '';
 }

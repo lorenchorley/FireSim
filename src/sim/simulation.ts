@@ -53,6 +53,8 @@ import {
   type CellExplanation,
   type CellFuelParams,
   type EmberStats,
+  type EngineInfo,
+  type EngineMemoryInfo,
   type FireWindContext,
   type FuelHistoryCompact,
   type FuelMap,
@@ -70,6 +72,7 @@ import {
   type SpotFire,
   type SpotProvenance,
   type SpreadEnvironment,
+  type SpreadModelUse,
   type StableNightState,
   type Terrain,
   type TerrainDerived,
@@ -84,13 +87,16 @@ import { afdrsFbi, ffdi } from '../fire/models';
 import { applyFuelEdit, cellsInBrush, cloneFuelMap, fuelParamsInto, makeCellFuelParams } from '../fuel';
 import { ensureFuelArrays, type FuelMapExt } from '../fuel/fuelMap';
 import { MoistureModel, droughtState, spinUpStableNight, stableNightInputAt, rainBefore } from '../fuel/moisture';
-import { createAtmosphere, type Atmosphere, type DiagnosticWind, type FireWindContextExt } from '../atmosphere';
-import { EmberModel, type EmberLandingEvent } from '../embers';
+import { ATMOS_PARAMS, createAtmosphere, type Atmosphere, type DiagnosticWind, type FireWindContextExt } from '../atmosphere';
+import { EMBER_CLASSES, EmberModel, type EmberLandingEvent } from '../embers';
+import { getFireModelOptions } from '../fire/models/params';
+import { SPREAD_PARAMS } from '../fire/spread/params';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
 import { SIM_PARAMS } from './params';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
+import { engineMemory, medianStampS, MEMORY_REFRESH_WALL_MS, spreadModelUse, tierReasonText } from './engineInfo';
 import type { SimOptionKey } from './protocol';
 
 type Atmos = Atmosphere | DiagnosticWind;
@@ -337,6 +343,18 @@ export class Simulation {
   private autoTune: SimPerf['autoTune'] = null;
   private snapWall = 0;
   private snapSim = 0;
+
+  // ── engine info (SimSnapshot.engine; bookkeeping for the transparency card, never read by the physics) ──
+  /** The last outer step Δt_a (s). */
+  private lastDt = NaN;
+  /** Spread models by fuel family of the working fuel map (reset by fuel changes) and the heath option it was made with. */
+  private spreadUse: { heath: string; list: SpreadModelUse[] } | null = null;
+  private weatherStampS = NaN;
+  /** Perf counters when the atmosphere of the current tier was built (per-tier means). */
+  private engBase = { steps: 0, atmMs: 0, stepMs: 0, sim: 0, wall: 0 };
+  /** Last memory measurement and its wall time (refreshed at most every MEMORY_REFRESH_WALL_MS). */
+  private memInfo: EngineMemoryInfo | undefined;
+  private memWall = -Infinity;
 
   constructor(scenario: ScenarioData, o: SimulationOptions = {}) {
     this.clock = o.clock ?? (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
@@ -960,6 +978,7 @@ export class Simulation {
 
   private afterFuelChange(cells: Int32Array | null): void {
     if (cells && cells.length === 0) return;
+    this.spreadUse = null;
     this.fire.refreshFuel(cells);
     this.moisture.refreshFuel(cells ?? undefined);
     this.explainEngine.refreshFuel();
@@ -985,6 +1004,8 @@ export class Simulation {
     a.setAmbient(hs[this.stampIdx]!, hs[Math.min(this.stampIdx + 1, hs.length - 1)]!);
     a.setTime(tMs);
     a.setNightState(this.night);
+    // Engine info: the per-tier means (step time, speed) start again with a new atmosphere.
+    this.engBase = { steps: this.perfSteps, atmMs: this.atmModuleMs(), stepMs: this.perfWall, sim: this.perfSim, wall: this.perfWall };
     return a;
   }
 
@@ -1165,6 +1186,7 @@ export class Simulation {
     const nSteps = Math.max(1, Math.ceil(rem / dtMax - 1e-9));
     const dt = nSteps === 1 ? rem : rem / nSteps;
     const tEnd = nSteps === 1 ? boundary : t + dt;
+    this.lastDt = dt;
 
     // 5–6 fire
     this.fire.prepare(env);
@@ -1597,10 +1619,12 @@ export class Simulation {
     if (dmz) layers['dmz'] = dmz.slice();
     let atmosphere = this.atm.view();
     const cells = atmosphere.grid.nx * atmosphere.grid.ny * Math.max(1, atmosphere.nz);
-    if (cells > P.atmosViewMaxCells) atmosphere = decimateView(atmosphere);
+    const decimated = cells > P.atmosViewMaxCells;
+    if (decimated) atmosphere = decimateView(atmosphere);
     const embers = this.opts.embers ? this.embers.particles() : { count: 0, data: new Float32Array(0) };
     const insights = this.pendingInsights;
     this.pendingInsights = [];
+    const stats = this.makeStats();
     return {
       time: this.t,
       fire,
@@ -1608,9 +1632,138 @@ export class Simulation {
       atmosphere,
       embers,
       spotFires: this.spots.map(cloneSpot),
-      stats: this.makeStats(),
+      stats,
       insights,
       layers,
+      engine: this.engineInfo(stats, decimated),
+    };
+  }
+
+  /** Wall ms spent in the atmosphere module so far (its step, the wind for the fire, the fire heat injection). */
+  private atmModuleMs(): number {
+    const m = this.perfMods;
+    return (m['atmosphere'] ?? 0) + (m['surfaceWind'] ?? 0) + (m['fireHeat'] ?? 0);
+  }
+
+  /**
+   * What the engine really runs now (SimSnapshot.engine, core/simTypes.ts EngineInfo), read from the modules: the
+   * atmosphere's own grid, the fire grid and the level set's last CFL bound, the ember model, the cadences of
+   * SIM_PARAMS, the perf counters of this tier, and memoryReport() at most every 30 wall-seconds. Cheap: a few dozen
+   * reads, plus one pass over the fuel types after a fuel change (the spread models by family).
+   */
+  private engineInfo(stats: SimStats, viewDecimated: boolean): EngineInfo {
+    const P = SIM_PARAMS;
+    const atm = this.atm;
+    const g = atm.grid;
+    const fg = this.terrain.grid;
+    const fast = this.tierNow === 'fast';
+    const dt = Number.isFinite(this.lastDt) && this.lastDt > 0 ? this.lastDt : null;
+    // The tier in force: the last applied quality record (a change during the run), else how it was chosen at the start.
+    let changedAt: number | null = null;
+    for (let i = this.applied.length - 1; i >= 0; i--) {
+      const r = this.records.get(this.applied[i]!);
+      if (r && r.body.kind === 'quality') {
+        changedAt = r.time;
+        break;
+      }
+    }
+    const cause: EngineInfo['tierCause'] =
+      changedAt !== null ? 'changed' : this.tierReq !== 'auto' ? 'requested' : this.autoTune ? 'auto-tune' : !this.ready && this.spinTotal > 0 ? 'auto-pending' : 'auto-default';
+    const autoTune = this.autoTune ? { ...this.autoTune, steps: P.autoTuneSteps } : null;
+    // Per-tier means since this tier's atmosphere was built.
+    const b = this.engBase;
+    const steps = this.perfSteps - b.steps;
+    const wall = this.perfWall - b.wall;
+    const sim = this.perfSim - b.sim;
+    // The level set's CFL bound of its last sub-step (fire/spread LevelSetCore.lastBound; no front → no sub-step).
+    const ls = (this.fire as unknown as { ls?: { lastBound?: number; bandCount?: number } }).ls;
+    const bound = ls && (ls.bandCount ?? 0) > 0 && typeof ls.lastBound === 'number' && Number.isFinite(ls.lastBound) ? ls.lastBound : NaN;
+    const heath = getFireModelOptions().heathModel;
+    if (!this.spreadUse || this.spreadUse.heath !== heath) this.spreadUse = { heath, list: spreadModelUse(this.fuel as FuelMapExt, heath) };
+    if (!Number.isFinite(this.weatherStampS)) this.weatherStampS = medianStampS(this.scenario.weather);
+    const now = this.clock();
+    if (now - this.memWall >= MEMORY_REFRESH_WALL_MS || !this.memInfo) {
+      try {
+        this.memInfo = engineMemory(this.memoryReport(), this.t);
+      } catch {
+        this.memInfo = undefined;
+      }
+      this.memWall = now;
+    }
+    const EP = this.embers.params.transport;
+    const LSP = SPREAD_PARAMS.levelSet;
+    const V = SPREAD_PARAMS.validation;
+    return {
+      tier: this.tierNow,
+      tierRequested: this.tierReq,
+      tierCause: cause,
+      tierReason: tierReasonText({ tier: this.tierNow, cause, autoTune, changedAt, durationS: this.duration }),
+      autoTune,
+      tierChangedAt: changedAt,
+      atmosphere: {
+        kind: fast ? 'diagnostic' : '3d',
+        nx: g.nx,
+        ny: g.ny,
+        nz: g.nz,
+        dxM: g.dx,
+        dzFirstM: g.dz1,
+        topM: g.Hp,
+        stretch: g.stretch,
+        currentStepS: dt,
+        meanStepMs: steps > 0 ? (this.atmModuleMs() - b.atmMs) / steps : null,
+        spunUp: atm.spunUp,
+        upperAir: this.diag?.upperAirSource ?? this.scenario.weather.upperAirSource ?? 'none',
+        viewDecimated,
+      },
+      fire: {
+        nx: fg.nx,
+        ny: fg.ny,
+        cellM: fg.cellSize,
+        currentSubStepS: Number.isFinite(bound) && dt !== null ? Math.min(bound, dt) : null,
+        maxSpreadRate: LSP.rosMaxMs,
+        forestHeadCapMs: SPREAD_PARAMS.forestCapMh / 3600,
+        validSlopeDeg: [V.headSlopeMinDeg, V.headSlopeMaxDeg],
+      },
+      embers: {
+        on: this.opts.embers,
+        active: stats.activeEmbers,
+        max: this.maxEmbersNow(),
+        stepS: this.opts.embers ? dt : null,
+        subStepMinS: EP.dtMin,
+        subStepMaxS: EP.dtMax,
+        classes: [...EMBER_CLASSES],
+      },
+      cadence: {
+        displayStepS: this.snapshotStep(),
+        solverMaxStepS: this.opts.maxStepS,
+        solverBoundS: fast ? atm.maxStableDt() : P.dtMaxS,
+        solverFloorS: fast ? atm.maxStableDt() : ATMOS_PARAMS.dtMin,
+        moistureUpdateS: P.solarIntervalS,
+        detectorsS: P.minuteS,
+        checkpointS: P.checkpointIntervalS,
+        checkpointRing: P.checkpointRing,
+        weatherStampS: this.weatherStampS,
+        weatherInterpolation: 'linear',
+      },
+      run: {
+        seed: this.simOptions.seed,
+        deterministic: true,
+        simSecondsPerWallSecond: wall > 50 && sim > 0 ? sim / (wall / 1000) : null,
+        steps: this.perfSteps,
+        meanStepMs: steps > 0 ? (this.perfWall - b.stepMs) / steps : null,
+        checkpoints: this.ring.length + (this.cp0 ? 1 : 0),
+        checkpointBytes: this.checkpointBytes(),
+        spinUpS: fast ? 0 : P.spinUpS,
+      },
+      models: {
+        spread: this.spreadUse.list.map((m) => ({ ...m })),
+        coupling: this.opts.coupling,
+        mountainPhenomena: this.opts.mountainPhenomena,
+        embersOn: this.opts.embers,
+        pyrogenic: this.env.pyrogenicOn,
+        heathModel: heath,
+      },
+      ...(this.memInfo ? { memory: { ...this.memInfo, parts: this.memInfo.parts.map((p) => ({ ...p })) } } : {}),
     };
   }
 

@@ -1,11 +1,13 @@
 /**
- * Top bar: ONE row [menu] [clock + elapsed + state] [play / pause] [speed], and under it a slim one-line weather strip.
- * Everything else is collapsed until asked for: the menu (new scenario, settings, safety notice), the time popover (tap
- * the clock) and the speed popover. Nothing in here pops up by itself and nothing stops the simulation.
+ * Top bar, Google-Maps style: a floating rounded pill over the map [menu] [clock + elapsed + state] [play / pause]
+ * [speed chip], and under it a compact row of read-out chips (temperature, humidity, wind, fire-danger rating; they are
+ * not buttons). Everything else is collapsed until asked for: the main menu (a side sheet with Data sets, How this
+ * simulation works, Help, Safety notice, Settings, New scenario), the time sheet (tap the clock) and the speed sheet.
+ * Nothing in here pops up by itself and nothing stops the simulation.
  */
 import { msToKmh } from '../../../core/units';
 import { h, setChildren, text } from '../../dom';
-import { icon } from '../../icons';
+import { icon, type IconName } from '../../icons';
 import { compassName, formatClock, formatElapsedShort, formatRH, formatTemp, formatWind } from '../../format';
 import { bindStepSettings } from '../../settings';
 import { ffdi, ratingFromIndex, ratingStyle } from '../../weatherCalc';
@@ -15,32 +17,70 @@ import type { SimContext } from './context';
 import { createSpeedControl } from './speedControl';
 import { clockShowsSeconds } from './timelineModel';
 import { createTimePopover } from './timePopover';
-import { createPopoverGroup, glyph, GLYPHS } from './transportKit';
+import { createPopoverGroup, type PopoverGroup } from './transportKit';
 
 /** The clock waits for the engine this long before "Computing" is shown, so it does not flicker at the head. */
 const WAIT_BEFORE_BUSY_MS = 800;
 
-export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): void } {
+export interface TopBar {
+  el: HTMLElement;
+  /** The popover group (main menu, time and speed sheets): Back and Escape close the open one first. */
+  popovers: PopoverGroup;
+  destroy(): void;
+}
+
+export interface TopBarOptions {
+  /** Open the Help tab of the bottom sheet (the glossary). */
+  openHelp(): void;
+}
+
+export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
   const { session } = ctx;
 
-  // ── menu ──
+  // ── main menu (a Maps-style side sheet with list rows) ──
   const menuBtn = h(
     'button',
-    { type: 'button', class: 'tb-btn tb-menu', dataset: { testid: 'menu' }, aria: { label: 'Menu', haspopup: 'menu', expanded: false } },
-    glyph(GLYPHS.menu, 26),
+    { type: 'button', class: 'icon-btn tb-menu', dataset: { testid: 'menu' }, aria: { label: 'Menu', haspopup: 'menu', expanded: false } },
+    icon('menu'),
   );
-  const menuItem = (ic: Parameters<typeof icon>[0], label: string, testid: string, act: () => void): HTMLButtonElement =>
-    h('button', { type: 'button', class: 'tb-menu-item', attrs: { role: 'menuitem' }, dataset: { testid }, on: { click: () => (popovers.closeAll(), act()) } }, [
-      icon(ic),
-      h('span', null, label),
+  const row = (ic: IconName, title: string, sub: string | null, testid: string, act: () => void): HTMLElement =>
+    h('li', { attrs: { role: 'none' } }, [
+      h(
+        'button',
+        {
+          type: 'button',
+          class: ['list-row', 'drawer-row', sub && 'two-line'],
+          attrs: { role: 'menuitem' },
+          dataset: { testid },
+          on: {
+            click: () => {
+              popovers.closeAll(false);
+              act();
+            },
+          },
+        },
+        [h('span', { class: 'list-lead' }, icon(ic)), h('span', { class: 'list-body' }, [h('span', { class: 'list-title' }, title), sub ? h('span', { class: 'list-sub' }, sub) : null])],
+      ),
     ]);
-  const menuPanel = h('div', { class: 'tb-pop tb-pop-left tb-menu-pop', attrs: { role: 'menu' }, aria: { label: 'Menu' }, hidden: true }, [
-    menuItem('back', 'New scenario', 'menu-new', () => ctx.exit()),
-    menuItem('settings', 'Settings & about', 'menu-settings', () => ctx.openSettings()),
-    menuItem('warning', 'Safety notice', 'menu-notice', () => ctx.showNotice()),
+  const learn = [
+    ctx.openDatasets ? row('database', 'Data sets', 'Size, source and date of every data set used', 'menu-datasets', () => ctx.openDatasets?.()) : null,
+    ctx.openModelCard ? row('cube', 'How this simulation works', 'What is 2-D, what is 3-D, and how fine the grids are', 'menu-model', () => ctx.openModelCard?.()) : null,
+    row('help', 'Help and glossary', 'How to use the screen, and the words firefighters use', 'menu-help', () => opts.openHelp()),
+    row('warning', 'Safety notice', null, 'menu-notice', () => ctx.showNotice()),
+  ];
+  const app = [row('settings', 'Settings', null, 'menu-settings', () => ctx.openSettings()), row('plus', 'New scenario', 'Leave this simulation and set up another', 'menu-new', () => ctx.exit())];
+  const menuPanel = h('div', { class: 'sim-drawer', attrs: { role: 'dialog', tabindex: '-1' }, aria: { label: 'Menu' }, hidden: true }, [
+    h('div', { class: 'drawer-head' }, [
+      h('span', { class: 'drawer-mark', aria: { hidden: true } }, icon('flame')),
+      h('div', { class: 'drawer-heading' }, [h('h2', { class: 'drawer-title' }, 'FireSim'), h('p', { class: 'drawer-sub' }, ctx.scenario.name)]),
+      h('button', { type: 'button', class: 'icon-btn', aria: { label: 'Close menu' }, on: { click: () => popovers.closeAll() } }, icon('close')),
+    ]),
+    h('ul', { class: 'list drawer-list', attrs: { role: 'menu' }, aria: { label: 'Learn' } }, learn),
+    h('hr', { class: 'divider' }),
+    h('ul', { class: 'list drawer-list', attrs: { role: 'menu' }, aria: { label: 'App' } }, app),
   ]);
 
-  // ── clock (opens the time popover) ──
+  // ── clock (opens the time sheet) ──
   const clock = h('span', { class: 'clock-time', dataset: { testid: 'clock' } }, '--:--');
   const elapsed = h('span', { class: 'clock-elapsed' });
   const state = h('span', { class: 'tb-state', attrs: { 'aria-live': 'polite' } });
@@ -51,11 +91,11 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
   );
   const timePop = createTimePopover(ctx, { close: () => popovers.closeAll() });
 
-  // ── play / pause ──
+  // ── play / pause: the one blue control of the bar ──
   const playBtn = h(
     'button',
-    { type: 'button', class: 'tb-btn tb-play', dataset: { testid: 'play' }, aria: { label: 'Play' }, on: { click: () => onPlay() } },
-    icon('play', { size: 30 }),
+    { type: 'button', class: 'icon-btn icon-btn-filled tb-play', dataset: { testid: 'play' }, aria: { label: 'Play' }, on: { click: () => onPlay() } },
+    icon('play'),
   );
   function onPlay(): void {
     const s = session.state.get();
@@ -65,30 +105,25 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
   }
 
   // ── speed ──
-  const speed = createSpeedControl(ctx);
+  const speed = createSpeedControl(ctx, { close: () => popovers.closeAll() });
 
-  // ── weather strip ──
-  // A read-out, not a button: at 28 px tall it was a target too small for a wet, gloved thumb, and a slip from the play row
-  // opened the dock over the map. The Weather tab in the dock is the one way in to the weather timeline.
-  const wTemp = h('span', { class: 'wx-item' });
-  const wRh = h('span', { class: 'wx-item' });
-  const wWind = h('span', { class: 'wx-item wx-wind' });
-  const wRating = h('span', { class: 'rating-pill' });
-  const chip = h('div', { class: 'tb-wx', dataset: { testid: 'weather-chip' }, attrs: { role: 'img' } }, [wTemp, wRh, wWind, wRating]);
+  // ── weather read-out chips ──
+  // Read-outs, not buttons: a slip from the pill must not open anything over the map. The Weather tab is the one way in
+  // to the weather timeline.
+  const wTemp = h('span', { class: 'chip chip-float wx-chip' });
+  const wRh = h('span', { class: 'chip chip-float wx-chip' });
+  const wWind = h('span', { class: 'chip chip-float wx-chip wx-wind' });
+  const wRating = h('span', { class: 'rating-pill wx-rating' });
+  const chips = h('div', { class: 'tb-wx', dataset: { testid: 'weather-chip' }, attrs: { role: 'img' } }, [wTemp, wRh, wWind, wRating]);
   let wxLabel = '';
   let ratingLabel = '';
-  const setChipLabel = (): void => chip.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
+  const setChipLabel = (): void => chips.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
 
-  const el = h('header', { class: 'sim-topbar' }, [
-    h('div', { class: 'tb-row' }, [menuBtn, clockBtn, playBtn, speed.button]),
-    chip,
-    menuPanel,
-    timePop.panel,
-    speed.panel,
-  ]);
+  const pill = h('div', { class: 'search-bar tb-pill' }, [menuBtn, clockBtn, playBtn, speed.button]);
+  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel]);
 
   const popovers = createPopoverGroup(el, [
-    { id: 'menu', button: menuBtn, panel: menuPanel },
+    { id: 'menu', button: menuBtn, panel: menuPanel, dim: true },
     { id: 'time', button: clockBtn, panel: timePop.panel, onOpen: () => timePop.refresh() },
     { id: 'speed', button: speed.button, panel: speed.panel },
   ]);
@@ -137,9 +172,9 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       setChildren(
         state,
         sk === 'past'
-          ? h('span', { class: 'tb-chip tb-chip-past' }, 'Replay')
+          ? h('span', { class: 'badge badge-info tb-chip-past' }, [icon('history'), 'Replay'])
           : sk === 'busy'
-            ? h('span', { class: 'tb-chip tb-chip-busy' }, [h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }), 'Computing'])
+            ? h('span', { class: 'badge tb-chip-busy' }, [h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }), 'Computing'])
             : null,
       );
     }
@@ -152,23 +187,23 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
       // reader would say "Pause, pressed"): the state is only exposed to the stylesheet.
       playBtn.setAttribute('aria-label', pk === 'pause' ? 'Pause' : pk === 'again' ? 'Play again from the start' : 'Play');
       playBtn.dataset.state = pk;
-      setChildren(playBtn, icon(pk === 'pause' ? 'pause' : pk === 'again' ? 'replay' : 'play', { size: 30 }));
+      setChildren(playBtn, icon(pk === 'pause' ? 'pause' : pk === 'again' ? 'replay' : 'play'));
     }
     // Weather: interpolated from the scenario series at the view time; rating from the snapshot when available.
     const w = weatherAt(ctx.scenario.weather, abs);
     const unit = ctx.settings.get().units;
-    const t = Math.round(w.temperature);
+    const temp = formatTemp(w.temperature);
     const rh = formatRH(w.relativeHumidity);
     const dirName = compassName(w.windDir10);
     const windTxt = formatWind(w.windSpeed10, unit);
     const arrowDeg = Math.round(w.windDir10 / 5) * 5;
-    const wk = `${t}|${rh}|${dirName}|${windTxt}|${arrowDeg}`;
+    const wk = `${temp}|${rh}|${dirName}|${windTxt}|${arrowDeg}`;
     if (wk !== wxKey) {
       wxKey = wk;
-      setChildren(wTemp, h('span', null, `${t}°`));
-      setChildren(wRh, [icon('droplet', { size: 16, class: 'wx-icon' }), h('span', null, rh)]);
+      setChildren(wTemp, h('span', null, temp));
+      setChildren(wRh, [icon('droplet', { class: 'wx-icon' }), h('span', null, rh)]);
       setChildren(wWind, [windArrow(arrowDeg, 18), h('span', { class: 'wx-dir' }, dirName), h('span', { class: 'wx-speed' }, windTxt)]);
-      wxLabel = `Weather now: ${formatTemp(w.temperature)}, humidity ${rh}, wind from ${dirName} at ${windTxt}`;
+      wxLabel = `Weather now: ${temp}, humidity ${rh}, wind from ${dirName} at ${windTxt}`;
       setChipLabel();
     }
     const st = s.snapshot?.stats;
@@ -179,9 +214,10 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
     const rk = `${r.key}|${r.label}|${Math.round(fi)}`;
     if (rk !== ratingKey) {
       ratingKey = rk;
-      wRating.className = `rating-pill rating-${r.key}`;
+      wRating.className = `rating-pill wx-rating rating-${r.key}`;
+      // FFDI = the Forest Fire Danger Index; the rating word is the plain-English version of it.
       text(wRating, r.key === 'none' ? `FFDI ${Math.round(fi)}` : r.label);
-      ratingLabel = `Fire danger ${r.label}, FFDI about ${Math.round(fi)}`;
+      ratingLabel = `Fire danger ${r.label}, Forest Fire Danger Index about ${Math.round(fi)}`;
       setChipLabel();
     }
   };
@@ -194,6 +230,7 @@ export function createTopBar(ctx: SimContext): { el: HTMLElement; destroy(): voi
 
   return {
     el,
+    popovers,
     destroy() {
       unsub();
       unsub2();

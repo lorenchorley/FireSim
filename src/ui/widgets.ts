@@ -4,9 +4,10 @@
  * on colour alone. The newer primitives (chips, list rows, tiles, key-value lists...) are in ./primitives.ts.
  */
 import { compassName, wrapDeg } from '../core/units';
-import { h, svg, uniqueId, type Child } from './dom';
+import { pushBackLayer } from './backStack';
+import { h, setChildren, svg, uniqueId, type Child } from './dom';
 import { icon, type IconName } from './icons';
-import { rangeFill } from './primitives';
+import { iconButton, rangeFill } from './primitives';
 
 /**
  * primary = filled blue; tonal (alias accent) = blue tint; secondary (alias outlined, the default) = outlined pill;
@@ -339,4 +340,180 @@ export function windArrow(dirFrom: number, size = 22): SVGSVGElement {
     { viewBox: '0 0 24 24', width: size, height: size, class: 'wind-arrow', 'aria-hidden': 'true' },
     svg('path', { d: 'M12 3v15M6.5 13l5.5 7 5.5-7', transform: `rotate(${wrapDeg(dirFrom)} 12 12)`, fill: 'none', stroke: 'currentColor', 'stroke-width': 2.75, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
   );
+}
+
+/* === additions from the screens phase === */
+// Builders the Setup, Building and Settings screens needed that the design system did not have yet (docs/DESIGN.md §8):
+//  - chipChoice()   a single-choice radio group drawn as a row of chips (area, detail, weather source, duration)
+//  - appBar()       the Maps top app bar of a full screen: back arrow icon button + left-aligned title + trailing actions
+//  - confirmDialog() the confirmation dialog every destructive action asks first with (Back / Escape cancel it)
+//  - copyText()     tap-to-copy (licence and provider links: the app never opens an external page by itself)
+
+/**
+ * Choice chips: a radio group drawn as chips (CSS `.chip-choice`, components.css). Same keyboard behaviour as any radio
+ * group (arrow keys move the selection); the selected chip is tinted and shows a check that replaces its icon, so the
+ * choice is never shown by colour alone. Each chip is a <label class="chip"> around a real radio input, so
+ * getByRole('radio', { name }) finds it and the hit area is 44 x 44 px (label.chip::after). `scroll` keeps the chips on
+ * one horizontally scrolling row (for long option lists on narrow phones).
+ */
+export function chipChoice<T extends string>(o: {
+  label: string;
+  options: { value: T; label: string; icon?: IconName }[];
+  value: T;
+  onChange: (v: T) => void;
+  testId?: string;
+  hideLabel?: boolean;
+  scroll?: boolean;
+}): Segmented<T> & { setOptions(options: { value: T; label: string; icon?: IconName }[]): void } {
+  const name = uniqueId('chips');
+  let value = o.value;
+  const row = h('div', { class: ['chips', o.scroll && 'chips-scroll'] });
+  const el = h('fieldset', { class: 'chip-choice', dataset: o.testId ? { testid: o.testId } : undefined }, [h('legend', { class: o.hideLabel ? 'sr-only' : 'field-label' }, o.label), row]);
+  const mark = (): void => {
+    let chosen: HTMLElement | null = null;
+    for (const l of row.querySelectorAll<HTMLLabelElement>('label.chip')) {
+      const input = l.querySelector('input')!;
+      input.checked = input.value === value;
+      l.classList.toggle('is-selected', input.checked);
+      if (input.checked) chosen = l;
+    }
+    // A scrolling row keeps the chosen chip in view (sideways only: the page itself never jumps).
+    if (o.scroll && chosen) {
+      const c = chosen;
+      requestAnimationFrame(() => {
+        const pad = 12;
+        if (c.offsetLeft - pad < row.scrollLeft) row.scrollLeft = c.offsetLeft - pad;
+        else if (c.offsetLeft + c.offsetWidth + pad > row.scrollLeft + row.clientWidth) row.scrollLeft = c.offsetLeft + c.offsetWidth + pad - row.clientWidth;
+      });
+    }
+  };
+  let shown = '';
+  const render = (options: { value: T; label: string; icon?: IconName }[]): void => {
+    // Same options: keep the chips (and the keyboard focus on them); only the selection is updated.
+    const key = JSON.stringify(options.map((x) => [x.value, x.label, x.icon ?? '']));
+    if (key === shown) return mark();
+    shown = key;
+    const focused = row.contains(document.activeElement) ? (document.activeElement as HTMLInputElement).value : null;
+    setChildren(
+      row,
+      options.map((opt) =>
+        h('label', { class: 'chip chip-radio', dataset: { value: opt.value } }, [
+          h('input', {
+            type: 'radio',
+            name,
+            value: opt.value,
+            checked: opt.value === value,
+            on: {
+              change: () => {
+                value = opt.value;
+                mark();
+                o.onChange(opt.value);
+              },
+            },
+          }),
+          icon('check', { class: 'chip-check' }),
+          opt.icon ? icon(opt.icon) : null,
+          h('span', { class: 'chip-text' }, opt.label),
+        ]),
+      ),
+    );
+    mark();
+    if (focused !== null) row.querySelector<HTMLInputElement>(`input[value="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  };
+  render(o.options);
+  return {
+    el,
+    get: () => value,
+    set(v: T) {
+      value = v;
+      mark();
+    },
+    setOptions(options) {
+      render(options);
+    },
+  };
+}
+
+/**
+ * Top app bar of a full screen (Maps pattern): back-arrow icon button, left-aligned title, optional trailing controls.
+ * The back button's accessible name is `backLabel` (default "Back").
+ */
+export function appBar(o: { title: string; titleId?: string; onBack?: () => void; backLabel?: string; backTestId?: string; trailing?: Child; class?: string }): HTMLElement {
+  return h('header', { class: ['app-bar', o.class] }, [
+    o.onBack ? iconButton({ icon: 'arrow-back', label: o.backLabel ?? 'Back', onClick: () => o.onBack!(), ...(o.backTestId ? { testId: o.backTestId } : {}) }) : null,
+    h('h1', { class: 'app-bar-title', id: o.titleId, tabIndex: -1 }, o.title),
+    o.trailing ?? null,
+  ]);
+}
+
+/**
+ * Ask before a destructive action. Resolves true on the confirm button, false on Cancel, Escape, Back or a tap on the
+ * scrim. Opened only by a tap (nothing pops up on its own). Focus moves to Cancel (the safe choice) and returns to the
+ * control that was focused before. Registered with the app's Back stack, so Android Back cancels it first.
+ */
+export function confirmDialog(o: { title: string; body: Child; confirmLabel: string; cancelLabel?: string; danger?: boolean; host?: HTMLElement; testId?: string }): Promise<boolean> {
+  return new Promise((resolve) => {
+    const previous = document.activeElement as HTMLElement | null;
+    const titleId = uniqueId('dlg');
+    let done = false;
+    let removeLayer = (): void => undefined;
+    const finish = (ok: boolean): void => {
+      if (done) return;
+      done = true;
+      removeLayer();
+      scrim.remove();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      resolve(ok);
+    };
+    const cancel = button({ label: o.cancelLabel ?? 'Cancel', variant: 'ghost', testId: 'confirm-cancel', onClick: () => finish(false) });
+    const ok = button({ label: o.confirmLabel, variant: o.danger ? 'danger' : 'primary', testId: 'confirm-ok', onClick: () => finish(true) });
+    const dialog = h('div', { class: 'modal confirm-dialog', attrs: { role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId } }, [
+      h('h2', { class: 'dialog-title', id: titleId }, o.title),
+      h('div', { class: 'dialog-body' }, o.body),
+      h('div', { class: 'dialog-actions' }, [cancel, ok]),
+    ]);
+    const scrim = h('div', { class: 'modal-scrim', dataset: { testid: o.testId ?? 'confirm-dialog' } }, dialog);
+    scrim.addEventListener('click', (e) => {
+      if (e.target === scrim) finish(false);
+    });
+    scrim.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
+      } else if (e.key === 'Tab') {
+        // Two buttons: keep the focus inside the dialog.
+        e.preventDefault();
+        (document.activeElement === cancel ? ok : cancel).focus();
+      }
+    });
+    (o.host ?? document.getElementById('app') ?? document.body).appendChild(scrim);
+    removeLayer = pushBackLayer({ id: 'confirm', close: () => finish(false) });
+    cancel.focus();
+  });
+}
+
+/**
+ * Copy a text (a link) to the clipboard. Resolves true when it was copied. Uses the async Clipboard API, else a hidden
+ * textarea and execCommand (older WebViews). Never opens the link.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to the textarea path */
+  }
+  try {
+    const ta = h('textarea', { value: text, readOnly: true, style: 'position:fixed;left:-9999px;top:0;opacity:0' });
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
 }

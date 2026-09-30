@@ -1,131 +1,82 @@
 /*
- * Transport controls of the simulation screen: the top bar (menu, clock, play, speed, weather line), its popovers (menu,
- * time, speed) and the timeline strip. Everything here is collapsed until asked for and uses the theme tokens only, so the
- * "sunlight" and "night" themes both apply. Loaded after sim.css.
+ * Transport controls of the simulation screen, in the Google-Maps-for-Android language (docs/DESIGN.md): the floating
+ * pill top bar (menu, clock, play, speed) with its read-out chips, the main menu's side sheet, the time and speed bottom
+ * sheets, and the timeline strip. Everything here is collapsed until asked for and reads the design tokens only, so the
+ * light, dark and high-contrast modes all apply. Loaded after sim.css.
  *
- * Sizes other files rely on (--topbar-h, --scrub-h) are defined in tokens.css.
+ * The screen's chrome sizes (--topbar-h, --scrub-h, --dock-h) are set on .sim-screen in sim.css from the tokens.
  */
-/* ───────────────────────────── top bar ───────────────────────────── */
+
+/* ───────────────────────────── top bar: pill + read-out chips ───────────────────────────── */
 .sim-topbar {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 35;
-  height: var(--topbar-h);
-  padding: 0 max(8px, var(--safe-right)) 0 max(8px, var(--safe-left));
+  padding: var(--sp-2) max(var(--sp-2), var(--safe-right)) 0 max(var(--sp-2), var(--safe-left));
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  background: var(--surface-glass);
-  border-bottom: 2px solid var(--border-soft);
-  box-shadow: var(--shadow);
+  align-items: flex-start;
+  gap: var(--sp-1);
+  pointer-events: none; /* the map shows (and takes taps) around the pill and between the chips */
 }
 
-.tb-row {
+.sim-topbar > * {
+  pointer-events: auto;
+}
+
+.tb-pill {
   position: relative;
-  z-index: 2;
+  z-index: 2; /* above the scrim of an open sheet, so the pill's own buttons toggle it */
+  align-self: stretch;
+  gap: var(--sp-1);
+}
+
+.tb-pill .icon-btn {
   flex: 0 0 auto;
-  height: 54px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.tb-btn {
-  flex: 0 0 auto;
-  min-width: var(--tap);
-  height: var(--tap);
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: var(--control-border);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1;
-  touch-action: manipulation;
-  user-select: none;
-}
-
-.tb-btn:active {
-  background: var(--surface-3);
-}
-
-.tb-play {
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
-}
-
-.tb-play:active {
-  background: var(--accent);
-  filter: brightness(0.9);
-}
-
-.tb-play[data-state='play'] .icon {
-  margin-left: 3px;
-}
-
-.tb-speed {
-  min-width: 64px;
-  font-variant-numeric: tabular-nums;
-}
-
-.tb-speed-label {
-  white-space: nowrap;
-}
-
-/* The clock: a button (tap = jump to a time). */
+/* The clock: a button (tap = jump to a time), two lines: the time and "+elapsed · state". */
 .tb-clock {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
-  height: 54px;
+  min-height: var(--tap);
   margin: 0;
-  padding: 0 6px;
+  padding: 0 var(--sp-2);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
   border: 0;
-  border-radius: 10px;
-  background: var(--surface-2);
+  border-radius: var(--r-md);
+  background: transparent;
   color: var(--text);
   text-align: left;
-  line-height: 1.05;
   touch-action: manipulation;
 }
 
 .tb-clock:active {
-  background: var(--surface-3);
+  background: var(--state-press);
 }
 
 .clock-time {
-  font-size: 28px;
-  font-weight: 900;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .tb-sub {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -139,96 +90,81 @@
   display: inline-flex;
 }
 
+.tb-state .badge {
+  min-height: var(--lh-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tb-clock.is-busy .clock-elapsed {
   display: none;
 }
 
-.tb-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 0 8px;
-  border-radius: 7px;
-  font-size: 16px;
-  font-weight: 900;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Play / pause: the one filled blue control of the bar (40 px circle, 44 px hit area). */
+.tb-play .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
 }
 
-.tb-chip-past {
-  background: var(--info);
-  color: var(--on-info);
-}
-
-.tb-chip-busy {
-  background: var(--surface-3);
-  color: var(--text);
-}
-
-/* The weather line: one slim read-out row (not a button; the scrim of an open popover covers it, so a tap there just closes it). */
-.tb-wx {
+.tb-speed {
   flex: 0 0 auto;
-  width: 100%;
-  height: 28px;
-  margin: 0;
-  padding: 0 4px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-3) 0 var(--sp-2);
   color: var(--text);
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1;
-  text-align: left;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  user-select: none;
 }
 
-.tb-wx .wx-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+.tb-speed-label {
   white-space: nowrap;
 }
 
-.tb-wx .wx-wind {
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: 5px;
+/* The read-out chips (temperature, humidity, wind, fire-danger rating): not buttons; the Weather tab is the way in. */
+.tb-wx {
+  display: flex;
+  flex-wrap: wrap; /* at a large text size the chips wrap instead of running off the screen */
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
-.tb-wx .wx-wind span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Read-outs, not buttons, so they need no 32 px chip: a line of text plus 4 px above and below (28 px; it grows with the text). */
+.wx-chip {
+  min-height: calc(var(--lh-sm) + var(--sp-2));
+  gap: var(--sp-1);
+  padding: 0 calc(var(--sp-1) + 2px); /* 6 px: four read-outs fit one row on a 360 px phone */
+  color: var(--text);
 }
 
-.tb-wx .wx-dir {
-  font-weight: 900;
+.wx-chip .wx-icon {
+  color: var(--muted);
 }
 
-.tb-wx .wx-icon {
-  color: var(--chart-rh);
-}
-
-.tb-wx .rating-pill {
+.wx-wind .wind-arrow {
   flex: 0 0 auto;
-  min-height: 22px;
-  padding: 0 8px;
-  border-width: 1.5px;
-  border-radius: 7px;
-  font-size: 16px;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
-/* ───────────────────────────── popovers ───────────────────────────── */
-/* While one is open a transparent scrim below the bar swallows the tap that dismisses it. */
+.wx-dir {
+  font-weight: var(--fw-medium);
+}
+
+.wx-speed {
+  font-weight: var(--fw-regular);
+}
+
+.wx-rating {
+  min-height: calc(var(--lh-sm) + var(--sp-2));
+  padding: 0 calc(var(--sp-1) + 4px);
+  box-shadow: var(--elev-1);
+}
+
+:root[data-contrast='high'] .wx-rating {
+  box-shadow: inset 0 0 0 2px var(--outline);
+}
+
+/* ───────────────────────────── popovers: scrim, main menu, sheets ───────────────────────────── */
+/* While one is open a scrim below the pill swallows the tap that dismisses it (dimmed behind the side sheet). */
 .tb-scrim {
   position: fixed;
   inset: 0;
@@ -236,97 +172,168 @@
   background: transparent;
 }
 
-.tb-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  z-index: 3;
-  width: min(380px, calc(100vw - 16px));
-  max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - 16px);
-  padding: 10px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-strong);
+.tb-scrim.is-dim {
+  z-index: 3; /* the side sheet covers the pill too */
+  background: var(--scrim);
+  animation: fade var(--dur-2) var(--ease);
 }
 
-.tb-pop-left {
-  left: max(8px, var(--safe-left));
-}
-
-.tb-pop-right {
-  right: max(8px, var(--safe-right));
-}
-
-.tb-menu-pop {
-  width: min(280px, calc(100vw - 16px));
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-}
-
-.tb-menu-item {
-  min-height: 52px;
-  padding: 6px 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
-  text-align: left;
-}
-
-.tb-menu-item:active {
-  background: var(--surface-3);
-}
-
-.tb-pop:focus {
+.tb-sheet:focus,
+.sim-drawer:focus {
   outline: none;
 }
 
-.tp-col + .tp-col > :first-child {
-  margin-top: 12px;
+/* The main menu: a Maps-style side sheet from the left, list rows with leading icons and inset dividers. */
+.sim-drawer {
+  position: fixed;
+  z-index: 4;
+  top: calc(var(--strip-h) + var(--safe-top));
+  bottom: 0;
+  left: 0;
+  width: min(320px, 86vw);
+  padding: 0 0 var(--safe-bottom) var(--safe-left);
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-radius: 0 var(--r-lg) var(--r-lg) 0;
+  box-shadow: var(--elev-4);
+  animation: drawer-in var(--dur-2) var(--ease);
 }
 
-.tp-title {
-  margin: 0 0 6px;
-  font-size: 19px;
+.sim-drawer[hidden] {
+  display: none;
+}
+
+:root[data-contrast='high'] .sim-drawer {
+  border-right: 2px solid var(--outline);
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-1) var(--sp-2) var(--sp-4);
+}
+
+.drawer-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  border-radius: var(--r-md);
+  background: var(--fire-bg);
+  color: var(--fire-ink);
+}
+
+.drawer-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.drawer-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--fw-medium);
+}
+
+.drawer-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.drawer-list {
+  padding: var(--sp-1) 0;
+  background: transparent;
+}
+
+.drawer-row {
+  padding-left: var(--sp-4);
+  --row-inset: calc(var(--sp-4) + var(--icon-size) + var(--sp-3));
+}
+
+.drawer-list > li + li::before {
+  left: calc(var(--sp-4) + var(--icon-size) + var(--sp-3));
+}
+
+.sim-drawer .divider {
+  margin: var(--sp-1) 0;
+}
+
+/* The time and speed controls: bottom sheets (transportKit.transportSheet), centred, at most 560 px wide. */
+.tb-sheet {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 0;
+  width: min(560px, 100vw);
+  max-height: calc(100dvh - var(--strip-h) - var(--safe-top) - var(--sp-5));
+  transform: translateX(-50%);
+  animation: sheet-in var(--dur-2) var(--ease);
+}
+
+.tb-sheet[hidden] {
+  display: none;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translate(-50%, 24px);
+    opacity: 0;
+  }
+}
+
+.tb-sheet-body {
+  padding: 0 max(var(--sp-4), var(--safe-right)) var(--sp-3) max(var(--sp-4), var(--safe-left));
+}
+
+.tp-col + .tp-col > :first-child {
+  margin-top: var(--sp-3);
 }
 
 .tp-hint {
-  margin: 10px 0 0;
+  margin: 0 0 var(--sp-2);
   color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .tp-label,
 legend.tp-label {
   padding: 0;
-  font-size: 17px;
-  font-weight: 800;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
 }
 
 .tp-block {
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 .tp-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .tp-value {
-  font-weight: 900;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
@@ -334,58 +341,53 @@ legend.tp-label {
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
 }
 
 .tp-grid {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
+/* Presets wrap (four to a row at the normal text size, fewer when the text is large) and never let a label overflow. */
 .tp-speeds {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
 }
 
-.tp-rel {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 10px;
+.tp-speeds > .tp-chip {
+  flex: 1 0 64px;
+  min-width: max-content;
 }
 
-.tp-rel .tp-chip {
-  padding: 0;
-  font-size: 16px;
+.tp-speeds > .tp-chip-max {
+  flex-basis: 50%;
 }
 
-.tp-steps {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 6px;
-}
-
+/* Speed presets: flat two-line tiles (value over rate); selected = tint + 2 px blue frame + check (never colour alone). */
 .tp-chip {
-  min-height: 52px;
-  padding: 4px 2px;
+  position: relative;
+  min-height: var(--tap);
+  padding: var(--sp-1) 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  border: var(--control-border);
-  border-radius: 12px;
+  border: var(--bw) solid var(--outline-variant);
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
   text-align: center;
   touch-action: manipulation;
   user-select: none;
 }
 
-.tp-chip-flat {
-  min-height: 48px;
-  flex-direction: row;
-  white-space: nowrap;
+.tp-chip:active {
+  background: var(--state-press);
 }
 
 .tp-chip-main {
@@ -394,34 +396,56 @@ legend.tp-label {
 
 .tp-chip-sub {
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-regular);
   white-space: nowrap;
 }
 
 .tp-chip-max {
-  grid-column: span 3;
   flex-direction: row;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
 }
 
-.tp-chip:active {
-  background: var(--surface-3);
+.tp-check {
+  display: none;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.tp-chip .tp-check {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+}
+
+.tp-chip-max .tp-check {
+  position: static;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 .tp-chip[aria-pressed='true'] {
   border-color: var(--primary);
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .tp-chip[aria-pressed='true'] .tp-chip-sub {
-  color: inherit;
-  opacity: 0.9;
+  color: var(--on-primary-container);
+}
+
+.tp-chip[aria-pressed='true'] .tp-check,
+.tp-seg[aria-pressed='true'] .tp-check {
+  display: block;
 }
 
 .tp-chip:disabled {
-  opacity: 0.45;
+  opacity: 0.38;
 }
 
 .tp-custom,
@@ -429,8 +453,8 @@ legend.tp-label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 6px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
 }
 
 .tp-jump {
@@ -440,122 +464,117 @@ legend.tp-label {
 
 .tp-input {
   flex: 1 1 96px;
+  width: auto;
   min-width: 0;
-  height: 48px;
-  padding: 0 10px;
-  border: var(--control-border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 19px;
-  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
+/* The custom speed's unit: a pair of joined outlined segments; the selected one is tinted with a check. */
 .tp-segs {
   display: flex;
+  border: var(--bw) solid var(--outline);
+  border-radius: var(--r-pill);
   overflow: hidden;
-  border: var(--control-border);
-  border-radius: 10px;
 }
 
 .tp-seg {
-  min-width: 52px;
-  height: 44px;
-  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 var(--sp-3);
   border: 0;
   background: var(--surface);
   color: var(--text);
-  font-size: 17px;
-  font-weight: 800;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  touch-action: manipulation;
 }
 
 .tp-seg + .tp-seg {
-  border-left: 2px solid var(--border-soft);
+  border-left: var(--bw) solid var(--outline);
 }
 
 .tp-seg[aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
 .tp-go {
   flex: 0 0 auto;
-  min-width: 64px;
-  height: 48px;
-  padding: 0 18px;
-  border: var(--control-border);
-  border-radius: 10px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.tp-go:active {
-  filter: brightness(0.9);
 }
 
 .tp-msg {
-  margin: 8px 0 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--watch-bg);
-  border: 2px solid var(--watch);
-  font-size: 16px;
-  font-weight: 700;
+  margin: var(--sp-2) 0 0;
+}
+
+.tp-msg[hidden] {
+  display: none;
+}
+
+/* Time sheet: relative jumps and picture intervals are chips; the card jumps are outlined buttons. */
+.tp-rel,
+.tp-steps {
+  margin: var(--sp-3) 0 0;
+}
+
+.tp-step-chip {
+  font-variant-numeric: tabular-nums;
 }
 
 .tp-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
 .tp-card {
-  flex-direction: row;
-  gap: 4px;
-  white-space: nowrap;
+  flex: 1 1 0;
+  min-width: max-content;
+  padding: 0 var(--sp-3);
 }
 
 .tp-fieldset {
   min-width: 0;
-  margin: 14px 0 0;
+  margin: 0;
   padding: 0;
   border: 0;
 }
 
 .tp-note {
-  margin: 6px 0 0;
+  margin: var(--sp-1) 0 0;
   color: var(--muted);
-  font-size: 16px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
 }
 
 .tp-readout {
-  margin: 12px 0 0;
+  margin: var(--sp-3) 0 0;
   color: var(--muted);
-  font-size: 16px;
-  font-weight: 800;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
   font-variant-numeric: tabular-nums;
 }
 
-/* ───────────────────────────── timeline strip ───────────────────────────── */
+/* ───────────────────────────── timeline strip (64 px) ───────────────────────────── */
 .scrubber {
-  --tl-cy: 22px; /* y of the rail's centre inside the slider: the › ‹ buttons (44 px) end at 48 px, leaving 36 px under them for the fast-forward status */
+  --tl-cy: 22px; /* y of the rail's centre inside the slider: the step buttons (44 px) are centred on it */
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 18;
   height: var(--scrub-h);
-  padding: 4px max(6px, var(--safe-right)) var(--safe-bottom) max(6px, var(--safe-left));
+  padding: 0 max(var(--sp-1), var(--safe-right)) var(--safe-bottom) max(var(--sp-1), var(--safe-left));
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: var(--tap) minmax(0, 1fr) var(--tap) auto;
+  grid-template-rows: var(--tap) minmax(0, 1fr);
   align-items: stretch;
-  column-gap: 4px;
+  column-gap: var(--sp-1);
   background: var(--surface);
-  border-top: 2px solid var(--border-soft);
+  border-top: 1px solid var(--divider);
 }
 
 /* While dragging, the value bubble (above the strip) must show over the dock and the panels. */
@@ -564,33 +583,30 @@ legend.tp-label {
 }
 
 .tl-step {
-  align-self: start;
-  margin: calc(var(--tl-cy) - 22px) 0 0;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--surface-2);
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+  width: var(--tap);
+  height: var(--tap);
   color: var(--text);
-  touch-action: manipulation;
-  user-select: none;
   -webkit-touch-callout: none;
 }
 
-.tl-step:active {
-  background: var(--surface-3);
-  border-color: var(--border);
+.tl-step-prev {
+  grid-column: 1;
+}
+
+.tl-step-next {
+  grid-column: 3;
 }
 
 .tl-step:disabled {
-  opacity: 0.35;
+  opacity: 0.38;
 }
 
 .tl-mid {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   position: relative;
   min-width: 0;
 }
@@ -610,29 +626,33 @@ legend.tp-label {
 }
 
 .tl-slider:focus-visible .tl-thumb {
-  outline: 3px solid var(--focus);
-  outline-offset: 3px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-/* The track: 16 px in from each side so the 32 px thumb never overhangs the slider. */
+/* The track: 10 px in from each side so the 20 px thumb never overhangs the slider. */
 .tl-area {
   position: absolute;
-  left: 16px;
-  right: 16px;
+  left: 10px;
+  right: 10px;
   top: 0;
   bottom: 0;
 }
 
+/* Thin 4 px track: grey, the computed range lightly blue, the played part solid blue. */
 .tl-rail {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--tl-cy) - 7px);
-  height: 14px;
+  top: calc(var(--tl-cy) - 2px);
+  height: 4px;
   overflow: hidden;
-  border: 2px solid var(--border);
-  border-radius: 7px;
+  border-radius: 2px;
   background: var(--surface-3);
+}
+
+:root[data-contrast='high'] .tl-rail {
+  box-shadow: inset 0 0 0 1px var(--outline);
 }
 
 .tl-head,
@@ -645,19 +665,19 @@ legend.tp-label {
   left: 0;
 }
 
-/* The computed range (lightly shaded) and the part already played (solid). */
 .tl-head {
   width: var(--head, 0%);
-  background: var(--accent);
-  opacity: 0.4;
+  background: var(--primary);
+  opacity: 0.35;
 }
 
 .tl-played {
   width: var(--view, 0%);
-  background: var(--accent);
+  background: var(--primary);
 }
 
-/* A jump beyond the computed range: what has been computed on the way (solid) and what is still to do (striped). */
+/* A jump beyond the computed range, as a linear progress on the track: what has been computed on the way (solid) and what
+   is still to do (a flat lighter tone of the same colour). */
 .tl-seek-done {
   left: var(--seek-from, 0%);
   width: calc(var(--seek-reached, 0%) - var(--seek-from, 0%));
@@ -667,9 +687,8 @@ legend.tp-label {
 .tl-seek-todo {
   left: var(--seek-reached, 0%);
   width: calc(var(--seek-target, 0%) - var(--seek-reached, 0%));
-  background: repeating-linear-gradient(135deg, var(--info) 0 4px, transparent 4px 9px);
-  background-size: 12.73px 12.73px;
-  animation: tl-stripes 0.9s linear infinite;
+  background: var(--info);
+  opacity: 0.35;
 }
 
 .scrubber:not(.is-seeking) .tl-seek-done,
@@ -677,42 +696,36 @@ legend.tp-label {
   display: none;
 }
 
-@keyframes tl-stripes {
-  to {
-    background-position: 12.73px 0;
-  }
-}
-
 .tl-hours {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--tl-cy) + 8px);
-  height: 10px;
+  top: calc(var(--tl-cy) + 6px);
+  height: 6px;
   pointer-events: none;
 }
 
 .tl-hour {
   position: absolute;
   top: 0;
-  width: 2px;
-  height: 5px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--muted);
+  width: 1px;
+  height: 3px;
+  background: var(--outline);
 }
 
 .tl-hour-major {
-  height: 9px;
-  background: var(--text);
+  height: 6px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--muted);
 }
 
 .tl-labels {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--tl-cy) + 20px);
-  height: 20px;
+  top: calc(var(--tl-cy) + 14px);
+  height: var(--lh-xs);
   pointer-events: none;
 }
 
@@ -725,22 +738,21 @@ legend.tp-label {
   top: 0;
   transform: translateX(-50%);
   color: var(--muted);
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .tl-label-start {
-  transform: translateX(-16px);
+  transform: translateX(-10px);
 }
 
 .tl-label-end {
-  transform: translateX(calc(-100% + 16px));
+  transform: translateX(calc(-100% + 10px));
 }
 
-/* Revealed cards: short bars above the rail (Danger taller than Watch), and the forecast wind changes: diamonds above them. */
+/* Revealed cards: short ticks above the rail (Danger taller than Watch); the forecast wind changes: small diamonds. */
 .tl-marks {
   position: absolute;
   inset: 0;
@@ -749,43 +761,40 @@ legend.tp-label {
 
 .tl-mark {
   position: absolute;
-  width: 4px;
-  margin-left: -2px;
-  border-radius: 2px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 1.5px;
 }
 
 .tl-mark-danger {
-  top: calc(var(--tl-cy) - 21px);
-  height: 13px;
+  top: calc(var(--tl-cy) - 13px);
+  height: 9px;
   background: var(--danger);
 }
 
 .tl-mark-watch {
-  top: calc(var(--tl-cy) - 16px);
-  height: 8px;
-  background: var(--watch);
-  box-shadow: 0 0 0 1px var(--watch-ink);
+  top: calc(var(--tl-cy) - 10px);
+  height: 6px;
+  background: var(--watch-ink);
 }
 
 .tl-mark-change {
-  top: calc(var(--tl-cy) - 26px);
-  width: 10px;
-  height: 10px;
-  margin-left: -5px;
-  border: 2px solid var(--surface);
-  border-radius: 2px;
+  top: calc(var(--tl-cy) - 17px);
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 1px;
   background: var(--info);
   transform: rotate(45deg);
-  box-shadow: 0 0 0 1px var(--info);
+  box-shadow: 0 0 0 1px var(--surface);
 }
 
 .tl-target {
   position: absolute;
   left: var(--seek-target, 0%);
-  top: calc(var(--tl-cy) - 17px);
-  height: 34px;
-  border-left: 3px solid var(--text);
-  border-radius: 2px;
+  top: calc(var(--tl-cy) - 10px);
+  height: 20px;
+  border-left: 2px solid var(--text);
   pointer-events: none;
 }
 
@@ -793,77 +802,78 @@ legend.tp-label {
   position: absolute;
   left: var(--view, 0%);
   top: var(--tl-cy);
-  width: 32px;
-  height: 32px;
-  margin: -16px 0 0 -16px;
-  border: 3px solid var(--surface);
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow:
-    0 0 0 2px var(--border),
-    0 2px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px var(--surface);
   pointer-events: none;
-  transition: transform 0.1s var(--ease);
-}
-
-.tl-thumb::after {
-  content: '';
-  position: absolute;
-  inset: 7px;
-  border-radius: 50%;
-  background: var(--on-primary);
-  opacity: 0.9;
+  transition: transform var(--dur-1) var(--ease);
 }
 
 .scrubber.is-scrubbing .tl-thumb {
-  transform: scale(1.18);
+  transform: scale(1.2);
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 12px var(--state-press);
 }
 
 .tl-bubble {
   position: absolute;
   left: var(--view, 0%);
-  bottom: calc(100% + 14px);
+  bottom: calc(100% + var(--sp-3));
   transform: translateX(calc(-50% + var(--bubble-dx, 0px)));
-  padding: 6px 12px;
+  padding: var(--sp-1) var(--sp-3);
   display: flex;
   flex-direction: column;
   align-items: center;
-  border-radius: 12px;
-  background: var(--primary);
-  color: var(--on-primary);
-  box-shadow: var(--shadow-strong);
-  font-size: 19px;
-  font-weight: 900;
+  border-radius: var(--r-sm);
+  background: var(--surface-inverse);
+  color: var(--on-surface-inverse);
+  box-shadow: var(--elev-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
   white-space: nowrap;
   pointer-events: none;
 }
 
 .tl-bubble-sub {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--fw-regular);
 }
 
-/* Fast-forward status: takes the place of the hour labels, across the whole strip, while a jump computes. */
+/* Fast-forward: the status takes the place of the clock labels under the track, and Cancel sits beside the › button. */
 .tl-status {
-  position: absolute;
-  left: max(6px, var(--safe-left));
-  right: max(6px, var(--safe-right));
-  bottom: var(--safe-bottom);
+  grid-column: 2 / span 2;
+  grid-row: 2;
   z-index: 2;
-  height: 36px;
-  padding: 0 0 0 4px;
+  align-self: start;
+  min-width: 0;
+  padding: 0 var(--sp-2);
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--surface);
-  font-size: 16px;
-  font-weight: 800;
+  gap: var(--sp-1);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  pointer-events: none;
+}
+
+.tl-status[hidden],
+.tl-cancel[hidden] {
+  display: none;
+}
+
+.tl-status .spinner {
+  flex: 0 0 auto;
 }
 
 .tl-status-text {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -872,151 +882,105 @@ legend.tp-label {
 
 .tl-status-pct {
   flex: 0 0 auto;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
+/* Cancel: a text button (40 px, 44 px hit area) in its own column beside the › button while a jump computes. */
 .tl-cancel {
-  position: relative;
-  flex: 0 0 auto;
-  min-width: 84px;
-  height: 36px;
-  padding: 0 12px;
-  border: 2px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 900;
-  touch-action: manipulation;
-}
-
-/* A 44 px touch area around the 36 px button. An inset is measured from the padding box, inside the 2 px border, so this
-   reaches 8 px up (over the foot of the › button, where the strip has no more room; the two overlap only while a jump
-   computes, and Cancel wins there), 4 px down (into the bottom inset) and 4 px to each side. */
-.tl-cancel::before {
-  content: '';
-  position: absolute;
-  inset: -10px -6px -6px;
+  grid-column: 4;
+  grid-row: 1;
+  align-self: center;
+  padding: 0 var(--sp-3);
 }
 
 /* Sub-heading inside a settings card (the Danger card reactions). */
 .settings-sub {
-  margin: 18px 0 0;
-  font-size: 17px;
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
 }
 
 /* ───────────────────────────── narrow and landscape ───────────────────────────── */
-@media (max-width: 400px) {
-  .tb-wx {
-    gap: 9px;
-  }
-  .tb-wx .rating-pill {
-    padding: 0 6px;
-  }
-}
-
-@media (max-width: 380px) {
-  .tb-speed .icon {
-    display: none;
-  }
-}
-
-/* The clock already spins and says "Computing"; the strip gives its room to the target time ("Computing to 17:24…") on a narrow phone. */
+/* A narrow phone gives the status line its room: the clock already says "Computing". */
 @media (max-width: 400px) {
   .tl-status .spinner {
     display: none;
   }
 }
 
-/* Landscape phones: the weather line moves into the single row (56 px), the strip is 72 px, the popovers use two columns. */
+@media (max-width: 359px) {
+  .tb-speed .icon {
+    display: none;
+  }
+}
+
+/* Landscape phones: the chips move up beside the pill (one 48 px row); the sheets use two columns. */
 @media (orientation: landscape) and (max-height: 540px) {
-  .tp-2col {
-    width: min(780px, calc(100vw - 16px));
+  .sim-topbar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .tb-pill {
+    align-self: auto;
+    flex: 0 1 380px;
+    min-width: 0;
+  }
+  .tb-wx {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .tb-sheet.tp-2col {
+    width: min(780px, 100vw);
+  }
+  .tp-2col .tb-sheet-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 16px;
+    column-gap: var(--sp-4);
     align-items: start;
   }
   .tp-col + .tp-col > :first-child {
     margin-top: 0;
   }
-  .tp-2col .tp-cards {
-    margin-top: 0;
-  }
-  .tp-2col .tp-chip {
-    min-height: 44px;
-  }
   .tp-2col .tp-grid {
-    gap: 6px;
+    gap: var(--sp-1);
   }
-  .tp-2col .tp-title {
-    margin-bottom: 4px;
-  }
-  .tp-2col .tp-hint {
-    margin-top: 2px;
-  }
-  .tp-2col .tp-fieldset {
-    margin-top: 10px;
-  }
-  .sim-topbar {
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-  }
-  .tb-row {
-    display: contents;
-  }
-  /* With the row gone the buttons are the flex items: keep them above the scrim of an open popover. */
-  .tb-menu,
-  .tb-clock,
-  .tb-play,
-  .tb-speed {
-    position: relative;
-    z-index: 2;
-  }
-  .tb-menu {
-    order: 0;
-  }
-  .tb-clock {
-    order: 1;
-    flex: 0 0 auto;
-    min-width: 140px;
-  }
-  .tb-wx {
-    order: 2;
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
-    height: 44px;
-  }
-  .tb-play {
-    order: 3;
-  }
-  .tb-speed {
-    order: 4;
-  }
-  /* Between the two step buttons, so Cancel meets nothing; the hour ticks under the taller row give way while a jump computes. */
-  .tl-status {
-    left: 54px;
-    right: 54px;
-  }
-  .scrubber.is-seeking .tl-hours {
-    visibility: hidden;
-  }
-
-  .tb-pop {
-    max-height: calc(100dvh - var(--badge-h) - var(--safe-top) - var(--topbar-h) - 12px);
+  .tb-sheet .bottom-sheet-head {
+    min-height: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tl-seek-todo {
-    animation: none;
-  }
   .tl-thumb {
     transition: none;
   }
   .scrubber.is-scrubbing .tl-thumb {
     transform: none;
+  }
+  .sim-drawer,
+  .tb-sheet,
+  .tb-scrim.is-dim {
+    animation: none;
+  }
+}
+
+/* Forced colours: the played part and the thumb are fills; they keep their colour, and the track gets an edge. */
+@media (forced-colors: active) {
+  .tl-played,
+  .tl-head,
+  .tl-seek-done,
+  .tl-seek-todo,
+  .tl-thumb,
+  .wx-rating {
+    forced-color-adjust: none;
+  }
+  .tl-rail {
+    outline: 1px solid CanvasText;
+  }
+  .sim-drawer,
+  .tb-sheet {
+    outline: 1px solid CanvasText;
   }
 }

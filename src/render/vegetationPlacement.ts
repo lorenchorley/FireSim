@@ -111,6 +111,87 @@ export interface PlacementOptions {
    * after the fuel map changes).
    */
   cache?: PlacementCache;
+  /**
+   * Corridors kept clear of every tree and shrub (the RFS fire trails, so the canopy never hides a trail): polylines
+   * [x0, y0, x1, y1, ...] in local metres and the half-width of the cleared track (m). A plant is left out when its crown
+   * would reach into the track (distance to the line < halfWidth + half its crown width).
+   */
+  clearings?: { lines: readonly Float32Array[]; halfWidth: number } | null;
+}
+
+/** Widest crown radius a placed plant can have (m): rainforest 22 m × GROW_MAX / 2, rounded up. */
+const MAX_CROWN_RADIUS = 19;
+
+/**
+ * Segments of the clearing lines bucketed by fuel cell (every cell within reach of a segment lists it), so the test per
+ * plant only looks at the few segments near it.
+ */
+export class ClearingIndex {
+  private readonly cells = new Map<number, number[]>();
+  private readonly seg: Float32Array;
+  constructor(
+    g: GridSpec,
+    lines: readonly Float32Array[],
+    readonly halfWidth: number,
+  ) {
+    let n = 0;
+    for (const l of lines) n += Math.max(0, (l.length >> 1) - 1);
+    this.seg = new Float32Array(n * 4);
+    const reach = halfWidth + MAX_CROWN_RADIUS;
+    const h = g.cellSize;
+    let s = 0;
+    for (const l of lines) {
+      for (let i = 0; i + 3 < l.length; i += 2) {
+        const ax = l[i]!;
+        const ay = l[i + 1]!;
+        const bx = l[i + 2]!;
+        const by = l[i + 3]!;
+        this.seg.set([ax, ay, bx, by], s * 4);
+        const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach - g.x0) / h + 0.5));
+        const i1 = Math.min(g.nx - 1, Math.floor((Math.max(ax, bx) + reach - g.x0) / h + 0.5));
+        const j0 = Math.max(0, Math.floor((Math.min(ay, by) - reach - g.y0) / h + 0.5));
+        const j1 = Math.min(g.ny - 1, Math.floor((Math.max(ay, by) + reach - g.y0) / h + 0.5));
+        for (let j = j0; j <= j1; j++) {
+          for (let ii = i0; ii <= i1; ii++) {
+            const k = j * g.nx + ii;
+            let list = this.cells.get(k);
+            if (!list) this.cells.set(k, (list = []));
+            list.push(s);
+          }
+        }
+        s++;
+      }
+    }
+  }
+
+  /** Does the fuel cell k lie near any clearing (cheap pre-check)? */
+  near(k: number): boolean {
+    return this.cells.has(k);
+  }
+
+  /** Distance (m) from (x, y) to the nearest clearing line near cell k (Infinity when none is near). */
+  distance(k: number, x: number, y: number): number {
+    const list = this.cells.get(k);
+    if (!list) return Infinity;
+    let best = Infinity;
+    const sg = this.seg;
+    for (const s of list) {
+      const ax = sg[s * 4]!;
+      const ay = sg[s * 4 + 1]!;
+      const vx = sg[s * 4 + 2]! - ax;
+      const vy = sg[s * 4 + 3]! - ay;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / len2)) : 0;
+      const d2 = (ax + vx * t - x) ** 2 + (ay + vy * t - y) ** 2;
+      if (d2 < best) best = d2;
+    }
+    return Math.sqrt(best);
+  }
+
+  /** Would a plant of crown width w (m) at (x, y) in cell k reach into a cleared track? */
+  blocks(k: number, x: number, y: number, w: number): boolean {
+    return this.cells.has(k) && this.distance(k, x, y) < this.halfWidth + 0.5 * w;
+  }
 }
 
 /** Opaque cache of per-cell demand for one fuel map. */
@@ -379,6 +460,7 @@ export class PlacementJob {
   private readonly R0: number;
   private readonly far: number;
   private readonly wantUnder: boolean;
+  private readonly clear: ClearingIndex | null;
   private dem: Demand[] | null = null;
   private cursor = 0;
   private w = new Float32Array(0);
@@ -403,6 +485,8 @@ export class PlacementJob {
     this.R0 = opts.focusRadius ?? 1500;
     this.far = opts.farDensity ?? 0.12;
     this.wantUnder = opts.understorey !== false;
+    const cl = opts.clearings;
+    this.clear = cl && cl.lines.length ? new ClearingIndex(this.g, cl.lines, cl.halfWidth) : null;
     const c = opts.cache;
     if (c && c.fuel === fuel && c.demand) {
       this.dem = c.demand;
@@ -702,6 +786,8 @@ export class PlacementJob {
             break;
           }
         }
+        // A cleared corridor (fire trail): leave the plant out rather than let its crown hide the track.
+        if (this.clear && this.clear.blocks(k, x, y, width)) continue;
         const o = this.outs[group]!;
         const idx = o.n++;
         const z = this.opts.heightAt(x, y);

@@ -96,6 +96,8 @@ export class SnapshotStore {
   /** The real newest snapshot (null after a truncation until the next push). */
   private head: SimSnapshot | null = null;
   private headBytes = 0;
+  /** The newest snapshot's engine info (SimSnapshot.engine), kept through truncations: composed pictures carry it. */
+  private engine: SimSnapshot['engine'];
   /** Where the fire is rebuilt from: the newest snapshot's fire, or the stale one of a truncated head. */
   private fireSrc: FireField | null = null;
   private fireSrcBytes = 0;
@@ -211,6 +213,7 @@ export class SnapshotStore {
     this.truncateFrom(snap.time);
     if (this.head) this.demote(this.head);
     this.head = snap;
+    if (snap.engine) this.engine = snap.engine;
     this.headBytes = estimateSnapshotBytes(snap);
     this.trackBurnOut(snap.fire, snap.time, this.frames.length ? this.frames[this.frames.length - 1]!.time : NaN);
     this.fireSrc = snap.fire ?? null;
@@ -238,6 +241,7 @@ export class SnapshotStore {
     this.keyBytes = 0;
     this.embBytes = 0;
     this.head = null;
+    this.engine = undefined;
     this.headBytes = 0;
     this.fireSrc = null;
     this.fireSrcBytes = 0;
@@ -293,6 +297,8 @@ export class SnapshotStore {
       stats: frame.stats,
       insights: [],
       layers: key ? key.layers : head?.layers,
+      // The engine info describes the engine NOW (tier, grids, memory), so every picture carries the newest one.
+      ...(this.engine ? { engine: this.engine } : {}),
     } as SimSnapshot;
     this.cache = { gen: this.gen, t: tq, q: quantum, snap };
     return snap;

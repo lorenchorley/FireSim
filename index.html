@@ -12,7 +12,8 @@
     <title>FireSim — mountain bushfire trainer</title>
     <script>
       // Apply the stored / system theme and the high-contrast variant before first paint to avoid a flash.
-      // (Colours: THEME_CHROME in src/ui/settings.ts. The theme-color meta is the status-bar colour: amber strip.)
+      // (Colours: THEME_CHROME in src/ui/settings.ts. The theme-color meta is the status-bar colour: the amber strip, the
+      // same with or without high contrast; src/ui/settings.ts applyAppearance takes over once the app has started.)
       (function () {
         try {
           var p = new URLSearchParams(location.search);
@@ -21,6 +22,7 @@
           var s = saved.theme || 'system';
           var t = q === 'light' || q === 'dark' ? q : s === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : s;
           document.documentElement.dataset.theme = t;
+          document.documentElement.style.colorScheme = t;
           if (p.get('contrast') === 'high' || saved.highContrast === true) document.documentElement.dataset.contrast = 'high';
           var m = document.querySelector('meta[name="theme-color"]');
           if (m) m.setAttribute('content', t === 'dark' ? '#e0a100' : '#fbbc04');

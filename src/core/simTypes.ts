@@ -325,3 +325,179 @@ export interface SimStateView {
   factorsAt(k: number): SpreadFactors;
   evaluateCell(k: number): CellEvaluation;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engine info (transparency: "How this simulation works")
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * What the engine REALLY runs, reported with every snapshot (`SimSnapshot.engine`, producer: sim/simulation.ts
+ * `makeSnapshot` via sim/engineInfo.ts). Every value is read from the running modules (atmosphere grid, fire grid,
+ * level-set bound, ember model, SIM_PARAMS cadences, perf counters, `memoryReport()`), never typed in. Small (well
+ * under 2 KB) and structured-clone friendly (plain numbers, strings and arrays). Wall-clock values (step times, speed,
+ * memory) are measurements on this device; the physics never depends on them (snapshot hashes skip `engine`).
+ * The UI's history store carries the newest snapshot's `engine` on its composed pictures, so it always describes the
+ * engine NOW, not the moment on screen.
+ */
+export interface EngineInfo {
+  /** True only for the UI's demo engine (ui/mockSim.ts): nothing here then describes a physics simulation. */
+  mock?: boolean;
+  /** Atmosphere tier in use now. */
+  tier: QualityTier;
+  /** What was asked for at the start: 'auto' (auto-tune) or an explicit tier (performance setting, 'Fast' detail). */
+  tierRequested: 'auto' | QualityTier;
+  /**
+   * How the tier in use was decided: 'requested' = asked for explicitly at the start; 'auto-tune' = the auto-tune
+   * measured this device (spec §12.6); 'auto-pending' = auto, the timing sample is still running (3-D spin-up);
+   * 'auto-default' = auto without a timing sample (no spin-up was run); 'changed' = switched during the run
+   * (performance setting or "Use the 3-D atmosphere"), recorded at `tierChangedAt`.
+   */
+  tierCause: 'requested' | 'auto-tune' | 'auto-pending' | 'auto-default' | 'changed';
+  /** One plain sentence with the numbers behind the tier (auto-tune timing, or when it was changed). */
+  tierReason: string;
+  /** The auto-tune measurement (tier 'auto', once its timed steps ran), else null. */
+  autoTune: { stepMs: number; predictedS: number; budgetS: number; chosen: QualityTier; steps: number } | null;
+  /** Simulation time (s) of the tier change in force, null when the tier is the one of the start. */
+  tierChangedAt: number | null;
+  atmosphere: EngineAtmosphereInfo;
+  fire: EngineFireInfo;
+  embers: EngineEmberInfo;
+  cadence: EngineCadenceInfo;
+  run: EngineRunInfo;
+  models: EngineModelsInfo;
+  /** Measured typed-array memory of the running engine (worker side), refreshed at most every 30 wall-seconds. */
+  memory?: EngineMemoryInfo;
+}
+
+export interface EngineAtmosphereInfo {
+  /**
+   * '3d' = time-stepped 3-D air flow (dry Boussinesq on a terrain-following grid, spec §8.4, standard / high tiers);
+   * 'diagnostic' = fast tier: no time-stepped air flow; the forecast wind is fitted to the terrain by a mass-consistent
+   * solve on the same kind of grid once per weather stamp (§8.3, §8.9) and the fire uses its 10 m surface field.
+   */
+  kind: '3d' | 'diagnostic';
+  /** Columns east-west and north-south, and terrain-following levels, of the atmosphere grid (0 for the demo engine). */
+  nx: number;
+  ny: number;
+  nz: number;
+  /** Horizontal spacing (m). */
+  dxM: number;
+  /** First-level thickness Δζ₁ (m, over flat ground; thinner over high ground, spec §8.1). */
+  dzFirstM: number;
+  /** Model top above the lowest ground (m): H′ = max(3000, relief + 2000). */
+  topM: number;
+  /** Geometric stretch ratio of the level thicknesses. */
+  stretch: number;
+  /** The last atmosphere step Δt_a (s) (also the fire's and embers' outer step); null before the first step. */
+  currentStepS: number | null;
+  /** Mean wall-clock ms of the atmosphere module per step on this device (since the tier started); null before. */
+  meanStepMs: number | null;
+  /** 3-D spin-up finished (the air has settled over the terrain); always false in the diagnostic tier. */
+  spunUp: boolean;
+  /** Where the upper-air profile came from: a weather model, a designed preset air mass, or synthesis. */
+  upperAir: 'model' | 'preset' | 'synthetic' | 'none';
+  /** The snapshot's AtmosphereView was halved horizontally to stay small (display only; the solver grid is as above). */
+  viewDecimated: boolean;
+}
+
+export interface EngineFireInfo {
+  /** Fire (level-set) grid: cells east-west, north-south, and the cell size (m). Same grid as fuel and moisture. */
+  nx: number;
+  ny: number;
+  cellM: number;
+  /**
+   * The level-set sub-step (s) in use: min(CFL bound of the last sub-step, the outer step Δt_a); null when no front
+   * is moving (no fire yet, or all burnt out).
+   */
+  currentSubStepS: number | null;
+  /** Numerical cap on any spread rate (m/s, spec §7.2, [V WRF ros_max]). */
+  maxSpreadRate: number;
+  /** Cap on the forest (Vesta Mk2 and pine) head spread after every multiplier (m/s, spec D4). */
+  forestHeadCapMs: number;
+  /** Slope range (deg) outside which a head is flagged "not validated" (spec D4, §6.12). */
+  validSlopeDeg: [number, number];
+}
+
+export interface EngineEmberInfo {
+  /** Embers switched on (What if). */
+  on: boolean;
+  /** Tracked super-particles now and the budget (each may stand for several real firebrands). */
+  active: number;
+  max: number;
+  /** Outer ember step (s) = the atmosphere step (the wind is frozen per step); null before the first step. */
+  stepS: number | null;
+  /** Adaptive particle sub-step range (s) inside that step (spec §9.3). */
+  subStepMinS: number;
+  subStepMaxS: number;
+  /** Firebrand classes the model tracks. */
+  classes: EmberClass[];
+}
+
+export interface EngineCadenceInfo {
+  /** Display step (s): a picture every this many simulated seconds (Settings.timeStep, live). */
+  displayStepS: number;
+  /** Solver step limit set by the user (s); 0 = automatic. */
+  solverMaxStepS: number;
+  /** The tier's own bound on the outer step (s): 12 (3-D, stability-limited) or 10 (fast, fixed). */
+  solverBoundS: number;
+  /** The shortest outer step the tier's stability rule gives (s): 3 (3-D) or 10 (fast); the user limit may go lower. */
+  solverFloorS: number;
+  /** Insolation, surface heating and litter moisture update interval (s). */
+  moistureUpdateS: number;
+  /** Fire masks, detectors (insight cards) and atmosphere diagnostics interval (s). */
+  detectorsS: number;
+  /** Checkpoint interval (s) and ring size (plus the permanent start checkpoint). */
+  checkpointS: number;
+  checkpointRing: number;
+  /** Median spacing (s) of the weather series stamps and how the engine goes between them. */
+  weatherStampS: number;
+  weatherInterpolation: 'linear';
+}
+
+export interface EngineRunInfo {
+  seed: number;
+  /** Same scenario + seed + actions give bitwise the same results (spec §12.5, tested); false for the demo engine. */
+  deterministic: boolean;
+  /** Simulated seconds computed per wall-clock second on this device (recent, this tier); null until measured. */
+  simSecondsPerWallSecond: number | null;
+  /** Outer steps taken so far (all tiers, re-runs included). */
+  steps: number;
+  /** Mean wall-clock ms of one whole coupled step (fire, air, embers, detectors) on this device, this tier; null before. */
+  meanStepMs: number | null;
+  /** Checkpoints held (the start one + the ring) and their bytes: how far back a change can re-run from. */
+  checkpoints: number;
+  checkpointBytes: number;
+  /** 3-D spin-up length (s) before the start (0 in the fast tier). */
+  spinUpS: number;
+}
+
+/** One empirical spread model in use in this scenario, with the share of burnable cells it serves. */
+export interface SpreadModelUse {
+  family: FuelFamily;
+  /** Model name, e.g. 'Vesta Mk2', 'CSIRO grassland'. */
+  model: string;
+  /** Burnable fire cells of this family and their share of all burnable cells (0–1). */
+  cells: number;
+  share: number;
+}
+
+export interface EngineModelsInfo {
+  /** Spread models by fuel family FOR THIS SCENARIO (families with no cell are left out), most cells first. */
+  spread: SpreadModelUse[];
+  /** Fire–atmosphere coupling c_f (0 = the fire does not change the wind, 1 = full two-way coupling). */
+  coupling: number;
+  /** Parameterised mountain effects (eruptive slopes, lee-slope lateral spread, junctions, debris) on. */
+  mountainPhenomena: boolean;
+  embersOn: boolean;
+  /** Fast tier: the fire's own indraft is a 2-D potential-flow estimate on the ground (spec §8.8). */
+  pyrogenic: boolean;
+  heathModel: 'refit2024' | 'v1';
+}
+
+export interface EngineMemoryInfo {
+  /** Simulation time (s) of the measurement. */
+  measuredAt: number;
+  /** Parts as Simulation.memoryReport() names them (scenario, fire, moisture, fuel, atmosphere, embers, explain, checkpoints, rasters). */
+  parts: { name: string; bytes: number }[];
+  totalBytes: number;
+}

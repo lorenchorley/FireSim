@@ -907,6 +907,11 @@ export interface SimSnapshot {
   insights: Insight[];
   /** Extra overlay rasters on the fire grid, keyed by OverlayKind ('vls', 'attach', 'trench', 'dmz', 'landing'). */
   layers?: Record<string, Float32Array>;
+  /**
+   * What the engine really runs now (tier, grids, steps, models, measured memory): see {@link EngineInfo} in
+   * simTypes.ts. Optional: absent from older producers and from test fixtures.
+   */
+  engine?: import('./simTypes').EngineInfo;
 }
 
 export * from './simTypes';

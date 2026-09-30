@@ -2,6 +2,7 @@
  * Setup-form model (pure, unit-tested): defaults, validation and conversion to a {@link ScenarioRequest}.
  */
 import type { LatLon } from '../core/geo';
+import { formatBytes, isSubstitute, type DatasetRecord } from '../core/datasets';
 import { DEMO_SITES } from '../data/demoSites';
 import type { ScenarioRequest, WeatherMode } from '../scenario/request';
 import { manualSeries } from './weatherSeries';
@@ -304,4 +305,163 @@ export function detailHint(extentKm: number, detail: Detail, tier?: string): str
   const count = cells >= 1e5 ? `${Math.round(cells / 1000)}k` : cells.toLocaleString('en-AU');
   const why = built.coarsened ? ` (20 m needs an area of ${SCENARIO_PARAMS.highDetailMaxExtentM / 1000} km or less)` : detail === 'fast' ? ', simple 2-D wind' : '';
   return `${built.cellM} m cells · ${count} cells${why}`;
+}
+
+/**
+ * The fire grid the builder will really make for an area, a detail option and the performance profile's tier (the same
+ * rule buildRequest + scenario/build.ts resolveRequest apply): cell size, cells per side and in all, whether 20 m was asked
+ * for but the area is too large, and whether the wind is the simple 2-D surface model ('Fast' = the fast tier).
+ */
+export function detailCell(extentKm: number, detail: Detail, tier?: string): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean } {
+  const extentM = extentKm * 1000;
+  const t = detail === 'fast' ? 'fast' : tier;
+  const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
+  const n = Math.round(extentM / built.cellM);
+  return { cellM: built.cellM, n, cells: n * n, coarsened: built.coarsened, twoD: t === 'fast' };
+}
+
+/** Chip labels of the detail picker for an area and tier: each names the cell size that option really builds ("Normal · 20 m"). */
+export function detailChoices(extentKm: number, tier?: string): { value: Detail; label: string }[] {
+  return (['fast', 'normal', 'detailed'] as const).map((value) => {
+    const c = detailCell(extentKm, value, tier);
+    return { value, label: `${DETAIL_OPTIONS[value].label} · ${c.cellM} m${c.twoD ? ' 2-D' : ''}` };
+  });
+}
+
+/** Simulated durations offered as chips (h). A saved value that is not one of them (any whole hour 1-12) is offered too. */
+export const DURATION_CHOICES_H: readonly number[] = [1, 2, 3, 6, 9, 12];
+
+export function durationChoices(current: number): number[] {
+  return [...new Set([...DURATION_CHOICES_H, current])].filter((h) => Number.isInteger(h) && h >= 1 && h <= 12).sort((a, b) => a - b);
+}
+
+// ───────────── planned data ("Data for this run") ─────────────
+
+/** How a planned data set will be had: a provenance chip (origin-chip) or a neutral / warning badge. */
+export type PlanBadge =
+  | { kind: 'origin'; origin: 'live' | 'saved' | 'bundled' | 'synthetic' | 'user'; label: string }
+  | { kind: 'badge'; tone: 'neutral' | 'watch'; label: string };
+
+export interface PlanRow {
+  id: string;
+  role: DatasetRecord['role'];
+  title: string;
+  /** Provider without the parenthetical part ("NSW Spatial Services"). */
+  provider: string;
+  badge: PlanBadge;
+  /** '≈ 1.8 MB' (estimate, uncompressed), '1.4 MB' (exact: bundled files and saved packs), '' when nothing is needed. */
+  size: string;
+  /** What stands in when the data set cannot be had (offline, not covered), in the planner's words. */
+  note?: string;
+}
+
+/** Plain provider name: the part before a parenthesis ("NSW Spatial Services (Department of Customer Service)" -> "NSW Spatial Services"). */
+export const shortProvider = (name: string): string => name.replace(/\s*\(.*$/, '').trim() || name;
+
+/** A substitute planned because there is no signal (the planner's reason says so), not because the data do not exist here. */
+const offlineSubstitute = (r: DatasetRecord): boolean => isSubstitute(r) && r.origin !== 'bundled' && /offline/i.test(r.fallbackReason ?? '');
+
+/** One row of the Setup's data preview from a planned record (scenario/estimate.ts). */
+export function planRow(r: DatasetRecord, online: boolean): PlanRow {
+  const p = r.plan;
+  const exact = !!p && p.lowBytes === p.highBytes;
+  const net = p?.networkBytes ?? 0;
+  const bytes = net > 0 ? net : r.sizes.transferredBytes;
+  const size = bytes > 0 ? `${exact && net === 0 ? '' : '≈ '}${formatBytes(bytes)}` : '';
+  let badge: PlanBadge;
+  if (!online && offlineSubstitute(r)) badge = { kind: 'badge', tone: 'watch', label: 'Not available offline' };
+  else if (r.status === 'unavailable') badge = { kind: 'badge', tone: 'neutral', label: 'Not available here' };
+  else if (r.status === 'fallback') badge = { kind: 'origin', origin: 'synthetic', label: 'Estimated instead' };
+  else
+    switch (r.origin) {
+      case 'bundled':
+        badge = { kind: 'origin', origin: 'bundled', label: 'Bundled' };
+        break;
+      case 'cache':
+      case 'area-pack':
+        badge = { kind: 'origin', origin: 'saved', label: 'Saved on device' };
+        break;
+      case 'live':
+        badge = { kind: 'origin', origin: 'live', label: 'Live' };
+        break;
+      case 'user':
+        badge = { kind: 'origin', origin: 'user', label: 'Entered by you' };
+        break;
+      case 'preset':
+      case 'synthetic':
+        badge = { kind: 'origin', origin: 'synthetic', label: r.origin === 'preset' ? 'Designed' : 'Made up' };
+        break;
+      default:
+        badge = { kind: 'badge', tone: 'neutral', label: r.origin === 'derived' ? 'Worked out' : 'Not needed' };
+    }
+  const row: PlanRow = { id: r.id, role: r.role, title: r.title, provider: shortProvider(r.provider.name), badge, size };
+  const note = isSubstitute(r) ? r.fallbackReason : undefined;
+  if (note) row.note = note;
+  return row;
+}
+
+/** Provenance badge, provider and measured size of a BUILT record (ScenarioData.datasets), for the Building screen's final list. */
+export function builtRow(r: DatasetRecord): { provider: string; badge: PlanBadge; size: string } {
+  const z = r.sizes;
+  const size = z.transferredBytes > 0 ? `${(z.networkUnmeasuredBytes ?? 0) > 0 ? 'up to ' : ''}${formatBytes(z.transferredBytes)}` : '';
+  let badge: PlanBadge;
+  if (r.status === 'unavailable' || r.status === 'skipped') badge = { kind: 'badge', tone: 'neutral', label: r.status === 'skipped' ? 'Not used' : 'Not available' };
+  else if (r.status === 'fallback') badge = { kind: 'origin', origin: 'synthetic', label: 'Estimated instead' };
+  else
+    switch (r.origin) {
+      case 'live':
+        badge = { kind: 'origin', origin: 'live', label: 'Live' };
+        break;
+      case 'cache':
+      case 'area-pack':
+        badge = { kind: 'origin', origin: 'saved', label: 'Saved on device' };
+        break;
+      case 'bundled':
+        badge = { kind: 'origin', origin: 'bundled', label: 'Bundled' };
+        break;
+      case 'user':
+        badge = { kind: 'origin', origin: 'user', label: 'Entered by you' };
+        break;
+      case 'preset':
+      case 'synthetic':
+        badge = { kind: 'origin', origin: 'synthetic', label: r.origin === 'preset' ? 'Designed' : 'Made up' };
+        break;
+      default:
+        badge = { kind: 'badge', tone: 'neutral', label: r.origin === 'derived' ? 'Worked out' : 'Not obtained' };
+    }
+  return { provider: shortProvider(r.provider.name), badge, size };
+}
+
+/**
+ * Totals line and offline warnings of a plan. Download sizes are the uncompressed answers (an upper bound: services
+ * compress). With "Use the network" off, the line says whether the run has all its data or uses estimates for some.
+ * The five places layers (one query / one file) are named together.
+ */
+export function planSummary(records: readonly DatasetRecord[], online: boolean): { download: string; offline: string; offlineOk: boolean; warnings: string[] } {
+  let net = 0;
+  let onDevice = 0;
+  const needSignal: string[] = [];
+  const substitutes: string[] = [];
+  const name = (r: DatasetRecord): string => (r.role === 'context' ? 'roads, homes and place names' : r.title);
+  const addOnce = (xs: string[], x: string): void => void (xs.includes(x) || xs.push(x));
+  for (const r of records) {
+    const p = r.plan;
+    if (!p) continue;
+    net += p.networkBytes;
+    if (p.networkBytes === 0) onDevice += r.sizes.transferredBytes;
+    if (!p.offlineOk && !(!online && offlineSubstitute(r))) addOnce(needSignal, name(r));
+    if (!online && offlineSubstitute(r)) addOnce(substitutes, name(r));
+  }
+  const offlineOk = needSignal.length === 0 && substitutes.length === 0;
+  const download = net > 0 ? `≈ ${formatBytes(net)} to download` : 'Nothing to download';
+  const warnings: string[] = [];
+  if (!online && substitutes.length) warnings.push(`Offline: no data for ${listWords(substitutes)}; the app uses estimates instead. Save the area while you have a signal to use the real data.`);
+  if (online && needSignal.length) warnings.push(`Needs a signal for ${listWords(needSignal)}. Save the area for offline use first if you will have no coverage.`);
+  const offline = online ? `Works offline: ${offlineOk ? 'yes' : 'no'}` : substitutes.length ? 'Offline, with estimates' : 'Works offline: yes';
+  return { download: onDevice > 0 && net > 0 ? `${download} · ${formatBytes(onDevice)} on the phone` : download, offline, offlineOk, warnings };
+}
+
+function listWords(xs: readonly string[]): string {
+  const lower = xs.map((x) => x.charAt(0).toLowerCase() + x.slice(1));
+  return lower.length <= 1 ? (lower[0] ?? '') : `${lower.slice(0, -1).join(', ')} and ${lower[lower.length - 1]}`;
 }

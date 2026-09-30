@@ -1,1 +1,642 @@
-/* datasets.css — see docs/DESIGN.md; use the design tokens and primitives only. */
+/* datasets.css — see docs/DESIGN.md; use the design tokens and primitives only.
+ *
+ * The Data sets screen (src/ui/screens/datasets.ts): a full screen with a list page and a detail page, each a top app
+ * bar over cards of list rows (the flat Maps look). Everything here is layout on top of the primitives (cards, lists,
+ * chips, badges, origin chips, kv, stat, bar, sparkbar, legend chips, callouts); colours come from tokens, except the
+ * heat-map colours, which are data and arrive inline from the renderer's palette.
+ */
+
+/* ───────────── pages ───────────── */
+
+.datasets-screen .ds-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.datasets-screen .ds-main {
+  padding-bottom: calc(var(--sp-5) + var(--safe-bottom));
+}
+
+/* Card heading with an action on the right (the sort chip). */
+.ds-card-head {
+  display: flex;
+  flex-wrap: wrap; /* at a large font scale the action drops under the title instead of squeezing it */
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.ds-card-head .card-title {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: min(100%, 8rem);
+  overflow-wrap: break-word;
+}
+
+.ds-card-head .card-title .icon {
+  color: var(--icon);
+}
+
+.datasets-screen .sub-title {
+  margin-top: var(--sp-4);
+}
+
+.ds-note {
+  overflow-wrap: anywhere;
+}
+
+.ds-skel {
+  width: 60%;
+}
+
+/* Group headers inside a card: plain grey text, no band. */
+.datasets-screen .section-header.ds-group {
+  background: transparent;
+  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+}
+
+.datasets-screen .card > .section-header.ds-group {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.ds-group-gloss {
+  margin-top: 0;
+}
+
+/* Actions: small buttons that wrap keep 12 px between rows, so their 44 px hit areas never overlap. */
+.ds-actions {
+  row-gap: var(--sp-3);
+  column-gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+/* The inline confirmation of a copy / clear / delete (a line of text, never a pop-up). */
+.ds-status {
+  margin: 0;
+  color: var(--ok-ink);
+  overflow-wrap: anywhere;
+}
+
+.ds-status.is-shown {
+  margin-top: var(--sp-1);
+}
+
+/* ───────────── DS1 summary ───────────── */
+
+.ds-stats {
+  --cols: 2;
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+@media (min-width: 560px) {
+  .ds-stats {
+    --cols: 4;
+  }
+}
+
+/* "up to" / "≈" before a big number. */
+.stat-num .ds-pre {
+  margin: 0 var(--sp-1) 0 0;
+}
+
+.ds-legend {
+  margin: var(--sp-2) 0 var(--sp-1);
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.ds-legend .legend-chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Legend swatches of the stacked bars: the same colours as the bar segments (data colours, never the accent blue). */
+.ds-swatch {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--muted);
+}
+
+.ds-swatch-ok {
+  background: var(--ok);
+}
+
+.ds-swatch-watch {
+  background: var(--watch);
+}
+
+.ds-swatch-danger {
+  background: var(--danger);
+}
+
+.ds-swatch-fire {
+  background: var(--fire);
+}
+
+.ds-swatch-s1 {
+  background: var(--series-1);
+}
+
+.ds-swatch-s2 {
+  background: var(--series-2);
+}
+
+.ds-swatch-s3 {
+  background: var(--series-3);
+}
+
+.ds-swatch-s4 {
+  background: var(--series-4);
+}
+
+.ds-swatch-s5 {
+  background: var(--series-5);
+}
+
+@media (forced-colors: active) {
+  .ds-swatch {
+    forced-color-adjust: none;
+  }
+}
+
+.ds-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.ds-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds-line .icon {
+  color: var(--icon);
+}
+
+.ds-line.is-watch .icon {
+  color: var(--watch-ink);
+}
+
+.ds-fallbacks {
+  margin-top: var(--sp-3);
+}
+
+.ds-fallbacks p {
+  margin: 0;
+}
+
+.ds-fallback-list {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+  overflow-wrap: anywhere;
+}
+
+.ds-fallback-list li + li {
+  margin-top: var(--sp-1);
+}
+
+/* ───────────── DS2 list ───────────── */
+
+.ds-sort-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.ds-sort-menu {
+  right: 0;
+  top: calc(100% + var(--sp-2)); /* clear of the sort chip's 44 px hit area */
+  min-width: 12rem;
+}
+
+.ds-menu-row[aria-checked='true'] .list-title {
+  color: var(--primary-ink);
+  font-weight: var(--fw-medium);
+}
+
+.ds-menu-row[aria-checked='true'] .list-trail {
+  color: var(--primary-ink);
+}
+
+.ds-filters .chip-choice > .chips-scroll {
+  margin-top: 0;
+}
+
+/* The rows reach the card's edges like a .card-list. */
+.ds-rows {
+  margin: 0 calc(var(--sp-3) * -1);
+}
+
+.ds-row .list-body {
+  gap: calc(var(--sp-1) / 2);
+}
+
+.ds-row.is-not-used .list-title {
+  color: var(--muted);
+}
+
+.ds-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+/* Long words at a 200 % font scale wrap inside a chip instead of widening the row. */
+.ds-row-chips .badge,
+.ds-row-chips .origin-chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ds-size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.ds-size .icon {
+  color: var(--icon);
+}
+
+.ds-row-reason {
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds-row .bar {
+  margin-top: var(--sp-2);
+  min-width: 0;
+}
+
+.ds-row-trail {
+  align-self: center;
+  gap: var(--sp-1);
+}
+
+/* ───────────── DS4 working memory and storage ───────────── */
+
+.ds-mem-row .list-body,
+.ds-store-row .list-body {
+  gap: calc(var(--sp-1) / 2);
+}
+
+.ds-mem-row .bar,
+.ds-store-list .bar {
+  margin-top: var(--sp-1);
+  min-width: 0;
+}
+
+.ds-mem-title {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+}
+
+.ds-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ds-live .hint {
+  margin: 0;
+}
+
+.ds-storage-head {
+  margin: 0 0 var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.ds-storage .meter {
+  margin: var(--sp-2) 0;
+}
+
+.ds-store-row .list-trail {
+  align-self: center;
+}
+
+/* ───────────── DS6 how to read this ───────────── */
+
+.ds-details > summary {
+  color: var(--text);
+}
+
+.ds-details-body .sub-title:first-child {
+  margin-top: var(--sp-1);
+}
+
+.ds-how .card-list {
+  margin-top: var(--sp-2);
+}
+
+/* ───────────── DS3 detail ───────────── */
+
+.ds-identity-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-1);
+}
+
+.ds-identity-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--icon);
+}
+
+.ds-identity-titles {
+  min-width: 0;
+}
+
+.ds-identity-titles h2,
+.ds-identity-titles p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ds-identity-chips {
+  margin: var(--sp-2) 0;
+}
+
+.ds-identity p,
+.ds-trust p {
+  overflow-wrap: anywhere;
+}
+
+.ds-identity .callout {
+  margin-top: var(--sp-3);
+}
+
+.ds-identity .callout p {
+  margin: 0;
+}
+
+.ds-multiline {
+  white-space: pre-line;
+}
+
+.ds-link-val {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+
+.ds-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-2);
+  margin: var(--sp-2) 0 var(--sp-1);
+}
+
+.ds-link {
+  color: var(--primary-ink);
+  max-width: 100%;
+}
+
+.ds-link-host {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ds-url {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.ds-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+
+/* A value with a bar in front of it (sizes compared, class shares). */
+.ds-size-bars .kv-val,
+.ds-cats .kv-val {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.ds-size-bars .bar,
+.ds-cats .ds-cat-bar {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 2.5rem;
+  max-width: 10rem;
+}
+
+.ds-bar-text {
+  flex: 0 0 auto;
+  min-width: 4rem;
+  text-align: right;
+}
+
+.ds-cats .kv-key {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 60%;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.ds-cats .swatch {
+  width: var(--sp-3);
+  height: var(--sp-3);
+}
+
+.ds-part-title {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.ds-bullets {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+  overflow-wrap: anywhere;
+}
+
+.ds-bullets li + li {
+  margin-top: var(--sp-1);
+}
+
+/* Histogram: the sparkbar primitive at chart size, one bar per bin, with the lowest and highest bin edge under it. */
+.ds-hist-fig {
+  margin: var(--sp-2) 0 0;
+}
+
+.sparkbar.ds-hist {
+  --spark-color: var(--series-1);
+  display: flex;
+  width: 100%;
+  height: var(--row-h-3);
+  gap: var(--bw);
+  border-bottom: 1px solid var(--outline);
+}
+
+.sparkbar.ds-hist > i {
+  flex: 1 1 0;
+  width: auto;
+  border-radius: var(--r-xs) var(--r-xs) 0 0;
+}
+
+.ds-hist-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.ds-hist-axis > span:nth-child(2) {
+  text-align: center;
+}
+
+@media (forced-colors: active) {
+  .ds-cat-bar .bar-fill {
+    forced-color-adjust: none;
+  }
+}
+
+/* Heat-map preview: the canvas (north up) with its legend beside it on wide screens, under it on phones. */
+.ds-thumb {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  margin: var(--sp-2) 0 0;
+}
+
+@media (min-width: 560px) {
+  .ds-thumb {
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.ds-thumb-frame {
+  position: relative;
+  width: 100%;
+  max-width: 20rem;
+}
+
+.ds-thumb-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.ds-thumb-canvas.is-categorical {
+  image-rendering: pixelated;
+}
+
+.ds-north {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-glass);
+  color: var(--text);
+}
+
+.ds-thumb-legend {
+  min-width: 0;
+}
+
+.ds-thumb-title {
+  display: block;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.ds-ramp-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+
+.ds-ramp {
+  display: block;
+  height: var(--sp-3);
+  border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+@media (forced-colors: active) {
+  .ds-ramp,
+  .ds-thumb-canvas {
+    forced-color-adjust: none;
+  }
+}
+
+.ds-ramp-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.ds-range {
+  margin: var(--sp-1) 0 0;
+}
+
+.ds-swatch-clear {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--outline);
+}
+
+.ds-legend-note {
+  overflow-wrap: anywhere;
+}
+
+/* Facts with a plain-English note on its own line under the value (a second <dd>). */
+.ds-kv .kv-row {
+  row-gap: var(--sp-1);
+}
+
+.ds-kv .ds-kv-note {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.ds-kv .ds-coverage {
+  margin: var(--sp-1) 0 0;
+}

@@ -1,10 +1,12 @@
 /**
- * Timeline: a custom pointer slider over the WHOLE scenario, so any time is one tap away. Tap anywhere on the track to
- * jump there, drag to scrub (move the finger up for fine control), hold ‹ › to step by the display step, or use the
- * keyboard. The computed range is shaded; a time beyond it becomes a fast-forward whose progress is shown in the track,
- * with a Cancel button. There is no "Live" button: Play does that.
+ * Timeline strip (64 px, Maps-flat): a custom pointer slider over the WHOLE scenario, so any time is one tap away. Thin
+ * 4 px track, blue played part, 20 px thumb, clock ticks under it. Tap anywhere on the track to jump there, drag to scrub
+ * (move the finger up for fine control), hold ‹ › to step by the display step, or use the keyboard. The computed range is
+ * shaded; a time beyond it becomes a fast-forward whose progress is shown as a linear progress on the track and in words
+ * under it, with a Cancel button beside the step buttons. There is no "Live" button: Play does that.
  */
 import { h, setChildren, text } from '../../dom';
+import { icon } from '../../icons';
 import { formatClock, formatElapsedShort, formatStepLabel, tzOffsetHours } from '../../format';
 import { detectWindChanges } from '../../weatherCalc';
 import type { SimContext } from './context';
@@ -22,7 +24,7 @@ import {
   timeTicks,
   timeToFraction,
 } from './timelineModel';
-import { frameThrottle, glyph, GLYPHS } from './transportKit';
+import { frameThrottle } from './transportKit';
 
 /** Least distance (px) between two clock labels. */
 const MIN_LABEL_PX = 62;
@@ -64,14 +66,13 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const statusPct = h('span', { class: 'tl-status-pct', aria: { hidden: true } });
   const cancelBtn = h(
     'button',
-    { type: 'button', class: 'tl-cancel', dataset: { testid: 'seek-cancel' }, aria: { label: 'Cancel the fast-forward' }, on: { click: () => session.cancelSeek() } },
+    { type: 'button', class: 'btn btn-text tl-cancel', hidden: true, dataset: { testid: 'seek-cancel' }, aria: { label: 'Cancel the fast-forward' }, on: { click: () => session.cancelSeek() } },
     'Cancel',
   );
   const status = h('div', { class: 'tl-status', hidden: true, dataset: { testid: 'seek-status' }, attrs: { role: 'status' } }, [
     h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }),
     statusText,
     statusPct,
-    cancelBtn,
   ]);
 
   // ── ‹ › ──
@@ -79,8 +80,8 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const stepButton = (dir: -1 | 1): HTMLButtonElement => {
     const btn = h(
       'button',
-      { type: 'button', class: `tl-step tl-step-${dir < 0 ? 'prev' : 'next'}`, dataset: { testid: dir < 0 ? 'scrub-prev' : 'scrub-next' } },
-      glyph(dir < 0 ? GLYPHS.chevronLeft : GLYPHS.chevronRight, 28),
+      { type: 'button', class: `icon-btn tl-step tl-step-${dir < 0 ? 'prev' : 'next'}`, dataset: { testid: dir < 0 ? 'scrub-prev' : 'scrub-next' } },
+      icon(dir < 0 ? 'chevron-left' : 'chevron-right'),
     );
     let timer = 0;
     let held = false;
@@ -133,7 +134,7 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const nextBtn = stepButton(1);
 
   const mid = h('div', { class: 'tl-mid' }, [slider]);
-  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline' } }, [prevBtn, mid, nextBtn, status]);
+  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline' } }, [prevBtn, mid, nextBtn, cancelBtn, status]);
 
   // ── pointer: tap = jump, drag = scrub ──
   let areaLeft = 0;
@@ -279,6 +280,7 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
     wasSeeking = seeking;
     el.classList.toggle('is-seeking', seeking);
     status.hidden = !seeking;
+    cancelBtn.hidden = !seeking;
     target.hidden = !seeking;
     if (seeking) {
       const tgt = s.seekTarget!;

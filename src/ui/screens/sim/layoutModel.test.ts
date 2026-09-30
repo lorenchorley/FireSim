@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { badgeText, detentHeights, DOCK_H, fitMenu, pressTab, reduceMenu, snapDetent, tapHandle } from './layoutModel';
+import { backLayer, badgeText, cycleDetent, detentHeights, DOCK_H, fitMenu, GRIP_H, pressTab, reduceMenu, snapDetent, tapHandle } from './layoutModel';
 import { DEFAULT_UI, type MenuId } from './context';
 import { Store } from '../../store';
 
@@ -93,5 +93,64 @@ describe('bottom dock', () => {
 
   it('caps the badge at 9+', () => {
     expect([1, 9, 10, 120].map(badgeText)).toEqual(['1', '9', '9+', '9+']);
+  });
+
+  it('the collapsed dock is the 56 px bottom navigation and an open sheet shows its 44 px head plus content at peek', () => {
+    expect(DOCK_H).toBe(56);
+    expect(GRIP_H).toBeGreaterThanOrEqual(44);
+    // On a 360 x 640 phone the room between the chrome and the timeline is about 400 px: peek still shows a head and a card.
+    const h = detentHeights(400);
+    expect(h.peek - DOCK_H - GRIP_H).toBeGreaterThanOrEqual(96);
+  });
+
+  it('a tap on the grab handle steps the sheet taller, and from full back to peek', () => {
+    expect(cycleDetent('peek')).toBe('half');
+    expect(cycleDetent('half')).toBe('full');
+    expect(cycleDetent('full')).toBe('peek');
+  });
+});
+
+describe('Back and Escape: one layer per press, top-most first', () => {
+  const none = { popover: null, menu: null, panelOpen: false, pending: false, sheet: 'closed' } as const;
+
+  it('closes a top-bar sheet (menu, time, speed) before anything else', () => {
+    expect(backLayer({ ...none, popover: 'speed', menu: 'tools', panelOpen: true, sheet: 'half' })).toBe('popover');
+  });
+
+  it('then the speed dial or view list, then the tool panel (or a mark waiting to be confirmed), then the bottom sheet', () => {
+    expect(backLayer({ ...none, menu: 'view', panelOpen: true, sheet: 'half' })).toBe('menu');
+    expect(backLayer({ ...none, panelOpen: true, sheet: 'half' })).toBe('panel');
+    expect(backLayer({ ...none, pending: true })).toBe('panel');
+    expect(backLayer({ ...none, sheet: 'peek' })).toBe('sheet');
+  });
+
+  it('reports nothing to close when everything is collapsed, so Back may leave the screen', () => {
+    expect(backLayer(none)).toBeNull();
+  });
+
+  it('simulating Back presses walks down the layers and ends with nothing open', () => {
+    let s: Parameters<typeof backLayer>[0] = { popover: 'menu', menu: 'tools', panelOpen: true, pending: true, sheet: 'full' };
+    const seen: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const l = backLayer(s);
+      if (!l) break;
+      seen.push(l);
+      if (l === 'popover') s = { ...s, popover: null };
+      else if (l === 'menu') s = { ...s, menu: null };
+      else if (l === 'panel') s = { ...s, panelOpen: false, pending: false };
+      else s = { ...s, sheet: 'closed' };
+    }
+    expect(seen).toEqual(['popover', 'menu', 'panel', 'sheet']);
+  });
+});
+
+describe('speed dial and view card fit', () => {
+  it('the six tools fit one column above the Tools button on a portrait phone', () => {
+    // 44 px rows with 8 px gaps: 6 rows need 304 px.
+    expect(fitMenu(6, { availH: 320, availW: 330, itemH: 44, itemW: 176, gap: 8 })).toEqual({ cols: 1, rows: 6, scroll: false });
+  });
+
+  it('a landscape phone spreads the dial over columns towards the middle instead of scrolling', () => {
+    expect(fitMenu(6, { availH: 150, availW: 700, itemH: 44, itemW: 176, gap: 8 })).toEqual({ cols: 2, rows: 3, scroll: false });
   });
 });

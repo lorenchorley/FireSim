@@ -25,11 +25,6 @@ function rule(name: string, selector: string): string {
   }
   throw new Error(`no rule for ${selector} in ${name}`);
 }
-const px = (decls: string, prop: string): number => {
-  const m = new RegExp(`(?:^|[;\\s])${prop}:\\s*([0-9.]+)px`).exec(decls);
-  if (!m) throw new Error(`no ${prop} in px in: ${decls}`);
-  return Number(m[1]);
-};
 
 describe('stylesheets: text size', () => {
   it('no font-size below 14 px anywhere except the start-up diagnostics dump', () => {
@@ -45,8 +40,8 @@ describe('stylesheets: text size', () => {
     expect(small).toEqual([]);
   });
 
-  it('the dock tabs (primary navigation for the cards) are 16 px', () => {
-    expect(px(rule('sim.css', '.sheet-tab'), 'font-size')).toBeGreaterThanOrEqual(16);
+  it('the dock tabs (the Maps bottom navigation, primary navigation for the cards) label at the 14 px body size, not the 12 px stock label', () => {
+    expect(rule('sim.css', '.sheet-tab .nav-label')).toMatch(/font-size:\s*var\(--fs-(sm|md)\)/);
   });
 });
 
@@ -131,35 +126,42 @@ describe('stylesheets: tap targets', () => {
     expect(Number(/--field-h:\s*([0-9]+)px/.exec(tokens)![1])).toBeGreaterThanOrEqual(44);
   });
 
-  it('the dock row is DOCK_H tall: 44 px tabs under the 2 px border', () => {
-    const tokens = css('tokens.css');
-    expect(Number(/--dock-h:\s*([0-9]+)px/.exec(tokens)![1])).toBe(DOCK_H);
-    expect(DOCK_H - 2).toBeGreaterThanOrEqual(44);
-    expect(px(rule('sim.css', '.sheet-tab'), 'min-width')).toBeGreaterThanOrEqual(44);
+  /** The px value of a size token in the scales block of tokens.css. */
+  const tokenPx = (name: string): number => {
+    const t = css('tokens.css');
+    const scale = t.slice(t.lastIndexOf('/* ───────────────────────────── Scales'));
+    return Number(new RegExp(`${name}:\\s*([0-9.]+)px`).exec(scale)![1]);
+  };
+
+  it('the dock row is DOCK_H tall: the bottom navigation (--nav-h), with tabs at least 44 px wide', () => {
+    expect(tokenPx('--nav-h')).toBe(DOCK_H);
+    expect(rule('sim.css', '.sim-screen')).toMatch(/--dock-h:\s*var\(--nav-h\)/);
+    expect(DOCK_H).toBeGreaterThanOrEqual(44);
+    expect(rule('sim.css', '.sheet-tab.nav-item')).toContain('min-width: var(--tap)');
   });
 
-  it('the panel grip strip is GRIP_H tall and at least 44 px', () => {
-    expect(px(rule('sim.css', '.sheet-head'), 'height')).toBe(GRIP_H);
+  it('the sheet head (grab handle, title, close) is GRIP_H tall and at least 44 px', () => {
+    expect(rule('sim.css', '.sheet-head')).toContain('height: var(--tap)');
+    expect(tokenPx('--tap')).toBe(GRIP_H);
     expect(GRIP_H).toBeGreaterThanOrEqual(44);
   });
 
-  it('the timeline step buttons and the popover controls are at least 44 px', () => {
+  it('the timeline step buttons, the sheet controls and the menu rows are at least 44 px', () => {
     const step = rule('transport.css', '.tl-step');
-    expect(px(step, 'width')).toBeGreaterThanOrEqual(44);
-    expect(px(step, 'height')).toBeGreaterThanOrEqual(44);
-    expect(px(rule('transport.css', '.tp-chip'), 'min-height')).toBeGreaterThanOrEqual(44);
-    expect(px(rule('transport.css', '.tp-seg'), 'height')).toBeGreaterThanOrEqual(44);
-    expect(px(rule('transport.css', '.tb-menu-item'), 'min-height')).toBeGreaterThanOrEqual(44);
+    expect(step).toContain('width: var(--tap)');
+    expect(step).toContain('height: var(--tap)');
+    expect(rule('transport.css', '.tp-chip')).toContain('min-height: var(--tap)');
+    expect(rule('transport.css', '.tp-seg')).toContain('min-height: var(--tap)');
+    expect(rule('sim.css', '.dial-item')).toContain('min-height: var(--tap)');
+    expect(rule('sim.css', '.menu-item')).toContain('min-height: var(--row-h)');
+    expect(tokenPx('--row-h')).toBeGreaterThanOrEqual(44);
+    expect(tokenPx('--tap')).toBeGreaterThanOrEqual(44);
   });
 
-  it('the fast-forward Cancel button has a touch area of at least 44 px even against the screen edge (36 px + its reach upwards)', () => {
-    const cancel = px(rule('transport.css', '.tl-cancel'), 'height');
-    const border = 2; // the ::before inset starts inside the button's 2 px border
-    const reach = /\.tl-cancel::before\s*\{[^}]*inset:\s*(-?[0-9]+)px\s+-?[0-9]+px\s+(-?[0-9]+)px/.exec(css('transport.css'));
-    expect(reach).not.toBeNull();
-    const up = Math.abs(Number(reach![1])) - border;
-    const down = Math.abs(Number(reach![2])) - border;
-    expect(cancel + up).toBeGreaterThanOrEqual(44); // no bottom inset (3-button navigation): the screen edge clips the reach downwards
-    expect(cancel + up + down).toBeGreaterThanOrEqual(44);
+  it('the fast-forward Cancel button is a 44 px target of its own: a text button in its own column of the 44 px first row', () => {
+    expect(rule('transport.css', '.tl-cancel')).toContain('grid-row: 1');
+    expect(rule('transport.css', '.tl-cancel')).toContain('grid-column: 4');
+    expect(rule('transport.css', '.scrubber')).toMatch(/grid-template-rows:\s*var\(--tap\)/);
+    expect(rule('transport.css', '.scrubber')).toMatch(/grid-template-columns:\s*var\(--tap\) minmax\(0, 1fr\) var\(--tap\) auto/);
   });
 });

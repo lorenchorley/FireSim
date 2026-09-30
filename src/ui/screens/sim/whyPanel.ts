@@ -1,7 +1,9 @@
 /**
  * "Why here?" panel: the CellExplanation for a tapped point — narrative bullets, the multiplicative factor
  * breakdown of the spread rate (base × wind × slope × moisture × fuel × terrain) as log-scaled bars, fuel summary,
- * litter moisture, time since fire, arrival time, intensity, flame height and the dominant driver.
+ * litter moisture, time since fire, arrival time, intensity, flame height and the dominant driver — and "Where you are"
+ * (placeInfo.ts): the nearest road and fire trail, the nearest named place, the land use, the homes nearby and the ground,
+ * from the scenario's own places data (bundled, saved or downloaded, so it works offline) and terrain.
  */
 import { SpreadDriver, type CellExplanation } from '../../../core/types';
 import { h, setChildren } from '../../dom';
@@ -9,7 +11,37 @@ import { icon } from '../../icons';
 import { compassName, formatClock, formatElapsedShort, formatIntensity, formatMetres, formatMultiplier, formatRos, formatWind, formatYears } from '../../format';
 import { DRIVER_LABELS, LANDFORM_LABELS } from '../../labels';
 import { driverColour } from '../../legends';
+import { kv, sectionHeader } from '../../primitives';
+import type { ContextLayers } from '../../../core/places';
 import type { SimContext } from './context';
+import { placeInfo, placeRows, type PlaceRow } from './placeInfo';
+
+const CONTEXT_ORIGIN_WORDS: Record<ContextLayers['origin'], string> = {
+  bundled: 'built into the app',
+  live: 'downloaded for this run',
+  cache: 'a stored copy of an earlier download',
+  'area-pack': 'a saved area pack',
+};
+
+/** Where the "Where you are" facts come from, in one line (providers, how they got here, when they were fetched). */
+export function placeSourceNote(c: ContextLayers | null | undefined): string {
+  if (!c) return 'This place has no roads, trails, homes or zones in the app: none were bundled, saved or downloaded for it.';
+  const providers = [...new Set(c.sources.map((s) => s.provider))];
+  const who = providers.length ? providers.join(' and ') : 'NSW government open data';
+  return `Roads, trails, homes, zones and names: ${who}, ${CONTEXT_ORIGIN_WORDS[c.origin] ?? c.origin}${c.fetched ? `, fetched ${c.fetched}` : ''}. Ground: the scenario's terrain.`;
+}
+
+/** The "Where you are" section for a point (rows from placeInfo; "not available for this place" without places data). */
+export function whereSection(rows: readonly PlaceRow[], note: string): HTMLElement {
+  return h('section', { class: 'why-where', dataset: { testid: 'why-where' }, aria: { label: 'Where you are' } }, [
+    sectionHeader('Where you are'),
+    kv(
+      rows.map((r) => ({ key: r.key, value: h('span', { dataset: { place: r.id } }, r.value) })),
+      { layout: 'stack', dense: true, label: 'Where you are' },
+    ),
+    h('p', { class: 'why-where-note' }, note),
+  ]);
+}
 
 export interface FactorRow {
   label: string;
@@ -52,6 +84,19 @@ export function createWhyPanel(ctx: SimContext, onClose: () => void): { el: HTML
     content,
   ]);
 
+  // "Where you are" depends only on the point: worked out once per tapped point, not on every refresh of the explanation.
+  let whereKey = '';
+  let where: HTMLElement | null = null;
+  const whereFor = (x: number, y: number): HTMLElement => {
+    const key = `${Math.round(x)},${Math.round(y)}`;
+    if (key !== whereKey || !where) {
+      whereKey = key;
+      const info = placeInfo(x, y, { context: ctx.scenario.context ?? null, terrain: ctx.scenario.terrain });
+      where = whereSection(placeRows(info), placeSourceNote(ctx.scenario.context));
+    }
+    return where;
+  };
+
   const render = (): void => {
     const w = ctx.ui.get().why;
     if (!w) {
@@ -59,11 +104,11 @@ export function createWhyPanel(ctx: SimContext, onClose: () => void): { el: HTML
       return;
     }
     if (w.loading) {
-      setChildren(content, h('p', { class: 'status-line' }, [h('span', { class: 'spinner', aria: { hidden: true } }), 'Working out why…']));
+      setChildren(content, [h('p', { class: 'status-line' }, [h('span', { class: 'spinner', aria: { hidden: true } }), 'Working out why…']), whereFor(w.x, w.y)]);
       return;
     }
     if (w.error || !w.explanation) {
-      setChildren(content, h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w.error ?? 'No explanation available here.')]));
+      setChildren(content, [h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w.error ?? 'No explanation available here.')]), whereFor(w.x, w.y)]);
       return;
     }
     const e = w.explanation;
@@ -115,6 +160,7 @@ export function createWhyPanel(ctx: SimContext, onClose: () => void): { el: HTML
         fact('Intensity', burnt ? formatIntensity(e.intensity) : '–'),
         fact('Flame height', burnt ? formatMetres(e.flameHeight) : '–'),
       ]),
+      whereFor(w.x, w.y),
     ]);
   };
   const unsub = ctx.ui.subscribe(render, ['why']);

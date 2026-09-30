@@ -24,16 +24,19 @@ function hashValue(h: number, v: unknown, skip: ReadonlySet<string>, path: strin
   return h;
 }
 
-/** Hash of a snapshot, skipping wall-clock fields (stats.msPerSimMinute). */
+/**
+ * Hash of a snapshot, skipping wall-clock fields (stats.msPerSimMinute) and, always, `engine`: the engine info is
+ * metadata for the transparency card (grids, step times and memory measured on this device), not simulation state.
+ */
 export function snapshotHash(s: SimSnapshot, skip: readonly string[] = ['stats.msPerSimMinute']): number {
-  return hashValue(0x811c9dc5, s, new Set(skip), '');
+  return hashValue(0x811c9dc5, s, new Set([...skip, 'engine']), '');
 }
 
 /** Per-part hashes (to see which part diverged). */
 export function snapshotPartHashes(s: SimSnapshot): Record<string, number> {
   const out: Record<string, number> = {};
   const skip = new Set(['stats.msPerSimMinute']);
-  for (const k of Object.keys(s)) out[k] = hashValue(0x811c9dc5, (s as unknown as Record<string, unknown>)[k], skip, k);
+  for (const k of Object.keys(s)) if (k !== 'engine') out[k] = hashValue(0x811c9dc5, (s as unknown as Record<string, unknown>)[k], skip, k);
   if (s.layers) for (const k of Object.keys(s.layers)) out[`layers.${k}`] = hashValue(0x811c9dc5, s.layers[k], skip, k);
   const f = s.fire as unknown as Record<string, unknown>;
   for (const k of Object.keys(f)) out[`fire.${k}`] = hashValue(0x811c9dc5, f[k], skip, k);
