@@ -185,6 +185,8 @@ export interface DatasetVintage {
   capturedOn?: string;
   /** Plain text about the capture date ("Service copyright 'DFSI 2019'; a mosaic of flights from several dates"). */
   capturedNote?: string;
+  /** A few words on the capture date for credit lines when there is no single date ("a mosaic of several dates, service © 2020"). */
+  captureSummary?: string;
   /** Epoch ms when THIS COPY of the data was obtained from the provider (download time, cache record time, bundle capture). */
   retrievedAt: number;
   /** What `retrievedAt` is: fetched during this build, a stored copy's original download, the day the bundle was captured, or the build time (generated data). */
@@ -197,6 +199,11 @@ export interface DatasetVintage {
   currentTo?: string;
   /** Epoch ms until which a stored copy is used without asking the provider again. */
   cacheFreshUntil?: number;
+  /** Weather: age of the data (h) when the scenario was built, and the age after which it counts as stale (6 h forecast / 24 h past, docs/research/08 §5.5). */
+  ageHoursAtBuild?: number;
+  staleAfterHours?: number;
+  /** True when the data were already older than `staleAfterHours` at build time (the screen re-checks with {@link weatherStaleness}). */
+  stale?: boolean;
 }
 
 export interface DatasetCrs {
@@ -661,12 +668,80 @@ export function creditLines(records: readonly DatasetRecord[] | undefined, ids?:
   return out;
 }
 
-/** The imagery credit with its capture date: "Aerial photo © Spatial Services NSW (CC BY 4.0), captured 2020 (several dates)". '' when no imagery was used. */
+/**
+ * The imagery credit for the map, with its capture date: "Aerial photo © State of New South Wales (...), CC BY 4.0;
+ * a mosaic of several capture dates (service © 2020)". Uses `vintage.capturedOn` when the photo has one date, else
+ * `vintage.captureSummary`. '' when no imagery was used.
+ */
 export function imageryCredit(records: readonly DatasetRecord[] | undefined): string {
   const r = findDataset(records, 'imagery');
   if (!r || (r.status !== 'used' && r.status !== 'partial')) return '';
-  const when = r.vintage.capturedOn ? `, captured ${r.vintage.capturedOn}${r.vintage.capturedNote ? ` (${r.vintage.capturedNote})` : ''}` : '';
+  const v = r.vintage;
+  const when = v.capturedOn ? `; captured ${v.capturedOn}` : v.captureSummary ? `; ${v.captureSummary}` : '';
   return `Aerial photo ${r.attribution}${when}`;
+}
+
+/**
+ * Typed-array memory reachable from a value: every distinct ArrayBuffer behind a typed array / DataView / ArrayBuffer is
+ * counted ONCE (views sharing a buffer, and objects reached twice, are not double counted). Walks plain objects,
+ * arrays, Maps and Sets, depth-first, up to `maxDepth` levels. `skip` holds objects not to enter (and whose buffers are
+ * not counted), e.g. the scenario a simulation references. `byKey` adds up the bytes under each own key of the root.
+ * Pure and bounded (visits each object once); used for the scenario's memory, the simulation's measured memory
+ * (sim/simulation.ts `memoryReport`) and the memory-model tests.
+ */
+export function typedArrayFootprint(root: unknown, opts: { skip?: Iterable<unknown>; maxDepth?: number } = {}): { bytes: number; buffers: number; byKey: Record<string, number> } {
+  const skip = new Set<unknown>(opts.skip ?? []);
+  const seen = new Set<unknown>();
+  const buffers = new Set<unknown>();
+  const skipBuffers = new Set<unknown>();
+  const maxDepth = opts.maxDepth ?? 16;
+  const byKey: Record<string, number> = {};
+  let bytes = 0;
+  const bufferOf = (v: object): { b: unknown; n: number } | null => {
+    if (ArrayBuffer.isView(v)) return { b: v.buffer, n: v.buffer.byteLength };
+    if (v instanceof ArrayBuffer) return { b: v, n: v.byteLength };
+    if (typeof SharedArrayBuffer !== 'undefined' && v instanceof SharedArrayBuffer) return { b: v, n: v.byteLength };
+    return null;
+  };
+  // Collect the skipped objects' buffers first: they are excluded even when also reachable from elsewhere.
+  const collectSkip = (v: unknown, d: number, seenSkip: Set<unknown>): void => {
+    if (!v || typeof v !== 'object' || seenSkip.has(v) || d > maxDepth) return;
+    const b = bufferOf(v);
+    if (b) {
+      skipBuffers.add(b.b);
+      return;
+    }
+    seenSkip.add(v);
+    const kids = v instanceof Map ? [...v.values()] : v instanceof Set ? [...v] : Array.isArray(v) ? v : Object.values(v);
+    for (const k of kids) collectSkip(k, d + 1, seenSkip);
+  };
+  const ss = new Set<unknown>();
+  for (const s of skip) collectSkip(s, 0, ss);
+  const stack: [unknown, string, number][] = [[root, '', 0]];
+  while (stack.length) {
+    const [v, key, d] = stack.pop()!;
+    if (!v || typeof v !== 'object' || skip.has(v)) continue;
+    const b = bufferOf(v);
+    if (b) {
+      if (buffers.has(b.b) || skipBuffers.has(b.b)) continue;
+      buffers.add(b.b);
+      bytes += b.n;
+      if (key) byKey[key] = (byKey[key] ?? 0) + b.n;
+      continue;
+    }
+    if (seen.has(v) || d > maxDepth) continue;
+    seen.add(v);
+    if (v instanceof Map) {
+      for (const [k, x] of v) stack.push([x, key || String(k), d + 1]);
+    } else if (v instanceof Set) {
+      for (const x of v) stack.push([x, key, d + 1]);
+    } else if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) stack.push([v[i], key, d + 1]);
+    } else {
+      for (const k of Object.keys(v)) stack.push([(v as Record<string, unknown>)[k], key || k, d + 1]);
+    }
+  }
+  return { bytes, buffers: buffers.size, byKey };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -718,8 +793,13 @@ export function summariseDatasets(records: readonly DatasetRecord[], input: Summ
   }
   for (const k of Object.keys(share) as DatasetOrigin[]) share[k] = Math.round(share[k]! * 1e6) / 1e6;
   const fallbacks: DatasetFallbackNote[] = records
-    .filter((r) => r.status === 'fallback' || r.status === 'unavailable' || r.status === 'partial')
-    .map((r) => ({ id: r.id, title: r.title, status: r.status, reason: r.fallbackReason ?? r.coverage.note ?? STATUS_TITLES[r.status] }));
+    .filter((r) => r.status === 'fallback' || r.status === 'unavailable' || r.status === 'partial' || r.vintage.stale)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      reason: r.fallbackReason ?? (r.vintage.stale ? `Stored data ${Math.round(r.vintage.ageHoursAtBuild ?? 0)} h old at build time (stale after ${r.vintage.staleAfterHours ?? 0} h).` : (r.coverage.note ?? STATUS_TITLES[r.status])),
+    }));
   const warnings: string[] = [];
   for (const w of input.warnings) if (w && !warnings.includes(w)) warnings.push(w);
   const out: DatasetSummary = {

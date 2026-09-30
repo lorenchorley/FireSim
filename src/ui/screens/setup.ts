@@ -12,7 +12,7 @@ import { describeFix, getLocation, LocationError } from '../location';
 import { demoImageryUrl } from '../imagery';
 import { parseLatLon } from '../nsw';
 import { getPref, PREF_KEYS, setPref } from '../prefs';
-import { approxElevation, beltRh, detailHint, persistable, presetStart, resolveCentre, restoreSetup, validateSetup, type SetupState, type WeatherChoice } from '../setupModel';
+import { approxElevation, beltRh, DETAIL_OPTIONS, detailHint, persistable, presetStart, resolveCentre, restoreSetup, validateSetup, type SetupState, type WeatherChoice } from '../setupModel';
 import { Store } from '../store';
 import { BEAUFORT, beaufortFromKmh, beaufortRepresentativeKmh, dewPoint, ffdi, ratingFromIndex } from '../weatherCalc';
 import { button, compassRose, numberField, section, segmented, slider, toggle } from '../widgets';
@@ -201,11 +201,7 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
   });
   const detailSeg = segmented({
     label: 'Detail',
-    options: [
-      { value: 'fast', label: 'Fast', sub: '40 m' },
-      { value: 'normal', label: 'Normal', sub: '30 m' },
-      { value: 'detailed', label: 'Detailed', sub: '20 m' },
-    ],
+    options: (['fast', 'normal', 'detailed'] as const).map((value) => ({ value, ...DETAIL_OPTIONS[value] })),
     value: store.get().detail,
     testId: 'detail',
     onChange: (v) => {
@@ -272,7 +268,7 @@ export function createSetupScreen(opts: { onBuild: (s: SetupState) => void; onSe
     switch (s.weather) {
       case 'now':
         content = [
-          h('p', { class: 'hint' }, 'Hourly data for the site from Open-Meteo (Bureau of Meteorology ACCESS-G, ECMWF).'),
+          h('p', { class: 'hint' }, "Hourly data for the site from Open-Meteo: its automatic 'best match' forecast for the location, with ECMWF as the fallback."),
           !s.online ? h('p', { class: 'callout callout-warn' }, [icon('offline'), h('span', null, 'Offline: the last downloaded forecast will be used if there is one. Belt weather kit readings are more reliable without signal.')]) : null,
         ];
         break;

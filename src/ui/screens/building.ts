@@ -5,7 +5,7 @@
 import type { BuildProgress } from '../../scenario/request';
 import { h, setChildren, text } from '../dom';
 import { icon } from '../icons';
-import { BUILD_STEPS } from '../labels';
+import { BUILD_STEPS, buildStepStates } from '../labels';
 import { button } from '../widgets';
 
 export interface BuildingScreen {
@@ -46,6 +46,7 @@ export function createBuildingScreen(opts: { title: string; subtitle: string; on
   ]);
 
   const order = BUILD_STEPS.map((s) => s.step);
+  let reached = -1;
   return {
     el,
     progress(p) {
@@ -54,10 +55,11 @@ export function createBuildingScreen(opts: { title: string; subtitle: string; on
       barWrap.setAttribute('aria-valuenow', String(f));
       text(pct, `${f}%`);
       text(message, p.message);
-      const cur = order.indexOf(p.step);
+      const st = buildStepStates(p.step, reached);
+      reached = st.reached;
       order.forEach((step, i) => {
         const li = items.get(step)!;
-        const state = p.step === 'done' || i < cur ? 'done' : i === cur ? 'active' : 'pending';
+        const state = st.states[i]!;
         if (!li.classList.contains(state)) {
           li.className = `step ${state}`;
           setChildren(li.querySelector('.step-icon')!, state === 'done' ? icon('check', { size: 20 }) : state === 'active' ? h('span', { class: 'spinner' }) : null);

@@ -107,7 +107,7 @@ export function weatherRecord(i: WeatherInputs): DatasetRecord {
       model: { records: series.hours.length, resampling: 'generated', note: 'Interpolated in time to the simulation steps.' },
       sizes: sizesOf(t, { records: series.hours.length, durationMs: i.timings.weather }),
       stats,
-      evidence: { level: 'synthetic', note: "A designed scenario based on typical NSW fire-weather days ('hot NW wind then a southwesterly change'); values are chosen by FireSim, not measured.", specRef: 'docs/research/00-synthesis.md §11.3' },
+      evidence: { level: 'synthetic', note: `A designed weather day ('${d.presetName ?? d.presetId}') modelled on typical NSW fire-weather patterns; the values are chosen by FireSim, not measured or forecast.`, specRef: 'docs/research/00-synthesis.md §11.3' },
       warnings,
       limitations: [
         'Not a forecast: it shows how fire behaves in this kind of weather, not what the weather will do at this place.',
@@ -211,13 +211,16 @@ export function weatherRecord(i: WeatherInputs): DatasetRecord {
     provider: PROVIDERS.openMeteo,
     licence: LICENCES.openMeteo,
     attribution: ATTRIBUTION.openMeteo,
-    status: stale ? 'partial' : 'used',
+    // Stale stored weather is still real data: the status stays 'used', the vintage and a warning say how old it is.
+    status: 'used',
     origin,
     originDetail: `${m.short}${origin === 'live' ? '' : origin === 'area-pack' ? ` (area pack '${d.packName ?? ''}')` : ' (stored copy)'}`,
-    ...(stale ? { fallbackReason: `The weather is ${formatAge(ageH).replace(' old', '')} old (older than ${limitH} h).` } : {}),
     vintage: {
       retrievedAt: d.fetchedAt,
       retrievedBasis: origin === 'live' ? 'this-build' : 'stored-copy',
+      ageHoursAtBuild: Math.round(ageH * 10) / 10,
+      staleAfterHours: limitH,
+      ...(stale ? { stale: true } : {}),
       ...(tOfSeries ? { capturedOn: `${day(tOfSeries.from)}/${day(tOfSeries.to)}` } : {}),
       capturedNote: historical ? 'The dates the series covers.' : 'The dates the series covers; the forecast run behind it is not reported by the service.',
     },
@@ -240,10 +243,39 @@ export function weatherRecord(i: WeatherInputs): DatasetRecord {
   });
 }
 
+/** Pressure levels (hPa, high pressure first) and their mean heights (m ASL) in a series, from the hours that carry them. */
+export function pressureLevelsOf(series: WeatherSeries): { hPa: number; heightM: number }[] {
+  const acc = new Map<number, { sum: number; n: number }>();
+  for (const h of series.hours) {
+    for (const p of h.pressureLevels ?? []) {
+      if (!Number.isFinite(p.hPa)) continue;
+      const a = acc.get(p.hPa) ?? { sum: 0, n: 0 };
+      if (Number.isFinite(p.height)) {
+        a.sum += p.height;
+        a.n++;
+      }
+      acc.set(p.hPa, a);
+    }
+  }
+  return [...acc.entries()].sort((a, b) => b[0] - a[0]).map(([hPa, a]) => ({ hPa, heightM: a.n ? Math.round(a.sum / a.n) : NaN }));
+}
+
+const listText = (xs: readonly (string | number)[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/** "Temperature, humidity and wind at 850, 700 and 500 hPa (about 1.5 to 5.8 km up)." from the levels really present. */
+function upperAirWhat(levels: { hPa: number; heightM: number }[], designed: boolean): string {
+  if (!levels.length) return 'Temperature, humidity and wind above the ground (none was available for this scenario).';
+  const hs = levels.map((l) => l.heightM).filter(Number.isFinite);
+  const km = hs.length ? ` (about ${(Math.min(...hs) / 1000).toFixed(1)} to ${(Math.max(...hs) / 1000).toFixed(1)} km above sea level)` : '';
+  return `${designed ? 'A designed profile of t' : 'T'}emperature, humidity and wind at ${listText(levels.map((l) => l.hPa))} hPa${km}.`;
+}
+
 export function upperAirRecord(i: WeatherInputs): DatasetRecord {
   const { weather: w, ledger, series } = i;
   const d = w.detail;
   const u = d.upperAir;
+  const lv = pressureLevelsOf(series);
+  const lvText = lv.length ? `${listText(lv.map((l) => l.hPa))} hPa` : 'no levels';
   const t = sumTotals(ledger, [UPPER_AIR_TAG]);
   const share = upperAirShare(w);
   const shared = sumTotals(ledger, [WEATHER_TAG]);
@@ -252,7 +284,7 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
     id: 'upper-air',
     role: 'upperAir' as const,
     title: 'Upper-air profile',
-    what: 'Temperature, humidity and wind at 925, 850, 700 and 500 hPa (roughly 0.8 to 5.5 km up).',
+    what: upperAirWhat(lv, u.source === 'preset'),
     why: 'Sets how stable the air is above the fire, the starting wind above the ridges for the mountain wind model, how high smoke can rise, and the C-Haines index.',
     format: 'JSON (hourly pressure-level variables)',
     kind: 'timeseries' as const,
@@ -269,8 +301,8 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
       vintage: { retrievedAt: i.now, retrievedBasis: 'generated' },
       coverage: { fraction: 1 },
       sizes: sizesOf(t, { records: series.hours.length }),
-      stats: [stat('Pressure levels', u.levels, '')],
-      evidence: { level: 'synthetic', note: 'A designed air mass that goes with the preset (levels at 850, 700 and 500 hPa).' },
+      stats: [stat('Pressure levels', lv.length || u.levels, ''), textStat('Levels', lvText)],
+      evidence: { level: 'synthetic', note: `A designed air mass that goes with the preset (${lvText}).` },
       limitations: ['Designed by the app to match the preset, not measured or forecast.'],
     });
   }
@@ -299,11 +331,12 @@ export function upperAirRecord(i: WeatherInputs): DatasetRecord {
       sourceServices: [endpoint('api.open-meteo.com', '/v1/forecast', u.sameResponse ? 'pressure-level variables of the weather request' : `models=${u.model ?? ''}, pressure levels only`)],
       stats: [
         stat('Pressure levels complete', u.levels, ''),
+        textStat('Levels', lvText),
         textStat('Where it came from', u.sameResponse ? 'The same download as the weather' : `A separate request (${u.model ?? 'profile model'})`),
         ...(u.sameResponse ? [textStat('Size', `about ${formatBytes(sharedBytes)} (${formatPercent(share)} of the weather download, by variables)`, 'The two data sets share one download; the split is by number of variables, so it is an estimate.')] : []),
       ],
-      evidence: { level: 'modelled', note: 'Model profile for a 9 to 25 km cell; coarse in the vertical (four levels).', specRef: 'docs/research/08-data-sources-apis.md §5.3' },
-      limitations: ['Four levels only, and a model cell much larger than the mountains: a coarse picture of the air above the ridges.', 'Levels below the model’s own ground are ignored.'],
+      evidence: { level: 'modelled', note: `Model profile for a 9 to 25 km cell; coarse in the vertical (${lvText}).`, specRef: 'docs/research/08-data-sources-apis.md §5.3' },
+      limitations: [`${lv.length ? `${lv.length} levels` : 'Few levels'} only, and a model cell much larger than the mountains: a coarse picture of the air above the ridges.`, 'Levels below the model’s own ground are ignored.'],
       warnings: w.warnings.filter((x) => x.startsWith('Upper-air')),
     });
   }

@@ -1,0 +1,786 @@
+{
+  "datasets": [
+    {
+      "attribution": "Terrain: SRTM data courtesy of the U.S. Geological Survey, tiles by Mapzen on AWS Open Data",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 16 zoom-14 tiles (0 already stored) x 60.0 KB typical; zoom-14 tiles over NSW mountains measured 2026-09-30 (Bilpin: 42 to 98 kB); flat or sea tiles are smaller."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "Terrarium PNG tiles, zoom 14",
+      "id": "terrain",
+      "kind": "raster",
+      "licence": {
+        "name": "Public domain (SRTM); tiles distributed under AWS Open Data terms",
+        "url": "https://github.com/tilezen/joerd/blob/master/docs/attribution.md"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "16 zoom-14 tiles (0 already stored) x 60.0 KB typical; zoom-14 tiles over NSW mountains measured 2026-09-30 (Bilpin: 42 to 98 kB); flat or sea tiles are smaller",
+        "highBytes": 1760000,
+        "likelyOrigin": "live",
+        "lowBytes": 400000,
+        "networkBytes": 960000,
+        "offlineNote": "Not available with no signal: 16 tiles have to be downloaded.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "Mapzen Terrain Tiles on AWS Open Data (SRTM, U.S. Geological Survey)",
+        "url": "https://registry.opendata.aws/terrain-tiles/"
+      },
+      "role": "terrain",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 960000,
+        "requests": 16,
+        "transferredBytes": 960000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Ground height",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Height of the ground on a 10 m grid.",
+      "why": "Slope and aspect for fire spread, wind and sun."
+    },
+    {
+      "attribution": "© State of New South Wales (Spatial Services, a business unit of the Department of Customer Service NSW), CC BY 4.0",
+      "coverage": {
+        "fraction": 0
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: no photo is downloaded for other places."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "fallbackReason": "Photos are bundled for the eight demo sites only; this place shows height colours instead.",
+      "format": "-",
+      "id": "imagery",
+      "kind": "raster",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "none",
+      "plan": {
+        "basis": "no photo is downloaded for other places",
+        "highBytes": 0,
+        "likelyOrigin": "none",
+        "lowBytes": 0,
+        "networkBytes": 0,
+        "offlineNote": "Nothing to download.",
+        "offlineOk": true,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "imagery",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 0
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "unavailable",
+      "title": "Aerial photo",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Aerial photographs draped over the ground.",
+      "why": "Display only: helps you recognise the place."
+    },
+    {
+      "attribution": "© State of NSW and Department of Climate Change, Energy, the Environment and Water (CC BY 4.0)",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "GeoJSON pages (ArcGIS REST query)",
+      "id": "vegetation-svtm",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "44 km² queried x 12.5 KB per km² (median of the 8 bundled demo areas, 6.1 KB to 18.4 KB per km², same queries, fetched 2026-09-27)",
+        "highBytes": 802307,
+        "likelyOrigin": "live",
+        "lowBytes": 266455,
+        "networkBytes": 544196,
+        "offlineNote": "Not available with no signal: it is queried from the NSW service.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Department of Climate Change, Energy, the Environment and Water (DCCEEW)",
+        "url": "https://www.environment.nsw.gov.au/"
+      },
+      "role": "vegetation",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 544196,
+        "requests": 1,
+        "transferredBytes": 544196
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Vegetation map",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "The NSW State Vegetation Type Map (plant community polygons).",
+      "why": "Chooses the fuel class of every cell."
+    },
+    {
+      "attribution": "Meta and World Resources Institute (WRI) – 2024. High Resolution Canopy Height Maps (CHM). Source imagery for CHM © 2016 Maxar (CC BY 4.0)",
+      "coverage": {
+        "filledBy": "type-default canopy heights",
+        "fraction": 0
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: not downloaded for this area."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "fallbackReason": "The canopy map is only read over the network for areas of 3 km or less; typical tree heights for each vegetation type are used.",
+      "format": "-",
+      "id": "canopy-height",
+      "kind": "raster",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "none",
+      "plan": {
+        "basis": "not downloaded for this area",
+        "highBytes": 0,
+        "likelyOrigin": "none",
+        "lowBytes": 0,
+        "networkBytes": 0,
+        "offlineNote": "Nothing to download (type defaults).",
+        "offlineOk": true,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "Meta and World Resources Institute (WRI)",
+        "url": "https://registry.opendata.aws/dataforgood-fb-forests/"
+      },
+      "role": "canopy",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 0
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "fallback",
+      "title": "Tree canopy height",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Tree height and cover from the Meta and WRI canopy height maps.",
+      "why": "Wind reduction under the trees, ember lofting and crown fire."
+    },
+    {
+      "attribution": "FireSim",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: computed on the device."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "Computed",
+      "id": "fuel-derived",
+      "kind": "derived",
+      "licence": {
+        "name": "Derived from the data sets it is built from"
+      },
+      "limitations": [],
+      "origin": "derived",
+      "plan": {
+        "basis": "computed on the device",
+        "highBytes": 0,
+        "likelyOrigin": "derived",
+        "lowBytes": 0,
+        "networkBytes": 0,
+        "offlineNote": "Computed on the device.",
+        "offlineOk": true,
+        "onDevice": true
+      },
+      "provider": {
+        "name": "FireSim (this app)"
+      },
+      "role": "fuel",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 0,
+        "requests": 0,
+        "transferredBytes": 0
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Fuel map",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Fuel in every cell, worked out from the data above.",
+      "why": "The direct input of the fire model."
+    },
+    {
+      "attribution": "© State of NSW and Department of Climate Change, Energy, the Environment and Water (CC BY 4.0)",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "GeoJSON pages (ArcGIS REST query)",
+      "id": "fire-history",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "44 km² queried x 5.3 KB per km² (median of the 8 bundled demo areas, 622 B to 6.8 KB per km², same queries, fetched 2026-09-27)",
+        "highBytes": 297960,
+        "likelyOrigin": "live",
+        "lowBytes": 27099,
+        "networkBytes": 228746,
+        "offlineNote": "Not available with no signal: it is queried from the NSW service.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW National Parks and Wildlife Service (DCCEEW)",
+        "url": "https://www.nationalparks.nsw.gov.au/"
+      },
+      "role": "fireHistory",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 228746,
+        "requests": 1,
+        "transferredBytes": 228746
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Fire history",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NPWS outlines of past bushfires and prescribed burns.",
+      "why": "Time since fire sets how much fuel has built up."
+    },
+    {
+      "attribution": "Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: one forecast request; best_match forecast response for Katoomba, 76.8 kB (tests/fixtures/live, 2026-09-27) (a second request if the first model fails)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "JSON (Open-Meteo)",
+      "id": "weather",
+      "kind": "timeseries",
+      "licence": {
+        "name": "CC BY 4.0 (Open-Meteo API data; free for non-commercial use, which includes education)",
+        "url": "https://open-meteo.com/en/license"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "one forecast request; best_match forecast response for Katoomba, 76.8 kB (tests/fixtures/live, 2026-09-27) (a second request if the first model fails)",
+        "highBytes": 190000,
+        "likelyOrigin": "live",
+        "lowBytes": 60000,
+        "networkBytes": 77000,
+        "offlineNote": "Not available with no signal: the weather is downloaded.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "Open-Meteo",
+        "url": "https://open-meteo.com/"
+      },
+      "role": "weather",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 77000,
+        "requests": 1,
+        "transferredBytes": 77000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Weather",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "Hourly temperature, humidity, wind, cloud and rain for the site.",
+      "why": "Drives fuel moisture, fire spread and the mountain wind model."
+    },
+    {
+      "attribution": "Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 365 days of daily weather (10.4 KB; 365-day ERA5 daily response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (about 3 650 daily values, scaled from the 365-day response (10.4 kB))."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "JSON (Open-Meteo ERA5 archive)",
+      "id": "drought-history",
+      "kind": "timeseries",
+      "licence": {
+        "name": "CC BY 4.0 (Open-Meteo API data; free for non-commercial use, which includes education)",
+        "url": "https://open-meteo.com/en/license"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "365 days of daily weather (10.4 KB; 365-day ERA5 daily response for Katoomba, 10.4 kB (tests/fixtures/live, 2026-09-27)) and 10 years of daily rain for the usual yearly rainfall (about 3 650 daily values, scaled from the 365-day response (10.4 kB))",
+        "highBytes": 144000,
+        "likelyOrigin": "live",
+        "lowBytes": 9000,
+        "networkBytes": 100400,
+        "offlineNote": "Not available with no signal: the rainfall history is downloaded.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "Open-Meteo",
+        "url": "https://open-meteo.com/"
+      },
+      "role": "weather",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 100400,
+        "requests": 2,
+        "transferredBytes": 100400
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Rainfall history and drought",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "A year of daily rain and temperature, and the usual yearly rainfall.",
+      "why": "Sets the drought factor and KBDI."
+    },
+    {
+      "attribution": "© Spatial Services NSW",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "ArcGIS REST JSON",
+      "id": "roads",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
+        "highBytes": 864000,
+        "likelyOrigin": "live",
+        "lowBytes": 14400,
+        "networkBytes": 180000,
+        "offlineNote": "Not available with no signal: queried from the NSW services.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "context",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 180000,
+        "requests": 2,
+        "transferredBytes": 180000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Roads and tracks",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NSW government map data (Spatial Services, NSW Planning).",
+      "why": "Display only: helps you find your way and see what is at risk."
+    },
+    {
+      "attribution": "© Spatial Services NSW",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "ArcGIS REST JSON",
+      "id": "fire-trails",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
+        "highBytes": 864000,
+        "likelyOrigin": "live",
+        "lowBytes": 14400,
+        "networkBytes": 180000,
+        "offlineNote": "Not available with no signal: queried from the NSW services.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "context",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 180000,
+        "requests": 2,
+        "transferredBytes": 180000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Fire trails",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NSW government map data (Spatial Services, NSW Planning).",
+      "why": "Display only: helps you find your way and see what is at risk."
+    },
+    {
+      "attribution": "© Spatial Services NSW",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "ArcGIS REST JSON",
+      "id": "homes",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
+        "highBytes": 864000,
+        "likelyOrigin": "live",
+        "lowBytes": 14400,
+        "networkBytes": 180000,
+        "offlineNote": "Not available with no signal: queried from the NSW services.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "context",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 180000,
+        "requests": 2,
+        "transferredBytes": 180000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Homes (address points)",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NSW government map data (Spatial Services, NSW Planning).",
+      "why": "Display only: helps you find your way and see what is at risk."
+    },
+    {
+      "attribution": "© Spatial Services NSW",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "ArcGIS REST JSON",
+      "id": "zones",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
+        "highBytes": 864000,
+        "likelyOrigin": "live",
+        "lowBytes": 14400,
+        "networkBytes": 180000,
+        "offlineNote": "Not available with no signal: queried from the NSW services.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "context",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 180000,
+        "requests": 2,
+        "transferredBytes": 180000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Residential and built-up zones",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NSW government map data (Spatial Services, NSW Planning).",
+      "why": "Display only: helps you find your way and see what is at risk."
+    },
+    {
+      "attribution": "© Spatial Services NSW",
+      "coverage": {
+        "fraction": 1
+      },
+      "endpoints": [],
+      "evidence": {
+        "level": "assumed",
+        "note": "Planned before download: 36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)."
+      },
+      "extent": {
+        "areaKm2": 36,
+        "east": 150.452362,
+        "north": -33.49302,
+        "south": -33.54698,
+        "west": 150.387638
+      },
+      "format": "ArcGIS REST JSON",
+      "id": "place-names",
+      "kind": "vector",
+      "licence": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "limitations": [],
+      "origin": "live",
+      "plan": {
+        "basis": "36 km² x 25.0 KB per km² for the five layers together; live NSW queries: bush areas a few kB per km², towns over 100 kB per km² (Bilpin 2026-09-30)",
+        "highBytes": 864000,
+        "likelyOrigin": "live",
+        "lowBytes": 14400,
+        "networkBytes": 180000,
+        "offlineNote": "Not available with no signal: queried from the NSW services.",
+        "offlineOk": false,
+        "onDevice": false
+      },
+      "provider": {
+        "name": "NSW Spatial Services (Department of Customer Service)",
+        "url": "https://www.spatial.nsw.gov.au/"
+      },
+      "role": "context",
+      "sizes": {
+        "cachedBytes": 0,
+        "estimate": true,
+        "networkBytes": 180000,
+        "requests": 2,
+        "transferredBytes": 180000
+      },
+      "sourceServices": [],
+      "stats": [],
+      "status": "used",
+      "title": "Place names",
+      "vintage": {
+        "retrievedAt": 0,
+        "retrievedBasis": "unknown"
+      },
+      "warnings": [],
+      "what": "NSW government map data (Spatial Services, NSW Planning).",
+      "why": "Display only: helps you find your way and see what is at risk."
+    }
+  ],
+  "schema": 1
+}

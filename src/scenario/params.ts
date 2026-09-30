@@ -191,3 +191,17 @@ export type BeltExposure = keyof typeof SCENARIO_PARAMS.beltWindRatio;
 /** Mean annual rainfall of a demo site (mm) from the bundled table, or undefined. */
 export const demoAnnualRainfall = (siteId: string | undefined): number | undefined =>
   siteId ? SCENARIO_PARAMS.demoAnnualRainfall[siteId] : undefined;
+
+/**
+ * The fire cell the builder really uses (§11.6, §12.6; scenario/build.ts `resolveRequest`): 20 m only when High detail
+ * was asked for (a requested cell of 20 m or less, or the High tier) AND the extent is at most 6 km; otherwise 30 m. Any
+ * other requested size (e.g. 40 m) builds 30 m cells: the engine's calibrations (level-set viscosity, VLS slope
+ * thresholds, landform classes, ember emission per cell) are made and tested at 20-30 m (spec §2.1). `coarsened` says
+ * that High detail was asked for but the area is too large for it.
+ */
+export function builtFireCell(extentM: number, requestedCellM?: number, tier?: string): { cellM: number; coarsened: boolean } {
+  const P = SCENARIO_PARAMS;
+  const wantsHigh = (requestedCellM !== undefined && requestedCellM <= P.highDetailCellM) || tier === 'high';
+  if (!wantsHigh) return { cellM: P.fireCellM, coarsened: false };
+  return extentM <= P.highDetailMaxExtentM ? { cellM: P.highDetailCellM, coarsened: false } : { cellM: P.fireCellM, coarsened: true };
+}

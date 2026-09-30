@@ -276,22 +276,23 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
   await sleep(150, signal);
   if (!req.online && !req.demoSiteId) warnings.push('Fire history unavailable offline — assuming 10 years since fire.');
 
-  report('fuel', 0.7, 'Building fuel model…');
-  const alpine = req.demoSiteId === 'thredbo' || terrain.maxElevation > 1600;
-  const now = Date.now();
-  const fuel = fabricateFuel(terrain, canopy, options.seed, now, alpine);
-  await sleep(120, signal);
-
-  report('weather', 0.82, 'Getting weather…');
+  // Same step order as the real builder (scenario/build.ts): weather and drought before fuel, places last.
+  report('weather', 0.7, 'Getting weather…');
   const { series, start } = mockWeather(req);
   if (!req.online && (req.weather.kind === 'now' || req.weather.kind === 'forecast' || req.weather.kind === 'past')) {
     warnings.push('Offline: using stored/synthetic weather. Enter belt weather kit readings for local conditions.');
   }
   await sleep(150, signal);
-  report('drought', 0.88, 'Working out the drought factor…');
+  report('drought', 0.78, 'Working out the drought factor…');
   await sleep(60, signal);
-  report('moisture', 0.92, 'Spinning up fuel moisture…');
-  await sleep(150, signal);
+
+  report('fuel', 0.84, 'Building fuel model…');
+  const alpine = req.demoSiteId === 'thredbo' || terrain.maxElevation > 1600;
+  const now = Date.now();
+  const fuel = fabricateFuel(terrain, canopy, options.seed, now, alpine);
+  await sleep(120, signal);
+  report('places', 0.92, 'Roads, homes and place names…');
+  await sleep(60, signal);
 
   const site = DEMO_SITES.find((s) => s.id === req.demoSiteId);
   const scenario: ScenarioData = {

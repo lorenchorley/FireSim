@@ -10,6 +10,7 @@ import { parseLatLon } from './nsw';
 import { REPLAYS, WEATHER_PRESETS } from './content';
 import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import type { BeltKitInput } from '../scenario/beltKit';
+import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
 import type { PerformanceMode, ScenarioSettings } from './settings';
 import { performanceProfile } from './settings';
 
@@ -17,7 +18,19 @@ export type WhereMode = 'demo' | 'gps' | 'manual';
 export type Detail = 'fast' | 'normal' | 'detailed';
 export type WeatherChoice = 'now' | 'past' | 'forecast' | 'preset' | 'replay' | 'belt' | 'manual';
 
-export const DETAIL_CELL: Record<Detail, number> = { fast: 40, normal: 30, detailed: 20 };
+/**
+ * The fire cell each detail option asks for. The builder only makes 30 m or 20 m cells (scenario/params.ts
+ * `builtFireCell`; the engine is calibrated at 20-30 m), so 'Fast' is 30 m cells with the simple (2-D) wind model,
+ * i.e. the fast tier, not a coarser grid; 'Detailed' gives 20 m only for areas up to 6 km.
+ */
+export const DETAIL_CELL: Record<Detail, number> = { fast: 30, normal: 30, detailed: 20 };
+
+/** Labels of the detail picker: exactly what each option builds. */
+export const DETAIL_OPTIONS: Record<Detail, { label: string; sub: string }> = {
+  fast: { label: 'Fast', sub: '30 m · simple wind' },
+  normal: { label: 'Normal', sub: '30 m' },
+  detailed: { label: 'Detailed', sub: '20 m' },
+};
 export const EXTENTS_KM = [3, 6, 9] as const;
 export type ExtentKm = (typeof EXTENTS_KM)[number];
 
@@ -268,7 +281,8 @@ export function buildRequest(s: SetupState, settings: PerformanceMode | Scenario
     options: {
       fireCellSize: DETAIL_CELL[s.detail],
       maxEmbers: prof.maxEmbers,
-      tier: prof.tier,
+      // 'Fast' = the fast tier (2-D wind, no 3-D atmosphere): the quick option the engine really has.
+      tier: s.detail === 'fast' ? 'fast' : prof.tier,
       ...(typeof settings === 'string' ? {} : { snapshotInterval: settings.timeStep, maxStepS: settings.solverStep }),
     },
   };
@@ -277,9 +291,17 @@ export function buildRequest(s: SetupState, settings: PerformanceMode | Scenario
   return req;
 }
 
-/** Rough cell count and build/run expectation for the detail picker. */
-export function detailHint(extentKm: number, detail: Detail): string {
-  const n = Math.round((extentKm * 1000) / DETAIL_CELL[detail]);
+/**
+ * The cells the builder will really make for this choice (scenario/params.ts `builtFireCell`), for the detail picker.
+ * `tier` is the performance profile's tier ('high' with the Quality setting also gives 20 m up to 6 km).
+ */
+export function detailHint(extentKm: number, detail: Detail, tier?: string): string {
+  const extentM = extentKm * 1000;
+  const t = detail === 'fast' ? 'fast' : tier;
+  const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
+  const n = Math.round(extentM / built.cellM);
   const cells = n * n;
-  return `${DETAIL_CELL[detail]} m cells · ${cells >= 1e5 ? `${Math.round(cells / 1000)}k` : cells.toLocaleString('en-AU')} cells`;
+  const count = cells >= 1e5 ? `${Math.round(cells / 1000)}k` : cells.toLocaleString('en-AU');
+  const why = built.coarsened ? ` (20 m needs an area of ${SCENARIO_PARAMS.highDetailMaxExtentM / 1000} km or less)` : detail === 'fast' ? ', simple 2-D wind' : '';
+  return `${built.cellM} m cells · ${count} cells${why}`;
 }

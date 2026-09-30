@@ -5,6 +5,7 @@
  */
 import { PRESET_IDS, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import { REPLAYS as SCENARIO_REPLAYS } from '../scenario/replays';
+import { ATTRIBUTION as RECORD_ATTRIBUTION } from '../scenario/recordKit';
 
 
 /** Bump when the safety notice wording changes, so users see and accept it again. */
@@ -159,24 +160,129 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
 ];
 
+/**
+ * One credit line of Settings → Data and licences. The list names exactly the data the app uses (checked against the
+ * data-set records, src/scenario/datasetAttribution.test.ts), and the feeds it can read but does not use yet are marked
+ * so nothing is over-claimed.
+ */
 export interface Attribution {
   name: string;
   use: string;
   licence: string;
+  /** Who publishes it. */
+  provider?: string;
+  /** The credit line the data carry (the same text as the data-set records' `attribution`). */
+  attribution?: string;
+  /** 'used' (every scenario that needs it), 'fallback' (only when the first choice is missing), 'not-used' (the app can read it but does not use it yet). */
+  status?: 'used' | 'fallback' | 'not-used';
 }
 
 export const ATTRIBUTIONS: Attribution[] = [
-  { name: 'NSW Spatial Services', use: '5 m LiDAR elevation (DTM) and aerial imagery for the demo sites', licence: '© Spatial Services NSW, CC BY 4.0' },
-  { name: 'Meta & World Resources Institute', use: 'High Resolution Canopy Height Maps (Tolan et al. 2024)', licence: 'CC BY 4.0' },
-  { name: 'SRTM / AWS Terrain Tiles (Mapzen Terrarium)', use: 'Elevation outside the demo sites', licence: 'Public domain (NASA SRTM); tiles via AWS Open Data' },
-  { name: 'Open-Meteo', use: 'Weather forecasts, archive and historical forecasts (BOM ACCESS-G, ECMWF, GFS)', licence: 'CC BY 4.0; weather data © the national services' },
-  { name: 'NSW National Parks and Wildlife Service', use: 'Fire history (wildfires and prescribed burns)', licence: '© State of NSW and DCCEEW, CC BY 4.0' },
-  { name: 'NSW Spatial Services (roads and fire trails)', use: 'Roads and tracks (Transport Theme) and RFS-classified fire trails for the Roads layer', licence: '© Spatial Services NSW, CC BY 4.0' },
-  { name: 'NSW Spatial Services (addresses)', use: 'Home address points (Geocoded Addressing Theme) for the Homes layer', licence: '© Spatial Services NSW, CC BY 4.0' },
-  { name: 'NSW Spatial Services (place names)', use: 'Place and suburb names (Features of Interest, Administrative Boundaries) to help you find your way', licence: '© Spatial Services NSW, CC BY 4.0' },
-  { name: 'NSW Planning (land zoning)', use: 'Residential, village and other built-up land-use zones (ePlanning Land Zoning Map)', licence: '© State of NSW and Department of Planning, Housing and Infrastructure, CC BY 4.0' },
-  { name: 'NSW State Vegetation Type Map (SVTM)', use: 'Vegetation formations and classes → fuel types', licence: '© State of NSW and DCCEEW, CC BY 4.0' },
-  { name: 'NSW Rural Fire Service', use: 'Current incidents feed (when online)', licence: '© NSW RFS, used for information only' },
+  {
+    name: 'NSW Spatial Services (elevation)',
+    provider: 'NSW Spatial Services, Department of Customer Service',
+    use: 'Ground height for the demo sites: the NSW 5 m elevation model (NSW_5M_Elevation, which the service says is derived from stereo imagery), bundled at 10 m',
+    licence: '© Spatial Services NSW, CC BY 4.0',
+    attribution: RECORD_ATTRIBUTION.spatial,
+    status: 'used',
+  },
+  {
+    name: 'NSW Spatial Services (aerial imagery)',
+    provider: 'NSW Spatial Services, Department of Customer Service',
+    use: 'Aerial photos of the demo sites (NSW_Imagery, a mosaic of flights from several years), display only',
+    licence: 'CC BY 4.0',
+    attribution: RECORD_ATTRIBUTION.imagery,
+    status: 'used',
+  },
+  {
+    name: 'SRTM / AWS Terrain Tiles (Mapzen Terrarium)',
+    provider: 'NASA / U.S. Geological Survey SRTM, tiles by Mapzen on AWS Open Data',
+    use: 'Ground height (about 30 m) outside the demo sites',
+    licence: 'Public domain (NASA/USGS SRTM); tiles via AWS Open Data',
+    attribution: RECORD_ATTRIBUTION.terrarium,
+    status: 'fallback',
+  },
+  {
+    name: 'Meta & World Resources Institute',
+    provider: 'Meta and World Resources Institute (WRI)',
+    use: 'Tree canopy height and cover (High Resolution Canopy Height Maps v1, Tolan et al. 2024)',
+    licence: 'CC BY 4.0',
+    attribution: RECORD_ATTRIBUTION.meta,
+    status: 'used',
+  },
+  {
+    name: 'NSW State Vegetation Type Map (SVTM)',
+    provider: 'NSW Department of Climate Change, Energy, the Environment and Water (DCCEEW)',
+    use: 'Vegetation formations and classes → fuel types',
+    licence: '© State of NSW and DCCEEW, CC BY 4.0',
+    attribution: RECORD_ATTRIBUTION.svtm,
+    status: 'used',
+  },
+  {
+    name: 'NSW National Parks and Wildlife Service',
+    provider: 'NSW National Parks and Wildlife Service (DCCEEW)',
+    use: 'Fire history (wildfires and prescribed burns)',
+    licence: '© State of NSW and DCCEEW, CC BY 4.0',
+    attribution: RECORD_ATTRIBUTION.npws,
+    status: 'used',
+  },
+  { name: 'NSW Spatial Services (roads and fire trails)', provider: 'NSW Spatial Services', use: 'Roads and tracks (Transport Theme) and RFS-classified fire trails for the Roads layer', licence: '© Spatial Services NSW, CC BY 4.0', attribution: '© Spatial Services NSW', status: 'used' },
+  { name: 'NSW Spatial Services (addresses)', provider: 'NSW Spatial Services', use: 'Home address points (Geocoded Addressing Theme) for the Homes layer', licence: '© Spatial Services NSW, CC BY 4.0', attribution: '© Spatial Services NSW', status: 'used' },
+  { name: 'NSW Spatial Services (place names)', provider: 'NSW Spatial Services', use: 'Place and suburb names (Features of Interest, Administrative Boundaries) to help you find your way', licence: '© Spatial Services NSW, CC BY 4.0', attribution: '© Spatial Services NSW', status: 'used' },
+  {
+    name: 'NSW Planning (land zoning)',
+    provider: 'NSW Department of Planning, Housing and Infrastructure',
+    use: 'Residential, village and other built-up land-use zones (ePlanning Land Zoning Map)',
+    licence: '© State of NSW and Department of Planning, Housing and Infrastructure, CC BY 4.0',
+    attribution: '© State of NSW and Department of Planning, Housing and Infrastructure',
+    status: 'used',
+  },
+  {
+    name: 'Open-Meteo',
+    provider: 'Open-Meteo.com',
+    // Open-Meteo's documentation (read 2026-09-30) says only that 'best match' gives "the best forecast for any given
+    // location"; it does not say which models that combines for Australia, and it reports the Bureau of Meteorology's
+    // ACCESS-G open data as temporarily suspended. So no model is named that the app cannot verify.
+    use: "Weather: forecasts from Open-Meteo's automatic 'best match' (the model it judges best for the location; the answer does not say which), past weather, the year of daily rain behind the drought index, and the historic fire days",
+    licence: 'CC BY 4.0 (free for non-commercial use, which includes education)',
+    attribution: RECORD_ATTRIBUTION.openMeteo,
+    status: 'used',
+  },
+  {
+    name: 'ECMWF IFS (through Open-Meteo)',
+    provider: 'European Centre for Medium-Range Weather Forecasts',
+    use: "Forecast when 'best match' fails, upper-air levels (IFS 0.25°), and the 2019/20 historic fire days (historical forecasts)",
+    licence: 'CC BY 4.0 (ECMWF open data)',
+    status: 'fallback',
+  },
+  {
+    name: 'NOAA GFS (through Open-Meteo)',
+    provider: 'U.S. National Oceanic and Atmospheric Administration',
+    use: 'Upper-air levels only when the ECMWF levels are missing',
+    licence: 'Public domain (U.S. Government work)',
+    status: 'fallback',
+  },
+  {
+    name: 'Copernicus ERA5 (through Open-Meteo)',
+    provider: 'Copernicus Climate Change Service / ECMWF',
+    use: 'Past weather before 2016 (and later dates when the historical forecast is missing), the year of daily rain and temperature behind the drought index, the usual yearly rainfall, and the 2013 historic fire days',
+    licence: 'CC BY 4.0 through Open-Meteo; contains modified Copernicus Climate Change Service information',
+    status: 'used',
+  },
+  {
+    name: 'NSW Rural Fire Service (incidents feed)',
+    provider: 'NSW Rural Fire Service',
+    use: 'Not used yet: the app can read the current-incidents and fire-danger feeds but does not show them',
+    licence: '© NSW RFS, information only',
+    status: 'not-used',
+  },
+  {
+    name: 'Geoscience Australia DEA Hotspots',
+    provider: 'Geoscience Australia (Digital Earth Australia)',
+    use: 'Not used yet: the app can read satellite fire hotspots but does not show them',
+    licence: 'CC BY 4.0',
+    status: 'not-used',
+  },
 ];
 
 export const REFERENCES: { file: string; title: string }[] = [

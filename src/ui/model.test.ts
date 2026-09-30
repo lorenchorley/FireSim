@@ -5,7 +5,8 @@ import { makeGridSpec } from '../core/grid';
 import type { SceneViewApi } from '../render/api';
 import type { SimController, SimEvents } from '../sim/protocol';
 import { OVERLAY_OPTIONS, legendFor, rampGradient } from './legends';
-import { buildRequest, beltRh, defaultSetup, detailHint, persistable, restoreSetup, validateSetup } from './setupModel';
+import { buildRequest, beltRh, defaultSetup, DETAIL_OPTIONS, detailHint, persistable, restoreSetup, validateSetup } from './setupModel';
+import { resolveRequest } from '../scenario/build';
 import { MAX_REPLAY_SPEED, SimSession, advanceClock, baselineAt, runTarget } from './session';
 import { FUEL_PRESETS, fuelEditFor } from './fuelPresets';
 import { imageryCrop } from './imagery';
@@ -43,7 +44,11 @@ describe('setup model', () => {
     expect(u.options).toMatchObject({ tier: 'high', snapshotInterval: 10, maxStepS: 2, fireCellSize: 20 });
     const d = buildRequest(s, { ...DEFAULT_SETTINGS }, NOW);
     expect(d.options).toMatchObject({ snapshotInterval: 60, maxStepS: 0, tier: 'auto' });
-    expect(detailHint(9, 'detailed')).toMatch(/20 m cells · 203k cells/);
+    // What is offered is what is built: 20 m needs an area of 6 km or less (scenario/params.ts builtFireCell).
+    expect(detailHint(9, 'detailed')).toBe('30 m cells · 90,000 cells (20 m needs an area of 6 km or less)');
+    expect(detailHint(6, 'detailed')).toBe('20 m cells · 90,000 cells');
+    expect(detailHint(6, 'normal', 'high')).toBe('20 m cells · 90,000 cells');
+    expect(detailHint(3, 'fast')).toBe('30 m cells · 10,000 cells, simple 2-D wind');
   });
 
   it('builds belt-kit and manual series with a wind change', () => {
@@ -366,5 +371,24 @@ describe('settings', () => {
     expect(resolveTheme('light', true)).toBe('light');
     expect(performanceProfile('battery').smoke).toBe(false);
     expect(performanceProfile('quality').maxEmbers).toBe(4000);
+  });
+});
+
+describe('detail options are what the builder builds (survey item: "Fast 40 m" built 30 m)', () => {
+  const NOW2 = Date.UTC(2026, 8, 27, 2);
+  it('every option, extent and performance mode resolves to the cell size its hint names', () => {
+    for (const detail of ['fast', 'normal', 'detailed'] as const) {
+      for (const extentKm of [3, 6, 9] as const) {
+        for (const perf of ['auto', 'battery', 'quality'] as const) {
+          const s = { ...defaultSetup(NOW2), where: 'demo' as const, demoSiteId: 'katoomba', detail, extentKm, weather: 'preset' as const };
+          const req = buildRequest(s, perf, NOW2);
+          const built = resolveRequest(req).fireCellSize;
+          const hint = detailHint(extentKm, detail, req.options?.tier);
+          expect(hint.startsWith(`${built} m cells`), `${detail} ${extentKm} km ${perf}: ${hint} vs ${built} m`).toBe(true);
+          expect(DETAIL_OPTIONS[detail].sub).not.toMatch(/40 m/);
+          if (detail === 'fast') expect(req.options?.tier).toBe('fast');
+        }
+      }
+    }
   });
 });

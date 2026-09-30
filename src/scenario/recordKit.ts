@@ -161,7 +161,7 @@ export const bundleBytes = (m: BundleManifest | null | undefined, siteId: string
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Vintage of data obtained live (this build), from a stored copy, or bundled. */
-export function vintageFor(origin: DatasetOrigin, t: LedgerTotals, now: number, o: { capturedOn?: string; capturedNote?: string; bundleCapturedOn?: string; version?: string; versionNote?: string; currentTo?: string; cacheFreshUntil?: number; packCreatedAt?: number } = {}): DatasetVintage {
+export function vintageFor(origin: DatasetOrigin, t: LedgerTotals, now: number, o: { capturedOn?: string; capturedNote?: string; captureSummary?: string; bundleCapturedOn?: string; version?: string; versionNote?: string; currentTo?: string; cacheFreshUntil?: number; packCreatedAt?: number } = {}): DatasetVintage {
   const v: DatasetVintage = { retrievedAt: now, retrievedBasis: 'this-build' };
   if (origin === 'live') {
     v.retrievedAt = t.newestNetworkAt || now;
@@ -179,6 +179,7 @@ export function vintageFor(origin: DatasetOrigin, t: LedgerTotals, now: number, 
   }
   if (o.capturedOn) v.capturedOn = o.capturedOn;
   if (o.capturedNote) v.capturedNote = o.capturedNote;
+  if (o.captureSummary) v.captureSummary = o.captureSummary;
   if (o.version) v.version = o.version;
   if (o.versionNote) v.versionNote = o.versionNote;
   if (o.currentTo) v.currentTo = o.currentTo;

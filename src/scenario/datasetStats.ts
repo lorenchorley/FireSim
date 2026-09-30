@@ -589,7 +589,7 @@ export function fireHistoryStats(f: FuelMap, opts: { included?: readonly FireHis
     );
   }
   if (opts.rawFeatures !== undefined) stats.push(stat('Fire polygons in the data', opts.rawFeatures, '', 0));
-  stats.push(stat('Fires used in the model', facts.includedFires, ''));
+  stats.push(stat('Fire outlines used in the model', facts.includedFires, '', 0, 'A fire mapped in several pieces counts once per piece; fires after the start, or still burning at it, are not counted.'));
   if (facts.latestFire) stats.push(textStat('Most recent fire in the area', facts.latestFire));
   if (opts.skipped) stats.push(stat('Records skipped (no shape or season)', opts.skipped, ''));
   if (opts.verDate) stats.push(textStat('Data current to', new Date(opts.verDate).toISOString().slice(0, 10)));

@@ -30,7 +30,8 @@ import { assembleDatasets } from './datasetAssembly';
 import { describeImagery } from './imagery';
 import { loadCanopyLayer, loadFireHistoryLayer, loadVegetationLayer, type LayerContext } from './layers';
 import { MESSAGES } from './messages';
-import { SCENARIO_PARAMS } from './params';
+import { workingMemoryForScenario } from './memoryModel';
+import { builtFireCell, SCENARIO_PARAMS } from './params';
 import { replayInfo } from './replays';
 import type { BuildProgress, ScenarioRequest } from './request';
 import { elevationAtLocal, fireTerrainFromHiRes, loadHiResDem, medianOf } from './terrain';
@@ -80,13 +81,9 @@ export function resolveRequest(req: ScenarioRequest): ResolvedRequest {
     extent = P.demoExtentM;
     warnings.push(MESSAGES.extentClamped(P.demoExtentM / 1000, req.weather.kind === 'replay' ? 'replays use the bundled 9 km demo area' : 'offline: bundled 9 km demo area'));
   }
-  const requested = req.options?.fireCellSize;
-  const wantsHigh = (requested !== undefined && requested <= P.highDetailCellM) || req.options?.tier === 'high';
-  let fireCellSize: number = P.fireCellM;
-  if (wantsHigh) {
-    if (extent <= P.highDetailMaxExtentM) fireCellSize = P.highDetailCellM;
-    else warnings.push(MESSAGES.cellCoarsened(P.fireCellM));
-  }
+  const cell = builtFireCell(extent, req.options?.fireCellSize, req.options?.tier);
+  const fireCellSize = cell.cellM;
+  if (cell.coarsened) warnings.push(MESSAGES.cellCoarsened(P.fireCellM));
   extent = Math.round(extent / fireCellSize) * fireCellSize;
   const duration = Number.isFinite(req.duration) && req.duration > 0 ? req.duration : P.defaultDurationS;
   const site = demoSiteId ? DEMO_SITES.find((s) => s.id === demoSiteId) : undefined;
@@ -390,6 +387,8 @@ async function runBuild(req: ScenarioRequest, onProgress: (p: BuildProgress) => 
       timings,
       warnings: { terrain: hi.warnings, canopy: canopy.warnings, vegetation: veg.warnings, fireHistory: [...fh.warnings, ...history.warnings], weather: weather.warnings, drought: drought.warnings },
       allWarnings: series.warnings ?? [],
+      // What the run will hold in memory: the scenario measured, the engine modelled from these grids (memoryModel.ts).
+      workingMemory: workingMemoryForScenario(scenario, imagery ? { imagery: { width: imagery.drawnPx.w, height: imagery.drawnPx.h } } : {}),
     });
     scenario.datasets = datasets;
     scenario.datasetSummary = summary;

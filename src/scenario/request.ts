@@ -46,7 +46,7 @@ export interface BuildProgress {
    * and runs in parallel with the other steps, then collected just before 'done'; a slow live query shows its own
    * message (and fraction 0.90-0.98) here. The UI's step list (ui/labels.ts BUILD_STEPS) needs an entry for it.
    */
-  step: 'terrain' | 'canopy' | 'vegetation' | 'fireHistory' | 'fuel' | 'weather' | 'drought' | 'moisture' | 'places' | 'done';
+  step: 'terrain' | 'canopy' | 'vegetation' | 'fireHistory' | 'weather' | 'drought' | 'fuel' | 'places' | 'done';
   /** 0–1 */
   fraction: number;
   message: string;

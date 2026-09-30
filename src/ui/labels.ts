@@ -57,17 +57,36 @@ export const SEVERITY_LABELS: Record<InsightSeverity, string> = {
   info: 'Insight',
 };
 
+/**
+ * The build steps in the order scenario/build.ts really runs them (terrain → canopy → vegetation → fire history →
+ * weather → drought → fuel → places → done: fuel needs the drought factor, KBDI and the month). The fuel-moisture
+ * spin-up is not a build step: it runs in the simulation worker when the run starts.
+ */
 export const BUILD_STEPS: { step: BuildProgress['step']; label: string }[] = [
   { step: 'terrain', label: 'Terrain (elevation, slope, gullies)' },
   { step: 'canopy', label: 'Tree canopy height' },
   { step: 'vegetation', label: 'Vegetation map' },
   { step: 'fireHistory', label: 'Fire history' },
-  { step: 'fuel', label: 'Fuel model' },
   { step: 'weather', label: 'Weather' },
   { step: 'drought', label: 'Drought (rain history)' },
-  { step: 'moisture', label: 'Fuel moisture spin-up' },
+  { step: 'fuel', label: 'Fuel model' },
+  { step: 'places', label: 'Roads, homes and place names' },
   { step: 'done', label: 'Ready' },
 ];
+
+export type BuildStepState = 'done' | 'active' | 'pending';
+
+/**
+ * States of the {@link BUILD_STEPS} rows for a progress event. `reached` is the furthest step index seen so far (pass
+ * the previous result's `reached`, -1 at the start): the ticks never go backwards, and a step not in the list (an
+ * older or newer builder) keeps the rows as they were. 'done' ticks every row.
+ */
+export function buildStepStates(step: BuildProgress['step'], reached = -1): { states: BuildStepState[]; reached: number } {
+  const i = BUILD_STEPS.findIndex((s) => s.step === step);
+  const cur = step === 'done' ? BUILD_STEPS.length - 1 : Math.max(reached, i);
+  const states = BUILD_STEPS.map((_, k): BuildStepState => (step === 'done' || k < cur ? 'done' : k === cur ? 'active' : 'pending'));
+  return { states, reached: cur };
+}
 
 /** Upper-case first letter. */
 export const capitalise = (s: string): string => (s ? s[0]!.toUpperCase() + s.slice(1) : s);

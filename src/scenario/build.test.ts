@@ -5,6 +5,7 @@
  * request resolution, progress and cancellation.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { BUILD_STEPS, buildStepStates } from '../ui/labels';
 import type { ScenarioData, WeatherSeries } from '../core/types';
 import { LocalProjection } from '../core/geo';
 import { lmstHour } from '../core/physics';
@@ -113,6 +114,24 @@ describe('Katoomba offline (demo site): LiDAR terrain, real fuel and history, pr
     expect(steps).toEqual(['terrain', 'canopy', 'vegetation', 'fireHistory', 'weather', 'drought', 'fuel', 'places', 'done']);
     for (let i = 1; i < progress.length; i++) expect(progress[i]!.fraction).toBeGreaterThanOrEqual(progress[i - 1]!.fraction);
     expect(progress[progress.length - 1]!.fraction).toBe(1);
+  });
+  it('the Building screen lists the same steps in the same order and its ticks follow the real events', () => {
+    const steps = progress.map((p) => p.step).filter((x, i, a) => a.indexOf(x) === i);
+    expect(BUILD_STEPS.map((b) => b.step)).toEqual(steps);
+    let reached = -1;
+    let doneBefore = 0;
+    for (const p of progress) {
+      const st = buildStepStates(p.step, reached);
+      reached = st.reached;
+      const done = st.states.filter((x) => x === 'done').length;
+      expect(done).toBeGreaterThanOrEqual(doneBefore); // never goes backwards
+      doneBefore = done;
+      if (p.step === 'done') expect(st.states.every((x) => x === 'done')).toBe(true);
+      else {
+        expect(st.states.filter((x) => x === 'active')).toHaveLength(1);
+        expect(st.states[BUILD_STEPS.findIndex((b) => b.step === p.step)]).toBe('active');
+      }
+    }
   });
   it('terrain: bundled LiDAR, 30 m fire grid from 3×3 blocks, cliffs in slopeP90 / cliffFraction', () => {
     expect(s.terrain.source).toMatch(/NSW_5M_Elevation/);

@@ -40,6 +40,7 @@
  * construction); explain(x, y, time) evaluates at min(time, now) with the current environment.
  */
 import { Rng } from '../core/rng';
+import { typedArrayFootprint } from '../core/datasets';
 import { lmstHour, stableNight } from '../core/physics';
 import { cellAt } from '../core/grid';
 import { wrapDeg } from '../core/units';
@@ -144,6 +145,19 @@ export interface SimPerf {
   init: Record<string, number>;
   tier: QualityTier;
   autoTune: { stepMs: number; predictedS: number; budgetS: number; chosen: QualityTier } | null;
+}
+
+/** Parts of {@link Simulation.memoryReport} (the same parts as scenario/memoryModel.ts predicts). */
+export type SimMemoryPart = 'scenario' | 'fire' | 'explain' | 'moisture' | 'fuel' | 'atmosphere' | 'embers' | 'checkpoints' | 'rasters';
+
+/** Measured typed-array bytes of a running simulation (worker side). */
+export interface SimMemoryReport {
+  tier: QualityTier;
+  parts: Record<SimMemoryPart, number>;
+  totalBytes: number;
+  /** Checkpoints held (t0 + ring) and their bytes as the ring accounts them. */
+  checkpoints: number;
+  checkpointBytes: number;
 }
 
 interface PendingSpot {
@@ -743,6 +757,22 @@ export class Simulation {
   /** Approximate bytes held by checkpoints (memory budget, §13). */
   checkpointBytes(): number {
     return (this.cp0?.bytes ?? 0) + this.ring.reduce((a, c) => a + c.bytes, 0);
+  }
+
+  /**
+   * MEASURED typed-array memory of this simulation (the worker side), by part: the scenario copy the worker received,
+   * and the engine's own arrays (buffers shared with the scenario are counted under 'scenario' only). Walks the state
+   * once (a few ms at 90 000 cells): call it on demand, not per step. scenario/memoryModel.ts predicts the same parts
+   * before a run; its test compares the two. (Not yet forwarded by the worker protocol: the Data sets screen shows the
+   * model and, when the WebView exposes it, the main thread's JS heap.)
+   */
+  memoryReport(): SimMemoryReport {
+    const scenario = typedArrayFootprint(this.scenario).bytes;
+    const own = typedArrayFootprint(this, { skip: [this.scenario] });
+    const parts: Record<SimMemoryPart, number> = { scenario, fire: 0, explain: 0, moisture: 0, fuel: 0, atmosphere: 0, embers: 0, checkpoints: 0, rasters: 0 };
+    const GROUP: Record<string, SimMemoryPart> = { fire: 'fire', explainEngine: 'explain', moisture: 'moisture', fuelBase: 'fuel', fuel: 'fuel', atm: 'atmosphere', embers: 'embers', cp0: 'checkpoints', ring: 'checkpoints' };
+    for (const [k, b] of Object.entries(own.byKey)) parts[GROUP[k] ?? 'rasters'] += b;
+    return { tier: this.tierNow, parts, totalBytes: scenario + own.bytes, checkpoints: this.ring.length + (this.cp0 ? 1 : 0), checkpointBytes: this.checkpointBytes() };
   }
 
   /** Read-only state view for tests and the developer panel. */

@@ -308,7 +308,11 @@ export function imageryRecord(i: MapInputs): DatasetRecord {
     originDetail: `Bundled demo site '${im.siteId}'`,
     vintage: vintageFor('bundled', t, i.now, {
       bundleCapturedOn: cap,
+      // Service metadata (NSW_Imagery MapServer, read 2026-09-30): "most recent imagery overlays older imagery"; external
+      // sources "© AAM 2011,2012; © Jacobs Group Ausimage 2002,2006,2009,2014; © LANDSAT 2014"; copyright
+      // "© Department of Customer Service 2020". No per-pixel capture date is published.
       capturedNote: `A mosaic of flights from several years: the service credits AAM 2011-12, Jacobs Group Ausimage 2002-2014 and Landsat 2014 among its sources, with a service copyright of '${im.serviceCopyright ?? '© Department of Customer Service 2020'}'. The newest imagery overlays the oldest, so parts of the photo may be years out of date.`,
+      captureSummary: `a mosaic of several capture dates (service ${im.serviceCopyright ?? '© Department of Customer Service 2020'})`,
     }),
     crs: { native: 'EPSG:3857 (Web Mercator) tiles at zoom 15', toModel: 'Area-averaged 2 x 2, then resampled (bilinear) onto an 8 m local grid; cropped to the model area.' },
     extent: extentOf(i.centre, i.extentM),

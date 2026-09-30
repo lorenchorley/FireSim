@@ -143,7 +143,7 @@ export type WeatherSourceKind = 'forecast' | 'observed' | 'historical' | 'manual
 
 export interface WeatherSeries {
   kind: WeatherSourceKind;
-  /** Provenance for display, e.g. "Open-Meteo BOM ACCESS-G". */
+  /** Provenance for display, e.g. "Open-Meteo best_match forecast". */
   source: string;
   location: LatLon;
   /** Elevation of the weather model grid point / station (m) — used for lapse-rate adjustment. */
