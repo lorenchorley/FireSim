@@ -3,7 +3,8 @@
  * mock inventory): summary, filter and sort, the detail page, copies confirmed inline (never a pop-up), Escape and Back
  * stepping back one level at a time, "Show on map", and the run carrying on underneath without being paused.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { acceptNotice, armPopupWatch, popups, session, watchPopups } from './helpers';
 
 async function buildMock(page: Page): Promise<void> {
@@ -128,7 +129,7 @@ test('data sets: summary, filters, sort, detail, copy, Escape / Back one level a
   expect(errors).toEqual([]);
 });
 
-test('data sets before a run: what is on this phone (and the plan when Setup passes its form)', async ({ page }) => {
+test('data sets before a run: the plan of the Setup form, and what is on this phone', async ({ page }) => {
   await page.goto('/?mock=1&theme=light');
   await acceptNotice(page);
   await page.getByTestId('site-katoomba').click();
@@ -136,11 +137,10 @@ test('data sets before a run: what is on this phone (and the plan when Setup pas
   const screen = page.getByTestId('datasets-screen');
   await expect(screen).toBeVisible();
   await expect(screen.getByTestId('storage-headline')).toContainText('bundled with the app', { timeout: 15_000 });
-  const planned = await screen.getByTestId('datasets-summary').innerText();
-  if (/Planned data for this run/.test(planned)) {
-    await expect(screen.locator('[data-testid^=dataset-row-]').first()).toBeVisible();
-    await expect(screen.getByTestId('datasets-list')).toContainText('≈');
-  } else expect(planned).toMatch(/No model built yet/);
+  // The App passes the Setup form, so the screen shows what Build would fetch, with estimated sizes marked ≈.
+  await expect(screen.getByTestId('datasets-summary')).toContainText('Planned data for this run', { timeout: 15_000 });
+  await expect(screen.locator('[data-testid^=dataset-row-]').first()).toBeVisible();
+  await expect(screen.getByTestId('datasets-list')).toContainText('≈');
   expect(await screen.innerText()).not.toMatch(/\b(undefined|NaN|Infinity)\b/);
   await page.getByTestId('datasets-close').click();
   await expect(screen).toHaveCount(0);

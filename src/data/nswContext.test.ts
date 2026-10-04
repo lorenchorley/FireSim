@@ -175,6 +175,14 @@ describe('live query (fake ArcGIS server replaying the recorded responses)', () 
     expect(file.fetched).toBe(FETCHED);
   });
 
+  it('dates the file by the New South Wales day, so "captured" agrees with the "downloaded 06:47" the screens show', async () => {
+    serve();
+    // 19:47 UTC on 4 October is 06:47 on 5 October in Sydney (daylight saving started that morning).
+    const { file } = await fetchNswContextFile(BLACKHEATH_BBOX, { now: Date.UTC(2026, 9, 4, 19, 47) });
+    expect(file.fetched).toBe('2026-10-05');
+    expect(file.sources.every((src) => src.fetched === '2026-10-05')).toBe(true);
+  });
+
   it('asks like the script: POST forms, ids first, then object-id chunks with the recorded parameters', async () => {
     const s = serve({ multiply: { homes: 3, zones: 3, roads: 2 } });
     await fetchNswContextFile(BLACKHEATH_BBOX, { now: NOW });

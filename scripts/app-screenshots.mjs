@@ -1,4 +1,5 @@
-// Screenshots of the app's screens on the design tokens for docs/screenshots/design/ (app-*.png), on the mock engine.
+// Screenshots of the app's screens on the design tokens for docs/screenshots/design/ (app-*.png), on the mock engine, and (when
+// the server is the dev server, which serves it) of the style guide (styleguide-*.png).
 // Usage (dev server running): node scripts/app-screenshots.mjs [base URL, default http://localhost:5173] [out dir]
 // 390 x 844, device scale 1, light / dark / high contrast. The sim views use ?mock=1 (2-D map, mock engine).
 import { chromium } from '@playwright/test';
@@ -70,5 +71,23 @@ for (const [mode, q] of Object.entries(modes)) {
   }
   await page.context().close();
 }
+// The style guide: the whole page at phone width, and the mock map screen at 2x.
+const hasGuide = await fetch(`${base}/src/ui/styleguide.html`).then((r) => r.ok && (r.headers.get('content-type') ?? '').includes('html')).catch(() => false);
+if (hasGuide) {
+  for (const [mode, q] of Object.entries(modes)) {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    const page = await ctx.newPage();
+    await page.goto(`${base}/src/ui/styleguide.html?${q}`);
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: `${out}/styleguide-${mode}.png`, fullPage: true });
+    await ctx.close();
+    const ctx2 = await browser.newContext({ viewport: { width: 700, height: 1200 }, deviceScaleFactor: 2 });
+    const page2 = await ctx2.newPage();
+    await page2.goto(`${base}/src/ui/styleguide.html?${q}`);
+    await page2.waitForTimeout(900);
+    await page2.getByTestId('sg-phone').screenshot({ path: `${out}/styleguide-${mode}-map-screen.png` });
+    await ctx2.close();
+  }
+} else console.log('(the style guide is served by the dev server only: its pictures were not retaken)');
 await browser.close();
 console.log(`written to ${out}`);

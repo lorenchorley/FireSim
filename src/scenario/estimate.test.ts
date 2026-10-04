@@ -118,6 +118,15 @@ describe('estimates against real builds', () => {
         expect(real, id).toBe(p.highBytes);
       }
       expect(byId(s.datasets!, 'imagery').parts?.[0]?.bytes).toBe(byId(plan, 'imagery').plan!.highBytes - (byId(s.datasets!, 'imagery').parts?.[1]?.bytes ?? 0));
+      // The five places layers share one bundled file: the plan splits it the way the built records do (by each layer's JSON), within a byte of rounding.
+      for (const id of ['roads', 'fire-trails', 'homes', 'zones', 'place-names']) {
+        const real = byId(s.datasets!, id).sizes.transferredBytes;
+        expect(Math.abs(real - byId(plan, id).plan!.highBytes), `${id}: built ${real}, planned ${byId(plan, id).plan!.highBytes}`).toBeLessThanOrEqual(1);
+        // The same publisher as the built record (zoning is NSW Planning's, not Spatial Services').
+        const who = id === 'zones' ? /Planning/ : /Spatial Services/;
+        expect(byId(plan, id).provider.name, id).toMatch(who);
+        expect(byId(s.datasets!, id).provider.name, id).toMatch(who);
+      }
     } finally {
       n.restore();
     }

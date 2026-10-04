@@ -8,7 +8,8 @@
  * Screenshots of the main views go to docs/screenshots/ (README). `?debug=1` exposes window.__firesim, used only to
  * read the session state and to aim the camera at the escarpment (the fire is then marked with the UI's crosshair).
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { mkdirSync } from 'node:fs';
 import {
   acceptNotice,

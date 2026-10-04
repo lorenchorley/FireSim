@@ -8,7 +8,9 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 * Base and controls: `src/styles/base.css`, `components.css`
 * Floating and navigation pieces: `src/styles/overlays.css`
 * Data-sheet pieces: `src/styles/data.css`
-* Not yet migrated screens: `screens.css`, `sim.css`, `transport.css`, plus the temporary bridge `legacy.css`
+* Screens (they only compose the primitives and tokens; no colour or size of their own): `screens.css` (Setup, Building, Settings, Notice),
+  `sim.css` + `transport.css` (the simulation chrome), `layers.css` (Layers panel), `datasets.css` (Data sets), `modelcard.css` (How this
+  simulation works)
 * Icons: `src/ui/icons.ts` (`icon()`), typed builders: `src/ui/widgets.ts` and `src/ui/primitives.ts`
 * Live gallery of every primitive in every state (dev server only):
   `/src/ui/styleguide.html?theme=light|dark&contrast=high`
@@ -34,7 +36,7 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 
 ```css
 /* main.css already imports, in this order */
-tokens -> base -> components -> overlays -> data -> screens -> sim -> transport -> legacy
+tokens -> base -> components -> overlays -> data -> screens -> sim -> transport -> layers -> datasets -> modelcard
 ```
 
 * Appearance is set on `<html>`: `data-theme="light|dark"` and `data-contrast="high"` (only when on).
@@ -44,8 +46,9 @@ tokens -> base -> components -> overlays -> data -> screens -> sim -> transport 
   `tokens.css` for all three modes and to `docs/DESIGN.md`.
 * Use the type classes (`.t-title`, `.t-body`, `.t-secondary`, `.t-caption`, `.t-num` ...) instead of setting a font size.
 * Layout helpers: `.stack` (vertical, gap `--gap`), `.cluster` (wrapping row), `.grow`, `.spacer`.
-* `src/ui/styles.rules.test.ts`, `src/ui/tokens.contrast.test.ts` and `scripts/audit-tap-targets.mjs` guard the rules below (no gradients outside the slider
-  track, no uppercase or weights above 500 outside the sanctioned places, hit areas, contrast of every text pair in the four modes).
+* `src/ui/styles.rules.test.ts`, `src/ui/tokens.contrast.test.ts`, `scripts/check-contrast.mjs` and `scripts/audit-tap-targets.mjs` guard the rules below (no gradients outside the slider
+  track, no uppercase or weights above 500 outside the sanctioned places, no literal font size under 14 px, hit areas, contrast of every text pair in the four modes,
+  no hard-coded colour in any stylesheet).
 
 ## 3. Tokens
 
@@ -97,7 +100,14 @@ Data colours: `--chart-wind`, `--chart-temp`, `--chart-rh`, `--chart-moist` (win
 blue), categorical `--series-1..5` (teal, purple, brown, slate, magenta), `--violet-bg/-ink` (user-entered data),
 `--grid`, `--band-dry`.
 
-Safety strip: `--badge-bg` `#fbbc04` / `#e0a100`, `--badge-ink` `#3c2e00` / `#241a00` (7.8:1 and 7.6:1).
+Safety strip: `--badge-bg` `#fbbc04` / `#e0a100`, `--badge-ink` `#3c2e00` / `#241a00` (7.8:1 and 7.6:1). It reads "Training aid · not for operational use"
+wherever that fits on one line (360 px phones and wider at normal text size, 412 px and wider in high contrast, whose bold caps are wider) and
+"Training aid only" otherwise (narrower screens, large text); the choice is a container query on the strip itself (`base.css`), and
+`e2e/ui.spec.ts` checks it at the phone sizes, in both contrasts and at 200 % text.
+
+Map marks (the same in every theme: they are drawn over the aerial photo and the 3-D terrain, which do not follow the theme): `--map-halo`
+`#fff` (strokes and glyphs on the map), `--map-halo-veil` (white 20 %), `--map-shade` `#000` (the dark halo), `--map-pin` `#202124`, and the
+fire marks' data colours `--mark-observed` `#e02424`, `--mark-spot` `#ff8c1a`, `--mark-backburn` `#7b3fe4`.
 
 ### Elevation
 
@@ -141,43 +151,6 @@ TRAINING strip and `.badge-caps`. Numbers and times use `font-variant-numeric: t
 * Layers: `--z-float 20`, `--z-sheet 30`, `--z-scrim 80`, `--z-dialog 90`, `--z-toast 95`, `--z-strip 100`.
 * Safe areas: `--safe-top/bottom/left/right`.
 
-### Old -> new token map
-
-The old names are all still defined (the not-yet-migrated screen CSS keeps rendering); their meaning shifted as below.
-Prefer the new names in new code.
-
-| Old name | Old (light) | Now | Note |
-| --- | --- | --- | --- |
-| `--bg` | `#fff` | `#f1f3f4` | app background is light grey; cards are white |
-| `--surface` | `#fff` | `#fff` | |
-| `--surface-2` / `-3` | `#f1f3f5` / `#e3e7eb` | `#f1f3f4` / `#e8eaed` | |
-| `--surface-glass` | white 96 % | same | |
-| `--text` | `#0b0d10` | `#202124` | |
-| `--muted` | `#3a414b` | `#5f6368` | |
-| `--border` | `#1d232b` (dark 2 px outline) | `= --outline` `#80868b` | outlines are 1 px and mid grey; old 2 px rules now draw 2 px grey lines |
-| `--border-soft` | `#bfc6ce` | `= --divider` `#dadce0` | |
-| `--control-border` | `2px solid var(--border)` | `var(--bw) solid var(--outline)` (1 px) | |
-| `--primary` | `#111418` (black) | `#1a73e8` (blue) | "selected" fills are blue now |
-| `--on-primary` | `#fff` | `#fff` | |
-| `--accent` | `#ff6a13` (orange) | `= --primary` (blue) | the orange accent is now `--fire`; old `--accent` uses were selected/active states |
-| `--on-accent` / `--accent-soft` | `#111` / `#fff1e6` | `= --on-primary` / `= --primary-container` | |
-| `--danger` / `-bg` / `--on-danger` | `#c92a2a` / `#fff0f0` / `#fff` | `#d93025` / `#fce8e6` / `#fff` | text uses `--danger-ink` |
-| `--watch` / `-bg` / `-ink` / `--on-watch` | `#f2a900` / `#fff7e0` / `#7a4d00` / `#1a1400` | `#f9ab00` / `#fef7e0` / `#a05a00` / `#202124` | |
-| `--info` / `-bg` / `--on-info` | `#1c5fd0` / `#edf3ff` / `#fff` | `#1967d2` / `#e8f0fe` / `#fff` | |
-| `--ok` / `-bg` | `#237a36` / `#eaf7ed` | `#188038` / `#e6f4ea` | |
-| `--focus` | `#1c5fd0` | `#1a73e8` | 2 px ring, 2 px offset |
-| `--grid`, `--band-dry` | | retuned | |
-| `--chart-wind` | `#1c5fd0` (blue) | `#7b1fa2` (purple) | data never uses the interactive blue |
-| `--shadow` / `--shadow-strong` | `0 2px 12px` / `0 6px 28px` | `= --elev-2` / `= --elev-4` | |
-| `--badge-bg` / `--badge-ink` | `#ffd400` striped / `#111` | `#fbbc04` flat / `#3c2e00` | |
-| `--radius` / `--radius-sm` | 14 / 10 px | 12 / 8 px | |
-| `--tap` / `--tap-lg` | 48 / 60 px | 44 / 52 px | |
-| `--fab` | 56 px | 48 px | the sim menus shrink with it |
-| `--badge-h` | 20 px | 24 px | `= --strip-h` |
-| `--ease` | `cubic-bezier(.2,.7,.2,1)` | `cubic-bezier(.2,0,0,1)` | |
-| `--topbar-h`, `--scrub-h`, `--dock-h` | 84 px, 84 px + inset, 46 px | **unchanged** | the sim CSS still draws rows of exactly these sizes; the target values are `--bar-h + --weather-h` (68), `--timeline-h` (64) and `--nav-h` (56). The screen builders switch them when they restyle the chrome |
-| `--font` | system stack | same | |
-
 Dark ("Maps night"): `--bg #202124`, `--surface #303134`, `--surface-2 #3c4043`, `--surface-3 #4a4d51`, text `#e8eaed`,
 muted `#aab0b6`, primary `#8ab4f8`, danger `#f28b82`, watch `#fdd663`, ok `#81c995`.
 
@@ -190,7 +163,7 @@ muted `#aab0b6`, primary `#8ab4f8`, danger `#f28b82`, watch `#fdd663`, ok `#81c9
 | Orange/red for fire, danger and fire-danger only | Orange as a decorative brand accent in chrome |
 | A check, a thicker frame or a word next to every colour state | Selection or status by colour alone |
 | `--text` on `--surface-3` | `--muted` on `--surface-3` |
-| Tokens for every colour | A hex value in screen CSS (legacy files still have a few, see the checklist) |
+| Tokens for every colour | A hex value in any stylesheet (`npm run check:contrast` lists them) |
 
 ## 5. Density and the tap rule
 
@@ -205,9 +178,9 @@ muted `#aab0b6`, primary `#8ab4f8`, danger `#f28b82`, watch `#fdd663`, ok `#81c9
 | Slider | 48 px area, 10 px track, 34 px thumb | 44 px area, 4 px track, 20 px thumb |
 | Segmented | 52 px, 2 px outline | 44 px, 1 px outline |
 | Body text | 17 px, weight 700-900 | 14 px, weight 400-500 |
-| Top bar | 84 px | target 48 + 20 px weather line (screen builders) |
-| Bottom navigation | dock 46 px | target 56 px |
-| Timeline strip | 84 px | target 64 px |
+| Top bar | 84 px | 48 px pill + a 28 px row of read-out chips (`--bar-h`) |
+| Bottom navigation | dock 46 px | 56 px (`--nav-h`) |
+| Timeline strip | 84 px | 64 px (`--timeline-h`) |
 | TRAINING strip | 20 px striped, 14 px caps | 24 px flat amber, 12 px caps |
 
 **Tap rule (hard):** every interactive control has a hit area of at least 44 x 44 px even when its visual size is 32-40 px.
@@ -267,8 +240,8 @@ Each block below has a comment header in the CSS. Class names are stable. "TS" n
 
 ```html
 <button class="btn btn-primary">Filled</button>     <!-- one per screen area -->
-<button class="btn btn-tonal">Tonal</button>        <!-- also .btn-accent -->
-<button class="btn">Outlined</button>               <!-- default, also .btn-secondary / .btn-outlined -->
+<button class="btn btn-tonal">Tonal</button>
+<button class="btn btn-secondary">Outlined</button> <!-- the default variant -->
 <button class="btn btn-ghost">Text</button>         <!-- also .btn-text -->
 <button class="btn btn-danger">Delete</button>
 <button class="btn btn-primary btn-lg btn-block">[icon]Build 3D model</button>   <!-- .btn-sm (32) / default (40) / .btn-lg (48) -->
@@ -331,7 +304,7 @@ Fields are 44 px, 8 px radius, `--outline` border, 16 px text, blue 2 px on focu
 <ul class="list">                                                              <!-- .no-lead when no row has a leading icon -->
   <li><button class="list-row two-line">                                   <!-- .two-line 52 px / .three-line 72 px / default 48 px -->
     <span class="list-lead">[24 px icon]</span>
-    <span class="list-body"><span class="list-title">Terrain</span><span class="list-sub">1 m LiDAR</span></span>
+    <span class="list-body"><span class="list-title">Terrain</span><span class="list-sub">NSW 5 m elevation model</span></span>
     <span class="list-trail">12 MB [chevron-right]</span></button></li>
 </ul>
 <hr class="divider"> <hr class="divider divider-inset">
@@ -423,66 +396,49 @@ System bar colours (`THEME_CHROME` in `settings.ts`, for the native Android them
 4. Add a link for it in the style guide header.
 5. Never add a colour to a screen's CSS; if a screen needs a colour that has no token, add the token to all modes.
 
-## 11. Migration checklist (what the screen builders still have to do)
+## 11. The screens and where their rules live (final state)
 
-The app boots and every screen is usable on the new tokens (see `docs/screenshots/design/app-*.png`), but `screens.css`, `sim.css` and
-`transport.css` were written for the old look and were **not** restyled. What they still do:
+All screens are on the tokens and primitives above; there is no bridge or legacy stylesheet. A screen's CSS only composes primitives
+(layout, grids, the few pieces nothing else needs) and never sets a colour, a font size under 14 px or a hard-coded size that a token covers.
+Anything a screen needed that the design system did not have was added to the right primitives file in a block headed
+`/* === additions from the screens phase === */` (components.css `.chip-choice`; `widgets.ts` `chipChoice`, `appBar`, `confirmDialog`,
+`copyText`).
 
-**All legacy files**
+| Screen | Builder | CSS | What it is made of |
+| --- | --- | --- | --- |
+| Safety notice | `screens/notice.ts` | `overlays.css` (`.modal.notice`) | the dialog; shown first, and again from Settings or the main menu |
+| Setup | `screens/setup.ts` | `screens.css` | flat cards; `listRow` for "Use my location"; photo cards for the demo sites; `chipChoice` rows (area, detail, weather source, duration); "Data for this run" (a row per planned data set with an `originChip` and a size; estimates are marked "≈"); a bottom bar with the summary and the blue Build button |
+| Building | `screens/building.ts` | `screens.css` | `.progress`, a row per data set as it arrives |
+| Settings | `screens/settings.ts` | `screens.css` | `appBar`, `.list` rows with trailing values, `segmented`, `toggle` (including High contrast), links to Data sets and How this simulation works |
+| Simulation | `screens/sim/*` | `sim.css`, `transport.css` | below |
+| Layers panel | `screens/sim/layersPanel.ts` | `layers.css` | `tileGrid` (map type and map details), heat-map rows with a colour-ramp swatch, `chip`s, `segmented`, `toggle`, `slider`; one panel built from the layer catalog |
+| Data sets | `screens/datasets.ts` | `datasets.css` | `appBar`, `stat` / `statRow`, `stackedBar`, `bar`, `sparkbar`, `kv`, `originChip`, `listRow`, `chipChoice` (filters), a heat-map preview canvas, `confirmDialog` before any deletion |
+| How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary |
 
-* About 75 declarations with `font-weight: 600-900` (chrome, cards, insight cards, weather, stats, timeline, popovers). Use 400 / 500;
-  700 only for the clock digits (`.clock-time`), stat numbers and ratings.
-* About 30 `2px solid var(--border | --border-soft)` outlines and `inset 0 0 0 2px` selected frames: replace by the flat card (no border),
-  hairline (`--divider`) or the selected pattern (`aria-pressed` tint + check / 2 px `--primary` frame).
-* Hard-coded colours: `.brand-mark` (`#111418` / `#ff7a1a`), the step icons in `screens.css` (`#fff`, `#0e1116` on `--ok`; use
-  `--on-ok`), the `.dot-*` and `.ann-*` marker colours and the map background `#20251f` in `sim.css`. Map annotation colours are data
-  (fine); chrome colours should be tokens.
-* Text under 16 px is fine now (14 body, 12 caption); the old 16-19 px sizes make the legacy screens look large.
-* Bare `<strong>`, `<b>` are 500 now. `text-transform: uppercase` remains on `.sev-badge` (a real badge, OK) and the tracking on
-  the rating pill in the top bar (`.tb-wx .rating-pill`).
+**Full-screen screens** (Settings, Data sets, How this simulation works) open as overlays over the stage (`app.ts`): an `appBar` with a back
+arrow, cards of rows on the grey background, the TRAINING strip above all of it. The stage behind is `inert`, Back / Escape step back one
+level (a data set's page returns to the list), and focus returns to the control that opened the screen. They never pause or change the run.
 
-**Sim chrome (`transport.css`, top of `sim.css`)**
+**The simulation chrome**, from top to bottom: the floating pill (`.top-bar` / `.search-bar` look: main menu, clock with its elapsed line, the
+blue round Play button, the speed chip) with a row of 28 px read-out chips under it (temperature, humidity, wind, fire-danger rating: information,
+not buttons); the main menu is a left side sheet of `.list-row`s with inset dividers; a column of round white `.fab`s on the handed side (Layers, View,
+Compass); the extended "Tools" `.fab-ext` in the bottom corner with a labelled speed dial of mini-FABs; the map legend card and the attribution
+line at the bottom of the visible map; `.bottom-nav` (Insights with a `.nav-badge`, Weather, Stats, Help) above the timeline strip; a rounded
+`.bottom-sheet` with a grab handle that a tab opens at peek / half / full. One menu is open at a time; a pick, an outside tap, Escape and Back close it.
+Left-hand mode mirrors everything. Heights: `--bar-h` 48, read-out row 28, `--nav-h` 56, `--timeline-h` 64.
+Two rules keep controls reachable on short screens: while the View card is open the round-button column rises above the Tools button (`.map-fabs.view-open`),
+and on a short landscape screen at a large text size (200 % on 844 x 390) the read-out chips go away while a tool panel is open
+(`.chips-away`, set by `layoutInsets` in `simScreen.ts` only when the chips sit on their own row and the panel body has less than 64 px left), so
+the panel's header and its Add / Clear bar stay on screen. Both are covered by `e2e/ui.spec.ts`.
 
-* Top bar (`.sim-topbar`, `.tb-*`): replace by `.top-bar` + `.search-bar` (48 px pill) + `.top-bar-sub` weather line (20 px), then set
-  `--topbar-h` to the new total (68 px, no bottom border) and delete the 84 px rows. `.tb-play` becomes a `.fab-ext.fab-primary` or a round
-  `.fab.fab-primary` (it currently has a `0 2px 0` hard shadow); `.tb-chip`, `.tb-speed`, `.tb-wx` become chips / `.top-bar-sub` content.
-* Speed popover (`.tb-pop`, `.tp-*`): `.popover`, `.chip`/segmented presets, `slider()`, `stepper()`; the raw range in `speedControl.ts`
-  already calls `rangeFill()`, keep that when restyling.
-* Timeline (`.scrubber`, `.tl-*`): target `--timeline-h` 64 px (currently `--scrub-h` 84 px + inset); the seek stripes
-  (`.tl-seek-todo`) use a gradient: replace by a flat two-tone bar; step buttons `.tl-step` are 44 px with a 2 px border.
-* Round menus (`.menu-fab`, `.menu-item`, `.menu-row`, `.fab-caret`): now 48 px because `--fab` shrank; make them `.fab` + `.popover`
-  rows (or a column of `.chip-float`s) and drop the 2 px borders.
-* Dock (`.sheet`, `.sheet-tab`, `.sheet-head`, `.dock`): map to `.bottom-sheet` (grab handle, 20 px top radius) + `.bottom-nav`
-  (Insights, Weather, Stats, Help; `--dock-h` 46 -> `--nav-h` 56 and update `DOCK_H` in `layoutModel.ts` and its test). `.tab-badge` -> `.nav-badge`.
+**Never**: a pop-up, a toast or a dialog because of something the simulation did. New insight cards only raise the badge on the Insights tab. Dialogs
+open from a tap (`confirmDialog` for deletions, the safety notice, "Leave this simulation?").
 
-**Sim panels (`sim.css`)**
-
-* Insights (`.insight*`, `.sev-badge`, `.conf-badge`, `.factor-*`, `.driver-chip`): cards + badges + kv rows; group titles
-  (`.group-title`) are grey `.section-header`s (the bridge only lowercases them now).
-* Weather (`.wx-*`, `.weather-*`) and stats (`.stat-tile`, `.stat-grid`, `.stat-value`): `.stat` / `.stat-row`, `.kv`; charts use
-  `--chart-*` (wind is purple now).
-* Fire, fuel, wind, what-if panels (`.tool-panel`, `.panel-*`, `.preset*`, `.tp-*`): segmented, chips, sliders, `.list`; `.preset.selected`
-  is bridged to a blue frame.
-* Layers and legends (`.map-legend`, `.ml-*`, `.legend*`, `.overlay-group*`): the tile grid (`.tile-grid`) is the new layer picker;
-  legends become `.legend-chip`s and `.kv`. `.legend-ramp` keeps its data gradient (a colour ramp is data).
-* Why panel, help (`.why-*`, `.facts`, `.howto`), errors (`.error-chip`): callouts and banners.
-
-**Setup, building, settings (`screens.css`)**
-
-* Header (`.app-header`, `.brand*`, `.header-*`): `.app-bar`; the brand mark keeps its flame on a dark tile.
-* Setup (`.setup-*`, `.site-card`, `.choice-card`, `.fix`, `.manual-box`, `.step*`): cards and `.list` rows with 24 px leads; the footer
-  (`.setup-footer`, `.build-actions`) keeps one `.btn-primary.btn-lg.btn-block`; `.site-card.selected` is bridged to the blue frame.
-* Building (`.building-*`, `.progress-row`): uses the `.progress` primitive now (8 px in `legacy.css`).
-* Settings (`.settings-*`, `toggle-list`): theme options are still named "Sunlight" / "Night" (rename to "Light" / "Night"), add the
-  switch **High contrast (bright sun)** bound to `highContrast`, use `.list` rows with trailing values; the data sets section is a new
-  screen built from `kv`, `stat`, `bar`, `origin-chip`.
-* Notice (`notice.ts`): already a `.modal` dialog on the new tokens; add nothing.
-
-**Bridge (`legacy.css`)** currently holds: blue selected frames (`.site-card`, `.choice-card`, `.fix`, `.manual-box`, `.preset`), sentence
-case for `.site-region`, `.overlay-group-title`, `.group-title`, and the 8 px building progress bar. Delete each block when its screen is migrated.
+**Audits** (all in `scripts/`): `check-contrast.mjs` (`npm run check:contrast`, every stylesheet, four looks), `audit-tap-targets.mjs`,
+`audit-contrast-dom.mjs` (measures the rendered page), `layout-budget.mjs` (the share of the screen that is free map at 412x915, 390x844, 360x740,
+360x640 and 844x390). The e2e specs check the 200 % font scale, high contrast and the Back order (`e2e/integration.spec.ts`).
 
 **Other**
 
-* `src/render/legendGallery.ts` (render dev page) uses `.chip` as a static box; it is unaffected but should switch to `.legend-chip`.
-* Android native theme (status/navigation bar colours, splash): apply the table in section 9.
-* The mock/dev pages (`src/render/dev.html`) have their own CSS and were not touched.
+* `src/render/legendGallery.ts` and `src/render/dev.html` are dev pages with their own CSS; they do not use the app's stylesheets.
+* Android native theme (status/navigation bar colours, splash): the table in section 9.

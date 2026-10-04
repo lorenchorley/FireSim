@@ -19,7 +19,7 @@ recorded in the module's top-of-file notes and summarised below.
 | App shell | **Capacitor 8** (Android + iOS) around a Vite 8 + TypeScript 5.9 web app | One codebase; WebGL2 and module Web Workers in the system WebView; native HTTP (CapacitorHttp) bypasses CORS on government data services; testable in Chromium with Playwright |
 | 3‑D | **Three.js** (WebGL2), on-demand rendering | Instancing for tens of thousands of trees, runs in mobile WebViews |
 | Compute | one **Web Worker** running plain TypeScript kernels on typed arrays | Keeps the UI responsive; deterministic; unit-tested in Node (Vitest) |
-| Data | Open‑Meteo (BOM ACCESS‑G, ECMWF, GFS, ERA5); NSW Spatial Services LiDAR DTM + imagery (demo sites); AWS Terrain Tiles (SRTM); Meta/WRI canopy height; NSW NPWS fire history; NSW SVTM vegetation; NSW RFS feeds | Free, no API keys, Australian coverage |
+| Data | Open‑Meteo (its automatic ‘best match’, ECMWF IFS, GFS upper-air fallback, ERA5; BOM ACCESS‑G is not requested); NSW Spatial Services 5 m elevation model (derived from stereo imagery, not LiDAR) + imagery (demo sites); AWS Terrain Tiles (SRTM); Meta/WRI canopy height; NSW NPWS fire history; NSW SVTM vegetation; NSW RFS feeds | Free, no API keys, Australian coverage |
 | Offline | Bundled demo sites (`public/demo/`) and historic weather (`public/replays/`), user-downloaded **area packs** and a response cache in IndexedDB | Mountain fire grounds often have no mobile coverage |
 
 ## Source layout
@@ -50,14 +50,17 @@ src/
                  memoryModel.ts (working memory)
   sim/           Simulation (coupling loop), records, stats, SimHost, worker.ts, SimClient / LocalSimController,
                  protocol, validation/ (§15 scenarios), testing/ (scenario builders, hashes)
-  render/        SceneView (Three.js) + layers: terrain, vegetation, flames, embers, smoke, wind, cross-section,
-                 icons, sky, camera rig, heightfield picking, legends, palette, demo imagery
-  ui/            App shell, screens (notice, setup, building, sim/*, settings), session, stores, widgets, mocks
+  render/        SceneView (Three.js) + layers: terrain, vegetation (species-shaped canopy), places (roads, trails, homes,
+                 zones, names), flames, embers, smoke, wind, cross-section, icons, sky, camera rig, heightfield picking,
+                 legends, palette, layerCatalog.ts (the one description of every layer), demo imagery
+  ui/            App shell + back stack (app.ts, backStack.ts), screens (notice, setup, building, settings, datasets,
+                 modelCard, sim/*), session, stores, widgets + primitives (typed builders of the design system), mocks
   styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
-                 + screen CSS (screens, sim, transport) + legacy bridge; see docs/DESIGN.md
-e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock)
+                 + screen CSS (screens, sim, transport, layers, datasets, modelcard); see docs/DESIGN.md
+e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
+                 model-card, integration, android)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
-docs/screenshots/ produced by e2e/app.spec.ts
+docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 8 demo sites
 public/replays/  bundled hourly + 365-day daily weather of the 7 historic fire days
 ```
@@ -66,7 +69,7 @@ public/replays/  bundled hourly + 365-day daily weather of the 7 historic fire d
 
 ```
  Setup (ui/setupModel.buildRequest) ──ScenarioRequest──► scenario/buildScenario(req, onProgress, signal)
-     terrain (bundled LiDAR → area pack → Terrarium → synthetic) · canopy · SVTM · NPWS history · weather · drought · fuel
+     terrain (bundled 5 m model → area pack → Terrarium → synthetic) · canopy · SVTM · NPWS history · weather · drought · fuel
      every read recorded on a per-build DatasetLedger (data/ledger.ts) → DatasetRecord[] + DatasetSummary
                                                    │ ScenarioData (fire-grid Terrain + 10 m terrainHiRes, FuelMap,
                                                    ▼   WeatherSeries, options, warnings, datasets, datasetSummary)
@@ -105,7 +108,10 @@ the sequence is the classic one (a 10 s display step means 10 s steps; 30 s mean
 
 **Display step vs solver step.** The display step (`Settings.timeStep` → `SimOptions.snapshotInterval`, 10 s … 10 min)
 is how often the engine produces a picture. It is applied live (`setOption('snapshotInterval', s)` is not a record and
-never rewinds; the cadence continues from the next multiple) and does not change the physics for steps ≥ 12 s. The
+never rewinds; the cadence continues from the next multiple). It does not change the physics in the fast tier (10 s steps
+land on every selectable display step) nor for whole minutes in the 3-D tiers (the classic 5 × 12 s per minute); a display
+step of 10 s or 30 s in a 3-D tier splits the interval into other equal steps (3 × 10 s per 30 s), so the run differs from
+the 60 s one (measured: `src/sim/cadence.test.ts`; the Settings and time-menu hints say so). The
 solver step (`Settings.solverStep` → `maxStepS`: automatic / 5 / 2 / 1 s) caps Δt_a: it changes the trajectory, so it
 is a *timed record* like `coupling` (the UI session re-runs from the view time, see below).
 
@@ -221,8 +227,10 @@ datasetsToJson (stable) · datasetsToCsv (RFC 4180; per stat with {stats:true}) 
   attached to the summary at build time. Engine coefficients (`ENGINE_BYTES`) were measured by walking every typed array of
   real `Simulation`s; `Simulation.memoryReport()` measures a running engine by part and `memoryModel.test.ts` keeps the two
   within 8 % per part and 5 % in total. From a built scenario the worker's scenario copy (without the places context) and
-  its two fuel-map copies are measured, not modelled (`workerScenarioArrayBytes`, `fuelMapBytes`). `liveMemory()` reads `performance.memory` or says it is not available. (The worker
-  protocol does not forward `memoryReport` yet.)
+  its two fuel-map copies are measured, not modelled (`workerScenarioArrayBytes`, `fuelMapBytes`). `liveMemory()` reads `performance.memory` or says it is not available.
+  The running engine's own measurement reaches the UI as `SimSnapshot.engine.memory` (`EngineInfo`, at most every 30 s of real time, with the
+  simulated time it was taken at); the Data sets screen shows it under *Measured now* and sizes the modelled memory for the tier the engine
+  reports (`workingMemoryForScenario(…, { tier })`), not for the tier that was asked for ('auto' is modelled as Standard only before the engine reports).
 * **Storage** (`data/storage.ts`): `storage.report()` → bundled data (manifest), stored copies by kind and place with dates,
   area packs with item sizes, the browser's estimate, a warning above 500 MB; `storage.clearCache(kind)` and
   `storage.deleteAreaPack(id)` only after the user confirms. `KV.sizes()` returns each entry's size and stored-at time.
@@ -294,6 +302,47 @@ Coupling choices that deviate from the spec text (validation of §15, `src/sim/v
 
 `src/sim/validation/*.test.ts` run the §15 scenarios (V1–V22) headless on synthetic terrain and the demo sites; the
 long ones run with `SLOW=1`. Criteria the model does not meet yet are `it.fails` tests with the measured values.
+
+### Transparency: what is simulated (sim/engineInfo.ts, ui/modelInfo.ts, ui/screens/modelCard.ts)
+
+The user can open **How this simulation works** (Stats tab, Settings, Setup) to see what is 2-D, what is 3-D, the grids and the
+steps of THIS run. Three layers, each checked against the one below:
+
+1. **`EngineInfo`** (`core/simTypes.ts`, re-exported by `core/types.ts`) is an optional, structured-clone-friendly field of every
+   `SimSnapshot` (`SimSnapshot.engine`). `Simulation.makeSnapshot()` fills it in `engineInfo()` by READING the modules, never from
+   constants of its own: `tier` / `tierRequested` / `tierCause` (`requested | auto-tune | auto-pending | auto-default | changed`) /
+   `tierReason` (the sentence, with the auto-tune measurement) / `autoTune`; `atmosphere` (`kind` `'3d'` or `'diagnostic'`, `nx ny nz`,
+   `dxM`, `dzFirstM`, `topM` from the atmosphere's own `grid`, the current outer step, the mean step time of the tier in force,
+   `spunUp`, the upper-air source, whether the picture's air view was decimated); `fire` (the terrain grid, the level set's last
+   CFL sub-step, `rosMaxMs`, the forest head cap, the slope range outside which a head is "not validated"); `embers` (on, active, max,
+   the sub-step range, the five classes); `cadence` (display step, solver step and its bounds, moisture, detectors, checkpoints, weather
+   stamp spacing and interpolation); `run` (seed, deterministic, simulated s per wall s, steps, checkpoints and their bytes);
+   `models` (the empirical spread model per fuel family of the working fuel map, coupling, mountain phenomena, embers, pyrogenic,
+   heath model); and `memory` (the parts of `memoryReport()`). It is cheap: a few dozen reads, the fuel-family count once per fuel change
+   (`spreadUse` is reset by `afterFuelChange`), and `memoryReport()` at most every `MEMORY_REFRESH_WALL_MS` (30 s) of the injected
+   clock. The determinism hash (`sim/testing/hash.ts`) always skips `engine`: it is metadata of this device, not simulation state.
+   `MockSimController` reports an `EngineInfo` flagged `mock: true` with zero atmosphere and no tiers.
+2. **`describeModel({ scenario, engine, snapshot, settings, request })`** (`ui/modelInfo.ts`, pure, no DOM) returns a `ModelCard`:
+   a headline, then seven sections (*At a glance*, *What it can and cannot resolve*, *How sure are we?*, *Data in this run*, *Layers
+   and what they show*, *Engine right now*, *Words used*) made of `rows` (one per component, with an `EvidenceLevel`), `facts`,
+   `bullets`, `layers` (from `render/layerCatalog.ts`), a glossary and one `action` (open the Data sets screen). `mode` is `live`
+   (the engine reported), `planned` (a scenario, no report yet), `preview` (no scenario: planned from the Setup request with the same
+   rules the builder and engine apply: `builtFireCell`, `makeGridSpec`, `ATMOS_TIERS`) or `mock`. Every number is read from the engine
+   report, the scenario, the settings or a parameter table (`SIM_PARAMS`, `ATMOS_PARAMS`, `SPREAD_PARAMS`, `FIRE_MODEL_PARAMS`,
+   `SCENARIO_PARAMS`); the fast tier and the 3-D tiers are worded differently from the tier the engine reports NOW, also after a
+   switch mid-run. The two things quoted from documents (the evidence-tag counts of spec §4–§15 and the open issues of §16, and the
+   README's validation summary) are re-checked against the files by `modelInfo.test.ts`, which fails when they change.
+   `cardToText(card)` is "Copy as text".
+3. **`createModelCardScreen`** (`ui/screens/modelCard.ts`) draws it: a full-screen dialog (aria-modal, focus trap) opened by the App on
+   top of the running simulation (`App.openModelCard`; Back and Escape close it first; the screen stops its own Escape so the
+   forwarded key does not also close the dock underneath). Live values are re-read from the newest snapshot at most once a second and
+   patched in place (text nodes; a section is rebuilt only when its structure changes, e.g. after a tier switch); it never opens by
+   itself and never calls pause or touches playback.
+
+Tests: `sim/engineInfo.test.ts` (headless runs of both kinds of tier, a switch mid-run, a rewind, a fuel edit, the throttle),
+`ui/modelInfo.test.ts` (values follow the scenario, tier wording, fallbacks, text export, quoted facts), `e2e/model-card.spec.ts`
+(the real engine in the browser; the numbers on the page equal `window.__firesim`'s; a tier switch changes the wording),
+`ui/truthAudit.test.ts` and `e2e/truth.spec.ts` (the static statements of the screens checked against the code and the engine).
 
 ### explain/
 
@@ -394,15 +443,58 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   the Insights tab was last open (one per kind) for the dock badge, which turns red with one pulse for a Danger card.
   `DangerGate` only serves the opt-in settings: vibration (at most once per kind per simulated hour) and "pause on
   danger" (only the first time a kind is dangerous); both are OFF by default.
-* Simulation-screen chrome (`ui/screens/sim`): collapsed by default. Two 56 px round menus over the map (`mapMenu.ts`: tools
-  on the handed side, view on the other; the list opens beside the button, at most one open, the open state is
-  `UiState.menu`), a slim 46 px dock of four 44 px tabs above the timeline (`sheet.ts`; `UiState.sheet` is `closed | peek |
-  half | full`, default `closed`) and a thin error chip under the top bar that appears only if the engine fails. The pure
-  rules (menu reducer, dock taps and detent heights, list fitting) are in `layoutModel.ts`; `simScreen.ts` measures the
-  covered edges (`layoutInsets`) and gives the camera, the crosshair, the round buttons and the legend the visible map (the legend steps
-  aside while a round menu is open). Field-use rules, guarded by `ui/styles.rules.test.ts`: every tap target is at least 44 px (the weather
-  line under the top bar is a read-out, not a button), no text is under 14 px (dock tabs 16 px), and behind a full-screen dialog (Settings)
-  the stage is `inert`, so keyboard focus never walks into hidden controls.
+* Simulation-screen chrome (`ui/screens/sim`): collapsed by default, in the Google-Maps-for-Android language (docs/DESIGN.md).
+  **Top**: a floating pill (`topBar.ts`: main menu, clock with its elapsed / Replay / Computing line, the blue Play button and the
+  speed chip) with a row of read-out chips under it (temperature, humidity, wind, fire-danger rating: information, not buttons). The
+  main menu is a side sheet (Data sets, How this simulation works, Help and glossary, Safety notice, Settings, New scenario); the time
+  and speed controls open as small sheets (`transportKit.ts`, one popover at a time). **Map controls**: a column of round white
+  buttons (Layers, View with the current camera mode, Compass) and an extended "Tools" button in the bottom corner whose speed dial
+  holds the six tools (`mapMenu.ts`; the open menu is `UiState.menu`, so at most one is open and a map tap, Escape or Back collapses
+  it). **Bottom**: Maps-style bottom navigation (Insights with an unseen-cards badge, Weather, Stats, Help) above the timeline strip
+  (`sheet.ts`, `scrubber.ts`); a tab opens a rounded bottom sheet with a grab handle (`UiState.sheet` is `closed | peek | half | full`,
+  default `closed`). A thin error chip appears under the top bar only if the engine fails; the map's legend card (`mapLegend.ts`) and
+  attribution line (`mapCredits.ts`, a button that opens the Data sets screen) sit at the bottom of the visible map. Left-hand mode
+  mirrors everything. The column of round buttons sits under the top bar and, where that leaves no room beside the Tools button (a short landscape screen at a large text size) and the top bar only reaches part way across, starts level with the top bar's side instead (`--col-top`, set by `layoutInsets`). The pure rules (menu reducer, what Back closes first, dock taps and detent heights, list fitting) are in
+  `layoutModel.ts`; `simScreen.ts` measures the covered edges (`layoutInsets`) and gives the camera, the crosshair, the round buttons
+  and the legend the visible map. Field-use rules, guarded by `ui/styles.rules.test.ts`: every tap target is at least 44 px (the
+  read-out chips are not buttons), no literal font size is under 14 px (12 px exists only as the caption token), and behind a full-screen screen the stage is `inert`.
+* **Layers panel** (`layersPanel.ts`, `layersModel.ts`, `layersPrefs.ts`): built only from `render/layerCatalog.ts`, so a new
+  catalog row appears on its own. Map type (aerial photo / terrain colours / plain), Map details (one tile per scene layer: roads, fire
+  trails, homes, residential areas, place names, 3-D canopy, shrubs, flames, smoke, embers, wind streaks, insight markers; a greyed
+  tile carries the catalog's reason), Heat maps (every data layer that can colour the ground, grouped as the catalog groups them; one at
+  a time, tap again to switch off; "Show on its own" hides the photo and the trees; roads, homes and shrubs have both Show and Heat map),
+  Trees (natural / simple / coded by height, cover, bark or understorey hazard; sway) and Wind and air. Each row has an (i) with the
+  catalog text and a link to the data set behind it on the Data sets screen. The user's choices (only choices, never defaults) are
+  saved to the UI preferences (`layersPrefs.ts`, key `layers`) and put back at the start of the next run by `restoreLayerPrefs(ctx)`
+  (a remembered heat map only where it can be shown; the trees' wind sway starts off in battery mode and on a low-quality renderer).
+  "Why here?" has a *Where you are* part (`placeInfo.ts`, pure): nearest road and fire trail, the zone, homes within 500 m and 1 km,
+  the ground, all measured from `ScenarioData.context` and the terrain grid.
+* **Places context** (`ScenarioData.context`, `core/places.ts` `ContextLayers`): roads, RFS fire trails, residential and built-up
+  zones, homes and place names in local metres. `scenario/context.ts loadContext` takes them from the bundle (demo sites), an area pack,
+  the cache or a live query of the NSW services (`data/nswContext.ts`), in that order, and never fails a build. The worker does not
+  receive them (the 3-D view and the "Where you are" part use them on the main thread). `render/placesLayer.ts` draws them
+  (`SceneView.setContext`, `setLayers({ roads, fireTrails, homes, zones, placeNames })`, `placesLegend()`); the two data heat maps
+  `homeDensity` and `roadAccess` come from `render/contextFields.ts`.
+* **Full-screen screens and the Back stack** (`app.ts`, `backStack.ts`). Settings, Data sets and How this simulation works are
+  *overlays*: the App puts them over the stage, which becomes `inert` (focus and screen readers stay in the screen), and the simulation
+  keeps running and rendering underneath: opening one never pauses or changes playback. Closing one returns focus to the control that
+  opened it. The Back button (Android hardware Back, the browser's Back, Escape) closes the top-most thing first: a confirmation dialog,
+  a data set's page (back to the list), the screen, then the simulation's own menus, popovers, tool panel and sheet, and only then asks
+  before leaving the simulation (`BackStack`: one guard entry on the history while anything is closable; on Android `MainActivity`
+  maps the hardware Back to `WebView.goBack()` while the WebView has a history entry, which arrives as `popstate`). The App keeps the
+  current `ScenarioData` (`this.scenario`) so Settings and Setup can open the Data sets screen outside a run (no scenario: the plan of
+  the Setup form from `scenario/estimate.ts`, what is stored on the phone and the bundled data). "Show on map" from a data set closes
+  the overlays and applies its layer or heat map (`SimScreen.showLayer`). Entry points: main menu, Stats tab (*Data used*: See all, a row
+  = that data set), the Layers panel's (i), the map's attribution line, Settings, Setup (*Data for this run*, a row = that data set's
+  planned page) and, for the model card, the main menu, the Stats tab, Settings and Setup.
+* **Data sets screen** (`screens/datasets.ts`, `datasetsModel.ts` pure, `datasetViz.ts`): the summary (data sets, downloaded, in
+  memory, saved on this phone; the origin mix; substitutes in plain words; the model grid and the recipe to rebuild the run), the list
+  (filter chips, sort, one row per data set), a page per data set (what and why, provider and licence with links that are copied and only
+  opened after asking, dates, coordinates, resolution as published and in the model, sizes, statistics, the distribution, a heat-map
+  preview in the map's own colours, how far to trust it, limitations, Show on map, Copy as text / CSV / JSON), the run's working memory,
+  and *On this phone* (bundled, stored copies and saved areas with Delete / Clear, always after a confirmation). Every number is read
+  from `ScenarioData.datasets` / `datasetSummary`, `scenario/memoryModel.ts` and `data/storage.ts`; a compressed download whose wire
+  size the phone cannot report is shown as "up to ...".
 * Setup catalogues come from `src/scenario` (`WEATHER_PRESETS` / `PRESET_IDS`, `REPLAYS`); a preset starts on its
   canonical day and hour (e.g. 20 Dec 11:00 LMST), rounded to 10 min. Belt-kit readings are sent as
   `ScenarioRequest.beltKit` so the builder applies the psychrometer at the real station pressure and the 2 m → 10 m
@@ -420,20 +512,25 @@ primitives with markup, density and tap rules, old -> new token map, migration c
   strip, reduced motion), `components.css` (buttons, fields, segmented, switch, checkbox, slider, stepper, cards, lists, chips, badges,
   callouts, progress, skeleton), `overlays.css` (app bar, floating top bar, FABs, bottom sheet, dialog, popover, snackbar, bottom
   navigation, tile grid), `data.css` (key-value rows, stats, bars, meters, sparkbars, origin chips, tables, code, legend chips), then
-  the not yet migrated screen CSS (`screens.css`, `sim.css`, `transport.css`) and `legacy.css` (temporary overrides, deleted block by
-  block as screens migrate).
+  the screens' own CSS, which only composes the primitives and tokens (`screens.css` Setup / Building / Settings / Notice, `sim.css` and
+  `transport.css` the simulation chrome, `layers.css`, `datasets.css`, `modelcard.css`). No screen CSS hard-codes a colour: the map
+  marks drawn over imagery are tokens too (`--map-*`, `--mark-*`).
 * `<html data-theme="light|dark">` and `<html data-contrast="high">` are set by `ui/settings.ts` (`resolveAppearance` /
   `applyAppearance` / `startThemeSync`, from `Settings.theme` and `Settings.highContrast`) and, before first paint, by the inline script
   in `index.html`. `<meta name="theme-color">` follows the theme (`THEME_CHROME`: the status-bar colour is the amber strip, which also
   documents the navigation-bar colours for the native theme).
 * `ui/icons.ts` is the icon set (24 px, 2 px strokes, `currentColor`, kebab-case names plus aliases); `ui/widgets.ts` and
   `ui/primitives.ts` are typed builders for the primitives (`button`, `segmented`, `toggle`, `slider`; `chip`, `fab`, `listRow`, `kv`,
-  `stat`, `bar`, `meter`, `sparkbar`, `originChip`, `tile`, `tileGrid`, `bottomNav`, `bottomSheet`, `showSnackbar` ...).
+  `stat`, `bar`, `meter`, `sparkbar`, `originChip`, `tile`, `tileGrid`, `bottomNav`, `bottomSheet`, `showSnackbar` ...; `chipChoice`,
+  `appBar` and `confirmDialog` were added by the screens phase).
 * `ui/styleguide.html` (dev server only, `/src/ui/styleguide.html?theme=dark&contrast=high`) shows every primitive in every state and
   a mock map screen; screenshots are in `docs/screenshots/design/`.
-* Guard rails: `ui/styles.rules.test.ts` (tap sizes, no literal text under 14 px, flat rules: no gradients, no uppercase or heavy weights
+* Guard rails: `ui/styles.rules.test.ts` (tap sizes, no literal font size under 14 px, flat rules: no gradients, no uppercase or heavy weights
   outside the sanctioned places), `ui/tokens.contrast.test.ts` (WCAG contrast of every text and boundary pair in the four modes),
-  `ui/icons.test.ts`, `ui/primitives.test.ts`, `ui/settings.test.ts`.
+  `scripts/check-contrast.mjs` (`npm run check:contrast`: the curated pairs plus every rule of every stylesheet that sets a text and a
+  background colour, in the four modes; run by `ui/contrast.script.test.ts`), `scripts/audit-tap-targets.mjs`,
+  `scripts/audit-contrast-dom.mjs`, `scripts/layout-budget.mjs` (free map area per phone size), `ui/icons.test.ts`,
+  `ui/primitives.test.ts`, `ui/settings.test.ts`.
 
 ## Build and deployment
 
@@ -497,4 +594,7 @@ therefore usually picks the fast tier on phones. Spec budgets and CI gates: §13
   (`src/sim/validation.test.ts`, skip with `FIRESIM_SKIP_SLOW=1`).
 * `npx playwright test` — Pixel 7 profile, Chromium with SwiftShader WebGL, against the production build:
   `e2e/app.spec.ts` (the whole app with the real modules end to end, screenshots into `docs/screenshots/`),
-  `e2e/sim.spec.ts` (the real worker), `e2e/ui.spec.ts` (the UI on the mocks).
+  `e2e/sim.spec.ts` (the real worker), `e2e/ui.spec.ts` (the UI on the mocks), `e2e/layers.spec.ts` (the Layers panel, GPU
+  object counts), `e2e/datasets.spec.ts` and `e2e/model-card.spec.ts` (the two information screens), `e2e/integration.spec.ts`
+  (every entry point, the Back order, focus and inert, the 200 % font scale, high contrast, deletions that ask first, a whole run
+  with every screen visited and nothing popping up), `e2e/android.spec.ts` (an emulated Capacitor runtime).

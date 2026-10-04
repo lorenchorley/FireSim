@@ -18,7 +18,7 @@ import { buildRequest, defaultSetup } from './setupModel';
 const settings = { ...DEFAULT_SETTINGS };
 
 /** The card with its thin spaces (thousands groups) and no-break spaces (before units) as plain spaces, so the expectations stay readable. */
-const describeModel = (input: ModelCardInput): ModelCard => JSON.parse(JSON.stringify(describeRaw(input)).replace(/[\u2009\u00a0]/g, ' ')) as ModelCard;
+const describeModel = (input: ModelCardInput): ModelCard => JSON.parse(JSON.stringify(describeRaw(input)).replace(/[\u2009\u00a0\u202f]/g, ' ')) as ModelCard;
 const root = resolve(__dirname, '../..');
 
 /** Run a scenario a little and return its newest snapshot (with the engine info). */
@@ -125,9 +125,51 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     const lines = block.groups.flatMap((g) => g.layers);
     expect(lines.map((l) => l.id).sort()).toEqual(LAYER_CATALOG.map((l) => l.id).sort());
     expect(lines.find((l) => l.id === 'slope')!.resolution).toContain('30 m cells');
-    expect(lines.find((l) => l.id === 'wind')!.resolution).toContain('100 m atmosphere cells');
+    expect(lines.find((l) => l.id === 'wind')!.resolution).toContain('100 m grid, surface wind only');
     expect(lines.find((l) => l.id === 'placeNames')!.dimension).toBe('2-D labels');
     expect(block.dimensions.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('fast tier: the smoke is one drawn column and the wind streaks follow a surface wind, never a 3-D volume (as the At a glance rows say)', () => {
+    const block = card.sections.find((s) => s.id === 'layers')!.blocks[0]!;
+    if (block.type !== 'layers') throw new Error('layers block');
+    const lines = block.groups.flatMap((g) => g.layers);
+    const smoke = lines.find((l) => l.id === 'smoke')!;
+    expect(smoke.dimension).toBe('3-D objects');
+    expect(smoke.resolution).toContain('One drawn column');
+    expect(smoke.resolution).toContain('no smoke field');
+    expect(lines.find((l) => l.id === 'wind')!.dimension).toBe('3-D objects');
+    expect(lines.filter((l) => l.dimension === '3-D volume').map((l) => l.id)).toEqual([]);
+    // The same card says so in the glance row.
+    expect(row(card, 'smoke').dimensions).toMatch(/^Drawn only/);
+  });
+
+  it('terrain: a ground model coarser than the 10 m grid of the view is said to be interpolated, never presented as 10 m detail', () => {
+    const srtm = JSON.parse(JSON.stringify(fastScenario)) as ScenarioData;
+    srtm.datasets = [{ id: 'terrain', origin: 'live', native: { resolutionM: 30 } } as unknown as DatasetRecord];
+    srtm.terrainHiRes = { grid: { ...fastScenario.terrain.grid, cellSize: 10 }, elevation: new Float32Array(0) };
+    const c = describeModel({ scenario: srtm, engine: snap.engine, snapshot: snap, settings });
+    const t = row(c, 'terrain');
+    expect(t.resolution).toContain('a 10 m grid for the 3-D view and the air, smoothly interpolated from 30 m heights');
+    expect(t.resolution).not.toContain('the 10 m ground model');
+    const layers = c.sections.find((s) => s.id === 'layers')!.blocks[0]!;
+    if (layers.type !== 'layers') throw new Error('layers block');
+    expect(layers.groups.flatMap((g) => g.layers).find((l) => l.id === 'slope')!.resolution).toContain('interpolated from 30 m heights');
+    // A finer source (the demo sites' 5 m model) keeps the plain wording.
+    const dem = JSON.parse(JSON.stringify(srtm)) as ScenarioData;
+    dem.datasets = [{ id: 'terrain', origin: 'bundled', native: { resolutionM: 5 } } as unknown as DatasetRecord];
+    dem.terrainHiRes = srtm.terrainHiRes;
+    expect(row(describeModel({ scenario: dem, engine: snap.engine, snapshot: snap, settings }), 'terrain').resolution).toContain('the 10 m ground model for the 3-D view and the air');
+    // No claim of LiDAR anywhere in the card (the service says its heights are derived from stereo imagery).
+    expect(JSON.stringify(c)).not.toMatch(/LiDAR/);
+    expect(JSON.stringify(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }))).not.toMatch(/bundled LiDAR/);
+  });
+
+  it('before a run the Auto atmosphere row says the fast mode is the usual result on phones, and that this is not yet measured on phones', () => {
+    const atm = row(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }), 'atmosphere');
+    expect(atm.method).toMatch(/Most phones are expected to be too slow for the 3-D air, so the fast mode is the usual result/);
+    expect(atm.method).toMatch(/measured on a computer, not yet on phones \(spec §16 item 20\)/);
+    expect(SPEC_OPEN_ISSUES.find((x) => x.item === 20)!.plain).toMatch(/computer, not yet on target phones/);
   });
 });
 

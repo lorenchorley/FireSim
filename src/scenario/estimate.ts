@@ -17,7 +17,7 @@
  * `estimateScenarioData` reads only local things (the bundle manifest, the area-pack index and the cache's key list);
  * it makes no network request.
  */
-import { formatBytes, type DatasetOrigin, type DatasetPlan, type DatasetRecord, type DatasetRole, type DatasetStatus } from '../core/datasets';
+import { formatBytes, localDay, type DatasetOrigin, type DatasetPlan, type DatasetRecord, type DatasetRole, type DatasetStatus } from '../core/datasets';
 import type { LatLon } from '../core/types';
 import {
   CONTEXT_MARGIN_M,
@@ -356,22 +356,36 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
   {
     const ctxFile = fileBytes('context.json');
     const cf = siteFiles?.['context.json'];
-    const layers: { id: string; title: string; count?: number }[] = [
-      { id: 'roads', title: 'Roads and tracks', ...(cf?.roads !== undefined ? { count: cf.roads } : {}) },
-      { id: 'fire-trails', title: 'Fire trails', ...(cf?.fireTrails !== undefined ? { count: cf.fireTrails } : {}) },
-      { id: 'homes', title: 'Homes (address points)', ...(cf?.homes !== undefined ? { count: cf.homes } : {}) },
-      { id: 'zones', title: 'Residential and built-up zones', ...(cf?.zones !== undefined ? { count: cf.zones } : {}) },
-      { id: 'place-names', title: 'Place names', ...(cf?.places !== undefined ? { count: cf.places } : {}) },
+    // The size of the bundled file is split the way the built records split it: by each layer's share of the file's JSON
+    // (the manifest's layerBytes); without it, by feature count.
+    const lb = cf?.layerBytes;
+    const layers: { id: string; title: string; count?: number; bytes?: number; zoning?: boolean }[] = [
+      { id: 'roads', title: 'Roads and tracks', ...(cf?.roads !== undefined ? { count: cf.roads } : {}), ...(lb?.roads !== undefined ? { bytes: lb.roads } : {}) },
+      { id: 'fire-trails', title: 'Fire trails', ...(cf?.fireTrails !== undefined ? { count: cf.fireTrails } : {}), ...(lb?.fireTrails !== undefined ? { bytes: lb.fireTrails } : {}) },
+      { id: 'homes', title: 'Homes (address points)', ...(cf?.homes !== undefined ? { count: cf.homes } : {}), ...(lb?.homes !== undefined ? { bytes: lb.homes } : {}) },
+      { id: 'zones', title: 'Residential and built-up zones', zoning: true, ...(cf?.zones !== undefined ? { count: cf.zones } : {}), ...(lb?.zones !== undefined ? { bytes: lb.zones } : {}) },
+      { id: 'place-names', title: 'Place names', ...(cf?.places !== undefined ? { count: cf.places } : {}), ...(lb?.places !== undefined ? { bytes: lb.places } : {}) },
     ];
-    const common = { role: 'context' as const, what: 'NSW government map data (Spatial Services, NSW Planning).', why: 'Display only: helps you find your way and see what is at risk.', provider: PROVIDERS.spatial, licence: LICENCES.ccBy, attribution: '© Spatial Services NSW', kind: 'vector' as const };
-    const total = layers.reduce((a, l) => a + (l.count ?? 0), 0);
+    // Zoning is published by NSW Planning, the other four layers by Spatial Services (as in the built records).
+    const commonOf = (zoning: boolean | undefined) => ({
+      role: 'context' as const,
+      what: 'NSW government map data (Spatial Services, NSW Planning).',
+      why: 'Display only: helps you find your way and see what is at risk.',
+      provider: zoning ? PROVIDERS.planning : PROVIDERS.spatial,
+      licence: LICENCES.ccBy,
+      attribution: zoning ? ATTRIBUTION.planning : ATTRIBUTION.spatial,
+      kind: 'vector' as const,
+    });
+    const byBytes = layers.every((l) => l.bytes !== undefined);
+    const total = layers.reduce((a, l) => a + ((byBytes ? l.bytes : l.count) ?? 0), 0);
     const packC = pack('context');
     const cached = facts.cachedKeys.has(contextCacheKey(contextQueryBBox(centre, extentM)));
     const qKm2 = ((extentM + 2 * CONTEXT_MARGIN_M) / 1000) ** 2;
     for (const l of layers) {
+      const common = commonOf(l.zoning);
       const T = CONTEXT_PER_KM2[l.id as keyof typeof CONTEXT_PER_KM2];
-      const share = total > 0 ? (l.count ?? 0) / total : 1 / layers.length;
-      if (site && ctxFile !== undefined) add({ ...common, id: l.id, title: l.title, format: 'delta-coded JSON, bundled (one file for all five layers)', status: 'used', origin: 'bundled', originDetail: siteNote, ...exact(Math.round(ctxFile * share)), network: 0, requests: l.id === 'roads' ? 1 : 0, basis: `share of the bundled context.json (${formatBytes(ctxFile)}) by feature count`, offlineOk: true, offlineNote: 'Shipped with the app.', onDevice: true });
+      const share = total > 0 ? ((byBytes ? l.bytes : l.count) ?? 0) / total : 1 / layers.length;
+      if (site && ctxFile !== undefined) add({ ...common, id: l.id, title: l.title, format: 'delta-coded JSON, bundled (one file for all five layers)', status: 'used', origin: 'bundled', originDetail: siteNote, ...exact(Math.round(ctxFile * share)), network: 0, requests: l.id === 'roads' ? 1 : 0, basis: `share of the bundled context.json (${formatBytes(ctxFile)}) by ${byBytes ? 'the size of each layer in it' : 'feature count'}`, offlineOk: true, offlineNote: 'Shipped with the app.', onDevice: true });
       else if (packC || cached) add({ ...common, id: l.id, title: l.title, format: 'delta-coded JSON (stored)', status: 'used', origin: packC ? 'area-pack' : 'cache', ...(packC ? exact(Math.round(packBytes(packC, 'context') / layers.length)) : { low: 0, mid: 0, high: 0 }), network: 0, requests: 0, basis: packC ? 'share of the stored pack item' : 'stored copy', offlineOk: true, offlineNote: 'Saved on this device.', onDevice: true });
       else if (online) add({ ...common, id: l.id, title: l.title, format: 'ArcGIS REST JSON', status: 'used', origin: 'live', low: T.low * qKm2, mid: T.mid * qKm2, high: T.high * qKm2, network: T.mid * qKm2, requests: 2, basis: `${qKm2.toFixed(0)} km² queried x ${formatBytes(T.mid)} per km²; ${T.basis}`, offlineOk: false, offlineNote: noSignal('queried from the NSW services'), onDevice: false });
       else add({ ...common, id: l.id, title: l.title, format: '-', status: 'unavailable', origin: 'none', fallbackReason: 'Offline and not stored: the layer is left off the map.', low: 0, mid: 0, high: 0, network: 0, requests: 0, basis: 'offline', offlineOk: true, offlineNote: 'Display only; the run works without it.', onDevice: false });
@@ -387,7 +401,7 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
   const usedPack = facts.packs.find((p) => out.some((r) => r.origin === 'area-pack' && r.originDetail === `area pack '${p.name}'`));
   if (usedPack) {
     const b = usedPack.bytes;
-    add({ id: 'area-pack', role: 'pack', title: `Saved area pack: ${usedPack.name}`, what: 'Data you saved on this device for use with no signal.', why: 'Real data instead of substitutes when offline.', provider: PROVIDERS.app, licence: { name: 'Each item keeps the licence of its source' }, attribution: ATTRIBUTION.app, format: 'Items stored in the app database', kind: 'table', status: 'used', origin: 'area-pack', originDetail: `saved ${new Date(usedPack.createdAt).toISOString().slice(0, 10)}`, low: b, mid: 0, high: b, network: 0, requests: 0, basis: `the whole pack is ${formatBytes(b)} (${usedPack.itemNames.length} items); its items are counted under each data set`, offlineOk: true, offlineNote: 'Saved on this device.', onDevice: true });
+    add({ id: 'area-pack', role: 'pack', title: `Saved area pack: ${usedPack.name}`, what: 'Data you saved on this device for use with no signal.', why: 'Real data instead of substitutes when offline.', provider: PROVIDERS.app, licence: { name: 'Each item keeps the licence of its source' }, attribution: ATTRIBUTION.app, format: 'Items stored in the app database', kind: 'table', status: 'used', origin: 'area-pack', originDetail: `saved ${localDay(usedPack.createdAt)}`, low: b, mid: 0, high: b, network: 0, requests: 0, basis: `the whole pack is ${formatBytes(b)} (${usedPack.itemNames.length} items); its items are counted under each data set`, offlineOk: true, offlineNote: 'Saved on this device.', onDevice: true });
   }
   return out;
 }

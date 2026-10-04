@@ -35,6 +35,7 @@ import {
   type MemoryWhere,
   type WorkingMemory,
 } from '../../core/datasets';
+import type { EngineInfo } from '../../core/types';
 import type { StorageReport } from '../../data/storage';
 import type { AvailabilityContext } from '../../render/layerCatalog';
 import { layerById, layerForOverlay } from '../../render/layerCatalog';
@@ -280,7 +281,7 @@ export interface HeaderStat {
 export interface SummaryHeader {
   mode: 'built' | 'planned' | 'empty';
   title: string;
-  /** '15 data sets · 2.3 MB downloaded · 14.0 MB in memory · 3.3 MB stored on this phone' */
+  /** '15 data sets · 2.3 MB downloaded · 14.0 MB in memory · 3.3 MB newly saved on this phone' (what THIS build wrote, 0 B when it only read copies already there) */
   sentence: string;
   stats: HeaderStat[];
   /** Short extra lines under the stats (uncompressed size, bundled bytes, requests). */
@@ -358,7 +359,7 @@ export function summaryHeader(records: readonly DatasetRecord[], summary: Datase
     countStat,
     { id: 'downloaded', prefix: upTo ? 'up to' : '', value: rd.value, unit: rd.unit, caption: read ? read.caption : 'downloaded' },
     { id: 'memory', prefix: '', value: m.value, unit: m.unit, caption: 'data in memory' },
-    { id: 'stored', prefix: '', value: s.value, unit: s.unit, caption: 'saved on this phone' },
+    { id: 'stored', prefix: '', value: s.value, unit: s.unit, caption: 'newly saved on this phone' },
   ];
   const notes: string[] = [];
   if (upTo) notes.push(`Up to: the phone did not report the compressed size of ${formatBytes(unmeasured)} of the download, so its uncompressed size is counted; the real download was that much or less.`);
@@ -373,7 +374,7 @@ export function summaryHeader(records: readonly DatasetRecord[], summary: Datase
   return {
     mode: 'built',
     title: clean(summary?.scenarioName) || 'This model',
-    sentence: `${plural(n, 'data set')} · ${upTo ? 'up to ' : ''}${formatBytes(net)} downloaded · ${formatBytes(memory)} in memory · ${formatBytes(stored)} stored on this phone`,
+    sentence: `${plural(n, 'data set')} · ${upTo ? 'up to ' : ''}${formatBytes(net)} downloaded · ${formatBytes(memory)} in memory · ${formatBytes(stored)} newly saved on this phone`,
     stats,
     notes,
   };
@@ -401,6 +402,8 @@ export function freshness(records: readonly DatasetRecord[], summary: DatasetSum
   let oldest: { d: string; title: string } | null = null;
   for (const r of dataRecords(records)) {
     if (r.status === 'unavailable' || r.status === 'skipped') continue;
+    // The weather has its own line below: the dates in its record are the days the series COVERS, not when anything was captured.
+    if (r.role === 'weather' || r.role === 'upperAir') continue;
     for (const d of capturedDates(r.vintage?.capturedOn)) {
       if (!newest || d > newest.d) newest = { d, title: r.title };
       if (!oldest || d < oldest.d) oldest = { d, title: r.title };
@@ -413,7 +416,10 @@ export function freshness(records: readonly DatasetRecord[], summary: DatasetSum
   if (w && !w.plan) {
     if (w.origin === 'preset') lines.push('Weather: a day designed by the app, not a forecast or an observation.');
     else if (w.origin === 'user') lines.push('Weather: the readings you entered.');
-    else if (w.origin === 'bundled') lines.push(`Weather: a past day bundled with the app${w.vintage.retrievedAt > 0 ? `, captured ${formatDay(w.vintage.retrievedAt, tz)}` : ''}.`);
+    else if (w.origin === 'bundled') {
+      const day = formatIsoDay(w.vintage.capturedOn);
+      lines.push(`Weather: ${day ? `the weather model’s values for ${day}` : 'a past day'}, bundled with the app${w.vintage.retrievedAt > 0 ? ` (copied from the weather service on ${formatDay(w.vintage.retrievedAt, tz)})` : ''}.`);
+    }
     else if ((w.origin === 'live' || w.origin === 'cache' || w.origin === 'area-pack') && w.vintage.retrievedAt > 0) {
       const past = /past|archive|historical/i.test(`${w.originDetail ?? ''} ${w.what}`);
       const st = weatherStaleness(w, nowMs, past ? 'past' : 'forecast');
@@ -456,17 +462,44 @@ const TIER_WORDS: Record<string, string> = {
   high: 'High: finer 3-D atmosphere',
 };
 
-/** The model's grid, area and tier from the summary (DS1), as key-value facts. */
-export function modelFacts(summary: DatasetSummary | null | undefined): Fact[] {
+/** How the tier came about, in words that follow EngineInfo.tierCause. */
+const TIER_CAUSE_WORDS: Record<EngineInfo['tierCause'], string> = {
+  requested: 'asked for when the run started',
+  'auto-tune': 'chosen by Auto after timing this phone',
+  'auto-pending': 'Auto is still timing this phone',
+  'auto-default': 'Auto without a timing',
+  changed: 'changed during the run',
+};
+
+/** What the running engine says about its tier and air grid (the part of EngineInfo the model facts need). */
+export type EngineTierFacts = Pick<EngineInfo, 'tier' | 'tierCause' | 'tierReason' | 'atmosphere'>;
+
+/**
+ * The model's grid, area and tier from the summary (DS1), as key-value facts. The summary is written when the model is
+ * built, so it only knows the tier that was REQUESTED ('auto' on most phones); once the engine reports, its own tier, the
+ * reason for it and its air grid replace that, so the screen never describes the 3-D air for a run on the fast tier.
+ */
+export function modelFacts(summary: DatasetSummary | null | undefined, engine?: EngineTierFacts | null): Fact[] {
   const m = summary?.model;
   if (!m) return [];
   const out: Fact[] = [];
   if (isNum(m.nx) && isNum(m.ny) && isNum(m.cellSizeM)) out.push({ key: 'Fire grid', value: `${fc(m.nx)} x ${fc(m.ny)} cells of ${formatMetres(m.cellSizeM)} (${fc(m.cells ?? m.nx * m.ny)} cells)` });
   if (isNum(m.extentM) && m.extentM > 0) out.push({ key: 'Area', value: `${formatMetres(m.extentM)} x ${formatMetres(m.extentM)} (${fc((m.extentM / 1000) ** 2)} km²)` });
   if (isNum(m.hiResNx) && isNum(m.hiResNy) && isNum(m.hiResCellM)) out.push({ key: 'Ground for the 3-D view', value: `${fc(m.hiResNx)} x ${fc(m.hiResNy)} cells of ${formatMetres(m.hiResCellM)}` });
-  if (isNum(m.atmosCellM)) out.push({ key: 'Atmosphere grid', value: `${formatMetres(m.atmosCellM)} cells${isNum(m.atmosLevels) ? `, ${m.atmosLevels} levels up from the ground` : ''}` });
-  const tier = clean(m.tier);
-  if (tier) out.push({ key: 'Detail tier', value: TIER_WORDS[tier] ?? tier });
+  const a = engine?.atmosphere;
+  if (a && isNum(a.nx) && isNum(a.ny) && isNum(a.dxM) && a.dxM > 0) {
+    out.push(
+      a.kind === 'diagnostic'
+        ? { key: 'Wind grid', value: `${fc(a.nx)} x ${fc(a.ny)} columns of ${formatMetres(a.dxM)}, ${a.nz} levels`, note: 'The fast mode fits the forecast wind to the terrain on this grid and uses only the wind at the surface: no air is simulated through time.' }
+        : { key: 'Atmosphere grid', value: `${fc(a.nx)} x ${fc(a.ny)} columns of ${formatMetres(a.dxM)}, ${a.nz} levels up from the ground`, note: 'The 3-D air flow is simulated through time on this grid.' },
+    );
+  } else if (isNum(m.atmosCellM)) out.push({ key: 'Atmosphere grid', value: `${formatMetres(m.atmosCellM)} cells${isNum(m.atmosLevels) ? `, ${m.atmosLevels} levels up from the ground` : ''}` });
+  if (engine?.tier) {
+    out.push({ key: 'Detail tier', value: `${TIER_WORDS[engine.tier] ?? engine.tier} (${TIER_CAUSE_WORDS[engine.tierCause] ?? 'in force now'})`, ...(clean(engine.tierReason) ? { note: clean(engine.tierReason) } : {}) });
+  } else {
+    const tier = clean(m.tier);
+    if (tier) out.push({ key: 'Detail tier', value: TIER_WORDS[tier] ?? tier });
+  }
   if (isNum(m.durationS) && m.durationS > 0) out.push({ key: 'Simulated time', value: formatHours(m.durationS) });
   return out;
 }
@@ -756,8 +789,11 @@ export function timeFacts(r: DatasetRecord, nowMs: number, tz = 'Australia/Sydne
     if (s) out.push({ key, value: s });
   };
   const cap = clean(v.capturedOn);
-  add('Captured', cap ? capturedDates(cap).length === 1 && formatIsoDay(cap) ? formatIsoDay(cap) : cap : v.captureSummary);
-  add('About the capture date', v.capturedNote);
+  // A weather series is dated by the days it COVERS (a forecast week, a fire day of 2019), not by when it was copied: that is
+  // 'This copy obtained' below. Calling the 19 Dec 2019 of a replay "Captured" would say the weather was recorded that day.
+  const covers = r.role === 'weather' || r.role === 'upperAir';
+  add(covers ? 'Days covered' : 'Captured', cap ? capturedDates(cap).length === 1 && formatIsoDay(cap) ? formatIsoDay(cap) : cap : v.captureSummary);
+  add(covers ? 'About these days' : 'About the capture date', v.capturedNote);
   if (v.retrievedAt > 0 && v.retrievedBasis !== 'unknown') {
     const when = v.retrievedBasis === 'bundle-capture' ? formatDay(v.retrievedAt, tz) : formatDayTime(v.retrievedAt, tz);
     const ago = v.retrievedBasis === 'this-build' || v.retrievedBasis === 'stored-copy' ? formatAgo(v.retrievedAt, nowMs) : '';
@@ -770,6 +806,18 @@ export function timeFacts(r: DatasetRecord, nowMs: number, tz = 'Australia/Sydne
     add('Age when the model was built', `${Math.round(v.ageHoursAtBuild * 10) / 10} h${isNum(v.staleAfterHours) ? ` (stale after ${v.staleAfterHours} h)` : ''}${v.stale ? ': stale' : ''}`);
   }
   return out;
+}
+
+/**
+ * The label of a record's coverage line. "Real data cover" only for data that were obtained (live, stored, saved, bundled) or
+ * that fell short of covering the area; a designed, typed, or worked-out data set covers the area but is not "real data".
+ */
+export function coverageWords(r: Pick<DatasetRecord, 'origin' | 'coverage'>): { label: string; suffix: string } {
+  const o = r.origin;
+  if (o === 'preset' || (o === 'synthetic' && r.coverage.fraction >= 1)) return { label: 'Covers', suffix: ' (made up by the app, not real data)' };
+  if (o === 'user') return { label: 'Covers', suffix: ' (your values)' };
+  if (o === 'derived') return { label: 'Covers', suffix: ' (worked out from the data sets above)' };
+  return { label: 'Real data cover', suffix: '' };
 }
 
 /** Coordinate system, extent, coverage, resolution and dimensions as published and in the model. */
@@ -787,7 +835,8 @@ export function spaceFacts(r: DatasetRecord): Fact[] {
     if (isNum(e.areaKm2) && e.areaKm2 > 0) add('Area', `${fc(e.areaKm2)} km²`);
   }
   if (r.origin !== 'none' && r.coverage && isNum(r.coverage.fraction)) {
-    add('Real data cover', `${formatPercent(r.coverage.fraction)} of the model area${r.coverage.filledBy ? `; the rest: ${clean(r.coverage.filledBy)}` : ''}`);
+    const c = coverageWords(r);
+    add(c.label, `${formatPercent(r.coverage.fraction)} of the model area${r.coverage.filledBy ? `; the rest: ${clean(r.coverage.filledBy)}` : ''}${c.suffix}`);
     if (r.coverage.note && r.coverage.note !== r.fallbackReason) add('Coverage note', r.coverage.note);
   }
   add('As published', [dims(r.native), clean(r.native?.note)].filter(Boolean).join('. '));
@@ -1092,7 +1141,7 @@ export function storageModel(rep: StorageReport, tz = 'Australia/Sydney'): Stora
     bytes: p.bytes,
     created: formatDay(p.createdAt, tz),
     items: plural(p.items.length, 'item'),
-    area: isNum(p.extentM) && p.extentM > 0 ? `${formatMetres(p.extentM)} square around ${Math.abs(p.centre.lat).toFixed(3)}° S, ${p.centre.lon.toFixed(3)}° E` : '',
+    area: isNum(p.extentM) && p.extentM > 0 ? `${formatMetres(p.extentM)} square around ${Math.abs(p.centre.lat).toFixed(3)}° ${p.centre.lat < 0 ? 'S' : 'N'}, ${Math.abs(p.centre.lon).toFixed(3)}° ${p.centre.lon < 0 ? 'W' : 'E'}` : '',
     fraction: frac(p.bytes),
   }));
   let quota: StorageModel['quota'] = null;

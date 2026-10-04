@@ -281,6 +281,7 @@
   left: 50%;
   bottom: 0;
   width: min(560px, 100vw);
+  max-height: calc(100vh - var(--strip-h) - var(--safe-top) - var(--sp-5));
   max-height: calc(100dvh - var(--strip-h) - var(--safe-top) - var(--sp-5));
   transform: translateX(-50%);
   animation: sheet-in var(--dur-2) var(--ease);
@@ -913,6 +914,12 @@ legend.tp-label {
   .tb-speed .icon {
     display: none;
   }
+}
+
+/* A tool panel on a short landscape screen at a large text size has no room for its body: the read-out chips (on a row of their own there)
+   are put away while it is open (simScreen.ts layoutInsets decides). */
+.chips-away .tb-wx {
+  display: none;
 }
 
 /* Landscape phones: the chips move up beside the pill (one 48 px row); the sheets use two columns. */

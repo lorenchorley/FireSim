@@ -159,9 +159,15 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   unsubs.push(listen(window, 'resize', applyDetent));
 
   // ───────────── tabs ─────────────
+  let shownTab = ui.get().tab;
   const renderTabs = (): void => {
     const s = ui.get();
     const open = s.sheet !== 'closed';
+    // The four panels share one scrolling body: a tab opens at its top, not at the offset the previous tab was left at.
+    if (s.tab !== shownTab) {
+      shownTab = s.tab;
+      body.scrollTop = 0;
+    }
     for (const b of tabBtns) {
       const on = open && b.id === `tab-${s.tab}`;
       b.setAttribute('aria-selected', String(on));
@@ -428,10 +434,11 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       h('p', { class: 'hint' }, `Wind ${formatWind(st.weather.windSpeed10, unit)} ≈ ${Math.round(msToKmh(st.weather.windSpeed10))} km/h at 10 m in the open. Spot distances: ${st.spotFires ? formatDistance(Math.max(...(s.snapshot?.spotFires ?? []).map((x) => x.distance), 0)) + ' furthest' : 'none yet'}.`),
       sectionHeader('How the model runs'),
       kv(perfRows, { dense: true, label: 'Performance' }),
-      ctx.openModelCard ? list([listRow({ title: 'How this simulation works', sub: 'What is 2-D and what is 3-D, grid sizes and time steps', icon: 'cube', chevron: true, onClick: () => ctx.openModelCard?.(), testId: 'stats-model-card' })]) : null,
     ]);
   };
-  setChildren(panels.stats, [statsHost, dataCard()]);
+  // Built once and kept out of the part that is redrawn while the run plays: a tap on it is never lost to a redraw.
+  const modelRow = ctx.openModelCard ? list([listRow({ title: 'How this simulation works', sub: 'What is 2-D and what is 3-D, grid sizes and time steps', icon: 'cube', chevron: true, onClick: () => ctx.openModelCard?.(), testId: 'stats-model-card' })]) : null;
+  setChildren(panels.stats, [statsHost, modelRow, dataCard()]);
 
   /** The "Data used" card: a compact summary of the scenario's data sets that opens the Data sets screen. */
   function dataCard(): HTMLElement {
@@ -523,14 +530,18 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       h('li', null, [h('strong', null, 'Map buttons: '), 'the round buttons on the side open the layers, change the camera (top, 3-D, eye level, zoom) and turn the map north up.']),
       h('li', null, [h('strong', null, 'Insights: '), 'new cards never pop up; a number on the Insights tab tells you how many are waiting.']),
       h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see: more litter, a road, the wind here.']),
-      h('li', null, [h('strong', null, 'Layers / What if: '), 'colour the map by arrival time, slope, moisture and more; switch physics on or off and compare.']),
+      h('li', null, [h('strong', null, 'Layers: '), 'choose the map type, switch roads, fire trails, homes, residential areas, names and trees on or off one by one, or colour the ground by one measurement (a heat map). Tap (i) on a row to learn what it shows and where the data come from. Your choices are remembered.']),
+      h('li', null, [h('strong', null, 'What if: '), 'switch physics on or off and compare.']),
+      h('li', null, [h('strong', null, 'Where am I: '), '“Why here?” also names the nearest road and fire trail, how many homes are close and what the ground is like.']),
       h('li', null, [h('strong', null, 'Data: '), 'the line at the bottom of the map credits the data you see; tap it (or open the menu) for the size, source and date of every data set.']),
+      h('li', null, [h('strong', null, 'How it works: '), 'the menu also has “How this simulation works”: what is 2-D and what is 3-D, how fine the grids are and how often they are updated.']),
+      h('li', null, [h('strong', null, 'Back: '), 'the Back button closes the open menu, panel or screen first; the simulation keeps running while you read.']),
     ]),
     sectionHeader('Glossary'),
     h(
       'div',
       { class: 'glossary' },
-      GLOSSARY.map((g) => h('details', { class: 'gloss' }, [h('summary', null, [h('span', { class: 'gloss-term' }, g.term), g.short ? h('span', { class: 'gloss-short' }, ` · ${g.short}`) : null]), h('p', null, g.body)])),
+      GLOSSARY.map((g) => h('details', { class: 'gloss' }, [h('summary', null, h('span', { class: 'gloss-text' }, [h('span', { class: 'gloss-term' }, g.term), g.short ? h('span', { class: 'gloss-short' }, g.short) : null])), h('p', null, g.body)])),
     ),
   ]);
 

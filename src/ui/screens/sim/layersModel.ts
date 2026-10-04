@@ -19,6 +19,8 @@ import {
   DIMENSION_HELP,
   LAYER_CATALOG,
   LAYER_GROUPS,
+  layerDimension,
+  layerFactsOfDatasets,
   sceneLayerOn,
   sceneLayerPatch,
   type Availability,
@@ -218,7 +220,7 @@ export function infoRows(info: LayerInfo, sc: LayerScenario | undefined, a: Avai
     { key: 'Why it matters', value: info.why },
     { key: 'Where the data come from', value: safe(() => info.source(sc), 'Not recorded') },
     { key: 'How fine', value: safe(() => info.resolution(sc), 'Not recorded') },
-    { key: 'How it is drawn', value: `${info.dimension}: ${DIMENSION_HELP[info.dimension]}` },
+    { key: 'How it is drawn', value: `${layerDimension(info, sc)}: ${DIMENSION_HELP[layerDimension(info, sc)]}` },
     { key: 'Available here', value: a.ok ? 'Yes' : (a.reason ?? 'No') },
   ];
 }
@@ -237,6 +239,9 @@ export function layerScenarioOf(scenario: Pick<ScenarioData, 'terrain' | 'fuel' 
   const img = scenario.datasets?.find((d) => d.id === 'imagery' && (d.status === 'used' || d.status === 'partial'));
   const px = img?.model?.resolutionM ?? img?.native?.resolutionM;
   if (px !== undefined && Number.isFinite(px) && px > 0) sc.imageryCellSize = px;
+  Object.assign(sc, layerFactsOfDatasets(scenario.datasets));
+  // The fast mode's wind diagnostic carries no 3-D volume (nz = 0): what is drawn for the smoke and the wind differs.
+  if (snapshot?.atmosphere) sc.atmosphere3d = (snapshot.atmosphere.nz ?? 0) > 0;
   return sc;
 }
 

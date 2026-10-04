@@ -4,7 +4,6 @@
 //   node scripts/check-contrast.mjs                 table of the worst ratios per mode; exit 1 when a check fails
 //   node scripts/check-contrast.mjs --verbose       every checked pair
 //   node scripts/check-contrast.mjs --json          machine-readable result (used by src/ui/contrast.script.test.ts)
-//   node scripts/check-contrast.mjs --legacy        also list the not-yet-migrated CSS files (screens, sim, transport): advisory only
 //   npm run check:contrast
 //
 // What it checks, in the four looks the app has: light, dark, high-contrast light, high-contrast dark
@@ -24,10 +23,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const STYLES = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'styles');
-/** Design-system files: a failure here fails the check. */
-export const DESIGN_FILES = ['base.css', 'components.css', 'overlays.css', 'data.css'];
-/** Not-yet-migrated files: reported with --legacy, never fail. */
-export const LEGACY_FILES = ['legacy.css', 'screens.css', 'sim.css', 'transport.css'];
+/** Every stylesheet of the app (design system first, then the screens): a failure in any of them fails the check. */
+export const DESIGN_FILES = ['base.css', 'components.css', 'overlays.css', 'data.css', 'screens.css', 'sim.css', 'transport.css', 'layers.css', 'datasets.css', 'modelcard.css'];
 
 // ───────────────────────────── WCAG maths ─────────────────────────────
 
@@ -395,15 +392,13 @@ export function literalColours(files = DESIGN_FILES) {
 // ───────────────────────────── Run ─────────────────────────────
 
 /** Run every check. Returns {results, failures, literals, worst} (worst = lowest ratio per mode and kind). */
-export function runChecks({ legacy = false } = {}) {
+export function runChecks() {
   const modes = buildModes();
   const results = [];
   for (const name of MODE_NAMES) {
     results.push(...checkCurated(name, modes[name]));
     results.push(...checkScan(name, modes[name], DESIGN_FILES));
   }
-  const legacyResults = [];
-  if (legacy) for (const name of MODE_NAMES) legacyResults.push(...checkScan(name, modes[name], LEGACY_FILES));
   const failures = results.filter((r) => !r.ok);
   const worst = {};
   for (const r of results) {
@@ -411,7 +406,7 @@ export function runChecks({ legacy = false } = {}) {
     const key = `${r.mode}/${r.kind}`;
     if (!worst[key] || r.ratio < worst[key].ratio) worst[key] = { ratio: r.ratio, fg: r.fg, bg: r.bg, why: r.why };
   }
-  return { results, failures, legacyFailures: legacyResults.filter((r) => !r.ok), literals: literalColours(), worst };
+  return { results, failures, literals: literalColours(), worst };
 }
 
 // ───────────────────────────── CLI ─────────────────────────────
@@ -419,10 +414,10 @@ export function runChecks({ legacy = false } = {}) {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   const args = process.argv.slice(2);
-  const res = runChecks({ legacy: args.includes('--legacy') });
+  const res = runChecks();
   const fmt = (r) => `${r.mode.padEnd(10)} ${r.kind.padEnd(5)} ${(r.ratio === null ? 'n/a' : r.ratio.toFixed(2)).padStart(6)} (need ${r.need}) ${r.fg} on ${r.bg}: ${r.why}`;
   if (args.includes('--json')) {
-    console.log(JSON.stringify({ failures: res.failures.map(fmt), legacyFailures: res.legacyFailures.map(fmt), literals: res.literals, worst: res.worst, checked: res.results.length }));
+    console.log(JSON.stringify({ failures: res.failures.map(fmt), literals: res.literals, worst: res.worst, checked: res.results.length }));
     process.exit(res.failures.length ? 1 : 0);
   }
   if (args.includes('--verbose')) for (const r of res.results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${fmt(r)}`);
@@ -437,10 +432,6 @@ if (isMain) {
   if (res.literals.length) {
     console.log(`\nHard-coded colours in the design-system CSS (${res.literals.length}); prefer a token:`);
     for (const l of res.literals) console.log(`  ${l.file}: ${l.sel} { ${l.prop}: ${l.value} }`);
-  }
-  if (args.includes('--legacy') && res.legacyFailures.length) {
-    console.log(`\nAdvisory: ${res.legacyFailures.length} failing pairs in the not-yet-migrated CSS (screens, sim, transport):`);
-    for (const r of res.legacyFailures) console.log(`  ${fmt(r)}`);
   }
   if (res.failures.length) {
     console.log(`\n${res.failures.length} FAILING pair(s):`);

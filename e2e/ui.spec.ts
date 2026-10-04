@@ -3,7 +3,8 @@
  * the timeline (jump anywhere, back, cancel, picture interval), "nothing ever pops up and the run never stops by itself",
  * the opt-in pause on Danger cards, and settings/theme plus the belt weather kit.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import {
   acceptNotice,
   armPopupWatch,
@@ -379,4 +380,243 @@ test('settings switch to the night theme; belt kit computes RH live', async ({ p
   await expect(page.getByTestId('belt-rh')).toHaveText(/RH 4[01]%/);
   await page.getByTestId('belt-wet').fill('31');
   await expect(page.getByTestId('belt-rh')).toHaveText('RH –');
+});
+
+test('the dock tabs share one scrolling body: each tab opens at its top; a glossary gloss sits under its term, never behind a stray separator', async ({ page }) => {
+  await buildMock(page);
+  const body = page.locator('[data-testid=sheet] .sheet-body');
+  // Help, the tallest tab, scrolled to the bottom.
+  await page.getByTestId('tab-help').click();
+  await page.getByTestId('sheet-grip').click();
+  await page.getByTestId('sheet-grip').click();
+  await expect(page.getByTestId('dock')).toHaveAttribute('data-detent', 'full');
+  await body.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  expect(await body.evaluate((e) => e.scrollTop)).toBeGreaterThan(100);
+  // Another tab does not inherit that offset (it used to open half way down, or at the very bottom).
+  await page.getByTestId('tab-stats').click();
+  await expect(page.getByTestId('tab-stats')).toHaveAttribute('aria-selected', 'true');
+  expect(await body.evaluate((e) => e.scrollTop)).toBe(0);
+  await body.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  await page.getByTestId('tab-weather').click();
+  expect(await body.evaluate((e) => e.scrollTop)).toBe(0);
+  // Glossary: the one-line gloss is its own line under the term, without a leading "·".
+  await page.getByTestId('tab-help').click();
+  await expect(page.getByTestId('tab-help')).toHaveAttribute('aria-selected', 'true');
+  const glosses = await page.locator('.gloss').evaluateAll((els) =>
+    els.map((d) => {
+      const term = d.querySelector('.gloss-term')!.getBoundingClientRect();
+      const short = d.querySelector('.gloss-short');
+      const s = short?.getBoundingClientRect();
+      return { text: short?.textContent ?? '', below: s ? s.top >= term.bottom - 1 : true, hasTerm: term.width > 0 };
+    }),
+  );
+  expect(glosses.length).toBeGreaterThan(5);
+  for (const g of glosses) {
+    expect(g.hasTerm).toBe(true);
+    expect(g.below, `the gloss "${g.text}" sits under its term`).toBe(true);
+    expect(g.text.trim()).not.toMatch(/^[·•]/);
+  }
+  expect(glosses.some((g) => g.text.trim().length > 0)).toBe(true);
+
+  // Keyboard focus on a tab: the ring is drawn inside the tab (the tab row sits flush between the sheet and the timeline strip,
+  // so the outer 2 px ring was cut off above and below and only two blue bars were left at the sides).
+  await page.keyboard.press('Shift');
+  await page.getByTestId('tab-weather').focus();
+  const ring = await page.getByTestId('tab-weather').evaluate((e) => {
+    const cs = getComputedStyle(e);
+    return { style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), offset: parseFloat(cs.outlineOffset) };
+  });
+  expect(ring.style).toBe('solid');
+  expect(ring.width).toBeGreaterThanOrEqual(2);
+  expect(ring.offset).toBeLessThan(0);
+});
+
+test('the TRAINING strip keeps its full wording wherever it fits (360 px phones too), never clips, and shortens only when it must', async ({ page }) => {
+  const strip = async (vw: number, vh: number, query: string, scale = 1) => {
+    await page.setViewportSize({ width: vw, height: vh });
+    await page.goto(`/?mock=1&${query}`);
+    await expect(page.getByTestId('training-badge')).toBeVisible();
+    if (scale !== 1) {
+      await page.evaluate((k) => {
+        const cs = getComputedStyle(document.documentElement);
+        const decl = ['xs', 'sm', 'md', 'lg', 'xl', '2xl'].map((n) => `--fs-${n}: ${parseFloat(cs.getPropertyValue(`--fs-${n}`)) * k}px !important`);
+        const st = document.createElement('style');
+        st.textContent = `:root { ${decl.join('; ')} }`;
+        document.head.append(st);
+      }, scale);
+      await page.waitForTimeout(150);
+    }
+    return page.getByTestId('training-badge').evaluate((s) => {
+      const shown = (sel: string): boolean => getComputedStyle(s.querySelector(sel)!).display !== 'none';
+      const r = s.getBoundingClientRect();
+      return { full: shown('.badge-full'), short: shown('.badge-short'), clipped: s.scrollWidth > s.clientWidth + 1, onScreen: r.left >= 0 && r.right <= window.innerWidth + 1 };
+    });
+  };
+  const expectWording = (s: { full: boolean; short: boolean; clipped: boolean; onScreen: boolean }, wording: 'full' | 'short', what: string): void => {
+    expect(s.full, `${what}: full wording`).toBe(wording === 'full');
+    expect(s.short, `${what}: short wording`).toBe(wording === 'short');
+    expect(s.clipped, `${what}: not clipped`).toBe(false);
+    expect(s.onScreen, `${what}: inside the screen`).toBe(true);
+  };
+  expectWording(await strip(360, 740, 'theme=light'), 'full', '360 x 740, light'); // 28 em used to put these phones on the short wording
+  expectWording(await strip(360, 640, 'theme=dark'), 'full', '360 x 640, night');
+  expectWording(await strip(390, 844, 'theme=light'), 'full', '390 x 844, light');
+  expectWording(await strip(844, 390, 'theme=light'), 'full', '844 x 390, light');
+  expectWording(await strip(412, 915, 'theme=light&contrast=high'), 'full', '412 x 915, high contrast');
+  expectWording(await strip(390, 844, 'theme=light&contrast=high'), 'short', '390 x 844, high contrast (bold caps are wider)');
+  expectWording(await strip(320, 640, 'theme=light'), 'short', '320 x 640, light');
+  expectWording(await strip(412, 915, 'theme=light', 2), 'short', '412 x 915 at 200 % text');
+  expectWording(await strip(844, 390, 'theme=light', 2), 'full', '844 x 390 at 200 % text (the wide screen still has the room)');
+});
+
+test('the View card is never under the Tools button: every row, the zoom buttons included, takes the tap on a short phone, in high contrast and at a large text size', async ({ page }) => {
+  test.setTimeout(240_000);
+  const cases = [
+    { vw: 360, vh: 640, query: 'theme=light&contrast=high', scale: 1 }, // the read-out chips wrap to two rows: the card used to reach the Tools button
+    { vw: 360, vh: 640, query: 'theme=light', scale: 1 },
+    { vw: 360, vh: 640, query: 'theme=dark', scale: 1.3 },
+    { vw: 390, vh: 844, query: 'theme=light&contrast=high', scale: 1 },
+    { vw: 844, vh: 390, query: 'theme=light&contrast=high', scale: 1 },
+  ];
+  for (const c of cases) {
+    const what = `${c.vw}x${c.vh} ${c.query} text x${c.scale}`;
+    await page.setViewportSize({ width: c.vw, height: c.vh });
+    await page.goto(`/?mock=1&${c.query}`);
+    await expect(page.getByTestId('notice').or(page.getByTestId('site-katoomba')).first()).toBeVisible(); // the notice is shown once per device
+    if (await page.getByTestId('notice').isVisible()) await acceptNotice(page);
+    await page.getByTestId('site-katoomba').click();
+    await page.getByTestId('build').click();
+    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 60_000 });
+    if (c.scale !== 1) {
+      await page.evaluate((k) => {
+        const cs = getComputedStyle(document.documentElement);
+        const decl = ['xs', 'sm', 'md', 'lg', 'xl', '2xl'].map((n) => `--fs-${n}: ${parseFloat(cs.getPropertyValue(`--fs-${n}`)) * k}px !important`);
+        const st = document.createElement('style');
+        st.textContent = `:root { ${decl.join('; ')} }`;
+        document.head.append(st);
+      }, c.scale);
+    }
+    await page.waitForTimeout(500);
+    await openMenu(page, 'view');
+    await page.waitForTimeout(300);
+    const misses = await page.evaluate(() => {
+      const bad: string[] = [];
+      const probes = [[0, 0], [-15, -15], [15, -15], [-15, 15], [15, 15], [-21, 0], [21, 0], [0, -21], [0, 21]];
+      for (const id of ['zoom-out', 'zoom-in', 'fly-fire', 'compass']) {
+        const el = document.querySelector(`[data-testid=${id}]`) as HTMLElement | null;
+        if (!el) continue;
+        el.scrollIntoView({ block: 'nearest' }); // a card that scrolls has its last rows below the fold
+        const r = el.getBoundingClientRect();
+        const isZoom = id.startsWith('zoom');
+        for (const [dx, dy] of probes) {
+          // A row is as wide as its card: probe its own area only; the round zoom buttons have the 44 px area (+-21 px).
+          if (!isZoom && (Math.abs(dx) > r.width / 2 || Math.abs(dy) > r.height / 2)) continue;
+          const hit = document.elementFromPoint(r.left + r.width / 2 + dx, r.top + r.height / 2 + dy);
+          if (!hit || !(el === hit || el.contains(hit))) bad.push(`${id} at ${dx},${dy} hits ${hit ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 30)}` : 'nothing'}`);
+        }
+      }
+      return bad;
+    });
+    expect(misses, what).toEqual([]);
+    // And the "+" really zooms (it used to open nothing: the tap went to the Tools button underneath).
+    await page.getByTestId('zoom-in').click();
+    await expect(page.getByTestId('view-menu')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('tools-menu')).toHaveAttribute('aria-expanded', 'false');
+  }
+});
+
+test('at 200 % text on a short landscape screen the fire can still be added: the Add / Clear bar is on screen and takes the tap', async ({ page }) => {
+  test.setTimeout(240_000);
+  for (const [vw, vh] of [
+    [844, 390],
+    [360, 640],
+  ] as const) {
+    const what = `${vw}x${vh} at 200 % text`;
+    await page.setViewportSize({ width: vw, height: vh });
+    await page.goto('/?mock=1&theme=light');
+    await expect(page.getByTestId('notice').or(page.getByTestId('site-katoomba')).first()).toBeVisible();
+    if (await page.getByTestId('notice').isVisible()) await acceptNotice(page);
+    await page.getByTestId('site-katoomba').click();
+    await page.getByTestId('build').click();
+    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 60_000 });
+    await page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const decl: string[] = [];
+      for (const n of ['xs', 'sm', 'md', 'lg', 'xl', '2xl']) decl.push(`--fs-${n}: ${parseFloat(cs.getPropertyValue(`--fs-${n}`)) * 2}px !important`);
+      for (const n of ['xs', 'sm', 'md', 'lg', 'xl']) decl.push(`--lh-${n}: ${parseFloat(cs.getPropertyValue(`--lh-${n}`)) * 2}px !important`);
+      const st = document.createElement('style');
+      st.textContent = `:root { ${decl.join('; ')} }`;
+      document.head.append(st);
+    });
+    await page.waitForTimeout(500);
+    await pickTool(page, 'fire');
+    await expect(page.getByTestId('fire-panel')).toBeVisible();
+    await page.getByTestId('use-crosshair').click({ force: true });
+    await expect(page.getByTestId('confirm-fire')).toBeVisible();
+    await page.waitForTimeout(700); // the panel and the layout settle
+    const probe = await page.getByTestId('confirm-fire').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const bad: string[] = [];
+      for (const [fx, fy] of [[0.5, 0.5], [0.12, 0.12], [0.88, 0.12], [0.12, 0.88], [0.88, 0.88]]) {
+        const x = r.left + r.width * fx;
+        const y = r.top + r.height * fy;
+        const hit = y < innerHeight && x < innerWidth ? document.elementFromPoint(x, y) : null;
+        if (!hit || !(el === hit || el.contains(hit))) bad.push(`${Math.round(fx * 100)}%,${Math.round(fy * 100)}% -> ${hit ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 24)}` : 'off screen'}`);
+      }
+      return { bad, bottom: Math.round(r.bottom), vh: innerHeight };
+    });
+    expect(probe.bad, `${what}: the Add fire button must take the tap over its whole face (it ends at ${probe.bottom} of ${probe.vh})`).toEqual([]);
+    await page.getByTestId('confirm-fire').click();
+    await expect(page.getByTestId('fire-panel')).toContainText('Marked');
+    await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
+    await expect(page.getByTestId('fire-panel')).toHaveCount(0);
+    // The read-out chips come back with the panel closed.
+    await expect(page.getByTestId('weather-chip')).toBeVisible();
+  }
+});
+
+test('Layers tiles: the selected badge and its ring end before the label begins (they used to touch its first letter), and the tile name is 14 px body text', async ({ page }) => {
+  await buildMock(page);
+  await pickTool(page, 'layers');
+  const panel = page.getByTestId('layers-panel');
+  await expect(panel).toBeVisible();
+  const tiles = await panel.locator('.lp-tile.is-on').evaluateAll((els) =>
+    els.map((t) => {
+      const thumb = t.querySelector('.lp-thumb') as HTMLElement;
+      const label = t.querySelector('.lp-tile-label') as HTMLElement;
+      const after = getComputedStyle(thumb, '::after');
+      const ring = 2; // the badge's ring: box-shadow 0 0 0 (--sp-1 / 2)
+      const badgeRight = thumb.getBoundingClientRect().right - parseFloat(after.right);
+      return { name: label.textContent, clear: label.getBoundingClientRect().left - (badgeRight + ring), size: parseFloat(getComputedStyle(label).fontSize) };
+    }),
+  );
+  expect(tiles.length).toBeGreaterThan(1);
+  for (const t of tiles) {
+    expect(t.clear, `"${t.name}": room between the badge ring and the label`).toBeGreaterThanOrEqual(2);
+    expect(t.size, `"${t.name}": the tile name is body text`).toBeGreaterThanOrEqual(14);
+  }
+});
+
+test('the safety notice opens at its top on a short screen (title and first lines in sight), and its button is reachable by scrolling', async ({ page }) => {
+  for (const [vw, vh] of [
+    [844, 390],
+    [360, 640],
+  ] as const) {
+    await page.setViewportSize({ width: vw, height: vh });
+    await page.goto('/?mock=1&theme=light');
+    await expect(page.getByTestId('notice')).toBeVisible();
+    await page.waitForTimeout(400); // the focus lands one frame after the dialog opens
+    const open = await page.evaluate(() => {
+      const modal = document.querySelector('.modal.notice') as HTMLElement;
+      const title = document.getElementById('notice-title') as HTMLElement;
+      const t = title.getBoundingClientRect();
+      const m = modal.getBoundingClientRect();
+      return { scrollTop: modal.scrollTop, titleInSight: t.top >= m.top - 1 && t.bottom <= innerHeight, focused: document.activeElement?.getAttribute('data-testid') };
+    });
+    expect(open.scrollTop, `${vw}x${vh}: the dialog starts at its top`).toBe(0);
+    expect(open.titleInSight, `${vw}x${vh}: the title is in sight`).toBe(true);
+    expect(open.focused, 'the accept button still has the focus (keyboard users)').toBe('accept-notice');
+    await acceptNotice(page); // scrolls the button into view and taps it
+    await page.evaluate(() => localStorage.clear()); // the notice is shown once per device: show it again for the next size
+  }
 });

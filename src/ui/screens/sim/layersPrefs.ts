@@ -12,7 +12,7 @@
  */
 import type { AvailabilityContext } from '../../../render/layerCatalog';
 import { availabilityContext, layerForOverlay, HEAT_OVERLAY_KINDS } from '../../../render/layerCatalog';
-import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from '../../../render/layers';
+import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
 import { getPref, setPref } from '../../prefs';
 import { performanceProfile, type PerformanceMode } from '../../settings';
 import type { SimContext } from './context';
@@ -55,8 +55,6 @@ export interface LayerPrefs {
   /** Heat-map groups the user opened (true) or closed (false). */
   groups?: Partial<Record<string, boolean>>;
 }
-
-export const EMPTY_LAYER_PREFS: LayerPrefs = { v: LAYER_PREFS_VERSION, layers: {} };
 
 const BOOL_KEYS = new Set<PersistedLayerKey>(['imagery', 'vegetation', 'understorey', 'flames', 'smoke', 'embers', 'insightMarkers', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'windSway', 'soloHeat']);
 const OVERLAYS = new Set<string>(['none', ...HEAT_OVERLAY_KINDS]);
@@ -237,6 +235,3 @@ export function restoreLayerPrefs(ctx: Pick<SimContext, 'view' | 'scenario' | 'l
     live = false;
   };
 }
-
-/** For tests: the remembered overlay kinds that are valid values. */
-export const isOverlayKind = (v: unknown): v is OverlayKind => typeof v === 'string' && OVERLAYS.has(v);

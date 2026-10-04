@@ -3,7 +3,8 @@
  * so the native-only paths run — Preferences over the bridge, CapacitorHttp routing, native Geolocation.
  * Regression test for the build that hung on "Loading FireSim…" on phones.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { emulateCapacitorAndroid } from './androidBridge';
 import { armPopupWatch, jumpWithPopover, pickTool, popups, session, setSpeed, waitForSeekEnd, watchPopups } from './helpers';
 

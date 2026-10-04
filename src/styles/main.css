@@ -1,4 +1,4 @@
-/* FireSim field UI styles (vanilla CSS, no framework). Order matters: tokens -> base -> shared primitives -> screens -> legacy bridge. */
+/* FireSim field UI styles (vanilla CSS, no framework). Order matters: tokens -> base -> shared primitives -> screens -> sim chrome -> per-feature screens. */
 @import './tokens.css';
 @import './base.css';
 @import './components.css';
@@ -10,4 +10,3 @@
 @import './layers.css';
 @import './datasets.css';
 @import './modelcard.css';
-@import './legacy.css';

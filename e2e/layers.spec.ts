@@ -8,7 +8,8 @@
  *  - the choices are remembered for the next run;
  *  - "Why here?" says where you are (nearest road and fire trail, homes nearby, the ground).
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { LAYER_CATALOG } from '../src/render/layerCatalog';
 import { acceptNotice, openMenu, session } from './helpers';
 

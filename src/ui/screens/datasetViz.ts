@@ -32,12 +32,6 @@ export interface HeatPreviewData {
   cells: number;
 }
 
-const hex = (c: readonly number[]): string =>
-  `#${c
-    .slice(0, 3)
-    .map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0'))
-    .join('')}`;
-
 /**
  * The preview of a heat map for a scenario (and the latest snapshot for the live maps: moisture, wind), or null when the
  * map cannot be computed from what is loaded (no roads for the distance map, no 3-D wind yet).
@@ -197,6 +191,3 @@ export function heatPreview(d: HeatPreviewData, title: string): { el: HTMLElemen
     },
   };
 }
-
-/** Hex of a colour triple, for tests and debugging. */
-export const colourHex = hex;

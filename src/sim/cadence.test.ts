@@ -87,6 +87,28 @@ describe('display step', () => {
   }, 120000);
 });
 
+describe('display step and the trajectory (what the UI tells the user)', () => {
+  const fireAt = (tier: 'fast' | 'standard', interval: number, until: number): Record<string, number> => {
+    const c = collect();
+    new Simulation(scenario(interval, { extent: 1500 }), { hooks: c.hooks, tier }).advance(until);
+    return parts(c.snaps.find((s) => s.time === until)!);
+  };
+  const same = (a: Record<string, number>, b: Record<string, number>): boolean => ['fire.arrivalTime', 'fire.ros', 'fire.intensity', 'moisture', 'atmosphere', 'embers'].every((k) => a[k] === b[k]);
+
+  it('fast tier (10 s steps): 10, 30, 60 and 120 s pictures give the identical fire', () => {
+    const base = fireAt('fast', 60, 600);
+    for (const step of [10, 30, 120]) expect(same(fireAt('fast', step, 600), base), `display step ${step} s`).toBe(true);
+  }, 120000);
+
+  it('3-D tier: a picture interval of a whole number of minutes keeps the classic steps (identical fire); 30 s and 10 s land the steps on their own marks and give a different run', () => {
+    const base = fireAt('standard', 60, 600);
+    expect(same(fireAt('standard', 120, 600), base), 'display step 120 s').toBe(true);
+    // 60 s is 5 steps of 12 s; 30 s is 3 steps of 10 s: other time steps, so (the fire being chaotic) another run. The Settings
+    // and time-menu hints say so; this test fails if that stops being true, so they are updated together.
+    expect(same(fireAt('standard', 30, 600), base), 'display step 30 s').toBe(false);
+  }, 240000);
+});
+
 describe('solver step (maxStepS)', () => {
   it('is a timed record: it caps the steps from the current time and a rewind replays it identically', () => {
     const c = collect();

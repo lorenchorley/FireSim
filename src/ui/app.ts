@@ -58,6 +58,8 @@ export class App {
   private build: AbortController | null = null;
   private lastSetup: SetupState | null = null;
   private leaving = false;
+  /** Until then (performance.now() ms) "Build" on Setup is ignored: the second tap of a double tap on Cancel / Back to setup lands on it. */
+  private buildGuardUntil = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -80,6 +82,20 @@ export class App {
     // Cordova-style hardware Back event (fired by the @capacitor/app plugin's bridge when it is installed); without it the
     // native shell maps Back to WebView.goBack(), which arrives here as popstate.
     document.addEventListener('backbutton', () => this.back.back());
+    // Escape with a screen open but the focus outside it (nothing focused, or the control that opened it behind the inert
+    // stage): it still closes the screen, never something of the simulation underneath.
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape' || !e.isTrusted || e.defaultPrevented || this.overlays.length === 0) return;
+        const t = e.target;
+        if (t instanceof Element && (t.closest('.app-overlay') || t.closest('.modal-scrim'))) return; // their own handlers
+        e.preventDefault();
+        e.stopPropagation();
+        this.back.back();
+      },
+      { capture: true },
+    );
   }
 
   async start(): Promise<void> {
@@ -107,7 +123,9 @@ export class App {
     this.closeOverlays();
     const setup = createSetupScreen({
       services: this.services,
-      onBuild: (s) => void this.buildAndRun(s),
+      onBuild: (s) => {
+        if (performance.now() >= this.buildGuardUntil) void this.buildAndRun(s);
+      },
       onSettings: () => this.openSettings(),
       onOpenDatasets: (id) => this.openDatasets(id),
       onOpenModelCard: () => this.openModelCard(),
@@ -134,6 +152,11 @@ export class App {
       },
       { capture: true },
     );
+    // The Escape the Back stack sends into a screen (backStack.ts escapeStep) is synthetic: it must not bubble on to the
+    // simulation underneath, whose own Escape handling would close a menu or panel behind the screen.
+    host.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !e.isTrusted) e.stopPropagation();
+    });
     const ov: Overlay = { id, screen, host, opener, removeLayer: () => undefined };
     // Back steps inside the screen first (it handles Escape itself: a detail page returns to its list); when nothing
     // inside reacted, the screen closes.
@@ -190,8 +213,11 @@ export class App {
     if (existing) this.closeOverlay(existing);
     let ov: Overlay | undefined;
     const sim = this.sim;
+    // Without a run the screen plans the data from the Setup form (what Build would fetch, with estimated sizes).
+    const request = sim ? undefined : (this.setup?.state() ?? this.lastSetup ?? undefined);
     const screen = createDatasetsScreen({
       scenario: sim ? this.scenario : null,
+      ...(request ? { request } : {}),
       services: this.services,
       getSnapshot: () => this.sim?.session.state.get().snapshot ?? null,
       onClose: () => ov && this.closeOverlay(ov),
@@ -260,6 +286,11 @@ export class App {
 
   // ───────────── build and run ─────────────
 
+  /** Setup shows where Cancel / Back to setup were: ignore "Build" for a moment so a double tap does not start a build again. */
+  private guardBuild(): void {
+    this.buildGuardUntil = performance.now() + 500;
+  }
+
   private async buildAndRun(setup: SetupState): Promise<void> {
     this.lastSetup = setup;
     const req = buildRequest(setup, settingsStore.get());
@@ -271,10 +302,14 @@ export class App {
       subtitle: `${req.name ?? 'Scenario'} · ${req.extent / 1000} km square`,
       onCancel: () => {
         ctrl.abort();
+        this.guardBuild();
         this.showSetup();
       },
       onRetry: () => this.lastSetup && void this.buildAndRun(this.lastSetup),
-      onBack: () => this.showSetup(),
+      onBack: () => {
+        this.guardBuild();
+        this.showSetup();
+      },
     });
     this.closeOverlays();
     this.setup = null;

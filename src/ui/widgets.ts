@@ -13,7 +13,7 @@ import { iconButton, rangeFill } from './primitives';
  * primary = filled blue; tonal (alias accent) = blue tint; secondary (alias outlined, the default) = outlined pill;
  * ghost (alias text) = text button; danger = filled red.
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'tonal' | 'outlined' | 'text';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'tonal' | 'text';
 
 export interface ButtonOptions {
   label: string;

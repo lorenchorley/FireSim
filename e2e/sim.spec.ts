@@ -6,7 +6,7 @@
  * cancelled, the picture interval can be finer) and a whole run at maximum speed in which nothing pops up and playback
  * never stops by itself.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import {
   acceptNotice,
   armPopupWatch,

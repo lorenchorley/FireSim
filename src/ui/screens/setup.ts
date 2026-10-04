@@ -30,6 +30,7 @@ import {
   buildRequest,
   detailCell,
   detailChoices,
+  windHint,
   durationChoices,
   persistable,
   planRow,
@@ -185,6 +186,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       input: () => {
         update({ manualText: manualInput.value, where: 'manual' });
         renderWhere();
+        schedulePlan(); // the data a run needs depends on the place: the plan must follow the typed coordinates
       },
     },
   });
@@ -319,7 +321,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     const c = detailCell(s.extentKm, s.detail, tier());
     const cells = c.cells.toLocaleString('en-AU');
     const why = c.coarsened ? ` 20 m needs an area of 6 km or less.` : '';
-    const wind = c.twoD ? 'simple 2-D surface wind' : '3-D wind';
+    const wind = windHint(c);
     text(detailHintEl, `${c.cellM} m cells, ${c.n} × ${c.n} = ${cells} cells, ${wind}.${why} Finer cells show gullies and cliffs better but run slower.`);
   }
   const modelRow = opts.onOpenModelCard
@@ -471,7 +473,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       forecast: 'A future start time from the forecast.',
       past: 'Weather that happened on a past day.',
       preset: 'Teaching days with typical mountain fire weather.',
-      replay: 'The recorded weather of a real fire day.',
+      replay: 'The weather of a real fire day, as a weather model reconstructed it.',
       belt: 'Your belt weather kit readings (dry and wet bulb, wind).',
       manual: 'Type the conditions, with an optional wind change.',
     };
@@ -780,8 +782,14 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     });
     if (!ok || destroyed) return;
     const { storage } = await import('../../data');
-    await storage.deleteAreaPack(id).catch(() => false);
-    showSnackbar(el, `Deleted “${name}”`);
+    // Say what happened: a delete the device refused must not be reported as done.
+    let done: boolean | null;
+    try {
+      done = await storage.deleteAreaPack(id);
+    } catch {
+      done = null;
+    }
+    showSnackbar(el, done === null ? `Could not delete “${name}”: the phone refused to remove it` : done ? `Deleted “${name}”` : `“${name}” was already gone`);
     void renderStorage();
     schedulePlan();
   }
@@ -803,8 +811,15 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     if (!ok || destroyed) return;
     const { storage } = await import('../../data');
     let freed = 0;
-    for (const g of groups) freed += (await storage.clearCache(g.kind).catch(() => ({ removed: 0, bytes: 0 }))).bytes;
-    showSnackbar(el, `Cleared ${formatBytes(freed)}`);
+    let failed = 0;
+    for (const g of groups) {
+      try {
+        freed += (await storage.clearCache(g.kind)).bytes;
+      } catch {
+        failed++;
+      }
+    }
+    showSnackbar(el, failed ? `Cleared ${formatBytes(freed)}; could not clear ${failed === 1 ? 'one kind of stored copy' : `${failed} kinds of stored copies`}` : `Cleared ${formatBytes(freed)}`);
     void renderStorage();
     schedulePlan();
   }

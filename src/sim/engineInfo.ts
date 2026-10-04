@@ -27,6 +27,12 @@ export function spreadModelName(family: FuelFamily, heathModel: 'refit2024' | 'v
   }
 }
 
+/**
+ * The fast tier's fixed outer step (s): DiagnosticWind.maxStableDt() (spec §12.2, "fast tier 10 s fixed"). The model card
+ * quotes it before an engine has reported (a plan); engineInfo.test.ts checks it against a running fast engine.
+ */
+export const FAST_TIER_STEP_S = 10;
+
 const FAMILY_ORDER: readonly FuelFamily[] = ['vesta2', 'grass', 'heath', 'pine'];
 
 /**

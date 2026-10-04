@@ -172,6 +172,18 @@ describe('order: area pack → fresh cache → live', () => {
     expect(third.origin).toBe('cache');
   });
 
+  it('the stored copy is sized as the build states it: the file as JSON, not the 8 bytes a number takes in memory', async () => {
+    const n = net();
+    const first = await loadContext(bhReq({ kv: n.kv }));
+    const json = JSON.stringify(first.file).length;
+    const [entry] = await n.kv.sizes!('context/v1/');
+    expect(entry!.bytes).toBe(json + 64); // data/cache.ts storedBytes: the body size plus the record's small overhead
+    // The same copy read back is still a context file (the extra size field changes nothing else).
+    const again = await loadContext(bhReq({ kv: n.kv, online: false }));
+    expect(again.origin).toBe('cache');
+    expect(again.context!.roads).toHaveLength(379);
+  });
+
   it('a malformed cache entry is ignored', async () => {
     const n = net();
     await n.kv.put(bhKey, { t: NOW, file: { version: 2, roads: [] } });
@@ -221,7 +233,11 @@ describe('when the live query does not work', () => {
     await n.kv.put(bhKey, { t: NOW - 40 * DAY, file: blackheathFile('cache') });
     const r = await loadContext(bhReq({ kv: n.kv }));
     expect(r.origin).toBe('cache');
-    expect(r.warnings).toEqual([MESSAGES.contextStale(new Date(NOW - 40 * DAY).toISOString().slice(0, 10))]);
+    expect(r.warnings).toEqual([MESSAGES.contextStale('2026-08-20')]);
+    // The day is the New South Wales day: a copy saved at 19:00 UTC is already tomorrow in Sydney.
+    await n.kv.put(bhKey, { t: Date.UTC(2026, 6, 14, 19, 0), file: blackheathFile('cache') });
+    const late = await loadContext(bhReq({ kv: n.kv }));
+    expect(late.warnings).toEqual([MESSAGES.contextStale('2026-07-15')]);
     // Offline the same.
     const off = await loadContext(bhReq({ kv: n.kv, online: false }));
     expect(off.origin).toBe('cache');

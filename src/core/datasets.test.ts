@@ -27,6 +27,7 @@ import {
   weatherStaleness,
   type DatasetRecord,
   type SummaryInput,
+  localDay,
 } from './datasets';
 
 const rec = (o: Partial<DatasetRecord> & Pick<DatasetRecord, 'id' | 'role'>): DatasetRecord => ({
@@ -64,6 +65,16 @@ const INPUT: SummaryInput = {
 };
 
 describe('formatting', () => {
+  it('a day is the New South Wales day, so a copy made at 06:47 on 5 October is not shown as 4 October', () => {
+    expect(localDay(Date.UTC(2026, 9, 4, 19, 47))).toBe('2026-10-05'); // AEDT started on 4 October 2026
+    expect(localDay(Date.UTC(2026, 8, 29, 3, 0))).toBe('2026-09-29');
+    expect(localDay(Date.UTC(2026, 5, 30, 14, 30))).toBe('2026-07-01'); // AEST, UTC+10
+    expect(localDay(Date.UTC(2026, 9, 4, 19, 47), 'UTC')).toBe('2026-10-04');
+    expect(localDay(0)).toBe('');
+    expect(localDay(undefined)).toBe('');
+    expect(localDay(Number.NaN)).toBe('');
+  });
+
   it('bytes are base-10 with one decimal, like the Android storage screen', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(999)).toBe('999 B');

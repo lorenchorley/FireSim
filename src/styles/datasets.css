@@ -382,8 +382,7 @@
   margin: var(--sp-2) 0;
 }
 
-.ds-identity p,
-.ds-trust p {
+.ds-identity p {
   overflow-wrap: anywhere;
 }
 

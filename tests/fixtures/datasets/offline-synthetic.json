@@ -80,7 +80,7 @@
       "role": "terrain",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 227,
+        "durationMs": 280,
         "memoryBytes": 5840000,
         "networkBytes": 0,
         "requests": 0,
@@ -220,7 +220,7 @@
       "role": "imagery",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 0,
+        "durationMs": 1,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -418,7 +418,7 @@
       "stats": [
         {
           "hint": "The rest use the typical height of their vegetation type.",
-          "label": "Cells with measured canopy",
+          "label": "Cells with canopy-map values",
           "raw": 0,
           "unit": "%",
           "value": "0 %"
@@ -439,7 +439,8 @@
     {
       "attribution": "FireSim, worked out from: ground height, vegetation map, tree canopy height, fire history, rainfall history and drought",
       "coverage": {
-        "fraction": 1
+        "fraction": 1,
+        "note": "Every cell has a value. How much of it comes from real data is shown for each data set it is worked out from, below."
       },
       "distribution": {
         "colours": [
@@ -533,7 +534,7 @@
       "role": "fuel",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 17,
+        "durationMs": 27,
         "memoryBytes": 7040000,
         "networkBytes": 0,
         "requests": 0,
@@ -560,7 +561,7 @@
           "value": "0.6 %"
         },
         {
-          "hint": "Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 4 very high.",
+          "hint": "Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 3.5 very high, 4 extreme.",
           "label": "Litter fuel hazard, average (0 to 4)",
           "raw": 3.336,
           "unit": "",
@@ -579,6 +580,7 @@
           "value": "3.23"
         },
         {
+          "hint": "Bark has its own scale: 0 low, 1 moderate, 2 high, 3 very high, 4 extreme.",
           "label": "Bark hazard, average",
           "raw": 2.942,
           "unit": "",
@@ -871,7 +873,7 @@
           "value": "0.0 mm"
         },
         {
-          "hint": "McArthur Forest Fire Danger Index at the hottest, driest, windiest hour of the run.",
+          "hint": "McArthur Forest Fire Danger Index in the hour of the run when it was highest, from that hour's temperature, humidity and wind and the drought factor.",
           "label": "Peak fire danger index (FFDI)",
           "raw": 65.903,
           "unit": "",
@@ -1076,7 +1078,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 245,
+        "durationMs": 308,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -1135,7 +1137,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 245,
+        "durationMs": 308,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -1195,7 +1197,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 245,
+        "durationMs": 308,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -1215,7 +1217,7 @@
       "why": "Shows where people live relative to the fire and feeds the \"homes per hectare\" heat map. Display only: homes do not change the fire."
     },
     {
-      "attribution": "© Spatial Services NSW (CC BY 4.0)",
+      "attribution": "© State of NSW and Department of Planning, Housing and Infrastructure (CC BY 4.0)",
       "coverage": {
         "fraction": 0
       },
@@ -1254,7 +1256,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 245,
+        "durationMs": 308,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -1312,7 +1314,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 245,
+        "durationMs": 308,
         "networkBytes": 0,
         "requests": 0,
         "transferredBytes": 0
@@ -1406,8 +1408,8 @@
   ],
   "schema": 1,
   "summary": {
-    "buildDurationMs": 246,
-    "builtAt": 1790756098728,
+    "buildDurationMs": 309,
+    "builtAt": 1791143898045,
     "fallbacks": [
       {
         "id": "terrain",

@@ -67,6 +67,8 @@ export function showNotice(host: HTMLElement, opts: { review?: boolean } = {}): 
     });
     host.appendChild(el);
     if (opts.review) removeLayer = pushBackLayer({ id: 'notice', close: () => void close() });
-    requestAnimationFrame(() => accept.focus());
+    // preventScroll: on a short screen the dialog scrolls, and focusing the button at the bottom used to open it scrolled down, with the
+    // title and the first lines of the safety notice out of sight. It opens at its top; the button is a scroll away.
+    requestAnimationFrame(() => accept.focus({ preventScroll: true }));
   });
 }

@@ -551,7 +551,7 @@ function tiles(): HTMLElement {
       tile({ label: 'Roads', icon: 'road', selected: true, caption: 'Loaded' }),
       tile({ label: 'Homes', icon: 'home', caption: 'Saved on device' }),
       tile({ label: 'Zones', icon: 'polygon', caption: 'Not downloaded' }),
-      tile({ label: 'Trees', icon: 'tree', selected: true, caption: 'Built in' }),
+      tile({ label: 'Trees', icon: 'tree', selected: true, caption: 'Bundled' }),
       tile({ label: 'Places', icon: 'text', caption: 'Loaded' }),
       tile({ label: 'Heat', icon: 'flame', caption: 'Needs a run', disabled: true }),
       tile({ label: 'Wind', icon: 'wind', selected: true }),

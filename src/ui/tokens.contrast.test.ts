@@ -147,8 +147,8 @@ describe('tokens.css: parsing', () => {
 
   it('the dark block redefines every colour the light block defines (no light colour leaks into the night theme)', () => {
     const colour = (v: string): boolean => /^#|^rgba?\(/.test(v);
-    // The fire-danger rating colours are data and deliberately the same in both themes.
-    const lightOnly = Object.keys(base).filter((k) => colour(base[k]!) && !(k in dark) && !k.startsWith('--rating-'));
+    // The fire-danger rating colours and the map marks (drawn over imagery) are data and deliberately the same in both themes.
+    const lightOnly = Object.keys(base).filter((k) => colour(base[k]!) && !(k in dark) && !k.startsWith('--rating-') && !k.startsWith('--map-') && !k.startsWith('--mark-'));
     expect(lightOnly).toEqual([]);
   });
 });

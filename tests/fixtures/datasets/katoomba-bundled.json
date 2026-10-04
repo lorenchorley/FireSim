@@ -76,7 +76,7 @@
         "url": "https://creativecommons.org/licenses/by/4.0/"
       },
       "limitations": [
-        "The NSW_5M_Elevation service says its heights are 'derived from stereo imagery'. This app once called them LiDAR bare earth; the service does not say that.",
+        "The NSW_5M_Elevation service describes its heights as 'derived from stereo imagery' (photogrammetry): they are not LiDAR bare-earth heights.",
         "Averaged into 30 m cells, so cliffs and narrow gullies are softened. The 'very steep ground inside cells' figures show how much is hidden.",
         "Bundled at 10 m: the 5 m detail of the source is not in the app."
       ],
@@ -114,7 +114,7 @@
       "sizes": {
         "cachedBytes": 0,
         "decodedBytes": 3240000,
-        "durationMs": 284,
+        "durationMs": 332,
         "memoryBytes": 13140000,
         "networkBytes": 0,
         "requests": 2,
@@ -330,7 +330,7 @@
       "sizes": {
         "cachedBytes": 0,
         "decodedBytes": 5062500,
-        "durationMs": 3,
+        "durationMs": 2,
         "networkBytes": 0,
         "requests": 2,
         "transferredBytes": 271688
@@ -476,7 +476,7 @@
       "sizes": {
         "cachedBytes": 0,
         "decodedBytes": 1491893,
-        "durationMs": 86,
+        "durationMs": 116,
         "features": 3059,
         "networkBytes": 0,
         "records": 3147,
@@ -671,7 +671,7 @@
       "sizes": {
         "cachedBytes": 0,
         "decodedBytes": 607500,
-        "durationMs": 60,
+        "durationMs": 68,
         "networkBytes": 0,
         "requests": 2,
         "transferredBytes": 291290
@@ -686,7 +686,7 @@
       "stats": [
         {
           "hint": "The rest use the typical height of their vegetation type.",
-          "label": "Cells with measured canopy",
+          "label": "Cells with canopy-map values",
           "raw": 100,
           "unit": "%",
           "value": "100 %"
@@ -710,7 +710,7 @@
           "value": "36.1 m"
         },
         {
-          "label": "Tree cover, average of measured cells",
+          "label": "Tree cover, average of cells with canopy-map values",
           "raw": 77.94,
           "unit": "%",
           "value": "78 %"
@@ -729,6 +729,8 @@
         },
         {
           "label": "Native cell of the data used",
+          "raw": 20,
+          "unit": "m",
           "value": "20 m"
         }
       ],
@@ -748,7 +750,8 @@
     {
       "attribution": "FireSim, worked out from: ground height, vegetation map, tree canopy height, fire history, rainfall history and drought",
       "coverage": {
-        "fraction": 1
+        "fraction": 1,
+        "note": "Every cell has a value. How much of it comes from real data is shown for each data set it is worked out from, below."
       },
       "distribution": {
         "colours": [
@@ -850,7 +853,7 @@
         },
         {
           "label": "Rainfall history and drought",
-          "note": "real data",
+          "note": "designed by the app, not real data",
           "origin": "preset"
         }
       ],
@@ -860,7 +863,7 @@
       "role": "fuel",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 108,
+        "durationMs": 144,
         "memoryBytes": 15840000,
         "networkBytes": 0,
         "requests": 0,
@@ -899,7 +902,7 @@
           "value": "11 %"
         },
         {
-          "hint": "Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 4 very high.",
+          "hint": "Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 3.5 very high, 4 extreme.",
           "label": "Litter fuel hazard, average (0 to 4)",
           "raw": 2.773,
           "unit": "",
@@ -918,6 +921,7 @@
           "value": "2.97"
         },
         {
+          "hint": "Bark has its own scale: 0 low, 1 moderate, 2 high, 3 very high, 4 extreme.",
           "label": "Bark hazard, average",
           "raw": 2.163,
           "unit": "",
@@ -1019,7 +1023,7 @@
       "status": "partial",
       "title": "Fuel map",
       "vintage": {
-        "retrievedAt": 1790756096864,
+        "retrievedAt": 1791143895527,
         "retrievedBasis": "generated",
         "versionNote": "Fuel class and accumulation tables are compiled into the app (Olson curves per class, OFHAG hazard scores, Vesta Mk2 inputs)."
       },
@@ -1330,7 +1334,7 @@
           "value": "0.0 mm"
         },
         {
-          "hint": "McArthur Forest Fire Danger Index at the hottest, driest, windiest hour of the run.",
+          "hint": "McArthur Forest Fire Danger Index in the hour of the run when it was highest, from that hour's temperature, humidity and wind and the drought factor.",
           "label": "Peak fire danger index (FFDI)",
           "raw": 65.903,
           "unit": "",
@@ -1358,7 +1362,7 @@
       "status": "used",
       "title": "Weather",
       "vintage": {
-        "retrievedAt": 1790756096864,
+        "retrievedAt": 1791143895527,
         "retrievedBasis": "generated"
       },
       "warnings": [],
@@ -1428,7 +1432,7 @@
       "status": "used",
       "title": "Rainfall history and drought",
       "vintage": {
-        "retrievedAt": 1790756096864,
+        "retrievedAt": 1791143895527,
         "retrievedBasis": "generated"
       },
       "warnings": [],
@@ -1489,7 +1493,7 @@
       "status": "used",
       "title": "Upper-air profile",
       "vintage": {
-        "retrievedAt": 1790756096864,
+        "retrievedAt": 1791143895527,
         "retrievedBasis": "generated"
       },
       "warnings": [],
@@ -1541,12 +1545,13 @@
         "Being on the map does not mean a vehicle can use it: check trail classification and conditions locally."
       ],
       "model": {
-        "features": 2171,
-        "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
+        "features": 1980,
+        "note": "Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 2171
+        "features": 2171,
+        "note": "2 171 in the loaded map, which reaches a little beyond the model area."
       },
       "origin": "bundled",
       "originDetail": "Bundled demo site 'katoomba'",
@@ -1565,7 +1570,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 546,
+        "durationMs": 667,
         "features": 2171,
         "memoryBytes": 88032,
         "networkBytes": 0,
@@ -1581,40 +1586,41 @@
       ],
       "stats": [
         {
+          "hint": "Inside the model area only: the loaded map reaches a little further. A road that crosses the edge counts once and only the part inside is measured.",
           "label": "Road and track segments",
-          "raw": 2171,
+          "raw": 1980,
           "unit": "",
-          "value": "2 171"
+          "value": "1 980"
         },
         {
           "label": "Total length",
-          "raw": 394.076,
+          "raw": 331.283,
           "unit": "km",
-          "value": "394.1 km"
+          "value": "331.3 km"
         },
         {
           "label": "Highways and main roads",
-          "raw": 14.607,
+          "raw": 12.51,
           "unit": "km",
-          "value": "14.6 km"
+          "value": "12.5 km"
         },
         {
           "label": "Local roads",
-          "raw": 196.304,
+          "raw": 167.598,
           "unit": "km",
-          "value": "196.3 km"
+          "value": "167.6 km"
         },
         {
           "label": "Tracks and paths",
-          "raw": 183.164,
+          "raw": 151.175,
           "unit": "km",
-          "value": "183.2 km"
+          "value": "151.2 km"
         },
         {
           "label": "Unsealed (dirt) roads and tracks",
-          "raw": 206.903,
+          "raw": 166.989,
           "unit": "km",
-          "value": "206.9 km"
+          "value": "167.0 km"
         }
       ],
       "status": "used",
@@ -1673,12 +1679,13 @@
         "Trail condition, gates and closures are not in the data."
       ],
       "model": {
-        "features": 136,
-        "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
+        "features": 130,
+        "note": "Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 136
+        "features": 136,
+        "note": "136 in the loaded map, which reaches a little beyond the model area."
       },
       "origin": "bundled",
       "originDetail": "Bundled demo site 'katoomba'",
@@ -1697,7 +1704,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 546,
+        "durationMs": 667,
         "features": 136,
         "memoryBytes": 12960,
         "networkBytes": 0,
@@ -1713,17 +1720,18 @@
       ],
       "stats": [
         {
+          "hint": "Inside the model area only: the loaded map reaches a little further. A road that crosses the edge counts once and only the part inside is measured.",
           "label": "Fire trails",
-          "raw": 136,
+          "raw": 130,
           "unit": "",
-          "value": "136"
+          "value": "130"
         },
         {
           "hint": "Trails the Rural Fire Service classifies for firefighting access.",
           "label": "Total length",
-          "raw": 63.408,
+          "raw": 49.094,
           "unit": "km",
-          "value": "63.4 km"
+          "value": "49.1 km"
         }
       ],
       "status": "used",
@@ -1783,11 +1791,12 @@
         "The data are a snapshot and do not show new houses or ones lost since."
       ],
       "model": {
-        "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
-        "points": 7368,
+        "note": "Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.",
+        "points": 6801,
         "resampling": "none"
       },
       "native": {
+        "note": "7 368 in the loaded map, which reaches a little beyond the model area.",
         "points": 7368
       },
       "origin": "bundled",
@@ -1807,7 +1816,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 546,
+        "durationMs": 667,
         "features": 7368,
         "memoryBytes": 58944,
         "networkBytes": 0,
@@ -1823,11 +1832,11 @@
       ],
       "stats": [
         {
-          "hint": "One point per address; a block of units shares a point.",
+          "hint": "One point per address; a block of units shares a point. Inside the model area only.",
           "label": "Home address points",
-          "raw": 7368,
+          "raw": 6801,
           "unit": "",
-          "value": "7 368"
+          "value": "6 801"
         }
       ],
       "status": "used",
@@ -1886,12 +1895,13 @@
         "Only built-up zone types are kept; national park and rural zones are left out."
       ],
       "model": {
-        "features": 110,
-        "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
+        "features": 103,
+        "note": "Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.",
         "resampling": "none"
       },
       "native": {
-        "features": 110
+        "features": 110,
+        "note": "110 in the loaded map, which reaches a little beyond the model area."
       },
       "origin": "bundled",
       "originDetail": "Bundled demo site 'katoomba'",
@@ -1910,7 +1920,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 546,
+        "durationMs": 667,
         "features": 110,
         "memoryBytes": 25376,
         "networkBytes": 0,
@@ -1926,34 +1936,35 @@
       ],
       "stats": [
         {
+          "hint": "Inside the model area only: the loaded map reaches a little further. A road that crosses the edge counts once and only the part inside is measured.",
           "label": "Zones",
-          "raw": 110,
+          "raw": 103,
           "unit": "",
-          "value": "110"
+          "value": "103"
         },
         {
           "label": "Total area",
-          "raw": 74.319,
+          "raw": 26.791,
           "unit": "km²",
-          "value": "74.32 km²"
+          "value": "26.79 km²"
         },
         {
           "label": "Small rural lots",
-          "raw": 63.709,
+          "raw": 17.429,
           "unit": "km²",
-          "value": "63.71 km²"
+          "value": "17.43 km²"
         },
         {
           "label": "Environmental living",
-          "raw": 6.96,
+          "raw": 5.738,
           "unit": "km²",
-          "value": "6.96 km²"
+          "value": "5.74 km²"
         },
         {
           "label": "Residential",
-          "raw": 2.593,
+          "raw": 2.568,
           "unit": "km²",
-          "value": "2.59 km²"
+          "value": "2.57 km²"
         },
         {
           "label": "Industrial",
@@ -1969,7 +1980,7 @@
         },
         {
           "label": "Tourist",
-          "raw": 0.073,
+          "raw": 0.072,
           "unit": "km²",
           "value": "0.07 km²"
         }
@@ -2029,11 +2040,12 @@
         "Names are official gazetted names, which may differ from local usage."
       ],
       "model": {
-        "note": "Drawn as vectors; the heat maps derived from them are on the fire grid.",
-        "points": 5,
+        "note": "Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.",
+        "points": 3,
         "resampling": "none"
       },
       "native": {
+        "note": "5 in the loaded map, which reaches a little beyond the model area.",
         "points": 5
       },
       "origin": "bundled",
@@ -2053,7 +2065,7 @@
       "role": "context",
       "sizes": {
         "cachedBytes": 0,
-        "durationMs": 546,
+        "durationMs": 667,
         "features": 5,
         "networkBytes": 0,
         "requests": 0,
@@ -2068,13 +2080,8 @@
       ],
       "stats": [
         {
+          "hint": "Inside the model area only.",
           "label": "Place names",
-          "raw": 5,
-          "unit": "",
-          "value": "5"
-        },
-        {
-          "label": "Localities",
           "raw": 3,
           "unit": "",
           "value": "3"
@@ -2084,6 +2091,12 @@
           "raw": 2,
           "unit": "",
           "value": "2"
+        },
+        {
+          "label": "Localities",
+          "raw": 1,
+          "unit": "",
+          "value": "1"
         }
       ],
       "status": "used",
@@ -2163,7 +2176,7 @@
       "status": "skipped",
       "title": "Your input",
       "vintage": {
-        "retrievedAt": 1790756096864,
+        "retrievedAt": 1791143895527,
         "retrievedBasis": "generated"
       },
       "warnings": [],
@@ -2177,8 +2190,8 @@
       },
       "endpoints": [],
       "evidence": {
-        "level": "measured",
-        "note": "The files are copies of the services’ data at the capture date."
+        "level": "modelled",
+        "note": "The files are copies of the services’ data at the capture date. How far to trust each one is shown on its own data set: the vegetation and canopy maps are predictions, the heights, photo, fire outlines and roads are records."
       },
       "extent": {
         "areaKm2": 81,
@@ -2195,7 +2208,7 @@
       },
       "limitations": [
         "Bundled data are a snapshot: fires, roads and buildings since the capture date are not in them.",
-        "The elevation model is a 5 m grid from a 2019-era service resampled to 10 m; the aerial photo is a mosaic of several years."
+        "The elevation model is a 5 m grid from a service whose copyright notice reads “DFSI 2019”, resampled to 10 m; the aerial photo is a mosaic of several years."
       ],
       "origin": "bundled",
       "originDetail": "Files captured 2026-09-27 to 2026-09-29 and shipped inside the app",
@@ -2312,8 +2325,8 @@
   ],
   "schema": 1,
   "summary": {
-    "buildDurationMs": 550,
-    "builtAt": 1790756097414,
+    "buildDurationMs": 670,
+    "builtAt": 1791143896197,
     "fallbacks": [
       {
         "id": "vegetation-svtm",

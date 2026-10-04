@@ -158,7 +158,7 @@
   min-height: var(--row-h-2);
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--sp-2); /* the selected badge sits half a step out of the thumb's corner and its ring needs this much room before the label */
   padding: var(--sp-1) 0 var(--sp-1) var(--sp-1);
   border: 0;
   border-radius: var(--r-md) 0 0 var(--r-md);
@@ -205,8 +205,9 @@
 .lp-tile.is-on .lp-thumb::after {
   content: '';
   position: absolute;
-  top: calc(-1 * var(--sp-1));
-  right: calc(-1 * var(--sp-1));
+  /* Half a step out of the corner: the badge and its 2 px ring end where the label begins instead of running into its first letter. */
+  top: calc(-1 * var(--sp-1) / 2);
+  right: calc(-1 * var(--sp-1) / 2);
   width: var(--sp-3);
   height: var(--sp-3);
   border-radius: 50%;

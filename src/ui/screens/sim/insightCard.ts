@@ -14,7 +14,8 @@ const SEVERITY_ICON: Record<Insight['severity'], IconName> = { danger: 'danger',
 
 /** How much to trust a card (Insight.confidence), in plain words. */
 export const CONFIDENCE_LABELS: Record<NonNullable<Insight['confidence']>, { label: string; about: string }> = {
-  physics: { label: 'Physics', about: 'Well-understood physics the model computes directly.' },
+  // Not "the model computes it": the spread rates are fitted (empirical) formulas, and in the fast mode the air effects are estimates.
+  physics: { label: 'Well established', about: 'A well-documented effect in research and fire observations. The model uses fitted formulas or estimates for it, not a simulation of the physics.' },
   'rule-of-thumb': { label: 'Rule of thumb', about: 'Field experience and case studies; the model flags where it applies.' },
   'model-estimate': { label: 'Model estimate', about: 'The model’s best estimate; real fires can differ a lot.' },
   'sub-grid': { label: 'Below model detail', about: 'Smaller than the model grid, so the model can’t see this precisely.' },

@@ -21,7 +21,7 @@
  * (also after a switch mid-run). Before the engine reports (opened from Setup, or before the first picture) the numbers
  * are PLANNED, computed with the same rules the builder and the engine apply, and the card says so.
  */
-import { formatBytes, formatCount } from '../core/datasets';
+import { formatBytes, formatCount as formatCountThin } from '../core/datasets';
 import type { DatasetRecord, EngineInfo, QualityTier, ScenarioData, SimSnapshot, WeatherSeries } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
 import { EMBER_CLASSES, EMBER_PARAMS } from '../embers/params';
@@ -33,13 +33,16 @@ import {
   LAYER_CATALOG,
   LAYER_GROUPS,
   LAYER_GROUP_BLURBS,
+  layerDimension,
+  layerFactsOfDatasets,
   type AvailabilityContext,
   type LayerDimension,
   type LayerInfo,
   type LayerScenario,
 } from '../render/layerCatalog';
-import { builtFireCell } from '../scenario/params';
+import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
 import type { ScenarioRequest } from '../scenario/request';
+import { FAST_TIER_STEP_S } from '../sim/engineInfo';
 import { SIM_PARAMS } from '../sim/params';
 import { formatDuration, formatNumber, formatPlaybackSpeed, formatSpeedHint, formatStepLabel } from './format';
 import type { IconName } from './icons';
@@ -54,7 +57,7 @@ import type { Settings } from './settings';
 export type EvidenceLevel = 'measured' | 'modelled' | 'verified' | 'partly' | 'assumed' | 'synthetic' | 'display';
 
 export const EVIDENCE: Readonly<Record<EvidenceLevel, { label: string; icon: IconName; tone: Tone; gloss: string }>> = {
-  measured: { label: 'Measured data', icon: 'ruler', tone: 'ok', gloss: 'Surveyed or measured (LiDAR, satellite, your readings).' },
+  measured: { label: 'Measured data', icon: 'ruler', tone: 'ok', gloss: 'Surveyed or measured (photogrammetric heights, satellite radar, your readings).' },
   modelled: { label: 'Weather-model data', icon: 'cloud', tone: 'neutral', gloss: 'Output of a weather model (a forecast or a reanalysis), not a measurement here.' },
   verified: { label: 'Verified method', icon: 'check-circle', tone: 'ok', gloss: 'Checked against a published source or tested exactly.' },
   partly: { label: 'Partly verified', icon: 'help-circle', tone: 'neutral', gloss: 'A published method, but some parts are FireSim choices or could not be checked.' },
@@ -199,6 +202,8 @@ export const VALIDATION_SUMMARY =
 // Small formatters (never print undefined or NaN)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Thousands are grouped with a NARROW NO-BREAK space (U+202F): the thin space of formatCount lets "3 000 m" break across two lines. */
+const formatCount = (n: number | undefined | null): string => formatCountThin(n).replace(/\u2009/g, '\u202f');
 const ok = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
 /** A no-break space between a number and its unit, so "10 m" never breaks across two lines. */
 const NB = '\u00a0';
@@ -208,7 +213,8 @@ const grid2 = (nx: number, ny: number): string => `${formatCount(nx)}${NB}× ${f
 const pct = (f: number): string => `${Math.round(f * 100)}${NB}%`;
 const kmh = (ms: number): string => `${formatNumber(ms * 3.6, 1)}${NB}km/h`;
 const km = (mm: number): string => `${formatNumber(mm / 1000, mm % 1000 === 0 ? 0 : 1)}${NB}km`;
-const bytes = (b: number): string => formatBytes(b);
+/** A size with a no-break space before the unit. */
+const bytes = (b: number): string => formatBytes(b).replace(/ /g, NB);
 
 const TIER_NAME: Record<QualityTier, string> = { fast: 'Fast (surface wind)', standard: 'Standard (3-D air)', high: 'High (finer 3-D air)' };
 const CLASS_WORDS: Record<string, string> = { flake: 'stringybark flakes', ribbon: 'ribbon bark', leaf: 'leaves', twig: 'twigs', heavy: 'heavy pieces' };
@@ -305,7 +311,7 @@ function numbersOf(input: ModelCardInput, e: EngineInfo | null): Numbers | null 
     extentM: r.extent,
     fire: { nx: n, ny: n, cellM: built.cellM },
     // Demo sites carry the 10 m ground model; elsewhere it is made from whatever terrain is found (spec §11.6).
-    hiResM: r.demoSiteId ? 10 : null,
+    hiResM: r.demoSiteId ? SCENARIO_PARAMS.hiResCellM : null,
     tier,
     atm: plannedAtm(r.extent, grid3),
     atmFast: plannedAtm(r.extent, 'fast'),
@@ -359,17 +365,22 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
 
   // Terrain
   const terr = record(sc, 'terrain');
+  // The finer grid of the 3-D view is made from the source heights: when those are coarser it only interpolates them.
+  const srcM = terr && terr.origin !== 'synthetic' ? terr.native?.resolutionM : undefined;
+  const interpolated = !!n.hiResM && !!srcM && srcM > n.hiResM * 1.5;
   rows.push({
     id: 'terrain',
     component: 'Terrain (the ground)',
     dimensions: '2.5-D: one height for each point, a surface with no overhangs or caves',
-    resolution: `${cellTxt} cells for the fire (${grid2(n.fire.nx, n.fire.ny)})${n.hiResM ? `; the ${m(n.hiResM)} ground model for the 3-D view and the air` : ''}`,
+    resolution: `${cellTxt} cells for the fire (${grid2(n.fire.nx, n.fire.ny)})${
+      n.hiResM ? (interpolated ? `; a ${m(n.hiResM)} grid for the 3-D view and the air, smoothly interpolated from ${m(srcM!)} heights (smoother, not more detailed)` : `; the ${m(n.hiResM)} ground model for the 3-D view and the air`) : ''
+    }`,
     timeStep: 'Fixed for the run',
     method: 'Slope, aspect (the way a slope faces), ridges, gullies and the sun and shade on every slope are worked out from the heights.',
     evidence: terr?.origin === 'synthetic' || (sc && /synthetic/i.test(sc.terrain.source)) ? 'synthetic' : 'measured',
     evidenceNote: sc
       ? `${sc.terrain.source}${terr?.origin === 'synthetic' || /synthetic/i.test(sc.terrain.source) ? ' (no real terrain was available: made-up ground)' : ''}`
-      : 'Surveyed heights: the bundled LiDAR model for demo sites, SRTM satellite heights elsewhere',
+      : 'Surveyed heights: the NSW 5 m elevation model (derived from stereo imagery) for demo sites, SRTM satellite radar heights (about 30 m) elsewhere',
     specRef: '§0.2, §11.6',
     live: false,
   });
@@ -452,7 +463,7 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
   });
 
   // Fire spread
-  const bound = live ? e.cadence.solverBoundS : n.tier === 'fast' ? 10 : SIM_PARAMS.dtMaxS;
+  const bound = live ? e.cadence.solverBoundS : n.tier === 'fast' ? FAST_TIER_STEP_S : SIM_PARAMS.dtMaxS;
   const sub = live ? e.fire.currentSubStepS : null;
   const models = live && e.models.spread.length ? e.models.spread.map((s) => `${s.model} (${FAMILY_WORDS[s.family] ?? s.family}, ${pct(s.share)} of the burnable cells)`).join(', ') : null;
   rows.push({
@@ -520,8 +531,8 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
       component: 'Atmosphere (the air)',
       dimensions: 'Auto: 3-D air flow if this phone is fast enough, else the fast mode (a 2-D surface wind fitted to the terrain)',
       resolution: `3-D: ${describeAtm(a)}. Fast mode: the forecast wind fitted to the terrain on ${grid2(f.nx, f.ny)} columns`,
-      timeStep: `3-D: ${secs(ATMOS_PARAMS.dtMin)} to ${secs(SIM_PARAMS.dtMaxS)}; fast mode: ${secs(10)}`,
-      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it only if the whole run is predicted to finish within the time budget (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire).`,
+      timeStep: `3-D: ${secs(ATMOS_PARAMS.dtMin)} to ${secs(SIM_PARAMS.dtMaxS)}; fast mode: ${secs(FAST_TIER_STEP_S)}`,
+      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it only if the whole run is predicted to finish within the time budget (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). Most phones are expected to be too slow for the 3-D air, so the fast mode is the usual result; that is an expectation from speed figures measured on a computer, not yet on phones (spec §16 item 20).`,
       evidence: 'partly',
       evidenceNote: 'See the two modes: 3-D (spec §8.4) or fitted surface wind (spec §8.9); the speed rule is spec §12.6',
       specRef: '§8, §12.6',
@@ -589,7 +600,7 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
           dimensions: '3-D: a smoke field in the air',
           resolution: `The ${m(n.atm.dxM)} air grid`,
           timeStep: 'Every air step',
-          method: 'A passive smoke tracer, released in proportion to the fire’s heat, carried by the 3-D wind and fading over about 3 hours. It does not dim the sun or change the fire.',
+          method: `A passive smoke tracer, released in proportion to the fire’s heat, carried by the 3-D wind and fading with a decay time of about ${formatDuration(ATMOS_PARAMS.smokeTauS)}. It does not dim the sun or change the fire.`,
           evidence: 'assumed',
           evidenceNote: 'For the picture and the cards; smoke shading of the sun is not modelled (spec §8.7, §16 item 25)',
           specRef: '§8.7',
@@ -786,9 +797,17 @@ function layerScenario(input: ModelCardInput, n: Numbers | null, e: EngineInfo |
   const sc = input.scenario;
   const out: LayerScenario = {};
   if (n) out.fireCellSize = n.fire.cellM;
-  if (e && !e.mock) out.atmosphereCellSize = Math.round(e.atmosphere.dxM);
-  else if (n) out.atmosphereCellSize = Math.round((n.tier === 'fast' ? n.atmFast : n.atm).dxM);
+  if (e && !e.mock) {
+    out.atmosphereCellSize = Math.round(e.atmosphere.dxM);
+    out.atmosphere3d = e.atmosphere.kind === '3d';
+  } else if (n) {
+    out.atmosphereCellSize = Math.round((n.tier === 'fast' ? n.atmFast : n.atm).dxM);
+    if (n.tier === 'fast') out.atmosphere3d = false;
+    else if (n.tier !== 'auto') out.atmosphere3d = true;
+  }
+  if (n?.hiResM) out.terrainHiResCellSize = n.hiResM;
   if (sc) {
+    Object.assign(out, layerFactsOfDatasets(sc.datasets));
     out.terrainSource = sc.terrain.source;
     out.fuelSources = sc.fuel.sources;
     if (sc.context) out.context = sc.context;
@@ -814,9 +833,10 @@ function layersBlock(input: ModelCardInput, n: Numbers | null, e: EngineInfo | n
   const used = new Set<LayerDimension>();
   const groups = LAYER_GROUPS.map((g) => {
     const layers = LAYER_CATALOG.filter((l) => l.group === g).map((l): LayerLine => {
-      used.add(l.dimension);
+      const dimension = layerDimension(l, ls);
+      used.add(dimension);
       const a = avail ? l.available(avail) : null;
-      return { id: l.id, title: l.title, kind: l.kind, dimension: l.dimension, resolution: l.resolution(ls), what: l.what, ...(a && !a.ok && a.reason ? { unavailable: a.reason } : {}) };
+      return { id: l.id, title: l.title, kind: l.kind, dimension, resolution: l.resolution(ls), what: l.what, ...(a && !a.ok && a.reason ? { unavailable: a.reason } : {}) };
     });
     return { title: g, blurb: LAYER_GROUP_BLURBS[g], layers };
   });

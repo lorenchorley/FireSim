@@ -32,12 +32,13 @@ import {
   type DatasetSummary,
   type WorkingMemory,
 } from '../../core/datasets';
-import type { ScenarioData, SimSnapshot } from '../../core/types';
+import type { EngineInfo, ScenarioData, SimSnapshot } from '../../core/types';
 import type { StorageReport } from '../../data/storage';
 import { availabilityContext } from '../../render/layerCatalog';
 import type { LayerState, OverlayKind } from '../../render/layers';
 import { liveMemory, workingMemoryForScenario } from '../../scenario/memoryModel';
 import { h, setChildren, text, uniqueId } from '../dom';
+import { formatDuration as formatSimTime } from '../format';
 import { icon, type IconName } from '../icons';
 import type { Services } from '../modules';
 import { badge, bar, kv, meter, originChip, sparkbar, stackedBar, stat, type KvRow } from '../primitives';
@@ -117,6 +118,14 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
   let detailOpener: HTMLElement | null = null;
   let listScroll = 0;
   let memTimer: ReturnType<typeof setInterval> | undefined;
+  /** What the running engine reports now (null before it reports, or on the demo engine): its tier is the truth, the summary only knows the one that was asked for. */
+  const engineNow = (): EngineInfo | null => {
+    const e = opts.getSnapshot?.()?.engine;
+    return e && !e.mock ? e : null;
+  };
+  const tierKey = (e: EngineInfo | null): string => (e ? `${e.tier}/${e.tierCause}/${e.atmosphere.kind}` : '');
+  /** The tier the summary and the memory card were drawn for, to redraw them when the engine's changes (auto-tune, Settings, the Layers panel). */
+  let shownTier = '';
 
   const el = h('section', {
     class: 'screen datasets-screen',
@@ -251,7 +260,9 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
       );
     }
     // The model and the recipe
-    const mf = modelFacts(summary);
+    const eng = engineNow();
+    shownTier = tierKey(eng);
+    const mf = modelFacts(summary, eng);
     if (mf.length) out.push(h('h3', { class: 'sub-title' }, 'The model'), kv(mf.map(factRow), { label: 'The model grid', dense: true }));
     if (summary?.reproduce) {
       const copied = statusLine('reproduce-status');
@@ -432,7 +443,11 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
       const img = records.find((r) => r.id === 'imagery' && (r.status === 'used' || r.status === 'partial'));
       const iw = img?.native?.width ?? img?.model?.width;
       const ih = img?.native?.height ?? img?.model?.height;
+      const eng = engineNow();
+      shownTier = tierKey(eng);
       return workingMemoryForScenario(scenario, {
+        // The engine's own tier once it has reported: the fast tier holds about half of what the standard 3-D air does.
+        ...(eng ? { tier: eng.tier } : {}),
         snapshotBudgetBytes: defaultSnapshotBudget(),
         ...(iw && ih ? { imagery: { width: iw, height: ih } } : {}),
       });
@@ -453,6 +468,14 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
       );
     }
     rows.push(h('p', { class: 'hint' }, lm.note));
+    // What the engine itself measured in its own arrays (it reports at most every 30 s of real time, so the time is shown).
+    const eng = engineNow();
+    if (eng?.memory) {
+      rows.push(
+        h('p', { class: 't-body' }, `Simulation engine, measured by the engine: ${formatBytes(eng.memory.totalBytes)} (at ${formatSimTime(eng.memory.measuredAt)} of simulated time).`),
+        h('p', { class: 't-body' }, `Rewind checkpoints held now: ${fc(eng.run.checkpoints)}, ${formatBytes(eng.run.checkpointBytes)}.`),
+      );
+    }
     if (snap && scenario) {
       const budget = scenario.options?.maxEmbers;
       rows.push(
@@ -521,7 +544,16 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
     setChildren(memoryCard, out);
     renderLive();
     clearInterval(memTimer);
-    memTimer = setInterval(() => !destroyed && !memoryCard.hidden && renderLive(), 5000);
+    memTimer = setInterval(() => {
+      if (destroyed) return;
+      // The engine's tier changed since the cards were drawn (Auto finished timing the phone, or a switch): draw them again.
+      if (tierKey(engineNow()) !== shownTier) {
+        renderSummary();
+        renderMemory();
+        return;
+      }
+      if (!memoryCard.hidden) renderLive();
+    }, 5000);
   }
 
   // ───────────── DS4 on this phone ─────────────

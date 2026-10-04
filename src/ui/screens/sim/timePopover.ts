@@ -137,7 +137,7 @@ export function createTimePopover(ctx: SimContext, opts: { close(): void }): Tim
         h('fieldset', { class: 'tp-fieldset' }, [
           h('legend', { class: 'tp-label' }, 'Picture interval'),
           h('div', { class: 'chips tp-steps' }, stepBtns),
-          h('p', { class: 'tp-note' }, 'How much fire time each new picture covers. Shorter shows more detail.'),
+          h('p', { class: 'tp-note' }, 'How much fire time each new picture covers. Shorter shows more detail; 10 s and 30 s can also change the fire a little (the calculation takes shorter steps).'),
         ]),
         readout,
       ]),

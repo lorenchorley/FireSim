@@ -80,8 +80,6 @@ export interface SessionEvents {
   ended: () => void;
 }
 
-export const SPEEDS: readonly number[] = [1, 10, 60, 120, 300, 600, Infinity];
-
 /** Fastest the view clock replays already computed history at speed = Infinity (simulated s per wall s). */
 export const MAX_REPLAY_SPEED = 10800;
 

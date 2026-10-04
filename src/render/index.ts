@@ -55,6 +55,8 @@ export {
   HEAT_OVERLAY_KINDS,
   OVERLAY_KINDS,
   layerById,
+  layerDimension,
+  layerFactsOfDatasets,
   layersInGroup,
   layerForOverlay,
   layerForSceneKey,

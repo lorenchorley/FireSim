@@ -194,7 +194,7 @@ export type Origin = 'live' | 'saved' | 'bundled' | 'synthetic' | 'user';
 export const ORIGIN_INFO: Readonly<Record<Origin, { label: string; icon: IconName; description: string }>> = {
   live: { label: 'Live', icon: 'cloud', description: 'Fetched from the internet just now' },
   saved: { label: 'Saved on device', icon: 'smartphone', description: 'Downloaded earlier and stored on this device' },
-  bundled: { label: 'Built in', icon: 'database', description: 'Ships inside the app' },
+  bundled: { label: 'Bundled', icon: 'database', description: 'Ships inside the app' },
   synthetic: { label: 'Estimated', icon: 'tune', description: 'Generated or estimated by the app, not measured' },
   user: { label: 'Entered by you', icon: 'edit', description: 'Typed, drawn or chosen by the user' },
 };

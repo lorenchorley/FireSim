@@ -73,14 +73,14 @@ const isScenario = (m: unknown): m is ScenarioModule => typeof (m as ScenarioMod
 
 /** Resolve the services. `forceMock` (URL ?mock=1) skips the real modules entirely. */
 export async function loadServices(forceMock: boolean): Promise<Services> {
-  const mocks = await import('./mocks');
-  const [sim, render, scenario] = forceMock
-    ? [null, null, null]
-    : await Promise.all([
-        tryLoad(simLoaders, '../sim/index.ts', isSim, 'Simulation (src/sim)'),
-        tryLoad(renderLoaders, '../render/index.ts', isRender, '3-D view (src/render)'),
-        tryLoad(scenarioLoaders, '../scenario/index.ts', isScenario, 'Scenario builder (src/scenario)'),
-      ]);
+  // All four chunks are requested at once: awaiting the mocks first made the (much larger) sim / render / scenario chunks
+  // wait for the mock builder and its imports (the data-set inventory, the fire models) to be fetched and evaluated.
+  const [mocks, sim, render, scenario] = await Promise.all([
+    import('./mocks'),
+    forceMock ? null : tryLoad(simLoaders, '../sim/index.ts', isSim, 'Simulation (src/sim)'),
+    forceMock ? null : tryLoad(renderLoaders, '../render/index.ts', isRender, '3-D view (src/render)'),
+    forceMock ? null : tryLoad(scenarioLoaders, '../scenario/index.ts', isScenario, 'Scenario builder (src/scenario)'),
+  ]);
   const sources = {
     scenario: (scenario ? 'real' : 'mock') as ModuleSource,
     sim: (sim ? 'real' : 'mock') as ModuleSource,

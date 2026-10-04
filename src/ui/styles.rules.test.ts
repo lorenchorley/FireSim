@@ -40,6 +40,26 @@ describe('stylesheets: text size', () => {
     expect(small).toEqual([]);
   });
 
+  it('no fixed px line-height: it does not grow with the Android font scale, so a wrapped line runs into the next (only the badge, whose box is a fixed 16 px, is exempt)', () => {
+    const fixed: string[] = [];
+    for (const { f, text } of all) {
+      if (f === 'tokens.css') continue; // the --lh-* tokens themselves
+      const clean = text.replace(/\/\*[\s\S]*?\*\//g, '');
+      const re = /([^{}]*)\{([^{}]*)\}/g;
+      for (let m = re.exec(clean); m; m = re.exec(clean)) {
+        const lh = /line-height:\s*([0-9.]+)(px|rem)\b/.exec(m[2]!);
+        const fixedBox = /(^|;|\s)height:\s*[0-9.]+px/.test(m[2]!); // a one-line label in a box of its own height
+        if (lh && !fixedBox) fixed.push(`${f}: ${m[1]!.trim()} { line-height: ${lh[1]}${lh[2]} }`);
+      }
+    }
+    expect(fixed).toEqual([]);
+  });
+
+  it('the name of a tile (the Layers "Map type" row) is body text; only its status line is a 12 px caption', () => {
+    expect(rule('overlays.css', '.tile-label')).toMatch(/font-size:\s*var\(--fs-(sm|md)\)/);
+    expect(rule('overlays.css', '.tile-cap')).toMatch(/font-size:\s*var\(--fs-xs\)/);
+  });
+
   it('the dock tabs (the Maps bottom navigation, primary navigation for the cards) label at the 14 px body size, not the 12 px stock label', () => {
     expect(rule('sim.css', '.sheet-tab .nav-label')).toMatch(/font-size:\s*var\(--fs-(sm|md)\)/);
   });

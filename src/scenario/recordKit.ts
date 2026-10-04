@@ -3,6 +3,7 @@
  * facts), ledger-to-sizes conversion, extents, and the record skeleton.
  */
 import { LocalProjection } from '../core/geo';
+import { localDay } from '../core/datasets';
 import type {
   DatasetEndpoint,
   DatasetExtent,
@@ -47,6 +48,7 @@ export const ATTRIBUTION = {
   terrarium: 'Terrain: SRTM data courtesy of the U.S. Geological Survey, tiles by Mapzen on AWS Open Data',
   svtm: '© State of NSW and Department of Climate Change, Energy, the Environment and Water (CC BY 4.0)',
   npws: '© State of NSW and Department of Climate Change, Energy, the Environment and Water (CC BY 4.0)',
+  planning: '© State of NSW and Department of Planning, Housing and Infrastructure (CC BY 4.0)',
   meta: 'Meta and World Resources Institute (WRI) – 2024. High Resolution Canopy Height Maps (CHM). Source imagery for CHM © 2016 Maxar (CC BY 4.0)',
   openMeteo: 'Weather data by Open-Meteo.com (CC BY 4.0), from national weather services and Copernicus ERA5',
   app: 'FireSim',
@@ -197,7 +199,10 @@ export function skeleton(r: Pick<DatasetRecord, 'id' | 'role' | 'title' | 'what'
 }
 
 /** A month/day-free ISO day of an epoch ms, '' when unknown. */
-export const day = (ms: number): string => (ms > 0 ? new Date(ms).toISOString().slice(0, 10) : '');
+export const dayUtc = (ms: number): string => (ms > 0 ? new Date(ms).toISOString().slice(0, 10) : '');
+
+/** The calendar day (yyyy-mm-dd) of an instant in New South Wales (see `localDay`); '' when unknown. */
+export const day = (ms: number, timeZone = 'Australia/Sydney'): string => localDay(ms, timeZone);
 
 /** "1 h", "3 days" style age from epoch ms. */
 export function ageText(thenMs: number, nowMs: number): string {
@@ -205,6 +210,15 @@ export function ageText(thenMs: number, nowMs: number): string {
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`;
   if (h < 48) return `${Math.round(h)} h`;
   return `${Math.round(h / 24)} days`;
+}
+
+/** Share (0-1) of the box `a` (west, south, east, north in degrees) that lies inside the box `b` (domain-sized boxes: degrees are used as they are). */
+export function boxShare(a: { west: number; south: number; east: number; north: number }, b: readonly [number, number, number, number]): number {
+  const area = (a.east - a.west) * (a.north - a.south);
+  if (!(area > 0)) return 0;
+  const ox = Math.max(0, Math.min(a.east, b[2]) - Math.max(a.west, b[0]));
+  const oy = Math.max(0, Math.min(a.north, b[3]) - Math.max(a.south, b[1]));
+  return Math.max(0, Math.min(1, (ox * oy) / area));
 }
 
 /** Share (0-1) of the square (centre, side) that lies inside the square (c2, side2) (flat-earth, domain-sized squares). */

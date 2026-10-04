@@ -312,12 +312,21 @@ export function detailHint(extentKm: number, detail: Detail, tier?: string): str
  * rule buildRequest + scenario/build.ts resolveRequest apply): cell size, cells per side and in all, whether 20 m was asked
  * for but the area is too large, and whether the wind is the simple 2-D surface model ('Fast' = the fast tier).
  */
-export function detailCell(extentKm: number, detail: Detail, tier?: string): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean } {
+export function detailCell(extentKm: number, detail: Detail, tier?: string): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean; windAuto: boolean } {
   const extentM = extentKm * 1000;
   const t = detail === 'fast' ? 'fast' : tier;
   const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
   const n = Math.round(extentM / built.cellM);
-  return { cellM: built.cellM, n, cells: n * n, coarsened: built.coarsened, twoD: t === 'fast' };
+  // 'Auto' (the default performance setting) decides when the run starts: it times the 3-D air on this phone and drops to the
+  // 2-D surface wind when a whole run would take too long, which is the usual outcome on a phone.
+  return { cellM: built.cellM, n, cells: n * n, coarsened: built.coarsened, twoD: t === 'fast', windAuto: t === undefined || t === 'auto' };
+}
+
+/** The wind the Setup hint names for a detail choice: certain ('simple 2-D surface wind', '3-D wind') or, under Auto, both. */
+export function windHint(c: Pick<ReturnType<typeof detailCell>, 'twoD' | 'windAuto'>): string {
+  if (c.twoD) return 'simple 2-D surface wind';
+  if (c.windAuto) return 'a 3-D wind if this phone is fast enough, else a simple 2-D surface wind (decided when the run starts)';
+  return '3-D wind';
 }
 
 /** Chip labels of the detail picker for an area and tier: each names the cell size that option really builds ("Normal · 20 m"). */

@@ -11,7 +11,7 @@
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   creditLines,
   datasetIssues,
@@ -29,6 +29,7 @@ import { saveAreaPack, syntheticElevation } from '../data';
 import { BLACKHEATH, fakeNswServer } from '../data/nswContextTesting';
 import { ATTRIBUTIONS } from '../ui/content';
 import { buildScenario } from './build';
+import { day, dayUtc } from './recordKit';
 import { WEATHER_PRESETS } from './presets';
 import type { ScenarioRequest } from './request';
 import { fixture, KATOOMBA_NOW, KATOOMBA_NOW_ROUTES, withFakeNetwork, type FakeRoute } from './testing';
@@ -170,13 +171,17 @@ describe('a non-demo place online (fake network), then its stored copies offline
   beforeAll(async () => {
     const nsw = fakeNswServer();
     const n = withFakeNetwork(routes(), nsw.fetch);
+    // The cache stamps its copies with the clock (Date.now), and the recorded forecast covers days around KATOOMBA_NOW:
+    // the clock is set to that moment for the live build so the test does not depend on the day it is run.
+    vi.useFakeTimers({ toFake: ['Date'], now: KATOOMBA_NOW });
     try {
       live = await buildScenario(req);
       tileCalls = n.calls.filter((u) => u.includes('terrarium/14/')).length;
       // Seven hours later, no signal: everything from the stored copies; the forecast is now stale (> 6 h).
-      // (The cache stamps its copies with the real clock, so "seven hours later" is the real clock + 7 h.)
-      stored = await buildScenario({ ...req, online: false, now: Date.now() + 7 * 3600e3 });
+      vi.setSystemTime(KATOOMBA_NOW + 7 * 3600e3);
+      stored = await buildScenario({ ...req, online: false, now: KATOOMBA_NOW + 7 * 3600e3 });
     } finally {
+      vi.useRealTimers();
       n.restore();
     }
   }, 180_000);
@@ -197,6 +202,10 @@ describe('a non-demo place online (fake network), then its stored copies offline
     expect(t.sizes.storedOnDeviceBytes).toBe(t.sizes.networkBytes);
     expect(t.endpoints[0]).toMatchObject({ host: 's3.amazonaws.com', path: '/elevation-tiles-prod/terrarium/14/{n}/{n}.png' });
     expect(t.vintage.retrievedBasis).toBe('this-build');
+    // The SRTM heights are about 30 m apart; the 8 m pixel pitch of the zoom-14 tiles and the 10 m grid of the view are not their resolution.
+    expect(t.native?.resolutionM).toBe(30);
+    expect(t.native?.note).toMatch(/interpolated from them: finer pixels, no extra detail/);
+    expect(t.model?.note).toMatch(/interpolated from 30 m satellite heights/);
     const again = rec(stored, 'terrain');
     expect(again.origin).toBe('cache');
     expect(again.sizes.networkBytes).toBe(0);
@@ -223,6 +232,8 @@ describe('a non-demo place online (fake network), then its stored copies offline
     expect(w.vintage.stale).toBeUndefined();
     expect(w.endpoints.map((e) => `${e.host}${e.path}`)).toContain('api.open-meteo.com/v1/forecast');
     expect(w.stats.find((x) => x.label === 'Model')!.value).toBe("Open-Meteo 'best match'");
+    // The download date agrees with the times the screens show (New South Wales time), not the UTC date.
+    expect(w.stats.find((x) => x.label === 'Downloaded')!.value).toMatch(new RegExp(`^${day(w.vintage.retrievedAt)} \\(`));
     expect(JSON.stringify(w)).not.toMatch(/ACCESS-G/);
     expect(rec(live, 'upper-air').origin).toBe('live');
     expect(rec(live, 'drought-history').origin).toBe('live');
@@ -240,6 +251,54 @@ describe('a non-demo place online (fake network), then its stored copies offline
     expect(roads.sizes.networkBytes).toBeGreaterThan(0);
     for (const r of [...live.datasets!, ...stored.datasets!]) for (const e of [...r.endpoints, ...r.sourceServices]) expect(`${e.host}${e.path}`).not.toMatch(/[?&=#]|token|key=/i);
     expect(live.datasetSummary!.totals.storedBytes).toBeGreaterThan(0);
+  });
+});
+
+describe('a 4 km area inside the 9 km demo square: the places figures are for the model area, and the fuel map says what it is made of', () => {
+  let s: ScenarioData;
+  beforeAll(async () => {
+    const n = withFakeNetwork([]);
+    try {
+      const start = WEATHER_PRESETS['hot-nw-sw-change'].canonicalStart(KAT.lon, 2026);
+      s = await buildScenario({ centre: KAT, extent: 4000, demoSiteId: 'katoomba', weather: { kind: 'preset', presetId: 'hot-nw-sw-change', start }, duration: 2 * 3600, online: false });
+    } finally {
+      n.restore();
+    }
+  }, 120_000);
+
+  it('roads, trails, homes, zones and names: counted and measured inside the 4 km square, with the loaded file as published', () => {
+    const file = JSON.parse(readFileSync(`${PUBLIC}demo/katoomba/context.json`, 'utf8')) as { roads: unknown[]; homes: number[]; zones: unknown[]; places: unknown[] };
+    const roads = rec(s, 'roads');
+    const inside = Number(roads.stats.find((x) => x.label === 'Road and track segments')!.raw);
+    expect(inside).toBeGreaterThan(0);
+    expect(inside).toBeLessThan(file.roads.length);
+    expect(roads.native?.features).toBe(file.roads.length); // as loaded: the whole file
+    expect(roads.model?.features).toBe(inside);
+    expect(roads.coverage.fraction).toBe(1);
+    const homes = rec(s, 'homes');
+    expect(Number(homes.stats.find((x) => x.label === 'Home address points')!.raw)).toBeLessThan(file.homes.length / 2);
+    // Zoned land cannot exceed the model area (16 km²); in the 9.8 km file there is more than 70 km².
+    const zoned = Number(rec(s, 'zones').stats.find((x) => x.label === 'Total area')!.raw);
+    expect(zoned).toBeGreaterThan(0);
+    expect(zoned).toBeLessThanOrEqual(16);
+  });
+
+  it('the fuel map names its inputs honestly: a designed drought is not "real data"', () => {
+    const fuel = rec(s, 'fuel-derived');
+    const note = (label: string): string | undefined => fuel.parts!.find((p) => p.label === label)?.note;
+    expect(note('Ground height')).toBe('real data');
+    expect(note('Rainfall history and drought')).toBe('designed by the app, not real data');
+    expect(fuel.coverage.note).toMatch(/Every cell has a value/);
+  });
+});
+
+describe('record dates are New South Wales days', () => {
+  it('06:12 on 5 October (AEDT) is the 5th, though it is still the 4th in UTC', () => {
+    const ms = Date.UTC(2026, 9, 4, 19, 12);
+    expect(day(ms)).toBe('2026-10-05');
+    expect(dayUtc(ms)).toBe('2026-10-04');
+    expect(day(Date.UTC(2026, 5, 30, 14, 30))).toBe('2026-07-01'); // AEST (UTC+10) in winter
+    expect(day(0)).toBe('');
   });
 });
 

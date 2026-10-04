@@ -16,6 +16,7 @@ import {
   availableFilters,
   capturedDates,
   clean,
+  coverageWords,
   distributionModel,
   evidenceModel,
   fallbackNotes,
@@ -133,7 +134,7 @@ describe('datasetsModel: summary header (DS1)', () => {
     expect(byId.downloaded).toBe(formatBytes(t.networkBytes));
     expect(byId.memory).toBe(formatBytes(t.memoryBytes));
     expect(byId.stored).toBe(formatBytes(t.storedBytes));
-    expect(h.sentence).toBe(`${live.datasets.length} data sets · ${formatBytes(t.networkBytes)} downloaded · ${formatBytes(t.memoryBytes)} in memory · ${formatBytes(t.storedBytes)} stored on this phone`);
+    expect(h.sentence).toBe(`${live.datasets.length} data sets · ${formatBytes(t.networkBytes)} downloaded · ${formatBytes(t.memoryBytes)} in memory · ${formatBytes(t.storedBytes)} newly saved on this phone`);
     // The services compressed their answers: the uncompressed total is named.
     expect(h.notes.join(' ')).toContain(formatBytes(t.networkDecodedBytes!));
   });
@@ -208,6 +209,57 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     const stale = freshness(live.datasets, live.summary, w.vintage.retrievedAt + 30 * 3.6e6, TZ);
     expect(stale.weatherStale).toBe(true);
     expect(stale.lines.find((l) => l.startsWith('Weather'))).toContain('check it against your belt weather kit');
+  });
+
+  it('freshness: the days a weather series COVERS are not capture dates (no "oldest 27 Sep (Weather forecast)")', () => {
+    const w = JSON.parse(JSON.stringify(live.datasets.find((r) => r.id === 'weather'))) as DatasetRecord;
+    w.vintage.capturedOn = '2026-09-27/2026-10-05'; // what the builder records for a live forecast: the days it covers
+    const recs = live.datasets.map((r) => (r.id === 'weather' ? w : r));
+    for (const line of freshness(recs, live.summary, w.vintage.retrievedAt, TZ).lines) expect(line).not.toMatch(/Weather forecast|2026-09-27|27 Sep 2026 \(Weather/);
+    // A bundled historic day is described by its own day and the day the copy was made, not as "captured" on the copy date.
+    const r = JSON.parse(JSON.stringify(w)) as DatasetRecord;
+    r.origin = 'bundled';
+    r.vintage = { retrievedAt: Date.UTC(2026, 8, 27), retrievedBasis: 'bundle-capture', capturedOn: '2019-12-19' };
+    const line = freshness(recs.map((x) => (x.id === 'weather' ? r : x)), live.summary, Date.now(), TZ).lines.find((l) => l.startsWith('Weather'))!;
+    expect(line).toBe('Weather: the weather model’s values for 19 Dec 2019, bundled with the app (copied from the weather service on 27 Sep 2026).');
+  });
+
+  it('the model facts follow the ENGINE once it reports: the fast tier is never described as the 3-D air (the summary only knows what was asked for)', () => {
+    const fast = {
+      tier: 'fast' as const,
+      tierCause: 'auto-tune' as const,
+      tierReason: 'Auto: the first 20 3-D steps took 78.7 ms each on this device, so the whole 6.0 h run was predicted to take 238 s against a budget of 120 s: too slow, so the fast tier (no time-stepped 3-D air flow) was chosen.',
+      atmosphere: { kind: 'diagnostic' as const, nx: 45, ny: 45, nz: 20, dxM: 133.3, dzFirstM: 30, topM: 3000, stretch: 1.1, currentStepS: 10, meanStepMs: 5, spunUp: false, upperAir: 'preset' as const, viewDecimated: false },
+    };
+    const f = modelFacts(bundled.summary, fast);
+    const tier = f.find((x) => x.key === 'Detail tier')!;
+    expect(tier.value).toBe('Fast: a 2-D wind shaped by the ground (no 3-D air movement) (chosen by Auto after timing this phone)');
+    expect(tier.note).toBe(fast.tierReason);
+    expect(JSON.stringify(f)).not.toMatch(/starts on Standard/);
+    const grid = f.find((x) => x.key === 'Wind grid')!;
+    expect(grid.value).toBe('45 x 45 columns of 133 m, 20 levels');
+    expect(grid.note).toMatch(/uses only the wind at the surface/);
+    expect(f.find((x) => x.key === 'Atmosphere grid')).toBeUndefined();
+    // On the 3-D air, the grid is the air the engine steps, and a tier asked for says so.
+    const air = modelFacts(bundled.summary, { ...fast, tier: 'standard', tierCause: 'requested', tierReason: 'Asked for when the run started: the standard 3-D atmosphere.', atmosphere: { ...fast.atmosphere, kind: '3d' } });
+    expect(air.find((x) => x.key === 'Detail tier')!.value).toBe('Standard: 3-D atmosphere (asked for when the run started)');
+    expect(air.find((x) => x.key === 'Atmosphere grid')!.value).toBe('45 x 45 columns of 133 m, 20 levels up from the ground');
+    // Before the engine reports, Auto is described as what it is: a decision still to come.
+    expect(modelFacts(bundled.summary, null).find((x) => x.key === 'Detail tier')!.value).toMatch(/^Auto: starts on Standard/);
+  });
+
+  it('coverage: only obtained data are "Real data"; designed, typed and worked-out data sets are named for what they are', () => {
+    expect(coverageWords({ origin: 'bundled', coverage: { fraction: 1 } })).toEqual({ label: 'Real data cover', suffix: '' });
+    expect(coverageWords({ origin: 'live', coverage: { fraction: 0.4 } }).label).toBe('Real data cover');
+    expect(coverageWords({ origin: 'synthetic', coverage: { fraction: 0 } }).label).toBe('Real data cover'); // made-up ground: 0 % real
+    expect(coverageWords({ origin: 'preset', coverage: { fraction: 1 } })).toEqual({ label: 'Covers', suffix: ' (made up by the app, not real data)' });
+    expect(coverageWords({ origin: 'user', coverage: { fraction: 1 } }).label).toBe('Covers');
+    expect(coverageWords({ origin: 'derived', coverage: { fraction: 1 } }).label).toBe('Covers');
+    const preset = bundled.datasets.find((r) => r.id === 'weather')!;
+    const facts = spaceFacts(preset);
+    expect(facts.find((x) => x.key === 'Real data cover')).toBeUndefined();
+    expect(facts.find((x) => x.key === 'Covers')!.value).toMatch(/100 % of the model area \(made up by the app, not real data\)$/);
+    expect(spaceFacts(bundled.datasets.find((r) => r.id === 'terrain')!).find((x) => x.key === 'Real data cover')!.value).toMatch(/^100 % of the model area$/);
   });
 
   it('substitutes come with their reasons, in the summary order', () => {
@@ -326,6 +378,23 @@ describe('datasetsModel: detail (DS3)', () => {
     expect(c.find((x) => x.key === 'This copy obtained')!.value).toMatch(/^\d{1,2} [A-Z][a-z]{2} 2026 \(when the copy bundled with the app was made\)$/);
     const w = live.datasets.find((r) => r.id === 'weather')!;
     expect(timeFacts(w, w.vintage.retrievedAt + 2 * 3.6e6, TZ).find((x) => x.key === 'This copy obtained')!.value).toMatch(/2 h ago$/);
+  });
+
+  it('time: a weather series is dated by the days it covers, never "Captured" (19 Dec 2019 is not when it was copied)', () => {
+    const w = live.datasets.find((r) => r.id === 'weather')!;
+    const f = timeFacts(w, w.vintage.retrievedAt, TZ);
+    expect(f.some((x) => x.key === 'Captured' || x.key === 'About the capture date')).toBe(false);
+    expect(f.find((x) => x.key === 'Days covered')?.value).toBeTruthy();
+    expect(f.find((x) => x.key === 'About these days')?.value).toMatch(/covers/);
+    // The captured-on label of a map layer is unchanged.
+    expect(timeFacts(bundled.datasets.find((r) => r.id === 'canopy-height')!, Date.UTC(2026, 8, 30), TZ).some((x) => x.key === 'Captured')).toBe(true);
+  });
+
+  it('header: the "saved" number is what THIS build saved (0 B when it only read stored copies), and says so', () => {
+    const second = { ...live.summary!, totals: { ...live.summary!.totals, networkBytes: 0, networkUnmeasuredBytes: 0, storedBytes: 0 } };
+    const h = summaryHeader(live.datasets, second);
+    expect(h.stats.find((x) => x.id === 'stored')!.caption).toBe('newly saved on this phone');
+    expect(h.sentence).toMatch(/0 B newly saved on this phone$/);
   });
 
   it('statistics exactly as recorded, hints as notes', () => {

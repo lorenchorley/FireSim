@@ -21,6 +21,7 @@
  * Requests go through data/http.ts (browser fetch, or CapacitorHttp on device), so `signal` cancels them all.
  */
 import type { LatLon } from '../core/geo';
+import { localDay } from '../core/datasets';
 import type { ContextLayers } from '../core/places';
 import { decodeContext, type ContextFileV1 } from './contextLayers';
 import { HttpError, fetchJson, getHttpConfig, serviceUrl } from './http';
@@ -290,7 +291,7 @@ export async function fetchNswContextFile(bbox: BBox, opts: NswContextOptions & 
     throw new NswContextUnavailableError(`NSW place services unavailable: ${why}`, timedOut, lastError);
   }
   failed.sort((a, b) => CONTEXT_QUERY_IDS.indexOf(a) - CONTEXT_QUERY_IDS.indexOf(b));
-  const fetched = new Date(opts.now ?? Date.now()).toISOString().slice(0, 10);
+  const fetched = localDay(opts.now ?? Date.now());
   const file = buildContextFile({ id: opts.id ?? 'live', bbox, fetched, features });
   // Do not credit a source whose layer is missing (places and suburbs are one source: it stays if either was read).
   const read = new Set(CONTEXT_QUERY_IDS.filter((q) => !failed.includes(q)).map(sourceOfQuery));

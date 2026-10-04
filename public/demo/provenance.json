@@ -47,7 +47,14 @@
      "fireTrails": 20,
      "zones": 0,
      "homes": 1,
-     "places": 4
+     "places": 4,
+     "layerBytes": {
+      "roads": 11311,
+      "fireTrails": 8203,
+      "homes": 19,
+      "zones": 2,
+      "places": 259
+     }
     },
     "manifest.json": {
      "bytes": 377,
@@ -105,7 +112,14 @@
      "fireTrails": 144,
      "zones": 0,
      "homes": 21,
-     "places": 1
+     "places": 1,
+     "layerBytes": {
+      "roads": 26337,
+      "fireTrails": 17391,
+      "homes": 200,
+      "zones": 2,
+      "places": 65
+     }
     },
     "manifest.json": {
      "bytes": 454,
@@ -163,7 +177,14 @@
      "fireTrails": 31,
      "zones": 0,
      "homes": 48,
-     "places": 2
+     "places": 2,
+     "layerBytes": {
+      "roads": 24035,
+      "fireTrails": 6726,
+      "homes": 422,
+      "zones": 2,
+      "places": 134
+     }
     },
     "manifest.json": {
      "bytes": 452,
@@ -221,7 +242,14 @@
      "fireTrails": 89,
      "zones": 27,
      "homes": 3307,
-     "places": 6
+     "places": 6,
+     "layerBytes": {
+      "roads": 88914,
+      "fireTrails": 10268,
+      "homes": 21835,
+      "zones": 7672,
+      "places": 373
+     }
     },
     "manifest.json": {
      "bytes": 372,
@@ -279,7 +307,14 @@
      "fireTrails": 6,
      "zones": 0,
      "homes": 2,
-     "places": 4
+     "places": 4,
+     "layerBytes": {
+      "roads": 8703,
+      "fireTrails": 1908,
+      "homes": 30,
+      "zones": 2,
+      "places": 253
+     }
     },
     "manifest.json": {
      "bytes": 453,
@@ -337,7 +372,14 @@
      "fireTrails": 136,
      "zones": 110,
      "homes": 7368,
-     "places": 5
+     "places": 5,
+     "layerBytes": {
+      "roads": 185790,
+      "fireTrails": 12896,
+      "homes": 49727,
+      "zones": 30092,
+      "places": 297
+     }
     },
     "manifest.json": {
      "bytes": 375,
@@ -395,7 +437,14 @@
      "fireTrails": 4,
      "zones": 0,
      "homes": 321,
-     "places": 3
+     "places": 3,
+     "layerBytes": {
+      "roads": 29036,
+      "fireTrails": 1933,
+      "homes": 1913,
+      "zones": 2,
+      "places": 185
+     }
     },
     "manifest.json": {
      "bytes": 374,
@@ -453,7 +502,14 @@
      "fireTrails": 38,
      "zones": 0,
      "homes": 19,
-     "places": 9
+     "places": 9,
+     "layerBytes": {
+      "roads": 20213,
+      "fireTrails": 7940,
+      "homes": 179,
+      "zones": 2,
+      "places": 575
+     }
     },
     "manifest.json": {
      "bytes": 562,

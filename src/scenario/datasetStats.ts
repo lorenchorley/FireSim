@@ -380,10 +380,12 @@ export function fuelStats(f: FuelMap): StatsResult<FuelFacts> {
   const stats: DatasetStat[] = ranked.slice(0, 4).map((x) => shareStat(FUEL_TYPES[x.i as FuelType].name, x.share));
   if (ranked.length > 4) stats.push(shareStat('All other fuel types', ranked.slice(4).reduce((s, x) => s + x.share, 0)));
   stats.push(
-    stat('Litter fuel hazard, average (0 to 4)', facts.meanSurfaceHazard, '', 2, 'Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 4 very high.'),
+    // The scales of the fuel module (fuel/hazard.ts ratingFromFhs; render/legends.ts HAZARD_CLASS_BOUNDS): litter, near-surface and shrub
+    // hazard run 1 low, 2 moderate, 3 high, 3.5 very high, 4 extreme; bark has its own scale, 0 low to 4 extreme.
+    stat('Litter fuel hazard, average (0 to 4)', facts.meanSurfaceHazard, '', 2, 'Overall Fuel Hazard Assessment Guide scale: 1 low, 2 moderate, 3 high, 3.5 very high, 4 extreme.'),
     stat('Near-surface fuel hazard, average', facts.meanNearSurfaceHazard, '', 2),
     stat('Understorey (shrub) fuel hazard, average', facts.meanElevatedHazard, '', 2),
-    stat('Bark hazard, average', facts.meanBarkHazard, '', 2),
+    stat('Bark hazard, average', facts.meanBarkHazard, '', 2, 'Bark has its own scale: 0 low, 1 moderate, 2 high, 3 very high, 4 extreme.'),
     stat('Litter load, average', facts.meanSurfaceLoad, 't/ha', 1),
     stat('Litter load, heaviest cell', facts.maxSurfaceLoad, 't/ha', 1),
   );
@@ -519,13 +521,13 @@ export function canopyStats(f: FuelMap): StatsResult<CanopyFacts> {
     shareOver30: h.shareAbove(30),
   };
   const stats: DatasetStat[] = [];
-  if (ctx) stats.push(shareStat('Cells with measured canopy', facts.measuredShare, 'The rest use the typical height of their vegetation type.'));
+  if (ctx) stats.push(shareStat('Cells with canopy-map values', facts.measuredShare, 'The rest use the typical height of their vegetation type.'));
   if (valid) {
     stats.push(
       stat('Canopy height, typical (median)', facts.p50, 'm', 1),
       stat('Canopy height, tall trees (90th percentile)', facts.p90, 'm', 1),
       stat('Canopy height, tallest', facts.max, 'm', 1),
-      shareStat('Tree cover, average of measured cells', facts.meanCover),
+      shareStat('Tree cover, average of cells with canopy-map values', facts.meanCover),
       shareStat('Cells with trees over 15 m', facts.shareOver15),
       shareStat('Cells with trees over 30 m', facts.shareOver30),
     );
@@ -777,7 +779,7 @@ export function weatherStats(series: WeatherSeries, t0: number, durationS: numbe
   ];
   if (cN) stats.push(stat('Cloud cover, average', facts.cloudMean, '%'));
   stats.push(stat('Rain during the run', facts.rainTotalMm, 'mm', 1));
-  if (facts.peakFfdi !== undefined) stats.push(stat('Peak fire danger index (FFDI)', facts.peakFfdi, '', 0, 'McArthur Forest Fire Danger Index at the hottest, driest, windiest hour of the run.'));
+  if (facts.peakFfdi !== undefined) stats.push(stat('Peak fire danger index (FFDI)', facts.peakFfdi, '', 0, 'McArthur Forest Fire Danger Index in the hour of the run when it was highest, from that hour\'s temperature, humidity and wind and the drought factor.'));
   stats.push(
     stat('Weather before the start (fuel moisture spin-up)', facts.hoursBeforeStart, 'h'),
     stat('Weather after the start', facts.hoursAfterStart, 'h'),
@@ -878,55 +880,143 @@ function ringArea(r: Float32Array): number {
   return a / 2;
 }
 
-/** Counts, lengths and areas of the context layers (all layers of a ContextLayers, or its empty parts). */
-export function contextStats(c: ContextLayers): { facts: ContextFacts; roads: DatasetStat[]; fireTrails: DatasetStat[]; homes: DatasetStat[]; zones: DatasetStat[]; places: DatasetStat[] } {
+/** Length (m) of the part of a polyline [x0, y0, x1, y1, ...] that lies inside the square |x| <= h, |y| <= h (Liang-Barsky on each segment). */
+export function lengthInsideSquare(xy: ArrayLike<number>, h: number): number {
+  let total = 0;
+  const n = xy.length >> 1;
+  for (let i = 1; i < n; i++) {
+    const x0 = xy[2 * i - 2]!;
+    const y0 = xy[2 * i - 1]!;
+    const dx = xy[2 * i]! - x0;
+    const dy = xy[2 * i + 1]! - y0;
+    let t0 = 0;
+    let t1 = 1;
+    // p·t <= q for the four sides: -dx·t <= x0 + h, dx·t <= h - x0, -dy·t <= y0 + h, dy·t <= h - y0
+    const p = [-dx, dx, -dy, dy];
+    const q = [x0 + h, h - x0, y0 + h, h - y0];
+    let inside = true;
+    for (let k = 0; k < 4; k++) {
+      if (p[k] === 0) {
+        if (q[k]! < 0) inside = false;
+      } else {
+        const r = q[k]! / p[k]!;
+        if (p[k]! < 0) t0 = Math.max(t0, r);
+        else t1 = Math.min(t1, r);
+      }
+    }
+    if (inside && t1 > t0) total += (t1 - t0) * Math.hypot(dx, dy);
+  }
+  return total;
+}
+
+/** Area (m²) of a ring [x0, y0, x1, y1, ...] inside the square |x| <= h, |y| <= h (Sutherland-Hodgman against the four sides, then the shoelace). */
+export function ringAreaInsideSquare(ring: ArrayLike<number>, h: number): number {
+  let pts: [number, number][] = [];
+  for (let i = 0; i + 1 < ring.length; i += 2) pts.push([ring[i]!, ring[i + 1]!]);
+  const clip = (inside: (p: [number, number]) => boolean, cut: (a: [number, number], b: [number, number]) => [number, number]): void => {
+    const out: [number, number][] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      if (inside(a)) {
+        out.push(a);
+        if (!inside(b)) out.push(cut(a, b));
+      } else if (inside(b)) out.push(cut(a, b));
+    }
+    pts = out;
+  };
+  const atX = (x: number) => (a: [number, number], b: [number, number]): [number, number] => [x, a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0])];
+  const atY = (y: number) => (a: [number, number], b: [number, number]): [number, number] => [a[0] + ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]), y];
+  clip((p) => p[0] >= -h, atX(-h));
+  if (pts.length) clip((p) => p[0] <= h, atX(h));
+  if (pts.length) clip((p) => p[1] >= -h, atY(-h));
+  if (pts.length) clip((p) => p[1] <= h, atY(h));
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j]![0] * pts[i]![1] - pts[i]![0] * pts[j]![1];
+  return a / 2;
+}
+
+/**
+ * Counts, lengths and areas of the context layers (all layers of a ContextLayers, or its empty parts). With `halfM` only what lies
+ * inside the model area (the square of side 2 x halfM about the centre) is counted: a road that crosses its edge counts once and only
+ * the part inside is measured. The loaded map reaches a margin beyond the model area, which these figures leave out.
+ */
+export function contextStats(c: ContextLayers, o: { halfM?: number } = {}): { facts: ContextFacts; roads: DatasetStat[]; fireTrails: DatasetStat[]; homes: DatasetStat[]; zones: DatasetStat[]; places: DatasetStat[] } {
+  const h = o.halfM !== undefined && o.halfM > 0 ? o.halfM : undefined;
+  const lengthIn = (xy: Float32Array, whole: number): number => (h === undefined ? whole : lengthInsideSquare(xy, h));
   const byClass: Record<string, number> = {};
   let roadM = 0;
   let unsealed = 0;
+  let roadCount = 0;
   for (const r of c.roads) {
-    byClass[r.cls] = (byClass[r.cls] ?? 0) + r.lengthM;
-    roadM += r.lengthM;
-    if (r.surface === 2 || r.surface === 3) unsealed += r.lengthM;
+    const len = lengthIn(r.xy, r.lengthM);
+    if (!(len > 0)) continue;
+    roadCount++;
+    byClass[r.cls] = (byClass[r.cls] ?? 0) + len;
+    roadM += len;
+    if (r.surface === 2 || r.surface === 3) unsealed += len;
   }
   let trailM = 0;
-  for (const t of c.fireTrails) trailM += t.lengthM;
+  let trailCount = 0;
+  for (const t of c.fireTrails) {
+    const len = lengthIn(t.xy, t.lengthM);
+    if (!(len > 0)) continue;
+    trailCount++;
+    trailM += len;
+  }
   const zoneArea: Record<string, number> = {};
   let zoneTotal = 0;
+  let zoneCount = 0;
   for (const z of c.zones) {
     let a = 0;
-    z.rings.forEach((ring, i) => (a += i === 0 ? Math.abs(ringArea(ring)) : -Math.abs(ringArea(ring))));
+    z.rings.forEach((ring, i) => {
+      const ra = Math.abs(h === undefined ? ringArea(ring) : ringAreaInsideSquare(ring, h));
+      a += i === 0 ? ra : -ra;
+    });
     a = Math.max(0, a) / 1e6;
+    if (!(a > 0)) continue;
+    zoneCount++;
     zoneArea[z.kind] = (zoneArea[z.kind] ?? 0) + a;
     zoneTotal += a;
   }
   const kinds: Record<string, number> = {};
-  for (const p of c.places) kinds[p.kind] = (kinds[p.kind] ?? 0) + 1;
-  const homes = c.homes.length >> 1;
+  let placeCount = 0;
+  for (const p of c.places) {
+    if (h !== undefined && (Math.abs(p.x) > h || Math.abs(p.y) > h)) continue;
+    placeCount++;
+    kinds[p.kind] = (kinds[p.kind] ?? 0) + 1;
+  }
+  let homes = c.homes.length >> 1;
+  if (h !== undefined) {
+    homes = 0;
+    for (let i = 0; i + 1 < c.homes.length; i += 2) if (Math.abs(c.homes[i]!) <= h && Math.abs(c.homes[i + 1]!) <= h) homes++;
+  }
   const facts: ContextFacts = {
     roadKm: km(roadM),
-    roadCount: c.roads.length,
+    roadCount,
     roadKmByClass: Object.fromEntries(Object.entries(byClass).map(([k, v]) => [k, km(v)])),
     unsealedKm: km(unsealed),
     fireTrailKm: km(trailM),
-    fireTrailCount: c.fireTrails.length,
+    fireTrailCount: trailCount,
     homes,
-    zoneCount: c.zones.length,
+    zoneCount,
     zoneAreaKm2ByKind: zoneArea,
     zoneAreaKm2: zoneTotal,
-    places: c.places.length,
+    places: placeCount,
     placeKinds: kinds,
   };
-  const roads: DatasetStat[] = [stat('Road and track segments', c.roads.length, ''), stat('Total length', facts.roadKm, 'km', 1)];
+  const scope = h === undefined ? undefined : 'Inside the model area only: the loaded map reaches a little further. A road that crosses the edge counts once and only the part inside is measured.';
+  const roads: DatasetStat[] = [stat('Road and track segments', roadCount, '', 0, scope), stat('Total length', facts.roadKm, 'km', 1)];
   for (const g of ROAD_GROUPS) {
     const len = g.classes.reduce((s, k) => s + (byClass[k] ?? 0), 0);
     if (len > 0) roads.push(stat(g.title, km(len), 'km', 1));
   }
   roads.push(stat('Unsealed (dirt) roads and tracks', facts.unsealedKm, 'km', 1));
-  const fireTrails: DatasetStat[] = [stat('Fire trails', c.fireTrails.length, ''), stat('Total length', facts.fireTrailKm, 'km', 1, 'Trails the Rural Fire Service classifies for firefighting access.')];
-  const homesStats: DatasetStat[] = [stat('Home address points', homes, '', 0, 'One point per address; a block of units shares a point.')];
-  const zones: DatasetStat[] = [stat('Zones', c.zones.length, ''), stat('Total area', facts.zoneAreaKm2, 'km²', 2)];
+  const fireTrails: DatasetStat[] = [stat('Fire trails', trailCount, '', 0, scope), stat('Total length', facts.fireTrailKm, 'km', 1, 'Trails the Rural Fire Service classifies for firefighting access.')];
+  const homesStats: DatasetStat[] = [stat('Home address points', homes, '', 0, `One point per address; a block of units shares a point.${h === undefined ? '' : ' Inside the model area only.'}`)];
+  const zones: DatasetStat[] = [stat('Zones', zoneCount, '', 0, scope), stat('Total area', facts.zoneAreaKm2, 'km²', 2)];
   for (const [k, v] of Object.entries(zoneArea).sort((a, b) => b[1] - a[1])) zones.push(stat(ZONE_TITLES[k as ZoneKind] ?? k, v, 'km²', 2));
-  const places: DatasetStat[] = [stat('Place names', c.places.length, '')];
+  const places: DatasetStat[] = [stat('Place names', placeCount, '', 0, h === undefined ? undefined : 'Inside the model area only.')];
   for (const [k, v] of Object.entries(kinds).sort((a, b) => b[1] - a[1])) places.push(stat(PLACE_TITLES[k] ?? `${k[0]!.toUpperCase()}${k.slice(1)}`, v, ''));
   return { facts, roads, fireTrails, homes: homesStats, zones, places };
 }

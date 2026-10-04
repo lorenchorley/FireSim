@@ -224,7 +224,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   const atmosphere = part(E.atmosphere, cells, atm.columns, embers);
   add(
     'atmosphere',
-    tier === 'fast' ? 'Wind model (2-D, mass-consistent)' : `Atmosphere model (3-D, ${atm.nz} terrain-following levels)`,
+    tier === 'fast' ? 'Wind model of the fast mode (terrain-fitted wind; only the surface wind is used)' : `Atmosphere model (3-D, ${atm.nz} terrain-following levels)`,
     'worker',
     atmosphere,
     `${colsText} of ${Math.round(atm.cellM)} m: ${kb(E.atmosphere.perColumn)} per column + ${cellsText} x ${E.atmosphere.perCell} B`,

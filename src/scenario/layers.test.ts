@@ -88,6 +88,28 @@ describe('live SVTM / NPWS (fake network)', () => {
   });
 });
 
+describe('an area where the service answered "nothing mapped here"', () => {
+  it('fire history: the stored empty answer is a stored copy offline, as the live one was data (not "could not be read")', async () => {
+    const n = withFakeNetwork([{ match: ['Fire/NPWS_Fire_History/MapServer/0/query'], handler: () => ({ type: 'FeatureCollection', features: [] }) }]);
+    restore = n.restore;
+    const ctx: LayerContext = { centre: FAR, extent: 6000, online: true, kv: n.kv };
+    const live = await loadFireHistoryLayer(ctx);
+    expect(live.origin).toBe('network');
+    expect(live.geojson!.features).toHaveLength(0);
+    restore();
+    const off = withFakeNetwork([]);
+    restore = off.restore;
+    const again = await loadFireHistoryLayer({ ...ctx, online: false, kv: n.kv });
+    expect(again.origin).toBe('cache');
+    expect(again.geojson!.features).toHaveLength(0);
+    expect(again.info.storedAt).toBeGreaterThan(0);
+    expect(off.calls).toHaveLength(0);
+    // Nothing was ever stored for another area: that is the unavailable case.
+    const other = await loadFireHistoryLayer({ centre: { lat: -35.5, lon: 148.5 }, extent: 6000, online: false, kv: n.kv });
+    expect(other.origin).toBe('none');
+  });
+});
+
 describe('bundled and offline layers', () => {
   it('a demo site: bundled vegetation, history and canopy without network', async () => {
     const n = withFakeNetwork([]);

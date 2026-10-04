@@ -301,13 +301,13 @@
   margin: 0;
 }
 
-/* Badge legends: the badge, then its meaning beside it (under it when there is no room). */
+/* Badge legends: the badge, then its meaning under it (one column, so the texts line up at any width). */
 .mc-legend-item,
 .mc-dimension {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--sp-1) var(--sp-2);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
   padding: var(--sp-1) 0;
 }
 
@@ -333,7 +333,7 @@
 
 .mc-legend-item dd,
 .mc-dimension dd {
-  flex: 1 1 12rem;
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   line-height: 1.43;

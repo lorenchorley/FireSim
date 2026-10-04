@@ -13,6 +13,7 @@
  */
 import type { GridSpec, LatLon } from '../core/types';
 import { LocalProjection } from '../core/geo';
+import { localDay } from '../core/datasets';
 import {
   approxBytes,
   cachedFetchJson,
@@ -280,8 +281,9 @@ async function vectorLayer(
     // Offline: the stored copy of an earlier live query for this same area (a failed live query already fell back to it).
     const st = stored ? await stored(ctx).catch(() => null) : null;
     aborted(ctx.signal);
-    if (st && st.geojson.features.length) {
-      const when = new Date(st.storedAt).toISOString().slice(0, 10);
+    // An empty copy is still a copy: the service answered "nothing mapped here" (no fires on record), exactly what the live path calls data.
+    if (st) {
+      const when = localDay(st.storedAt);
       return done({ geojson: st.geojson, origin: 'cache', source: `${label}: stored copy (downloaded ${when})`, partial: false, warnings }, { storedAt: st.storedAt });
     }
     skipped.push('no stored copy');

@@ -400,7 +400,10 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
   el.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (e.key === 'Escape') {
+      // Stopped here: the App forwards Escape / Back as a synthetic key event that would otherwise bubble on to the
+      // simulation underneath and close its dock as well (this page returns you to the same place).
       e.preventDefault();
+      e.stopPropagation();
       opts.onClose();
       return;
     }

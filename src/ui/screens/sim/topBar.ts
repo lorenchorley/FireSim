@@ -54,7 +54,8 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
           dataset: { testid },
           on: {
             click: () => {
-              popovers.closeAll(false);
+              // Focus goes back to the menu button first, so a screen this row opens returns focus there when it closes.
+              popovers.closeAll();
               act();
             },
           },

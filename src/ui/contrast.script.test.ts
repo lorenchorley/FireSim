@@ -1,6 +1,6 @@
 /**
  * Runs scripts/check-contrast.mjs (`npm run check:contrast`) so a token or CSS edit that breaks WCAG contrast fails the unit tests.
- * The script checks the curated token pairs AND every rule of base / components / overlays / data.css that sets both a text and a
+ * The script checks the curated token pairs AND every rule of every stylesheet (design system and screens) that sets both a text and a
  * background colour, in the four looks (light, dark, high-contrast light and dark). See the header of the script for the thresholds.
  * tokens.contrast.test.ts is the older token-pair table; this one also covers the CSS itself.
  */
@@ -13,7 +13,6 @@ const script = join(__dirname, '..', '..', 'scripts', 'check-contrast.mjs');
 
 interface Report {
   failures: string[];
-  legacyFailures: string[];
   literals: { file: string; sel: string; prop: string; value: string }[];
   worst: Record<string, { ratio: number }>;
   checked: number;
@@ -48,12 +47,6 @@ describe('scripts/check-contrast.mjs', () => {
 
   it('the design-system CSS has no hard-coded colour (they cannot follow the theme)', () => {
     expect(report.literals).toEqual([]);
-  });
-
-  it('the not-yet-migrated CSS does not regress past the two known dev-only pairs', () => {
-    const { report: withLegacy } = run(['--legacy']);
-    const unexpected = withLegacy.legacyFailures.filter((f) => !f.includes('.mock-banner'));
-    expect(unexpected).toEqual([]);
   });
 
   it('agrees with src/ui/contrast.ts (the style guide table) and with the WCAG reference values', async () => {

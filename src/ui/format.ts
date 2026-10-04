@@ -158,13 +158,6 @@ export function formatWind(ms: number, unit: SpeedUnit = 'kmh'): string {
   return unit === 'kmh' ? `${formatNumber(msToKmh(ms))} km/h` : `${formatNumber(ms, ms < 10 ? 1 : 0)} m/s`;
 }
 
-/** Value only (no unit) in the user's unit. */
-export function windValue(ms: number, unit: SpeedUnit = 'kmh'): number {
-  return unit === 'kmh' ? msToKmh(ms) : ms;
-}
-
-export const windUnitLabel = (unit: SpeedUnit): string => (unit === 'kmh' ? 'km/h' : 'm/s');
-
 /**
  * Fire rate of spread (input m/s): km/h when ≥ 1 km/h, otherwise m/h (Australian practice), e.g. "2.4 km/h",
  * "450 m/h", "0 m/h".

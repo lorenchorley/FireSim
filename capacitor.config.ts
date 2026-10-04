@@ -5,7 +5,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  *
  * The web app is built with `npm run build:cap` into `dist/` (relative URLs, `base: './'`, no source maps) and served
  * by Capacitor from https://localhost (Android) / capacitor://localhost (iOS). Everything the app needs offline is in
- * that bundle: the code, the simulation Web Worker (an ES module worker) and the demo sites (public/demo, ~29 MB)
+ * that bundle: the code, the simulation Web Worker (an ES module worker) and the demo sites (public/demo, ~31 MB)
  * and historical replays (public/replays).
  */
 const config: CapacitorConfig = {
@@ -17,6 +17,11 @@ const config: CapacitorConfig = {
   server: {
     // https (the default since Capacitor 6) gives a secure context for module workers, IndexedDB and geolocation.
     androidScheme: 'https',
+  },
+  android: {
+    // The UI uses CSS container queries, :has() and dvh with fallbacks, and the `inert` attribute: Chrome 105-108. An older
+    // System WebView gets Capacitor's "update the WebView" message instead of a half-working screen.
+    minWebViewVersion: 108,
   },
   // WebView content debugging (chrome://inspect) follows Capacitor's default: on in debug builds, off in release builds.
   ios: {

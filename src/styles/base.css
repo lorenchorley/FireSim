@@ -270,17 +270,20 @@ time {
   display: none;
 }
 
-/* The full wording needs about 27 em (24 em of text + icon + padding). The strip is a size container so the choice follows the
- * text SIZE and not only the screen width: at Android font scale 130 % or more the full wording no longer fits a 390 px phone and
- * the short wording (which always fits) takes over instead of the end of the sentence being cut off. em is the strip's own font
- * size (12 px, 13 px in high contrast), so it grows with the text. The media query is the fallback for WebViews without
+/* The full wording needs about 26 em (measured: 24.3 em of text + the 14 px icon and its gap) of the strip's content width, and the
+ * bold 13 px caps of high contrast about 28.5 em. The strip is a size container so the choice follows the text SIZE and not only the
+ * screen width: at Android font scale 130 % or more the full wording no longer fits a 390 px phone and the short wording (which always
+ * fits) takes over instead of the end of the sentence being cut off. em is the strip's own font size (12 px, 13 px in high
+ * contrast), so it grows with the text. The thresholds sit a little above those needs (measured in the widest fallback font, so
+ * Roboto has more room) and BELOW the content width of a 360 px phone: 28 em put those phones on the short wording although the
+ * full one fits there (336 px of content against about 311 px of text). The media query is the fallback for WebViews without
  * container queries and for the smallest screens. */
 .training-badge {
   container-type: inline-size;
   container-name: training-strip;
 }
 
-@container training-strip (max-width: 28em) {
+@container training-strip (max-width: 26.5em) {
   .training-badge .badge-full {
     display: none;
   }
@@ -290,8 +293,8 @@ time {
   }
 }
 
-/* Bold 13 px caps are wider: ~30 em. */
-@container training-strip (max-width: 30.5em) {
+/* Bold 13 px caps are wider: ~28.5 em. */
+@container training-strip (max-width: 29.5em) {
   :root[data-contrast='high'] .training-badge .badge-full {
     display: none;
   }

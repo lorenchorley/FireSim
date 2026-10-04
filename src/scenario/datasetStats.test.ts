@@ -7,7 +7,8 @@ import { makeGridSpec } from '../core/grid';
 import { FireHistoryKind, FuelType, type FuelMap, type WeatherHour, type WeatherSeries } from '../core/types';
 import { uniformFuel } from '../fire/spread/testing';
 import { buildTerrain } from '../terrain/analysis';
-import { binShares, canopyStats, fireHistoryStats, fuelStats, Hist, moistureStats, terrainStats, vegetationStats, weatherStats } from './datasetStats';
+import { EMPTY_CONTEXT, type ContextLayers } from '../core/places';
+import { binShares, canopyStats, contextStats, fireHistoryStats, fuelStats, Hist, lengthInsideSquare, moistureStats, ringAreaInsideSquare, terrainStats, vegetationStats, weatherStats } from './datasetStats';
 
 const ORIGIN = { lat: -33.7, lon: 150.3 };
 
@@ -134,6 +135,68 @@ describe('weather and moisture', () => {
     expect(r.facts.shareUnder6).toBe(0.12);
     expect(r.facts.shareOver20).toBe(0.59);
     expect(r.facts.median).toBeCloseTo(25, 0);
+  });
+});
+
+describe('places statistics inside the model area', () => {
+  it('lengthInsideSquare measures only the part of a polyline inside the square', () => {
+    expect(lengthInsideSquare([-10, 0, 10, 0], 50)).toBeCloseTo(20, 6); // wholly inside
+    expect(lengthInsideSquare([-100, 0, 100, 0], 50)).toBeCloseTo(100, 6); // crosses both sides: the 100 m between them
+    expect(lengthInsideSquare([0, 0, 200, 0], 50)).toBeCloseTo(50, 6); // leaves through the east side
+    expect(lengthInsideSquare([60, -100, 60, 100], 50)).toBe(0); // runs alongside, outside
+    expect(lengthInsideSquare([-100, -100, 100, 100], 50)).toBeCloseTo(Math.hypot(100, 100), 6); // the diagonal through the square
+    expect(lengthInsideSquare([-60, -60, 60, -60, 60, 60], 50)).toBe(0); // an L round the outside
+    expect(lengthInsideSquare([0, 0], 50)).toBe(0);
+  });
+
+  it('ringAreaInsideSquare clips a polygon to the square, also a concave one', () => {
+    const sq = (x0: number, y0: number, x1: number, y1: number): number[] => [x0, y0, x1, y0, x1, y1, x0, y1];
+    expect(Math.abs(ringAreaInsideSquare(sq(-10, -10, 10, 10), 50))).toBeCloseTo(400, 6);
+    expect(Math.abs(ringAreaInsideSquare(sq(0, 0, 100, 100), 50))).toBeCloseTo(2500, 6); // a quarter of it lies inside
+    expect(Math.abs(ringAreaInsideSquare(sq(-500, -500, 500, 500), 50))).toBeCloseTo(100 * 100, 6); // covers the whole square
+    expect(ringAreaInsideSquare(sq(60, 60, 90, 90), 50)).toBe(0);
+    // An L shape (concave): its area inside the square is the sum of its two arms' parts.
+    const L = [0, 0, 80, 0, 80, 20, 20, 20, 20, 80, 0, 80];
+    expect(Math.abs(ringAreaInsideSquare(L, 50))).toBeCloseTo(50 * 20 + 20 * 30, 6);
+  });
+
+  const ctx = (): ContextLayers => ({
+    ...EMPTY_CONTEXT({ lat: -33.7, lon: 150.3 }),
+    roads: [
+      { cls: 'local', surface: 1, xy: new Float32Array([-1000, 0, 1000, 0]), lengthM: 2000 }, // crosses a 100 m square: 100 m inside
+      { cls: 'track', surface: 2, xy: new Float32Array([500, 500, 600, 500]), lengthM: 100 }, // wholly outside
+    ],
+    fireTrails: [{ xy: new Float32Array([0, -80, 0, 500]), lengthM: 580 }],
+    zones: [
+      { code: 'R2', kind: 'residential', name: 'x', rings: [new Float32Array([0, 0, 200, 0, 200, 200, 0, 200])] }, // a quarter inside
+      { code: 'RU6', kind: 'ruralSmall', name: 'y', rings: [new Float32Array([300, 300, 400, 300, 400, 400, 300, 400])] }, // outside
+    ],
+    homes: new Float32Array([0, 0, 40, -40, 51, 0, 0, 900]),
+    places: [
+      { name: 'In', kind: 'town', x: 10, y: 10 },
+      { name: 'Out', kind: 'suburb', x: 5000, y: 0 },
+    ],
+  });
+
+  it('with the model area, counts and measures only what lies inside it', () => {
+    const s = contextStats(ctx(), { halfM: 50 });
+    expect(s.facts).toMatchObject({ roadCount: 1, fireTrailCount: 1, homes: 2, zoneCount: 1, places: 1 });
+    expect(s.facts.roadKm).toBeCloseTo(0.1, 6);
+    expect(s.facts.unsealedKm).toBe(0);
+    expect(s.facts.fireTrailKm).toBeCloseTo(0.1, 6); // from y = -80 to y = 500: the 100 m between y = -50 and y = 50
+    expect(s.facts.zoneAreaKm2).toBeCloseTo(2500 / 1e6, 9);
+    expect(s.facts.placeKinds).toEqual({ town: 1 });
+    const statOf = (list: { label: string; value: string }[], label: string): string => list.find((x) => x.label === label)!.value;
+    expect(statOf(s.roads, 'Road and track segments')).toBe('1');
+    expect(statOf(s.homes, 'Home address points')).toBe('2');
+    expect(s.roads[0]!.hint).toMatch(/Inside the model area only/);
+  });
+
+  it('without it, the whole loaded map (as before)', () => {
+    const s = contextStats(ctx());
+    expect(s.facts).toMatchObject({ roadCount: 2, fireTrailCount: 1, homes: 4, zoneCount: 2, places: 2 });
+    expect(s.facts.roadKm).toBeCloseTo(2.1, 6);
+    expect(s.roads[0]!.hint).toBeUndefined();
   });
 });
 

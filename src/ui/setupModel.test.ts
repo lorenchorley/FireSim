@@ -17,7 +17,7 @@ import { WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import { arrivalOf, BUILD_STEPS, DATASET_TITLES, datasetIcon, datasetStep, datasetTitle } from './labels';
 import { ICON_ALIASES, ICON_NAMES } from './icons';
 import { performanceProfile } from './settings';
-import { buildRequest, builtRow, defaultSetup, detailCell, detailChoices, detailHint, durationChoices, DURATION_CHOICES_H, planRow, planSummary, restoreSetup, shortProvider } from './setupModel';
+import { buildRequest, builtRow, defaultSetup, detailCell, detailChoices, detailHint, durationChoices, DURATION_CHOICES_H, planRow, planSummary, restoreSetup, shortProvider, windHint } from './setupModel';
 
 const NOW = Date.UTC(2026, 8, 30, 2);
 const fixture = (name: string): { datasets: DatasetRecord[] } => JSON.parse(readFileSync(join(__dirname, '..', '..', 'tests', 'fixtures', 'datasets', name), 'utf8'));
@@ -51,6 +51,23 @@ describe('detail options name the grid that is built', () => {
     expect(detailCell(6, 'normal', performanceProfile('auto').tier).cellM).toBe(30);
     expect(detailCell(9, 'detailed', 'auto')).toMatchObject({ cellM: 30, coarsened: true });
     expect(detailChoices(3, 'auto').map((c) => c.label)).toEqual(['Fast · 30 m 2-D', 'Normal · 30 m', 'Detailed · 20 m']);
+  });
+});
+
+describe('the wind the Setup hint names', () => {
+  it('Auto (the default) does not promise the 3-D wind: it decides when the run starts, and the fast tier is the usual outcome on a phone', () => {
+    const auto = detailCell(6, 'normal', performanceProfile('auto').tier);
+    expect(auto).toMatchObject({ twoD: false, windAuto: true });
+    expect(windHint(auto)).toBe('a 3-D wind if this phone is fast enough, else a simple 2-D surface wind (decided when the run starts)');
+    expect(windHint(detailCell(6, 'normal', undefined))).toBe(windHint(auto));
+  });
+
+  it('Saver and the Fast detail are the simple 2-D wind for certain; Best quality is the 3-D wind for certain', () => {
+    expect(windHint(detailCell(6, 'normal', performanceProfile('battery').tier))).toBe('simple 2-D surface wind');
+    expect(windHint(detailCell(6, 'fast', performanceProfile('auto').tier))).toBe('simple 2-D surface wind');
+    const best = detailCell(6, 'normal', performanceProfile('quality').tier);
+    expect(best.windAuto).toBe(false);
+    expect(windHint(best)).toBe('3-D wind');
   });
 });
 

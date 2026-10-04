@@ -102,7 +102,28 @@ for (const id of sites) {
     ...(fh ? { verDate: Math.max(0, ...fh.features.map((f) => Number(f.properties?.VerDate) || 0)) || undefined } : {}),
   });
   const ctx = readJson(`${dir}/context.json`);
-  add('context.json', ctx?.fetched ?? cap('context.json'), ctx ? { roads: ctx.roads.length, fireTrails: ctx.fireTrails.length, zones: ctx.zones.length, homes: ctx.homes.length / 2, places: ctx.places.length } : {});
+  // layerBytes: the size of each layer's JSON in the shared file, so the Setup plan splits its size the way the built records do
+  // (src/scenario/datasetRecordsPlaces.ts layerShares).
+  add(
+    'context.json',
+    ctx?.fetched ?? cap('context.json'),
+    ctx
+      ? {
+          roads: ctx.roads.length,
+          fireTrails: ctx.fireTrails.length,
+          zones: ctx.zones.length,
+          homes: ctx.homes.length / 2,
+          places: ctx.places.length,
+          layerBytes: {
+            roads: JSON.stringify(ctx.roads).length,
+            fireTrails: JSON.stringify(ctx.fireTrails).length,
+            homes: JSON.stringify(ctx.homes).length,
+            zones: JSON.stringify(ctx.zones).length,
+            places: JSON.stringify(ctx.places).length,
+          },
+        }
+      : {},
+  );
   add('manifest.json', readJson(`${dir}/manifest.json`)?.capturedOn);
   // Terrarium tiles: one line for the folder.
   let tiles = 0;

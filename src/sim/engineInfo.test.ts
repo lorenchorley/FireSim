@@ -10,7 +10,7 @@ import { EMBER_CLASSES, EMBER_PARAMS } from '../embers';
 import { SPREAD_PARAMS } from '../fire/spread/params';
 import { Simulation } from './simulation';
 import { SIM_PARAMS } from './params';
-import { medianStampS, spreadModelName, spreadModelUse, tierReasonText } from './engineInfo';
+import { FAST_TIER_STEP_S, medianStampS, spreadModelName, spreadModelUse, tierReasonText } from './engineInfo';
 import { snapshotHash } from './testing/hash';
 import { pointIgnition, syntheticScenario } from './testing/scenarios';
 
@@ -79,8 +79,8 @@ describe('engine info: fast tier (DiagnosticWind)', () => {
     expect(e.cadence).toEqual({
       displayStepS: 300,
       solverMaxStepS: 0,
-      solverBoundS: 10,
-      solverFloorS: 10,
+      solverBoundS: FAST_TIER_STEP_S,
+      solverFloorS: FAST_TIER_STEP_S,
       moistureUpdateS: SIM_PARAMS.solarIntervalS,
       detectorsS: SIM_PARAMS.minuteS,
       checkpointS: SIM_PARAMS.checkpointIntervalS,

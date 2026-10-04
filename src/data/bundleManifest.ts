@@ -21,6 +21,8 @@ export interface BundleFile {
   zones?: number;
   homes?: number;
   places?: number;
+  /** context.json: the size of each layer's JSON in the shared file, to split the file's bytes between the five layers. */
+  layerBytes?: Partial<Record<'roads' | 'fireTrails' | 'homes' | 'zones' | 'places', number>>;
 }
 
 export interface BundleSite {

@@ -127,7 +127,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): { el: HTMLEle
         testId: 'time-step',
         onChange: (v) => set({ timeStep: Number(v) }),
       }).el,
-      hint('How much fire time each new picture covers, and how finely the timeline steps. Shorter shows more and computes more. Also in the time menu (tap the clock). Applies from the current time on.'),
+      hint('How much fire time each new picture covers, and how finely the timeline steps. Shorter shows more and computes more. With the 3-D atmosphere, 10 s and 30 s also make the calculation steps shorter, so the fire comes out a little different from the 1 minute run. Also in the time menu (tap the clock). Applies from the current time on.'),
       segmented<string>({
         label: 'Solver step limit (advanced)',
         options: SOLVER_STEPS.map((sec) => ({ value: String(sec), label: sec === 0 ? 'Automatic' : formatStepLabel(sec) })),

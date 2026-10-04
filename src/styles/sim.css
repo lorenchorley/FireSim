@@ -60,8 +60,8 @@
   left: 50%;
   top: calc(var(--topbar-h) / 2 + 20%);
   transform: translate(-50%, -50%);
-  color: #ffffff;
-  filter: drop-shadow(0 0 1.5px #000) drop-shadow(0 0 3px rgba(0, 0, 0, 0.8));
+  color: var(--map-halo);
+  filter: drop-shadow(0 0 1.5px var(--map-shade)) drop-shadow(0 0 3px var(--map-shade));
   pointer-events: none;
   z-index: 4;
 }
@@ -96,7 +96,7 @@
 /* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
 .map-fabs {
   position: absolute;
-  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2));
+  top: calc(var(--col-top, var(--map-top, var(--topbar-h))) + var(--sp-2));
   right: calc(var(--edge) + var(--safe-right));
   z-index: 14; /* under the dock and the tool panels: an open sheet is what the user is working in */
   display: flex;
@@ -108,6 +108,12 @@
 .hand-left .map-fabs {
   right: auto;
   left: calc(var(--edge) + var(--safe-left));
+}
+
+/* The View card hangs from its button down to the bottom cover and, on a short screen or with the chips on two rows, reaches the Tools
+   button (z-index 20): while it is open the column is the top layer, so the card (the Zoom row's "+") is never covered. */
+.map-fabs.view-open {
+  z-index: 21;
 }
 
 .map-fabs .fab[aria-pressed='true'] {
@@ -946,7 +952,7 @@ button.map-credit:active {
 .insight-title {
   margin: 2px 0 0;
   font-size: var(--fs-md);
-  line-height: 22px;
+  line-height: 1.375; /* 22 px at 16 px; a px value stayed 22 px at large text and the lines of a wrapped title ran into each other */
   font-weight: var(--fw-medium);
 }
 
@@ -1226,16 +1232,26 @@ button.map-credit:active {
   min-height: var(--tap);
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   cursor: pointer;
+}
+
+.gloss-text {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-1) 0;
+  min-width: 0;
 }
 
 .gloss-term {
   font-weight: var(--fw-medium);
 }
 
+/* The one-line gloss sits under the term (a wrapped line never starts with a separator). */
 .gloss-short {
   color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--fw-regular);
 }
 
 .gloss p {
@@ -1256,6 +1272,7 @@ button.map-credit:active {
 
 .tool-panel {
   pointer-events: auto;
+  max-height: min(52vh, calc(100vh - var(--topbar-h) - var(--scrub-h) - 160px)); /* vh first: a WebView before Chrome 108 has no dvh */
   max-height: min(52vh, calc(100dvh - var(--topbar-h) - var(--scrub-h) - 160px));
   display: flex;
   flex-direction: column;
@@ -1317,6 +1334,30 @@ button.map-credit:active {
 
 .panel-foot .btn {
   width: 100%;
+}
+
+/* A short landscape screen at a large text size (simScreen.ts puts the read-out chips away): the panel is squeezed between the top bar and the
+   timeline, so its header and its Add / Clear bar give up their spare padding to keep both on screen. */
+.chips-away .panel-head {
+  min-height: var(--tap);
+}
+
+.chips-away .panel-title {
+  line-height: 1.2;
+}
+
+.chips-away .panel-body {
+  padding-top: 0;
+  padding-bottom: 0; /* the body may shrink to nothing: its own padding would keep 24 px of it and push the bar under the timeline */
+}
+
+.chips-away .panel-foot {
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-2);
+}
+
+.chips-away .panel-foot.pending-box {
+  gap: var(--sp-1);
 }
 
 .panel-body > .btn {
@@ -1405,15 +1446,15 @@ button.map-credit:active {
 }
 
 .dot-observed {
-  background: #e02424;
+  background: var(--mark-observed);
 }
 
 .dot-spot {
-  background: #ff8c1a;
+  background: var(--mark-spot);
 }
 
 .dot-backburn {
-  background: #7b3fe4;
+  background: var(--mark-backburn);
 }
 
 .preset-grid {
@@ -1635,54 +1676,6 @@ button.map-credit:active {
   grid-column: 1 / -1;
 }
 
-/* ── Layers panel pieces (viewPanels.ts; its builder may refine these in layers.css, which loads later) ── */
-.overlay-group {
-  margin: var(--sp-1) 0 var(--sp-2);
-}
-
-.overlay-group-title {
-  display: block;
-  margin-bottom: var(--sp-1);
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-}
-
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-3) var(--sp-2);
-}
-
-.chip-btn {
-  position: relative;
-  min-height: var(--ctl-h-sm);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-pill);
-  border: var(--bw) solid var(--outline-variant);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-}
-
-.chip-btn::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: max(100%, var(--tap));
-  height: max(100%, var(--tap));
-  transform: translate(-50%, -50%);
-}
-
-.chip-btn[aria-pressed='true'] {
-  background: var(--primary-container);
-  border-color: var(--primary);
-  color: var(--on-primary-container);
-  box-shadow: inset 0 0 0 1px var(--primary);
-}
-
 .legend {
   margin: var(--sp-2) 0;
   padding: var(--sp-3);
@@ -1774,14 +1767,14 @@ button.map-credit:active {
 
 .ann-stroke-casing {
   fill: none;
-  stroke: #ffffff;
+  stroke: var(--map-halo);
   stroke-width: 10px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .ann-pin-dot {
-  stroke: #ffffff;
+  stroke: var(--map-halo);
   stroke-width: 3.5px;
 }
 
@@ -1804,20 +1797,20 @@ button.map-credit:active {
 }
 
 .ann-why-ring {
-  fill: rgba(255, 255, 255, 0.2);
-  stroke: #ffffff;
+  fill: var(--map-halo-veil);
+  stroke: var(--map-halo);
   stroke-width: 4px;
 }
 
 .ann-why-dot {
-  fill: #202124;
-  stroke: #ffffff;
+  fill: var(--map-pin);
+  stroke: var(--map-halo);
   stroke-width: 2px;
 }
 
 .ann-wind-casing {
   fill: none;
-  stroke: #000000;
+  stroke: var(--map-shade);
   stroke-width: 9px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1826,7 +1819,7 @@ button.map-credit:active {
 
 .ann-wind-arrow {
   fill: none;
-  stroke: #ffffff;
+  stroke: var(--map-halo);
   stroke-width: 5px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1879,6 +1872,7 @@ button.map-credit:active {
 
 @media (orientation: landscape) and (max-height: 540px) {
   .tool-panel {
+    max-height: calc(100vh - var(--strip-h) - var(--safe-top) - var(--map-top, var(--topbar-h)) - var(--scrub-h) - var(--sp-2));
     max-height: calc(100dvh - var(--strip-h) - var(--safe-top) - var(--map-top, var(--topbar-h)) - var(--scrub-h) - var(--sp-2));
     border-radius: var(--r-lg) var(--r-lg) 0 0;
   }

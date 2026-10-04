@@ -10,9 +10,8 @@
  *
  * Selected by <html data-theme="light|dark"> and <html data-contrast="high"> (src/ui/settings.ts sets both).
  *
- * Naming: NEW tokens are grouped below (surfaces, text, lines, interactive, fire semantics, elevation, type, space,
- * shape, size, motion). The LEGACY block at the top of each theme keeps the old names the screen CSS still uses
- * (--bg, --surface, --border, --primary, --accent ...) with remapped values; see docs/DESIGN.md "Old -> new token map".
+ * Naming: tokens are grouped below (surfaces, text, lines, interactive, fire semantics, map marks, elevation, type, space,
+ * shape, size, motion); docs/DESIGN.md lists them. The sim screen sets its own chrome sizes (sim.css, .sim-screen).
  *
  * Colour rules: one interactive accent (blue); fire semantics (orange/red/yellow) are reserved for fire, danger and the
  * fire-danger ratings; green means OK; the interactive blue is never used for data (charts, map layers, legends).
@@ -44,8 +43,6 @@
   --divider: #dadce0; /* 1 px hairlines between rows and around resting chips (decorative, not a boundary) */
   --outline: #80868b; /* boundary of text fields, checkboxes, switches, segmented buttons: >= 3:1 on --surface and --bg */
   --outline-variant: #dadce0; /* boundary of buttons and chips that carry a text label (the label identifies them) */
-  --border: var(--outline); /* LEGACY name */
-  --border-soft: var(--divider); /* LEGACY name */
 
   /* Interactive accent (blue). Fills and icons use --primary; TEXT on white/grey uses --primary-ink (>= 4.5:1 everywhere) */
   --primary: #1a73e8;
@@ -53,9 +50,6 @@
   --primary-ink: #1967d2;
   --primary-container: #e8f0fe; /* selected chip, tonal button, selected tile, nav pill */
   --on-primary-container: #174ea6;
-  --accent: var(--primary); /* LEGACY: the old orange accent is now the interactive blue; fire orange is --fire */
-  --on-accent: var(--on-primary);
-  --accent-soft: var(--primary-container);
   --focus: #1a73e8;
 
   /* Status: danger (red), watch (amber), ok (green), info (blue), fire (orange). x = fill/icon, on-x = text on fill, x-bg = tint, x-ink = text on tint/surface */
@@ -89,6 +83,16 @@
   --rating-ink: #202124;
   --rating-ink-catastrophic: #ffffff;
 
+  /* Map marks: drawn over the aerial photo and the 3-D terrain, which do not follow the theme, so the same in every theme
+     (white with a dark halo; the fire marks' observed / spot / back-burn colours are data) */
+  --map-halo: #ffffff;
+  --map-halo-veil: rgba(255, 255, 255, 0.2);
+  --map-shade: #000000;
+  --map-pin: #202124;
+  --mark-observed: #e02424;
+  --mark-spot: #ff8c1a;
+  --mark-backburn: #7b3fe4;
+
   /* Data colours for charts (never the interactive blue) */
   --chart-wind: #7b1fa2;
   --chart-temp: #c2410c;
@@ -118,8 +122,6 @@
   --elev-2: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15); /* search pill, FABs, popovers */
   --elev-3: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15); /* bottom sheets, menus */
   --elev-4: 0 2px 3px rgba(60, 64, 67, 0.3), 0 6px 10px 4px rgba(60, 64, 67, 0.15); /* dialogs */
-  --shadow: var(--elev-2); /* LEGACY */
-  --shadow-strong: var(--elev-4); /* LEGACY */
 
   --map-dim: transparent;
 
@@ -153,17 +155,12 @@
   --divider: #3c4043;
   --outline: #969ba1;
   --outline-variant: #5f6368;
-  --border: var(--outline);
-  --border-soft: var(--divider);
 
   --primary: #8ab4f8;
   --on-primary: #202124;
   --primary-ink: #8ab4f8;
   --primary-container: #2f3b52;
   --on-primary-container: #d2e3fc;
-  --accent: var(--primary);
-  --on-accent: var(--on-primary);
-  --accent-soft: var(--primary-container);
   --focus: #8ab4f8;
 
   --danger: #f28b82;
@@ -211,8 +208,6 @@
   --elev-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(232, 234, 237, 0.08);
   --elev-3: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(232, 234, 237, 0.08);
   --elev-4: 0 2px 3px rgba(0, 0, 0, 0.6), 0 6px 10px 4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(232, 234, 237, 0.1);
-  --shadow: var(--elev-2);
-  --shadow-strong: var(--elev-4);
 
   --map-dim: rgba(0, 0, 0, 0.2);
 
@@ -244,8 +239,6 @@
   --elev-2: 0 1px 3px rgba(0, 0, 0, 0.35);
   --elev-3: 0 2px 6px rgba(0, 0, 0, 0.35);
   --elev-4: 0 3px 10px rgba(0, 0, 0, 0.4);
-  --shadow: var(--elev-2);
-  --shadow-strong: var(--elev-4);
 }
 
 /* Light + high contrast: today's "Sunlight" look built from the same tokens. */
@@ -371,13 +364,10 @@
   --r-xl: 20px; /* top corners of bottom sheets */
   --r-bar: 28px; /* the floating top bar */
   --r-pill: 999px;
-  --radius: var(--r-md); /* LEGACY */
-  --radius-sm: var(--r-sm); /* LEGACY */
 
   /* Lines */
   --bw: 1px; /* control outline width: 1 px, 2 px in high contrast */
   --card-bw: 0px; /* card outline: none (flat), 2 px in high contrast */
-  --control-border: var(--bw) solid var(--outline); /* LEGACY name; input-like controls */
 
   /* Sizes. HARD RULE: every interactive control has a hit area of at least --tap x --tap, whatever its visual size. */
   --icon-size: 24px;
@@ -398,18 +388,10 @@
   --nav-h: 56px; /* bottom navigation */
   --timeline-h: 64px; /* timeline strip */
   --strip-h: 24px; /* the training strip (must not grow past this) */
-  --badge-h: var(--strip-h); /* LEGACY name of --strip-h: the sim layout subtracts it */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
-
-  /* Sim-screen chrome, LEGACY values: the sim CSS (sim.css, transport.css) still draws rows of exactly these sizes.
-     The screen builders change these to --bar-h + --weather-h, --timeline-h and so on when they restyle the chrome.
-     --scrub-h INCLUDES the bottom safe-area inset. Landscape phones fold the weather line into one row (media query below). */
-  --topbar-h: 84px;
-  --scrub-h: calc(84px + var(--safe-bottom));
-  --dock-h: 46px; /* the tab row: a 2 px border + 44 px tabs (the smallest tap target we allow) */
 
   /* Motion: 150-200 ms; prefers-reduced-motion switches it off in base.css */
   --dur-1: 150ms;
@@ -423,11 +405,4 @@
   --z-dialog: 90;
   --z-toast: 95;
   --z-strip: 100; /* the training strip is above everything */
-}
-
-@media (orientation: landscape) and (max-height: 540px) {
-  :root {
-    --topbar-h: 56px;
-    --scrub-h: calc(72px + var(--safe-bottom));
-  }
 }

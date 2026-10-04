@@ -15,7 +15,7 @@ import type { BundleManifest, DatasetLedger } from '../data';
 import { droughtStats, num, stat, textStat, weatherStats } from './datasetStats';
 import { MESSAGES } from './messages';
 import { SCENARIO_PARAMS } from './params';
-import { ATTRIBUTION, LICENCES, PROVIDERS, day, endpoint, endpointsOf, extentOf, skeleton, sizesOf, sumTotals, vintageFor } from './recordKit';
+import { ATTRIBUTION, LICENCES, PROVIDERS, day, dayUtc, endpoint, endpointsOf, extentOf, skeleton, sizesOf, sumTotals, vintageFor } from './recordKit';
 import type { DroughtResult, ResolvedWeather } from './weatherSources';
 import { DROUGHT_TAG, UPPER_AIR_TAG, WEATHER_TAG } from './weatherSources';
 
@@ -238,7 +238,7 @@ export function weatherRecord(i: WeatherInputs): DatasetRecord {
       ageHoursAtBuild: Math.round(ageH * 10) / 10,
       staleAfterHours: limitH,
       ...(stale ? { stale: true } : {}),
-      ...(tOfSeries ? { capturedOn: `${day(tOfSeries.from)}/${day(tOfSeries.to)}` } : {}),
+      ...(tOfSeries ? { capturedOn: `${dayUtc(tOfSeries.from)}/${dayUtc(tOfSeries.to)}` } : {}),
       capturedNote: historical ? 'The dates the series covers.' : 'The dates the series covers; the forecast run behind it is not reported by the service.',
     },
     crs: { native: 'Grid point of a global model (latitude and longitude of the nearest point)', toModel: 'A single series applied over the whole model area, corrected for the height difference (lapse rate) and interpolated in time to the simulation steps.' },

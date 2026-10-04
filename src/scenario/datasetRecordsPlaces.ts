@@ -10,7 +10,7 @@ import type { AreaPackMeta, BundleManifest, DatasetLedger } from '../data';
 import { CONTEXT_DATASET_ID } from '../data';
 import { CONTEXT_FILE_TAG, type ContextInfo, type ContextResult } from './context';
 import { contextStats, fuelStats, moistureStats, num, stat, textStat, type MoistureFacts } from './datasetStats';
-import { ATTRIBUTION, COPIES, LICENCES, PROVIDERS, dateMs, endpoint, endpointsOf, extentOf, ownArrayBytes, skeleton, sizesOf, sumTotals, vintageFor, day } from './recordKit';
+import { ATTRIBUTION, COPIES, LICENCES, PROVIDERS, boxShare, dateMs, endpoint, endpointsOf, extentOf, ownArrayBytes, skeleton, sizesOf, sumTotals, vintageFor, day } from './recordKit';
 
 export interface PlacesInputs {
   ledger: DatasetLedger;
@@ -123,7 +123,8 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
   const { places, ledger } = i;
   const ctx = places.context;
   const origin = originOfContext(places.origin);
-  const cs = ctx ? contextStats(ctx) : null;
+  // Figures for the model area only: the loaded map reaches a margin beyond it (and, for a demo site, the whole 9 km square).
+  const cs = ctx ? contextStats(ctx, { halfM: i.extentM / 2 }) : null;
   const shares = origin === 'live' ? null : layerShares(places.file);
   // What this build stored of the shared place file (a live answer is kept for offline use), split the same way.
   const storeShares = layerShares(places.file);
@@ -143,7 +144,9 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
     const cached = origin === 'live' ? 0 : origin === 'bundled' ? 0 : Math.round((fileTotals.cacheBytes + fileTotals.packBytes) * share);
     const missing = !ctx || failedIds.has(L.id);
     const sourceStats = cs ? (L.key === 'roads' ? cs.roads : L.key === 'fireTrails' ? cs.fireTrails : L.key === 'homes' ? cs.homes : L.key === 'zones' ? cs.zones : cs.places) : [];
+    // As loaded (the whole file, a little more than the model area) and inside the model area.
     const count = !ctx ? 0 : L.key === 'roads' ? ctx.roads.length : L.key === 'fireTrails' ? ctx.fireTrails.length : L.key === 'homes' ? ctx.homes.length >> 1 : L.key === 'zones' ? ctx.zones.length : ctx.places.length;
+    const inside = !cs ? 0 : L.key === 'roads' ? cs.facts.roadCount : L.key === 'fireTrails' ? cs.facts.fireTrailCount : L.key === 'homes' ? cs.facts.homes : L.key === 'zones' ? cs.facts.zoneCount : cs.facts.places;
     const memory = !ctx ? 0 : L.key === 'roads' ? ctx.roads.reduce((s, r) => s + r.xy.byteLength, 0) : L.key === 'fireTrails' ? ctx.fireTrails.reduce((s, r) => s + r.xy.byteLength, 0) : L.key === 'homes' ? ctx.homes.byteLength : L.key === 'zones' ? ctx.zones.reduce((s, z) => s + z.rings.reduce((a, r) => a + r.byteLength, 0), 0) : 0;
     const common = {
       id: L.id,
@@ -154,7 +157,7 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
       // Zoning is published by NSW Planning (the ePlanning service), the other layers by Spatial Services.
       provider: L.key === 'zones' ? (src ? { name: src.provider, url: PROVIDERS.planning.url } : PROVIDERS.planning) : src ? { name: src.provider, url: PROVIDERS.spatial.url } : PROVIDERS.spatial,
       licence: src ? { name: src.licence, url: LICENCES.ccBy.url } : LICENCES.ccBy,
-      attribution: src?.attribution ?? ATTRIBUTION.spatial,
+      attribution: src?.attribution ?? (L.key === 'zones' ? ATTRIBUTION.planning : ATTRIBUTION.spatial),
       format: L.format,
       kind: L.kind,
       extent: extentOf(i.centre, i.extentM),
@@ -198,9 +201,14 @@ export function placesRecords(i: PlacesInputs): DatasetRecord[] {
           capturedNote: origin === 'live' ? 'Read from the live service; the services do not publish an update date.' : `Fetched from the service on ${fetched ?? 'an unknown date'}; not refreshed since.`,
         }),
         crs: { native: 'EPSG:4326 (longitude and latitude), coordinates rounded to 1e-5 degrees (about 1 m)', toModel: 'Projected to metres east and north of the site centre (equirectangular).' },
-        coverage: { fraction: partial ? 0.5 : 1, note: 'Complete for the queried box unless flagged partial; an empty layer means the service has nothing there.' },
-        native: { ...(L.kind === 'points' ? { points: count } : { features: count }) },
-        model: { resampling: 'none', ...(L.kind === 'points' ? { points: count } : { features: count }), note: 'Drawn as vectors; the heat maps derived from them are on the fire grid.' },
+        coverage: {
+          // The share of the model area inside the loaded box (all of it, except for a demo site's map that stops short).
+          fraction: places.file ? boxShare(extentOf(i.centre, i.extentM), places.file.bbox) : partial ? 0.5 : 1,
+          ...(partial ? { filledBy: 'nothing (the layer is left off the map there)' } : {}),
+          note: 'Complete for the queried box unless flagged partial; an empty layer means the service has nothing there.',
+        },
+        native: { ...(L.kind === 'points' ? { points: count } : { features: count }), ...(inside !== count ? { note: `${formatCount(count)} in the loaded map, which reaches a little beyond the model area.` } : {}) },
+        model: { resampling: 'none', ...(L.kind === 'points' ? { points: inside } : { features: inside }), note: 'Only what lies inside the model area; drawn as vectors, and the heat maps derived from them are on the fire grid.' },
         sizes: sizesOf(own, {
           transferredBytes: bytes,
           networkBytes: net,
@@ -244,12 +252,19 @@ export interface FuelInputs {
 
 const STATUS_WORD: Partial<Record<DatasetRecord['status'], string>> = { fallback: 'substitute', unavailable: 'not available', partial: 'partly real' };
 
+/** What to say about an input of the fuel map: only data that were obtained are "real data"; a designed or typed input says what it is. */
+function partNote(r: DatasetRecord): string {
+  if (r.status === 'used') return r.origin === 'preset' || r.origin === 'synthetic' ? 'designed by the app, not real data' : r.origin === 'user' ? 'your values' : 'real data';
+  if (r.status === 'user') return 'your values';
+  return r.fallbackReason ?? STATUS_WORD[r.status] ?? r.status;
+}
+
 export function fuelRecord(i: FuelInputs): DatasetRecord {
   const fs = fuelStats(i.fuel);
   const g = i.fuel.grid;
   const ids = ['terrain', 'vegetation-svtm', 'canopy-height', 'fire-history', 'drought-history'];
   const ins = i.inputs.filter((r) => ids.includes(r.id));
-  const parts: DatasetPart[] = ins.map((r) => ({ label: r.title, origin: r.origin, note: r.status === 'used' ? 'real data' : r.fallbackReason ?? r.status }));
+  const parts: DatasetPart[] = ins.map((r) => ({ label: r.title, origin: r.origin, note: partNote(r) }));
   const bad = ins.filter((r) => r.status === 'fallback' || r.status === 'unavailable' || r.status === 'partial');
   // Only substitutes among the map inputs (no real terrain, vegetation, canopy or fire history): the fuel is a substitute too.
   const realMap = ins.filter((r) => r.id !== 'drought-history' && (r.status === 'used' || r.status === 'partial'));
@@ -274,7 +289,7 @@ export function fuelRecord(i: FuelInputs): DatasetRecord {
     ...(bad.length ? { fallbackReason: `Built ${status === 'fallback' ? 'only' : 'partly'} from substitutes: ${bad.map((r) => `${r.title.toLowerCase()} (${STATUS_WORD[r.status] ?? r.status})`).join(', ')}.` } : {}),
     vintage: { retrievedAt: i.now, retrievedBasis: 'generated', versionNote: 'Fuel class and accumulation tables are compiled into the app (Olson curves per class, OFHAG hazard scores, Vesta Mk2 inputs).' },
     extent: extentOf(i.centre, i.extentM),
-    coverage: { fraction: 1 },
+    coverage: { fraction: 1, note: 'Every cell has a value. How much of it comes from real data is shown for each data set it is worked out from, below.' },
     model: { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells: g.nx * g.ny, resampling: 'none' },
     sizes: { transferredBytes: 0, networkBytes: 0, cachedBytes: 0, requests: 0, memoryBytes: memory, ...(i.timingMs !== undefined ? { durationMs: i.timingMs } : {}) },
     stats: [...fs.stats, ...i.fuel.sources.map((s) => textStat('Source line', s))],
@@ -401,9 +416,11 @@ export function bundleRecord(i: { now: number; centre: LatLon; extentM: number; 
       ...(replayRead ? [textStat('Replay weather files read', formatBytes(replayRead), 'Counted under Weather and Rainfall history.')] : []),
       stat('Files', files, '', 0, files !== parts.length ? `${parts.length} entries; the terrain tiles are one entry` : undefined),
     ],
-    evidence: { level: 'measured', note: 'The files are copies of the services’ data at the capture date.' },
+    // A package of data sets of different kinds: the trust of each is on its own record (heights, photos, fire outlines and roads are
+    // records; the vegetation and canopy maps are predictions), so the package takes the lower level.
+    evidence: { level: 'modelled', note: 'The files are copies of the services’ data at the capture date. How far to trust each one is shown on its own data set: the vegetation and canopy maps are predictions, the heights, photo, fire outlines and roads are records.' },
     warnings: [],
-    limitations: ['Bundled data are a snapshot: fires, roads and buildings since the capture date are not in them.', 'The elevation model is a 5 m grid from a 2019-era service resampled to 10 m; the aerial photo is a mosaic of several years.'],
+    limitations: ['Bundled data are a snapshot: fires, roads and buildings since the capture date are not in them.', 'The elevation model is a 5 m grid from a service whose copyright notice reads “DFSI 2019”, resampled to 10 m; the aerial photo is a mosaic of several years.'],
     parts,
   });
 }
@@ -453,7 +470,7 @@ export function packRecord(i: { now: number; centre: LatLon; extentM: number; pa
     coverage: { fraction: 1 },
     sizes: { transferredBytes: 0, networkBytes: 0, cachedBytes: 0, requests: 0, storedOnDeviceBytes: packs.reduce((a, p) => a + p.bytes, 0) },
     stats,
-    evidence: { level: 'measured', note: 'Copies of the services’ data on the day the pack was saved.' },
+    evidence: { level: 'modelled', note: 'Copies of the services’ data on the day the pack was saved. How far to trust each item is shown on its own data set (a forecast, a vegetation map and a canopy map are predictions, not records).' },
     limitations: ['A saved pack ages: a forecast in it is stale after 6 hours, and fires, roads and homes since the save are not in it.'],
     parts,
   });

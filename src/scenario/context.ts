@@ -13,6 +13,7 @@
  * caller's `signal` aborts. Data licence: CC BY 4.0, © Spatial Services NSW and © State of NSW and Department of
  * Planning, Housing and Infrastructure (the attribution strings travel in `ContextLayers.sources`).
  */
+import { localDay } from '../core/datasets';
 import type { ContextLayers } from '../core/places';
 import {
   contextCacheKey,
@@ -85,6 +86,8 @@ interface ContextCacheRecord {
   /** Unix ms when the live query ran. */
   t: number;
   file: ContextFileV1;
+  /** Size of the file as JSON (bytes): what the storage report counts for this entry (data/cache.ts storedBytes), the same figure the build's records state. */
+  n?: number;
 }
 
 /** Area-pack item name of the context file. */
@@ -112,7 +115,6 @@ interface Found {
   info: Omit<ContextInfo, 'durationMs'>;
 }
 
-const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 /**
  * Find the context file for a domain: see the module doc for the order. `fresh` (area-pack download) asks the services
@@ -184,7 +186,7 @@ export async function resolveContextFile(req: ContextRequest, fresh = false): Pr
 
   // 5. Older data is better than none.
   if (cached) {
-    warnings.push(MESSAGES.contextStale(isoDay(cached.t)));
+    warnings.push(MESSAGES.contextStale(localDay(cached.t)));
     traceCached();
     return found(cached.file, 'cache', { cachedAt: cached.t });
   }
@@ -278,8 +280,9 @@ async function liveQuery(req: ContextRequest, bbox: ReturnType<typeof contextQue
 
 async function storeInCache(kv: KV, key: string, rec: ContextCacheRecord, stored?: (bytes: number) => void): Promise<void> {
   try {
-    await kv.put(key, rec);
-    stored?.(JSON.stringify(rec.file).length);
+    const n = JSON.stringify(rec.file).length;
+    await kv.put(key, { ...rec, n });
+    stored?.(n);
     const keys = await kv.keys('context/v1/');
     if (keys.length <= CACHE_ENTRIES) return;
     const aged: { key: string; t: number }[] = [];

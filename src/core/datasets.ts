@@ -303,6 +303,9 @@ export interface DatasetStat {
   hint?: string;
 }
 
+/** Label of the canopy record's statistic that carries the cell size (m) the canopy data were read on (`raw`); the layer catalog words its resolution from it. */
+export const CANOPY_NATIVE_CELL_LABEL = 'Native cell of the data used';
+
 /** Data for a spark bar: a histogram (`edges` has values.length + 1 entries) or categories (`labels`). Values are SHARES (0-1) of the cells. */
 export interface DatasetDistribution {
   kind: 'histogram' | 'categorical';
@@ -577,6 +580,19 @@ export function formatPercent(fraction: number | undefined | null): string {
 /** Epoch ms as an ISO date ('2026-09-29') in UTC; '' for a non-finite time. */
 export function isoDate(ms: number | undefined | null): string {
   return isNum(ms) && ms > 0 ? new Date(ms).toISOString().slice(0, 10) : '';
+}
+
+/**
+ * The calendar day ('2026-10-05') of an instant in New South Wales, where the app is used: a copy made at 06:12 on 5 October
+ * (AEDT) is '2026-10-05', not the UTC date '2026-10-04', so it agrees with the times the screens show. '' for a non-finite time.
+ */
+export function localDay(ms: number | undefined | null, timeZone = 'Australia/Sydney'): string {
+  if (!isNum(ms) || !(ms > 0)) return '';
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+  } catch {
+    return isoDate(ms);
+  }
 }
 
 /** Epoch ms as 'yyyy-mm-dd hh:mm UTC'; '' for a non-finite time. */

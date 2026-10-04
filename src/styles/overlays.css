@@ -492,6 +492,13 @@ button.search-bar-text {
   -webkit-user-select: none;
 }
 
+/* The ring goes INSIDE the item: the items fill the whole bar (and the dock's tab row sits between the sheet and the timeline strip), so
+ * the global 2 px offset ring was cut off above and below, leaving two blue bars at the sides. */
+.nav-item:focus-visible {
+  outline-offset: -4px;
+  border-radius: var(--r-md);
+}
+
 .nav-label {
   max-width: 100%;
   overflow: hidden;
@@ -613,8 +620,8 @@ button.search-bar-text {
 
 .tile-label {
   max-width: 100%;
-  font-size: var(--fs-xs);
-  line-height: var(--lh-xs);
+  font-size: var(--fs-sm); /* the name of a control is body text; only the status line under it (.tile-cap) is a 12 px caption */
+  line-height: var(--lh-sm);
   font-weight: var(--fw-medium);
   color: var(--text);
   overflow-wrap: anywhere;

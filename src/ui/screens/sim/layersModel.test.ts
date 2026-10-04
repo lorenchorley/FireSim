@@ -165,6 +165,24 @@ describe('availability and words', () => {
     expect(sc.terrainSource).toBe('NSW 5 m LiDAR');
     const img = datasets.find((d) => d.id === 'imagery')!;
     expect(sc.imageryCellSize).toBe(img.model?.resolutionM ?? img.native?.resolutionM);
+    expect(sc.atmosphere3d).toBe(false); // a surface-only wind diagnostic (no levels): not the 3-D atmosphere
+    expect(layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never, { atmosphere: { nz: 20, grid: { cellSize: 150 } } } as never).atmosphere3d).toBe(true);
+    expect(layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never, null).atmosphere3d).toBeUndefined(); // before the first picture: not known
+  });
+
+  it('the (i) text says how the layer is drawn in THIS run: the smoke of the fast mode is not a 3-D volume', () => {
+    const smoke = LAYER_CATALOG.find((l) => l.id === 'smoke')!;
+    const row = (sc: Parameters<typeof infoRows>[1]): string => infoRows(smoke, sc, { ok: true }).find((r) => r.key === 'How it is drawn')!.value;
+    expect(row({ atmosphere3d: false })).toMatch(/^3-D objects:/);
+    expect(row({ atmosphere3d: true })).toMatch(/^3-D volume:/);
+    expect(row(undefined)).toMatch(/^3-D volume:/);
+    expect(infoRows(smoke, { atmosphere3d: false }, { ok: true }).find((r) => r.key === 'How fine')!.value).toMatch(/no smoke field/);
+  });
+
+  it('the catalog is worded from the ground and canopy records', () => {
+    const datasets = fixture('katoomba-bundled');
+    const sc = layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never);
+    expect(sc.terrainNativeCellSize).toBe(datasets.find((d) => d.id === 'terrain')!.native!.resolutionM);
   });
 });
 

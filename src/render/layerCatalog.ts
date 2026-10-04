@@ -20,6 +20,7 @@
  *   }
  * The legend of the shown heat map is `view.legend()` (SceneView), or `legendFor(kind, ctx)` from legends.ts.
  */
+import { CANOPY_NATIVE_CELL_LABEL, type DatasetRecord } from '../core/datasets';
 import type { ContextLayers } from '../core/places';
 import { FuelType, type FuelMap, type SimSnapshot } from '../core/types';
 import type { LayerState, OverlayKind } from './layers';
@@ -122,6 +123,18 @@ export interface LayerScenario {
   context?: Pick<ContextLayers, 'sources' | 'fetched'> | null;
   /** Pixel size of the aerial photo (m). */
   imageryCellSize?: number;
+  /**
+   * True when the 3-D atmosphere is running, false in the fast mode (a surface wind fitted to the terrain: no smoke
+   * field, no wind through the plume). Absent = not known (before the engine reports): the layers are described for
+   * the 3-D atmosphere and the fast mode is not mentioned.
+   */
+  atmosphere3d?: boolean;
+  /** Resolution (m) of the ground heights as published (5 for the NSW model of the demo sites, about 30 for SRTM). */
+  terrainNativeCellSize?: number;
+  /** Cell size (m) of the finer ground grid the 3-D view is drawn from. */
+  terrainHiResCellSize?: number;
+  /** Cell size (m) the canopy-height data were aggregated on before they were put on the fire grid. */
+  canopyCellSize?: number;
 }
 
 export interface LayerInfo {
@@ -254,13 +267,20 @@ const needsContext =
 const cell = (sc?: LayerScenario): string => (sc?.fireCellSize ? `${sc.fireCellSize} m` : '20 or 30 m');
 const fireGrid = (sc?: LayerScenario): string => `${cell(sc)} cells (the fire grid)`;
 
-const TERRAIN_DEFAULT = 'NSW Spatial Services 5 m LiDAR ground model (demo sites), or SRTM satellite elevation elsewhere';
+const TERRAIN_DEFAULT = 'NSW Spatial Services 5 m elevation model (demo sites, bundled at 10 m), or SRTM satellite elevation (about 30 m) elsewhere';
 const terrainSource = (sc?: LayerScenario): string => sc?.terrainSource ?? TERRAIN_DEFAULT;
-const terrainResolution = (sc?: LayerScenario): string => `${cell(sc)} cells for the colours; the 3-D ground is drawn finer (10 m) where LiDAR is available`;
+/** How the ground is drawn: the colours on the fire grid, the 3-D ground from a finer grid that adds detail only where the data have it. */
+const terrainResolution = (sc?: LayerScenario): string => {
+  const hi = sc?.terrainHiResCellSize;
+  const native = sc?.terrainNativeCellSize;
+  if (hi && native && native > hi * 1.5) return `${cell(sc)} cells for the colours; the 3-D ground is drawn on a ${hi} m grid smoothly interpolated from ${native} m heights, so it looks finer than the data are`;
+  if (hi) return `${cell(sc)} cells for the colours; the 3-D ground is drawn on a finer ${hi} m grid`;
+  return `${cell(sc)} cells for the colours; the 3-D ground is drawn on a finer 10 m grid (the demo sites' 5 m model, bundled at 10 m; elsewhere it is interpolated from the 30 m satellite heights)`;
+};
 
 const CANOPY_DEFAULT = 'Meta and World Resources Institute canopy-height map, made from 1 m satellite images (CC BY 4.0)';
 const canopySource = (sc?: LayerScenario): string => sc?.fuelSources?.find((s) => /canopy height/i.test(s)) ?? CANOPY_DEFAULT;
-const canopyResolution = (sc?: LayerScenario): string => `20 m canopy map, shown on the ${cell(sc)} fire grid`;
+const canopyResolution = (sc?: LayerScenario): string => `${sc?.canopyCellSize ?? 20} m canopy map, shown on the ${cell(sc)} fire grid`;
 
 const FUEL_DEFAULT = 'NSW State Vegetation Type Map turned into fuel types, with fuel built up since the last fire (NPWS fire history)';
 const fuelSource = (sc?: LayerScenario): string => {
@@ -777,8 +797,11 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     scene: 'smoke',
     dimension: '3-D volume',
     available: always,
-    source: () => SIMULATION,
-    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells, drawn as soft puffs`,
+    source: (sc) => (sc?.atmosphere3d === false ? 'Drawn by FireSim from the fire and the wind: the fast mode does not simulate smoke' : SIMULATION),
+    resolution: (sc) =>
+      sc?.atmosphere3d === false
+        ? 'One drawn column of puffs above the most intense part of the fire; there is no smoke field'
+        : `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells, drawn as soft puffs`,
   },
   {
     id: 'embers',
@@ -803,8 +826,14 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     scene: 'wind',
     dimension: '3-D volume',
     available: always,
-    source: () => 'FireSim 3-D atmosphere (or the weather forecast wind where the atmosphere is off), computed on this device',
-    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells, drawn as streaks`,
+    source: (sc) =>
+      sc?.atmosphere3d === false
+        ? 'The fast mode’s surface wind: the forecast wind bent around the terrain, computed on this device (no wind through the plume)'
+        : 'FireSim 3-D atmosphere (or the weather forecast wind where the atmosphere is off), computed on this device',
+    resolution: (sc) =>
+      sc?.atmosphereCellSize
+        ? `${sc.atmosphereCellSize} m grid${sc.atmosphere3d === false ? ', surface wind only' : ' of atmosphere cells'}, drawn as streaks`
+        : `${sc?.atmosphere3d === false ? 'A surface wind field' : '100 to 270 m atmosphere cells'}, drawn as streaks`,
   },
   {
     id: 'crossSection',
@@ -837,6 +866,31 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // Lookups and helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The resolutions of the data sets behind the terrain and canopy layers, read from the scenario's data-set records
+ * (core/datasets.ts), for {@link LayerScenario}: the ground heights as published and the canopy data as read.
+ */
+export function layerFactsOfDatasets(datasets: readonly DatasetRecord[] | undefined): Pick<LayerScenario, 'terrainNativeCellSize' | 'canopyCellSize'> {
+  const out: Pick<LayerScenario, 'terrainNativeCellSize' | 'canopyCellSize'> = {};
+  const terrain = datasets?.find((d) => d.id === 'terrain');
+  const native = terrain && terrain.origin !== 'synthetic' ? terrain.native?.resolutionM : undefined;
+  if (native !== undefined && Number.isFinite(native) && native > 0) out.terrainNativeCellSize = native;
+  const canopy = datasets?.find((d) => d.id === 'canopy-height');
+  const cell = canopy && canopy.origin !== 'none' ? canopy.stats.find((x) => x.label === CANOPY_NATIVE_CELL_LABEL)?.raw : undefined;
+  if (cell !== undefined && Number.isFinite(cell) && cell > 0) out.canopyCellSize = cell;
+  return out;
+}
+
+/**
+ * How a layer is drawn in THIS scenario. The smoke and the wind streaks are a 3-D volume only with the 3-D atmosphere; in
+ * the fast mode (a surface wind fitted to the terrain) the smoke is one drawn column and the streaks follow a surface
+ * wind, so both are objects drawn in the 3-D scene, not a field through the air.
+ */
+export function layerDimension(info: LayerInfo, sc?: LayerScenario): LayerDimension {
+  if (sc?.atmosphere3d === false && (info.id === 'smoke' || info.id === 'wind')) return '3-D objects';
+  return info.dimension;
+}
 
 export const layerById = (id: string): LayerInfo | undefined => LAYER_CATALOG.find((l) => l.id === id);
 
@@ -871,7 +925,8 @@ export function availabilityContext(input: {
   const ctx = input.context ?? null;
   return {
     hasFire: input.fire ?? !!input.snapshot,
-    has3dAtmosphere: !!input.snapshot?.atmosphere,
+    // The fast tier carries a surface-only wind diagnostic (nz = 0): that is not the 3-D atmosphere.
+    has3dAtmosphere: (input.snapshot?.atmosphere?.nz ?? 0) > 0,
     hasContext: !!ctx,
     hasGrass: input.fuel ? fuelHasGrass(input.fuel) : false,
     hasCanopyData: !!input.fuel?.sources.some((s) => /canopy height/i.test(s)),

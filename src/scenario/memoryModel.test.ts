@@ -82,6 +82,15 @@ describe('workingMemory text and totals', () => {
     const f = workingMemoryForScenario(scenario, { tier: 'fast' });
     const hgh = workingMemoryForScenario(scenario, { tier: 'high' });
     expect(f.workerBytes).toBeLessThan(hgh.workerBytes);
+    // The engine's own tier is the one to model once it has reported: the fast tier is not described as the 3-D atmosphere, and
+    // holds less than 'auto' (which is modelled as Standard) for the same scenario.
+    const std = workingMemoryForScenario(scenario, { tier: 'auto' });
+    expect(f.tier).toBe('fast');
+    expect(f.items.find((x) => x.id === 'atmosphere')!.label).toMatch(/fast mode/);
+    expect(f.items.find((x) => x.id === 'atmosphere')!.label).not.toMatch(/3-D/);
+    expect(std.items.find((x) => x.id === 'atmosphere')!.label).toMatch(/3-D/);
+    expect(f.workerBytes).toBeLessThan(std.workerBytes);
+    expect(f.notes.join(' ')).not.toMatch(/Auto tier/);
   });
 
   it('a long run keeps the scrubber history under the budget', () => {

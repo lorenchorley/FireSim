@@ -11,9 +11,8 @@
  */
 
 /* ───────────────────────── Buttons ─────────────────────────
- * <button class="btn">Outlined (default)</button>  .btn-primary (filled blue)  .btn-tonal  .btn-ghost / .btn-text  .btn-danger
+ * <button class="btn btn-secondary">Outlined (default)</button>  .btn-primary (filled blue)  .btn-tonal  .btn-ghost / .btn-text  .btn-danger
  * sizes .btn-sm (32) / default (40) / .btn-lg (48); .btn-block full width; .btn-icon round icon-only (widgets.button iconOnly).
- * Legacy variants still work: .btn-secondary = outlined, .btn-accent = tonal.
  */
 .btn {
   --btn-h: var(--ctl-h);
@@ -127,8 +126,7 @@ a.chip::after,
   color: var(--on-primary);
 }
 
-.btn-tonal,
-.btn-accent {
+.btn-tonal {
   background: var(--primary-container);
   border-color: transparent;
   color: var(--on-primary-container);
@@ -140,8 +138,7 @@ a.chip::after,
   color: var(--on-danger);
 }
 
-.btn-secondary,
-.btn-outlined {
+.btn-secondary {
   background: var(--surface);
 }
 
@@ -198,10 +195,8 @@ a.chip::after,
 }
 
 .btn-secondary:disabled,
-.btn-outlined:disabled,
 .btn-secondary.is-disabled,
-.btn-outlined.is-disabled,
-.btn:not(.btn-primary):not(.btn-tonal):not(.btn-accent):not(.btn-danger):not(.btn-ghost):not(.btn-text):disabled {
+.btn:not(.btn-primary):not(.btn-tonal):not(.btn-danger):not(.btn-ghost):not(.btn-text):disabled {
   background: transparent;
   border-color: var(--disabled-bg);
 }

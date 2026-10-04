@@ -158,6 +158,58 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Time since fire',
     body: 'Fuel re-accumulates over about 10–20 years after a fire or hazard-reduction burn. Recently burnt ground slows a fire and is a better anchor, but only for a few years.',
   },
+  {
+    term: 'Layer',
+    short: 'One kind of information on the map',
+    body: 'Roads, fire trails, homes, residential areas, place names, trees, shrubs, wind streaks, flames, smoke or a heat map. Each one switches on or off on its own in the Layers panel, and its (i) button says what it shows, why it matters and where the data come from.',
+  },
+  {
+    term: 'Heat map',
+    short: 'The ground coloured by one measurement',
+    body: 'Cool colours (blue, green) mean little and warm colours (orange, red) mean a lot, for example of slope, fuel hazard or how fast the fire runs. One heat map shows at a time; “Show on its own” hides the photo and the trees so the colours are easy to read.',
+  },
+  {
+    term: 'Data set',
+    short: 'One source the model is built from',
+    body: 'For example the ground height, the vegetation map or the weather forecast. The Data sets screen (main menu) lists each one with its size, who provides it, how fine it is, how old it is and where it came from.',
+  },
+  {
+    term: 'Bundled, live, saved, estimated',
+    short: 'Where a data set came from',
+    body: 'Bundled data ship inside the app, so they work with no signal. Live data were downloaded while the model was built. Saved data are a copy the phone kept from an earlier download. Estimated data were worked out or made up by the app because the real ones were not available.',
+  },
+  {
+    term: 'Resolution',
+    short: 'How fine the data are',
+    body: 'A 30 m grid keeps one value for every 30 m by 30 m square. Finer data show smaller gullies and ridges, but take more time and memory.',
+  },
+  {
+    term: '2-D and 3-D',
+    short: 'What the model works out in each',
+    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one. “How this simulation works” in the main menu shows what your run is using.',
+  },
+  {
+    term: 'Canopy height',
+    short: 'How tall the trees are',
+    body: 'Estimated from satellite pictures (Meta and the World Resources Institute), so the trees in the 3-D view stand at about their real height. Tall trees with loose bark can throw embers a long way.',
+  },
+  {
+    term: 'Understorey',
+    short: 'The shrubs under the trees',
+    body: 'The shrub layer is the ladder that lets flames climb from the ground into the tree crowns. More and taller shrubs mean a higher fire hazard.',
+  },
+  {
+    term: 'Bark hazard',
+    body: 'How much loose, stringy bark the trees carry. Smooth gums have little; stringybark has the most and is the worst source of embers.',
+  },
+  {
+    term: 'Grass curing',
+    body: 'How dry and golden the grass is, from fresh and green to fully dry. Dry grass burns fast and fierce; green grass hardly burns.',
+  },
+  {
+    term: 'Fire trail',
+    body: 'A vehicle track that the NSW Rural Fire Service has classified for firefighting access. Shown separately from ordinary roads.',
+  },
 ];
 
 /**

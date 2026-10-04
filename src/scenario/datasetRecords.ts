@@ -7,7 +7,7 @@
  * loaders' own reports (origin, site, tile counts). The only typed-in text is the documented static facts: provider and
  * licence names, service copyright text, format names and the plain-English explanations.
  */
-import { formatBytes, formatPercent, typedArrayFootprint, type DatasetOrigin, type DatasetPart, type DatasetRecord, type DatasetStat } from '../core/datasets';
+import { CANOPY_NATIVE_CELL_LABEL, formatBytes, formatPercent, typedArrayFootprint, type DatasetOrigin, type DatasetPart, type DatasetRecord, type DatasetStat } from '../core/datasets';
 import type { FireHistoryRecord, FuelMap, LatLon, Terrain } from '../core/types';
 import { FireHistoryKind } from '../core/types';
 import type { BundleManifest, DatasetLedger } from '../data';
@@ -76,6 +76,13 @@ export function originOf(o: LayerOrigin, ledger: DatasetLedger | undefined, tags
 
 const capturedOf = (m: BundleManifest | null, siteId: string | undefined, file: string): string | undefined => (siteId ? bundleFile(m, siteId, file)?.capturedOn : undefined);
 
+/**
+ * Resolution (m) of the SRTM heights behind the Terrarium tiles: 1 arc-second, 30.9 m north-south and about 26 m east-west at
+ * 33.7° S ("30 m" in the sources: docs/research/08 §3.4). The tiles themselves are served at a fixed zoom whose PIXELS can be much
+ * finer (about 8 m at zoom 14): each pixel is interpolated from this source and carries no extra detail.
+ */
+export const SRTM_CELL_M = 30;
+
 /** Ground metres per Terrarium pixel at a latitude and zoom. */
 const terrariumPixelM = (latDeg: number, z: number): number => (Math.cos((latDeg * Math.PI) / 180) * 2 * Math.PI * 6378137) / (256 * 2 ** z);
 
@@ -94,7 +101,10 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
   const st = terrainStats(terrain, { ...(i.localRelief ? { localRelief: i.localRelief } : {}), ...(info.tiles ? { seaOrNoDataCells: info.tiles.seaOrNoDataCells } : {}) });
   const memory = (ownArrayBytes(terrain) + typedBytes(i.hiRes.elevation)) * COPIES;
   const durationMs = i.timings.terrain ?? info.durationMs;
-  const model = { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells, resampling: 'block-average' as const, note: `A ${i.hiRes.grid.cellSize} m grid (${i.hiRes.grid.nx} x ${i.hiRes.grid.ny}) drives the 3-D view and is averaged ${b} x ${b} into each fire cell; slope, aspect and landforms are worked out on the fire grid.` };
+  // Heights of a pack saved from Terrarium tiles are the same 30 m SRTM data: the 10 m grid only interpolates them.
+  const srtm = hi.origin === 'tiles' || (hi.origin === 'pack' && /Terrarium|SRTM|Terrain Tiles/i.test(info.packSource ?? ''));
+  const hiNote = srtm ? ` It is smoothly interpolated from ${SRTM_CELL_M} m satellite heights, so it shows the ground more smoothly but not in more detail.` : '';
+  const model = { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells, resampling: 'block-average' as const, note: `A ${i.hiRes.grid.cellSize} m grid (${i.hiRes.grid.nx} x ${i.hiRes.grid.ny}) drives the 3-D view and is averaged ${b} x ${b} into each fire cell; slope, aspect and landforms are worked out on the fire grid.${hiNote}` };
   const stats: DatasetStat[] = [];
   const parts: DatasetPart[] = [];
   const common = {
@@ -145,7 +155,7 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
         specRef: 'docs/research/08-data-sources-apis.md §3.5',
       },
       limitations: [
-        "The NSW_5M_Elevation service says its heights are 'derived from stereo imagery'. This app once called them LiDAR bare earth; the service does not say that.",
+        "The NSW_5M_Elevation service describes its heights as 'derived from stereo imagery' (photogrammetry): they are not LiDAR bare-earth heights.",
         `Averaged into ${g.cellSize} m cells, so cliffs and narrow gullies are softened. The 'very steep ground inside cells' figures show how much is hidden.`,
         'Bundled at 10 m: the 5 m detail of the source is not in the app.',
       ],
@@ -193,7 +203,7 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
       }),
       crs: { native: `EPSG:3857 (Web Mercator) tiles, about ${num(px, 1)} m per pixel at zoom ${tl.zoom}`, toModel: `Bilinear sampling of the tile mosaic onto the ${i.hiRes.grid.cellSize} m local grid (metres east and north of the site centre), then block-averaged to the fire grid.` },
       coverage: { fraction: Math.max(0, 1 - noDataShare), ...(noDataShare > 0 ? { filledBy: 'sea level (0 m)', filledOrigin: 'synthetic' as const, note: 'Sea, deep water or no-data points are set to 0 m.' } : {}) },
-      native: { resolutionM: Math.round(px * 10) / 10, width: 256, height: 256, note: 'The source data (SRTM) are about 30 m.' },
+      native: { resolutionM: SRTM_CELL_M, note: `SRTM heights about ${SRTM_CELL_M} m apart. The tiles are 256 x 256 pixels of about ${num(px, 1)} m at zoom ${tl.zoom}, interpolated from them: finer pixels, no extra detail.` },
       sizes: sizesOf(t, { decodedBytes: tl.tiles * 256 * 256 * 4, memoryBytes: memory, durationMs, tiles: tl.tiles }),
       evidence: { level: 'measured', note: 'Radar-measured heights at about 30 m; coarse for mountain terrain.', specRef: 'docs/research/08-data-sources-apis.md §3.4' },
       warnings,
@@ -216,11 +226,17 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
       : /Terrarium|SRTM|Terrain Tiles/i.test(src)
         ? { provider: PROVIDERS.awsTerrain, licence: LICENCES.publicDomain, attribution: ATTRIBUTION.terrarium }
         : { provider: PROVIDERS.app, licence: { name: 'As recorded in the pack' }, attribution: src || 'Elevation saved in an area pack' };
+    const packNative = srtm
+      ? { resolutionM: SRTM_CELL_M, note: `SRTM heights about ${SRTM_CELL_M} m apart, saved as a ${i.hiRes.grid.cellSize} m grid interpolated from them.` }
+      : /NSW_5M_Elevation|Spatial Services/i.test(src)
+        ? { resolutionM: 5, note: 'Published on a 5 m grid, saved on the pack’s own grid.' }
+        : null;
     rec = skeleton({
       ...common,
       what: `A ${i.hiRes.grid.cellSize} m ground-height grid saved in an area pack for offline use (${src || 'source not recorded'}).`,
       ...who,
       format: 'Float32 elevation grid saved in an area pack',
+      ...(packNative ? { native: packNative } : {}),
       kind: 'raster',
       status: 'used',
       origin: 'area-pack',
@@ -477,7 +493,7 @@ export function canopyRecord(i: MapInputs): DatasetRecord {
     status: partial ? 'partial' : 'used',
     origin,
     originDetail: origin === 'bundled' ? `Bundled demo site '${site}' (20 m)` : origin === 'area-pack' ? `Area pack '${canopy.info.packName ?? ''}'` : c.via === 'remote-cache' ? 'Stored copy of an earlier download' : 'Downloaded now (Cloud-Optimised GeoTIFF row ranges)',
-    ...(partial ? { fallbackReason: `Canopy height is measured on ${formatPercent(c.coverage)} of the area; the rest uses typical heights for the vegetation type.` } : {}),
+    ...(partial ? { fallbackReason: `The canopy-height map covers ${formatPercent(c.coverage)} of the area; the rest uses typical heights for the vegetation type.` } : {}),
     vintage: vintageFor(origin, t, i.now, {
       capturedOn: '2016',
       capturedNote: 'Built from Maxar imagery of about 2016 (per the map’s citation); trees may have grown, burnt or been cleared since.',
@@ -490,7 +506,7 @@ export function canopyRecord(i: MapInputs): DatasetRecord {
     model: { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells: g.nx * g.ny, resampling: nativeM < g.cellSize ? 'area-average' : 'bilinear', channels: ['90th percentile height (m)', 'mean height (m)', 'cover (share of 1 m pixels 2 m or taller)'] },
     sizes: sizesOf(t, { durationMs: i.timings.canopy ?? canopy.info.durationMs, decodedBytes: nativeM === 20 && bf ? 450 * 450 * 3 : undefined }),
     endpoints: endpointsOf(ledger, [CANOPY_TAG]),
-    stats: [...cs.stats, textStat('Native cell of the data used', `${nativeM} m`), ...(c.cogTiles?.length ? [stat('Source tiles read', c.cogTiles.length, '')] : [])],
+    stats: [...cs.stats, stat(CANOPY_NATIVE_CELL_LABEL, nativeM, 'm'), ...(c.cogTiles?.length ? [stat('Source tiles read', c.cogTiles.length, '')] : [])],
     ...(cs.distribution ? { distribution: cs.distribution } : {}),
     warnings: [...i.warnings.canopy],
     limitations: [

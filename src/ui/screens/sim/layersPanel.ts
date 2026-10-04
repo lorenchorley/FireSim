@@ -193,7 +193,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const availNow = (): AvailabilityContext => {
     const st = ctx.session.state.get();
     // A fire exists once one is marked (or the run shows burnt ground); the first snapshot of a run comes before any fire.
-    return { ...base, hasFire: st.ignitions.length > 0 || (st.snapshot?.stats?.burntAreaHa ?? 0) > 0, has3dAtmosphere: !!st.snapshot?.atmosphere };
+    return { ...base, hasFire: st.ignitions.length > 0 || (st.snapshot?.stats?.burntAreaHa ?? 0) > 0, has3dAtmosphere: has3dAtmosphere(st.snapshot) };
   };
   let avail = availNow();
   let availSig = availabilitySignature(avail);

@@ -39,7 +39,14 @@ const ARRIVAL_BADGE: Record<Arrival['origin'], PlanBadge> = {
 
 type Step = BuildProgress['step'];
 
+/**
+ * A double tap on "Build" (or "Try again") must not cancel the build with its second tap: the Cancel button sits where
+ * Build was. A Cancel within this time (ms) of the screen appearing is ignored; nobody changes their mind that fast.
+ */
+export const CANCEL_GUARD_MS = 600;
+
 export function createBuildingScreen(opts: { title: string; subtitle: string; onCancel: () => void; onRetry: () => void; onBack: () => void }): BuildingScreen {
+  const shownAt = performance.now();
   const bar = h('div', { class: 'progress-fill' });
   const barWrap = h('div', { class: 'progress building-progress', attrs: { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': 0, 'aria-label': 'Build progress' } }, bar);
   const pct = h('span', { class: 'progress-pct t-num' }, '0 %');
@@ -63,7 +70,7 @@ export function createBuildingScreen(opts: { title: string; subtitle: string; on
   );
   const rows = new Map<string, { li: HTMLLIElement; key: string }>();
   const warnings = h('div', { class: 'build-warnings', attrs: { 'aria-live': 'polite' } });
-  const actions = h('div', { class: 'bottom-bar build-actions' }, [button({ label: 'Cancel', icon: 'close', variant: 'secondary', size: 'lg', testId: 'cancel-build', onClick: opts.onCancel })]);
+  const actions = h('div', { class: 'bottom-bar build-actions' }, [button({ label: 'Cancel', icon: 'close', variant: 'secondary', size: 'lg', testId: 'cancel-build', onClick: () => (performance.now() - shownAt >= CANCEL_GUARD_MS ? opts.onCancel() : undefined) })]);
   const el = h('div', { class: 'screen building-screen', dataset: { testid: 'building' } }, [
     h('main', { class: 'screen-main building-main' }, [
       h('section', { class: 'card build-card build-head' }, [

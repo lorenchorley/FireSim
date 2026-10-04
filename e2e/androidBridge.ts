@@ -35,16 +35,32 @@ const PLUGIN_HEADERS = [
 export interface AndroidEmulationOptions {
   /** Geolocation fix returned by the fake plugin (default: Katoomba). */
   position?: { latitude: number; longitude: number; accuracy: number };
+  /**
+   * Keep the fake SharedPreferences across page reloads of the same tab (the real ones survive the app being closed and
+   * reopened). Off by default: each page load then starts with empty preferences.
+   */
+  persistPreferences?: boolean;
 }
 
 /** Install the Android emulation before any page script runs. Call before page.goto(). */
 export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulationOptions = {}): Promise<void> {
   const position = opts.position ?? { latitude: -33.715, longitude: 150.285, accuracy: 12 };
   await page.addInitScript(
-    ({ bridgeJs, headers, position }) => {
+    ({ bridgeJs, headers, position, persist }) => {
       const w = window as unknown as Record<string, any>;
       const origFetch = window.fetch.bind(window);
       const prefs = new Map<string, string>();
+      const PREFS_KEY = '__nativePrefs';
+      if (persist) {
+        try {
+          for (const [k, v] of JSON.parse(sessionStorage.getItem(PREFS_KEY) ?? '[]') as [string, string][]) prefs.set(k, v);
+        } catch {
+          /* nothing saved yet */
+        }
+      }
+      const savePrefs = (): void => {
+        if (persist) sessionStorage.setItem(PREFS_KEY, JSON.stringify([...prefs]));
+      };
       w.__nativeCalls = [] as { plugin: string; method: string }[];
 
       // 1. Globals the native side injects first.
@@ -66,12 +82,15 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
             return { value: prefs.has(o.key) ? prefs.get(o.key)! : null };
           case 'Preferences.set':
             prefs.set(o.key, String(o.value));
+            savePrefs();
             return {};
           case 'Preferences.remove':
             prefs.delete(o.key);
+            savePrefs();
             return {};
           case 'Preferences.clear':
             prefs.clear();
+            savePrefs();
             return {};
           case 'Preferences.keys':
             return { keys: [...prefs.keys()] };
@@ -129,6 +148,6 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
       new Function(bridgeJs)();
       w.Capacitor.PluginHeaders = headers;
     },
-    { bridgeJs: NATIVE_BRIDGE_JS, headers: PLUGIN_HEADERS, position },
+    { bridgeJs: NATIVE_BRIDGE_JS, headers: PLUGIN_HEADERS, position, persist: !!opts.persistPreferences },
   );
 }

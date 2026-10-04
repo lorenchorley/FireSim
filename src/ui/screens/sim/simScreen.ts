@@ -33,6 +33,7 @@ import { createMapMenu } from './mapMenu';
 import { backLayer, reduceMenu } from './layoutModel';
 import { mapCredits } from './mapCredits';
 import { createMapLegend } from './mapLegend';
+import { restoreLayerPrefs } from './layersPrefs';
 import { createTopBar } from './topBar';
 import { createLayersPanel, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
@@ -80,6 +81,9 @@ const TOOLS: { id: ToolId; label: string; icon: IconName }[] = [
   { id: 'layers', label: 'Layers', icon: 'layers' },
   { id: 'whatif', label: 'What if', icon: 'whatif' },
 ];
+
+/** The least height (px) the body of a tool panel is given before the read-out chips make room (landscape, large text). */
+const PANEL_BODY_MIN = 64;
 
 export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const { scenario, services } = o;
@@ -138,6 +142,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       return view.pickGround(r.left + r.width / 2, r.top + r.height / 2);
     },
   };
+  // Start from the device's defaults plus the layer choices the user made in earlier runs.
+  unsubs.push(restoreLayerPrefs(ctx));
 
   // ───────────── chrome ─────────────
   const topBar = createTopBar(ctx, {
@@ -196,6 +202,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     variant: 'card',
     testId: 'view-menu',
     ui,
+    // While the card is open the column rises above the Tools button: on a short screen (or with the read-out chips on two rows)
+    // the card reaches down to it, and the Zoom row's "+" must not be underneath.
+    onOpenChange: (open) => fabColumn.classList.toggle('view-open', open),
     current: { icon: VIEW_MODES[0]!.icon, label: VIEW_MODES[0]!.label },
     entries: [
       ...VIEW_MODES.map((m) => ({
@@ -294,6 +303,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   // whatever covers the bottom, fit the menus' lists to the room, and keep the legend and the credit line beside it.
   /** Height of the column of round buttons (px), remembered for when it is hidden. */
   let colH = 136;
+  /** The read-out chips are put away while a tool panel is open on a short landscape screen that cannot hold both (see layoutInsets). */
+  let chipsAway = false;
+  const shortLandscape = typeof matchMedia === 'function' ? matchMedia('(orientation: landscape) and (max-height: 540px)') : null;
   const layoutInsets = (): void => {
     const host = sceneHost.getBoundingClientRect();
     if (!host.width || !host.height) return;
@@ -306,17 +318,34 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     let band = strip;
     let left = 0;
     let right = 0;
+    /** The slim strip at the bottom (the closed dock in a side column) and the x range it covers. */
+    let slim = null as { x0: number; x1: number; fromBottom: number } | null; // set by cover() below
     const cover = (r: { left: number; right: number; top: number; width: number; height: number }): void => {
       if (r.width <= 0 || r.height <= 0) return;
       const fromBottom = host.bottom - r.top;
       if (r.width >= host.width * 0.6) {
         bottom = Math.max(bottom, fromBottom);
         band = Math.max(band, fromBottom);
-      } else if (r.height < host.height * 0.4) bottom = Math.max(bottom, fromBottom); // a slim strip (the closed dock in a side column)
-      else if (r.left + r.width / 2 < host.left + host.width / 2) left = Math.max(left, r.right - host.left);
+      } else if (r.height < host.height * 0.4) {
+        // a slim strip (the closed dock in a side column)
+        bottom = Math.max(bottom, fromBottom);
+        slim = { x0: r.left - host.left, x1: r.right - host.left, fromBottom: Math.max(slim?.fromBottom ?? 0, fromBottom) };
+      } else if (r.left + r.width / 2 < host.left + host.width / 2) left = Math.max(left, r.right - host.left);
       else right = Math.max(right, host.right - r.left);
     };
     const panelEl = panelHost.firstElementChild as HTMLElement | null;
+    // A short landscape screen at a large text size (200 % on 844 x 390): the top bar's two rows, the panel's header and its Add / Clear bar
+    // and the timeline leave no room for the panel's body, and the bar ends up under the timeline (Add fire cannot be tapped). The read-out
+    // chips are not needed while a panel is open, so when they sit on their own row under the pill and the panel is squeezed they go away
+    // until the panel closes (decided once per panel: hidden chips cannot be measured again).
+    if (!panelEl) chipsAway = false;
+    else if (!chipsAway && shortLandscape?.matches) {
+      const body = panelEl.querySelector<HTMLElement>('.panel-body');
+      const chips = topBar.el.querySelector<HTMLElement>('.tb-wx');
+      const pill = topBar.el.querySelector<HTMLElement>('.tb-pill');
+      if (body && chips && pill && body.clientHeight < PANEL_BODY_MIN && chips.getBoundingClientRect().top >= pill.getBoundingClientRect().bottom - 2) chipsAway = true;
+    }
+    root.classList.toggle('chips-away', chipsAway);
     if (panelEl) cover(panelEl.getBoundingClientRect());
     else if (!sheet.el.hidden) {
       const sr = sheet.el.getBoundingClientRect();
@@ -335,17 +364,31 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 
     // The column of round buttons steps aside when a tool panel or a tall sheet reaches up to it (portrait), and the Tools
     // button gives way when a sheet would push it into the column. (The column's own height is remembered while hidden.)
+    // It sits under the top bar; where that leaves no room beside the Tools button (a short landscape screen at a large
+    // text size) and the top bar only reaches part way across, it starts higher, level with the top bar's side.
     if (fabColumn.offsetHeight) colH = fabColumn.offsetHeight;
-    const colTop = top + 8;
-    const colBottom = colTop + colH;
-    const coverTop = host.height - bottom;
     const colSide = fabColumn.getBoundingClientRect();
     const colX = colSide.width ? colSide.left + colSide.width / 2 - host.left : settingsStore.get().handedness === 'left' ? 32 : host.width - 32;
-    const colCovered = coverTop < colBottom + 8 && (colX > left && colX < host.width - right);
-    root.classList.toggle('fabs-crowded', colCovered);
+    const colHalf = (colSide.width || 40) / 2 + 8;
+    // Only what is under the column's x range covers it from below (the closed dock of a side column is on the other side).
+    const bottomAtCol = Math.max(strip, band, slim && slim.x1 > colX - colHalf && slim.x0 < colX + colHalf ? slim.fromBottom : 0);
+    const coverTop = host.height - bottomAtCol;
     const toolsR = toolsMenu.fab.getBoundingClientRect();
     const toolsTop = host.height - (band + 12) - (toolsR.height || 48);
-    const crowded = !colCovered && toolsTop < colBottom + 8 && Math.abs(toolsR.left + toolsR.width / 2 - host.left - colX) < host.width / 3;
+    const toolsBeside = Math.abs(toolsR.left + toolsR.width / 2 - host.left - colX) < host.width / 3;
+    let topAtCol = 0;
+    for (const e of topBar.el.querySelectorAll<HTMLElement>('.tb-pill, .tb-wx > *')) {
+      const r = e.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && r.right > host.left + colX - colHalf && r.left < host.left + colX + colHalf) topAtCol = Math.max(topAtCol, r.bottom - host.top);
+    }
+    if (!errorChip.hidden) topAtCol = Math.max(topAtCol, errorChip.getBoundingClientRect().bottom - host.top);
+    const fitsAt = (t: number): boolean => coverTop >= t + 8 + colH + 8 && (!toolsBeside || toolsTop >= t + 8 + colH + 8);
+    const colBase = !fitsAt(top) && topAtCol < top && fitsAt(topAtCol) ? topAtCol : top;
+    root.style.setProperty('--col-top', `${Math.round(colBase)}px`);
+    const colBottom = colBase + 8 + colH;
+    const colCovered = coverTop < colBottom + 8 && colX > left && colX < host.width - right;
+    root.classList.toggle('fabs-crowded', colCovered);
+    const crowded = !colCovered && toolsTop < colBottom + 8 && toolsBeside;
     root.classList.toggle('fab-crowded', crowded);
 
     // In a side-column layout (landscape) the closed dock is a slim tab strip at the bottom: a list must not cover its tabs.
@@ -430,7 +473,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       cancelAnimationFrame(insetRaf);
       clearTimeout(insetTimer);
     },
-    ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool', 'menu']),
+    ui.subscribe(scheduleInsets, ['sheet', 'panelOpen', 'tool', 'menu', 'pending']), // 'pending': the Add / Clear bar grows the panel's foot
     session.state.subscribe(scheduleInsets, ['error']),
     layers.subscribe(renderCredit, ['imagery', 'vegetation', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'overlay', 'soloHeat']),
     // Portrait: a menu list rises above an open dock. Side columns (landscape): an open sheet fills the column where the
