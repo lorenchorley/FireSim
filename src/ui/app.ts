@@ -3,7 +3,8 @@
  * Data sets, How this simulation works). Always shows the TRAINING strip and hosts the screen-reader live region.
  *
  * Full-screen screens are OVERLAYS: they cover the stage (which becomes inert, so focus and screen readers stay in the
- * screen) while the simulation keeps running and rendering underneath; opening one never pauses or changes playback.
+ * screen) while the simulation keeps running underneath and the 3-D view stops drawing frames nobody can see (battery);
+ * opening one never pauses or changes playback.
  * Closing one returns focus to the control that opened it. The Back button (Android hardware Back, the browser's Back,
  * Escape) closes the top-most thing first — a confirmation, a dataset's detail page, the screen, then the simulation's own
  * menus, popovers, panels and dock — and only then asks before leaving the simulation (backStack.ts).
@@ -190,6 +191,8 @@ export class App {
   private updateInert(): void {
     const top = this.overlays[this.overlays.length - 1];
     this.stage.inert = !!top;
+    // The covered 3-D view stops drawing (the run itself carries on): a reading screen should not cost battery.
+    this.sim?.setCovered(!!top);
     for (const ov of this.overlays) ov.host.inert = ov !== top;
   }
 
@@ -366,6 +369,7 @@ export class App {
       this.scenario = scenario;
       this.swap(sim);
       this.sim = sim;
+      sim.setCovered(this.overlays.length > 0);
       sim.view.resize();
       this.back.sync();
       this.announce(`Model ready: ${scenario.name}. Mark where the fire is with the Fire tool, then press Play.`);

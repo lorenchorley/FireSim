@@ -70,6 +70,8 @@ export interface SimScreen {
    * (the sheet and a tool panel close; playback is not touched).
    */
   showLayer(t: { overlay?: OverlayKind; sceneKey?: keyof LayerState }): void;
+  /** A full-screen screen is (or is no longer) on top of this one: the 3-D view stops drawing while it is. Playback is not touched. */
+  setCovered(covered: boolean): void;
   destroy(): void;
 }
 
@@ -928,7 +930,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     o.announce(`Showing ${name} on the map.`);
   }
 
-  return { el: root, session, view, back: closeTopLayer, showLayer, destroy };
+  return { el: root, session, view, back: closeTopLayer, showLayer, setCovered: (covered) => view.setCovered?.(covered), destroy };
 }
 
 /** A screen-space annotation (pending mark, stroke, "why" point), as plain data so changes can be detected. */

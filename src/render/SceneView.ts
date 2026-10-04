@@ -185,6 +185,8 @@ export class SceneView implements SceneViewApi {
   private dirty = true;
   private disposed = false;
   private contextLost = false;
+  /** A full-screen screen covers the view ({@link setCovered}): no frames are drawn. */
+  private covered = false;
   private lastFrame = 0;
   private lastRender = 0;
   private interacting = false;
@@ -1058,6 +1060,13 @@ export class SceneView implements SceneViewApi {
 
   private frame(now: number): void {
     if (this.disposed || this.contextLost) return;
+    if (this.covered && !this.settleNow) {
+      // Nothing to see (a screen is open over the view): draw nothing, and keep the clocks still so the first frame after
+      // it closes carries on from where the view was.
+      this.lastFrame = now;
+      this.meter.tick(-1e9);
+      return;
+    }
     const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0;
     this.lastFrame = now;
     this.u.uClock!.value = (this.u.uClock!.value as number) + dt;
@@ -1215,6 +1224,15 @@ export class SceneView implements SceneViewApi {
   }
   private measuring = true;
   private settleNow = false;
+
+  setCovered(covered: boolean): void {
+    if (covered === this.covered) return;
+    this.covered = covered;
+    if (!covered) {
+      this.lastRender = 0;
+      this.dirty = true;
+    }
+  }
 
   resize(): void {
     const w = Math.max(1, this.container.clientWidth);

@@ -278,6 +278,7 @@ safety notice again; `?debug=1` exposes
 ```bash
 npm test                          # Vitest: every module, about 2 200 tests incl. the §15 validation scenarios
 npm run check:contrast            # WCAG contrast of every text pair of every stylesheet in the four looks
+npm run build:cap && npm run check:bundle   # the APK build: one page, no source maps, JS / CSS / data within the budgets (docs/ARCHITECTURE.md, Performance budgets)
 FIRESIM_SKIP_SLOW=1 npm test      # skip the long 3-h Katoomba validation (src/sim/validation.test.ts)
 SLOW=1 npx vitest run src/sim/validation   # include the long §15 scenarios (night, 6 h runs)
 npx vitest run src/fire           # one module

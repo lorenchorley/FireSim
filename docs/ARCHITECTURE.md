@@ -477,7 +477,9 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   `homeDensity` and `roadAccess` come from `render/contextFields.ts`.
 * **Full-screen screens and the Back stack** (`app.ts`, `backStack.ts`). Settings, Data sets and How this simulation works are
   *overlays*: the App puts them over the stage, which becomes `inert` (focus and screen readers stay in the screen), and the simulation
-  keeps running and rendering underneath: opening one never pauses or changes playback. Closing one returns focus to the control that
+  keeps running underneath: opening one never pauses or changes playback. The covered 3-D view stops drawing frames
+  (`SimScreen.setCovered` → `SceneViewApi.setCovered`, called from `App.updateInert`; snapshots and the camera keep their state and the
+  first frame after the screen closes shows the latest), so a reading screen does not run the GPU. Closing one returns focus to the control that
   opened it. The Back button (Android hardware Back, the browser's Back, Escape) closes the top-most thing first: a confirmation dialog,
   a data set's page (back to the list), the screen, then the simulation's own menus, popovers, tool panel and sheet, and only then asks
   before leaving the simulation (`BackStack`: one guard entry on the history while anything is closable; on Android `MainActivity`
@@ -586,6 +588,60 @@ minutes, no coalescing): fast tier 40 ms per simulated minute without snapshots,
 coalescing to 25/s cuts that overhead to +3.0 ms/min (43 MB per wall second instead of 223). On the main thread no long task (> 50 ms) was observed while playing at maximum speed;
 `SceneView.update` takes ≈ 4 ms median, 9 ms p95. Phones are 2–3× slower (spec §13); the spec's auto-tune (§12.6)
 therefore usually picks the fast tier on phones. Spec budgets and CI gates: §13 (V20).
+
+### Performance budgets (phone, battery, APK size)
+
+Measured by the performance review of the screens phase, in headless Chromium with SwiftShader (software WebGL, so absolute frame
+times are slow and are only ever compared between builds on the same machine), Katoomba (bundled demo), `low` render quality,
+412 x 915, medians of 5 runs unless noted; "4x" = Chrome DevTools CPU throttling 4x as a mid-range phone proxy. Baselines are the two
+commits before the screens phase: `6a3d171` (the UI rework, before layers) and `3e01e78` (layers phase 1, before the design system and
+the dataset provenance). "Now" is the tree of this document.
+
+| Measure | 6a3d171 | 3e01e78 | now | Budget / verdict |
+| --- | --- | --- | --- | --- |
+| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2821 / 945 | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 506 / 177 | gzip <= 195; screens, layer catalog and the model-card text are in it |
+| CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 121.6 / 21.8 | raw <= 135, gzip <= 25 |
+| Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 29.0 / 32.1 | demo <= 31 |
+| HTML pages in the production build | 1 | 1 | 1 | exactly `index.html` (style guide, `render/dev*.html`, legend gallery are dev-server pages, never built) |
+| Source maps in `build:cap` (the APK) | 0 | 0 | 0 | 0 |
+| Debug APK (`gradlew assembleDebug`, MB) | 27.1 (Sep 28, before the screens phase) | | 27.6 | <= 30; holds `index.html` as its only page of ours |
+| Start: first paint / Setup interactive (ms) | 68 / 240 | 56 / 259 | 56 / 263 | Setup <= 350 (1x); at 4x 682 / 696 / 766, budget <= 1000 |
+| Scenario build to first frame of the sim (ms, 1x) | 2467 | 2581 | 2763 | <= 3500; the places step adds ~55 ms and the data-set inventory ~45 ms |
+| Scenario build in Node, Katoomba 9 km bundled (ms) | | 282 | 305 | <= 400 |
+| Worker, fast tier, 10 s / 60 s display step (ms wall per simulated minute) | | 46.1 / 33.6 | 44.6 / 38.2 (36.0 vs 34.6 over 60 min) | within 10 % of the baseline |
+| Worker, standard tier, 10 s / 60 s display step | | 199 / 152 | 194 / 157 | within 10 % of the baseline |
+| `EngineInfo` per snapshot (worker) | | | 4 us, 1.8 kB; a memory measurement of 19 ms at most every 30 wall-seconds | <= 0.1 ms per snapshot |
+| Main thread while playing (6 % of wall at 1x, 8 s) | | 432 ms | 488 ms (22 ms per drawn frame in both) | no long task (> 50 ms) at 1x |
+| Frame (low, 3-D view): draw calls / k triangles, all layers off | | 4 / 102 | 4 / 102 | |
+| Frame: default layers / all scene layers on | | 15 / 138 | 17 / 161 and 19 / 228 | high (measured 20 / 495): <= 25 draws, <= 550 k triangles |
+| Frame: a heat map on its own / over the scene | | 9 / 115 and 15 / 124 | 11 / 139 and 17 / 148 | |
+| Layers panel: DOM nodes when open / open+close CPU at 4x | | 179 / 17 ms | 914 / 43 ms | <= 1000 nodes, <= 60 ms |
+| A heat map switched on and off at 4x: longest main-thread task | | (the 14 data maps are new) | <= 112 ms (insolation computes once: 68 ms at 1x, then cached) | <= 150 ms at 4x |
+| Data sets screen open, longest task at 4x (16 rows / 60 rows) | | | <= 268 ms / 250 ms (60 rows are drawn in slices over frames) | <= 300 ms |
+| Model card open, longest task at 4x | | | 146 ms | <= 300 ms |
+| After 100 layer toggles and 80 screen / panel opens | | | JS heap 9.8 to 10.5 MB (100 toggles) and 12 MB (the screen cycles); DOM nodes (2790) and listeners (228) unchanged; GPU geometries 12 to 20 and textures 16 to 18 (made on first use, then kept) | no growth per toggle |
+
+Rules that keep the budgets (each has a test, a script or a measurement behind it):
+
+* **Nothing is drawn behind a full-screen screen.** `App.updateInert` tells the sim screen when a Settings / Data sets / model-card
+  screen covers it; the 3-D view then skips its frames (`SceneViewApi.setCovered`) while the run carries on. `e2e/integration.spec.ts`
+  ("a full-screen screen over the run stops the 3-D view drawing frames") fails if a frame is drawn behind a screen, and if drawing
+  does not resume when it closes. (Before, a burning fire kept a hidden view at its 30 fps cap for as long as the screen stayed open.)
+* **The view is on demand.** It draws only when the camera moves, data change, or something animates: a fire's flames and spot
+  markers, wind streaks, smoke fade, the trees' wind sway (`VegetationLayer.animating`: sway on, canopy visible, near-surface wind
+  above 0.5 m/s, trees placed; off by default on the `low` tier and in the top view). Animation alone is capped at 30 fps. Known cost, not
+  changed: with a fire burning, or the default wind streaks on, the loop animates even while paused, because the flames flicker.
+* **Heavy work is sliced.** The places layer builds in 4 ms slices per frame (about 95 ms in all for Katoomba, of which the residential
+  fill raster is two thirds, and 10 MB of GPU memory; it is built even while those layers are off); the forest is placed 4 ms per
+  frame; the Data sets list is drawn in chunks; data heat maps are computed on first use and cached.
+* **Screens are cheap while open.** The model card re-reads at most once a second (and not while the page is hidden); the Data sets
+  memory card every 5 s; both timers end with the screen. The compass reads the camera heading five times a second.
+* **The worker does not pay for transparency.** `Simulation.engineInfo` is bookkeeping read once per snapshot; the physics never reads it.
+* **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
+  entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
+  server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.
+  `npx cap sync android` copies exactly `dist/` (33 MB with the demo sites) into `android/app/src/main/assets/public`.
 
 ## Testing
 

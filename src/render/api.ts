@@ -87,6 +87,12 @@ export interface SceneViewApi {
   readonly renderQuality?: 'low' | 'medium' | 'high';
   /** Render statistics for the performance HUD. */
   stats(): { fps: number; drawCalls: number; triangles: number };
+  /**
+   * A full-screen screen is open over the view (Settings, Data sets, How this simulation works): stop drawing frames until
+   * it is uncovered, so a reading screen does not run the GPU for pixels nobody sees. Snapshots and the camera keep their
+   * state; the first frame after uncovering shows the latest. Optional: the 2-D mock has nothing to save.
+   */
+  setCovered?(covered: boolean): void;
   resize(): void;
   dispose(): void;
 }

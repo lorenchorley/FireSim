@@ -690,3 +690,33 @@ test('real engine: the Data sets screen shows the scenario’s own numbers; ever
   expect((await session(page)).error).toBeNull();
   expect(errors).toEqual([]);
 });
+
+// ───────────── battery: nothing is drawn behind a full-screen screen ─────────────
+
+test('real engine: a full-screen screen over the run stops the 3-D view drawing frames while the run carries on; closing it resumes drawing', async ({ page }) => {
+  test.setTimeout(420_000);
+  await buildKatoomba(page);
+  await markFire(page); // a burning fire keeps the view animating, so frames are drawn unless something stops them
+  await setSpeed(page, 60);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).playing).toBe(true);
+  const frames = (): Promise<number> => page.evaluate(() => (window as unknown as { __firesim: { view: { renderer: { info: { render: { frame: number } } } } } }).__firesim.view.renderer.info.render.frame);
+  const f0 = await frames();
+  await expect.poll(frames, { message: 'the uncovered view draws', timeout: 30_000 }).toBeGreaterThan(f0 + 1);
+
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-datasets').click();
+  await expect(page.getByTestId('datasets-screen')).toBeVisible();
+  await page.waitForTimeout(1200); // a frame already in flight may land
+  const covered = await frames();
+  const t0 = (await session(page)).headTime;
+  await page.waitForTimeout(3000);
+  expect(await frames(), 'no frame is drawn behind the screen').toBe(covered);
+  expect((await session(page)).playing, 'opening the screen does not pause the run').toBe(true);
+  await expect.poll(async () => (await session(page)).headTime, { message: 'the run carries on underneath' }).toBeGreaterThan(t0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('datasets-screen')).toHaveCount(0);
+  await expect.poll(frames, { message: 'closing the screen resumes drawing', timeout: 30_000 }).toBeGreaterThan(covered);
+  expect((await session(page)).error).toBeNull();
+});
