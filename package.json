@@ -1,6 +1,6 @@
 {
   "name": "firesim",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "FireSim - on-site 3D coupled atmosphere, bushfire and ember simulation for training firefighters in the mountains of NSW",
   "type": "module",
