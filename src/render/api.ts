@@ -11,6 +11,22 @@ export interface SceneImagery {
   attribution: string;
 }
 
+/**
+ * The camera as numbers (read-only; for tests and the debug handle). The 3-D view orbits a target on the ground: `target` is
+ * that point in local metres, `distance` the camera's distance from it, `azimuthDeg` the compass bearing (clockwise from north)
+ * of the camera as seen from the target and `polarDeg` its angle from straight above (0 = plan view). `headingDeg` is where
+ * the camera looks (compass degrees; in the plan view the screen's up direction). At eye level the target is a point 1 m in
+ * front of the eye, so azimuth and polar describe the look direction. The 2-D map is always top-down and north up.
+ */
+export interface CameraState {
+  target: [number, number];
+  distance: number;
+  azimuthDeg: number;
+  polarDeg: number;
+  headingDeg: number;
+  mode: 'orbit' | 'top' | 'ground';
+}
+
 export interface SceneViewApi {
   /**
    * Build the terrain, vegetation and static layers for a new scenario. `hiRes` (ScenarioData.terrainHiRes, the 10 m
@@ -65,6 +81,10 @@ export interface SceneViewApi {
   readonly heading: number;
   /** Turn the view to face a compass heading (e.g. 0 = north up), keeping the target, distance and tilt. */
   setHeading(deg: number): void;
+  /** The camera as numbers (target, distance, azimuth, tilt, heading, mode); cheap and read-only. */
+  cameraState(): CameraState;
+  /** A flick of the map is still gliding on after the finger lifted: a touch now only stops it (it is not a map tap). */
+  readonly gliding: boolean;
   /** Temporary brush outline while the user paints fuel edits (null to hide). */
   setBrushPreview(p: { x: number; y: number; radius: number; colour: string } | null): void;
   /** Temporarily disable camera gestures (e.g. while drawing a fire line). */

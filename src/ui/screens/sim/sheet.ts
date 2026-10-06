@@ -527,6 +527,10 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       h('li', null, [h('strong', null, 'Tools: '), 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything.']),
       h('li', null, [h('strong', null, 'Fire: '), 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.']),
       h('li', null, [h('strong', null, 'Play: '), 'press the blue Play button and pick a speed on the chip beside it; drag or tap the timeline to jump to any time.']),
+      h('li', null, [
+        h('strong', null, 'Moving around the map: '),
+        'drag with one finger to slide the map along, like grabbing a paper map. Put two fingers on it and move them together to turn the view (sideways) and tilt it (up or down), or pinch them to zoom; you can pinch and turn in one movement. At eye level you cannot slide: one finger turns your head. While “Draw a line” (Fire) or “Paint” (Fuel) is on, one finger draws and the map stays still; switch back to tapping to move the map again. With a mouse: left button slides, right button turns, wheel zooms.',
+      ]),
       h('li', null, [h('strong', null, 'Map buttons: '), 'the round buttons on the side open the layers, change the camera (top, 3-D, eye level, zoom) and turn the map north up.']),
       h('li', null, [h('strong', null, 'Insights: '), 'new cards never pop up; a number on the Insights tab tells you how many are waiting.']),
       h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see: more litter, a road, the wind here.']),

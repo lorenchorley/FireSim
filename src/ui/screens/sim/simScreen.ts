@@ -604,7 +604,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   renderMenuOpen();
 
   // ───────────── map taps ─────────────
-  const downs = new Map<number, { x: number; y: number; t: number }>();
+  const downs = new Map<number, { x: number; y: number; t: number; glide: boolean; far: boolean }>();
   /** Pointers whose press only dismissed an open menu (that tap is not also a map tap). */
   const dismissing = new Set<number>();
   let multi = false;
@@ -628,10 +628,21 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       sceneHost,
       'pointerdown',
       (e) => {
-        downs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+        // (this capture listener runs before the view's own: a flick of the map is still gliding if this press stops it)
+        downs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), glide: view.gliding, far: false });
         if (downs.size > 1) multi = true;
       },
       { capture: true },
+    ),
+    // A finger that wandered off by more than a tap's slop dragged the map, even if it came back to where it began.
+    listen(
+      sceneHost,
+      'pointermove',
+      (e) => {
+        const d = downs.get(e.pointerId);
+        if (d && !d.far && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) d.far = true;
+      },
+      { capture: true, passive: true },
     ),
     listen(
       sceneHost,
@@ -642,7 +653,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         const wasMulti = multi;
         if (downs.size === 0) multi = false;
         const dismissed = dismissing.delete(e.pointerId);
-        if (!d || wasMulti || dismissed) return;
+        if (!d || wasMulti || dismissed || d.glide || d.far) return; // a touch that stopped a gliding map, or dragged it, is not a tap on it
         if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12 || performance.now() - d.t > 700) return;
         onTap(e.clientX, e.clientY);
       },

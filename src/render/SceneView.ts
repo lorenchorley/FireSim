@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { SceneImagery, SceneViewApi } from './api';
+import type { CameraState, SceneImagery, SceneViewApi } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { gridBounds, sunDirectionWorld } from './coords';
@@ -885,6 +885,14 @@ export class SceneView implements SceneViewApi {
 
   get heading(): number {
     return this.rig.heading;
+  }
+
+  cameraState(): CameraState {
+    return this.rig.cameraState();
+  }
+
+  get gliding(): boolean {
+    return this.rig.gliding;
   }
 
   setHeading(deg: number): void {

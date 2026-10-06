@@ -71,7 +71,8 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   **Why here?** — tap anywhere for the factor breakdown (wind, slope, moisture, fuel, terrain, position on the fire)
   and a narrative.
 - **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume),
-  vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands.
+  vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
+  turn, tilt and zoom it, all at once (see *Controls*).
 - **Layers**: one panel built from a catalogue of layers (`src/render/layerCatalog.ts`), each with a plain "what it shows, why it
   matters, where the data come from, how fine it is". *Map type* (aerial photo, terrain colours, plain); *Map details*, a switch for
   each: 3-D canopy, shrubs, **roads and tracks**, **fire trails**, **homes**, **residential and built-up areas**, **place names**,
@@ -110,6 +111,28 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   tab) and nothing pauses it (pause on Danger and vibration are opt-in). Big targets (44 px at least), crosshair placement for gloves
   and wet screens, light, night and **high-contrast** ("bright sun", Settings) looks, left/right-handed layout, Android's Back button
   closes the top-most menu, panel or screen first, screen-reader labels, text up to Android's 200 % font scale without clipping.
+
+## Controls
+
+The map is moved with the fingers, the same in the 3-D view and the top (plan) view:
+
+| Gesture | What it does |
+|---|---|
+| **One finger drag** | slides the map like grabbing it: the ground under the finger stays under it, at any tilt (a light glide carries on when you flick and let go; touching the map stops it) |
+| **Two fingers moving together** | turns the view (sideways drag) and tilts it (up or down); the top view can only turn |
+| **Pinch** | zooms towards the point between the fingers |
+| Pinch **and** drag in one movement | zooms and turns / tilts at the same time (no mode to pick) |
+| Lift one finger of two | carries on as a one-finger slide from where the other finger is; a second finger put down during a slide switches to turn / zoom, without a jump; a third finger is ignored |
+| **Tap** | "Why here?" (or places the fire / fuel brush when that tool is open); a slide is never a tap |
+| **Eye level** ("what you would see from here") | a first-person look-around: one or two fingers turn the view; you cannot slide your position, there is no zoom |
+| Drawing a fire line or painting fuel (**Draw a line** in Fire, **Paint** in Fuel) | one finger draws and the map is locked; switch back to tapping to move the map again |
+| Mouse (desktop development) | left button slides, right button turns and tilts, middle button or wheel zooms |
+| Round buttons (View menu) | zoom in / out, the 3-D, top and eye-level views, fly to the fire or to you, turn the map north up. Turning and tilting by hand have no button (two fingers; right mouse button), nor has sliding (one finger; left mouse button) |
+
+Sensitivity: a pinch is 1 : 1 (fingers twice as far apart = half the distance) and two fingers dragged one and a half screen heights
+turn the view a full circle. At a flat viewing angle the ground near the horizon covers kilometres per pixel, so the map is not
+held one-to-one there: a drag that starts in that part of the screen slides the view at most five times as fast as one in the
+middle. The Help sheet in the app has the short version (Moving around the map).
 
 ## The science
 

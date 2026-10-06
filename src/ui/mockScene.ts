@@ -8,7 +8,7 @@ import { BurnState, FuelType, type FuelMap, type Ignition, type Insight, type Si
 import { sampleBilinear } from '../core/grid';
 import { DEG, msToKmh, windToUV } from '../core/units';
 import { multiHillshade, insolation } from '../terrain';
-import type { SceneImagery, SceneViewApi } from '../render/api';
+import type { CameraState, SceneImagery, SceneViewApi } from '../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
 import { driverColour, fuelColour, legendFor, SNAPSHOT_LAYER_OVERLAYS } from './legends';
 
@@ -72,6 +72,7 @@ export class MockSceneView implements SceneViewApi {
   private user: { x: number; y: number; heading: number | null } | null = null;
   private brush: { x: number; y: number; radius: number; colour: string } | null = null;
   private interaction = true;
+  private mode: CameraState['mode'] = 'top';
   // View transform: centre (local m) and scale (CSS px per metre).
   private cx = 0;
   private cy = 0;
@@ -197,6 +198,7 @@ export class MockSceneView implements SceneViewApi {
 
   setViewMode(mode: 'orbit' | 'top' | 'ground'): void {
     // The 2-D view is always top-down; 'top' re-fits the domain, 'ground' centres on the user.
+    this.mode = mode;
     if (mode === 'top') this.fit(true);
     if (mode === 'ground' && this.user) this.flyTo(this.user.x, this.user.y, 1500);
   }
@@ -220,6 +222,15 @@ export class MockSceneView implements SceneViewApi {
 
   setHeading(_deg: number): void {
     /* always north up */
+  }
+
+  /** The map as a camera: centred on (cx, cy), looking straight down, north up; `distance` is the span the short side shows. */
+  /** The 2-D map has no glide. */
+  readonly gliding = false;
+
+  cameraState(): CameraState {
+    const r = this.canvas.getBoundingClientRect();
+    return { target: [this.cx, this.cy], distance: Math.min(r.width, r.height || r.width) / Math.max(1e-9, this.scale), azimuthDeg: 0, polarDeg: 0, headingDeg: 0, mode: this.mode };
   }
 
   setUserLocation(x: number, y: number, headingDeg?: number | null): void {

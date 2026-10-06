@@ -1,16 +1,36 @@
 /**
- * Camera and touch controls: OrbitControls tuned for phones (one finger rotates, two fingers pan + pinch-zoom; in the
- * top view one finger pans like a map), damping, distance/tilt limits, a terrain-clearance clamp, animated fly-to and
- * three view modes:
+ * Camera and touch controls, tuned for phones, damping, distance/tilt limits, a terrain-clearance clamp, animated fly-to
+ * and three view modes:
  *   orbit   oblique 3-D view around a target on the ground
  *   top     plan view (north up unless rotated), for overlays and marking fire
  *   ground  eye level (1.7 m) at the user's position, looking towards the fire — "what you would see from here"
+ *
+ * Gestures in orbit and top view (the same in both):
+ *   ONE finger drag     displaces the view like grabbing the map: the ground under the finger stays under it
+ *                       ({@link PanGesture} / {@link GroundGrab}), with a light glide after the finger lifts
+ *   TWO fingers         OrbitControls' TOUCH.DOLLY_ROTATE: the drag of their midpoint turns (horizontal) and tilts
+ *                       (vertical) the view around the target, the change of their distance zooms towards the midpoint,
+ *                       all at the same time (no lock, no threshold); the top view cannot tilt
+ *   lifting / adding    a finger continues / switches without a jump; fingers beyond the second are ignored
+ *   mouse               left drag pans, right drag rotates, middle drag and the wheel zoom (desktop development)
+ * Eye level is a first-person look-around: one or two fingers turn the view; the eye itself cannot be displaced.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { CameraState } from './api';
 import type { HeightField } from './heightfield';
+import { PanGesture } from './panGesture';
 
 export type ViewMode = 'orbit' | 'top' | 'ground';
+
+/**
+ * Touch / mouse sensitivity of the orbit and top views.
+ *  - zoomSpeed 1: OrbitControls maps a pinch by distance ← distance · (spacing before ÷ spacing after)^zoomSpeed, so 1 is exactly
+ *    1 : 1 (fingers twice as far apart = half the distance); the wheel then gives the stock 5 % per notch.
+ *  - rotateSpeed 2/3: OrbitControls turns 2π · rotateSpeed per screen height of midpoint drag, so one full turn takes
+ *    1.5 screen heights (the old 0.6 took 1.67: about the same feel, a round number).
+ */
+export const GESTURE = { zoomSpeed: 1, rotateSpeed: 2 / 3 } as const;
 
 interface Flight {
   t0: number;
@@ -20,6 +40,9 @@ interface Flight {
   fromPos: THREE.Vector3;
   toPos: THREE.Vector3;
 }
+
+/** After a one-finger drag the target's height starts following the terrain again, its easing ramping up over this time (ms). */
+const HEIGHT_EASE_MS = 450;
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -49,16 +72,33 @@ export class CameraRig {
   /** Screen areas covered by UI (CSS px): the optical centre is moved to the middle of the rest (animated). */
   private insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private insetsShown = { top: 0, right: 0, bottom: 0, left: 0 };
+  /** One-finger pan (its pointer listeners are registered before OrbitControls' own, see PanGesture). */
+  private readonly pan: PanGesture;
+  /** Share (0–1) of the usual terrain-following easing of the target's height in force: 0 while a finger drags, then ramping up. */
+  private heightEase = 1;
+  private heightEaseT = -1e9;
 
   constructor(dom: HTMLElement, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(50, aspect, 2, 200000);
     this.camera.position.set(0, 4000, 6000);
+    this.pan = new PanGesture(dom, {
+      camera: this.camera,
+      target: () => this.controls.target,
+      accepts: () => this.interaction && !this.flight,
+      canPan: () => this._mode !== 'ground',
+      surface: () => this.hf,
+      metresPerPixel: () => this.metresPerPixel(),
+      started: () => this.controls.dispatchEvent({ type: 'start' }),
+      ended: () => this.controls.dispatchEvent({ type: 'end' }),
+    });
     this.controls = new OrbitControls(this.camera, dom);
     const c = this.controls;
+    // Wheel zoom or a mouse drag (OrbitControls dispatches 'start') ends a glide.
+    c.addEventListener('start', this.stopGlide);
     c.enableDamping = true;
     c.dampingFactor = 0.12;
-    c.rotateSpeed = 0.6;
-    c.zoomSpeed = 1.1;
+    c.rotateSpeed = GESTURE.rotateSpeed;
+    c.zoomSpeed = GESTURE.zoomSpeed;
     c.panSpeed = 1.0;
     c.screenSpacePanning = false; // pan over the ground plane, not the screen plane
     c.minDistance = 40;
@@ -111,6 +151,9 @@ export class CameraRig {
     const prev = this._mode;
     this._mode = mode;
     this.applyModeControls();
+    // A finger that is still down keeps the gesture OrbitControls began for the old mode (one finger rotating at eye level):
+    // end it, so that the finger does nothing until it lifts (the pan of this mode starts with the next touch).
+    if (mode !== prev) (this.controls as unknown as { state: number }).state = -1;
     if (!this.hf) return;
     const c = this.controls;
     if (mode === 'top') {
@@ -151,6 +194,7 @@ export class CameraRig {
     t.y += dy;
     this.camera.position.y += dy;
     if (this.eye) this.eye.y += dy;
+    this.pan.rebase(); // a finger that is dragging grabs the (re-scaled) ground again where it is
     const f = this.flight;
     if (f) {
       for (const [tgt, pos] of [
@@ -173,15 +217,18 @@ export class CameraRig {
   private applyModeControls(): void {
     const c = this.controls;
     c.enabled = this.interaction;
+    this.pan.cancel(); // a drag or glide of the old mode ends (the fingers stay tracked until they lift)
     if (this._mode === 'top') {
       c.minPolarAngle = 0;
       c.maxPolarAngle = 0.001;
       c.enableRotate = true;
       c.enablePan = true;
       c.enableZoom = true;
-      c.rotateSpeed = 0.6;
+      c.rotateSpeed = GESTURE.rotateSpeed;
+      c.zoomSpeed = GESTURE.zoomSpeed;
       c.minDistance = 60;
-      c.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+      // One finger is the grab pan of PanGesture (null: OrbitControls does nothing for it); two fingers pinch and turn at once.
+      c.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
       c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     } else if (this._mode === 'ground') {
       c.minPolarAngle = THREE.MathUtils.degToRad(20);
@@ -199,22 +246,36 @@ export class CameraRig {
       c.enablePan = true;
       c.enableZoom = true;
       c.enableRotate = true;
-      c.rotateSpeed = 0.6;
+      c.rotateSpeed = GESTURE.rotateSpeed;
+      c.zoomSpeed = GESTURE.zoomSpeed;
       c.minDistance = 40;
-      c.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-      c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+      c.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
+      c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     }
   }
 
   setInteractionEnabled(on: boolean): void {
     this.interaction = on;
     if (!this.flight) this.controls.enabled = on;
+    if (!on) this.pan.reset(); // finger drawing took over the screen: no drag, no glide, no tracked finger
+  }
+
+  private readonly stopGlide = (): void => {
+    this.pan.stopGlide();
+  };
+
+  /** Ground metres one canvas pixel stands for at the orbit target (the scale of the glide's speed thresholds). */
+  private metresPerPixel(): number {
+    const d = this.camera.position.distanceTo(this.controls.target);
+    return (2 * d * Math.tan(THREE.MathUtils.degToRad(this.baseFov / 2))) / Math.max(1, this.viewH);
   }
 
   /** Animate to a target/position (duration s; 0 = jump). */
   goTo(target: THREE.Vector3, pos: THREE.Vector3, duration = 1.2): void {
+    this.pan.cancel(); // a flight or a jump ends any drag or glide
     if (duration <= 0) {
       this.flight = null;
+      this.controls.enabled = this.interaction; // a jump that interrupts a flight must not leave the controls switched off
       this.controls.target.copy(target);
       this.camera.position.copy(pos);
       this.camera.lookAt(target);
@@ -249,6 +310,11 @@ export class CameraRig {
     return this.flight !== null;
   }
 
+  /** A flick is still gliding on (a touch now only stops it). */
+  get gliding(): boolean {
+    return this.pan.gliding;
+  }
+
   /** Per-frame update: flights, damping, clamps, near plane. Returns true if the camera moved. */
   update(now: number): boolean {
     const before = this.tmp.copy(this.camera.position);
@@ -256,6 +322,9 @@ export class CameraRig {
     const by = before.y;
     const bz = before.z;
     const tb = this.tmp3.copy(this.controls.target);
+    let px = 0;
+    let pz = 0;
+    let panned = false;
     if (this.flight) {
       const f = this.flight;
       const t = Math.min(1, (now - f.t0) / f.duration);
@@ -282,8 +351,16 @@ export class CameraRig {
           this.controls.target.add(off);
         }
       }
+      // One-finger drag / glide: after OrbitControls (which may still be damping a rotation), before the clamps.
+      px = this.controls.target.x;
+      pz = this.controls.target.z;
+      this.pan.step(now);
+      panned = true;
+      if (this.pan.panning) this.heightEaseT = now;
+      this.heightEase = Math.min(1, Math.max(0, (now - this.heightEaseT) / HEIGHT_EASE_MS));
     }
     this.clamp();
+    if (panned) this.pan.settle(this.controls.target.x - px, this.controls.target.z - pz);
     this.updateNear();
     const insetsMoving = this.stepInsets(now);
     const moved =
@@ -324,7 +401,13 @@ export class CameraRig {
       const ty = hf.worldHeightAt(tx, -tz);
       const dx = tx - c.target.x;
       const dz = tz - c.target.z;
-      const dy = (ty - c.target.y) * 0.25; // ease vertically
+      // Ease vertically (25 % per frame), except while one finger drags the map: the grab moves the camera sideways to keep the
+      // ground under the finger, and at a flat viewing angle a small change of the camera's height means a large sideways
+      // correction (1 / tan of the angle at which the finger's ray meets the ground: ×3 to ×10 on a mountain side), which
+      // changes the ground height under the target, which changes the height again: a loop that flip-flops or runs away.
+      // After the drag the height follows the terrain again, the gain ramping up over HEIGHT_EASE_MS so that the view does not
+      // lurch by the (up to a hundred pixels) that the terrain rose or fell while the height was held.
+      const dy = (ty - c.target.y) * 0.25 * this.heightEase;
       if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-4) {
         c.target.x += dx;
         c.target.y += dy;
@@ -351,6 +434,7 @@ export class CameraRig {
       this.viewW = 1000 * aspect;
     }
     this.applyViewOffset();
+    this.pan.rebase(); // the canvas changed shape under a finger that is dragging (the phone was turned): grab where it is now
   }
 
   /**
@@ -472,7 +556,28 @@ export class CameraRig {
     this.goTo(t, this.offsetFrom(t, d, THREE.MathUtils.degToRad(deg + 180), polar), 0.6);
   }
 
+  /**
+   * The view as numbers (tests, the debug handle): the orbit target in local metres, the camera's distance from it, and the
+   * camera's compass azimuth and polar angle (from vertical) as seen from the target, in degrees; `headingDeg` is where the
+   * camera looks. At eye level the target is 1 m in front of the eye, so these describe the look direction.
+   */
+  cameraState(): CameraState {
+    const t = this.controls.target;
+    const off = this.tmp.copy(this.camera.position).sub(t);
+    const d = off.length();
+    return {
+      target: [t.x, -t.z],
+      distance: d,
+      azimuthDeg: (THREE.MathUtils.radToDeg(Math.atan2(off.x, -off.z)) + 360) % 360,
+      polarDeg: d > 1e-9 ? THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(off.y / d, -1, 1))) : 0,
+      headingDeg: this.heading,
+      mode: this._mode,
+    };
+  }
+
   dispose(): void {
+    this.pan.dispose();
+    this.controls.removeEventListener('start', this.stopGlide);
     this.controls.dispose();
   }
 }

@@ -361,9 +361,10 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   refreshFuel(fuel): void;  update(snapshot: SimSnapshot): void;  setLayers(l: Partial<LayerState>): void;
   setIgnitions(ignitions, spots): void;  setInsights(insights): void;  focusInsight(insight | null, fly?): void;
   pickGround(clientX, clientY): [x, y] | null;  projectToScreen(x, y): [cx, cy] | null;  flyTo(x, y, distance?): void;
-  setViewMode('orbit' | 'top' | 'ground'): void;  setUserLocation(x, y, headingDeg?): void;
+  setViewMode('orbit' | 'top' | 'ground'): void;  setUserLocation(x, y, headingDeg?): void;  readonly gliding: boolean;   // a flick still glides
   setViewInsets({ top, right, bottom, left }): void;   // covered screen areas: fly-to targets land in the rest
   zoomBy(factor): void;  readonly heading: number;  setHeading(deg): void;   // zoom / compass buttons
+  cameraState(): { target: [x, y]; distance; azimuthDeg; polarDeg; headingDeg; mode };   // the camera as numbers (tests, debug)
   viewSection?(animate?): void;                        // side-on view of the cross-section (3-D view only)
   setBrushPreview(p | null): void;  setInteractionEnabled(on): void;  stats(); resize(); dispose();
 }
@@ -371,6 +372,62 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 * The terrain mesh is built from `ScenarioData.terrainHiRes` (the 10 m DEM) when present, decimated to the quality
   budget (224 / 320 / 400 samples per side), so cliffs are finer than the 30 m fire grid; fuel, fire and overlays are
   draped from the fire grid.
+* **Camera and gestures** (`cameraRig.ts`, `groundPan.ts`, `panGesture.ts`). Orbit and top view, on a phone:
+  **one finger** = displace the view, **two fingers** = turn / tilt (the midpoint's drag) and zoom (the change of their
+  spacing) at the same time; eye level is a first-person look-around (one or two fingers turn the view, the eye cannot be
+  displaced); the mouse keeps left = pan, right = rotate, middle / wheel = zoom.
+  * *The one-finger pan is a grab, not OrbitControls' pan.* `PanGesture` tracks touch / pen pointers with its own listeners
+    on the canvas (registered before OrbitControls', capture phase) and `GroundGrab` keeps the ground point that was under the
+    finger under it: the ray through the finger is cut with the heightfield (`HeightField.raycast`, ≤ 4 camera–target
+    distances; else the horizontal plane through the target; else a view-plane drag at the target distance when the finger is
+    above the horizon), and each frame the camera and the target are translated over the ground by the amount that puts
+    that ray back through the grabbed point (one ray / plane cut, exact for any tilt, field of view and view inset because
+    the NDC position comes from the canvas rect and the camera's own projection). OrbitControls' screen-delta pan moves the
+    ground at ~62 % of the finger speed at the default 52° tilt. The pan is applied in `CameraRig.update` (once per frame,
+    after OrbitControls' update, before the clamps), so the terrain-clearance easing and a rotation that is still damping do not
+    pull the ground from under a resting finger; `clamp()` still keeps the target inside the domain, and a finger that goes on
+    pushing against the edge re-grabs where it is (`PanGesture.settle`), so that turning back is followed at once.
+    *Nothing runs away near the horizon* (`PAN.MAX_SPEEDUP`, 5): flat ground through the target covers (sin of the view axis'
+    angle to the ground ÷ sin of the ray's)² times as much per pixel as the ground at the target, which is hundreds of
+    times at a flat angle (a few pixels of drag would throw the camera across the domain), so a finger ray is steepened to the
+    line where that reaches 5× (`GroundGrab.steepen`; at the default 52° tilt that is above the top of the canvas, at 70° it is
+    a quarter of the way down, at 80° just under the horizon). A finger that lands above that line drags from it (its offset is
+    kept), so there is no dead zone going down, and nothing happens when it goes on up. Far terrain that would still be too
+    fast is held nearer (`limitSpeedup`).
+  * *The target's height* follows the terrain (25 % per frame, `CameraRig.clamp`) except while one finger drags: the grab moves the
+    camera sideways to keep the ground under the finger, and at a flat angle a small change of the camera's height is a large
+    sideways correction, which changes the ground height under the target, which changes the height again (a loop that flip-flops
+    or runs away, measured at 70° over Katoomba's cliffs). The easing ramps back in over 450 ms after the drag so the view does not
+    lurch by the height the terrain gained (up to a hundred pixels).
+  * *Inertia.* The finger velocity (smoothed over 50 ms from the translations actually achieved each frame) decays with a
+    250 ms time constant after the lift, only if the finger was moving faster than 150 px/s (capped at 3000 px/s, so a flick
+    glides at most ~750 px; `PAN` in `groundPan.ts`). The exact integral is used per frame, so the distance does not depend on
+    the frame rate. Any new touch, a flight (`goTo`), a mode change, interaction off, disposal, a wheel turn, the domain
+    edge or frames that stopped for half a second (a screen covered the map, the page was hidden) ends it; `update()` keeps
+    reporting motion while it runs, so the on-demand renderer keeps drawing. A touch that stops a glide is not a map tap
+    (`SceneViewApi.gliding`, read by the tap detector of `simScreen.ts` when the finger goes down), and neither is a finger that
+    wandered more than 12 px and came back.
+  * *Two fingers* are OrbitControls' `TOUCH.DOLLY_ROTATE` (`touches = { ONE: null, TWO: DOLLY_ROTATE }`), which pinches and
+    turns in the same update, with no lock and no threshold, zooming towards the midpoint (`zoomToCursor`). `GESTURE` in
+    `cameraRig.ts`: `zoomSpeed` 1 (a pinch is exactly 1 : 1: spacing × 2 = distance ÷ 2) and `rotateSpeed` 2/3 (OrbitControls turns
+    2π · rotateSpeed per screen height of drag: one full turn per 1.5 heights, 30° per 100 px on an 800 px canvas; the former
+    0.6 took 1.67). Measured with real touch: the target of a pure two-finger drag moves ~1.5 px per 80 px dragged (the zoom
+    step each finger event triggers leaves a small residue).
+  * *Transitions.* One finger → two: the pan ends without glide and OrbitControls takes over (its baselines are the fingers'
+    current positions: no jump). Two → one: the finger that is left is re-grabbed where it is (no jump) and OrbitControls
+    drops to its idle one-finger state. A third finger and every finger after it are ignored: `PanGesture` stops their pointer
+    events before OrbitControls would see them (it would end the two-finger gesture), so the first two carry on. A pen is
+    handled like a finger and hidden from OrbitControls (which takes it for a mouse); it is captured on the canvas while it is
+    down, because the browser captures a finger by itself but not a pen (a stroke that leaves the canvas would lose its end).
+    The state machine is idle → pan → multi
+    → pan → idle; cancel (`pointercancel`, `lostpointercapture`), a flight, interaction off (finger drawing) and a mode change
+    end a drag (a mode change also ends OrbitControls' own gesture, so a finger that was looking around at eye level does not
+    carry on rotating the new view), a stale finger is forgotten when a new first finger arrives (`isPrimary`), a press of a
+    pointer that is still tracked starts afresh and a canvas that changes shape under a dragging finger (the phone is turned)
+    grabs again where the finger is.
+  * `SceneViewApi.cameraState()` returns the camera as numbers (target in local metres, distance, azimuth, tilt, heading,
+    mode); `cameraRig.gestures.test.ts` drives the real rig with a fake element, `groundPan.test.ts` tests the maths and
+    `e2e/gestures.spec.ts` checks all of it with real multi-touch (CDP `Input.dispatchTouchEvent`).
 * View insets use `camera.setViewOffset` with a widened field of view: the canvas keeps its angular size and the
   optical centre moves to the middle of the unobscured area (animated). The UI centres its crosshair there.
 * Aerial imagery: `src/data` locates it and computes the window (`loadDemoImageryInfo`, `imageryWindow`); the UI

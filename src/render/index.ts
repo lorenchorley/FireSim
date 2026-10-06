@@ -2,7 +2,7 @@
  * Render module (Three.js 3-D scene). The UI programs against {@link SceneViewApi} (api.ts) and {@link LayerState}
  * (layers.ts); {@link SceneView} is the implementation. Legends for the overlays come from {@link legendFor}.
  */
-export type { SceneViewApi, SceneImagery } from './api';
+export type { SceneViewApi, SceneImagery, CameraState } from './api';
 export { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
 export { SceneView, type SceneViewOptions, type RenderQuality } from './SceneView';
 export {
