@@ -384,9 +384,9 @@ export interface SceneViewApi {                       // src/render/api.ts — a
     that ray back through the grabbed point (one ray / plane cut, exact for any tilt, field of view and view inset because
     the NDC position comes from the canvas rect and the camera's own projection). OrbitControls' screen-delta pan moves the
     ground at ~62 % of the finger speed at the default 52° tilt. The pan is applied in `CameraRig.update` (once per frame,
-    after OrbitControls' update, before the clamps), so the terrain-clearance easing and a rotation that is still damping do not
-    pull the ground from under a resting finger; `clamp()` still keeps the target inside the domain, and a finger that goes on
-    pushing against the edge re-grabs where it is (`PanGesture.settle`), so that turning back is followed at once.
+    after OrbitControls' update, before the clamps), so a rotation that is still damping does not pull the ground from under a
+    resting finger; `clamp()` still keeps the target inside the domain, and a finger that goes on pushing against the edge
+    re-grabs where it is (`PanGesture.settle`, fed with how far the camera really moved), so that turning back is followed at once.
     *Nothing runs away near the horizon* (`PAN.MAX_SPEEDUP`, 5): flat ground through the target covers (sin of the view axis'
     angle to the ground ÷ sin of the ray's)² times as much per pixel as the ground at the target, which is hundreds of
     times at a flat angle (a few pixels of drag would throw the camera across the domain), so a finger ray is steepened to the
@@ -394,11 +394,36 @@ export interface SceneViewApi {                       // src/render/api.ts — a
     a quarter of the way down, at 80° just under the horizon). A finger that lands above that line drags from it (its offset is
     kept), so there is no dead zone going down, and nothing happens when it goes on up. Far terrain that would still be too
     fast is held nearer (`limitSpeedup`).
-  * *The target's height* follows the terrain (25 % per frame, `CameraRig.clamp`) except while one finger drags: the grab moves the
-    camera sideways to keep the ground under the finger, and at a flat angle a small change of the camera's height is a large
-    sideways correction, which changes the ground height under the target, which changes the height again (a loop that flip-flops
-    or runs away, measured at 70° over Katoomba's cliffs). The easing ramps back in over 450 ms after the drag so the view does not
-    lurch by the height the terrain gained (up to a hundred pixels).
+  * *The target and the terrain* (`CameraRig.settleTarget`, `SEAT` in `cameraRig.ts`). The orbit target should lie on the ground
+    under the middle of the screen (it is the pivot of a rotation and the zoom distance); it is eased onto the terrain, 25 % of
+    what is left per frame, in one of two ways. *Translating the whole rig* up or down keeps the distance but shifts the picture
+    by the same amount, and while a finger holds the ground at a flat angle that is a feedback loop: the grab moves the camera
+    sideways to keep the ground under the finger (1 / tan of the angle at which the finger's ray meets the ground: ×3 to ×10 on
+    a mountain side, per metre of height), which changes the ground height under the target, which changes the height again (the
+    view flip-flops or runs away: ±40 px per frame at 70° over Katoomba's cliffs; on the 10 m DEM some drags step against the
+    previous step from 45°, dozens of times at 70°). Freezing the height while a finger drags and translating the rig after the
+    lift only moves that shift to the lift, where it shows as the picture creeping (median 7 to 32 px, 90th percentile 44 to 367
+    px, worst 684 px for 100–400 px drags at 30–75° on Katoomba). So from 22.5° polar angle up the camera never moves for
+    the terrain: the target *slides along the line of sight* to the camera onto the first surface that line meets (`slideTarget`:
+    `HeightField.raycast` from the CAMERA along the line, within the distance limits; at most 4 % of the distance per frame so
+    that a cliff crossing the middle of the screen is no pop; a line that meets no terrain leaves the target where it is). The
+    surface is looked for from the camera, not from the target: a march over a band of distances around the target found a
+    grazing ridge from some distances and the ground behind it from others, so on rugged ground the target swung between the
+    two for ever (`update()` never went quiet and the distance oscillated by up to 8 %: one settled view in 60 to 100 at
+    60–80°). The picture does not change by a pixel; the orbit distance does. Below 22.5° (near plan: the grab is steep, the loop
+    gain small, and a vertical translation hardly shifts the picture) the whole rig follows the terrain, so the map keeps its
+    scale. The two are never mixed: where the line of sight grazes a ridge a small vertical move of the rig decides which surface
+    the line meets, so a rig that follows the ground under the target while the target slides to the surface the line meets is a
+    loop through a discontinuity (a smoothstep mix between 15° and 30° swung slowly to and fro in about one view in 2 500).
+    Measured with `cameraRig.relief.measure.test.ts` (Katoomba's
+    10 m DEM, 6 places × 8 directions × 100–400 px drags, finger 50 px/s, 1 000 m and 3 000 m from the target): creep after the
+    lift 0.0 px at 30–75° (≤ 1.5 px when the target reached the domain edge, 7.9 px in one of the 7 drags at 75°, 1 000 m, whose
+    camera had flown into the terrain, which the clearance clamp holds up), no flip-flop at any tilt (in the drags that stayed clear of
+    the domain edge and the ground), the camera's path as straight as when holding the height. The price is the scale: the camera keeps its height above the sea, so over a 100–400 px
+    slide at 52° the distance changes by −10 % to +20 % (10th to 90th percentile; −17 % to +59 % worst; measured in the real
+    app with real multi-touch, 381 drags, creep 0.1 px at worst), 0 % below 22.5° and in the top view. `cameraState().target` is
+    therefore the ground under the middle of the screen, which can still settle by metres for about half a second after the
+    camera has stopped (tests that ask "did the view move" read the camera).
   * *Inertia.* The finger velocity (smoothed over 50 ms from the translations actually achieved each frame) decays with a
     250 ms time constant after the lift, only if the finger was moving faster than 150 px/s (capped at 3000 px/s, so a flick
     glides at most ~750 px; `PAN` in `groundPan.ts`). The exact integral is used per frame, so the distance does not depend on

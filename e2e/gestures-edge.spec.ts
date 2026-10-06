@@ -45,6 +45,12 @@ type View = {
 const V = (page: Page, fn: string, ...args: unknown[]): Promise<unknown> =>
   page.evaluate(([f, a]) => ((window as unknown as { __firesim: { view: Record<string, (...x: unknown[]) => unknown> } }).__firesim.view[f as string] as (...x: unknown[]) => unknown)(...(a as unknown[])), [fn, args] as [string, unknown[]]);
 const cam = (page: Page): Promise<CamState> => V(page, 'cameraState') as Promise<CamState>;
+/** Where the camera is over the ground (x, z in world metres): the picture. (The orbit target also slides onto the terrain for a moment after the camera has stopped.) */
+const eyeOverGround = (page: Page): Promise<[number, number]> =>
+  page.evaluate(() => {
+    const p = (window as unknown as { __firesim: { view: View } }).__firesim.view.camera.position;
+    return [p.x, p.z] as [number, number];
+  });
 const pick = (page: Page, x: number, y: number): Promise<[number, number] | null> => V(page, 'pickGround', x, y) as Promise<[number, number] | null>;
 const screenOf = (page: Page, x: number, y: number): Promise<[number, number] | null> => V(page, 'projectToScreen', x, y) as Promise<[number, number] | null>;
 const lookAt = (page: Page, x: number, y: number, d: number, az: number, tilt: number): Promise<unknown> => V(page, 'lookAt', x, y, d, az, tilt, false);
@@ -193,7 +199,7 @@ test('map gestures with real touch: flat angles, rugged ground, taps, the domain
     const net = Math.hypot(moving.at(-1)!.x - moving[0]!.x, moving.at(-1)!.z - moving[0]!.z);
     expect(net).toBeGreaterThan(300);
     expect(path / net, 'camera path / net displacement').toBeLessThan(1.25);
-    // The lift: the height follows the terrain again over about half a second; the ground never lurches by more than a few px a frame.
+    // The lift: the picture stays (the camera does not move for the terrain; the target slides along the line of sight onto the ground).
     const px: [number, number][] = [];
     await hand.up(1);
     for (let i = 0; i < 40; i++) {
@@ -204,7 +210,7 @@ test('map gestures with real touch: flat angles, rugged ground, taps, the domain
     expect(px.length).toBeGreaterThan(20);
     let lurch = 0;
     for (let i = 1; i < px.length; i++) lurch = Math.max(lurch, dist(px[i]!, px[i - 1]!));
-    expect(lurch, 'largest on-screen step of the grabbed ground after the lift (px)').toBeLessThan(14);
+    expect(lurch, 'largest on-screen step of the grabbed ground after the lift (px)').toBeLessThan(1);
   });
 
   await test.step('taps: a touch that stops a glide is not a tap, a drag that comes back is not a tap, a clean tap still is', async () => {
@@ -224,8 +230,9 @@ test('map gestures with real touch: flat angles, rugged ground, taps, the domain
     expect(await whyPanels(page), 'the touch that stopped the glide was not a tap').toBe(0);
     expect(await gliding(page)).toBe(false);
     const stopped = await cam(page);
+    const stoppedAt = await eyeOverGround(page);
     await sleep(400);
-    expect(dist((await cam(page)).target, stopped.target), 'the view stays where the touch stopped it').toBeLessThan(0.5);
+    expect(dist(await eyeOverGround(page), stoppedAt), 'the view stays where the touch stopped it').toBeLessThan(0.5);
     expect(dist(stopped.target, midGlide.target)).toBeGreaterThan(0);
     // A drag out and back to within a few px of where it began.
     await hand.down(1, 250, 450);
@@ -275,10 +282,10 @@ test('map gestures with real touch: flat angles, rugged ground, taps, the domain
     await sleep(100);
     await V(page, 'setCovered', true);
     await sleep(900);
-    const covered = await cam(page);
+    const covered = await eyeOverGround(page);
     await V(page, 'setCovered', false);
     await sleep(2200);
-    expect(dist((await cam(page)).target, covered.target), 'the glide did not start again').toBeLessThan(1);
+    expect(dist(await eyeOverGround(page), covered), 'the glide did not start again').toBeLessThan(1);
     expect(await gliding(page)).toBe(false);
   });
 

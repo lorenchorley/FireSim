@@ -22,6 +22,7 @@ type View = {
   projectToScreen(x: number, y: number): [number, number] | null;
   lookAt(x: number, y: number, distance: number, azimuthDeg: number, tiltDeg: number, animate?: boolean): void;
   setLayers(l: Record<string, unknown>): void;
+  camera: { position: { y: number } };
 };
 const cameraState = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as { __firesim: { view: View } }).__firesim.view.cameraState());
 
@@ -78,6 +79,8 @@ test('a pen drags the map like a finger, also when the stroke runs off the canva
 
   await page.evaluate(() => (window as unknown as { __firesim: { view: View } }).__firesim.view.lookAt(0, 0, 3000, 200, 52, false));
   const s0 = await settle(page);
+  const eyeY = (): Promise<number> => page.evaluate(() => (window as unknown as { __firesim: { view: View } }).__firesim.view.camera.position.y);
+  const y0 = await eyeY();
   const c = (await page.evaluate(([x, y]) => (window as unknown as { __firesim: { view: View } }).__firesim.view.projectToScreen(x!, y!), s0.target))!;
   const A: [number, number] = [c[0], c[1] + 150];
 
@@ -105,7 +108,10 @@ test('a pen drags the map like a finger, also when the stroke runs off the canva
   const moved1 = Math.hypot(s1.target[0] - s0.target[0], s1.target[1] - s0.target[1]);
   expect(moved1, 'the pen moved the map (also over the bar)').toBeGreaterThan(200);
   expect(Math.abs(s1.polarDeg - s0.polarDeg), 'a pan does not tilt').toBeLessThan(0.2);
-  expect(Math.abs(s1.distance / s0.distance - 1)).toBeLessThan(0.05);
+  // The camera does not rise or sink with the terrain (the orbit target slides along the line of sight onto the ground instead),
+  // so the distance follows the relief a little: 6 % over this 400 m pan on Katoomba.
+  expect(Math.abs((await eyeY()) - y0), 'the camera keeps its height (m)').toBeLessThan(0.5);
+  expect(Math.abs(s1.distance / s0.distance - 1)).toBeLessThan(0.15);
 
   // Stroke 2, the same pen: it must pan again (a stuck first stroke would swallow it).
   await page.evaluate(() => (window as unknown as { __firesim: { view: View } }).__firesim.view.lookAt(0, 0, 3000, 200, 52, false));

@@ -14,6 +14,8 @@
  *   lifting / adding    a finger continues / switches without a jump; fingers beyond the second are ignored
  *   mouse               left drag pans, right drag rotates, middle drag and the wheel zoom (desktop development)
  * Eye level is a first-person look-around: one or two fingers turn the view; the eye itself cannot be displaced.
+ *
+ * The orbit target is kept on the terrain under the middle of the screen without moving the picture: see {@link SEAT}.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -41,8 +43,29 @@ interface Flight {
   toPos: THREE.Vector3;
 }
 
-/** After a one-finger drag the target's height starts following the terrain again, its easing ramping up over this time (ms). */
-const HEIGHT_EASE_MS = 450;
+/**
+ * How the orbit target keeps to the terrain (`CameraRig.settleTarget`; docs/ARCHITECTURE.md → Camera).
+ *
+ * The target should lie on the ground under the middle of the screen (the pivot of a rotation, the zoom distance). There are two
+ * ways to get it there: translate the whole rig vertically (the distance stays, but the picture shifts by the same amount, and
+ * while a finger holds the ground at a flat angle that shift feeds back through the grab: the view shakes), or slide the target
+ * along the line of sight to the camera (the camera does not move, so the picture does not change; only the orbit distance
+ * does). The camera moves for the terrain only in near-plan views (below {@link SEAT.SLIDE_FROM}), where a vertical translation
+ * changes next to nothing on the screen and the map keeps its scale; everywhere else the target slides.
+ */
+const SEAT = {
+  /** Share of the remaining difference between the target and the terrain that is closed per frame. */
+  EASE: 0.25,
+  /**
+   * Polar angle (° from vertical) from which the target slides along the line of sight; below it the whole rig follows the terrain.
+   * Never both at once: where the line of sight grazes a ridge, a small vertical move of the rig decides which surface it meets, so
+   * a rig that follows the height of the ground under the target while the target slides to the surface the line meets is a loop
+   * through a discontinuity (it swung slowly to and fro in a 15-30° blend, one view in a few thousand, and never came to rest).
+   */
+  SLIDE_FROM: 22.5,
+  /** The target moves by at most this share of the distance in one frame (so a cliff passing the middle of the screen is no pop). */
+  MAX_STEP: 0.04,
+} as const;
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
@@ -74,9 +97,6 @@ export class CameraRig {
   private insetsShown = { top: 0, right: 0, bottom: 0, left: 0 };
   /** One-finger pan (its pointer listeners are registered before OrbitControls' own, see PanGesture). */
   private readonly pan: PanGesture;
-  /** Share (0–1) of the usual terrain-following easing of the target's height in force: 0 while a finger drags, then ramping up. */
-  private heightEase = 1;
-  private heightEaseT = -1e9;
 
   constructor(dom: HTMLElement, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(50, aspect, 2, 200000);
@@ -352,15 +372,13 @@ export class CameraRig {
         }
       }
       // One-finger drag / glide: after OrbitControls (which may still be damping a rotation), before the clamps.
-      px = this.controls.target.x;
-      pz = this.controls.target.z;
+      px = this.camera.position.x;
+      pz = this.camera.position.z;
       this.pan.step(now);
       panned = true;
-      if (this.pan.panning) this.heightEaseT = now;
-      this.heightEase = Math.min(1, Math.max(0, (now - this.heightEaseT) / HEIGHT_EASE_MS));
     }
     this.clamp();
-    if (panned) this.pan.settle(this.controls.target.x - px, this.controls.target.z - pz);
+    if (panned) this.pan.settle(this.camera.position.x - px, this.camera.position.z - pz);
     this.updateNear();
     const insetsMoving = this.stepInsets(now);
     const moved =
@@ -395,25 +413,14 @@ export class CameraRig {
     const c = this.controls;
     const cam = this.camera.position;
     if (this._mode !== 'ground') {
-      // Target inside the domain and on the surface (move the camera with it so the view does not jump).
-      const tx = THREE.MathUtils.clamp(c.target.x, hf.xMin, hf.xMax);
-      const tz = THREE.MathUtils.clamp(c.target.z, -hf.yMax, -hf.yMin);
-      const ty = hf.worldHeightAt(tx, -tz);
-      const dx = tx - c.target.x;
-      const dz = tz - c.target.z;
-      // Ease vertically (25 % per frame), except while one finger drags the map: the grab moves the camera sideways to keep the
-      // ground under the finger, and at a flat viewing angle a small change of the camera's height means a large sideways
-      // correction (1 / tan of the angle at which the finger's ray meets the ground: ×3 to ×10 on a mountain side), which
-      // changes the ground height under the target, which changes the height again: a loop that flip-flops or runs away.
-      // After the drag the height follows the terrain again, the gain ramping up over HEIGHT_EASE_MS so that the view does not
-      // lurch by the (up to a hundred pixels) that the terrain rose or fell while the height was held.
-      const dy = (ty - c.target.y) * 0.25 * this.heightEase;
-      if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-4) {
+      this.settleTarget(hf);
+      // Target inside the domain (move the camera with it so the view does not jump).
+      const dx = THREE.MathUtils.clamp(c.target.x, hf.xMin, hf.xMax) - c.target.x;
+      const dz = THREE.MathUtils.clamp(c.target.z, -hf.yMax, -hf.yMin) - c.target.z;
+      if (Math.abs(dx) + Math.abs(dz) > 1e-4) {
         c.target.x += dx;
-        c.target.y += dy;
         c.target.z += dz;
         cam.x += dx;
-        cam.y += dy;
         cam.z += dz;
       }
     }
@@ -423,6 +430,59 @@ export class CameraRig {
     const ground = hf.worldHeightAt(x, y);
     const clearance = this._mode === 'ground' ? this.eyeHeight * Math.max(1, hf.vex) * 0.9 : Math.max(8, 0.03 * cam.distanceTo(c.target));
     if (cam.y < ground + clearance) cam.y = ground + clearance;
+  }
+
+  /**
+   * Ease the orbit target (and, near the plan view, the rig with it) onto the terrain under the middle of the screen; see {@link SEAT}.
+   * Both ways are eased (25 % of what is left per frame) and bring the target onto the surface; the polar angle of the view (which
+   * neither of them changes) decides which one: the rig below {@link SEAT.SLIDE_FROM}, the target's slide from there up.
+   */
+  private settleTarget(hf: HeightField): void {
+    const tg = this.controls.target;
+    const cam = this.camera.position;
+    const off = this.tmp2.copy(cam).sub(tg);
+    const polar = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(off.y / Math.max(1e-9, off.length()), -1, 1)));
+    if (polar >= SEAT.SLIDE_FROM) {
+      this.slideTarget(hf);
+      return;
+    }
+    // The whole rig up or down; the terrain under the target is read at the target clamped into the domain.
+    const ground = hf.worldHeightAt(THREE.MathUtils.clamp(tg.x, hf.xMin, hf.xMax), -THREE.MathUtils.clamp(tg.z, -hf.yMax, -hf.yMin));
+    const dy = (ground - tg.y) * SEAT.EASE;
+    if (Math.abs(dy) > 1e-4) {
+      tg.y += dy;
+      cam.y += dy;
+    }
+  }
+
+  /**
+   * Slide the target along the line of sight to the camera towards the terrain: the camera does not
+   * move, so neither does the picture; only the orbit distance changes. The terrain is the first surface the line of sight
+   * meets, the ground that the middle of the screen shows, found by a ray from the CAMERA ({@link HeightField.raycast}), within the
+   * distance limits. It does not depend on where the target is now. (A search that started at the target, over a band of
+   * distances around it, found a different surface - a grazing ridge, or the ground behind it - depending on the target's
+   * distance, so on rugged ground the target could swing to and fro between the two for ever and the view never came to rest.)
+   * A line of sight that meets no terrain (the view looks over it, or out of the domain) leaves the target where it is.
+   */
+  private slideTarget(hf: HeightField): void {
+    const c = this.controls;
+    const cam = this.camera.position;
+    const tg = c.target;
+    const ox = tg.x - cam.x;
+    const oy = tg.y - cam.y;
+    const oz = tg.z - cam.z;
+    const d = Math.hypot(ox, oy, oz);
+    if (d < 1e-6) return;
+    const ux = ox / d;
+    const uy = oy / d;
+    const uz = oz / d;
+    const hit = hf.raycast(cam.x, cam.y, cam.z, ux, uy, uz, c.maxDistance);
+    if (!hit) return;
+    const t = THREE.MathUtils.clamp(hit.t, c.minDistance, c.maxDistance);
+    const cap = SEAT.MAX_STEP * d;
+    const step = THREE.MathUtils.clamp((t - d) * SEAT.EASE, -cap, cap);
+    if (Math.abs(step) < 0.005) return; // within 2 cm of the ground: at rest (update() must go quiet)
+    tg.set(cam.x + ux * (d + step), cam.y + uy * (d + step), cam.z + uz * (d + step));
   }
 
   resize(aspect: number, width?: number, height?: number): void {

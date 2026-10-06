@@ -132,7 +132,11 @@ The map is moved with the fingers, the same in the 3-D view and the top (plan) v
 Sensitivity: a pinch is 1 : 1 (fingers twice as far apart = half the distance) and two fingers dragged one and a half screen heights
 turn the view a full circle. At a flat viewing angle the ground near the horizon covers kilometres per pixel, so the map is not
 held one-to-one there: a drag that starts in that part of the screen slides the view at most five times as fast as one in the
-middle. The Help sheet in the app has the short version (Moving around the map).
+middle. Lifting the finger never moves the picture: the camera does not climb or sink with the terrain, the view's pivot (the
+ground under the middle of the screen) just slides along the line of sight, so over a ridge or into a valley the scale changes a
+little (−10 % to +20 % over a 100–400 px slide at the default tilt, 10th to 90th percentile on Katoomba's cliffs) as it would for
+a camera flying at a steady height; in near-plan views (tilt under about 22°) and in the top view, which keep their scale, the
+camera follows the terrain instead. The Help sheet in the app has the short version (Moving around the map).
 
 ## The science
 

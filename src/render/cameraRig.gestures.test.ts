@@ -136,7 +136,10 @@ interface Rig {
   frames(n: number): boolean[];
   /** Let ms of time pass without any frame (the view was covered by a screen, the page was in the background). */
   skip(ms: number): void;
-  /** Advance n frames; returns how far (m) the orbit target moved over the ground in each. */
+  /**
+   * Advance n frames; returns how far (m) the camera moved over the ground in each. (The camera, not the orbit target: the target
+   * also slides along the line of sight onto the terrain when the picture is at rest, see CameraRig.settleTarget.)
+   */
   slide(n: number): number[];
   down(id: number, x: number, y: number, init?: Partial<FakeEvent>): FakeEvent;
   move(id: number, x: number, y: number, init?: Partial<FakeEvent>): FakeEvent;
@@ -179,13 +182,15 @@ function setup(hf: HeightField = makeHf()): Rig {
     },
     slide(n) {
       const out: number[] = [];
-      let prev = rig.cameraState().target;
+      const cam = rig.camera.position;
+      let px = cam.x;
+      let pz = cam.z;
       for (let i = 0; i < n; i++) {
         clock += 16;
         rig.update(clock);
-        const t = rig.cameraState().target;
-        out.push(Math.hypot(t[0] - prev[0], t[1] - prev[1]));
-        prev = t;
+        out.push(Math.hypot(cam.x - px, cam.z - pz));
+        px = cam.x;
+        pz = cam.z;
       }
       return out;
     },
@@ -269,9 +274,10 @@ describe('CameraRig gestures: one finger pans like grabbing the map', () => {
     expect(dist2(after.target, before.target)).toBeGreaterThan(300);
     expect(after.azimuthDeg).toBeCloseTo(before.azimuthDeg, 6);
     expect(after.polarDeg).toBeCloseTo(before.polarDeg, 4);
-    // The camera-to-target distance is unchanged up to the terrain-clearance easing of the target height.
+    // The camera-to-target distance is unchanged up to the terrain: the target slides along the line of sight onto the ground
+    // under the middle of the screen (the camera does not move for it), 2 % here, 400 px of drag over gentle hills.
     expect(Math.abs(after.distance / before.distance - 1)).toBeLessThan(0.02);
-    // Still the same ground under the finger, within a metre (the target height follows the terrain in 25 % steps).
+    // Still the same ground under the finger, within a metre (the camera only moved with the finger).
     expect(dist2(r.pick(290, 330), grabbed)).toBeLessThan(2);
     expect(mid.mode).toBe('orbit');
   });
@@ -393,9 +399,7 @@ describe('CameraRig gestures: one finger pans like grabbing the map', () => {
     r.el.clientHeight = W;
     r.rig.resize(H / W, H, W);
     r.frames(3);
-    const after = r.state();
-    expect(dist2(after.target, before.target), 'the target did not jump').toBeLessThan(0.5 * mppOf(before.distance));
-    expect(r.rig.camera.position.distanceTo(cam0)).toBeLessThan(0.5 * mppOf(before.distance));
+    expect(r.rig.camera.position.distanceTo(cam0), 'the camera did not jump').toBeLessThan(0.5 * mppOf(before.distance));
     // And the finger carries on grabbing the ground that is under it now.
     const grabbed = r.pickIn(230, 450, H, W);
     drag(r, [{ id: 1, to: [330, 300] }], 6);
@@ -459,7 +463,7 @@ describe('CameraRig gestures: two fingers turn, tilt and zoom at the same time',
     const turn = ((after.azimuthDeg - before.azimuthDeg + 540) % 360) - 180;
     expect(Math.abs(turn)).toBeCloseTo(((2 * Math.PI * GESTURE.rotateSpeed * 100) / H) * (180 / Math.PI), 0); // = 30°
     expect(after.polarDeg).toBeCloseTo(before.polarDeg, 3);
-    expect(Math.abs(after.distance / before.distance - 1)).toBeLessThan(0.002); // (the target height follows the terrain)
+    expect(Math.abs(after.distance / before.distance - 1)).toBeLessThan(0.002); // (the target slides along the line of sight onto the terrain: gently here)
     // The target stays: OrbitControls' zoom-to-cursor, run once per finger event, leaves a small residue (a few px per 100 px).
     expect(dist2(after.target, before.target)).toBeLessThan(15 * mppOf(before.distance));
   });
@@ -736,11 +740,11 @@ describe('CameraRig gestures: cancel, interaction off, flights, glide', () => {
     r.down(1, 200, 500);
     drag(r, [{ id: 1, to: [200, 300] }], 8);
     r.frames(25);
-    const t = r.state().target;
     r.rig.setInteractionEnabled(false);
     r.up(1);
+    const cam = r.rig.camera.position.clone();
     expect(Math.max(...r.slide(40))).toBeLessThan(1e-3);
-    expect(dist2(r.state().target, t)).toBeLessThan(1e-3);
+    expect(r.rig.camera.position.distanceTo(cam)).toBeLessThan(1e-3);
   });
 
   it('a flight (fly to the fire, a view-mode change) ignores fingers and ends a drag in progress', () => {
@@ -838,12 +842,12 @@ describe('CameraRig gestures: cancel, interaction off, flights, glide', () => {
     r.up(1);
     r.frames(2);
     expect(r.rig.gliding).toBe(true);
-    const t = r.state().target;
+    const cam = r.rig.camera.position.clone();
     r.skip(3000); // the view was covered for three seconds: no frames
     r.frames(1);
     expect(r.rig.gliding).toBe(false);
     r.frames(60);
-    expect(dist2(r.state().target, t)).toBeLessThan(1);
+    expect(r.rig.camera.position.distanceTo(cam)).toBeLessThan(1);
   });
 
   it('a slow release and a rest before lifting do not glide', () => {
@@ -872,11 +876,14 @@ describe('CameraRig gestures: cancel, interaction off, flights, glide', () => {
     flick();
     r.frames(3);
     const before = r.state().target;
+    // The glide would carry the view kilometres on in the 250 ms; the zoom flight keeps the target, which then settles by metres
+    // onto the terrain that the line of sight now meets (CameraRig.settleTarget).
+    const settles = 0.005 * r.state().distance;
     r.rig.zoomBy(0.8); // a short flight
     for (let i = 0; i < 60 && r.rig.flying; i++) r.frames(1);
-    expect(dist2(r.state().target, before)).toBeLessThan(1); // the glide did not carry on during or after it
+    expect(dist2(r.state().target, before)).toBeLessThan(settles); // the glide did not carry on during or after it
     r.frames(30);
-    expect(dist2(r.state().target, before)).toBeLessThan(1);
+    expect(dist2(r.state().target, before)).toBeLessThan(settles);
     flick();
     r.frames(3);
     r.rig.setMode('top');
@@ -1000,7 +1007,9 @@ describe('CameraRig gestures: eye level, mouse, pen', () => {
 describe('CameraRig gestures: a drag on rugged terrain at a flat viewing angle is steady', () => {
   // Steep ridges and valleys (slopes up to ~0.6 on top of a general rise), viewed at a low angle from 2 km: the finger grabs
   // ground far away where a small change of the camera's height moves the ground under the finger by several times as much
-  // horizontally. If the target's height followed the terrain while the finger drags, that correction would feed back on itself.
+  // horizontally. If the camera's height followed the terrain while the finger drags, that correction would feed back on itself;
+  // so the camera does not move for the terrain here (the target slides along the line of sight instead), and nothing moves on the
+  // screen after the lift either (holding the height and translating the rig after the lift made the picture creep).
   function ruggedHf(): HeightField {
     const z = new Float32Array(grid.nx * grid.ny);
     for (let j = 0; j < grid.ny; j++)
@@ -1059,8 +1068,7 @@ describe('CameraRig gestures: a drag on rugged terrain at a flat viewing angle i
       // And the ground under the finger is still the ground that was grabbed (screen px).
       const now = screenOfGround(r, grabbed);
       expect(Math.hypot(now[0] - x0, now[1] - (y0 + 60)), 'grab error (px)').toBeLessThan(3);
-      // After the finger lifts the height follows the terrain again, but gently: the view settles over about half a second
-      // instead of lurching (it may have to move by a hundred pixels or so after a drag over high relief).
+      // After the finger lifts the picture stays: the target slides onto the ground along the line of sight, the camera is still.
       r.up(1, { clientX: x0, clientY: y0 + 60 });
       let prev = screenOfGround(r, grabbed);
       let worst = 0;
@@ -1070,7 +1078,7 @@ describe('CameraRig gestures: a drag on rugged terrain at a flat viewing angle i
         worst = Math.max(worst, Math.hypot(p[0] - prev[0], p[1] - prev[1]));
         prev = p;
       }
-      expect(worst, 'largest on-screen step of the ground after the lift (px per frame)').toBeLessThan(10);
+      expect(worst, 'largest on-screen step of the ground after the lift (px per frame)').toBeLessThan(0.5);
     });
   }
 });

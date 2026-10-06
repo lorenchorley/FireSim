@@ -202,6 +202,7 @@ test('map gestures with real touch: one finger pans, two fingers turn / tilt / z
     const A: [number, number] = [cx + 40, cy + 120];
     const B: [number, number] = [cx - 70, cy - 90];
     await expectCanvasAt(page, ...A);
+    const eye0 = await eyePosition(page);
     const grabbed = await pick(page, ...A);
     expect(grabbed).not.toBeNull();
     await hand.down(1, ...A);
@@ -222,12 +223,13 @@ test('map gestures with real touch: one finger pans, two fingers turn / tilt / z
     expect(during.mode).toBe('orbit');
     // The ground moved WITH the finger (grabbed ground is now at B), i.e. the target went the opposite way from the drag
     // (up-left on screen = the target moves down-right over the ground): the screen point of the grabbed ground is B. It is
-    // exact while the finger is down (above); once it lifts, the target's height follows the terrain again over ~0.5 s (it is
-    // held while a finger drags: see CameraRig.clamp), which moves the view by a few pixels on this terrain (a few dozen after
-    // a drag over high relief): within a tenth of the screen height, never a different place.
+    // exact while the finger is down (above), and it stays there once the finger lifts: the camera does not move for the
+    // terrain (the target slides along the line of sight onto the ground instead, see CameraRig.settleTarget), so the picture
+    // does not creep, and the camera keeps its height above the sea.
     const now = await screenOf(page, grabbed![0], grabbed![1]);
     expect(now).not.toBeNull();
-    expect(Math.hypot(now![0] - B[0], now![1] - B[1]), 'the grabbed ground ends where the finger left it').toBeLessThan(0.1 * H);
+    expect(Math.hypot(now![0] - B[0], now![1] - B[1]), 'the grabbed ground ends where the finger left it (px)').toBeLessThan(3);
+    expect(Math.abs((await eyePosition(page))[1] - eye0[1]), 'the camera did not rise or sink with the terrain (m)').toBeLessThan(0.5);
   });
 
   // ───────── two fingers: a pinch zooms 1 : 1 ─────────
