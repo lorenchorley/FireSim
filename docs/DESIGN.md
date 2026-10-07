@@ -407,7 +407,7 @@ Anything a screen needed that the design system did not have was added to the ri
 | Screen | Builder | CSS | What it is made of |
 | --- | --- | --- | --- |
 | Safety notice | `screens/notice.ts` | `overlays.css` (`.modal.notice`) | the dialog; shown first, and again from Settings or the main menu |
-| Setup | `screens/setup.ts` | `screens.css` | flat cards; `listRow` for "Use my location"; photo cards for the demo sites; `chipChoice` rows (area, detail, weather source, duration); "Data for this run" (a row per planned data set with an `originChip` and a size; estimates are marked "≈"); a bottom bar with the summary and the blue Build button |
+| Setup | `screens/setup.ts` | `screens.css` | flat cards; `listRow` for "Use my location"; a box for a pasted Google Maps link or coordinates with a Paste `iconButton` and a result row in the style of the GPS fix (`.fix`: pin, numbers, name, chips, Selected, Clear); photo cards for the demo sites; `chipChoice` rows (area, detail, weather source, duration); "Data for this run" (a row per planned data set with an `originChip` and a size; estimates are marked "≈"); a bottom bar with the summary and the blue Build button |
 | Building | `screens/building.ts` | `screens.css` | `.progress`, a row per data set as it arrives |
 | Settings | `screens/settings.ts` | `screens.css` | `appBar`, `.list` rows with trailing values, `segmented`, `toggle` (including High contrast), links to Data sets and How this simulation works |
 | Simulation | `screens/sim/*` | `sim.css`, `transport.css` | below |

@@ -308,7 +308,7 @@ export function imageryRecord(i: MapInputs): DatasetRecord {
       kind: 'raster',
       status: 'unavailable',
       origin: 'none',
-      fallbackReason: 'Aerial photos are bundled only for the eight demo sites; none covers this place. The ground is drawn with the height colours instead.',
+      fallbackReason: 'Aerial photos are bundled only for the demo sites; none covers this place. The ground is drawn with the height colours instead.',
       vintage: vintageFor('none', t, i.now),
       coverage: { fraction: 0 },
       sizes: sizesOf(t, { durationMs: i.timings.imagery }),
@@ -364,7 +364,7 @@ export function imageryRecord(i: MapInputs): DatasetRecord {
     limitations: [
       'Display only: the photo does not change the simulation.',
       'Photos show the ground as it was when flown, which can be years ago; bushfires and clearing since then are not shown.',
-      'Only the eight demo sites carry photos; other places show height colours instead.',
+      'Only the demo sites carry photos; other places show height colours instead.',
     ],
   });
 }

@@ -1,5 +1,5 @@
 /**
- * ONE real scenario build against the live services for a place that is not a demo site (Bilpin, -33.52 150.42, a
+ * ONE real scenario build against the live services for a place that is not a demo site (Bilpin village, -33.498 150.522, a
  * semi-rural village in the Blue Mountains foothills, 6 km at 30 m, weather "now"), to check the data-set records
  * with real bytes and to compare them with the Setup estimates (scenario/estimate.ts). Skipped unless NET=1 (behind a
  * proxy also NODE_USE_ENV_PROXY=1):
@@ -17,7 +17,8 @@ import { buildScenario } from './build';
 import { estimateScenarioData } from './estimate';
 import type { ScenarioRequest } from './request';
 
-const BILPIN = { lat: -33.52, lon: 150.42 };
+/** Bilpin village. (-33.52 150.42, where this test first ran, is inside the bundled Mount Tomah demo site, so it would be built from the bundle.) */
+const BILPIN = { lat: -33.498, lon: 150.522 };
 const OUT = fileURLToPath(new URL('../../tests/fixtures/datasets/', import.meta.url));
 
 describe.skipIf(!process.env.NET)('live scenario build (NET=1)', () => {

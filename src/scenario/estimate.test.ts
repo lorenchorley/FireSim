@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { DatasetRecord } from '../core/datasets';
-import { createMemoryKV, elevationTilesFor, loadBundleManifest, saveAreaPack, type BundleManifest } from '../data';
+import { createMemoryKV, DEMO_SITES, elevationTilesFor, loadBundleManifest, saveAreaPack, type BundleManifest } from '../data';
 import { buildScenario } from './build';
 import { estimateScenarioData, planScenarioData, summarisePlan, TYPICAL } from './estimate';
 import { WEATHER_PRESETS } from './presets';
@@ -14,7 +14,8 @@ import type { ScenarioRequest } from './request';
 import { withFakeNetwork } from './testing';
 
 const KAT = { lat: -33.715, lon: 150.285 };
-const BILPIN = { lat: -33.52, lon: 150.42 };
+/** A place that no demo site covers: Bilpin village, 9 km east of Mount Tomah (the bundled Mount Tomah site takes in -33.52 150.42, where the recorded live build was made before it existed). */
+const BILPIN = { lat: -33.498, lon: 150.522 };
 const byId = (rs: readonly DatasetRecord[], id: string): DatasetRecord => {
   const r = rs.find((x) => x.id === id);
   if (!r) throw new Error(`no planned record ${id}`);
@@ -65,6 +66,14 @@ describe('planScenarioData', () => {
     expect(t.plan!.networkBytes).toBe(tiles.length * TYPICAL.terrariumTile.mid);
     expect(t.plan!.basis).toMatch(new RegExp(`${tiles.length} zoom-14 tiles`));
     expect(byId(plan, 'imagery').status).toBe('unavailable');
+    // The per-km² figure of the vegetation and fire-history estimates is read from every bundled site, so its words count them (and say when they were fetched) from the bundle, not from a number typed in.
+    const m2 = m!;
+    expect(Object.keys(m2.sites)).toHaveLength(DEMO_SITES.length);
+    const vb = byId(plan, 'vegetation-svtm').plan!.basis;
+    expect(vb).toContain(`median of the ${DEMO_SITES.length} bundled demo areas`);
+    expect(vb).toMatch(/fetched 2026-\d\d-\d\d to 2026-\d\d-\d\d/); // the first eight in September, Mount Tomah in October
+    expect(byId(plan, 'imagery').plan?.basis ?? '').not.toMatch(/\beight\b/i);
+    expect(byId(plan, 'imagery').fallbackReason ?? '').not.toMatch(/\beight\b/i);
     expect(byId(plan, 'canopy-height').status).toBe('fallback'); // 6 km: the remote canopy is only read up to 3 km
     expect(byId(plan, 'upper-air').origin).toBe('live');
     const sum = summarisePlan(plan);

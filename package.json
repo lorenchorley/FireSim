@@ -18,7 +18,8 @@
     "build:cap": "tsc --noEmit && vite build --mode capacitor",
     "test:fast": "FIRESIM_SKIP_SLOW=1 vitest run",
     "check:contrast": "node scripts/check-contrast.mjs",
-    "check:bundle": "node scripts/check-bundle.mjs"
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "provenance": "node scripts/build-demo-provenance.mjs"
   },
   "license": "MIT",
   "dependencies": {

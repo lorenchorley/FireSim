@@ -8,8 +8,8 @@
  *  - Bundled files and area-pack items: their EXACT byte lengths (public/demo/provenance.json, the pack's item sizes).
  *  - Terrain tiles: the exact tile list of the request (data/terrainTiles.ts `elevationTilesFor`), minus tiles already
  *    stored, times the typical tile size measured from real downloads ({@link TYPICAL}).
- *  - Vegetation and fire history: bytes per km² of the eight bundled demo areas (the same ArcGIS queries, fetched
- *    2026-09-27; lowest, median and highest site) times the queried area.
+ *  - Vegetation and fire history: bytes per km² of the bundled demo areas, read from provenance.json (the same ArcGIS
+ *    queries; lowest, median and highest site) times the queried area. Adding a demo site moves these figures a little.
  *  - Weather: the measured size of the responses of the same requests (tests/fixtures/live, fetched 2026-09-27).
  *  - Roads, homes and places: bytes per km² measured from the live Bilpin build (2026-09-30), wide range.
  * The live test (src/scenario/datasets.live.test.ts) compares these with a real build.
@@ -106,16 +106,17 @@ export interface PlanFacts {
   storedWeather: boolean;
 }
 
-const PER_KM2 = (m: BundleManifest | null, file: string): { low: number; mid: number; high: number } | null => {
+/** Bytes per km² of one bundled file over the demo sites that have it (lowest, median, highest), how many sites that is and when they were fetched. */
+const PER_KM2 = (m: BundleManifest | null, file: string): { low: number; mid: number; high: number; sites: number; from?: string; to?: string } | null => {
   if (!m) return null;
   const km2 = (SCENARIO_PARAMS.demoExtentM / 1000) ** 2;
-  const xs = Object.values(m.sites)
-    .map((s) => s.files[file]?.bytes)
-    .filter((b): b is number => typeof b === 'number' && b > 0)
-    .map((b) => b / km2)
-    .sort((a, b) => a - b);
+  const files = Object.values(m.sites)
+    .map((s) => s.files[file])
+    .filter((f): f is NonNullable<typeof f> => typeof f?.bytes === 'number' && f.bytes > 0);
+  const xs = files.map((f) => f.bytes / km2).sort((a, b) => a - b);
   if (!xs.length) return null;
-  return { low: xs[0]!, mid: xs[Math.floor(xs.length / 2)]!, high: xs[xs.length - 1]! };
+  const dates = files.map((f) => f.capturedOn).filter((d): d is string => typeof d === 'string').sort();
+  return { low: xs[0]!, mid: xs[Math.floor(xs.length / 2)]!, high: xs[xs.length - 1]!, sites: xs.length, ...(dates.length ? { from: dates[0]!, to: dates[dates.length - 1]! } : {}) };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,7 +267,7 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
     const base = { id: 'imagery', role: 'imagery' as const, title: 'Aerial photo', what: 'Aerial photographs draped over the ground.', why: 'Display only: helps you recognise the place.', provider: PROVIDERS.spatial, licence: LICENCES.ccBy, attribution: ATTRIBUTION.imagery, kind: 'raster' as const };
     const jpg = fileBytes('imagery.jpg');
     if (site && jpg !== undefined) add({ ...base, format: 'JPEG, bundled', status: 'used', origin: 'bundled', originDetail: siteNote, ...exact(jpg + (fileBytes('imagery.json') ?? 0)), network: 0, requests: 2, basis: 'exact size of the bundled files', offlineOk: true, offlineNote: 'Shipped with the app.', onDevice: true });
-    else add({ ...base, format: '-', status: 'unavailable', origin: 'none', fallbackReason: 'Photos are bundled for the eight demo sites only; this place shows height colours instead.', low: 0, mid: 0, high: 0, network: 0, requests: 0, basis: 'no photo is downloaded for other places', offlineOk: true, offlineNote: 'Nothing to download.', onDevice: false });
+    else add({ ...base, format: '-', status: 'unavailable', origin: 'none', fallbackReason: 'Photos are bundled for the demo sites only; this place shows height colours instead.', low: 0, mid: 0, high: 0, network: 0, requests: 0, basis: 'no photo is downloaded for other places', offlineOk: true, offlineNote: 'Nothing to download.', onDevice: false });
   }
 
   // ── canopy ──
@@ -298,7 +299,7 @@ export function planScenarioData(req: ScenarioRequest, facts: PlanFacts): Datase
       const U = TYPICAL.vectorUnclipped;
       const r = k ? { low: k.low * qKm2 * U.low, mid: k.mid * qKm2 * U.mid, high: k.high * qKm2 * U.high } : { low: 0, mid: 0, high: 0 };
       const basis = k
-        ? `${qKm2.toFixed(0)} km² queried x ${formatBytes(k.mid)} per km² (median of the 8 bundled demo areas, ${formatBytes(k.low)} to ${formatBytes(k.high)} per km², same queries, fetched 2026-09-27), x ${U.low} to ${U.high} because ${U.basis}`
+        ? `${qKm2.toFixed(0)} km² queried x ${formatBytes(k.mid)} per km² (median of the ${k.sites} bundled demo areas, ${formatBytes(k.low)} to ${formatBytes(k.high)} per km², same queries, fetched ${k.from && k.to ? (k.from === k.to ? k.from : `${k.from} to ${k.to}`) : 'on several dates'}), x ${U.low} to ${U.high} because ${U.basis}`
         : 'no bundled areas to compare with';
       if (cached) add({ ...base, id, format: 'GeoJSON pages (stored copy)', status: 'used', origin: 'cache', originDetail: 'stored copy', ...r, network: 0, requests: 1, basis, offlineOk: true, offlineNote: 'A stored copy is on this device.', onDevice: true });
       else if (online) add({ ...base, id, format: 'GeoJSON pages (ArcGIS REST query)', status: 'used', origin: 'live', ...r, network: r.mid, requests: Math.max(1, Math.ceil(r.mid / 1_000_000)), basis, offlineOk: false, offlineNote: noSignal('it is queried from the NSW service'), onDevice: false });

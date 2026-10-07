@@ -26,6 +26,13 @@ export const DEMO_SITES: DemoSite[] = [
     teaching: 'Deep gorge with steep north- and south-facing walls: aspect-driven fuel moisture, valley wind channelling, cross-valley spotting.',
   },
   {
+    id: 'tomah',
+    name: 'Mount Tomah',
+    region: 'Blue Mountains',
+    centre: { lat: -33.53, lon: 150.425 },
+    teaching: 'Basalt-capped ridge on Bells Line of Road: tall wet forest on the high ground, rainforest in the steep gullies, dry forest and heath on the rest, all inside the 2019/20 Gospers Mountain fire perimeter.',
+  },
+  {
     id: 'kanangra',
     name: 'Kanangra Walls',
     region: 'Kanangra-Boyd',

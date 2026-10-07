@@ -41,13 +41,15 @@ below come from `e2e/gallery.spec.ts` (the same build, in light, night and high-
 | One data set: source, licence, resolution, trust | What the app keeps on the phone; deletions always ask first | How this simulation works: what is 2-D, what is 3-D | The engine's own grid sizes and steps, live |
 | ![Night](docs/screenshots/23-sim-dark.png) | ![High contrast](docs/screenshots/23-sim-high-contrast.png) | ![200 % text](docs/screenshots/25-font-scale-200.png) | ![Planned data in Setup](docs/screenshots/26-setup-data.png) |
 | The night look | High contrast ("bright sun") | Android's 200 % font scale | Setup plans the data before anything is downloaded |
+| ![A pasted Google Maps link](docs/screenshots/27-maps-link.png) | | | |
+| Setup: a pasted Google Maps link becomes a place, with its name and whether the app has data for it | | | |
 
 Every new picture also exists in `-dark` and `-high-contrast` versions in `docs/screenshots/`; the design system and the screens on
 their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 
 ## Features
 
-- **Where**: GPS, typed coordinates, or eight bundled **demo sites** with the NSW 5 m elevation model (bundled at 10 m),
+- **Where**: GPS, a pasted **Google Maps link** (or typed coordinates), or nine bundled **demo sites** (Katoomba, Blackheath, Mount Tomah, Kanangra, Thredbo, Gospers, Pigeon House, Barrington, Warrumbungles) with the NSW 5 m elevation model (bundled at 10 m),
   canopy height (from Meta's 1 m map), aerial imagery, vegetation and fire history — they work fully offline. 3–12 km square, 20 or 30 m fire grid.
 - **Weather**: live (Open-Meteo's automatic 'best match' forecast for the location, ECMWF IFS as the fallback, upper-air levels from ECMWF IFS 0.25° or GFS; BOM ACCESS-G is not requested: Open-Meteo reports its open data as suspended), a past date (historical forecasts / ERA5), the forecast
   (up to 16 days), four designed **presets** (hot NW wind ahead of a SW change; calm night with katabatic drainage;
@@ -111,6 +113,43 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   tab) and nothing pauses it (pause on Danger and vibration are opt-in). Big targets (44 px at least), crosshair placement for gloves
   and wet screens, light, night and **high-contrast** ("bright sun", Settings) looks, left/right-handed layout, Android's Back button
   closes the top-most menu, panel or screen first, screen-reader labels, text up to Android's 200 % font scale without clipping.
+
+## Choosing a place from a Google Maps link
+
+Setup → **Where** takes a place three ways: *Use my location* (GPS), one of the bundled demo sites, or the box **"Or paste a Google
+Maps link or coordinates"**. In Google Maps touch and hold the spot (or open the place), tap **Share** and paste what it gives you
+(or tap the link button beside the box to paste from the clipboard). The app reads the position out of the text and shows it as a
+result row like the GPS fix: the latitude and longitude, the place name when there is one, whether it is **In NSW**, whether
+the app has **bundled data** for it (a demo site covers it, so it works offline), and **Clear**. The data plan below it follows the place.
+
+What it understands (`src/ui/mapsLink.ts`, table-driven tests in `src/ui/mapsLink.test.ts`, about 190 cases):
+
+- **Google Maps addresses**: `/maps/place/<name>/@lat,lon,17z/data=…!3d<lat>!4d<lon>` (the pin wins over the `@` map view, which can
+  be kilometres away), `/maps/@lat,lon,zoom`, `?q=lat,lon`, `q=loc:…`, `q=Name@lat,lon`, `?ll=`, `?center=`,
+  `/maps/search/lat,+lon`, `/maps/search/?api=1&query=`, embed addresses, a route that has one clear point (a route between two places
+  is refused: "Open the place and share that"), on `google.com`, `maps.google.com` and every country domain (`google.com.au`, `google.co.uk` …),
+  with encoded commas, plus signs, percent-encoded names, trailing punctuation and upper-case hosts.
+- **The text Google's Share makes** (a place name, maybe an address, then the link): the first Maps link in the text is used, and the
+  name is the first line (it becomes the scenario name; otherwise "Your location").
+- **Plain coordinates** as before and more: `-33.5447, 150.4097`, `33.5447° S 150.4097° E`, `S 33.5447 E 150.4097`,
+  `33°32'44.2"S 150°24'35.1"E` (with ′ ″ ’ ” marks), degrees and decimal minutes, `lat … lon …`; a longitude-first pair is swapped and says so. A comma as the
+  decimal point is not supported (the message says to use a dot).
+- `geo:` links, OpenStreetMap links, and Google's wrapper links (`consent.google.com/…?continue=`, `google.com/url?q=`).
+- A **short link** (`maps.app.goo.gl/…`, `goo.gl/maps/…`) holds no coordinates. See below.
+
+**What leaves the phone.** Nothing for a long link, coordinates, a geo: or OpenStreetMap link: they are read on the phone. For a Google
+short link the Android app makes **one request to Google's own short-link address** (`src/ui/mapsShortLink.ts`, through the native
+HTTP stack, so CORS does not matter): it asks for the redirect only (`disableRedirects`), reads the `Location` header, and takes the
+position from the address Google redirects to. No account and no custom header is sent (the phone's HTTP stack adds only its usual
+User-Agent; the app itself keeps no Google cookies), it times out after 15 s, retries once, and
+follows Google's own addresses only, by hand (one request per redirect, always over https, never to another host or port): a short link that leads
+anywhere else is refused and never opened or read. Only a Google short link is ever requested; no other pasted address is fetched. (If the address
+Google hands over has no position in it, its page is read as a last resort, at most 512 kB of it, and that page is Google's too.) (A real `maps.app.goo.gl` link on 2026-10-07 answered with one 302 straight to the
+`/maps/place/…` address, 100 to 900 ms. A link to a place that has only a place id and no position, which does exist, comes back as "This
+link names a place but does not say where it is".) In the plain web build the browser hides the redirect, so the app says "Short links only
+work inside the Android app. Open the link in a browser and paste the long address, or paste the coordinates." and asks nothing.
+**What is remembered**: only the coordinates (`-33.54470, 150.40970`). The pasted link, which carries a place id, and the share text are
+never stored, in the remembered last setup or anywhere else; the place name lasts only until the app is closed.
 
 ## Controls
 
@@ -284,6 +323,16 @@ place with their dates, and the saved area packs with their items; `storage.clea
 its Setup plan) and `offline-synthetic.json` (a non-demo place with no signal: every substitute). `?mock=1` scenarios carry an honest mock inventory
 (`src/ui/mockDatasets.ts`).
 
+**Adding or rebuilding a demo site.** List it in `src/data/demoSites.ts` (an id of lowercase letters only, the centre; the
+square is 9 km), then run `NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-site.mjs <id>`. It runs, one after the other, the
+fetchers for the Terrarium tiles, the NSW 5 m elevation model (`fetch-demo-dem5m.mjs`), the aerial photo
+(`fetch-demo-imagery.mjs`, which needs Python 3 with Pillow for the JPEG), the canopy height, the SVTM vegetation
+(`fetch-demo-vegetation.mjs`), the NPWS fire history (`fetch-demo-fire-history.mjs`) and the places context, and then
+rebuilds `public/demo/provenance.json` (`npm run provenance` does that alone). Files that already exist are never overwritten
+without `--force`. Re-running Katoomba into a scratch folder (`--out=<dir>`) reproduces the committed files: the same
+dimensions, headers and encodings, elevations within 0.1 m (rms), 96 of 96 fire-history polygons identical and the aerial
+photo within about 1 of 255 grey levels per pixel (`docs/research/08b-live-endpoint-verification.md`, section 10).
+
 ## Run it
 
 Requirements: Node 20+ (22 used here), npm.
@@ -343,12 +392,15 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   is never "real data", and the card's layer list agrees with the tier about the smoke and the wind.
 - `e2e/gallery.spec.ts` — takes the pictures of the new screens for `docs/screenshots/` (see above).
 - `e2e/android.spec.ts` — the app under an emulated Capacitor Android runtime.
+- `e2e/maps-link.spec.ts` — Setup's "paste a Google Maps link or coordinates" box: a long Mount Tomah link, Google's share text, the Paste button,
+  a short link under the emulated Android runtime (`e2e/androidBridge.ts` fakes the native HTTP plugin's redirect, so no real network is used) and in the
+  plain web build, rubbish and route links, Clear, the remembered setup holding coordinates only, labels and tap targets; takes `27-maps-link*.png`.
 - `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
 ## Try it on an Android phone
 
-The quickest way is the **debug APK** (about 27 MB, works offline with the eight demo sites):
+The quickest way is the **debug APK** (about 30 MB, works offline with the nine demo sites; Mount Tomah adds about 3 MB to the 27.6 MB of the first eight):
 
 1. Build it with `scripts/build-android-apk.sh` (installs the Android command-line SDK if needed, no Android Studio
    required), or use a copy someone has built for you. The file is `android/app/build/outputs/apk/debug/app-debug.apk`.
@@ -384,7 +436,7 @@ For iOS, after `cap add ios`, add the location permission the "Use my location" 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
 Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 108+, which `capacitor.config.ts` enforces, iOS 16+; the build target is ES2022). The bundle
-is ~34 MB (about 3.0 MB of app code and styles, 2.8 MB of it JavaScript), of which ~31 MB are the demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
+is ~38 MB (about 3.0 MB of app code and styles, 2.8 MB of it JavaScript), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
 ## Offline use and area packs
@@ -517,6 +569,9 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   (V22). Remaining gaps: the V20 speed gates are missed for very large (≈ 3 000–5 000 ha) fires, the standard tier
   reproduces the forecast 10 m wind on flat ground to ≈ 1 % on average but up to ≈ 4 % in single cells (V21), and one
   long forecast-fixture scenario is still an expected failure.
+- A Google **short link** can be opened only in the Android app (one request to Google); in a browser paste the long address. A place
+  Google gives only a place id (no position in the address) cannot be used: touch and hold the spot in Google Maps to drop a pin and share that.
+  Pasting the clipboard with the link button needs the phone's permission; if it is refused, touch and hold the box and choose Paste.
 - Weather and live data need the network (or an area pack). On device, requests go through CapacitorHttp; in the
   browser (including an installed PWA) the NSW, RFS and Open-Meteo services are called directly — all send CORS headers
   (verified live, doc 08b). Only the remote canopy-height bucket needs the dev-server proxy (or a deployment proxy).

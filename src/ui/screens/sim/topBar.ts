@@ -73,7 +73,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
   const menuPanel = h('div', { class: 'sim-drawer', attrs: { role: 'dialog', tabindex: '-1' }, aria: { label: 'Menu' }, hidden: true }, [
     h('div', { class: 'drawer-head' }, [
       h('span', { class: 'drawer-mark', aria: { hidden: true } }, icon('flame')),
-      h('div', { class: 'drawer-heading' }, [h('h2', { class: 'drawer-title' }, 'FireSim'), h('p', { class: 'drawer-sub' }, ctx.scenario.name)]),
+      h('div', { class: 'drawer-heading' }, [h('h2', { class: 'drawer-title' }, 'FireSim'), h('p', { class: 'drawer-sub', attrs: { dir: 'auto' } }, ctx.scenario.name)]),
       h('button', { type: 'button', class: 'icon-btn', aria: { label: 'Close menu' }, on: { click: () => popovers.closeAll() } }, icon('close')),
     ]),
     h('ul', { class: 'list drawer-list', attrs: { role: 'menu' }, aria: { label: 'Learn' } }, learn),

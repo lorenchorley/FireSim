@@ -61,7 +61,7 @@ e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.
                  model-card, integration, android)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
-public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 8 demo sites
+public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
 public/replays/  bundled hourly + 365-day daily weather of the 7 historic fire days
 ```
 
@@ -684,10 +684,10 @@ the dataset provenance). "Now" is the tree of this document.
 | JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2821 / 945 | gzip <= 1000 (`npm run check:bundle`) |
 | Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 506 / 177 | gzip <= 195; screens, layer catalog and the model-card text are in it |
 | CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 121.6 / 21.8 | raw <= 135, gzip <= 25 |
-| Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 29.0 / 32.1 | demo <= 31 |
+| Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 29.0 / 32.1 | demo <= 36 (was 31 before Mount Tomah) |
 | HTML pages in the production build | 1 | 1 | 1 | exactly `index.html` (style guide, `render/dev*.html`, legend gallery are dev-server pages, never built) |
 | Source maps in `build:cap` (the APK) | 0 | 0 | 0 | 0 |
-| Debug APK (`gradlew assembleDebug`, MB) | 27.1 (Sep 28, before the screens phase) | | 27.6 | <= 30; holds `index.html` as its only page of ours |
+| Debug APK (`gradlew assembleDebug`, MB) | 27.1 (Sep 28, before the screens phase) | | 27.6 | <= 33 (was 30 before Mount Tomah); holds `index.html` as its only page of ours |
 | Start: first paint / Setup interactive (ms) | 68 / 240 | 56 / 259 | 56 / 263 | Setup <= 350 (1x); at 4x 682 / 696 / 766, budget <= 1000 |
 | Scenario build to first frame of the sim (ms, 1x) | 2467 | 2581 | 2763 | <= 3500; the places step adds ~55 ms and the data-set inventory ~45 ms |
 | Scenario build in Node, Katoomba 9 km bundled (ms) | | 282 | 305 | <= 400 |
@@ -703,6 +703,8 @@ the dataset provenance). "Now" is the tree of this document.
 | Data sets screen open, longest task at 4x (16 rows / 60 rows) | | | <= 268 ms / 250 ms (60 rows are drawn in slices over frames) | <= 300 ms |
 | Model card open, longest task at 4x | | | 146 ms | <= 300 ms |
 | After 100 layer toggles and 80 screen / panel opens | | | JS heap 9.8 to 10.5 MB (100 toggles) and 12 MB (the screen cycles); DOM nodes (2790) and listeners (228) unchanged; GPU geometries 12 to 20 and textures 16 to 18 (made on first use, then kept) | no growth per toggle |
+
+Mount Tomah, the ninth demo site (added 2026-10-07), is not in the "now" column above (measured before it existed): it adds 4.28 MB to `public/demo` (29.0 to 33.1 MiB; 34.9 MB with the replays) and, deflated, about 2.7 MB to the APK (27.6 to about 30.3 MB; estimated, the APK was not rebuilt).
 
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 
@@ -723,7 +725,7 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
   server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.
-  `npx cap sync android` copies exactly `dist/` (33 MB with the demo sites) into `android/app/src/main/assets/public`.
+  `npx cap sync android` copies exactly `dist/` (about 38 MB with the nine demo sites) into `android/app/src/main/assets/public`.
 
 ## Testing
 

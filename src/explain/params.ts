@@ -336,6 +336,7 @@ export type ExplainParams = typeof EXPLAIN_PARAMS;
 export const LEE_OF_DIVIDE: Readonly<Record<string, boolean>> = Object.freeze({
   katoomba: true,
   grose: true,
+  tomah: true,
   gospers: true,
   kanangra: true,
   budawangs: true,

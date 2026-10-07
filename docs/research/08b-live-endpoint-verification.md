@@ -285,6 +285,63 @@ days before the start date.
 
 ## Reproduction notes
 
-The fetch and resample scripts were run from a scratch directory, not committed, to keep
-this change data-only. All parameters needed to reproduce the data are above, and each
-`dem5m.json` / `imagery.json` records its method in `source`.
+The first eight sites were made with scratch scripts that were not committed (a Pillow / shapely
+pipeline). All parameters needed to reproduce the data are above, and each `dem5m.json` /
+`imagery.json` records its method in `source`. Since 2026-10-07 the scripts are committed (section 10).
+
+
+---
+
+## 10. Mount Tomah (the ninth site) and the committed fetch scripts
+
+**Date:** 2026-10-07. Site `tomah`, centre -33.53, 150.425 (9 km square: -33.5705 to -33.4895, 150.3764 to 150.4736).
+
+### The scripts
+
+`node scripts/fetch-demo-site.mjs <id>` (with `NODE_USE_ENV_PROXY=1` behind the proxy) builds a whole `public/demo/<id>/`
+by running, in order, `fetch-demo-terrain.mjs`, `fetch-demo-dem5m.mjs`, `fetch-demo-imagery.mjs`,
+`fetch-demo-canopy.mjs`, `fetch-demo-vegetation.mjs`, `fetch-demo-fire-history.mjs`, `fetch-demo-context.mjs` and
+`build-demo-provenance.mjs`. Each also runs alone (`[--out=<dir>] [--force] [siteId ...]`); existing files are never
+overwritten without `--force`. Shared code is in `scripts/lib/` (grid and Mercator maths, retries, a PNG writer with adaptive
+row filters, the Pillow helper for the JPEG). The imagery step needs Python 3 with Pillow because the committed files are
+progressive 4:2:0 JPEGs written by Pillow and no JavaScript encoder in the dependencies writes that.
+
+Two things found while reproducing the old files, both now in the scripts:
+
+- **Ask for Esri JSON, not GeoJSON, from the SVTM layer.** The service's own GeoJSON conversion hangs the holes of big
+  multi-part polygons on the wrong parts: one "Not classified" polygon around Katoomba came out at 15.2 km2 inside the box
+  against 10.0 km2 in the committed file (and 9.2 km2 more than the box itself holds). The script now takes the rings as
+  they are (outer rings clockwise, holes counter-clockwise), clips each to the box (Sutherland-Hodgman) and gives every hole
+  to the smallest clipped outer ring around it.
+- **Pillow's PNG writer filters rows adaptively** (the committed `dem5m.png` is 1.41 MB; fast-png writes unfiltered rows and made
+  it 1.98 MB). `scripts/lib/png.mjs` picks the filter with the smallest sum of absolute residuals per row: 1.38 MB.
+
+### Proof: Katoomba regenerated into a scratch folder and compared (`node scripts/compare-demo-site.mjs katoomba <dir>`)
+
+| File | Result against the committed file |
+|---|---|
+| `dem5m.json` | same fields in the same order; min / max elevation 247.15 / 1076.46 m against 247.17 / 1076.48; nodata 0 |
+| `dem5m.png` | 900 x 900, elevation difference mean 0.0001 m, rms 0.095 m, 99th percentile 0.33 m, largest 6.1 m (one cliff cell); 1,377,744 B against 1,411,059 B |
+| `imagery.jpg` | 1125 x 1125, progressive, 4:2:0, quality tables equal; mean absolute difference 1.02 / 0.98 / 1.07 of 255 per channel, best alignment at 0 px (a 1 px shift gives 7.7), 0.00 % of pixels off by more than 24 levels; 271,159 B against 271,203 B |
+| `vegetation.geojson` | `clippedTo` equal; area of every `vegForm` within 0.05 km2 (total 84.10 against 84.05 km2); 99.97 % of 6000 random points have the same class; 3074 against 3059 polygons (15 more slivers); 1,494,384 B against 1,491,893 B |
+| `fire-history.geojson` | 96 of 96 polygons identical (geometry and attributes); 37 wildfires, 59 prescribed burns |
+| `context.json` | identical apart from the two fetch dates |
+
+### Mount Tomah, what the bundle holds (read from the files)
+
+| File | Bytes | Notes |
+|---|---|---|
+| `dem5m.png` + `.json` | 1,431,041 | elevation 287.95 to 1044.01 m (the high point is Mount Wilson's basalt cap, -33.5045 150.3800); the Mount Tomah locality point reads 982 m; the Blue Mountains Botanic Garden (OpenStreetMap, -33.5387 150.4220) reads 957 m and the highest ground within 1.5 km of it is 1016 m (the brief's rough -33.545 150.410 is on the slope below, 800 m); mean 753 m; 50 % of the ground is steeper than 20 degrees, 22 % steeper than 30 degrees |
+| `imagery.jpg` + `.json` | 233,028 | 10 x 10 tiles at zoom 15 |
+| `canopy.png` + `.json` | 273,695 | |
+| `vegetation.geojson` | 1,437,002 | 2660 polygons: dry sclerophyll forests (shrubby) 43.0 km2, wet sclerophyll (shrubby) 14.5, rainforests 9.1, not classified 5.4, wet sclerophyll (grassy) 5.0, heathlands 4.7, freshwater wetlands 1.7. Blue Mountains Basalt Cap Forest 8.8 km2 sits on the highest ground (mean 874 m against 741 m for the dry forests) |
+| `fire-history.geojson` | 405,981 | 45 polygons (17 wildfires, 28 prescribed burns). The whole square lies inside the 2019-20 Gospers Mountain wildfire perimeter (479,514 ha); the 2013-14 State Mine fire covers 18 % of it, 1979-80 72 %, 1993-94 64 % (perimeters, not severity) |
+| `context.json` | 53,367 | 368 road lines (Bells Line of Road is the only arterial, 15.3 km), 37 fire trails, 289 homes, 0 residential zones (the 30 zone polygons are rural landscape, conservation, national park, infrastructure), 3 place names (Mount Tomah, Mount Wilson, Berambing) |
+| `terrarium/` + `manifest.json` | 450,698 | 12 tiles at zoom 13 |
+| **Total** | **4,284,812** | about 2.7 MB deflated |
+
+Bilpin village (-33.498, 150.522) lies 9.2 km east of Mount Tomah, so no single 9 km square holds both; the square is placed so that
+Mount Tomah, the Botanic Garden, Berambing and 15 km of Bells Line of Road are inside, the Bilpin ridge (-33.52, 150.42, 6 km) is
+covered, Mount Wilson's village is on the west edge and Mount Irvine just beyond the north edge. Its centre is 10.0 km north of the
+Blackheath site's, so the two squares do not overlap: a strip about 1 km wide (-33.5795 to -33.5705) lies between them, where a
+scenario falls back to the 30 m heights and to live or partial data like any place without a demo site.

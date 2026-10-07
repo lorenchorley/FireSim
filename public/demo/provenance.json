@@ -457,6 +457,71 @@
     }
    }
   },
+  "tomah": {
+   "totalBytes": 4284812,
+   "files": {
+    "dem5m.png": {
+     "bytes": 1430325,
+     "capturedOn": "2026-10-07"
+    },
+    "dem5m.json": {
+     "bytes": 716,
+     "capturedOn": "2026-10-07"
+    },
+    "imagery.jpg": {
+     "bytes": 232547,
+     "capturedOn": "2026-10-07"
+    },
+    "imagery.json": {
+     "bytes": 481,
+     "capturedOn": "2026-10-07"
+    },
+    "canopy.png": {
+     "bytes": 273348,
+     "capturedOn": "2026-10-07"
+    },
+    "canopy.json": {
+     "bytes": 347,
+     "capturedOn": "2026-10-07"
+    },
+    "vegetation.geojson": {
+     "bytes": 1437002,
+     "capturedOn": "2026-10-07",
+     "features": 2660
+    },
+    "fire-history.geojson": {
+     "bytes": 405981,
+     "capturedOn": "2026-10-07",
+     "features": 45,
+     "verDate": 1788739200000
+    },
+    "context.json": {
+     "bytes": 53367,
+     "capturedOn": "2026-10-07",
+     "roads": 368,
+     "fireTrails": 37,
+     "zones": 0,
+     "homes": 289,
+     "places": 3,
+     "layerBytes": {
+      "roads": 40421,
+      "fireTrails": 8627,
+      "homes": 2212,
+      "zones": 2,
+      "places": 187
+     }
+    },
+    "manifest.json": {
+     "bytes": 450,
+     "capturedOn": "2026-10-07"
+    },
+    "terrarium": {
+     "bytes": 450248,
+     "count": 12,
+     "capturedOn": "2026-10-07"
+    }
+   }
+  },
   "warrumbungles": {
    "totalBytes": 3677696,
    "files": {
@@ -584,5 +649,5 @@
    }
   }
  },
- "totalBytes": 30587246
+ "totalBytes": 34872058
 }

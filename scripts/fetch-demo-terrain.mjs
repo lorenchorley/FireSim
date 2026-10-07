@@ -1,10 +1,12 @@
 // Downloads AWS Terrain Tiles (Terrarium encoding) covering each bundled NSW demo site into public/demo/<id>/terrarium/.
-// Usage: NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-terrain.mjs
+// Usage: NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-terrain.mjs [siteId ...]   (no ids = every site; tiles already there are kept)
+// manifest.json carries the capture date (`capturedOn`, the day the tiles were first fetched; an existing one is kept).
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../src/data/demoSites.ts', import.meta.url), 'utf8');
-const sites = [...src.matchAll(/id: '([a-z]+)'[\s\S]*?centre: \{ lat: (-?[\d.]+), lon: (-?[\d.]+) \}/g)].map((m) => ({ id: m[1], lat: +m[2], lon: +m[3] }));
+const wanted = process.argv.slice(2);
+const sites = [...src.matchAll(/id: '([a-z]+)'[\s\S]*?centre: \{ lat: (-?[\d.]+), lon: (-?[\d.]+) \}/g)].map((m) => ({ id: m[1], lat: +m[2], lon: +m[3] })).filter((s) => !wanted.length || wanted.includes(s.id));
 const EXTENT = Number(/DEMO_EXTENT_M = (\d+)/.exec(src)[1]);
 const Z = Number(/DEMO_TILE_ZOOM = (\d+)/.exec(src)[1]);
 
@@ -33,6 +35,11 @@ for (const s of sites) {
     await mkdir(dir, { recursive: true });
     await writeFile(file, Buffer.from(await res.arrayBuffer()));
   }
-  await writeFile(new URL(`../public/demo/${s.id}/manifest.json`, import.meta.url), JSON.stringify({ id: s.id, zoom: Z, tiles, source: 'AWS Terrain Tiles (Terrarium), SRTM 1 arc-second' }, null, 1));
+  const manifest = new URL(`../public/demo/${s.id}/manifest.json`, import.meta.url);
+  let capturedOn = new Date().toISOString().slice(0, 10);
+  try {
+    capturedOn = JSON.parse(readFileSync(manifest, 'utf8')).capturedOn ?? capturedOn;
+  } catch {}
+  await writeFile(manifest, JSON.stringify({ id: s.id, zoom: Z, tiles, source: 'AWS Terrain Tiles (Terrarium), SRTM 1 arc-second', capturedOn }, null, 1));
   console.log(s.id, tiles.length, 'tiles');
 }

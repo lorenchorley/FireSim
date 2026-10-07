@@ -89,10 +89,16 @@ export const SCENARIO_PARAMS = Object.freeze({
   /**
    * Mean annual rainfall (mm) of the demo sites [K, UNVERIFIED approximations of BoM climatology, spec §5.7]. Used
    * offline, for replays and when the 10-year archive is unavailable.
+   *
+   * `tomah` is not an approximation of the Bureau's climatology: it is the Open-Meteo ERA5 archive mean of the 10 years 2016-2025
+   * (the same method as the live request, annualRainfallFromDaily) at the grid point nearest the site, -33.497 150.371 at 819 m:
+   * 1099 mm, read 2026-10-07 and rounded to the nearest 50 mm [H, UNVERIFIED]. ERA5's 0.25° grid reads mountain rain low (the same
+   * method gives 1006 mm for Katoomba against the 1400 mm above), so Tomah's figure is on the low side.
    */
   demoAnnualRainfall: Object.freeze({
     katoomba: 1400,
     grose: 1100,
+    tomah: 1100,
     kanangra: 900,
     thredbo: 1500,
     gospers: 750,

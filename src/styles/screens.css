@@ -267,6 +267,63 @@ button.list-row:disabled .list-lead {
   margin: var(--sp-1) 0 0;
 }
 
+/* The box and its Paste button on one row; the button sits level with the 44 px field. */
+.manual-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.manual-row .field {
+  flex: 1 1 auto;
+}
+
+.manual-row .icon-btn {
+  margin-bottom: 2px;
+}
+
+/* The result of a pasted link or typed coordinates: the same row as the GPS fix. It is a live region, so it stays in the
+ * accessibility tree when empty (an empty block takes no room; a region that is display:none is not announced when it fills). */
+
+.manual-result .status-line,
+.manual-result .callout {
+  margin: var(--sp-2) 0 var(--sp-1);
+}
+
+.manual-fix {
+  margin-bottom: var(--sp-1);
+}
+
+/* A status chip in a result row (GPS fix or pasted place) may wrap: "Bundled data: Mount Tomah" at 200 % text on a 360 px phone
+ * would otherwise run off the card and be cut. */
+.fix .chip {
+  max-width: 100%;
+  white-space: normal;
+  padding-block: 4px;
+}
+
+.fix-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: var(--fw-medium);
+}
+
+.fix .hint {
+  margin: var(--sp-1) 0 0;
+}
+
+.fix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.manual-result > .fix-actions {
+  margin-top: 0;
+}
+
 /* Demo sites: one row of place cards that scrolls sideways (Maps "places" cards). It clips, so it carries the room the
  * cards' focus ring needs; the next card peeks in at the right edge to show that the row scrolls. */
 .site-scroll {

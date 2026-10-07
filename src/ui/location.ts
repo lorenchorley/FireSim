@@ -88,8 +88,12 @@ export async function getLocation(): Promise<LocationFix> {
   return fromBrowser();
 }
 
-/** Summary of a fix for display: NSW check, poor-accuracy flag and a nearby demo site with bundled data. */
-export function describeFix(p: LatLon, accuracy: number): { inNsw: boolean; poor: boolean; nearDemo: DemoSite | null; nearDemoDistance: number } {
+/**
+ * Where a position is, for the result rows of Setup (the GPS fix and a pasted place): inside NSW or not, and the bundled demo site
+ * that has data for it (the position lies well inside the site's 9 km square). `southHint` is true for a position that is in NSW
+ * once its latitude is made negative ("33.7, 150.3" typed without the minus sign), so the screen can say so.
+ */
+export function describePlace(p: LatLon): { inNsw: boolean; nearDemo: DemoSite | null; nearDemoDistance: number; southHint: boolean } {
   let nearDemo: DemoSite | null = null;
   let best = Infinity;
   for (const s of DEMO_SITES) {
@@ -101,5 +105,33 @@ export function describeFix(p: LatLon, accuracy: number): { inNsw: boolean; poor
   }
   // A demo site "covers" the location when the location lies well inside its bundled 9 km square.
   const covers = best < DEMO_EXTENT_M / 2 - 1500;
-  return { inNsw: isInNsw(p), poor: accuracy > 50, nearDemo: covers ? nearDemo : null, nearDemoDistance: best };
+  const inNsw = isInNsw(p);
+  return { inNsw, nearDemo: covers ? nearDemo : null, nearDemoDistance: best, southHint: !inNsw && p.lat > 0 && isInNsw({ lat: -p.lat, lon: p.lon }) };
+}
+
+/** Summary of a fix for display: NSW check, poor-accuracy flag and a nearby demo site with bundled data. */
+export function describeFix(p: LatLon, accuracy: number): { inNsw: boolean; poor: boolean; nearDemo: DemoSite | null; nearDemoDistance: number } {
+  const d = describePlace(p);
+  return { inNsw: d.inNsw, poor: accuracy > 50, nearDemo: d.nearDemo, nearDemoDistance: d.nearDemoDistance };
+}
+
+/** What reading the clipboard gave: the text, or why not (with what to say to the person). */
+export type ClipboardRead = { ok: true; text: string } | { ok: false; reason: 'empty' | 'blocked'; message: string };
+
+/**
+ * The text on the clipboard for the Paste button of Setup. The browser API only (the phone's WebView asks first or refuses; no
+ * Capacitor clipboard plugin is installed, and none is added for this): when it is missing or refused the message tells the person
+ * to touch and hold the box and choose Paste, which always works. Never throws.
+ */
+export async function readClipboardText(): Promise<ClipboardRead> {
+  const blocked: ClipboardRead = { ok: false, reason: 'blocked', message: 'The phone did not let the app read the clipboard. Touch and hold the box, then choose Paste.' };
+  try {
+    const clip = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clip || typeof clip.readText !== 'function') return blocked;
+    const text = await clip.readText();
+    if (typeof text !== 'string' || text.trim() === '') return { ok: false, reason: 'empty', message: 'The clipboard is empty. Copy a link in Google Maps first (Share, then Copy).' };
+    return { ok: true, text };
+  } catch {
+    return blocked;
+  }
 }

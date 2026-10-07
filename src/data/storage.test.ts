@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryKV, saveAreaPack, type KV, type KVSize } from './cache';
 import { loadBundleManifest } from './bundleManifest';
+import { DEMO_SITES } from './demoSites';
 import { clearCacheKind, placeLabel, placeOfKey, removeAreaPack, storage, storageReport, STORAGE_WARN_BYTES } from './storage';
 
 const rec = (bytes: number, t: number, url = 'https://example.org/x') => ({ t, url, v: new ArrayBuffer(bytes), n: bytes });
@@ -30,8 +31,9 @@ describe('storageReport', () => {
     expect(g('terrain-tiles')).toMatchObject({ entries: 2, oldest: 1000, newest: 3000 });
     expect(g('terrain-tiles').bytes).toBeGreaterThan(200_000);
     expect(g('weather').entries).toBe(2);
-    expect(g('weather').places.map((p) => p.label).sort()).toEqual(['-33.52, 150.42', 'Katoomba – Narrow Neck & Megalong escarpment'].sort());
-    expect(g('map-layers').places[0]!.label).toBe('-33.52, 150.42');
+    // -33.52 150.42 is 1.2 km from the Mount Tomah site's centre, so its stored copies are filed under the site's name.
+    expect(g('weather').places.map((p) => p.label).sort()).toEqual(['Mount Tomah', 'Katoomba – Narrow Neck & Megalong escarpment'].sort());
+    expect(g('map-layers').places[0]!.label).toBe('Mount Tomah');
     expect(g('places').bytes).toBeGreaterThanOrEqual(350_000);
     expect(g('rainfall').entries).toBe(1);
     expect(r.packs).toHaveLength(1);
@@ -50,7 +52,7 @@ describe('storageReport', () => {
     const m = await loadBundleManifest();
     const r = await storageReport({ kv: createMemoryKV(), manifest: m });
     expect(r.bundled.available).toBe(true);
-    expect(r.bundled.sites).toHaveLength(8);
+    expect(r.bundled.sites).toHaveLength(DEMO_SITES.length);
     expect(r.bundled.totalBytes).toBe(m!.totalBytes);
     expect(r.bundled.sites.find((s) => s.id === 'katoomba')!.capturedOn).toMatch(/^2026-09-2\d$/);
     const none = await storageReport({ kv: createMemoryKV(), manifest: null });
@@ -114,5 +116,7 @@ describe('places of keys', () => {
     expect(placeOfKey('annualRainfall/-33.50,150.40')).toEqual({ lat: -33.5, lon: 150.4 });
     expect(placeOfKey('terrarium/14/1/2')).toBeNull();
     expect(placeLabel({ lat: -33.72, lon: 150.29 })).toMatch(/^Katoomba/);
+    expect(placeLabel({ lat: -33.52, lon: 150.42 })).toBe('Mount Tomah');
+    expect(placeLabel({ lat: -34.2, lon: 151.0 })).toBe('-34.20, 151.00'); // more than 10 km from every demo site: its coordinates
   });
 });

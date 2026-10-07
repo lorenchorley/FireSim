@@ -205,6 +205,7 @@ export function districtFor(districts: FireDangerDistrict[], council?: string, n
 export const DEMO_SITE_COUNCILS: Readonly<Record<string, string>> = Object.freeze({
   katoomba: 'Blue Mountains',
   grose: 'Blue Mountains',
+  tomah: 'Blue Mountains',
   kanangra: 'Oberon',
   thredbo: 'Snowy Monaro',
   gospers: 'Lithgow',

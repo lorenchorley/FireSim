@@ -34,7 +34,7 @@ const BUDGET = {
   jsGzipKb: 1000, // every chunk, gzip (the render chunk with three.js and the sim chunk are the big ones)
   cssKb: 135, // raw (minified)
   cssGzipKb: 25,
-  demoMb: 31, // public/demo
+  demoMb: 36, // public/demo (nine sites, 33.1 MiB since Mount Tomah was added on 2026-10-07; it was 31 for the first eight, 29.0 MiB)
 };
 
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));

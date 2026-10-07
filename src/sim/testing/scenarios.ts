@@ -7,6 +7,7 @@ import { makeGridSpec } from '../../core/grid';
 import { DEFAULT_SIM_OPTIONS, FuelType, type Ignition, type QualityTier, type ScenarioData, type SimOptions, type Terrain, type WeatherHour, type WeatherSeries } from '../../core/types';
 import { uniformFuel } from '../../fire/spread/testing';
 import { buildScenario } from '../../scenario';
+import { DEMO_SITES } from '../../data/demoSites';
 import { buildTerrain } from '../../terrain';
 import { civilToUtc } from '../../scenario/time';
 
@@ -32,18 +33,13 @@ export function demoScenario(o: DemoScenarioOptions = {}): Promise<ScenarioData>
   let p = cache.get(key);
   if (!p) {
     const site = o.site ?? 'katoomba';
-    const centres: Record<string, { lat: number; lon: number }> = {
-      katoomba: { lat: -33.715, lon: 150.285 },
-      grose: { lat: -33.62, lon: 150.33 },
-      gospers: { lat: -32.98, lon: 150.6 },
-      kanangra: { lat: -33.99, lon: 150.12 },
-    };
+    const centre = (DEMO_SITES.find((s) => s.id === site) ?? DEMO_SITES[0]!).centre;
     const [y, m, d, h] = o.startCivil ?? [2025, 12, 20, 11];
     const weather = o.replay
       ? ({ kind: 'replay', replayId: o.replay } as const)
       : ({ kind: 'preset', presetId: o.preset ?? 'hot-nw-sw-change', start: civilToUtc(y, m, d, h) } as const);
     p = buildScenario({
-      centre: centres[site] ?? centres['katoomba']!,
+      centre,
       extent: o.extent ?? 9000,
       demoSiteId: site,
       weather,

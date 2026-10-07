@@ -192,6 +192,12 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   /** Number of retries after a transient failure (default 1). */
   retries?: number;
+  /**
+   * 'manual': do not follow redirects; a 3xx answer comes back as it is, with its `location` header (native: the plugin's
+   * `disableRedirects`; fetch: `redirect: 'manual'`, which a browser answers with an opaque response, so only the native path
+   * and Node can read it). Default 'follow'. Used by the Google short-link resolver, which reads only the redirect.
+   */
+  redirect?: 'follow' | 'manual';
   /** Rewrite absolute URLs of known services for the current platform (default true). */
   route?: boolean;
   /**
@@ -316,7 +322,10 @@ export interface RawResponse {
   status: number;
   headers: Record<string, string>;
   data: ArrayBuffer;
+  /** The URL that was asked for. */
   url: string;
+  /** The URL the answer came from after any redirects, when the transport says (the native plugin's `HttpResponse.url`, fetch's `Response.url`). */
+  finalUrl?: string;
 }
 
 /** GET a JSON document. */
@@ -437,9 +446,10 @@ async function request(url: string, kind: BodyKind, opts: RequestOptions): Promi
 async function attempt(url: string, kind: BodyKind, opts: RequestOptions, raw: boolean, probe?: Probe): Promise<unknown> {
   if (opts.signal?.aborted) throw new HttpError('aborted', url, `Request aborted: ${url}`);
   const timeoutMs = opts.timeoutMs ?? config.timeoutMs;
+  const manual = opts.redirect === 'manual';
   return detectPlatform() === 'native'
-    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe)
-    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe);
+    ? nativeAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe, manual)
+    : fetchAttempt(url, kind, opts.headers, timeoutMs, opts.signal, raw, opts.form, probe, manual);
 }
 
 const FORM_TYPE = 'application/x-www-form-urlencoded';
@@ -453,6 +463,7 @@ async function fetchAttempt(
   raw: boolean,
   form?: Record<string, string>,
   probe?: Probe,
+  manualRedirect = false,
 ): Promise<unknown> {
   const doFetch = config.fetch ?? globalThis.fetch;
   if (typeof doFetch !== 'function') throw new HttpError('network', url, 'fetch is not available in this environment');
@@ -470,7 +481,7 @@ async function fetchAttempt(
   try {
     const res = form
       ? await doFetch(url, { method: 'POST', headers: { ...headers, 'content-type': FORM_TYPE }, body: new URLSearchParams(form).toString(), signal: ctrl.signal })
-      : await doFetch(url, { method: 'GET', headers, signal: ctrl.signal });
+      : await doFetch(url, { method: 'GET', headers, signal: ctrl.signal, ...(manualRedirect ? { redirect: 'manual' as const } : {}) });
     if (probe) {
       probe.status = res.status;
       probe.wire = contentLength(res.headers);
@@ -481,7 +492,7 @@ async function fetchAttempt(
       res.headers.forEach((v, k) => (h[k.toLowerCase()] = v));
       if (probe) probe.body = data.byteLength;
       await settleWire(probe, url, startedAt);
-      return { status: res.status, headers: h, data, url } satisfies RawResponse;
+      return { status: res.status, headers: h, data, url, ...(res.url ? { finalUrl: res.url } : {}) } satisfies RawResponse;
     }
     if (!res.ok) {
       // Drain the body so the connection can be reused; ignore failures.
@@ -516,6 +527,7 @@ async function nativeAttempt(
   raw: boolean,
   form?: Record<string, string>,
   probe?: Probe,
+  manualRedirect = false,
 ): Promise<unknown> {
   const req = config.nativeRequest ?? ((o: HttpOptions) => CapacitorHttp.request(o));
   let timedOut = false;
@@ -537,6 +549,7 @@ async function nativeAttempt(
         method: form ? 'POST' : 'GET',
         headers: form ? { ...headers, 'content-type': FORM_TYPE } : (headers ?? {}),
         ...(form ? { data: form } : {}),
+        ...(manualRedirect ? { disableRedirects: true } : {}),
         responseType: kind === 'binary' ? 'arraybuffer' : kind === 'json' ? 'json' : 'text',
         ...(hasTimeout(timeoutMs) ? { connectTimeout: timeoutMs, readTimeout: timeoutMs } : {}),
       }),
@@ -552,7 +565,7 @@ async function nativeAttempt(
     if (raw) {
       const data = toArrayBuffer(res.data);
       if (probe) probe.body = data.byteLength;
-      return { status: res.status, headers: h, data, url } satisfies RawResponse;
+      return { status: res.status, headers: h, data, url, ...(typeof res.url === 'string' && res.url ? { finalUrl: res.url } : {}) } satisfies RawResponse;
     }
     if (!ok) {
       const body = typeof res.data === 'string' ? res.data : safeStringify(res.data);

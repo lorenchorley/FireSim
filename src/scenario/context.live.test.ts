@@ -1,5 +1,5 @@
 /**
- * ONE real check against the live NSW services, for a place that is not a demo site: Bilpin (-33.52, 150.42), a
+ * ONE real check against the live NSW services, for a place that is not a demo site: Bilpin village (-33.498, 150.522), a
  * semi-rural village in the Blue Mountains foothills. Skipped unless NET=1 (and, behind a proxy, NODE_USE_ENV_PROXY=1):
  *
  *   NET=1 NODE_USE_ENV_PROXY=1 npx vitest run src/scenario/context.live.test.ts
@@ -11,7 +11,8 @@ import { createMemoryKV, resetHttpConfig } from '../data';
 import { fetchNswContextFile, contextQueryBBox } from '../data/nswContext';
 import { loadContext } from './context';
 
-const BILPIN = { lat: -33.52, lon: 150.42 };
+/** Bilpin village. (-33.52 150.42, where this test first ran, is inside the bundled Mount Tomah demo site, so it would be read from the bundle.) */
+const BILPIN = { lat: -33.498, lon: 150.522 };
 
 describe.skipIf(!process.env.NET)('live NSW services (NET=1)', () => {
   it('Bilpin, 6 km domain: roads, homes, zones and names, then the cached repeat', { timeout: 300_000 }, async () => {

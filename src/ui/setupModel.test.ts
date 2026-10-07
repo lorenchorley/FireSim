@@ -17,7 +17,7 @@ import { WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import { arrivalOf, BUILD_STEPS, DATASET_TITLES, datasetIcon, datasetStep, datasetTitle } from './labels';
 import { ICON_ALIASES, ICON_NAMES } from './icons';
 import { performanceProfile } from './settings';
-import { buildRequest, builtRow, defaultSetup, detailCell, detailChoices, detailHint, durationChoices, DURATION_CHOICES_H, planRow, planSummary, restoreSetup, shortProvider, windHint } from './setupModel';
+import { buildRequest, builtRow, defaultSetup, detailCell, detailChoices, detailHint, durationChoices, DURATION_CHOICES_H, persistable, planRow, planSummary, resolveCentre, restoreSetup, shortProvider, validateSetup, windHint } from './setupModel';
 
 const NOW = Date.UTC(2026, 8, 30, 2);
 const fixture = (name: string): { datasets: DatasetRecord[] } => JSON.parse(readFileSync(join(__dirname, '..', '..', 'tests', 'fixtures', 'datasets', name), 'utf8'));
@@ -124,7 +124,7 @@ describe('Data for this run (planned records)', () => {
 
   it('a place away from the demo sites with no signal: "Not available offline" and what stands in', async () => {
     const m = await loadBundleManifest();
-    const s = { ...defaultSetup(NOW), where: 'manual' as const, manualText: '-33.52, 150.42', online: false, weather: 'now' as const };
+    const s = { ...defaultSetup(NOW), where: 'manual' as const, manualText: '-33.498, 150.522', online: false, weather: 'now' as const }; // Bilpin village: east of the Mount Tomah site
     const recs = planScenarioData(buildRequest(s, 'auto', NOW), { manifest: m, packs: [], cachedKeys: new Set(), storedWeather: false });
     const rows = recs.map((r) => planRow(r, false));
     const offline = rows.filter((r) => r.badge.label === 'Not available offline').map((r) => r.id);
@@ -136,6 +136,19 @@ describe('Data for this run (planned records)', () => {
     expect(sum.offline).toBe('Offline, with estimates');
     expect(sum.offlineOk).toBe(false);
     expect(sum.warnings[0]).toMatch(/^Offline: no data for ground height, .*roads, homes and place names; the app uses estimates instead/);
+  });
+
+  it('a typed place on the Bilpin ridge lies inside the Mount Tomah site: its data come from the bundle, offline', async () => {
+    const m = await loadBundleManifest();
+    const s = { ...defaultSetup(NOW), where: 'manual' as const, manualText: '-33.52, 150.42', online: false, weather: 'now' as const };
+    const recs = planScenarioData(buildRequest(s, 'auto', NOW), { manifest: m, packs: [], cachedKeys: new Set(), storedWeather: false });
+    for (const id of ['terrain', 'vegetation-svtm', 'fire-history', 'roads', 'canopy-height', 'imagery']) {
+      expect(recs.find((r) => r.id === id)?.origin, id).toBe('bundled');
+    }
+    const offline = recs.map((r) => planRow(r, false)).filter((r) => r.badge.label === 'Not available offline').map((r) => r.id);
+    expect(offline).not.toContain('terrain');
+    expect(offline).not.toContain('vegetation-svtm');
+    expect(offline).not.toContain('roads');
   });
 
   it('provider names drop the parenthetical part', () => {
@@ -214,5 +227,61 @@ describe('the build reports the data sets as they arrive (BuildProgress.datasets
     for (const d of last) expect(arrivalOf(d, formatBytes).origin, d.id).toBe('bundled');
     const terrainBytes = last.find((d) => d.id === 'terrain')!.bytes;
     expect(terrainBytes).toBe(s.datasets!.find((r) => r.id === 'terrain')!.sizes.transferredBytes);
+  });
+});
+
+describe('the pasted place (a Google Maps link or coordinates) in the form', () => {
+  const SHARE = 'Mount Tomah Botanic Garden\nhttps://www.google.com/maps/place/Mount+Tomah+Botanic+Garden/@-33.5447,150.4097,17z/data=!4m6!3m5!1s0x6b1292f3c1e5d9e1:0x5017d681632a3b0!8m2!3d-33.5447!4d150.4097';
+
+  it('the centre and the scenario name come from the place: the name of the link, else "Your location"', () => {
+    const base = { ...defaultSetup(NOW), where: 'manual' as const };
+    expect(resolveCentre({ ...base, manualText: '-33.54470, 150.40970', manualName: 'Mount Tomah Botanic Garden' })).toEqual({ centre: { lat: -33.5447, lon: 150.4097 }, name: 'Mount Tomah Botanic Garden' });
+    expect(resolveCentre({ ...base, manualText: '-33.54470, 150.40970' })).toEqual({ centre: { lat: -33.5447, lon: 150.4097 }, name: 'Your location' });
+    expect(buildRequest({ ...base, manualText: '-33.54470, 150.40970', manualName: 'Mount Tomah Botanic Garden' }, 'auto', NOW).name).toBe('Mount Tomah Botanic Garden');
+  });
+
+  it('every way of typing coordinates (and a link kept in the text) gives a centre', () => {
+    const base = { ...defaultSetup(NOW), where: 'manual' as const };
+    for (const t of ['-33.7, 150.3', '-33.7,150.3', 'S 33.7 E 150.3', '33.7° S, 150.3° E', "33°42'0\"S 150°18'0\"E", 'geo:-33.7,150.3', SHARE]) {
+      const c = resolveCentre({ ...base, manualText: t });
+      expect('centre' in c, t).toBe(true);
+    }
+  });
+
+  it('says what to do when there is no place yet, and why a pasted place was not taken', () => {
+    const base = { ...defaultSetup(NOW), where: 'manual' as const };
+    expect(validateSetup({ ...base, manualText: '' }, NOW)[0]).toBe('Paste a Google Maps link or enter coordinates such as -33.715, 150.285.');
+    expect(validateSetup({ ...base, manualText: 'hello' }, NOW)[0]).toMatch(/coordinates/);
+    expect(validateSetup({ ...base, manualText: '95, 150' }, NOW)[0]).toMatch(/Latitude must be between/);
+    expect(validateSetup({ ...base, manualText: '-33.7, 150.3' }, NOW)).toEqual([]);
+  });
+
+  it('the remembered setup holds coordinates only: a pasted link and its place id never reach storage', () => {
+    const s = { ...defaultSetup(NOW), where: 'manual' as const, manualText: SHARE, manualName: 'Mount Tomah Botanic Garden' };
+    const p = persistable(s);
+    expect(p.manualText).toBe('-33.54470, 150.40970');
+    expect(p.manualName).toBe('');
+    const json = JSON.stringify(p);
+    expect(json).not.toMatch(/google|goo\.gl|0x6b1292f3|Botanic|https?:/i);
+  });
+
+  it('coordinates typed by hand are remembered as typed', () => {
+    expect(persistable({ ...defaultSetup(NOW), manualText: '-33.70, 149.86' }).manualText).toBe('-33.70, 149.86');
+    expect(restoreSetup(JSON.parse(JSON.stringify(persistable({ ...defaultSetup(NOW), manualText: '-33.70, 149.86' }))), NOW).manualText).toBe('-33.70, 149.86');
+  });
+
+  it('an older save that kept a link is cleaned when it is restored; junk and a short link are dropped; the name never comes back', () => {
+    expect(restoreSetup({ manualText: SHARE, manualName: 'x' }, NOW)).toMatchObject({ manualText: '-33.54470, 150.40970', manualName: '' });
+    expect(restoreSetup({ manualText: 'https://maps.app.goo.gl/AbCdEf123' }, NOW).manualText).toBe('');
+    expect(restoreSetup({ manualText: 'hello' }, NOW).manualText).toBe('');
+    expect(restoreSetup({ manualText: 42 as unknown as string }, NOW).manualText).toBe('');
+    expect(restoreSetup(null, NOW)).toMatchObject({ manualText: '', manualName: '' });
+  });
+
+  it('"the box" with nothing usable in it comes back as the demo site, not as nothing chosen', () => {
+    expect(restoreSetup({ where: 'manual', manualText: 'https://maps.app.goo.gl/AbCdEf123' }, NOW).where).toBe('demo');
+    expect(restoreSetup({ where: 'manual', manualText: '' }, NOW).where).toBe('demo');
+    expect(restoreSetup({ where: 'manual', manualText: 'hello' }, NOW).where).toBe('demo');
+    expect(restoreSetup({ where: 'manual', manualText: '-33.70, 149.86' }, NOW).where).toBe('manual');
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Setup screen (B), flat Maps style: a stack of cards and list rows with chips for the options.
- *   Where: "Use my location", coordinates, or a demo site (horizontally scrolling place cards with lazily decoded photos)
+ *   Where: "Use my location", a pasted Google Maps link or typed coordinates, or a demo site (horizontally scrolling place cards with
+ *     lazily decoded photos)
  *   Area and detail: area 3 / 6 / 9 km and detail as chips, each naming the cell size the builder really makes
  *   Weather: the source as one row of chips (now, forecast, past, preset, historic fire, belt kit, manual) and its panel
  *   Run: duration chips and "Use the network"
@@ -16,11 +17,13 @@ import { h, setChildren, show, text } from '../dom';
 import { icon } from '../icons';
 import { REPLAYS, WEATHER_PRESETS } from '../content';
 import { DEFAULT_TZ, formatLatLon, formatDateTime, fromZonedInput, toZonedInput, tzOffsetHours, zonedDate, zonedTime } from '../format';
-import { describeFix, getLocation, LocationError } from '../location';
+import type { LatLon } from '../../core/geo';
+import { describeFix, describePlace, getLocation, LocationError, readClipboardText } from '../location';
+import { formatCoordinateText, parseLocationText, rememberableText, type LocationNeedsNetwork, type LocationSource } from '../mapsLink';
+import { resolveMapsShortLink } from '../mapsShortLink';
 import { demoImageryUrl } from '../imagery';
 import { datasetIcon } from '../labels';
 import type { Services } from '../modules';
-import { parseLatLon } from '../nsw';
 import { getPref, PREF_KEYS, setPref } from '../prefs';
 import { chip, iconButton, listRow, showSnackbar } from '../primitives';
 import { performanceProfile, settingsStore } from '../settings';
@@ -175,26 +178,239 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   // ───────────── Where ─────────────
   const gpsResult = h('div', { class: 'gps-result', attrs: { 'aria-live': 'polite' } });
   const gpsRow = listRow({ title: 'Use my location', sub: 'GPS fix, up to 30 s in steep country', icon: 'my-location', testId: 'use-location', onClick: () => void locate() }) as HTMLButtonElement;
+  // The place of a pasted Google Maps link or of typed coordinates. The box shows what the person typed or pasted; the form keeps only
+  // what it means (state.manualText: coordinates, state.manualName: the place name), and `manualView` is what the result row shows.
+  type ManualView =
+    | { kind: 'empty' }
+    | { kind: 'typing' }
+    | { kind: 'looking' }
+    | { kind: 'ok'; position: LatLon; name?: string; label: string; note?: string }
+    | { kind: 'error'; message: string };
+  let manualView: ManualView = { kind: 'empty' };
+  let lookupCtrl: AbortController | null = null;
+  let lookupSeq = 0;
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+  let lookupRun: (() => void) | null = null;
+  let errorTimer: ReturnType<typeof setTimeout> | undefined;
+  let errorRun: (() => void) | null = null;
+  /** Text as it was copied, with its line breaks (the box is one line, so it shows them as spaces): the name of a Google share is its first line. */
+  let copied: { text: string; squashed: string } | null = null;
+  let pastedText: string | null = null;
+  const squash = (t: string): string => t.replace(/\s+/g, '');
+  const SOURCE_LABEL: Record<LocationSource, string> = {
+    coordinates: 'Coordinates',
+    'google-maps-link': 'Google Maps link',
+    'geo-link': 'Map link (geo:)',
+    'openstreetmap-link': 'OpenStreetMap link',
+  };
+
+  const manualHint = h('p', { class: 'hint', id: 'manual-hint', dataset: { testid: 'manual-hint' } }, 'Share a place from Google Maps and paste it here — a link, or lat, lon');
+  const manualResult = h('div', { class: 'manual-result', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'manual-result' } });
   const manualInput = h('input', {
     type: 'text',
     id: 'manual-coords',
     inputMode: 'text',
     autocomplete: 'off',
-    placeholder: '-33.715, 150.285',
+    autocapitalize: 'off',
+    spellcheck: false,
+    placeholder: 'Google Maps link, or -33.715, 150.285',
     dataset: { testid: 'manual-coords' },
+    aria: { describedby: 'manual-hint' },
     on: {
-      input: () => {
-        update({ manualText: manualInput.value, where: 'manual' });
-        renderWhere();
-        schedulePlan(); // the data a run needs depends on the place: the plan must follow the typed coordinates
+      paste: (e) => {
+        const t = e.clipboardData?.getData('text/plain') ?? '';
+        // A pasted place or link REPLACES what the box held, like the Paste button: pasted after leftover text it would otherwise join
+        // it ("<old link> <new link>": the old one is read first; "x <name> <address> <link>": the address ends up in the name).
+        const whole = t.trim() ? parseLocationText(t) : null;
+        if (whole && (whole.ok || whole.reason === 'short-link-needs-network' || /https?:\/\/|geo:/i.test(t))) {
+          e.preventDefault();
+          manualInput.value = t.replace(/[\r\n]+/g, ' ');
+          copied = /[\r\n]/.test(t) ? { text: t, squashed: squash(t) } : null;
+          pastedText = null;
+          applyManualText(t, { now: true });
+          return;
+        }
+        // Anything else is pasted as usual. Remember its line breaks: a one-line box shows them as spaces, and "Name / address / link" needs them.
+        pastedText = t && /[\r\n]/.test(t) ? t : null;
+      },
+      input: (e) => {
+        const pasted = (e as InputEvent).inputType === 'insertFromPaste' || (e as InputEvent).inputType === 'insertFromDrop';
+        const shown = manualInput.value;
+        if (pastedText && squash(pastedText) === squash(shown)) copied = { text: pastedText, squashed: squash(pastedText) };
+        else if (!copied || copied.squashed !== squash(shown)) copied = null;
+        pastedText = null;
+        applyManualText(copied ? copied.text : shown, { now: pasted });
+      },
+      change: () => flushManual(),
+      keydown: (e) => {
+        if (e.key !== 'Enter' || e.isComposing) return; // Enter that confirms an IME word is not "done"
+        e.preventDefault();
+        applyManualText(copied && copied.squashed === squash(manualInput.value) ? copied.text : manualInput.value, { now: true });
+        flushManual();
+        manualInput.blur();
       },
     },
   });
-  const manualMsg = h('p', { class: 'hint', attrs: { 'aria-live': 'polite' } });
+  const pasteBtn = iconButton({ icon: 'link', label: 'Paste a Google Maps link from the clipboard', testId: 'manual-paste', variant: 'tonal', onClick: () => void pasteFromClipboard() });
   const manualBox = h('div', { class: 'manual-box' }, [
-    h('div', { class: 'field' }, [h('label', { class: 'field-label', htmlFor: 'manual-coords' }, 'Or enter coordinates (lat, lon)'), h('div', { class: 'input-wrap' }, manualInput)]),
-    manualMsg,
+    h('div', { class: 'manual-row' }, [h('div', { class: 'field' }, [h('label', { class: 'field-label', htmlFor: 'manual-coords' }, 'Or paste a Google Maps link or coordinates'), h('div', { class: 'input-wrap' }, manualInput)]), pasteBtn]),
+    manualHint,
+    manualResult,
   ]);
+
+  function cancelLookup(): void {
+    lookupSeq++;
+    lookupCtrl?.abort();
+    lookupCtrl = null;
+    clearTimeout(lookupTimer);
+    lookupRun = null;
+  }
+  function cancelError(): void {
+    clearTimeout(errorTimer);
+    errorRun = null;
+  }
+  /** Run what was waiting for a pause in the typing: the short-link lookup, the "not recognised" message. */
+  function flushManual(): void {
+    if (lookupRun) {
+      clearTimeout(lookupTimer);
+      const run = lookupRun;
+      lookupRun = null;
+      run();
+    }
+    if (errorRun) {
+      clearTimeout(errorTimer);
+      const run = errorRun;
+      errorRun = null;
+      run();
+    }
+  }
+
+  /** Read what is in the box (a link, share text or coordinates) and make it the place; a short link is looked up. */
+  function applyManualText(raw: string, o: { now?: boolean } = {}): void {
+    cancelLookup();
+    cancelError();
+    const whereBefore = store.get().where;
+    const r = parseLocationText(raw);
+    if (r.ok) {
+      manualView = { kind: 'ok', position: r.position, ...(r.name ? { name: r.name } : {}), label: SOURCE_LABEL[r.source], ...(r.note ? { note: r.note } : {}) };
+      update({ manualText: rememberableText(raw), manualName: r.name ?? '', where: 'manual' });
+    } else if (r.reason === 'short-link-needs-network') {
+      manualView = { kind: 'looking' };
+      update({ manualText: '', manualName: '', where: 'manual' });
+      lookupRun = () => void lookUp(r);
+      lookupTimer = setTimeout(flushManual, o.now ? 0 : 450);
+    } else if (r.reason === 'empty') {
+      manualView = { kind: 'empty' };
+      update({ manualText: '', manualName: '', where: 'manual' });
+    } else {
+      // Not a place (yet): say why once the typing pauses, so the message does not flash up on every key.
+      manualView = { kind: 'typing' };
+      update({ manualText: '', manualName: '', where: 'manual' });
+      errorRun = () => {
+        manualView = { kind: 'error', message: r.message };
+        renderWhere();
+      };
+      errorTimer = setTimeout(flushManual, o.now ? 0 : 700);
+    }
+    renderWhere();
+    if (store.get().where !== whereBefore) renderWeatherPanel(); // the historic-fire list follows the site only while a demo site is chosen
+    schedulePlan(); // the data a run needs depends on the place: the plan must follow the pasted or typed place
+  }
+
+  /** Ask Google where a short link leads (on the phone). Editing the text cancels it. */
+  async function lookUp(link: LocationNeedsNetwork): Promise<void> {
+    const ctrl = new AbortController();
+    lookupCtrl = ctrl;
+    const seq = ++lookupSeq;
+    const res = await resolveMapsShortLink(link.url, { signal: ctrl.signal, ...(link.name ? { nameHint: link.name } : {}) });
+    if (destroyed || ctrl.signal.aborted || seq !== lookupSeq) return;
+    lookupCtrl = null;
+    if (res.ok) {
+      manualView = { kind: 'ok', position: res.position, ...(res.name ? { name: res.name } : {}), label: 'Google Maps short link', ...(res.note ? { note: res.note } : {}) };
+      // `where` stays as it is: the person may have picked a demo site or the GPS while Google was asked, and a late answer must not take
+      // the choice back (the row then offers "Use this place").
+      update({ manualText: formatCoordinateText(res.position), manualName: res.name ?? '' });
+    } else {
+      manualView = { kind: 'error', message: res.message };
+      update({ manualText: '', manualName: '' });
+    }
+    renderWhere();
+    renderWeatherPanel();
+    schedulePlan();
+  }
+
+  async function pasteFromClipboard(): Promise<void> {
+    pasteBtn.disabled = true;
+    const clip = await readClipboardText();
+    pasteBtn.disabled = false;
+    if (destroyed) return;
+    if (!clip.ok) {
+      cancelError();
+      manualView = { kind: 'error', message: clip.message };
+      renderManual();
+      manualInput.focus();
+      return;
+    }
+    manualInput.value = clip.text;
+    copied = { text: clip.text, squashed: squash(clip.text) };
+    if (squash(manualInput.value) !== copied.squashed) copied = null;
+    applyManualText(clip.text, { now: true });
+  }
+
+  function clearManual(): void {
+    cancelLookup();
+    cancelError();
+    copied = null;
+    manualInput.value = '';
+    manualView = { kind: 'empty' };
+    const s = store.get();
+    update({ manualText: '', manualName: '', ...(s.where === 'manual' ? { where: 'demo' as const } : {}) });
+    renderWhere();
+    renderWeatherPanel();
+    schedulePlan();
+    manualInput.focus();
+  }
+
+  /** The result row under the box, in the style of the GPS fix: pin, numbers, name, chips, notes, Selected and Clear. */
+  function renderManual(): void {
+    const s = store.get();
+    const v = manualView;
+    manualBox.classList.toggle('selected', s.where === 'manual' && v.kind === 'ok');
+    show(manualHint, v.kind === 'empty' || v.kind === 'typing');
+    const clearBtn = (): HTMLElement => button({ label: 'Clear', icon: 'close', variant: 'text', size: 'sm', testId: 'manual-clear', onClick: clearManual });
+    if (v.kind === 'empty' || v.kind === 'typing') return setChildren(manualResult, null);
+    if (v.kind === 'looking') {
+      return setChildren(manualResult, [h('p', { class: 'status-line', dataset: { testid: 'manual-looking' } }, [h('span', { class: 'spinner', aria: { hidden: true } }), 'Looking up the place with Google Maps…']), h('div', { class: 'fix-actions' }, clearBtn())]);
+    }
+    if (v.kind === 'error') {
+      return setChildren(manualResult, [h('p', { class: 'callout callout-warn', dataset: { testid: 'manual-message' } }, [icon('warning'), h('span', null, v.message)]), h('div', { class: 'fix-actions' }, clearBtn())]);
+    }
+    const d = describePlace(v.position);
+    const selected = s.where === 'manual';
+    const site = d.nearDemo ? (d.nearDemo.name.split('–')[0]?.trim() ?? d.nearDemo.region) : '';
+    setChildren(manualResult, [
+      h('div', { class: ['fix', 'manual-fix', selected && 'selected'], dataset: { testid: 'manual-fix' } }, [
+        h('div', { class: 'fix-main' }, [
+          icon('pin'),
+          h('span', { class: 't-num', dataset: { testid: 'manual-latlon' } }, formatLatLon(v.position.lat, v.position.lon)),
+          v.name ? h('span', { class: 'fix-name', attrs: { dir: 'auto' }, dataset: { testid: 'manual-name' } }, v.name) : null,
+          selected ? h('span', { class: 'fix-selected' }, [icon('check'), 'Selected']) : null,
+        ]),
+        h('div', { class: 'chips' }, [chip({ label: v.label, tone: 'neutral' }), chip({ label: d.inNsw ? 'In NSW' : 'Outside NSW', tone: d.inNsw ? 'ok' : 'watch' }), d.nearDemo ? chip({ label: `Bundled data: ${site}`, tone: 'info' }) : null]),
+        v.note ? h('p', { class: 'hint' }, v.note) : null,
+        d.southHint ? h('p', { class: 'hint' }, 'South of the equator the latitude is negative. Did you mean the same place with a minus sign, or S after the number?') : null,
+        !d.inNsw ? h('p', { class: 'hint' }, 'Fuel, fire-history and vegetation data are NSW-only; results elsewhere use estimates.') : null,
+        h('div', { class: 'fix-actions' }, [!selected ? button({ label: 'Use this place', variant: 'tonal', size: 'sm', testId: 'manual-use', onClick: () => (update({ where: 'manual' }), renderWhere(), renderWeatherPanel(), schedulePlan()) }) : null, clearBtn()]),
+      ]),
+    ]);
+  }
+
+  /** After the saved setup comes back: show the remembered coordinates as a result row (nothing is changed or looked up). */
+  function restoreManualView(): void {
+    const t = store.get().manualText;
+    const r = t.trim() ? parseLocationText(t) : null;
+    manualView = r && r.ok ? { kind: 'ok', position: r.position, label: SOURCE_LABEL[r.source] } : { kind: 'empty' };
+  }
 
   async function locate(): Promise<void> {
     gpsRow.disabled = true;
@@ -267,9 +483,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
         ]),
       ]);
     }
-    const p = parseLatLon(s.manualText);
-    manualBox.classList.toggle('selected', s.where === 'manual');
-    text(manualMsg, s.manualText.trim() === '' ? 'Decimal degrees or degrees-minutes, e.g. 33°42.9′S 150°17.1′E.' : p ? `${formatLatLon(p.lat, p.lon)}${s.where === 'manual' ? ' — selected' : ''}` : 'Not recognised yet — try “-33.715, 150.285”.');
+    renderManual();
     renderFooter();
   }
 
@@ -851,7 +1065,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     buildBtn.classList.toggle('is-disabled', errs.length > 0);
     setChildren(errorsEl, showErrors || s.where !== 'demo' ? errs.map((e) => h('p', { class: 'error-line' }, [icon('warning'), e])) : null);
     const site = DEMO_SITES.find((x) => x.id === s.demoSiteId);
-    const where = s.where === 'demo' ? (site?.name.split('–')[0]?.trim() ?? 'Demo site') : s.where === 'gps' ? 'My location' : 'Coordinates';
+    const where = s.where === 'demo' ? (site?.name.split('–')[0]?.trim() ?? 'Demo site') : s.where === 'gps' ? 'My location' : (s.manualName.trim() ? `\u2068${s.manualName.trim()}\u2069` : 'Coordinates'); // the name is isolated: a right-to-left name must not reorder the "6 km · 6 h" after it
     const wLabel: Record<WeatherChoice, string> = { now: 'live weather', forecast: `forecast ${s.forecastTime ? formatDateTime(s.forecastTime) : ''}`, past: 'past weather', preset: 'preset weather', replay: 'historic day', belt: 'belt kit readings', manual: 'manual weather' };
     text(summaryEl, `${where} · ${s.extentKm} km · ${s.durationH} h · ${wLabel[s.weather]}`);
   }
@@ -892,6 +1106,8 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     durChips.set(String(s.durationH));
     onlineToggle.set(s.online);
     manualInput.value = s.manualText;
+    restoreManualView();
+    renderManual();
     schedulePlan();
   }
   renderAll();
@@ -903,6 +1119,8 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     destroy: () => {
       destroyed = true;
       clearTimeout(planTimer);
+      cancelLookup();
+      cancelError();
       packAbort?.abort();
       thumbs.destroy();
       unsubPerf();

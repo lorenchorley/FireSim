@@ -2,7 +2,7 @@
 // canopy height map (Tolan et al. 2024, CC BY 4.0, s3://dataforgood-fb-data/forests/v1/alsgedi_global_v6_float/chm/).
 // Output: public/demo/<id>/canopy.png (RGB: R = 90th-percentile height m, G = mean height m, B = cover fraction × 255)
 // on a CELL m grid centred on the site, plus canopy.json metadata.
-// Usage: NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-canopy.mjs [siteId ...]
+// Usage: NODE_USE_ENV_PROXY=1 node scripts/fetch-demo-canopy.mjs [--force] [siteId ...]   (an existing canopy.png is kept unless --force)
 import { fromUrl } from 'geotiff';
 import { encode } from 'fast-png';
 import { readFileSync } from 'node:fs';
@@ -10,7 +10,9 @@ import { writeFile, access } from 'node:fs/promises';
 
 const src = readFileSync(new URL('../src/data/demoSites.ts', import.meta.url), 'utf8');
 let sites = [...src.matchAll(/id: '([a-z]+)'[\s\S]*?centre: \{ lat: (-?[\d.]+), lon: (-?[\d.]+) \}/g)].map((m) => ({ id: m[1], lat: +m[2], lon: +m[3] }));
-if (process.argv.length > 2) sites = sites.filter((s) => process.argv.slice(2).includes(s.id));
+const wantedIds = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const force = process.argv.includes('--force');
+if (wantedIds.length) sites = sites.filter((s) => wantedIds.includes(s.id));
 const EXTENT = Number(/DEMO_EXTENT_M = (\d+)/.exec(src)[1]);
 const CELL = 20;
 const R = 6378137;
@@ -28,7 +30,7 @@ const merc = (lat, lon) => [(R * lon * Math.PI) / 180, R * Math.log(Math.tan(Mat
 
 for (const s of sites) {
   const out = new URL(`../public/demo/${s.id}/canopy.png`, import.meta.url);
-  try { await access(out); console.log(s.id, 'exists'); continue; } catch {}
+  if (!force) try { await access(out); console.log(s.id, 'exists'); continue; } catch {}
   const n = Math.round(EXTENT / CELL);
   const kLat = 111195, kLon = 111195 * Math.cos((s.lat * Math.PI) / 180);
   const hist = new Array(n * n); // per cell: histogram of heights 0..60
@@ -77,6 +79,6 @@ for (const s of sites) {
     png[o] = p90; png[o + 1] = Math.round(sum[k] / cnt[k]); png[o + 2] = Math.round((cover[k] / cnt[k]) * 255);
   }
   await writeFile(out, encode({ width: n, height: n, data: png, channels: 3, depth: 8 }));
-  await writeFile(new URL(`../public/demo/${s.id}/canopy.json`, import.meta.url), JSON.stringify({ id: s.id, cellSize: CELL, n, centre: { lat: s.lat, lon: s.lon }, extent: EXTENT, encoding: 'RGB: R=p90 canopy height (m), G=mean height (m), B=cover fraction (>=2 m) x255; row 0 = north', source: 'Meta & WRI High Resolution Canopy Height Maps v1 (Tolan et al. 2024), CC BY 4.0' }, null, 1));
+  await writeFile(new URL(`../public/demo/${s.id}/canopy.json`, import.meta.url), JSON.stringify({ id: s.id, cellSize: CELL, n, centre: { lat: s.lat, lon: s.lon }, extent: EXTENT, encoding: 'RGB: R=p90 canopy height (m), G=mean height (m), B=cover fraction (>=2 m) x255; row 0 = north', source: 'Meta & WRI High Resolution Canopy Height Maps v1 (Tolan et al. 2024), CC BY 4.0', capturedOn: new Date().toISOString().slice(0, 10) }, null, 1));
   console.log(`\n${s.id} done`);
 }

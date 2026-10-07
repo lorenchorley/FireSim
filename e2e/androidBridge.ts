@@ -10,7 +10,10 @@
  * native plugins would: Preferences (in-memory SharedPreferences), CapacitorHttp (real fetch, native response
  * format incl. base64 for binary), Geolocation (a fixed position near Katoomba), Filesystem/Cookies stubs.
  *
- * Every call is recorded on window.__nativeCalls so tests can assert what reached "native".
+ * Every call is recorded on window.__nativeCalls so tests can assert what reached "native". Requests to URLs listed in
+ * `httpRoutes` are answered from the list the way the Android HTTP stack would (a 302 with a Location header when redirects are
+ * disabled, the followed chain's final address in `url` otherwise) and are recorded on window.__nativeHttp (url, headers,
+ * disableRedirects): no real network is touched, so the Google short-link tests are the same on every machine.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -32,6 +35,20 @@ const PLUGIN_HEADERS = [
   header('WebView', [['setServerAssetPath'], ['setServerBasePath'], ['getServerBasePath'], ['persistServerBasePath']]),
 ];
 
+/** A faked answer of the native HTTP plugin (see {@link AndroidEmulationOptions.httpRoutes}). */
+export interface FakeHttpRoute {
+  /** The address (or the start of it) this answers; the first route that matches is used. */
+  match: string;
+  /** A redirect: the address of the Location header; `status` is 302 unless given. */
+  location?: string;
+  status?: number;
+  /** The page, for an answer that is not a redirect. */
+  body?: string;
+  contentType?: string;
+  /** Hold the answer back (ms), to see the "Looking up…" state. */
+  delayMs?: number;
+}
+
 export interface AndroidEmulationOptions {
   /** Geolocation fix returned by the fake plugin (default: Katoomba). */
   position?: { latitude: number; longitude: number; accuracy: number };
@@ -40,13 +57,15 @@ export interface AndroidEmulationOptions {
    * reopened). Off by default: each page load then starts with empty preferences.
    */
   persistPreferences?: boolean;
+  /** Answers of the native HTTP plugin for some addresses (a Google short link's redirect, for example); other addresses reach the real network. */
+  httpRoutes?: FakeHttpRoute[];
 }
 
 /** Install the Android emulation before any page script runs. Call before page.goto(). */
 export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulationOptions = {}): Promise<void> {
   const position = opts.position ?? { latitude: -33.715, longitude: 150.285, accuracy: 12 };
   await page.addInitScript(
-    ({ bridgeJs, headers, position, persist }) => {
+    ({ bridgeJs, headers, position, persist, routes }) => {
       const w = window as unknown as Record<string, any>;
       const origFetch = window.fetch.bind(window);
       const prefs = new Map<string, string>();
@@ -62,6 +81,7 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
         if (persist) sessionStorage.setItem(PREFS_KEY, JSON.stringify([...prefs]));
       };
       w.__nativeCalls = [] as { plugin: string; method: string }[];
+      w.__nativeHttp = [] as { url: string; method: string; headers: Record<string, string>; disableRedirects: boolean }[];
 
       // 1. Globals the native side injects first.
       w.WEBVIEW_SERVER_URL = location.origin;
@@ -75,6 +95,26 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
         for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
         return btoa(s);
       };
+
+      /** A faked HttpResponse for an address in `routes`, following redirects only when the request does not disable them; null: not faked. */
+      async function fakeHttp(o: any): Promise<unknown | null> {
+        let url: string = o.url;
+        for (let hop = 0; hop < 8; hop++) {
+          const route = routes.find((r: { match: string }) => url.startsWith(r.match));
+          if (!route) return hop === 0 ? null : { status: 404, headers: {}, url, data: '' };
+          w.__nativeHttp.push({ url, method: o.method ?? 'GET', headers: o.headers ?? {}, disableRedirects: !!o.disableRedirects });
+          if (route.delayMs) await new Promise((r) => setTimeout(r, route.delayMs));
+          if (route.location) {
+            if (o.disableRedirects) return { status: route.status ?? 302, headers: { Location: route.location }, url, data: '' };
+            url = new URL(route.location, url).href;
+            continue;
+          }
+          const body: string = route.body ?? '';
+          const binary = o.responseType === 'arraybuffer' || o.responseType === 'blob';
+          return { status: route.status ?? 200, headers: { 'Content-Type': route.contentType ?? 'text/html' }, url, data: binary ? btoa(unescape(encodeURIComponent(body))) : body };
+        }
+        return { status: 310, headers: {}, url, data: '' };
+      }
 
       async function handle(pluginId: string, methodName: string, o: any): Promise<unknown> {
         switch (`${pluginId}.${methodName}`) {
@@ -109,6 +149,8 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
           case 'CapacitorHttp.request':
           case 'CapacitorHttp.get':
           case 'CapacitorHttp.post': {
+            const faked = routes.length ? await fakeHttp(o) : null;
+            if (faked) return faked;
             const url = new URL(o.url);
             for (const [k, v] of Object.entries(o.params ?? {})) url.searchParams.set(k, String(v));
             const res = await origFetch(url.toString(), { method: o.method ?? 'GET', headers: o.headers ?? {}, body: o.data });
@@ -148,6 +190,6 @@ export async function emulateCapacitorAndroid(page: Page, opts: AndroidEmulation
       new Function(bridgeJs)();
       w.Capacitor.PluginHeaders = headers;
     },
-    { bridgeJs: NATIVE_BRIDGE_JS, headers: PLUGIN_HEADERS, position, persist: !!opts.persistPreferences },
+    { bridgeJs: NATIVE_BRIDGE_JS, headers: PLUGIN_HEADERS, position, persist: !!opts.persistPreferences, routes: opts.httpRoutes ?? [] },
   );
 }

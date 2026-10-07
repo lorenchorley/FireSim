@@ -326,7 +326,7 @@ describe('datasetsModel: list (DS2)', () => {
   it('data that were not used say so, with the reason', () => {
     const img = rowModel(live.datasets.find((r) => r.id === 'imagery')!, 1);
     expect(img.status).toMatchObject({ label: 'Not used', notUsed: true });
-    expect(img.reason).toMatch(/bundled only for the eight demo sites/);
+    expect(img.reason).toMatch(/bundled only for the (eight )?demo sites/); // the recorded live build (tests/fixtures/datasets) was made when there were eight; the app's own words no longer count them
     const canopy = rowModel(live.datasets.find((r) => r.id === 'canopy-height')!, 1);
     expect(canopy.status).toMatchObject({ label: 'Substitute used', tone: 'watch' });
     expect(canopy.reason.length).toBeGreaterThan(10);

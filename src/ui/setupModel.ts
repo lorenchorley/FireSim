@@ -7,7 +7,7 @@ import { DEMO_SITES } from '../data/demoSites';
 import type { ScenarioRequest, WeatherMode } from '../scenario/request';
 import { manualSeries } from './weatherSeries';
 import { pressureAtElevation, relativeHumidityFromWetBulb } from './weatherCalc';
-import { parseLatLon } from './nsw';
+import { parseLocationText, rememberableText } from './mapsLink';
 import { REPLAYS, WEATHER_PRESETS } from './content';
 import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import type { BeltKitInput } from '../scenario/beltKit';
@@ -60,7 +60,14 @@ export interface SetupState {
   demoSiteId: string;
   /** GPS fix (not persisted). */
   gps: { position: LatLon; accuracy: number } | null;
+  /**
+   * The place of the "paste a Google Maps link or coordinates" box, as text that holds nothing but coordinates: what was typed
+   * when it was coordinates, else the normalised "lat, lon" of the pasted link (the link itself, which carries a place id, is
+   * never kept here or remembered).
+   */
   manualText: string;
+  /** The place name of a pasted link or share text ("Mount Tomah Botanic Garden"); '' for typed coordinates. Not remembered. */
+  manualName: string;
   extentKm: ExtentKm;
   detail: Detail;
   weather: WeatherChoice;
@@ -84,6 +91,7 @@ export function defaultSetup(now = Date.now()): SetupState {
     demoSiteId: 'katoomba',
     gps: null,
     manualText: '',
+    manualName: '',
     extentKm: 6,
     detail: 'normal',
     weather: 'preset',
@@ -110,7 +118,8 @@ export function defaultSetup(now = Date.now()): SetupState {
 /** Fields that are persisted between sessions (not the GPS fix; times are refreshed). */
 export function persistable(s: SetupState): Partial<SetupState> {
   const { gps: _gps, pastTime: _p, forecastTime: _f, presetStart: _ps, ...rest } = s;
-  return { ...rest, belt: { ...s.belt, time: 0 }, manual: { ...s.manual, start: 0 } };
+  // The remembered place is coordinates only: a pasted link or share text (a place id and a name) is never stored.
+  return { ...rest, manualText: rememberableText(s.manualText), manualName: '', belt: { ...s.belt, time: 0 }, manual: { ...s.manual, start: 0 } };
 }
 
 /** Merge a persisted partial state over the defaults (ignoring invalid values). */
@@ -124,6 +133,10 @@ export function restoreSetup(saved: Partial<SetupState> | null, now = Date.now()
   if (!EXTENTS_KM.includes(s.extentKm)) s.extentKm = d.extentKm;
   if (!(s.detail in DETAIL_CELL)) s.detail = d.detail;
   if (s.where === 'gps') s.where = 'demo'; // a fix is needed again
+  s.manualText = rememberableText(typeof s.manualText === 'string' ? s.manualText : '');
+  s.manualName = '';
+  // "Where: the box" with nothing usable in it (a short link not yet looked up, a message, junk) would come back with NOTHING chosen.
+  if (s.where === 'manual' && s.manualText === '') s.where = 'demo';
   if (!WEATHER_PRESETS.some((p) => p.id === s.presetId)) s.presetId = d.presetId;
   if (!REPLAYS.some((r) => r.id === s.replayId)) s.replayId = d.replayId;
   s.durationH = Math.min(12, Math.max(1, Math.round(Number(s.durationH) || d.durationH)));
@@ -134,6 +147,7 @@ export function restoreSetup(saved: Partial<SetupState> | null, now = Date.now()
 const DEMO_ELEVATION: Record<string, number> = {
   katoomba: 950,
   grose: 900,
+  tomah: 800,
   kanangra: 1150,
   thredbo: 1450,
   gospers: 550,
@@ -163,9 +177,9 @@ export function resolveCentre(s: SetupState): { centre: LatLon; demoSiteId?: str
     if (!s.gps) return { error: 'No location yet — tap “Use my location”.' };
     return { centre: s.gps.position, name: 'My location' };
   }
-  const p = parseLatLon(s.manualText);
-  if (!p) return { error: 'Enter coordinates such as -33.715, 150.285.' };
-  return { centre: p, name: `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}` };
+  const p = parseLocationText(s.manualText);
+  if (!p.ok) return { error: p.reason === 'empty' || p.reason === 'not-recognised' ? 'Paste a Google Maps link or enter coordinates such as -33.715, 150.285.' : p.message };
+  return { centre: p.position, name: s.manualName.trim() || 'Your location' };
 }
 
 /** Validation messages for the current form (empty = OK to build). */
