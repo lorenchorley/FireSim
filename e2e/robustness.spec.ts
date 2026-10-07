@@ -1305,11 +1305,25 @@ test('every screen opened and closed 30 times leaks no DOM nodes, event listener
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('layers-panel')).toHaveCount(0);
   };
-  const read = async (): Promise<{ nodes: number; listeners: number; heapMB: number }> => {
+  const readOnce = async (): Promise<{ nodes: number; listeners: number; heapMB: number }> => {
     await cdp.send('HeapProfiler.collectGarbage');
     const c = (await cdp.send('Memory.getDOMCounters')) as { nodes: number; jsEventListeners: number };
     const heapMB = await page.evaluate(() => ((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576);
     return { nodes: c.nodes, listeners: c.jsEventListeners, heapMB };
+  };
+  // The counters include a panel that has just been closed for as long as a timer or an animation frame still holds it (a chunk of about
+  // a thousand nodes and a hundred listeners that comes and goes between two readings, with the heap flat). A leak does not go away, so
+  // read again after a pause until two readings agree, and keep the lower one: that is what stays once the screens have let go.
+  const read = async (): Promise<{ nodes: number; listeners: number; heapMB: number }> => {
+    let best = await readOnce();
+    for (let i = 0; i < 10; i++) {
+      await page.waitForTimeout(1200);
+      const next = await readOnce();
+      const same = next.nodes === best.nodes && next.listeners === best.listeners;
+      best = { nodes: Math.min(best.nodes, next.nodes), listeners: Math.min(best.listeners, next.listeners), heapMB: Math.min(best.heapMB, next.heapMB) };
+      if (same) break;
+    }
+    return best;
   };
   for (let i = 0; i < 10; i++) await cycle(); // warm-up: lazy modules, caches, the panels' first rendering
   const base = await read();
