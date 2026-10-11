@@ -1,8 +1,8 @@
-# Plan: debug statistics, honest speed reporting, Air Slices and zoom-adaptive wind (0.3.0 to 0.5.0)
+# Plan: night map lighting, debug statistics, honest speed reporting, Air Slices and zoom-adaptive wind (0.3.0 to 0.5.0)
 
 **Status: plan only. Nothing is built.** Branch `claude/3d-fire-simulation-app-xoy1o6`, written 2026-10-11 against HEAD `c5c2f44` (0.2.2).
 
-**Inputs:** the five requests in this conversation; the "Engine right now" readout from the user's phone (Fast tier chosen by auto-tune, 41.1 ms per 3-D air step, fast tier computing at 871x real time); and four read-only surveys of the code (timeline and playback; slice UI and render integration; engine data plumbing and tests; wind glyphs and fine-scale wind). File and line references below come from those surveys or from direct reads; `[est]` marks a number that is an estimate, not a measurement.
+**Inputs:** your requests in this conversation (slices, slow-run reporting, horizontal slice and zoom detail, debug statistics, night lighting); the "Engine right now" readout from the user's phone (Fast tier chosen by auto-tune, 41.1 ms per 3-D air step, fast tier computing at 871x real time); and four read-only surveys of the code (timeline and playback; slice UI and render integration; engine data plumbing and tests; wind glyphs and fine-scale wind). File and line references below come from those surveys or from direct reads; `[est]` marks a number that is an estimate, not a measurement.
 
 ---
 
@@ -14,8 +14,9 @@
 | Detailed (3-D) mode may fall behind real time; results matter more; report slowness subtly on the timeline; tap for a comprehensible explanation | Auto prefers the detailed 3-D air on any phone that can run it at all; never silently drops to the fast model; a small amber speed button appears at the end of the timeline only while playback is waiting for the simulation; tapping it opens a plain-language sheet | **B** | 0.3.0 |
 | Vertical cross-sections of the air wherever you want, on mobile | Air Slice tool: place a line anywhere (crosshair Set A / Set B, or one-tap presets), a flat 2-D side-view panel with axes, terrain, colour chips, flow streaks and a touch probe, plus the 3-D curtain; works on every phone because the fast tier now publishes a diagnosed 3-D wind; exact near-ground sampling | **C**, **D** | 0.4.0 |
 | A horizontal slice of wind; indicators that get more detailed as you zoom; curves that follow the wind when very close | "Arrows and flow lines" layer at a chosen height: sparse straight arrows far away, denser arrows closer, curved streamlines up close, seeded per screen area; height control; honest captions about what the model can resolve; optional 60 m "wind the fire feels" raster for close-up detail | **E** | 0.5.0 |
+| Remove the day/night darkening of the terrain, in the Layers settings, because at night the terrain details are very hard to see | Layers, Map type, **Night lighting**: Realistic (today's look), Brighter, Daylight. The ground, trees and roads stay readable after dark, lit from a fixed north-west sun so relief shows; the sky, stars and the fire's glow still follow the clock; remembered between runs | **F** (section 9b) | 0.3.0, and independent, so it can ship first |
 
-Recommended order: **A + B first** (small, and they give every later release real phone data), then **C + D**, then **E**. Each release is an installable APK with its own phone check-list (section 12).
+Recommended order: **F, A and B first** (F is small and independent; A and B give every later release real phone data), then **C + D**, then **E**. Each release is an installable APK with its own phone check-list (section 12).
 
 ## 2. What the phone and the code told us
 
@@ -52,7 +53,7 @@ Recommended order: **A + B first** (small, and they give every later release rea
 
 | # | Decision | Default | Effect if you change it |
 |---|---|---|---|
-| D1 | Release split | Three installable drops: 0.3.0 (A + B), 0.4.0 (C + D), 0.5.0 (E) | One big drop is possible but loses the early phone data and raises risk |
+| D1 | Release split | Three installable drops: 0.3.0 (F + A + B), 0.4.0 (C + D), 0.5.0 (E) | One big drop is possible but loses the early phone data and raises risk |
 | D2 | Auto policy ceiling | Detailed unless the predicted compute time for a 6 h run exceeds **10 minutes** (cut-off about 198 ms per air step, about 4.8x slower than your phone), scaled by run length, floor 60 s | Smaller = more phones fall back to Fast; larger = more phones wait longer. Your phone gets Detailed either way |
 | D3 | Timeline signal placement | A 44x44 speed button in the strip's right-hand column that exists only while behind (like Cancel does while seeking); a layout spike confirms it; fallback is a badge in the clock button plus an under-rail line | See 6.4 |
 | D4 | Old "Engine right now" section | Moves into the new screen; the model card keeps a four-row summary and an "Open Simulation debug statistics" row | Keeping the full block in both places duplicates about 30 rows |
@@ -64,6 +65,8 @@ Recommended order: **A + B first** (small, and they give every later release rea
 | D10 | Bundle budget | Lazy-load the slice panel and glyph engine, run a trim pass; raise the all-JS budget only if measured need remains, and ask you first | Estimated additions are 40-50 kB gzip against 46 kB of headroom |
 | D11 | Fire-felt wind raster | Int16, about 60 m cells, newest snapshot plus keyframes (0.5.0 stage E2) | Float32 at 30 m is 4-8x the memory |
 | D12 | Names | "Detailed (3-D air)" = Standard and High tiers; "Fast (surface wind)" stays | Only labels change |
+| D13 | Night lighting choices and default | Realistic (default), Brighter, Daylight; the default stays Realistic because the dark night is a deliberate training point (judging a fire at night) | Making Brighter the default changes the night screenshots and every night e2e baseline |
+| D14 | When night lighting ships | With 0.3.0 | It is independent of everything else: I can ship it alone first as 0.2.3 if you need it sooner |
 
 ## 4. Ground rules (apply to every workstream)
 
@@ -476,14 +479,55 @@ Wind particles are seeded uniformly over the **whole domain** (1300 surface / 26
 
 ---
 
+## 9b. Workstream F: Night map lighting (0.3.0)
+
+Small and independent: it can ship first, even alone. It sits after E only to keep the other section numbers stable.
+
+I read "day night terrain modifier" as the automatic day/night lighting of the 3-D map: after dark the ground, photo, trees and roads are dimmed and tinted blue, so relief is hard to read. Tell me if you meant something else.
+
+### 9b.1 What the user gets
+- **Layers, Map type, Night lighting:** three choices, **Realistic** (today's look, the default), **Brighter** and **Daylight**. Brighter and Daylight light the ground (photo, terrain colours or plain), trees, roads and labels after dark from a fixed north-west sun, so slopes show their shape. The sky, stars, the fire's glow, lit windows and the fire light on smoke still follow the clock. By day nothing changes.
+- It applies instantly (uniform updates only: no rebuild, no pause), is remembered between runs, and "Reset layers" returns it to Realistic.
+
+### 9b.2 Why the terrain is hard to read at night today
+`skyLighting` (`src/render/sky.ts:39-48`) has no direct sun below about -3 degrees (sun intensity 0) and an ambient of 0.27-0.32 against 0.5 at noon, tinted dark blue, with exposure raised by up to 60 % (`:100`). The terrain shader's direct-sun term (`src/render/terrainLayer.ts:204-206`) therefore vanishes and only the dim ambient with the baked relief term is left; the aerial photo is scaled by a reference light that follows the same dim ambient (`:212-218`). The darkness is deliberate (the header says "dark enough that a night fire's glow dominates the scene, which is exactly when trainees most often misjudge it", `sky.ts:3-4`), which is why Realistic stays the default (D13).
+
+### 9b.3 Design
+- **A view setting, like the Plain map type** (not a `LayerState` key): `SceneViewApi.setNightLook?(look)` and `readonly nightLook?` next to `setPlainGround?` (`src/render/api.ts:101-103`); persisted as `LayerPrefs.nightLook?` with a sanitizer branch (`src/ui/screens/sim/layersPrefs.ts:54,91`), saved through `rememberLayerChoice` (`:162-171`), restored in `restoreLayerPrefs` (`:232`) and reset in the panel's reset action (`layersPanel.ts:759`). Nothing changes in `LAYER_STATE_ROLE`, no exact-shape test changes, and `LAYER_PREFS_VERSION` stays 1. The row is hidden when the view has no such method (the 2-D mock), exactly as `canPlain` does (`layersPanel.ts:186-188`).
+- **Lighting maths (pure, `src/render/sky.ts`):** `mapLighting(real, look, sunElevation)`. The weight is `w = m x smoothstep(8 deg, -2 deg, elevation)` with `m = 0, 0.55, 1` for Realistic, Brighter, Daylight, so with the sun above about 8 degrees nothing changes and the effect fades in through dusk. The target is `skyLighting(40 deg)` (no cloud or smoke, because visibility is the goal) from a fixed cartographic sun direction (north-west, azimuth 315 degrees, 40 degrees up). Sun direction (blended as vectors and renormalised), sun colour and intensity, sky and ground ambient, ambient intensity and exposure are the real values blended toward the target by `w` in linear colour. With `m = 0` the output is bit-identical to today (test).
+- **Uniform plumbing (`SceneView.applyLighting`, `SceneView.ts:1013-1042`):** the shared uniforms the map shaders already read now carry the **map lighting**; `uNight` stays the **real** night. A new `uMapNight = real night x (1 - w)` serves the sites that dim the map. The sky dome gets its **own** sun direction, colour, intensity and exposure from the real lighting (as it already has its own zenith and horizon), so a bright map never paints a sun disc into a night sky or changes the sky's brightness. `sunKey` is invalidated so a change applies at once, as `setStartTime` does (`:989-996`).
+- **Shader audit and classification** (from a grep of `uNight`, `uExposure`, `uSunI` and `uAmbI` in `src/render`):
+
+| Use | Sites | After the change |
+|---|---|---|
+| Map lighting (sun, ambient, exposure) | `terrainLayer.ts:62-63,204-218,383-397` (ground and photo); `treeShaders.ts:269-272,397-401`; `placesLayer.ts:296-309`; `smokeLayer.ts:60,78`; `glsl.ts:42-57`; `streaks.ts:132`, `crossSectionLayer.ts:81`, `fireLayer.ts:133` (exposure only) | Follow the blended map lighting; no shader change, they read the shared uniforms |
+| Dimming at night | `placesLayer.ts:226-227` (roads dim and cool), `:309` (ambient floor), `:352` (labels); `treeShaders.ts:409` (moonlight add) | Read `uMapNight` (added to the shared lists at `vegetationLayer.ts:127-131,514` and `placesLayer.ts:440`) |
+| Emissive and atmosphere | `skyDome.ts:40-44` (sun disc, stars); `fireLayer.ts:91` (flame gain); `smokeLayer.ts:80` (fire light on smoke); `placesLayer.ts:313` (lit windows); `terrainLayer.ts:226` (zone glow); `SceneView.ts:1034` (`uGlowGain`) | Unchanged, real night |
+
+  The sky dome reads the shared sun and exposure uniforms today (`skyDome.ts:24-25,68-70`), so it is the one consumer that must move to its own.
+- **Shadows:** terrain cast shadows keep following the real sun (`updateShadows`, `SceneView.ts:1049-1054`, off below 0.5 degrees), so at night relief comes from the fixed-direction light and the baked relief term, not from invented shadows, and there is no extra cost on phones.
+- **Fog and fire:** the real dark fog colour stays so the horizon matches the dark sky, with fog density reduced by `w` so distant ridges are not swallowed; flames, embers and smoke keep their night glow gain. Both are tuned in **spike S4** (section 10), which also checks that the fire still stands out in Daylight, since judging fires at night is a training point.
+
+### 9b.4 UI
+In the Layers panel's **Map type** section (`layersPanel.ts:272-325`), below the tile grid: a `segmented` control "Night lighting" with Realistic, Brighter and Daylight (test id `night-look`) and the hint "Realistic follows the clock. Brighter and Daylight light the ground, trees and roads after dark so terrain detail stays readable. The sky, stars and the fire's glow still follow the clock." About +12 DOM nodes against 86 spare; no CSS.
+
+### 9b.5 Files, tests, acceptance
+- **Files:** `src/render/sky.ts` (+ test), `SceneView.ts`, `api.ts`, `treeShaders.ts`, `vegetationLayer.ts`, `placesLayer.ts`, `skyDome.ts`, `src/ui/screens/sim/layersPanel.ts`, `layersPrefs.ts`, docs.
+- **Pure tests:** `mapLighting`: `m = 0` equals `skyLighting` for a sweep of elevations, cloud and smoke values; every look is identical when the elevation is 8 degrees or more; `m = 1` at night equals the target; continuous and monotone through dusk; direction normalised; the `uMapNight` and real-night relationships. `sanitizeLayerPrefs`: valid and invalid `nightLook`, version stays 1, unknown keys ignored. The panel row model.
+- **E2E (real engine, night through the `setStartTime` debug path; `src/render/dev.ts:15` already has a night start for the dev page):** switch looks and assert, from screenshots decoded with `fast-png`, that the mean luminance of a ground region rises Realistic < Brighter < Daylight by a margin, a sky region does not change, and no sun disc appears; a reload keeps the choice; Reset returns to Realistic; no console errors; draw-call and triangle counts unchanged. Screenshots: night Realistic and night Daylight.
+- **Acceptance on your phone:** at night, Layers, Map type, Night lighting, Daylight: relief, trees and roads read as by day; the sky stays dark with stars; the fire still glows; switching back restores; it is remembered next run.
+- **Size:** S.
+
+---
+
 ## 10. Releases, order and how the build would run
 
 Sizes are relative single-builder effort: S under a day, M one to two days, L three to five days. With parallel agents the wall time is shorter.
 
 | Release | Contents | Size | Done when |
 |---|---|---|---|
-| **M0 (before 0.3.0)** | Contracts commit (types only: `EngineInfo.perf`, `autoTune` fields, `SessionState.pace`, optional `AtmosphereView` fields, `airView.ts` helpers) so lanes can build in parallel; **spike S1** timeline signal placement (6.4); **spike S2** bundle baseline and trim candidates (dev-only code in the production bundle, dead code); **spike S3** a node micro-benchmark of the glyph generator (2000 glyphs x 10 segments through the sampler) to check the 8 ms estimate before workstream E is committed to | S | Spike notes committed; decisions D3 and D10 informed |
-| **0.3.0** (versionCode 6) | **A** debug statistics + **B** honest speed | M + M | Section 12 gates green; phone check-list 1 |
+| **M0 (before 0.3.0)** | Contracts commit (types only: `EngineInfo.perf`, `autoTune` fields, `SessionState.pace`, optional `AtmosphereView` fields, `airView.ts` helpers) so lanes can build in parallel; **spike S1** timeline signal placement (6.4); **spike S2** bundle baseline and trim candidates (dev-only code in the production bundle, dead code); **spike S3** a node micro-benchmark of the glyph generator (2000 glyphs x 10 segments through the sampler) to check the 8 ms estimate before workstream E is committed to; **spike S4** the night-lighting look tuned on the real renderer with screenshots (9b.3) | S | Spike notes committed; decisions D3 and D10 informed |
+| **0.3.0** (versionCode 6) | **F** night map lighting + **A** debug statistics + **B** honest speed | S + M + M | Section 12 gates green; phone check-list 1 |
 | **0.3.1** (optional) | Speed test button | S | Frozen kernels and CI reference |
 | **0.4.0** (versionCode 7) | **C** air data foundation + **D** Air Slice side view | L + L | Gates green; oracle tests pass; phone check-list 2 |
 | **0.4.1** (optional) | Time-lapse recorder for a pinned line | M | Memory within its 12 MB budget |
@@ -492,7 +536,7 @@ Sizes are relative single-builder effort: S under a day, M one to two days, L th
 **Dependencies:** B needs A's `EngineInfo.perf` (contract only, so they overlap); D needs C; E1 needs C; E2 is independent of E1 at the data level.
 
 **If you say "use a workflow"** each release runs like 0.2.0 to 0.2.2: a Build phase with lanes in parallel and clear file ownership, an independent Verify phase (a different agent per lane, re-measuring on the real app), a Fix loop, then Release (version bump in `package.json`, `package-lock.json` and `android/app/build.gradle`; `npm run build:cap`; `npx cap sync android`; debug APK; screenshots; docs; commit and push; APK handed to you).
-- **0.3.0 lanes:** (1) worker and engine: `perfStats`, `simTypes`, `simulation`/`engineInfo`, auto-tune policy and its tests; (2) debug-statistics UI: screen, `deviceInfo`, `eventLog`, the three entry rows, `modelInfo` summary; (3) pace: `paceModel`, `paceSheet`, scrubber, top bar, transport CSS, session; (4) docs and e2e updates. Lanes 2 and 3 start from the M0 contracts.
+- **0.3.0 lanes:** (1) worker and engine: `perfStats`, `simTypes`, `simulation`/`engineInfo`, auto-tune policy and its tests; (2) debug-statistics UI: screen, `deviceInfo`, `eventLog`, the three entry rows, `modelInfo` summary; (3) pace: `paceModel`, `paceSheet`, scrubber, top bar, transport CSS, session; (4) docs and e2e updates; (5) night lighting: `sky.ts` maths, uniforms, the shader sites and the Layers row (small and independent, so it can ship first). Lanes 2 and 3 start from the M0 contracts.
 - **0.4.0 lanes:** (1) data first: sampler v2, layouts, flags, memory model, oracle tests (everything else waits for its tests to pass); then in parallel (2) slice model, panel and tool, (3) curtain refactor, gating and strings, (4) docs.
 - **0.5.0 lanes:** (1) pure glyph engine and tests, (2) rendering, camera and layer wiring, (3) E2 data and memory, (4) UI and docs.
 
@@ -507,9 +551,10 @@ Sizes are relative single-builder effort: S under a day, M one to two days, L th
 | C air data | about 3 kB | entry (sampler) |
 | D Air Slice | 14-18 kB | lazy chunk |
 | E glyphs | 10-14 kB | lazy chunk |
-| **Total** | **37-48 kB** | against **46 kB** of headroom |
+| F night lighting | about 1 kB | entry (`sky.ts` maths, panel row) |
+| **Total** | **38-49 kB** | against **46 kB** of headroom |
 
-Running total after each release [est]: about 965 kB, 985 kB, 997 kB. This is at the limit, so: lazy-load everything heavy, run the trim pass (spike S2), and **decide at the end of 0.4.0 with real numbers** whether to raise the all-JS budget (D10); I will ask you before changing a budget. Entry chunk additions are kept under about 5 kB. CSS: A 2 kB + B 1 kB + D 4 kB + E 2 kB = 9 kB against 12.8 kB. Layers-panel DOM: +6 nodes against 86. Demo data and APK size are unaffected.
+Running total after each release [est]: about 966 kB, 986 kB, 998 kB. This is at the limit, so: lazy-load everything heavy, run the trim pass (spike S2), and **decide at the end of 0.4.0 with real numbers** whether to raise the all-JS budget (D10); I will ask you before changing a budget. Entry chunk additions are kept under about 5 kB. CSS: A 2 kB + B 1 kB + D 4 kB + E 2 kB = 9 kB against 12.8 kB. Layers-panel DOM: +6 nodes from E and about +12 from F, against 86 spare. Demo data and APK size are unaffected.
 
 **Memory** (6 h run, per the survey's keyframe maths; the history store cap is 6 % of device memory, 48-168 MB):
 
@@ -533,13 +578,14 @@ The debug statistics screen shows frames kept, thinned frames and the heap, so t
 2. Start a run in Auto: the tier line says Detailed with the measured step and the minutes it should take.
 3. Set playback to 600x or faster: within about 20 s a small amber button appears at the right end of the timeline; tap it, read the sheet; tap "Play at 30x" and watch it fade.
 4. After about 5 minutes of play, copy the statistics again (speed history, where the time went, memory, frame rate, events).
+5. At night (start a scenario in the evening, or scrub past dusk): Layers, Map type, Night lighting. Try Brighter and Daylight: the terrain, trees and roads should read as by day while the sky stays dark and the fire still glows. Reopen the app and check the choice is remembered.
 
 **Phone check-list 2 (0.4.0):** on both tiers, place a line with the crosshair and with a preset, read the probe at a ridge crest, switch chips, rotate to landscape, compare with the old curtain, scrub back and read "air from"; copy the statistics (memory, frames, thinned frames).
 
 **Phone check-list 3 (0.5.0):** zoom from the whole area to a ridge and watch the ladder; try each height; check the captions; copy the statistics (frame rate, memory).
 
 ## 13. Docs, help and screenshots
-README (feature list, "Controls", the transparency and performance sections, the numbers at 497-517 and 565-566), `docs/ARCHITECTURE.md` (new modules, `EngineInfo.perf`, the view layout and kinds, the pace model, budgets at 661-701), `docs/DESIGN.md` (timeline signal, slice panel, glyph legend, screens table at 412-418), `docs/research/00-synthesis.md` mentions listed in 6.7 and 7.7, Help and Glossary entries (Air slice, Diagnosed wind, Flow lines, Why is it slow?, Simulation debug statistics), the model card strings, release notes. Screenshots: refresh 05, add the debug statistics screen, the pace sheet, the slice panel (portrait, landscape, fast-tier diagnosed), the glyph zoom triplet.
+README (feature list, "Controls", the transparency and performance sections, the numbers at 497-517 and 565-566), `docs/ARCHITECTURE.md` (new modules, `EngineInfo.perf`, the view layout and kinds, the pace model, budgets at 661-701), `docs/DESIGN.md` (timeline signal, slice panel, glyph legend, screens table at 412-418), `docs/research/00-synthesis.md` mentions listed in 6.7 and 7.7, Help and Glossary entries (Night lighting, Air slice, Diagnosed wind, Flow lines, Why is it slow?, Simulation debug statistics), the model card strings, release notes. Screenshots: refresh 05, add the debug statistics screen, the pace sheet, the night look (Realistic and Daylight), the slice panel (portrait, landscape, fast-tier diagnosed), the glyph zoom triplet.
 
 ## 14. Risk register
 
@@ -561,11 +607,12 @@ README (feature list, "Controls", the transparency and performance sections, the
 | `performance.memory`, long-task or battery APIs missing | Rows say "not available"; tested with stubs |
 | Narrow phones (360 px) | Panel and sheet also checked at 360x640 |
 | Test-suite runtime growth | New logic is pure and fast; slow suites stay gated |
+| Night lighting touches shared uniforms and shaders used by the ground, trees, roads, smoke and the sky | Pure blending maths with a "Realistic is bit-identical to today" test; the shader audit table (9b.3); the sky dome moves to its own uniforms; e2e luminance checks; spike S4 for the look |
 
 ## 15. Later (deliberately not in this plan)
 GPU or WebGPU solver and finer time-stepped grids; a finer diagnosed terrain-wind solve (65-100 m, hourly, so CPU-affordable) for the fast tier, which changes the wind the fire feels and needs re-validation; true-height floating glyphs in orbit view; draggable slice handles; retroactive worker-side replay for slices; several slices at once; wind and temperature profile at a point and a time-height diagram; an Android "Share to FireSim" target; a one-finger-rotate option; saving statistics to a file.
 
 ## 16. What I need from you
-1. Confirm or change **D2** (Auto ceiling), **D3** (timeline button, which the spike confirms), **D6** (crosshair placement first), **D7** (recorder later), **D9** (glyph layer opt-in) and **D10** (bundle approach). Silence means the defaults.
-2. Say **"go"** for 0.3.0 (A + B), and whether to run it as a parallel multi-agent workflow ("use a workflow") or directly.
+1. Confirm or change **D2** (Auto ceiling), **D3** (timeline button, which the spike confirms), **D6** (crosshair placement first), **D7** (recorder later), **D9** (glyph layer opt-in), **D10** (bundle approach), **D13** (night lighting default Realistic) and **D14** (night lighting with 0.3.0, or alone first as 0.2.3). Silence means the defaults.
+2. Say **"go"** for 0.3.0 (F + A + B), and whether to run it as a parallel multi-agent workflow ("use a workflow") or directly.
 3. After 0.3.0, paste the debug statistics from your phone; the thresholds in B and the budgets in C to E are then tuned against real numbers.
