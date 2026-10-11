@@ -1,8 +1,8 @@
-# Plan: night map lighting, debug statistics, honest speed reporting, Air Slices and zoom-adaptive wind (0.3.0 to 0.5.0)
+# Plan: night map lighting, picture quality, debug statistics, honest speed reporting, Air Slices and zoom-adaptive wind (0.3.0 to 0.5.0)
 
 **Status: plan only. Nothing is built.** Branch `claude/3d-fire-simulation-app-xoy1o6`, written 2026-10-11 against HEAD `c5c2f44` (0.2.2).
 
-**Inputs:** your requests in this conversation (slices, slow-run reporting, horizontal slice and zoom detail, debug statistics, night lighting); the "Engine right now" readout from the user's phone (Fast tier chosen by auto-tune, 41.1 ms per 3-D air step, fast tier computing at 871x real time); and four read-only surveys of the code (timeline and playback; slice UI and render integration; engine data plumbing and tests; wind glyphs and fine-scale wind). File and line references below come from those surveys or from direct reads; `[est]` marks a number that is an estimate, not a measurement.
+**Inputs:** your requests in this conversation (slices, slow-run reporting, horizontal slice and zoom detail, debug statistics, night lighting, picture quality); the "Engine right now" readout from the user's phone (Fast tier chosen by auto-tune, 41.1 ms per 3-D air step, fast tier computing at 871x real time); and four read-only surveys of the code (timeline and playback; slice UI and render integration; engine data plumbing and tests; wind glyphs and fine-scale wind). File and line references below come from those surveys or from direct reads; `[est]` marks a number that is an estimate, not a measurement.
 
 ---
 
@@ -15,8 +15,9 @@
 | Vertical cross-sections of the air wherever you want, on mobile | Air Slice tool: place a line anywhere (crosshair Set A / Set B, or one-tap presets), a flat 2-D side-view panel with axes, terrain, colour chips, flow streaks and a touch probe, plus the 3-D curtain; works on every phone because the fast tier now publishes a diagnosed 3-D wind; exact near-ground sampling | **C**, **D** | 0.4.0 |
 | A horizontal slice of wind; indicators that get more detailed as you zoom; curves that follow the wind when very close | "Arrows and flow lines" layer at a chosen height: sparse straight arrows far away, denser arrows closer, curved streamlines up close, seeded per screen area; height control; honest captions about what the model can resolve; optional 60 m "wind the fire feels" raster for close-up detail | **E** | 0.5.0 |
 | Remove the day/night darkening of the terrain, in the Layers settings, because at night the terrain details are very hard to see | Layers, Map type, **Night lighting**: Realistic (today's look), Brighter, Daylight. The ground, trees and roads stay readable after dark, lit from a fixed north-west sun so relief shows; the sky, stars and the fire's glow still follow the clock; remembered between runs | **F** (section 9b) | 0.3.0, and independent, so it can ship first |
+| Add the picture-quality tier and the history budget to the debug statistics, and a Picture quality override (Auto, Low, Medium, High) so Detail can force the best-looking view too | Settings, Simulation, **Picture quality**: Auto (the phone's guess; the Detail profile asks for High), Low, Medium, High; applies to the next model you build; the statistics screen shows the tier in use, why, what it sets, and the history budget | **G** (section 9c), plus A | 0.3.0 |
 
-Recommended order: **F, A and B first** (F is small and independent; A and B give every later release real phone data), then **C + D**, then **E**. Each release is an installable APK with its own phone check-list (section 12).
+Recommended order: **F, G, A and B first** (F and G are small and independent; A and B give every later release real phone data), then **C + D**, then **E**. Each release is an installable APK with its own phone check-list (section 12).
 
 ## 2. What the phone and the code told us
 
@@ -48,12 +49,13 @@ Recommended order: **F, A and B first** (F is small and independent; A and B giv
 - `transportSheet()` + `createPopoverGroup()` (`src/ui/screens/sim/transportKit.ts:33,110`) are the right primitives for a tap-for-details sheet (dialog role, scrim, Escape, focus return, Back handling via `closeTopLayer`).
 - Bundle: all-JS gzip 953.8 kB of 1000 (lazy chunks count; `scripts/check-bundle.mjs`), entry 184 of 195, CSS 122.2 kB of 135 raw; Layers-panel DOM 914 of 1000 nodes. Headroom is thin.
 - Vitest runs in `node` with no DOM; DOM builders are not unit-tested; logic must live in pure modules. There is no CI config in the repo; e2e runs a Pixel 7 profile on SwiftShader. Only one e2e spec forces a tier; the others run on Auto and branch on what the machine picks.
+- The 3-D picture quality tier (terrain mesh 224 / 320 / 400, trees 16k / 32k / 48k, pixel-ratio cap 1.25 / 1.75 / 2) is chosen only by `guessQuality()` from cores and memory when the view is built (`src/render/SceneView.ts:77-90,230`); no setting reaches it, and `createSceneView(container)` takes no options (`src/ui/modules.ts:23,98`). The scrubber history budget is 6 % of the reported device memory clamped to 48-160 MB (`src/ui/session.ts:794`).
 
 ## 3. Decisions to confirm (each has a default, so "go" accepts them all)
 
 | # | Decision | Default | Effect if you change it |
 |---|---|---|---|
-| D1 | Release split | Three installable drops: 0.3.0 (F + A + B), 0.4.0 (C + D), 0.5.0 (E) | One big drop is possible but loses the early phone data and raises risk |
+| D1 | Release split | Three installable drops: 0.3.0 (F + G + A + B), 0.4.0 (C + D), 0.5.0 (E) | One big drop is possible but loses the early phone data and raises risk |
 | D2 | Auto policy ceiling | Detailed unless the predicted compute time for a 6 h run exceeds **10 minutes** (cut-off about 198 ms per air step, about 4.8x slower than your phone), scaled by run length, floor 60 s | Smaller = more phones fall back to Fast; larger = more phones wait longer. Your phone gets Detailed either way |
 | D3 | Timeline signal placement | A 44x44 speed button in the strip's right-hand column that exists only while behind (like Cancel does while seeking); a layout spike confirms it; fallback is a badge in the clock button plus an under-rail line | See 6.4 |
 | D4 | Old "Engine right now" section | Moves into the new screen; the model card keeps a four-row summary and an "Open Simulation debug statistics" row | Keeping the full block in both places duplicates about 30 rows |
@@ -67,6 +69,8 @@ Recommended order: **F, A and B first** (F is small and independent; A and B giv
 | D12 | Names | "Detailed (3-D air)" = Standard and High tiers; "Fast (surface wind)" stays | Only labels change |
 | D13 | Night lighting choices and default | Realistic (default), Brighter, Daylight; the default stays Realistic because the dark night is a deliberate training point (judging a fire at night) | Making Brighter the default changes the night screenshots and every night e2e baseline |
 | D14 | When night lighting ships | With 0.3.0 | It is independent of everything else: I can ship it alone first as 0.2.3 if you need it sooner |
+| D15 | Picture quality semantics | Auto = the phone's guess, except the Detail profile asks for High; Low, Medium and High always win; applies to the next model you build | "Apply now" needs a view rebuild; leaving Detail alone keeps today's behaviour |
+| D16 | Adaptive pixel ratio | Stays on in every case as the safety valve (it only lowers the resolution while the frame rate stays under 30) | Pinning it would sharpen a forced High but can stutter or exhaust a small GPU |
 
 ## 4. Ground rules (apply to every workstream)
 
@@ -130,8 +134,8 @@ Cost classes: **S** static, **C** counter (one add per event), **R** running agg
 | Step quality | Share of air steps limited by horizontal CFL / vertical CFL / the 12 s cap / the user limit; run-max horizontal and vertical wind; pressure-projection corrections per step; 3-D spin-up wall time; fire sub-steps per outer step; burning cells | values the solvers already compute for the time step | R |
 | Embers | Tracked / budget (exists); spawned and landed totals if the ember model already counts them | existing | C |
 | Re-runs | Rewinds, sim-seconds recomputed, tier switches, checkpoint restores | session / worker | C |
-| Memory | Engine measured total and top parts (exists, refreshed at most every 30 s), checkpoints held and bytes (exists), history store frames / keyframes / bytes against cap / thinned frames (`snapshotStore.ts` getters), snapshot size last and mean, JS heap used / total / limit (`performance.memory`, reader at `src/scenario/memoryModel.ts:335`), storage used / quota (`src/data/storage.ts:78`) | mixed | C/D |
-| Display (main thread) | Frame rate last 10 s (mean, 95th percentile frame ms, frames over 33 ms and over 100 ms); long tasks in the last 60 s (count, total ms; `PerformanceObserver('longtask')` where present); draw calls, triangles, textures (`renderer.info`); pixel ratio used vs cap; canvas size. The scene stops drawing while a full-screen screen is open (`src/render/api.ts:111`), so these are the last seconds before opening | `SceneView` ring + observer | H/D |
+| Memory | Engine measured total and top parts (exists, refreshed at most every 30 s), checkpoints held and bytes (exists), the **history budget** (6 % of the reported device memory clamped to 48-160 MB, with the memory class it came from; `defaultSnapshotBudget`, `src/ui/session.ts:794`) and what is held against it: bytes, full pictures, light frames and thinned frames (`snapshotStore.ts` getters), snapshot size last and mean, JS heap used / total / limit (`performance.memory`, reader at `src/scenario/memoryModel.ts:335`), storage used / quota (`src/data/storage.ts:78`) | mixed | C/D |
+| Display (main thread) | Frame rate last 10 s (mean, 95th percentile frame ms, frames over 33 ms and over 100 ms); long tasks in the last 60 s (count, total ms; `PerformanceObserver('longtask')` where present); draw calls, triangles, textures (`renderer.info`); the **picture quality tier** (Low, Medium or High) and why (set by you, asked for by the Detail profile, or guessed from this phone's cores and memory, with those numbers) and what the tier sets (terrain mesh samples per side, tree budget, canopy triangle budget, pixel-ratio cap, flame and smoke caps; workstream G); pixel ratio used vs cap and how many times the adaptive ratio has lowered it; canvas size. The scene stops drawing while a full-screen screen is open (`src/render/api.ts:111`), so these are the last seconds before opening | `SceneView` ring + observer | H/D |
 | Phone: hardware | Maker and model; Android version and API level; CPU cores, architecture, bitness; memory class (`deviceMemory`, a coarse bucket); screen px, CSS px, pixel ratio, refresh rate measured from 30 animation frames, touch points; battery level and charging where the API exists; storage | UA Client Hints `getHighEntropyValues`, user-agent fallback, `navigator.*`, `screen.*` | D |
 | Phone: software and graphics | WebView / Chromium version and brands; raw user agent; WebGL2 vendor and renderer (`WEBGL_debug_renderer_info`), max texture size, float and half-float render targets, compressed textures; WebGPU present (adapter vendor and architecture within a 1 s timeout); WebAssembly, SIMD (`WebAssembly.validate` probe), `SharedArrayBuffer`, `crossOriginIsolated`; `OffscreenCanvas`, module workers; reduced motion, contrast and colour scheme | new `src/ui/deviceInfo.ts` (reuses probes in `src/ui/bootDiagnostics.ts:48-77`) | D |
 | What this phone can do | Three measured sentences, never guesses: 3-D air step ms and speed if the 3-D tier ran; fast-tier speed if it ran; memory headroom (engine vs JS heap limit); graphics path | derived from the rows above | D |
@@ -142,7 +146,7 @@ Optional **Speed test** (stretch, release 0.3.1): about 2 s in a throwaway worke
 ### 5.4 Design
 - **Pure content, thin DOM.** `src/ui/debugStats.ts` (no DOM) builds a `DebugStats` object (groups of `{ id, label, value, note?, live? }`) from `{ engine, session, frames, store, device, events, now }` and exports `debugStatsToText`. `src/ui/screens/debugStats.ts` renders it with the existing primitives (`appBar`, `kv`, collapsible groups and the focus trap and in-place 1 Hz patching from `modelCard.ts:390-424`).
 - **Worker side.** New `src/sim/perfStats.ts` holds the aggregates and rings, fed from the places that already time modules (`addPerf`, `autoTuneDecide`). It reports through a new `EngineInfo.perf` block (about 40 numbers, 20 speed samples, <= 8 events; well under the 2 KB EngineInfo note at `src/core/simTypes.ts:333-341`). New fields are `null`, never NaN (`engineInfo.test.ts:34` rule). Worker events (tier choice, long-step bursts) are drained into `perf.events` at `makeSnapshot` (each event has an increasing `seq`; the UI dedups), so **no new `SimController` method** is needed (hand-written fakes in `session.timeline.test.ts:69`, `review.test.ts:44`, `model.test.ts:175` and `mockSim.ts:190` would all break).
-- **Main side.** `SceneView.frameStats()` as an optional `SceneViewApi` method (like `viewSection?`, `src/render/api.ts:52`; the mock stays valid) backed by a 120-entry ring in the render loop, which already times frames for `AdaptiveDpr` (`SceneView.ts:194,1170-1186`); `src/ui/deviceInfo.ts` collects phone facts once and caches them (`deviceInfoNow()` for the synchronous part, `deviceInfoAsync()` for Client Hints, battery, storage, WebGPU adapter, refresh rate); `src/ui/eventLog.ts` is the event ring.
+- **Main side.** `SceneView.frameStats()` as an optional `SceneViewApi` method (like `viewSection?`, `src/render/api.ts:52`; the mock stays valid) backed by a 120-entry ring in the render loop, which already times frames for `AdaptiveDpr` (`SceneView.ts:194,1170-1186`); it also reports the picture-quality facts (tier and source, and the values the tier sets); `src/ui/deviceInfo.ts` collects phone facts once and caches them (`deviceInfoNow()` for the synchronous part, `deviceInfoAsync()` for Client Hints, battery, storage, WebGPU adapter, refresh rate); `src/ui/eventLog.ts` is the event ring.
 - **Opening.** `App.openDebugStats()` mirrors `openModelCard()` (`src/ui/app.ts:236-252`): overlay id `debug-stats`, a single instance, a back-stack entry, focus returns to the row that opened it. Rows added to the sim context (`context.ts`, `simScreen.ts:130-133`) and to Settings and Setup options.
 - **No new native plugin (D5).** The app ships only core, filesystem, geolocation and preferences. Maker, model and Android version come from User-Agent Client Hints where the WebView offers them, else from the user agent; the raw user agent is always printed, so the first copy from a phone shows exactly what this WebView reports. Chromium's reduced user agent can hide model and OS ("Android 10; K"); if that is what arrives the row says "hidden by the WebView" rather than guessing.
 - **Cost guardrails (acceptance, measured).** Always-on statistics add less than 1 % to whole-step time in the fast and standard tiers (a `perf.test.ts`-style comparison with them switched off), under 16 KB retained in the worker and under 60 KB on the main thread, no allocation per frame (reviewed, and checked by the heap-flat leak test in `e2e/robustness.spec.ts`), zero network calls.
@@ -520,6 +524,45 @@ In the Layers panel's **Map type** section (`layersPanel.ts:272-325`), below the
 
 ---
 
+## 9c. Workstream G: Picture quality setting (0.3.0)
+
+Small. Lets you choose the 3-D picture quality instead of leaving it to a guess from the phone, and makes the **Detail** performance profile ask for the best-looking view as well as the best simulation. It sits after F only to keep the other section numbers stable.
+
+### 9c.1 What the user gets
+- **Settings, Simulation, Picture quality** (under Performance): **Auto**, **Low**, **Medium**, **High**.
+- **Auto** keeps today's behaviour (the phone's cores and memory decide), except under the **Detail** performance profile, where Auto means High. Saver and Balanced are unchanged. Low, Medium and High always win.
+- Hint: "Auto picks from this phone's cores and memory; Detail also asks for High. High draws more terrain and trees and needs more memory; the picture still lowers its resolution by itself if the frame rate stays under 30. Applies to the next model you build." When High is chosen on a phone the guess calls Low, a non-blocking line adds: "This phone looks like a Low device (4 cores, 3 GB). High may run slowly or close the app."
+- The debug statistics (workstream A) show the tier in use, why, and what it sets, next to the history budget.
+
+### 9c.2 What a tier sets today (all in `src/render/SceneView.ts`)
+
+| | Low | Medium | High |
+|---|---|---|---|
+| Terrain mesh (samples per side) | 224 | 320 | 400 |
+| Tree instances | 16,000 | 32,000 | 48,000 |
+| Canopy triangle budget | 100k | 170k | 250k |
+| Pixel-ratio cap | 1.25 | 1.75 | 2 |
+| Flame sites / smoke puffs | 2,500 / 800 | 5,000 / 1,500 | 5,000 / 1,500 |
+| Tree sway by default | off | on | on |
+
+`guessQuality()` (`SceneView.ts:83-90`): High at 8 or more cores and 6 GB or more, Low at 4 or fewer cores or 3 GB or less, otherwise Medium; a missing value counts as 4 cores and 4 GB, which gives Low. The tree-sway default already follows the view's resolved quality (`layersPrefs.ts:113`, `layersPanel.ts:752`), so it follows the override too.
+
+### 9c.3 Design
+- **Setting:** `pictureQuality: 'auto' | 'low' | 'medium' | 'high'` in `Settings` (`src/ui/settings.ts:18-70`, default `'auto'`), validated in `sanitise` (only those four values). Additive, so `SETTINGS_VERSION` stays 2.
+- **Pure rule:** `resolveRenderQuality(pictureQuality, performance)` next to `performanceProfile` (`settings.ts:189`): an explicit value returns itself; `'auto'` returns `'high'` when `performance === 'quality'`, otherwise `undefined` (let `guessQuality()` decide). Unit-tested over all 4 x 3 combinations. `guessQuality` is exported (module-private today) so the statistics screen and the tests can show and check what Auto would pick.
+- **Plumbing:** `createSceneView(container, opts?: { quality?: RenderQuality })` (`src/ui/modules.ts:23,98`; the mock ignores it) and `simScreen.ts:105` passes `resolveRenderQuality(...)`. `SceneView` already accepts `opts.quality` (`SceneView.ts:56,230`). A read-only `qualityInfo` (tier, `source: 'set' | 'guess'`, the guess inputs, the values the tier sets) feeds the statistics screen.
+- **Applies to the next model you build,** like the Performance setting ("Applies to the next model you build", `src/ui/screens/settings.ts:281`): the terrain mesh decimation (`SceneView.ts:337`), the canopy budget (`:354`) and the pixel-ratio cap (`:231`; `AdaptiveDpr.maxDpr` is readonly) are fixed when the view is built, and switching live would mean rebuilding the terrain layer with its relief and sky-view shading (`:343-348`). An "apply now" is not planned.
+- **Adaptive pixel ratio stays on in every case** as the safety valve: it lowers the ratio by 0.25 after 1.5 s under 30 fps (or 80 % of the frame-rate cap) and restores it after 5 s of headroom, never below 1 (`src/render/perf.ts:67-125`). The statistics show how many times it fired (D16).
+- **Memory estimate:** `workingMemoryForScenario(s, { renderQuality })` (`src/scenario/memoryModel.ts:146,270,299`) assumes `'medium'` unless told. The Data sets screen (`src/ui/screens/datasets.ts:448`) passes the resolved quality so its estimate shows what High costs. The build-time estimate (`src/scenario/build.ts:393`) keeps its default, because passing it through the request would put a device setting into the scenario data; the first task checks this.
+
+### 9c.4 Files, tests, acceptance
+- **Files:** `src/ui/settings.ts`, `src/ui/screens/settings.ts` (the row and hint), `src/ui/modules.ts`, `src/ui/screens/sim/simScreen.ts`, `src/render/SceneView.ts` and `api.ts` (read-only facts, `guessQuality` export), `src/ui/screens/datasets.ts`, docs.
+- **Tests:** the `resolveRenderQuality` table; `guessQuality` boundaries (8 cores / 6 GB, 4 / 3, missing values); settings default and sanitise (`src/ui/settings.test.ts`, `settingsScreen.test.ts` updates); the hint logic as a pure function. E2E: set High in Settings and start a run (a debug hook reads `view.renderQuality`, and the statistics screen says "High (set by you)"); the same for Low; Auto with Detail gives High; Auto with Balanced equals `guessQuality` of the page's own `navigator` values; tree sway defaults off on Low. Draw-call and triangle budgets are checked per tier.
+- **Acceptance on your phone:** Settings, Picture quality, High; start a new model: visibly denser terrain and trees; the statistics screen says High (set by you) and shows the frame rate, ratio drops and memory; Auto returns to the guess.
+- **Size:** S. Ships with 0.3.0 (the statistics screen shows its result), but it does not depend on A to work.
+
+---
+
 ## 10. Releases, order and how the build would run
 
 Sizes are relative single-builder effort: S under a day, M one to two days, L three to five days. With parallel agents the wall time is shorter.
@@ -527,7 +570,7 @@ Sizes are relative single-builder effort: S under a day, M one to two days, L th
 | Release | Contents | Size | Done when |
 |---|---|---|---|
 | **M0 (before 0.3.0)** | Contracts commit (types only: `EngineInfo.perf`, `autoTune` fields, `SessionState.pace`, optional `AtmosphereView` fields, `airView.ts` helpers) so lanes can build in parallel; **spike S1** timeline signal placement (6.4); **spike S2** bundle baseline and trim candidates (dev-only code in the production bundle, dead code); **spike S3** a node micro-benchmark of the glyph generator (2000 glyphs x 10 segments through the sampler) to check the 8 ms estimate before workstream E is committed to; **spike S4** the night-lighting look tuned on the real renderer with screenshots (9b.3) | S | Spike notes committed; decisions D3 and D10 informed |
-| **0.3.0** (versionCode 6) | **F** night map lighting + **A** debug statistics + **B** honest speed | S + M + M | Section 12 gates green; phone check-list 1 |
+| **0.3.0** (versionCode 6) | **F** night map lighting + **G** picture quality + **A** debug statistics + **B** honest speed | S + S + M + M | Section 12 gates green; phone check-list 1 |
 | **0.3.1** (optional) | Speed test button | S | Frozen kernels and CI reference |
 | **0.4.0** (versionCode 7) | **C** air data foundation + **D** Air Slice side view | L + L | Gates green; oracle tests pass; phone check-list 2 |
 | **0.4.1** (optional) | Time-lapse recorder for a pinned line | M | Memory within its 12 MB budget |
@@ -536,7 +579,7 @@ Sizes are relative single-builder effort: S under a day, M one to two days, L th
 **Dependencies:** B needs A's `EngineInfo.perf` (contract only, so they overlap); D needs C; E1 needs C; E2 is independent of E1 at the data level.
 
 **If you say "use a workflow"** each release runs like 0.2.0 to 0.2.2: a Build phase with lanes in parallel and clear file ownership, an independent Verify phase (a different agent per lane, re-measuring on the real app), a Fix loop, then Release (version bump in `package.json`, `package-lock.json` and `android/app/build.gradle`; `npm run build:cap`; `npx cap sync android`; debug APK; screenshots; docs; commit and push; APK handed to you).
-- **0.3.0 lanes:** (1) worker and engine: `perfStats`, `simTypes`, `simulation`/`engineInfo`, auto-tune policy and its tests; (2) debug-statistics UI: screen, `deviceInfo`, `eventLog`, the three entry rows, `modelInfo` summary; (3) pace: `paceModel`, `paceSheet`, scrubber, top bar, transport CSS, session; (4) docs and e2e updates; (5) night lighting: `sky.ts` maths, uniforms, the shader sites and the Layers row (small and independent, so it can ship first). Lanes 2 and 3 start from the M0 contracts.
+- **0.3.0 lanes:** (1) worker and engine: `perfStats`, `simTypes`, `simulation`/`engineInfo`, auto-tune policy and its tests; (2) debug-statistics UI: screen, `deviceInfo`, `eventLog`, the three entry rows, `modelInfo` summary; (3) pace: `paceModel`, `paceSheet`, scrubber, top bar, transport CSS, session; (4) docs and e2e updates; (5) night lighting: `sky.ts` maths, uniforms, the shader sites and the Layers row (small and independent, so it can ship first); (6) picture quality: the setting, `resolveRenderQuality`, the view plumbing and the Settings row (small). Lanes 2 and 3 start from the M0 contracts.
 - **0.4.0 lanes:** (1) data first: sampler v2, layouts, flags, memory model, oracle tests (everything else waits for its tests to pass); then in parallel (2) slice model, panel and tool, (3) curtain refactor, gating and strings, (4) docs.
 - **0.5.0 lanes:** (1) pure glyph engine and tests, (2) rendering, camera and layer wiring, (3) E2 data and memory, (4) UI and docs.
 
@@ -552,9 +595,10 @@ Sizes are relative single-builder effort: S under a day, M one to two days, L th
 | D Air Slice | 14-18 kB | lazy chunk |
 | E glyphs | 10-14 kB | lazy chunk |
 | F night lighting | about 1 kB | entry (`sky.ts` maths, panel row) |
-| **Total** | **38-49 kB** | against **46 kB** of headroom |
+| G picture quality | under 1 kB | entry (settings, rule, Settings row) |
+| **Total** | **38-50 kB** | against **46 kB** of headroom |
 
-Running total after each release [est]: about 966 kB, 986 kB, 998 kB. This is at the limit, so: lazy-load everything heavy, run the trim pass (spike S2), and **decide at the end of 0.4.0 with real numbers** whether to raise the all-JS budget (D10); I will ask you before changing a budget. Entry chunk additions are kept under about 5 kB. CSS: A 2 kB + B 1 kB + D 4 kB + E 2 kB = 9 kB against 12.8 kB. Layers-panel DOM: +6 nodes from E and about +12 from F, against 86 spare. Demo data and APK size are unaffected.
+Running total after each release [est]: about 967 kB, 987 kB, 999 kB. This is at the limit, so: lazy-load everything heavy, run the trim pass (spike S2), and **decide at the end of 0.4.0 with real numbers** whether to raise the all-JS budget (D10); I will ask you before changing a budget. Entry chunk additions are kept under about 5 kB. CSS: A 2 kB + B 1 kB + D 4 kB + E 2 kB = 9 kB against 12.8 kB. Layers-panel DOM: +6 nodes from E and about +12 from F, against 86 spare. Demo data and APK size are unaffected.
 
 **Memory** (6 h run, per the survey's keyframe maths; the history store cap is 6 % of device memory, 48-168 MB):
 
@@ -579,13 +623,14 @@ The debug statistics screen shows frames kept, thinned frames and the heap, so t
 3. Set playback to 600x or faster: within about 20 s a small amber button appears at the right end of the timeline; tap it, read the sheet; tap "Play at 30x" and watch it fade.
 4. After about 5 minutes of play, copy the statistics again (speed history, where the time went, memory, frame rate, events).
 5. At night (start a scenario in the evening, or scrub past dusk): Layers, Map type, Night lighting. Try Brighter and Daylight: the terrain, trees and roads should read as by day while the sky stays dark and the fire still glows. Reopen the app and check the choice is remembered.
+6. Settings, Simulation, Picture quality: set High and start a new model (it applies to the next model you build): denser terrain and trees; the statistics screen says "High (set by you)" and shows the frame rate and memory. Set Auto again to return to the guess.
 
 **Phone check-list 2 (0.4.0):** on both tiers, place a line with the crosshair and with a preset, read the probe at a ridge crest, switch chips, rotate to landscape, compare with the old curtain, scrub back and read "air from"; copy the statistics (memory, frames, thinned frames).
 
 **Phone check-list 3 (0.5.0):** zoom from the whole area to a ridge and watch the ladder; try each height; check the captions; copy the statistics (frame rate, memory).
 
 ## 13. Docs, help and screenshots
-README (feature list, "Controls", the transparency and performance sections, the numbers at 497-517 and 565-566), `docs/ARCHITECTURE.md` (new modules, `EngineInfo.perf`, the view layout and kinds, the pace model, budgets at 661-701), `docs/DESIGN.md` (timeline signal, slice panel, glyph legend, screens table at 412-418), `docs/research/00-synthesis.md` mentions listed in 6.7 and 7.7, Help and Glossary entries (Night lighting, Air slice, Diagnosed wind, Flow lines, Why is it slow?, Simulation debug statistics), the model card strings, release notes. Screenshots: refresh 05, add the debug statistics screen, the pace sheet, the night look (Realistic and Daylight), the slice panel (portrait, landscape, fast-tier diagnosed), the glyph zoom triplet.
+README (feature list, "Controls", the transparency and performance sections, the numbers at 497-517 and 565-566), `docs/ARCHITECTURE.md` (new modules, `EngineInfo.perf`, the view layout and kinds, the pace model, budgets at 661-701), `docs/DESIGN.md` (timeline signal, slice panel, glyph legend, screens table at 412-418), `docs/research/00-synthesis.md` mentions listed in 6.7 and 7.7, Help and Glossary entries (Night lighting, Picture quality, Air slice, Diagnosed wind, Flow lines, Why is it slow?, Simulation debug statistics), the model card strings, release notes. Screenshots: refresh 05, add the debug statistics screen, the pace sheet, the night look (Realistic and Daylight), the slice panel (portrait, landscape, fast-tier diagnosed), the glyph zoom triplet.
 
 ## 14. Risk register
 
@@ -608,11 +653,12 @@ README (feature list, "Controls", the transparency and performance sections, the
 | Narrow phones (360 px) | Panel and sheet also checked at 360x640 |
 | Test-suite runtime growth | New logic is pure and fast; slow suites stay gated |
 | Night lighting touches shared uniforms and shaders used by the ground, trees, roads, smoke and the sky | Pure blending maths with a "Realistic is bit-identical to today" test; the shader audit table (9b.3); the sky dome moves to its own uniforms; e2e luminance checks; spike S4 for the look |
+| Forcing High picture quality on a small phone makes the app slow or gets it killed by Android | Auto stays the default; a non-blocking hint when High is chosen on a phone the guess calls Low; the adaptive pixel ratio stays on as the safety valve; the statistics screen shows tier, memory, frame rate and ratio drops; it applies only to the next model |
 
 ## 15. Later (deliberately not in this plan)
 GPU or WebGPU solver and finer time-stepped grids; a finer diagnosed terrain-wind solve (65-100 m, hourly, so CPU-affordable) for the fast tier, which changes the wind the fire feels and needs re-validation; true-height floating glyphs in orbit view; draggable slice handles; retroactive worker-side replay for slices; several slices at once; wind and temperature profile at a point and a time-height diagram; an Android "Share to FireSim" target; a one-finger-rotate option; saving statistics to a file.
 
 ## 16. What I need from you
-1. Confirm or change **D2** (Auto ceiling), **D3** (timeline button, which the spike confirms), **D6** (crosshair placement first), **D7** (recorder later), **D9** (glyph layer opt-in), **D10** (bundle approach), **D13** (night lighting default Realistic) and **D14** (night lighting with 0.3.0, or alone first as 0.2.3). Silence means the defaults.
-2. Say **"go"** for 0.3.0 (F + A + B), and whether to run it as a parallel multi-agent workflow ("use a workflow") or directly.
+1. Confirm or change **D2** (Auto ceiling), **D3** (timeline button, which the spike confirms), **D6** (crosshair placement first), **D7** (recorder later), **D9** (glyph layer opt-in), **D10** (bundle approach), **D13** (night lighting default Realistic) and **D14** (night lighting with 0.3.0, or alone first as 0.2.3), **D15** (Picture quality: Auto follows the phone, Detail asks for High, applies to the next model) and **D16** (adaptive pixel ratio stays on). Silence means the defaults.
+2. Say **"go"** for 0.3.0 (F + G + A + B), and whether to run it as a parallel multi-agent workflow ("use a workflow") or directly.
 3. After 0.3.0, paste the debug statistics from your phone; the thresholds in B and the budgets in C to E are then tuned against real numbers.
