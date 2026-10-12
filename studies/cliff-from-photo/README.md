@@ -29,6 +29,37 @@ From [study 01](01-single-photo-depth/README.md), one photo of one sandstone cli
   assumes the face is 600 m away; the metric model put it at a few metres.
 - **Agreement is not accuracy.** Five depth models agree on what is nearer (rank correlation 0.91 to 0.99), but they share training lineage.
 - **Ledge-scale detail is either a model's learned prior or invented from shading.** Neither is a measurement.
+- **On a phone, offline: not recommended.** The ordinary code could be ported, but the depth models are 1.3 to 1.6 GB, a phone-sized one needs
+  an ML runtime the app does not have, speed on a phone is unmeasured, and the output is not measured geometry. See
+  [On the phone, offline?](#on-the-phone-offline) below.
+
+## On the phone, offline?
+
+Asked on 2026-10-12: could these tools run inside the app, offline? A desk look: nothing was built and nothing was measured on a phone.
+**Short answer: the ordinary code could; the depth network could only be a small model, at a real cost; not recommended.**
+
+| Piece | Offline on the phone? | Cost |
+|---|---|---|
+| Mesh building, alignment, disagreement map, export (steps 2 to 5) | Yes. Array maths on a crop of about 700 x 450 pixels, and three.js is already in the app | A few kB of code. The all-JS budget is nearly full (953.8 of 1000 kB gzip), so it would be a lazy-loaded chunk or a budget change, which has to be asked about first |
+| The four models the study ran | No. 1.34 GB (DA3 Mono, DA3 Metric, V2 Large) and 1.64 GB (DA3 Large 1.1), against an APK of about 30 MB (budget 33 MB) | 12 to 45 s a run on four CPU cores in the sandbox |
+| Phone-sized models | Possible. Depth Anything V2 Small is 99 MB, or as ONNX exports for Transformers.js 49.6 MB (fp16), 27 MB (int8) or 19 MB (4-bit weights). DA3 Small is 137 MB and DA3 Base 542 MB. All listed as Apache-2.0; training-data licences unchecked | An ML runtime, which the app does not have (its dependencies are Capacitor, three, geotiff and fast-png). ONNX Runtime Web 1.30.0 is a 14 MB WASM binary (28 MB for the WebGPU build) plus 3 to 6 MB of JS, so the smallest setup is about 35 MB uncompressed, about as much as today's whole APK |
+
+- **Speed and memory.** Research note 09 lists WASM threads and SharedArrayBuffer as unsupported in Android WebView and WebGPU there as
+  unconfirmed, so the likely path is single-threaded WASM. No model has been timed on a phone. A guess: seconds to tens of seconds for a small
+  model; the Large models' weights (1.3 to 1.6 GB) would not fit beside the simulation. A native Android plugin (ONNX Runtime Mobile or
+  similar) would be faster, but it is new native code and was not evaluated.
+- **Delivery.** Bundled (the APK grows by the model and the runtime), or an optional one-time download kept in app storage like the area
+  packs, which keeps the APK near 30 MB.
+- **Quality is untested** for small models on this photo (open questions 3 and 9). Study 01 found that even the Large models disagree on
+  steepness by tens of degrees.
+- **Why not.** The output is not measured geometry, so it cannot feed the fire numbers (plan ground rule 10) and would need a "guessed shape"
+  label (rule 4). What the plan wants from photos (section 15b: rock style, bare rock versus vegetation, edge profile) is preparation work
+  whose result is a small bundled data file, offline by construction like the vegetation and aerial layers. A "learner takes a photo" feature
+  would be a different product: picture only, labelled a guess, the photo never leaving the phone; size L `[est]`; not planned.
+
+Sources, all looked up on 2026-10-12: model sizes and licences from the Hugging Face model pages; ONNX Runtime Web file sizes from jsDelivr
+(uncompressed); the app's budgets from `docs/ARCHITECTURE.md` (Performance budgets) and the plan's bundle figures; WebView limits from
+`docs/research/09-mobile-tech-stack.md` (lines 105 to 108); the app's dependencies from `package.json`.
 
 ## Open questions
 
@@ -39,8 +70,8 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
    Needs: where study 01's photo was taken, or a new photo with a known position and direction.
 2. **Several photos, real geometry.** Multi-view reconstruction (structure from motion; `pycolmap` installs, and Depth Anything 3 takes several
    images). How few photos, how far apart, give ledges at metre scale? Licence note: the Depth Anything 3 Giant and Nested models are CC BY-NC.
-3. **Score the models.** Add Depth Pro, Marigold v2, MoGe-2 and other Depth Anything 3 sizes, and rank them against the ground truth from 1,
-   not only against each other.
+3. **Score the models.** Add Depth Pro, Marigold v2, MoGe-2 and other Depth Anything 3 sizes, including the phone-sized ones (DA3 Small and
+   Base, V2 Small; all Apache-2.0), and rank them against the ground truth from 1, not only against each other.
 4. **A vertical-face prior.** Combine the model's relief with "faces are near vertical" and measure what it does to the other-viewpoint quality
    and to the steepness the models disagree about.
 5. **Photo to bare rock and vegetation.** Mark bare rock, vegetated ledges and vegetated chutes on a few photos by hand, and compare with the
@@ -51,6 +82,9 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
    example of what not to repeat: it is in the repository with no source or licence recorded.
 8. **Where is detail worth it?** Cliffs are the most complex terrain in the demo sites. Whether the simulation should spend more detail there,
    and near the front, is a separate stretch goal that is **not to be studied yet**: [adaptive-simulation-quality](../adaptive-simulation-quality/README.md).
+9. **Does a phone-sized model give a usable relief, and how fast?** Only worth doing if a learner-photo feature is ever wanted (plan section
+   15b). Run DA3 Small and V2 Small on study 01's photo with the same steps, time them and compare with the Large result, then time one on a
+   phone through ONNX Runtime Web (WASM) or a native plugin. Not started.
 
 ## Log
 
