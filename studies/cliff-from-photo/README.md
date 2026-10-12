@@ -65,7 +65,7 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
   source and licence **unrecorded**; fill them in as soon as they are known (see [`inputs/README.md`](01-single-photo-depth/inputs/README.md)).
   The repository is public.
 - **Where it was run:** a CPU-only cloud sandbox (4 cores, 16 GB, no GPU). PyPI, Hugging Face and the jsDelivr CDN were reachable and GitHub
-  release pages were not. The first load of each 1.3 GB model from a cold disk took 2 to 3.5 minutes; inference took 12 to 45 seconds.
+  release pages were not. The first load of each 1.3 to 1.6 GB model from a cold disk took 2 to 3.5 minutes; inference took 12 to 45 seconds.
 - **Depth Anything 3** needs its extra imports installed by hand (see `requirements.txt`).
 - **Interactive viewer:** step 6 builds it. The copy published for the project owner as a private Claude artifact is not part of the repository.
 - **Before committing anything here**, read the rules in [`../README.md`](../README.md): public repository, nothing third-party without its licence.

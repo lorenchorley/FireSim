@@ -156,7 +156,7 @@ pip install -r requirements.txt          # read the comments in it: CPU-only tor
 scripts/run_all.sh                       # the photo is already in inputs/; START=2 scripts/run_all.sh skips the model runs (steps 2 to 7 need only data/)
 ```
 
-Step 1 took about 12 minutes in the sandbox, almost all of it loading 1.3 GB models from a cold disk (inference took 12 to 45 seconds a
+Step 1 took about 12 minutes in the sandbox, almost all of it loading 1.3 to 1.6 GB models from a cold disk (inference took 12 to 45 seconds a
 run); steps 2 to 6 take seconds; step 7 about a minute and needs a Chromium (`CHROMIUM_PATH`).
 
 ## Files
