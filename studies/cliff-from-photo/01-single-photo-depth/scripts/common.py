@@ -18,8 +18,8 @@ from PIL import Image, ImageDraw, ImageFont
 STUDY = Path(__file__).resolve().parent.parent
 INPUT_PHOTO = STUDY / 'inputs' / 'photo.jpg'
 DATA = STUDY / 'data'        # committed: depth maps and the mesh (no photo pixels)
-RESULTS = STUDY / 'results'  # committed: figures without the photo, a geometry-only model, text results
-WORK = STUDY / 'work'        # git-ignored: anything that contains the photo (textured models, viewer page, figures)
+RESULTS = STUDY / 'results'  # committed: figures, text results, the geometry-only and the textured model
+WORK = STUDY / 'work'        # git-ignored: rebuildable by-products (viewer pages, OBJ export, the invented-detail variant, single renders)
 for _d in (DATA, RESULTS, WORK):
     _d.mkdir(exist_ok=True)
 

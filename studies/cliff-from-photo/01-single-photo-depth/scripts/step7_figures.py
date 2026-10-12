@@ -2,8 +2,8 @@
 
 Needs data/, the pages from step 6 and the playwright package with a Chromium (set CHROMIUM_PATH to a Chromium or Chrome binary,
 or let playwright use its own browser).
-  results/overview.png            no photo: the depth the model guessed, clay renders, front/back, model disagreement (committed)
-  work/overview_with_photo.png    the photo, its outline and the textured renders (only when the photo is present; git-ignored)
+  results/overview.png                no photo: the depth the model guessed, clay renders, front/back, model disagreement
+  results/overview_with_photo.png     the photo, its outline and the textured renders (only when inputs/photo.jpg is present)
 """
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def region_diagram() -> None:
              'Blue lines: the vertical bands used to read how steep the models make the faces.', 'Pale blue line: the waterfall, interpolated away. Cross: assumed principal point.']
     for i, t in enumerate(notes):
         d.text((16, 14 + i * 20), t, fill=(60, 60, 60), font=font)
-    d.text((16, PHOTO_H - 26), f'Photo pixel coordinates, {PHOTO_W} x {PHOTO_H}. The photo itself is not in the repository (see inputs/README.md).', fill=(90, 90, 90), font=font)
+    d.text((16, PHOTO_H - 26), f'Photo pixel coordinates, {PHOTO_W} x {PHOTO_H}. The photo is inputs/photo.jpg (see inputs/README.md for its licence status).', fill=(90, 90, 90), font=font)
     img.save(RESULTS / 'region_outline.png', optimize=True)
     print('wrote results/region_outline.png')
 
@@ -103,7 +103,7 @@ def main() -> None:
         t = render(WORK / 'viewer_local.html', {'photo': ('photo', 0, 0, 1.0), 'left30': ('photo', -30, 0, 1.0), 'right30': ('photo', 30, 0, 1.0)})
         sheet([label(photo, '1  The photo, region used'), label(depth_map, '2  Depth the model guessed (warm = near)'), label(r['clay_photo'], '3  Shape alone ("clay")'),
                label(t['left30'], '4  Textured, camera 30 deg left'), label(t['right30'], '5  Textured, camera 30 deg right'), label(r['unc_photo'], '6  Where three depth models disagree (red)')],
-              WORK / 'overview_with_photo.png')
+              RESULTS / 'overview_with_photo.png')
 
 
 if __name__ == '__main__':

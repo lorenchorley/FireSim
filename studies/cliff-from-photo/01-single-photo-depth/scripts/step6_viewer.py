@@ -1,6 +1,6 @@
 """Step 6: build the interactive viewer page (three.js). Needs data/; adds the photo as a texture when the photo is present.
 
-Writes, to work/ (git-ignored, because with the photo they contain it):
+Writes, to work/ (git-ignored: rebuildable):
   viewer_artifact.html  content-only page with three.js from jsdelivr: what was published as a Claude artifact (it has no
                         <html>/<head>/<body> because the publishing step wraps the page in its own)
   viewer_local.html     a complete page that uses work/vendor/ copies of three.js, for the headless renders in step 7

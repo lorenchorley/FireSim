@@ -1,6 +1,5 @@
-# The input photo has no recorded licence and this repository is public, so it is never committed.
-# Anything that contains photo pixels (textured models, the viewer page with its texture, figures with the photo) goes to work/.
-inputs/photo.*
+# work/ holds by-products that are large or can be rebuilt with the scripts: the viewer pages (with their copy of the photo),
+# the variant with the invented detail, the OBJ export, the single renders and the downloaded three.js files.
 work/
 __pycache__/
 *.pyc

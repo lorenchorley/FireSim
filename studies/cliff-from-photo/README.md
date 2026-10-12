@@ -47,7 +47,8 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
    canopy-based estimate planned for the fire model (plan 9d.4, spike S6). This is the part that could change fire behaviour.
 6. **Photo to rock style.** Read ledge spacing relative to face height, joint direction, overhang share and colours from photos of each demo
    site, as parameters for the cliff shader (plan 9d.3 item 5).
-7. **A small photo set** of the demo sites' cliffs, with the position, direction, date and licence of each recorded.
+7. **A small photo set** of the demo sites' cliffs, with the position, direction, date and licence of each recorded. Study 01's photo is the
+   example of what not to repeat: it is in the repository with no source or licence recorded.
 
 ## Log
 
@@ -58,8 +59,9 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
 ## Resume here
 
 - **Run it:** `studies/cliff-from-photo/01-single-photo-depth/scripts/run_all.sh` (see that study's README; `START=2` skips the model runs).
-- **The photo is not in the repository** (public repo, licence unknown). Its checksum and what to do about it are in
-  [`01-single-photo-depth/inputs/README.md`](01-single-photo-depth/inputs/README.md). Anything that contains it goes to the git-ignored `work/`.
+- **The photo is in the repository** (`01-single-photo-depth/inputs/photo.jpg`), committed at the project owner's request on 2026-10-12 with its
+  source and licence **unrecorded**; fill them in as soon as they are known (see [`inputs/README.md`](01-single-photo-depth/inputs/README.md)).
+  The repository is public.
 - **Where it was run:** a CPU-only cloud sandbox (4 cores, 16 GB, no GPU). PyPI, Hugging Face and the jsDelivr CDN were reachable and GitHub
   release pages were not. The first load of each 1.3 GB model from a cold disk took 2 to 3.5 minutes; inference took 12 to 45 seconds.
 - **Depth Anything 3** needs its extra imports installed by hand (see `requirements.txt`).

@@ -19,17 +19,18 @@ studies/<topic>/
   NN-short-name/           one study
     README.md              question, method, findings with numbers, limits, how to reproduce, files
     requirements.txt       pinned versions
-    inputs/                a README (source, licence, checksum); the input itself only when its licence allows publishing
+    inputs/                the input and a README with its source, licence status and checksum
     scripts/               numbered steps and a run_all.sh
     data/                  small, derived, committed (compressed arrays, a mesh); no third-party pictures
     results/               committed figures, tables and models
-    work/                  git-ignored: anything large, or anything that contains third-party material
+    work/                  git-ignored: large or rebuildable by-products
 ```
 
 ## Rules
 
-- **Public repository.** Do not commit photographs, maps or other third-party material unless its licence allows publication and the
-  licence is written next to it. Keep a checksum so the input can be recognised, and make the committed results without it.
+- **Public repository.** Write the source and the licence next to any photograph, map or other third-party material you commit, and keep a
+  checksum. If the owner decides to commit something whose licence is not known, record that decision and its date next to it, say which
+  files show it, and fill in the source as soon as it is known. Prefer results that can be made, and re-made, without the third-party input.
 - **Pin and record.** Package versions in `requirements.txt`; model names, revisions and licences in the study README. A model or data
   set licensed for non-commercial use can be used to learn something, but say so, because it cannot go into the product.
 - **Say what is measured and what is guessed.** Every study README separates the two, and states the assumptions that set the scale.

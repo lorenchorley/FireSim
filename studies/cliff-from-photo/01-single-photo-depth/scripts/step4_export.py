@@ -1,9 +1,9 @@
 """Step 4: export the mesh as glTF binary files (metres, Y up, camera at the origin looking along -Z).
 
-results/cliff_central_sequence_geometry.glb   geometry only: no photo, no texture coordinates (committed).
-With the photo present, work/ also gets (git-ignored, because they contain the photo):
-  cliff_central_sequence.glb                       textured with the photo
-  cliff_central_sequence_with_invented_detail.glb  the same with the invented ledge and joint relief added
+results/cliff_central_sequence_geometry.glb   geometry only: no photo, no texture coordinates.
+results/cliff_central_sequence_textured.glb   textured with the photo (written only when inputs/photo.jpg is present).
+With the photo present, work/ (git-ignored, rebuildable) also gets:
+  cliff_central_sequence_with_invented_detail.glb  the textured model with the invented ledge and joint relief added
   obj/cliff_central_sequence.obj (+ .mtl and the texture)
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ def main() -> None:
         return m
 
     pbr = PBRMaterial(baseColorTexture=img, metallicFactor=0.0, roughnessFactor=1.0, doubleSided=True, name='photo')
-    textured(pos, pbr).export(WORK / 'cliff_central_sequence.glb')
+    textured(pos, pbr).export(RESULTS / 'cliff_central_sequence_textured.glb')
     textured(with_detail(pos, dz), pbr).export(WORK / 'cliff_central_sequence_with_invented_detail.glb')
     obj_dir = WORK / 'obj'
     obj_dir.mkdir(exist_ok=True)
@@ -53,7 +53,7 @@ def main() -> None:
     (obj_dir / 'cliff_central_sequence.mtl').write_text((obj_dir / 'material.mtl').read_text().replace('photo.png', 'cliff_central_sequence_photo.png'))
     (obj_dir / 'material.mtl').unlink()
     (obj_dir / 'photo.png').replace(obj_dir / 'cliff_central_sequence_photo.png')
-    print('wrote work/cliff_central_sequence.glb, work/cliff_central_sequence_with_invented_detail.glb and work/obj/')
+    print('wrote results/cliff_central_sequence_textured.glb, work/cliff_central_sequence_with_invented_detail.glb and work/obj/')
 
 
 if __name__ == '__main__':

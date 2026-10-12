@@ -22,13 +22,17 @@ With one photo of a cliff and nothing else, how good a 3-D model can we make of 
 - **The ledge-scale detail is either a model's prior or invented.** The optional "invented detail" layer, which pushes thin dark lines in the
   photo back as ledges and joints, makes the clay look richer but adds no information.
 
-![The result from six viewpoints, without the photo](results/overview.png)
+![The photo, the depth the model guessed, and the result from other viewpoints](results/overview_with_photo.png)
+
+`results/overview.png` is the same figure without the photo.
 
 ## The photo and the region
 
-The photo is **not in the repository** (public repository, licence unknown): see [`inputs/README.md`](inputs/README.md) for its checksum
-and what to do about it. The region that was modelled, the crop the models were run on and the four bands used to read how steep the faces are
-look like this (drawn on a blank canvas the size of the photo):
+![The photo](inputs/photo.jpg)
+
+The photo is in the repository at the project owner's request. **Its source and licence are not recorded**; read
+[`inputs/README.md`](inputs/README.md) before reusing or republishing it. The region that was modelled, the crop the models were run on and
+the four bands used to read how steep the faces are look like this (drawn on a blank canvas the size of the photo):
 
 ![Region outline](results/region_outline.png)
 
@@ -119,7 +123,7 @@ The right side fails first because the guessed wall faces left: from the right y
 ### 6. Where the models disagree
 
 Median disagreement is 2.2 % of the face's depth range, and 10.1 % at the 90th percentile. It is largest at the lower right end of the
-region, next to the foreground trees (panel 5 of the overview). The two models used for the comparison share a backbone family with the mesh's
+region, next to the foreground trees (the last panel of the overview). The two models used for the comparison share a backbone family with the mesh's
 own model, so low disagreement elsewhere is weak evidence.
 
 ### 7. The invented detail
@@ -142,14 +146,14 @@ has thin dark lines. Dark lines in a photo are also stains and shadows, so it is
 - The depth models were trained mostly on near-range scenes, and all four descend from the same research line.
 - The viewing-cone numbers are area based. They ignore parts of the sheet hiding other parts, and the 3x stretch threshold is a choice.
 - The waterfall removal and the invented detail are choices of this study, not outputs of the models.
+- The photo's source and licence are unknown (see `inputs/README.md`).
 
 ## Reproduce
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt          # read the comments in it: CPU-only torch, and Depth Anything 3 is installed without its dependencies
-cp /path/to/photo.jpg inputs/photo.jpg   # step 1 only; steps 2 to 7 run from data/
-scripts/run_all.sh                       # START=2 scripts/run_all.sh skips the model runs
+scripts/run_all.sh                       # the photo is already in inputs/; START=2 scripts/run_all.sh skips the model runs (steps 2 to 7 need only data/)
 ```
 
 Step 1 took about 12 minutes in the sandbox, almost all of it loading 1.3 GB models from a cold disk (inference took 12 to 45 seconds a
@@ -163,10 +167,11 @@ run); steps 2 to 6 take seconds; step 7 about a minute and needs a Chromium (`CH
 | `scripts/step1_depth.py` | runs the depth models; writes `data/*.npz`, `camera.json`, `models.json` |
 | `scripts/step2_compare_models.py` | agreement, lean per band, metric scale check; the depth-map figure |
 | `scripts/step3_build_mesh.py` | the mesh, the disagreement map, the invented detail; writes `data/mesh.npz` |
-| `scripts/step4_export.py` | glTF export (geometry only here; textured versions into `work/` when the photo is present) |
+| `scripts/step4_export.py` | glTF export: geometry only, and textured with the photo (the invented-detail variant and an OBJ go to `work/`) |
 | `scripts/step5_evaluate.py` | face orientation and the viewing-cone table |
 | `scripts/step6_viewer.py`, `viewer_template.html` | the interactive three.js page |
 | `scripts/step7_figures.py` | the renders and the overview figures |
 | `data/` | depth maps (float16), camera, model revisions, the mesh: 3 MB, no photo pixels |
-| `results/` | `overview.png`, `depth_models_compared.png`, `region_outline.png`, two evaluation texts, `mesh_stats.json`, `cliff_central_sequence_geometry.glb` |
-| `work/` (git-ignored) | everything that contains the photo: textured models, the viewer page, the figure with the photo |
+| `inputs/` | `photo.jpg` and a README with its checksum and the (unknown) licence status |
+| `results/` | `overview_with_photo.png` and `overview.png` (the same without the photo), `depth_models_compared.png`, `region_outline.png`, two evaluation texts, `mesh_stats.json`, `cliff_central_sequence_textured.glb` and `cliff_central_sequence_geometry.glb` (no photo) |
+| `work/` (git-ignored) | rebuildable by-products: the viewer pages, the variant with the invented detail, the OBJ export, single renders |
