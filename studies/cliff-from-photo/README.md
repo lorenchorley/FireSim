@@ -49,6 +49,8 @@ Suggested order. Each one that gets done becomes a numbered study folder and a r
    site, as parameters for the cliff shader (plan 9d.3 item 5).
 7. **A small photo set** of the demo sites' cliffs, with the position, direction, date and licence of each recorded. Study 01's photo is the
    example of what not to repeat: it is in the repository with no source or licence recorded.
+8. **Where is detail worth it?** Cliffs are the most complex terrain in the demo sites. Whether the simulation should spend more detail there,
+   and near the front, is a separate stretch goal that is **not to be studied yet**: [adaptive-simulation-quality](../adaptive-simulation-quality/README.md).
 
 ## Log
 

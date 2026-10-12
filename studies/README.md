@@ -10,6 +10,7 @@ a plan in [`docs/plans/`](../docs/plans/) first.
 | Topic | Question | Status |
 |---|---|---|
 | [cliff-from-photo](cliff-from-photo/) | Can photographs of a cliff improve how FireSim draws it, and what the fire model knows about it? | ongoing, 1 study; a stretch goal in no release |
+| [adaptive-simulation-quality](adaptive-simulation-quality/) | Can the simulation spend more detail where the terrain is complex and where it matters to the fire? | not started; a stretch goal in no release; not to be studied straight away |
 
 ## How a topic is laid out
 
