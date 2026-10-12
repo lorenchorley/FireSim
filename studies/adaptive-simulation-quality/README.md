@@ -46,7 +46,8 @@ Suggested order; none is started.
    cells, and of run time, that are both important and complex. No change to the simulation. This sizes the possible gain before any design.
 2. **Does resolution change the answer, and where?** Run a bundled scenario at 30, 20 and 10 m and compare arrival times, perimeter and
    spotting. If the runs agree except around complex terrain, adaptivity pays; if they differ everywhere, the calibration depends on
-   resolution and that has to be understood first.
+   resolution and that has to be understood first. The same experiment, with a finer reference run, is how the
+   [simulation-validity](../simulation-validity/README.md) topic would measure numerical error, so do it once for both.
 3. **Which lever first?** Rank the four levers (physics gate, embers, fire mesh, air nest) by gain and cost. The physics gate and the embers
    look cheapest.
 4. **Can the decision be deterministic and visible?** Write the refinement rule as a function of state, with a label for the map and a
