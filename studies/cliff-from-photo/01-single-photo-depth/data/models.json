@@ -1,0 +1,18 @@
+{
+ "depth-anything/DA3-LARGE-1.1": {
+  "licence": "Apache-2.0",
+  "revision": "0e109ae307c5982f319a67cf6f9f99ccdc0ec97c"
+ },
+ "depth-anything/DA3METRIC-LARGE": {
+  "licence": "Apache-2.0",
+  "revision": "4010e39f3634a45bc60553321fb49fb760bd594e"
+ },
+ "depth-anything/DA3MONO-LARGE": {
+  "licence": "Apache-2.0",
+  "revision": "f465978e618db8cc79c83b8bbf24964857db1875"
+ },
+ "depth-anything/Depth-Anything-V2-Large-hf": {
+  "licence": "CC-BY-NC-4.0",
+  "revision": "7581137eff8d4e94f6e796d3baea0e9fa79b22d2"
+ }
+}

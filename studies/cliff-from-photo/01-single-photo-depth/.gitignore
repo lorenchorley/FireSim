@@ -1,0 +1,7 @@
+# The input photo has no recorded licence and this repository is public, so it is never committed.
+# Anything that contains photo pixels (textured models, the viewer page with its texture, figures with the photo) goes to work/.
+inputs/photo.*
+work/
+__pycache__/
+*.pyc
+.venv/

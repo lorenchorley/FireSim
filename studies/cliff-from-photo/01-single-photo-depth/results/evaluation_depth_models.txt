@@ -1,0 +1,41 @@
+Camera: focal 1033 px at 1200 px wide, horizontal field of view 60.3 deg (Depth Anything 3 Large estimate)
+
+A. Rank agreement (Spearman) of inverse depth inside the cliff region. Higher = the models agree on what is nearer.
+   They share training lineage, so agreement is not evidence that they are right.
+                                          V2     V2 crop   DA3 Large    DA3 Mono  DA3 Metric
+Depth Anything V2 (disparity)              -        0.98        0.96        0.99        0.98
+Depth Anything V2, zoomed crop          0.98           -        0.91        0.98        0.98
+Depth Anything 3 Large                  0.96        0.91           -        0.96        0.93
+Depth Anything 3 Mono                   0.99        0.98        0.96           -        0.99
+Depth Anything 3 Metric                 0.98        0.98        0.93        0.99           -
+
+B. How far each model leans the vertical faces (degrees; + = top leans back, - = top leans toward the camera; 0 = vertical).
+   Whole-photo runs. Real sandstone faces here are close to vertical.
+band                               DA3 Large                  DA3 Mono                DA3 Metric  V2 (1/disp, zero offset)
+left buttress        27 deg (x1.06 top/base)  -11 deg (x0.98 top/base)   -9 deg (x0.98 top/base)  -39 deg (x0.91 top/base)
+tall orange wall     32 deg (x1.08 top/base)    1 deg (x1.00 top/base)  -14 deg (x0.97 top/base)  -22 deg (x0.96 top/base)
+bedded section       29 deg (x1.05 top/base)  -10 deg (x0.99 top/base)  -19 deg (x0.97 top/base)  -32 deg (x0.95 top/base)
+lower cliff          50 deg (x1.09 top/base)    1 deg (x1.00 top/base)    4 deg (x1.01 top/base)   -4 deg (x0.99 top/base)
+
+C. The same for Mono and Metric, whole-photo run against the run on the 2x zoomed crop.
+band                   Mono full     Mono crop   Metric full   Metric crop
+left buttress                -11           -18            -9           -13
+tall orange wall               1           -13           -14           -19
+bedded section               -10           -12           -19           -26
+lower cliff                    1             4             4            -7
+
+   Depth relative to the median inside the region (1st and 99th percentile):
+   Mono full    0.57 .. 1.88
+   Mono crop    0.41 .. 1.84
+   Metric full  0.67 .. 1.48
+   Metric crop  0.65 .. 1.49
+
+   Rank agreement among the four runs above:
+   Mono full       1.00    1.00    0.99    0.98
+   Mono crop       1.00    1.00    0.99    0.98
+   Metric full     0.99    0.99    1.00    0.99
+   Metric crop     0.98    0.98    0.99    1.00
+
+D. Metric scale check. Depth Anything 3 Metric predicts a canonical depth; metres = depth x focal / 300 (focal in the model input's pixels).
+   It puts the cliff region at 4.0 to 8.7 m from the camera (median 5.9 m). The cliff is across a valley, hundreds of metres away,
+   so this scale was not used: the metric head is trained on near-range scenes and does not extrapolate to a landscape.

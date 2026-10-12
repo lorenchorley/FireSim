@@ -1,0 +1,27 @@
+{
+ "assumed_distance_m": 600.0,
+ "focal_px": 1033.3334786551338,
+ "step_px": 2,
+ "max_depth_jump": 1.5,
+ "Z0": 600.0,
+ "vertices": 32735,
+ "triangles": 64344,
+ "quads_cut_for_depth_jump": 0,
+ "triangles_removed_edge_on": 0,
+ "extent_m": {
+  "width": 401.8638000488281,
+  "height": 257.9054870605469,
+  "depth_range": 972.5596923828125
+ },
+ "distance_from_camera_m": {
+  "p1": 243.96731567382812,
+  "p50": 600.0011596679688,
+  "p99": 1107.7598876953125
+ },
+ "disagreement": {
+  "median": 0.022042322903871536,
+  "p90": 0.1014200896024704
+ },
+ "invented_detail_amplitude_m": 2.5,
+ "invented_detail_vertices_over_0_5m_pct": 22.20253551244845
+}

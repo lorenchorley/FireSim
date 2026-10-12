@@ -199,6 +199,9 @@ Validation against the spec's scenarios (§15, V1–V22: slope ratios, wind–sl
 slowdown, katabatic and anabatic flows, spotting distances, VLS, gullies, wind changes, recent burns, junctions,
 plume regimes, determinism and rewind) runs headless in `src/sim/validation/`.
 
+Exploratory studies that are **not part of the app** live in [`studies/`](studies/), one folder per ongoing topic
+(first topic: [cliff from photo](studies/cliff-from-photo/), whether photographs can improve how cliffs are drawn and described).
+
 ## Transparency: what is simulated
 
 *Is it 2-D or 3-D?* Both, by component, and the app says so for the run you are looking at: **How this simulation works**

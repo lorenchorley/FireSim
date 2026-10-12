@@ -1,0 +1,12 @@
+{
+ "source": "Depth Anything 3 Large (DA3-LARGE-1.1) intrinsics estimate for the whole photo",
+ "focal_px_processed": 868.0001220703125,
+ "processed_width_px": 1008,
+ "focal_px_photo": 1033.3334786551338,
+ "hfov_deg": 60.28276410614993,
+ "principal_point_px": [
+  600.0,
+  315.0
+ ],
+ "note": "No EXIF in the photo, so this is a model estimate. The principal point is assumed to be the photo centre."
+}

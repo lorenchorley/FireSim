@@ -1,0 +1,26 @@
+# Study 01, Python 3.11. Versions are what the study was run with (2026-10-12), CPU only, no GPU.
+# CPU-only torch:  pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+numpy==2.4.6
+scipy==1.17.1
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+trimesh==5.1.1
+transformers==5.19.0
+huggingface_hub==2.2.0
+safetensors==0.8.0
+accelerate==1.15.0
+playwright==1.63.0          # step 7 only; it needs a Chromium (see run_all.sh)
+
+# Depth Anything 3 declares dependencies that are not needed for inference (xformers, open3d, gradio, ...) and pins numpy<2.
+# Install the package without its dependencies, then only what it imports:
+#   pip install --no-deps depth-anything-3==0.1.1
+einops==0.8.2
+omegaconf==2.4.0
+addict==2.4.0
+matplotlib==3.11.2
+pycolmap==4.2.1
+evo==1.37.1
+moviepy==1.0.3
+imageio==2.38.1
+plyfile==1.1.3
+typer==0.27.3

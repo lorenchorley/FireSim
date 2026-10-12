@@ -1,0 +1,126 @@
+<title>Cliff From One Photo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  /* Layout: one full-height column. A 3D stage fills the space, a compact control tray sits under it, and a short note explains what is real. */
+  :root {
+    --bg: #eef0f2; --panel: #ffffff; --ink: #1b2229; --muted: #55616d; --line: #cfd6dd;
+    --accent: #a8480b; --accent-ink: #ffffff; --stage: #dde3e8; --back: #8d98a3;
+    --clay: #d9d3c9; --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-num: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0d1217; --panel: #151c23; --ink: #e6ebf0; --muted: #9aa7b3; --line: #2a3541;
+    --accent: #f0a24a; --accent-ink: #10151b; --stage: #0b1015; --back: #39434d; --clay: #a39d92; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --bg: #0d1217; --panel: #151c23; --ink: #e6ebf0; --muted: #9aa7b3; --line: #2a3541;
+    --accent: #f0a24a; --accent-ink: #10151b; --stage: #0b1015; --back: #39434d; color-scheme: dark; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.45 var(--font-ui); }
+  .app { height: 100%; display: flex; flex-direction: column; }
+  header { padding: 10px 16px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.01em; }
+  header p { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+  .stage { position: relative; flex: 1 1 auto; min-height: 220px; background: var(--stage); }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hint, .legend { position: absolute; left: 12px; margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+  .hint { bottom: 10px; transition: opacity .4s; }
+  .legend { top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .legend i { width: 96px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2aa876, #e3d23a, #d8452f); }
+  .tray { background: var(--panel); border-top: 1px solid var(--line); padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 6px; max-height: 52%; overflow-y: auto; }
+  .row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+  .row > label, .row > span.lab { flex: 0 0 auto; min-width: 5.4em; font-size: 14px; line-height: 44px; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  button { font: 600 14px/1 var(--font-ui); min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; white-space: nowrap; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type=range] { flex: 1 1 140px; min-width: 0; height: 44px; accent-color: var(--accent); }
+  output { flex: 0 0 auto; font: 500 14px var(--font-num); min-width: 3.4em; text-align: right; }
+  details { font-size: 14px; color: var(--muted); }
+  summary { min-height: 36px; display: flex; align-items: center; cursor: pointer; color: var(--ink); font-weight: 600; }
+  details p { margin: 4px 0 8px; max-width: 70ch; }
+  .nogl { padding: 24px 16px; }
+  @media (prefers-reduced-motion: reduce) { .hint { transition: none; } }
+</style>
+<div class="app">
+  <header><h1>Cliff from one photo</h1><p>Central cliff sequence. Depth guessed by AI, scale assumed.</p></header>
+  <div class="stage" id="stage"><canvas id="c"></canvas>
+    <p class="hint" id="hint">Drag to orbit. Pinch or scroll to zoom.</p>
+    <p class="legend" id="legend" hidden>Models agree <i></i> Models disagree</p></div>
+  <div class="tray">
+    <div class="row"><span class="lab">View</span><div class="chips" id="views">
+      <button type="button" data-view="0,0" aria-pressed="true">Photo view</button><button type="button" data-view="-30,0" aria-pressed="false">Left 30°</button><button type="button" data-view="30,0" aria-pressed="false">Right 30°</button><button type="button" data-view="0,45" aria-pressed="false">Above</button><button type="button" data-view="-75,6" aria-pressed="false">Along cliff</button></div></div>
+    <div class="row"><span class="lab">Show</span><div class="chips" id="modes">
+      <button type="button" data-mode="photo" aria-pressed="true">Photo</button><button type="button" data-mode="clay" aria-pressed="false">Clay</button><button type="button" data-mode="unc" aria-pressed="false">Agreement</button><button type="button" id="detail" aria-pressed="false">Invented detail</button></div></div>
+    <div class="row"><label for="k">Depth strength</label><input id="k" type="range" min="0" max="150" value="100"><output id="kv" for="k">100%</output><button type="button" id="kreset">Reset</button></div>
+    <details><summary>What am I looking at?</summary>
+      <p>A flat sheet of the photo, draped over a depth map that AI models guessed from the picture alone. It looks right from where the photo was taken and gets stretched or empty as you move away. Nothing here is measured.</p>
+      <p>Sizes assume the cliff face is about 600 m from the camera. Every distance scales with that guess. The camera's field of view (60°) is also an AI estimate.</p>
+      <p>Depth strength: 100% is the depth the AI guessed. Lower values flatten the sheet toward a poster. The Photo view never changes.</p>
+      <p id="notex" hidden>This copy was built without the photo, so Front/back only shows which side of the sheet you are looking at.</p>
+      <p>Clay shows the shape without the photo. Agreement colours the sheet green where three different depth models agree and red where they don't. Invented detail adds small grooves where the photo has thin dark lines; it is made up, not measured.</p></details>
+  </div>
+</div>
+__SCRIPTS__
+<script>
+(function () {
+  const DATA = __DATA__, TEX = "__TEX__";
+  const noTex = !!DATA.noTex;
+  const stage = document.getElementById('stage'), canvas = document.getElementById('c');
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true }); }
+  catch (e) { stage.innerHTML = '<p class="nogl">This viewer needs WebGL, which this browser does not provide.</p>'; return; }
+  const bin = atob(DATA.b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  let off = 0; const take = (T, n) => { const a = new T(u8.buffer, off, n); off += n * T.BYTES_PER_ELEMENT; return a; };
+  const N = DATA.nv, pos = take(Float32Array, N * 3), uv = take(Float32Array, N * 2), unc = take(Float32Array, N), dz = take(Float32Array, N), idx = take(Uint32Array, DATA.nt * 3);
+  const P0 = pos.slice(), Zb = new Float32Array(N); for (let i = 0; i < N; i++) Zb[i] = -P0[i * 3 + 2];
+  const col = new Float32Array(N * 3), lerp = (a, b, t) => a + (b - a) * t;
+  for (let i = 0; i < N; i++) { const t = Math.min(1, unc[i] / DATA.uncScale), g = [0.165, 0.659, 0.463], y = [0.89, 0.824, 0.227], r = [0.847, 0.271, 0.184], A = t < .5 ? g : y, B = t < .5 ? y : r, s = t < .5 ? t * 2 : (t - .5) * 2;
+    col[i * 3] = lerp(A[0], B[0], s); col[i * 3 + 1] = lerp(A[1], B[1], s); col[i * 3 + 2] = lerp(A[2], B[2], s); }
+  renderer.outputEncoding = THREE.sRGBEncoding; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(DATA.vfov, 1, 1, 8000);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  let tex = null; if (noTex) { window.__texReady = true; } else { tex = new THREE.TextureLoader().load(TEX, () => { window.__texReady = true; render(); }); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4; }
+  const matPhoto = noTex ? new THREE.MeshStandardMaterial({ color: 0xd9d3c9, roughness: 1, metalness: 0, side: THREE.FrontSide }) : new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide });
+  const matBack = new THREE.MeshBasicMaterial({ color: 0x8d98a3, side: THREE.BackSide });
+  const matClay = new THREE.MeshStandardMaterial({ color: 0xd9d3c9, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+  const matUnc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, matPhoto), back = new THREE.Mesh(geo, matBack); scene.add(mesh, back);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(-0.6, 0.7, 0.55); scene.add(sun, new THREE.HemisphereLight(0xffffff, 0x556070, 0.55));
+  function theme() { const cs = getComputedStyle(document.documentElement); scene.background = new THREE.Color(cs.getPropertyValue('--stage').trim() || '#dde3e8'); matBack.color.set(cs.getPropertyValue('--back').trim() || '#8d98a3'); matClay.color.set(cs.getPropertyValue('--clay').trim() || '#d9d3c9'); if (noTex) matPhoto.color.set(cs.getPropertyValue('--clay').trim() || '#d9d3c9'); render(); }
+  const bb = new THREE.Box3().setFromBufferAttribute(geo.getAttribute('position')), C = bb.getCenter(new THREE.Vector3());
+  const r0 = new THREE.Vector3(DATA.rx, DATA.ry, -1).normalize(), T = r0.clone().multiplyScalar(C.dot(r0));       // the photo's own line of sight
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ctrl = new THREE.OrbitControls(camera, canvas); ctrl.enableDamping = !reduce; ctrl.dampingFactor = 0.12; ctrl.target.copy(T); ctrl.minDistance = 40; ctrl.maxDistance = 3500; ctrl.screenSpacePanning = true;
+  const O = new THREE.Vector3(), v0 = O.clone().sub(T), R0 = v0.length(), az0 = Math.atan2(v0.x, v0.z), el0 = Math.asin(v0.y / R0);
+  let k = 1, detail = false, dirty = true;
+  function render() { renderer.render(scene, camera); }
+  function setView(a, e) { const az = az0 + a * Math.PI / 180, el = el0 + e * Math.PI / 180;
+    camera.position.set(T.x + R0 * Math.cos(el) * Math.sin(az), T.y + R0 * Math.sin(el), T.z + R0 * Math.cos(el) * Math.cos(az));
+    camera.up.set(0, 1, 0); ctrl.target.copy(T); camera.lookAt(T); ctrl.update(); render(); }
+  function shape() { const pa = geo.getAttribute('position'), Z0 = DATA.Z0;               // every point moves along its own ray, so the photo view never changes
+    for (let i = 0; i < N; i++) { const Z = Zb[i], Zn = Z0 + k * (Z - Z0) + (detail ? dz[i] : 0), s = Zn / Z; pa.array[i * 3] = P0[i * 3] * s; pa.array[i * 3 + 1] = P0[i * 3 + 1] * s; pa.array[i * 3 + 2] = -Zn; }
+    pa.needsUpdate = true; geo.computeVertexNormals(); render(); }
+  function setStrength(v) { k = v; document.getElementById('kv').textContent = Math.round(v * 100) + '%'; document.getElementById('k').value = Math.round(v * 100); shape(); }
+  function setDetail(on) { detail = on; document.getElementById('detail').setAttribute('aria-pressed', String(on)); shape(); }
+  function setMode(m) { mesh.material = m === 'photo' ? matPhoto : m === 'clay' ? matClay : matUnc; back.visible = m === 'photo'; document.getElementById('legend').hidden = m !== 'unc'; render(); }
+  function resize() { const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h;
+    const vv = 2 * Math.atan(Math.tan(DATA.hfov * Math.PI / 360) / camera.aspect) * 180 / Math.PI; camera.fov = Math.max(DATA.vfov, vv); camera.updateProjectionMatrix(); render(); }
+  ctrl.addEventListener('change', () => { dirty = true; });
+  ctrl.addEventListener('start', () => { document.getElementById('hint').style.opacity = 0; });
+  (function loop() { requestAnimationFrame(loop); if (ctrl.update() || dirty) { dirty = false; render(); } })();
+  new ResizeObserver(resize).observe(stage);
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme);
+  new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  const group = (id, attr, fn) => document.querySelectorAll('#' + id + ' button[' + attr + ']').forEach(b => b.addEventListener('click', () => { document.querySelectorAll('#' + id + ' button[' + attr + ']').forEach(x => x.setAttribute('aria-pressed', String(x === b))); fn(b.getAttribute(attr.replace('data-', 'data-'))) }));
+  group('views', 'data-view', v => { const [a, e] = v.split(',').map(Number); setView(a, e); });
+  group('modes', 'data-mode', setMode);
+  document.getElementById('detail').addEventListener('click', () => setDetail(!detail));
+  const ks = document.getElementById('k'); ks.addEventListener('input', () => setStrength(ks.value / 100)); document.getElementById('kreset').addEventListener('click', () => setStrength(1));
+  window.__api = { setView, setMode, setStrength, setDetail };
+  if (noTex) { const pb = document.querySelector('#modes button[data-mode="photo"]'); pb.textContent = 'Front/back'; document.getElementById('notex').hidden = false; }
+  theme(); resize(); shape(); setView(0, 0); window.__ready = true;
+})();
+</script>
