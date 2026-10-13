@@ -1,0 +1,20 @@
+--- a/src/ui/app.ts
++++ b/src/ui/app.ts
+@@ -20,7 +20,6 @@
+ import { buildRequest, type SetupState } from './setupModel';
+ import { settingsStore } from './settings';
+ import { createBuildingScreen, type BuildingScreen } from './screens/building';
+-import { createDatasetsScreen } from './screens/datasets';
+ import { createModelCardScreen } from './screens/modelCard';
+ import { noticeAccepted, showNotice } from './screens/notice';
+ import { createSettingsScreen } from './screens/settings';
+@@ -211,7 +210,8 @@
+   }
+ 
+   /** The Data sets screen: the running scenario's inventory, or (from Setup / no run) the planned, stored and bundled data. */
+-  openDatasets(datasetId?: string): void {
++  async openDatasets(datasetId?: string): Promise<void> {
++    const { createDatasetsScreen } = await import('./screens/datasets');
+     const existing = this.overlays.find((o) => o.id === 'datasets');
+     if (existing) this.closeOverlay(existing);
+     let ov: Overlay | undefined;

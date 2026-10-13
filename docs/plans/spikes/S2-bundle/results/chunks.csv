@@ -1,0 +1,38 @@
+chunk,raw_bytes,gzip9_bytes,brotli11_bytes,loaded,dynamic_import_sites,static_importers
+areaPack-BRTBKc0x.js,3296,1516,1340,static (of a boot chunk),src/ui/screens/setup.ts:922,scenario-CyVR7pfA.js
+basedecoder-BuG7fe0q.js,1291,703,605,lazy,,deflate-DrpJyiUj.js jpeg-Di1AymDI.js lerc-QP1TA3MH.js lzw-D2FslT4L.js packbits-DCimUQ1T.js raw-A-vJRPpa.js webimage-zQMH-_zR.js zstd-i4Jwubnx.js
+catalogue-Dy7iKToi.js,16386,4983,4410,static (entry graph),,datasetStats-DI78qXyW.js estimate-BGrgvUwk.js index-CAoD7JAE.js mcarthur-C5X5px3Q.js sim--xMhWn_v.js
+data-Db-hA8NP.js,102087,34346,30592,static (entry graph),src/ui/screens/setup.ts:944 ; src/ui/screens/setup.ts:998 ; src/ui/screens/setup.ts:1026,areaPack-BRTBKc0x.js datasetStats-DI78qXyW.js estimate-BGrgvUwk.js hillshade-DiSI-VO3.js index-CAoD7JAE.js mcarthur-C5X5px3Q.js mocks-BF7hnoS_.js openMeteo-BeFUAsqG.js render-BcWIqPx6.js replays-C-GuXc9P.js scenario-CyVR7pfA.js sim--xMhWn_v.js terrain-BwRlvvif.js weather-BCtPTOFV.js weatherSources-HEvh1alG.js
+datasetStats-DI78qXyW.js,23306,9962,8911,static (of a boot chunk),,estimate-BGrgvUwk.js mocks-BF7hnoS_.js
+deflate-DrpJyiUj.js,179,165,129,lazy,node_modules/geotiff/dist-module/compression/index.js:118,
+dist-C5Vgn5nD.js,7757,3088,2773,static (entry graph),,esm-B0sbNcPP.js esm-C6kMOuIF.js index-CAoD7JAE.js storage-DmfRc9Ip.js web-C0xWYv7t.js web-i9eqyzQd.js
+esm-B0sbNcPP.js,977,511,476,lazy,src/ui/location.ts:36,
+esm-C6kMOuIF.js,364,255,238,native boot,src/ui/prefs.ts:29,
+estimate-BGrgvUwk.js,105463,33784,29186,static (of a boot chunk),src/ui/screens/datasets.ts:1100 ; src/ui/screens/setup.ts:853,scenario-CyVR7pfA.js
+globals-CCptAvKb.js,7608,2796,2393,static (entry graph),,data-Db-hA8NP.js index-CAoD7JAE.js lerc-QP1TA3MH.js storage-DmfRc9Ip.js
+hillshade-DiSI-VO3.js,677,443,414,static (of a boot chunk),,mocks-BF7hnoS_.js render-BcWIqPx6.js
+index-CAoD7JAE.js,544258,189801,154347,entry,,estimate-BGrgvUwk.js mocks-BF7hnoS_.js render-BcWIqPx6.js scenario-CyVR7pfA.js sim--xMhWn_v.js
+jpeg-Di1AymDI.js,10808,4027,3573,lazy,node_modules/geotiff/dist-module/compression/index.js:104,
+lerc-QP1TA3MH.js,96958,37518,31484,lazy,node_modules/geotiff/dist-module/compression/index.js:128,
+lzw-D2FslT4L.js,1449,824,744,lazy,node_modules/geotiff/dist-module/compression/index.js:92,
+mcarthur-C5X5px3Q.js,25026,9960,9180,static (of a boot chunk),,datasetStats-DI78qXyW.js estimate-BGrgvUwk.js sim--xMhWn_v.js
+mocks-BF7hnoS_.js,59012,22466,20043,boot (requested at start-up),src/ui/modules.ts:79,
+openMeteo-BeFUAsqG.js,15658,6411,5862,static (entry graph),,areaPack-BRTBKc0x.js estimate-BGrgvUwk.js index-CAoD7JAE.js mcarthur-C5X5px3Q.js replays-C-GuXc9P.js scenario-CyVR7pfA.js sim--xMhWn_v.js weather-BCtPTOFV.js weatherSources-HEvh1alG.js
+packbits-DCimUQ1T.js,347,252,213,lazy,node_modules/geotiff/dist-module/compression/index.js:123,
+pako.esm-Ch1S5qKo.js,46608,14637,13180,lazy,,deflate-DrpJyiUj.js lerc-QP1TA3MH.js
+preload-helper-uBIymjUX.js,1233,685,574,static (entry graph),,data-Db-hA8NP.js esm-B0sbNcPP.js esm-C6kMOuIF.js index-CAoD7JAE.js storage-DmfRc9Ip.js
+raw-A-vJRPpa.js,115,120,99,lazy,node_modules/geotiff/dist-module/compression/index.js:86,
+render-BcWIqPx6.js,761604,205609,169815,boot (requested at start-up),src/ui/modules.ts:51,
+replays-C-GuXc9P.js,8163,3722,3330,static (entry graph),,estimate-BGrgvUwk.js index-CAoD7JAE.js scenario-CyVR7pfA.js weatherSources-HEvh1alG.js
+rng-BnwdYkrg.js,668,371,345,static (of a boot chunk),,mocks-BF7hnoS_.js sim--xMhWn_v.js
+scenario-CyVR7pfA.js,10264,4740,4218,boot (requested at start-up),src/ui/modules.ts:52,
+sim--xMhWn_v.js,398524,140052,121172,boot (requested at start-up),src/ui/modules.ts:50,
+storage-DmfRc9Ip.js,42028,15652,14136,static (entry graph),src/ui/screens/datasets.ts:566 ; src/ui/screens/datasets.ts:589 ; src/ui/screens/datasets.ts:609,areaPack-BRTBKc0x.js data-Db-hA8NP.js datasetStats-DI78qXyW.js estimate-BGrgvUwk.js index-CAoD7JAE.js mocks-BF7hnoS_.js openMeteo-BeFUAsqG.js replays-C-GuXc9P.js scenario-CyVR7pfA.js sim--xMhWn_v.js terrain-BwRlvvif.js weatherSources-HEvh1alG.js
+terrain-BwRlvvif.js,15939,6946,6243,static (entry graph),,catalogue-Dy7iKToi.js datasetStats-DI78qXyW.js estimate-BGrgvUwk.js index-CAoD7JAE.js mcarthur-C5X5px3Q.js mocks-BF7hnoS_.js openMeteo-BeFUAsqG.js render-BcWIqPx6.js sim--xMhWn_v.js weatherSources-HEvh1alG.js
+weather-BCtPTOFV.js,7287,3218,2955,static (of a boot chunk),,scenario-CyVR7pfA.js sim--xMhWn_v.js weatherSources-HEvh1alG.js
+weatherSources-HEvh1alG.js,37235,13199,11948,static (of a boot chunk),,areaPack-BRTBKc0x.js estimate-BGrgvUwk.js scenario-CyVR7pfA.js
+web-C0xWYv7t.js,1191,541,457,lazy,node_modules/@capacitor/preferences/dist/esm/index.js:3,
+web-i9eqyzQd.js,2086,852,710,lazy,node_modules/@capacitor/geolocation/dist/esm/index.js:4,
+webimage-zQMH-_zR.js,936,526,438,lazy,node_modules/geotiff/dist-module/compression/index.js:157,
+worker-D07vFJbS.js,488162,172774,147284,worker,,
+zstd-i4Jwubnx.js,81026,32252,26911,lazy,node_modules/geotiff/dist-module/compression/index.js:147,

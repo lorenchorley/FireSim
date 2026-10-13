@@ -1,0 +1,8 @@
+--- a/src/fuel/index.ts
++++ b/src/fuel/index.ts
+@@ -83,5 +83,4 @@
+   type FuelMapExt,
+ } from './fuelMap';
+ export { applyFuelEdit, cellsInBrush, brushContains } from './edits';
+-export { buildDemoFuel, type DemoFuel, type DemoFuelOptions } from './demo';
+ export { ScanlineRasteriser, projectRings, pointInRings, cellCentreLattice, subPointLattice, type Lattice, type LocalRings } from './polygon';

@@ -1,0 +1,125 @@
+--- a/src/sim/client.ts
++++ b/src/sim/client.ts
+@@ -11,7 +11,7 @@
+  * evaluates arrival state at min(time, now).
+  */
+ import type { CellExplanation, Ignition, Insight, QualityTier, ScenarioData, ScenarioEdit } from '../core/types';
+-import { SimHost, type SimHostOptions } from './host';
++import type { LocalSimController } from './localController';
+ import type { FromWorker, SimController, SimEvents, SimOptionKey, ToWorker } from './protocol';
+ 
+ type Listener = (...args: never[]) => void;
+@@ -40,7 +40,7 @@
+ }
+ 
+ /** Shared protocol client: sends ToWorker messages through `send`, dispatches FromWorker messages to listeners. */
+-abstract class ProtocolController implements SimController {
++export abstract class ProtocolController implements SimController {
+   protected readonly events = new Events();
+   private readonly pendingExplain = new Map<number, { resolve: (e: CellExplanation) => void; reject: (e: Error) => void }>();
+   private reqId = 1;
+@@ -146,35 +146,6 @@
+ }
+ 
+ /**
+- * In-thread controller: the simulation runs in the calling thread in chunks (setTimeout yields), with the same
+- * message semantics as the worker. Messages in both directions are delivered asynchronously (like postMessage).
+- */
+-export class LocalSimController extends ProtocolController {
+-  private readonly host: SimHost;
+-
+-  constructor(opts: Omit<SimHostOptions, 'transfer'> = {}) {
+-    super();
+-    this.host = new SimHost({ post: (m) => queueMicrotask(() => this.receive(m)) }, { ...opts, transfer: false });
+-  }
+-
+-  /** The in-thread simulation (tests, developer panel). */
+-  get simulation(): SimHost['simulation'] {
+-    return this.host.simulation;
+-  }
+-
+-  protected send(msg: ToWorker): void {
+-    if (this.disposed) return;
+-    // Asynchronous like postMessage, so callers never re-enter the simulation from a listener.
+-    setTimeout(() => this.host.handle(msg), 0);
+-  }
+-
+-  override dispose(): void {
+-    super.dispose();
+-    this.host.dispose();
+-  }
+-}
+-
+-/**
+  * The scenario as the worker needs it: without the display-only places context (roads, homes, zones, place names),
+  * which can be hundreds of KB of typed arrays the simulation never reads and postMessage would clone for nothing.
+  * The caller's object is left intact (the render layer still reads `context`).
+@@ -211,11 +182,14 @@
+       w.onmessageerror = () => this.receive({ type: 'error', message: 'simulation worker message could not be decoded' });
+     } else {
+       // No Worker: run in this thread; forward its events.
+-      const local = new LocalSimController();
+-      this.local = local;
+-      for (const ev of ['ready', 'snapshot', 'status', 'error', 'rewound'] as const) {
+-        local.on(ev, ((...a: never[]) => (this.events.emit as (e: string, ...x: never[]) => void)(ev, ...a)) as never);
+-      }
++      this.local = null;
++      void import('./localController').then((m) => {
++        const local = new m.LocalSimController();
++        (this as { local: LocalSimController | null }).local = local;
++        for (const ev of ['ready', 'snapshot', 'status', 'error', 'rewound'] as const) {
++          local.on(ev, ((...a: never[]) => (this.events.emit as (e: string, ...x: never[]) => void)(ev, ...a)) as never);
++        }
++      });
+     }
+   }
+ 
+--- a/src/sim/index.ts
++++ b/src/sim/index.ts
+@@ -8,8 +8,5 @@
+  *   LocalSimController  SimController running the same host in the calling thread.
+  *   SimHost             the chunked message loop shared by the worker and LocalSimController.
+  */
+-export { Simulation, type SimulationOptions, type SimulationHooks, type SimulationTestHooks, type SimPerf } from './simulation';
+-export { SimClient, LocalSimController } from './client';
+-export { SimHost, snapshotTransferables, type HostPort, type SimHostOptions } from './host';
+-export { SIM_PARAMS, type SimParams } from './params';
++export { SimClient } from './client';
+ export type { FromWorker, ToWorker, SimController, SimEvents, SimOptionKey } from './protocol';
+--- a/src/sim/localController.ts
++++ b/src/sim/localController.ts
+@@ -0,0 +1,34 @@
++import type { CellExplanation, Ignition, Insight, QualityTier, ScenarioData, ScenarioEdit } from '../core/types';
++import { SimHost, type SimHostOptions } from './host';
++import { ProtocolController } from './client';
++import type { ToWorker } from './protocol';
++
++/**
++ * In-thread controller: the simulation runs in the calling thread in chunks (setTimeout yields), with the same
++ * message semantics as the worker. Messages in both directions are delivered asynchronously (like postMessage).
++ */
++export class LocalSimController extends ProtocolController {
++  private readonly host: SimHost;
++
++  constructor(opts: Omit<SimHostOptions, 'transfer'> = {}) {
++    super();
++    this.host = new SimHost({ post: (m) => queueMicrotask(() => this.receive(m)) }, { ...opts, transfer: false });
++  }
++
++  /** The in-thread simulation (tests, developer panel). */
++  get simulation(): SimHost['simulation'] {
++    return this.host.simulation;
++  }
++
++  protected send(msg: ToWorker): void {
++    if (this.disposed) return;
++    // Asynchronous like postMessage, so callers never re-enter the simulation from a listener.
++    setTimeout(() => this.host.handle(msg), 0);
++  }
++
++  override dispose(): void {
++    super.dispose();
++    this.host.dispose();
++  }
++}
++

@@ -1,0 +1,15 @@
+--- a/src/ui/modules.ts
++++ b/src/ui/modules.ts
+@@ -75,8 +75,11 @@
+ export async function loadServices(forceMock: boolean): Promise<Services> {
+   // All four chunks are requested at once: awaiting the mocks first made the (much larger) sim / render / scenario chunks
+   // wait for the mock builder and its imports (the data-set inventory, the fire models) to be fetched and evaluated.
++  // Measurement only: the APK build (mode 'capacitor') keeps just the 2-D map fallback; the mock simulation, the mock
++  // scenario builder and their data stay in the other builds.
++  const IS_APK = import.meta.env.MODE === 'capacitor';
+   const [mocks, sim, render, scenario] = await Promise.all([
+-    import('./mocks'),
++    (IS_APK ? import('./mockScene') : import('./mocks')) as Promise<typeof import('./mocks')>,
+     forceMock ? null : tryLoad(simLoaders, '../sim/index.ts', isSim, 'Simulation (src/sim)'),
+     forceMock ? null : tryLoad(renderLoaders, '../render/index.ts', isRender, '3-D view (src/render)'),
+     forceMock ? null : tryLoad(scenarioLoaders, '../scenario/index.ts', isScenario, 'Scenario builder (src/scenario)'),

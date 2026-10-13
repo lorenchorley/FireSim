@@ -1,0 +1,30 @@
+--- a/src/ui/modules.ts
++++ b/src/ui/modules.ts
+@@ -75,12 +75,15 @@
+ export async function loadServices(forceMock: boolean): Promise<Services> {
+   // All four chunks are requested at once: awaiting the mocks first made the (much larger) sim / render / scenario chunks
+   // wait for the mock builder and its imports (the data-set inventory, the fire models) to be fetched and evaluated.
++  // Measurement only: the 2-D map (the fallback without WebGL2) is loaded with the others; the mock simulation, the mock
++  // scenario builder and their data load only for ?mock=1 or when a real module is missing.
+   const [mocks, sim, render, scenario] = await Promise.all([
+-    import('./mocks'),
++    import('./mockScene') as Promise<typeof import('./mocks')>,
+     forceMock ? null : tryLoad(simLoaders, '../sim/index.ts', isSim, 'Simulation (src/sim)'),
+     forceMock ? null : tryLoad(renderLoaders, '../render/index.ts', isRender, '3-D view (src/render)'),
+     forceMock ? null : tryLoad(scenarioLoaders, '../scenario/index.ts', isScenario, 'Scenario builder (src/scenario)'),
+   ]);
++  const full = forceMock || !sim || !scenario ? await import('./mocks') : null;
+   const sources = {
+     scenario: (scenario ? 'real' : 'mock') as ModuleSource,
+     sim: (sim ? 'real' : 'mock') as ModuleSource,
+@@ -93,8 +96,8 @@
+       render && typeof render.crossSectionLegend === 'function' && typeof render.windLegend === 'function'
+         ? { crossSection: render.crossSectionLegend, wind: render.windLegend }
+         : null,
+-    buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
+-    createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),
++    buildScenario: scenario ? scenario.buildScenario : full!.mockBuildScenario,
++    createController: () => (sim ? new sim.SimClient() : new full!.MockSimController()),
+     createSceneView(container: HTMLElement): SceneViewApi {
+       if (render) {
+         try {

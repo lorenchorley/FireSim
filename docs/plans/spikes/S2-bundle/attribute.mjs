@@ -8,16 +8,29 @@
  *   nice -n 10 npx vite build --mode capacitor --sourcemap --outDir <scratch>/dist-map --emptyOutDir
  *
  * Commands (all print Markdown to stdout; `all` also writes the tables to --out as .md and .csv):
- *   node attribute.mjs chunks   --dist <dist>                      chunk table: size, load path, trigger
- *   node attribute.mjs modules  --dist <dist-with-maps> [--top 40] modules and packages per chunk
- *   node attribute.mjs blobs    --dist <dist-with-maps> [--min 600] big string literals and text-heavy modules
- *   node attribute.mjs cut      --dist <dist-with-maps> --match <regex> [--chunk <name-prefix>]
- *                                                                   gzip -9 saved by deleting the matching modules
- *   node attribute.mjs symbols  --dist <dist-with-maps> --match <regex>
- *                                                                   top-level declarations of matching modules, with bytes
- *   node attribute.mjs dead     --root <repo or HEAD snapshot> --dist <dist-with-maps>
- *                                                                   unreachable modules, unused exports, kept dead code
- *   node attribute.mjs all      --dist <dist-with-maps> --root <repo or snapshot> --out results
+ *   chunks   --dist <dist-with-maps>            every chunk: size, how it loads and what triggers it, start-up phases
+ *                                               (without maps the call sites are unknown, so lazy chunks are all "lazy")
+ *   modules  --dist <dist-with-maps> [--top 40] top modules, packages, folders, duplicates, groups per chunk
+ *   blobs    --dist <dist-with-maps> [--min 600] big string literals, text-heavy modules, console calls
+ *   cut      --dist <dist-with-maps> --match <regex on the module path> [--chunk <name prefix>]
+ *                                               gzip -9 saved by deleting the matching modules' bytes and compressing again
+ *   symbols  --dist <dist-with-maps> --match <regex>
+ *                                               top-level declarations and class members of the matching modules, with bytes
+ *   range    --dist <dist-with-maps> --file <module path> --grep <regex>
+ *                                               bytes of the source lines that match (a hook, a switch)
+ *   css      --dist <dist> --root <repo or snapshot>
+ *                                               CSS rules whose classes appear in no source file (a text heuristic)
+ *   compare  --dist <dist> --other <dist-with-maps>
+ *                                               same JS in both builds, apart from the sourceMappingURL line
+ *   compile  --dist <dist-with-maps>            V8 compile time per load phase on this machine; run as
+ *                                               node --experimental-vm-modules attribute.mjs compile ...
+ *   dead     --dist <dist-with-maps> --root <repo or snapshot> [--csv file]
+ *                                               module reachability and the declarations nothing live reaches, per bundle
+ *   all      --dist <dist-with-maps> --root <repo or snapshot> --out <results folder>
+ *                                               everything above that has a table, written as .md and .csv
+ *
+ * `--root` must be a tree identical to the one the build came from (a clean checkout, or `git archive <commit>` with
+ * node_modules linked in): positions in the source maps are checked against it and the script says when they differ.
  *
  * How the numbers are made (details in README.md):
  *   - raw bytes: the source map says which original module every stretch of the generated chunk came from (the same
@@ -37,7 +50,6 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ts = require('typescript');
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -485,19 +497,6 @@ export function loadBuild(dist, opts = {}) {
   return { dist, chunks, byName, entry: entryMatch ? entryMatch[1] : null, preloads, html };
 }
 
-/** Converts a char offset in the chunk to (line, col) using the chunk's line table. */
-function posOf(chunk, off) {
-  const ls = chunk.lineStarts;
-  let lo = 0;
-  let hi = ls.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (ls[mid] <= off) lo = mid;
-    else hi = mid - 1;
-  }
-  return { line: lo, col: off - ls[lo] };
-}
-
 /** Segment index covering a char offset (the last segment that starts at or before it), or -1. */
 function segmentAt(chunk, off) {
   const st = chunk.segStart;
@@ -831,11 +830,12 @@ export function declUnits(text, fileName = 'x.ts') {
 
 function cmdChunks(build) {
   const g = chunkGraph(build);
+  const short = (list) => (list.length > 3 ? `${list.slice(0, 3).map((n) => n.replace(/-[\w-]{8}\.js$/, '')).join(', ')} and ${list.length - 3} more` : list.map((n) => n.replace(/-[\w-]{8}\.js$/, '')).join(', '));
   const rows = build.chunks
     .map((c) => ({ c, i: g.info.get(c.name) }))
     .sort((a, b) => b.c.gz - a.c.gz);
   const tot = (f) => build.chunks.reduce((a, c) => a + f(c), 0);
-  const out = [];
+  const out = ['kB = 1024 bytes, as in scripts/check-bundle.mjs. gzip -9 is zlib level 9 per file; brotli 11 is information only.\n'];
   out.push(
     mdTable(
       ['Chunk', 'Raw kB', 'gzip -9 kB', 'brotli 11 kB', 'Loaded', 'Trigger (source file:line of the import)'],
@@ -844,9 +844,9 @@ function cmdChunks(build) {
           let trigger = '';
           if (i.kind === 'entry') trigger = 'index.html `<script type=module>`';
           else if (i.kind === 'worker') trigger = i.importers.length ? '' : 'new Worker(new URL(...)) in `src/sim/client.ts` (when the sim screen opens)';
-          else if (i.kind === 'static (entry graph)') trigger = `static import of ${i.staticImporters.join(', ')}`;
+          else if (i.kind === 'static (entry graph)') trigger = `static import of ${short(i.staticImporters)}`;
           else if (i.importers.length) trigger = [...new Set(i.importers.map((e) => e.site))].join('; ');
-          if (i.kind === 'static (of a boot chunk)' || (i.kind === 'lazy' && !trigger)) trigger = (trigger ? trigger + '; ' : '') + `static import of ${i.staticImporters.join(', ')}`;
+          if (i.kind === 'static (of a boot chunk)' || (i.kind === 'lazy' && !trigger)) trigger = (trigger ? trigger + '; ' : '') + `static import of ${short(i.staticImporters)}`;
           if (c.isWorker && i.importers.length === 0) trigger = 'new Worker(new URL(...)) in src/sim/client.ts, made when the sim screen opens';
           return [c.name, kb(c.raw), kb(c.gz), kb(c.br), i.kind, trigger];
         }),
@@ -884,7 +884,7 @@ function cmdChunks(build) {
 
 function cmdModules(build, top = 40) {
   const rows = moduleRows(build);
-  const out = [];
+  const out = ['kB = 1024 bytes. gzip kB is each module\'s share of the chunk\'s real gzip -9 size (bits of the compressed stream), so the shares add up to the totals of scripts/check-bundle.mjs.\n'];
   // Per chunk: groups.
   const byChunk = new Map();
   for (const r of rows) {
@@ -927,6 +927,28 @@ function cmdModules(build, top = 40) {
     ),
   );
   out.push(`\nTotal: raw ${kb(totalRaw)} kB, gzip ${kb(totalGz)} kB.`);
+  // Application folders one level down (src/ui/screens, src/fire/spread, ...).
+  const g2 = new Map();
+  for (const r of rows) {
+    if (!r.group2.startsWith('src')) continue;
+    const g = g2.get(r.group2) ?? { raw: 0, gz: 0, n: 0, chunks: new Map() };
+    g.raw += r.raw;
+    g.gz += r.gz;
+    g.n++;
+    g.chunks.set(r.id, (g.chunks.get(r.id) ?? 0) + r.gz);
+    g2.set(r.group2, g);
+  }
+  out.push('\n### Application folders, one level down (top 25 by gzip)\n');
+  out.push(
+    mdTable(
+      ['Folder', 'Raw kB', 'gzip kB', 'Modules', 'Where (gzip kB per chunk)'],
+      [...g2.entries()]
+        .sort((a, b) => b[1].gz - a[1].gz)
+        .slice(0, 25)
+        .map(([name, g]) => [name, kb(g.raw), kb(g.gz), g.n, [...g.chunks.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([id, gz]) => `${id} ${kb(gz)}`).join(', ')]),
+      'lrrrl',
+    ),
+  );
   // Modules that are bundled into more than one chunk (the worker is a separate bundle, so it repeats code of the main thread).
   const byModule = new Map();
   for (const r of rows) {
@@ -992,9 +1014,10 @@ function cmdBlobs(build, min = 600) {
   const textHeavy = rows.filter((r) => r.raw >= 4 * KB).map((r) => ({ ...r, share: r.textRaw / r.raw })).sort((a, b) => b.textGz - a.textGz).slice(0, 25);
   out.push('### Modules by bytes inside string and template literals (any size), top 25 by gzip\n');
   out.push(mdTable(['Module', 'Chunk', 'Module raw kB', 'Text raw kB', 'Text gzip kB', 'Text share of raw'], textHeavy.map((r) => ['`' + r.module + '`', r.id, kb(r.raw), kb(r.textRaw), kb(r.textGz, 2), pct(r.textRaw, r.raw)]), 'llrrrr'));
-  const tText = rows.reduce((a, r) => a + r.textRaw, 0);
-  const tTextGz = rows.reduce((a, r) => a + r.textGz, 0);
-  out.push(`\nAll string and template literals together: raw ${kb(tText)} kB, gzip ${kb(tTextGz)} kB.`);
+  const allRows = moduleRows(build);
+  const tText = allRows.reduce((a, r) => a + r.textRaw, 0);
+  const tTextGz = allRows.reduce((a, r) => a + r.textGz, 0);
+  out.push(`\nAll string and template literals together: raw ${kb(tText)} kB, gzip ${kb(tTextGz)} kB (${pct(tTextGz, build.chunks.reduce((a, c) => a + c.gz, 0))} of all JS gzip).`);
   // console.* diagnostics
   const cons = new Map();
   let cN = 0;
@@ -1177,7 +1200,7 @@ function isValueUse(node) {
   return true;
 }
 
-async function cmdDead(build, rootArg, opts = {}) {
+export async function cmdDead(build, rootArg, opts = {}) {
   const root = path.resolve(rootArg).replace(/\\/g, '/');
   const log = (...a) => console.error('[dead]', ...a);
   const out = [];
@@ -1196,46 +1219,43 @@ async function cmdDead(build, rootArg, opts = {}) {
     const disk = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null;
     if (disk !== list[0].chunk.map.sourcesContent[list[0].idx]) mismatch.push(rel);
   }
-  if (mismatch.length) {
-    log(`WARNING: ${mismatch.length} source file(s) under ${root} differ from the build's sourcesContent (e.g. ${mismatch[0]}); the numbers below are not reliable.`);
-  }
-  out.push(`Tree checked: \`${root}\`; ${bundled.size} application modules have code in the build; ${mismatch.length} differ from the build's embedded sources.\n`);
+  if (mismatch.length) log(`WARNING: ${mismatch.length} source file(s) under ${root} differ from the build's sourcesContent (e.g. ${mismatch[0]}); the numbers below are not reliable.`);
+  out.push(`Tree checked: the one given by --root; ${bundled.size} application modules have code in the build; ${mismatch.length} differ from the build's embedded sources.\n`);
   // --- 2. program
   const t0 = Date.now();
   const { ls, program, options } = openProgram(root);
   const checker = program.getTypeChecker();
-  const relOf = (f) => path.relative(root, f).split(path.sep).join('/');
-  const appFiles = program.getSourceFiles().filter((sf) => !sf.isDeclarationFile && relOf(sf.fileName).startsWith('src/') && !relOf(sf.fileName).startsWith('..'));
+  const relOf = (f) => path.relative(root, f.replace(/\\/g, '/')).split(path.sep).join('/');
+  const appFiles = program.getSourceFiles().filter((sf) => !sf.isDeclarationFile && relOf(sf.fileName).startsWith('src/'));
   log(`program: ${appFiles.length} files under src/ in ${Date.now() - t0} ms`);
-  // --- 3. module graph from the entry points
+  // --- 3. module graph per entry point
   const byRel = new Map(appFiles.map((sf) => [relOf(sf.fileName), sf]));
-  const edges = new Map(); // rel -> Set(rel)
+  const edges = new Map(); // rel -> [{to, kind}]
   for (const sf of appFiles) {
-    const from = relOf(sf.fileName);
-    const set = new Set();
-    for (const s of runtimeSpecs(sf)) {
+    const list = [];
+    for (const sp of runtimeSpecs(sf)) {
       let target = null;
-      if (s.relative) target = path.resolve(path.dirname(sf.fileName), s.spec);
-      else if (s.spec.startsWith('.') || s.spec.startsWith('@/')) {
-        const r = ts.resolveModuleName(s.spec, sf.fileName, options, ts.sys).resolvedModule;
-        target = r?.resolvedFileName ?? null;
-      }
-      if (target) {
-        const rel = relOf(target.replace(/\\/g, '/'));
-        if (byRel.has(rel)) set.add(rel);
-      }
+      if (sp.relative) target = path.resolve(path.dirname(sf.fileName), sp.spec);
+      else if (sp.spec.startsWith('.') || sp.spec.startsWith('@/')) target = ts.resolveModuleName(sp.spec, sf.fileName, options, ts.sys).resolvedModule?.resolvedFileName ?? null;
+      if (target && byRel.has(relOf(target))) list.push({ to: relOf(target), kind: sp.kind });
     }
-    edges.set(from, set);
+    edges.set(relOf(sf.fileName), list);
   }
-  const entries = ['src/main.ts', 'src/sim/worker.ts'].filter((e) => byRel.has(e));
-  const reachable = new Set();
-  const stack = [...entries];
-  while (stack.length) {
-    const m = stack.pop();
-    if (reachable.has(m)) continue;
-    reachable.add(m);
-    for (const n of edges.get(m) ?? []) stack.push(n);
-  }
+  const reach = (entry, skipKinds) => {
+    const seen = new Set();
+    const stack = byRel.has(entry) ? [entry] : [];
+    while (stack.length) {
+      const m = stack.pop();
+      if (seen.has(m)) continue;
+      seen.add(m);
+      for (const e of edges.get(m) ?? []) if (!skipKinds.includes(e.kind)) stack.push(e.to);
+    }
+    return seen;
+  };
+  // The worker URL is not an import: the worker is its own bundle with its own entry.
+  const reachMain = reach('src/main.ts', ['url']);
+  const reachWorker = reach('src/sim/worker.ts', ['url']);
+  const reachable = new Set([...reachMain, ...reachWorker]);
   const bundledSet = new Set(bundled.keys());
   const notReachableButBundled = [...bundledSet].filter((m) => !reachable.has(m));
   const sizeOf = (rel) => fs.statSync(path.join(root, rel)).size;
@@ -1252,60 +1272,58 @@ async function cmdDead(build, rootArg, opts = {}) {
   }
   out.push('### Modules: reachability from `src/main.ts` and `src/sim/worker.ts`\n');
   out.push(
-    `${appFiles.length} files under src/ (the TypeScript program, tests included). Following run-time imports (static, \`import()\`, \`import.meta.glob\`, \`new URL(...)\`; \`import type\` is not followed) from the two entry points reaches ${reachable.size}. ${bundledSet.size} of those have code in the build. Modules in the build that the graph did not reach: ${notReachableButBundled.length}${notReachableButBundled.length ? ' (' + notReachableButBundled.join(', ') + ')' : ' (the graph is complete)'}.\n`,
+    `${appFiles.length} files under src/ (the TypeScript program, tests included). Following run-time imports (static, \`import()\`, \`import.meta.glob\`; \`import type\` is not followed) reaches ${reachMain.size} modules from \`src/main.ts\` and ${reachWorker.size} from \`src/sim/worker.ts\` (${reachable.size} together). ${bundledSet.size} of those have code in the build. Modules in the build that the graph did not reach: ${notReachableButBundled.length}${notReachableButBundled.length ? ' (' + notReachableButBundled.join(', ') + ')' : ' (the graph is complete)'}.\n`,
   );
   out.push(mdTable(['Not reachable from the app', 'Files', 'Source kB', 'Examples'], [...unreachCats.entries()].map(([k, g]) => [k, g.n, kb(g.bytes), g.list.slice(0, 6).map((x) => '`' + x + '`').join(', ')]), 'lrrl'));
   const otherUnreach = (unreachCats.get('other')?.list ?? []).map((m) => [`\`${m}\``, kb(sizeOf(m), 1)]);
   out.push('\nFiles under `src/` that are not tests, not dev pages and not reachable from the entry points (they cost nothing in the bundle):\n');
   out.push(mdTable(['File', 'Source kB'], otherUnreach, 'lr'));
+  const testInBundle = [...bundledSet].filter((m) => isTestPath(m) || isDevPath(m));
+  out.push(`\nTest helpers and dev pages that have code in the build: ${testInBundle.length}${testInBundle.length ? ' (' + testInBundle.join(', ') + ')' : ''}.\n`);
   const reachNoBytes = [...reachable].filter((m) => !bundledSet.has(m) && !isTestPath(m));
   const withCode = [];
   for (const m of reachNoBytes) {
     const { units } = declUnits(fs.readFileSync(path.join(root, m), 'utf8'), m);
     if (units.length) withCode.push([m, units.length, sizeOf(m)]);
   }
-  out.push(`\nReachable modules with run-time declarations but no bytes in any chunk (the bundler dropped everything: nothing in them is used): ${withCode.length}.\n`);
+  out.push(`Reachable modules with run-time declarations but no bytes in any chunk (the bundler dropped everything in them): ${withCode.length}. They can still pull their imports into a bundle through top-level statements that the bundler must keep (see the worker section below).\n`);
   if (withCode.length) out.push(mdTable(['Module', 'Declarations', 'Source kB'], withCode.sort((a, b) => b[2] - a[2]).map((r) => ['`' + r[0] + '`', r[1], kb(r[2])]), 'lrr'));
 
-  // --- 4. units of the bundled modules, with their bytes
+  // --- 4. units of the bundled modules, with their bytes in the main-thread chunks and in the worker
   const unitsOf = new Map(); // rel -> {units, sf}
   const unitList = [];
+  const GROUPS = ['main', 'worker'];
   for (const [rel, list] of bundled) {
-    const text = fs.readFileSync(path.join(root, rel), 'utf8');
-    const { units } = declUnits(text, rel);
+    const { units } = declUnits(fs.readFileSync(path.join(root, rel), 'utf8'), rel);
     const kept = units.filter((u) => u.kind !== 'prop' && u.kind !== 'ctor');
     for (const u of kept) {
       u.rel = rel;
       u.id = unitList.length;
-      u.raw = 0;
-      u.gz = 0;
+      u.cost = { main: { raw: 0, gz: 0 }, worker: { raw: 0, gz: 0 } };
       u.byChunk = {};
       for (const { chunk, idx } of list) {
         const r = rangeCost(chunk, idx, u.start, u.end);
-        u.raw += r.raw;
-        u.gz += r.gz;
+        const g = chunk.isWorker ? 'worker' : 'main';
+        u.cost[g].raw += r.raw;
+        u.cost[g].gz += r.gz;
         if (r.raw) u.byChunk[chunk.id] = (u.byChunk[chunk.id] ?? 0) + r.gz;
       }
       unitList.push(u);
     }
     unitsOf.set(rel, { units: kept, sf: byRel.get(rel) });
   }
-  // Own bytes: a class's bytes minus its members'.
-  for (const [rel, { units }] of unitsOf) {
+  for (const { units } of unitsOf.values()) {
     for (const u of units) {
-      if (u.kind !== 'class') continue;
-      let mr = 0;
-      let mg = 0;
-      for (const m of units) if (m.parent === u.name && m !== u && m.kind !== 'class') {
-        mr += m.raw;
-        mg += m.gz;
+      u.own = { main: { ...u.cost.main }, worker: { ...u.cost.worker } };
+      if (u.kind === 'class') {
+        for (const m of units) {
+          if (m.parent !== u.name || m.kind === 'class') continue;
+          for (const g of GROUPS) {
+            u.own[g].raw = Math.max(0, u.own[g].raw - m.cost[g].raw);
+            u.own[g].gz = Math.max(0, u.own[g].gz - m.cost[g].gz);
+          }
+        }
       }
-      u.ownRaw = Math.max(0, u.raw - mr);
-      u.ownGz = Math.max(0, u.gz - mg);
-    }
-    for (const u of units) if (u.ownRaw === undefined) {
-      u.ownRaw = u.raw;
-      u.ownGz = u.gz;
     }
   }
   const innermost = (rel, pos) => {
@@ -1318,86 +1336,69 @@ async function cmdDead(build, rootArg, opts = {}) {
   const unitContaining = (rel, start) => (unitsOf.get(rel)?.units ?? []).find((u) => u.start <= start && start < u.end && u.nameStart === start) ?? null;
 
   // --- 5. references (value uses only) from the language service
-  const refsTo = new Map(); // target id -> Set of source ids (-1 = module top level)
+  const refSources = new Map(); // target id -> Set of source unit ids
+  const rootFiles = new Map(); // target id -> Set of files whose top-level code references it
   const refCount = new Map();
   const queryUnits = unitList.filter((u) => !(u.kind === 'field' && !u.hasBody) && !u.isAbstract);
   let done = 0;
   const t1 = Date.now();
-  const mention = new Map();
   for (const u of queryUnits) {
     const file = path.join(root, u.rel);
     const res = (u.nameStarts ?? [u.nameStart]).flatMap((pos) => ls.findReferences(file, pos) ?? []);
     const set = new Set();
+    const files = new Set();
     let nRefs = 0;
     for (const g of res) {
       for (const r of g.references) {
         if (r.isDefinition) continue;
-        const rf = relOf(r.fileName.replace(/\\/g, '/'));
+        const rf = relOf(r.fileName);
         if (!unitsOf.has(rf)) continue; // tests, dev pages, modules without code in the build
-        const sf = unitsOf.get(rf).sf;
-        const node = nodeAt(sf, r.textSpan.start);
+        const node = nodeAt(unitsOf.get(rf).sf, r.textSpan.start);
+        // A reference sits on an identifier (or a string key). Anything else is a {@link} inside a comment.
+        if (!(ts.isIdentifier(node) || ts.isPrivateIdentifier(node) || ts.isStringLiteralLike(node))) continue;
         if (!isValueUse(node)) continue;
         const enc = innermost(rf, r.textSpan.start);
         if (enc && rf === u.rel && enc.start >= u.start && enc.end <= u.end) continue; // inside itself
         if (enc && rf === u.rel && u.kind === 'class' && enc.parent === u.name) continue;
-        set.add(enc ? enc.id : -1);
+        if (enc) set.add(enc.id);
+        else files.add(rf);
         nRefs++;
       }
     }
-    refsTo.set(u.id, set);
+    refSources.set(u.id, set);
+    rootFiles.set(u.id, files);
     refCount.set(u.id, nRefs);
-    if (++done % 500 === 0) log(`${done}/${queryUnits.length} units queried (${((Date.now() - t1) / 1000).toFixed(0)} s)`);
+    if (++done % 1000 === 0) log(`${done}/${queryUnits.length} units queried (${((Date.now() - t1) / 1000).toFixed(0)} s)`);
   }
   log(`references: ${queryUnits.length} units in ${((Date.now() - t1) / 1000).toFixed(0)} s`);
 
-  // --- 6. liveness
-  const outEdges = new Map(); // source id -> Set(target ids)
-  const rootLive = new Set();
-  for (const [t, srcs] of refsTo) {
-    for (const s of srcs) {
-      if (s === -1) rootLive.add(t);
-      else {
-        if (!outEdges.has(s)) outEdges.set(s, new Set());
-        outEdges.get(s).add(t);
-      }
+  // --- 6. liveness, once for the main-thread bundle and once for the worker bundle
+  const outEdges = new Map(); // source unit id -> Set(target ids)
+  for (const [t, srcs] of refSources) {
+    for (const sId of srcs) {
+      if (!outEdges.has(sId)) outEdges.set(sId, new Set());
+      outEdges.get(sId).add(t);
     }
   }
-  const live = new Set(rootLive);
-  const reason = new Map();
-  for (const t of rootLive) reason.set(t, 'referenced from module top-level code');
-  // Exports of the modules loaded through import.meta.glob are used through interface types the checker does not link.
-  for (const idxRel of ['src/sim/index.ts', 'src/render/index.ts', 'src/scenario/index.ts']) {
-    const sf = byRel.get(idxRel);
-    const sym = sf && checker.getSymbolAtLocation(sf);
-    if (!sym) continue;
-    for (const e of checker.getExportsOfModule(sym)) {
-      const target = e.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(e) : e;
-      for (const d of target.declarations ?? []) {
-        const rf = relOf(d.getSourceFile().fileName.replace(/\\/g, '/'));
-        const nm = d.name ? d.name.getStart(d.getSourceFile()) : d.getStart(d.getSourceFile());
-        const u = unitContaining(rf, nm);
-        if (u && !live.has(u.id)) {
-          live.add(u.id);
-          reason.set(u.id, `exported through ${idxRel} (loaded by import.meta.glob in src/ui/modules.ts)`);
-        }
-      }
+  const classOf = new Map(); // "rel|ClassName" -> class unit
+  const membersOf = new Map();
+  for (const u of unitList) {
+    if (u.kind === 'class') classOf.set(u.rel + '|' + u.name, u);
+    if (u.parent) {
+      const k = u.rel + '|' + u.parent;
+      if (!membersOf.has(k)) membersOf.set(k, []);
+      membersOf.get(k).push(u);
     }
   }
-  // Members that override something an external library declares, protocol names, and fields' initialisers.
-  const classNode = (rel, u) => {
-    const sf = unitsOf.get(rel).sf;
-    let found = null;
-    ts.forEachChild(sf, (n) => {
-      if (ts.isClassDeclaration(n) && n.getStart(sf) === u.start) found = n;
-    });
-    return found;
-  };
+  // Members that override something a library declares (three.js calls them), by the type checker.
   const externalOverride = new Set();
-  for (const [rel, { units }] of unitsOf) {
+  for (const [rel, { units, sf }] of unitsOf) {
     for (const cu of units.filter((x) => x.kind === 'class')) {
-      const node = classNode(rel, cu);
+      let node = null;
+      ts.forEachChild(sf, (n) => {
+        if (ts.isClassDeclaration(n) && n.getStart(sf) === cu.start) node = n;
+      });
       if (!node) continue;
-      const type = checker.getTypeAtLocation(node);
       const bases = [];
       const walkBases = (t, depth = 0) => {
         if (depth > 6) return;
@@ -1407,148 +1408,397 @@ async function cmdDead(build, rootArg, opts = {}) {
         }
       };
       try {
-        walkBases(type);
+        walkBases(checker.getTypeAtLocation(node));
       } catch {
         /* a class whose base is unresolved */
       }
       for (const m of units.filter((x) => x.parent === cu.name)) {
         for (const b of bases) {
           const prop = b.getProperty?.(m.name);
-          if (prop?.declarations?.some((d) => !relOf(d.getSourceFile().fileName.replace(/\\/g, '/')).startsWith('src/'))) externalOverride.add(m.id);
+          if (prop?.declarations?.some((d) => !relOf(d.getSourceFile().fileName).startsWith('src/'))) externalOverride.add(m.id);
         }
       }
     }
   }
-  const classOf = new Map(); // "rel|ClassName" -> class unit
-  for (const [rel, { units }] of unitsOf) for (const u of units) if (u.kind === 'class') classOf.set(rel + '|' + u.name, u);
-  const alwaysLive = (u) => {
-    if (u.parent && (PROTOCOL_NAMES.has(u.name) || externalOverride.has(u.id))) return 'protocol name or overrides a library member';
-    if (u.isAbstract) return 'abstract';
+  const memberWhy = (m) => {
+    if (m.kind === 'field') return 'field of a live class (initialiser runs at construction)';
+    if (PROTOCOL_NAMES.has(m.name) || externalOverride.has(m.id)) return 'protocol name or overrides a library member';
+    if (m.isAbstract) return 'abstract';
     return null;
   };
-  const queue = [...live];
-  const markLive = (id, why) => {
-    if (live.has(id)) return;
-    live.add(id);
-    reason.set(id, why);
-    queue.push(id);
-  };
-  // When a class is live: its fields (initialisers run at construction), its protocol members and library overrides are live.
-  const membersOf = new Map();
-  for (const u of unitList) if (u.parent) {
-    const k = u.rel + '|' + u.parent;
-    if (!membersOf.has(k)) membersOf.set(k, []);
-    membersOf.get(k).push(u);
-  }
-  const reviveMembers = (cu) => {
-    for (const m of membersOf.get(cu.rel + '|' + cu.name) ?? []) {
-      const why = m.kind === 'field' ? 'field of a live class (initialiser runs at construction)' : alwaysLive(m);
-      if (why) markLive(m.id, why);
+  const GLOB_BARRELS = ['src/sim/index.ts', 'src/render/index.ts', 'src/scenario/index.ts'];
+  const globRootIds = new Map(); // unit id -> barrel
+  for (const idxRel of GLOB_BARRELS) {
+    const sf = byRel.get(idxRel);
+    const sym = sf && checker.getSymbolAtLocation(sf);
+    if (!sym) continue;
+    for (const e of checker.getExportsOfModule(sym)) {
+      const target = e.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(e) : e;
+      for (const d of target.declarations ?? []) {
+        const df = d.getSourceFile();
+        const u = unitContaining(relOf(df.fileName), d.name ? d.name.getStart(df) : d.getStart(df));
+        if (u) globRootIds.set(u.id, idxRel);
+      }
     }
-  };
-  for (const id of [...live]) if (unitList[id].kind === 'class') reviveMembers(unitList[id]);
-  // Members whose class is also referenced only count once the class is live; seeds first, then propagate.
-  while (queue.length) {
-    const id = queue.pop();
-    const u = unitList[id];
-    if (u.kind === 'class') reviveMembers(u);
-    // a live member keeps its class
-    if (u.parent) {
-      const cu = classOf.get(u.rel + '|' + u.parent);
-      if (cu) markLive(cu.id, `contains the live member ${u.name}`);
+  }
+  const computeLive = (reachSet, withGlobRoots) => {
+    const live = new Set();
+    const reason = new Map();
+    const queue = [];
+    const mark = (id, why) => {
+      if (live.has(id)) return;
+      live.add(id);
+      reason.set(id, why);
+      queue.push(id);
+    };
+    for (const [t, files] of rootFiles) if ([...files].some((f) => reachSet.has(f))) mark(t, 'referenced from module top-level code');
+    if (withGlobRoots) for (const [id, idxRel] of globRootIds) mark(id, `exported through ${idxRel} (loaded by import.meta.glob in src/ui/modules.ts)`);
+    while (queue.length) {
+      const id = queue.pop();
+      const u = unitList[id];
+      if (u.kind === 'class') for (const m of membersOf.get(u.rel + '|' + u.name) ?? []) if (memberWhy(m)) mark(m.id, memberWhy(m));
+      if (u.parent) {
+        const cu = classOf.get(u.rel + '|' + u.parent);
+        if (cu) mark(cu.id, `contains the live member ${u.name}`);
+      }
+      for (const t of outEdges.get(id) ?? []) mark(t, `used by ${u.parent ? u.parent + '.' : ''}${u.name} (${u.rel})`);
     }
-    for (const t of outEdges.get(id) ?? []) markLive(t, `used by ${u.parent ? u.parent + '.' : ''}${u.name} (${u.rel})`);
-  }
-  // Fields keep their class's other state; nothing else to do.
-  const dead = unitList.filter((u) => !live.has(u.id) && u.kind !== 'field' && (u.raw > 0));
-  const deadFields = unitList.filter((u) => !live.has(u.id) && u.kind === 'field' && u.raw > 0);
-  const deadSet = new Set(dead.map((u) => u.id));
-  // Why dead: referenced by nothing, or only by other dead units.
-  const referrers = new Map();
-  for (const [s, ts_] of outEdges) for (const t of ts_) {
-    if (!referrers.has(t)) referrers.set(t, []);
-    referrers.get(t).push(s);
-  }
-  const whyDead = (u) => {
-    const rs = (referrers.get(u.id) ?? []).filter((r) => deadSet.has(r));
-    const n = refCount.get(u.id) ?? 0;
-    if (!n) return 'no reference in the bundled code';
-    return rs.length ? 'only used by dead code: ' + rs.slice(0, 2).map((r) => `${unitList[r].parent ? unitList[r].parent + '.' : ''}${unitList[r].name}`).join(', ') : 'used only from code that is not in the build';
+    return { live, reason };
   };
+  const analyses = { main: computeLive(reachMain, true), worker: computeLive(reachWorker, false) };
   // --- 7. report
-  const sum = (arr, f) => arr.reduce((a, u) => a + f(u), 0);
-  const label = (u) => (u.parent ? `${u.parent}.${u.name}` : u.name);
-  out.push('\n### Symbols in the build with no live reference\n');
-  out.push(
-    `Method: the TypeScript language service lists every reference to each of the ${unitList.length} top-level declarations and class members (functions, classes, variables, enums, methods, accessors, fields) of the ${bundled.size} modules in the build. A reference counts when it is a run-time use (not an import, an export list, a type position or \`implements\`) inside code that is itself live. Roots: module top-level statements, the exports behind the three \`import.meta.glob\` modules, constructors and fields of live classes, protocol names (${[...PROTOCOL_NAMES].slice(0, 4).join(', ')}, ...) and members that override a library class. Everything else not reached is dead. Bytes are the generated code whose source map points inside the declaration (summed over every chunk that contains it).\n`,
-  );
-  const totalDeadRaw = sum(dead, (u) => u.ownRaw);
-  const totalDeadGz = sum(dead, (u) => u.ownGz);
-  out.push(`Dead declarations with code in the build: ${dead.length}, own bytes raw ${kb(totalDeadRaw)} kB, gzip ${kb(totalDeadGz, 2)} kB (class bodies count without their members). Fields never read: ${deadFields.length} (raw ${kb(sum(deadFields, (u) => u.raw), 2)} kB).\n`);
-  const byKind = new Map();
-  for (const u of dead) {
-    const g = byKind.get(u.kind) ?? { n: 0, raw: 0, gz: 0 };
-    g.n++;
-    g.raw += u.ownRaw;
-    g.gz += u.ownGz;
-    byKind.set(u.kind, g);
+  const deadAll = [];
+  for (const g of GROUPS) {
+    for (const u of unitList) {
+      if (u.kind === 'field') continue;
+      if (analyses[g].live.has(u.id) || u.own[g].raw <= 0) continue;
+      deadAll.push({ scope: g, u, raw: u.own[g].raw, gz: u.own[g].gz });
+    }
   }
-  out.push(mdTable(['Kind', 'Count', 'Raw kB', 'gzip kB'], [...byKind.entries()].sort((a, b) => b[1].gz - a[1].gz).map(([k, g]) => [k, g.n, kb(g.raw, 2), kb(g.gz, 2)]), 'lrrr'));
-  const byMod = new Map();
-  for (const u of dead) {
-    const g = byMod.get(u.rel) ?? { n: 0, raw: 0, gz: 0 };
+  const deadIds = { main: new Set(deadAll.filter((d) => d.scope === 'main').map((d) => d.u.id)), worker: new Set(deadAll.filter((d) => d.scope === 'worker').map((d) => d.u.id)) };
+  const referrers = new Map();
+  for (const [sId, ts_] of outEdges) for (const t of ts_) {
+    if (!referrers.has(t)) referrers.set(t, []);
+    referrers.get(t).push(sId);
+  }
+  const label = (u) => (u.parent ? `${u.parent}.${u.name}` : u.name);
+  const whyDead = (d) => {
+    const rs = (referrers.get(d.u.id) ?? []).filter((r) => deadIds[d.scope].has(r));
+    if (rs.length) return 'only used by dead code: ' + rs.slice(0, 2).map((r) => label(unitList[r])).join(', ');
+    return (refCount.get(d.u.id) ?? 0) ? 'used only from code that is not in this bundle' : 'no reference in the bundled code';
+  };
+  const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
+  out.push('\n### Symbols in the build that nothing live reaches\n');
+  out.push(
+    `Method: the TypeScript language service lists every reference to each of the ${unitList.length} top-level declarations and class members (functions, classes, variables, enums, methods, accessors, fields) of the ${bundled.size} modules in the build. A reference counts when it is a run-time use (not an import, an export list, a type position or \`implements\`) inside code that is itself live. Roots: module top-level statements of the modules each bundle loads; for the main-thread bundle also the exports behind the three \`import.meta.glob\` modules; constructors and fields of live classes; protocol names (${[...PROTOCOL_NAMES].slice(0, 4).join(', ')}, ...) and members that override a library class. Everything else is dead. It is done twice, once for the main-thread chunks (entry \`src/main.ts\`) and once for the worker (entry \`src/sim/worker.ts\`), because a module bundled into both is live in one and may be dead in the other. Bytes are the generated code whose source map points inside the declaration, in the chunks of that bundle.\n`,
+  );
+  const scopeRows = GROUPS.map((g) => {
+    const d = deadAll.filter((x) => x.scope === g);
+    return [g === 'main' ? 'main-thread chunks' : 'worker', d.length, kb(sum(d, (x) => x.raw), 2), kb(sum(d, (x) => x.gz), 2)];
+  });
+  out.push(mdTable(['Bundle', 'Dead declarations with code', 'Raw kB', 'gzip kB'], scopeRows, 'lrrr'));
+  out.push(`\nTotal: ${deadAll.length} declarations, raw ${kb(sum(deadAll, (x) => x.raw), 2)} kB, gzip ${kb(sum(deadAll, (x) => x.gz), 2)} kB (class bodies count without their members).\n`);
+  const byKind = new Map();
+  for (const d of deadAll) {
+    const k = `${d.scope === 'main' ? 'main' : 'worker'}: ${d.u.kind}`;
+    const g = byKind.get(k) ?? { n: 0, raw: 0, gz: 0 };
     g.n++;
-    g.raw += u.ownRaw;
-    g.gz += u.ownGz;
-    byMod.set(u.rel, g);
+    g.raw += d.raw;
+    g.gz += d.gz;
+    byKind.set(k, g);
+  }
+  out.push(mdTable(['Bundle: kind', 'Count', 'Raw kB', 'gzip kB'], [...byKind.entries()].sort((a, b) => b[1].gz - a[1].gz).map(([k, g]) => [k, g.n, kb(g.raw, 2), kb(g.gz, 2)]), 'lrrr'));
+  const byMod = new Map();
+  for (const d of deadAll) {
+    const k = `${d.u.rel} (${d.scope})`;
+    const g = byMod.get(k) ?? { n: 0, raw: 0, gz: 0 };
+    g.n++;
+    g.raw += d.raw;
+    g.gz += d.gz;
+    byMod.set(k, g);
   }
   out.push('\nBy module (top 15 by gzip):\n');
-  out.push(mdTable(['Module', 'Dead declarations', 'Raw kB', 'gzip kB'], [...byMod.entries()].sort((a, b) => b[1].gz - a[1].gz).slice(0, 15).map(([m, g]) => ['`' + m + '`', g.n, kb(g.raw, 2), kb(g.gz, 2)]), 'lrrr'));
+  out.push(mdTable(['Module (bundle)', 'Dead declarations', 'Raw kB', 'gzip kB'], [...byMod.entries()].sort((a, b) => b[1].gz - a[1].gz).slice(0, 15).map(([m, g]) => ['`' + m + '`', g.n, kb(g.raw, 2), kb(g.gz, 2)]), 'lrrr'));
+  // Where else the name appears: unit tests, e2e specs, scripts (a rough, text-based count, so generic names over-count).
+  const walkFiles = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' ? [] : e.isDirectory() ? walkFiles(path.join(d, e.name)) : [path.join(d, e.name)])) : []);
+  const testTexts = [
+    ...appFiles.map((sf) => relOf(sf.fileName)).filter((r) => isTestPath(r) || isDevPath(r)).map((r) => ({ r, t: fs.readFileSync(path.join(root, r), 'utf8') })),
+    ...['e2e', 'tests', 'scripts'].flatMap((d) => walkFiles(path.join(root, d)).filter((f) => /\.(ts|mjs)$/.test(f)).map((f) => ({ r: relOf(f), t: fs.readFileSync(f, 'utf8') }))),
+  ];
+  const mentions = (name) => {
+    if (name.length < 5) return '?';
+    const re = new RegExp('\\b' + name.replace(/[^\w$]/g, '') + '\\b');
+    const hit = testTexts.filter((x) => re.test(x.t));
+    const e2e = hit.filter((x) => x.r.startsWith('e2e/')).length;
+    return `${hit.length - e2e} test/dev files, ${e2e} e2e`;
+  };
+  for (const d of deadAll) d.mentions = mentions(d.u.name);
   out.push('\nThe 40 biggest (own gzip bytes):\n');
   out.push(
     mdTable(
-      ['Declaration', 'Module', 'Kind', 'Raw kB', 'gzip kB', 'Chunks', 'Why dead'],
-      dead
+      ['Declaration', 'Module', 'Kind', 'Bundle', 'Raw kB', 'gzip kB', 'Why dead', 'Named in'],
+      deadAll
         .slice()
-        .sort((a, b) => b.ownGz - a.ownGz)
+        .sort((a, b) => b.gz - a.gz)
         .slice(0, 40)
-        .map((u) => [label(u), '`' + u.rel + '`', u.kind, kb(u.ownRaw, 2), kb(u.ownGz, 2), Object.keys(u.byChunk).join(', '), whyDead(u)]),
-      'llcrrll',
+        .map((d) => [label(d.u), '`' + d.u.rel + '`', d.u.kind, d.scope, kb(d.raw, 2), kb(d.gz, 2), whyDead(d), d.mentions]),
+      'llccrrll',
     ),
   );
-  return { text: out.join('\n'), dead, deadFields, unitList, reachable, unreachable, bundled, refCount };
+  const dead = deadAll.map((d) => ({ ...d.u, ownRaw: d.raw, ownGz: d.gz, scope: d.scope, mentions: d.mentions }));
+  return { text: out.join('\n'), dead, deadAll, unitList, analyses, reachMain, reachWorker, reachable, unreachable, bundled, refCount };
+}
+
+/** V8 compile (parse and lazy compile, no run) time of the chunks in each load phase, on this machine. Needs --experimental-vm-modules. */
+function cmdCompile(build) {
+  const vm = require('node:vm');
+  if (typeof vm.SourceTextModule !== 'function') return { text: 'Run it as: node --experimental-vm-modules attribute.mjs compile --dist <dist-with-maps>' };
+  const g = chunkGraph(build);
+  const median = (c) => {
+    const xs = [];
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now();
+      new vm.SourceTextModule(c.text, { identifier: c.name });
+      xs.push(performance.now() - t0);
+    }
+    return xs.sort((a, b) => a - b)[2];
+  };
+  median(build.chunks[0]); // warm up the compiler
+  const ms = new Map(build.chunks.map((c) => [c.name, median(c)]));
+  const sumOf = (set) => [...set].reduce((a, n) => a + (ms.get(n) ?? 0), 0);
+  const p1 = g.entryStatic;
+  const p2 = new Set([...g.bootSet].filter((n) => !p1.has(n)));
+  const p3 = new Set(build.chunks.filter((c) => c.isWorker).map((c) => c.name));
+  const p4 = new Set(build.chunks.map((c) => c.name).filter((n) => !p1.has(n) && !p2.has(n) && !p3.has(n)));
+  const rows = [['1. entry and its static imports', p1], ['2. requested at start-up', p2], ['3. worker', p3], ['4. on demand', p4]].map(([l, set]) => [l, set.size, sumOf(set).toFixed(0)]);
+  return {
+    text: [mdTable(['Phase', 'Files', 'V8 compile, ms (median of 5)'], rows, 'lrr'), '', `Phases 1 and 2 together (main thread at start-up): ${(sumOf(p1) + sumOf(p2)).toFixed(0)} ms. This machine, Node ${process.version}; a phone is slower [guess: 3 to 6 times].`].join('\n'),
+  };
+}
+
+/** The JS of two builds is the same, apart from the `//# sourceMappingURL=` line that a build with maps adds. */
+function cmdCompare(distA, distB) {
+  const strip = (t) => t.replace(/\n?\/\/# sourceMappingURL=[^\n]*\s*$/, '');
+  const dirA = path.join(path.resolve(distA), 'assets');
+  const dirB = path.join(path.resolve(distB), 'assets');
+  const a = fs.readdirSync(dirA).filter((f) => /\.(js|css)$/.test(f)).sort();
+  const b = fs.readdirSync(dirB).filter((f) => /\.(js|css)$/.test(f)).sort();
+  const lines = [];
+  const sameNames = JSON.stringify(a) === JSON.stringify(b);
+  let same = 0;
+  let withComment = 0;
+  for (const f of a) {
+    if (!b.includes(f)) continue;
+    const ta = fs.readFileSync(path.join(dirA, f), 'utf8');
+    const tb = fs.readFileSync(path.join(dirB, f), 'utf8');
+    if (strip(tb) !== tb) withComment++;
+    if (strip(ta) === strip(tb)) same++;
+    else lines.push(`DIFFERENT: ${f}`);
+  }
+  lines.push(`${a.length} JS and CSS files in ${distA}, ${b.length} in ${distB}; same file names (content hashes): ${sameNames}; identical after removing the sourceMappingURL line: ${same}; files with that line in the second build: ${withComment}.`);
+  const htmlSame = fs.readFileSync(path.join(path.resolve(distA), 'index.html'), 'utf8') === fs.readFileSync(path.join(path.resolve(distB), 'index.html'), 'utf8');
+  lines.push(`index.html identical: ${htmlSame}.`);
+  return { text: lines.join('\n') };
+}
+
+/** Cost of the source lines that match a pattern (a debug hook, a feature switch): `--file src/ui/app.ts --grep __firesim`. */
+function cmdRange(build, file, pattern) {
+  const re = new RegExp(pattern);
+  const out = [];
+  for (const c of build.chunks) {
+    const idx = c.sources.indexOf(file);
+    if (idx < 0 || !c.map) continue;
+    const text = c.map.sourcesContent[idx];
+    const ls = lineStartsOf(text);
+    const rows = [];
+    ls.forEach((start, i) => {
+      const end = ls[i + 1] ?? text.length;
+      const line = text.slice(start, end);
+      if (!re.test(line)) return;
+      const r = rangeCost(c, idx, start, end);
+      rows.push([i + 1, '`' + line.trim().slice(0, 110) + '`', kb(r.raw, 2), kb(r.gz, 2)]);
+    });
+    out.push(`#### ${file} in ${c.name}\n`);
+    out.push(mdTable(['Line', 'Source', 'Raw kB', 'gzip kB'], rows, 'llrr'));
+  }
+  return { text: out.join('\n') || 'No such source in the build.' };
+}
+
+/** Heuristic: CSS rules whose class names appear nowhere in the application source (dynamic class names give false hits). */
+function cmdCss(build, root) {
+  const dir = path.join(build.dist, 'assets');
+  const cssFile = fs.readdirSync(dir).find((f) => f.endsWith('.css'));
+  const css = fs.readFileSync(path.join(dir, cssFile), 'utf8');
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  const files = walk(path.join(root, 'src')).filter((f) => f.endsWith('.ts') && !isTestPath(path.relative(root, f).split(path.sep).join('/')));
+  const corpus = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n') + fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const blocks = (text) => {
+    const outB = [];
+    let i = 0;
+    while (i < text.length) {
+      let j = i;
+      let depth = 0;
+      while (j < text.length) {
+        const ch = text[j];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            j++;
+            break;
+          }
+        } else if (ch === ';' && depth === 0) {
+          j++;
+          break;
+        }
+        j++;
+      }
+      outB.push(text.slice(i, j));
+      i = j;
+    }
+    return outB;
+  };
+  const used = new Map();
+  const isUsed = (cls) => {
+    if (!used.has(cls)) used.set(cls, corpus.includes(cls));
+    return used.get(cls);
+  };
+  const dead = [];
+  let rules = 0;
+  const visit = (block, ctx) => {
+    const open = block.indexOf('{');
+    if (open < 0) return;
+    const head = block.slice(0, open);
+    const body = block.slice(open + 1, block.lastIndexOf('}'));
+    if (head.startsWith('@')) {
+      if (/^@(media|supports|container|layer)/.test(head)) for (const b of blocks(body)) visit(b, ctx + head + ' ');
+      return;
+    }
+    rules++;
+    const unusedIn = (sel) => [...sel.matchAll(/\.(-?[_a-zA-Z][_a-zA-Z0-9-]*)/g)].map((m) => m[1]).some((c) => !isUsed(c));
+    if (head.split(',').every(unusedIn)) dead.push({ ctx, head: head.slice(0, 80), bytes: block.length });
+  };
+  for (const b of blocks(css)) visit(b, '');
+  const total = dead.reduce((a, r) => a + r.bytes, 0);
+  const out = [`CSS file ${cssFile}: ${css.length} bytes, ${rules} style rules. Rules whose every selector names a class that appears in no application source file: ${dead.length}, ${total} bytes (${pct(total, css.length)}).`, ''];
+  out.push(mdTable(['Bytes', 'Rule'], dead.sort((a, b) => b.bytes - a.bytes).slice(0, 12).map((r) => [r.bytes, '`' + (r.ctx + r.head) + '`']), 'rl'));
+  return { text: out.join('\n'), dead, total, size: css.length };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------------------------------------------------
 
+function need(opts, name, what) {
+  if (!opts[name] || opts[name] === true) {
+    console.error(`--${name} ${what} is required`);
+    process.exit(2);
+  }
+  return opts[name];
+}
+
 async function main() {
   const { cmd, opts } = parseArgs(process.argv.slice(2));
-  if (!cmd || !['chunks', 'modules', 'blobs', 'cut', 'symbols', 'dead', 'all'].includes(cmd)) {
+  const COMMANDS = ['chunks', 'modules', 'blobs', 'cut', 'symbols', 'range', 'css', 'compare', 'compile', 'dead', 'all'];
+  if (!cmd || !COMMANDS.includes(cmd)) {
     console.error(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
     process.exit(cmd ? 2 : 0);
   }
-  const dist = opts.dist;
-  if (!dist) {
-    console.error('--dist <build folder> is required');
+  if (cmd === 'compare') {
+    console.log(cmdCompare(need(opts, 'dist', '<build folder>'), need(opts, 'other', '<second build folder>')).text);
+    return;
+  }
+  const distDir = need(opts, 'dist', '<build folder>');
+  if (!fs.existsSync(path.join(distDir, 'assets'))) {
+    console.error(`No ${path.join(distDir, 'assets')}: build first (see the top of this file)`);
     process.exit(2);
   }
-  const build = loadBuild(dist, { litMin: Number(opts.min ?? 600) });
-  if (cmd === 'chunks') console.log(cmdChunks(build).text);
-  else if (cmd === 'modules') console.log(cmdModules(build, Number(opts.top ?? 40)).text);
-  else if (cmd === 'blobs') console.log(cmdBlobs(build, Number(opts.min ?? 600)).text);
-  else if (cmd === 'dead') {
-    if (!opts.root) throw new Error('--root <a clean checkout or git-archive snapshot of the commit the build came from> is required');
-    const r = await cmdDead(build, opts.root, opts);
-    console.log(r.text);
-    if (opts.csv) fs.writeFileSync(opts.csv, csv(['declaration', 'module', 'kind', 'own_raw_bytes', 'own_gzip_bytes', 'chunks'], r.dead.map((u) => [(u.parent ? u.parent + '.' : '') + u.name, u.rel, u.kind, Math.round(u.ownRaw), Math.round(u.ownGz), Object.keys(u.byChunk).join(' ')])));
-  } else if (cmd === 'symbols') {
-    if (!opts.match) throw new Error('--match <regex on the module path> is required');
-    console.log(cmdSymbols(build, opts.match, Number(opts.minraw ?? 0)).text);
-  } else if (cmd === 'cut') {
-    if (!opts.match) throw new Error('--match <regex on the module path> is required');
-    console.log(cmdCut(build, opts.match, opts.chunk).text);
+  const build = loadBuild(distDir, { litMin: Number(opts.min ?? 600) });
+  const deadCsv = (r) =>
+    csv(
+      ['declaration', 'module', 'kind', 'bundle', 'own_raw_bytes', 'own_gzip_bytes', 'chunks', 'named_in'],
+      r.dead.map((u) => [(u.parent ? u.parent + '.' : '') + u.name, u.rel, u.kind, u.scope, Math.round(u.ownRaw), Math.round(u.ownGz), Object.keys(u.byChunk).join(' '), u.mentions]),
+    );
+  switch (cmd) {
+    case 'chunks':
+      console.log(cmdChunks(build).text);
+      break;
+    case 'modules':
+      console.log(cmdModules(build, Number(opts.top ?? 40)).text);
+      break;
+    case 'blobs':
+      console.log(cmdBlobs(build, Number(opts.min ?? 600)).text);
+      break;
+    case 'cut':
+      console.log(cmdCut(build, need(opts, 'match', '<regex on the module path>'), opts.chunk).text);
+      break;
+    case 'symbols':
+      console.log(cmdSymbols(build, need(opts, 'match', '<regex on the module path>'), Number(opts.minraw ?? 0)).text);
+      break;
+    case 'range':
+      console.log(cmdRange(build, need(opts, 'file', '<module path, e.g. src/ui/app.ts>'), need(opts, 'grep', '<regex on its lines>')).text);
+      break;
+    case 'css':
+      console.log(cmdCss(build, path.resolve(need(opts, 'root', '<repo or snapshot>'))).text);
+      break;
+    case 'compile':
+      console.log(cmdCompile(build).text);
+      break;
+    case 'dead': {
+      const r = await cmdDead(build, need(opts, 'root', '<a clean checkout or git-archive snapshot of the commit the build came from>'), opts);
+      console.log(r.text);
+      if (opts.csv && opts.csv !== true) fs.writeFileSync(opts.csv, deadCsv(r));
+      break;
+    }
+    case 'all': {
+      const out = path.resolve(need(opts, 'out', '<results folder>'));
+      fs.mkdirSync(out, { recursive: true });
+      const write = (name, text) => {
+        fs.writeFileSync(path.join(out, name), text.endsWith('\n') ? text : text + '\n');
+        console.error(`wrote ${path.join(out, name)}`);
+      };
+      const ch = cmdChunks(build);
+      write('chunks.md', ch.text);
+      const g = ch.graph;
+      write(
+        'chunks.csv',
+        csv(
+          ['chunk', 'raw_bytes', 'gzip9_bytes', 'brotli11_bytes', 'loaded', 'dynamic_import_sites', 'static_importers'],
+          build.chunks.map((c) => {
+            const i = g.info.get(c.name);
+            return [c.name, c.raw, c.gz, c.br, i.kind, [...new Set(i.importers.map((e) => e.site))].join(' ; '), i.staticImporters.join(' ')];
+          }),
+        ),
+      );
+      const m = cmdModules(build, Number(opts.top ?? 40));
+      write('attribution.md', m.text);
+      write(
+        'modules.csv',
+        csv(
+          ['chunk', 'module', 'group', 'raw_bytes', 'gzip_bytes', 'text_raw_bytes', 'text_gzip_bytes'],
+          m.rows.map((r) => [r.id, r.module, r.group, Math.round(r.raw), Math.round(r.gz), Math.round(r.textRaw), Math.round(r.textGz)]),
+        ),
+      );
+      const gg = new Map();
+      for (const r of m.rows) {
+        const k = r.group + '\u0000' + r.id;
+        const x = gg.get(k) ?? { group: r.group, chunk: r.id, raw: 0, gz: 0, n: 0 };
+        x.raw += r.raw;
+        x.gz += r.gz;
+        x.n++;
+        gg.set(k, x);
+      }
+      write('packages.csv', csv(['group', 'chunk', 'modules', 'raw_bytes', 'gzip_bytes'], [...gg.values()].sort((a, b) => b.gz - a.gz).map((x) => [x.group, x.chunk, x.n, Math.round(x.raw), Math.round(x.gz)])));
+      write('blobs.md', cmdBlobs(build, Number(opts.min ?? 600)).text);
+      if (opts.root && opts.root !== true) {
+        const root = path.resolve(opts.root);
+        const r = await cmdDead(build, root, opts);
+        write('dead-code.md', r.text);
+        write('dead-code.csv', deadCsv(r));
+        write('css.md', cmdCss(build, root).text);
+      } else console.error('(no --root: dead-code.md and css.md skipped)');
+      break;
+    }
   }
 }
 

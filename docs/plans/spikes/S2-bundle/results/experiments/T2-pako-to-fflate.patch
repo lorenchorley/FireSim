@@ -1,0 +1,15 @@
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -14,9 +14,12 @@
+     enforce: 'pre',
+     resolveId(source, importer) {
+       if (importer && /geotiff[\\/]dist-module[\\/]compression[\\/]index\.js$/.test(importer) && /^\.\/(lerc|zstd|jpeg|webimage)\.js$/.test(source)) return STUB;
++      // geotiff inflates with pako; fast-png already ships fflate, which does the same job in 2 kB.
++      if (importer && /geotiff[\\/]dist-module[\\/]/.test(importer) && source === 'pako') return '\0firesim-pako-via-fflate';
+       return null;
+     },
+     load(id) {
++      if (id === '\0firesim-pako-via-fflate') return "import { decompressSync } from 'fflate';\nexport const inflate = (data) => decompressSync(data).slice();\n";
+       if (id !== STUB) return null;
+       return "export const zstd = { init: async () => { throw new Error('This build has no decoder for this TIFF compression'); } };\nexport default class UnsupportedTiffDecoder { constructor() { throw new Error('This build has no decoder for this TIFF compression'); } }\n";
+     },

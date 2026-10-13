@@ -1,0 +1,13 @@
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -21,8 +21,8 @@
+   server: { host: true, port: 5173, proxy },
+   preview: { port: 4173, proxy },
+   // The simulation worker (src/sim/worker.ts) is an ES module worker, bundled with its own chunk.
+-  worker: { format: 'es' as const },
+-  build: { target: 'es2022', sourcemap: mode !== 'capacitor', chunkSizeWarningLimit: 2000 },
++  worker: { format: 'es' as const, rolldownOptions: { treeshake: { manualPureFunctions: ['Object.freeze'] } } },
++  build: { target: 'es2022', sourcemap: mode !== 'capacitor', chunkSizeWarningLimit: 2000, rolldownOptions: { treeshake: { manualPureFunctions: ['Object.freeze'] } } },
+   test: {
+     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+     environment: 'node',

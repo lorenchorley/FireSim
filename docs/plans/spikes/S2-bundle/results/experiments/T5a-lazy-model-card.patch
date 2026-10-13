@@ -1,0 +1,20 @@
+--- a/src/ui/app.ts
++++ b/src/ui/app.ts
+@@ -21,7 +21,6 @@
+ import { settingsStore } from './settings';
+ import { createBuildingScreen, type BuildingScreen } from './screens/building';
+ import { createDatasetsScreen } from './screens/datasets';
+-import { createModelCardScreen } from './screens/modelCard';
+ import { noticeAccepted, showNotice } from './screens/notice';
+ import { createSettingsScreen } from './screens/settings';
+ import { createSetupScreen, type SetupScreen } from './screens/setup';
+@@ -233,7 +232,8 @@
+   }
+ 
+   /** "How this simulation works": from the running scenario, or a preview of the Setup's current choice. */
+-  openModelCard(): void {
++  async openModelCard(): Promise<void> {
++    const { createModelCardScreen } = await import('./screens/modelCard');
+     const existing = this.overlays.find((o) => o.id === 'model-card');
+     if (existing) this.closeOverlay(existing);
+     let ov: Overlay | undefined;
