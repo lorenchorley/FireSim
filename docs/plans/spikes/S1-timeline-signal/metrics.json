@@ -1,0 +1,1162 @@
+[
+{
+"name": "portrait-light-none-ok",
+"look": "light",
+"vp": "portrait",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t1-behind",
+"look": "light",
+"vp": "portrait",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t1-waiting",
+"look": "light",
+"vp": "portrait",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t2-behind",
+"look": "light",
+"vp": "portrait",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t2-waiting",
+"look": "light",
+"vp": "portrait",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t3-behind",
+"look": "light",
+"vp": "portrait",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-t3-waiting",
+"look": "light",
+"vp": "portrait",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-none-ok",
+"look": "light",
+"vp": "landscape",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t1-behind",
+"look": "light",
+"vp": "landscape",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t1-waiting",
+"look": "light",
+"vp": "landscape",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t2-behind",
+"look": "light",
+"vp": "landscape",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t2-waiting",
+"look": "light",
+"vp": "landscape",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t3-behind",
+"look": "light",
+"vp": "landscape",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-t3-waiting",
+"look": "light",
+"vp": "landscape",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-none-ok",
+"look": "dark",
+"vp": "portrait",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t1-behind",
+"look": "dark",
+"vp": "portrait",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t1-waiting",
+"look": "dark",
+"vp": "portrait",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t2-behind",
+"look": "dark",
+"vp": "portrait",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t2-waiting",
+"look": "dark",
+"vp": "portrait",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t3-behind",
+"look": "dark",
+"vp": "portrait",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-t3-waiting",
+"look": "dark",
+"vp": "portrait",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+222.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-none-ok",
+"look": "dark",
+"vp": "landscape",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t1-behind",
+"look": "dark",
+"vp": "landscape",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t1-waiting",
+"look": "dark",
+"vp": "landscape",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t2-behind",
+"look": "dark",
+"vp": "landscape",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t2-waiting",
+"look": "dark",
+"vp": "landscape",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+75.8,
+16
+],
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t3-behind",
+"look": "dark",
+"vp": "landscape",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-t3-waiting",
+"look": "dark",
+"vp": "landscape",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+206.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-none-ok",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t1-behind",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t1-waiting",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t2-behind",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t2-waiting",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t3-behind",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-light-hc-t3-waiting",
+"look": "light-hc",
+"vp": "portrait",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-none-ok",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t1-behind",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t1-waiting",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t2-behind",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t2-waiting",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t3-behind",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-light-hc-t3-waiting",
+"look": "light-hc",
+"vp": "landscape",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-none-ok",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t1-behind",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t1-waiting",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 240,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t2-behind",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t2-waiting",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": true,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t3-behind",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "portrait-dark-hc-t3-waiting",
+"look": "dark-hc",
+"vp": "portrait",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 851,
+"trackW": 284,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 4,
+"clockButton": [
+212.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-none-ok",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "none",
+"level": "ok",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t1-behind",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t1",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t1-waiting",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t1",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 672,
+"button": [
+44,
+44
+],
+"badge": null,
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t2-behind",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t2",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t2-waiting",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t2",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": [
+85,
+16
+],
+"underRailLine": true,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t3-behind",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t3",
+"level": "behind",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+},
+{
+"name": "landscape-dark-hc-t3-waiting",
+"look": "dark-hc",
+"vp": "landscape",
+"variant": "t3",
+"level": "waiting",
+"stripH": 64,
+"stripTop": 326,
+"trackW": 716,
+"button": null,
+"badge": null,
+"underRailLine": false,
+"labels": 7,
+"clockButton": [
+196.5,
+44
+],
+"errors": []
+}
+]

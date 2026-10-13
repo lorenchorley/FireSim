@@ -1,0 +1,331 @@
+diff --git a/src/styles/transport.css b/src/styles/transport.css
+index 3d279f9..9ddce1f 100644
+--- a/src/styles/transport.css
++++ b/src/styles/transport.css
+@@ -991,3 +991,55 @@ legend.tp-label {
+     outline: 1px solid CanvasText;
+   }
+ }
++
++/* ───────────────────────────── spike S1: pace signal candidates (prototype, not for release) ───────────────────────────── */
++/* T1: a 44 px button in the strip's 4th column; faint outline when behind, amber ring when waiting. */
++.tl-pace {
++  grid-column: 4;
++  grid-row: 1;
++  align-self: center;
++  justify-self: center;
++  width: var(--tap);
++  height: var(--tap);
++  border-radius: 50%;
++  color: var(--text);
++  box-shadow: inset 0 0 0 1px var(--outline);
++}
++.tl-pace[hidden] {
++  display: none;
++}
++.scrubber[data-pace='waiting'] .tl-pace {
++  color: var(--watch-ink);
++  box-shadow: inset 0 0 0 3px var(--watch);
++}
++/* The amber line under the rail: a fixed 44 px run that ends at the thumb (the stretch between thumb and head is empty while waiting). */
++.tl-pace-line {
++  position: absolute;
++  left: max(0px, calc(var(--view, 0%) - 44px));
++  width: min(44px, var(--view, 0%));
++  top: calc(var(--tl-cy) + 4px);
++  height: 3px;
++  border-radius: 2px;
++  background: var(--watch);
++  pointer-events: none;
++}
++.tl-pace-line[hidden] {
++  display: none;
++}
++/* T3: an amber ring on the thumb. */
++.scrubber[data-pace-variant='t3'][data-pace='behind'] .tl-thumb {
++  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--outline);
++}
++.scrubber[data-pace-variant='t3'][data-pace='waiting'] .tl-thumb {
++  box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px var(--watch);
++}
++/* T2: a badge in the clock's state slot. */
++.tb-chip-pace {
++  background: var(--watch);
++  color: #1b1500;
++  gap: 4px;
++}
++.tp-pace h3 {
++  margin: var(--sp-3) 0 var(--sp-1);
++  font-size: var(--fs-md);
++}
+diff --git a/src/ui/icons.ts b/src/ui/icons.ts
+index 3aa52e0..3dfe19c 100644
+--- a/src/ui/icons.ts
++++ b/src/ui/icons.ts
+@@ -28,6 +28,7 @@ const ICONS = {
+   play: 'M7 4.5v15l12.5-7.5z',
+   pause: 'M7.5 4.5v15|M16.5 4.5v15',
+   speed: 'M4 6l7 6-7 6z|M13 6l7 6-7 6z',
++  gauge: 'M4 17a8 8 0 1 1 16 0|M12 16.5l3.6-5|*M12 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+   ember: 'M12 12.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z|M18 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z|M6.5 17.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z|M17 18a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6z|M7 7.5a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6z',
+   leaf: 'M5 20c0-9 5-15 15-15 0 10-6 15-15 15z|M5 20l8-8',
+   target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z|M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M12 12.1v-.2',
+diff --git a/src/ui/screens/sim/scrubber.ts b/src/ui/screens/sim/scrubber.ts
+index ca2d089..633e1eb 100644
+--- a/src/ui/screens/sim/scrubber.ts
++++ b/src/ui/screens/sim/scrubber.ts
+@@ -31,8 +31,16 @@ const MIN_LABEL_PX = 62;
+ 
+ const pct = (frac: number): string => `${(frac * 100).toFixed(3)}%`;
+ 
+-export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): void } {
++/** Spike S1 (docs/plans/spikes/S1): which candidate placement of the pace signal is drawn, chosen by `?pace=t1|t2|t3`. */
++export type PaceVariant = 't1' | 't2' | 't3';
++export function paceVariant(): PaceVariant | null {
++  const v = new URLSearchParams(window.location.search).get('pace');
++  return v === 't1' || v === 't2' || v === 't3' ? v : null;
++}
++
++export function createScrubber(ctx: SimContext, opts: { onPace?: () => void } = {}): { el: HTMLElement; paceButton: HTMLElement; destroy(): void } {
+   const { session, scenario } = ctx;
++  const variant = paceVariant();
+   const D = scenario.duration;
+   const startMs = scenario.startTime;
+   const clock = (t: number, secs = false): string => formatClock(ctx.absTime(t), ctx.tz, secs);
+@@ -133,8 +141,23 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+   const prevBtn = stepButton(-1);
+   const nextBtn = stepButton(1);
+ 
++  // Spike S1: T1 is a button in the 4th grid column (the one Cancel uses while a jump computes).
++  const paceBtn = h(
++    'button',
++    {
++      type: 'button',
++      class: 'icon-btn tl-pace',
++      hidden: true,
++      dataset: { testid: 'pace-btn' },
++      aria: { label: 'Simulation is running slower than your playback speed. Show details.', haspopup: 'dialog', expanded: false },
++      on: { click: () => opts.onPace?.() },
++    },
++    icon('gauge', { size: 20 }),
++  );
++  const paceLine = h('div', { class: 'tl-pace-line', hidden: true, aria: { hidden: true } });
++  area.append(paceLine);
+   const mid = h('div', { class: 'tl-mid' }, [slider]);
+-  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline' } }, [prevBtn, mid, nextBtn, cancelBtn, status]);
++  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline', paceVariant: variant ?? '' } }, [prevBtn, mid, nextBtn, cancelBtn, status, ...(variant === 't1' ? [paceBtn] : [])]);
+ 
+   // ── pointer: tap = jump, drag = scrub ──
+   let areaLeft = 0;
+@@ -170,8 +193,22 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+     bubble.style.setProperty('--bubble-dx', `${Math.round(dx)}px`);
+   };
+ 
++  // Spike S1, T3: while the signal shows, a press that lands on the thumb waits to see whether it is a tap (opens the
++  // sheet) or a drag (scrubs as before). `thumbWait` holds the press until the finger has moved THUMB_SLOP_PX.
++  const THUMB_HIT_PX = 22;
++  const THUMB_SLOP_PX = 6;
++  let thumbWait: { id: number; x: number; y: number } | null = null;
++  const beginDrag = (e: PointerEvent, x: number): void => {
++    session.beginScrub();
++    drag = dragStart(x, areaLeft, areaW, D, snapFor(session.state.get().timeStep));
++    el.classList.add('is-scrubbing');
++    scrub.push(drag.t);
++    render();
++    showBubble();
++    void e;
++  };
+   slider.addEventListener('pointerdown', (e) => {
+-    if (drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
++    if (drag || thumbWait || (e.pointerType === 'mouse' && e.button !== 0)) return;
+     measure();
+     pointerId = e.pointerId;
+     downY = e.clientY;
+@@ -182,14 +219,23 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+     }
+     e.preventDefault();
+     slider.focus({ preventScroll: true });
+-    session.beginScrub();
+-    drag = dragStart(e.clientX, areaLeft, areaW, D, snapFor(session.state.get().timeStep));
+-    el.classList.add('is-scrubbing');
+-    scrub.push(drag.t);
+-    render();
+-    showBubble();
++    if (variant === 't3' && el.dataset.pace && el.dataset.pace !== 'ok') {
++      const s = session.state.get();
++      const thumbX = areaLeft + timeToFraction(s.viewTime, D) * areaW;
++      if (Math.abs(e.clientX - thumbX) <= THUMB_HIT_PX) {
++        thumbWait = { id: e.pointerId, x: e.clientX, y: e.clientY };
++        return;
++      }
++    }
++    beginDrag(e, e.clientX);
+   });
+   slider.addEventListener('pointermove', (e) => {
++    if (thumbWait && e.pointerId === thumbWait.id) {
++      if (Math.hypot(e.clientX - thumbWait.x, e.clientY - thumbWait.y) <= THUMB_SLOP_PX) return;
++      const w = thumbWait;
++      thumbWait = null;
++      beginDrag(e, w.x);
++    }
+     if (!drag || e.pointerId !== pointerId) return;
+     drag = dragMove(drag, e.clientX, e.clientY - downY, areaW, D, session.state.get().timeStep);
+     scrub.push(drag.t);
+@@ -197,6 +243,11 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+     showBubble();
+   });
+   const finish = (e: PointerEvent): void => {
++    if (thumbWait && e.pointerId === thumbWait.id) {
++      thumbWait = null;
++      if (e.type === 'pointerup') opts.onPace?.();
++      return;
++    }
+     if (!drag || e.pointerId !== pointerId) return;
+     if (e.type === 'pointerup') drag = dragMove(drag, e.clientX, e.clientY - downY, areaW, D, session.state.get().timeStep);
+     const t = drag.t;
+@@ -271,6 +322,11 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+   function render(): void {
+     const s = session.state.get();
+     const shown = drag ? drag.t : s.viewTime;
++    // Spike S1: the pace signal (SessionState.pace is set by hand for now, from the debug handle).
++    const level = variant && s.pace && s.seekTarget === null ? s.pace.level : 'ok';
++    el.dataset.pace = level;
++    paceBtn.hidden = !(variant === 't1' && level !== 'ok');
++    paceLine.hidden = !((variant === 't1' || variant === 't2') && level === 'waiting');
+     setVar('--view', pct(timeToFraction(shown, D)));
+     setVar('--head', pct(timeToFraction(s.headTime, D)));
+ 
+@@ -332,7 +388,7 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+     }
+   }
+ 
+-  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep']);
++  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep', 'pace']);
+   measure();
+   render();
+   // The width is known once the strip is in the page; the observer builds the ticks then (and on every resize).
+@@ -343,6 +399,7 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
+ 
+   return {
+     el,
++    paceButton: variant === 't3' ? slider : paceBtn,
+     destroy() {
+       unsub();
+       scrub.cancel();
+diff --git a/src/ui/screens/sim/simScreen.ts b/src/ui/screens/sim/simScreen.ts
+index 53afb72..bbdf61f 100644
+--- a/src/ui/screens/sim/simScreen.ts
++++ b/src/ui/screens/sim/simScreen.ts
+@@ -148,7 +148,18 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
+   unsubs.push(restoreLayerPrefs(ctx));
+ 
+   // ───────────── chrome ─────────────
++  // Spike S1: the strip is made first so the top bar can hang the pace sheet on its button.
++  const scrubber = createScrubber(ctx, { onPace: () => topBar.popovers.toggle('pace') });
++  // Spike S1: `?pace=t1&paceLevel=behind|waiting` forces the signal on, so the audit scripts can look at each candidate.
++  {
++    const q = new URLSearchParams(window.location.search);
++    const lvl = q.get('paceLevel');
++    if (q.get('pace') && (lvl === 'behind' || lvl === 'waiting' || lvl === 'ok')) {
++      ctx.session.state.set({ pace: { level: lvl, wanted: 60, achieved: 38, waitingShare: lvl === 'waiting' ? 0.4 : 0, capacity: 38, duty: 0.97, aheadS: 60, bufferS: 1, sinceMs: 0 } });
++    }
++  }
+   const topBar = createTopBar(ctx, {
++    paceButton: scrubber.paceButton,
+     openHelp: () => {
+       if (ui.get().panelOpen || ui.get().pending) closePanel();
+       ui.set({ tab: 'help', sheet: ui.get().sheet === 'closed' || ui.get().sheet === 'peek' ? 'half' : ui.get().sheet, menu: null });
+@@ -168,7 +179,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
+     o.announce(`Showing ${i.title} on the map.`);
+   };
+   const sheet = createSheet(ctx, showInsight);
+-  const scrubber = createScrubber(ctx);
+   const dangerGate = new DangerGate();
+ 
+   // Tools: an extended FAB in the bottom corner (on the handed side) whose speed dial holds the six tools.
+diff --git a/src/ui/screens/sim/topBar.ts b/src/ui/screens/sim/topBar.ts
+index ab44373..92fdcf7 100644
+--- a/src/ui/screens/sim/topBar.ts
++++ b/src/ui/screens/sim/topBar.ts
+@@ -17,7 +17,8 @@ import type { SimContext } from './context';
+ import { createSpeedControl } from './speedControl';
+ import { clockShowsSeconds } from './timelineModel';
+ import { createTimePopover } from './timePopover';
+-import { createPopoverGroup, type PopoverGroup } from './transportKit';
++import { paceVariant } from './scrubber';
++import { createPopoverGroup, transportSheet, type PopoverGroup } from './transportKit';
+ 
+ /** The clock waits for the engine this long before "Computing" is shown, so it does not flicker at the head. */
+ const WAIT_BEFORE_BUSY_MS = 800;
+@@ -32,6 +33,8 @@ export interface TopBar {
+ export interface TopBarOptions {
+   /** Open the Help tab of the bottom sheet (the glossary). */
+   openHelp(): void;
++  /** Spike S1: the control that opens the pace sheet (T1: the strip's button; T3: the slider). */
++  paceButton?: HTMLElement;
+ }
+ 
+ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+@@ -92,6 +95,17 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+   );
+   const timePop = createTimePopover(ctx, { close: () => popovers.closeAll() });
+ 
++  // Spike S1: a stub of the details sheet. T1 and T3 open it from the strip; T2 puts a section into the time sheet.
++  const variant = paceVariant();
++  const paceStub = (): HTMLElement[] => [
++    h('p', null, 'You asked for 60x. This phone is computing about 38x right now, so playback waits for the simulation about 4 seconds in every 10.'),
++    h('p', null, 'Does it change the result? No. The same choices give the same fire at any speed.'),
++  ];
++  const paceSheet = transportSheet({ title: 'Running slower than playback', testId: 'pace-sheet', body: paceStub(), onClose: () => popovers.closeAll() });
++  if (variant === 't2') {
++    timePop.panel.querySelector('.tb-sheet-body')?.append(h('section', { class: 'tp-pace', dataset: { testid: 'pace-section' } }, [h('h3', null, 'Simulation speed'), ...paceStub()]));
++  }
++
+   // ── play / pause: the one blue control of the bar ──
+   const playBtn = h(
+     'button',
+@@ -121,12 +135,13 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+   const setChipLabel = (): void => chips.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
+ 
+   const pill = h('div', { class: 'search-bar tb-pill' }, [menuBtn, clockBtn, playBtn, speed.button]);
+-  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel]);
++  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel, paceSheet]);
+ 
+   const popovers = createPopoverGroup(el, [
+     { id: 'menu', button: menuBtn, panel: menuPanel, dim: true },
+     { id: 'time', button: clockBtn, panel: timePop.panel, onOpen: () => timePop.refresh() },
+     { id: 'speed', button: speed.button, panel: speed.panel },
++    { id: 'pace', button: opts.paceButton ?? clockBtn, panel: paceSheet },
+   ]);
+   menuBtn.addEventListener('click', () => popovers.toggle('menu'));
+   clockBtn.addEventListener('click', () => popovers.toggle('time'));
+@@ -166,7 +181,8 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+       waitTimer = window.setTimeout(render, WAIT_BEFORE_BUSY_MS + 20);
+     }
+     const busy = seeking || (waiting && now - waitingSince >= WAIT_BEFORE_BUSY_MS);
+-    const sk = busy ? 'busy' : !session.isLive(s) ? 'past' : '';
++    const paced = variant === 't2' && s.pace !== null && s.pace.level !== 'ok';
++    const sk = busy ? 'busy' : !session.isLive(s) ? 'past' : paced ? 'behind' : '';
+     if (sk !== stateKey) {
+       stateKey = sk;
+       clockBtn.classList.toggle('is-busy', sk === 'busy'); // "Computing" takes the elapsed time's place
+@@ -176,7 +192,9 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+           ? h('span', { class: 'badge badge-info tb-chip-past' }, [icon('history'), 'Replay'])
+           : sk === 'busy'
+             ? h('span', { class: 'badge tb-chip-busy' }, [h('span', { class: 'spinner spinner-sm', aria: { hidden: true } }), 'Computing'])
+-            : null,
++            : sk === 'behind'
++              ? h('span', { class: 'badge tb-chip-pace', dataset: { testid: 'pace-badge' } }, [icon('gauge', { size: 14 }), 'Behind'])
++              : null,
+       );
+     }
+     const shownPlaying = s.playing || seeking;
+@@ -222,7 +240,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
+       setChipLabel();
+     }
+   };
+-  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep']);
++  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep', 'pace']);
+   const unsub2 = ctx.settings.subscribe(() => {
+     wxKey = '';
+     render();

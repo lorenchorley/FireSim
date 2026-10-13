@@ -1,0 +1,182 @@
+[
+ {
+  "vp": "portrait",
+  "variant": "t1",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t1",
+  "test": "button >= 44 px",
+  "pass": true,
+  "detail": "44 x 44"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t1",
+  "test": "tap opens the sheet, clock untouched",
+  "pass": true,
+  "detail": "open true expanded true view 8640 -> 8640"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t1",
+  "test": "Escape closes and focus returns",
+  "pass": true,
+  "detail": "closed true focus pace-btn"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t1",
+  "test": "outside tap closes",
+  "pass": true
+ },
+ {
+  "vp": "portrait",
+  "variant": "t2",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t2",
+  "test": "badge shown in the clock",
+  "pass": true,
+  "detail": "badge 76 x 16 in a clock button 222 x 44"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t2",
+  "test": "clock tap opens the time sheet with the new section",
+  "pass": true,
+  "detail": "section {\"top\":759,\"bottom\":895,\"sheetTop\":283,\"sheetBottom\":915,\"vh\":915} fullyInView true"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t3",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t3",
+  "test": "tap on the thumb opens the sheet, clock untouched",
+  "pass": true,
+  "detail": "open true view 8640 -> 8640"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t3",
+  "test": "tap 30 px from the thumb still seeks",
+  "pass": true,
+  "detail": "view 8640 -> 6360"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t3",
+  "test": "tap 18 px from the thumb (taps stolen from the slider)",
+  "pass": true,
+  "detail": "sheet true, view 8640 -> 8640 (a plain seek would have moved it 1369 s)"
+ },
+ {
+  "vp": "portrait",
+  "variant": "t3",
+  "test": "drag from the thumb still scrubs",
+  "pass": true,
+  "detail": "view 8640 -> 4080"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t1",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t1",
+  "test": "button >= 44 px",
+  "pass": true,
+  "detail": "44 x 44"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t1",
+  "test": "tap opens the sheet, clock untouched",
+  "pass": true,
+  "detail": "open true expanded true view 8640 -> 8640"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t1",
+  "test": "Escape closes and focus returns",
+  "pass": true,
+  "detail": "closed true focus pace-btn"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t1",
+  "test": "outside tap closes",
+  "pass": true
+ },
+ {
+  "vp": "landscape",
+  "variant": "t2",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t2",
+  "test": "badge shown in the clock",
+  "pass": true,
+  "detail": "badge 76 x 16 in a clock button 206 x 44"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t2",
+  "test": "clock tap opens the time sheet with the new section",
+  "pass": true,
+  "detail": "section {\"top\":336,\"bottom\":492,\"sheetTop\":48,\"sheetBottom\":390,\"vh\":390} fullyInView false"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t3",
+  "test": "track tap seeks",
+  "pass": true,
+  "detail": "view 8640 -> 3240"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t3",
+  "test": "tap on the thumb opens the sheet, clock untouched",
+  "pass": true,
+  "detail": "open true view 8640 -> 8640"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t3",
+  "test": "tap 30 px from the thumb still seeks",
+  "pass": true,
+  "detail": "view 8640 -> 7740"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t3",
+  "test": "tap 18 px from the thumb (taps stolen from the slider)",
+  "pass": true,
+  "detail": "sheet true, view 8640 -> 8640 (a plain seek would have moved it 543 s)"
+ },
+ {
+  "vp": "landscape",
+  "variant": "t3",
+  "test": "drag from the thumb still scrubs",
+  "pass": true,
+  "detail": "view 8640 -> 6840"
+ }
+]
