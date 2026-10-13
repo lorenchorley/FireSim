@@ -1,0 +1,1056 @@
+diff --git a/src/render/SceneView.ts b/src/render/SceneView.ts
+index c1445bb..00927bb 100644
+--- a/src/render/SceneView.ts
++++ b/src/render/SceneView.ts
+@@ -12,7 +12,7 @@
+  */
+ import type { ContextLayers } from '../core/places';
+ import * as THREE from 'three';
+-import type { GridSpec } from '../core/grid';
++import { resample, type GridSpec } from '../core/grid';
+ import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
+ import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
+ import type { CameraState, SceneImagery, SceneViewApi } from './api';
+@@ -22,13 +22,17 @@ import { gridBounds, sunDirectionWorld } from './coords';
+ import { CrossSectionLayer } from './crossSectionLayer';
+ import { EmberLayer } from './emberLayer';
+ import { FlameLayer } from './fireLayer';
++import { cliffSharpen, type CliffSharpenOptions, type CliffSharpenStats } from './cliffSharpen';
+ import {
+   arrivalTexture,
+   decimateGrid,
++  decimateTerrain,
+   fireAuxTexture,
+   fireCentroid,
+   flameSites,
+   glowField,
++  hornGradient,
++  hybridGradient,
+   lightTerrain,
+   overlayField,
+   type OverlayField,
+@@ -44,7 +48,7 @@ import { PlacesLayer } from './placesLayer';
+ import { skyLighting } from './sky';
+ import { SkyDome } from './skyDome';
+ import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
+-import { TerrainLayer, type TerrainDecals } from './terrainLayer';
++import { TerrainLayer, type LightGradient, type TerrainDecals } from './terrainLayer';
+ import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
+ import type { PlacementCache } from './vegetationPlacement';
+ import { WindArrows, WindLayer, type WindDomain } from './windLayer';
+@@ -68,6 +72,35 @@ export interface SceneViewOptions {
+   smokeReference?: number;
+   /** Show static surface-wind arrows on a coarse lattice when the wind layer is on (default false). */
+   windArrows?: boolean;
++  /** SPIKE S5 prototype: how cliffs are drawn. Omitted = today. */
++  cliff?: CliffViewOptions;
++}
++
++/** SPIKE S5 prototype switches (plan 9d.3): all off is today's drawing. */
++export interface CliffViewOptions {
++  /** Steepen the 10 m terrain along the fall line before the mesh is built. */
++  sharpen: boolean;
++  sharpenOpts?: Partial<CliffSharpenOptions>;
++  /** 'old' = decimateGrid (box blur), 'keep' = decimateTerrain (keeps the edge where the footprint is steep). */
++  mesh: 'old' | 'keep';
++  meshLoDeg?: number;
++  meshHiDeg?: number;
++  /** Despike the finished mesh at this many metres (0 or omitted = off). */
++  meshDespikeM?: number;
++  /**
++   * Light from the (sharpened) 10 m terrain instead of the fire grid. 'mesh' = the render mesh resampled to the 10 m grid
++   * (lighting that agrees with the drawn geometry).
++   */
++  light: boolean | 'mesh' | 'meshgrid' | 'hybrid' | 'n10s-mesh' | 'n10s-min' | 'nmesh-s10';
++}
++
++/** SPIKE S5: milliseconds per stage of the last setScenario, and what the sharpening did. */
++export interface CliffBuildInfo {
++  sharpen: CliffSharpenStats | null;
++  ms: Record<string, number>;
++  meshVertices: number;
++  meshTriangles: number;
++  usedHiRes: boolean;
+ }
+ 
+ /**
+@@ -142,6 +175,8 @@ export class SceneView implements SceneViewApi {
+   private rg: RenderGrid | null = null;
+   private hf: HeightField | null = null;
+   private lightT: Terrain | null = null;
++  /** SPIKE S5: what the last setScenario built and how long each stage took. */
++  cliffInfo: CliffBuildInfo | null = null;
+   private domain: WindDomain | null = null;
+   private layers: LayerState = structuredClone(DEFAULT_LAYERS);
+   private readonly quality: (typeof QUALITY)[RenderQuality];
+@@ -334,18 +369,74 @@ export class SceneView implements SceneViewApi {
+     const hi = opts.hiRes;
+     const useHi = !!hi && hi.grid.cellSize < terrain.grid.cellSize && hi.elevation.length === hi.grid.nx * hi.grid.ny && coversDomain(hi.grid, terrain.grid);
+     const src = useHi ? hi! : terrain;
+-    const rg = decimateGrid(src.grid, src.elevation, this.opts.meshResolution ?? this.quality.mesh);
++    const cl = this.opts.cliff;
++    const T: Record<string, number> = {};
++    let now = performance.now();
++    const lap = (name: string): void => {
++      const t = performance.now();
++      T[name] = t - now;
++      now = t;
++    };
++    let srcElev: Float32Array = src.elevation;
++    let sharpStats: CliffSharpenStats | null = null;
++    if (cl?.sharpen) {
++      const r = cliffSharpen(src.grid, src.elevation, cl.sharpenOpts);
++      srcElev = r.elevation;
++      sharpStats = r.stats;
++      T.sharpen = r.stats.ms.total;
++      now = performance.now();
++    }
++    const meshN = this.opts.meshResolution ?? this.quality.mesh;
++    const rg = cl?.mesh === 'keep' ? decimateTerrain(src.grid, srcElev, meshN, { loDeg: cl.meshLoDeg, hiDeg: cl.meshHiDeg, despikeM: cl.meshDespikeM }) : decimateGrid(src.grid, srcElev, meshN);
++    lap('decimate');
+     this.rg = rg;
+     this.hf = new HeightField(rg.grid, rg.elevation, this.vex);
+     const b = gridBounds(rg.grid);
+     const hf = this.hf;
+     this.domain = { ...b, heightAt: (x, y) => hf.heightAt(x, y) };
+     this.lightT = lightTerrain(rg, terrain.source);
++    lap('lightTerrain');
++    let lightGrad: LightGradient | undefined;
++    let slopeGrad: LightGradient | undefined;
++    if (cl?.light === 'n10s-mesh' || cl?.light === 'n10s-min') {
++      // SPIKE S5 split: normals (lighting) from the 10 m sharpened terrain, the slope that picks strata / photo from the mesh
++      lightGrad = { grid: src.grid, ...hornGradient(src.grid, srcElev) };
++      slopeGrad = { grid: rg.grid, dzdx: this.lightT.dzdx, dzdy: this.lightT.dzdy };
++      lap('gradientSplit');
++    } else if (cl?.light === 'nmesh-s10') {
++      // the reverse: normals from the mesh, the colour-picking slope from the 10 m sharpened terrain
++      lightGrad = { grid: rg.grid, dzdx: this.lightT.dzdx, dzdy: this.lightT.dzdy };
++      slopeGrad = { grid: src.grid, ...hornGradient(src.grid, srcElev) };
++      lap('gradientSplit');
++    } else if (cl?.light === 'hybrid') {
++      lightGrad = { grid: src.grid, ...hybridGradient(src.grid, srcElev, rg, cl.meshLoDeg ?? 40, cl.meshHiDeg ?? 55) };
++      lap('gradientHybrid');
++    } else if (cl?.light === 'meshgrid') {
++      // The Horn gradient of the render mesh itself (already computed for the hillshade), on the mesh grid: no extra work.
++      lightGrad = { grid: rg.grid, dzdx: this.lightT.dzdx, dzdy: this.lightT.dzdy };
++      lap('gradientMeshGrid');
++    } else if (cl?.light === 'mesh') {
++      lightGrad = { grid: src.grid, ...hornGradient(src.grid, resample(rg.grid, rg.elevation, src.grid)) };
++      lap('gradientFromMesh');
++    } else if (cl?.light) {
++      lightGrad = { grid: src.grid, ...hornGradient(src.grid, srcElev) };
++      lap('gradient10m');
++    }
+ 
+-    const tl = new TerrainLayer(rg, terrain, this.u, Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
++    const tl = new TerrainLayer(rg, terrain, this.u, Math.min(8, this.renderer.capabilities.getMaxAnisotropy()), lightGrad, slopeGrad);
++    lap('terrainLayer');
++    T.gradientTexture = tl.gradientMs;
+     tl.setFuel(fuel, terrain);
+     tl.setImagery(opts.imagery ?? null, terrain.grid);
+-    tl.setShade(multiHillshade(this.lightT), skyViewFactor(this.lightT, 12), null);
++    lap('fuelImagery');
++    const hill = multiHillshade(this.lightT);
++    lap('hillshade');
++    const svf = skyViewFactor(this.lightT, 12);
++    lap('skyView');
++    tl.setShade(hill, svf, null);
++    lap('setShade');
++    if (cl?.light === 'n10s-min') tl.uniforms.uSplit!.value = 2;
++    this.cliffInfo = { sharpen: sharpStats, ms: T, meshVertices: rg.grid.nx * rg.grid.ny, meshTriangles: 2 * (rg.grid.nx - 1) * (rg.grid.ny - 1), usedHiRes: useHi };
+     this.terrainLayer = tl;
+     this.scene.add(tl.group);
+ 
+@@ -917,6 +1008,42 @@ export class SceneView implements SceneViewApi {
+     return this.rig.mode;
+   }
+ 
++  /** SPIKE S5 harness: the camera pose in world coordinates (x east, y up, z = -north): position and orbit target. */
++  getPose(): { pos: [number, number, number]; target: [number, number, number] } {
++    const p = this.rig.camera.position;
++    const t = this.rig.controls.target;
++    return { pos: [p.x, p.y, p.z], target: [t.x, t.y, t.z] };
++  }
++
++  /** SPIKE S5 harness: put the camera exactly there and keep it there (the target is not seated on this drawing's terrain). */
++  setPose(pos: [number, number, number], target: [number, number, number]): void {
++    this.rig.freezePose = true;
++    this.rig.goTo(new THREE.Vector3(...target), new THREE.Vector3(...pos), 0);
++    this.dirty = true;
++  }
++
++  /** SPIKE S5 harness: light the terrain from the mesh's own facets (flat shading) to judge the geometry alone. */
++  debugFlat(on: boolean): void {
++    if (this.terrainLayer) this.terrainLayer.uniforms.uDbgFlat!.value = on ? 1 : 0;
++    this.dirty = true;
++  }
++
++  /** SPIKE S5 harness: eye level at local (ux, uy) looking at the ground point (lx, ly); `eyeH` = eye height (m, default 1.7). Jumps (no flight). */
++  standAt(ux: number, uy: number, lx: number, ly: number, eyeH?: number): void {
++    if (eyeH !== undefined && Number.isFinite(eyeH)) this.rig.eyeHeight = eyeH;
++    this.rig.setMode('ground', { user: [ux, uy], lookAt: [lx, ly] });
++    const eye = this.rig.groundPoint(ux, uy);
++    eye.y += this.rig.eyeHeight * Math.max(1, this.vex);
++    const dir = this.rig.groundPoint(lx, ly).sub(eye);
++    dir.y = Math.max(dir.y, -0.25 * Math.hypot(dir.x, dir.z));
++    dir.normalize();
++    this.rig.goTo(eye.clone().add(dir), eye, 0);
++    this.updateViewDependentLayers();
++    this.vegetation?.setNearCull(24);
++    this.refreshMarkers();
++    this.dirty = true;
++  }
++
+   setInteractionEnabled(enabled: boolean): void {
+     this.rig.setInteractionEnabled(enabled);
+   }
+diff --git a/src/render/cameraRig.ts b/src/render/cameraRig.ts
+index f3725d6..5fad9e9 100644
+--- a/src/render/cameraRig.ts
++++ b/src/render/cameraRig.ts
+@@ -78,6 +78,8 @@ export class CameraRig {
+   private interaction = true;
+   /** Eye height above ground in 'ground' mode (m). */
+   eyeHeight = 1.7;
++  /** SPIKE S5 harness: do not seat the target on the terrain (so panels that compare two drawings share one exact camera pose). */
++  freezePose = false;
+   private readonly tmp = new THREE.Vector3();
+   private readonly tmp2 = new THREE.Vector3();
+   private readonly tmp3 = new THREE.Vector3();
+@@ -413,7 +415,7 @@ export class CameraRig {
+     const c = this.controls;
+     const cam = this.camera.position;
+     if (this._mode !== 'ground') {
+-      this.settleTarget(hf);
++      if (!this.freezePose) this.settleTarget(hf);
+       // Target inside the domain (move the camera with it so the view does not jump).
+       const dx = THREE.MathUtils.clamp(c.target.x, hf.xMin, hf.xMax) - c.target.x;
+       const dz = THREE.MathUtils.clamp(c.target.z, -hf.yMax, -hf.yMin) - c.target.z;
+diff --git a/src/render/cliffSharpen.test.ts b/src/render/cliffSharpen.test.ts
+new file mode 100644
+index 0000000..2b157d2
+--- /dev/null
++++ b/src/render/cliffSharpen.test.ts
+@@ -0,0 +1,91 @@
++import { describe, expect, it } from 'vitest';
++import type { GridSpec } from '../core/grid';
++import { cliffSharpen, countSpikes } from './cliffSharpen';
++import { hornGradient, slopeFromGradient } from './fields';
++
++const origin = { lat: -33.7, lon: 150.3 };
++const mk = (nx: number, ny: number, h = 10): GridSpec => ({ nx, ny, cellSize: h, x0: 0, y0: 0, origin });
++const maxSlope = (g: GridSpec, z: Float32Array): number => {
++  const { dzdx, dzdy } = hornGradient(g, z);
++  let m = 0;
++  for (let k = 0; k < z.length; k++) m = Math.max(m, slopeFromGradient(dzdx[k]!, dzdy[k]!));
++  return m;
++};
++
++describe('cliffSharpen (S5 prototype)', () => {
++  it('makes a 70 degree ramp with rounded shoulders steeper and keeps its end heights', () => {
++    const g = mk(60, 40);
++    const z = new Float32Array(g.nx * g.ny);
++    const run = 100 / Math.tan((70 * Math.PI) / 180);
++    for (let j = 0; j < g.ny; j++)
++      for (let i = 0; i < g.nx; i++) {
++        const t = Math.min(1, Math.max(0, (i * 10 - 200) / run));
++        z[j * g.nx + i] = 0.45 * 100 * (1 - t) + 0.55 * 100 * (1 - t * t * (3 - 2 * t));
++      }
++    const r = cliffSharpen(g, z);
++    expect(maxSlope(g, r.elevation)).toBeGreaterThan(maxSlope(g, z) + 2);
++    expect(r.elevation[20 * g.nx + 5]).toBe(z[20 * g.nx + 5]);
++    expect(r.elevation[20 * g.nx + 54]).toBe(z[20 * g.nx + 54]);
++  });
++
++  it('leaves a straight steep ramp (away from the edge) and all ground under 48 degrees untouched, bit for bit', () => {
++    const g = mk(80, 80);
++    const plane = new Float32Array(g.nx * g.ny);
++    const gentle = new Float32Array(g.nx * g.ny);
++    for (let j = 0; j < g.ny; j++)
++      for (let i = 0; i < g.nx; i++) {
++        plane[j * g.nx + i] = 500 - 25 * i + 7 * j;
++        gentle[j * g.nx + i] = 300 + 18 * Math.sin(i / 9) + 12 * Math.cos(j / 7) - 3 * i;
++      }
++    const rp = cliffSharpen(g, plane).elevation;
++    for (let j = 5; j < g.ny - 5; j++) for (let i = 5; i < g.nx - 5; i++) expect(rp[j * g.nx + i]).toBe(plane[j * g.nx + i]);
++    expect(maxSlope(g, gentle)).toBeLessThan(48);
++    expect(cliffSharpen(g, gentle).elevation.every((v, k) => v === gentle[k])).toBe(true);
++  });
++
++  it('leaves no tower or pit of 10 m or more, is deterministic, bounded, and never touches the edge or makes a NaN', () => {
++    const g = mk(100, 100);
++    const z = new Float32Array(g.nx * g.ny);
++    let s = 12345;
++    const rnd = (): number => {
++      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
++      return s / 4294967296;
++    };
++    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) z[j * g.nx + i] = 400 + 90 * Math.sin(i / 9) * Math.cos(j / 11) + (rnd() < 0.02 ? (rnd() - 0.5) * 120 : 0) + 2 * rnd();
++    const a = cliffSharpen(g, z);
++    const b = cliffSharpen(g, z);
++    expect(a.elevation.every((v, k) => v === b.elevation[k])).toBe(true);
++    expect(countSpikes(g, a.elevation, 10)).toEqual({ towers: 0, pits: 0 });
++    for (let i = 0; i < g.nx; i++) {
++      expect(a.elevation[i]).toBe(z[i]);
++      expect(a.elevation[(g.ny - 1) * g.nx + i]).toBe(z[(g.ny - 1) * g.nx + i]);
++    }
++    for (let j = 3; j < g.ny - 3; j++)
++      for (let i = 3; i < g.nx - 3; i++) {
++        let lo = Infinity;
++        let hi = -Infinity;
++        for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) {
++          const v = z[(j + dj) * g.nx + i + di]!;
++          lo = Math.min(lo, v);
++          hi = Math.max(hi, v);
++        }
++        expect(a.elevation[j * g.nx + i]).toBeGreaterThanOrEqual(lo - 2 - 1e-3);
++        expect(a.elevation[j * g.nx + i]).toBeLessThanOrEqual(hi + 2 + 1e-3);
++      }
++    const zn = Float32Array.from(z);
++    zn[50 * g.nx + 50] = NaN;
++    const rn = cliffSharpen(g, zn).elevation;
++    let fresh = 0;
++    for (let k = 0; k < rn.length; k++) if (Number.isNaN(rn[k]!) && !Number.isNaN(zn[k]!)) fresh++;
++    expect(fresh).toBe(0);
++  });
++
++  it('keeps the floor of a gully with 60 degree walls unchanged', () => {
++    const g = mk(80, 80);
++    const z = new Float32Array(g.nx * g.ny);
++    for (let j = 0; j < g.ny; j++)
++      for (let i = 0; i < g.nx; i++) z[j * g.nx + i] = 200 + 1.8 * j + Math.min(Math.abs(i - 40) * 10 * Math.tan((60 * Math.PI) / 180), 120);
++    const r = cliffSharpen(g, z).elevation;
++    for (let j = 4; j < g.ny - 4; j++) expect(Math.abs(r[j * g.nx + 40]! - z[j * g.nx + 40]!)).toBeLessThan(1e-3);
++  });
++});
+diff --git a/src/render/cliffSharpen.ts b/src/render/cliffSharpen.ts
+new file mode 100644
+index 0000000..e89eb8d
+--- /dev/null
++++ b/src/render/cliffSharpen.ts
+@@ -0,0 +1,323 @@
++/**
++ * SPIKE S5 PROTOTYPE (throwaway, not reviewed code). Display-only cliff sharpening, plan 9d.3.1.
++ *
++ * Steepens the 10 m terrain along the fall line in steep bands so that faces read as near-vertical rock walls. The
++ * simulation never sees the result. The rule (all constants are options, defaults are the plan's):
++ *   (a) weight w = smoothstep(loDeg, hiDeg, Horn slope), spread one cell outwards at `spread` (0.6);
++ *   (b) for each cell with w > 0, sample the ORIGINAL terrain along the fall line up to `window` cells each way
++ *       (bilinear), take the minimum and maximum, and move the cell towards whichever is nearer in height by
++ *       w x strength x the distance; nothing happens within `eps` metres of the middle, so a straight ramp is left alone;
++ *   (c) a despike pass pulls any cell that stands `despikeM` or more above or below all eight neighbours back to
++ *       `despikeMargin` metres past them.
++ * Grid edges are never moved. A cell with a NaN height never moves.
++ */
++import type { GridSpec } from '../core/grid';
++
++export interface CliffSharpenOptions {
++  /** Horn slope (deg) where the weight starts / reaches 1. */
++  loDeg: number;
++  hiDeg: number;
++  /** Weight given to the 8 neighbours of a steep cell (the shoulders). */
++  spread: number;
++  /** Cells sampled each way along the fall line. */
++  window: number;
++  /** Multiplier on the weight (1 = the plan's rule). */
++  strength: number;
++  /** Dead band (m) around the middle of the window. */
++  eps: number;
++  /** Tower / pit height (m) the despike pass removes, and the margin it leaves (m). */
++  despikeM: number;
++  despikeMargin: number;
++  /**
++   * Fallback rung "lip and foot snapping only": a cell moves only when its position p = (z - min) / (max - min) in the
++   * window is within `snap` of an end (p <= snap or p >= 1 - snap). 0.5 = every cell (the plan's rule).
++   */
++  snap: number;
++}
++
++export const CLIFF_SHARPEN_DEFAULTS: Readonly<CliffSharpenOptions> = Object.freeze({
++  loDeg: 48,
++  hiDeg: 62,
++  spread: 0.6,
++  window: 3,
++  strength: 1,
++  eps: 0.5,
++  despikeM: 10,
++  despikeMargin: 2,
++  snap: 0.5,
++});
++
++export interface CliffSharpenStats {
++  /** Cells with a weight above zero (steep cells plus their shoulders). */
++  weighted: number;
++  /** Cells whose final height differs from the data by at least 0.5 m, their mean and largest change (m). */
++  moved: number;
++  movedMeanM: number;
++  movedMaxM: number;
++  /** Towers and pits the despike pass fixed. */
++  despiked: number;
++  /** Milliseconds per stage: slope pass, weights, fall-line moves, despike, total. */
++  ms: { slope: number; weights: number; move: number; despike: number; total: number };
++}
++
++export interface CliffSharpenResult {
++  elevation: Float32Array;
++  stats: CliffSharpenStats;
++}
++
++const RAD2DEG = 180 / Math.PI;
++const DEG2RAD = Math.PI / 180;
++
++const smoothstep = (a: number, b: number, x: number): number => {
++  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
++  return t * t * (3 - 2 * t);
++};
++
++/**
++ * Squared Horn gradient magnitude (tan^2 of the slope) of every cell; edge cells replicate the border, the same
++ * operator as `hornGradient` (fields.ts) and src/terrain. No atan: callers compare against tan^2 thresholds.
++ */
++export function hornTan2(grid: GridSpec, z: ArrayLike<number>, out: Float32Array = new Float32Array(grid.nx * grid.ny)): Float32Array {
++  const { nx, ny, cellSize: h } = grid;
++  const inv = 1 / (8 * h);
++  const clampI = (i: number): number => (i < 0 ? 0 : i >= nx ? nx - 1 : i);
++  const clampJ = (j: number): number => (j < 0 ? 0 : j >= ny ? ny - 1 : j);
++  const edgeCell = (i: number, j: number): void => {
++    const at = (a: number, b: number): number => z[clampJ(b) * nx + clampI(a)]!;
++    const a = at(i - 1, j + 1);
++    const b = at(i, j + 1);
++    const c = at(i + 1, j + 1);
++    const d = at(i - 1, j);
++    const f = at(i + 1, j);
++    const g = at(i - 1, j - 1);
++    const hh = at(i, j - 1);
++    const ii = at(i + 1, j - 1);
++    const p = (c + 2 * f + ii - (a + 2 * d + g)) * inv;
++    const q = (a + 2 * b + c - (g + 2 * hh + ii)) * inv;
++    out[j * nx + i] = p * p + q * q;
++  };
++  for (let i = 0; i < nx; i++) {
++    edgeCell(i, 0);
++    edgeCell(i, ny - 1);
++  }
++  for (let j = 1; j < ny - 1; j++) {
++    edgeCell(0, j);
++    edgeCell(nx - 1, j);
++    for (let i = 1; i < nx - 1; i++) {
++      const k = j * nx + i;
++      const n = k + nx;
++      const s = k - nx;
++      const p = (z[n + 1]! + 2 * z[k + 1]! + z[s + 1]! - (z[n - 1]! + 2 * z[k - 1]! + z[s - 1]!)) * inv;
++      const q = (z[n - 1]! + 2 * z[n]! + z[n + 1]! - (z[s - 1]! + 2 * z[s]! + z[s + 1]!)) * inv;
++      out[k] = p * p + q * q;
++    }
++  }
++  return out;
++}
++
++/** Cells that stand `m` metres or more above all eight neighbours (towers) or below all of them (pits). */
++export function countSpikes(grid: GridSpec, z: ArrayLike<number>, m: number): { towers: number; pits: number } {
++  const { nx, ny } = grid;
++  let towers = 0;
++  let pits = 0;
++  const off = [-nx - 1, -nx, -nx + 1, -1, 1, nx - 1, nx, nx + 1];
++  for (let j = 1; j < ny - 1; j++) {
++    for (let i = 1; i < nx - 1; i++) {
++      const k = j * nx + i;
++      const v = z[k]!;
++      let up = true;
++      let dn = true;
++      for (let t = 0; t < 8 && (up || dn); t++) {
++        const q = z[k + off[t]!]!;
++        if (v - q < m) up = false;
++        if (q - v < m) dn = false;
++      }
++      if (up) towers++;
++      if (dn) pits++;
++    }
++  }
++  return { towers, pits };
++}
++
++/**
++ * Pull every cell that stands `m` metres or more above all eight neighbours (a tower) or below all of them (a pit) back to
++ * `margin` metres past its highest (lowest) neighbour. In place; decisions use the heights before any fix (Jacobi), so the
++ * result does not depend on the scan order. The grid's outer ring is never touched. Returns the number of cells fixed.
++ */
++export function despikeGrid(grid: GridSpec, z: Float32Array, m: number, margin: number): number {
++  const { nx, ny } = grid;
++  const off = [-nx - 1, -nx, -nx + 1, -1, 1, nx - 1, nx, nx + 1];
++  const fixK: number[] = [];
++  const fixV: number[] = [];
++  for (let j = 1; j < ny - 1; j++) {
++    for (let i = 1; i < nx - 1; i++) {
++      const k = j * nx + i;
++      const v = z[k]!;
++      const first = z[k + off[0]!]!;
++      if (v - first >= m) {
++        let hi = -Infinity;
++        let ok = true;
++        for (let t = 0; t < 8; t++) {
++          const q = z[k + off[t]!]!;
++          if (v - q < m) {
++            ok = false;
++            break;
++          }
++          if (q > hi) hi = q;
++        }
++        if (ok) {
++          fixK.push(k);
++          fixV.push(hi + margin);
++        }
++      } else if (first - v >= m) {
++        let lo = Infinity;
++        let ok = true;
++        for (let t = 0; t < 8; t++) {
++          const q = z[k + off[t]!]!;
++          if (q - v < m) {
++            ok = false;
++            break;
++          }
++          if (q < lo) lo = q;
++        }
++        if (ok) {
++          fixK.push(k);
++          fixV.push(lo - margin);
++        }
++      }
++    }
++  }
++  for (let s = 0; s < fixK.length; s++) z[fixK[s]!] = fixV[s]!;
++  return fixK.length;
++}
++
++export function cliffSharpen(grid: GridSpec, z: Float32Array, opts: Partial<CliffSharpenOptions> = {}): CliffSharpenResult {
++  const o: CliffSharpenOptions = { ...CLIFF_SHARPEN_DEFAULTS, ...opts };
++  const { nx, ny, cellSize: h } = grid;
++  const n = nx * ny;
++  const t0 = performance.now();
++  const out = Float32Array.from(z);
++
++  // ── (a) weights ────────────────────────────────────────────────────────────
++  const tan2Lo = Math.tan(o.loDeg * DEG2RAD) ** 2;
++  const g2 = hornTan2(grid, z);
++  const t1 = performance.now();
++  const w0 = new Float32Array(n);
++  const steep: number[] = [];
++  for (let k = 0; k < n; k++) {
++    if (g2[k]! >= tan2Lo) {
++      const w = smoothstep(o.loDeg, o.hiDeg, Math.atan(Math.sqrt(g2[k]!)) * RAD2DEG);
++      if (w > 0) {
++        w0[k] = w;
++        steep.push(k);
++      }
++    }
++  }
++  // Spread: w = max(w0, spread x max of the 3 x 3 w0), applied to interior cells only (scatter form of the gather).
++  const w = new Float32Array(n);
++  for (let s = 0; s < steep.length; s++) {
++    const k = steep[s]!;
++    const i = k % nx;
++    const j = (k - i) / nx;
++    const v0 = w0[k]!;
++    const v1 = o.spread * v0;
++    for (let dj = -1; dj <= 1; dj++) {
++      const jj = j + dj;
++      if (jj < 1 || jj > ny - 2) continue;
++      for (let di = -1; di <= 1; di++) {
++        const ii = i + di;
++        if (ii < 1 || ii > nx - 2) continue;
++        const kk = jj * nx + ii;
++        const v = di === 0 && dj === 0 ? v0 : v1;
++        if (v > w[kk]!) w[kk] = v;
++      }
++    }
++  }
++  const active: number[] = [];
++  for (let j = 1; j < ny - 1; j++) {
++    for (let i = 1; i < nx - 1; i++) {
++      const k = j * nx + i;
++      if (w[k]! > 0) active.push(k);
++    }
++  }
++  const t2 = performance.now();
++
++  // ── (b) fall-line moves (reads the original terrain, writes the copy) ─────────
++  const inv8h = 1 / (8 * h);
++  const R = Math.max(1, Math.round(o.window));
++  const mx1 = nx - 1;
++  const my1 = ny - 1;
++  const bil = (fx: number, fy: number): number => {
++    fx = fx < 0 ? 0 : fx > mx1 ? mx1 : fx;
++    fy = fy < 0 ? 0 : fy > my1 ? my1 : fy;
++    let i0 = Math.floor(fx);
++    let j0 = Math.floor(fy);
++    if (i0 > nx - 2) i0 = nx - 2;
++    if (j0 > ny - 2) j0 = ny - 2;
++    const tx = fx - i0;
++    const ty = fy - j0;
++    const k = j0 * nx + i0;
++    return (z[k]! * (1 - tx) + z[k + 1]! * tx) * (1 - ty) + (z[k + nx]! * (1 - tx) + z[k + nx + 1]! * tx) * ty;
++  };
++  for (let s = 0; s < active.length; s++) {
++    const k = active[s]!;
++    const i = k % nx;
++    const j = (k - i) / nx;
++    const n0 = k + nx;
++    const s0 = k - nx;
++    const gx = (z[n0 + 1]! + 2 * z[k + 1]! + z[s0 + 1]! - (z[n0 - 1]! + 2 * z[k - 1]! + z[s0 - 1]!)) * inv8h;
++    const gy = (z[n0 - 1]! + 2 * z[n0]! + z[n0 + 1]! - (z[s0 - 1]! + 2 * z[s0]! + z[s0 + 1]!)) * inv8h;
++    const gn = Math.hypot(gx, gy);
++    if (!(gn > 1e-6)) continue;
++    const ux = gx / gn;
++    const uy = gy / gn;
++    const cur = z[k]!;
++    let mn = cur;
++    let mx = cur;
++    for (let t = 1; t <= R; t++) {
++      const a = bil(i + t * ux, j + t * uy);
++      const b = bil(i - t * ux, j - t * uy);
++      if (a < mn) mn = a;
++      if (a > mx) mx = a;
++      if (b < mn) mn = b;
++      if (b > mx) mx = b;
++    }
++    const d = cur - 0.5 * (mn + mx);
++    if (!(Math.abs(d) > o.eps)) continue;
++    if (o.snap < 0.5) {
++      const p = (cur - mn) / (mx - mn);
++      if (p > o.snap && p < 1 - o.snap) continue;
++    }
++    const wk = Math.min(1, w[k]! * o.strength);
++    out[k] = cur + wk * ((d > 0 ? mx : mn) - cur);
++  }
++  const t3 = performance.now();
++
++  // ── (c) despike ───────────────────────────────────────────────────────────────
++  const despiked = o.despikeM > 0 ? despikeGrid(grid, out, o.despikeM, o.despikeMargin) : 0;
++  const t4 = performance.now();
++
++  // ── statistics (outside the timed stages) ──────────────────────────────────────
++  let moved = 0;
++  let sum = 0;
++  let max = 0;
++  for (let k = 0; k < n; k++) {
++    const dd = Math.abs(out[k]! - z[k]!);
++    if (dd >= 0.5) {
++      moved++;
++      sum += dd;
++      if (dd > max) max = dd;
++    }
++  }
++  return {
++    elevation: out,
++    stats: {
++      weighted: active.length,
++      moved,
++      movedMeanM: moved ? sum / moved : 0,
++      movedMaxM: max,
++      despiked,
++      ms: { slope: t1 - t0, weights: t2 - t1, move: t3 - t2, despike: t4 - t3, total: t4 - t0 },
++    },
++  };
++}
+diff --git a/src/render/dev.ts b/src/render/dev.ts
+index 447b99c..a11608f 100644
+--- a/src/render/dev.ts
++++ b/src/render/dev.ts
+@@ -9,6 +9,16 @@
+  *   wind=off|surface|volume  cross=1  crossAz=<deg>  imagery=0|1  veg=0|1  vex=1  iso=30  hud=0  play=1
+  *   cam=x,y,dist,az,tilt (camera target & pose)  user=x,y,heading  quality=low|medium|high  focus=1
+  *   smoke=0 flames=0 embers=0 legend=0 dpr=<fixed dpr>  arrows=1  brush=x,y,radius  crossAt=x,y
++ *   SPIKE S5 (cliff drawing, plan 9d.3; all default to today's drawing):
++ *     hires=1        feed the 10 m DEM the way the app does (setScenario's hiRes, fire grid from fireTerrainFromHiRes at cell=30 by default)
++ *     sharpen=0|1    steepen the 10 m terrain along the fall line (needs hires=1 to mean what the plan says)
++ *       lo=48 hi=62 spread=0.6 win=3 str=1 eps=0.5 despike=10 snap=0.5   its constants (snap<0.5 = lip and foot only)
++ *     mesh=old|keep  old = decimateGrid (box blur), keep = decimateTerrain (blur on gentle ground only)
++ *       mlo=40 mhi=55  its blend range (deg); mdespike=<m>  despike the finished mesh at this many metres (default off)
++ *     light=0|1|mesh|meshgrid|hybrid|n10s-mesh|nmesh-s10 normals, slope and strata from the (sharpened) 10 m terrain instead of the fire grid
++ *     meshN=<n>      mesh samples per side (default by quality: 224 / 320 / 400); 900 = the 10 m terrain itself
++ *     marks=0        no ignition, insight or user markers in the picture
++ *     eye=ux,uy,lx,ly[,h]  eye level at (ux, uy) looking at the ground point (lx, ly), h = eye height in m
+  *   Places layers (bundled NSW context, see src/data/contextLayers.ts): context=1 loads them (also implied by any of
+  *   roads= fireTrails= homes= zones= names= being given), each 0|1 switches a layer (defaults: roads, fireTrails and
+  *   names on, homes and zones off); town=<place name> aims the camera at a place, with d=<distance m> az=<deg>
+@@ -17,6 +27,7 @@
+ import { makeGridSpec } from '../core/grid';
+ import type { SimSnapshot } from '../core/types';
+ import { DEMO_SITES, loadBundledContext, loadCanopy, loadElevation, setAssetBase } from '../data';
++import { fireTerrainFromHiRes } from '../scenario/terrain';
+ import type { ContextLayers } from '../core/places';
+ import { buildTerrain } from '../terrain';
+ import { loadDemoImagery } from './demoAssets';
+@@ -40,12 +51,23 @@ async function main(): Promise<void> {
+   setAssetBase(`${location.origin}/`);
+   const siteId = q.get('site') ?? 'katoomba';
+   const site = DEMO_SITES.find((s) => s.id === siteId) ?? DEMO_SITES[0]!;
+-  const cell = num('cell', 20);
++  const hires = q.get('hires') === '1';
++  const cell = num('cell', hires ? 30 : 20);
+   const extent = 9000;
+ 
+   // Terrain: src/data prefers the bundled NSW 5 m LiDAR bare-earth DTM, else the SRTM Terrarium tiles.
+-  const elev = await loadElevation({ centre: site.centre, extent, cellSize: cell, demoSiteId: site.id });
+-  const terrain = buildTerrain(elev.grid, elev.elevation, elev.source);
++  // hires=1 does what the app does: a 10 m DEM goes to setScenario as `hiRes` (the mesh and lighting come from it), and
++  // the fire-grid terrain is its block average (fireTerrainFromHiRes).
++  let terrain;
++  let hiRes: { grid: ReturnType<typeof makeGridSpec>; elevation: Float32Array } | null = null;
++  if (hires) {
++    const e10 = await loadElevation({ centre: site.centre, extent, cellSize: 10, demoSiteId: site.id });
++    hiRes = { grid: e10.grid, elevation: e10.elevation };
++    terrain = fireTerrainFromHiRes({ grid: e10.grid, elevation: e10.elevation, source: e10.source }, cell);
++  } else {
++    const elev = await loadElevation({ centre: site.centre, extent, cellSize: cell, demoSiteId: site.id });
++    terrain = buildTerrain(elev.grid, elev.elevation, elev.source);
++  }
+ 
+   // Fuel on a 30 m fire grid from the bundled canopy.
+   const fuelGrid = makeGridSpec(site.centre, extent, 30);
+@@ -69,9 +91,29 @@ async function main(): Promise<void> {
+     fixedDpr: q.has('dpr'),
+     maxDpr: q.has('dpr') ? num('dpr', 1) : undefined,
+     windArrows: q.get('arrows') === '1',
++    meshResolution: q.has('meshN') ? num('meshN', 400) : undefined,
++    cliff: {
++      sharpen: q.get('sharpen') === '1',
++      sharpenOpts: {
++        ...(q.has('lo') ? { loDeg: num('lo', 48) } : {}),
++        ...(q.has('hi') ? { hiDeg: num('hi', 62) } : {}),
++        ...(q.has('spread') ? { spread: num('spread', 0.6) } : {}),
++        ...(q.has('win') ? { window: num('win', 3) } : {}),
++        ...(q.has('str') ? { strength: num('str', 1) } : {}),
++        ...(q.has('eps') ? { eps: num('eps', 0.5) } : {}),
++        ...(q.has('despike') ? { despikeM: num('despike', 10) } : {}),
++        ...(q.has('snap') ? { snap: num('snap', 0.5) } : {}),
++      },
++      mesh: q.get('mesh') === 'keep' ? 'keep' : 'old',
++      ...(q.has('mlo') ? { meshLoDeg: num('mlo', 40) } : {}),
++      ...(q.has('mhi') ? { meshHiDeg: num('mhi', 55) } : {}),
++      ...(q.has('mdespike') ? { meshDespikeM: num('mdespike', 0) } : {}),
++      light: (['mesh', 'meshgrid', 'hybrid', 'n10s-mesh', 'n10s-min', 'nmesh-s10'] as const).find((v) => v === q.get('light')) ?? q.get('light') === '1',
++    },
+   });
+-  view.setScenario(terrain, fuel, { imagery, context });
++  view.setScenario(terrain, fuel, { imagery, context, hiRes });
+   view.setStartTime(startTime);
++  if (q.get('dbg') === 'flat') view.debugFlat(true);
+   $('loading').classList.add('hidden');
+ 
+   const overlay = (q.get('overlay') ?? 'none') as OverlayKind;
+@@ -97,8 +139,10 @@ async function main(): Promise<void> {
+       centre: q.has('crossAt') ? (q.get('crossAt')!.split(',').map(Number) as [number, number]) : [fire.ignition[0] + 1800 * Math.sin((((fire.opts.windDir + 180) % 360) * Math.PI) / 180), fire.ignition[1] + 1800 * Math.cos((((fire.opts.windDir + 180) % 360) * Math.PI) / 180)],
+     },
+   });
+-  view.setIgnitions(fire.ignitions(), []);
+-  if (q.has('user')) {
++  view.setIgnitions(q.get('marks') === '0' ? [] : fire.ignitions(), []);
++  if (q.get('marks') === '0') {
++    /* SPIKE S5: no ignition pins, insight markers or user marker in the picture */
++  } else if (q.has('user')) {
+     const [ux, uy, uh] = q.get('user')!.split(',').map(Number);
+     view.setUserLocation(ux!, uy!, Number.isFinite(uh) ? uh! : null);
+   } else {
+@@ -117,7 +161,7 @@ async function main(): Promise<void> {
+   const show = (snap: SimSnapshot): void => {
+     view.update(snap);
+     const ins = fire.insights(snap.time);
+-    view.setInsights(ins);
++    view.setInsights(q.get('marks') === '0' ? [] : ins);
+     if (q.get('focus') === '1') view.focusInsight(ins[0] ?? null, false);
+     const local = new Date(startTime + snap.time * 1000 + 11 * 3600 * 1000);
+     $('clock').textContent = `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')} +${(snap.time / 3600).toFixed(1)}h`;
+@@ -148,7 +192,10 @@ async function main(): Promise<void> {
+   }
+   if (q.get('cross') === '1' && !q.has('cam')) view.viewSection(false);
+   const mode = q.get('view');
+-  if (mode === 'top' || mode === 'ground') view.setViewMode(mode);
++  if (q.has('eye')) {
++    const [ex, ey, lx, ly, eh] = q.get('eye')!.split(',').map(Number);
++    view.standAt(ex!, ey!, lx!, ly!, eh);
++  } else if (mode === 'top' || mode === 'ground') view.setViewMode(mode);
+   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-view]')) b.classList.toggle('on', b.dataset.view === (mode ?? 'orbit'));
+ 
+   // HUD wiring.
+diff --git a/src/render/fields.test.ts b/src/render/fields.test.ts
+index dccab9e..4902403 100644
+--- a/src/render/fields.test.ts
++++ b/src/render/fields.test.ts
+@@ -4,6 +4,7 @@ import { BurnState, FuelType, SpreadDriver, type FireField, type FuelMap, type T
+ import {
+   arrivalTexture,
+   decimateGrid,
++  decimateTerrain,
+   fireAuxTexture,
+   fireCentroid,
+   flameSites,
+@@ -118,6 +119,37 @@ describe('decimateGrid', () => {
+   });
+ });
+ 
++describe('decimateTerrain (S5 prototype)', () => {
++  it('is bit-identical to decimateGrid on ground under 40 degrees, and returns small grids unchanged', () => {
++    const g = makeGridSpec(origin, 9000, 10);
++    const z = new Float32Array(g.nx * g.ny);
++    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) z[j * g.nx + i] = 600 + 60 * Math.sin(i / 23) * Math.cos(j / 31) + 0.35 * i;
++    const a = decimateTerrain(g, z, 400);
++    const b = decimateGrid(g, z, 400);
++    expect(a.grid).toEqual(b.grid);
++    expect(a.ratio).toBe(b.ratio);
++    expect(a.elevation.every((v, k) => v === b.elevation[k])).toBe(true);
++    expect(decimateTerrain(g, z, 1000).grid).toBe(g);
++  });
++
++  it('keeps a step a step: a 150 m step stays steeper than the blur leaves it', () => {
++    const g = makeGridSpec(origin, 9000, 10);
++    const z = new Float32Array(g.nx * g.ny);
++    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) z[j * g.nx + i] = i < 450 ? 150 : 0;
++    const steepest = (e: Float32Array, n: number, cell: number): number => {
++      let m = 0;
++      const row = Math.floor(n / 2) * n;
++      for (let i = 0; i < n - 1; i++) m = Math.max(m, Math.atan(Math.abs(e[row + i + 1]! - e[row + i]!) / cell) * (180 / Math.PI));
++      return m;
++    };
++    const keep = decimateTerrain(g, z, 400);
++    const blur = decimateGrid(g, z, 400);
++    expect(steepest(keep.elevation, keep.grid.nx, keep.grid.cellSize)).toBeGreaterThan(steepest(blur.elevation, blur.grid.nx, blur.grid.cellSize) + 2);
++    // an ideal step across one pair of vertices is atan(150 / 22.5) = 81.5 degrees; with a vertex inside the 10 m transition it is less
++    expect(steepest(keep.elevation, keep.grid.nx, keep.grid.cellSize)).toBeGreaterThan(70);
++  });
++});
++
+ describe('fire textures', () => {
+   const g = makeGridSpec(origin, 2000, 30);
+   // Circular fire growing at 0.2 m/s from the centre.
+diff --git a/src/render/fields.ts b/src/render/fields.ts
+index 6197c1b..488a52b 100644
+--- a/src/render/fields.ts
++++ b/src/render/fields.ts
+@@ -7,6 +7,7 @@ import { boxBlur, resample, type GridSpec } from '../core/grid';
+ import type { ContextLayers } from '../core/places';
+ import { BurnState, FireHistoryKind, FuelType, type AtmosphereView, type FireField, type FuelMap, type Terrain } from '../core/types';
+ import { clamp } from '../core/units';
++import { despikeGrid, hornTan2 } from './cliffSharpen';
+ import { contextFieldValues } from './contextFields';
+ import type { OverlayKind } from './layers';
+ import { NO_DATA, NOT_BURNT } from './legends';
+@@ -66,6 +67,81 @@ export function decimateGrid(grid: GridSpec, elevation: Float32Array, maxN: numb
+   return { grid: dst, elevation: resample(grid, src, dst), ratio };
+ }
+ 
++export interface DecimateTerrainOptions {
++  /** Footprint slope (deg) below which the blurred value is used and above which the unblurred sample takes over. */
++  loDeg: number;
++  hiDeg: number;
++  /** When above 0: a despike pass on the finished mesh (towers and pits of this many metres or more, 2 m margin). */
++  despikeM: number;
++}
++
++/**
++ * SPIKE S5 PROTOTYPE (plan 9d.3.2). A mesh that keeps the edge: the same value as {@link decimateGrid} on gentle ground,
++ * and the unblurred bilinear sample where the vertex's footprint is steep (blend smoothstep(loDeg, hiDeg, the largest
++ * 10 m Horn slope inside the footprint)), so a step stays a step between adjacent vertices. Where the footprint's
++ * steepest slope is at or below `loDeg` the result is bit-identical to decimateGrid.
++ */
++export function decimateTerrain(grid: GridSpec, elevation: Float32Array, maxN: number, opts: Partial<DecimateTerrainOptions> = {}): RenderGrid {
++  const base = decimateGrid(grid, elevation, maxN);
++  if (base.ratio === 1) return base;
++  const loDeg = opts.loDeg ?? 40;
++  const hiDeg = opts.hiDeg ?? 55;
++  const dst = base.grid;
++  const raw = resample(grid, elevation, dst);
++  const g2 = hornTan2(grid, elevation);
++  const tan2Lo = Math.tan((loDeg * Math.PI) / 180) ** 2;
++  const out = new Float32Array(base.elevation);
++  const half = dst.cellSize / 2;
++  for (let j = 0; j < dst.ny; j++) {
++    const y = dst.y0 + j * dst.cellSize;
++    const j0 = Math.max(0, Math.floor((y - half - grid.y0) / grid.cellSize));
++    const j1 = Math.min(grid.ny - 1, Math.ceil((y + half - grid.y0) / grid.cellSize));
++    for (let i = 0; i < dst.nx; i++) {
++      const x = dst.x0 + i * dst.cellSize;
++      const i0 = Math.max(0, Math.floor((x - half - grid.x0) / grid.cellSize));
++      const i1 = Math.min(grid.nx - 1, Math.ceil((x + half - grid.x0) / grid.cellSize));
++      let m = 0;
++      for (let b = j0; b <= j1; b++) {
++        const row = b * grid.nx;
++        for (let a = i0; a <= i1; a++) {
++          const v = g2[row + a]!;
++          if (v > m) m = v;
++        }
++      }
++      if (m <= tan2Lo) continue;
++      const t = Math.min(1, Math.max(0, (Math.atan(Math.sqrt(m)) * 180) / Math.PI - loDeg) / (hiDeg - loDeg));
++      const wt = t * t * (3 - 2 * t);
++      const k = j * dst.nx + i;
++      out[k] = base.elevation[k]! * (1 - wt) + raw[k]! * wt;
++    }
++  }
++  if ((opts.despikeM ?? 0) > 0) despikeGrid(dst, out, opts.despikeM!, 2);
++  return { grid: dst, elevation: out, ratio: base.ratio };
++}
++
++/**
++ * SPIKE S5 PROTOTYPE. The lighting gradient, on the 10 m grid, for a render mesh that keeps edges: the Horn gradient of the
++ * 10 m terrain `z10` on gentle ground, the Horn gradient of the render mesh (sampled onto the 10 m grid) where the steeper of
++ * the two slopes is steep. The blend is smoothstep(loDeg, hiDeg, that slope), so a pixel on a face is lit the way the mesh
++ * draws it, and gentle ground keeps the 10 m detail that the mesh's blur removed.
++ */
++export function hybridGradient(grid: GridSpec, z10: Float32Array, rg: RenderGrid, loDeg = 40, hiDeg = 55): { dzdx: Float32Array; dzdy: Float32Array } {
++  const g10 = hornGradient(grid, z10);
++  const gm = hornGradient(grid, resample(rg.grid, rg.elevation, grid));
++  const n = grid.nx * grid.ny;
++  const dzdx = new Float32Array(n);
++  const dzdy = new Float32Array(n);
++  for (let k = 0; k < n; k++) {
++    const a = Math.hypot(g10.dzdx[k]!, g10.dzdy[k]!);
++    const b = Math.hypot(gm.dzdx[k]!, gm.dzdy[k]!);
++    const t = Math.min(1, Math.max(0, ((Math.atan(Math.max(a, b)) * 180) / Math.PI - loDeg) / (hiDeg - loDeg)));
++    const w = t * t * (3 - 2 * t);
++    dzdx[k] = g10.dzdx[k]! * (1 - w) + gm.dzdx[k]! * w;
++    dzdy[k] = g10.dzdy[k]! * (1 - w) + gm.dzdy[k]! * w;
++  }
++  return { dzdx, dzdy };
++}
++
+ /**
+  * Horn (1981) 3 × 3 gradient, the same operator as src/terrain (edge cells replicate the border).
+  * dz/dx is + towards east, dz/dy + towards north (j = 0 south).
+diff --git a/src/render/terrainLayer.ts b/src/render/terrainLayer.ts
+index 427228e..33de501 100644
+--- a/src/render/terrainLayer.ts
++++ b/src/render/terrainLayer.ts
+@@ -30,10 +30,12 @@ uniform float uVex;
+ varying vec2 vLocal;
+ varying float vZ;
+ varying float vDist;
++varying vec3 vW;
+ void main() {
+   vec3 w = vec3(position.x, position.z * uVex, -position.y);
+   vLocal = position.xy;
+   vZ = position.z;
++  vW = w;
+   vec4 mv = viewMatrix * vec4(w, 1.0);
+   vDist = -mv.z;
+   gl_Position = projectionMatrix * mv;
+@@ -51,6 +53,7 @@ const float PLAIN_GROUND = 0.40;
+ uniform sampler2D uAlbedo;   uniform vec4 uAlbedoXf;
+ uniform sampler2D uImagery;  uniform vec4 uImageryXf; uniform float uUseImagery; uniform float uImageryFlipV; uniform float uPlainBase;
+ uniform sampler2D uGrad;     uniform vec4 uGradXf;
++uniform sampler2D uGradS;    uniform vec4 uGradSXf; uniform float uSplit; // SPIKE S5: a second gradient that drives only the colour (slope), not the normal
+ uniform sampler2D uShade;    uniform vec4 uShadeXf;
+ uniform sampler2D uArrival;  uniform sampler2D uFireAux; uniform vec4 uFireXf; uniform float uHasFire;
+ uniform sampler2D uGlow;     uniform vec4 uGlowXf; uniform float uGlowGain;
+@@ -66,9 +69,11 @@ uniform vec4 uUser; uniform float uUserHeading; uniform vec4 uFocus;
+ uniform vec4 uSpots[${MAX_SPOTS}]; uniform int uSpotCount;
+ uniform vec4 uIgn[${MAX_IGNITION_SEGMENTS}]; uniform int uIgnCount;
+ uniform float uPixelMetres;
++uniform float uDbgFlat;
+ varying vec2 vLocal;
+ varying float vZ;
+ varying float vDist;
++varying vec3 vW;
+ 
+ // Arrival time with manual bilinear filtering; "not burnt" texels take the latest neighbouring arrival + 10 min so
+ // the burnt edge stays a smooth curve even next to non-flammable cells.
+@@ -144,8 +149,10 @@ void main() {
+   // ── Normal from the full-resolution Horn gradient ─────────────────────────
+   vec2 grad = texture(uGrad, fsGridUv(p, uGradXf)).rg;
+   vec3 n = normalize(vec3(-uVex * grad.x, 1.0, uVex * grad.y));
++  if (uDbgFlat > 0.5) n = normalize(cross(dFdx(vW), dFdy(vW))); // SPIKE S5 debug: the mesh's own facets
+   vec4 shade = texture(uShade, fsGridUv(p, uShadeXf)); // r hillshade, g sky view, b cast shadow
+   float slope = length(grad);
++  if (uSplit > 0.5) { float sm = length(texture(uGradS, fsGridUv(p, uGradSXf)).rg); slope = uSplit > 1.5 ? min(slope, sm) : sm; }
+ 
+   // ── Base colour ──────────────────────────────────────────────────────────
+   vec4 alb = texture(uAlbedo, fsGridUv(p, uAlbedoXf));
+@@ -402,6 +409,13 @@ void main() {
+ }
+ `;
+ 
++/** SPIKE S5: a Horn gradient field on its own grid (the lighting texture's source). */
++export interface LightGradient {
++  grid: GridSpec;
++  dzdx: Float32Array;
++  dzdy: Float32Array;
++}
++
+ export interface TerrainDecals {
+   brush: { x: number; y: number; radius: number; colour: THREE.Color } | null;
+   spots: { x: number; y: number; radius: number }[];
+@@ -430,13 +444,18 @@ export class TerrainLayer {
+   private imageryTex: THREE.Texture | null = null;
+   private readonly shadeData: Uint8Array;
+   readonly renderGrid: RenderGrid;
++  /** SPIKE S5: milliseconds spent filling the gradient texture (interleave and half-float conversion). */
++  gradientMs = 0;
+ 
+   /**
+    * @param shared uniforms shared with the other layers (same-named entries replace the terrain's defaults, so
+    *               lighting, time and exaggeration are set once for every material)
+    */
+-  constructor(rg: RenderGrid, terrain: Terrain, shared: Record<string, THREE.IUniform>, private readonly maxAnisotropy = 4) {
++  constructor(rg: RenderGrid, terrain: Terrain, shared: Record<string, THREE.IUniform>, private readonly maxAnisotropy = 4, lightGrad?: LightGradient, slopeGrad?: LightGradient) {
+     this.renderGrid = rg;
++    // SPIKE S5: the normals, slope and strata come from `lightGrad` (the 10 m, optionally sharpened, terrain) when given,
++    // else from the fire grid as today.
++    const gsrc: LightGradient = lightGrad ?? { grid: terrain.grid, dzdx: terrain.dzdx, dzdy: terrain.dzdy };
+     const { geometry, skirt } = buildTerrainGeometry(rg.grid, rg.elevation, terrain.minElevation);
+     const spots = Array.from({ length: MAX_SPOTS }, () => new THREE.Vector4());
+     const ign = Array.from({ length: MAX_IGNITION_SEGMENTS }, () => new THREE.Vector4());
+@@ -456,7 +475,10 @@ export class TerrainLayer {
+       uImageryFlipV: { value: 0 },
+       uPlainBase: { value: 0 },
+       uGrad: { value: dG },
+-      uGradXf: { value: new THREE.Vector4(...gridTransform(terrain.grid)) },
++      uGradXf: { value: new THREE.Vector4(...gridTransform(gsrc.grid)) },
++      uGradS: { value: dG },
++      uGradSXf: { value: new THREE.Vector4(0, 0, 1, 1) },
++      uSplit: { value: 0 },
+       uShade: { value: dA },
+       uShadeXf: { value: new THREE.Vector4(...gridTransform(rg.grid)) },
+       uArrival: { value: dF },
+@@ -501,6 +523,7 @@ export class TerrainLayer {
+       uIgn: { value: ign },
+       uIgnCount: { value: 0 },
+       uPixelMetres: { value: 0.002 },
++      uDbgFlat: { value: 0 },
+       ...shared,
+     };
+     this.material = new THREE.ShaderMaterial({
+@@ -535,15 +558,30 @@ export class TerrainLayer {
+     this.group.add(this.mesh, this.skirt);
+ 
+     // Full-resolution Horn gradients as an RG16F normal texture.
+-    const n = terrain.grid.nx * terrain.grid.ny;
++    const tg0 = performance.now();
++    const n = gsrc.grid.nx * gsrc.grid.ny;
+     const g2 = new Float32Array(n * 2);
+     for (let k = 0; k < n; k++) {
+-      g2[k * 2] = terrain.dzdx[k]!;
+-      g2[k * 2 + 1] = terrain.dzdy[k]!;
++      g2[k * 2] = gsrc.dzdx[k]!;
++      g2[k * 2 + 1] = gsrc.dzdy[k]!;
+     }
+-    const gradTex = halfRgTexture(g2, terrain.grid.nx, terrain.grid.ny);
++    const gradTex = halfRgTexture(g2, gsrc.grid.nx, gsrc.grid.ny);
++    this.gradientMs = performance.now() - tg0;
+     this.textures.add(gradTex);
+     this.uniforms.uGrad!.value = gradTex;
++    if (slopeGrad) {
++      const m = slopeGrad.grid.nx * slopeGrad.grid.ny;
++      const g3 = new Float32Array(m * 2);
++      for (let k = 0; k < m; k++) {
++        g3[k * 2] = slopeGrad.dzdx[k]!;
++        g3[k * 2 + 1] = slopeGrad.dzdy[k]!;
++      }
++      const t2 = halfRgTexture(g3, slopeGrad.grid.nx, slopeGrad.grid.ny);
++      this.textures.add(t2);
++      this.uniforms.uGradS!.value = t2;
++      (this.uniforms.uGradSXf!.value as THREE.Vector4).set(...gridTransform(slopeGrad.grid));
++      this.uniforms.uSplit!.value = 1;
++    }
+     this.shadeData = new Uint8Array(rg.grid.nx * rg.grid.ny * 4);
+   }
+ 

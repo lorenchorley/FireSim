@@ -1,0 +1,316 @@
+S5 harness: node v22.22.2, 4 cores (Intel(R) Xeon(R) Processor @ 2.10GHz), load average 0.3 1.7 5.2 when it started, 7 timed repetitions, median (min) in ms
+
+== 1. The table of plan 9d.3, re-run (10 m terrain, whole grid; the prototype is the optimised cliffSharpen of this file)
+Columns: data to new. "PLAN" is the number printed in 9d.3, "NOW" is this run. d = NOW - PLAN.
+
+-- katoomba (900 x 900 cells at 10 m)
+quantity                                                    PLAN             NOW
+steepest 10 m slope (deg)                           83.2 to 85.0    83.2 to 85.0
+area over 70 deg (%)                                0.52 to 0.97    0.52 to 0.97
+High mesh edges over 70 deg (%), today to new       0.12 to 0.60    0.12 to 0.60
+steepest High mesh edge (deg), today to new         78.0 to 83.5    78.0 to 83.5
+steepest Low mesh edge (deg), today to new          73.2 to 79.1    73.2 to 79.1
+drainage overlap (IoU, 5 ha)                                0.92            0.92
+cells with weight > 0: 36255 (4.48 % of cells); moved by 0.5 m or more: 31756 (3.92 %), mean 19.0 m, largest 94.6 m
+despiked: 46 cells; towers/pits of 10 m or more left: {"towers":0,"pits":0}; before sharpening, in the data: {"towers":0,"pits":0}
+smaller spikes (towers/pits standing out from all 8 neighbours by at least 3 m, 5 m): data {"towers":2,"pits":1} {"towers":1,"pits":0}; sharpened {"towers":80,"pits":87} {"towers":21,"pits":32}
+against the plan's probe (steepenDir + despike, whole grid): 0 cells differ by more than 1 mm, largest difference 1.2e-4 m; probe despiked 46
+decimateTerrain against the probe's decimateKeep (High): largest difference 6.1e-5 m
+
+-- kanangra (900 x 900 cells at 10 m)
+quantity                                                    PLAN             NOW
+steepest 10 m slope (deg)                           82.8 to 86.2    82.8 to 86.2
+area over 70 deg (%)                                0.16 to 0.98    0.16 to 0.98
+High mesh edges over 70 deg (%), today to new       0.02 to 0.47    0.02 to 0.47
+steepest High mesh edge (deg), today to new         79.9 to 85.3    79.9 to 85.3
+steepest Low mesh edge (deg), today to new          75.9 to 81.3    75.9 to 81.3
+drainage overlap (IoU, 5 ha)                                0.94            0.94
+cells with weight > 0: 62290 (7.69 % of cells); moved by 0.5 m or more: 49250 (6.08 %), mean 13.2 m, largest 122.2 m
+despiked: 48 cells; towers/pits of 10 m or more left: {"towers":0,"pits":0}; before sharpening, in the data: {"towers":0,"pits":0}
+smaller spikes (towers/pits standing out from all 8 neighbours by at least 3 m, 5 m): data {"towers":4,"pits":1} {"towers":0,"pits":0}; sharpened {"towers":84,"pits":104} {"towers":32,"pits":49}
+against the plan's probe (steepenDir + despike, whole grid): 0 cells differ by more than 1 mm, largest difference 1.2e-4 m; probe despiked 48
+decimateTerrain against the probe's decimateKeep (High): largest difference 6.1e-5 m
+
+-- grose (900 x 900 cells at 10 m)
+quantity                                                    PLAN             NOW
+steepest 10 m slope (deg)                           84.0 to 86.2    84.0 to 86.2
+area over 70 deg (%)                                1.09 to 1.45    1.09 to 1.45
+High mesh edges over 70 deg (%), today to new       0.44 to 0.87    0.44 to 0.87
+steepest High mesh edge (deg), today to new         80.8 to 85.4    80.8 to 85.4
+steepest Low mesh edge (deg), today to new          76.4 to 81.9    76.4 to 81.9
+drainage overlap (IoU, 5 ha)                                0.86            0.86
+cells with weight > 0: 56990 (7.04 % of cells); moved by 0.5 m or more: 48195 (5.95 %), mean 20.9 m, largest 119.6 m
+despiked: 86 cells; towers/pits of 10 m or more left: {"towers":0,"pits":0}; before sharpening, in the data: {"towers":0,"pits":0}
+smaller spikes (towers/pits standing out from all 8 neighbours by at least 3 m, 5 m): data {"towers":4,"pits":8} {"towers":1,"pits":2}; sharpened {"towers":134,"pits":125} {"towers":54,"pits":54}
+against the plan's probe (steepenDir + despike, whole grid): 0 cells differ by more than 1 mm, largest difference 6.1e-5 m; probe despiked 86
+decimateTerrain against the probe's decimateKeep (High): largest difference 6.1e-5 m
+
+-- tomah (900 x 900 cells at 10 m)
+quantity                                                    PLAN             NOW
+steepest 10 m slope (deg)                           73.5 to 81.7    73.5 to 81.7
+area over 70 deg (%)                                0.02 to 0.79    0.02 to 0.79
+High mesh edges over 70 deg (%), today to new       0.00 to 0.31    0.00 to 0.31
+steepest High mesh edge (deg), today to new         67.3 to 79.2    67.3 to 79.2
+steepest Low mesh edge (deg), today to new          60.7 to 72.3    60.7 to 72.3
+drainage overlap (IoU, 5 ha)                                0.91            0.91
+cells with weight > 0: 64705 (7.99 % of cells); moved by 0.5 m or more: 49105 (6.06 %), mean 9.5 m, largest 54.5 m
+despiked: 1 cells; towers/pits of 10 m or more left: {"towers":0,"pits":0}; before sharpening, in the data: {"towers":0,"pits":0}
+smaller spikes (towers/pits standing out from all 8 neighbours by at least 3 m, 5 m): data {"towers":0,"pits":13} {"towers":0,"pits":3}; sharpened {"towers":24,"pits":49} {"towers":7,"pits":5}
+against the plan's probe (steepenDir + despike, whole grid): 0 cells differ by more than 1 mm, largest difference 6.1e-5 m; probe despiked 1
+decimateTerrain against the probe's decimateKeep (High): largest difference 6.1e-5 m
+
+== 2. Mesh edges (share of the triangle edges, both axes) by combination: today = box blur of the data (decimateGrid);
+   data+keep = decimateTerrain of the data; sharp+blur = decimateGrid of the sharpened terrain; plan = decimateTerrain of the sharpened terrain
+site      tier    cell    combination   max deg    >60 %    >70 %    >80 %
+katoomba  High    22.5 m  today            78.0     0.59     0.12     0.00
+katoomba  High    22.5 m  data+keep        80.6     0.67     0.19     0.00
+katoomba  High    22.5 m  sharp+blur       81.0     0.86     0.42     0.01
+katoomba  High    22.5 m  plan             83.5     0.88     0.60     0.14
+katoomba  Medium  28.2 m  today            78.1     0.57     0.10     0.00
+katoomba  Medium  28.2 m  data+keep        79.7     0.66     0.16     0.00
+katoomba  Medium  28.2 m  sharp+blur       80.9     0.85     0.37     0.00
+katoomba  Medium  28.2 m  plan             82.2     0.93     0.60     0.08
+katoomba  Low     40.3 m  today            73.2     0.39     0.02     0.00
+katoomba  Low     40.3 m  data+keep        76.3     0.62     0.11     0.00
+katoomba  Low     40.3 m  sharp+blur       75.5     0.65     0.13     0.00
+katoomba  Low     40.3 m  plan             79.1     1.00     0.49     0.00
+kanangra  High    22.5 m  today            79.9     0.24     0.02     0.00
+kanangra  High    22.5 m  data+keep        81.6     0.35     0.05     0.00
+kanangra  High    22.5 m  sharp+blur       83.7     0.70     0.21     0.01
+kanangra  High    22.5 m  plan             85.3     0.99     0.47     0.05
+kanangra  Medium  28.2 m  today            79.0     0.23     0.02     0.00
+kanangra  Medium  28.2 m  data+keep        80.4     0.30     0.04     0.00
+kanangra  Medium  28.2 m  sharp+blur       83.2     0.64     0.17     0.01
+kanangra  Medium  28.2 m  plan             84.1     0.93     0.39     0.03
+kanangra  Low     40.3 m  today            75.9     0.13     0.01     0.00
+kanangra  Low     40.3 m  data+keep        78.4     0.23     0.03     0.00
+kanangra  Low     40.3 m  sharp+blur       78.7     0.32     0.05     0.00
+kanangra  Low     40.3 m  plan             81.3     0.76     0.22     0.00
+grose     High    22.5 m  today            80.8     1.10     0.44     0.01
+grose     High    22.5 m  data+keep        83.2     1.13     0.52     0.03
+grose     High    22.5 m  sharp+blur       83.7     1.31     0.75     0.13
+grose     High    22.5 m  plan             85.4     1.32     0.87     0.35
+grose     Medium  28.2 m  today            80.1     1.09     0.43     0.00
+grose     Medium  28.2 m  data+keep        81.5     1.13     0.52     0.02
+grose     Medium  28.2 m  sharp+blur       83.1     1.31     0.73     0.09
+grose     Medium  28.2 m  plan             84.1     1.36     0.87     0.30
+grose     Low     40.3 m  today            76.4     1.02     0.25     0.00
+grose     Low     40.3 m  data+keep        79.5     1.11     0.46     0.00
+grose     Low     40.3 m  sharp+blur       79.4     1.16     0.51     0.00
+grose     Low     40.3 m  plan             81.9     1.34     0.88     0.09
+tomah     High    22.5 m  today            67.3     0.07     0.00     0.00
+tomah     High    22.5 m  data+keep        71.6     0.17     0.00     0.00
+tomah     High    22.5 m  sharp+blur       75.5     0.46     0.05     0.00
+tomah     High    22.5 m  plan             79.2     0.88     0.31     0.00
+tomah     Medium  28.2 m  today            67.6     0.05     0.00     0.00
+tomah     Medium  28.2 m  data+keep        70.3     0.13     0.00     0.00
+tomah     Medium  28.2 m  sharp+blur       74.9     0.41     0.03     0.00
+tomah     Medium  28.2 m  plan             76.7     0.80     0.20     0.00
+tomah     Low     40.3 m  today            60.7     0.00     0.00     0.00
+tomah     Low     40.3 m  data+keep        65.7     0.07     0.00     0.00
+tomah     Low     40.3 m  sharp+blur       66.5     0.08     0.00     0.00
+tomah     Low     40.3 m  plan             72.3     0.52     0.02     0.00
+
+== 2b. Spikes in the mesh as drawn: vertices that stand out from all 8 mesh neighbours by at least 5 m / 10 m / 20 m (towers + pits), by combination.
+   "plan + despike" = decimateTerrain with a despike pass on the finished mesh at 10 m (High) / 18 m (Low), 2 m margin (the 10 m terrain rule scaled to the vertex spacing: 45 degrees to every neighbour at 10 m cells is about 22 m at 22.5 m and 40 m at 40.3 m; 10 and 18 are the milder values tried)
+site      tier    combination        >=5 m  >=10 m  >=20 m  max deg   >70 %
+katoomba  High    today                  2       0       0     78.0    0.12
+katoomba  High    plan                  26      13       3     83.5    0.60
+katoomba  High    plan + despike        13       0       0     83.5    0.60
+katoomba  Low     today                  5       0       0     73.2    0.02
+katoomba  Low     plan                   9       2       0     79.1    0.49
+katoomba  Low     plan + despike         9       2       0     79.1    0.49
+kanangra  High    today                  3       0       0     79.9    0.02
+kanangra  High    plan                  27      12       3     85.3    0.47
+kanangra  High    plan + despike        15       0       0     85.3    0.46
+kanangra  Low     today                  8       2       0     75.9    0.01
+kanangra  Low     plan                  27       5       0     81.3    0.22
+kanangra  Low     plan + despike        27       5       0     81.3    0.22
+grose     High    today                  4       0       0     80.8    0.44
+grose     High    plan                  54      20       8     85.4    0.87
+grose     High    plan + despike        34       0       0     85.4    0.87
+grose     Low     today                 13       0       0     76.4    0.25
+grose     Low     plan                  28       8       1     81.9    0.88
+grose     Low     plan + despike        27       7       0     81.9    0.88
+tomah     High    today                 11       0       0     67.3    0.00
+tomah     High    plan                  16       1       0     79.2    0.31
+tomah     High    plan + despike        15       0       0     79.2    0.31
+tomah     Low     today                 19       3       0     60.7    0.00
+tomah     Low     plan                  55      11       2     72.3    0.02
+tomah     Low     plan + despike        52       8       0     72.3    0.02
+
+== 3. Build timings in node (ms, median of 7 after 2 warm-ups; this machine has 4 shared cores, so read them as upper-ish)
+site               sharpen  slope  weights   move  despike       decim old      decim keep      light 10 m
+katoomba       28 (min 25)      7        6      7        3      11 (min 9)     38 (min 36)   165 (min 159)
+          the plan's unoptimised probe on this site: 458 ms (one run)
+kanangra       32 (min 32)     10        9     14        5      10 (min 9)     38 (min 37)   163 (min 151)
+grose          29 (min 28)      6        7     11        3      10 (min 9)     37 (min 36)   157 (min 149)
+tomah          30 (min 29)      7        7     18        3      10 (min 9)     34 (min 33)   156 (min 152)
+          the plan's unoptimised probe on this site: 439 ms (one run)
+"light 10 m" = Horn gradient of the 10 m terrain + interleave + half-float conversion, i.e. what the RG16F lighting texture costs to build on the CPU (the plan does not budget it).
+
+== 4. Properties from the pure-test list of plan 9d.6, checked on the prototype
+property                                                                                            result
+a 70 deg ramp with rounded shoulders becomes steeper                                                PASS  steepest 72.9 to 78.7 deg
+... and keeps its end heights                                                                       PASS  plateau cells unchanged: true, foot cells unchanged: true
+a straight ramp (68 deg plane, 5 cells in from the edge) is untouched bit for bit                   PASS  
+ground under 48 deg is untouched bit for bit                                                        PASS  steepest in the test 27.8 deg
+a gully with 60 deg walls stays a slot: floor cells unchanged                                       PASS  drainage cells (1 ha) before 2319, overlap 0.94
+... and its drainage is kept (overlap at least 0.85)                                                PASS  
+no tower or pit of 10 m or more after the despike (rugged test terrain with 2 % random spikes)      PASS  towers 0, pits 0; despiked 183
+deterministic (two runs identical)                                                                  PASS  
+grid edges untouched                                                                                PASS  
+moves bounded by the 7 x 7 neighbourhood range (plus the 2 m despike margin)                        PASS  
+no new NaN when the data has NaN cells                                                              PASS  0 new NaN
+900 x 900 grid in under 1 s (generous guard)                                                        PASS  36 ms
+decimateTerrain equals decimateGrid exactly on ground under 40 deg                                  PASS  steepest in the test 33.5 deg
+(real Tomah data) share of High vertices that differ from decimateGrid                              PASS  32223 of 160000 (20.14 %)
+
+== 5. What the mesh alone can show: the steepest edge of the mesh across an ideal step of height H, as the step slides across the vertex lattice
+   (the data step is one 10 m cell wide, 10 m cells, mesh by decimateTerrain on the data; the phase is scanned in 1 m steps; "blur" = decimateGrid)
+H (m)   spacing      ideal  keep min  keep mean  keep max  blur min  blur mean  blur max
+30      22.5 m        53.1      51.4       52.5      53.1      40.8       42.2      44.3
+30      40.3 m        36.7      32.6       35.7      36.7      23.1       27.2      31.0
+60      22.5 m        69.4      68.3       69.0      69.4      59.9       61.1      62.8
+60      40.3 m        56.1      52.0       55.1      56.1      40.4       45.6      50.2
+100     22.5 m        77.3      76.6       77.0      77.3      70.8       71.7      72.9
+100     40.3 m        68.0      64.9       67.3      68.0      54.8       59.5      63.4
+150     22.5 m        81.5      80.9       81.3      81.5      76.9       77.6      78.4
+150     40.3 m        75.0      72.7       74.4      75.0      64.8       68.5      71.6
+300     22.5 m        85.7      85.4       85.6      85.7      83.4       83.7      84.1
+300     40.3 m        82.3      81.1       82.1      82.3      76.8       78.8      80.5
+"ideal" = atan(H / spacing): the best a mesh can do with one pair of vertices straddling the step. The plan 9d.6 test "150 m step keeps at least 80 deg on the 22 m mesh and 75 on the 40 m mesh" is the ideal column; it needs no vertex inside the 10 m transition.
+
+== 6. Fallback ladder (cumulative, strongest first). Numbers per site: steepest slope, area over 70 deg, High and Low mesh edges over 70 deg (decimateTerrain), drainage overlap, cells moved, mean move, despiked
+site      rung                                                  steep  >70 %  High>70  Low>70   IoU   moved  mean m  desp  spk>=5  ledge %
+katoomba  data (no sharpening)                                   83.2   0.52     0.12    0.02                                           1      6 %
+          R0 plan: gate 48-62, window 3, full                    85.0   0.97     0.60    0.49  0.92   31756    19.0    46      53     23 %
+          R1 weaker gate 52-66                                   85.0   0.91     0.57    0.45  0.93   26536    19.9    35      41     26 %
+          R2 R1 + one-cell window                                84.2   0.80     0.41    0.24  0.98   23943    10.2    32      60     16 %
+          R3 R2 + lip and foot only (snap 0.25)                  84.0   0.55     0.21    0.14  0.99    3873     5.9     0       1      8 %
+          (alone) one-cell window, plan gate                     84.2   0.82     0.42    0.24  0.97   27966     9.8    35      89     16 %
+          (alone) lip and foot only (snap 0.25), plan gate       84.8   0.70     0.31    0.20  0.95    9919    11.1    13      39     23 %
+          (alone) strength 0.6, plan gate                        84.1   0.87     0.49    0.31  0.97   30691    11.8    19      36      8 %
+          (alone) despike at 5 m, plan gate                      85.0   0.97     0.60    0.49  0.92   31755    19.0    99       0     23 %
+          (alone) despike at 3 m, plan gate                      85.0   0.97     0.60    0.49  0.92   31781    19.0   213       0     23 %
+kanangra  data (no sharpening)                                   82.8   0.16     0.02    0.01                                           0     12 %
+          R0 plan: gate 48-62, window 3, full                    86.2   0.98     0.47    0.22  0.94   49250    13.2    48      81     21 %
+          R1 weaker gate 52-66                                   86.2   0.73     0.36    0.18  0.96   33281    13.2    27      62     20 %
+          R2 R1 + one-cell window                                84.8   0.45     0.16    0.07  0.98   27445     6.8    16      28     19 %
+          R3 R2 + lip and foot only (snap 0.25)                  84.2   0.18     0.05    0.03  0.99    1847     3.3     0       0     12 %
+          (alone) one-cell window, plan gate                     84.8   0.52     0.18    0.07  0.97   38732     6.7    19      62     19 %
+          (alone) lip and foot only (snap 0.25), plan gate       85.3   0.24     0.08    0.04  0.97    6884     6.4     8      14     14 %
+          (alone) strength 0.6, plan gate                        85.0   0.68     0.29    0.11  0.97   46582     8.3    19      50      9 %
+          (alone) despike at 5 m, plan gate                      86.2   0.98     0.47    0.22  0.94   49253    13.2   129       0     21 %
+          (alone) despike at 3 m, plan gate                      86.2   0.98     0.47    0.22  0.94   49261    13.2   236       0     21 %
+grose     data (no sharpening)                                   84.0   1.09     0.44    0.25                                           3      8 %
+          R0 plan: gate 48-62, window 3, full                    86.2   1.45     0.87    0.88  0.86   48195    20.9    86     108     21 %
+          R1 weaker gate 52-66                                   86.2   1.34     0.83    0.85  0.89   39996    22.3    65      89     21 %
+          R2 R1 + one-cell window                                85.3   1.21     0.68    0.65  0.95   36083    11.7    92     120     20 %
+          R3 R2 + lip and foot only (snap 0.25)                  84.9   1.11     0.55    0.50  0.98    6185     7.1     0       2      9 %
+          (alone) one-cell window, plan gate                     85.3   1.24     0.69    0.65  0.94   42534    11.0   105     131     21 %
+          (alone) lip and foot only (snap 0.25), plan gate       85.6   1.26     0.66    0.59  0.91   16853    12.9    20      71     27 %
+          (alone) strength 0.6, plan gate                        85.2   1.24     0.73    0.75  0.93   46484    13.0    40      57      9 %
+          (alone) despike at 5 m, plan gate                      86.2   1.45     0.87    0.88  0.86   48201    20.9   194       0     21 %
+          (alone) despike at 3 m, plan gate                      86.2   1.45     0.87    0.88  0.86   48239    20.9   345       0     21 %
+tomah     data (no sharpening)                                   73.5   0.02     0.00    0.00                                           3      9 %
+          R0 plan: gate 48-62, window 3, full                    81.7   0.79     0.31    0.02  0.91   49105     9.5     1      12     19 %
+          R1 weaker gate 52-66                                   81.4   0.57     0.22    0.01  0.95   32442     9.0     0      10     17 %
+          R2 R1 + one-cell window                                78.4   0.28     0.06    0.00  0.98   27615     4.9     0       6     14 %
+          R3 R2 + lip and foot only (snap 0.25)                  76.0   0.04     0.01    0.00  0.99    2153     2.6     0       2     10 %
+          (alone) one-cell window, plan gate                     78.5   0.34     0.07    0.00  0.96   41223     5.1     3      11     16 %
+          (alone) lip and foot only (snap 0.25), plan gate       78.6   0.10     0.02    0.00  0.96    9404     4.9     0       5     11 %
+          (alone) strength 0.6, plan gate                        79.1   0.48     0.13    0.00  0.96   46080     6.1     0       3      6 %
+          (alone) despike at 5 m, plan gate                      81.7   0.79     0.31    0.02  0.91   49105     9.5    13       0     19 %
+          (alone) despike at 3 m, plan gate                      81.7   0.79     0.31    0.02  0.91   49119     9.5    74       0     19 %
+
+== 6b. Drift of the drawn face from the data (plan 9d.3 item 7: the drawn lip and foot "can sit up to about three cells (30 m)" from the data's)
+   For every cell of the sharpened terrain at 45 deg or more: the distance (cells, Chebyshev) to the nearest data cell at 45 deg or more, searched out to 6 cells. 0 = the cell is steep in the data too.
+site         cells      0      1      2      3      4    5-6     >6   mean
+katoomba     15985  96.5%   3.5%   0.0%   0.0%   0.0%   0.0%   0.0%   0.04
+kanangra     36735  95.8%   4.1%   0.1%   0.0%   0.0%   0.0%   0.0%   0.04
+grose        26793  95.6%   4.4%   0.0%   0.0%   0.0%   0.0%   0.0%   0.04
+tomah        32152  95.1%   4.9%   0.0%   0.0%   0.0%   0.0%   0.0%   0.05
+
+== 6c. The faces of the pictures: ground height at the face centre, and the width of the band where the slope the shader uses is 50 deg or more
+   (the shader switches from photo to banded rock between 40 and 58 deg). Profile along the fall line through the centre, 2 m steps, +-200 m; "from, to" in m, + = downhill.
+site      ground at centre: data / today mesh / sharpened mesh (m)  
+katoomba  852 / 852 / 777                                           
+   fire grid 30 m (today's lighting)    width   92 m   from   -40 to    50
+   10 m data                            width   38 m   from   -18 to    18
+   10 m sharpened                       width   28 m   from   -18 to     8
+   High mesh, today                     width   74 m   from   -34 to    38
+   High mesh, plan                      width   68 m   from   -38 to    28
+   Low mesh, today                      width  104 m   from   -42 to    60
+   Low mesh, plan                       width   94 m   from   -58 to    34
+kanangra  1016 / 1014 / 1032                                        
+   fire grid 30 m (today's lighting)    width   38 m   from     0 to    82
+   10 m data                            width   66 m   from  -116 to    96
+   10 m sharpened                       width   60 m   from  -118 to    98
+   High mesh, today                     width   66 m   from    -8 to    96
+   High mesh, plan                      width   82 m   from   -12 to   102
+   Low mesh, today                      width    8 m   from    38 to    44
+   Low mesh, plan                       width   40 m   from    40 to   130
+grose     861 / 850 / 839                                           
+   fire grid 30 m (today's lighting)    width   94 m   from   -44 to    48
+   10 m data                            width   50 m   from   -40 to    28
+   10 m sharpened                       width   28 m   from    -8 to    18
+   High mesh, today                     width   82 m   from   -38 to    42
+   High mesh, plan                      width   60 m   from   -30 to    28
+   Low mesh, today                      width  102 m   from   -46 to    54
+   Low mesh, plan                       width   94 m   from   -34 to    58
+tomah     459 / 459 / 448                                           
+   fire grid 30 m (today's lighting)    width   84 m   from   -28 to    54
+   10 m data                            width  104 m   from   -22 to   154
+   10 m sharpened                       width   76 m   from   -16 to   150
+   High mesh, today                     width   94 m   from   -28 to   140
+   High mesh, plan                      width  100 m   from   -26 to   152
+   Low mesh, today                      width   72 m   from   -26 to    44
+   Low mesh, plan                       width   76 m   from   -32 to    42
+
+== 7. Face heights (fall-line runs of 45 deg or more that start at a lip cell of 55 deg or more), in the data and in the sharpened terrain
+   A lip cell = a cell of 55 deg or more whose cell one step up the fall line is under 45 deg. The height is the drop to the foot (the first cell under 45 deg going down).
+   ledge % = share of faces that meet 55 deg or more again within 3 cells below their foot (a bench, then another face): a measure of terracing.
+site      terrain             lips   <30 m   30-60  60-100  100-200  >200 m    drop    run  ledge %
+katoomba  10 m data           2590     9 %    17 %    27 %     47 %     0 %    96 m   40 m      6 %
+katoomba  10 m sharpened      4715     7 %    18 %    20 %     52 %     4 %   107 m   20 m     23 %
+katoomba  High today           796     1 %     6 %    26 %     64 %     2 %   118 m   68 m      1 %
+katoomba  High plan           1299     6 %     7 %    20 %     62 %     4 %   119 m   45 m      5 %
+katoomba  Low today            246     0 %    13 %    10 %     69 %     8 %   125 m   81 m      0 %
+katoomba  Low plan             466    14 %     5 %    10 %     60 %    12 %   143 m   81 m      0 %
+kanangra  10 m data           1559    18 %    31 %    22 %     26 %     3 %    61 m   30 m     12 %
+kanangra  10 m sharpened      6647    10 %    38 %    29 %     20 %     2 %    61 m   20 m     21 %
+kanangra  High today           295     2 %    11 %    28 %     47 %    11 %   114 m   68 m      8 %
+kanangra  High plan           1085     7 %    12 %    38 %     38 %     5 %    92 m   45 m     22 %
+kanangra  Low today             74     0 %     7 %    23 %     46 %    24 %   117 m   81 m     14 %
+kanangra  Low plan             211    10 %     9 %    11 %     53 %    17 %   136 m   81 m     20 %
+grose     10 m data           3659    12 %    22 %    12 %     34 %    19 %   113 m   40 m      8 %
+grose     10 m sharpened      7033    10 %    25 %    18 %     25 %    22 %    90 m   20 m     21 %
+grose     High today          1064     1 %     5 %     7 %     47 %    40 %   185 m   68 m      3 %
+grose     High plan           1728     6 %     7 %    14 %     35 %    37 %   176 m   45 m     12 %
+grose     Low today            492     0 %     2 %     4 %     49 %    43 %   191 m  121 m      0 %
+grose     Low plan             663     6 %     3 %     4 %     30 %    57 %   209 m   81 m      3 %
+tomah     10 m data           2702    26 %    51 %    22 %      1 %     0 %    42 m   30 m      9 %
+tomah     10 m sharpened      8054    16 %    47 %    32 %      5 %     0 %    50 m   20 m     19 %
+tomah     High today           238     6 %    44 %    45 %      5 %     0 %    60 m   45 m      3 %
+tomah     High plan           1217    17 %    20 %    52 %     10 %     1 %    70 m   45 m     20 %
+tomah     Low today              1     0 %     0 %   100 %      0 %     0 %    82 m   81 m      0 %
+tomah     Low plan              56    21 %     7 %    20 %     52 %     0 %   102 m   40 m     16 %
+   drop = median height from lip to foot; run = median horizontal distance from the lip cell to the first cell under 45 deg (whole cells of the grid it is measured on).
+
+== 7b. Steep-patch refinement, counted (10 m triangles instead of the mesh quads where the sharpened terrain has 45 deg or more inside the quad, plus a one-quad margin)
+site      tier      mesh tris   quads  flagged % of quads  extra tris  total tris  flag >=55  extra >=55
+katoomba  High         318402  159201    15268      9.6 %      124483      442885      11699       95384
+katoomba  Medium       203522  101761    11189     11.0 %      155351      358873       8539      118558
+katoomba  Low           99458   49729     6964     14.0 %      212431      311889       5342      162954
+kanangra  High         318402  159201    32380     20.3 %      264001      582403      19345      157724
+kanangra  Medium       203522  101761    23132     22.7 %      321172      524694      14054      195130
+kanangra  Low           99458   49729    13937     28.0 %      425137      524595       8681      264807
+grose     High         318402  159201    26512     16.7 %      216158      534560      18306      149253
+grose     Medium       203522  101761    19265     18.9 %      267481      471003      13388      185883
+grose     Low           99458   49729    11963     24.1 %      364922      464380       8468      258310
+tomah     High         318402  159201    37969     23.8 %      309569      627971      23766      193769
+tomah     Medium       203522  101761    27600     27.1 %      383207      586729      17664      245252
+tomah     Low           99458   49729    17073     34.3 %      520798      620256      11323      345399
+Each flagged quad is replaced by about (spacing / 10 m)^2 cells of 10 m, two triangles each (High and Medium: about 10 triangles per 22 m quad, Low: about 32 per 40 m quad). Crack-free stitching is not counted.
+
