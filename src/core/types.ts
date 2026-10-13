@@ -56,6 +56,12 @@ export interface Terrain {
   slopeP90Deg?: Float32Array;
   /** Fraction (0–1) of 10 m sub-cells steeper than 60° (cliff). */
   cliffFraction?: Float32Array;
+  /**
+   * Fraction (0–1) of each fire cell that is bare rock: the share of steep 10 m sub-cells, taken down by the canopy
+   * cover where canopy data exists (plan `docs/plans/air-slice-wind-detail-honest-speed.md` §9d.4). Absent when the
+   * scenario has no rock data, in which case the fire model uses `cliffFraction` exactly as before.
+   */
+  rockFraction?: Float32Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -755,15 +761,41 @@ export interface SpotFire {
   ridgeDrop?: number;
 }
 
-/** Near-surface and volume atmosphere fields for display. */
+/**
+ * Near-surface and volume atmosphere fields for display.
+ *
+ * Two layouts exist. The original one is `'flat'`: the 3-D arrays are resampled onto flat levels of equal height above
+ * the lowest terrain, with zero below the ground. The `'terrain-following'` layout ships the model's native arrays
+ * (plan `docs/plans/air-slice-wind-detail-honest-speed.md` §7.2): level `l` of column `c` sits at `h0 + levels[l] · J`
+ * above the datum, with `h0 = terrainHeight[c]` and `J = 1 − h0 / topM`. Use `core/airView.ts` (`airLayout`,
+ * `cellHeightAsl`, …) instead of reading `layout`, `kind` or `levels` directly, so views written before these optional
+ * fields existed keep their old meaning.
+ */
 export interface AtmosphereView {
   /** 2-D horizontal grid of the atmosphere model. */
   grid: GridSpec;
   nz: number;
-  /** Heights of level centres above the lowest terrain point (m). */
+  /**
+   * Flat layout: heights of level centres above the lowest terrain point (m). Terrain-following layout: the model's
+   * vertical coordinate ζ of the level centres (m, same numbers, different meaning: see the interface comment).
+   */
   levels: Float32Array;
   /** Height of terrain relative to the lowest terrain (m), on the atmosphere grid. */
   terrainHeight: Float32Array;
+  /** How the 3-D arrays are laid out. Undefined means `'flat'`. */
+  layout?: 'flat' | 'terrain-following';
+  /**
+   * What produced the 3-D fields: `'prognostic'` = the time-stepped 3-D air (standard and high tiers); `'diagnosed'` =
+   * the fast tier's terrain fit of the forecast wind (terrain effects only; no temperature or smoke). Undefined means
+   * `nz > 0 ? 'prognostic' : 'surface'`.
+   */
+  kind?: 'prognostic' | 'diagnosed';
+  /** Model top above the datum (m), the model's H′ (terrain-following layout only; used for `J`). */
+  topM?: number;
+  /** Elevation (m ASL) of the height datum (the lowest terrain, the model's zMin). */
+  baseM?: number;
+  /** Simulation time (s) the view was produced, so a picture can say "air from 14:05". */
+  time?: number;
   /** 10 m AGL wind components on the atmosphere grid (m/s). */
   surfaceU: Float32Array;
   surfaceV: Float32Array;

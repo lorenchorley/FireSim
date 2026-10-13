@@ -85,6 +85,9 @@ export interface TerrainFeaturesData {
   saddle: Uint8Array;
   ridge: Uint8Array;
   cliff: Uint8Array;
+  /** Bare-rock fraction and vegetated-chute mask (see TerrainFeatures.rock / .chute); absent without rock data. */
+  rock?: Float32Array;
+  chute?: Uint8Array;
   narrowValley: Uint8Array;
   slope30: Float32Array;
   valleyDrop: Float32Array;

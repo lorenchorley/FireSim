@@ -22,6 +22,7 @@ import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, Si
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import { groupInsights } from './insightGroups';
+import type { PaceInfo } from './paceTypes';
 import { SnapshotStore } from './snapshotStore';
 import { Emitter, Store } from './store';
 
@@ -49,6 +50,12 @@ export interface SessionState {
   computing: boolean;
   /** Worker throughput (simulated s per wall s). */
   workerSpeed: number;
+  /**
+   * Whether the simulation is keeping up with the playback speed (see paceTypes.ts; the tracker that fills it is
+   * planned as paceModel.ts). Null while there is nothing to judge: paused, Max speed, a jump or a spin-up in
+   * progress, the app hidden, or no tracker running.
+   */
+  pace: PaceInfo | null;
   snapshot: SimSnapshot | null;
   /** The user scrubbed back to review earlier results (cleared by edits, or by playing on to the newest time). */
   reviewing: boolean;
@@ -152,6 +159,7 @@ export class SimSession {
       speed: 60,
       computing: false,
       workerSpeed: 0,
+      pace: null,
       snapshot: null,
       reviewing: false,
       seekTarget: null,

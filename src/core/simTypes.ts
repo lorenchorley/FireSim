@@ -36,6 +36,18 @@ export interface TerrainFeatures {
   saddle: Uint8Array;
   ridge: Uint8Array;
   cliff: Uint8Array;
+  /**
+   * Bare-rock fraction (0–1) of each fire cell, a copy of `Terrain.rockFraction`. Present only when the scenario has
+   * rock data (plan `docs/plans/air-slice-wind-detail-honest-speed.md` §9d.4, workstream H-sim); optional so that
+   * test doubles and older producers keep compiling. When it is present, `cliff` means "bare rock wall" (rock ≥ 0.5
+   * and not a chute) instead of "steep ground".
+   */
+  rock?: Float32Array;
+  /**
+   * 1 on a vegetated chute: a drainage cell with trench score ≥ 0.3 and rock ≥ 0.2, a gully through a rock band that
+   * stays open to creeping fire (never a wall). Present only together with `rock`.
+   */
+  chute?: Uint8Array;
   /** Valley-floor width ≤ 200 m with both walls ≥ 15° within 300 m. */
   narrowValley: Uint8Array;
   /** Slope (deg) of the DEM averaged to 30 m (VLS calibration scale). */
@@ -355,8 +367,22 @@ export interface EngineInfo {
   tierCause: 'requested' | 'auto-tune' | 'auto-pending' | 'auto-default' | 'changed';
   /** One plain sentence with the numbers behind the tier (auto-tune timing, or when it was changed). */
   tierReason: string;
-  /** The auto-tune measurement (tier 'auto', once its timed steps ran), else null. */
-  autoTune: { stepMs: number; predictedS: number; budgetS: number; chosen: QualityTier; steps: number } | null;
+  /**
+   * The auto-tune measurement (tier 'auto', once its timed steps ran), else null. `stepMs` is the number the decision
+   * used: the mean of the timed 3-D steps (0.2.x) or, from 0.3.0, the median of the steady steps after the warm-up
+   * (`warmupSteps` of them are timed first and skipped). `warmupMeanMs` is the mean of those skipped steps, kept so the
+   * debug statistics can show how much the warm-up inflates the old reading. Both new fields are absent from older
+   * producers; a producer that sets them never sets them to undefined (null means "not measured").
+   */
+  autoTune: {
+    stepMs: number;
+    predictedS: number;
+    budgetS: number;
+    chosen: QualityTier;
+    steps: number;
+    warmupSteps?: number;
+    warmupMeanMs?: number | null;
+  } | null;
   /** Simulation time (s) of the tier change in force, null when the tier is the one of the start. */
   tierChangedAt: number | null;
   atmosphere: EngineAtmosphereInfo;
@@ -367,6 +393,12 @@ export interface EngineInfo {
   models: EngineModelsInfo;
   /** Measured typed-array memory of the running engine (worker side), refreshed at most every 30 wall-seconds. */
   memory?: EngineMemoryInfo;
+  /**
+   * Timing and quality statistics of the running engine for the "Simulation debug statistics" screen and the speed
+   * signal on the timeline (workstream A and B of the plan). Optional: absent from older producers, the demo engine and
+   * test fixtures. Producer (planned): sim/perfStats.ts, drained into the snapshot by `makeSnapshot`.
+   */
+  perf?: EnginePerfInfo;
 }
 
 export interface EngineAtmosphereInfo {
@@ -500,4 +532,114 @@ export interface EngineMemoryInfo {
   /** Parts as Simulation.memoryReport() names them (scenario, fire, moisture, fuel, atmosphere, embers, explain, checkpoints, rasters). */
   parts: { name: string; bytes: number }[];
   totalBytes: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engine performance statistics (workstream A and B of docs/plans/air-slice-wind-detail-honest-speed.md, §5.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Where a step's wall time is shown to go, grouped for people. The producer maps the lap names of
+ * `Simulation.perfMods` onto these (for example `atmosphere` → 'air'; `surfaceWind` and `fireHeat` → 'coupling', with the
+ * `airAt` lap left out because it is nested inside `surfaceWind`; `embers` → 'embers'; `snapshot` → 'picture';
+ * `checkpoint` → 'checkpoints'). The producer owns the final mapping and documents it where it is made.
+ */
+export type PerfModuleId = 'air' | 'fire' | 'coupling' | 'embers' | 'moisture' | 'detectors' | 'picture' | 'checkpoints' | 'other';
+
+/** One row of "Where the time goes". Shares are of the worker's busy time, 0–1. */
+export interface PerfModuleShare {
+  id: PerfModuleId;
+  /** Mean wall ms per outer step since this tier started; null before the first step. */
+  ms: number | null;
+  /** Share of the busy time since this tier started; null before the first step. */
+  share: number | null;
+  /** The share over the last 10 s of computing; null when nothing ran in that window. */
+  share10: number | null;
+}
+
+/**
+ * How fast the worker computes, in simulated seconds per wall second WHILE IT IS COMPUTING (idle time is left out, so a
+ * worker that is ahead of the viewer is not "slow"). All null until measured.
+ */
+export interface PerfSpeed {
+  s10: number | null;
+  s60: number | null;
+  /** Whole run on this tier. */
+  mean: number | null;
+  /** The best and the worst 10 s window of the run. */
+  best10: number | null;
+  worst10: number | null;
+}
+
+/** The outer step (simulated s) and the whole-step wall time (ms). All null before the first step. */
+export interface PerfStep {
+  nowS: number | null;
+  minS: number | null;
+  meanS: number | null;
+  maxS: number | null;
+  /** Wall ms of one whole coupled step over the last 128 steps. */
+  medianMs: number | null;
+  p95Ms: number | null;
+  maxMs: number | null;
+  /** Steps since this tier started that took longer than 100 ms and 250 ms. */
+  over100: number;
+  over250: number;
+}
+
+/** What limited the 3-D air step, and other cheap facts the solvers already compute. */
+export interface PerfStepQuality {
+  /**
+   * Shares (0–1, summing to 1) of the air steps whose length was set by the horizontal CFL bound, the vertical CFL
+   * bound, the tier's own step cap and the user's solver limit; null before the first air step and in the fast tier.
+   */
+  limitedBy: { cflH: number; cflV: number; cap: number; user: number } | null;
+  /** Largest horizontal and vertical wind (m/s) seen in the air steps of the run. */
+  maxWindH: number | null;
+  maxWindV: number | null;
+  /** Mean pressure-projection corrections per air step. */
+  projectionCorrections: number | null;
+  /** Wall seconds the 3-D spin-up took (0 in the fast tier). */
+  spinUpWallS: number | null;
+  /** Mean fire level-set sub-steps per outer step, and the burning cells now. */
+  fireSubSteps: number | null;
+  burningCells: number | null;
+}
+
+export type PerfEventKind = 'tier' | 'long-steps' | 'rewind' | 'restore';
+
+/**
+ * Something the worker noticed. Drained into `EnginePerfInfo.events` when a snapshot is made (at most 8 at a time); the
+ * UI keeps its own ring and drops an event whose `seq` it has already stored.
+ */
+export interface PerfEvent {
+  /** Increases by one per event for the life of the engine instance. */
+  seq: number;
+  kind: PerfEventKind;
+  /** Simulation time (s) and wall clock (ms since the epoch) when it happened. */
+  simS: number;
+  wallMs: number;
+  /** One short plain sentence for the "Recent events" list. Never a coordinate, a place name or an identifier. */
+  text: string;
+}
+
+/**
+ * The engine's timing statistics: about 60 numbers, 20 speed samples and at most 8 events. The plan's budget is that
+ * this block stays under 2 KB when serialised, and the producer's test pins it. A value that is not measured yet is
+ * null, never NaN or undefined. Wall-clock values are measurements on this device; snapshot hashes skip `engine`, so
+ * none of this can change a result.
+ */
+export interface EnginePerfInfo {
+  speed: PerfSpeed;
+  /** 20 samples of computing speed, one per 30 s of computing, oldest first; null for a slot with no computing. */
+  history: (number | null)[];
+  step: PerfStep;
+  /** Share (0–1) of wall time the worker spent computing, over the last 10 s and 60 s. */
+  duty: { s10: number | null; s60: number | null };
+  modules: PerfModuleShare[];
+  quality: PerfStepQuality;
+  /** Ember totals when the ember model counts them, else null. */
+  embers: { spawned: number; landed: number } | null;
+  /** Work done again: rewinds, the simulated seconds recomputed, tier switches and checkpoint restores. */
+  reruns: { rewinds: number; recomputedS: number; tierSwitches: number; restores: number };
+  events: PerfEvent[];
 }
