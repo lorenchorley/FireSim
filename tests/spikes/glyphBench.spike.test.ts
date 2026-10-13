@@ -1,33 +1,28 @@
 /**
  * Spike S3 of docs/plans/air-slice-wind-detail-honest-speed.md (section 10, M0): how long does it take to build the
  * wind glyphs of workstream E (arrows and curved flow lines traced through the wind field), and is the plan's
- * "<= 8 ms p95 on a phone" believable? Nothing here changes the app. Not part of `npm test`: it is gated by
- * FIRESIM_SPIKE and takes several minutes.
+ * "<= 8 ms p95 on a phone" believable? Nothing here changes the app. Not part of `npm test`: gated by FIRESIM_SPIKE.
  *
- *   FIRESIM_SPIKE=1 nice -n 10 npx vitest run tests/spikes/glyphBench.spike.test.ts
+ *   FIRESIM_SPIKE=1 FIRESIM_SPIKE_OUT=docs/plans/spikes/S3-glyph-benchmark/results.txt nice -n 10 \
+ *     npx vitest run tests/spikes/glyphBench.spike.test.ts
  *
- * Optional environment (development conveniences):
- *   FIRESIM_SPIKE_OUT=<file>     also write the report to this file
- *   FIRESIM_SPIKE_JSON=<file>    write the numbers as JSON
- *   FIRESIM_SPIKE_CASES=a,b      only build these cases (std6, std12, high6, high12)
- *   FIRESIM_SPIKE_QUICK=1        few repetitions (checks the harness; the numbers are not for the note)
- *   FIRESIM_SPIKE_MAXLOAD=2.5    1-minute load average above which a timed series is repeated (up to ATTEMPTS)
- *   FIRESIM_SPIKE_ATTEMPTS=3
+ * Optional: FIRESIM_SPIKE_JSON=<file> writes the numbers as JSON; FIRESIM_SPIKE_QUICK=1 is a 2-minute smoke run
+ * (its numbers are not for use). The note is docs/plans/spikes/S3-glyph-benchmark/README.md.
  *
- * What is built (docs/plans/spikes/S3-glyph-benchmark/README.md has the method and the findings):
- *  1. Real AtmosphereView data: a real `Atmosphere` (standard and high tier; Katoomba 6 km, and the same DEM
- *     mirror-padded to 12 km) is spun up for 1200 s of model time. `view()` gives today's flat view (sampler v1) and the
- *     engine's native terrain-following arrays give the plan's `layout: 'terrain-following'` view (sampler v2).
- *  2. Sampler v2 (plan 7.2) as the plan writes it, and a hand-inlined version of the same arithmetic.
- *  3. The glyph tracer of plan 9.3: jittered world-lattice seeds from an integer hash, RK2 midpoint,
- *     arc-length parameterised, calm dots, domain-edge stop, culling to a view box, flat Float32Array output in the
- *     StreakBatch layout (segment start, segment end, colour) plus the halo-batch copy.
- *  4. Timing, cost split, ns per call, allocation, the raster alternative and its accuracy, the phone extrapolation.
+ * What is built:
+ *  1. Real AtmosphereView data: a real `Atmosphere` (standard and high tier; Katoomba 6 km, and the same DEM mirror-padded to
+ *     12 km) spun up for 1200 s of model time. `view()` gives today's flat view (sampler v1); the engine's native
+ *     terrain-following arrays give the plan's `layout: 'terrain-following'` view (sampler v2, plan 7.2).
+ *  2. The glyph tracer of plan 9.3: jittered world-lattice seeds from an integer hash, RK2 midpoint, arc-length
+ *     parameterised, calm dots, domain-edge stop, culling to a view box, flat Float32Array output in the StreakBatch layout
+ *     (segment start, segment end, colour) plus the halo-batch copy.
+ *  3. Timing (variants round-robin in one block, with the machine's load recorded beside every block), cost split, ns per
+ *     call, allocation, the raster alternative and its accuracy, staging, the phone extrapolation.
  *
- * Calling convention. V8 boxes a double that is passed to, or returned from, a function that is not inlined (one
- * 16-byte HeapNumber each). So the tracer talks to its field through a scratch Float64Array `pos` (x, y in; the DEM
- * height out at pos[2]) and never passes a double. The variants that follow the plan's API (v1, v2: `wind(x, y, zAsl,
- * out)`) box inside their adapters; that is the measured difference between "as the plan writes it" and "allocation-free".
+ * Calling convention. V8 boxes a double passed to, or returned from, a function it does not inline (one 16-byte
+ * HeapNumber each). The tracer therefore talks to its field through a scratch Float64Array `pos` and never passes a double.
+ * The variants that follow the plan's API (`wind(x, y, zAsl, out)`: v1, v2) box inside their adapters; that is the
+ * measured difference between "as the plan writes it" and "allocation-free".
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -49,9 +44,6 @@ import { WIND_RAMP, sampleRamp, srgbToLinear, type Rgb } from '../../src/render/
 
 const ENABLED = Boolean(process.env.FIRESIM_SPIKE);
 const QUICK = Boolean(process.env.FIRESIM_SPIKE_QUICK);
-const MAX_LOAD = Number(process.env.FIRESIM_SPIKE_MAXLOAD ?? 2.5);
-const ATTEMPTS = Number(process.env.FIRESIM_SPIKE_ATTEMPTS ?? 3);
-const CASE_FILTER = process.env.FIRESIM_SPIKE_CASES ? process.env.FIRESIM_SPIKE_CASES.split(',') : null;
 
 /** One data point: the 3-D air step takes 17.5 ms on this machine and 41.1 ms on the user's phone (spike brief). */
 const PHONE_FACTOR = 41.1 / 17.5;
@@ -112,6 +104,17 @@ function gc(): void {
   }
   gcFn();
 }
+/** V8 tier of a function ("TurboFan", "Maglev", "Baseline", "Interpreted"), through %GetOptimizationStatus. */
+let statusFn: ((fn: unknown) => number) | null = null;
+function tierOf(fn: unknown): string {
+  if (!statusFn) {
+    v8.setFlagsFromString('--allow-natives-syntax');
+    statusFn = new Function('f', 'return %GetOptimizationStatus(f);') as (fn: unknown) => number;
+  }
+  const st = statusFn(fn);
+  return st & (1 << 6) ? 'TurboFan' : st & (1 << 5) ? 'Maglev' : st & (1 << 15) ? 'Baseline' : 'Interpreted';
+}
+
 interface GcEvent {
   kind: number;
   start: number;
@@ -142,47 +145,39 @@ function summarise(a: number[]): Summary {
   return { n: s.length, min: s[0]!, median: percentile(s, 0.5), p95: percentile(s, 0.95), max: s[s.length - 1]!, mean: s.reduce((x, y) => x + y, 0) / s.length };
 }
 
-interface KeyGc {
-  minor: number;
-  major: number;
-  /** Time (ms) of GC events that overlapped this variant's timed windows. */
-  ms: number;
-  /** Timed rebuilds that overlapped a GC event. */
-  hits: number;
-}
-
-/** Timings of several variants measured round-robin in the same time window, plus what the machine was doing meanwhile. */
+/** Timings of several variants measured round-robin in one time window, plus what the machine was doing meanwhile. */
 interface Block {
-  keys: string[];
-  ms: Record<string, number[]>;
   sum: Record<string, Summary>;
-  gc: Record<string, KeyGc>;
+  /** 1-minute load average line of /proc/loadavg before and after the timed loop. */
   load0: string;
   load1: string;
-  /** CPU time of this process / wall time (1 = never descheduled; GC and compiler threads can push it above 1). */
+  /** CPU time of this process / wall time (below 1: it was descheduled). */
   cpuWall: number;
-  /** Other processes' CPU and the hypervisor's steal time, as a percentage of one core, over the block. */
+  /** Other processes' CPU and the hypervisor's steal time, as a percentage of one core. */
   othersPct: number;
   stealPct: number;
-  wallMs: number;
+  /** All tracers were at the TurboFan tier when timing started. */
+  tiered: boolean;
+  /** GC events during the timed loop. */
+  gcMinor: number;
+  gcMajor: number;
+  gcMs: number;
 }
+const BLOCKS: Block[] = [];
 
 /**
- * Time several rebuild functions round-robin: warm-up for all, then `reps` rounds in which each variant is timed once
- * (the starting variant rotates). Slow drift and other load then hit every variant alike, so the comparisons between
- * variants are fair even on a shared machine.
+ * Time several rebuild functions round-robin (one rebuild of each in turn, the starting variant rotating), so that load from
+ * other processes and slow drift hit every variant alike. Warm-up first, then until every tracer is at TurboFan (`ready`).
  */
-async function interleaved(rebuilds: Record<string, (i: number) => number>, reps = REPS, warm = WARM): Promise<Block> {
+async function interleaved(rebuilds: Record<string, (i: number) => number>, reps = REPS, warm = WARM, ready?: () => boolean): Promise<Block> {
   const keys = Object.keys(rebuilds);
   for (let i = 0; i < warm; i++) for (const k of keys) rebuilds[k]!(i);
+  if (ready) for (let extra = 0; extra < 800 && !ready(); extra++) for (const k of keys) rebuilds[k]!(warm + extra);
+  const tiered = ready ? ready() : true;
   await flushGc();
   const g0 = gcEvents.length;
   const ms: Record<string, number[]> = {};
-  const st: Record<string, number[]> = {};
-  for (const k of keys) {
-    ms[k] = new Array<number>(reps);
-    st[k] = new Array<number>(reps);
-  }
+  for (const k of keys) ms[k] = new Array<number>(reps);
   const load0 = loadavg();
   const cpu0 = process.cpuUsage();
   const sys0 = cpuStat();
@@ -192,9 +187,7 @@ async function interleaved(rebuilds: Record<string, (i: number) => number>, reps
       const k = keys[(i + j) % keys.length]!;
       const t0 = performance.now();
       rebuilds[k]!(warm + i);
-      const t1 = performance.now();
-      ms[k]![i] = t1 - t0;
-      st[k]![i] = t0;
+      ms[k]![i] = performance.now() - t0;
     }
   }
   const wall = performance.now() - w0;
@@ -205,76 +198,34 @@ async function interleaved(rebuilds: Record<string, (i: number) => number>, reps
   const ev = gcEvents.slice(g0);
   const own = (cpu.user + cpu.system) / 1000;
   const sum: Record<string, Summary> = {};
-  const gcInfo: Record<string, KeyGc> = {};
-  for (const k of keys) {
-    sum[k] = summarise(ms[k]!);
-    let hits = 0;
-    let gms = 0;
-    for (let i = 0; i < reps; i++) {
-      const a0 = st[k]![i]!;
-      const a1 = a0 + ms[k]![i]!;
-      let hit = false;
-      for (const e of ev) {
-        const ov = Math.min(a1, e.start + e.dur) - Math.max(a0, e.start);
-        if (ov > 0) {
-          hit = true;
-          gms += ov;
-        }
-      }
-      if (hit) hits++;
-    }
-    gcInfo[k] = { minor: 0, major: 0, ms: gms, hits };
-  }
-  const minor = ev.filter((e) => e.kind === 1).length;
-  const major = ev.filter((e) => e.kind === 4).length;
-  for (const k of keys) {
-    gcInfo[k]!.minor = minor;
-    gcInfo[k]!.major = major;
-  }
-  return {
-    keys,
-    ms,
+  for (const k of keys) sum[k] = summarise(ms[k]!);
+  const b: Block = {
     sum,
-    gc: gcInfo,
     load0,
     load1: load1s,
     cpuWall: own / wall,
     othersPct: (100 * Math.max(0, (sys1.busy - sys0.busy) * 10 - own)) / wall,
     stealPct: (100 * (sys1.steal - sys0.steal) * 10) / wall,
-    wallMs: wall,
+    tiered,
+    gcMinor: ev.filter((e) => e.kind === 1).length,
+    gcMajor: ev.filter((e) => e.kind === 4).length,
+    gcMs: ev.reduce((a, e) => a + e.dur, 0),
   };
+  BLOCKS.push(b);
+  return b;
 }
 
-/** One variant on its own (a Block with one key). */
-async function single(rebuild: (i: number) => number, reps = REPS, warm = WARM): Promise<{ sum: Summary; block: Block; gc: KeyGc }> {
-  const b = await interleaved({ x: rebuild }, reps, warm);
-  return { sum: b.sum['x']!, block: b, gc: b.gc['x']! };
+/** One variant on its own (a block with one key). */
+async function single(rebuild: (i: number) => number, reps = REPS, warm = WARM, ready?: () => boolean): Promise<{ sum: Summary; block: Block }> {
+  const b = await interleaved({ x: rebuild }, reps, warm, ready);
+  return { sum: b.sum['x']!, block: b };
 }
 
-/** "load before/after | others % | cpu/wall" of a block, for the report. */
-const cond = (b: Block): string => `${f(load1(b.load0), 1)}/${f(load1(b.load1), 1)} ${f(b.othersPct, 0)}% ${f(b.cpuWall, 2)}`;
-const blockJson = (b: Block): Record<string, unknown> => ({ load0: b.load0, load1: b.load1, cpuWall: b.cpuWall, othersPct: b.othersPct, stealPct: b.stealPct, wallMs: b.wallMs });
-
-/**
- * Wait (up to `maxWaitMs`) until other processes use less than a quarter of a core, so that the timings that follow are
- * not taken against somebody else's test run. Logs what it found; it never skips the measurement.
- */
-async function quiet(label: string, maxWaitMs = 240_000): Promise<void> {
-  const t0 = performance.now();
-  for (;;) {
-    const a = cpuStat();
-    const w0 = performance.now();
-    await sleep(2000);
-    const b = cpuStat();
-    const wall = performance.now() - w0;
-    const others = Math.max(0, (b.busy - a.busy) * 10) / wall; // this process is asleep, so everything is somebody else's
-    const waited = performance.now() - t0;
-    if (others < 0.25 || waited > maxWaitMs) {
-      log(`[quiet] before ${label}: other processes use ${f(others, 2)} cores (waited ${f(waited / 1000, 0)} s), load average ${loadavg()}`);
-      return;
-    }
-  }
-}
+/** A block is LOADED when other processes used more than half a core or this process got under 90 % of its wall time. */
+const loaded = (b: Block): boolean => b.othersPct > 50 || b.cpuWall < 0.9;
+/** Beside every table row: load average before/after, other processes' % of a core, own cpu/wall, quiet or LOADED. */
+const cond = (b: Block): string => `${f(load1(b.load0), 1)}/${f(load1(b.load1), 1)} ${f(b.othersPct, 0)}% ${f(b.cpuWall, 2)} ${loaded(b) ? 'LOADED' : 'quiet'}${b.tiered ? '' : ' NOT-TURBOFAN'}`;
+const blockJson = (b: Block): Record<string, unknown> => ({ load0: b.load0, load1: b.load1, cpuWall: b.cpuWall, othersPct: b.othersPct, stealPct: b.stealPct, tiered: b.tiered, loaded: loaded(b) });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // Data: real engine fields
@@ -321,8 +272,7 @@ interface Case {
   buildS: number;
   steps: number;
   v1?: AtmosphereSampler;
-  s2?: SamplerV2;
-  s2t?: SamplerV2T;
+  s2?: TfSampler;
   dem?: Dem;
 }
 
@@ -411,29 +361,22 @@ async function buildCase(name: string, label: string, tier: 'standard' | 'high',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// Sampler v2 (plan 7.2) and variants
+// Sampler v2 (plan 7.2)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Plan 7.2, as written: per column of the 4-column stencil compute zeta = (zAsl - baseM - h0) / J with J = 1 - h0 / topM,
- * clamp to the first and last level, binary-search the level, interpolate linearly in zeta, blend the 4 columns
- * bilinearly. Same arithmetic as DiagnosticWind.sampleBg and Atmosphere.sampleAt. API like v1: doubles in.
+ * Plan 7.2: per column of the 4-column stencil compute zeta = (zAsl - baseM - h0) / J with J = 1 - h0 / topM, clamp to the
+ * first and last level, binary-search the level, interpolate linearly in zeta, blend the 4 columns bilinearly. Same
+ * arithmetic as DiagnosticWind.sampleBg and Atmosphere.sampleAt. Two entry points over the same arrays:
+ * `wind3`, the plan's API (doubles in, u v w out), and `windZ`, the same arithmetic hand-inlined for u and v with every
+ * input in a scratch array, so that nothing is boxed.
  */
-class SamplerV2 {
-  private readonly nx: number;
-  private readonly ny: number;
-  private readonly nz: number;
-  private readonly plane: number;
-  private readonly x0: number;
-  private readonly y0: number;
-  private readonly invCell: number;
-  private readonly topM: number;
-  private readonly baseM: number;
-  private readonly lv: Float32Array;
-  private readonly h0: Float32Array;
-  private readonly u: Float32Array;
-  private readonly v: Float32Array;
-  private readonly w: Float32Array;
+class TfSampler {
+  private readonly nx: number; private readonly ny: number; private readonly nz: number; private readonly plane: number;
+  private readonly x0: number; private readonly y0: number; private readonly invCell: number;
+  private readonly topM: number; private readonly baseM: number;
+  private readonly lv: Float32Array; private readonly h0: Float32Array;
+  private readonly u: Float32Array; private readonly v: Float32Array; private readonly w: Float32Array;
 
   constructor(view: TfView) {
     this.nx = view.grid.nx;
@@ -468,7 +411,7 @@ class SamplerV2 {
     return lo + (zeta - lv[lo]!) / (lv[lo + 1]! - lv[lo]!);
   }
 
-  /** (u, v, w) at a local point and an elevation (m ASL); out must have 3 slots. */
+  /** Plan API: (u, v, w) at a local point and an elevation (m ASL); out has 3 slots. */
   wind3(x: number, y: number, zAsl: number, out: Float32Array): void {
     const nx = this.nx;
     let fx = (x - this.x0) * this.invCell;
@@ -491,8 +434,7 @@ class SamplerV2 {
       const c = (j0 + (q >> 1)) * nx + i0 + (q & 1);
       const wq = (q & 1 ? tx : 1 - tx) * (q >> 1 ? ty : 1 - ty);
       const h0 = this.h0[c]!;
-      const zeta = (zr - h0) / (1 - h0 / this.topM);
-      const kf = this.level(zeta);
+      const kf = this.level((zr - h0) / (1 - h0 / this.topM));
       let k0 = kf | 0;
       if (k0 > nz2) k0 = nz2;
       const t = kf - k0;
@@ -506,321 +448,22 @@ class SamplerV2 {
     out[2] = sw;
   }
 
-  /** (u, v) only: what a glyph tracer needs (one third less blending work than wind3). */
-  wind2(x: number, y: number, zAsl: number, out: Float32Array): void {
-    const nx = this.nx;
-    let fx = (x - this.x0) * this.invCell;
-    let fy = (y - this.y0) * this.invCell;
-    fx = fx < 0 ? 0 : fx > nx - 1 ? nx - 1 : fx;
-    fy = fy < 0 ? 0 : fy > this.ny - 1 ? this.ny - 1 : fy;
-    let i0 = fx | 0;
-    let j0 = fy | 0;
-    if (i0 > nx - 2) i0 = nx - 2;
-    if (j0 > this.ny - 2) j0 = this.ny - 2;
-    const tx = fx - i0;
-    const ty = fy - j0;
-    const zr = zAsl - this.baseM;
-    const plane = this.plane;
-    const nz2 = this.nz - 2;
-    let su = 0;
-    let sv = 0;
-    for (let q = 0; q < 4; q++) {
-      const c = (j0 + (q >> 1)) * nx + i0 + (q & 1);
-      const wq = (q & 1 ? tx : 1 - tx) * (q >> 1 ? ty : 1 - ty);
-      const h0 = this.h0[c]!;
-      const zeta = (zr - h0) / (1 - h0 / this.topM);
-      const kf = this.level(zeta);
-      let k0 = kf | 0;
-      if (k0 > nz2) k0 = nz2;
-      const t = kf - k0;
-      const o = k0 * plane + c;
-      su += wq * (this.u[o]! + (this.u[o + plane]! - this.u[o]!) * t);
-      sv += wq * (this.v[o]! + (this.v[o + plane]! - this.v[o]!) * t);
-    }
-    out[0] = su;
-    out[1] = sv;
-  }
-}
-
-/**
- * wind2 with three one-time precomputations (per view, microseconds): a level-index table instead of the binary search
- * (bins half the thinnest level, so at most one correction step), the reciprocal of J per column and the reciprocal of
- * the level spacing. Not in the plan; measured to see how much of the cost is the 4 searches.
- */
-class SamplerV2T {
-  private readonly nx: number;
-  private readonly ny: number;
-  private readonly nz: number;
-  private readonly plane: number;
-  private readonly x0: number;
-  private readonly y0: number;
-  private readonly invCell: number;
-  private readonly baseM: number;
-  private readonly lv: Float32Array;
-  private readonly h0: Float32Array;
-  private readonly invJ: Float64Array;
-  private readonly invDl: Float64Array;
-  private readonly tab: Uint8Array;
-  private readonly binInv: number;
-  private readonly u: Float32Array;
-  private readonly v: Float32Array;
-
-  constructor(view: TfView) {
-    this.nx = view.grid.nx;
-    this.ny = view.grid.ny;
-    this.nz = view.nz;
-    this.plane = view.grid.nx * view.grid.ny;
-    this.x0 = view.grid.x0;
-    this.y0 = view.grid.y0;
-    this.invCell = 1 / view.grid.cellSize;
-    this.baseM = view.baseM;
-    this.lv = view.levels;
-    this.h0 = view.terrainHeight;
-    this.u = view.u;
-    this.v = view.v;
-    this.invJ = new Float64Array(this.plane);
-    for (let c = 0; c < this.plane; c++) this.invJ[c] = 1 / (1 - view.terrainHeight[c]! / view.topM);
-    this.invDl = new Float64Array(view.nz);
-    let minDl = Infinity;
-    for (let k = 0; k < view.nz - 1; k++) {
-      const dl = view.levels[k + 1]! - view.levels[k]!;
-      this.invDl[k] = 1 / dl;
-      minDl = Math.min(minDl, dl);
-    }
-    const bin = minDl / 2;
-    this.binInv = 1 / bin;
-    const top = view.levels[view.nz - 1]!;
-    this.tab = new Uint8Array(Math.ceil(top / bin) + 2);
-    let k = 0;
-    for (let b = 0; b < this.tab.length; b++) {
-      while (k < view.nz - 2 && view.levels[k + 1]! <= b * bin) k++;
-      this.tab[b] = k;
-    }
-  }
-
-  private level(zeta: number): number {
-    const lv = this.lv;
-    if (zeta <= lv[0]!) return 0;
-    if (zeta >= lv[this.nz - 1]!) return this.nz - 1;
-    let k = this.tab[(zeta * this.binInv) | 0]!;
-    while (lv[k + 1]! <= zeta) k++;
-    return k + (zeta - lv[k]!) * this.invDl[k]!;
-  }
-
-  wind2(x: number, y: number, zAsl: number, out: Float32Array): void {
-    const nx = this.nx;
-    let fx = (x - this.x0) * this.invCell;
-    let fy = (y - this.y0) * this.invCell;
-    fx = fx < 0 ? 0 : fx > nx - 1 ? nx - 1 : fx;
-    fy = fy < 0 ? 0 : fy > this.ny - 1 ? this.ny - 1 : fy;
-    let i0 = fx | 0;
-    let j0 = fy | 0;
-    if (i0 > nx - 2) i0 = nx - 2;
-    if (j0 > this.ny - 2) j0 = this.ny - 2;
-    const tx = fx - i0;
-    const ty = fy - j0;
-    const zr = zAsl - this.baseM;
-    const plane = this.plane;
-    const nz2 = this.nz - 2;
-    let su = 0;
-    let sv = 0;
-    for (let q = 0; q < 4; q++) {
-      const c = (j0 + (q >> 1)) * nx + i0 + (q & 1);
-      const wq = (q & 1 ? tx : 1 - tx) * (q >> 1 ? ty : 1 - ty);
-      const zeta = (zr - this.h0[c]!) * this.invJ[c]!;
-      const kf = this.level(zeta);
-      let k0 = kf | 0;
-      if (k0 > nz2) k0 = nz2;
-      const t = kf - k0;
-      const o = k0 * plane + c;
-      su += wq * (this.u[o]! + (this.u[o + plane]! - this.u[o]!) * t);
-      sv += wq * (this.v[o]! + (this.v[o + plane]! - this.v[o]!) * t);
-    }
-    out[0] = su;
-    out[1] = sv;
-  }
-}
-
-/** Render DEM bilinear lookup with the scratch-array convention (same arithmetic as HeightField.heightAt). */
-class Dem {
-  private readonly e: Float32Array;
-  private readonly nx: number;
-  private readonly mx: number;
-  private readonly my: number;
-  private readonly x0: number;
-  private readonly y0: number;
-  private readonly inv: number;
-  constructor(hf: HeightField) {
-    this.e = hf.elevation;
-    this.nx = hf.grid.nx;
-    this.mx = hf.grid.nx - 1;
-    this.my = hf.grid.ny - 1;
-    this.x0 = hf.grid.x0;
-    this.y0 = hf.grid.y0;
-    this.inv = 1 / hf.grid.cellSize;
-  }
-  /** pos[2] = elevation (m ASL) at (pos[0], pos[1]). */
-  atP(pos: Float64Array): void {
-    let fx = (pos[0]! - this.x0) * this.inv;
-    let fy = (pos[1]! - this.y0) * this.inv;
-    fx = fx < 0 ? 0 : fx > this.mx ? this.mx : fx;
-    fy = fy < 0 ? 0 : fy > this.my ? this.my : fy;
-    let i0 = fx | 0;
-    let j0 = fy | 0;
-    if (i0 >= this.mx) i0 = this.mx - 1;
-    if (j0 >= this.my) j0 = this.my - 1;
-    const tx = fx - i0;
-    const ty = fy - j0;
-    const e = this.e;
-    const k = j0 * this.nx + i0;
-    pos[2] = (e[k]! * (1 - tx) + e[k + 1]! * tx) * (1 - ty) + (e[k + this.nx]! * (1 - tx) + e[k + this.nx + 1]! * tx) * ty;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
-// Glyph fields: windAt(x, y) at the chosen height above the render DEM, in several implementations
-// ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-interface GlyphField {
-  /** pos[0], pos[1] = x, y (m) in; wind (u, v) in out[0], out[1] (the u,v,w variants also write out[2]). */
-  windP(pos: Float64Array, out: Float32Array): void;
-  /** pos[0], pos[1] = x, y in; the render DEM elevation (m ASL) in pos[2], for the lift of the drawn polyline. */
-  groundP(pos: Float64Array): void;
-}
-
-/** Today's sampler (`AtmosphereSampler.wind`, plan API: doubles in) on today's flat view. u, v, w; flat levels with zeros under the terrain. */
-class FieldV1 implements GlyphField {
-  private readonly hf: HeightField;
-  private readonly s: AtmosphereSampler;
-  private readonly h: number;
-  constructor(hf: HeightField, s: AtmosphereSampler, h: number) {
-    this.hf = hf;
-    this.s = s;
-    this.h = h;
-  }
-  windP(pos: Float64Array, out: Float32Array): void {
-    const x = pos[0]!;
-    const y = pos[1]!;
-    this.s.wind(x, y, this.hf.heightAt(x, y) + this.h, this.h, out);
-  }
-  groundP(pos: Float64Array): void {
-    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
-  }
-}
-
-/** Sampler v2 as the plan writes it (doubles in), three components (apples to apples with v1). */
-class FieldV2 implements GlyphField {
-  private readonly hf: HeightField;
-  private readonly s: SamplerV2;
-  private readonly h: number;
-  constructor(hf: HeightField, s: SamplerV2, h: number) {
-    this.hf = hf;
-    this.s = s;
-    this.h = h;
-  }
-  windP(pos: Float64Array, out: Float32Array): void {
-    const x = pos[0]!;
-    const y = pos[1]!;
-    this.s.wind3(x, y, this.hf.heightAt(x, y) + this.h, out);
-  }
-  groundP(pos: Float64Array): void {
-    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
-  }
-}
-
-/** Sampler v2 as the plan writes it, u and v only. */
-class FieldV2uv implements GlyphField {
-  private readonly hf: HeightField;
-  private readonly s: SamplerV2;
-  private readonly h: number;
-  constructor(hf: HeightField, s: SamplerV2, h: number) {
-    this.hf = hf;
-    this.s = s;
-    this.h = h;
-  }
-  windP(pos: Float64Array, out: Float32Array): void {
-    const x = pos[0]!;
-    const y = pos[1]!;
-    this.s.wind2(x, y, this.hf.heightAt(x, y) + this.h, out);
-  }
-  groundP(pos: Float64Array): void {
-    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
-  }
-}
-
-/** Sampler v2 with the level table (doubles in). */
-class FieldV2t implements GlyphField {
-  private readonly hf: HeightField;
-  private readonly s: SamplerV2T;
-  private readonly h: number;
-  constructor(hf: HeightField, s: SamplerV2T, h: number) {
-    this.hf = hf;
-    this.s = s;
-    this.h = h;
-  }
-  windP(pos: Float64Array, out: Float32Array): void {
-    const x = pos[0]!;
-    const y = pos[1]!;
-    this.s.wind2(x, y, this.hf.heightAt(x, y) + this.h, out);
-  }
-  groundP(pos: Float64Array): void {
-    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
-  }
-}
-
-/**
- * Sampler v2 with the same arithmetic and the same binary search, written as one method that takes no double argument
- * and calls nothing that returns one (DEM lookup through the scratch array, level search inline): allocation-free.
- */
-class FieldV2P implements GlyphField {
-  private readonly dem: Dem;
-  private readonly h: number;
-  private readonly nx: number;
-  private readonly ny: number;
-  private readonly nz: number;
-  private readonly plane: number;
-  private readonly x0: number;
-  private readonly y0: number;
-  private readonly invCell: number;
-  private readonly topM: number;
-  private readonly baseM: number;
-  private readonly lv: Float32Array;
-  private readonly h0: Float32Array;
-  private readonly u: Float32Array;
-  private readonly v: Float32Array;
-  constructor(dem: Dem, view: TfView, h: number) {
-    this.dem = dem;
-    this.h = h;
-    this.nx = view.grid.nx;
-    this.ny = view.grid.ny;
-    this.nz = view.nz;
-    this.plane = view.grid.nx * view.grid.ny;
-    this.x0 = view.grid.x0;
-    this.y0 = view.grid.y0;
-    this.invCell = 1 / view.grid.cellSize;
-    this.topM = view.topM;
-    this.baseM = view.baseM;
-    this.lv = view.levels;
-    this.h0 = view.terrainHeight;
-    this.u = view.u;
-    this.v = view.v;
-  }
-  windP(pos: Float64Array, out: Float32Array): void {
-    this.dem.atP(pos);
+  /** Hand-inlined, no boxing: pos[0], pos[1], pos[2] = x, y, zAsl in; (u, v) out. The clamps use Math.min/Math.max (see Dem). */
+  windZ(pos: Float64Array, out: Float32Array): void {
     const nx = this.nx;
     const nz = this.nz;
     const lv = this.lv;
     let fx = (pos[0]! - this.x0) * this.invCell;
     let fy = (pos[1]! - this.y0) * this.invCell;
-    fx = fx < 0 ? 0 : fx > nx - 1 ? nx - 1 : fx;
-    fy = fy < 0 ? 0 : fy > this.ny - 1 ? this.ny - 1 : fy;
+    fx = Math.max(0, Math.min(nx - 1, fx));
+    fy = Math.max(0, Math.min(this.ny - 1, fy));
     let i0 = fx | 0;
     let j0 = fy | 0;
     if (i0 > nx - 2) i0 = nx - 2;
     if (j0 > this.ny - 2) j0 = this.ny - 2;
     const tx = fx - i0;
     const ty = fy - j0;
-    const zr = pos[2]! + this.h - this.baseM;
+    const zr = pos[2]! - this.baseM;
     const plane = this.plane;
     const nz2 = nz - 2;
     let su = 0;
@@ -852,6 +495,116 @@ class FieldV2P implements GlyphField {
     }
     out[0] = su;
     out[1] = sv;
+  }
+}
+
+
+/**
+ * Render DEM bilinear lookup with the scratch-array convention (same arithmetic as HeightField.heightAt). The clamp is
+ * written with Math.max/Math.min on purpose: the ternary `fx < 0 ? 0 : fx > mx ? mx : fx` of HeightField.heightAt mixes
+ * integer constants with a double, and once V8 has seen integral inputs (a raster built on texel centres) it boxes that
+ * double (one 16-byte HeapNumber per call) in the optimised code. Measured in sections 05 and 11.
+ */
+class Dem {
+  private readonly e: Float32Array;
+  private readonly nx: number;
+  private readonly mx: number;
+  private readonly my: number;
+  private readonly x0: number;
+  private readonly y0: number;
+  private readonly inv: number;
+  constructor(hf: HeightField) {
+    this.e = hf.elevation;
+    this.nx = hf.grid.nx;
+    this.mx = hf.grid.nx - 1;
+    this.my = hf.grid.ny - 1;
+    this.x0 = hf.grid.x0;
+    this.y0 = hf.grid.y0;
+    this.inv = 1 / hf.grid.cellSize;
+  }
+  /** pos[2] = elevation (m ASL) at (pos[0], pos[1]). */
+  atP(pos: Float64Array): void {
+    let fx = (pos[0]! - this.x0) * this.inv;
+    let fy = (pos[1]! - this.y0) * this.inv;
+    fx = Math.max(0, Math.min(this.mx, fx));
+    fy = Math.max(0, Math.min(this.my, fy));
+    let i0 = fx | 0;
+    let j0 = fy | 0;
+    if (i0 >= this.mx) i0 = this.mx - 1;
+    if (j0 >= this.my) j0 = this.my - 1;
+    const tx = fx - i0;
+    const ty = fy - j0;
+    const e = this.e;
+    const k = j0 * this.nx + i0;
+    pos[2] = (e[k]! * (1 - tx) + e[k + 1]! * tx) * (1 - ty) + (e[k + this.nx]! * (1 - tx) + e[k + this.nx + 1]! * tx) * ty;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Glyph fields: windAt(x, y) at the chosen height above the render DEM, in several implementations
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+interface GlyphField {
+  /** pos[0], pos[1] = x, y (m) in; wind (u, v) in out[0], out[1] (v1 and v2 also write out[2]). */
+  windP(pos: Float64Array, out: Float32Array): void;
+  /** pos[0], pos[1] = x, y in; the render DEM elevation (m ASL) in pos[2], for the lift of the drawn polyline. */
+  groundP(pos: Float64Array): void;
+}
+
+/** Today's sampler (`AtmosphereSampler.wind`, plan API: doubles in) on today's flat view. u, v, w; zeros under the terrain. */
+class FieldV1 implements GlyphField {
+  private readonly hf: HeightField;
+  private readonly s: AtmosphereSampler;
+  private readonly h: number;
+  constructor(hf: HeightField, s: AtmosphereSampler, h: number) {
+    this.hf = hf;
+    this.s = s;
+    this.h = h;
+  }
+  windP(pos: Float64Array, out: Float32Array): void {
+    const x = pos[0]!;
+    const y = pos[1]!;
+    this.s.wind(x, y, this.hf.heightAt(x, y) + this.h, this.h, out);
+  }
+  groundP(pos: Float64Array): void {
+    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
+  }
+}
+
+/** Sampler v2 as the plan writes it (plan API, doubles in, u v w). */
+class FieldV2 implements GlyphField {
+  private readonly hf: HeightField;
+  private readonly s: TfSampler;
+  private readonly h: number;
+  constructor(hf: HeightField, s: TfSampler, h: number) {
+    this.hf = hf;
+    this.s = s;
+    this.h = h;
+  }
+  windP(pos: Float64Array, out: Float32Array): void {
+    const x = pos[0]!;
+    const y = pos[1]!;
+    this.s.wind3(x, y, this.hf.heightAt(x, y) + this.h, out);
+  }
+  groundP(pos: Float64Array): void {
+    pos[2] = this.hf.heightAt(pos[0]!, pos[1]!);
+  }
+}
+
+/** Sampler v2 hand-inlined: positions through the scratch array, DEM lookup without boxing, u and v only. Allocation-free. */
+class FieldV2P implements GlyphField {
+  private readonly dem: Dem;
+  private readonly s: TfSampler;
+  private readonly h: number;
+  constructor(dem: Dem, s: TfSampler, h: number) {
+    this.dem = dem;
+    this.s = s;
+    this.h = h;
+  }
+  windP(pos: Float64Array, out: Float32Array): void {
+    this.dem.atP(pos);
+    pos[2] += this.h;
+    this.s.windZ(pos, out);
   }
   groundP(pos: Float64Array): void {
     this.dem.atP(pos);
@@ -904,8 +657,8 @@ class FieldRaster implements GlyphField {
     const nr = this.nr;
     let fx = (pos[0]! - this.x0) * this.invStep;
     let fy = (pos[1]! - this.y0) * this.invStep;
-    fx = fx < 0 ? 0 : fx > nr - 1 ? nr - 1 : fx;
-    fy = fy < 0 ? 0 : fy > nr - 1 ? nr - 1 : fy;
+    fx = Math.max(0, Math.min(nr - 1, fx));
+    fy = Math.max(0, Math.min(nr - 1, fy));
     let i0 = fx | 0;
     let j0 = fy | 0;
     if (i0 > nr - 2) i0 = nr - 2;
@@ -1045,6 +798,10 @@ interface TraceCtx {
   field: GlyphField;
   /** Seeds in use. */
   n: number;
+  /** Glyph range [g0, g1) and the segment cursor of this call: a rebuild can be cut into slices that resume where the last stopped. */
+  g0: number;
+  g1: number;
+  seg0: number;
   segs: number;
   sx: Float64Array;
   sy: Float64Array;
@@ -1087,7 +844,9 @@ interface TraceCtx {
 /**
  * Build all glyphs of the context: for every seed, RK2 midpoint through windAt with a step of lengthPx x metresPerPixel /
  * segs (arc-length parameterised: the step follows the unit direction). A seed with speed under `calm` becomes a dot.
- * Returns the number of segments written. Uses nothing but its argument (it is copied through Function.prototype.toString).
+ * Traces glyphs g0 .. g1-1 and appends their segments from seg0 (a whole rebuild is g0 = 0, g1 = n, seg0 = 0, calls = 0; a
+ * slice resumes at the cursor the previous slice left). Returns the segment cursor. Uses nothing but its argument (it is
+ * copied through Function.prototype.toString).
  */
 function traceGlyphs(c: TraceCtx): number {
   const field = c.field;
@@ -1110,9 +869,9 @@ function traceGlyphs(c: TraceCtx): number {
   const p1 = c.near[1]!;
   const p2 = c.near[2]!;
   const pd = c.near[3]!;
-  let seg = 0;
+  let seg = c.seg0;
   let calls = 0;
-  for (let g = 0; g < c.n; g++) {
+  for (let g = c.g0; g < c.g1; g++) {
     let px = c.sx[g]!;
     let py = c.sy[g]!;
     const mpp = c.smpp[g]!;
@@ -1225,19 +984,25 @@ function traceGlyphs(c: TraceCtx): number {
     c.ey[g] = py;
     c.len[g] = n * ds;
   }
-  if (write) {
-    // The halo underlay is a second StreakBatch with the same geometry: copy, do not recompute.
+  if (write && c.g1 >= c.n) {
+    // The halo underlay is a second StreakBatch with the same geometry: copy, do not recompute (after the last slice).
     c.A2.set(A.subarray(0, 3 * seg));
     c.B2.set(B.subarray(0, 3 * seg));
   }
-  c.calls = calls;
+  c.seg0 = seg;
+  c.calls += calls;
   c.total = seg;
   return seg;
 }
 
-/** An independently compiled copy of a function: its type feedback is not shared with any other copy. */
+/**
+ * An independently compiled copy of a function. V8 caches `new Function` by source text and then shares type feedback
+ * between the copies, so the text is made unique with a counter: every copy starts cold and learns only from its own calls
+ * (an earlier version shared feedback and let integer-valued test inputs make the tracer box its doubles).
+ */
+let freshCount = 0;
 function fresh<T extends (...a: never[]) => unknown>(fn: T): T {
-  return new Function(`"use strict"; return (${fn.toString()});`)() as T;
+  return new Function(`"use strict"; return (${fn.toString()});\n// copy ${++freshCount}`)() as T;
 }
 
 const COLOUR_SCRATCH: Rgb = [0, 0, 0];
@@ -1269,6 +1034,9 @@ function makeCtx(field: GlyphField, cap: number, segs: number, dom: Dom): TraceC
   return {
     field,
     n: 0,
+    g0: 0,
+    g1: 0,
+    seg0: 0,
     segs,
     sx: new Float64Array(cap),
     sy: new Float64Array(cap),
@@ -1306,13 +1074,11 @@ function makeCtx(field: GlyphField, cap: number, segs: number, dom: Dom): TraceC
 // Rigs: one configured rebuild (seeds + trace) per variant
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-type Kind = 'v1' | 'v2' | 'v2uv' | 'v2t' | 'v2p' | 'r1' | 'r2';
+type Kind = 'v1' | 'v2' | 'v2p' | 'r1' | 'r2';
 const KIND_LABEL: Record<Kind, string> = {
   v1: 'today (u,v,w; flat view; plan API)',
   v2: 'plan 7.2 (u,v,w; plan API)',
-  v2uv: 'plan 7.2, u,v only',
-  v2t: 'u,v + level table',
-  v2p: 'u,v hand-inlined, no boxing',
+  v2p: 'plan 7.2 hand-inlined (u,v; no boxing)',
   r1: 'raster 1x',
   r2: 'raster 2x',
 };
@@ -1321,22 +1087,23 @@ const VIEWPORT = { w: 412, h: 868 }; // CSS px, a phone in portrait (the plan's 
 const MARGIN = 1.5; // plan 9.3: bounding box plus 25 % margin on each side
 const VFOV = (50 * Math.PI) / 180;
 const PXM = (2 * Math.tan(VFOV / 2)) / VIEWPORT.h; // radians per pixel (uPixelMetres at distance 1)
+const N_BOXES = 16;
 
 interface RigCfg {
   c: Case;
   kind: Kind;
   cap: number;
   segs: number;
-  /** Height above ground (m). */
+  /** Height above the render DEM (m). */
   h: number;
   /** Size of one model cell on screen (px): sets metres per pixel (plan: L3 is 32 to 90). */
   cellPx: number;
-  /** Variants for the cost split. */
+  /** For the cost split: no output / colour by sampleRamp per segment / replay recorded results / record results. */
   write?: boolean;
   naive?: boolean;
   replay?: Float32Array;
   record?: boolean;
-  /** Always use box 0 (needed by the replay). */
+  /** Always use view box 0 (the replay needs it). */
   fixedBox?: boolean;
   /** Use this field instead of building one from `kind`. */
   field?: GlyphField;
@@ -1348,39 +1115,34 @@ interface Rig {
   ctx: TraceCtx;
   trace: (c: TraceCtx) => number;
   seeds: Seeds;
+  /** Lattice spacing (m). */
   spacing: number;
-  boxW: number;
-  boxH: number;
-  mpp0: number;
   /** seeds + trace for the i-th view box */
   rebuild: (i: number) => number;
+  /** The same work cut into slices of at most `budgetMs` (the clock is read every `chunk` glyphs); returns each slice's duration. */
+  rebuildSliced: (i: number, budgetMs: number, chunk?: number) => number[];
   seedOnly: (i: number) => number;
   raster?: FieldRaster;
   direct?: GlyphField;
   record?: FieldRecord;
 }
 
-function samplersOf(c: Case): { v1: AtmosphereSampler; s2: SamplerV2; s2t: SamplerV2T; dem: Dem } {
+function samplersOf(c: Case): { v1: AtmosphereSampler; s2: TfSampler; dem: Dem } {
   c.v1 ??= new AtmosphereSampler(c.flat, c.tf.baseM, null);
-  c.s2 ??= new SamplerV2(c.tf);
-  c.s2t ??= new SamplerV2T(c.tf);
+  c.s2 ??= new TfSampler(c.tf);
   c.dem ??= new Dem(c.hf);
-  return { v1: c.v1, s2: c.s2, s2t: c.s2t, dem: c.dem };
+  return { v1: c.v1, s2: c.s2, dem: c.dem };
 }
 
 function halton(i: number, b: number): number {
   let fr = 1;
   let r = 0;
-  let k = i + 1;
-  while (k > 0) {
+  for (let k = i + 1; k > 0; k = Math.floor(k / b)) {
     fr /= b;
     r += fr * (k % b);
-    k = Math.floor(k / b);
   }
   return r;
 }
-
-const N_BOXES = 16;
 
 function makeRig(cfg: RigCfg): Rig {
   const { c, kind } = cfg;
@@ -1391,11 +1153,10 @@ function makeRig(cfg: RigCfg): Rig {
   if (cfg.field) field = cfg.field;
   else if (kind === 'v1') field = new FieldV1(c.hf, sm.v1, cfg.h);
   else if (kind === 'v2') field = new FieldV2(c.hf, sm.s2, cfg.h);
-  else if (kind === 'v2uv') field = new FieldV2uv(c.hf, sm.s2, cfg.h);
-  else if (kind === 'v2t') field = new FieldV2t(c.hf, sm.s2t, cfg.h);
-  else if (kind === 'v2p') field = new FieldV2P(sm.dem, c.tf, cfg.h);
+  else if (kind === 'v2p') field = new FieldV2P(sm.dem, sm.s2, cfg.h);
   else {
-    direct = new FieldV2P(sm.dem, c.tf, cfg.h);
+    // The raster is filled with the hand-inlined direct sampler.
+    direct = new FieldV2P(sm.dem, sm.s2, cfg.h);
     raster = new FieldRaster(sm.dem, c.tf.grid, kind === 'r1' ? 1 : 2);
     raster.build(direct);
     field = raster;
@@ -1412,7 +1173,7 @@ function makeRig(cfg: RigCfg): Rig {
   ctx.colourFn = cfg.naive ? naiveColour : null;
   const trace = fresh(traceGlyphs);
   const seeds: Seeds = { sx: ctx.sx, sy: ctx.sy, smpp: ctx.smpp };
-  // View: phone portrait, top-down, one model cell = cellPx pixels.
+  // View: phone portrait, top-down, one model cell = cellPx pixels, 16 boxes spread over the domain (Halton).
   const mpp0 = c.dx / cfg.cellPx;
   const camH = mpp0 / PXM;
   const domW = c.dom.x1 - c.dom.x0;
@@ -1434,10 +1195,35 @@ function makeRig(cfg: RigCfg): Rig {
   const rebuild = (i: number): number => {
     const n = seedOnly(i);
     ctx.n = n;
+    ctx.g0 = 0;
+    ctx.g1 = n;
+    ctx.seg0 = 0;
+    ctx.calls = 0;
     if (cfg.replay) (field as FieldReplay).idx = 0;
     return trace(ctx);
   };
-  const rig: Rig = { cfg, field, ctx, trace, seeds, spacing: S, boxW, boxH, mpp0, rebuild, seedOnly };
+  const rebuildSliced = (i: number, budgetMs: number, chunk = 32): number[] => {
+    const slices: number[] = [];
+    let t0 = performance.now();
+    const n = seedOnly(i);
+    ctx.n = n;
+    ctx.seg0 = 0;
+    ctx.calls = 0;
+    for (let g = 0; g < n; g += chunk) {
+      ctx.g0 = g;
+      ctx.g1 = Math.min(n, g + chunk);
+      trace(ctx);
+      const now = performance.now();
+      if (now - t0 >= budgetMs) {
+        slices.push(now - t0); // in the app: return to the frame loop here
+        t0 = performance.now();
+      }
+    }
+    const last = performance.now() - t0;
+    if (last > 0.001) slices.push(last);
+    return slices;
+  };
+  const rig: Rig = { cfg, field, ctx, trace, seeds, spacing: S, rebuild, rebuildSliced, seedOnly };
   if (raster) {
     rig.raster = raster;
     rig.direct = direct;
@@ -1499,12 +1285,26 @@ const CASES: { name: string; label: string; tier: 'standard' | 'high'; extent: n
   { name: 'high6', label: 'high 6 km', tier: 'high', extent: 6000 },
   { name: 'high12', label: 'high 12 km', tier: 'high', extent: 12000 },
 ];
+const MATRIX_KINDS: Kind[] = ['v1', 'v2', 'v2p', 'r1', 'r2'];
 
-const MATRIX_KINDS: Kind[] = ['v1', 'v2', 'v2uv', 'v2p', 'r1', 'r2'];
+/** The 3-D air step (10 s of model time), the one phone data point: 17.5 ms here and 41.1 ms on the phone (spike brief). */
+function airStep(eng: Atmosphere, n: number): Summary {
+  for (let i = 0; i < 5; i++) eng.step(10);
+  const ms: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+    eng.step(10);
+    ms.push(performance.now() - t0);
+  }
+  return summarise(ms);
+}
+const TURBOFAN = (rigs: Rig[]) => (): boolean => rigs.every((r) => tierOf(r.trace) === 'TurboFan');
 
 describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
   const cases = new Map<string, Case>();
   const std6 = (): Case => cases.get('std6')!;
+  /** A separate engine, only stepped, to time the air step at the start and at the end of the run (the cases above stay as built). */
+  let cal: Case | undefined;
   let loadStart = '';
 
   beforeAll(async () => {
@@ -1512,32 +1312,124 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     loadStart = loadavg();
     log('S3 glyph benchmark: sampler v1/v2, glyph tracer, raster alternative');
     log(`date ${new Date().toISOString()}  node ${process.version}  v8 ${process.versions.v8}  ${process.platform}/${process.arch}`);
-    const cp = cpus();
-    log(`cpu ${cp[0]?.model ?? '?'} x${cp.length}  memory ${(totalmem() / 2 ** 30).toFixed(1)} GiB`);
-    log(`load average at start: ${loadStart}  (limit for a timed series: ${MAX_LOAD}, attempts ${ATTEMPTS})`);
+    log(`cpu ${cpus()[0]?.model ?? '?'} x${cpus().length}  memory ${(totalmem() / 2 ** 30).toFixed(1)} GiB`);
+    log(`load average at start: ${loadStart}`);
     log(`mode ${QUICK ? 'QUICK (not for the note)' : 'full'}: warm-up ${WARM}, timed rebuilds ${REPS} (headline ${REPS_HEAD}), spin-up ${SPIN_S} s of model time`);
+    log('beside every timed table: load average before/after the block, other processes\' CPU as % of one core, this process\' CPU time / wall time, quiet or LOADED');
     log();
     for (const d of CASES) {
-      if (CASE_FILTER && !CASE_FILTER.includes(d.name)) continue;
       const c = await buildCase(d.name, d.label, d.tier, d.extent);
       cases.set(d.name, c);
       log(`built ${d.label}: ${c.nx}x${c.ny}x${c.nz} columns, dx ${f(c.dx, 1)} m, H' ${f(c.tf.topM, 0)} m, datum ${f(c.tf.baseM, 0)} m ASL, ${c.steps} steps in ${f(c.buildS, 1)} s`);
     }
+    cal = await buildCase('cal', 'calibration', 'standard', 6000);
+    const a0 = airStep(cal.engine, QUICK ? 8 : 30);
+    RES['airStepStart'] = a0;
+    log(`calibration, 3-D air step of a standard 6 km engine at the start: median ${f(a0.median)} ms, min ${f(a0.min)} ms (the brief quotes 17.5 ms for this machine); load average ${loadavg()}`);
     log();
   }, 1_800_000);
 
   afterAll(() => {
     log();
+    const nLoaded = BLOCKS.filter(loaded).length;
+    const med = summarise(BLOCKS.map((b) => b.othersPct)).median;
+    log(`timed blocks: ${BLOCKS.length}; LOADED (other processes above half a core, or this process under 90 % of its wall time): ${nLoaded}; median other-process CPU ${f(med, 0)} % of a core; median hypervisor steal ${f(summarise(BLOCKS.map((b) => b.stealPct)).median, 1)} %`);
+    RES['blocks'] = { total: BLOCKS.length, loaded: nLoaded, medianOthersPct: med };
     log(`load average at end: ${loadavg()}  (start: ${loadStart})`);
-    const file = process.env.FIRESIM_SPIKE_OUT;
-    if (file) writeFileSync(file, OUT.join('\n') + '\n');
-    const json = process.env.FIRESIM_SPIKE_JSON;
-    if (json) writeFileSync(json, JSON.stringify(RES, null, 1));
+    if (process.env.FIRESIM_SPIKE_OUT) writeFileSync(process.env.FIRESIM_SPIKE_OUT, OUT.join('\n') + '\n');
+    if (process.env.FIRESIM_SPIKE_JSON) writeFileSync(process.env.FIRESIM_SPIKE_JSON, JSON.stringify(RES, null, 1));
   });
 
+  /** Allocation per steady-state rebuild (2000 x 10, standard 6 km) for every variant; run early and late to show the effect of JIT history. */
+  const allocSection = async (title: string, key: string): Promise<void> => {
+    log(`== ${title}`);
+    log('   heap growth (process.memoryUsage().heapUsed) across windows of 40 glyphs, after a warm-up to TurboFan and a forced GC; the median of the windows is scaled to 2000 glyphs.');
+    log('   Windows are short so that they fit in the young generation: a scavenge inside a window shows as a negative or small outlier, and the median ignores it.');
+    const c = std6();
+    const rows: string[][] = [['variant', 'bytes per rebuild', 'bytes per sampler call', 'GC events in a 300-rebuild series (minor / major / ms)', 'tiers: tracer / windP']];
+    const res: Record<string, unknown> = {};
+    const warmUp = async (rig: Rig): Promise<void> => {
+      for (let i = 0; i < 150; i++) rig.rebuild(i);
+      for (let extra = 0; extra < 800 && tierOf(rig.trace) !== 'TurboFan'; extra++) rig.rebuild(150 + extra);
+      for (let i = 0; i < 30; i++) rig.rebuild(i);
+      gc();
+      gc();
+      await flushGc();
+    };
+    /** What reading the heap size twice adds inside a window (same protocol as the windows: no arithmetic between the two reads). */
+    const readOverhead = (): number =>
+      summarise(
+        Array.from({ length: 21 }, () => {
+          const a0 = process.memoryUsage().heapUsed;
+          const a1 = process.memoryUsage().heapUsed;
+          return a1 - a0;
+        }),
+      ).median;
+    const CHUNK = 40;
+    const measureChunks = async (rig: Rig): Promise<number> => {
+      await warmUp(rig);
+      const overhead = readOverhead();
+      const ctx = rig.ctx;
+      const n = rig.seedOnly(0);
+      ctx.n = n;
+      const d: number[] = [];
+      for (let g = 0; g + CHUNK < n; g += CHUNK) {
+        ctx.g0 = g;
+        ctx.g1 = g + CHUNK;
+        ctx.seg0 = 0;
+        ctx.calls = 0;
+        const a0 = process.memoryUsage().heapUsed;
+        rig.trace(ctx);
+        const a1 = process.memoryUsage().heapUsed;
+        d.push(a1 - a0 - overhead);
+      }
+      return summarise(d).median * (n / CHUNK);
+    };
+    // Seeds alone, whole rebuilds (they allocate nothing, so no scavenge can fall inside a window).
+    const rigSeed = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 });
+    await warmUp(rigSeed);
+    const ovSeed = readOverhead();
+    const dSeed: number[] = [];
+    for (let i = 0; i < 41; i++) {
+      const a0 = process.memoryUsage().heapUsed;
+      rigSeed.seedOnly(200 + i);
+      const a1 = process.memoryUsage().heapUsed;
+      dSeed.push(a1 - a0 - ovSeed);
+    }
+    rows.push(['seeds only (lattice, hash, thinning), whole rebuilds', f(summarise(dSeed).median, 0), '-', '-', '-']);
+    res['seeds'] = { bytes: summarise(dSeed).median };
+    for (const kind of ['v1', 'v2', 'v2p', 'r1'] as Kind[]) {
+      const rig = makeRig({ c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40 });
+      const bytes = await measureChunks(rig);
+      const s1 = await single(rig.rebuild, REPS_HEAD, WARM, () => tierOf(rig.trace) === 'TurboFan');
+      rows.push([`${kind}  ${KIND_LABEL[kind]}`, f(bytes, 0), f(bytes / rig.ctx.calls, 1), `${s1.block.gcMinor} / ${s1.block.gcMajor} / ${f(s1.block.gcMs, 2)}`, `${tierOf(rig.trace)} / ${tierOf(Object.getPrototypeOf(rig.field).windP)}`]);
+      res[kind] = { bytes, calls: rig.ctx.calls, gcMinor: s1.block.gcMinor, gcMajor: s1.block.gcMajor, gcMs: s1.block.gcMs };
+    }
+    // Detector check: a deliberately allocating field (one fresh array per sample) must show up.
+    const inner = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 }).field;
+    const leaky: GlyphField = {
+      windP(pos, out) {
+        const t = [pos[0]!, pos[1]!];
+        pos[0] = t[0]!;
+        inner.windP(pos, out);
+        out[2] = t.length;
+      },
+      groundP: (pos) => inner.groundP(pos),
+    };
+    const leakRig = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40, field: leaky });
+    const leakBytes = await measureChunks(leakRig);
+    leakRig.rebuild(0);
+    rows.push(['detector check: v2p plus one [x, y] array per sample', f(leakBytes, 0), f(leakBytes / leakRig.ctx.calls, 1), '-', tierOf(leakRig.trace)]);
+    res['detector'] = { bytes: leakBytes };
+    table(rows);
+    log('A young generation of 16 MB (the V8 default for a desktop) is scavenged whenever it fills: bytes per rebuild / 16 MB = scavenges per rebuild; a phone WebView has a smaller one (not measured).');
+    log();
+    RES[key] = res;
+  };
+
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('00 cold start: the first rebuilds of a fresh tracer (JIT warm-up, standard 6 km, 2000 x 10)', async () => {
-    log('== 00 cold start (sampler and tracer are compiled from scratch in this process; standard 6 km, 2000 x 10)');
+  it('00 cold start: the first rebuilds of a fresh tracer (standard 6 km, 2000 x 10)', async () => {
+    log('== 00 cold start (the sampler and the tracer are compiled from scratch in this process; standard 6 km, 2000 x 10)');
     const c = std6();
     const res: Record<string, unknown> = {};
     for (const kind of ['v2p', 'r1'] as Kind[]) {
@@ -1548,14 +1440,23 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
         rig.rebuild(i);
         first.push(performance.now() - t0);
       }
-      const steady = await timedSeries(rig.rebuild, 30, 20);
-      log(`${kind}: first 12 rebuilds (ms): ${first.map((x) => f(x, 1)).join(' ')}; steady median ${f(steady.sum.median)} ms; first = ${f(first[0]! / steady.sum.median, 1)}x`);
+      const steady = await single(rig.rebuild, 30, 20, () => tierOf(rig.trace) === 'TurboFan');
+      log(`${kind}: first 12 rebuilds (ms): ${first.map((x) => f(x, 1)).join(' ')}; steady median ${f(steady.sum.median)} ms; first = ${f(first[0]! / steady.sum.median, 1)}x  [${cond(steady.block)}]`);
       res[kind] = { first, steadyMedian: steady.sum.median };
       expect(first[0]).toBeGreaterThan(0);
     }
+    // The same cold start cut into slices of a phone-equivalent frame budget: the slice count adapts by itself.
+    const rigS = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 });
+    const per: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const sl = rigS.rebuildSliced(i, BUDGET_MS / PHONE_FACTOR);
+      per.push(`${sl.length} (longest ${f(Math.max(...sl), 1)} ms)`);
+    }
+    log(`v2p cut into slices of ${f(BUDGET_MS / PHONE_FACTOR, 2)} ms (= ${BUDGET_MS} ms on the phone estimate), fresh tracer: slices per rebuild: ${per.join(', ')}`);
+    res['sliced'] = per;
     log();
     RES['cold'] = res;
-  }, 600_000);
+  }, 900_000);
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
   it('01 the data: real views', () => {
@@ -1568,7 +1469,6 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
       const out = new Float32Array(3);
       let sum = 0;
       let mx = 0;
-      let n = 0;
       for (let j = 0; j < 40; j++) {
         for (let i = 0; i < 40; i++) {
           const x = c.dom.x0 + ((i + 0.5) / 40) * (c.dom.x1 - c.dom.x0);
@@ -1577,37 +1477,33 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
           const sp = Math.hypot(out[0]!, out[1]!);
           sum += sp;
           mx = Math.max(mx, sp);
-          n++;
         }
       }
-      const flatMb = (c.flat.u.byteLength * 5) / 1e6;
-      const natMb = (c.tf.u.byteLength * 3) / 1e6;
-      rows.push([c.label, `${c.nx}x${c.ny}`, f(c.dx, 0), String(c.nz), f(c.tf.topM, 0), f(relief, 0), `${f(sum / n, 1)} / ${f(mx, 1)}`, f(flatMb, 2), f(natMb, 2)]);
-      expect(sum / n).toBeGreaterThan(0.5);
+      rows.push([c.label, `${c.nx}x${c.ny}`, f(c.dx, 0), String(c.nz), f(c.tf.topM, 0), f(relief, 0), `${f(sum / 1600, 1)} / ${f(mx, 1)}`, f((c.flat.u.byteLength * 5) / 1e6, 2), f((c.tf.u.byteLength * 3) / 1e6, 2)]);
+      expect(sum / 1600).toBeGreaterThan(0.5);
     }
     table(rows);
     log('flat view MB counts u, v, w, theta, smoke; native MB counts the three wind arrays the sampler reads.');
+    // How many glyphs does the plan's own lattice put on a phone? (plan 9.2: about 36 px apart at L3, power-of-two spacing in metres)
+    const cnt: string[][] = [['lattice spacing (px)', 'glyphs inside the 412 x 868 screen', 'glyphs inside the box with 25 % margin each side']];
+    for (const sp of [25.5, 36, 51]) cnt.push([`${sp}${sp === 36 ? ' (nominal)' : sp < 36 ? ' (pow2 rounded down)' : ' (pow2 rounded up)'}`, f((VIEWPORT.w * VIEWPORT.h) / (sp * sp), 0), f((VIEWPORT.w * MARGIN * VIEWPORT.h * MARGIN) / (sp * sp), 0)]);
+    log('glyph counts the plan\'s L3 lattice puts on a phone in portrait (arithmetic: area / spacing squared):');
+    table(cnt);
     log();
   });
 
-  it('02 sampler v2 against the engine oracle, v1 and the variants', () => {
-    log('== 02 sampler correctness (random points, heights 5 m to 2 km above the engine ground, 6000 per case)');
-    const rows: string[][] = [['case', 'v2 vs engine.sample: max |du,dv,dw| m/s', 'v2t vs v2 max m/s', 'v2p vs v2 max m/s', 'v1 vs engine: mean |dU| at 50 m', 'v1 vs engine at 100 m', 'v2 vs engine at 50 m']];
+  it('02 sampler v2 against the engine oracle and v1', () => {
+    log('== 02 sampler correctness (6000 random points per case, heights 5 m to 2 km above the engine ground)');
+    const rows: string[][] = [['case', 'v2 vs engine.sample: max |du,dv,dw| m/s', 'hand-inlined vs v2: max |du,dv| m/s', 'v1 vs engine: mean |dU| at 50 m', 'v1 vs engine at 100 m']];
     for (const c of cases.values()) {
       const sm = samplersOf(c);
       const eng = c.engine as unknown as { groundAt(x: number, y: number): number; sample(x: number, y: number, z: number, o: Float32Array): void };
       const rng = new Rng(11);
-      const o1 = new Float32Array(3);
-      const o2 = new Float32Array(3);
-      const o3 = new Float32Array(3);
-      const o4 = new Float32Array(3);
-      const o5 = new Float32Array(3);
+      const [o1, o2, o3, o4] = [0, 1, 2, 3].map(() => new Float32Array(3)) as [Float32Array, Float32Array, Float32Array, Float32Array];
       const pos = new Float64Array(3);
-      let maxV2 = 0;
-      let maxT = 0;
-      let maxP = 0;
       const v1Err: Record<number, number> = { 50: 0, 100: 0 };
-      const v2Err: Record<number, number> = { 50: 0, 100: 0 };
+      let maxV2 = 0;
+      let maxP = 0;
       let cnt = 0;
       for (let q = 0; q < 6000; q++) {
         const x = c.tf.grid.x0 + rng.next() * (c.nx - 1) * c.tf.grid.cellSize;
@@ -1616,44 +1512,39 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
         const zAsl = eng.groundAt(x, y) + agl;
         eng.sample(x, y, agl, o1);
         sm.s2.wind3(x, y, zAsl, o2);
-        sm.s2t.wind2(x, y, zAsl, o3);
         maxV2 = Math.max(maxV2, Math.abs(o1[0]! - o2[0]!), Math.abs(o1[1]! - o2[1]!), Math.abs(o1[2]! - o2[2]!));
-        maxT = Math.max(maxT, Math.abs(o3[0]! - o2[0]!), Math.abs(o3[1]! - o2[1]!));
-        // v2p against v2uv at the same render-DEM height (h = agl above the render DEM)
         pos[0] = x;
         pos[1] = y;
-        new FieldV2P(sm.dem, c.tf, agl).windP(pos, o5);
-        new FieldV2uv(c.hf, sm.s2, agl).windP(pos, o4);
-        maxP = Math.max(maxP, Math.abs(o5[0]! - o4[0]!), Math.abs(o5[1]! - o4[1]!));
+        pos[2] = zAsl;
+        sm.s2.windZ(pos, o3);
+        maxP = Math.max(maxP, Math.abs(o3[0]! - o2[0]!), Math.abs(o3[1]! - o2[1]!));
         if (agl === 50 || agl === 100) {
           sm.v1.wind(x, y, zAsl, agl, o4);
           v1Err[agl]! += Math.hypot(o4[0]! - o1[0]!, o4[1]! - o1[1]!);
-          v2Err[agl]! += Math.hypot(o2[0]! - o1[0]!, o2[1]! - o1[1]!);
           if (agl === 50) cnt++;
         }
       }
-      rows.push([c.label, f(maxV2, 5), f(maxT, 6), f(maxP, 6), f(v1Err[50]! / cnt, 3), f(v1Err[100]! / cnt, 3), f(v2Err[50]! / cnt, 5)]);
+      rows.push([c.label, f(maxV2, 5), f(maxP, 6), f(v1Err[50]! / cnt, 3), f(v1Err[100]! / cnt, 3)]);
       expect(maxV2).toBeLessThan(2e-3);
-      expect(maxT).toBeLessThan(1e-3);
       expect(maxP).toBeLessThan(1e-3);
     }
     table(rows);
-    log('The engine ground (30 m fire grid, bilinear) gives zAsl for the engine comparison so that every sampler sees the same input.');
-    log('v2p vs v2 is compared at heights above the render DEM. v1 differs from the engine near the ground because the flat view holds zeros below the terrain.');
+    log('The engine ground (30 m fire grid, bilinear) gives zAsl, so that every sampler sees the same input. v1 differs from the engine near the ground because the flat view holds zeros below the terrain.');
     log();
   });
 
   it('03 tracer checks on analytic fields (straight, rotation, arc length, calm, edge, determinism)', () => {
     log('== 03 tracer checks');
     const dom: Dom = { x0: -3000, x1: 3000, y0: -3000, y1: 3000 };
-    const run = (fn: (x: number, y: number, o: Float32Array) => void, seeds: [number, number][], segs: number, mpp: number, d = dom): TraceCtx => {
-      const ctx = makeCtx(new FieldFn(fn), seeds.length, segs, d);
+    const run = (fn: (x: number, y: number, o: Float32Array) => void, seeds: [number, number][], segs: number, mpp: number): TraceCtx => {
+      const ctx = makeCtx(new FieldFn(fn), seeds.length, segs, dom);
       seeds.forEach(([x, y], i) => {
         ctx.sx[i] = x;
         ctx.sy[i] = y;
         ctx.smpp[i] = mpp;
       });
       ctx.n = seeds.length;
+      ctx.g1 = ctx.n;
       fresh(traceGlyphs)(ctx);
       return ctx;
     };
@@ -1663,10 +1554,7 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     let lenErr = 0;
     const ds = (40 * 3.3) / 10; // 10 m/s x 4 px = 40 px
     for (let k = 0; k < 10; k++) {
-      const ax = uni.A[3 * k]!;
-      const ay = -uni.A[3 * k + 2]!;
-      const bx = uni.B[3 * k]!;
-      const by = -uni.B[3 * k + 2]!;
+      const [ax, ay, bx, by] = [uni.A[3 * k]!, -uni.A[3 * k + 2]!, uni.B[3 * k]!, -uni.B[3 * k + 2]!];
       dev = Math.max(dev, Math.abs((bx - ax) * 0.8 - (by - ay) * 0.6));
       lenErr = Math.max(lenErr, Math.abs(Math.hypot(bx - ax, by - ay) - ds) / ds);
     }
@@ -1675,7 +1563,11 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     expect(lenErr).toBeLessThan(1e-3);
     // 2. Solid-body rotation about (500, 0): radius recovered.
     const om = 0.02;
-    const rot = run((x, y, o) => { o[0] = -om * y; o[1] = om * (x - 500); }, [[800, 0]], 12, 5);
+    const rotate = (x: number, y: number, o: Float32Array): void => {
+      o[0] = -om * y;
+      o[1] = om * (x - 500);
+    };
+    const rot = run(rotate, [[800, 0]], 12, 5);
     let rMax = 0;
     for (let k = 0; k < rot.gCount[0]!; k++) rMax = Math.max(rMax, Math.abs(Math.hypot(rot.B[3 * k]! - 500, -rot.B[3 * k + 2]!) - 300) / 300);
     log(`solid-body rotation, radius 300 m, ${rot.gCount[0]} segments: worst radius error ${f(rMax * 100, 4)} % (plan: within 1 %)`);
@@ -1690,14 +1582,13 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     log(`seed 50 m from the east edge, wind east: ${edge.gCount[0]} of 10 segments written, ${outside} beyond the edge`);
     expect(edge.gCount[0]!).toBeLessThan(10);
     expect(outside).toBe(0);
-    const a1 = run((x, y, o) => { o[0] = -om * y; o[1] = om * (x - 500); }, [[800, 0], [100, 100]], 10, 5);
-    const a2 = run((x, y, o) => { o[0] = -om * y; o[1] = om * (x - 500); }, [[800, 0], [100, 100]], 10, 5);
+    const a1 = run(rotate, [[800, 0], [100, 100]], 10, 5);
+    const a2 = run(rotate, [[800, 0], [100, 100]], 10, 5);
     const same = Buffer.from(a1.A.buffer).equals(Buffer.from(a2.A.buffer)) && Buffer.from(a1.C.buffer).equals(Buffer.from(a2.C.buffer));
     log(`determinism: two runs give identical arrays: ${same}`);
     expect(same).toBe(true);
     // 6. Seeds: a seed depends only on its lattice indices, not on the box.
-    const c = std6();
-    const rig = makeRig({ c, kind: 'v2p', cap: 100000, segs: 6, h: 100, cellPx: 40 });
+    const rig = makeRig({ c: std6(), kind: 'v2p', cap: 100000, segs: 6, h: 100, cellPx: 40 });
     const nBig = rig.seedOnly(0);
     const set = new Set<string>();
     for (let k = 0; k < nBig; k++) set.add(`${rig.seeds.sx[k]!.toFixed(6)},${rig.seeds.sy[k]!.toFixed(6)}`);
@@ -1710,7 +1601,7 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('04 ns per sampler call', () => {
+  it('04 ns per sampler call', async () => {
     log('== 04 ns per call (best of 7 trials of 1 million calls). windAt = render-DEM lookup + sampler at DEM + 100 m.');
     const c = std6();
     const N = 50_000;
@@ -1730,129 +1621,157 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     const ty = rec.record!.ys.slice(0, nTrace);
     const out = new Float32Array(3);
     const pos = new Float64Array(3);
-    const kinds: Kind[] = ['v1', 'v2', 'v2uv', 'v2t', 'v2p', 'r1', 'r2'];
     const rb = Math.ceil((N * reps) / nTrace);
-    const rows: string[][] = [['windAt', 'random positions ns', `as traced (${nTrace} requests) ns`]];
+    const rows: string[][] = [['windAt', `positions as traced (${nTrace} requests), ns`, 'random positions, ns']];
     const res: Record<string, { random: number; traced: number }> = {};
-    const fields = kinds.map((k) => [k, makeRig({ c, kind: k, cap: 100, segs: 6, h: 100, cellPx: 40 }).field] as const);
-    const demNaive = fields[0]![1];
-    const demInline = fields[4]![1];
-    for (const [name, fld] of [['DEM lookup only, HeightField.heightAt (plan API)', demNaive], ['DEM lookup only, scratch-array convention', demInline]] as const) {
-      const gl1 = fresh(groundLoop);
-      const gl2 = fresh(groundLoop);
-      const a = nsPerCall(() => gl1(fld, rx, ry, N, reps, pos), N * reps);
-      const b = nsPerCall(() => gl2(fld, tx, ty, nTrace, rb, pos), nTrace * rb);
-      rows.push([name, f(a.ns, 1), f(b.ns, 1)]);
+    const fields = MATRIX_KINDS.map((k) => [k, makeRig({ c, kind: k, cap: 100, segs: 6, h: 100, cellPx: 40 }).field] as const);
+    for (const [name, fld] of [['DEM lookup alone, HeightField.heightAt (plan API)', fields[0]![1]], ['DEM lookup alone, scratch-array convention', fields[2]![1]]] as const) {
+      const a = nsPerCall(() => fresh(groundLoop)(fld, rx, ry, N, reps, pos), N * reps);
+      const b = nsPerCall(() => fresh(groundLoop)(fld, tx, ty, nTrace, rb, pos), nTrace * rb);
+      rows.push([name, f(b.ns, 1), f(a.ns, 1)]);
       res[name] = { random: a.ns, traced: b.ns };
     }
     for (const [kind, fld] of fields) {
-      const loopA = fresh(windLoop);
-      const loopB = fresh(windLoop);
-      const a = nsPerCall(() => loopA(fld, rx, ry, N, reps, pos, out), N * reps);
-      const b = nsPerCall(() => loopB(fld, tx, ty, nTrace, rb, pos, out), nTrace * rb);
-      rows.push([`${kind}  ${KIND_LABEL[kind]}`, f(a.ns, 1), f(b.ns, 1)]);
+      const a = nsPerCall(() => fresh(windLoop)(fld, rx, ry, N, reps, pos, out), N * reps);
+      const b = nsPerCall(() => fresh(windLoop)(fld, tx, ty, nTrace, rb, pos, out), nTrace * rb);
+      rows.push([`${kind}  ${KIND_LABEL[kind]}`, f(b.ns, 1), f(a.ns, 1)]);
       res[kind] = { random: a.ns, traced: b.ns };
     }
     table(rows);
-    const v2 = res['v2']!;
-    log(`plan 7.2 claim "1300 to 2600 particles per frame, well under 1 ms": 2600 samples x ${f(v2.traced, 0)} ns = ${f((2600 * v2.traced) / 1e6, 2)} ms (this machine, plan API incl. the DEM lookup)`);
+    log(`plan 7.2 claim "1300 to 2600 particles per frame, well under 1 ms": 2600 samples x ${f(res['v2']!.traced, 0)} ns = ${f((2600 * res['v2']!.traced) / 1e6, 2)} ms (this machine, plan API incl. the DEM lookup)`);
+    log(`machine during this test: load average ${loadavg().split(' ').slice(0, 3).join(' ')}`);
     log();
     RES['nsPerCall'] = res;
   }, 600_000);
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('05 rebuild matrix: caps 600/1200/2000 x segments 6/10/12, every variant (standard 6 km)', async () => {
-    log('== 05 rebuild matrix: standard 6 km, h = 100 m, one model cell = 40 px, phone portrait view with 25 % margin');
+  it('05 allocation, early (the JIT has seen little else)', async () => {
+    await allocSection('05 allocation per steady-state rebuild, early in the run (2000 x 10, standard 6 km)', 'allocEarly');
+  }, 1_800_000);
+
+  it('06 rebuild matrix: caps 600/1200/2000 x segments 6/10/12, every variant (standard 6 km)', async () => {
+    log('== 06 rebuild matrix: standard 6 km, h = 100 m, one model cell = 40 px, phone portrait view with 25 % margin');
+    log('   the variants of a row group are timed round-robin in one block; cond = load average before/after, other processes\' CPU, own cpu/wall, quiet or LOADED');
     const c = std6();
-    const rows: string[][] = [['glyphs x segs', 'variant', 'glyphs', 'segments', 'calls', 'min ms', 'median ms', 'p95 ms', 'max ms', 'load', 'cpu/wall']];
+    const rows: string[][] = [['glyphs x segs', 'variant', 'glyphs', 'segments', 'calls', 'min ms', 'median ms', 'p95 ms', 'max ms', 'cond']];
     const out: Record<string, unknown> = {};
     for (const cap of [600, 1200, 2000]) {
       for (const segs of [6, 10, 12]) {
+        const rigs = Object.fromEntries(MATRIX_KINDS.map((k) => [k, makeRig({ c, kind: k, cap, segs, h: 100, cellPx: 40 })])) as Record<Kind, Rig>;
+        const b = await interleaved(Object.fromEntries(MATRIX_KINDS.map((k) => [k, rigs[k].rebuild])), cap === 2000 && segs === 10 ? REPS_HEAD : REPS, WARM, TURBOFAN(Object.values(rigs)));
         for (const kind of MATRIX_KINDS) {
-          const rig = makeRig({ c, kind, cap, segs, h: 100, cellPx: 40 });
-          const head = cap === 2000 && segs === 10;
-          const s = await timedSeries(rig.rebuild, head ? REPS_HEAD : REPS);
-          rows.push([`${cap} x ${segs}`, kind, String(rig.ctx.n), String(rig.ctx.total), String(rig.ctx.calls), f(s.sum.min), f(s.sum.median), f(s.sum.p95), f(s.sum.max), `${f(load1(s.load0), 1)}/${f(load1(s.load1), 1)}${s.loadOk ? '' : '!'}`, f(s.cpuWall, 2)]);
-          out[`${kind}:${cap}x${segs}`] = { ...s.sum, glyphs: rig.ctx.n, segments: rig.ctx.total, calls: rig.ctx.calls, load0: s.load0, load1: s.load1, cpuWall: s.cpuWall, othersMs: s.othersMs, stealMs: s.stealMs, wallMs: s.wallMs, attempts: s.attempts, loadOk: s.loadOk, gcMinor: s.gcMinor, gcMajor: s.gcMajor, gcMs: s.gcMs, gcHits: s.gcHits };
+          const s = b.sum[kind]!;
+          const rig = rigs[kind];
+          rows.push([`${cap} x ${segs}`, kind, String(rig.ctx.n), String(rig.ctx.total), String(rig.ctx.calls), f(s.min), f(s.median), f(s.p95), f(s.max), cond(b)]);
+          out[`${kind}:${cap}x${segs}`] = { ...s, glyphs: rig.ctx.n, segments: rig.ctx.total, calls: rig.ctx.calls, ...blockJson(b) };
         }
       }
     }
     table(rows);
-    log('glyphs, segments and calls are for the last rebuild. load = 1-minute average before/after the series ("!" = above the limit after all attempts); cpu/wall = CPU time of this process over wall time (below 1 = descheduled).');
-    log('r1 and r2 rows are the trace only: the raster is built once per snapshot or height change (see 07).');
+    log('glyphs, segments and calls are for the last rebuild of the block. r1 and r2 rows are the trace only: the raster is built once per snapshot or height change (see 09).');
     log();
     RES['matrix'] = out;
   }, 3_600_000);
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('06 cost split of one 2000 x 10 rebuild', async () => {
-    log('== 06 cost split, standard 6 km, 2000 glyphs x 10 segments, fixed box');
+  it('07 cost split of one 2000 x 10 rebuild', async () => {
+    log('== 07 cost split, standard 6 km, 2000 glyphs x 10 segments, fixed box (the variants of one table are timed round-robin)');
     const c = std6();
     const res: Record<string, unknown> = {};
-    for (const kind of ['v2uv', 'v2p'] as Kind[]) {
+    for (const kind of ['v2', 'v2p', 'r1'] as Kind[]) {
       const cfg = { c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40, fixedBox: true };
       const recRig = makeRig({ ...cfg, record: true });
       recRig.rebuild(0);
       const rec = recRig.record!;
       const nCalls = rec.idx;
-      const uv = rec.uv.slice(0, 2 * nCalls);
       const full = makeRig(cfg);
       const noWrite = makeRig({ ...cfg, write: false });
-      const replay = makeRig({ ...cfg, write: false, replay: uv });
-      const sFull = await timedSeries(full.rebuild, REPS_HEAD);
-      const sNoW = await timedSeries(noWrite.rebuild, REPS_HEAD);
-      const sRep = await timedSeries(replay.rebuild, REPS_HEAD);
-      const sSeed = await timedSeries((i) => full.seedOnly(i), REPS_HEAD);
+      const replay = makeRig({ ...cfg, write: false, replay: rec.uv.slice(0, 2 * nCalls) });
       const naive = makeRig({ ...cfg, naive: true });
-      const sNaive = await timedSeries(naive.rebuild, REPS_HEAD);
-      // Sampler alone on the recorded request stream.
-      const loop = fresh(windLoop);
-      const o = new Float32Array(3);
-      const pos = new Float64Array(3);
+      const b = await interleaved({ full: full.rebuild, noWrite: noWrite.rebuild, replay: replay.rebuild, seeds: (i) => full.seedOnly(i), naive: naive.rebuild }, REPS_HEAD, WARM, TURBOFAN([full, noWrite, replay, naive]));
+      // The sampler alone on the recorded request stream.
       const xs = rec.xs.slice(0, nCalls);
       const ys = rec.ys.slice(0, nCalls);
-      const samp = nsPerCall(() => loop(full.field, xs, ys, nCalls, 1, pos, o), nCalls, 25);
-      const m = (s: Series): number => s.sum.median;
-      const mn = (s: Series): number => s.sum.min;
-      const out = m(sFull) - m(sNoW);
-      const sampler = m(sNoW) - m(sRep);
-      const arith = m(sRep) - m(sSeed);
-      log(`-- ${kind}: ${KIND_LABEL[kind]}`);
+      const samp = nsPerCall(() => fresh(windLoop)(full.field, xs, ys, nCalls, 1, new Float64Array(3), new Float32Array(3)), nCalls, 25);
+      const m = (k: string): number => b.sum[k]!.median;
+      const mn = (k: string): number => b.sum[k]!.min;
+      const [out, sampler, arith] = [m('full') - m('noWrite'), m('noWrite') - m('replay'), m('replay') - m('seeds')];
+      log(`-- ${kind}: ${KIND_LABEL[kind]}   [cond ${cond(b)}]`);
       table([
         ['part', 'median ms', 'min ms', 'share of median'],
-        ['seeds (lattice, hash, thinning, metres per pixel)', f(m(sSeed), 3), f(mn(sSeed), 3), `${f((100 * m(sSeed)) / m(sFull), 0)} %`],
-        ['tracing arithmetic (RK2, normalising, edge test, loop)', f(arith, 3), f(mn(sRep) - mn(sSeed), 3), `${f((100 * arith) / m(sFull), 0)} %`],
-        [`sampler calls (${nCalls} x windAt incl. DEM lookup)`, f(sampler, 3), f(mn(sNoW) - mn(sRep), 3), `${f((100 * sampler) / m(sFull), 0)} %`],
-        ['output (DEM lift, vertex write, colour table, near plane, halo copy)', f(out, 3), f(mn(sFull) - mn(sNoW), 3), `${f((100 * out) / m(sFull), 0)} %`],
-        ['total rebuild', f(m(sFull), 3), f(mn(sFull), 3), '100 %'],
+        ['seeds (lattice, hash, thinning, metres per pixel)', f(m('seeds'), 3), f(mn('seeds'), 3), `${f((100 * m('seeds')) / m('full'), 0)} %`],
+        ['tracing arithmetic (RK2, normalising, edge test, loop)', f(arith, 3), f(mn('replay') - mn('seeds'), 3), `${f((100 * arith) / m('full'), 0)} %`],
+        [`sampler calls (${nCalls} x windAt${kind === 'r1' ? ', raster bilinear' : ' incl. DEM lookup'})`, f(sampler, 3), f(mn('noWrite') - mn('replay'), 3), `${f((100 * sampler) / m('full'), 0)} %`],
+        ['output (DEM lift, vertex write, colour table, near plane, halo copy)', f(out, 3), f(mn('full') - mn('noWrite'), 3), `${f((100 * out) / m('full'), 0)} %`],
+        ['total rebuild', f(m('full'), 3), f(mn('full'), 3), '100 %'],
       ]);
       log(`replaying the ${nCalls} recorded requests through windAt alone: ${f(samp.ns, 1)} ns per call = ${f((samp.ns * nCalls) / 1e6, 3)} ms (the sampler line by subtraction: ${f((sampler / nCalls) * 1e6, 1)} ns per call)`);
       log(`segments written ${full.ctx.total}; output floats ${full.ctx.total * 10} (A, B, C) + ${full.ctx.total * 6} (halo copy A2, B2)`);
-      log(`colour by sampleRamp + srgbToLinear per segment (as WindLayer does per streak) instead of the table: median ${f(m(sNaive), 3)} ms (${m(sNaive) >= m(sFull) ? '+' : ''}${f(m(sNaive) - m(sFull), 3)} ms)`);
+      log(`colour by sampleRamp + srgbToLinear per segment (as WindLayer does per streak) instead of the table: median ${f(m('naive'), 3)} ms (${m('naive') >= m('full') ? '+' : ''}${f(m('naive') - m('full'), 3)} ms)`);
       log();
-      res[kind] = { seeds: m(sSeed), arith, sampler, output: out, total: m(sFull), calls: nCalls, replayNs: samp.ns, naiveColour: m(sNaive), segments: full.ctx.total };
+      res[kind] = { seeds: m('seeds'), arith, sampler, output: out, total: m('full'), calls: nCalls, replayNs: samp.ns, naiveColour: m('naive'), segments: full.ctx.total, ...blockJson(b) };
     }
     RES['split'] = res;
   }, 1_800_000);
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('07 raster alternative: build cost and what it gives up', async () => {
-    log('== 07 raster alternative (all grids), 2000 glyphs x 10 segments, h = 100 m');
-    const rows: string[][] = [['case', 'raster', 'texels', 'build median ms', 'build p95 ms', 'trace median ms', 'trace p95 ms', 'new snapshot: build + trace median ms', 'direct v2p median ms', 'direct v2p p95 ms']];
+  it('08 staging: one rebuild cut into slices that fit a frame', async () => {
+    const sliceMs = BUDGET_MS / PHONE_FACTOR;
+    log(`== 08 staging: the clock is read every 32 glyphs and a slice ends when its budget is spent (here ${f(sliceMs, 2)} ms = ${BUDGET_MS} ms on the phone estimate; ${BUDGET_MS} ms here = ${BUDGET_MS * THROTTLE} ms at the 4x throttle)`);
+    const c = std6();
+    const rows: string[][] = [['variant', 'glyphs x segs', 'budget here ms', 'unsliced median ms', 'sliced total median ms', 'slices per rebuild (median / max)', 'slice ms: median / p95 / max', 'cond']];
+    const res: Record<string, unknown> = {};
+    for (const kind of ['v2p', 'r1'] as Kind[]) {
+      for (const [cap, segs] of [[2000, 10], [1200, 10], [600, 10]] as const) {
+        for (const budget of [sliceMs, BUDGET_MS]) {
+          const rig = makeRig({ c, kind, cap, segs, h: 100, cellPx: 40 });
+          const counts: number[] = [];
+          const all: number[] = [];
+          const b = await interleaved(
+            {
+              whole: rig.rebuild,
+              sliced: (i) => {
+                const sl = rig.rebuildSliced(i, budget);
+                counts.push(sl.length);
+                all.push(...sl);
+                return sl.length;
+              },
+            },
+            REPS,
+            WARM,
+            () => tierOf(rig.trace) === 'TurboFan',
+          );
+          const keep = counts.slice(-REPS);
+          const slices = summarise(all.slice(-keep.reduce((x, y) => x + y, 0)));
+          const sc = summarise(keep);
+          rows.push([kind, `${cap} x ${segs}`, f(budget, 2), f(b.sum['whole']!.median), f(b.sum['sliced']!.median), `${sc.median} / ${sc.max}`, `${f(slices.median)} / ${f(slices.p95)} / ${f(slices.max)}`, cond(b)]);
+          res[`${kind}:${cap}x${segs}:${f(budget, 1)}`] = { whole: b.sum['whole'], sliced: b.sum['sliced'], slices: sc, slice: slices, ...blockJson(b) };
+        }
+      }
+    }
+    table(rows);
+    log('A slice overshoots its budget by at most the time of 32 glyphs. The first slice of a rebuild includes the seeds.');
+    log();
+    RES['staging'] = res;
+  }, 1_800_000);
+
+  // ───────────────────────────────────────────────────────────────────────────────────────────────
+  it('09 raster alternative: build cost and what it gives up', async () => {
+    log('== 09 raster alternative (all grids), 2000 glyphs x 10 segments, h = 100 m; direct and raster traces are timed round-robin');
+    const rows: string[][] = [['case', 'raster', 'texels', 'build median ms', 'build p95 ms', 'trace median ms', 'trace p95 ms', 'new snapshot: build + trace median ms', 'direct v2p median ms', 'direct v2p p95 ms', 'cond']];
     const resRaster: Record<string, unknown> = {};
     for (const c of cases.values()) {
-      const direct = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 });
-      const sD = await timedSeries(direct.rebuild, REPS_HEAD);
-      for (const kind of ['r1', 'r2'] as Kind[]) {
-        const rig = makeRig({ c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40 });
-        const R = rig.raster!;
-        const sB = await timedSeries(() => {
-          R.build(rig.direct!);
-          return 0;
-        }, REPS);
-        const sT = await timedSeries(rig.rebuild, REPS_HEAD);
-        rows.push([c.label, kind === 'r1' ? '1x (model grid)' : '2x finer', String(R.nr * R.nr), f(sB.sum.median, 3), f(sB.sum.p95, 3), f(sT.sum.median, 3), f(sT.sum.p95, 3), f(sB.sum.median + sT.sum.median, 3), f(sD.sum.median, 3), f(sD.sum.p95, 3)]);
-        resRaster[`${c.name}:${kind}`] = { texels: R.nr * R.nr, build: sB.sum, trace: sT.sum, direct: sD.sum };
+      const [direct, r1, r2] = (['v2p', 'r1', 'r2'] as Kind[]).map((kind) => makeRig({ c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40 })) as [Rig, Rig, Rig];
+      const b = await interleaved(
+        { direct: direct.rebuild, trace1: r1.rebuild, trace2: r2.rebuild, build1: () => (r1.raster!.build(r1.direct!), 0), build2: () => (r2.raster!.build(r2.direct!), 0) },
+        REPS_HEAD,
+        WARM,
+        TURBOFAN([direct, r1, r2]),
+      );
+      for (const [kind, R, tr, bd] of [['r1', r1.raster!, 'trace1', 'build1'], ['r2', r2.raster!, 'trace2', 'build2']] as const) {
+        const [sB, sT, sD] = [b.sum[bd]!, b.sum[tr]!, b.sum['direct']!];
+        rows.push([c.label, kind === 'r1' ? '1x (model grid)' : '2x finer', String(R.nr * R.nr), f(sB.median, 3), f(sB.p95, 3), f(sT.median, 3), f(sT.p95, 3), f(sB.median + sT.median, 3), f(sD.median, 3), f(sD.p95, 3), cond(b)]);
+        resRaster[`${c.name}:${kind}`] = { texels: R.nr * R.nr, build: sB, trace: sT, direct: sD, ...blockJson(b) };
       }
     }
     table(rows);
@@ -1863,7 +1782,7 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
     log('-- accuracy: distance between the end point of each glyph traced through the raster and through the direct v2 sampler');
     log('   (2000 glyphs x 10 segments in each of 16 view boxes; same seeds and rules; px = distance / the glyph\'s own metres per pixel;');
     log('    cell = size of one model cell on screen; length = mean path length of the direct glyphs)');
-    const acc: string[][] = [['case', 'h (m)', 'cell (px)', 'raster', 'length m', 'mean m', 'p95 m', 'max m', 'mean % of length', 'mean px', 'p95 px', 'max px', 'glyphs']];
+    const acc: string[][] = [['case', 'h (m)', 'cell (px)', 'raster', 'length m', 'mean m', 'p95 m', 'p99 m', 'max m', 'mean % of length', 'mean px', 'p95 px', 'p99 px', 'max px', '% of glyphs over 3 px', 'glyphs']];
     const resAcc: Record<string, unknown> = {};
     for (const c of cases.values()) {
       for (const h of [10, 50, 100, 300]) {
@@ -1884,19 +1803,21 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
               expect(rg.ctx.n).toBe(nG);
               for (let k = 0; k < nG; k++) {
                 const dd = Math.hypot(rg.ctx.ex[k]! - direct.ctx.ex[k]!, rg.ctx.ey[k]! - direct.ctx.ey[k]!);
-                const len = direct.ctx.len[k]!;
                 d.push(dd);
                 dPx.push(dd / direct.ctx.smpp[k]!);
-                lens.push(len);
-                rel.push(len > 1 ? dd / len : 0);
+                lens.push(direct.ctx.len[k]!);
+                rel.push(direct.ctx.len[k]! > 1 ? dd / direct.ctx.len[k]! : 0);
               }
             }
             const sd = summarise(d);
             const sp = summarise(dPx);
+            const p99 = percentile([...d].sort((x, y) => x - y), 0.99);
+            const p99Px = percentile([...dPx].sort((x, y) => x - y), 0.99);
+            const over3 = (100 * dPx.filter((x) => x > 3).length) / dPx.length;
             const meanLen = lens.reduce((a, x) => a + x, 0) / lens.length;
             const meanRel = rel.reduce((a, x) => a + x, 0) / rel.length;
-            acc.push([c.label, String(h), String(cellPx), kind === 'r1' ? '1x' : '2x', f(meanLen, 0), f(sd.mean, 1), f(sd.p95, 1), f(sd.max, 0), f(meanRel * 100, 1), f(sp.mean, 2), f(sp.p95, 2), f(sp.max, 1), String(d.length)]);
-            resAcc[`${c.name}:h${h}:cell${cellPx}:${kind}`] = { mean: sd.mean, p95: sd.p95, max: sd.max, meanRelPct: meanRel * 100, meanPx: sp.mean, p95Px: sp.p95, maxPx: sp.max, meanLen };
+            acc.push([c.label, String(h), String(cellPx), kind === 'r1' ? '1x' : '2x', f(meanLen, 0), f(sd.mean, 1), f(sd.p95, 1), f(p99, 1), f(sd.max, 0), f(meanRel * 100, 1), f(sp.mean, 2), f(sp.p95, 2), f(p99Px, 2), f(sp.max, 1), f(over3, 2), String(d.length)]);
+            resAcc[`${c.name}:h${h}:cell${cellPx}:${kind}`] = { mean: sd.mean, p95: sd.p95, p99, max: sd.max, meanRelPct: meanRel * 100, meanPx: sp.mean, p95Px: sp.p95, p99Px, maxPx: sp.max, over3Pct: over3, meanLen };
           }
         }
       }
@@ -1907,112 +1828,90 @@ describe.skipIf(!ENABLED)('S3 glyph benchmark (FIRESIM_SPIKE)', () => {
   }, 3_600_000);
 
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('08 allocation per steady-state rebuild (2000 x 10, standard 6 km)', async () => {
-    log('== 08 allocation per rebuild (heap growth over a few rebuilds with no GC in between; the cost of reading the heap size is subtracted)');
-    const c = std6();
-    const rows: string[][] = [['variant', 'bytes per rebuild', 'bytes per sampler call', 'GC events in a 300-rebuild series (minor / major / ms)', 'rebuilds that overlapped a GC']];
-    const res: Record<string, unknown> = {};
-    const measure = async (rebuild: (i: number) => number): Promise<number> => {
-      for (let i = 0; i < 80; i++) rebuild(i);
-      for (const reps of [3, 2, 1]) {
-        gc();
-        gc();
-        await flushGc();
-        const e0 = gcEvents.length;
-        const h0 = process.memoryUsage().heapUsed;
-        const h00 = process.memoryUsage().heapUsed;
-        const overhead = h00 - h0;
-        const a = process.memoryUsage().heapUsed;
-        for (let i = 0; i < reps; i++) rebuild(100 + i);
-        const b = process.memoryUsage().heapUsed;
-        await flushGc();
-        if (gcEvents.length === e0) return (b - a - overhead) / reps;
-      }
-      return NaN;
-    };
-    const rigSeed = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 });
-    const seedBytes = await measure((i) => rigSeed.seedOnly(i));
-    rows.push(['seeds only (lattice, hash, thinning)', f(seedBytes, 0), '-', '-', '-']);
-    res['seeds'] = { bytes: seedBytes };
-    for (const kind of ['v1', 'v2', 'v2uv', 'v2t', 'v2p', 'r1'] as Kind[]) {
-      const rig = makeRig({ c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40 });
-      const bytes = await measure(rig.rebuild);
-      const s = await timedSeries(rig.rebuild, REPS_HEAD);
-      rows.push([`${kind}  ${KIND_LABEL[kind]}`, f(bytes, 0), f(bytes / rig.ctx.calls, 1), `${s.gcMinor} / ${s.gcMajor} / ${f(s.gcMs, 2)}`, String(s.gcHits)]);
-      res[kind] = { bytes, calls: rig.ctx.calls, gcMinor: s.gcMinor, gcMajor: s.gcMajor, gcMs: s.gcMs, gcHits: s.gcHits };
-    }
-    // Detector check: a deliberately allocating field (one fresh array per sample) must show up.
-    const base = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40 });
-    const inner = base.field;
-    const leaky: GlyphField = {
-      windP(pos, out) {
-        const t = [pos[0]!, pos[1]!];
-        pos[0] = t[0]!;
-        inner.windP(pos, out);
-        out[2] = t.length;
-      },
-      groundP: (pos) => inner.groundP(pos),
-    };
-    const leakRig = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h: 100, cellPx: 40, field: leaky });
-    const leakBytes = await measure(leakRig.rebuild);
-    rows.push(['detector check: v2p plus one [x, y] array per sample', f(leakBytes, 0), f(leakBytes / leakRig.ctx.calls, 1), '-', '-']);
-    table(rows);
-    log('A 16 MB young generation (V8 default here) is scavenged whenever it fills, so bytes per rebuild / 16 MB = scavenges per rebuild.');
-    log();
-    RES['alloc'] = res;
-  }, 1_800_000);
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('09 other grids and heights (2000 x 10)', async () => {
-    log('== 09 other grids and heights (2000 glyphs x 10 segments)');
-    const rows: string[][] = [['case', 'h (m)', 'variant', 'median ms', 'p95 ms', 'segments', 'calls']];
+  it('10 other grids and heights (2000 x 10)', async () => {
+    log('== 10 other grids and heights (2000 glyphs x 10 segments; the variants of one group are timed round-robin)');
+    const rows: string[][] = [['case', 'h (m)', 'variant', 'median ms', 'p95 ms', 'segments', 'calls', 'cond']];
     const res: Record<string, unknown> = {};
     for (const c of cases.values()) {
-      for (const kind of ['v1', 'v2uv', 'v2p'] as Kind[]) {
-        const rig = makeRig({ c, kind, cap: 2000, segs: 10, h: 100, cellPx: 40 });
-        const s = await timedSeries(rig.rebuild, REPS);
-        rows.push([c.label, '100', kind, f(s.sum.median), f(s.sum.p95), String(rig.ctx.total), String(rig.ctx.calls)]);
-        res[`${c.name}:h100:${kind}`] = s.sum;
+      const kinds: Kind[] = ['v1', 'v2', 'v2p', 'r1'];
+      const rigs = Object.fromEntries(kinds.map((k) => [k, makeRig({ c, kind: k, cap: 2000, segs: 10, h: 100, cellPx: 40 })])) as Record<Kind, Rig>;
+      const b = await interleaved(Object.fromEntries(kinds.map((k) => [k, rigs[k].rebuild])), REPS, WARM, TURBOFAN(Object.values(rigs)));
+      for (const kind of kinds) {
+        const s = b.sum[kind]!;
+        rows.push([c.label, '100', kind, f(s.median), f(s.p95), String(rigs[kind].ctx.total), String(rigs[kind].ctx.calls), cond(b)]);
+        res[`${c.name}:h100:${kind}`] = { ...s, ...blockJson(b) };
       }
     }
-    const c = std6();
-    for (const h of [10, 50, 300, 1000, 2000]) {
-      const rig = makeRig({ c, kind: 'v2p', cap: 2000, segs: 10, h, cellPx: 40 });
-      const s = await timedSeries(rig.rebuild, REPS);
-      rows.push([c.label, String(h), 'v2p', f(s.sum.median), f(s.sum.p95), String(rig.ctx.total), String(rig.ctx.calls)]);
-      res[`std6:h${h}:v2p`] = s.sum;
-    }
+    const hs = [10, 50, 100, 300, 1000, 2000];
+    const rigs = hs.map((h) => makeRig({ c: std6(), kind: 'v2p', cap: 2000, segs: 10, h, cellPx: 40 }));
+    const b = await interleaved(Object.fromEntries(hs.map((h, i) => [`h${h}`, rigs[i]!.rebuild])), REPS, WARM, TURBOFAN(rigs));
+    hs.forEach((h, i) => {
+      const s = b.sum[`h${h}`]!;
+      rows.push([std6().label, String(h), 'v2p', f(s.median), f(s.p95), String(rigs[i]!.ctx.total), String(rigs[i]!.ctx.calls), cond(b)]);
+      res[`std6:h${h}:v2p`] = { ...s, ...blockJson(b) };
+    });
     table(rows);
     log();
     RES['grids'] = res;
   }, 1_800_000);
 
+  it('11 allocation again, after all other timing tests', async () => {
+    await allocSection('11 allocation per steady-state rebuild again, after every other test (2000 x 10, standard 6 km)', 'allocLate');
+  }, 1_800_000);
+
   // ───────────────────────────────────────────────────────────────────────────────────────────────
-  it('10 extrapolation to a phone and to the 4x throttle', () => {
-    log('== 10 extrapolation');
+  it('12 extrapolation to a phone and to the 4x throttle', async () => {
+    log('== 12 extrapolation');
+    // Check of the one data point against this run: the 3-D air step of the calibration engine, timed again at the end.
+    const air = airStep(cal!.engine, QUICK ? 8 : 30);
+    const air0 = RES['airStepStart'] as Summary;
+    log(`3-D air step of a standard 6 km engine: at the start median ${f(air0.median)} ms (min ${f(air0.min)}), at the end median ${f(air.median)} ms (min ${f(air.min)}); the brief quotes 17.5 ms for this machine and 41.1 ms for the phone.`);
+    log(`Factor used: ${f(PHONE_FACTOR, 2)}; with this run's medians it would be ${f(41.1 / air0.median, 2)} (start) and ${f(41.1 / air.median, 2)} (end). Load average now: ${loadavg().split(' ').slice(0, 3).join(' ')}`);
+    RES['airStep'] = air;
     log(`phone factor ${f(PHONE_FACTOR, 2)} = 41.1 ms (phone) / 17.5 ms (this machine) for the 3-D air step: ONE data point, and the code differs (stencil and multigrid, not a branchy sampler).`);
-    log(`4x throttle = 4 x this machine's time. Budget: ${BUDGET_MS} ms p95 on a phone (plan 9.8), 32 ms at the throttle. "With margin": phone estimate <= budget / ${MARGIN_FACTOR} = ${f(BUDGET_MS / MARGIN_FACTOR, 1)} ms.`);
-    const m = RES['matrix'] as Record<string, Summary & { glyphs: number }> | undefined;
+    log(`4x throttle = 4 x this machine's time. Budgets: ${BUDGET_MS} ms on the phone (plan 9.8), ${BUDGET_MS * THROTTLE} ms at the throttle. Margin: a phone estimate of at most budget / ${MARGIN_FACTOR} = ${f(BUDGET_MS / MARGIN_FACTOR, 1)} ms.`);
+    log('The machine is shared and its timings carry interference, which inflates them. The classes take that into account:');
+    log('"fits with margin" / "fits": even the p95 of this loaded run x 2.35 is within 5.3 / 8 ms, so a quiet machine can only do better (safe).');
+    log('"over (needs Nx)": even the FASTEST rebuild x 2.35 exceeds 8 ms; N is the speed-up that a quiet machine would need over that rebuild to fit (the claim is only as good as the load estimate).');
+    log('"undecided": the fastest rebuild fits but the loaded p95 does not.');
+    log(`The same rules at the 4x throttle use 4 x the time here against 32 ms, so the last column is the question "is the time here within ${BUDGET_MS} ms": the throttle budget is ${f(THROTTLE / PHONE_FACTOR, 2)}x looser than the phone budget.`);
+    const m = RES['matrix'] as Record<string, Summary> | undefined;
     if (!m) {
       log('(matrix missing: run the whole file)');
       return;
     }
-    const rows: string[][] = [['glyphs x segs', 'variant', 'p95 here ms', 'phone p95 est ms (x2.35)', 'throttle p95 ms (x4)', 'fits 8 ms', 'fits with margin', 'frames of <= 8 ms (phone)', 'frames of <= 32 ms (throttle)']];
+    const rows: string[][] = [['glyphs x segs', 'variant', 'here: min / median / p95 ms', 'phone estimate: min / median / p95 ms', 'p95 at the 4x throttle ms', 'against 8 ms on the phone', 'against 32 ms at 4x throttle']];
     const out: Record<string, unknown> = {};
     for (const kind of MATRIX_KINDS) {
       for (const cap of [600, 1200, 2000]) {
         for (const segs of [6, 10, 12]) {
-          const s = m[`${kind}:${cap}x${segs}`];
-          if (!s) continue;
-          const ph = s.p95 * PHONE_FACTOR;
-          const th = s.p95 * THROTTLE;
-          rows.push([`${cap} x ${segs}`, kind, f(s.p95), f(ph), f(th), ph <= BUDGET_MS ? 'yes' : 'no', ph <= BUDGET_MS / MARGIN_FACTOR ? 'yes' : 'no', String(Math.ceil(ph / BUDGET_MS)), String(Math.ceil(th / 32))]);
-          out[`${kind}:${cap}x${segs}`] = { here: s.p95, phone: ph, throttle: th };
+          const s = m[`${kind}:${cap}x${segs}`]!;
+          const [pMin, pMed, pP95] = [s.min * PHONE_FACTOR, s.median * PHONE_FACTOR, s.p95 * PHONE_FACTOR];
+          const cls = pP95 <= BUDGET_MS / MARGIN_FACTOR ? 'fits with margin' : pP95 <= BUDGET_MS ? 'fits' : pMin > BUDGET_MS ? `over (needs ${f(pMin / BUDGET_MS, 1)}x)` : 'undecided';
+          const thMin = s.min * THROTTLE;
+          const thP95 = s.p95 * THROTTLE;
+          const clsTh = thP95 <= BUDGET_MS * THROTTLE ? 'fits' : thMin > BUDGET_MS * THROTTLE ? `over (needs ${f(thMin / (BUDGET_MS * THROTTLE), 1)}x)` : 'undecided';
+          rows.push([`${cap} x ${segs}`, kind, `${f(s.min)} / ${f(s.median)} / ${f(s.p95)}`, `${f(pMin, 1)} / ${f(pMed, 1)} / ${f(pP95, 1)}`, f(thP95, 1), cls, clsTh]);
+          out[`${kind}:${cap}x${segs}`] = { here: s, phone: { min: pMin, median: pMed, p95: pP95 }, throttleP95: thP95, cls, clsTh };
         }
       }
     }
     table(rows);
+    // How many glyphs fit? Cost is close to linear in the glyph count: scale the 2000-glyph block (an assumption: fixed costs bend it a little).
+    const fit: string[][] = [['variant', 'segments', 'median us per glyph here', 'glyphs that fit 8 ms (phone p95 estimate)', 'glyphs that fit 5.3 ms (with margin)', 'glyphs that fit 32 ms at the 4x throttle']];
+    const fitOut: Record<string, unknown> = {};
+    for (const kind of MATRIX_KINDS) {
+      for (const segs of [6, 10, 12]) {
+        const s = m[`${kind}:2000x${segs}`]!;
+        const g = (budget: number, factor: number): number => Math.floor((2000 * budget) / (s.p95 * factor));
+        fit.push([kind, String(segs), f((s.median * 1000) / 2000, 2), String(g(BUDGET_MS, PHONE_FACTOR)), String(g(BUDGET_MS / MARGIN_FACTOR, PHONE_FACTOR)), String(g(BUDGET_MS * THROTTLE, THROTTLE))]);
+        fitOut[`${kind}:${segs}`] = { usPerGlyph: (s.median * 1000) / 2000, g8: g(BUDGET_MS, PHONE_FACTOR), g53: g(BUDGET_MS / MARGIN_FACTOR, PHONE_FACTOR), gTh: g(BUDGET_MS * THROTTLE, THROTTLE) };
+      }
+    }
+    table(fit);
+    log('(linear scaling of the p95 of the 2000-glyph block; the raster rows are the trace only, without the once-per-snapshot raster build)');
     log();
     RES['extrapolation'] = out;
+    RES['fit'] = fitOut;
   });
 });
