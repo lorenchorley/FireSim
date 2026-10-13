@@ -1,0 +1,725 @@
+diff --git a/src/render/SceneView.ts b/src/render/SceneView.ts
+index c1445bb..5d086c8 100644
+--- a/src/render/SceneView.ts
++++ b/src/render/SceneView.ts
+@@ -41,7 +41,7 @@ import { legendFor, overlayScale, type LegendSpec } from './legends';
+ import { AdaptiveDpr, FrameMeter } from './perf';
+ import { sameOrigin } from './placesGeometry';
+ import { PlacesLayer } from './placesLayer';
+-import { skyLighting } from './sky';
++import { mapLighting, MAP_LOOK, skyLighting, type NightLook } from './sky';
+ import { SkyDome } from './skyDome';
+ import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
+ import { TerrainLayer, type TerrainDecals } from './terrainLayer';
+@@ -262,6 +262,9 @@ export class SceneView implements SceneViewApi {
+       uGroundAmb: { value: new THREE.Color(0.3, 0.26, 0.2) },
+       uAmbI: { value: 0.65 },
+       uNight: { value: 0 },
++      uMapNight: { value: 0 },
++      uMapGain: { value: 1 },
++      uShadowGain: { value: 1 },
+       uExposure: { value: 1 },
+       uFogColour: { value: new THREE.Color(0.7, 0.78, 0.88) },
+       uFogDensity: { value: 1 / 45000 },
+@@ -450,6 +453,28 @@ export class SceneView implements SceneViewApi {
+   }
+   private plainGroundOn = false;
+ 
++  /**
++   * Night lighting (Layers, Map type): Realistic is the clock's lighting, Brighter and Daylight light the map from a fixed
++   * sun after dark while the sky, stars and the fire's glow keep following the clock. Uniforms only: no rebuild.
++   */
++  setNightLook(look: NightLook): void {
++    if (this.nightLookValue === look) return;
++    this.nightLookValue = look;
++    this.sunKey = NaN;
++    this.applyLighting(this.sunTimeMs());
++    this.dirty = true;
++  }
++  get nightLook(): NightLook {
++    return this.nightLookValue;
++  }
++  /** Spike S4 only: recompute the lighting now (the tuning constants of MAP_LOOK changed). */
++  refreshLighting(): void {
++    this.sunKey = NaN;
++    this.applyLighting(this.sunTimeMs());
++    this.dirty = true;
++  }
++  private nightLookValue: NightLook = 'realistic';
++
+   /** An aerial photo was given for this scenario. */
+   get hasImagery(): boolean {
+     return this.terrainLayer?.hasImagery ?? false;
+@@ -1020,20 +1045,40 @@ export class SceneView implements SceneViewApi {
+     const L = skyLighting(sun.elevation, { cloudCover: w?.cloudCover, smoke: this.smokeHaze * 0.35 });
+     const u = this.u;
+     const dir = sunDirectionWorld(sun.azimuth, Math.max(sun.elevation, -2));
+-    (u.uSunDir!.value as THREE.Vector3).set(dir[0], dir[1], dir[2]);
+-    (u.uSunColour!.value as THREE.Color).setRGB(...L.sunColour);
+-    u.uSunI!.value = L.sunIntensity;
+-    (u.uSkyAmb!.value as THREE.Color).setRGB(...L.skyAmbient);
+-    (u.uGroundAmb!.value as THREE.Color).setRGB(...L.groundAmbient);
+-    u.uAmbI!.value = L.ambientIntensity;
++    // The map (ground, photo, trees, roads, labels, smoke body) reads the MAP lighting; the sky dome, the night factor of
++    // the emissive things (flames, fire light on smoke, lit windows, stars) and the fog colour keep the REAL one.
++    const M = mapLighting(L, this.nightLookValue, dir);
++    (u.uSunDir!.value as THREE.Vector3).set(M.sunDir[0], M.sunDir[1], M.sunDir[2]);
++    (u.uSunColour!.value as THREE.Color).setRGB(...M.sunColour);
++    u.uSunI!.value = M.sunIntensity;
++    (u.uSkyAmb!.value as THREE.Color).setRGB(...M.skyAmbient);
++    (u.uGroundAmb!.value as THREE.Color).setRGB(...M.groundAmbient);
++    u.uAmbI!.value = M.ambientIntensity;
+     u.uNight!.value = L.night;
+-    u.uExposure!.value = L.exposure;
++    u.uMapNight!.value = M.mapNight;
++    u.uMapGain!.value = M.mapGain;
++    u.uShadowGain!.value = MAP_LOOK.shadowFade ? 1 - M.weight : 1;
++    u.uExposure!.value = M.exposure;
++    // The smoke body has its own lighting so the spike can compare "map" and "real" (smokeMap 1 is the plan's table).
++    const Ms = MAP_LOOK.smokeMap === 1 ? M : mapLighting(L, this.nightLookValue, dir, MAP_LOOK.smokeMap);
++    const sm = this.smoke.uniforms;
++    (sm.uSunColour!.value as THREE.Color).setRGB(...Ms.sunColour);
++    sm.uSunI!.value = Ms.sunIntensity;
++    (sm.uSkyAmb!.value as THREE.Color).setRGB(...Ms.skyAmbient);
++    sm.uAmbI!.value = Ms.ambientIntensity;
++    sm.uExposure!.value = Ms.exposure;
+     (u.uFogColour!.value as THREE.Color).setRGB(...L.fog);
+-    (this.sky.uniforms.uZenith!.value as THREE.Color).setRGB(...L.zenith);
+-    (this.sky.uniforms.uHorizon!.value as THREE.Color).setRGB(...L.horizon);
++    const su = this.sky.uniforms;
++    const SK = MAP_LOOK.skyFromMap ? M : null;
++    (su.uSunDir!.value as THREE.Vector3).set(...(SK ? SK.sunDir : dir));
++    (su.uSunColour!.value as THREE.Color).setRGB(...(SK ? SK.sunColour : L.sunColour));
++    su.uSunI!.value = SK ? SK.sunIntensity : L.sunIntensity;
++    su.uExposure!.value = SK ? SK.exposure : L.exposure;
++    (su.uZenith!.value as THREE.Color).setRGB(...L.zenith);
++    (su.uHorizon!.value as THREE.Color).setRGB(...L.horizon);
+     u.uGlowGain!.value = 1.2 + 5 * L.night;
+     const size = this.hf ? Math.max(this.hf.xMax - this.hf.xMin, this.hf.yMax - this.hf.yMin) : 9000;
+-    u.uFogDensity!.value = (1 + 1.5 * this.smokeHaze) / (size * 4.2);
++    u.uFogDensity!.value = ((1 + 1.5 * this.smokeHaze) / (size * 4.2)) * (1 - MAP_LOOK.fogCut * M.weight);
+     this.sunAz = sun.azimuth;
+     this.sunEl = sun.elevation;
+     this.updateShadows(performance.now());
+diff --git a/src/render/api.ts b/src/render/api.ts
+index 17bc051..00f14bf 100644
+--- a/src/render/api.ts
++++ b/src/render/api.ts
+@@ -4,6 +4,7 @@ import type { GridSpec } from '../core/grid';
+ import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
+ import type { LayerState } from './layers';
+ import type { LegendSpec } from './legends';
++import type { NightLook } from './sky';
+ 
+ export interface SceneImagery {
+   /** Image covering the scenario domain exactly; row 0 = north. */
+@@ -101,6 +102,14 @@ export interface SceneViewApi {
+   setPlainGround?(on: boolean): void;
+   /** Map type 'Plain' is on. */
+   readonly plainGround?: boolean;
++  /**
++   * Night lighting: 'realistic' follows the clock (today), 'brighter' and 'daylight' light the ground, trees, roads and labels
++   * after dark from a fixed north-west sun while the sky, the stars and the fire's glow keep following the clock. A view setting,
++   * not a LayerState key; uniforms only, so it applies at once. Optional: the 2-D mock has no night lighting.
++   */
++  setNightLook?(look: NightLook): void;
++  /** The night lighting in use. */
++  readonly nightLook?: NightLook;
+   /** An aerial photo was given for this scenario (so the 'Aerial photo' map type can be shown). */
+   readonly hasImagery?: boolean;
+   /** The render quality tier in use (the UI keeps the trees' wind sway off by default on 'low'). */
+diff --git a/src/render/dev.ts b/src/render/dev.ts
+index 447b99c..35cd36e 100644
+--- a/src/render/dev.ts
++++ b/src/render/dev.ts
+@@ -13,6 +13,12 @@
+  *   roads= fireTrails= homes= zones= names= being given), each 0|1 switches a layer (defaults: roads, fireTrails and
+  *   names on, homes and zones off); town=<place name> aims the camera at a place, with d=<distance m> az=<deg>
+  *   tilt=<deg> (defaults 1800, 200, 55); start=22 gives the night theme.
++ *   SPIKE S4 (docs/plans/spikes/S4-night-look): nightLook=realistic|brighter|daylight (default realistic) calls
++ *   view.setNightLook; startMin=<minutes> is added to the start time (dusk checks); plain=1 turns on the Plain map type.
++ *   Overrides of the map-lighting constants in sky.ts (MAP_LOOK): nlMix=<Brighter share> nlHigh=<deg> nlLow=<deg> nlAz=<deg>
++ *   nlEl=<deg> nlFog=<0..1 cut of the fog density> nlExp=plan|fold nlSmoke=<0..1 share of map light on the smoke body>
++ *   nlShadow=0|1 (cast shadows x (1 - w)) nlDir=vector|light nlBlend=separate|product. The plan as written is
++ *   nlMix=0.55&nlEl=40&nlFog=1&nlSmoke=1&nlShadow=0&nlDir=vector&nlBlend=separate.
+  */
+ import { makeGridSpec } from '../core/grid';
+ import type { SimSnapshot } from '../core/types';
+@@ -25,6 +31,7 @@ import { fireCentroid } from './fields';
+ import type { OverlayKind } from './layers';
+ import { crossSectionLegend } from './legends';
+ import { SceneView } from './SceneView';
++import { MAP_LOOK, NIGHT_LOOKS, type NightLook } from './sky';
+ 
+ const q = new URLSearchParams(location.search);
+ const num = (k: string, d: number): number => (q.has(k) ? Number(q.get(k)) : d);
+@@ -32,7 +39,7 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id)
+ 
+ declare global {
+   interface Window {
+-    __fs?: { view: SceneView; fire: SyntheticFire; ready: boolean; setTime(t: number): void; error?: string };
++    __fs?: { view: SceneView; fire: SyntheticFire; ready: boolean; setTime(t: number): void; error?: string; look?: typeof MAP_LOOK; origin?: { lat: number; lon: number }; startTime?: number };
+   }
+ }
+ 
+@@ -59,7 +66,18 @@ async function main(): Promise<void> {
+ 
+   // Start: 21 Dec 2019 at `start` local (AEDT = UTC+11).
+   const startHour = num('start', 13);
+-  const startTime = Date.UTC(2019, 11, 21, startHour - 11, 0, 0);
++  const startTime = Date.UTC(2019, 11, 21, startHour - 11, 0, 0) + num('startMin', 0) * 60000;
++  if (q.has('nlMix')) MAP_LOOK.mix.brighter = num('nlMix', 0.55);
++  if (q.has('nlHigh')) MAP_LOOK.fadeHigh = num('nlHigh', 8);
++  if (q.has('nlLow')) MAP_LOOK.fadeLow = num('nlLow', -2);
++  if (q.has('nlAz')) MAP_LOOK.sunAzimuth = num('nlAz', 315);
++  if (q.has('nlEl')) MAP_LOOK.sunElevation = num('nlEl', 40);
++  if (q.has('nlFog')) MAP_LOOK.fogCut = num('nlFog', 1);
++  if (q.has('nlExp')) MAP_LOOK.exposureMode = q.get('nlExp') === 'fold' ? 'fold' : 'plan';
++  if (q.has('nlSmoke')) MAP_LOOK.smokeMap = num('nlSmoke', 1);
++  if (q.has('nlShadow')) MAP_LOOK.shadowFade = q.get('nlShadow') === '1';
++  if (q.has('nlDir')) MAP_LOOK.dirBlend = q.get('nlDir') === 'vector' ? 'vector' : 'light';
++  if (q.has('nlBlend')) MAP_LOOK.lightBlend = q.get('nlBlend') === 'separate' ? 'separate' : 'product';
+   const fire = new SyntheticFire(terrain, fuel, { startTime, windSpeed: num('ws', 8), windDir: num('wd', 295) });
+ 
+   const container = $('view');
+@@ -71,6 +89,9 @@ async function main(): Promise<void> {
+     windArrows: q.get('arrows') === '1',
+   });
+   view.setScenario(terrain, fuel, { imagery, context });
++  if (q.get('plain') === '1') view.setPlainGround(true);
++  const look = (q.get('nightLook') ?? 'realistic') as NightLook;
++  if (NIGHT_LOOKS.includes(look)) view.setNightLook(look);
+   view.setStartTime(startTime);
+   $('loading').classList.add('hidden');
+ 
+@@ -214,7 +235,7 @@ async function main(): Promise<void> {
+   });
+ 
+   if (q.get('flush') !== '0') view.flushPlaces(); // flush=0 leaves the sliced build to the render loop (timing checks)
+-  window.__fs = { view, fire, ready: true, setTime };
++  window.__fs = { view, fire, ready: true, setTime, look: MAP_LOOK, origin: terrain.grid.origin, startTime };
+ }
+ 
+ function renderLegend(view: SceneView): void {
+diff --git a/src/render/index.ts b/src/render/index.ts
+index 1dc9175..15b9f6c 100644
+--- a/src/render/index.ts
++++ b/src/render/index.ts
+@@ -25,7 +25,7 @@ export * as palette from './palette';
+ export { HeightField, type RayHit } from './heightfield';
+ export { localToWorld, worldToLocal, gridTransform, gridBounds, sunDirectionWorld } from './coords';
+ export { loadDemoImagery, type DemoImageryOptions } from './demoAssets';
+-export { skyLighting, type SkyLighting } from './sky';
++export { mapLighting, NIGHT_LOOKS, skyLighting, type MapLighting, type NightLook, type SkyLighting } from './sky';
+ export { placeVegetation, PlacementJob, VegGroup, VEG_GROUP_LABELS, MAX_VEG_INSTANCES, type VegInstances, type PlacementOptions } from './vegetationPlacement';
+ // The 3-D canopy: styles, colour coding (legend + scale of the 'coded' style), bark rules, sway, budgets (see canopyStyle.ts).
+ export {
+diff --git a/src/render/mapLighting.test.ts b/src/render/mapLighting.test.ts
+new file mode 100644
+index 0000000..0d8476b
+--- /dev/null
++++ b/src/render/mapLighting.test.ts
+@@ -0,0 +1,130 @@
++// SPIKE S4 prototype tests for the map lighting (Night lighting). Throwaway: the lane writes the reviewed version.
++import { describe, expect, it } from 'vitest';
++import { sunDirectionWorld, type Vec3 } from './coords';
++import { MAP_LOOK, mapLighting, NIGHT_LOOKS, skyLighting, type NightLook } from './sky';
++
++const ELEVATIONS = [-30, -18, -12, -8, -6, -3, -2, -1, 0, 0.5, 2, 4, 6, 8, 8.5, 12, 30, 60, 90];
++const realDir = (el: number, az = 240): Vec3 => sunDirectionWorld(az, Math.max(el, -2));
++const lum = (c: readonly number[]): number => 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
++
++describe('mapLighting', () => {
++  it('Realistic is bit-identical to today for every elevation, cloud and smoke value', () => {
++    for (const el of ELEVATIONS)
++      for (const cloudCover of [0, 40, 100])
++        for (const smoke of [0, 0.3, 1]) {
++          const real = skyLighting(el, { cloudCover, smoke });
++          const dir = realDir(el);
++          const m = mapLighting(real, 'realistic', dir);
++          expect(m.weight).toBe(0);
++          expect(m.sunDir).toBe(dir); // the very same numbers
++          expect(m.sunColour).toBe(real.sunColour);
++          expect(m.sunIntensity).toBe(real.sunIntensity);
++          expect(m.skyAmbient).toBe(real.skyAmbient);
++          expect(m.groundAmbient).toBe(real.groundAmbient);
++          expect(m.ambientIntensity).toBe(real.ambientIntensity);
++          expect(m.exposure).toBe(real.exposure);
++          expect(m.mapNight).toBe(real.night);
++        }
++  });
++
++  it('every look is identical to Realistic with the sun at or above fadeHigh (8 deg)', () => {
++    for (const el of [8, 8.5, 12, 30, 60, 90])
++      for (const look of NIGHT_LOOKS) {
++        const real = skyLighting(el, { cloudCover: 30 });
++        const m = mapLighting(real, look as NightLook, realDir(el));
++        expect(m.weight).toBe(0);
++        expect(m.sunIntensity).toBe(real.sunIntensity);
++        expect(m.ambientIntensity).toBe(real.ambientIntensity);
++        expect(m.exposure).toBe(real.exposure);
++        expect(m.sunColour).toEqual(real.sunColour);
++      }
++  });
++
++  it('Daylight at night equals the target lighting from the fixed sun', () => {
++    const target = skyLighting(MAP_LOOK.sunElevation);
++    const tdir = sunDirectionWorld(MAP_LOOK.sunAzimuth, MAP_LOOK.sunElevation);
++    for (const el of [-2, -6, -12, -30]) {
++      const real = skyLighting(el, { cloudCover: 80, smoke: 0.5 });
++      const m = mapLighting(real, 'daylight', realDir(el));
++      expect(m.weight).toBe(1);
++      expect(m.sunIntensity).toBeCloseTo(target.sunIntensity, 12);
++      expect(m.ambientIntensity).toBeCloseTo(target.ambientIntensity, 12);
++      expect(m.exposure).toBeCloseTo(target.exposure, 12);
++      for (let i = 0; i < 3; i++) {
++        expect(m.sunColour[i]).toBeCloseTo(target.sunColour[i]!, 12);
++        expect(m.skyAmbient[i]).toBeCloseTo(target.skyAmbient[i]!, 12);
++        expect(m.groundAmbient[i]).toBeCloseTo(target.groundAmbient[i]!, 12);
++        expect(m.sunDir[i]).toBeCloseTo(tdir[i]!, 12);
++      }
++      expect(m.mapNight).toBe(0);
++    }
++  });
++
++  it('the direction is a unit vector; weight and sun intensity are monotone and continuous through dusk', () => {
++    for (const look of ['brighter', 'daylight'] as NightLook[]) {
++      let prev = -1;
++      let prevI = NaN;
++      for (let el = 10; el >= -14; el -= 0.1) {
++        const real = skyLighting(el);
++        const m = mapLighting(real, look, realDir(el));
++        expect(Math.hypot(...m.sunDir)).toBeCloseTo(1, 12);
++        expect(m.weight).toBeGreaterThanOrEqual(prev - 1e-12);
++        expect(m.weight).toBeLessThanOrEqual(MAP_LOOK.mix[look] + 1e-12);
++        prev = m.weight;
++        if (Number.isFinite(prevI)) expect(Math.abs(m.sunIntensity - prevI)).toBeLessThan(0.1); // per 0.1 deg
++        prevI = m.sunIntensity;
++      }
++    }
++  });
++
++  it('mapNight is the real night times (1 - weight): 0 in Daylight, between in Brighter, the real value in Realistic', () => {
++    const real = skyLighting(-20);
++    expect(real.night).toBe(1);
++    expect(mapLighting(real, 'realistic', realDir(-20)).mapNight).toBe(1);
++    expect(mapLighting(real, 'brighter', realDir(-20)).mapNight).toBeCloseTo(1 - MAP_LOOK.mix.brighter, 12);
++    expect(mapLighting(real, 'daylight', realDir(-20)).mapNight).toBe(0);
++    expect(mapLighting(skyLighting(40), 'daylight', realDir(40)).mapNight).toBe(0); // by day it is the real night (0)
++  });
++
++  // The two defects of the plan's blend that the spike found (see the README).
++  it('at night every look is lit from the fixed sun, whatever the real sun azimuth does (a plain vector blend swings with it)', () => {
++    const tdir = sunDirectionWorld(MAP_LOOK.sunAzimuth, MAP_LOOK.sunElevation);
++    for (const az of [0, 60, 120, 180, 240, 300])
++      for (const look of ['brighter', 'daylight'] as NightLook[]) {
++        const m = mapLighting(skyLighting(-30), look, realDir(-30, az));
++        for (let i = 0; i < 3; i++) expect(m.sunDir[i]).toBeCloseTo(tdir[i]!, 12);
++      }
++    // the same with the plan's vector blend: Brighter's direction depends on the real azimuth (up to tens of degrees)
++    MAP_LOOK.dirBlend = 'vector';
++    try {
++      const a = mapLighting(skyLighting(-30), 'brighter', realDir(-30, 60)).sunDir;
++      const b = mapLighting(skyLighting(-30), 'brighter', realDir(-30, 240)).sunDir;
++      expect(Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) * (180 / Math.PI)).toBeGreaterThan(30);
++    } finally {
++      MAP_LOOK.dirBlend = 'light';
++    }
++  });
++
++  it('the sun light (colour times intensity) at night is the weight times the target sun light, not the weight squared', () => {
++    const target = skyLighting(MAP_LOOK.sunElevation);
++    const full = lum(target.sunColour) * target.sunIntensity;
++    const b = mapLighting(skyLighting(-30), 'brighter', realDir(-30));
++    expect(lum(b.sunColour) * b.sunIntensity).toBeCloseTo(MAP_LOOK.mix.brighter * full, 10);
++    MAP_LOOK.lightBlend = 'separate';
++    try {
++      const s = mapLighting(skyLighting(-30), 'brighter', realDir(-30));
++      expect(lum(s.sunColour) * s.sunIntensity).toBeCloseTo(MAP_LOOK.mix.brighter ** 2 * full, 10); // the plan's blend
++    } finally {
++      MAP_LOOK.lightBlend = 'product';
++    }
++  });
++
++  it('a smoke weight of 0 gives the real lighting back untouched', () => {
++    const real = skyLighting(-30);
++    const dir = realDir(-30);
++    const m = mapLighting(real, 'daylight', dir, 0);
++    expect(m.sunIntensity).toBe(real.sunIntensity);
++    expect(m.exposure).toBe(real.exposure);
++    expect(m.sunDir).toBe(dir);
++  });
++});
+diff --git a/src/render/placesLayer.ts b/src/render/placesLayer.ts
+index edde048..a04813a 100644
+--- a/src/render/placesLayer.ts
++++ b/src/render/placesLayer.ts
+@@ -154,7 +154,8 @@ uniform vec3 uFill[${STYLE_COUNT}];
+ uniform vec3 uCase[${STYLE_COUNT}];
+ uniform vec4 uPar[${STYLE_COUNT}];
+ uniform vec4 uPar2[${STYLE_COUNT}];
+-uniform float uNight;
++uniform float uMapNight;
++uniform float uMapGain;
+ uniform float uClock;
+ uniform float uTime;
+ uniform float uBurnBand;
+@@ -223,8 +224,8 @@ void main() {
+     col = mix(col, natural, 0.93 * nearK) + 0.02 * col * nearK;
+   }
+   // Scene light: night dims and cools the map, but roads stay readable.
+-  float k = mix(1.0, 0.36, uNight);
+-  col *= k * mix(vec3(1.0), vec3(0.78, 0.9, 1.12), uNight);
++  float k = mix(1.0, 0.36, uMapNight);
++  col *= k * uMapGain * mix(vec3(1.0), vec3(0.78, 0.9, 1.12), uMapNight);
+ 
+   // Fire: the flaming band glows through the road, burnt road is sooted.
+   vec3 emit = vec3(0.0);
+@@ -294,7 +295,7 @@ const HOME_FRAG = /* glsl */ `
+ ${TONEMAP}
+ ${FOG}
+ uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
+-uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight;
++uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight; uniform float uMapNight;
+ uniform vec3 uWall; uniform vec3 uRoof; uniform vec3 uDotCol;
+ varying vec3 vN;
+ varying float vPart;
+@@ -306,7 +307,7 @@ void main() {
+   albedo = mix(albedo, uDotCol, vDot);
+   float ndl = max(dot(n, uSunDir), 0.0);
+   vec3 amb = mix(uGroundAmb, uSkyAmb, 0.5 + 0.5 * n.y) * uAmbI;
+-  vec3 lit = (uSunColour * uSunI * ndl * 0.85 + amb * 1.3 + 0.05 * (1.0 - uNight)) / LIGHT_REF;
++  vec3 lit = (uSunColour * uSunI * ndl * 0.85 + amb * 1.3 + 0.05 * (1.0 - uMapNight)) / LIGHT_REF;
+   // Dots are drawn flat and bright so they read as markers; houses are lit by the scene.
+   vec3 col = albedo * mix(lit, vec3(0.9) + 0.1 * lit, vDot);
+   // Lit windows at night keep the town readable.
+@@ -344,12 +345,12 @@ void main() {
+ 
+ const LABEL_FRAG = /* glsl */ `
+ uniform sampler2D uAtlas;
+-uniform float uNight;
++uniform float uMapNight;
+ varying vec2 vUv;
+ varying float vAlpha;
+ void main() {
+   vec4 c = texture(uAtlas, vUv);
+-  c.rgb *= mix(1.0, 0.82, uNight);
++  c.rgb *= mix(1.0, 0.82, uMapNight);
+   c.a *= vAlpha;
+   if (c.a < 0.02) discard;
+   gl_FragColor = c;
+@@ -438,6 +439,8 @@ export class PlacesLayer {
+       uViewport: pick('uViewport', new THREE.Vector2(1, 1)),
+       uDpr: pick('uDpr', 1),
+       uNight: pick('uNight', 0),
++      uMapNight: pick('uMapNight', 0),
++      uMapGain: pick('uMapGain', 1),
+       uClock: pick('uClock', 0),
+       uTime: pick('uTime', 0),
+       uBurnBand: pick('uBurnBand', 420),
+@@ -854,6 +857,7 @@ export class PlacesLayer {
+             uViewport: this.ribbonUniforms.uViewport!,
+             uDpr: this.ribbonUniforms.uDpr!,
+             uNight: this.ribbonUniforms.uNight!,
++            uMapNight: this.ribbonUniforms.uMapNight!,
+             uExposure: this.ribbonUniforms.uExposure!,
+             uFogColour: this.ribbonUniforms.uFogColour!,
+             uFogDensity: this.ribbonUniforms.uFogDensity!,
+@@ -971,7 +975,7 @@ export class PlacesLayer {
+         uVex: this.ribbonUniforms.uVex!,
+         uViewport: this.ribbonUniforms.uViewport!,
+         uDpr: this.ribbonUniforms.uDpr!,
+-        uNight: this.ribbonUniforms.uNight!,
++        uMapNight: this.ribbonUniforms.uMapNight!,
+         uAtlas: { value: tex },
+       },
+       vertexShader: LABEL_VERT,
+diff --git a/src/render/sky.ts b/src/render/sky.ts
+index eca8789..30f3191 100644
+--- a/src/render/sky.ts
++++ b/src/render/sky.ts
+@@ -3,7 +3,8 @@
+  * in sun elevation: noon is neutral, the low sun warm and golden, twilight pink-violet and the night dark blue — dark
+  * enough that a night fire's glow dominates the scene, which is exactly when trainees most often misjudge it.
+  */
+-import { clamp } from '../core/units';
++import { clamp, smoothstep } from '../core/units';
++import { sunDirectionWorld, type Vec3 } from './coords';
+ import { hexToRgb, mixRgb, rgbToLinear, type Rgb } from './palette';
+ 
+ export interface SkyLighting {
+@@ -100,3 +101,136 @@ export function skyLighting(sunElevation: number, opts: { cloudCover?: number; s
+     exposure: 1 + 0.6 * night,
+   };
+ }
++
++// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
++// Map lighting (Layers, Map type, Night lighting). SPIKE S4 PROTOTYPE: not reviewed code.
++// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
++
++export type NightLook = 'realistic' | 'brighter' | 'daylight';
++export const NIGHT_LOOKS: readonly NightLook[] = ['realistic', 'brighter', 'daylight'];
++
++/** The numbers the spike tunes. The dev harness can override them from the URL (nlMix, nlHigh, nlLow, nlAz, nlEl, nlFog). */
++export const MAP_LOOK = {
++  /** Share of the map lighting that is replaced by the fixed sun at night, per look. */
++  mix: { realistic: 0, brighter: 0.3, daylight: 1 } as Record<NightLook, number>,
++  /** Sun elevation (deg) at and above which nothing changes, and at and below which the look is at full strength. */
++  fadeHigh: 8,
++  fadeLow: -2,
++  /** The fixed map sun (compass azimuth, elevation above the horizon, deg). */
++  sunAzimuth: 315,
++  sunElevation: 30,
++  /** Fog density is multiplied by 1 - fogCut * weight (0: the fog is left as it is, which the spike recommends). */
++  fogCut: 0,
++  /**
++   * 'plan': the map exposure replaces the real one in the shared uniform (the plan as written). 'fold': the shared exposure
++   * stays the real one and the map exposure is folded into the sun and ambient intensities (ratio mapExposure / realExposure,
++   * returned as mapGain for the sites with no light term, the road colours).
++   */
++  exposureMode: 'plan' as 'plan' | 'fold',
++  /** Share of the map lighting the smoke body gets (1: the plan's table, 0: the smoke keeps the real lighting). */
++  smokeMap: 0,
++  /**
++   * 'vector': the direction is blended as plain vectors by the weight (the plan as written). 'light': the vectors are weighted by
++   * the light each sun carries, (1 - weight) * real sun intensity and weight * target intensity, so at night, when the real sun
++   * has no light, Brighter is lit from the fixed direction too (a plain vector blend swings with the real sun's azimuth).
++   */
++  dirBlend: 'light' as 'vector' | 'light',
++  /**
++   * 'separate': colour and intensity are blended on their own (the plan as written): with the real sun black and dark (night) the
++   * sun's light, colour times intensity, goes with weight squared (a quarter at Brighter). 'product': the light (colour times
++   * intensity) is blended and split again, so it goes with the weight; ambient is treated the same way.
++   */
++  lightBlend: 'product' as 'separate' | 'product',
++  /** Spike only: draw the sky with the MAP sun and exposure (the bug the plan's own-uniforms rule prevents), to calibrate the e2e check. */
++  skyFromMap: false,
++  /** The terrain cast shadows (real sun) are scaled by 1 - weight, so they do not clash with the blended light and do not pop at 0.5 deg. */
++  shadowFade: true,
++};
++
++export interface MapLighting {
++  /** Blend weight toward the fixed sun, 0 (today's lighting) to 1: mix[look] * smoothstep(fadeHigh, fadeLow, elevation). */
++  weight: number;
++  /** Unit vector towards the light (world frame), blended as vectors and renormalised. */
++  sunDir: Vec3;
++  sunColour: Rgb;
++  sunIntensity: number;
++  skyAmbient: Rgb;
++  groundAmbient: Rgb;
++  ambientIntensity: number;
++  exposure: number;
++  /** Night as the map sees it: the real night times (1 - weight). Dims roads, labels and the tree moonlight add. */
++  mapNight: number;
++  /** 'fold' mode only: map exposure / real exposure (1 otherwise). */
++  mapGain: number;
++}
++
++const lerp3 = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
++
++/**
++ * The lighting the MAP (ground, photo, trees, roads, labels, smoke body) uses. With the sun above `fadeHigh` or the look
++ * Realistic it is exactly `real` (same numbers, no arithmetic). Otherwise `real` is blended toward the daylight lighting of
++ * a fixed sun (no cloud, no smoke: visibility is the goal) by the weight, in linear colour; the direction is blended as
++ * vectors and renormalised. `realSunDir` is the real sun's world direction (SkyLighting has no azimuth).
++ */
++export function mapLighting(real: SkyLighting, look: NightLook, realSunDir: Vec3, weightScale = 1): MapLighting {
++  const w = MAP_LOOK.mix[look] * weightScale * smoothstep(MAP_LOOK.fadeHigh, MAP_LOOK.fadeLow, real.sunElevation);
++  if (!(w > 0)) {
++    return {
++      weight: 0,
++      sunDir: realSunDir,
++      sunColour: real.sunColour,
++      sunIntensity: real.sunIntensity,
++      skyAmbient: real.skyAmbient,
++      groundAmbient: real.groundAmbient,
++      ambientIntensity: real.ambientIntensity,
++      exposure: real.exposure,
++      mapNight: real.night,
++      mapGain: 1,
++    };
++  }
++  const tg = skyLighting(MAP_LOOK.sunElevation);
++  const td = sunDirectionWorld(MAP_LOOK.sunAzimuth, MAP_LOOK.sunElevation);
++  let v: Vec3;
++  if (MAP_LOOK.dirBlend === 'light') {
++    const a = (1 - w) * real.sunIntensity;
++    const b = w * tg.sunIntensity;
++    v = [realSunDir[0] * a + td[0] * b, realSunDir[1] * a + td[1] * b, realSunDir[2] * a + td[2] * b];
++  } else {
++    v = [realSunDir[0] + (td[0] - realSunDir[0]) * w, realSunDir[1] + (td[1] - realSunDir[1]) * w, realSunDir[2] + (td[2] - realSunDir[2]) * w];
++  }
++  const len = Math.hypot(v[0], v[1], v[2]) || 1;
++  const exposure = lerpN(real.exposure, tg.exposure, w);
++  const fold = MAP_LOOK.exposureMode === 'fold';
++  const gain = fold ? exposure / real.exposure : 1;
++  const sunI = lerpN(real.sunIntensity, tg.sunIntensity, w);
++  const ambI = lerpN(real.ambientIntensity, tg.ambientIntensity, w);
++  let sunColour: Rgb;
++  let skyAmbient: Rgb;
++  let groundAmbient: Rgb;
++  if (MAP_LOOK.lightBlend === 'product') {
++    // colour * intensity is what the shaders use: blend that, then divide the blended intensity out again.
++    const split = (cr: Rgb, ir: number, ct: Rgb, it: number, i: number): Rgb => {
++      const k = i > 1e-9 ? 1 / i : 0;
++      return i > 1e-9 ? [((1 - w) * cr[0] * ir + w * ct[0] * it) * k, ((1 - w) * cr[1] * ir + w * ct[1] * it) * k, ((1 - w) * cr[2] * ir + w * ct[2] * it) * k] : ct;
++    };
++    sunColour = split(real.sunColour, real.sunIntensity, tg.sunColour, tg.sunIntensity, sunI);
++    skyAmbient = split(real.skyAmbient, real.ambientIntensity, tg.skyAmbient, tg.ambientIntensity, ambI);
++    groundAmbient = split(real.groundAmbient, real.ambientIntensity, tg.groundAmbient, tg.ambientIntensity, ambI);
++  } else {
++    sunColour = lerp3(real.sunColour, tg.sunColour, w);
++    skyAmbient = lerp3(real.skyAmbient, tg.skyAmbient, w);
++    groundAmbient = lerp3(real.groundAmbient, tg.groundAmbient, w);
++  }
++  return {
++    weight: w,
++    sunDir: [v[0] / len, v[1] / len, v[2] / len],
++    sunColour,
++    sunIntensity: sunI * gain,
++    skyAmbient,
++    groundAmbient,
++    ambientIntensity: ambI * gain,
++    exposure: fold ? real.exposure : exposure,
++    mapNight: real.night * (1 - w),
++    mapGain: gain,
++  };
++}
+diff --git a/src/render/skyDome.ts b/src/render/skyDome.ts
+index 92853d4..478c2d8 100644
+--- a/src/render/skyDome.ts
++++ b/src/render/skyDome.ts
+@@ -56,18 +56,20 @@ export class SkyDome {
+ 
+   constructor(shared: Record<string, THREE.IUniform>) {
+     this.geom = new THREE.SphereGeometry(1000, 32, 16);
++    // The sky has its OWN sun and exposure (the real ones): the map may be lit from a fixed sun after dark (night lighting)
++    // and must not paint a sun disc into a night sky or change the sky's brightness.
+     this.uniforms = {
+       uZenith: { value: new THREE.Color(0.2, 0.35, 0.7) },
+       uHorizon: { value: new THREE.Color(0.7, 0.8, 0.9) },
++      uSunDir: { value: new THREE.Vector3(0.3, 0.8, -0.4).normalize() },
++      uSunColour: { value: new THREE.Color(1, 0.95, 0.88) },
++      uSunI: { value: 2.6 },
++      uExposure: { value: 1 },
+     };
+     this.mat = new THREE.ShaderMaterial({
+       uniforms: {
+         ...this.uniforms,
+-        uSunDir: shared.uSunDir!,
+-        uSunColour: shared.uSunColour!,
+-        uSunI: shared.uSunI!,
+         uNight: shared.uNight!,
+-        uExposure: shared.uExposure!,
+         uFogColour: shared.uFogColour!,
+       },
+       vertexShader: SKY_VERT,
+diff --git a/src/render/smokeLayer.ts b/src/render/smokeLayer.ts
+index 83b8ea7..3a15e93 100644
+--- a/src/render/smokeLayer.ts
++++ b/src/render/smokeLayer.ts
+@@ -222,18 +222,21 @@ export class SmokeLayer {
+     g.setAttribute('aProps', this.aProps);
+     g.instanceCount = 0;
+     this.geom = g;
+-    this.uniforms = { uMix: { value: 1 }, uAlphaScale: { value: 1 } };
++    this.uniforms = {
++      uMix: { value: 1 },
++      uAlphaScale: { value: 1 },
++      uSunColour: { value: new THREE.Color(1, 0.95, 0.88) },
++      uSunI: { value: 2.6 },
++      uSkyAmb: { value: new THREE.Color(0.5, 0.6, 0.8) },
++      uAmbI: { value: 0.65 },
++      uExposure: { value: 1 },
++    };
+     this.mat = new THREE.ShaderMaterial({
+       uniforms: {
+         ...this.uniforms,
+         uVex: shared.uVex!,
+         uClock: shared.uClock!,
+-        uSunColour: shared.uSunColour!,
+-        uSunI: shared.uSunI!,
+-        uSkyAmb: shared.uSkyAmb!,
+-        uAmbI: shared.uAmbI!,
+         uNight: shared.uNight!,
+-        uExposure: shared.uExposure!,
+         uFogColour: shared.uFogColour!,
+         uFogDensity: shared.uFogDensity!,
+       },
+diff --git a/src/render/terrainLayer.ts b/src/render/terrainLayer.ts
+index 427228e..6a67da0 100644
+--- a/src/render/terrainLayer.ts
++++ b/src/render/terrainLayer.ts
+@@ -60,7 +60,7 @@ uniform vec4 uOverlayScale;  // lo, hi, mode (0 off, 1 ramp, 2 classes, 3 catego
+ uniform vec4 uOverlayNoData; uniform float uOverlayOpacity; uniform float uOverlayFire;
+ uniform float uTime; uniform float uClock; uniform float uIsoMinutes; uniform float uIsoStrong; uniform float uBurnBand;
+ uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
+-uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight;
++uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight; uniform float uShadowGain;
+ uniform vec4 uBrush; uniform vec3 uBrushColour;
+ uniform vec4 uUser; uniform float uUserHeading; uniform vec4 uFocus;
+ uniform vec4 uSpots[${MAX_SPOTS}]; uniform int uSpotCount;
+@@ -202,7 +202,7 @@ void main() {
+ 
+   // ── Lighting ─────────────────────────────────────────────────────────────
+   float ndl = max(dot(n, uSunDir), 0.0);
+-  float shadow = shade.b;
++  float shadow = shade.b * uShadowGain;
+   vec3 sun = uSunColour * uSunI * ndl * (1.0 - 0.92 * shadow);
+   float hemi = 0.5 + 0.5 * n.y;
+   float relief = 0.55 + 0.9 * shade.r;
+@@ -488,6 +488,7 @@ export class TerrainLayer {
+       uGroundAmb: { value: new THREE.Color(0.3, 0.26, 0.2) },
+       uAmbI: { value: 0.65 },
+       uNight: { value: 0 },
++      uShadowGain: { value: 1 },
+       uExposure: { value: 1 },
+       uFogColour: { value: new THREE.Color(0.7, 0.78, 0.88) },
+       uFogDensity: { value: 1 / 45000 },
+diff --git a/src/render/treeShaders.ts b/src/render/treeShaders.ts
+index 44b0d5f..a2d45f7 100644
+--- a/src/render/treeShaders.ts
++++ b/src/render/treeShaders.ts
+@@ -269,7 +269,7 @@ ${FOG}
+ uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
+ uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uGlowGain;
+ uniform float uStyle;
+-uniform float uNight;
++uniform float uMapNight;
+ uniform sampler2D uLeaf;
+ uniform sampler2D uImp;
+ varying vec3 vN;
+@@ -406,7 +406,7 @@ void main() {
+   aoS = mix(1.0, aoS, uStyle < 0.5 ? 0.95 : 0.6);
+   vec3 col = albedo * (sunL * ndl * 0.85 * (0.55 + 0.45 * aoS) + amb * 0.85 * aoS + glow + sunL * back * vec3(0.5, 0.75, 0.2) * 0.35) / LIGHT_REF;
+   // A little moon/starlight so silhouettes and trunks stay readable on a dark night.
+-  col += albedo * uNight * 0.05 * vec3(0.32, 0.45, 0.75) * (0.5 + 0.5 * aoS);
++  col += albedo * uMapNight * 0.05 * vec3(0.32, 0.45, 0.75) * (0.5 + 0.5 * aoS);
+   if (foliage) col *= 0.9;
+   vec3 ldr = fsDisplay(col) + fsTonemap(vec3(1.0, 0.36, 0.06) * vFire.x * 2.2);
+   ldr = fsFog(ldr, vState.w);
+diff --git a/src/render/vegetationLayer.test.ts b/src/render/vegetationLayer.test.ts
+index 659e463..c42abfd 100644
+--- a/src/render/vegetationLayer.test.ts
++++ b/src/render/vegetationLayer.test.ts
+@@ -35,6 +35,7 @@ function sharedUniforms(): Record<string, THREE.IUniform> {
+     uFogColour: v(new THREE.Color()),
+     uFogDensity: v(0),
+     uNight: v(0),
++    uMapNight: v(0),
+   };
+ }
+ 
+diff --git a/src/render/vegetationLayer.ts b/src/render/vegetationLayer.ts
+index 7bc8e18..d3f952a 100644
+--- a/src/render/vegetationLayer.ts
++++ b/src/render/vegetationLayer.ts
+@@ -511,7 +511,7 @@ export class VegetationLayer {
+       const s = SPEC[group];
+       const uniforms: Record<string, THREE.IUniform> = {};
+       for (const k of SHARED_KEYS) uniforms[k] = this.shared[k]!;
+-      if (this.shared.uNight) uniforms.uNight = this.shared.uNight;
++      uniforms.uMapNight = this.shared.uMapNight ?? { value: 0 };
+       Object.assign(uniforms, this.uniforms);
+       Object.assign(uniforms, {
+         uKind: { value: s.kind },
