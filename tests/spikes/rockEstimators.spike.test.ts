@@ -14,8 +14,10 @@
  *   5. when labels.json exists in the output folder, scores every estimator against the labels and writes results.md.
  *
  * Environment: FIRESIM_SPIKE_SITES (comma list, default the four sites), FIRESIM_SPIKE_OUT (output folder, default
- * docs/plans/spikes/S6-rock-estimators). Image work uses only fast-png's neighbours already in node_modules: the JPEG
- * decoder of geotiff, plus a small baseline JPEG encoder and a 5 x 7 bitmap font written here.
+ * docs/plans/spikes/S6-rock-estimators), FIRESIM_SPIKE_AID (a folder for the labelling aid sheets: the same crop as is,
+ * with the shadows lifted, as raw 8 m pixels and as a wider 810 m crop; no slope and no numbers; scratch use only).
+ * Nothing new is installed: the JPEG decoder is the one inside geotiff; a small baseline JPEG encoder and a 5 x 7 bitmap
+ * font are written here. The default vitest reporter does not print the harness's log lines; add --reporter=verbose.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -46,7 +48,7 @@ const SITE_IDS = (process.env.FIRESIM_SPIKE_SITES ?? 'katoomba,kanangra,grose,to
 const SITE_PREFIX: Record<string, string> = { katoomba: 'KT', kanangra: 'KN', grose: 'GR', tomah: 'TM', budawangs: 'BW', thredbo: 'TH' };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pre-registered settings (written down before any tile was drawn or scored; the README quotes them and the hash below)
+// Pre-registered settings (fixed before any tile of the four study sites was looked at or scored; the README quotes them and the hash below)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CONFIG = {
@@ -648,6 +650,8 @@ interface SiteData {
   green: Greenness;
   vegCtx: VegCtx;
   steep: Float32Array;
+  /** Share of the 10 m sub-cells of each fire cell at 65 degrees or more (very steep, cliff-like ground). */
+  steep65Cell: Float32Array;
   /** Photo vegetation share of each fire cell at the base threshold T. */
   vegFire: Float32Array;
   est: Record<EstId, Est>;
@@ -655,6 +659,7 @@ interface SiteData {
   e1Sens: { deg: number; wall: number; partial: number; chute: number }[];
   canopyNote: string;
   demNote: string;
+  photoNote: string;
   /** Checks that our block averaging matches the app's own numbers. */
   checks: { cliffFractionMaxDiff: number; coverBlockMeanAbsDiff: number };
 }
@@ -819,7 +824,7 @@ async function loadSite(id: string): Promise<SiteData> {
   if (!raster) throw new Error(`${id}: no canopy raster`);
   const cover10 = resampleMapped(raster.grid, raster.cover, hiGrid, mapGrids(raster.grid, hiGrid));
   // 3. The photo.
-  const imeta = await loadAssetJson<{ cellSize: number; n: number; extent: number }>(`demo/${id}/imagery.json`);
+  const imeta = await loadAssetJson<{ cellSize: number; n: number; extent: number; source?: string; attribution?: string; serviceCopyright?: string }>(`demo/${id}/imagery.json`);
   const jpg = await loadDemoImageryBytes(id);
   if (!imeta || !jpg) throw new Error(`${id}: no aerial photo`);
   const photo = await decodeJpegRgb(jpg);
@@ -843,6 +848,7 @@ async function loadSite(id: string): Promise<SiteData> {
   };
   const steepSub = steepSubAt(CONFIG.rockSlopeDeg);
   const steep = blockMean(steepSub, hiN, B, nx, ny);
+  const steep65Cell = blockMean(steepSubAt(65), hiN, B, nx, ny);
   // 5. Greenness threshold from the reference forest of this photo (decided before any label exists).
   const gcfg = CONFIG.green;
   const refVals: number[] = [];
@@ -906,10 +912,10 @@ async function loadSite(id: string): Promise<SiteData> {
     E2c: subAnd(cover10),
     E3c: subAnd(base.veg10),
     E23c: subAnd(maxOf(cover10, base.veg10)),
-    E3T80: times(steep, vegAt(T * 0.8).vegFire),
-    E3T120: times(steep, vegAt(T * 1.2).vegFire),
-    E3D80: times(steep, vegAt(median - 0.8 * green.delta).vegFire),
-    E3D120: times(steep, vegAt(median - 1.2 * green.delta).vegFire),
+    E3T80: times(steep, vegAt(T * (1 - gcfg.relShift)).vegFire),
+    E3T120: times(steep, vegAt(T * (1 + gcfg.relShift)).vegFire),
+    E3D80: times(steep, vegAt(median - (1 - gcfg.relShift) * green.delta).vegFire),
+    E3D120: times(steep, vegAt(median - (1 + gcfg.relShift) * green.delta).vegFire),
   };
   const est = {} as Record<EstId, Est>;
   for (const e of EST_IDS) {
@@ -951,11 +957,13 @@ async function loadSite(id: string): Promise<SiteData> {
     green,
     vegCtx,
     steep,
+    steep65Cell,
     vegFire: base.vegFire,
     est,
     e1Sens,
     canopyNote: `${layer.canopy.source}`,
     demNote: hi.dem.source,
+    photoNote: `${imeta.source ?? 'bundled aerial photo'}; ${imeta.attribution ?? ''}; service copyright ${imeta.serviceCopyright ?? 'not stated'}`,
     checks: { cliffFractionMaxDiff, coverBlockMeanAbsDiff: coverDiff },
   };
 }
@@ -1082,6 +1090,14 @@ interface Tile {
   cover: number;
   veg: number;
   slope: number;
+  /** Share of the 81 10 m sub-cells of the patch at 65 degrees or more, and the steepest one (deg): context for tiles the photo shows as vegetated. */
+  steep65: number;
+  max10: number;
+  /** Mean ExG and mean luminance (0-255) of the photo pixels inside the 90 m patch box. */
+  exgMean: number;
+  lumMean: number;
+  /** Direction the ground faces (deg, compass), the circular mean over the 9 cells weighted by steepFraction; NaN on flat ground. */
+  facing: number;
   est: Record<EstId, TileEst>;
 }
 
@@ -1109,6 +1125,41 @@ function makeTiles(site: SiteData, patches: Patch[], siteIdx: number): Tile[] {
     const x = g.x0 + p.ci * g.cellSize;
     const y = g.y0 + p.cj * g.cellSize;
     const ll = site.proj.toLatLon(x, y);
+    const B = CONFIG.fireCellM / SCENARIO_PARAMS.hiResCellM;
+    const hn = site.hiGrid.nx;
+    let exgSum = 0;
+    let lumSum = 0;
+    let nPx = 0;
+    {
+      const hw = (CONFIG.patchCells * CONFIG.fireCellM) / 2;
+      const { c0, c1, r0, r1 } = photoRange(x, y, hw, site.photoCell);
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          exgSum += site.exg[r * site.photo.w + c]!;
+          lumSum += site.lum[r * site.photo.w + c]!;
+          nPx++;
+        }
+      }
+    }
+    let fx = 0;
+    let fy = 0;
+    for (const k of cells) {
+      const a = site.terrain.aspectDeg[k]!;
+      if (!Number.isFinite(a)) continue;
+      const w = site.steep[k]! + 1e-6;
+      fx += w * Math.sin((a * Math.PI) / 180);
+      fy += w * Math.cos((a * Math.PI) / 180);
+    }
+    const facing = fx === 0 && fy === 0 ? NaN : (((Math.atan2(fx, fy) * 180) / Math.PI) % 360 + 360) % 360;
+    let n65 = 0;
+    let max10 = 0;
+    for (let sj = B * (p.cj - 1); sj < B * (p.cj + 2); sj++) {
+      for (let si = B * (p.ci - 1); si < B * (p.ci + 2); si++) {
+        const v = site.s10[sj * hn + si]!;
+        if (v >= 65) n65++;
+        if (v > max10) max10 = v;
+      }
+    }
     return {
       id: `${prefix}${String(n + 1).padStart(2, '0')}`,
       site: site.id,
@@ -1124,6 +1175,11 @@ function makeTiles(site: SiteData, patches: Patch[], siteIdx: number): Tile[] {
       cover: mean(site.coverFire),
       veg: mean(site.vegFire),
       slope: mean(site.terrain.slopeDeg),
+      steep65: n65 / (9 * B * B),
+      max10,
+      exgMean: exgSum / nPx,
+      lumMean: lumSum / nPx,
+      facing,
       est,
     };
   });
@@ -1261,7 +1317,7 @@ function renderSheet(site: SiteData, tiles: Tile[], numbers: boolean): Rgb {
   const W = 2 * S.margin + S.cols * tileW + (S.cols - 1) * S.gap;
   const H = S.titleH + S.margin + rows * (tileH + S.gap);
   const img = newRgb(W, H, PAPER);
-  const title = `${site.name.split(' - ')[0]!.toUpperCase()}  ${numbers ? 'WITH ESTIMATOR NUMBERS (FOR THE RECORD)' : 'BLIND SHEET (NO ESTIMATOR NUMBERS)'}  SEED ${CONFIG.seed}  PHOTO (C) SPATIAL SERVICES NSW CC BY 4.0`;
+  const title = `${site.id.toUpperCase()}  ${numbers ? 'WITH ESTIMATOR NUMBERS (FOR THE RECORD)' : 'BLIND SHEET (NO ESTIMATOR NUMBERS)'}  SEED ${CONFIG.seed}  PHOTO (C) SPATIAL SERVICES NSW CC BY 4.0`;
   drawText(img, S.margin, 3, title, INK);
   // slope legend
   let lx = S.margin;
@@ -1574,6 +1630,10 @@ function resultsMarkdown(runs: SiteRun[], labels: LabelMap): string {
   P();
   P(`Settings hash (CONFIG and CRITERIA of the harness): \`${configHash()}\`. Seed ${CONFIG.seed}. Fire cell ${CONFIG.fireCellM} m. Sites: ${runs.map((r) => r.site.id).join(', ')}.`);
   P();
+  P('Data, all read with the app\'s own loaders from `public/demo/<site>/` (offline):');
+  P();
+  P(table(['site', 'terrain', 'canopy', 'aerial photo'], runs.map((r) => [r.site.id, r.site.demNote, r.site.canopyNote, r.site.photoNote])));
+  P();
   P('Labels are one rater (an AI) looking at 8 m aerial photos, not an expert survey. Every percentage carries its counts; 20 tiles per site means wide error bars (Wilson 95 % intervals where shown).');
   P();
 
@@ -1655,6 +1715,33 @@ function resultsMarkdown(runs: SiteRun[], labels: LabelMap): string {
     P();
   }
 
+  // 3b. What each estimator opens of today's walls
+  P('## 3b. What each estimator does to today\'s wall cells (whole fire grid, no labels)');
+  P();
+  P('Of the cells E0 (today) calls a wall: how many the estimator still calls a wall, and how many it opens (partial, chute or none). "Very steep" = at least 25 % of the cell\'s 10 m sub-cells at 65 degrees or more. Cells opened while very steep are where the estimator trusts the canopy or the photo over the terrain: if those are real cliffs under trees or in shadow, they become passable.');
+  P();
+  const openRows: (string | number)[][] = [];
+  for (const r of runs) {
+    const e0 = r.site.est.E0.cls;
+    for (const e of ['F', 'E1', 'E2', 'E3', 'E23'] as const) {
+      const cls = r.site.est[e].cls;
+      let kept = 0;
+      let opened = 0;
+      let openedVery = 0;
+      for (let k = 0; k < e0.length; k++) {
+        if (e0[k] !== CLS_WALL) continue;
+        if (cls[k] === CLS_WALL) kept++;
+        else {
+          opened++;
+          if (r.site.steep65Cell[k]! >= 0.25) openedVery++;
+        }
+      }
+      openRows.push([r.site.id, EST_NAME[e], kept + opened, cellPct(kept, kept + opened), cellPct(opened, kept + opened), cellPct(openedVery, opened)]);
+    }
+  }
+  P(table(['site', 'estimator', "E0's wall cells", 'still wall', 'opened', 'of the opened, very steep'], openRows));
+  P();
+
   // 4. The sample
   P('## 4. The sample: 20 tiles per site chosen from the numbers, then labelled by eye from the photo');
   P();
@@ -1664,15 +1751,19 @@ function resultsMarkdown(runs: SiteRun[], labels: LabelMap): string {
   if (runs.some((r) => r.notes.length)) P();
   P(
     table(
-      ['id', 'stratum', 'centre lat, lon', 'cell i,j', 'steep', 'cover', 'photo veg', 'slope 30 m', 'E1 rock', 'E2 rock', 'E3 rock', 'label', 'confidence', 'evidence'],
+      ['id', 'stratum', 'centre lat, lon', 'cell i,j', 'steep', 'share >= 65 deg', 'steepest 10 m', 'cover', 'photo veg', 'photo ExG', 'photo lum', 'slope 30 m', 'E1 rock', 'E2 rock', 'E3 rock', 'label', 'confidence', 'evidence'],
       allTiles.map((t) => [
         t.id,
         t.stratum + (t.kind ? ` (${t.kind})` : ''),
         `${t.lat.toFixed(5)}, ${t.lon.toFixed(5)}`,
         `${t.ci},${t.cj}`,
         t.steep.toFixed(2),
+        t.steep65.toFixed(2),
+        t.max10.toFixed(0),
         t.cover.toFixed(2),
         t.veg.toFixed(2),
+        t.exgMean.toFixed(3),
+        t.lumMean.toFixed(0),
         t.slope.toFixed(0),
         t.est.E1.rockMean.toFixed(2),
         t.est.E2.rockMean.toFixed(2),
@@ -1774,6 +1865,20 @@ function resultsMarkdown(runs: SiteRun[], labels: LabelMap): string {
   );
   P();
 
+  P('### 5.6 Which tiles');
+  P();
+  P(
+    table(
+      ['estimator', 'veg (steep) tiles called wall (false walls)', 'rock tiles called wall', 'rock tiles not called wall', 'unsure tiles called wall', 'gentle veg tiles with any wall cell (cells)', 'control tiles with any wall cell'],
+      (MAIN_EST as readonly EstId[]).map((e) => {
+        const ids = (ts: LTile[]): string => ts.map((t) => t.id).join(', ') || 'none';
+        const s = S(e);
+        return [EST_NAME[e], ids(s.groups['veg-steep'].filter((t) => isWallTile(t.est[e]))), ids(s.groups.rock.filter((t) => isWallTile(t.est[e]))), ids(s.groups.rock.filter((t) => !isWallTile(t.est[e]))), ids(s.groups.unsure.filter((t) => isWallTile(t.est[e]))), s.groups['veg-gentle'].filter((t) => t.est[e].nW > 0).map((t) => `${t.id} (${t.est[e].nW})`).join(', ') || 'none', ids(allTiles.filter((t) => t.stratum === 'control' && t.est[e].nW > 0))];
+      }),
+    ),
+  );
+  P();
+
   // 6. E0 against the labels
   P('## 6. Wall cells of each estimator inside tiles of each label (the bug H-sim is meant to fix, for E0)');
   P();
@@ -1824,15 +1929,53 @@ function resultsMarkdown(runs: SiteRun[], labels: LabelMap): string {
   }
   P(table(['quantile of reference ExG used as T', 'veg(steep) wall tiles', 'veg(steep) wall cells', 'rock tiles that are wall', 'AUC (same for all T up to ties)', 'T per site'], sweepRows));
   P();
-  P('Mean photo colour and ExG of the labelled tiles by label (the tile mean over its 9 cells of the photo vegetation share, the canopy cover and the E1 value):');
+  P('Steep veg tiles that an estimator calls a wall, split by how cliff-like the patch is (share of 10 m sub-cells at 65 degrees or more). A "veg" label comes from what the photo shows from above; a near-vertical face has almost no area from above, so a wall tile with many 65 degree cells under trees may still be a real cliff.');
   P();
-  const meanOf = (ts: LTile[], f: (t: LTile) => number): string => (ts.length ? (ts.reduce((s, t) => s + f(t), 0) / ts.length).toFixed(2) : 'n/a');
+  const vsAll = allTiles.filter((t) => groupOf(t) === 'veg-steep');
   P(
     table(
-      ['label group', 'tiles', 'mean steep', 'mean canopy cover', 'mean photo vegetation share', 'mean E2 rock', 'mean E3 rock'],
+      ['estimator', 'veg (steep) tiles', 'wall tiles', 'of which share >= 65 deg is 0.2 or more', 'of which less than 0.2'],
+      (MAIN_EST as readonly EstId[]).map((e) => {
+        const w = vsAll.filter((t) => isWallTile(t.est[e]));
+        return [EST_NAME[e], vsAll.length, w.length, w.filter((t) => t.steep65 >= 0.2).length, w.filter((t) => t.steep65 < 0.2).length];
+      }),
+    ),
+  );
+  P();
+  P('Steep forest proper: the veg (steep) tiles with a cliff-like share (10 m sub-cells at 65 degrees or more) under 0.2, so slopes of 55 to 65 degrees under vegetation, where a wall is least likely to be right. The G1 rates again on that subset only (tuned on nothing, but chosen after the labels existed):');
+  P();
+  const forest = vsAll.filter((t) => t.steep65 < 0.2);
+  P(
+    table(
+      ['estimator', 'tiles', 'wall tiles', 'wall cells'],
+      (MAIN_EST as readonly EstId[]).map((e) => [EST_NAME[e], forest.length, shareCi(forest.filter((t) => isWallTile(t.est[e])).length, forest.length), shareCi(forest.reduce((a, t) => a + t.est[e].nW, 0), forest.length * CELLS)]),
+    ),
+  );
+  P();
+  P('Which way the ground faces (steepFraction-weighted compass octant of the downhill direction), for the unsure tiles (deep shadow) against all tiles. The best-matching sun for the photo shading is in the north-west at all four sites (section 8), so faces turned away from it, to the south-east and east, are the ones in shadow:');
+  P();
+  const octs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const oct = (a: number): number => (Number.isFinite(a) ? Math.round(a / 45) % 8 : -1);
+  P(
+    table(
+      ['facing', ...octs],
+      [
+        ['all 80 tiles', ...octs.map((_, i) => allTiles.filter((t) => oct(t.facing) === i).length)],
+        ['unsure tiles', ...octs.map((_, i) => allTiles.filter((t) => t.label === 'unsure' && oct(t.facing) === i).length)],
+        ['rock tiles', ...octs.map((_, i) => allTiles.filter((t) => t.label === 'rock' && oct(t.facing) === i).length)],
+      ],
+    ),
+  );
+  P();
+  P('Mean photo colour and canopy by label group (tile means; ExG and luminance are over the photo pixels inside the 90 m box; "photo vegetation share" is the share of pixels with ExG > T):');
+  P();
+  const meanOf = (ts: LTile[], f: (t: LTile) => number, d = 2): string => (ts.length ? (ts.reduce((s, t) => s + f(t), 0) / ts.length).toFixed(d) : 'n/a');
+  P(
+    table(
+      ['label group', 'tiles', 'mean steep', 'mean share >= 65 deg', 'mean canopy cover', 'mean photo vegetation share', 'mean ExG', 'mean luminance', 'mean E2 rock', 'mean E3 rock'],
       GROUPS.map((g) => {
         const ts = allTiles.filter((t) => groupOf(t) === g);
-        return [g, ts.length, meanOf(ts, (t) => t.steep), meanOf(ts, (t) => t.cover), meanOf(ts, (t) => t.veg), meanOf(ts, (t) => t.est.E2.rockMean), meanOf(ts, (t) => t.est.E3.rockMean)];
+        return [g, ts.length, meanOf(ts, (t) => t.steep), meanOf(ts, (t) => t.steep65), meanOf(ts, (t) => t.cover), meanOf(ts, (t) => t.veg), meanOf(ts, (t) => t.exgMean, 3), meanOf(ts, (t) => t.lumMean, 0), meanOf(ts, (t) => t.est.E2.rockMean), meanOf(ts, (t) => t.est.E3.rockMean)];
       }),
     ),
   );
