@@ -251,7 +251,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: '2-D and 3-D',
     short: 'What the model works out in each',
-    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one, which gives a little different fire. Auto, the usual choice, uses the 3-D air unless a short timing test when the run starts finds this phone far too slow for it. “How this simulation works” in the main menu shows what your run is using and why.',
+    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one (the fire comes out a little different). Auto, the usual choice, uses the 3-D air unless a short timing test when the run starts finds this phone far too slow for it. “How this simulation works” in the main menu shows what your run is using and why.',
   },
   {
     term: 'Picture quality',
