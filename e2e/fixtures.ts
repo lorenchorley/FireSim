@@ -11,6 +11,9 @@ export { expect };
 const IGNORED: RegExp[] = [
   // Chromium's software GL (SwiftShader) in the headless test browser says so when WebGL starts; real phones do not.
   /GPU stall due to ReadPixels|Automatic fallback to software WebGL|GL Driver Message|WebGL.*(swiftshader|software)/i,
+  // The headless test browser has no WebGPU adapter: asking for one (the Simulation debug statistics screen does, with a 1 s
+  // timeout, to name the GPU) logs this warning. A phone's WebView either answers or logs it to its own log, not to a test.
+  /Failed to create WebGPU Context Provider/i,
   // Playwright's headless browser has no favicon or manifest requests answered for the 404 probes of some pages.
   /Failed to load resource: the server responded with a status of 404.*favicon/i,
 ];

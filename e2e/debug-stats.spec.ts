@@ -243,10 +243,15 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
     expect(small, look).toEqual([]);
     const heights = await screen(page).locator('.mc-toggle').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
     for (const hgt of heights) expect(hgt, look).toBeGreaterThanOrEqual(44);
-    for (const id of ['debug-stats-close', 'debug-stats-copy-icon']) {
-      const b = await page.getByTestId(id).boundingBox();
-      expect(b!.width, `${look} ${id}`).toBeGreaterThanOrEqual(44);
-      expect(b!.height, `${look} ${id}`).toBeGreaterThanOrEqual(44);
+    // An icon button is drawn 40 px and grows its hit area to the tap size with its ::after (components.css), so measure both.
+    for (const id of ['debug-stats-close', 'debug-stats-copy-icon', 'debug-stats-copy']) {
+      const hit = await page.getByTestId(id).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const a = getComputedStyle(el, '::after');
+        return { w: Math.max(r.width, parseFloat(a.width) || 0), h: Math.max(r.height, parseFloat(a.height) || 0) };
+      });
+      expect(hit.w, `${look} ${id}`).toBeGreaterThanOrEqual(44);
+      expect(hit.h, `${look} ${id}`).toBeGreaterThanOrEqual(44);
     }
   }
   await page.evaluate(() => {
