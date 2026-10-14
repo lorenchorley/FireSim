@@ -155,6 +155,11 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
   const { grid, elevation: z } = input;
   const { nx, ny, cellSize: h } = grid;
   const n = nx * ny;
+  // A field of the wrong size would be read past its end and give no rock, scree or pavement without a word.
+  if (z.length !== n) throw new RangeError(`buildRockMask: ${z.length} heights for a ${nx} x ${ny} grid`);
+  for (const [name, f] of [['slope', input.slope], ['cover', input.cover], ['windowSlope', input.windowSlope]] as const) {
+    if (f && f.values.length !== f.grid.nx * f.grid.ny) throw new RangeError(`buildRockMask: ${name} has ${f.values.length} values for a ${f.grid.nx} x ${f.grid.ny} grid`);
+  }
   const rgba = new Uint8Array(n * 4);
   for (let p = 3; p < rgba.length; p += 4) rgba[p] = 255;
   const r = new Uint8Array(n);
