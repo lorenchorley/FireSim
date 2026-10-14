@@ -9,7 +9,8 @@
  *                              the validation summary, the steep-slope / extreme-weather caveat
  *   4 Data in this run         a SHORT summary of the data inventory (the Data sets screen has the detail)
  *   5 Layers and what they show   the layer catalog: dimensionality and resolution of every layer
- *   6 Engine right now         LIVE rows (tier and why, steps, speed, embers, memory, checkpoints)
+ *   6 Speed and memory right now   LIVE summary (tier and why, speed, memory, this phone) and a row that opens the full
+ *                              "Simulation debug statistics" screen (src/ui/debugStats.ts)
  *   7 Words used               glossary
  *
  * TRUTH RULES. Every number comes from the engine report, the scenario, the settings or the code's own parameter tables
@@ -120,7 +121,7 @@ export type CardBlock =
   | { type: 'layers'; dimensions: { dimension: LayerDimension; help: string }[]; groups: { title: string; blurb: string; layers: LayerLine[] }[] }
   | { type: 'glossary'; terms: { term: string; gloss: string }[] }
   | { type: 'legend'; title: string; items: { level: EvidenceLevel; label: string; gloss: string }[] }
-  | { type: 'action'; action: 'open-datasets'; label: string };
+  | { type: 'action'; action: 'open-datasets' | 'open-debug-stats'; label: string };
 
 export type SectionId = 'glance' | 'limits' | 'sure' | 'data' | 'layers' | 'engine' | 'words';
 
@@ -161,6 +162,8 @@ export interface ModelCardInput {
   historyBudgetBytes?: number;
   /** Which simulation module runs ('mock' = the demo engine). */
   engineSource?: 'real' | 'mock';
+  /** What this phone reports (`navigator.hardwareConcurrency` and `deviceMemory`); null where it does not say. */
+  phone?: { cores: number | null; memoryGb: number | null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,6 +218,13 @@ const kmh = (ms: number): string => `${formatNumber(ms * 3.6, 1)}${NB}km/h`;
 const km = (mm: number): string => `${formatNumber(mm / 1000, mm % 1000 === 0 ? 0 : 1)}${NB}km`;
 /** A size with a no-break space before the unit. */
 const bytes = (b: number): string => formatBytes(b).replace(/ /g, NB);
+
+/**
+ * The only 3-D air step measured on a phone so far (ms, the first 20 steps with their warm-up, from the phone readout that
+ * started the 0.3.0 plan): quoted in the Auto wording in place of the old guess that most phones are too slow, until the debug
+ * statistics have collected more phones.
+ */
+const FIRST_PHONE_STEP_MS = 41;
 
 const TIER_NAME: Record<QualityTier, string> = { fast: 'Fast (surface wind)', standard: 'Standard (3-D air)', high: 'High (finer 3-D air)' };
 const CLASS_WORDS: Record<string, string> = { flake: 'stringybark flakes', ribbon: 'ribbon bark', leaf: 'leaves', twig: 'twigs', heavy: 'heavy pieces' };
@@ -529,10 +539,10 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
     rows.push({
       id: 'atmosphere',
       component: 'Atmosphere (the air)',
-      dimensions: 'Auto: 3-D air flow if this phone is fast enough, else the fast mode (a 2-D surface wind fitted to the terrain)',
+      dimensions: 'Auto: decided when the run starts, from a short timing test on this phone. 3-D air flow unless it would take far too long, else the fast mode (a 2-D surface wind fitted to the terrain)',
       resolution: `3-D: ${describeAtm(a)}. Fast mode: the forecast wind fitted to the terrain on ${grid2(f.nx, f.ny)} columns`,
       timeStep: `3-D: ${secs(ATMOS_PARAMS.dtMin)} to ${secs(SIM_PARAMS.dtMaxS)}; fast mode: ${secs(FAST_TIER_STEP_S)}`,
-      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it only if the whole run is predicted to finish within the time budget (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). Most phones are expected to be too slow for the 3-D air, so the fast mode is the usual result; that is an expectation from speed figures measured on a computer, not yet on phones (spec §16 item 20).`,
+      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it unless the whole run is predicted to take longer than the time limit (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). On the one phone measured so far the 3-D step took about ${FIRST_PHONE_STEP_MS} ms, so Auto chooses the 3-D air; how other phones do is not yet measured (spec §16 item 20). The 3-D air can fall behind when you play faster than the phone computes; the timeline says so.`,
       evidence: 'partly',
       evidenceNote: 'See the two modes: 3-D (spec §8.4) or fitted surface wind (spec §8.9); the speed rule is spec §12.6',
       specRef: '§8, §12.6',
@@ -864,7 +874,14 @@ function tierWords(e: EngineInfo, settings: ModelCardInput['settings']): string 
   }
 }
 
-function engineFacts(input: ModelCardInput, n: Numbers | null, e: EngineInfo | null): CardBlock[] {
+/** The row that opens the full screen: every statistics group, the phone's hardware and software, and a Copy button. */
+const OPEN_DEBUG_STATS: CardBlock = { type: 'action', action: 'open-debug-stats', label: 'Open Simulation debug statistics' };
+
+/**
+ * The four live numbers that matter (the tier and why, the computing speed, the engine's memory, this phone) and the row that
+ * opens "Simulation debug statistics", which holds everything else (the old 20-row "Engine right now" block moved there).
+ */
+function engineFacts(input: ModelCardInput, e: EngineInfo | null): CardBlock[] {
   if (input.engineSource === 'mock' || e?.mock) {
     return [
       {
@@ -872,6 +889,7 @@ function engineFacts(input: ModelCardInput, n: Numbers | null, e: EngineInfo | n
         tone: 'warn',
         text: 'The demo engine is running: a stand-in used when the simulation cannot load (or with ?mock=1). It draws a plausible fire with a simple travel-time search on the terrain grid. None of the physics described on this page is being computed, so there are no live engine values.',
       },
+      OPEN_DEBUG_STATS,
     ];
   }
   if (!e) {
@@ -882,62 +900,32 @@ function engineFacts(input: ModelCardInput, n: Numbers | null, e: EngineInfo | n
           ? 'The engine has not reported yet (it does with its first picture). The numbers on this page are planned from the scenario.'
           : 'Opened before a run: there is no engine yet. The numbers on this page are planned from your Setup choice; open this page again during a run for live values.',
       },
+      OPEN_DEBUG_STATS,
     ];
   }
   const a = e.atmosphere;
+  const phone = input.phone;
   const facts: CardFact[] = [
     { id: 'eng-tier', key: 'Atmosphere tier', value: TIER_NAME[e.tier], note: tierWords(e, input.settings), live: true },
-    {
-      id: 'eng-step',
-      key: 'Outer step (air, fire and embers step together)',
-      value: ok(a.currentStepS) ? secs(a.currentStepS) : 'Not started',
-      note:
-        e.cadence.solverMaxStepS > 0
-          ? `Limited to ${secs(e.cadence.solverMaxStepS)} by your solver step setting`
-          : e.cadence.solverFloorS === e.cadence.solverBoundS
-            ? `Automatic: fixed at ${secs(e.cadence.solverBoundS)} in the fast mode`
-            : `Automatic: ${secs(e.cadence.solverFloorS)} to ${secs(e.cadence.solverBoundS)}, shorter in strong wind`,
-      live: true,
-    },
-    { id: 'eng-substep', key: 'Fire sub-step', value: ok(e.fire.currentSubStepS) ? secs(e.fire.currentSubStepS) : 'No front moving', live: true },
     {
       id: 'eng-speed',
       key: 'Computing speed on this phone',
       value: ok(e.run.simSecondsPerWallSecond) ? `${formatCount(Math.round(e.run.simSecondsPerWallSecond))} s of fire per second` : 'Not measured yet',
       note: ok(e.run.meanStepMs)
-        ? `One step takes ${formatNumber(e.run.meanStepMs, e.run.meanStepMs < 10 ? 1 : 0)} ms${ok(a.meanStepMs) ? `, of which the air ${formatNumber(a.meanStepMs, a.meanStepMs < 10 ? 1 : 0)} ms` : ''} (average for this tier)`
+        ? `One step takes ${formatNumber(e.run.meanStepMs, e.run.meanStepMs < 10 ? 1 : 0)} ms${ok(a.meanStepMs) ? `, of which the air ${formatNumber(a.meanStepMs, a.meanStepMs < 10 ? 1 : 0)} ms` : ''} (average for this tier); you asked for ${formatPlaybackSpeed(input.settings.defaultSpeed > 0 ? input.settings.defaultSpeed : Infinity)}`
         : undefined,
       live: true,
     },
+    { id: 'eng-memory', key: 'Engine memory (measured)', value: e.memory ? bytes(e.memory.totalBytes) : 'Not measured yet', note: e.memory ? `Measured at ${formatDuration(e.memory.measuredAt)} of fire time` : undefined, live: true },
     {
-      id: 'eng-playback',
-      key: 'Playback speed (your setting)',
-      value: formatPlaybackSpeed(input.settings.defaultSpeed > 0 ? input.settings.defaultSpeed : Infinity),
-      note: formatSpeedHint(input.settings.defaultSpeed > 0 ? input.settings.defaultSpeed : Infinity),
-      live: true,
-    },
-    { id: 'eng-display', key: 'Display step', value: `A picture every ${formatStepLabel(e.cadence.displayStepS)}`, live: true },
-    {
-      id: 'eng-embers',
-      key: 'Embers in the air',
-      value: e.embers.on ? `${formatCount(e.embers.active)} of ${formatCount(e.embers.max)} tracked` : 'Switched off',
-      live: true,
-    },
-    {
-      id: 'eng-checkpoints',
-      key: 'Checkpoints (rewind points)',
-      value: `${e.run.checkpoints} held, ${bytes(e.run.checkpointBytes)}`,
-      note: `One every ${formatStepLabel(e.cadence.checkpointS)}; a change in the past re-runs from the one before it`,
-      live: true,
+      id: 'eng-phone',
+      key: 'This phone',
+      value: phone ? `${ok(phone.cores) ? `${phone.cores} cores` : 'cores not reported'}, ${ok(phone.memoryGb) ? `about ${phone.memoryGb}${NB}GB memory class` : 'memory class not reported'}` : 'Not reported',
+      note: ok(input.historyBudgetBytes) ? `Time-scrubber history: up to ${bytes(input.historyBudgetBytes)} on this phone; older pictures are thinned beyond that` : undefined,
+      live: false,
     },
   ];
-  if (ok(input.historyBudgetBytes)) {
-    facts.push({ id: 'eng-history', key: 'Time-scrubber history', value: `Up to ${bytes(input.historyBudgetBytes)} on this phone`, note: 'Older pictures are thinned beyond that; the fire front of any time is still rebuilt exactly', live: false });
-  }
-  if (e.memory) facts.push({ id: 'eng-memory', key: 'Engine memory (measured)', value: bytes(e.memory.totalBytes), note: `Measured at ${formatDuration(e.memory.measuredAt)} of fire time`, live: true });
-  facts.push({ id: 'eng-seed', key: 'Seed', value: String(e.run.seed), note: e.run.deterministic ? 'The same choices give exactly the same result' : undefined, live: false });
-  if (n && a.viewDecimated) facts.push({ id: 'eng-view', key: 'Air in the pictures', value: 'Halved for display', note: 'The solver grid is as above; the pictures carry every second column', live: true });
-  return [{ type: 'facts', facts }];
+  return [{ type: 'facts', facts }, OPEN_DEBUG_STATS];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -954,7 +942,7 @@ export const GLOSSARY: readonly { term: string; gloss: string }[] = [
   { term: 'Head, flank, back', gloss: 'The fastest part of the fire front, its sides, and the part that backs into the wind or downhill.' },
   { term: 'Time step, sub-step', gloss: 'How far the clock jumps between two calculations; a sub-step is a smaller jump inside one step.' },
   { term: 'CFL limit', gloss: 'A step must be short enough that nothing moves more than about one cell in it; faster fire or wind means shorter steps.' },
-  { term: 'Tier', gloss: 'How much of the air the phone simulates: Fast (a fitted surface wind), Standard (3-D air) or High (finer 3-D air).' },
+  { term: 'Tier', gloss: 'How much of the air the phone simulates: Fast (a fitted surface wind), Standard (3-D air) or High (finer 3-D air). Auto: decided when the run starts, from a short timing test on this phone.' },
   { term: 'Mass-consistent wind', gloss: 'A wind adjusted so that no air piles up or disappears: it flows around hills and through gaps.' },
   { term: 'Boussinesq flow', gloss: 'A standard simplification of the equations of moving air, good for winds near the ground.' },
   { term: 'Terrain-following grid', gloss: 'Air levels that follow the shape of the ground near the surface and flatten out higher up.' },
@@ -983,7 +971,7 @@ function headlineOf(mode: ModelCard['mode'], n: Numbers | null, e: EngineInfo | 
   const is3d = atmosphereIs3d(n, e);
   if (is3d === true) return `${fire}; the air above it is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart).`;
   if (is3d === false) return `${fire}; the wind is a 2-D surface field fitted to the terrain (fast mode, no 3-D air flow).`;
-  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) if this phone is fast enough, else the wind is a 2-D surface field (fast mode).`;
+  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is a 2-D surface field (fast mode).`;
 }
 
 /** The whole card (pure). */
@@ -1057,7 +1045,7 @@ export function describeModel(input: ModelCardInput): ModelCard {
   });
   sections.push({ id: 'data', title: 'Data in this run', summary: 'How many data sets, how much was downloaded, and what stood in for missing data.', blocks: dataFacts(input, e), live: mode === 'live' });
   sections.push({ id: 'layers', title: 'Layers and what they show', summary: 'Every map layer: drawn on the ground, as objects, or through the air, and how fine it is.', blocks: [layersBlock(input, n, e)], live: false });
-  sections.push({ id: 'engine', title: 'Engine right now', summary: mode === 'live' ? 'Live values from the running engine.' : 'Live values appear here during a run.', blocks: engineFacts(input, n, e), live: mode === 'live' });
+  sections.push({ id: 'engine', title: 'Speed and memory right now', summary: mode === 'live' ? 'Four live numbers; the full statistics are one tap away.' : 'Live values appear here during a run.', blocks: engineFacts(input, e), live: mode === 'live' });
   sections.push({ id: 'words', title: 'Words used', summary: 'The technical words on this page in plain English.', blocks: [{ type: 'glossary', terms: [...GLOSSARY] }], live: false });
   const subtitle =
     mode === 'live'

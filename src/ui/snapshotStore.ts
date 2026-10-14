@@ -143,6 +143,15 @@ export class SnapshotStore {
     return this.headBytes + this.fireSrcBytes + this.keyBytes + this.embBytes + this.frames.length * FRAME_BYTES + this.spotLog.length * SPOT_BYTES + this.bufBytes() + (this.burnEnd?.byteLength ?? 0);
   }
 
+  /** Bytes of the newest snapshot and of the keyframes (the debug statistics show them next to the total). */
+  get newestBytes(): number {
+    return this.headBytes;
+  }
+
+  get keyframeBytes(): number {
+    return this.keyBytes;
+  }
+
   /** Mean spacing (s) of the retained steps: the display step until old history has been thinned. */
   get spacing(): number {
     const n = this.frames.length;

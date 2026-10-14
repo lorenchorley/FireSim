@@ -29,6 +29,7 @@ export interface SettingsScreenOptions {
   onOpenDatasets?: (datasetId?: string) => void;
   /** Open "How this simulation works". */
   onOpenModelCard?: () => void;
+  onOpenDebugStats?: () => void;
 }
 
 /** Links of an attribution, from the providers and licences the data-set records use (scenario/recordKit.ts). */
@@ -163,6 +164,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): { el: HTMLEle
     h('ul', { class: 'list card-list' }, [
       opts.onOpenDatasets ? h('li', null, listRow({ title: 'Data sets and storage', sub: 'Every data set: size, origin, age, licence; what is on this phone', icon: 'database', chevron: true, testId: 'settings-datasets', onClick: () => opts.onOpenDatasets?.() })) : null,
       opts.onOpenModelCard ? h('li', null, listRow({ title: 'How this simulation works', sub: 'What is 2-D and what is 3-D, grids, time steps and limits', icon: 'help-circle', chevron: true, testId: 'settings-model-card', onClick: () => opts.onOpenModelCard?.() })) : null,
+      opts.onOpenDebugStats ? h('li', null, listRow({ title: 'Simulation debug statistics', sub: 'Speed, memory, what this phone can do; copy as text', icon: 'speed', chevron: true, testId: 'settings-debug-stats', onClick: () => opts.onOpenDebugStats?.() })) : null,
     ]),
     { icon: 'info', id: 'settings-transparency' },
   );

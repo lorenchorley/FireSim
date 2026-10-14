@@ -82,15 +82,61 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expect(row(card, 'fuel').dimensions).toContain('not a 3-D block model');
     expect(row(card, 'weather').dimensions).toContain('not a weather map');
     expect(row(card, 'display').method).toContain('Trees are decorative');
-    // Engine right now: live rows.
-    const engine = card.sections.find((s) => s.id === 'engine')!;
-    const facts = engine.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : []));
-    expect(facts.find((f) => f.id === 'eng-tier')!.value).toBe('Fast (surface wind)');
-    expect(facts.find((f) => f.id === 'eng-step')!.value).toBe('10 s');
-    expect(facts.find((f) => f.id === 'eng-embers')!.value).toBe(`${snap.stats.activeEmbers.toLocaleString('en-AU').replace(/,/g, ' ')} of 1 000 tracked`);
-    expect(facts.find((f) => f.id === 'eng-checkpoints')!.value).toMatch(/^1 held, /);
     expectClean(card);
   }, 120000);
+
+  it('"Engine right now" is retired: the section is a four-row live summary and a row that opens the Simulation debug statistics', () => {
+    const phone = { cores: 8, memoryGb: 6 };
+    const c = describeModel({ scenario: fastScenario, engine: snap.engine, snapshot: snap, settings, historyBudgetBytes: 100 * 1024 * 1024, phone });
+    const engine = c.sections.find((s) => s.id === 'engine')!;
+    expect(engine.title).toBe('Speed and memory right now');
+    expect(JSON.stringify(c)).not.toContain('Engine right now');
+    const facts = engine.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : []));
+    expect(facts.map((f) => [f.id, f.key])).toEqual([
+      ['eng-tier', 'Atmosphere tier'],
+      ['eng-speed', 'Computing speed on this phone'],
+      ['eng-memory', 'Engine memory (measured)'],
+      ['eng-phone', 'This phone'],
+    ]);
+    const e = snap.engine!;
+    expect(facts[0]!.value).toBe('Fast (surface wind)');
+    expect(facts[0]!.note).toBe('Asked for at the start (the Fast detail option in Setup).');
+    expect(facts[1]!.value).toMatch(/^[\d ]+ s of fire per second$|^Not measured yet$/);
+    expect(facts[1]!.note).toContain('you asked for');
+    expect(facts[2]!.value).toBe(e.memory ? `${(e.memory.totalBytes / 1e6).toFixed(1)} MB`.replace(' ', ' ') : 'Not measured yet');
+    expect(facts[3]!.value).toBe('8 cores, about 6 GB memory class');
+    expect(facts[3]!.note).toMatch(/^Time-scrubber history: up to [\d.]+ MB on this phone/);
+    expect(engine.blocks.filter((b) => b.type === 'action')).toEqual([{ type: 'action', action: 'open-debug-stats', label: 'Open Simulation debug statistics' }]);
+    // The long block moved to the new screen: none of its other rows is here any more.
+    for (const gone of ['eng-step', 'eng-substep', 'eng-playback', 'eng-display', 'eng-embers', 'eng-checkpoints', 'eng-history', 'eng-seed', 'eng-view']) expect(facts.map((f) => f.id)).not.toContain(gone);
+    expectClean(c);
+  });
+
+  it('a phone that reports nothing, and no memory measurement yet, say so in words', () => {
+    const e = { ...(snap.engine as EngineInfo), memory: undefined };
+    const c = describeModel({ scenario: fastScenario, engine: e, settings, phone: { cores: null, memoryGb: null } });
+    const facts = c.sections.find((s) => s.id === 'engine')!.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : []));
+    expect(facts.find((f) => f.id === 'eng-memory')!.value).toBe('Not measured yet');
+    expect(facts.find((f) => f.id === 'eng-phone')!.value).toBe('cores not reported, memory class not reported');
+    expect(describeModel({ scenario: fastScenario, engine: e, settings }).sections.find((s) => s.id === 'engine')!.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : [])).find((f) => f.id === 'eng-phone')!.value).toBe('Not reported');
+    expectClean(c);
+  });
+
+  it('before a run, and with the demo engine, the section still offers the full statistics', () => {
+    for (const c of [describeModel({ scenario: null, settings }), describeModel({ scenario: fastScenario, engine: null, settings }), describeModel({ scenario: fastScenario, engine: null, settings, engineSource: 'mock' })]) {
+      const blocks = c.sections.find((s) => s.id === 'engine')!.blocks;
+      expect(blocks.some((b) => b.type === 'action' && b.action === 'open-debug-stats')).toBe(true);
+    }
+  });
+
+  it('the text export keeps the summary rows only: the new title, no old title, no long block, no action label', () => {
+    const t = cardToText(describeModel({ scenario: fastScenario, engine: snap.engine, snapshot: snap, settings }));
+    expect(t).toContain('== Speed and memory right now ==');
+    expect(t).not.toContain('Engine right now');
+    expect(t).toContain('  Atmosphere tier: Fast (surface wind)');
+    expect(t).not.toContain('Fire sub-step');
+    expect(t).not.toContain('Open Simulation debug statistics');
+  });
 
   it('what it can and cannot resolve is derived from the grids', () => {
     const lim = card.sections.find((s) => s.id === 'limits')!;
@@ -165,10 +211,12 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expect(JSON.stringify(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }))).not.toMatch(/bundled LiDAR/);
   });
 
-  it('before a run the Auto atmosphere row says the fast mode is the usual result on phones, and that this is not yet measured on phones', () => {
+  it('before a run the Auto atmosphere row says how Auto decides, quotes the one phone measured so far, and does not say most phones are too slow', () => {
     const atm = row(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }), 'atmosphere');
-    expect(atm.method).toMatch(/Most phones are expected to be too slow for the 3-D air, so the fast mode is the usual result/);
-    expect(atm.method).toMatch(/measured on a computer, not yet on phones \(spec §16 item 20\)/);
+    expect(atm.dimensions).toMatch(/^Auto: decided when the run starts, from a short timing test on this phone\. 3-D air flow unless it would take far too long/);
+    expect(atm.method).toMatch(/On the one phone measured so far the 3-D step took about 41 ms, so Auto chooses the 3-D air; how other phones do is not yet measured \(spec §16 item 20\)/);
+    expect(atm.method).toMatch(/keeps it unless the whole run is predicted to take longer than the time limit \(about \d+ s for 6 h of fire\)/);
+    expect(JSON.stringify(describeModel({ scenario: null, request: buildRequest(defaultSetup(), settings), settings }))).not.toMatch(/too slow for the 3-D air|fast mode is the usual result|Most phones/);
     expect(SPEC_OPEN_ISSUES.find((x) => x.item === 20)!.plain).toMatch(/computer, not yet on target phones/);
   });
 });
@@ -220,7 +268,7 @@ describe('describeModel: other cell sizes, extents and tiers change the rows', (
     expect(p6.mode).toBe('preview');
     // 6 km, 'auto': 30 m fire cells; the standard 3-D grid clamp(6000 / 45) = 133 m → 45 columns, 20 levels.
     expect(p6.headline).toBe(
-      'Planned: fire spreads in 2-D on a 30 m grid; the air is simulated in 3-D (45 × 45 × 20 cells, 133 m apart) if this phone is fast enough, else the wind is a 2-D surface field (fast mode).',
+      'Planned: fire spreads in 2-D on a 30 m grid; the air is simulated in 3-D (45 × 45 × 20 cells, 133 m apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is a 2-D surface field (fast mode).',
     );
     expect(row(p6, 'fire').resolution).toContain('(200 × 200 = 40 000 cells)');
     expect(row(p6, 'atmosphere').resolution).toContain('up to at least 3 000 m');

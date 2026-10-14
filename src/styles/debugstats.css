@@ -1,0 +1,56 @@
+/* debugstats.css — "Simulation debug statistics" (src/ui/screens/debugStats.ts). The cards, collapsible groups and key/value rows
+ * are the model card's (.mc-*, modelcard.css); this file adds only the long title, long values, the chart and the copy box.
+ */
+.debugstats-screen .app-bar-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.3;
+  padding: var(--sp-1) 0;
+}
+
+/* Live / Paused / Finished / No run yet: a word (not colour alone), 16 px. */
+.ds-state {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  font-weight: var(--fw-medium);
+}
+
+.ds-state.is-live {
+  color: var(--ok-ink);
+}
+
+/* A user agent or a long sentence wraps at any width. */
+.ds-val {
+  overflow-wrap: anywhere;
+}
+
+.ds-chart {
+  display: block;
+  width: 100%;
+  max-width: 16rem;
+  height: 2rem;
+  color: var(--series-1);
+}
+
+.ds-chart rect {
+  fill: currentColor;
+}
+
+.ds-box {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 9rem;
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: var(--fs-sm) / 1.43 var(--font-mono);
+}
+
+.ds-box[hidden] {
+  display: none;
+}

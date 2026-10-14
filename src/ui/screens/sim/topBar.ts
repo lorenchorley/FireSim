@@ -69,7 +69,11 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
     row('help', 'Help and glossary', 'How to use the screen, and the words firefighters use', 'menu-help', () => opts.openHelp()),
     row('warning', 'Safety notice', null, 'menu-notice', () => ctx.showNotice()),
   ];
-  const app = [row('settings', 'Settings', null, 'menu-settings', () => ctx.openSettings()), row('plus', 'New scenario', 'Leave this simulation and set up another', 'menu-new', () => ctx.exit())];
+  const app = [
+    row('settings', 'Settings', null, 'menu-settings', () => ctx.openSettings()),
+    ctx.openDebugStats ? row('speed', 'Simulation debug statistics', 'Speed, memory and what this phone can do', 'menu-debug-stats', () => ctx.openDebugStats?.()) : null,
+    row('plus', 'New scenario', 'Leave this simulation and set up another', 'menu-new', () => ctx.exit()),
+  ];
   const menuPanel = h('div', { class: 'sim-drawer', attrs: { role: 'dialog', tabindex: '-1' }, aria: { label: 'Menu' }, hidden: true }, [
     h('div', { class: 'drawer-head' }, [
       h('span', { class: 'drawer-mark', aria: { hidden: true } }, icon('flame')),

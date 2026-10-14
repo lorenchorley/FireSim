@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 const STYLES = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'styles');
 /** Every stylesheet of the app (design system first, then the screens): a failure in any of them fails the check. */
-export const DESIGN_FILES = ['base.css', 'components.css', 'overlays.css', 'data.css', 'screens.css', 'sim.css', 'transport.css', 'layers.css', 'datasets.css', 'modelcard.css'];
+export const DESIGN_FILES = ['base.css', 'components.css', 'overlays.css', 'data.css', 'screens.css', 'sim.css', 'transport.css', 'layers.css', 'datasets.css', 'modelcard.css', 'debugstats.css'];
 
 // ───────────────────────────── WCAG maths ─────────────────────────────
 

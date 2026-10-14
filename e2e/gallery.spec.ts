@@ -170,7 +170,7 @@ test('gallery: the new screens in light, night and high contrast, for README.md'
   await page.keyboard.press('Escape');
   await expect(ds).toHaveCount(0);
 
-  // ── How this simulation works: the top, and the live engine rows ──
+  // ── How this simulation works: the top, and the live summary ("Speed and memory right now") ──
   await page.getByTestId('menu').click();
   await page.getByTestId('menu-model').click();
   const card = page.getByTestId('model-card');
@@ -184,6 +184,16 @@ test('gallery: the new screens in light, night and high contrast, for README.md'
   await shot(page, '13-model-card-live');
   await page.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
+
+  // ── Simulation debug statistics (the menu row directly under Settings): the top, with the Summary open ──
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-debug-stats').click();
+  const stats = page.getByTestId('debug-stats');
+  await expect(stats).toBeVisible();
+  await stats.locator('.screen-main').evaluate((m) => (m.scrollTop = 0));
+  await shot(page, '13b-debug-stats');
+  await page.keyboard.press('Escape');
+  await expect(stats).toHaveCount(0);
 
   // ── At Android's 200 % font scale ──
   await fontScale(page, 2);

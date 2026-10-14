@@ -91,6 +91,18 @@ describe('SnapshotStore steps and keyframes', () => {
     expect(st.at(10)).toBeNull();
     expect(st.totalBytes).toBe(0);
   });
+
+  it('reports the size of the newest picture and of the keyframes (the debug statistics show them next to the total)', () => {
+    const st = new SnapshotStore({ minInterval: 60, maxBytes: 1e9 });
+    expect([st.newestBytes, st.keyframeBytes]).toEqual([0, 0]);
+    filled(900, 60, { bigBytes: 40_000 }, st);
+    expect(st.keyframeCount).toBeGreaterThanOrEqual(2);
+    expect(st.newestBytes).toBeGreaterThan(40_000);
+    expect(st.keyframeBytes).toBeGreaterThan(st.keyframeCount * 40_000);
+    expect(st.newestBytes + st.keyframeBytes).toBeLessThan(st.totalBytes);
+    st.clear();
+    expect([st.newestBytes, st.keyframeBytes]).toEqual([0, 0]);
+  });
 });
 
 describe('SnapshotStore.at', () => {

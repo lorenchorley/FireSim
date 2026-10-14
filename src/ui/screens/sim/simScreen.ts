@@ -54,6 +54,8 @@ export interface SimScreenOptions {
   onOpenDatasets?(datasetId?: string): void;
   /** Open "How this simulation works"; the run keeps going underneath. */
   onOpenModelCard?(): void;
+  /** Open "Simulation debug statistics"; the run keeps going underneath. */
+  onOpenDebugStats?(): void;
 }
 
 export interface SimScreen {
@@ -113,6 +115,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
   const controller = services.createController();
   const session = new SimSession(scenario, controller, view);
+  // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
+  let stopEvents = (): void => undefined;
+  unsubs.push(() => stopEvents());
+  void import('../../runEvents').then((m) => {
+    if (!destroyed) stopEvents = m.watchRun(session);
+  });
   const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind } });
 
   const ctx: SimContext = {
@@ -131,6 +139,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     showNotice: o.onNotice,
     ...(o.onOpenDatasets ? { openDatasets: (id?: string) => o.onOpenDatasets?.(id) } : {}),
     ...(o.onOpenModelCard ? { openModelCard: () => o.onOpenModelCard?.() } : {}),
+    ...(o.onOpenDebugStats ? { openDebugStats: () => o.onOpenDebugStats?.() } : {}),
     absTime: (t) => scenario.startTime + t * 1000,
     buildWarnings: o.buildWarnings ?? [],
     get legendProvider() {
