@@ -396,6 +396,15 @@ describe('labels and values', () => {
     expect(rowOf(s, 'display', 'cliffs').note).toBe('102400 vertices, 204000 triangles; rock detail in the shader: high');
   });
 
+  it('the frame rate says "1 frame per second", not "1 frames", in the row and in the group line', () => {
+    const at = (fps10: number): DebugStats => buildDebugStats({ ...full(), frames: { ...frames, fps10 } });
+    expect(rowOf(at(1), 'display', 'fps').value).toBe('1 frame per second');
+    expect(rowOf(at(1.4), 'display', 'fps').value).toBe('1 frame per second'); // rounds to 1
+    expect(plain(at(1).groups.find((g) => g.id === 'display')!.summary)).toBe('Medium picture; 1 frame per second');
+    expect(rowOf(at(0.4), 'display', 'fps').value).toBe('0 frames per second');
+    expect(rowOf(at(60), 'display', 'fps').value).toBe('60 frames per second');
+  });
+
   it('picture quality says "set by you", "asked for by the Detail profile" or the guess with its numbers', () => {
     const base = { source: 'option' as const, cores: 8, memoryGb: 6 };
     expect(pictureQualityWhy(base, 'set')).toBe('set by you');

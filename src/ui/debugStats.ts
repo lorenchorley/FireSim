@@ -178,6 +178,8 @@ const hms = (s: number | null | undefined): string => {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${p(Math.floor(t / 3600))}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`;
 };
+/** "29 frames per second", "1 frame per second". */
+const framesPerSecond = (v: number): string => `${fix(v, 0)}${NB}frame${fix(v, 0) === '1' ? '' : 's'} per second`;
 const longSpan = (s: number): string => formatDuration(s).replace(/ /g, NB);
 
 /** "2026-10-11 14:32:05" in the phone's time (the offset is given, so the node tests do not depend on the machine's zone). */
@@ -516,7 +518,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
   const rows: StatRow[] = [];
   if (f)
     rows.push(
-      R('fps', 'Frame rate, last 10 s', ok(f.fps10) ? `${fix(f.fps10, 0)} frames per second` : NOT_YET, 'The scene stops drawing while a full-screen screen is open, so this is the last seconds before it opened', true),
+      R('fps', 'Frame rate, last 10 s', ok(f.fps10) ? framesPerSecond(f.fps10) : NOT_YET, 'The scene stops drawing while a full-screen screen is open, so this is the last seconds before it opened', true),
       R('frame-mean', 'Frame time, mean and 95th percentile', ok(f.frameMeanMs) && ok(f.frameP95Ms) ? `${ms(f.frameMeanMs)} and ${ms(f.frameP95Ms)}` : NOT_YET, undefined, true),
       R('slow-frames', 'Frames slower than 30 per second, and over 100 ms', `${f.over33} and ${f.over100}`, `Of the last ${f.frames} frames`, true),
     );
@@ -546,7 +548,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
       ),
     );
   else if (t === null) rows.push(R('cliffs', 'Cliff drawing (once per scenario)', 'Nothing sharpened in this run (no 10 m terrain)'));
-  const fps = f && ok(f.fps10) ? `${fix(f.fps10, 0)} frames per second` : 'frame rate not measured yet';
+  const fps = f && ok(f.fps10) ? framesPerSecond(f.fps10) : 'frame rate not measured yet';
   return G('display', 'Display (main thread)', rows, q ? `${cap(q.tier)} picture; ${fps}` : fps);
 }
 
