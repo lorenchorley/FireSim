@@ -25,6 +25,7 @@ import { SimSession } from '../../session';
 import { DangerGate } from '../../insightGroups';
 import { performanceProfile, settingsStore } from '../../settings';
 import { Store } from '../../store';
+import { debugPaceLevel } from '../../paceModel';
 import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './context';
 import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels';
 import { createScrubber } from './scrubber';
@@ -54,6 +55,8 @@ export interface SimScreenOptions {
   onOpenDatasets?(datasetId?: string): void;
   /** Open "How this simulation works"; the run keeps going underneath. */
   onOpenModelCard?(): void;
+  /** Open the Simulation debug statistics screen (the slow-run sheet's "All the numbers"); the run keeps going underneath. */
+  onOpenDebugStats?(): void;
 }
 
 export interface SimScreen {
@@ -131,6 +134,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     showNotice: o.onNotice,
     ...(o.onOpenDatasets ? { openDatasets: (id?: string) => o.onOpenDatasets?.(id) } : {}),
     ...(o.onOpenModelCard ? { openModelCard: () => o.onOpenModelCard?.() } : {}),
+    ...(o.onOpenDebugStats ? { openDebugStats: () => o.onOpenDebugStats?.() } : {}),
     absTime: (t) => scenario.startTime + t * 1000,
     buildWarnings: o.buildWarnings ?? [],
     get legendProvider() {
@@ -148,7 +152,13 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   unsubs.push(restoreLayerPrefs(ctx));
 
   // ───────────── chrome ─────────────
+  // The strip is made first: the top bar hangs the slow-run sheet on its speed button.
+  const scrubber = createScrubber(ctx);
+  // Debug hook (a dev build, or ?debug in the address): ?paceLevel=behind|waiting|ok shows the speed signal for screenshots and audits.
+  const forcedPace = debugPaceLevel(window.location.search, import.meta.env.DEV);
+  if (forcedPace) session.debugForcePace(forcedPace);
   const topBar = createTopBar(ctx, {
+    paceButton: scrubber.paceButton,
     openHelp: () => {
       if (ui.get().panelOpen || ui.get().pending) closePanel();
       ui.set({ tab: 'help', sheet: ui.get().sheet === 'closed' || ui.get().sheet === 'peek' ? 'half' : ui.get().sheet, menu: null });
@@ -168,7 +178,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     o.announce(`Showing ${i.title} on the map.`);
   };
   const sheet = createSheet(ctx, showInsight);
-  const scrubber = createScrubber(ctx);
   const dangerGate = new DangerGate();
 
   // Tools: an extended FAB in the bottom corner (on the handed side) whose speed dial holds the six tools.

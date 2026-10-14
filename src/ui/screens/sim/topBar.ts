@@ -17,7 +17,7 @@ import type { SimContext } from './context';
 import { createSpeedControl } from './speedControl';
 import { clockShowsSeconds } from './timelineModel';
 import { createTimePopover } from './timePopover';
-import { createPopoverGroup, type PopoverGroup } from './transportKit';
+import { createPopoverGroup, type PopoverGroup, transportSheet } from './transportKit';
 
 /** The clock waits for the engine this long before "Computing" is shown, so it does not flicker at the head. */
 const WAIT_BEFORE_BUSY_MS = 800;
@@ -32,6 +32,8 @@ export interface TopBar {
 export interface TopBarOptions {
   /** Open the Help tab of the bottom sheet (the glossary). */
   openHelp(): void;
+  /** The timeline's speed button: it opens the slow-run sheet, which joins this bar's popovers (the strip is made first, so it is handed in). */
+  paceButton?: HTMLElement;
 }
 
 export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
@@ -92,6 +94,22 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
   );
   const timePop = createTimePopover(ctx, { close: () => popovers.closeAll() });
 
+  // ── the slow-run sheet (plan §6.5): the shell is made here, its contents are loaded on the first tap ──
+  const paceSheetEl = opts.paceButton
+    ? transportSheet({ title: 'Running slower than playback', testId: 'pace-sheet', class: 'tp tp-2col tp-pace', body: [], onClose: () => popovers.closeAll() })
+    : null;
+  let paceMount: Promise<{ refresh(): void; destroy(): void } | null> | null = null;
+  const openPace = (): void => {
+    if (!paceSheetEl) return;
+    paceMount ??= import('./paceSheet')
+      .then((m) => m.mountPaceSheet(ctx, paceSheetEl, { close: () => popovers.closeAll() }))
+      .catch(() => {
+        paceSheetEl.querySelector('.tb-sheet-body')?.replaceChildren(h('p', { class: 'tp-hint' }, 'The details are not available right now.'));
+        return null;
+      });
+    void paceMount.then((p) => p?.refresh());
+  };
+
   // ── play / pause: the one blue control of the bar ──
   const playBtn = h(
     'button',
@@ -121,16 +139,18 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
   const setChipLabel = (): void => chips.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
 
   const pill = h('div', { class: 'search-bar tb-pill' }, [menuBtn, clockBtn, playBtn, speed.button]);
-  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel]);
+  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel, paceSheetEl]);
 
   const popovers = createPopoverGroup(el, [
     { id: 'menu', button: menuBtn, panel: menuPanel, dim: true },
     { id: 'time', button: clockBtn, panel: timePop.panel, onOpen: () => timePop.refresh() },
     { id: 'speed', button: speed.button, panel: speed.panel },
+    ...(opts.paceButton && paceSheetEl ? [{ id: 'pace', button: opts.paceButton, panel: paceSheetEl, onOpen: openPace }] : []),
   ]);
   menuBtn.addEventListener('click', () => popovers.toggle('menu'));
   clockBtn.addEventListener('click', () => popovers.toggle('time'));
   speed.button.addEventListener('click', () => popovers.toggle('speed'));
+  opts.paceButton?.addEventListener('click', () => popovers.toggle('pace'));
 
   // The settings screen changes the picture interval and the solver step: pass them on to the running session.
   const offSteps = bindStepSettings(session, ctx.settings);
@@ -165,7 +185,9 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       clearTimeout(waitTimer);
       waitTimer = window.setTimeout(render, WAIT_BEFORE_BUSY_MS + 20);
     }
-    const busy = seeking || (waiting && now - waitingSince >= WAIT_BEFORE_BUSY_MS);
+    // While the speed signal is on, the clock waiting for the engine is said once, there: no second "Computing" badge for it.
+    const paced = s.pace !== null && s.pace.level !== 'ok';
+    const busy = seeking || (waiting && !paced && now - waitingSince >= WAIT_BEFORE_BUSY_MS);
     const sk = busy ? 'busy' : !session.isLive(s) ? 'past' : '';
     if (sk !== stateKey) {
       stateKey = sk;
@@ -222,7 +244,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       setChipLabel();
     }
   };
-  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep']);
+  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep', 'pace']);
   const unsub2 = ctx.settings.subscribe(() => {
     wxKey = '';
     render();
@@ -240,6 +262,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       popovers.destroy();
       timePop.destroy();
       speed.destroy();
+      void paceMount?.then((p) => p?.destroy());
     },
   };
 }

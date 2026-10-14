@@ -77,6 +77,8 @@ export interface SimContext {
   openDatasets?: (datasetId?: string) => void;
   /** Open "How this simulation works" (absent when the app does not offer it). The run keeps going. */
   openModelCard?: () => void;
+  /** Open the Simulation debug statistics screen (absent when the app does not offer it: the slow-run sheet then has no "All the numbers" row). The run keeps going. */
+  openDebugStats?: () => void;
   /** Absolute time (unix ms) of a simulation time. */
   absTime(t: number): number;
   /** Renderer legends (preferred when present). */
