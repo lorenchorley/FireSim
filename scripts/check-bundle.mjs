@@ -9,6 +9,7 @@
  *   - JavaScript and CSS size (raw and gzipped; the WebView reads files from the APK uncompressed, so the raw figure is what
  *     is parsed, the gzipped one is what a web host would send),
  *   - the entry chunk (index-*.js: everything the first screen needs before it can show Setup),
+ *   - the GeoTIFF decoders the app never reads and pako stay out (vite.config.ts leaves them out; see LEFT_OUT below),
  *   - the bundled data (public/demo, public/replays) stays what the manifest says.
  * The exit code is 1 when a budget is exceeded.
  *
@@ -36,6 +37,20 @@ const BUDGET = {
   cssGzipKb: 25,
   demoMb: 36, // public/demo (nine sites, 33.1 MiB since Mount Tomah was added on 2026-10-07; it was 31 for the first eight, 29.0 MiB)
 };
+
+/**
+ * Code the build leaves out on purpose (vite.config.ts, `stubUnusedTiffCode`, 87 kB gzip): the GeoTIFF decoders the app never
+ * reads (LERC and ZSTD carry WebAssembly as base64 text; JPEG; WebP) and pako (fast-png's fflate inflates instead). Each marker
+ * is text only that code has. The stub's own message must be there too: if a geotiff update moves its files, the stub stops
+ * matching, the decoders come back, and this fails.
+ */
+const LEFT_OUT = [
+  { what: 'the LERC and ZSTD decoders (WebAssembly text)', marker: 'AGFzbQEAAAAB' },
+  { what: 'the GeoTIFF JPEG decoder', marker: 'buildHuffmanTable: codeLength mismatch' },
+  { what: 'the GeoTIFF WebP decoder', marker: 'Cannot decode WebImage' },
+  { what: 'pako', marker: 'incorrect header check' },
+];
+const STUB_MARKER = 'This build has no decoder for this TIFF compression';
 
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
 const files = walk(dist);
@@ -77,5 +92,10 @@ check('css kB', fig.cssKb, BUDGET.cssKb);
 check('css gzip kB', fig.cssGzipKb, BUDGET.cssGzipKb);
 check('demo data MB', fig.demoMb, BUDGET.demoMb);
 console.log(`     (raw: js ${fig.jsKb.toFixed(0)} kB, entry ${fig.entryKb.toFixed(0)} kB)`);
+const scripts = js.map((f) => ({ name: rel(f), text: fs.readFileSync(f, 'utf8') }));
+const back = LEFT_OUT.flatMap(({ what, marker }) => scripts.filter((s) => s.text.includes(marker)).map((s) => `${what} is back in the bundle (${s.name})`));
+if (!scripts.some((s) => s.text.includes(STUB_MARKER))) back.push('the stub for the unused GeoTIFF decoders is not in the bundle: vite.config.ts no longer matches geotiff');
+console.log(`${back.length ? 'OVER' : 'ok  '} ${'left out'.padEnd(14)} ${back.length ? `${back.length} problem(s)` : `none of ${LEFT_OUT.length} found`}`);
+problems.push(...back);
 for (const p of problems) console.error(`FAIL ${p}`);
 process.exit(problems.length ? 1 : 0);

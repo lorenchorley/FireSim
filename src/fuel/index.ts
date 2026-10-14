@@ -2,6 +2,8 @@
  * fuel/ — fuel-type catalogue, SVTM vegetation mapping, vegetation inference, NPWS fire history, fuel accumulation,
  * hazard ↔ load conversions, the fire-grid fuel map and fuel edits (spec docs/research/00-synthesis.md §4).
  * The dead-fuel moisture and drought code lives in fuel/moisture (separate module).
+ * `buildDemoFuel` (fuel/demo, a helper for tests and dev harnesses) is imported from './demo' and not re-exported here:
+ * through this barrel it keeps the whole data layer in the simulation worker (about 7 kB gzip).
  */
 export { FUEL_PARAMS, resolveFuelParams, YEAR_MS, DAY_MS, type FuelParams } from './params';
 export {
@@ -83,5 +85,4 @@ export {
   type FuelMapExt,
 } from './fuelMap';
 export { applyFuelEdit, cellsInBrush, brushContains } from './edits';
-export { buildDemoFuel, type DemoFuel, type DemoFuelOptions } from './demo';
 export { ScanlineRasteriser, projectRings, pointInRings, cellCentreLattice, subPointLattice, type Lattice, type LocalRings } from './polygon';
