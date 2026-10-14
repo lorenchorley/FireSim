@@ -1260,6 +1260,18 @@ button.map-credit:active {
   line-height: var(--lh-sm);
 }
 
+/* A glossary entry with a list under its text (the words of the map icons). */
+.gloss-list {
+  margin: 0 0 var(--sp-3);
+  padding-left: calc(var(--sp-4) + var(--sp-5));
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.gloss-list li {
+  margin-bottom: var(--sp-2);
+}
+
 /* ───────────────────────── tool panels (bottom sheets over the map) ───────────────────────── */
 .panel-host {
   position: absolute;

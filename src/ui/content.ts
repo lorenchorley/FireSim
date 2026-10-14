@@ -1,7 +1,7 @@
 /**
- * Static text content: the safety notice, weather presets and historic replays offered in Setup, the glossary (Help
- * tab), data attributions & licences and research references (About). Wording follows doc 10 §10.1: plain words,
- * "about" for numbers, never "you are safe".
+ * Static text content: the safety notice, weather presets and historic replays offered in Setup, the Help tab's how-to
+ * list and glossary, data attributions & licences and research references (About). Wording follows doc 10 §10.1: plain
+ * words, "about" for numbers, never "you are safe".
  */
 import { PRESET_IDS, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
 import { REPLAYS as SCENARIO_REPLAYS } from '../scenario/replays';
@@ -57,22 +57,68 @@ export interface ReplayOption {
 /** Historic fire days with bundled hourly weather (public/replays/): the scenario builder's catalogue (§11.4). */
 export const REPLAYS: ReplayOption[] = SCENARIO_REPLAYS.map((r) => ({ id: r.id, siteId: r.site, date: r.date, name: r.name, description: r.story }));
 
+/** One line of the Help tab's "How to use" list: a bold label and what to do. */
+export interface HelpStep {
+  label: string;
+  text: string;
+}
+
+/** The Help tab's "How to use" list, in the order shown (the dock's Help tab draws it; the words of the icons are in the glossary). */
+export const HELP_STEPS: readonly HelpStep[] = [
+  {
+    label: 'Tools',
+    text: 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything. Tap an icon to ask about it: the panel then starts with the icon as drawn on the map and its name, and the ring jumps onto it. Tap the ground beside an icon and there is no icon row. The words of the icons are in the Glossary, under Map icons.',
+  },
+  { label: 'Fire', text: 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.' },
+  { label: 'Play', text: 'press the blue Play button and pick a speed on the chip beside it; drag or tap the timeline to jump to any time.' },
+  {
+    label: 'If it runs slowly',
+    text: 'when the simulation cannot keep up with your playback speed, a small gauge button appears at the right end of the timeline. Tap it to see why and what you can do. It never changes the result.',
+  },
+  {
+    label: 'Moving around the map',
+    text: 'drag with one finger to slide the map along, like grabbing a paper map. Put two fingers on it and move them together to turn the view (sideways) and tilt it (up or down), or pinch them to zoom; you can pinch and turn in one movement. At eye level you cannot slide: one finger turns your head. While “Draw a line” (Fire) or “Paint” (Fuel) is on, one finger draws and the map stays still; switch back to tapping to move the map again. With a mouse: left button slides, right button turns, wheel zooms.',
+  },
+  { label: 'Map buttons', text: 'the round buttons on the side open the layers, change the camera (top, 3-D, eye level, zoom) and turn the map north up.' },
+  { label: 'Insights', text: 'new cards never pop up; a number on the Insights tab tells you how many are waiting.' },
+  { label: 'Fuel / Wind', text: 'tell the model what you see: more litter, a road, the wind here.' },
+  {
+    label: 'Layers',
+    text: 'choose the map type, switch roads, fire trails, homes, residential areas, names and trees on or off one by one, or colour the ground by one measurement (a heat map). After dark, Night lighting (under Map type) can light the ground, trees and roads so the terrain stays easy to read. Tap (i) on a row to learn what it shows and where the data come from. Your choices are remembered.',
+  },
+  { label: 'What if', text: 'switch physics on or off and compare.' },
+  { label: 'Where am I', text: '“Why here?” also names the nearest road and fire trail, how many homes are close and what the ground is like.' },
+  { label: 'Data', text: 'the line at the bottom of the map credits the data you see; tap it (or open the menu) for the size, source and date of every data set.' },
+  { label: 'How it works', text: 'the menu also has “How this simulation works”: what is 2-D and what is 3-D, how fine the grids are and how often they are updated.' },
+  {
+    label: 'Statistics',
+    text: 'the menu has “Simulation debug statistics”, directly under Settings: how fast the simulation computes on this phone, where the time goes, memory and what this phone can do. “Copy as text” copies the page to paste into a message. Nothing is sent anywhere.',
+  },
+  {
+    label: 'Settings',
+    text: 'open it from the menu. Performance and Picture quality set how much the phone computes and how much the 3-D picture draws; both apply to the next model you build.',
+  },
+  { label: 'Back', text: 'the Back button closes the open menu, panel or screen first; the simulation keeps running while you read.' },
+];
+
 export interface GlossaryEntry {
   term: string;
   short?: string;
   body: string;
+  /** A short list under the body, one line per name (the words of the map icons). */
+  items?: readonly { name: string; text: string }[];
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'ROS',
     short: 'Rate of spread',
-    body: 'How fast the fire edge moves, usually in km/h or m/h. The head (front) is fastest, the flanks slower, the back slowest. Walking uphill on a 20° track is only about 1.4 km/h — you cannot outrun a fire uphill.',
+    body: 'How fast the fire edge moves, usually in km/h or m/h. The head (front) is fastest, the flanks slower, the back slowest. Walking uphill on a 20° track is only about 1.4 km/h, so you cannot outrun a fire uphill.',
   },
   {
     term: 'FFDI',
     short: 'McArthur Forest Fire Danger Index',
-    body: 'A number from temperature, humidity, wind and drought (drought factor 0–10). About 12 = moderate, 24 = high, 50 = extreme, 100 = catastrophic. It assumes flat ground — slopes can make the same weather far worse.',
+    body: 'A number from temperature, humidity, wind and drought (drought factor 0–10). About 12 = moderate, 24 = high, 50 = extreme, 100 = catastrophic. It assumes flat ground, so slopes can make the same weather far worse.',
   },
   {
     term: 'Fire Danger Rating (AFDRS)',
@@ -106,7 +152,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     term: 'Inversion',
-    body: 'A layer where temperature increases with height, usually overnight. It traps smoke and holds fire activity down until the morning sun breaks it — then winds from above can reach the fire within minutes.',
+    body: 'A layer where temperature increases with height, usually overnight. It traps smoke and holds fire activity down until the morning sun breaks it. Then winds from above can reach the fire within minutes.',
   },
   {
     term: 'Thermal belt',
@@ -143,7 +189,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     term: 'LACES',
-    body: 'Lookouts, Awareness, Communications, Escape routes, Safety refuges — the Australian fireground safety system. A refuge needs clearance of at least 4× the flame height, and more on slopes or in wind.',
+    body: 'Lookouts, Awareness, Communications, Escape routes, Safety refuges: the Australian fireground safety system. A refuge needs clearance of at least 4× the flame height, and more on slopes or in wind.',
   },
   {
     term: 'Intensity',
@@ -169,6 +215,25 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Cool colours (blue, green) mean little and warm colours (orange, red) mean a lot, for example of slope, fuel hazard or how fast the fire runs. One heat map shows at a time; “Show on its own” hides the photo and the trees so the colours are easy to read.',
   },
   {
+    term: 'Night lighting',
+    short: 'How the map is lit after dark',
+    body: 'In Layers, under Map type. Realistic follows the clock: the ground goes dark at night, as it would, and a fire’s glow stands out. Brighter and Daylight light the ground, trees and roads after dark from a fixed sun in the north-west, so slopes, ridges and roads stay easy to read; Daylight is the brightest. They fade in around sunset, and by day nothing changes. The sky, the stars and the fire’s glow still follow the clock. It only changes how the map is drawn, never the fire. It applies at once, is remembered for next time, and “Reset layers” puts it back to Realistic.',
+  },
+  {
+    term: 'Map icons',
+    short: 'What the icons on the map mean',
+    body: 'Tap an icon with the Why here? tool (the one the map uses while no other tool is open) and the panel starts with a row that shows the icon as drawn on the map, its name and a line of detail. Tap the ground beside it and there is no such row, so you can tell what your tap took. A tap within about 22 px of an icon’s centre counts. When icons overlap, the nearest one wins and the row says how many more are there: zoom in to tell them apart.',
+    items: [
+      { name: 'You are here', text: 'A blue dot with a white ring: your phone’s position. It is not drawn at eye level.' },
+      { name: 'Ignition point, line or area', text: 'A red pin with a flame: a fire or a back-burn you marked, and the time it was lit. For a line or an area the pin is at its first point.' },
+      { name: 'Spot fire', text: 'An orange disc with a flame: a fire started by an ember, with when it started and how far ahead of the front it is, or a spot fire you marked.' },
+      { name: 'Danger', text: 'A red octagon with an exclamation mark: the most serious kind of insight card. The row gives the kind, for example Danger: Uphill run, and the card’s title.' },
+      { name: 'Watch out', text: 'An amber triangle with an exclamation mark: an insight card that asks for attention. The row gives the kind and the card’s title.' },
+      { name: 'Insight', text: 'A blue circle with an i: an insight card that explains something the fire is doing. The row gives the kind and the card’s title. The Insight markers layer draws all three.' },
+      { name: 'Home', text: 'A small house, or a dot when far away: one marker per address. A home can be tapped only while the Homes layer is on, and not when a hill hides it.' },
+    ],
+  },
+  {
     term: 'Data set',
     short: 'One source the model is built from',
     body: 'For example the ground height, the vegetation map or the weather forecast. The Data sets screen (main menu) lists each one with its size, who provides it, how fine it is, how old it is and where it came from.',
@@ -186,7 +251,22 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: '2-D and 3-D',
     short: 'What the model works out in each',
-    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one. “How this simulation works” in the main menu shows what your run is using.',
+    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one (the fire comes out a little different). Auto, the usual choice, uses the 3-D air unless a short timing test when the run starts finds this phone far too slow for it. “How this simulation works” in the main menu shows what your run is using and why.',
+  },
+  {
+    term: 'Picture quality',
+    short: 'How much the 3-D picture draws',
+    body: 'In Settings, under Simulation: Auto, Low, Medium or High. A higher choice draws more terrain and trees and needs more memory. Auto picks from this phone’s cores and memory, and picks High when Performance is set to Detail. The picture still lowers its own resolution if the frame rate stays under 30. If High is chosen on a phone that looks like a Low device, a line under the choice warns that it may run slowly or close the app. It applies to the next model you build, and it never changes the fire. The Simulation debug statistics say which one is in use and why.',
+  },
+  {
+    term: 'Why is it slow?',
+    short: 'The gauge button at the end of the timeline',
+    body: 'When you play faster than this phone can compute, playback has to wait for the simulation. A small gauge button then appears at the right end of the timeline, with a faint outline while the simulation is falling behind and a thicker ring once playback is waiting. It never opens by itself: tap it to see what you asked for, what this phone is computing, where the time goes and what you can do, such as playing at a slower speed or switching to the fast model from that moment (the fire from then on comes out a little different). It never changes the result: the same choices give the same fire at any speed, it only takes longer to appear. Playing slower is what helps. Pausing stops the simulation too. There is no button at Max speed, because Max asks for no particular speed. “All the numbers” on the sheet opens the Simulation debug statistics.',
+  },
+  {
+    term: 'Simulation debug statistics',
+    short: 'Speed, memory and what this phone can do',
+    body: 'A page of measurements for anyone who wants to see how the simulation is doing on this phone: how fast it computes and how that changed, where the time goes, memory, the picture’s frame rate and what this phone can do. Open the main menu and tap Simulation debug statistics, directly under Settings (it is also in Settings, under Data and transparency, and in Setup, where the phone facts work before any run). Tap “Copy as text” to copy the whole page, ready to paste into a message. Nothing is sent anywhere: the copy has no coordinates and no identifiers, and a place you chose yourself is only called a custom place. The numbers are measured on this phone and update every second while the page is open. Where a phone’s browser hides its model or Android version, the page says “Hidden by the WebView” instead of guessing.',
   },
   {
     term: 'Canopy height',

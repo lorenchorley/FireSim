@@ -203,3 +203,140 @@ test('gallery: the new screens in light, night and high contrast, for README.md'
   await expect(ds).toBeVisible();
   await shot(page, '25b-font-scale-200-datasets', ['light']);
 });
+
+// ───────────────────────────────────────── 0.3.0 ─────────────────────────────────────────
+// The pictures of the 0.3.0 features, in two tests of their own (each is run alone with `-g "gallery 0.3.0"`): the speed
+// sheet, Settings with Picture quality and Why here? with an icon row (a daytime run), and the night look, Realistic and
+// Daylight (a run that starts at night, so the clock on the screen and the light agree). Real engine, the bundled Katoomba
+// demo, offline.
+
+type W = {
+  __firesim: {
+    view: {
+      flyTo(x: number, y: number, d: number): void;
+      lookAt(x: number, y: number, distance: number, azimuthDeg?: number, tiltDeg?: number): void;
+      projectToScreen(x: number, y: number): [number, number] | null;
+      setNightLook?(look: string): void;
+      renderNow?(): void;
+    };
+    session: { state: { get(): { ignitions: { points: [number, number][] }[] } }; debugForcePace(level: string | null): void };
+  };
+};
+
+/** Setup to the sim: the bundled Katoomba, a weather preset, nothing from the network. */
+async function buildKatoomba(page: Page, preset: string): Promise<void> {
+  await page.goto('/?debug=1&theme=light');
+  await acceptNotice(page);
+  await page.getByTestId('site-katoomba').click();
+  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
+  await page.getByTestId(`preset-${preset}`).click();
+  const online = page.getByTestId('online').getByRole('switch');
+  if (await online.isChecked()) await page.getByTestId('online').click();
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
+}
+
+/** Mark a fire on the escarpment at the crosshair, then close the tool; returns the fire's own spot. */
+async function markEscarpmentFire(page: Page): Promise<[number, number]> {
+  await pickTool(page, 'fire');
+  await expect(page.getByTestId('fire-panel')).toBeVisible();
+  await page.evaluate(() => (window as unknown as W).__firesim.view.flyTo(-2170, 900, 2500));
+  await page.waitForTimeout(1500);
+  await page.getByTestId('use-crosshair').click();
+  await page.getByTestId('confirm-fire').click();
+  await expect(page.getByTestId('fire-panel')).toContainText('Marked');
+  await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
+  return page.evaluate(() => (window as unknown as W).__firesim.session.state.get().ignitions[0]!.points[0]!);
+}
+
+/** Play at a speed until the clock passes `untilS`, then pause: the engine has some minutes of fire behind it. */
+async function playTo(page: Page, speed: number, untilS: number): Promise<void> {
+  await setSpeed(page, speed);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).viewTime, { timeout: 300_000 }).toBeGreaterThan(untilS);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).playing).toBe(false);
+}
+
+/** The screen position of a ground point once the camera has settled (two reads 250 ms apart agree). */
+async function settledAt(page: Page, x: number, y: number): Promise<[number, number]> {
+  let last: [number, number] | null = null;
+  let found: [number, number] | null = null;
+  await expect
+    .poll(
+      async () => {
+        const p = await page.evaluate(([px, py]) => (window as unknown as W).__firesim.view.projectToScreen(px!, py!), [x, y]);
+        const ok = !!p && !!last && Math.hypot(p[0] - last[0], p[1] - last[1]) < 0.5;
+        if (ok) found = p;
+        last = p;
+        return ok;
+      },
+      { timeout: 20_000, intervals: [250] },
+    )
+    .toBe(true);
+  return found!;
+}
+
+test('gallery 0.3.0: the speed sheet, Why here? with an icon row and Settings with Picture quality', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba(page, 'hot-nw-sw-change');
+  const ignition = await markEscarpmentFire(page);
+  await playTo(page, 600, 900);
+
+  // ── The speed sheet: the debug hook shows the signal (60x asked for; the sheet's own fixture is the reading), the real
+  //    engine supplies where the time goes ──
+  await setSpeed(page, 60);
+  await page.evaluate(() => (window as unknown as W).__firesim.session.debugForcePace('waiting'));
+  await page.getByTestId('pace-btn').click();
+  await expect(page.getByTestId('pace-lead')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('pace-time')).toBeVisible({ timeout: 30_000 });
+  await animationsDone(page);
+  await shot(page, '28-pace-sheet', ['light', 'dark']);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('pace-sheet')).toBeHidden();
+  await page.evaluate(() => (window as unknown as W).__firesim.session.debugForcePace(null));
+  await expect(page.getByTestId('pace-btn')).toBeHidden();
+
+  // ── Why here? with an icon row: tap the ignition pin (it stands above its tip, so its picture is half its height up) ──
+  await page.evaluate(([x, y]) => (window as unknown as W).__firesim.view.flyTo(x!, y!, 2500), ignition);
+  const tip = await settledAt(page, ignition[0], ignition[1]);
+  await page.mouse.click(tip[0], tip[1] - 17);
+  const why = page.getByTestId('why-panel');
+  await expect(page.getByTestId('why-marker')).toContainText('Ignition point', { timeout: 30_000 });
+  await expect(why.locator('.narrative li').first()).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(600);
+  await shot(page, '29-why-here-icon', ['light']);
+  await why.getByRole('button', { name: 'Close' }).click();
+
+  // ── Settings: Performance and Picture quality, with their hints ──
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-settings').click();
+  await expect(page.getByTestId('settings')).toBeVisible();
+  await scrollTo(page, '#settings-simulation');
+  await expect(page.getByTestId('picture-quality')).toBeVisible();
+  await shot(page, '30-settings-picture-quality', ['light', 'dark']);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('settings')).toHaveCount(0);
+});
+
+test('gallery 0.3.0: the night look, Realistic and Daylight, on a run that starts at night', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba(page, 'calm-night-katabatic');
+  const ignition = await markEscarpmentFire(page);
+  await playTo(page, 600, 5400); // an hour and a half of fire: the glow is wider than its pin
+  // Close enough to see the glow and low enough to show a strip of sky: what changes is the ground; the sky and the fire stay as they were.
+  await page.evaluate(([x, y]) => (window as unknown as W).__firesim.view.lookAt(x!, y!, 2000, 200, 68), ignition);
+  await page.waitForTimeout(1500);
+  const look = async (l: 'realistic' | 'daylight'): Promise<void> => {
+    await page.evaluate((v) => {
+      const view = (window as unknown as W).__firesim.view;
+      view.setNightLook?.(v);
+      view.renderNow?.();
+    }, l);
+    await page.waitForTimeout(800);
+  };
+  await look('realistic');
+  await shot(page, '31-night-realistic', ['light']);
+  await look('daylight');
+  await shot(page, '31b-night-daylight', ['light']);
+});
