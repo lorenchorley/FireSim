@@ -426,9 +426,9 @@ describe('labels and values', () => {
     expect(rowOf(s, 'display', 'slow-frames').value).toBe('41 and 3');
     expect(rowOf(s, 'display', 'long-tasks').value).toBe('4 (612 ms in all, longest 310 ms)');
     expect(rowOf(s, 'display', 'draw-calls').value).toBe('212 and 910000');
-    expect(rowOf(s, 'display', 'pixel-ratio')).toMatchObject({ value: '1.50 and 1.75', note: 'The adaptive resolution has lowered it 1 time' });
+    expect(rowOf(s, 'display', 'pixel-ratio')).toMatchObject({ value: '1.50 and 1.75', note: "The cap is the tier's or the screen's own ratio, whichever is lower. The adaptive resolution has lowered the ratio 1 time" });
     expect(rowOf(s, 'display', 'picture-quality').value).toBe('Medium (guessed from this phone: 6 cores, 4 GB)');
-    expect(rowOf(s, 'display', 'picture-sets').value).toBe('terrain 320 x 320 samples, 32000 trees, 170k canopy triangles, pixel ratio cap 1.75, 5000 flame sites, 1500 smoke puffs, tree sway on by default');
+    expect(rowOf(s, 'display', 'picture-sets').value).toBe('terrain 320 x 320 samples, 32000 trees, 170k canopy triangles, pixel ratio cap for this tier 1.75, 5000 flame sites, 1500 smoke puffs, tree sway on by default');
     expect(rowOf(s, 'display', 'cliffs').value).toBe('5 % of the 10 m cells moved; sharpening 180 ms, rock mask 70 ms, mesh 95 ms, lighting 40 ms');
     expect(rowOf(s, 'display', 'cliffs').note).toBe('102400 vertices, 204000 triangles; rock detail in the shader: high');
   });

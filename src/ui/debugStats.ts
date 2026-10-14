@@ -529,14 +529,14 @@ function displayGroup(i: DebugStatsInput): StatGroup {
     rows.push(
       R('draw-calls', 'Draw calls and triangles', `${f.drawCalls} and ${f.triangles}`, undefined, true),
       R('textures', 'Textures held by the graphics card', String(f.textures), undefined, true),
-      R('pixel-ratio', 'Pixel ratio used and its cap', `${fix(f.pixelRatio, 2)} and ${fix(f.pixelRatioCap, 2)}`, `The adaptive resolution has lowered it ${f.dprDrops} ${f.dprDrops === 1 ? 'time' : 'times'}`, true),
+      R('pixel-ratio', 'Pixel ratio used and its cap', `${fix(f.pixelRatio, 2)} and ${fix(f.pixelRatioCap, 2)}`, `The cap is the tier's or the screen's own ratio, whichever is lower. The adaptive resolution has lowered the ratio ${f.dprDrops} ${f.dprDrops === 1 ? 'time' : 'times'}`, true),
       R('canvas', 'Drawing size', `${f.canvasW} x ${f.canvasH} pixels`, undefined, true),
       R('last-draw', 'Last frame drawn', ok(f.lastDrawAgeS) ? `${fix(f.lastDrawAgeS, f.lastDrawAgeS < 10 ? 1 : 0)}${NB}s ago` : NOT_YET, undefined, true),
     );
   if (q)
     rows.push(
       R('picture-quality', 'Picture quality in use', `${cap(q.tier)} (${pictureQualityWhy(q, i.qualityAsk)})`),
-      R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
+      R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap for this tier ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
     );
   else rows.push(R('picture-quality', 'Picture quality in use', i.run ? 'Not available (this view does not report a picture tier)' : NO_RUN));
   if (t)
