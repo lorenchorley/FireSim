@@ -357,7 +357,7 @@ describe('labels and values', () => {
 
   it('Memory: budget with its memory class, what is held, thinned frames estimated from the range, the heap', () => {
     expect(rowOf(s, 'memory', 'history-budget').value).toBe('100.7 MB');
-    expect(rowOf(s, 'memory', 'history-budget').note).toBe('6 % of the 4 GB memory class, between 48 and 160 MB');
+    expect(rowOf(s, 'memory', 'history-budget').note).toBe('6 % of the 4 GB memory class, between 48 and 160 MB; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly');
     expect(rowOf(s, 'memory', 'history-held').value).toBe('61.0 MB of 96.0 MB');
     expect(rowOf(s, 'memory', 'full-pictures').value).toBe('18');
     // 9600 s at a 60 s step = 161 frames expected, 150 kept: about 11 thinned away.

@@ -473,7 +473,7 @@ function memoryGroup(i: DebugStatsInput): StatGroup {
   const rows: StatRow[] = [
     R('engine', 'Engine memory (measured)', e?.memory ? bytes(e.memory.totalBytes) : e ? NOT_YET : NO_RUN, e?.memory ? `Measured at ${hms(e.memory.measuredAt)} of fire time; the largest parts: ${top.map((p) => `${p.name} ${bytes(p.bytes)}`).join(', ')}` : undefined, true),
     R('checkpoints', 'Checkpoints (rewind points)', e ? `${e.run.checkpoints} held, ${bytes(e.run.checkpointBytes)}` : NO_RUN, undefined, true),
-    R('history-budget', 'History budget (the time scrubber)', b ? bytes(b.bytes) : NOT_YET, b ? `6 % of the ${b.memoryGb !== null ? `${b.memoryGb} GB memory class` : 'memory class (3 GB assumed: this phone does not report it)'}, between 48 and 160 MB` : undefined),
+    R('history-budget', 'History budget (the time scrubber)', b ? bytes(b.bytes) : NOT_YET, b ? `6 % of the ${b.memoryGb !== null ? `${b.memoryGb} GB memory class` : 'memory class (3 GB assumed: this phone does not report it)'}, between 48 and 160 MB; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly` : undefined),
   ];
   if (s) {
     const expected = s.range && s.displayStepS > 0 ? Math.floor((s.range.end - s.range.start) / s.displayStepS) + 1 : 0;
