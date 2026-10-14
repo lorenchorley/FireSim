@@ -44,7 +44,18 @@ below come from `e2e/gallery.spec.ts` (the same build, in light, night and high-
 | ![A pasted Google Maps link](docs/screenshots/27-maps-link.png) | | | |
 | Setup: a pasted Google Maps link becomes a place, with its name and whether the app has data for it | | | |
 
-Every new picture also exists in `-dark` and `-high-contrast` versions in `docs/screenshots/`; the design system and the screens on
+The pictures of 0.3.0 are in the same spec: the debug statistics screen in the first test, the others in the three tests whose names
+start with "gallery 0.3.0" (the speed sheet, Why here? with an icon row and Settings, the night look, and an escarpment close-up).
+
+| | | | |
+|---|---|---|---|
+| ![Simulation debug statistics](docs/screenshots/13b-debug-stats.png) | ![The speed sheet](docs/screenshots/28-pace-sheet.png) | ![Why here? with an icon row](docs/screenshots/29-why-here-icon.png) | ![Settings with Picture quality](docs/screenshots/30-settings-picture-quality.png) |
+| Simulation debug statistics: the top of the page, with Copy as text and the groups collapsed | The speed sheet: why the simulation cannot keep up with the playback speed, and what to do | Why here? on an icon: the icon as the map draws it, its name and a line of detail | Settings: Performance and Picture quality, with their hints |
+| ![Night lighting, Realistic](docs/screenshots/31-night-realistic.png) | ![Night lighting, Daylight](docs/screenshots/31b-night-daylight.png) | ![An escarpment close-up](docs/screenshots/32-escarpment-cliffs.png) | |
+| Night lighting, Realistic: the real night | The same moment with Daylight: the ground lit from a fixed sun, the sky and the fire as before | An escarpment close-up on High: cliffs drawn as rock walls with ledges, joints, stains and scree (display only: every number uses the data as received) | |
+
+Most new pictures also exist in `-dark` and `-high-contrast` versions in `docs/screenshots/` (of the 0.3.0 pictures, the statistics
+screen has both, the speed sheet and Settings a `-dark` one, and the others are light only); the design system and the screens on
 their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 
 ## Features
@@ -79,6 +90,11 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 - **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume),
   vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
   turn, tilt and zoom it, all at once (see *Controls*).
+- **Cliffs**: in the 3-D view, cliff faces are drawn as near-vertical rock walls, lit from the sharpened ground, with ledges that catch
+  the light, vertical joints, dark bands under overhangs, water stains, scree below a face and bare pavement along the top, and no
+  trees on bare faces. It is always on and trimmed by Picture quality. It is a drawing only: the simulation, the slope overlay and
+  every number use the terrain as received, and the fire model's own rule for very steep ground is the one it had before (see
+  *Cliffs: what is drawn and what is simulated*).
 - **Layers**: one panel built from a catalogue of layers (`src/render/layerCatalog.ts`), each with a plain "what it shows, why it
   matters, where the data come from, how fine it is". *Map type* (aerial photo, terrain colours, plain), with **Night lighting**
   (Realistic, Brighter, Daylight: see *Night lighting* below); *Map details*, a switch for
@@ -227,7 +243,7 @@ report, not from text:
 
 | Component | Dimensions | Resolution (a 6 km Katoomba run, as an example) | Time step |
 |---|---|---|---|
-| Terrain | 2.5-D: one height per point | 30 m fire cells (200 × 200); a 10 m grid for the view and the air (the demo sites' 5 m model resampled; away from them it is interpolated from the 30 m SRTM heights, so smoother but not finer) | fixed |
+| Terrain | 2.5-D: one height per point | 30 m fire cells (200 × 200); a 10 m grid for the view and the air (the demo sites' 5 m model resampled; away from them it is interpolated from the 30 m SRTM heights, so smoother but not finer). The 3-D view draws cliff faces steeper than this grid; the simulation and every number use it as received | fixed |
 | Fuel | a vertical **column of layers per cell** (litter, near-surface, shrubs, bark, canopy), not 3-D blocks | the fire cells | fixed, except fuel edits and burning |
 | Weather forcing | one time series at one point plus an upper-air profile, applied to the whole area | records about every hour, linear in between | - |
 | Litter moisture | 2-D, one value per cell | the fire cells | every 10 min of fire time |
@@ -236,7 +252,7 @@ report, not from text:
 | Fire and air feedback | two-way in 3-D; a 2-D indraft estimate in the fast tier | the air grid / the fire grid coarsened ×2 | every step |
 | Embers | **3-D** Lagrangian particles (up to the performance profile's maximum) | individual tracked particles in 5 bark and fuel classes | every outer step |
 | Smoke | 3-D tracer in the 3-D tiers; only a drawn column in the fast tier | the air grid | every air step |
-| Display | 3-D rendering; **trees are decorative** (placed from canopy cover and height), roads, trails, homes and names are map data | - | a picture every display step |
+| Display | 3-D rendering; **trees are decorative** (placed from canopy cover and height), **cliff faces are a drawing** (steeper than the data, with rock detail), roads, trails, homes and names are map data | - | a picture every display step |
 
 The page has seven groups (the first open, the rest collapsed): *At a glance* (one card per component with dimensions, resolution,
 time step, method in plain words, an evidence badge and the spec section), *What it can and cannot resolve* (derived from the
@@ -270,8 +286,9 @@ perturbed clock, in chunks of several sizes and across a rewind, and compares ev
 leaves out the first 10 (the JIT warm-up, which inflates the first readings) and takes the **median** of the other 20
 (`autoTuneDecision`, `src/sim/engineInfo.ts`; constants in `SIM_PARAMS`, `src/sim/params.ts`). It predicts the whole run as
 1.4 x that step x the number of 10 s steps and keeps the **detailed 3-D air** unless the prediction is over a limit: 10 minutes of
-computing for 6 hours of fire, scaled by the run length, never under a minute. For the 1 to 12 hour runs Setup offers, the limit
-is a step of about 198 ms. Over it, Auto picks the fast surface-wind model and says why with the numbers. This is the only place
+computing for 6 hours of fire, scaled by the run length, never under a minute. For every run of 36 minutes or longer (Setup offers
+1 to 12 hours) the limit is a step of 198.4 ms; only a shorter run, which Setup does not offer, is held up by the one-minute floor
+(`428571 / duration in s` ms, so 238 ms at 30 minutes). Over it, Auto picks the fast surface-wind model and says why with the numbers. This is the only place
 the wall clock reaches the engine: the tier never changes by itself afterwards (a test pins it, with a clock that turns very slow
 mid-run), only you change it (Settings, or Layers, *Use the 3-D atmosphere*). Saver always runs the fast model; Detail runs the
 high 3-D tier. The report keeps both the warm-up mean and the steady median (`EngineInfo.autoTune`).
@@ -288,16 +305,20 @@ least 90 % of the time, for 10 s) is a faint outline. *Waiting* (the clock held 
 10 s, for 6 s in a row) is a 3 px ring and a 44 px run under the rail that ends at the thumb, drawn in the `--watch-ink` colour. It is
 never colour alone: the glyph, the ring's thickness and the button's name carry the meaning. Nothing pops up and nothing vibrates; a
 screen reader hears one polite line when playback starts to wait (at most every 2 minutes). The button is left out while a jump
-computes, after a play, seek or speed change (15 s of grace), while paused, with the app in the background, during the 3-D spin-up,
+computes, after a play, seek or speed change (15 s of grace, then the 6 s or 10 s hold: the button comes about 22 to 27 s after Play, and
+about 33 s if Play was pressed during the 3-D spin-up, as measured on the real engine), while paused, with the app in the background, during the 3-D spin-up,
 when replaying earlier results, after a rewind or an edit, and at Max speed (which asks for nothing). The old "Computing" badge is
 not shown while the signal is.
 
 **The sheet.** Tapping the button opens *Running slower than playback* (a bottom sheet; Back and Escape close it): what you asked
 for against what this phone is computing right now, *Does it change the result? No*, where the time goes in the last 10 s (the 3-D
 air, fire spread, embers, everything else), the likely reasons (each only when the numbers support it), two actions (*Play at N x*,
-the nearest preset at or below what the phone achieves; *Use the fast model from here*, which says the fire from that moment comes
-out a little different, and is hidden when the model is already fast), and *All the numbers*. It says *Pausing stops the simulation
-too. Playing slower is what lets it keep up.* The sheet is a separate chunk, loaded on the first tap.
+the nearest preset at or below what the phone achieves, which also becomes the default speed, as picking it in the speed sheet does;
+*Use the fast model from here*, which restores the last checkpoint (one per 30 minutes of fire) and computes again, so its note says
+*The fire is computed again from the last checkpoint, up to half an hour of fire ago, and comes out a little different*, and which is
+hidden when the model is already fast), and *All the numbers*. It says *Pausing stops the simulation too. Playing slower is what lets
+it keep up.* (a pause stops the worker, so it does not let the simulation run ahead). The sheet's *Fire spread* row includes the
+coupling with the air. The sheet is a separate chunk, loaded on the first tap.
 
 ## Simulation debug statistics
 
@@ -315,7 +336,9 @@ other place is "a custom place"; error lines are stripped of links and long deci
 model, Android version and WebView come from User-Agent Client Hints where the WebView has them, else from the user agent, whose raw
 text is always shown; a reduced user agent says "Hidden by the WebView" instead of a guess (`src/ui/deviceInfo.ts`, web APIs only,
 no native plugin). The frame numbers are the last seconds before the screen opened, because the 3-D view stops drawing behind a
-full-screen screen; a slow frame is one over 34 ms (the 30 fps playback cap draws 33.3 ms frames).
+full-screen screen; a slow frame is one over 34 ms (the 30 fps playback cap draws 33.3 ms frames, which assumes a 60 Hz panel). The *Display* group also has one row for the cliff
+drawing, once per scenario (see *Cliffs: what is drawn and what is simulated*). Some things are not counted and say so: the ember
+totals read "Not counted by this engine", and where time goes per module the last 10 seconds show shares, not milliseconds.
 
 What it costs the engine: the worker side (`src/sim/perfStats.ts`) is counters, running aggregates and rings of at most 128 numbers,
 with no loop over cells and no per-step log; `src/sim/perf.test.ts` and `perfStats.test.ts` hold it to under 1 % of a step, under
@@ -334,8 +357,10 @@ lighting unchanged (a test).
 
 **Picture quality** (*Settings, Simulation, Picture quality*): Auto, Low, Medium, High, for the next model you build. Auto picks
 from the phone's cores and memory (High at 8 or more cores and 6 GB or more; Low at 4 or fewer cores or 3 GB or less; otherwise
-Medium; a value the phone does not report counts as 4 cores and 4 GB), except that the Detail performance profile asks for High.
-A tier sets the terrain mesh, the trees, the canopy triangles, the pixel-ratio cap and the flame and smoke caps:
+Medium; a value the phone does not report counts as 4 cores and 4 GB; the browser's memory figure is a coarse bucket (0.25, 0.5, 1, 2, 4
+or 8 GB), so in practice High needs a phone that reports the 8 GB bucket), except that the Detail performance profile asks for High.
+A tier sets the terrain mesh, the trees, the canopy triangles, the pixel-ratio cap, the flame and smoke caps and how much rock detail the
+cliffs get (see *Cliffs*, next):
 
 | | Low | Medium | High |
 |---|---|---|---|
@@ -345,11 +370,84 @@ A tier sets the terrain mesh, the trees, the canopy triangles, the pixel-ratio c
 | Pixel-ratio cap | 1.25 | 1.75 | 2 |
 | Flame sites / smoke puffs | 2,500 / 800 | 5,000 / 1,500 | 5,000 / 1,500 |
 | Trees sway by default | off | on | on |
+| Rock detail on cliffs (kinds drawn, of six) | 3 | 4 | 6 |
 
 The picture still lowers its own resolution while the frame rate stays under 30, whatever the tier. If High is chosen (or asked for by
 Detail) on a phone the guess calls Low, Settings says so in a plain line and blocks nothing. The statistics screen shows the tier in
 use, why, and what it sets. The memory estimate made while a model is built stays device-independent (it assumes Medium); the Data
 sets screen re-sizes it for the tier actually running.
+
+## Cliffs: what is drawn and what is simulated
+
+**Drawn: a display-only look, always on.** With a 10 m terrain (every scenario the real builder makes has one, even where it is only
+interpolated from 30 m heights; the demo engine's 2-D map has none and keeps the old drawing) the 3-D view draws steep ground as rock walls. There is no setting and no
+data-faithful mode, and every picture-quality tier has it: the tier only trims the detail. The ground height data is a stereo-derived
+model in which a face reads as a steep slope, and the old mesh blurred it to a ramp, so it was drawn as a rounded curtain. The new
+drawing is one pipeline (`src/render/cliffDrawing.ts`, pure, run once per scenario when the view is set up):
+
+1. **Sharpen** (`cliffSharpen.ts`). Cells are weighted by `smoothstep(48, 62)` of their 3 x 3 Horn slope, in degrees (the weight is
+   spread to the eight neighbours at 0.6 so the shoulders move too). Each weighted cell moves towards the nearer of the lowest and
+   the highest height found up to 3 cells (30 m) either way along its own fall line, so a straight ramp and all ground under
+   48 degrees are left exactly as they were and a gully stays a slot. A despike pass then pulls any cell that stands 10 m or more above
+   or below all eight neighbours back to just past them. On the whole bundled 9 km Katoomba terrain 3.9 % of the 10 m cells move (6.1 % at Tomah),
+   by 19 m on average at Katoomba and by up to about 120 m at Kanangra and Grose, where a face collapses to a step (measured with the
+   shipped function).
+2. **A mesh that keeps the edge** (`terrainMesh.ts`, `decimateTerrain`). Under 40 degrees it returns exactly what the old
+   `decimateGrid` returned; where a vertex's footprint holds ground steeper than that it blends to the unblurred sample (fully at
+   55 degrees), so a step stays a step between neighbouring vertices. The finished mesh is despiked (10 m at High and Medium, 18 m at
+   Low). For a 9 km area the mesh cells are 22.5, 28.2 and 40.3 m at High, Medium and Low (400, 320 and 224 samples a side).
+3. **Light from the 10 m ground.** The shader's normals come from a Horn-gradient texture of the sharpened 10 m terrain (RG16F; the
+   fire grid's gradient stays as the fallback when there is no 10 m terrain), and the hillshade, sky-view factor and cast shadows
+   are computed from the sharpened mesh, so cliff shadows sharpen too. The slope that decides banded rock against the aerial photo is
+   the **mesh's own** (a per-vertex attribute, `aSlope`, one `varying`), not the 10 m one: the two disagree by up to a vertex
+   spacing and the photo-against-rock switch would draw that disagreement as spikes along the lip and the foot.
+4. **A rock mask** (`rockMask.ts`; an RGBA8 raster on the 10 m grid, sampled in the shader as `uRock`): R is bare rock, from the mesh
+   slope with a band lowered by tier (48 to 58, 45 to 55 and 42 to 52 degrees at High, Medium and Low, because a coarser mesh
+   reads a face gentler) and the canopy cover, which fades out on walls (the canopy raster is a top-down 20 m product and cannot see a
+   face); G is scree (a 22 to 40 degree slope with rock within 80 m uphill); B is lip pavement (under 15 degrees with rock within
+   40 m). A one-byte copy of R stays on the main thread for tree placement.
+5. **Rock detail in the terrain shader**, only where R is above 0.25 (G and B above 0.05), faded by the pixel-size terms the strata
+   already use so nothing shimmers in wide views: **ledges** (a stepped profile that tilts the normal as well as the colour),
+   **vertical joints**, **overhang bands** (darker ambient under each ledge), **water stains**, **scree** and **lip pavement**. High
+   draws all six, Medium four (no joints, no overhang bands), Low three (ledges, stains, scree). Under the Plain map type or a solo heat
+   map only the normal is perturbed, at 40 % of its strength, so an overlay reads on the shape of the land.
+6. **Trees stay off bare faces.** A tree that would stand where R is 0.5 or more is drawn again within its cell up to three times and
+   then left out; between 0.2 and 0.5 the trees thin out to none.
+7. **What follows the drawn ground follows the drawing**: picking, the camera clamp, flames, smoke bases, labels and roads are
+   placed on the sharpened mesh, so they sit on what you see. The fire, fuel and aerial photo textures stay on their own coordinates:
+   only heights change, so nothing is shifted sideways. Vertical exaggeration multiplies the sharpened heights as before, and night
+   lighting shades rock like any ground.
+
+**Not simulated: every number uses the terrain as received** (ground rule 10 of the plan: a drawing may be stylised, a number may
+not). The simulation, the slope and elevation overlays, the explanation cards and the Data sets statistics never see the sharpened
+ground, and the Sunlight (insolation) heat map, which is computed in the view, is computed from the 10 m terrain as received on the
+old mesh, not from the drawing. The Data sets Terrain card says so: *Cliff faces are drawn steeper than the data so they read as
+rock walls. Fire, wind and slope numbers use the data as received.* Help has an entry, *Cliffs and rock*.
+
+**What the fire model does with steep ground (unchanged in 0.3.0).** It does not read the drawing. A fire cell is a wall (the
+surface fire cannot enter it) if its landform is Cliff, that is a slope over 45 degrees on the fire grid, whose cells are 20 or 30 m, or
+if at least 30 % of its 10 m sub-cells are steeper than 60 degrees, or if the 90th-percentile sub-cell slope is 60 degrees or more
+(`computeTerrainFeatures`, `src/fire/terrainFeatures.ts`); fuel inference calls ground over 55 degrees or half sub-cell cliff
+non-fuel as well. Embers do not read the wall mask and still cross it. This rule makes no difference between bare rock and steep
+forest, and it is not the same set of ground as the drawn walls: the drawing steepens from 48 degrees on the 10 m slope, the model's
+wall follows the mean over a fire cell. So fire can cross ground that is drawn as a wall, and a steep forested slope can be a wall in
+the model without being drawn as rock. Making a wall mean bare rock, with part-rock cells that slow the fire and vegetated chutes
+that stay open, is the plan's second half (H-sim); it is **not in 0.3.0** and is planned for 0.3.1, so results near cliffs are the same
+as in 0.2.2.
+
+**Limits.** A face under about 60 m high is below what a 22 to 40 m mesh can show and still reads as a steep bank; the lighting and
+the rock detail carry it. The despike also clips real single-vertex summits and pits that stand 10 m or more above or below all eight
+neighbours: on the High mesh a vertex moves by up to 26.6 m at Katoomba and 42.5 m at Grose (the highest point of each of the four steep sites is within about half a metre of the data's, as it was with the old
+mesh). No phone has been measured: see *Known limitations*.
+
+**What it costs.** The pipeline ran in 150 to 450 ms in node for Katoomba and Tomah on the three tiers (a loaded 4-core machine; the
+plan's guess for a phone is 2.7 to 5 times that, not measured). The triangle count of the ground does not change with it (a mesh of
+400 x 400 samples has 318,402 at High, 203,522 at Medium with 320 and 99,458 at Low with 224) and the draw calls do not change
+(`e2e/cliffs.spec.ts`). The terrain shader gains one texture (`uRock`, the 11th of 16 fragment units), the `aSlope` attribute and the
+defines `CLIFF`, `RD_LEDGES`, `RD_OVERHANG`, `RD_JOINTS`, `RD_STAINS`, `RD_SCREE` and `RD_PAVEMENT`. Memory, as three rows of the Data
+sets screen's working memory: for a 9 km area (810,000 cells of 10 m) 0.81 MB on the screen thread (the rock copy) and 7.1 MB on the
+graphics side (the lighting gradient 3.2 MB, the rock mask 3.2 MB and the mesh's slope 0.64 MB at High), plus about 13 MB held while
+the scenario is set up and then released. The render chunk grew by about 7.5 kB gzipped (+19 kB raw) and the entry by about 0.4 kB.
 
 ## Data sources and licences
 
@@ -525,6 +623,11 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   draw-call and triangle budgets.
 - `e2e/icon-tap.spec.ts`: tapping an icon: the Why here? row shows the icon and its name and asks about the icon's own spot; a tap
   60 px away is a plain ground tap; the other tools are unchanged; first on the 2-D map, then on the real engine.
+- `e2e/cliffs.spec.ts`: the cliff drawing on the real 3-D view (Katoomba, High and Low): the drawn ground near the escarpment is steeper than
+  without the 10 m terrain, edge contrast on the cliff pixels is higher than without the sharpening (a weak, necessary check: a serrated
+  drawing passes it, so the pictures matter more), no near-black or all-zero pixel, the same draw calls with and without it and the
+  triangles inside the budget; the Data sets Terrain card carries the disclosure and the statistics screen shows its row. It attaches
+  the pictures to the report (and writes them to `CLIFFS_SHOTS` when that is set).
 - `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
@@ -723,6 +826,14 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   button handling (`MainActivity.java`), Android's 200 % font scale and the high-contrast look have not been checked on a physical
   phone. The 200 % font scale is emulated by doubling the type tokens, which is what the WebView's text zoom does to CSS pixels;
   at 400 % the Setup screen no longer fits.
+- Cliffs are a drawing in 0.3.0 (see *Cliffs: what is drawn and what is simulated*): the fire model still treats ground it calls Cliff
+  (a slope over 45 degrees on its 20 or 30 m cells, or many steep 10 m sub-cells) as a wall the surface fire cannot enter, whether it is
+  bare rock or forested, and does not read the drawing; rock in the fire model is planned for 0.3.1. A face under about 60 m high still
+  reads as a steep bank. The drawing was judged on still frames in software GL, by one reviewer, and its timings were measured in node and
+  in Chromium on a desktop, never on a phone, so how long it takes on a phone and how its detail looks there are open.
+- Before the first Play of a run, the model card and the statistics can still say that Auto is timing the phone: the first picture is
+  sent before the 3-D spin-up that does the timing, so the tier line catches up with the first snapshot after Play. The decision itself
+  is not affected.
 - Picture quality: the screenshots are taken in software GL, with DejaVu / Liberation Sans standing in for Roboto (no 500 weight).
 - `docs/screenshots/` are regenerated by `npx playwright test` (the numbered pictures) and `node scripts/app-screenshots.mjs` against
   a dev server (`docs/screenshots/design/`).

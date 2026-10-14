@@ -722,7 +722,8 @@ checks for them: the Night lighting row is left out, and the statistics' display
   (`computeTerrainFeatures`), whether it is rock or forest; fuel inference calls ground over 55 degrees or half sub-cell cliff non-fuel;
   and the ember model has no reference to walls, so embers cross them. Rock in the model (the rock fraction, a wall that means bare
   rock, part-rock cells that slow the fire, vegetated chutes that stay open, the card wording; plan 9d.4, H-sim) is **not in 0.3.0**
-  (decision D17) and ships as 0.3.1.
+  (decision D17) and ships as 0.3.1. The optional contract fields it will use (`Terrain.rockFraction`, `TerrainFeatures.rock` and `chute`)
+  are declared, and nothing in 0.3.0 sets or reads them.
 
   **Measurements and known limits.** The despike also clips real single-vertex summits and pits: on the High mesh a vertex moves by up to
   26.6 m at Katoomba, 22.9 m at Kanangra, 42.5 m at Grose and 12.9 m at Tomah, and each site's highest point stays within about half a
