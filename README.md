@@ -66,7 +66,7 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   dew, rain), Vesta Mk2 / CSIRO grassland / heath / pine models, a level-set front with directional slope, mountain
   phenomena (eruptive slopes and chimneys, vorticity-driven lateral spread, junction zones, rolling debris), a 3-D
   terrain-following atmosphere (slope winds, cold-air drainage, thermal belts, the fire's own indraft and plume) or a
-  fast surface-wind tier (the Saver profile, or when a phone is far too slow for the 3-D air), and Lagrangian embers with
+  fast surface-wind tier (the Saver profile, or when Auto finds that the 3-D air would take far too long on the phone), and Lagrangian embers with
   spot-fire ignition. The app says when the simulation cannot keep up with the speed you chose (see *Speed and the
   timeline signal*); the result never depends on speed.
 - **Explanations**: insight cards as the fire does something worth learning (upslope run, ridge-crest slowdown,
@@ -324,8 +324,8 @@ retained and at most 1.9 KB serialised).
 
 ## Night lighting and picture quality
 
-**Night lighting** (*Layers, Map type, Night lighting*): *Realistic* (the default) follows the clock, so the night is as dark as it
-is on the ground, which is a deliberate training point (judging a fire at night). *Brighter* and *Daylight* light the ground, the
+**Night lighting** (*Layers, Map type, Night lighting*): *Realistic* (the default) follows the clock, so the night is dark, on
+purpose: judging a fire at night is when trainees most often misjudge it. *Brighter* and *Daylight* light the ground, the
 trees, roads and labels after dark from a fixed north-west sun 30 degrees up (so slopes show their shape; Daylight is not noon),
 fading in over dusk from a real sun at +8 degrees to -2 degrees. By day all three are the same picture. The sky, stars, the fire's
 glow, lit windows, the smoke and the fog keep the real clock. It applies at once (no rebuild, no pause), is remembered between runs,
