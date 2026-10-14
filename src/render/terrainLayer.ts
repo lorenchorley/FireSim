@@ -4,6 +4,9 @@
  *   base colour   natural fuel palette (per fuel cell) with fine procedural detail, or the aerial imagery
  *   lighting      Horn-gradient normals from the FULL-resolution DEM (texture), real sun direction with terrain cast
  *                 shadows, sky-view ambient occlusion and a multi-directional hillshade relief cue, fire glow light
+ *   rock          with a 10 m terrain (the cliff drawing, cliffDrawing.ts): the normals come from its sharpened gradient, the
+ *                 slope that picks banded rock or the photo from the mesh itself, and a rock mask adds ledges, joints,
+ *                 stains, scree and lip pavement
  *   fire          burnt ground (char + ash), flaming band and front line from the arrival-time texture and the
  *                 interpolated display time, still-burning cells from the burn-state texture
  *   overlays      one R32F value texture + a LUT (legends.ts), isochrones every N minutes with fwidth-crisp lines
@@ -15,11 +18,13 @@
 import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Terrain } from '../core/types';
+import { ROCK_DETAIL_PLAIN, cliffDefines, type DetailTier } from './cliffDrawing';
 import { gridTransform } from './coords';
 import { groundColours, type OverlayField, type RenderGrid } from './fields';
 import { FOG, GRID, NOISE, TONEMAP } from './glsl';
 import type { OverlayScale } from './legends';
-import { dummyFloat, dummyRgba, halfRgTexture, lutTexture, r8Texture, refillFloat, refillRgba, rgbaTexture } from './textures';
+import type { RockMask } from './rockMask';
+import { dummyFloat, dummyRgba, halfRgTexture, halfRgTexturePair, lutTexture, r8Texture, refillFloat, refillRgba, rgbaTexture } from './textures';
 import type { SceneImagery } from './api';
 
 export const MAX_SPOTS = 16;
@@ -30,13 +35,131 @@ uniform float uVex;
 varying vec2 vLocal;
 varying float vZ;
 varying float vDist;
+#ifdef CLIFF
+attribute float aSlope; // gradient magnitude of the render mesh at the vertex
+varying float vSlope;
+#endif
 void main() {
   vec3 w = vec3(position.x, position.z * uVex, -position.y);
   vLocal = position.xy;
   vZ = position.z;
+#ifdef CLIFF
+  vSlope = aSlope;
+#endif
   vec4 mv = viewMatrix * vec4(w, 1.0);
   vDist = -mv.z;
   gl_Position = projectionMatrix * mv;
+}
+`;
+
+
+/**
+ * Rock detail (plan 9d.3.5), compiled in only when the layer has a rock mask (`#ifdef CLIFF`): `rk` is the mask (R bare steep rock, G scree,
+ * B lip pavement), evaluated only where R is above 0.25 (G, B where they are above 0.05) and faded by the terms the strata already use
+ * (`fwidth(vZ)` for the bands, `uPixelMetres x vDist` for everything finer), each fading to its own mean so the ground does not change
+ * brightness as the view widens. The tier picks the effects with RD_* defines (cliffDrawing.ts `rockDetailFlags`); under the Plain map
+ * type and a solo heat map only the normal is perturbed, at `uRockPlain` of its strength, so an overlay reads on the shape of the land.
+ */
+const ROCK_DETAIL = /* glsl */ `
+// Sandstone in linear light: the palette's ROCK (#a4927a) and ROCK_DARK (#6d5f50).
+const vec3 ROCK_LIT = vec3(0.371, 0.287, 0.195);
+const vec3 ROCK_DRK = vec3(0.153, 0.115, 0.080);
+
+// Value noise whose lattice index wraps, so a fine pattern keeps its precision 4 km from the origin (fsNoise's hash does not).
+float rkHash(vec2 i) {
+  vec2 q = fract(mod(i, 127.0) * vec2(0.1031, 0.1030));
+  q += dot(q, q.yx + 33.33);
+  return fract((q.x + q.y) * q.x);
+}
+float rkNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(rkHash(i), rkHash(i + vec2(1.0, 0.0)), u.x), mix(rkHash(i + vec2(0.0, 1.0)), rkHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+// One ledge per period of the height phase: 1 on a thin shelf, 0 on the riser below it, and 0 at both ends of the period.
+float rkShelf(float f) { return smoothstep(0.78, 0.9, f) * (1.0 - smoothstep(0.94, 1.0, f)); }
+
+void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strataV, float fine, vec3 img, inout vec3 n, inout vec3 base, inout float ao) {
+  float plain = step(0.5, uPlainBase);
+  float colour = 1.0 - plain;
+  float nrm = mix(1.0, uRockPlain, plain);
+  float pxm = uPixelMetres * vDist; // metres across a pixel here
+  float wr = smoothstep(0.25, 0.7, rk.r);
+  if (wr > 0.0) {
+    // Sandstone, tinted by the photo when it is shown, banded like the strata.
+    vec3 sand = mix(ROCK_DRK, ROCK_LIT, 0.4 + 0.6 * fsNoise(p / 30.0 + 3.1));
+    vec3 face = mix(sand, img, 0.25 * step(0.5, uUseImagery)) * (0.9 + strataV + 0.12 * (fine - 0.5));
+    base = mix(base, face, wr * 0.85 * colour);
+#ifdef RD_LEDGES
+    // (a) Ledges on the strata's own bands (7 m and 25 m): a thin shelf at the top of each, broken up along the face, that tilts the
+    // normal up so it catches the sun, and lightens the colour.
+    float f7 = 1.0 - smoothstep(0.8, 2.5, zw);
+    float f25 = 1.0 - smoothstep(3.0, 9.0, zw);
+    float ph7 = vZ * 0.1432 + strataN * 0.1592;
+    float ph25 = vZ * 0.0398 + strataN * 0.0796;
+    float i7 = floor(ph7);
+    float i25 = floor(ph25);
+    float brk7 = smoothstep(0.30, 0.55, rkNoise(p / 16.0 + vec2(i7 * 5.31, i7 * 1.77)));
+    float brk25 = smoothstep(0.25, 0.5, rkNoise(p / 30.0 + vec2(i25 * 3.77, i25 * 8.1)));
+    float ledge = max(0.8 * rkShelf(ph7 - i7) * brk7 * f7, rkShelf(ph25 - i25) * brk25 * f25);
+    n = normalize(n + vec3(0.0, 1.1 * ledge * nrm * wr, 0.0));
+    base *= 1.0 + 0.3 * ledge * colour;
+#endif
+#ifdef RD_OVERHANG
+    // (c) Overhang bands: darker ambient light just under each 7 m shelf.
+    float t7 = ph7 - i7;
+    float under = smoothstep(0.45, 0.72, t7) * (1.0 - smoothstep(0.72, 0.8, t7)) * brk7 * f7 * wr;
+    ao *= 1.0 - 0.5 * under;
+    base *= 1.0 - 0.2 * under * colour;
+#endif
+#ifdef RD_JOINTS
+    // (b) Vertical joints: thin dark cracks that depend on the horizontal position only, so a crack runs straight up the face.
+    float jf = 1.0 - smoothstep(0.08, 0.4, pxm);
+    if (jf > 0.0) {
+      float jc = 1.0 - smoothstep(0.015, 0.045, abs(rkNoise(p / 3.2 + 11.7) - 0.5));
+      jc *= smoothstep(0.3, 0.6, rkNoise(p / 11.0 + vec2(vZ / 30.0, 4.4))); // a crack runs part of the height
+      base *= 1.0 - 0.5 * jc * jf * wr * colour;
+    }
+#endif
+#ifdef RD_STAINS
+    // (d) Water stains: noise that changes slowly with height, so it streaks down the face; dark manganese and ochre.
+    float sf = 1.0 - smoothstep(2.0, 9.0, pxm);
+    float sn = 0.65 * rkNoise(p / 7.0 + vec2(vZ / 60.0, vZ / 110.0)) + 0.35 * rkNoise(p / 2.7 + vec2(vZ / 25.0, 7.7));
+    float dark = mix(0.25, smoothstep(0.5, 0.72, sn), sf);
+    float och = mix(0.4, smoothstep(0.38, 0.58, rkNoise(p / 13.0 + vec2(vZ / 90.0, 31.0))), sf);
+    vec3 stain = mix(vec3(1.0), vec3(0.62, 0.56, 0.5), dark) * mix(vec3(1.0), vec3(1.07, 0.94, 0.8), 0.6 * och);
+    base *= mix(vec3(1.0), stain, wr * colour);
+#endif
+    // Fine grain in the plane of the face (the ground noise depends on the position only, and would just streak down a wall).
+    float g1 = 1.0 - smoothstep(0.1, 0.45, pxm);
+    if (g1 > 0.0) {
+      vec2 tg = vec2(grad.y, -grad.x);
+      float tl = length(tg);
+      tg = tl > 1e-3 ? tg / tl : vec2(1.0, 0.0);
+      vec2 fc = vec2(dot(p, tg), vZ);
+      float g2 = 1.0 - smoothstep(0.03, 0.15, pxm);
+      float grain = 0.6 * mix(0.5, rkNoise(fc / 0.9), g1) + 0.4 * mix(0.5, rkNoise(fc / 0.3 + 5.0), g2);
+      base *= 1.0 + 0.3 * (grain - 0.5) * wr * colour;
+    }
+  }
+#ifdef RD_SCREE
+  if (rk.g > 0.05) {
+    // (e) Scree below a face: coarse grey-brown speckle; the fragments fade to their mean once a pixel spans several of them.
+    float gf = 1.0 - smoothstep(1.5, 7.0, pxm);
+    float sp = mix(0.5, 0.6 * rkNoise(p / 1.3) + 0.4 * rkNoise(p / 0.45 + 9.0), gf);
+    base = mix(base, mix(vec3(0.16, 0.14, 0.12), vec3(0.42, 0.37, 0.31), sp), rk.g * 0.4 * colour);
+  }
+#endif
+#ifdef RD_PAVEMENT
+  if (rk.b > 0.05) {
+    // (f) Lip pavement: pale rock patches with a heath tint between them.
+    float pf = 1.0 - smoothstep(3.0, 12.0, pxm);
+    float pat = smoothstep(0.42, 0.58, mix(0.5, 0.65 * rkNoise(p / 6.0 + 5.3) + 0.35 * rkNoise(p / 2.2 + 1.9), pf));
+    vec3 pale = mix(ROCK_LIT, vec3(0.55, 0.5, 0.44), 0.35);
+    base = mix(base, mix(base * vec3(0.9, 0.84, 0.6), pale, pat), rk.b * 0.5 * colour);
+  }
+#endif
 }
 `;
 
@@ -69,6 +192,11 @@ uniform float uPixelMetres;
 varying vec2 vLocal;
 varying float vZ;
 varying float vDist;
+#ifdef CLIFF
+uniform sampler2D uRock;     uniform vec4 uRockXf; uniform float uRockPlain;
+varying float vSlope;
+${ROCK_DETAIL}
+#endif
 
 // Arrival time with manual bilinear filtering; "not burnt" texels take the latest neighbouring arrival + 10 min so
 // the burnt edge stays a smooth curve even next to non-flammable cells.
@@ -146,11 +274,20 @@ void main() {
   vec3 n = normalize(vec3(-uVex * grad.x, 1.0, uVex * grad.y));
   vec4 shade = texture(uShade, fsGridUv(p, uShadeXf)); // r hillshade, g sky view, b cast shadow
   float slope = length(grad);
+#ifdef CLIFF
+  // The 10 m gradient only lights; the render mesh's own slope picks banded rock or the photo (spike S5: the 10 m slope disagrees with a
+  // 22 or 40 m triangle by up to one vertex spacing, and the switch draws that as spikes along the lip and foot).
+  slope = vSlope;
+  vec4 rk = texture(uRock, fsGridUv(p, uRockXf)); // R bare rock, G scree, B lip pavement
+#endif
 
   // ── Base colour ──────────────────────────────────────────────────────────
   vec4 alb = texture(uAlbedo, fsGridUv(p, uAlbedoXf));
   vec3 base = alb.rgb;
   float rock = alb.a;
+#ifdef CLIFF
+  rock = max(rk.r, step(0.845, rock) * rock); // the mask replaces the ramp of the fire-grid slope (bare non-fuel keeps its 0.85)
+#endif
   // Sandstone strata bands on cliffs (≈ 7 m and 25 m apart), faded out once a pixel spans a good part of a band so
   // they never alias into moiré in wide views (derivative taken here, in uniform control flow).
   float zw = fwidth(vZ);
@@ -191,6 +328,11 @@ void main() {
     }
   }
 
+  float rockAo = 1.0;
+#ifdef CLIFF
+  rockDetail(rk, p, grad, zw, strataN, strataV, fine, img, n, base, rockAo);
+#endif
+
   // ── Land-use zones (residential, village, …): a translucent tint, premultiplied linear RGBA, so the photo, the
   // lighting, the fire and the heat maps all still work on top of it.
   vec3 zoneTint = vec3(0.0);
@@ -206,7 +348,7 @@ void main() {
   vec3 sun = uSunColour * uSunI * ndl * (1.0 - 0.92 * shadow);
   float hemi = 0.5 + 0.5 * n.y;
   float relief = 0.55 + 0.9 * shade.r;
-  vec3 amb = mix(uGroundAmb, uSkyAmb, hemi) * uAmbI * (0.35 + 0.65 * shade.g) * relief;
+  vec3 amb = mix(uGroundAmb, uSkyAmb, hemi) * uAmbI * (0.35 + 0.65 * shade.g) * relief * rockAo;
   vec3 light = sun + amb;
   light /= LIGHT_REF;
   if (uUseImagery > 0.5) {
@@ -411,6 +553,18 @@ export interface TerrainDecals {
   focus: { x: number; y: number; radius: number } | null;
 }
 
+/**
+ * The cliff drawing's inputs for the layer (plan 9d.3; cliffDrawing.ts builds them): the shader's normals come from `gradient` (the Horn
+ * gradient of the sharpened 10 m terrain) instead of the fire grid's, the slope that picks banded rock or the photo is the render mesh's
+ * own (`meshSlope`, one value per vertex), and `mask` drives the rock detail, which `detail` (the picture-quality tier) trims.
+ */
+export interface TerrainCliff {
+  gradient: { grid: GridSpec; dzdx: Float32Array; dzdy: Float32Array };
+  meshSlope: Float32Array;
+  mask: RockMask;
+  detail: DetailTier;
+}
+
 /** Terrain mesh + material. Owns its textures. */
 export class TerrainLayer {
   readonly group = new THREE.Group();
@@ -430,14 +584,19 @@ export class TerrainLayer {
   private imageryTex: THREE.Texture | null = null;
   private readonly shadeData: Uint8Array;
   readonly renderGrid: RenderGrid;
+  /** Milliseconds spent filling the lighting-gradient and rock-mask textures (the CPU side; 0 without the cliff drawing). */
+  readonly cliffTextureMs: number = 0;
+  /** The rock detail tier in the shader: the picture-quality tier's, or 'off' when the layer has no rock mask. */
+  readonly rockDetail: DetailTier | 'off';
 
   /**
    * @param shared uniforms shared with the other layers (same-named entries replace the terrain's defaults, so
    *               lighting, time and exaggeration are set once for every material)
    */
-  constructor(rg: RenderGrid, terrain: Terrain, shared: Record<string, THREE.IUniform>, private readonly maxAnisotropy = 4) {
+  constructor(rg: RenderGrid, terrain: Terrain, shared: Record<string, THREE.IUniform>, private readonly maxAnisotropy = 4, cliff?: TerrainCliff) {
     this.renderGrid = rg;
-    const { geometry, skirt } = buildTerrainGeometry(rg.grid, rg.elevation, terrain.minElevation);
+    this.rockDetail = cliff ? cliff.detail : 'off';
+    const { geometry, skirt } = buildTerrainGeometry(rg.grid, rg.elevation, terrain.minElevation, cliff?.meshSlope);
     const spots = Array.from({ length: MAX_SPOTS }, () => new THREE.Vector4());
     const ign = Array.from({ length: MAX_IGNITION_SEGMENTS }, () => new THREE.Vector4());
     const dF = dummyFloat(1e30);
@@ -456,7 +615,7 @@ export class TerrainLayer {
       uImageryFlipV: { value: 0 },
       uPlainBase: { value: 0 },
       uGrad: { value: dG },
-      uGradXf: { value: new THREE.Vector4(...gridTransform(terrain.grid)) },
+      uGradXf: { value: new THREE.Vector4(...gridTransform(cliff ? cliff.gradient.grid : terrain.grid)) },
       uShade: { value: dA },
       uShadeXf: { value: new THREE.Vector4(...gridTransform(rg.grid)) },
       uArrival: { value: dF },
@@ -502,12 +661,14 @@ export class TerrainLayer {
       uIgn: { value: ign },
       uIgnCount: { value: 0 },
       uPixelMetres: { value: 0.002 },
+      ...(cliff ? { uRock: { value: dA }, uRockXf: { value: new THREE.Vector4(...gridTransform(cliff.mask.grid)) }, uRockPlain: { value: ROCK_DETAIL_PLAIN } } : {}),
       ...shared,
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: TERRAIN_VERT,
       fragmentShader: TERRAIN_FRAG,
+      defines: cliff ? cliffDefines(cliff.detail) : {},
       toneMapped: false,
     });
     this.mesh = new THREE.Mesh(geometry, this.material);
@@ -535,14 +696,26 @@ export class TerrainLayer {
     this.skirt.name = 'terrain-skirt';
     this.group.add(this.mesh, this.skirt);
 
-    // Full-resolution Horn gradients as an RG16F normal texture.
-    const n = terrain.grid.nx * terrain.grid.ny;
-    const g2 = new Float32Array(n * 2);
-    for (let k = 0; k < n; k++) {
-      g2[k * 2] = terrain.dzdx[k]!;
-      g2[k * 2 + 1] = terrain.dzdy[k]!;
+    // Full-resolution Horn gradients as an RG16F normal texture (the sharpened 10 m terrain's with the cliff drawing, else the fire grid's).
+    let gradTex: THREE.DataTexture;
+    if (cliff) {
+      const t0 = performance.now();
+      const gg = cliff.gradient.grid;
+      gradTex = halfRgTexturePair(cliff.gradient.dzdx, cliff.gradient.dzdy, gg.nx, gg.ny);
+      // The rock mask is linear data, not colour: no sRGB decoding, bilinear filtering.
+      const maskTex = rgbaTexture(cliff.mask.rgba, cliff.mask.grid.nx, cliff.mask.grid.ny, { linear: true });
+      this.textures.add(maskTex);
+      this.uniforms.uRock!.value = maskTex;
+      this.cliffTextureMs = performance.now() - t0;
+    } else {
+      const n = terrain.grid.nx * terrain.grid.ny;
+      const g2 = new Float32Array(n * 2);
+      for (let k = 0; k < n; k++) {
+        g2[k * 2] = terrain.dzdx[k]!;
+        g2[k * 2 + 1] = terrain.dzdy[k]!;
+      }
+      gradTex = halfRgTexture(g2, terrain.grid.nx, terrain.grid.ny);
     }
-    const gradTex = halfRgTexture(g2, terrain.grid.nx, terrain.grid.ny);
     this.textures.add(gradTex);
     this.uniforms.uGrad!.value = gradTex;
     this.shadeData = new Uint8Array(rg.grid.nx * rg.grid.ny * 4);
@@ -755,6 +928,7 @@ export function buildTerrainGeometry(
   g: GridSpec,
   z: Float32Array,
   minElevation: number,
+  slope?: Float32Array,
 ): { geometry: THREE.BufferGeometry; skirt: THREE.BufferGeometry } {
   const { nx, ny, cellSize: h } = g;
   const pos = new Float32Array(nx * ny * 3);
@@ -795,6 +969,8 @@ export function buildTerrainGeometry(
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  // The render mesh's own gradient magnitude per vertex (the cliff drawing): picks banded rock or the photo, instead of a texture.
+  if (slope) geometry.setAttribute('aSlope', new THREE.BufferAttribute(slope, 1));
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
 
   // Skirt: walk the boundary counter-clockwise (S edge W→E, E edge S→N, N edge E→W, W edge N→S).
