@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { PaceInfo, PaceLevel } from './paceTypes';
-import { createPaceTracker, forcedPace, PACE, type PaceFrame, shouldAnnounce } from './paceModel';
+import { createPaceTracker, debugPaceLevel, forcedPace, PACE, type PaceFrame, shouldAnnounce } from './paceModel';
 import { advanceClock, runTarget } from './session';
 
 const FRAME_MS = 50;
@@ -559,6 +559,22 @@ describe('the tracker only looks', () => {
       expect(p.level).toBe(level);
       for (const [k, v] of Object.entries(p)) if (typeof v === 'number') expect(Number.isFinite(v), k).toBe(true);
     }
+  });
+});
+
+describe('the debug hook', () => {
+  it('reads ?paceLevel only in a dev build or with ?debug in the address', () => {
+    expect(debugPaceLevel('?paceLevel=waiting', false)).toBeNull();
+    expect(debugPaceLevel('?mock=1&paceLevel=waiting', false)).toBeNull();
+    expect(debugPaceLevel('?debug=1&paceLevel=waiting', false)).toBe('waiting');
+    expect(debugPaceLevel('?debug&paceLevel=behind', false)).toBe('behind');
+    expect(debugPaceLevel('?mock=1&paceLevel=ok', true)).toBe('ok');
+    expect(debugPaceLevel('?paceLevel=waiting', true)).toBe('waiting');
+  });
+  it('ignores anything that is not a level', () => {
+    expect(debugPaceLevel('?debug=1&paceLevel=slow', false)).toBeNull();
+    expect(debugPaceLevel('?debug=1', false)).toBeNull();
+    expect(debugPaceLevel('', true)).toBeNull();
   });
 });
 

@@ -13,10 +13,6 @@ import { formatSpeedMultiple } from './format';
 import type { PaceInfo } from './paceTypes';
 import { niceSpeed, SPEED_PRESETS } from './screens/sim/speedModel';
 
-/** The accessible name of the button on the timeline, and what a screen reader hears (once) when the simulation starts to hold playback. */
-export const PACE_BUTTON_LABEL = 'Simulation is running slower than your playback speed. Show details.';
-export const PACE_ANNOUNCEMENT = 'Simulation is running slower than your playback speed.';
-
 /** The air flow is "the heaviest part" and worth a reason at this share of the busy time; likewise the fire (with its wind) and the embers. */
 export const REASON_SHARE = { air: 0.4, fire: 0.4, embers: 0.25 } as const;
 /** "Slower than earlier in this run": the speed now is under this fraction of the median of the first four history samples. */

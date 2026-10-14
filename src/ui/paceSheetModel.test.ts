@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import type { EnginePerfInfo, PerfModuleId, PerfModuleShare } from '../core/simTypes';
 import type { PaceInfo } from './paceTypes';
-import { earlierSpeed, fireEvery, PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
+import { PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL } from './paceModel';
+import { earlierSpeed, fireEvery, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
 
 const pace = (o: Partial<PaceInfo> = {}): PaceInfo => ({
   level: 'waiting',

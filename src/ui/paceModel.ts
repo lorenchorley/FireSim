@@ -59,6 +59,10 @@ export const PACE = {
   announceEveryS: 120,
 } as const;
 
+/** The accessible name of the button on the timeline, and what a screen reader hears (once) when the simulation starts to hold playback back. */
+export const PACE_BUTTON_LABEL = 'Simulation is running slower than your playback speed. Show details.';
+export const PACE_ANNOUNCEMENT = 'Simulation is running slower than your playback speed.';
+
 /** Why a stretch of frames does not count. The first group lasts while it is true; the second happens once, and then the wait runs. */
 export type PaceExclusion =
   | 'paused'
@@ -149,6 +153,18 @@ export function forcedPace(level: PaceLevel, nowMs: number): PaceInfo {
     bufferS: level === 'waiting' ? 0.3 : 1,
     sinceMs: nowMs,
   };
+}
+
+/**
+ * The debug hook (`?paceLevel=behind|waiting|ok`): the level to force, or null. It exists only in a dev build or with
+ * `?debug` in the address, so it cannot be reached by accident; it lets screenshots and the layout audits show the signal
+ * without a phone that is too slow.
+ */
+export function debugPaceLevel(search: string, dev: boolean): PaceLevel | null {
+  const q = new URLSearchParams(search);
+  if (!dev && !q.has('debug')) return null;
+  const v = q.get('paceLevel');
+  return v === 'ok' || v === 'behind' || v === 'waiting' ? v : null;
 }
 
 /**
