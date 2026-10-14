@@ -93,10 +93,20 @@ describe('buildCliffDrawing on a synthetic escarpment', () => {
     for (const i of [0, 40, 73, 74, 100]) expect(sampleRock(cd.rock, g.x0 + i * 10, g.y0 + row * 10)).toBeCloseTo(r(i), 2);
   });
 
-  it('canopy cover takes the rock away (a forested face is not bare rock)', () => {
-    const covered = run(z, { cover: { grid: g, canopyCover: new Float32Array(g.nx * g.ny).fill(1) } });
-    expect(covered.mask.stats.rockCells).toBe(0);
-    expect(cd.mask.stats.rockCells).toBeGreaterThan(0);
+  it('canopy cover takes the rock away from a steep slope, but not from a wall (the raster cannot see a face)', () => {
+    const forest = { grid: g, canopyCover: new Float32Array(g.nx * g.ny).fill(1) };
+    // a 150 m wall of 70 degrees: rock under full cover, as without it
+    const wall = run(z, { cover: forest });
+    expect(wall.mask.stats.rockCells).toBeGreaterThan(0.6 * cd.mask.stats.rockCells);
+    // a 100 m ramp of 55 degrees (steep, not a wall): the plan's rule, cover x rock = none
+    const ramp = terrainOf(g, (i) => {
+      const x = i * 10;
+      return x <= 700 ? 600 : Math.max(500, 600 - (x - 700) * TAN(55));
+    });
+    expect(run(ramp).mask.stats.rockCells).toBeGreaterThan(5);
+    expect(run(ramp, { cover: forest }).mask.stats.rockCells).toBe(0);
+    // and bare cover = 0 changes nothing
+    expect(run(z, { cover: { grid: g, canopyCover: new Float32Array(g.nx * g.ny) } }).mask.rgba).toEqual(cd.mask.rgba);
   });
 
   it('counts the vertices and triangles of the mesh and times each stage', () => {

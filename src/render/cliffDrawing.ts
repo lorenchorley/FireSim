@@ -13,11 +13,11 @@
  * Everything here is for drawing. The simulation, the slope overlay, the elevation numbers and the cards read the terrain as
  * received (plan section 4, rule 10): nothing in the result goes to them.
  */
-import type { GridSpec } from '../core/grid';
+import { sampleBilinear, type GridSpec } from '../core/grid';
 import type { FuelMap, Terrain } from '../core/types';
 import { cliffSharpen } from './cliffSharpen';
 import { hornGradient, lightTerrain, type RenderGrid } from './fields';
-import { buildRockMask, rockCopy, type RockCopy, type RockMask } from './rockMask';
+import { buildRockMask, rockCopy, type RockCopy, type RockField, type RockMask } from './rockMask';
 import { MESH_DESPIKE_M, decimateTerrain } from './terrainMesh';
 
 /** The picture-quality tiers (SceneView's `RenderQuality`). */
@@ -91,6 +91,31 @@ export const MESH_ROCK_BAND_DEG: Readonly<Record<DetailTier, { loDeg: number; hi
   low: { loDeg: 42, hiDeg: 52 },
 });
 
+/**
+ * The canopy cover that takes rock away (plan 9d.3.4: R = slope x (1 - cover)), on the mesh's grid, and less of it where the mesh is
+ * steep: cover x (1 - smoothstep(hiDeg - 2, hiDeg + 8, mesh slope)), so the cover is half gone where the band is complete and all gone
+ * 8 degrees above it. The canopy raster is a top-down 20 m product and cannot see a face: of the sharpened 10 m cells steeper than
+ * 75 degrees (a wall), 53 to 60 % at Katoomba, Kanangra and Grose and 90 % at Tomah have cover of 0.5 or more, so with the plain rule
+ * most of a drawn wall is "forest": no rock detail, trees stood on it and the photo smeared down it. A wall is rock whatever the
+ * raster says; a steep slope that is not a wall (under the band) keeps the plan's rule, and the simulation, which never sees this field,
+ * keeps the cover (H-sim, 0.3.1).
+ */
+function coverOnMesh(fuel: CliffDrawingInput['fuel'], mesh: RenderGrid, slopeDeg: Float32Array, band: { loDeg: number; hiDeg: number }): RockField {
+  const g = mesh.grid;
+  const out = new Float32Array(g.nx * g.ny);
+  const from = band.hiDeg - 2;
+  const span = 10;
+  for (let j = 0, k = 0; j < g.ny; j++) {
+    const y = g.y0 + j * g.cellSize;
+    for (let i = 0; i < g.nx; i++, k++) {
+      const t = Math.min(1, Math.max(0, (slopeDeg[k]! - from) / span));
+      const cover = sampleBilinear(fuel.grid, fuel.canopyCover, g.x0 + i * g.cellSize, y);
+      out[k] = cover * (1 - t * t * (3 - 2 * t));
+    }
+  }
+  return { grid: g, values: out };
+}
+
 export interface CliffDrawingInput {
   /** The scenario's 10 m terrain, as received. It is never modified. */
   hi: { grid: GridSpec; elevation: Float32Array };
@@ -148,17 +173,13 @@ export function buildCliffDrawing(i: CliffDrawingInput): CliffDrawing {
   const gradient = { grid: hi.grid, ...hornGradient(hi.grid, sharp.elevation) };
   const gradientMs = performance.now() - t;
 
-  // R follows the mesh's slope (it is what is drawn); the scree and pavement windows follow the 10 m slope of the sharpened terrain, the
+  // R follows the mesh's slope (it is what is drawn), with the cover that a wall overrides; the scree and pavement windows follow the 10 m slope of the sharpened terrain, the
   // mask's own default: the mesh's slope would start the pavement a vertex spacing from the lip.
-  const mask = buildRockMask(
-    {
-      grid: hi.grid,
-      elevation: sharp.elevation,
-      slope: { grid: mesh.grid, values: lightT.slopeDeg },
-      cover: { grid: i.fuel.grid, values: i.fuel.canopyCover },
-    },
-    MESH_ROCK_BAND_DEG[i.tier],
-  );
+  t = performance.now();
+  const band = MESH_ROCK_BAND_DEG[i.tier];
+  const cover = coverOnMesh(i.fuel, mesh, lightT.slopeDeg, band);
+  const coverMs = performance.now() - t;
+  const mask = buildRockMask({ grid: hi.grid, elevation: sharp.elevation, slope: { grid: mesh.grid, values: lightT.slopeDeg }, cover }, band);
 
   return {
     mesh,
@@ -170,7 +191,7 @@ export function buildCliffDrawing(i: CliffDrawingInput): CliffDrawing {
     stats: {
       sharpenedShare: sharp.stats.moved / (hi.grid.nx * hi.grid.ny),
       sharpenMs: sharp.stats.ms.total,
-      maskMs: mask.stats.ms,
+      maskMs: mask.stats.ms + coverMs,
       meshMs,
       gradientMs,
       meshVertices: mesh.grid.nx * mesh.grid.ny,

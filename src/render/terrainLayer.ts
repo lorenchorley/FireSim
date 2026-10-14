@@ -94,8 +94,8 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
 #ifdef RD_LEDGES
     // (a) Ledges on the strata's own bands (7 m and 25 m): a thin shelf at the top of each, broken up along the face, that tilts the
     // normal up so it catches the sun, and lightens the colour.
-    float f7 = 1.0 - smoothstep(0.8, 2.5, zw);
-    float f25 = 1.0 - smoothstep(3.0, 9.0, zw);
+    float f7 = 1.0 - smoothstep(0.4, 1.3, zw); // a shelf is a fifth of its band: it goes once a pixel spans half of it (the colour bands go later)
+    float f25 = 1.0 - smoothstep(1.5, 4.5, zw);
     float ph7 = vZ * 0.1432 + strataN * 0.1592;
     float ph25 = vZ * 0.0398 + strataN * 0.0796;
     float i7 = floor(ph7);
@@ -126,8 +126,8 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
     // (d) Water stains: noise that changes slowly with height, so it streaks down the face; dark manganese and ochre.
     float sf = 1.0 - smoothstep(2.0, 9.0, pxm);
     float sn = 0.65 * rkNoise(p / 7.0 + vec2(vZ / 60.0, vZ / 110.0)) + 0.35 * rkNoise(p / 2.7 + vec2(vZ / 25.0, 7.7));
-    float dark = mix(0.25, smoothstep(0.5, 0.72, sn), sf);
-    float och = mix(0.4, smoothstep(0.38, 0.58, rkNoise(p / 13.0 + vec2(vZ / 90.0, 31.0))), sf);
+    float dark = mix(0.25, smoothstep(0.45, 0.78, sn), sf);
+    float och = mix(0.4, smoothstep(0.3, 0.7, rkNoise(p / 13.0 + vec2(vZ / 90.0, 31.0))), sf);
     vec3 stain = mix(vec3(1.0), vec3(0.62, 0.56, 0.5), dark) * mix(vec3(1.0), vec3(1.07, 0.94, 0.8), 0.6 * och);
     base *= mix(vec3(1.0), stain, wr * colour);
 #endif
@@ -148,16 +148,15 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
     // (e) Scree below a face: coarse grey-brown speckle; the fragments fade to their mean once a pixel spans several of them.
     float gf = 1.0 - smoothstep(1.5, 7.0, pxm);
     float sp = mix(0.5, 0.6 * rkNoise(p / 1.3) + 0.4 * rkNoise(p / 0.45 + 9.0), gf);
-    base = mix(base, mix(vec3(0.16, 0.14, 0.12), vec3(0.42, 0.37, 0.31), sp), rk.g * 0.4 * colour);
+    base *= mix(vec3(1.0), vec3(1.05, 0.98, 0.9) * (0.55 + 0.9 * sp), rk.g * 0.65 * colour); // lights and darkens what is there (a photo's shadow stays dark)
   }
 #endif
 #ifdef RD_PAVEMENT
   if (rk.b > 0.05) {
     // (f) Lip pavement: pale rock patches with a heath tint between them.
     float pf = 1.0 - smoothstep(3.0, 12.0, pxm);
-    float pat = smoothstep(0.42, 0.58, mix(0.5, 0.65 * rkNoise(p / 6.0 + 5.3) + 0.35 * rkNoise(p / 2.2 + 1.9), pf));
-    vec3 pale = mix(ROCK_LIT, vec3(0.55, 0.5, 0.44), 0.35);
-    base = mix(base, mix(base * vec3(0.9, 0.84, 0.6), pale, pat), rk.b * 0.5 * colour);
+    float pat = smoothstep(0.35, 0.65, mix(0.5, 0.65 * rkNoise(p / 6.0 + 5.3) + 0.35 * rkNoise(p / 2.2 + 1.9), pf));
+    base *= mix(vec3(1.0), mix(vec3(0.92, 0.86, 0.66), vec3(1.3, 1.25, 1.15), pat), rk.b * 0.5 * colour);
   }
 #endif
 }
