@@ -111,6 +111,14 @@ export const RENDER_MESH_N = { low: 224, medium: 320, high: 400 } as const;
 /** Tree instances by render quality (render/SceneView.ts QUALITY.veg) and an estimated 80 B each (matrix + colour + extras). */
 export const RENDER_TREE_INSTANCES = { low: 16_000, medium: 32_000, high: 48_000 } as const;
 const TREE_INSTANCE_BYTES = 80;
+/**
+ * The cliff drawing (plan 9d.3; render/cliffDrawing.ts), only for a scenario with a 10 m terrain. Per 10 m cell: the rock copy that tree
+ * placement reads stays on the screen thread (1 B); on the graphics side the lighting gradient (RG16F, 4 B) and the rock mask (RGBA8, 4 B),
+ * and per mesh vertex the mesh's own slope (4 B). While the scenario is set up the screen thread also holds the sharpened ground (4 B per
+ * cell) and the arrays the gradient and the mask are made from (12 B: the two Horn gradient fields and the 10 m slope); all are released
+ * once the first picture is built.
+ */
+export const CLIFF_BYTES = Object.freeze({ rockCopyPerCell: 1, gradientPerCell: 4, maskPerCell: 4, meshSlopePerVertex: 4, setupPerCell: 16 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inputs
@@ -272,6 +280,16 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   const meshN = hn > 0 ? Math.min(hn, RENDER_MESH_N[q]) : RENDER_MESH_N[q];
   const meshBytes = meshN * meshN * 12 + (meshN - 1) * (meshN - 1) * 6 * (meshN * meshN > 65535 ? 4 : 2) + meshN * meshN * 4;
   add('gpu-terrain', 'Ground mesh and shading texture', 'gpu', meshBytes, `${meshN} x ${meshN} samples: positions 12 B + triangle indices + a 4 B shade texel each (estimate)`);
+  if (hn > 0) {
+    // Cliff drawing (a 10 m terrain is what gets sharpened): one item on the screen thread and two on the graphics side.
+    const hiCells = Math.max(i.hiResNx ?? 0, 0) * Math.max(i.hiResNy ?? 0, 0);
+    const hiText = `${hiCells.toLocaleString('en-AU')} ground cells of 10 m`;
+    add('cliff-main', 'Cliff drawing: rock copy that keeps trees off bare faces', 'main', hiCells * CLIFF_BYTES.rockCopyPerCell, `${hiText} x ${CLIFF_BYTES.rockCopyPerCell} B`, {
+      note: `While the scenario is set up about ${kb(hiCells * CLIFF_BYTES.setupPerCell)} more is held (the sharpened ground and the lighting arrays), and released once the picture is built.`,
+    });
+    add('gpu-cliff-light', 'Cliff drawing: lighting gradient of the 10 m ground', 'gpu', hiCells * CLIFF_BYTES.gradientPerCell + meshN * meshN * CLIFF_BYTES.meshSlopePerVertex, `${hiText} x ${CLIFF_BYTES.gradientPerCell} B + ${meshN} x ${meshN} mesh vertices x ${CLIFF_BYTES.meshSlopePerVertex} B for the mesh's own slope (estimate)`);
+    add('gpu-cliff-rock', 'Cliff drawing: rock mask (rock, scree, lip pavement)', 'gpu', hiCells * CLIFF_BYTES.maskPerCell, `${hiText} x ${CLIFF_BYTES.maskPerCell} B (estimate)`);
+  }
   const dataTex = cells * 16;
   add('gpu-data', 'Fire and heat-map textures on the fire grid', 'gpu', dataTex, `${cellsText} x about 16 B (about four float textures; estimate)`);
   if (i.imagery && i.imagery.width > 0 && i.imagery.height > 0) {

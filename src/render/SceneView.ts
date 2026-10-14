@@ -15,9 +15,10 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi } from './api';
+import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
+import { buildCliffDrawing } from './cliffDrawing';
 import { gridBounds, sunDirectionWorld } from './coords';
 import { CrossSectionLayer } from './crossSectionLayer';
 import { EmberLayer } from './emberLayer';
@@ -43,6 +44,7 @@ import { AdaptiveDpr, FrameMeter } from './perf';
 import { lineOfSightClear, sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
 import { deviceFacts, guessQuality, type DeviceFacts } from './qualityGuess';
+import type { RockCopy } from './rockMask';
 import { mapLighting, skyLighting } from './sky';
 import { SkyDome } from './skyDome';
 import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
@@ -162,6 +164,11 @@ export class SceneView implements SceneViewApi {
   private rg: RenderGrid | null = null;
   private hf: HeightField | null = null;
   private lightT: Terrain | null = null;
+  /** The cliff drawing's statistics for this scenario (null when nothing was sharpened), and what is kept of it: the rock copy for trees and the 10 m terrain as received (the insolation overlay is a number, so it reads that). */
+  private cliffStats: TerrainDrawStats | null = null;
+  private rockCopy: RockCopy | null = null;
+  private dataHiRes: { grid: GridSpec; elevation: Float32Array } | null = null;
+  private dataLightT: Terrain | null = null;
   private domain: WindDomain | null = null;
   private layers: LayerState = structuredClone(DEFAULT_LAYERS);
   private readonly quality: (typeof QUALITY)[RenderQuality];
@@ -368,15 +375,24 @@ export class SceneView implements SceneViewApi {
     const hi = opts.hiRes;
     const useHi = !!hi && hi.grid.cellSize < terrain.grid.cellSize && hi.elevation.length === hi.grid.nx * hi.grid.ny && coversDomain(hi.grid, terrain.grid);
     const src = useHi ? hi! : terrain;
-    const rg = decimateGrid(src.grid, src.elevation, this.opts.meshResolution ?? this.quality.mesh);
+    const meshN = this.opts.meshResolution ?? this.quality.mesh;
+    // With a 10 m terrain the ground is drawn from a sharpened copy of it (plan 9d.3: the mesh, the lighting and the rock mask, and
+    // through the mesh everything that follows the drawn ground); the copy is not kept. Without one (the mock, synthetic terrain) the
+    // old path runs unchanged.
+    const cliff = useHi ? buildCliffDrawing({ hi: hi!, fuel, meshN, tier: this.renderQuality, source: terrain.source }) : null;
+    const rg = cliff ? cliff.mesh : decimateGrid(src.grid, src.elevation, meshN);
     this.rg = rg;
     this.hf = new HeightField(rg.grid, rg.elevation, this.vex);
     const b = gridBounds(rg.grid);
     const hf = this.hf;
     this.domain = { ...b, heightAt: (x, y) => hf.heightAt(x, y) };
-    this.lightT = lightTerrain(rg, terrain.source);
+    this.lightT = cliff ? cliff.lightT : lightTerrain(rg, terrain.source);
+    this.rockCopy = cliff ? cliff.rock : null;
+    this.dataHiRes = cliff ? hi! : null;
+    this.dataLightT = null;
 
-    const tl = new TerrainLayer(rg, terrain, this.u, Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+    const tl = new TerrainLayer(rg, terrain, this.u, Math.min(8, this.renderer.capabilities.getMaxAnisotropy()), cliff ? { gradient: cliff.gradient, meshSlope: cliff.meshSlope, mask: cliff.mask, detail: this.renderQuality } : undefined);
+    this.cliffStats = cliff ? { ...cliff.stats, gradientMs: cliff.stats.gradientMs + tl.cliffTextureMs, rockDetail: tl.rockDetail } : null;
     tl.setFuel(fuel, terrain);
     tl.setImagery(opts.imagery ?? null, terrain.grid);
     tl.setShade(multiHillshade(this.lightT), skyViewFactor(this.lightT, 12), null);
@@ -448,6 +464,8 @@ export class SceneView implements SceneViewApi {
         understorey: true,
         // RFS fire trails are cleared corridors: no tree or shrub stands on one, so a trail is never hidden by the canopy.
         clearings: this.trailClearings(),
+        // Bare faces carry no trees (the rock mask's R, plan 9d.3.6); none without a 10 m terrain.
+        rock: this.rockCopy,
         seed: 7,
         cache: this.vegCache,
       },
@@ -761,15 +779,26 @@ export class SceneView implements SceneViewApi {
     tl.setOverlay(field, scale, fireOv);
   }
 
+  /**
+   * The lighting terrain a heat map reads. A heat map is a number shown to a person, so with the cliff drawing it is built from the
+   * 10 m terrain as received, on the old mesh (made on first use), never from the sharpened drawing (plan section 4, rule 10).
+   */
+  private numbersLightT(): Terrain {
+    if (!this.dataHiRes || !this.terrain) return this.lightT!;
+    this.dataLightT ??= lightTerrain(decimateGrid(this.dataHiRes.grid, this.dataHiRes.elevation, this.opts.meshResolution ?? this.quality.mesh), this.terrain.source);
+    return this.dataLightT;
+  }
+
   private insolationField(): OverlayField | null {
     if (!this.lightT || !this.rg || !this.terrain) return null;
     const t = this.sunTimeMs();
     const key = `${Math.round(t / 600000)}`;
     if (key === this.insolKey && this.insolField) return this.insolField;
     const w = this.snap?.stats?.weather;
-    const ins = insolation(this.lightT, t, { cloudCover: w?.cloudCover, ghi: w?.shortwaveRadiation, location: this.terrain.grid.origin });
+    const lt = this.numbersLightT();
+    const ins = insolation(lt, t, { cloudCover: w?.cloudCover, ghi: w?.shortwaveRadiation, location: this.terrain.grid.origin });
     this.insolKey = key;
-    this.insolField = { grid: this.rg.grid, values: ins.total, categorical: false };
+    this.insolField = { grid: lt.grid, values: ins.total, categorical: false };
     return this.insolField;
   }
 
@@ -1333,6 +1362,11 @@ export class SceneView implements SceneViewApi {
       canvasH: buf.height,
       lastDrawAgeS: this.lastDrawMs === null ? null : Math.max(0, (performance.now() - this.lastDrawMs) / 1000),
     };
+  }
+
+  /** What the cliff drawing built for this scenario (statistics screen); null when the scenario had no 10 m terrain and nothing was sharpened. */
+  terrainStats(): TerrainDrawStats | null {
+    return this.cliffStats ? { ...this.cliffStats } : null;
   }
 
   /** Extra diagnostics for the dev HUD. */

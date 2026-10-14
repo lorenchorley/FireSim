@@ -119,6 +119,8 @@ describe('Katoomba, bundled demo site, offline', () => {
     expect(new Date(t.vintage.retrievedAt).toISOString().slice(0, 10)).toMatch(/^2026-09-2\d$/);
     expect(t.native?.resolutionM).toBe(5);
     expect(t.model).toMatchObject({ resolutionM: 30, width: 300, height: 300, resampling: 'block-average' });
+    // The 3-D view draws the cliffs sharpened, so the card says the drawing is not the data (plan 9d.3, ground rule 10).
+    expect(t.model?.note).toContain('Cliff faces are drawn steeper than the data so they read as rock walls. Fire, wind and slope numbers use the data as received.');
     expect(t.stats.find((x) => x.label === 'Relief (highest minus lowest)')!.raw).toBeGreaterThan(700);
     expect(s.datasetSummary!.totals.networkBytes).toBe(0);
     const bundle = rec(s, 'bundled-site');

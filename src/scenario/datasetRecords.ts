@@ -90,6 +90,9 @@ const terrariumPixelM = (latDeg: number, z: number): number => (Math.cos((latDeg
 // Terrain
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** What the 3-D view's sharpened cliffs mean for the numbers (plan section 4, rule 10): the drawing is stylised, the numbers are not. */
+export const TERRAIN_DRAWING_NOTE = 'Cliff faces are drawn steeper than the data so they read as rock walls. Fire, wind and slope numbers use the data as received.';
+
 export function terrainRecord(i: MapInputs): DatasetRecord {
   const { hi, terrain, ledger } = i;
   const info = hi.info;
@@ -104,7 +107,7 @@ export function terrainRecord(i: MapInputs): DatasetRecord {
   // Heights of a pack saved from Terrarium tiles are the same 30 m SRTM data: the 10 m grid only interpolates them.
   const srtm = hi.origin === 'tiles' || (hi.origin === 'pack' && /Terrarium|SRTM|Terrain Tiles/i.test(info.packSource ?? ''));
   const hiNote = srtm ? ` It is smoothly interpolated from ${SRTM_CELL_M} m satellite heights, so it shows the ground more smoothly but not in more detail.` : '';
-  const model = { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells, resampling: 'block-average' as const, note: `A ${i.hiRes.grid.cellSize} m grid (${i.hiRes.grid.nx} x ${i.hiRes.grid.ny}) drives the 3-D view and is averaged ${b} x ${b} into each fire cell; slope, aspect and landforms are worked out on the fire grid.${hiNote}` };
+  const model = { resolutionM: g.cellSize, width: g.nx, height: g.ny, cells, resampling: 'block-average' as const, note: `A ${i.hiRes.grid.cellSize} m grid (${i.hiRes.grid.nx} x ${i.hiRes.grid.ny}) drives the 3-D view and is averaged ${b} x ${b} into each fire cell; slope, aspect and landforms are worked out on the fire grid.${hiNote} ${TERRAIN_DRAWING_NOTE}` };
   const stats: DatasetStat[] = [];
   const parts: DatasetPart[] = [];
   const common = {

@@ -9,16 +9,21 @@
  *   wind=off|surface|volume  cross=1  crossAz=<deg>  imagery=0|1  veg=0|1  vex=1  iso=30  hud=0  play=1
  *   cam=x,y,dist,az,tilt (camera target & pose)  user=x,y,heading  quality=low|medium|high  focus=1
  *   smoke=0 flames=0 embers=0 legend=0 dpr=<fixed dpr>  arrows=1  brush=x,y,radius  crossAt=x,y
+ *   Cliff drawing (workstream H): hires=1 feeds the 10 m DEM to setScenario as `hiRes` the way the app does (the fire-grid terrain is its
+ *   block average, cell=30 by default), which is what turns the sharpened cliffs on; without it the old path runs. marks=0 leaves out the
+ *   ignition, insight and user markers; eye=ux,uy,lx,ly[,h] stands at eye level (h m, default 1.7) at (ux, uy) looking at the ground point (lx, ly).
  *   Places layers (bundled NSW context, see src/data/contextLayers.ts): context=1 loads them (also implied by any of
  *   roads= fireTrails= homes= zones= names= being given), each 0|1 switches a layer (defaults: roads, fireTrails and
  *   names on, homes and zones off); town=<place name> aims the camera at a place, with d=<distance m> az=<deg>
  *   tilt=<deg> (defaults 1800, 200, 55); start=22 gives the night theme; startMin=<minutes> is added to the start time (dusk
  *   checks); nightLook=realistic|brighter|daylight sets the map's night lighting (default realistic).
  */
+import * as THREE from 'three';
 import { makeGridSpec } from '../core/grid';
 import type { SimSnapshot } from '../core/types';
 import { DEMO_SITES, loadBundledContext, loadCanopy, loadElevation, setAssetBase } from '../data';
 import type { ContextLayers } from '../core/places';
+import { fireTerrainFromHiRes } from '../scenario/terrain';
 import { buildTerrain } from '../terrain';
 import { loadDemoImagery } from './demoAssets';
 import { fabricateFuel, SyntheticFire } from './devScenario';
@@ -41,12 +46,22 @@ async function main(): Promise<void> {
   setAssetBase(`${location.origin}/`);
   const siteId = q.get('site') ?? 'katoomba';
   const site = DEMO_SITES.find((s) => s.id === siteId) ?? DEMO_SITES[0]!;
-  const cell = num('cell', 20);
+  const hires = q.get('hires') === '1';
+  const cell = num('cell', hires ? 30 : 20);
   const extent = 9000;
 
-  // Terrain: src/data prefers the bundled NSW 5 m LiDAR bare-earth DTM, else the SRTM Terrarium tiles.
-  const elev = await loadElevation({ centre: site.centre, extent, cellSize: cell, demoSiteId: site.id });
-  const terrain = buildTerrain(elev.grid, elev.elevation, elev.source);
+  // Terrain: src/data prefers the bundled NSW 5 m LiDAR bare-earth DTM, else the SRTM Terrarium tiles. With hires=1 the 10 m DEM goes to
+  // setScenario as `hiRes` and the fire-grid terrain is its block average, as in the app.
+  let hiRes: { grid: ReturnType<typeof makeGridSpec>; elevation: Float32Array } | null = null;
+  let terrain;
+  if (hires) {
+    const e10 = await loadElevation({ centre: site.centre, extent, cellSize: 10, demoSiteId: site.id });
+    hiRes = { grid: e10.grid, elevation: e10.elevation };
+    terrain = fireTerrainFromHiRes({ grid: e10.grid, elevation: e10.elevation, source: e10.source }, cell);
+  } else {
+    const elev = await loadElevation({ centre: site.centre, extent, cellSize: cell, demoSiteId: site.id });
+    terrain = buildTerrain(elev.grid, elev.elevation, elev.source);
+  }
 
   // Fuel on a 30 m fire grid from the bundled canopy.
   const fuelGrid = makeGridSpec(site.centre, extent, 30);
@@ -71,7 +86,7 @@ async function main(): Promise<void> {
     maxDpr: q.has('dpr') ? num('dpr', 1) : undefined,
     windArrows: q.get('arrows') === '1',
   });
-  view.setScenario(terrain, fuel, { imagery, context });
+  view.setScenario(terrain, fuel, { imagery, context, hiRes });
   view.setStartTime(startTime);
   const look = q.get('nightLook');
   if (look === 'brighter' || look === 'daylight') view.setNightLook(look);
@@ -100,8 +115,11 @@ async function main(): Promise<void> {
       centre: q.has('crossAt') ? (q.get('crossAt')!.split(',').map(Number) as [number, number]) : [fire.ignition[0] + 1800 * Math.sin((((fire.opts.windDir + 180) % 360) * Math.PI) / 180), fire.ignition[1] + 1800 * Math.cos((((fire.opts.windDir + 180) % 360) * Math.PI) / 180)],
     },
   });
-  view.setIgnitions(fire.ignitions(), []);
-  if (q.has('user')) {
+  const marks = q.get('marks') !== '0';
+  view.setIgnitions(marks ? fire.ignitions() : [], []);
+  if (!marks) {
+    // no user marker either
+  } else if (q.has('user')) {
     const [ux, uy, uh] = q.get('user')!.split(',').map(Number);
     view.setUserLocation(ux!, uy!, Number.isFinite(uh) ? uh! : null);
   } else {
@@ -120,7 +138,7 @@ async function main(): Promise<void> {
   const show = (snap: SimSnapshot): void => {
     view.update(snap);
     const ins = fire.insights(snap.time);
-    view.setInsights(ins);
+    view.setInsights(marks ? ins : []);
     if (q.get('focus') === '1') view.focusInsight(ins[0] ?? null, false);
     const local = new Date(startTime + snap.time * 1000 + 11 * 3600 * 1000);
     $('clock').textContent = `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')} +${(snap.time / 3600).toFixed(1)}h`;
@@ -151,7 +169,10 @@ async function main(): Promise<void> {
   }
   if (q.get('cross') === '1' && !q.has('cam')) view.viewSection(false);
   const mode = q.get('view');
-  if (mode === 'top' || mode === 'ground') view.setViewMode(mode);
+  if (q.has('eye')) {
+    const [ex, ey, lx, ly, eh] = q.get('eye')!.split(',').map(Number);
+    standAt(view, ex!, ey!, lx!, ly!, eh);
+  } else if (mode === 'top' || mode === 'ground') view.setViewMode(mode);
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-view]')) b.classList.toggle('on', b.dataset.view === (mode ?? 'orbit'));
 
   // HUD wiring.
@@ -218,6 +239,26 @@ async function main(): Promise<void> {
 
   if (q.get('flush') !== '0') view.flushPlaces(); // flush=0 leaves the sliced build to the render loop (timing checks)
   window.__fs = { view, fire, ready: true, setTime };
+}
+
+/**
+ * Eye level at (ux, uy) looking at the ground point (lx, ly), `eyeH` m above the ground; jumps there (no flight). Dev harness only: it
+ * reaches into the view's private rig and canopy, so it stays out of SceneView's API.
+ */
+function standAt(view: SceneView, ux: number, uy: number, lx: number, ly: number, eyeH = 1.7): void {
+  type Rig = { eyeHeight: number; setMode(m: string, o: object): void; groundPoint(x: number, y: number): THREE.Vector3; goTo(t: THREE.Vector3, p: THREE.Vector3, s: number): void };
+  const inner = view as unknown as { rig: Rig; vegetation: { setNearCull(m: number): void } | null; updateViewDependentLayers(): void };
+  const rig = inner.rig;
+  rig.eyeHeight = eyeH;
+  rig.setMode('ground', { user: [ux, uy], lookAt: [lx, ly] });
+  const eye = rig.groundPoint(ux, uy);
+  eye.y += eyeH;
+  const dir = rig.groundPoint(lx, ly).sub(eye);
+  dir.y = Math.max(dir.y, -0.25 * Math.hypot(dir.x, dir.z));
+  dir.normalize();
+  rig.goTo(eye.clone().add(dir), eye, 0);
+  inner.updateViewDependentLayers();
+  inner.vegetation?.setNearCull(24);
 }
 
 function renderLegend(view: SceneView): void {

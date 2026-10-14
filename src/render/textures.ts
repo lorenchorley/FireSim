@@ -31,6 +31,18 @@ export function halfRgTexture(data: Float32Array, nx: number, ny: number): THREE
   return finish(t, true);
 }
 
+/** RG16F from two separate float fields (no interleaved Float32 copy is made: a 9 km area at 10 m would hold 6.5 MB more), LINEAR. */
+export function halfRgTexturePair(a: Float32Array, b: Float32Array, nx: number, ny: number): THREE.DataTexture {
+  const h = new Uint16Array(a.length * 2);
+  const toHalf = THREE.DataUtils.toHalfFloat;
+  for (let k = 0; k < a.length; k++) {
+    h[k * 2] = toHalf(Math.max(-65000, Math.min(65000, a[k]!)));
+    h[k * 2 + 1] = toHalf(Math.max(-65000, Math.min(65000, b[k]!)));
+  }
+  const t = new THREE.DataTexture(h, nx, ny, THREE.RGFormat, THREE.HalfFloatType);
+  return finish(t, true);
+}
+
 /** RGBA8 texture; `srgb` marks colour data (decoded to linear by the GPU). */
 export function rgbaTexture(data: Uint8Array, nx: number, ny: number, opts: { srgb?: boolean; linear?: boolean; mipmaps?: boolean } = {}): THREE.DataTexture {
   const t = new THREE.DataTexture(data, nx, ny, THREE.RGBAFormat, THREE.UnsignedByteType);
