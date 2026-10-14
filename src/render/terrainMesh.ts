@@ -19,6 +19,8 @@ export interface DecimateTerrainOptions {
    * Height (m) of a tower or pit that a despike pass removes from the finished mesh (2 m margin); 0 leaves the mesh as it is.
    * The blend samples the unblurred terrain at single vertices, and 13, 12, 20 and 1 vertices at the four bundled sites stand 10 m
    * or more above or below all eight neighbours (up to 44 m; `decimateGrid` leaves none). See {@link MESH_DESPIKE_M} for the tier values.
+   * The pass looks at the whole mesh, so a real summit that stands out by this much would be clipped as well; at the four sites it
+   * changes only vertices the blend had moved off `decimateGrid`'s value (tested).
    */
   despikeM: number;
 }
@@ -33,8 +35,8 @@ const MESH_DESPIKE_MARGIN_M = 2;
  * A mesh that keeps the edge: the same value as {@link decimateGrid} on gentle ground, and the unblurred bilinear sample
  * where the vertex's footprint is steep (blend smoothstep(loDeg, hiDeg, the largest 10 m Horn slope inside the footprint),
  * 40 to 55 degrees by default), so a step stays a step. Where the steepest slope in a footprint is at or below `loDeg` the
- * vertex is bit-identical to `decimateGrid`'s, and with `despikeM` at its default of 0 so is the whole mesh of a terrain
- * with nothing steeper. Returns `decimateGrid`'s result untouched when no decimation is needed (a grid within `maxN`).
+ * vertex is bit-identical to `decimateGrid`'s, so a terrain with nothing steeper comes out exactly as `decimateGrid` gives it
+ * (with `despikeM` at its default of 0). Returns `decimateGrid`'s result untouched when no decimation is needed (a grid within `maxN`).
  *
  * The footprint of a vertex is the block of source cells within half a mesh cell of it. Instead of scanning that block for
  * every vertex, each steep source cell is scattered to the (one to four) vertices whose footprint contains it, which gives

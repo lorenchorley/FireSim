@@ -82,7 +82,7 @@ export interface RockMaskStats {
 
 export interface RockMask {
   grid: GridSpec;
-  /** RGBA8, 4 bytes per cell, row 0 = south (the grid's order; flip when a texture wants row 0 = north). */
+  /** RGBA8, 4 bytes per cell in the grid's order (row 0 = south), the order `rgbaTexture` (textures.ts) takes for the other grid textures. */
   rgba: Uint8Array;
   stats: RockMaskStats;
 }
@@ -250,6 +250,7 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
     // B, first half: the rock cells give the ground within reach that lies above them a share of their R.
     const offI: number[] = [];
     const offJ: number[] = [];
+    const offK: number[] = [];
     const offW: number[] = [];
     for (let dj = -tb; dj <= tb; dj++)
       for (let di = -tb; di <= tb; di++) {
@@ -257,6 +258,7 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
         if (d > o.lipReachM + 1e-6) continue;
         offI.push(di);
         offJ.push(dj);
+        offK.push(dj * nx + di);
         offW.push(reachFade(d, o.lipReachM, h));
       }
     const lip = new Uint8Array(n);
@@ -271,12 +273,15 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
             const rv = r[k]!;
             if (rv < R_MIN_BYTE) continue;
             const zr = z[k]!;
+            const inside = i >= tb && i < nx - tb && j >= tb && j < ny - tb;
             for (let t = 0; t < offI.length; t++) {
-              const ii = i + offI[t]!;
-              const jj = j + offJ[t]!;
-              if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
-              const kk = jj * nx + ii;
-              const v = Math.round(rv * offW[t]!);
+              if (!inside) {
+                const ii = i + offI[t]!;
+                const jj = j + offJ[t]!;
+                if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+              }
+              const kk = k + offK[t]!;
+              const v = (rv * offW[t]! + 0.5) | 0;
               if (v > lip[kk]! && zr <= z[kk]!) lip[kk] = v;
             }
           }
@@ -332,11 +337,13 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
               fx = fx < 0 ? 0 : fx > mx1 ? mx1 : fx;
               fy = fy < 0 ? 0 : fy > my1 ? my1 : fy;
               // The ray is up the fall line: it stops where the ground falls away (a crest), so rock beyond a crest is not uphill.
-              const zi = z[Math.round(fy) * nx + Math.round(fx)]!;
+              const zi = z[((fy + 0.5) | 0) * nx + ((fx + 0.5) | 0)]!;
               if (!(zi >= zTop - CREST_DROP_M)) break;
               if (zi > zTop) zTop = zi;
-              const i0 = Math.min(Math.floor(fx), nx - 2);
-              const j0 = Math.min(Math.floor(fy), ny - 2);
+              let i0 = fx | 0;
+              let j0 = fy | 0;
+              if (i0 > nx - 2) i0 = nx - 2;
+              if (j0 > ny - 2) j0 = ny - 2;
               const tx = fx - i0;
               const ty = fy - j0;
               const q = j0 * nx + i0;

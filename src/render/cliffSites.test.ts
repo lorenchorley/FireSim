@@ -6,8 +6,8 @@
  *   SLOW=1 npx vitest run src/render/cliffSites.test.ts
  *
  * The acceptance numbers measure mesh edges, not the look: a serrated drawing passes all of them (S5), so they are necessary
- * checks only. Times are node times on a busy machine, so the guards are twice the plan's phone budgets (the real figures are
- * about a tenth of them).
+ * checks only. The time guards are sanity limits of 2 s for a node run on a shared machine (the first call in a process is cold;
+ * quiet figures are 20 to 40 ms each), not the plan's phone budgets, which are `[est]` and unmeasured.
  */
 import { describe, expect, it } from 'vitest';
 import { sampleBilinear } from '../core/grid';
@@ -64,9 +64,22 @@ async function checkSite(id: CliffSite): Promise<void> {
   expect(countSpikes(grid, sharp.elevation, 10)).toEqual({ towers: 0, pits: 0 });
   expect(countSpikes(high.grid, high.elevation, MESH_DESPIKE_M.high)).toEqual({ towers: 0, pits: 0 });
   expect(countSpikes(low.grid, low.elevation, MESH_DESPIKE_M.low)).toEqual({ towers: 0, pits: 0 });
+  // Without the despike there are vertex spikes (S5: 13, 12, 20 and 1 at High) and it changes only vertices the blend had moved off
+  // decimateGrid's value, so ground that decimateGrid gives unchanged is never touched.
+  const plain = decimateTerrain(grid, sharp.elevation, 400);
+  const blurred = decimateGrid(grid, sharp.elevation, 400);
+  let despiked = 0;
+  for (let k = 0; k < high.elevation.length; k++) {
+    if (high.elevation[k] === plain.elevation[k]) continue;
+    despiked++;
+    expect(plain.elevation[k]).not.toBe(blurred.elevation[k]);
+  }
+  expect(despiked).toBeLessThan(25);
+  const before = countSpikes(plain.grid, plain.elevation, MESH_DESPIKE_M.high);
+  expect(before.towers + before.pits).toBe(despiked);
   expect(iou(drainageMask(grid, elevation), drainageMask(grid, sharp.elevation))).toBeGreaterThanOrEqual(0.85);
-  expect(sharpenMs).toBeLessThan(800);
-  expect(meshMs).toBeLessThan(200);
+  expect(sharpenMs).toBeLessThan(2000);
+  expect(meshMs).toBeLessThan(2000);
 
   // The sharpening is a bounded, local change: a few percent of the cells.
   expect(sharp.stats.moved / elevation.length).toBeGreaterThan(0.02);
@@ -77,7 +90,7 @@ async function checkSite(id: CliffSite): Promise<void> {
   const t2 = performance.now();
   const mask = buildRockMask({ grid, elevation: sharp.elevation, slope: { grid: high.grid, values: hornSlopeDeg(high.grid, high.elevation) }, cover });
   const maskMs = performance.now() - t2;
-  expect(maskMs).toBeLessThan(300);
+  expect(maskMs).toBeLessThan(2000);
   expect(mask.stats.rockCells / elevation.length).toBeGreaterThan(0.0002); // Tomah, with short faces, has 0.05 %; the others 0.5 to 0.9 %
   expect(mask.stats.rockCells / elevation.length).toBeLessThan(0.1);
   expect(mask.stats.screeCells).toBeGreaterThan(0);

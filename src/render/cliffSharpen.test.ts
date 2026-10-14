@@ -70,7 +70,7 @@ describe('cliffSharpen', () => {
     expect(z.every((v, k) => v === copy[k])).toBe(true);
   });
 
-  it('keeps a 15 m V-gully a slot: the floor cells are unchanged and its drainage is kept', () => {
+  it('keeps a V-gully a slot (60 degree walls, 17 m up in the first cell): the floor cells are unchanged and its drainage is kept', () => {
     const g = flatGrid(120, 120);
     // a gully with 60 degree walls up to a plateau 120 m above its floor, falling 10 degrees towards the south
     const z = terrainOf(g, (i, j) => 200 + 1.8 * j + Math.min(Math.abs(i - 60) * 10 * TAN(60), 120));
@@ -80,8 +80,8 @@ describe('cliffSharpen', () => {
     const after = drainageMask(g, r, 10000);
     expect(before.reduce((s, v) => s + v, 0)).toBeGreaterThan(50);
     expect(iou(before, after)).toBeGreaterThanOrEqual(0.85);
-    // and a gully 15 m deep and 30 m wide between 70 degree faces keeps its floor too
-    const slot = terrainOf(g, (i, j) => 300 + 1.5 * j + Math.min(Math.abs(i - 60) * 10 * TAN(70), 15) + (Math.abs(i - 60) > 3 ? 80 : 0));
+    // and so does a slot with sheer 80 m walls: its floor is 30 m wide, so the walls' weight reaches it through the shoulders
+    const slot = terrainOf(g, (i, j) => 300 + 1.5 * j + (Math.abs(i - 60) > 1 ? 80 : 0));
     const rs = cliffSharpen(g, slot).elevation;
     for (let j = 4; j < g.ny - 4; j++) expect(Math.abs(rs[j * g.nx + 60]! - slot[j * g.nx + 60]!)).toBeLessThan(1e-3);
   });
