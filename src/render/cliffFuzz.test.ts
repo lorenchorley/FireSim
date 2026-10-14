@@ -384,10 +384,10 @@ describe('buildRockMask on random fields', () => {
       const slope = field(rnd, sg, 0, 0);
       for (let j = 0; j < sg.ny; j++) for (let i = 0; i < sg.nx; i++) slope.values[j * sg.nx + i] = 40 + 45 * Math.sin(i / 2.3 + trial) * Math.cos(j / 3.1 - trial);
       const cover = field(rnd, cg, 0, 1);
-      const m = buildRockMask({ grid: g, elevation: z, slope, cover });
+      const m = buildRockMask({ grid: g, elevation: z, slope, windowSlope: slope, cover });
       const tag = `trial ${trial}`;
       expect(m.rgba.length).toBe(4 * g.nx * g.ny);
-      const again = buildRockMask({ grid: g, elevation: z, slope, cover });
+      const again = buildRockMask({ grid: g, elevation: z, slope, windowSlope: slope, cover });
       expect(Array.from(again.rgba), `${tag}: deterministic`).toEqual(Array.from(m.rgba));
       const R = (i: number, j: number): number => m.rgba[(j * g.nx + i) * 4]!;
       let rockSeen = 0;

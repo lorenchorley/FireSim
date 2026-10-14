@@ -181,7 +181,7 @@ describe('buildRockMask', () => {
     const meshSlope: RockField = { grid: mesh, values: hornSlopeDeg(mesh, resample(g, z, mesh)) };
     const fineSlope: RockField = { grid: g, values: hornSlopeDeg(g, z) };
     const input = { grid: g, elevation: z, slope: meshSlope };
-    const same = buildRockMask(input);
+    const same = buildRockMask({ ...input, windowSlope: meshSlope });
     const split = buildRockMask({ ...input, windowSlope: fineSlope });
     // R follows the first slope either way
     for (let k = 0; k < g.nx * g.ny; k++) expect(split.rgba[k * 4]).toBe(same.rgba[k * 4]);
@@ -189,6 +189,9 @@ describe('buildRockMask', () => {
     const flatCells = (m: RockMask): number[] => Array.from({ length: g.nx }, (_, i) => i).filter((i) => ch(m, 2, i) > 0.5);
     expect(flatCells(split).length).toBeGreaterThan(flatCells(same).length - 1);
     expect(split.rgba.some((v, k) => k % 4 !== 0 && v !== same.rgba[k])).toBe(true);
+    // absent, the windows follow the 10 m slope of the elevation, not the slope R follows (the easy call must not lose the pavement)
+    const absent = buildRockMask(input);
+    expect(absent.rgba.every((v, k) => v === split.rgba[k])).toBe(true);
     // with the fine slope everywhere the mask equals the one built from the fine slope alone, for G and B
     const fine = buildRockMask({ grid: g, elevation: z, slope: fineSlope });
     const both = buildRockMask({ grid: g, elevation: z, slope: fineSlope, windowSlope: fineSlope });
