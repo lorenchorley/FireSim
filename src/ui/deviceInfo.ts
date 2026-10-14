@@ -354,6 +354,20 @@ async function readHints(env: DeviceEnv, ms: number): Promise<HighHints | null> 
   };
 }
 
+const cleanBattery = (b: { level: number; charging: boolean } | null): DeviceLater['battery'] => (b && typeof b.level === 'number' && Number.isFinite(b.level) ? { level: b.level, charging: !!b.charging } : null);
+const cleanStorage = (s: { usage?: number; quota?: number } | null): DeviceLater['storage'] => (s && pos(s.usage) !== null && pos(s.quota) !== null ? { usage: s.usage!, quota: s.quota! } : null);
+
+/**
+ * The two slow facts that change while the app runs: the battery level and the storage in use. `deviceLater()` reads them once
+ * and keeps them for the life of the page, so the screen reads them again when it opens, every few seconds and when it copies
+ * (a battery figure from an hour ago is not a measurement of now). Never rejects.
+ */
+export async function deviceVolatile(env: DeviceEnv = browserEnv()): Promise<Pick<DeviceLater, 'battery' | 'storage'>> {
+  const ms = env.timeoutMs ?? 1000;
+  const [battery, storage] = await Promise.all([within(env.nav.getBattery?.(), ms), within(env.nav.storage?.estimate?.(), ms)]);
+  return { battery: cleanBattery(battery), storage: cleanStorage(storage) };
+}
+
 /** The slow facts: Client Hints, battery, storage, the GPU, the refresh rate and the graphics probe. Never rejects. */
 export async function deviceInfoAsync(env: DeviceEnv = browserEnv()): Promise<DeviceLater> {
   const ms = env.timeoutMs ?? 1000;
@@ -379,8 +393,8 @@ export async function deviceInfoAsync(env: DeviceEnv = browserEnv()): Promise<De
   }
   return {
     hints,
-    battery: battery && typeof battery.level === 'number' && Number.isFinite(battery.level) ? { level: battery.level, charging: !!battery.charging } : null,
-    storage: storage && pos(storage.usage) !== null && pos(storage.quota) !== null ? { usage: storage.usage!, quota: storage.quota! } : null,
+    battery: cleanBattery(battery),
+    storage: cleanStorage(storage),
     refreshHz,
     gl: probeGl(env),
     gpu,
