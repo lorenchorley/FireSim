@@ -9,7 +9,7 @@ import type { Insight } from '../../../core/types';
 import { msToKmh } from '../../../core/units';
 import { h, listen, prefersReducedMotion, setChildren, text } from '../../dom';
 import { icon, type IconName } from '../../icons';
-import { GLOSSARY } from '../../content';
+import { GLOSSARY, HELP_STEPS } from '../../content';
 import {
   compassName,
   formatArea,
@@ -523,29 +523,18 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
   setChildren(panels.help, [
     h('div', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, 'Training aid only, not an operational prediction. Follow your IC (incident controller), your Crew Leader and NSW RFS procedures. LACES first (Lookouts, Awareness, Communications, Escape routes, Safety zones).')]),
     sectionHeader('How to use'),
-    h('ol', { class: 'howto' }, [
-      h('li', null, [h('strong', null, 'Tools: '), 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything.']),
-      h('li', null, [h('strong', null, 'Fire: '), 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.']),
-      h('li', null, [h('strong', null, 'Play: '), 'press the blue Play button and pick a speed on the chip beside it; drag or tap the timeline to jump to any time.']),
-      h('li', null, [
-        h('strong', null, 'Moving around the map: '),
-        'drag with one finger to slide the map along, like grabbing a paper map. Put two fingers on it and move them together to turn the view (sideways) and tilt it (up or down), or pinch them to zoom; you can pinch and turn in one movement. At eye level you cannot slide: one finger turns your head. While “Draw a line” (Fire) or “Paint” (Fuel) is on, one finger draws and the map stays still; switch back to tapping to move the map again. With a mouse: left button slides, right button turns, wheel zooms.',
-      ]),
-      h('li', null, [h('strong', null, 'Map buttons: '), 'the round buttons on the side open the layers, change the camera (top, 3-D, eye level, zoom) and turn the map north up.']),
-      h('li', null, [h('strong', null, 'Insights: '), 'new cards never pop up; a number on the Insights tab tells you how many are waiting.']),
-      h('li', null, [h('strong', null, 'Fuel / Wind: '), 'tell the model what you see: more litter, a road, the wind here.']),
-      h('li', null, [h('strong', null, 'Layers: '), 'choose the map type, switch roads, fire trails, homes, residential areas, names and trees on or off one by one, or colour the ground by one measurement (a heat map). Tap (i) on a row to learn what it shows and where the data come from. Your choices are remembered.']),
-      h('li', null, [h('strong', null, 'What if: '), 'switch physics on or off and compare.']),
-      h('li', null, [h('strong', null, 'Where am I: '), '“Why here?” also names the nearest road and fire trail, how many homes are close and what the ground is like.']),
-      h('li', null, [h('strong', null, 'Data: '), 'the line at the bottom of the map credits the data you see; tap it (or open the menu) for the size, source and date of every data set.']),
-      h('li', null, [h('strong', null, 'How it works: '), 'the menu also has “How this simulation works”: what is 2-D and what is 3-D, how fine the grids are and how often they are updated.']),
-      h('li', null, [h('strong', null, 'Back: '), 'the Back button closes the open menu, panel or screen first; the simulation keeps running while you read.']),
-    ]),
+    h('ol', { class: 'howto' }, HELP_STEPS.map((st) => h('li', null, [h('strong', null, `${st.label}: `), st.text]))),
     sectionHeader('Glossary'),
     h(
       'div',
       { class: 'glossary' },
-      GLOSSARY.map((g) => h('details', { class: 'gloss' }, [h('summary', null, h('span', { class: 'gloss-text' }, [h('span', { class: 'gloss-term' }, g.term), g.short ? h('span', { class: 'gloss-short' }, g.short) : null])), h('p', null, g.body)])),
+      GLOSSARY.map((g) =>
+        h('details', { class: 'gloss' }, [
+          h('summary', null, h('span', { class: 'gloss-text' }, [h('span', { class: 'gloss-term' }, g.term), g.short ? h('span', { class: 'gloss-short' }, g.short) : null])),
+          h('p', null, g.body),
+          g.items ? h('ul', { class: 'gloss-list' }, g.items.map((it) => h('li', null, [h('strong', null, `${it.name}: `), it.text]))) : null,
+        ]),
+      ),
     ),
   ]);
 
