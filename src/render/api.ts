@@ -27,6 +27,92 @@ export interface CameraState {
   mode: 'orbit' | 'top' | 'ground';
 }
 
+/**
+ * Night lighting of the map (workstream F of docs/plans/air-slice-wind-detail-honest-speed.md, §9b): 'realistic' follows the
+ * clock (today's look); 'brighter' and 'daylight' light the ground, trees and roads after dark from a fixed north-west sun.
+ */
+export type NightLook = 'realistic' | 'brighter' | 'daylight';
+
+/**
+ * The 3-D picture quality tier in use and what it sets (workstream G, §9c). A read-only fact for the "Simulation debug
+ * statistics" screen. The view knows how the tier was chosen (an option or a guess), not why the option was given: the UI
+ * says "set by you" or "asked for by the Detail profile" from the settings.
+ */
+export interface QualityInfo {
+  tier: 'low' | 'medium' | 'high';
+  /** 'option': `createSceneView(container, { quality })` was given; 'guess': guessed from this phone's cores and memory. */
+  source: 'option' | 'guess';
+  /** What the guess is on this phone (the same as `tier` when `source` is 'guess'), and the numbers it used; null when the browser does not say. */
+  guess: 'low' | 'medium' | 'high';
+  cores: number | null;
+  memoryGb: number | null;
+  /** What the tier sets. */
+  terrainSamples: number;
+  treeBudget: number;
+  canopyTriangles: number;
+  pixelRatioCap: number;
+  flameSites: number;
+  smokePuffs: number;
+  treeSwayDefault: boolean;
+}
+
+/**
+ * Frame and draw statistics of the view (workstream A, §5.3 "Display"), from a ring of the last ~120 frame times that the
+ * render loop already measures. Null fields have no data yet. While a full-screen screen covers the view nothing is drawn,
+ * so these are the last seconds before it opened (`lastDrawAgeS` says how old).
+ */
+export interface FrameStatsInfo {
+  /** Frames per second over the last 10 s of drawing. */
+  fps10: number | null;
+  frameMeanMs: number | null;
+  frameP95Ms: number | null;
+  /** Frames in the ring that took more than 33 ms and more than 100 ms, and how many frames the ring holds. */
+  over33: number;
+  over100: number;
+  frames: number;
+  drawCalls: number;
+  triangles: number;
+  textures: number;
+  /** Pixel ratio in use, its cap for this tier, how many times the adaptive ratio has lowered it, and the canvas size in device pixels. */
+  pixelRatio: number;
+  pixelRatioCap: number;
+  dprDrops: number;
+  canvasW: number;
+  canvasH: number;
+  /** Seconds since a frame was last drawn; null before the first. */
+  lastDrawAgeS: number | null;
+}
+
+/**
+ * What the cliff drawing cost and produced for the current scenario (workstream H, §9d.3 and §9d.6). Producer: the 3-D
+ * view; null or absent when the scenario has no 10 m terrain (the mock, synthetic terrain), in which case nothing is
+ * sharpened. Times are wall ms on this phone for the one build at scenario load.
+ */
+export interface TerrainDrawStats {
+  /** Share (0–1) of 10 m cells the sharpening moved. */
+  sharpenedShare: number | null;
+  sharpenMs: number | null;
+  maskMs: number | null;
+  meshMs: number | null;
+  gradientMs: number | null;
+  meshVertices: number;
+  meshTriangles: number;
+  /** Rock detail in the terrain shader: all six effects, four, three, or off (no rock mask). */
+  rockDetail: 'high' | 'medium' | 'low' | 'off';
+}
+
+/**
+ * An icon the map draws and the user can tap (workstream I, §9e). `x`, `y` are the icon's own spot in local metres (a pin's
+ * tip, not its picture). `others` is how many more icons were also within reach of the tap. Draft shape: the lane that builds
+ * the pick may add fields the words need.
+ */
+export type MapMarker =
+  | { kind: 'you'; x: number; y: number; others: number }
+  | { kind: 'ignition'; x: number; y: number; others: number; ignition: Ignition }
+  | { kind: 'spot'; x: number; y: number; others: number; spot: SpotFire }
+  | { kind: 'insight'; x: number; y: number; others: number; insight: Insight }
+  | { kind: 'home'; x: number; y: number; others: number };
+
 export interface SceneViewApi {
   /**
    * Build the terrain, vegetation and static layers for a new scenario. `hiRes` (ScenarioData.terrainHiRes, the 10 m
@@ -103,8 +189,25 @@ export interface SceneViewApi {
   readonly plainGround?: boolean;
   /** An aerial photo was given for this scenario (so the 'Aerial photo' map type can be shown). */
   readonly hasImagery?: boolean;
+  /**
+   * Night lighting of the map (workstream F): applies at once (uniforms only), kept across scenarios. A view setting, not a
+   * LayerState key. Absent on the 2-D mock, which has no night.
+   */
+  setNightLook?(look: NightLook): void;
+  readonly nightLook?: NightLook;
   /** The render quality tier in use (the UI keeps the trees' wind sway off by default on 'low'). */
   readonly renderQuality?: 'low' | 'medium' | 'high';
+  /** The tier, how it was chosen and what it sets (workstream G); absent on the 2-D mock. */
+  readonly qualityInfo?: QualityInfo;
+  /** Frame and draw statistics for the debug statistics screen (workstream A); absent on the 2-D mock. */
+  frameStats?(): FrameStatsInfo | null;
+  /** Cliff drawing statistics for the current scenario (workstream H); null when nothing was sharpened. */
+  terrainStats?(): TerrainDrawStats | null;
+  /**
+   * The icon under a screen position, or null (workstream I): within 22 px of an icon's centre (homes 14 px), nearest wins.
+   * Optional so hand-written fakes keep compiling; the ground is picked with `pickGround`.
+   */
+  pickMarker?(clientX: number, clientY: number): MapMarker | null;
   /** Render statistics for the performance HUD. */
   stats(): { fps: number; drawCalls: number; triangles: number };
   /**
