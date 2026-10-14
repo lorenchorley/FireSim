@@ -431,6 +431,43 @@ test('the dock tabs share one scrolling body: each tab opens at its top; a gloss
   expect(ring.offset).toBeLessThan(0);
 });
 
+test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, night lighting, picture quality, the slow-run button, the debug statistics); the icon words are a list under their text and fit the screen', async ({ page }) => {
+  await buildMock(page);
+  await page.getByTestId('tab-help').click();
+  await page.getByTestId('sheet-grip').click();
+  await page.getByTestId('sheet-grip').click();
+  await expect(page.getByTestId('dock')).toHaveAttribute('data-detent', 'full');
+  const help = page.locator('#panel-help');
+  // How to use: the Tools step says to tap an icon; the new steps are there, each a bold label and a sentence.
+  const steps = await help.locator('.howto li').evaluateAll((els) => els.map((e) => ({ label: e.querySelector('strong')?.textContent ?? '', text: e.textContent ?? '' })));
+  const tools = steps.find((x) => x.label === 'Tools: ');
+  expect(tools?.text).toContain('Tap an icon to ask about it');
+  for (const label of ['If it runs slowly: ', 'Statistics: ', 'Settings: ']) expect(steps.map((x) => x.label), label).toContain(label);
+  // Glossary: the new terms are in, closed until tapped, each with its one-line gloss under the term.
+  const terms = await help.locator('.gloss-term').allInnerTexts();
+  for (const t of ['Night lighting', 'Map icons', 'Picture quality', 'Why is it slow?', 'Simulation debug statistics']) expect(terms, t).toContain(t);
+  // Map icons: seven lines under the paragraph, none cut off, none under 14 px, nothing wider than the screen.
+  const icons = help.locator('.gloss', { hasText: 'What the icons on the map mean' });
+  await icons.locator('summary').click();
+  await expect(icons).toHaveAttribute('open', '');
+  const list = icons.locator('.gloss-list li');
+  await expect(list).toHaveCount(7);
+  const vp = page.viewportSize()!;
+  const rows = await list.evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { name: e.querySelector('strong')?.textContent ?? '', right: r.right, font: parseFloat(getComputedStyle(e).fontSize), belowParagraph: r.top >= (e.closest('.gloss')!.querySelector('p')!.getBoundingClientRect().bottom - 1) };
+    }),
+  );
+  expect(rows.map((r) => r.name)).toEqual(['You are here: ', 'Ignition point, line or area: ', 'Spot fire: ', 'Danger: ', 'Watch out: ', 'Insight: ', 'Home: ']);
+  for (const r of rows) {
+    expect(r.right, `${r.name} fits the screen`).toBeLessThanOrEqual(vp.width + 1);
+    expect(r.font, `${r.name} is body text`).toBeGreaterThanOrEqual(14);
+    expect(r.belowParagraph, `${r.name} sits under the paragraph`).toBe(true);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('the TRAINING strip keeps its full wording wherever it fits (360 px phones too), never clips, and shortens only when it must', async ({ page }) => {
   const strip = async (vw: number, vh: number, query: string, scale = 1) => {
     await page.setViewportSize({ width: vw, height: vh });
