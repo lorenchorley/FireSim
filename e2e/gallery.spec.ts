@@ -205,10 +205,10 @@ test('gallery: the new screens in light, night and high contrast, for README.md'
 });
 
 // ───────────────────────────────────────── 0.3.0 ─────────────────────────────────────────
-// The pictures of the 0.3.0 features, in two tests of their own (each is run alone with `-g "gallery 0.3.0"`): the speed
-// sheet, Settings with Picture quality and Why here? with an icon row (a daytime run), and the night look, Realistic and
-// Daylight (a run that starts at night, so the clock on the screen and the light agree). Real engine, the bundled Katoomba
-// demo, offline.
+// The pictures of the 0.3.0 features, in three tests of their own (each is run alone with `-g "gallery 0.3.0"`): the speed
+// sheet, Settings with Picture quality and Why here? with an icon row (a daytime run), the night look, Realistic and
+// Daylight (a run that starts at night, so the clock on the screen and the light agree), and an escarpment close-up on
+// the High picture tier (cliffs drawn as rock walls). Real engine, the bundled Katoomba demo, offline.
 
 type W = {
   __firesim: {
@@ -339,4 +339,31 @@ test('gallery 0.3.0: the night look, Realistic and Daylight, on a run that start
   await shot(page, '31-night-realistic', ['light']);
   await look('daylight');
   await shot(page, '31b-night-daylight', ['light']);
+});
+
+test('gallery 0.3.0: an escarpment close-up, the cliffs drawn as rock walls on the High picture tier', async ({ page }) => {
+  test.setTimeout(600_000);
+  await page.goto('/?debug=1&theme=light');
+  await acceptNotice(page);
+  // Picture quality High, chosen in Settings (it applies to the model built next), so the picture has all six kinds of rock detail.
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('settings')).toBeVisible();
+  await page.getByTestId('picture-quality').getByRole('radio', { name: 'High' }).check();
+  await page.getByTestId('close-settings').click();
+  await expect(page.getByTestId('settings')).toHaveCount(0);
+  await page.getByTestId('site-katoomba').click();
+  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
+  await page.getByTestId('preset-hot-nw-sw-change').click();
+  const online = page.getByTestId('online').getByRole('switch');
+  if (await online.isChecked()) await page.getByTestId('online').click();
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
+  // The tallest sheer face of Katoomba's escarpment (spike S5; e2e/cliffs.spec.ts frames it the same way): orbit from the valley side,
+  // 25 degrees off the face's fall line, 650 m from its foot, no wind streaks. No fire: the picture is of the ground.
+  const face = { x: 2505, y: -1995, down: 181 };
+  const foot = { x: face.x + 60 * Math.sin((face.down * Math.PI) / 180), y: face.y + 60 * Math.cos((face.down * Math.PI) / 180) };
+  await setLayers(page, { wind: 'off' });
+  await page.evaluate(([x, y, az]) => (window as unknown as W).__firesim.view.lookAt(x!, y!, 650, az, 62), [foot.x, foot.y, (face.down + 25) % 360]);
+  await page.waitForTimeout(2500); // the canopy is placed a frame at a time
+  await shot(page, '32-escarpment-cliffs', ['light']);
 });

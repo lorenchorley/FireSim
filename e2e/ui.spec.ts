@@ -431,7 +431,7 @@ test('the dock tabs share one scrolling body: each tab opens at its top; a gloss
   expect(ring.offset).toBeLessThan(0);
 });
 
-test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, night lighting, picture quality, the slow-run button, the debug statistics); the icon words are a list under their text and fit the screen', async ({ page }) => {
+test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, night lighting, picture quality, cliffs and rock, the slow-run button, the debug statistics); the icon words are a list under their text and fit the screen', async ({ page }) => {
   await buildMock(page);
   await page.getByTestId('tab-help').click();
   await page.getByTestId('sheet-grip').click();
@@ -445,7 +445,7 @@ test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, ni
   for (const label of ['If it runs slowly: ', 'Statistics: ', 'Settings: ']) expect(steps.map((x) => x.label), label).toContain(label);
   // Glossary: the new terms are in, closed until tapped, each with its one-line gloss under the term.
   const terms = await help.locator('.gloss-term').allInnerTexts();
-  for (const t of ['Night lighting', 'Map icons', 'Picture quality', 'Why is it slow?', 'Simulation debug statistics']) expect(terms, t).toContain(t);
+  for (const t of ['Night lighting', 'Map icons', 'Picture quality', 'Cliffs and rock', 'Why is it slow?', 'Simulation debug statistics']) expect(terms, t).toContain(t);
   // Map icons: seven lines under the paragraph, none cut off, none under 14 px, nothing wider than the screen.
   const icons = help.locator('.gloss', { hasText: 'What the icons on the map mean' });
   await icons.locator('summary').click();

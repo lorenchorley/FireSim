@@ -9,11 +9,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
 import type { MapMarker } from '../render/api';
+import { rockDetailCount } from '../render/cliffDrawing';
 import { MIN_HIT_PX } from '../render/markerPick';
+import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
 import { forcedPace } from './paceModel';
-import { paceSheet } from './paceSheetModel';
+import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
 import { NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
@@ -116,6 +118,24 @@ describe('Help and glossary: the 0.3.0 entries say what the screens say', () => 
     expect(step('Settings')).toContain('Picture quality');
   });
 
+  it('Cliffs and rock: what is drawn, that every number uses the data as received, that the detail follows Picture quality (six, four, three), the 60 m limit', () => {
+    const b = entry('Cliffs and rock').body;
+    expect(b.startsWith('In the 3-D view, cliff faces are drawn steeper than the data and show ledges, joints, stains and scree.')).toBe(true);
+    expect(b).toContain('The simulation, the slope overlay and every number use the data as received.');
+    // The Data sets Terrain card says the same thing in its own words (plan section 4, rule 10).
+    expect(TERRAIN_DRAWING_NOTE).toContain('Cliff faces are drawn steeper than the data');
+    expect(TERRAIN_DRAWING_NOTE).toContain('use the data as received');
+    // The six effects of the rock detail and how many each Picture quality tier draws.
+    for (const w of ['ledges', 'vertical joints', 'bands under overhangs', 'water stains', 'scree', 'bare rock along the top']) expect(b).toContain(w);
+    expect([rockDetailCount('high'), rockDetailCount('medium'), rockDetailCount('low')]).toEqual([6, 4, 3]);
+    expect(b).toContain('Picture quality: High draws all six kinds, Medium four and Low three');
+    // The mesh's resolution limit, that it is always on, and that it never touches the fire.
+    expect(b).toContain('A face under about 60 m high still reads as a steep bank');
+    expect(b).toContain('always on');
+    expect(b).toContain('never the fire');
+    expect(entry('Picture quality').body).toContain('rock detail on cliffs');
+  });
+
   it('Simulation debug statistics: the screen title, where it lives, Copy, nothing sent, "Hidden by the WebView"', () => {
     const e = entry(DEBUG_STATS_TITLE);
     expect(e.term).toBe('Simulation debug statistics');
@@ -147,8 +167,12 @@ describe('Help and glossary: the 0.3.0 entries say what the screens say', () => 
     expect(b).toContain('Playing slower is what helps');
     // The link on the sheet and the action that changes the fire.
     expect(b).toContain(`“${sheet.link}”`);
-    expect(sheet.actions?.fast?.note).toBe('The fire from this moment on comes out a little different.');
-    expect(b).toContain('the fire from then on comes out a little different');
+    // Switching to the fast model restores the latest checkpoint (one per 1800 s of fire) and computes again, so the sheet's note and the
+    // glossary both say "from the last checkpoint, up to half an hour of fire ago", not "from this moment".
+    expect(sheet.actions?.fast?.note).toBe(FAST_NOTE);
+    expect(FAST_NOTE).toContain('from the last checkpoint, up to half an hour of fire ago');
+    expect(b).toContain('computed again from the last checkpoint, up to half an hour of fire ago, and comes out a little different');
+    expect(b).not.toContain('from that moment');
     expect(b).toContain('There is no button at Max speed');
     expect(b).toContain(DEBUG_STATS_TITLE);
     expect(step('If it runs slowly')).toContain('gauge button');

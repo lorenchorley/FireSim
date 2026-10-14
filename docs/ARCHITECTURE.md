@@ -56,7 +56,7 @@ src/
                  rig, heightfield picking, legends, palette, layerCatalog.ts (the one description of every layer), demo
                  imagery; pure helpers with no three.js: qualityGuess.ts (the picture-quality guess), markerPick.ts (which icon
                  a tap is on), iconAtlas.ts (the icons' drawing), frameLog.ts (frame statistics); render-only pure helpers
-                 for the cliff drawing: cliffSharpen.ts, terrainMesh.ts, rockMask.ts
+                 for the cliff drawing: cliffDrawing.ts (the pipeline), cliffSharpen.ts, terrainMesh.ts, rockMask.ts
   ui/            App shell + back stack (app.ts, backStack.ts), screens (notice, setup, building, settings, datasets,
                  modelCard, debugStats, sim/*), session, stores, widgets + primitives (typed builders of the design system),
                  mocks; the speed signal (paceModel.ts, paceSheetModel.ts, paceTypes.ts) and Simulation debug statistics
@@ -64,7 +64,7 @@ src/
   styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
                  + screen CSS (screens, sim, transport, layers, datasets, modelcard, debugstats); see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
-                 model-card, integration, android; and for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap)
+                 model-card, integration, android; and for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap, cliffs)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
@@ -366,13 +366,16 @@ decision is the only wall-clock decision in the engine. The plan is `docs/plans/
 own). `Simulation.stepOnce` already timed its laps; it now also feeds them (`addLap`, `endStep`, `noteAirStep`) to `PerfStats`, and
 `makeSnapshot` attaches `report()` as `EngineInfo.perf` (the `Simulation` option `perfStats: false` turns it off, for the cost
 tests). Fields, each `null` until measured and never NaN: `speed` (simulated s per busy s over the last 10 s and 60 s, the tier's
-mean, and the best and worst tumbling 10 s window), `history` (up to 20 speeds, one per 30 s of computing), `step` (outer step now,
+mean, and the best and worst tumbling 10 s window), `history` (only the filled samples, 0 to 20, one speed per 30 s of computing), `step` (outer step now,
 min, mean, max; whole-step wall ms median, 95th percentile and max over the last 128 steps; counts over 100 and 250 ms), `duty` (share
 of wall time computing over 10 s and 60 s: a worker flat out reads about 0.97 to 1), `modules` (nine rows: ms per step, share since
 the tier started, share over the last 10 s), `quality` (what limited the air step: horizontal CFL, vertical CFL, the tier's cap or
-the user's limit; run-max winds, projection corrections, spin-up wall seconds, fire sub-steps, burning cells), `embers` (always null:
+the user's limit; run-max winds, projection corrections, spin-up wall seconds (including the 30 timing steps), fire sub-steps, burning cells), `embers` (always null:
 the ember model keeps no honest pair of totals), `reruns` (rewinds, seconds recomputed, tier switches, restores) and `events` (kinds
-`tier`, `long-steps`, `rewind`, `restore`; at most 8 per snapshot, each with an increasing `seq` that the UI de-duplicates by).
+`tier`, `long-steps`, `rewind`, `restore`; drained by a size budget of about 750 characters per snapshot, oldest first, so four or five
+at once, each with an increasing `seq` that the UI de-duplicates by; `SimSession.onEngineEvents` records the events of every snapshot, not
+only of the one on screen). `perf` is published only with snapshots, so the "last 10 s" values go stale while the run is idle, and `reruns`
+counts atmosphere rebuilds as tier switches (one switch writes three log lines).
 Module mapping: the `atmosphere` lap is `air`; `firePrepare`, `fireStep`, `fireMasks` and `fireMinute` are `fire`; `surfaceWind` and
 `fireHeat` are `coupling` (`airAt` is nested inside `surfaceWind` and is not added again); `embers`; `solarMoisture` is `moisture`;
 `diagnostics` and `explain` are `detectors`; `snapshot` is `picture`; `checkpoint` is `checkpoints`; everything else, and whatever
@@ -388,17 +391,24 @@ When the requested tier is `auto`, the first `autoTuneSteps` = 30 steps of the 3
 `autoTuneWarmupSteps` = 10 (the JIT warm-up) are only reported, as `autoTune.warmupMeanMs`; the decision uses the **median** of steps
 11 to 30. `T_pred = autoTuneOverhead x step x duration / autoTuneStepS` (1.4, and 10 s). The budget is
 `max(autoTuneMinBudgetS, autoTuneBudgetS x duration / autoTuneBudgetRefS)`, that is `max(60 s, 600 s x duration / 6 h)`. The 3-D air
-is kept when `T_pred <= budget`, else the fast tier. For every run Setup offers (1 to 12 hours) the cut-off is a step of about
-198 ms (`600 / 3.024`); only a run under 36 minutes, which Setup does not offer, is held up by the one-minute floor (238 ms at 30
-minutes). The one phone measured so far took 41 ms (the mean of its first 20 steps, warm-up included): the old rule (the mean of
+is kept when `T_pred <= budget`, else the fast tier. For every run of 36 minutes or longer (Setup offers 1 to 12 hours) the cut-off is a
+step of 198.4 ms (`600 / 3.024`); only a run under 36 minutes, which Setup does not offer, is held up by the one-minute floor
+(`428571 / duration in s` ms, 238 ms at 30 minutes). The one phone measured so far took 41 ms (the mean of its first 20 steps, warm-up included): the old rule (the mean of
 the first 20 steps, 120 s for 6 h) predicted 124 s and chose Fast; the new cut-off is 4.8 times that step. The decision is taken
 once, in `Simulation.autoTuneDecide`, written to `perf.events` (`autoTuneEventText`) and never revisited: a test in
 `engineInfo.test.ts` holds the tier fixed even when the clock turns very slow mid-run, and the tier changes afterwards only by a
-record (the performance setting changed mid-run maps Saver to fast, Balanced to standard and Detail to high; or Layers, *Use the 3-D
-atmosphere*). The reason lines, with the measured numbers in place of the examples: *"Detailed 3-D air: this phone takes about 21 ms
+record (the performance setting changed mid-run maps Saver to fast, Balanced to standard outright, not to another Auto test, and Detail
+to high; or Layers, *Use the 3-D atmosphere*). On the build machine the steady median was 20.9 ms and the warm-up mean 50.7 ms. The reason lines, with the measured numbers in place of the examples: *"Detailed 3-D air: this phone takes about 21 ms
 per air step, so this run should compute in about 63 s (about 342 times real time). It can fall behind when you play faster than
 that; the timeline will say so."* and *"Fast surface-wind model: the detailed 3-D air would take about 15 min on this phone, longer
 than the limit of 10 min for a run like this. Switch in Settings, Performance, or Layers, Use the 3-D atmosphere."*
+
+**Known limitation (not fixed; it predates 0.3.0).** After Build the tier line stays "Auto: ... being timed" (`tierCause`
+`auto-pending`, `autoTune` null) until the first snapshot after Play, because the host posts the t0 snapshot before the spin-up that does
+the timing; the model card and the statistics cannot show "Detailed, N ms" before Play (about 25 s after Build in a paused run). The fix
+needs the host to refresh the engine info after the spin-up (a protocol timing change). `spinUpWallS` includes the 30 timing steps even
+when Auto then picks Fast, and after a switch to the 3-D air the headline reads "Everything else 50 %" because the 900 s re-spin runs in
+the records lap.
 
 **The pace model and `SessionState.pace`.** `ui/paceModel.ts` (pure, no clock of its own) is a tracker with 1-second bins over 30 s.
 `SimSession.trackPace` feeds it one `PaceFrame` per animation frame (the clock, the newest result, the speed asked for, the tier, a
@@ -414,10 +424,19 @@ rewind or an edit (the newest result moving backward) and a gap in the frames. `
 (`SimSession.debugForcePace`, for screenshots and layout audits). `ui/paceSheetModel.ts` (pure) turns `PaceInfo`, the engine's `perf`
 and the time left into every sentence of the sheet; a reason is shown only when the numbers support it (air above 40 % of the busy
 time on a 3-D tier, fire plus coupling above 40 %, embers above 25 %, speed now under 75 % of the median of the first four history
-samples), and "Play at N x" is the nearest preset at or below what the phone achieves. Pausing stops the worker (`SimSession.pause`
-calls `controller.pause`), so the sheet says "Pausing stops the simulation too. Playing slower is what lets it keep up." DOM:
-`screens/sim/scrubber.ts` makes the 44 px button (test id `pace-btn`, in the strip's fourth grid column, hidden while a jump
-computes), the under-rail run and a polite status line that announces entering `waiting` and at most every 2 minutes;
+samples), and "Play at N x" is the nearest preset at or below what the phone achieves (it also stores that speed as the default speed, as
+picking it in the speed sheet does). The sheet's *Fire spread* row adds the coupling module to fire spread (the statistics screen
+lists them apart). "Use the fast model from here" is the `setQuality` path: it restores the latest checkpoint (one per 1800 s of fire)
+and computes again, so its note says "The fire is computed again from the last checkpoint, up to half an hour of fire ago, and comes out
+a little different" and not "from this moment on". Pausing stops the worker (`SimSession.pause` calls `controller.pause`), so it does
+not let the simulation run ahead (the plan said up to 30 minutes), and the sheet says "Pausing stops the simulation too. Playing slower
+is what lets it keep up." The sheet's footnote reads "Measured on this phone, over the last 10 seconds". The button needs the 15 s of
+grace and the 6 s (waiting) or 10 s (behind) hold, so it comes about 22 to 27 s after Play and about 33 s when Play is pressed during the
+3-D spin-up (measured on the real engine). DOM: `screens/sim/scrubber.ts` makes the 44 px button (test id `pace-btn`, in the strip's
+fourth grid column, hidden while a jump computes; `aria-haspopup="dialog"` and `aria-expanded`; the ring and the run are drawn in
+`--watch-ink`), the under-rail run and, as a separate visually hidden `role=status` span (`aria-live=polite`, test id `pace-live`), the
+line that announces entering `waiting` and at most every 2 minutes. Known, not fixed: Android Back closes the sheet but focus then lands on
+the body (the top bar's shared `closeAll(false)`), and so it does after Escape from the statistics screen that "All the numbers" opened.
 `screens/sim/topBar.ts` hangs the sheet on its popover group (so the strip is created first and its button handed over), loads
 `screens/sim/paceSheet.ts` on the first tap, and does not show the old "Computing" badge while the signal is on.
 
@@ -435,10 +454,15 @@ last 40 events, and the long-task counter); `ui/runEvents.ts` (its own chunk, ab
 from pace episodes, `perf.events` (by `seq`), the app going to the background and the first thinning of the history.
 `render/frameLog.ts` (`FrameLog`: a 120-frame ring and ten 1-second bins; a slow frame is over 34 ms, a very slow one over 100 ms)
 is kept by the render loop's `FrameMeter` and read through `SceneViewApi.frameStats?()`; while a full-screen screen covers the view
-nothing is drawn, so those numbers are the last seconds before it opened (`lastDrawAgeS`). `App.openDebugStats()` opens it as the
+nothing is drawn, so those numbers are the last seconds before it opened (`lastDrawAgeS`). The slow-frame threshold is 34 ms, not the 33 ms
+of the contract, because the 30 fps cap draws 33.3 ms frames (the field is still named `over33`, and the threshold assumes a 60 Hz
+panel). The Display group also carries the *Cliff drawing (once per scenario)* row, from
+`SceneViewApi.terrainStats?()`. Some rows are honestly empty: embers released and landed read "Not counted by this engine"
+(`perf.embers` is always null) and the per-module times of the last 10 seconds are shown as shares only. `App.openDebugStats()` opens it as the
 overlay `debug-stats` (one instance; Back and Escape close it; focus returns to the row that opened it) from the main menu row
 directly under Settings (`menu-debug-stats`), Settings (`settings-debug-stats`), Setup (`setup-debug-stats`, where the run groups say
-"No run yet" and the phone groups are live), the model card, and the pace sheet's "All the numbers".
+"No run yet" and the phone groups are live), the model card, and the pace sheet's "All the numbers". The rows' sub-lines: "Speed, memory
+and what this phone can do" in the menu and in Setup, "Speed, memory, what this phone can do; copy as text" in Settings.
 
 ### explain/
 
@@ -465,6 +489,7 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   setNightLook?(look: 'realistic' | 'brighter' | 'daylight'): void;  readonly nightLook?: NightLook;   // map lighting after dark, uniforms only (3-D view only)
   readonly qualityInfo?: QualityInfo;                  // the picture tier, how it was chosen and what it sets (3-D view only)
   frameStats?(): FrameStatsInfo | null;                // frame rate, slow frames, draw calls, pixel ratio: the debug statistics (3-D view only)
+  terrainStats?(): TerrainDrawStats | null;            // what the cliff drawing built for this scenario; null when nothing was sharpened (3-D view only)
   pickMarker?(clientX, clientY): MapMarker | null;     // the icon under a screen position (22 px, homes 14 px), or null; the 2-D map has it too
   setBrushPreview(p | null): void;  setInteractionEnabled(on): void;  stats(); resize(); dispose();
 }
@@ -473,8 +498,11 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 The members marked optional are absent from the 2-D mock (`ui/mockScene.ts`, which has only `pickMarker`) and from hand-written fakes, so the UI
 checks for them: the Night lighting row is left out, and the statistics' display group says "Not available", where the view lacks them.
 * The terrain mesh is built from `ScenarioData.terrainHiRes` (the 10 m DEM) when present, decimated to the quality
-  budget (224 / 320 / 400 samples per side), so cliffs are finer than the 30 m fire grid; fuel, fire and overlays are
-  draped from the fire grid.
+  budget (224 / 320 / 400 samples per side: cells of 40.3 / 28.2 / 22.5 m for a 9 km area), so the ground is finer than the 30 m
+  fire grid; fuel, fire and overlays are draped from the fire grid. Since 0.3.0 the mesh is made from a **sharpened copy** of that
+  DEM and keeps an edge (`decimateTerrain`), so a cliff is a wall and no longer the blurred ramp it was: under 40 degrees it is
+  exactly what `decimateGrid` gave, and a scenario without a 10 m terrain takes the old path unchanged. A face under about 60 m
+  high is still a ramp on a 22 or 40 m mesh (the mesh's resolution limit). See *The cliff drawing* below.
 * **Camera and gestures** (`cameraRig.ts`, `groundPan.ts`, `panGesture.ts`). Orbit and top view, on a phone:
   **one finger** = displace the view, **two fingers** = turn / tilt (the midpoint's drag) and zoom (the change of their
   spacing) at the same time; eye level is a first-person look-around (one or two fingers turn the view, the eye cannot be
@@ -598,19 +626,25 @@ checks for them: the Night lighting row is left out, and the statistics' display
   cast shadows, which keep following the real sun; the sky dome and the smoke body get their own sun, ambient and exposure uniforms
   from the real lighting, so a lit map never paints a sun disc into a night sky. A change of look is uniforms only
   (`SceneViewApi.setNightLook` invalidates the sun key): no rebuild, no pause. It is a view setting like Plain, stored as
-  `LayerPrefs.nightLook` (`ui/screens/sim/layersPrefs.ts`; the prefs version stays 1) and reset by "Reset layers".
+  `LayerPrefs.nightLook` (`ui/screens/sim/layersPrefs.ts`; the prefs version stays 1) and reset by "Reset layers". Two things measured on
+  the real renderer (software GL, Katoomba): the cast shadows switch off at +0.5 degrees of real sun, a dusk step of 0.9 luma under
+  Daylight and 1.1 under Brighter; and Daylight ground just after sunset (-1.5 degrees) is brighter than at +10 degrees (60.2 against 51.8
+  on the photo map), by design, because the map sun stays 30 degrees up. The 86-pixel difference the spike saw between frames is page-load
+  noise that the unpatched build shows as well (one load in six differed from the others by 82 or 86 pixels; the cause was not found).
 * **Picture quality** (`SceneView.ts` `QUALITY`, `render/qualityGuess.ts`, `ui/settings.ts`). Tiers Low / Medium / High set the
   terrain mesh (224 / 320 / 400 samples per side), the tree budget (16,000 / 32,000 / 48,000), the canopy triangle budget (100k /
   170k / 250k), the pixel-ratio cap (1.25 / 1.75 / 2), the flame sites and smoke puffs (2,500 + 800 / 5,000 + 1,500 / 5,000 + 1,500)
-  and whether trees sway by default (off on Low). `Settings.pictureQuality` is `'auto' | 'low' | 'medium' | 'high'` (default `'auto'`,
+  and whether trees sway by default (off on Low); the rock detail of the cliff drawing is trimmed by the same tier (6 / 4 / 3 effects, see
+  *The cliff drawing*). `Settings.pictureQuality` is `'auto' | 'low' | 'medium' | 'high'` (default `'auto'`,
   sanitised; `SETTINGS_VERSION` unchanged). `resolveRenderQuality(pictureQuality, performance)` in `settings.ts` is the pure rule: an
   explicit value wins; Auto is High under the Detail profile and otherwise `undefined`, which lets the view guess. `guessQuality` (High
   at 8 or more cores and 6 GB or more, Low at 4 or fewer cores or 3 GB or less, else Medium; a missing value counts as 4 cores and
-  4 GB) lives in the pure `qualityGuess.ts` and is re-exported by `SceneView.ts`, so the Settings and Data sets screens read it
+  4 GB; `navigator.deviceMemory` is a coarse bucket of 0.25, 0.5, 1, 2, 4 or 8 GB, so it is never 6 and the High guess needs the 8 GB
+  bucket, which predates 0.3.0) lives in the pure `qualityGuess.ts` and is re-exported by `SceneView.ts`, so the Settings and Data sets screens read it
   without pulling Three.js into the entry chunk. `simScreen.ts` passes the result to `createSceneView(container, { quality })` when
   the view is built, so a change applies to the next model. `describeQuality` (pure, `SceneView.ts`) builds
   `SceneViewApi.qualityInfo` (the tier, whether it was an option or a guess, the cores and memory the guess read, and what the tier
-  sets). The adaptive pixel ratio stays on in every tier: it only lowers the resolution while the frame rate stays under 30. The
+  sets; its `pixelRatioCap` is the tier's cap, not the smaller of the device's ratio and the cap). The adaptive pixel ratio stays on in every tier: it only lowers the resolution while the frame rate stays under 30. The
   build-time memory estimate (`scenario/memoryModel.ts`) stays device-independent (it models Medium); the Data sets screen re-models
   it with the running tier.
 * **Tapping an icon** (`render/markerPick.ts`, `render/iconAtlas.ts`, `ui/screens/sim/markerWords.ts`, `SceneView.pickMarker`).
@@ -625,9 +659,79 @@ checks for them: the Night lighting row is left out, and the statistics' display
   `tapTarget(tool, marker, ground)` (in the Why tool an icon wins and the question is about its own spot, also when the finger's ray
   misses the ground; the other tools keep the ground) and `markerShownAt` (a time-bound icon is dropped when the clock goes back
   before it). `whyPanel.ts` puts the row first in every state and `WhyState.marker` keeps it through refreshes.
-* **Pure cliff helpers, render-only.** `cliffSharpen.ts`, `terrainMesh.ts` (`decimateTerrain`) and `rockMask.ts` are DOM-free and
-  three.js-free helpers for the cliff drawing; only the 3-D view's code imports them, so they stay out of the entry chunk and the
-  worker.
+* **The cliff drawing** (0.3.0, plan section 9d, H-look; **display only**). With a 10 m terrain the 3-D view draws steep ground as rock
+  walls. The modules are pure, DOM-free and three.js-free, and only the 3-D view's code imports them, so they stay out of the entry
+  chunk and the worker (`fields.ts`, which the Data sets screen imports, must not grow, which is why `decimateTerrain` is not next to
+  `decimateGrid`): `cliffSharpen.ts` (`cliffSharpen(grid, elevation)` gives a sharpened copy and its stats; `hornTan2`, `hornSlopeDeg`,
+  `despikeGrid`; constants in `CLIFF_SHARPEN_DEFAULTS`), `terrainMesh.ts` (`decimateTerrain(grid, elevation, maxN, { loDeg, hiDeg,
+  despikeM })`, `MESH_DESPIKE_M`), `rockMask.ts` (`buildRockMask` gives a `RockMask { grid, rgba, stats }`, `rockCopy` its CPU copy of R,
+  `sampleRock`) and `cliffDrawing.ts`, the one place that fixes the order. `buildCliffDrawing({ hi, fuel, meshN, tier, source })`:
+  1. `cliffSharpen`: a weight `smoothstep(48, 62)` of the 3 x 3 Horn slope, spread to the eight neighbours at 0.6; each weighted cell
+     moves towards the nearer of the lowest and highest height within 3 cells (30 m) either way along its own fall line (nothing
+     within 0.5 m of the middle, so a straight ramp and a gully floor stay); a despike pulls any cell that stands 10 m or more above or
+     below all eight neighbours back to 2 m past them. The outer ring never moves, a window that would leave the grid is cut short, and a
+     terrain with no cell over 48 degrees comes back as an exact copy. The input is never modified and the sharpened copy is not kept.
+  2. `decimateTerrain`: `decimateGrid`'s blurred value, blended to the unblurred bilinear sample by `smoothstep(40, 55)` of the steepest
+     10 m slope in the vertex's footprint (each steep source cell is scattered to the one to four vertices whose footprint holds it,
+     which gives the same maxima as scanning every footprint for a fraction of the reads), then a mesh despike (`MESH_DESPIKE_M`: 10 m
+     at High and Medium, 18 m at Low, 2 m margin). It returns `decimateGrid`'s result untouched when no decimation is needed.
+  3. `lightTerrain(mesh)`: the hillshade, sky-view factor and cast shadows follow the sharpened mesh, and the **mesh's own gradient
+     magnitude** at each vertex (`meshSlope`) picks banded rock against the photo: the 10 m slope disagrees with a 22 or 40 m triangle
+     by up to a vertex spacing, and the switch would draw the disagreement as spikes along the lip and foot (spike S5).
+  4. `hornGradient` of the sharpened 10 m terrain: the shader's normals (the relief, which is real).
+  5. `buildRockMask`: R is bare rock from the mesh slope with the tier's band (`MESH_ROCK_BAND_DEG`: 48 to 58, 45 to 55 and 42 to 52
+     degrees at High, Medium and Low, because a coarser mesh reads a face gentler and the default 52 to 62 band finds less of it)
+     times `1 - cover`, where the canopy cover fades out on walls (`coverOnMesh`: cover x `1 - smoothstep(hi - 2, hi + 8, mesh slope)`;
+     the canopy raster is top-down and 20 m, and 53 to 90 % of the sharpened cells over 75 degrees have cover of 0.5 or more); G is scree
+     (22 to 40 degrees with rock within 80 m uphill); B is lip pavement (under 15 degrees with rock within 40 m); the scree and pavement
+     windows use the 10 m slope of the sharpened terrain, because the mesh's slope would start the pavement a vertex spacing from the
+     lip. The mask is RGBA8 at 10 m, and `rockCopy` keeps R as one byte per cell for tree placement.
+
+  **Wiring.** `SceneView.setScenario` runs it when `useHi` (a 10 m terrain that covers the fire grid) and builds
+  `new TerrainLayer(rg, terrain, shared, aniso, { gradient, meshSlope, mask, detail })`; without a 10 m terrain nothing is sharpened
+  (`terrainStats()` is null) and the old path runs. `HeightField` is built from the sharpened mesh, so picking, the camera clamp, flames,
+  smoke bases, places and roads agree with what is drawn; the fire, fuel and photo textures stay on their own coordinates (only heights
+  change, so nothing is shifted sideways). Vertical exaggeration multiplies the sharpened heights as before. **Shader:** a vertex
+  attribute `aSlope` (the mesh's gradient magnitude; its varying `vSlope` replaces the gradient texture's slope in the photo-against-rock
+  switch), a new `uGrad` (the sharpened 10 m gradient as RG16F, `halfRgTexturePair`; `uGradXf` follows its grid), the sampler `uRock`
+  (RGBA8, linear, with `uRockXf` and `uRockPlain` = 0.4; the 11th of the 16 fragment texture units) and the defines `CLIFF` and one
+  `RD_*` per effect (`cliffDefines(tier)`): `RD_LEDGES`, `RD_OVERHANG` (it needs the ledges' phase), `RD_JOINTS`, `RD_STAINS`, `RD_SCREE`,
+  `RD_PAVEMENT`. High has all six, Medium four (no joints, no overhang bands), Low three (ledges, stains, scree). `rockDetail()` runs
+  only where R is above 0.25 (G and B above 0.05), fades by `fwidth(vZ)` and `uPixelMetres x vDist` to each effect's own mean so
+  nothing shimmers in wide views, and under the Plain map type or a solo heat map (`uPlainBase`) only perturbs the normal, at
+  `uRockPlain`. `rock = max(R, step(0.845, albedo.a) x albedo.a)`: the mask replaces the fire-grid slope ramp for rock tint, and bare
+  non-fuel keeps its 0.85. A scenario without a 10 m terrain compiles none of this (no `CLIFF`, no `uRock`). **Trees:** `placeVegetation`
+  gets `rock`, and a candidate at R of 0.5 or more is drawn again in its cell up to three times and then left out, thinning to none
+  between 0.2 and 0.5 (`ROCK_REJECT`, `ROCK_THIN`, `ROCK_REDRAWS`; deterministic, from a hash). **Statistics:** `SceneView.terrainStats()`
+  returns `TerrainDrawStats` (share of 10 m cells moved, the build ms of the sharpening, the rock mask, the mesh and the lighting
+  gradient, mesh vertices and triangles, the rock-detail tier), shown as the *Cliff drawing (once per scenario)* row of the statistics
+  screen's Display group, or "Nothing sharpened in this run (no 10 m terrain)" when it is null (and no row when a view cannot say).
+  **Memory:** three rows of the working-memory model when the scenario has a 10 m terrain (`CLIFF_BYTES` in `scenario/memoryModel.ts`):
+  `cliff-main` (the rock copy, 1 B per 10 m cell, on the screen thread, with a note that about 16 B per cell more is held while the
+  scenario is set up and released once the first picture is built), `gpu-cliff-light` (the lighting gradient, 4 B per cell, and the mesh's
+  slope, 4 B per vertex) and `gpu-cliff-rock` (the rock mask, 4 B per cell). For a 9 km area (810,000 cells, a 400 x 400 mesh) that is
+  0.81 MB, 3.88 MB and 3.24 MB, and about 13 MB while setting up (`memoryModel.test.ts` pins these).
+
+  **Numbers are not touched** (plan section 4, rule 10): the simulation, the slope and elevation overlays, the cards and the Data sets
+  statistics read the terrain as received; the one heat map the view computes, Sunlight (insolation), reads `numbersLightT()`, the 10 m
+  terrain as received on a `decimateGrid` mesh made on first use. The Data sets Terrain record ends with `TERRAIN_DRAWING_NOTE`
+  (`scenario/datasetRecords.ts`): "Cliff faces are drawn steeper than the data so they read as rock walls. Fire, wind and slope numbers
+  use the data as received." **The fire model's rule for steep ground is unchanged in 0.3.0** and does not read any of this: a fire
+  cell is a wall (`BurnState.NonFlammable`, `cliffNonFlammable`) when its landform is Cliff (a slope over 45 degrees on the 20 or 30 m
+  fire grid), or at least 30 % of its 10 m sub-cells are over 60 degrees, or its 90th-percentile sub-cell slope is 60 degrees or more
+  (`computeTerrainFeatures`), whether it is rock or forest; fuel inference calls ground over 55 degrees or half sub-cell cliff non-fuel;
+  and the ember model has no reference to walls, so embers cross them. Rock in the model (the rock fraction, a wall that means bare
+  rock, part-rock cells that slow the fire, vegetated chutes that stay open, the card wording; plan 9d.4, H-sim) is **not in 0.3.0**
+  (decision D17) and ships as 0.3.1. The optional contract fields it will use (`Terrain.rockFraction`, `TerrainFeatures.rock` and `chute`)
+  are declared, and nothing in 0.3.0 sets or reads them.
+
+  **Measurements and known limits.** The despike also clips real single-vertex summits and pits: on the High mesh a vertex moves by up to
+  26.6 m at Katoomba, 22.9 m at Kanangra, 42.5 m at Grose and 12.9 m at Tomah, and each site's highest point stays within about half a
+  metre of the data's, as it did with the old mesh. On the four steep sites 3.9 % (Katoomba), 6.1 % (Tomah) and similar shares of the 10 m
+  cells move, by 9.5 to 20.9 m on average and up to 54.5 to 122.2 m (the shipped function on the whole bundled terrain). In node on a
+  loaded 4-core machine the whole pipeline took 150 to 450 ms for Katoomba and Tomah on the three tiers (each stage 10 to 200 ms); the
+  plan's guess for a phone is 2.7 to 5 times that, and no phone has been measured. The ground's triangle count is the mesh's, unchanged
+  (318,402 at High, 203,522 at Medium, 99,458 at Low for a 9 km area), and the draw calls do not change (`e2e/cliffs.spec.ts`).
 
 ### ui/
 
@@ -834,15 +938,17 @@ times are slow and are only ever compared between builds on the same machine), K
 412 x 915, medians of 5 runs unless noted; "4x" = Chrome DevTools CPU throttling 4x as a mid-range phone proxy. Baselines are the two
 commits before the screens phase: `6a3d171` (the UI rework, before layers) and `3e01e78` (layers phase 1, before the design system and
 the dataset provenance). "Now" is the tree of this document. The four bundle rows (JS, entry, CSS, bundled data) of the "now" column
-were remeasured for 0.3.0 on this tree with `flock /tmp/firesim-heavy.lock npm run build:cap` and then `npm run check:bundle` (kB of
-1024 bytes and `gzip -9`, as the script prints them), **before the cliff drawing was merged**; the release pass will refresh them. The
-other rows were measured in the screens phase and have not been measured again here.
+were remeasured for 0.3.0 on this tree, **with the cliff drawing merged** (`flock /tmp/firesim-heavy.lock npm run build:cap` and then
+`npm run check:bundle`, kB of 1024 bytes and `gzip -9`, as the script prints them); the release pass will refresh them once more. The
+Layers panel row was corrected to what the night-look verification counted (below). The other rows were measured in the screens phase
+and have not been measured again here.
 
 | Measure | 6a3d171 | 3e01e78 | now | Budget / verdict |
 | --- | --- | --- | --- | --- |
-| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2698 / 900.8 | gzip <= 1000 (`npm run check:bundle`) |
-| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 461 / 159.7 | gzip <= 195; screens and the layer catalog are in it (the model-card text is a lazy chunk since 0.3.0) |
-| CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 125.1 / 22.3 | raw <= 135, gzip <= 25 |
+| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2727 / 911.7 | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 461 / 159.4 | gzip <= 195; screens and the layer catalog are in it (the model-card text is a lazy chunk since 0.3.0) |
+| CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 125.3 / 22.4 | raw <= 135, gzip <= 25 |
+| Render chunk `render-*.js` (raw / gzip, kB as Vite prints them) | | | 785.3 / 216.9 | no budget of its own; the cliff drawing is about +19 kB raw and +7.5 kB gzip of it (the cliff lane's own before and after builds: 765.8 / 209.4 to 785.0 / 216.9), and the entry about +0.4 kB gzip |
 | Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 33.1 / 36.0 (nine sites, with Mount Tomah) | demo <= 36 (was 31 before Mount Tomah) |
 | HTML pages in the production build | 1 | 1 | 1 | exactly `index.html` (style guide, `render/dev*.html`, legend gallery are dev-server pages, never built) |
 | Source maps in `build:cap` (the APK) | 0 | 0 | 0 | 0 |
@@ -858,7 +964,9 @@ other rows were measured in the screens phase and have not been measured again h
 | Frame (low, 3-D view): draw calls / k triangles, all layers off | | 4 / 102 | 4 / 102 | |
 | Frame: default layers / all scene layers on | | 15 / 138 | 17 / 161 and 19 / 228 | high (measured 20 / 495): <= 25 draws, <= 550 k triangles |
 | Frame: a heat map on its own / over the scene | | 9 / 115 and 15 / 124 | 11 / 139 and 17 / 148 | |
-| Layers panel: DOM nodes when open / open+close CPU at 4x | | 179 / 17 ms | 914 / 43 ms | <= 1000 nodes, <= 60 ms |
+| The cliff drawing, built once per scenario (node, bundled Katoomba and Tomah, three tiers) | | | 150 to 450 ms in all, each stage (sharpen, rock mask, mesh, lighting gradient) 10 to 200 ms, on a loaded 4-core machine (a second run of the same call: 145 to 400 ms); ground triangles and draw calls unchanged | the plan's phone figures (sharpen plus mask at most 400 ms and 150 ms `[est]`) are not measured on a phone |
+| The cliff drawing, working memory (9 km area, High) | | | 0.81 MB on the screen thread, 7.1 MB on the graphics side (gradient 3.24, rock mask 3.24, mesh slope 0.64), about 13 MB more while the scenario is set up | three rows of the Data sets memory card, pinned by `scenario/memoryModel.test.ts` |
+| Layers panel: DOM nodes when open / open+close CPU at 4x | | 179 / 17 ms | 940 / 43 ms | <= 1000 nodes, <= 60 ms; 940 counted with the Night lighting row (915 without it: the row is 25 nodes, not 12), so the margin is 60; the CPU figure was not repeated with the row |
 | A heat map switched on and off at 4x: longest main-thread task | | (the 14 data maps are new) | <= 112 ms (insolation computes once: 68 ms at 1x, then cached) | <= 150 ms at 4x |
 | Data sets screen open, longest task at 4x (16 rows / 60 rows) | | | <= 268 ms / 250 ms (60 rows are drawn in slices over frames) | <= 300 ms |
 | Model card open, longest task at 4x | | | 146 ms | <= 300 ms |
@@ -869,10 +977,22 @@ Mount Tomah, the ninth demo site (added 2026-10-07), is in the bundled-data row 
 What 0.3.0 did to the bundle, from the same build (gzip kB of 1000 bytes as Vite prints them): a build-only Vite plugin in `vite.config.ts`
 leaves out the GeoTIFF decoders the app never reads (LERC, ZSTD, JPEG, WebP) and pako (inflate goes through `fflate`, now an explicit
 dependency), and `npm run check:bundle` fails if any of them comes back; the app's GeoTIFF reader reads Deflate, raw, LZW and PackBits
-only. The model card and its text moved out of the entry into a lazy chunk (about 18.4 kB, loaded on the first open). New lazy chunks:
-Simulation debug statistics about 15.0 (about 125 rows of text; the plan guessed 6 to 8), the speed sheet about 3.6 and `runEvents`
-about 1.1. The pace model, the event ring, the icon words and the Night lighting and Picture quality rows are small and live in the
-entry; the pure icon hit test (`markerPick`) is a chunk of its own, about 0.9 kB.
+only. The model card and its text moved out of the entry into a lazy chunk (18.4 kB, loaded on the first open: `App.openModelCard()` is
+async, ignores a second tap while the chunk loads and reports a chunk that fails; a failed chunk import cannot be retried on the same
+page, because Chromium caches the failure, and the APK's chunks are local). New lazy chunks, as Vite prints them for this tree
+(gzip kB of 1000 bytes): Simulation debug statistics 15.2 (about 125 rows of text; the plan guessed 6 to 8), the speed sheet 3.7 and
+`runEvents` 1.2. The pace model, the event ring, the icon words and the Night lighting and Picture quality rows are small and live in the
+entry; the pure icon hit test (`markerPick`) is a chunk of its own, about 1.0 kB, and not in the entry as the plan had it. As each lane was verified against its own
+lane base, the trims save 87.2 kB of all JS (988.0 kB without the stub plugin against 900.8 with it, when they were verified), the model
+card frees 24.2 kB of the entry (the plan said 21.2) for 3.0 kB more JS in all, and the statistics lane adds 19.2 kB to all JS (the
+plan said 6 to 8 lazy plus 1 of glue); the entry fell 9.8 kB there because the build now splits `content`, `recordKit`, `store` and
+`types` out of it, which leaves its own growth at about 3.8 kB, not 1. The cliff drawing is in the render chunk (see the table). Limits of
+the trims, found by the verification and not fixed: the `fflate` shim does not check the Adler-32 checksum (pako threw on a bad one),
+accepts raw deflate, and returns empty for empty input (geotiff then throws); only `data/canopy.ts` uses geotiff, and only for the
+Meta/WRI canopy-height COG (Deflate with predictor 2, checked in research note 08 section 3.8 for one tile only, Katoomba quadkey
+311230121; other tiles and any re-encoding by Meta are unverified, and there was no network to check); and `loadCanopyLayer`'s
+`.catch(() => null)` reports a COG in an unsupported compression as "the canopy service did not answer". The plan's T3b and T4b trims
+were not done.
 
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 
@@ -911,6 +1031,13 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   with every screen visited and nothing popping up), `e2e/android.spec.ts` (an emulated Capacitor runtime), and for 0.3.0
   `e2e/debug-stats.spec.ts` (the statistics screen), `e2e/pace.spec.ts` (the speed signal and its sheet), `e2e/night-look.spec.ts`
   (Night lighting, read from decoded screenshots), `e2e/picture-quality.spec.ts` (the tier a setting gives, and its budgets) and
-  `e2e/icon-tap.spec.ts` (tapping an icon). The pure modules of 0.3.0 each have a node test beside them (`perfStats`, `paceModel`,
-  `paceSheetModel`, `debugStats`, `deviceInfo`, `eventLog`, `runEvents`, `frameLog`, `markerPick`, `iconAtlas`, `markerWords`,
-  `mapLighting` and its uniforms, `quality`).
+  `e2e/icon-tap.spec.ts` (tapping an icon) and `e2e/cliffs.spec.ts` (the cliff drawing on Katoomba at High and Low, read from decoded
+  frames: steeper drawn ground, higher edge contrast on the cliff pixels (a weak check, a serrated drawing passes it), no near-black or
+  all-zero pixel, the same draw calls with and without it, the Terrain card note and the statistics row). The pure modules of 0.3.0 each
+  have a node test beside them (`perfStats`, `paceModel`, `paceSheetModel`, `debugStats`, `deviceInfo`, `eventLog`, `runEvents`,
+  `frameLog`, `markerPick`, `iconAtlas`, `markerWords`, `mapLighting` and its uniforms, `quality`; for the cliff drawing `cliffSharpen`,
+  `terrainMesh`, `rockMask`, `cliffDrawing`, the property tests of `cliffFuzz` on random terrains, `terrainLayer.cliff` (which
+  gradient lights the ground, where the rock slope comes from, the defines of each tier, and that a layer without a 10 m terrain is the
+  old one), the rock rule of `vegetationPlacement` and `vegetationLayer`, the memory rows of `memoryModel`, and `cliffSites`, which holds
+  the built code to the plan's table on the bundled sites: Katoomba always, all four with `SLOW=1`). `content.test.ts` pins that the Help
+  and Glossary say what the screens say (the checkpoint wording of the fast-model note, the six, four and three rock effects).
