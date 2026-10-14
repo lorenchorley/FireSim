@@ -22,6 +22,7 @@ import { icon, type IconName } from '../../icons';
 import { kv, sectionHeader, setChipSelected, setTileSelected, tile, tileGrid, chip } from '../../primitives';
 import { button, chipChoice, compassRose, segmented, slider, toggle } from '../../widgets';
 import { LAYER_GROUP_BLURBS, availabilityContext, sceneLayerOn, type AvailabilityContext, type LayerGroup, type LayerInfo } from '../../../render/layerCatalog';
+import type { NightLook } from '../../../render/api';
 import type { LayerState, OverlayKind } from '../../../render/layers';
 import { canopyCodeLegend, type CanopyCode } from '../../../render/canopyStyle';
 import { placesLegend, type PlacesLayerId } from '../../../render/placesLegend';
@@ -38,6 +39,7 @@ import {
   layerScenarioOf,
   mapTypeOf,
   mapTypePatch,
+  nightLookRow,
   panelPlan,
   scenePatch,
   tileCaption,
@@ -322,7 +324,22 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
       }
     }
   };
-  const mapSection = h('section', { class: 'lp-section', aria: { label: 'Map type' } }, [h('div', { class: 'lp-head' }, [sectionHeader('Map type'), mapInfoBtn]), mapGrid, mapInfo]);
+  // Night lighting: a view setting like Plain; the row is left out where the view has no night (the 2-D map).
+  const nightRow = nightLookRow(view);
+  const night = nightRow
+    ? segmented<NightLook>({
+        label: nightRow.label,
+        options: [...nightRow.options],
+        value: nightRow.value,
+        testId: 'night-look',
+        onChange: (v) => {
+          view.setNightLook?.(v);
+          void rememberLayerChoice({ nightLook: v });
+        },
+      })
+    : null;
+  const nightEls = night && nightRow ? [night.el, h('p', { class: 'hint lp-hint' }, nightRow.hint)] : [];
+  const mapSection = h('section', { class: 'lp-section', aria: { label: 'Map type' } }, [h('div', { class: 'lp-head' }, [sectionHeader('Map type'), mapInfoBtn]), mapGrid, mapInfo, ...nightEls]);
 
   // ───────────── Map details (scene tiles) ─────────────
   const tileInfo = h('div', { class: 'lp-info', id: uniqueId('lp-info'), hidden: true, dataset: { testid: 'layer-info-tiles' } });
@@ -757,6 +774,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
       layers.set(patch);
       plain = false;
       viewPlain.setPlainGround?.(false);
+      view.setNightLook?.('realistic');
       void forgetLayerPrefs();
       renderAll();
       ctx.announce('Layers reset to the defaults for this device.');
@@ -775,6 +793,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
 
   const renderAll = (): void => {
     renderMapType();
+    night?.set(view.nightLook ?? 'realistic');
     renderTiles();
     renderHeat();
     renderActive(true);

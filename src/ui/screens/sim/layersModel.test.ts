@@ -2,7 +2,8 @@
  * The Layers panel's model (layersModel.ts), driven by the layer catalog only: every catalog row lands exactly once in
  * its place (map type, a tile, a switch row, a heat-map row), a new catalog row appears by itself, the heat maps behave
  * like a radio group that can be switched off, availability reasons come from the catalog, the default open groups, the
- * (i) text, the data set behind each layer, the unit words, the map types, and the solo ground of the 3-D view.
+ * (i) text, the data set behind each layer, the unit words, the map types, the Night lighting row and the solo ground of
+ * the 3-D view.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,9 +11,12 @@ import { describe, expect, it } from 'vitest';
 import type { DatasetRecord } from '../../../core/datasets';
 import { LAYER_CATALOG, LAYER_GROUPS, HEAT_OVERLAY_KINDS, type AvailabilityContext, type LayerInfo } from '../../../render/layerCatalog';
 import { DEFAULT_LAYERS } from '../../../render/layers';
-import { groundBase } from '../../../render/SceneView';
+import { groundBase, SceneView } from '../../../render/SceneView';
+import { NIGHT_LOOKS } from '../../../render/sky';
 import {
   MAP_TYPES,
+  NIGHT_LOOK_HINT,
+  NIGHT_LOOK_OPTIONS,
   UNIT_WORDS,
   availabilityOf,
   datasetsForLayer,
@@ -20,9 +24,11 @@ import {
   heatPatch,
   heatSubline,
   infoRows,
+  isNightLook,
   layerScenarioOf,
   mapTypeOf,
   mapTypePatch,
+  nightLookRow,
   panelPlan,
   scenePatch,
   soloActive,
@@ -111,6 +117,41 @@ describe('state changes', () => {
     expect(mapTypePatch('photo')).toEqual({ layers: { imagery: true }, plain: false });
     expect(mapTypePatch('plain')).toEqual({ layers: { imagery: false }, plain: true });
     expect(mapTypePatch('terrain')).toEqual({ layers: { imagery: false }, plain: false });
+  });
+});
+
+describe('night lighting row (Map type)', () => {
+  it('offers Realistic, Brighter and Daylight, starting from the view\'s look, with the hint', () => {
+    const row = nightLookRow({ setNightLook: () => undefined, nightLook: 'brighter' });
+    expect(row).not.toBeNull();
+    expect(row!.label).toBe('Night lighting');
+    expect(row!.options.map((o) => [o.value, o.label])).toEqual([
+      ['realistic', 'Realistic'],
+      ['brighter', 'Brighter'],
+      ['daylight', 'Daylight'],
+    ]);
+    expect(row!.value).toBe('brighter');
+    expect(row!.hint).toBe(NIGHT_LOOK_HINT);
+    expect(NIGHT_LOOK_HINT).toMatch(/^Realistic follows the clock\. Brighter and Daylight light the ground, trees and roads after dark/);
+    expect(NIGHT_LOOK_HINT).toMatch(/The sky, stars and the fire’s glow still follow the clock\.$/);
+    // Today's look when the view does not say (a view that was never given a look reads as Realistic).
+    expect(nightLookRow({ setNightLook: () => undefined })!.value).toBe('realistic');
+    expect(nightLookRow({ setNightLook: () => undefined, nightLook: 'dusk' as never })!.value).toBe('realistic');
+  });
+
+  it('is left out when the view has no night lighting (the 2-D map)', () => {
+    expect(nightLookRow({})).toBeNull();
+    expect(nightLookRow({ nightLook: 'daylight' })).toBeNull(); // a value without the method cannot be changed
+    expect(nightLookRow({ setNightLook: 3 })).toBeNull();
+  });
+
+  it('lists the looks the renderer knows, in its order, and the 3-D view has the method', () => {
+    expect(NIGHT_LOOK_OPTIONS.map((o) => o.value)).toEqual([...NIGHT_LOOKS]);
+    expect(NIGHT_LOOK_OPTIONS[0]!.value).toBe('realistic'); // today's look is first and the default
+    expect(NIGHT_LOOKS.every(isNightLook)).toBe(true);
+    expect(['dusk', '', null, undefined, 1].some(isNightLook)).toBe(false);
+    expect(typeof SceneView.prototype.setNightLook).toBe('function');
+    expect(Object.getOwnPropertyDescriptor(SceneView.prototype, 'nightLook')?.get).toBeTypeOf('function');
   });
 });
 

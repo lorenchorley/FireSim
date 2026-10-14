@@ -30,6 +30,7 @@ import {
   type LayerScenario,
   type SceneLayerKey,
 } from '../../../render/layerCatalog';
+import type { NightLook } from '../../../render/api';
 import type { LayerState, OverlayKind } from '../../../render/layers';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +62,35 @@ export function mapTypeOf(l: Pick<LayerState, 'imagery'>, plain: boolean, hasIma
 /** What choosing a map type changes: the imagery switch (LayerState) and the plain-ground flag of the view. */
 export function mapTypePatch(t: MapType): { layers: Pick<LayerState, 'imagery'>; plain: boolean } {
   return { layers: { imagery: t === 'photo' }, plain: t === 'plain' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Night lighting
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The choices of Map type, Night lighting, in the order shown (the first is today's look and the default). */
+export const NIGHT_LOOK_OPTIONS: readonly { value: NightLook; label: string }[] = [
+  { value: 'realistic', label: 'Realistic' },
+  { value: 'brighter', label: 'Brighter' },
+  { value: 'daylight', label: 'Daylight' },
+];
+
+export const NIGHT_LOOK_HINT =
+  'Realistic follows the clock. Brighter and Daylight light the ground, trees and roads after dark so terrain detail stays readable. The sky, stars and the fire’s glow still follow the clock.';
+
+export const isNightLook = (v: unknown): v is NightLook => NIGHT_LOOK_OPTIONS.some((o) => o.value === v);
+
+export interface NightLookRow {
+  label: string;
+  hint: string;
+  options: readonly { value: NightLook; label: string }[];
+  value: NightLook;
+}
+
+/** The Night lighting row, or null when the view has no night lighting (the 2-D map has no night). */
+export function nightLookRow(view: { setNightLook?: unknown; nightLook?: NightLook }): NightLookRow | null {
+  if (typeof view.setNightLook !== 'function') return null;
+  return { label: 'Night lighting', hint: NIGHT_LOOK_HINT, options: NIGHT_LOOK_OPTIONS, value: isNightLook(view.nightLook) ? view.nightLook : 'realistic' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
