@@ -113,6 +113,16 @@ describe('watchRun', () => {
     ]);
   });
 
+  it('events of a new engine instance, whose seq starts again at 1, are recorded too', () => {
+    const { log, state } = setup();
+    const first = { seq: 1, kind: 'tier', simS: 0, wallMs: 5_000, text: 'Detailed 3-D air chosen: about 41 ms per air step.' };
+    const again = { seq: 1, kind: 'tier', simS: 0, wallMs: 90_000, text: 'Fast surface-wind model chosen.' };
+    state.set({ snapshot: withEvents([first]) });
+    state.set({ snapshot: withEvents([again]) });
+    state.set({ snapshot: withEvents([first, again]) });
+    expect(log.list().slice(1).map((e) => e.text)).toEqual([first.text, again.text]);
+  });
+
   it('a snapshot with no engine info (the demo engine) or no perf block adds nothing', () => {
     const { log, state } = setup();
     state.set({ snapshot: {} as unknown as SimSnapshot });

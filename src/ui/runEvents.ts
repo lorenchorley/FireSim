@@ -64,14 +64,18 @@ export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'>, log: 
   log.begin();
   log.add('run', 'Run started.', 0);
   const pace = new PaceWatch(log);
-  let lastSeq = 0;
+  // An event is delivered with every snapshot that carries it, so the UI drops one it has seen. The key is the seq with the wall
+  // time: a new engine instance restarts its seq at 1, and its events must not be taken for the old instance's.
+  const seen = new Set<string>();
   let thinned = false;
   let hiddenAt = 0;
   const offPace = session.state.subscribe((s) => pace.observe(s.pace, s.viewTime), ['pace']);
   const offSnap = session.state.subscribe((s) => {
     for (const e of s.snapshot?.engine?.perf?.events ?? []) {
-      if (e.seq <= lastSeq) continue;
-      lastSeq = e.seq;
+      const key = `${e.seq}@${e.wallMs}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (seen.size > 64) seen.delete(seen.values().next().value as string);
       log.add(e.kind, e.text, e.simS, e.wallMs);
     }
     const st = session.snapshots;
