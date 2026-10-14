@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Insight, SimSnapshot } from '../core/types';
 import { MockSimController, mockBuildScenario } from './mocks';
+import { mockScenarioId } from './mockScenario';
 import { slopeFactor } from './mockFire';
 import type { BuildProgress } from '../scenario/request';
 import { datasetIssues } from '../core/datasets';
@@ -11,6 +12,13 @@ describe('mock fire physics helpers', () => {
     expect(slopeFactor(10)).toBeCloseTo(2, 0);
     expect(slopeFactor(-10)).toBeCloseTo(0.67, 1);
     expect(slopeFactor(-40)).toBeGreaterThan(0.5);
+  });
+});
+
+describe('the demo engine\'s scenario id', () => {
+  it('starts with the bundled site (as the real builder\'s ids do, so the debug statistics name the place); another place is "mock" alone', () => {
+    expect(mockScenarioId('katoomba', 36 * 36)).toBe('katoomba-mock-100');
+    expect(mockScenarioId(undefined, 36 * 36)).toBe('mock-100');
   });
 });
 
@@ -30,6 +38,8 @@ describe('mock scenario + controller', () => {
       (p) => steps.push(p),
     );
     expect(steps.at(-1)!.step).toBe('done');
+    // A bundled site leads the id, as in the real builder's ids: the statistics screen names the place from it.
+    expect(scenario.id).toMatch(/^katoomba-mock-[0-9a-z]+$/);
     expect(scenario.terrain.source).toMatch(/NSW|LiDAR|Terrain|Synthetic/i);
     expect(scenario.terrain.maxElevation - scenario.terrain.minElevation).toBeGreaterThan(200);
     // The mock carries a data-set inventory like a real build: real bundled terrain, everything fabricated says so.

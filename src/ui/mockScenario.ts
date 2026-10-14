@@ -235,6 +235,14 @@ export function fabricateFuel(terrain: Terrain, canopy: { height: Float32Array; 
   return f;
 }
 
+/**
+ * The id of a demo-engine scenario: a bundled site's id leads, as in the real builder's ids, so the statistics screen can name the
+ * place; any other place is just "mock" and a time stamp.
+ */
+export function mockScenarioId(demoSiteId: string | undefined, nowMs: number): string {
+  return `${demoSiteId ? `${demoSiteId}-` : ''}mock-${nowMs.toString(36)}`;
+}
+
 /** Mock implementation of `buildScenario` from src/scenario. */
 export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal) => {
   const warnings: string[] = ['Mock mode: fuel, weather and fire behaviour are synthetic (for testing the interface).'];
@@ -302,7 +310,7 @@ export const mockBuildScenario: BuildScenarioFn = async (req, onProgress, signal
 
   const site = DEMO_SITES.find((s) => s.id === req.demoSiteId);
   const scenario: ScenarioData = {
-    id: `mock-${Date.now().toString(36)}`,
+    id: mockScenarioId(site?.id, Date.now()),
     name: req.name ?? site?.name ?? 'My location',
     origin: { ...req.centre },
     extent: req.extent,
