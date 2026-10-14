@@ -268,6 +268,21 @@ describe('the groups of the catalogue', () => {
     expect(rowOf(s, 'hardware', 'cores').value).toBe('Not reported');
   });
 
+  it('the Display group before a run says "No run yet" (there is no view), not that the view keeps no statistics; a view that cannot say says "Not available"', () => {
+    const before = buildDebugStats(bare());
+    for (const id of ['fps', 'picture-quality', 'cliffs']) expect(rowOf(before, 'display', id).value, id).toBe('No run yet');
+    const map = full();
+    map.frames = null;
+    map.quality = null;
+    map.terrain = undefined; // the 2-D map: a run, and a view with none of the 3-D statistics
+    const flat = buildDebugStats(map);
+    expect(rowOf(flat, 'display', 'fps').value).toBe('Not available (this view keeps no frame statistics)');
+    expect(rowOf(flat, 'display', 'picture-quality').value).toBe('Not available (this view does not report a picture tier)');
+    expect(rowOf(flat, 'display', 'cliffs')).toMatchObject({ label: 'Cliff drawing (once per scenario)', value: 'Not available' });
+    // A 3-D view that built nothing sharpened says so, and one that did shows its numbers.
+    expect(rowOf(buildDebugStats({ ...full(), terrain: null }), 'display', 'cliffs').value).toBe('Nothing sharpened in this run (no 10 m terrain)');
+  });
+
   const missing: [string, (i: DebugStatsInput) => void][] = [
     ['no engine report yet', (i) => (i.engine = null)],
     ['a mock engine', (i) => ((i.engineSource = 'mock'), (i.engine = { ...engine, mock: true }))],
