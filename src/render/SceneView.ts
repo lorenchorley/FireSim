@@ -323,7 +323,11 @@ export class SceneView implements SceneViewApi {
     }
     this.resize();
     this.applyLighting(Date.now());
-    this.renderer.setAnimationLoop((t) => this.frame(t));
+    // No frames while the container has no size: the app builds the view before its screen is in the page (the engine's first answer
+    // is awaited in between), and a frame at 1 px wastes the work and plans the canopy for a 1 px screen (renderNow still draws).
+    this.renderer.setAnimationLoop((t) => {
+      if (this.container.clientWidth > 0 && this.container.clientHeight > 0) this.frame(t);
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────────

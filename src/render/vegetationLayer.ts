@@ -138,6 +138,8 @@ const SHARED_KEYS = [
 export const TOP_FADE: [number, number] = [0.87, 0.99];
 /** From this view steepness on, every instance is faded out: nothing is drawn. */
 const TOP_HIDDEN = 0.992;
+/** The plan is made again when the pixels per radian differ from the plan's by more than this factor (one step of the adaptive pixel ratio, at most a fifth, keeps it). */
+const PLAN_PX_TOLERANCE = 1.25;
 
 export class VegetationLayer {
   readonly group = new THREE.Group();
@@ -157,6 +159,8 @@ export class VegetationLayer {
   private lodCam: [number, number, number] | null = null;
   private lodVex = 1;
   private lodPx = 1000;
+  /** The pixels per radian the current plan was made with: it drops what would be under a pixel, so it goes stale with the screen's size. */
+  private planPx = 1000;
   private planSig = '';
   private pendingSets: VegInstances[] | null = null;
   private pendingPlan: LodPlan | null = null;
@@ -304,6 +308,10 @@ export class VegetationLayer {
     this.uniforms.uPxPerRad!.value = pxPerRad;
     this.uniforms.uThinStart!.value = thinStart;
     this.lodPx = pxPerRad;
+    // The plan drops what would be under a pixel, so it is made for one screen size: a plan made while the view was 1 px tall (before
+    // its screen was in the page) kept no tree and, as nothing re-planned it, the forest stayed empty until the camera moved. A plan
+    // made for a very different size (that, a turn of the phone, a pixel ratio step) is made again.
+    if (this.sets.length > 0 && (pxPerRad > this.planPx * PLAN_PX_TOLERANCE || pxPerRad * PLAN_PX_TOLERANCE < this.planPx)) this.requestPlan();
   }
 
   /**
@@ -428,6 +436,7 @@ export class VegetationLayer {
 
   private computePlan(): LodPlan | null {
     if (this.sets.length === 0) return null;
+    this.planPx = this.lodPx;
     return planLod(this.sets, {
       cam: this.lodCam ?? [0, 0, 1e5],
       vex: this.lodVex,
