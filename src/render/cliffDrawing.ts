@@ -15,7 +15,7 @@
  */
 import type { GridSpec } from '../core/grid';
 import type { FuelMap, Terrain } from '../core/types';
-import { cliffSharpen, hornSlopeDeg } from './cliffSharpen';
+import { cliffSharpen } from './cliffSharpen';
 import { hornGradient, lightTerrain, type RenderGrid } from './fields';
 import { buildRockMask, rockCopy, type RockCopy, type RockMask } from './rockMask';
 import { MESH_DESPIKE_M, decimateTerrain } from './terrainMesh';
@@ -76,6 +76,21 @@ export const rockDetailCount = (tier: DetailTier): number => Object.values(rockD
  */
 export const ROCK_DETAIL_PLAIN = 0.4;
 
+/**
+ * The slope band (deg) that rock R follows on the MESH's slope, by tier. The mask's default band (52 to 62) is for a 10 m slope; the
+ * mesh's slope is smoothed over about three vertices (45 m at High, 120 m at Low), so a face reads gentler on a coarser mesh and the
+ * same band finds less of it: cells with R of 0.5 or more at Tomah are 503 from the 10 m slope and 396, 224 and 0 from the High, Medium
+ * and Low meshes (the verifier's count of the default band). Each tier's band is lowered by 3 degrees a step. Measured on the four
+ * sites against the 10 m rock: at least 96 % of the mesh's rock is within 30 m of it, and 73 % (Kanangra, Low; Tomah, Low 75 %) to
+ * 96 % of the 10 m rock is within 30 m of the mesh's, where the default band gives 37 % and 0 %. The rock then covers the face the
+ * mesh draws, which is about one vertex spacing wider than the 10 m face.
+ */
+export const MESH_ROCK_BAND_DEG: Readonly<Record<DetailTier, { loDeg: number; hiDeg: number }>> = Object.freeze({
+  high: { loDeg: 48, hiDeg: 58 },
+  medium: { loDeg: 45, hiDeg: 55 },
+  low: { loDeg: 42, hiDeg: 52 },
+});
+
 export interface CliffDrawingInput {
   /** The scenario's 10 m terrain, as received. It is never modified. */
   hi: { grid: GridSpec; elevation: Float32Array };
@@ -95,7 +110,7 @@ export interface CliffBuildStats {
   sharpenMs: number;
   maskMs: number;
   meshMs: number;
-  /** The CPU side of the lighting gradient (the 10 m Horn gradient and the slope the pavement window uses); the texture fill is the layer's. */
+  /** The CPU side of the lighting gradient (the 10 m Horn gradient); the texture fill is the layer's. */
   gradientMs: number;
   meshVertices: number;
   meshTriangles: number;
@@ -131,18 +146,19 @@ export function buildCliffDrawing(i: CliffDrawingInput): CliffDrawing {
 
   t = performance.now();
   const gradient = { grid: hi.grid, ...hornGradient(hi.grid, sharp.elevation) };
-  // The pavement (B) looks for flat ground next to rock; with the mesh's slope that ground starts a vertex spacing from the lip, so
-  // its window uses the 10 m slope of the sharpened terrain (rockMask.ts).
-  const windowSlope = hornSlopeDeg(hi.grid, sharp.elevation);
   const gradientMs = performance.now() - t;
 
-  const mask = buildRockMask({
-    grid: hi.grid,
-    elevation: sharp.elevation,
-    slope: { grid: mesh.grid, values: lightT.slopeDeg },
-    cover: { grid: i.fuel.grid, values: i.fuel.canopyCover },
-    windowSlope: { grid: hi.grid, values: windowSlope },
-  });
+  // R follows the mesh's slope (it is what is drawn); the scree and pavement windows follow the 10 m slope of the sharpened terrain, the
+  // mask's own default: the mesh's slope would start the pavement a vertex spacing from the lip.
+  const mask = buildRockMask(
+    {
+      grid: hi.grid,
+      elevation: sharp.elevation,
+      slope: { grid: mesh.grid, values: lightT.slopeDeg },
+      cover: { grid: i.fuel.grid, values: i.fuel.canopyCover },
+    },
+    MESH_ROCK_BAND_DEG[i.tier],
+  );
 
   return {
     mesh,

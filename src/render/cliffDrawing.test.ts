@@ -5,9 +5,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { cliffSharpen } from './cliffSharpen';
-import { ROCK_DETAIL_PLAIN, buildCliffDrawing, cliffDefines, rockDetailCount, rockDetailFlags, type DetailTier } from './cliffDrawing';
+import { MESH_ROCK_BAND_DEG, ROCK_DETAIL_PLAIN, buildCliffDrawing, cliffDefines, rockDetailCount, rockDetailFlags, type DetailTier } from './cliffDrawing';
 import { decimateGrid, hornGradient } from './fields';
-import { sampleRock } from './rockMask';
+import { ROCK_MASK_DEFAULTS, buildRockMask, sampleRock } from './rockMask';
 import { edgeSlopes, flatGrid, loadSite, maxOf, terrainOf } from './testing/cliffs';
 
 const TAN = (deg: number): number => Math.tan((deg * Math.PI) / 180);
@@ -116,6 +116,25 @@ describe('buildCliffDrawing on a synthetic escarpment', () => {
     expect(again.mesh.elevation).toEqual(cd.mesh.elevation);
     expect(again.mask.rgba).toEqual(cd.mask.rgba);
     expect(again.gradient.dzdx).toEqual(cd.gradient.dzdx);
+  });
+});
+
+describe("R follows the MESH's slope, with a band that a coarser mesh lowers", () => {
+  it('the bands step down with the tier and stay under the default band of a 10 m slope', () => {
+    const b = MESH_ROCK_BAND_DEG;
+    expect(b.high.loDeg).toBeLessThan(ROCK_MASK_DEFAULTS.loDeg);
+    expect(b.medium.loDeg).toBeLessThan(b.high.loDeg);
+    expect(b.low.loDeg).toBeLessThan(b.medium.loDeg);
+    for (const t of ['high', 'medium', 'low'] as const) expect(b[t].hiDeg - b[t].loDeg).toBe(ROCK_MASK_DEFAULTS.hiDeg - ROCK_MASK_DEFAULTS.loDeg);
+  });
+
+  it('a 150 m face on a coarse mesh (40 m at Low) has rock where the default band finds almost none', () => {
+    const z = escarpment();
+    const low = run(z, { tier: 'low', meshN: 45 });
+    expect(low.mesh.grid.cellSize).toBeGreaterThan(38);
+    const byDefault = buildRockMask({ grid: g, elevation: cliffSharpen(g, z).elevation, slope: { grid: low.mesh.grid, values: low.lightT.slopeDeg } });
+    expect(low.mask.stats.rockCells).toBeGreaterThan(byDefault.stats.rockCells + 3);
+    expect(low.mask.stats.rockCells).toBeGreaterThan(5);
   });
 });
 
