@@ -941,14 +941,14 @@ times are slow and are only ever compared between builds on the same machine), K
 commits before the screens phase: `6a3d171` (the UI rework, before layers) and `3e01e78` (layers phase 1, before the design system and
 the dataset provenance). "Now" is the tree of this document. The four bundle rows (JS, entry, CSS, bundled data) of the "now" column
 were remeasured for 0.3.0 on this tree, **with the cliff drawing merged** (`flock /tmp/firesim-heavy.lock npm run build:cap` and then
-`npm run check:bundle`, kB of 1024 bytes and `gzip -9`, as the script prints them); the release pass will refresh them once more. The
+`npm run check:bundle`, kB of 1024 bytes and `gzip -9`, as the script prints them) (the release build of 0.3.0). The
 Layers panel row was corrected to what the night-look verification counted (below). The other rows were measured in the screens phase
 and have not been measured again here.
 
 | Measure | 6a3d171 | 3e01e78 | now | Budget / verdict |
 | --- | --- | --- | --- | --- |
-| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2727 / 911.7 | gzip <= 1000 (`npm run check:bundle`) |
-| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 461 / 159.4 | gzip <= 195; screens and the layer catalog are in it (the model-card text is a lazy chunk since 0.3.0) |
+| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2729 / 912.5 | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 462 / 159.7 | gzip <= 195; screens and the layer catalog are in it (the model-card text is a lazy chunk since 0.3.0) |
 | CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 125.3 / 22.4 | raw <= 135, gzip <= 25 |
 | Render chunk `render-*.js` (raw / gzip, kB as Vite prints them) | | | 785.3 / 216.9 | no budget of its own; the cliff drawing is about +19 kB raw and +7.5 kB gzip of it (the cliff lane's own before and after builds: 765.8 / 209.4 to 785.0 / 216.9), and the entry about +0.4 kB gzip |
 | Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 33.1 / 36.0 (nine sites, with Mount Tomah) | demo <= 36 (was 31 before Mount Tomah) |
