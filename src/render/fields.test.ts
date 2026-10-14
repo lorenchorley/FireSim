@@ -89,6 +89,44 @@ describe('hornGradient', () => {
     // Edges replicate the border (one-sided): still close to the plane slope scaled by 3/4.
     expect(Math.abs(dzdx[0]!)).toBeGreaterThan(0.1);
   });
+
+  it('gives bit for bit what the clamped lookup of every cell gives, on grids of any shape', () => {
+    // The first version read every neighbour through a clamped lookup (a 10 m terrain's lighting texture took 200 ms of it); the interior now
+    // reads them directly. Same operations in the same order, so the same Float32 results.
+    const reference = (g: { nx: number; ny: number; cellSize: number }, z: ArrayLike<number>): { dzdx: Float32Array; dzdy: Float32Array } => {
+      const { nx, ny, cellSize: h } = g;
+      const dzdx = new Float32Array(nx * ny);
+      const dzdy = new Float32Array(nx * ny);
+      const at = (i: number, j: number): number => z[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))]!;
+      for (let j = 0; j < ny; j++)
+        for (let i = 0; i < nx; i++) {
+          const a = at(i - 1, j + 1);
+          const b = at(i, j + 1);
+          const c = at(i + 1, j + 1);
+          const d = at(i - 1, j);
+          const f = at(i + 1, j);
+          const gg = at(i - 1, j - 1);
+          const hh = at(i, j - 1);
+          const ii = at(i + 1, j - 1);
+          dzdx[j * nx + i] = (c + 2 * f + ii - (a + 2 * d + gg)) / (8 * h);
+          dzdy[j * nx + i] = (a + 2 * b + c - (gg + 2 * hh + ii)) / (8 * h);
+        }
+      return { dzdx, dzdy };
+    };
+    let seed = 7;
+    const rnd = (): number => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (const [nx, ny, cellSize] of [[1, 1, 10], [1, 5, 10], [5, 1, 10], [2, 2, 10], [3, 2, 7.5], [2, 9, 30], [37, 23, 10], [64, 64, 22.5]] as const) {
+      const g = { ...makeGridSpec(origin, 1000, cellSize), nx, ny };
+      const z = new Float32Array(nx * ny).map(() => 500 + 120 * rnd());
+      const got = hornGradient(g, z);
+      const want = reference(g, z);
+      expect(got.dzdx, `${nx} x ${ny}`).toEqual(want.dzdx);
+      expect(got.dzdy, `${nx} x ${ny}`).toEqual(want.dzdy);
+    }
+  });
 });
 
 describe('decimateGrid', () => {

@@ -74,22 +74,32 @@ export function hornGradient(grid: GridSpec, z: ArrayLike<number>): { dzdx: Floa
   const { nx, ny, cellSize: h } = grid;
   const dzdx = new Float32Array(nx * ny);
   const dzdy = new Float32Array(nx * ny);
-  const at = (i: number, j: number): number => z[clamp(j, 0, ny - 1) * nx + clamp(i, 0, nx - 1)]!;
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      // Rows north (j+1) … south (j−1): a b c / d e f / g h i
-      const a = at(i - 1, j + 1);
-      const b = at(i, j + 1);
-      const c = at(i + 1, j + 1);
-      const d = at(i - 1, j);
-      const f = at(i + 1, j);
-      const g = at(i - 1, j - 1);
-      const hh = at(i, j - 1);
-      const ii = at(i + 1, j - 1);
+  const k8 = 8 * h;
+  const cell = (i: number, j: number, a: number, b: number, c: number, d: number, f: number, g: number, hh: number, ii: number): void => {
+    // Rows north (j+1) … south (j−1): a b c / d e f / g h i
+    const k = j * nx + i;
+    dzdx[k] = (c + 2 * f + ii - (a + 2 * d + g)) / k8;
+    dzdy[k] = (a + 2 * b + c - (g + 2 * hh + ii)) / k8;
+  };
+  // Interior cells read their eight neighbours directly (the common case, and the cost of a 10 m terrain's lighting texture)…
+  for (let j = 1; j < ny - 1; j++) {
+    for (let i = 1; i < nx - 1; i++) {
       const k = j * nx + i;
-      dzdx[k] = (c + 2 * f + ii - (a + 2 * d + g)) / (8 * h);
-      dzdy[k] = (a + 2 * b + c - (g + 2 * hh + ii)) / (8 * h);
+      const n = k + nx;
+      const s = k - nx;
+      cell(i, j, z[n - 1]!, z[n]!, z[n + 1]!, z[k - 1]!, z[k + 1]!, z[s - 1]!, z[s]!, z[s + 1]!);
     }
+  }
+  // … the border replicates the edge.
+  const at = (i: number, j: number): number => z[clamp(j, 0, ny - 1) * nx + clamp(i, 0, nx - 1)]!;
+  const edge = (i: number, j: number): void => cell(i, j, at(i - 1, j + 1), at(i, j + 1), at(i + 1, j + 1), at(i - 1, j), at(i + 1, j), at(i - 1, j - 1), at(i, j - 1), at(i + 1, j - 1));
+  for (let i = 0; i < nx; i++) {
+    edge(i, 0);
+    if (ny > 1) edge(i, ny - 1);
+  }
+  for (let j = 1; j < ny - 1; j++) {
+    edge(0, j);
+    if (nx > 1) edge(nx - 1, j);
   }
   return { dzdx, dzdy };
 }
