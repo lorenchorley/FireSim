@@ -43,7 +43,7 @@ describe('PaceWatch: slow-run episodes', () => {
     w.observe(pace('ok', { achieved: 60, capacity: 90 }), 900);
     w.observe(pace('ok'), 960);
     expect(log.list().map((e) => [e.kind, e.runS, e.text])).toEqual([
-      ['slow', 600, 'The simulation is falling behind: computing about 50x, asked for 60x.'],
+      ['slow', 600, 'The simulation is falling behind: computing about 50×, asked for 60×.'],
       ['slow', 700, 'Playback is now waiting for the simulation.'],
       ['slow', 900, 'Back at the speed asked for after 2 min 0 s. Slowest: about 40 % of the speed asked for.'],
     ]);
@@ -56,7 +56,7 @@ describe('PaceWatch: slow-run episodes', () => {
     tick(8000);
     w.observe(null, 130); // paused: no judgement
     const [a, b] = log.list();
-    expect(a!.text).toBe('Playback is waiting for the simulation: computing about 30x, asked for 60x.');
+    expect(a!.text).toBe('Playback is waiting for the simulation: computing about 30×, asked for 60×.');
     expect(b!.text).toBe('The slow spell ended after 8 s (playback was paused, jumped or changed speed). Slowest: about 33 % of the speed asked for.');
   });
 
@@ -69,7 +69,7 @@ describe('PaceWatch: slow-run episodes', () => {
     w.observe(pace('ok'), 30);
     const texts = log.list().map((e) => e.text);
     expect(texts[1]).toContain('Slowest: about 10 % ');
-    expect(texts[2]).toBe('The simulation is falling behind: computing slower, asked for 60x.');
+    expect(texts[2]).toBe('The simulation is falling behind: computing slower, asked for 60×.');
     expect(texts[3]).not.toContain('Slowest');
     for (const t of texts) expect(t).not.toMatch(/undefined|NaN|null|Infinity/);
   });

@@ -128,7 +128,7 @@ const NOW = Date.UTC(2026, 9, 11, 3, 32, 5); // 14:32:05 at UTC+11
 const events: LogEvent[] = [
   { wallMs: NOW - 120_000, runS: 0, kind: 'run', text: 'Run started.' },
   { wallMs: NOW - 90_000, runS: 0, kind: 'tier', text: 'Detailed 3-D air chosen: about 41 ms per air step.' },
-  { wallMs: NOW - 30_000, runS: 1800, kind: 'slow', text: 'The simulation is falling behind: computing about 430x, asked for 600x.' },
+  { wallMs: NOW - 30_000, runS: 1800, kind: 'slow', text: 'The simulation is falling behind: computing about 430×, asked for 600×.' },
 ];
 
 let engine: EngineInfo;
@@ -330,10 +330,10 @@ describe('labels and values', () => {
   });
 
   it('Speed: the worker perf block, the speed asked for and the pace signal', () => {
-    expect(rowOf(s, 'speed', 's10')).toMatchObject({ label: 'Computing speed, last 10 s', value: '871x' });
-    expect(rowOf(s, 'speed', 'best10').value).toBe('905x');
-    expect(rowOf(s, 'speed', 'wanted')).toMatchObject({ value: '600x', note: '10 min of fire per second' });
-    expect(rowOf(s, 'speed', 'achieved').value).toBe('410x');
+    expect(rowOf(s, 'speed', 's10')).toMatchObject({ label: 'Computing speed, last 10 s', value: '871×' });
+    expect(rowOf(s, 'speed', 'best10').value).toBe('905×');
+    expect(rowOf(s, 'speed', 'wanted')).toMatchObject({ value: '600×', note: '10 min of fire per second' });
+    expect(rowOf(s, 'speed', 'achieved').value).toBe('410×');
     expect(rowOf(s, 'speed', 'waiting').value).toBe('27 %');
     expect(rowOf(s, 'speed', 'pace').value).toBe('Waiting for the simulation');
   });
@@ -467,10 +467,10 @@ describe('labels and values', () => {
     expect(rows.map((r) => r.id)).toEqual(['speed', 'memory', 'graphics']);
     expect(rows[2]!.value).toBe('WebGL2 on Mali-G710, float render targets yes, WebGPU present.'); // the row's label already says "Graphics"
     expect(rows[1]!.value).toContain('of a 2.1\u00a0GB limit');
-    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 6.2 ms on average (41 ms in the timing test), and the run computes at about 843x real time.');
+    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 6.2 ms on average (41 ms in the timing test), and the run computes at about 843× real time.');
     const fast = full();
     fast.engine = fastEngine;
-    expect(rowOf(buildDebugStats(fast), 'canDo', 'speed').value).toBe('The fast model has computed this run at about 843x real time.');
+    expect(rowOf(buildDebugStats(fast), 'canDo', 'speed').value).toBe('The fast model has computed this run at about 843× real time.');
     const mock = full();
     mock.engineSource = 'mock';
     expect(rowOf(buildDebugStats(mock), 'canDo', 'speed').value).toBe('The demo engine is running, so nothing was measured.');
@@ -479,7 +479,7 @@ describe('labels and values', () => {
 
   it('Summary: tier, speed, memory and the phone class in one line; the demo engine and "no run" say so', () => {
     const line = rowOf(s, 'summary', 'headline').value;
-    expect(line).toContain('Standard (3-D air), computing about 871x (600x asked for)');
+    expect(line).toContain('Standard (3-D air), computing about 871× (600× asked for)');
     expect(line).toMatch(/this phone: 8 cores, about 6 GB memory class\.$/);
     expect(rowOf(buildDebugStats(bare()), 'summary', 'headline').value).toBe('No run yet. This phone: cores not reported, memory class not reported.');
     const mock = full();
@@ -550,7 +550,7 @@ describe('the header, the copy and its shape', () => {
     expect(lines.indexOf('== Memory ==')).toBeLessThan(lines.indexOf('== Phone: hardware =='));
     expect(lines.indexOf('== Phone: software and graphics ==')).toBeLessThan(lines.indexOf('== Recent events =='));
     expect(lines[lines.length - 1]).toBe('-- end --');
-    expect(text).toContain('  Computing speed, last 10 s: 871x (Simulated seconds per wall second while the worker computes)');
+    expect(text).toContain('  Computing speed, last 10 s: 871× (Simulated seconds per wall second while the worker computes)');
     // One row per line, plain spaces (no no-break spaces in a paste).
     expect(text).not.toContain(' ');
   });
@@ -634,7 +634,7 @@ describe('Recent events', () => {
   it('lists the events newest first with their wall clock (in the phone\'s time), run clock and kind', () => {
     const rows = buildDebugStats(full()).groups.find((g) => g.id === 'events')!.rows;
     expect(rows.map((r) => [r.label, r.value])).toEqual([
-      ['14:31:35 (run 00:30:00, speed)', 'The simulation is falling behind: computing about 430x, asked for 600x.'],
+      ['14:31:35 (run 00:30:00, speed)', 'The simulation is falling behind: computing about 430×, asked for 600×.'],
       ['14:30:35 (run 00:00:00, tier)', 'Detailed 3-D air chosen: about 41 ms per air step.'],
       ['14:30:05 (run 00:00:00, start)', 'Run started.'],
     ]);

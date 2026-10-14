@@ -7,6 +7,7 @@
  * Events never carry a coordinate, a place name or an identifier. Nothing here changes a result: it only reads state.
  */
 import { eventLog, type EventLog } from './eventLog';
+import { formatSpeedMultiple } from './format';
 import type { PerfEvent } from '../core/simTypes';
 import type { PaceInfo, PaceLevel } from './paceTypes';
 import type { SimSession } from './session';
@@ -43,8 +44,8 @@ export class PaceWatch {
     if (level === was) return;
     this.level = level;
     const computing = pace ? (pace.capacity ?? pace.achieved) : null;
-    const asked = pace ? `${Math.round(pace.wanted)}x` : '';
-    const now = computing !== null ? `about ${Math.round(computing)}x` : 'slower';
+    const asked = pace ? formatSpeedMultiple(Math.round(pace.wanted)) : '';
+    const now = computing !== null ? `about ${formatSpeedMultiple(Math.round(computing))}` : 'slower';
     if (level === 'ok') {
       const worst = Number.isFinite(this.worst) ? ` Slowest: about ${Math.round(100 * Math.min(1, this.worst))} % of the speed asked for.` : '';
       const after = waited(this.log.now() - this.t0);

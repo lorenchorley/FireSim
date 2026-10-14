@@ -132,7 +132,7 @@ describe('where the time goes', () => {
     expect(v.time!.title).toBe('Where the time goes (last 10 s)');
     expect(v.time!.rows.map((r) => [r.label, r.text])).toEqual([
       ['3-D air flow', '52 %'],
-      ['Fire spread', '21 %'],
+      ['Fire spread and its wind', '21 %'],
       ['Embers', '12 %'],
       ['Everything else', '15 %'],
     ]);

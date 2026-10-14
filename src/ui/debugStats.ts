@@ -167,7 +167,8 @@ const fix = (v: number, d: number): string => v.toFixed(d);
 const num = (v: number | null | undefined, d = 0, unit = ''): string => (ok(v) ? `${fix(v, d)}${unit}` : NOT_YET);
 const ms = (v: number | null | undefined): string => (ok(v) ? `${v < 10 ? fix(v, 1) : fix(v, 0)}${NB}ms` : NOT_YET);
 const sec = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 || Math.abs(v - Math.round(v)) < 0.05 ? fix(v, 0) : fix(v, 1)}${NB}s` : NOT_YET);
-const speedX = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 ? fix(v, 0) : fix(v, 1)}x` : NOT_YET);
+/** "871×": the speed chip's and the pace sheet's multiplication sign. */
+const speedX = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 ? fix(v, 0) : fix(v, 1)}×` : NOT_YET);
 const pct = (share: number | null | undefined): string => (ok(share) ? `${fix(Math.round(share * 100), 0)}${NB}%` : NOT_YET);
 const bytes = (b: number | null | undefined): string => (ok(b) ? formatBytes(b).replace(/ /g, NB) : NOT_YET);
 const yesNo = (b: boolean): string => (b ? 'Yes' : 'No');
@@ -398,7 +399,7 @@ function speedGroup(i: DebugStatsInput): StatGroup {
 function historyGroup(i: DebugStatsInput): StatGroup {
   const h = i.engine?.perf?.history;
   const have = !!h && h.some(ok);
-  const rows = [R('samples', 'Computing speed, one sample per 30 s of computing, oldest first', have ? h!.map((v) => (ok(v) ? fix(v, v >= 10 ? 0 : 1) : '-')).join(' ') : i.engine?.perf ? NOT_YET : absent(i), have ? 'x real time' : undefined, true)];
+  const rows = [R('samples', 'Computing speed, one sample per 30 s of computing, oldest first', have ? h!.map((v) => (ok(v) ? fix(v, v >= 10 ? 0 : 1) : '-')).join(' ') : i.engine?.perf ? NOT_YET : absent(i), have ? '× real time' : undefined, true)];
   if (have) rows.push({ id: 'chart', label: 'Chart', value: '', spark: h!.slice(), live: true });
   return G('history', 'Speed history', rows, have ? `${h!.filter(ok).length} samples` : i.engine?.perf ? NOT_YET : NA);
 }

@@ -254,7 +254,7 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
 
   let time: PaceSheetView['time'] = null;
   if (g) {
-    const labels: Record<PaceRowId, string> = { air: tier === 'fast' ? 'Surface wind' : '3-D air flow', fire: 'Fire spread', embers: 'Embers', other: 'Everything else' };
+    const labels: Record<PaceRowId, string> = { air: tier === 'fast' ? 'Surface wind' : '3-D air flow', fire: 'Fire spread and its wind', embers: 'Embers', other: 'Everything else' };
     const ids: PaceRowId[] = ['air', 'fire', 'embers', 'other'];
     const pct = percents(ids.map((id) => g.shares[id]));
     time = {
