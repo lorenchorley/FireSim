@@ -43,6 +43,7 @@ const MESH_DESPIKE_MARGIN_M = 2;
  * exactly the same maxima for a fraction of the reads, and the unblurred sample is taken only at the vertices that need it.
  */
 export function decimateTerrain(grid: GridSpec, elevation: Float32Array, maxN: number, opts: Partial<DecimateTerrainOptions> = {}): RenderGrid {
+  if (elevation.length !== grid.nx * grid.ny) throw new RangeError(`decimateTerrain: ${elevation.length} heights for a ${grid.nx} x ${grid.ny} grid`);
   const base = decimateGrid(grid, elevation, maxN);
   if (base.ratio === 1) return base;
   const loDeg = opts.loDeg ?? 40;
