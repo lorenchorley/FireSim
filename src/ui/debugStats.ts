@@ -499,11 +499,12 @@ function memoryGroup(i: DebugStatsInput): StatGroup {
   ];
   if (s) {
     const expected = s.range && s.displayStepS > 0 ? Math.floor((s.range.end - s.range.start) / s.displayStepS) + 1 : 0;
+    const gone = Math.max(0, expected - s.frames);
     rows.push(
       R('history-held', 'History held', `${bytes(s.bytes)}${s.maxBytes > 0 ? ` of ${bytes(s.maxBytes)}` : ''}`, undefined, true),
       R('full-pictures', 'Full pictures (keyframes)', String(s.keyframes), `About ${bytes(s.keyframes > 0 ? s.keyframeBytes / s.keyframes : null)} each; the newest picture is ${bytes(s.newestBytes)}`, true),
       R('light-frames', 'Light frames kept', String(s.frames), undefined, true),
-      R('thinned', 'Frames thinned away', s.frames > 0 ? `About ${Math.max(0, expected - s.frames)}` : NOT_YET, `Kept frames are now about ${sec(s.spacingS)} apart (display step ${sec(s.displayStepS)})`, true),
+      R('thinned', 'Frames thinned away', s.frames > 0 ? (gone > 0 ? `About ${gone}` : 'None') : NOT_YET, gone > 0 ? `Kept frames are now about ${sec(s.spacingS)} apart (display step ${sec(s.displayStepS)})` : `The display step is ${sec(s.displayStepS)}`, true),
     );
   } else rows.push(R('history-held', 'History held', NO_RUN));
   rows.push(

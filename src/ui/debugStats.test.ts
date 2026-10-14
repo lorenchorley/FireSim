@@ -404,11 +404,21 @@ describe('labels and values', () => {
     expect(rowOf(s, 'memory', 'history-held').value).toBe('61.0 MB of 96.0 MB');
     expect(rowOf(s, 'memory', 'full-pictures').value).toBe('18');
     // 9600 s at a 60 s step = 161 frames expected, 150 kept: about 11 thinned away.
-    expect(rowOf(s, 'memory', 'thinned').value).toBe('About 11');
+    expect(rowOf(s, 'memory', 'thinned')).toMatchObject({ value: 'About 11', note: 'Kept frames are now about 63 s apart (display step 60 s)' });
     expect(rowOf(s, 'memory', 'heap').value).toBe('88.0 MB used of 120.0 MB, limit 2.1 GB');
     const noMem = full();
     noMem.historyBudget = { bytes: 48 * 1048576, memoryGb: null };
     expect(rowOf(buildDebugStats(noMem), 'memory', 'history-budget').note).toContain('3 GB assumed');
+  });
+
+  it('Frames thinned away: when none were, it says so and does not talk of kept frames being "now" apart (the mean spacing can sit under the display step)', () => {
+    const i = full();
+    i.store = { ...i.store!, frames: 190, spacingS: 50, displayStepS: 60, range: { start: 0, end: 9600 } }; // 161 expected, 190 kept
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned')).toMatchObject({ value: 'None', note: 'The display step is 60 s' });
+    i.store = { ...i.store, frames: 161 }; // exactly as many as expected
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned').value).toBe('None');
+    i.store = { ...i.store, frames: 0, range: null };
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned').value).toBe('Not measured yet');
   });
 
   it('Display: frames, slow frames, long tasks, draw calls, pixel ratio drops, picture quality and why, and the cliff drawing', () => {
