@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, SceneImagery, SceneViewApi } from './api';
+import type { CameraState, QualityInfo, SceneImagery, SceneViewApi } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { gridBounds, sunDirectionWorld } from './coords';
@@ -41,6 +41,7 @@ import { legendFor, overlayScale, type LegendSpec } from './legends';
 import { AdaptiveDpr, FrameMeter } from './perf';
 import { sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
+import { deviceFacts, guessQuality, type DeviceFacts } from './qualityGuess';
 import { skyLighting } from './sky';
 import { SkyDome } from './skyDome';
 import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
@@ -74,19 +75,37 @@ export interface SceneViewOptions {
  * Quality tiers. Triangle budget (doc 09 §8.1: ≤ 1–1.5 M): terrain 2·mesh² + the canopy, which is planned to at most
  * 250 k triangles (high) / 170 k (medium) / 100 k (low) over three levels of detail (see CANOPY_BUDGETS in vegetationLayer.ts).
  */
-const QUALITY: Record<RenderQuality, { mesh: number; veg: number; dpr: number; canopy: keyof typeof CANOPY_BUDGETS }> = {
-  low: { mesh: 224, veg: 16000, dpr: 1.25, canopy: 'low' },
-  medium: { mesh: 320, veg: 32000, dpr: 1.75, canopy: 'medium' },
-  high: { mesh: 400, veg: 48000, dpr: 2, canopy: 'high' },
+const QUALITY: Record<RenderQuality, { mesh: number; veg: number; dpr: number; canopy: keyof typeof CANOPY_BUDGETS; flames: number; puffs: number }> = {
+  low: { mesh: 224, veg: 16000, dpr: 1.25, canopy: 'low', flames: 2500, puffs: 800 },
+  medium: { mesh: 320, veg: 32000, dpr: 1.75, canopy: 'medium', flames: 5000, puffs: 1500 },
+  high: { mesh: 400, veg: 48000, dpr: 2, canopy: 'high', flames: 5000, puffs: 1500 },
 };
 
-function guessQuality(): RenderQuality {
-  const nav = (typeof navigator !== 'undefined' ? navigator : {}) as { hardwareConcurrency?: number; deviceMemory?: number };
-  const cores = nav.hardwareConcurrency ?? 4;
-  const mem = nav.deviceMemory ?? 4;
-  if (cores >= 8 && mem >= 6) return 'high';
-  if (cores <= 4 || mem <= 3) return 'low';
-  return 'medium';
+// The guess lives in qualityGuess.ts (pure, so the Settings screen can read it without loading this file).
+export { guessQuality };
+
+/**
+ * The tier in use, how it was chosen and what it sets (pure, unit-tested; the statistics screen shows it). An option that is
+ * given wins over the guess; the overrides of {@link SceneViewOptions} (tests and screenshots only) show as what is in force.
+ * The tree sway default follows the tier because the UI keeps the sway off by default on 'low' (layersPrefs.ts).
+ */
+export function describeQuality(opts: Pick<SceneViewOptions, 'quality' | 'meshResolution' | 'vegetationBudget' | 'maxDpr'>, device: DeviceFacts, guess: RenderQuality): QualityInfo {
+  const tier = opts.quality ?? guess;
+  const q = QUALITY[tier];
+  return {
+    tier,
+    source: opts.quality ? 'option' : 'guess',
+    guess,
+    cores: device.cores,
+    memoryGb: device.memoryGb,
+    terrainSamples: opts.meshResolution ?? q.mesh,
+    treeBudget: opts.vegetationBudget ?? q.veg,
+    canopyTriangles: CANOPY_BUDGETS[q.canopy].triangles,
+    pixelRatioCap: opts.maxDpr ?? q.dpr,
+    flameSites: q.flames,
+    smokePuffs: q.puffs,
+    treeSwayDefault: tier !== 'low',
+  };
 }
 
 /** True if the fine grid spans the coarse grid's domain (cell edges, within one fine cell). */
@@ -145,6 +164,7 @@ export class SceneView implements SceneViewApi {
   private domain: WindDomain | null = null;
   private layers: LayerState = structuredClone(DEFAULT_LAYERS);
   private readonly quality: (typeof QUALITY)[RenderQuality];
+  private readonly qualityFacts: QualityInfo;
   private readonly opts: SceneViewOptions;
 
   // Simulation state.
@@ -227,7 +247,8 @@ export class SceneView implements SceneViewApi {
   constructor(container: HTMLElement, opts: SceneViewOptions = {}) {
     this.container = container;
     this.opts = opts;
-    this.quality = QUALITY[opts.quality ?? guessQuality()];
+    this.qualityFacts = describeQuality(opts, deviceFacts(), guessQuality());
+    this.quality = QUALITY[this.qualityFacts.tier];
     const maxDpr = opts.maxDpr ?? Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, this.quality.dpr);
     this.dpr = new AdaptiveDpr({ maxDpr, minDpr: Math.min(1, maxDpr) });
 
@@ -457,7 +478,12 @@ export class SceneView implements SceneViewApi {
 
   /** The quality tier in use (mesh, canopy budget, maximum DPR). */
   get renderQuality(): RenderQuality {
-    return (Object.keys(QUALITY) as RenderQuality[]).find((k) => QUALITY[k] === this.quality) ?? 'medium';
+    return this.qualityFacts.tier;
+  }
+
+  /** The tier, how it was chosen (an option or the guess) and what it sets; fixed when the view is built. */
+  get qualityInfo(): QualityInfo {
+    return this.qualityFacts;
   }
 
   /** How the ground is drawn now (tests and the dev HUD): photo, plain relief, solo heat map. */
@@ -535,7 +561,7 @@ export class SceneView implements SceneViewApi {
     const glow = glowField(fire, target);
     this.terrainLayer.setGlow(glow.grid, glow.data);
     const hf = this.hf;
-    const sites = flameSites(fire, this.timeFrom, this.timeTo, { max: this.quality === QUALITY.low ? 2500 : 5000 });
+    const sites = flameSites(fire, this.timeFrom, this.timeTo, { max: this.quality.flames });
     this.flames.setSites(sites, (x, y) => hf.heightAt(x, y));
     this.flameSpacing = fire.grid.cellSize / Math.max(1, Math.min(3, Math.round(fire.grid.cellSize / 12)));
 
@@ -578,7 +604,7 @@ export class SceneView implements SceneViewApi {
   private updateSmoke(): void {
     if (!this.snap || !this.hf || !this.sampler) return;
     const atm = this.snap.atmosphere;
-    let puffs = atm ? puffsFromAtmosphere(atm, this.atmBase, this.quality === QUALITY.low ? 800 : 1500, this.opts.smokeReference) : [];
+    let puffs = atm ? puffsFromAtmosphere(atm, this.atmBase, this.quality.puffs, this.opts.smokeReference) : [];
     if (!atm || puffs.length === 0) {
       const c = this.fire ? fireCentroid(this.fire, this.snap.time) : null;
       puffs = c ? plumeColumn({ x: c.x, y: c.y, ground: this.hf.heightAt(c.x, c.y) }, c.maxIntensity, this.sampler) : [];

@@ -20,10 +20,12 @@ import {
   applyAppearance,
   initSettings,
   resolveAppearance,
+  resolveRenderQuality,
   sanitiseSettings,
   settingsStore,
   themeChrome,
   type AppearanceTarget,
+  type PictureQuality,
 } from './settings';
 
 beforeEach(() => {
@@ -134,4 +136,48 @@ describe('appearance', () => {
     expect(themeChrome('dark', true)).toBe(THEME_CHROME['dark-hc']);
     expect(themeChrome('light')).toBe(THEME_CHROME.light);
   });
+});
+
+describe('picture quality setting', () => {
+  it('is Auto by default, and the settings version did not change (additive)', () => {
+    expect(DEFAULT_SETTINGS.pictureQuality).toBe('auto');
+    expect(SETTINGS_VERSION).toBe(2);
+  });
+
+  it('sanitising keeps the four values and drops anything else (the default then applies)', () => {
+    for (const v of ['auto', 'low', 'medium', 'high'] as const) expect(sanitiseSettings({ pictureQuality: v })).toEqual({ pictureQuality: v });
+    for (const bad of ['ultra', 'High', '', 3, true, null] as unknown[]) expect(sanitiseSettings({ pictureQuality: bad as 'auto' }), String(bad)).toEqual({});
+  });
+
+  it('settings saved before it existed load with Auto; a saved choice loads and is saved when it changes', async () => {
+    mem.set('settings', { theme: 'dark', settingsVersion: SETTINGS_VERSION });
+    await initSettings();
+    expect(settingsStore.get().pictureQuality).toBe('auto');
+    settingsStore.set({ pictureQuality: 'high' });
+    await flush();
+    expect((mem.get('settings') as { pictureQuality: string }).pictureQuality).toBe('high');
+    settingsStore.set({ ...DEFAULT_SETTINGS });
+    mem.set('settings', { pictureQuality: 'low', settingsVersion: SETTINGS_VERSION });
+    await initSettings();
+    expect(settingsStore.get().pictureQuality).toBe('low');
+  });
+});
+
+describe('resolveRenderQuality (the tier asked of the 3-D view)', () => {
+  const modes = ['battery', 'auto', 'quality'] as const; // Saver, Balanced, Detail
+  // Auto lets the view guess from the phone, except Detail, which asks for High; Low, Medium and High always win.
+  const table: Record<PictureQuality, Record<(typeof modes)[number], string | undefined>> = {
+    auto: { battery: undefined, auto: undefined, quality: 'high' },
+    low: { battery: 'low', auto: 'low', quality: 'low' },
+    medium: { battery: 'medium', auto: 'medium', quality: 'medium' },
+    high: { battery: 'high', auto: 'high', quality: 'high' },
+  };
+
+  for (const pq of Object.keys(table) as PictureQuality[]) {
+    for (const mode of modes) {
+      it(`${pq} with ${mode} performance gives ${table[pq][mode] ?? 'no request (the view guesses)'}`, () => {
+        expect(resolveRenderQuality(pq, mode)).toBe(table[pq][mode]);
+      });
+    }
+  }
 });

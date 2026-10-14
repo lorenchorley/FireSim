@@ -8,18 +8,23 @@
  * The design language is documented in docs/DESIGN.md; the tokens live in src/styles/tokens.css.
  */
 import type { QualityTier } from '../core/types';
+import type { RenderQuality } from '../render/SceneView';
 import type { SpeedUnit } from './format';
 import { getPref, PREF_KEYS, setPref } from './prefs';
 import { Store } from './store';
 
 export type ThemeSetting = 'system' | 'light' | 'dark';
 export type PerformanceMode = 'auto' | 'battery' | 'quality';
+/** The 3-D picture quality: 'auto' follows the phone (and the Detail profile), the others always win. */
+export type PictureQuality = 'auto' | RenderQuality;
 
 export interface Settings {
   theme: ThemeSetting;
   units: SpeedUnit;
   /** 'battery' lowers render/ember detail and the engine tier; 'quality' raises them. */
   performance: PerformanceMode;
+  /** The 3-D picture quality for the next model you build; see {@link resolveRenderQuality}. */
+  pictureQuality: PictureQuality;
   /** Side of the screen the Tools menu button sits on (for one-handed use); the View menu takes the other side. */
   handedness: 'right' | 'left';
   /**
@@ -59,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   units: 'kmh',
   performance: 'auto',
+  pictureQuality: 'auto',
   handedness: 'right',
   pauseOnDanger: false,
   haptics: false,
@@ -93,6 +99,7 @@ function sanitise(s: Partial<Settings>): Partial<Settings> {
   if (s.theme === 'system' || s.theme === 'light' || s.theme === 'dark') out.theme = s.theme;
   if (s.units === 'kmh' || s.units === 'ms') out.units = s.units;
   if (s.performance === 'auto' || s.performance === 'battery' || s.performance === 'quality') out.performance = s.performance;
+  if (s.pictureQuality === 'auto' || s.pictureQuality === 'low' || s.pictureQuality === 'medium' || s.pictureQuality === 'high') out.pictureQuality = s.pictureQuality;
   if (s.handedness === 'left' || s.handedness === 'right') out.handedness = s.handedness;
   // Settings saved before version 2 hold the old defaults (pause and vibrate ON), not a choice the user made.
   const current = s.settingsVersion === SETTINGS_VERSION;
@@ -195,6 +202,15 @@ export function performanceProfile(mode: PerformanceMode): { maxEmbers: number; 
     default:
       return { maxEmbers: 3000, smoke: true, vegetation: true, tier: 'auto' };
   }
+}
+
+/**
+ * The tier to ask the 3-D view for: an explicit picture quality returns itself; 'auto' asks for 'high' under the Detail
+ * profile and otherwise returns undefined, which lets the view guess from the phone's cores and memory (guessQuality).
+ */
+export function resolveRenderQuality(pictureQuality: PictureQuality, performance: PerformanceMode): RenderQuality | undefined {
+  if (pictureQuality !== 'auto') return pictureQuality;
+  return performance === 'quality' ? 'high' : undefined;
 }
 
 /** The settings a scenario request takes: the performance mode and the two step settings. */
