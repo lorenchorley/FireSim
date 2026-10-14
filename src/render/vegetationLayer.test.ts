@@ -314,4 +314,57 @@ describe('VegetationLayer staged work', () => {
     expect(l.stats().near).toBe(before.near);
     l.dispose();
   });
+
+  // The view is built before its screen is in the page and used to draw at 1 px tall during a slow engine start: a placement that
+  // finished then was planned for that size (every tree is under a pixel, so none was kept) and stayed that way until the camera
+  // moved or the canopy was switched off and on: a forest-less map. SceneView no longer draws without a size; the layer also plans
+  // again whenever the size changes a lot.
+  it('plans again when the screen size changes a lot, so a plan made at 1 px tall does not stay empty', () => {
+    const l = layer();
+    l.staged = true;
+    l.setProjection(1.2, 2600); // a detached 1 px view
+    l.startPlacement(fm, { budget: 8000, heightAt, focus: [0, 0], focusRadius: 700, seed: 2 }, [0, 0, 3000], 1);
+    while (l.placing) l.pump(Infinity);
+    expect(l.instanceCount, 'every tree is under a pixel at that size').toBe(0);
+    l.setProjection(1000, 2600); // the screen is laid out
+    expect(l.placing, 'the plan is stale').toBe(true);
+    expect(l.pump(Infinity)).toBe(true);
+    expect(l.instanceCount).toBeGreaterThan(0);
+    expect(l.placing).toBe(false);
+    l.dispose();
+  });
+
+  it('keeps the plan for the small changes of a pixel ratio step, and plans again for a large one in either direction', () => {
+    const l = layer();
+    l.staged = true;
+    l.updateLod([0, 0, 520], 1, 700, true);
+    l.setInstances(sets);
+    l.pump(Infinity);
+    const n = l.instanceCount;
+    expect(n).toBeGreaterThan(0);
+    for (const px of [1000, 900, 1100, 810]) {
+      l.setProjection(px, 2600);
+      expect(l.placing, `${px} px per radian is close enough to the plan's 1000`).toBe(false);
+    }
+    l.setProjection(700, 2600); // zoomed out to a fifth of the pixels or so, or a much smaller screen
+    expect(l.placing).toBe(true);
+    l.pump(Infinity);
+    expect(l.placing).toBe(false);
+    l.setProjection(700, 2600); // the plan now stands at 700: no endless re-planning
+    expect(l.placing).toBe(false);
+    l.setProjection(1400, 2600);
+    expect(l.placing).toBe(true);
+    l.pump(Infinity);
+    expect(l.placing).toBe(false);
+    l.dispose();
+  });
+
+  it('an empty layer has nothing to plan whatever the size', () => {
+    const l = layer();
+    l.staged = true;
+    l.setProjection(1.2, 2600);
+    l.setProjection(2000, 2600);
+    expect(l.placing).toBe(false);
+    l.dispose();
+  });
 });

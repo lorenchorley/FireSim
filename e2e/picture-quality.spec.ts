@@ -75,18 +75,13 @@ interface Probe {
 }
 
 /**
- * The view's tier and facts, with the canopy placed and one frame drawn now. The first placement of a run can come out empty
- * on a slow start (it happened in some runs on this busy machine, with identical settings and data), so the canopy is placed
- * again by switching it off and on, as the Layers panel's switch does: the count the budgets are read from is then always
- * the tier's own.
+ * The view's tier and facts, with the canopy placed and one frame drawn now. The first placement of a run used to come out empty
+ * after a slow engine start (the canopy plan was made while the view was still 1 px tall and never made again: fixed in
+ * VegetationLayer.setProjection, tested in vegetationLayer.test.ts), so this does not place it again: the first placement
+ * is what is measured, and an empty one fails here.
  */
 async function probe(page: Page): Promise<Probe> {
-  type Handle = { __firesim: { view: { setLayers(p: Record<string, unknown>): void; renderNow(): void; diagnostics(): Record<string, number> } } };
-  await page.evaluate(() => {
-    const v = (window as unknown as Handle).__firesim.view;
-    v.setLayers({ vegetation: false });
-    v.setLayers({ vegetation: true });
-  });
+  type Handle = { __firesim: { view: { renderNow(): void; diagnostics(): Record<string, number> } } };
   const trees = (): Promise<number> =>
     page.evaluate(() => {
       const v = (window as unknown as Handle).__firesim.view;
