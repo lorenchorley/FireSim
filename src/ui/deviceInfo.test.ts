@@ -3,7 +3,7 @@
  * answer, hang or are missing, no battery API, no WebGPU, WebGL2 that cannot be created, and the refresh-rate measurement.
  */
 import { describe, expect, it } from 'vitest';
-import { apiLevelOf, deviceInfoAsync, deviceInfoNow, makerOf, parseUserAgent, phoneIdentity, type DeviceEnv, type NavLike } from './deviceInfo';
+import { apiLevelOf, deviceInfoAsync, deviceInfoNow, deviceVolatile, makerOf, parseUserAgent, phoneIdentity, type DeviceEnv, type NavLike } from './deviceInfo';
 
 const UA_REDUCED = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 const UA_WEBVIEW = 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.144 Mobile Safari/537.36';
@@ -256,5 +256,24 @@ describe('deviceInfoAsync', () => {
     expect(await hz([16.7, 16.7, 16.7, 50])).toBe(60);
     expect(await hz([11.1])).toBe(90);
     expect(await hz([8.33])).toBe(120);
+  });
+});
+
+describe('deviceVolatile', () => {
+  it('reads the battery and the storage again each time (the page-long reading of deviceInfoAsync is from the first open)', async () => {
+    let level = 0.8;
+    let used = 1000;
+    const e = env({ getBattery: async () => ({ level, charging: false }), storage: { estimate: async () => ({ usage: used, quota: 5_000_000 }) } });
+    expect(await deviceVolatile(e)).toEqual({ battery: { level: 0.8, charging: false }, storage: { usage: 1000, quota: 5_000_000 } });
+    level = 0.55; // an hour of play later
+    used = 2500;
+    expect(await deviceVolatile(e)).toEqual({ battery: { level: 0.55, charging: false }, storage: { usage: 2500, quota: 5_000_000 } });
+  });
+
+  it('no battery API, an answer that hangs or nonsense numbers: nulls, no throw', async () => {
+    expect(await deviceVolatile(env({}))).toEqual({ battery: null, storage: null });
+    const hang = env({ getBattery: () => new Promise(() => undefined), storage: { estimate: async () => ({ usage: Number.NaN, quota: 0 }) } });
+    expect(await deviceVolatile(hang)).toEqual({ battery: null, storage: null });
+    expect(await deviceVolatile(env({ getBattery: async () => { throw new Error('denied'); } }))).toEqual({ battery: null, storage: null });
   });
 });

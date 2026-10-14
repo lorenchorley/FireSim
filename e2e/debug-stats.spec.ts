@@ -78,6 +78,15 @@ test('before any run: opens from Setup and from Settings, the run groups say so,
   await expect(screen(page)).toBeVisible();
   await expect(screen(page)).toHaveAttribute('role', 'dialog');
   await expect(screen(page)).toHaveAttribute('aria-modal', 'true');
+  // A Copy in the first moments, before the slow phone facts (Client Hints, battery, the graphics probe) have been read, waits for
+  // them: the paste never holds "Reading..." (it did, for about a second after opening).
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByTestId('debug-stats-copy').click();
+  await expect(page.getByTestId('debug-stats-status')).toContainText('Copied');
+  const early = await page.evaluate(() => navigator.clipboard.readText());
+  expect(early).not.toContain('Reading...');
+  expect(early).toContain('GPU vendor and renderer');
+  expect(early).toContain('Battery:');
   await expect(page.getByRole('heading', { name: 'Simulation debug statistics', level: 1 })).toBeVisible();
   await expect(page.getByTestId('debug-stats-header')).toContainText('no run yet');
   await expect(page.getByTestId('debug-stats-headline')).toContainText('No run yet');

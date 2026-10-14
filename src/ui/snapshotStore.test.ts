@@ -298,6 +298,18 @@ describe('SnapshotStore memory', () => {
     }
   });
 
+  it('counts the times older history was thinned: none for a store inside its budget, even when its pictures are far apart', () => {
+    const sparse = new SnapshotStore({ minInterval: 60, maxBytes: 1e9 });
+    for (const t of [0, 188, 376]) sparse.push(snap(t)); // the worker's first chunks: pictures 3 display steps apart
+    expect(sparse.spacing).toBe(188);
+    expect(sparse.thinnedCount).toBe(0);
+    const tight = new SnapshotStore({ minInterval: 10, maxBytes: 40 * MB });
+    for (let t = 0; t <= 6 * 3600; t += 10) tight.push(snap(t, { bigBytes: 3 * MB }));
+    expect(tight.thinnedCount).toBeGreaterThan(0);
+    tight.clear();
+    expect(tight.thinnedCount).toBe(0);
+  });
+
   it('never drops the first keyframe or the newest snapshot, even with a budget smaller than one picture', () => {
     const st = new SnapshotStore({ minInterval: 60, maxBytes: 1000 });
     for (let t = 0; t <= 3600; t += 60) st.push(snap(t, { bigBytes: 100_000 }));

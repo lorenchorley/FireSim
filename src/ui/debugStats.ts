@@ -27,6 +27,7 @@ const NO_RUN = 'No run yet';
 const NA = 'Not available';
 const NA_PHONE = 'Not available on this phone';
 const READING = 'Reading...';
+const MIB = 1024 * 1024;
 const NB = ' ';
 
 // ───────────────────────────── input and output shapes ─────────────────────────────
@@ -202,15 +203,22 @@ const MODULE_NAME: Record<string, string> = {
   other: 'Everything else',
 };
 
-/** A line made safe to copy: first line only, links gone, long decimals (coordinates) hidden, and every text in `hide` (a place's name) replaced. */
+/**
+ * A line made safe to copy: first line only, links gone, long decimals (coordinates) hidden, a pair of short ones too ("-33.54,
+ * 150.41" is a place to about a kilometre), and every text in `hide` (a place's name) replaced, as it is written, with plus signs
+ * for spaces or percent-encoded (the forms a Maps link carries).
+ */
 export function scrubError(text: string, hide: readonly string[] = []): string {
+  const forms = (h: string): string[] => [h, h.replace(/\s+/g, '+'), encodeURIComponent(h)];
   return (
     hide
       .filter((h) => h.trim().length > 1)
+      .flatMap(forms)
       .reduce((t, h) => t.split(h).join('<place>'), text)
       .split('\n')[0]!
       .replace(/\b(?:https?|capacitor|file|blob):\/\/\S*/gi, '<link>')
       .replace(/-?\d+\.\d{3,}/g, '<number>')
+      .replace(/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/g, '<position>')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 160) || 'Unknown error'
@@ -475,7 +483,8 @@ function memoryGroup(i: DebugStatsInput): StatGroup {
   const rows: StatRow[] = [
     R('engine', 'Engine memory (measured)', e?.memory ? bytes(e.memory.totalBytes) : e ? NOT_YET : NO_RUN, e?.memory ? `Measured at ${hms(e.memory.measuredAt)} of fire time; the largest parts: ${top.map((p) => `${p.name} ${bytes(p.bytes)}`).join(', ')}` : undefined, true),
     R('checkpoints', 'Checkpoints (rewind points)', e ? `${e.run.checkpoints} held, ${bytes(e.run.checkpointBytes)}` : NO_RUN, undefined, true),
-    R('history-budget', 'History budget (the time scrubber)', b ? bytes(b.bytes) : NOT_YET, b ? `6 % of the ${b.memoryGb !== null ? `${b.memoryGb} GB memory class` : 'memory class (3 GB assumed: this phone does not report it)'}, between 48 and 160 MB; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly` : undefined),
+    // The limits are `defaultSnapshotBudget`'s 48 and 160 MiB, said in the same (decimal) megabytes as the figure above them.
+    R('history-budget', 'History budget (the time scrubber)', b ? bytes(b.bytes) : NOT_YET, b ? `6 % of the ${b.memoryGb !== null ? `${b.memoryGb} GB memory class` : 'memory class (3 GB assumed: this phone does not report it)'}, between ${bytes(48 * MIB)} and ${bytes(160 * MIB)}; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly` : undefined),
   ];
   if (s) {
     const expected = s.range && s.displayStepS > 0 ? Math.floor((s.range.end - s.range.start) / s.displayStepS) + 1 : 0;
@@ -603,8 +612,8 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
   const gfx = !l
     ? 'The graphics probe is still running.'
     : l.gl.ok
-      ? `Graphics: WebGL2 on ${l.gl.renderer ?? 'a GPU whose name is hidden'}, float render targets ${l.gl.floatTargets ? 'yes' : 'no'}, WebGPU ${l.gpu.present ? 'present' : 'absent'}.`
-      : 'Graphics: WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.';
+      ? `WebGL2 on ${l.gl.renderer ?? 'a GPU whose name is hidden'}, float render targets ${l.gl.floatTargets ? 'yes' : 'no'}, WebGPU ${l.gpu.present ? 'present' : 'absent'}.`
+      : 'WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.';
   return G('canDo', 'What this phone can do', [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)], 'Three sentences from the measurements above');
 }
 

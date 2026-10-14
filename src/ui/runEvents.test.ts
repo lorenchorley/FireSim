@@ -84,7 +84,7 @@ describe('watchRun', () => {
     doc.listeners.clear();
   });
 
-  function setup(): { log: EventLog; tick(ms: number): void; state: Store<SessionState>; snaps: { spacing: number; displayStep: number }; stop(): void } {
+  function setup(): { log: EventLog; tick(ms: number): void; state: Store<SessionState>; snaps: { spacing: number; displayStep: number; thinnedCount: number }; stop(): void } {
     (globalThis as { document?: unknown }).document = {
       get hidden() {
         return doc.hidden;
@@ -94,7 +94,7 @@ describe('watchRun', () => {
     };
     const { log, tick } = fakeLog();
     const state = new Store({ pace: null, snapshot: null, viewTime: 0 } as unknown as SessionState);
-    const snaps = { spacing: 60, displayStep: 60 };
+    const snaps = { spacing: 60, displayStep: 60, thinnedCount: 0 };
     const stop = watchRun({ state, snapshots: snaps } as unknown as Pick<SimSession, 'state' | 'snapshots'>, log);
     return { log, tick, state, snaps, stop };
   }
@@ -154,15 +154,26 @@ describe('watchRun', () => {
     expect(log.list()[2]!.runS).toBe(420);
   });
 
+  it('pictures far apart early in a run are not "the history memory is full": only a store that thinned says so', () => {
+    // Seen on the real app (a 6 h fast-tier run, 15 s in): the first chunks left pictures 94 s apart (display step 60 s) with 3 MB of 168 MB held.
+    const { log, state, snaps } = setup();
+    snaps.spacing = 94;
+    state.set({ snapshot: withEvents([]), viewTime: 15 });
+    state.set({ snapshot: withEvents([]), viewTime: 30 });
+    expect(log.list().filter((e) => e.kind === 'history')).toHaveLength(0);
+  });
+
   it('notes the first thinning of the history once, with the new spacing', () => {
     const { log, state, snaps } = setup();
     state.set({ snapshot: withEvents([]) });
-    snaps.spacing = 75; // under 1.5 x the display step
+    snaps.spacing = 75;
     state.set({ snapshot: withEvents([]) });
     expect(log.list()).toHaveLength(1);
     snaps.spacing = 130;
+    snaps.thinnedCount = 1;
     state.set({ snapshot: withEvents([]), viewTime: 1800 });
     snaps.spacing = 300;
+    snaps.thinnedCount = 2;
     state.set({ snapshot: withEvents([]) });
     const thin = log.list().filter((e) => e.kind === 'history');
     expect(thin).toHaveLength(1);

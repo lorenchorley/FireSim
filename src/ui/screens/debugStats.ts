@@ -18,7 +18,7 @@ import { liveMemory } from '../../scenario/memoryModel';
 import { bootErrors } from '../bootDiagnostics';
 import { APP_VERSION, BUILD_MODE, buildId } from '../buildInfo';
 import { buildDebugStats, debugStatsToText, TITLE, type DebugStats, type DebugStatsInput, type StatGroup, type StatRow } from '../debugStats';
-import { deviceInfoNow, deviceLater, type DeviceLater } from '../deviceInfo';
+import { deviceInfoNow, deviceLater, deviceVolatile, type DeviceLater } from '../deviceInfo';
 import { h, setChildren, svg, text, uniqueId } from '../dom';
 import { eventLog, longTasks } from '../eventLog';
 import { icon } from '../icons';
@@ -40,6 +40,8 @@ export interface DebugStatsOptions {
 
 /** Values are patched at most this often (ms) while the page is open. */
 const REFRESH_MS = 1000;
+/** The battery level and the storage in use are read again every this many refreshes. */
+const VOLATILE_EVERY = 15;
 const SITE_NAMES: Readonly<Record<string, string>> = Object.fromEntries(DEMO_SITES.map((s) => [s.id, s.name]));
 
 /** What the app knows right now, gathered for the pure content. */
@@ -144,7 +146,18 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     if (msg) statusTimer = setTimeout(() => say(''), 8000);
   };
   const box = h('textarea', { class: 'ds-box', readOnly: true, rows: 8, hidden: true, aria: { label: 'The statistics as text' }, dataset: { testid: 'debug-stats-fallback' } });
+  // The battery and the storage are read again (the page-long reading is from the first open); until the slow facts have come in
+  // there is nothing to refresh, and `later` is still null.
+  const rereadVolatile = async (): Promise<void> => {
+    if (!later) return;
+    const v = await deviceVolatile();
+    if (!destroyed && later) later = { ...later, ...v };
+  };
   const copy = async (): Promise<void> => {
+    // A copy made in the first second would carry "Reading..." in place of the phone's facts: it waits for them (they come in
+    // within about two seconds at the most) and takes the battery and the storage as they are now.
+    later ??= await deviceLater();
+    await rereadVolatile();
     const body = debugStatsToText(buildDebugStats(collect(opts, later)));
     if (await copyText(body)) {
       box.hidden = true;
@@ -279,12 +292,15 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
 
   paintAll();
   // The slow phone facts (Client Hints, battery, graphics probe, refresh rate) arrive a moment after the page opens.
-  void deviceLater().then((l) => {
+  void deviceLater().then(async (l) => {
     later = l;
+    await rereadVolatile(); // the page-long reading may be from an earlier open: the battery and the storage now
     if (!destroyed) refresh();
   });
+  let ticks = 0;
   const timer = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return;
+    if (++ticks % VOLATILE_EVERY === 0) void rereadVolatile();
     try {
       refresh();
     } catch (e) {
