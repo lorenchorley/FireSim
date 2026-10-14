@@ -3,7 +3,7 @@
  * what the Data sets screen says about the tier, the memory and the data is what the engine and the scenario say. (The wording
  * of each statement is also unit-tested; this checks it end to end, with whatever tier the machine's auto-tune picks.)
  *   - Setup does not promise the 3-D wind under 'Auto';
- *   - the Data sets screen names the ENGINE's tier (not 'Auto: starts on Standard') and sizes the memory for it;
+ *   - the Data sets screen names the ENGINE's tier (not the 'Auto: the 3-D atmosphere unless...' plan) and sizes the memory for it;
  *   - the places figures are for the model area (the zoned land cannot exceed the 36 km² square);
  *   - the designed weather is "made up by the app", never "Real data", in the data set itself and in the fuel map built from it;
  *   - the model card's headline and its layer list say the same about the smoke and the wind as the engine's tier does.
@@ -37,7 +37,7 @@ test('Data sets and the model card tell the truth about the tier, the memory and
   if (await online.isChecked()) await page.getByTestId('online').click();
 
   // Setup: the default performance setting is Auto, which decides when the run starts: the hint names both winds.
-  await expect(page.getByTestId('detail-hint')).toContainText('3-D wind if this phone is fast enough, else a simple 2-D surface wind');
+  await expect(page.getByTestId('detail-hint')).toContainText('3-D wind, or a simple 2-D surface wind if this phone is far too slow for it');
 
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
@@ -64,7 +64,7 @@ test('Data sets and the model card tell the truth about the tier, the memory and
   const summary = norm(await screen.getByTestId('datasets-summary').innerText());
   const tierWords = { fast: 'Fast: a 2-D wind shaped by the ground (no 3-D air movement)', standard: 'Standard: 3-D atmosphere', high: 'High: finer 3-D atmosphere' }[e.tier];
   expect(summary).toContain(tierWords);
-  expect(summary).not.toContain('Auto: starts on Standard');
+  expect(summary).not.toContain('Auto: the 3-D atmosphere unless');
   // What THIS build saved, not what the phone holds in all (the Storage card below says that).
   expect(summary).toContain('newly saved on this phone');
   if (e.tierCause === 'auto-tune') expect(summary).toContain('chosen by Auto after timing this phone');

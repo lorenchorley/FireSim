@@ -8,6 +8,7 @@ import type { FireWindContext } from '../core/simTypes';
 import { windToUV } from '../core/units';
 import type { Terrain, WeatherHour, WeatherSeries } from '../core/types';
 import { Atmosphere } from './atmosphere';
+import { ATMOS_PARAMS } from './params';
 import { featuresDouble, flatTerrain, fuelDouble, hour, katoombaTerrain, nightState, parseOpenMeteoFixture, seriesOf, analyticTerrain } from './testUtils';
 import { insolation } from '../terrain';
 import type { GridSpec } from '../core/grid';
@@ -142,5 +143,34 @@ describe('3-D tier: contract behaviour', () => {
     a.sampleTurb(0, 0, 50, turb);
     expect(turb[0]).toBeGreaterThan(0);
     expect(turb[2]).toBeGreaterThan(0);
+  });
+});
+
+describe('3-D tier: the numbers behind the step length (read by the engine statistics)', () => {
+  it('stepLimit() names the bound maxStableDt() used, and the wind maxima are the ones it used', () => {
+    const t = analyticTerrain(4000, 40, (x, y) => 500 + 300 * Math.exp(-(x * x + y * y) / (2 * 600 * 600)));
+    const hrs: WeatherHour[] = [0, 1].map((q) => hour(Date.UTC(2025, 0, 5, q), 12, 270));
+    const a = make(t, seriesOf(hrs, { sourceElevation: 500 }), 4000);
+    a.setAmbient(hrs[0]!, hrs[1]!);
+    a.setTime(hrs[0]!.time);
+    // Before any step there is no wind: nothing but the upper clamp bounds the step.
+    expect(a.stepLimit()).toBe(2);
+    expect(a.maxStableDt()).toBe(ATMOS_PARAMS.dtMax);
+    const seen = new Set<number>();
+    for (let q = 0; q < 40; q++) {
+      a.step(Math.min(a.maxStableDt(), 10));
+      const limit = a.stepLimit();
+      seen.add(limit);
+      const { courant, dtMin, dtMax } = ATMOS_PARAMS;
+      const h = courant * (a.grid.dx / Math.max(a.maxWindH, 1e-6));
+      if (limit === 2) expect(a.maxStableDt()).toBe(dtMax);
+      else if (limit === 0) expect(a.maxStableDt()).toBeCloseTo(Math.min(dtMax, Math.max(dtMin, h)), 9);
+      else expect(h).toBeGreaterThanOrEqual(a.maxStableDt() - 1e-9); // the vertical bound binds: the horizontal one is not smaller
+      expect(a.maxWindH).toBeGreaterThan(0);
+      expect(a.maxWindV).toBeGreaterThanOrEqual(0);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(1);
+    // Over a 300 m hill in a 12 m/s wind the horizontal wind is a real maximum, not the cell-centred zero of a quiet start.
+    expect(a.maxWindH).toBeGreaterThan(5);
   });
 });

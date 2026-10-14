@@ -230,7 +230,7 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await expect(page.getByTestId('overlay-arrival')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('cross-section').click();
   await expect(page.getByTestId('cross-section').getByRole('switch')).toBeChecked();
-  // If the auto-tune picked the fast (surface-wind) tier, switch this run to the 3-D atmosphere from the panel.
+  // If the engine is on the fast (surface-wind) tier (Auto keeps the 3-D air unless a machine is far too slow), switch this run to the 3-D atmosphere from the panel.
   if (await page.getByTestId('need-3d').isVisible()) {
     await page.getByTestId('use-3d').click();
     await expect(page.getByTestId('need-3d')).toBeHidden({ timeout: 120_000 });

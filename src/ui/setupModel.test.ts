@@ -55,10 +55,10 @@ describe('detail options name the grid that is built', () => {
 });
 
 describe('the wind the Setup hint names', () => {
-  it('Auto (the default) does not promise the 3-D wind: it decides when the run starts, and the fast tier is the usual outcome on a phone', () => {
+  it('Auto (the default) does not promise the 3-D wind: it decides when the run starts, and the 3-D wind is the usual outcome (the 2-D wind only on a phone far too slow)', () => {
     const auto = detailCell(6, 'normal', performanceProfile('auto').tier);
     expect(auto).toMatchObject({ twoD: false, windAuto: true });
-    expect(windHint(auto)).toBe('a 3-D wind if this phone is fast enough, else a simple 2-D surface wind (decided when the run starts)');
+    expect(windHint(auto)).toBe('a 3-D wind, or a simple 2-D surface wind if this phone is far too slow for it (decided when the run starts)');
     expect(windHint(detailCell(6, 'normal', undefined))).toBe(windHint(auto));
   });
 

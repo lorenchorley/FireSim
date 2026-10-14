@@ -571,6 +571,25 @@ export class Atmosphere extends AtmosBase {
     return clamp(P.courant * Math.min(a, b), P.dtMin, P.dtMax);
   }
 
+  /**
+   * What set `maxStableDt()` (for the engine statistics, O(1)): 0 = the horizontal bound Δx/|u|max, 1 = the vertical bound
+   * Δz_min/|w|max, 2 = neither: the upper clamp `dtMax` (also the case before any wind exists).
+   */
+  stepLimit(): 0 | 1 | 2 {
+    const a = this.maxU > 1e-6 ? this.grid.dx / this.maxU : Infinity;
+    const b = this.maxW > 1e-6 ? this.dzMin / this.maxW : Infinity;
+    return ATMOS_PARAMS.courant * Math.min(a, b) >= ATMOS_PARAMS.dtMax ? 2 : a <= b ? 0 : 1;
+  }
+
+  /** Cell-centred wind maxima (m/s) of the last step, horizontal and vertical: the numbers behind `maxStableDt()`. */
+  get maxWindH(): number {
+    return this.maxU;
+  }
+
+  get maxWindV(): number {
+    return this.maxW;
+  }
+
   step(dt: number): void {
     if (!(dt > 0)) return;
     const g = this.grid;

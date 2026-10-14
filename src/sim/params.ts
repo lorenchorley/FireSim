@@ -33,16 +33,22 @@ export const SIM_PARAMS = Object.freeze({
   dtMaxS: 12,
   /** 3-D spin-up before t0 with the t0 ambient (s). */
   spinUpS: 900,
-  // ── auto-tune (§12.6) ──
-  /** Number of timed standard-tier spin-up steps. */
-  autoTuneSteps: 20,
+  // ── auto-tune (§12.6; the 0.3.0 policy, plan §6.2: the detailed 3-D air unless it is hopeless) ──
+  /** Timed standard-tier spin-up steps in all: the first `autoTuneWarmupSteps` are the JIT warm-up and are only reported. */
+  autoTuneSteps: 30,
+  /** Warm-up steps timed first and left out of the decision (the median of the other `autoTuneSteps − this` is used). */
+  autoTuneWarmupSteps: 10,
   /** T_pred = overhead · t_step · duration / stepS. */
   autoTuneOverhead: 1.4,
   autoTuneStepS: 10,
-  /** budget = max(minBudgetS, budgetS · duration / budgetRefS). */
-  autoTuneBudgetS: 120,
+  /**
+   * budget = max(minBudgetS, budgetS · duration / budgetRefS): 10 minutes of computing for 6 h of fire, scaled by the run
+   * length, never under a minute. The 3-D air is kept when T_pred ≤ budget (the cut-off is about 198 ms per air step for
+   * a 6 h run, 4.8 times the one phone measured so far).
+   */
+  autoTuneBudgetS: 600,
   autoTuneBudgetRefS: 6 * 3600,
-  autoTuneMinBudgetS: 30,
+  autoTuneMinBudgetS: 60,
   // ── embers (§12.6 tier table) ──
   maxEmbersByTier: { fast: 2000, standard: 4000, high: 4000 } as Readonly<Record<QualityTier, number>>,
   /** Block size (fire cells) of the front-ROS raster used for the landing callback's rosLocal (exclusion zone) [H]. */

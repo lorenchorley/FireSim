@@ -172,8 +172,8 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
     const kind = id.replace('overlay-', '');
     await page.evaluate((k) => document.querySelector(`[data-testid="overlay-${k}"]`)?.closest('.lp-group-body')?.removeAttribute('hidden'), kind);
     expect(await domClick(page, id), id).toBe(true);
-    // The wind-speed map needs the 3-D atmosphere: the engine's auto-tune may have chosen the fast tier on this machine, and
-    // then the row says why it cannot be shown (it must not silently do nothing).
+    // The wind-speed map needs the 3-D atmosphere: Auto keeps it on nearly every machine, but a very slow one gets the fast tier,
+    // and then the row says why it cannot be shown (it must not silently do nothing).
     const noAtmosphere = kind === 'windSpeed' && (await page.evaluate(() => ((window as unknown as { __firesim: { session: { state: { get(): { snapshot: { atmosphere: { nz: number } } | null } } } } }).__firesim.session.state.get().snapshot?.atmosphere?.nz ?? 0) === 0));
     if (noAtmosphere) {
       await page.waitForTimeout(300);

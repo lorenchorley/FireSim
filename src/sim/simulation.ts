@@ -7,7 +7,8 @@
  *                              atmosphere of the build tier (auto → standard), explain engine, forecast insights and a
  *                              t0 snapshot (u_bg wind, moisture, no 3-D volume) are available at once.
  *   spinUp(deadline)         → 3-D tiers: 900 s of atmosphere steps with the t0 ambient, surface heating and the cold
- *                              pool; tier 'auto' times the first 20 steps and may switch to the fast tier (§12.6).
+ *                              pool; tier 'auto' times the first 30 steps and switches to the fast tier only if the 3-D air
+ *                              is hopelessly slow (the one wall-clock decision, §12.6, plan §6.2).
  *                              Then the permanent t0 checkpoint is taken. Returns true when finished.
  *   advance(until, deadline) → whole atmosphere steps while t < until (never clipped to `until`, so the step sequence
  *                              does not depend on how the run is chunked); snapshots every snapshotInterval (the
@@ -31,8 +32,9 @@
  * every 60 s boundary and on every display-step boundary.
  *
  * Determinism (§12.5): independent Rng streams (embers seed, fire seed+1, explain seed+2, atmosphere seed+3), no
- * wall clock in physics (wall time only for the auto-tune decision at init and the performance monitor), Float64
- * time. Rewind (§12.4) restores the latest checkpoint ≤ target and re-runs the same records.
+ * wall clock in physics (wall time only for the auto-tune decision at init, the performance monitor and the timing
+ * statistics of sim/perfStats.ts, which nothing reads back), Float64 time. Rewind (§12.4) restores the latest
+ * checkpoint ≤ target and re-runs the same records.
  *
  * Deviations / interpretations (see the sim/ report): records at a time < now trigger a rewind to that time; option
  * records later than a rewind target are moved to the target (the UI's "what-if from the view time"); a removed edit
@@ -96,7 +98,8 @@ import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
 import { SIM_PARAMS } from './params';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
-import { engineMemory, medianStampS, MEMORY_REFRESH_WALL_MS, spreadModelUse, tierReasonText } from './engineInfo';
+import { autoTuneDecision, autoTuneEventText, engineMemory, formatSimTime, medianStampS, MEMORY_REFRESH_WALL_MS, spreadModelUse, tierReasonText } from './engineInfo';
+import { AIR_LIMIT, PerfStats } from './perfStats';
 import type { SimOptionKey } from './protocol';
 
 type Atmos = Atmosphere | DiagnosticWind;
@@ -116,6 +119,8 @@ export interface SimulationOptions {
   clock?: () => number;
   /** Skip the 3-D spin-up (tests of the loop only). */
   skipSpinUp?: boolean;
+  /** false = leave the always-on timing statistics (`EngineInfo.perf`) off: the cost test compares the two; default on. */
+  perfStats?: boolean;
   /**
    * Snapshot coalescing: cadence snapshots closer than this many wall-clock ms to the previous emitted one are skipped
    * (their side effects are kept, their insights carried to the next one), except the first of every keyframe window
@@ -150,7 +155,7 @@ export interface SimPerf {
   modules: Record<string, number>;
   init: Record<string, number>;
   tier: QualityTier;
-  autoTune: { stepMs: number; predictedS: number; budgetS: number; chosen: QualityTier } | null;
+  autoTune: { stepMs: number; predictedS: number; budgetS: number; chosen: QualityTier; warmupMeanMs: number | null } | null;
 }
 
 /** Parts of {@link Simulation.memoryReport} (the same parts as scenario/memoryModel.ts predicts). */
@@ -331,7 +336,8 @@ export class Simulation {
   private spinDone = 0;
   private spinTotal = 0;
   private spinTimed = 0;
-  private spinWall = 0;
+  /** Wall ms of the timed spin-up steps, in order (the Auto decision, plan §6.2). */
+  private readonly spinTimes = new Float64Array(SIM_PARAMS.autoTuneSteps);
   private ready = false;
 
   // ── performance ──
@@ -343,6 +349,14 @@ export class Simulation {
   private autoTune: SimPerf['autoTune'] = null;
   private snapWall = 0;
   private snapSim = 0;
+  /** Always-on timing statistics (EngineInfo.perf); null when switched off. Fed from the laps of `stepOnce`, never read by the physics. */
+  private readonly perfStats: PerfStats | null;
+  /** Wall clock (ms) when the step in progress started, NaN outside a step (the statistics' duty counts the step under way). */
+  private stepStartMs = NaN;
+  /** The furthest simulation time any step has reached: what lies below it is computed again after a rewind. */
+  private timeReached = 0;
+  /** Time (s) of the checkpoint restored since the last 'rewound' notice, NaN when none. */
+  private restoredAt = NaN;
 
   // ── engine info (SimSnapshot.engine; bookkeeping for the transparency card, never read by the physics) ──
   /** The last outer step Δt_a (s). */
@@ -358,6 +372,7 @@ export class Simulation {
 
   constructor(scenario: ScenarioData, o: SimulationOptions = {}) {
     this.clock = o.clock ?? (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
+    this.perfStats = o.perfStats === false ? null : new PerfStats();
     this.hooks = o.hooks ?? {};
     this.testHooks = o.testHooks ?? {};
     this.heatingOn = this.testHooks.surfaceHeating !== false;
@@ -555,8 +570,7 @@ export class Simulation {
       this.addPerf('spinUp', ms, true);
       this.spinDone += dt;
       if (this.tierReq === 'auto' && this.spinTimed < P.autoTuneSteps) {
-        this.spinTimed++;
-        this.spinWall += ms;
+        this.spinTimes[this.spinTimed++] = ms;
         if (this.spinTimed === P.autoTuneSteps && this.autoTuneDecide()) {
           // Switched to the fast tier: no 3-D spin-up needed.
           this.spinDone = this.spinTotal;
@@ -624,7 +638,7 @@ export class Simulation {
       if (t < now - EPS) {
         this.dropCheckpointsAfter(t);
         this.suppressUntil = Math.min(this.suppressUntil, t);
-        this.hooks.rewound?.(t);
+        this.notifyRewound(t);
       }
       return true;
     }
@@ -635,7 +649,7 @@ export class Simulation {
     this.restore(cp);
     this.replayTarget = now > this.t + EPS ? now : -Infinity;
     this.suppressUntil = Math.min(pending, t);
-    this.hooks.rewound?.(t);
+    this.notifyRewound(t);
     return true;
   }
 
@@ -668,6 +682,27 @@ export class Simulation {
     return (Math.floor(t / i + EPS) + 1) * i;
   }
 
+  /**
+   * Tell the receiver that results after `time` are stale (the `rewound` hook) and note it in the statistics: one event per
+   * notice, saying whether a checkpoint was restored for it (the statistics never read back into the run).
+   */
+  private notifyRewound(time: number): void {
+    const stats = this.perfStats;
+    if (stats) {
+      stats.noteRewind();
+      const from = this.restoredAt;
+      this.restoredAt = NaN;
+      stats.event(
+        Number.isFinite(from) ? 'restore' : 'rewind',
+        this.t,
+        Number.isFinite(from)
+          ? `Rewound to ${formatSimTime(time)}: restored the checkpoint at ${formatSimTime(from)} and ran forward again.`
+          : `Rewound to ${formatSimTime(time)}: nothing was computed after it, so nothing was restored.`,
+      );
+    }
+    this.hooks.rewound?.(time);
+  }
+
   private setSnapshotInterval(seconds: number): void {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     this.simOptions.snapshotInterval = Math.max(1, Math.min(3600, seconds));
@@ -692,7 +727,6 @@ export class Simulation {
       }
       this.spinDone = 0;
       this.spinTimed = 0;
-      this.spinWall = 0;
       this.spinTotal = tier === 'fast' ? 0 : SIM_PARAMS.spinUpS;
       if (this.spinTotal === 0) this.finishSpinUp();
       return;
@@ -706,7 +740,7 @@ export class Simulation {
     this.restore(cp);
     this.replayTarget = now;
     this.suppressUntil = -Infinity;
-    this.hooks.rewound?.(cp.time);
+    this.notifyRewound(cp.time);
   }
 
   /**
@@ -723,7 +757,7 @@ export class Simulation {
       // point were already sent.
       if (this.replayTarget > target) this.replayTarget = target > this.t + EPS ? target : -Infinity;
       if (this.suppressUntil > target) this.suppressUntil = target;
-      this.hooks.rewound?.(target);
+      this.notifyRewound(target);
       return this.t;
     }
     const cp = this.checkpointAtOrBefore(target);
@@ -734,7 +768,7 @@ export class Simulation {
     this.restore(cp);
     this.replayTarget = target;
     this.suppressUntil = Math.min(pending, target);
-    this.hooks.rewound?.(target);
+    this.notifyRewound(target);
     return cp.time;
   }
 
@@ -838,7 +872,7 @@ export class Simulation {
     } else if (time < now - EPS) {
       // A replay is running and has not reached the record yet: results after it will differ.
       this.suppressUntil = Math.min(this.suppressUntil, time);
-      this.hooks.rewound?.(time);
+      this.notifyRewound(time);
     }
   }
 
@@ -1006,7 +1040,16 @@ export class Simulation {
     a.setNightState(this.night);
     // Engine info: the per-tier means (step time, speed) start again with a new atmosphere.
     this.engBase = { steps: this.perfSteps, atmMs: this.atmModuleMs(), stepMs: this.perfWall, sim: this.perfSim, wall: this.perfWall };
+    this.perfStats?.startTier();
     return a;
+  }
+
+  /** The atmosphere is about to be rebuilt for another tier after the start: count it and say so (the Auto choice is no switch). */
+  private noteTierSwitch(simT: number): void {
+    const stats = this.perfStats;
+    if (!stats) return;
+    stats.noteTierSwitch();
+    stats.event('tier', simT, `The atmosphere changed to ${this.tierNow === 'fast' ? 'the fast model' : 'the detailed 3-D air'} at ${formatSimTime(simT)} of simulated time.`);
   }
 
   private buildEmbers(tier: QualityTier): EmberModel {
@@ -1033,15 +1076,17 @@ export class Simulation {
     };
   }
 
-  /** Auto-tune (§12.6) from the mean wall time of the first 20 standard spin-up steps. Returns true if switched to fast. */
+  /**
+   * Auto-tune (§12.6, plan §6.2) from the wall times of the first `autoTuneSteps` standard spin-up steps: the median of the
+   * steady ones (after the warm-up) predicts the run, and the 3-D air stays unless that is hopeless (engineInfo.ts
+   * `autoTuneDecision`). The one decision that reads the wall clock; it is taken once, here, and the tier never changes
+   * by itself afterwards. Returns true if switched to fast.
+   */
   private autoTuneDecide(): boolean {
-    const P = SIM_PARAMS;
-    const stepMs = this.spinWall / Math.max(1, this.spinTimed);
-    const predictedS = (P.autoTuneOverhead * stepMs * (this.duration / P.autoTuneStepS)) / 1000;
-    const budgetS = Math.max(P.autoTuneMinBudgetS, (P.autoTuneBudgetS * this.duration) / P.autoTuneBudgetRefS);
-    const chosen: QualityTier = predictedS <= budgetS ? 'standard' : 'fast';
-    this.autoTune = { stepMs, predictedS, budgetS, chosen };
-    if (chosen === 'fast') {
+    const d = autoTuneDecision(this.spinTimes.subarray(0, this.spinTimed), this.duration);
+    this.autoTune = d;
+    this.perfStats?.event('tier', 0, autoTuneEventText(d));
+    if (d.chosen === 'fast') {
       this.tierNow = 'fast';
       this.atm = this.buildAtmosphere('fast');
       this.embers = this.buildEmbers('fast');
@@ -1063,6 +1108,7 @@ export class Simulation {
     if (tier === this.tierNow) return;
     const emberState = this.embers.checkpoint();
     this.tierNow = tier;
+    this.noteTierSwitch(t);
     this.atm = this.buildAtmosphere(tier);
     this.embers = this.buildEmbers(tier);
     this.embers.restore(emberState);
@@ -1090,10 +1136,13 @@ export class Simulation {
   private stepOnce(): void {
     const P = SIM_PARAMS;
     const c0 = this.clock();
+    this.stepStartMs = c0;
     let c = c0;
+    const stats = this.perfStats;
     const lap = (name: string): void => {
       const now = this.clock();
       this.perfMods[name] = (this.perfMods[name] ?? 0) + now - c;
+      stats?.addLap(name, now - c);
       c = now;
     };
     const t = this.t;
@@ -1180,7 +1229,10 @@ export class Simulation {
     // lands on both — is split into equal steps. With a display step ≥ 60 s the sequence is the classic one.
     const interval = this.snapshotStep();
     const userCap = Math.max(1, Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval));
-    const dtMax = Math.min(this.tierNow === 'fast' ? this.atm.maxStableDt() : Math.min(this.atm.maxStableDt(), P.dtMaxS), userCap);
+    const dtTier = this.tierNow === 'fast' ? this.atm.maxStableDt() : Math.min(this.atm.maxStableDt(), P.dtMaxS);
+    const dtMax = Math.min(dtTier, userCap);
+    // What set the air step's length, for the statistics: the user's limit (solver step or display step), else the bound the air reports.
+    const airLimit = !stats || this.tierNow === 'fast' ? -1 : userCap < dtTier ? AIR_LIMIT.user : (this.atm as Atmosphere).stepLimit();
     const boundary = Math.min((Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS, (Math.floor(t / interval + EPS) + 1) * interval);
     const rem = boundary - t;
     const nSteps = Math.max(1, Math.ceil(rem / dtMax - 1e-9));
@@ -1191,7 +1243,9 @@ export class Simulation {
     // 5–6 fire
     this.fire.prepare(env);
     lap('firePrepare');
+    const subs0 = stats ? this.fireSubCount() : 0;
     this.fire.step(dt, env);
+    if (stats) stats.noteFireSubSteps(this.fireSubCount() - subs0);
     for (const d of this.fire.takeDebrisIgnitions()) this.addSpot(d.x, d.y, d.time, d.travel, null, d.sourceCell);
     this.fire.takeBreachEvents();
     lap('fireStep');
@@ -1200,6 +1254,10 @@ export class Simulation {
     if (this.opts.coupling > 0) this.atm.addFireHeat(grid, this.heatPrev, this.crownPrev);
     lap('fireHeat');
     this.atm.step(dt);
+    if (airLimit >= 0) {
+      const a = this.atm as Atmosphere;
+      stats!.noteAirStep(airLimit, a.maxWindH, a.maxWindV, a.lastProjection.iterations);
+    }
     this.heatPrev.set(this.fire.heatRelease());
     this.crownPrev.set(this.fire.crownShare());
     lap('atmosphere');
@@ -1266,7 +1324,20 @@ export class Simulation {
       while (this.ring.length > 1 && bytes > P.checkpointMaxBytes) bytes -= this.ring.shift()!.bytes;
       lap('checkpoint');
     }
-    this.perfWall += this.clock() - c0;
+    const cEnd = this.clock();
+    this.perfWall += cEnd - c0;
+    this.stepStartMs = NaN;
+    if (stats) {
+      stats.noteRecomputed(Math.max(0, Math.min(tEnd, this.timeReached) - t));
+      if (tEnd > this.timeReached) this.timeReached = tEnd;
+      stats.endStep(c0, cEnd, dt, this.t);
+    }
+  }
+
+  /** Level-set sub-steps the fire has taken so far (a counter the level set keeps for its reinitialisation cadence). */
+  private fireSubCount(): number {
+    const ls = (this.fire as unknown as { ls?: { subCount?: number } }).ls;
+    return ls?.subCount ?? 0;
   }
 
   /** §12.2 step 4: U_fire, U_bg10, U_fireInd, U_ridge and near-surface T/ρ on the fire grid. */
@@ -1669,7 +1740,7 @@ export class Simulation {
     }
     const cause: EngineInfo['tierCause'] =
       changedAt !== null ? 'changed' : this.tierReq !== 'auto' ? 'requested' : this.autoTune ? 'auto-tune' : !this.ready && this.spinTotal > 0 ? 'auto-pending' : 'auto-default';
-    const autoTune = this.autoTune ? { ...this.autoTune, steps: P.autoTuneSteps } : null;
+    const autoTune = this.autoTune ? { ...this.autoTune, steps: P.autoTuneSteps, warmupSteps: P.autoTuneWarmupSteps } : null;
     // Per-tier means since this tier's atmosphere was built.
     const b = this.engBase;
     const steps = this.perfSteps - b.steps;
@@ -1693,6 +1764,7 @@ export class Simulation {
     const EP = this.embers.params.transport;
     const LSP = SPREAD_PARAMS.levelSet;
     const V = SPREAD_PARAMS.validation;
+    const perf = this.perfStats?.report({ nowMs: now, stepStartMs: this.stepStartMs, spinUpWallS: (this.perfInit['spinUp'] ?? 0) / 1000, burningCells: stats.burningCells });
     return {
       tier: this.tierNow,
       tierRequested: this.tierReq,
@@ -1764,6 +1836,7 @@ export class Simulation {
         heathModel: heath,
       },
       ...(this.memInfo ? { memory: { ...this.memInfo, parts: this.memInfo.parts.map((p) => ({ ...p })) } } : {}),
+      ...(perf ? { perf } : {}),
     };
   }
 
@@ -1833,6 +1906,8 @@ export class Simulation {
   }
 
   private restore(cp: Checkpoint): void {
+    this.perfStats?.noteRestore();
+    this.restoredAt = cp.time;
     // Records applied at the checkpoint; fuel state from the base + that sequence when it differs.
     const fuelNow = fuelSequence(this.records, this.applied);
     const fuelCp = fuelSequence(this.records, cp.applied);
@@ -1845,6 +1920,7 @@ export class Simulation {
     // Atmosphere / embers of the checkpoint's tier, wind edits as applied at the checkpoint.
     if (cp.tier !== this.tierNow) {
       this.tierNow = cp.tier;
+      this.noteTierSwitch(cp.time);
       this.atm = this.buildAtmosphere(cp.tier);
       this.embers = this.buildEmbers(cp.tier);
     } else this.setWindEdits(activeEdits(this.records, this.applied).wind);

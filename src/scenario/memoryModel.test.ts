@@ -68,7 +68,7 @@ describe('workingMemory text and totals', () => {
     const scenario = syntheticScenario({ extent: 3000, cellSize: 30, options: { tier: 'auto' } });
     const wm = workingMemoryForScenario(scenario, { imagery: { width: 1125, height: 1125 }, snapshotBudgetBytes: 96 * 1024 * 1024 });
     expect(wm.tier).toBe('standard'); // 'auto' is modelled as Standard
-    expect(wm.notes[0]).toMatch(/Auto tier/);
+    expect(wm.notes[0]).toMatch(/^Auto tier: shown for Standard, the usual result; on a phone far too slow for the 3-D air, Auto picks Fast at the start/);
     expect(wm.cells).toBe(100 * 100);
     expect(wm.totalBytes).toBe(wm.mainBytes + wm.workerBytes + wm.gpuBytes);
     expect(wm.items.find((x) => x.id === 'scenario-main')!.bytes).toBe(typedArrayFootprint(scenario).bytes);

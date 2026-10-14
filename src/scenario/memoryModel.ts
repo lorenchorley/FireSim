@@ -291,7 +291,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
     'GPU figures are estimates: WebGL does not report how much memory it uses.',
     'JavaScript objects (feature lists, labels, closures) are not counted: typed arrays hold nearly all the data.',
   ];
-  if (i.tier === 'auto') notes.unshift('Auto tier: shown for Standard, where every run starts; the app may switch to Fast after timing this device, which uses less.');
+  if (i.tier === 'auto') notes.unshift('Auto tier: shown for Standard, the usual result; on a phone far too slow for the 3-D air, Auto picks Fast at the start, which uses less.');
   return { tier, items, totalBytes: mainBytes + workerBytes + gpuBytes, mainBytes, workerBytes, gpuBytes, cells, notes };
 }
 

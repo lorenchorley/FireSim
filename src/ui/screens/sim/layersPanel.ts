@@ -676,7 +676,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     testId: 'wind-layer',
     onChange: (v) => set({ wind: v }),
   });
-  // The fast tier (auto-tune on slower devices) has no 3-D atmosphere: offer the switch where it matters.
+  // The fast tier (Saver, the Fast detail, or Auto on a phone far too slow for the 3-D air) has no 3-D atmosphere: offer the switch where it matters.
   const need3d = h('div', { class: 'callout callout-info need-3d', hidden: true, dataset: { testid: 'need-3d' } });
   const renderNeed3d = (): void => {
     const l = layers.get();
@@ -687,7 +687,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     setChildren(need3d, [
       icon('info'),
       h('div', null, [
-        h('p', null, 'This run uses the fast surface-wind model (picked for this device’s speed), so there is no 3-D plume or cold air to slice through.'),
+        h('p', null, 'This run uses the fast surface-wind model, so there is no 3-D plume or cold air to slice through.'),
         button({
           label: 'Use the 3-D atmosphere',
           icon: 'cube',
