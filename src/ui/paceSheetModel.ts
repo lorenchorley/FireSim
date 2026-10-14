@@ -18,6 +18,15 @@ export const REASON_SHARE = { air: 0.4, fire: 0.4, embers: 0.25 } as const;
 /** "Slower than earlier in this run": the speed now is under this fraction of the median of the first four history samples. */
 export const SLOWER_THAN_EARLIER = 0.75;
 
+/**
+ * What switching to the fast model costs. A tier change restores the engine's latest checkpoint (one every 30 minutes of fire,
+ * `SIM_PARAMS.checkpointIntervalS`) and computes again from there, so the pictures since that checkpoint are replaced too: it is
+ * not only "from this moment on". On the real engine the burnt area then differed by a few percent from the checkpoint onward,
+ * and the newest result went back to the checkpoint for a few seconds.
+ */
+export const FAST_NOTE = 'The fire is computed again from the last checkpoint, up to half an hour of fire ago, and comes out a little different.';
+export const FAST_ANNOUNCEMENT = 'Using the fast model. The simulation computes again from its last checkpoint.';
+
 /** What the sheet needs to know of the engine: the tier, whether it is the demo engine, and the statistics. */
 export interface PaceSheetEngine {
   tier: QualityTier;
@@ -259,7 +268,7 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
     const speed = playAtSpeed(pace);
     actions = {
       playAt: speed === null ? null : { speed, label: `Play at ${formatSpeedMultiple(speed)}` },
-      fast: engine && !engine.mock && engine.tier !== 'fast' ? { label: 'Use the fast model from here', note: 'The fire from this moment on comes out a little different.' } : null,
+      fast: engine && !engine.mock && engine.tier !== 'fast' ? { label: 'Use the fast model from here', note: FAST_NOTE } : null,
       pausing: 'Pausing stops the simulation too. Playing slower is what lets it keep up.',
     };
   }

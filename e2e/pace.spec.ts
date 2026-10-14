@@ -42,7 +42,7 @@ async function buildSlow(page: Page): Promise<void> {
   await page.getByTestId('preset-hot-nw-sw-change').click();
   const online = page.getByTestId('online').getByRole('switch');
   if (await online.isChecked()) await page.getByTestId('online').click();
-  await page.getByTestId('duration').getByRole('radio', { name: /^3/ }).check({ force: true });
+  await page.getByTestId('duration').getByRole('radio', { name: /^12/ }).check({ force: true });
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
 }
@@ -125,7 +125,7 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(play).toBeVisible();
   await expect(play).toHaveText(/^Play at \d+(\.\d+)?×$/);
   await expect(page.getByTestId('pace-fast')).toHaveText('Use the fast model from here');
-  await expect(page.getByTestId('pace-fast-note')).toHaveText('The fire from this moment on comes out a little different.');
+  await expect(page.getByTestId('pace-fast-note')).toHaveText('The fire is computed again from the last checkpoint, up to half an hour of fire ago, and comes out a little different.');
   // Sections that need the engine's statistics (EngineInfo.perf) are there when it reports them, with four rows adding up to 100 %.
   if (await page.getByTestId('pace-time').isVisible()) {
     const rows = await page.locator('[data-testid^=pace-time-] .meter-value').allInnerTexts();
@@ -164,7 +164,7 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   expect((await pace(page))?.level ?? null).not.toBe('waiting');
   expect((await session(page)).playing).toBe(true);
   expect((await session(page)).error).toBeNull();
-  expect(D).toBe(3 * 3600);
+  expect(D).toBe(12 * 3600);
 
   // ── through all of it: no pop-up, no alert, no toast ──
   expect(await popups(page)).toEqual([]);

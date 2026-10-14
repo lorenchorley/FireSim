@@ -6,7 +6,7 @@
  * them out and keeps them current once a second, in place (a tap on a button is never lost to a redraw).
  */
 import { h, text } from '../../dom';
-import { paceSheet, speedWord } from '../../paceSheetModel';
+import { FAST_ANNOUNCEMENT, paceSheet, speedWord } from '../../paceSheetModel';
 import { list, listRow, pct } from '../../primitives';
 import { speedToStored } from '../../settings';
 import type { SimContext } from './context';
@@ -88,7 +88,7 @@ export function mountPaceSheet(ctx: SimContext, panel: HTMLElement, opts: { clos
         click: () => {
           // The existing path: the engine restores its latest checkpoint and goes on with the fast model from there.
           session.controller.setQuality('fast');
-          ctx.announce('Using the fast model from this moment on.');
+          ctx.announce(FAST_ANNOUNCEMENT);
           opts.close();
         },
       },

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { EnginePerfInfo, PerfModuleId, PerfModuleShare } from '../core/simTypes';
 import type { PaceInfo } from './paceTypes';
 import { PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL } from './paceModel';
-import { earlierSpeed, fireEvery, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
+import { SIM_PARAMS } from '../sim/params';
+import { earlierSpeed, FAST_ANNOUNCEMENT, FAST_NOTE, fireEvery, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
 
 const pace = (o: Partial<PaceInfo> = {}): PaceInfo => ({
   level: 'waiting',
@@ -247,11 +248,20 @@ describe('what you can do', () => {
     expect(paceSheet(input({ pace: pace({ achieved: null, capacity: null }) })).actions!.playAt).toBeNull();
   });
   it('offers the fast model from here (with what it costs) unless it is already the fast model, the demo engine or unknown', () => {
-    expect(paceSheet(input()).actions!.fast).toEqual({ label: 'Use the fast model from here', note: 'The fire from this moment on comes out a little different.' });
+    expect(paceSheet(input()).actions!.fast).toEqual({ label: 'Use the fast model from here', note: FAST_NOTE });
     expect(paceSheet(input({ engine: { tier: 'high', perf: perf() } })).actions!.fast).not.toBeNull();
     expect(paceSheet(input({ engine: { tier: 'fast', perf: perf() } })).actions!.fast).toBeNull();
     expect(paceSheet(input({ engine: { tier: 'standard', mock: true } })).actions!.fast).toBeNull();
     expect(paceSheet(input({ engine: null })).actions!.fast).toBeNull();
+  });
+  it('says what the switch really does: the engine goes back to its last checkpoint (up to 30 minutes of fire), so the pictures since then change too, not only those from now on', () => {
+    // setQuality restores the latest checkpoint (SIM_PARAMS.checkpointIntervalS = 1800 s) and computes again from there.
+    expect(SIM_PARAMS.checkpointIntervalS).toBe(1800);
+    expect(FAST_NOTE).toMatch(/last checkpoint/);
+    expect(FAST_NOTE).toMatch(/half an hour/);
+    expect(FAST_NOTE).not.toMatch(/from this moment on/);
+    expect(FAST_ANNOUNCEMENT).toMatch(/last checkpoint/);
+    expect(FAST_ANNOUNCEMENT).not.toMatch(/from this moment on/);
   });
   it('says that pausing does not let the simulation catch up (it stops too)', () => {
     expect(paceSheet(input()).actions!.pausing).toBe('Pausing stops the simulation too. Playing slower is what lets it keep up.');
