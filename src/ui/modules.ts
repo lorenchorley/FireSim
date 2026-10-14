@@ -8,6 +8,7 @@
  */
 import type { ScenarioData } from '../core/types';
 import type { SceneViewApi } from '../render/api';
+import type { RenderQuality, SceneViewOptions } from '../render/SceneView';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import type { SimController } from '../sim/protocol';
 import type { ExternalLegend, LegendProvider } from './legends';
@@ -19,8 +20,11 @@ export type ModuleSource = 'real' | 'mock';
 export interface Services {
   buildScenario: BuildScenarioFn;
   createController(): SimController;
-  /** Create the scene view; falls back to the 2-D mock if the real one throws (reported via `sceneSource`). */
-  createSceneView(container: HTMLElement): SceneViewApi;
+  /**
+   * Create the scene view; falls back to the 2-D mock if the real one throws (reported via `sceneSource`). `quality` is the
+   * picture quality tier to ask for (undefined lets the view guess from the phone); the 2-D mock ignores it.
+   */
+  createSceneView(container: HTMLElement, opts?: { quality?: RenderQuality }): SceneViewApi;
   readonly sources: { scenario: ModuleSource; sim: ModuleSource; scene: ModuleSource };
   /** Overlay legends from the renderer, when it provides them (the UI falls back to its own). */
   legendProvider: LegendProvider | null;
@@ -37,7 +41,7 @@ interface SimModule {
   SimClient: new () => SimController;
 }
 interface RenderModule {
-  SceneView: new (container: HTMLElement) => SceneViewApi;
+  SceneView: new (container: HTMLElement, opts?: SceneViewOptions) => SceneViewApi;
   legendFor?: LegendProvider;
   crossSectionLegend?: () => ExternalLegend;
   windLegend?: (mode: 'surface' | 'volume') => ExternalLegend;
@@ -95,10 +99,10 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
     createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),
-    createSceneView(container: HTMLElement): SceneViewApi {
+    createSceneView(container: HTMLElement, opts?: { quality?: RenderQuality }): SceneViewApi {
       if (render) {
         try {
-          return new render.SceneView(container);
+          return new render.SceneView(container, opts);
         } catch (e) {
           console.warn('[FireSim] 3-D view unavailable on this device — showing the 2-D map instead.', e);
           sources.scene = 'mock';

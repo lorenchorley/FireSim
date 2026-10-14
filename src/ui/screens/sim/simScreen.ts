@@ -23,7 +23,7 @@ import { weatherAt } from '../../weatherSeries';
 import type { Services } from '../../modules';
 import { SimSession } from '../../session';
 import { DangerGate } from '../../insightGroups';
-import { performanceProfile, settingsStore } from '../../settings';
+import { performanceProfile, resolveRenderQuality, settingsStore } from '../../settings';
 import { Store } from '../../store';
 import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './context';
 import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels';
@@ -105,7 +105,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const root = h('div', { class: ['screen', 'sim-screen', `hand-${settingsStore.get().handedness}`], dataset: { testid: 'sim' } }, [sceneHost, dim, annotations, drawLayer, crosshair]);
 
   // ───────────── scene + session ─────────────
-  const view = services.createSceneView(sceneHost);
+  const view = services.createSceneView(sceneHost, { quality: resolveRenderQuality(settingsStore.get().pictureQuality, settingsStore.get().performance) });
   const prof = performanceProfile(settingsStore.get().performance);
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, smoke: prof.smoke, vegetation: prof.vegetation, imagery: !!o.imagery });
   view.setScenario(scenario.terrain, scenario.fuel, { imagery: o.imagery, hiRes: scenario.terrainHiRes ?? null });

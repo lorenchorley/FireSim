@@ -228,6 +228,7 @@ export class App {
       ...(request ? { request } : {}),
       services: this.services,
       getSnapshot: () => this.sim?.session.state.get().snapshot ?? null,
+      getRenderQuality: () => this.sim?.view.renderQuality,
       onClose: () => ov && this.closeOverlay(ov),
       ...(sim ? { onShowLayer: (t: ShowLayerTarget) => this.showLayer(t) } : {}),
       onOpenModelCard: () => this.openModelCard(),
