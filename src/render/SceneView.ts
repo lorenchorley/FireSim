@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, SceneImagery, SceneViewApi } from './api';
+import type { CameraState, FrameStatsInfo, SceneImagery, SceneViewApi } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { gridBounds, sunDirectionWorld } from './coords';
@@ -204,6 +204,9 @@ export class SceneView implements SceneViewApi {
   private flameSpacing = 10;
   private vegPending = 0;
   private readonly lastStats = { fps: 0, drawCalls: 0, triangles: 0 };
+  /** Times the adaptive pixel ratio lowered the resolution, and when (frame time, ms) a frame was last drawn: debug statistics. */
+  private dprDrops = 0;
+  private lastDrawMs: number | null = null;
   private wasCapped = false;
   private readonly resizeObserver: ResizeObserver | null = null;
   private readonly onLost = (e: Event): void => {
@@ -1161,6 +1164,7 @@ export class SceneView implements SceneViewApi {
     this.embers.setProjection(pxPerRad, this.dpr.dpr);
 
     this.renderer.render(this.scene, cam);
+    this.lastDrawMs = now;
     const info = this.renderer.info.render;
     // The adaptive DPR judges the frame rate against the cap in force (30 fps playback vs uncapped interaction).
     if (capped !== this.wasCapped) {
@@ -1175,6 +1179,7 @@ export class SceneView implements SceneViewApi {
     if (!this.opts.fixedDpr && fdt > 0) {
       const d = this.dpr.sample(fdt, this.meter.fps, capped ? 30 : Infinity);
       if (d !== null) {
+        if (d < (this.u.uDpr!.value as number)) this.dprDrops++;
         this.renderer.setPixelRatio(d);
         this.u.uDpr!.value = d;
         this.wind.setDpr(d);
@@ -1190,6 +1195,30 @@ export class SceneView implements SceneViewApi {
   /** Render statistics of the last frame. */
   stats(): { fps: number; drawCalls: number; triangles: number } {
     return { ...this.lastStats };
+  }
+
+  /** Frame and draw statistics for the debug statistics screen: the last seconds drawn (nothing is drawn while a screen covers the view). */
+  frameStats(): FrameStatsInfo {
+    const f = this.meter.log.summary();
+    const st = this.lastStats;
+    const buf = this.renderer.domElement;
+    return {
+      fps10: f.fps10,
+      frameMeanMs: f.meanMs,
+      frameP95Ms: f.p95Ms,
+      over33: f.over33,
+      over100: f.over100,
+      frames: f.frames,
+      drawCalls: st.drawCalls,
+      triangles: st.triangles,
+      textures: this.renderer.info.memory.textures,
+      pixelRatio: this.dpr.dpr,
+      pixelRatioCap: this.dpr.maxDpr,
+      dprDrops: this.dprDrops,
+      canvasW: buf.width,
+      canvasH: buf.height,
+      lastDrawAgeS: this.lastDrawMs === null ? null : Math.max(0, (performance.now() - this.lastDrawMs) / 1000),
+    };
   }
 
   /** Extra diagnostics for the dev HUD. */

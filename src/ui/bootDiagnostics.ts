@@ -45,10 +45,17 @@ export function bootDone(): void {
   watchdog = null;
 }
 
+/** The uncaught errors and unhandled rejections seen since start-up, oldest first (read by the Simulation debug statistics screen). */
+export const bootErrors = (): readonly string[] => errors;
+
+/** A WebGL2 context on a throwaway canvas (null when the browser has none; throws when making one fails). The caller loses it when done. */
+export function openWebgl2(): WebGL2RenderingContext | null {
+  return document.createElement('canvas').getContext('webgl2');
+}
+
 function webgl2(): string {
   try {
-    const c = document.createElement('canvas');
-    const gl = c.getContext('webgl2');
+    const gl = openWebgl2();
     if (!gl) return 'no';
     const dbg = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'yes';

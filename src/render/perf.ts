@@ -7,6 +7,8 @@
  * (render-on-demand) scene does not look "slow".
  */
 
+import { FrameLog } from './frameLog';
+
 export interface AdaptiveDprOptions {
   /** Highest DPR used (default min(devicePixelRatio, 2)). */
   maxDpr: number;
@@ -31,11 +33,14 @@ export class FrameMeter {
   private last = -1;
   /** Frames further apart than this (ms) are treated as a pause, not a slow frame. */
   gapMs = 250;
+  /** The last 120 intervals and the last 10 s, for the debug statistics (a stall of up to 2 s is recorded here though the meter above ignores it). */
+  readonly log = new FrameLog();
 
   /** Record a rendered frame at time `now` (ms). Returns the frame interval (ms) or 0 after a gap. */
   tick(now: number): number {
     const dt = this.last < 0 ? 0 : now - this.last;
     this.last = now;
+    if (dt > 0) this.log.add(dt, now);
     if (dt <= 0 || dt > this.gapMs) return 0;
     // Ring buffer with a running sum: no allocation or O(n) work per frame.
     if (this.n === this.ring.length) this.sum -= this.ring[this.head]!;
