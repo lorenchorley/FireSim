@@ -25,7 +25,7 @@ import { icon } from '../icons';
 import type { Services } from '../modules';
 import { iconButton } from '../primitives';
 import { defaultSnapshotBudget, type SimSession } from '../session';
-import type { Settings } from '../settings';
+import type { PictureQualityAsk } from '../settings';
 import { appBar, button, copyText } from '../widgets';
 
 export interface DebugStatsOptions {
@@ -34,7 +34,8 @@ export interface DebugStatsOptions {
   services: Services;
   session: SimSession | null;
   view: SceneViewApi | null;
-  settings: () => Settings;
+  /** What asked for the picture quality when the running view was built (SimScreen.pictureQualityAsk); null with no run. */
+  qualityAsk: PictureQualityAsk;
   onClose(): void;
 }
 
@@ -58,7 +59,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInp
     frames: o.view?.frameStats?.() ?? null,
     longTasks: { supported: longTasks.supported, ...longTasks.recent(performance.now()) },
     quality: o.view?.qualityInfo ?? null,
-    settings: o.settings(),
+    qualityAsk: o.qualityAsk,
     terrain: o.view ? (o.view.terrainStats ? o.view.terrainStats() : undefined) : undefined,
     store: snaps
       ? {
