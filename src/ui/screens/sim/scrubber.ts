@@ -8,6 +8,8 @@
 import { h, setChildren, text } from '../../dom';
 import { icon } from '../../icons';
 import { formatClock, formatElapsedShort, formatStepLabel, tzOffsetHours } from '../../format';
+import { PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL, shouldAnnounce } from '../../paceModel';
+import type { PaceLevel } from '../../paceTypes';
 import { detectWindChanges } from '../../weatherCalc';
 import type { SimContext } from './context';
 import {
@@ -31,7 +33,11 @@ const MIN_LABEL_PX = 62;
 
 const pct = (frac: number): string => `${(frac * 100).toFixed(3)}%`;
 
-export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): void } {
+/**
+ * The speed button that opens the slow-run sheet is handed back, so the top bar can hang the sheet on it (the strip is made
+ * first). The button is only on screen while the simulation holds playback back (plan §6.4).
+ */
+export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: HTMLElement; destroy(): void } {
   const { session, scenario } = ctx;
   const D = scenario.duration;
   const startMs = scenario.startTime;
@@ -49,10 +55,12 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const marks = h('div', { class: 'tl-marks', aria: { hidden: true } });
   const target = h('div', { class: 'tl-target', hidden: true, aria: { hidden: true } });
   const thumb = h('div', { class: 'tl-thumb', aria: { hidden: true } });
+  // While `waiting`: a short amber run under the rail that ends at the thumb (the stretch between thumb and head has no length then).
+  const paceRun = h('div', { class: 'tl-pace-run', hidden: true, aria: { hidden: true } });
   const bubbleMain = h('span', { class: 'tl-bubble-main' });
   const bubbleSub = h('span', { class: 'tl-bubble-sub' });
   const bubble = h('div', { class: 'tl-bubble', hidden: true, aria: { hidden: true } }, [bubbleMain, bubbleSub]);
-  const area = h('div', { class: 'tl-area' }, [rail, hourTicks, labels, marks, target, thumb, bubble]);
+  const area = h('div', { class: 'tl-area' }, [rail, paceRun, hourTicks, labels, marks, target, thumb, bubble]);
   const slider = h('div', {
     class: 'tl-slider',
     dataset: { testid: 'scrubber' },
@@ -133,8 +141,23 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   const prevBtn = stepButton(-1);
   const nextBtn = stepButton(1);
 
+  // ── the speed signal: a 44 px button in the 4th column (Cancel's), only while the simulation is behind the speed asked for ──
+  const paceBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'icon-btn tl-pace',
+      hidden: true,
+      dataset: { testid: 'pace-btn' },
+      aria: { label: PACE_BUTTON_LABEL, haspopup: 'dialog', expanded: false },
+    },
+    icon('gauge', { size: 20 }),
+  );
+  // A polite status line for screen readers: said once when playback starts to wait, at most every two minutes, never an alert.
+  const paceLive = h('span', { class: 'sr-only', dataset: { testid: 'pace-live' }, attrs: { role: 'status', 'aria-live': 'polite' } });
+
   const mid = h('div', { class: 'tl-mid' }, [slider]);
-  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline' } }, [prevBtn, mid, nextBtn, cancelBtn, status]);
+  const el = h('div', { class: 'scrubber', dataset: { testid: 'timeline', pace: 'ok' } }, [prevBtn, mid, nextBtn, cancelBtn, status, paceBtn, paceLive]);
 
   // ── pointer: tap = jump, drag = scrub ──
   let areaLeft = 0;
@@ -261,6 +284,9 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
   let stepKey = -1;
   let seekFrom = 0;
   let wasSeeking = false;
+  let paceShown = '';
+  let paceLevel: PaceLevel | null = null;
+  let paceAnnouncedAt: number | null = null;
   const vars = new Map<string, string>();
   const setVar = (name: string, value: string): void => {
     if (vars.get(name) === value) return;
@@ -291,6 +317,29 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
       setVar('--seek-target', pct(timeToFraction(tgt, D)));
       text(statusText, `Computing to ${clock(tgt, s.timeStep < 60)}…`);
       text(statusPct, `${seekPercent(s.seekProgress)} %`);
+    }
+
+    // The speed signal (hidden while a jump computes: the button shares Cancel's column, and nothing is judged then). It stays
+    // while its sheet is open, even if the simulation has caught up meanwhile, so the sheet is never left without its button.
+    const lv: PaceLevel | null = seeking ? null : (s.pace?.level ?? null);
+    const sheetOpen = paceBtn.getAttribute('aria-expanded') === 'true';
+    const paceNow = `${lv}|${sheetOpen}`;
+    if (paceNow !== paceShown) {
+      paceShown = paceNow;
+      const slow = lv === 'behind' || lv === 'waiting';
+      el.dataset.pace = slow ? lv : 'ok';
+      paceRun.hidden = lv !== 'waiting';
+      const hideBtn = !slow && !sheetOpen;
+      if (hideBtn && !paceBtn.hidden && document.activeElement === paceBtn) slider.focus({ preventScroll: true });
+      paceBtn.hidden = hideBtn;
+      if (lv !== paceLevel) {
+        const at = performance.now();
+        if (shouldAnnounce(paceLevel, lv, paceAnnouncedAt, at)) {
+          paceAnnouncedAt = at;
+          text(paceLive, PACE_ANNOUNCEMENT);
+        } else if (lv !== 'waiting') text(paceLive, '');
+        paceLevel = lv;
+      }
     }
 
     // Text and ARIA change at most every few seconds of simulated time.
@@ -332,7 +381,10 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
     }
   }
 
-  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep']);
+  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep', 'pace']);
+  // Closing the sheet (a tap outside, Escape, Back) changes aria-expanded on the button: it may then have to go.
+  const paceWatch = typeof MutationObserver === 'function' ? new MutationObserver(render) : null;
+  paceWatch?.observe(paceBtn, { attributes: true, attributeFilter: ['aria-expanded'] });
   measure();
   render();
   // The width is known once the strip is in the page; the observer builds the ticks then (and on every resize).
@@ -343,10 +395,12 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; destroy(): v
 
   return {
     el,
+    paceButton: paceBtn,
     destroy() {
       unsub();
       scrub.cancel();
       ro?.disconnect();
+      paceWatch?.disconnect();
       for (const o of offs) o();
     },
   };

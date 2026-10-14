@@ -265,6 +265,10 @@ export function curatedPairs() {
   // Bars, meters and sparkbars are data and sit on --surface-3 (the track) inside a card
   for (const c of ['--muted', '--ok', '--danger', '--series-1', '--series-2', '--series-3', '--series-4', '--series-5']) add(c, '--surface-3', 'ui', `bar fill ${c} against its track`);
   add('--watch', '--surface-3', 'info', 'amber bar fill against its track (a value always accompanies a bar)');
+  // The speed signal on the timeline (plan 6.4): its ring and the run under the rail are box-shadow and background, which the automatic scan
+  // does not pair. They are drawn in --watch-ink, because the amber --watch is only about 1.9:1 against the strip in the light looks.
+  add('--watch-ink', '--surface', 'ui', 'speed signal on the timeline strip: the waiting ring, its glyph and the run under the rail');
+  add('--watch', '--surface', 'info', 'amber --watch against the strip: too faint for the speed signal in the light looks (it uses --watch-ink)');
   for (const c of ['--chart-wind', '--chart-temp', '--chart-rh', '--chart-moist', '--series-1', '--series-2', '--series-3', '--series-4', '--series-5']) {
     add(c, '--surface', 'ui', `chart / bar colour ${c} against a card`);
   }

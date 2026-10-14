@@ -21,8 +21,10 @@
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
+import type { EngineInfo } from '../core/simTypes';
 import { groupInsights } from './insightGroups';
-import type { PaceInfo } from './paceTypes';
+import { createPaceTracker, type PaceExclusion, type PaceFrame } from './paceModel';
+import type { PaceInfo, PaceLevel } from './paceTypes';
 import { SnapshotStore } from './snapshotStore';
 import { Emitter, Store } from './store';
 
@@ -51,9 +53,9 @@ export interface SessionState {
   /** Worker throughput (simulated s per wall s). */
   workerSpeed: number;
   /**
-   * Whether the simulation is keeping up with the playback speed (see paceTypes.ts; the tracker that fills it is
-   * planned as paceModel.ts). Null while there is nothing to judge: paused, Max speed, a jump or a spin-up in
-   * progress, the app hidden, or no tracker running.
+   * Whether the simulation is keeping up with the playback speed (see paceTypes.ts; filled by the tracker in
+   * paceModel.ts from the animation loop). Null while there is nothing to judge: paused, Max speed, a jump or a spin-up
+   * in progress, the app hidden, a wait after any of those, or no tracker running.
    */
   pace: PaceInfo | null;
   snapshot: SimSnapshot | null;
@@ -143,6 +145,12 @@ export class SimSession {
   private keyInsights: readonly Insight[] | null = null;
   private keyForecast: readonly Insight[] | null = null;
   private keyGeneration = 0;
+  /** Watches whether the engine keeps up with the playback speed. It only looks: it never changes a tier, a step or an option. */
+  private readonly pace = createPaceTracker();
+  /** The frame handed to the tracker each animation frame (one object, refilled: the tracker keeps nothing of it). */
+  private readonly paceFrame: PaceFrame = { nowMs: 0, playing: false, seeking: false, hidden: false, viewTime: 0, headTime: 0, duration: 0, speed: 1, spinUp: false, reviewing: false, tier: null, reruns: null, capacity: null, duty: null, computing: false };
+  /** The newest engine report (tier, statistics): the picture shown can be older than the engine. */
+  private engine: EngineInfo | null = null;
 
   constructor(
     scenario: ScenarioData,
@@ -229,6 +237,7 @@ export class SimSession {
     this.controller.pause();
     this.requestedUntil = this.state.get().headTime;
     this.stopLoop();
+    this.paceExclude('paused');
     // The clock can be ahead of the results while it waits for the engine (after an edit or a re-run dropped them):
     // stopped, it shows the newest computed time, so the clock and the picture agree and nothing beyond the computed
     // range is ever displayed.
@@ -356,6 +365,7 @@ export class SimSession {
     this.seekFrom = s.viewTime;
     this.seekResume = resume;
     this.seekSawRunning = false;
+    this.paceExclude('seeking');
     this.state.set({ seekTarget: target, seekProgress: 0, reviewing: false });
     this.requestedUntil = target;
     this.lastRunCall = performance.now();
@@ -429,6 +439,7 @@ export class SimSession {
     if (this.state.get().playing) {
       this.state.set({ playing: false });
       this.stopLoop();
+      this.paceExclude('paused');
     }
   }
 
@@ -556,6 +567,7 @@ export class SimSession {
   }
 
   private afterEdit(): void {
+    this.paceExclude('edit');
     this.syncView();
     if (this.state.get().playing) this.ensureRunning(true);
   }
@@ -587,6 +599,7 @@ export class SimSession {
    */
   private onRewound(time: number): void {
     if (this.disposed) return;
+    this.paceExclude('rerun');
     const s = this.state.get();
     // After removing an ignition everything after its time is stale, even before the view time.
     const floor = this.rewindFloor;
@@ -604,6 +617,7 @@ export class SimSession {
   private onSnapshot(snap: SimSnapshot): void {
     if (this.disposed) return;
     this.snapshots.push(snap);
+    if (snap.engine) this.engine = snap.engine;
     const s = this.state.get();
     // After a rewind the worker re-simulates from a checkpoint before the rewind time, so it re-reports insights the
     // UI kept (it only drops those after the rewind time). Skip those by id, and by what they say, in case the
@@ -718,6 +732,55 @@ export class SimSession {
     return [...s.forecastInsights, ...s.insights.filter((i) => i.time <= vt + 1)].sort((a, b) => b.time - a.time);
   }
 
+  // ───────────────────────────── pace ─────────────────────────────
+
+  /**
+   * One animation frame for the pace tracker, after the clock moved: where the clock is against the newest result, the
+   * speed asked for and what the engine reports. The worker's computing speed is `EngineInfo.perf.speed.s10`, else the
+   * `workerSpeed` average of the status reports. Publishes `pace` (the same object until the tracker has news).
+   */
+  private trackPace(now: number): void {
+    const s = this.state.get();
+    const e = this.engine;
+    const perf = e?.perf;
+    const f = this.paceFrame;
+    f.nowMs = now;
+    f.playing = s.playing;
+    f.seeking = s.seekTarget !== null;
+    f.hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    f.viewTime = s.viewTime;
+    f.headTime = s.headTime;
+    f.duration = this.duration;
+    f.speed = s.speed;
+    f.spinUp = e?.tierCause === 'auto-pending';
+    f.reviewing = s.reviewing;
+    f.tier = e?.tier ?? null;
+    f.reruns = perf ? perf.reruns.rewinds + perf.reruns.tierSwitches + perf.reruns.restores : null;
+    f.capacity = perf?.speed.s10 && perf.speed.s10 > 0 ? perf.speed.s10 : s.workerSpeed > 0 ? s.workerSpeed : null;
+    f.duty = perf?.duty.s10 ?? null;
+    f.computing = s.computing;
+    this.publishPace(this.pace.frame(f));
+  }
+
+  private publishPace(info: PaceInfo | null): void {
+    if (info !== this.state.get().pace) this.state.set({ pace: info });
+  }
+
+  /** Something the frames cannot show (a pause, a jump, an edit, a re-run) makes what was measured meaningless. */
+  private paceExclude(reason: PaceExclusion): void {
+    this.publishPace(this.pace.exclude(reason, performance.now()));
+  }
+
+  /** The newest report of the engine (tier, timing statistics), or null before the first snapshot: the picture on screen can be older than the engine. */
+  engineInfo(): EngineInfo | null {
+    return this.engine;
+  }
+
+  /** Debug hook (`?debug`, see simScreen.ts): publish a canned pace level for screenshots and layout audits; `null` gives control back to the tracker. */
+  debugForcePace(level: PaceLevel | null): void {
+    this.publishPace(this.pace.force(level, performance.now()));
+  }
+
   private startLoop(): void {
     if (this.raf) return;
     this.lastFrame = performance.now();
@@ -732,6 +795,7 @@ export class SimSession {
       if (vt !== s.viewTime) this.state.set({ viewTime: vt, ...(s.reviewing && vt >= s.headTime - 1 ? { reviewing: false } : {}) });
       this.syncView();
       if (!this.state.get().playing) return; // paused while revealing (pause on danger)
+      this.trackPace(now);
       this.ensureRunning();
       if (vt >= this.duration - 1e-6) {
         this.pause();
