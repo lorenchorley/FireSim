@@ -117,6 +117,8 @@ export class SnapshotStore {
    * from the new run and not from a keyframe of the old one that is up to a whole key interval earlier.
    */
   private keyDue = false;
+  /** How many times older history was actually thinned to stay inside the budget (0 until the budget is first reached). */
+  private thinned = 0;
   readonly maxBytes: number;
 
   constructor(opts: SnapshotStoreOptions = {}) {
@@ -150,6 +152,11 @@ export class SnapshotStore {
 
   get keyframeBytes(): number {
     return this.keyBytes;
+  }
+
+  /** How many times older history was thinned because the budget was reached (the "history memory is full" event reads it; a sparse early history is not thinning). */
+  get thinnedCount(): number {
+    return this.thinned;
   }
 
   /** Mean spacing (s) of the retained steps: the display step until old history has been thinned. */
@@ -257,6 +264,7 @@ export class SnapshotStore {
     this.spotLog.length = 0;
     this.burnEnd = null;
     this.bufs[0] = this.bufs[1] = null;
+    this.thinned = 0;
     this.cache = null;
     this.gen++;
   }
@@ -442,14 +450,22 @@ export class SnapshotStore {
     const room = Math.max(0, this.maxBytes - this.headBytes - this.fireSrcBytes - this.bufBytes() - (this.burnEnd?.byteLength ?? 0) - this.spotLog.length * SPOT_BYTES);
     const headT = this.frames[this.frames.length - 1]!.time;
     if (this.keyBytes > room * SHARE.keys) {
+      const before = this.keys.length;
       this.keys = fit(this.keys, headT, this.keyEvery, room * SHARE.keys);
       this.keyBytes = this.keys.reduce((a, e) => a + e.bytes, 0);
+      if (this.keys.length < before) this.thinned++;
     }
     if (this.embBytes > room * SHARE.embers) {
+      const before = this.embs.length;
       this.embs = fit(this.embs, headT, this.step, room * SHARE.embers);
       this.embBytes = this.embs.reduce((a, e) => a + e.bytes, 0);
+      if (this.embs.length < before) this.thinned++;
     }
-    if (this.frames.length * FRAME_BYTES > room * SHARE.frames) this.frames = fit(this.frames, headT, this.step, room * SHARE.frames);
+    if (this.frames.length * FRAME_BYTES > room * SHARE.frames) {
+      const before = this.frames.length;
+      this.frames = fit(this.frames, headT, this.step, room * SHARE.frames);
+      if (this.frames.length < before) this.thinned++;
+    }
   }
 }
 

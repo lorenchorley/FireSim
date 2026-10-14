@@ -78,8 +78,9 @@ export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'>, log: 
       if (seen.size > 64) seen.delete(seen.values().next().value as string);
       log.add(e.kind, e.text, e.simS, e.wallMs);
     }
+    // Only a store that really thinned its history says so: pictures far apart early in a run (the worker's first chunks) are not it.
     const st = session.snapshots;
-    if (!thinned && st.spacing > 1.5 * st.displayStep) {
+    if (!thinned && st.thinnedCount > 0) {
       thinned = true;
       log.add('history', `The history memory is full: older pictures are now about ${Math.round(st.spacing)} s apart.`, s.viewTime);
     }
