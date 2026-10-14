@@ -14,9 +14,10 @@ import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
-import { waited, type LogEvent } from './eventLog';
+import type { LogEvent } from './eventLog';
 import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
+import { waited } from './runEvents';
 
 export const TITLE = 'Simulation debug statistics';
 export const END_MARKER = '-- end --';

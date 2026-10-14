@@ -14,7 +14,6 @@ import type { SceneImagery, SceneViewApi } from '../../../render/api';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from '../../../render/layers';
 import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey } from '../../../render/layerCatalog';
 import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
-import { watchRun } from '../../eventLog';
 import { icon, type IconName } from '../../icons';
 import { thinPath, windScreenRotation, type Pt } from '../../brushGeometry';
 import { presetById } from '../../fuelPresets';
@@ -116,7 +115,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
   const controller = services.createController();
   const session = new SimSession(scenario, controller, view);
-  unsubs.push(watchRun(session)); // the "Recent events" of the debug statistics: slow-run episodes, engine events, background / foreground
+  // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
+  let stopEvents = (): void => undefined;
+  unsubs.push(() => stopEvents());
+  void import('../../runEvents').then((m) => {
+    if (!destroyed) stopEvents = m.watchRun(session);
+  });
   const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind } });
 
   const ctx: SimContext = {
