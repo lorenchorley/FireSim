@@ -707,10 +707,12 @@ checks for them: the Night lighting row is left out, and the statistics' display
   gradient, mesh vertices and triangles, the rock-detail tier), shown as the *Cliff drawing (once per scenario)* row of the statistics
   screen's Display group, or "Nothing sharpened in this run (no 10 m terrain)" when it is null (and no row when a view cannot say).
   **Memory:** three rows of the working-memory model when the scenario has a 10 m terrain (`CLIFF_BYTES` in `scenario/memoryModel.ts`):
-  `cliff-main` (the rock copy, 1 B per 10 m cell, on the screen thread, with a note that about 16 B per cell more is held while the
-  scenario is set up and released once the first picture is built), `gpu-cliff-light` (the lighting gradient, 4 B per cell, and the mesh's
-  slope, 4 B per vertex) and `gpu-cliff-rock` (the rock mask, 4 B per cell). For a 9 km area (810,000 cells, a 400 x 400 mesh) that is
-  0.81 MB, 3.88 MB and 3.24 MB, and about 13 MB while setting up (`memoryModel.test.ts` pins these).
+  `cliff-main` (on the screen thread: the rock copy, 1 B per 10 m cell, and the arrays Three.js keeps behind the gradient texture, the
+  mask texture and the mesh's slope attribute so it can restore them after a lost graphics context, 8 B per cell and 4 B per vertex; with a
+  note that about 16 B per cell more is held while the scenario is set up and released once the first picture is built),
+  `gpu-cliff-light` (the lighting gradient, 4 B per cell, and the mesh's slope, 4 B per vertex) and `gpu-cliff-rock` (the rock mask, 4 B
+  per cell). For a 9 km area (810,000 cells, a 400 x 400 mesh) that is 7.93 MB, 3.88 MB and 3.24 MB, and about 13 MB while setting up
+  (`memoryModel.test.ts` pins these; a verifier measured +13 MB renderer memory at the peak of `setScenario` at High and +24 MB at Low).
 
   **Numbers are not touched** (plan section 4, rule 10): the simulation, the slope and elevation overlays, the cards and the Data sets
   statistics read the terrain as received; the one heat map the view computes, Sunlight (insolation), reads `numbersLightT()`, the 10 m

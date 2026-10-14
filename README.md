@@ -445,9 +445,10 @@ plan's guess for a phone is 2.7 to 5 times that, not measured). The triangle cou
 400 x 400 samples has 318,402 at High, 203,522 at Medium with 320 and 99,458 at Low with 224) and the draw calls do not change
 (`e2e/cliffs.spec.ts`). The terrain shader gains one texture (`uRock`, the 11th of 16 fragment units), the `aSlope` attribute and the
 defines `CLIFF`, `RD_LEDGES`, `RD_OVERHANG`, `RD_JOINTS`, `RD_STAINS`, `RD_SCREE` and `RD_PAVEMENT`. Memory, as three rows of the Data
-sets screen's working memory: for a 9 km area (810,000 cells of 10 m) 0.81 MB on the screen thread (the rock copy) and 7.1 MB on the
-graphics side (the lighting gradient 3.2 MB, the rock mask 3.2 MB and the mesh's slope 0.64 MB at High), plus about 13 MB held while
-the scenario is set up and then released. The render chunk grew by about 7.5 kB gzipped (+19 kB raw) and the entry by about 0.4 kB.
+sets screen's working memory: for a 9 km area (810,000 cells of 10 m) 7.9 MB on the screen thread (the rock copy, 0.81 MB, and the arrays
+Three.js keeps behind the two textures and the mesh's slope so it can restore them after a lost graphics context, 7.1 MB) and 7.1 MB on
+the graphics side (the lighting gradient 3.2 MB, the rock mask 3.2 MB and the mesh's slope 0.64 MB at High), plus about 13 MB held
+while the scenario is set up and then released. The render chunk grew by about 7.5 kB gzipped (+19 kB raw) and the entry by about 0.4 kB.
 
 ## Data sources and licences
 
