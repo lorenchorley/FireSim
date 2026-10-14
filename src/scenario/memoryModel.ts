@@ -114,11 +114,13 @@ const TREE_INSTANCE_BYTES = 80;
 /**
  * The cliff drawing (plan 9d.3; render/cliffDrawing.ts), only for a scenario with a 10 m terrain. Per 10 m cell: the rock copy that tree
  * placement reads stays on the screen thread (1 B); on the graphics side the lighting gradient (RG16F, 4 B) and the rock mask (RGBA8, 4 B),
- * and per mesh vertex the mesh's own slope (4 B). While the scenario is set up the screen thread also holds the sharpened ground (4 B per
- * cell) and the arrays the gradient and the mask are made from (12 B: the two Horn gradient fields and the 10 m slope); all are released
- * once the first picture is built.
+ * and per mesh vertex the mesh's own slope (4 B). Three.js keeps the array each texture and the slope attribute were made from (so a lost
+ * graphics context can be restored), which is a second copy on the screen thread for as long as the scenario lives: 8 B per cell for the
+ * two textures and 4 B per mesh vertex (measured on the real view: 3.09 MiB for each 900 x 900 texture, 0.61 MiB for the 400 x 400 slope).
+ * While the scenario is set up the screen thread also holds the sharpened ground (4 B per cell) and the arrays the gradient and the mask
+ * are made from (12 B: the two Horn gradient fields and the 10 m slope); all are released once the first picture is built.
  */
-export const CLIFF_BYTES = Object.freeze({ rockCopyPerCell: 1, gradientPerCell: 4, maskPerCell: 4, meshSlopePerVertex: 4, setupPerCell: 16 });
+export const CLIFF_BYTES = Object.freeze({ rockCopyPerCell: 1, textureCopyPerCell: 8, meshSlopeCopyPerVertex: 4, gradientPerCell: 4, maskPerCell: 4, meshSlopePerVertex: 4, setupPerCell: 16 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inputs
@@ -284,7 +286,8 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
     // Cliff drawing (a 10 m terrain is what gets sharpened): one item on the screen thread and two on the graphics side.
     const hiCells = Math.max(i.hiResNx ?? 0, 0) * Math.max(i.hiResNy ?? 0, 0);
     const hiText = `${hiCells.toLocaleString('en-AU')} ground cells of 10 m`;
-    add('cliff-main', 'Cliff drawing: rock copy that keeps trees off bare faces', 'main', hiCells * CLIFF_BYTES.rockCopyPerCell, `${hiText} x ${CLIFF_BYTES.rockCopyPerCell} B`, {
+    const keptBytes = hiCells * (CLIFF_BYTES.rockCopyPerCell + CLIFF_BYTES.textureCopyPerCell) + meshN * meshN * CLIFF_BYTES.meshSlopeCopyPerVertex;
+    add('cliff-main', 'Cliff drawing: rock copy that keeps trees off bare faces, and the copies of its textures', 'main', keptBytes, `${hiText} x (${CLIFF_BYTES.rockCopyPerCell} B rock copy + ${CLIFF_BYTES.textureCopyPerCell} B for the copies kept of the two textures) + ${meshN} x ${meshN} mesh vertices x ${CLIFF_BYTES.meshSlopeCopyPerVertex} B`, {
       note: `While the scenario is set up about ${kb(hiCells * CLIFF_BYTES.setupPerCell)} more is held (the sharpened ground and the lighting arrays), and released once the picture is built.`,
     });
     add('gpu-cliff-light', 'Cliff drawing: lighting gradient of the 10 m ground', 'gpu', hiCells * CLIFF_BYTES.gradientPerCell + meshN * meshN * CLIFF_BYTES.meshSlopePerVertex, `${hiText} x ${CLIFF_BYTES.gradientPerCell} B + ${meshN} x ${meshN} mesh vertices x ${CLIFF_BYTES.meshSlopePerVertex} B for the mesh's own slope (estimate)`);
