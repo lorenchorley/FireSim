@@ -60,7 +60,7 @@ uniform vec4 uOverlayScale;  // lo, hi, mode (0 off, 1 ramp, 2 classes, 3 catego
 uniform vec4 uOverlayNoData; uniform float uOverlayOpacity; uniform float uOverlayFire;
 uniform float uTime; uniform float uClock; uniform float uIsoMinutes; uniform float uIsoStrong; uniform float uBurnBand;
 uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
-uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight;
+uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight; uniform float uShadowGain;
 uniform vec4 uBrush; uniform vec3 uBrushColour;
 uniform vec4 uUser; uniform float uUserHeading; uniform vec4 uFocus;
 uniform vec4 uSpots[${MAX_SPOTS}]; uniform int uSpotCount;
@@ -202,7 +202,7 @@ void main() {
 
   // ── Lighting ─────────────────────────────────────────────────────────────
   float ndl = max(dot(n, uSunDir), 0.0);
-  float shadow = shade.b;
+  float shadow = shade.b * uShadowGain;
   vec3 sun = uSunColour * uSunI * ndl * (1.0 - 0.92 * shadow);
   float hemi = 0.5 + 0.5 * n.y;
   float relief = 0.55 + 0.9 * shade.r;
@@ -488,6 +488,7 @@ export class TerrainLayer {
       uGroundAmb: { value: new THREE.Color(0.3, 0.26, 0.2) },
       uAmbI: { value: 0.65 },
       uNight: { value: 0 },
+      uShadowGain: { value: 1 },
       uExposure: { value: 1 },
       uFogColour: { value: new THREE.Color(0.7, 0.78, 0.88) },
       uFogDensity: { value: 1 / 45000 },

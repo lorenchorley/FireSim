@@ -8,8 +8,10 @@ import type { AvailabilityContext } from '../../../render/layerCatalog';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
 import { Store } from '../../store';
 import { getPref } from '../../prefs';
+import type { NightLook } from '../../../render/api';
 import {
   LAYER_PREFS_KEY,
+  LAYER_PREFS_VERSION,
   forgetLayerPrefs,
   layerDefaults,
   loadLayerPrefs,
@@ -110,5 +112,69 @@ describe('storage', () => {
     expect(applied[0]).toMatchObject({ roads: false, canopyStyle: 'simple', overlay: 'slope', windSway: false });
     expect(plain).toBe(true);
     expect(paused).toBe(false);
+  });
+});
+
+describe('night lighting (a view setting, remembered with the map type)', () => {
+  it('sanitise keeps a valid look, drops a damaged one, stays at version 1 and ignores unknown keys', () => {
+    expect(LAYER_PREFS_VERSION).toBe(1);
+    for (const look of ['realistic', 'brighter', 'daylight']) expect(sanitizeLayerPrefs({ v: 1, layers: {}, nightLook: look }).nightLook).toBe(look);
+    for (const bad of ['dusk', 'Daylight', '', 3, null, true, {}, ['daylight']]) expect(sanitizeLayerPrefs({ v: 1, layers: { roads: false }, nightLook: bad })).toEqual({ v: 1, layers: { roads: false } });
+    // An old record has no look (nothing remembered: Realistic), a record of another version is dropped as a whole, and keys
+    // this version does not know are ignored rather than carried along.
+    expect(sanitizeLayerPrefs({ v: 1, layers: {} }).nightLook).toBeUndefined();
+    expect(sanitizeLayerPrefs({ v: 2, layers: {}, nightLook: 'daylight' })).toEqual({ v: 1, layers: {} });
+    expect(sanitizeLayerPrefs({ v: 1, layers: {}, nightLook: 'brighter', nightColour: 'blue', extra: { a: 1 } })).toEqual({ v: 1, layers: {}, nightLook: 'brighter' });
+    // A look is not a LayerState key: it is not taken from `layers`.
+    expect(sanitizeLayerPrefs({ v: 1, layers: { nightLook: 'daylight' } })).toEqual({ v: 1, layers: {} });
+  });
+
+  it('is remembered next to the other choices, replaced by the next choice, kept when others change, and forgotten on reset', async () => {
+    await rememberLayerChoice({ nightLook: 'daylight' });
+    await rememberLayerChoice({ layers: { roads: false }, plainGround: true });
+    resetLayerPrefsCache();
+    let p = await loadLayerPrefs();
+    expect(p.nightLook).toBe('daylight');
+    expect(p.layers).toEqual({ roads: false });
+    expect(p.plainGround).toBe(true);
+    expect((await getPref<{ nightLook?: string } | null>(LAYER_PREFS_KEY, null))?.nightLook).toBe('daylight');
+    await rememberLayerChoice({ nightLook: 'realistic' }); // choosing today's look again is a choice too
+    resetLayerPrefsCache();
+    p = await loadLayerPrefs();
+    expect(p.nightLook).toBe('realistic');
+    await forgetLayerPrefs();
+    resetLayerPrefsCache();
+    expect((await loadLayerPrefs()).nightLook).toBeUndefined();
+  });
+
+  const hookCtx = (view: object): never =>
+    ({
+      view,
+      scenario: { fuel: { type: new Uint8Array(4), sources: [] }, context: null, datasets: [] },
+      layers: new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection } }),
+      settings: new Store({ performance: 'auto' }),
+      session: { state: new Store({ snapshot: null, ignitions: [] }) },
+    }) as never;
+  const runHook = async (view: object): Promise<void> => {
+    const off = restoreLayerPrefs(hookCtx(view));
+    await loadLayerPrefs();
+    await new Promise((r) => setTimeout(r, 0));
+    off();
+  };
+
+  it('the sim-screen hook gives the remembered look to the view, and does nothing when none was chosen or the view has no night', async () => {
+    await rememberLayerChoice({ nightLook: 'brighter' });
+    resetLayerPrefsCache();
+    const looks: NightLook[] = [];
+    await runHook({ setLayers: () => undefined, setNightLook: (l: NightLook) => looks.push(l), hasImagery: true });
+    expect(looks).toEqual(['brighter']);
+    resetLayerPrefsCache();
+    await runHook({ setLayers: () => undefined, hasImagery: true }); // the 2-D map: no method, no error
+
+    await forgetLayerPrefs();
+    resetLayerPrefsCache();
+    looks.length = 0;
+    await runHook({ setLayers: () => undefined, setNightLook: (l: NightLook) => looks.push(l), hasImagery: true });
+    expect(looks).toEqual([]); // nothing remembered: the view keeps its own default
   });
 });

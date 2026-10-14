@@ -1,6 +1,6 @@
 /**
  * The user's layer choices, remembered between runs ("what was on last time"): every switch, heat map, canopy style and
- * map type the user sets in the Layers panel is saved to the UI preferences (prefs.ts; Capacitor Preferences on the device),
+ * map type (and the map's night lighting) the user sets in the Layers panel is saved to the UI preferences (prefs.ts; Capacitor Preferences on the device),
  * and a new simulation starts from the device's defaults with those choices on top. Only choices the user made are
  * stored (never a default), so battery mode keeps its lighter defaults for everything the user did not touch.
  *
@@ -10,12 +10,14 @@
  *
  * Wiring (simScreen.ts, once the SimContext exists): `unsubs.push(restoreLayerPrefs(ctx))`.
  */
+import type { NightLook } from '../../../render/api';
 import type { AvailabilityContext } from '../../../render/layerCatalog';
 import { availabilityContext, layerForOverlay, HEAT_OVERLAY_KINDS } from '../../../render/layerCatalog';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
 import { getPref, setPref } from '../../prefs';
 import { performanceProfile, type PerformanceMode } from '../../settings';
 import type { SimContext } from './context';
+import { isNightLook } from './layersModel';
 
 export const LAYER_PREFS_KEY = 'layers';
 export const LAYER_PREFS_VERSION = 1;
@@ -52,6 +54,8 @@ export interface LayerPrefs {
   layers: Partial<Pick<LayerState, PersistedLayerKey>>;
   /** Map type 'Plain' (a view setting, not a LayerState key). */
   plainGround?: boolean;
+  /** Night lighting of the map (a view setting, not a LayerState key). */
+  nightLook?: NightLook;
   /** Heat-map groups the user opened (true) or closed (false). */
   groups?: Partial<Record<string, boolean>>;
 }
@@ -89,6 +93,7 @@ export function sanitizeLayerPrefs(raw: unknown): LayerPrefs {
     }
   }
   if (typeof r.plainGround === 'boolean') out.plainGround = r.plainGround;
+  if (isNightLook(r.nightLook)) out.nightLook = r.nightLook;
   if (r.groups && typeof r.groups === 'object') {
     const g: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(r.groups as Record<string, unknown>)) if (typeof v === 'boolean' && k.length < 64) g[k] = v;
@@ -159,7 +164,7 @@ export function cachedLayerPrefs(): LayerPrefs | null {
 }
 
 /** Merge a choice into the remembered ones and save (writes are queued in order; never throws). */
-export function rememberLayerChoice(change: { layers?: Partial<LayerState>; plainGround?: boolean; groups?: Partial<Record<string, boolean>> }): Promise<void> {
+export function rememberLayerChoice(change: { layers?: Partial<LayerState>; plainGround?: boolean; nightLook?: NightLook; groups?: Partial<Record<string, boolean>> }): Promise<void> {
   chain = chain
     .then(async () => {
       const cur = await loadLayerPrefs();
@@ -169,6 +174,7 @@ export function rememberLayerChoice(change: { layers?: Partial<LayerState>; plai
         v: LAYER_PREFS_VERSION,
         layers,
         ...(change.plainGround !== undefined ? { plainGround: change.plainGround } : cur.plainGround !== undefined ? { plainGround: cur.plainGround } : {}),
+        ...(change.nightLook !== undefined ? { nightLook: change.nightLook } : cur.nightLook !== undefined ? { nightLook: cur.nightLook } : {}),
         groups: { ...(cur.groups ?? {}), ...(change.groups ?? {}) },
       });
       cache = next;
@@ -230,6 +236,7 @@ export function restoreLayerPrefs(ctx: Pick<SimContext, 'view' | 'scenario' | 'l
       ctx.layers.set(patch);
     }
     if (prefs.plainGround !== undefined) (ctx.view as { setPlainGround?(on: boolean): void }).setPlainGround?.(prefs.plainGround);
+    if (prefs.nightLook !== undefined) ctx.view.setNightLook?.(prefs.nightLook);
   });
   return () => {
     live = false;

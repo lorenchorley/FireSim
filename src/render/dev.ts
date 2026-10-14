@@ -12,7 +12,8 @@
  *   Places layers (bundled NSW context, see src/data/contextLayers.ts): context=1 loads them (also implied by any of
  *   roads= fireTrails= homes= zones= names= being given), each 0|1 switches a layer (defaults: roads, fireTrails and
  *   names on, homes and zones off); town=<place name> aims the camera at a place, with d=<distance m> az=<deg>
- *   tilt=<deg> (defaults 1800, 200, 55); start=22 gives the night theme.
+ *   tilt=<deg> (defaults 1800, 200, 55); start=22 gives the night theme; startMin=<minutes> is added to the start time (dusk
+ *   checks); nightLook=realistic|brighter|daylight sets the map's night lighting (default realistic).
  */
 import { makeGridSpec } from '../core/grid';
 import type { SimSnapshot } from '../core/types';
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
 
   // Start: 21 Dec 2019 at `start` local (AEDT = UTC+11).
   const startHour = num('start', 13);
-  const startTime = Date.UTC(2019, 11, 21, startHour - 11, 0, 0);
+  const startTime = Date.UTC(2019, 11, 21, startHour - 11, 0, 0) + num('startMin', 0) * 60000;
   const fire = new SyntheticFire(terrain, fuel, { startTime, windSpeed: num('ws', 8), windDir: num('wd', 295) });
 
   const container = $('view');
@@ -72,6 +73,8 @@ async function main(): Promise<void> {
   });
   view.setScenario(terrain, fuel, { imagery, context });
   view.setStartTime(startTime);
+  const look = q.get('nightLook');
+  if (look === 'brighter' || look === 'daylight') view.setNightLook(look);
   $('loading').classList.add('hidden');
 
   const overlay = (q.get('overlay') ?? 'none') as OverlayKind;

@@ -56,18 +56,20 @@ export class SkyDome {
 
   constructor(shared: Record<string, THREE.IUniform>) {
     this.geom = new THREE.SphereGeometry(1000, 32, 16);
+    // The sky has its own sun and exposure (always the real ones): the map may be lit from a fixed sun after dark (night
+    // lighting) and must not paint a sun disc into a night sky or change the sky's brightness.
     this.uniforms = {
       uZenith: { value: new THREE.Color(0.2, 0.35, 0.7) },
       uHorizon: { value: new THREE.Color(0.7, 0.8, 0.9) },
+      uSunDir: { value: new THREE.Vector3(0.3, 0.8, -0.4).normalize() },
+      uSunColour: { value: new THREE.Color(1, 0.95, 0.88) },
+      uSunI: { value: 2.6 },
+      uExposure: { value: 1 },
     };
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         ...this.uniforms,
-        uSunDir: shared.uSunDir!,
-        uSunColour: shared.uSunColour!,
-        uSunI: shared.uSunI!,
         uNight: shared.uNight!,
-        uExposure: shared.uExposure!,
         uFogColour: shared.uFogColour!,
       },
       vertexShader: SKY_VERT,

@@ -269,7 +269,7 @@ ${FOG}
 uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
 uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uGlowGain;
 uniform float uStyle;
-uniform float uNight;
+uniform float uMapNight;
 uniform sampler2D uLeaf;
 uniform sampler2D uImp;
 varying vec3 vN;
@@ -406,7 +406,7 @@ void main() {
   aoS = mix(1.0, aoS, uStyle < 0.5 ? 0.95 : 0.6);
   vec3 col = albedo * (sunL * ndl * 0.85 * (0.55 + 0.45 * aoS) + amb * 0.85 * aoS + glow + sunL * back * vec3(0.5, 0.75, 0.2) * 0.35) / LIGHT_REF;
   // A little moon/starlight so silhouettes and trunks stay readable on a dark night.
-  col += albedo * uNight * 0.05 * vec3(0.32, 0.45, 0.75) * (0.5 + 0.5 * aoS);
+  col += albedo * uMapNight * 0.05 * vec3(0.32, 0.45, 0.75) * (0.5 + 0.5 * aoS);
   if (foliage) col *= 0.9;
   vec3 ldr = fsDisplay(col) + fsTonemap(vec3(1.0, 0.36, 0.06) * vFire.x * 2.2);
   ldr = fsFog(ldr, vState.w);
