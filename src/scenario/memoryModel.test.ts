@@ -4,11 +4,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { makeGridSpec } from '../core/grid';
-import { typedArrayFootprint } from '../core/datasets';
+import { formatBytes, typedArrayFootprint } from '../core/datasets';
 import { atmosCellSize } from '../atmosphere/grid';
 import { Simulation } from '../sim/simulation';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { atmosphereGrid, checkpointCount, liveMemory, scenarioArrayBytes, workingMemory, workingMemoryForScenario } from './memoryModel';
+import { CLIFF_BYTES, atmosphereGrid, checkpointCount, liveMemory, scenarioArrayBytes, workingMemory, workingMemoryForScenario } from './memoryModel';
 
 const PARTS = ['fire', 'explain', 'moisture', 'fuel', 'rasters', 'atmosphere', 'embers'] as const;
 
@@ -97,6 +97,47 @@ describe('workingMemory text and totals', () => {
     const wm = workingMemory({ tier: 'standard', fireNx: 300, fireNy: 300, extentM: 9000, durationS: 12 * 3600, snapshotIntervalS: 10, snapshotBudgetBytes: 64e6 });
     expect(wm.items.find((x) => x.id === 'snapshots')!.bytes).toBe(64e6);
     expect(wm.items.find((x) => x.id === 'checkpoints')!.formula).toMatch(/9 x/);
+  });
+});
+
+describe('the cliff drawing rows (plan 9d.3, section 11)', () => {
+  const base = { tier: 'standard' as const, fireNx: 300, fireNy: 300, extentM: 9000, durationS: 3600 };
+  const item = (wm: ReturnType<typeof workingMemory>, id: string) => wm.items.find((x) => x.id === id);
+
+  it('a 9 km area with a 10 m terrain: a 0.8 MB rock copy on the screen thread, two 3.2 MB textures and the 0.64 MB mesh slope on the graphics side', () => {
+    const wm = workingMemory({ ...base, hiResNx: 900, hiResNy: 900, renderQuality: 'high' });
+    expect(item(wm, 'cliff-main')).toMatchObject({ where: 'main', bytes: 810_000 });
+    expect(item(wm, 'gpu-cliff-light')).toMatchObject({ where: 'gpu', bytes: 900 * 900 * 4 + 400 * 400 * 4 });
+    expect(item(wm, 'gpu-cliff-rock')).toMatchObject({ where: 'gpu', bytes: 900 * 900 * 4 });
+    expect(item(wm, 'gpu-cliff-light')!.bytes - 900 * 900 * 4).toBe(640_000); // the mesh gradient of the plan (S5)
+    // the extra held while the scenario is set up is said on the main item, and the totals include the new rows
+    expect(item(wm, 'cliff-main')!.note).toContain(`While the scenario is set up about ${formatBytes(16 * 810_000)} more is held`);
+    expect(wm.totalBytes).toBe(wm.mainBytes + wm.workerBytes + wm.gpuBytes);
+    const without = workingMemory({ ...base, renderQuality: 'high' });
+    expect(wm.mainBytes - without.mainBytes).toBe(810_000 + (wm.items.find((x) => x.id === 'scenario-main')!.bytes - without.items.find((x) => x.id === 'scenario-main')!.bytes));
+    expect(wm.gpuBytes - without.gpuBytes).toBe(900 * 900 * 8 + 400 * 400 * 4);
+  });
+
+  it('the mesh slope follows the picture-quality tier, and a mesh never has more samples than the terrain', () => {
+    const low = workingMemory({ ...base, hiResNx: 900, hiResNy: 900, renderQuality: 'low' });
+    expect(item(low, 'gpu-cliff-light')!.bytes).toBe(900 * 900 * CLIFF_BYTES.gradientPerCell + 224 * 224 * CLIFF_BYTES.meshSlopePerVertex);
+    const small = workingMemory({ ...base, hiResNx: 150, hiResNy: 150, renderQuality: 'high' });
+    expect(item(small, 'gpu-cliff-light')!.bytes).toBe(150 * 150 * 4 + 150 * 150 * 4);
+  });
+
+  it('a scenario without a 10 m terrain (synthetic ground) has no cliff rows: nothing is sharpened', () => {
+    const wm = workingMemory({ ...base, renderQuality: 'high' });
+    expect(wm.items.filter((x) => x.id.includes('cliff'))).toEqual([]);
+  });
+
+  it('is built from the scenario that has a 10 m terrain, and never prints NaN', () => {
+    const scenario = syntheticScenario({ extent: 3000, cellSize: 30, options: { tier: 'auto' } });
+    const g = scenario.terrain.grid;
+    const withHi = { ...scenario, terrainHiRes: { grid: { ...g, nx: 300, ny: 300, cellSize: 10 }, elevation: new Float32Array(300 * 300) } };
+    const wm = workingMemoryForScenario(withHi, { renderQuality: 'medium' });
+    expect(item(wm, 'cliff-main')!.bytes).toBe(300 * 300);
+    expect(item(wm, 'gpu-cliff-rock')!.bytes).toBe(300 * 300 * 4);
+    for (const x of wm.items.filter((y) => y.id.includes('cliff'))) expect(`${x.label} ${x.formula} ${x.note ?? ''}`).not.toMatch(/NaN|undefined|Infinity/);
   });
 });
 
