@@ -3,7 +3,9 @@
  * in sun elevation: noon is neutral, the low sun warm and golden, twilight pink-violet and the night dark blue — dark
  * enough that a night fire's glow dominates the scene, which is exactly when trainees most often misjudge it.
  */
-import { clamp } from '../core/units';
+import { clamp, smoothstep } from '../core/units';
+import type { NightLook } from './api';
+import { sunDirectionWorld, type Vec3 } from './coords';
 import { hexToRgb, mixRgb, rgbToLinear, type Rgb } from './palette';
 
 export interface SkyLighting {
@@ -98,5 +100,103 @@ export function skyLighting(sunElevation: number, opts: { cloudCover?: number; s
     fog: rgbToLinear(fogS),
     night,
     exposure: 1 + 0.6 * night,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Map lighting (Layers, Map type, Night lighting; docs/plans/air-slice-wind-detail-honest-speed.md section 9b)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The three looks in the order the Layers panel lists them. */
+export const NIGHT_LOOKS: readonly NightLook[] = ['realistic', 'brighter', 'daylight'];
+
+/** How far each look goes towards the fixed sun after dark: 0 is today's lighting, 1 the whole way (spike S4 tuned Brighter). */
+export const NIGHT_LOOK_MIX: Readonly<Record<NightLook, number>> = { realistic: 0, brighter: 0.3, daylight: 1 };
+
+/** The fixed map sun of Brighter and Daylight: north-west (the best of eight at both spike sites), 30 degrees up. */
+export const MAP_SUN = { azimuth: 315, elevation: 30 } as const;
+
+/** The look is off with the real sun at or above `FADE_HIGH` degrees and at full strength at or below `FADE_LOW`. */
+const FADE_HIGH = 8;
+const FADE_LOW = -2;
+
+/** The lighting the map (ground, photo, trees, roads, labels) is drawn with. */
+export interface MapLighting {
+  /** Share of the fixed sun in the map lighting: the look's mix times the dusk fade (0 = exactly the real lighting). */
+  weight: number;
+  /** Unit vector towards the light, world frame. */
+  sunDir: Vec3;
+  sunColour: Rgb;
+  sunIntensity: number;
+  skyAmbient: Rgb;
+  groundAmbient: Rgb;
+  ambientIntensity: number;
+  exposure: number;
+  /** Night as the things that dim the map see it (roads, labels, tree moonlight): the real night times (1 - weight). */
+  mapNight: number;
+  /** Scale of the terrain's cast shadows, which follow the real sun: 1 - weight. */
+  shadowGain: number;
+}
+
+let target: SkyLighting | null = null;
+
+/** The lighting of the fixed sun by day: no cloud and no smoke, because seeing the ground is the point. */
+function mapTarget(): SkyLighting {
+  return (target ??= skyLighting(MAP_SUN.elevation));
+}
+
+/** Colour times intensity is what the shaders use, so blend that and divide the blended intensity out again. */
+function blendLight(real: Rgb, realI: number, tgt: Rgb, tgtI: number, w: number, i: number): Rgb {
+  if (!(i > 1e-9)) return [tgt[0], tgt[1], tgt[2]];
+  const a = (1 - w) * realI;
+  const b = w * tgtI;
+  return [(real[0] * a + tgt[0] * b) / i, (real[1] * a + tgt[1] * b) / i, (real[2] * a + tgt[2] * b) / i];
+}
+
+/**
+ * The lighting the map uses for a look. With the look Realistic, or the sun at 8 degrees or more, it is `real` itself (the
+ * same objects, no arithmetic). As the sun sets the real lighting fades into the daylight of a fixed north-west sun
+ * (`MAP_SUN`) by `weight = mix[look] x smoothstep(8, -2, elevation)`. The direction is weighted by the light each sun
+ * carries (a sun below the horizon has none, so at night every look is lit from the fixed sun whatever the real azimuth
+ * does); the sun's light and the ambient are blended as colour times intensity; the exposure is blended as it is.
+ * `realSunDir` is the real sun's world direction (`SkyLighting` has no azimuth).
+ */
+export function mapLighting(real: SkyLighting, look: NightLook, realSunDir: Vec3): MapLighting {
+  const w = NIGHT_LOOK_MIX[look] * smoothstep(FADE_HIGH, FADE_LOW, real.sunElevation);
+  if (!(w > 0)) {
+    return {
+      weight: 0,
+      sunDir: realSunDir,
+      sunColour: real.sunColour,
+      sunIntensity: real.sunIntensity,
+      skyAmbient: real.skyAmbient,
+      groundAmbient: real.groundAmbient,
+      ambientIntensity: real.ambientIntensity,
+      exposure: real.exposure,
+      mapNight: real.night,
+      shadowGain: 1,
+    };
+  }
+  const t = mapTarget();
+  const td = sunDirectionWorld(MAP_SUN.azimuth, MAP_SUN.elevation);
+  const a = (1 - w) * real.sunIntensity;
+  const b = w * t.sunIntensity;
+  const vx = realSunDir[0] * a + td[0] * b;
+  const vy = realSunDir[1] * a + td[1] * b;
+  const vz = realSunDir[2] * a + td[2] * b;
+  const len = Math.hypot(vx, vy, vz) || 1;
+  const sunIntensity = lerpN(real.sunIntensity, t.sunIntensity, w);
+  const ambientIntensity = lerpN(real.ambientIntensity, t.ambientIntensity, w);
+  return {
+    weight: w,
+    sunDir: [vx / len, vy / len, vz / len],
+    sunColour: blendLight(real.sunColour, real.sunIntensity, t.sunColour, t.sunIntensity, w, sunIntensity),
+    sunIntensity,
+    skyAmbient: blendLight(real.skyAmbient, real.ambientIntensity, t.skyAmbient, t.ambientIntensity, w, ambientIntensity),
+    groundAmbient: blendLight(real.groundAmbient, real.ambientIntensity, t.groundAmbient, t.ambientIntensity, w, ambientIntensity),
+    ambientIntensity,
+    exposure: lerpN(real.exposure, t.exposure, w),
+    mapNight: real.night * (1 - w),
+    shadowGain: 1 - w,
   };
 }
