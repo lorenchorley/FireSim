@@ -129,10 +129,10 @@ describe('TerrainLayer with the cliff drawing', () => {
     expect(l.material.defines).toEqual(cliffDefines(tier));
     // after the preprocessor: the joints' crack noise only at High, the overhang's shade only at High, the pavement not at Low
     const frag = preprocess(l.material.fragmentShader, l.material.defines ?? {});
-    expect(frag.includes('rkNoise(p / 3.2 + 11.7)'), 'joints').toBe(tier === 'high');
+    expect(frag.includes('rkNoise(vec2(al / 3.2 + 11.7, 3.7))'), 'joints').toBe(tier === 'high');
     expect(frag.includes('ao *= 1.0 - 0.5 * under'), 'overhang').toBe(tier === 'high');
     expect(frag.includes('rkNoise(p / 6.0 + 5.3)'), 'pavement').toBe(tier !== 'low');
-    for (const always of ['rkShelf(ph7 - i7)', 'rkNoise(p / 13.0 + vec2(vZ / 90.0, 31.0))', 'rkNoise(p / 1.3)']) expect(frag, always).toContain(always); // ledges, stains, scree
+    for (const always of ['rkShelf(ph7 - i7)', 'rkNoise(vec2(al / 13.0 + 31.0, vZ / 90.0))', 'rkNoise(p / 1.3)']) expect(frag, always).toContain(always); // ledges, stains, scree
     expect(frag).toContain('slope = vSlope;');
     expect(new Set(samplers(frag)).size).toBe(11);
     l.dispose();

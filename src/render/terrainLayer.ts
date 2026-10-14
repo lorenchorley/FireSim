@@ -91,6 +91,12 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
     vec3 sand = mix(ROCK_DRK, ROCK_LIT, 0.4 + 0.6 * fsNoise(p / 30.0 + 3.1));
     vec3 face = mix(sand, img, 0.25 * step(0.5, uUseImagery)) * (0.9 + strataV + 0.12 * (fine - 0.5));
     base = mix(base, face, wr * 0.85 * colour);
+    // The face's own horizontal direction (along its contour lines): joints, stains and grain are patterns in (along, height), so they run
+    // straight up and down the face whichever way it is turned (a pattern of the ground position alone draws loops on a slope).
+    vec2 tg = vec2(grad.y, -grad.x);
+    float tl = length(tg);
+    tg = tl > 1e-3 ? tg / tl : vec2(1.0, 0.0);
+    float al = dot(p, tg);
 #ifdef RD_LEDGES
     // (a) Ledges on the strata's own bands (7 m and 25 m): a thin shelf at the top of each, broken up along the face, that tilts the
     // normal up so it catches the sun, and lightens the colour.
@@ -100,8 +106,8 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
     float ph25 = vZ * 0.0398 + strataN * 0.0796;
     float i7 = floor(ph7);
     float i25 = floor(ph25);
-    float brk7 = smoothstep(0.30, 0.55, rkNoise(p / 16.0 + vec2(i7 * 5.31, i7 * 1.77)));
-    float brk25 = smoothstep(0.25, 0.5, rkNoise(p / 30.0 + vec2(i25 * 3.77, i25 * 8.1)));
+    float brk7 = smoothstep(0.30, 0.55, rkNoise(vec2(al / 16.0 + i7 * 5.31, i7 * 1.77)));
+    float brk25 = smoothstep(0.25, 0.5, rkNoise(vec2(al / 30.0 + i25 * 3.77, i25 * 8.1)));
     float ledge = max(0.8 * rkShelf(ph7 - i7) * brk7 * f7, rkShelf(ph25 - i25) * brk25 * f25);
     n = normalize(n + vec3(0.0, 1.1 * ledge * nrm * wr, 0.0));
     base *= 1.0 + 0.3 * ledge * colour;
@@ -114,30 +120,27 @@ void rockDetail(vec4 rk, vec2 p, vec2 grad, float zw, float strataN, float strat
     base *= 1.0 - 0.2 * under * colour;
 #endif
 #ifdef RD_JOINTS
-    // (b) Vertical joints: thin dark cracks that depend on the horizontal position only, so a crack runs straight up the face.
+    // (b) Vertical joints: thin dark cracks that depend on the position along the face only, so a crack runs straight up it.
     float jf = 1.0 - smoothstep(0.08, 0.4, pxm);
     if (jf > 0.0) {
-      float jc = 1.0 - smoothstep(0.015, 0.045, abs(rkNoise(p / 3.2 + 11.7) - 0.5));
-      jc *= smoothstep(0.3, 0.6, rkNoise(p / 11.0 + vec2(vZ / 30.0, 4.4))); // a crack runs part of the height
+      float jc = 1.0 - smoothstep(0.015, 0.045, abs(rkNoise(vec2(al / 3.2 + 11.7, 3.7)) - 0.5));
+      jc *= smoothstep(0.3, 0.6, rkNoise(vec2(al / 11.0, vZ / 30.0 + 4.4))); // a crack runs part of the height
       base *= 1.0 - 0.5 * jc * jf * wr * colour;
     }
 #endif
 #ifdef RD_STAINS
     // (d) Water stains: noise that changes slowly with height, so it streaks down the face; dark manganese and ochre.
     float sf = 1.0 - smoothstep(2.0, 9.0, pxm);
-    float sn = 0.65 * rkNoise(p / 7.0 + vec2(vZ / 60.0, vZ / 110.0)) + 0.35 * rkNoise(p / 2.7 + vec2(vZ / 25.0, 7.7));
+    float sn = 0.7 * rkNoise(vec2(al / 7.0, vZ / 60.0)) + 0.3 * rkNoise(vec2(al / 2.7 + 7.7, vZ / 25.0));
     float dark = mix(0.25, smoothstep(0.45, 0.78, sn), sf);
-    float och = mix(0.4, smoothstep(0.3, 0.7, rkNoise(p / 13.0 + vec2(vZ / 90.0, 31.0))), sf);
-    vec3 stain = mix(vec3(1.0), vec3(0.62, 0.56, 0.5), dark) * mix(vec3(1.0), vec3(1.07, 0.94, 0.8), 0.6 * och);
+    float och = mix(0.4, smoothstep(0.3, 0.7, rkNoise(vec2(al / 13.0 + 31.0, vZ / 90.0))), sf);
+    vec3 stain = mix(vec3(1.0), vec3(0.62, 0.56, 0.5), dark) * mix(vec3(1.0), vec3(1.07, 0.94, 0.8), 0.45 * och);
     base *= mix(vec3(1.0), stain, wr * colour);
 #endif
     // Fine grain in the plane of the face (the ground noise depends on the position only, and would just streak down a wall).
     float g1 = 1.0 - smoothstep(0.1, 0.45, pxm);
     if (g1 > 0.0) {
-      vec2 tg = vec2(grad.y, -grad.x);
-      float tl = length(tg);
-      tg = tl > 1e-3 ? tg / tl : vec2(1.0, 0.0);
-      vec2 fc = vec2(dot(p, tg), vZ);
+      vec2 fc = vec2(al, vZ);
       float g2 = 1.0 - smoothstep(0.03, 0.15, pxm);
       float grain = 0.6 * mix(0.5, rkNoise(fc / 0.9), g1) + 0.4 * mix(0.5, rkNoise(fc / 0.3 + 5.0), g2);
       base *= 1.0 + 0.3 * (grain - 0.5) * wr * colour;
