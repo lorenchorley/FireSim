@@ -1,14 +1,15 @@
 /**
  * "Simulation debug statistics": a full-screen dialog in the same flat Maps look as "How this simulation works" (it reuses
- * that screen's cards and collapsible groups, modelcard.css): a top app bar with Back and a Copy icon, a card with the one-line
- * summary, the state (live, paused, finished, no run yet), a labelled Copy button, and then the groups of the catalogue (the
- * first open). The content is src/ui/debugStats.ts (pure, tested); this file only reads the live sources, draws it and patches
- * it once a second IN PLACE (text nodes, no rebuild unless a group's rows changed), so a selection and the scroll position
- * survive. It skips while the app is hidden, never pauses or changes playback, and never opens by itself.
+ * that screen's cards and collapsible groups, modelcard.css): a top app bar with Back and a Copy icon, a card with the
+ * one-line summary, the state (live, paused, finished, no run yet) and a labelled Copy button, and then the groups of the
+ * catalogue (each collapsed, with its own one-line summary). The content is src/ui/debugStats.ts (pure, tested); this file
+ * only reads the live sources, draws it and patches it once a second IN PLACE (text nodes, no rebuild unless a group's rows
+ * changed), so a selection and the scroll position survive. It skips while the app is hidden, never pauses or changes
+ * playback, and never opens by itself.
  *
- * Copy puts the whole page on the clipboard as plain text and says so on a line of text (no pop-up). When the phone refuses the
- * clipboard the text appears in a box to touch and hold. Nothing leaves the phone. Escape and Android Back close it (the App
- * forwards Back as Escape); Tab stays inside.
+ * Copy puts the whole page on the clipboard as plain text and says so on a line of text (no pop-up). When the phone refuses
+ * the clipboard the text appears in a box to touch and hold. Nothing leaves the phone. Escape and Android Back close it (the
+ * App forwards Back as Escape); Tab stays inside.
  */
 import type { ScenarioData } from '../../core/types';
 import { DEMO_SITES } from '../../data/demoSites';
@@ -182,7 +183,8 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
 
   // ───────────── groups ─────────────
   const rendered = new Map<string, Rendered>();
-  const open = new Set<string>(['summary']);
+  // All collapsed at first: the one-line summary above and each group's own line say enough to choose; no group repeats it.
+  const open = new Set<string>();
 
   const renderRow = (r: StatRow, cells: Map<string, Cells>): HTMLElement => {
     const label = h('dt', { class: 'kv-key' }, r.label);

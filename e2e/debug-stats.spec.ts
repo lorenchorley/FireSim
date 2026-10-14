@@ -38,7 +38,7 @@ const GROUPS = [
 const screen = (page: Page) => page.getByTestId('debug-stats');
 const norm = (s: string): string => s.replace(/[   ]/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Open every collapsed group (the first one is open already). */
+/** Open every collapsed group. */
 async function openAllGroups(page: Page): Promise<void> {
   const toggles = screen(page).locator('.mc-toggle');
   const n = await toggles.count();
@@ -83,8 +83,8 @@ test('before any run: opens from Setup and from Settings, the run groups say so,
   await expect(page.getByTestId('debug-stats-headline')).toContainText('No run yet');
   await expect(page.getByTestId('debug-stats-state')).toHaveText('No run yet');
   await expect(page.getByTestId('training-badge')).toBeVisible();
-  // The summary group is open, the others are collapsed; the groups are the catalogue's.
-  await expect(page.getByTestId('debug-group-summary')).toHaveAttribute('aria-expanded', 'true');
+  // The groups are the catalogue's, all collapsed at first, each with a line of its own.
+  await expect(page.getByTestId('debug-group-summary')).toHaveAttribute('aria-expanded', 'false');
   await expect(screen(page).locator('.mc-toggle-title')).toHaveText(GROUPS);
   await openAllGroups(page);
   await expect(page.getByTestId('debug-group-run-body')).toContainText('No run yet');
