@@ -36,9 +36,11 @@ const pace = (page: Page): Promise<PaceState | null> =>
  * Build the Katoomba demo offline on the slow tier: the Detail profile asks for the 3-D air, whatever this machine's auto-tune would pick.
  * The picture is pinned to Low: Detail also asks for High, and on software rendering a High picture (with the cliff drawing) takes seconds
  * per frame, and the tracker rightly says nothing while frames are more than 2 s apart (the display, not the simulation, is slow).
+ * The solver step limit is 2 s so the engine stays slow whatever the machine: at 10 s steps a quick machine computes the whole 12 h in
+ * about two minutes and the signal ends under the test (a finished run publishes no pace).
  */
 async function buildSlow(page: Page): Promise<void> {
-  await page.addInitScript(() => localStorage.setItem('firesim.settings', JSON.stringify({ performance: 'quality', pictureQuality: 'low' })));
+  await page.addInitScript(() => localStorage.setItem('firesim.settings', JSON.stringify({ performance: 'quality', pictureQuality: 'low', solverStep: 2 })));
   await page.goto('/?debug=1');
   await acceptNotice(page);
   await page.getByTestId('site-katoomba').click();
