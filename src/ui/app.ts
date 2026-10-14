@@ -21,7 +21,6 @@ import { buildRequest, type SetupState } from './setupModel';
 import { settingsStore } from './settings';
 import { createBuildingScreen, type BuildingScreen } from './screens/building';
 import { createDatasetsScreen } from './screens/datasets';
-import { createModelCardScreen } from './screens/modelCard';
 import { noticeAccepted, showNotice } from './screens/notice';
 import { createSettingsScreen } from './screens/settings';
 import { createSetupScreen, type SetupScreen } from './screens/setup';
@@ -232,8 +231,12 @@ export class App {
     ov = this.overlays[this.overlays.length - 1];
   }
 
-  /** "How this simulation works": from the running scenario, or a preview of the Setup's current choice. */
-  openModelCard(): void {
+  /**
+   * "How this simulation works": from the running scenario, or a preview of the Setup's current choice. The card and its
+   * text (src/ui/modelInfo.ts, about 21 kB gzip) load on the first open, so they stay out of the entry chunk.
+   */
+  async openModelCard(): Promise<void> {
+    const { createModelCardScreen } = await import('./screens/modelCard');
     const existing = this.overlays.find((o) => o.id === 'model-card');
     if (existing) this.closeOverlay(existing);
     let ov: Overlay | undefined;
