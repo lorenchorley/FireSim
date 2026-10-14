@@ -11,7 +11,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { acceptNotice, armPopupWatch, popups, scenarioDuration, session, setSpeed, watchPopups } from './helpers';
+import { acceptNotice, animationsDone, armPopupWatch, popups, scenarioDuration, session, setSpeed, watchPopups } from './helpers';
 
 const LABEL = 'Simulation is running slower than your playback speed. Show details.';
 /** The speed presets of the speed sheet (speedModel.ts), below 3600x. */
@@ -136,7 +136,8 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   if (await page.getByTestId('pace-numbers').count()) await expect(page.getByTestId('pace-numbers')).toContainText('All the numbers');
   await expect(sheet).toContainText('Measured on this phone, over the last 10 seconds.');
   expect(await sheet.innerText()).not.toMatch(BAD);
-  // The sheet is inside the screen, and a screen reader's focus is in it.
+  // The sheet is inside the screen (once its slide-in has finished), and a screen reader's focus is in it.
+  await animationsDone(page);
   const box = (await sheet.boundingBox())!;
   const vp = page.viewportSize()!;
   expect(box.y).toBeGreaterThanOrEqual(0);
@@ -180,6 +181,12 @@ for (const [w, h, name] of [[412, 915, 'portrait'], [844, 390, 'landscape']] as 
     await page.getByTestId('build').click();
     await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
     await armPopupWatch(page);
+    // Park the clock at 40 % of the run, so the thumb is mid-track (at the very start the run under the rail has no length).
+    await page.evaluate(() => {
+      const fs = (window as unknown as { __firesim: { session: { seek(t: number): void }; scenario: { duration: number } } }).__firesim;
+      fs.session.seek(fs.scenario.duration * 0.4);
+    });
+    await expect.poll(async () => (await session(page)).seekTarget, { timeout: 60_000 }).toBeNull();
     const force = (level: string | null): Promise<void> =>
       page.evaluate((l) => (window as unknown as { __firesim: { session: { debugForcePace(l: string | null): void } } }).__firesim.session.debugForcePace(l), level);
     const btn = page.getByTestId('pace-btn');
@@ -213,6 +220,7 @@ for (const [w, h, name] of [[412, 915, 'portrait'], [844, 390, 'landscape']] as 
     await expect(page.getByTestId('pace-lead')).toHaveText('You asked for 60× (1 minute of fire every second). This phone is computing about 38× right now, so playback waits for the simulation about 4 seconds in every 10.', { timeout: 30_000 });
     await expect(page.getByTestId('pace-play-at')).toHaveText('Play at 30×');
     await expect(page.getByTestId('pace-fast')).toBeHidden(); // the demo engine has no tiers to switch
+    await animationsDone(page);
     const box = (await sheet.boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.y + box.height).toBeLessThanOrEqual(h + 1);
