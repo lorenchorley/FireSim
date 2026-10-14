@@ -125,7 +125,7 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(play).toBeVisible();
   await expect(play).toHaveText(/^Play at \d+(\.\d+)?×$/);
   await expect(page.getByTestId('pace-fast')).toHaveText('Use the fast model from here');
-  await expect(page.getByTestId('pace-fast-note')).toHaveText('The fire from this moment on comes out a little different.');
+  await expect(page.getByTestId('pace-fast-note')).toHaveText('The fire is computed again from the last checkpoint, up to half an hour of fire ago, and comes out a little different.');
   // Sections that need the engine's statistics (EngineInfo.perf) are there when it reports them, with four rows adding up to 100 %.
   if (await page.getByTestId('pace-time').isVisible()) {
     const rows = await page.locator('[data-testid^=pace-time-] .meter-value').allInnerTexts();
