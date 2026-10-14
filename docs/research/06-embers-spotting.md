@@ -1420,6 +1420,13 @@ The embers stay within about 10 % of the 1–2 minute overall budget.
 | 29 | **Embers drifting downhill at night** | Night-time (sun below horizon), drainage flow resolved (near-surface wind downslope ≥ 1 m/s), landings downslope of the source | "At night, cold air **slides downhill** like water. Low embers ride it into gullies and valleys, below the fire. Most land on damp fuel and go out, but in dry spells they can start fires **downhill and down-valley**." |
 | 30 | **Ridge-top fire, longer reach (Albini check)** | Source cell class L = ridge top or mid-slope windward, relief ΔH ≥ 200 m | "US fire behaviour tools add about **{+x} %** to spotting distance for a fire in this position because of the drop into the valley. FireSim's 3-D flight shows **{ΔX} m** extra." |
 
+*Implementation note (0.3.0), for card 16 and for the finding in §2.9 that gorges and cliffs are not barriers.* The embers do not read cliffs at all, so they
+cross them as the finding says. The card is implemented as the spot variant of "Fire crossed the break": an ember's flight path is
+walked in half-cell steps and a run of non-fuel or water cells (or a narrow break inside a cell) of at least 10 m counts, so a cliff counts
+only where the fuel map calls it non-fuel, and the words say "break", not "gorge" or "rock band". The 0.3.0 cliff drawing in the 3-D view
+(faces steeper than the data, with ledges, joints, stains and scree) is display only and changes neither this card nor any number. Rock-band
+wording for cliffs belongs to the rock model planned for 0.3.1.
+
 "Why" statements to reuse across cards:
 * "Embers only go far if they are lifted high, stay alight long, and meet strong wind."
 * "Where embers land matters less than *what* they land on: dry, fine litter catches, damp litter

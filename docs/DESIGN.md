@@ -109,6 +109,10 @@ Map marks (the same in every theme: they are drawn over the aerial photo and the
 `#fff` (strokes and glyphs on the map), `--map-halo-veil` (white 20 %), `--map-shade` `#000` (the dark halo), `--map-pin` `#202124`, and the
 fire marks' data colours `--mark-observed` `#e02424`, `--mark-spot` `#ff8c1a`, `--mark-backburn` `#7b3fe4`.
 
+The look of the 3-D ground is the renderer's, not a design token: it does not follow the theme, and the rock walls of the cliff drawing
+(0.3.0, display only) are sandstone in linear light inside the terrain shader (the palette's `ROCK` `#a4927a` and `ROCK_DARK` `#6d5f50`),
+trimmed by Picture quality. See `docs/ARCHITECTURE.md`, *The cliff drawing*.
+
 ### Elevation
 
 | Token | Use | Light value |
@@ -442,13 +446,16 @@ length while playback waits, so a line there would not show. The ring and the ru
 is only 1.9:1 against the strip in the two light looks (the colour table above says never to use it as text or a thin line on white).
 High contrast: a 2 px outline and a 4 px ring. Forced colours: `ButtonText` borders (1 px, 3 px) and a `Highlight` run. There is no
 transition, so reduced motion has nothing to switch off. The accessible name is "Simulation is running slower than your playback speed.
-Show details." and a polite status line (`role=status`, visually hidden) says it once when playback starts to wait and at most every 2
-minutes; it is never `role=alert`, never a toast or a scrim. The old "Computing" badge is not shown while the signal is. A tap opens
+Show details." (the button has `aria-haspopup="dialog"` and `aria-expanded`), and a separate visually hidden `<span role="status"
+aria-live="polite">` says it once when playback starts to wait and at most every 2 minutes; it is never `role=alert`, never a toast or a
+scrim. The old "Computing" badge is not shown while the signal is. A tap opens
 the sheet *Running slower than playback* (`transportSheet()` in the top bar's popover group: dialog role, grab handle, Close; an outside
 tap, Escape and Back close it and focus returns to the button; two columns on a short landscape screen): a lead sentence (what you asked
 for and what the phone is computing), *Does it change the result? No ...*, `meter` rows for where the time goes (3-D air, fire spread,
-embers, everything else), the likely reasons (a list, only those the numbers support), the buttons *Play at N x* and *Use the fast
-model from here* (with its note), an *All the numbers* `listRow` that opens Simulation debug statistics, and a footnote ("Measured on
+embers, everything else; the *Fire spread* row includes the coupling), the likely reasons (a list, only those the numbers support), the
+buttons *Play at N x* and *Use the fast model from here* (with its note: "The fire is computed again from the last checkpoint, up to half
+an hour of fire ago, and comes out a little different"), the sentence "Pausing stops the simulation too. Playing slower is what lets it
+keep up.", an *All the numbers* `listRow` that opens Simulation debug statistics, and a footnote ("Measured on
 this phone, over the last 10 seconds"). "Play at N x" also becomes the default speed, as choosing it in the speed sheet does.
 
 **The Why here? icon row** (`whyPanel.ts`, `markerWords.ts`, `.why-marker` in `sim.css`). When the Why here? tool is tapped on an
