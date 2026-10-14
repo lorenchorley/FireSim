@@ -48,17 +48,23 @@ src/
                  live feeds (RFS incidents, fire danger, hotspots; not used by the UI yet), data-set records
                  (datasetAssembly, datasetRecords*, datasetStats, recordKit, imagery), estimate.ts (planned data),
                  memoryModel.ts (working memory)
-  sim/           Simulation (coupling loop), records, stats, SimHost, worker.ts, SimClient / LocalSimController,
-                 protocol, validation/ (§15 scenarios), testing/ (scenario builders, hashes)
+  sim/           Simulation (coupling loop), records, stats, perfStats.ts (the engine's timing statistics, EngineInfo.perf),
+                 SimHost, worker.ts, SimClient / LocalSimController, protocol, validation/ (§15 scenarios), testing/
+                 (scenario builders, hashes)
   render/        SceneView (Three.js) + layers: terrain, vegetation (species-shaped canopy), places (roads, trails, homes,
-                 zones, names), flames, embers, smoke, wind, cross-section, icons, sky, camera rig, heightfield picking,
-                 legends, palette, layerCatalog.ts (the one description of every layer), demo imagery
+                 zones, names), flames, embers, smoke, wind, cross-section, icons, sky (+ mapLighting, the night look), camera
+                 rig, heightfield picking, legends, palette, layerCatalog.ts (the one description of every layer), demo
+                 imagery; pure helpers with no three.js: qualityGuess.ts (the picture-quality guess), markerPick.ts (which icon
+                 a tap is on), iconAtlas.ts (the icons' drawing), frameLog.ts (frame statistics); render-only pure helpers
+                 for the cliff drawing: cliffSharpen.ts, terrainMesh.ts, rockMask.ts
   ui/            App shell + back stack (app.ts, backStack.ts), screens (notice, setup, building, settings, datasets,
-                 modelCard, sim/*), session, stores, widgets + primitives (typed builders of the design system), mocks
+                 modelCard, debugStats, sim/*), session, stores, widgets + primitives (typed builders of the design system),
+                 mocks; the speed signal (paceModel.ts, paceSheetModel.ts, paceTypes.ts) and Simulation debug statistics
+                 (debugStats.ts, deviceInfo.ts, eventLog.ts, runEvents.ts)
   styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
-                 + screen CSS (screens, sim, transport, layers, datasets, modelcard); see docs/DESIGN.md
+                 + screen CSS (screens, sim, transport, layers, datasets, modelcard, debugstats); see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
-                 model-card, integration, android)
+                 model-card, integration, android; and for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
@@ -255,9 +261,10 @@ export class Simulation {
   constructor(scenario: ScenarioData, opts?: { tier?: 'auto' | QualityTier; hooks?: { snapshot?(s: SimSnapshot): void;
     rewound?(time: number): void }; clock?: () => number; skipSpinUp?: boolean;
     testHooks?: { moisture?(M, FA, t): void; surfaceHeating?: boolean; emberLanding?(ev): void };   // §15 set-ups only
-    minSnapshotWallMs?: number });                        // coalescing (host: 40 ms; default 0 = never skip)
+    minSnapshotWallMs?: number;                           // coalescing (host: 40 ms; default 0 = never skip)
+    perfStats?: boolean });                               // timing statistics for EngineInfo.perf (default on; false in the cost tests)
   readonly forecastInsights: Insight[];                   // 'ready' payload (§10.3)
-  spinUp(deadlineMs?: number): boolean;                    // 3-D spin-up 900 s + auto-tune; t0 checkpoint when done
+  spinUp(deadlineMs?: number): boolean;                    // 3-D spin-up 900 s, its first 30 steps timed for Auto; t0 checkpoint when done
   advance(until: number, deadlineMs?: number, shouldStop?: () => boolean): boolean;   // whole Δt_a steps
   ignite(i: Ignition): void; edit(e: ScenarioEdit, time: number): void; removeEdit(id: string): void;   // timed records
   removeIgnition(id: string): boolean;                     // undo a mark: delete its record, rewind to it, re-run
@@ -311,21 +318,24 @@ steps of THIS run. Three layers, each checked against the one below:
 1. **`EngineInfo`** (`core/simTypes.ts`, re-exported by `core/types.ts`) is an optional, structured-clone-friendly field of every
    `SimSnapshot` (`SimSnapshot.engine`). `Simulation.makeSnapshot()` fills it in `engineInfo()` by READING the modules, never from
    constants of its own: `tier` / `tierRequested` / `tierCause` (`requested | auto-tune | auto-pending | auto-default | changed`) /
-   `tierReason` (the sentence, with the auto-tune measurement) / `autoTune`; `atmosphere` (`kind` `'3d'` or `'diagnostic'`, `nx ny nz`,
+   `tierReason` (the sentence, with the auto-tune measurement) / `autoTune` (`stepMs` the median of the steady steps, `predictedS`,
+   `budgetS`, `chosen`, `steps`, and from 0.3.0 `warmupSteps` and `warmupMeanMs`); `atmosphere` (`kind` `'3d'` or `'diagnostic'`, `nx ny nz`,
    `dxM`, `dzFirstM`, `topM` from the atmosphere's own `grid`, the current outer step, the mean step time of the tier in force,
    `spunUp`, the upper-air source, whether the picture's air view was decimated); `fire` (the terrain grid, the level set's last
    CFL sub-step, `rosMaxMs`, the forest head cap, the slope range outside which a head is "not validated"); `embers` (on, active, max,
    the sub-step range, the five classes); `cadence` (display step, solver step and its bounds, moisture, detectors, checkpoints, weather
    stamp spacing and interpolation); `run` (seed, deterministic, simulated s per wall s, steps, checkpoints and their bytes);
    `models` (the empirical spread model per fuel family of the working fuel map, coupling, mountain phenomena, embers, pyrogenic,
-   heath model); and `memory` (the parts of `memoryReport()`). It is cheap: a few dozen reads, the fuel-family count once per fuel change
+   heath model); `memory` (the parts of `memoryReport()`); and `perf` (the timing statistics, below). It is cheap: a few dozen reads, the fuel-family count once per fuel change
    (`spreadUse` is reset by `afterFuelChange`), and `memoryReport()` at most every `MEMORY_REFRESH_WALL_MS` (30 s) of the injected
    clock. The determinism hash (`sim/testing/hash.ts`) always skips `engine`: it is metadata of this device, not simulation state.
    `MockSimController` reports an `EngineInfo` flagged `mock: true` with zero atmosphere and no tiers.
 2. **`describeModel({ scenario, engine, snapshot, settings, request })`** (`ui/modelInfo.ts`, pure, no DOM) returns a `ModelCard`:
    a headline, then seven sections (*At a glance*, *What it can and cannot resolve*, *How sure are we?*, *Data in this run*, *Layers
-   and what they show*, *Engine right now*, *Words used*) made of `rows` (one per component, with an `EvidenceLevel`), `facts`,
-   `bullets`, `layers` (from `render/layerCatalog.ts`), a glossary and one `action` (open the Data sets screen). `mode` is `live`
+   and what they show*, *Speed and memory right now*, *Words used*) made of `rows` (one per component, with an `EvidenceLevel`),
+   `facts`, `bullets`, `layers` (from `render/layerCatalog.ts`), a glossary and `action`s (open the Data sets screen; open
+   Simulation debug statistics). *Speed and memory right now* is a four-fact live summary (tier and why, computing speed, engine
+   memory, this phone) plus that last action: the long list it used to hold is the statistics screen. `mode` is `live`
    (the engine reported), `planned` (a scenario, no report yet), `preview` (no scenario: planned from the Setup request with the same
    rules the builder and engine apply: `builtFireCell`, `makeGridSpec`, `ATMOS_TIERS`) or `mock`. Every number is read from the engine
    report, the scenario, the settings or a parameter table (`SIM_PARAMS`, `ATMOS_PARAMS`, `SPREAD_PARAMS`, `FIRE_MODEL_PARAMS`,
@@ -334,7 +344,8 @@ steps of THIS run. Three layers, each checked against the one below:
    README's validation summary) are re-checked against the files by `modelInfo.test.ts`, which fails when they change.
    `cardToText(card)` is "Copy as text".
 3. **`createModelCardScreen`** (`ui/screens/modelCard.ts`) draws it: a full-screen dialog (aria-modal, focus trap) opened by the App on
-   top of the running simulation (`App.openModelCard`; Back and Escape close it first; the screen stops its own Escape so the
+   top of the running simulation (`App.openModelCard`, async: the card and its text are a lazy chunk, loaded on the first open;
+   Back and Escape close it first; the screen stops its own Escape so the
    forwarded key does not also close the dock underneath). Live values are re-read from the newest snapshot at most once a second and
    patched in place (text nodes; a section is rebuilt only when its structure changes, e.g. after a tier switch); it never opens by
    itself and never calls pause or touches playback.
@@ -343,6 +354,91 @@ Tests: `sim/engineInfo.test.ts` (headless runs of both kinds of tier, a switch m
 `ui/modelInfo.test.ts` (values follow the scenario, tier wording, fallbacks, text export, quoted facts), `e2e/model-card.spec.ts`
 (the real engine in the browser; the numbers on the page equal `window.__firesim`'s; a tier switch changes the wording),
 `ui/truthAudit.test.ts` and `e2e/truth.spec.ts` (the static statements of the screens checked against the code and the engine).
+
+### Speed: statistics, the Auto policy and the honest-speed signal (0.3.0)
+
+Detailed (3-D air) runs may compute slower than playback. The code measures that, says so where the user is looking, and never
+reacts on its own: nothing here changes the tier, the display step, the solver step or an option, and the one start-time Auto
+decision is the only wall-clock decision in the engine. The plan is `docs/plans/air-slice-wind-detail-honest-speed.md`
+(workstreams A and B).
+
+**`EngineInfo.perf`** (`EnginePerfInfo` in `core/simTypes.ts`; producer `sim/perfStats.ts`, class `PerfStats`, pure, no clock of its
+own). `Simulation.stepOnce` already timed its laps; it now also feeds them (`addLap`, `endStep`, `noteAirStep`) to `PerfStats`, and
+`makeSnapshot` attaches `report()` as `EngineInfo.perf` (the `Simulation` option `perfStats: false` turns it off, for the cost
+tests). Fields, each `null` until measured and never NaN: `speed` (simulated s per busy s over the last 10 s and 60 s, the tier's
+mean, and the best and worst tumbling 10 s window), `history` (up to 20 speeds, one per 30 s of computing), `step` (outer step now,
+min, mean, max; whole-step wall ms median, 95th percentile and max over the last 128 steps; counts over 100 and 250 ms), `duty` (share
+of wall time computing over 10 s and 60 s: a worker flat out reads about 0.97 to 1), `modules` (nine rows: ms per step, share since
+the tier started, share over the last 10 s), `quality` (what limited the air step: horizontal CFL, vertical CFL, the tier's cap or
+the user's limit; run-max winds, projection corrections, spin-up wall seconds, fire sub-steps, burning cells), `embers` (always null:
+the ember model keeps no honest pair of totals), `reruns` (rewinds, seconds recomputed, tier switches, restores) and `events` (kinds
+`tier`, `long-steps`, `rewind`, `restore`; at most 8 per snapshot, each with an increasing `seq` that the UI de-duplicates by).
+Module mapping: the `atmosphere` lap is `air`; `firePrepare`, `fireStep`, `fireMasks` and `fireMinute` are `fire`; `surfaceWind` and
+`fireHeat` are `coupling` (`airAt` is nested inside `surfaceWind` and is not added again); `embers`; `solarMoisture` is `moisture`;
+`diagnostics` and `explain` are `detectors`; `snapshot` is `picture`; `checkpoint` is `checkpoints`; everything else, and whatever
+no lap covers, is `other`. A tier switch clears what is "since the tier started" and keeps the run's own counters. No
+`SimController` method was added: the block rides on snapshots. Cost, pinned by `sim/perf.test.ts` and `sim/perfStats.test.ts`:
+under 1 % of a step, under 16 KB retained in the worker, under 2 KB serialised, no extra clock reads (the lane's own measurements
+were about 5 microseconds per step, 0.24 % of a fast-tier step and 0.02 % of a standard one, about 11 KB retained and at most 1.9 KB
+serialised). Results never depend on it: `sim/simulation.test.ts` compares every snapshot hash with the statistics off, on, and on
+with a perturbed clock (both kinds of tier, several chunk sizes, a rewind), and `snapshotHash` skips `engine`.
+
+**The Auto policy** (`autoTuneDecision` and `tierReasonText` in `sim/engineInfo.ts`; constants in `SIM_PARAMS`, `sim/params.ts`).
+When the requested tier is `auto`, the first `autoTuneSteps` = 30 steps of the 3-D spin-up are timed. The first
+`autoTuneWarmupSteps` = 10 (the JIT warm-up) are only reported, as `autoTune.warmupMeanMs`; the decision uses the **median** of steps
+11 to 30. `T_pred = autoTuneOverhead x step x duration / autoTuneStepS` (1.4, and 10 s). The budget is
+`max(autoTuneMinBudgetS, autoTuneBudgetS x duration / autoTuneBudgetRefS)`, that is `max(60 s, 600 s x duration / 6 h)`. The 3-D air
+is kept when `T_pred <= budget`, else the fast tier. For every run Setup offers (1 to 12 hours) the cut-off is a step of about
+198 ms (`600 / 3.024`); only a run under 36 minutes, which Setup does not offer, is held up by the one-minute floor (238 ms at 30
+minutes). The one phone measured so far took 41 ms (the mean of its first 20 steps, warm-up included): the old rule (the mean of
+the first 20 steps, 120 s for 6 h) predicted 124 s and chose Fast; the new cut-off is 4.8 times that step. The decision is taken
+once, in `Simulation.autoTuneDecide`, written to `perf.events` (`autoTuneEventText`) and never revisited: a test in
+`engineInfo.test.ts` holds the tier fixed even when the clock turns very slow mid-run, and the tier changes afterwards only by a
+record (the performance setting changed mid-run maps Saver to fast, Balanced to standard and Detail to high; or Layers, *Use the 3-D
+atmosphere*). The reason lines, with the measured numbers in place of the examples: *"Detailed 3-D air: this phone takes about 21 ms
+per air step, so this run should compute in about 63 s (about 342 times real time). It can fall behind when you play faster than
+that; the timeline will say so."* and *"Fast surface-wind model: the detailed 3-D air would take about 15 min on this phone, longer
+than the limit of 10 min for a run like this. Switch in Settings, Performance, or Layers, Use the 3-D atmosphere."*
+
+**The pace model and `SessionState.pace`.** `ui/paceModel.ts` (pure, no clock of its own) is a tracker with 1-second bins over 30 s.
+`SimSession.trackPace` feeds it one `PaceFrame` per animation frame (the clock, the newest result, the speed asked for, the tier, a
+re-run counter, the worker's computing speed `perf.speed.s10` with the `workerSpeed` average as the fallback, and `perf.duty.s10`),
+and edits, re-runs, pauses and seeks tell it to drop its window (`exclude`). It publishes `SessionState.pace: PaceInfo | null`
+(`ui/paceTypes.ts`: `level` `ok | behind | waiting`, `wanted`, `achieved`, `waitingShare`, `capacity`, `duty`, `aheadS`, `bufferS`,
+`sinceMs`), `null` while there is nothing to judge. The numbers are one `PACE` object. `waiting`: the clock held within 1 s of the
+newest result for 15 % of the last 10 s, for 6 s in a row (it leaves under 5 % for 20 s). `behind`: the worker computes under 90 % of
+the speed asked for and is busy at least 90 % of the time, for 10 s (it leaves at 97 %, or under 70 % busy, for 10 s). There are 15 s
+of grace after a play, a seek, a speed change or a re-run (5 s after the app returns). Left out entirely: paused, seeking, the app
+hidden, Max speed (no wanted speed), the 3-D spin-up (`tierCause` `auto-pending`), replay of history, a speed or tier change, a
+rewind or an edit (the newest result moving backward) and a gap in the frames. `?debug=1&paceLevel=ok|behind|waiting` forces a level
+(`SimSession.debugForcePace`, for screenshots and layout audits). `ui/paceSheetModel.ts` (pure) turns `PaceInfo`, the engine's `perf`
+and the time left into every sentence of the sheet; a reason is shown only when the numbers support it (air above 40 % of the busy
+time on a 3-D tier, fire plus coupling above 40 %, embers above 25 %, speed now under 75 % of the median of the first four history
+samples), and "Play at N x" is the nearest preset at or below what the phone achieves. Pausing stops the worker (`SimSession.pause`
+calls `controller.pause`), so the sheet says "Pausing stops the simulation too. Playing slower is what lets it keep up." DOM:
+`screens/sim/scrubber.ts` makes the 44 px button (test id `pace-btn`, in the strip's fourth grid column, hidden while a jump
+computes), the under-rail run and a polite status line that announces entering `waiting` and at most every 2 minutes;
+`screens/sim/topBar.ts` hangs the sheet on its popover group (so the strip is created first and its button handed over), loads
+`screens/sim/paceSheet.ts` on the first tap, and does not show the old "Computing" badge while the signal is on.
+
+**Simulation debug statistics.** `ui/debugStats.ts` (pure) turns `{ engine, playback, frames, quality, store, heap, device, events,
+errors, build, clock }` into 18 groups of rows (`buildDebugStats`), and `debugStatsToText` writes the Copy text (a header line, the
+stable group titles, an end marker). Groups: Summary, Run, Choices, Grids, Speed, Speed history, Step, Worker duty, Where the time
+goes, Step quality, Embers, Re-runs, Memory, Display (main thread), Phone: hardware, Phone: software and graphics, What this phone
+can do, Recent events. No coordinate, custom place name or identifier is ever written (a bundled site is named by its id, any other
+place is "a custom place", error lines are scrubbed). `ui/screens/debugStats.ts` draws it with the model card's collapsible groups
+(`.mc-*`), all collapsed, patches values in place once a second, skips while the app is hidden, and never pauses or opens by itself;
+the Copy fallback is a selectable box (`debug-stats-fallback`). `ui/deviceInfo.ts` (`deviceInfoNow`, cheap and re-read every second;
+`deviceInfoAsync`, once and cached: Client Hints, battery, storage, a graphics probe, refresh rate) reads an injectable environment
+so node tests can feed fixtures, and uses web APIs only (no native plugin). `ui/eventLog.ts` is in the entry chunk (a ring of the
+last 40 events, and the long-task counter); `ui/runEvents.ts` (its own chunk, about 1.1 kB gzip, loaded when a run starts) fills it
+from pace episodes, `perf.events` (by `seq`), the app going to the background and the first thinning of the history.
+`render/frameLog.ts` (`FrameLog`: a 120-frame ring and ten 1-second bins; a slow frame is over 34 ms, a very slow one over 100 ms)
+is kept by the render loop's `FrameMeter` and read through `SceneViewApi.frameStats?()`; while a full-screen screen covers the view
+nothing is drawn, so those numbers are the last seconds before it opened (`lastDrawAgeS`). `App.openDebugStats()` opens it as the
+overlay `debug-stats` (one instance; Back and Escape close it; focus returns to the row that opened it) from the main menu row
+directly under Settings (`menu-debug-stats`), Settings (`settings-debug-stats`), Setup (`setup-debug-stats`, where the run groups say
+"No run yet" and the phone groups are live), the model card, and the pace sheet's "All the numbers".
 
 ### explain/
 
@@ -366,9 +462,16 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   zoomBy(factor): void;  readonly heading: number;  setHeading(deg): void;   // zoom / compass buttons
   cameraState(): { target: [x, y]; distance; azimuthDeg; polarDeg; headingDeg; mode };   // the camera as numbers (tests, debug)
   viewSection?(animate?): void;                        // side-on view of the cross-section (3-D view only)
+  setNightLook?(look: 'realistic' | 'brighter' | 'daylight'): void;  readonly nightLook?: NightLook;   // map lighting after dark, uniforms only (3-D view only)
+  readonly qualityInfo?: QualityInfo;                  // the picture tier, how it was chosen and what it sets (3-D view only)
+  frameStats?(): FrameStatsInfo | null;                // frame rate, slow frames, draw calls, pixel ratio: the debug statistics (3-D view only)
+  pickMarker?(clientX, clientY): MapMarker | null;     // the icon under a screen position (22 px, homes 14 px), or null; the 2-D map has it too
   setBrushPreview(p | null): void;  setInteractionEnabled(on): void;  stats(); resize(); dispose();
 }
+// ui/modules.ts: createSceneView(container, opts?: { quality?: 'low' | 'medium' | 'high' }): SceneViewApi   (see Picture quality below)
 ```
+The members marked optional are absent from the 2-D mock (`ui/mockScene.ts`, which has only `pickMarker`) and from hand-written fakes, so the UI
+checks for them: the Night lighting row is left out, and the statistics' display group says "Not available", where the view lacks them.
 * The terrain mesh is built from `ScenarioData.terrainHiRes` (the 10 m DEM) when present, decimated to the quality
   budget (224 / 320 / 400 samples per side), so cliffs are finer than the 30 m fire grid; fuel, fire and overlays are
   draped from the fire grid.
@@ -482,6 +585,49 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   added without an entry. `sceneLayerOn` / `sceneLayerPatch` read and write the switches, `availabilityContext(...)`
   builds the availability flags from the fuel map, snapshot and context. `legendGallery.html` (dev page) shows every
   legend chip and catalog row in both themes (`?cvd=deutan` for colour blindness).
+* **Night map lighting** (`render/sky.ts`, `SceneView.applyLighting`). `mapLighting(real, look, realSunDir)` (pure) returns the
+  lighting the map is drawn with. With the look Realistic, or the real sun at 8 degrees or more, it is the real lighting itself (the
+  same objects, no arithmetic). As the sun sets (from +8 to -2 degrees, a smoothstep) the weight `w = NIGHT_LOOK_MIX[look] x smoothstep`
+  (Realistic 0, Brighter 0.3, Daylight 1) blends the real lighting towards that of a fixed sun, north-west (azimuth 315 degrees) and
+  30 degrees up (`MAP_SUN`, with no cloud and no smoke, because seeing the ground is the point). The sun direction is weighted by the
+  light each sun carries (a sun below the horizon carries none, so at night every look is lit from the fixed sun whatever the real
+  azimuth does), the sun's light and the ambient are blended as colour times intensity, and the exposure as it is. `applyLighting`
+  writes the result to the shared uniforms the map shaders already read (ground, photo, trees, roads, labels). **The uniforms are
+  split:** `uNight` stays the real night (flames, the fire's light on smoke, lit windows, stars, the fog colour); a new `uMapNight`
+  (the real night x (1 - w)) serves what dims the map (roads, labels, tree moonlight); `uShadowGain` (1 - w) scales the terrain's
+  cast shadows, which keep following the real sun; the sky dome and the smoke body get their own sun, ambient and exposure uniforms
+  from the real lighting, so a lit map never paints a sun disc into a night sky. A change of look is uniforms only
+  (`SceneViewApi.setNightLook` invalidates the sun key): no rebuild, no pause. It is a view setting like Plain, stored as
+  `LayerPrefs.nightLook` (`ui/screens/sim/layersPrefs.ts`; the prefs version stays 1) and reset by "Reset layers".
+* **Picture quality** (`SceneView.ts` `QUALITY`, `render/qualityGuess.ts`, `ui/settings.ts`). Tiers Low / Medium / High set the
+  terrain mesh (224 / 320 / 400 samples per side), the tree budget (16,000 / 32,000 / 48,000), the canopy triangle budget (100k /
+  170k / 250k), the pixel-ratio cap (1.25 / 1.75 / 2), the flame sites and smoke puffs (2,500 + 800 / 5,000 + 1,500 / 5,000 + 1,500)
+  and whether trees sway by default (off on Low). `Settings.pictureQuality` is `'auto' | 'low' | 'medium' | 'high'` (default `'auto'`,
+  sanitised; `SETTINGS_VERSION` unchanged). `resolveRenderQuality(pictureQuality, performance)` in `settings.ts` is the pure rule: an
+  explicit value wins; Auto is High under the Detail profile and otherwise `undefined`, which lets the view guess. `guessQuality` (High
+  at 8 or more cores and 6 GB or more, Low at 4 or fewer cores or 3 GB or less, else Medium; a missing value counts as 4 cores and
+  4 GB) lives in the pure `qualityGuess.ts` and is re-exported by `SceneView.ts`, so the Settings and Data sets screens read it
+  without pulling Three.js into the entry chunk. `simScreen.ts` passes the result to `createSceneView(container, { quality })` when
+  the view is built, so a change applies to the next model. `describeQuality` (pure, `SceneView.ts`) builds
+  `SceneViewApi.qualityInfo` (the tier, whether it was an option or a guess, the cores and memory the guess read, and what the tier
+  sets). The adaptive pixel ratio stays on in every tier: it only lowers the resolution while the frame rate stays under 30. The
+  build-time memory estimate (`scenario/memoryModel.ts`) stays device-independent (it models Medium); the Data sets screen re-models
+  it with the running tier.
+* **Tapping an icon** (`render/markerPick.ts`, `render/iconAtlas.ts`, `ui/screens/sim/markerWords.ts`, `SceneView.pickMarker`).
+  `refreshMarkers` records, for every icon it draws, the `MapMarker` it stands for, and `pickMarker` hit-tests that same list, plus
+  the homes when the Homes layer is on and the home is not hidden behind terrain (`lineOfSightClear`), so what is drawn and what can
+  be tapped cannot differ. `markerPick.ts` (pure): a tap hits within `max(half the icon, 22)` px of the icon's centre (homes 14 px); the
+  nearest centre wins, ties go you, ignition, spot fire, insight, home; the answer says how many other icons were also hit; a pin's
+  centre is half its height above its anchor; projection is not clipped to the screen (an icon half off the edge can still be
+  tapped) but leaves out points behind the camera. `iconAtlas.ts` holds the `Icon` enum and the atlas drawing (canvas and palette
+  only, no three.js, guarded by a dependency test; `iconLayer.ts` re-exports it) and `iconGlyphUrl`, so the panel shows the map's own
+  picture. `markerWords.ts` (pure): `markerRow` (name, detail line, "+N more icons here, zoom in to tell them apart"),
+  `tapTarget(tool, marker, ground)` (in the Why tool an icon wins and the question is about its own spot, also when the finger's ray
+  misses the ground; the other tools keep the ground) and `markerShownAt` (a time-bound icon is dropped when the clock goes back
+  before it). `whyPanel.ts` puts the row first in every state and `WhyState.marker` keeps it through refreshes.
+* **Pure cliff helpers, render-only.** `cliffSharpen.ts`, `terrainMesh.ts` (`decimateTerrain`) and `rockMask.ts` are DOM-free and
+  three.js-free helpers for the cliff drawing; only the 3-D view's code imports them, so they stay out of the entry chunk and the
+  worker.
 
 ### ui/
 
@@ -528,12 +674,14 @@ export interface SceneViewApi {                       // src/render/api.ts — a
 * Simulation-screen chrome (`ui/screens/sim`): collapsed by default, in the Google-Maps-for-Android language (docs/DESIGN.md).
   **Top**: a floating pill (`topBar.ts`: main menu, clock with its elapsed / Replay / Computing line, the blue Play button and the
   speed chip) with a row of read-out chips under it (temperature, humidity, wind, fire-danger rating: information, not buttons). The
-  main menu is a side sheet (Data sets, How this simulation works, Help and glossary, Safety notice, Settings, New scenario); the time
+  main menu is a side sheet (Data sets, How this simulation works, Help and glossary, Safety notice, Settings, Simulation debug
+  statistics directly under it, New scenario); the time
   and speed controls open as small sheets (`transportKit.ts`, one popover at a time). **Map controls**: a column of round white
   buttons (Layers, View with the current camera mode, Compass) and an extended "Tools" button in the bottom corner whose speed dial
   holds the six tools (`mapMenu.ts`; the open menu is `UiState.menu`, so at most one is open and a map tap, Escape or Back collapses
   it). **Bottom**: Maps-style bottom navigation (Insights with an unseen-cards badge, Weather, Stats, Help) above the timeline strip
-  (`sheet.ts`, `scrubber.ts`); a tab opens a rounded bottom sheet with a grab handle (`UiState.sheet` is `closed | peek | half | full`,
+  (`sheet.ts`, `scrubber.ts`; the strip's fourth column holds the speed signal's button while the simulation cannot keep up, see
+  *Speed* above); a tab opens a rounded bottom sheet with a grab handle (`UiState.sheet` is `closed | peek | half | full`,
   default `closed`). A thin error chip appears under the top bar only if the engine fails; the map's legend card (`mapLegend.ts`) and
   attribution line (`mapCredits.ts`, a button that opens the Data sets screen) sit at the bottom of the visible map. Left-hand mode
   mirrors everything. The column of round buttons sits under the top bar and, where that leaves no room beside the Tools button (a short landscape screen at a large text size) and the top bar only reaches part way across, starts level with the top bar's side instead (`--col-top`, set by `layoutInsets`). The pure rules (menu reducer, what Back closes first, dock taps and detent heights, list fitting) are in
@@ -541,14 +689,15 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   and the legend the visible map. Field-use rules, guarded by `ui/styles.rules.test.ts`: every tap target is at least 44 px (the
   read-out chips are not buttons), no literal font size is under 14 px (12 px exists only as the caption token), and behind a full-screen screen the stage is `inert`.
 * **Layers panel** (`layersPanel.ts`, `layersModel.ts`, `layersPrefs.ts`): built only from `render/layerCatalog.ts`, so a new
-  catalog row appears on its own. Map type (aerial photo / terrain colours / plain), Map details (one tile per scene layer: roads, fire
+  catalog row appears on its own. Map type (aerial photo / terrain colours / plain, and under the tiles Night lighting: Realistic /
+  Brighter / Daylight, `nightLookRow` in `layersModel.ts`, left out where the view has no `setNightLook`), Map details (one tile per scene layer: roads, fire
   trails, homes, residential areas, place names, 3-D canopy, shrubs, flames, smoke, embers, wind streaks, insight markers; a greyed
   tile carries the catalog's reason), Heat maps (every data layer that can colour the ground, grouped as the catalog groups them; one at
   a time, tap again to switch off; "Show on its own" hides the photo and the trees; roads, homes and shrubs have both Show and Heat map),
   Trees (natural / simple / coded by height, cover, bark or understorey hazard; sway) and Wind and air. Each row has an (i) with the
   catalog text and a link to the data set behind it on the Data sets screen. The user's choices (only choices, never defaults) are
   saved to the UI preferences (`layersPrefs.ts`, key `layers`) and put back at the start of the next run by `restoreLayerPrefs(ctx)`
-  (a remembered heat map only where it can be shown; the trees' wind sway starts off in battery mode and on a low-quality renderer).
+  (a remembered heat map only where it can be shown; the remembered night look; the trees' wind sway starts off in battery mode and on a low-quality renderer).
   "Why here?" has a *Where you are* part (`placeInfo.ts`, pure): nearest road and fire trail, the zone, homes within 500 m and 1 km,
   the ground, all measured from `ScenarioData.context` and the terrain grid.
 * **Places context** (`ScenarioData.context`, `core/places.ts` `ContextLayers`): roads, RFS fire trails, residential and built-up
@@ -557,8 +706,8 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   receive them (the 3-D view and the "Where you are" part use them on the main thread). `render/placesLayer.ts` draws them
   (`SceneView.setContext`, `setLayers({ roads, fireTrails, homes, zones, placeNames })`, `placesLegend()`); the two data heat maps
   `homeDensity` and `roadAccess` come from `render/contextFields.ts`.
-* **Full-screen screens and the Back stack** (`app.ts`, `backStack.ts`). Settings, Data sets and How this simulation works are
-  *overlays*: the App puts them over the stage, which becomes `inert` (focus and screen readers stay in the screen), and the simulation
+* **Full-screen screens and the Back stack** (`app.ts`, `backStack.ts`). Settings, Data sets, How this simulation works and
+  Simulation debug statistics are *overlays*: the App puts them over the stage, which becomes `inert` (focus and screen readers stay in the screen), and the simulation
   keeps running underneath: opening one never pauses or changes playback. The covered 3-D view stops drawing frames
   (`SimScreen.setCovered` → `SceneViewApi.setCovered`, called from `App.updateInert`; snapshots and the camera keep their state and the
   first frame after the screen closes shows the latest), so a reading screen does not run the GPU. Closing one returns focus to the control that
@@ -570,7 +719,9 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   the Setup form from `scenario/estimate.ts`, what is stored on the phone and the bundled data). "Show on map" from a data set closes
   the overlays and applies its layer or heat map (`SimScreen.showLayer`). Entry points: main menu, Stats tab (*Data used*: See all, a row
   = that data set), the Layers panel's (i), the map's attribution line, Settings, Setup (*Data for this run*, a row = that data set's
-  planned page) and, for the model card, the main menu, the Stats tab, Settings and Setup.
+  planned page) and, for the model card, the main menu, the Stats tab, Settings and Setup. Simulation debug statistics
+  (`App.openDebugStats`, its own lazy chunk, overlay id `debug-stats`) opens from the main menu directly under Settings, Settings, Setup,
+  the model card and the speed sheet.
 * **Data sets screen** (`screens/datasets.ts`, `datasetsModel.ts` pure, `datasetViz.ts`): the summary (data sets, downloaded, in
   memory, saved on this phone; the origin mix; substitutes in plain words; the model grid and the recipe to rebuild the run), the list
   (filter chips, sort, one row per data set), a page per data set (what and why, provider and licence with links that are copied and only
@@ -584,7 +735,9 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   `ScenarioRequest.beltKit` so the builder applies the psychrometer at the real station pressure and the 2 m → 10 m
   wind conversion.
 * Performance mode changes during a run call `SimController.setQuality` ('battery' → fast, 'auto' → standard,
-  'quality' → high). A fast-tier run offers "Use the 3-D atmosphere" in the Layers panel where it matters.
+  'quality' → high): a change made mid-run asks for the tier outright (Balanced then means the 3-D air, not another Auto timing test;
+  Auto's one decision is the start of a run, see *Speed* above). A fast-tier run offers "Use the 3-D atmosphere" in the Layers panel
+  where it matters; the speed sheet's "Use the fast model from here" is the same `setQuality` path the other way.
 
 #### Styles and the design system
 
@@ -668,8 +821,11 @@ minutes, no coalescing): fast tier 40 ms per simulated minute without snapshots,
 10 / 30 / 60 / 300 s steps (10.1 / 3.4 / 1.7 / 0.3 MB per simulated minute); standard tier 240 ms/min, +22.4 / +7.5 / +3.7 /
 +0.7 ms (14.9 / 5.0 / 2.5 / 0.5 MB/min). At maximum speed the fast tier would make 130 pictures per second at a 10 s step;
 coalescing to 25/s cuts that overhead to +3.0 ms/min (43 MB per wall second instead of 223). On the main thread no long task (> 50 ms) was observed while playing at maximum speed;
-`SceneView.update` takes ≈ 4 ms median, 9 ms p95. Phones are 2–3× slower (spec §13); the spec's auto-tune (§12.6)
-therefore usually picks the fast tier on phones. Spec budgets and CI gates: §13 (V20).
+`SceneView.update` takes ≈ 4 ms median, 9 ms p95. All of that is one desktop core. Only one phone has been measured so far: on it the
+3-D air step took 41 ms (the mean of the first 20 steps, warm-up included). The spec's 2–3× guess (§13) is therefore not used to say
+what phones do; the app measures the phone it runs on (the Auto timing at the start, `EngineInfo.perf`, the Simulation debug
+statistics screen) and the 0.3.0 Auto policy keeps the detailed 3-D air up to about 198 ms per air step (see *Speed* above). Spec
+budgets and CI gates: §13 (V20).
 
 ### Performance budgets (phone, battery, APK size)
 
@@ -677,14 +833,17 @@ Measured by the performance review of the screens phase, in headless Chromium wi
 times are slow and are only ever compared between builds on the same machine), Katoomba (bundled demo), `low` render quality,
 412 x 915, medians of 5 runs unless noted; "4x" = Chrome DevTools CPU throttling 4x as a mid-range phone proxy. Baselines are the two
 commits before the screens phase: `6a3d171` (the UI rework, before layers) and `3e01e78` (layers phase 1, before the design system and
-the dataset provenance). "Now" is the tree of this document.
+the dataset provenance). "Now" is the tree of this document. The four bundle rows (JS, entry, CSS, bundled data) of the "now" column
+were remeasured for 0.3.0 on this tree with `flock /tmp/firesim-heavy.lock npm run build:cap` and then `npm run check:bundle` (kB of
+1024 bytes and `gzip -9`, as the script prints them), **before the cliff drawing was merged**; the release pass will refresh them. The
+other rows were measured in the screens phase and have not been measured again here.
 
 | Measure | 6a3d171 | 3e01e78 | now | Budget / verdict |
 | --- | --- | --- | --- | --- |
-| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2821 / 945 | gzip <= 1000 (`npm run check:bundle`) |
-| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 506 / 177 | gzip <= 195; screens, layer catalog and the model-card text are in it |
-| CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 121.6 / 21.8 | raw <= 135, gzip <= 25 |
-| Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 29.0 / 32.1 | demo <= 36 (was 31 before Mount Tomah) |
+| JS, all chunks (raw / gzip, kB) | 2237 / 743 | 2421 / 807 | 2698 / 900.8 | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 178 / 63 | 214 / 75 | 461 / 159.7 | gzip <= 195; screens and the layer catalog are in it (the model-card text is a lazy chunk since 0.3.0) |
+| CSS (raw / gzip, kB) | 45.0 / 9.7 | 86.4 / 17.0 | 125.1 / 22.3 | raw <= 135, gzip <= 25 |
+| Bundled data `public/demo` (MB) / whole `dist/` (MB) | 28.4 / 30.8 | 29.0 / 31.6 | 33.1 / 36.0 (nine sites, with Mount Tomah) | demo <= 36 (was 31 before Mount Tomah) |
 | HTML pages in the production build | 1 | 1 | 1 | exactly `index.html` (style guide, `render/dev*.html`, legend gallery are dev-server pages, never built) |
 | Source maps in `build:cap` (the APK) | 0 | 0 | 0 | 0 |
 | Debug APK (`gradlew assembleDebug`, MB) | 27.1 (Sep 28, before the screens phase) | | 27.6 | <= 33 (was 30 before Mount Tomah); holds `index.html` as its only page of ours |
@@ -694,6 +853,7 @@ the dataset provenance). "Now" is the tree of this document.
 | Worker, fast tier, 10 s / 60 s display step (ms wall per simulated minute) | | 46.1 / 33.6 | 44.6 / 38.2 (36.0 vs 34.6 over 60 min) | within 10 % of the baseline |
 | Worker, standard tier, 10 s / 60 s display step | | 199 / 152 | 194 / 157 | within 10 % of the baseline |
 | `EngineInfo` per snapshot (worker) | | | 4 us, 1.8 kB; a memory measurement of 19 ms at most every 30 wall-seconds | <= 0.1 ms per snapshot |
+| `EngineInfo.perf`, the timing statistics (worker) | | | about 5 us per step, about 11 KB retained, at most 1.9 KB serialised (the engine lane's measurements; not repeated here) | < 1 % of step time (0.24 % of a fast-tier step, 0.02 % of a standard one), < 16 KB retained, < 2 KB serialised (`sim/perf.test.ts`, `sim/perfStats.test.ts`) |
 | Main thread while playing (6 % of wall at 1x, 8 s) | | 432 ms | 488 ms (22 ms per drawn frame in both) | no long task (> 50 ms) at 1x |
 | Frame (low, 3-D view): draw calls / k triangles, all layers off | | 4 / 102 | 4 / 102 | |
 | Frame: default layers / all scene layers on | | 15 / 138 | 17 / 161 and 19 / 228 | high (measured 20 / 495): <= 25 draws, <= 550 k triangles |
@@ -704,7 +864,15 @@ the dataset provenance). "Now" is the tree of this document.
 | Model card open, longest task at 4x | | | 146 ms | <= 300 ms |
 | After 100 layer toggles and 80 screen / panel opens | | | JS heap 9.8 to 10.5 MB (100 toggles) and 12 MB (the screen cycles); DOM nodes (2790) and listeners (228) unchanged; GPU geometries 12 to 20 and textures 16 to 18 (made on first use, then kept) | no growth per toggle |
 
-Mount Tomah, the ninth demo site (added 2026-10-07), is not in the "now" column above (measured before it existed): it adds 4.28 MB to `public/demo` (29.0 to 33.1 MiB; 34.9 MB with the replays) and, deflated, about 2.7 MB to the APK (27.6 to about 30.3 MB; estimated, the APK was not rebuilt).
+Mount Tomah, the ninth demo site (added 2026-10-07), is in the bundled-data row of the "now" column (33.1 MiB measured on the 0.3.0 tree); the other rows were measured before it existed. It adds 4.28 MB to `public/demo` (29.0 to 33.1 MiB; 34.9 MB with the replays) and, deflated, about 2.7 MB to the APK (27.6 to about 30.3 MB; estimated, the APK was not rebuilt).
+
+What 0.3.0 did to the bundle, from the same build (gzip kB of 1000 bytes as Vite prints them): a build-only Vite plugin in `vite.config.ts`
+leaves out the GeoTIFF decoders the app never reads (LERC, ZSTD, JPEG, WebP) and pako (inflate goes through `fflate`, now an explicit
+dependency), and `npm run check:bundle` fails if any of them comes back; the app's GeoTIFF reader reads Deflate, raw, LZW and PackBits
+only. The model card and its text moved out of the entry into a lazy chunk (about 18.4 kB, loaded on the first open). New lazy chunks:
+Simulation debug statistics about 15.0 (about 125 rows of text; the plan guessed 6 to 8), the speed sheet about 3.6 and `runEvents`
+about 1.1. The pace model, the event ring, the icon words and the Night lighting and Picture quality rows are small and live in the
+entry; the pure icon hit test (`markerPick`) is a chunk of its own, about 0.9 kB.
 
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 
@@ -719,9 +887,12 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
 * **Heavy work is sliced.** The places layer builds in 4 ms slices per frame (about 95 ms in all for Katoomba, of which the residential
   fill raster is two thirds, and 10 MB of GPU memory; it is built even while those layers are off); the forest is placed 4 ms per
   frame; the Data sets list is drawn in chunks; data heat maps are computed on first use and cached.
-* **Screens are cheap while open.** The model card re-reads at most once a second (and not while the page is hidden); the Data sets
-  memory card every 5 s; both timers end with the screen. The compass reads the camera heading five times a second.
+* **Screens are cheap while open.** The model card and Simulation debug statistics re-read at most once a second (and not while the
+  page is hidden); the Data sets memory card every 5 s; the timers end with the screen. The compass reads the camera heading five times a second.
 * **The worker does not pay for transparency.** `Simulation.engineInfo` is bookkeeping read once per snapshot; the physics never reads it.
+  The timing statistics (`PerfStats`, `EngineInfo.perf`) are fed from clock reads the engine already made (a test checks that a run
+  reads the clock as often with them on as off), are counters, running aggregates and small rings only, and are held to under 1 % of a
+  step and under 16 KB retained.
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
   server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.
@@ -737,4 +908,9 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   `e2e/sim.spec.ts` (the real worker), `e2e/ui.spec.ts` (the UI on the mocks), `e2e/layers.spec.ts` (the Layers panel, GPU
   object counts), `e2e/datasets.spec.ts` and `e2e/model-card.spec.ts` (the two information screens), `e2e/integration.spec.ts`
   (every entry point, the Back order, focus and inert, the 200 % font scale, high contrast, deletions that ask first, a whole run
-  with every screen visited and nothing popping up), `e2e/android.spec.ts` (an emulated Capacitor runtime).
+  with every screen visited and nothing popping up), `e2e/android.spec.ts` (an emulated Capacitor runtime), and for 0.3.0
+  `e2e/debug-stats.spec.ts` (the statistics screen), `e2e/pace.spec.ts` (the speed signal and its sheet), `e2e/night-look.spec.ts`
+  (Night lighting, read from decoded screenshots), `e2e/picture-quality.spec.ts` (the tier a setting gives, and its budgets) and
+  `e2e/icon-tap.spec.ts` (tapping an icon). The pure modules of 0.3.0 each have a node test beside them (`perfStats`, `paceModel`,
+  `paceSheetModel`, `debugStats`, `deviceInfo`, `eventLog`, `runEvents`, `frameLog`, `markerPick`, `iconAtlas`, `markerWords`,
+  `mapLighting` and its uniforms, `quality`).
