@@ -7,6 +7,7 @@
  * Events never carry a coordinate, a place name or an identifier. Nothing here changes a result: it only reads state.
  */
 import { eventLog, type EventLog } from './eventLog';
+import type { PerfEvent } from '../core/simTypes';
 import type { PaceInfo, PaceLevel } from './paceTypes';
 import type { SimSession } from './session';
 
@@ -60,7 +61,7 @@ export class PaceWatch {
  * Watch one run: reset the log, then record slow-run episodes, the engine's events, going to the background and coming back,
  * and the first thinning of the history. Returns the stop function.
  */
-export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'>, log: EventLog = eventLog): () => void {
+export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'> & Partial<Pick<SimSession, 'onEngineEvents'>>, log: EventLog = eventLog): () => void {
   log.begin();
   log.add('run', 'Run started.', 0);
   const pace = new PaceWatch(log);
@@ -70,14 +71,20 @@ export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'>, log: 
   let thinned = false;
   let hiddenAt = 0;
   const offPace = session.state.subscribe((s) => pace.observe(s.pace, s.viewTime), ['pace']);
-  const offSnap = session.state.subscribe((s) => {
-    for (const e of s.snapshot?.engine?.perf?.events ?? []) {
+  const take = (events: readonly PerfEvent[]): void => {
+    for (const e of events) {
       const key = `${e.seq}@${e.wallMs}`;
       if (seen.has(key)) continue;
       seen.add(key);
       if (seen.size > 64) seen.delete(seen.values().next().value as string);
       log.add(e.kind, e.text, e.simS, e.wallMs);
     }
+  };
+  // The session hands over the events of every snapshot as it arrives; the picture on screen carries only the newest engine
+  // report, so on its own it would lose the events of a snapshot that was not the newest when the picture changed.
+  const offEvents = session.onEngineEvents?.(take);
+  const offSnap = session.state.subscribe((s) => {
+    if (!offEvents) take(s.snapshot?.engine?.perf?.events ?? []);
     const st = session.snapshots;
     if (!thinned && st.spacing > 1.5 * st.displayStep) {
       thinned = true;
@@ -97,6 +104,7 @@ export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'>, log: 
   document.addEventListener('visibilitychange', onVisibility);
   return () => {
     offPace();
+    offEvents?.();
     offSnap();
     document.removeEventListener('visibilitychange', onVisibility);
   };

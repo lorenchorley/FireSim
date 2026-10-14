@@ -1,5 +1,6 @@
 /** What fills the recent-events ring during a run (runEvents.ts): slow-run episodes from the pace levels, the engine's events, the background / foreground pair, the first thinning of the history. */
 import { afterEach, describe, expect, it } from 'vitest';
+import type { PerfEvent } from '../core/simTypes';
 import type { SimSnapshot } from '../core/types';
 import { EventLog } from './eventLog';
 import type { PaceInfo, PaceLevel } from './paceTypes';
@@ -121,6 +122,20 @@ describe('watchRun', () => {
     state.set({ snapshot: withEvents([again]) });
     state.set({ snapshot: withEvents([first, again]) });
     expect(log.list().slice(1).map((e) => e.text)).toEqual([first.text, again.text]);
+  });
+
+  it('with a session that hands over the events of every snapshot, an event of a snapshot that was not the newest is recorded', () => {
+    const { log, state } = setup();
+    const sinks: ((e: readonly PerfEvent[]) => void)[] = [];
+    const snaps = { spacing: 60, displayStep: 60 };
+    const stop = watchRun({ state, snapshots: snaps, onEngineEvents: (cb: (e: readonly PerfEvent[]) => void) => (sinks.push(cb), () => void sinks.splice(sinks.indexOf(cb), 1)) } as unknown as Pick<SimSession, 'state' | 'snapshots' | 'onEngineEvents'>, log);
+    const rewind: PerfEvent = { seq: 3, kind: 'rewind', simS: 1200, wallMs: 7_000, text: 'Went back to 20:00.' };
+    // the event arrives on a snapshot, and the picture on screen never shows that snapshot's engine report
+    sinks[0]!([rewind]);
+    sinks[0]!([rewind]);
+    expect(log.list().slice(1).map((e) => e.text)).toEqual([rewind.text]);
+    stop();
+    expect(sinks).toHaveLength(0);
   });
 
   it('a snapshot with no engine info (the demo engine) or no perf block adds nothing', () => {

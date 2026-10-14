@@ -21,7 +21,7 @@
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
-import type { EngineInfo } from '../core/simTypes';
+import type { EngineInfo, PerfEvent } from '../core/simTypes';
 import { groupInsights } from './insightGroups';
 import { createPaceTracker, type PaceExclusion, type PaceFrame } from './paceModel';
 import type { PaceInfo, PaceLevel } from './paceTypes';
@@ -151,6 +151,8 @@ export class SimSession {
   private readonly paceFrame: PaceFrame = { nowMs: 0, playing: false, seeking: false, hidden: false, viewTime: 0, headTime: 0, duration: 0, speed: 1, spinUp: false, reviewing: false, tier: null, reruns: null, capacity: null, duty: null, computing: false };
   /** The newest engine report (tier, statistics): the picture shown can be older than the engine. */
   private engine: EngineInfo | null = null;
+  /** Listeners of the engine's events (see {@link SimSession.onEngineEvents}). */
+  private readonly engineEventSinks = new Set<(events: readonly PerfEvent[]) => void>();
 
   constructor(
     scenario: ScenarioData,
@@ -618,6 +620,8 @@ export class SimSession {
     if (this.disposed) return;
     this.snapshots.push(snap);
     if (snap.engine) this.engine = snap.engine;
+    const evs = snap.engine?.perf?.events;
+    if (evs && evs.length > 0) for (const sink of this.engineEventSinks) sink(evs);
     const s = this.state.get();
     // After a rewind the worker re-simulates from a checkpoint before the rewind time, so it re-reports insights the
     // UI kept (it only drops those after the rewind time). Skip those by id, and by what they say, in case the
@@ -774,6 +778,17 @@ export class SimSession {
   /** The newest report of the engine (tier, timing statistics), or null before the first snapshot: the picture on screen can be older than the engine. */
   engineInfo(): EngineInfo | null {
     return this.engine;
+  }
+
+  /**
+   * The engine's events (tier choice, slow steps, rewinds, checkpoint restores) of EVERY snapshot as it arrives. A composed
+   * picture carries only the newest engine report, so reading the events from the picture on screen loses those of a snapshot
+   * that was not the newest when the picture changed. A snapshot is delivered once; the listener drops what it has seen by
+   * `seq`. Returns the stop function.
+   */
+  onEngineEvents(listener: (events: readonly PerfEvent[]) => void): () => void {
+    this.engineEventSinks.add(listener);
+    return () => void this.engineEventSinks.delete(listener);
   }
 
   /** Debug hook (`?debug`, see simScreen.ts): publish a canned pace level for screenshots and layout audits; `null` gives control back to the tracker. */
