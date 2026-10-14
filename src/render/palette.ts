@@ -253,6 +253,8 @@ export const MARKER_COLOURS = {
   ignition: '#e02424',
   spot: '#ff8c1a',
   focus: '#ffffff',
+  /** The roof of a home on the map (the 3-D houses, the Homes legend entry and the house in the "Why here?" row). */
+  home: '#b9532a',
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────

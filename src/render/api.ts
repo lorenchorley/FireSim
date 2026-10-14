@@ -103,13 +103,16 @@ export interface TerrainDrawStats {
 
 /**
  * An icon the map draws and the user can tap (workstream I, §9e). `x`, `y` are the icon's own spot in local metres (a pin's
- * tip, not its picture). `others` is how many more icons were also within reach of the tap. Draft shape: the lane that builds
- * the pick may add fields the words need.
+ * tip, not its picture). `others` is how many more icons were also within reach of the tap. The objects are the ones the
+ * view was given (`setIgnitions`, `setInsights`, the snapshot), so the words about an icon come from the data, not from the view.
+ * An `ignition` with origin 'spot' is a spot fire the user marked (the map draws it as the spot-fire icon, not a pin);
+ * a `spot` is a simulated one, or one given to `setIgnitions` as a SpotFire when `marked` is true. A `home` is one address
+ * point (one marker per address); `you` is the phone's position (not drawn at eye level, so not tappable there).
  */
 export type MapMarker =
   | { kind: 'you'; x: number; y: number; others: number }
   | { kind: 'ignition'; x: number; y: number; others: number; ignition: Ignition }
-  | { kind: 'spot'; x: number; y: number; others: number; spot: SpotFire }
+  | { kind: 'spot'; x: number; y: number; others: number; spot: SpotFire; marked?: boolean }
   | { kind: 'insight'; x: number; y: number; others: number; insight: Insight }
   | { kind: 'home'; x: number; y: number; others: number };
 
