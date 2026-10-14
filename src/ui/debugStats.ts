@@ -337,7 +337,7 @@ function choicesGroup(i: DebugStatsInput): StatGroup {
   const p = i.playback;
   rows.push(
     R('display-step', 'Display step', `A picture every ${longSpan(c.displayStepS)}`),
-    R('solver-limit', 'Solver step limit', c.solverMaxStepS > 0 ? `${sec(c.solverMaxStepS)} (your setting)` : `Automatic (${sec(c.solverFloorS)} to ${sec(c.solverBoundS)})`),
+    R('solver-limit', 'Solver step limit', c.solverMaxStepS > 0 ? `${sec(c.solverMaxStepS)} (your setting)` : sec(c.solverFloorS) === sec(c.solverBoundS) ? `Automatic (${sec(c.solverBoundS)})` : `Automatic (${sec(c.solverFloorS)} to ${sec(c.solverBoundS)})`),
     R('playback', 'Playback speed asked for', p ? speedAsked(p.speed) : NO_RUN, p && Number.isFinite(p.speed) ? formatSpeedHint(p.speed) : undefined, true),
     R('coupling', 'Fire and air feedback', e.models.coupling <= 0 ? 'Off' : `On, strength ${fix(e.models.coupling, 2)}`),
     R('embers', 'Embers', e.models.embersOn ? 'On' : 'Off'),

@@ -361,6 +361,18 @@ describe('labels and values', () => {
     expect(rowOf(buildDebugStats(i), 'step', 'air-mean').value).toBe('Not used in this tier');
   });
 
+  it('Solver step limit: a range in the 3-D tiers, one value when the floor and the cap are the same (the fast tier), your own limit when set', () => {
+    const limit = (cadence: Partial<EngineInfo['cadence']>): string => {
+      const i = full();
+      i.engine = { ...engine, cadence: { ...engine.cadence, ...cadence } };
+      return rowOf(buildDebugStats(i), 'choices', 'solver-limit').value;
+    };
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 0.5, solverBoundS: 10 })).toBe('Automatic (0.5 s to 10 s)');
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 10, solverBoundS: 10 })).toBe('Automatic (10 s)');
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 9.98, solverBoundS: 10.01 })).toBe('Automatic (10 s)'); // the same as shown
+    expect(limit({ solverMaxStepS: 6, solverFloorS: 10, solverBoundS: 10 })).toBe('6 s (your setting)');
+  });
+
   it('Choices: the tier, why, and the timing test with the warm-up reading', () => {
     expect(rowOf(s, 'choices', 'tier').value).toBe('Standard (3-D air)');
     expect(rowOf(s, 'choices', 'tier').note).toBe(engine.tierReason);
