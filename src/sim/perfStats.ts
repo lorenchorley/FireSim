@@ -6,8 +6,9 @@
  * physics, so no result can depend on it (snapshot hashes skip `engine`).
  *
  * Cost classes (plan §5.3): C counters, R running aggregates and H rings of at most 128 numbers. There is no loop over
- * cells, no allocation in the per-step feed (typed arrays made once; the report builds its small result object), and no
- * per-step log. Retained size: about 11 KB (`retainedBytes()`, pinned under 16 KB in the test).
+ * cells, nothing of its own allocated in the per-step feed (typed arrays made once; V8 boxes a fractional number handed
+ * to any call, which is all that is left, and the report builds its small result object), and no per-step log.
+ * Retained size: about 11 KB (`retainedBytes()`, pinned under 16 KB in the test).
  *
  * What the numbers mean (the final choices; the contract only names them):
  *  - Busy time is the wall time spent INSIDE whole coupled steps (`stepOnce`: records, fire, air, embers, detectors, the
@@ -16,7 +17,8 @@
  *    'other') and is counted, because it is work the worker did.
  *  - Speeds are simulated seconds per busy second: idle time never lowers them, so a worker that is ahead of the viewer is
  *    not "slow". `s10` and `s60` cover the whole 1-second bins of the last 10 and 60 wall seconds up to the report, and
- *    are null under 100 ms of busy time. `mean` is the whole tier (the same number as `EngineRunInfo.simSecondsPerWallSecond`).
+ *    are null under 100 ms of busy time. `mean` is the whole tier (the measurement `EngineRunInfo.simSecondsPerWallSecond`
+ *    makes, but it counts the step under way as simulated and not as wall time: up to one step in a run of hundreds).
  *    `best10` and `worst10` are TUMBLING windows of 10 s of busy time each (a window closes when 10 s of computing have
  *    been added), so they are exact and cost one add per step. `history` holds one speed per 30 s of busy time, oldest
  *    first, at most 20 and only filled samples (a run with under 30 s of computing has none).
