@@ -247,7 +247,7 @@ function bundledSite(id: string, sites: Readonly<Record<string, string>>): strin
 }
 
 function pacePhrase(p: PaceInfo | null): string {
-  if (!p) return 'Not judged now (paused, as fast as possible, jumping, or hidden)';
+  if (!p) return 'Not judged now';
   return p.level === 'ok' ? 'Keeping up' : p.level === 'behind' ? 'Falling behind the speed asked for' : 'Waiting for the simulation';
 }
 
@@ -269,7 +269,7 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
     line = `${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
   }
-  return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], line);
+  return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
 }
 
 function runGroup(i: DebugStatsInput): StatGroup {
@@ -371,9 +371,10 @@ function speedGroup(i: DebugStatsInput): StatGroup {
     R('wanted', 'Playback speed asked for', p ? speedAsked(p.speed) : NO_RUN, p && Number.isFinite(p.speed) ? formatSpeedHint(p.speed) : undefined, true),
     R('achieved', 'Playback speed achieved, last 10 s', pace ? (ok(pace.achieved) ? speedX(pace.achieved) : 'Not measured yet (needs 10 s of play)') : 'Not judged now', undefined, true),
     R('waiting', 'Share of the last 10 s playback waited for the simulation', pace ? pct(pace.waitingShare) : 'Not judged now', undefined, true),
-    R('pace', 'Pace signal', pacePhrase(pace), undefined, true),
+    R('pace', 'Pace signal', pacePhrase(pace), pace ? undefined : 'Paused, as fast as possible, jumping to a time, or the app is hidden', true),
   );
-  return G('speed', 'Speed', rows, ok(sp?.s10) ? `Computing about ${speedX(sp!.s10)}; ${pacePhrase(pace).toLowerCase()}` : e ? 'Computing speed not measured yet' : noEngine(i));
+  const now = sp ? sp.s10 : e?.run.simSecondsPerWallSecond;
+  return G('speed', 'Speed', rows, ok(now) ? `Computing about ${speedX(now)}; ${pacePhrase(pace).toLowerCase()}` : e ? 'Computing speed not measured yet' : noEngine(i));
 }
 
 function historyGroup(i: DebugStatsInput): StatGroup {
