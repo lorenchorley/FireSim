@@ -926,7 +926,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   function closeTopLayer(): boolean {
     const u = ui.get();
     const layer = backLayer({ popover: topBar.popovers.openId(), menu: u.menu, panelOpen: u.panelOpen, pending: !!u.pending, sheet: u.sheet });
-    if (layer === 'popover') topBar.popovers.closeAll(false);
+    if (layer === 'popover') topBar.popovers.closeAll(); // focus goes back to the button that opened it, as it does for Escape
     else if (layer === 'menu') ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
     else if (layer === 'panel') closePanel();
     else if (layer === 'sheet') ui.set({ sheet: 'closed' });

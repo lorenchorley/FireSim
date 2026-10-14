@@ -246,6 +246,33 @@ for (const [w, h, name] of [[412, 915, 'portrait'], [844, 390, 'landscape']] as 
     await sheet.getByRole('button', { name: 'Close' }).click();
     await expect(sheet).toBeHidden();
 
+    // The hardware Back (history back) closes the sheet like Escape does, and the focus is back on the button, not left on the page.
+    await btn.click();
+    await expect(sheet).toBeVisible();
+    await page.goBack();
+    await expect(sheet).toBeHidden();
+    await expect(btn).toBeFocused();
+
+    // "All the numbers" opens the statistics screen over it; Escape closes that screen and the focus is back on the button that led there.
+    await btn.click();
+    await page.getByTestId('pace-numbers').click();
+    await expect(page.getByTestId('debug-stats')).toBeVisible();
+    await expect(sheet).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('debug-stats')).toHaveCount(0);
+    await expect(btn).toBeFocused();
+    // The signal can end while that screen is open: its button is gone when the screen closes, and the focus goes to the timeline, not to the page.
+    await btn.click();
+    await page.getByTestId('pace-numbers').click();
+    await expect(page.getByTestId('debug-stats')).toBeVisible();
+    await force(null);
+    await expect(btn).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('debug-stats')).toHaveCount(0);
+    await expect(page.getByTestId('scrubber')).toBeFocused();
+    await force('waiting');
+    await expect(btn).toBeVisible();
+
     // Opening it never changed the run: paused stays paused, and the speed is what it was.
     expect((await session(page)).playing).toBe(false);
     expect((await session(page)).speed).toBe(60);
