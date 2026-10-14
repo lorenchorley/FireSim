@@ -252,6 +252,7 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
     expect(small, look).toEqual([]);
     const heights = await screen(page).locator('.mc-toggle').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
     for (const hgt of heights) expect(hgt, look).toBeGreaterThanOrEqual(44);
+    expect(await page.getByTestId('debug-stats-copy').evaluate((el) => el.getBoundingClientRect().height), `${look} Copy button`).toBeGreaterThanOrEqual(44);
     // An icon button is drawn 40 px and grows its hit area to the tap size with its ::after (components.css), so measure both.
     for (const id of ['debug-stats-close', 'debug-stats-copy-icon', 'debug-stats-copy']) {
       const hit = await page.getByTestId(id).evaluate((el) => {
@@ -268,6 +269,22 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
     r.dataset.theme = 'light';
     delete r.dataset.contrast;
   });
+
+  // At twice the text size (Android's font scale doubles the type tokens, not the tap size) the Copy button is still 44 px tall:
+  // it was 42 px, a small button that only grew with its text.
+  await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const decl = [
+      ...['xs', 'sm', 'md', 'lg', 'xl', '2xl'].map((n) => `--fs-${n}: ${parseFloat(cs.getPropertyValue(`--fs-${n}`)) * 2}px !important`),
+      ...['xs', 'sm', 'md', 'lg', 'xl'].map((n) => `--lh-${n}: ${parseFloat(cs.getPropertyValue(`--lh-${n}`)) * 2}px !important`),
+    ];
+    const st = document.createElement('style');
+    st.id = 'e2e-text-200';
+    st.textContent = `:root { ${decl.join('; ')} }`;
+    document.head.append(st);
+  });
+  expect(await page.getByTestId('debug-stats-copy').evaluate((el) => el.getBoundingClientRect().height), 'Copy button at 200 % text').toBeGreaterThanOrEqual(44);
+  await page.evaluate(() => document.getElementById('e2e-text-200')?.remove());
 
   // Escape closes it; the run is still playing and focus is back on the menu button.
   await page.keyboard.press('Escape');

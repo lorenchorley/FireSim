@@ -178,6 +178,10 @@ describe('stylesheets: tap targets', () => {
     expect(tokenPx('--tap')).toBeGreaterThanOrEqual(44);
   });
 
+  it('the statistics screen\'s Copy button is itself 44 px tall (a small button grew to only 42 px at 200 % text)', () => {
+    expect(rule('debugstats.css', '.btn.ds-copy')).toContain('min-height: var(--tap)');
+  });
+
   it('the fast-forward Cancel button is a 44 px target of its own: a text button in its own column of the 44 px first row', () => {
     expect(rule('transport.css', '.tl-cancel')).toContain('grid-row: 1');
     expect(rule('transport.css', '.tl-cancel')).toContain('grid-column: 4');
