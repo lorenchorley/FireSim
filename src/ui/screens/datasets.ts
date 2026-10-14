@@ -36,6 +36,8 @@ import type { EngineInfo, ScenarioData, SimSnapshot } from '../../core/types';
 import type { StorageReport } from '../../data/storage';
 import { availabilityContext } from '../../render/layerCatalog';
 import type { LayerState, OverlayKind } from '../../render/layers';
+import { guessQuality } from '../../render/qualityGuess';
+import type { RenderQuality } from '../../render/SceneView';
 import { liveMemory, workingMemoryForScenario } from '../../scenario/memoryModel';
 import { h, setChildren, text, uniqueId } from '../dom';
 import { formatDuration as formatSimTime } from '../format';
@@ -43,7 +45,7 @@ import { icon, type IconName } from '../icons';
 import type { Services } from '../modules';
 import { badge, bar, kv, meter, originChip, sparkbar, stackedBar, stat, type KvRow } from '../primitives';
 import { defaultSnapshotBudget } from '../session';
-import { settingsStore } from '../settings';
+import { resolveRenderQuality, settingsStore } from '../settings';
 import { buildRequest, type SetupState } from '../setupModel';
 import { appBar, button, chipChoice, confirmDialog, copyText } from '../widgets';
 import { heatPreview, heatPreviewData } from './datasetViz';
@@ -84,6 +86,8 @@ export interface DatasetsScreenOptions {
   scenario: ScenarioData | null;
   services: Services;
   getSnapshot?: () => SimSnapshot | null;
+  /** The picture quality tier the running 3-D view was built with (undefined: no view, or the 2-D map); the settings say what the next model gets. */
+  getRenderQuality?: () => RenderQuality | undefined;
   onClose(): void;
   /** 'Show on map': close the screen and show this layer / heat map. */
   onShowLayer?(t: { overlay?: OverlayKind; sceneKey?: keyof LayerState }): void;
@@ -449,6 +453,8 @@ export function createDatasetsScreen(opts: DatasetsScreenOptions): { el: HTMLEle
         // The engine's own tier once it has reported: the fast tier holds about half of what the standard 3-D air does.
         ...(eng ? { tier: eng.tier } : {}),
         snapshotBudgetBytes: defaultSnapshotBudget(),
+        // The tier the view runs at (the GPU rows: ground mesh, trees); the build-time estimate keeps the medium default (build.ts).
+        renderQuality: opts.getRenderQuality?.() ?? resolveRenderQuality(settingsStore.get().pictureQuality, settingsStore.get().performance) ?? guessQuality(),
         ...(iw && ih ? { imagery: { width: iw, height: ih } } : {}),
       });
     } catch (e) {
