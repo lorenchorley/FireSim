@@ -10,7 +10,7 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 * Data-sheet pieces: `src/styles/data.css`
 * Screens (they only compose the primitives and tokens; no colour or size of their own): `screens.css` (Setup, Building, Settings, Notice),
   `sim.css` + `transport.css` (the simulation chrome), `layers.css` (Layers panel), `datasets.css` (Data sets), `modelcard.css` (How this
-  simulation works)
+  simulation works), `debugstats.css` (Simulation debug statistics, which reuses the model card's cards and groups)
 * Icons: `src/ui/icons.ts` (`icon()`), typed builders: `src/ui/widgets.ts` and `src/ui/primitives.ts`
 * Live gallery of every primitive in every state (dev server only):
   `/src/ui/styleguide.html?theme=light|dark&contrast=high`
@@ -36,7 +36,7 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 
 ```css
 /* main.css already imports, in this order */
-tokens -> base -> components -> overlays -> data -> screens -> sim -> transport -> layers -> datasets -> modelcard
+tokens -> base -> components -> overlays -> data -> screens -> sim -> transport -> layers -> datasets -> modelcard -> debugstats
 ```
 
 * Appearance is set on `<html>`: `data-theme="light|dark"` and `data-contrast="high"` (only when on).
@@ -88,7 +88,7 @@ Each family has `--x` (fill or big icon), `--on-x` (text on the fill), `--x-bg` 
 | Family | `--x` | `--x-bg` | `--x-ink` | Meaning |
 | --- | --- | --- | --- | --- |
 | danger | `#d93025` / `#f28b82` | `#fce8e6` / `#42302f` | `#c5221f` / `#f28b82` | errors, destructive actions, danger cards |
-| watch | `#f9ab00` / `#fdd663` | `#fef7e0` / `#3d3520` | `#a05a00` / `#fdd663` | caution (amber). Never use the fill as text or as a thin icon on white (2:1) |
+| watch | `#f9ab00` / `#fdd663` | `#fef7e0` / `#3d3520` | `#a05a00` / `#fdd663` | caution (amber). Never use the fill as text or as a thin icon on white (2:1); the timeline's speed signal draws its ring and run in `--watch-ink` |
 | ok | `#188038` / `#81c995` | `#e6f4ea` / `#263a2c` | `#137333` / `#81c995` | loaded, saved, live, fine |
 | info | `#1967d2` / `#8ab4f8` | `#e8f0fe` / `#2f3b52` | `#174ea6` / `#aecbfa` | neutral information (same blue family as the accent, so use it for chrome only) |
 | fire | `#e8710a` / `#ff9a5c` | `#fef0e0` / `#40291a` | `#b3400b` / `#ffb27f` | fire markers and fire semantics; no text sits on the fill |
@@ -223,7 +223,7 @@ progress bar and the skeleton become static.
 icons to 18 px in CSS; list leads and bars use 24. Gallery: the style guide. Names are kebab-case; older camelCase names and a few
 synonyms are aliases (`ICON_ALIASES`):
 
-* fire and tools: `flame ember leaf brush wind whatif why help-circle help crosshair target line point person undo replay cube top eye eye-off compass gps locate my-location pin play pause speed`
+* fire and tools: `flame ember leaf brush wind whatif why help-circle help crosshair target line point person undo replay cube top eye eye-off compass gps locate my-location pin play pause speed gauge`
 * navigation and actions: `menu close back arrow-back arrow-forward arrow-up arrow-down chevron-up chevron-down chevron-left chevron-right plus minus check check-circle search more-vert more-horiz open-in-new copy edit share filter tune sync history download upload trash settings contrast lock`
 * status: `warning danger info online offline`
 * data and layers: `database storage road route home tree terrain satellite cloud cloud-off droplet thermometer ruler clock calendar sun moon map globe grid image polygon text file link smartphone bar-chart table chart stats list book`
@@ -407,21 +407,22 @@ Anything a screen needed that the design system did not have was added to the ri
 | Screen | Builder | CSS | What it is made of |
 | --- | --- | --- | --- |
 | Safety notice | `screens/notice.ts` | `overlays.css` (`.modal.notice`) | the dialog; shown first, and again from Settings or the main menu |
-| Setup | `screens/setup.ts` | `screens.css` | flat cards; `listRow` for "Use my location"; a box for a pasted Google Maps link or coordinates with a Paste `iconButton` and a result row in the style of the GPS fix (`.fix`: pin, numbers, name, chips, Selected, Clear); photo cards for the demo sites; `chipChoice` rows (area, detail, weather source, duration); "Data for this run" (a row per planned data set with an `originChip` and a size; estimates are marked "≈"); a bottom bar with the summary and the blue Build button |
+| Setup | `screens/setup.ts` | `screens.css` | flat cards; `listRow` for "Use my location"; a box for a pasted Google Maps link or coordinates with a Paste `iconButton` and a result row in the style of the GPS fix (`.fix`: pin, numbers, name, chips, Selected, Clear); photo cards for the demo sites; `chipChoice` rows (area, detail, weather source, duration), then two `listRow`s under "Area and detail" (How this simulation works, Simulation debug statistics, so a phone can be checked before anything is built); "Data for this run" (a row per planned data set with an `originChip` and a size; estimates are marked "≈"); a bottom bar with the summary and the blue Build button |
 | Building | `screens/building.ts` | `screens.css` | `.progress`, a row per data set as it arrives |
-| Settings | `screens/settings.ts` | `screens.css` | `appBar`, `.list` rows with trailing values, `segmented`, `toggle` (including High contrast), links to Data sets and How this simulation works |
+| Settings | `screens/settings.ts` | `screens.css` | `appBar`, `.list` rows with trailing values, `segmented` (Simulation: Performance, then **Picture quality** Auto / Low / Medium / High with its hint and, only when it applies, one plain paragraph that High may run slowly on a phone the guess calls Low: a heads-up, never an alert or a dialog), `toggle` (including High contrast), links to Data sets, How this simulation works and Simulation debug statistics |
 | Simulation | `screens/sim/*` | `sim.css`, `transport.css` | below |
-| Layers panel | `screens/sim/layersPanel.ts` | `layers.css` | `tileGrid` (map type and map details), heat-map rows with a colour-ramp swatch, `chip`s, `segmented`, `toggle`, `slider`; one panel built from the layer catalog |
+| Layers panel | `screens/sim/layersPanel.ts` | `layers.css` | `tileGrid` (map type and map details), **Night lighting** (a `segmented` Realistic / Brighter / Daylight with a hint, directly under the map-type tiles; test id `night-look`; left out where the view has no night), heat-map rows with a colour-ramp swatch, `chip`s, `segmented`, `toggle`, `slider`; one panel built from the layer catalog |
 | Data sets | `screens/datasets.ts` | `datasets.css` | `appBar`, `stat` / `statRow`, `stackedBar`, `bar`, `sparkbar`, `kv`, `originChip`, `listRow`, `chipChoice` (filters), a heat-map preview canvas, `confirmDialog` before any deletion |
-| How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary |
+| How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary; its *Speed and memory right now* section is four live `kv` rows and a tonal button that opens Simulation debug statistics |
+| Simulation debug statistics | `screens/debugStats.ts` | `debugstats.css` (and `modelcard.css`) | `appBar` with a Back arrow and a Copy `iconButton`; one `card` with the one-line summary, a state word (Live, Paused, Finished, No run yet, Demo engine: a word, never colour alone), a labelled Copy `button` and its hint; then 18 collapsed groups (the model card's collapsible `card`s, each with its own one-line summary, `kv-stack` rows, a tiny bar chart, `.ds-chart`, in `--series-1` for the speed history); a selectable `textarea` (`.ds-box`) appears only when the phone refuses the clipboard |
 
-**Full-screen screens** (Settings, Data sets, How this simulation works) open as overlays over the stage (`app.ts`): an `appBar` with a back
+**Full-screen screens** (Settings, Data sets, How this simulation works, Simulation debug statistics) open as overlays over the stage (`app.ts`): an `appBar` with a back
 arrow, cards of rows on the grey background, the TRAINING strip above all of it. The stage behind is `inert`, Back / Escape step back one
 level (a data set's page returns to the list), and focus returns to the control that opened the screen. They never pause or change the run.
 
 **The simulation chrome**, from top to bottom: the floating pill (`.top-bar` / `.search-bar` look: main menu, clock with its elapsed line, the
 blue round Play button, the speed chip) with a row of 28 px read-out chips under it (temperature, humidity, wind, fire-danger rating: information,
-not buttons); the main menu is a left side sheet of `.list-row`s with inset dividers; a column of round white `.fab`s on the handed side (Layers, View,
+not buttons); the main menu is a left side sheet of `.list-row`s with inset dividers (its last group is Settings, Simulation debug statistics and New scenario); a column of round white `.fab`s on the handed side (Layers, View,
 Compass); the extended "Tools" `.fab-ext` in the bottom corner with a labelled speed dial of mini-FABs; the map legend card and the attribution
 line at the bottom of the visible map; `.bottom-nav` (Insights with a `.nav-badge`, Weather, Stats, Help) above the timeline strip; a rounded
 `.bottom-sheet` with a grab handle that a tab opens at peek / half / full. One menu is open at a time; a pick, an outside tap, Escape and Back close it.
@@ -430,6 +431,33 @@ Two rules keep controls reachable on short screens: while the View card is open 
 and on a short landscape screen at a large text size (200 % on 844 x 390) the read-out chips go away while a tool panel is open
 (`.chips-away`, set by `layoutInsets` in `simScreen.ts` only when the chips sit on their own row and the panel body has less than 64 px left), so
 the panel's header and its Add / Clear bar stay on screen. Both are covered by `e2e/ui.spec.ts`.
+
+**The speed signal** (`scrubber.ts`, `paceSheet.ts`, `transport.css`). While the simulation cannot keep up with the playback speed,
+and only then, a 44 x 44 px round button (`.icon-btn.tl-pace`, the `gauge` icon at 20 px, test id `pace-btn`) takes the strip's fourth
+grid column, the one Cancel uses while a jump computes, and is hidden while a jump computes. The strip stays `--timeline-h` (64 px) high;
+the track is 44 px narrower while the button shows. It is a state, and never colour alone: *behind* (an
+early warning) is the glyph in `--text` inside a 1 px `--outline` ring; *waiting* is the glyph and a 3 px ring in `--watch-ink`, plus a
+44 x 3 px run under the rail (`.tl-pace-run`) that ends at the thumb, because the stretch between the thumb and the newest result has no
+length while playback waits, so a line there would not show. The ring and the run use `--watch-ink` and not `--watch`: the amber fill
+is only 1.9:1 against the strip in the two light looks (the colour table above says never to use it as text or a thin line on white).
+High contrast: a 2 px outline and a 4 px ring. Forced colours: `ButtonText` borders (1 px, 3 px) and a `Highlight` run. There is no
+transition, so reduced motion has nothing to switch off. The accessible name is "Simulation is running slower than your playback speed.
+Show details." and a polite status line (`role=status`, visually hidden) says it once when playback starts to wait and at most every 2
+minutes; it is never `role=alert`, never a toast or a scrim. The old "Computing" badge is not shown while the signal is. A tap opens
+the sheet *Running slower than playback* (`transportSheet()` in the top bar's popover group: dialog role, grab handle, Close; an outside
+tap, Escape and Back close it and focus returns to the button; two columns on a short landscape screen): a lead sentence (what you asked
+for and what the phone is computing), *Does it change the result? No ...*, `meter` rows for where the time goes (3-D air, fire spread,
+embers, everything else), the likely reasons (a list, only those the numbers support), the buttons *Play at N x* and *Use the fast
+model from here* (with its note), an *All the numbers* `listRow` that opens Simulation debug statistics, and a footnote ("Measured on
+this phone, over the last 10 seconds"). "Play at N x" also becomes the default speed, as choosing it in the speed sheet does.
+
+**The Why here? icon row** (`whyPanel.ts`, `markerWords.ts`, `.why-marker` in `sim.css`). When the Why here? tool is tapped on an
+icon, the panel starts with a row on `--surface-2` with `--r-md` corners: the icon (32 px; the map's own picture cut from its atlas,
+or for a home the UI house icon in the home marker's colour; decorative, `aria-hidden`, so the words carry the meaning), its name in
+`--fs-md` medium weight ("Spot fire", "Ignition point", "Danger: Uphill run", "You are here", "Home"), one muted `--fs-sm` detail line
+(for example "Started by an ember at 15:17 (+1:12), 450 m ahead of the front") and, when icons are stacked, "+2 more icons here, zoom in
+to tell them apart". It comes first in every state of the panel (loading, error, explanation); a tap on the ground has no such row,
+which is how the panel says "I took the ground, not an icon". It is part of the panel, not a popup, toast or alert.
 
 **Never**: a pop-up, a toast or a dialog because of something the simulation did. New insight cards only raise the badge on the Insights tab. Dialogs
 open from a tap (`confirmDialog` for deletions, the safety notice, "Leave this simulation?").
