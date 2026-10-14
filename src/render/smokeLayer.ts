@@ -222,18 +222,23 @@ export class SmokeLayer {
     g.setAttribute('aProps', this.aProps);
     g.instanceCount = 0;
     this.geom = g;
-    this.uniforms = { uMix: { value: 1 }, uAlphaScale: { value: 1 } };
+    // The smoke body has its own five lighting uniforms (always the real lighting): over a map lit by night lighting it
+    // would otherwise turn into a pale cloud in a dark sky and hide the fire.
+    this.uniforms = {
+      uMix: { value: 1 },
+      uAlphaScale: { value: 1 },
+      uSunColour: { value: new THREE.Color(1, 0.95, 0.88) },
+      uSunI: { value: 2.6 },
+      uSkyAmb: { value: new THREE.Color(0.5, 0.6, 0.8) },
+      uAmbI: { value: 0.65 },
+      uExposure: { value: 1 },
+    };
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         ...this.uniforms,
         uVex: shared.uVex!,
         uClock: shared.uClock!,
-        uSunColour: shared.uSunColour!,
-        uSunI: shared.uSunI!,
-        uSkyAmb: shared.uSkyAmb!,
-        uAmbI: shared.uAmbI!,
         uNight: shared.uNight!,
-        uExposure: shared.uExposure!,
         uFogColour: shared.uFogColour!,
         uFogDensity: shared.uFogDensity!,
       },

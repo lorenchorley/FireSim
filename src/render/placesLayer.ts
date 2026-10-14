@@ -154,7 +154,7 @@ uniform vec3 uFill[${STYLE_COUNT}];
 uniform vec3 uCase[${STYLE_COUNT}];
 uniform vec4 uPar[${STYLE_COUNT}];
 uniform vec4 uPar2[${STYLE_COUNT}];
-uniform float uNight;
+uniform float uMapNight;
 uniform float uClock;
 uniform float uTime;
 uniform float uBurnBand;
@@ -223,8 +223,8 @@ void main() {
     col = mix(col, natural, 0.93 * nearK) + 0.02 * col * nearK;
   }
   // Scene light: night dims and cools the map, but roads stay readable.
-  float k = mix(1.0, 0.36, uNight);
-  col *= k * mix(vec3(1.0), vec3(0.78, 0.9, 1.12), uNight);
+  float k = mix(1.0, 0.36, uMapNight);
+  col *= k * mix(vec3(1.0), vec3(0.78, 0.9, 1.12), uMapNight);
 
   // Fire: the flaming band glows through the road, burnt road is sooted.
   vec3 emit = vec3(0.0);
@@ -294,7 +294,7 @@ const HOME_FRAG = /* glsl */ `
 ${TONEMAP}
 ${FOG}
 uniform vec3 uSunDir; uniform vec3 uSunColour; uniform float uSunI;
-uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight;
+uniform vec3 uSkyAmb; uniform vec3 uGroundAmb; uniform float uAmbI; uniform float uNight; uniform float uMapNight;
 uniform vec3 uWall; uniform vec3 uRoof; uniform vec3 uDotCol;
 varying vec3 vN;
 varying float vPart;
@@ -306,7 +306,7 @@ void main() {
   albedo = mix(albedo, uDotCol, vDot);
   float ndl = max(dot(n, uSunDir), 0.0);
   vec3 amb = mix(uGroundAmb, uSkyAmb, 0.5 + 0.5 * n.y) * uAmbI;
-  vec3 lit = (uSunColour * uSunI * ndl * 0.85 + amb * 1.3 + 0.05 * (1.0 - uNight)) / LIGHT_REF;
+  vec3 lit = (uSunColour * uSunI * ndl * 0.85 + amb * 1.3 + 0.05 * (1.0 - uMapNight)) / LIGHT_REF;
   // Dots are drawn flat and bright so they read as markers; houses are lit by the scene.
   vec3 col = albedo * mix(lit, vec3(0.9) + 0.1 * lit, vDot);
   // Lit windows at night keep the town readable.
@@ -344,12 +344,12 @@ void main() {
 
 const LABEL_FRAG = /* glsl */ `
 uniform sampler2D uAtlas;
-uniform float uNight;
+uniform float uMapNight;
 varying vec2 vUv;
 varying float vAlpha;
 void main() {
   vec4 c = texture(uAtlas, vUv);
-  c.rgb *= mix(1.0, 0.82, uNight);
+  c.rgb *= mix(1.0, 0.82, uMapNight);
   c.a *= vAlpha;
   if (c.a < 0.02) discard;
   gl_FragColor = c;
@@ -438,6 +438,7 @@ export class PlacesLayer {
       uViewport: pick('uViewport', new THREE.Vector2(1, 1)),
       uDpr: pick('uDpr', 1),
       uNight: pick('uNight', 0),
+      uMapNight: pick('uMapNight', 0),
       uClock: pick('uClock', 0),
       uTime: pick('uTime', 0),
       uBurnBand: pick('uBurnBand', 420),
@@ -854,6 +855,7 @@ export class PlacesLayer {
             uViewport: this.ribbonUniforms.uViewport!,
             uDpr: this.ribbonUniforms.uDpr!,
             uNight: this.ribbonUniforms.uNight!,
+            uMapNight: this.ribbonUniforms.uMapNight!,
             uExposure: this.ribbonUniforms.uExposure!,
             uFogColour: this.ribbonUniforms.uFogColour!,
             uFogDensity: this.ribbonUniforms.uFogDensity!,
@@ -971,7 +973,7 @@ export class PlacesLayer {
         uVex: this.ribbonUniforms.uVex!,
         uViewport: this.ribbonUniforms.uViewport!,
         uDpr: this.ribbonUniforms.uDpr!,
-        uNight: this.ribbonUniforms.uNight!,
+        uMapNight: this.ribbonUniforms.uMapNight!,
         uAtlas: { value: tex },
       },
       vertexShader: LABEL_VERT,

@@ -128,6 +128,7 @@ const SHARED_KEYS = [
   'uSkyAmb',
   'uGroundAmb',
   'uAmbI',
+  'uMapNight',
   'uExposure',
   'uFogColour',
   'uFogDensity',
@@ -511,7 +512,6 @@ export class VegetationLayer {
       const s = SPEC[group];
       const uniforms: Record<string, THREE.IUniform> = {};
       for (const k of SHARED_KEYS) uniforms[k] = this.shared[k]!;
-      if (this.shared.uNight) uniforms.uNight = this.shared.uNight;
       Object.assign(uniforms, this.uniforms);
       Object.assign(uniforms, {
         uKind: { value: s.kind },

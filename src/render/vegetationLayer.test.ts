@@ -35,6 +35,7 @@ function sharedUniforms(): Record<string, THREE.IUniform> {
     uFogColour: v(new THREE.Color()),
     uFogDensity: v(0),
     uNight: v(0),
+    uMapNight: v(0),
   };
 }
 

@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, SceneImagery, SceneViewApi } from './api';
+import type { CameraState, NightLook, SceneImagery, SceneViewApi } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { gridBounds, sunDirectionWorld } from './coords';
@@ -41,7 +41,7 @@ import { legendFor, overlayScale, type LegendSpec } from './legends';
 import { AdaptiveDpr, FrameMeter } from './perf';
 import { sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
-import { skyLighting } from './sky';
+import { mapLighting, skyLighting } from './sky';
 import { SkyDome } from './skyDome';
 import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
@@ -262,6 +262,8 @@ export class SceneView implements SceneViewApi {
       uGroundAmb: { value: new THREE.Color(0.3, 0.26, 0.2) },
       uAmbI: { value: 0.65 },
       uNight: { value: 0 },
+      uMapNight: { value: 0 },
+      uShadowGain: { value: 1 },
       uExposure: { value: 1 },
       uFogColour: { value: new THREE.Color(0.7, 0.78, 0.88) },
       uFogDensity: { value: 1 / 45000 },
@@ -449,6 +451,22 @@ export class SceneView implements SceneViewApi {
     return this.plainGroundOn;
   }
   private plainGroundOn = false;
+
+  /**
+   * Night lighting of the map (Layers, Map type): Realistic follows the clock, Brighter and Daylight light the map from a fixed
+   * sun after dark while the sky, stars and the fire's glow keep following the clock. Uniforms only, so it applies at once.
+   */
+  setNightLook(look: NightLook): void {
+    if (this.nightLookValue === look) return;
+    this.nightLookValue = look;
+    this.sunKey = NaN;
+    this.applyLighting(this.sunTimeMs());
+    this.dirty = true;
+  }
+  get nightLook(): NightLook {
+    return this.nightLookValue;
+  }
+  private nightLookValue: NightLook = 'realistic';
 
   /** An aerial photo was given for this scenario. */
   get hasImagery(): boolean {
@@ -1020,17 +1038,33 @@ export class SceneView implements SceneViewApi {
     const L = skyLighting(sun.elevation, { cloudCover: w?.cloudCover, smoke: this.smokeHaze * 0.35 });
     const u = this.u;
     const dir = sunDirectionWorld(sun.azimuth, Math.max(sun.elevation, -2));
-    (u.uSunDir!.value as THREE.Vector3).set(dir[0], dir[1], dir[2]);
-    (u.uSunColour!.value as THREE.Color).setRGB(...L.sunColour);
-    u.uSunI!.value = L.sunIntensity;
-    (u.uSkyAmb!.value as THREE.Color).setRGB(...L.skyAmbient);
-    (u.uGroundAmb!.value as THREE.Color).setRGB(...L.groundAmbient);
-    u.uAmbI!.value = L.ambientIntensity;
+    // The map (ground, photo, trees, roads, labels) reads the MAP lighting. The sky dome, the smoke body, the night factor of
+    // the emissive things (flames, fire light on smoke, lit windows, stars) and the fog colour keep the REAL lighting.
+    const M = mapLighting(L, this.nightLookValue, dir);
+    (u.uSunDir!.value as THREE.Vector3).set(M.sunDir[0], M.sunDir[1], M.sunDir[2]);
+    (u.uSunColour!.value as THREE.Color).setRGB(...M.sunColour);
+    u.uSunI!.value = M.sunIntensity;
+    (u.uSkyAmb!.value as THREE.Color).setRGB(...M.skyAmbient);
+    (u.uGroundAmb!.value as THREE.Color).setRGB(...M.groundAmbient);
+    u.uAmbI!.value = M.ambientIntensity;
     u.uNight!.value = L.night;
-    u.uExposure!.value = L.exposure;
+    u.uMapNight!.value = M.mapNight;
+    u.uShadowGain!.value = M.shadowGain;
+    u.uExposure!.value = M.exposure;
     (u.uFogColour!.value as THREE.Color).setRGB(...L.fog);
-    (this.sky.uniforms.uZenith!.value as THREE.Color).setRGB(...L.zenith);
-    (this.sky.uniforms.uHorizon!.value as THREE.Color).setRGB(...L.horizon);
+    const su = this.sky.uniforms;
+    (su.uSunDir!.value as THREE.Vector3).set(dir[0], dir[1], dir[2]);
+    (su.uSunColour!.value as THREE.Color).setRGB(...L.sunColour);
+    su.uSunI!.value = L.sunIntensity;
+    su.uExposure!.value = L.exposure;
+    (su.uZenith!.value as THREE.Color).setRGB(...L.zenith);
+    (su.uHorizon!.value as THREE.Color).setRGB(...L.horizon);
+    const sm = this.smoke.uniforms;
+    (sm.uSunColour!.value as THREE.Color).setRGB(...L.sunColour);
+    sm.uSunI!.value = L.sunIntensity;
+    (sm.uSkyAmb!.value as THREE.Color).setRGB(...L.skyAmbient);
+    sm.uAmbI!.value = L.ambientIntensity;
+    sm.uExposure!.value = L.exposure;
     u.uGlowGain!.value = 1.2 + 5 * L.night;
     const size = this.hf ? Math.max(this.hf.xMax - this.hf.xMin, this.hf.yMax - this.hf.yMin) : 9000;
     u.uFogDensity!.value = (1 + 1.5 * this.smokeHaze) / (size * 4.2);
