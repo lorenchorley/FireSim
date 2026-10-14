@@ -5,7 +5,7 @@
  * simulated in 3-D (45 × 45 × 20 cells, 200 m apart)"), then seven collapsible groups (the first open):
  *
  *   At a glance · What it can and cannot resolve · How sure are we? · Data in this run · Layers and what they show ·
- *   Engine right now · Words used
+ *   Speed and memory right now · Words used
  *
  * The content is src/ui/modelInfo.ts (pure, tested); this file only draws it. While the page is open the live values
  * are refreshed at most once per second, in place (text nodes are patched, the structure is rebuilt only when it
@@ -34,6 +34,8 @@ export interface ModelCardOptions {
   settings: () => Settings;
   onClose(): void;
   onOpenDatasets?(datasetId?: string): void;
+  /** Open "Simulation debug statistics" (the full numbers behind the "Speed and memory right now" summary). */
+  onOpenDebugStats?(): void;
 }
 
 /** Live values are refreshed at most this often (ms) while the page is open. */
@@ -51,6 +53,7 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
   });
 
   const historyBudget = defaultSnapshotBudget();
+  const nav = globalThis.navigator as { hardwareConcurrency?: number; deviceMemory?: number } | undefined;
   const input = (): Parameters<typeof describeModel>[0] => {
     const snapshot = opts.getSnapshot?.() ?? null;
     const settings = opts.settings();
@@ -70,6 +73,7 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
       request,
       historyBudgetBytes: historyBudget,
       engineSource: opts.services.sources.sim,
+      phone: { cores: nav?.hardwareConcurrency ?? null, memoryGb: nav?.deviceMemory ?? null },
     };
   };
 
@@ -241,6 +245,10 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
           b.terms.map((g) => h('div', { class: 'mc-term' }, [h('dt', { class: 'mc-term-name' }, g.term), h('dd', { class: 't-secondary' }, g.gloss)])),
         );
       case 'action':
+        if (b.action === 'open-debug-stats')
+          return opts.onOpenDebugStats
+            ? h('div', { class: 'mc-actions cluster' }, [button({ label: b.label, icon: 'speed', variant: 'tonal', testId: 'model-card-debug-stats', onClick: () => opts.onOpenDebugStats?.() })])
+            : null;
         if (!opts.onOpenDatasets) return null;
         return h('div', { class: 'mc-actions cluster' }, [
           button({ label: b.label, icon: 'database', variant: 'tonal', testId: 'model-card-datasets', onClick: () => opts.onOpenDatasets?.() }),

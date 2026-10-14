@@ -65,6 +65,7 @@ export interface SetupScreenOptions {
   onOpenDatasets?: (datasetId?: string) => void;
   /** Open "How this simulation works" for the current choice. */
   onOpenModelCard?: (s: SetupState) => void;
+  onOpenDebugStats?: () => void;
   /** To say when the scenario builder is the demo (mock) one. */
   services?: Services;
 }
@@ -541,7 +542,14 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   const modelRow = opts.onOpenModelCard
     ? listRow({ title: 'How this simulation works', sub: 'What is 2-D and what is 3-D, grids and time steps', icon: 'help-circle', chevron: true, testId: 'setup-model-card', onClick: () => opts.onOpenModelCard?.(store.get()) })
     : null;
-  const areaCard = section('Area and detail', [extentChips.el, detailChips.el, detailHintEl, modelRow ? h('ul', { class: 'list card-list' }, h('li', null, modelRow)) : null], { icon: 'target', id: 'setup-area' });
+  const debugRow = opts.onOpenDebugStats
+    ? listRow({ title: 'Simulation debug statistics', sub: 'Speed, memory and what this phone can do', icon: 'speed', chevron: true, testId: 'setup-debug-stats', onClick: () => opts.onOpenDebugStats?.() })
+    : null;
+  const areaCard = section(
+    'Area and detail',
+    [extentChips.el, detailChips.el, detailHintEl, modelRow || debugRow ? h('ul', { class: 'list card-list' }, [modelRow ? h('li', null, modelRow) : null, debugRow ? h('li', null, debugRow) : null]) : null],
+    { icon: 'target', id: 'setup-area' },
+  );
 
   // ───────────── Weather ─────────────
   const weatherChips = chipChoice<WeatherChoice>({

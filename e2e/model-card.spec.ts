@@ -151,19 +151,23 @@ test('model card on the real engine: opens while playing, shows the engine’s o
   expect(s1.playing).toBe(true);
   expect(s1.viewTime).toBeGreaterThan(t0);
 
-  // The live rows: the engine rows equal the engine's report. (The test pauses to read two things at the same instant; the
-  // card itself never does.)
+  // The live rows: the four-row summary equals the engine's report (the long block moved to the Simulation debug statistics
+  // screen, debug-stats.spec.ts). (The test pauses to read two things at the same instant; the card itself never does.)
   await page.evaluate(() => (window as unknown as { __firesim: { session: { pause(): void } } }).__firesim.session.pause());
   await expect.poll(async () => (await session(page)).playing).toBe(false);
   await page.waitForTimeout(1600); // the card refreshes once a second
   const e1 = (await engine(page))!;
   const engBody = page.getByTestId('model-section-engine-body');
   const fact = async (id: string): Promise<string> => norm(await engBody.locator(`[data-fact="${id}"] .mc-fact-value`).innerText());
-  await expect.poll(() => fact('eng-embers')).toBe(e1.embers.on ? `${grp(e1.embers.active)} of ${grp(e1.embers.max)} tracked` : 'Switched off');
-  expect(await fact('eng-tier')).toBe(e1.tier === 'fast' ? 'Fast (surface wind)' : e1.tier === 'high' ? 'High (finer 3-D air)' : 'Standard (3-D air)');
-  expect(await fact('eng-checkpoints')).toContain(`${e1.run.checkpoints} held`);
-  expect(await fact('eng-seed')).toBe(String(e1.run.seed));
-  expect(await fact('eng-display')).toContain('A picture every');
+  await expect.poll(() => fact('eng-tier')).toBe(e1.tier === 'fast' ? 'Fast (surface wind)' : e1.tier === 'high' ? 'High (finer 3-D air)' : 'Standard (3-D air)');
+  expect(await fact('eng-speed')).toMatch(/^[\d ]+ s of fire per second$|^Not measured yet$/);
+  const mem = e1.memory?.totalBytes;
+  await expect.poll(() => fact('eng-memory')).toBe(mem === undefined ? 'Not measured yet' : mem < 1e6 ? `${(mem / 1e3).toFixed(1)} KB` : `${(mem / 1e6).toFixed(1)} MB`);
+  expect(await fact('eng-phone')).toMatch(/cores|memory class/);
+  // The title "Engine right now" is retired and the long block is gone from the card: it is the four rows and a link.
+  await expect(page.getByTestId('model-section-engine')).toContainText('Speed and memory right now');
+  expect(await engBody.locator('[data-fact]').count()).toBe(4);
+  expect(await engBody.innerText()).not.toContain('Fire sub-step');
   expect(norm(await engBody.locator('[data-fact="eng-tier"] .mc-fact-note').innerText())).toContain(e1.tierReason.replace(/[   ]/g, ' ').slice(0, 30));
   checkHeadline(await headline(), e1);
 
@@ -195,7 +199,8 @@ test('model card on the real engine: opens while playing, shows the engine’s o
   await expect(page.getByTestId('model-card-status')).toContainText('Copied');
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain('TRAINING AID · NOT FOR OPERATIONAL USE');
-  for (const w of ['At a glance', 'What it can and cannot resolve', 'How sure are we?', 'Data in this run', 'Layers and what they show', 'Engine right now', 'Words used']) expect(clip).toContain(w);
+  for (const w of ['At a glance', 'What it can and cannot resolve', 'How sure are we?', 'Data in this run', 'Layers and what they show', 'Speed and memory right now', 'Words used']) expect(clip).toContain(w);
+  expect(clip).not.toContain('Engine right now');
   expect(clip).not.toMatch(BAD);
 
   // ── Escape closes the card; the run is still going. Then Back (Android hardware Back = history back) the same. ──
@@ -239,14 +244,14 @@ test('model card from Setup: a preview planned from the form, with no run behind
     await expect(page.getByTestId('build')).toBeVisible();
   };
 
-  // Normal detail: the headline is the plan of the form (auto tier: 3-D if the phone is fast enough, else the fast mode).
+  // Normal detail: the headline is the plan of the form (auto tier: 3-D unless the timing test on this phone finds it far too slow).
   let [, cell, nx] = await hint();
   await open();
   await expect(page.getByTestId('training-badge')).toBeVisible();
   await expect(page.getByTestId('model-card-mode')).toContainText('preview');
   let head = norm(await page.getByTestId('model-card-headline').innerText());
   expect(head).toContain(`Planned: fire spreads in 2-D on a ${cell} m grid`);
-  expect(head).toMatch(/if this phone is fast enough/);
+  expect(head).toMatch(/unless a short timing test on this phone, when the run starts, finds it far too slow/);
   const fireRow = norm(await page.getByTestId('model-row-fire').innerText());
   expect(fireRow).toContain(`${cell} m cells (${nx} × ${nx}`);
   await openAllSections(page);

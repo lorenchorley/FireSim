@@ -15,6 +15,7 @@ import type { LayerState, OverlayKind } from '../render/layers';
 import { BackStack, escapeStep, setAppBackStack } from './backStack';
 import { h, text } from './dom';
 import { icon } from './icons';
+import { watchLongTasks } from './eventLog';
 import { loadScenarioImagery } from './imagery';
 import type { Services } from './modules';
 import { buildRequest, type SetupState } from './setupModel';
@@ -38,7 +39,7 @@ export type ShowLayerTarget = { overlay?: OverlayKind; sceneKey?: keyof LayerSta
 
 /** A full-screen screen shown over the stage. */
 interface Overlay {
-  id: 'settings' | 'datasets' | 'model-card';
+  id: 'settings' | 'datasets' | 'model-card' | 'debug-stats';
   screen: Screen;
   host: HTMLElement;
   opener: HTMLElement | null;
@@ -61,6 +62,8 @@ export class App {
   private leaving = false;
   /** Until then (performance.now() ms) "Build" on Setup is ignored: the second tap of a double tap on Cancel / Back to setup lands on it. */
   private buildGuardUntil = 0;
+  /** The debug statistics chunk is loading: a second tap meanwhile is ignored. */
+  private openingDebugStats = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -76,6 +79,7 @@ export class App {
       h('span', { class: 'badge-short', aria: { hidden: true } }, 'Training aid only'),
     ]);
     root.replaceChildren(badge, this.stage, this.live);
+    watchLongTasks(); // the Display statistics count the screen thread's long tasks of the last minute
     this.back = new BackStack(history);
     setAppBackStack(this.back);
     this.back.setBase({ back: () => this.baseBack(), closable: () => !!this.sim || !!this.building });
@@ -130,6 +134,7 @@ export class App {
       onSettings: () => this.openSettings(),
       onOpenDatasets: (id) => this.openDatasets(id),
       onOpenModelCard: () => this.openModelCard(),
+      onOpenDebugStats: () => void this.openDebugStats(),
     });
     this.setup = setup;
     this.swap(setup);
@@ -205,6 +210,7 @@ export class App {
       onNotice: () => void showNotice(this.root, { review: true }),
       onOpenDatasets: (id) => this.openDatasets(id),
       onOpenModelCard: () => this.openModelCard(),
+      onOpenDebugStats: () => void this.openDebugStats(),
     });
     this.openOverlay('settings', screen);
     ov = this.overlays[this.overlays.length - 1];
@@ -246,9 +252,39 @@ export class App {
       settings: () => settingsStore.get(),
       onClose: () => ov && this.closeOverlay(ov),
       onOpenDatasets: (id) => this.openDatasets(id),
+      onOpenDebugStats: () => void this.openDebugStats(),
     });
     this.openOverlay('model-card', screen);
     ov = this.overlays[this.overlays.length - 1];
+  }
+
+  /**
+   * "Simulation debug statistics": the speed, memory and phone facts of the running simulation (or, before a run, of the phone).
+   * The screen is its own lazy chunk, loaded on the first open. One instance; focus returns to the row that opened it.
+   */
+  async openDebugStats(): Promise<void> {
+    if (this.openingDebugStats) return;
+    this.openingDebugStats = true;
+    try {
+      const { createDebugStatsScreen } = await import('./screens/debugStats');
+      const existing = this.overlays.find((o) => o.id === 'debug-stats');
+      if (existing) this.closeOverlay(existing);
+      let ov: Overlay | undefined;
+      const screen = createDebugStatsScreen({
+        scenario: this.sim ? this.scenario : null,
+        services: this.services,
+        session: this.sim?.session ?? null,
+        view: this.sim?.view ?? null,
+        settings: () => settingsStore.get(),
+        onClose: () => ov && this.closeOverlay(ov),
+      });
+      this.openOverlay('debug-stats', screen);
+      ov = this.overlays[this.overlays.length - 1];
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.openingDebugStats = false;
+    }
   }
 
   /** "Show on map" from the Data sets screen: back to the running simulation, with that layer or heat map on. */
@@ -360,6 +396,7 @@ export class App {
         onNotice: () => void showNotice(this.root, { review: true }),
         onOpenDatasets: (id) => this.openDatasets(id),
         onOpenModelCard: () => this.openModelCard(),
+        onOpenDebugStats: () => void this.openDebugStats(),
       });
       if (ctrl.signal.aborted || this.building !== building) {
         sim.destroy();
