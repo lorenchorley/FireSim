@@ -2,12 +2,14 @@
  * Settings & About (D), flat Maps style: a top app bar (back arrow + left-aligned title) and cards of list rows, switches and
  * segmented controls.
  *   Display: theme (Auto / Light / Night), High contrast (bright sun), wind units, the hand the Tools menu is for
- *   Simulation: performance, picture interval and solver step, the optional reactions to Danger cards (off by default)
+ *   Simulation: performance, picture quality (3-D), picture interval and solver step, the optional reactions to Danger cards (off by default)
  *   Data and transparency: "Data sets and storage" and "How this simulation works" (full-screen screens)
  *   Safety: the notice again
  *   Data and licences: content.ts ATTRIBUTIONS, with tap-to-copy links (the app never opens a web page by itself)
  *   Research behind the model, About (version, build id, which modules run)
  */
+import { deviceFacts, guessQuality } from '../../render/qualityGuess';
+import type { RenderQuality } from '../../render/SceneView';
 import { CC_BY_4, LICENCES, PROVIDERS } from '../../scenario/recordKit';
 import { APP_VERSION, BUILD_MODE, buildId } from '../buildInfo';
 import { ATTRIBUTIONS, REFERENCES, type Attribution } from '../content';
@@ -16,7 +18,7 @@ import { icon } from '../icons';
 import type { Services } from '../modules';
 import { formatStepLabel } from '../format';
 import { kv, listRow, showSnackbar } from '../primitives';
-import { performanceProfile, settingsStore, SOLVER_STEPS, TIME_STEPS, type PerformanceMode, type ThemeSetting } from '../settings';
+import { performanceProfile, resolveRenderQuality, settingsStore, SOLVER_STEPS, TIME_STEPS, type PerformanceMode, type PictureQuality, type ThemeSetting } from '../settings';
 import { detailCell } from '../setupModel';
 import { SCENARIO_PARAMS } from '../../scenario/params';
 import { appBar, copyText, section, segmented, toggle } from '../widgets';
@@ -55,6 +57,15 @@ export function createSettingsScreen(opts: SettingsScreenOptions): { el: HTMLEle
   const s = settingsStore.get();
   const set = settingsStore.set.bind(settingsStore);
   const hint = (t: string): HTMLElement => h('p', { class: 'hint' }, t);
+  // The warning under Picture quality follows both the Performance and the Picture quality choices (Detail also asks for High).
+  const phone: PhoneGuess = { tier: guessQuality(), ...deviceFacts() };
+  const qualityNote = h('p', { class: 'hint', dataset: { testid: 'picture-quality-note' }, aria: { live: 'polite' } });
+  const showQualityNote = (): void => {
+    const t = pictureQualityNote(settingsStore.get().pictureQuality, settingsStore.get().performance, phone);
+    qualityNote.textContent = t ?? '';
+    qualityNote.hidden = !t;
+  };
+  showQualityNote();
 
   const display = section(
     'Display',
@@ -116,9 +127,30 @@ export function createSettingsScreen(opts: SettingsScreenOptions): { el: HTMLEle
         ],
         value: s.performance,
         testId: 'performance',
-        onChange: (v) => set({ performance: v }),
+        onChange: (v) => {
+          set({ performance: v });
+          showQualityNote();
+        },
       }).el,
       hint(performanceHint()),
+      segmented<PictureQuality>({
+        label: 'Picture quality',
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'low', label: 'Low' },
+          { value: 'medium', label: 'Medium' },
+          { value: 'high', label: 'High' },
+        ],
+        value: s.pictureQuality,
+        columns: 2,
+        testId: 'picture-quality',
+        onChange: (v) => {
+          set({ pictureQuality: v });
+          showQualityNote();
+        },
+      }).el,
+      hint(PICTURE_QUALITY_HINT),
+      qualityNote,
       segmented<string>({
         label: 'Picture interval (time step)',
         options: TIME_STEPS.map((sec) => ({ value: String(sec), label: formatStepLabel(sec) })),
@@ -265,6 +297,28 @@ export function createSettingsScreen(opts: SettingsScreenOptions): { el: HTMLEle
 function buildLabel(): string {
   const id = buildId();
   return id === 'development' ? 'Development server' : `${id} (${BUILD_MODE})`;
+}
+
+/** What the Picture quality row does (settings.ts resolveRenderQuality; the tiers are in SceneView.ts). */
+export const PICTURE_QUALITY_HINT =
+  "Auto picks from this phone's cores and memory; Detail also asks for High. High draws more terrain and trees and needs more memory; the picture still lowers its resolution by itself if the frame rate stays under 30. Applies to the next model you build.";
+
+/** What the view's guess says about this phone: the tier Auto would pick, and the numbers it used (null: the browser does not say). */
+export interface PhoneGuess {
+  tier: RenderQuality;
+  cores: number | null;
+  memoryGb: number | null;
+}
+
+/**
+ * The line under the Picture quality row when the picture would be High on a phone the guess calls Low: High chosen, or Auto
+ * under the Detail profile, which asks for it. Null otherwise. A heads-up only; nothing is blocked.
+ */
+export function pictureQualityNote(pictureQuality: PictureQuality, performance: PerformanceMode, phone: PhoneGuess): string | null {
+  if (resolveRenderQuality(pictureQuality, performance) !== 'high' || phone.tier !== 'low') return null;
+  const cores = phone.cores === null ? 'cores not reported' : `${phone.cores} ${phone.cores === 1 ? 'core' : 'cores'}`;
+  const memory = phone.memoryGb === null ? 'memory not reported' : `${phone.memoryGb} GB`;
+  return `This phone looks like a Low device (${cores}, ${memory}). High may run slowly or close the app.`;
 }
 
 /** What the performance modes change, read from the profiles and the builder's cell rule (settings.ts, setupModel.ts). */

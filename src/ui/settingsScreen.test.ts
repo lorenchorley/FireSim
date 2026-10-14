@@ -1,7 +1,7 @@
 /**
  * Settings & About, the parts that must not be typed in: the tap-to-copy links of the attributions come from the providers
- * and licences the data-set records use, the performance hint is worded from the profiles and the builder's cell rule, and
- * the About block's version and build id are read from package.json and the bundle name.
+ * and licences the data-set records use, the performance hint is worded from the profiles and the builder's cell rule, the
+ * picture quality hint and its heads-up for High on a phone the guess calls Low, and the About block's version and build id are read from package.json and the bundle name.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { CC_BY_4, LICENCES, PROVIDERS } from '../scenario/recordKit';
 import { APP_VERSION, buildId, bundleHash } from './buildInfo';
 import { ATTRIBUTIONS } from './content';
-import { attributionLinks, performanceHint } from './screens/settings';
+import { attributionLinks, performanceHint, PICTURE_QUALITY_HINT, pictureQualityNote } from './screens/settings';
 import { performanceProfile } from './settings';
 
 describe('attribution links', () => {
@@ -39,6 +39,40 @@ describe('performance hint', () => {
     expect(t).toContain(performanceProfile('quality').maxEmbers.toLocaleString('en-AU'));
     expect(t).toContain('20 m cells for areas up to 6 km');
     expect(t).toContain('simple 2-D wind');
+  });
+});
+
+describe('picture quality hint and note', () => {
+  const low = { tier: 'low', cores: 4, memoryGb: 3 } as const;
+
+  it('the hint says what Auto, Detail and High do, that the picture still lowers itself, and when it applies', () => {
+    expect(PICTURE_QUALITY_HINT).toContain("Auto picks from this phone's cores and memory; Detail also asks for High.");
+    expect(PICTURE_QUALITY_HINT).toContain('High draws more terrain and trees and needs more memory');
+    expect(PICTURE_QUALITY_HINT).toContain('lowers its resolution by itself if the frame rate stays under 30');
+    expect(PICTURE_QUALITY_HINT).toContain('Applies to the next model you build.');
+  });
+
+  it('High on a phone the guess calls Low gets the heads-up, with that phone\'s numbers', () => {
+    expect(pictureQualityNote('high', 'auto', low)).toBe('This phone looks like a Low device (4 cores, 3 GB). High may run slowly or close the app.');
+    expect(pictureQualityNote('high', 'battery', { tier: 'low', cores: 2, memoryGb: 1 })).toBe('This phone looks like a Low device (2 cores, 1 GB). High may run slowly or close the app.');
+  });
+
+  it('Auto under Detail asks for High, so it gets the same heads-up; Auto under Saver or Balanced does not', () => {
+    expect(pictureQualityNote('auto', 'quality', low)).toMatch(/^This phone looks like a Low device/);
+    expect(pictureQualityNote('auto', 'auto', low)).toBeNull();
+    expect(pictureQualityNote('auto', 'battery', low)).toBeNull();
+  });
+
+  it('nothing for Low or Medium, nor for High on a phone the guess calls Medium or High', () => {
+    expect(pictureQualityNote('low', 'quality', low)).toBeNull();
+    expect(pictureQualityNote('medium', 'quality', low)).toBeNull();
+    expect(pictureQualityNote('high', 'auto', { tier: 'medium', cores: 6, memoryGb: 4 })).toBeNull();
+    expect(pictureQualityNote('high', 'quality', { tier: 'high', cores: 8, memoryGb: 8 })).toBeNull();
+  });
+
+  it('says so when the browser does not report the numbers (they count as 4 cores and 4 GB, which gives Low)', () => {
+    expect(pictureQualityNote('high', 'auto', { tier: 'low', cores: null, memoryGb: null })).toBe('This phone looks like a Low device (cores not reported, memory not reported). High may run slowly or close the app.');
+    expect(pictureQualityNote('high', 'auto', { tier: 'low', cores: 1, memoryGb: 0.5 })).toContain('(1 core, 0.5 GB)');
   });
 });
 
