@@ -72,7 +72,7 @@ async function flyTo(page: Page, x: number, y: number, distance: number): Promis
 }
 
 test('real engine end to end: build → escarpment fire → play → insights → why here → overlays → rewind → edits', async ({ page }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(900_000); // 600 s before the cliff drawing: software rendering of it takes CPU from the worker, and Auto picks the 3-D air here
   const errors: string[] = [];
   const fallbacks: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

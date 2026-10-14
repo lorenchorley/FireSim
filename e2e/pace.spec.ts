@@ -32,9 +32,13 @@ const pace = (page: Page): Promise<PaceState | null> =>
     return (fs.session.state.get().pace ?? null) as never;
   });
 
-/** Build the Katoomba demo offline on the slow tier: the Detail profile asks for the 3-D air, whatever this machine's auto-tune would pick. */
+/**
+ * Build the Katoomba demo offline on the slow tier: the Detail profile asks for the 3-D air, whatever this machine's auto-tune would pick.
+ * The picture is pinned to Low: Detail also asks for High, and on software rendering a High picture (with the cliff drawing) takes seconds
+ * per frame, and the tracker rightly says nothing while frames are more than 2 s apart (the display, not the simulation, is slow).
+ */
 async function buildSlow(page: Page): Promise<void> {
-  await page.addInitScript(() => localStorage.setItem('firesim.settings', JSON.stringify({ performance: 'quality' })));
+  await page.addInitScript(() => localStorage.setItem('firesim.settings', JSON.stringify({ performance: 'quality', pictureQuality: 'low' })));
   await page.goto('/?debug=1');
   await acceptNotice(page);
   await page.getByTestId('site-katoomba').click();
