@@ -215,20 +215,41 @@ function lead(pace: PaceInfo | null): { state: PaceSheetView['state']; title: st
   return { state: 'waiting', title, lead: `You asked for ${speedWord(pace.wanted)} (${fireEvery(pace.wanted)}). ${mid} for the simulation ${wait}.` };
 }
 
-function reasonsFor(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null): string[] {
-  const out: string[] = [];
+/** A likely reason for the slowness: the sentences of the sheet, and the same in a few words for the event log. */
+interface Reason {
+  text: string;
+  short: string;
+}
+
+function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null): Reason[] {
+  const out: Reason[] = [];
   const tier = engine?.tier;
   if (g && (tier === 'standard' || tier === 'high') && g.shares.air > REASON_SHARE.air) {
     const heaviest = g.shares.air >= g.shares.fire && g.shares.air >= g.shares.embers && g.shares.air >= g.shares.other;
-    out.push(`${heaviest ? 'The 3-D air flow is the heaviest part.' : 'The 3-D air flow takes a big share of the time.'} The fast model skips it and is usually about three times faster, with less detail.`);
+    out.push({
+      text: `${heaviest ? 'The 3-D air flow is the heaviest part.' : 'The 3-D air flow takes a big share of the time.'} The fast model skips it and is usually about three times faster, with less detail.`,
+      short: heaviest ? 'the 3-D air flow is the heaviest part' : 'the 3-D air flow takes a big share of the time',
+    });
   }
   const earlier = earlierSpeed(engine?.perf?.history);
   if (earlier !== null && known(pace.capacity) && pace.capacity < SLOWER_THAN_EARLIER * earlier) {
-    out.push(`Slower than before (about ${speedWord(earlier)} earlier in this run). The phone may be warm or in battery saver.`);
+    out.push({
+      text: `Slower than before (about ${speedWord(earlier)} earlier in this run). The phone may be warm or in battery saver.`,
+      short: `slower than before (about ${speedWord(earlier)} earlier in this run)`,
+    });
   }
-  if (g && g.shares.fire > REASON_SHARE.fire) out.push('A big fire takes longer to compute; this eases as it burns out.');
-  if (g && g.shares.embers > REASON_SHARE.embers) out.push('Many embers are in the air, and each one takes time to follow. This eases when fewer are flying.');
+  if (g && g.shares.fire > REASON_SHARE.fire) out.push({ text: 'A big fire takes longer to compute; this eases as it burns out.', short: 'a big fire takes longer to compute' });
+  if (g && g.shares.embers > REASON_SHARE.embers) out.push({ text: 'Many embers are in the air, and each one takes time to follow. This eases when fewer are flying.', short: 'many embers are in the air' });
   return out;
+}
+
+/**
+ * The first reason the sheet would list, in a few words ("the 3-D air flow is the heaviest part"), for the event log (plan 6.6:
+ * a slow spell is written with its leading reason). Null when the simulation is keeping up, nothing is judged, or no reason applies.
+ */
+export function leadingReason(pace: PaceInfo | null, engine: PaceSheetEngine | null): string | null {
+  if (!pace || pace.level === 'ok' || !known(pace.wanted) || !Number.isFinite(pace.wanted)) return null;
+  return reasonList(pace, engine, groups(engine?.perf))[0]?.short ?? null;
 }
 
 /** "At this pace the end of the run is about 9 minutes away (6 at your speed)." Null when there is nothing to compare, it is under a minute away, or both come to the same. */
@@ -277,7 +298,7 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
     ...head,
     result: { question: 'Does it change the result?', answer: 'No. The same choices give the same fire at any speed. It only takes longer to appear.' },
     time,
-    reasons: pace && pace.level !== 'ok' ? reasonsFor(pace, engine, g) : [],
+    reasons: pace && pace.level !== 'ok' ? reasonList(pace, engine, g).map((r) => r.text) : [],
     actions,
     end: pace && pace.level !== 'ok' ? endLine(pace, input.remainingS) : null,
     link: 'All the numbers',

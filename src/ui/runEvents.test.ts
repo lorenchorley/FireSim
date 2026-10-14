@@ -75,6 +75,48 @@ describe('PaceWatch: slow-run episodes', () => {
   });
 });
 
+describe('PaceWatch: the leading reason', () => {
+  const why = 'the 3-D air flow is the heaviest part';
+  const said = ` Likely reason: ${why}.`;
+
+  it('is written once per episode, with the first event: the start', () => {
+    const { log, tick } = fakeLog();
+    const w = new PaceWatch(log);
+    w.observe(pace('behind', { achieved: 54, capacity: 50 }), 600, why);
+    w.observe(pace('behind', { achieved: 50, capacity: 48 }), 660, why);
+    tick(20_000);
+    w.observe(pace('waiting', { achieved: 24, capacity: 44 }), 700, why);
+    tick(100_000);
+    w.observe(pace('ok', { achieved: 60, capacity: 90 }), 900);
+    const texts = log.list().map((e) => e.text);
+    expect(texts[0]).toBe(`The simulation is falling behind: computing about 50×, asked for 60×.${said}`);
+    expect(texts[1]).toBe('Playback is now waiting for the simulation.');
+    expect(texts[2]).toBe('Back at the speed asked for after 2 min 0 s. Slowest: about 40 % of the speed asked for.');
+  });
+
+  it('one found after the start goes on the next event (a change of level, or the end); the next episode starts afresh', () => {
+    const { log, tick } = fakeLog();
+    const w = new PaceWatch(log);
+    w.observe(pace('behind'), 0); // the engine's numbers are not there yet
+    w.observe(pace('behind'), 10, why); // now they are: no event for a reading alone
+    expect(log.list()).toHaveLength(1);
+    expect(log.list()[0]!.text).not.toContain('Likely reason');
+    tick(5_000);
+    w.observe(pace('waiting'), 20, why);
+    expect(log.list()[1]!.text).toBe(`Playback is now waiting for the simulation.${said}`);
+    w.observe(pace('ok'), 30);
+    expect(log.list()[2]!.text).not.toContain('Likely reason');
+    // A second episode that finds its reason only by the end says it there; an episode with none says none.
+    w.observe(pace('behind'), 40);
+    w.observe(pace('behind'), 50, 'a big fire takes longer to compute');
+    w.observe(null, 60); // paused
+    expect(log.list()[4]!.text).toMatch(/^The slow spell ended after .* Likely reason: a big fire takes longer to compute\.$/);
+    w.observe(pace('behind'), 70);
+    w.observe(pace('ok'), 80);
+    expect(log.list().slice(5).map((e) => e.text.includes('Likely reason'))).toEqual([false, false]);
+  });
+});
+
 describe('watchRun', () => {
   const doc = { hidden: false, listeners: new Map<string, () => void>() };
   const original = (globalThis as { document?: unknown }).document;
@@ -152,6 +194,14 @@ describe('watchRun', () => {
     state.set({ pace: pace('ok'), viewTime: 420 });
     expect(log.list().map((e) => e.kind)).toEqual(['run', 'slow', 'slow']);
     expect(log.list()[2]!.runS).toBe(420);
+  });
+
+  it('writes the reason from the engine\'s own numbers on the screen: the 3-D air flow takes most of the time', () => {
+    const { log, state } = setup();
+    const modules = [{ id: 'air', ms: 50, share: 0.2, share10: 0.6 }, { id: 'fire', ms: 10, share: 0.2, share10: 0.2 }, { id: 'other', ms: 5, share: 0.2, share10: 0.2 }];
+    state.set({ snapshot: { engine: { tier: 'standard', perf: { modules, history: [] } } } as unknown as SimSnapshot });
+    state.set({ pace: pace('behind', { capacity: 50 }), viewTime: 300 });
+    expect(log.list()[1]!.text).toBe('The simulation is falling behind: computing about 50×, asked for 60×. Likely reason: the 3-D air flow is the heaviest part.');
   });
 
   it('pictures far apart early in a run are not "the history memory is full": only a store that thinned says so', () => {
