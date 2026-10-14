@@ -11,9 +11,10 @@
  *       happens within 0.5 m of the middle, so a straight ramp is left alone and a gully floor (the middle of a V along
  *       its own fall line) stays where it is;
  *   (c) a despike pass pulls any cell that stands 10 m or more above or below all eight neighbours back to 2 m past them.
- * Deterministic (the despike decides on the heights before any fix), the outer ring of cells is never moved, and a cell
- * with no height (NaN) never moves and never makes another one NaN. A terrain with no cell over 48 degrees comes back as an
- * exact copy.
+ * Deterministic (the despike decides on the heights before any fix), the outer ring of cells is never moved, a fall-line window
+ * that would leave the grid is cut short on both sides (so a ramp that runs into the border is left alone, like any other), and a
+ * cell with no height (NaN) never moves and never makes another one NaN. A terrain with no cell over 48 degrees comes back as an
+ * exact copy; with a steep cell anywhere the despike runs on the whole terrain, so a tower or pit of the data itself goes too.
  */
 import type { GridSpec } from '../core/grid';
 import { smoothstep } from '../core/units';
@@ -179,6 +180,7 @@ export function cliffSharpen(grid: GridSpec, z: Float32Array, opts: Partial<Clif
   const o: CliffSharpenOptions = { ...CLIFF_SHARPEN_DEFAULTS, ...opts };
   const { nx, ny, cellSize: h } = grid;
   const n = nx * ny;
+  if (z.length !== n) throw new RangeError(`cliffSharpen: ${z.length} heights for a ${nx} x ${ny} grid`);
   const t0 = performance.now();
   const out = Float32Array.from(z);
   if (nx < 3 || ny < 3) {
@@ -268,8 +270,15 @@ export function cliffSharpen(grid: GridSpec, z: Float32Array, opts: Partial<Clif
     let mn = cur;
     let mx = cur;
     for (let t = 1; t <= R; t++) {
-      const a = bil(i + t * ux, j + t * uy);
-      const b = bil(i - t * ux, j - t * uy);
+      const ax = i + t * ux;
+      const ay = j + t * uy;
+      const bx = i - t * ux;
+      const by = j - t * uy;
+      // A window that would leave the grid is cut short on both sides, so a ramp that runs into the border is still a ramp
+      // (reading the clamped border instead would put the cell off the middle and pull it towards the border height).
+      if (ax < 0 || ax > mx1 || ay < 0 || ay > my1 || bx < 0 || bx > mx1 || by < 0 || by > my1) break;
+      const a = bil(ax, ay);
+      const b = bil(bx, by);
       if (a < mn) mn = a;
       if (a > mx) mx = a;
       if (b < mn) mn = b;
