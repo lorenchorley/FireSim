@@ -6,7 +6,7 @@
  * Escape and the hardware Back button close it; nothing pops up. A second test opens the card from Setup (no run: a
  * preview planned from the form). (Its pictures, docs/screenshots/12-model-card*.png and 13-model-card-live*.png, are taken by gallery.spec.ts.)
  */
-import type { Page } from '@playwright/test';
+import { test as plainTest, type Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { acceptNotice, armPopupWatch, popups, session, watchPopups } from './helpers';
 
@@ -272,4 +272,48 @@ test('model card from Setup: a preview planned from the form, with no run behind
   await close();
 
   expect(errors).toEqual([]);
+});
+
+// The card's code loads on the first open (a lazy chunk): a second tap while it loads must not build the card twice, which
+// leaves the Back guard of the history out of step (the next Back then left the app with the card open), and a chunk that
+// cannot be loaded must not be an unhandled promise rejection.
+test('model card, lazy chunk: two taps at once open one card, and Back closes it without leaving the app', async ({ page }) => {
+  await page.goto('/?debug=1');
+  await acceptNotice(page);
+  await page.getByTestId('site-katoomba').click();
+  await page.evaluate(() => {
+    const w = window as unknown as { __cards: number };
+    w.__cards = 0;
+    new MutationObserver((records) => {
+      for (const r of records) r.addedNodes.forEach((n) => (n as HTMLElement).querySelector?.('[data-testid="model-card"]') && w.__cards++);
+    }).observe(document.body, { childList: true, subtree: true });
+    const row = document.querySelector('[data-testid="setup-model-card"]') as HTMLElement;
+    row.click();
+    row.click();
+  });
+  await expect(page.getByTestId('model-card')).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId('model-card')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as unknown as { __cards: number }).__cards)).toBe(1);
+  await page.goBack();
+  await expect(page.getByTestId('model-card')).toHaveCount(0);
+  await expect(page.getByTestId('build')).toBeVisible(); // still in the app
+  expect(page.url()).toContain('localhost');
+});
+
+plainTest('model card, lazy chunk: one that cannot be loaded leaves no unhandled rejection, and Setup stays usable', async ({ page }) => {
+  const uncaught: string[] = [];
+  const logged: string[] = [];
+  page.on('pageerror', (e) => uncaught.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && logged.push(m.text()));
+  await page.goto('/?debug=1');
+  await acceptNotice(page);
+  await page.getByTestId('site-katoomba').click();
+  await page.route('**/assets/modelCard-*.js', (route) => route.abort());
+  await page.getByTestId('setup-model-card').click();
+  await page.waitForTimeout(1000);
+  await expect(page.getByTestId('model-card')).toHaveCount(0);
+  await expect(page.getByTestId('build')).toBeVisible();
+  expect(uncaught).toEqual([]);
+  expect(logged.some((l) => /dynamically imported module/.test(l))).toBe(true); // reported, not swallowed
 });

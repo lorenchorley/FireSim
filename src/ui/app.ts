@@ -63,6 +63,8 @@ export class App {
   private buildGuardUntil = 0;
   /** The debug statistics chunk is loading: a second tap meanwhile is ignored. */
   private openingDebugStats = false;
+  /** The model card chunk is loading: a second tap meanwhile is ignored. */
+  private openingModelCard = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -243,23 +245,31 @@ export class App {
    * text (src/ui/modelInfo.ts, about 21 kB gzip) load on the first open, so they stay out of the entry chunk.
    */
   async openModelCard(): Promise<void> {
-    const { createModelCardScreen } = await import('./screens/modelCard');
-    const existing = this.overlays.find((o) => o.id === 'model-card');
-    if (existing) this.closeOverlay(existing);
-    let ov: Overlay | undefined;
-    const request = this.setup?.state() ?? this.lastSetup ?? undefined;
-    const screen = createModelCardScreen({
-      scenario: this.sim ? this.scenario : null,
-      ...(request ? { request } : {}),
-      services: this.services,
-      getSnapshot: () => this.sim?.session.state.get().snapshot ?? null,
-      settings: () => settingsStore.get(),
-      onClose: () => ov && this.closeOverlay(ov),
-      onOpenDatasets: (id) => this.openDatasets(id),
-      onOpenDebugStats: () => void this.openDebugStats(),
-    });
-    this.openOverlay('model-card', screen);
-    ov = this.overlays[this.overlays.length - 1];
+    if (this.openingModelCard) return;
+    this.openingModelCard = true;
+    try {
+      const { createModelCardScreen } = await import('./screens/modelCard');
+      const existing = this.overlays.find((o) => o.id === 'model-card');
+      if (existing) this.closeOverlay(existing);
+      let ov: Overlay | undefined;
+      const request = this.setup?.state() ?? this.lastSetup ?? undefined;
+      const screen = createModelCardScreen({
+        scenario: this.sim ? this.scenario : null,
+        ...(request ? { request } : {}),
+        services: this.services,
+        getSnapshot: () => this.sim?.session.state.get().snapshot ?? null,
+        settings: () => settingsStore.get(),
+        onClose: () => ov && this.closeOverlay(ov),
+        onOpenDatasets: (id) => this.openDatasets(id),
+        onOpenDebugStats: () => void this.openDebugStats(),
+      });
+      this.openOverlay('model-card', screen);
+      ov = this.overlays[this.overlays.length - 1];
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.openingModelCard = false;
+    }
   }
 
   /**
