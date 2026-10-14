@@ -456,7 +456,7 @@ export interface Fact {
 }
 
 const TIER_WORDS: Record<string, string> = {
-  auto: 'Auto: starts on Standard (3-D atmosphere); the app may switch to Fast (a 2-D wind shaped by the ground) after timing this phone',
+  auto: 'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: a 2-D wind shaped by the ground)',
   fast: 'Fast: a 2-D wind shaped by the ground (no 3-D air movement)',
   standard: 'Standard: 3-D atmosphere',
   high: 'High: finer 3-D atmosphere',

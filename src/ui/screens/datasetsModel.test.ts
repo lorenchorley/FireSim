@@ -228,14 +228,14 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     const fast = {
       tier: 'fast' as const,
       tierCause: 'auto-tune' as const,
-      tierReason: 'Auto: the first 20 3-D steps took 78.7 ms each on this device, so the whole 6.0 h run was predicted to take 238 s against a budget of 120 s: too slow, so the fast tier (no time-stepped 3-D air flow) was chosen.',
+      tierReason: 'Fast surface-wind model: the detailed 3-D air would take about 12 min to compute this run on this phone (about 240 ms per air step), longer than the limit of 10 min for a run this long. Switch in Settings, Performance, or Layers, Use the 3-D atmosphere.',
       atmosphere: { kind: 'diagnostic' as const, nx: 45, ny: 45, nz: 20, dxM: 133.3, dzFirstM: 30, topM: 3000, stretch: 1.1, currentStepS: 10, meanStepMs: 5, spunUp: false, upperAir: 'preset' as const, viewDecimated: false },
     };
     const f = modelFacts(bundled.summary, fast);
     const tier = f.find((x) => x.key === 'Detail tier')!;
     expect(tier.value).toBe('Fast: a 2-D wind shaped by the ground (no 3-D air movement) (chosen by Auto after timing this phone)');
     expect(tier.note).toBe(fast.tierReason);
-    expect(JSON.stringify(f)).not.toMatch(/starts on Standard/);
+    expect(JSON.stringify(f)).not.toMatch(/Auto: the 3-D atmosphere unless/);
     const grid = f.find((x) => x.key === 'Wind grid')!;
     expect(grid.value).toBe('45 x 45 columns of 133 m, 20 levels');
     expect(grid.note).toMatch(/uses only the wind at the surface/);
@@ -245,7 +245,9 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     expect(air.find((x) => x.key === 'Detail tier')!.value).toBe('Standard: 3-D atmosphere (asked for when the run started)');
     expect(air.find((x) => x.key === 'Atmosphere grid')!.value).toBe('45 x 45 columns of 133 m, 20 levels up from the ground');
     // Before the engine reports, Auto is described as what it is: a decision still to come.
-    expect(modelFacts(bundled.summary, null).find((x) => x.key === 'Detail tier')!.value).toMatch(/^Auto: starts on Standard/);
+    expect(modelFacts(bundled.summary, null).find((x) => x.key === 'Detail tier')!.value).toBe(
+      'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: a 2-D wind shaped by the ground)',
+    );
   });
 
   it('coverage: only obtained data are "Real data"; designed, typed and worked-out data sets are named for what they are', () => {
@@ -276,7 +278,7 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     expect(f.find((x) => x.key === 'Fire grid')!.value).toBe(`${m.nx} x ${m.ny} cells of ${m.cellSizeM} m (${formatCount(m.nx * m.ny).replace(/\u2009/g, '\u202f')} cells)`);
     expect(f.find((x) => x.key === 'Area')!.value).toContain(`${m.extentM / 1000} km x ${m.extentM / 1000} km`);
     expect(f.find((x) => x.key === 'Atmosphere grid')!.value).toBe(`${m.atmosCellM} m cells, ${m.atmosLevels} levels up from the ground`);
-    expect(f.find((x) => x.key === 'Detail tier')!.value).toMatch(/^Auto: starts on Standard/);
+    expect(f.find((x) => x.key === 'Detail tier')!.value).toMatch(/^Auto: the 3-D atmosphere unless this phone is far too slow for it/);
     expect(reproduceText(bundled.summary)).toContain(`FireSim scenario ${bundled.summary!.scenarioId}`);
     expect(reproduceText(bundled.summary)).toContain(`Seed: ${bundled.summary!.seed}`);
   });

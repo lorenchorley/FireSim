@@ -331,15 +331,15 @@ export function detailCell(extentKm: number, detail: Detail, tier?: string): { c
   const t = detail === 'fast' ? 'fast' : tier;
   const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
   const n = Math.round(extentM / built.cellM);
-  // 'Auto' (the default performance setting) decides when the run starts: it times the 3-D air on this phone and drops to the
-  // 2-D surface wind when a whole run would take too long, which is the usual outcome on a phone.
+  // 'Auto' (the default performance setting) decides when the run starts: it times the 3-D air on this phone and keeps it
+  // unless a whole run would take far too long (about 10 minutes of computing for 6 hours of fire), so 3-D is the usual outcome.
   return { cellM: built.cellM, n, cells: n * n, coarsened: built.coarsened, twoD: t === 'fast', windAuto: t === undefined || t === 'auto' };
 }
 
 /** The wind the Setup hint names for a detail choice: certain ('simple 2-D surface wind', '3-D wind') or, under Auto, both. */
 export function windHint(c: Pick<ReturnType<typeof detailCell>, 'twoD' | 'windAuto'>): string {
   if (c.twoD) return 'simple 2-D surface wind';
-  if (c.windAuto) return 'a 3-D wind if this phone is fast enough, else a simple 2-D surface wind (decided when the run starts)';
+  if (c.windAuto) return 'a 3-D wind, or a simple 2-D surface wind if this phone is far too slow for it (decided when the run starts)';
   return '3-D wind';
 }
 
