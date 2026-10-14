@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, SceneImagery, SceneViewApi } from './api';
+import type { CameraState, MapMarker, SceneImagery, SceneViewApi } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { gridBounds, sunDirectionWorld } from './coords';
@@ -38,8 +38,9 @@ import { HeightField } from './heightfield';
 import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
+import { homeCandidates, iconCandidate, pickMarkerAt, projectPoint, type PickCandidate } from './markerPick';
 import { AdaptiveDpr, FrameMeter } from './perf';
-import { sameOrigin } from './placesGeometry';
+import { lineOfSightClear, sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
 import { skyLighting } from './sky';
 import { SkyDome } from './skyDome';
@@ -180,6 +181,8 @@ export class SceneView implements SceneViewApi {
   private focus: Insight | null = null;
   private user: { x: number; y: number; heading: number | null } | null = null;
   private brush: { x: number; y: number; radius: number; colour: string } | null = null;
+  /** The icons as last drawn: the one list that both the icon layer draws and `pickMarker` hit-tests. */
+  private iconList: IconInstance[] = [];
 
   // Loop.
   private dirty = true;
@@ -195,6 +198,7 @@ export class SceneView implements SceneViewApi {
   private readonly lastCam = new THREE.Vector3(Infinity, 0, 0);
   private viewInsets: { top?: number; right?: number; bottom?: number; left?: number } = {};
   private readonly tmpO = new THREE.Vector3();
+  private readonly tmpM = new THREE.Matrix4();
   private readonly tmpSize = new THREE.Vector2();
   private readonly tmpD = new THREE.Vector3();
   private readonly lastTarget = new THREE.Vector3();
@@ -823,17 +827,18 @@ export class SceneView implements SceneViewApi {
     const h = (x: number, y: number): number => hf.heightAt(x, y);
     for (const ig of this.ignitions) {
       const p = ig.points[0];
-      if (p) icons.push({ icon: ig.origin === 'spot' ? Icon.Spot : Icon.Ignition, x: p[0], y: p[1], z: h(p[0], p[1]), sizePx: 34, pin: ig.origin !== 'spot' });
+      if (p) icons.push({ icon: ig.origin === 'spot' ? Icon.Spot : Icon.Ignition, x: p[0], y: p[1], z: h(p[0], p[1]), sizePx: 34, pin: ig.origin !== 'spot', marker: { kind: 'ignition', x: p[0], y: p[1], ignition: ig } });
     }
-    for (const s of spots.slice(-48)) icons.push({ icon: Icon.Spot, x: s.x, y: s.y, z: h(s.x, s.y), sizePx: 26 });
+    for (const s of spots.slice(-48)) icons.push({ icon: Icon.Spot, x: s.x, y: s.y, z: h(s.x, s.y), sizePx: 26, marker: { kind: 'spot', x: s.x, y: s.y, spot: s, ...(this.userSpots.includes(s) ? { marked: true } : {}) } });
     if (this.layers.insightMarkers) {
       for (const ins of this.insights) {
         const focused = this.focus?.id === ins.id;
-        icons.push({ icon: severityIcon(ins.severity), x: ins.x, y: ins.y, z: h(ins.x, ins.y), sizePx: focused ? 40 : 30, pin: false, pulse: focused });
+        icons.push({ icon: severityIcon(ins.severity), x: ins.x, y: ins.y, z: h(ins.x, ins.y), sizePx: focused ? 40 : 30, pin: false, pulse: focused, marker: { kind: 'insight', x: ins.x, y: ins.y, insight: ins } });
       }
     }
     if (this.focus) icons.push({ icon: Icon.Focus, x: this.focus.x, y: this.focus.y, z: h(this.focus.x, this.focus.y), sizePx: 64, pulse: true });
-    if (this.user && this.rig.mode !== 'ground') icons.push({ icon: Icon.User, x: this.user.x, y: this.user.y, z: h(this.user.x, this.user.y) + 1, sizePx: 22 });
+    if (this.user && this.rig.mode !== 'ground') icons.push({ icon: Icon.User, x: this.user.x, y: this.user.y, z: h(this.user.x, this.user.y) + 1, sizePx: 22, marker: { kind: 'you', x: this.user.x, y: this.user.y } });
+    this.iconList = icons;
     this.icons.set(icons);
     this.dirty = true;
   }
@@ -864,6 +869,47 @@ export class SceneView implements SceneViewApi {
     if (p.z < -1 || p.z > 1 || p.x < -1 || p.x > 1 || p.y < -1 || p.y > 1) return null;
     const rect = this.renderer.domElement.getBoundingClientRect();
     return [rect.left + ((p.x + 1) / 2) * rect.width, rect.top + ((1 - p.y) / 2) * rect.height];
+  }
+
+  /**
+   * The icon under a screen position (workstream I): every icon `refreshMarkers` drew, plus the homes when the Homes layer is
+   * on, projected the way the icon shader does it (not clipped to the screen, nothing behind the camera) and judged by
+   * markerPick.ts. A home hidden behind terrain is skipped, as its name label would be.
+   */
+  pickMarker(clientX: number, clientY: number): MapMarker | null {
+    const hf = this.hf;
+    if (!hf) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const cam = this.rig.camera;
+    cam.updateMatrixWorld();
+    const viewProj = this.tmpM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements;
+    const tx = clientX - rect.left;
+    const ty = clientY - rect.top;
+    const vex = this.vex;
+    const cands: PickCandidate[] = [];
+    for (const ic of this.iconList) {
+      if (!ic.marker) continue;
+      const s = projectPoint(viewProj, ic.x, ic.z * vex, -ic.y, rect.width, rect.height);
+      if (s) cands.push(iconCandidate(ic.marker, s[0], s[1], ic.sizePx, !!ic.pin));
+    }
+    const homes = this.contextLayers?.homes;
+    if (homes && homes.length > 1) {
+      const eye = cam.position;
+      const heightAt = (x: number, y: number): number => hf.heightAt(x, y);
+      const roofY = (x: number, y: number): number => hf.heightAt(x, y) * vex + 3;
+      cands.push(
+        ...homeCandidates(
+          homes,
+          this.layers.homes,
+          tx,
+          ty,
+          (x, y) => projectPoint(viewProj, x, roofY(x, y), -y, rect.width, rect.height),
+          (x, y) => !hf.contains(x, y) || !lineOfSightClear(heightAt, vex, [eye.x, -eye.z, eye.y], [x, y, roofY(x, y)], 60, 40),
+        ),
+      );
+    }
+    return pickMarkerAt(tx, ty, cands);
   }
 
   flyTo(x: number, y: number, distance?: number): void {

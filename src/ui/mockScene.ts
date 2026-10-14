@@ -8,8 +8,9 @@ import { BurnState, FuelType, type FuelMap, type Ignition, type Insight, type Si
 import { sampleBilinear } from '../core/grid';
 import { DEG, msToKmh, windToUV } from '../core/units';
 import { multiHillshade, insolation } from '../terrain';
-import type { CameraState, SceneImagery, SceneViewApi } from '../render/api';
+import type { CameraState, MapMarker, SceneImagery, SceneViewApi } from '../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
+import { markerRank, pickMarkerAt, type MarkerSource, type PickCandidate } from '../render/markerPick';
 import { driverColour, fuelColour, legendFor, SNAPSHOT_LAYER_OVERLAYS } from './legends';
 
 type Rgb = [number, number, number];
@@ -181,6 +182,26 @@ export class MockSceneView implements SceneViewApi {
     const sy = r.height / 2 + this.offY - (y - this.cy) * this.scale;
     if (sx < -50 || sy < -50 || sx > r.width + 50 || sy > r.height + 50) return null;
     return [r.left + sx, r.top + sy];
+  }
+
+  /** The marker under a screen position: the icons this view draws, judged by the same rules as the 3-D view (render/markerPick.ts). */
+  pickMarker(clientX: number, clientY: number): MapMarker | null {
+    if (!this.terrain) return null;
+    const r = this.canvas.getBoundingClientRect();
+    const cands: PickCandidate[] = [];
+    const add = (marker: MarkerSource, halfPx: number): void => {
+      const [sx, sy] = this.toScreen(marker.x, marker.y, r.width, r.height);
+      cands.push({ marker, sx, sy, halfPx, rank: markerRank(marker) });
+    };
+    for (const ign of this.ignitions) {
+      const p = ign.points[0];
+      if (p) add({ kind: 'ignition', x: p[0], y: p[1], ignition: ign }, 9);
+    }
+    for (const s of this.spots) add({ kind: 'spot', x: s.x, y: s.y, spot: s, marked: true }, 10);
+    for (const s of this.snapshot?.spotFires ?? []) add({ kind: 'spot', x: s.x, y: s.y, spot: s }, 10);
+    if (this.layers.insightMarkers) for (const ins of this.insights) add({ kind: 'insight', x: ins.x, y: ins.y, insight: ins }, 10);
+    if (this.user) add({ kind: 'you', x: this.user.x, y: this.user.y }, 9);
+    return pickMarkerAt(clientX - r.left, clientY - r.top, cands);
   }
 
   flyTo(x: number, y: number, distance = 2000): void {
