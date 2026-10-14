@@ -128,7 +128,7 @@ const NOW = Date.UTC(2026, 9, 11, 3, 32, 5); // 14:32:05 at UTC+11
 const events: LogEvent[] = [
   { wallMs: NOW - 120_000, runS: 0, kind: 'run', text: 'Run started.' },
   { wallMs: NOW - 90_000, runS: 0, kind: 'tier', text: 'Detailed 3-D air chosen: about 41 ms per air step.' },
-  { wallMs: NOW - 30_000, runS: 1800, kind: 'slow', text: 'The simulation is falling behind: computing about 430x, asked for 600x.' },
+  { wallMs: NOW - 30_000, runS: 1800, kind: 'slow', text: 'The simulation is falling behind: computing about 430×, asked for 600×.' },
 ];
 
 let engine: EngineInfo;
@@ -268,6 +268,21 @@ describe('the groups of the catalogue', () => {
     expect(rowOf(s, 'hardware', 'cores').value).toBe('Not reported');
   });
 
+  it('the Display group before a run says "No run yet" (there is no view), not that the view keeps no statistics; a view that cannot say says "Not available"', () => {
+    const before = buildDebugStats(bare());
+    for (const id of ['fps', 'picture-quality', 'cliffs']) expect(rowOf(before, 'display', id).value, id).toBe('No run yet');
+    const map = full();
+    map.frames = null;
+    map.quality = null;
+    map.terrain = undefined; // the 2-D map: a run, and a view with none of the 3-D statistics
+    const flat = buildDebugStats(map);
+    expect(rowOf(flat, 'display', 'fps').value).toBe('Not available (this view keeps no frame statistics)');
+    expect(rowOf(flat, 'display', 'picture-quality').value).toBe('Not available (this view does not report a picture tier)');
+    expect(rowOf(flat, 'display', 'cliffs')).toMatchObject({ label: 'Cliff drawing (once per scenario)', value: 'Not available' });
+    // A 3-D view that built nothing sharpened says so, and one that did shows its numbers.
+    expect(rowOf(buildDebugStats({ ...full(), terrain: null }), 'display', 'cliffs').value).toBe('Nothing sharpened in this run (no 10 m terrain)');
+  });
+
   const missing: [string, (i: DebugStatsInput) => void][] = [
     ['no engine report yet', (i) => (i.engine = null)],
     ['a mock engine', (i) => ((i.engineSource = 'mock'), (i.engine = { ...engine, mock: true }))],
@@ -315,10 +330,10 @@ describe('labels and values', () => {
   });
 
   it('Speed: the worker perf block, the speed asked for and the pace signal', () => {
-    expect(rowOf(s, 'speed', 's10')).toMatchObject({ label: 'Computing speed, last 10 s', value: '871x' });
-    expect(rowOf(s, 'speed', 'best10').value).toBe('905x');
-    expect(rowOf(s, 'speed', 'wanted')).toMatchObject({ value: '600x', note: '10 min of fire per second' });
-    expect(rowOf(s, 'speed', 'achieved').value).toBe('410x');
+    expect(rowOf(s, 'speed', 's10')).toMatchObject({ label: 'Computing speed, last 10 s', value: '871×' });
+    expect(rowOf(s, 'speed', 'best10').value).toBe('905×');
+    expect(rowOf(s, 'speed', 'wanted')).toMatchObject({ value: '600×', note: '10 min of fire per second' });
+    expect(rowOf(s, 'speed', 'achieved').value).toBe('410×');
     expect(rowOf(s, 'speed', 'waiting').value).toBe('27 %');
     expect(rowOf(s, 'speed', 'pace').value).toBe('Waiting for the simulation');
   });
@@ -346,6 +361,33 @@ describe('labels and values', () => {
     expect(s.groups.find((g) => g.id === 'time')!.summary).toBe('3-D air step 52\u00a0%');
   });
 
+  it('the 3-D air step is one number in "Step", "Where the time goes" and the phone sentence (the engine\'s own reading also holds the wind for the fire and its heat)', () => {
+    const i = full();
+    i.engine = { ...engine, atmosphere: { ...engine.atmosphere, meanStepMs: 133 }, perf: { ...perf, modules: perf.modules.map((m) => (m.id === 'air' ? { ...m, ms: 116 } : m)) } };
+    const d = buildDebugStats(i);
+    expect(rowOf(d, 'step', 'air-mean')).toMatchObject({ value: '116 ms', note: 'The air module alone, as in "Where the time goes"' });
+    expect(rowOf(d, 'time', 'air').value).toBe('116 ms per step, 52 % of busy time');
+    expect(rowOf(d, 'canDo', 'speed').value).toContain('the 3-D air step takes about 116 ms on average');
+    // An engine with no perf block has only its own reading, and the fast tier does not use the air step.
+    i.engine = { ...engine, perf: undefined, atmosphere: { ...engine.atmosphere, meanStepMs: 133 } };
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean')).toMatchObject({ value: '133 ms' });
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean').note).toBeUndefined();
+    i.engine = fastEngine;
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean').value).toBe('Not used in this tier');
+  });
+
+  it('Solver step limit: a range in the 3-D tiers, one value when the floor and the cap are the same (the fast tier), your own limit when set', () => {
+    const limit = (cadence: Partial<EngineInfo['cadence']>): string => {
+      const i = full();
+      i.engine = { ...engine, cadence: { ...engine.cadence, ...cadence } };
+      return rowOf(buildDebugStats(i), 'choices', 'solver-limit').value;
+    };
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 0.5, solverBoundS: 10 })).toBe('Automatic (0.5 s to 10 s)');
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 10, solverBoundS: 10 })).toBe('Automatic (10 s)');
+    expect(limit({ solverMaxStepS: 0, solverFloorS: 9.98, solverBoundS: 10.01 })).toBe('Automatic (10 s)'); // the same as shown
+    expect(limit({ solverMaxStepS: 6, solverFloorS: 10, solverBoundS: 10 })).toBe('6 s (your setting)');
+  });
+
   it('Choices: the tier, why, and the timing test with the warm-up reading', () => {
     expect(rowOf(s, 'choices', 'tier').value).toBe('Standard (3-D air)');
     expect(rowOf(s, 'choices', 'tier').note).toBe(engine.tierReason);
@@ -362,11 +404,21 @@ describe('labels and values', () => {
     expect(rowOf(s, 'memory', 'history-held').value).toBe('61.0 MB of 96.0 MB');
     expect(rowOf(s, 'memory', 'full-pictures').value).toBe('18');
     // 9600 s at a 60 s step = 161 frames expected, 150 kept: about 11 thinned away.
-    expect(rowOf(s, 'memory', 'thinned').value).toBe('About 11');
+    expect(rowOf(s, 'memory', 'thinned')).toMatchObject({ value: 'About 11', note: 'Kept frames are now about 63 s apart (display step 60 s)' });
     expect(rowOf(s, 'memory', 'heap').value).toBe('88.0 MB used of 120.0 MB, limit 2.1 GB');
     const noMem = full();
     noMem.historyBudget = { bytes: 48 * 1048576, memoryGb: null };
     expect(rowOf(buildDebugStats(noMem), 'memory', 'history-budget').note).toContain('3 GB assumed');
+  });
+
+  it('Frames thinned away: when none were, it says so and does not talk of kept frames being "now" apart (the mean spacing can sit under the display step)', () => {
+    const i = full();
+    i.store = { ...i.store!, frames: 190, spacingS: 50, displayStepS: 60, range: { start: 0, end: 9600 } }; // 161 expected, 190 kept
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned')).toMatchObject({ value: 'None', note: 'The display step is 60 s' });
+    i.store = { ...i.store, frames: 161 }; // exactly as many as expected
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned').value).toBe('None');
+    i.store = { ...i.store, frames: 0, range: null };
+    expect(rowOf(buildDebugStats(i), 'memory', 'thinned').value).toBe('Not measured yet');
   });
 
   it('Display: frames, slow frames, long tasks, draw calls, pixel ratio drops, picture quality and why, and the cliff drawing', () => {
@@ -374,11 +426,20 @@ describe('labels and values', () => {
     expect(rowOf(s, 'display', 'slow-frames').value).toBe('41 and 3');
     expect(rowOf(s, 'display', 'long-tasks').value).toBe('4 (612 ms in all, longest 310 ms)');
     expect(rowOf(s, 'display', 'draw-calls').value).toBe('212 and 910000');
-    expect(rowOf(s, 'display', 'pixel-ratio')).toMatchObject({ value: '1.50 and 1.75', note: 'The adaptive resolution has lowered it 1 time' });
+    expect(rowOf(s, 'display', 'pixel-ratio')).toMatchObject({ value: '1.50 and 1.75', note: "The cap is the tier's or the screen's own ratio, whichever is lower. The adaptive resolution has lowered the ratio 1 time" });
     expect(rowOf(s, 'display', 'picture-quality').value).toBe('Medium (guessed from this phone: 6 cores, 4 GB)');
-    expect(rowOf(s, 'display', 'picture-sets').value).toBe('terrain 320 x 320 samples, 32000 trees, 170k canopy triangles, pixel ratio cap 1.75, 5000 flame sites, 1500 smoke puffs, tree sway on by default');
+    expect(rowOf(s, 'display', 'picture-sets').value).toBe('terrain 320 x 320 samples, 32000 trees, 170k canopy triangles, pixel ratio cap for this tier 1.75, 5000 flame sites, 1500 smoke puffs, tree sway on by default');
     expect(rowOf(s, 'display', 'cliffs').value).toBe('5 % of the 10 m cells moved; sharpening 180 ms, rock mask 70 ms, mesh 95 ms, lighting 40 ms');
     expect(rowOf(s, 'display', 'cliffs').note).toBe('102400 vertices, 204000 triangles; rock detail in the shader: high');
+  });
+
+  it('the frame rate says "1 frame per second", not "1 frames", in the row and in the group line', () => {
+    const at = (fps10: number): DebugStats => buildDebugStats({ ...full(), frames: { ...frames, fps10 } });
+    expect(rowOf(at(1), 'display', 'fps').value).toBe('1 frame per second');
+    expect(rowOf(at(1.4), 'display', 'fps').value).toBe('1 frame per second'); // rounds to 1
+    expect(plain(at(1).groups.find((g) => g.id === 'display')!.summary)).toBe('Medium picture; 1 frame per second');
+    expect(rowOf(at(0.4), 'display', 'fps').value).toBe('0 frames per second');
+    expect(rowOf(at(60), 'display', 'fps').value).toBe('60 frames per second');
   });
 
   it('picture quality says "set by you", "asked for by the Detail profile" or the guess with its numbers', () => {
@@ -406,10 +467,10 @@ describe('labels and values', () => {
     expect(rows.map((r) => r.id)).toEqual(['speed', 'memory', 'graphics']);
     expect(rows[2]!.value).toBe('WebGL2 on Mali-G710, float render targets yes, WebGPU present.'); // the row's label already says "Graphics"
     expect(rows[1]!.value).toContain('of a 2.1\u00a0GB limit');
-    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 41 ms on average (41 ms in the timing test), and the run computes at about 843x real time.');
+    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 6.2 ms on average (41 ms in the timing test), and the run computes at about 843× real time.');
     const fast = full();
     fast.engine = fastEngine;
-    expect(rowOf(buildDebugStats(fast), 'canDo', 'speed').value).toBe('The fast model has computed this run at about 843x real time.');
+    expect(rowOf(buildDebugStats(fast), 'canDo', 'speed').value).toBe('The fast model has computed this run at about 843× real time.');
     const mock = full();
     mock.engineSource = 'mock';
     expect(rowOf(buildDebugStats(mock), 'canDo', 'speed').value).toBe('The demo engine is running, so nothing was measured.');
@@ -418,7 +479,7 @@ describe('labels and values', () => {
 
   it('Summary: tier, speed, memory and the phone class in one line; the demo engine and "no run" say so', () => {
     const line = rowOf(s, 'summary', 'headline').value;
-    expect(line).toContain('Standard (3-D air), computing about 871x (600x asked for)');
+    expect(line).toContain('Standard (3-D air), computing about 871× (600× asked for)');
     expect(line).toMatch(/this phone: 8 cores, about 6 GB memory class\.$/);
     expect(rowOf(buildDebugStats(bare()), 'summary', 'headline').value).toBe('No run yet. This phone: cores not reported, memory class not reported.');
     const mock = full();
@@ -489,7 +550,7 @@ describe('the header, the copy and its shape', () => {
     expect(lines.indexOf('== Memory ==')).toBeLessThan(lines.indexOf('== Phone: hardware =='));
     expect(lines.indexOf('== Phone: software and graphics ==')).toBeLessThan(lines.indexOf('== Recent events =='));
     expect(lines[lines.length - 1]).toBe('-- end --');
-    expect(text).toContain('  Computing speed, last 10 s: 871x (Simulated seconds per wall second while the worker computes)');
+    expect(text).toContain('  Computing speed, last 10 s: 871× (Simulated seconds per wall second while the worker computes)');
     // One row per line, plain spaces (no no-break spaces in a paste).
     expect(text).not.toContain(' ');
   });
@@ -570,13 +631,23 @@ describe('privacy: no coordinates, no custom place name, no identifier', () => {
 });
 
 describe('Recent events', () => {
-  it('lists the events newest first with their wall clock (in the phone\'s time) and run clock', () => {
+  it('lists the events newest first with their wall clock (in the phone\'s time), run clock and kind', () => {
     const rows = buildDebugStats(full()).groups.find((g) => g.id === 'events')!.rows;
     expect(rows.map((r) => [r.label, r.value])).toEqual([
-      ['14:31:35 (run 00:30:00)', 'The simulation is falling behind: computing about 430x, asked for 600x.'],
-      ['14:30:35 (run 00:00:00)', 'Detailed 3-D air chosen: about 41 ms per air step.'],
-      ['14:30:05 (run 00:00:00)', 'Run started.'],
+      ['14:31:35 (run 00:30:00, speed)', 'The simulation is falling behind: computing about 430×, asked for 600×.'],
+      ['14:30:35 (run 00:00:00, tier)', 'Detailed 3-D air chosen: about 41 ms per air step.'],
+      ['14:30:05 (run 00:00:00, start)', 'Run started.'],
     ]);
+  });
+
+  it('every kind of event has its own short word, also with no run clock', () => {
+    const kinds: LogEvent['kind'][] = ['run', 'tier', 'slow', 'app', 'rewind', 'restore', 'long-steps', 'history'];
+    const i = full();
+    i.events = kinds.map((kind, n) => ({ wallMs: NOW + n * 1000, runS: n % 2 ? null : 60, kind, text: `event ${kind}` }));
+    const rows = buildDebugStats(i).groups.find((g) => g.id === 'events')!.rows;
+    const words = rows.map((r) => /, ([^)]+)\)$/.exec(r.label)?.[1]);
+    expect(words).toEqual(['history', 'long steps', 'restore', 'rewind', 'app', 'speed', 'tier', 'start']); // newest first
+    expect(rows.find((r) => r.value === 'event app')!.label).toMatch(/\(no run clock, app\)$/);
   });
 
   it('keeps 40 at most, and says "Nothing yet" for none', () => {

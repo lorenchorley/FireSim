@@ -63,7 +63,8 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: 
   const area = h('div', { class: 'tl-area' }, [rail, paceRun, hourTicks, labels, marks, target, thumb, bubble]);
   const slider = h('div', {
     class: 'tl-slider',
-    dataset: { testid: 'scrubber' },
+    // `focusHome`: where focus goes when the control that opened a full-screen screen is gone by the time it closes (app.ts).
+    dataset: { testid: 'scrubber', focusHome: '' },
     attrs: { role: 'slider', tabindex: '0' },
     aria: { label: 'Simulation time', valuemin: 0, valuemax: Math.round(D), valuenow: 0 },
   });

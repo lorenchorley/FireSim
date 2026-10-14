@@ -186,7 +186,12 @@ export class App {
     }
     ov.host.remove();
     this.updateInert();
-    if (ov.opener?.isConnected && !ov.opener.closest('[inert]')) ov.opener.focus({ preventScroll: true });
+    const back = ov.opener;
+    if (back?.isConnected && !back.closest('[inert]')) {
+      back.focus({ preventScroll: true });
+      // The control can be gone by now (the speed signal ends while a screen is open): focus then goes to the screen's own home, not to the page.
+      if (document.activeElement !== back) this.stage.querySelector<HTMLElement>('[data-focus-home]')?.focus({ preventScroll: true });
+    }
   }
 
   private closeOverlays(): void {

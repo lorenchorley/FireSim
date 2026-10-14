@@ -4,7 +4,7 @@ import type { EnginePerfInfo, PerfModuleId, PerfModuleShare } from '../core/simT
 import type { PaceInfo } from './paceTypes';
 import { PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL } from './paceModel';
 import { SIM_PARAMS } from '../sim/params';
-import { earlierSpeed, FAST_ANNOUNCEMENT, FAST_NOTE, fireEvery, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
+import { earlierSpeed, FAST_ANNOUNCEMENT, FAST_NOTE, fireEvery, leadingReason, type PaceSheetEngine, type PaceSheetInput, paceSheet, percents, playAtSpeed, speedWord } from './paceSheetModel';
 
 const pace = (o: Partial<PaceInfo> = {}): PaceInfo => ({
   level: 'waiting',
@@ -132,7 +132,7 @@ describe('where the time goes', () => {
     expect(v.time!.title).toBe('Where the time goes (last 10 s)');
     expect(v.time!.rows.map((r) => [r.label, r.text])).toEqual([
       ['3-D air flow', '52 %'],
-      ['Fire spread', '21 %'],
+      ['Fire spread and its wind', '21 %'],
       ['Embers', '12 %'],
       ['Everything else', '15 %'],
     ]);
@@ -221,6 +221,38 @@ describe('likely reasons (each only when the numbers support it)', () => {
     expect(r[1]).toMatch(/^Slower than before/);
     expect(r[2]).toMatch(/^A big fire/);
     expect(reasons({ shares: { air: 0.3, fire: 0.3, embers: 0.1, other: 0.3 } })).toEqual([]);
+  });
+});
+
+describe('the leading reason, in a few words for the event log', () => {
+  const lead = (o: { shares?: Partial<Record<PerfModuleId, number>>; history?: (number | null)[]; tier?: 'fast' | 'standard' | 'high'; pace?: PaceInfo | null; engine?: PaceSheetEngine | null } = {}): string | null =>
+    leadingReason(o.pace === undefined ? pace() : o.pace, o.engine === undefined ? { tier: o.tier ?? 'standard', perf: perf({ modules: modules(o.shares ?? PLAN_SHARES), history: o.history ?? [] }) } : o.engine);
+
+  it('is the first reason the sheet lists, one phrase for each kind', () => {
+    expect(lead()).toBe('the 3-D air flow is the heaviest part');
+    expect(lead({ shares: { air: 0.45, fire: 0.5, embers: 0.05 } })).toBe('the 3-D air flow takes a big share of the time');
+    expect(lead({ shares: { air: 0.2, fire: 0.25, coupling: 0.2, other: 0.35 } })).toBe('a big fire takes longer to compute');
+    expect(lead({ shares: { air: 0.2, fire: 0.2, embers: 0.26, other: 0.34 } })).toBe('many embers are in the air');
+    expect(lead({ shares: { other: 1 }, history: [55, 56, 54, 55, 50, 45, 40, 38] })).toBe('slower than before (about 55× earlier in this run)');
+  });
+  it('is the same reason the sheet puts first, whatever the numbers', () => {
+    for (const shares of [PLAN_SHARES, { air: 0.45, fire: 0.1, coupling: 0.31, embers: 0.14 }, { air: 0.2, fire: 0.2, embers: 0.26, other: 0.34 }, { other: 1 }]) {
+      for (const history of [[], [55, 55, 55, 55]]) {
+        const sheet = paceSheet(input({ engine: { tier: 'standard', perf: perf({ modules: modules(shares), history }) } })).reasons[0];
+        const short = lead({ shares, history });
+        expect(short === null, JSON.stringify([shares, history])).toBe(sheet === undefined);
+        if (short !== null) expect(sheet!.toLowerCase().startsWith(short.toLowerCase().slice(0, 20)), `${sheet} / ${short}`).toBe(true);
+      }
+    }
+  });
+  it('is null when playback keeps up, nothing is judged, nothing is known of the engine, or no reason applies', () => {
+    expect(lead({ pace: pace({ level: 'ok' }) })).toBeNull();
+    expect(lead({ pace: null })).toBeNull();
+    expect(lead({ pace: pace({ wanted: Number.NaN }) })).toBeNull();
+    expect(lead({ engine: null })).toBeNull();
+    expect(lead({ engine: { tier: 'standard' } })).toBeNull();
+    expect(lead({ tier: 'fast' })).toBeNull();
+    expect(lead({ shares: { air: 0.3, fire: 0.3, embers: 0.1, other: 0.3 } })).toBeNull();
   });
 });
 

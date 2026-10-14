@@ -21,6 +21,11 @@
   color: var(--ok-ink);
 }
 
+/* The Copy button is 44 px tall at any text size (a small button grew to only 42 px at 200 % text, under the tap size). */
+.btn.ds-copy {
+  min-height: var(--tap);
+}
+
 /* A user agent or a long sentence wraps at any width. */
 .ds-val {
   overflow-wrap: anywhere;

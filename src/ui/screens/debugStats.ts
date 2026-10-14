@@ -187,7 +187,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     state,
     headline,
     subtitle,
-    h('div', { class: 'mc-actions cluster' }, [button({ label: 'Copy as text', icon: 'copy', size: 'sm', testId: 'debug-stats-copy', onClick: () => void copy() })]),
+    h('div', { class: 'mc-actions cluster' }, [button({ label: 'Copy as text', icon: 'copy', size: 'sm', class: 'ds-copy', testId: 'debug-stats-copy', onClick: () => void copy() })]),
     h('p', { class: 'hint' }, 'Copies this page as text. Nothing is sent anywhere. The numbers are measured on this phone and update every second while this page is open.'),
     status,
     box,

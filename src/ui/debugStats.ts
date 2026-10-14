@@ -14,7 +14,7 @@ import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
-import type { LogEvent } from './eventLog';
+import type { EventKind, LogEvent } from './eventLog';
 import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
 import type { PictureQualityAsk } from './settings';
@@ -167,7 +167,8 @@ const fix = (v: number, d: number): string => v.toFixed(d);
 const num = (v: number | null | undefined, d = 0, unit = ''): string => (ok(v) ? `${fix(v, d)}${unit}` : NOT_YET);
 const ms = (v: number | null | undefined): string => (ok(v) ? `${v < 10 ? fix(v, 1) : fix(v, 0)}${NB}ms` : NOT_YET);
 const sec = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 || Math.abs(v - Math.round(v)) < 0.05 ? fix(v, 0) : fix(v, 1)}${NB}s` : NOT_YET);
-const speedX = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 ? fix(v, 0) : fix(v, 1)}x` : NOT_YET);
+/** "871×": the speed chip's and the pace sheet's multiplication sign. */
+const speedX = (v: number | null | undefined): string => (ok(v) ? `${v >= 10 ? fix(v, 0) : fix(v, 1)}×` : NOT_YET);
 const pct = (share: number | null | undefined): string => (ok(share) ? `${fix(Math.round(share * 100), 0)}${NB}%` : NOT_YET);
 const bytes = (b: number | null | undefined): string => (ok(b) ? formatBytes(b).replace(/ /g, NB) : NOT_YET);
 const yesNo = (b: boolean): string => (b ? 'Yes' : 'No');
@@ -178,6 +179,8 @@ const hms = (s: number | null | undefined): string => {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${p(Math.floor(t / 3600))}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`;
 };
+/** "29 frames per second", "1 frame per second". */
+const framesPerSecond = (v: number): string => `${fix(v, 0)}${NB}frame${fix(v, 0) === '1' ? '' : 's'} per second`;
 const longSpan = (s: number): string => formatDuration(s).replace(/ /g, NB);
 
 /** "2026-10-11 14:32:05" in the phone's time (the offset is given, so the node tests do not depend on the machine's zone). */
@@ -258,6 +261,15 @@ function pacePhrase(p: PaceInfo | null): string {
   return p.level === 'ok' ? 'Keeping up' : p.level === 'behind' ? 'Falling behind the speed asked for' : 'Waiting for the simulation';
 }
 
+/**
+ * The 3-D air step's mean wall time: the air module of "Where the time goes". The engine's `atmosphere.meanStepMs` also holds the
+ * wind for the fire and the heat it puts back (the Coupling rows there), so it reads higher; both places say the module's own value.
+ */
+function airStepMs(e: EngineInfo): number | null {
+  const m = e.perf?.modules.find((x) => x.id === 'air');
+  return m && ok(m.ms) ? m.ms : e.atmosphere.meanStepMs;
+}
+
 /** A group; the collapsed line is `summary`, else the first row. */
 const G = (id: GroupId, title: string, rows: StatRow[], summary?: string): StatGroup => ({ id, title, summary: summary ?? `${rows[0]!.label}: ${rows[0]!.value}`, rows });
 /** What a group says when there is no engine report (the demo engine, or no run yet), and when the engine has no such block (an older one). */
@@ -326,7 +338,7 @@ function choicesGroup(i: DebugStatsInput): StatGroup {
   const p = i.playback;
   rows.push(
     R('display-step', 'Display step', `A picture every ${longSpan(c.displayStepS)}`),
-    R('solver-limit', 'Solver step limit', c.solverMaxStepS > 0 ? `${sec(c.solverMaxStepS)} (your setting)` : `Automatic (${sec(c.solverFloorS)} to ${sec(c.solverBoundS)})`),
+    R('solver-limit', 'Solver step limit', c.solverMaxStepS > 0 ? `${sec(c.solverMaxStepS)} (your setting)` : sec(c.solverFloorS) === sec(c.solverBoundS) ? `Automatic (${sec(c.solverBoundS)})` : `Automatic (${sec(c.solverFloorS)} to ${sec(c.solverBoundS)})`),
     R('playback', 'Playback speed asked for', p ? speedAsked(p.speed) : NO_RUN, p && Number.isFinite(p.speed) ? formatSpeedHint(p.speed) : undefined, true),
     R('coupling', 'Fire and air feedback', e.models.coupling <= 0 ? 'Off' : `On, strength ${fix(e.models.coupling, 2)}`),
     R('embers', 'Embers', e.models.embersOn ? 'On' : 'Off'),
@@ -387,7 +399,7 @@ function speedGroup(i: DebugStatsInput): StatGroup {
 function historyGroup(i: DebugStatsInput): StatGroup {
   const h = i.engine?.perf?.history;
   const have = !!h && h.some(ok);
-  const rows = [R('samples', 'Computing speed, one sample per 30 s of computing, oldest first', have ? h!.map((v) => (ok(v) ? fix(v, v >= 10 ? 0 : 1) : '-')).join(' ') : i.engine?.perf ? NOT_YET : absent(i), have ? 'x real time' : undefined, true)];
+  const rows = [R('samples', 'Computing speed, one sample per 30 s of computing, oldest first', have ? h!.map((v) => (ok(v) ? fix(v, v >= 10 ? 0 : 1) : '-')).join(' ') : i.engine?.perf ? NOT_YET : absent(i), have ? '× real time' : undefined, true)];
   if (have) rows.push({ id: 'chart', label: 'Chart', value: '', spark: h!.slice(), live: true });
   return G('history', 'Speed history', rows, have ? `${h!.filter(ok).length} samples` : i.engine?.perf ? NOT_YET : NA);
 }
@@ -410,7 +422,8 @@ function stepGroup(i: DebugStatsInput): StatGroup {
       R('whole-max', 'Whole step, longest (last 128)', ms(st.maxMs), undefined, true),
       R('over', 'Steps over 100 ms and over 250 ms', `${st.over100} and ${st.over250}`, undefined, true),
     );
-  rows.push(R('air-mean', '3-D air step, mean wall time', e.atmosphere.kind === '3d' ? ms(e.atmosphere.meanStepMs) : 'Not used in this tier', undefined, true));
+  const air3d = e.atmosphere.kind === '3d';
+  rows.push(R('air-mean', '3-D air step, mean wall time', air3d ? ms(airStepMs(e)) : 'Not used in this tier', air3d && e.perf ? 'The air module alone, as in "Where the time goes"' : undefined, true));
   return G('step', 'Step', rows, `Whole step ${st && ok(st.medianMs) ? `about ${ms(st.medianMs)}` : ms(e.run.meanStepMs)}`);
 }
 
@@ -487,11 +500,12 @@ function memoryGroup(i: DebugStatsInput): StatGroup {
   ];
   if (s) {
     const expected = s.range && s.displayStepS > 0 ? Math.floor((s.range.end - s.range.start) / s.displayStepS) + 1 : 0;
+    const gone = Math.max(0, expected - s.frames);
     rows.push(
       R('history-held', 'History held', `${bytes(s.bytes)}${s.maxBytes > 0 ? ` of ${bytes(s.maxBytes)}` : ''}`, undefined, true),
       R('full-pictures', 'Full pictures (keyframes)', String(s.keyframes), `About ${bytes(s.keyframes > 0 ? s.keyframeBytes / s.keyframes : null)} each; the newest picture is ${bytes(s.newestBytes)}`, true),
       R('light-frames', 'Light frames kept', String(s.frames), undefined, true),
-      R('thinned', 'Frames thinned away', s.frames > 0 ? `About ${Math.max(0, expected - s.frames)}` : NOT_YET, `Kept frames are now about ${sec(s.spacingS)} apart (display step ${sec(s.displayStepS)})`, true),
+      R('thinned', 'Frames thinned away', s.frames > 0 ? (gone > 0 ? `About ${gone}` : 'None') : NOT_YET, gone > 0 ? `Kept frames are now about ${sec(s.spacingS)} apart (display step ${sec(s.displayStepS)})` : `The display step is ${sec(s.displayStepS)}`, true),
     );
   } else rows.push(R('history-held', 'History held', NO_RUN));
   rows.push(
@@ -506,26 +520,26 @@ function displayGroup(i: DebugStatsInput): StatGroup {
   const rows: StatRow[] = [];
   if (f)
     rows.push(
-      R('fps', 'Frame rate, last 10 s', ok(f.fps10) ? `${fix(f.fps10, 0)} frames per second` : NOT_YET, 'The scene stops drawing while a full-screen screen is open, so this is the last seconds before it opened', true),
+      R('fps', 'Frame rate, last 10 s', ok(f.fps10) ? framesPerSecond(f.fps10) : NOT_YET, 'The scene stops drawing while a full-screen screen is open, so this is the last seconds before it opened', true),
       R('frame-mean', 'Frame time, mean and 95th percentile', ok(f.frameMeanMs) && ok(f.frameP95Ms) ? `${ms(f.frameMeanMs)} and ${ms(f.frameP95Ms)}` : NOT_YET, undefined, true),
       R('slow-frames', 'Frames slower than 30 per second, and over 100 ms', `${f.over33} and ${f.over100}`, `Of the last ${f.frames} frames`, true),
     );
-  else rows.push(R('fps', 'Frame rate, last 10 s', 'Not available (this view keeps no frame statistics)'));
+  else rows.push(R('fps', 'Frame rate, last 10 s', i.run ? 'Not available (this view keeps no frame statistics)' : NO_RUN)); // no run: there is no view yet
   rows.push(R('long-tasks', 'Long tasks, last 60 s', lt.supported ? `${lt.count} (${ms(lt.totalMs)} in all, longest ${ms(lt.maxMs)})` : NA_PHONE, undefined, true));
   if (f)
     rows.push(
       R('draw-calls', 'Draw calls and triangles', `${f.drawCalls} and ${f.triangles}`, undefined, true),
       R('textures', 'Textures held by the graphics card', String(f.textures), undefined, true),
-      R('pixel-ratio', 'Pixel ratio used and its cap', `${fix(f.pixelRatio, 2)} and ${fix(f.pixelRatioCap, 2)}`, `The adaptive resolution has lowered it ${f.dprDrops} ${f.dprDrops === 1 ? 'time' : 'times'}`, true),
+      R('pixel-ratio', 'Pixel ratio used and its cap', `${fix(f.pixelRatio, 2)} and ${fix(f.pixelRatioCap, 2)}`, `The cap is the tier's or the screen's own ratio, whichever is lower. The adaptive resolution has lowered the ratio ${f.dprDrops} ${f.dprDrops === 1 ? 'time' : 'times'}`, true),
       R('canvas', 'Drawing size', `${f.canvasW} x ${f.canvasH} pixels`, undefined, true),
       R('last-draw', 'Last frame drawn', ok(f.lastDrawAgeS) ? `${fix(f.lastDrawAgeS, f.lastDrawAgeS < 10 ? 1 : 0)}${NB}s ago` : NOT_YET, undefined, true),
     );
   if (q)
     rows.push(
       R('picture-quality', 'Picture quality in use', `${cap(q.tier)} (${pictureQualityWhy(q, i.qualityAsk)})`),
-      R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
+      R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap for this tier ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
     );
-  else rows.push(R('picture-quality', 'Picture quality in use', 'Not available (this view does not report a picture tier)'));
+  else rows.push(R('picture-quality', 'Picture quality in use', i.run ? 'Not available (this view does not report a picture tier)' : NO_RUN));
   if (t)
     rows.push(
       R(
@@ -536,7 +550,8 @@ function displayGroup(i: DebugStatsInput): StatGroup {
       ),
     );
   else if (t === null) rows.push(R('cliffs', 'Cliff drawing (once per scenario)', 'Nothing sharpened in this run (no 10 m terrain)'));
-  const fps = f && ok(f.fps10) ? `${fix(f.fps10, 0)} frames per second` : 'frame rate not measured yet';
+  else rows.push(R('cliffs', 'Cliff drawing (once per scenario)', i.run ? NA : NO_RUN)); // a view that cannot say
+  const fps = f && ok(f.fps10) ? framesPerSecond(f.fps10) : 'frame rate not measured yet';
   return G('display', 'Display (main thread)', rows, q ? `${cap(q.tier)} picture; ${fps}` : fps);
 }
 
@@ -603,7 +618,7 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
       ? 'The demo engine is running, so nothing was measured.'
       : 'No run has measured this phone yet. Start a run, or look here again during one.'
     : e.atmosphere.kind === '3d'
-      ? `On this phone the 3-D air step takes about ${ms(e.atmosphere.meanStepMs)} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
+      ? `On this phone the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
       : `The fast model has computed this run at about ${speedX(real)} real time${a && a.chosen === 'fast' ? `; the 3-D air step took about ${test} in the timing test` : ''}.`;
   const mem = e?.memory
     ? `The engine holds ${bytes(e.memory.totalBytes)}; ${heap && heap.limitBytes !== null ? `the screen thread's JavaScript heap is ${bytes(heap.usedBytes)} of a ${bytes(heap.limitBytes)} limit (the engine's own memory is not in that heap).` : "this phone does not report the screen thread's heap limit."}`
@@ -616,12 +631,15 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
   return G('canDo', 'What this phone can do', [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)], 'Three sentences from the measurements above');
 }
 
+/** The short word beside each event line: what kind of event it is. */
+const EVENT_KIND: Record<EventKind, string> = { run: 'start', tier: 'tier', slow: 'speed', app: 'app', rewind: 'rewind', restore: 'restore', 'long-steps': 'long steps', history: 'history' };
+
 function eventsGroup(i: DebugStatsInput): StatGroup {
   const off = i.clock.tzOffsetMin;
   const rows: StatRow[] = [...i.events]
     .reverse()
     .slice(0, 40)
-    .map((e, n) => R(`e${n}`, `${localStamp(e.wallMs, off, false)} (${e.runS === null ? 'no run clock' : `run ${hms(e.runS)}`})`, scrubError(e.text, i.hide)));
+    .map((e, n) => R(`e${n}`, `${localStamp(e.wallMs, off, false)} (${e.runS === null ? 'no run clock' : `run ${hms(e.runS)}`}, ${EVENT_KIND[e.kind]})`, scrubError(e.text, i.hide)));
   i.errors
     .slice(-5)
     .reverse()

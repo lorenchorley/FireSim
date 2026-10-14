@@ -7,6 +7,8 @@
  * Events never carry a coordinate, a place name or an identifier. Nothing here changes a result: it only reads state.
  */
 import { eventLog, type EventLog } from './eventLog';
+import { formatSpeedMultiple } from './format';
+import { leadingReason } from './paceSheetModel';
 import type { PerfEvent } from '../core/simTypes';
 import type { PaceInfo, PaceLevel } from './paceTypes';
 import type { SimSession } from './session';
@@ -20,39 +22,53 @@ export function waited(ms: number): string {
 /**
  * Turns the pace levels (`SessionState.pace`) into slow-run episodes: one event when playback falls behind, one when it starts
  * to wait or stops waiting while still behind, and one when it is back, with how long it lasted and the slowest speed seen
- * against the speed asked for.
+ * against the speed asked for. The leading reason (paceSheetModel.ts `leadingReason`) is said once per episode, on the first of
+ * those events written after it is known.
  */
 export class PaceWatch {
   private level: PaceLevel = 'ok';
   private t0 = 0;
   private worst = Infinity;
+  private reason: string | null = null;
+  private reasonSaid = false;
 
   constructor(private readonly log: EventLog) {}
 
-  observe(pace: PaceInfo | null, runS: number): void {
+  /** " Likely reason: …", once per episode. */
+  private because(): string {
+    if (!this.reason || this.reasonSaid) return '';
+    this.reasonSaid = true;
+    return ` Likely reason: ${this.reason}.`;
+  }
+
+  observe(pace: PaceInfo | null, runS: number, reason: string | null = null): void {
     const level = pace?.level ?? 'ok';
     const was = this.level;
     if (level === 'ok' && was === 'ok') return;
     if (was === 'ok') {
       this.t0 = this.log.now();
       this.worst = Infinity;
+      this.reason = null;
+      this.reasonSaid = false;
     }
+    if (level !== 'ok' && reason) this.reason = reason;
     // The slowest ratio is what playback achieved against what was asked for; the sentences name what the worker computes.
     const played = pace ? (pace.achieved ?? pace.capacity) : null;
     if (pace && level !== 'ok' && played !== null && pace.wanted > 0) this.worst = Math.min(this.worst, played / pace.wanted);
     if (level === was) return;
     this.level = level;
+    const why = this.because();
     const computing = pace ? (pace.capacity ?? pace.achieved) : null;
-    const asked = pace ? `${Math.round(pace.wanted)}x` : '';
-    const now = computing !== null ? `about ${Math.round(computing)}x` : 'slower';
+    const asked = pace ? formatSpeedMultiple(Math.round(pace.wanted)) : '';
+    const now = computing !== null ? `about ${formatSpeedMultiple(Math.round(computing))}` : 'slower';
     if (level === 'ok') {
       const worst = Number.isFinite(this.worst) ? ` Slowest: about ${Math.round(100 * Math.min(1, this.worst))} % of the speed asked for.` : '';
       const after = waited(this.log.now() - this.t0);
-      this.log.add('slow', pace ? `Back at the speed asked for after ${after}.${worst}` : `The slow spell ended after ${after} (playback was paused, jumped or changed speed).${worst}`, runS);
+      this.log.add('slow', pace ? `Back at the speed asked for after ${after}.${worst}${why}` : `The slow spell ended after ${after} (playback was paused, jumped or changed speed).${worst}${why}`, runS);
     } else if (was === 'ok') {
-      this.log.add('slow', level === 'waiting' ? `Playback is waiting for the simulation: computing ${now}, asked for ${asked}.` : `The simulation is falling behind: computing ${now}, asked for ${asked}.`, runS);
+      this.log.add('slow', level === 'waiting' ? `Playback is waiting for the simulation: computing ${now}, asked for ${asked}.${why}` : `The simulation is falling behind: computing ${now}, asked for ${asked}.${why}`, runS);
     } else {
-      this.log.add('slow', level === 'waiting' ? 'Playback is now waiting for the simulation.' : 'Playback is no longer waiting, but the simulation is still behind.', runS);
+      this.log.add('slow', level === 'waiting' ? `Playback is now waiting for the simulation.${why}` : `Playback is no longer waiting, but the simulation is still behind.${why}`, runS);
     }
   }
 }
@@ -70,7 +86,7 @@ export function watchRun(session: Pick<SimSession, 'state' | 'snapshots'> & Part
   const seen = new Set<string>();
   let thinned = false;
   let hiddenAt = 0;
-  const offPace = session.state.subscribe((s) => pace.observe(s.pace, s.viewTime), ['pace']);
+  const offPace = session.state.subscribe((s) => pace.observe(s.pace, s.viewTime, leadingReason(s.pace, s.snapshot?.engine ?? null)), ['pace']);
   const take = (events: readonly PerfEvent[]): void => {
     for (const e of events) {
       const key = `${e.seq}@${e.wallMs}`;
