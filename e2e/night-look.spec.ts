@@ -215,10 +215,10 @@ test('Night lighting: the ground rises Realistic < Brighter < Daylight at night,
   await expect(panel).toContainText('Realistic follows the clock. Brighter and Daylight light the ground, trees and roads after dark so terrain detail stays readable.');
   await expect(panel.locator('section[aria-label="Map type"]').getByTestId('night-look')).toHaveCount(1);
   expect(await viewLook(page)).toBe('realistic');
-  // The row is small: the plan gives the whole feature about 12 DOM nodes of the Layers panel's 86 spare.
+  // The row is small: 25 DOM nodes measured (the plan allowed about 12 of the Layers panel's 86 spare), so 28 leaves a small margin and a bigger row is noticed.
   const rowNodes = await row.evaluate((el) => 1 + el.querySelectorAll('*').length + 1); // the control and the hint under it
   test.info().annotations.push({ type: 'night row DOM nodes', description: String(rowNodes) });
-  expect(rowNodes).toBeLessThanOrEqual(32);
+  expect(rowNodes).toBeLessThanOrEqual(28);
 
   // ── Night, standard view: the three looks, chosen in the panel ──
   await shoot(page, { ms: night, look: 'realistic', camera: 'std' }); // the first frame after the loop stops takes one step of the animated state
