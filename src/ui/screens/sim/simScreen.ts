@@ -55,8 +55,8 @@ export interface SimScreenOptions {
   onOpenDatasets?(datasetId?: string): void;
   /** Open "How this simulation works"; the run keeps going underneath. */
   onOpenModelCard?(): void;
-  /** Open the Simulation debug statistics screen (the slow-run sheet's "All the numbers"); the run keeps going underneath. */
-  onOpenDebugStats?(): void;
+  /** Open the Simulation debug statistics screen for the slow-run sheet's "All the numbers" row; the run keeps going underneath. */
+  onOpenAllNumbers?(): void;
 }
 
 export interface SimScreen {
@@ -134,7 +134,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     showNotice: o.onNotice,
     ...(o.onOpenDatasets ? { openDatasets: (id?: string) => o.onOpenDatasets?.(id) } : {}),
     ...(o.onOpenModelCard ? { openModelCard: () => o.onOpenModelCard?.() } : {}),
-    ...(o.onOpenDebugStats ? { openDebugStats: () => o.onOpenDebugStats?.() } : {}),
+    ...(o.onOpenAllNumbers ? { openAllNumbers: () => o.onOpenAllNumbers?.() } : {}),
     absTime: (t) => scenario.startTime + t * 1000,
     buildWarnings: o.buildWarnings ?? [],
     get legendProvider() {

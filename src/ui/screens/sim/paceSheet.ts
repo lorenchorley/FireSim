@@ -102,9 +102,9 @@ export function mountPaceSheet(ctx: SimContext, panel: HTMLElement, opts: { clos
   // Focus goes back to the timeline's button first (close), so the screen this opens returns focus there when it closes.
   const openNumbers = (): void => {
     opts.close();
-    ctx.openDebugStats?.();
+    ctx.openAllNumbers?.();
   };
-  const numbers = ctx.openDebugStats ? list([listRow({ title: 'All the numbers', icon: 'speed', chevron: true, onClick: openNumbers, testId: 'pace-numbers' })]) : null;
+  const numbers = ctx.openAllNumbers ? list([listRow({ title: 'All the numbers', icon: 'speed', chevron: true, onClick: openNumbers, testId: 'pace-numbers' })]) : null;
   const footnote = h('p', { class: 'tp-note' });
 
   body.replaceChildren(h('div', { class: 'tp-col' }, [lead, result, time]), h('div', { class: 'tp-col' }, [reasons, actions, end, numbers, footnote]));

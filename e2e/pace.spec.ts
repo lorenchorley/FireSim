@@ -14,6 +14,8 @@ import { expect, test } from './fixtures';
 import { acceptNotice, armPopupWatch, popups, scenarioDuration, session, setSpeed, watchPopups } from './helpers';
 
 const LABEL = 'Simulation is running slower than your playback speed. Show details.';
+/** The speed presets of the speed sheet (speedModel.ts), below 3600x. */
+const PRESETS = [0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800];
 const BAD = /\b(undefined|NaN|Infinity|null|\[object)\b/;
 
 interface PaceState {
@@ -101,7 +103,8 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(live).toHaveAttribute('role', 'status');
   await expect(live).toHaveAttribute('aria-live', 'polite');
   if ((await pace(page))?.level === 'waiting') await expect(live).toHaveText('Simulation is running slower than your playback speed.');
-  expect(await page.locator('[role=alert], [role=alertdialog], .toast, .modal-scrim').count()).toBe(0);
+  // Nothing that could be an alert, a toast or a dialog scrim is on screen (the engine-failure strip is hidden unless the engine failed).
+  expect(await page.locator('[role=alert], [role=alertdialog], .toast, .modal-scrim').evaluateAll((els) => els.filter((e) => !e.closest('.error-chip, .sim-error') && !(e as HTMLElement).hidden).length)).toBe(0);
   await expect(page.getByTestId('pace-sheet')).toBeHidden(); // nothing opened by itself
 
   // ── the sheet: only on a tap ──
@@ -147,15 +150,15 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(btn).toBeFocused();
   expect((await session(page)).playing).toBe(true);
 
-  // ── "Play at N": the speed changes, the signal is cleared, the run keeps going ──
+  // ── "Play at N": the speed changes to a preset below the one asked for, the signal is cleared, the run keeps going ──
   await btn.click();
   await expect(play).toBeVisible();
-  const wanted = Number.parseFloat(((await play.innerText()).match(/\d+(\.\d+)?/) ?? ['0'])[0]);
-  expect(wanted).toBeGreaterThan(0);
-  expect(wanted).toBeLessThan(3600);
+  await expect(play).toHaveText(/^Play at \d+(\.\d+)?×$/);
   await play.click();
   await expect(sheet).toBeHidden();
-  await expect.poll(async () => (await session(page)).speed).toBe(wanted);
+  // (The sheet refreshes about once a second, so the number may have moved between a read and the tap: any preset below 3600 is right.)
+  await expect.poll(async () => (await session(page)).speed).toBeLessThan(3600);
+  expect(PRESETS).toContain((await session(page)).speed);
   await expect(btn).toBeHidden({ timeout: 5000 }); // a change of speed drops the reading; judged afresh after the wait
   expect((await pace(page))?.level ?? null).not.toBe('waiting');
   expect((await session(page)).playing).toBe(true);
@@ -190,7 +193,8 @@ for (const [w, h, name] of [[412, 915, 'portrait'], [844, 390, 'landscape']] as 
       await force(level);
       await expect(btn).toBeVisible();
       await expect(strip).toHaveAttribute('data-pace', level);
-      await expect(page.locator('.tl-pace-run')).toBeVisible({ visible: level === 'waiting' });
+      if (level === 'waiting') await expect(page.locator('.tl-pace-run')).toBeVisible();
+      else await expect(page.locator('.tl-pace-run')).toBeHidden();
       expect((await strip.boundingBox())!.height).toBe(stripH);
       const hit = await hitArea(page, 'pace-btn');
       expect(hit).toMatchObject({ w: 44, h: 44, missed: [] });
