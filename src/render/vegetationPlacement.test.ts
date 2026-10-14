@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeGridSpec, type GridSpec } from '../core/grid';
 import { FuelFlag, FuelType, type FuelMap } from '../core/types';
 import { BARK_CODE } from './canopyStyle';
+import { sampleRock, type RockCopy } from './rockMask';
 import { INSTANCE_BYTES, MAX_VEG_INSTANCES, PlacementJob, VEG_GROUP_COUNT, VegGroup, placeVegetation, splitBudget, totalInstances, type VegInstances } from './vegetationPlacement';
 
 const origin = { lat: -33.7, lon: 150.3 };
@@ -301,5 +302,100 @@ describe('splitBudget', () => {
     const b = splitBudget(1000, [100, 1e6, 0, 0, 0, 0, 0, 0]);
     expect(b[0]).toBe(100);
     expect(b[1]).toBeGreaterThan(890);
+  });
+});
+
+describe('bare rock (the rock mask)', () => {
+  /** FNV-1a over every array of every group, so two placements can be compared bit for bit with one number. */
+  const digest = (v: VegInstances[]): number => {
+    let h = 0x811c9dc5;
+    const feed = (a: ArrayBufferView): void => {
+      const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+      for (let i = 0; i < b.length; i++) h = Math.imul(h ^ b[i]!, 0x01000193) >>> 0;
+    };
+    for (const s of v) {
+      feed(new Uint32Array([s.count]));
+      for (const a of [s.position, s.size, s.rand, s.tint, s.info, s.aux]) feed(a);
+    }
+    return h;
+  };
+  /** The pine and wet-forest variant of the 6 km forest, with a fire trail so the clearing rule runs too. */
+  const mixed = (): FuelMap => {
+    const f = forest(g);
+    for (let k = 0; k < f.type.length; k++) {
+      const i = k % g.nx;
+      if (f.type[k] === FuelType.DryForestShrubby) f.type[k] = i < g.nx / 2 ? FuelType.PinePlantation : FuelType.WetForest;
+    }
+    return f;
+  };
+  const trail = { lines: [new Float32Array([-300, -1500, 200, 1500])], halfWidth: 4 };
+
+  // A rock raster on a 10 m grid over the same 6 km: R as a function of local x and y.
+  const rockOf = (fn: (x: number, y: number) => number): RockCopy => {
+    const g10 = makeGridSpec(origin, 6000, 10);
+    const r = new Uint8Array(g10.nx * g10.ny);
+    for (let j = 0; j < g10.ny; j++) for (let i = 0; i < g10.nx; i++) r[j * g10.nx + i] = Math.round(255 * fn(g10.x0 + i * 10, g10.y0 + j * 10));
+    return { grid: g10, r };
+  };
+  const all = (v: VegInstances[]): [number, number, number][] => {
+    const out: [number, number, number][] = [];
+    for (const s of v) for (let i = 0; i < s.count; i++) out.push([s.position[i * 3]!, s.position[i * 3 + 1]!, s.group]);
+    return out;
+  };
+  // A rock band across the forest: bare for |y| < 300, falling to none at |y| = 400 (R = 0.5 at 350 and 0.2 at 380).
+  const band = rockOf((_x, y) => Math.min(1, Math.max(0, (400 - Math.abs(y)) / 100)));
+
+  it('places the scenarios with no mask exactly as before the rule: the digests were taken on the code without it', () => {
+    // Taken from the placement code before the rock rule existed (the same two scenarios, same options).
+    expect(digest(placeVegetation(fuel, { budget: 20000, heightAt, seed: 3 }))).toBe(3283714147);
+    expect(digest(placeVegetation(mixed(), { budget: 30000, heightAt, focusRadius: 4000, clearings: trail }))).toBe(1445165315);
+  });
+
+  it('is unchanged by a mask with no rock in it, or by no mask at all', () => {
+    const none = rockOf(() => 0);
+    const base = placeVegetation(mixed(), { budget: 30000, heightAt, focusRadius: 4000, clearings: trail });
+    expect(digest(placeVegetation(mixed(), { budget: 30000, heightAt, focusRadius: 4000, clearings: trail, rock: none }))).toBe(digest(base));
+    expect(digest(placeVegetation(mixed(), { budget: 30000, heightAt, focusRadius: 4000, clearings: trail, rock: null }))).toBe(digest(base));
+  });
+
+  it('puts no plant where R is 0.5 or more, in any group, and is deterministic', () => {
+    const opts = { budget: 40000, heightAt, focusRadius: 4000, clearings: trail, rock: band };
+    const a = placeVegetation(mixed(), opts);
+    const b = placeVegetation(mixed(), opts);
+    expect(digest(a)).toBe(digest(b));
+    const free = placeVegetation(mixed(), { ...opts, rock: null });
+    // Without the mask there are plenty of plants on the band (so the test can fail), with it none.
+    const onBand = (v: VegInstances[]): number => all(v).filter(([x, y]) => sampleRock(band, x, y) >= 0.5 - 1e-4).length;
+    expect(onBand(free)).toBeGreaterThan(300);
+    expect(onBand(a)).toBe(0);
+    expect(totalInstances(a)).toBeLessThan(totalInstances(free));
+    expect(a.map((s) => s.count).some((c) => c > 0)).toBe(true);
+  });
+
+  it('leaves the plants away from the rock exactly where they were, and thins the edge of the rock between R 0.2 and 0.5', () => {
+    const opts = { budget: 40000, heightAt, focusRadius: 4000 };
+    const free = all(placeVegetation(fuel, opts));
+    const masked = all(placeVegetation(fuel, { ...opts, rock: band }));
+    const far = (v: [number, number, number][]): string[] => v.filter(([, y]) => Math.abs(y) > 450).map((p) => p.join(','));
+    expect(far(masked)).toEqual(far(free));
+    // R falls from 0.5 (|y| = 350) to 0.2 (|y| = 380): about half the plants of a cell of that strip are kept on average.
+    const inEdge = (v: [number, number, number][]): number => v.filter(([, y]) => Math.abs(y) >= 350 && Math.abs(y) < 380).length;
+    expect(inEdge(free)).toBeGreaterThan(200);
+    expect(inEdge(masked) / inEdge(free)).toBeGreaterThan(0.2);
+    expect(inEdge(masked) / inEdge(free)).toBeLessThan(0.8);
+  });
+
+  it('draws a plant on rock again within its cell before it drops it, so a half-rock cell keeps most of its plants', () => {
+    // R is 1 at x = -25 and 0.5 at x = -15 and falls to none by x = -5, so the cells of the column x = -30 to 0 are half bare rock.
+    const half = rockOf((x) => (x <= -25 ? 1 : x === -15 ? 0.5 : 0));
+    const opts = { budget: 40000, heightAt, focusRadius: 4000 };
+    const inColumn = (v: [number, number, number][]): [number, number, number][] => v.filter(([x]) => x >= -30 && x < 0);
+    const free = inColumn(all(placeVegetation(fuel, opts)));
+    const masked = inColumn(all(placeVegetation(fuel, { ...opts, rock: half })));
+    expect(free.length).toBeGreaterThan(400);
+    // Per draw: half of the cell is rock (draw again), a fifth is the thin edge (kept about half the time) and three tenths is clear.
+    // Four draws keep 0.4 x (1 + 0.5 + 0.25 + 0.125) = 75 % of the plants, where dropping every plant that lands on rock keeps 40 %.
+    expect(masked.length / free.length).toBeGreaterThan(0.65);
+    for (const [x] of masked) expect(x).toBeGreaterThanOrEqual(-15 - 1e-3);
   });
 });

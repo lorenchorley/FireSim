@@ -23,6 +23,7 @@ import { clamp } from '../core/units';
 import { BARK_CODE, FOLIAGE, barkKindOf, type BarkKind } from './canopyStyle';
 import { hash01 } from './fields';
 import { mixRgb, type Rgb } from './palette';
+import { sampleRock, type RockCopy } from './rockMask';
 
 /** Instance groups; each is drawn by its own meshes (one per level of detail). */
 export enum VegGroup {
@@ -117,7 +118,19 @@ export interface PlacementOptions {
    * would reach into the track (distance to the line < halfWidth + half its crown width).
    */
   clearings?: { lines: readonly Float32Array[]; halfWidth: number } | null;
+  /**
+   * The CPU copy of the rock mask's R channel (bare steep rock, 0 to 1, at 10 m). A candidate position at R of 0.5 or more is drawn
+   * again within its cell (up to {@link ROCK_REDRAWS} times, from a hash, so the result is deterministic) and left out when
+   * every draw is on rock; between R 0.2 and 0.5 the plants thin out to none. Absent or null places exactly as before.
+   */
+  rock?: RockCopy | null;
 }
+
+/** R at or above which a plant is never placed, and below which the rock does not thin anything (plan 9d.3.6). */
+export const ROCK_REJECT = 0.5;
+export const ROCK_THIN = 0.2;
+/** How many times a plant that lands on rock is drawn again within its cell before it is left out. */
+export const ROCK_REDRAWS = 3;
 
 /** Widest crown radius a placed plant can have (m): rainforest 22 m × GROW_MAX / 2, rounded up. */
 const MAX_CROWN_RADIUS = 19;
@@ -412,6 +425,17 @@ export const GROW_MAX = 1.7;
 const ROW_ANGLE = 0.35;
 const ROW_ACROSS = 5.5;
 const ROW_ALONG = 4;
+const ROW_COS = Math.cos(ROW_ANGLE);
+const ROW_SIN = Math.sin(ROW_ANGLE);
+
+/** Snap a point onto the rotated plantation lattice (rows run across cell borders); `r` is the small random offset along a row. */
+function snapToRows(x: number, y: number, r: number, out: [number, number]): void {
+  const u = Math.round((x * ROW_COS + y * ROW_SIN) / ROW_ACROSS) * ROW_ACROSS;
+  const v = Math.round((-x * ROW_SIN + y * ROW_COS) / ROW_ALONG) * ROW_ALONG + (r - 0.5) * 0.8;
+  out[0] = u * ROW_COS - v * ROW_SIN;
+  out[1] = u * ROW_SIN + v * ROW_COS;
+}
+const rowPoint: [number, number] = [0, 0];
 
 enum Phase {
   Demand,
@@ -461,6 +485,7 @@ export class PlacementJob {
   private readonly far: number;
   private readonly wantUnder: boolean;
   private readonly clear: ClearingIndex | null;
+  private readonly rock: RockCopy | null;
   private dem: Demand[] | null = null;
   private cursor = 0;
   private w = new Float32Array(0);
@@ -487,6 +512,7 @@ export class PlacementJob {
     this.wantUnder = opts.understorey !== false;
     const cl = opts.clearings;
     this.clear = cl && cl.lines.length ? new ClearingIndex(this.g, cl.lines, cl.halfWidth) : null;
+    this.rock = opts.rock ?? null;
     const c = opts.cache;
     if (c && c.fuel === fuel && c.demand) {
       this.dem = c.demand;
@@ -683,7 +709,7 @@ export class PlacementJob {
   }
 
   private fillCell(k: number): void {
-    const { g, fuel, seed } = this;
+    const { g, fuel, seed, rock } = this;
     const h = g.cellSize;
     const i = k % g.nx;
     const j = (k / g.nx) | 0;
@@ -755,12 +781,9 @@ export class PlacementJob {
             height = ch * (0.9 + 0.2 * r3);
             width = clamp(height * 0.28, 2.5, 7) * Math.min(grow, 1.4);
             // Plantation rows: snap onto a rotated lattice that runs across cell borders.
-            const ca = Math.cos(ROW_ANGLE);
-            const sa = Math.sin(ROW_ANGLE);
-            const u = Math.round((x * ca + y * sa) / ROW_ACROSS) * ROW_ACROSS;
-            const v = Math.round((-x * sa + y * ca) / ROW_ALONG) * ROW_ALONG + (r5 - 0.5) * 0.8;
-            x = u * ca - v * sa;
-            y = u * sa + v * ca;
+            snapToRows(x, y, r5, rowPoint);
+            x = rowPoint[0];
+            y = rowPoint[1];
             break;
           }
           case Fam.Heath: {
@@ -785,6 +808,22 @@ export class PlacementJob {
             width = height * (1.2 + 0.8 * r4) * Math.min(grow, 1.3);
             break;
           }
+        }
+        // Bare rock: a plant that lands on it is drawn again within its cell, then left out; the edge of the rock is thinned.
+        if (rock) {
+          let r = sampleRock(rock, x, y);
+          for (let t = 0; t < ROCK_REDRAWS && r >= ROCK_REJECT; t++) {
+            x = g.x0 + (i + hash01(i, j, base + 500 + 2 * t) - 0.5) * h;
+            y = g.y0 + (j + hash01(i, j, base + 501 + 2 * t) - 0.5) * h;
+            if (f === Fam.Conifer) {
+              snapToRows(x, y, r5, rowPoint);
+              x = rowPoint[0];
+              y = rowPoint[1];
+            }
+            r = sampleRock(rock, x, y);
+          }
+          if (r >= ROCK_REJECT) continue;
+          if (r > ROCK_THIN && hash01(i, j, base + 700) >= (ROCK_REJECT - r) / (ROCK_REJECT - ROCK_THIN)) continue;
         }
         // A cleared corridor (fire trail): leave the plant out rather than let its crown hide the track.
         if (this.clear && this.clear.blocks(k, x, y, width)) continue;
