@@ -42,7 +42,7 @@ async function buildSlow(page: Page): Promise<void> {
   await page.getByTestId('preset-hot-nw-sw-change').click();
   const online = page.getByTestId('online').getByRole('switch');
   if (await online.isChecked()) await page.getByTestId('online').click();
-  await page.getByTestId('duration').getByRole('radio', { name: /^3/ }).check({ force: true });
+  await page.getByTestId('duration').getByRole('radio', { name: /^12/ }).check({ force: true });
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
 }
@@ -164,7 +164,7 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   expect((await pace(page))?.level ?? null).not.toBe('waiting');
   expect((await session(page)).playing).toBe(true);
   expect((await session(page)).error).toBeNull();
-  expect(D).toBe(3 * 3600);
+  expect(D).toBe(12 * 3600);
 
   // ── through all of it: no pop-up, no alert, no toast ──
   expect(await popups(page)).toEqual([]);
