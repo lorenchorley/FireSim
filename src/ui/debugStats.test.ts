@@ -477,7 +477,7 @@ describe('the header, the copy and its shape', () => {
     expect(lines.indexOf('== Memory ==')).toBeLessThan(lines.indexOf('== Phone: hardware =='));
     expect(lines.indexOf('== Phone: software and graphics ==')).toBeLessThan(lines.indexOf('== Recent events =='));
     expect(lines[lines.length - 1]).toBe('-- end --');
-    expect(text).toContain('  Computing speed, last 10 s: 871x (Simulated seconds per wall second while the worker is computing (idle time left out))');
+    expect(text).toContain('  Computing speed, last 10 s: 871x (Simulated seconds per wall second while the worker computes)');
     // One row per line, plain spaces (no no-break spaces in a paste).
     expect(text).not.toContain(' ');
   });
