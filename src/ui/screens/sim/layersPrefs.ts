@@ -1,6 +1,6 @@
 /**
  * The user's layer choices, remembered between runs ("what was on last time"): every switch, heat map, canopy style and
- * map type the user sets in the Layers panel is saved to the UI preferences (prefs.ts; Capacitor Preferences on the device),
+ * map type (and the map's night lighting) the user sets in the Layers panel is saved to the UI preferences (prefs.ts; Capacitor Preferences on the device),
  * and a new simulation starts from the device's defaults with those choices on top. Only choices the user made are
  * stored (never a default), so battery mode keeps its lighter defaults for everything the user did not touch.
  *

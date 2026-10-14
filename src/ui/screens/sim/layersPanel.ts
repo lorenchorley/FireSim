@@ -2,7 +2,7 @@
  * The Layers panel, Google-Maps style (a bottom sheet in portrait, the side column in landscape), built from the layer
  * catalog only (render/layerCatalog.ts through layersModel.ts, so a new catalog row shows up here by itself):
  *
- *   Map type     Aerial photo / Terrain colours / Plain (radio tiles)
+ *   Map type     Aerial photo / Terrain colours / Plain (radio tiles), and Night lighting (Realistic / Brighter / Daylight)
  *   Map details  a tile per scene layer (roads, fire trails, homes, residential areas, names, trees, shrubs, flames, smoke,
  *                embers, wind streaks, insight markers ...): each switches on its own; a greyed tile says why it cannot
  *   Heat maps    every data layer that can colour the ground, grouped as the catalog groups them (collapsible), each with
