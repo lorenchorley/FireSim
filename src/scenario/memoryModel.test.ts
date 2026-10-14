@@ -104,9 +104,14 @@ describe('the cliff drawing rows (plan 9d.3, section 11)', () => {
   const base = { tier: 'standard' as const, fireNx: 300, fireNy: 300, extentM: 9000, durationS: 3600 };
   const item = (wm: ReturnType<typeof workingMemory>, id: string) => wm.items.find((x) => x.id === id);
 
-  it('a 9 km area with a 10 m terrain: a 0.8 MB rock copy on the screen thread, two 3.2 MB textures and the 0.64 MB mesh slope on the graphics side', () => {
+  it('a 9 km area with a 10 m terrain: a 0.8 MB rock copy and the copies of the textures on the screen thread, two 3.2 MB textures and the 0.64 MB mesh slope on the graphics side', () => {
     const wm = workingMemory({ ...base, hiResNx: 900, hiResNy: 900, renderQuality: 'high' });
-    expect(item(wm, 'cliff-main')).toMatchObject({ where: 'main', bytes: 810_000 });
+    // The screen thread also keeps the array each texture and the slope attribute were made from (Three.js holds them for a lost
+    // graphics context): 2 x 3.24 MB + 0.64 MB. Verifier measurement on the real view, High, Katoomba: uGrad and uRock `image.data`
+    // 3.09 MiB each, `aSlope` 0.61 MiB, and 7.2 MB more array memory in the page than the same view without the cliff drawing.
+    const kept = 810_000 + 900 * 900 * 8 + 400 * 400 * 4;
+    expect(kept).toBe(7_930_000);
+    expect(item(wm, 'cliff-main')).toMatchObject({ where: 'main', bytes: kept });
     expect(item(wm, 'gpu-cliff-light')).toMatchObject({ where: 'gpu', bytes: 900 * 900 * 4 + 400 * 400 * 4 });
     expect(item(wm, 'gpu-cliff-rock')).toMatchObject({ where: 'gpu', bytes: 900 * 900 * 4 });
     expect(item(wm, 'gpu-cliff-light')!.bytes - 900 * 900 * 4).toBe(640_000); // the mesh gradient of the plan (S5)
@@ -114,7 +119,7 @@ describe('the cliff drawing rows (plan 9d.3, section 11)', () => {
     expect(item(wm, 'cliff-main')!.note).toContain(`While the scenario is set up about ${formatBytes(16 * 810_000)} more is held`);
     expect(wm.totalBytes).toBe(wm.mainBytes + wm.workerBytes + wm.gpuBytes);
     const without = workingMemory({ ...base, renderQuality: 'high' });
-    expect(wm.mainBytes - without.mainBytes).toBe(810_000 + (wm.items.find((x) => x.id === 'scenario-main')!.bytes - without.items.find((x) => x.id === 'scenario-main')!.bytes));
+    expect(wm.mainBytes - without.mainBytes).toBe(kept + (wm.items.find((x) => x.id === 'scenario-main')!.bytes - without.items.find((x) => x.id === 'scenario-main')!.bytes));
     expect(wm.gpuBytes - without.gpuBytes).toBe(900 * 900 * 8 + 400 * 400 * 4);
   });
 
@@ -135,7 +140,7 @@ describe('the cliff drawing rows (plan 9d.3, section 11)', () => {
     const g = scenario.terrain.grid;
     const withHi = { ...scenario, terrainHiRes: { grid: { ...g, nx: 300, ny: 300, cellSize: 10 }, elevation: new Float32Array(300 * 300) } };
     const wm = workingMemoryForScenario(withHi, { renderQuality: 'medium' });
-    expect(item(wm, 'cliff-main')!.bytes).toBe(300 * 300);
+    expect(item(wm, 'cliff-main')!.bytes).toBe(300 * 300 * (1 + 8) + 300 * 300 * 4); // a 300 x 300 mesh: the terrain is not decimated
     expect(item(wm, 'gpu-cliff-rock')!.bytes).toBe(300 * 300 * 4);
     for (const x of wm.items.filter((y) => y.id.includes('cliff'))) expect(`${x.label} ${x.formula} ${x.note ?? ''}`).not.toMatch(/NaN|undefined|Infinity/);
   });
