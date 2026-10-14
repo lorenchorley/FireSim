@@ -6,6 +6,7 @@
  * from the scenario's own places data (bundled, saved or downloaded, so it works offline) and terrain.
  */
 import { SpreadDriver, type CellExplanation } from '../../../core/types';
+import { iconGlyphUrl } from '../../../render/iconAtlas';
 import { h, setChildren } from '../../dom';
 import { icon } from '../../icons';
 import { compassName, formatClock, formatElapsedShort, formatIntensity, formatMetres, formatMultiplier, formatRos, formatWind, formatYears } from '../../format';
@@ -14,6 +15,7 @@ import { driverColour } from '../../legends';
 import { kv, sectionHeader } from '../../primitives';
 import type { ContextLayers } from '../../../core/places';
 import type { SimContext } from './context';
+import { markerRow, type MarkerRow } from './markerWords';
 import { placeInfo, placeRows, type PlaceRow } from './placeInfo';
 
 const CONTEXT_ORIGIN_WORDS: Record<ContextLayers['origin'], string> = {
@@ -40,6 +42,26 @@ export function whereSection(rows: readonly PlaceRow[], note: string): HTMLEleme
       { layout: 'stack', dense: true, label: 'Where you are' },
     ),
     h('p', { class: 'why-where-note' }, note),
+  ]);
+}
+
+/**
+ * The row at the top of the panel when an icon was tapped: the icon as the map draws it, its name, one muted line of
+ * detail and, when icons lie on top of each other, how many more. The picture is decorative; the words are the label.
+ */
+export function markerRowElement(row: MarkerRow): HTMLElement {
+  const glyph = row.pic.kind === 'icon' ? iconGlyphUrl(row.pic.icon) : '';
+  const pic =
+    row.pic.kind === 'home'
+      ? h('span', { class: 'why-marker-pic', style: { color: row.pic.colour }, aria: { hidden: true } }, icon('home', { size: 28 }))
+      : h('img', { class: 'why-marker-pic', src: glyph || undefined, alt: '', aria: { hidden: true } });
+  return h('div', { class: 'why-marker', dataset: { testid: 'why-marker', kind: row.kind } }, [
+    pic,
+    h('div', { class: 'why-marker-text' }, [
+      h('p', { class: 'why-marker-name' }, row.name),
+      h('p', { class: 'why-marker-detail' }, row.detail),
+      row.more ? h('p', { class: 'why-marker-more', dataset: { testid: 'why-marker-more' } }, row.more) : null,
+    ]),
   ]);
 }
 
@@ -103,12 +125,14 @@ export function createWhyPanel(ctx: SimContext, onClose: () => void): { el: HTML
       setChildren(content, h('p', { class: 'hint' }, 'Tap anywhere on the map to see what drives the fire at that spot.'));
       return;
     }
+    // The tapped icon (if any) comes first in every state, so a tap on an icon is told apart from a tap on the ground at once.
+    const tapped = w.marker ? markerRowElement(markerRow(w.marker, (t) => formatClock(ctx.absTime(t), ctx.tz))) : null;
     if (w.loading) {
-      setChildren(content, [h('p', { class: 'status-line' }, [h('span', { class: 'spinner', aria: { hidden: true } }), 'Working out why…']), whereFor(w.x, w.y)]);
+      setChildren(content, [tapped, h('p', { class: 'status-line' }, [h('span', { class: 'spinner', aria: { hidden: true } }), 'Working out why…']), whereFor(w.x, w.y)]);
       return;
     }
     if (w.error || !w.explanation) {
-      setChildren(content, [h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w.error ?? 'No explanation available here.')]), whereFor(w.x, w.y)]);
+      setChildren(content, [tapped, h('p', { class: 'callout callout-warn' }, [icon('warning'), h('span', null, w.error ?? 'No explanation available here.')]), whereFor(w.x, w.y)]);
       return;
     }
     const e = w.explanation;
@@ -117,6 +141,7 @@ export function createWhyPanel(ctx: SimContext, onClose: () => void): { el: HTML
     const rows = factorRows(e);
     const base = e.factors.base;
     setChildren(content, [
+      tapped,
       h('p', { class: 'why-place' }, [
         h('strong', null, LANDFORM_LABELS[e.landform] ?? 'Slope'),
         ` · ${Math.round(e.slopeDeg)}°\u00a0slope${Number.isFinite(e.aspectDeg) ? ` facing\u00a0${compassName(e.aspectDeg)}` : ''} · ${Math.round(e.elevation)}\u00a0m`,
