@@ -1581,7 +1581,7 @@ boundary does not push ridge-level wind into decoupled valleys; as Δθ decays a
 w_day smoothly. Vorticity confinement ε = 0 (visual-only ≤ 0.1, never fed to ROS).
 `Δt_a = clamp(3·min(Δx/|u|max, Δz_min/|w|max), 3 s, 12 s)`. **Spin-up**: 900 s without fire, run as
 t ∈ [t0 − 900 s, t0) with the t0 ambient, t0 surface heating and the §5.2a cold pool (`spunUp = true` after it); these
-steps are also the auto-tune timing sample (§12.6).
+steps are also the auto-tune timing sample, the first 30 of them (§12.6).
 
 ### 8.5 Pressure / mass-consistent solver (P0) [V doc 07 §7.4 measurements]
 
@@ -1670,8 +1670,8 @@ within ±5 % of the uncoupled (c_f = 0) value.
 slope flows (§8.6, full S), lee separation, pyrogenic potential, user edits (via u₀, §8.3); `view()` returns the 10 m
 fields and a zero 3-D volume; `airAt()` returns the §5.2 template T; `sampleTurb` from similarity (§9.3) with
 z_i = BLH ?? 1500 m by day, 200 m at night; `spunUp` is always false; diagnostics: inversion from §5.2a, Briggs plume
-top. **No wall-clock fallback**: the tier changes only at init (auto-tune) or by `setQuality`, which is recorded as an
-edit at a simulation time and replayed on rewind (§12.6), so physics never depends on wall-clock time.
+top. **No wall-clock fallback**: the tier changes only at init (the one auto-tune decision) or by `setQuality`, which is
+recorded as an edit at a simulation time and replayed on rewind (§12.6), so physics never depends on wall-clock time.
 
 ### 8.10 Diagnostics (P1) `diagnostics(): AtmosDiagnostics`
 
@@ -2149,7 +2149,7 @@ init(scenario):
   atm.setAmbient(stamp_i ≤ t0, stamp_i+1); atm.setTime(t0)
   post 'ready' (forecastInsights) and the t0 snapshot (u_bg wind, moisture, no 3-D volume)
   3-D tiers: spin-up t ∈ [t0 − 900 s, t0) with the t0 ambient, setSurfaceHeating(sun(t0), w(t0), kbdi, night) and the
-    cold pool; tier auto: the first 20 spin-up steps are the timing sample (§12.6); if the choice is 'fast', replace atm
+    cold pool; tier auto: the first 30 spin-up steps are the timing sample, the first 10 skipped (§12.6); if the choice is 'fast', replace atm
     by DiagnosticWind
   explain = new InsightEngine(terrain, derived, fuel, features); checkpoint(t0) (kept permanently)
 loop while t < tEnd (each iteration = one atmosphere step Δt_a):
@@ -2214,10 +2214,18 @@ produce bitwise-identical snapshots (V18).
 | high | 3-D | clamp(extent/60, 100, 270) m | 24 / 25 m | 2 | as built (20 m if the scenario was built for High and extent ≤ 6 km) | 4000 |
 
 `fireCellSize` is fixed by scenario/ when it builds the grids; auto-tune and `setQuality` change only the atmosphere
-tier, Δt_a and `maxEmbers` (a user-set `maxEmbers` wins). **Auto-tune** (tier 'auto'): from the mean wall time of the
-first 20 standard-tier spin-up steps, predict `T_pred = 1.4 · t_step · duration/10 s` (1.4 = fire + embers +
-overheads in one worker; 1.0 with the two-worker pipeline); choose standard if `T_pred ≤ budget = 120 s ×
-duration/6 h` (min 30 s), else fast. High is used only when requested. `setQuality(tier)`: at the next step boundary,
+tier, Δt_a and `maxEmbers` (a user-set `maxEmbers` wins). **Auto-tune** (tier 'auto'), as implemented in 0.3.0: time the
+first 30 standard-tier spin-up steps. The first 10 are the JIT warm-up and are only reported: they inflate a reading (on
+the build machine their mean was 50.7 ms against a steady median of 20.9 ms; the one phone measured so far gave 41 ms as the
+mean of its first 20 steps, so its steady step is probably lower). `t_step` is the median of the other 20, so one slow step (a
+garbage collection, another app) does not decide. Predict `T_pred = 1.4 · t_step · duration/10 s` (1.4 = fire +
+embers + overheads in one worker; 1.0 with the two-worker pipeline); keep the standard tier if `T_pred ≤ budget = 600 s ×
+duration/6 h` (min 60 s), else fast. For a run of 1 to 12 h that is a step of about 198 ms, 4.8 times that phone's 41 ms. The
+600 s is a FireSim heuristic that favours the 3-D result over waiting: the 120 s of the §13 target would have sent that phone
+to the fast tier on a 3.6 % margin (124 s predicted). The prediction is a rough guide, since a big fire costs more than the
+air step alone. The decision is taken once, at the start, and is the only wall-clock-dependent choice in the engine (§12.5):
+Auto does not degrade the run afterwards, and a run that cannot keep up with the playback speed is reported on the timeline
+with the measured numbers instead of changing the tier. High is used only when requested. `setQuality(tier)`: at the next step boundary,
 restore the latest checkpoint ≤ now, rebuild the atmosphere for the new tier and re-spin it for 900 s at the
 checkpoint time, then re-run to now; recorded as an edit at that simulation time and replayed on rewind.
 `setOption` changes (coupling, embers, mountainPhenomena, maxEmbers) apply from the next step and are recorded the
@@ -2244,8 +2252,11 @@ x86 Node core [K doc 09]. Evidence: doc 07 measured 7.9 ms per step on one Xeon 
 | start-up: moisture spin-up (LUT + 48 h per cell) + t0 snapshot | ≤ 1.5 s + 0.5 s | 1 | ≤ 2 s |
 
 Consequences: the **fast tier** (15–60 s per 6 h) always meets the budget; the **standard tier** in one worker needs
-60–260 s per 6 h and meets the budget only on the faster half of mid-range phones, so auto-tune decides from the
-measured step (§12.6); the **two-worker pipeline** (P1, §12.2; ≈ 1.7–1.9×) brings standard to ≈ max(atmosphere,
+60–260 s per 6 h against the 120 s target, so the target alone would send the slower mid-range phones to the fast tier. The
+first measurement (one phone, 41 ms per 3-D air step, inside the 25–56 ms estimated above) lies at the low end of that
+range. Auto-tune (§12.6) does not apply the target: it decides from the measured steady step and keeps the 3-D air unless a
+whole run is predicted to take over 10 minutes, and playback that outruns the computation is reported, not avoided; the
+**two-worker pipeline** (P1, §12.2; ≈ 1.7–1.9×) brings standard to ≈ max(atmosphere,
 fire + embers) = 45–200 s. WASM SIMD for advection and smoothers (1.5–3× [H], doc 07 §8) is the next lever; WASM
 threads are not relied on (Capacitor cross-origin isolation UNVERIFIED). Memory: < 150 MB in the worker (atmosphere
 ~50 fields × 40k cells; fire ~30 fields × 90k; checkpoints 9 × ~8 MB). **CI gates** (x86 Node, one worker, Katoomba

@@ -38,7 +38,7 @@ below come from `e2e/gallery.spec.ts` (the same build, in light, night and high-
 | ![Trees coded by bark](docs/screenshots/22-trees-coded.png) | ![Where you are](docs/screenshots/24-where-you-are.png) | ![Data sets](docs/screenshots/14-datasets-summary.png) | ![The list of data sets](docs/screenshots/15-datasets-list.png) |
 | Trees colour-coded by bark (ember) hazard | "Why here?" also says where you are: nearest road and trail, homes, the ground | Data sets: size, origin and age of everything the model was built from | One row per data set, with its origin and size |
 | ![A data set](docs/screenshots/16-datasets-detail.png) | ![Storage](docs/screenshots/17-datasets-storage.png) | ![How this simulation works](docs/screenshots/12-model-card.png) | ![The live engine rows](docs/screenshots/13-model-card-live.png) |
-| One data set: source, licence, resolution, trust | What the app keeps on the phone; deletions always ask first | How this simulation works: what is 2-D, what is 3-D | The engine's own grid sizes and steps, live |
+| One data set: source, licence, resolution, trust | What the app keeps on the phone; deletions always ask first | How this simulation works: what is 2-D, what is 3-D | The live summary (tier, speed, memory, this phone) and a way into all the numbers |
 | ![Night](docs/screenshots/23-sim-dark.png) | ![High contrast](docs/screenshots/23-sim-high-contrast.png) | ![200 % text](docs/screenshots/25-font-scale-200.png) | ![Planned data in Setup](docs/screenshots/26-setup-data.png) |
 | The night look | High contrast ("bright sun") | Android's 200 % font scale | Setup plans the data before anything is downloaded |
 | ![A pasted Google Maps link](docs/screenshots/27-maps-link.png) | | | |
@@ -66,17 +66,22 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   dew, rain), Vesta Mk2 / CSIRO grassland / heath / pine models, a level-set front with directional slope, mountain
   phenomena (eruptive slopes and chimneys, vorticity-driven lateral spread, junction zones, rolling debris), a 3-D
   terrain-following atmosphere (slope winds, cold-air drainage, thermal belts, the fire's own indraft and plume) or a
-  fast surface-wind tier on slower phones, and Lagrangian embers with spot-fire ignition.
+  fast surface-wind tier (the Saver profile, or when Auto finds that the 3-D air would take far too long on the phone), and Lagrangian embers with
+  spot-fire ignition. The app says when the simulation cannot keep up with the speed you chose (see *Speed and the
+  timeline signal*); the result never depends on speed.
 - **Explanations**: insight cards as the fire does something worth learning (upslope run, ridge-crest slowdown,
   gully chimney, lee-slope eddy / VLS, spotting, crown fire, wind change: "the flank becomes the head", dead man zone,
   pyroconvection…), repeats grouped per phenomenon, "Show me" switches on the layer that makes it visible.
   **Why here?** — tap anywhere for the factor breakdown (wind, slope, moisture, fuel, terrain, position on the fire)
-  and a narrative.
+  and a narrative. Tap an **icon** (the fire you marked, a spot fire, an insight marker, your own position, a home) and the
+  panel opens with that icon as the map draws it and its name in a word or two (for example "Spot fire" or "Danger: Uphill
+  run"), and the question is about the icon's own spot; tap the ground and there is no icon row.
 - **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume),
   vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
   turn, tilt and zoom it, all at once (see *Controls*).
 - **Layers**: one panel built from a catalogue of layers (`src/render/layerCatalog.ts`), each with a plain "what it shows, why it
-  matters, where the data come from, how fine it is". *Map type* (aerial photo, terrain colours, plain); *Map details*, a switch for
+  matters, where the data come from, how fine it is". *Map type* (aerial photo, terrain colours, plain), with **Night lighting**
+  (Realistic, Brighter, Daylight: see *Night lighting* below); *Map details*, a switch for
   each: 3-D canopy, shrubs, **roads and tracks**, **fire trails**, **homes**, **residential and built-up areas**, **place names**,
   flames, smoke, embers, wind streaks, insight markers; and *Heat maps*, every data layer as a colour map of the ground (cool = little,
   warm = much), one at a time, optionally **on its own** (the photo and the trees step aside): ground height, landform, slope, aspect,
@@ -94,6 +99,14 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   run*). Details below (*Data sets and provenance*).
 - **How this simulation works**: what is 2-D and what is 3-D in the run you are looking at, the grids and steps, what the model can and
   cannot resolve and how sure it is, from the engine's own report (see *Transparency* below).
+- **Simulation debug statistics**: one screen with the numbers behind the run, measured on this phone: the tier in use and why, the
+  computing speed (last 10 s and 60 s, the run's mean, the best and worst 10 s, a history), where the time goes (air, fire,
+  embers and the rest), memory, the frame rate, what the phone is (model, Android, WebView, cores, memory class, GPU and graphics
+  features) and the recent events. A Copy button puts the whole page on the clipboard as plain text, so a phone's readout can be
+  pasted into a message. It sits directly under Settings in the main menu (and in Settings, Setup and the model card). Details
+  below (*Simulation debug statistics*).
+- **Picture quality** (Settings → Simulation): Auto, Low, Medium or High for the 3-D picture. Auto picks from the phone's cores
+  and memory (the Detail performance profile asks for High); it applies to the next model you build. See *Picture quality* below.
 - **The trees** (Layers → Trees): the 3-D canopy is drawn from the data, at the real canopy height: stringybark has a thick dark fibrous
   trunk, ribbon bark a pale trunk with hanging streamers, smooth gums a pale smooth trunk (the ember-source hazard you can
   see); tall wet forest, rainforest, snow gum, pine rows, heath, understorey shrubs at their real height (the ladder fuel)
@@ -105,6 +118,8 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   fast-forward with its progress on the track (Cancel stops it, the view lands exactly on the time). There is no "Live" button: Play
   carries on from wherever you are, and backgrounding the app pauses a run or a fast-forward. Pictures are 60 s
   apart by default and can be 10 s to 10 min (Settings or the clock menu), with the solver step configurable too.
+  If the phone cannot compute as fast as the speed you chose, a small gauge button appears at the end of the timeline (and
+  only then): tap it for what is happening, that it never changes the result, and what to do. Nothing pops up by itself.
   **What if** (fire–atmosphere feedback, embers, mountain phenomena on/off → re-run from now and compare).
 - **Field UX**: the map is the star, in a flat Google-Maps-for-Android look with a little less white space than stock: a floating
   top pill (menu, clock, Play, speed) with read-out chips for the weather and the fire-danger rating, a column of round map buttons
@@ -163,6 +178,7 @@ The map is moved with the fingers, the same in the 3-D view and the top (plan) v
 | Pinch **and** drag in one movement | zooms and turns / tilts at the same time (no mode to pick) |
 | Lift one finger of two | carries on as a one-finger slide from where the other finger is; a second finger put down during a slide switches to turn / zoom, without a jump; a third finger is ignored |
 | **Tap** | "Why here?" (or places the fire / fuel brush when that tool is open); a slide is never a tap |
+| **Tap an icon** (with the Why here? tool) | opens the panel with that icon and its name at the top, and asks about the icon's own spot: the ring jumps onto it. A tap within about 22 px of an icon's centre counts (a home: 14 px); the nearest icon wins, and a stack says "+2 more icons here, zoom in to tell them apart". Tap the ground beside it and there is no icon row. The other tools (fire, fuel, wind) still place on the ground under the finger |
 | **Eye level** ("what you would see from here") | a first-person look-around: one or two fingers turn the view; you cannot slide your position, there is no zoom |
 | Drawing a fire line or painting fuel (**Draw a line** in Fire, **Paint** in Fuel) | one finger draws and the map is locked; switch back to tapping to move the map again |
 | Mouse (desktop development) | left button slides, right button turns and tilts, middle button or wheel zooms |
@@ -227,18 +243,113 @@ time step, method in plain words, an evidence badge and the spec section), *What
 real grid sizes: the smallest ridge or gully the air grid can show is about twice its spacing; what is parameterised instead
 of resolved; what is not represented at all), *How sure are we?* (evidence tags of the specification, the open issues of its
 §16 that change numbers on screen, the validation summary), *Data in this run* (a short summary; the Data sets screen has the
-detail), *Layers and what they show* (the layer catalogue with each layer's dimensionality and resolution), *Engine right now*
-(live: tier and why, steps, speed, embers, checkpoints, memory) and *Words used*. *Copy as text* exports all of it.
+detail), *Layers and what they show* (the layer catalogue with each layer's dimensionality and resolution), *Speed and memory
+right now* (four live numbers: the tier in use and why, the computing speed, the engine's memory and this phone, with a row that
+opens *Simulation debug statistics*, where the long list that used to be here now lives) and *Words used*. *Copy as text* exports
+all of it. The page is loaded the first time it is opened.
 
 **How the numbers are kept honest.** `Simulation.makeSnapshot` attaches `SimSnapshot.engine` (`EngineInfo`,
 `src/core/simTypes.ts`), read from the modules themselves (the atmosphere's own grid, the fire grid, the level set's last CFL
 bound, the ember model, the cadences of `SIM_PARAMS`, the tier in force and why: requested, auto-tune with its measurement, or
-changed during the run), with the engine's memory measured by `memoryReport()` at most every 30 s. `describeModel()`
+changed during the run), with the engine's memory measured by `memoryReport()` at most every 30 s and its timing statistics
+(`EngineInfo.perf`, from `src/sim/perfStats.ts`: speeds, step times, where the time goes, re-runs, events). `describeModel()`
 (`src/ui/modelInfo.ts`, pure) turns that, the scenario and the settings into the card; before the engine reports (or from
 Setup) the numbers are *planned* with the same rules the builder and the engine use, and the card says so. A tier switch
 mid-run changes the wording from the checkpoint on. The demo engine (`?mock=1`, or when the worker cannot load) says that it
 is a stand-in. Static statements were checked against the code and the specification; the counts quoted from the
 specification and the README are re-checked by `src/ui/modelInfo.test.ts`.
+
+## Speed: what the app measures and what it says
+
+Detailed mode is allowed to be slower than playback. The app measures that, says so where you are looking, and explains it on
+tap. None of it changes a result: the engine's own timings are read, never fed back, and the snapshot hash skips them
+(`src/sim/simulation.test.ts` runs the same scenario on both kinds of tier with the statistics off, on, and on with a wildly
+perturbed clock, in chunks of several sizes and across a rewind, and compares every snapshot hash).
+
+**Auto, decided once.** *Settings, Performance, Balanced* (the default) times 30 steps of the 3-D air's spin-up when a run starts,
+leaves out the first 10 (the JIT warm-up, which inflates the first readings) and takes the **median** of the other 20
+(`autoTuneDecision`, `src/sim/engineInfo.ts`; constants in `SIM_PARAMS`, `src/sim/params.ts`). It predicts the whole run as
+1.4 x that step x the number of 10 s steps and keeps the **detailed 3-D air** unless the prediction is over a limit: 10 minutes of
+computing for 6 hours of fire, scaled by the run length, never under a minute. For the 1 to 12 hour runs Setup offers, the limit
+is a step of about 198 ms. Over it, Auto picks the fast surface-wind model and says why with the numbers. This is the only place
+the wall clock reaches the engine: the tier never changes by itself afterwards (a test pins it, with a clock that turns very slow
+mid-run), only you change it (Settings, or Layers, *Use the 3-D atmosphere*). Saver always runs the fast model; Detail runs the
+high 3-D tier. The report keeps both the warm-up mean and the steady median (`EngineInfo.autoTune`).
+
+**What has been measured.** Only one phone so far: on it the 3-D step took 41 ms. That was the mean of the first 20 steps, warm-up
+included, which is what Auto read before 0.3.0; it predicted 124 s for a 6-hour run against a 120 s limit and chose the fast
+model. The new rule would have kept the detailed air at that reading, and the limit of about 198 ms is 4.8 times that. The app
+does not claim what most phones do: it reports what this phone does (*Simulation debug statistics*).
+
+**The signal on the timeline.** If the speed you chose is higher than the phone can compute, the clock reaches the newest result and
+waits. `src/ui/paceModel.ts` (pure) watches that and, only while it is true, a 44 x 44 px gauge button appears at the end of the
+timeline (the track gets 44 px shorter). *Behind* (early warning: the worker computes under 90 % of the asked speed while busy at
+least 90 % of the time, for 10 s) is a faint outline. *Waiting* (the clock held at the newest result for 15 % or more of the last
+10 s, for 6 s in a row) is a 3 px ring and a 44 px run under the rail that ends at the thumb, drawn in the `--watch-ink` colour. It is
+never colour alone: the glyph, the ring's thickness and the button's name carry the meaning. Nothing pops up and nothing vibrates; a
+screen reader hears one polite line when playback starts to wait (at most every 2 minutes). The button is left out while a jump
+computes, after a play, seek or speed change (15 s of grace), while paused, with the app in the background, during the 3-D spin-up,
+when replaying earlier results, after a rewind or an edit, and at Max speed (which asks for nothing). The old "Computing" badge is
+not shown while the signal is.
+
+**The sheet.** Tapping the button opens *Running slower than playback* (a bottom sheet; Back and Escape close it): what you asked
+for against what this phone is computing right now, *Does it change the result? No*, where the time goes in the last 10 s (the 3-D
+air, fire spread, embers, everything else), the likely reasons (each only when the numbers support it), two actions (*Play at N x*,
+the nearest preset at or below what the phone achieves; *Use the fast model from here*, which says the fire from that moment comes
+out a little different, and is hidden when the model is already fast), and *All the numbers*. It says *Pausing stops the simulation
+too. Playing slower is what lets it keep up.* The sheet is a separate chunk, loaded on the first tap.
+
+## Simulation debug statistics
+
+Main menu, directly under Settings (also *Settings, Data and transparency*, Setup's *Area and detail* so a phone can be checked
+before anything is built, the model card, and *All the numbers* in the speed sheet). It never opens by itself and never pauses or
+changes playback; it refreshes once a second in place (so a selection survives), not while the app is hidden. Its 18 groups are
+collapsed at first, each with a one-line summary: Summary, Run, Choices, Grids, Speed, Speed history, Step, Worker duty, Where the
+time goes, Step quality, Embers, Re-runs, Memory, Display, Phone hardware, Phone software and graphics, What this phone can do, and
+Recent events. **Copy** puts the whole page on the clipboard as plain text (a header with the time and the offset from UTC, the run,
+the stable group titles, and an end marker so a cut-off paste shows); if the phone refuses, the text appears in a box to select.
+
+Every number is a measurement on this phone or a value the app was given, and says "Not measured yet", "No run yet" or "Not
+available" rather than guess. The copy holds no coordinates, no custom place name and no identifier (a bundled site is named, any
+other place is "a custom place"; error lines are stripped of links and long decimals), and sends nothing anywhere. The phone's
+model, Android version and WebView come from User-Agent Client Hints where the WebView has them, else from the user agent, whose raw
+text is always shown; a reduced user agent says "Hidden by the WebView" instead of a guess (`src/ui/deviceInfo.ts`, web APIs only,
+no native plugin). The frame numbers are the last seconds before the screen opened, because the 3-D view stops drawing behind a
+full-screen screen; a slow frame is one over 34 ms (the 30 fps playback cap draws 33.3 ms frames).
+
+What it costs the engine: the worker side (`src/sim/perfStats.ts`) is counters, running aggregates and rings of at most 128 numbers,
+with no loop over cells and no per-step log; `src/sim/perf.test.ts` and `perfStats.test.ts` hold it to under 1 % of a step, under
+16 KB retained in the worker and under 2 KB serialised per snapshot (the builder measured about 5 microseconds per step, about 11 KB
+retained and at most 1.9 KB serialised).
+
+## Night lighting and picture quality
+
+**Night lighting** (*Layers, Map type, Night lighting*): *Realistic* (the default) follows the clock, so the night is dark, on
+purpose: judging a fire at night is when trainees most often misjudge it. *Brighter* and *Daylight* light the ground, the
+trees, roads and labels after dark from a fixed north-west sun 30 degrees up (so slopes show their shape; Daylight is not noon),
+fading in over dusk from a real sun at +8 degrees to -2 degrees. By day all three are the same picture. The sky, stars, the fire's
+glow, lit windows, the smoke and the fog keep the real clock. It applies at once (no rebuild, no pause), is remembered between runs,
+and *Reset layers* returns it to Realistic. The maths is `mapLighting` in `src/render/sky.ts`; with Realistic it returns the real
+lighting unchanged (a test).
+
+**Picture quality** (*Settings, Simulation, Picture quality*): Auto, Low, Medium, High, for the next model you build. Auto picks
+from the phone's cores and memory (High at 8 or more cores and 6 GB or more; Low at 4 or fewer cores or 3 GB or less; otherwise
+Medium; a value the phone does not report counts as 4 cores and 4 GB), except that the Detail performance profile asks for High.
+A tier sets the terrain mesh, the trees, the canopy triangles, the pixel-ratio cap and the flame and smoke caps:
+
+| | Low | Medium | High |
+|---|---|---|---|
+| Terrain mesh (samples per side) | 224 | 320 | 400 |
+| Tree instances | 16,000 | 32,000 | 48,000 |
+| Canopy triangle budget | 100k | 170k | 250k |
+| Pixel-ratio cap | 1.25 | 1.75 | 2 |
+| Flame sites / smoke puffs | 2,500 / 800 | 5,000 / 1,500 | 5,000 / 1,500 |
+| Trees sway by default | off | on | on |
+
+The picture still lowers its own resolution while the frame rate stays under 30, whatever the tier. If High is chosen (or asked for by
+Detail) on a phone the guess calls Low, Settings says so in a plain line and blocks nothing. The statistics screen shows the tier in
+use, why, and what it sets. The memory estimate made while a model is built stays device-independent (it assumes Medium); the Data
+sets screen re-sizes it for the tier actually running.
 
 ## Data sources and licences
 
@@ -350,7 +461,8 @@ npm run preview      # serve dist/ on http://localhost:4173
 URL parameters (development, demos, tests): `?mock=1` runs the UI on the mock engine, 2-D map and mock builder (no
 WebGL or worker needed); `?theme=light|dark` and `?contrast=high` (for the session; Settings keeps them); `?notice=1` shows the
 safety notice again; `?debug=1` exposes
-`window.__firesim` (session, view, scenario) in a production build.
+`window.__firesim` (session, view, scenario) in a production build, and with it `&paceLevel=ok|behind|waiting` shows the speed
+signal on the timeline without a slow phone (screenshots and layout audits).
 
 ### Tests
 
@@ -398,6 +510,21 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
 - `e2e/maps-link.spec.ts` — Setup's "paste a Google Maps link or coordinates" box: a long Mount Tomah link, Google's share text, the Paste button,
   a short link under the emulated Android runtime (`e2e/androidBridge.ts` fakes the native HTTP plugin's redirect, so no real network is used) and in the
   plain web build, rubbish and route links, Clear, the remembered setup holding coordinates only, labels and tap targets; takes `27-maps-link*.png`.
+- `e2e/debug-stats.spec.ts`: the Simulation debug statistics screen. It opens from Setup and Settings before any run, and on the real engine from
+  the menu row directly under Settings while the run plays (without pausing it); values change in place once a second; Copy gives plain
+  text with the group titles, an end marker and no coordinates, and a box to select from when the clipboard is refused; Back and Escape
+  close it and focus returns; no pop-up, no network call, text and targets in the three looks.
+- `e2e/pace.spec.ts`: the speed signal. On the real engine under the Detail profile at 3600× the 44 px button appears after its wait,
+  announces itself once and never as an alert, its sheet opens only on a tap, and "Play at N×" clears it; with `?debug=1&paceLevel=`
+  each level in two phone sizes (hit area, strip height, sheet fit, Escape, focus back on the button).
+- `e2e/night-look.spec.ts`: Night lighting on the real 3-D view, read from decoded screenshots: a ground region gets brighter from
+  Realistic to Brighter to Daylight at night, the sky is pixel for pixel the same and no sun disc appears, by day the looks are one
+  picture, no new GPU objects, the choice is remembered, Reset returns to Realistic, and the row is absent on the 2-D map.
+- `e2e/picture-quality.spec.ts`: the Picture quality setting. High set in Settings gives a High view on a phone the guess calls Low (with the
+  heads-up line), Low gives Low, Auto under Detail asks for High, Auto under Balanced is the guess, and every tier stays inside its
+  draw-call and triangle budgets.
+- `e2e/icon-tap.spec.ts`: tapping an icon: the Why here? row shows the icon and its name and asks about the icon's own spot; a tap
+  60 px away is a plain ground tap; the other tools are unchanged; first on the 2-D map, then on the real engine.
 - `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
@@ -439,7 +566,7 @@ For iOS, after `cap add ios`, add the location permission the "Use my location" 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
 Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 108+, which `capacitor.config.ts` enforces, iOS 16+; the build target is ES2022). The bundle
-is ~38 MB (about 3.0 MB of app code and styles, 2.8 MB of it JavaScript), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
+is ~38 MB (about 2.9 MB of app code and styles, 2.8 MB of it JavaScript, from `npm run build:cap`), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
 ## Offline use and area packs
@@ -509,12 +636,16 @@ extreme "hot NW wind" preset with the fire on the escarpment, 4 simulated hours 
 
 Inside the app (with the 3-D view rendering in software GL on the same CPU) the fast tier runs at 600–900 s/s. On
 the main thread no task over 50 ms was observed while playing at maximum speed; updating the 3-D view from a
-snapshot takes 4 ms median, 9 ms p95. Phones are about 2–3× slower than this core, so the fast tier gives a 6-hour
-run in about a minute and the standard tier keeps up with the default 60× playback.
+snapshot takes 4 ms median, 9 ms p95. All of that is one desktop core. Only one phone has been measured so far: on it
+the 3-D step took 41 ms (the mean of the first 20 steps, warm-up included), so the app does not claim a speed for phones in
+general. A phone's own numbers are on the *Simulation debug statistics* screen (its *What this phone can do* group turns them
+into three measured sentences), and the timeline says when the simulation cannot keep up with the speed you chose (*Speed: what
+the app measures and what it says*, above).
 
-Tiers: *Settings → Performance*: **Auto** (default) times the first 20 steps of the 3-D spin-up and picks the standard
-tier only if a 6-hour run would take ≤ 2 minutes, else the fast tier (spec §12.6); **Battery saver** = fast;
-**Best quality** = high (3-D, 24 levels). A fast-tier run can be switched to the 3-D atmosphere from the Layers panel
+Tiers: *Settings → Performance*: **Balanced** (the default) is **Auto**: it times 30 steps of the 3-D spin-up, skips the first 10
+and keeps the detailed 3-D air unless the median of the other 20 predicts a whole run longer than 10 minutes of computing for 6
+hours of fire (about 198 ms per air step; spec §12.6 as changed in 0.3.0), else it picks the fast tier; **Saver** = fast;
+**Detail** = high (3-D, 24 levels). A fast-tier run can be switched to the 3-D atmosphere from the Layers panel
 (cross-section / "through the plume") — the worker restores the last checkpoint and re-runs. The 3-D view adapts its
 resolution to the frame rate and draws only when something changes; snapshots stream every 5 simulated minutes into a
 memory-capped replay store (≈ 6 % of the device memory, 48–160 MB).
@@ -565,8 +696,12 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 - The models are simplified and calibrated for education; many mountain-effect coefficients are hypotheses flagged
   [H]/UNVERIFIED in the spec (§16). Real fires on steep slopes and in extreme weather are often faster.
-- On most phones the auto-tune picks the fast surface-wind tier; the plume, cold-air pools and the cross-section need
-  the 3-D atmosphere (one tap in Layers, or *Best quality*), which is 3–4× slower.
+- Speed on a phone is measured by the app, not assumed: only one phone has been measured so far (its 3-D step took 41 ms). Auto
+  keeps the detailed 3-D air unless a whole run is predicted to take more than about 10 minutes of computing for 6 hours of fire,
+  so at a high playback speed, or with a big fire, the simulation can fall behind; the timeline then shows its speed button and
+  the sheet says what is happening. The fast surface-wind tier is about 4× quicker (900 against 220 s/s on the desktop core
+  above) but has no plume, cold-air pools or cross-section, which need the 3-D atmosphere (Balanced on a phone that can run it,
+  Detail, or one tap in Layers).
 - Validation (`src/sim/validation/`): the spec's §15 scenarios pass, including gully-vs-sunny-slope litter moisture
   (V8), lateral spread rate on lee slopes (V10), the fire-induced-wind card (V15) and coupled head ROS in both tiers
   (V22). Remaining gaps: the V20 speed gates are missed for very large (≈ 3 000–5 000 ha) fires, the standard tier
