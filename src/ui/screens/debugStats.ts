@@ -22,7 +22,7 @@ import { h, setChildren, svg, text, uniqueId } from '../dom';
 import { eventLog, longTasks } from '../eventLog';
 import { icon } from '../icons';
 import type { Services } from '../modules';
-import { badge, iconButton } from '../primitives';
+import { iconButton } from '../primitives';
 import { defaultSnapshotBudget, type SimSession } from '../session';
 import type { Settings } from '../settings';
 import { appBar, button, copyText } from '../widgets';
@@ -165,7 +165,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     backTestId: 'debug-stats-close',
     trailing: iconButton({ icon: 'copy', label: 'Copy as text', onClick: () => void copy(), testId: 'debug-stats-copy-icon' }),
   });
-  const state = h('div', { class: 'ds-state' });
+  const state = h('p', { class: 'ds-state', dataset: { testid: 'debug-stats-state' } });
   const headline = h('p', { class: 'mc-headline', dataset: { testid: 'debug-stats-headline' } });
   const subtitle = h('p', { class: 'mc-subtitle t-secondary', dataset: { testid: 'debug-stats-header' } });
   const intro = h('section', { class: 'card mc-intro', aria: { label: 'Summary' } }, [
@@ -226,13 +226,10 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     return r;
   };
 
-  let lastStatus = '';
   const paintHeader = (): void => {
     const hd = stats.header;
-    if (lastStatus !== hd.status) {
-      lastStatus = hd.status;
-      setChildren(state, badge(hd.status, hd.status === 'Live' ? { tone: 'ok', dot: true } : hd.status === 'Demo engine' ? { tone: 'watch', icon: 'warning' } : { icon: hd.status === 'Paused' ? 'pause' : 'info' }));
-    }
+    text(state, hd.status);
+    state.classList.toggle('is-live', hd.status === 'Live');
     text(headline, stats.groups[0]!.rows[0]!.value);
     text(subtitle, `${hd.app} · ${hd.run}${hd.seed ? ` · ${hd.seed}` : ''}`);
   };

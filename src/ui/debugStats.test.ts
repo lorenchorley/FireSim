@@ -9,7 +9,7 @@ import type { EngineInfo, EnginePerfInfo, SimSnapshot } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
 import { Simulation } from '../sim/simulation';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { buildDebugStats, debugStatsToText, END_MARKER, pictureQualityWhy, scrubError, sparkline, TITLE, type DebugStats, type DebugStatsInput, type StatRow } from './debugStats';
+import { buildDebugStats, debugStatsToText, END_MARKER, pictureQualityWhy, scrubError, TITLE, type DebugStats, type DebugStatsInput, type StatRow } from './debugStats';
 import { deviceInfoAsync, deviceInfoNow, type DeviceEnv, type NavLike } from './deviceInfo';
 import type { LogEvent } from './eventLog';
 import type { PaceInfo } from './paceTypes';
@@ -317,7 +317,7 @@ describe('labels and values', () => {
   it('Speed: the worker perf block, the speed asked for and the pace signal', () => {
     expect(rowOf(s, 'speed', 's10')).toMatchObject({ label: 'Computing speed, last 10 s', value: '871x' });
     expect(rowOf(s, 'speed', 'best10').value).toBe('905x');
-    expect(rowOf(s, 'speed', 'wanted').value).toBe('600x (600×)');
+    expect(rowOf(s, 'speed', 'wanted')).toMatchObject({ value: '600x', note: '10 min of fire per second' });
     expect(rowOf(s, 'speed', 'achieved').value).toBe('410x');
     expect(rowOf(s, 'speed', 'waiting').value).toBe('27 %');
     expect(rowOf(s, 'speed', 'pace').value).toBe('Waiting for the simulation');
@@ -573,14 +573,5 @@ describe('Recent events', () => {
     const none = full();
     none.events = [];
     expect(buildDebugStats(none).groups.find((g) => g.id === 'events')!.rows[0]!.value).toBe('Nothing yet');
-  });
-});
-
-describe('sparkline', () => {
-  it('scales a series onto eight block heights, leaves a gap for null, and is empty for no data', () => {
-    expect(sparkline([0, 1, 2, 3, 4, 5, 6, 7])).toBe('▁▂▃▄▅▆▇█');
-    expect(sparkline([5, null, 5])).toBe('▄ ▄');
-    expect(sparkline([null, null])).toBe('');
-    expect(sparkline([])).toBe('');
   });
 });

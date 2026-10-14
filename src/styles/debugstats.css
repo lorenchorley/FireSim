@@ -9,11 +9,16 @@
   padding: var(--sp-1) 0;
 }
 
+/* Live / Paused / Finished / No run yet: a word (not colour alone), 16 px. */
 .ds-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-1) var(--sp-2);
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  font-weight: var(--fw-medium);
+}
+
+.ds-state.is-live {
+  color: var(--ok-ink);
 }
 
 /* A user agent or a long sentence wraps at any width. */

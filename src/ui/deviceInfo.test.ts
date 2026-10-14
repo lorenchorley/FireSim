@@ -12,13 +12,12 @@ const UA_SAMSUNG = 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36
 const env = (nav: NavLike, extra: Partial<DeviceEnv> = {}): DeviceEnv => ({ platform: 'android', nav, timeoutMs: 20, ...extra });
 
 /** A WebGL2 context that answers the few questions the probe asks. */
-function fakeGl(extensions: string[] = ['WEBGL_debug_renderer_info', 'EXT_color_buffer_float', 'WEBGL_compressed_texture_astc', 'WEBGL_compressed_texture_etc'], lost: { v: boolean } = { v: false }): WebGL2RenderingContext {
+function fakeGl(extensions: string[] = ['WEBGL_debug_renderer_info', 'EXT_color_buffer_float', 'WEBGL_compressed_texture_astc', 'WEBGL_compressed_texture_etc']): WebGL2RenderingContext {
   const dbg = { UNMASKED_VENDOR_WEBGL: 37445, UNMASKED_RENDERER_WEBGL: 37446 };
   return {
     MAX_TEXTURE_SIZE: 3379,
     getParameter: (p: number) => (p === 37445 ? 'ARM' : p === 37446 ? 'Mali-G710' : p === 3379 ? 8192 : null),
     getExtension: (name: string) => {
-      if (name === 'WEBGL_lose_context') return { loseContext: () => (lost.v = true) };
       if (name === 'WEBGL_debug_renderer_info') return extensions.includes(name) ? dbg : null;
       return extensions.includes(name) ? {} : null;
     },
@@ -158,7 +157,6 @@ describe('phoneIdentity', () => {
 
 describe('deviceInfoAsync', () => {
   it('everything present: hints, battery, storage, WebGPU adapter, WebGL2 limits, wasm and the refresh rate', async () => {
-    const lost = { v: false };
     let t = 0;
     const later = await deviceInfoAsync(
       env(
@@ -170,7 +168,7 @@ describe('deviceInfoAsync', () => {
           gpu: { requestAdapter: async () => ({ info: { vendor: 'arm', architecture: 'valhall' } }) },
         },
         {
-          openGl2: () => fakeGl(undefined, lost),
+          openGl2: () => fakeGl(),
           raf: (cb) => (setTimeout(() => cb((t += 1000 / 60)), 0), 1),
           timeoutMs: 1000,
           wasm: { validate: () => true },
@@ -186,7 +184,6 @@ describe('deviceInfoAsync', () => {
     expect(later.storage).toEqual({ usage: 5e6, quota: 4e10 });
     expect(later.gpu).toEqual({ present: true, adapter: { vendor: 'arm', architecture: 'valhall' } });
     expect(later.gl).toEqual({ ok: true, vendor: 'ARM', renderer: 'Mali-G710', maxTextureSize: 8192, floatTargets: true, halfFloatTargets: true, floatLinear: false, compressed: ['ASTC', 'ETC2'] });
-    expect(lost.v).toBe(true); // the throwaway context is released
     expect(later.refreshHz).toBe(60);
     expect([later.wasm, later.simd, later.sharedArrayBuffer, later.crossOriginIsolated, later.offscreenCanvas, later.moduleWorkers]).toEqual([true, true, false, false, true, true]);
     expectClean(later);

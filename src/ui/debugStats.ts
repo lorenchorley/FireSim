@@ -15,7 +15,7 @@ import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import { waited, type LogEvent } from './eventLog';
-import { formatDuration, formatPlaybackSpeed } from './format';
+import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
 
 export const TITLE = 'Simulation debug statistics';
@@ -108,7 +108,7 @@ export interface StatRow {
   note?: string;
   /** The value changes while the run goes on. */
   live?: boolean;
-  /** A series for the tiny chart on the screen (the text export prints the numbers in `value`). */
+  /** A series for the tiny chart on the screen (the row's `value` is then empty; the numbers are the row above, and in the text export). */
   spark?: (number | null)[];
 }
 
@@ -198,15 +198,6 @@ const MODULE_NAME: Record<string, string> = {
   checkpoints: 'Checkpoints',
   other: 'Everything else',
 };
-
-/** Block characters from low to high: a tiny chart of a series (null leaves a gap). */
-export function sparkline(values: readonly (number | null)[]): string {
-  const v = values.filter(ok);
-  if (!v.length) return '';
-  const lo = Math.min(...v);
-  const hi = Math.max(...v);
-  return values.map((x) => (ok(x) ? '▁▂▃▄▅▆▇█'[hi > lo ? Math.min(7, Math.floor(((x - lo) / (hi - lo)) * 8)) : 3]! : ' ')).join('');
-}
 
 /** A line made safe to copy: first line only, links gone, long decimals (coordinates) hidden, and every text in `hide` (a place's name) replaced. */
 export function scrubError(text: string, hide: readonly string[] = []): string {
@@ -329,7 +320,7 @@ function choicesGroup(i: DebugStatsInput): StatGroup {
   rows.push(
     R('display-step', 'Display step', `A picture every ${longSpan(cadence.displayStepS)}`),
     R('solver-limit', 'Solver step limit', cadence.solverMaxStepS > 0 ? `${sec(cadence.solverMaxStepS)} (your setting)` : `Automatic (${sec(cadence.solverFloorS)} to ${sec(cadence.solverBoundS)})`),
-    R('playback', 'Playback speed asked for', i.playback ? (Number.isFinite(i.playback.speed) ? `${formatPlaybackSpeed(i.playback.speed)}` : 'Max (as fast as possible)') : NO_RUN, undefined, true),
+    R('playback', 'Playback speed asked for', i.playback ? (Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'Max (as fast as possible)') : NO_RUN, i.playback && Number.isFinite(i.playback.speed) ? formatSpeedHint(i.playback.speed) : undefined, true),
     R('coupling', 'Fire and air feedback', e.models.coupling <= 0 ? 'Off' : `On, strength ${fix(e.models.coupling, 2)}`),
     R('embers', 'Embers', e.models.embersOn ? 'On' : 'Off'),
     R('mountain', 'Mountain phenomena', e.models.mountainPhenomena ? 'On' : 'Off'),
@@ -381,7 +372,7 @@ function speedGroup(i: DebugStatsInput): StatGroup {
     if (p && ok(p.workerSpeed) && p.workerSpeed > 0) rows.push(R('worker', 'Computing speed, average of recent chunks', speedX(p.workerSpeed), undefined, true));
   }
   rows.push(
-    R('wanted', 'Playback speed asked for', p ? (Number.isFinite(p.speed) ? `${speedX(p.speed)} (${formatPlaybackSpeed(p.speed)})` : 'Max (as fast as possible)') : NO_RUN, undefined, true),
+    R('wanted', 'Playback speed asked for', p ? (Number.isFinite(p.speed) ? speedX(p.speed) : 'Max (as fast as possible)') : NO_RUN, p && Number.isFinite(p.speed) ? formatSpeedHint(p.speed) : undefined, true),
     R('achieved', 'Playback speed achieved, last 10 s', pace ? (ok(pace.achieved) ? speedX(pace.achieved) : 'Not measured yet (needs 10 s of play)') : 'Not judged now', undefined, true),
     R('waiting', 'Share of the last 10 s playback waited for the simulation', pace ? pct(pace.waitingShare) : 'Not judged now', undefined, true),
     R('pace', 'Pace signal', pacePhrase(pace), undefined, true),

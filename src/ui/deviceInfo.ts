@@ -298,7 +298,7 @@ function probeGl(env: DeviceEnv): GlInfo {
         .filter(([ext]) => !!gl.getExtension(ext!))
         .map(([, name]) => name!),
     };
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    // The throwaway context is not "lost" on purpose (Chromium logs a warning for that); it is released when it is collected.
     return out;
   } catch {
     return none;
