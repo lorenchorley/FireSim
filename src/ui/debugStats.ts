@@ -17,6 +17,7 @@ import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import type { LogEvent } from './eventLog';
 import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
+import type { PictureQualityAsk } from './settings';
 import { waited } from './runEvents';
 
 export const TITLE = 'Simulation debug statistics';
@@ -84,7 +85,8 @@ export interface DebugStatsInput {
   /** Long tasks of the last minute; `supported` false when the browser has no such API. */
   longTasks: { supported: boolean; count: number; totalMs: number; maxMs: number };
   quality: QualityInfo | null;
-  settings: { performance: 'auto' | 'battery' | 'quality'; pictureQuality?: string };
+  /** What asked for the picture quality when the view was built (kept from then, not read from the settings now). */
+  qualityAsk: PictureQualityAsk;
   /** The cliff drawing's statistics: null when nothing was sharpened, undefined when this build cannot say. */
   terrain: TerrainDrawStats | null | undefined;
   store: StoreFacts | null;
@@ -230,12 +232,9 @@ const R = (id: string, label: string, value: string, note?: string, live?: boole
 
 // ───────────────────────────── the groups ─────────────────────────────
 
-/** Picture quality: why this tier is in use (the view knows an option or a guess; the settings say which option). */
-export function pictureQualityWhy(q: Pick<QualityInfo, 'source' | 'cores' | 'memoryGb'>, s: DebugStatsInput['settings']): string {
-  if (q.source === 'option') {
-    if (s.pictureQuality && s.pictureQuality !== 'auto') return 'set by you';
-    return s.performance === 'quality' ? 'asked for by the Detail profile' : 'asked for by the app';
-  }
+/** Picture quality: why this tier is in use (the view knows an option or a guess; `ask` is what gave the option when it was built). */
+export function pictureQualityWhy(q: Pick<QualityInfo, 'source' | 'cores' | 'memoryGb'>, ask: PictureQualityAsk): string {
+  if (q.source === 'option') return ask === 'set' ? 'set by you' : ask === 'detail' ? 'asked for by the Detail profile' : 'asked for by the app';
   const cores = ok(q.cores) ? `${q.cores} cores` : 'cores not reported (counted as 4)';
   const mem = ok(q.memoryGb) ? `${q.memoryGb} GB` : 'memory not reported (counted as 4 GB)';
   return `guessed from this phone: ${cores}, ${mem}`;
@@ -523,7 +522,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
     );
   if (q)
     rows.push(
-      R('picture-quality', 'Picture quality in use', `${cap(q.tier)} (${pictureQualityWhy(q, i.settings)})`),
+      R('picture-quality', 'Picture quality in use', `${cap(q.tier)} (${pictureQualityWhy(q, i.qualityAsk)})`),
       R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
     );
   else rows.push(R('picture-quality', 'Picture quality in use', 'Not available (this view does not report a picture tier)'));

@@ -19,6 +19,7 @@ import {
   THEME_CHROME,
   applyAppearance,
   initSettings,
+  pictureQualityAsk,
   resolveAppearance,
   resolveRenderQuality,
   sanitiseSettings,
@@ -180,4 +181,28 @@ describe('resolveRenderQuality (the tier asked of the 3-D view)', () => {
       });
     }
   }
+});
+
+describe('pictureQualityAsk (why the view got its tier, kept from when it was built)', () => {
+  const modes = ['battery', 'auto', 'quality'] as const;
+
+  it("an explicit picture quality is the person's choice under every profile, Auto under Detail is the profile, Auto otherwise nothing", () => {
+    for (const mode of modes) for (const pq of ['low', 'medium', 'high'] as const) expect(pictureQualityAsk(pq, mode), `${pq} ${mode}`).toBe('set');
+    expect(pictureQualityAsk('auto', 'quality')).toBe('detail');
+    expect(pictureQualityAsk('auto', 'auto')).toBeNull();
+    expect(pictureQualityAsk('auto', 'battery')).toBeNull();
+  });
+
+  it('agrees with resolveRenderQuality: it is null exactly when the view is left to guess', () => {
+    for (const mode of modes) for (const pq of ['auto', 'low', 'medium', 'high'] as const) expect(pictureQualityAsk(pq, mode) === null, `${pq} ${mode}`).toBe(resolveRenderQuality(pq, mode) === undefined);
+  });
+
+  it('is a value taken at one moment: changing the settings afterwards does not change it', () => {
+    settingsStore.set({ pictureQuality: 'high', performance: 'auto' });
+    const s = settingsStore.get();
+    const taken = pictureQualityAsk(s.pictureQuality, s.performance);
+    settingsStore.set({ pictureQuality: 'auto' });
+    expect(taken).toBe('set');
+    expect(pictureQualityAsk(settingsStore.get().pictureQuality, settingsStore.get().performance)).toBeNull();
+  });
 });

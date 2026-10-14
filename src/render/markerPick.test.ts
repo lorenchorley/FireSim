@@ -3,7 +3,24 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { Ignition, Insight, SpotFire } from '../core/types';
 import type { MapMarker } from './api';
-import { HOME_HIT_PX, MIN_HIT_PX, homeCandidates, hitRadius, iconCandidate, iconCentre, markerRank, pickMarkerAt, projectPoint, type MarkerSource, type PickCandidate } from './markerPick';
+import {
+  HOME_DOT_PX,
+  HOME_HIT_MIN_PX,
+  HOME_HIT_PX,
+  HOME_LARGE_PX,
+  MIN_HIT_PX,
+  homeCandidates,
+  homeDrawnPx,
+  homeHitRadius,
+  hitRadius,
+  iconCandidate,
+  iconCentre,
+  markerRank,
+  pickMarkerAt,
+  projectPoint,
+  type MarkerSource,
+  type PickCandidate,
+} from './markerPick';
 
 const ignition = (origin: Ignition['origin'] = 'observed'): Ignition => ({ id: 'i1', kind: 'point', points: [[10, 20]], time: 0, origin });
 const spot = { id: 1, x: 5, y: 6, time: 100, distance: 300, travel: 400 } as SpotFire;
@@ -42,11 +59,18 @@ describe('hit radius', () => {
     expect(pickMarkerAt(33, 0, big)).toBeNull();
   });
 
-  it('a home uses 14 px whatever its size', () => {
+  it('a home never gets more than 14 px, however large it is drawn', () => {
     const home = [{ marker: HOME, sx: 0, sy: 0, halfPx: 40, rank: markerRank(HOME) }];
     expect(hitRadius(home[0]!)).toBe(HOME_HIT_PX);
     expect(pickMarkerAt(13.9, 0, home)?.kind).toBe('home');
     expect(pickMarkerAt(14.1, 0, home)).toBeNull();
+  });
+
+  it('a home drawn as a dot gets 6 px (half the dot and a margin, never less), not the 22 px of the other icons', () => {
+    const dot = [{ marker: HOME, sx: 0, sy: 0, halfPx: HOME_DOT_PX / 2, rank: markerRank(HOME) }];
+    expect(hitRadius(dot[0]!)).toBe(HOME_HIT_MIN_PX);
+    expect(pickMarkerAt(5.9, 0, dot)?.kind).toBe('home');
+    expect(pickMarkerAt(6.1, 0, dot)).toBeNull();
   });
 
   it('no candidates, no hit', () => {
@@ -223,6 +247,61 @@ describe('homes', () => {
 
   it('every candidate is a plain home marker (one per address)', () => {
     const c = homeCandidates(homes, true, 100, 100, project, visible);
-    expect(c.every((x) => x.marker.kind === 'home' && x.rank === markerRank(HOME) && x.halfPx === HOME_HIT_PX)).toBe(true);
+    expect(c.every((x) => x.marker.kind === 'home' && x.rank === markerRank(HOME) && x.halfPx === HOME_LARGE_PX / 2)).toBe(true); // no size given: drawn large
+  });
+});
+
+describe('the radius of a home follows its drawn size', () => {
+  it('the drawn size is the house width at that depth, never smaller than the dot', () => {
+    // a 1000 px tall view at a 50 degree field of view: 1000 / (2 tan 25) = 1072 px per metre at 1 m
+    const k = (1 / Math.tan((25 * Math.PI) / 180)) * 500;
+    expect(homeDrawnPx(100, k)).toBeCloseTo((8 * k) / 100, 6); // 86 px: close up
+    expect(homeDrawnPx(400, k)).toBeCloseTo(21.4, 1);
+    expect(homeDrawnPx(5000, k)).toBe(HOME_DOT_PX); // far: the dot
+    expect(homeDrawnPx(0, k)).toBeGreaterThan(1e6); // on the camera: finite, not NaN
+  });
+
+  it('the radius is half the drawn size plus 4 px, between 6 and 14', () => {
+    expect(homeHitRadius(HOME_DOT_PX)).toBe(6); // 5.75 rounds up to the least
+    expect(homeHitRadius(8)).toBe(8);
+    expect(homeHitRadius(12)).toBe(10);
+    expect(homeHitRadius(20)).toBe(14);
+    expect(homeHitRadius(HOME_LARGE_PX)).toBe(HOME_HIT_PX);
+    expect(homeHitRadius(300)).toBe(HOME_HIT_PX);
+    expect(homeHitRadius(0)).toBe(HOME_HIT_MIN_PX);
+  });
+
+  it('a town of dots is not taken: a tap 10 px from a dot goes to the ground, a tap on the dot still finds it', () => {
+    const homes = Float32Array.from([100, 100, 110, 100, 120, 100]);
+    const dots = (x: number, y: number): [number, number, number] => [x, y, HOME_DOT_PX];
+    expect(homeCandidates(homes, true, 105, 120, dots, () => false)).toEqual([]); // 20 px from the nearest
+    expect(homeCandidates(homes, true, 105, 108, dots, () => false)).toEqual([]); // 8 px: the dots are 6 px targets
+    const on = homeCandidates(homes, true, 101, 102, dots, () => false);
+    expect(on).toHaveLength(1);
+    expect(pickMarkerAt(101, 102, on)).toMatchObject({ kind: 'home', x: 100, y: 100, others: 0 });
+  });
+
+  it('the same homes drawn large keep the 14 px reach', () => {
+    const homes = Float32Array.from([100, 100]);
+    const big = (x: number, y: number): [number, number, number] => [x, y, 60];
+    expect(homeCandidates(homes, true, 100, 113, big, () => false)).toHaveLength(1);
+    expect(homeCandidates(homes, true, 100, 115, big, () => false)).toHaveLength(0);
+    const mid = (x: number, y: number): [number, number, number] => [x, y, 10]; // 10 px: radius 9
+    expect(homeCandidates(homes, true, 100, 108, mid, () => false)).toHaveLength(1);
+    expect(homeCandidates(homes, true, 100, 110, mid, () => false)).toHaveLength(0);
+  });
+
+  it('each home is judged by its own size: a near large house and a far dot beside it', () => {
+    const homes = Float32Array.from([100, 100, 100, 130]);
+    const mixed = (x: number, y: number): [number, number, number] => [x, y, y === 100 ? 60 : HOME_DOT_PX];
+    const c = homeCandidates(homes, true, 100, 115, mixed, () => false); // 15 px from the large one, 15 from the dot
+    expect(c).toHaveLength(0);
+    expect(homeCandidates(homes, true, 100, 112, mixed, () => false).map((x) => x.marker.y)).toEqual([100]); // 12 px: only the large one reaches
+  });
+
+  it('the pick measures from the radius of each candidate, and a dot loses to an icon beside it at the same distance', () => {
+    const homes = Float32Array.from([50, 50]);
+    const cands = [...homeCandidates(homes, true, 50, 54, (x, y) => [x, y, HOME_DOT_PX], () => false), at(INS, 50, 54)];
+    expect(pickMarkerAt(50, 54, cands)!.kind).toBe('insight');
   });
 });

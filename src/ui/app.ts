@@ -289,7 +289,7 @@ export class App {
         services: this.services,
         session: this.sim?.session ?? null,
         view: this.sim?.view ?? null,
-        settings: () => settingsStore.get(),
+        qualityAsk: this.sim?.pictureQualityAsk ?? null,
         onClose: () => ov && this.closeOverlay(ov),
       });
       this.openOverlay('debug-stats', screen);

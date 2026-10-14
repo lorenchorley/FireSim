@@ -169,7 +169,7 @@ function full(): DebugStatsInput {
     frames,
     longTasks: { supported: true, count: 4, totalMs: 612, maxMs: 310 },
     quality,
-    settings: { performance: 'auto', pictureQuality: 'auto' },
+    qualityAsk: null,
     terrain,
     store: { bytes: 61e6, maxBytes: 96e6, keyframes: 18, keyframeBytes: 54e6, newestBytes: 4e6, frames: 150, spacingS: 63, displayStepS: 60, range: { start: 0, end: 9600 } },
     historyBudget: { bytes: 96 * 1048576, memoryGb: 4 },
@@ -195,7 +195,7 @@ function bare(): DebugStatsInput {
     frames: null,
     longTasks: { supported: false, count: 0, totalMs: 0, maxMs: 0 },
     quality: null,
-    settings: { performance: 'auto' },
+    qualityAsk: null,
     terrain: undefined,
     store: null,
     historyBudget: null,
@@ -383,11 +383,22 @@ describe('labels and values', () => {
 
   it('picture quality says "set by you", "asked for by the Detail profile" or the guess with its numbers', () => {
     const base = { source: 'option' as const, cores: 8, memoryGb: 6 };
-    expect(pictureQualityWhy(base, { performance: 'auto', pictureQuality: 'high' })).toBe('set by you');
-    expect(pictureQualityWhy(base, { performance: 'quality', pictureQuality: 'auto' })).toBe('asked for by the Detail profile');
-    expect(pictureQualityWhy(base, { performance: 'auto', pictureQuality: 'auto' })).toBe('asked for by the app');
-    expect(pictureQualityWhy({ source: 'guess', cores: 4, memoryGb: 3 }, { performance: 'auto' })).toBe('guessed from this phone: 4 cores, 3 GB');
-    expect(pictureQualityWhy({ source: 'guess', cores: null, memoryGb: null }, { performance: 'auto' })).toBe('guessed from this phone: cores not reported (counted as 4), memory not reported (counted as 4 GB)');
+    expect(pictureQualityWhy(base, 'set')).toBe('set by you');
+    expect(pictureQualityWhy(base, 'detail')).toBe('asked for by the Detail profile');
+    expect(pictureQualityWhy(base, null)).toBe('asked for by the app');
+    expect(pictureQualityWhy({ source: 'guess', cores: 4, memoryGb: 3 }, null)).toBe('guessed from this phone: 4 cores, 3 GB');
+    expect(pictureQualityWhy({ source: 'guess', cores: null, memoryGb: null }, null)).toBe('guessed from this phone: cores not reported (counted as 4), memory not reported (counted as 4 GB)');
+    // only an option has a reason of its own: a guess is a guess whatever the settings were when it was made
+    expect(pictureQualityWhy({ source: 'guess', cores: 4, memoryGb: 3 }, 'set')).toBe('guessed from this phone: 4 cores, 3 GB');
+  });
+
+  it('the picture quality row keeps the reason it was built with, whatever the settings are now', () => {
+    // The reason is an input (taken when the view was built), not read from the settings when the screen opens.
+    expect(rowOf(buildDebugStats({ ...full(), qualityAsk: 'set' }), 'display', 'picture-quality').value).toBe('Medium (guessed from this phone: 6 cores, 4 GB)'); // the fixture's view guessed
+    const option = { ...full(), quality: { ...quality, source: 'option' as const } };
+    expect(rowOf(buildDebugStats({ ...option, qualityAsk: 'set' }), 'display', 'picture-quality').value).toBe('Medium (set by you)');
+    expect(rowOf(buildDebugStats({ ...option, qualityAsk: 'detail' }), 'display', 'picture-quality').value).toBe('Medium (asked for by the Detail profile)');
+    expect(rowOf(buildDebugStats({ ...option, qualityAsk: null }), 'display', 'picture-quality').value).toBe('Medium (asked for by the app)');
   });
 
   it('What this phone can do: three measured sentences', () => {

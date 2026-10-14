@@ -213,6 +213,18 @@ export function resolveRenderQuality(pictureQuality: PictureQuality, performance
   return performance === 'quality' ? 'high' : undefined;
 }
 
+/** What asked the 3-D view for its tier: the person's own choice, the Detail profile, or nothing (the view then guessed from the phone). */
+export type PictureQualityAsk = 'set' | 'detail' | null;
+
+/**
+ * Why {@link resolveRenderQuality} gave what it gave. The view is built once for a model, so the reason is taken then and kept
+ * (the statistics screen reads it): the settings can change while the model runs, and the tier in use does not.
+ */
+export function pictureQualityAsk(pictureQuality: PictureQuality, performance: PerformanceMode): PictureQualityAsk {
+  if (pictureQuality !== 'auto') return 'set';
+  return performance === 'quality' ? 'detail' : null;
+}
+
 /** The settings a scenario request takes: the performance mode and the two step settings. */
 export type ScenarioSettings = Pick<Settings, 'performance' | 'timeStep' | 'solverStep'>;
 

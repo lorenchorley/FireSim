@@ -38,7 +38,7 @@ import { HeightField } from './heightfield';
 import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
-import { homeCandidates, iconCandidate, pickMarkerAt, projectPoint, type PickCandidate } from './markerPick';
+import { homeCandidates, homeDrawnPx, iconCandidate, pickMarkerAt, projectPoint, type PickCandidate } from './markerPick';
 import { AdaptiveDpr, FrameMeter } from './perf';
 import { lineOfSightClear, sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
@@ -925,7 +925,7 @@ export class SceneView implements SceneViewApi {
   /**
    * The icon under a screen position (workstream I): every icon `refreshMarkers` drew, plus the homes when the Homes layer is
    * on, projected the way the icon shader does it (not clipped to the screen, nothing behind the camera) and judged by
-   * markerPick.ts. A home hidden behind terrain is skipped, as its name label would be.
+   * markerPick.ts. A home hidden behind terrain is skipped, as its name label would be; a home's radius follows how big it is drawn.
    */
   pickMarker(clientX: number, clientY: number): MapMarker | null {
     const hf = this.hf;
@@ -949,13 +949,17 @@ export class SceneView implements SceneViewApi {
       const eye = cam.position;
       const heightAt = (x: number, y: number): number => hf.heightAt(x, y);
       const roofY = (x: number, y: number): number => hf.heightAt(x, y) * vex + 3;
+      const pxPerMetreAt1m = (cam.projectionMatrix.elements[5]! * rect.height) / 2; // as the house shader measures its size
       cands.push(
         ...homeCandidates(
           homes,
           this.layers.homes,
           tx,
           ty,
-          (x, y) => projectPoint(viewProj, x, roofY(x, y), -y, rect.width, rect.height),
+          (x, y) => {
+            const s = projectPoint(viewProj, x, roofY(x, y), -y, rect.width, rect.height);
+            return s && [s[0], s[1], homeDrawnPx(s[2], pxPerMetreAt1m)];
+          },
           (x, y) => !hf.contains(x, y) || !lineOfSightClear(heightAt, vex, [eye.x, -eye.z, eye.y], [x, y, roofY(x, y)], 60, 40),
         ),
       );

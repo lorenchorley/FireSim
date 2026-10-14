@@ -23,7 +23,7 @@ import { weatherAt } from '../../weatherSeries';
 import type { Services } from '../../modules';
 import { SimSession } from '../../session';
 import { DangerGate } from '../../insightGroups';
-import { performanceProfile, resolveRenderQuality, settingsStore } from '../../settings';
+import { performanceProfile, pictureQualityAsk, resolveRenderQuality, settingsStore, type PictureQualityAsk } from '../../settings';
 import { Store } from '../../store';
 import { debugPaceLevel } from '../../paceModel';
 import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './context';
@@ -64,6 +64,8 @@ export interface SimScreen {
   el: HTMLElement;
   session: SimSession;
   view: SceneViewApi;
+  /** What asked for the picture quality when the view was built (the person, the Detail profile, or nothing: a guess). */
+  pictureQualityAsk: PictureQualityAsk;
   /**
    * Android Back: close the top-most open layer of the screen (a top-bar sheet, the speed dial or view list, the tool
    * panel, the bottom sheet), one per press. Returns false when nothing was open, so the app may leave the screen.
@@ -106,7 +108,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const root = h('div', { class: ['screen', 'sim-screen', `hand-${settingsStore.get().handedness}`], dataset: { testid: 'sim' } }, [sceneHost, dim, annotations, drawLayer, crosshair]);
 
   // ───────────── scene + session ─────────────
-  const view = services.createSceneView(sceneHost, { quality: resolveRenderQuality(settingsStore.get().pictureQuality, settingsStore.get().performance) });
+  const { pictureQuality, performance: performanceMode } = settingsStore.get();
+  const view = services.createSceneView(sceneHost, { quality: resolveRenderQuality(pictureQuality, performanceMode) });
+  const pictureAsk = pictureQualityAsk(pictureQuality, performanceMode); // kept for the statistics: the settings may change during the run
   const prof = performanceProfile(settingsStore.get().performance);
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, smoke: prof.smoke, vegetation: prof.vegetation, imagery: !!o.imagery });
   view.setScenario(scenario.terrain, scenario.fuel, { imagery: o.imagery, hiRes: scenario.terrainHiRes ?? null });
@@ -964,7 +968,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     o.announce(`Showing ${name} on the map.`);
   }
 
-  return { el: root, session, view, back: closeTopLayer, showLayer, setCovered: (covered) => view.setCovered?.(covered), destroy };
+  return { el: root, session, view, pictureQualityAsk: pictureAsk, back: closeTopLayer, showLayer, setCovered: (covered) => view.setCovered?.(covered), destroy };
 }
 
 /** A screen-space annotation (pending mark, stroke, "why" point), as plain data so changes can be detected. */
