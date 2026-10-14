@@ -14,7 +14,7 @@ import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
-import type { LogEvent } from './eventLog';
+import type { EventKind, LogEvent } from './eventLog';
 import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
 import type { PictureQualityAsk } from './settings';
@@ -630,12 +630,15 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
   return G('canDo', 'What this phone can do', [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)], 'Three sentences from the measurements above');
 }
 
+/** The short word beside each event line: what kind of event it is. */
+const EVENT_KIND: Record<EventKind, string> = { run: 'start', tier: 'tier', slow: 'speed', app: 'app', rewind: 'rewind', restore: 'restore', 'long-steps': 'long steps', history: 'history' };
+
 function eventsGroup(i: DebugStatsInput): StatGroup {
   const off = i.clock.tzOffsetMin;
   const rows: StatRow[] = [...i.events]
     .reverse()
     .slice(0, 40)
-    .map((e, n) => R(`e${n}`, `${localStamp(e.wallMs, off, false)} (${e.runS === null ? 'no run clock' : `run ${hms(e.runS)}`})`, scrubError(e.text, i.hide)));
+    .map((e, n) => R(`e${n}`, `${localStamp(e.wallMs, off, false)} (${e.runS === null ? 'no run clock' : `run ${hms(e.runS)}`}, ${EVENT_KIND[e.kind]})`, scrubError(e.text, i.hide)));
   i.errors
     .slice(-5)
     .reverse()

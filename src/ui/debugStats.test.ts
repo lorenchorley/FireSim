@@ -631,13 +631,23 @@ describe('privacy: no coordinates, no custom place name, no identifier', () => {
 });
 
 describe('Recent events', () => {
-  it('lists the events newest first with their wall clock (in the phone\'s time) and run clock', () => {
+  it('lists the events newest first with their wall clock (in the phone\'s time), run clock and kind', () => {
     const rows = buildDebugStats(full()).groups.find((g) => g.id === 'events')!.rows;
     expect(rows.map((r) => [r.label, r.value])).toEqual([
-      ['14:31:35 (run 00:30:00)', 'The simulation is falling behind: computing about 430x, asked for 600x.'],
-      ['14:30:35 (run 00:00:00)', 'Detailed 3-D air chosen: about 41 ms per air step.'],
-      ['14:30:05 (run 00:00:00)', 'Run started.'],
+      ['14:31:35 (run 00:30:00, speed)', 'The simulation is falling behind: computing about 430x, asked for 600x.'],
+      ['14:30:35 (run 00:00:00, tier)', 'Detailed 3-D air chosen: about 41 ms per air step.'],
+      ['14:30:05 (run 00:00:00, start)', 'Run started.'],
     ]);
+  });
+
+  it('every kind of event has its own short word, also with no run clock', () => {
+    const kinds: LogEvent['kind'][] = ['run', 'tier', 'slow', 'app', 'rewind', 'restore', 'long-steps', 'history'];
+    const i = full();
+    i.events = kinds.map((kind, n) => ({ wallMs: NOW + n * 1000, runS: n % 2 ? null : 60, kind, text: `event ${kind}` }));
+    const rows = buildDebugStats(i).groups.find((g) => g.id === 'events')!.rows;
+    const words = rows.map((r) => /, ([^)]+)\)$/.exec(r.label)?.[1]);
+    expect(words).toEqual(['history', 'long steps', 'restore', 'rewind', 'app', 'speed', 'tier', 'start']); // newest first
+    expect(rows.find((r) => r.value === 'event app')!.label).toMatch(/\(no run clock, app\)$/);
   });
 
   it('keeps 40 at most, and says "Nothing yet" for none', () => {
