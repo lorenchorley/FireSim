@@ -10,7 +10,7 @@
  */
 import type { Insight, ScenarioData } from '../../../core/types';
 import { BurnState } from '../../../core/types';
-import type { SceneImagery, SceneViewApi } from '../../../render/api';
+import type { MapMarker, SceneImagery, SceneViewApi } from '../../../render/api';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from '../../../render/layers';
 import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey } from '../../../render/layerCatalog';
 import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
@@ -31,6 +31,7 @@ import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
 import { createMapMenu } from './mapMenu';
 import { backLayer, reduceMenu } from './layoutModel';
+import { markerShownAt, tapTarget } from './markerWords';
 import { mapCredits } from './mapCredits';
 import { createMapLegend } from './mapLegend';
 import { restoreLayerPrefs } from './layersPrefs';
@@ -666,14 +667,17 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   );
 
   function onTap(cx: number, cy: number): void {
-    const p = view.pickGround(cx, cy);
-    if (!p) return;
+    // In the Why tool an icon under the finger is what is asked about (its own spot); the other tools keep the ground.
+    const tool = ui.get().panelOpen ? ui.get().tool : 'why';
+    const hit = tapTarget(tool, tool === 'why' ? view.pickMarker?.(cx, cy) : null, view.pickGround(cx, cy));
+    if (!hit) return;
+    const p = hit.point;
     // Touching the map brings the map back: collapse an open dock panel.
     if (ui.get().sheet !== 'closed') ui.set({ sheet: 'closed' });
     const s = ui.get();
     switch (s.panelOpen ? s.tool : 'why') {
       case 'why':
-        void askWhy(p);
+        void askWhy(p, false, hit.marker);
         break;
       case 'fire':
         if (s.fireInput === 'point') ui.set({ pending: { kind: 'point', at: p } });
@@ -693,17 +697,20 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   /**
    * Explain a point at the view time. `refresh` re-asks for the same point after the clock moved (a new snapshot while
    * the panel is open): the previous explanation stays on screen until the new one arrives, so it does not flash.
+   * `marker` is the map icon that was tapped (p is then its own spot): it stays on the panel's top row through refreshes
+   * and is dropped when the view time is back before the icon existed.
    */
-  async function askWhy(p: [number, number], refresh = false): Promise<void> {
+  async function askWhy(p: [number, number], refresh = false, marker: MapMarker | null = null): Promise<void> {
     const seq = ++whySeq;
     const time = session.state.get().viewTime;
-    if (!refresh) ui.set({ tool: 'why', panelOpen: true, why: { x: p[0], y: p[1], time, loading: true, explanation: null } });
+    const tapped = marker && markerShownAt(marker, time, session.state.get().forecastInsights) ? marker : null;
+    if (!refresh) ui.set({ tool: 'why', panelOpen: true, why: { x: p[0], y: p[1], time, loading: true, explanation: null, marker: tapped } });
     whyInFlight = true;
     try {
       const e = await session.explain(p[0], p[1]);
-      if (seq === whySeq && ui.get().why) ui.set({ why: { x: p[0], y: p[1], time, loading: false, explanation: e } });
+      if (seq === whySeq && ui.get().why) ui.set({ why: { x: p[0], y: p[1], time, loading: false, explanation: e, marker: tapped } });
     } catch (err) {
-      if (seq === whySeq && ui.get().why && !refresh) ui.set({ why: { x: p[0], y: p[1], time, loading: false, explanation: null, error: (err as Error).message || 'No explanation available here.' } });
+      if (seq === whySeq && ui.get().why && !refresh) ui.set({ why: { x: p[0], y: p[1], time, loading: false, explanation: null, error: (err as Error).message || 'No explanation available here.', marker: tapped } });
     } finally {
       if (seq === whySeq) whyInFlight = false;
     }
@@ -716,8 +723,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       const u = ui.get();
       const w = u.why;
       if (!w || w.loading || whyInFlight || !u.panelOpen || u.tool !== 'why' || !st.snapshot) return;
-      if (Math.abs(st.viewTime - w.time) < 30) return;
-      void askWhy([w.x, w.y], true);
+      const iconGone = !!w.marker && !markerShownAt(w.marker, st.viewTime, st.forecastInsights);
+      if (!iconGone && Math.abs(st.viewTime - w.time) < 30) return;
+      void askWhy([w.x, w.y], true, w.marker ?? null);
     }, ['snapshot']),
   );
 

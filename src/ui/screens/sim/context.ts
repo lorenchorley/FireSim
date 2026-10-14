@@ -1,6 +1,6 @@
 /** Shared state and services for the components of the simulation screen. */
 import type { CellExplanation, Ignition, ScenarioData } from '../../../core/types';
-import type { SceneViewApi } from '../../../render/api';
+import type { MapMarker, SceneViewApi } from '../../../render/api';
 import type { LayerState } from '../../../render/layers';
 import type { SimSession } from '../../session';
 import type { Settings } from '../../settings';
@@ -30,6 +30,8 @@ export interface WhyState {
   loading: boolean;
   explanation: CellExplanation | null;
   error?: string;
+  /** The map icon the question is about (the point is then the icon's own spot); null or absent for a tap on the ground. */
+  marker?: MapMarker | null;
 }
 
 export interface UiState {

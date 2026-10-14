@@ -1539,6 +1539,53 @@ button.map-credit:active {
   line-height: var(--lh-sm);
 }
 
+/* The icon that was tapped (markerWords.ts, whyPanel.ts): the picture the map draws, its name, one muted line. */
+.why-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.why-marker-pic {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.why-marker-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.why-marker-text p {
+  margin: 0;
+}
+
+.why-marker-name {
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: var(--fw-medium);
+}
+
+.why-marker-detail,
+.why-marker-more {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.why-marker-more {
+  margin-top: var(--sp-1);
+}
+
 .driver-chip {
   display: inline-flex;
   align-items: center;
