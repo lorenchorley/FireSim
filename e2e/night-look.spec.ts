@@ -27,8 +27,12 @@ type Region = [number, number, number, number]; // fractions of the frame: x0, y
 /** Where the mean luma of the ground and of the sky is read (spike S4's regions, drawn in its shot 04). */
 const GROUND: Region = [0.04, 0.7, 0.96, 0.97];
 const SKY: Region = [0.03, 0.015, 0.45, 0.1];
-/** Looking north-west and up 32 degrees from eye level: the fixed map sun (north-west, 30 degrees up) would be about in the middle. */
-const EYE_SKY: Region = [0.1, 0.05, 0.9, 0.5];
+/**
+ * Looking north-west and up 32 degrees from eye level on the highest ground of the area, with the trees, roads and names off: the
+ * frame holds nothing but sky above the horizon, and the fixed map sun (north-west, 30 degrees up) would sit in this region
+ * just above its lower edge (the vertical field of view is 50 degrees, so the region reaches down to about 26 degrees).
+ */
+const EYE_SKY: Region = [0.1, 0.05, 0.9, 0.62];
 
 interface Frame {
   w: number;
@@ -38,10 +42,11 @@ interface Frame {
   calls: number;
   triangles: number;
   memory: string;
+  png: Buffer;
 }
 
 interface ViewHandle {
-  scenario: { startTime: number; weather: { timezone?: string }; terrain: { grid: { nx: number; ny: number; cellSize: number } } };
+  scenario: { startTime: number; weather: { timezone?: string }; terrain: { elevation: Float32Array; grid: { nx: number; ny: number; cellSize: number; x0: number; y0: number } } };
   view: {
     nightLook?: Look;
     cameraState(): { target: [number, number]; distance: number };
@@ -80,7 +85,11 @@ interface Shot {
   ms?: number;
   /** A look to set through the view; omitted keeps the one the panel set. */
   look?: Look;
-  /** 'std': the orbit camera above the middle of the area, 4.2 km out for a 9 km area, from the south-south-west and low enough to show a strip of sky. 'eye': eye level looking north-west and up 32 degrees. */
+  /**
+   * 'std': the orbit camera above the middle of the area, 0.45 of the area's width out, from the south-south-west and low enough
+   * to show a strip of sky. 'eye': eye level on the highest ground, looking north-west and up 32 degrees, with the trees, roads,
+   * names and wind off (it leaves them off: take these shots last).
+   */
   camera: 'std' | 'eye';
 }
 
@@ -101,6 +110,7 @@ async function shoot(page: Page, shot: Shot): Promise<Frame> {
       setNightLook(look: string): void;
       setStartTime(ms: number): void;
       setViewMode(m: string): void;
+      setLayers(p: Record<string, unknown>): void;
       lookAt(x: number, y: number, d: number, az: number, tilt: number): void;
       renderNow(): void;
     };
@@ -117,9 +127,18 @@ async function shoot(page: Page, shot: Shot): Promise<Frame> {
         v.setViewMode('orbit');
         v.lookAt(0, 0, 0.45 * size, 200, 72);
       } else {
+        // Nothing but terrain below the horizon and sky above it: the highest ground, and nothing standing on it or floating over it.
+        v.setLayers({ vegetation: false, understorey: false, roads: false, fireTrails: false, homes: false, zones: false, placeNames: false, wind: 'off', smoke: false, flames: false, embers: false, insightMarkers: false });
+        const t = fs.scenario.terrain;
+        let top = 0;
+        for (let i = 1; i < t.elevation.length; i++) if (t.elevation[i]! > t.elevation[top]!) top = i;
+        const ex = t.grid.x0 + (top % t.grid.nx) * t.grid.cellSize;
+        const ey = t.grid.y0 + Math.floor(top / t.grid.nx) * t.grid.cellSize;
+        v.setViewMode('orbit'); // the eye stands where the orbit view is centred
+        v.lookAt(ex, ey, 200, 315, 80);
         v.setViewMode('ground');
-        const eye = v.rig.groundPoint(0, 0);
-        eye.y += 2;
+        const eye = v.rig.groundPoint(ex, ey);
+        eye.y += 1.7;
         const a = (315 * Math.PI) / 180;
         const p = (32 * Math.PI) / 180;
         const target = eye.clone(); // a THREE.Vector3: the camera's lookAt needs the real thing
@@ -142,7 +161,7 @@ async function shoot(page: Page, shot: Shot): Promise<Frame> {
     }
   }, shot);
   const png = decode(Buffer.from(r.url.split(',')[1]!, 'base64'));
-  return { w: png.width, h: png.height, ch: png.channels, data: png.data, calls: r.calls, triangles: r.triangles, memory: r.memory };
+  return { w: png.width, h: png.height, ch: png.channels, data: png.data, calls: r.calls, triangles: r.triangles, memory: r.memory, png: Buffer.from(r.url.split(',')[1]!, 'base64') };
 }
 
 const box = (f: Frame, r: Region): { x0: number; y0: number; x1: number; y1: number } => ({ x0: Math.floor(r[0] * f.w), y0: Math.floor(r[1] * f.h), x1: Math.floor(r[2] * f.w), y1: Math.floor(r[3] * f.h) });
@@ -213,45 +232,52 @@ test('Night lighting: the ground rises Realistic < Brighter < Daylight at night,
 
   const g = [meanLuma(realistic, GROUND), meanLuma(brighter, GROUND), meanLuma(daylight, GROUND)];
   test.info().annotations.push({ type: 'night ground luma', description: g.map((x) => x.toFixed(1)).join(' / ') });
-  expect(g[1]! - g[0]!, `Brighter - Realistic (ground ${g.map((x) => x.toFixed(1)).join(' / ')})`).toBeGreaterThanOrEqual(12);
-  expect(g[2]! - g[1]!, `Daylight - Brighter (ground ${g.map((x) => x.toFixed(1)).join(' / ')})`).toBeGreaterThanOrEqual(9);
+  console.log(`NIGHT-LOOK ground luma R/B/D ${g.map((x) => x.toFixed(1)).join(' / ')}, sky luma ${meanLuma(realistic, SKY).toFixed(1)}, draw calls ${realistic.calls}, triangles ${realistic.triangles}, ${realistic.memory}`);
+  expect.soft(g[1]! - g[0]!, `Brighter - Realistic (ground ${g.map((x) => x.toFixed(1)).join(' / ')})`).toBeGreaterThanOrEqual(12);
+  expect.soft(g[2]! - g[1]!, `Daylight - Brighter (ground ${g.map((x) => x.toFixed(1)).join(' / ')})`).toBeGreaterThanOrEqual(9);
 
   // The sky, the stars and the horizon are the clock's: not one pixel changes.
-  expect(differing(realistic, brighter, SKY), 'sky pixels that differ, Brighter').toBe(0);
-  expect(differing(realistic, daylight, SKY), 'sky pixels that differ, Daylight').toBe(0);
-  expect(Math.abs(meanLuma(daylight, SKY) - meanLuma(realistic, SKY))).toBeLessThan(0.5);
-  expect(differing(realistic, daylight), 'the ground does change').toBeGreaterThan(1000);
+  expect.soft(differing(realistic, brighter, SKY), 'sky pixels that differ, Brighter').toBe(0);
+  expect.soft(differing(realistic, daylight, SKY), 'sky pixels that differ, Daylight').toBe(0);
+  expect.soft(Math.abs(meanLuma(daylight, SKY) - meanLuma(realistic, SKY))).toBeLessThan(0.5);
+  expect.soft(differing(realistic, daylight), 'the ground does change').toBeGreaterThan(1000);
 
   // Nothing is drawn or made on the way: same draw calls, triangles and GPU objects in every look.
   for (const f of [brighter, daylight]) {
-    expect(f.calls).toBe(realistic.calls);
-    expect(f.triangles).toBe(realistic.triangles);
-    expect(f.memory).toBe(realistic.memory);
+    expect.soft(f.calls).toBe(realistic.calls);
+    expect.soft(f.triangles).toBe(realistic.triangles);
+    expect.soft(f.memory).toBe(realistic.memory);
   }
-
-  // ── Eye level, looking north-west and up: no sun disc in the night sky, whatever the look ──
-  const eyeR = await shoot(page, { look: 'realistic', camera: 'eye' });
-  const eyeB = await shoot(page, { look: 'brighter', camera: 'eye' });
-  const eyeD = await shoot(page, { look: 'daylight', camera: 'eye' });
-  expect(Math.abs(meanLuma(eyeD, EYE_SKY) - meanLuma(eyeR, EYE_SKY)), 'a sun disc lifts this region from about 21 to 90').toBeLessThan(0.5);
-  expect(differing(eyeR, eyeB, EYE_SKY)).toBe(0);
-  expect(differing(eyeR, eyeD, EYE_SKY)).toBe(0);
 
   // ── By day all three looks are the same picture, pixel for pixel ──
   const dayR = await shoot(page, { ms: day, look: 'realistic', camera: 'std' });
   const dayB = await shoot(page, { look: 'brighter', camera: 'std' });
   const dayD = await shoot(page, { look: 'daylight', camera: 'std' });
-  expect(differing(dayR, dayB), 'by day Brighter differs from Realistic in this many pixels').toBe(0);
-  expect(differing(dayR, dayD), 'by day Daylight differs from Realistic in this many pixels').toBe(0);
-  expect(dayB.calls).toBe(dayR.calls);
-  expect(dayD.triangles).toBe(dayR.triangles);
+  expect.soft(differing(dayR, dayB), 'by day Brighter differs from Realistic in this many pixels').toBe(0);
+  expect.soft(differing(dayR, dayD), 'by day Daylight differs from Realistic in this many pixels').toBe(0);
+  expect.soft(dayB.calls).toBe(dayR.calls);
+  expect.soft(dayD.triangles).toBe(dayR.triangles);
   // ... and that day really is brighter than the Realistic night (the clock moved).
-  expect(meanLuma(dayR, GROUND)).toBeGreaterThan(g[0]! + 20);
+  expect.soft(meanLuma(dayR, GROUND)).toBeGreaterThan(g[0]! + 20);
 
   // Going back to Realistic at night draws the first picture again.
   await pickLook(page, 'Realistic');
   const again = await shoot(page, { ms: night, camera: 'std' });
-  expect(differing(realistic, again)).toBeLessThan(50);
+  expect.soft(differing(realistic, again)).toBeLessThan(50);
+
+  // ── Eye level, looking north-west and up: no sun disc in the night sky, whatever the look ──
+  // (The map sun is a fixed north-west sun: if the sky shared it, a disc would sit about in the middle of this region and the sky's
+  // own exposure would change. A sun disc lifts the mean luma of a region like this from about 21 to 90.)
+  const eyeR = await shoot(page, { ms: night, look: 'realistic', camera: 'eye' });
+  const eyeB = await shoot(page, { look: 'brighter', camera: 'eye' });
+  const eyeD = await shoot(page, { look: 'daylight', camera: 'eye' });
+  await test.info().attach('eye-level-realistic.png', { body: eyeR.png, contentType: 'image/png' });
+  await test.info().attach('eye-level-daylight.png', { body: eyeD.png, contentType: 'image/png' });
+  const sky = [meanLuma(eyeR, EYE_SKY), meanLuma(eyeB, EYE_SKY), meanLuma(eyeD, EYE_SKY)];
+  console.log(`NIGHT-LOOK eye-level sky region luma R/B/D ${sky.map((x) => x.toFixed(2)).join(' / ')}`);
+  expect.soft(Math.abs(sky[2]! - sky[0]!), 'mean luma of the sky toward the north-west, Daylight against Realistic').toBeLessThan(0.5);
+  expect.soft(differing(eyeR, eyeB, EYE_SKY), 'eye-level sky pixels that differ, Brighter').toBe(0);
+  expect.soft(differing(eyeR, eyeD, EYE_SKY), 'eye-level sky pixels that differ, Daylight').toBe(0);
 });
 
 test('Night lighting: the choice is remembered for the next run and Reset layers returns it to Realistic', async ({ page }) => {
@@ -277,6 +303,7 @@ test('Night lighting: the choice is remembered for the next run and Reset layers
   expect(await viewLook(page)).toBe('realistic');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('firesim.layers'))).toBeNull();
   const reset = await shoot(page, { camera: 'std' });
+  console.log(`NIGHT-LOOK after a reload and after Reset: ground luma ${meanLuma(remembered, GROUND).toFixed(1)} (remembered Daylight) / ${meanLuma(reset, GROUND).toFixed(1)} (Realistic)`);
   expect(meanLuma(remembered, GROUND) - meanLuma(reset, GROUND), 'the remembered Daylight is lighter than Realistic').toBeGreaterThanOrEqual(21);
   expect(differing(remembered, reset, SKY)).toBe(0);
 });
