@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { BurnState, FuelType, SpreadDriver, type FuelEdit, type SimSnapshot, type WindEdit } from '../core/types';
 import { cellAt } from '../core/grid';
-import { Simulation } from './simulation';
+import { Simulation, type SimulationOptions } from './simulation';
 import { snapshotHash, snapshotPartHashes } from './testing/hash';
 import { pointIgnition, syntheticScenario } from './testing/scenarios';
 import { SIM_PARAMS } from './params';
@@ -261,4 +261,84 @@ describe('Simulation on a synthetic slope (fast tier)', () => {
     for (let m = 60; m <= Math.floor(seen[seen.length - 1]! / 60) * 60; m += 60) expect(seen).toContain(m);
     for (let q = 1; q < seen.length; q++) expect(seen[q]! - seen[q - 1]!).toBeLessThanOrEqual(SIM_PARAMS.dtMaxS + 1e-9);
   }, 120000);
+});
+
+describe('results never depend on speed, display or statistics (plan §4, rule 1)', () => {
+  /** A clock that only goes forward but jumps about: 0 to 40 ms per read, and now and then a 5 s stall (a phone in trouble). */
+  const wildClock = (seed: number): (() => number) => {
+    let now = 0;
+    let x = seed >>> 0;
+    return () => {
+      x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+      return (now += x % 7 === 0 ? 5000 : x % 41);
+    };
+  };
+  const steadyClock = (): (() => number) => {
+    let now = 0;
+    return () => (now += 1);
+  };
+
+  /** Snapshot hashes by time and the last engine info of a run to `until`, asked for in pieces of `chunk` simulated seconds. */
+  function hashesOf(sc: ReturnType<typeof syntheticScenario>, o: Omit<SimulationOptions, 'hooks'>, chunk: number, until: number): { hashes: Map<number, number>; info: SimSnapshot['engine'] } {
+    const hashes = new Map<number, number>();
+    let info: SimSnapshot['engine'];
+    const sim = new Simulation(sc, {
+      ...o,
+      hooks: {
+        snapshot: (snap) => {
+          hashes.set(snap.time, snapshotHash(snap));
+          info = snap.engine;
+        },
+      },
+    });
+    for (let t = chunk; t < until + chunk; t += chunk) sim.advance(Math.min(t, until));
+    return { hashes, info };
+  }
+
+  it('fast tier: statistics off, on with a steady clock, on with a wildly perturbed clock, in chunks of 60 s, 700 s and a whole run: the same snapshot hashes', () => {
+    const sc = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], extent: 2400, options: { snapshotInterval: 60 } });
+    const base = hashesOf(sc, { perfStats: false }, 1800, 1800);
+    expect(base.info!.perf).toBeUndefined(); // off means off
+    expect(base.hashes.size).toBe(30);
+    const steady = hashesOf(sc, { clock: steadyClock() }, 60, 1800);
+    const wild = hashesOf(sc, { clock: wildClock(7) }, 700, 1800);
+    const wild2 = hashesOf(sc, { clock: wildClock(12345) }, 250, 1800);
+    for (const run of [steady, wild, wild2]) {
+      expect([...run.hashes.keys()]).toEqual([...base.hashes.keys()]);
+      for (const [t, h] of base.hashes) expect(run.hashes.get(t), `t=${t}`).toBe(h);
+    }
+    // The statistics really were on and really saw the perturbation.
+    expect(steady.info!.perf!.step.medianMs).not.toBeNull();
+    expect(wild.info!.perf!.step.over250).toBeGreaterThan(0);
+    expect(steady.info!.perf!.step.over250).toBe(0);
+    expect(wild.info!.perf!.step.maxMs!).toBeGreaterThan(steady.info!.perf!.step.maxMs!);
+  }, 240000);
+
+  it('the same run asked for in wall-clock chunks (as the host does) and with a rewind in the middle is unchanged too', () => {
+    const sc = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], extent: 2400, options: { snapshotInterval: 60 } });
+    const base = hashesOf(sc, { perfStats: false }, 1800, 1800).hashes;
+    for (const [seed, chunkMs] of [[3, 25], [99, 400]] as const) {
+      const clock = wildClock(seed);
+      const hashes = new Map<number, number>();
+      const sim = new Simulation(sc, { clock, hooks: { snapshot: (snap) => hashes.set(snap.time, snapshotHash(snap)) } });
+      let guard = 0;
+      while (!sim.advance(1800, clock() + chunkMs)) if (++guard > 100000) throw new Error('no progress');
+      expect(guard, `chunks at seed ${seed}`).toBeGreaterThan(1);
+      for (const [t, h] of base) expect(hashes.get(t), `seed ${seed} t=${t}`).toBe(h);
+      hashes.clear();
+      sim.rewind(900);
+      while (!sim.advance(1800, clock() + chunkMs)) if (++guard > 200000) throw new Error('no progress');
+      for (const [t, h] of hashes) expect(base.get(t), `after a rewind, seed ${seed} t=${t}`).toBe(h);
+      expect(hashes.size).toBeGreaterThan(0);
+    }
+  }, 240000);
+
+  it('standard tier: the same, with the 3-D air and its spin-up', () => {
+    const sc = syntheticScenario({ ignitions: [pointIgnition('a', -300, 0, 0, 60)], extent: 1500, options: { snapshotInterval: 60 } });
+    const base = hashesOf(sc, { tier: 'standard', perfStats: false }, 600, 600);
+    const wild = hashesOf(sc, { tier: 'standard', clock: wildClock(5) }, 180, 600);
+    expect(base.hashes.size).toBe(10);
+    for (const [t, h] of base.hashes) expect(wild.hashes.get(t), `t=${t}`).toBe(h);
+    expect(wild.info!.perf!.quality.limitedBy).not.toBeNull();
+  }, 240000);
 });

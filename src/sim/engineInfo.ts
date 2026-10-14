@@ -1,10 +1,12 @@
 /**
  * Pure helpers of the engine info (core/simTypes.ts `EngineInfo`, reported with every snapshot by
  * Simulation.makeSnapshot): the empirical spread models a scenario's fuel map uses, the weather stamp spacing, the
- * plain sentence behind the tier, and the 30 s throttle of the measured memory. Nothing here touches the physics.
+ * Auto decision (tier from timed steps) and the plain sentence behind the tier, and the 30 s throttle of the measured
+ * memory. Nothing here touches the physics.
  */
 import type { EngineInfo, EngineMemoryInfo, FuelFamily, FuelMap, QualityTier, SpreadModelUse, WeatherSeries } from '../core/types';
 import { resolveClass } from '../fuel/catalogue';
+import { SIM_PARAMS } from './params';
 import type { SimMemoryReport } from './simulation';
 
 /**
@@ -92,6 +94,55 @@ const round = (v: number, d = 0): string => (Number.isFinite(v) ? v.toFixed(d) :
 /** No-break space between a number and its unit. */
 const NB = '\u00a0';
 
+/** What the Auto choice at the start measured and decided (EngineInfo.autoTune before `steps` and `warmupSteps` are added). */
+export interface AutoTuneDecision {
+  /** The number the decision used: the median wall time (ms) of the steady steps, after the warm-up. */
+  stepMs: number;
+  /** Mean wall time (ms) of the warm-up steps that were left out; null when none were. */
+  warmupMeanMs: number | null;
+  /** Predicted wall time (s) of the whole run on the 3-D air: overhead × step × (duration / 10 s). */
+  predictedS: number;
+  /** The most the 3-D air may take for a run this long (s). */
+  budgetS: number;
+  chosen: 'standard' | 'fast';
+}
+
+/**
+ * The Auto decision of the start (spec §12.6, plan §6.2) from the wall times (ms) of the timed 3-D spin-up steps, in the
+ * order they ran. The first `autoTuneWarmupSteps` are the JIT warm-up: only their mean is kept, for the statistics.
+ * The prediction uses the MEDIAN of the others (one slow step from a garbage collection or another app does not decide),
+ * and the 3-D air is kept unless the whole run is predicted to take longer than the budget, which is about ten minutes of
+ * computing for six hours of fire (`autoTuneBudgetS`), scaled by the run length and never under a minute.
+ */
+export function autoTuneDecision(stepTimesMs: ArrayLike<number>, durationS: number, P: Pick<typeof SIM_PARAMS, 'autoTuneWarmupSteps' | 'autoTuneOverhead' | 'autoTuneStepS' | 'autoTuneBudgetS' | 'autoTuneBudgetRefS' | 'autoTuneMinBudgetS'> = SIM_PARAMS): AutoTuneDecision {
+  const n = stepTimesMs.length;
+  const warm = Math.min(P.autoTuneWarmupSteps, Math.max(0, n - 1));
+  let warmSum = 0;
+  for (let i = 0; i < warm; i++) warmSum += stepTimesMs[i]!;
+  const steady = new Float64Array(n - warm);
+  for (let i = warm; i < n; i++) steady[i - warm] = stepTimesMs[i]!;
+  steady.sort();
+  const m = steady.length >> 1;
+  const stepMs = steady.length === 0 ? 0 : steady.length % 2 ? steady[m]! : (steady[m - 1]! + steady[m]!) / 2;
+  const predictedS = (P.autoTuneOverhead * stepMs * (durationS / P.autoTuneStepS)) / 1000;
+  const budgetS = Math.max(P.autoTuneMinBudgetS, (P.autoTuneBudgetS * durationS) / P.autoTuneBudgetRefS);
+  return { stepMs, warmupMeanMs: warm > 0 ? warmSum / warm : null, predictedS, budgetS, chosen: predictedS <= budgetS ? 'standard' : 'fast' };
+}
+
+/** A computing time for a sentence ("53 s", "2 min", "1 h 5 min"; the caller says "about"). */
+export function formatWallDuration(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return '?';
+  return s < 120 ? `${Math.round(s)}${NB}s` : formatSimTime(s);
+}
+
+/** The most a run of this length may take, for a sentence: "10 min", "about 7 min", "100 s". */
+function limitWords(budgetS: number): string {
+  const exact = budgetS < 120 || Math.abs(budgetS / 60 - Math.round(budgetS / 60)) < 0.05;
+  return `${exact ? '' : 'about '}${formatWallDuration(budgetS)}`;
+}
+
+const stepWords = (ms: number): string => `${round(ms, ms < 10 ? 1 : 0)}${NB}ms`;
+
 /** The plain sentence behind the tier in use (EngineInfo.tierReason), with the auto-tune numbers when there are any. */
 export function tierReasonText(o: {
   tier: QualityTier;
@@ -102,15 +153,25 @@ export function tierReasonText(o: {
 }): string {
   const a = o.autoTune;
   switch (o.cause) {
-    case 'auto-tune':
+    case 'auto-tune': {
       if (!a) return `Auto: ${TIER_WORDS[o.tier]}.`;
+      const when = formatWallDuration(a.predictedS);
+      if (a.chosen === 'fast') {
+        return (
+          `Fast surface-wind model: the detailed 3-D air would take about ${when} to compute this run on this phone ` +
+          `(about ${stepWords(a.stepMs)} per air step), longer than the limit of ${limitWords(a.budgetS)} for a run this long. ` +
+          'Switch in Settings, Performance, or Layers, Use the 3-D atmosphere.'
+        );
+      }
+      const times = a.predictedS > 0 ? o.durationS / a.predictedS : 0;
+      const real = times > 0 ? ` (about ${round(times, times < 10 ? 1 : 0)}${NB}times real time)` : '';
       return (
-        `Auto: the first ${a.steps} 3-D steps took ${round(a.stepMs, 1)}${NB}ms each on this device, so the whole ` +
-        `${round(o.durationS / 3600, 1)}${NB}h run was predicted to take ${round(a.predictedS)}${NB}s against a budget of ${round(a.budgetS)}${NB}s: ` +
-        `${a.chosen === 'fast' ? 'too slow, so ' : ''}${TIER_WORDS[a.chosen]} ${a.chosen === 'fast' ? 'was chosen' : 'was kept'}.`
+        `Detailed 3-D air: this phone takes about ${stepWords(a.stepMs)} per air step, so this run should compute in about ${when}${real}. ` +
+        'It can fall behind when you play faster than that; the timeline will say so.'
       );
+    }
     case 'auto-pending':
-      return 'Auto: the 3-D atmosphere is being timed on this device during its spin-up; it stays only if a whole run would finish within the budget.';
+      return 'Auto: the 3-D atmosphere is being timed on this device during its spin-up; it stays unless a whole run would take longer than the time limit.';
     case 'auto-default':
       return `Auto without a timing sample: ${TIER_WORDS[o.tier]}.`;
     case 'changed':
@@ -118,6 +179,13 @@ export function tierReasonText(o: {
     default:
       return `Asked for when the run started: ${TIER_WORDS[o.tier]}.`;
   }
+}
+
+/** The "Recent events" line for the Auto decision (EnginePerfInfo.events). */
+export function autoTuneEventText(d: AutoTuneDecision): string {
+  return d.chosen === 'fast'
+    ? `Auto chose the fast model: the 3-D air would take about ${formatWallDuration(d.predictedS)}, over the limit of ${limitWords(d.budgetS)}.`
+    : `Auto kept the detailed 3-D air: about ${stepWords(d.stepMs)} per air step.`;
 }
 
 /** "1 h 30 min" / "45 min" / "0 min" from seconds (simulated time since the start). */
