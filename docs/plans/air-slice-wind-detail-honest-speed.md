@@ -298,13 +298,13 @@ Likely reasons                      (each shown only when the numbers support it
 
 What you can do
   [Play at 30x]   [Use the fast model from here]
-  Pausing lets the simulation get up to 30 minutes of fire ahead.
+  Pausing stops the simulation too. Playing slower is what lets it keep up.
 
 At this pace the end of the run is about 9 minutes away (6 at your speed).
-All the numbers  >                       Measured on this phone, last 30 seconds.
+All the numbers  >                       Measured on this phone, last 10 seconds.
 ```
 - **`behind` wording:** "Computing about 38x; you asked for 60x. About 1 minute of fire is already computed; after that, playback will wait."
-- **Actions:** "Play at N" sets the nearest preset at or below achieved speed (`speedModel.ts:4-8`); "Use the fast model from here" calls `setQuality('fast')` (existing path; the sheet notes "The fire from this moment on comes out a little different") and is hidden when already fast; Close. No "compute ahead" button: pausing already lets the worker look ahead.
+- **Actions:** "Play at N" sets the nearest preset at or below achieved speed (`speedModel.ts:4-8`); "Use the fast model from here" calls `setQuality('fast')` (existing path; **as built, the note says the fire is recomputed from the last checkpoint, up to half an hour of fire ago, because `Simulation.setQuality` restores the latest checkpoint (one per 1800 s of fire); verified on the real engine: the burnt area changes before the view time, not "from this moment on"**) and is hidden when already fast; Close. No "compute ahead" button. **As built, pausing does NOT let the worker look ahead: `SimSession.pause` calls `controller.pause`, which stops it (the first draft of this plan said otherwise).**
 - **Reasons logic:** air share of busy time > 40 % and tier is Standard or High; fire plus coupling > 40 %; speed now < 75 % of the median of the first four speed-history samples (throttling is only ever said as "may"); embers share > 25 %. If none applies the section is omitted.
 
 ### 6.6 Plumbing
@@ -560,7 +560,7 @@ I read "day night terrain modifier" as the automatic day/night lighting of the 3
 - **S4 result (done 2026-10-13, `docs/plans/spikes/S4-night-look/`, 14 screenshots, the measuring script and a throwaway patch).** The design is sound and works as built on the real renderer: by day all three looks are pixel-identical (18 frames), the sky region is identical between looks, draw calls, triangles, programs, geometries and textures do not change, a look change is uniforms only (0.007 ms) and the console stayed empty in the runs that checked it. Five corrections above (direction weight, smoke body, shadow fade, colour times intensity, signature) and Brighter `m = 0.3`; none changes the architecture and all are small. What will be seen on the phone: at -2 to -6 degrees the sky is still sunset or twilight while a Daylight map is fully lit (the fade makes it last about 55 minutes from +4 to -6 degrees); Daylight is not noon (the sun is at 30 degrees, so the flat ground has about half the noon sun term); the aerial photos' pale tiles, invisible in Realistic, show once the map is lit; the smoke is a dark veil over a lit map. Nothing was seen on a phone, with two sites, one date and a synthetic fire.
 
 ### 9b.4 UI
-In the Layers panel's **Map type** section (`layersPanel.ts:272-325`), below the tile grid: a `segmented` control "Night lighting" with Realistic, Brighter and Daylight (test id `night-look`) and the hint "Realistic follows the clock. Brighter and Daylight light the ground, trees and roads after dark so terrain detail stays readable. The sky, stars and the fire's glow still follow the clock." About +12 DOM nodes against 86 spare; no CSS.
+In the Layers panel's **Map type** section (`layersPanel.ts:272-325`), below the tile grid: a `segmented` control "Night lighting" with Realistic, Brighter and Daylight (test id `night-look`) and the hint "Realistic follows the clock. Brighter and Daylight light the ground, trees and roads after dark so terrain detail stays readable. The sky, stars and the fire's glow still follow the clock." About +12 DOM nodes against 86 spare; no CSS. **As built: 25 nodes (the panel is 940 of 1000 with the row open, 915 without; margin 60, not 74).**
 
 ### 9b.5 Files, tests, acceptance
 - **Files:** `src/render/sky.ts` (+ test), `SceneView.ts`, `api.ts`, `treeShaders.ts`, `vegetationLayer.ts`, `placesLayer.ts`, `skyDome.ts`, `src/ui/screens/sim/layersPanel.ts`, `layersPrefs.ts`, docs.
