@@ -3,16 +3,43 @@
  * are tested in node: the view projects every icon it drew to the screen, this module decides which one the finger meant.
  *
  * An icon is a hit when the tap is within `max(half its size, 22)` px of the centre of its picture (a 44 px target; the
- * icons are 22 to 40 px), a home within 14 px. The nearest centre wins; an exact tie goes to the higher rank (you, ignition,
- * spot fire, insight, home). The result also says how many more icons were hit, so the panel can say they are stacked.
+ * icons are 22 to 40 px), a home within a radius that follows how big the house is drawn (6 px for a dot up to 14 px for a
+ * house drawn large). The nearest centre wins; an exact tie goes to the higher rank (you, ignition, spot fire, insight, home).
+ * The result also says how many more icons were hit, so the panel can say they are stacked.
  * A pin stands on its anchor (the shader draws it from its bottom centre up), so its centre is half its height above it.
  */
 import type { MapMarker } from './api';
 
 /** The smallest radius (px) around an icon's centre that counts as a tap on it. */
 export const MIN_HIT_PX = 22;
-/** Homes are small and many: a tight radius, so a tap meant for the ground in a town is not kept taken by houses. */
+/**
+ * The most a home's radius grows to (px). Homes are small and many: in a town a tap meant for the ground must not be kept
+ * taken by houses, so the radius follows the drawn size ({@link homeHitRadius}) and only a house drawn large gets this much.
+ */
 export const HOME_HIT_PX = 14;
+/** The least a home's radius shrinks to (px): a house drawn as a dot is still a target for a finger. */
+export const HOME_HIT_MIN_PX = 6;
+/** How far past the drawn edge of a house a tap still counts (px). */
+export const HOME_HIT_MARGIN_PX = 4;
+/** The smallest a house is drawn (px): zoomed out it becomes a dot this big (placesLayer.ts, `uDotPx`). */
+export const HOME_DOT_PX = 3.5;
+/** How wide a house is drawn (m), before the shader's random 0.85 to 1.25 scale (placesLayer.ts, HOME_VERT). */
+export const HOME_WIDTH_M = 8;
+/** The drawn size (px) at which a home gets the full {@link HOME_HIT_PX}; a home with no size given counts as this large. */
+export const HOME_LARGE_PX = 2 * (HOME_HIT_PX - HOME_HIT_MARGIN_PX);
+
+/**
+ * How many px wide a house is drawn: its width in metres at this depth, never less than the dot. `pxPerMetreAt1m` is the
+ * screen height in px times the projection's y scale, over two (what one metre at a depth of one metre covers).
+ */
+export function homeDrawnPx(depthM: number, pxPerMetreAt1m: number): number {
+  return Math.max(HOME_DOT_PX, (HOME_WIDTH_M * pxPerMetreAt1m) / Math.max(depthM, 1e-6));
+}
+
+/** The radius (px) around a home's centre that counts as a tap on it: half its drawn size and a margin, between the dot's and the cap. */
+export function homeHitRadius(drawnPx: number): number {
+  return Math.min(HOME_HIT_PX, Math.max(HOME_HIT_MIN_PX, drawnPx / 2 + HOME_HIT_MARGIN_PX));
+}
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 /** What an icon stands for, before a tap has counted the icons around it (`others` is the pick's answer). */
@@ -54,9 +81,9 @@ export function iconCandidate(marker: MarkerSource, ax: number, ay: number, size
   return { marker, sx, sy, halfPx: sizePx / 2, rank: markerRank(marker) };
 }
 
-/** How far from its centre a tap still counts as on the icon. */
+/** How far from its centre a tap still counts as on the icon (a home's `halfPx` is half its drawn size, see {@link homeCandidates}). */
 export function hitRadius(c: Pick<PickCandidate, 'marker' | 'halfPx'>): number {
-  return c.marker.kind === 'home' ? HOME_HIT_PX : Math.max(c.halfPx, MIN_HIT_PX);
+  return c.marker.kind === 'home' ? homeHitRadius(2 * c.halfPx) : Math.max(c.halfPx, MIN_HIT_PX);
 }
 
 /**
@@ -82,28 +109,30 @@ export function pickMarkerAt(tx: number, ty: number, candidates: readonly PickCa
 /**
  * A world point to screen pixels (from the view's top left) through a combined projection x view matrix (column-major, as
  * three.js stores it), not clipped to the screen: an icon half off the edge can still be tapped. Null for a point behind the
- * camera (the icon shader draws nothing there either).
+ * camera (the icon shader draws nothing there either). The third number is the point's depth in front of the camera (m).
  */
-export function projectPoint(viewProj: ArrayLike<number>, x: number, y: number, z: number, widthPx: number, heightPx: number): [number, number] | null {
+export function projectPoint(viewProj: ArrayLike<number>, x: number, y: number, z: number, widthPx: number, heightPx: number): [number, number, number] | null {
   const e = viewProj;
   const w = e[3]! * x + e[7]! * y + e[11]! * z + e[15]!;
   if (!(w > 0)) return null;
   const nx = (e[0]! * x + e[4]! * y + e[8]! * z + e[12]!) / w;
   const ny = (e[1]! * x + e[5]! * y + e[9]! * z + e[13]!) / w;
-  return [((nx + 1) / 2) * widthPx, ((1 - ny) / 2) * heightPx];
+  return [((nx + 1) / 2) * widthPx, ((1 - ny) / 2) * heightPx, w];
 }
 
 /**
  * Candidates for the homes within reach of a tap. Nothing when the Homes layer is off; a home hidden behind terrain
  * (`hidden`) or behind the camera (`project` gives null) is skipped. `homes` is [x0, y0, x1, y1, …] in local metres;
- * `project` gives screen px; only homes within the home radius of the tap are looked at further, so a town of thousands is cheap.
+ * `project` gives screen px and, as a third number, how many px wide that house is drawn (a home with none counts as drawn
+ * large); a home is a hit within {@link homeHitRadius} of that size, so a town seen from far away, where houses are dots, does not
+ * take the taps meant for the ground. Only homes within reach of the tap are looked at further, so a town of thousands is cheap.
  */
 export function homeCandidates(
   homes: Float32Array,
   layerOn: boolean,
   tx: number,
   ty: number,
-  project: (x: number, y: number) => readonly [number, number] | null,
+  project: (x: number, y: number) => readonly [number, number, number?] | null,
   hidden: (x: number, y: number) => boolean,
 ): PickCandidate[] {
   const out: PickCandidate[] = [];
@@ -112,10 +141,12 @@ export function homeCandidates(
     const x = homes[i]!;
     const y = homes[i + 1]!;
     const s = project(x, y);
-    if (!s || Math.hypot(s[0] - tx, s[1] - ty) > HOME_HIT_PX) continue;
+    if (!s) continue;
+    const drawnPx = s[2] ?? HOME_LARGE_PX;
+    if (Math.hypot(s[0] - tx, s[1] - ty) > homeHitRadius(drawnPx)) continue;
     if (hidden(x, y)) continue;
     const marker: MarkerSource = { kind: 'home', x, y };
-    out.push({ marker, sx: s[0], sy: s[1], halfPx: HOME_HIT_PX, rank: markerRank(marker) });
+    out.push({ marker, sx: s[0], sy: s[1], halfPx: drawnPx / 2, rank: markerRank(marker) });
   }
   return out;
 }
