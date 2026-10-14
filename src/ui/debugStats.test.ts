@@ -357,7 +357,8 @@ describe('labels and values', () => {
 
   it('Memory: budget with its memory class, what is held, thinned frames estimated from the range, the heap', () => {
     expect(rowOf(s, 'memory', 'history-budget').value).toBe('100.7 MB');
-    expect(rowOf(s, 'memory', 'history-budget').note).toBe('6 % of the 4 GB memory class, between 48 and 160 MB; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly');
+    // The limits are said in the same decimal megabytes as the figure (the real app once printed "167.8 MB ... between 48 and 160 MB": 160 MiB is 167.8 MB).
+    expect(plain(rowOf(s, 'memory', 'history-budget').note!)).toBe('6 % of the 4 GB memory class, between 50.3 MB and 167.8 MB; older pictures are thinned beyond it, the fire front of any time is still rebuilt exactly');
     expect(rowOf(s, 'memory', 'history-held').value).toBe('61.0 MB of 96.0 MB');
     expect(rowOf(s, 'memory', 'full-pictures').value).toBe('18');
     // 9600 s at a 60 s step = 161 frames expected, 150 kept: about 11 thinned away.
@@ -392,7 +393,7 @@ describe('labels and values', () => {
   it('What this phone can do: three measured sentences', () => {
     const rows = s.groups.find((g) => g.id === 'canDo')!.rows;
     expect(rows.map((r) => r.id)).toEqual(['speed', 'memory', 'graphics']);
-    expect(rows[2]!.value).toBe('Graphics: WebGL2 on Mali-G710, float render targets yes, WebGPU present.');
+    expect(rows[2]!.value).toBe('WebGL2 on Mali-G710, float render targets yes, WebGPU present.'); // the row's label already says "Graphics"
     expect(rows[1]!.value).toContain('of a 2.1\u00a0GB limit');
     expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 41 ms on average (41 ms in the timing test), and the run computes at about 843x real time.');
     const fast = full();
@@ -450,7 +451,7 @@ describe('the phone groups', () => {
     expect(rowOf(s, 'software', 'webgpu').value).toBe('No');
     expect(rowOf(s, 'software', 'webgl2').value).toBe('No: the 3-D view cannot run, the 2-D map is used');
     expect(rowOf(s, 'software', 'gpu').value).toBe('Not available');
-    expect(rowOf(s, 'canDo', 'graphics').value).toBe('Graphics: WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.');
+    expect(rowOf(s, 'canDo', 'graphics').value).toBe('WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.');
     // The raw user agent is always printed, so a developer sees exactly what the WebView said.
     expect(debugStatsToText(s)).toContain(UA_REDUCED);
   });
@@ -547,6 +548,10 @@ describe('privacy: no coordinates, no custom place name, no identifier', () => {
     expect(scrubError('see https://x.test/?q=-33.7154,150.2851 now')).toBe('see <link> now');
     expect(scrubError('at -33.7154321, 150.2851234 and 41.1 ms')).toBe('at <number>, <number> and 41.1 ms');
     expect(scrubError('Place: Foo Bar', ['Foo Bar'])).toBe('Place: <place>');
+    // Seen in the real app's copy: a pair of two-decimal coordinates and the Maps link's plus-joined name passed through.
+    expect(scrubError('plain string: near -33.54,150.41 (maps/place/Mount+Tomah+Botanic+Garden)', ['Mount Tomah Botanic Garden'])).toBe('plain string: near <position> (maps/place/<place>)');
+    expect(scrubError('no data for Mount%20Tomah%20Botanic%20Garden', ['Mount Tomah Botanic Garden'])).toBe('no data for <place>');
+    expect(scrubError('took 1.5, 2.5 and 41.1 ms')).toBe('took <position> and 41.1 ms'); // the price of the pair rule: two short decimals in a row read as a position
     expect(scrubError('x'.repeat(500))).toHaveLength(160);
     expect(scrubError('')).toBe('Unknown error');
     expect(scrubError('ab', ['a'])).toBe('ab'); // one-letter names are not worth replacing (and would wreck the text)

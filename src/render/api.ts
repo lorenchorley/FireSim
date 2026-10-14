@@ -66,7 +66,7 @@ export interface FrameStatsInfo {
   fps10: number | null;
   frameMeanMs: number | null;
   frameP95Ms: number | null;
-  /** Frames in the ring that took more than 33 ms and more than 100 ms, and how many frames the ring holds. */
+  /** Frames in the ring that took more than 34 ms (the field keeps its name: 34, not 33, because playback is capped at 30 fps and a capped frame takes 33.3 ms) and more than 100 ms, and how many frames the ring holds. */
   over33: number;
   over100: number;
   frames: number;
