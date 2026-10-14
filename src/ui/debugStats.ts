@@ -500,7 +500,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
       R('frame-mean', 'Frame time, mean and 95th percentile', ok(f.frameMeanMs) && ok(f.frameP95Ms) ? `${ms(f.frameMeanMs)} and ${ms(f.frameP95Ms)}` : NOT_YET, undefined, true),
       R('slow-frames', 'Frames slower than 30 per second, and over 100 ms', `${f.over33} and ${f.over100}`, `Of the last ${f.frames} frames`, true),
     );
-  else rows.push(R('fps', 'Frame rate, last 10 s', 'Not available (the 2-D map keeps no frame statistics)'));
+  else rows.push(R('fps', 'Frame rate, last 10 s', 'Not available (this view keeps no frame statistics)'));
   rows.push(R('long-tasks', 'Long tasks, last 60 s', lt.supported ? `${lt.count} (${ms(lt.totalMs)} in all, longest ${ms(lt.maxMs)})` : NA_PHONE, undefined, true));
   if (f)
     rows.push(
@@ -515,7 +515,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
       R('picture-quality', 'Picture quality in use', `${cap(q.tier)} (${pictureQualityWhy(q, i.settings)})`),
       R('picture-sets', 'What that tier sets', `terrain ${q.terrainSamples} x ${q.terrainSamples} samples, ${q.treeBudget} trees, ${Math.round(q.canopyTriangles / 1000)}k canopy triangles, pixel ratio cap ${fix(q.pixelRatioCap, 2)}, ${q.flameSites} flame sites, ${q.smokePuffs} smoke puffs, tree sway ${q.treeSwayDefault ? 'on' : 'off'} by default`),
     );
-  else rows.push(R('picture-quality', 'Picture quality in use', 'Not available (the 2-D map has no picture tiers)'));
+  else rows.push(R('picture-quality', 'Picture quality in use', 'Not available (this view does not report a picture tier)'));
   if (t)
     rows.push(
       R(
