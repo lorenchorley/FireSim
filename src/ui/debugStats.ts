@@ -258,6 +258,15 @@ function pacePhrase(p: PaceInfo | null): string {
   return p.level === 'ok' ? 'Keeping up' : p.level === 'behind' ? 'Falling behind the speed asked for' : 'Waiting for the simulation';
 }
 
+/**
+ * The 3-D air step's mean wall time: the air module of "Where the time goes". The engine's `atmosphere.meanStepMs` also holds the
+ * wind for the fire and the heat it puts back (the Coupling rows there), so it reads higher; both places say the module's own value.
+ */
+function airStepMs(e: EngineInfo): number | null {
+  const m = e.perf?.modules.find((x) => x.id === 'air');
+  return m && ok(m.ms) ? m.ms : e.atmosphere.meanStepMs;
+}
+
 /** A group; the collapsed line is `summary`, else the first row. */
 const G = (id: GroupId, title: string, rows: StatRow[], summary?: string): StatGroup => ({ id, title, summary: summary ?? `${rows[0]!.label}: ${rows[0]!.value}`, rows });
 /** What a group says when there is no engine report (the demo engine, or no run yet), and when the engine has no such block (an older one). */
@@ -410,7 +419,8 @@ function stepGroup(i: DebugStatsInput): StatGroup {
       R('whole-max', 'Whole step, longest (last 128)', ms(st.maxMs), undefined, true),
       R('over', 'Steps over 100 ms and over 250 ms', `${st.over100} and ${st.over250}`, undefined, true),
     );
-  rows.push(R('air-mean', '3-D air step, mean wall time', e.atmosphere.kind === '3d' ? ms(e.atmosphere.meanStepMs) : 'Not used in this tier', undefined, true));
+  const air3d = e.atmosphere.kind === '3d';
+  rows.push(R('air-mean', '3-D air step, mean wall time', air3d ? ms(airStepMs(e)) : 'Not used in this tier', air3d && e.perf ? 'The air module alone, as in "Where the time goes"' : undefined, true));
   return G('step', 'Step', rows, `Whole step ${st && ok(st.medianMs) ? `about ${ms(st.medianMs)}` : ms(e.run.meanStepMs)}`);
 }
 
@@ -603,7 +613,7 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
       ? 'The demo engine is running, so nothing was measured.'
       : 'No run has measured this phone yet. Start a run, or look here again during one.'
     : e.atmosphere.kind === '3d'
-      ? `On this phone the 3-D air step takes about ${ms(e.atmosphere.meanStepMs)} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
+      ? `On this phone the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
       : `The fast model has computed this run at about ${speedX(real)} real time${a && a.chosen === 'fast' ? `; the 3-D air step took about ${test} in the timing test` : ''}.`;
   const mem = e?.memory
     ? `The engine holds ${bytes(e.memory.totalBytes)}; ${heap && heap.limitBytes !== null ? `the screen thread's JavaScript heap is ${bytes(heap.usedBytes)} of a ${bytes(heap.limitBytes)} limit (the engine's own memory is not in that heap).` : "this phone does not report the screen thread's heap limit."}`

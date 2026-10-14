@@ -346,6 +346,21 @@ describe('labels and values', () => {
     expect(s.groups.find((g) => g.id === 'time')!.summary).toBe('3-D air step 52\u00a0%');
   });
 
+  it('the 3-D air step is one number in "Step", "Where the time goes" and the phone sentence (the engine\'s own reading also holds the wind for the fire and its heat)', () => {
+    const i = full();
+    i.engine = { ...engine, atmosphere: { ...engine.atmosphere, meanStepMs: 133 }, perf: { ...perf, modules: perf.modules.map((m) => (m.id === 'air' ? { ...m, ms: 116 } : m)) } };
+    const d = buildDebugStats(i);
+    expect(rowOf(d, 'step', 'air-mean')).toMatchObject({ value: '116 ms', note: 'The air module alone, as in "Where the time goes"' });
+    expect(rowOf(d, 'time', 'air').value).toBe('116 ms per step, 52 % of busy time');
+    expect(rowOf(d, 'canDo', 'speed').value).toContain('the 3-D air step takes about 116 ms on average');
+    // An engine with no perf block has only its own reading, and the fast tier does not use the air step.
+    i.engine = { ...engine, perf: undefined, atmosphere: { ...engine.atmosphere, meanStepMs: 133 } };
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean')).toMatchObject({ value: '133 ms' });
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean').note).toBeUndefined();
+    i.engine = fastEngine;
+    expect(rowOf(buildDebugStats(i), 'step', 'air-mean').value).toBe('Not used in this tier');
+  });
+
   it('Choices: the tier, why, and the timing test with the warm-up reading', () => {
     expect(rowOf(s, 'choices', 'tier').value).toBe('Standard (3-D air)');
     expect(rowOf(s, 'choices', 'tier').note).toBe(engine.tierReason);
@@ -406,7 +421,7 @@ describe('labels and values', () => {
     expect(rows.map((r) => r.id)).toEqual(['speed', 'memory', 'graphics']);
     expect(rows[2]!.value).toBe('WebGL2 on Mali-G710, float render targets yes, WebGPU present.'); // the row's label already says "Graphics"
     expect(rows[1]!.value).toContain('of a 2.1\u00a0GB limit');
-    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 41 ms on average (41 ms in the timing test), and the run computes at about 843x real time.');
+    expect(plain(rows[0]!.value)).toBe('On this phone the 3-D air step takes about 6.2 ms on average (41 ms in the timing test), and the run computes at about 843x real time.');
     const fast = full();
     fast.engine = fastEngine;
     expect(rowOf(buildDebugStats(fast), 'canDo', 'speed').value).toBe('The fast model has computed this run at about 843x real time.');
