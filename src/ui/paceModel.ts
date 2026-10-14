@@ -125,7 +125,6 @@ interface Bin {
   sec: number;
   wall: number;
   moved: number;
-  wanted: number;
   clamped: number;
   busy: number;
 }
@@ -177,7 +176,7 @@ export function shouldAnnounce(prev: PaceLevel | null, next: PaceLevel | null, l
 }
 
 export function createPaceTracker(): PaceTracker {
-  const bins: Bin[] = Array.from({ length: PACE.binCount }, () => ({ sec: -1, wall: 0, moved: 0, wanted: 0, clamped: 0, busy: 0 }));
+  const bins: Bin[] = Array.from({ length: PACE.binCount }, () => ({ sec: -1, wall: 0, moved: 0, clamped: 0, busy: 0 }));
   let info: PaceInfo | null = null;
   let forced: PaceLevel | null = null;
 
@@ -224,7 +223,7 @@ export function createPaceTracker(): PaceTracker {
     const b = bins[mod(sec, PACE.binCount)]!;
     if (b.sec !== sec) {
       b.sec = sec;
-      b.wall = b.moved = b.wanted = b.clamped = b.busy = 0;
+      b.wall = b.moved = b.clamped = b.busy = 0;
     }
     return b;
   };
@@ -278,7 +277,6 @@ export function createPaceTracker(): PaceTracker {
       if (dt > 0) {
         const b = binFor(f.nowMs);
         b.wall += dt;
-        b.wanted += f.speed * dt;
         b.moved += Math.max(0, f.viewTime - last.view);
         // Held at the newest result: the clock cannot move, and there is more to compute (at the end of the run it is just the end).
         if (f.viewTime >= f.headTime - PACE.headEpsS && f.headTime < f.duration - PACE.headEpsS) b.clamped += dt;
