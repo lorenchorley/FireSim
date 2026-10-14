@@ -15,6 +15,7 @@
  */
 import { sampleBilinear, type GridSpec } from '../core/grid';
 import { smoothstep } from '../core/units';
+import { hornSlopeDeg } from './cliffSharpen';
 
 /** A scalar field on its own regular grid (j = 0 south), resampled bilinearly onto the raster's grid. */
 export interface RockField {
@@ -35,9 +36,10 @@ export interface RockMaskInput {
   /** Canopy cover (0 to 1) on any grid, normally the fuel map's; absent means no cover. */
   cover?: RockField | null;
   /**
-   * The slope the scree and pavement windows use, when that should differ from the one R follows. Absent means `slope`. The
-   * render mesh's slope is smoothed over about three vertices (45 m at High), so with it the flat ground that counts as pavement
-   * starts about 20 m from the lip; the 10 m slope (or a larger `lipReachM`) brings the pavement back to the edge.
+   * The slope the scree and pavement windows use. Absent means the 10 m slope of `elevation` on `grid` (Horn, as `hornSlopeDeg`),
+   * not `slope`: the render mesh's slope is smoothed over about three vertices (45 m at High), so with it the flat ground that
+   * counts as pavement starts about 20 m from the lip and almost no pavement is found (verifier: 70 cells against 2311 at
+   * Katoomba). Pass a field to override.
    */
   windowSlope?: RockField | null;
 }
@@ -295,7 +297,7 @@ export function buildRockMask(input: RockMaskInput, opts: Partial<RockMaskOption
     }
 
     // G, and the rest of B, in the blocks near rock: the slope windows, then the ray up the fall line for scree.
-    const windowAt = sampler(input.windowSlope ?? input.slope, grid);
+    const windowAt = sampler(input.windowSlope ?? { grid, values: hornSlopeDeg(grid, input.elevation) }, grid);
     const screeFrom = o.screeLoDeg - o.screeEdgeDeg;
     const screeTo = o.screeHiDeg + o.screeEdgeDeg;
     const lipFrom = o.lipMaxDeg - o.lipEdgeDeg;
