@@ -23,7 +23,7 @@ import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import type { EngineInfo } from '../core/simTypes';
 import { groupInsights } from './insightGroups';
-import { createPaceTracker, type PaceExclusion } from './paceModel';
+import { createPaceTracker, type PaceExclusion, type PaceFrame } from './paceModel';
 import type { PaceInfo, PaceLevel } from './paceTypes';
 import { SnapshotStore } from './snapshotStore';
 import { Emitter, Store } from './store';
@@ -147,6 +147,8 @@ export class SimSession {
   private keyGeneration = 0;
   /** Watches whether the engine keeps up with the playback speed. It only looks: it never changes a tier, a step or an option. */
   private readonly pace = createPaceTracker();
+  /** The frame handed to the tracker each animation frame (one object, refilled: the tracker keeps nothing of it). */
+  private readonly paceFrame: PaceFrame = { nowMs: 0, playing: false, seeking: false, hidden: false, viewTime: 0, headTime: 0, duration: 0, speed: 1, spinUp: false, reviewing: false, tier: null, reruns: null, capacity: null, duty: null, computing: false };
   /** The newest engine report (tier, statistics): the picture shown can be older than the engine. */
   private engine: EngineInfo | null = null;
 
@@ -741,25 +743,23 @@ export class SimSession {
     const s = this.state.get();
     const e = this.engine;
     const perf = e?.perf;
-    this.publishPace(
-      this.pace.frame({
-        nowMs: now,
-        playing: s.playing,
-        seeking: s.seekTarget !== null,
-        hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
-        viewTime: s.viewTime,
-        headTime: s.headTime,
-        duration: this.duration,
-        speed: s.speed,
-        spinUp: e?.tierCause === 'auto-pending',
-        reviewing: s.reviewing,
-        tier: e?.tier ?? null,
-        reruns: perf ? perf.reruns.rewinds + perf.reruns.tierSwitches + perf.reruns.restores : null,
-        capacity: perf?.speed.s10 && perf.speed.s10 > 0 ? perf.speed.s10 : s.workerSpeed > 0 ? s.workerSpeed : null,
-        duty: perf?.duty.s10 ?? null,
-        computing: s.computing,
-      }),
-    );
+    const f = this.paceFrame;
+    f.nowMs = now;
+    f.playing = s.playing;
+    f.seeking = s.seekTarget !== null;
+    f.hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    f.viewTime = s.viewTime;
+    f.headTime = s.headTime;
+    f.duration = this.duration;
+    f.speed = s.speed;
+    f.spinUp = e?.tierCause === 'auto-pending';
+    f.reviewing = s.reviewing;
+    f.tier = e?.tier ?? null;
+    f.reruns = perf ? perf.reruns.rewinds + perf.reruns.tierSwitches + perf.reruns.restores : null;
+    f.capacity = perf?.speed.s10 && perf.speed.s10 > 0 ? perf.speed.s10 : s.workerSpeed > 0 ? s.workerSpeed : null;
+    f.duty = perf?.duty.s10 ?? null;
+    f.computing = s.computing;
+    this.publishPace(this.pace.frame(f));
   }
 
   private publishPace(info: PaceInfo | null): void {
