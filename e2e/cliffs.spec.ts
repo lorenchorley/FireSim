@@ -14,8 +14,12 @@
  *    guard in fixtures.ts).
  *
  * The tier follows the device (cores and memory) until the picture-quality setting exists, so the test browser says what each run
- * needs and the test reads the tier back from the view. Frames are read from the canvas with the app's own loop stopped.
+ * needs and the test reads the tier back from the view. Frames are read from the canvas with the app's own loop stopped. The pictures are
+ * attached to the report, and written to the folder in CLIFFS_SHOTS when it is set (for the docs: orbit, close, and the ground alone with
+ * and without the sharpening, per tier).
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { decode } from 'fast-png';
 import { expect, test } from './fixtures';
@@ -253,10 +257,19 @@ for (const tier of ['high', 'low'] as const) {
     const oldPhoto = await shoot(page, { look: 'photo', hiRes: false, distance: 1100 });
     expect(plain.stats, 'nothing is sharpened without a 10 m terrain').toBeNull();
     expect(await rockAt(), 'no rock copy without a 10 m terrain: trees are placed as before').toBeNull();
-    await test.info().attach(`orbit-${tier}.png`, { body: photo.png, contentType: 'image/png' });
-    await test.info().attach(`close-${tier}.png`, { body: close.png, contentType: 'image/png' });
-    await test.info().attach(`ground-sharpened-${tier}.png`, { body: wall.png, contentType: 'image/png' });
-    await test.info().attach(`ground-not-sharpened-${tier}.png`, { body: plain.png, contentType: 'image/png' });
+    const pictures: [string, Buffer][] = [
+      [`orbit-${tier}.png`, photo.png],
+      [`close-${tier}.png`, close.png],
+      [`ground-sharpened-${tier}.png`, wall.png],
+      [`ground-not-sharpened-${tier}.png`, plain.png],
+      [`orbit-not-sharpened-${tier}.png`, oldPhoto.png],
+    ];
+    for (const [name, body] of pictures) await test.info().attach(name, { body, contentType: 'image/png' });
+    const dir = process.env['CLIFFS_SHOTS'];
+    if (dir) {
+      mkdirSync(dir, { recursive: true });
+      for (const [name, body] of pictures) writeFileSync(join(dir, name), body);
+    }
 
     // The drawn face is steeper: over 22 m (one mesh cell) the sharpened ground climbs at least 70 degrees, which the unsharpened
     // path never draws. (S5: the steepest High edge is 83.5 degrees against 78.0, and at Low 79.1 against 73.2; without the 10 m
