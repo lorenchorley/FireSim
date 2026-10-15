@@ -477,7 +477,7 @@ export type CreateSliceUpdater = (opts?: { minIntervalMs?: number }) => SliceUpd
  * of the conventions). `moveProbe` is the keyboard: one lattice step per key (a quarter of the axis when `big`), starting
  * from the middle of the slice when `pos` is null, and never leaving the slice. `probeSentence` is the readout, in the repo's
  * voice (plain words, "about"): "Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m
- * above ground, 3 K warmer than the area"; "towards A" for a negative along, "to the right" or "to the left" for across,
+ * above ground, 3 K warmer than average"; "towards A" for a negative along, "to the right" or "to the left" for across,
  * "down" for a negative up; the temperature clause only when the air has one (never for the diagnosed kind); for `where`
  * other than 'air' one short sentence ("Inside the ground", "Below the model's ground: the model has no air here", "Above the
  * top of the model"). `windFromDeg` is the "from" bearing of the conventions, wrapped to 0 to 360.

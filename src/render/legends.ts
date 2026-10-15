@@ -751,7 +751,7 @@ export function sliceLegend(field: SliceFieldId, kind: SliceKind): LegendSpec {
   });
   return {
     overlay: 'slice',
-    title: field === 'theta' ? 'Warmer or cooler than the area at that height' : SLICE_FIELDS.find((f) => f.id === field)!.name,
+    title: field === 'theta' ? 'Warmer or cooler than the average of the slice at that height' : SLICE_FIELDS.find((f) => f.id === field)!.name,
     units: d.units,
     kind: 'continuous',
     entries,

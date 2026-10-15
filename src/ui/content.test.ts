@@ -280,7 +280,7 @@ describe('Help and glossary: the 0.4.0 entries say what the Air slices screens s
   it('Probe: the example is the very sentence the code writes, and the keys and the clear button are the panel’s', () => {
     const r: SliceProbeReading = { pos: { s: 0, z: 0 }, x: 0, y: 0, aglM: 60, where: 'air', speed: 32 / 3.6, along: 28 / 3.6, across: 0, up: 1.4, fromDeg: 315, fromWord: compassWord(315), thetaK: 3, smoke: null };
     const sentence = probeSentence(r, { units: 'kmh', kind: 'prognostic' });
-    expect(sentence).toBe('Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area');
+    expect(sentence).toBe('Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average');
     const b = entry('Probe').body;
     expect(b).toContain(`“${sentence}”`);
     // The fast model's air has no temperature, so its sentence has no temperature part.

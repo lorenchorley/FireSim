@@ -90,9 +90,9 @@ describe('sliceLegend (one legend for every chip of the air slice)', () => {
     expect(sliceLegend('along', 'prognostic').entries.map((e) => e.label)).toEqual(['-90', '-60', '-30', '0', '+30', '+60', '+90']);
   });
 
-  it('the temperature legend says warmer or cooler than the area at that height, not "vs surroundings"', () => {
+  it('the temperature legend says warmer or cooler than the average of the slice at that height, not "vs surroundings"', () => {
     const l = sliceLegend('theta', 'prognostic');
-    expect(l.title).toBe('Warmer or cooler than the area at that height');
+    expect(l.title).toBe('Warmer or cooler than the average of the slice at that height');
     expect(JSON.stringify(l)).not.toMatch(/vs surroundings/i);
     expect(l.note).toMatch(/warmer or cooler than the rest of the section at the same height/i);
     expect(crossSectionLegend().title).toBe(l.title);
