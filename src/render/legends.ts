@@ -699,14 +699,14 @@ const HAZARD_TITLES: Record<'vls' | 'attach' | 'trench' | 'dmz', { title: string
   },
 };
 
-/** The legend ticks of each chip of the air slice: evenly spaced over the chip's scale (so a label sits under its colour), in the units shown. */
+/** The legend ticks of each chip of the air slice: evenly spaced over the chip's scale (in log steps for smoke), so a label sits under its colour, in the units shown. */
 const SLICE_LEGEND: Record<SliceFieldId, { units: string; kmh?: boolean; ticks: number[]; labels?: string[]; words: [string, string] }> = {
   speed: { units: 'km/h', kmh: true, ticks: [0, 30, 60, 90], words: ['calm', 'storm force'] },
   along: { units: 'km/h', kmh: true, ticks: [-90, -60, -30, 0, 30, 60, 90], words: ['blowing towards A', 'blowing towards B'] },
   across: { units: 'km/h', kmh: true, ticks: [-90, -60, -30, 0, 30, 60, 90], words: ['blowing to the left', 'blowing to the right'] },
   up: { units: 'm/s', ticks: [-4, 0, 4, 8], words: ['sinking', 'rising'] },
   theta: { units: 'K', ticks: [-10, -5, 0, 5, 10, 15, 20], words: ['cooler', 'warmer'] },
-  smoke: { units: '', ticks: [0, 0.25, 0.5, 0.75, 1], labels: ['none', '', '', '', 'a lot'], words: ['none', 'a lot'] },
+  smoke: { units: '', ticks: [1e-4, 1e-3, 1e-2, 1e-1, 1], labels: ['faint', '', '', '', 'thick'], words: ['a trace of smoke', 'dense smoke'] },
 };
 
 const SLICE_ARROWS = 'Arrows show the wind in the section.';
@@ -728,7 +728,7 @@ function sliceNote(field: SliceFieldId, kind: SliceKind): string {
     case 'theta':
       return `Warmer or cooler than the rest of the section at the same height. Red = warm rising air (fire plume, sunny slopes); blue = cold sinking air (night drainage into valleys). ${arrows}${diagnosed}`;
     case 'smoke':
-      return `Where the model has put smoke, from none to a lot. The scale is the model’s own, not a measured amount. ${arrows}${diagnosed}`;
+      return `Where the model has put smoke, from a faint trace to dense. Each step along the bar is ten times more smoke, in the model’s own units, not a measured amount. ${arrows}${diagnosed}`;
   }
 }
 

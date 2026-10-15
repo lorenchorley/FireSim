@@ -13,8 +13,21 @@ import type { SliceData, SliceFieldId } from './slice/types';
 export const CURTAIN_ALPHA_BASE = 0.58;
 export const CURTAIN_ALPHA_STRONG = 0.4;
 
-/** The size of a value (in its chip's units) that counts as strong: the cell is then fully opaque. Temperature keeps the 1.5 K the curtain always used. */
-const STRONG_AT: Record<SliceFieldId, number> = { speed: 8, along: 6, across: 6, up: 1, theta: 1.5, smoke: 0.2 };
+/**
+ * The size of a value (in its chip's units) that counts as strong: the cell is then fully opaque. Temperature keeps the 1.5 K the
+ * curtain always used. The wind chips are more see-through at light winds so the ground behind still shows. (Smoke is a log scale:
+ * its strength is how far up the ramp it is, `strength`.)
+ */
+const STRONG_AT: Record<Exclude<SliceFieldId, 'smoke'>, number> = { speed: 16, along: 12, across: 12, up: 2, theta: 1.5 };
+
+/** How strong a value is, 0 to 1: its size against `STRONG_AT`, or for smoke its place on the log ramp (a trace is 0, dense is 1). */
+function strength(field: SliceFieldId, value: number): number {
+  if (field === 'smoke') {
+    const { lo, hi } = sliceFieldScale('smoke');
+    return Math.min(1, Math.max(0, (Math.log10(Math.max(value, 1e-12)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))));
+  }
+  return Math.min(1, Math.abs(value) / STRONG_AT[field]);
+}
 
 /** Grey that smoke mixes into the colours, and the most it can take away from them. */
 const SMOKE_GREY = 0.45;
@@ -22,8 +35,7 @@ const SMOKE_MAX_SHARE = 0.3;
 
 /** Opacity (0 to 1) of a valid cell: more opaque the stronger the value, and where smoke thickens the cell. */
 export function curtainAlpha(field: SliceFieldId, value: number, smokeShare = 0): number {
-  const s = Math.min(1, Math.abs(value) / STRONG_AT[field]);
-  return CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG * Math.max(s, smokeShare);
+  return CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG * Math.max(strength(field, value), smokeShare);
 }
 
 /**

@@ -59,11 +59,13 @@ describe('sliceLegend (one legend for every chip of the air slice)', () => {
         expect(l.entries.length, id).toBeGreaterThanOrEqual(3);
         expect(l.gradient, id).toMatch(/^linear-gradient/);
         expect(l.note, id).toBeTruthy();
-        const step = l.entries[1]!.value - l.entries[0]!.value;
+        // Evenly spaced along the bar: in value, or in tenfold steps for the log scale of smoke.
+        const place = (v: number): number => (s.ramp.log ? Math.log10(v) : v);
+        const step = place(l.entries[1]!.value) - place(l.entries[0]!.value);
         for (let i = 0; i < l.entries.length; i++) {
           const e = l.entries[i]!;
           expect(e.colour, id).toMatch(/^#[0-9a-f]{6}$/i);
-          if (i > 0) expect(e.value - l.entries[i - 1]!.value, `${id} spacing`).toBeCloseTo(step, 9);
+          if (i > 0) expect(place(e.value) - place(l.entries[i - 1]!.value), `${id} spacing`).toBeCloseTo(step, 9);
           // The colour of a label is the colour the curtain and the panel draw at that value.
           const v = l.units === 'km/h' ? e.value / 3.6 : e.value;
           expect(close(hexToRgb(e.colour), sampleRamp(s.ramp, v), 1.5 / 255), `${id} ${e.value}`).toBe(true);

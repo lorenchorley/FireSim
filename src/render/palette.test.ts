@@ -148,12 +148,13 @@ describe('diverging air-slice ramps (neutral in the middle, darker with the size
     });
   }
 
-  /** Smallest ΔE between two points of the ramp that are a fifth of its range apart or more, for one kind of colour vision. */
+  /** Smallest ΔE between two points of the ramp that are a fifth of its range apart or more (of its log range for a log ramp), for one kind of colour vision. */
   const fifthApart = (ramp: Ramp, v: (typeof VISION_TYPES)[number]): number => {
     const a = ramp.pos[0]!;
     const b = ramp.pos[ramp.pos.length - 1]!;
+    const at = (i: number): number => (ramp.log ? 10 ** (a + ((b - a) * i) / 20) : a + ((b - a) * i) / 20);
     let min = Infinity;
-    for (let i = 0; i <= 20; i++) for (let j = i + 4; j <= 20; j++) min = Math.min(min, deltaE(simulateVision(sampleRamp(ramp, a + ((b - a) * i) / 20), v), simulateVision(sampleRamp(ramp, a + ((b - a) * j) / 20), v)));
+    for (let i = 0; i <= 20; i++) for (let j = i + 4; j <= 20; j++) min = Math.min(min, deltaE(simulateVision(sampleRamp(ramp, at(i)), v), simulateVision(sampleRamp(ramp, at(j)), v)));
     return min;
   };
 
@@ -194,16 +195,28 @@ describe('sliceFieldScale', () => {
     for (const id of SLICE_FIELD_IDS) {
       const s = sliceFieldScale(id);
       expect(s.hi, id).toBeGreaterThan(s.lo);
-      expect(s.lo, id).toBeLessThanOrEqual(s.ramp.pos[0]!);
-      expect(s.hi, id).toBeGreaterThanOrEqual(s.ramp.pos[s.ramp.pos.length - 1]!);
+      expect(s.lo, id).toBeLessThanOrEqual(s.ramp.stops[0]!.at);
+      expect(s.hi, id).toBeGreaterThanOrEqual(s.ramp.stops[s.ramp.stops.length - 1]!.at);
     }
+  });
+
+  it('smoke is a log scale from a ten-thousandth of "full" to full: a young plume (about 0.001, measured) is visibly darker than none, and a big one darker still', () => {
+    const s = sliceFieldScale('smoke');
+    expect(s.ramp.log).toBe(true);
+    expect(s.lo).toBeGreaterThan(0);
+    const l = (v: number): number => luminance(sampleRamp(s.ramp, v));
+    expect(l(0)).toBe(l(s.lo)); // no smoke and the faintest smoke are the palest colour
+    expect(l(0.001)).toBeLessThan(l(0) - 0.05);
+    expect(l(0.01)).toBeLessThan(l(0.001) - 0.05);
+    expect(l(1)).toBeLessThan(l(0.1));
+    expect(l(50)).toBe(l(1)); // beyond the top it stays the darkest
   });
 
   it('uses the ramps the plan names: wind speed 0 to 25 m/s, up and down, temperature, along and across symmetric about 0, smoke', () => {
     expect(sliceFieldScale('speed')).toMatchObject({ ramp: WIND_RAMP, lo: 0, hi: 25, diverging: false });
     expect(sliceFieldScale('up')).toMatchObject({ ramp: UPDRAFT_RAMP, diverging: true });
     expect(sliceFieldScale('theta')).toMatchObject({ ramp: THETA_RAMP, diverging: true });
-    expect(sliceFieldScale('smoke')).toMatchObject({ ramp: SMOKE_RAMP, lo: 0, diverging: false });
+    expect(sliceFieldScale('smoke')).toMatchObject({ ramp: SMOKE_RAMP, lo: 1e-4, hi: 1, diverging: false });
     for (const id of ['along', 'across'] as const) {
       const s = sliceFieldScale(id);
       expect(s.ramp).toBe(ALONG_RAMP);

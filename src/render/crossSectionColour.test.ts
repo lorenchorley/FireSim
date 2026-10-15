@@ -47,8 +47,19 @@ describe('curtainAlpha', () => {
         expect(a).toBeLessThanOrEqual(1);
         prev = a;
       }
-      expect(curtainAlpha(id, -3), id).toBe(curtainAlpha(id, 3));
+      // A negative wind or temperature is as strong as a positive one; smoke has no negative (it counts as none).
+      if (id !== 'smoke') expect(curtainAlpha(id, -3), id).toBe(curtainAlpha(id, 3));
     }
+  });
+
+  it('smoke is as strong as its place on the log ramp: a trace is see-through, the model’s young plume (about 0.001) a quarter of the way up, dense smoke solid', () => {
+    expect(curtainAlpha('smoke', 0)).toBeCloseTo(CURTAIN_ALPHA_BASE, 9);
+    expect(curtainAlpha('smoke', -1)).toBeCloseTo(CURTAIN_ALPHA_BASE, 9);
+    expect(curtainAlpha('smoke', 1e-4)).toBeCloseTo(CURTAIN_ALPHA_BASE, 9);
+    expect(curtainAlpha('smoke', 1e-3)).toBeCloseTo(CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG * 0.25, 9);
+    expect(curtainAlpha('smoke', 1e-2)).toBeCloseTo(CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG * 0.5, 9);
+    expect(curtainAlpha('smoke', 1)).toBeCloseTo(CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG, 9);
+    expect(curtainAlpha('smoke', 40)).toBeCloseTo(CURTAIN_ALPHA_BASE + CURTAIN_ALPHA_STRONG, 9);
   });
 });
 
