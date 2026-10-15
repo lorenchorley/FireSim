@@ -136,16 +136,17 @@
     background: var(--surface);
   }
   .slice-canvas {
-    height: 96px;
+    height: 84px;
   }
   .slice-tool-body {
-    scroll-padding: 108px 0 30px; /* and clear of the picture */
+    scroll-padding: 96px 0 30px; /* and clear of the picture */
   }
   .slice-readout {
     margin-top: 0;
   }
   .slice-readout-text {
-    padding: 2px 0; /* four lines of the longest reading fit under the picture */
+    padding: 2px 0;
+    line-height: 1.3; /* five lines of the longest reading fit under the picture */
   }
   .slice-probing .slice-footer {
     display: none; /* in the footer's room: it is back when the reading is cleared */
