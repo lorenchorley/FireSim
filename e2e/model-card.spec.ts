@@ -2,7 +2,7 @@
  * "How this simulation works" (src/ui/screens/modelCard.ts) in the browser, on the REAL engine (Katoomba bundled demo data,
  * the 'hot NW wind' preset, offline): the card opens from the Stats tab while the run is playing and never pauses it; its
  * headline and rows carry the grid sizes the engine itself reports (window.__firesim, SimSnapshot.engine); the live rows
- * follow the engine; switching the atmosphere tier mid-run changes the wording (3-D air flow <-> fast 2-D surface wind);
+ * follow the engine; switching the atmosphere tier mid-run changes the wording (3-D air flow <-> the fast mode's wind fitted to the terrain);
  * Escape and the hardware Back button close it; nothing pops up. A second test opens the card from Setup (no run: a
  * preview planned from the form). (Its pictures, docs/screenshots/12-model-card*.png and 13-model-card-live*.png, are taken by gallery.spec.ts.)
  */
@@ -101,7 +101,7 @@ test('model card on the real engine: opens while playing, shows the engine’s o
     if (e.atmosphere.kind === '3d') {
       expect(head).toContain(`the air above it is simulated in 3-D (${e.atmosphere.nx} × ${e.atmosphere.ny} × ${e.atmosphere.nz} cells, ${Math.round(e.atmosphere.dxM)} m apart)`);
     } else {
-      expect(head).toContain('the wind is a 2-D surface field');
+      expect(head).toContain('the wind is the forecast fitted to the terrain');
       expect(head).not.toMatch(/simulated in 3-D/);
     }
   };
@@ -177,12 +177,12 @@ test('model card on the real engine: opens while playing, shows the engine’s o
   await page.evaluate(() => (window as unknown as { __firesim: { session: { play(): void } } }).__firesim.session.play());
   await expect.poll(async () => (await engine(page))?.tier, { timeout: 120_000 }).toBe(want);
   const e2 = (await engine(page))!;
-  await expect.poll(async () => await headline(), { timeout: 10_000 }).toContain(want === 'fast' ? 'the wind is a 2-D surface field' : 'the air above it is simulated in 3-D');
+  await expect.poll(async () => await headline(), { timeout: 10_000 }).toContain(want === 'fast' ? 'the wind is the forecast fitted to the terrain' : 'the air above it is simulated in 3-D');
   await expect.poll(() => fact('eng-tier'), { timeout: 10_000 }).toBe(want === 'fast' ? 'Fast (surface wind)' : 'Standard (3-D air)');
   checkHeadline(await headline(), e2);
   const atmNow = norm(await page.getByTestId('model-row-atmosphere').innerText());
   if (want === 'fast') {
-    expect(atmNow).toContain('Fast mode: a 2-D surface wind');
+    expect(atmNow).toContain('Fast mode: the forecast wind fitted to the terrain');
     expect(atmNow).not.toContain('the air flow is simulated through time');
     expect(norm(await page.getByTestId('model-row-smoke').innerText())).toContain('Drawn only');
   } else {
@@ -260,13 +260,13 @@ test('model card from Setup: a preview planned from the form, with no run behind
   expect(await cardText(page)).not.toMatch(BAD);
   await close();
 
-  // Fast detail: the wording changes to the 2-D surface wind of the fast mode.
+  // Fast detail: the wording changes to the fitted wind of the fast mode.
   await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
   [, cell, nx] = await hint();
   await open();
   head = norm(await page.getByTestId('model-card-headline').innerText());
   expect(head).toContain(`Planned: fire spreads in 2-D on a ${cell} m grid`);
-  expect(head).toContain('the wind is a 2-D surface field');
+  expect(head).toContain('the wind is the forecast fitted to the terrain');
   expect(head).not.toMatch(/simulated in 3-D/);
   expect(norm(await page.getByTestId('model-row-atmosphere').innerText())).toContain('Fast mode');
   await close();
