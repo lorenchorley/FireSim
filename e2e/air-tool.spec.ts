@@ -7,7 +7,8 @@
  *   - the Tools menu lists "Air slices"; the 2-D map says "The side view needs the 3-D view." and loads nothing
  *   - the side view's chunk is asked for when the tool opens, not at start-up; a chunk that fails leaves one line, a Try again button and
  *     the controls working
- *   - Set start (A): the crosshair shows, a REAL one-finger touch pan moves the map under it, "Place A here" keeps A; B is refused while
+ *   - Set start (A): the crosshair shows, a REAL one-finger touch pan moves the map under it, a tap sets a dashed mark (the two-step
+ *     confirm for gloves) and "Place A here" keeps that point as A; a tap with nothing being placed does nothing; B is refused while
  *     too close to A ("Make the line longer than ..."), then placed: a and b are written together with preset null and the field Speed
  *   - marks A, B and the line on the map; Swap; a preset writes the live line and clears a and b; Me to fire is disabled with its reason
  *   - Back (Escape) drops a placement first and closes the tool next; focus goes back to the Tools button; nothing pops up by itself
@@ -220,7 +221,12 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   await page.getByTestId('slice-presets-toggle').click();
   await expect(page.getByTestId('slice-preset-along')).toBeHidden();
 
-  // ───────── Set start (A): the crosshair, a real touch pan, Place A here ─────────
+  // A tap on the map with the tool open but nothing being placed does nothing.
+  await page.touchscreen.tap(206, 300);
+  await page.waitForTimeout(500);
+  await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(0);
+
+  // ───────── Set start (A): the crosshair, a real touch pan, a tap for the two-step confirm, Place A here ─────────
   await page.getByTestId('slice-set-a').click();
   await expect(page.locator('.sim-screen .crosshair')).toBeVisible();
   await expect(page.getByTestId('slice-place')).toHaveText('Place A here');
@@ -233,7 +239,18 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   await touchDrag(page, cdp, [c0.x + 40, c0.y + 110], [c0.x - 20, c0.y - 110]);
   await settle(page);
   await expect.poll(async () => (await groundAtCrosshair(page)) ?? [NaN, NaN], { message: 'the one-finger pan moved the map under the cross while placing' }).not.toEqual(under0);
-  const aPoint = (await groundAtCrosshair(page))!;
+  // The two-step confirm of a wet screen or a glove: a tap sets the point (a dashed mark), "Place A here" confirms it, and it is the
+  // tapped point that is placed, not the one under the cross.
+  const crossGround = (await groundAtCrosshair(page))!;
+  const tapAt: [number, number] = [c0.x + 35, c0.y - 25];
+  const aPoint = (await page.evaluate(([x, y]) => (window as unknown as Win).__firesim.view.pickGround(x!, y!), tapAt))!;
+  const tapAway = Math.hypot(aPoint[0] - crossGround[0], aPoint[1] - crossGround[1]);
+  expect(tapAway, 'the tapped point is not the one under the cross, and (for the too-short check below) not far from it').toBeGreaterThan(40);
+  expect(tapAway).toBeLessThan(280);
+  await page.touchscreen.tap(...tapAt);
+  await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(1);
+  await expect(page.locator('.annotations .ann-slice-end circle')).toHaveAttribute('style', /stroke-dasharray/);
+  await expect(page.getByTestId('slice-note')).toContainText('The mark shows where A will go. Press Place A here');
   await expect(page.getByTestId('slice-place')).toBeEnabled();
   await page.getByTestId('slice-place').click();
   await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
@@ -241,12 +258,13 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   await expect(page.getByTestId('slice-note')).toHaveText('Start (A) is set. Now set the end (B).');
   await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(1);
   await expect(page.locator('.annotations .ann-slice-end text')).toHaveText('A');
+  await expect(page.locator('.annotations .ann-slice-end circle')).not.toHaveAttribute('style', /stroke-dasharray/); // placed: a solid mark now
   await expect(page.getByTestId('slice-set-b')).toBeFocused();
 
   // ───────── Set end (B): too close to A is refused in words, then a pan and Place B here ─────────
   await page.getByTestId('slice-set-b').click();
   await expect(page.getByTestId('slice-place')).toHaveText('Place B here');
-  await expect(page.getByTestId('slice-place')).toBeDisabled(); // the cross is still over A
+  await expect(page.getByTestId('slice-place')).toBeDisabled(); // the cross is still within 300 m of A
   await expect(page.getByTestId('slice-note')).toHaveText('Make the line longer than 300 m');
   await touchDrag(page, cdp, [c0.x + 30, c0.y - 100], [c0.x - 10, c0.y + 120]);
   await settle(page);
@@ -271,6 +289,9 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   expect((await cs(page))!.b).toEqual(before.a);
 
   // ───────── a preset writes the live line and clears a and b ─────────
+  // (the stand-in's preset line is fixed, 1 km each way from (0, -300): look at it so both ends are on the screen)
+  await page.evaluate(() => (window as unknown as Win).__firesim.view.lookAt(0, -300, 3500, 200, 52, false));
+  await settle(page);
   await page.getByTestId('slice-presets-toggle').click();
   await page.getByTestId('slice-preset-across').click();
   await expect.poll(() => cs(page)).toMatchObject({ enabled: true, preset: 'across' });
