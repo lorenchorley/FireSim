@@ -290,9 +290,10 @@ function otherEnd(end: SliceEnd, s: SliceToolState, facts: LineFacts): SlicePoin
  */
 export function placeVerdict(end: SliceEnd, point: SlicePoint | null, s: SliceToolState, facts: LineFacts, grid: GridSpec | null): PlaceVerdict {
   if (!point) return { ok: false, why: 'no-ground' };
-  if (grid && !inModelArea(point, grid)) return { ok: false, why: 'outside' };
+  const p = tidy(point); // judged as it will be stored
+  if (grid && !inModelArea(p, grid)) return { ok: false, why: 'outside' };
   const other = otherEnd(end, s, facts);
-  if (other && Math.hypot(point[0] - other[0], point[1] - other[1]) < facts.minLengthM) return { ok: false, why: 'too-short' };
+  if (other && Math.hypot(p[0] - other[0], p[1] - other[1]) + 1e-6 < facts.minLengthM) return { ok: false, why: 'too-short' };
   return { ok: true };
 }
 

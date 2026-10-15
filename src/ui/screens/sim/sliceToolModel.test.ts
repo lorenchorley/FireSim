@@ -6,7 +6,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GridSpec } from '../../../core/grid';
 import { DEFAULT_LAYERS } from '../../../render/layers';
-import { SLICE_PRESET_IDS, type ResolvedSlice, type SlicePoint, type SlicePresetId, type SlicePresetStatus } from '../../../render/slice/types';
+import { resolveSlice, sectionFromEndpoints, slicePresetStatus } from '../../../render/slice/sectionLine';
+import { SLICE_PRESET_IDS, type ResolvedSlice, type SlicePoint, type SlicePresetId, type SlicePresetStatus, type SliceResolveContext } from '../../../render/slice/types';
 import {
   AIR_TOOL_LABEL,
   LINE_PROJECTION_POINTS,
@@ -58,6 +59,9 @@ const EMPTY: LineFacts = { line: null, source: null, preset: null, issue: null, 
 const withLine = (a: SlicePoint, b: SlicePoint, source: LineFacts['source'] = 'endpoints', extra: Partial<LineFacts> = {}): LineFacts => ({ ...EMPTY, line: { a, b }, source, ...extra });
 const placing = (end: 'a' | 'b', extra: Partial<SliceToolState> = {}): SliceToolState => ({ ...initialSliceToolState(), placing: end, ...extra });
 const allOk = (): Record<SlicePresetId, SlicePresetStatus> => presetStatuses(null, 'ok');
+
+/** What the scene gives the resolver: a slope rising to the north-east, the wind from the west, a fire at the centre, a phone fix. */
+const ctxOf = (grid: GridSpec): SliceResolveContext => ({ grid, heightAt: (x, y) => 500 + 0.2 * x + 0.2 * y, mapCentre: [0, 0], fire: [0, 0], windFromDeg: 270, user: [-500, -500] });
 
 describe('the tool and its words', () => {
   it('has the label the Tools dock shows', () => {
@@ -599,6 +603,73 @@ describe('the marks on the map', () => {
 
   it('no probe pin without a line', () => {
     expect(sliceMarks({ ...initialSliceToolState(), probe: { s: 250, z: 800 } }, EMPTY)).toEqual([]);
+  });
+});
+
+describe('the tool agrees with the pure resolver of the scene (render/slice/sectionLine.ts)', () => {
+  const G: GridSpec = { nx: 46, ny: 46, cellSize: 133, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
+
+  it('the shortest line is the resolver\'s, in the words as well', () => {
+    const r = resolveSlice({ azimuth: 0, centre: [0, 0], preset: null }, ctxOf(G));
+    expect(minLengthFor(G)).toBe(r.minLengthM);
+    expect(roundUp50(r.minLengthM)).toBe(300); // two 133 m cells are 266 m: the words say 300
+  });
+
+  it('"Place here" is refused exactly when the resolver would call the line too short', () => {
+    const f: LineFacts = { ...EMPTY, minLengthM: minLengthFor(G) };
+    let seed = 7;
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const stored = (p: SlicePoint): SlicePoint => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]; // ends are kept to 0.1 m
+    const inside = (): SlicePoint => stored([-2900 + rnd() * 5800, -2900 + rnd() * 5800]);
+    let refused = 0;
+    for (let i = 0; i < 400; i++) {
+      const a = inside();
+      // Points around the limit as well as far from it.
+      const ang = rnd() * Math.PI * 2;
+      const d = i % 2 ? 150 + rnd() * 900 : 299.5 + rnd();
+      const b: SlicePoint = [a[0] + Math.cos(ang) * d, a[1] + Math.sin(ang) * d];
+      if (!inModelArea(b, G)) continue;
+      const verdict = placeVerdict('b', b, { ...placing('b'), draft: { a, b: null } }, f, G);
+      const r = sectionFromEndpoints(stored(a), stored(b), G);
+      if (!verdict.ok) refused++;
+      expect(verdict.ok, `a=${a} b=${b} d=${d}`).toBe(r.issue === null);
+    }
+    expect(refused).toBeGreaterThan(50);
+  });
+
+  it('a point the resolver clips or misses is refused as outside the model area', () => {
+    const f = withLine([0, 0], [0, 1000], 'endpoints', { minLengthM: 300 });
+    for (const p of [[2985.1, 0], [-3000.1, 0], [0, 4000], [100000, 100000]] as SlicePoint[]) {
+      expect(placeVerdict('a', p, placing('a'), f, G)).toEqual({ ok: false, why: 'outside' });
+      expect(sectionFromEndpoints(p, [0, 1000], G).clipped || sectionFromEndpoints(p, [0, 1000], G).issue !== null).toBe(true);
+    }
+    for (const p of [[2984.9, 0], [-3000, 0], [0, 2985]] as SlicePoint[]) expect(placeVerdict('a', p, placing('a'), f, G).ok).toBe(true);
+  });
+
+  it('what the tool shows for Me to fire before there is a slice never disables a preset the resolver would allow', () => {
+    for (const user of [null, [9000, 0], [100, 100]] as (SlicePoint | null)[]) {
+      for (const fire of [null, [0, 0]] as (SlicePoint | null)[]) {
+        const real = slicePresetStatus('me', { ...ctxOf(G), user, fire });
+        const shown = presetStatuses(null, userFixOf(user, G)).me;
+        if (real.ok) expect(shown.ok).toBe(true);
+        if (!shown.ok) expect(real.ok).toBe(false);
+      }
+    }
+    // The one gap: with a fix inside the area and no fire the resolver says no-fire, which only an update can tell.
+    expect(slicePresetStatus('me', { ...ctxOf(G), user: [100, 100], fire: null })).toEqual({ ok: false, issue: 'no-fire' });
+    expect(presetStatuses(null, 'ok').me).toEqual({ ok: true });
+  });
+
+  it('every reason the resolver can give a preset or a line has words', () => {
+    const issues = new Set<string>();
+    for (const preset of ['along', 'across', 'slope', 'me'] as const) {
+      for (const over of [{}, { windFromDeg: null }, { fire: null }, { user: null }, { heightAt: () => 100 }, { mapCentre: [99999, 0] as SlicePoint, fire: null }]) {
+        const r = resolveSlice({ azimuth: 0, centre: [0, 0], preset }, { ...ctxOf(G), ...over });
+        if (r.issue) issues.add(r.issue);
+      }
+    }
+    expect([...issues].sort()).toEqual(['calm', 'flat-ground', 'no-fire', 'no-user', 'outside-model']);
+    for (const i of issues) expect(issueWords(i as Parameters<typeof issueWords>[0], 300).length).toBeGreaterThan(10);
   });
 });
 
