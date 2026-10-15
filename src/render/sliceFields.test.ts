@@ -1,7 +1,8 @@
 /** Which chips of the air slice the air can give, and the words that say why not (the Layers panel, the map legend and the Air slices panel all use them). */
 import { describe, expect, it } from 'vitest';
 import type { AtmosphereView } from '../core/types';
-import { DIAGNOSED_SECTION_NOTE, DIAGNOSED_STREAKS_NOTE, NO_AIR_REASON, SWITCHING_NOTE, USE_3D_LABEL, effectiveSliceField, sectionColouring, sliceAirOf, sliceFieldStatuses, sliceKindOf, type SliceAir } from './sliceFields';
+import type { LayerState } from './layers';
+import { DIAGNOSED_SECTION_NOTE, DIAGNOSED_STREAKS_NOTE, LINE_BY_CENTRE, NO_AIR_REASON, SWITCHING_NOTE, USE_3D_LABEL, effectiveSliceField, sectionChanged, sectionColouring, sliceAirOf, sliceFieldStatuses, sliceKindOf, type SliceAir } from './sliceFields';
 import { SLICE_FIELD_IDS, SLICE_FIELDS } from './slice/types';
 import { SLICE_USE_3D_LABEL } from '../ui/screens/sim/sliceTypes';
 
@@ -109,6 +110,42 @@ describe('sectionColouring (the legend and the curtain)', () => {
     expect(sectionColouring(DIAGNOSED, 'up')).toEqual({ field: 'up', kind: 'diagnosed' });
     expect(sectionColouring(NONE, 'speed')).toBeNull();
     expect(sectionColouring(SURFACE, undefined)).toBeNull();
+  });
+});
+
+describe('sectionChanged (what makes the scene compute a new slice)', () => {
+  const base = (cs: Partial<LayerState['crossSection']> = {}, vex = 1): Pick<LayerState, 'crossSection' | 'verticalExaggeration'> => ({
+    crossSection: { enabled: true, azimuth: 90, centre: [100, 200], ...cs },
+    verticalExaggeration: vex,
+  });
+
+  it('is false for the same section, even in new objects and arrays', () => {
+    expect(sectionChanged(base(), base())).toBe(false);
+    expect(sectionChanged(base({ a: [1, 2], b: [3, 4], preset: null, field: 'along' }), base({ a: [1, 2], b: [3, 4], preset: null, field: 'along' }))).toBe(false);
+    expect(sectionChanged(base({ preset: undefined }), base({ preset: null }))).toBe(false); // absent and null both mean "no preset"
+  });
+
+  it('is true when the section is switched on, or anything that makes the line or the colouring changes', () => {
+    expect(sectionChanged(base({ enabled: false }), base())).toBe(true);
+    expect(sectionChanged(base(), base({ azimuth: 91 }))).toBe(true);
+    expect(sectionChanged(base(), base({ centre: [101, 200] }))).toBe(true);
+    expect(sectionChanged(base(), base({ centre: [100, 201] }))).toBe(true);
+    expect(sectionChanged(base(), base({ a: [1, 2] }))).toBe(true);
+    expect(sectionChanged(base({ a: [1, 2] }), base({ a: [1, 3] }))).toBe(true);
+    expect(sectionChanged(base({ b: [1, 2] }), base({ b: [2, 2] }))).toBe(true);
+    expect(sectionChanged(base(), base({ preset: 'along' }))).toBe(true);
+    expect(sectionChanged(base({ preset: 'along' }), base({ preset: 'across' }))).toBe(true);
+    expect(sectionChanged(base(), base({ field: 'theta' }))).toBe(true);
+    expect(sectionChanged(base({ field: 'speed' }), base({ field: 'up' }))).toBe(true);
+    expect(sectionChanged(base(), base({}, 2))).toBe(true);
+  });
+
+  it('is true when the line is put back on the centre rule: an explicit undefined and a null preset replace the old A, B and preset', () => {
+    const placed = base({ a: [1, 2], b: [3, 4], preset: 'slope' });
+    const back = { ...placed, crossSection: { ...placed.crossSection, ...LINE_BY_CENTRE } };
+    expect(back.crossSection.a).toBeUndefined();
+    expect(sectionChanged(placed, back)).toBe(true);
+    expect(sectionChanged(base({ a: [1, 2], b: [3, 4] }), { ...placed, crossSection: { ...placed.crossSection, a: undefined, b: undefined, preset: null } })).toBe(true);
   });
 });
 

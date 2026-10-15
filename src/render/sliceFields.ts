@@ -9,6 +9,7 @@
  */
 import { airHas, airKind, type AirField, type AirKind } from '../core/airView';
 import type { AtmosphereView } from '../core/types';
+import type { LayerState } from './layers';
 import { SLICE_FIELDS, type SliceFieldId, type SliceFieldStatus, type SliceHas, type SliceKind } from './slice/types';
 
 /** The kind of air and which 3-D fields it really holds (what `AtmosphereSampler` says as `kind` and `hasWind` / `hasTheta` / `hasSmoke`). */
@@ -33,6 +34,28 @@ export function sliceKindOf(air: SliceAir): SliceKind | null {
  * a preset from before does not hide the change. (A spread in `SceneView.setLayers` keeps an explicit `undefined`.)
  */
 export const LINE_BY_CENTRE = { a: undefined, b: undefined, preset: null } as const;
+
+const samePoint = (p: readonly number[] | undefined, q: readonly number[] | undefined): boolean => p === q || (!!p && !!q && p[0] === q[0] && p[1] === q[1]);
+
+/**
+ * Does a layer change need a new slice? Anything that makes the line (azimuth, centre, A, B, preset) or the colouring (the chip),
+ * the section being switched on, or the exaggeration the arrows' heights are baked with. The comparison goes field by field because
+ * `crossSection` is a new object on every `setLayers`, and a lone `undefined` (the line put back on the centre rule) is a change.
+ */
+export function sectionChanged(prev: Pick<LayerState, 'crossSection' | 'verticalExaggeration'>, next: Pick<LayerState, 'crossSection' | 'verticalExaggeration'>): boolean {
+  const a = prev.crossSection;
+  const b = next.crossSection;
+  return (
+    !a.enabled ||
+    a.azimuth !== b.azimuth ||
+    !samePoint(a.centre, b.centre) ||
+    !samePoint(a.a, b.a) ||
+    !samePoint(a.b, b.b) ||
+    (a.preset ?? null) !== (b.preset ?? null) ||
+    a.field !== b.field ||
+    prev.verticalExaggeration !== next.verticalExaggeration
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Words (plain, sentence case, no em dashes; "the fast model" and "the 3-D atmosphere" are the names the app already uses)

@@ -47,6 +47,9 @@ import { deviceFacts, guessQuality, type DeviceFacts } from './qualityGuess';
 import type { RockCopy } from './rockMask';
 import { mapLighting, skyLighting } from './sky';
 import { SkyDome } from './skyDome';
+import { createSliceUpdater } from './slice/sliceUpdater';
+import type { SliceComputed, SliceFieldId, SliceFieldStatus, SliceInputs, SliceUpdate } from './slice/types';
+import { effectiveSliceField, sectionChanged, sliceFieldStatuses } from './sliceFields';
 import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
 import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
@@ -134,6 +137,9 @@ export function groundBase(l: Pick<LayerState, 'imagery' | 'soloHeat' | 'overlay
 /** Half-width (m) of the tree-free corridor along a fire trail: a 4-6 m wide track plus a little verge. */
 const TRAIL_CLEAR_HALF_WIDTH = 4;
 
+/** A 10 m wind slower than this (m/s) has no direction worth a line along or across it: "calm" for the air slice presets (the probe uses the same). */
+const CALM_WIND_MS = 0.2;
+
 const FIRE_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver']);
 /** Overlays whose values change with every snapshot. */
 const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation', 'windSpeed']);
@@ -170,6 +176,15 @@ export class SceneView implements SceneViewApi {
   private dataHiRes: { grid: GridSpec; elevation: Float32Array } | null = null;
   private dataLightT: Terrain | null = null;
   private domain: WindDomain | null = null;
+  /** The ground the air slice reads: the 10 m terrain as received (not the sharpened drawing) where there is one, else the drawn ground's own. */
+  private sliceTerrain: HeightField | null = null;
+  /** The one computation of the air slice, read by the curtain and (through `slice()` and `onSlice`) the side-view panel. */
+  private readonly slicer = createSliceUpdater();
+  private sliceNow: SliceUpdate | null = null;
+  private readonly sliceListeners = new Set<(u: SliceUpdate | null) => void>();
+  /** Which chips the air can give, kept while the kind of air and its fields do not change (one object per kind, not one per update). */
+  private sliceFieldsKey = '';
+  private sliceFieldsNow: Record<SliceFieldId, SliceFieldStatus> | null = null;
   private layers: LayerState = structuredClone(DEFAULT_LAYERS);
   private readonly quality: (typeof QUALITY)[RenderQuality];
   private readonly qualityFacts: QualityInfo;
@@ -362,6 +377,7 @@ export class SceneView implements SceneViewApi {
     this.snap = null;
     this.fire = null;
     this.sampler = null;
+    this.dropSlice();
     this.displayTime = this.timeFrom = this.timeTo = 0;
     this.lastUpdateWall = 0;
     this.startMs = this.explicitStartMs = null;
@@ -386,6 +402,8 @@ export class SceneView implements SceneViewApi {
     const b = gridBounds(rg.grid);
     const hf = this.hf;
     this.domain = { ...b, heightAt: (x, y) => hf.heightAt(x, y) };
+    // The air slice reads the 10 m ground as received, not the sharpened copy the ground is drawn from (plan §4 rule 10).
+    this.sliceTerrain = cliff ? new HeightField(hi!.grid, hi!.elevation, 1) : hf;
     this.lightT = cliff ? cliff.lightT : lightTerrain(rg, terrain.source);
     this.rockCopy = cliff ? cliff.rock : null;
     this.dataHiRes = cliff ? hi! : null;
@@ -626,7 +644,7 @@ export class SceneView implements SceneViewApi {
     this.updateSmoke();
     const c = fireCentroid(fire, target);
     this.wind.focus = c ? { x: c.x, y: c.y, radius: 900 } : null;
-    if (this.layers.crossSection.enabled) this.updateSection();
+    if (this.layers.crossSection.enabled) this.updateSection(false);
     this.updateWindArrows();
     if (SNAPSHOT_OVERLAYS.has(this.layers.overlay)) this.updateOverlay();
     this.refreshMarkers();
@@ -663,12 +681,113 @@ export class SceneView implements SceneViewApi {
     this.smokeHaze = Math.min(1, puffs.reduce((a, p) => a + p.alpha, 0) / 250);
   }
 
-  private updateSection(): void {
-    if (!this.hf || !this.domain) return;
-    const cs = this.layers.crossSection;
-    const sampler = this.sampler ?? new AtmosphereSampler(null, this.hf.minElevation, null);
-    const hf = this.hf;
-    this.section.update({ centre: cs.centre, azimuth: cs.azimuth }, this.domain, (x, y) => hf.heightAt(x, y), sampler, this.vex, this.dpr.dpr);
+  // ───────────────────────────────────────────────────────────────────────────
+  // The air slice (render/slice): one computation for the 3-D curtain and the side-view panel
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * What a computation of the slice needs, from what the scene holds: the line state of `layers.crossSection`, the model grid,
+   * the 10 m ground, the map centre (the camera's target), the fire, the wind at the shown time and the phone's position.
+   * Null before the first snapshot of a scenario.
+   */
+  private sliceInputs(): SliceInputs | null {
+    const snap = this.snap;
+    const terrain = this.sliceTerrain;
+    const sampler = this.sampler;
+    if (!snap || !terrain || !sampler) return null;
+    const t = this.rig.controls.target;
+    const c = fireCentroid(snap.fire, snap.time);
+    const w = snap.stats?.weather;
+    return {
+      line: this.layers.crossSection,
+      ctx: {
+        grid: snap.atmosphere?.grid ?? snap.fire.grid,
+        heightAt: (x, y) => terrain.heightAt(x, y),
+        mapCentre: [t.x, -t.z],
+        fire: c ? [c.x, c.y] : null,
+        windFromDeg: w && w.windSpeed10 >= CALM_WIND_MS && Number.isFinite(w.windDir10) ? w.windDir10 : null,
+        user: this.user ? [this.user.x, this.user.y] : null,
+      },
+      sampler,
+      terrain,
+      shownTime: snap.time,
+    };
+  }
+
+  /**
+   * Ask for the slice of the section that is switched on, and draw it. A line, field or layer edit (`immediate`) is computed at once;
+   * a new snapshot is throttled by the updater (the frame loop's `poll` picks up one that had to wait).
+   */
+  private updateSection(immediate: boolean): void {
+    const inputs = this.sliceInputs();
+    if (!inputs) return;
+    const done = this.slicer.request(inputs, performance.now(), immediate);
+    if (done) this.applySlice(done);
+  }
+
+  /** Which chips the air of the shown picture can give: one answer per kind of air, reused until the air changes. */
+  private sliceFields(): Record<SliceFieldId, SliceFieldStatus> {
+    const s = this.sampler!;
+    const key = `${s.kind}${+s.hasWind}${+s.hasTheta}${+s.hasSmoke}`;
+    if (key !== this.sliceFieldsKey || !this.sliceFieldsNow) {
+      this.sliceFieldsKey = key;
+      this.sliceFieldsNow = sliceFieldStatuses({ kind: s.kind, has: { wind: s.hasWind, theta: s.hasTheta, smoke: s.hasSmoke } });
+    }
+    return this.sliceFieldsNow;
+  }
+
+  /** A computed slice becomes the current one: the curtain is redrawn from it and the panel and the tool are told. */
+  private applySlice(done: SliceComputed): void {
+    const fields = this.sliceFields();
+    const update: SliceUpdate = { ...done, field: effectiveSliceField(this.layers.crossSection.field, fields), fields };
+    this.sliceNow = update;
+    this.drawSection();
+    this.notifySlice(update);
+    this.dirty = true;
+  }
+
+  /** Redraw the curtain from the current slice (a new pixel ratio, a changed exaggeration: the air is not sampled again). */
+  private drawSection(): void {
+    const data = this.sliceNow?.data;
+    const terrain = this.sliceTerrain;
+    if (!data || !terrain || !this.sampler) this.section.clear();
+    else this.section.update(data, this.sliceNow!.field, (x, y) => terrain.heightAt(x, y), this.sampler, this.vex, this.dpr.dpr);
+  }
+
+  private notifySlice(u: SliceUpdate | null): void {
+    for (const cb of this.sliceListeners) {
+      try {
+        cb(u);
+      } catch (e) {
+        console.warn('[FireSim] a slice listener failed', e);
+      }
+    }
+  }
+
+  /** Forget the slice (a new scenario, or the section switched off): nothing is drawn and the listeners hear null. */
+  private dropSlice(): void {
+    this.slicer.invalidate();
+    if (this.sliceNow === null) return;
+    this.sliceNow = null;
+    this.drawSection();
+    this.notifySlice(null);
+  }
+
+  /** Frame loop: compute a slice that had to wait for its 250 ms (the air changed, the line did not). */
+  private pollSlice(): void {
+    const done = this.slicer.poll(performance.now());
+    if (done && this.layers.crossSection.enabled) this.applySlice(done);
+  }
+
+  slice(): SliceUpdate | null {
+    return this.layers.crossSection.enabled ? this.sliceNow : null;
+  }
+
+  onSlice(cb: (update: SliceUpdate | null) => void): () => void {
+    this.sliceListeners.add(cb);
+    return () => {
+      this.sliceListeners.delete(cb);
+    };
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -723,8 +842,11 @@ export class SceneView implements SceneViewApi {
     if (prev && (thinTrees(prev) !== thinTrees(l) || (!prev.vegetation && l.vegetation))) this.placeVegetation(true);
     this.updateViewDependentLayers();
     this.section.visible = l.crossSection.enabled;
-    if (l.crossSection.enabled && (!prev || !prev.crossSection.enabled || prev.crossSection.azimuth !== l.crossSection.azimuth || prev.crossSection.centre[0] !== l.crossSection.centre[0] || prev.crossSection.centre[1] !== l.crossSection.centre[1] || prev.verticalExaggeration !== l.verticalExaggeration)) {
-      this.updateSection();
+    if (!l.crossSection.enabled) {
+      // Switched off: the slice is forgotten and the panel and the tool hear null.
+      if (!prev || prev.crossSection.enabled) this.dropSlice();
+    } else if (!prev || sectionChanged(prev, l)) {
+      this.updateSection(true);
     }
     if (!prev || prev.insightMarkers !== l.insightMarkers) this.refreshMarkers();
   }
@@ -1075,6 +1197,10 @@ export class SceneView implements SceneViewApi {
   viewSection(animate = true): void {
     const cs = this.layers.crossSection;
     if (!this.hf) return;
+    // The line the section really has (a hand-placed one, a preset, or the chord through the centre), not the centre and azimuth alone.
+    const line = this.sliceNow?.resolved.line ?? null;
+    const centre: [number, number] = line ? [(line.a[0] + line.b[0]) / 2, (line.a[1] + line.b[1]) / 2] : cs.centre;
+    const azimuthDeg = line ? (Math.atan2(line.dir[0], line.dir[1]) * 180) / Math.PI : cs.azimuth;
     // A side view needs the oblique camera (the top view locks the tilt, eye level the position).
     if (this.rig.mode !== 'orbit') this.rig.setMode('orbit');
     const cam = this.rig.camera;
@@ -1082,22 +1208,22 @@ export class SceneView implements SceneViewApi {
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.rig.viewAspect);
     // Frame ~3 km of the section across and its lowest ~2.5 km (where the fire, the plume base and the drainage
     // flows are) top to bottom: portrait phones are limited by the width, landscape by the height.
-    const span = Math.min(3000, this.section.line?.length ?? 3000);
+    const span = Math.min(3000, line?.length ?? 3000);
     const height = 2500 * this.vex;
     const d = THREE.MathUtils.clamp(Math.max((0.5 * span) / Math.tan(hfov / 2), (0.6 * height) / Math.tan(vfov / 2)), 1500, 12000);
     // Current camera azimuth as seen from the target; view from the nearer side of the section.
     const t = this.rig.controls.target;
     const curAz = (Math.atan2(cam.position.x - t.x, -(cam.position.z - t.z)) * 180) / Math.PI;
     const diff = (a: number): number => Math.abs(((a - curAz + 540) % 360) - 180);
-    const az = diff(cs.azimuth - 90) <= diff(cs.azimuth + 90) ? cs.azimuth - 90 : cs.azimuth + 90;
+    const az = diff(azimuthDeg - 90) <= diff(azimuthDeg + 90) ? azimuthDeg - 90 : azimuthDeg + 90;
     // The target must stay on the ground, so aim at a ground point BEHIND the section: the line of sight then crosses
     // the section about a third of the way up and the curtain sits in the middle of the screen, not at the top.
     const tilt = 72;
     const behind = (0.35 * height) / Math.tan(THREE.MathUtils.degToRad(90 - tilt));
     const a = THREE.MathUtils.degToRad(az);
-    const tx = THREE.MathUtils.clamp(cs.centre[0] - Math.sin(a) * behind, this.hf.xMin, this.hf.xMax);
-    const ty = THREE.MathUtils.clamp(cs.centre[1] - Math.cos(a) * behind, this.hf.yMin, this.hf.yMax);
-    const back = Math.hypot(tx - cs.centre[0], ty - cs.centre[1]);
+    const tx = THREE.MathUtils.clamp(centre[0] - Math.sin(a) * behind, this.hf.xMin, this.hf.xMax);
+    const ty = THREE.MathUtils.clamp(centre[1] - Math.cos(a) * behind, this.hf.yMin, this.hf.yMax);
+    const back = Math.hypot(tx - centre[0], ty - centre[1]);
     this.lookAt(tx, ty, d + back, az, tilt, animate);
   }
 
@@ -1250,6 +1376,8 @@ export class SceneView implements SceneViewApi {
     }
     this.updateShadows(now);
     this.u.uTime!.value = this.displayTime;
+    // A slice that waited for its interval (the air changed, the line did not) is computed here and redraws the curtain.
+    if (this.layers.crossSection.enabled) this.pollSlice();
 
     const animating =
       playing ||
@@ -1331,7 +1459,7 @@ export class SceneView implements SceneViewApi {
         this.updateViewport();
         // Pixel-width strokes baked at build time follow the new DPR.
         this.updateWindArrows();
-        if (this.layers.crossSection.enabled) this.updateSection();
+        if (this.layers.crossSection.enabled) this.drawSection();
         this.dirty = true;
       }
     }
