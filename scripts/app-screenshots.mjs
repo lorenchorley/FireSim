@@ -2,6 +2,7 @@
 // the server is the dev server, which serves it) of the style guide (styleguide-*.png).
 // Usage (dev server running): node scripts/app-screenshots.mjs [base URL, default http://localhost:5173] [out dir]
 // 390 x 844, device scale 1, light / dark / high contrast. The sim views use ?mock=1 (2-D map, mock engine).
+// STALE since 0.4.0 (retaken by running this script): app-sim-menus-*.png, because the Tools list has a seventh entry, Air slices.
 import { chromium } from '@playwright/test';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
