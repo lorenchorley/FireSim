@@ -5,6 +5,7 @@
  * tokens.contrast.test.ts is the older token-pair table; this one also covers the CSS itself.
  */
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio } from './contrast';
@@ -58,5 +59,19 @@ describe('scripts/check-contrast.mjs', () => {
     for (const [a, b] of [['#1a73e8', '#ffffff'], ['#5f6368', '#f1f3f4'], ['#aab0b6', '#3c4043'], ['#fbbc04', '#3c2e00']] as const) {
       expect(m.contrast(a, b)).toBeCloseTo(contrastRatio(a, b), 9);
     }
+  });
+
+  it('the Air slice map marks are tokens the check sees: no literal colour in sliceTool.ts, and the teal against its halo and the white letter on it are curated pairs that pass in every look', async () => {
+    const tool = readFileSync(join(__dirname, 'screens', 'sim', 'sliceTool.ts'), 'utf8');
+    expect(tool).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(tool).toContain('var(--mark-slice)');
+    expect(readFileSync(join(__dirname, '..', 'styles', 'tokens.css'), 'utf8')).toMatch(/--mark-slice:\s*#[0-9a-fA-F]{6}/);
+    const path = '../../scripts/check-contrast.mjs';
+    const m = (await import(/* @vite-ignore */ path)) as { curatedPairs: () => { fg: string; bg: string; kind: string }[] };
+    const pairs = m.curatedPairs();
+    expect(pairs.some((p) => p.fg === '--mark-slice' && p.bg === '--map-halo' && p.kind === 'ui')).toBe(true);
+    expect(pairs.some((p) => p.fg === '--map-halo' && p.bg === '--mark-slice' && p.kind === 'large')).toBe(true);
+    expect(tool).toContain('font:700 19px'); // bold 19 px is WCAG large text, which is what the 'large' pair above assumes
+    expect(report.failures.filter((f) => f.includes('mark-slice'))).toEqual([]);
   });
 });
