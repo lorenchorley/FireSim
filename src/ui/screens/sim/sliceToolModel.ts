@@ -424,9 +424,12 @@ export function sliceMarks(s: SliceToolState | undefined, facts: LineFacts): Sli
   if (!s) return [];
   const marks: SliceMark[] = [];
   const line = facts.line;
-  if (line) {
+  // Over the original curtain's chord (the Layers panel's section: not the tool's line) a draft end is the person's own and is shown instead of the chord's ends.
+  const draftOverChord = !!line && !ownLine(facts) && !!(s.draft.a || s.draft.b);
+  if (line && !draftOverChord) {
     marks.push({ kind: 'slice', from: line.a, to: line.b }, { kind: 'sliceA', at: line.a, pending: false }, { kind: 'sliceB', at: line.b, pending: false });
   } else {
+    if (line) marks.push({ kind: 'slice', from: line.a, to: line.b });
     if (s.draft.a) marks.push({ kind: 'sliceA', at: s.draft.a, pending: false });
     if (s.draft.b) marks.push({ kind: 'sliceB', at: s.draft.b, pending: false });
   }

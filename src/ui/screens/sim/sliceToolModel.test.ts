@@ -584,6 +584,18 @@ describe('the marks on the map', () => {
     expect(sliceMarks(s, withLine([0, 0], [0, 1000])).filter((m) => m.kind === 'sliceA')).toEqual([{ kind: 'sliceA', at: [0, 0], pending: false }]);
   });
 
+  it('over the original curtain\'s chord (the Layers panel\'s section), a draft end is shown where it was placed, not the chord\'s end', () => {
+    const s = { ...initialSliceToolState(), draft: { a: [10, 20] as SlicePoint, b: null } };
+    const marks = sliceMarks(s, withLine([0, -2000], [0, 2000], 'centre'));
+    expect(marks.map((m) => m.kind)).toEqual(['slice', 'sliceA']); // the chord stays (it is what the curtain draws); its own ends are not the tool's
+    expect(marks.find((m) => m.kind === 'sliceA')).toEqual({ kind: 'sliceA', at: [10, 20], pending: false });
+  });
+
+  it('over the chord with no draft yet, the chord\'s ends are the A and B of the side view', () => {
+    const marks = sliceMarks(initialSliceToolState(), withLine([0, -2000], [0, 2000], 'centre'));
+    expect(marks.map((m) => m.kind)).toEqual(['slice', 'sliceA', 'sliceB']);
+  });
+
   it('shows the tapped candidate as a pending mark of the end being placed', () => {
     const marks = sliceMarks(placing('b', { candidate: [300, 400] }), EMPTY);
     expect(marks).toEqual([{ kind: 'sliceB', at: [300, 400], pending: true }]);
