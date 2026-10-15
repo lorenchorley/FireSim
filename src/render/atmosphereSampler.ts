@@ -13,8 +13,10 @@
  *
  * Allocation: spike S3 measured that a method taking and returning doubles is boxed (48 bytes per call) unless V8 inlines
  * it, which it does not for a loop of tens of thousands of calls. `windP` and `fieldsP` therefore take their position in
- * a Float64Array and write the answer to a Float32Array, and allocate nothing (a test measures it). `wind`, `theta`,
- * `smoke` and `sample3` keep their old signatures for the layers that call them a few thousand times a frame.
+ * a Float64Array and write the answer to a Float32Array, and allocate nothing, whether or not V8 inlines the blend (two tests
+ * measure it). `wind`, `surfaceWind`, `theta`, `smoke` and `sample3` keep their old signatures for the layers that call them
+ * a few thousand times a frame; each double argument of a call V8 does not inline costs a heap number (16 bytes), so a loop
+ * that must not allocate calls `windP`.
  * Without an atmosphere, or one that holds no wind, the sampler falls back to the ambient wind with a power-law profile.
  */
 import type { GridSpec } from '../core/grid';
@@ -55,6 +57,8 @@ export class AtmosphereSampler {
   private readonly qw = new Float64Array(4);
   private readonly sk = new Int32Array(4);
   private readonly st = new Float64Array(4);
+  /** The answers of the last blends (see `blendTo`). */
+  private readonly acc = new Float64Array(3);
 
   /**
    * @param atm      atmosphere view (null → ambient fallback)
@@ -173,8 +177,12 @@ export class AtmosphereSampler {
     }
   }
 
-  /** Blend of one 3-D field over the stencil of the last `locate`. */
-  private blend(f: Float32Array): number {
+  /**
+   * Blend of one 3-D field over the stencil of the last `locate`, into acc[i]. It hands its answer back through `acc` and not
+   * through a return value: a method that returns a double is boxed (a heap number per call) whenever V8 does not inline it,
+   * which it declines to do on a busy machine or in a cold loop (atmosphereSampler.alloc.test.ts runs with inlining off).
+   */
+  private blendTo(f: Float32Array, i: number): void {
     const plane = this.plane;
     const dk = this.dk;
     let s = 0;
@@ -182,7 +190,7 @@ export class AtmosphereSampler {
       const o = this.sk[q]! * plane + this.sc[q]!;
       s += this.qw[q]! * (f[o]! + (f[o + dk]! - f[o]!) * this.st[q]!);
     }
-    return s;
+    this.acc[i] = s;
   }
 
   /** The ambient wind with a power-law profile of the height above ground. */
@@ -204,9 +212,13 @@ export class AtmosphereSampler {
     }
     this.locate(pos);
     const a = this.atm!;
-    out[0] = this.blend(a.u);
-    out[1] = this.blend(a.v);
-    out[2] = this.blend(a.w);
+    const acc = this.acc;
+    this.blendTo(a.u, 0);
+    this.blendTo(a.v, 1);
+    this.blendTo(a.w, 2);
+    out[0] = acc[0]!;
+    out[1] = acc[1]!;
+    out[2] = acc[2]!;
   }
 
   /**
@@ -222,13 +234,23 @@ export class AtmosphereSampler {
     }
     this.locate(pos);
     const a = this.atm!;
+    const acc = this.acc;
     if (this.hasWind) {
-      out[0] = this.blend(a.u);
-      out[1] = this.blend(a.v);
-      out[2] = this.blend(a.w);
+      this.blendTo(a.u, 0);
+      this.blendTo(a.v, 1);
+      this.blendTo(a.w, 2);
+      out[0] = acc[0]!;
+      out[1] = acc[1]!;
+      out[2] = acc[2]!;
     } else this.ambientWind(pos.length > 3 ? pos[3]! : 0, out);
-    out[3] = this.hasTheta ? this.blend(a.thetaAnomaly) : 0;
-    out[4] = this.hasSmoke ? this.blend(a.smoke) : 0;
+    if (this.hasTheta) {
+      this.blendTo(a.thetaAnomaly, 0);
+      out[3] = acc[0]!;
+    } else out[3] = 0;
+    if (this.hasSmoke) {
+      this.blendTo(a.smoke, 0);
+      out[4] = acc[0]!;
+    } else out[4] = 0;
   }
 
   /** Bilinear sample of a 2-D atmosphere-grid field. */
@@ -249,7 +271,8 @@ export class AtmosphereSampler {
     p[1] = y;
     p[2] = zAsl;
     this.locate(p);
-    return this.blend(f);
+    this.blendTo(f, 0);
+    return this.acc[0]!;
   }
 
   /** 10 m wind (u, v) at a local point. */
@@ -288,9 +311,13 @@ export class AtmosphereSampler {
     p[2] = zAsl;
     this.locate(p);
     const a = this.atm!;
-    out[0] = this.blend(a.u);
-    out[1] = this.blend(a.v);
-    out[2] = this.blend(a.w);
+    const acc = this.acc;
+    this.blendTo(a.u, 0);
+    this.blendTo(a.v, 1);
+    this.blendTo(a.w, 2);
+    out[0] = acc[0]!;
+    out[1] = acc[1]!;
+    out[2] = acc[2]!;
   }
 
   theta(x: number, y: number, zAsl: number): number {
