@@ -278,6 +278,8 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   expect(preset.a ?? null).toBeNull();
   expect(preset.b ?? null).toBeNull();
   await expect(page.getByTestId('slice-preset-across')).toBeHidden(); // the list folds away after a choice
+  await expect(page.getByTestId('slice-presets-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('slice-presets-toggle').locator('svg path')).toHaveAttribute('d', 'M6 9l6 6 6-6'); // and its arrow points down again
   await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(2);
 
   // ───────── Back and Escape: the placement first, then the tool; focus goes back to the Tools button ─────────

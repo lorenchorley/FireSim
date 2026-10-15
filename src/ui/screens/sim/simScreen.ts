@@ -950,9 +950,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const layer = backLayer({ popover: topBar.popovers.openId(), menu: u.menu, panelOpen: u.panelOpen, pending: !!u.pending, sheet: u.sheet });
     if (layer === 'popover') topBar.popovers.closeAll(); // focus goes back to the button that opened it, as it does for Escape
     else if (layer === 'menu') ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
-    else if (layer === 'panel') {
-      if (!backFromAirTool(ui)) closePanel(); // a placement under way in the Air slices tool is dropped first
-    }
+    else if (layer === 'panel' && !backFromAirTool(ui)) closePanel(); // (a placement under way in the Air slices tool is dropped first, and that is the press)
     else if (layer === 'sheet') ui.set({ sheet: 'closed' });
     return layer !== null;
   }

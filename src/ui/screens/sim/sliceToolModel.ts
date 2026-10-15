@@ -476,11 +476,6 @@ export function sliceAnnotationMarks(marks: readonly SliceMark[], project: (p: S
   return out;
 }
 
-/** Whether the tool has anything for the map to keep in step with the camera (the per-frame projection runs only then). */
-export function marksAreLive(s: SliceToolState | undefined, facts: LineFacts): boolean {
-  return sliceMarks(s, facts).length > 0;
-}
-
 /** The effective chip: what the scene says, else the stored choice, else Speed (what the first placement writes). */
 export function effectiveField(update: Pick<SliceUpdate, 'field'> | null | undefined, cs: CrossSection): SliceFieldId {
   return update?.field ?? cs.field ?? 'speed';

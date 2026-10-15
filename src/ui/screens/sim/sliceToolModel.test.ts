@@ -26,7 +26,6 @@ import {
   initialSliceToolState,
   issueWords,
   lineFacts,
-  marksAreLive,
   minLengthFor,
   ownLine,
   placeHere,
@@ -567,13 +566,11 @@ describe('the marks on the map', () => {
   it('shows nothing before anything is placed, and no state at all shows nothing', () => {
     expect(sliceMarks(initialSliceToolState(), EMPTY)).toEqual([]);
     expect(sliceMarks(undefined, EMPTY)).toEqual([]);
-    expect(marksAreLive(initialSliceToolState(), EMPTY)).toBe(false);
   });
 
   it('shows a draft end on its own', () => {
     const s = { ...initialSliceToolState(), draft: { a: [10, 20] as SlicePoint, b: null } };
     expect(sliceMarks(s, EMPTY)).toEqual([{ kind: 'sliceA', at: [10, 20], pending: false }]);
-    expect(marksAreLive(s, EMPTY)).toBe(true);
   });
 
   it('shows the line with A and B (the line under the ends)', () => {

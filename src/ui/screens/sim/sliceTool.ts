@@ -96,10 +96,12 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     },
   });
   const presetsId = uniqueId('slice-presets');
+  let chevron = icon('chevron-down');
+  let chevronUp = false;
   const presetsToggle = h(
     'button',
     { type: 'button', class: 'btn btn-secondary', dataset: { testid: 'slice-presets-toggle' }, aria: { expanded: false, controls: presetsId }, on: { click: () => togglePresets() } },
-    [h('span', { class: 'btn-text' }, PRESETS_LABEL), icon('chevron-down')],
+    [h('span', { class: 'btn-text' }, PRESETS_LABEL), chevron],
   );
   const idleRow = h('div', { class: 'row-actions slice-row' }, [setBtn.a.el, setBtn.b.el, swapBtn.el, presetsToggle]);
   const placeBtn = makeButton('Place A here', { variant: 'primary', large: true, testId: 'slice-place', onClick: () => placeHere() });
@@ -130,8 +132,15 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
       c.why.hidden = !pv.reason;
       text(c.why, pv.reason ?? '');
     }
-    presetList.hidden = !presetsOpen || !!v.placing;
-    presetsToggle.setAttribute('aria-expanded', String(presetsOpen && !v.placing));
+    const open = presetsOpen && !v.placing;
+    presetList.hidden = !open;
+    presetsToggle.setAttribute('aria-expanded', String(open));
+    if (open !== chevronUp) {
+      chevronUp = open;
+      const next = icon(open ? 'chevron-up' : 'chevron-down');
+      chevron.replaceWith(next);
+      chevron = next;
+    }
     text(note, v.hint);
     note.hidden = !v.hint;
   }
@@ -186,7 +195,6 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   }
   function togglePresets(): void {
     presetsOpen = !presetsOpen;
-    setChildren(presetsToggle, [h('span', { class: 'btn-text' }, PRESETS_LABEL), icon(presetsOpen ? 'chevron-up' : 'chevron-down')]);
     render();
   }
 
