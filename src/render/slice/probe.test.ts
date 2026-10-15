@@ -274,7 +274,7 @@ describe('probeSentence', () => {
   const kmh = { units: 'kmh', kind: 'prognostic' } as const;
 
   it('reads the plan’s example exactly', () => {
-    expect(probeSentence(air(), kmh)).toBe('Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area');
+    expect(probeSentence(air(), kmh)).toBe('Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average');
   });
 
   it('says towards A for a negative along, to the right or left for across, down for a negative up, cooler for a negative anomaly', () => {
@@ -283,8 +283,10 @@ describe('probeSentence', () => {
     expect(probeSentence(air({ across: -ms(12) }), kmh)).toContain('across the line 12 km/h to the left');
     expect(probeSentence(air({ up: -2.25 }), kmh)).toContain('down 2.3 m/s');
     expect(probeSentence(air({ up: 0.01 }), kmh)).not.toMatch(/\b(up|down)\b/);
-    expect(probeSentence(air({ thetaK: -2.4 }), kmh)).toMatch(/2\.4 K cooler than the area$/);
-    expect(probeSentence(air({ thetaK: 0.2 }), kmh)).toMatch(/about the same temperature as the area$/);
+    expect(probeSentence(air({ thetaK: -2.4 }), kmh)).toMatch(/2\.4 K cooler than average$/);
+    expect(probeSentence(air({ thetaK: 0.2 }), kmh)).toMatch(/about average temperature$/);
+    // The number is against the slice's own air at that height (the row mean in sampleSlice), never "the area".
+    for (const t of [3, -2.4, 0.2]) expect(probeSentence(air({ thetaK: t }), kmh)).not.toMatch(/the area/);
   });
 
   it('gives the temperature clause only for the time-stepped kind and only when the air has one', () => {
@@ -295,7 +297,7 @@ describe('probeSentence', () => {
 
   it('speaks in m/s when asked, with a decimal below 10, but the vertical stays in m/s either way', () => {
     expect(probeSentence(air({ speed: 9.44, along: 8.1, across: 0 }), { units: 'ms', kind: 'prognostic' })).toBe(
-      'Wind about 9.4 m/s from the north-west, along the line 8.1 m/s towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area',
+      'Wind about 9.4 m/s from the north-west, along the line 8.1 m/s towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average',
     );
     expect(probeSentence(air({ speed: 14.2, along: 12.6 }), { units: 'ms', kind: 'diagnosed' })).toBe('Wind about 14 m/s from the north-west, along the line 13 m/s towards B, up 1.4 m/s, 60 m above ground');
   });
@@ -320,7 +322,7 @@ describe('probeSentence', () => {
   it('reads a real probe end to end', () => {
     const d = makeSliceData({ a: [0, 0], b: [3000, 0], wind: () => [ms(28), ms(5), 1], theta: (s) => (s > 1500 ? 2 : 0), ground: () => 100 });
     const s = probeSentence(probeAt(d, { s: 2600, z: 400 }), kmh);
-    expect(s).toMatch(/^Wind about 28 km\/h from the west, along the line 28 km\/h towards B, across the line 5 km\/h to the left, up 1(\.0)? m\/s, 300 m above ground, \d(\.\d)? K (warmer|cooler) than the area$/);
+    expect(s).toMatch(/^Wind about 28 km\/h from the west, along the line 28 km\/h towards B, across the line 5 km\/h to the left, up 1(\.0)? m\/s, 300 m above ground, \d(\.\d)? K (warmer|cooler) than average$/);
   });
 });
 

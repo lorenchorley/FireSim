@@ -233,7 +233,9 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     };
     const f = modelFacts(bundled.summary, fast);
     const tier = f.find((x) => x.key === 'Detail tier')!;
-    expect(tier.value).toBe('Fast: a 2-D wind shaped by the ground (no 3-D air movement) (chosen by Auto after timing this phone)');
+    expect(tier.value).toBe('Fast: the forecast wind fitted to the terrain (no air flow simulated through time) (chosen by Auto after timing this phone)');
+    // The fast tier publishes a diagnosed 3-D wind since 0.4.0, so its words never say "2-D wind" or "no 3-D air movement" again.
+    expect(tier.value).not.toMatch(/2-D wind|no 3-D/);
     expect(tier.note).toBe(fast.tierReason);
     expect(JSON.stringify(f)).not.toMatch(/Auto: the 3-D atmosphere unless/);
     const grid = f.find((x) => x.key === 'Wind grid')!;
@@ -247,7 +249,7 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     expect(air.find((x) => x.key === 'Atmosphere grid')!.value).toBe('45 x 45 columns of 133 m, 20 levels up from the ground');
     // Before the engine reports, Auto is described as what it is: a decision still to come.
     expect(modelFacts(bundled.summary, null).find((x) => x.key === 'Detail tier')!.value).toBe(
-      'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: a 2-D wind shaped by the ground)',
+      'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: the forecast wind fitted to the terrain)',
     );
   });
 

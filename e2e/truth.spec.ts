@@ -62,7 +62,7 @@ test('Data sets and the model card tell the truth about the tier, the memory and
   const screen = page.getByTestId('datasets-screen');
   await expect(screen).toBeVisible();
   const summary = norm(await screen.getByTestId('datasets-summary').innerText());
-  const tierWords = { fast: 'Fast: a 2-D wind shaped by the ground (no 3-D air movement)', standard: 'Standard: 3-D atmosphere', high: 'High: finer 3-D atmosphere' }[e.tier];
+  const tierWords = { fast: 'Fast: the forecast wind fitted to the terrain (no air flow simulated through time)', standard: 'Standard: 3-D atmosphere', high: 'High: finer 3-D atmosphere' }[e.tier];
   expect(summary).toContain(tierWords);
   expect(summary).not.toContain('Auto: the 3-D atmosphere unless');
   // What THIS build saved, not what the phone holds in all (the Storage card below says that).

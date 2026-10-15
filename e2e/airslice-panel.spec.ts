@@ -202,6 +202,23 @@ test('3-D air in landscape (844x390): the picture and the footer stay in view wh
   await expect(footer).toBeHidden();
   await page.getByTestId('slice-probe-clear').click();
   await expect(footer).toBeInViewport();
+
+  // The longest reading: a line oblique to the wind has an along and an across part, and the 3-D air has a temperature clause, which
+  // wraps to five lines here. Every one of them is all inside the panel (it ran under the timeline by a line before the picture was
+  // 84 px and the lines 1.3 high).
+  await page.evaluate(() =>
+    (window as unknown as { __firesim: { view: { setLayers(l: Record<string, unknown>): void } } }).__firesim.view.setLayers({ crossSection: { enabled: true, a: [-2500, 0], b: [2500, 0], preset: null, field: 'speed' } }),
+  );
+  await expect(canvas).toBeVisible();
+  await page.waitForTimeout(1500);
+  for (const [fx, fy] of [[0.2, 0.2], [0.5, 0.5], [0.8, 0.35]] as const) {
+    await press(page, canvas, fx, fy);
+    await expect(readout).toBeVisible();
+    await expect(page.getByTestId('slice-readout-text')).toContainText(/across the line/);
+    const ob = (await readout.boundingBox())!;
+    const pb = (await page.getByTestId('air-panel').boundingBox())!;
+    expect(ob.y + ob.height, `the whole reading is inside the panel (${fx}, ${fy})`).toBeLessThanOrEqual(pb.y + pb.height + 1);
+  }
 });
 
 test('reduced motion: arrows instead of streaks, and a picture that holds still', async ({ page }) => {

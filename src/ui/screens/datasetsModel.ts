@@ -456,8 +456,8 @@ export interface Fact {
 }
 
 const TIER_WORDS: Record<string, string> = {
-  auto: 'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: a 2-D wind shaped by the ground)',
-  fast: 'Fast: a 2-D wind shaped by the ground (no 3-D air movement)',
+  auto: 'Auto: the 3-D atmosphere unless this phone is far too slow for it, decided when the run starts (then Fast: the forecast wind fitted to the terrain)',
+  fast: 'Fast: the forecast wind fitted to the terrain (no air flow simulated through time)',
   standard: 'Standard: 3-D atmosphere',
   high: 'High: finer 3-D atmosphere',
 };

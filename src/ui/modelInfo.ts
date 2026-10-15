@@ -17,7 +17,7 @@
  * (SIM_PARAMS, ATMOS_TIERS, SPREAD_PARAMS ...) — never typed in. Static sentences were checked against the code and the
  * specification (docs/research/00-synthesis.md, "§" below); the counts and item numbers quoted from the specification
  * and the README are re-checked by modelInfo.test.ts. Empirical relations are called empirical, parameterised effects
- * are not called resolved, FireSim choices are labelled as assumptions. The fast tier (a surface wind fitted to the
+ * are not called resolved, FireSim choices are labelled as assumptions. The fast tier (the forecast wind fitted to the
  * terrain) and the 3-D tiers (time-stepped air flow) are described differently, from the tier the engine reports NOW
  * (also after a switch mid-run). Before the engine reports (opened from Setup, or before the first picture) the numbers
  * are PLANNED, computed with the same rules the builder and the engine apply, and the card says so.
@@ -522,7 +522,7 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
     rows.push({
       id: 'atmosphere',
       component: 'Atmosphere (the air)',
-      dimensions: 'Fast mode: a 2-D surface wind worked out from the terrain; no air flow is simulated through time',
+      dimensions: 'Fast mode: the forecast wind fitted to the terrain, with no air flow simulated through time; the fire feels a 2-D surface wind built from it',
       resolution: `The forecast wind fitted to the terrain on ${grid2(a.nx, a.ny)} columns ${m(a.dxM)} apart (${a.nz} levels); the fire uses its surface wind`,
       timeStep:
         `Fitted again for each weather record (every ${formatStepLabel(live ? e.cadence.weatherStampS : stamp)}; every ${formatStepLabel(ATMOS_PARAMS.subStampS)} when the wind turns more than ${ATMOS_PARAMS.subStampDirDeg}° between records) ` +
@@ -540,7 +540,7 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
     rows.push({
       id: 'atmosphere',
       component: 'Atmosphere (the air)',
-      dimensions: 'Auto: decided when the run starts, from a short timing test on this phone. 3-D air flow unless it would take far too long, else the fast mode (a 2-D surface wind fitted to the terrain)',
+      dimensions: 'Auto: decided when the run starts, from a short timing test on this phone. 3-D air flow unless it would take far too long, else the fast mode (the forecast wind fitted to the terrain)',
       resolution: `3-D: ${describeAtm(a)}. Fast mode: the forecast wind fitted to the terrain on ${grid2(f.nx, f.ny)} columns`,
       timeStep: `3-D: ${secs(ATMOS_PARAMS.dtMin)} to ${secs(SIM_PARAMS.dtMaxS)}; fast mode: ${secs(FAST_TIER_STEP_S)}`,
       method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it unless the whole run is predicted to take longer than the time limit (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). On the one phone measured so far the 3-D step took about ${FIRST_PHONE_STEP_MS} ms, so Auto chooses the 3-D air; how other phones do is not yet measured (spec §16 item 20). The 3-D air can fall behind when you play faster than the phone computes; the timeline says so.`,
@@ -972,8 +972,8 @@ function headlineOf(mode: ModelCard['mode'], n: Numbers | null, e: EngineInfo | 
   const fire = `${lead}${lead ? 'fire' : 'Fire'} spreads in 2-D on a ${m(n.fire.cellM)} grid`;
   const is3d = atmosphereIs3d(n, e);
   if (is3d === true) return `${fire}; the air above it is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart).`;
-  if (is3d === false) return `${fire}; the wind is a 2-D surface field fitted to the terrain (fast mode, no 3-D air flow).`;
-  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is a 2-D surface field (fast mode).`;
+  if (is3d === false) return `${fire}; the wind is the forecast fitted to the terrain, with no air flow simulated through time (fast mode).`;
+  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is the forecast fitted to the terrain (fast mode).`;
 }
 
 /** The whole card (pure). */

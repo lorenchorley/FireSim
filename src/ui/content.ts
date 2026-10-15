@@ -295,7 +295,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'Air from',
     short: 'How old the air in a slice is',
-    body: 'The footer of the side view says when the air it shows was made, for example “air from 11:25”. That is the simulation’s own clock, the one on the screen, not the time of day on your phone. It is usually the time you are looking at. When you jump back, the picture is put together from the nearest saved air at or before that time (saved about every 5 minutes), so the air can be older than the fire you see. Past 90 seconds the footer says how much older, for example “air from 11:25 (4 min before the time shown)”.',
+    body: 'The footer of the side view says when the air it shows was made, for example “air from 11:25”. That is the simulation’s own clock, the one on the screen, not the time of day on your phone. The air is saved about every 5 minutes, so the picture you are looking at is put together from the nearest saved air at or before its time, and the air can be up to about 5 minutes older than the fire you see, while the run plays as well as when you jump back. Only the newest picture of the run has air made at its own time. Past 90 seconds the footer says how much older, for example “air from 11:25 (4 min before the time shown)”.',
   },
   {
     term: 'Model cells',
@@ -305,7 +305,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'Probe',
     short: 'Reading the air at one point',
-    body: 'Tap or drag on the side view and a line of words says what the air is doing at that point, for example “Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area”. A pin on the map shows where along the line the point is. K is a kelvin: a difference of 3 K is a difference of 3 degrees Celsius. With the picture selected, the arrow keys move the probe and Escape clears it, and so does the small X button beside the words. Points inside the ground, below the model’s own ground or above its top get a short sentence that says so instead. The temperature part is only there on the 3-D atmosphere.',
+    body: 'Tap or drag on the side view and a line of words says what the air is doing at that point, for example “Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average”. A pin on the map shows where along the line the point is. K is a kelvin: a difference of 3 K is a difference of 3 degrees Celsius. “Average” means the average of the slice at that height: the model’s air along the line that lies at about the same height above sea level. With the picture selected, the arrow keys move the probe and Escape clears it, and so does the small X button beside the words. Points inside the ground, below the model’s own ground or above its top get a short sentence that says so instead. The temperature part is only there on the 3-D atmosphere.',
   },
   {
     term: 'Along and across',

@@ -13,7 +13,7 @@ import {
   disabledNotes,
   emptyState,
   flowCount,
-  flowKey,
+  flowSlice,
   flowTimeScale,
   footerParts,
   footerRuns,
@@ -26,6 +26,7 @@ import {
   plotLayout,
   rasterBox,
   rasterize,
+  sameFlowSlice,
   scaleCaption,
   scaleTag,
   showsScaleTag,
@@ -248,15 +249,31 @@ describe('streak helpers', () => {
     expect(flowTimeScale(NaN)).toBe(1);
   });
 
-  it('keeps the particles for the same line and lattice, seeds again for another', () => {
-    const a = fakeSlice();
-    const b = fakeSlice();
-    b.seq = 99;
-    expect(flowKey(a)).toBe(flowKey(b));
-    const moved = fakeSlice();
-    moved.line = { ...moved.line, b: [moved.line.b[0] + 500, moved.line.b[1]] };
-    expect(flowKey(moved)).not.toBe(flowKey(a));
-    expect(flowKey(fakeSlice({ columns: 30 }))).not.toBe(flowKey(a));
+  it('keeps the particles while a preset line drifts with the fire (a few metres at every update), seeds again for a new line', () => {
+    // "Along the wind" and "Me to fire" are live lines: at 60x the fire's centre moves tens of metres between two updates, so the ends do too.
+    // Seeding afresh at every update would restart the streaks 4 times a second (the old key rounded the ends to 1 m).
+    let prev = flowSlice(fakeSlice());
+    for (let i = 1; i <= 60; i++) {
+      const d = fakeSlice();
+      d.line = { ...d.line, a: [d.line.a[0] + 7 * i, d.line.a[1] - 3 * i], b: [d.line.b[0] + 9 * i, d.line.b[1] - 4 * i] };
+      d.zMin += 2 * i;
+      d.zMax += 3 * i;
+      const now = flowSlice(d);
+      expect(sameFlowSlice(prev, now), `update ${i}`).toBe(true);
+      prev = now;
+    }
+    const base = flowSlice(fakeSlice());
+    const again = fakeSlice();
+    again.seq = 99; // the same line and lattice with new air: the particles go on
+    expect(sameFlowSlice(base, flowSlice(again))).toBe(true);
+    expect(sameFlowSlice(null, base)).toBe(false);
+    expect(sameFlowSlice(base, flowSlice(fakeSlice({ columns: 30 })))).toBe(false);
+    const placed = fakeSlice();
+    placed.line = { ...placed.line, b: [placed.line.b[0] + 500, placed.line.b[1]] }; // B put somewhere else: a new line
+    expect(sameFlowSlice(base, flowSlice(placed))).toBe(false);
+    const taller = fakeSlice();
+    taller.zMax += 600;
+    expect(sameFlowSlice(base, flowSlice(taller))).toBe(false);
   });
 
   it('gives a smaller plot fewer streaks, between 60 and 300', () => {

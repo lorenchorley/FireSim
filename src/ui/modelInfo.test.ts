@@ -59,7 +59,10 @@ describe('describeModel: live values follow the scenario and the engine', () => 
 
   it('fast tier: 2-D fire, a fitted surface wind, and the engine’s own numbers', () => {
     expect(card.mode).toBe('live');
-    expect(card.headline).toBe('Fire spreads in 2-D on a 30 m grid; the wind is a 2-D surface field fitted to the terrain (fast mode, no 3-D air flow).');
+    // Since 0.4.0 the fast tier publishes its fitted wind in 3-D (the diagnosed wind): the card must not call it a 2-D surface field or say there is no 3-D air flow.
+    expect(card.headline).not.toMatch(/2-D surface field|no 3-D air flow/);
+    expect(row(card, 'atmosphere').dimensions).toContain('the fire feels a 2-D surface wind built from it');
+    expect(card.headline).toBe('Fire spreads in 2-D on a 30 m grid; the wind is the forecast fitted to the terrain, with no air flow simulated through time (fast mode).');
     const fire = row(card, 'fire');
     expect(fire.resolution).toContain('30 m cells (100 × 100 = 10 000 cells)');
     expect(fire.method).toContain('Vesta Mk2 (forest, 100 % of the burnable cells)');
@@ -73,7 +76,7 @@ describe('describeModel: live values follow the scenario and the engine', () => 
       expect(Number(sub![1])).toBeCloseTo(e.fire.currentSubStepS!, 0);
     }
     const atm = row(card, 'atmosphere');
-    expect(atm.dimensions).toMatch(/^Fast mode: a 2-D surface wind/);
+    expect(atm.dimensions).toMatch(/^Fast mode: the forecast wind fitted to the terrain/);
     expect(atm.resolution).toContain('30 × 30 columns 100 m apart (20 levels)');
     expect(atm.method).toContain('mass-consistent');
     expect(row(card, 'coupling').dimensions).toMatch(/2-D estimate/);
@@ -250,7 +253,7 @@ describe('describeModel: other cell sizes, extents and tiers change the rows', (
     const sim = new Simulation(sc, { hooks: { snapshot: (s) => (last = s) } });
     sim.advance(2100);
     const before = describeModel({ scenario: sc, engine: last!.engine, settings });
-    expect(before.headline).toContain('2-D surface field');
+    expect(before.headline).toContain('the wind is the forecast fitted to the terrain');
     sim.setQuality('standard');
     sim.advance(2400);
     const after = describeModel({ scenario: sc, engine: last!.engine, settings });
@@ -264,7 +267,7 @@ describe('describeModel: other cell sizes, extents and tiers change the rows', (
   it('planned from a scenario before the engine reports; preview from the Setup request; the extent changes the air grid', () => {
     const planned = describeModel({ scenario: fastScenario, engine: null, settings });
     expect(planned.mode).toBe('planned');
-    expect(planned.headline).toMatch(/^Planned: fire spreads in 2-D on a 30 m grid; the wind is a 2-D surface field/);
+    expect(planned.headline).toMatch(/^Planned: fire spreads in 2-D on a 30 m grid; the wind is the forecast fitted to the terrain/);
     expectClean(planned);
     const s = defaultSetup(Date.UTC(2026, 0, 10));
     const r6 = buildRequest({ ...s, extentKm: 6 }, settings, Date.UTC(2026, 0, 10));
@@ -272,13 +275,13 @@ describe('describeModel: other cell sizes, extents and tiers change the rows', (
     expect(p6.mode).toBe('preview');
     // 6 km, 'auto': 30 m fire cells; the standard 3-D grid clamp(6000 / 45) = 133 m → 45 columns, 20 levels.
     expect(p6.headline).toBe(
-      'Planned: fire spreads in 2-D on a 30 m grid; the air is simulated in 3-D (45 × 45 × 20 cells, 133 m apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is a 2-D surface field (fast mode).',
+      'Planned: fire spreads in 2-D on a 30 m grid; the air is simulated in 3-D (45 × 45 × 20 cells, 133 m apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is the forecast fitted to the terrain (fast mode).',
     );
     expect(row(p6, 'fire').resolution).toContain('(200 × 200 = 40 000 cells)');
     expect(row(p6, 'atmosphere').resolution).toContain('up to at least 3 000 m');
     const r9 = buildRequest({ ...s, extentKm: 9, detail: 'fast' }, settings, Date.UTC(2026, 0, 10));
     const p9 = describeModel({ scenario: null, request: r9, settings });
-    expect(p9.headline).toBe('Planned: fire spreads in 2-D on a 30 m grid; the wind is a 2-D surface field fitted to the terrain (fast mode, no 3-D air flow).');
+    expect(p9.headline).toBe('Planned: fire spreads in 2-D on a 30 m grid; the wind is the forecast fitted to the terrain, with no air flow simulated through time (fast mode).');
     expect(row(p9, 'atmosphere').resolution).toContain('45 × 45 columns 200 m apart');
     const r3 = buildRequest({ ...s, extentKm: 3, detail: 'detailed' }, settings, Date.UTC(2026, 0, 10));
     const p3 = describeModel({ scenario: null, request: r3, settings });

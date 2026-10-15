@@ -31,7 +31,7 @@ import {
   disabledNotes,
   emptyState,
   flowCount,
-  flowKey,
+  flowSlice,
   flowTimeScale,
   footerRuns,
   legendView,
@@ -40,10 +40,12 @@ import {
   pickPos,
   plotLayout,
   rasterize,
+  sameFlowSlice,
   scaleCaption,
   scaleTag,
   showsScaleTag,
   streakExaggeration,
+  type FlowSlice,
   type Lut,
   type PlotLayout,
   type Raster,
@@ -136,7 +138,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   let rasterOf: SliceData | null = null; // a new slice object may carry the same `seq` as the last one: the image follows the object too
   const luts = new Map<SliceFieldId, Lut>();
   let flow: FlowParticles | null = null;
-  let seeded = '';
+  let seededSlice: FlowSlice | null = null; // the slice the particles were last seeded (or kept) for
+  let seededCount = 0;
 
   function lutFor(f: SliceFieldId): Lut {
     let l = luts.get(f);
@@ -275,13 +278,20 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   function ensureFlow(d: SliceData): void {
     if (reduced) return;
     if (!flow) flow = createFlow(FLOW_COUNT, 1);
-    // A smaller plot (the short landscape panel) gets fewer streaks, so it is not a smear; more particles than before are seeded afresh.
+    // A smaller plot (the short landscape panel) gets fewer streaks, so it is not a smear; many more particles than were seeded are seeded afresh
+    // (a few more or fewer, from a pixel more or less of height, are not worth a restart). The same picture a moment later, for example a live
+    // preset drifting with the fire, goes on with the streaks it has.
     const n = layout ? flowCount(layout) : FLOW_COUNT;
-    const key = `${flowKey(d)}|${n}`;
-    if (key === seeded) return;
+    const now = flowSlice(d);
+    const same = sameFlowSlice(seededSlice, now) && n <= seededCount * 1.15;
+    seededSlice = now;
+    if (same) {
+      flow.count = n;
+      return;
+    }
     flow.count = n;
     seedFlow(flow, d);
-    seeded = key;
+    seededCount = n;
     clearTrail();
   }
 
@@ -511,7 +521,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       canvas.dataset.motion = reduced ? 'arrows' : 'streaks';
       if (reduced) {
         flow = null;
-        seeded = '';
+        seededSlice = null;
       } else if (data) ensureFlow(data);
       staticDirty = true;
       clearTrail();

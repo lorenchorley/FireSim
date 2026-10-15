@@ -340,7 +340,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await press(page, canvas, 0.3, 0.3);
     await expect(readout).toBeVisible();
     await expect(text).toContainText(/^(Wind about|Calm)/);
-    if (fastTier) await expect(text).not.toContainText(/warmer|cooler|same temperature/);
+    if (fastTier) await expect(text).not.toContainText(/warmer|cooler|average temperature/);
     await expect(page.locator('.annotations .ann-slice-probe')).toHaveCount(1);
     const first = await text.innerText();
     await press(page, canvas, 0.8, 0.45);
@@ -349,12 +349,15 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await canvas.focus();
     for (let i = 0; i < 4; i++) await page.keyboard.press('Shift+ArrowLeft');
     await expect.poll(async () => { const k = await marks(page); return k.pin && k.a ? dist(k.pin, k.a) : 999; }, { message: 'the pin is at A' }).toBeLessThan(4);
-    let m = await marks(page);
     for (let i = 0; i < 2; i++) await page.keyboard.press('Shift+ArrowRight');
-    await expect.poll(async () => dist((await marks(page)).pin!, (await marks(page)).a!)).toBeGreaterThan(30);
-    m = await marks(page);
-    const mid = dist(m.pin!, m.a!);
-    expect(dist(m.pin!, m.b!), 'half way: about as far from B as from A').toBeLessThan(mid * 1.6);
+    // The pin is re-projected once per drawn frame and the software-GL browser draws about one a second, so it may show the first key's quarter
+    // for a while: wait until it shows the half (it was read after "moved more than 30 px", which a quarter already is, and failed under load).
+    await expect
+      .poll(async () => {
+        const k = await marks(page);
+        return k.pin && k.a && k.b ? dist(k.pin, k.b) / Math.max(1, dist(k.pin, k.a)) : 999;
+      }, { message: 'half way: about as far from B as from A' })
+      .toBeLessThan(1.6);
     for (let i = 0; i < 2; i++) await page.keyboard.press('Shift+ArrowRight');
     await expect.poll(async () => dist((await marks(page)).pin!, (await marks(page)).b!)).toBeLessThan(4);
     for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown'); // a lattice step down each: the reading changes, the pin does not leave the line
@@ -370,7 +373,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     // the time-stepped air has a temperature clause
     if (!fastTier) {
       await press(page, canvas, 0.5, 0.25);
-      await expect(text).toContainText(/warmer|cooler|same temperature/);
+      await expect(text).toContainText(/warmer|cooler|average temperature/);
       await clear.click();
     }
   });
@@ -638,7 +641,7 @@ test('fast tier: place, presets, chips with Temp and Smoke off, probe, cells, fo
     await page.getByTestId('slice-chip-theta').click();
     await expect(canvasOf(page)).toHaveAttribute('data-field', 'theta');
     await expect.poll(async () => (await sliceOf(page))?.field).toBe('theta');
-    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the area/);
+    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the average of the slice at that height/);
     await page.getByTestId('air-close').click();
   });
 });

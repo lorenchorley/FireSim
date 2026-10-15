@@ -68,15 +68,21 @@ export class LatticeStencil {
 }
 
 /**
- * True when the point p = [s, z] lies inside the slice and its nearest lattice point is valid air. This is the test a streak uses
- * to know it has left the air (the ground, the model's top, either end of the line).
+ * True when the point p = [s, z] lies inside the slice, its nearest lattice point is valid air and it is above the 10 m ground
+ * under it (the line the filled ground is drawn with). This is the test a streak uses to know it has left the air (the ground,
+ * the model's top, either end of the line). The second condition matters where the model's own ground is lower than the 10 m
+ * ground (a crag or cliff the model smooths away): that air is valid in the model but the panel draws solid ground over it.
  */
 export function inValidAir(d: SliceData, p: Float64Array): boolean {
   const s = p[0]!;
   const z = p[1]!;
   const length = d.line.length;
   if (!(s >= 0 && s <= length && z >= d.zMin && z <= d.zMax)) return false;
-  const c = length > 0 ? Math.round((s / length) * (d.columns - 1)) : 0;
+  const fc = length > 0 ? (s / length) * (d.columns - 1) : 0;
+  const c = Math.round(fc);
   const r = d.zMax > d.zMin ? Math.round(((z - d.zMin) / (d.zMax - d.zMin)) * (d.rows - 1)) : 0;
-  return d.valid[r * d.columns + c] === 1;
+  if (d.valid[r * d.columns + c] !== 1) return false;
+  const c0 = Math.max(0, Math.min(Math.floor(fc), d.columns - 2));
+  const c1 = Math.min(c0 + 1, d.columns - 1);
+  return z >= d.ground[c0]! + (d.ground[c1]! - d.ground[c0]!) * (fc - c0);
 }

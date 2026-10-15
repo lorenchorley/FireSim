@@ -55,6 +55,22 @@ describe('createFlow and seedFlow', () => {
     expect(high).toBeGreaterThan(15);
   });
 
+  it('keeps out of the 10 m ground where the model\'s own ground is lower (a cliff it smooths away): the filled ground is drawn over that air', () => {
+    // The 10 m ground is at 500 m; the model's air starts 120 m lower. Lattice rows every 50 m: 400 and 450 are valid cells that lie inside the drawn ground.
+    const d = makeSliceData({ columns: 81, rows: 41, a: [0, 0], b: [4000, 0], zMin: 0, zMax: 2000, ground: () => 500, modelGround: () => 380, wind: () => [10, 0, 0] });
+    expect(d.valid[8 * 81 + 40], 'row 8 (400 m) is valid air of the model').toBe(1);
+    const f = createFlow(300, 5);
+    seedFlow(f, d);
+    for (let step = 0; step < 120; step++) {
+      for (let i = 0; i < f.count; i++) expect(f.z[i]!, `step ${step} particle ${i} at ${f.s[i]}, ${f.z[i]}`).toBeGreaterThanOrEqual(500);
+      stepFlow(f, d, 1 / 24, { exaggeration: 1, timeScale: 40, maxAgeS: 6 });
+    }
+    // and the static arrows of reduced motion are not laid inside it either
+    const a = flowArrows(d, 8, 40, 1);
+    expect(a.count).toBeGreaterThan(50);
+    for (let i = 0; i < a.count; i++) expect(a.z[i]!).toBeGreaterThanOrEqual(500);
+  });
+
   it('finds air in a slice that is mostly ground (the fallback scan)', () => {
     const d = makeSliceData({ columns: 60, rows: 40, zMin: 0, zMax: 2000, ground: () => 1990 }); // only the top row is air
     const f = createFlow(50, 1);
