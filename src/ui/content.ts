@@ -67,7 +67,7 @@ export interface HelpStep {
 export const HELP_STEPS: readonly HelpStep[] = [
   {
     label: 'Tools',
-    text: 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers and What if. Tap the map for “Why here?” without choosing anything. Tap an icon to ask about it: the panel then starts with the icon as drawn on the map and its name, and the ring jumps onto it. Tap the ground beside an icon and there is no icon row. The words of the icons are in the Glossary, under Map icons.',
+    text: 'the Tools button at the bottom of the map opens Why here?, Fire, Fuel, Wind, Layers, What if and Air slices. Tap the map for “Why here?” without choosing anything. Tap an icon to ask about it: the panel then starts with the icon as drawn on the map and its name, and the ring jumps onto it. Tap the ground beside an icon and there is no icon row. The words of the icons are in the Glossary, under Map icons.',
   },
   { label: 'Fire', text: 'tap the map (or use the crosshair) to mark where the fire is; draw a line for a fire edge.' },
   { label: 'Play', text: 'press the blue Play button and pick a speed on the chip beside it; drag or tap the timeline to jump to any time.' },
@@ -87,6 +87,10 @@ export const HELP_STEPS: readonly HelpStep[] = [
     text: 'choose the map type, switch roads, fire trails, homes, residential areas, names and trees on or off one by one, or colour the ground by one measurement (a heat map). After dark, Night lighting (under Map type) can light the ground, trees and roads so the terrain stays easy to read. Tap (i) on a row to learn what it shows and where the data come from. Your choices are remembered.',
   },
   { label: 'What if', text: 'switch physics on or off and compare.' },
+  {
+    label: 'Air slices',
+    text: 'open Tools, then Air slices, for a side view of the air along a line. Tap “Set start (A)”, slide the map until the cross is over the spot and tap “Place A here”, then do the same for the end (B). Or open Presets and tap “Along the wind”, “Across the wind”, “Up the slope” or “Me to fire”. Tap or drag on the picture to read the air at that point, and use the chips to colour it by Speed, Along, Up/down, Across, Temp or Smoke. It works on every run: on the fast model it shows the diagnosed wind, and Temp and Smoke wait for the 3-D atmosphere. Back drops a line you are placing first, then closes the tool. It only reads the air and never changes the fire.',
+  },
   { label: 'Where am I', text: '“Why here?” also names the nearest road and fire trail, how many homes are close and what the ground is like.' },
   { label: 'Data', text: 'the line at the bottom of the map credits the data you see; tap it (or open the menu) for the size, source and date of every data set.' },
   { label: 'How it works', text: 'the menu also has “How this simulation works”: what is 2-D and what is 3-D, how fine the grids are and how often they are updated.' },
@@ -251,7 +255,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: '2-D and 3-D',
     short: 'What the model works out in each',
-    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is 3-D on the standard and high settings, and a 2-D surface wind on the fast one (the fire comes out a little different). Auto, the usual choice, uses the 3-D air unless a short timing test when the run starts finds this phone far too slow for it. “How this simulation works” in the main menu shows what your run is using and why.',
+    body: 'The fire spreads in 2-D, along the ground. Embers are tracked in 3-D. The air above is stepped through time in 3-D on the standard and high settings. The fast one has no time-stepped air: it fits the forecast wind to the terrain (the diagnosed wind) and the fire feels a 2-D surface wind built from it, so the fire comes out a little different. Auto, the usual choice, uses the 3-D air unless a short timing test when the run starts finds this phone far too slow for it. “How this simulation works” in the main menu shows what your run is using and why.',
   },
   {
     term: 'Picture quality',
@@ -272,6 +276,46 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Simulation debug statistics',
     short: 'Speed, memory and what this phone can do',
     body: 'A page of measurements for anyone who wants to see how the simulation is doing on this phone: how fast it computes and how that changed, where the time goes, memory, the picture’s frame rate and what this phone can do. Open the main menu and tap Simulation debug statistics, directly under Settings (it is also in Settings, under Data and transparency, and in Setup, where the phone facts work before any run). Tap “Copy as text” to copy the whole page, ready to paste into a message. Nothing is sent anywhere: the copy has no coordinates and no identifiers, and a place you chose yourself is only called a custom place. The numbers are measured on this phone and update every second while the page is open. Where a phone’s browser hides its model or Android version, the page says “Hidden by the WebView” instead of guessing.',
+  },
+  {
+    term: 'Air slices',
+    short: 'A side view of the air along a line',
+    body: 'In Tools. It cuts the air along a line you choose and shows it from the side, with height up the picture and distance along the line from A on the left to B on the right. Set A and B with the cross, or open Presets: “Along the wind”, “Across the wind”, “Up the slope” (A downhill, B uphill) or “Me to fire”, which needs your position inside the model area. A preset is a line through the fire, or through the middle of the map when there is no fire yet, about 3 km each way, and it follows the wind and the fire while the run plays. Placing a line also switches on the same slice in the 3-D view, as a curtain standing over the map; Layers can switch it off. The chips colour the slice by Speed, Along, Up/down, Across, Temp or Smoke. The four wind chips work on every run, and Temp and Smoke need the 3-D atmosphere. It only reads the air, so it never changes the fire.',
+  },
+  {
+    term: 'Side view',
+    short: 'The air along a line, seen from the side',
+    body: 'The picture in the Air slices panel. A is always at the left and B at the right. Heights are metres above sea level, drawn at true scale times the Vertical exaggeration set in Layers; a tag on the height axis says “True scale” or, for example, “Height ×1.5”, and if the picture has to be squeezed to fit, it says the scale really drawn. The filled ground is the 10 m terrain data. The dashed line is the ground as the model itself sees it, which is smoother, so cliffs it smooths away show only in the filled ground. Streaks drift with the air in the plane of the slice, so the flow over a ridge and any rising or sinking air can be seen moving; if the phone is set to reduce motion, still arrows are drawn instead. The picture follows playback. Its footer says what kind of air it shows, how fine the model grid is and when the air is from.',
+  },
+  {
+    term: 'Diagnosed wind',
+    short: 'The fast model’s wind, fitted to the terrain',
+    body: 'What the fast model has in place of time-stepped 3-D air. It takes the forecast wind and fits it to the terrain, the way hills bend, funnel and slow it, once for each weather record and blended in time between two of them. So it shows terrain effects only: no fire plume, no cold air draining down the valleys, no sun-driven slope winds, no temperature and no smoke, and at night or in a valley the wind near the ground can be quite different. The Air slices tool and the wind speed map work with it and say so: the footer reads “Diagnosed wind: terrain effects only”. The 3-D atmosphere adds the rest. “Use the 3-D atmosphere”, in Layers or in Air slices, switches a run over; it is computed again from the last checkpoint, up to half an hour of fire ago.',
+  },
+  {
+    term: 'Air from',
+    short: 'How old the air in a slice is',
+    body: 'The footer of the side view says when the air it shows was made, for example “air from 11:25”. That is the simulation’s own clock, the one on the screen, not the time of day on your phone. It is usually the time you are looking at. When you jump back, the picture is put together from the nearest saved air at or before that time (saved about every 5 minutes), so the air can be older than the fire you see. Past 90 seconds the footer says how much older, for example “air from 11:25 (4 min before the time shown)”.',
+  },
+  {
+    term: 'Model cells',
+    short: 'The blocks the air model really uses',
+    body: 'The air model keeps one value for each block of a grid (the footer gives the width of a block) and for each layer above the ground. The side view normally draws the air smoothed between them, which looks finer than the model is. Turn on “Show model cells” to draw one block for each cell the line passes through, with the model’s own value in it and nothing blended. What happens inside a block is not known to the model.',
+  },
+  {
+    term: 'Probe',
+    short: 'Reading the air at one point',
+    body: 'Tap or drag on the side view and a line of words says what the air is doing at that point, for example “Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area”. A pin on the map shows where along the line the point is. K is a kelvin: a difference of 3 K is a difference of 3 degrees Celsius. With the picture selected, the arrow keys move the probe and Escape clears it, and so does the small X button beside the words. Points inside the ground, below the model’s own ground or above its top get a short sentence that says so instead. The temperature part is only there on the 3-D atmosphere.',
+  },
+  {
+    term: 'Along and across',
+    short: 'Two ways to split the wind in a slice',
+    body: 'The Along and Across chips split the sideways wind into the part that runs with the line and the part that crosses it. Along is positive towards B and negative towards A. Across is positive towards the right of someone walking from A to B and negative towards the left. Both use one pair of colours, purple towards A or the left and green towards B or the right, with a pale middle where there is no wind in that direction. Up/down is the third part: air rising (warm colours) or sinking (cool colours), in metres per second. Speed is the sideways wind speed whichever way it blows, and does not count air going up or down. The wind is always named by where it comes from.',
+  },
+  {
+    term: 'Wind speed map',
+    short: 'The ground coloured by wind speed',
+    body: 'A heat map in Layers, under Fire and weather: the wind 10 m above the ground, place by place, in km/h. It works on the 3-D atmosphere and on the fast model too. On the fast model it shows the diagnosed wind, the forecast wind fitted to the terrain, without the night-time, slope-wind and fire effects that the fast model adds for the fire itself. Like the other fire and weather maps it needs a fire marked first.',
   },
   {
     term: 'Canopy height',
