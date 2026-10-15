@@ -490,7 +490,7 @@ export function modelFacts(summary: DatasetSummary | null | undefined, engine?: 
   if (a && isNum(a.nx) && isNum(a.ny) && isNum(a.dxM) && a.dxM > 0) {
     out.push(
       a.kind === 'diagnostic'
-        ? { key: 'Wind grid', value: `${fc(a.nx)} x ${fc(a.ny)} columns of ${formatMetres(a.dxM)}, ${a.nz} levels`, note: 'The fast mode fits the forecast wind to the terrain on this grid and uses only the wind at the surface: no air is simulated through time.' }
+        ? { key: 'Wind grid', value: `${fc(a.nx)} x ${fc(a.ny)} columns of ${formatMetres(a.dxM)}, ${a.nz} levels`, note: 'The fast mode fits the forecast wind to the terrain on this grid. The fire uses the wind at the surface and the fitted wind above it is kept for the pictures: no air is simulated through time.' }
         : { key: 'Atmosphere grid', value: `${fc(a.nx)} x ${fc(a.ny)} columns of ${formatMetres(a.dxM)}, ${a.nz} levels up from the ground`, note: 'The 3-D air flow is simulated through time on this grid.' },
     );
   } else if (isNum(m.atmosCellM)) out.push({ key: 'Atmosphere grid', value: `${formatMetres(m.atmosCellM)} cells${isNum(m.atmosLevels) ? `, ${m.atmosLevels} levels up from the ground` : ''}` });

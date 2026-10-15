@@ -230,14 +230,22 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await expect(page.getByTestId('overlay-arrival')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('cross-section').click();
   await expect(page.getByTestId('cross-section').getByRole('switch')).toBeChecked();
-  // If the engine is on the fast (surface-wind) tier (Auto keeps the 3-D air unless a machine is far too slow), switch this run to the 3-D atmosphere from the panel.
+  // If the engine is on the fast tier (Auto keeps the 3-D air unless a machine is far too slow), switch this run to the 3-D atmosphere from the panel.
   if (await page.getByTestId('need-3d').isVisible()) {
     await page.getByTestId('use-3d').click();
     await expect(page.getByTestId('need-3d')).toBeHidden({ timeout: 120_000 });
   }
+  // The fast tier's view has levels too (its diagnosed wind): the 3-D atmosphere is the view whose kind is 'prognostic'.
   await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __firesim: { session: { state: { get(): { snapshot: { atmosphere?: { nz: number } } } } } } }).__firesim.session.state.get().snapshot.atmosphere?.nz ?? 0), { timeout: 120_000 })
-    .toBeGreaterThan(0);
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const a = (window as unknown as { __firesim: { session: { state: { get(): { snapshot: { atmosphere?: { nz: number; kind?: string } } } } } } }).__firesim.session.state.get().snapshot.atmosphere;
+          return (a?.kind ?? ((a?.nz ?? 0) > 0 ? 'prognostic' : 'surface')) === 'prognostic';
+        }),
+      { timeout: 120_000 },
+    )
+    .toBe(true);
   await page.getByTestId('cs-view').click();
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
   await shot(page, '05-cross-section');

@@ -355,14 +355,14 @@ function gridsGroup(i: DebugStatsInput): StatGroup {
   const a = e.atmosphere;
   const f = e.fire;
   return G('grids', 'Grids', [
-    R('atmosphere', 'Atmosphere grid', `${a.nx} x ${a.ny} x ${a.nz} cells (${a.kind === '3d' ? 'time-stepped 3-D air' : 'a surface wind fitted to the terrain'})`),
+    R('atmosphere', 'Atmosphere grid', `${a.nx} x ${a.ny} x ${a.nz} cells (${a.kind === '3d' ? 'time-stepped 3-D air' : 'the forecast wind fitted to the terrain, not stepped through time'})`),
     R('spacing', 'Atmosphere spacing', metres(a.dxM)),
     R('first-layer', 'First layer thickness', metres(a.dzFirstM)),
     R('top', 'Model top above the lowest ground', metres(a.topM)),
     R('stretch', 'Level stretch ratio', fix(a.stretch, 2)),
     R('spun-up', '3-D spin-up', a.kind === '3d' ? (a.spunUp ? 'Finished' : 'Not finished') : 'Not used in this tier', undefined, true),
     R('upper-air', 'Upper air from', UPPER_AIR[a.upperAir]),
-    R('view-decimated', 'Air in the pictures', a.viewDecimated ? 'Halved for display' : 'Full grid'),
+    R('view-decimated', 'Air in the pictures', `${a.kind === '3d' ? 'Wind, temperature and smoke' : 'The fitted wind only (diagnosed)'}; ${a.viewDecimated ? 'halved for display' : 'full grid'}`),
     R('fire-grid', 'Fire grid', `${f.nx} x ${f.ny} cells, ${metres(f.cellM)} apart`),
     R('sub-step', 'Fire sub-step now', f.currentSubStepS === null ? 'No front moving' : sec(f.currentSubStepS), undefined, true),
   ]);

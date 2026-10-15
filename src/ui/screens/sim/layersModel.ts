@@ -13,6 +13,7 @@
  * why, source, resolution, dimension, availability), the data set behind each layer (from DatasetRecord.layer, the
  * builder's own link, else the data set it is worked out from), and plain words for the units.
  */
+import { airKind } from '../../../core/airView';
 import type { DatasetRecord } from '../../../core/datasets';
 import type { ScenarioData, SimSnapshot } from '../../../core/types';
 import {
@@ -270,8 +271,8 @@ export function layerScenarioOf(scenario: Pick<ScenarioData, 'terrain' | 'fuel' 
   const px = img?.model?.resolutionM ?? img?.native?.resolutionM;
   if (px !== undefined && Number.isFinite(px) && px > 0) sc.imageryCellSize = px;
   Object.assign(sc, layerFactsOfDatasets(scenario.datasets));
-  // The fast mode's wind diagnostic carries no 3-D volume (nz = 0): what is drawn for the smoke and the wind differs.
-  if (snapshot?.atmosphere) sc.atmosphere3d = (snapshot.atmosphere.nz ?? 0) > 0;
+  // The fast mode's air is the diagnosed wind (no temperature or smoke volume): what is drawn for the smoke and the wind differs.
+  if (snapshot?.atmosphere) sc.atmosphere3d = airKind(snapshot.atmosphere) === 'prognostic';
   return sc;
 }
 
