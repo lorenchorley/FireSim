@@ -90,13 +90,13 @@ describe('sliceLegend (one legend for every chip of the air slice)', () => {
     expect(sliceLegend('along', 'prognostic').entries.map((e) => e.label)).toEqual(['-90', '-60', '-30', '0', '+30', '+60', '+90']);
   });
 
-  it("the temperature legend says warmer or cooler than the slice's average at that height (what the number is against), not 'the area' and not 'vs surroundings'", () => {
+  it("the temperature legend says warmer or cooler than the average of the slice at that height (what the number is against), not 'the area' and not 'vs surroundings'", () => {
     const l = sliceLegend('theta', 'prognostic');
-    expect(l.title).toBe("Warmer or cooler than the slice's average at that height");
+    expect(l.title).toBe('Warmer or cooler than the average of the slice at that height');
     expect(l.title).toContain(SLICE_THETA_BASIS);
     expect(JSON.stringify(l)).not.toMatch(/vs surroundings/i);
     expect(JSON.stringify(l)).not.toMatch(/than the area/i);
-    expect(l.note).toMatch(/^Warmer or cooler than the slice's average at that height, not a real temperature\./);
+    expect(l.note).toMatch(/^Warmer or cooler than the average of the slice at that height, not a real temperature\./);
     expect(crossSectionLegend().title).toBe(l.title);
     // The chip's name (the panel's aria label, the picture's text alternative) says the same, so the three never disagree.
     const chip = SLICE_FIELDS.find((f) => f.id === 'theta')!;

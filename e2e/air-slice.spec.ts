@@ -340,7 +340,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await press(page, canvas, 0.3, 0.3);
     await expect(readout).toBeVisible();
     await expect(text).toContainText(/^(Wind about|Calm)/);
-    if (fastTier) await expect(text).not.toContainText(/warmer|cooler|same temperature/);
+    if (fastTier) await expect(text).not.toContainText(/warmer|cooler|average temperature/);
     await expect(page.locator('.annotations .ann-slice-probe')).toHaveCount(1);
     const first = await text.innerText();
     await press(page, canvas, 0.8, 0.45);
@@ -373,7 +373,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     // the time-stepped air has a temperature clause
     if (!fastTier) {
       await press(page, canvas, 0.5, 0.25);
-      await expect(text).toContainText(/warmer|cooler|same temperature/);
+      await expect(text).toContainText(/warmer|cooler|average temperature/);
       await clear.click();
     }
   });
@@ -641,7 +641,7 @@ test('fast tier: place, presets, chips with Temp and Smoke off, probe, cells, fo
     await page.getByTestId('slice-chip-theta').click();
     await expect(canvasOf(page)).toHaveAttribute('data-field', 'theta');
     await expect.poll(async () => (await sliceOf(page))?.field).toBe('theta');
-    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the slice's average at that height/);
+    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the average of the slice at that height/);
     await page.getByTestId('air-close').click();
   });
 });

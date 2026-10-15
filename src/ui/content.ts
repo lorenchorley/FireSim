@@ -305,7 +305,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'Probe',
     short: 'Reading the air at one point',
-    body: 'Tap or drag on the side view and a line of words says what the air is doing at that point, for example “Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the slice\'s average at that height”. A pin on the map shows where along the line the point is. K is a kelvin: a difference of 3 K is a difference of 3 degrees Celsius. With the picture selected, the arrow keys move the probe and Escape clears it, and so does the small X button beside the words. Points inside the ground, below the model’s own ground or above its top get a short sentence that says so instead. The temperature part is only there on the 3-D atmosphere.',
+    body: 'Tap or drag on the side view and a line of words says what the air is doing at that point, for example “Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average”. A pin on the map shows where along the line the point is. K is a kelvin: a difference of 3 K is a difference of 3 degrees Celsius. “Average” means the average of the slice at that height: the model’s air along the line that lies at about the same height above sea level. With the picture selected, the arrow keys move the probe and Escape clears it, and so does the small X button beside the words. Points inside the ground, below the model’s own ground or above its top get a short sentence that says so instead. The temperature part is only there on the 3-D atmosphere.',
   },
   {
     term: 'Along and across',

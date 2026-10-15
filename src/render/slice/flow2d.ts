@@ -88,11 +88,14 @@ function place(f: FlowParticles, i: number, d: SliceData): boolean {
   const n = d.columns * d.rows;
   draw(f);
   const start = Math.floor(rnd[0]! * n);
-  for (let q = 0; q < n; q++) {
-    const k = (start + q) % n;
-    if (d.valid[k] === 1) {
+  // A lattice point that is valid air and above the 10 m ground; failing that (a slice whose air all lies inside it) any valid one.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let q = 0; q < n; q++) {
+      const k = (start + q) % n;
+      if (d.valid[k] !== 1) continue;
       const s = ((k % d.columns) / Math.max(1, d.columns - 1)) * length;
       const z = d.zMin + (Math.floor(k / d.columns) / Math.max(1, d.rows - 1)) * span;
+      if (pass === 0 && z < d.ground[k % d.columns]!) continue;
       f.s[i] = s;
       f.z[i] = z;
       f.ps[i] = s;
