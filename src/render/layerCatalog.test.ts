@@ -184,20 +184,25 @@ describe('plain wording', () => {
     for (const l of LAYER_CATALOG) for (const sc of [undefined, interpolated]) expect(`${l.source(sc)} ${l.resolution(sc)}`, l.id).not.toMatch(/LiDAR/);
   });
 
-  it('the smoke and the wind streaks are 3-D volumes only with the 3-D atmosphere', () => {
+  it('the smoke is a 3-D volume only with the 3-D atmosphere; the wind streaks read a 3-D wind on both tiers (the fast tier publishes its diagnosed wind through the air, plan 7.3)', () => {
     const fast = { atmosphere3d: false, atmosphereCellSize: 133 };
     const air = { atmosphere3d: true, atmosphereCellSize: 133 };
     expect(layerDimension(info('smoke'), fast)).toBe('3-D objects');
-    expect(layerDimension(info('wind'), fast)).toBe('3-D objects');
     expect(layerDimension(info('smoke'), air)).toBe('3-D volume');
-    expect(layerDimension(info('wind'), air)).toBe('3-D volume');
     expect(layerDimension(info('smoke'))).toBe('3-D volume'); // not known yet: described for the 3-D air
+    expect(layerDimension(info('wind'), fast)).toBe('3-D volume');
+    expect(layerDimension(info('wind'), air)).toBe('3-D volume');
+    expect(layerDimension(info('wind'))).toBe('3-D volume');
     expect(info('smoke').resolution(fast)).toMatch(/one drawn column.*no smoke field/i);
     expect(info('smoke').source(fast)).toMatch(/does not simulate smoke/);
-    expect(info('wind').resolution(fast)).toBe('133 m grid, surface wind only, drawn as streaks');
+    expect(info('wind').resolution(fast)).toBe('133 m grid of wind cells (the diagnosed wind), drawn as streaks');
+    expect(info('wind').resolution({ atmosphere3d: false })).toBe('Wind cells of the diagnosed wind, drawn as streaks');
     expect(info('wind').resolution(air)).toBe('133 m grid of atmosphere cells, drawn as streaks');
+    // The fast mode's streaks are the diagnosed wind, and the text says what that leaves out: not a "surface wind only", not "bent around".
+    expect(info('wind').source(fast)).toMatch(/diagnosed wind: the forecast wind fitted to the terrain.*terrain effects only, so there is no plume in it/);
+    for (const text of [info('wind').source(fast), info('wind').resolution(fast), info('wind').resolution({ atmosphere3d: false })]) expect(text).not.toMatch(/surface wind|surface field|[—–]/);
     expect(info('crossSection').dimension).toBe('2-D slice');
-    for (const l of LAYER_CATALOG) if (l.id !== 'smoke' && l.id !== 'wind') expect(layerDimension(l, fast), l.id).toBe(l.dimension);
+    for (const l of LAYER_CATALOG) if (l.id !== 'smoke') expect(layerDimension(l, fast), l.id).toBe(l.dimension);
   });
 
   it('layerFactsOfDatasets reads the ground and canopy resolutions of the records, and ignores made-up ground and a missing canopy map', () => {
@@ -272,6 +277,16 @@ describe('availability', () => {
     expect(info('windSpeed').source({ atmosphere3d: true })).toMatch(/3-D atmosphere model/);
     expect(info('windSpeed').resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toMatch(/^133 m wind cells, fitted again for each weather record/);
     expect(info('windSpeed').resolution({ atmosphereCellSize: 150 })).toMatch(/^150 m atmosphere cells/);
+  });
+
+  it('wind speed says it is the air model’s wind, not always the wind the fire feels: on a calm night the two can differ a lot (measured by the 0.4.0 verifier, plan 18.4)', () => {
+    const ws = info('windSpeed');
+    expect(ws.why).toBe('Wind is the biggest driver of a fire, and ridges and gaps funnel it hardest; on a calm night the wind the fire feels can differ a lot from this map.');
+    // The map's own legend says the same, and says what the colours are (the model's 10 m wind, fitted to the terrain) on either tier.
+    const note = legendFor('windSpeed')!.note!;
+    expect(note).toContain('this map shows the model’s wind about 10 m above the ground, fitted to the terrain');
+    expect(note).toContain('on a calm night can differ a lot from the wind the fire feels');
+    for (const text of [ws.why, note]) expect(text).not.toMatch(/[—–]/);
   });
 
   it('places layers need their data and name what is missing', () => {

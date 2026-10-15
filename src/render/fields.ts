@@ -228,7 +228,7 @@ export interface OverlaySources {
   layers?: Record<string, Float32Array> | null;
   /** Roads, fire trails and home addresses, for the 'homeDensity' and 'roadAccess' heat maps (NO_DATA everywhere without it). */
   context?: ContextLayers | null;
-  /** The latest snapshot's atmosphere view, for the 'windSpeed' heat map (null when the 3-D atmosphere is off: no field). */
+  /** The latest snapshot's atmosphere view, for the 'windSpeed' heat map: its 10 m wind (`surfaceU/V`), published by both tiers (null before the first snapshot: no field). */
   atmosphere?: AtmosphereView | null;
 }
 

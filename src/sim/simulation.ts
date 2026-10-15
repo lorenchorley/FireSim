@@ -5,7 +5,8 @@
  * Lifecycle
  *   new Simulation(scenario)  → terrain features, fuel (+ edits at t ≤ 0), stable-night and moisture spin-up, fire model,
  *                              atmosphere of the build tier (auto → standard), explain engine, forecast insights and a
- *                              t0 snapshot (u_bg wind, moisture, no 3-D volume) are available at once.
+ *                              t0 snapshot (u_bg wind, moisture, the air view as it stands: the fast tier's diagnosed
+ *                              3-D wind, or the 3-D tiers' air before its spin-up) are available at once.
  *   spinUp(deadline)         → 3-D tiers: 900 s of atmosphere steps with the t0 ambient, surface heating and the cold
  *                              pool; tier 'auto' times the first 30 steps and switches to the fast tier only if the 3-D air
  *                              is hopelessly slow (the one wall-clock decision, §12.6, plan §6.2).

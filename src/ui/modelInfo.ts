@@ -944,7 +944,7 @@ export const GLOSSARY: readonly { term: string; gloss: string }[] = [
   { term: 'Head, flank, back', gloss: 'The fastest part of the fire front, its sides, and the part that backs into the wind or downhill.' },
   { term: 'Time step, sub-step', gloss: 'How far the clock jumps between two calculations; a sub-step is a smaller jump inside one step.' },
   { term: 'CFL limit', gloss: 'A step must be short enough that nothing moves more than about one cell in it; faster fire or wind means shorter steps.' },
-  { term: 'Tier', gloss: 'How much of the air the phone simulates: Fast (a fitted surface wind), Standard (3-D air) or High (finer 3-D air). Auto: decided when the run starts, from a short timing test on this phone.' },
+  { term: 'Tier', gloss: 'How much of the air the phone simulates: Fast (the forecast wind fitted to the terrain), Standard (3-D air) or High (finer 3-D air). Auto: decided when the run starts, from a short timing test on this phone.' },
   { term: 'Mass-consistent wind', gloss: 'A wind adjusted so that no air piles up or disappears: it flows around hills and through gaps.' },
   { term: 'Boussinesq flow', gloss: 'A standard simplification of the equations of moving air, good for winds near the ground.' },
   { term: 'Terrain-following grid', gloss: 'Air levels that follow the shape of the ground near the surface and flatten out higher up.' },

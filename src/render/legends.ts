@@ -675,7 +675,7 @@ function dataLegend(overlay: DataOverlayKind, ctx: LegendContext): LegendSpec {
         WIND_SPEED_RAMP,
         ['0', '10', '20', '30', '40', '50', '60+'],
         ['calm', 'light breeze', 'moderate breeze', 'fresh breeze', 'strong breeze', 'near gale', 'gale'],
-        'Wind is the biggest driver of a fire: it speeds the fire up sharply, and ridges and gaps funnel it hardest.',
+        'Wind is the biggest driver of a fire and ridges and gaps funnel it hardest; this map shows the model’s wind about 10 m above the ground, fitted to the terrain, which on a calm night can differ a lot from the wind the fire feels.',
       );
   }
 }

@@ -118,7 +118,7 @@ test('Data sets and the model card tell the truth about the tier, the memory and
   if (e.tier === 'fast') {
     expect(text).toContain('Smoke and plume'); // the glance row exists
     expect(text).toContain('One drawn column of puffs above the most intense part of the fire; there is no smoke field');
-    expect(text).toContain('surface wind only');
+    expect(text).toContain('grid of wind cells (the diagnosed wind)');
     expect(text).not.toContain('133 m atmosphere cells, drawn as soft puffs');
   } else {
     expect(text).not.toContain('there is no smoke field');
