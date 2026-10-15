@@ -111,14 +111,31 @@ function cellsAgainstEngine(d: SliceData, view: AtmosphereView, l: SectionLine, 
     ['up', (_u, _v, w) => w],
     ['smoke', (_u, _v, _w, _th, sm) => sm],
   ];
-  const mean: number[] = [];
+  // The temperature reference: the slice's row mean (raw anomaly = stored anomaly + the mean of its row) at the height of the cell's centre.
+  const rowMean: number[] = [];
   if (native.theta) {
-    for (let m = 0; m < nz; m++) {
-      let sum = 0;
-      for (let q = 0; q < c.count; q++) sum += native.theta[m * plane + c.column[q]!]!;
-      mean.push(sum / c.count);
+    const s = new AtmosphereSampler(view, 0, null);
+    for (let r = 0; r < d.rows; r++) {
+      let m = NaN;
+      for (let col = 0; col < d.columns && Number.isNaN(m); col++) {
+        const k = r * d.columns + col;
+        if (!d.valid[k]) continue;
+        const sm = (col / (d.columns - 1)) * l.length;
+        m = s.theta(l.a[0] + l.dir[0] * sm, l.a[1] + l.dir[1] * sm, zOf(d, r)) - d.values.theta[k]!;
+      }
+      rowMean.push(m);
     }
   }
+  const meanAt = (z: number): number => {
+    const f = (z - d.zMin) / ((d.zMax - d.zMin) / (d.rows - 1));
+    const r0 = Math.max(0, Math.min(d.rows - 1, Math.floor(f)));
+    const r1 = Math.min(d.rows - 1, r0 + 1);
+    const a = rowMean[r0]!;
+    const b = rowMean[r1]!;
+    if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : b;
+    if (Number.isNaN(b)) return a;
+    return a + (b - a) * Math.max(0, Math.min(1, f - r0));
+  };
   for (let q = 0; q < c.count; q++) {
     for (let m = 0; m < nz; m++) {
       const src = m * plane + c.column[q]!;
@@ -126,7 +143,8 @@ function cellsAgainstEngine(d: SliceData, view: AtmosphereView, l: SectionLine, 
       const th = native.theta ? native.theta[src]! : 0;
       const sm = native.smoke ? native.smoke[src]! : 0;
       for (const [id, f] of fields) expect(c.values[id][q * nz + m], `${id} column ${q} level ${m}`).toBeCloseTo(f(u, v, w, th, sm), 4);
-      expect(c.values.theta[q * nz + m], `theta column ${q} level ${m}`).toBeCloseTo(native.theta ? th - mean[m]! : 0, 4);
+      const zc = (c.zEdges[q * (nz + 1) + m]! + c.zEdges[q * (nz + 1) + m + 1]!) / 2;
+      expect(c.values.theta[q * nz + m], `theta column ${q} level ${m}`).toBeCloseTo(native.theta ? th - meanAt(zc) : 0, 3);
     }
   }
   // And the view the sampler read holds the same numbers as the engine's state (the published copy is the native array).

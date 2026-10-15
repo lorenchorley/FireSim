@@ -2,7 +2,9 @@
  * Reading a sampled slice between its lattice points (pure; shared by the probe and the flow streaks). A point (s, z) of the
  * slice sits in a cell of four lattice points; the bilinear weights are multiplied by the validity mask and renormalised, so a
  * point just above the model's ground is not pulled towards the zeros an invalid cell holds (the same near-ground bias the
- * terrain-following view exists to remove). The stencil is a reused object: a lookup allocates nothing.
+ * terrain-following view exists to remove). The stencil is a reused object, and the point to look up is passed in a Float64Array
+ * [s, z] rather than as two numbers, which V8 would box (16 bytes each) unless it inlined the call (spike S3, the sampler's
+ * `windP`): a lookup allocates nothing.
  */
 import type { SliceData } from './types';
 
@@ -20,8 +22,10 @@ export class LatticeStencil {
   /** The share of the bilinear weight that fell on valid cells: 1 inside the model's air, 0 when no corner is valid. */
   coverage = 0;
 
-  /** Find the stencil of (s, z): s metres from A, z metres ASL, clamped into the slice. */
-  locate(d: SliceData, s: number, z: number): void {
+  /** Find the stencil of the point p = [s, z]: s metres from A, z metres ASL, clamped into the slice. */
+  locate(d: SliceData, p: Float64Array): void {
+    const s = p[0]!;
+    const z = p[1]!;
     const cols = d.columns;
     const rows = d.rows;
     const length = d.line.length;
@@ -64,10 +68,12 @@ export class LatticeStencil {
 }
 
 /**
- * True when (s, z) lies inside the slice and its nearest lattice point is valid air. This is the test a streak uses to know it
- * has left the air (the ground, the model's top, either end of the line).
+ * True when the point p = [s, z] lies inside the slice and its nearest lattice point is valid air. This is the test a streak uses
+ * to know it has left the air (the ground, the model's top, either end of the line).
  */
-export function inValidAir(d: SliceData, s: number, z: number): boolean {
+export function inValidAir(d: SliceData, p: Float64Array): boolean {
+  const s = p[0]!;
+  const z = p[1]!;
   const length = d.line.length;
   if (!(s >= 0 && s <= length && z >= d.zMin && z <= d.zMax)) return false;
   const c = length > 0 ? Math.round((s / length) * (d.columns - 1)) : 0;

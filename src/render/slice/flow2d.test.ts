@@ -4,10 +4,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createFlow, flowArrows, seedFlow, stepFlow, type FlowOptions, type FlowParticles } from './flow2d';
-import { inValidAir } from './lattice';
+import { inValidAir as inValidAirP } from './lattice';
 import { makeSliceData } from './testing';
 import type { SliceData } from './types';
 
+const inValidAir = (d: SliceData, s: number, z: number): boolean => inValidAirP(d, Float64Array.of(s, z));
 const OPTS: FlowOptions = { exaggeration: 1, timeScale: 1, maxAgeS: 1e9 };
 const bytes = (a: Float32Array): string => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('hex');
 const state = (f: FlowParticles): string => [f.s, f.z, f.ps, f.pz, f.age].map(bytes).join('|') + `|${f.seed}`;

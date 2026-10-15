@@ -5,7 +5,11 @@
 import { describe, expect, it } from 'vitest';
 import { windToUV } from '../../core/units';
 import { moveProbe, probeAt, probeSentence, windFromDeg } from './probe';
-import { makeSliceData } from './testing';
+import { AtmosphereSampler, type SectionLine } from '../atmosphereSampler';
+import { Rng } from '../../core/rng';
+import { makeGridSpec } from '../../core/grid';
+import { sampleSlice } from './sliceField';
+import { makeAirView, makeSliceData } from './testing';
 import type { SliceProbeReading } from './types';
 
 const ms = (kmh: number): number => kmh / 3.6;
@@ -317,5 +321,52 @@ describe('probeSentence', () => {
     const d = makeSliceData({ a: [0, 0], b: [3000, 0], wind: () => [ms(28), ms(5), 1], theta: (s) => (s > 1500 ? 2 : 0), ground: () => 100 });
     const s = probeSentence(probeAt(d, { s: 2600, z: 400 }), kmh);
     expect(s).toMatch(/^Wind about 28 km\/h from the west, along the line 28 km\/h towards B, across the line 5 km\/h to the left, up 1(\.0)? m\/s, 300 m above ground, \d(\.\d)? K (warmer|cooler) than the area$/);
+  });
+});
+
+describe('probeAt on a slice the sampler made', () => {
+  // A gentle slope (the four columns around a point have about the same ground) and fields linear in x, y and height: bilinear
+  // reads of the stored lattice are then exact, so the probe equals the analytic field anywhere in the model's air.
+  const ground = (x: number): number => 500 + 0.05 * x;
+  const fu = (x: number, y: number, z: number): number => 3 + 0.004 * (z - 500) + 0.0008 * x - 0.0003 * y;
+  const fv = (x: number, y: number, z: number): number => -1 + 0.002 * (z - 500) - 0.0004 * x + 0.0006 * y;
+  const grid = makeGridSpec({ lat: -33.7, lon: 150.3 }, 31 * 200, 200);
+  const view = makeAirView({ grid, groundAt: ground, u: fu, v: fv, w: (x) => 0.0002 * x, theta: (x) => x / 1000, smoke: (_x, y) => 2 + y / 1000 });
+  const sampler = new AtmosphereSampler(view, 0, null);
+  const length = Math.hypot(4400, 2100);
+  const l: SectionLine = { a: [-2200, -1000], b: [2200, 1100], dir: [4400 / length, 2100 / length], length };
+  const d = sampleSlice(sampler, { heightAt: (x) => ground(x) - 3 }, { line: l, shownTime: 0 })!;
+
+  it('reads the analytic wind at random points between the lattice points, and the pin is on the line', () => {
+    const rng = new Rng(9);
+    let worst = 0;
+    let n = 0;
+    for (let q = 0; q < 400; q++) {
+      const s = rng.range(0, length);
+      const x = l.a[0] + l.dir[0] * s;
+      const y = l.a[1] + l.dir[1] * s;
+      const z = ground(x) + rng.range(250, 1900);
+      if (z > d.zMax - 5 || z > sampler.top - 450) continue;
+      const r = probeAt(d, { s, z });
+      expect(r.where).toBe('air');
+      expect([r.x, r.y]).toEqual([x, y].map((v) => expect.closeTo(v, 6)));
+      const u = fu(x, y, z);
+      const v = fv(x, y, z);
+      worst = Math.max(worst, Math.abs(r.along! - (u * l.dir[0] + v * l.dir[1])), Math.abs(r.across! - (u * l.dir[1] - v * l.dir[0])), Math.abs(r.up! - 0.0002 * x));
+      expect(r.fromDeg).toBeCloseTo(windFromDeg(u, v), 1);
+      n++;
+    }
+    expect(n).toBeGreaterThan(300);
+    expect(worst).toBeLessThan(2e-3);
+  });
+
+  it('says what it reads, end to end, in both units', () => {
+    const r = probeAt(d, { s: length / 2, z: ground(0) + 600 });
+    const kmh = probeSentence(r, { units: 'kmh', kind: 'prognostic' });
+    const ms = probeSentence(r, { units: 'ms', kind: 'prognostic' });
+    expect(kmh).toMatch(/^Wind about \d+ km\/h from the [a-z-]+, /);
+    expect(ms).toMatch(/^Wind about \d+(\.\d)? m\/s from the [a-z-]+, /);
+    expect(kmh).toContain('600 m above ground');
+    expect(kmh).not.toContain('NaN');
   });
 });

@@ -41,13 +41,18 @@ const PLACE_TRIES = 24;
 
 const stencil = new LatticeStencil();
 const vel = new Float64Array(2);
+/** The point being looked up, [s, z]: positions go through an array, not through number arguments (see lattice.ts). */
+const at = new Float64Array(2);
 
-/** A mulberry32 draw in [0, 1), advancing `f.seed`. */
-function next(f: FlowParticles): number {
+/** The last draw of `draw`, in [0, 1): handed over in an array so that no boxed double is returned. */
+const rnd = new Float64Array(1);
+
+/** A mulberry32 draw, advancing `f.seed`, into `rnd[0]` (in [0, 1)). */
+function draw(f: FlowParticles): void {
   let t = (f.seed = (f.seed + 0x6d2b79f5) | 0);
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  rnd[0] = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
 export function createFlow(count: number, seed = 1): FlowParticles {
@@ -68,18 +73,21 @@ function place(f: FlowParticles, i: number, d: SliceData): boolean {
   const length = d.line.length;
   const span = d.zMax - d.zMin;
   for (let q = 0; q < PLACE_TRIES; q++) {
-    const s = next(f) * length;
-    const z = d.zMin + next(f) * span;
-    if (inValidAir(d, s, z)) {
-      f.s[i] = s;
-      f.z[i] = z;
-      f.ps[i] = s;
-      f.pz[i] = z;
+    draw(f);
+    at[0] = rnd[0]! * length;
+    draw(f);
+    at[1] = d.zMin + rnd[0]! * span;
+    if (inValidAir(d, at)) {
+      f.s[i] = at[0]!;
+      f.z[i] = at[1]!;
+      f.ps[i] = at[0]!;
+      f.pz[i] = at[1]!;
       return true;
     }
   }
   const n = d.columns * d.rows;
-  const start = Math.floor(next(f) * n);
+  draw(f);
+  const start = Math.floor(rnd[0]! * n);
   for (let q = 0; q < n; q++) {
     const k = (start + q) % n;
     if (d.valid[k] === 1) {
@@ -103,13 +111,14 @@ function place(f: FlowParticles, i: number, d: SliceData): boolean {
 export function seedFlow(f: FlowParticles, data: SliceData): void {
   for (let i = 0; i < f.count; i++) {
     place(f, i, data);
-    f.age[i] = next(f) * SEED_AGE_SPREAD_S;
+    draw(f);
+    f.age[i] = rnd[0]! * SEED_AGE_SPREAD_S;
   }
 }
 
-/** The along-line wind and the vertical wind (m/s) at (s, z) into vel[0], vel[1]; false where no valid air surrounds the point. */
-function velocityAt(d: SliceData, s: number, z: number): boolean {
-  stencil.locate(d, s, z);
+/** The along-line wind and the vertical wind (m/s) at `at` = [s, z] into vel[0], vel[1]; false where no valid air surrounds the point. */
+function velocityAt(d: SliceData): boolean {
+  stencil.locate(d, at);
   if (stencil.coverage <= 1e-9) return false;
   vel[0] = stencil.value(d.values.along);
   vel[1] = stencil.value(d.values.up);
@@ -132,20 +141,24 @@ export function stepFlow(f: FlowParticles, data: SliceData, dtS: number, opts: F
     f.pz[i] = z0;
     f.age[i] = f.age[i]! + dtS;
     let moved = false;
-    if (f.age[i]! <= opts.maxAgeS && velocityAt(data, s0, z0)) {
+    at[0] = s0;
+    at[1] = z0;
+    if (f.age[i]! <= opts.maxAgeS && velocityAt(data)) {
       const u1 = vel[0]!;
       const w1 = vel[1]! * ex;
       let u = u1;
       let w = w1;
-      if (velocityAt(data, s0 + 0.5 * dt * u1, z0 + 0.5 * dt * w1)) {
+      at[0] = s0 + 0.5 * dt * u1;
+      at[1] = z0 + 0.5 * dt * w1;
+      if (velocityAt(data)) {
         u = vel[0]!;
         w = vel[1]! * ex;
       }
-      const s1 = s0 + dt * u;
-      const z1 = z0 + dt * w;
-      if (inValidAir(data, s1, z1)) {
-        f.s[i] = s1;
-        f.z[i] = z1;
+      at[0] = s0 + dt * u;
+      at[1] = z0 + dt * w;
+      if (inValidAir(data, at)) {
+        f.s[i] = at[0]!;
+        f.z[i] = at[1]!;
         moved = true;
       }
     }
@@ -179,7 +192,9 @@ export function flowArrows(
     const z = data.zMin + ((r + 0.5) / nr) * span;
     for (let c = 0; c < nc; c++) {
       const s = ((c + 0.5) / nc) * length;
-      if (!inValidAir(data, s, z) || !velocityAt(data, s, z)) continue;
+      at[0] = s;
+      at[1] = z;
+      if (!inValidAir(data, at) || !velocityAt(data)) continue;
       const along = vel[0]!;
       const up = vel[1]!;
       out.s[n] = s;

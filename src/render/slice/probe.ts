@@ -20,6 +20,7 @@ const SMALL_MS = 0.2;
 const LEVEL_MS = 0.05;
 
 const stencil = new LatticeStencil();
+const at = new Float64Array(2);
 
 /**
  * The direction a wind with components (u east, v north) comes FROM, degrees clockwise from north in [0, 360): a wind blowing
@@ -79,7 +80,9 @@ export function probeAt(data: SliceData, pos: SliceProbePos): SliceProbeReading 
     r.where = 'above-model';
     return r;
   }
-  stencil.locate(data, s, z);
+  at[0] = s;
+  at[1] = z;
+  stencil.locate(data, at);
   if (stencil.coverage <= 1e-9) {
     // Between the two ground lines the model has nothing here: every lattice point around the pin is outside it.
     r.where = 'below-model';

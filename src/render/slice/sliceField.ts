@@ -35,6 +35,8 @@ let crossT = new Float64Array(512);
 let crossEdges = new Float64Array(512);
 let crossCol = new Int32Array(512);
 let faceZ = new Float64Array(64);
+/** The mean temperature anomaly of each lattice row's valid cells (NaN for a row with none), kept for the model's cells. */
+let rowMean = new Float64Array(64);
 
 function ensureColumns(n: number): void {
   if (colX.length >= n) return;
@@ -139,6 +141,7 @@ export function sampleSlice(sampler: AtmosphereSampler, terrain: SliceTerrain, s
   const ground = d.ground;
   const hasTheta = sampler.hasTheta;
   const dz = (zMax - zMin) / (rows - 1);
+  if (rowMean.length < rows) rowMean = new Float64Array(rows);
   for (let r = 0; r < rows; r++) {
     const z = r === rows - 1 ? zMax : zMin + r * dz;
     const row = r * columns;
@@ -174,12 +177,13 @@ export function sampleSlice(sampler: AtmosphereSampler, terrain: SliceTerrain, s
       }
     }
     // The temperature anomaly against the slice's own air at this height: the row mean of the valid points comes off.
+    rowMean[r] = hasTheta && n > 0 ? sum / n : NaN;
     if (hasTheta && n > 0) {
       const mean = sum / n;
       for (let c = 0; c < columns; c++) if (valid[row + c] === 1) theta[row + c] = theta[row + c]! - mean;
     }
   }
-  d.cells = sliceCells(atm, sampler, line, d.cells, d.has.theta, d.has.smoke);
+  d.cells = sliceCells(atm, sampler, line, d.cells, d.has.theta, d.has.smoke, zMin, dz, rows);
   return d;
 }
 
@@ -218,12 +222,27 @@ function levelFaces(atm: AtmosphereView): void {
   }
 }
 
+/** The lattice's row mean of the temperature anomaly at height `z` (linear between rows; a row with no valid cell is skipped, 0 if none has one). */
+function rowMeanAt(z: number, zMin: number, dz: number, rows: number): number {
+  const f = dz > 0 ? (z - zMin) / dz : 0;
+  const r0 = f <= 0 ? 0 : Math.min(rows - 1, Math.floor(f));
+  const r1 = Math.min(rows - 1, r0 + 1);
+  const t = f <= 0 ? 0 : Math.min(1, f - r0);
+  const a = rowMean[r0]!;
+  const b = rowMean[r1]!;
+  if (a !== a) return b !== b ? 0 : b; // NaN: that row has no valid cell
+  if (b !== b) return a;
+  return a + (b - a) * t;
+}
+
 /**
  * The model columns the line crosses, in order from A, with the boundaries between them (distance from A), the level
  * boundaries of each in metres ASL and the model's own value of every field at each cell centre. The horizontal cell of node
  * (i, j) is centred on it and one cell wide, so the line changes cell where it crosses a half-cell line. `theta` here is the
- * native anomaly minus the mean of its level over the crossed cells (the same "against the slice's air at that height" as the
- * lattice, which has no rows of equal height in a terrain-following model). Reuses `prev` when the line crosses the same cells.
+ * native anomaly minus the lattice's row mean at the height of the cell's centre (linear between rows): the same "against the
+ * slice's air at that height" as the lattice, so a cell and the raster under it agree. (The model's levels follow the terrain,
+ * so the mean of a level over the crossed cells would be a different, tilted reference.) Reuses `prev` when the line crosses the
+ * same cells.
  */
 function sliceCells(
   atm: AtmosphereView,
@@ -232,6 +251,9 @@ function sliceCells(
   prev: SliceCells | null,
   hasTheta: boolean,
   hasSmoke: boolean,
+  zMin: number,
+  rowDz: number,
+  rows: number,
 ): SliceCells | null {
   const g = atm.grid;
   const nx = g.nx;
@@ -332,16 +354,8 @@ function sliceCells(
       along[k] = u * dx + v * dy;
       across[k] = u * dy - v * dx;
       up[k] = atm.w[src]!;
-      theta[k] = hasTheta ? atm.thetaAnomaly[src]! : 0;
+      theta[k] = hasTheta ? atm.thetaAnomaly[src]! - rowMeanAt((cells.zEdges[c * faces + l]! + cells.zEdges[c * faces + l + 1]!) / 2, zMin, rowDz, rows) : 0;
       smoke[k] = hasSmoke ? atm.smoke[src]! : 0;
-    }
-  }
-  if (hasTheta) {
-    for (let l = 0; l < nz; l++) {
-      let sum = 0;
-      for (let c = 0; c < count; c++) sum += theta[c * nz + l]!;
-      const mean = sum / count;
-      for (let c = 0; c < count; c++) theta[c * nz + l] = theta[c * nz + l]! - mean;
     }
   }
   return cells;

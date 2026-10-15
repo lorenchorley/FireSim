@@ -321,6 +321,54 @@ describe('sampleSlice: what the air does not hold', () => {
   });
 });
 
+describe('sampleSlice: a flat-layout view (made before the terrain-following layout existed)', () => {
+  it('interpolates in height above the datum, is valid above the datum everywhere, and keeps the 3-D fields', () => {
+    const g = GRID;
+    const lv = Float32Array.from([50, 150, 300, 600, 1000, 1500, 2100]);
+    const plane = g.nx * g.ny;
+    const fill = (f: (l: number, c: number) => number): Float32Array => {
+      const a = new Float32Array(plane * lv.length);
+      for (let l = 0; l < lv.length; l++) for (let c = 0; c < plane; c++) a[l * plane + c] = f(l, c);
+      return a;
+    };
+    const view = {
+      grid: g,
+      nz: lv.length,
+      levels: lv,
+      terrainHeight: new Float32Array(plane),
+      surfaceU: new Float32Array(plane),
+      surfaceV: new Float32Array(plane),
+      u: fill((l) => 2 + 0.01 * lv[l]!),
+      v: fill(() => 0),
+      w: fill((l) => 0.001 * lv[l]!),
+      thetaAnomaly: fill((l) => 0.002 * lv[l]!),
+      smoke: fill(() => 1),
+    };
+    const s = new AtmosphereSampler(view, 400, null);
+    expect(s.layout).toBe('flat');
+    const d = sampleSlice(s, { heightAt: () => 450 }, { line: line([-2000, 0], [2000, 0]), shownTime: 0 })!;
+    expect(d.kind).toBe('prognostic');
+    expect(d.has).toEqual({ wind: true, theta: true, smoke: true });
+    expect(d.zMin).toBeCloseTo(400, 6);
+    expect(d.topAsl).toBeCloseTo(400 + 2100 + 300, 6); // the last level plus half the last gap
+    let checked = 0;
+    for (let r = 0; r < d.rows; r++) {
+      const z = zOf(d, r);
+      for (let c = 0; c < d.columns; c++) {
+        const k = r * d.columns + c;
+        expect(d.valid[k]).toBe(z >= 400 ? 1 : 0); // the flat view's own ground is its datum
+        if (z >= 450 && z <= 2500) {
+          expect(d.values.along[k]).toBeCloseTo(2 + 0.01 * (z - 400), 4);
+          expect(d.values.up[k]).toBeCloseTo(0.001 * (z - 400), 5);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+    expect(d.cells!.count).toBeGreaterThan(10);
+  });
+});
+
 describe('sampleSlice: lattice size and reuse', () => {
   const v = ridgeView({ u: (x) => 2 + x / 1000, v: () => 0, w: () => 0, theta: (x) => x / 500, smoke: () => 1 });
   const s = sampler(v);
@@ -473,18 +521,36 @@ describe('sampleSlice: the model’s own cells along the line', () => {
     expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(200);
   });
 
-  it('values are the model’s own cell values, not interpolated; the temperature has the level mean over the crossed cells removed', () => {
+  it('values are the model’s own cell values, not interpolated; the temperature has the slice’s row mean at the cell’s height removed', () => {
     const l = line([-2750, 1890], [2310, -2600]);
     const d = sample(s, l);
     const c = d.cells!;
     const dx = l.dir[0];
     const dy = l.dir[1];
-    const thetaMean: number[] = [];
-    for (let lev = 0; lev < nz; lev++) {
-      let sum = 0;
-      for (let q = 0; q < c.count; q++) sum += v.thetaAnomaly[lev * plane + c.column[q]!]!;
-      thetaMean.push(sum / c.count);
+    const faces = nz + 1;
+    // The row means of the raw anomaly, rebuilt from the sampler (raw = stored anomaly + mean at any valid cell of the row).
+    const mean: number[] = [];
+    for (let r = 0; r < d.rows; r++) {
+      let m = NaN;
+      for (let col = 0; col < d.columns && Number.isNaN(m); col++) {
+        const k = r * d.columns + col;
+        if (!d.valid[k]) continue;
+        const sm = (col / (d.columns - 1)) * l.length;
+        m = s.theta(l.a[0] + dx * sm, l.a[1] + dy * sm, zOf(d, r)) - d.values.theta[k]!;
+      }
+      mean.push(m);
     }
+    const meanAt = (z: number): number => {
+      const f = (z - d.zMin) / ((d.zMax - d.zMin) / (d.rows - 1));
+      const r0 = Math.max(0, Math.min(d.rows - 1, Math.floor(f)));
+      const r1 = Math.min(d.rows - 1, r0 + 1);
+      const a = mean[r0]!;
+      const b = mean[r1]!;
+      if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : b;
+      if (Number.isNaN(b)) return a;
+      return a + (b - a) * Math.max(0, Math.min(1, f - r0));
+    };
+    let checked = 0;
     for (let q = 0; q < c.count; q++) {
       for (let lev = 0; lev < nz; lev++) {
         const src = lev * plane + c.column[q]!;
@@ -496,9 +562,29 @@ describe('sampleSlice: the model’s own cells along the line', () => {
         expect(c.values.across[k]).toBeCloseTo(u * dy - vv * dx, 4);
         expect(c.values.up[k]).toBe(v.w[src]);
         expect(c.values.smoke[k]).toBe(v.smoke[src]);
-        expect(c.values.theta[k]).toBeCloseTo(v.thetaAnomaly[src]! - thetaMean[lev]!, 4);
+        const zc = (c.zEdges[q * faces + lev]! + c.zEdges[q * faces + lev + 1]!) / 2;
+        expect(c.values.theta[k], `theta column ${q} level ${lev}`).toBeCloseTo(v.thetaAnomaly[src]! - meanAt(zc), 3);
+        checked++;
       }
     }
+    expect(checked).toBe(c.count * nz);
+  });
+
+  it('a cell and the raster under it agree on the temperature: the cell value is the native one with the same reference', () => {
+    // A uniform anomaly of 2 K everywhere: every lattice cell is 0 against its row, and so is every model cell.
+    const flatTheta = ridgeView({ u: () => 1, v: () => 0, w: () => 0, theta: () => 2, smoke: () => 0 });
+    const d = sample(sampler(flatTheta), line([-2000, 100], [2000, 100]));
+    expect(d.cells!.values.theta.every((x) => Math.abs(x) < 1e-5)).toBe(true);
+    // A warm patch on one side of the line: positive there, negative on the other side, in the cells as in the raster.
+    const patch = ridgeView({ u: () => 1, v: () => 0, w: () => 0, theta: (x) => (x > 0 ? 3 : 0), smoke: () => 0 });
+    const e = sample(sampler(patch), line([-2000, 100], [2000, 100]));
+    const first = 0;
+    const last = e.cells!.count - 1;
+    const mid = Math.floor(nz / 2);
+    expect(e.cells!.values.theta[first * nz + mid]!).toBeLessThan(0);
+    expect(e.cells!.values.theta[last * nz + mid]!).toBeGreaterThan(0);
+    expect(e.values.theta[Math.floor(e.rows * 0.5) * e.columns]!).toBeLessThan(0);
+    expect(e.values.theta[Math.floor(e.rows * 0.5) * e.columns + e.columns - 1]!).toBeGreaterThan(0);
   });
 
   it('a diagnosed view has cells too, with no temperature or smoke', () => {
