@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyticTerrain } from '../atmosphere/testUtils';
 import { buildAtmosGrid } from '../atmosphere/grid';
-import { airHas, airKind, airLayout, cellHeightAsl, hasAirWind } from './airView';
+import { AIR_STALE_S, airAgeS, airHas, airKind, airLayout, airTime, cellHeightAsl, hasAirWind } from './airView';
 import { makeGridSpec } from './grid';
 import type { AtmosphereView } from './types';
 
@@ -128,5 +128,23 @@ describe('cellHeightAsl', () => {
       }
     }
     expect(checked).toBeGreaterThan(20);
+  });
+});
+
+describe('airTime and airAgeS', () => {
+  it('read the time the air was produced and how much older it is than the picture shown with it', () => {
+    const v = legacyView(5, { time: 14 * 60 });
+    expect(airTime(v)).toBe(840);
+    expect(airAgeS(v, 840)).toBe(0);
+    expect(airAgeS(v, 840 + 300)).toBe(300);
+    expect(airAgeS(v, 800)).toBe(0); // never negative
+    expect(AIR_STALE_S).toBe(90);
+  });
+  it('say null for a view made before the stamp existed, a view with a non-finite time, or no view', () => {
+    expect(airTime(legacyView(5))).toBeNull();
+    expect(airTime(legacyView(5, { time: Number.NaN }))).toBeNull();
+    expect(airTime(null)).toBeNull();
+    expect(airAgeS(legacyView(5), 100)).toBeNull();
+    expect(airAgeS(undefined, 100)).toBeNull();
   });
 });
