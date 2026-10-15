@@ -1,0 +1,6 @@
+/* slice.css — the Air slice side view (src/ui/screens/sim/slicePanel.ts, sliceTool.ts). At most 4 KB in all; imported by slicePanel.ts
+ * (a lazy chunk), not by main.css. Class names start with .slice-. Two lanes write here, each only in its own block, so merges stay clean. */
+
+/* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape layout) ── */
+
+/* ── block 2: slicetool (the controls row and its notice line; reuse .btn and .row-actions before adding anything) ── */

@@ -4,6 +4,7 @@
  * canopyStyle, ...); layerCatalog.ts describes every layer and heat map in plain English and lists the settings
  * (LAYER_CATALOG, LAYER_SETTING_KEYS), and its test fails if a key or an OverlayKind is added without an entry.
  */
+import type { SliceFieldId, SlicePresetId } from './slice/types';
 
 export type OverlayKind =
   | 'none'
@@ -55,8 +56,27 @@ export interface LayerState {
   embers: boolean;
   /** Animated wind particles: off, near the surface, or through the plume/boundary layer. */
   wind: 'off' | 'surface' | 'volume';
-  /** Vertical cross-section of the atmosphere (temperature anomaly + wind vectors). */
-  crossSection: { enabled: boolean; /** azimuth of the section line through `centre` (deg) */ azimuth: number; centre: [number, number] };
+  /**
+   * Vertical cross-section of the atmosphere: the 3-D curtain, and the data of the Air slice side view (render/slice/types.ts;
+   * plan §8.2). The line is the first of these that applies: `preset` (a live line, from the wind, the fire, the slope or the
+   * phone), `a` and `b` both set (a hand-placed line, local metres), else the chord through `centre` along `azimuth` (the
+   * original). Whoever writes `centre` or `azimuth` must also write `a: undefined, b: undefined, preset: null`, and whoever
+   * writes `a` and `b` writes `preset: null`, or a stale higher rule hides the change. Not persisted (layersPrefs.ts).
+   */
+  crossSection: {
+    enabled: boolean;
+    /** azimuth of the section line through `centre` (deg) */
+    azimuth: number;
+    centre: [number, number];
+    a?: [number, number];
+    b?: [number, number];
+    preset?: SlicePresetId | null;
+    /**
+     * What the section is coloured by. Absent keeps the original curtain's colouring: temperature where the air has it,
+     * else wind speed. The Air slices tool writes 'speed' when it first places a line.
+     */
+    field?: SliceFieldId;
+  };
   insightMarkers: boolean;
   /** Vertical exaggeration of the terrain (1 = true scale). */
   verticalExaggeration: number;

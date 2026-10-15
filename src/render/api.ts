@@ -4,6 +4,7 @@ import type { GridSpec } from '../core/grid';
 import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import type { LayerState } from './layers';
 import type { LegendSpec } from './legends';
+import type { SliceUpdate } from './slice/types';
 
 export interface SceneImagery {
   /** Image covering the scenario domain exactly; row 0 = north. */
@@ -139,6 +140,18 @@ export interface SceneViewApi {
   setLayers(layers: Partial<LayerState>): void;
   /** Fly to a side-on view of the vertical cross-section (LayerState.crossSection); the 2-D map has none. */
   viewSection?(animate?: boolean): void;
+  /**
+   * The air slice the scene computes for `LayerState.crossSection` (workstream D, render/slice/types.ts): the effective line, the
+   * sampled slice, which presets and chips can be used, and the field it is coloured by. One computation, shared by the 3-D curtain and
+   * the side-view panel. Null while the section is off, before the first snapshot, and on the 2-D map (which has no air data;
+   * the member is then absent). `data` inside it is refilled in place by the next update: read it, do not keep it.
+   */
+  slice?(): SliceUpdate | null;
+  /**
+   * Called after every new slice (at most every `SLICE_UPDATE_MIN_MS` while the air changes, at once on a line, field or
+   * layer edit) and with null when the section is switched off. Returns the unsubscribe function.
+   */
+  onSlice?(cb: (update: SliceUpdate | null) => void): () => void;
   /** Ignitions / spot fires the user has marked (drawn as markers). */
   setIgnitions(ignitions: Ignition[], spots: SpotFire[]): void;
   setInsights(insights: Insight[]): void;

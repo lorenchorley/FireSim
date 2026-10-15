@@ -9,6 +9,7 @@
 import type { ScenarioData } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { RenderQuality, SceneViewOptions } from '../render/SceneView';
+import type { SliceFieldId, SliceKind } from '../render/slice/types';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import type { SimController } from '../sim/protocol';
 import type { ExternalLegend, LegendProvider } from './legends';
@@ -35,6 +36,8 @@ export interface Services {
 export interface SceneLegends {
   crossSection(): ExternalLegend;
   wind(mode: 'surface' | 'volume'): ExternalLegend;
+  /** Legend of one chip of the air slice (render/legends.ts `sliceLegend`, workstream D); absent until the render module has it. */
+  slice?(field: SliceFieldId, kind: SliceKind): ExternalLegend;
 }
 
 interface SimModule {
@@ -45,6 +48,7 @@ interface RenderModule {
   legendFor?: LegendProvider;
   crossSectionLegend?: () => ExternalLegend;
   windLegend?: (mode: 'surface' | 'volume') => ExternalLegend;
+  sliceLegend?: (field: SliceFieldId, kind: SliceKind) => ExternalLegend;
 }
 interface ScenarioModule {
   buildScenario: BuildScenarioFn;
