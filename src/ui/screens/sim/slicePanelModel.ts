@@ -48,6 +48,8 @@ export interface LayoutInput {
   exaggeration: number;
   /** The canvas text size (CSS px): the margins grow with it. */
   smallPx: number;
+  /** The measured width (CSS px) of the widest height label, so the left margin always holds it; absent: estimated from the text size. */
+  labelW?: number;
 }
 
 const PAD_R = 12;
@@ -67,7 +69,7 @@ export function plotLayout(i: LayoutInput): PlotLayout {
   const width = Math.max(1, fin(i.width, 1));
   const height = Math.max(1, fin(i.height, 1));
   const small = fin(i.smallPx, 12);
-  const padL = Math.max(44, Math.ceil(small * 3.9)); // room for "1,500 m"
+  const padL = Math.max(44, Math.ceil(fin(i.labelW ?? 0, 0)) + 10, Math.ceil(small * 4.2)); // room for "1,500 m" and a gap
   const axisH = Math.ceil(small + 12);
   const availW = Math.max(8, width - padL - PAD_R);
   const availH = Math.max(8, height - PAD_T - axisH);
@@ -111,12 +113,6 @@ export function pickPos(l: PlotLayout, x: number, y: number): SliceProbePos {
   return { s: sOfX(l, x), z: zOfY(l, y) };
 }
 
-/** Which half of the canvas the readout takes when it floats over it (landscape): the one away from the pin. */
-export function readoutSide(l: PlotLayout, pos: SliceProbePos | null): 'top' | 'bottom' {
-  if (!pos) return 'top';
-  return yOfZ(l, pos.z) < l.height / 2 ? 'bottom' : 'top';
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Axes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,22 +134,33 @@ export type TickFn = (lo: number, hi: number, target?: number) => { values: numb
 export function axisTicks(l: PlotLayout, ticks: TickFn, smallPx: number): { height: Tick[]; distance: Tick[] } {
   const height = ticks(l.zMin, l.zMax, clamp(Math.round(l.plot.h / (smallPx * 3.2)), 2, 6)).values.map((v) => ({ value: v, pos: yOfZ(l, v), label: `${formatNumber(v)} m` }));
   const edge = 22;
-  const distance = ticks(0, l.length, clamp(Math.round(l.plot.w / 84), 2, 5))
+  const distance = ticks(0, l.length, clamp(Math.round(l.plot.w / 64), 2, 6))
     .values.map((v) => ({ value: v, pos: xOfS(l, v), label: formatDistance(v) }))
     .filter((t) => t.pos - l.plot.x >= edge && l.plot.x + l.plot.w - t.pos >= edge);
   return { height, distance };
 }
 
-/** The line under the canvas: what the height axis is and the scale actually drawn (the ratio is what is on screen, not what the slider asks). */
+/** The words for the scale actually drawn (the ratio is what is on screen, not what the slider asks): for the caption and the screen reader. */
 export function scaleCaption(ratio: number): string {
   const r = fin(ratio, 1);
   if (r >= 1.05) return `Heights are above sea level and stretched about ${formatNumber(r, 1)} times.`;
   if (r <= 0.95) return `Heights are above sea level and squashed to about ${formatNumber(r, 1)} of true scale.`;
-  return 'Heights are above sea level, drawn to the same scale as distance.';
+  return 'Heights are above sea level, to the same scale as distance.';
+}
+
+/** The small tag on the height axis: "True scale", or "Height x1.5" (the stretch, or the squash below 1). */
+export function scaleTag(ratio: number): string {
+  const r = fin(ratio, 1);
+  return r >= 1.05 || r <= 0.95 ? `Height ×${formatNumber(r, 1)}` : 'True scale';
 }
 
 /** What the dashed line is, and why the filled ground can show cliffs the dashed one does not. */
 export const TERRAIN_CAPTION = 'Dashed line: the ground as the model sees it. Cliffs it smooths away show only in the filled ground.';
+
+/** The tag needs room: it is left out of a plot too small to carry it (the short landscape panel). */
+export function showsScaleTag(l: PlotLayout): boolean {
+  return l.plot.h >= 100 && l.plot.w >= 200;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colour: the field raster and the model cells
@@ -240,12 +247,28 @@ export function rasterBox(l: PlotLayout, columns: number, rows: number): Box {
 /** About 300 particles, drawn at most 24 times a second (plan §8.5). */
 export const FLOW_COUNT = 300;
 export const FLOW_FRAME_S = 1 / 24;
-/** A particle lives this many seconds of AIR time before it is re-seeded (about 6 s on screen at the pace of `flowTimeScale`). */
-export const FLOW_LIFE_S = 480;
+/** A particle lives this many seconds of the panel's clock before it is re-seeded: longer than the 8 s a 10 m/s wind takes to cross the line (`flowTimeScale`). */
+export const FLOW_LIFE_S = 12;
+
+/** Streaks for a plot: 300 on a full portrait panel, fewer on a small one (about one per 190 square px), never fewer than 60. */
+export function flowCount(l: PlotLayout): number {
+  return Math.min(FLOW_COUNT, Math.max(60, Math.round((l.plot.w * l.plot.h) / 190)));
+}
 
 /** Air seconds per real second: a particle in a 10 m/s wind crosses the whole line in about 8 s, whatever the line's length. */
 export function flowTimeScale(lengthM: number): number {
   return Math.max(1, fin(lengthM, 0) / 80);
+}
+
+/**
+ * The `exaggeration` handed to `stepFlow`. The particles live in metres (s, z) and the plot draws a metre of height
+ * `ratio` times as long as a metre of distance, so a parcel that rises `w` metres while it moves `u` metres along already
+ * appears on screen with the slope `ratio * w / u`, which is the slope of the exaggerated ground it flows over. The on-screen
+ * ratio therefore goes into the DRAWING (yOfZ), and the particles take 1: giving `stepFlow` the ratio as well would count it
+ * twice and make streaks climb `ratio` times steeper than the ground they follow (checked in slicePanel.flow.test.ts).
+ */
+export function streakExaggeration(_l: PlotLayout): number {
+  return 1;
 }
 
 /** Same line, same lattice: the particles keep going through a new update. A different one is seeded afresh. */
@@ -278,6 +301,35 @@ export function footerParts(info: SliceFooterInfo, tz: string, absTime: (t: numb
 
 export function footerText(info: SliceFooterInfo, tz: string, absTime: (t: number) => number): string {
   return footerParts(info, tz, absTime).join(' · ');
+}
+
+/** A piece of the footer; `keep: false` pieces are the ones a one-line footer on a short screen drops (CSS hides them). */
+export interface FooterRun {
+  text: string;
+  keep: boolean;
+}
+
+/** The footer as runs: the same words as `footerText`, with the explanations that can go marked, so a short screen still says kind, grid and age. */
+export function footerRuns(info: SliceFooterInfo, tz: string, absTime: (t: number) => number): FooterRun[] {
+  const [kind, grid, air] = footerParts(info, tz, absTime);
+  const [head, more] = splitKindLabel(kind);
+  const gridWords = grid.startsWith('model ') ? ['model ', grid.slice(6)] : ['', grid];
+  const runs: FooterRun[] = [
+    { text: head, keep: true },
+    { text: more, keep: false },
+    { text: ' · ', keep: true },
+    { text: gridWords[0]!, keep: false },
+    { text: gridWords[1]!, keep: true },
+    { text: ' · ', keep: true },
+    { text: air, keep: true },
+  ];
+  return runs.filter((r) => r.text !== '');
+}
+
+/** The kind of air in two parts, "Diagnosed wind" and ": terrain effects only", so a short landscape screen can keep the first on one line. */
+export function splitKindLabel(label: string): [string, string] {
+  const i = label.indexOf(':');
+  return i < 0 ? [label, ''] : [label.slice(0, i), label.slice(i)];
 }
 
 export interface ChipView {

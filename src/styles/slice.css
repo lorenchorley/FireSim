@@ -3,11 +3,7 @@
 
 /* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape layout) ── */
 
-/* Portrait: everything in one flow inside the tool panel's scrolling body: canvas, chips, legend, controls, switch, footer. */
-.slice-view {
-  background: var(--surface);
-}
-
+/* The panel is one flow in the tool panel's scrolling body: canvas, chips, legend, controls, switch, footer. */
 .slice-stage {
   position: relative;
 }
@@ -15,11 +11,9 @@
 .slice-canvas {
   display: block;
   width: 100%;
-  height: 230px;
+  height: clamp(180px, 27vh, 230px); /* about 230 px, less on a short screen */
   border-radius: var(--r-sm);
-  background: var(--surface);
   touch-action: none; /* a drag moves the probe, not the panel */
-  -webkit-tap-highlight-color: transparent;
 }
 
 .slice-canvas:focus-visible {
@@ -27,18 +21,11 @@
   outline-offset: 2px;
 }
 
-@media (max-height: 700px) and (orientation: portrait) {
-  .slice-canvas {
-    height: 190px;
-  }
-}
-
 .slice-empty {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   padding: var(--sp-4);
   text-align: center;
   color: var(--muted);
@@ -49,10 +36,9 @@
 
 .slice-readout {
   display: flex;
-  align-items: flex-start;
   gap: var(--sp-1);
   margin-top: var(--sp-2);
-  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+  padding: 0 var(--sp-1) 0 var(--sp-3);
   border-radius: var(--r-md);
   background: var(--surface-2);
   font-size: var(--fs-sm);
@@ -61,8 +47,17 @@
 
 .slice-readout-text {
   flex: 1;
-  min-width: 0;
-  padding: var(--sp-2) 0;
+  padding: var(--sp-3) 0;
+}
+
+.slice-chips {
+  gap: var(--sp-3) var(--sp-1);
+}
+
+.slice-chips .chip {
+  flex: 1 0 auto;
+  justify-content: center;
+  padding: 0 6px; /* six chips in 358 px */
 }
 
 .slice-chip[aria-disabled='true'] {
@@ -76,15 +71,11 @@
   line-height: var(--lh-sm);
 }
 
-.slice-legend-title {
-  color: var(--muted);
-}
-
 .slice-ramp {
   height: 12px;
   margin: var(--sp-1) 0;
-  border-radius: var(--r-pill);
   border: 1px solid var(--divider);
+  border-radius: var(--r-pill);
 }
 
 .slice-ends,
@@ -105,46 +96,35 @@
   height: 12px;
   margin-right: 6px;
   border-radius: var(--r-xs);
-  vertical-align: -1px;
 }
 
-.slice-use3d {
-  margin: var(--sp-1) 0 var(--sp-2);
+/* Always in view: the body scrolls under it. Sticky offsets count from the body's content box, so the footer reaches out over
+   the body's bottom padding and carries as much of its own. */
+.slice-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-4));
+  z-index: 2;
+  margin: 0;
+  padding: var(--sp-1) 0 var(--sp-4);
+  border-top: 1px solid var(--divider);
+  background: var(--surface);
 }
 
-/* Short landscape (the side column, about 166 px of body): the canvas and the one-line footer stay pinned, the rest scrolls between them. */
+/* Short landscape (the side column, about 166 px of body): the canvas and a one-line footer stay pinned, the rest scrolls between. */
 @media (orientation: landscape) and (max-height: 540px) {
   .slice-view {
     position: sticky;
-    top: 0;
+    top: calc(-1 * var(--sp-2)); /* over the body's top padding, like the footer: nothing scrolls past above the canvas */
     z-index: 2;
-  }
-  .slice-canvas {
-    height: 104px;
-  }
-  .slice-readout {
-    position: absolute;
-    left: var(--sp-1);
-    right: var(--sp-1);
-    margin: 0;
-    box-shadow: var(--elev-2);
-  }
-  .slice-readout[data-at='top'] {
-    top: var(--sp-1);
-  }
-  .slice-readout[data-at='bottom'] {
-    bottom: var(--sp-1);
-  }
-  .slice-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    margin: 0;
-    padding: var(--sp-1) 0;
+    margin-top: calc(-1 * var(--sp-2));
+    padding-top: var(--sp-2);
     background: var(--surface);
   }
-  .slice-kind-more {
-    display: none;
+  .slice-canvas {
+    height: 96px;
+  }
+  .slice-more {
+    display: none; /* the kind, the grid and the age of the air stay; their explanations wait for a taller screen */
   }
 }
 

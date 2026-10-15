@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WIND_RAMP } from '../../../render/palette';
-import { drawArrows, drawAxes, drawCells, drawGround, drawProbe, drawStreaks, fadeTrail, paintStatic, type Ctx, type DrawColours, type StaticView } from './sliceDraw';
+import { drawArrows, drawAxes, drawCells, drawGround, drawProbe, drawScaleTag, drawStreaks, fadeTrail, paintStatic, type Ctx, type DrawColours, type StaticView } from './sliceDraw';
 import { fakeSlice } from './slicePanelFixtures';
 import { axisTicks, makeLut, plotLayout, xOfS, yOfZ, type TickFn } from './slicePanelModel';
 
@@ -140,6 +140,23 @@ describe('paintStatic: the still layers', () => {
     const at = (label: string): number => s.calls.find((c) => c.name === 'fillText' && c.args[0] === label)!.args[1] as number;
     expect(at('A')).toBeCloseTo(v.layout.plot.x, 9);
     expect(at('B')).toBeCloseTo(v.layout.plot.x + v.layout.plot.w, 9);
+  });
+
+  it('draws the scale tag in the corner of the plot on the surface colour, and nothing without one', () => {
+    const v = view();
+    const s = stub();
+    expect(drawScaleTag(s.ctx, v.layout, COLOURS, FONT, 'Height ×1.5')).toBe(true);
+    expect(s.calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])).toEqual(['Height ×1.5']);
+    const tag = s.calls.find((c) => c.name === 'fillText')!;
+    expect(tag.args[1] as number).toBeGreaterThan(v.layout.plot.x);
+    expect(tag.args[2] as number).toBeGreaterThan(v.layout.plot.y);
+    expect(s.count('fillRect')).toBe(1); // the pill
+    expect(balanced(s.calls)).toBe(true);
+    for (const n of s.numbers()) expect(Number.isFinite(n)).toBe(true);
+    // the axes alone carry no tag: it goes over the streaks, drawn by the panel last
+    const none = stub();
+    drawAxes(none.ctx, v);
+    expect(none.count('fillRect')).toBe(0);
   });
 
   it('keeps every coordinate a number at other canvas sizes and exaggerations', () => {

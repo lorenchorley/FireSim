@@ -12,9 +12,11 @@ import {
   chipModel,
   disabledNotes,
   emptyState,
+  flowCount,
   flowKey,
   flowTimeScale,
   footerParts,
+  footerRuns,
   footerText,
   joinLabels,
   legendView,
@@ -25,9 +27,11 @@ import {
   plotLayout,
   rasterBox,
   rasterize,
-  readoutSide,
   scaleCaption,
+  scaleTag,
+  showsScaleTag,
   sOfX,
+  splitKindLabel,
   spreadLabels,
   xOfS,
   yOfZ,
@@ -121,12 +125,6 @@ describe('pixels and metres', () => {
     expect(zOfY(l, 9999)).toBe(l.zMin);
     expect(pickPos(l, -1, -1)).toEqual({ s: 0, z: l.zMax });
   });
-
-  it('puts the floating readout on the half of the canvas away from the pin', () => {
-    expect(readoutSide(l, { s: 100, z: l.zMax })).toBe('bottom');
-    expect(readoutSide(l, { s: 100, z: l.zMin })).toBe('top');
-    expect(readoutSide(l, null)).toBe('top');
-  });
 });
 
 describe('axis ticks', () => {
@@ -149,9 +147,23 @@ describe('axis ticks', () => {
 describe('captions', () => {
   it('says the stretch in plain words, and "same scale" near 1', () => {
     expect(scaleCaption(2.34)).toBe('Heights are above sea level and stretched about 2.3 times.');
-    expect(scaleCaption(1)).toBe('Heights are above sea level, drawn to the same scale as distance.');
+    expect(scaleCaption(1)).toBe('Heights are above sea level, to the same scale as distance.');
     expect(scaleCaption(1.04)).toContain('same scale');
     expect(scaleCaption(NaN)).toContain('same scale');
+  });
+
+  it('puts the same facts in the small tag on the axis', () => {
+    expect(scaleTag(2.34)).toBe('Height ×2.3');
+    expect(scaleTag(0.62)).toBe('Height ×0.6');
+    expect(scaleTag(1)).toBe('True scale');
+    expect(scaleTag(1.049)).toBe('True scale');
+    expect(scaleTag(NaN)).toBe('True scale');
+  });
+
+  it('leaves the tag out of a plot too small to carry it (the short landscape panel)', () => {
+    expect(showsScaleTag(plotLayout(BASE))).toBe(true);
+    expect(showsScaleTag(plotLayout({ ...BASE, width: 356, height: 96 }))).toBe(false);
+    expect(showsScaleTag(plotLayout({ ...BASE, width: 220, height: 230 }))).toBe(false);
   });
 });
 
@@ -227,6 +239,14 @@ describe('streak helpers', () => {
     expect(flowKey(fakeSlice({ columns: 30 }))).not.toBe(flowKey(a));
   });
 
+  it('gives a smaller plot fewer streaks, between 60 and 300', () => {
+    expect(flowCount(plotLayout(BASE))).toBe(300);
+    const landscape = flowCount(plotLayout({ ...BASE, width: 356, height: 96 }));
+    expect(landscape).toBeGreaterThanOrEqual(60);
+    expect(landscape).toBeLessThan(150);
+    expect(flowCount(plotLayout({ ...BASE, width: 60, height: 40 }))).toBe(60);
+  });
+
   it('sizes the static arrow lattice to the plot', () => {
     const g = arrowGrid(plotLayout(BASE));
     expect(g.cols).toBeGreaterThanOrEqual(2);
@@ -243,6 +263,21 @@ describe('footer: the honest labels (§8.1)', () => {
     const parts = footerParts({ kind: 'diagnosed', cellSizeM: 133.3, airTime: 3600, shownTime: 3600 }, tz, abs);
     expect(parts).toEqual(['Diagnosed wind: terrain effects only', 'model grid 133 m', 'air from 12:20']);
     expect(footerText({ kind: 'prognostic', cellSizeM: 200, airTime: 0, shownTime: 0 }, tz, abs)).toBe('3-D time-stepped air · model grid 200 m · air from 11:20');
+  });
+
+  it('splits the kind at its colon so a short screen can keep the first half', () => {
+    expect(splitKindLabel('Diagnosed wind: terrain effects only')).toEqual(['Diagnosed wind', ': terrain effects only']);
+    expect(splitKindLabel('3-D time-stepped air')).toEqual(['3-D time-stepped air', '']);
+  });
+
+  it('keeps kind, grid and age when a short screen drops the explanations, and says the same words otherwise', () => {
+    const info = { kind: 'diagnosed' as const, cellSizeM: 133.3, airTime: 1000, shownTime: 1300 };
+    const runs = footerRuns(info, tz, abs);
+    expect(runs.map((r) => r.text).join('')).toBe(footerText(info, tz, abs));
+    expect(runs.filter((r) => r.keep).map((r) => r.text).join('')).toBe('Diagnosed wind · grid 133 m · air from 11:36 (5 min before the time shown)');
+    const prog = footerRuns({ kind: 'prognostic', cellSizeM: 200, airTime: 0, shownTime: 0 }, tz, abs);
+    expect(prog.map((r) => r.text).join('')).toBe('3-D time-stepped air · model grid 200 m · air from 11:20');
+    expect(prog.filter((r) => r.keep).map((r) => r.text).join('')).toBe('3-D time-stepped air · grid 200 m · air from 11:20');
   });
 
   it('says how much older the air is than the time shown only beyond 90 s', () => {

@@ -136,7 +136,7 @@ export function drawGround(ctx: Ctx, v: StaticView): void {
       if (i === 0) ctx.moveTo(pts[0]!, pts[1]!);
       else ctx.lineTo(pts[i]!, pts[i + 1]!);
     }
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.75;
     ctx.lineJoin = 'round';
     ctx.strokeStyle = colours.ink;
     ctx.stroke();
@@ -201,6 +201,26 @@ export function drawAxes(ctx: Ctx, v: StaticView): void {
   ctx.fillText('B', right, bottom + 5);
 }
 
+/** The axis tag ("True scale", "Height x1.5"): a small label in the top-left corner of the plot, on the surface colour so it reads over any field colour. Drawn last, over the streaks. */
+export function drawScaleTag(ctx: Ctx, l: PlotLayout, colours: DrawColours, font: DrawFont, label: string): boolean {
+  const pad = 5;
+  const h = Math.ceil(font.smallPx + 8);
+  ctx.font = font.small;
+  const w = ctx.measureText(label).width + pad * 2;
+  if (!ok(w, l.plot.x, l.plot.y)) return false;
+  ctx.save();
+  ctx.globalAlpha = 0.88;
+  ctx.fillStyle = colours.surface;
+  ctx.fillRect(l.plot.x + 4, l.plot.y + 4, w, h);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = colours.ink;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, l.plot.x + 4 + pad, l.plot.y + 4 + h / 2 + 0.5);
+  ctx.restore();
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Moving layers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +253,7 @@ export function drawStreaks(ctx: Ctx, l: PlotLayout, f: Streaks, colours: DrawCo
   ctx.beginPath();
   ctx.rect(l.plot.x, l.plot.y, l.plot.w, l.plot.h);
   ctx.clip();
-  ctx.lineCap = 'round';
+  ctx.lineCap = 'butt'; // round caps would double the colour where one step's segment meets the next
   ctx.beginPath();
   let n = 0;
   for (let i = 0; i < f.count; i++) {
@@ -247,12 +267,12 @@ export function drawStreaks(ctx: Ctx, l: PlotLayout, f: Streaks, colours: DrawCo
     n++;
   }
   ctx.strokeStyle = colours.surface;
-  ctx.globalAlpha = 0.55;
-  ctx.lineWidth = 3.4;
+  ctx.globalAlpha = 0.4;
+  ctx.lineWidth = 3;
   ctx.stroke();
   ctx.strokeStyle = colours.ink;
   ctx.globalAlpha = 0.9;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.2;
   ctx.stroke();
   ctx.restore();
   return n;
