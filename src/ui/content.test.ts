@@ -270,6 +270,9 @@ describe('Help and glossary: the 0.4.0 entries say what the Air slices screens s
     expect(b).toContain('“air from 11:25 (4 min before the time shown)”');
     expect(b).toContain(`Past ${AIR_STALE_S} seconds`);
     expect(b).toContain('about every 5 minutes');
+    // Only the newest picture carries air made at its own time (snapshotStore.air.test.ts), so while a run plays the air is typically up to 5 minutes older than the picture: "usually the time you are looking at" was wrong.
+    expect(b).toContain('up to about 5 minutes older than the fire you see, while the run plays as well as when you jump back');
+    expect(b).not.toContain('usually the time you are looking at');
   });
 
   it('Model cells: the switch is labelled the way Help says', () => {

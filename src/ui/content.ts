@@ -295,7 +295,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'Air from',
     short: 'How old the air in a slice is',
-    body: 'The footer of the side view says when the air it shows was made, for example “air from 11:25”. That is the simulation’s own clock, the one on the screen, not the time of day on your phone. It is usually the time you are looking at. When you jump back, the picture is put together from the nearest saved air at or before that time (saved about every 5 minutes), so the air can be older than the fire you see. Past 90 seconds the footer says how much older, for example “air from 11:25 (4 min before the time shown)”.',
+    body: 'The footer of the side view says when the air it shows was made, for example “air from 11:25”. That is the simulation’s own clock, the one on the screen, not the time of day on your phone. The air is saved about every 5 minutes, so the picture you are looking at is put together from the nearest saved air at or before its time, and the air can be up to about 5 minutes older than the fire you see, while the run plays as well as when you jump back. Only the newest picture of the run has air made at its own time. Past 90 seconds the footer says how much older, for example “air from 11:25 (4 min before the time shown)”.',
   },
   {
     term: 'Model cells',
