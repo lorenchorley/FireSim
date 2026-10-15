@@ -148,6 +148,10 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expect(text).toContain('forest head fires faster than 15 km/h');
     expect(text).toContain('no data assimilation');
     expect(text).toContain('fast mode: a 2-D estimate');
+    // The air slice now works on the fast mode's diagnosed wind: only the plume, temperature and smoke need the 3-D atmosphere.
+    expect(text).toContain('the plume, moving cold-air pools, air temperature and smoke need the 3-D atmosphere');
+    expect(text).toContain('The air slice still works there, on the diagnosed wind');
+    expect(text).not.toContain('cross-section of the air');
   });
 
   it('the text export contains every row, fact, bullet, layer and term', () => {

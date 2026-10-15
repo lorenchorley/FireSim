@@ -55,6 +55,35 @@ const legendColours = (kind: Parameters<typeof legendFor>[0]): Rgb[] => {
 const SEVERITY: Record<Insight['severity'], string> = { info: '#2f80ed', watch: '#f2a900', danger: '#e02424' };
 const IGNITION_COLOURS: Record<Ignition['origin'], string> = { observed: '#e02424', spot: '#ff8c1a', backburn: '#7b3fe4' };
 
+/**
+ * The ends of the section line in local metres. A placed line (a preset, or A and B) is resolved by the same pure code and the same
+ * precedence as in the 3-D view; otherwise it is the chord through the centre along the azimuth, as it always was here. The mock has
+ * no air, so it draws only the line (no slice, no `slice()` member).
+ */
+export function mockSectionEnds(
+  cs: LayerState['crossSection'],
+  o: { terrain: Pick<Terrain, 'grid' | 'elevation'> | null; snapshot: SimSnapshot | null; mapCentre: [number, number]; user: { x: number; y: number } | null; halfExtent: number },
+): { a: [number, number]; b: [number, number] } | null {
+  const t = o.terrain;
+  if (t && (cs.preset || (cs.a && cs.b))) {
+    const snap = o.snapshot;
+    const c = snap ? fireCentroid(snap.fire, snap.time) : null;
+    const w = snap?.stats?.weather;
+    const r = resolveSlice(cs, {
+      grid: snap?.atmosphere?.grid ?? t.grid,
+      heightAt: (x, y) => sampleBilinear(t.grid, t.elevation, x, y),
+      mapCentre: o.mapCentre,
+      fire: c ? [c.x, c.y] : null,
+      windFromDeg: w && w.windSpeed10 >= 0.2 ? w.windDir10 : null,
+      user: o.user ? [o.user.x, o.user.y] : null,
+    });
+    return r.line ? { a: r.line.a, b: r.line.b } : null;
+  }
+  const L = o.halfExtent * 1.4;
+  const [dx, dy] = [Math.sin(cs.azimuth * DEG) * L, Math.cos(cs.azimuth * DEG) * L];
+  return { a: [cs.centre[0] - dx, cs.centre[1] - dy], b: [cs.centre[0] + dx, cs.centre[1] + dy] };
+}
+
 export class MockSceneView implements SceneViewApi {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -779,31 +808,9 @@ export class MockSceneView implements SceneViewApi {
     ctx.stroke();
   }
 
-  /**
-   * The ends of the section line in local metres. A placed line (a preset, or A and B) is resolved by the same pure code and the same
-   * precedence as in the 3-D view; otherwise it is the chord through the centre along the azimuth, as it always was here. The mock has
-   * no air, so it draws only the line (no slice, no `slice()` member).
-   */
+  /** The ends of the section line in local metres (see `mockSectionEnds`). */
   private sectionEnds(): { a: [number, number]; b: [number, number] } | null {
-    const cs = this.layers.crossSection;
-    const t = this.terrain;
-    if (t && (cs.preset || (cs.a && cs.b))) {
-      const snap = this.snapshot;
-      const c = snap ? fireCentroid(snap.fire, snap.time) : null;
-      const w = snap?.stats?.weather;
-      const r = resolveSlice(cs, {
-        grid: snap?.atmosphere?.grid ?? t.grid,
-        heightAt: (x, y) => sampleBilinear(t.grid, t.elevation, x, y),
-        mapCentre: [this.cx, this.cy],
-        fire: c ? [c.x, c.y] : null,
-        windFromDeg: w && w.windSpeed10 >= 0.2 ? w.windDir10 : null,
-        user: this.user ? [this.user.x, this.user.y] : null,
-      });
-      return r.line ? { a: r.line.a, b: r.line.b } : null;
-    }
-    const L = this.halfExtent() * 1.4;
-    const [dx, dy] = [Math.sin(cs.azimuth * DEG) * L, Math.cos(cs.azimuth * DEG) * L];
-    return { a: [cs.centre[0] - dx, cs.centre[1] - dy], b: [cs.centre[0] + dx, cs.centre[1] + dy] };
+    return mockSectionEnds(this.layers.crossSection, { terrain: this.terrain, snapshot: this.snapshot, mapCentre: [this.cx, this.cy], user: this.user, halfExtent: this.halfExtent() });
   }
 
   private drawCrossSection(W: number, H: number): void {

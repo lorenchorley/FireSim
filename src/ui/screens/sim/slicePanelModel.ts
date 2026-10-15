@@ -54,8 +54,13 @@ export interface LayoutInput {
 
 const PAD_R = 12;
 const PAD_T = 8;
+/** The least canvas height worth drawing: a very long, low slice at true scale is a thin strip, and the rest of the box stays empty. */
+const BOX_MIN = 120;
 const EXAGGERATION_MIN = 1;
 const EXAGGERATION_MAX = 3;
+
+/** The room under the plot for the distance axis (tick marks and their labels). */
+const axisHeight = (small: number): number => Math.ceil(small + 12);
 
 const fin = (v: number, fallback: number): number => (Number.isFinite(v) ? v : fallback);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -70,7 +75,7 @@ export function plotLayout(i: LayoutInput): PlotLayout {
   const height = Math.max(1, fin(i.height, 1));
   const small = fin(i.smallPx, 12);
   const padL = Math.max(44, Math.ceil(fin(i.labelW ?? 0, 0)) + 10, Math.ceil(small * 4.2)); // room for "1,500 m" and a gap
-  const axisH = Math.ceil(small + 12);
+  const axisH = axisHeight(small);
   const availW = Math.max(8, width - padL - PAD_R);
   const availH = Math.max(8, height - PAD_T - axisH);
   const length = Math.max(1, fin(i.length, 1));
@@ -98,6 +103,17 @@ export function plotLayout(i: LayoutInput): PlotLayout {
     ratio: pxPerMZ / pxPerM,
     fitted,
   };
+}
+
+/**
+ * The canvas height (CSS px) that holds the picture at the asked-for ratio with no empty band above it: the top margin, the plot
+ * at `ratio = slider` and the distance axis. A long line, or a low slice, at true scale is shorter than the box. The panel sets
+ * the canvas to this height and the stylesheet caps it at the full box, so where the box is the limit (a short line, a tall
+ * range or a big slider) the cap applies and the picture is fitted to it as `plotLayout` says.
+ */
+export function naturalBoxHeight(i: Omit<LayoutInput, 'height'>): number {
+  const tall = plotLayout({ ...i, height: 1e6 });
+  return Math.max(BOX_MIN, Math.ceil(PAD_T + tall.plot.h + axisHeight(fin(i.smallPx, 12))));
 }
 
 /** Pixel of a distance from A (m) and of a height (m ASL). */

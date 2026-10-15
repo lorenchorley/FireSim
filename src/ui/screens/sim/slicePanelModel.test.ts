@@ -21,6 +21,7 @@ import {
   legendView,
   lutIndex,
   makeLut,
+  naturalBoxHeight,
   pickPos,
   plotLayout,
   rasterBox,
@@ -96,6 +97,27 @@ describe('plotLayout', () => {
     expect(plotLayout({ ...BASE, length: 12000, zMax: 1000, exaggeration: 0 }).ratio).toBeCloseTo(1, 9);
     const l = plotLayout({ width: NaN, height: Infinity, length: NaN, zMin: NaN, zMax: NaN, exaggeration: NaN, smallPx: NaN });
     for (const v of [l.width, l.height, l.plot.x, l.plot.y, l.plot.w, l.plot.h, l.pxPerM, l.pxPerMZ, l.ratio, l.length, l.zMin, l.zMax]) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  it('wants a canvas no taller than its picture: no empty band above a long or low slice at true scale', () => {
+    const { height: _h, ...input } = BASE;
+    // a 6 km line over a 2 150 m range at true scale is 330 px wide, so about 118 px tall, not the 230 px box
+    const six = { ...input, length: 6000, zMax: 2500 };
+    const need = naturalBoxHeight(six);
+    expect(need).toBeLessThan(160);
+    // in a box of that height the picture fills it, exactly at the asked-for ratio (not fitted), with the room above it gone
+    const l = plotLayout({ ...six, height: need });
+    expect(l.fitted).toBe(false);
+    expect(l.ratio).toBeCloseTo(1, 9);
+    expect(l.plot.y).toBeGreaterThanOrEqual(8);
+    expect(l.plot.y).toBeLessThan(9); // the box is rounded up to a whole pixel
+    expect(l.plot.y + l.plot.h).toBeLessThanOrEqual(need - 24 + 1e-6);
+    // the same line at 3 times needs more, and a line too short for the box wants more than the box (the stylesheet's cap fits it)
+    expect(naturalBoxHeight({ ...six, exaggeration: 3 })).toBeGreaterThan(need);
+    expect(naturalBoxHeight({ ...input, length: 1000, zMax: 2500 })).toBeGreaterThan(BASE.height);
+    // a thin strip is never thinner than the least worth drawing, and a text that is not a number does not break it
+    expect(naturalBoxHeight({ ...input, length: 60000, zMax: 400 })).toBe(120);
+    expect(Number.isFinite(naturalBoxHeight({ width: NaN, length: NaN, zMin: NaN, zMax: NaN, exaggeration: NaN, smallPx: NaN }))).toBe(true);
   });
 
   it('makes room for the larger text of a bigger type size', () => {

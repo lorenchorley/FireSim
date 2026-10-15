@@ -831,6 +831,10 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
           : null,
       ]),
     ]);
+    // The panel may open with the section already on (the Air slices tool placed a line): the chips show the section's state at once, not at the next slice.
+    fieldKey = '';
+    renderFieldChips();
+    renderNeed3d();
   };
   const switchRows = plan.switches.map((info) => {
     const infoId = uniqueId('lp-info');

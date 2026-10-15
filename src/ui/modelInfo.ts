@@ -749,7 +749,7 @@ function limitBullets(input: ModelCardInput, n: Numbers, e: EngineInfo | null): 
       ref: '§7.2, D4',
     },
   ];
-  if (is3d === false) cannot.push({ kind: 'cannot', text: 'In the fast mode: the plume, moving cold-air pools and the cross-section of the air need the 3-D atmosphere.', ref: '§8.9' });
+  if (is3d === false) cannot.push({ kind: 'cannot', text: 'In the fast mode: the plume, moving cold-air pools, air temperature and smoke need the 3-D atmosphere. The air slice still works there, on the diagnosed wind (terrain effects only).', ref: '§8.9' });
   const param: CardBullet[] = [
     { kind: 'parameterised', text: 'Eruptive fire in steep gullies and chimneys, sideways spread on lee slopes (VLS), junction zones and rolling debris (the mountain effects).', ref: '§7.6–7.11' },
     { kind: 'parameterised', text: `Slope winds too small for the ${m(dx)} grid: a sub-grid estimate is added to the wind at the fire.`, ref: '§8.6' },

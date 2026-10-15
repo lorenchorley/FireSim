@@ -36,6 +36,7 @@ import {
   footerRuns,
   legendView,
   makeLut,
+  naturalBoxHeight,
   pickPos,
   plotLayout,
   rasterize,
@@ -58,6 +59,9 @@ function makeBuf(): Buf {
   const canvas = document.createElement('canvas');
   return { canvas, ctx: canvas.getContext('2d') };
 }
+
+/** The canvas while there is no slice: room for its few words, so the controls the tool gave come up the screen. */
+const EMPTY_BOX_PX = 128;
 
 const KEYS: Record<string, 'left' | 'right' | 'up' | 'down'> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
 
@@ -87,7 +91,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const view = h('div', { class: 'slice-view' }, h('div', { class: 'slice-stage' }, [canvas, empty, readout]));
 
   const reasonsId = uniqueId('slice-reasons');
-  const reasons = h('div', { class: 'slice-reasons', id: reasonsId, hidden: true, dataset: { testid: 'slice-reasons' } });
+  // The button comes first (it is what a person can act on, and it stays in view on a short screen); the words follow it, and the chips are described by the words.
+  const reasons = h('div', { class: 'slice-reasons', hidden: true, dataset: { testid: 'slice-reasons' } });
   const chipEls = new Map<SliceFieldId, HTMLButtonElement>();
   for (const f of SLICE_FIELDS) {
     const name = f.name.toLowerCase() === f.label.toLowerCase() ? f.label : `${f.label}, ${f.name.toLowerCase()}`;
@@ -188,8 +193,21 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     return true;
   }
 
+  /**
+   * The canvas is as tall as its picture needs (`--slice-h`; the stylesheet caps it at the full box), so a long line at true scale
+   * has no empty band above it and the controls come up the screen.
+   */
+  let boxPx = 0;
+  function fitBox(px: number): void {
+    if (px === boxPx) return;
+    boxPx = px;
+    canvas.style.setProperty('--slice-h', `${px}px`);
+    size(); // measure the new box now, so the layout that follows is made for it
+  }
+
   function computeLayout(): void {
     if (!data || !font || cssW < 8) {
+      if (!data) fitBox(EMPTY_BOX_PX);
       layout = null;
       return;
     }
@@ -199,7 +217,9 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       ctx.font = font.small;
       labelW = Math.max(ctx.measureText(`${formatNumber(data.zMax)} m`).width, ctx.measureText(`${formatNumber(data.zMin)} m`).width);
     }
-    layout = plotLayout({ width: cssW, height: cssH, length: data.line.length, zMin: data.zMin, zMax: data.zMax, exaggeration: vex, smallPx: font.smallPx, labelW });
+    const input = { length: data.line.length, zMin: data.zMin, zMax: data.zMax, exaggeration: vex, smallPx: font.smallPx, labelW };
+    fitBox(naturalBoxHeight({ ...input, width: cssW }));
+    layout = plotLayout({ ...input, width: cssW, height: cssH });
   }
 
   function ensureRaster(d: SliceData): void {
@@ -315,12 +335,12 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     // The reasons, word for word from the scene, and the button that helps: only while some chip is off.
     const notes = disabledNotes(chips);
     const key = notes.map((n) => `${n.labels.join('+')}:${n.reason}:${n.use3d}`).join('|');
+    reasons.hidden = !data || notes.length === 0; // with no slice the chips are put away, and so are their reasons
     if (key !== notesKey) {
       notesKey = key;
-      reasons.hidden = notes.length === 0;
       setChildren(reasons, [
-        ...notes.map((n) => h('p', { class: 'hint' }, n.reason)),
         notes.some((n) => n.use3d) ? button({ label: SLICE_USE_3D_LABEL, variant: 'tonal', class: 'slice-use3d', testId: 'slice-use3d', onClick: () => options.onUse3d() }) : null,
+        h('div', { id: reasonsId }, notes.map((n) => h('p', { class: 'hint' }, n.reason))),
       ]);
     }
     canvas.dataset.field = field;
@@ -369,6 +389,9 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     const e = emptyState(update);
     empty.hidden = !e;
     if (e) text(empty, e.text);
+    // Nothing to colour or to draw cells of: the controls the tool gave come right under the words, with no scrolling to find them.
+    chipRow.hidden = !data;
+    cellsToggle.el.hidden = !data;
     canvas.setAttribute('aria-label', canvasLabel(data, fieldName()));
     canvas.dataset.seq = data ? String(data.seq) : '';
     syncScale();
@@ -378,13 +401,14 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   }
 
   function updateReadout(): void {
-    if (!reading || !data) {
-      readout.hidden = true;
+    const on = !!reading && !!data;
+    readout.hidden = !on;
+    root.classList.toggle('slice-probing', on); // (the short landscape panel gives the footer's line to the reading while there is one)
+    if (!on) {
       canvas.removeAttribute('aria-describedby');
       return;
     }
-    text(readoutText, probeSentence(reading, { units, kind: data.kind }));
-    readout.hidden = false;
+    text(readoutText, probeSentence(reading!, { units, kind: data!.kind }));
     canvas.setAttribute('aria-describedby', readoutId);
   }
 
