@@ -456,6 +456,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     const changed = size();
     if (!changed && !force) return;
     computeLayout();
+    if (data) ensureFlow(data);
     staticDirty = true;
     if (changed) clearTrail();
     syncDom();
@@ -547,6 +548,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       if (v === vex) return;
       vex = v;
       computeLayout();
+      if (data) ensureFlow(data);
       staticDirty = true;
       clearTrail();
       syncScale();

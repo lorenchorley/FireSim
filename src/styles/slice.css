@@ -123,6 +123,9 @@
   .slice-canvas {
     height: 96px;
   }
+  .slice-readout {
+    margin-top: 0; /* the window under the pinned picture is about 44 px: the clear button fits only without a gap */
+  }
   .slice-more {
     display: none; /* the kind, the grid and the age of the air stay; their explanations wait for a taller screen */
   }
