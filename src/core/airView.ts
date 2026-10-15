@@ -38,7 +38,7 @@ export function airHas(
   view: Pick<AtmosphereView, 'grid' | 'nz' | 'u' | 'v' | 'w' | 'thetaAnomaly' | 'smoke'> | null | undefined,
   field: AirField,
 ): boolean {
-  if (!view || view.nz <= 0) return false;
+  if (!view || view.nz <= 0 || !view.grid) return false; // a hand-made fixture may lack the grid
   const n = view.grid.nx * view.grid.ny * view.nz;
   if (n <= 0) return false;
   switch (field) {
@@ -74,4 +74,26 @@ export function cellHeightAsl(
   const top = view.topM;
   const J = top !== undefined && top > 0 ? 1 - h0 / top : 1;
   return baseM + h0 + lv * J;
+}
+
+/** The air counts as noticeably older than the picture it is shown with beyond this age (s): the footer then says how much. */
+export const AIR_STALE_S = 90;
+
+/**
+ * Simulation time (s) of the air a view holds, so a picture can say "air from 14:05", or null for a view that does not say
+ * (made before the stamp existed) or no view at all.
+ */
+export function airTime(view: Pick<AtmosphereView, 'time'> | null | undefined): number | null {
+  const t = view?.time;
+  return t !== undefined && Number.isFinite(t) ? t : null;
+}
+
+/**
+ * How much older the air is than the picture it is shown with (s, never negative), or null when the view has no time.
+ * Scrubbing back composes the picture from the keyframe at or before the shown time, up to a keyframe interval older
+ * (snapshotStore.ts), so the air can be minutes older than the fire; the slice footer says so beyond AIR_STALE_S.
+ */
+export function airAgeS(view: Pick<AtmosphereView, 'time'> | null | undefined, shownTimeS: number): number | null {
+  const t = airTime(view);
+  return t === null ? null : Math.max(0, shownTimeS - t);
 }

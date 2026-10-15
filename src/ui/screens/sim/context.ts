@@ -1,5 +1,6 @@
 /** Shared state and services for the components of the simulation screen. */
-import type { CellExplanation, Ignition, ScenarioData } from '../../../core/types';
+import { airKind } from '../../../core/airView';
+import type { AtmosphereView, CellExplanation, Ignition, ScenarioData } from '../../../core/types';
 import type { MapMarker, SceneViewApi } from '../../../render/api';
 import type { LayerState } from '../../../render/layers';
 import type { SimSession } from '../../session';
@@ -110,9 +111,11 @@ export const DEFAULT_UI: UiState = {
 };
 
 /**
- * True when the snapshot carries the 3-D atmosphere (standard / high tier). The fast tier's view has surface winds
- * only (nz = 0): no plume volume, cross-section or through-the-plume wind particles.
+ * True when the snapshot carries the time-stepped 3-D atmosphere (standard / high tier): wind, temperature and smoke, so a
+ * plume volume, cross-section temperature and smoke, and through-the-plume wind particles. The fast tier's view holds only
+ * the diagnosed wind (`hasAirWind` in core/airView.ts): no plume, temperature or smoke. Asked of the view itself (`airKind`), not of the engine
+ * report, because a picture composed from history carries the newest engine info (snapshotStore.ts).
  */
-export function has3dAtmosphere(snap: { atmosphere?: { nz: number } } | null | undefined): boolean {
-  return !!snap?.atmosphere && snap.atmosphere.nz > 0;
+export function has3dAtmosphere(snap: { atmosphere?: Pick<AtmosphereView, 'nz' | 'kind'> | null } | null | undefined): boolean {
+  return airKind(snap?.atmosphere) === 'prognostic';
 }

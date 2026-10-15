@@ -411,7 +411,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const b = s.compare ? baselineAt(s.compare, st.time) : null;
     const g = ctx.scenario.terrain.grid;
     const perfRows: KvRow[] = [
-      { key: 'Wind model', value: has3dAtmosphere(s.snapshot) ? '3-D atmosphere: plume, cold air and slope winds' : 'Fast: a surface wind shaped by the terrain' },
+      { key: 'Wind model', value: has3dAtmosphere(s.snapshot) ? '3-D atmosphere: plume, cold air and slope winds' : 'Fast: the forecast wind fitted to the terrain (no plume or cold air)' },
       { key: 'Fire grid', value: `${formatNumber(g.nx)} × ${formatNumber(g.ny)} cells of ${formatNumber(g.cellSize)} m` },
       { key: 'Compute time', value: Number.isFinite(st.msPerSimMinute) ? `${formatNumber(st.msPerSimMinute, 1)} ms per simulated minute` : '–' },
       { key: 'Worker speed', value: s.workerSpeed > 0 ? `${formatNumber(s.workerSpeed)}× real time` : 'idle' },

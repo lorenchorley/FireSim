@@ -7,8 +7,9 @@ import { makeGridSpec } from '../core/grid';
 import { formatBytes, typedArrayFootprint } from '../core/datasets';
 import { atmosCellSize } from '../atmosphere/grid';
 import { Simulation } from '../sim/simulation';
+import { keyframeBytes } from '../ui/snapshotStore';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { CLIFF_BYTES, atmosphereGrid, checkpointCount, liveMemory, scenarioArrayBytes, workingMemory, workingMemoryForScenario } from './memoryModel';
+import { CLIFF_BYTES, atmosphereGrid, checkpointCount, keyframeBytesModel, liveMemory, scenarioArrayBytes, workingMemory, workingMemoryForScenario } from './memoryModel';
 
 const PARTS = ['fire', 'explain', 'moisture', 'fuel', 'rasters', 'atmosphere', 'embers'] as const;
 
@@ -56,6 +57,14 @@ describe('model vs the real allocated arrays', () => {
       // The worker total (scenario copy + engine) within 5 %.
       const workerModel = wm.items.filter((x) => x.where === 'worker').reduce((a, x) => a + x.bytes, 0);
       expect(Math.abs(workerModel - real.totalBytes) / real.totalBytes).toBeLessThan(0.05);
+      // The history's keyframe (moisture, overlay rasters and the air view the snapshot carries) against the model: the fast tier's
+      // diagnosed volume holds u, v and w only, the 3-D tiers five fields per level.
+      const snap = sim.snapshot();
+      const atm = atmosphereGrid(scenario.extent, tier);
+      const kfReal = keyframeBytes(snap);
+      const kfModel = keyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz);
+      expect(Math.abs(kfModel - kfReal) / kfReal, `keyframe: model ${kfModel} vs measured ${kfReal}`).toBeLessThan(0.03);
+      expect(snap.atmosphere!.nz).toBe(atm.nz);
       // A measured checkpoint figure replaces the model.
       const wm2 = workingMemory({ tier, fireNx: g.nx, fireNy: g.ny, extentM: scenario.extent, durationS: 1800, measured: { checkpointBytes: real.checkpointBytes } });
       expect(wm2.items.find((x) => x.id === 'checkpoints')!.bytes).toBe(real.checkpointBytes);

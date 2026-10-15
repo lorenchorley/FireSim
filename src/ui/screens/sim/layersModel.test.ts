@@ -208,6 +208,8 @@ describe('availability and words', () => {
     expect(sc.imageryCellSize).toBe(img.model?.resolutionM ?? img.native?.resolutionM);
     expect(sc.atmosphere3d).toBe(false); // a surface-only wind diagnostic (no levels): not the 3-D atmosphere
     expect(layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never, { atmosphere: { nz: 20, grid: { cellSize: 150 } } } as never).atmosphere3d).toBe(true);
+    // The fast tier's diagnosed wind has 20 levels too, and is still not the 3-D atmosphere (plan 7.4: the kind decides, not nz).
+    expect(layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never, { atmosphere: { nz: 20, kind: 'diagnosed', grid: { cellSize: 150 } } } as never).atmosphere3d).toBe(false);
     expect(layerScenarioOf({ terrain: { grid: { cellSize: 30 } }, fuel: { sources: [] }, datasets } as never, null).atmosphere3d).toBeUndefined(); // before the first picture: not known
   });
 

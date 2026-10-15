@@ -1688,7 +1688,8 @@ export class Simulation {
     };
     const dmz = this.explainEngine.layers()['dmz'];
     if (dmz) layers['dmz'] = dmz.slice();
-    let atmosphere = this.atm.view();
+    // The air's own time travels with it ("air from 14:05"): the picture can be composed from an older keyframe.
+    let atmosphere: NonNullable<SimSnapshot['atmosphere']> = { ...this.atm.view(), time: this.t };
     const cells = atmosphere.grid.nx * atmosphere.grid.ny * Math.max(1, atmosphere.nz);
     const decimated = cells > P.atmosViewMaxCells;
     if (decimated) atmosphere = decimateView(atmosphere);
@@ -2016,7 +2017,7 @@ function structuredCloneSafe<T>(v: T): T {
 }
 
 /** Halve the horizontal resolution of an atmosphere view (block means of 2 × 2 columns). */
-function decimateView(v: SimSnapshot['atmosphere'] & object): NonNullable<SimSnapshot['atmosphere']> {
+export function decimateView(v: SimSnapshot['atmosphere'] & object): NonNullable<SimSnapshot['atmosphere']> {
   const g = v.grid;
   const nx2 = Math.ceil(g.nx / 2);
   const ny2 = Math.ceil(g.ny / 2);
@@ -2051,10 +2052,17 @@ function decimateView(v: SimSnapshot['atmosphere'] & object): NonNullable<SimSna
     return out;
   };
   const grid = { ...g, nx: nx2, ny: ny2, cellSize: g.cellSize * 2, x0: g.x0 + g.cellSize / 2, y0: g.y0 + g.cellSize / 2 };
+  // Block means keep a terrain-following view consistent: level l of the coarse column sits at the mean of the fine
+  // columns' heights (h0 + ζ·(1 − h0 / H′) is linear in h0), so the layout, kind, top, datum and time carry over as they are.
   return {
     grid,
     nz,
     levels: v.levels.slice(),
+    ...(v.layout !== undefined ? { layout: v.layout } : {}),
+    ...(v.kind !== undefined ? { kind: v.kind } : {}),
+    ...(v.topM !== undefined ? { topM: v.topM } : {}),
+    ...(v.baseM !== undefined ? { baseM: v.baseM } : {}),
+    ...(v.time !== undefined ? { time: v.time } : {}),
     terrainHeight: down2(v.terrainHeight),
     surfaceU: down2(v.surfaceU),
     surfaceV: down2(v.surfaceV),

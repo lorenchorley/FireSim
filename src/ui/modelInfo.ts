@@ -22,6 +22,7 @@
  * (also after a switch mid-run). Before the engine reports (opened from Setup, or before the first picture) the numbers
  * are PLANNED, computed with the same rules the builder and the engine apply, and the card says so.
  */
+import { airKind, hasAirWind } from '../core/airView';
 import { formatBytes, formatCount as formatCountThin } from '../core/datasets';
 import type { DatasetRecord, EngineInfo, QualityTier, ScenarioData, SimSnapshot, WeatherSeries } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
@@ -833,7 +834,8 @@ function availabilityOf(input: ModelCardInput, e: EngineInfo | null): Availabili
   if (!sc) return null;
   const img = record(sc, 'imagery');
   const ctx = availabilityContext({ fuel: sc.fuel, context: sc.context ?? null, fire: (input.snapshot?.stats.burntAreaHa ?? 0) > 0, hasImagery: !!img && (img.status === 'used' || img.status === 'partial') });
-  ctx.has3dAtmosphere = e ? !e.mock && e.atmosphere.kind === '3d' : (input.snapshot?.atmosphere?.nz ?? 0) > 0;
+  ctx.has3dAtmosphere = e ? !e.mock && e.atmosphere.kind === '3d' : airKind(input.snapshot?.atmosphere) === 'prognostic';
+  ctx.hasAirWind = ctx.has3dAtmosphere || hasAirWind(input.snapshot?.atmosphere);
   return ctx;
 }
 

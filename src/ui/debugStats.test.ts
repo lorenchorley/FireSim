@@ -397,6 +397,22 @@ describe('labels and values', () => {
     expect(rowOf(s, 'choices', 'autotune').note).toBe('Predicted 124 s for the whole run against a limit of 600 s; chose Standard (3-D air)');
   });
 
+  it('Grids: the fast tier says its air is the fitted wind (a diagnosed 3-D wind), the 3-D tiers say wind, temperature and smoke', () => {
+    const grids = (e: EngineInfo): { air: StatRow; view: StatRow } => {
+      const i = full();
+      i.engine = e;
+      const st = buildDebugStats(i);
+      return { air: rowOf(st, 'grids', 'atmosphere'), view: rowOf(st, 'grids', 'view-decimated') };
+    };
+    const three = grids({ ...engine, atmosphere: { ...engine.atmosphere, kind: '3d', viewDecimated: false } });
+    expect(three.air.value).toContain('time-stepped 3-D air');
+    expect(three.view).toMatchObject({ label: 'Air in the pictures', value: 'Wind, temperature and smoke; full grid' });
+    const fast = grids({ ...engine, atmosphere: { ...engine.atmosphere, kind: 'diagnostic', viewDecimated: true } });
+    expect(fast.air.value).toContain('the forecast wind fitted to the terrain, not stepped through time');
+    expect(fast.air.value).not.toContain('surface wind');
+    expect(fast.view.value).toBe('The fitted wind only (diagnosed); halved for display');
+  });
+
   it('Memory: budget with its memory class, what is held, thinned frames estimated from the range, the heap', () => {
     expect(rowOf(s, 'memory', 'history-budget').value).toBe('100.7 MB');
     // The limits are said in the same decimal megabytes as the figure (the real app once printed "167.8 MB ... between 48 and 160 MB": 160 MiB is 167.8 MB).

@@ -238,7 +238,8 @@ describe('datasetsModel: origin mix, freshness, substitutes, model (DS1)', () =>
     expect(JSON.stringify(f)).not.toMatch(/Auto: the 3-D atmosphere unless/);
     const grid = f.find((x) => x.key === 'Wind grid')!;
     expect(grid.value).toBe('45 x 45 columns of 133 m, 20 levels');
-    expect(grid.note).toMatch(/uses only the wind at the surface/);
+    expect(grid.note).toMatch(/The fire uses the wind at the surface and the fitted wind above it is kept for the pictures/);
+    expect(grid.note).toMatch(/no air is simulated through time/);
     expect(f.find((x) => x.key === 'Atmosphere grid')).toBeUndefined();
     // On the 3-D air, the grid is the air the engine steps, and a tier asked for says so.
     const air = modelFacts(bundled.summary, { ...fast, tier: 'standard', tierCause: 'requested', tierReason: 'Asked for when the run started: the standard 3-D atmosphere.', atmosphere: { ...fast.atmosphere, kind: '3d' } });

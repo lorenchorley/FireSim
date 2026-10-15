@@ -1,7 +1,8 @@
 /**
  * Fast tier `DiagnosticWind` (spec §8.9, P0): no 3-D dynamics. Mass-consistent u_bg per stamp (time-interpolated),
  * night decoupling, sub-grid slope flows (full S), lee separation, pyrogenic potential (c_p = c_f, head correction),
- * user wind edits via u₀. view() returns the 10 m fields and a zero 3-D volume; airAt() the §5.2 template T;
+ * user wind edits via u₀. view() returns the 10 m fields and the diagnosed 3-D wind (the stamp pair's u_bg on the native
+ * terrain-following levels, kind 'diagnosed': no temperature or smoke); airAt() the §5.2 template T;
  * sampleTurb from similarity; spunUp is always false; diagnostics: inversion from the §5.2a template, Briggs /
  * 1-D plume top. No wall-clock dependence anywhere (tier changes are recorded edits, §12.6).
  */
@@ -248,8 +249,42 @@ export class DiagnosticWind extends AtmosBase {
       sv[c] = (1 - a) * (ar * va + ai * ua) + a * (br * vb + bi * ub);
       th[c] = g.zs[c]! - g.zMin;
     }
+    // The diagnosed volume: the stamp pair's u_bg blended in time (the blend sampleBg applies), on the native levels.
+    const n = g.plane * g.nz;
+    const u = new Float32Array(n);
+    const v = new Float32Array(n);
+    const w = new Float32Array(n);
+    const au = A.bg!.uc;
+    const av = A.bg!.vc;
+    const aw = A.bg!.wc;
+    const bu = B.bg!.uc;
+    const bv = B.bg!.vc;
+    const bw = B.bg!.wc;
+    for (let k = 0; k < n; k++) {
+      u[k] = (1 - a) * au[k]! + a * bu[k]!;
+      v[k] = (1 - a) * av[k]! + a * bv[k]!;
+      w[k] = (1 - a) * aw[k]! + a * bw[k]!;
+    }
+    const levels = new Float32Array(g.nz);
+    for (let k = 0; k < g.nz; k++) levels[k] = g.zetaC[k]!;
     const empty = new Float32Array(0);
-    return { grid: g.grid, nz: 0, levels: empty, terrainHeight: th, surfaceU: su, surfaceV: sv, u: empty, v: empty, w: empty, thetaAnomaly: empty, smoke: empty };
+    return {
+      grid: g.grid,
+      nz: g.nz,
+      levels,
+      terrainHeight: th,
+      layout: 'terrain-following',
+      kind: 'diagnosed',
+      topM: g.Hp,
+      baseM: g.zMin,
+      surfaceU: su,
+      surfaceV: sv,
+      u,
+      v,
+      w,
+      thetaAnomaly: empty,
+      smoke: empty,
+    };
   }
 
   /** θ = raw θ_env + §5.2a cold-pool template (no resolved perturbation in the fast tier). */

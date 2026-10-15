@@ -240,6 +240,18 @@ describe('availability', () => {
     expect(a('crossSection', ALL).ok).toBe(true);
   });
 
+  it('wind speed also shows in the fast tier, whose diagnosed wind carries the 10 m wind (plan 7.5 step 4), and says where it comes from', () => {
+    const fastTier = { ...ALL, has3dAtmosphere: false, hasAirWind: true };
+    expect(a('windSpeed', fastTier).ok).toBe(true);
+    expect(a('windSpeed', { ...fastTier, hasFire: false })).toEqual({ ok: false, reason: 'Needs a fire: mark one first' });
+    // No air picture at all (before the first one, or a view without wind): the old reason.
+    expect(a('windSpeed', { ...ALL, has3dAtmosphere: false, hasAirWind: false })).toEqual({ ok: false, reason: 'Needs the 3-D atmosphere: switch it on in Settings' });
+    expect(info('windSpeed').source({ atmosphere3d: false })).toMatch(/forecast wind fitted to the terrain/);
+    expect(info('windSpeed').source({ atmosphere3d: true })).toMatch(/3-D atmosphere model/);
+    expect(info('windSpeed').resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toMatch(/^133 m wind cells, fitted again for each weather record/);
+    expect(info('windSpeed').resolution({ atmosphereCellSize: 150 })).toMatch(/^150 m atmosphere cells/);
+  });
+
   it('places layers need their data and name what is missing', () => {
     const cases: [string, string][] = [
       ['roads', 'No road data for this place'],
@@ -293,18 +305,31 @@ describe('availabilityContext builder', () => {
   });
 
   it('derives every flag from the objects the app has', () => {
-    expect(availabilityContext({})).toEqual({ hasFire: false, has3dAtmosphere: false, hasContext: false, hasGrass: false, hasCanopyData: false, hasImagery: false, hasHomes: false, hasRoads: false });
+    expect(availabilityContext({})).toEqual({ hasFire: false, has3dAtmosphere: false, hasAirWind: false, hasContext: false, hasGrass: false, hasCanopyData: false, hasImagery: false, hasHomes: false, hasRoads: false });
     const full = availabilityContext({
       fuel: fuel([FuelType.Grassland, FuelType.Heath], ['NSW SVTM', 'Meta & WRI 1 m canopy height (Tolan et al. 2024, CC BY 4.0)']),
       snapshot: { atmosphere: { nz: 20 } as AtmosphereView },
       context: ctx(3, 2),
       hasImagery: true,
     });
-    expect(full).toEqual({ hasFire: true, has3dAtmosphere: true, hasContext: true, hasGrass: true, hasCanopyData: true, hasImagery: true, hasHomes: true, hasRoads: true });
+    // (a bare `{ nz: 20 }` has no arrays to sample, so it is the 3-D atmosphere by `kind` but holds no wind)
+    expect(full).toEqual({ hasFire: true, has3dAtmosphere: true, hasAirWind: false, hasContext: true, hasGrass: true, hasCanopyData: true, hasImagery: true, hasHomes: true, hasRoads: true });
     const surfaceOnly = availabilityContext({ fuel: fuel([FuelType.WetForest], ['Canopy: type defaults']), snapshot: { atmosphere: undefined as unknown as AtmosphereView }, context: ctx(0, 0), fire: true });
     expect(surfaceOnly).toMatchObject({ hasFire: true, has3dAtmosphere: false, hasGrass: false, hasCanopyData: false, hasContext: true, hasHomes: false, hasRoads: false });
-    // The fast tier's surface-only wind diagnostic (nz = 0) is not the 3-D atmosphere.
-    expect(availabilityContext({ snapshot: { atmosphere: { nz: 0 } as AtmosphereView } }).has3dAtmosphere).toBe(false);
+    // A surface-only view (nz = 0) is not the 3-D atmosphere and holds no 3-D wind.
+    expect(availabilityContext({ snapshot: { atmosphere: { nz: 0 } as AtmosphereView } })).toMatchObject({ has3dAtmosphere: false, hasAirWind: false });
+    // The fast tier's diagnosed wind is a 3-D wind but not the 3-D atmosphere; the time-stepped air is both.
+    const volume = (kind?: 'prognostic' | 'diagnosed'): AtmosphereView => {
+      const grid = makeGridSpec({ lat: 0, lon: 0 }, 300, 100);
+      const n = grid.nx * grid.ny * 2;
+      const a = (): Float32Array => new Float32Array(n);
+      const none = new Float32Array(0);
+      const diagnosed = kind === 'diagnosed';
+      return { grid, nz: 2, levels: Float32Array.of(10, 40), terrainHeight: new Float32Array(grid.nx * grid.ny), ...(kind ? { kind } : {}), surfaceU: new Float32Array(grid.nx * grid.ny), surfaceV: new Float32Array(grid.nx * grid.ny), u: a(), v: a(), w: a(), thetaAnomaly: diagnosed ? none : a(), smoke: diagnosed ? none : a() };
+    };
+    expect(availabilityContext({ snapshot: { atmosphere: volume('diagnosed') } })).toMatchObject({ has3dAtmosphere: false, hasAirWind: true });
+    expect(availabilityContext({ snapshot: { atmosphere: volume('prognostic') } })).toMatchObject({ has3dAtmosphere: true, hasAirWind: true });
+    expect(availabilityContext({ snapshot: { atmosphere: volume() } })).toMatchObject({ has3dAtmosphere: true, hasAirWind: true }); // a view made before `kind` existed
     // A marked fire counts before the first snapshot arrives.
     expect(availabilityContext({ fire: true }).hasFire).toBe(true);
     expect(availabilityContext({ snapshot: { atmosphere: undefined as unknown as AtmosphereView }, fire: false }).hasFire).toBe(false);

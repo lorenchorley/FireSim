@@ -99,8 +99,17 @@ export const RING_CHECKPOINT_GROWTH_BYTES = 400_000;
 export const SNAPSHOT_FIRE_BYTES_PER_CELL = 23;
 /** Keyframe: moisture + 4 overlay rasters (vls, attach, trench, landing), 4 B each per cell. */
 export const KEYFRAME_BYTES_PER_CELL = 20;
-/** Keyframe atmosphere view per column: terrain height, surface u/v (12 B) plus, in the 3-D tiers, u, v, w, theta and smoke per level (20 B). */
-export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20 };
+/**
+ * Keyframe atmosphere view per column: terrain height, surface u/v (12 B) plus per level, in the 3-D tiers u, v, w, theta and
+ * smoke (20 B) and in the fast tier's diagnosed volume u, v and w only (12 B). The level heights add 4 B per level once.
+ */
+export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOnly: 12 };
+
+/** Bytes of one keyframe (ui/snapshotStore.ts `keyframeBytes`): the fixed part, moisture and four overlay rasters per fire cell, the air view. */
+export function keyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
+  const perLevel = tier === 'fast' ? KEYFRAME_COLUMN_BYTES.perLevelWindOnly : KEYFRAME_COLUMN_BYTES.perLevel;
+  return 256 + KEYFRAME_BYTES_PER_CELL * cells + columns * (KEYFRAME_COLUMN_BYTES.surface + nz * perLevel) + 4 * nz;
+}
 /** Light frame kept per display step (stats, bookkeeping; ui/snapshotStore.ts FRAME_BYTES). */
 export const FRAME_BYTES = 1024;
 /** Ember particles kept per step after thinning (typical; at most 64 KB each). */
@@ -234,7 +243,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   const atmosphere = part(E.atmosphere, cells, atm.columns, embers);
   add(
     'atmosphere',
-    tier === 'fast' ? 'Wind model of the fast mode (terrain-fitted wind; only the surface wind is used)' : `Atmosphere model (3-D, ${atm.nz} terrain-following levels)`,
+    tier === 'fast' ? 'Wind model of the fast mode (the forecast wind fitted to the terrain)' : `Atmosphere model (3-D, ${atm.nz} terrain-following levels)`,
     'worker',
     atmosphere,
     `${colsText} of ${Math.round(atm.cellM)} m: ${kb(E.atmosphere.perColumn)} per column + ${cellsText} x ${E.atmosphere.perCell} B`,
@@ -257,7 +266,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   );
 
   // ── snapshot history (main) ──
-  const kfBytes = 256 + KEYFRAME_BYTES_PER_CELL * cells + atm.columns * (KEYFRAME_COLUMN_BYTES.surface + (tier === 'fast' ? 0 : atm.nz * KEYFRAME_COLUMN_BYTES.perLevel));
+  const kfBytes = keyframeBytesModel(tier, cells, atm.columns, atm.nz);
   const keyEvery = Math.max(300, step);
   const nKeys = Math.floor(i.durationS / keyEvery) + 1;
   const nFrames = Math.floor(i.durationS / step) + 1;

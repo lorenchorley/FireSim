@@ -11,6 +11,7 @@
  * cost ~2 triangles per puff and scale with the plume size instead of the screen size.
  */
 import * as THREE from 'three';
+import { airHas, cellHeightAsl } from '../core/airView';
 import type { AtmosphereView } from '../core/types';
 import { profileFactor, type AtmosphereSampler } from './atmosphereSampler';
 import { hash01 } from './fields';
@@ -97,8 +98,14 @@ export interface Puff {
   rand: number;
 }
 
-/** Puffs for the atmosphere's smoke field (≤ max, deterministic). */
+/**
+ * Puffs for the atmosphere's smoke field (≤ max, deterministic). `base` is the datum (m ASL) of a view that does not carry its
+ * own; cell heights come from `cellHeightAsl`, so a terrain-following view puts its smoke where the model has it, over the
+ * hills. A view without a smoke array (the fast tier's diagnosed wind) has no puffs.
+ */
 export function puffsFromAtmosphere(atm: AtmosphereView, base: number, max = 1500, reference = SMOKE_REFERENCE): Puff[] {
+  if (!airHas(atm, 'smoke')) return [];
+  const hasTheta = airHas(atm, 'theta');
   const g = atm.grid;
   const plane = g.nx * g.ny;
   const n = plane * atm.nz;
@@ -121,7 +128,7 @@ export function puffsFromAtmosphere(atm: AtmosphereView, base: number, max = 150
     const rem = k - z * plane;
     const j = (rem / g.nx) | 0;
     const i = rem - j * g.nx;
-    const dz = atm.nz > 1 ? atm.levels[Math.min(z + 1, atm.nz - 1)]! - atm.levels[Math.max(z - 1, 0)]! : 200;
+    const dz = atm.nz > 1 ? cellHeightAsl(atm, rem, Math.min(z + 1, atm.nz - 1), base) - cellHeightAsl(atm, rem, Math.max(z - 1, 0), base) : 200;
     const r1 = hash01(k, 2);
     const r2 = hash01(k, 3);
     const r3 = hash01(k, 4);
@@ -130,10 +137,10 @@ export function puffsFromAtmosphere(atm: AtmosphereView, base: number, max = 150
     out.push({
       x: g.x0 + (i + (r1 - 0.5) * 0.8) * g.cellSize,
       y: g.y0 + (j + (r2 - 0.5) * 0.8) * g.cellSize,
-      z: base + atm.levels[z]! + (r3 - 0.5) * 0.4 * dz,
+      z: cellHeightAsl(atm, rem, z, base) + (r3 - 0.5) * 0.4 * dz,
       radius: g.cellSize * (0.8 + 0.5 * r3) * cover,
       alpha: Math.min(1, c / cRef) * 0.3,
-      heat: Math.min(1, Math.max(0, atm.thetaAnomaly[k]! / 6)),
+      heat: hasTheta ? Math.min(1, Math.max(0, atm.thetaAnomaly[k]! / 6)) : 0,
       rand: r1,
     });
   }

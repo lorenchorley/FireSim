@@ -20,6 +20,7 @@
  *   }
  * The legend of the shown heat map is `view.legend()` (SceneView), or `legendFor(kind, ctx)` from legends.ts.
  */
+import { airKind, hasAirWind } from '../core/airView';
 import { CANOPY_NATIVE_CELL_LABEL, type DatasetRecord } from '../core/datasets';
 import type { ContextLayers } from '../core/places';
 import { FuelType, type FuelMap, type SimSnapshot } from '../core/types';
@@ -87,8 +88,10 @@ export interface HeatInfo {
 export interface AvailabilityContext {
   /** A fire has been marked (or a run is showing), so fire results exist. */
   hasFire: boolean;
-  /** The 3-D atmosphere is running (not the fast surface-wind tier). */
+  /** The time-stepped 3-D atmosphere is running (wind, temperature and smoke), not the fast tier's diagnosed wind. */
   has3dAtmosphere: boolean;
+  /** The picture carries a 3-D wind to sample: the 3-D atmosphere or the fast tier's diagnosed wind. Absent counts as `has3dAtmosphere`. */
+  hasAirWind?: boolean;
   /** Roads, fire trails, homes, zones and place names were loaded for this place. */
   hasContext: boolean;
   /** Some ground here is grass or grassy woodland. */
@@ -634,9 +637,16 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     kind: 'heat',
     heat: heat('windSpeed', 'km/h'),
     dimension: '2.5-D terrain',
-    available: (c) => (c.has3dAtmosphere ? needsFire(c) : needsAtmosphere(c)),
-    source: () => 'FireSim 3-D atmosphere model (winds 10 m above the ground), computed on this device',
-    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells, updated at every simulation step`,
+    // The 10 m wind exists in both tiers: the 3-D atmosphere's, and the fast tier's own terrain fit of the forecast wind.
+    available: (c) => ((c.hasAirWind ?? c.has3dAtmosphere) ? needsFire(c) : needsAtmosphere(c)),
+    source: (sc) =>
+      sc?.atmosphere3d === false
+        ? 'FireSim wind model: the forecast wind fitted to the terrain (winds 10 m above the ground), computed on this device'
+        : 'FireSim 3-D atmosphere model (winds 10 m above the ground), computed on this device',
+    resolution: (sc) =>
+      sc?.atmosphere3d === false
+        ? `${sc.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} wind cells, fitted again for each weather record and blended in between`
+        : `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells, updated at every simulation step`,
   },
   {
     id: 'landing',
@@ -925,8 +935,9 @@ export function availabilityContext(input: {
   const ctx = input.context ?? null;
   return {
     hasFire: input.fire ?? !!input.snapshot,
-    // The fast tier carries a surface-only wind diagnostic (nz = 0): that is not the 3-D atmosphere.
-    has3dAtmosphere: (input.snapshot?.atmosphere?.nz ?? 0) > 0,
+    // The fast tier carries a diagnosed wind (kind 'diagnosed'): a 3-D wind, but not the 3-D atmosphere.
+    has3dAtmosphere: airKind(input.snapshot?.atmosphere) === 'prognostic',
+    hasAirWind: hasAirWind(input.snapshot?.atmosphere),
     hasContext: !!ctx,
     hasGrass: input.fuel ? fuelHasGrass(input.fuel) : false,
     hasCanopyData: !!input.fuel?.sources.some((s) => /canopy height/i.test(s)),

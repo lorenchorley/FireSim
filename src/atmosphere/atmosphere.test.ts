@@ -116,7 +116,7 @@ describe('3-D tier: projection and determinism', () => {
 });
 
 describe('3-D tier: contract behaviour', () => {
-  it('c_f = 0 ⇒ U_fire = U_dyn10 and U_fireInd = 0 (one-way coupling); view() on flat levels', () => {
+  it('c_f = 0 ⇒ U_fire = U_dyn10 and U_fireInd = 0 (one-way coupling); view() in the terrain-following layout', () => {
     const t = analyticTerrain(4000, 40, (x, y) => 500 + 150 * Math.exp(-(x * x + y * y) / (2 * 500 * 500)));
     const hrs: WeatherHour[] = [0, 1].map((q) => hour(Date.UTC(2025, 0, 5, q), 6, 270));
     const s = seriesOf(hrs, { sourceElevation: 500 });
@@ -132,10 +132,16 @@ describe('3-D tier: contract behaviour', () => {
     expect(v.nz).toBe(a.grid.nz);
     expect(v.u.length).toBe(a.grid.plane * a.grid.nz);
     expect(v.levels[0]).toBeCloseTo(a.grid.zetaC[0]!, 4);
-    // Below-terrain cells of the flat view are zero; the lowest column has data at level 0.
+    // The native arrays on the model's own levels (plan 7.2): level 0 of every column holds the model's wind, also under the
+    // hill, where the old flat resample put zeros.
+    expect(v.layout).toBe('terrain-following');
+    expect(v.kind).toBe('prognostic');
+    expect(v.topM).toBe(a.grid.Hp);
+    expect(v.baseM).toBe(a.grid.zMin);
     const cHill = (a.grid.ny >> 1) * a.grid.nx + (a.grid.nx >> 1);
     expect(v.terrainHeight[cHill]!).toBeGreaterThan(100);
-    expect(v.u[cHill]).toBe(0);
+    expect(v.u[cHill]).toBe(a.state.uc[cHill]);
+    expect(Math.hypot(v.u[cHill]!, v.v[cHill]!)).toBeGreaterThan(0);
     const d = a.diagnostics();
     expect(d.spunUp).toBe(false);
     expect(Number.isFinite(d.frH)).toBe(true);

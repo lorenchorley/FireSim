@@ -26,6 +26,7 @@ import type { NightLook } from '../../../render/api';
 import type { LayerState, OverlayKind } from '../../../render/layers';
 import { canopyCodeLegend, type CanopyCode } from '../../../render/canopyStyle';
 import { placesLegend, type PlacesLayerId } from '../../../render/placesLegend';
+import { hasAirWind } from '../../../core/airView';
 import { has3dAtmosphere, type SimContext } from './context';
 import {
   MAP_TYPES,
@@ -195,7 +196,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const availNow = (): AvailabilityContext => {
     const st = ctx.session.state.get();
     // A fire exists once one is marked (or the run shows burnt ground); the first snapshot of a run comes before any fire.
-    return { ...base, hasFire: st.ignitions.length > 0 || (st.snapshot?.stats?.burntAreaHa ?? 0) > 0, has3dAtmosphere: has3dAtmosphere(st.snapshot) };
+    return { ...base, hasFire: st.ignitions.length > 0 || (st.snapshot?.stats?.burntAreaHa ?? 0) > 0, has3dAtmosphere: has3dAtmosphere(st.snapshot), hasAirWind: hasAirWind(st.snapshot?.atmosphere) };
   };
   let avail = availNow();
   let availSig = availabilitySignature(avail);
