@@ -1,0 +1,166 @@
+/**
+ * What the Air slices tool does to the app's stores (workstream D): the glue between the pure model (sliceToolModel.ts) and the
+ * two stores and the scene it writes to. No DOM and no timers, so it is unit-tested with real stores and a fake scene
+ * (sliceToolActions.test.ts). sliceTool.ts builds the buttons and calls these; simScreen.ts reads the same state for the map marks.
+ *
+ * The tool talks to the scene only through `view.setLayers` (the line, the field), `view.slice()` (what is drawn and which presets
+ * can be tapped) and `ctx.pickCrosshair()`. Order of a write: the tool state first, then the layer store, then the scene, so
+ * anything the scene calls back with (`onSlice`) already finds the stores up to date.
+ */
+import type { GridSpec } from '../../../core/grid';
+import type { SceneViewApi } from '../../../render/api';
+import type { LayerState } from '../../../render/layers';
+import type { SliceFieldId, SlicePoint, SlicePresetId, SliceProbePos, SliceUpdate } from '../../../render/slice/types';
+import type { Store } from '../../store';
+import type { UiState } from './context';
+import {
+  backStep,
+  cancelPlacing,
+  choosePreset,
+  controlsView,
+  effectiveField,
+  fieldWrite,
+  hasStoredLine,
+  initialSliceToolState,
+  lineFacts,
+  ownLine,
+  placeHere,
+  placeVerdict,
+  presetStatuses,
+  reopened,
+  startPlacing,
+  swapEnds,
+  userFixOf,
+  withProbe,
+  withShowCells,
+  type ControlsView,
+  type CrossSection,
+  type LineFacts,
+  type PlaceVerdict,
+  type SliceEnd,
+  type ToolStep,
+} from './sliceToolModel';
+import type { SliceToolState } from './sliceTypes';
+
+export interface SliceToolHost {
+  ui: Store<UiState>;
+  layers: Store<LayerState>;
+  view: Pick<SceneViewApi, 'setLayers' | 'slice'>;
+  /** The model area's grid (the air's own when a picture exists, else the terrain's), or null. */
+  grid(): GridSpec | null;
+  /** The ground point under the screen crosshair (`SimContext.pickCrosshair`), or null over the sky. */
+  crosshair(): SlicePoint | null;
+  /** The phone's position (Setup GPS fix), local metres. */
+  user: SlicePoint | null;
+  announce(msg: string): void;
+}
+
+export interface PlaceOutcome {
+  verdict: PlaceVerdict;
+  /** A line was written to the layers (not only a draft end kept). */
+  wrote: boolean;
+  /** The line is the first one the tool made (the panel takes the keyboard focus). */
+  firstLine: boolean;
+}
+
+export interface SliceToolActions {
+  state(): SliceToolState;
+  update(): SliceUpdate | null;
+  facts(): LineFacts;
+  /** The model of the buttons and the quiet line right now. */
+  controls(switching3d?: boolean): ControlsView;
+  /** The tool opened: its state exists, a placement under way is dropped, and the section shows again when the tool holds a line. */
+  open(): void;
+  /** The tool closed: nothing is being placed any more (the line, the draft, the probe and the switches stay). */
+  close(): void;
+  startPlacing(end: SliceEnd): void;
+  cancelPlacing(): void;
+  /** "Place A/B here": the tapped candidate, else the crosshair's point. */
+  placeHere(): PlaceOutcome;
+  swap(): void;
+  preset(id: SlicePresetId): void;
+  setField(field: SliceFieldId): void;
+  setProbe(pos: SliceProbePos | null): void;
+  setShowCells(on: boolean): void;
+  /** The effective chip (the scene's, else the stored one, else Speed). */
+  field(): SliceFieldId;
+}
+
+export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
+  const { ui, layers, view } = host;
+  const state = (): SliceToolState => ui.get().slice ?? initialSliceToolState();
+  const update = (): SliceUpdate | null => view.slice?.() ?? null;
+  const cs = (): CrossSection => layers.get().crossSection;
+  const facts = (): LineFacts => lineFacts(update()?.resolved, cs(), host.grid());
+
+  const writeLayers = (next: CrossSection): void => {
+    layers.set({ crossSection: next });
+    view.setLayers({ crossSection: next });
+  };
+  const apply = (step: ToolStep): void => {
+    if (step.state !== ui.get().slice) ui.set({ slice: step.state });
+    if (step.crossSection) writeLayers(step.crossSection);
+    if (step.say) host.announce(step.say);
+  };
+
+  return {
+    state,
+    update,
+    facts,
+    field: () => effectiveField(update(), cs()),
+    controls(switching3d = false) {
+      const s = state();
+      const f = facts();
+      const grid = host.grid();
+      const end = s.placing;
+      const verdict = end ? placeVerdict(end, s.candidate ?? host.crosshair(), s, f, grid) : null;
+      return controlsView({ state: s, facts: f, presets: presetStatuses(update()?.presets, userFixOf(host.user, grid)), fix: userFixOf(host.user, grid), verdict, switching3d });
+    },
+    open() {
+      const cur = ui.get().slice;
+      const next = cur ? reopened(cur) : initialSliceToolState();
+      if (next !== cur) ui.set({ slice: next });
+      const c = cs();
+      if (!c.enabled && hasStoredLine(c)) writeLayers({ ...c, enabled: true });
+    },
+    close() {
+      const cur = ui.get().slice;
+      if (cur && reopened(cur) !== cur) ui.set({ slice: reopened(cur) });
+    },
+    startPlacing: (end) => apply(startPlacing(state(), end)),
+    cancelPlacing: () => apply(cancelPlacing(state())),
+    placeHere() {
+      const s = state();
+      const f = facts();
+      const { step, verdict } = placeHere(s, s.candidate ?? host.crosshair(), cs(), f, host.grid());
+      apply(step);
+      return { verdict, wrote: !!step.crossSection, firstLine: !!step.crossSection && !ownLine(f) };
+    },
+    swap: () => apply(swapEnds(state(), cs(), facts())),
+    preset(id) {
+      const st = presetStatuses(update()?.presets, userFixOf(host.user, host.grid()))[id];
+      apply(choosePreset(state(), cs(), id, st));
+    },
+    setField(field) {
+      const next = fieldWrite(cs(), field);
+      if (next) writeLayers(next);
+    },
+    setProbe(pos) {
+      const next = withProbe(state(), pos);
+      if (next !== ui.get().slice) ui.set({ slice: next });
+    },
+    setShowCells(on) {
+      const next = withShowCells(state(), on);
+      if (next !== ui.get().slice) ui.set({ slice: next });
+    },
+  };
+}
+
+/** Android Back and Escape: a placement under way is dropped first (the tool stays open); false when there was nothing of the tool's to undo. */
+export function backFromAirTool(ui: Store<UiState>): boolean {
+  const u = ui.get();
+  const step = u.tool === 'air' && u.panelOpen ? backStep(u.slice) : null;
+  if (!step) return false;
+  ui.set({ slice: step.state });
+  return true;
+}

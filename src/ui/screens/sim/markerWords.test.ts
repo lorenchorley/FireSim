@@ -165,7 +165,7 @@ describe('when an icon exists', () => {
 describe('tapTarget: which point a tap asks about', () => {
   const ground: [number, number] = [100, 200];
   const marker = igMarker();
-  const tools: ToolId[] = ['why', 'fire', 'fuel', 'wind', 'layers', 'whatif'];
+  const tools: ToolId[] = ['why', 'fire', 'fuel', 'wind', 'layers', 'whatif', 'air'];
 
   it('in the Why tool the icon wins and the point is the icon\'s own spot, not the ground under the finger', () => {
     expect(tapTarget('why', marker, ground)).toEqual({ point: [10, 20], marker });

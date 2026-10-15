@@ -4,3 +4,18 @@
 /* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape layout) ── */
 
 /* ── block 2: slicetool (the controls row and its notice line; reuse .btn and .row-actions before adding anything) ── */
+.slice-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+.slice-preset .btn {
+  width: 100%;
+}
+.slice-preset .hint {
+  margin: var(--sp-1) var(--sp-2) 0;
+}
+.slice-note {
+  margin: var(--sp-2) 0 0;
+}

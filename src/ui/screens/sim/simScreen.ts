@@ -30,6 +30,9 @@ import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './contex
 import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels';
 import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
+import { createAirPanel, sliceMarkElement } from './sliceTool';
+import { backFromAirTool } from './sliceToolActions';
+import { AIR_TOOL_LABEL, lineFacts, sliceAnnotationMarks, sliceMarks, tapCandidate, type SliceAnnMark } from './sliceToolModel';
 import { createMapMenu } from './mapMenu';
 import { backLayer, reduceMenu } from './layoutModel';
 import { markerShownAt, tapTarget } from './markerWords';
@@ -88,6 +91,7 @@ const TOOLS: { id: ToolId; label: string; icon: IconName }[] = [
   { id: 'wind', label: 'Wind', icon: 'wind' },
   { id: 'layers', label: 'Layers', icon: 'layers' },
   { id: 'whatif', label: 'What if', icon: 'whatif' },
+  { id: 'air', label: AIR_TOOL_LABEL, icon: 'line' },
 ];
 
 /** The least height (px) the body of a tool panel is given before the read-out chips make room (landscape, large text). */
@@ -591,7 +595,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     panel = null;
     setChildren(panelHost, null);
     if (!s.panelOpen) return;
-    const factory = { why: createWhyPanel, fire: createFirePanel, fuel: createFuelPanel, wind: createWindPanel, layers: createLayersPanel, whatif: createWhatIfPanel }[s.tool];
+    const factory = { why: createWhyPanel, fire: createFirePanel, fuel: createFuelPanel, wind: createWindPanel, layers: createLayersPanel, whatif: createWhatIfPanel, air: createAirPanel }[s.tool];
     panel = factory(ctx, closePanel);
     panelHost.append(panel.el);
   };
@@ -601,7 +605,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const s = ui.get();
     drawLayer.hidden = !s.drawing;
     view.setInteractionEnabled(!s.drawing);
-    const wantsCrosshair = s.panelOpen && ((s.tool === 'fire' && s.fireInput === 'point') || (s.tool === 'fuel' && !s.drawing) || s.tool === 'wind');
+    const wantsCrosshair = s.panelOpen && ((s.tool === 'fire' && s.fireInput === 'point') || (s.tool === 'fuel' && !s.drawing) || s.tool === 'wind' || (s.tool === 'air' && !!s.slice?.placing));
     crosshair.hidden = !wantsCrosshair;
     root.classList.toggle('drawing', s.drawing);
     viewMenu.setPressed(s.viewMode);
@@ -614,6 +618,15 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     scheduleAnnotations();
   };
   unsubs.push(ui.subscribe(renderModes, ['drawing', 'tool', 'panelOpen', 'fireInput', 'pending', 'viewMode', 'why', 'wind', 'fuelPreset']));
+  // The Air slices tool: the crosshair follows its placement; its marks follow every change of its state (a dragged probe is not worth a full renderModes).
+  unsubs.push(
+    ui.subscribe((s, prev) => (s.slice?.placing !== prev.slice?.placing ? renderModes() : scheduleAnnotations()), ['slice']),
+    layers.subscribe(scheduleAnnotations, ['crossSection']),
+  );
+  const offSlice = view.onSlice?.(() => {
+    if (ui.get().tool === 'air' && ui.get().panelOpen) scheduleAnnotations();
+  });
+  if (offSlice) unsubs.push(offSlice);
   // A round menu's list opens over the strip of map the legend occupies: the legend steps aside while a menu is open.
   const renderMenuOpen = (): void => {
     const m = ui.get().menu;
@@ -706,6 +719,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         break;
       case 'wind':
         ui.set({ pending: { kind: 'point', at: p } });
+        break;
+      case 'air':
+        if (s.slice?.placing) ui.set({ slice: tapCandidate(s.slice, p) });
         break;
       default:
         break;
@@ -839,6 +855,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       const q = project([s.why.x, s.why.y]);
       if (q) marks.push({ kind: 'why', at: [r1(q[0]), r1(q[1])] });
     }
+    // The Air slices tool: its line, ends, tapped point and probe, re-projected every frame while there is something to show.
+    if (s.panelOpen && s.tool === 'air') {
+      const placed = sliceMarks(s.slice, lineFacts(view.slice?.()?.resolved, layers.get().crossSection, null));
+      if (placed.length) live = true;
+      marks.push(...sliceAnnotationMarks(placed, project));
+    }
     const key = JSON.stringify(marks);
     if (key !== annKey) {
       annKey = key;
@@ -928,7 +950,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const layer = backLayer({ popover: topBar.popovers.openId(), menu: u.menu, panelOpen: u.panelOpen, pending: !!u.pending, sheet: u.sheet });
     if (layer === 'popover') topBar.popovers.closeAll(); // focus goes back to the button that opened it, as it does for Escape
     else if (layer === 'menu') ui.set({ menu: reduceMenu(u.menu, { type: 'escape' }) });
-    else if (layer === 'panel') closePanel();
+    else if (layer === 'panel' && !backFromAirTool(ui)) closePanel(); // (a placement under way in the Air slices tool is dropped first, and that is the press)
     else if (layer === 'sheet') ui.set({ sheet: 'closed' });
     return layer !== null;
   }
@@ -976,10 +998,16 @@ type AnnMark =
   | { kind: 'stroke'; d: string; colour: string; width?: number }
   | { kind: 'pin'; at: [number, number]; colour: string }
   | { kind: 'wind'; at: [number, number]; rotate: number }
-  | { kind: 'why'; at: [number, number] };
+  | { kind: 'why'; at: [number, number] }
+  | SliceAnnMark;
 
 function markElement(m: AnnMark): SVGElement | SVGElement[] {
   switch (m.kind) {
+    case 'sliceA':
+    case 'sliceB':
+    case 'slice':
+    case 'probe':
+      return sliceMarkElement(m);
     case 'stroke':
       return [
         svg('path', { d: m.d, class: 'ann-stroke-casing', style: m.width ? `stroke-width:${m.width + 4}px;opacity:.35` : '' }),
