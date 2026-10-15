@@ -32,6 +32,7 @@ import {
   placeVerdict,
   placeWords,
   presetStatuses,
+  presetIssueWords,
   presetViews,
   probeMapPoint,
   reopened,
@@ -440,6 +441,18 @@ describe('presets', () => {
     expect(views.find((v) => v.id === 'me')!.reason).toBe('You are outside the model area');
   });
 
+  it('a preset that comes out too short is about where the fire or the phone is, not "make the line longer"', () => {
+    // "Make the line longer than 300 m" is for a line the person placed; nobody can lengthen "Me to fire" or a chord through the fire.
+    const me = presetViews({ ...allOk(), me: { ok: false, issue: 'too-short' } }, null, 'ok', 300).find((v) => v.id === 'me')!;
+    expect(me.reason).toBe('You are less than 300 m from the fire');
+    expect(presetIssueWords('me', 'too-short', 420)).toBe('You are less than 450 m from the fire');
+    for (const id of ['along', 'across', 'slope'] as const) expect(presetIssueWords(id, 'too-short', 300)).toBe('Too near the edge of the model area for a line this long');
+    const along = presetViews({ ...allOk(), along: { ok: false, issue: 'too-short' } }, null, 'ok', 300)[0]!;
+    expect(along.reason).toBe('Too near the edge of the model area for a line this long');
+    // every other issue keeps the shared words
+    for (const issue of ['outside-model', 'no-user', 'no-fire', 'flat-ground', 'calm'] as const) expect(presetIssueWords('along', issue, 300, 'none')).toBe(issueWords(issue, 300, 'none'));
+  });
+
   it('every disabled reason the scene can send is worded (no preset is disabled without words)', () => {
     for (const issue of ['too-short', 'outside-model', 'no-user', 'no-fire', 'flat-ground', 'calm'] as const) {
       const st = { ...allOk(), along: { ok: false, issue } } as Record<SlicePresetId, SlicePresetStatus>;
@@ -544,6 +557,11 @@ describe('the controls: buttons and the quiet line', () => {
     expect(controlsView(input({ facts: { ...EMPTY, issue: 'too-short', minLengthM: 266 } })).hint).toBe('Make the line longer than 300 m');
   });
 
+  it('a preset in force that has become too short says so about the place, a hand line about its length', () => {
+    expect(controlsView(input({ facts: { ...EMPTY, source: 'preset', preset: 'me', issue: 'too-short', minLengthM: 300 } })).hint).toBe('You are less than 300 m from the fire');
+    expect(controlsView(input({ facts: { ...EMPTY, source: 'endpoints', issue: 'too-short', minLengthM: 300 } })).hint).toBe('Make the line longer than 300 m');
+  });
+
   it('a clipped line and a preset without a fire say so quietly', () => {
     expect(controlsView(input({ facts: withLine([0, 0], [0, 1000], 'preset', { notes: ['clipped'] }) })).hint).toBe('Shown to the edge of the model area');
     expect(controlsView(input({ facts: withLine([0, 0], [0, 1000], 'preset', { notes: ['no-fire-centred-on-map'] }) })).hint).toBe('No fire yet: centred on the map');
@@ -582,6 +600,18 @@ describe('the marks on the map', () => {
   it('the line wins over a stale draft', () => {
     const s = { ...initialSliceToolState(), draft: { a: [99, 99] as SlicePoint, b: null } };
     expect(sliceMarks(s, withLine([0, 0], [0, 1000])).filter((m) => m.kind === 'sliceA')).toEqual([{ kind: 'sliceA', at: [0, 0], pending: false }]);
+  });
+
+  it('over the original curtain\'s chord (the Layers panel\'s section), a draft end is shown where it was placed, not the chord\'s end', () => {
+    const s = { ...initialSliceToolState(), draft: { a: [10, 20] as SlicePoint, b: null } };
+    const marks = sliceMarks(s, withLine([0, -2000], [0, 2000], 'centre'));
+    expect(marks.map((m) => m.kind)).toEqual(['slice', 'sliceA']); // the chord stays (it is what the curtain draws); its own ends are not the tool's
+    expect(marks.find((m) => m.kind === 'sliceA')).toEqual({ kind: 'sliceA', at: [10, 20], pending: false });
+  });
+
+  it('over the chord with no draft yet, the chord\'s ends are the A and B of the side view', () => {
+    const marks = sliceMarks(initialSliceToolState(), withLine([0, -2000], [0, 2000], 'centre'));
+    expect(marks.map((m) => m.kind)).toEqual(['slice', 'sliceA', 'sliceB']);
   });
 
   it('shows the tapped candidate as a pending mark of the end being placed', () => {
