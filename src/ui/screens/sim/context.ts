@@ -10,7 +10,7 @@ import type { Pt } from '../../brushGeometry';
 import type { LegendProvider } from '../../legends';
 import type { SliceToolState } from './sliceTypes';
 
-export type ToolId = 'why' | 'fire' | 'fuel' | 'wind' | 'layers' | 'whatif';
+export type ToolId = 'why' | 'fire' | 'fuel' | 'wind' | 'layers' | 'whatif' | 'air';
 /** Bottom dock: 'closed' = only the navigation row (the default), then three heights of open sheet. */
 export type SheetDetent = 'closed' | 'peek' | 'half' | 'full';
 /** The floating menus over the map (the Tools speed dial and the View list); at most one is open. */

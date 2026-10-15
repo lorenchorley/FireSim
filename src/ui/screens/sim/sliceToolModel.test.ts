@@ -9,6 +9,7 @@ import { DEFAULT_LAYERS } from '../../../render/layers';
 import { SLICE_PRESET_IDS, type ResolvedSlice, type SlicePoint, type SlicePresetId, type SlicePresetStatus } from '../../../render/slice/types';
 import {
   AIR_TOOL_LABEL,
+  LINE_PROJECTION_POINTS,
   NOTE_WORDS,
   PLACE_LABEL,
   SET_LABEL,
@@ -35,6 +36,7 @@ import {
   probeMapPoint,
   reopened,
   roundUp50,
+  sliceAnnotationMarks,
   sliceMarks,
   startPlacing,
   swapEnds,
@@ -597,5 +599,41 @@ describe('the marks on the map', () => {
 
   it('no probe pin without a line', () => {
     expect(sliceMarks({ ...initialSliceToolState(), probe: { s: 250, z: 800 } }, EMPTY)).toEqual([]);
+  });
+});
+
+describe('the marks on the screen', () => {
+  /** 1 px per 10 m, y up on the map and down on the screen. */
+  const project = (p: SlicePoint): [number, number] | null => (Math.abs(p[0]) > 5000 ? null : [p[0] / 10, -p[1] / 10]);
+
+  it('projects the ends, the pending mark and the probe, half a pixel at a time', () => {
+    const marks = sliceMarks({ ...placing('b', { candidate: [333, 777], probe: { s: 250, z: 800 } }) }, withLine([0, 0], [0, 1000]));
+    const out = sliceAnnotationMarks(marks, project);
+    expect(out.find((m) => m.kind === 'sliceA')).toEqual({ kind: 'sliceA', at: [0, -0], pending: false });
+    expect(out.find((m) => m.kind === 'sliceB' && !m.pending)).toEqual({ kind: 'sliceB', at: [0, -100], pending: false });
+    expect(out.find((m) => m.kind === 'sliceB' && m.pending)).toEqual({ kind: 'sliceB', at: [33.5, -77.5], pending: true });
+    expect(out.find((m) => m.kind === 'probe')).toEqual({ kind: 'probe', at: [0, -25] });
+  });
+
+  it('draws the line as one path through the sampled ground points, from A to B', () => {
+    const [line] = sliceAnnotationMarks([{ kind: 'slice', from: [0, 0], to: [0, 1500] }], project) as [{ kind: 'slice'; d: string }];
+    const pts = line.d.split(' ');
+    expect(pts).toHaveLength(LINE_PROJECTION_POINTS);
+    expect(pts[0]).toMatch(/^M0,/);
+    expect(pts.slice(1).every((p) => p.startsWith('L'))).toBe(true);
+    expect(pts.at(-1)).toBe('L0,-150');
+  });
+
+  it('breaks the line where it leaves the screen and leaves off marks that are off the screen', () => {
+    const [line] = sliceAnnotationMarks([{ kind: 'slice', from: [-9000, 0], to: [0, 0] }], project) as [{ kind: 'slice'; d: string }];
+    expect(line.d.split(' ').filter((p) => p.startsWith('M'))).toHaveLength(1); // starts again where the line comes back on
+    expect(line.d.startsWith('M')).toBe(true);
+    expect(sliceAnnotationMarks([{ kind: 'sliceA', at: [9000, 0], pending: false }, { kind: 'probe', at: [9000, 0] }], project)).toEqual([]);
+    expect(sliceAnnotationMarks([{ kind: 'slice', from: [9000, 0], to: [9500, 0] }], project)).toEqual([]);
+  });
+
+  it('gives the same data twice for the same picture (so simScreen can skip the rebuild)', () => {
+    const marks = sliceMarks(initialSliceToolState(), withLine([0, 0], [0, 1000]));
+    expect(JSON.stringify(sliceAnnotationMarks(marks, project))).toBe(JSON.stringify(sliceAnnotationMarks(marks, project)));
   });
 });

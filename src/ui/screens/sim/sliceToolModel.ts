@@ -437,6 +437,44 @@ export function sliceMarks(s: SliceToolState | undefined, facts: LineFacts): Sli
   return marks;
 }
 
+/**
+ * A mark in screen coordinates (px in the scene host), as plain data so simScreen.ts can tell when nothing moved and skip the rebuild.
+ * `slice` is the line as an SVG path along the terrain (broken where the line leaves the screen).
+ */
+export type SliceAnnMark =
+  | { kind: 'sliceA' | 'sliceB'; at: [number, number]; pending: boolean }
+  | { kind: 'slice'; d: string }
+  | { kind: 'probe'; at: [number, number] };
+
+/** Number of ground points a line is projected through, so it follows the terrain instead of cutting straight across a valley. */
+export const LINE_PROJECTION_POINTS = 16;
+
+/** Project the marks with the scene's `projectToScreen` (null off the screen). Marks whose point is off the screen are left out. */
+export function sliceAnnotationMarks(marks: readonly SliceMark[], project: (p: SlicePoint) => [number, number] | null): SliceAnnMark[] {
+  const half = (v: number): number => Math.round(v * 2) / 2;
+  const out: SliceAnnMark[] = [];
+  for (const m of marks) {
+    if (m.kind === 'slice') {
+      let d = '';
+      let pen = false;
+      for (const q of alongPoints(m.from, m.to, LINE_PROJECTION_POINTS).map(project)) {
+        if (!q) pen = false;
+        else {
+          d += `${pen ? 'L' : 'M'}${half(q[0])},${half(q[1])} `;
+          pen = true;
+        }
+      }
+      if (d) out.push({ kind: 'slice', d: d.trimEnd() });
+    } else {
+      const q = project(m.at);
+      if (!q) continue;
+      const at: [number, number] = [half(q[0]), half(q[1])];
+      out.push(m.kind === 'probe' ? { kind: 'probe', at } : { kind: m.kind, at, pending: m.pending });
+    }
+  }
+  return out;
+}
+
 /** Whether the tool has anything for the map to keep in step with the camera (the per-frame projection runs only then). */
 export function marksAreLive(s: SliceToolState | undefined, facts: LineFacts): boolean {
   return sliceMarks(s, facts).length > 0;

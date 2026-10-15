@@ -23,7 +23,7 @@ interface Rig {
   /** The point the crosshair is over (null: the sky). */
   cross: { at: SlicePoint | null };
   /** What the scene's slice() returns. */
-  scene: { update: Partial<SliceUpdate> & { resolved?: Partial<ResolvedSlice> } | null };
+  scene: { update: (Partial<Omit<SliceUpdate, 'resolved'>> & { resolved?: Partial<ResolvedSlice> }) | null };
 }
 
 function rig(opts: { user?: SlicePoint | null; layers?: Partial<LayerState> } = {}): Rig {
