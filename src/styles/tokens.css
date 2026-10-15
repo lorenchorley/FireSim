@@ -92,6 +92,7 @@
   --mark-observed: #e02424;
   --mark-spot: #ff8c1a;
   --mark-backburn: #7b3fe4;
+  --mark-slice: #00796b; /* the Air slice's line, its A and B discs and the probe's pin (sliceTool.ts); scripts/check-contrast.mjs checks it against its halo */
 
   /* Data colours for charts (never the interactive blue) */
   --chart-wind: #7b1fa2;

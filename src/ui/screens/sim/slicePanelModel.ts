@@ -281,16 +281,47 @@ export function flowTimeScale(lengthM: number): number {
  * `ratio` times as long as a metre of distance, so a parcel that rises `w` metres while it moves `u` metres along already
  * appears on screen with the slope `ratio * w / u`, which is the slope of the exaggerated ground it flows over. The on-screen
  * ratio therefore goes into the DRAWING (yOfZ), and the particles take 1: giving `stepFlow` the ratio as well would count it
- * twice and make streaks climb `ratio` times steeper than the ground they follow (checked in slicePanel.flow.test.ts).
+ * twice and make streaks climb `ratio` times steeper than the ground they follow (checked in slicePanelFlow.test.ts).
  */
 export function streakExaggeration(_l: PlotLayout): number {
   return 1;
 }
 
-/** Same line, same lattice: the particles keep going through a new update. A different one is seeded afresh. */
-export function flowKey(data: SliceData): string {
-  const r = (v: number): number => Math.round(v);
-  return `${data.columns}x${data.rows}|${r(data.line.a[0])},${r(data.line.a[1])}|${r(data.line.b[0])},${r(data.line.b[1])}|${r(data.zMin)}|${r(data.zMax)}`;
+/** What the streaks need of a slice to tell "the same picture a moment later" from "another line": the lattice, the ends of the line and the height range. */
+export interface FlowSlice {
+  columns: number;
+  rows: number;
+  a: [number, number];
+  b: [number, number];
+  zMin: number;
+  zMax: number;
+}
+
+export function flowSlice(data: SliceData): FlowSlice {
+  return { columns: data.columns, rows: data.rows, a: [data.line.a[0], data.line.a[1]], b: [data.line.b[0], data.line.b[1]], zMin: data.zMin, zMax: data.zMax };
+}
+
+/** The ends of a line may move this far (a share of its length) from one update to the next and the particles still go on: a live preset follows the fire. */
+const FLOW_DRIFT_SHARE = 0.1;
+/** The height range may move this far (m) in the same way (the lowest and highest ground under a sliding line change). */
+const FLOW_DRIFT_Z_M = 150;
+
+/**
+ * Same lattice, ends within a tenth of the line and heights within 150 m of the last update: the particles keep going through the new
+ * air. Anything else (nothing before, another lattice, a line put somewhere else) is seeded afresh. The particles live in slice
+ * coordinates, so a few metres of drift costs nothing, while seeding at every update would restart the streaks up to four times a second
+ * whenever "Along the wind" or "Me to fire" follows a moving fire.
+ */
+export function sameFlowSlice(prev: FlowSlice | null, now: FlowSlice): boolean {
+  if (!prev || prev.columns !== now.columns || prev.rows !== now.rows) return false;
+  const length = Math.hypot(now.b[0] - now.a[0], now.b[1] - now.a[1]);
+  const reach = FLOW_DRIFT_SHARE * length;
+  return (
+    Math.hypot(now.a[0] - prev.a[0], now.a[1] - prev.a[1]) <= reach &&
+    Math.hypot(now.b[0] - prev.b[0], now.b[1] - prev.b[1]) <= reach &&
+    Math.abs(now.zMin - prev.zMin) <= FLOW_DRIFT_Z_M &&
+    Math.abs(now.zMax - prev.zMax) <= FLOW_DRIFT_Z_M
+  );
 }
 
 /** The static arrow lattice used under reduced motion: about one arrow per 34 x 30 px. */

@@ -59,4 +59,14 @@ describe('inValidAir', () => {
     expect(inValidAir(d, P(1000, 300))).toBe(true);
     expect(inValidAir(d, P(NaN, 300))).toBe(false);
   });
+
+  it('is false in air the model has but the 10 m ground covers (the model\'s own ground is lower), following the drawn ground line between columns', () => {
+    const g = makeSliceData({ columns: 11, rows: 6, a: [0, 0], b: [1000, 0], zMin: 0, zMax: 500, ground: (s) => s / 2, modelGround: (s) => s / 2 - 100 });
+    expect(g.valid[2 * 11 + 5], 'the lattice point at 200 m above column 5 is valid in the model').toBe(1);
+    expect(inValidAir(g, P(500, 200))).toBe(false); // under the 250 m ground at 500 m
+    expect(inValidAir(g, P(500, 240))).toBe(false);
+    expect(inValidAir(g, P(500, 260))).toBe(true); // above the 250 m ground, nearest lattice point (the 300 m row) valid
+    expect(inValidAir(g, P(550, 290))).toBe(true); // ground 275 here (between columns 5 and 6)
+    expect(inValidAir(g, P(550, 270))).toBe(false);
+  });
 });

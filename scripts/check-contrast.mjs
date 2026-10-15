@@ -232,6 +232,12 @@ export function curatedPairs() {
   add('--fire', '--surface-3', 'info', 'fire bar fill against its track (the value is always printed next to a bar)');
   add('--fire', '--bg', 'info', 'fire marker against the app background (markers carry a label)');
 
+  // The Air slice's marks on the map (sliceTool.ts draws them as inline SVG with these tokens, which no stylesheet rule pairs): the teal line, disc
+  // and pin against their white halo and ring, and the white A or B on the teal disc (bold 16 px). Against the aerial photo itself the halo carries the edge.
+  add('--mark-slice', '--map-halo', 'ui', 'Air slice marks on the map: the teal line, A and B discs and probe pin against their white halo');
+  // (5.3:1. The letter is bold 19 px, which WCAG counts as large text: 3:1, and 4.5:1 in the high-contrast looks; it would not pass the 7:1 of small text there.)
+  add('--map-halo', '--mark-slice', 'large', 'the white A or B (bold 19 px) on the teal Air slice disc');
+
   // Fire-danger ratings (data colours, both themes) and the pill text on them
   for (const r of ['none', 'moderate', 'high', 'extreme']) add('--rating-ink', `--rating-${r}`, 'text', `rating pill: ${r}`);
   add('--rating-ink-catastrophic', '--rating-catastrophic', 'text', 'rating pill: catastrophic');

@@ -3,7 +3,7 @@ import { FuelType, SpreadDriver } from '../core/types';
 import type { OverlayKind } from './layers';
 import { NO_DATA, crossSectionLegend, formatDuration, legendFor, niceArrivalMax, overlayColour, overlayScale, sliceLegend, windLegend } from './legends';
 import { FUEL_TYPE_COLOURS, INTENSITY_CLASSES, MOISTURE_RAMP, hexToRgb, sampleRamp, sliceFieldScale } from './palette';
-import { SLICE_FIELD_IDS } from './slice/types';
+import { SLICE_FIELDS, SLICE_FIELD_IDS, SLICE_THETA_BASIS } from './slice/types';
 
 const ALL: OverlayKind[] = ['arrival', 'ros', 'intensity', 'driver', 'moisture', 'fuelLoad', 'fuelType', 'timeSinceFire', 'slope', 'aspect', 'insolation'];
 
@@ -90,12 +90,18 @@ describe('sliceLegend (one legend for every chip of the air slice)', () => {
     expect(sliceLegend('along', 'prognostic').entries.map((e) => e.label)).toEqual(['-90', '-60', '-30', '0', '+30', '+60', '+90']);
   });
 
-  it('the temperature legend says warmer or cooler than the area at that height, not "vs surroundings"', () => {
+  it("the temperature legend says warmer or cooler than the average of the slice at that height (what the number is against), not 'the area' and not 'vs surroundings'", () => {
     const l = sliceLegend('theta', 'prognostic');
-    expect(l.title).toBe('Warmer or cooler than the area at that height');
+    expect(l.title).toBe('Warmer or cooler than the average of the slice at that height');
+    expect(l.title).toContain(SLICE_THETA_BASIS);
     expect(JSON.stringify(l)).not.toMatch(/vs surroundings/i);
-    expect(l.note).toMatch(/warmer or cooler than the rest of the section at the same height/i);
+    expect(JSON.stringify(l)).not.toMatch(/than the area/i);
+    expect(l.note).toMatch(/^Warmer or cooler than the average of the slice at that height, not a real temperature\./);
     expect(crossSectionLegend().title).toBe(l.title);
+    // The chip's name (the panel's aria label, the picture's text alternative) says the same, so the three never disagree.
+    const chip = SLICE_FIELDS.find((f) => f.id === 'theta')!;
+    expect(chip.name).toBe(`Air temperature against ${SLICE_THETA_BASIS}`);
+    expect(chip.name).not.toMatch(/surroundings|the area/i);
   });
 
   it('along and across say which way is which, in words', () => {

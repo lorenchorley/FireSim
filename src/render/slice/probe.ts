@@ -133,7 +133,7 @@ function speedWords(ms: number, units: SliceSpeedUnit): string {
 
 /**
  * The readout, in the repo's voice (plain words, "about"), for example "Wind about 32 km/h from the north-west, along the line
- * 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area". The wind is always "from"; the along and across
+ * 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than average". The wind is always "from"; the along and across
  * parts say which way the air goes in the picture ("towards A" or "towards B", "to the right" or "to the left" of someone
  * walking from A to B); vertical motion is in m/s whatever the speed unit is. The temperature clause is for the time-stepped
  * kind only. A point that is not in the model's air gets one short sentence saying why.
@@ -154,7 +154,9 @@ export function probeSentence(r: SliceProbeReading, opts: { units: SliceSpeedUni
   if (Math.abs(up) >= LEVEL_MS) parts.push(`${up > 0 ? 'up' : 'down'} ${short(Math.abs(up))} m/s`);
   parts.push(r.aglM < 1 ? 'at ground level' : `${int(r.aglM >= 20 ? Math.round(r.aglM / 10) * 10 : r.aglM)} m above ground`);
   if (opts.kind === 'prognostic' && r.thetaK !== null) {
-    parts.push(Math.abs(r.thetaK) < 0.5 ? 'about the same temperature as the area' : `${short(Math.abs(r.thetaK))} K ${r.thetaK > 0 ? 'warmer' : 'cooler'} than the area`);
+    // "Average" is the mean of the slice's own valid cells at that height (types.ts, Temperature); the legend and the Help say so. The words
+    // are kept short on purpose: the landscape readout has room for four lines, and a longer clause pushes the longest readings to five.
+    parts.push(Math.abs(r.thetaK) < 0.5 ? 'about average temperature' : `${short(Math.abs(r.thetaK))} K ${r.thetaK > 0 ? 'warmer' : 'cooler'} than average`);
   }
   return parts.join(', ');
 }

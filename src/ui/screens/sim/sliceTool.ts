@@ -355,9 +355,11 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
 }
 
 // ───────────── the marks on the map ─────────────
-// Drawn by simScreen.ts into the `.annotations` SVG (data on the map: the same in every theme, inline styles, no animation).
+// Drawn by simScreen.ts into the `.annotations` SVG (data on the map: the same in every theme, inline styles, no animation). The colours are
+// tokens (tokens.css: `--mark-slice`, the white `--map-halo`), so `npm run check:contrast` sees them.
 
-const SLICE_INK = '#00796b';
+const SLICE_INK = 'var(--mark-slice)';
+const SLICE_PAPER = 'var(--map-halo)';
 
 /** The glyph of one map mark: the line (casing and stroke), the A and B ends (a dashed ring while only tapped), the probe pin. */
 export function sliceMarkElement(m: SliceAnnMark): SVGElement | SVGElement[] {
@@ -367,12 +369,12 @@ export function sliceMarkElement(m: SliceAnnMark): SVGElement | SVGElement[] {
     case 'sliceA':
     case 'sliceB':
       return svg('g', { class: 'ann-slice-end', transform: `translate(${m.at[0]},${m.at[1]})` }, [
-        svg('circle', { r: 15, class: 'ann-pin-dot', style: m.pending ? `fill:#fff;stroke:${SLICE_INK};stroke-width:3px;stroke-dasharray:5 3` : `fill:${SLICE_INK}` }),
-        svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', style: `font:700 16px system-ui,sans-serif;fill:${m.pending ? SLICE_INK : '#fff'}` }, m.kind === 'sliceA' ? 'A' : 'B'),
+        svg('circle', { r: 15, class: 'ann-pin-dot', style: m.pending ? `fill:${SLICE_PAPER};stroke:${SLICE_INK};stroke-width:3px;stroke-dasharray:5 3` : `fill:${SLICE_INK}` }),
+        svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', style: `font:700 19px system-ui,sans-serif;fill:${m.pending ? SLICE_INK : SLICE_PAPER}` }, m.kind === 'sliceA' ? 'A' : 'B'),
       ]);
     case 'probe':
       return svg('g', { class: 'ann-slice-probe', transform: `translate(${m.at[0]},${m.at[1]})` }, [
-        svg('circle', { r: 9, class: 'ann-pin-dot', style: `fill:#fff;stroke:${SLICE_INK};stroke-width:3px` }),
+        svg('circle', { r: 9, class: 'ann-pin-dot', style: `fill:${SLICE_PAPER};stroke:${SLICE_INK};stroke-width:3px` }),
         svg('circle', { r: 3.5, style: `fill:${SLICE_INK}` }),
       ]);
   }

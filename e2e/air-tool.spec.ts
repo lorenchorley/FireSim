@@ -295,6 +295,27 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   await page.getByTestId('slice-presets-toggle').click();
   await page.getByTestId('slice-preset-across').click();
   await expect.poll(() => cs(page)).toMatchObject({ enabled: true, preset: 'across' });
+  if (mode === 'scene') {
+    // The scene's own preset is a chord of up to 3 km each way (the stand-in's is 1 km), longer than the 3.5 km view above: back off, over
+    // the middle of the line it really resolved, until both ends are on the screen (a mark is only drawn for an end that projects).
+    const ends = await page.evaluate(() => {
+      const l = ((window as unknown as Win).__firesim.view as unknown as { slice(): { resolved: { line: { a: [number, number]; b: [number, number] } | null } } | null }).slice()?.resolved.line;
+      return l ? { a: l.a, b: l.b } : null;
+    });
+    expect(ends, 'the scene resolved the preset line').not.toBeNull();
+    const mid: [number, number] = [(ends!.a[0] + ends!.b[0]) / 2, (ends!.a[1] + ends!.b[1]) / 2];
+    let framed = false;
+    for (const d of [4500, 6500, 9000, 12000, 16000]) {
+      await page.evaluate(([x, y, dist]) => (window as unknown as Win).__firesim.view.lookAt(x!, y!, dist!, 200, 52, false), [mid[0], mid[1], d]);
+      await settle(page);
+      framed = await page.evaluate(([a, b]) => {
+        const v = (window as unknown as Win).__firesim.view as unknown as { projectToScreen(x: number, y: number): [number, number] | null };
+        return !!v.projectToScreen(a![0]!, a![1]!) && !!v.projectToScreen(b![0]!, b![1]!);
+      }, [ends!.a, ends!.b]);
+      if (framed) break;
+    }
+    expect(framed, 'both ends of the preset line can be put on the screen').toBe(true);
+  }
   const preset = (await cs(page))!;
   expect(preset.a ?? null).toBeNull();
   expect(preset.b ?? null).toBeNull();

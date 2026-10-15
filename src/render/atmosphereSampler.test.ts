@@ -571,7 +571,7 @@ describe('sampler v2 against the engine’s own sample() (a real Atmosphere over
       n++;
     }
     expect(worstNew).toBeLessThan(1e-3);
-    expect(worstOld).toBeLessThan(-0.9); // measured -97.6 % on this ridge: the flat view blends in the zeros under the ground
+    expect(worstOld).toBeLessThan(-0.9); // measured -96.4 % on this ridge (re-measured by the 0.4.0 verifier; docs said 97.6): the flat view blends in the zeros under the ground
     expect(meanOld / n).toBeGreaterThan(0.25); // measured 32.9 %
   });
 });
