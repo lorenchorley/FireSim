@@ -83,7 +83,8 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   let toldCells = actions.state().showCells;
 
   // ───────────── the controls ─────────────
-  const focus = (e: HTMLElement | null | undefined): void => e?.focus({ preventScroll: true });
+  /** Focus a button of the controls; the panel's body scrolls (short landscape), so one that is off screen is scrolled into view. */
+  const focus = (e: HTMLElement | null | undefined): void => e?.focus();
   const setBtn: Record<SliceEnd, ReturnType<typeof makeButton>> = {
     a: makeButton(SET_LABEL.a, { testId: 'slice-set-a', onClick: () => startPlacing('a') }),
     b: makeButton(SET_LABEL.b, { testId: 'slice-set-b', onClick: () => startPlacing('b') }),
@@ -348,7 +349,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
       panel?.destroy();
       panel = null;
       actions.close();
-      focus(returnTo);
+      returnTo?.focus({ preventScroll: true });
     },
   };
 }
