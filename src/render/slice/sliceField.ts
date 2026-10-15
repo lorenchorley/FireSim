@@ -128,8 +128,10 @@ export function sampleSlice(sampler: AtmosphereSampler, terrain: SliceTerrain, s
   d.cellSizeM = cellSizeM;
   d.airTime = sampler.airTime;
   d.shownTime = spec.shownTime;
-  d.ground.set(groundS.subarray(0, columns));
-  d.modelGround.set(modelGroundS.subarray(0, columns));
+  for (let c = 0; c < columns; c++) {
+    d.ground[c] = groundS[c]!;
+    d.modelGround[c] = modelGroundS[c]!;
+  }
 
   const { speed, along, across, up, theta, smoke } = d.values;
   const valid = d.valid;
