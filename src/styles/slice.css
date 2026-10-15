@@ -1,9 +1,6 @@
-/* slice.css — the Air slice side view (src/ui/screens/sim/slicePanel.ts, sliceTool.ts). At most 4 KB in all; imported by slicePanel.ts
- * (a lazy chunk), not by main.css. Class names start with .slice-. Two lanes write here, each only in its own block, so merges stay clean. */
+/* The Air slice side view (slicePanel.ts, sliceTool.ts). At most 4 KB in all; imported by slicePanel.ts (a lazy chunk), not main.css. Block 1: panel, block 2: tool. */
 
-/* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape layout) ── */
-
-/* The panel is one flow in the tool panel's scrolling body: canvas, chips, legend, controls, switch, footer. */
+/* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape) ── */
 .slice-stage {
   position: relative;
 }
@@ -11,7 +8,8 @@
 .slice-canvas {
   display: block;
   width: 100%;
-  height: clamp(180px, 27vh, 230px); /* about 230 px, less on a short screen */
+  height: var(--slice-h, clamp(180px, 27vh, 230px)); /* as tall as the picture needs (slicePanel.ts), at most the box */
+  max-height: clamp(180px, 27vh, 230px);
   border-radius: var(--r-sm);
   touch-action: none; /* a drag moves the probe, not the panel */
 }
@@ -60,6 +58,15 @@
   padding: 0 6px; /* six chips in 358 px */
 }
 
+/* A narrow phone: two rows of three, all in view (wider screens and the side column scroll one row). */
+@media (max-width: 411px) {
+  .slice-chips {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    overflow: visible;
+  }
+}
+
 .slice-chip[aria-disabled='true'] {
   opacity: 0.38;
   cursor: not-allowed;
@@ -98,23 +105,26 @@
   border-radius: var(--r-xs);
 }
 
-/* Always in view: the body scrolls under it. Sticky offsets count from the body's content box, so the footer reaches out over
-   the body's bottom padding and carries as much of its own. */
+/* Always in view: the body scrolls under it, and it sits on the body's bottom edge. */
+.slice-tool-body {
+  padding-bottom: 0;
+}
+
 .slice-footer {
   position: sticky;
-  bottom: calc(-1 * var(--sp-4));
+  bottom: 0;
   z-index: 2;
   margin: 0;
-  padding: var(--sp-1) 0 var(--sp-4);
+  padding: var(--sp-1) 0;
   border-top: 1px solid var(--divider);
   background: var(--surface);
 }
 
-/* Short landscape (the side column, about 166 px of body): the canvas and a one-line footer stay pinned, the rest scrolls between. */
+/* Short landscape (the side column): the canvas and a one-line footer stay pinned, the rest scrolls between. */
 @media (orientation: landscape) and (max-height: 540px) {
   .slice-view {
     position: sticky;
-    top: calc(-1 * var(--sp-2)); /* over the body's top padding, like the footer: nothing scrolls past above the canvas */
+    top: calc(-1 * var(--sp-2)); /* over the body's top padding: nothing scrolls past above the canvas */
     z-index: 2;
     margin-top: calc(-1 * var(--sp-2));
     padding-top: var(--sp-2);
@@ -124,14 +134,14 @@
     height: 96px;
   }
   .slice-readout {
-    margin-top: 0; /* the window under the pinned picture is about 44 px: the clear button fits only without a gap */
+    margin-top: 0; /* the window under the pinned picture is small: the clear button fits only without a gap */
   }
   .slice-more {
-    display: none; /* the kind, the grid and the age of the air stay; their explanations wait for a taller screen */
+    display: none; /* kind, grid and age stay; their explanations wait for a taller screen */
   }
 }
 
-/* ── block 2: slicetool (the controls row and its notice line; reuse .btn and .row-actions before adding anything) ── */
+/* ── block 2: slicetool (the controls and their notice line) ── */
 .slice-presets {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
