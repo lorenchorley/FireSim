@@ -1,16 +1,24 @@
 /**
  * The Help tab's words (content.ts: the how-to list and the glossary), pinned two ways: their shape and voice (plain words, no
- * em dashes, nothing undefined), and, for the 0.3.0 features, that what they say is what the code says (the labels the
- * screens use, the sheet's own sentences, the tap radius, the words of the icons), so a change to a screen cannot leave a
- * stale sentence in Help.
+ * em dashes, nothing undefined), and, for the 0.3.0 and 0.4.0 features, that what they say is what the code says (the
+ * labels the screens use, the sheet's own sentences, the tap radius, the words of the icons, the footer and the probe
+ * sentence of the Air slices panel), so a change to a screen cannot leave a stale sentence in Help.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { AIR_STALE_S } from '../core/airView';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
+import { compassWord } from '../explain/text';
 import type { MapMarker } from '../render/api';
 import { rockDetailCount } from '../render/cliffDrawing';
+import { LAYER_CATALOG, type AvailabilityContext } from '../render/layerCatalog';
+import { sliceLegend } from '../render/legends';
 import { MIN_HIT_PX } from '../render/markerPick';
+import { sampleRamp, sliceFieldScale } from '../render/palette';
+import { probeSentence } from '../render/slice/probe';
+import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceProbeReading } from '../render/slice/types';
+import { USE_3D_LABEL, sliceFieldStatuses } from '../render/sliceFields';
 import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
@@ -18,6 +26,8 @@ import { forcedPace } from './paceModel';
 import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
 import { NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
+import { airFromText, scaleTag, TERRAIN_CAPTION } from './screens/sim/slicePanelModel';
+import { AIR_TOOL_LABEL, PLACE_LABEL, PRESET_LABEL, SET_LABEL } from './screens/sim/sliceToolModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
 import { resolveRenderQuality } from './settings';
 
@@ -183,6 +193,131 @@ describe('Help and glossary: the 0.3.0 entries say what the screens say', () => 
     expect(b).toContain('Auto');
     expect(b).toContain('unless a short timing test when the run starts finds this phone far too slow for it');
     expect(b).not.toMatch(/most phones/i);
+  });
+});
+
+describe('Help and glossary: the 0.4.0 entries say what the Air slices screens say', () => {
+  const noAir: AvailabilityContext = { hasFire: true, has3dAtmosphere: false, hasContext: false, hasGrass: false, hasCanopyData: false, hasImagery: false };
+  const diagnosedAir = { kind: 'diagnosed' as const, has: { wind: true, theta: false, smoke: false } };
+
+  it('every term the release notes ask for has an entry', () => {
+    for (const t of ['Air slices', 'Side view', 'Diagnosed wind', 'Air from', 'Model cells', 'Probe', 'Along and across', 'Wind speed map']) expect(entry(t).body.length, t).toBeGreaterThan(80);
+  });
+
+  it('Air slices: the tool, its buttons, its presets and its chips are the words of the screens, and the preset length is the code’s', () => {
+    const help = squash(step('Air slices'));
+    const b = entry('Air slices').body;
+    expect(squash(step('Tools'))).toContain(`What if and ${AIR_TOOL_LABEL}`);
+    expect(help).toContain(`open Tools, then ${AIR_TOOL_LABEL}`);
+    expect(help).toContain(`“${SET_LABEL.a}”`);
+    expect(help).toContain(`“${PLACE_LABEL.a}”`);
+    for (const label of Object.values(PRESET_LABEL)) {
+      expect(help).toContain(`“${label}”`);
+      expect(b).toContain(`“${label}”`);
+    }
+    // The chips, in the order of the panel.
+    const chips = SLICE_FIELDS.map((f) => f.label)
+      .join(', ')
+      .replace(/, ([^,]+)$/, ' or $1');
+    expect(chips).toBe('Speed, Along, Up/down, Across, Temp or Smoke');
+    expect(help).toContain(chips);
+    expect(b).toContain(chips);
+    // The four wind chips work on the fast model's air, Temp and Smoke need the 3-D atmosphere (the scene's own answer).
+    const st = sliceFieldStatuses(diagnosedAir);
+    for (const id of ['speed', 'along', 'up', 'across'] as const) expect(st[id].ok, id).toBe(true);
+    for (const id of ['theta', 'smoke'] as const) expect(st[id], id).toMatchObject({ ok: false, action: 'use-3d' });
+    expect(b).toContain('The four wind chips work on every run, and Temp and Smoke need the 3-D atmosphere');
+    expect(help).toContain('Temp and Smoke wait for the 3-D atmosphere');
+    expect(b).toContain(`about ${SLICE_PRESET_HALF_LENGTH_M / 1000} km each way`);
+    expect(b).toContain('never changes the fire');
+    expect(help).toContain('never changes the fire');
+  });
+
+  it('Side view: A is at the left, the scale tag and the ground captions are the panel’s, and the streaks give way to arrows', () => {
+    const b = entry('Side view').body;
+    expect(scaleTag(1)).toBe('True scale');
+    expect(scaleTag(1.5)).toBe('Height ×1.5');
+    expect(b).toContain('“True scale”');
+    expect(b).toContain('“Height ×1.5”');
+    expect(b).toContain('A is always at the left and B at the right');
+    expect(TERRAIN_CAPTION).toContain('Dashed line: the ground as the model sees it');
+    expect(TERRAIN_CAPTION).toContain('smooths away show only in the filled ground');
+    expect(b).toContain('The dashed line is the ground as the model itself sees it');
+    expect(b).toContain('smooths away show only in the filled ground');
+    expect(b).toContain('Vertical exaggeration');
+    expect(b).toContain('still arrows are drawn instead');
+  });
+
+  it('Diagnosed wind: the footer’s own words, the button’s label, and that switching computes again from the last checkpoint', () => {
+    const b = entry('Diagnosed wind').body;
+    expect(b).toContain(`“${SLICE_KIND_LABEL.diagnosed}”`);
+    expect(b).toContain(`“${USE_3D_LABEL}”`);
+    expect(b).toContain('computed again from the last checkpoint, up to half an hour of fire ago');
+    // No temperature and no smoke: the chips that need them are the ones the scene turns off.
+    const st = sliceFieldStatuses(diagnosedAir);
+    expect(st.theta.ok || st.smoke.ok).toBe(false);
+    expect(b).toContain('no temperature and no smoke');
+    // The 2-D and 3-D entry points here (and still says how Auto decides: pinned above).
+    expect(entry('2-D and 3-D').body).toContain('diagnosed wind');
+  });
+
+  it('Air from: the footer’s sentence, and the 90 seconds after which it says how much older the air is', () => {
+    const abs = (t: number): number => Date.UTC(2025, 0, 5, 11, 25) + t * 1000;
+    expect(airFromText(0, 30, 'UTC', abs)).toBe('air from 11:25');
+    expect(airFromText(0, 240, 'UTC', abs)).toBe('air from 11:25 (4 min before the time shown)');
+    const b = entry('Air from').body;
+    expect(b).toContain('“air from 11:25”');
+    expect(b).toContain('“air from 11:25 (4 min before the time shown)”');
+    expect(b).toContain(`Past ${AIR_STALE_S} seconds`);
+    expect(b).toContain('about every 5 minutes');
+  });
+
+  it('Model cells: the switch is labelled the way Help says', () => {
+    expect(readFileSync(resolve(__dirname, 'screens/sim/slicePanel.ts'), 'utf8')).toContain("label: 'Show model cells'");
+    expect(entry('Model cells').body).toContain('“Show model cells”');
+  });
+
+  it('Probe: the example is the very sentence the code writes, and the keys and the clear button are the panel’s', () => {
+    const r: SliceProbeReading = { pos: { s: 0, z: 0 }, x: 0, y: 0, aglM: 60, where: 'air', speed: 32 / 3.6, along: 28 / 3.6, across: 0, up: 1.4, fromDeg: 315, fromWord: compassWord(315), thetaK: 3, smoke: null };
+    const sentence = probeSentence(r, { units: 'kmh', kind: 'prognostic' });
+    expect(sentence).toBe('Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area');
+    const b = entry('Probe').body;
+    expect(b).toContain(`“${sentence}”`);
+    // The fast model's air has no temperature, so its sentence has no temperature part.
+    expect(probeSentence(r, { units: 'kmh', kind: 'diagnosed' })).not.toMatch(/warmer|cooler/);
+    expect(b).toContain('The temperature part is only there on the 3-D atmosphere');
+    const panel = readFileSync(resolve(__dirname, 'screens/sim/slicePanel.ts'), 'utf8');
+    expect(panel).toContain("label: 'Clear the probe'");
+    expect(panel).toContain("ArrowLeft: 'left'");
+    expect(b).toContain('arrow keys move the probe and Escape clears it');
+  });
+
+  it('Along and across: the signs and the two colours are the legend’s and the palette’s', () => {
+    const b = entry('Along and across').body;
+    expect(sliceLegend('along', 'prognostic').note).toContain('green blows towards B, purple towards A');
+    expect(sliceLegend('across', 'prognostic').note).toContain('green blows towards the right of someone walking from A to B, purple towards the left');
+    expect(b).toContain('Along is positive towards B and negative towards A');
+    expect(b).toContain('Across is positive towards the right of someone walking from A to B and negative towards the left');
+    expect(b).toContain('purple towards A or the left and green towards B or the right');
+    const { ramp, lo, hi } = sliceFieldScale('along');
+    const neg = sampleRamp(ramp, lo);
+    const pos = sampleRamp(ramp, hi);
+    expect(neg[0]).toBeGreaterThan(neg[1]); // purple: red and blue above green
+    expect(neg[2]).toBeGreaterThan(neg[1]);
+    expect(pos[1]).toBeGreaterThan(pos[0]); // green
+    expect(pos[1]).toBeGreaterThan(pos[2]);
+    expect(sliceLegend('up', 'prognostic').note).toContain('Air rising (red) or sinking (blue)');
+    expect(b).toContain('rising (warm colours) or sinking (cool colours)');
+  });
+
+  it('Wind speed map: on the fast model’s air it can be shown (once there is a fire), and Help says both', () => {
+    const windSpeed = LAYER_CATALOG.find((l) => l.id === 'windSpeed')!;
+    expect(windSpeed.available({ ...noAir, hasAirWind: true }).ok).toBe(true);
+    expect(windSpeed.available({ ...noAir, hasAirWind: true, hasFire: false })).toEqual({ ok: false, reason: 'Needs a fire: mark one first' });
+    expect(windSpeed.available({ ...noAir, hasAirWind: false }).ok).toBe(false);
+    const b = entry('Wind speed map').body;
+    expect(b).toContain('on the fast model too');
+    expect(b).toContain('needs a fire marked first');
   });
 });
 

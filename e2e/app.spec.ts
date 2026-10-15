@@ -190,6 +190,7 @@ test('real engine end to end: build → escarpment fire → play → insights �
     const view = await page.screenshot();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('view-menu')).toHaveAttribute('aria-expanded', 'false');
+    // STALE since 0.4.0: the committed 09-menus-open.png shows six tools; the Tools list now has a seventh, Air slices. This line retakes it.
     await composeSideBySide(page, tools, view, `${SHOTS}/09-menus-open.png`, size);
   }
   await viewMenuAction(page, 'compass'); // north up
@@ -249,6 +250,9 @@ test('real engine end to end: build → escarpment fire → play → insights �
     .toBe(true);
   await page.getByTestId('cs-view').click();
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
+  // STALE since 0.4.0: the committed 05-cross-section.png predates the curtain's colour chips, its colours from the slice lattice and
+  // its use on the fast model. This line retakes it (with the 3-D atmosphere and no chip chosen: temperature, as before); the new
+  // pictures of Air slices (33 to 35) are made by the "gallery 0.4.0" tests of e2e/gallery.spec.ts.
   await shot(page, '05-cross-section');
   await pickTool(page, 'layers');
   await page.getByTestId('cross-section').click();

@@ -24,9 +24,9 @@ incidents, or a guarantee that anywhere is safe.
 | ![Setup](docs/screenshots/01-setup.png) | ![Mark the fire](docs/screenshots/02-mark-fire.png) | ![3-D view](docs/screenshots/03-orbit.png) | ![Arrival isochrones](docs/screenshots/04-top-arrival.png) |
 | Setup: demo site, preset weather | Mark the fire with the crosshair | 3-D view of the running fire | Top view, arrival-time overlay |
 | ![Cross-section](docs/screenshots/05-cross-section.png) | ![Insights](docs/screenshots/06-insights.png) | ![Why here?](docs/screenshots/07-why-here.png) | ![Eye level](docs/screenshots/08-eye-level.png) |
-| Vertical cross-section (3-D atmosphere) | Insight cards | "Why here?" explanation | Eye level from a lookout |
+| The air slice's curtain (this picture is from before 0.4.0 and will be retaken: the curtain now has colour chips and also works on the fast tier) | Insight cards | "Why here?" explanation | Eye level from a lookout |
 | ![Menus](docs/screenshots/09-menus-open.png) | ![Timeline jump](docs/screenshots/10-timeline-jump.png) | ![Speed](docs/screenshots/11-speed-popover.png) | |
-| The two round menus, expanded (tools, view) | A jump far ahead computing, with Cancel | Playback speed options | |
+| The two round menus, expanded (tools, view; the Tools list gained Air slices in 0.4.0, so this picture will be retaken too) | A jump far ahead computing, with Cancel | Playback speed options | |
 
 The screenshots above are produced by the end-to-end test `e2e/app.spec.ts` (Pixel 7 profile, the real engine). The new screens
 below come from `e2e/gallery.spec.ts` (the same build, in light, night and high-contrast looks) and are 412 x 839 CSS pixels.
@@ -58,6 +58,14 @@ Most new pictures also exist in `-dark` and `-high-contrast` versions in `docs/s
 screen has both, the speed sheet and Settings a `-dark` one, and the others are light only); the design system and the screens on
 their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 
+The pictures of 0.4.0 (Air slices) are made by one more test of the same spec, `gallery 0.4.0: the Air slices tool ...`. They are
+written into `docs/screenshots/` when the pictures are regenerated for the release; until then these four files do not exist.
+
+| | | | |
+|---|---|---|---|
+| ![Placing the start of a line](docs/screenshots/33-air-slices-placing.png) | ![The side view on the 3-D atmosphere](docs/screenshots/34-air-slice-side-view.png) | ![The side view on the fast model](docs/screenshots/34b-air-slice-diagnosed.png) | ![The curtain and its colour chips](docs/screenshots/35-air-slice-curtain-chips.png) |
+| The Air slices tool placing A: the cross over the map, "Place A here" and Cancel | The side view of a line along the wind on the 3-D atmosphere: six chips, the probe, the footer "3-D time-stepped air · model grid 133 m · air from ..." | The same on the fast model: Temp and Smoke are off with the reason and "Use the 3-D atmosphere", the footer says "Diagnosed wind: terrain effects only" | The 3-D curtain in the scene, with the Layers panel's chips to colour it |
+
 ## Features
 
 - **Where**: GPS, a pasted **Google Maps link** (or typed coordinates), or nine bundled **demo sites** (Katoomba, Blackheath, Mount Tomah, Kanangra, Thredbo, Gospers, Pigeon House, Barrington, Warrumbungles) with the NSW 5 m elevation model (bundled at 10 m),
@@ -77,7 +85,7 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   dew, rain), Vesta Mk2 / CSIRO grassland / heath / pine models, a level-set front with directional slope, mountain
   phenomena (eruptive slopes and chimneys, vorticity-driven lateral spread, junction zones, rolling debris), a 3-D
   terrain-following atmosphere (slope winds, cold-air drainage, thermal belts, the fire's own indraft and plume) or a
-  fast surface-wind tier (the Saver profile, or when Auto finds that the 3-D air would take far too long on the phone), and Lagrangian embers with
+  fast tier that fits the forecast wind to the terrain instead of stepping air through time (the Saver profile, or when Auto finds that the 3-D air would take far too long on the phone; its wind is published as the *diagnosed wind*, see *Air slices and the air picture*), and Lagrangian embers with
   spot-fire ignition. The app says when the simulation cannot keep up with the speed you chose (see *Speed and the
   timeline signal*); the result never depends on speed.
 - **Explanations**: insight cards as the fire does something worth learning (upslope run, ridge-crest slowdown,
@@ -87,8 +95,16 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   and a narrative. Tap an **icon** (the fire you marked, a spot fire, an insight marker, your own position, a home) and the
   panel opens with that icon as the map draws it and its name in a word or two (for example "Spot fire" or "Danger: Uphill
   run"), and the question is about the icon's own spot; tap the ground and there is no icon row.
+- **Air slices** (Tools, 0.4.0): a side view of the air along a line you place anywhere on the map, on every run. Place the start (A) and
+  the end (B) with the cross, or tap a preset (**Along the wind**, **Across the wind**, **Up the slope**, **Me to fire**). A flat panel draws
+  the air in the plane of the line, with the ground, height and distance axes, flow streaks, colour chips (Speed, Along, Up/down, Across,
+  Temp, Smoke), and a **probe**: tap or drag to read the wind, the up or down air, the height above the ground and, on the 3-D atmosphere,
+  how much warmer or cooler it is, in one plain sentence, with a pin on the map. A footer always says what kind of air it is, how fine the
+  model grid is and when the air is from. The same slice stands in the 3-D view as a curtain. On the fast model it shows the **diagnosed
+  wind** (the forecast wind fitted to the terrain, terrain effects only) and says so; Temp and Smoke need the 3-D atmosphere. It only
+  reads the air and never changes the fire. See *Air slices and the air picture*.
 - **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume),
-  vertical cross-section, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
+  the air slice's curtain, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
   turn, tilt and zoom it, all at once (see *Controls*).
 - **Cliffs**: in the 3-D view, cliff faces are drawn as near-vertical rock walls, lit from the sharpened ground, with ledges that catch
   the light, vertical joints, dark bands under overhangs, water stains, scree below a face and bare pavement along the top, and no
@@ -102,7 +118,7 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   flames, smoke, embers, wind streaks, insight markers; and *Heat maps*, every data layer as a colour map of the ground (cool = little,
   warm = much), one at a time, optionally **on its own** (the photo and the trees step aside): ground height, landform, slope, aspect,
   sunlight, tree height and cover, shrub height, the four fuel hazards (leaf litter, grass and low shrubs, shrubs, bark), grass curing,
-  fuel type and load, years since fire, wildfire or prescribed burn, homes per hectare, distance to a road, wind speed, litter moisture
+  fuel type and load, years since fire, wildfire or prescribed burn, homes per hectare, distance to a road, wind speed (on both tiers: the fast model shows its diagnosed 10 m wind), litter moisture
   and the fire results (arrival time with isochrones, spread rate, intensity, spread driver, flame attachment, VLS, dead man zone, ember
   landings). A layer that cannot be shown says why ("Needs a fire: mark one first"). Your choices are remembered for the next run.
 - **Places**: roads, RFS fire trails, homes, residential zones and place names are official NSW open data, bundled for the demo
@@ -144,6 +160,16 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
   tab) and nothing pauses it (pause on Danger and vibration are opt-in). Big targets (44 px at least), crosshair placement for gloves
   and wet screens, light, night and **high-contrast** ("bright sun", Settings) looks, left/right-handed layout, Android's Back button
   closes the top-most menu, panel or screen first, screen-reader labels, text up to Android's 200 % font scale without clipping.
+
+## Versions
+
+| Version | What it is | State |
+|---|---|---|
+| 0.3.0 (versionCode 6) | night lighting, picture quality, the debug statistics, the honest speed signal, the cliff drawing, tap on an icon | built and checked on the real app in software rendering; not seen on a phone |
+| **0.4.0** (versionCode 7) | the **air data foundation** (every tier publishes a 3-D wind that can be sliced, exact near-ground sampling, capability flags) and **Air slices**, the side view | built and checked the same way; not seen on a phone. What was built and what the checks found: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 18 |
+| 0.3.1 (optional) | rock in the fire model (a wall that means bare rock, part-rock cells) and a speed test button | waits for someone who knows the escarpments to re-label the aerial tiles of spike S6 |
+| 0.4.1 (optional) | a time-lapse recorder for a pinned Air slice line | not started |
+| 0.5.0 (versionCode 8) | a horizontal wind slice and wind glyphs that get more detailed as you zoom (the Air slices tool's Map view tab) | not started |
 
 ## Choosing a place from a Google Maps link
 
@@ -194,6 +220,7 @@ The map is moved with the fingers, the same in the 3-D view and the top (plan) v
 | Pinch **and** drag in one movement | zooms and turns / tilts at the same time (no mode to pick) |
 | Lift one finger of two | carries on as a one-finger slide from where the other finger is; a second finger put down during a slide switches to turn / zoom, without a jump; a third finger is ignored |
 | **Tap** | "Why here?" (or places the fire / fuel brush when that tool is open); a slide is never a tap |
+| **Air slices, placing a line** | with "Set start (A)" or "Set end (B)" chosen, the cross is shown and one finger still slides the map under it; "Place A here" keeps the point under the cross. A tap on the map sets a dashed mark instead, and "Place A here" then keeps that point (the two-step confirm for gloves and wet screens). Back or Escape drops the placement first and closes the tool next |
 | **Tap an icon** (with the Why here? tool) | opens the panel with that icon and its name at the top, and asks about the icon's own spot: the ring jumps onto it. A tap within about 22 px of an icon's centre counts (a home: 14 px); the nearest icon wins, and a stack says "+2 more icons here, zoom in to tell them apart". Tap the ground beside it and there is no icon row. The other tools (fire, fuel, wind) still place on the ground under the finger |
 | **Eye level** ("what you would see from here") | a first-person look-around: one or two fingers turn the view; you cannot slide your position, there is no zoom |
 | Drawing a fire line or painting fuel (**Draw a line** in Fire, **Paint** in Fuel) | one finger draws and the map is locked; switch back to tapping to move the map again |
@@ -248,10 +275,10 @@ report, not from text:
 | Weather forcing | one time series at one point plus an upper-air profile, applied to the whole area | records about every hour, linear in between | - |
 | Litter moisture | 2-D, one value per cell | the fire cells | every 10 min of fire time |
 | **Fire spread** | **2-D level-set front** on the terrain surface (empirical rates: Vesta Mk2, CSIRO grassland, AFDRS heath, pine), not resolved combustion | 30 m (20 m for areas up to 6 km on *Detailed*) | sub-steps from the CFL limit inside the outer step |
-| **Atmosphere** | standard / high tiers: **3-D** Boussinesq flow on a terrain-following grid; **fast tier: a 2-D surface wind** fitted to the terrain (mass-consistent), no time-stepped air flow | 45 × 45 × 20 columns about 133 m apart (standard, 6 km), 60 × 60 × 24 (high); the fast tier fits the wind on the standard grid | 3 s to 12 s (shorter in strong wind); fast tier 10 s |
+| **Atmosphere** | standard / high tiers: **3-D** Boussinesq flow on a terrain-following grid; **fast tier: no time-stepped air**, the forecast wind fitted to the terrain by a mass-consistent solve (one per weather record, blended in time); the fire feels a 2-D surface wind built from it, and the fitted 3-D wind itself is published as the *diagnosed wind* (terrain effects only: no temperature, no smoke) | 45 × 45 × 20 columns about 133 m apart (standard, 6 km), 60 × 60 × 24 (high); the fast tier fits the wind on the standard grid | 3 s to 12 s (shorter in strong wind); fast tier 10 s |
 | Fire and air feedback | two-way in 3-D; a 2-D indraft estimate in the fast tier | the air grid / the fire grid coarsened ×2 | every step |
 | Embers | **3-D** Lagrangian particles (up to the performance profile's maximum) | individual tracked particles in 5 bark and fuel classes | every outer step |
-| Smoke | 3-D tracer in the 3-D tiers; only a drawn column in the fast tier | the air grid | every air step |
+| Smoke | 3-D tracer in the 3-D tiers; only a drawn column in the fast tier (the Smoke chip of an air slice is off there) | the air grid | every air step |
 | Display | 3-D rendering; **trees are decorative** (placed from canopy cover and height), **cliff faces are a drawing** (steeper than the data, with rock detail), roads, trails, homes and names are map data | - | a picture every display step |
 
 The page has seven groups (the first open, the rest collapsed): *At a glance* (one card per component with dimensions, resolution,
@@ -450,6 +477,127 @@ Three.js keeps behind the two textures and the mesh's slope so it can restore th
 the graphics side (the lighting gradient 3.2 MB, the rock mask 3.2 MB and the mesh's slope 0.64 MB at High), plus about 13 MB held
 while the scenario is set up and then released. The render chunk grew by about 7.5 kB gzipped (+19 kB raw) and the entry by about 0.4 kB.
 
+## Air slices and the air picture
+
+**What it is.** *Tools, Air slices* shows a vertical slice of the air along a line you choose, from the side, in a flat panel above the
+timeline (a Canvas 2-D drawing, `src/ui/screens/sim/slicePanel.ts`) and as a curtain in the 3-D view. The panel has a *Side view* tab;
+its *Map view* tab is planned for 0.5.0 and is not there. It works on every run, because since 0.4.0 both tiers publish a 3-D wind for it
+to read (see *The air view*, below). It only reads the air: nothing it does reaches the simulation, so the fire is the same with a
+slice on or off. The 2-D demo map (`?mock=1`) has no air, so the tool there says "The side view needs the 3-D view."
+
+**Placing a line.** *Set start (A)* shows the cross; slide the map under it with one finger and tap *Place A here* (a tap on the map
+sets a dashed mark and *Place A here* then keeps that point, the two-step confirm for gloves and wet screens); then *Set end (B)* and
+*Place B here*. That is four taps for a line of your own and two for a preset (*Presets*, then one of the four). *Swap* turns the line
+round. A and B are written together or not at all, so a half-placed line is never drawn. A preset is a line through the fire (the
+middle of the map when there is no fire yet, and the line then says "No fire yet: centred on the map"), about 3 km each way, cut to the
+model rectangle ("Shown to the edge of the model area"):
+
+| Preset | A to B | It cannot be used when |
+|---|---|---|
+| Along the wind | A upwind, B downwind | the wind is calm: "The wind is calm, so it has no direction yet" |
+| Across the wind | the wind blows to the right of A to B (so "Across" reads positive) | the wind is calm |
+| Up the slope | A downhill, B uphill, from the ground's slope over about 2 km | the ground is flatter than about 2 degrees: "The ground here is too flat to have an uphill direction" |
+| Me to fire | from your phone's position to the fire (not extended) | there is no position inside the model area ("This run has no position for you", "You are outside the model area") or no fire yet |
+
+A preset is live: it is worked out again from the wind at the time shown, the fire and the phone every time the slice is computed, so
+*Along the wind* follows a wind change while the run plays. The shortest line is the larger of 300 m and two model cells; shorter
+ones are refused in words ("Make the line longer than 300 m", the number rounded up to 50 m). Back and Escape drop a placement under
+way first and close the tool next, and focus returns to the Tools button; one-finger pan keeps working while placing. The line, A and B
+are written to the layer state (`LayerState.crossSection.a`, `b`, `preset`, `field`; nothing is remembered between runs) and drawn on the
+map as marks (A, B, the line and the probe's pin).
+
+**The side view.** Height is metres above sea level, up the picture; distance from A is along the bottom, A always at the left. The
+slice is sampled on a lattice of 48 to 192 columns (one per half model cell of the line) and 48 to 56 rows, from 50 m under the lowest
+ground on the line to 2,000 m over the highest or the model top. It draws:
+
+- the **field** as a smoothed raster, or, with the *Show model cells* switch (off at first), one block for each cell the line really
+  passes through with the model's own value in it, nothing blended;
+- the **ground** as a filled shape from the 10 m terrain as received (never the sharpened cliff drawing) and the ground **as the model
+  sees it** as a dashed line, which is smoother, so a cliff the model smooths away shows only in the filled shape;
+- **axes** (ticks at 1, 2 or 5 times a power of ten, chosen by a pure `niceTicks` to give about five, for example every 500 m of height, and distance in metres or kilometres) and a small tag, "True scale"
+  or, for example, "Height ×1.5", for the scale actually drawn: true scale times the existing *Vertical exaggeration* slider (1 to 3) of
+  Layers, reduced when the box is too short for it;
+- **flow streaks** (about 300 particles moving with the along-line wind and the vertical motion, at most 24 frames a second, stopped
+  while the panel is hidden or the page is in the background), or, when the phone is set to reduce motion, a still lattice of arrows;
+- the **probe**: tap or drag on the picture (or use the arrow keys on the focused picture; Escape or the small X clears it) and one
+  sentence reads the air there, for example "Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m
+  above ground, 3 K warmer than the area", with a pin on the map. Points inside the ground, below the model's own ground or above its top
+  get a short sentence that says so;
+- the **chips**, a legend and the **footer** (below).
+
+| Chip | Colours the slice by | Needs |
+|---|---|---|
+| Speed | the sideways wind speed, 0 to 90 km/h | a 3-D wind (both tiers) |
+| Along | the wind along the line: purple towards A, green towards B | a 3-D wind |
+| Up/down | air rising (warm colours) or sinking (cool colours), -4 to +8 m/s | a 3-D wind |
+| Across | the wind across the line: purple towards the left, green towards the right of someone walking from A to B | a 3-D wind |
+| Temp | warmer or cooler than the rest of the slice's air at that height, in kelvin (-10 to +20 K) | the 3-D atmosphere |
+| Smoke | the model's smoke concentration on a **log scale**, four steps of ten from 0.0001 to 1 | the 3-D atmosphere |
+
+On the fast tier Temp and Smoke are off with the reason in words and a *Use the 3-D atmosphere* button, which switches the run over (it
+restores the last checkpoint and computes again). Along and Across share one diverging ramp, pale at zero and darker with the size of
+the wind; wind direction is always reported as where it comes **from**, with the hyphenated eight-point word ("north-west"). The footer
+is always in view: **kind · model grid · age**, for example "3-D time-stepped air · model grid 133 m · air from 11:25" or "Diagnosed wind:
+terrain effects only · model grid 133 m · air from 11:25", and "(4 min before the time shown)" is added when the air is more than 90 s
+older than the picture, as it can be after jumping back (the picture is composed from the saved air at or before that time).
+
+In short landscape (844 x 390) the picture and a one-line footer stay pinned at the top of the panel, the chips and controls scroll
+under them, and the footer keeps the kind, the grid and the age but drops their explanations.
+
+**The curtain** is the same slice standing over the terrain in the 3-D view. The scene computes the slice once (`SliceUpdater`,
+`src/render/slice/sliceUpdater.ts`: at once for a new line, chip or layer change, otherwise at most every 250 ms after a new picture
+of the air) and both the curtain and the panel read that one result, so they cannot disagree. The curtain's colours are the slice's
+lattice, drawn with the same ramps as the panel and the legends; its wind arrows still read the sampler at 15 columns by six heights
+(30 to 2,200 m above the ground), and the cyan arrows that mark air blowing against the main wind are drawn on the 3-D atmosphere only.
+With no chip chosen it keeps its old colouring (temperature on the 3-D atmosphere, wind speed on the fast tier); the first line you place
+chooses Speed. The Layers panel has the same six chips under *Air slice*, and, on the fast model, a note: "This section shows the diagnosed
+wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperature and smoke."
+
+**The air view** (workstream C). Every picture the engine sends carries `atmosphere: AtmosphereView`, and since 0.4.0 it says what it is:
+
+| Field | Meaning |
+|---|---|
+| `layout` | `'terrain-following'`: the model's own arrays, not resampled onto flat levels (older or hand-made views have `'flat'` or nothing, which counts as flat) |
+| `kind` | `'prognostic'` (the time-stepped 3-D air: wind, temperature, smoke), `'diagnosed'` (the fast tier's fitted wind: wind only), or nothing (`nz > 0` means prognostic, otherwise `'surface'`) |
+| `topM`, `baseM` | the model top above the datum, and the datum's height above sea level (the lowest ground), so no consumer has to estimate it |
+| `time` | the simulation time the air was made at, which is what "air from 11:25" says |
+
+The 3-D tier's `view()` ships fresh copies of its native arrays (nothing resampled, no zeros under the ground). The old flat view blended
+the zeros under the ground into every sample near a hill: a test over a 700 m ridge shows it reading up to 97.6 % low at 30 m above the
+ground (33 % on average across the ridge). The fast tier's `view()` now carries the stamp-blended wind it already had inside, the *diagnosed
+wind*: the forecast profile fitted to the terrain by the mass-consistent solve, once per weather record and blended in time, with the
+user's wind edits. It has none of the extras the fire's own 2-D wind adds (night-time decoupling, slope flows, the lee blend, the fire's
+indraft), no plume, no temperature and no smoke, and every slice made from it says so. Questions are asked of the view with `airKind`,
+`airHas`, `hasAirWind`, `cellHeightAsl` and `airAgeS` (`src/core/airView.ts`), never by reading `nz`: `has3dAtmosphere` now means the
+prognostic air only, and a new `hasAirWind` flag means "a wind that can be sliced". The wind speed heat map therefore also works on the
+fast tier, from the 10 m wind of the fit.
+
+**Checked against the engines.** The render sampler (`src/render/atmosphereSampler.ts`) does what each engine's own `sample()` does: per
+column of the four-column stencil it works out the terrain-following height, finds the level by binary search and interpolates, then blends
+the columns. On a real `Atmosphere` and a real `DiagnosticWind` it equals the engine's own value to 1.9e-6 m/s at 1,200 random points from the
+ground to 2,000 m on each tier (the test allows 1e-3), and a slice equals the engine's value cell for cell to about 3e-6 m/s on lines across,
+along and oblique to a ridge (`src/atmosphere/airView.oracle.test.ts`, `src/render/slice/sliceField.oracle.test.ts`; the numbers are in the
+test log). Its allocation-free entry points (`windP` for the wind, `fieldsP` for wind, temperature and smoke) take about 110 and 260 ns and 0.14 bytes per call (a boxing cost of 48 bytes per call that spike S3 found in V8 is avoided).
+
+**What it costs** (measured in node on the build machine, one run each; `[atmos perf]`, `[slice perf]` lines in the test logs): the air
+view takes 0.60 ms per snapshot on the fast tier (498 kB, 45 x 45 x 20) and 0.77 ms on the standard tier (815 kB); one slice update
+(resolve the line, the four preset checks, sample, the model's cells) takes a median of 0.5 to 1.0 ms and a 95th percentile of up to
+1.5 ms, and allocates about 6 kB of result objects and 35 bytes in the reused arrays; one streak step takes 0.05 ms. These are desktop
+numbers: the plan's limit of 8 ms at 4x CPU throttle was not measured, and nothing was measured on a phone. **Memory:** the fast tier's
+volume adds 474.6 KiB to every keyframe of the history (u, v and w, 12 bytes per cell of 45 x 45 x 20), about 35 MB over the 72 keyframes
+of a 6 hour run, so the history budget (about 6 % of the device's memory) thins old pictures a little earlier on small phones; the Data
+sets memory model (`keyframeBytesModel`) counts it. The panel, its drawing, the streaks, the probe and its styles are one lazy chunk that
+loads the first time the tool opens (gzip size in *Build the phone apps* below); the tool's shell and the scene glue are in the entry.
+
+**Limits.** The side view's picture was judged on still frames and a real browser in software rendering, not on a phone. It reads the
+model's air: the diagnosed wind on the fast tier is the forecast wind where the terrain bends it, and at night or in a valley the wind the
+fire feels there can be quite different. The curtain's ground is the 10 m terrain as received, so a cliff the 3-D view draws steeper is
+drawn at its data slope in the curtain. Temp is "warmer or cooler than the rest of the slice at that height", not a real temperature and
+not against the whole area (the probe sentence and the legend title still say "than the area"). For lines longer than about 4 km the
+true-scale picture is shorter than its box and the room above it is blank. The builders also reported, and this page did not re-check, that
+the landscape panel leaves only about 44 px for the chips and controls to scroll in, that the *Use the 3-D atmosphere* button is just below
+the fold in portrait on the fast tier, and that the Tools dial scrolls at 360 x 640. The time-lapse recorder is 0.4.1.
+
 ## Data sources and licences
 
 | Source | Used for | Licence |
@@ -566,7 +714,7 @@ signal on the timeline without a slow phone (screenshots and layout audits).
 ### Tests
 
 ```bash
-npm test                          # Vitest: every module, about 2 200 tests incl. the §15 validation scenarios
+npm test                          # Vitest: every module incl. the §15 validation scenarios (3,331 tests at the 0.3.0 gate; the 0.4.0 count is in the plan, section 18.2)
 npm run check:contrast            # WCAG contrast of every text pair of every stylesheet in the four looks
 npm run build:cap && npm run check:bundle   # the APK build: one page, no source maps, JS / CSS / data within the budgets (docs/ARCHITECTURE.md, Performance budgets)
 FIRESIM_SKIP_SLOW=1 npm test      # skip the long 3-h Katoomba validation (src/sim/validation.test.ts)
@@ -604,7 +752,7 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
 - `e2e/truth.spec.ts` — the truth audit of the two information screens on the real engine: the tier the Data sets screen names is the
   engine's (whatever the auto-tune picked), its memory is sized for that tier, the places figures are for the model area, a designed weather
   is never "real data", and the card's layer list agrees with the tier about the smoke and the wind.
-- `e2e/gallery.spec.ts` — takes the pictures of the new screens for `docs/screenshots/` (see above).
+- `e2e/gallery.spec.ts`: takes the pictures of the new screens for `docs/screenshots/` (see above; the 0.4.0 test is `gallery 0.4.0`).
 - `e2e/android.spec.ts` — the app under an emulated Capacitor Android runtime.
 - `e2e/maps-link.spec.ts` — Setup's "paste a Google Maps link or coordinates" box: a long Mount Tomah link, Google's share text, the Paste button,
   a short link under the emulated Android runtime (`e2e/androidBridge.ts` fakes the native HTTP plugin's redirect, so no real network is used) and in the
@@ -629,6 +777,19 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   drawing passes it, so the pictures matter more), no near-black or all-zero pixel, the same draw calls with and without it and the
   triangles inside the budget; the Data sets Terrain card carries the disclosure and the statistics screen shows its row. It attaches
   the pictures to the report (and writes them to `CLIFFS_SHOTS` when that is set).
+- `e2e/air-view.spec.ts`: the air view as the real engines publish it, on both tiers (the tier pinned by the Detail choice or by switching
+  the run to the 3-D atmosphere): every picture carries the terrain-following layout, the kind of the air, the datum, the top and the
+  air's own time; the fast tier's view holds a 3-D wind of kind `diagnosed` with no temperature or smoke; the wind speed map (now also on
+  the fast tier), the wind streaks, the smoke and the curtain work on both, and the curtain's chips and its "diagnosed wind" note follow
+  the kind of the air and not the number of levels.
+- `e2e/air-tool.spec.ts`: the Air slices tool's placement flow: the Tools entry, "The side view needs the 3-D view." on the 2-D map and no
+  chunk loaded, the panel's chunk asked for when the tool opens and not at start-up (and a failed chunk leaves one line, Try again and
+  working buttons), a real one-finger touch pan under the cross, the two-step tap confirm, "Make the line longer than 300 m", what is
+  written to the layers, Swap, a preset, "Me to fire" off with its reason, Back and Escape, focus, and nothing popping up by itself.
+- `e2e/airslice-panel.spec.ts`: the side-view panel on both tiers: the painted picture, six chips on the 3-D air and Temp and Smoke off
+  with the reason and the button on the fast tier, the probe (tap, drag, arrow keys, Escape, the clear button), "Show model cells", the
+  honest footer in view, landscape 844 x 390 (the picture and footer pinned, chips and controls scrolling), reduced motion (arrows, a
+  picture that holds still) and moving streaks otherwise.
 - `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
@@ -670,7 +831,7 @@ For iOS, after `cap add ios`, add the location permission the "Use my location" 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
 Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 108+, which `capacitor.config.ts` enforces, iOS 16+; the build target is ES2022). The bundle
-is ~38 MB (about 2.9 MB of app code and styles, 2.8 MB of it JavaScript, from `npm run build:cap`), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
+is about TBD-BUNDLE MB (about TBD-BUNDLE MB of app code and styles, TBD-BUNDLE MB of it JavaScript, from `npm run build:cap`; all JavaScript TBD-BUNDLE kB gzip, the entry chunk TBD-BUNDLE kB gzip, the lazy Air slices chunk TBD-BUNDLE kB gzip, against budgets that did not change: 1000 and 195), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
 ## Offline use and area packs
@@ -749,8 +910,8 @@ the app measures and what it says*, above).
 Tiers: *Settings → Performance*: **Balanced** (the default) is **Auto**: it times 30 steps of the 3-D spin-up, skips the first 10
 and keeps the detailed 3-D air unless the median of the other 20 predicts a whole run longer than 10 minutes of computing for 6
 hours of fire (about 198 ms per air step; spec §12.6 as changed in 0.3.0), else it picks the fast tier; **Saver** = fast;
-**Detail** = high (3-D, 24 levels). A fast-tier run can be switched to the 3-D atmosphere from the Layers panel
-(cross-section / "through the plume") — the worker restores the last checkpoint and re-runs. The 3-D view adapts its
+**Detail** = high (3-D, 24 levels). A fast-tier run can be switched to the 3-D atmosphere from the Layers panel or the Air slices
+panel (for the plume, temperature and smoke): the worker restores the last checkpoint and re-runs. The 3-D view adapts its
 resolution to the frame rate and draws only when something changes; snapshots stream every 5 simulated minutes into a
 memory-capped replay store (≈ 6 % of the device memory, 48–160 MB).
 
@@ -780,7 +941,7 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Module | What it does |
 |---|---|
-| `src/core` | shared types and contracts (`types.ts`, `simTypes.ts`), grids, local projection, units, seeded RNG, shared physics |
+| `src/core` | shared types and contracts (`types.ts`, `simTypes.ts`), grids, local projection, units, seeded RNG, shared physics, `airView.ts` (what an air view is and holds) |
 | `src/data` | bundled assets, HTTP (native / dev proxy), IndexedDB cache and area packs, terrain tiles, canopy, demo rasters and sites |
 | `src/terrain` | slope, aspect, curvature, TPI, landforms, solar position, insolation with terrain shadows, hillshade |
 | `src/fuel` | fuel catalogue, SVTM mapping, vegetation inference, fire history and accumulation, fuel map and edits |
@@ -788,12 +949,13 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `src/fire/models` | Vesta Mk2 / 2012, CSIRO grassland, heath, pine, McArthur, intensity, flame height, spotting, AFDRS FBI |
 | `src/fire/terrainFeatures.ts` | gullies / chimneys, ridges, saddles, lee slopes for the mountain phenomena |
 | `src/fire/spread` | level-set spread with directional slope, mountain phenomena, spread-driver attribution, checkpoints |
-| `src/atmosphere` | mass-consistent background wind, 3-D terrain-following Boussinesq solver, slope flows, fire heat, fast `DiagnosticWind` |
+| `src/atmosphere` | mass-consistent background wind, 3-D terrain-following Boussinesq solver, slope flows, fire heat, fast `DiagnosticWind` (which also publishes its fitted wind as the diagnosed 3-D wind) |
 | `src/embers` | Lagrangian firebrands: emission, lofting, transport, burnout, landing and spot-fire ignition |
 | `src/explain` | insight detectors and card texts, forecast cards, "Why here?" cell explanation |
 | `src/scenario` | the build pipeline, weather sources (Open-Meteo), presets, replays, belt kit, area packs, live feeds |
 | `src/sim` | `Simulation` (coupling loop, records, checkpoints, rewind, tiers), `SimHost`, worker, `SimClient` |
-| `src/render` | `SceneView`: terrain, vegetation, flames, embers, smoke, wind particles, overlays, cross-section, camera rig |
+| `src/render` | `SceneView`: terrain, vegetation, flames, embers, smoke, wind particles, overlays, the air slice's curtain, camera rig; the air sampler (`atmosphereSampler.ts`) |
+| `src/render/slice` | the Air slice's pure modules: `sampleSlice`, the line and its presets (`sectionFromEndpoints`, `resolveSlice`), axis ticks, flow streaks, the probe, the shared `SliceUpdater`; no Three.js and no DOM |
 | `src/ui` | app shell, setup / building / simulation screens, session (time, playback, edits), panels, mocks |
 
 ## Known limitations
@@ -803,9 +965,9 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - Speed on a phone is measured by the app, not assumed: only one phone has been measured so far (its 3-D step took 41 ms). Auto
   keeps the detailed 3-D air unless a whole run is predicted to take more than about 10 minutes of computing for 6 hours of fire,
   so at a high playback speed, or with a big fire, the simulation can fall behind; the timeline then shows its speed button and
-  the sheet says what is happening. The fast surface-wind tier is about 4× quicker (900 against 220 s/s on the desktop core
-  above) but has no plume, cold-air pools or cross-section, which need the 3-D atmosphere (Balanced on a phone that can run it,
-  Detail, or one tap in Layers).
+  the sheet says what is happening. The fast tier is about 4× quicker (900 against 220 s/s on the desktop core
+  above) but has no plume, cold-air pools, temperature or smoke in an air slice, which need the 3-D atmosphere (Balanced on a phone
+  that can run it, Detail, or one tap in Layers or Air slices); an air slice on the fast tier shows the diagnosed wind and says so.
 - Validation (`src/sim/validation/`): the spec's §15 scenarios pass, including gully-vs-sunny-slope litter moisture
   (V8), lateral spread rate on lee slopes (V10), the fire-induced-wind card (V15) and coupled head ROS in both tiers
   (V22). Remaining gaps: the V20 speed gates are missed for very large (≈ 3 000–5 000 ha) fires, the standard tier
@@ -817,7 +979,13 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - Weather and live data need the network (or an area pack). On device, requests go through CapacitorHttp; in the
   browser (including an installed PWA) the NSW, RFS and Open-Meteo services are called directly — all send CORS headers
   (verified live, doc 08b). Only the remote canopy-height bucket needs the dev-server proxy (or a deployment proxy).
-- Snapshots are dense (≈ 2 MB each); long runs are thinned in the replay store to fit its memory budget.
+- Snapshots are dense (≈ 2 MB each); long runs are thinned in the replay store to fit its memory budget. Since 0.4.0 the fast tier's
+  snapshots also carry its diagnosed 3-D wind (about 0.5 MB more per snapshot, 474.6 KiB per kept keyframe at 45 x 45 x 20, about 35 MB over
+  a 6 hour run), so thinning starts a little earlier; the whole snapshot size was not measured again.
+- Air slices (0.4.0, see *Air slices and the air picture*): seen only in software rendering and in node tests, never on a phone, so the
+  streaks' frame rate, the panel's feel with gloves and the chunk's load time on a phone are open. On the fast tier the slice shows the
+  forecast wind fitted to the terrain, not the wind the fire feels, and it says so in the footer; Temp is relative to the slice's own
+  air at each height; the time-lapse recorder (0.4.1) and the Map view tab (0.5.0) are not built.
 - Places data are what the NSW services hold: a track that is not mapped is not drawn, a home without an address point is not
   counted, and the zoning layer is the planning map, not what is built. The 3-D trees are decorative (placed from canopy cover and
   height); the fire and the air do not see individual trees.

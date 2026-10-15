@@ -28,7 +28,7 @@ recorded in the module's top-of-file notes and summarised below.
 src/
   main.ts        entry: settings/theme, loadServices (real modules or ?mock=1), App
   core/          contracts (types.ts, simTypes.ts, datasets.ts = data-set provenance), grid, geo (LocalProjection),
-                 units, rng, shared physics
+                 units, rng, shared physics, airView.ts (what an AtmosphereView is and holds: kind, layout, flags, air time)
   data/          assets (bundled files in browser / Node), http, cache + area-pack storage, terrain tiles
                  (Terrarium), canopy, demo rasters (DEM, imagery window, GeoJSON), demo sites, synthetic terrain,
                  ledger.ts (request ledger), storage.ts (storage report), bundleManifest.ts (public/demo/provenance.json)
@@ -41,7 +41,8 @@ src/
   fire/terrainFeatures.ts  gully axes / trench, ridges, saddles, lee exposure (on the fire grid, from the 10 m DEM)
   fire/spread/   FireSpreadModel (level set, head vector, three-speed ellipse, mountain phenomena, attribution)
   atmosphere/    createAtmosphere → Atmosphere (3-D) or DiagnosticWind (fast): background, solver, surface
-                 heating, fire heat, plume, fire wind
+                 heating, fire heat, plume, fire wind; both publish a terrain-following air view (the fast tier's is
+                 its diagnosed wind)
   embers/        EmberModel: emission, lofting, transport, burnout, landing, spot ignition, overlays
   explain/       InsightEngine, rule registry, card texts, forecast cards, explainCell ("Why here?"), safety
   scenario/      buildScenario pipeline, Open-Meteo, weather sources, presets, replays, belt kit, layers, area packs,
@@ -56,15 +57,21 @@ src/
                  rig, heightfield picking, legends, palette, layerCatalog.ts (the one description of every layer), demo
                  imagery; pure helpers with no three.js: qualityGuess.ts (the picture-quality guess), markerPick.ts (which icon
                  a tap is on), iconAtlas.ts (the icons' drawing), frameLog.ts (frame statistics); render-only pure helpers
-                 for the cliff drawing: cliffDrawing.ts (the pipeline), cliffSharpen.ts, terrainMesh.ts, rockMask.ts
+                 for the cliff drawing: cliffDrawing.ts (the pipeline), cliffSharpen.ts, terrainMesh.ts, rockMask.ts;
+                 atmosphereSampler.ts (the air sampler, v2), sliceFields.ts (which Air slice chips an air can give, and the
+                 words), crossSectionLayer.ts + crossSectionColour.ts (the curtain), slice/ (the Air slice's pure modules)
   ui/            App shell + back stack (app.ts, backStack.ts), screens (notice, setup, building, settings, datasets,
                  modelCard, debugStats, sim/*), session, stores, widgets + primitives (typed builders of the design system),
                  mocks; the speed signal (paceModel.ts, paceSheetModel.ts, paceTypes.ts) and Simulation debug statistics
-                 (debugStats.ts, deviceInfo.ts, eventLog.ts, runEvents.ts)
+                 (debugStats.ts, deviceInfo.ts, eventLog.ts, runEvents.ts); the Air slices tool (screens/sim/sliceTool.ts,
+                 sliceToolModel.ts, sliceToolActions.ts, sliceToolLoad.ts, sliceTypes.ts: in the entry chunk) and its side-view
+                 panel (screens/sim/slicePanel.ts, slicePanelModel.ts, sliceDraw.ts: one lazy chunk)
   styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
-                 + screen CSS (screens, sim, transport, layers, datasets, modelcard, debugstats); see docs/DESIGN.md
+                 + screen CSS (screens, sim, transport, layers, datasets, modelcard, debugstats; slice.css, imported by the lazy
+                 side-view chunk and not by main.css); see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
-                 model-card, integration, android; and for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap, cliffs)
+                 model-card, integration, android; for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap, cliffs;
+                 for 0.4.0 air-view, air-tool, airslice-panel)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
@@ -464,6 +471,205 @@ directly under Settings (`menu-debug-stats`), Settings (`settings-debug-stats`),
 "No run yet" and the phone groups are live), the model card, and the pace sheet's "All the numbers". The rows' sub-lines: "Speed, memory
 and what this phone can do" in the menu and in Setup, "Speed, memory, what this phone can do; copy as text" in Settings.
 
+### The air view and the Air slice (0.4.0)
+
+Workstream C (the air data foundation) and workstream D (Air slices, the side view) of
+`docs/plans/air-slice-wind-detail-honest-speed.md`; what was built and the corrections to that text are in its section 18. The slice only
+reads the air: nothing here feeds back into the engine (plan section 4, rule 1), and a test pins that reading a view changes no state.
+
+**The air view.** `SimSnapshot.atmosphere` is an `AtmosphereView` (`core/types.ts`; every question asked of it goes through
+`core/airView.ts`, never through `nz`). Besides its old fields it has four optional ones, absent from views made before 0.4.0 (test
+fixtures, the dev scenario, the 2-D mock), which then keep their old meaning:
+
+| Field | Meaning | Absent means |
+|---|---|---|
+| `layout` | `'terrain-following'`: the model's native arrays; `'flat'`: resampled onto flat levels above the lowest ground, zero below the terrain | `'flat'` |
+| `kind` | `'prognostic'`: the time-stepped 3-D air (wind, temperature anomaly, smoke); `'diagnosed'`: the fast tier's fitted wind (wind only) | `nz > 0` is `'prognostic'`, else `'surface'` (10 m wind only) |
+| `topM`, `baseM` | the model top above the datum (the model's H′, so `J = 1 − h0 / topM`) and the datum's height above sea level (the lowest ground, `zMin`) | `J = 1`; the consumer estimates the datum |
+| `time` | the simulation time the air was produced at (stamped by `makeSnapshot`: `{ ...atm.view(), time: this.t }`), so a picture can say "air from 14:05" | no air time ("air time not recorded") |
+
+In the terrain-following layout `levels` are the model's ζ centres, `terrainHeight` is `h0` (above the datum) and `u v w thetaAnomaly
+smoke` are copies of the engine's `uc vc wc th sm` (index `level × plane + column`), so level `l` of column `c` is `h0 + ζ_l × J` above the
+datum (`cellHeightAsl` for both layouts). `Atmosphere.view()` ships fresh copies of its native arrays, nothing resampled and no zero cell
+under a hill (a snapshot's arrays are transferred to the main thread and detach, so every call allocates; the call changes no engine
+state). `DiagnosticWind.view()` returns the same layout with `u, v, w = (1 − a) × A.bg + a × B.bg`, the very blend its `sampleBg` uses, on the native
+levels (`kind: 'diagnosed'`, `thetaAnomaly` and `smoke` of length 0, the 10 m `surfaceU / surfaceV` as before). `decimateView` (the view is
+halved horizontally above `atmosViewMaxCells` = 150,000 cells) now carries layout, kind, top, datum and time over: block means keep the
+terrain-following layout consistent because `h0 + ζ (1 − h0 / H′)` is linear in `h0`. `keyframeBytes` in `ui/snapshotStore.ts` counts real
+byte lengths, so a history keyframe carries its air and its own time, and "air from" can be said for any time on the scrubber (a picture
+composed from an older keyframe says so).
+
+**What the diagnosed wind is, and is not.** It is `st.bg`, the cached mass-consistent solve of the forecast profile on the model's grid
+(`AtmosBase`), one per weather stamp and blended in time between two, with stability weighting and the user's wind edits (an edit reaches
+only the stamps at or after its time; a test pins it). It has none of what the fire's own 2-D wind (`windFire`) adds: the κ scaling, the
+night-time decoupling, the slope flows, the ridge and lee blend and the fire's indraft, and it has no plume, temperature or smoke. So a
+slice or a wind-speed map of the fast tier shows the forecast wind where the terrain bends it, and at night or in a valley the wind
+the fire feels can differ a lot; every consumer says "diagnosed" and "terrain effects only". **Cost:** `view()` took 0.60 ms and 498 kB
+on the fast tier (Katoomba 9 km, 45 x 45 x 20), 0.77 ms and 815 kB on the standard tier (6 km) and 1.16 ms and 1,730 kB on the high tier
+(9 km, 60 x 60 x 24), in `atmosphere/airView.perf.test.ts` (one run, node, build machine: the `[atmos perf]` lines of the log). The
+volume is published on every emitted snapshot, with no option or lazy flag. **Memory:** the diagnosed volume adds 12 bytes per cell to a
+keyframe, 474.6 KiB at 45 x 45 x 20 (`keyframeBytesModel`, `scenario/memoryModel.ts`, which the Data sets screen's working memory
+uses; the atmosphere row's label for the fast tier is now "the forecast wind fitted to the terrain"), about 35 MB over the 72 keyframes of
+a 6 hour run at the 300 s keyframe spacing; the history budget (about 6 % of device memory) is unchanged, so the store thins old history
+a little earlier on small phones. A test (`ui/snapshotStore.air.test.ts`) weighs a fast-tier keyframe with and without it, and
+`memoryModel.test.ts` checks the model's keyframe bytes against a real snapshot's for each tier, within 3 %.
+
+**Capability flags** (`core/airView.ts`, plus `AvailabilityContext` in `render/layerCatalog.ts`). `airKind(view)`, `airLayout`,
+`airHas(view, 'wind' | 'theta' | 'smoke')` (the array really holds a value for every column and level, so an empty array never reaches an
+interpolation: a fast-tier `theta()` or `smoke()` used to read NaN), `hasAirWind` and `cellHeightAsl`, `airTime`, `airAgeS` and
+`AIR_STALE_S` = 90 s. `has3dAtmosphere` now means *prognostic* (`airKind(view) === 'prognostic'`, asked of the view itself, not of
+`EngineInfo.atmosphere.kind`, because a picture composed from history carries the newest engine info), and the new `hasAirWind` means
+"a 3-D wind a slice can sample": it gates the Air slice, the wind-speed heat map and the slice chips. The catalog's `crossSection`
+entry is available on any picture with a 3-D wind ("Needs the air picture, which the simulation makes once it has started");
+Temp and Smoke need `airHas(view, 'theta' | 'smoke')`. The wind streaks "Through the plume" stay selectable on the fast tier and show
+an info note ("These streaks follow the fast model's diagnosed wind (terrain effects only), so there is no plume. Use the 3-D
+atmosphere to see it."); the plan had said they would be unavailable.
+
+**Sampler v2** (`render/atmosphereSampler.ts`, pure; the one reader of the air view, used by the wind streaks, the smoke, the ember
+view, the curtain's arrows and the slice). For the terrain-following layout it does what the engine's own `sample()` does
+(`Atmosphere.sampleAt`, `DiagnosticWind.sampleBg`): for each of the four stencil columns it works out `ζ = (zAsl − baseM − h0) / J`,
+finds the level by binary search, interpolates linearly in ζ, then blends the four columns bilinearly. Below the first level centre it
+takes level 0, like the engine; above the top it takes the top level (the engine switches to its profile wind with w = 0 there; the
+oracle stays inside the model, up to 2,000 m above the ground, and a slice never goes above the top). The flat layout keeps its old
+path. `windP(pos, out)` and `fieldsP(pos, out)` take the position in a `Float64Array` and write a `Float32Array`: spike S3 found that
+a method of doubles is boxed at 48 bytes per call in V8 when called in a long loop. They take about 110 and 260 ns per call and
+allocate 0.14 bytes per call (`atmosphereSampler.test.ts` logs it); `wind`, `theta`, `smoke` and `sample3` keep their old signatures
+for the layers that call them a few thousand times a frame. The sampler also gives `kind`, `hasWind / hasTheta / hasSmoke`, `airTime`,
+`modelGroundAt(x, y)` (the datum plus the view's smoothed `terrainHeight`, which a slice shades as "below the model's ground") and `top`.
+**Oracle tests** (the important ones): `atmosphere/airView.oracle.test.ts` runs a real `Atmosphere` and a real `DiagnosticWind` over a
+700 m ridge and asserts the sampler on the published view equals the engine's own `sample()` to 1e-3 m/s at 1,200 random points from the
+ground to 2,000 m on each tier (the worst difference measured was 1.9e-6 m/s on both), at several points of the stamp blend, that
+the view has no zero cell under the ridge, that two calls and calls interleaved with steps give identical bytes, that a restored
+checkpoint gives bitwise-identical arrays, and that a wind edit shows in the diagnosed field only from its own time on;
+`render/atmosphereSampler.test.ts` covers both layouts, the guards, the allocation and a regression (the old flat view read up to 97.6 %
+low 30 m above the ground across a 700 m ridge, 32.9 % on average over the crossing; the new view is exact);
+`sim/airView.sim.test.ts` the fields stamped on every snapshot of both tiers, `decimateView`, the transfer list and the rule that the
+simulation's results do not depend on the view being read.
+
+**Embers and smoke on the new view.** `smokeLayer.puffsFromAtmosphere` is the one place that read the arrays directly: it now takes
+cell heights from `cellHeightAsl` (smoke over the hills sits where the model has it), returns no puffs for a view without a smoke array
+and no heat for one without temperature. `SceneView` takes the datum from `view.baseM` and falls back to its old estimate for a view without it.
+The other readers go through the sampler (the displayed embers, the wind streaks, the smoke column, the curtain's arrows and the slice),
+so on the fast tier the displayed embers and the streaks "Through the plume" now drift with the diagnosed wind; before, the fast tier's view had
+no volume and the sampler fell back to the ambient wind with a power-law profile (it still does for a view that holds no wind).
+
+**`src/render/slice`** (pure: no Three.js, no DOM; `types.ts` is the contract and holds every convention):
+
+| Module | What it does |
+|---|---|
+| `types.ts` | the shared types, `SLICE_FIELDS` (the chips: Speed, Along, Up/down, Across, Temp, Smoke), `SLICE_KIND_LABEL`, constants (`SLICE_UPDATE_MIN_MS` 250, `SLICE_MIN_LENGTH_M` 300, `SLICE_MIN_LENGTH_CELLS` 2, `SLICE_PRESET_HALF_LENGTH_M` 3000), and the conventions below |
+| `sliceField.ts` | `sampleSlice(sampler, terrain, spec, out?)`: reads the air on a lattice with `fieldsP`, 48 to 192 columns (one per half model cell of the line) by 48 to 56 rows from 50 m under the lowest ground on the line to the highest ground plus 2,000 m or the model top; fields `speed along across up theta smoke` as `Float32Array`, a validity mask (above the model's own ground, at or below its top), the 10 m ground and the model's ground per column, `kind`, `airTime`, and the model's own cells the line passes through (for "Show model cells"). The arrays are reused from one update to the next |
+| `sectionLine.ts` | `sectionFromEndpoints(a, b, grid)` (clip to the model rectangle, minimum length `max(300 m, 2 cells)`, reversal), `resolveSlice(state, ctx)` (the effective line, from a preset, else A and B, else the old centre and azimuth), `slicePresetStatus` (so the tool can disable a preset with its reason). Never throws: a line that cannot be made is `line: null` with an issue code (`too-short`, `outside-model`, `no-user`, `no-fire`, `flat-ground`, `calm`); the words belong to whoever shows them |
+| `lattice.ts` | `LatticeStencil`: bilinear reading between lattice points with the validity mask renormalised, so a point just above the model's ground is not pulled towards the zeros an invalid cell holds |
+| `flow2d.ts` | the streaks: `createFlow`, `seedFlow`, `stepFlow` (seeded, never `Math.random`; a particle that leaves valid air is re-seeded), `flowArrows` (the still lattice under reduced motion) |
+| `probe.ts` | `probeAt` (the air at a point of the slice, with `where`: air, in the ground, below the model's ground, above its top), `moveProbe` (the arrow keys), `probeSentence`, `windFromDeg` |
+| `niceTicks.ts` | axis ticks at 1, 2 or 5 times a power of ten |
+| `sliceUpdater.ts` | `createSliceUpdater`, the shared computation (below) |
+| `testing.ts` | fixtures for tests (not imported by application code) |
+
+*Conventions* (unit-tested; the top of `types.ts` is the source): local metres, east and north; heights are metres above sea level, and
+"above ground" is always against the 10 m terrain as received, never the model's smoothed ground and never the sharpened cliff drawing.
+`dir` is the unit vector from A to B and `s` the distance from A; A is the left end of the panel and the panel never mirrors. `along =
+u·dx + v·dy` (positive towards B); `across = u·dy − v·dx` (positive towards the right of someone walking from A to B); `up` is `w`;
+`speed` is horizontal. A wind is named by where it comes **from** (`atan2(−u, −v)`), with the hyphenated eight-point word of
+`explain/text.ts` ("north-west", not "northwest"). The lattice has column `c` at `s = c / (columns − 1) × length` and row 0 the lowest.
+`theta` is not the raw perturbation: it is the potential-temperature anomaly minus the mean of the valid cells of its own row ("warmer or
+cooler than the slice's air at that height"), because the raw field carries the night cold pool and the area-wide daytime warming.
+
+*The line* (`LayerState.crossSection`, `render/layers.ts`, nested optional fields so there is no new top-level key and `LAYER_PREFS_VERSION`
+is unchanged; nothing is persisted): `a`, `b`, `preset` (`'along' | 'across' | 'slope' | 'me' | null`), `field`. The line is the first
+of: a live `preset`, then `a` and `b` both set, else the chord through `centre` along `azimuth` (the old curtain, kept so "Show me" and
+the compass rose still work). Whoever writes `centre` or `azimuth` must also write `a: undefined, b: undefined, preset: null`
+(`LINE_BY_CENTRE` in `render/sliceFields.ts`), and whoever writes `a` and `b` writes `preset: null`; `SceneView.setLayers` keeps an explicit
+`undefined` when it merges the nested object, and `sectionChanged` compares the nested fields one by one because the object is new on every write. Absent `field` keeps the
+old curtain colouring (temperature where the air has it, else speed); the tool writes `'speed'` with the first line it places. Presets are
+live chords through the fire (the map centre when there is none) of 3 km each way: *along* runs A upwind to B downwind, *across* is the
+bearing of the wind towards minus 90 degrees (the wind blows to the right of A to B, so `across` reads positive), *slope* runs A downhill
+to B uphill from a Sobel gradient of the 10 m ground over about 2 km (flatter than 2 degrees has none), *me* runs from the phone's Setup
+fix to the fire and is not extended.
+
+**The shared `SliceUpdater`** (`slice/sliceUpdater.ts`, owned by `SceneView`). `request(inputs, nowMs, immediate)` resolves the line,
+samples the air into the same `SliceData` object every time, and checks the four presets; a line, chip or layer edit is computed at
+once, a new snapshot at most every 250 ms (a request inside the interval is kept pending and `poll(nowMs)`, called from the frame loop,
+releases it). It owns no timer and takes the clock as an argument, so tests use a fake one; `invalidate()` forgets everything (a new
+scenario, the section switched off). `SceneView.sliceInputs()` fills `SliceInputs` from what the scene holds: the line state, the model
+grid, the **10 m terrain as received** (`HeightField` of the hi-res DEM, not the sharpened mesh the ground is drawn from), the camera
+target as the map centre, `fireCentroid` of the shown snapshot, the 10 m wind direction at the shown time (calm under 0.2 m/s is
+`null`), the phone's position and the shown time. `applySlice` adds the effective `field` and the state of every chip
+(`sliceFieldStatuses`, one object per kind of air), redraws the curtain and calls the listeners of `onSlice`. `viewSection()` flies to the
+resolved line, not to `centre` and `azimuth`. A slice update (resolve, four preset checks, sample, cells) took a median of 0.5 to 1.0 ms
+and a 95th percentile of up to 1.5 ms in node on the build machine (lattices of 96 x 55 and 129 x 55; `render/slice/slice.perf.test.ts`);
+the plan's limit is 8 ms at 4x CPU throttle, which was not measured. The same test logs the allocation: 35 bytes per `sampleSlice` into a
+reused `SliceData`, about 6 kB of small result objects per update, a heap that changes by 32 kB over 3,000 updates, 2.6 bytes per
+streak step.
+
+**The oracle for slices** (`render/slice/sliceField.oracle.test.ts`): the slice's `along`, `across`, `up` and `speed` equal the engine's own
+`sample()` rotated into the line's frame to 3e-6 m/s on lines across, along and oblique to a ridge, on both tiers; the other tests of
+`sliceField` cover a uniform field (constant), a linear shear (exact), the validity mask, the sign conventions on a rotated line and their
+inverse, units, the model's cells, and the preset geometry from fixtures with every issue.
+
+**The curtain** (`render/crossSectionLayer.ts`, `crossSectionColour.ts`). It no longer samples the air itself: it takes the `SliceData` and
+the effective field, uses the slice's own lattice as its texture (one texel per lattice point, row 0 the lowest, so nothing is
+resampled in the shader), colours it with `sliceFieldScale(field)` (the same ramp as the panel and the legend), and draws the ground
+from the 10 m terrain under each column. Cells outside the model are transparent; strong values are more opaque (wind chips are more
+see-through at light winds so the ground behind shows). Its arrows keep reading the sampler (15 columns by six heights, 30 to 2,200 m above
+the ground, `windP`); the cyan arrows that mark air blowing against the main wind are drawn on the prognostic air only, and smoke greys the
+other chips only where the air has smoke. `render/sliceFields.ts` is the one place that says which chips an air can give and why not (so
+the scene, the Layers panel, the map legend and the Air slices panel never disagree): wind chips on any air with a wind, Temp and Smoke on
+`airHas` of the field, with the reason in plain words and `action: 'use-3d'` where switching helps. **Colour ramps** (`render/palette.ts`):
+a new diverging `ALONG_RAMP` (purple for negative, green for positive, pale at zero, mirror stops with the same luminance, so it reads in
+grey), a log `SMOKE_RAMP` (four decades from 0.0001 to 1 of the model's own units, because the smoke of a young plume is about a
+thousandth of a big fire's and a linear scale would show nothing), and `sliceFieldScale(field)`, which the curtain, the panel and
+`sliceLegend(field, kind)` all read. `palette.test.ts` now also covers `THETA_RAMP` and `UPDRAFT_RAMP` with the Machado colour-vision
+tests (they were not covered before); the measured numbers are in `docs/DESIGN.md`.
+
+**The tool** (`ui/screens/sim/sliceTool.ts` and friends, in the entry chunk; `ToolId` gained `'air'`, the Tools list "Air slices" with the
+`line` icon). `sliceToolModel.ts` is a pure state machine over `SliceToolState` (`UiState.slice`, created the first time the tool opens;
+tab, which end is being placed, a tapped `candidate`, a `draft` end waiting for the other, the probe, the "Show model cells" switch)
+and holds every word of the tool; `sliceToolActions.ts` applies a step to the two stores and the scene in a fixed order (tool state, then
+layers, then scene, so a callback from the scene finds the stores up to date); `sliceTool.ts` builds the buttons (*Set start (A)*, *Set end
+(B)*, *Swap*, *Presets*, then *Place A here* and *Cancel* while placing) and the quiet note line, keeps focus where the person is, and
+hands the controls element to the panel. `simScreen.ts` shows the crosshair while the tool is placing, treats a map tap during placing
+as a `candidate` (the two-step confirm), draws the marks (`sliceA`, `sliceB`, the line, the probe's pin, re-projected per frame only while
+the tool is open and there is something to show), and makes Back drop a placement first (`backFromAirTool`). A and B are written together
+or not at all; re-placing one end of an existing line writes both (the other from the resolved line); every line write clears the probe,
+the candidate and the draft and switches the section on. The 2-D map has no `slice` member, and the tool says "The side view needs the
+3-D view." and loads nothing.
+
+**The panel** (`slicePanel.ts`, `slicePanelModel.ts`, `sliceDraw.ts`; Canvas 2-D). `slicePanelModel.ts` and `sliceDraw.ts` are pure
+or drawn against a stub context in tests; `slicePanel.ts` wires them to the elements. Layers drawn: the raster of the lattice (smoothed, or
+the model's cells as nearest-neighbour blocks with their native values), the filled 10 m ground and the dashed model ground, axes, the
+streaks (about 300 particles, at most 24 frames a second, only while the panel is on screen and the page visible; fewer in a small plot;
+a still arrow lattice under `prefersReducedMotion()`), the probe cross, the legend (`options.legend`, the scene's `sliceLegend`),
+and the footer (kind · model grid · air from, with "(N min before the time shown)" past 90 s). Height is drawn at the true scale times
+the existing x1 to 3 *Vertical exaggeration* slider where that fits in the box, otherwise fitted to the box; the tag on the axis says the
+ratio really drawn. **Streaks and the exaggeration:** the plan and the contract said to give `stepFlow` the on-screen ratio; the
+panel gives it 1, because the ratio is already in the drawing (`yOfZ`), and passing it as well would count it twice and make streaks climb
+`ratio` times steeper than the ground they follow (checked in `slicePanelFlow.test.ts`); `flowArrows`, which has no drawing to carry the
+ratio, is given it. DOM text (chips, the readout, the footer) is 14 px or more and every control a 44 px target; the canvas carries only
+axis labels and the scale tag at the caption size, as the weather chart does, and has a text alternative. The probe is tap or drag
+(pointer capture, no touch-hover moves), arrow keys (one lattice step; a quarter of the axis with Shift), Escape clears; the readout is
+`probeSentence` in a `.slice-readout` with a 44 px clear button. The panel never touches the scene, the layers or the session: the tool
+passes each `SliceUpdate` in with `setData` and takes events out through the option callbacks (`onField`, `onProbe`, `onShowCells`,
+`onUse3d`); a chip tap writes `crossSection.field`, so the curtain follows.
+
+**The lazy chunk.** The panel, its drawing, `flow2d`, `probe`, `niceTicks`, the lattice reader and `slice.css` load as one dynamic chunk,
+requested only when the Air slices tool first opens (`sliceToolLoad.ts` is the one `import('./slicePanel')`; a test asserts no
+request at start-up), with a "Loading the side view" line, and a "The side view could not be loaded." line with *Try again* if it fails
+(the controls still work, since the curtain draws without the panel). The entry chunk holds the tool's shell, its model, the scene glue
+and the registration; `slice.css` is 3,780 bytes of source (cap 4 KB) and is not imported by `main.css`. Sizes of the chunk, of the entry's
+growth and of the chunk the build splits `explain/text.ts` into (`probe.ts` is the only main-thread module that imports it, and the
+in-thread engine's chunk holds it too, so the build shares it as a chunk of its own: a size the lane reported as about 12 kB gzip, to be
+re-read): `TBD-BUNDLE` (*Performance budgets*, below). Budgets in `scripts/check-bundle.mjs` did not change.
+
+**Tests.** Pure, in node: `airView.oracle`, `airView.perf`, `airView.sim`, `atmosphereSampler`, `snapshotStore.air`, `memoryModel` (the
+keyframe rows), `core/airView`, `render/slice/*` (`contract`, `lattice`, `niceTicks`, `flow2d`, `probe`, `sectionLine`, `sliceField`,
+`sliceField.oracle`, `slice.perf`, `sliceUpdater`), `render/sliceFields`, `crossSectionColour`, `crossSectionLayer`, `smokePuffs`, `palette`
+and `legends` (the new ramps, colour vision and legends), `layerCatalog`, `ui/screens/sim/slicePanelModel`, `sliceDraw`,
+`slicePanelFlow`, `sliceToolModel`, `sliceToolActions`, `mapLegend` and `context`; `ui/content.test.ts` pins the Help and Glossary entries to
+the words the code uses. Real app, Playwright: `e2e/air-view.spec.ts`, `air-tool.spec.ts` and `airslice-panel.spec.ts`, plus changes to
+`app.spec.ts` (the slice's note and the tier switch) and `robustness.spec.ts`.
+
 ### explain/
 
 `explainCell` (spec §10.4) ranks the §6.12 factor decomposition. The fire model's wind and slope factors are those
@@ -485,7 +691,9 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   setViewInsets({ top, right, bottom, left }): void;   // covered screen areas: fly-to targets land in the rest
   zoomBy(factor): void;  readonly heading: number;  setHeading(deg): void;   // zoom / compass buttons
   cameraState(): { target: [x, y]; distance; azimuthDeg; polarDeg; headingDeg; mode };   // the camera as numbers (tests, debug)
-  viewSection?(animate?): void;                        // side-on view of the cross-section (3-D view only)
+  viewSection?(animate?): void;                        // side-on view of the cross-section (3-D view only); flies to the resolved line
+  slice?(): SliceUpdate | null;                        // the air slice the scene computed for LayerState.crossSection, shared by the curtain and the side-view panel (3-D view only)
+  onSlice?(cb: (update: SliceUpdate | null) => void): () => void;   // after every new slice, and with null when the section is switched off; returns the unsubscribe
   setNightLook?(look: 'realistic' | 'brighter' | 'daylight'): void;  readonly nightLook?: NightLook;   // map lighting after dark, uniforms only (3-D view only)
   readonly qualityInfo?: QualityInfo;                  // the picture tier, how it was chosen and what it sets (3-D view only)
   frameStats?(): FrameStatsInfo | null;                // frame rate, slow frames, draw calls, pixel ratio: the debug statistics (3-D view only)
@@ -590,7 +798,7 @@ checks for them: the Night lighting row is left out, and the statistics' display
   (`ui/imagery.ts`) crops it for the domain from the named demo site or any demo site that covers it.
 * Snapshot overlays: `SimSnapshot.layers` ('vls', 'attach', 'trench', 'dmz', 'landing') on the fire grid.
 * Wind particles use a cool palette (grey-blue → white → cyan → blue → violet) so they never read as fire.
-* Legends: `legendFor(overlay)`, `crossSectionLegend()`, `windLegend(mode)`; the UI shows them in the Layers panel
+* Legends: `legendFor(overlay)`, `sliceLegend(field, kind)` (`crossSectionLegend()` stays as a wrapper for the dev pages), `windLegend(mode)`; the UI shows them in the Layers panel
   and as a compact legend on the map.
 * **Heat maps and the layer catalog** (layers rework). One heat map at a time (`LayerState.overlay`), any number of scene
   layers on or off independently. Every data layer is also a heat map: ground height, landform, tree height and cover,
@@ -603,7 +811,8 @@ checks for them: the Night lighting row is left out, and the statistics' display
   grey "no fire on record"): non-fuel for the hazards, no trees for tree height, not grass for curing, no home nearby.
   The shader LUT path is reused (no new shaders); the legend and the ground colours come from the same ramps.
   `OverlaySources` gained `context` (roads / homes for `homeDensity`, `roadAccess`) and `atmosphere` (`windSpeed`, km/h from
-  the 10 m surface winds; a snapshot overlay). The elevation ramp stretches over the site's height range: pass the same
+  the 10 m surface winds of the air view; a snapshot overlay; since 0.4.0 it is available on any picture that carries a 3-D wind, so
+  also on the fast tier, where the 10 m wind is the diagnosed fit's). The elevation ramp stretches over the site's height range: pass the same
   `LegendContext.elevationRange` to `overlayScale` and `legendFor` (`SceneView.legend()` does; without a range the legend
   only says "lowest … highest").
 * `layerCatalog.ts` is the one description of every layer (`LAYER_GROUPS`, `LAYER_CATALOG`): plain title, what it shows,
@@ -784,7 +993,7 @@ checks for them: the Night lighting row is left out, and the statistics' display
   statistics directly under it, New scenario); the time
   and speed controls open as small sheets (`transportKit.ts`, one popover at a time). **Map controls**: a column of round white
   buttons (Layers, View with the current camera mode, Compass) and an extended "Tools" button in the bottom corner whose speed dial
-  holds the six tools (`mapMenu.ts`; the open menu is `UiState.menu`, so at most one is open and a map tap, Escape or Back collapses
+  holds the seven tools (Why here?, Fire, Fuel, Wind, Layers, What if and, from 0.4.0, Air slices; `mapMenu.ts`; the open menu is `UiState.menu`, so at most one is open and a map tap, Escape or Back collapses
   it). **Bottom**: Maps-style bottom navigation (Insights with an unseen-cards badge, Weather, Stats, Help) above the timeline strip
   (`sheet.ts`, `scrubber.ts`; the strip's fourth column holds the speed signal's button while the simulation cannot keep up, see
   *Speed* above); a tab opens a rounded bottom sheet with a grab handle (`UiState.sheet` is `closed | peek | half | full`,
@@ -800,7 +1009,9 @@ checks for them: the Night lighting row is left out, and the statistics' display
   trails, homes, residential areas, place names, 3-D canopy, shrubs, flames, smoke, embers, wind streaks, insight markers; a greyed
   tile carries the catalog's reason), Heat maps (every data layer that can colour the ground, grouped as the catalog groups them; one at
   a time, tap again to switch off; "Show on its own" hides the photo and the trees; roads, homes and shrubs have both Show and Heat map),
-  Trees (natural / simple / coded by height, cover, bark or understorey hazard; sway) and Wind and air. Each row has an (i) with the
+  Trees (natural / simple / coded by height, cover, bark or understorey hazard; sway) and Wind and air (the wind streaks, the Air slice
+  switch with its six field chips and, on the fast tier, the info note about the diagnosed wind with the *Use the 3-D atmosphere* button,
+  the compass rose, and the vertical exaggeration). Each row has an (i) with the
   catalog text and a link to the data set behind it on the Data sets screen. The user's choices (only choices, never defaults) are
   saved to the UI preferences (`layersPrefs.ts`, key `layers`) and put back at the start of the next run by `restoreLayerPrefs(ctx)`
   (a remembered heat map only where it can be shown; the remembered night look; the trees' wind sway starts off in battery mode and on a low-quality renderer).
@@ -996,6 +1207,34 @@ Meta/WRI canopy-height COG (Deflate with predictor 2, checked in research note 0
 `.catch(() => null)` reports a COG in an unsupported compression as "the canopy service did not answer". The plan's T3b and T4b trims
 were not done.
 
+**What 0.4.0 adds** (the air data foundation and Air slices). The bundle rows are to be filled from the release build
+(`flock /tmp/firesim-heavy.lock npm run build:cap`, then `npm run check:bundle`, kB of 1024 bytes and `gzip -9` as the script prints them);
+the budgets in `scripts/check-bundle.mjs` did not change (entry 195 kB, all JS 1000 kB gzip: the owner chose to reuse the existing budget,
+so the panel is a lazy chunk). The other rows were measured in node on the build machine, one run each, from the log lines named.
+
+| Measure | 0.3.0 (table above) | 0.4.0 | Budget / verdict |
+| --- | --- | --- | --- |
+| JS, all chunks (raw / gzip, kB) | 2729 / 912.5 | TBD-BUNDLE | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 462 / 159.7 | TBD-BUNDLE (a builder reported about +5.7 gzip for the tool's shell, model and scene glue) | gzip <= 195 |
+| CSS (raw / gzip, kB) | 125.3 / 22.4 | TBD-BUNDLE | raw <= 135, gzip <= 25; `slice.css` is imported by the lazy chunk, not by `main.css` |
+| The Air slices panel chunk (panel, drawing, `flow2d`, `probe`, `niceTicks`, lattice reader, its CSS), gzip kB | none | TBD-BUNDLE | lazy, no budget of its own; the plan estimated 14 to 18 |
+| The chunk the build splits `explain/text.ts` into, gzip kB | none | TBD-BUNDLE (a builder reported about 12) | counted in all JS |
+| `src/styles/slice.css`, source | none | 3,780 bytes | <= 4 KB (the plan's CSS estimate) |
+| Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | TBD-BUNDLE | unchanged by this release / <= 33 |
+| `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
+| History keyframe, fast tier at 45 x 45 x 20 | | +474.6 KiB (12 bytes per cell) | |
+| History of a 6 h fast-tier run (72 keyframes) | | about +35 MB; old history thins a little earlier on small phones | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB |
+| Sampler v2 per call: `windP` / `fieldsP` | | 109 / 258 ns, 0.14 bytes (`[sampler perf]`) | allocation-free; `atmosphereSampler.test.ts` measures it |
+| One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle; **not measured at 4x** |
+| One streak step (300 particles); the probe with its sentence | | 0.05 ms and 2.6 bytes; 4.7 us and 448 bytes | |
+| Heap after 3,000 slice updates | | changed by 31.8 kB | heap-flat |
+| Layers panel: DOM nodes when open | 940 | not re-measured | <= 1000; the chip row and its note are built only once the section is switched on |
+
+Not measured: the panel on a phone (frame rate with the streaks, the chunk's load time), the slice update at 4x CPU throttle, the whole
+fast-tier snapshot size after the volume (about 0.5 MB more than before from the arrays' sizes), the Layers panel's node count with
+the section on. The plan's budget row for D ("14 to 18 kB, lazy") and for C ("about 3 kB, entry") are to be compared with the TBD-BUNDLE
+figures above when they are filled in.
+
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 
 * **Nothing is drawn behind a full-screen screen.** `App.updateInert` tells the sim screen when a Settings / Data sets / model-card
@@ -1015,6 +1254,11 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   The timing statistics (`PerfStats`, `EngineInfo.perf`) are fed from clock reads the engine already made (a test checks that a run
   reads the clock as often with them on as off), are counters, running aggregates and small rings only, and are held to under 1 % of a
   step and under 16 KB retained.
+* **The Air slice costs nothing while it is off, and little while it is on.** Nothing of the panel loads until the tool is first opened
+  (`e2e/air-tool.spec.ts` checks no request at start-up); the scene computes no slice while the section is off (the updater is
+  invalidated); one `SliceUpdater` serves the curtain and the panel; the slice reuses its arrays, and a test holds 3,000 updates to
+  a flat heap; the streaks run at most 24 frames a second and stop while the panel is hidden, the page is in the background or the phone is
+  set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing.
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
   server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.
@@ -1042,4 +1286,9 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   gradient lights the ground, where the rock slope comes from, the defines of each tier, and that a layer without a 10 m terrain is the
   old one), the rock rule of `vegetationPlacement` and `vegetationLayer`, the memory rows of `memoryModel`, and `cliffSites`, which holds
   the built code to the plan's table on the bundled sites: Katoomba always, all four with `SLOW=1`). `content.test.ts` pins that the Help
-  and Glossary say what the screens say (the checkpoint wording of the fast-model note, the six, four and three rock effects).
+  and Glossary say what the screens say (the checkpoint wording of the fast-model note, the six, four and three rock effects, and for 0.4.0
+  the labels of the Air slices tool, the footer and probe sentences, the 90 second rule and the wind speed map on the fast tier).
+  For 0.4.0 the real-app specs are `e2e/air-view.spec.ts` (the air both engines publish and the layers that read it), `e2e/air-tool.spec.ts`
+  (the tool's placement flow, the lazy chunk) and `e2e/airslice-panel.spec.ts` (the panel on both tiers, landscape, reduced motion); the
+  pure modules each have a node test beside them (the list is in *The air view and the Air slice*), including the oracle tests that hold the
+  sampler and the slice to the engines' own `sample()`.

@@ -10,7 +10,8 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 * Data-sheet pieces: `src/styles/data.css`
 * Screens (they only compose the primitives and tokens; no colour or size of their own): `screens.css` (Setup, Building, Settings, Notice),
   `sim.css` + `transport.css` (the simulation chrome), `layers.css` (Layers panel), `datasets.css` (Data sets), `modelcard.css` (How this
-  simulation works), `debugstats.css` (Simulation debug statistics, which reuses the model card's cards and groups)
+  simulation works), `debugstats.css` (Simulation debug statistics, which reuses the model card's cards and groups), `slice.css` (the Air
+  slices side view and the tool's controls, at most 4 KB; imported by the lazy side-view chunk and not by `main.css`)
 * Icons: `src/ui/icons.ts` (`icon()`), typed builders: `src/ui/widgets.ts` and `src/ui/primitives.ts`
 * Live gallery of every primitive in every state (dev server only):
   `/src/ui/styleguide.html?theme=light|dark&contrast=high`
@@ -37,6 +38,7 @@ who builds a screen: **use the primitives below, do not invent one-off styles.**
 ```css
 /* main.css already imports, in this order */
 tokens -> base -> components -> overlays -> data -> screens -> sim -> transport -> layers -> datasets -> modelcard -> debugstats
+/* slice.css is not in this list: slicePanel.ts imports it, so it loads with the Air slices side view the first time the tool opens */
 ```
 
 * Appearance is set on `<html>`: `data-theme="light|dark"` and `data-contrast="high"` (only when on).
@@ -112,6 +114,53 @@ fire marks' data colours `--mark-observed` `#e02424`, `--mark-spot` `#ff8c1a`, `
 The look of the 3-D ground is the renderer's, not a design token: it does not follow the theme, and the rock walls of the cliff drawing
 (0.3.0, display only) are sandstone in linear light inside the terrain shader (the palette's `ROCK` `#a4927a` and `ROCK_DARK` `#6d5f50`),
 trimmed by Picture quality. See `docs/ARCHITECTURE.md`, *The cliff drawing*.
+
+### Air slice colours (data ramps of the renderer, not tokens)
+
+The six chips of an Air slice colour it with ramps from `src/render/palette.ts` (`sliceFieldScale(field)`). The side-view panel's raster, the
+3-D curtain and the legends all read that one function, so what is drawn always matches its legend. Like every data ramp they are the
+same in every look. None uses the interactive blue as its meaning, and no chip's ramp is mistaken for another's: along and across are
+purple and green, which are neither the blue and red of temperature nor the blue and orange of up and down.
+
+| Chip | Ramp | Range (legend) | Neutral | Notes |
+| --- | --- | --- | --- | --- |
+| Speed | `WIND_RAMP` | 0 to 25 m/s (0 to 90 km/h) | none: 0 is calm grey-blue | the cool ramp the wind particles and arrows already use (grey-blue, white, cyan, blue, violet; it goes through white, so it is not luminance-ordered and the colour-vision tests below do not cover it) |
+| Along | `ALONG_RAMP` | -25 to +25 m/s (-90 to +90 km/h) | pale at 0 | purple towards A, green towards B |
+| Across | `ALONG_RAMP` | the same | pale at 0 | purple towards the left, green towards the right of someone walking from A to B |
+| Up/down | `UPDRAFT_RAMP` | -4 to +8 m/s | pale at 0 | sinking (blue) to rising (orange to red); the range is not symmetric |
+| Temp | `THETA_RAMP` | -10 to +20 K | pale at 0 | warmer or cooler than the rest of the slice's air at the same height |
+| Smoke | `SMOKE_RAMP` | 0.0001 to 1, **a log scale** | none: below the first stop is the palest | pale warm grey to dark brown-grey; every step along the bar is ten times more smoke |
+
+`ALONG_RAMP` is new in 0.4.0: a diverging ramp whose stops are mirror images with the same luminance (relative luminance 0.06 at both ends
+and 0.93 at zero), so it reads in grey and the two sides differ by hue alone. `SMOKE_RAMP` is a **log ramp** (`makeRamp(stops, { log: true })`,
+sampled with `sampleRamp`, never as a linear table): the model's smoke concentration of a young plume is about a thousandth of that of a
+big fire (measured: 0.0005 to 0.001 after 5 to 15 minutes of a small fire), and a linear scale would show nothing for it. Its legend labels the
+two ends "faint" and "thick" and the map's legend card says so in words: "Each step along the bar is ten times more smoke, in the model's own
+units, not a measured amount." The map's legend card (`sliceLegend(field, kind)`, `mapLegend.ts`) also carries two end words for each chip
+("calm" to "storm force", "blowing towards A" to "blowing towards B", "blowing to the left" to "blowing to the right", "sinking" to "rising",
+"cooler" to "warmer", "a trace of smoke" to "dense smoke") and a teaching sentence; the side-view panel's own compact legend keeps the
+title with its units and the numbers under the bar, so in the panel a value is read from the numbers and the probe's words, never from colour
+alone.
+
+**Colour-vision numbers** (`palette.test.ts`; CIE76 ΔE in CIELAB after the Machado, Oliveira and Fernandes (2009) simulation at full severity,
+`colourVision.ts`; about 2.3 is a just-noticeable difference and above 10 is easy). Two measures: "a fifth apart" is the smallest ΔE between
+any two values that are a fifth of the ramp's range (of its log range for smoke) apart or more, and "two sides" is the smallest ΔE between a
+value on the negative side and one on the positive side, each at least a quarter of the way out. Measured when this was written:
+
+| Ramp | Normal | Protan | Deutan | Tritan | Floor the test holds |
+| --- | --- | --- | --- | --- | --- |
+| Along and across, a fifth apart | 26.2 | 26.1 | 25.2 | 24.9 | above 20 |
+| Along and across, the two sides | 56.3 | 42.1 | 32.8 | 30.0 | above 20 |
+| Smoke, a fifth apart | 12.0 | 12.2 | 11.9 | 11.8 | above 9 |
+| Temperature, a fifth apart | 12.8 | 8.9 | 11.5 | 13.4 | above 8 |
+| Temperature, the two sides | 71.9 | 50.1 | 56.9 | 82.9 | above 20 |
+| Up and down, a fifth apart | 7.6 | 7.9 | 6.4 | 11.4 | above 6 |
+| Up and down, the two sides | 73.6 | 54.5 | 64.4 | 75.1 | above 20 |
+
+Temperature and up/down are the older ramps, covered by these tests for the first time in 0.4.0. Their floors are the measured ones, below
+the 9 that the heat-map ramps keep: the closest pair is the two darkest shades of one hue at the strong end (8.9 for temperature under
+protan vision, 6.4 for up/down under deutan), well above a just-noticeable difference, and the strength is also carried by the luminance
+order and by the legend's numbers.
 
 ### Elevation
 
@@ -419,6 +468,8 @@ Anything a screen needed that the design system did not have was added to the ri
 | Data sets | `screens/datasets.ts` | `datasets.css` | `appBar`, `stat` / `statRow`, `stackedBar`, `bar`, `sparkbar`, `kv`, `originChip`, `listRow`, `chipChoice` (filters), a heat-map preview canvas, `confirmDialog` before any deletion |
 | How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary; its *Speed and memory right now* section is four live `kv` rows and a tonal button that opens Simulation debug statistics |
 | Simulation debug statistics | `screens/debugStats.ts` | `debugstats.css` (and `modelcard.css`) | `appBar` with a Back arrow and a Copy `iconButton`; one `card` with the one-line summary, a state word (Live, Paused, Finished, No run yet, Demo engine: a word, never colour alone), a labelled Copy `button` and its hint; then 18 collapsed groups (the model card's collapsible `card`s, each with its own one-line summary, `kv-stack` rows, a tiny bar chart, `.ds-chart`, in `--series-1` for the speed history); a selectable `textarea` (`.ds-box`) appears only when the phone refuses the clipboard |
+| Air slices tool | `screens/sim/sliceTool.ts` | `slice.css` (block 2) | a bottom tool panel (`.tool-panel.slice-tool`) with the `line` icon in its title ("Air slice", and "Side view" beside it in `.t-secondary`) and Close; the controls are `.row-actions` of `.btn`s: *Set start (A)*, *Set end (B)*, *Swap*, *Presets* (with a chevron and `aria-expanded`), then, while placing, a primary large *Place A here* and *Cancel*; the four presets are a two-column grid of `.btn`s, a disabled one with its reason under it as a `.hint`; one quiet `.hint` note line. Nothing pops up |
+| Air slice side view | `screens/sim/slicePanel.ts` | `slice.css` (block 1) | one Canvas 2-D picture; a row of six filter `chip`s (`chips-scroll`), the reasons for any off chip (`.hint`s) and a tonal `button` *Use the 3-D atmosphere*; a legend (a gradient bar and its end words, or class swatches); the tool's controls; a `toggle` *Show model cells* with its description; the terrain `.hint`; the footer `.hint` |
 
 **Full-screen screens** (Settings, Data sets, How this simulation works, Simulation debug statistics) open as overlays over the stage (`app.ts`): an `appBar` with a back
 arrow, cards of rows on the grey background, the TRAINING strip above all of it. The stage behind is `inert`, Back / Escape step back one
@@ -465,6 +516,60 @@ or for a home the UI house icon in the home marker's colour; decorative, `aria-h
 (for example "Started by an ember at 15:17 (+1:12), 450 m ahead of the front") and, when icons are stacked, "+2 more icons here, zoom in
 to tell them apart". It comes first in every state of the panel (loading, error, explanation); a tap on the ground has no such row,
 which is how the panel says "I took the ground, not an icon". It is part of the panel, not a popup, toast or alert.
+
+**The Air slices tool and its side view** (`sliceTool.ts`, `slicePanel.ts`, `slice.css`; the tool is the seventh entry of the Tools dial, label
+"Air slices", icon `line`). It is a tool panel like the others, in `.panel-host`, and nothing in it opens or speaks by itself: no toast,
+no dialog, no `role=alert`; a line that cannot be made is one quiet `.hint` under the buttons, in words ("Make the line longer than 300 m").
+
+*Placing.* *Set start (A)* and *Set end (B)* are secondary `.btn`s; the one to do next is tonal. Choosing one shows the app's crosshair and swaps
+the row for a primary large *Place A here* (it takes focus) and *Cancel*; the note says "Move the map until the cross is over the start (A)" and
+the map still slides under one finger. A tap on the map sets a dashed mark and *Place A here* then keeps that point: the two-step confirm the Wind
+tool already uses for gloves and wet screens. After a placement focus moves to the next button; Back and Escape drop a placement first and close
+the tool next, and focus goes back to the Tools button. *Presets* folds out a two-column grid of four `.btn`s (the live one is tonal and
+`aria-pressed`); a preset that cannot be used is disabled and says why under itself. Every button is a 44 px target (a 40 px `.btn` with its
+expander).
+
+*On the map* (inline SVG in `.annotations`, drawn only while the tool is open and only re-projected per frame then): A and B are 15 px discs with
+a white letter (a dashed ring with a dark letter while the point is only tapped and not yet placed), the line is a 4 px stroke with a dark halo,
+and the probe's pin is a white disc with a ring and a dot. They share one literal teal, `#00796b`, set inline in `sliceTool.ts` (`SLICE_INK`),
+like the other map marks' inline styles. **It is not a token** and `check:contrast` does not see it (it reads stylesheets): a token for it,
+and a contrast check against the aerial photo, are not done.
+
+*The picture.* A `<canvas class="slice-canvas">` `clamp(180px, 27vh, 230px)` high, `--r-sm` corners, `touch-action: none` (a drag moves the probe,
+not the panel), `role="img"` with a text alternative ("Side view of the air along a 6 km line from A to B, coloured by wind speed. The arrow keys
+move a probe that reads the air at a point; Escape clears it.") and `tabindex="0"` with the 2 px `--focus` ring. Everything on it is read from the
+tokens through `getComputedStyle` (`--text`, `--muted`, `--grid`, `--surface`, `--outline`, `--surface-3`, `--chart-moist`, `--font`, `--fs-xs`), so the
+look, high contrast and the text size apply; the axis labels and the scale tag are the caption size (12 px, as the weather chart's), and
+everything that is real text (chips, readout, legend, footer) is DOM text at 14 px or more. Streaks and arrows are drawn in `--text` over a
+`--surface` halo so they read on every ramp; the probe cross is `--text` over a `--surface` halo. The ground is `--surface-3` with a tint, with the
+model's own ground as a dashed `--text` line. The picture is drawn at the device pixel ratio up to 3. Under reduced motion there are no
+streaks and no fade: still arrows, and nothing on the picture moves.
+
+*Chips, reasons, legend.* Six `chip`s (`aria-pressed`) in a group labelled "Colour the slice by"; in 358 px they share the row, so they have 6 px of side
+padding (and the row scrolls if it is ever too narrow). A chip the air cannot give is `aria-disabled` at 38 % opacity (not `disabled`, so it still takes
+focus and a screen reader reads its reason through `aria-describedby`), and its reason is written under the row word for word as the scene
+wrote it, with a tonal *Use the 3-D atmosphere* button where switching helps. The legend under it is the legend's title with its units, then a
+12 px gradient bar with a 1 px `--divider` border and up to five numbers under it (or 12 px class swatches with their words).
+
+*Probe.* A tap or a drag on the picture (pointer capture; a finger lifted off the glass or a mouse passing over does not move it), or the
+arrow keys when it has focus (a lattice step; a quarter of the axis with Shift), and Escape clears it. The words appear in a `.slice-readout`
+(`--surface-2`, `--r-md`, 14 px) under the picture, with a 44 px *Clear the probe* icon button; a screen reader hears a reading after a key
+move (after a pause of 0.4 s, so a held key does not queue), not after every drag.
+
+*Footer.* A `.hint` that is `position: sticky` at the bottom of the panel's body with a 1 px `--divider` above it, so it is always in view:
+"3-D time-stepped air · model grid 133 m · air from 11:25", or "Diagnosed wind: terrain effects only · model grid 133 m · air from 11:25", with
+"(4 min before the time shown)" added past 90 seconds. In short landscape (844 x 390: `orientation: landscape` and `max-height: 540px`) the picture
+is pinned at the top of the panel at 96 px, the chips and the controls scroll beneath it, and the footer is one line that keeps the kind, the grid
+and the age and hides their explanations (`.slice-more`); the readout loses its top margin so the clear button fits.
+
+*Words, as the rules of this document and `src/ui/content.ts` ask.* Plain words and sentence case; no em dash; "about" for a number ("Wind
+about 32 km/h"); a wind is named by where it comes **from** with the hyphenated eight-point word ("north-west"), never "towards" in words; the
+along and across parts say which way the air goes in the picture ("towards A", "towards B", "to the right", "to the left"); vertical motion in
+metres per second whichever speed unit is chosen; heights are "above sea level" on the axis and "above ground" in the sentence (against the 10 m
+ground); K is a difference, so "3 K warmer" and never a temperature; "diagnosed wind" and "terrain effects only" wherever the air is the fast
+model's; a disabled thing always says why, in a sentence, near it. The probe sentence and the legend's title still say "than the area" for the
+temperature, where the number is against the slice's own air at that height (the legend's teaching sentence says it exactly): a wording the
+lanes left, to be made exact.
 
 **Never**: a pop-up, a toast or a dialog because of something the simulation did. New insight cards only raise the badge on the Insights tab. Dialogs
 open from a tap (`confirmDialog` for deletions, the safety notice, "Leave this simulation?").

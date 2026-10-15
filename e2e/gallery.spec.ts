@@ -4,10 +4,19 @@
  * homes / zones / names, the colour-coded trees, "Where you are", and the simulation in the three looks (light, night and
  * high contrast) and at Android's 200 % font scale. Real engine, the bundled Katoomba demo (offline), one build; the looks are
  * switched on <html> (the same attributes Settings sets). Pictures are 412 x 915 CSS pixels (Pixel 7), a few hundred kB each.
+ *
+ * Release 0.4.0 (Air slices) adds the two tests named "gallery 0.4.0" at the end (run alone with `-g "gallery 0.4.0"`): pictures 33,
+ * 34, 34b and 35. It also made three existing pictures STALE, which stay as they were until the whole suite is run again:
+ *   - docs/screenshots/05-cross-section.png (e2e/app.spec.ts): the curtain now takes its colours from the slice lattice, has six colour
+ *     chips in the Layers panel and works on the fast model too;
+ *   - docs/screenshots/09-menus-open.png (e2e/app.spec.ts) and docs/screenshots/design/app-sim-menus-*.png (scripts/app-screenshots.mjs):
+ *     the Tools list has a seventh entry, Air slices.
+ * They are not produced by the gallery tests below: regenerate them with `npx playwright test e2e/app.spec.ts` and
+ * `node scripts/app-screenshots.mjs` (README.md says so next to each).
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { acceptNotice, animationsDone, pickTool, pickViewMode, session, setSpeed, zoomView } from './helpers';
+import { acceptNotice, animationsDone, openMenu, pickTool, pickViewMode, session, setSpeed, zoomView } from './helpers';
 
 const SHOTS = 'docs/screenshots';
 type Look = 'light' | 'dark' | 'high-contrast';
@@ -366,4 +375,116 @@ test('gallery 0.3.0: an escarpment close-up, the cliffs drawn as rock walls on t
   await page.evaluate(([x, y, az]) => (window as unknown as W).__firesim.view.lookAt(x!, y!, 650, az, 62), [foot.x, foot.y, (face.down + 25) % 360]);
   await page.waitForTimeout(2500); // the canopy is placed a frame at a time
   await shot(page, '32-escarpment-cliffs', ['light']);
+});
+
+// ───────────────────────────────────────── 0.4.0 ─────────────────────────────────────────
+// The pictures of Air slices (README.md): the tool placing the start of a line (33), the side view on the 3-D atmosphere with the
+// probe (34), the side view on the fast model, where the air is the diagnosed wind and Temp and Smoke are off with their reason
+// (34b), and the 3-D curtain with the Layers panel's colour chips (35). Real engine, the bundled Katoomba demo at 6 km (the model
+// grid then reads 133 m), offline. Written for the 0.4.0 release and NOT RUN when it was written: the selectors are those of
+// e2e/air-tool.spec.ts, e2e/airslice-panel.spec.ts and e2e/layers.spec.ts, which are run.
+
+/** Setup to the sim at 6 km, with the Detail choice named: 'Fast' pins the fast model, 'Normal' leaves Auto (the 3-D air on this machine). */
+async function buildKatoomba6km(page: Page, preset: string, detail: 'Fast' | 'Normal'): Promise<void> {
+  await page.goto('/?debug=1&theme=light');
+  await acceptNotice(page);
+  await page.getByTestId('site-katoomba').click();
+  await page.getByTestId('extent').getByRole('radio', { name: '6 km' }).check({ force: true });
+  await page.getByTestId('detail').getByRole('radio', { name: new RegExp(`^${detail}`) }).check({ force: true });
+  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
+  await page.getByTestId(`preset-${preset}`).click();
+  const online = page.getByTestId('online').getByRole('switch');
+  if (await online.isChecked()) await page.getByTestId('online').click();
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
+}
+
+/** The kind of the air in the picture the scene shows now ('prognostic' or 'diagnosed'), once it has one. */
+const airKindOf = (page: Page): Promise<string | null> =>
+  page.evaluate(() => {
+    type S = { snapshot: { atmosphere?: { kind?: string; nz: number } } | null };
+    const a = (window as unknown as { __firesim: { session: { state: { get(): S } } } }).__firesim.session.state.get().snapshot?.atmosphere;
+    return a ? (a.kind ?? (a.nz > 0 ? 'prognostic' : 'surface')) : null;
+  });
+
+/** Open the Air slices tool, put the line "Along the wind" with one tap on its preset, and wait for the panel to draw it. */
+async function alongTheWind(page: Page): Promise<void> {
+  await openMenu(page, 'tools');
+  await page.getByTestId('tool-air').click();
+  await expect(page.getByTestId('air-panel')).toBeVisible();
+  await page.getByTestId('slice-presets-toggle').click();
+  await page.getByTestId('slice-preset-along').click();
+  const canvas = page.getByTestId('slice-canvas');
+  await expect(canvas).toBeVisible({ timeout: 30_000 });
+  await expect(canvas).not.toHaveAttribute('data-seq', '', { timeout: 30_000 });
+  await page.waitForTimeout(2500); // the streaks need a moment to draw their tails
+}
+
+test('gallery 0.4.0: the Air slices tool placing a line, the side view with the probe on the 3-D atmosphere, and the curtain with its colour chips', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba6km(page, 'hot-nw-sw-change', 'Normal');
+  // Auto keeps the 3-D air unless this machine is far too slow for it: switch the run over if it chose the fast model.
+  await expect.poll(() => airKindOf(page), { timeout: 60_000 }).not.toBeNull();
+  if ((await airKindOf(page)) !== 'prognostic') {
+    await page.evaluate(() => (window as unknown as { __firesim: { session: { controller: { setQuality(t: string): void } } } }).__firesim.session.controller.setQuality('standard'));
+    await expect.poll(() => airKindOf(page), { timeout: 240_000 }).toBe('prognostic');
+  }
+  const ignition = await markEscarpmentFire(page);
+  await playTo(page, 600, 900);
+
+  // ── 33: the tool placing the start of a line: the cross over the map, "Place A here" and Cancel ──
+  await page.evaluate(([x, y]) => (window as unknown as W).__firesim.view.lookAt(x!, y!, 3000, 200, 58), ignition);
+  await page.waitForTimeout(1500);
+  await openMenu(page, 'tools');
+  await page.getByTestId('tool-air').click();
+  await expect(page.getByTestId('air-panel')).toBeVisible();
+  await page.getByTestId('slice-set-a').click();
+  await expect(page.locator('.sim-screen .crosshair')).toBeVisible();
+  await expect(page.getByTestId('slice-place')).toHaveText('Place A here');
+  await page.waitForTimeout(800);
+  await shot(page, '33-air-slices-placing', ['light', 'dark']);
+  await page.getByTestId('slice-cancel').click();
+  await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
+  await page.getByTestId('air-close').click();
+  await expect(page.getByTestId('air-panel')).toHaveCount(0);
+
+  // ── 34: the side view of a line along the wind, with a probe reading ──
+  await alongTheWind(page);
+  const canvas = page.getByTestId('slice-canvas');
+  await expect(page.getByTestId('slice-footer')).toContainText('3-D time-stepped air');
+  await expect(page.getByTestId('slice-footer')).toContainText(/air from \d\d:\d\d/);
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+  await expect(page.getByTestId('slice-readout')).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
+  await shot(page, '34-air-slice-side-view', ['light', 'dark']);
+  await page.getByTestId('air-close').click();
+  await expect(page.getByTestId('air-panel')).toHaveCount(0);
+
+  // ── 35: the curtain in the 3-D view, seen from the side, coloured by Up/down, with the Layers panel's chips ──
+  await pickTool(page, 'layers');
+  await expect(page.getByTestId('layers-panel')).toBeVisible();
+  await page.getByTestId('cs-view').scrollIntoViewIfNeeded();
+  await page.getByTestId('cs-view').click();
+  await page.getByTestId('slice-field-up').click();
+  await page.waitForTimeout(3000); // the camera flies side-on and the curtain is redrawn with the new colours
+  await page.getByTestId('slice-field').scrollIntoViewIfNeeded();
+  await shot(page, '35-air-slice-curtain-chips', ['light', 'dark']);
+});
+
+test('gallery 0.4.0: the side view on the fast model, the diagnosed wind, with Temp and Smoke off and the reason', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba6km(page, 'hot-nw-sw-change', 'Fast');
+  await expect.poll(() => airKindOf(page), { timeout: 60_000 }).toBe('diagnosed');
+  await markEscarpmentFire(page);
+  await playTo(page, 600, 900);
+  await alongTheWind(page);
+  const footer = page.getByTestId('slice-footer');
+  await expect(footer).toContainText('Diagnosed wind');
+  await expect(footer).toContainText('terrain effects only');
+  for (const id of ['theta', 'smoke']) await expect(page.getByTestId(`slice-chip-${id}`)).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('slice-use3d')).toHaveText('Use the 3-D atmosphere');
+  // The panel scrolls inside the tool: bring the reasons and the button into view (the footer stays pinned at the bottom).
+  await page.getByTestId('slice-use3d').scrollIntoViewIfNeeded();
+  await shot(page, '34b-air-slice-diagnosed', ['light', 'dark']);
 });
