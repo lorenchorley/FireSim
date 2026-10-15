@@ -32,6 +32,7 @@ import {
   placeVerdict,
   placeWords,
   presetStatuses,
+  presetIssueWords,
   presetViews,
   probeMapPoint,
   reopened,
@@ -440,6 +441,18 @@ describe('presets', () => {
     expect(views.find((v) => v.id === 'me')!.reason).toBe('You are outside the model area');
   });
 
+  it('a preset that comes out too short is about where the fire or the phone is, not "make the line longer"', () => {
+    // "Make the line longer than 300 m" is for a line the person placed; nobody can lengthen "Me to fire" or a chord through the fire.
+    const me = presetViews({ ...allOk(), me: { ok: false, issue: 'too-short' } }, null, 'ok', 300).find((v) => v.id === 'me')!;
+    expect(me.reason).toBe('You are less than 300 m from the fire');
+    expect(presetIssueWords('me', 'too-short', 420)).toBe('You are less than 450 m from the fire');
+    for (const id of ['along', 'across', 'slope'] as const) expect(presetIssueWords(id, 'too-short', 300)).toBe('Too near the edge of the model area for a line this long');
+    const along = presetViews({ ...allOk(), along: { ok: false, issue: 'too-short' } }, null, 'ok', 300)[0]!;
+    expect(along.reason).toBe('Too near the edge of the model area for a line this long');
+    // every other issue keeps the shared words
+    for (const issue of ['outside-model', 'no-user', 'no-fire', 'flat-ground', 'calm'] as const) expect(presetIssueWords('along', issue, 300, 'none')).toBe(issueWords(issue, 300, 'none'));
+  });
+
   it('every disabled reason the scene can send is worded (no preset is disabled without words)', () => {
     for (const issue of ['too-short', 'outside-model', 'no-user', 'no-fire', 'flat-ground', 'calm'] as const) {
       const st = { ...allOk(), along: { ok: false, issue } } as Record<SlicePresetId, SlicePresetStatus>;
@@ -542,6 +555,11 @@ describe('the controls: buttons and the quiet line', () => {
     const v = controlsView(input({ facts: { ...EMPTY, source: 'preset', preset: 'along', issue: 'calm' } }));
     expect(v.hint).toBe('The wind is calm, so it has no direction yet');
     expect(controlsView(input({ facts: { ...EMPTY, issue: 'too-short', minLengthM: 266 } })).hint).toBe('Make the line longer than 300 m');
+  });
+
+  it('a preset in force that has become too short says so about the place, a hand line about its length', () => {
+    expect(controlsView(input({ facts: { ...EMPTY, source: 'preset', preset: 'me', issue: 'too-short', minLengthM: 300 } })).hint).toBe('You are less than 300 m from the fire');
+    expect(controlsView(input({ facts: { ...EMPTY, source: 'endpoints', issue: 'too-short', minLengthM: 300 } })).hint).toBe('Make the line longer than 300 m');
   });
 
   it('a clipped line and a preset without a fire say so quietly', () => {

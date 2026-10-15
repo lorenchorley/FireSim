@@ -104,6 +104,16 @@ export function issueWords(issue: SliceIssue, minLengthM: number, fix: UserFix =
   }
 }
 
+/**
+ * The reason a preset cannot be drawn. The words of `issueWords`, except "too short": "Make the line longer" is for a line the
+ * person placed. A preset comes out too short because of where the phone or the fire is (the fire near a corner of the model, the
+ * phone within a model cell or two of the fire), and nobody can lengthen that.
+ */
+export function presetIssueWords(id: SlicePresetId, issue: SliceIssue, minLengthM: number, fix: UserFix = 'ok'): string {
+  if (issue === 'too-short') return id === 'me' ? `You are less than ${roundUp50(minLengthM)} m from the fire` : 'Too near the edge of the model area for a line this long';
+  return issueWords(issue, minLengthM, fix);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Geometry
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +247,7 @@ export interface PresetView {
 export function presetViews(statuses: Record<SlicePresetId, SlicePresetStatus>, active: SlicePresetId | null, fix: UserFix, minLengthM: number): PresetView[] {
   return SLICE_PRESET_IDS.map((id) => {
     const st = statuses[id];
-    return { id, label: PRESET_LABEL[id], disabled: !st.ok, reason: st.ok ? null : issueWords(st.issue, minLengthM, fix), active: active === id };
+    return { id, label: PRESET_LABEL[id], disabled: !st.ok, reason: st.ok ? null : presetIssueWords(id, st.issue, minLengthM, fix), active: active === id };
   });
 }
 
@@ -403,7 +413,7 @@ function hintLine(i: ControlsInput, next: SliceEnd | null): string {
     if (s.candidate) return `The mark shows where ${s.placing.toUpperCase()} will go. Press ${place}, or tap the map to move it.`;
     return `Move the map until the cross is over ${END_WORD[s.placing]}, then press ${place}. You can also tap the map.`;
   }
-  if (facts.issue) return issueWords(facts.issue, facts.minLengthM, i.fix);
+  if (facts.issue) return facts.preset ? presetIssueWords(facts.preset, facts.issue, facts.minLengthM, i.fix) : issueWords(facts.issue, facts.minLengthM, i.fix);
   if (facts.notes.length) return facts.notes.map((n) => NOTE_WORDS[n]).join('. ');
   if (next) return `${next === 'b' ? 'Start (A)' : 'End (B)'} is set. Now set ${END_WORD[next]}.`;
   return '';
