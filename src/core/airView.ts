@@ -38,7 +38,7 @@ export function airHas(
   view: Pick<AtmosphereView, 'grid' | 'nz' | 'u' | 'v' | 'w' | 'thetaAnomaly' | 'smoke'> | null | undefined,
   field: AirField,
 ): boolean {
-  if (!view || view.nz <= 0) return false;
+  if (!view || view.nz <= 0 || !view.grid) return false; // a hand-made fixture may lack the grid
   const n = view.grid.nx * view.grid.ny * view.nz;
   if (n <= 0) return false;
   switch (field) {

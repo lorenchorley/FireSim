@@ -235,7 +235,13 @@ describe('fast tier: checkpoint/restore and view', () => {
     expect(Buffer.from(r2.u.buffer).equals(Buffer.from(r1.u.buffer))).toBe(true);
     expect(Buffer.from(r2.v.buffer).equals(Buffer.from(r1.v.buffer))).toBe(true);
     const v = a.view();
-    expect(v.nz).toBe(0);
+    // The fast tier publishes its diagnosed 3-D wind on the native terrain-following levels (plan 7.3).
+    expect(v.nz).toBe(a.grid.nz);
+    expect(v.kind).toBe('diagnosed');
+    expect(v.layout).toBe('terrain-following');
+    expect(v.u.length).toBe(a.grid.plane * a.grid.nz);
+    expect(v.thetaAnomaly.length).toBe(0);
+    expect(v.smoke.length).toBe(0);
     expect(v.surfaceU.length).toBe(a.grid.plane);
     expect(a.spunUp).toBe(false);
     expect(a.maxStableDt()).toBe(10);

@@ -1097,16 +1097,16 @@ export class Atmosphere extends AtmosBase {
     this.sample(x, y, zAgl, out);
   }
 
+  /**
+   * The native arrays as a terrain-following view (plan 7.2): level l of column c is at h0 + ζ_l·J above the datum z_min, so
+   * the sampler does what `sample()` does and nothing is resampled or zeroed below the ground. Fresh copies per call (a
+   * snapshot's arrays are transferred to the main thread and detach); reading them changes no state. `time` is stamped by
+   * the orchestrator (`makeSnapshot`).
+   */
   view(): AtmosphereView {
     if (!this.initialised) this.initialiseState();
     const g = this.grid;
     const { nz, plane } = g;
-    const N = plane * nz;
-    const u = new Float32Array(N);
-    const v = new Float32Array(N);
-    const w = new Float32Array(N);
-    const th = new Float32Array(N);
-    const sm = new Float32Array(N);
     const levels = new Float32Array(nz);
     for (let k = 0; k < nz; k++) levels[k] = g.zetaC[k]!;
     const terrainHeight = new Float32Array(plane);
@@ -1119,20 +1119,6 @@ export class Atmosphere extends AtmosBase {
       const h0 = g.zs[c]! - g.zMin;
       terrainHeight[c] = h0;
       const J = g.J[c]!;
-      for (let l = 0; l < nz; l++) {
-        const zeta = (g.zetaC[l]! - h0) / J;
-        if (zeta < 0) continue; // below the terrain: 0
-        const kf = zeta <= g.zetaC[0]! ? 0 : levelFrac(g, c, zeta * J);
-        const k0 = Math.min(Math.floor(kf), nz - 2);
-        const t = kf - k0;
-        const o = k0 * plane + c;
-        const d = l * plane + c;
-        u[d] = this.uc[o]! + (this.uc[o + plane]! - this.uc[o]!) * t;
-        v[d] = this.vc[o]! + (this.vc[o + plane]! - this.vc[o]!) * t;
-        w[d] = this.wc[o]! + (this.wc[o + plane]! - this.wc[o]!) * t;
-        th[d] = this.th[o]! + (this.th[o + plane]! - this.th[o]!) * t;
-        sm[d] = this.sm[o]! + (this.sm[o + plane]! - this.sm[o]!) * t;
-      }
       const z1 = g.zetaC[0]! * J;
       const re = (1 - a) * kappaLookup(A.kappa!.re, z1) + a * kappaLookup(B.kappa!.re, z1);
       const im = (1 - a) * kappaLookup(A.kappa!.im, z1) + a * kappaLookup(B.kappa!.im, z1);
@@ -1141,7 +1127,23 @@ export class Atmosphere extends AtmosBase {
       surfaceU[c] = re * uu - im * vv;
       surfaceV[c] = re * vv + im * uu;
     }
-    return { grid: g.grid, nz, levels, terrainHeight, surfaceU, surfaceV, u, v, w, thetaAnomaly: th, smoke: sm };
+    return {
+      grid: g.grid,
+      nz,
+      levels,
+      terrainHeight,
+      layout: 'terrain-following',
+      kind: 'prognostic',
+      topM: g.Hp,
+      baseM: g.zMin,
+      surfaceU,
+      surfaceV,
+      u: this.uc.slice(),
+      v: this.vc.slice(),
+      w: this.wc.slice(),
+      thetaAnomaly: this.th.slice(),
+      smoke: this.sm.slice(),
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────

@@ -612,8 +612,10 @@ export class SceneView implements SceneViewApi {
     this.flames.setSites(sites, (x, y) => hf.heightAt(x, y));
     this.flameSpacing = fire.grid.cellSize / Math.max(1, Math.min(3, Math.round(fire.grid.cellSize / 12)));
 
-    // Atmosphere sampler (height datum = mean ground elevation minus the model's terrain height).
-    this.atmBase = snapshot.atmosphere ? this.estimateAtmBase(snapshot.atmosphere.grid, snapshot.atmosphere.terrainHeight) : this.hf.minElevation;
+    // Atmosphere sampler. The height datum is the view's own (`baseM`); a view made before it existed gets the estimate
+    // (mean ground elevation minus the model's terrain height).
+    const atmView = snapshot.atmosphere;
+    this.atmBase = atmView ? (atmView.baseM ?? this.estimateAtmBase(atmView.grid, atmView.terrainHeight)) : this.hf.minElevation;
     this.sampler = new AtmosphereSampler(snapshot.atmosphere ?? null, this.atmBase, snapshot.stats?.weather ?? null);
     const [lu, lv] = this.sampler.ambient;
     this.flames.setLean(lu, lv);
