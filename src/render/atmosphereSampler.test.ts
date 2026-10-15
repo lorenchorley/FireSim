@@ -392,21 +392,28 @@ describe('sampler v2, allocation', () => {
       return acc;
     };
     for (const [name, loop] of [['windP', loopW], ['fieldsP', loopF]] as const) {
-      // Warm up so that V8 has optimised the loop (boxed doubles are what unoptimised code allocates).
+      // Warm up so that V8 has optimised the loop (unoptimised code boxes every double it computes). On a busy machine the
+      // optimising compile can take a while to land, so the measurement is repeated, with more warm-up between, for up to 4 s:
+      // code that allocates never gets under the limit, whatever it is given.
       let sink = 0;
       for (let r = 0; r < 60; r++) sink += loop(5000);
-      gc();
-      gc();
       const WINDOW = 2000;
-      const d: number[] = [];
-      for (let r = 0; r < 41; r++) {
-        const a0 = process.memoryUsage().heapUsed;
-        sink += loop(WINDOW);
-        const a1 = process.memoryUsage().heapUsed;
-        d.push(a1 - a0);
-      }
-      d.sort((p, q) => p - q);
-      const median = d[d.length >> 1]!;
+      let median = Infinity;
+      const started = Date.now();
+      do {
+        gc();
+        gc();
+        const d: number[] = [];
+        for (let r = 0; r < 41; r++) {
+          const a0 = process.memoryUsage().heapUsed;
+          sink += loop(WINDOW);
+          const a1 = process.memoryUsage().heapUsed;
+          d.push(a1 - a0);
+        }
+        d.sort((p, q) => p - q);
+        median = d[d.length >> 1]!;
+        if (median / WINDOW >= 2) for (let r = 0; r < 40; r++) sink += loop(5000);
+      } while (median / WINDOW >= 2 && Date.now() - started < 4000);
       // The speed of the same loop, for the log (not asserted: a shared machine). Spike S3 measured 143 ns for its hand-inlined u, v sampler.
       const t0 = performance.now();
       sink += loop(300_000);
