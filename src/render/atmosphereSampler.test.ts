@@ -407,6 +407,11 @@ describe('sampler v2, allocation', () => {
       }
       d.sort((p, q) => p - q);
       const median = d[d.length >> 1]!;
+      // The speed of the same loop, for the log (not asserted: a shared machine). Spike S3 measured 143 ns for its hand-inlined u, v sampler.
+      const t0 = performance.now();
+      sink += loop(300_000);
+      const ns = ((performance.now() - t0) * 1e6) / 300_000;
+      process.stderr.write(`[sampler perf] ${name}: ${ns.toFixed(0)} ns per call, ${(median / WINDOW).toFixed(2)} bytes per call (median of 41 windows of ${WINDOW})\n`);
       expect(Number.isFinite(sink), name).toBe(true);
       // A boxed call would add at least 48 bytes x 2000 = 96 kB to every window; reading the heap twice adds a few hundred bytes.
       expect(median / WINDOW, `${name}: bytes per call`).toBeLessThan(2);
