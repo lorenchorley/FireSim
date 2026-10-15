@@ -8,13 +8,15 @@
 import { h, setChildren } from '../../dom';
 import { icon } from '../../icons';
 import { fromExternalLegend, overlayLegend, rampGradient, stopWords, type ExternalLegend, type Legend } from '../../legends';
+import { sectionColouring, sliceAirOf } from '../../../render/sliceFields';
+import type { SliceFieldId, SliceKind } from '../../../render/slice/types';
 import type { SimContext } from './context';
 
 /** Classes listed on the card; the rest are in the Layers panel. */
 const MAX_CLASSES = 4;
 
 /** What is coloured on the map now (pure apart from the providers it is given). */
-export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvider' | 'sceneLegends' | 'scenario' | 'view'>, viewTime: number): Legend | null {
+export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvider' | 'sceneLegends' | 'scenario' | 'session' | 'view'>, viewTime: number): Legend | null {
   const s = ctx.layers.get();
   if (s.overlay !== 'none') {
     const t = ctx.scenario.terrain;
@@ -28,9 +30,17 @@ export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvide
   const coded = s.vegetation && s.canopyStyle === 'coded' ? (ctx.view as { canopyLegend?(): ExternalLegend | null }).canopyLegend?.() : null;
   if (coded) return fromExternalLegend(coded, null);
   const sl = ctx.sceneLegends;
-  if (sl && s.crossSection.enabled) return fromExternalLegend(sl.crossSection(), null);
+  if (sl && s.crossSection.enabled) {
+    const sc = sectionColour(ctx, s.crossSection.field);
+    return fromExternalLegend(sc && sl.slice ? sl.slice(sc.field, sc.kind) : sl.crossSection(), null);
+  }
   if (sl && s.wind !== 'off') return fromExternalLegend(sl.wind(s.wind), null);
   return null;
+}
+
+/** What the section is coloured by on the air now: the chip chosen (else the original curtain's colouring) and the kind of air, or null before the first picture of the air. */
+function sectionColour(ctx: Pick<SimContext, 'session'>, chosen: SliceFieldId | undefined): { field: SliceFieldId; kind: SliceKind } | null {
+  return sectionColouring(sliceAirOf(ctx.session.state.get().snapshot?.atmosphere), chosen);
 }
 
 export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el: HTMLElement; destroy(): void } {
@@ -41,7 +51,9 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     const s = ctx.layers.get();
     const vt = ctx.session.state.get().viewTime;
     // The arrival-time ramp grows with the elapsed time: refresh it every 30 simulated minutes.
-    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${s.wind}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
+    // The section's legend follows the chip it is coloured by on the air shown (the chip chosen, or the one the air allows).
+    const sc = s.crossSection.enabled ? sectionColour(ctx, s.crossSection.field) : null;
+    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
     if (k === key && !force) return;
     key = k;
     const l = currentMapLegend(ctx, vt);
@@ -108,7 +120,7 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     (el.querySelector('button') as HTMLButtonElement | null)?.focus({ preventScroll: true });
   };
   const u1 = ctx.layers.subscribe(() => render(), ['overlay', 'isochroneMinutes', 'crossSection', 'wind', 'vegetation', 'canopyStyle', 'canopyCode']);
-  const u2 = ctx.session.state.subscribe(() => render(), ['viewTime']);
+  const u2 = ctx.session.state.subscribe(() => render(), ['viewTime', 'snapshot']);
   render();
   return {
     el,

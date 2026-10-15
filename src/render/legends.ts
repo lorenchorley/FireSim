@@ -37,7 +37,6 @@ import {
   LANDING_RAMP,
   ROS_RAMP,
   SLOPE_CLASSES,
-  THETA_RAMP,
   TSF_NO_RECORD,
   TSF_RAMP,
   UPDRAFT_RAMP,
@@ -50,9 +49,11 @@ import {
   sampleClasses,
   sampleCyclic,
   sampleRamp,
+  sliceFieldScale,
   type Ramp,
   type Rgb,
 } from './palette';
+import { SLICE_FIELDS, SLICE_KIND_LABEL, type SliceFieldId, type SliceKind } from './slice/types';
 
 /** How the legend should be drawn. */
 export type LegendKind = 'continuous' | 'classes' | 'categorical' | 'cyclic';
@@ -68,7 +69,7 @@ export interface LegendEntry {
 }
 
 export interface LegendSpec {
-  overlay: OverlayKind | 'crossSection' | 'wind' | 'updraft';
+  overlay: OverlayKind | 'crossSection' | 'slice' | 'wind' | 'updraft';
   title: string;
   /** Units of `entries[].value` (display string, e.g. "km/h"). */
   units: string;
@@ -698,17 +699,70 @@ const HAZARD_TITLES: Record<'vls' | 'attach' | 'trench' | 'dmz', { title: string
   },
 };
 
-/** Legend of the vertical cross-section (potential-temperature anomaly). */
-export function crossSectionLegend(): LegendSpec {
+/** The legend ticks of each chip of the air slice: evenly spaced over the chip's scale (so a label sits under its colour), in the units shown. */
+const SLICE_LEGEND: Record<SliceFieldId, { units: string; kmh?: boolean; ticks: number[]; labels?: string[]; words: [string, string] }> = {
+  speed: { units: 'km/h', kmh: true, ticks: [0, 30, 60, 90], words: ['calm', 'storm force'] },
+  along: { units: 'km/h', kmh: true, ticks: [-90, -60, -30, 0, 30, 60, 90], words: ['blowing towards A', 'blowing towards B'] },
+  across: { units: 'km/h', kmh: true, ticks: [-90, -60, -30, 0, 30, 60, 90], words: ['blowing to the left', 'blowing to the right'] },
+  up: { units: 'm/s', ticks: [-4, 0, 4, 8], words: ['sinking', 'rising'] },
+  theta: { units: 'K', ticks: [-10, -5, 0, 5, 10, 15, 20], words: ['cooler', 'warmer'] },
+  smoke: { units: '', ticks: [0, 0.25, 0.5, 0.75, 1], labels: ['none', '', '', '', 'a lot'], words: ['none', 'a lot'] },
+};
+
+const SLICE_ARROWS = 'Arrows show the wind in the section.';
+const SLICE_CYAN = 'Cyan arrows blow against the main wind.';
+
+/** The teaching sentence under the legend of each chip (the 3-D atmosphere, then what the fast model adds or lacks). */
+function sliceNote(field: SliceFieldId, kind: SliceKind): string {
+  const arrows = kind === 'prognostic' ? `${SLICE_ARROWS} ${SLICE_CYAN}` : SLICE_ARROWS;
+  const diagnosed = kind === 'diagnosed' ? ` ${SLICE_KIND_LABEL.diagnosed}, so no plume.` : '';
+  switch (field) {
+    case 'speed':
+      return `How fast the air moves sideways in the section. ${arrows}${diagnosed}`;
+    case 'along':
+      return `Wind along the line: green blows towards B, purple towards A. ${arrows}${diagnosed}`;
+    case 'across':
+      return `Wind across the line: green blows towards the right of someone walking from A to B, purple towards the left. ${arrows}${diagnosed}`;
+    case 'up':
+      return `Air rising (red) or sinking (blue): the plume, sunny slopes, eddies behind ridges and cold air running downhill. ${arrows}${diagnosed}`;
+    case 'theta':
+      return `Warmer or cooler than the rest of the section at the same height. Red = warm rising air (fire plume, sunny slopes); blue = cold sinking air (night drainage into valleys). ${arrows}${diagnosed}`;
+    case 'smoke':
+      return `Where the model has put smoke, from none to a lot. The scale is the model’s own, not a measured amount. ${arrows}${diagnosed}`;
+  }
+}
+
+/**
+ * Legend of one chip of the air slice (the 3-D curtain and the side-view panel colour with `sliceFieldScale`, so this always
+ * matches them). `kind` is the air shown: the 3-D atmosphere also draws the cyan reverse-flow arrows, the fast model's
+ * diagnosed wind says what it is.
+ */
+export function sliceLegend(field: SliceFieldId, kind: SliceKind): LegendSpec {
+  const scale = sliceFieldScale(field);
+  const d = SLICE_LEGEND[field];
+  const c: Rgb = [0, 0, 0];
+  const entries: LegendEntry[] = d.ticks.map((t, i) => {
+    sampleRamp(scale.ramp, d.kmh ? t / 3.6 : t, c);
+    const label = d.labels ? d.labels[i]! : t > 0 && scale.diverging ? `+${t}` : `${t}`;
+    const entry: LegendEntry = { value: t, colour: rgbToHex(c), label };
+    if (i === 0) entry.words = d.words[0];
+    else if (i === d.ticks.length - 1) entry.words = d.words[1];
+    return entry;
+  });
   return {
-    overlay: 'crossSection',
-    title: 'Air temperature vs surroundings',
-    units: 'K',
+    overlay: 'slice',
+    title: field === 'theta' ? 'Warmer or cooler than the area at that height' : SLICE_FIELDS.find((f) => f.id === field)!.name,
+    units: d.units,
     kind: 'continuous',
-    entries: stopsLegend(THETA_RAMP, (v) => (v > 0 ? `+${v}` : `${v}`)),
-    gradient: gradientCss(THETA_RAMP, -6, 20),
-    note: 'Red = warm rising air (fire plume, sunny slopes); blue = cold sinking air (night drainage into valleys). Arrows show the wind in the section; cyan arrows blow against the main wind.',
+    entries,
+    gradient: gradientCss(scale.ramp, scale.lo, scale.hi),
+    note: sliceNote(field, kind),
   };
+}
+
+/** Legend of the vertical cross-section as it was before the chips: the temperature colouring of the 3-D atmosphere (kept for the dev page and the legend gallery). */
+export function crossSectionLegend(): LegendSpec {
+  return { ...sliceLegend('theta', 'prognostic'), overlay: 'crossSection' };
 }
 
 /** Legend of the wind particles ('surface' colours by speed, 'volume' by vertical velocity). */

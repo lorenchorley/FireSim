@@ -6,7 +6,8 @@
  */
 import { LAYER_CATALOG, LAYER_GROUPS, LAYER_GROUP_BLURBS, layersInGroup, type AvailabilityContext } from './layerCatalog';
 import type { OverlayKind } from './layers';
-import { LUT_SIZE, crossSectionLegend, legendFor, overlayColour, overlayScale, windLegend, type LegendContext, type LegendSpec } from './legends';
+import { LUT_SIZE, crossSectionLegend, legendFor, overlayColour, overlayScale, sliceLegend, windLegend, type LegendContext, type LegendSpec } from './legends';
+import { SLICE_FIELD_IDS } from './slice/types';
 
 const q = new URLSearchParams(location.search);
 const rangeParam = q.get('elev')?.split(',').map(Number);
@@ -135,6 +136,7 @@ function theme(name: 'light' | 'dark'): HTMLElement {
     }
   }
   root.append(el('h2', undefined, 'Other legends'), chip(crossSectionLegend()), chip(windLegend('surface')), chip(windLegend('volume')));
+  root.append(el('h2', undefined, 'Air slice chips'), ...SLICE_FIELD_IDS.map((f) => chip(sliceLegend(f, 'prognostic'))));
   if (q.get('catalog') !== '0') {
     root.append(el('h2', undefined, 'Layer catalog'));
     for (const g of LAYER_GROUPS) {
