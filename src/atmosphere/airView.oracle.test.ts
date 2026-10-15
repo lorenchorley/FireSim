@@ -83,6 +83,7 @@ function oracle(engine: { sample(x: number, y: number, z: number, out: Float32Ar
     for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(got[k]! - out[k]!));
     if (Math.hypot(out[0]!, out[1]!) > 0.5) windy++;
   }
+  process.stderr.write(`[air oracle] ${view.kind}: worst |sampler - engine sample()| ${worst.toExponential(2)} m/s over ${n} points (${windy} with a wind over 0.5 m/s)\n`);
   return { worst, windy };
 }
 
