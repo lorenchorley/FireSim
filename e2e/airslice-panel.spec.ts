@@ -56,7 +56,12 @@ async function openSlice(page: Page): Promise<Locator> {
 /** How much of the canvas is painted, and a checksum of its pixels (a coarse one: every 5th pixel of every 3rd row). */
 async function paint(canvas: Locator): Promise<{ painted: number; sum: number }> {
   return canvas.evaluate((c: HTMLCanvasElement) => {
-    const g = c.getContext('2d')!;
+    // read a copy: repeated getImageData on the panel's own canvas makes Chromium warn (and the console guard fails the test)
+    const copy = document.createElement('canvas');
+    copy.width = c.width;
+    copy.height = c.height;
+    const g = copy.getContext('2d', { willReadFrequently: true })!;
+    g.drawImage(c, 0, 0);
     const d = g.getImageData(0, 0, c.width, c.height).data;
     let painted = 0;
     let sum = 0;
@@ -199,8 +204,16 @@ test('reduced motion: arrows instead of streaks, and a picture that holds still'
   await expect.poll(() => airKind(page), { timeout: 60_000 }).not.toBeNull();
   const canvas = await openSlice(page);
   await expect(canvas).toHaveAttribute('data-motion', 'arrows');
+  // The air may still be settling for a moment (the 3-D air's first pictures): wait until two looks 500 ms apart agree, then it must hold.
+  await expect
+    .poll(async () => {
+      const first = (await paint(canvas)).sum;
+      await page.waitForTimeout(500);
+      return first === (await paint(canvas)).sum;
+    }, { timeout: 60_000 })
+    .toBe(true);
   const a = await paint(canvas);
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1200);
   expect((await paint(canvas)).sum).toBe(a.sum); // nothing moves
   await page.getByTestId('slice-chip-up').click();
   await expect.poll(async () => (await paint(canvas)).sum).not.toBe(a.sum);

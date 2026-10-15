@@ -126,6 +126,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   let colours: DrawColours | null = null;
   let font: DrawFont | null = null;
   let staticDirty = true;
+  let tagText = ''; // the axis tag for the scale drawn now, or '' where the plot is too small for one
   let raster: Raster | null = null;
   let rasterKey = '';
   let rasterOf: SliceData | null = null; // a new slice object may carry the same `seq` as the last one: the image follows the object too
@@ -237,7 +238,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     ctx.drawImage(still.canvas, 0, 0);
     if (!reduced) ctx.drawImage(trail.canvas, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (font && showsScaleTag(layout)) drawScaleTag(ctx, layout, colours, font, scaleTag(layout.ratio));
+    if (font && tagText) drawScaleTag(ctx, layout, colours, font, tagText);
     if (reading) drawProbe(ctx, layout, reading.pos, colours);
   }
 
@@ -361,6 +362,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
 
   /** The words for the drawn scale, in the caption under the controls and in the canvas's text alternative. */
   function syncScale(): void {
+    tagText = layout && showsScaleTag(layout) ? scaleTag(layout.ratio) : '';
     if (layout) text(scaleWords, scaleCaption(layout.ratio));
   }
 
