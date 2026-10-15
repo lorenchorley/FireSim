@@ -8,6 +8,7 @@ export { SceneView, type SceneViewOptions, type RenderQuality } from './SceneVie
 export {
   legendFor,
   crossSectionLegend,
+  sliceLegend,
   windLegend,
   overlayScale,
   overlayColour,

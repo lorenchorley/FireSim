@@ -27,6 +27,18 @@ import type { LayerState, OverlayKind } from '../../../render/layers';
 import { canopyCodeLegend, type CanopyCode } from '../../../render/canopyStyle';
 import { placesLegend, type PlacesLayerId } from '../../../render/placesLegend';
 import { hasAirWind } from '../../../core/airView';
+import { SLICE_FIELDS, SLICE_FIELD_IDS, type SliceFieldId } from '../../../render/slice/types';
+import {
+  DIAGNOSED_SECTION_NOTE,
+  DIAGNOSED_STREAKS_NOTE,
+  LINE_BY_CENTRE,
+  SWITCHING_ANNOUNCEMENT,
+  SWITCHING_NOTE,
+  USE_3D_LABEL,
+  effectiveSliceField,
+  sliceAirOf,
+  sliceFieldStatuses,
+} from '../../../render/sliceFields';
 import { has3dAtmosphere, type SimContext } from './context';
 import {
   MAP_TYPES,
@@ -677,41 +689,100 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     testId: 'wind-layer',
     onChange: (v) => set({ wind: v }),
   });
-  // The fast tier (Saver, the Fast detail, or Auto on a phone far too slow for the 3-D air) has no 3-D atmosphere: offer the switch where it matters.
-  const need3d = h('div', { class: 'callout callout-info need-3d', hidden: true, dataset: { testid: 'need-3d' } });
+  /**
+   * An info callout with the switch to the 3-D atmosphere, for a run on the fast tier (Saver, the Fast detail, or Auto on a phone far
+   * too slow for the 3-D air): its air is the diagnosed wind, with no plume, temperature or smoke. One for the wind streaks through the
+   * plume and one for the air slice. Hidden while the air is the 3-D atmosphere; it forgets "re-computing" once it hides.
+   */
+  const use3dCallout = (testId: string, buttonTestId: string, text: string): { el: HTMLElement; show(on: boolean): void } => {
+    const el = h('div', { class: 'callout callout-info need-3d', hidden: true, dataset: { testid: testId } });
+    const fill = (): void =>
+      setChildren(el, [
+        icon('info'),
+        h('div', null, [
+          h('p', null, text),
+          button({
+            label: USE_3D_LABEL,
+            icon: 'cube',
+            variant: 'secondary',
+            testId: buttonTestId,
+            onClick: () => {
+              ctx.session.controller.setQuality('standard');
+              setChildren(el, [icon('info'), h('p', null, SWITCHING_NOTE)]);
+              ctx.announce(SWITCHING_ANNOUNCEMENT);
+            },
+          }),
+        ]),
+      ]);
+    return {
+      el,
+      show(on) {
+        const was = !el.hidden;
+        el.hidden = !on;
+        if (!on) {
+          if (was) setChildren(el, null);
+        } else if (!el.childElementCount) fill();
+      },
+    };
+  };
+  const streaksNote = use3dCallout('need-3d', 'use-3d', DIAGNOSED_STREAKS_NOTE);
+  const sliceNote = use3dCallout('slice-diagnosed', 'use-3d-slice', DIAGNOSED_SECTION_NOTE);
   const renderNeed3d = (): void => {
     const l = layers.get();
     const snap = ctx.session.state.get().snapshot;
-    const wants = l.crossSection.enabled || l.wind === 'volume';
-    need3d.hidden = !wants || !snap || has3dAtmosphere(snap);
-    if (need3d.hidden || need3d.childElementCount) return;
-    setChildren(need3d, [
-      icon('info'),
-      h('div', null, [
-        h('p', null, 'This run uses the fast surface-wind model, so there is no 3-D plume or cold air to slice through.'),
-        button({
-          label: 'Use the 3-D atmosphere',
-          icon: 'cube',
-          variant: 'secondary',
-          testId: 'use-3d',
-          onClick: () => {
-            ctx.session.controller.setQuality('standard');
-            setChildren(need3d, [icon('info'), h('p', null, 'Re-computing with the 3-D atmosphere from the last checkpoint… press Play to continue.')]);
-            ctx.announce('Switching to the 3-D atmosphere. The simulation re-computes from the last checkpoint.');
-          },
-        }),
-      ]),
-    ]);
+    streaksNote.show(l.wind === 'volume' && !!snap && !has3dAtmosphere(snap));
+    // The air slice works on the fast tier's diagnosed wind: it says what that is, and what the 3-D atmosphere would add.
+    sliceNote.show(l.crossSection.enabled && sliceAirOf(snap?.atmosphere).kind === 'diagnosed');
   };
+  // What the section is coloured by (the chip chosen, else the original curtain's colouring) and which chips this air can give: the scene's
+  // own answer when it has one (SceneViewApi.slice), else worked out from the picture shown, with the same functions.
+  const sliceState = (): { field: SliceFieldId; fields: ReturnType<typeof sliceFieldStatuses> } => {
+    const u = view.slice?.() ?? null;
+    if (u) return { field: u.field, fields: u.fields };
+    const fields = sliceFieldStatuses(sliceAirOf(ctx.session.state.get().snapshot?.atmosphere));
+    return { field: effectiveSliceField(layers.get().crossSection.field, fields), fields };
+  };
+  const fieldChips = new Map<SliceFieldId, HTMLButtonElement>();
+  let fieldKey = '';
+  const renderFieldChips = (): void => {
+    if (!fieldChips.size) return; // the section's controls are built the first time it is switched on
+    const { field, fields } = sliceState();
+    const key = field + SLICE_FIELD_IDS.map((id) => (fields[id].ok ? '1' : '0')).join('');
+    if (key === fieldKey) return;
+    fieldKey = key;
+    for (const f of SLICE_FIELDS) {
+      const el = fieldChips.get(f.id)!;
+      const st = fields[f.id];
+      setChipSelected(el, f.id === field);
+      el.disabled = !st.ok;
+      // A chip that cannot be tapped says why to a screen reader (and in a tooltip); the note under the chips says it in words for everyone.
+      if (st.ok) {
+        el.removeAttribute('aria-label');
+        el.removeAttribute('title');
+      } else {
+        el.setAttribute('aria-label', `${f.label}. ${st.reason}`);
+        el.title = st.reason;
+      }
+    }
+  };
+  const pickField = (id: SliceFieldId): void => {
+    set({ crossSection: { ...layers.get().crossSection, field: id } });
+    fieldKey = '';
+    renderFieldChips();
+  };
+  const placedLine = (cs: LayerState['crossSection']): boolean => !!cs.preset || (!!cs.a && !!cs.b);
+  const lineHint = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-line-hint' } }, 'The section follows the line you placed with Air slices. Turning the compass or tapping Centre on the fire replaces it.');
   const csBox = h('div', { class: 'cs-box' });
   const csInfo = plan.switches.find((l) => l.scene === 'crossSection');
   const csToggle = toggle({
-    label: csInfo?.title ?? 'Vertical air slice',
-    description: 'Slice through the atmosphere: warm plume, cold air pools and wind arrows',
+    label: csInfo?.title ?? 'Air slice',
+    description: 'A slice through the air along a line, with wind arrows',
     checked: layers.get().crossSection.enabled,
     testId: 'cross-section',
     onChange: (v) => {
-      set({ crossSection: { ...layers.get().crossSection, enabled: v, centre: v ? fireCentre(ctx) : layers.get().crossSection.centre } });
+      const cs = layers.get().crossSection;
+      // Switching on centres the default section on the fire; a line placed with Air slices stays as it is.
+      set({ crossSection: { ...cs, enabled: v, ...(v && !placedLine(cs) ? { centre: fireCentre(ctx), ...LINE_BY_CENTRE } : {}) } });
       renderCs();
     },
   });
@@ -719,11 +790,32 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     const cs = layers.get().crossSection;
     csToggle.set(cs.enabled);
     csBox.hidden = !cs.enabled;
-    if (!cs.enabled || csBox.childElementCount) return;
+    if (!cs.enabled) return;
+    lineHint.hidden = !placedLine(cs);
+    if (csBox.childElementCount) {
+      renderFieldChips();
+      renderNeed3d();
+      return;
+    }
+    const chips = SLICE_FIELDS.map((f) => {
+      const c = chip({ label: f.label, kind: 'filter', testId: `slice-field-${f.id}`, onToggle: () => pickField(f.id) }) as HTMLButtonElement;
+      fieldChips.set(f.id, c);
+      return c;
+    });
     setChildren(csBox, [
-      compassRose({ label: 'Section direction', mode: 'towards', value: cs.azimuth, size: 170, onChange: (d) => set({ crossSection: { ...layers.get().crossSection, azimuth: d } }) }).el,
+      h('p', { class: 'field-label' }, 'Colour the section by'),
+      h('div', { class: 'chips', attrs: { role: 'group' }, aria: { label: 'Colour the section by' }, dataset: { testid: 'slice-field' } }, chips),
+      sliceNote.el,
+      lineHint,
+      compassRose({
+        label: 'Section direction',
+        mode: 'towards',
+        value: cs.azimuth,
+        size: 170,
+        onChange: (d) => set({ crossSection: { ...layers.get().crossSection, azimuth: d, ...LINE_BY_CENTRE } }),
+      }).el,
       h('div', { class: 'row-actions' }, [
-        button({ label: 'Centre on the fire', icon: 'target', variant: 'secondary', onClick: () => set({ crossSection: { ...layers.get().crossSection, centre: fireCentre(ctx) } }) }),
+        button({ label: 'Centre on the fire', icon: 'target', variant: 'secondary', onClick: () => set({ crossSection: { ...layers.get().crossSection, centre: fireCentre(ctx), ...LINE_BY_CENTRE } }) }),
         ctx.view.viewSection
           ? button({
               label: 'View from the side',
@@ -758,7 +850,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     hint: 'Heights are stretched to make the terrain easier to read. Slope numbers and fire speeds always use the true slope.',
     onInput: (v) => set({ verticalExaggeration: v }),
   });
-  const airSection = h('section', { class: 'lp-section', aria: { label: 'Wind and air' } }, [sectionHeader('Wind and air'), wind.el, ...switchRows, need3d, csBox, vex.el]);
+  const airSection = h('section', { class: 'lp-section', aria: { label: 'Wind and air' } }, [sectionHeader('Wind and air'), wind.el, streaksNote.el, ...switchRows, csBox, vex.el]);
 
   // ───────────── Reset ─────────────
   const reset = button({
@@ -829,13 +921,15 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
         renderHeat();
       }
       renderActive();
-      const was = need3d.hidden;
+      // (The callouts forget "re-computing" by themselves once the 3-D snapshots arrive and they hide.)
       renderNeed3d();
-      // Once the 3-D snapshots arrive, forget the old message so it can be shown again later if needed.
-      if (need3d.hidden && !was) setChildren(need3d, null);
+      renderFieldChips();
     }, ['snapshot', 'ignitions']),
     ctx.session.state.subscribe(() => renderActive(), ['viewTime']),
   );
+  // The scene computes the slice a moment after the snapshot arrives and says which chips the air can give: follow it (only a change redraws the chips).
+  const offSlice = view.onSlice?.(() => renderFieldChips());
+  if (offSlice) offs.push(offSlice);
   renderAll();
 
   return {

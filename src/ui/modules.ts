@@ -99,7 +99,7 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
     legendProvider: render && typeof render.legendFor === 'function' ? render.legendFor : null,
     sceneLegends:
       render && typeof render.crossSectionLegend === 'function' && typeof render.windLegend === 'function'
-        ? { crossSection: render.crossSectionLegend, wind: render.windLegend }
+        ? { crossSection: render.crossSectionLegend, wind: render.windLegend, ...(typeof render.sliceLegend === 'function' ? { slice: render.sliceLegend } : {}) }
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
     createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),

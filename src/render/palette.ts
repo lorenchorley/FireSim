@@ -6,6 +6,7 @@
  * ramps are ordered by luminance so they stay readable with red–green colour-vision deficiency (doc 09 §9).
  */
 import { FireHistoryKind, FuelType, Landform, SpreadDriver, type InsightSeverity } from '../core/types';
+import type { SliceFieldId } from './slice/types';
 
 /** sRGB colour with components 0–1. */
 export type Rgb = [number, number, number];
@@ -429,6 +430,71 @@ export const UPDRAFT_RAMP = makeRamp([
   { at: 3, colour: '#ff6a3d' },
   { at: 8, colour: '#d7191c' },
 ]);
+
+/**
+ * Wind along or across the line of an air slice (m/s, symmetric about 0): purple on the negative side (along: towards A;
+ * across: to the left), pale at 0, green on the positive side (towards B; to the right). Diverging and luminance-ordered:
+ * both arms get darker with the size of the wind, and a stop and its mirror have the same luminance, so the ramp reads in
+ * grey and the two sides differ by hue alone (blue-yellow and red-green colour vision both keep them apart,
+ * palette.test.ts). Deliberately not blue and red (temperature) or blue and orange (up and down), so no chip is mistaken for another.
+ */
+export const ALONG_RAMP = makeRamp([
+  { at: -25, colour: '#6e247b' },
+  { at: -15, colour: '#9b72ac' },
+  { at: -8, colour: '#c8add3' },
+  { at: -3, colour: '#e9d7e9' },
+  { at: 0, colour: '#f7f7f7' },
+  { at: 3, colour: '#c2e7bc' },
+  { at: 8, colour: '#83c683' },
+  { at: 15, colour: '#3a924b' },
+  { at: 25, colour: '#075122' },
+]);
+
+/**
+ * Smoke in an air slice (the model's own concentration, 1 = the amount the smoke layer draws at full density): pale warm grey to
+ * dark brown-grey. Logarithmic over four decades, because the concentration of a young plume is about a thousandth of that of a
+ * big fire (measured: 0.0005 to 0.001 after 5 to 15 minutes of a small fire), and a linear scale would show nothing for it.
+ * Anything below the first stop takes its colour (no smoke is the palest).
+ */
+export const SMOKE_RAMP = makeRamp(
+  [
+    { at: 1e-4, colour: '#f2efe9' },
+    { at: 1e-3, colour: '#cfc6b8' },
+    { at: 1e-2, colour: '#9a8f82' },
+    { at: 1e-1, colour: '#6b6158' },
+    { at: 1, colour: '#1f1b18' },
+  ],
+  { log: true },
+);
+
+/** What colours a chip of the air slice: the ramp, the values its ends stand for (units of `SliceData.values`), and whether 0 is the neutral middle. */
+export interface SliceScale {
+  ramp: Ramp;
+  lo: number;
+  hi: number;
+  diverging: boolean;
+}
+
+/**
+ * The colour scale of each chip of the air slice, in the units of `SliceData.values` (m/s, kelvin, smoke concentration; smoke is a log scale, sample it with `sampleRamp`, not a linear table).
+ * The curtain's texture, the side-view panel's raster and the legends (`sliceLegend`) all use it, so what is drawn always
+ * matches the legend. Values outside `lo` to `hi` take the colour of the nearest end.
+ */
+export function sliceFieldScale(field: SliceFieldId): SliceScale {
+  switch (field) {
+    case 'speed':
+      return { ramp: WIND_RAMP, lo: 0, hi: 25, diverging: false };
+    case 'along':
+    case 'across':
+      return { ramp: ALONG_RAMP, lo: -25, hi: 25, diverging: true };
+    case 'up':
+      return { ramp: UPDRAFT_RAMP, lo: -4, hi: 8, diverging: true };
+    case 'theta':
+      return { ramp: THETA_RAMP, lo: -10, hi: 20, diverging: true };
+    case 'smoke':
+      return { ramp: SMOKE_RAMP, lo: 1e-4, hi: 1, diverging: false };
+  }
+}
 
 /** Ember colour by temperature fraction (0 cold … 1 hot): blackbody-like. */
 export const EMBER_RAMP = makeRamp([

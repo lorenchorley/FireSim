@@ -230,10 +230,11 @@ test('real engine end to end: build → escarpment fire → play → insights �
   await expect(page.getByTestId('overlay-arrival')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('cross-section').click();
   await expect(page.getByTestId('cross-section').getByRole('switch')).toBeChecked();
-  // If the engine is on the fast tier (Auto keeps the 3-D air unless a machine is far too slow), switch this run to the 3-D atmosphere from the panel.
-  if (await page.getByTestId('need-3d').isVisible()) {
-    await page.getByTestId('use-3d').click();
-    await expect(page.getByTestId('need-3d')).toBeHidden({ timeout: 120_000 });
+  // If the engine is on the fast tier (Auto keeps the 3-D air unless a machine is far too slow), the section says it shows the diagnosed wind:
+  // switch this run to the 3-D atmosphere from that note.
+  if (await page.getByTestId('slice-diagnosed').isVisible()) {
+    await page.getByTestId('use-3d-slice').click();
+    await expect(page.getByTestId('slice-diagnosed')).toBeHidden({ timeout: 120_000 });
   }
   // The fast tier's view has levels too (its diagnosed wind): the 3-D atmosphere is the view whose kind is 'prognostic'.
   await expect

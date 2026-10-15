@@ -10,7 +10,9 @@ import { DEG, msToKmh, windToUV } from '../core/units';
 import { multiHillshade, insolation } from '../terrain';
 import type { CameraState, MapMarker, SceneImagery, SceneViewApi } from '../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
+import { fireCentroid } from '../render/fields';
 import { markerRank, pickMarkerAt, type MarkerSource, type PickCandidate } from '../render/markerPick';
+import { resolveSlice } from '../render/slice/sectionLine';
 import { driverColour, fuelColour, legendFor, SNAPSHOT_LAYER_OVERLAYS } from './legends';
 
 type Rgb = [number, number, number];
@@ -777,14 +779,41 @@ export class MockSceneView implements SceneViewApi {
     ctx.stroke();
   }
 
+  /**
+   * The ends of the section line in local metres. A placed line (a preset, or A and B) is resolved by the same pure code and the same
+   * precedence as in the 3-D view; otherwise it is the chord through the centre along the azimuth, as it always was here. The mock has
+   * no air, so it draws only the line (no slice, no `slice()` member).
+   */
+  private sectionEnds(): { a: [number, number]; b: [number, number] } | null {
+    const cs = this.layers.crossSection;
+    const t = this.terrain;
+    if (t && (cs.preset || (cs.a && cs.b))) {
+      const snap = this.snapshot;
+      const c = snap ? fireCentroid(snap.fire, snap.time) : null;
+      const w = snap?.stats?.weather;
+      const r = resolveSlice(cs, {
+        grid: snap?.atmosphere?.grid ?? t.grid,
+        heightAt: (x, y) => sampleBilinear(t.grid, t.elevation, x, y),
+        mapCentre: [this.cx, this.cy],
+        fire: c ? [c.x, c.y] : null,
+        windFromDeg: w && w.windSpeed10 >= 0.2 ? w.windDir10 : null,
+        user: this.user ? [this.user.x, this.user.y] : null,
+      });
+      return r.line ? { a: r.line.a, b: r.line.b } : null;
+    }
+    const L = this.halfExtent() * 1.4;
+    const [dx, dy] = [Math.sin(cs.azimuth * DEG) * L, Math.cos(cs.azimuth * DEG) * L];
+    return { a: [cs.centre[0] - dx, cs.centre[1] - dy], b: [cs.centre[0] + dx, cs.centre[1] + dy] };
+  }
+
   private drawCrossSection(W: number, H: number): void {
     const cs = this.layers.crossSection;
     if (!cs.enabled) return;
+    const ends = this.sectionEnds();
+    if (!ends) return;
     const ctx = this.ctx;
-    const L = this.halfExtent() * 1.4;
-    const [dx, dy] = [Math.sin(cs.azimuth * DEG) * L, Math.cos(cs.azimuth * DEG) * L];
-    const a = this.toScreen(cs.centre[0] - dx, cs.centre[1] - dy, W, H);
-    const b = this.toScreen(cs.centre[0] + dx, cs.centre[1] + dy, W, H);
+    const a = this.toScreen(ends.a[0], ends.a[1], W, H);
+    const b = this.toScreen(ends.b[0], ends.b[1], W, H);
     ctx.save();
     ctx.setLineDash([14, 8]);
     ctx.lineWidth = 3;

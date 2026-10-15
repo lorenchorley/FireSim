@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { FuelType, SpreadDriver } from '../core/types';
 import type { OverlayKind } from './layers';
-import { NO_DATA, crossSectionLegend, formatDuration, legendFor, niceArrivalMax, overlayColour, overlayScale, windLegend } from './legends';
-import { FUEL_TYPE_COLOURS, INTENSITY_CLASSES, MOISTURE_RAMP, hexToRgb } from './palette';
+import { NO_DATA, crossSectionLegend, formatDuration, legendFor, niceArrivalMax, overlayColour, overlayScale, sliceLegend, windLegend } from './legends';
+import { FUEL_TYPE_COLOURS, INTENSITY_CLASSES, MOISTURE_RAMP, hexToRgb, sampleRamp, sliceFieldScale } from './palette';
+import { SLICE_FIELD_IDS } from './slice/types';
 
 const ALL: OverlayKind[] = ['arrival', 'ros', 'intensity', 'driver', 'moisture', 'fuelLoad', 'fuelType', 'timeSinceFire', 'slope', 'aspect', 'insolation'];
 
@@ -41,6 +42,85 @@ describe('legendFor', () => {
     expect(crossSectionLegend().entries.length).toBeGreaterThan(4);
     expect(windLegend('surface').units).toBe('km/h');
     expect(windLegend('volume').units).toBe('m/s');
+  });
+});
+
+describe('sliceLegend (one legend for every chip of the air slice)', () => {
+  const KINDS = ['prognostic', 'diagnosed'] as const;
+
+  it('has a legend for every chip and both kinds of air, with evenly spaced labels that sit under their colours', () => {
+    for (const id of SLICE_FIELD_IDS)
+      for (const kind of KINDS) {
+        const l = sliceLegend(id, kind);
+        const s = sliceFieldScale(id);
+        expect(l.overlay).toBe('slice');
+        expect(l.kind).toBe('continuous');
+        expect(l.title.length, `${id} title`).toBeGreaterThan(3);
+        expect(l.entries.length, id).toBeGreaterThanOrEqual(3);
+        expect(l.gradient, id).toMatch(/^linear-gradient/);
+        expect(l.note, id).toBeTruthy();
+        // Evenly spaced along the bar: in value, or in tenfold steps for the log scale of smoke.
+        const place = (v: number): number => (s.ramp.log ? Math.log10(v) : v);
+        const step = place(l.entries[1]!.value) - place(l.entries[0]!.value);
+        for (let i = 0; i < l.entries.length; i++) {
+          const e = l.entries[i]!;
+          expect(e.colour, id).toMatch(/^#[0-9a-f]{6}$/i);
+          if (i > 0) expect(place(e.value) - place(l.entries[i - 1]!.value), `${id} spacing`).toBeCloseTo(step, 9);
+          // The colour of a label is the colour the curtain and the panel draw at that value.
+          const v = l.units === 'km/h' ? e.value / 3.6 : e.value;
+          expect(close(hexToRgb(e.colour), sampleRamp(s.ramp, v), 1.5 / 255), `${id} ${e.value}`).toBe(true);
+        }
+        // The ends of the labels are the ends of the scale.
+        const toMs = (v: number): number => (l.units === 'km/h' ? v / 3.6 : v);
+        expect(toMs(l.entries[0]!.value), id).toBeCloseTo(s.lo, 6);
+        expect(toMs(l.entries[l.entries.length - 1]!.value), id).toBeCloseTo(s.hi, 6);
+        expect(l.entries[0]!.words, id).toBeTruthy();
+        expect(l.entries[l.entries.length - 1]!.words, id).toBeTruthy();
+      }
+  });
+
+  it('wind speed is in km/h like the wind streaks, up and down in m/s, temperature in kelvin, smoke in no unit (the model’s own scale)', () => {
+    expect(sliceLegend('speed', 'prognostic').units).toBe('km/h');
+    expect(sliceLegend('along', 'prognostic').units).toBe('km/h');
+    expect(sliceLegend('across', 'prognostic').units).toBe('km/h');
+    expect(sliceLegend('up', 'prognostic').units).toBe('m/s');
+    expect(sliceLegend('theta', 'prognostic').units).toBe('K');
+    expect(sliceLegend('smoke', 'prognostic').units).toBe('');
+    expect(sliceLegend('speed', 'prognostic').entries.map((e) => e.label)).toEqual(['0', '30', '60', '90']);
+    expect(sliceLegend('along', 'prognostic').entries.map((e) => e.label)).toEqual(['-90', '-60', '-30', '0', '+30', '+60', '+90']);
+  });
+
+  it('the temperature legend says warmer or cooler than the area at that height, not "vs surroundings"', () => {
+    const l = sliceLegend('theta', 'prognostic');
+    expect(l.title).toBe('Warmer or cooler than the area at that height');
+    expect(JSON.stringify(l)).not.toMatch(/vs surroundings/i);
+    expect(l.note).toMatch(/warmer or cooler than the rest of the section at the same height/i);
+    expect(crossSectionLegend().title).toBe(l.title);
+  });
+
+  it('along and across say which way is which, in words', () => {
+    expect(sliceLegend('along', 'prognostic').entries[0]!.words).toBe('blowing towards A');
+    expect(sliceLegend('along', 'prognostic').entries[6]!.words).toBe('blowing towards B');
+    expect(sliceLegend('across', 'prognostic').entries[0]!.words).toBe('blowing to the left');
+    expect(sliceLegend('across', 'prognostic').entries[6]!.words).toBe('blowing to the right');
+  });
+
+  it('the 3-D atmosphere mentions the cyan reverse-flow arrows; the fast model says what it is and has none', () => {
+    for (const id of SLICE_FIELD_IDS) {
+      expect(sliceLegend(id, 'prognostic').note, id).toMatch(/cyan arrows blow against the main wind/i);
+      const d = sliceLegend(id, 'diagnosed').note!;
+      expect(d, id).toContain('Diagnosed wind: terrain effects only');
+      expect(d, id).not.toMatch(/cyan/i);
+    }
+  });
+
+  it('is written in plain words: no em dash, sentences that end', () => {
+    for (const id of SLICE_FIELD_IDS)
+      for (const kind of KINDS) {
+        const l = sliceLegend(id, kind);
+        expect(JSON.stringify(l), `${id} ${kind}`).not.toMatch(/[—–]/);
+        expect(l.note, `${id} ${kind}`).toMatch(/\.$/);
+      }
   });
 });
 

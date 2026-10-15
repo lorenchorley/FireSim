@@ -848,15 +848,22 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
   {
     id: 'crossSection',
     group: 'Simulation visuals',
-    title: 'Vertical air slice',
-    what: 'A vertical slice through the air along a line, showing warm and cool air and the wind arrows.',
-    why: 'It shows how the fire builds its own plume and wind, and how cold air drains down the valleys at night.',
+    title: 'Air slice',
+    what: 'A vertical slice through the air along a line, coloured by wind, rising and sinking air, temperature or smoke, with arrows for the wind in the slice.',
+    why: 'It shows how the hills bend the wind and, with the 3-D atmosphere, how the fire builds its own plume and wind and how cold air drains down the valleys at night.',
     kind: 'scene',
     scene: 'crossSection',
     dimension: '2-D slice',
-    available: needsAtmosphere,
-    source: () => 'FireSim 3-D atmosphere, computed on this device',
-    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells`,
+    // Any air with a 3-D wind: the 3-D atmosphere's (wind, temperature and smoke), or the fast tier's diagnosed wind (wind only).
+    available: (c) => need(c.hasAirWind ?? c.has3dAtmosphere, 'Needs the air picture, which the simulation makes once it has started'),
+    source: (sc) =>
+      sc?.atmosphere3d === false
+        ? 'FireSim wind model: the forecast wind fitted to the terrain, computed on this device (terrain effects only: the fast mode has no plume, temperature or smoke)'
+        : 'FireSim 3-D atmosphere, computed on this device',
+    resolution: (sc) =>
+      sc?.atmosphere3d === false
+        ? `${sc.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} wind cells, fitted again for each weather record and blended in between`
+        : `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} atmosphere cells`,
   },
   {
     id: 'insightMarkers',
