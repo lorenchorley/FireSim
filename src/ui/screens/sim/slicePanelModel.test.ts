@@ -18,11 +18,9 @@ import {
   footerParts,
   footerRuns,
   footerText,
-  joinLabels,
   legendView,
   lutIndex,
   makeLut,
-  noteText,
   pickPos,
   plotLayout,
   rasterBox,
@@ -314,21 +312,13 @@ describe('chips', () => {
     expect(c.filter((x) => x.available).map((x) => x.id)).toEqual(['speed', 'along', 'up', 'across']);
   });
 
-  it('groups the notes by reason: one reason is shown alone, several carry the chip names', () => {
+  it('makes one note per distinct reason, each word for word as the scene wrote it', () => {
     const same = disabledNotes(chipModel({ ...fakeUpdate(null).fields, theta: off('Needs the 3-D atmosphere.', 'use-3d'), smoke: off('Needs the 3-D atmosphere.', 'use-3d') }, 'speed'));
-    expect(same).toEqual([{ labels: ['Temp', 'Smoke'], reason: 'Needs the 3-D atmosphere.', use3d: true }]);
-    expect(noteText(same[0]!, false)).toBe('Needs the 3-D atmosphere.');
-    const two = disabledNotes(chipModel({ ...fakeUpdate(null).fields, theta: off('No temperature here.'), smoke: off('No smoke here.', 'use-3d') }, 'speed'));
-    expect(two.map((n) => noteText(n, true))).toEqual(['Temp: No temperature here.', 'Smoke: No smoke here.']);
+    expect(same).toEqual([{ reason: 'Needs the 3-D atmosphere.', labels: ['Temp', 'Smoke'], use3d: true }]);
+    const two = disabledNotes(chipModel({ ...fakeUpdate(null).fields, theta: off('Temperature needs the 3-D atmosphere.'), smoke: off('Smoke needs the 3-D atmosphere.', 'use-3d') }, 'speed'));
+    expect(two.map((n) => n.reason)).toEqual(['Temperature needs the 3-D atmosphere.', 'Smoke needs the 3-D atmosphere.']);
     expect(two.map((n) => n.use3d)).toEqual([false, true]);
     expect(disabledNotes(chipModel(null, 'speed'))).toEqual([]);
-  });
-
-  it('joins names in plain words', () => {
-    expect(joinLabels([])).toBe('');
-    expect(joinLabels(['Temp'])).toBe('Temp');
-    expect(joinLabels(['Temp', 'Smoke'])).toBe('Temp and Smoke');
-    expect(joinLabels(['A', 'B', 'C'])).toBe('A, B and C');
   });
 });
 

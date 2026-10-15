@@ -353,13 +353,14 @@ export function chipModel(fields: Record<SliceFieldId, SliceFieldStatus> | null 
 }
 
 export interface DisabledNote {
-  /** The chips this note is about, by label. */
-  labels: string[];
+  /** The scene's words for why chips are off, verbatim (they already name the field). */
   reason: string;
+  /** The chips they are about, by label (for tests and the screen reader's description). */
+  labels: string[];
   use3d: boolean;
 }
 
-/** One note per distinct reason, in chip order. A single reason is shown alone; several carry their chip names. */
+/** One note per distinct reason, in chip order, each shown as the scene wrote it. */
 export function disabledNotes(chips: readonly ChipView[]): DisabledNote[] {
   const notes: DisabledNote[] = [];
   for (const c of chips) {
@@ -368,19 +369,9 @@ export function disabledNotes(chips: readonly ChipView[]): DisabledNote[] {
     if (same) {
       same.labels.push(c.label);
       same.use3d = same.use3d || c.use3d;
-    } else notes.push({ labels: [c.label], reason: c.reason, use3d: c.use3d });
+    } else notes.push({ reason: c.reason, labels: [c.label], use3d: c.use3d });
   }
   return notes;
-}
-
-/** "Temp", "Temp and Smoke", "A, B and C". */
-export function joinLabels(labels: readonly string[]): string {
-  if (labels.length <= 1) return labels[0] ?? '';
-  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
-}
-
-export function noteText(n: DisabledNote, several: boolean): string {
-  return several ? `${joinLabels(n.labels)}: ${n.reason}` : n.reason;
 }
 
 export type EmptyKind = 'no-line' | 'too-short' | 'outside' | 'no-wind';

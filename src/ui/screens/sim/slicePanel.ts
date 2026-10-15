@@ -36,7 +36,6 @@ import {
   footerRuns,
   legendView,
   makeLut,
-  noteText,
   pickPos,
   plotLayout,
   rasterize,
@@ -320,7 +319,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       notesKey = key;
       reasons.hidden = notes.length === 0;
       setChildren(reasons, [
-        ...notes.map((n) => h('p', { class: 'hint' }, noteText(n, notes.length > 1))),
+        ...notes.map((n) => h('p', { class: 'hint' }, n.reason)),
         notes.some((n) => n.use3d) ? button({ label: SLICE_USE_3D_LABEL, variant: 'tonal', class: 'slice-use3d', testId: 'slice-use3d', onClick: () => options.onUse3d() }) : null,
       ]);
     }
