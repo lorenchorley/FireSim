@@ -401,13 +401,14 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   }
 
   function updateReadout(): void {
-    if (!reading || !data) {
-      readout.hidden = true;
+    const on = !!reading && !!data;
+    readout.hidden = !on;
+    root.classList.toggle('slice-probing', on); // (the short landscape panel gives the footer's line to the reading while there is one)
+    if (!on) {
       canvas.removeAttribute('aria-describedby');
       return;
     }
-    text(readoutText, probeSentence(reading, { units, kind: data.kind }));
-    readout.hidden = false;
+    text(readoutText, probeSentence(reading!, { units, kind: data!.kind }));
     canvas.setAttribute('aria-describedby', readoutId);
   }
 

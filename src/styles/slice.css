@@ -8,7 +8,7 @@
 .slice-canvas {
   display: block;
   width: 100%;
-  height: var(--slice-h, clamp(180px, 27vh, 230px)); /* as tall as the picture needs (slicePanel.ts), at most the box */
+  height: var(--slice-h, clamp(180px, 27vh, 230px)); /* what the picture needs (slicePanel.ts), at most the box */
   max-height: clamp(180px, 27vh, 230px);
   border-radius: var(--r-sm);
   touch-action: none; /* a drag moves the probe, not the panel */
@@ -58,7 +58,7 @@
   padding: 0 6px; /* six chips in 358 px */
 }
 
-/* A narrow phone: two rows of three, all in view (wider screens and the side column scroll one row). */
+/* A narrow phone: two rows of three (wider screens and the side column scroll one row). */
 @media (max-width: 411px) {
   .slice-chips {
     display: grid;
@@ -105,9 +105,14 @@
   border-radius: var(--r-xs);
 }
 
-/* Always in view: the body scrolls under it, and it sits on the body's bottom edge. */
+/* Always in view: the body scrolls under it. With no footer the controls are last: their hit areas must end inside the panel. */
 .slice-tool-body {
   padding-bottom: 0;
+  scroll-padding-bottom: 72px; /* a control scrolled to stops clear of the footer */
+}
+
+.slice-controls {
+  padding-bottom: 6px;
 }
 
 .slice-footer {
@@ -124,7 +129,7 @@
 @media (orientation: landscape) and (max-height: 540px) {
   .slice-view {
     position: sticky;
-    top: calc(-1 * var(--sp-2)); /* over the body's top padding: nothing scrolls past above the canvas */
+    top: calc(-1 * var(--sp-2));
     z-index: 2;
     margin-top: calc(-1 * var(--sp-2));
     padding-top: var(--sp-2);
@@ -133,11 +138,20 @@
   .slice-canvas {
     height: 96px;
   }
+  .slice-tool-body {
+    scroll-padding: 108px 0 30px; /* and clear of the picture */
+  }
   .slice-readout {
-    margin-top: 0; /* the window under the pinned picture is small: the clear button fits only without a gap */
+    margin-top: 0;
+  }
+  .slice-readout-text {
+    padding: 2px 0; /* four lines of the longest reading fit under the picture */
+  }
+  .slice-probing .slice-footer {
+    display: none; /* in the footer's room: it is back when the reading is cleared */
   }
   .slice-more {
-    display: none; /* kind, grid and age stay; their explanations wait for a taller screen */
+    display: none; /* kind, grid and age stay */
   }
 }
 
