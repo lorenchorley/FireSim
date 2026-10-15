@@ -5,6 +5,7 @@
  */
 import type { Insight, InsightKind } from '../core/types';
 import type { LayerState, OverlayKind } from '../render/layers';
+import { LINE_BY_CENTRE } from '../render/sliceFields';
 
 /** Layer id → overlay, in the spec's mapping. The first id in `showLayers` that maps to an overlay wins. */
 const OVERLAY_OF: Record<string, OverlayKind> = {
@@ -60,10 +61,10 @@ export function showMePatch(insight: Pick<Insight, 'kind' | 'x' | 'y' | 'showLay
         break;
       case 'plume':
         patch.wind = 'volume';
-        patch.crossSection = { enabled: true, azimuth: windToDeg, centre: [insight.x, insight.y] };
+        patch.crossSection = { enabled: true, azimuth: windToDeg, centre: [insight.x, insight.y], ...LINE_BY_CENTRE, field: 'theta' };
         break;
       case 'temperature':
-        patch.crossSection = { enabled: true, azimuth: patch.crossSection?.azimuth ?? windToDeg, centre: [insight.x, insight.y] };
+        patch.crossSection = { enabled: true, azimuth: patch.crossSection?.azimuth ?? windToDeg, centre: [insight.x, insight.y], ...LINE_BY_CENTRE, field: 'theta' };
         break;
       case 'smoke':
         patch.smoke = true;

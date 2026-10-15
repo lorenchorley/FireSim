@@ -232,12 +232,34 @@ describe('availability', () => {
     }
   });
 
-  it('wind speed and the air slice need the 3-D atmosphere', () => {
+  it('wind speed needs an air picture, and the 3-D atmosphere when the picture does not say what air it is', () => {
     expect(a('windSpeed', { ...ALL, has3dAtmosphere: false })).toEqual({ ok: false, reason: 'Needs the 3-D atmosphere: switch it on in Settings' });
-    expect(a('crossSection', { ...ALL, has3dAtmosphere: false })).toEqual({ ok: false, reason: 'Needs the 3-D atmosphere: switch it on in Settings' });
     expect(a('windSpeed', { ...ALL, hasFire: false }).ok).toBe(false);
     expect(a('windSpeed', ALL).ok).toBe(true);
+  });
+
+  it('the air slice is available on any air with a 3-D wind: the 3-D atmosphere and the fast tier’s diagnosed wind', () => {
     expect(a('crossSection', ALL).ok).toBe(true);
+    expect(a('crossSection', { ...ALL, hasFire: false }).ok).toBe(true); // it slices the air whether or not a fire exists
+    const fastTier = { ...ALL, has3dAtmosphere: false, hasAirWind: true };
+    expect(a('crossSection', fastTier)).toEqual({ ok: true });
+    // No air picture at all (before the first one): the reason is to wait for the simulation, not to change a setting.
+    const none = { ok: false, reason: 'Needs the air picture, which the simulation makes once it has started' };
+    expect(a('crossSection', { ...ALL, has3dAtmosphere: false, hasAirWind: false })).toEqual(none);
+    expect(a('crossSection', { ...ALL, has3dAtmosphere: false })).toEqual(none); // a context that does not say: the 3-D atmosphere decides
+    expect(a('crossSection', { ...ALL, has3dAtmosphere: true, hasAirWind: false })).toEqual(none);
+  });
+
+  it('the air slice says which air it shows in its source and resolution, for both kinds', () => {
+    const cs = info('crossSection');
+    expect(cs.source({ atmosphere3d: true })).toBe('FireSim 3-D atmosphere, computed on this device');
+    expect(cs.source()).toBe('FireSim 3-D atmosphere, computed on this device');
+    expect(cs.source({ atmosphere3d: false })).toMatch(/forecast wind fitted to the terrain/);
+    expect(cs.source({ atmosphere3d: false })).toMatch(/no plume, temperature or smoke/);
+    expect(cs.resolution({ atmosphere3d: true, atmosphereCellSize: 133 })).toBe('133 m atmosphere cells');
+    expect(cs.resolution()).toBe('100 to 270 m atmosphere cells');
+    expect(cs.resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toMatch(/^133 m wind cells, fitted again for each weather record/);
+    for (const text of [cs.title, cs.what, cs.why, cs.source({ atmosphere3d: false }), cs.resolution({ atmosphere3d: false })]) expect(text).not.toMatch(/[—–]/);
   });
 
   it('wind speed also shows in the fast tier, whose diagnosed wind carries the 10 m wind (plan 7.5 step 4), and says where it comes from', () => {

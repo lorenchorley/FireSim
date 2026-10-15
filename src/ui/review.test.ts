@@ -246,7 +246,19 @@ describe('"Show me" layers', () => {
     expect(showMePatch({ ...base, showLayers: ['slope', 'spread'] }, 90)).toEqual({ overlay: 'slope' });
     expect(showMePatch({ ...base, showLayers: ['embers'] }, 90)).toEqual({ overlay: 'landing', embers: true });
     expect(showMePatch({ ...base, showLayers: ['wind', 'dmz'] }, 90)).toEqual({ wind: 'surface', overlay: 'dmz' });
-    expect(showMePatch({ ...base, showLayers: ['plume'] }, 135)).toEqual({ wind: 'volume', crossSection: { enabled: true, azimuth: 135, centre: [100, 200] } });
+    expect(showMePatch({ ...base, showLayers: ['plume'] }, 135)).toEqual({ wind: 'volume', crossSection: { enabled: true, azimuth: 135, centre: [100, 200], preset: null, field: 'theta' } });
+  });
+  it('the plume and temperature sections put the line back on the centre and azimuth rule and colour by temperature', () => {
+    // Writing centre and azimuth must also clear a hand-placed line and a preset (render/slice/types.ts), or a stale one hides the section.
+    // `toStrictEqual` sees the explicit undefined, which is what a spread in SceneView.setLayers needs to overwrite the old values.
+    const free = { a: undefined, b: undefined, preset: null, field: 'theta' };
+    expect(showMePatch({ ...base, showLayers: ['plume'] }, 135).crossSection).toStrictEqual({ enabled: true, azimuth: 135, centre: [100, 200], ...free });
+    expect(showMePatch({ ...base, showLayers: ['temperature'] }, 45).crossSection).toStrictEqual({ enabled: true, azimuth: 45, centre: [100, 200], ...free });
+    expect(showMePatch({ ...base, showLayers: ['plume', 'temperature'] }, 10).crossSection).toStrictEqual({ enabled: true, azimuth: 10, centre: [100, 200], ...free });
+    const applied = { ...{ enabled: false, azimuth: 0, centre: [0, 0], a: [1, 2], b: [3, 4], preset: 'along' }, ...showMePatch({ ...base, showLayers: ['plume'] }, 135).crossSection };
+    expect(applied).toMatchObject({ enabled: true, azimuth: 135, centre: [100, 200], preset: null, field: 'theta' });
+    expect(applied.a).toBeUndefined();
+    expect(applied.b).toBeUndefined();
   });
   it('falls back to a per-kind default without showLayers', () => {
     expect(showMePatch({ ...base, kind: 'upslope-run' }, 0)).toEqual({ overlay: 'slope' });

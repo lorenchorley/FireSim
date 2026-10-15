@@ -27,6 +27,13 @@ export function sliceKindOf(air: SliceAir): SliceKind | null {
   return air.has.wind && (air.kind === 'prognostic' || air.kind === 'diagnosed') ? air.kind : null;
 }
 
+/**
+ * What whoever writes `centre` or `azimuth` of `LayerState.crossSection` must write with them (render/slice/types.ts
+ * `SliceLineState`): the line then goes back to "the chord through the centre along the azimuth", so a hand-placed line or
+ * a preset from before does not hide the change. (A spread in `SceneView.setLayers` keeps an explicit `undefined`.)
+ */
+export const LINE_BY_CENTRE = { a: undefined, b: undefined, preset: null } as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Words (plain, sentence case, no em dashes; "the fast model" and "the 3-D atmosphere" are the names the app already uses)
 // ─────────────────────────────────────────────────────────────────────────────
