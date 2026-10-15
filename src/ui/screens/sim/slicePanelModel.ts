@@ -281,7 +281,7 @@ export function flowTimeScale(lengthM: number): number {
  * `ratio` times as long as a metre of distance, so a parcel that rises `w` metres while it moves `u` metres along already
  * appears on screen with the slope `ratio * w / u`, which is the slope of the exaggerated ground it flows over. The on-screen
  * ratio therefore goes into the DRAWING (yOfZ), and the particles take 1: giving `stepFlow` the ratio as well would count it
- * twice and make streaks climb `ratio` times steeper than the ground they follow (checked in slicePanel.flow.test.ts).
+ * twice and make streaks climb `ratio` times steeper than the ground they follow (checked in slicePanelFlow.test.ts).
  */
 export function streakExaggeration(_l: PlotLayout): number {
   return 1;
