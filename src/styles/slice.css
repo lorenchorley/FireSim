@@ -3,4 +3,149 @@
 
 /* ── block 1: slicepanel (canvas, chips, legend, readout, footer, landscape layout) ── */
 
+/* Portrait: everything in one flow inside the tool panel's scrolling body: canvas, chips, legend, controls, switch, footer. */
+.slice-view {
+  background: var(--surface);
+}
+
+.slice-stage {
+  position: relative;
+}
+
+.slice-canvas {
+  display: block;
+  width: 100%;
+  height: 230px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  touch-action: none; /* a drag moves the probe, not the panel */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.slice-canvas:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-height: 700px) and (orientation: portrait) {
+  .slice-canvas {
+    height: 190px;
+  }
+}
+
+.slice-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  pointer-events: none;
+}
+
+.slice-readout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.slice-readout-text {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-2) 0;
+}
+
+.slice-chip[aria-disabled='true'] {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.slice-legend {
+  margin: var(--sp-2) 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.slice-legend-title {
+  color: var(--muted);
+}
+
+.slice-ramp {
+  height: 12px;
+  margin: var(--sp-1) 0;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--divider);
+}
+
+.slice-ends,
+.slice-classes {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.slice-classes {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.slice-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: var(--r-xs);
+  vertical-align: -1px;
+}
+
+.slice-use3d {
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+/* Short landscape (the side column, about 166 px of body): the canvas and the one-line footer stay pinned, the rest scrolls between them. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .slice-view {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .slice-canvas {
+    height: 104px;
+  }
+  .slice-readout {
+    position: absolute;
+    left: var(--sp-1);
+    right: var(--sp-1);
+    margin: 0;
+    box-shadow: var(--elev-2);
+  }
+  .slice-readout[data-at='top'] {
+    top: var(--sp-1);
+  }
+  .slice-readout[data-at='bottom'] {
+    bottom: var(--sp-1);
+  }
+  .slice-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0;
+    padding: var(--sp-1) 0;
+    background: var(--surface);
+  }
+  .slice-kind-more {
+    display: none;
+  }
+}
+
 /* ── block 2: slicetool (the controls row and its notice line; reuse .btn and .row-actions before adding anything) ── */
