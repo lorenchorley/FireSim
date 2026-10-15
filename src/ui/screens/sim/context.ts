@@ -8,6 +8,7 @@ import type { Settings } from '../../settings';
 import type { Store } from '../../store';
 import type { Pt } from '../../brushGeometry';
 import type { LegendProvider } from '../../legends';
+import type { SliceToolState } from './sliceTypes';
 
 export type ToolId = 'why' | 'fire' | 'fuel' | 'wind' | 'layers' | 'whatif';
 /** Bottom dock: 'closed' = only the navigation row (the default), then three heights of open sheet. */
@@ -54,6 +55,8 @@ export interface UiState {
   brushRadius: number;
   wind: { dir: number; kmh: number; radius: number };
   viewMode: 'orbit' | 'top' | 'ground';
+  /** The Air slices tool's own state (placement, probe, tab, model cells); undefined until the tool is first opened (sliceTypes.ts). */
+  slice?: SliceToolState;
 }
 
 export interface SimContext {
