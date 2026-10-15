@@ -114,7 +114,7 @@ export const SLICE_MIN_LENGTH_CELLS = 2;
 /** A preset line runs this far each way from its centre, so far as the model rectangle allows (about 6 km, §8.4). */
 export const SLICE_PRESET_HALF_LENGTH_M = 3000;
 
-/** (The footer says how much older the air is than the picture beyond `AIR_STALE_S` = 90 s: core/airView.ts, `airAgeS`.) */
+// (The footer says how much older the air is than the picture beyond `AIR_STALE_S` = 90 s: core/airView.ts, `airAgeS`.)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The line: what is asked for, and what it resolves to
@@ -155,7 +155,7 @@ export type SliceIssue = 'too-short' | 'outside-model' | 'no-user' | 'no-fire' |
 /**
  * Facts about a line that IS drawn (the controls show them as a quiet line, never a toast):
  *   clipped                  the line met the edge of the model rectangle and was cut ("Shown to the edge of the model area")
- *   no-fire-centred-on-map   a preset (or the original curtain) had no fire to go through ("No fire yet: centred on the map")
+ *   no-fire-centred-on-map   a preset (not 'me') had no fire to go through ("No fire yet: centred on the map")
  */
 export type SliceNote = 'clipped' | 'no-fire-centred-on-map';
 
