@@ -7,7 +7,7 @@
  *  - the probe: a tap puts a readout under the picture, a different tap changes it, the clear button, the arrow keys and Escape;
  *  - "Show model cells" redraws the picture (nearest neighbour) and says nothing else;
  *  - the honest footer: the kind of air, the model grid and the time of the air, always in view;
- *  - landscape 844x390: the canvas and the footer stay in view while the chips and the controls scroll under them;
+ *  - landscape 844x390: the canvas and the footer stay in view while the chips and the controls scroll under them (a reading takes the footer's line);
  *  - reduced motion: static arrows instead of streaks, and a picture that holds still.
  * It drives the tool (lane slicetool) by the Tools menu entry `tool-air` and its preset button `slice-preset-along`; the panel's own
  * parts by the test ids of slicePanel.ts (`slice-canvas`, `slice-chip-<field>`, `slice-readout`, `slice-footer`, ...). Nothing in
@@ -191,9 +191,16 @@ test('3-D air in landscape (844x390): the picture and the footer stay in view wh
   await page.getByTestId('slice-chip-along').scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-along').click();
   await expect(canvas).toHaveAttribute('data-field', 'along');
-  // a tap on the picture reads the air; the readout comes in under the pinned picture and does not push the footer out of view
+  // a tap on the picture reads the air; the readout comes in under the pinned picture, all of it in view: there is no room for the
+  // footer as well, so it gives the reading its line and is back when the reading is cleared
   await press(page, canvas, 0.4, 0.3);
-  await expect(page.getByTestId('slice-readout')).toBeVisible();
+  const readout = page.getByTestId('slice-readout');
+  await expect(readout).toBeVisible();
+  const rb = (await readout.boundingBox())!;
+  const panelBottom = (await page.getByTestId('air-panel').boundingBox())!;
+  expect(rb.y + rb.height, 'the whole reading is inside the panel').toBeLessThanOrEqual(panelBottom.y + panelBottom.height + 1);
+  await expect(footer).toBeHidden();
+  await page.getByTestId('slice-probe-clear').click();
   await expect(footer).toBeInViewport();
 });
 
