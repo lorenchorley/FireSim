@@ -4,7 +4,8 @@
  *  - every picture carries the terrain-following layout, the kind of the air, the datum and top, and the air's own time;
  *  - the fast tier's view holds a 3-D wind (kind 'diagnosed', no temperature or smoke) and the 3-D tier's holds all five fields;
  *  - the layers that read the air work on both: the wind speed heat map (now also in the fast tier), the wind streaks, the
- *    smoke and the curtain, whose "needs the 3-D atmosphere" callout follows the kind and not the number of levels;
+ *    smoke and the curtain, whose chips (Temp and Smoke need the 3-D atmosphere) and "diagnosed wind" callout follow the kind
+ *    of the air and not the number of levels;
  *  - nothing in the console (the guard of ./fixtures) and the run is never paused by an error.
  */
 import type { Page } from '@playwright/test';
@@ -83,8 +84,34 @@ async function checkLayers(page: Page, prognostic: boolean): Promise<void> {
   await panel.getByTestId('wind-layer').getByRole('radio', { name: 'Near the ground' }).check({ force: true });
   await panel.getByTestId('cross-section').click();
   await expect(panel.getByTestId('cross-section').getByRole('switch')).toBeChecked();
-  if (prognostic) await expect(page.getByTestId('need-3d')).toBeHidden();
-  else await expect(page.getByTestId('need-3d')).toBeVisible();
+  // The section works on both airs. The old "need the 3-D atmosphere" warning stays only for the streaks through the plume (not on here).
+  await expect(page.getByTestId('need-3d')).toBeHidden();
+  const chip = (id: string) => panel.getByTestId(`slice-field-${id}`);
+  for (const id of ['speed', 'along', 'up', 'across']) await expect(chip(id)).toBeEnabled();
+  if (prognostic) {
+    // Every chip works, nothing is said about a missing plume, and with no chip chosen the curtain keeps its old colouring: temperature.
+    await expect(panel.getByTestId('slice-diagnosed')).toBeHidden();
+    await expect(chip('theta')).toBeEnabled();
+    await expect(chip('smoke')).toBeEnabled();
+    await expect(chip('theta')).toHaveAttribute('aria-pressed', 'true');
+  } else {
+    // The fast tier shows the diagnosed wind: Temp and Smoke are off and say why, the info callout says what the section is and offers the switch.
+    const note = panel.getByTestId('slice-diagnosed');
+    await expect(note).toBeVisible();
+    await expect(note).toContainText('This section shows the diagnosed wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperature and smoke.');
+    await expect(panel.getByTestId('use-3d-slice')).toBeVisible();
+    await expect(chip('theta')).toBeDisabled();
+    await expect(chip('smoke')).toBeDisabled();
+    await expect(chip('theta')).toHaveAttribute('aria-label', /Temperature needs the 3-D atmosphere/);
+    await expect(chip('speed')).toHaveAttribute('aria-pressed', 'true');
+  }
+  // A chip changes the colouring, and the legend on the map follows it.
+  await chip('along').click();
+  await expect(chip('along')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chip('speed')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('map-legend')).toContainText('Wind along the line');
+  await chip('up').click();
+  await expect(page.getByTestId('map-legend')).toContainText('Air going up or down');
   await page.waitForTimeout(500); // a few frames with the layers on
   expect((await session(page)).error).toBeNull();
   await panel.getByTestId('cross-section').click();

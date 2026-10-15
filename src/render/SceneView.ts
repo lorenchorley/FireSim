@@ -1586,6 +1586,8 @@ export class SceneView implements SceneViewApi {
     this.windArrows.dispose();
     this.smoke.dispose();
     this.section.dispose();
+    this.slicer.invalidate();
+    this.sliceListeners.clear();
     this.icons.dispose();
     this.renderer.dispose();
     // Release the GL context now instead of at GC time: browsers allow only ~8–16 live contexts, and the app may
