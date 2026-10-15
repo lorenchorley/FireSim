@@ -53,7 +53,7 @@ import {
   type Ramp,
   type Rgb,
 } from './palette';
-import { SLICE_FIELDS, SLICE_KIND_LABEL, type SliceFieldId, type SliceKind } from './slice/types';
+import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_THETA_BASIS, type SliceFieldId, type SliceKind } from './slice/types';
 
 /** How the legend should be drawn. */
 export type LegendKind = 'continuous' | 'classes' | 'categorical' | 'cyclic';
@@ -726,7 +726,7 @@ function sliceNote(field: SliceFieldId, kind: SliceKind): string {
     case 'up':
       return `Air rising (red) or sinking (blue): the plume, sunny slopes, eddies behind ridges and cold air running downhill. ${arrows}${diagnosed}`;
     case 'theta':
-      return `Warmer or cooler than the rest of the section at the same height. Red = warm rising air (fire plume, sunny slopes); blue = cold sinking air (night drainage into valleys). ${arrows}${diagnosed}`;
+      return `Warmer or cooler than ${SLICE_THETA_BASIS}, not a real temperature. Red = warm rising air (fire plume, sunny slopes); blue = cold sinking air (night drainage into valleys). ${arrows}${diagnosed}`;
     case 'smoke':
       return `Where the model has put smoke, from a faint trace to dense. Each step along the bar is ten times more smoke, in the model’s own units, not a measured amount. ${arrows}${diagnosed}`;
   }
@@ -751,7 +751,7 @@ export function sliceLegend(field: SliceFieldId, kind: SliceKind): LegendSpec {
   });
   return {
     overlay: 'slice',
-    title: field === 'theta' ? 'Warmer or cooler than the area at that height' : SLICE_FIELDS.find((f) => f.id === field)!.name,
+    title: field === 'theta' ? `Warmer or cooler than ${SLICE_THETA_BASIS}` : SLICE_FIELDS.find((f) => f.id === field)!.name,
     units: d.units,
     kind: 'continuous',
     entries,

@@ -30,7 +30,7 @@ describe('the map legend of the air slice', () => {
   });
 
   it('with no chip chosen it is the original colouring: temperature on the 3-D atmosphere, wind speed on the fast model', () => {
-    expect(currentMapLegend(ctxFor(lite('prognostic', true), {}), 0)!.title).toBe('Warmer or cooler than the area at that height');
+    expect(currentMapLegend(ctxFor(lite('prognostic', true), {}), 0)!.title).toBe("Warmer or cooler than the slice's average at that height");
     expect(currentMapLegend(ctxFor(lite('diagnosed', false), {}), 0)!.title).toBe('Wind speed');
   });
 

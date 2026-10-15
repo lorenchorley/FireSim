@@ -78,12 +78,19 @@ export interface SliceFieldInfo {
   needs: AirField;
 }
 
+/**
+ * What the Temp chip is measured against, in words. `theta` is the anomaly minus the mean of the valid cells of its own row of the
+ * slice (see the Temperature convention above), so the honest words are "warmer or cooler than the slice's average at that height",
+ * not "than the area". The probe sentence, the legend and the chip's name all use this one phrase.
+ */
+export const SLICE_THETA_BASIS = "the slice's average at that height";
+
 export const SLICE_FIELDS: readonly SliceFieldInfo[] = [
   { id: 'speed', label: 'Speed', name: 'Wind speed', needs: 'wind' },
   { id: 'along', label: 'Along', name: 'Wind along the line', needs: 'wind' },
   { id: 'up', label: 'Up/down', name: 'Air going up or down', needs: 'wind' },
   { id: 'across', label: 'Across', name: 'Wind across the line', needs: 'wind' },
-  { id: 'theta', label: 'Temp', name: 'Air temperature against the surroundings', needs: 'theta' },
+  { id: 'theta', label: 'Temp', name: `Air temperature against ${SLICE_THETA_BASIS}`, needs: 'theta' },
   { id: 'smoke', label: 'Smoke', name: 'Smoke', needs: 'smoke' },
 ];
 
@@ -477,7 +484,7 @@ export type CreateSliceUpdater = (opts?: { minIntervalMs?: number }) => SliceUpd
  * of the conventions). `moveProbe` is the keyboard: one lattice step per key (a quarter of the axis when `big`), starting
  * from the middle of the slice when `pos` is null, and never leaving the slice. `probeSentence` is the readout, in the repo's
  * voice (plain words, "about"): "Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m
- * above ground, 3 K warmer than the area"; "towards A" for a negative along, "to the right" or "to the left" for across,
+ * above ground, 3 K warmer than the slice's average at that height"; "towards A" for a negative along, "to the right" or "to the left" for across,
  * "down" for a negative up; the temperature clause only when the air has one (never for the diagnosed kind); for `where`
  * other than 'air' one short sentence ("Inside the ground", "Below the model's ground: the model has no air here", "Above the
  * top of the model"). `windFromDeg` is the "from" bearing of the conventions, wrapped to 0 to 360.
@@ -504,8 +511,8 @@ export type CreateSliceUpdater = (opts?: { minIntervalMs?: number }) => SliceUpd
  *
  *   export function sliceLegend(field: SliceFieldId, kind: SliceKind): LegendSpec        (replaces `crossSectionLegend`)
  *
- * The legend of a chip (`LegendSpec.overlay` gains 'slice'). The temperature legend says "warmer or cooler than the air
- * around it at that height", not "Air temperature vs surroundings".
+ * The legend of a chip (`LegendSpec.overlay` gains 'slice'). The temperature legend says "warmer or cooler than the slice's
+ * average at that height" (`SLICE_THETA_BASIS`), not "Air temperature vs surroundings" and not "than the area".
  *
  * ── src/render/SceneView.ts, api.ts ──
  *

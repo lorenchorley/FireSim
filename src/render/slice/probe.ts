@@ -10,7 +10,7 @@
 import { RAD, wrapDeg } from '../../core/units';
 import { compassWord, int, short } from '../../explain/text';
 import { LatticeStencil } from './lattice';
-import type { SliceData, SliceKind, SliceProbePos, SliceProbeReading, SliceSpeedUnit } from './types';
+import { SLICE_THETA_BASIS, type SliceData, type SliceKind, type SliceProbePos, type SliceProbeReading, type SliceSpeedUnit } from './types';
 
 /** Below this horizontal speed (m/s) the wind has no direction worth naming. */
 const CALM_MS = 0.2;
@@ -133,7 +133,7 @@ function speedWords(ms: number, units: SliceSpeedUnit): string {
 
 /**
  * The readout, in the repo's voice (plain words, "about"), for example "Wind about 32 km/h from the north-west, along the line
- * 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the area". The wind is always "from"; the along and across
+ * 28 km/h towards B, up 1.4 m/s, 60 m above ground, 3 K warmer than the slice's average at that height". The wind is always "from"; the along and across
  * parts say which way the air goes in the picture ("towards A" or "towards B", "to the right" or "to the left" of someone
  * walking from A to B); vertical motion is in m/s whatever the speed unit is. The temperature clause is for the time-stepped
  * kind only. A point that is not in the model's air gets one short sentence saying why.
@@ -154,7 +154,8 @@ export function probeSentence(r: SliceProbeReading, opts: { units: SliceSpeedUni
   if (Math.abs(up) >= LEVEL_MS) parts.push(`${up > 0 ? 'up' : 'down'} ${short(Math.abs(up))} m/s`);
   parts.push(r.aglM < 1 ? 'at ground level' : `${int(r.aglM >= 20 ? Math.round(r.aglM / 10) * 10 : r.aglM)} m above ground`);
   if (opts.kind === 'prognostic' && r.thetaK !== null) {
-    parts.push(Math.abs(r.thetaK) < 0.5 ? 'about the same temperature as the area' : `${short(Math.abs(r.thetaK))} K ${r.thetaK > 0 ? 'warmer' : 'cooler'} than the area`);
+    // The number is against the slice's own air at that height (the mean of the row, see `SliceData.values.theta`), not the whole area.
+    parts.push(Math.abs(r.thetaK) < 0.5 ? `about the same temperature as ${SLICE_THETA_BASIS}` : `${short(Math.abs(r.thetaK))} K ${r.thetaK > 0 ? 'warmer' : 'cooler'} than ${SLICE_THETA_BASIS}`);
   }
   return parts.join(', ');
 }

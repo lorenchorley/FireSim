@@ -638,7 +638,7 @@ test('fast tier: place, presets, chips with Temp and Smoke off, probe, cells, fo
     await page.getByTestId('slice-chip-theta').click();
     await expect(canvasOf(page)).toHaveAttribute('data-field', 'theta');
     await expect.poll(async () => (await sliceOf(page))?.field).toBe('theta');
-    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the area/);
+    await expect(page.getByTestId('slice-legend')).toContainText(/Warmer or cooler than the slice's average at that height/);
     await page.getByTestId('air-close').click();
   });
 });
