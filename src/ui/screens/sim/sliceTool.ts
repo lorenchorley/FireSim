@@ -77,6 +77,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   let loadState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let lastKey = '';
+  let wasPlacing: SliceEnd | null = null;
   /** What the panel was last told, so its own events are not echoed back to it. */
   let toldProbe: SliceProbePos | null = actions.state().probe;
   let toldCells = actions.state().showCells;
@@ -87,7 +88,13 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     a: makeButton(SET_LABEL.a, { testId: 'slice-set-a', onClick: () => startPlacing('a') }),
     b: makeButton(SET_LABEL.b, { testId: 'slice-set-b', onClick: () => startPlacing('b') }),
   };
-  const swapBtn = makeButton(SWAP_LABEL, { testId: 'slice-swap', onClick: () => (actions.swap(), render()) });
+  const swapBtn = makeButton(SWAP_LABEL, {
+    testId: 'slice-swap',
+    onClick: () => {
+      actions.swap();
+      render();
+    },
+  });
   const presetsId = uniqueId('slice-presets');
   const presetsToggle = h(
     'button',
@@ -106,7 +113,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   });
   const presetList = h('div', { class: 'slice-presets', id: presetsId, hidden: true }, presetCells.map((c) => c.wrap));
   const note = h('p', { class: 'hint slice-note', dataset: { testid: 'slice-note' }, hidden: true });
-  const controls = h('div', { class: 'slice-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note]);
+  const controls = h('div', { class: 'slice-tool-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note]);
 
   function apply(v: ControlsView): void {
     idleRow.hidden = !!v.placing;
@@ -138,6 +145,9 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
       lastKey = key;
       apply(v);
     }
+    // A placement ended from outside the buttons (Back, Escape): the keyboard focus was on a button that is now put away.
+    if (!v.placing && wasPlacing && placingRow.contains(document.activeElement)) focus(setBtn[wasPlacing].el);
+    wasPlacing = v.placing;
     // The cross moves when the map is panned, and nothing tells us: while placing, look again a few times a second.
     if (v.placing && !pollTimer) pollTimer = setInterval(render, 150);
     else if (!v.placing && pollTimer) {
@@ -250,6 +260,12 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
         try {
           mount(m);
         } catch {
+          // A panel that fails while it is being made is as good as one that did not load: the controls stay, with Try again.
+          try {
+            panel?.destroy();
+          } catch {
+            // nothing more to undo
+          }
           panel = null;
           loadState = 'failed';
           layoutBody();
@@ -307,7 +323,6 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   const offSlice = ctx.view.onSlice?.(onSlice);
   if (offSlice) unsubs.push(offSlice);
 
-  layoutBody();
   render();
   startLoad();
 
