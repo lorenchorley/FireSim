@@ -442,7 +442,7 @@ test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, ni
   const steps = await help.locator('.howto li').evaluateAll((els) => els.map((e) => ({ label: e.querySelector('strong')?.textContent ?? '', text: e.textContent ?? '' })));
   const tools = steps.find((x) => x.label === 'Tools: ');
   expect(tools?.text).toContain('Tap an icon to ask about it');
-  for (const label of ['If it runs slowly: ', 'Statistics: ', 'Settings: ', 'Air slices: ']) expect(steps.map((x) => x.label), label).toContain(label);
+  for (const label of ['If it runs slowly: ', 'Statistics: ', 'Settings: ', 'Air slices: ', 'Record a line: ']) expect(steps.map((x) => x.label), label).toContain(label);
   expect(tools?.text).toContain('Air slices'); // 0.4.0: the Tools list names the new tool
   // Glossary: the new terms are in, closed until tapped, each with its one-line gloss under the term.
   const terms = await help.locator('.gloss-term').allInnerTexts();
