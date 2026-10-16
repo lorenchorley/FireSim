@@ -758,7 +758,7 @@ fails the same import again, so on the web a second try cannot recover (plan 17.
 scene glue and the registration; `slice.css` is 4,024 bytes of source (cap 4,096) and is not imported by `main.css`. Sizes of the chunk, of the entry's
 growth and of the chunk the build splits `explain/text.ts` into (`probe.ts` is the only main-thread module that imports it, and the
 in-thread engine's chunk holds it too, so the build shares it as a chunk of its own: a size the lane reported as about 12 kB gzip, to be
-re-read): `TBD-BUNDLE` (*Performance budgets*, below). Budgets in `scripts/check-bundle.mjs` did not change.
+re-read): 12.1 kB gzip in the release build (*Performance budgets*, below). Budgets in `scripts/check-bundle.mjs` did not change.
 
 **Tests.** Pure, in node: `airView.oracle`, `airView.perf`, `airView.sim`, `atmosphereSampler`, `snapshotStore.air`, `memoryModel` (the
 keyframe rows), `core/airView`, `core/airPack` (the 16-bit wind copy and its bound), `snapshotStore.fast6h.sim` (the 6 hour table of the
@@ -1317,13 +1317,13 @@ so the panel is a lazy chunk). The other rows were measured in node on the build
 
 | Measure | 0.3.0 (table above) | 0.4.0 | Budget / verdict |
 | --- | --- | --- | --- |
-| JS, all chunks (raw / gzip, kB) | 2729 / 912.5 | TBD-BUNDLE | gzip <= 1000 (`npm run check:bundle`) |
-| Entry chunk `index-*.js` (raw / gzip, kB) | 462 / 159.7 | TBD-BUNDLE (a builder reported about +5.7 gzip for the tool's shell, model and scene glue) | gzip <= 195 |
-| CSS (raw / gzip, kB) | 125.3 / 22.4 | TBD-BUNDLE | raw <= 135, gzip <= 25; `slice.css` is imported by the lazy chunk, not by `main.css` |
-| The Air slices panel chunk (panel, drawing, `flow2d`, `probe`, `niceTicks`, lattice reader, its CSS), gzip kB | none | TBD-BUNDLE | lazy, no budget of its own; the plan estimated 14 to 18 |
-| The chunk the build splits `explain/text.ts` into, gzip kB | none | TBD-BUNDLE (a builder reported about 12) | counted in all JS |
+| JS, all chunks (raw / gzip, kB) | 2729 / 912.5 | 2807 / 943.3 | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 462 / 159.7 | 477.7 / 165.5 (+5.8 gzip: the tool's shell, model and scene glue, and the air view fields) | gzip <= 195 |
+| CSS (raw / gzip, kB) | 125.3 / 22.4 | 127.7 / 23.3 | raw <= 135, gzip <= 25; `slice.css` is imported by the lazy chunk, not by `main.css` |
+| The Air slices panel chunk (panel, drawing, `flow2d`, `probe`, `niceTicks`, lattice reader, its CSS), gzip kB | none | 10.5 (26.1 raw), plus its CSS 0.9 (2.3 raw) | lazy, no budget of its own; the plan estimated 14 to 18 |
+| The chunk the build splits `explain/text.ts` into, gzip kB | none | 12.1 (35.5 raw) | counted in all JS |
 | `src/styles/slice.css`, source | none | 4,024 bytes (`wc -c`; it was 3,979 before the slice-UI round) | <= 4,096 bytes (the plan's CSS estimate) |
-| Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | TBD-BUNDLE | unchanged by this release / <= 33 |
+| Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | 33.1 / 29.0 (30,360,109 bytes; `sectionLine` chunk 3.7 gzip is also new) | unchanged by this release / no budget |
 | `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`; the times vary: later runs gave 0.40 / 0.60 / 1.15 ms and 0.43 ms fast, 1.22 ms high) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
 | History keyframe, fast tier at 45 x 45 x 20 | | +237.3 KiB (6 bytes per cell: 16-bit integers, in a wind list beside the keyframes; the live snapshot holds the 474.6 KiB exactly) | within 0.00046 m/s of the exact wind at 30 m/s |
 | History of a 6 h fast-tier run (72 keyframes) | | 2 GB and up: +17.5 MB (72 volumes); 0.5 to 1 GB: about +5 % per keyframe, the volumes held to 4 % of the budget; keyframes and longest gap as in 0.3.0 (the count about 5 % lower on average over the last hour) | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB; `snapshotStore.fast6h.sim.test.ts` |
@@ -1335,8 +1335,8 @@ so the panel is a lazy chunk). The other rows were measured in node on the build
 
 Not measured: the panel on a phone (frame rate with the streaks, the chunk's load time), the whole
 fast-tier snapshot size after the volume (about 0.5 MB more than before from the arrays' sizes), the Layers panel's node count with
-the section on. The plan's budget row for D ("14 to 18 kB, lazy") and for C ("about 3 kB, entry") are to be compared with the TBD-BUNDLE
-figures above when they are filled in.
+the section on. The plan's budget row for D ("14 to 18 kB, lazy") is met with room (10.5 kB gzip plus 0.9 kB of CSS); for C ("about 3 kB, entry")
+the entry grew by 5.8 kB gzip in all, which includes the tool's shell, the model and the scene glue, so that row was too small.
 
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 

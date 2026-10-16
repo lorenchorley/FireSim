@@ -24,9 +24,9 @@ incidents, or a guarantee that anywhere is safe.
 | ![Setup](docs/screenshots/01-setup.png) | ![Mark the fire](docs/screenshots/02-mark-fire.png) | ![3-D view](docs/screenshots/03-orbit.png) | ![Arrival isochrones](docs/screenshots/04-top-arrival.png) |
 | Setup: demo site, preset weather | Mark the fire with the crosshair | 3-D view of the running fire | Top view, arrival-time overlay |
 | ![Cross-section](docs/screenshots/05-cross-section.png) | ![Insights](docs/screenshots/06-insights.png) | ![Why here?](docs/screenshots/07-why-here.png) | ![Eye level](docs/screenshots/08-eye-level.png) |
-| The air slice's curtain (this picture is from before 0.4.0 and will be retaken: the curtain now has colour chips and also works on the fast tier) | Insight cards | "Why here?" explanation | Eye level from a lookout |
+| The air slice's curtain (retaken for 0.4.0: it now has colour chips and also works on the fast tier) | Insight cards | "Why here?" explanation | Eye level from a lookout |
 | ![Menus](docs/screenshots/09-menus-open.png) | ![Timeline jump](docs/screenshots/10-timeline-jump.png) | ![Speed](docs/screenshots/11-speed-popover.png) | |
-| The two round menus, expanded (tools, view; the Tools list gained Air slices in 0.4.0, so this picture will be retaken too) | A jump far ahead computing, with Cancel | Playback speed options | |
+| The two round menus, expanded (tools, view; the Tools list gained Air slices in 0.4.0) | A jump far ahead computing, with Cancel | Playback speed options | |
 
 The screenshots above are produced by the end-to-end test `e2e/app.spec.ts` (Pixel 7 profile, the real engine). The new screens
 below come from `e2e/gallery.spec.ts` (the same build, in light, night and high-contrast looks) and are 412 x 839 CSS pixels.
@@ -60,7 +60,7 @@ their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 
 The pictures of 0.4.0 (Air slices) are made by two more tests of the same spec, `gallery 0.4.0: the Air slices tool placing a line ...`
 (33, 34 and 35) and `gallery 0.4.0: the side view on the fast model ...` (34b). They are written into `docs/screenshots/` when the pictures
-are regenerated for the release; until then these four files do not exist.
+are regenerated (the 0.4.0 release run did).
 
 | | | | |
 |---|---|---|---|
@@ -896,7 +896,7 @@ For iOS, after `cap add ios`, add the location permission the "Use my location" 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
 Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 108+, which `capacitor.config.ts` enforces, iOS 16+; the build target is ES2022). The bundle
-is about TBD-BUNDLE MB (about TBD-BUNDLE MB of app code and styles, TBD-BUNDLE MB of it JavaScript, from `npm run build:cap`; all JavaScript TBD-BUNDLE kB gzip, the entry chunk TBD-BUNDLE kB gzip, the lazy Air slices chunk TBD-BUNDLE kB gzip, against budgets that did not change: 1000 and 195), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
+is about 36 MB (about 3.0 MB of app code and styles, 2.7 MB of it JavaScript, from `npm run build:cap`; all JavaScript 943.3 kB gzip, the entry chunk 165.5 kB gzip, the lazy Air slices chunk 10.5 kB gzip plus 0.9 kB of CSS, against budgets that did not change: 1000 and 195), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
 ## Offline use and area packs
