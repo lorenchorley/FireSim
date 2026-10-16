@@ -28,6 +28,7 @@ import {
   type SlicePresetId,
   type SlicePresetStatus,
   type SliceProbePos,
+  type SliceRecordingStatus,
   type SliceUpdate,
 } from '../../../render/slice/types';
 import type { SlicePlacing, SliceToolState } from './sliceTypes';
@@ -64,6 +65,11 @@ export const PLACE_LABEL: Record<SliceEnd, string> = { a: 'Place A here', b: 'Pl
 export const SWAP_LABEL = 'Swap';
 export const CANCEL_LABEL = 'Cancel';
 export const PRESETS_LABEL = 'Presets';
+/** The time-lapse recording's two buttons (0.4.1) and what the screen reader hears when they are pressed. */
+export const KEEP_LABEL = 'Keep this line';
+export const CLEAR_RECORDING_LABEL = 'Clear recording';
+export const KEEP_SAY = 'Line kept. Recording from the next picture.';
+export const CLEAR_SAY = 'Recording cleared. Recording again from the next picture.';
 const END_WORD: Record<SliceEnd, string> = { a: 'the start (A)', b: 'the end (B)' };
 
 export const PRESET_LABEL: Record<SlicePresetId, string> = { along: 'Along the wind', across: 'Across the wind', slope: 'Up the slope', me: 'Me to fire' };
@@ -363,6 +369,20 @@ export function swapEnds(s: SliceToolState, cs: CrossSection, facts: LineFacts):
   };
 }
 
+/**
+ * "Keep this line": a live preset (it follows the wind and the fire, so it is never recorded) becomes the fixed line it is now, the same
+ * way "Swap" freezes one, and the recording starts with the next picture. Nothing for any other line or for no line.
+ */
+export function keepLine(s: SliceToolState, cs: CrossSection, facts: LineFacts): ToolStep {
+  const line = facts.line;
+  if (!line || facts.source !== 'preset' || !facts.preset) return noStep(s);
+  return {
+    state: { ...s, placing: null, candidate: null, draft: { a: null, b: null }, probe: null },
+    crossSection: { ...cs, enabled: true, a: line.a, b: line.b, preset: null, field: cs.field ?? 'speed' },
+    say: KEEP_SAY,
+  };
+}
+
 /** A chip was chosen (in the panel): the section is coloured by it. */
 export function fieldWrite(cs: CrossSection, field: SliceFieldId): CrossSection | null {
   return cs.field === field ? null : { ...cs, field };
@@ -398,6 +418,8 @@ export interface ControlsInput {
   verdict: PlaceVerdict | null;
   /** The tool just asked for the 3-D atmosphere and the run has not caught up yet. */
   switching3d?: boolean;
+  /** The time-lapse recorder's state (`SceneViewApi.sliceRecording.status()`), or null where there is no recorder. */
+  recording?: Pick<SliceRecordingStatus, 'count'> | null;
 }
 
 export interface ControlsView {
@@ -410,6 +432,10 @@ export interface ControlsView {
   presets: PresetView[];
   /** The quiet line under the buttons, '' when there is nothing to say. */
   hint: string;
+  /** "Keep this line" is offered: the line in force is a live preset that can be drawn (and nothing is being placed). */
+  keep: boolean;
+  /** "Clear recording" is offered: the recorder holds at least one picture (and nothing is being placed). */
+  clear: boolean;
 }
 
 export function controlsView(i: ControlsInput): ControlsView {
@@ -423,6 +449,8 @@ export function controlsView(i: ControlsInput): ControlsView {
     swapDisabled: !facts.line,
     presets: presetViews(i.presets, facts.preset, i.fix, facts.minLengthM),
     hint: hintLine(i, next),
+    keep: !end && facts.source === 'preset' && !!facts.preset && !!facts.line,
+    clear: !end && (i.recording?.count ?? 0) > 0,
   };
 }
 

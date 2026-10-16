@@ -7,10 +7,11 @@ import { describe, expect, it } from 'vitest';
 import type { GridSpec } from '../../../core/grid';
 import type { SceneViewApi } from '../../../render/api';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
-import type { ResolvedSlice, SlicePoint, SlicePresetId, SlicePresetStatus, SliceUpdate } from '../../../render/slice/types';
+import type { ResolvedSlice, SlicePoint, SlicePresetId, SlicePresetStatus, SliceRecordingStatus, SliceUpdate } from '../../../render/slice/types';
 import { Store } from '../../store';
 import { DEFAULT_UI, type UiState } from './context';
 import { backFromAirTool, createSliceToolActions, watchLineForProbe, type SliceToolHost } from './sliceToolActions';
+import { CLEAR_SAY, KEEP_SAY } from './sliceToolModel';
 
 const GRID: GridSpec = { nx: 61, ny: 61, cellSize: 100, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
 
@@ -24,24 +25,47 @@ interface Rig {
   cross: { at: SlicePoint | null };
   /** What the scene's slice() returns. */
   scene: { update: (Partial<Omit<SliceUpdate, 'resolved'>> & { resolved?: Partial<ResolvedSlice> }) | null };
+  /** The fake time-lapse recorder behind `view.sliceRecording` (null: a scene without one, the 2-D map). `clears` counts its `clear()` calls. */
+  recorder: { status: SliceRecordingStatus; clears: number } | null;
 }
 
-function rig(opts: { user?: SlicePoint | null; fire?: boolean; layers?: Partial<LayerState> } = {}): Rig {
+const recStatus = (o: Partial<SliceRecordingStatus> = {}): SliceRecordingStatus => ({ state: 'off', offFor: null, count: 0, from: null, to: null, spacingS: 0, bytes: 0, budgetBytes: 6e6, dropped: null, ...o });
+
+function rig(opts: { user?: SlicePoint | null; fire?: boolean; layers?: Partial<LayerState>; recorder?: boolean } = {}): Rig {
   const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind }, tool: 'air', panelOpen: true });
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, ...opts.layers });
   const calls: string[] = [];
   const said: string[] = [];
   const cross: Rig['cross'] = { at: [0, 0] };
   const scene: Rig['scene'] = { update: null };
-  const view: Pick<SceneViewApi, 'setLayers' | 'slice'> = {
+  const recorder: Rig['recorder'] = opts.recorder === false ? null : { status: recStatus(), clears: 0 };
+  const view: Pick<SceneViewApi, 'setLayers' | 'slice' | 'sliceRecording'> = {
     setLayers(p) {
       // The scene calls back inside setLayers: the stores must already hold the new section by then.
       calls.push(`view ${JSON.stringify(p.crossSection)} store=${JSON.stringify(layers.get().crossSection.a ?? null)}`);
+      // The recorder's own rule (R-core, SliceTimeLapse.follow): a fixed line is recorded from the next picture, a live preset is not. Only what the tool shows afterwards is tested here.
+      if (recorder && p.crossSection) {
+        const fixed = !p.crossSection.preset && !!p.crossSection.a && !!p.crossSection.b;
+        recorder.status = fixed ? recStatus({ state: 'waiting' }) : recStatus({ state: 'off', offFor: p.crossSection.preset ? 'preset' : null });
+      }
     },
+    ...(recorder
+      ? {
+          sliceRecording: {
+            record: () => undefined,
+            truncateAfter: () => undefined,
+            clear() {
+              recorder.clears++;
+              recorder.status = recStatus({ state: 'waiting', dropped: 'cleared' });
+            },
+            status: () => recorder.status,
+          },
+        }
+      : {}),
     slice: () => (scene.update ? ({ field: 'speed', presets: allOk(), fields: {}, data: null, ...scene.update, resolved: { line: null, source: 'endpoints', preset: null, issue: null, notes: [], minLengthM: 300, ...scene.update.resolved } } as unknown as SliceUpdate) : null),
   };
   const host: SliceToolHost = { ui, layers, view, grid: () => GRID, crosshair: () => cross.at, user: opts.user === undefined ? [200, 200] : opts.user, hasFire: () => opts.fire ?? true, announce: (m) => said.push(m) };
-  return { host, ui, layers, calls, said, cross, scene };
+  return { host, ui, layers, calls, said, cross, scene, recorder };
 }
 
 const allOk = (): Record<SlicePresetId, SlicePresetStatus> => ({ along: { ok: true }, across: { ok: true }, slope: { ok: true }, me: { ok: true } });
@@ -170,6 +194,96 @@ describe('placing A and B', () => {
     expect(backFromAirTool(r.ui)).toBe(false);
     r.ui.set({ tool: 'air', panelOpen: false });
     expect(backFromAirTool(r.ui)).toBe(false);
+  });
+});
+
+describe('Keep this line and Clear recording (0.4.1)', () => {
+  const presetScene = (r: Rig): void => {
+    r.layers.set({ crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, preset: 'along', field: 'speed' } });
+    r.recorder!.status = recStatus({ state: 'off', offFor: 'preset' });
+    r.scene.update = { resolved: { line: line([-1500, 200], [1500, -200]), source: 'preset', preset: 'along' }, recording: r.recorder!.status };
+  };
+
+  it('Keep this line is offered for a live preset only, with the Clear button hidden while nothing is recorded', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    expect(t.controls()).toMatchObject({ keep: false, clear: false });
+    presetScene(r);
+    expect(t.controls()).toMatchObject({ keep: true, clear: false });
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints', preset: null } };
+    expect(t.controls().keep).toBe(false);
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'centre', preset: null } };
+    expect(t.controls().keep).toBe(false); // the Layers chord is not the tool's line
+  });
+
+  it('writes both ends of the preset line, preset null, clears the probe and says so; the scene then waits for the next picture', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    presetScene(r);
+    t.setProbe({ s: 400, z: 900 });
+    t.keep();
+    expect(r.layers.get().crossSection).toMatchObject({ enabled: true, a: [-1500, 200], b: [1500, -200], preset: null, field: 'speed' });
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]).toContain('"a":[-1500,200]');
+    expect(r.calls[0]).toContain('store=[-1500,200]'); // the stores were written before the scene was told
+    expect(r.ui.get().slice!.probe).toBeNull();
+    expect(r.said.at(-1)).toBe(KEEP_SAY);
+    expect(r.recorder!.status.state).toBe('waiting'); // (the fake recorder's rule: a fixed line is recorded from the next picture)
+    // what the tool shows now: the line is fixed (no Keep), nothing is recorded yet (no Clear)
+    r.scene.update = { resolved: { line: line([-1500, 200], [1500, -200]), source: 'endpoints', preset: null }, recording: r.recorder!.status };
+    expect(t.controls()).toMatchObject({ keep: false, clear: false });
+  });
+
+  it('Keep this line does nothing for a fixed line or without a line: no write, no scene call, no announcement', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.keep();
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints' } };
+    t.keep();
+    expect(r.calls).toEqual([]);
+    expect(r.said).toEqual([]);
+    expect(r.layers.get().crossSection.enabled).toBe(false);
+  });
+
+  it('Clear recording is offered while the recorder holds a picture, from the recorder\'s own state and not the last update\'s copy of it', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints' }, recording: recStatus({ state: 'recording', count: 8, from: 600, to: 900 }) };
+    expect(t.controls().clear).toBe(false); // the recorder says nothing is held (the update is a snapshot old)
+    r.recorder!.status = recStatus({ state: 'recording', count: 8, from: 600, to: 900 });
+    expect(t.controls().clear).toBe(true);
+    expect(t.recording()).toBe(r.recorder!.status);
+  });
+
+  it('falls back to the update\'s copy of the state where the scene does not give the recorder itself', () => {
+    const r = rig({ recorder: false });
+    const t = createSliceToolActions(r.host);
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints' }, recording: recStatus({ state: 'recording', count: 3, from: 0, to: 60 }) };
+    expect(t.recording()?.count).toBe(3);
+    expect(t.controls().clear).toBe(true);
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints' } };
+    expect(t.recording()).toBeNull();
+    expect(t.controls().clear).toBe(false);
+  });
+
+  it('Clear recording calls the recorder once, says so, and the button is gone afterwards', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    r.scene.update = { resolved: { line: line([0, 0], [0, 1000]), source: 'endpoints' } };
+    r.recorder!.status = recStatus({ state: 'recording', count: 12, from: 600, to: 1500 });
+    expect(t.controls().clear).toBe(true);
+    t.clearRecording();
+    expect(r.recorder!.clears).toBe(1);
+    expect(r.said).toEqual([CLEAR_SAY]);
+    expect(t.controls().clear).toBe(false);
+    expect(r.calls).toEqual([]); // the line is not touched
+    expect(r.recorder!.status).toMatchObject({ state: 'waiting', dropped: 'cleared' });
+  });
+
+  it('Clear recording on a scene without a recorder does nothing and says nothing', () => {
+    const r = rig({ recorder: false });
+    createSliceToolActions(r.host).clearRecording();
+    expect(r.said).toEqual([]);
   });
 });
 

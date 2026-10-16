@@ -10,6 +10,10 @@ import { resolveSlice, sectionFromEndpoints, slicePresetStatus } from '../../../
 import { SLICE_PRESET_IDS, type ResolvedSlice, type SlicePoint, type SlicePresetId, type SlicePresetStatus, type SliceResolveContext } from '../../../render/slice/types';
 import {
   AIR_TOOL_LABEL,
+  CLEAR_RECORDING_LABEL,
+  CLEAR_SAY,
+  KEEP_LABEL,
+  KEEP_SAY,
   LINE_PROJECTION_POINTS,
   LOAD_FAILED_LINE,
   NOTE_WORDS,
@@ -26,6 +30,7 @@ import {
   inModelArea,
   initialSliceToolState,
   issueWords,
+  keepLine,
   lineFacts,
   loadFailedView,
   minLengthFor,
@@ -415,6 +420,59 @@ describe('Swap', () => {
   });
 });
 
+describe('Keep this line (the time-lapse recording, 0.4.1)', () => {
+  it('has the words the plan promises', () => {
+    expect(KEEP_LABEL).toBe('Keep this line');
+    expect(CLEAR_RECORDING_LABEL).toBe('Clear recording');
+    expect(KEEP_SAY).toBe('Line kept. Recording from the next picture.');
+    expect(CLEAR_SAY).toBe('Recording cleared. Recording again from the next picture.');
+    for (const w of [KEEP_LABEL, CLEAR_RECORDING_LABEL, KEEP_SAY, CLEAR_SAY]) expect(w).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it('turns the live preset into the fixed line it is now: both ends, preset null, the section on, the chip kept, the probe cleared', () => {
+    const f = withLine([-1000, 250.5], [1000, -250.5], 'preset', { preset: 'along' });
+    const s: SliceToolState = { ...initialSliceToolState(), probe: { s: 10, z: 10 }, draft: { a: [1, 1], b: null }, candidate: [5, 5] };
+    const step = keepLine(s, { ...CS, enabled: false, preset: 'along', field: 'up' }, f);
+    expect(step.crossSection).toMatchObject({ enabled: true, a: [-1000, 250.5], b: [1000, -250.5], preset: null, field: 'up' });
+    expect(step.state).toMatchObject({ probe: null, placing: null, candidate: null, draft: { a: null, b: null } });
+    expect(step.say).toBe(KEEP_SAY);
+  });
+
+  it('keeps the ends in the order A to B (it is not a swap) and says Speed when the section has no chip yet', () => {
+    const step = keepLine(initialSliceToolState(), { ...CS, preset: 'me' }, withLine([300, 0], [-300, 800], 'preset', { preset: 'me' }));
+    expect(step.crossSection).toMatchObject({ a: [300, 0], b: [-300, 800], field: 'speed' });
+  });
+
+  it('does nothing for a line that is already fixed, the Layers chord, a preset with no line, or no line', () => {
+    const s = initialSliceToolState();
+    for (const f of [withLine([0, 0], [0, 1000], 'endpoints'), withLine([0, 0], [0, 1000], 'centre'), { ...EMPTY, source: 'preset' as const, preset: 'along' as const, issue: 'calm' as const }, EMPTY]) {
+      const step = keepLine(s, CS, f);
+      expect(step.state).toBe(s);
+      expect(step.crossSection).toBeNull();
+      expect(step.say).toBeNull();
+    }
+  });
+
+  it('the kept line is the very line the preset was: the scene\'s resolver gives the same ends for the written state', () => {
+    const G: GridSpec = { nx: 46, ny: 46, cellSize: 133, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
+    for (const preset of ['along', 'across', 'slope', 'me'] as const) {
+      const live = resolveSlice({ azimuth: 0, centre: [0, 0], preset }, ctxOf(G));
+      expect(live.line, preset).not.toBeNull();
+      const step = keepLine(initialSliceToolState(), { ...CS, preset }, lineFacts(live, { ...CS, preset }, G));
+      const kept = resolveSlice(step.crossSection!, ctxOf(G));
+      expect(kept.source, preset).toBe('endpoints');
+      expect(kept.preset).toBeNull();
+      expect(kept.line!.a[0]).toBeCloseTo(live.line!.a[0], 6);
+      expect(kept.line!.a[1]).toBeCloseTo(live.line!.a[1], 6);
+      expect(kept.line!.b[0]).toBeCloseTo(live.line!.b[0], 6);
+      expect(kept.line!.b[1]).toBeCloseTo(live.line!.b[1], 6);
+      expect(kept.line!.length).toBeCloseTo(live.line!.length, 6);
+      // and a second Keep has nothing left to do
+      expect(keepLine(initialSliceToolState(), step.crossSection!, lineFacts(kept, step.crossSection!, G)).crossSection).toBeNull();
+    }
+  });
+});
+
 describe('presets', () => {
   it('Me to fire is offered only with a position fix inside the model area', () => {
     expect(presetStatuses(null, 'ok').me).toEqual({ ok: true });
@@ -582,6 +640,26 @@ describe('the controls: buttons and the quiet line', () => {
 
   it('while the run switches to the 3-D atmosphere the line says it is re-computing', () => {
     expect(controlsView(input({ switching3d: true })).hint).toBe('Re-computing with the 3-D atmosphere from the last checkpoint. Press Play to continue.');
+  });
+
+  it('offers Keep this line only while the line in force is a live preset that can be drawn, and not while placing', () => {
+    const preset = withLine([0, 0], [0, 1000], 'preset', { preset: 'along' });
+    expect(controlsView(input({ facts: preset })).keep).toBe(true);
+    expect(controlsView(input({ facts: withLine([0, 0], [0, 1000], 'endpoints') })).keep).toBe(false);
+    expect(controlsView(input({ facts: withLine([0, 0], [0, 1000], 'centre') })).keep).toBe(false);
+    expect(controlsView(input({ facts: { ...EMPTY, source: 'preset', preset: 'along', issue: 'calm' } })).keep).toBe(false);
+    expect(controlsView(input()).keep).toBe(false);
+    expect(controlsView(input({ facts: preset, state: placing('a'), verdict: { ok: true } })).keep).toBe(false);
+  });
+
+  it('offers Clear recording only while the recorder holds a picture, and not while placing', () => {
+    const line = withLine([0, 0], [0, 1000], 'endpoints');
+    expect(controlsView(input({ facts: line })).clear).toBe(false); // no recorder
+    expect(controlsView(input({ facts: line, recording: null })).clear).toBe(false);
+    expect(controlsView(input({ facts: line, recording: { count: 0 } })).clear).toBe(false);
+    expect(controlsView(input({ facts: line, recording: { count: 1 } })).clear).toBe(true);
+    expect(controlsView(input({ facts: line, recording: { count: 120 } })).clear).toBe(true);
+    expect(controlsView(input({ facts: line, recording: { count: 5 }, state: placing('b'), verdict: { ok: true } })).clear).toBe(false);
   });
 
   it('marks the preset in force and disables Me to fire without a fix, with its reason', () => {
