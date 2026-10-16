@@ -121,10 +121,10 @@ describe('describeModel: live values follow the scenario and the engine', () => 
       const c = describeModel({ scenario: fastScenario, engine: snap.engine, snapshot: snap, settings, historyBudgetBytes: history, phone: { cores: 8, memoryGb: 6 } });
       return c.sections.find((s) => s.id === 'engine')!.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : [])).find((f) => f.id === 'eng-phone')!.note!;
     };
-    expect(noteAt(48 * MIB)).toMatch(/older pictures are thinned beyond that; an Air slices recording adds up to 6\.3 MB$/); // 6 MiB on the weakest phone
-    expect(noteAt(61.44 * MIB)).toMatch(/an Air slices recording adds up to 8\.1 MB$/); // 7.7 MiB
-    expect(noteAt(96 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB$/); // the full 12 MiB
-    expect(noteAt(160 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB$/); // and no more
+    expect(noteAt(48 * MIB)).toMatch(/older pictures are thinned beyond that; an Air slices recording adds up to 6\.3 MB on top of it$/); // 6 MiB on the weakest phone
+    expect(noteAt(61.44 * MIB)).toMatch(/an Air slices recording adds up to 8\.1 MB on top of it$/); // 7.7 MiB
+    expect(noteAt(96 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB on top of it$/); // the full 12 MiB
+    expect(noteAt(160 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB on top of it$/); // and no more
     expect(noteAt(100 * MIB)).toMatch(/^Time-scrubber history: up to 104\.9 MB on this phone;/);
     expect(noteAt(100 * MIB)).not.toMatch(/[\u2013\u2014]/);
   });
