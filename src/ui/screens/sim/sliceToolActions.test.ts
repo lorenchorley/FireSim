@@ -10,7 +10,7 @@ import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
 import type { ResolvedSlice, SlicePoint, SlicePresetId, SlicePresetStatus, SliceUpdate } from '../../../render/slice/types';
 import { Store } from '../../store';
 import { DEFAULT_UI, type UiState } from './context';
-import { backFromAirTool, createSliceToolActions, type SliceToolHost } from './sliceToolActions';
+import { backFromAirTool, createSliceToolActions, watchLineForProbe, type SliceToolHost } from './sliceToolActions';
 
 const GRID: GridSpec = { nx: 61, ny: 61, cellSize: 100, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
 
@@ -26,7 +26,7 @@ interface Rig {
   scene: { update: (Partial<Omit<SliceUpdate, 'resolved'>> & { resolved?: Partial<ResolvedSlice> }) | null };
 }
 
-function rig(opts: { user?: SlicePoint | null; layers?: Partial<LayerState> } = {}): Rig {
+function rig(opts: { user?: SlicePoint | null; fire?: boolean; layers?: Partial<LayerState> } = {}): Rig {
   const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind }, tool: 'air', panelOpen: true });
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, ...opts.layers });
   const calls: string[] = [];
@@ -40,7 +40,7 @@ function rig(opts: { user?: SlicePoint | null; layers?: Partial<LayerState> } = 
     },
     slice: () => (scene.update ? ({ field: 'speed', presets: allOk(), fields: {}, data: null, ...scene.update, resolved: { line: null, source: 'endpoints', preset: null, issue: null, notes: [], minLengthM: 300, ...scene.update.resolved } } as unknown as SliceUpdate) : null),
   };
-  const host: SliceToolHost = { ui, layers, view, grid: () => GRID, crosshair: () => cross.at, user: opts.user === undefined ? [200, 200] : opts.user, announce: (m) => said.push(m) };
+  const host: SliceToolHost = { ui, layers, view, grid: () => GRID, crosshair: () => cross.at, user: opts.user === undefined ? [200, 200] : opts.user, hasFire: () => opts.fire ?? true, announce: (m) => said.push(m) };
   return { host, ui, layers, calls, said, cross, scene };
 }
 
@@ -198,10 +198,30 @@ describe('presets, Swap, the chip and the switches', () => {
     expect(r.layers.get().crossSection.preset).toBe('along');
   });
 
-  it('Me to fire works with a fix inside the model area', () => {
+  it('Me to fire works with a fix inside the model area and a fire', () => {
     const r = rig({ user: [100, 100] });
     createSliceToolActions(r.host).preset('me');
     expect(r.layers.get().crossSection.preset).toBe('me');
+  });
+
+  it('Me to fire is disabled with its reason until there is a fire, also before the scene has a slice to say so (it set the preset and drew nothing)', () => {
+    const r = rig({ user: [100, 100], fire: false });
+    const t = createSliceToolActions(r.host);
+    expect(t.controls().presets.find((p) => p.id === 'me')).toMatchObject({ disabled: true, reason: 'There is no fire to go to yet' });
+    t.preset('me');
+    expect(r.layers.get().crossSection.preset ?? null).toBeNull();
+    expect(r.calls).toEqual([]);
+    expect(r.said).toEqual([]);
+    // the other presets are not held up by it
+    expect(t.controls().presets.filter((p) => !p.disabled).map((p) => p.id)).toEqual(['along', 'across', 'slope']);
+    // the scene's own answer wins once it has one
+    r.scene.update = { presets: allOk() };
+    expect(t.controls().presets.find((p) => p.id === 'me')!.disabled).toBe(false);
+  });
+
+  it('with no position AND no fire the reason is the position (the resolver\'s order)', () => {
+    const r = rig({ user: null, fire: false });
+    expect(createSliceToolActions(r.host).controls().presets.find((p) => p.id === 'me')).toMatchObject({ disabled: true, reason: 'This run has no position for you' });
   });
 
   it('the controls disable Me to fire with its reason without a fix, and with a fix outside the area', () => {
@@ -294,5 +314,51 @@ describe('the controls while placing', () => {
     expect(t.controls().hint).toBe('No fire yet: centred on the map');
     r.scene.update = { resolved: { line: null, source: 'preset', preset: 'slope', issue: 'flat-ground' } };
     expect(t.controls().hint).toBe('The ground here is too flat to have an uphill direction');
+  });
+});
+
+describe('a probe is cleared when the line changes from outside the tool', () => {
+  const probing = (r: Rig): void => {
+    const t = createSliceToolActions(r.host);
+    t.open();
+    t.setProbe({ s: 800, z: 1000 });
+    expect(r.ui.get().slice!.probe).not.toBeNull();
+  };
+
+  it('the Layers compass (azimuth, centre, a and b put back on the centre rule) takes the probe off, also while the tool is closed', () => {
+    const r = rig({ layers: { crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, a: [0, 0], b: [0, 1000], preset: null, field: 'speed' } } });
+    const off = watchLineForProbe(r.ui, r.layers);
+    probing(r);
+    r.layers.set({ crossSection: { ...r.layers.get().crossSection, azimuth: 120, centre: [0, 500], a: undefined, b: undefined, preset: null } });
+    expect(r.ui.get().slice!.probe).toBeNull();
+    off();
+  });
+
+  it('"Show me" and a preset chosen in the Layers panel do too; a chip does not', () => {
+    const r = rig({ layers: { crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, a: [0, 0], b: [0, 1000], preset: null, field: 'speed' } } });
+    const off = watchLineForProbe(r.ui, r.layers);
+    probing(r);
+    r.layers.set({ crossSection: { ...r.layers.get().crossSection, field: 'up' } });
+    expect(r.ui.get().slice!.probe, 'a chip leaves the probe where it is').not.toBeNull();
+    r.layers.set({ crossSection: { ...r.layers.get().crossSection, enabled: true, azimuth: 33, centre: [5, 5], a: undefined, b: undefined, preset: null, field: 'theta' } });
+    expect(r.ui.get().slice!.probe).toBeNull();
+    off();
+  });
+
+  it('the tool\'s own line writes still clear it (once: the watcher finds nothing left to do), and after unsubscribing the watcher does nothing', () => {
+    const r = rig();
+    const off = watchLineForProbe(r.ui, r.layers);
+    const t = createSliceToolActions(r.host);
+    t.open();
+    t.preset('along');
+    t.setProbe({ s: 100, z: 900 });
+    const before = r.ui.get().slice;
+    t.preset('across');
+    expect(r.ui.get().slice!.probe).toBeNull();
+    expect(r.ui.get().slice).not.toBe(before);
+    off();
+    t.setProbe({ s: 100, z: 900 });
+    r.layers.set({ crossSection: { ...r.layers.get().crossSection, azimuth: 1, centre: [1, 1], preset: null } });
+    expect(r.ui.get().slice!.probe, 'unsubscribed').not.toBeNull();
   });
 });

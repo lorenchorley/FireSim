@@ -9,6 +9,7 @@
  * file builds the elements, wires the events, keeps the keyboard focus where the person is, and passes the scene's slice to the
  * panel. Nothing here pops up by itself: no toast, no role=alert, announcements only for what the person just did.
  */
+import { fireCentroid } from '../../../render/fields';
 import { has3dAtmosphere, type SimContext } from './context';
 import { h, listen, setChildren, svg, text, uniqueId } from '../../dom';
 import { icon } from '../../icons';
@@ -20,13 +21,13 @@ import {
   AIR_PANEL_TITLE,
   CANCEL_LABEL,
   LOADING_LINE,
-  LOAD_FAILED_LINE,
   NEEDS_3D_VIEW,
   PRESETS_LABEL,
   PRESET_LABEL,
   RETRY_LABEL,
   SET_LABEL,
   SWAP_LABEL,
+  loadFailedView,
   type ControlsView,
   type SliceAnnMark,
   type SliceEnd,
@@ -58,6 +59,14 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     return { el, destroy: () => undefined };
   }
 
+  // The scene's rule for "there is a fire" (the centroid of the burning and the recently burnt cells), looked for once for each snapshot.
+  let fireAt: { snap: unknown; has: boolean } | null = null;
+  const hasFire = (): boolean => {
+    const snap = ctx.session.state.get().snapshot;
+    if (!snap) return false;
+    if (fireAt?.snap !== snap) fireAt = { snap, has: fireCentroid(snap.fire, snap.time) !== null };
+    return fireAt.has;
+  };
   const host: SliceToolHost = {
     ui: ctx.ui,
     layers: ctx.layers,
@@ -65,6 +74,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     grid: () => ctx.session.state.get().snapshot?.atmosphere?.grid ?? ctx.scenario.terrain.grid,
     crosshair: () => ctx.pickCrosshair(),
     user: ctx.user,
+    hasFire,
     announce: ctx.announce,
   };
   const actions: SliceToolActions = createSliceToolActions(host);
@@ -85,6 +95,11 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   // ───────────── the controls ─────────────
   /** Focus a button of the controls; the panel's body scrolls (short landscape), so one that is off screen is scrolled into view. */
   const focus = (e: HTMLElement | null | undefined): void => e?.focus();
+  /** The picture is the top of the body: scrolled back to it after a tap far down on the controls (the panel's own focus does not scroll), and for a new reading on a short landscape screen (the picture is pinned there and the reading follows it). */
+  const showPicture = (): void => {
+    body.scrollTop = 0;
+  };
+  const shortLandscape = (): boolean => typeof matchMedia === 'function' && matchMedia('(orientation: landscape) and (max-height: 540px)').matches;
   const setBtn: Record<SliceEnd, ReturnType<typeof makeButton>> = {
     a: makeButton(SET_LABEL.a, { testId: 'slice-set-a', onClick: () => startPlacing('a') }),
     b: makeButton(SET_LABEL.b, { testId: 'slice-set-b', onClick: () => startPlacing('b') }),
@@ -184,15 +199,19 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     render();
     if (!end || !out.verdict.ok) return; // refused: the quiet line says why and the placement stays open
     const s = actions.state();
-    if (out.firstLine && panel) panel.focus();
-    else focus(setBtn[out.wrote ? end : s.draft.a && !s.draft.b ? 'b' : 'a'].el);
+    if (out.firstLine && panel) {
+      panel.focus();
+      showPicture();
+    } else focus(setBtn[out.wrote ? end : s.draft.a && !s.draft.b ? 'b' : 'a'].el);
   }
   function choosePreset(id: SlicePresetId): void {
     actions.preset(id);
     presetsOpen = false;
     render();
-    if (panel) panel.focus();
-    else focus(presetsToggle);
+    if (panel) {
+      panel.focus();
+      showPicture();
+    } else focus(presetsToggle);
   }
   function togglePresets(): void {
     presetsOpen = !presetsOpen;
@@ -201,10 +220,20 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
 
   // ───────────── the side-view panel (lazy chunk) ─────────────
   const loadingLine = h('p', { class: 'hint', dataset: { testid: 'slice-loading' } }, LOADING_LINE);
-  const failedBox = h('div', { class: 'row-actions', dataset: { testid: 'slice-load-failed' } }, [
-    h('p', { class: 'hint' }, LOAD_FAILED_LINE),
-    makeButton(RETRY_LABEL, { testId: 'slice-load-retry', onClick: () => startLoad() }).el,
-  ]);
+  const failedLine = h('p', { class: 'hint' });
+  const retryBtn = makeButton(RETRY_LABEL, { testId: 'slice-load-retry', onClick: () => startLoad() }).el;
+  const failedBox = h('div', { class: 'row-actions', dataset: { testid: 'slice-load-failed' } }, [failedLine, retryBtn]);
+  let failures = 0;
+  /** The side view did not arrive (or did not start): one line, and Try again the first time. */
+  function loadFailed(): void {
+    loadState = 'failed';
+    const v = loadFailedView(++failures);
+    text(failedLine, v.line);
+    const hadFocus = document.activeElement === retryBtn;
+    retryBtn.hidden = !v.retry;
+    layoutBody();
+    if (hadFocus && !v.retry) focus(setBtn.a.el); // the button the person pressed is put away
+  }
 
   function layoutBody(): void {
     if (loadState === 'ready' && panel) setChildren(body, panel.el);
@@ -231,6 +260,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
       onProbe: (pos) => {
         toldProbe = pos;
         actions.setProbe(pos);
+        if (pos && shortLandscape()) showPicture(); // (the reading is under the pinned picture, and the body may be scrolled down to the chips)
       },
       onShowCells: (on) => {
         toldCells = on;
@@ -276,14 +306,12 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
             // nothing more to undo
           }
           panel = null;
-          loadState = 'failed';
-          layoutBody();
+          loadFailed();
         }
       },
       () => {
         if (destroyed) return;
-        loadState = 'failed';
-        layoutBody();
+        loadFailed();
       },
     );
   }

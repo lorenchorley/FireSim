@@ -163,7 +163,7 @@ test('2-D map: the tool is in the Tools menu, says it needs the 3-D view, and as
   expect(chunks).toEqual([]);
 });
 
-test('a side-view chunk that fails to load leaves one line, Try again, and the controls working', async ({ page }) => {
+test('a side-view chunk that fails to load leaves one line, Try again, and the controls working; a failed retry says to reopen the app', async ({ page }) => {
   test.info().annotations.push({ type: 'network-failures' });
   await page.route(/slicePanel[^/]*\.js/, (route) => route.abort());
   await buildMock(page);
@@ -171,7 +171,13 @@ test('a side-view chunk that fails to load leaves one line, Try again, and the c
   await openAirTool(page);
   await expect(page.getByTestId('slice-load-failed')).toBeVisible();
   await expect(page.getByTestId('slice-load-failed')).toContainText('The side view could not be loaded.');
+  await expect(page.getByTestId('slice-load-failed')).not.toContainText('reopen');
   await expect(page.getByTestId('slice-load-retry')).toBeVisible();
+  await expect(page.getByTestId('slice-controls')).toBeVisible();
+  // Try again fails the same way (a browser remembers a module that failed to load): the words say what can be done, and there is no button that cannot work
+  await page.getByTestId('slice-load-retry').click();
+  await expect(page.getByTestId('slice-load-failed')).toContainText('Close and reopen FireSim to load it.');
+  await expect(page.getByTestId('slice-load-retry')).toBeHidden();
   await expect(page.getByTestId('slice-controls')).toBeVisible();
   await page.getByTestId('slice-presets-toggle').click();
   await page.getByTestId('slice-preset-along').click();

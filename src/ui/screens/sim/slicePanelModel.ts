@@ -263,6 +263,28 @@ export function rasterBox(l: PlotLayout, columns: number, rows: number): Box {
 /** About 300 particles, drawn at most 24 times a second (plan §8.5). */
 export const FLOW_COUNT = 300;
 export const FLOW_FRAME_S = 1 / 24;
+/** A display frame may come this early (the clock is rounded to a tenth of a millisecond) and still count as the next streak frame. */
+const FLOW_FRAME_SLACK_S = 0.0005;
+
+/** The streaks' clock: the time of the last display frame and the seconds gathered since the last streak frame was drawn. */
+export interface FlowClock {
+  last: number;
+  acc: number;
+}
+
+/**
+ * One display frame at `tMs` (the `requestAnimationFrame` time): the seconds to step the particles by when it is time for the next streak
+ * frame, else 0 (skip it). At most 24 streak frames a second on any display (60 Hz draws 20, 144 Hz and 120 Hz 24). A skipped frame keeps
+ * its time, so a frame that is drawn steps by all of it (at most 0.1 s, so a tab that was away does not fling the particles).
+ */
+export function flowTick(c: FlowClock, tMs: number): number {
+  c.acc += c.last ? (tMs - c.last) / 1000 : 0;
+  c.last = tMs;
+  if (c.acc < FLOW_FRAME_S - FLOW_FRAME_SLACK_S) return 0;
+  const dt = Math.min(c.acc, 0.1);
+  c.acc = 0;
+  return dt;
+}
 /** A particle lives this many seconds of the panel's clock before it is re-seeded: longer than the 8 s a 10 m/s wind takes to cross the line (`flowTimeScale`). */
 export const FLOW_LIFE_S = 12;
 

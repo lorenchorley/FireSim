@@ -37,6 +37,42 @@ export const LINE_BY_CENTRE = { a: undefined, b: undefined, preset: null } as co
 
 const samePoint = (p: readonly number[] | undefined, q: readonly number[] | undefined): boolean => p === q || (!!p && !!q && p[0] === q[0] && p[1] === q[1]);
 
+type SectionState = LayerState['crossSection'];
+
+/** The Layers panel's compass for the section: the bearing it shows, and the centre that a turn of it (or "Centre on the fire") keeps. */
+export interface SectionCompass {
+  /** Degrees clockwise from north the line points towards. */
+  azimuth: number;
+  /** The point a turn writes as `centre`: the middle of the placed line, else the stored centre. */
+  centre: [number, number];
+  /** The section is a line placed with Air slices (a preset, or A and B), whose own bearing and middle these are. */
+  placed: boolean;
+}
+
+/**
+ * What the Layers compass shows. The stored `azimuth` and `centre` are only the line's own while the section follows the centre rule; once Air slices
+ * has placed a line (a preset, or A and B) they are stale (0 and the last ignition). Then the compass shows THAT line's bearing, and turning it writes
+ * the middle of that line as `centre` (with `LINE_BY_CENTRE`), so the line swings about its middle instead of jumping to the old centre. `line` is the
+ * line the scene resolved (a preset has no ends in the store); without it the placed A and B are used, else the stored values.
+ */
+export function sectionCompass(cs: SectionState, line: { a: readonly number[]; b: readonly number[] } | null | undefined): SectionCompass {
+  const placed = !!cs.preset || (!!cs.a && !!cs.b);
+  const own = placed ? (line ?? (cs.a && cs.b ? { a: cs.a, b: cs.b } : null)) : null;
+  if (!own) return { azimuth: cs.azimuth, centre: [cs.centre[0], cs.centre[1]], placed };
+  const dx = own.b[0]! - own.a[0]!;
+  const dy = own.b[1]! - own.a[1]!;
+  if (!(Math.hypot(dx, dy) > 0)) return { azimuth: cs.azimuth, centre: [cs.centre[0], cs.centre[1]], placed };
+  return { azimuth: (((Math.atan2(dx, dy) * 180) / Math.PI) % 360 + 360) % 360, centre: [(own.a[0]! + own.b[0]!) / 2, (own.a[1]! + own.b[1]!) / 2], placed };
+}
+
+/**
+ * Is it the same line? What makes the line (azimuth, centre, A, B, the preset), not the chip, the switch or the exaggeration: a probe
+ * placed on a line is still on it after the chip changed, and nowhere after the compass turned it.
+ */
+export function sameLine(a: LayerState['crossSection'], b: LayerState['crossSection']): boolean {
+  return a.azimuth === b.azimuth && samePoint(a.centre, b.centre) && samePoint(a.a, b.a) && samePoint(a.b, b.b) && (a.preset ?? null) === (b.preset ?? null);
+}
+
 /**
  * Does a layer change need a new slice? Anything that makes the line (azimuth, centre, A, B, preset) or the colouring (the chip),
  * the section being switched on, or the exaggeration the arrows' heights are baked with. The comparison goes field by field because
