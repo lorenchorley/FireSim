@@ -59,6 +59,7 @@ export function createSliceTimeLapse(host: SliceTimeLapseHost): SliceTimeLapse {
         const t = snap.time;
         if (!host.enabled()) {
           failed = false;
+          scratch = null;
           rec.reset();
           return;
         }
@@ -114,6 +115,7 @@ export function createSliceTimeLapse(host: SliceTimeLapseHost): SliceTimeLapse {
     reset() {
       failed = false;
       lastKey = null;
+      scratch = null; // the slice the samples are made in is let go with the recording
       rec.reset();
     },
   };
