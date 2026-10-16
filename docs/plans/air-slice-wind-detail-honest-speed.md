@@ -1118,13 +1118,13 @@ The verdict cells of v-ui and v-core are inferred from the fixes each merged; th
 
 | Gate | Result |
 |---|---|
-| `npx tsc --noEmit` | **[orchestrator]** (clean on the docs lane's tree) |
-| `SLOW=1 npx vitest run` | **[orchestrator]** (0.4.0: 234 files passed, 6 skipped; 3,880 tests passed, 34 skipped, 1 expected fail) |
-| `npm run build:cap` then `npm run check:bundle` | **[orchestrator]**. Docs lane, one run: entry 166.0 kB gzip of 195, all JS 949.3 of 1000, CSS 127.7 kB raw (23.3 gzip) of 135 (25), demo data 33.1 MB of 36; raw JS 2,823 kB, raw entry 479 kB; none of the four removed decoders is back; no budget changed. 0.4.0 was 165.5 / 943.3 / 127.7 (23.3): the entry grew by 0.5 kB and all JS by 6.0 kB. New small shared chunks: `lattice` 0.7 kB gzip, `sliceRecording` 0.8, `recordingWords` 0.8; the Air slices panel chunk is 10.3 kB gzip (25.8 raw) plus 0.9 kB of CSS |
-| `npm run check:contrast` | **[orchestrator]** |
-| `scripts/layout-budget.mjs` | **[orchestrator]** (0.4.0: 73.9 / 76.0 / 70.3 / 65.6 / 77.4 % at 390x844, 412x915, 360x740, 360x640, 844x390) |
-| `scripts/audit-tap-targets.mjs` | **[orchestrator]**. The gate runs it on `?mock=1`, where there is no slice, so it never reaches *Keep this line* or *Clear recording*: `e2e/air-slice.spec.ts` runs the same tap logic on the real tool at 412 x 915 and 360 x 640 with each of them shown. At 844 x 390 with the real engine the audit reports 3 of 8 probes missed for every control of the tool (see 19.4) |
-| `npx playwright test` (the whole e2e suite) | **[orchestrator]** |
+| `npx tsc --noEmit` | Clean (17 s), on the release tree (`6bd14f6`) |
+| `SLOW=1 npx vitest run` | 241 files passed, 6 skipped; 4,074 tests passed, 34 skipped, 1 expected fail, in 608 s (0.4.0: 234 files, 3,880 tests) |
+| `npm run build:cap` then `npm run check:bundle` | Ok, the figures of the gate run equal the docs lane's: entry 166.0 kB gzip of 195, all JS 949.3 of 1000, CSS 127.7 kB raw (23.3 gzip) of 135 (25), demo data 33.1 MB of 36; raw JS 2,823 kB, raw entry 479 kB; none of the four removed decoders is back; no budget changed. 0.4.0 was 165.5 / 943.3 / 127.7 (23.3): the entry grew by 0.5 kB and all JS by 6.0 kB. New small shared chunks: `lattice` 0.7 kB gzip, `sliceRecording` 0.8, `recordingWords` 0.8; the Air slices panel chunk is 10.3 kB gzip (25.8 raw) plus 0.9 kB of CSS |
+| `npm run check:contrast` | Ok: every checked pair meets its threshold |
+| `scripts/layout-budget.mjs` | Ok at five sizes: 73.9 / 76.0 / 70.3 / 65.6 / 77.4 % band at 390x844, 412x915, 360x740, 360x640, 844x390 (budgets 72 / 74 / 68 / 63 / 72), the same as 0.4.0 |
+| `scripts/audit-tap-targets.mjs` | Ok on the Setup screen and on the sim screen at 412x915, 844x390 and 360x640. The gate runs it on `?mock=1`, where there is no slice, so it never reaches *Keep this line* or *Clear recording*: `e2e/air-slice.spec.ts` runs the same tap logic on the real tool at 412 x 915 and 360 x 640 with each of them shown. At 844 x 390 with the real engine the audit reports 3 of 8 probes missed for every control of the tool (see 19.4) |
+| `npx playwright test` (the whole e2e suite) | 139 of 141 passed on the first run (1.0 h). The two failures are the same two specs that failed the first full run of 0.4.0 and passed alone: `airslice-panel.spec.ts:247` (reduced motion) and `pace.spec.ts:72` (real-engine slow tier, 3600x). Rerun alone on the quiet machine, both pass (28.6 s and 53.5 s). They are load-sensitive (the full run uses parallel workers on four cores); no defect was found behind either. The earlier flake, `robustness.spec.ts` "Settings changed mid-run", passed in this run after its poll was given 30 s (19.3) |
 | Debug APK | **[orchestrator]** |
 
 Not run by the docs lane: the whole unit and e2e suites, the contrast and layout audits, the APK, and the phone.
