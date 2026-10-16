@@ -351,8 +351,13 @@ export class SliceRecorder implements SliceRecordingReader {
     const n = list.length;
     let g = this.gap;
     if (!(g > 0)) {
-      g = Infinity; // the first thinning: the gap is twice the least spacing the arrivals made
-      for (let i = 1; i < n; i++) g = Math.min(g, list[i]!.time - list[i - 1]!.time);
+      // The first thinning: the gap is twice the TYPICAL (median) spacing the arrivals made. The least spacing would let one picture a few
+      // seconds after another (the run-end picture of a pause) set it far under the real spacing, and the status would say "about every 20 s"
+      // of a recording whose pictures are 2 min apart, for as long as it lasts: every later thinning doubles the gap and the real spacing alike.
+      const spacing: number[] = [];
+      for (let i = 1; i < n; i++) spacing.push(list[i]!.time - list[i - 1]!.time);
+      spacing.sort((a, b) => a - b);
+      g = spacing[spacing.length >> 1]!;
     }
     this.gap = 2 * g;
     if (n === 2) {
@@ -367,6 +372,27 @@ export class SliceRecorder implements SliceRecordingReader {
       else if (i === n - 2 && newestOdd) this.release(s);
       else if (i % 2 === 1) this.release(s);
       else list[w++] = s;
+    }
+    list.length = w;
+    this.spread();
+  }
+
+  /**
+   * Arrivals that were not evenly spaced leave pairs closer than the new gap after the halving (a picture a few seconds after another).
+   * The later of such a pair goes, or the earlier one when the later is the newest, so every two samples stay at least the gap apart.
+   */
+  private spread(): void {
+    const list = this.samples;
+    const need = this.gap - GAP_TOLERANCE_S;
+    let w = 1; // the first stays
+    for (let i = 1; i < list.length; i++) {
+      const s = list[i]!;
+      if (s.time - list[w - 1]!.time >= need) list[w++] = s;
+      else if (i < list.length - 1) this.release(s);
+      else if (w > 1) {
+        this.release(list[w - 1]!); // the newest takes the place of the last one kept
+        list[w - 1] = s;
+      } else list[w++] = s; // only the first and the newest are left: both stay
     }
     list.length = w;
   }
