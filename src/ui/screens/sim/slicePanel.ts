@@ -125,7 +125,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const terrainLine = h('p', { class: 'hint slice-terrain', hidden: true, dataset: { testid: 'slice-terrain' } }, [scaleWords, ' ', TERRAIN_CAPTION]);
   // The time-lapse recording (0.4.1): what the cells switch cannot do on a recorded slice, and what is recorded. Plain text, nothing announced.
   const cellsNoteEl = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-cells-note' } });
-  const recordingEl = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-recording' } });
+  const recordingEl = h('p', { class: 'hint', hidden: true, tabIndex: -1, dataset: { testid: 'slice-recording' } }); // (tabIndex -1: focused by Keep this line and Clear recording, not a stop of the Tab key)
   const footer = h('p', { class: 'hint slice-footer', hidden: true, dataset: { testid: 'slice-footer' } });
   const controlsWrap = h('div', { class: 'slice-controls' }, options.controls);
   // Order: picture, reading, chips, legend, controls, the notes of the chips that are off, the switch (and its note), the recording's status, the caption, the
@@ -663,6 +663,12 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     },
     focus() {
       canvas.focus({ preventScroll: true });
+    },
+    focusRecording() {
+      if (dirty) catchUp(); // (the words of the update the press just made, not the ones before it)
+      if (recordingEl.hidden) return false;
+      recordingEl.focus(); // scrolls to it, clear of the footer (`scroll-padding-bottom`), and a screen reader reads it
+      return true;
     },
     destroy() {
       destroyed = true;

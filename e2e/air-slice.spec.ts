@@ -116,6 +116,13 @@ const recOf = (page: Page): Promise<Rec> =>
   });
 /** The screen-reader live region (the app's one polite announcer). */
 const liveRegion = (page: Page): Locator => page.locator('div.sr-only[aria-live="polite"]');
+/** The recording's status line is on screen: inside the panel's window and clear of the pinned footer (the answer to a press of Keep this line or Clear recording). */
+const statusInView = (page: Page): Promise<boolean> =>
+  page.evaluate(() => {
+    const s = document.querySelector('[data-testid="slice-recording"]')!.getBoundingClientRect();
+    const f = document.querySelector('[data-testid="slice-footer"]')!.getBoundingClientRect();
+    return s.height > 0 && s.top >= 0 && s.bottom <= f.top + 1;
+  });
 
 const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
 const cam = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as Handle).__firesim.view.cameraState());
@@ -915,6 +922,9 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await expect(status).toHaveText('This preset follows the wind and the fire, so it is not recorded. Press Keep this line to record it.');
     await expect(keep).toBeVisible();
     expect((await keep.boundingBox())!.height, 'a button of the tool: 40 px drawn, a 44 px target').toBeGreaterThanOrEqual(40);
+    // It sits in a row of its own right under Presets: 4 px between the drawn buttons, or their 44 px hit areas fight (scripts/audit-tap-targets.mjs flagged Presets at 2 px).
+    const presetsBox = (await page.getByTestId('slice-presets-toggle').boundingBox())!;
+    expect((await keep.boundingBox())!.y - (presetsBox.y + presetsBox.height), 'Keep this line is 4 px under Presets').toBeGreaterThanOrEqual(3.5);
     await expect(clear).toBeHidden();
     expect((await recOf(page)).status).toMatchObject({ state: 'off', offFor: 'preset', count: 0 });
     await expect(footer).toContainText(/ · air from \d\d:\d\d/);
@@ -931,6 +941,9 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(dist(cs.a!, before.a)).toBeLessThan(0.2);
     expect(dist(cs.b!, before.b)).toBeLessThan(0.2);
     await expect(keep, 'a fixed line cannot be kept again').toBeHidden();
+    // The button that was pressed is put away: focus goes to the status line, which scrolls into view (it is a screen below the controls) and says what happened.
+    await expect(status).toBeFocused();
+    expect(await statusInView(page), 'the status line is in view after Keep this line, not under the footer').toBe(true);
     await expect(liveRegion(page)).toHaveText('Line kept. Recording from the next picture.');
     // paused at the head: nothing arrives unless the worker is still computing ahead, so "waiting" or already a picture
     await expect(status).toHaveText(/^(Recording starts with the next picture\.|Recorded from \d\d:\d\d)/);
@@ -1035,6 +1048,8 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await clear.click();
     await expect(liveRegion(page)).toHaveText('Recording cleared. Recording again from the next picture.');
     await expect(clear).toBeHidden();
+    await expect(status, 'focus goes to the status line, as after Keep this line').toBeFocused();
+    expect(await statusInView(page), 'the status line is in view after Clear recording, not under the footer').toBe(true);
     await expect(status).toHaveText(/^Recording cleared\. (Recording starts with the next picture\.|Recording again from \d\d:\d\d\.)/);
     const r = await recOf(page);
     expect(r.status).toMatchObject({ dropped: 'cleared', count: 0 });

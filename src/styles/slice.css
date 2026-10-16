@@ -116,8 +116,8 @@
 }
 
 .slice-controls .slice-row {
-  gap: 4px var(--sp-2); /* a phone's two rows of buttons: close, so both are in view */
-  margin: 2px 0;
+  gap: 4px var(--sp-2); /* a phone's two rows of buttons: close, so both are in view, but 4 px apart: hit areas must not fight */
+  margin: 4px 0;
 }
 
 .slice-footer {

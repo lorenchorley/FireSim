@@ -928,7 +928,7 @@ function engineFacts(input: ModelCardInput, e: EngineInfo | null): CardBlock[] {
       key: 'This phone',
       value: phone ? `${ok(phone.cores) ? `${phone.cores} cores` : 'cores not reported'}, ${ok(phone.memoryGb) ? `about ${phone.memoryGb}${NB}GB memory class` : 'memory class not reported'}` : 'Not reported',
       note: ok(input.historyBudgetBytes)
-        ? `Time-scrubber history: up to ${bytes(input.historyBudgetBytes)} on this phone; older pictures are thinned beyond that; an Air slices recording adds up to ${bytes(sliceRecordingBudget(input.historyBudgetBytes))}`
+        ? `Time-scrubber history: up to ${bytes(input.historyBudgetBytes)} on this phone; older pictures are thinned beyond that; an Air slices recording adds up to ${bytes(sliceRecordingBudget(input.historyBudgetBytes))} on top of it`
         : undefined,
       live: false,
     },

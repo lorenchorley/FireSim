@@ -134,6 +134,11 @@ export interface SlicePanelController {
   setActive(active: boolean): void;
   /** Move keyboard focus to the canvas (after the first line is placed). */
   focus(): void;
+  /**
+   * Move focus to the recording's status line, which scrolls it into view (0.4.1): the button that was pressed, Keep this line or Clear recording, is put away,
+   * and the answer is further down the panel. False when there is no status line to go to.
+   */
+  focusRecording(): boolean;
   /** Remove listeners, the streak loop and the observers; the tool removes `el`. */
   destroy(): void;
 }

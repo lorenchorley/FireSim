@@ -178,6 +178,12 @@ describe('stylesheets: tap targets', () => {
     expect(tokenPx('--tap')).toBeGreaterThanOrEqual(44);
   });
 
+  it('the Air slices tool keeps its rows of buttons 4 px apart, so their 44 px hit areas do not fight (Keep this line and Clear recording sit in a row right under Presets)', () => {
+    const row = rule('slice.css', '.slice-controls .slice-row');
+    expect(Number(/gap:\s*([0-9]+)px/.exec(row)![1])).toBeGreaterThanOrEqual(4);
+    expect(Number(/margin:\s*([0-9]+)px/.exec(row)![1])).toBeGreaterThanOrEqual(4); // between two rows (blocks) the margins collapse into one
+  });
+
   it('the statistics screen\'s Copy button is itself 44 px tall (a small button grew to only 42 px at 200 % text)', () => {
     expect(rule('debugstats.css', '.btn.ds-copy')).toContain('min-height: var(--tap)');
   });

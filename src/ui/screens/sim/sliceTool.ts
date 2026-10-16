@@ -133,13 +133,17 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   });
   const presetList = h('div', { class: 'slice-presets', id: presetsId, hidden: true }, presetCells.map((c) => c.wrap));
   const note = h('p', { class: 'hint slice-note', dataset: { testid: 'slice-note' }, hidden: true });
+  /** The pressed button of the recording is put away: focus goes to the status line, which says what happened (and is scrolled into view), else to the first button. */
+  function afterRecordingButton(): void {
+    if (!panel?.focusRecording()) focus(setBtn.a.el);
+  }
   // The time-lapse recording's two buttons (0.4.1): Keep this line turns a live preset into a line that can be recorded, Clear recording empties the recorder.
   const keepBtn = makeButton(KEEP_LABEL, {
     testId: 'slice-keep',
     onClick: () => {
       actions.keep();
       render();
-      focus(setBtn.a.el); // (the button that was pressed is put away: a kept line is no longer a preset)
+      afterRecordingButton(); // (the button that was pressed is put away: a kept line is no longer a preset)
     },
   });
   const clearBtn = makeButton(CLEAR_RECORDING_LABEL, {
@@ -147,7 +151,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     onClick: () => {
       actions.clearRecording();
       render();
-      focus(setBtn.a.el);
+      afterRecordingButton();
     },
   });
   const recordRow = h('div', { class: 'row-actions slice-row', hidden: true }, [keepBtn.el, clearBtn.el]);
