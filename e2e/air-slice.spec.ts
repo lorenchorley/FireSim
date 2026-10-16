@@ -105,15 +105,14 @@ interface Rec {
   /** The time of the air of the picture on screen (a recorded slice carries the air time of its own sample, so this is read from the picture). */
   pictureAirTime: number | null;
   shownTime: number | null;
-  kind: string | null;
 }
 const recOf = (page: Page): Promise<Rec> =>
   page.evaluate(() => {
     const w = window as unknown as Handle;
-    const u = w.__firesim.view.slice?.() as { data: { recordedAt?: number; shownTime: number; kind: string } | null } | null | undefined;
+    const u = w.__firesim.view.slice?.() as { data: { recordedAt?: number; shownTime: number } | null } | null | undefined;
     const rec = (w.__firesim.view as unknown as { sliceRecording?: { status(): RecStatus } }).sliceRecording;
     const air = w.__firesim.session.state.get().snapshot?.atmosphere?.time;
-    return { status: rec ? rec.status() : null, recordedAt: u?.data?.recordedAt ?? null, pictureAirTime: air ?? null, shownTime: u?.data?.shownTime ?? null, kind: u?.data?.kind ?? null };
+    return { status: rec ? rec.status() : null, recordedAt: u?.data?.recordedAt ?? null, pictureAirTime: air ?? null, shownTime: u?.data?.shownTime ?? null };
   });
 /** The screen-reader live region (the app's one polite announcer). */
 const liveRegion = (page: Page): Locator => page.locator('div.sr-only[aria-live="polite"]');
