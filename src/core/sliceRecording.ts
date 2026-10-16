@@ -60,8 +60,16 @@ export function sliceFieldErrorBound(scale: number): number {
 export function packField(src: ArrayLike<number>, n: number, dst: Int16Array, offset: number): number {
   let m = 0;
   for (let i = 0; i < n; i++) {
-    const a = Math.abs(src[i]!);
-    if (a > m && a !== Infinity) m = a; // NaN never compares greater
+    const a = src[i]!;
+    const b = a < 0 ? -a : a;
+    if (b > m) m = b; // NaN never compares greater
+  }
+  if (m === Infinity) {
+    m = 0; // an infinity does not take part: the largest finite value
+    for (let i = 0; i < n; i++) {
+      const a = Math.abs(src[i]!);
+      if (a > m && a !== Infinity) m = a;
+    }
   }
   const s = Math.fround(m / WIND_PACK_LEVELS);
   const inv = 1 / s;
@@ -69,9 +77,11 @@ export function packField(src: ArrayLike<number>, n: number, dst: Int16Array, of
     dst.fill(0, offset, offset + n); // all zero, or so small that its quantum is not a Float32
     return 0;
   }
+  // Round half away from zero by truncating x +- 0.5 (measured faster than Math.round in this loop). A value that is not finite gives NaN or an
+  // infinity, which `| 0` makes 0: no test in the loop.
   for (let i = 0; i < n; i++) {
-    const x = src[i]!;
-    dst[offset + i] = Math.abs(x) <= m ? Math.round(x * inv) : 0; // NaN and the infinities fail the test
+    const x = src[i]! * inv;
+    dst[offset + i] = (x < 0 ? x - 0.5 : x + 0.5) | 0;
   }
   return s;
 }
