@@ -469,7 +469,7 @@ Anything a screen needed that the design system did not have was added to the ri
 | How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary; its *Speed and memory right now* section is four live `kv` rows and a tonal button that opens Simulation debug statistics |
 | Simulation debug statistics | `screens/debugStats.ts` | `debugstats.css` (and `modelcard.css`) | `appBar` with a Back arrow and a Copy `iconButton`; one `card` with the one-line summary, a state word (Live, Paused, Finished, No run yet, Demo engine: a word, never colour alone), a labelled Copy `button` and its hint; then 18 collapsed groups (the model card's collapsible `card`s, each with its own one-line summary, `kv-stack` rows, a tiny bar chart, `.ds-chart`, in `--series-1` for the speed history); a selectable `textarea` (`.ds-box`) appears only when the phone refuses the clipboard |
 | Air slices tool | `screens/sim/sliceTool.ts` | `slice.css` (block 2) | a bottom tool panel (`.tool-panel.slice-tool`) with the `line` icon in its title ("Air slice", and "Side view" beside it in `.t-secondary`) and Close; the controls are `.row-actions` of `.btn`s: *Set start (A)*, *Set end (B)*, *Swap*, *Presets* (with a chevron and `aria-expanded`), then, while placing, a primary large *Place A here* and *Cancel*; the four presets are a two-column grid of `.btn`s, a disabled one with its reason under it as a `.hint`; one quiet `.hint` note line. Nothing pops up |
-| Air slice side view | `screens/sim/slicePanel.ts` | `slice.css` (block 1) | one Canvas 2-D picture; a row of six filter `chip`s (`chips-scroll`), the reasons for any off chip (`.hint`s) and a tonal `button` *Use the 3-D atmosphere*; a legend (a gradient bar and its end words, or class swatches); the tool's controls; a `toggle` *Show model cells* with its description; the terrain `.hint`; the footer `.hint` |
+| Air slice side view | `screens/sim/slicePanel.ts` | `slice.css` (block 1) | one Canvas 2-D picture; under it the probe's reading (`.slice-readout`, only while there is one); a row of six filter `chip`s (`chips-scroll`; two rows of three under 412 px); the tool's controls; the reasons for any off chip (`.hint`s) with a tonal `button` *Use the 3-D atmosphere* before them; a legend (a gradient bar and its end words, or class swatches: after the controls where no chip is off, after the reasons where one is); a `toggle` *Show model cells* with its description; the terrain `.hint`; the footer `.hint` |
 
 **Full-screen screens** (Settings, Data sets, How this simulation works, Simulation debug statistics) open as overlays over the stage (`app.ts`): an `appBar` with a back
 arrow, cards of rows on the grey background, the TRAINING strip above all of it. The stage behind is `inert`, Back / Escape step back one
@@ -537,7 +537,8 @@ which `sliceTool.ts` reads as `SLICE_INK = 'var(--mark-slice)'`, so `check:contr
 bold 19 px, so it counts as large text (3:1 is needed, and 4.5:1 in the high-contrast looks; it would not pass the 7:1 of small text there). What is not done is a
 check against the aerial photo behind the halo: the halo carries the edge there.
 
-*The picture.* A `<canvas class="slice-canvas">` `clamp(180px, 27vh, 230px)` high, `--r-sm` corners, `touch-action: none` (a drag moves the probe,
+*The picture.* A `<canvas class="slice-canvas">` as tall as its picture needs (`--slice-h`, set by the panel), at most `clamp(180px, 27vh, 230px)`, so a long
+line at true scale has no blank band above it (128 px while there is no slice, 84 px in short landscape), `--r-sm` corners, `touch-action: none` (a drag moves the probe,
 not the panel), `role="img"` with a text alternative ("Side view of the air along a 6 km line from A to B, coloured by wind speed. The arrow keys
 move a probe that reads the air at a point; Escape clears it.") and `tabindex="0"` with the 2 px `--focus` ring. Everything on it is read from the
 tokens through `getComputedStyle` (`--text`, `--muted`, `--grid`, `--surface`, `--outline`, `--surface-3`, `--chart-moist`, `--font`, `--fs-xs`), so the
@@ -547,22 +548,30 @@ everything that is real text (chips, readout, legend, footer) is DOM text at 14 
 model's own ground as a dashed `--text` line. The picture is drawn at the device pixel ratio up to 3. Under reduced motion there are no
 streaks and no fade: still arrows, and nothing on the picture moves.
 
-*Chips, reasons, legend.* Six `chip`s (`aria-pressed`) in a group labelled "Colour the slice by"; in 358 px they share the row, so they have 6 px of side
-padding (and the row scrolls if it is ever too narrow). A chip the air cannot give is `aria-disabled` at 38 % opacity (not `disabled`, so it still takes
+*Chips, reasons, legend.* Six `chip`s (`aria-pressed`) in a group labelled "Colour the slice by"; from 412 px wide they share one row, with 6 px of side
+padding, and under 412 px they sit in two rows of three (`.slice-chips` becomes a three-column grid). A chip the air cannot give is `aria-disabled` at 38 % opacity (not `disabled`, so it still takes
 focus and a screen reader reads its reason through `aria-describedby`), and its reason is written under the row word for word as the scene
-wrote it, with a tonal *Use the 3-D atmosphere* button where switching helps. The legend under it is the legend's title with its units, then a
-12 px gradient bar with a 1 px `--divider` border and up to five numbers under it (or 12 px class swatches with their words).
+wrote it, with a tonal *Use the 3-D atmosphere* button where switching helps; the button comes first, and a tap on a chip that is off scrolls to
+the reason and the button. The order on a phone in portrait is the picture, the reading, the chips, the tool's controls, then the reasons and the
+button, then the legend, so that *Set start* and *Presets* stay in view at 390 x 844 (the button is a scroll away; at 360 x 640 only the picture and
+the chips fit in the window). Where no chip is off (the 3-D air) the legend comes before the controls. The legend is the legend's title with its units,
+then a 12 px gradient bar with a 1 px `--divider` border and up to five numbers under it (or 12 px class swatches with their words).
 
 *Probe.* A tap or a drag on the picture (pointer capture; a finger lifted off the glass or a mouse passing over does not move it), or the
 arrow keys when it has focus (a lattice step; a quarter of the axis with Shift), and Escape clears it. The words appear in a `.slice-readout`
 (`--surface-2`, `--r-md`, 14 px) under the picture, with a 44 px *Clear the probe* icon button; a screen reader hears a reading after a key
-move (after a pause of 0.4 s, so a held key does not queue), not after every drag.
+move (after a pause of 0.4 s, so a held key does not queue), not after every drag. The reading is not part of the pinned picture: in short
+landscape it scrolls with the chips and the controls, so it never covers them.
 
 *Footer.* A `.hint` that is `position: sticky` at the bottom of the panel's body with a 1 px `--divider` above it, so it is always in view:
 "3-D time-stepped air · model grid 133 m · air from 11:25", or "Diagnosed wind: terrain effects only · model grid 133 m · air from 11:25", with
-"(4 min before the time shown)" added past 90 seconds. In short landscape (844 x 390: `orientation: landscape` and `max-height: 540px`) the picture
-is pinned at the top of the panel at 96 px, the chips and the controls scroll beneath it, and the footer is one line that keeps the kind, the grid
-and the age and hides their explanations (`.slice-more`); the readout loses its top margin so the clear button fits.
+"(4 min before the time shown)" added past 90 seconds (the age is in minutes, so an old picture on a small phone can say "239 min before the time shown").
+In short landscape (844 x 390: `orientation: landscape` and `max-height: 540px`) the picture is pinned at the top of the panel at 84 px, as wide as the
+panel (the pinned block reaches the panel's edges), the reading, the chips and the controls scroll beneath it
+(five lines of reading fit under it at a line height of 1.3), and the footer is one line, pinned at the bottom, that keeps the kind, the grid and
+the age and hides their explanations (`.slice-more`); while a reading is shown the footer is hidden and its line goes to the reading, and the
+readout loses its top margin so the clear button's hit area does not reach under the picture. The body keeps `scroll-padding` for the pinned picture
+above and the footer below, so a control that is scrolled to stops clear of both.
 
 *Words, as the rules of this document and `src/ui/content.ts` ask.* Plain words and sentence case; no em dash; "about" for a number ("Wind
 about 32 km/h"); a wind is named by where it comes **from** with the hyphenated eight-point word ("north-west"), never "towards" in words; the

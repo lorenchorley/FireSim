@@ -497,7 +497,7 @@ levels (`kind: 'diagnosed'`, `thetaAnomaly` and `smoke` of length 0, the 10 m `s
 halved horizontally above `atmosViewMaxCells` = 150,000 cells) now carries layout, kind, top, datum and time over: block means keep the
 terrain-following layout consistent because `h0 + ζ (1 − h0 / H′)` is linear in `h0`. `keyframeBytes` in `ui/snapshotStore.ts` counts real
 byte lengths, so a history keyframe carries its air and its own time, and "air from" can be said for any time on the scrubber (a picture
-composed from an older keyframe says so).
+composed from an older keyframe says so; on the fast tier the time is that of the saved wind volume, see below).
 
 **What the diagnosed wind is, and is not.** It is `st.bg`, the cached mass-consistent solve of the forecast profile on the model's grid
 (`AtmosBase`), one per weather stamp and blended in time between two, with stability weighting and the user's wind edits (an edit reaches
@@ -515,7 +515,7 @@ volume is published on every emitted snapshot, with no option or lazy flag. **Me
 published view, 474.6 KiB at 45 x 45 x 20 (`keyframeBytesModel`, `scenario/memoryModel.ts`, which the Data sets screen's working memory
 uses; the atmosphere row's label for the fast tier is now "the forecast wind fitted to the terrain"). The newest snapshot holds it exactly:
 the live view and the engine are untouched. **The history keeps an older picture's copy cheaper** (fix F1 of the 0.4.0 list: with the
-volume whole in every keyframe a keyframe was 1,310,636 B against 824,556 B in 0.3.0, and a 1 GB phone kept 33 keyframes of a 6 hour
+volume whole in every keyframe a keyframe was 1,310,636 B against 824,636 B in 0.3.0, and a 1 GB phone kept 33 keyframes of a 6 hour
 fast-tier run, 40 min apart at the widest, where 0.3.0 kept 55, 10 min apart). `ui/snapshotStore.ts` moves the volume out of the keyframe
 into a list of its own and packs it (`core/airPack.ts`): u, v and w as 16-bit integers with a scale per field, 6 bytes per cell,
 237.3 KiB at 45 x 45 x 20. Display only: a restored picture is a plain Float32 view that the sampler reads like any other. **Error
@@ -607,7 +607,8 @@ no volume and the sampler fell back to the ambient wind with a power-law profile
 | `lattice.ts` | `LatticeStencil`: bilinear reading between lattice points with the validity mask renormalised, so a point just above the model's ground is not pulled towards the zeros an invalid cell holds |
 | `flow2d.ts` | the streaks: `createFlow`, `seedFlow`, `stepFlow` (seeded, never `Math.random`; a particle that leaves valid air is re-seeded), `flowArrows` (the still lattice under reduced motion) |
 | `probe.ts` | `probeAt` (the air at a point of the slice, with `where`: air, in the ground, below the model's ground, above its top), `moveProbe` (the arrow keys), `probeSentence`, `windFromDeg` |
-| `niceTicks.ts` | axis ticks at 1, 2 or 5 times a power of ten |
+| `niceTicks.ts` | axis ticks at 1, 2 or 5 times a power of ten (candidate steps compared by their tick count, the winner's list built once, the last eight answers kept and handed back as the same object) |
+| `presetWind.ts` | `presetWindFromDeg(air, centre, groundAsl, forecastFromDeg)` and `PRESET_WIND_AGL_M` (30 m): the direction the Along and Across presets follow, from the model's wind at the centre, else the forecast's |
 | `sliceUpdater.ts` | `createSliceUpdater`, the shared computation (below) |
 | `testing.ts` | fixtures for tests (not imported by application code) |
 
@@ -630,7 +631,14 @@ old curtain colouring (temperature where the air has it, else speed); the tool w
 live chords through the fire (the map centre when there is none) of 3 km each way: *along* runs A upwind to B downwind, *across* is the
 bearing of the wind towards minus 90 degrees (the wind blows to the right of A to B, so `across` reads positive), *slope* runs A downhill
 to B uphill from a Sobel gradient of the 10 m ground over about 2 km (flatter than 2 degrees has none), *me* runs from the phone's Setup
-fix to the fire and is not extended.
+fix to the fire and is not extended. **The wind *along* and *across* follow** is the model's own, at the middle of the chord (the fire, else
+the map centre), `PRESET_WIND_AGL_M` = 30 m above the 10 m ground there (`presetWindFromDeg` in `render/slice/presetWind.ts`, which does not
+allocate). The forecast's 10 m direction at the shown time is only the fallback, for an air with no 3-D wind or a model wind there under
+0.2 m/s (a sheltered pocket does not switch the presets off while the weather has a direction), and a calm forecast too has no direction
+(`calm`). The first build used the forecast alone; after a wind edit the two differ (a 14 m/s wind from the east edited in at the fire gives
+12.7 m/s from about 95 degrees at 30 m while the forecast still says the weather file's north-westerly), and a line along the forecast is
+not one the Along and Across chips mean much for. *Me to fire* is disabled until there is a fire, with the reason "There is no fire to go to
+yet" (the tool looks for the fire with the scene's own rule, `fireCentroid`, once for each snapshot, until the scene has a slice to say).
 
 **The shared `SliceUpdater`** (`slice/sliceUpdater.ts`, owned by `SceneView`). `request(inputs, nowMs, immediate)` resolves the line,
 samples the air into the same `SliceData` object every time, and checks the four presets; a line, chip or layer edit is computed at
@@ -638,15 +646,25 @@ once, a new snapshot at most every 250 ms (a request inside the interval is kept
 releases it). It owns no timer and takes the clock as an argument, so tests use a fake one; `invalidate()` forgets everything (a new
 scenario, the section switched off). `SceneView.sliceInputs()` fills `SliceInputs` from what the scene holds: the line state, the model
 grid, the **10 m terrain as received** (`HeightField` of the hi-res DEM, not the sharpened mesh the ground is drawn from), the camera
-target as the map centre, `fireCentroid` of the shown snapshot, the 10 m wind direction at the shown time (calm under 0.2 m/s is
-`null`), the phone's position and the shown time. `applySlice` adds the effective `field` and the state of every chip
+target as the map centre, the fire (`fireCentroid` of the shown snapshot, a scan of the fire grid that is made once for each snapshot and
+kept until the next, not at every line edit), the direction the presets follow (`windFromDeg`: `presetWindFromDeg`, the model's wind 30 m
+up at the centre the presets use, else the forecast's 10 m direction at the shown time, where a wind under 0.2 m/s is `null`), the phone's
+position and the shown time. `applySlice` adds the effective `field` and the state of every chip
 (`sliceFieldStatuses`, one object per kind of air), redraws the curtain and calls the listeners of `onSlice`. `viewSection()` flies to the
 resolved line, not to `centre` and `azimuth`. A slice update (resolve, four preset checks, sample, cells) took a median of 0.5 to 1.0 ms
 and a 95th percentile of up to 1.5 ms in node on the build machine (lattices of 96 x 55 and 129 x 55; `render/slice/slice.perf.test.ts`);
 the plan's limit is 8 ms at 4x CPU throttle. That was measured later, in a real browser in software rendering under a 4x throttle: the
 compute alone (resolve and sample) took 2.5 ms per edit in one check and a 95th percentile of 7.1 ms on the fast tier and 8.9 ms on the 3-D
 tier in another, so it is borderline; the whole update (compute, the panel's redraw and the curtain) took a 95th percentile of 18 ms on the fast tier and
-33 ms on the 3-D tier (maximum 41 ms), so the limit is not met for the whole update (plan 18.3, item 18). The same test logs the allocation: 35 bytes per `sampleSlice` into a
+33 ms on the 3-D tier (maximum 41 ms), so the limit is not met for the whole update (plan 18.3, item 18). A fix round then moved the panel's
+repaint out of the update (`setData` only notes the slice and the repaint takes the next display frame, once however many slices came in
+that frame, and nothing is drawn while the panel is covered) and made `niceTicks` count its candidate steps and keep its last eight answers
+(it had built nine tick lists, about 250 us a call, twice for every repaint). Measured on the fast tier with the panel open at a 4x throttle
+in software-rendered Chromium (150 line edits, three runs, not a phone): the synchronous update took a median of 4.2 to 4.5 ms and a 95th
+percentile of 7.9 to 9.5 ms (before: 10.5 to 11.5 and 17.9 to 20.9), the repaint, now a frame of its own, a median of 3.3 to 4.4 ms and a
+95th percentile of 8.4 to 10.4, and update plus repaint a 95th percentile of about 15 to 17 ms (before: 24 to 26). The repaint was moved,
+not removed, so the plan's 8 ms is approached and not met for the whole update. The 3-D tier was measured once: 5.9 ms median and 12.6 ms
+95th percentile for the synchronous update, against 12.7 and 22.3. The node test (`slice.perf.test.ts`) also logs the allocation: 35 bytes per `sampleSlice` into a
 reused `SliceData`, about 6 kB of small result objects per update, a heap that changes by 32 kB over 3,000 updates, 2.6 bytes per
 streak step.
 
@@ -663,12 +681,27 @@ see-through at light winds so the ground behind shows). Its arrows keep reading 
 the ground, through the sampler's boxed `wind(x, y, z, agl, out)`, not `windP`); the cyan arrows that mark air blowing against the main wind are drawn on the prognostic air only, and smoke greys the
 other chips only where the air has smoke. `render/sliceFields.ts` is the one place that says which chips an air can give and why not (so
 the scene, the Layers panel, the map legend and the Air slices panel never disagree): wind chips on any air with a wind, Temp and Smoke on
-`airHas` of the field, with the reason in plain words and `action: 'use-3d'` where switching helps. **Colour ramps** (`render/palette.ts`):
+`airHas` of the field, with the reason in plain words and `action: 'use-3d'` where switching helps. It also holds the two small rules of the
+Layers compass, `sectionCompass` and `sameLine` (below). **Colour ramps** (`render/palette.ts`):
 a new diverging `ALONG_RAMP` (purple for negative, green for positive, pale at zero, mirror stops with the same luminance, so it reads in
 grey), a log `SMOKE_RAMP` (four decades from 0.0001 to 1 of the model's own units, because the smoke of a young plume is about a
 thousandth of a big fire's and a linear scale would show nothing), and `sliceFieldScale(field)`, which the curtain, the panel and
 `sliceLegend(field, kind)` all read. `palette.test.ts` now also covers `THETA_RAMP` and `UPDRAFT_RAMP` with the Machado colour-vision
 tests (they were not covered before); the measured numbers are in `docs/DESIGN.md`.
+
+**The Layers compass** (`ui/screens/sim/layersPanel.ts`, `sectionCompass` in `render/sliceFields.ts`). The stored `LayerState.crossSection.azimuth`
+and `centre` are the line's own only while the line follows the centre rule; with a line placed by the tool, or a preset, they are stale,
+and the compass first read "Towards N 0" and, when turned, jumped the line to the stored centre (the origin, or the last ignition) instead of
+turning it. Now `sectionCompass(cs, line)` gives the bearing and the middle of the line the scene really resolved (`SliceUpdate.resolved.line`:
+a preset has no ends in the store; without it the placed A and B, else the stored values), the compass shows that bearing and follows it
+when the line moves (a preset's line follows the wind and the fire), turning it writes `azimuth` and `centre` = the line's middle with
+`LINE_BY_CENTRE` (so a, b and preset are cleared and the line becomes the longest chord through the middle, out to the model's edges), and
+*Centre on the fire* keeps the bearing and writes the fire as the centre. The words in that panel say "slice" (*Colour the slice by*,
+*Slice direction*, "Looking at the slice from the side."), and a hint above the compass says what turning it does; the diagnosed-wind note
+(`DIAGNOSED_SECTION_NOTE`) still begins "This section shows". `sameLine(a, b)` says whether two states are the same line (azimuth, centre,
+A, B, preset): `probeAfterLineChange` clears the tool's probe when the line changes from outside the tool, and `watchLineForProbe` (a
+subscription made once by `simScreen.ts`, for the life of the sim screen) applies it to the compass, *Centre on the fire* and *Show me*;
+the tool's own writes already clear it with the line.
 
 **The tool** (`ui/screens/sim/sliceTool.ts` and friends, in the entry chunk; `ToolId` gained `'air'`, the Tools list "Air slices" with the
 `line` icon). `sliceToolModel.ts` is a pure state machine over `SliceToolState` (`UiState.slice`, created the first time the tool opens;
@@ -686,9 +719,13 @@ the candidate and the draft and switches the section on. The 2-D map has no `sli
 **The panel** (`slicePanel.ts`, `slicePanelModel.ts`, `sliceDraw.ts`; Canvas 2-D). `slicePanelModel.ts` and `sliceDraw.ts` are pure
 or drawn against a stub context in tests; `slicePanel.ts` wires them to the elements. Layers drawn: the raster of the lattice (smoothed, or
 the model's cells as nearest-neighbour blocks with their native values), the filled 10 m ground and the dashed model ground, axes, the
-streaks (about 300 particles, at most 24 frames a second, only while the panel is on screen and the page visible; fewer in a small plot;
-a still arrow lattice under `prefersReducedMotion()`), the probe cross, the legend (`options.legend`, the scene's `sliceLegend`),
-and the footer (kind · model grid · air from, with "(N min before the time shown)" past 90 s). Height is drawn at the true scale times
+streaks (about 300 particles, at most 24 frames a second on any display, only while the panel is on screen and the page visible; fewer in a
+small plot; a still arrow lattice under `prefersReducedMotion()`), the probe cross, the legend (`options.legend`, the scene's `sliceLegend`),
+and the footer (kind · model grid · air from, with "(N min before the time shown)" past 90 s). **The cap:** `flowTick(clock, tMs)` in
+`slicePanelModel.ts` gathers the display's frame times and lets a streak frame through when 1/24 s less half a millisecond has passed, so a
+60 Hz display draws 20 a second (every third frame) and 120 and 144 Hz draw 24. The first version's threshold was 1/24 s minus 8 ms, which
+let a 144 Hz display draw about 29 a second (found by a verifier); a test runs 12 display rates from 30 to 360 Hz and, with a little
+jitter, holds all of them to at most 24 a second. Height is drawn at the true scale times
 the existing x1 to 3 *Vertical exaggeration* slider where that fits in the box, otherwise fitted to the box; the tag on the axis says the
 ratio really drawn. **Streaks and the exaggeration:** the plan and the contract said to give `stepFlow` the on-screen ratio; the
 panel gives it 1, because the ratio is already in the drawing (`yOfZ`), and passing it as well would count it twice and make streaks climb
@@ -696,21 +733,36 @@ panel gives it 1, because the ratio is already in the drawing (`yOfZ`), and pass
 ratio, is given it. DOM text (chips, the readout, the footer) is 14 px or more and every control a 44 px target; the canvas carries only
 axis labels and the scale tag at the caption size, as the weather chart does, and has a text alternative. The probe is tap or drag
 (pointer capture, no touch-hover moves), arrow keys (one lattice step; a quarter of the axis with Shift), Escape clears; the readout is
-`probeSentence` in a `.slice-readout` with a 44 px clear button. The panel never touches the scene, the layers or the session: the tool
+`probeSentence` in a `.slice-readout` with a 44 px clear button. **Order of the parts** (it matters on a small screen): the picture, the probe's reading, the
+chips, the legend and the tool's controls, then the notes of the chips that are off with the *Use the 3-D atmosphere* button first, the
+*Show model cells* switch, the scale caption and the footer. While some chip is off (the fast tier) the legend moves behind the notes
+(`arrange`), so *Set start* and *Presets* stay near the chips; the 3-D button is then a scroll away, and a tap on a chip that is off scrolls
+to its reason and the button. In short landscape (`orientation: landscape` and `max-height: 540px`) the picture (84 px, as wide as the panel)
+is pinned at the top and a one-line footer at the bottom, the reading, chips and controls scroll between them (the reading was pinned with the
+picture before and covered the window) and the footer is hidden while a reading is shown. The tool scrolls the body back to the picture when the first line is placed
+or a preset is chosen (the panel's own focus does not scroll), and in short landscape when a probe is placed, so the reading is right under it. The canvas is as tall as its picture needs (`naturalBoxHeight`, set as `--slice-h`, at most `clamp(180px, 27vh,
+230px)`; 128 px while there is no slice), so a long line at true scale leaves no blank band above it. **The repaint:** `setData` only keeps
+the slice and asks for the next display frame; the layout, the words, the picture and the probe's reading are redone once per frame
+however many slices came in it (`catchUp`), and not at all while the panel is covered (`setActive(false)`: the next `setActive(true)` catches
+up). Any call that needs the new picture (a probe move, a chip) catches up first, so the new air is never painted into the old layout.
+The panel never touches the scene, the layers or the session: the tool
 passes each `SliceUpdate` in with `setData` and takes events out through the option callbacks (`onField`, `onProbe`, `onShowCells`,
 `onUse3d`); a chip tap writes `crossSection.field`, so the curtain follows.
 
 **The lazy chunk.** The panel, its drawing, `flow2d`, `probe`, `niceTicks`, the lattice reader and `slice.css` load as one dynamic chunk,
 requested only when the Air slices tool first opens (`sliceToolLoad.ts` is the one `import('./slicePanel')`; a test asserts no
 request at start-up), with a "Loading the side view" line, and a "The side view could not be loaded." line with *Try again* if it fails
-(the controls still work, since the curtain draws without the panel). The entry chunk holds the tool's shell, its model, the scene glue
-and the registration; `slice.css` is 3,979 bytes of source (cap 4,096) and is not imported by `main.css`. Sizes of the chunk, of the entry's
+(the controls still work, since the curtain draws without the panel). A failed retry says "The side view could not be loaded. Close and
+reopen FireSim to load it." and puts the button away (`loadFailedView(failures)`): a browser remembers a module that failed to load and
+fails the same import again, so on the web a second try cannot recover (plan 17.4). The entry chunk holds the tool's shell, its model, the
+scene glue and the registration; `slice.css` is 4,024 bytes of source (cap 4,096) and is not imported by `main.css`. Sizes of the chunk, of the entry's
 growth and of the chunk the build splits `explain/text.ts` into (`probe.ts` is the only main-thread module that imports it, and the
 in-thread engine's chunk holds it too, so the build shares it as a chunk of its own: a size the lane reported as about 12 kB gzip, to be
 re-read): `TBD-BUNDLE` (*Performance budgets*, below). Budgets in `scripts/check-bundle.mjs` did not change.
 
 **Tests.** Pure, in node: `airView.oracle`, `airView.perf`, `airView.sim`, `atmosphereSampler`, `snapshotStore.air`, `memoryModel` (the
-keyframe rows), `core/airView`, `render/slice/*` (`contract`, `lattice`, `niceTicks`, `flow2d`, `probe`, `sectionLine`, `sliceField`,
+keyframe rows), `core/airView`, `core/airPack` (the 16-bit wind copy and its bound), `snapshotStore.fast6h.sim` (the 6 hour table of the
+history at the budgets of weak phones; run on its own, it prints the table), `render/slice/*` (`contract`, `lattice`, `niceTicks`, `flow2d`, `probe`, `sectionLine`, `presetWind`, `sliceField`,
 `sliceField.oracle`, `slice.perf`, `sliceUpdater`), `render/sliceFields`, `crossSectionColour`, `crossSectionLayer`, `smokePuffs`, `palette`
 and `legends` (the new ramps, colour vision and legends), `layerCatalog`, `ui/screens/sim/slicePanelModel`, `sliceDraw`,
 `slicePanelFlow`, `sliceToolModel`, `sliceToolActions`, `mapLegend` and `context`; `ui/content.test.ts` pins the Help and Glossary entries to
@@ -1270,13 +1322,13 @@ so the panel is a lazy chunk). The other rows were measured in node on the build
 | CSS (raw / gzip, kB) | 125.3 / 22.4 | TBD-BUNDLE | raw <= 135, gzip <= 25; `slice.css` is imported by the lazy chunk, not by `main.css` |
 | The Air slices panel chunk (panel, drawing, `flow2d`, `probe`, `niceTicks`, lattice reader, its CSS), gzip kB | none | TBD-BUNDLE | lazy, no budget of its own; the plan estimated 14 to 18 |
 | The chunk the build splits `explain/text.ts` into, gzip kB | none | TBD-BUNDLE (a builder reported about 12) | counted in all JS |
-| `src/styles/slice.css`, source | none | 3,979 bytes (`wc -c`) | <= 4,096 bytes (the plan's CSS estimate) |
+| `src/styles/slice.css`, source | none | 4,024 bytes (`wc -c`; it was 3,979 before the slice-UI round) | <= 4,096 bytes (the plan's CSS estimate) |
 | Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | TBD-BUNDLE | unchanged by this release / <= 33 |
 | `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`; the times vary: later runs gave 0.40 / 0.60 / 1.15 ms and 0.43 ms fast, 1.22 ms high) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
 | History keyframe, fast tier at 45 x 45 x 20 | | +237.3 KiB (6 bytes per cell: 16-bit integers, in a wind list beside the keyframes; the live snapshot holds the 474.6 KiB exactly) | within 0.00046 m/s of the exact wind at 30 m/s |
 | History of a 6 h fast-tier run (72 keyframes) | | 2 GB and up: +17.5 MB (72 volumes); 0.5 to 1 GB: about +5 % per keyframe, the volumes held to 4 % of the budget; keyframes and longest gap as in 0.3.0 (the count about 5 % lower on average over the last hour) | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB; `snapshotStore.fast6h.sim.test.ts` |
 | Sampler v2 per call: `windP` / `fieldsP` | | 109 / 258 ns, 0.14 bytes (`[sampler perf]`); later runs 100 to 130 / 182 to 260 ns | allocation-free; `atmosphereSampler.test.ts` measures it, and `atmosphereSampler.alloc.test.ts` with inlining off |
-| One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle. Measured later at 4x in a browser: compute alone p95 7.1 ms (fast) / 8.9 ms (3-D), the whole update (compute, panel redraw, curtain) p95 18 / 33 ms, max 41 ms: **not met for the whole update** |
+| One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle. Measured later at 4x in a browser: compute alone p95 7.1 ms (fast) / 8.9 ms (3-D), the whole update (compute, panel redraw, curtain) p95 18 / 33 ms, max 41 ms. After the slice-UI round (fast tier, panel open, 150 edits, 4x, software rendering): synchronous update p50 4.2 to 4.5 ms, p95 7.9 to 9.5 ms (was 10.5 to 11.5 and 17.9 to 20.9); the repaint, now a frame of its own, p50 3.3 to 4.4 ms, p95 8.4 to 10.4; both p95 about 15 to 17 ms (was 24 to 26): **the repaint was moved, not removed; approached, not met for the whole update** |
 | One streak step (300 particles); the probe with its sentence | | 0.05 ms and 2.6 bytes; 4.7 us and 448 bytes | |
 | Heap after 3,000 slice updates | | changed by 31.8 kB | heap-flat |
 | Layers panel: DOM nodes when open | 940 | not re-measured | <= 1000; the chip row and its note are built only once the section is switched on |
@@ -1308,8 +1360,9 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
 * **The Air slice costs nothing while it is off, and little while it is on.** Nothing of the panel loads until the tool is first opened
   (`e2e/air-tool.spec.ts` checks no request at start-up); the scene computes no slice while the section is off (the updater is
   invalidated); one `SliceUpdater` serves the curtain and the panel; the slice reuses its arrays, and a test holds 3,000 updates to
-  a flat heap; the streaks run at most 24 frames a second and stop while the panel is hidden, the page is in the background or the phone is
-  set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing.
+  a flat heap; the panel is repainted once in the next display frame, however many slices came, and not at all while it is covered; the
+  streaks run at most 24 frames a second on any display (20 at 60 Hz) and stop while the panel is hidden, the page is in the background or
+  the phone is set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing.
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
   server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.

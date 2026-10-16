@@ -495,13 +495,18 @@ model rectangle ("Shown to the edge of the model area"):
 
 | Preset | A to B | It cannot be used when |
 |---|---|---|
-| Along the wind | A upwind, B downwind | the wind is calm: "The wind is calm, so it has no direction yet" |
+| Along the wind | A upwind, B downwind | the wind is calm (the model's at the middle of the line and the forecast's): "The wind is calm, so it has no direction yet" |
 | Across the wind | the wind blows to the right of A to B (so "Across" reads positive) | the wind is calm |
 | Up the slope | A downhill, B uphill, from the ground's slope over about 2 km | the ground is flatter than about 2 degrees: "The ground here is too flat to have an uphill direction" |
-| Me to fire | from your phone's position to the fire (not extended) | there is no position inside the model area ("This run has no position for you", "You are outside the model area") or no fire yet |
+| Me to fire | from your phone's position to the fire (not extended) | there is no position inside the model area ("This run has no position for you", "You are outside the model area") or no fire yet ("There is no fire to go to yet"); the button stays off, with that reason under it, until there is both |
 
-A preset is live: it is worked out again from the wind at the time shown, the fire and the phone every time the slice is computed, so
-*Along the wind* follows a wind change while the run plays. The shortest line is the larger of 300 m and two model cells; shorter
+A preset is live: it is worked out again from the wind, the fire and the phone every time the slice is computed, so *Along the wind*
+follows a wind change while the run plays. The wind it follows is the model's own, at the middle of the preset line (the fire, else the
+middle of the map), 30 m above the ground there, because that is the air the slice shows and the Along and Across chips are about. The
+forecast's 10 m direction at the time shown is only the fallback, for air that holds no 3-D wind or a model wind there under 0.2 m/s.
+After a wind edit the two can differ by tens of degrees (an edit of 14 m/s from the east at the fire gave 12.7 m/s from about 95 degrees
+at 30 m while the forecast still said the weather file's north-westerly), and the line now follows the edit. The shortest line is the
+larger of 300 m and two model cells; shorter
 ones are refused in words ("Make the line longer than 300 m", the number rounded up to 50 m). Back and Escape drop a placement under
 way first and close the tool next, and focus returns to the Tools button; one-finger pan keeps working while placing. The line, A and B
 are written to the layer state (`LayerState.crossSection.a`, `b`, `preset`, `field`; nothing is remembered between runs) and drawn on the
@@ -518,8 +523,9 @@ ground on the line to 2,000 m over the highest or the model top. It draws:
 - **axes** (ticks at 1, 2 or 5 times a power of ten, chosen by a pure `niceTicks` to give about five, for example every 500 m of height, and distance in metres or kilometres) and a small tag, "True scale"
   or, for example, "Height ×1.5", for the scale actually drawn: true scale times the existing *Vertical exaggeration* slider (1 to 3) of
   Layers, reduced when the box is too short for it;
-- **flow streaks** (about 300 particles moving with the along-line wind and the vertical motion, at most 24 frames a second, stopped
-  while the panel is hidden or the page is in the background), or, when the phone is set to reduce motion, a still lattice of arrows;
+- **flow streaks** (about 300 particles moving with the along-line wind and the vertical motion, at most 24 frames a second on any
+  display, so a 60 Hz screen draws 20, a 120 or 144 Hz one 24; stopped while the panel is hidden, covered or the page is in the
+  background), or, when the phone is set to reduce motion, a still lattice of arrows;
 - the **probe**: tap or drag on the picture (or use the arrow keys on the focused picture; Escape or the small X clears it) and one
   sentence reads the air there, for example "Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m
   above ground, 3 K warmer than average", with a pin on the map. Points inside the ground, below the model's own ground or above its top
@@ -541,11 +547,20 @@ the wind; wind direction is always reported as where it comes **from**, with the
 is always in view: **kind · model grid · age**, for example "3-D time-stepped air · model grid 133 m · air from 11:25" or "Diagnosed wind:
 terrain effects only · model grid 133 m · air from 11:25", and "(4 min before the time shown)" is added when the air is more than 90 s
 older than the picture. That is usual, not rare: only the newest picture of a run has air made at its own time, every earlier one is composed
-from the saved air (kept about every 5 minutes, `SnapshotStore` keyframes) at or before its time, so the footer can say 2 to 5 minutes
-while the run plays at 60 x (as seen when the build was checked), and not only after jumping back.
+from the saved air at or before its time. Where the history has room (a 2 GB phone, for a 6 hour run) the air is saved about every 5 minutes (the history's
+keyframes), so the footer can say 2 to 5 minutes while the run plays at 60 x (as seen when the build was checked), and not only after
+jumping back. On a 0.5 or 1 GB phone the fast tier's saved wind is thinned to a share of the history's memory once that fills (see
+*Memory* below), so after hours of run the air of an old picture can be hours older than the picture (up to 239, 119 and 129 minutes
+at 48, 61.4 and 64 MiB over 6 hours, measured), and the footer says exactly that, in minutes.
 
-In short landscape (844 x 390) the picture and a one-line footer stay pinned at the top of the panel, the chips and controls scroll
-under them, and the footer keeps the kind, the grid and the age but drops their explanations.
+**On a short screen.** In short landscape (844 x 390) the picture (84 px high, as wide as the panel) and a one-line footer stay pinned;
+the reading of a probe, the chips and the controls scroll between them, so with a reading on, the chips, *Presets* and the 3-D button can
+still be reached (the footer gives its line to the reading while there is one, and a new tap on the picture scrolls back up to the
+reading). In portrait the order is the picture, the reading, the chips, the controls, then the notes of the chips that are off with the
+*Use the 3-D atmosphere* button, then the legend (on the 3-D air there are no notes, and the legend comes before the controls). That
+keeps *Set start* and *Presets* in view at 390 x 844; the 3-D button is a scroll away there, and a tap on a chip that is off scrolls to
+its reason and the button. Under 412 px wide the six chips sit in two rows of three. The picture is as tall as it needs to be (at most
+180 to 230 px, 27 % of the screen height within those limits), so a long line at true scale has no empty band above it.
 
 **The curtain** is the same slice standing over the terrain in the 3-D view. The scene computes the slice once (`SliceUpdater`,
 `src/render/slice/sliceUpdater.ts`: at once for a new line, chip or layer change, otherwise at most every 250 ms after a new picture
@@ -554,7 +569,12 @@ lattice, drawn with the same ramps as the panel and the legends; its wind arrows
 (30 to 2,200 m above the ground), and the cyan arrows that mark air blowing against the main wind are drawn on the 3-D atmosphere only.
 With no chip chosen it keeps its old colouring (temperature on the 3-D atmosphere, wind speed on the fast tier); the first line you place
 chooses Speed. The Layers panel has the same six chips under *Air slice*, and, on the fast model, a note: "This section shows the diagnosed
-wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperature and smoke."
+wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperature and smoke." In that panel the chips are headed *Colour the
+slice by* and the compass is *Slice direction*. With a line placed by the tool (or a preset) the compass shows that line's own bearing, and
+turning it swings the line about its middle, out to the edges of the model area (the line is then the compass's, no longer a preset or
+A and B); *Centre on the fire* moves the line to the fire at the same bearing, and a hint above the compass, shown while a line is placed, says so. A probe on the old line
+is cleared whenever the line is changed from outside the tool (the compass, *Centre on the fire*, *Show me*). One sentence of the Layers
+panel still says "section", the diagnosed-wind note above.
 
 **The air view** (workstream C). Every picture the engine sends carries `atmosphere: AtmosphereView`, and since 0.4.0 it says what it is:
 
@@ -589,11 +609,29 @@ view takes 0.60 ms per snapshot on the fast tier (498 kB, 45 x 45 x 20) and 0.77
 run (in later runs `view()` took 0.40 to 0.60 ms on the fast tier, `windP` 100 to 130 ns, `fieldsP` 182 to 260 ns, a streak step 0.041 to 0.05 ms,
 a probe with its sentence 2.9 to 5.5 us and the update's 95th percentile reached 1.59 ms) and they are desktop numbers. Under a 4x CPU throttle in a
 desktop browser (still not a phone) the compute alone had a 95th percentile of 7.1 ms on the fast tier and 8.9 ms on the 3-D tier, against the
-plan's limit of 8 ms, and the whole update with the panel's redraw and the curtain 18 and 33 ms (plan section 18.3, item 18). **Memory:** the fast tier's
-volume adds 474.6 KiB to every keyframe of the history (u, v and w, 12 bytes per cell of 45 x 45 x 20), about 35 MB over the 72 keyframes
-of a 6 hour run, so the history budget (about 6 % of the device's memory) thins old pictures a little earlier on small phones; the Data
-sets memory model (`keyframeBytesModel`) counts it. The panel, its drawing, the streaks, the probe and its styles are one lazy chunk that
-loads the first time the tool opens (gzip size in *Build the phone apps* below); the tool's shell and the scene glue are in the entry.
+plan's limit of 8 ms, and the whole update with the panel's redraw and the curtain 18 and 33 ms (plan section 18.3, item 18). A fix round then
+moved the panel's repaint out of the update into the next display frame (several slices in one frame are one repaint, and nothing is
+drawn while the panel is covered) and cached the axis ticks. Measured again at a 4x throttle in software rendering on the fast tier with
+the panel open (150 line edits, three runs): the synchronous update took a median of 4.2 to 4.5 ms and a 95th percentile of 7.9 to 9.5 ms
+(it was 10.5 to 11.5 and 17.9 to 20.9), and the repaint, now a frame of its own, a median of 3.3 to 4.4 ms and a 95th percentile of 8.4 to
+10.4. The repaint was moved, not removed: update plus repaint is a 95th percentile of about 15 to 17 ms (it was 24 to 26), so the plan's
+8 ms is approached and not met for the whole update. The 3-D tier was measured once: 5.9 ms and 12.6 ms (median and 95th percentile of the
+update) against 12.7 and 22.3. **Memory:** the fast tier's volume is 12 bytes per cell and level in every picture it publishes (u, v and w;
+474.6 KiB at 45 x 45 x 20), and the newest snapshot holds it exactly. The history keeps an older picture's copy packed
+(`src/core/airPack.ts`): u, v and w as 16-bit integers with a scale for each, 6 bytes per cell (237.3 KiB), within 0.502 of a step
+(`max|f| / 32767`) per field of the exact wind, which is 0.00046 m/s for a 30 m/s field. The packed volumes are in a list of their own
+beside the keyframes with 4 % of the room the history has (the embers' share went from 20 % to 16 %; the keyframes keep 72 % and the light
+frames 8 %), so a volume never costs a picture. A picture takes the newest saved volume at or before its time and its air time is that
+volume's, so the footer's "N min before the time shown" stays true; the live view, the newest snapshot and the 3-D tiers' views are exact.
+Measured with real fast-tier Katoomba snapshots over 6 hours at a 60 s step (`npx vitest run src/ui/snapshotStore.fast6h.sim.test.ts
+--reporter=verbose --silent=false`), keyframes kept (longest gap in minutes) at the 6 hour instant, at 48, 61.4, 64 and 122.9 MiB: 0.3.0
+35 (40), 55 (10), 53 (20), 72 (5); with the volume whole in every keyframe 22 (40), 33 (40), 31 (40), 72 (5); now 39 (20), 57 (10),
+55 (10), 72 (5). The count is a sawtooth, so over the last hour the mean is about 5 % lower than 0.3.0's. A keyframe with its volume
+weighs about 868 kB on average (0.3.0: 824,636 B, whole volume 1,310,636 B). Thinning only the wind is not counted as thinning the
+history. The price is the freshness of the air in old pictures (above). The Data sets memory model (`keyframeBytesModel`,
+`keptKeyframeBytesModel`) counts the live and the kept keyframe. The panel, its drawing, the streaks, the probe and its styles are one
+lazy chunk that loads the first time the tool opens (gzip size in *Build the phone apps* below); the tool's shell and the scene glue are
+in the entry.
 
 **Limits.** The side view's picture was judged on still frames and a real browser in software rendering, not on a phone. It reads the
 model's air, and the air is not always the wind the fire feels: the diagnosed wind on the fast tier is the forecast wind where the terrain
@@ -603,10 +641,12 @@ published 10 m wind and about 1 in 5 more than one and a half times it; on a win
 in section 18.4 of the plan). The curtain's ground is the 10 m terrain as received, so a cliff the 3-D view draws steeper is
 drawn at its data slope in the curtain. Temp is "warmer or cooler than the average of the slice at that height" (the probe says "than
 average"), not a real temperature and not against the whole area; because the average is of the line's own air, on a short line through a
-plume the chip understates the plume, which is part of what it is compared with. For lines longer than about 4 km the
-true-scale picture is shorter than its box and the room above it is blank. The builders also reported, and this page did not re-check, that
-the landscape panel leaves only about 44 px for the chips and controls to scroll in, that the *Use the 3-D atmosphere* button is just below
-the fold in portrait on the fast tier, and that the Tools dial scrolls at 360 x 640. The time-lapse recorder is 0.4.1.
+plume the chip understates the plume, which is part of what it is compared with. The layout was measured in software rendering at 390 x 844,
+360 x 640 and 844 x 390 (a log of positions, not a phone): at 360 x 640 only the picture and the chips fit in the window of about 230 px,
+and a reading of five lines is about 112 px where 80 to 90 px are left under the picture, so it needs a scroll to read in full. Two small
+things were left as they are: a tapped candidate on the map beats the crosshair until Cancel (the hint says so), and a preset centred on
+the map because there is no fire follows the camera at the rate of the pictures, not at once. That the Tools dial scrolls at 360 x 640 is as
+the builders reported and was not re-checked. The time-lapse recorder is 0.4.1.
 
 ## Data sources and licences
 
@@ -794,12 +834,13 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   the kind of the air and not the number of levels.
 - `e2e/air-tool.spec.ts`: the Air slices tool's placement flow: the Tools entry, "The side view needs the 3-D view." on the 2-D map and no
   chunk loaded, the panel's chunk asked for when the tool opens and not at start-up (and a failed chunk leaves one line, Try again and
-  working buttons), a real one-finger touch pan under the cross, the two-step tap confirm, "Make the line longer than 300 m", what is
-  written to the layers, Swap, a preset, "Me to fire" off with its reason, Back and Escape, focus, and nothing popping up by itself.
+  working buttons, and a failed retry says "Close and reopen FireSim to load it" and puts the button away), a real one-finger touch pan
+  under the cross, the two-step tap confirm, "Make the line longer than 300 m", what is written to the layers, Swap, a preset, "Me to fire"
+  off with its reason, Back and Escape, focus, and nothing popping up by itself.
 - `e2e/airslice-panel.spec.ts`: the side-view panel on both tiers: the painted picture, six chips on the 3-D air and Temp and Smoke off
   with the reason and the button on the fast tier, the probe (tap, drag, arrow keys, Escape, the clear button), "Show model cells", the
-  honest footer in view, landscape 844 x 390 (the picture and footer pinned, chips and controls scrolling), reduced motion (arrows, a
-  picture that holds still) and moving streaks otherwise.
+  honest footer in view, landscape 844 x 390 (the picture and footer pinned, the chips and controls scrolling, also with a reading on, when
+  the chips and Presets can still be reached and tapped), reduced motion (arrows, a picture that holds still) and moving streaks otherwise.
 - `e2e/air-slice.spec.ts` (5 tests): the whole Air slice at once, the tool, the curtain and the panel, on both tiers, for the seams the three
   lane specs above do not reach. A and B placed with the cross after a real touch pan and a tap (the line the scene computed is the one
   placed, and the panel draws it), every preset ("Me to fire" off with its reason), the chips (six on the 3-D air; Temp and Smoke off on
@@ -807,7 +848,10 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   ways), the probe by tap and arrow keys with the pin moving along the line, "Show model cells", the footer and "air from" also with the
   time scrubbed back, landscape, Escape, Back and focus return, the curtain staying when the tool closes, one-finger pan and the pinch
   with the tool open, the button that switches the run to the 3-D atmosphere, reduced motion, high contrast, the dark look, the vertical
-  exaggeration, and the 2-D stand-in map drawing the placed line.
+  exaggeration, and the 2-D stand-in map drawing the placed line. Since the slice-UI round it also holds the presets to the model's own wind
+  at the middle of the line (30 m up, read from the slice's own lattice), the panel redrawn in the next frame and not inside the update that
+  made the slice, the Layers compass showing the placed line's bearing and swinging that line about its middle (and clearing the probe),
+  and, at 390 x 844 and 360 x 640, that the controls follow the chips and a tap on a chip that is off scrolls to its reason and the button.
 - `e2e/air-curtain-gpu.spec.ts` (1 test): the curtain leaks no GPU objects. The section is switched on and off, the line, its length (four
   lengths, so the lattice changes size), the preset and the chip are changed, 60 times, and the renderer holds the same number of
   geometries and textures at the end as after a warm-up (the Layers spec does the same for every other layer).
@@ -962,7 +1006,7 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Module | What it does |
 |---|---|
-| `src/core` | shared types and contracts (`types.ts`, `simTypes.ts`), grids, local projection, units, seeded RNG, shared physics, `airView.ts` (what an air view is and holds) |
+| `src/core` | shared types and contracts (`types.ts`, `simTypes.ts`), grids, local projection, units, seeded RNG, shared physics, `airView.ts` (what an air view is and holds), `airPack.ts` (the 16-bit copy of a fast-tier wind volume that the history keeps) |
 | `src/data` | bundled assets, HTTP (native / dev proxy), IndexedDB cache and area packs, terrain tiles, canopy, demo rasters and sites |
 | `src/terrain` | slope, aspect, curvature, TPI, landforms, solar position, insolation with terrain shadows, hillshade |
 | `src/fuel` | fuel catalogue, SVTM mapping, vegetation inference, fire history and accumulation, fuel map and edits |
@@ -976,7 +1020,7 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `src/scenario` | the build pipeline, weather sources (Open-Meteo), presets, replays, belt kit, area packs, live feeds |
 | `src/sim` | `Simulation` (coupling loop, records, checkpoints, rewind, tiers), `SimHost`, worker, `SimClient` |
 | `src/render` | `SceneView`: terrain, vegetation, flames, embers, smoke, wind particles, overlays, the air slice's curtain, camera rig; the air sampler (`atmosphereSampler.ts`) |
-| `src/render/slice` | the Air slice's pure modules: `sampleSlice`, the line and its presets (`sectionFromEndpoints`, `resolveSlice`), axis ticks, flow streaks, the probe, the shared `SliceUpdater`; no Three.js and no DOM |
+| `src/render/slice` | the Air slice's pure modules: `sampleSlice`, the line and its presets (`sectionFromEndpoints`, `resolveSlice`, `presetWindFromDeg` for the wind the presets follow), axis ticks, flow streaks, the probe, the shared `SliceUpdater`; no Three.js and no DOM |
 | `src/ui` | app shell, setup / building / simulation screens, session (time, playback, edits), panels, mocks |
 
 ## Known limitations
@@ -1001,8 +1045,11 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   browser (including an installed PWA) the NSW, RFS and Open-Meteo services are called directly — all send CORS headers
   (verified live, doc 08b). Only the remote canopy-height bucket needs the dev-server proxy (or a deployment proxy).
 - Snapshots are dense (≈ 2 MB each); long runs are thinned in the replay store to fit its memory budget. Since 0.4.0 the fast tier's
-  snapshots also carry its diagnosed 3-D wind (about 0.5 MB more per snapshot, 474.6 KiB per kept keyframe at 45 x 45 x 20, about 35 MB over
-  a 6 hour run), so thinning starts a little earlier; the whole snapshot size was not measured again.
+  snapshots also carry its diagnosed 3-D wind (about 0.5 MB more per snapshot, 474.6 KiB at 45 x 45 x 20; the whole snapshot size was not
+  measured again). The newest snapshot holds it exactly; the history keeps an older picture's copy packed to 16-bit integers (237.3 KiB,
+  within 0.00046 m/s at 30 m/s) in a list with 4 % of its memory, so the pictures kept over a 6 hour run are about those of 0.3.0 (the
+  count about 5 % lower on average over the last hour, the longest gap at the 6 hour instant the same or shorter) and what thins instead is the freshness of
+  the air in old pictures: on a 0.5 or 1 GB phone it can be hours older than the picture, and the slice footer says so.
 - Air slices (0.4.0, see *Air slices and the air picture*): seen only in software rendering and in node tests, never on a phone, so the
   streaks' frame rate, the panel's feel with gloves and the chunk's load time on a phone are open. On the fast tier the slice shows the
   forecast wind fitted to the terrain, not the wind the fire feels, and it says so in the footer; on a calm night the 10 m wind that both
