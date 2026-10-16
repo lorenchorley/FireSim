@@ -24,6 +24,7 @@
  */
 import { airKind, hasAirWind } from '../core/airView';
 import { formatBytes, formatCount as formatCountThin } from '../core/datasets';
+import { sliceRecorderBudgetBytes } from '../core/sliceRecording';
 import type { DatasetRecord, EngineInfo, QualityTier, ScenarioData, SimSnapshot, WeatherSeries } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
 import { EMBER_CLASSES, EMBER_PARAMS } from '../embers/params';
@@ -876,11 +877,8 @@ function tierWords(e: EngineInfo, settings: ModelCardInput['settings']): string 
   }
 }
 
-/**
- * What an Air slices recording (0.4.1) may hold on top of the history: an eighth of the history budget, at most 12 MiB (6 MiB on the weakest
- * phone). The same rule as `sliceRecorderBudgetBytes` of the recorder (core/sliceRecording.ts), kept here so the card does not load the recorder.
- */
-export const sliceRecordingBudget = (historyBytes: number): number => Math.min(12 * 1048576, Math.round(historyBytes / 8));
+/** What an Air slices recording (0.4.1) may hold on top of the history (the recorder's own rule, core/sliceRecording.ts). */
+export const sliceRecordingBudget = sliceRecorderBudgetBytes;
 
 /** The row that opens the full screen: every statistics group, the phone's hardware and software, and a Copy button. */
 const OPEN_DEBUG_STATS: CardBlock = { type: 'action', action: 'open-debug-stats', label: 'Open Simulation debug statistics' };
