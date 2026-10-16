@@ -31,7 +31,7 @@ import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels'
 import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
 import { createAirPanel, sliceMarkElement } from './sliceTool';
-import { backFromAirTool } from './sliceToolActions';
+import { backFromAirTool, watchLineForProbe } from './sliceToolActions';
 import { AIR_TOOL_LABEL, lineFacts, sliceAnnotationMarks, sliceMarks, tapCandidate, type SliceAnnMark } from './sliceToolModel';
 import { createMapMenu } from './mapMenu';
 import { backLayer, reduceMenu } from './layoutModel';
@@ -622,6 +622,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   unsubs.push(
     ui.subscribe((s, prev) => (s.slice?.placing !== prev.slice?.placing ? renderModes() : scheduleAnnotations()), ['slice']),
     layers.subscribe(scheduleAnnotations, ['crossSection']),
+    watchLineForProbe(ui, layers), // (a probe is cleared when the line changes from outside the tool: the compass, "Show me")
   );
   const offSlice = view.onSlice?.(() => {
     if (ui.get().tool === 'air' && ui.get().panelOpen) scheduleAnnotations();

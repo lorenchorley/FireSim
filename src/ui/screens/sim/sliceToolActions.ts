@@ -27,6 +27,7 @@ import {
   placeHere,
   placeVerdict,
   presetStatuses,
+  probeAfterLineChange,
   reopened,
   startPlacing,
   swapEnds,
@@ -161,6 +162,18 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       if (next !== ui.get().slice) ui.set({ slice: next });
     },
   };
+}
+
+/**
+ * The line changed from outside the tool (the Layers compass, "Centre on the fire", "Show me"): the probe was placed on the old line, so it is
+ * cleared, whether the tool is open or not. Subscribed for the life of the sim screen; returns the unsubscribe.
+ */
+export function watchLineForProbe(ui: Store<UiState>, layers: Store<LayerState>): () => void {
+  return layers.subscribe((next, prev) => {
+    const cur = ui.get().slice;
+    const s = probeAfterLineChange(cur, prev.crossSection, next.crossSection);
+    if (s !== cur) ui.set({ slice: s });
+  }, ['crossSection']);
 }
 
 /** Android Back and Escape: a placement under way is dropped first (the tool stays open); false when there was nothing of the tool's to undo. */

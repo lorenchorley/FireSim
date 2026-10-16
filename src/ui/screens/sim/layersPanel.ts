@@ -20,7 +20,7 @@ import { SNAPSHOT_LAYER_OVERLAYS, fromExternalLegend, legendFor, overlayLegend, 
 import { h, prefersReducedMotion, setChildren, uniqueId } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { kv, sectionHeader, setChipSelected, setTileSelected, tile, tileGrid, chip } from '../../primitives';
-import { button, chipChoice, compassRose, segmented, slider, toggle } from '../../widgets';
+import { button, chipChoice, compassRose, segmented, slider, toggle, type CompassRose } from '../../widgets';
 import { LAYER_GROUP_BLURBS, availabilityContext, sceneLayerOn, type AvailabilityContext, type LayerGroup, type LayerInfo } from '../../../render/layerCatalog';
 import type { NightLook } from '../../../render/api';
 import type { LayerState, OverlayKind } from '../../../render/layers';
@@ -36,6 +36,7 @@ import {
   SWITCHING_NOTE,
   USE_3D_LABEL,
   effectiveSliceField,
+  sectionCompass,
   sliceAirOf,
   sliceFieldStatuses,
 } from '../../../render/sliceFields';
@@ -771,7 +772,19 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     renderFieldChips();
   };
   const placedLine = (cs: LayerState['crossSection']): boolean => !!cs.preset || (!!cs.a && !!cs.b);
-  const lineHint = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-line-hint' } }, 'The section follows the line you placed with Air slices. Turning the compass or tapping Centre on the fire replaces it.');
+  const lineHint = h(
+    'p',
+    { class: 'hint', hidden: true, dataset: { testid: 'slice-line-hint' } },
+    'The slice follows the line you placed with Air slices, and the compass shows its direction. Turning the compass swings the line about its middle, out to the edges of the model area. Centre on the fire moves it to the fire.',
+  );
+  // The compass shows the line the section really has: with a line placed by Air slices the stored azimuth and centre are stale (sectionCompass).
+  let compass: CompassRose | null = null;
+  const compassNow = (): ReturnType<typeof sectionCompass> => sectionCompass(layers.get().crossSection, view.slice?.()?.resolved.line);
+  const renderCompass = (): void => {
+    if (!compass) return;
+    const c = compassNow();
+    if (Math.round(c.azimuth) !== Math.round(compass.get())) compass.set(c.azimuth); // (a preset's line follows the wind and the fire: the needle follows it)
+  };
   const csBox = h('div', { class: 'cs-box' });
   const csInfo = plan.switches.find((l) => l.scene === 'crossSection');
   const csToggle = toggle({
@@ -795,6 +808,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     if (csBox.childElementCount) {
       renderFieldChips();
       renderNeed3d();
+      renderCompass();
       return;
     }
     const chips = SLICE_FIELDS.map((f) => {
@@ -803,19 +817,25 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
       return c;
     });
     setChildren(csBox, [
-      h('p', { class: 'field-label' }, 'Colour the section by'),
-      h('div', { class: 'chips', attrs: { role: 'group' }, aria: { label: 'Colour the section by' }, dataset: { testid: 'slice-field' } }, chips),
+      h('p', { class: 'field-label' }, 'Colour the slice by'),
+      h('div', { class: 'chips', attrs: { role: 'group' }, aria: { label: 'Colour the slice by' }, dataset: { testid: 'slice-field' } }, chips),
       sliceNote.el,
       lineHint,
-      compassRose({
-        label: 'Section direction',
+      (compass = compassRose({
+        label: 'Slice direction',
         mode: 'towards',
-        value: cs.azimuth,
+        value: compassNow().azimuth,
         size: 170,
-        onChange: (d) => set({ crossSection: { ...layers.get().crossSection, azimuth: d, ...LINE_BY_CENTRE } }),
-      }).el,
+        // Turned: a new line through the middle of the one that is there (the stored centre when the line is already the centre rule's).
+        onChange: (d) => set({ crossSection: { ...layers.get().crossSection, azimuth: d, centre: compassNow().centre, ...LINE_BY_CENTRE } }),
+      })).el,
       h('div', { class: 'row-actions' }, [
-        button({ label: 'Centre on the fire', icon: 'target', variant: 'secondary', onClick: () => set({ crossSection: { ...layers.get().crossSection, centre: fireCentre(ctx), ...LINE_BY_CENTRE } }) }),
+        button({
+          label: 'Centre on the fire',
+          icon: 'target',
+          variant: 'secondary',
+          onClick: () => set({ crossSection: { ...layers.get().crossSection, azimuth: compassNow().azimuth, centre: fireCentre(ctx), ...LINE_BY_CENTRE } }),
+        }),
         ctx.view.viewSection
           ? button({
               label: 'View from the side',
@@ -825,7 +845,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
               onClick: () => {
                 ctx.ui.set({ viewMode: 'orbit' });
                 ctx.view.viewSection?.();
-                ctx.announce('Looking at the cross-section from the side.');
+                ctx.announce('Looking at the slice from the side.');
               },
             })
           : null,
@@ -932,7 +952,10 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     ctx.session.state.subscribe(() => renderActive(), ['viewTime']),
   );
   // The scene computes the slice a moment after the snapshot arrives and says which chips the air can give: follow it (only a change redraws the chips).
-  const offSlice = view.onSlice?.(() => renderFieldChips());
+  const offSlice = view.onSlice?.(() => {
+    renderFieldChips();
+    renderCompass();
+  });
   if (offSlice) offs.push(offSlice);
   renderAll();
 

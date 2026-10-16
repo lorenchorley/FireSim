@@ -21,13 +21,13 @@ import {
   AIR_PANEL_TITLE,
   CANCEL_LABEL,
   LOADING_LINE,
-  LOAD_FAILED_LINE,
   NEEDS_3D_VIEW,
   PRESETS_LABEL,
   PRESET_LABEL,
   RETRY_LABEL,
   SET_LABEL,
   SWAP_LABEL,
+  loadFailedView,
   type ControlsView,
   type SliceAnnMark,
   type SliceEnd,
@@ -211,10 +211,20 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
 
   // ───────────── the side-view panel (lazy chunk) ─────────────
   const loadingLine = h('p', { class: 'hint', dataset: { testid: 'slice-loading' } }, LOADING_LINE);
-  const failedBox = h('div', { class: 'row-actions', dataset: { testid: 'slice-load-failed' } }, [
-    h('p', { class: 'hint' }, LOAD_FAILED_LINE),
-    makeButton(RETRY_LABEL, { testId: 'slice-load-retry', onClick: () => startLoad() }).el,
-  ]);
+  const failedLine = h('p', { class: 'hint' });
+  const retryBtn = makeButton(RETRY_LABEL, { testId: 'slice-load-retry', onClick: () => startLoad() }).el;
+  const failedBox = h('div', { class: 'row-actions', dataset: { testid: 'slice-load-failed' } }, [failedLine, retryBtn]);
+  let failures = 0;
+  /** The side view did not arrive (or did not start): one line, and Try again the first time. */
+  function loadFailed(): void {
+    loadState = 'failed';
+    const v = loadFailedView(++failures);
+    text(failedLine, v.line);
+    const hadFocus = document.activeElement === retryBtn;
+    retryBtn.hidden = !v.retry;
+    layoutBody();
+    if (hadFocus && !v.retry) focus(setBtn.a.el); // the button the person pressed is put away
+  }
 
   function layoutBody(): void {
     if (loadState === 'ready' && panel) setChildren(body, panel.el);
@@ -286,14 +296,12 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
             // nothing more to undo
           }
           panel = null;
-          loadState = 'failed';
-          layoutBody();
+          loadFailed();
         }
       },
       () => {
         if (destroyed) return;
-        loadState = 'failed';
-        layoutBody();
+        loadFailed();
       },
     );
   }

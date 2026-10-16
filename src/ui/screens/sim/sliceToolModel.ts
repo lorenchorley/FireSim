@@ -15,6 +15,7 @@
  */
 import type { GridSpec } from '../../../core/grid';
 import type { LayerState } from '../../../render/layers';
+import { sameLine } from '../../../render/sliceFields';
 import {
   SLICE_MIN_LENGTH_CELLS,
   SLICE_MIN_LENGTH_M,
@@ -45,7 +46,17 @@ export const AIR_PANEL_SUBTITLE = 'Side view';
 export const NEEDS_3D_VIEW = 'The side view needs the 3-D view.';
 export const LOADING_LINE = 'Loading the side view';
 export const LOAD_FAILED_LINE = 'The side view could not be loaded.';
+export const LOAD_FAILED_AGAIN_LINE = 'The side view could not be loaded. Close and reopen FireSim to load it.';
 export const RETRY_LABEL = 'Try again';
+
+/**
+ * What the tool says when the side view's chunk did not arrive, by how many times it has failed. The first failure offers "Try again"
+ * (a network that came back); a failed retry says to reopen the app instead and offers no button: a browser remembers a module that
+ * failed to load and fails the same import again, so on the web a second try cannot recover (plan 17.4).
+ */
+export function loadFailedView(failures: number): { line: string; retry: boolean } {
+  return failures >= 2 ? { line: LOAD_FAILED_AGAIN_LINE, retry: false } : { line: LOAD_FAILED_LINE, retry: true };
+}
 export const SWITCHING_3D_LINE = 'Re-computing with the 3-D atmosphere from the last checkpoint. Press Play to continue.';
 
 export const SET_LABEL: Record<SliceEnd, string> = { a: 'Set start (A)', b: 'Set end (B)' };
@@ -359,6 +370,15 @@ export function fieldWrite(cs: CrossSection, field: SliceFieldId): CrossSection 
 
 export function withProbe(s: SliceToolState, probe: SliceProbePos | null): SliceToolState {
   return s.probe === probe ? s : { ...s, probe };
+}
+
+/**
+ * The line changed (the section's `prev` and `next`): the probe was put on the old line (`SliceToolState.probe`: "cleared when the line
+ * changes"), so it goes. The tool's own writes clear it with the line; this is for the others: the Layers compass, "Centre on the fire"
+ * and "Show me". The same state back when the line is the same (a chip, the switch) or there is no probe.
+ */
+export function probeAfterLineChange(s: SliceToolState | undefined, prev: CrossSection, next: CrossSection): SliceToolState | undefined {
+  return s && s.probe && !sameLine(prev, next) ? { ...s, probe: null } : s;
 }
 
 export function withShowCells(s: SliceToolState, on: boolean): SliceToolState {

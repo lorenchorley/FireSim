@@ -11,6 +11,7 @@ import { SLICE_PRESET_IDS, type ResolvedSlice, type SlicePoint, type SlicePreset
 import {
   AIR_TOOL_LABEL,
   LINE_PROJECTION_POINTS,
+  LOAD_FAILED_LINE,
   NOTE_WORDS,
   PLACE_LABEL,
   SET_LABEL,
@@ -26,12 +27,14 @@ import {
   initialSliceToolState,
   issueWords,
   lineFacts,
+  loadFailedView,
   minLengthFor,
   ownLine,
   placeHere,
   placeVerdict,
   placeWords,
   presetStatuses,
+  probeAfterLineChange,
   presetIssueWords,
   presetViews,
   probeMapPoint,
@@ -710,6 +713,28 @@ describe('the tool agrees with the pure resolver of the scene (render/slice/sect
   });
 });
 
+describe('the probe when the line changes from outside the tool', () => {
+  const probing = (): SliceToolState => ({ ...initialSliceToolState(), probe: { s: 900, z: 1200 } });
+  const line = (o: Partial<CrossSection> = {}): CrossSection => ({ ...CS, enabled: true, a: [0, 0], b: [0, 1000], preset: null, ...o });
+
+  it('is cleared when the compass or "Show me" put the line somewhere else', () => {
+    const s = probing();
+    const turned = { ...line(), a: undefined, b: undefined, azimuth: 45, centre: [10, 10] as SlicePoint };
+    expect(probeAfterLineChange(s, line(), turned)).toEqual({ ...s, probe: null });
+    expect(probeAfterLineChange(s, line({ preset: 'along' }), line({ preset: 'across' }))!.probe).toBeNull();
+    expect(probeAfterLineChange(s, line(), line({ b: [0, 1200] }))!.probe).toBeNull();
+  });
+
+  it('stays when the line is the same: a chip, the switch, the exaggeration; and with no probe or no tool state there is nothing to do', () => {
+    const s = probing();
+    expect(probeAfterLineChange(s, line(), line({ field: 'theta' }))).toBe(s);
+    expect(probeAfterLineChange(s, line({ enabled: false }), line())).toBe(s);
+    const none = initialSliceToolState();
+    expect(probeAfterLineChange(none, line(), line({ azimuth: 10 }))).toBe(none);
+    expect(probeAfterLineChange(undefined, line(), line({ azimuth: 10 }))).toBeUndefined();
+  });
+});
+
 describe('the marks on the screen', () => {
   /** 1 px per 10 m, y up on the map and down on the screen. */
   const project = (p: SlicePoint): [number, number] | null => (Math.abs(p[0]) > 5000 ? null : [p[0] / 10, -p[1] / 10]);
@@ -743,5 +768,15 @@ describe('the marks on the screen', () => {
   it('gives the same data twice for the same picture (so simScreen can skip the rebuild)', () => {
     const marks = sliceMarks(initialSliceToolState(), withLine([0, 0], [0, 1000]));
     expect(JSON.stringify(sliceAnnotationMarks(marks, project))).toBe(JSON.stringify(sliceAnnotationMarks(marks, project)));
+  });
+});
+
+describe('when the side view does not arrive', () => {
+  it('offers Try again after the first failure, and after a failed retry says to reopen the app and offers no button', () => {
+    expect(loadFailedView(1)).toEqual({ line: LOAD_FAILED_LINE, retry: true });
+    const again = loadFailedView(2);
+    expect(again.retry).toBe(false);
+    expect(again.line).toBe('The side view could not be loaded. Close and reopen FireSim to load it.');
+    expect(loadFailedView(5)).toEqual(again);
   });
 });

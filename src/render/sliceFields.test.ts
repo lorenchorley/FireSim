@@ -2,7 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AtmosphereView } from '../core/types';
 import type { LayerState } from './layers';
-import { DIAGNOSED_SECTION_NOTE, DIAGNOSED_STREAKS_NOTE, LINE_BY_CENTRE, NO_AIR_REASON, SWITCHING_NOTE, USE_3D_LABEL, effectiveSliceField, sectionChanged, sectionColouring, sliceAirOf, sliceFieldStatuses, sliceKindOf, type SliceAir } from './sliceFields';
+import { DIAGNOSED_SECTION_NOTE, DIAGNOSED_STREAKS_NOTE, LINE_BY_CENTRE, NO_AIR_REASON, SWITCHING_NOTE, USE_3D_LABEL, effectiveSliceField, sameLine, sectionChanged, sectionColouring, sectionCompass, sliceAirOf, sliceFieldStatuses, sliceKindOf, type SliceAir } from './sliceFields';
+import { resolveSlice } from './slice/sectionLine';
+import { makeResolveContext } from './slice/testing';
 import { SLICE_FIELD_IDS, SLICE_FIELDS } from './slice/types';
 import { SLICE_USE_3D_LABEL } from '../ui/screens/sim/sliceTypes';
 
@@ -113,6 +115,51 @@ describe('sectionColouring (the legend and the curtain)', () => {
   });
 });
 
+describe('sectionCompass (the Layers compass against the line the section really has)', () => {
+  const cs = (o: Partial<LayerState['crossSection']> = {}): LayerState['crossSection'] => ({ enabled: true, azimuth: 0, centre: [0, 0], ...o });
+
+  it('shows the stored azimuth and centre while the section follows the centre rule', () => {
+    expect(sectionCompass(cs({ azimuth: 135, centre: [40, -20] }), { a: [0, 0], b: [100, 0] })).toEqual({ azimuth: 135, centre: [40, -20], placed: false });
+    expect(sectionCompass(cs({ azimuth: 135 }), null).azimuth).toBe(135);
+  });
+
+  it('shows the bearing of a line placed by Air slices, and its middle (it read "Towards N 0" with a line placed: the stored values are stale)', () => {
+    const line = { a: [-1000, -1000] as [number, number], b: [1000, 1000] as [number, number] }; // to the north-east
+    const c = sectionCompass(cs({ preset: 'along' }), line);
+    expect(c).toEqual({ azimuth: 45, centre: [0, 0], placed: true });
+    expect(sectionCompass(cs({ a: [100, 200], b: [100, 1200], preset: null }), { a: [100, 200], b: [100, 1200] })).toEqual({ azimuth: 0, centre: [100, 700], placed: true });
+    for (const [b, want] of [[[0, 1000], 0], [[1000, 0], 90], [[0, -1000], 180], [[-1000, 0], 270], [[-1000, 1000], 315]] as const) {
+      expect(sectionCompass(cs({ preset: 'slope' }), { a: [0, 0], b: [...b] }).azimuth, `towards ${b}`).toBeCloseTo(want, 9);
+    }
+  });
+
+  it('uses the placed A and B when the scene has no line yet, and the stored values when it has nothing at all or a line without length', () => {
+    expect(sectionCompass(cs({ a: [0, 0], b: [0, -500], preset: null }), null)).toEqual({ azimuth: 180, centre: [0, -250], placed: true });
+    expect(sectionCompass(cs({ preset: 'across', azimuth: 77, centre: [5, 6] }), undefined)).toEqual({ azimuth: 77, centre: [5, 6], placed: true });
+    expect(sectionCompass(cs({ preset: 'across', azimuth: 77, centre: [5, 6] }), { a: [1, 1], b: [1, 1] })).toEqual({ azimuth: 77, centre: [5, 6], placed: true });
+  });
+
+  it('turning it swings the placed line about its middle: the new line has the new bearing and passes through the old middle (it jumped to the stored centre)', () => {
+    const ctx = makeResolveContext({ n: 61, cellSize: 100 }); // a 6 km model area centred on the origin
+    const placed = resolveSlice({ azimuth: 0, centre: [0, 0], a: [-1200, 400], b: [800, 1400], preset: null }, ctx).line!;
+    const state = cs({ a: [-1200, 400], b: [800, 1400], preset: null, azimuth: 0, centre: [0, 0] });
+    const shown = sectionCompass(state, placed);
+    const turnedTo = 120;
+    const written = { ...state, azimuth: turnedTo, centre: shown.centre, ...LINE_BY_CENTRE };
+    const after = resolveSlice(written, ctx);
+    expect(after.source).toBe('centre');
+    const line = after.line!;
+    expect(sectionCompass(written, line)).toMatchObject({ azimuth: turnedTo, placed: false });
+    const bearing = ((Math.atan2(line.dir[0], line.dir[1]) * 180) / Math.PI + 360) % 360;
+    expect(bearing).toBeCloseTo(turnedTo, 6);
+    const mid = shown.centre;
+    expect(Math.abs((mid[0] - line.a[0]) * line.dir[1] - (mid[1] - line.a[1]) * line.dir[0]), 'the old middle is on the new line').toBeLessThan(1e-6);
+    // the old way (stored centre 0, 0) would have put the line through the origin instead
+    const old = resolveSlice({ ...state, azimuth: turnedTo, ...LINE_BY_CENTRE }, ctx).line!;
+    expect(Math.abs((mid[0] - old.a[0]) * old.dir[1] - (mid[1] - old.a[1]) * old.dir[0])).toBeGreaterThan(100);
+  });
+});
+
 describe('sectionChanged (what makes the scene compute a new slice)', () => {
   const base = (cs: Partial<LayerState['crossSection']> = {}, vex = 1): Pick<LayerState, 'crossSection' | 'verticalExaggeration'> => ({
     crossSection: { enabled: true, azimuth: 90, centre: [100, 200], ...cs },
@@ -163,5 +210,25 @@ describe('the words', () => {
   it('the section note is the plan’s sentence, and the button says the same as the Air slices panel’s', () => {
     expect(DIAGNOSED_SECTION_NOTE).toBe('This section shows the diagnosed wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperature and smoke.');
     expect(USE_3D_LABEL).toBe(SLICE_USE_3D_LABEL);
+  });
+});
+
+describe('sameLine (a probe stays on the line it was placed on)', () => {
+  const cs = (o: Partial<LayerState['crossSection']> = {}): LayerState['crossSection'] => ({ enabled: true, azimuth: 90, centre: [100, 200], ...o });
+
+  it('is true for the same line in new objects, and when only the chip or the switch changed', () => {
+    expect(sameLine(cs(), cs())).toBe(true);
+    expect(sameLine(cs({ a: [1, 2], b: [3, 4], preset: null }), cs({ a: [1, 2], b: [3, 4], preset: null, field: 'theta' }))).toBe(true);
+    expect(sameLine(cs({ preset: undefined }), cs({ preset: null }))).toBe(true);
+    expect(sameLine(cs({ enabled: false }), cs())).toBe(true);
+  });
+
+  it('is false when the compass turned it, it was centred somewhere else, an end moved or the preset changed', () => {
+    expect(sameLine(cs(), cs({ azimuth: 95 }))).toBe(false);
+    expect(sameLine(cs(), cs({ centre: [101, 200] }))).toBe(false);
+    expect(sameLine(cs({ a: [1, 2], b: [3, 4] }), cs({ a: [1, 2], b: [3, 5] }))).toBe(false);
+    expect(sameLine(cs({ preset: 'along' }), cs({ preset: 'across' }))).toBe(false);
+    const placed = cs({ a: [1, 2], b: [3, 4], preset: 'slope' });
+    expect(sameLine(placed, { ...placed, ...LINE_BY_CENTRE })).toBe(false); // put back on the centre rule
   });
 });
