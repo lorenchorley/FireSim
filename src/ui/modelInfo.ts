@@ -877,6 +877,12 @@ function tierWords(e: EngineInfo, settings: ModelCardInput['settings']): string 
 }
 
 /** The row that opens the full screen: every statistics group, the phone's hardware and software, and a Copy button. */
+/**
+ * What an Air slices recording (0.4.1) may hold on top of the history: an eighth of the history budget, at most 12 MiB (6 MiB on the weakest
+ * phone). The same rule as `sliceRecorderBudgetBytes` of the recorder (core/sliceRecording.ts), kept here so the card does not load the recorder.
+ */
+export const sliceRecordingBudget = (historyBytes: number): number => Math.min(12 * 1048576, Math.round(historyBytes / 8));
+
 const OPEN_DEBUG_STATS: CardBlock = { type: 'action', action: 'open-debug-stats', label: 'Open Simulation debug statistics' };
 
 /**
@@ -923,7 +929,9 @@ function engineFacts(input: ModelCardInput, e: EngineInfo | null): CardBlock[] {
       id: 'eng-phone',
       key: 'This phone',
       value: phone ? `${ok(phone.cores) ? `${phone.cores} cores` : 'cores not reported'}, ${ok(phone.memoryGb) ? `about ${phone.memoryGb}${NB}GB memory class` : 'memory class not reported'}` : 'Not reported',
-      note: ok(input.historyBudgetBytes) ? `Time-scrubber history: up to ${bytes(input.historyBudgetBytes)} on this phone; older pictures are thinned beyond that` : undefined,
+      note: ok(input.historyBudgetBytes)
+        ? `Time-scrubber history: up to ${bytes(input.historyBudgetBytes)} on this phone; older pictures are thinned beyond that; an Air slices recording adds up to ${bytes(sliceRecordingBudget(input.historyBudgetBytes))}`
+        : undefined,
       live: false,
     },
   ];

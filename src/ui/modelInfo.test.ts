@@ -11,7 +11,7 @@ import type { DatasetRecord, DatasetSummary, EngineInfo, ScenarioData, SimSnapsh
 import { LAYER_CATALOG } from '../render/layerCatalog';
 import { Simulation } from '../sim/simulation';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { cardToText, describeModel as describeRaw, GLOSSARY, SPEC_EVIDENCE, SPEC_OPEN_ISSUES, type ModelCard, type ModelCardInput, type ModelRow } from './modelInfo';
+import { cardToText, describeModel as describeRaw, GLOSSARY, SPEC_EVIDENCE, SPEC_OPEN_ISSUES, sliceRecordingBudget, type ModelCard, type ModelCardInput, type ModelRow } from './modelInfo';
 import { DEFAULT_SETTINGS } from './settings';
 import { buildRequest, defaultSetup } from './setupModel';
 
@@ -113,6 +113,29 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     // The long block moved to the new screen: none of its other rows is here any more.
     for (const gone of ['eng-step', 'eng-substep', 'eng-playback', 'eng-display', 'eng-embers', 'eng-checkpoints', 'eng-history', 'eng-seed', 'eng-view']) expect(facts.map((f) => f.id)).not.toContain(gone);
     expectClean(c);
+  });
+
+  it('says what an Air slices recording may add on top of the history, from the history budget (an eighth, at most 12 MiB)', () => {
+    const MIB = 1048576;
+    const noteAt = (history: number): string => {
+      const c = describeModel({ scenario: fastScenario, engine: snap.engine, snapshot: snap, settings, historyBudgetBytes: history, phone: { cores: 8, memoryGb: 6 } });
+      return c.sections.find((s) => s.id === 'engine')!.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : [])).find((f) => f.id === 'eng-phone')!.note!;
+    };
+    expect(noteAt(48 * MIB)).toMatch(/older pictures are thinned beyond that; an Air slices recording adds up to 6\.3 MB$/); // 6 MiB on the weakest phone
+    expect(noteAt(61.44 * MIB)).toMatch(/an Air slices recording adds up to 8\.1 MB$/); // 7.7 MiB
+    expect(noteAt(96 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB$/); // the full 12 MiB
+    expect(noteAt(160 * MIB)).toMatch(/an Air slices recording adds up to 12\.6 MB$/); // and no more
+    expect(noteAt(100 * MIB)).toMatch(/^Time-scrubber history: up to 104\.9 MB on this phone;/);
+    expect(noteAt(100 * MIB)).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it('the recording budget rule: an eighth of the history, 6 MiB at the 48 MiB floor and never over 12 MiB', () => {
+    const MIB = 1048576;
+    expect(sliceRecordingBudget(48 * MIB)).toBe(6 * MIB);
+    expect(sliceRecordingBudget(61.44 * MIB) / MIB).toBeCloseTo(7.68, 6);
+    expect(sliceRecordingBudget(96 * MIB)).toBe(12 * MIB);
+    expect(sliceRecordingBudget(160 * MIB)).toBe(12 * MIB);
+    expect(sliceRecordingBudget(0)).toBe(0);
   });
 
   it('a phone that reports nothing, and no memory measurement yet, say so in words', () => {
