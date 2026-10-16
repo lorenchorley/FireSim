@@ -71,7 +71,7 @@ src/
                  side-view chunk and not by main.css); see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
                  model-card, integration, android; for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap, cliffs;
-                 for 0.4.0 air-view, air-tool, airslice-panel)
+                 for 0.4.0 air-view, air-tool, airslice-panel, air-slice, air-curtain-gpu)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
@@ -504,7 +504,11 @@ composed from an older keyframe says so).
 only the stamps at or after its time; a test pins it). It has none of what the fire's own 2-D wind (`windFire`) adds: the κ scaling, the
 night-time decoupling, the slope flows, the ridge and lee blend and the fire's indraft, and it has no plume, temperature or smoke. So a
 slice or a wind-speed map of the fast tier shows the forecast wind where the terrain bends it, and at night or in a valley the wind
-the fire feels can differ a lot; every consumer says "diagnosed" and "terrain effects only". **Cost:** `view()` took 0.60 ms and 498 kB
+the fire feels can differ a lot; every consumer says "diagnosed" and "terrain effects only". The gap was measured (Katoomba, 6 km, 4,096
+cells; the fire's 2-D wind divided by the published 10 m wind): on a windy day or night (7 to 10 m/s) the median is about 1.0 and 8 cells
+in 10 lie between 0.81 and 1.10, but on the calm-night preset the fast tier's 10th and 90th percentiles are 0.35 and 1.91 (16.6 % of cells
+under half, 20.5 % over one and a half times) and the standard tier has 31.9 % of its cells over one and a half times, so the wind speed
+map is not the wind the fire feels on a calm night on either tier (plan 18.4). **Cost:** `view()` took 0.60 ms and 498 kB
 on the fast tier (Katoomba 9 km, 45 x 45 x 20), 0.77 ms and 815 kB on the standard tier (6 km) and 1.16 ms and 1,730 kB on the high tier
 (9 km, 60 x 60 x 24), in `atmosphere/airView.perf.test.ts` (one run, node, build machine: the `[atmos perf]` lines of the log). The
 volume is published on every emitted snapshot, with no option or lazy flag. **Memory:** the diagnosed volume adds 12 bytes per cell to a
@@ -533,16 +537,25 @@ takes level 0, like the engine; above the top it takes the top level (the engine
 oracle stays inside the model, up to 2,000 m above the ground, and a slice never goes above the top). The flat layout keeps its old
 path. `windP(pos, out)` and `fieldsP(pos, out)` take the position in a `Float64Array` and write a `Float32Array`: spike S3 found that
 a method of doubles is boxed at 48 bytes per call in V8 when called in a long loop. They take about 110 and 260 ns per call and
-allocate 0.14 bytes per call (`atmosphereSampler.test.ts` logs it); `wind`, `theta`, `smoke` and `sample3` keep their old signatures
-for the layers that call them a few thousand times a frame. The sampler also gives `kind`, `hasWind / hasTheta / hasSmoke`, `airTime`,
+allocate 0.14 bytes per call (`atmosphereSampler.test.ts` logs it); `wind`, `theta`, `smoke`, `surfaceWind` and `sample3` keep their old
+signatures for the layers that call them a few thousand times a frame. Those box their double arguments when V8 does not inline them
+(about 60 bytes per call; the code before 0.4.0 did the same), which costs about 11 kB a frame for the standard tier's through-the-plume
+streaks as measured by a verifier; `windP` and `fieldsP` are the garbage-free path, but only the slice calls `fieldsP` and nothing in
+the app calls `windP` yet, so the streaks, the displayed embers, the curtain's arrows and the tree sway still take the boxed path. The sampler also gives `kind`, `hasWind / hasTheta / hasSmoke`, `airTime`,
 `modelGroundAt(x, y)` (the datum plus the view's smoothed `terrainHeight`, which a slice shades as "below the model's ground") and `top`.
 **Oracle tests** (the important ones): `atmosphere/airView.oracle.test.ts` runs a real `Atmosphere` and a real `DiagnosticWind` over a
 700 m ridge and asserts the sampler on the published view equals the engine's own `sample()` to 1e-3 m/s at 1,200 random points from the
 ground to 2,000 m on each tier (the worst difference measured was 1.9e-6 m/s on both), at several points of the stamp blend, that
 the view has no zero cell under the ridge, that two calls and calls interleaved with steps give identical bytes, that a restored
 checkpoint gives bitwise-identical arrays, and that a wind edit shows in the diagnosed field only from its own time on;
-`render/atmosphereSampler.test.ts` covers both layouts, the guards, the allocation and a regression (the old flat view read up to 97.6 %
+`atmosphere/airView.edges.test.ts` is a second oracle for what the random points do not reach (exactly on column nodes, on and beyond the
+edge and corners, on and either side of every level centre, below the first level and above the top, on the steep real Katoomba DEM and a
+cliff step, across the fast tier's sub-stamps and a wind edit, a whole `sampleSlice` edge to edge, and empty, short or NaN fields);
+`render/atmosphereSampler.test.ts` covers both layouts, the guards, the allocation and a regression (the old flat view read up to 96.4 %
 low 30 m above the ground across a 700 m ridge, 32.9 % on average over the crossing; the new view is exact);
+`render/atmosphereSampler.alloc.test.ts` holds `windP` and `fieldsP` to no allocation with V8's inlining switched off (a method that
+returns a double is boxed unless TurboFan inlines it, and it declines to when the machine is busy or a loop is cold, so the blend
+hands its answer back through a scratch array; the default-state measurement in `atmosphereSampler.test.ts` depends on the JIT);
 `sim/airView.sim.test.ts` the fields stamped on every snapshot of both tiers, `decimateView`, the transfer list and the rule that the
 simulation's results do not depend on the view being read.
 
@@ -599,7 +612,10 @@ target as the map centre, `fireCentroid` of the shown snapshot, the 10 m wind di
 (`sliceFieldStatuses`, one object per kind of air), redraws the curtain and calls the listeners of `onSlice`. `viewSection()` flies to the
 resolved line, not to `centre` and `azimuth`. A slice update (resolve, four preset checks, sample, cells) took a median of 0.5 to 1.0 ms
 and a 95th percentile of up to 1.5 ms in node on the build machine (lattices of 96 x 55 and 129 x 55; `render/slice/slice.perf.test.ts`);
-the plan's limit is 8 ms at 4x CPU throttle, which was not measured. The same test logs the allocation: 35 bytes per `sampleSlice` into a
+the plan's limit is 8 ms at 4x CPU throttle. That was measured later, in a real browser in software rendering under a 4x throttle: the
+compute alone (resolve and sample) took 2.5 ms per edit in one check and a 95th percentile of 7.1 ms on the fast tier and 8.9 ms on the 3-D
+tier in another, so it is borderline; the whole update (compute, the panel's redraw and the curtain) took a 95th percentile of 18 ms on the fast tier and
+33 ms on the 3-D tier (maximum 41 ms), so the limit is not met for the whole update (plan 18.3, item 18). The same test logs the allocation: 35 bytes per `sampleSlice` into a
 reused `SliceData`, about 6 kB of small result objects per update, a heap that changes by 32 kB over 3,000 updates, 2.6 bytes per
 streak step.
 
@@ -613,7 +629,7 @@ the effective field, uses the slice's own lattice as its texture (one texel per 
 resampled in the shader), colours it with `sliceFieldScale(field)` (the same ramp as the panel and the legend), and draws the ground
 from the 10 m terrain under each column. Cells outside the model are transparent; strong values are more opaque (wind chips are more
 see-through at light winds so the ground behind shows). Its arrows keep reading the sampler (15 columns by six heights, 30 to 2,200 m above
-the ground, `windP`); the cyan arrows that mark air blowing against the main wind are drawn on the prognostic air only, and smoke greys the
+the ground, through the sampler's boxed `wind(x, y, z, agl, out)`, not `windP`); the cyan arrows that mark air blowing against the main wind are drawn on the prognostic air only, and smoke greys the
 other chips only where the air has smoke. `render/sliceFields.ts` is the one place that says which chips an air can give and why not (so
 the scene, the Layers panel, the map legend and the Air slices panel never disagree): wind chips on any air with a wind, Temp and Smoke on
 `airHas` of the field, with the reason in plain words and `action: 'use-3d'` where switching helps. **Colour ramps** (`render/palette.ts`):
@@ -657,7 +673,7 @@ passes each `SliceUpdate` in with `setData` and takes events out through the opt
 requested only when the Air slices tool first opens (`sliceToolLoad.ts` is the one `import('./slicePanel')`; a test asserts no
 request at start-up), with a "Loading the side view" line, and a "The side view could not be loaded." line with *Try again* if it fails
 (the controls still work, since the curtain draws without the panel). The entry chunk holds the tool's shell, its model, the scene glue
-and the registration; `slice.css` is 3,780 bytes of source (cap 4 KB) and is not imported by `main.css`. Sizes of the chunk, of the entry's
+and the registration; `slice.css` is 3,979 bytes of source (cap 4,096) and is not imported by `main.css`. Sizes of the chunk, of the entry's
 growth and of the chunk the build splits `explain/text.ts` into (`probe.ts` is the only main-thread module that imports it, and the
 in-thread engine's chunk holds it too, so the build shares it as a chunk of its own: a size the lane reported as about 12 kB gzip, to be
 re-read): `TBD-BUNDLE` (*Performance budgets*, below). Budgets in `scripts/check-bundle.mjs` did not change.
@@ -667,7 +683,7 @@ keyframe rows), `core/airView`, `render/slice/*` (`contract`, `lattice`, `niceTi
 `sliceField.oracle`, `slice.perf`, `sliceUpdater`), `render/sliceFields`, `crossSectionColour`, `crossSectionLayer`, `smokePuffs`, `palette`
 and `legends` (the new ramps, colour vision and legends), `layerCatalog`, `ui/screens/sim/slicePanelModel`, `sliceDraw`,
 `slicePanelFlow`, `sliceToolModel`, `sliceToolActions`, `mapLegend` and `context`; `ui/content.test.ts` pins the Help and Glossary entries to
-the words the code uses. Real app, Playwright: `e2e/air-view.spec.ts`, `air-tool.spec.ts` and `airslice-panel.spec.ts`, plus changes to
+the words the code uses. Real app, Playwright: `e2e/air-view.spec.ts`, `air-tool.spec.ts`, `airslice-panel.spec.ts`, `air-slice.spec.ts` (the three together, 5 tests) and `air-curtain-gpu.spec.ts` (no GPU object leaks), plus changes to
 `app.spec.ts` (the slice's note and the tier switch) and `robustness.spec.ts`.
 
 ### explain/
@@ -1219,18 +1235,18 @@ so the panel is a lazy chunk). The other rows were measured in node on the build
 | CSS (raw / gzip, kB) | 125.3 / 22.4 | TBD-BUNDLE | raw <= 135, gzip <= 25; `slice.css` is imported by the lazy chunk, not by `main.css` |
 | The Air slices panel chunk (panel, drawing, `flow2d`, `probe`, `niceTicks`, lattice reader, its CSS), gzip kB | none | TBD-BUNDLE | lazy, no budget of its own; the plan estimated 14 to 18 |
 | The chunk the build splits `explain/text.ts` into, gzip kB | none | TBD-BUNDLE (a builder reported about 12) | counted in all JS |
-| `src/styles/slice.css`, source | none | 3,780 bytes | <= 4 KB (the plan's CSS estimate) |
+| `src/styles/slice.css`, source | none | 3,979 bytes (`wc -c`) | <= 4,096 bytes (the plan's CSS estimate) |
 | Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | TBD-BUNDLE | unchanged by this release / <= 33 |
-| `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
+| `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`; the times vary: later runs gave 0.40 / 0.60 / 1.15 ms and 0.43 ms fast, 1.22 ms high) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
 | History keyframe, fast tier at 45 x 45 x 20 | | +474.6 KiB (12 bytes per cell) | |
 | History of a 6 h fast-tier run (72 keyframes) | | about +35 MB; old history thins a little earlier on small phones | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB |
-| Sampler v2 per call: `windP` / `fieldsP` | | 109 / 258 ns, 0.14 bytes (`[sampler perf]`) | allocation-free; `atmosphereSampler.test.ts` measures it |
-| One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle; **not measured at 4x** |
+| Sampler v2 per call: `windP` / `fieldsP` | | 109 / 258 ns, 0.14 bytes (`[sampler perf]`); later runs 100 to 130 / 182 to 260 ns | allocation-free; `atmosphereSampler.test.ts` measures it, and `atmosphereSampler.alloc.test.ts` with inlining off |
+| One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle. Measured later at 4x in a browser: compute alone p95 7.1 ms (fast) / 8.9 ms (3-D), the whole update (compute, panel redraw, curtain) p95 18 / 33 ms, max 41 ms: **not met for the whole update** |
 | One streak step (300 particles); the probe with its sentence | | 0.05 ms and 2.6 bytes; 4.7 us and 448 bytes | |
 | Heap after 3,000 slice updates | | changed by 31.8 kB | heap-flat |
 | Layers panel: DOM nodes when open | 940 | not re-measured | <= 1000; the chip row and its note are built only once the section is switched on |
 
-Not measured: the panel on a phone (frame rate with the streaks, the chunk's load time), the slice update at 4x CPU throttle, the whole
+Not measured: the panel on a phone (frame rate with the streaks, the chunk's load time), the whole
 fast-tier snapshot size after the volume (about 0.5 MB more than before from the arrays' sizes), the Layers panel's node count with
 the section on. The plan's budget row for D ("14 to 18 kB, lazy") and for C ("about 3 kB, entry") are to be compared with the TBD-BUNDLE
 figures above when they are filled in.
@@ -1289,6 +1305,8 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   and Glossary say what the screens say (the checkpoint wording of the fast-model note, the six, four and three rock effects, and for 0.4.0
   the labels of the Air slices tool, the footer and probe sentences, the 90 second rule and the wind speed map on the fast tier).
   For 0.4.0 the real-app specs are `e2e/air-view.spec.ts` (the air both engines publish and the layers that read it), `e2e/air-tool.spec.ts`
-  (the tool's placement flow, the lazy chunk) and `e2e/airslice-panel.spec.ts` (the panel on both tiers, landscape, reduced motion); the
+  (the tool's placement flow, the lazy chunk), `e2e/airslice-panel.spec.ts` (the panel on both tiers, landscape, reduced motion),
+  `e2e/air-slice.spec.ts` (5 tests: the tool, the curtain and the panel together on both tiers, the seams the three lane specs do not
+  reach) and `e2e/air-curtain-gpu.spec.ts` (the curtain's GPU objects stay constant over 60 changes); the
   pure modules each have a node test beside them (the list is in *The air view and the Air slice*), including the oracle tests that hold the
   sampler and the slice to the engines' own `sample()`.
