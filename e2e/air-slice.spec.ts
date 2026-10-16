@@ -915,6 +915,9 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await expect(status).toHaveText('This preset follows the wind and the fire, so it is not recorded. Press Keep this line to record it.');
     await expect(keep).toBeVisible();
     expect((await keep.boundingBox())!.height, 'a button of the tool: 40 px drawn, a 44 px target').toBeGreaterThanOrEqual(40);
+    // It sits in a row of its own right under Presets: 4 px between the drawn buttons, or their 44 px hit areas fight (scripts/audit-tap-targets.mjs flagged Presets at 2 px).
+    const presetsBox = (await page.getByTestId('slice-presets-toggle').boundingBox())!;
+    expect((await keep.boundingBox())!.y - (presetsBox.y + presetsBox.height), 'Keep this line is 4 px under Presets').toBeGreaterThanOrEqual(3.5);
     await expect(clear).toBeHidden();
     expect((await recOf(page)).status).toMatchObject({ state: 'off', offFor: 'preset', count: 0 });
     await expect(footer).toContainText(/ · air from \d\d:\d\d/);
