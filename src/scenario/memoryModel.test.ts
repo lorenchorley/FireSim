@@ -7,9 +7,9 @@ import { makeGridSpec } from '../core/grid';
 import { formatBytes, typedArrayFootprint } from '../core/datasets';
 import { atmosCellSize } from '../atmosphere/grid';
 import { Simulation } from '../sim/simulation';
-import { keyframeBytes } from '../ui/snapshotStore';
+import { SnapshotStore, keyframeBytes } from '../ui/snapshotStore';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { CLIFF_BYTES, atmosphereGrid, checkpointCount, keyframeBytesModel, liveMemory, scenarioArrayBytes, workingMemory, workingMemoryForScenario } from './memoryModel';
+import { CLIFF_BYTES, atmosphereGrid, checkpointCount, keptKeyframeBytesModel, keyframeBytesModel, liveMemory, scenarioArrayBytes, windVolumeBytesModel, workingMemory, workingMemoryForScenario } from './memoryModel';
 
 const PARTS = ['fire', 'explain', 'moisture', 'fuel', 'rasters', 'atmosphere', 'embers'] as const;
 
@@ -65,6 +65,17 @@ describe('model vs the real allocated arrays', () => {
       const kfModel = keyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz);
       expect(Math.abs(kfModel - kfReal) / kfReal, `keyframe: model ${kfModel} vs measured ${kfReal}`).toBeLessThan(0.03);
       expect(snap.atmosphere!.nz).toBe(atm.nz);
+      // The keyframe as the history keeps it (a store that has demoted the snapshot): the fast tier's wind volume is packed, 6 B per cell
+      // and level, in a list beside the keyframes; the 3-D tiers keep their air whole.
+      const store = new SnapshotStore({ maxBytes: 1e9 });
+      store.push(snap);
+      store.push({ ...snap, time: snap.time + 300 });
+      expect(store.keyframeCount).toBe(1);
+      const keptReal = store.keyframeBytes;
+      const keptModel = keptKeyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz) + windVolumeBytesModel(tier, atm.columns, atm.nz);
+      expect(Math.abs(keptModel - keptReal) / keptReal, `kept keyframe: model ${keptModel} vs measured ${keptReal}`).toBeLessThan(0.03);
+      expect(store.windFrameCount).toBe(tier === 'fast' ? 1 : 0);
+      if (tier === 'fast') expect(keptReal).toBeLessThan(kfReal - 0.4 * atm.columns * atm.nz * 12); // the volume costs half of what the live one does
       // A measured checkpoint figure replaces the model.
       const wm2 = workingMemory({ tier, fireNx: g.nx, fireNy: g.ny, extentM: scenario.extent, durationS: 1800, measured: { checkpointBytes: real.checkpointBytes } });
       expect(wm2.items.find((x) => x.id === 'checkpoints')!.bytes).toBe(real.checkpointBytes);

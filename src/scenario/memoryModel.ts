@@ -26,6 +26,7 @@
  * has it) and says plainly when a device does not expose it.
  */
 import { formatBytes, typedArrayFootprint, type LiveMemory, type MemoryWhere, type WorkingMemory, type WorkingMemoryItem } from '../core/datasets';
+import { WIND_PACK_BYTES_PER_VALUE, WIND_PACK_FIXED_BYTES } from '../core/airPack';
 import type { QualityTier, ScenarioData } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
 import { SIM_PARAMS } from '../sim/params';
@@ -102,14 +103,34 @@ export const KEYFRAME_BYTES_PER_CELL = 20;
 /**
  * Keyframe atmosphere view per column: terrain height, surface u/v (12 B) plus per level, in the 3-D tiers u, v, w, theta and
  * smoke (20 B) and in the fast tier's diagnosed volume u, v and w only (12 B). The level heights add 4 B per level once.
+ * The fast tier's volume is kept packed in the history (core/airPack.ts: three 16-bit integers per cell and level, 6 B, and a
+ * fixed 64 B per volume): `packedPerLevel`.
  */
-export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOnly: 12 };
+export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOnly: 12, packedPerLevel: 3 * WIND_PACK_BYTES_PER_VALUE };
 
-/** Bytes of one keyframe (ui/snapshotStore.ts `keyframeBytes`): the fixed part, moisture and four overlay rasters per fire cell, the air view. */
+/**
+ * Bytes of a snapshot's keyframe part (ui/snapshotStore.ts `keyframeBytes`): the fixed part, moisture and four overlay rasters per
+ * fire cell, the air view as the engine publishes it. This is what the newest snapshot holds, and what a 3-D-tier keyframe keeps.
+ */
 export function keyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
   const perLevel = tier === 'fast' ? KEYFRAME_COLUMN_BYTES.perLevelWindOnly : KEYFRAME_COLUMN_BYTES.perLevel;
   return 256 + KEYFRAME_BYTES_PER_CELL * cells + columns * (KEYFRAME_COLUMN_BYTES.surface + nz * perLevel) + 4 * nz;
 }
+
+/**
+ * Bytes of the wind volume the history keeps beside a fast-tier keyframe (0 for the 3-D tiers, which keep their air in the
+ * keyframe): the packed copy of the diagnosed wind, 6 B per cell and level. `keptKeyframeBytesModel` leaves it out.
+ */
+export function windVolumeBytesModel(tier: QualityTier, columns: number, nz: number): number {
+  return tier === 'fast' ? columns * nz * KEYFRAME_COLUMN_BYTES.packedPerLevel + WIND_PACK_FIXED_BYTES : 0;
+}
+
+/** Bytes of a keyframe as the store keeps it: {@link keyframeBytesModel} without the fast tier's wind volume, which is in the wind list. */
+export function keptKeyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
+  const volume = tier === 'fast' ? columns * nz * KEYFRAME_COLUMN_BYTES.perLevelWindOnly : 0;
+  return keyframeBytesModel(tier, cells, columns, nz) - volume;
+}
+
 /** Light frame kept per display step (stats, bookkeeping; ui/snapshotStore.ts FRAME_BYTES). */
 export const FRAME_BYTES = 1024;
 /** Ember particles kept per step after thinning (typical; at most 64 KB each). */
@@ -266,13 +287,17 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   );
 
   // ── snapshot history (main) ──
+  // The newest snapshot holds the air as published; every older keyframe holds it as the store keeps it (the fast tier's wind volume packed,
+  // in a list of its own that the store holds to a small share once the budget is reached: the figure here is the most it can be before that).
   const kfBytes = keyframeBytesModel(tier, cells, atm.columns, atm.nz);
+  const keptBytes = keptKeyframeBytesModel(tier, cells, atm.columns, atm.nz);
+  const windBytes = windVolumeBytesModel(tier, atm.columns, atm.nz);
   const keyEvery = Math.max(300, step);
   const nKeys = Math.floor(i.durationS / keyEvery) + 1;
   const nFrames = Math.floor(i.durationS / step) + 1;
   const fireArrays = SNAPSHOT_FIRE_BYTES_PER_CELL * cells;
   const head = 2048 + fireArrays + kfBytes;
-  const history = head + fireArrays * 3 + 4 * cells + nKeys * kfBytes + nFrames * (FRAME_BYTES + EMBER_FRAME_BYTES);
+  const history = head + fireArrays * 3 + 4 * cells + nKeys * (keptBytes + windBytes) + nFrames * (FRAME_BYTES + EMBER_FRAME_BYTES);
   const budget = i.snapshotBudgetBytes && i.snapshotBudgetBytes > 0 ? i.snapshotBudgetBytes : DEFAULT_SNAPSHOT_BUDGET;
   const snapMeasured = i.measured?.snapshotStoreBytes;
   add(
@@ -282,7 +307,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
     snapMeasured ?? Math.min(budget, history),
     snapMeasured !== undefined
       ? `measured: ${kb(snapMeasured)} of a ${kb(budget)} budget`
-      : `${nKeys} keyframes x ${kb(kfBytes)} + ${nFrames} frames x ${kb(FRAME_BYTES + EMBER_FRAME_BYTES)} + fire arrays; kept under ${kb(budget)} (older history is thinned)`,
+      : `${nKeys} keyframes x ${kb(keptBytes)}${windBytes > 0 ? ` + up to ${nKeys} copies of the 3-D wind x ${kb(windBytes)}` : ''} + ${nFrames} frames x ${kb(FRAME_BYTES + EMBER_FRAME_BYTES)} + fire arrays; kept under ${kb(budget)} (older history is thinned)`,
   );
 
   // ── GPU (estimates) ──

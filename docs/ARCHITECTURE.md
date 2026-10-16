@@ -511,12 +511,43 @@ under half, 20.5 % over one and a half times) and the standard tier has 31.9 % o
 map is not the wind the fire feels on a calm night on either tier (plan 18.4). **Cost:** `view()` took 0.60 ms and 498 kB
 on the fast tier (Katoomba 9 km, 45 x 45 x 20), 0.77 ms and 815 kB on the standard tier (6 km) and 1.16 ms and 1,730 kB on the high tier
 (9 km, 60 x 60 x 24), in `atmosphere/airView.perf.test.ts` (one run, node, build machine: the `[atmos perf]` lines of the log). The
-volume is published on every emitted snapshot, with no option or lazy flag. **Memory:** the diagnosed volume adds 12 bytes per cell to a
-keyframe, 474.6 KiB at 45 x 45 x 20 (`keyframeBytesModel`, `scenario/memoryModel.ts`, which the Data sets screen's working memory
-uses; the atmosphere row's label for the fast tier is now "the forecast wind fitted to the terrain"), about 35 MB over the 72 keyframes of
-a 6 hour run at the 300 s keyframe spacing; the history budget (about 6 % of device memory) is unchanged, so the store thins old history
-a little earlier on small phones. A test (`ui/snapshotStore.air.test.ts`) weighs a fast-tier keyframe with and without it, and
-`memoryModel.test.ts` checks the model's keyframe bytes against a real snapshot's for each tier, within 3 %.
+volume is published on every emitted snapshot, with no option or lazy flag. **Memory:** the diagnosed volume is 12 bytes per cell in every
+published view, 474.6 KiB at 45 x 45 x 20 (`keyframeBytesModel`, `scenario/memoryModel.ts`, which the Data sets screen's working memory
+uses; the atmosphere row's label for the fast tier is now "the forecast wind fitted to the terrain"). The newest snapshot holds it exactly:
+the live view and the engine are untouched. **The history keeps an older picture's copy cheaper** (fix F1 of the 0.4.0 list: with the
+volume whole in every keyframe a keyframe was 1,310,636 B against 824,556 B in 0.3.0, and a 1 GB phone kept 33 keyframes of a 6 hour
+fast-tier run, 40 min apart at the widest, where 0.3.0 kept 55, 10 min apart). `ui/snapshotStore.ts` moves the volume out of the keyframe
+into a list of its own and packs it (`core/airPack.ts`): u, v and w as 16-bit integers with a scale per field, 6 bytes per cell,
+237.3 KiB at 45 x 45 x 20. Display only: a restored picture is a plain Float32 view that the sampler reads like any other. **Error
+bound:** a field is stored as `round(f / s)` with `s = max|f| / 32767` and read back as `q · s`, so every value is within `max|f| / 65534`
+plus the rounding of a Float32 (`s · 0.502` all told, `windPackErrorBound`): 0.00046 m/s for a 30 m/s field, and a sampled wind (a
+convex mix of stored values) is off by no more. Measured on the real Katoomba 45 x 45 x 20 view (largest |u|, |v|, |w| 15.0, 14.2, 6.2 m/s):
+worst difference 2.3e-4, 2.2e-4, 9.4e-5 m/s, exactly at the bound (`airPack.test.ts`, `airView.sim.test.ts`,
+`snapshotStore.fast6h.sim.test.ts`). **Which volume a picture gets:** the newest saved volume at or before its time, with the view's `time`
+set to that volume's, so the slice footer's "air from 14:05 (N min before the time shown)" is true; the surface wind, terrain, layout, top
+and datum are the keyframe's own. **Budget:** the volumes have a share of their own, 4 % of what is left after the newest snapshot (the
+keyframes keep their 72 % and the light frames their 8 %; the embers' share goes from 20 % to 16 %), so a volume never takes a picture's
+room. Before the budget is first reached every keyframe keeps its volume (2 GB and up never reach it: 72 volumes, 17.5 MB, for 6 hours);
+after that the list is held to its share at every step and thinned by age like the others (a first and a newest volume, finer where the
+history is young), which is not counted as thinning the history (no picture goes). 3-D tiers keep their air whole in the keyframes, as
+before. Measured with real fast-tier snapshots (Katoomba 6 km, 40,000 fire cells, 45 x 45 x 20, 6 hours, display step 60 s) by
+`npx vitest run src/ui/snapshotStore.fast6h.sim.test.ts --reporter=verbose --silent=false`, keyframes (longest gap in minutes) at the 6 hour
+instant, "0.3.0" being the same snapshots without the volume, "before" this fix the volume whole in the keyframe:
+
+| History budget (device) | 0.3.0 | before the fix | now | wind volumes kept | history held (MiB): 0.3.0 / before / now |
+| --- | --- | --- | --- | --- | --- |
+| 48 MiB (0.5 GB) | 35 (40) | 22 (40) | 39 (20) | 7 | 38.8 / 39.2 / 40.2 |
+| 61.4 MiB (1 GB) | 55 (10) | 33 (40) | 57 (10) | 9 | 54.5 / 52.9 / 59.1 |
+| 64 MiB | 53 (20) | 31 (40) | 55 (10) | 10 | 52.9 / 50.4 / 57.7 |
+| 122.9 MiB (2 GB) | 72 (5) | 72 (5) | 72 (5) | 72 | 67.9 / 101.7 / 85.5 |
+
+The count is a sawtooth (it falls when the budget is reached and grows back), so one instant is partly luck: over the last hour of the
+run, at one instant every 5 minutes, the mean count is 38.9 / 54.0 / 56.6 against 40.8 / 56.6 / 60.2 in 0.3.0 at 48 / 61.4 / 64 MiB (about
+5 % fewer on average, the same lowest count to within 1 and the same longest gap or shorter), the price of the 4 % share. A keyframe with
+its volume is 868 kB, 863 kB and 869 kB on average at those budgets (0.3.0: 825 kB) and 1,067,700 B at 2 GB. The air of the oldest picture
+of such a run is up to 239 / 119 / 129 min older than the picture at 48 / 61.4 / 64 MiB (the footer says so). A test
+(`ui/snapshotStore.air.test.ts`) weighs the live and the kept keyframe, and `memoryModel.test.ts` checks the model's bytes against a real
+snapshot's and a real kept keyframe's for each tier, within 3 %.
 
 **Capability flags** (`core/airView.ts`, plus `AvailabilityContext` in `render/layerCatalog.ts`). `airKind(view)`, `airLayout`,
 `airHas(view, 'wind' | 'theta' | 'smoke')` (the array really holds a value for every column and level, so an empty array never reaches an
@@ -986,7 +1017,9 @@ checks for them: the Night lighting row is left out, and the statistics' display
   scrubbing shows the exact front at any time whatever the cadence, and after a rewind the re-simulated newest arrays are
   authoritative for earlier times too. Moisture, overlay rasters and the atmosphere view are kept at *keyframes* (every
   300 s, or the display step if larger, plus one at once for the first picture after history was cut — a rewind, an edit,
-  an atmosphere tier change — so the re-run's data shows immediately and not the old run's up to 300 s later); every step keeps a light frame (time, stats, spot-fire count into one shared
+  an atmosphere tier change — so the re-run's data shows immediately and not the old run's up to 300 s later); the fast tier's 3-D wind volume is not in
+  the keyframe but in a list of its own, packed to 16-bit integers (`core/airPack.ts`, 6 bytes per cell, with a share of the budget of its
+  own: see the air-data section); every step keeps a light frame (time, stats, spot-fire count into one shared
   log) and its embers. `at(t)` returns the real newest snapshot at or after its time, else a composition (keyframe +
   light frame + rebuilt fire) for exactly t; `at(t, quantum)` rounds t down to a *quantum* and the same object comes
   back within it (`atOrBefore` uses min(display step, 30 s)). While playing the session uses `playQuantum(speed)` =
@@ -994,8 +1027,10 @@ checks for them: the Night lighting row is left out, and the statistics' display
   scrubbing the exact time, so the view is updated only when something changed. The rebuilt arrays live in two rotating buffers (a composed picture is valid until the second next one;
   `SceneView.update` copies what it needs synchronously). Over budget (48–160 MB), older history is thinned first
   (an entry survives when it is at least age / R after the previous kept one, R shrinking until each list fits its share);
-  the first keyframe and the newest snapshot are never dropped. Measured with real Katoomba snapshots (40 k fire cells)
-  for 6 h under a 64 MB budget: 56 / 56 / 53 MB at 10 / 30 / 60 s steps (`src/ui/snapshotStore.sim.test.ts`).
+  the first keyframe and the newest snapshot are never dropped. Measured with real fast-tier Katoomba snapshots (40 k fire cells)
+  for 6 h under a 64 MiB budget: 60.2 / 59.8 / 57.7 MiB held, 58 / 56 / 55 keyframes, at 10 / 30 / 60 s steps (`src/ui/snapshotStore.sim.test.ts`;
+  with the diagnosed wind whole in every keyframe it was 57.2 / 44.7 / 50.4 MiB and 31 / 26 / 31 keyframes); the budgets of the 0.5, 1 and 2 GB
+  classes, and the 0.3.0 comparison, are in the air-data section (`src/ui/snapshotStore.fast6h.sim.test.ts`).
 * Insight flood control (`ui/insightGroups.ts`): a large fire reports the same phenomenon along its whole edge
   (hundreds of cards in 6 h). The Insights tab and the map show one card / marker per kind (the newest of the most
   severe instances, "seen N times since …"). Nothing pops up over the map: `UnseenTracker` counts the cards revealed since
@@ -1238,8 +1273,8 @@ so the panel is a lazy chunk). The other rows were measured in node on the build
 | `src/styles/slice.css`, source | none | 3,979 bytes (`wc -c`) | <= 4,096 bytes (the plan's CSS estimate) |
 | Bundled data `public/demo` (MB) / debug APK (MB) | 33.1 / 27.6 | TBD-BUNDLE | unchanged by this release / <= 33 |
 | `view()` of the air per snapshot (worker): fast / standard / high tier | fast: the 10 m fields only | 0.60 ms, 498 kB / 0.77 ms, 815 kB / 1.16 ms, 1,730 kB (`[atmos perf]`, `airView.perf.test.ts`; the times vary: later runs gave 0.40 / 0.60 / 1.15 ms and 0.43 ms fast, 1.22 ms high) | the plan estimated about 0.5 ms for the fast tier; the test allows 25 / 60 ms |
-| History keyframe, fast tier at 45 x 45 x 20 | | +474.6 KiB (12 bytes per cell) | |
-| History of a 6 h fast-tier run (72 keyframes) | | about +35 MB; old history thins a little earlier on small phones | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB |
+| History keyframe, fast tier at 45 x 45 x 20 | | +237.3 KiB (6 bytes per cell: 16-bit integers, in a wind list beside the keyframes; the live snapshot holds the 474.6 KiB exactly) | within 0.00046 m/s of the exact wind at 30 m/s |
+| History of a 6 h fast-tier run (72 keyframes) | | 2 GB and up: +17.5 MB (72 volumes); 0.5 to 1 GB: about +5 % per keyframe, the volumes held to 4 % of the budget; keyframes and longest gap as in 0.3.0 (the count about 5 % lower on average over the last hour) | the history budget is unchanged: about 6 % of device memory, 48 to 160 MB; `snapshotStore.fast6h.sim.test.ts` |
 | Sampler v2 per call: `windP` / `fieldsP` | | 109 / 258 ns, 0.14 bytes (`[sampler perf]`); later runs 100 to 130 / 182 to 260 ns | allocation-free; `atmosphereSampler.test.ts` measures it, and `atmosphereSampler.alloc.test.ts` with inlining off |
 | One slice update (resolve, four preset checks, sample, cells) | | median 0.5 to 1.0 ms, p95 up to 1.5 ms, on lattices of 96 x 55 and 129 x 55 (`[slice perf]`, `slice.perf.test.ts`) | plan: p95 <= 8 ms at 4x CPU throttle. Measured later at 4x in a browser: compute alone p95 7.1 ms (fast) / 8.9 ms (3-D), the whole update (compute, panel redraw, curtain) p95 18 / 33 ms, max 41 ms: **not met for the whole update** |
 | One streak step (300 particles); the probe with its sentence | | 0.05 ms and 2.6 bytes; 4.7 us and 448 bytes | |
