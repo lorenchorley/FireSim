@@ -1,13 +1,14 @@
 /**
  * The updater with a fake clock: a snapshot-time request inside 250 ms is pending and `poll` releases it, an edit never waits,
- * the arrays are reused across updates, and `invalidate` forgets everything.
+ * the arrays are reused across updates, and `invalidate` forgets everything. With a recording (0.4.1) it asks the reader first and
+ * takes its slice, and a live slice never keeps the recorded tag.
  */
 import { describe, expect, it } from 'vitest';
 import { makeGridSpec } from '../../core/grid';
-import { AtmosphereSampler } from '../atmosphereSampler';
+import { AtmosphereSampler, type SectionLine } from '../atmosphereSampler';
 import { createSliceUpdater } from './sliceUpdater';
-import { makeAirView, makeResolveContext } from './testing';
-import { SLICE_PRESET_IDS, SLICE_UPDATE_MIN_MS, type SliceInputs, type SliceLineState } from './types';
+import { makeAirView, makeResolveContext, makeSliceData } from './testing';
+import { SLICE_PRESET_IDS, SLICE_UPDATE_MIN_MS, type SliceData, type SliceInputs, type SliceKind, type SliceLineState, type SliceRecordingReader } from './types';
 
 const ORIGIN = { lat: -33.7, lon: 150.3 };
 const GRID = makeGridSpec(ORIGIN, 31 * 200, 200); // +-3000 m, 200 m cells
@@ -18,13 +19,14 @@ const airView = (speed: number) => makeAirView({ grid: GRID, groundAt: ridge, u:
 const ctx = makeResolveContext({ grid: GRID, heightAt: ridge, fire: [200, 0], windFromDeg: 270, user: [-1500, 0] });
 const east: SliceLineState = { azimuth: 90, centre: [0, 0] };
 
-function inputs(o: { speed?: number; line?: SliceLineState; shownTime?: number; sampler?: AtmosphereSampler } = {}): SliceInputs {
+function inputs(o: { speed?: number; line?: SliceLineState; shownTime?: number; sampler?: AtmosphereSampler; recording?: SliceRecordingReader } = {}): SliceInputs {
   return {
     line: o.line ?? east,
     ctx,
     sampler: o.sampler ?? new AtmosphereSampler(airView(o.speed ?? 5), 0, null),
     terrain,
     shownTime: o.shownTime ?? 0,
+    ...(o.recording ? { recording: o.recording } : {}),
   };
 }
 
@@ -201,5 +203,153 @@ describe('createSliceUpdater: invalidate', () => {
     expect(after.data!.shownTime).toBe(3);
     expect(after.data).not.toBe(first.data);
     expect(after.data!.values.speed).not.toBe(first.data!.values.speed);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The time-lapse recording (0.4.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ReadCall {
+  line: SectionLine;
+  shownTime: number;
+  kind: SliceKind;
+  pictureAirTime: number | null;
+  out: SliceData | null;
+}
+
+/** A reader that answers from a function and remembers what it was asked. */
+function reader(answer: (call: ReadCall) => SliceData | null): { reader: SliceRecordingReader; calls: ReadCall[] } {
+  const calls: ReadCall[] = [];
+  return {
+    calls,
+    reader: {
+      read(line, shownTime, kind, pictureAirTime, out) {
+        const call = { line, shownTime, kind, pictureAirTime, out };
+        calls.push(call);
+        return answer(call);
+      },
+    },
+  };
+}
+
+/** A recorded slice the way the reader makes it: tagged, with no model cells, wind 9 m/s along the line. */
+function recorded(at: number, out: SliceData | null = null): SliceData {
+  const d = out ?? makeSliceData({ columns: 60, rows: 40, a: [-3000, 0], b: [3000, 0], wind: () => [9, 0, 0] });
+  d.recordedAt = at;
+  d.cells = null;
+  return d;
+}
+
+describe('createSliceUpdater: a recorded slice', () => {
+  it('is the data when the reader answers, tagged, with the updater\'s own count on it', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => recorded(300));
+    const out = u.request(inputs({ recording: r.reader, shownTime: 400 }), 0)!;
+    expect(out.data).not.toBeNull();
+    expect(out.data!.recordedAt).toBe(300);
+    expect(out.data!.cells).toBeNull();
+    expect(out.data!.values.speed[0]).toBe(0); // (the reader's lattice, not a live sample of the 5 m/s air)
+    expect(out.data!.seq).toBe(1);
+    expect(u.request(inputs({ recording: r.reader, shownTime: 500 }), 1000, true)!.data!.seq).toBe(2);
+  });
+
+  it('asks the reader for the resolved line, the time shown, the kind of air, the picture\'s air time and the data it holds', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => null);
+    const first = u.request(inputs({ recording: r.reader, shownTime: 450 }), 0)!;
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]!.line).toBe(first.resolved.line);
+    expect(r.calls[0]!.shownTime).toBe(450);
+    expect(r.calls[0]!.kind).toBe('prognostic');
+    expect(r.calls[0]!.pictureAirTime).toBe(600); // the air view's own time (the fixture's default)
+    expect(r.calls[0]!.out).toBeNull(); // nothing held yet
+    u.request(inputs({ recording: r.reader, shownTime: 460 }), 1000, true);
+    expect(r.calls[1]!.out).toBe(first.data); // the object the live slice was made into: the reader may refill it
+  });
+
+  it('says "diagnosed" for the fast tier\'s air', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => null);
+    const sampler = new AtmosphereSampler(makeAirView({ grid: GRID, groundAt: ridge, u: () => 4, v: () => 0, w: () => 0, kind: 'diagnosed', time: 120 }), 0, null);
+    expect(u.request(inputs({ recording: r.reader, sampler }), 0)!.data!.kind).toBe('diagnosed');
+    expect(r.calls[0]!.kind).toBe('diagnosed');
+    expect(r.calls[0]!.pictureAirTime).toBe(120);
+  });
+
+  it('falls back to a live slice of the picture\'s air when the reader has none', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => null);
+    const d = u.request(inputs({ recording: r.reader, speed: 7 }), 0)!.data!;
+    expect(d.recordedAt).toBeUndefined();
+    expect(d.cells).not.toBeNull();
+    expect(d.values.speed[d.values.speed.length - 1]).toBeCloseTo(7, 4);
+  });
+
+  it('a live slice after a recorded one, in the same object, has no recordedAt and has its model cells again', () => {
+    const u = createSliceUpdater();
+    let mode: 'live' | 'recorded' = 'live';
+    // The reader refills the slice it is given when the lattice matches, as the real one does.
+    const r = reader((c) => (mode === 'recorded' && c.out ? recorded(250, c.out) : null));
+    const live = u.request(inputs({ recording: r.reader }), 0)!.data!;
+    expect(live.recordedAt).toBeUndefined();
+    mode = 'recorded';
+    const rec = u.request(inputs({ recording: r.reader }), 1000, true)!.data!;
+    expect(rec).toBe(live); // one object, changed in place
+    expect(rec.recordedAt).toBe(250);
+    expect(rec.cells).toBeNull();
+    mode = 'live';
+    const again = u.request(inputs({ recording: r.reader }), 2000, true)!.data!;
+    expect(again).toBe(live);
+    expect(again.recordedAt).toBeUndefined();
+    expect(again.cells).not.toBeNull();
+  });
+
+  it('a live slice after a recorded one of another size is a new object without the tag', () => {
+    const u = createSliceUpdater();
+    let mode: 'recorded' | 'live' = 'recorded';
+    const r = reader(() => (mode === 'recorded' ? recorded(100) : null));
+    const rec = u.request(inputs({ recording: r.reader }), 0)!.data!;
+    expect(rec.recordedAt).toBe(100);
+    mode = 'live';
+    const live = u.request(inputs({ recording: r.reader }), 1000, true)!.data!;
+    expect(live).not.toBe(rec);
+    expect(live.recordedAt).toBeUndefined();
+  });
+
+  it('without a recording the reader is never involved: the slice is as in 0.4.0', () => {
+    const u = createSliceUpdater();
+    const d = u.request(inputs(), 0)!.data!;
+    expect(d.recordedAt).toBeUndefined();
+    expect(d.cells).not.toBeNull();
+  });
+
+  it('does not ask when there is no line or the air holds no 3-D wind', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => recorded(1));
+    expect(u.request(inputs({ recording: r.reader, line: { azimuth: 90, centre: [0, 0], a: [0, 0], b: [100, 0] } }), 0)!.data).toBeNull();
+    expect(u.request(inputs({ recording: r.reader, sampler: new AtmosphereSampler(null, 0, null) }), 1000, true)!.data).toBeNull();
+    expect(r.calls).toHaveLength(0);
+  });
+
+  it('a reader that throws leaves the live slice, never an error in the scene\'s update', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => {
+      throw new Error('broken recorder');
+    });
+    let out: ReturnType<typeof u.request> = null;
+    expect(() => (out = u.request(inputs({ recording: r.reader, speed: 6 }), 0))).not.toThrow();
+    expect(out!.data!.recordedAt).toBeUndefined();
+    expect(out!.data!.values.speed[out!.data!.values.speed.length - 1]).toBeCloseTo(6, 4);
+  });
+
+  it('a pending snapshot request keeps its reader for the poll that releases it', () => {
+    const u = createSliceUpdater();
+    const r = reader(() => recorded(200));
+    u.request(inputs(), 0);
+    expect(u.request(inputs({ recording: r.reader, shownTime: 90 }), 100)).toBeNull();
+    const released = u.poll(300)!;
+    expect(released.data!.recordedAt).toBe(200);
+    expect(r.calls[0]!.shownTime).toBe(90);
   });
 });
