@@ -644,7 +644,7 @@ exact; an older, composed picture takes the recorded air; before the first sampl
 0.4.0 path, unchanged. The footer then says "recorded air from 11:25" (with "(2 min before the time shown)" past 90 s, counted from the sample).
 The probe, the streaks, the legend and the chips read the same `SliceData`, so nothing else changed. Against the picture's own saved air at the same
 time the differences were the 2 to 3 minutes the air really moved (on the fast tier 0.01 to 0.03 m/s of 17.5; the 3-D air's speed 0.05 to
-0.24 % rms; the v-core verifier's measurement, real engine).
+0.24 % rms; a verifier's measurement, real engine).
 
 *How a sample is kept* (`src/core/sliceRecording.ts`, reusing the idea of `airPack.ts`). Each field is a signed 16-bit integer with a scale of its
 own (`q = round(f / s)`, `s = max|f| / 32767`): along, across and up (6 bytes a lattice point) and, on the 3-D air, theta and smoke (10 in all).
@@ -697,7 +697,7 @@ sends the pictures again. `onSnapshot` feeds the recorder after the store has th
 a 90 x 54 line took a median of 0.95 ms and a 95th percentile of 1.23 ms on the 3-D air (0.63 and 0.71 ms on the fast tier), a read a 95th
 percentile of 0.065 ms, the store that thins a median of 0.25 ms, and the whole `record(snapshot)` path on 96 x 56 a median of 1.00 ms and a 95th
 percentile of 1.31 ms; 3,000 arrivals, thinning included, changed the heap by 70.7 kB. In a real browser in software rendering under a 4x CPU
-throttle at Max speed on a 6 km line (the v-core verifier's measurement, not repeated by the docs lane), `record()` took a median of 3.8 ms and a 95th
+throttle at Max speed on a 6 km line (a verifier's measurement, not repeated by the docs lane), `record()` took a median of 3.8 ms and a 95th
 percentile of 13.2 ms (maximum 22 ms) on the fast tier, where 14 pictures arrive each second and the recorder took a mean 6.7 % of the time (worst
 second 132 ms), and 4.7, 11.1 and 29 ms on the 3-D tier, where 5 arrive each second (2.7 %). It is highest in the first 20 to 50 seconds after
 *Keep this line*, and falls as thinning halves the rate at which pictures are stored; a single call can exceed the 16.7 ms of a 60 frames-a-second frame.

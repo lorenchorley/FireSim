@@ -726,7 +726,7 @@ or drawn against a stub context in tests; `slicePanel.ts` wires them to the elem
 the model's cells as nearest-neighbour blocks with their native values), the filled 10 m ground and the dashed model ground, axes, the
 streaks (about 300 particles, at most 24 frames a second on any display, only while the panel is on screen and the page visible; fewer in a
 small plot; a still arrow lattice under `prefersReducedMotion()`), the probe cross, the legend (`options.legend`, the scene's `sliceLegend`),
-and the footer (kind · model grid · air from, with "(N min before the time shown)" past 90 s). **The cap:** `flowTick(clock, tMs)` in
+and the footer (kind · model grid · air from, with "(N min before the time shown)" past 90 s; "recorded air from" where the slice was read from the recording, 0.4.1). **The cap:** `flowTick(clock, tMs)` in
 `slicePanelModel.ts` gathers the display's frame times and lets a streak frame through when 1/24 s less half a millisecond has passed, so a
 60 Hz display draws 20 a second (every third frame) and 120 and 144 Hz draw 24. The first version's threshold was 1/24 s minus 8 ms, which
 let a 144 Hz display draw about 29 a second (found by a verifier); a test runs 12 display rates from 30 to 360 Hz and, with a little
@@ -894,8 +894,8 @@ row said 6.7 MB; never over the budget).
 median of 0.95 ms and a 95th percentile of 1.23 ms on the 3-D air (the sampling alone median 0.73 ms), 0.63 and 0.71 ms on the fast tier; a `read` p95 0.065 and
 0.036 ms; the store that thins a median of 0.25 ms; the whole `record(snapshot)` path on 96 x 56 a median of 1.00 ms and p95 1.31 ms (the design's limit 1.5);
 3,000 arrivals with thinning and a replay among them changed the heap by 70.7 kB (the test allows 256 kB), at 12 MiB (3-D air) and 6 MiB (fast tier). The
-192 x 56 case (which cannot occur) is 1.91 and 2.18 ms. In a real browser in software rendering under a 4x CPU throttle at Max speed on a 6 km line (v-core,
-not repeated by the docs lane) `record()` took a median of 3.8 ms and p95 13.2 ms (maximum 22 ms) on the fast tier, at 14 pictures a second (a mean 6.7 % of the
+192 x 56 case (which cannot occur) is 1.91 and 2.18 ms. In a real browser in software rendering under a 4x CPU throttle at Max speed on a 6 km line (a verifier's
+measurement, not repeated by the docs lane) `record()` took a median of 3.8 ms and p95 13.2 ms (maximum 22 ms) on the fast tier, at 14 pictures a second (a mean 6.7 % of the
 time, worst second 132 ms), and a median of 4.7 ms and p95 11.1 ms (maximum 29 ms) on the 3-D tier, at 5 a second (2.7 %): the highest load is in the first 20
 to 50 seconds after *Keep this line* and it falls as thinning halves the rate at which pictures are stored; a single call can exceed a frame at 60 frames a second;
 with the slice off or a preset a call is 0.03 to 0.1 ms and nothing is stored. Nothing was measured on a phone. If frame drops show up, the next step is to sample
@@ -1504,7 +1504,7 @@ gzip) and no check was weakened. The node rows are from `npx vitest run src/rend
 | `arrive` + sample + `store`, 90 x 54 (node) | | 3-D air: median 0.95 ms, p95 1.23 ms; fast tier: 0.63 and 0.71 ms | the design's p95 <= 1.5 ms |
 | `read`, 90 x 54 (node) | | p95 0.065 ms (3-D air), 0.036 ms (fast tier) | <= 0.5 ms |
 | The whole `record(snapshot)`, 96 x 56 (node) | | median 1.00 ms, p95 1.31 ms | <= 1.5 ms |
-| `record()` in a browser at a 4x throttle, Max speed, software rendering (v-core, not repeated here) | | fast tier: median 3.8 ms, p95 13.2 ms, max 22 ms, 14 a second (6.7 % of the time); 3-D: 4.7 / 11.1 / 29 ms, 5 a second (2.7 %) | not a phone; a single call can exceed a 60 frames-a-second frame |
+| `record()` in a browser at a 4x throttle, Max speed, software rendering (a verifier's measurement, not repeated here) | | fast tier: median 3.8 ms, p95 13.2 ms, max 22 ms, 14 a second (6.7 % of the time); 3-D: 4.7 / 11.1 / 29 ms, 5 a second (2.7 %) | not a phone; a single call can exceed a 60 frames-a-second frame |
 | Heap after 3,000 arrivals, thinning and a replay among them (node) | | changed by 70.7 kB (12 MiB, 3-D air); -14.3 kB (6 MiB, fast tier) | heap-flat (the test allows 256 kB) |
 | Snapshot hash with and without a recorder | | equal, both tiers (`sliceTimeLapse.test.ts`) | the recorder never feeds back |
 
@@ -1536,7 +1536,7 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   a flat heap; the panel is repainted once in the next display frame, however many slices came, and not at all while it is covered; the
   streaks run at most 24 frames a second on any display (20 at 60 Hz) and stop while the panel is hidden, the page is in the background or
   the phone is set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing. The time-lapse recorder (0.4.1) is the same while the slice is off or the line is a preset: a call is 0.03 to
-  0.1 ms (v-core, in a browser at a 4x throttle) and nothing is stored; it keeps to its own budget (an eighth of the history's, at most 12 MiB, a free list so a
+  0.1 ms (a verifier, in a browser at a 4x throttle) and nothing is stored; it keeps to its own budget (an eighth of the history's, at most 12 MiB, a free list so a
   steady stream allocates nothing) and a test holds 3,000 arrivals to a flat heap.
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
