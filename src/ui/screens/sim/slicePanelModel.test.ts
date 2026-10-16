@@ -14,6 +14,7 @@ import {
   emptyState,
   flowCount,
   flowSlice,
+  flowTick,
   flowTimeScale,
   footerParts,
   footerRuns,
@@ -36,6 +37,7 @@ import {
   xOfS,
   yOfZ,
   zOfY,
+  type FlowClock,
   type LayoutInput,
   type TickFn,
 } from './slicePanelModel';
@@ -427,5 +429,49 @@ describe('legend', () => {
   it('spreads labels evenly', () => {
     expect(spreadLabels(['a', 'b', 'c'], 5)).toEqual(['a', 'b', 'c']);
     expect(spreadLabels(['a', 'b', 'c', 'd', 'e', 'f', 'g'], 3)).toEqual(['a', 'd', 'g']);
+  });
+});
+
+describe('flowTick: the streaks are drawn at most 24 times a second, whatever the display', () => {
+  /** Streak frames drawn in `seconds` on a display of `hz`, its frame times rounded to a tenth of a millisecond (and shaken by `jitterMs`). */
+  function drawnPerSecond(hz: number, seconds = 20, jitterMs = 0): { rate: number; steps: number[] } {
+    const clock: FlowClock = { last: 0, acc: 0 };
+    let drawn = 0;
+    const steps: number[] = [];
+    const n = Math.round(hz * seconds);
+    for (let i = 1; i <= n; i++) {
+      const shake = jitterMs ? Math.sin(i * 12.9898) * jitterMs : 0;
+      const dt = flowTick(clock, Math.round(((i * 1000) / hz + shake) * 10) / 10);
+      if (dt > 0) {
+        drawn++;
+        steps.push(dt);
+      }
+    }
+    return { rate: drawn / seconds, steps };
+  }
+
+  it('draws no more than 24 a second on 60, 75, 90, 120, 144, 165 and 240 Hz displays (144 Hz drew about 29 a second when a frame could come 8 ms early)', () => {
+    for (const hz of [30, 48, 60, 72, 75, 90, 100, 120, 144, 165, 240, 360]) {
+      const { rate } = drawnPerSecond(hz);
+      expect(rate, `${hz} Hz`).toBeLessThanOrEqual(24.05);
+    }
+    expect(drawnPerSecond(144).rate).toBeGreaterThan(23.5);
+    expect(drawnPerSecond(120).rate).toBeGreaterThan(23.5);
+    expect(drawnPerSecond(60).rate).toBeGreaterThan(19.5); // every third frame: 20 a second
+    expect(drawnPerSecond(60).rate).toBeLessThanOrEqual(20.05);
+  });
+
+  it('stays at or under about 24 a second when the frame times are not exactly regular', () => {
+    for (const hz of [60, 120, 144]) expect(drawnPerSecond(hz, 20, 0.4).rate, `${hz} Hz with 0.4 ms of jitter`).toBeLessThanOrEqual(24.5);
+  });
+
+  it('steps the particles by all the time since the last streak frame, and by no more than a tenth of a second after a long pause', () => {
+    const { steps } = drawnPerSecond(144, 2);
+    for (const dt of steps) expect(dt).toBeGreaterThan(1 / 24 - 0.002);
+    const clock: FlowClock = { last: 0, acc: 0 };
+    expect(flowTick(clock, 1000)).toBe(0); // the first frame only starts the clock
+    expect(flowTick(clock, 1010)).toBe(0); // 10 ms: not yet
+    expect(flowTick(clock, 1050)).toBeCloseTo(0.05, 9); // 50 ms in all: draws, stepping by all of it
+    expect(flowTick(clock, 9000)).toBe(0.1); // a tab that was away
   });
 });
