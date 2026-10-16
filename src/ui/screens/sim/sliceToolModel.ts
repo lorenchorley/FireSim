@@ -68,8 +68,8 @@ export const PRESETS_LABEL = 'Presets';
 /** The time-lapse recording's two buttons (0.4.1) and what the screen reader hears when they are pressed. */
 export const KEEP_LABEL = 'Keep this line';
 export const CLEAR_RECORDING_LABEL = 'Clear recording';
-export const KEEP_SAY = 'Line kept. Recording from the next picture.';
-export const CLEAR_SAY = 'Recording cleared. Recording again from the next picture.';
+export const KEEP_SAY = 'Line kept. Recording starts when the simulation next runs.';
+export const CLEAR_SAY = 'Recording cleared. Recording starts when the simulation next runs.';
 const END_WORD: Record<SliceEnd, string> = { a: 'the start (A)', b: 'the end (B)' };
 
 export const PRESET_LABEL: Record<SlicePresetId, string> = { along: 'Along the wind', across: 'Across the wind', slope: 'Up the slope', me: 'Me to fire' };

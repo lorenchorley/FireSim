@@ -446,25 +446,25 @@ describe('labels and values', () => {
         id: 'slice-recording',
         label: 'Air slice recording',
         value: '42 slices, 2.0 MB of 6.3 MB',
-        note: 'Recorded from 11:30 to 12:40, about every 2 min; 3-D air; 48.7 KB a slice',
+        note: 'Recorded from 11:30 to 12:40 (about every 2 min); 3-D air; 48.7 KB a slice',
         live: true,
       });
     });
 
     it('says the air of the fast tier, and a single slice in the singular', () => {
-      expect(rowFor(status(), (i) => (i.engine = fastEngine))!.note).toBe('Recorded from 11:30 to 12:40, about every 2 min; diagnosed wind; 48.7 KB a slice');
+      expect(rowFor(status(), (i) => (i.engine = fastEngine))!.note).toBe('Recorded from 11:30 to 12:40 (about every 2 min); diagnosed wind; 48.7 KB a slice');
       const one = rowFor(status({ count: 1, from: 600, to: 600, spacingS: 0, bytes: 48_696 }))!;
       expect(one.value).toBe('1 slice, 48.7 KB of 6.3 MB');
       expect(one.note).toBe('Recorded from 11:30; 3-D air; 48.7 KB a slice');
-      expect(rowFor(status({ spacingS: 0 }))!.note).toContain('11:30 to 12:40, every picture');
-      expect(rowFor(status(), (i) => (i.engine = null))!.note).toBe('Recorded from 11:30 to 12:40, about every 2 min; 48.7 KB a slice');
+      expect(rowFor(status({ spacingS: 0 }))!.note).toContain('11:30 to 12:40 (every picture kept)');
+      expect(rowFor(status(), (i) => (i.engine = null))!.note).toBe('Recorded from 11:30 to 12:40 (about every 2 min); 48.7 KB a slice');
     });
 
     it('off, waiting and stopped', () => {
       expect(rowFor(status({ state: 'off', count: 0, from: null, to: null }))).toMatchObject({ value: 'Off', live: true });
       expect(rowFor(status({ state: 'off', offFor: 'preset', count: 0, from: null, to: null }))!.note).toBe('A preset follows the wind and the fire, so it is not recorded');
       expect(rowFor(status({ state: 'off', offFor: 'chord', count: 0, from: null, to: null }))!.note).toBe('The Layers line is not recorded');
-      expect(rowFor(status({ state: 'waiting', count: 0, from: null, to: null, bytes: 0 }))).toMatchObject({ value: 'Waiting for the next picture', live: true });
+      expect(rowFor(status({ state: 'waiting', count: 0, from: null, to: null, bytes: 0 }))).toMatchObject({ value: 'Waiting for the simulation to run', live: true });
       expect(rowFor(status({ state: 'failed', count: 0, from: null, to: null, bytes: 0 }))).toMatchObject({ value: 'Stopped' });
     });
 

@@ -424,8 +424,8 @@ describe('Keep this line (the time-lapse recording, 0.4.1)', () => {
   it('has the words the plan promises', () => {
     expect(KEEP_LABEL).toBe('Keep this line');
     expect(CLEAR_RECORDING_LABEL).toBe('Clear recording');
-    expect(KEEP_SAY).toBe('Line kept. Recording from the next picture.');
-    expect(CLEAR_SAY).toBe('Recording cleared. Recording again from the next picture.');
+    expect(KEEP_SAY).toBe('Line kept. Recording starts when the simulation next runs.');
+    expect(CLEAR_SAY).toBe('Recording cleared. Recording starts when the simulation next runs.');
     for (const w of [KEEP_LABEL, CLEAR_RECORDING_LABEL, KEEP_SAY, CLEAR_SAY]) expect(w).not.toMatch(/[\u2013\u2014]/);
   });
 

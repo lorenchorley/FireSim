@@ -390,11 +390,11 @@ describe('the recording\'s status line and the cells note (0.4.1, every sentence
     return recordingLine(u, tz, abs);
   };
 
-  it('recording: the span and how close its pictures are, "about" once pictures were thinned', () => {
-    expect(line(status())).toBe('Recorded from 11:30 to 12:40, every picture.');
-    expect(line(status({ spacingS: 20 }))).toBe('Recorded from 11:30 to 12:40, about every 20 s.');
-    expect(line(status({ spacingS: 120 }))).toBe('Recorded from 11:30 to 12:40, about every 2 min.');
-    expect(line(status({ spacingS: 600 }))).toBe('Recorded from 11:30 to 12:40, about every 10 min.');
+  it('recording: the span and, in brackets, how close its pictures are ("about" once pictures were thinned)', () => {
+    expect(line(status())).toBe('Recorded from 11:30 to 12:40 (every picture kept).');
+    expect(line(status({ spacingS: 20 }))).toBe('Recorded from 11:30 to 12:40 (about every 20 s).');
+    expect(line(status({ spacingS: 120 }))).toBe('Recorded from 11:30 to 12:40 (about every 2 min).');
+    expect(line(status({ spacingS: 600 }))).toBe('Recorded from 11:30 to 12:40 (about every 10 min).');
   });
 
   it('says only the start while the first pictures are all in one minute', () => {
@@ -402,26 +402,37 @@ describe('the recording\'s status line and the cells note (0.4.1, every sentence
     expect(line(status({ count: 3, to: 640, spacingS: 0 }))).toBe('Recorded from 11:30.');
   });
 
-  it('a time before the first picture says why the air can be older', () => {
-    expect(line(status(), 300)).toBe("Recorded from 11:30. This time is earlier, so it uses the history's saved air, which can be older.");
-    expect(line(status(), 600)).toBe('Recorded from 11:30 to 12:40, every picture.'); // the first picture itself is inside
+  it('a time before the first picture says where the recording starts (as far ahead as the simulation had run) and why the air can be older', () => {
+    expect(line(status(), 300)).toBe("Recorded from 11:30, as far ahead as the simulation had run. This time is earlier, so it uses the history's saved air, which can be older.");
+    expect(line(status(), 600)).toBe('Recorded from 11:30 to 12:40 (every picture kept).'); // the first picture itself is inside
   });
 
   it('waiting: nothing recorded yet', () => {
-    expect(line(status({ state: 'waiting', count: 0, from: null, to: null }))).toBe('Recording starts with the next picture.');
+    expect(line(status({ state: 'waiting', count: 0, from: null, to: null }))).toBe('Recording starts when the simulation next runs.');
   });
 
   it('after a drop: the reason, then where it records from', () => {
     const one = { count: 1, from: 5100, to: 5100 };
     expect(line(status({ ...one, dropped: 'line' }), 5100)).toBe('The line changed, so the old recording was dropped. Recording again from 12:45.');
-    expect(line(status({ ...one, dropped: 'cleared' }), 5100)).toBe('Recording cleared. Recording again from 12:45.');
     expect(line(status({ ...one, dropped: 'model' }), 5100)).toBe('The air model changed, so the earlier recording was dropped. Recording again from 12:45.');
     // the span grows with the new recording; the reason stays with it
-    expect(line(status({ count: 9, from: 5100, to: 6000, dropped: 'line', spacingS: 0 }), 5400)).toBe('The line changed, so the old recording was dropped. Recording again from 12:45 to 13:00, every picture.');
+    expect(line(status({ count: 9, from: 5100, to: 6000, dropped: 'line', spacingS: 0 }), 5400)).toBe('The line changed, so the old recording was dropped. Recording again from 12:45 to 13:00 (every picture kept).');
     // and none of it is lost when the time shown is before the new start
-    expect(line(status({ ...one, dropped: 'cleared' }), 4000)).toBe("Recording cleared. Recording again from 12:45. This time is earlier, so it uses the history's saved air, which can be older.");
+    expect(line(status({ ...one, dropped: 'model' }), 4000)).toBe(
+      "The air model changed, so the earlier recording was dropped. Recording again from 12:45, as far ahead as the simulation had run. This time is earlier, so it uses the history's saved air, which can be older.",
+    );
     // dropped and nothing recorded yet
-    expect(line(status({ state: 'waiting', count: 0, from: null, to: null, dropped: 'cleared' }))).toBe('Recording cleared. Recording starts with the next picture.');
+    expect(line(status({ state: 'waiting', count: 0, from: null, to: null, dropped: 'cleared' }))).toBe('Recording cleared. Recording starts when the simulation next runs.');
+  });
+
+  it('after Clear recording: "Recording cleared." stays only until a picture is held again (the screen reader heard it at the press)', () => {
+    const one = { count: 1, from: 5100, to: 5100 };
+    expect(line(status({ state: 'waiting', count: 0, from: null, to: null, dropped: 'cleared' }))).toMatch(/^Recording cleared\. /);
+    expect(line(status({ ...one, dropped: 'cleared' }), 5100)).toBe('Recorded from 12:45.');
+    expect(line(status({ count: 9, from: 5100, to: 6000, dropped: 'cleared', spacingS: 120 }), 5400)).toBe('Recorded from 12:45 to 13:00 (about every 2 min).');
+    expect(line(status({ ...one, dropped: 'cleared' }), 4000)).toBe(
+      "Recorded from 12:45, as far ahead as the simulation had run. This time is earlier, so it uses the history's saved air, which can be older.",
+    );
   });
 
   it('off for a preset or the Layers chord: why, and what to do', () => {
