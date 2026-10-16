@@ -15,6 +15,7 @@ import { createSliceTimeLapse, type SliceTimeLapse } from '../render/slice/slice
 import { makeAirView, makeResolveContext } from '../render/slice/testing';
 import type { SliceLineState, SliceRecordingApi, SliceRecordingStatus } from '../render/slice/types';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
+import { sliceRecordingBudget } from './modelInfo';
 import { defaultSnapshotBudget, SimSession } from './session';
 import { Emitter } from './store';
 
@@ -198,6 +199,31 @@ describe('every snapshot reaches the recorder, after the history has it', () => 
     expect(dflt.budgets).toEqual([defaultSnapshotBudget()]);
     expect(dflt.real.status().budgetBytes).toBe(Math.min(12 * MiB, Math.round(defaultSnapshotBudget() / 8)));
     b.s.dispose();
+  });
+
+  it('the budget the recorder really keeps is the one the model card says, for the histories of 48, 61.44, 96 and 160 MiB and for the phones that give those', async () => {
+    const histories: [number, number][] = [
+      [48 * MiB, 6 * MiB],
+      [61.44 * MiB, 7.68 * MiB],
+      [96 * MiB, 12 * MiB],
+      [160 * MiB, 12 * MiB],
+    ];
+    for (const [history, mib] of histories) {
+      const spy = spiedView();
+      const { s } = await make(spy.view, { maxBytes: history });
+      expect(spy.real.status().budgetBytes).toBe(Math.round(mib));
+      expect(spy.real.status().budgetBytes).toBe(sliceRecordingBudget(history)); // the card's own figure (modelInfo.ts), from the same history
+      s.dispose();
+    }
+    // a phone's memory class gives the history budget (`defaultSnapshotBudget`), which the card and the session both read
+    for (const [gb, mib] of [[0.5, 6], [1, 7.68], [2, 12], [4, 12]] as const) {
+      const spy = spiedView();
+      const { s } = await make(spy.view, { maxBytes: defaultSnapshotBudget(gb) });
+      expect(spy.real.status().budgetBytes, `${gb} GB`).toBe(Math.min(12 * MiB, Math.round(defaultSnapshotBudget(gb) / 8)));
+      expect(spy.real.status().budgetBytes / MiB, `${gb} GB`).toBeCloseTo(mib, 1);
+      expect(spy.real.status().budgetBytes, `${gb} GB`).toBe(sliceRecordingBudget(defaultSnapshotBudget(gb)));
+      s.dispose();
+    }
   });
 });
 
