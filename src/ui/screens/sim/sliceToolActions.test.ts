@@ -26,7 +26,7 @@ interface Rig {
   scene: { update: (Partial<Omit<SliceUpdate, 'resolved'>> & { resolved?: Partial<ResolvedSlice> }) | null };
 }
 
-function rig(opts: { user?: SlicePoint | null; layers?: Partial<LayerState> } = {}): Rig {
+function rig(opts: { user?: SlicePoint | null; fire?: boolean; layers?: Partial<LayerState> } = {}): Rig {
   const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind }, tool: 'air', panelOpen: true });
   const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection }, ...opts.layers });
   const calls: string[] = [];
@@ -40,7 +40,7 @@ function rig(opts: { user?: SlicePoint | null; layers?: Partial<LayerState> } = 
     },
     slice: () => (scene.update ? ({ field: 'speed', presets: allOk(), fields: {}, data: null, ...scene.update, resolved: { line: null, source: 'endpoints', preset: null, issue: null, notes: [], minLengthM: 300, ...scene.update.resolved } } as unknown as SliceUpdate) : null),
   };
-  const host: SliceToolHost = { ui, layers, view, grid: () => GRID, crosshair: () => cross.at, user: opts.user === undefined ? [200, 200] : opts.user, announce: (m) => said.push(m) };
+  const host: SliceToolHost = { ui, layers, view, grid: () => GRID, crosshair: () => cross.at, user: opts.user === undefined ? [200, 200] : opts.user, hasFire: () => opts.fire ?? true, announce: (m) => said.push(m) };
   return { host, ui, layers, calls, said, cross, scene };
 }
 
@@ -198,10 +198,30 @@ describe('presets, Swap, the chip and the switches', () => {
     expect(r.layers.get().crossSection.preset).toBe('along');
   });
 
-  it('Me to fire works with a fix inside the model area', () => {
+  it('Me to fire works with a fix inside the model area and a fire', () => {
     const r = rig({ user: [100, 100] });
     createSliceToolActions(r.host).preset('me');
     expect(r.layers.get().crossSection.preset).toBe('me');
+  });
+
+  it('Me to fire is disabled with its reason until there is a fire, also before the scene has a slice to say so (it set the preset and drew nothing)', () => {
+    const r = rig({ user: [100, 100], fire: false });
+    const t = createSliceToolActions(r.host);
+    expect(t.controls().presets.find((p) => p.id === 'me')).toMatchObject({ disabled: true, reason: 'There is no fire to go to yet' });
+    t.preset('me');
+    expect(r.layers.get().crossSection.preset ?? null).toBeNull();
+    expect(r.calls).toEqual([]);
+    expect(r.said).toEqual([]);
+    // the other presets are not held up by it
+    expect(t.controls().presets.filter((p) => !p.disabled).map((p) => p.id)).toEqual(['along', 'across', 'slope']);
+    // the scene's own answer wins once it has one
+    r.scene.update = { presets: allOk() };
+    expect(t.controls().presets.find((p) => p.id === 'me')!.disabled).toBe(false);
+  });
+
+  it('with no position AND no fire the reason is the position (the resolver\'s order)', () => {
+    const r = rig({ user: null, fire: false });
+    expect(createSliceToolActions(r.host).controls().presets.find((p) => p.id === 'me')).toMatchObject({ disabled: true, reason: 'This run has no position for you' });
   });
 
   it('the controls disable Me to fire with its reason without a fix, and with a fix outside the area', () => {

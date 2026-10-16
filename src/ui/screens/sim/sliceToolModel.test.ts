@@ -415,9 +415,18 @@ describe('Swap', () => {
 describe('presets', () => {
   it('Me to fire is offered only with a position fix inside the model area', () => {
     expect(presetStatuses(null, 'ok').me).toEqual({ ok: true });
+    expect(presetStatuses(null, 'ok', true).me).toEqual({ ok: true });
     expect(presetStatuses(null, 'none').me).toEqual({ ok: false, issue: 'no-user' });
     expect(presetStatuses(null, 'outside').me).toEqual({ ok: false, issue: 'no-user' });
     for (const id of ['along', 'across', 'slope'] as const) expect(presetStatuses(null, 'none')[id]).toEqual({ ok: true });
+  });
+
+  it('Me to fire also needs a fire, and the position is asked first (as the resolver does)', () => {
+    expect(presetStatuses(null, 'ok', false).me).toEqual({ ok: false, issue: 'no-fire' });
+    expect(presetStatuses(null, 'none', false).me).toEqual({ ok: false, issue: 'no-user' });
+    expect(presetStatuses(null, 'outside', false).me).toEqual({ ok: false, issue: 'no-user' });
+    for (const id of ['along', 'across', 'slope'] as const) expect(presetStatuses(null, 'ok', false)[id]).toEqual({ ok: true });
+    expect(presetViews(presetStatuses(null, 'ok', false), null, 'ok', 300).find((v) => v.id === 'me')).toMatchObject({ disabled: true, reason: 'There is no fire to go to yet' });
   });
 
   it('the scene\'s own statuses win once it has them', () => {
@@ -673,18 +682,19 @@ describe('the tool agrees with the pure resolver of the scene (render/slice/sect
     for (const p of [[2984.9, 0], [-3000, 0], [0, 2985]] as SlicePoint[]) expect(placeVerdict('a', p, placing('a'), f, G).ok).toBe(true);
   });
 
-  it('what the tool shows for Me to fire before there is a slice never disables a preset the resolver would allow', () => {
-    for (const user of [null, [9000, 0], [100, 100]] as (SlicePoint | null)[]) {
+  it('what the tool shows for Me to fire before there is a slice never disables a preset the resolver would allow, and gives the resolver\'s own reason when it does', () => {
+    for (const user of [null, [9000, 0], [100, 100], [1500, 1500]] as (SlicePoint | null)[]) {
       for (const fire of [null, [0, 0]] as (SlicePoint | null)[]) {
         const real = slicePresetStatus('me', { ...ctxOf(G), user, fire });
-        const shown = presetStatuses(null, userFixOf(user, G)).me;
+        const shown = presetStatuses(null, userFixOf(user, G), fire !== null).me;
         if (real.ok) expect(shown.ok).toBe(true);
-        if (!shown.ok) expect(real.ok).toBe(false);
+        if (!shown.ok) expect(shown, `user ${user} fire ${fire}`).toEqual(real);
+        // (only the distance is left to the scene: a phone 140 m from the fire is "too short", which needs the fire's position)
       }
     }
-    // The one gap: with a fix inside the area and no fire the resolver says no-fire, which only an update can tell.
+    // (it used to offer Me to fire with a fix and no fire: the tap set the preset, the note said there was no fire and the canvas said "Choose a preset")
     expect(slicePresetStatus('me', { ...ctxOf(G), user: [100, 100], fire: null })).toEqual({ ok: false, issue: 'no-fire' });
-    expect(presetStatuses(null, 'ok').me).toEqual({ ok: true });
+    expect(presetStatuses(null, 'ok', false).me).toEqual({ ok: false, issue: 'no-fire' });
   });
 
   it('every reason the resolver can give a preset or a line has words', () => {

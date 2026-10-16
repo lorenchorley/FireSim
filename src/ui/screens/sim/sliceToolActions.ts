@@ -52,6 +52,8 @@ export interface SliceToolHost {
   crosshair(): SlicePoint | null;
   /** The phone's position (Setup GPS fix), local metres. */
   user: SlicePoint | null;
+  /** There is a fire at the shown time (what "Me to fire" needs before the scene has a slice to say so). */
+  hasFire(): boolean;
   announce(msg: string): void;
 }
 
@@ -93,6 +95,12 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
   const cs = (): CrossSection => layers.get().crossSection;
   const facts = (): LineFacts => lineFacts(update()?.resolved, cs(), host.grid());
 
+  /** The scene's statuses when it has a slice; else what the tool can see (the fire is looked for only then: it is a scan of the fire). */
+  const presetsNow = (grid: GridSpec | null): ReturnType<typeof presetStatuses> => {
+    const live = update()?.presets;
+    return live ?? presetStatuses(null, userFixOf(host.user, grid), host.hasFire());
+  };
+
   const writeLayers = (next: CrossSection): void => {
     layers.set({ crossSection: next });
     view.setLayers({ crossSection: next });
@@ -114,7 +122,7 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       const grid = host.grid();
       const end = s.placing;
       const verdict = end ? placeVerdict(end, s.candidate ?? host.crosshair(), s, f, grid) : null;
-      return controlsView({ state: s, facts: f, presets: presetStatuses(update()?.presets, userFixOf(host.user, grid)), fix: userFixOf(host.user, grid), verdict, switching3d });
+      return controlsView({ state: s, facts: f, presets: presetsNow(grid), fix: userFixOf(host.user, grid), verdict, switching3d });
     },
     open() {
       const cur = ui.get().slice;
@@ -138,8 +146,7 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
     },
     swap: () => apply(swapEnds(state(), cs(), facts())),
     preset(id) {
-      const st = presetStatuses(update()?.presets, userFixOf(host.user, host.grid()))[id];
-      apply(choosePreset(state(), cs(), id, st));
+      apply(choosePreset(state(), cs(), id, presetsNow(host.grid())[id]));
     },
     setField(field) {
       const next = fieldWrite(cs(), field);

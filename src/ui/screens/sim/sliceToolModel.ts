@@ -224,13 +224,15 @@ export function hasStoredLine(cs: CrossSection): boolean {
 /**
  * Which presets can be tapped. The scene's update is authoritative (it knows the wind, the fire and the ground); before
  * there is one (the section has never been on) only what the tool itself can see is known: "Me to fire" needs a phone
- * position inside the model area, and the others are offered.
+ * position inside the model area and a fire to go to (`fire`: there is one at the shown time), and the others are offered.
+ * The same order as the resolver's: no position first, then no fire.
  */
-export function presetStatuses(presets: Record<SlicePresetId, SlicePresetStatus> | null | undefined, fix: UserFix): Record<SlicePresetId, SlicePresetStatus> {
+export function presetStatuses(presets: Record<SlicePresetId, SlicePresetStatus> | null | undefined, fix: UserFix, fire = true): Record<SlicePresetId, SlicePresetStatus> {
   if (presets) return presets;
   const out = {} as Record<SlicePresetId, SlicePresetStatus>;
   for (const id of SLICE_PRESET_IDS) out[id] = { ok: true };
   if (fix !== 'ok') out.me = { ok: false, issue: 'no-user' };
+  else if (!fire) out.me = { ok: false, issue: 'no-fire' };
   return out;
 }
 

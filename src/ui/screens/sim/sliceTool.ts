@@ -9,6 +9,7 @@
  * file builds the elements, wires the events, keeps the keyboard focus where the person is, and passes the scene's slice to the
  * panel. Nothing here pops up by itself: no toast, no role=alert, announcements only for what the person just did.
  */
+import { fireCentroid } from '../../../render/fields';
 import { has3dAtmosphere, type SimContext } from './context';
 import { h, listen, setChildren, svg, text, uniqueId } from '../../dom';
 import { icon } from '../../icons';
@@ -58,6 +59,14 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     return { el, destroy: () => undefined };
   }
 
+  // The scene's rule for "there is a fire" (the centroid of the burning and the recently burnt cells), looked for once for each snapshot.
+  let fireAt: { snap: unknown; has: boolean } | null = null;
+  const hasFire = (): boolean => {
+    const snap = ctx.session.state.get().snapshot;
+    if (!snap) return false;
+    if (fireAt?.snap !== snap) fireAt = { snap, has: fireCentroid(snap.fire, snap.time) !== null };
+    return fireAt.has;
+  };
   const host: SliceToolHost = {
     ui: ctx.ui,
     layers: ctx.layers,
@@ -65,6 +74,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     grid: () => ctx.session.state.get().snapshot?.atmosphere?.grid ?? ctx.scenario.terrain.grid,
     crosshair: () => ctx.pickCrosshair(),
     user: ctx.user,
+    hasFire,
     announce: ctx.announce,
   };
   const actions: SliceToolActions = createSliceToolActions(host);
