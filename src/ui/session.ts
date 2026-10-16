@@ -162,6 +162,7 @@ export class SimSession {
   ) {
     this.scenario = scenario;
     this.snapshots = new SnapshotStore({ minInterval: scenario.options.snapshotInterval, maxBytes: opts.maxBytes ?? defaultSnapshotBudget() });
+    view.sliceRecording?.setHistoryBudget?.(this.snapshots.maxBytes); // the Air slice recorder keeps an eighth of it, on top of the history
     this.state = new Store<SessionState>({
       viewTime: 0,
       headTime: 0,
@@ -454,7 +455,7 @@ export class SimSession {
     const t = s.viewTime;
     if (t < s.headTime - 1e-3) {
       this.controller.rewind(t);
-      this.snapshots.truncateAfter(t);
+      this.cutHistory(t);
       this.state.set({
         headTime: this.snapshots.headTime() ?? t,
         insights: s.insights.filter((i) => i.time <= t),
@@ -505,7 +506,7 @@ export class SimSession {
     this.controller.setOption('mountainPhenomena', options.mountainPhenomena);
     // Always rewind, even at the head, so the new options apply from exactly `since`.
     this.controller.rewind(since);
-    this.snapshots.truncateAfter(since);
+    this.cutHistory(since);
     this.requestedUntil = since;
     this.state.set({
       options,
@@ -526,7 +527,7 @@ export class SimSession {
     const s = this.state.get();
     const since = s.viewTime;
     this.controller.rewind(since);
-    this.snapshots.truncateAfter(since);
+    this.cutHistory(since);
     this.requestedUntil = since;
     this.state.set({
       reviewing: false,
@@ -549,7 +550,7 @@ export class SimSession {
     const t = ign.time;
     this.rewindFloor = t;
     if (t < s.headTime) {
-      this.snapshots.truncateAfter(t);
+      this.cutHistory(t);
       this.requestedUntil = Math.min(this.requestedUntil, t);
     }
     this.state.set((st) => ({
@@ -608,7 +609,7 @@ export class SimSession {
     this.rewindFloor = null;
     const keep = floor !== null && floor <= time + 1e-6 ? time : Math.max(time, s.viewTime);
     if (s.headTime <= keep && s.insights.every((i) => i.time <= keep)) return;
-    this.snapshots.truncateAfter(keep);
+    this.cutHistory(keep);
     this.requestedUntil = Math.min(this.requestedUntil, time);
     this.state.set({ headTime: this.snapshots.headTime() ?? time, insights: s.insights.filter((i) => i.time <= keep) });
     this.syncView();
@@ -619,6 +620,7 @@ export class SimSession {
   private onSnapshot(snap: SimSnapshot): void {
     if (this.disposed) return;
     this.snapshots.push(snap);
+    this.view.sliceRecording?.record(snap); // reads the snapshot (the pinned Air slice line), never changes it
     if (snap.engine) this.engine = snap.engine;
     const evs = snap.engine?.perf?.events;
     if (evs && evs.length > 0) for (const sink of this.engineEventSinks) sink(evs);
@@ -833,7 +835,18 @@ export class SimSession {
     for (const u of this.unsubs) u();
     this.controller.dispose();
     this.snapshots.clear();
+    this.view.sliceRecording?.clear();
     this.events.clear();
+  }
+
+  /**
+   * The one place history is cut (plan 8.6): the store and the Air slice recorder keep the same time order. Keeps everything at or
+   * before `t`. A snapshot at or before the newest stored time cuts both by itself (`SnapshotStore.push`, `SliceRecorder.arrive`),
+   * which is how a tier switch and a replay invalidate the stale results.
+   */
+  private cutHistory(t: number): void {
+    this.snapshots.truncateAfter(t);
+    this.view.sliceRecording?.truncateAfter(t);
   }
 }
 

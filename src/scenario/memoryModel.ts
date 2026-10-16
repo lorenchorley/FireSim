@@ -27,6 +27,7 @@
  */
 import { formatBytes, typedArrayFootprint, type LiveMemory, type MemoryWhere, type WorkingMemory, type WorkingMemoryItem } from '../core/datasets';
 import { WIND_PACK_BYTES_PER_VALUE, WIND_PACK_FIXED_BYTES } from '../core/airPack';
+import { sliceRecorderBudgetBytes, sliceSampleBytes } from '../core/sliceRecording';
 import type { QualityTier, ScenarioData } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
 import { SIM_PARAMS } from '../sim/params';
@@ -129,6 +130,17 @@ export function windVolumeBytesModel(tier: QualityTier, columns: number, nz: num
 export function keptKeyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
   const volume = tier === 'fast' ? columns * nz * KEYFRAME_COLUMN_BYTES.perLevelWindOnly : 0;
   return keyframeBytesModel(tier, cells, columns, nz) - volume;
+}
+
+/**
+ * The Air slices time-lapse recorder (0.4.1; core/sliceRecording.ts): an eighth of the history's budget, at most 12 MiB, on top of the history
+ * (it takes nothing from it, so the `snapshots` item does not change). Re-exported for the model card and the statistics screen.
+ */
+export { sliceRecorderBudgetBytes };
+
+/** Bytes of one recorded sample of a line on a `columns` x `rows` lattice: the fast tier records the diagnosed wind (3 fields a point), the 3-D tiers 5. */
+export function sliceSampleBytesModel(columns: number, rows: number, tier: QualityTier): number {
+  return sliceSampleBytes(columns * rows, tier === 'fast' ? 'diagnosed' : 'prognostic');
 }
 
 /** Light frame kept per display step (stats, bookkeeping; ui/snapshotStore.ts FRAME_BYTES). */
@@ -346,6 +358,7 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
     'GPU figures are estimates: WebGL does not report how much memory it uses.',
     'JavaScript objects (feature lists, labels, closures) are not counted: typed arrays hold nearly all the data.',
   ];
+  notes.push(`An Air slices recording adds up to ${kb(sliceRecorderBudgetBytes(budget))} while a line is recorded; it is not in the figures above.`);
   if (i.tier === 'auto') notes.unshift('Auto tier: shown for Standard, the usual result; on a phone far too slow for the 3-D air, Auto picks Fast at the start, which uses less.');
   return { tier, items, totalBytes: mainBytes + workerBytes + gpuBytes, mainBytes, workerBytes, gpuBytes, cells, notes };
 }

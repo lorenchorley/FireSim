@@ -107,7 +107,7 @@ class SlowEngine implements SimController {
   }
 }
 
-const nullView = new Proxy({}, { get: () => () => null }) as unknown as SceneViewApi;
+const nullView = new Proxy({}, { get: (_t, key) => (key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
 const scenario = (): ScenarioData =>
   ({ id: 's', name: 's', origin: { lat: 0, lon: 0 }, extent: 3000, startTime: 0, duration: DURATION, ignitions: [], edits: [], options: { snapshotInterval: STEP, coupling: 1, embers: true, mountainPhenomena: true } }) as unknown as ScenarioData;
 

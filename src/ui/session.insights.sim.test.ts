@@ -12,7 +12,7 @@ import { demoScenario, pointIgnition, withIgnitions } from '../sim/testing/scena
 import { SimSession } from './session';
 
 const SKIP = typeof process !== 'undefined' && process.env['FIRESIM_SKIP_SLOW'] === '1';
-const nullView = new Proxy({}, { get: () => () => null }) as unknown as SceneViewApi;
+const nullView = new Proxy({}, { get: (_t, key) => (key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 async function until(pred: () => boolean, ms: number, what: string): Promise<void> {
   const t0 = Date.now();

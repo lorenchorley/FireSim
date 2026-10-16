@@ -9,7 +9,9 @@ import { atmosCellSize } from '../atmosphere/grid';
 import { Simulation } from '../sim/simulation';
 import { SnapshotStore, keyframeBytes } from '../ui/snapshotStore';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { CLIFF_BYTES, atmosphereGrid, checkpointCount, keptKeyframeBytesModel, keyframeBytesModel, liveMemory, scenarioArrayBytes, windVolumeBytesModel, workingMemory, workingMemoryForScenario } from './memoryModel';
+import { readFileSync } from 'node:fs';
+import { sliceRecorderBudgetBytes as coreBudget, sliceSampleBytes } from '../core/sliceRecording';
+import { CLIFF_BYTES, atmosphereGrid, checkpointCount, keptKeyframeBytesModel, keyframeBytesModel, liveMemory, scenarioArrayBytes, sliceRecorderBudgetBytes, sliceSampleBytesModel, windVolumeBytesModel, workingMemory, workingMemoryForScenario } from './memoryModel';
 
 const PARTS = ['fire', 'explain', 'moisture', 'fuel', 'rasters', 'atmosphere', 'embers'] as const;
 
@@ -181,5 +183,67 @@ describe('liveMemory', () => {
       },
     };
     expect(liveMemory(hostile).available).toBe(false);
+  });
+});
+
+describe('the Air slices recording (0.4.1): it comes on top of the history and takes nothing from it', () => {
+  const MiB = 1048576;
+  const run = { tier: 'standard' as const, fireNx: 300, fireNy: 300, extentM: 9000, durationS: 6 * 3600, snapshotIntervalS: 60 };
+  const item = (wm: ReturnType<typeof workingMemory>, id: string) => wm.items.find((x) => x.id === id)!;
+
+  it('exports the budget and the bytes of a sample of a line: 48,696 at 90 x 54 on the 3-D tiers, 29,256 on the fast tier', () => {
+    expect(sliceRecorderBudgetBytes).toBe(coreBudget);
+    expect(sliceRecorderBudgetBytes(48 * MiB)).toBe(6 * MiB);
+    expect(sliceRecorderBudgetBytes(61.44 * MiB) / MiB).toBeCloseTo(7.68, 2);
+    expect(sliceRecorderBudgetBytes(96 * MiB)).toBe(12 * MiB);
+    expect(sliceRecorderBudgetBytes(160 * MiB)).toBe(12 * MiB);
+    expect(sliceSampleBytesModel(90, 54, 'standard')).toBe(48696);
+    expect(sliceSampleBytesModel(90, 54, 'high')).toBe(48696);
+    expect(sliceSampleBytesModel(90, 54, 'fast')).toBe(29256);
+    expect(sliceSampleBytesModel(192, 56, 'fast')).toBe(sliceSampleBytes(192 * 56, 'diagnosed'));
+    expect(sliceSampleBytesModel(192, 56, 'standard')).toBe(107616);
+  });
+
+  it('appends ONE note and does not touch the first: the Auto note stays at [0], the new one is last and says how much (an eighth, at most 12 MiB)', () => {
+    const auto = workingMemory({ ...run, tier: 'auto', snapshotBudgetBytes: 48 * MiB });
+    expect(auto.notes[0]).toMatch(/^Auto tier: shown for Standard/);
+    const note = auto.notes[auto.notes.length - 1]!;
+    expect(note).toBe('An Air slices recording adds up to 6.3 MB while a line is recorded; it is not in the figures above.');
+    expect(auto.notes.filter((n) => /Air slices recording/.test(n))).toHaveLength(1);
+    const fixed = workingMemory({ ...run, snapshotBudgetBytes: 48 * MiB });
+    expect(fixed.notes[0]).not.toMatch(/Air slices recording/); // the pinned first note of a fixed tier is still the scenario note
+    expect(fixed.notes[0]).toMatch(/^Every figure is modelled|^The scenario data/);
+    expect(workingMemory({ ...run, snapshotBudgetBytes: 61.44 * MiB }).notes.pop()).toContain('8.1 MB');
+    expect(workingMemory({ ...run, snapshotBudgetBytes: 122.88 * MiB }).notes.pop()).toContain('12.6 MB');
+    expect(workingMemory({ ...run }).notes.pop()).toContain('12.6 MB'); // the 150 MiB default history
+  });
+
+  it('the history item and the totals are exactly what they were: the figures of 0.4.0 at budgets of 48, 61.44 and 122.88 MiB', () => {
+    // Taken from the model before the recorder existed (a long run, which the budget caps; a short one, which it does not).
+    const capped = { fast: [50331648, 64424509, 128849019], standard: [50331648, 64424509, 128849019] } as const;
+    const small = { fast: 3903328, standard: 5810880 } as const;
+    for (const tier of ['fast', 'standard'] as const) {
+      [48, 61.44, 122.88].forEach((b, k) => {
+        const long = workingMemory({ ...run, tier, snapshotBudgetBytes: Math.round(b * MiB) });
+        expect(item(long, 'snapshots').bytes, `${tier} 6 h at ${b} MiB`).toBe(capped[tier][k]);
+        const short = workingMemory({ tier, fireNx: 100, fireNy: 100, extentM: 3000, durationS: 1800, snapshotIntervalS: 60, snapshotBudgetBytes: Math.round(b * MiB) });
+        expect(item(short, 'snapshots').bytes, `${tier} 30 min at ${b} MiB`).toBe(small[tier]);
+        // the recording is in no item and no total: the main-thread bytes are the history's and the scenario's, nothing more
+        expect(long.items.map((x) => x.id)).not.toContain('slice-recording');
+        expect(long.totalBytes).toBe(long.mainBytes + long.workerBytes + long.gpuBytes);
+      });
+    }
+    // The same run under different budgets differs by exactly the history's cap and nothing else.
+    const a = workingMemory({ ...run, snapshotBudgetBytes: 48 * MiB });
+    const b = workingMemory({ ...run, snapshotBudgetBytes: 122.88 * MiB });
+    expect(b.totalBytes - a.totalBytes).toBe(item(b, 'snapshots').bytes - item(a, 'snapshots').bytes);
+  });
+
+  it('snapshotStore.ts has no part in it: the store does not know the recorder (no diff, and a source check says so)', () => {
+    const src = readFileSync(new URL('../ui/snapshotStore.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/SliceRecord|sliceRecord|SliceTimeLapse|time-lapse|recorder/i);
+    // and nothing of the recorder is added to what the store counts
+    const wm = workingMemory({ ...run, snapshotBudgetBytes: 48 * MiB });
+    expect(item(wm, 'snapshots').formula).not.toMatch(/recording/i);
   });
 });

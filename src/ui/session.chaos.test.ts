@@ -15,7 +15,7 @@ import { LocalSimController } from '../sim/client';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
 import { SimSession } from './session';
 
-const nullView = new Proxy({}, { get: () => () => null }) as unknown as SceneViewApi;
+const nullView = new Proxy({}, { get: (_t, key) => (key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 async function until(pred: () => boolean, ms: number, what: string): Promise<void> {
   const t0 = Date.now();
