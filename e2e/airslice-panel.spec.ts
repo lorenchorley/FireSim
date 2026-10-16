@@ -163,7 +163,7 @@ test('3-D air: the picture, six chips, the probe, model cells and the honest foo
   await expect(panel.getByTestId('slice-controls')).toBeAttached();
 });
 
-test('3-D air in landscape (844x390): the picture and the footer stay in view while the chips and the controls scroll under them', async ({ page }) => {
+test('3-D air in landscape (844x390): the picture and the footer stay in view while the chips and the controls scroll under them, also with a reading on', async ({ page }) => {
   test.setTimeout(420_000);
   await page.setViewportSize({ width: 844, height: 390 });
   await build(page, 'Normal');
@@ -200,6 +200,29 @@ test('3-D air in landscape (844x390): the picture and the footer stay in view wh
   const panelBottom = (await page.getByTestId('air-panel').boundingBox())!;
   expect(rb.y + rb.height, 'the whole reading is inside the panel').toBeLessThanOrEqual(panelBottom.y + panelBottom.height + 1);
   await expect(footer).toBeHidden();
+  // the reading scrolls with the controls instead of covering them: the chips and Presets can be reached and tapped while it is on
+  const topmost = (loc: Locator): Promise<boolean> =>
+    loc.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return !!hit && (el === hit || el.contains(hit));
+    });
+  // (scrolled the way a focus or a tap scrolls: to the nearest edge, clear of the pinned picture by the body's scroll-padding)
+  const reach = (loc: Locator): Promise<void> => loc.evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+  const chipUp = page.getByTestId('slice-chip-up');
+  await reach(chipUp);
+  await expect(chipUp).toBeInViewport();
+  expect(await topmost(chipUp), 'the chip is not under the reading').toBe(true);
+  await chipUp.click();
+  await expect(canvas).toHaveAttribute('data-field', 'up');
+  const presets = page.getByTestId('slice-presets-toggle');
+  await reach(presets);
+  expect(await topmost(presets), 'Presets is not under the reading').toBe(true);
+  await page.getByTestId('slice-chip-along').click();
+  // and the next tap on the picture brings the reading back under it
+  await press(page, canvas, 0.5, 0.3);
+  const back = (await readout.boundingBox())!;
+  expect(back.y, 'the reading is right under the picture').toBeLessThan(cb.y + cb.height + 8);
   await page.getByTestId('slice-probe-clear').click();
   await expect(footer).toBeInViewport();
 
@@ -275,11 +298,14 @@ test('fast tier: Temp and Smoke are off with the reason and the button, the foot
   await expect(use3d).toHaveText('Use the 3-D atmosphere');
   const ub = (await use3d.boundingBox())!;
   expect(ub.height).toBeGreaterThanOrEqual(40);
-  // a tap on an unavailable chip does nothing
+  // a tap on an unavailable chip does not colour the slice; it scrolls to the reason and the button (they are below the controls)
+  await canvas.scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-theta').click({ force: true });
   await expect(canvas).toHaveAttribute('data-field', 'speed');
   await expect(page.getByTestId('slice-chip-theta')).toHaveAttribute('aria-pressed', 'false');
+  await expect(use3d, 'the tap on a chip that is off brings the 3-D button into view').toBeInViewport({ ratio: 1 });
   // the wind chips colour the slice, and the probe has no temperature clause
+  await canvas.scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-across').click();
   await expect(canvas).toHaveAttribute('data-field', 'across');
   await press(page, canvas, 0.35, 0.2);

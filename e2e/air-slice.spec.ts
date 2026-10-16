@@ -254,6 +254,35 @@ const marks = (page: Page): Promise<{ a: Pt | null; b: Pt | null; pin: Pt | null
 const bearing = (d: Pt): number => ((Math.atan2(d[0], d[1]) * 180) / Math.PI + 360) % 360;
 const angleBetween = (a: number, b: number): number => Math.abs(((a - b + 540) % 360) - 180);
 
+/**
+ * The wind the slice itself holds where its line is centred (the fire, else the map centre: the camera's target), 30 m above the ground there, read
+ * from its own lattice: the wind's speed, and its direction relative to the line (degrees clockwise from the line's own direction, so 0 is a wind along
+ * the line towards B and 90 is a wind blowing to the right of A to B). Also the forecast's own direction (towards) for the same time.
+ */
+const windAtCentre = (page: Page): Promise<{ speed: number; rel: number; forecastTowards: number | null }> =>
+  page.evaluate(() => {
+    const w = window as unknown as Handle;
+    const u = w.__firesim.view.slice?.() as { resolved: { line: { a: Pt; dir: Pt; length: number } }; data: { columns: number; rows: number; zMin: number; zMax: number; ground: Float32Array; values: Record<string, Float32Array> } };
+    const d = u.data;
+    const L = u.resolved.line;
+    const c = w.__firesim.view.cameraState().target;
+    const fc = Math.min(d.columns - 1, Math.max(0, ((((c[0] - L.a[0]) * L.dir[0] + (c[1] - L.a[1]) * L.dir[1]) / L.length) * (d.columns - 1))));
+    const c0 = Math.min(d.columns - 2, Math.floor(fc));
+    const tc = fc - c0;
+    const z = d.ground[c0]! * (1 - tc) + d.ground[c0 + 1]! * tc + 30;
+    const fr = Math.min(d.rows - 1, Math.max(0, ((z - d.zMin) / (d.zMax - d.zMin)) * (d.rows - 1)));
+    const r0 = Math.min(d.rows - 2, Math.floor(fr));
+    const tr = fr - r0;
+    const at = (a: Float32Array): number => {
+      const g = (r: number, k: number): number => a[r * d.columns + k]!;
+      return (g(r0, c0) * (1 - tc) + g(r0, c0 + 1) * tc) * (1 - tr) + (g(r0 + 1, c0) * (1 - tc) + g(r0 + 1, c0 + 1) * tc) * tr;
+    };
+    const along = at(d.values.along!);
+    const across = at(d.values.across!);
+    const dir = w.__firesim.session.state.get().snapshot?.stats?.weather?.windDir10;
+    return { speed: Math.hypot(along, across), rel: (Math.atan2(across, along) * 180) / Math.PI, forecastTowards: dir === undefined ? null : (dir + 180) % 360 };
+  });
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The whole flow, on either tier
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,8 +444,13 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
       expect(s.source).toBe('preset');
       expect(s.line!.length, `${id}: a long line through the fire or the map centre`).toBeGreaterThan(1500);
       const b = bearing(s.line!.dir);
-      if (id === 'along') expect(angleBetween(b, windTowards), 'along the wind: A upwind, B downwind').toBeLessThan(2);
-      if (id === 'across') expect(angleBetween(b, (windTowards - 90 + 360) % 360), 'across the wind: the wind blows to the right of A to B').toBeLessThan(2);
+      if (id !== 'slope') {
+        // The model's own wind where the line is centred, 30 m up (the forecast's 10 m wind is only the fallback: after a wind edit the two differ by tens
+        // of degrees, and in rough ground by several): 'along' lies along it, A upwind and B downwind, and 'across' has it blowing to the right of A to B.
+        const w = await windAtCentre(page);
+        if (w.speed >= 0.2) expect(angleBetween(w.rel, id === 'along' ? 0 : 90), `${id}: the model's wind at the centre, ${w.speed.toFixed(1)} m/s, is ${w.rel.toFixed(1)} degrees round from the line`).toBeLessThan(3);
+        else expect(angleBetween(b, id === 'along' ? windTowards : (windTowards - 90 + 360) % 360), `${id}: calm in the model there, so the forecast's direction`).toBeLessThan(2);
+      }
       if (id === 'slope') expect(s.groundB! - s.groundA!, 'up the slope: A downhill, B uphill').toBeGreaterThan(5);
       expect((await paint(canvas)).painted).toBeGreaterThan(0.3);
     }
@@ -426,6 +460,25 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await expect(page.getByTestId('slice-controls')).toContainText('This run has no position for you');
     await toggle.click();
     await choosePreset(page, 'along'); // the line for the rest of the flow: along the wind
+    await expect.poll(async () => (await sliceOf(page))?.preset).toBe('along');
+  });
+
+  // ───────── 6b. the panel repaints in a frame of its own ─────────
+  await test.step('a new slice is drawn in the next frame, not inside the update that made it', async () => {
+    // (at 4x CPU the panel's repaint inside the update was two thirds of it: the update is the scene's, the repaint is the panel's frame)
+    const r = await page.evaluate(async () => {
+      const v = (window as unknown as Handle).__firesim.view;
+      const c = document.querySelector('[data-testid="slice-canvas"]') as HTMLElement;
+      const made = (): number => (v.slice?.() as unknown as { data: { seq: number } | null }).data?.seq ?? -1;
+      v.setLayers({ crossSection: { ...v.getLayers().crossSection, enabled: true, a: [-1500, 200], b: [1400, -300], preset: null } });
+      const seq = made();
+      const atOnce = c.dataset.seq;
+      await new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+      return { seq, atOnce, after: c.dataset.seq };
+    });
+    expect(r.atOnce, 'the picture was not redrawn inside the call that changed the line').not.toBe(String(r.seq));
+    expect(r.after, 'it is redrawn by the next frame').toBe(String(r.seq));
+    await choosePreset(page, 'along'); // the line for the rest of the flow
     await expect.poll(async () => (await sliceOf(page))?.preset).toBe('along');
   });
 
@@ -469,6 +522,10 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     }
     // the same state in the Layers panel: a chip chosen here is the pressed one there, and a chip chosen there is the pressed one here
     await page.getByTestId('slice-chip-across').click();
+    // a probe on this line: it must be gone when the line is changed from outside the tool (the compass below)
+    await canvas.scrollIntoViewIfNeeded();
+    await press(page, canvas, 0.5, 0.25);
+    await expect(page.getByTestId('slice-readout')).toBeVisible();
     await page.getByTestId('layers-fab').click(); // (the Tools menu is put away while a tool is open)
     const layers = page.getByTestId('layers-panel');
     await expect(layers.getByTestId('slice-field-across')).toHaveAttribute('aria-pressed', 'true');
@@ -483,8 +540,22 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     }
     await layers.getByTestId('slice-field-up').click();
     await expect.poll(async () => (await sliceOf(page))?.field).toBe('up');
+    await expect(layers.getByTestId('slice-line-hint')).toBeVisible(); // "The slice follows the line you placed with Air slices ..."
+    // The compass shows the line the section really has (it read "Towards N 0" with a line placed), and turning it swings THAT line about its middle
+    // (it jumped to the stored centre, the origin or the last ignition)
+    const dial = layers.getByRole('slider', { name: 'Slice direction' });
+    const placedLine = (await sliceOf(page))!.line!;
+    const shownDeg = Number(await dial.getAttribute('aria-valuenow'));
+    expect(angleBetween(shownDeg, bearing(placedLine.dir)), `the compass shows the line's own bearing (${bearing(placedLine.dir).toFixed(1)})`).toBeLessThan(1);
+    const middle: Pt = [(placedLine.a[0] + placedLine.b[0]) / 2, (placedLine.a[1] + placedLine.b[1]) / 2];
+    await dial.focus();
+    await page.keyboard.press('ArrowRight'); // 5 degrees round, to a multiple of 5
+    await expect.poll(async () => (await sliceOf(page))?.source, { message: 'the compass writes the centre rule' }).toBe('centre');
+    const swung = (await sliceOf(page))!.line!;
+    expect(angleBetween(bearing(swung.dir), Math.round((shownDeg + 5) / 5) * 5), 'the line turned by the step').toBeLessThan(0.5);
+    const off = Math.abs((middle[0] - swung.a[0]) * swung.dir[1] - (middle[1] - swung.a[1]) * swung.dir[0]);
+    expect(off, 'the turned line passes through the middle of the line it was (m)').toBeLessThan(1);
     // "Centre on the fire" puts the line back on the centre rule: a preset must not hide the change; the section can be switched off and on
-    await expect(layers.getByTestId('slice-line-hint')).toBeVisible(); // "The section follows the line you placed with Air slices ..."
     await layers.getByRole('button', { name: 'Centre on the fire' }).click();
     await expect.poll(async () => (await sliceOf(page))?.source).toBe('centre');
     const centred = await page.evaluate(() => (window as unknown as Handle).__firesim.view.getLayers().crossSection);
@@ -499,6 +570,8 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await expect.poll(async () => (await sliceOf(page))?.field).toBe('up'); // the chip survives
     await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
     await openAirTool(page);
+    await expect(page.getByTestId('slice-readout'), 'the probe went when the compass changed the line').toBeHidden();
+    await expect(page.locator('.annotations .ann-slice-probe')).toHaveCount(0);
     await expect(page.getByTestId('slice-chip-up')).toHaveAttribute('aria-pressed', 'true');
     await expect(canvas).toHaveAttribute('data-field', 'up');
     await page.getByTestId('slice-chip-speed').click();
@@ -542,6 +615,36 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     const pb = (await page.getByTestId('air-panel').boundingBox())!;
     expect(rb.y + rb.height, 'the whole reading is inside the panel').toBeLessThanOrEqual(pb.y + pb.height + 1);
     await expect(page.getByTestId('slice-footer')).toBeHidden();
+    // The reading is under the pinned picture and scrolls with the controls: with it on, the chips, Presets and the 3-D button can still be reached and
+    // tapped (it was pinned and covered the whole window, so nothing could be reached until the X had cleared it)
+    const onTop = (loc: Locator): Promise<boolean> =>
+      loc.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return !!hit && (el === hit || el.contains(hit));
+      });
+    // (scrolled the way a focus or a tap scrolls: to the nearest edge, clear of the pinned picture and footer by the body's scroll-padding)
+    const reach = (loc: Locator): Promise<void> => loc.evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+    const chipUp = page.getByTestId('slice-chip-up');
+    await reach(chipUp);
+    await expect(chipUp).toBeInViewport();
+    expect(await onTop(chipUp), 'the chip is not under the reading or the pinned picture').toBe(true);
+    await chipUp.click();
+    await expect(canvas).toHaveAttribute('data-field', 'up');
+    const presetsToggle = page.getByTestId('slice-presets-toggle');
+    await reach(presetsToggle);
+    expect(await onTop(presetsToggle), 'Presets is reachable with the reading on').toBe(true);
+    if (fastTier) {
+      const use3d = page.getByTestId('slice-use3d');
+      await reach(use3d);
+      expect(await onTop(use3d), 'the 3-D button is reachable with the reading on').toBe(true);
+    }
+    // a new tap on the picture brings the reading back under it, whatever the body was scrolled to
+    await press(page, canvas, 0.6, 0.3);
+    const again = (await readout.boundingBox())!;
+    const picture = (await canvas.boundingBox())!;
+    expect(again.y, 'the reading is right under the picture').toBeLessThan(picture.y + picture.height + 8);
+    expect(again.y + again.height).toBeLessThanOrEqual((await page.getByTestId('air-panel').boundingBox())!.y + (await page.getByTestId('air-panel').boundingBox())!.height + 1);
     await page.getByTestId('slice-probe-clear').click();
     await expect(page.getByTestId('slice-footer')).toBeInViewport();
     await page.getByTestId('slice-chip-speed').click();
@@ -725,7 +828,30 @@ test('reduced motion, high contrast, the dark look and the vertical exaggeration
     }
     await expect(canvas).toBeInViewport();
     await expect(page.getByTestId('slice-chip-smoke')).toBeInViewport();
-    if (w === 390) await expect(page.getByTestId('slice-use3d'), 'the tier button is in view on a 390 x 844 phone').toBeInViewport();
+    // The placement controls come right after the chips (they were under the notes of the chips that are off and the legend, below the fold): on a
+    // 390 x 844 phone both rows of buttons are in view; on a 360 x 640 one the first row is within a short scroll (the window is 230 px: the picture and
+    // the chips fill it). The 3-D button comes with the notes after them, a scroll away: a tap on a chip that is off scrolls to it.
+    if (w === 390) {
+      await expect(page.getByTestId('slice-set-a'), 'Set start is in view on a 390 x 844 phone').toBeInViewport({ ratio: 1 });
+      await expect(page.getByTestId('slice-presets-toggle'), 'Presets is in view on a 390 x 844 phone').toBeInViewport({ ratio: 1 });
+    }
+    const lastChip = (await page.getByTestId('slice-chip-smoke').boundingBox())!;
+    const setA = (await page.getByTestId('slice-set-a').boundingBox())!;
+    expect(setA.y - (lastChip.y + lastChip.height), `Set start follows the chips directly at ${w} px (px between them)`).toBeLessThan(40);
+    await page.getByTestId('slice-chip-theta').click({ force: true });
+    await expect(page.getByTestId('slice-reasons'), 'a tap on a chip that is off brings its reason into view').toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('slice-use3d'), 'and the 3-D button').toBeInViewport({ ratio: 1 });
+    await expect(canvas).toHaveAttribute('data-field', 'speed');
+    // Scrolled down to the controls, "Presets, Across the wind" brings the picture back into view (the panel's focus does not scroll it there)
+    await page.getByTestId('slice-presets-toggle').evaluate((el) => el.scrollIntoView({ block: 'start' })); // (the controls at the top of the window: the person scrolled down to them)
+    const pictureBefore = (await canvas.boundingBox())!;
+    expect(pictureBefore.y + pictureBefore.height, 'the picture is scrolled out of view above the controls before the tap').toBeLessThanOrEqual((await page.locator('.slice-tool-body').boundingBox())!.y + 1);
+    await choosePreset(page, 'across');
+    await expect.poll(async () => (await sliceOf(page))?.preset).toBe('across');
+    await expect(canvas, `the picture is in view after a preset tapped from the controls at ${w} px`).toBeInViewport({ ratio: 1 });
+    await choosePreset(page, 'along');
+    await expect.poll(async () => (await sliceOf(page))?.preset).toBe('along');
+    await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0));
   }
   await page.setViewportSize({ width: 412, height: 915 });
   await page.waitForTimeout(800);

@@ -20,7 +20,6 @@ import { iconButton } from '../../primitives';
 import { button, toggle } from '../../widgets';
 import { drawArrows, drawProbe, drawScaleTag, drawStreaks, fadeTrail, paintStatic, type Ctx, type DrawColours, type DrawFont } from './sliceDraw';
 import {
-  FLOW_FRAME_S,
   FLOW_COUNT,
   FLOW_LIFE_S,
   TERRAIN_CAPTION,
@@ -32,6 +31,7 @@ import {
   emptyState,
   flowCount,
   flowSlice,
+  flowTick,
   flowTimeScale,
   footerRuns,
   legendView,
@@ -45,6 +45,7 @@ import {
   scaleTag,
   showsScaleTag,
   streakExaggeration,
+  type FlowClock,
   type FlowSlice,
   type Lut,
   type PlotLayout,
@@ -90,7 +91,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     readoutText,
     iconButton({ icon: 'close', label: 'Clear the probe', testId: 'slice-probe-clear', onClick: () => userProbe(null, false) }),
   ]);
-  const view = h('div', { class: 'slice-view' }, h('div', { class: 'slice-stage' }, [canvas, empty, readout]));
+  // The reading is not part of the picture's block: on a short landscape screen the picture stays pinned and the reading scrolls with the controls.
+  const view = h('div', { class: 'slice-view' }, h('div', { class: 'slice-stage' }, [canvas, empty]));
 
   const reasonsId = uniqueId('slice-reasons');
   // The button comes first (it is what a person can act on, and it stays in view on a short screen); the words follow it, and the chips are described by the words.
@@ -118,7 +120,16 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const scaleWords = h('span', { dataset: { testid: 'slice-scale' } });
   const terrainLine = h('p', { class: 'hint slice-terrain', hidden: true, dataset: { testid: 'slice-terrain' } }, [scaleWords, ' ', TERRAIN_CAPTION]);
   const footer = h('p', { class: 'hint slice-footer', hidden: true, dataset: { testid: 'slice-footer' } });
-  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, chipRow, reasons, legendHost, h('div', { class: 'slice-controls' }, options.controls), cellsToggle.el, terrainLine, footer]);
+  const controlsWrap = h('div', { class: 'slice-controls' }, options.controls);
+  // Order: picture, reading, chips, legend, controls, the notes of the chips that are off, the switch, the caption, the footer. When there are notes (the fast
+  // tier) the legend goes after them: the controls stay in reach on a small phone (`arrange`).
+  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, legendHost, controlsWrap, reasons, cellsToggle.el, terrainLine, footer]);
+  let legendLast = false;
+  function arrange(last: boolean): void {
+    if (last === legendLast) return;
+    legendLast = last;
+    root.insertBefore(legendHost, last ? cellsToggle.el : controlsWrap);
+  }
 
   // ───────────── canvases and what they hold ─────────────
   const ctx = canvas.getContext('2d');
@@ -270,8 +281,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
 
   // ───────────── streaks: at most 24 a second, only while the panel is on screen and the page is visible ─────────────
   let raf = 0;
-  let lastT = 0;
-  let acc = 0;
+  const clock: FlowClock = { last: 0, acc: 0 };
 
   const wantStreaks = (): boolean => active && !destroyed && !reduced && !document.hidden && !!data && !!layout && data.has.wind;
 
@@ -297,12 +307,9 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
 
   function frame(t: number): void {
     raf = requestAnimationFrame(frame);
-    acc += lastT ? (t - lastT) / 1000 : 0;
-    lastT = t;
-    if (acc < FLOW_FRAME_S - 0.008) return;
-    const dt = Math.min(acc, 0.1);
-    acc = 0;
-    if (!wantStreaks() || !flow || !data || !layout || !colours || !trail.ctx) return;
+    if (dirty) catchUp(); // (a new slice that this frame's own callback has not drawn yet: never paint the new air into the old layout)
+    const dt = flowTick(clock, t);
+    if (!dt || !wantStreaks() || !flow || !data || !layout || !colours || !trail.ctx) return;
     stepFlow(flow, data, dt, { exaggeration: streakExaggeration(layout), timeScale: flowTimeScale(data.line.length), maxAgeS: FLOW_LIFE_S });
     trail.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     fadeTrail(trail.ctx, cssW, cssH);
@@ -313,8 +320,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   function syncLoop(): void {
     if (wantStreaks()) {
       if (!raf) {
-        lastT = 0;
-        acc = 0;
+        clock.last = 0;
+        clock.acc = 0;
         raf = requestAnimationFrame(frame);
       }
     } else if (raf) {
@@ -346,6 +353,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     const notes = disabledNotes(chips);
     const key = notes.map((n) => `${n.labels.join('+')}:${n.reason}:${n.use3d}`).join('|');
     reasons.hidden = !data || notes.length === 0; // with no slice the chips are put away, and so are their reasons
+    arrange(!reasons.hidden);
     if (key !== notesKey) {
       notesKey = key;
       setChildren(reasons, [
@@ -422,10 +430,40 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     canvas.setAttribute('aria-describedby', readoutId);
   }
 
+  // ───────────── a new slice is drawn in the next display frame ─────────────
+  let dirty = false; // `setData` has given a slice that the words, the layout and the picture have not caught up with
+  let paintRaf = 0;
+
+  /**
+   * Put a new slice on screen: the layout, the words, the picture and the probe's reading, once however many slices came since the last frame.
+   * It was done inside `setData`, which the scene calls from the update that places a line, and made that update about 10 ms longer at 4x CPU
+   * (a 4x slowed phone): now `setData` only notes the slice and the repaint takes the next frame.
+   */
+  function catchUp(): void {
+    if (paintRaf) {
+      cancelAnimationFrame(paintRaf);
+      paintRaf = 0;
+    }
+    if (!dirty || destroyed) return;
+    dirty = false;
+    if (!cssW) size(); // (a resize is the observer's: measuring the box at every slice would force a layout each time)
+    computeLayout();
+    if (data) {
+      ensureFlow(data);
+      staticDirty = true;
+    }
+    reading = data && probe ? probeAt(data, probe) : null;
+    syncDom();
+    updateReadout();
+    paint();
+    syncLoop();
+  }
+
   // ───────────── input ─────────────
   let say = 0;
   /** A probe the user placed or moved (press, drag, arrow keys) or cleared (null). `speak`: a screen reader hears the reading, after a short pause so a held key does not queue. */
   function userProbe(pos: SliceProbePos | null, speak: boolean): void {
+    if (dirty) catchUp();
     reading = data && pos ? probeAt(data, pos) : null;
     probe = reading ? reading.pos : null;
     updateReadout();
@@ -476,6 +514,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
 
   function pickField(id: SliceFieldId): void {
     const c = chipModel(update?.fields, field).find((x) => x.id === id);
+    // A chip that is off says why when it is tapped: the notes (and the button) are below the controls, so they are scrolled to.
+    if (c && !c.available && !reasons.hidden) reasons.scrollIntoView?.({ block: 'nearest' });
     if (!c || !c.available || id === field) return;
     field = id;
     staticDirty = true;
@@ -541,19 +581,17 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       update = u;
       data = u?.data ?? null;
       if (u) field = u.field;
-      size();
-      computeLayout();
-      if (data) {
-        ensureFlow(data);
-        staticDirty = true;
+      dirty = true;
+      // Several slices in one frame are one repaint. Covered or off screen nothing is drawn: the next `setActive(true)` catches up.
+      if (active && !paintRaf) {
+        paintRaf = requestAnimationFrame(() => {
+          paintRaf = 0;
+          if (active) catchUp();
+        });
       }
-      reading = data && probe ? probeAt(data, probe) : null;
-      syncDom();
-      updateReadout();
-      paint();
-      syncLoop();
     },
     setProbe(pos) {
+      if (dirty) catchUp();
       probe = pos;
       reading = data && pos ? probeAt(data, pos) : null;
       updateReadout();
@@ -561,6 +599,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     },
     setField(f) {
       if (f === field) return;
+      if (dirty) catchUp();
       field = f;
       staticDirty = true;
       syncChips();
@@ -570,17 +609,20 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     },
     setShowCells(on) {
       if (on === showCells) return;
+      if (dirty) catchUp();
       showCells = on;
       cellsToggle.set(on);
       staticDirty = true;
       paint();
     },
     setUnits(u) {
+      if (dirty) catchUp();
       units = u;
       updateReadout();
     },
     setExaggeration(v) {
       if (v === vex) return;
+      if (dirty) catchUp();
       vex = v;
       computeLayout();
       if (data) ensureFlow(data);
@@ -592,8 +634,13 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     },
     setActive(a) {
       active = a;
-      if (a) relayout(true);
-      else syncLoop();
+      if (a) {
+        if (dirty) {
+          dirty = false; // the full relayout below is the catch-up
+          reading = data && probe ? probeAt(data, probe) : null;
+        }
+        relayout(true);
+      } else syncLoop();
     },
     focus() {
       canvas.focus({ preventScroll: true });
@@ -602,6 +649,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
+      if (paintRaf) cancelAnimationFrame(paintRaf);
+      paintRaf = 0;
       clearTimeout(say);
       for (const off of offs) off();
       offs.length = 0;
