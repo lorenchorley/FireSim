@@ -4,7 +4,7 @@ import type { GridSpec } from '../core/grid';
 import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import type { LayerState } from './layers';
 import type { LegendSpec } from './legends';
-import type { SliceUpdate } from './slice/types';
+import type { SliceRecordingApi, SliceUpdate } from './slice/types';
 
 export interface SceneImagery {
   /** Image covering the scenario domain exactly; row 0 = north. */
@@ -152,6 +152,8 @@ export interface SceneViewApi {
    * layer edit) and with null when the section is switched off. Returns the unsubscribe function.
    */
   onSlice?(cb: (update: SliceUpdate | null) => void): () => void;
+  /** The time-lapse recorder of the pinned line (0.4.1, render/slice/types.ts): the session feeds it every snapshot and cuts it with the history. Absent on the 2-D map. */
+  sliceRecording?: SliceRecordingApi;
   /** Ignitions / spot fires the user has marked (drawn as markers). */
   setIgnitions(ignitions: Ignition[], spots: SpotFire[]): void;
   setInsights(insights: Insight[]): void;

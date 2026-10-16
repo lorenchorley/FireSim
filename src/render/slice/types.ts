@@ -35,6 +35,7 @@
  *                in every field and are never drawn as air.
  */
 import type { GridSpec } from '../../core/grid';
+import type { SimSnapshot } from '../../core/types';
 import type { AirField, AirKind } from '../../core/airView';
 import type { AtmosphereSampler, SectionLine } from '../atmosphereSampler';
 
@@ -249,6 +250,8 @@ export interface SliceData {
   /** Counts up with every computation, so a consumer can tell "same line, new air" from "nothing happened". */
   seq: number;
   kind: SliceKind;
+  /** Simulation time (s) of the recorded sample this slice was read from (0.4.1 time-lapse recorder); absent = sampled from the air of the picture shown. */
+  recordedAt?: number;
   /** The line, A to B (`a`, `b`, `dir`, `length`: atmosphereSampler.ts). */
   line: SectionLine;
   columns: number;
@@ -359,6 +362,8 @@ export interface SliceComputed {
 export interface SliceUpdate extends SliceComputed {
   field: SliceFieldId;
   fields: Record<SliceFieldId, SliceFieldStatus>;
+  /** The time-lapse recorder's state (0.4.1), added by the scene glue; absent where there is no recorder (the 2-D map). */
+  recording?: SliceRecordingStatus;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,6 +380,8 @@ export interface SliceInputs {
   terrain: SliceTerrain;
   /** `SimSnapshot.time`. */
   shownTime: number;
+  /** Recorded slices of the pinned line (0.4.1); absent = every slice is sampled from the picture's air, as in 0.4.0. */
+  recording?: SliceRecordingReader;
 }
 
 /**
@@ -521,3 +528,41 @@ export type CreateSliceUpdater = (opts?: { minIntervalMs?: number }) => SliceUpd
  * `crossSection` (`immediate`) and from its frame loop (`poll`), builds the `SliceUpdate` (adding `field` and `fields`), draws
  * the curtain from `SliceData`, and calls the `onSlice` subscribers (`SceneViewApi.slice`, `onSlice`: render/api.ts).
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The time-lapse recorder (0.4.1, plan 8.6 and decision D7; design in the release notes of 0.4.1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RecordingState = 'off' | 'waiting' | 'recording' | 'failed';
+export type RecordingDrop = 'line' | 'cleared' | 'model';
+
+export interface SliceRecordingStatus {
+  state: RecordingState;
+  /** Why it is off although a line is shown: a live preset, or the Layers chord; null otherwise. */
+  offFor: 'preset' | 'chord' | null;
+  count: number;
+  /** Sim time (s) of the first and the newest sample. */
+  from: number | null;
+  to: number | null;
+  /** Minimum spacing after thinning; 0 = every picture kept. */
+  spacingS: number;
+  bytes: number;
+  budgetBytes: number;
+  /** What dropped the recording before this one (null: nothing yet). */
+  dropped: RecordingDrop | null;
+}
+
+export interface SliceRecordingReader {
+  /** A recorded slice for exactly this line and kind, at or before `shownTime` and newer than `pictureAirTime`, filled into `out` (reused when it has the lattice); else null. */
+  read(line: SectionLine, shownTime: number, kind: SliceKind, pictureAirTime: number | null, out: SliceData | null): SliceData | null;
+}
+
+export interface SliceRecordingApi {
+  /** Every snapshot, as it arrives (`Session.onSnapshot`). */
+  record(snap: SimSnapshot): void;
+  /** Keep the samples at or before `t`. */
+  truncateAfter(t: number): void;
+  /** The person's "Clear recording". */
+  clear(): void;
+  status(): SliceRecordingStatus;
+}
