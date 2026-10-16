@@ -565,4 +565,6 @@ export interface SliceRecordingApi {
   /** The person's "Clear recording". */
   clear(): void;
   status(): SliceRecordingStatus;
+  /** The session says how many bytes its history may hold; the recorder keeps an eighth of that, at most 12 MiB, on top of it (core/sliceRecording.ts). Absent on a double that has no budget. */
+  setHistoryBudget?(historyBytes: number): void;
 }
