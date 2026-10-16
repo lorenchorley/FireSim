@@ -19,6 +19,12 @@
  *    view. The composed snapshot for a time uses the nearest keyframe at or before it.
  *  - EVERY STEP keeps a light frame: time, stats and the number of spot fires (the spot fires themselves live in one
  *    append-only log shared by all frames); embers (up to 64 KB each) are kept per step too, but thinned first.
+ *  - WIND VOLUMES. The fast tier's diagnosed 3-D wind (u, v, w; 12 bytes per cell, 486 kB at 45 x 45 x 20) is not kept in the
+ *    keyframes: a keyframe holds the rest of the air view and the volume goes to a list of its own, packed to 16-bit integers
+ *    (airPack.ts: 6 bytes per cell, within 0.0005 m/s of the exact wind at 30 m/s). The list has its own share of the budget, so
+ *    a volume never costs a picture, and is thinned on its own. A picture takes the newest saved volume at or before its time,
+ *    stamped with that volume's own time, so the slice footer says how much older than the picture the air is.
+ *    The newest snapshot and the views of the 3-D tiers are kept exact.
  *
  * Memory. The total is kept under `maxBytes`: when a list is over its share, older history is thinned first (an entry
  * survives when it is at least age / R after the previous kept one, R shrinking until it fits), so recent history
@@ -36,6 +42,8 @@
  * A snapshot at or before existing ones (the worker re-simulated after a rewind) invalidates them, as do
  * {@link truncateAfter} / {@link truncateFrom}.
  */
+import { airHas, airKind } from '../core/airView';
+import { packedWindBytes, packWind, unpackWind, type PackedWind } from '../core/airPack';
 import { BurnState, type AtmosphereView, type EmberParticles, type FireField, type SimSnapshot, type SimStats, type SpotFire } from '../core/types';
 
 /** Burning band (s) after a cell's arrival when its burn-out cannot be bracketed (the renderer's uBurnBand in terrainLayer.ts). */
@@ -79,6 +87,14 @@ interface EmberFrame {
   bytes: number;
 }
 
+/** The packed diagnosed wind of the picture at `time` (`airTime`: the air view's own stamp, when it had one). */
+interface WindFrame {
+  time: number;
+  airTime: number | undefined;
+  wind: PackedWind;
+  bytes: number;
+}
+
 interface FireBuffer {
   arrival: Float32Array;
   burnState: Uint8Array;
@@ -86,13 +102,28 @@ interface FireBuffer {
 
 /** Share of the budget left after the newest snapshot: keyframes, embers, light frames and the spot log. */
 const SHARE = { keys: 0.72, embers: 0.2, frames: 0.08 } as const;
+/**
+ * The same shares while the history holds wind volumes. The keyframes and the light frames keep their shares exactly (a volume
+ * never takes a picture's room); the volumes take theirs from the embers, which are thinned first anyway. 4 % of the room is 7 to
+ * 10 volumes at 48 to 64 MiB: with the thinning by age, the oldest picture of a 6 h run has air 2 to 4 h older (the slice footer says).
+ */
+const SHARE_WIND = { keys: 0.72, wind: 0.04, embers: 0.16, frames: 0.08 } as const;
+
+/** The wind arrays of a keyframe's air view when its volume is kept in the wind list. */
+const NO_WIND = new Float32Array(0);
 
 export class SnapshotStore {
   private frames: Frame[] = [];
   private keys: Keyframe[] = [];
   private embs: EmberFrame[] = [];
+  private winds: WindFrame[] = [];
   private keyBytes = 0;
   private embBytes = 0;
+  private windBytes = 0;
+  /** The budget has been reached once: from then on the wind list is held to its share at every step (see `enforceBudget`). */
+  private pressed = false;
+  /** The volume last restored for a picture (Float32, 12 bytes per cell), so scrubbing inside one stretch of air restores it once. */
+  private windCache: { src: PackedWind; u: Float32Array; v: Float32Array; w: Float32Array } | null = null;
   /** The real newest snapshot (null after a truncation until the next push). */
   private head: SimSnapshot | null = null;
   private headBytes = 0;
@@ -140,9 +171,9 @@ export class SnapshotStore {
     return this.keys.length;
   }
 
-  /** Bytes held (the newest snapshot, keyframes, embers, light frames, the spot log and the fire scratch buffers). */
+  /** Bytes held (the newest snapshot, keyframes, wind volumes, embers, light frames, the spot log and the scratch buffers). */
   get totalBytes(): number {
-    return this.headBytes + this.fireSrcBytes + this.keyBytes + this.embBytes + this.frames.length * FRAME_BYTES + this.spotLog.length * SPOT_BYTES + this.bufBytes() + (this.burnEnd?.byteLength ?? 0);
+    return this.headBytes + this.fireSrcBytes + this.keyBytes + this.windBytes + this.embBytes + this.frames.length * FRAME_BYTES + this.spotLog.length * SPOT_BYTES + this.bufBytes() + (this.burnEnd?.byteLength ?? 0);
   }
 
   /** Bytes of the newest snapshot and of the keyframes (the debug statistics show them next to the total). */
@@ -150,8 +181,19 @@ export class SnapshotStore {
     return this.headBytes;
   }
 
+  /** Bytes of the keyframes with the wind volumes they carry. */
   get keyframeBytes(): number {
-    return this.keyBytes;
+    return this.keyBytes + this.windBytes;
+  }
+
+  /** Number of retained wind volumes (the fast tier's diagnosed 3-D wind of older pictures; none for the 3-D tiers, which keep their air in the keyframes). */
+  get windFrameCount(): number {
+    return this.winds.length;
+  }
+
+  /** Times (ascending) of the retained wind volumes. */
+  windFrameTimes(): number[] {
+    return this.winds.map((w) => w.time);
   }
 
   /** How many times older history was thinned because the budget was reached (the "history memory is full" event reads it; a sparse early history is not thinning). */
@@ -254,8 +296,12 @@ export class SnapshotStore {
     this.frames = [];
     this.keys = [];
     this.embs = [];
+    this.winds = [];
     this.keyBytes = 0;
     this.embBytes = 0;
+    this.windBytes = 0;
+    this.pressed = false;
+    this.windCache = null;
     this.head = null;
     this.engine = undefined;
     this.headBytes = 0;
@@ -308,7 +354,7 @@ export class SnapshotStore {
       time: tq,
       fire: this.rebuildFire(tq),
       moisture: key?.moisture ?? head?.moisture,
-      atmosphere: key ? key.atmosphere : head?.atmosphere,
+      atmosphere: key ? this.airOf(key, tq) : head?.atmosphere,
       embers: emb?.embers ?? head?.embers ?? EMPTY_EMBERS,
       spotFires: this.spotLog.slice(0, frame.spotCount),
       stats: frame.stats,
@@ -319,6 +365,23 @@ export class SnapshotStore {
     } as SimSnapshot;
     this.cache = { gen: this.gen, t: tq, q: quantum, snap };
     return snap;
+  }
+
+  /**
+   * The air view of the picture at time t composed from `key`. A keyframe of the fast tier holds its air view without the wind
+   * volume: the picture takes the newest saved volume at or before t, restored to Float32 (within airPack.ts's bound), and the
+   * view's `time` becomes that volume's own, so "air from" and the age beyond AIR_STALE_S tell the truth. The surface wind, the
+   * terrain, the layout and the datum stay the keyframe's own. With no volume to take (all thinned away, or one of another grid)
+   * the view comes back as the keyframe holds it, with no wind (`hasAirWind` says so). Any other view is the keyframe's own, exact.
+   */
+  private airOf(key: Keyframe, t: number): AtmosphereView | undefined {
+    const a = key.atmosphere;
+    if (!a || airKind(a) !== 'diagnosed' || a.nz <= 0 || a.u.length > 0) return a;
+    const wf = this.winds[atOrBeforeIndex(this.winds, t)];
+    if (!wf || wf.time > t + EPS || wf.wind.count !== a.grid.nx * a.grid.ny * a.nz) return a;
+    if (this.windCache?.src !== wf.wind) this.windCache = { src: wf.wind, ...unpackWind(wf.wind) };
+    const c = this.windCache;
+    return { ...a, u: c.u, v: c.v, w: c.w, ...(wf.airTime !== undefined ? { time: wf.airTime } : {}) };
   }
 
   /**
@@ -350,9 +413,17 @@ export class SnapshotStore {
     return { grid: src.grid, arrivalTime: arr, burnState: bs, ros: src.ros, intensity: src.intensity, flameHeight: src.flameHeight, spreadDir: src.spreadDir, driver: src.driver, phase: src.phase };
   }
 
+  /** Let go of the restored volume once the saved one it came from is gone (thinned, or cut by a rewind): it would keep both in memory. */
+  private forgetStaleWind(): void {
+    const c = this.windCache;
+    if (c && !this.winds.some((w) => w.wind === c.src)) this.windCache = null;
+  }
+
   private bufBytes(): number {
     let b = 0;
     for (const x of this.bufs) if (x) b += x.arrival.byteLength + x.burnState.byteLength;
+    const c = this.windCache;
+    if (c) b += c.u.byteLength + c.v.byteLength + c.w.byteLength;
     return b;
   }
 
@@ -384,7 +455,17 @@ export class SnapshotStore {
     const lastKey = this.keys[this.keys.length - 1];
     if (!lastKey || this.keyDue || h.time - lastKey.time >= this.keyEvery - EPS) {
       this.keyDue = false;
-      const k: Keyframe = { time: h.time, moisture: h.moisture, atmosphere: h.atmosphere, layers: h.layers, bytes: keyframeBytes(h) };
+      let atmosphere = h.atmosphere;
+      // The fast tier's diagnosed wind volume goes to the wind list, packed; the keyframe keeps the rest of its air view.
+      const wind = atmosphere && airKind(atmosphere) === 'diagnosed' && airHas(atmosphere, 'wind') ? packWind(atmosphere.u, atmosphere.v, atmosphere.w) : null;
+      if (atmosphere && wind) {
+        const bytes = packedWindBytes(wind);
+        this.winds.push({ time: h.time, airTime: atmosphere.time, wind, bytes });
+        this.windBytes += bytes;
+        atmosphere = { ...atmosphere, u: NO_WIND, v: NO_WIND, w: NO_WIND };
+      }
+      const k: Keyframe = { time: h.time, moisture: h.moisture, atmosphere, layers: h.layers, bytes: 0 };
+      k.bytes = keyframeBytes(k);
       this.keys.push(k);
       this.keyBytes += k.bytes;
     }
@@ -411,6 +492,8 @@ export class SnapshotStore {
       changed = true;
     }
     while (this.keys.length && pred(this.keys[this.keys.length - 1]!.time)) this.keyBytes -= this.keys.pop()!.bytes;
+    while (this.winds.length && pred(this.winds[this.winds.length - 1]!.time)) this.windBytes -= this.winds.pop()!.bytes;
+    this.forgetStaleWind();
     if (changed) this.keyDue = true;
     while (this.embs.length && pred(this.embs[this.embs.length - 1]!.time)) this.embBytes -= this.embs.pop()!.bytes;
     if (this.head && pred(this.head.time)) {
@@ -424,8 +507,10 @@ export class SnapshotStore {
     if (f.length === 0) {
       this.keys = [];
       this.embs = [];
+      this.winds = [];
       this.keyBytes = 0;
       this.embBytes = 0;
+      this.windBytes = 0;
       this.fireSrc = null;
       this.fireSrcBytes = 0;
       this.spotLog.length = 0;
@@ -446,24 +531,40 @@ export class SnapshotStore {
 
   /** Thin older history while a list is over its share of the budget. */
   private enforceBudget(): void {
-    if (this.totalBytes <= this.maxBytes) return;
+    const over = this.totalBytes > this.maxBytes;
+    // Until the budget is first reached every volume is kept. After that the wind list is held to its share at every step: left to
+    // grow into the room between thinnings, it would shorten the stretch the keyframes can grow into by as much (fewer pictures).
+    if (!over && !this.pressed) return;
+    this.pressed = true;
     const room = Math.max(0, this.maxBytes - this.headBytes - this.fireSrcBytes - this.bufBytes() - (this.burnEnd?.byteLength ?? 0) - this.spotLog.length * SPOT_BYTES);
     const headT = this.frames[this.frames.length - 1]!.time;
-    if (this.keyBytes > room * SHARE.keys) {
+    const share = this.winds.length ? SHARE_WIND : SHARE;
+    if (over && this.keyBytes > room * share.keys) {
       const before = this.keys.length;
-      this.keys = fit(this.keys, headT, this.keyEvery, room * SHARE.keys);
+      this.keys = fit(this.keys, headT, this.keyEvery, room * share.keys);
       this.keyBytes = this.keys.reduce((a, e) => a + e.bytes, 0);
       if (this.keys.length < before) this.thinned++;
     }
-    if (this.embBytes > room * SHARE.embers) {
+    if (this.winds.length && this.windBytes > room * SHARE_WIND.wind) {
+      // Thinning volumes is not thinning the history (no picture goes, only how fresh its air is, which the slice footer says),
+      // so it does not count. A share smaller than two volumes drops from the old end, as `fit` does for the other lists.
+      const cap = room * SHARE_WIND.wind;
+      this.winds = fit(this.winds, headT, this.keyEvery, cap);
+      let bytes = this.winds.reduce((a, e) => a + e.bytes, 0);
+      while (bytes > cap && this.winds.length > 0) bytes -= this.winds.shift()!.bytes;
+      this.windBytes = bytes;
+      this.forgetStaleWind();
+    }
+    if (!over) return;
+    if (this.embBytes > room * share.embers) {
       const before = this.embs.length;
-      this.embs = fit(this.embs, headT, this.step, room * SHARE.embers);
+      this.embs = fit(this.embs, headT, this.step, room * share.embers);
       this.embBytes = this.embs.reduce((a, e) => a + e.bytes, 0);
       if (this.embs.length < before) this.thinned++;
     }
-    if (this.frames.length * FRAME_BYTES > room * SHARE.frames) {
+    if (this.frames.length * FRAME_BYTES > room * share.frames) {
       const before = this.frames.length;
-      this.frames = fit(this.frames, headT, this.step, room * SHARE.frames);
+      this.frames = fit(this.frames, headT, this.step, room * share.frames);
       if (this.frames.length < before) this.thinned++;
     }
   }
@@ -541,8 +642,11 @@ function atmosphereBytes(a: AtmosphereView | undefined): number {
   return b;
 }
 
-/** Retained bytes of the parts a keyframe holds (moisture, overlay rasters, atmosphere view). */
-export function keyframeBytes(s: SimSnapshot): number {
+/**
+ * Retained bytes of the parts a keyframe holds (moisture, overlay rasters, atmosphere view). Of a live snapshot this counts its air
+ * view as it is, the fast tier's diagnosed wind at 12 bytes per cell; a kept keyframe holds that wind packed, in the wind list.
+ */
+export function keyframeBytes(s: Pick<SimSnapshot, 'moisture' | 'atmosphere' | 'layers'>): number {
   let b = 256 + typedBytes(s.moisture) + atmosphereBytes(s.atmosphere);
   if (s.layers) for (const v of Object.values(s.layers)) b += typedBytes(v);
   return b;

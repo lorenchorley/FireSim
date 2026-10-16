@@ -5,9 +5,12 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { airHas, airKind, airLayout, hasAirWind } from '../core/airView';
+import { packWind, windPackErrorBound } from '../core/airPack';
 import type { AtmosphereView, SimSnapshot } from '../core/types';
 import { Atmosphere } from '../atmosphere/atmosphere';
 import { DiagnosticWind } from '../atmosphere/diagnosticWind';
+import { AtmosphereSampler } from '../render/atmosphereSampler';
+import { SnapshotStore } from '../ui/snapshotStore';
 import { snapshotTransferables } from './host';
 import { Simulation, decimateView } from './simulation';
 import { snapshotPartHashes } from './testing/hash';
@@ -195,4 +198,88 @@ describe('snapshotTransferables lists the diagnosed volume', () => {
       expect(hasAirWind(received)).toBe(true);
     });
   }
+});
+
+describe('the history keeps the diagnosed wind packed (display only: the live view and the engine stay exact)', () => {
+  /** The three snapshots of the fast run, in a store with room for everything: the first two become keyframes, the last is the live one. */
+  const stored = (): { store: SnapshotStore; snaps: SimSnapshot[] } => {
+    const snaps = run('fast', 900);
+    const store = new SnapshotStore({ maxBytes: 1e9, minInterval: 300 });
+    for (const s of snaps) store.push(s);
+    return { store, snaps };
+  };
+
+  it('a restored view is within the stated bound of the exact one in every field, and carries the same layout, kind, top, datum and time', { timeout: 120_000 }, () => {
+    const { store, snaps } = stored();
+    expect(store.windFrameCount).toBe(2);
+    const report: string[] = [];
+    for (const [i, exact] of [snaps[0]!.atmosphere!, snaps[1]!.atmosphere!].entries()) {
+      const got = store.at(snaps[i]!.time)!.atmosphere!;
+      const bound = windPackErrorBound(packWind(exact.u, exact.v, exact.w)!);
+      const worst = (a: Float32Array, b: Float32Array): number => a.reduce((m, x, k) => Math.max(m, Math.abs(x - b[k]!)), 0);
+      const diff = [worst(got.u, exact.u), worst(got.v, exact.v), worst(got.w, exact.w)];
+      expect(diff[0]!, 'u').toBeLessThanOrEqual(bound[0]);
+      expect(diff[1]!, 'v').toBeLessThanOrEqual(bound[1]);
+      expect(diff[2]!, 'w').toBeLessThanOrEqual(bound[2]);
+      // The numbers a reader can hold the claim to: well under a millimetre per second, for winds of metres per second.
+      for (const d of diff) expect(d).toBeLessThan(0.001);
+      const peak = (f: Float32Array): number => f.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+      report.push(`t=${snaps[i]!.time}: worst difference u ${diff[0]!.toExponential(2)}, v ${diff[1]!.toExponential(2)}, w ${diff[2]!.toExponential(2)} m/s (bounds ${bound.map((b) => b.toExponential(2)).join(', ')}; largest |u|, |v|, |w| ${peak(exact.u).toFixed(2)}, ${peak(exact.v).toFixed(2)}, ${peak(exact.w).toFixed(2)} m/s)`);
+      // Everything else of the view is the exact one, and the air says it is of its own time.
+      expect([got.layout, got.kind, got.topM, got.baseM, got.time, got.nz]).toEqual([exact.layout, exact.kind, exact.topM, exact.baseM, exact.time, exact.nz]);
+      expect(got.grid).toEqual(exact.grid);
+      for (const k of ['levels', 'terrainHeight', 'surfaceU', 'surfaceV'] as const) expect(got[k], k).toEqual(exact[k]);
+      expect(got.u.length).toBe(exact.u.length);
+      expect(hasAirWind(got)).toBe(true);
+      expect(airKind(got)).toBe('diagnosed');
+      expect(airHas(got, 'theta') || airHas(got, 'smoke')).toBe(false);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[history wind] real fast-tier views (2.4 km synthetic site, 24 x 24 x 20):\n  ${report.join('\n  ')}`);
+  });
+
+  it('the sampler reads a restored view like the exact one: any wind it gives is within the same bound', { timeout: 120_000 }, () => {
+    const { store, snaps } = stored();
+    const exact = snaps[0]!.atmosphere!;
+    const got = store.at(snaps[0]!.time)!.atmosphere!;
+    const bound = windPackErrorBound(packWind(exact.u, exact.v, exact.w)!);
+    const base = exact.baseM!;
+    const a = new AtmosphereSampler(exact, base, null);
+    const b = new AtmosphereSampler(got, base, null);
+    expect(b.hasWind).toBe(true);
+    const g = exact.grid;
+    const pos = new Float64Array(3);
+    const x = new Float32Array(3);
+    const y = new Float32Array(3);
+    let s = 7;
+    const rnd = (): number => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const worst = [0, 0, 0];
+    for (let n = 0; n < 4000; n++) {
+      pos[0] = g.x0 + rnd() * (g.nx - 1) * g.cellSize;
+      pos[1] = g.y0 + rnd() * (g.ny - 1) * g.cellSize;
+      pos[2] = base + rnd() * exact.topM!; // from the datum to the model top: below the ground included
+      a.windP(pos, x);
+      b.windP(pos, y);
+      for (let c = 0; c < 3; c++) worst[c] = Math.max(worst[c]!, Math.abs(x[c]! - y[c]!));
+    }
+    // A sampled wind is a mix of stored values with weights that add up to 1, so it is off by at most what the stored values are
+    // (the sampler hands back Float32: allow the rounding of one).
+    for (let c = 0; c < 3; c++) expect(worst[c]!, `component ${c}`).toBeLessThanOrEqual(bound[c]! + 1e-5);
+    expect(worst[0]!).toBeGreaterThan(0); // not vacuous: the restored view is not the exact one
+    // eslint-disable-next-line no-console
+    console.log(`[history wind] 4000 sampled points: worst difference u ${worst[0]!.toExponential(2)}, v ${worst[1]!.toExponential(2)}, w ${worst[2]!.toExponential(2)} m/s`);
+  });
+
+  it('the newest picture is the live snapshot itself, bit for bit: only older pictures are restored', { timeout: 120_000 }, () => {
+    const { store, snaps } = stored();
+    const head = store.latest()!;
+    expect(head).toBe(snaps[2]);
+    expect(head.atmosphere).toBe(snaps[2]!.atmosphere);
+    const n = head.atmosphere!.grid.nx * head.atmosphere!.grid.ny * head.atmosphere!.nz;
+    expect(head.atmosphere!.u.byteLength).toBe(4 * n); // the live view keeps its Float32 volume
+    // Older pictures are not the engine's arrays: the keyframe holds its own copy and the engine's snapshot is left as it was.
+    const old = store.at(snaps[0]!.time)!.atmosphere!;
+    expect(old.u).not.toBe(snaps[0]!.atmosphere!.u);
+    expect(snaps[0]!.atmosphere!.u.length).toBe(n);
+  });
 });
