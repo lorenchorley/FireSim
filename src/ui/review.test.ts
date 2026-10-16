@@ -63,6 +63,7 @@ function recordingView(): { view: SceneViewApi; calls: { insights: Insight[][]; 
       get: (_t, key) => {
         if (key === 'setInsights') return (i: Insight[]) => calls.insights.push(i);
         if (key === 'setIgnitions') return (i: Ignition[], s: SpotFire[]) => calls.ignitions.push([i, s]);
+        if (key === 'sliceRecording') return undefined; // a view with no recorder, like the 2-D map
         return () => null;
       },
     },

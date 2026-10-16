@@ -120,7 +120,7 @@ class FakeEngine implements SimController {
   }
 }
 
-const nullView = new Proxy({}, { get: () => () => null }) as unknown as SceneViewApi;
+const nullView = new Proxy({}, { get: (_t, key) => (key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
 
 const scenario = (duration = 7200): ScenarioData =>
   ({ id: 's', name: 's', origin: { lat: 0, lon: 0 }, extent: 3000, startTime: 0, duration, ignitions: [], edits: [], options: { snapshotInterval: 60, coupling: 1, embers: true, mountainPhenomena: true } }) as unknown as ScenarioData;
@@ -688,7 +688,7 @@ describe('pictures while playing', () => {
   it('are rounded to about six per wall second (not one per frame) and exact when paused', async () => {
     const e = new FakeEngine();
     let updates: number[] = [];
-    const view = new Proxy({}, { get: (_t, key) => (key === 'update' ? (snap: SimSnapshot) => updates.push(snap.time) : () => null) }) as unknown as SceneViewApi;
+    const view = new Proxy({}, { get: (_t, key) => (key === 'update' ? (snap: SimSnapshot) => updates.push(snap.time) : key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
     const s = new SimSession(scenario(), e, view, { maxBytes: 1e9 });
     await s.start();
     e.history(3000);

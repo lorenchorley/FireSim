@@ -13,6 +13,7 @@
 import type { ContextLayers } from '../core/places';
 import * as THREE from 'three';
 import type { GridSpec } from '../core/grid';
+import { SLICE_RECORDER_MAX_BYTES } from '../core/sliceRecording';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
 import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats } from './api';
@@ -48,6 +49,7 @@ import type { RockCopy } from './rockMask';
 import { mapLighting, skyLighting } from './sky';
 import { SkyDome } from './skyDome';
 import { presetWindFromDeg } from './slice/presetWind';
+import { createSliceTimeLapse } from './slice/sliceTimeLapse';
 import { createSliceUpdater } from './slice/sliceUpdater';
 import type { SliceComputed, SliceFieldId, SliceFieldStatus, SliceInputs, SliceUpdate } from './slice/types';
 import { effectiveSliceField, sectionChanged, sliceFieldStatuses } from './sliceFields';
@@ -181,6 +183,16 @@ export class SceneView implements SceneViewApi {
   private sliceTerrain: HeightField | null = null;
   /** The one computation of the air slice, read by the curtain and (through `slice()` and `onSlice`) the side-view panel. */
   private readonly slicer = createSliceUpdater();
+  /** The time-lapse recorder of the pinned line (0.4.1): the session feeds it every snapshot (`SceneViewApi.sliceRecording`) and the updater reads it first. */
+  readonly sliceRecording = createSliceTimeLapse({
+    line: () => this.layers.crossSection,
+    enabled: () => this.layers.crossSection.enabled,
+    terrain: () => this.sliceTerrain,
+    budgetBytes: SLICE_RECORDER_MAX_BYTES,
+    changed: () => {
+      if (this.snap && this.layers.crossSection.enabled) this.updateSection(true);
+    },
+  });
   private sliceNow: SliceUpdate | null = null;
   /** The fire's centre for the snapshot the slice is shown with: a line edit asks again for the same snapshot, and finding it scans the fire field (about 1 ms at 4x CPU). */
   private sliceFireOf: { snap: SimSnapshot; at: [number, number] | null } | null = null;
@@ -723,6 +735,7 @@ export class SceneView implements SceneViewApi {
       sampler,
       terrain,
       shownTime: snap.time,
+      recording: this.sliceRecording,
     };
   }
 
@@ -751,7 +764,8 @@ export class SceneView implements SceneViewApi {
   /** A computed slice becomes the current one: the curtain is redrawn from it and the panel and the tool are told. */
   private applySlice(done: SliceComputed): void {
     const fields = this.sliceFields();
-    const update: SliceUpdate = { ...done, field: effectiveSliceField(this.layers.crossSection.field, fields), fields };
+    this.sliceRecording.follow(done.resolved); // a moved line drops its recording at once, even while paused
+    const update: SliceUpdate = { ...done, field: effectiveSliceField(this.layers.crossSection.field, fields), fields, recording: this.sliceRecording.status() };
     this.sliceNow = update;
     this.drawSection();
     this.notifySlice(update);
@@ -779,6 +793,7 @@ export class SceneView implements SceneViewApi {
   /** Forget the slice (a new scenario, or the section switched off): nothing is drawn and the listeners hear null. */
   private dropSlice(): void {
     this.slicer.invalidate();
+    this.sliceRecording.reset();
     if (this.sliceNow === null) return;
     this.sliceNow = null;
     this.drawSection();
@@ -1599,6 +1614,7 @@ export class SceneView implements SceneViewApi {
     this.smoke.dispose();
     this.section.dispose();
     this.slicer.invalidate();
+    this.sliceRecording.reset();
     this.sliceListeners.clear();
     this.icons.dispose();
     this.renderer.dispose();

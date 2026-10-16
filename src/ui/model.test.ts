@@ -188,7 +188,7 @@ class FakeController implements SimController {
   dispose(): void {}
 }
 
-const nullView = new Proxy({}, { get: () => () => null }) as unknown as SceneViewApi;
+const nullView = new Proxy({}, { get: (_t, key) => (key === 'sliceRecording' ? undefined : () => null) }) as unknown as SceneViewApi;
 
 function fakeScenario(): ScenarioData {
   return { id: 's', name: 's', origin: { lat: 0, lon: 0 }, extent: 3000, startTime: 0, duration: 7200, ignitions: [], edits: [], options: { snapshotInterval: 300, coupling: 1, embers: true, mountainPhenomena: true } } as unknown as ScenarioData;
