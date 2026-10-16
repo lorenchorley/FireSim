@@ -1196,7 +1196,8 @@ test('real engine: Settings changed mid-run (performance mode, picture interval,
   const D = await scenarioDuration(page);
   await setSpeed(page, 300);
   await page.getByTestId('play').click();
-  await expect.poll(async () => (await session(page)).viewTime).toBeGreaterThan(300);
+  // The engine needs about 5 to 6 s to reach 300 s on a busy machine, over the 5 s default (the same on 0.4.0).
+  await expect.poll(async () => (await session(page)).viewTime, { timeout: 30_000 }).toBeGreaterThan(300);
   const choose = async (testId: string, name: RegExp): Promise<void> => {
     await page.getByTestId('menu').click();
     await page.getByTestId('menu-settings').click();
