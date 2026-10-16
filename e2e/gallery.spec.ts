@@ -5,7 +5,10 @@
  * high contrast) and at Android's 200 % font scale. Real engine, the bundled Katoomba demo (offline), one build; the looks are
  * switched on <html> (the same attributes Settings sets). Pictures are 412 x 915 CSS pixels (Pixel 7), a few hundred kB each.
  *
- * Release 0.4.0 (Air slices) adds the two tests named "gallery 0.4.0" at the end (run alone with `-g "gallery 0.4.0"`): pictures 33,
+ * Release 0.4.1 (the time-lapse recorder of an Air slice line) adds the test "gallery 0.4.1" at the very end (run alone with
+ * `-g "gallery 0.4.1"`): picture 36, the side view of a recorded line with its status line and Clear recording.
+ *
+ * Release 0.4.0 (Air slices) adds the two tests named "gallery 0.4.0" (run alone with `-g "gallery 0.4.0"`): pictures 33,
  * 34, 34b and 35. It also made three existing pictures STALE, which stay as they were until the whole suite is run again:
  *   - docs/screenshots/05-cross-section.png (e2e/app.spec.ts): the curtain now takes its colours from the slice lattice, has six colour
  *     chips in the Layers panel and works on the fast model too;
@@ -16,7 +19,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { acceptNotice, animationsDone, openMenu, pickTool, pickViewMode, session, setSpeed, zoomView } from './helpers';
+import { acceptNotice, animationsDone, openMenu, pickTool, pickViewMode, session, setSpeed, tapTimeline, zoomView } from './helpers';
 
 const SHOTS = 'docs/screenshots';
 type Look = 'light' | 'dark' | 'high-contrast';
@@ -487,4 +490,71 @@ test('gallery 0.4.0: the side view on the fast model, the diagnosed wind, with T
   // The panel scrolls inside the tool: bring the reasons and the button into view (the footer stays pinned at the bottom).
   await page.getByTestId('slice-use3d').scrollIntoViewIfNeeded();
   await shot(page, '34b-air-slice-diagnosed', ['light', 'dark']);
+});
+
+// ───────────────────────────────────────── 0.4.1 ─────────────────────────────────────────
+// The picture of a recorded Air slice (README.md, docs/DESIGN.md): a line kept with "Keep this line", the run played on until the recorder holds a
+// span of pictures, the time scrubbed back to inside it, so the footer says "recorded air from", the status line says from when to when, and
+// "Clear recording" is on offer (it is shown only while something is recorded, and "Keep this line" only for a live preset, so the two are never
+// on screen together). Real engine, the 3-D tier, the bundled Katoomba demo at 6 km (offline). Run alone with `-g "gallery 0.4.1"`.
+
+type RecStatus = { state: string; count: number; from: number | null; to: number | null; spacingS: number };
+const recStatusOf = (page: Page): Promise<RecStatus | null> =>
+  page.evaluate(() => {
+    const v = (window as unknown as { __firesim: { view: { sliceRecording?: { status(): RecStatus } } } }).__firesim.view;
+    return v.sliceRecording ? v.sliceRecording.status() : null;
+  });
+
+test('gallery 0.4.1: the side view of a recorded line, with its status line and Clear recording', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba6km(page, 'hot-nw-sw-change', 'Normal');
+  // Auto keeps the 3-D air unless this machine is far too slow for it: switch the run over if it chose the fast model.
+  await expect.poll(() => airKindOf(page), { timeout: 60_000 }).not.toBeNull();
+  if ((await airKindOf(page)) !== 'prognostic') {
+    await page.evaluate(() => (window as unknown as { __firesim: { session: { controller: { setQuality(t: string): void } } } }).__firesim.session.controller.setQuality('standard'));
+    await expect.poll(() => airKindOf(page), { timeout: 240_000 }).toBe('prognostic');
+  }
+  await markEscarpmentFire(page);
+  await playTo(page, 600, 900);
+
+  // A preset follows the wind and the fire, so it is not recorded; "Keep this line" fixes it where it is now.
+  await alongTheWind(page);
+  await expect(page.getByTestId('slice-keep')).toBeVisible();
+  await page.getByTestId('slice-keep').click();
+  await expect(page.getByTestId('slice-keep')).toBeHidden();
+
+  // Play on until the recorder holds a span of pictures (it records what the worker makes, which can be ahead of the time shown), then pause.
+  await setSpeed(page, 120);
+  await page.getByTestId('play').click();
+  await expect
+    .poll(
+      async () => {
+        const st = await recStatusOf(page);
+        return !!st && st.count >= 8 && st.to! - st.from! >= 600;
+      },
+      { timeout: 400_000, intervals: [500] },
+    )
+    .toBe(true);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).playing).toBe(false);
+
+  // Scrub to a time inside the span, off the 5-minute keyframes (at one the picture's own air is as new as the recording's).
+  const st = (await recStatusOf(page))!;
+  const raw = st.from! + (st.to! - st.from!) * 0.6;
+  const t = Math.min(st.to! - 30, Math.max(st.from! + 30, raw - (raw % 300) + 150));
+  await tapTimeline(page, t);
+  const footer = page.getByTestId('slice-footer');
+  await expect(footer).toContainText(/recorded air from \d\d:\d\d/, { timeout: 60_000 });
+  await expect(footer).toContainText('3-D time-stepped air');
+  const status = page.getByTestId('slice-recording');
+  await expect(status).toHaveText(/^Recorded from \d\d:\d\d to \d\d:\d\d \((every picture kept|about every .+)\)\.$/);
+  const clear = page.getByTestId('slice-recording-clear');
+  await expect(clear).toBeVisible();
+  await page.waitForTimeout(2500); // the streaks need a moment to draw their tails
+
+  // The panel scrolls inside the tool: put Clear recording at the top of its window, so the controls, the cells switch, the status line and the footer
+  // (pinned at the bottom) are all in view.
+  await clear.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.waitForTimeout(500);
+  await shot(page, '36-air-slice-recorded', ['light']);
 });

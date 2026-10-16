@@ -1,12 +1,14 @@
 /**
  * The Help tab's words (content.ts: the how-to list and the glossary), pinned two ways: their shape and voice (plain words, no
- * em dashes, nothing undefined), and, for the 0.3.0 and 0.4.0 features, that what they say is what the code says (the
+ * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0 and 0.4.1 features, that what they say is what the code says (the
  * labels the screens use, the sheet's own sentences, the tap radius, the words of the icons, the footer and the probe
- * sentence of the Air slices panel), so a change to a screen cannot leave a stale sentence in Help.
+ * sentence of the Air slices panel, the buttons and the status line of its time-lapse recording), so a change to a screen
+ * cannot leave a stale sentence in Help.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { ATMOS_TIERS } from '../atmosphere/params';
 import { AIR_STALE_S } from '../core/airView';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
 import { compassWord } from '../explain/text';
@@ -17,17 +19,19 @@ import { legendFor, sliceLegend } from '../render/legends';
 import { MIN_HIT_PX } from '../render/markerPick';
 import { sampleRamp, sliceFieldScale } from '../render/palette';
 import { probeSentence } from '../render/slice/probe';
-import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceProbeReading } from '../render/slice/types';
+import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceProbeReading, type SliceRecordingStatus } from '../render/slice/types';
 import { USE_3D_LABEL, sliceFieldStatuses } from '../render/sliceFields';
 import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
+import { formatClock } from './format';
 import { forcedPace } from './paceModel';
 import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
 import { NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
+import { NOT_RECORDED_WORDS, RECORDING_EARLIER_WORDS, recordingText, spacingWords } from './recordingWords';
 import { airFromText, scaleTag, TERRAIN_CAPTION } from './screens/sim/slicePanelModel';
-import { AIR_TOOL_LABEL, PLACE_LABEL, PRESET_LABEL, SET_LABEL } from './screens/sim/sliceToolModel';
+import { AIR_TOOL_LABEL, CLEAR_RECORDING_LABEL, KEEP_LABEL, PLACE_LABEL, PRESET_LABEL, SET_LABEL } from './screens/sim/sliceToolModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
 import { resolveRenderQuality } from './settings';
 
@@ -273,6 +277,9 @@ describe('Help and glossary: the 0.4.0 entries say what the Air slices screens s
     // Only the newest picture carries air made at its own time (snapshotStore.air.test.ts), so while a run plays the air is typically up to 5 minutes older than the picture: "usually the time you are looking at" was wrong.
     expect(b).toContain('up to about 5 minutes older than the fire you see, while the run plays as well as when you jump back');
     expect(b).not.toContain('usually the time you are looking at');
+    // 0.4.1: "only the newest picture has air made at its own time" holds only without a recording of the line.
+    expect(b).toContain('Without a recording, only the newest picture of the run has air made at its own time');
+    expect(b).not.toMatch(/(^|\. )Only the newest picture of the run has air made at its own time/);
   });
 
   it('Model cells: the switch is labelled the way Help says', () => {
@@ -398,5 +405,65 @@ describe('Help and glossary: the words of the map icons are the words the Why he
     expect(s).toContain('Tap an icon to ask about it');
     expect(s).toContain('Map icons');
     expect(s).toContain('Tap the ground beside an icon and there is no icon row');
+  });
+});
+
+describe('Help and glossary: the 0.4.1 entries say what the recording of a line says', () => {
+  const abs = (t: number): number => Date.UTC(2025, 0, 5, 11, 25) + t * 1000;
+  const clock = (t: number): string => formatClock(Date.UTC(2025, 0, 5, 11, 30) + t * 1000, 'UTC');
+  const recording = (o: Partial<SliceRecordingStatus> = {}): SliceRecordingStatus => ({ state: 'recording', offFor: null, count: 40, from: 0, to: 4200, spacingS: 0, bytes: 1e6, budgetBytes: 6e6, dropped: null, ...o });
+  const layersPanel = (): string => readFileSync(resolve(__dirname, 'screens/sim/layersPanel.ts'), 'utf8');
+
+  it('Record a line: the labels of the tool, the status line’s own example, and what drops a recording', () => {
+    const help = squash(step('Record a line'));
+    expect([KEEP_LABEL, CLEAR_RECORDING_LABEL]).toEqual(['Keep this line', 'Clear recording']);
+    for (const label of [SET_LABEL.a, SET_LABEL.b, KEEP_LABEL, CLEAR_RECORDING_LABEL]) expect(help).toContain(`“${label}”`);
+    // The example is the very sentence the status line writes for that recording, and the thinned one is the panel's own word.
+    const example = recordingText(recording(), 3000, clock);
+    expect(example).toBe('Recorded from 11:30 to 12:40 (every picture kept).');
+    expect(help).toContain(`“${example}”`);
+    expect(spacingWords(120)).toBe('about every 2 min');
+    expect(recordingText(recording({ spacingS: 120 }), 3000, clock)).toBe('Recorded from 11:30 to 12:40 (about every 2 min).');
+    expect(help).toContain('“about every 2 min”');
+    // A time earlier than the first picture uses the history's saved air, as 0.4.0 did, and the status line says so.
+    expect(RECORDING_EARLIER_WORDS).toContain("uses the history's saved air");
+    expect(help).toContain('uses the history’s saved air as before');
+    // A preset is not recorded, in the words the status line uses.
+    expect(NOT_RECORDED_WORDS.preset).toContain('follows the wind and the fire, so it is not recorded');
+    expect(help).toContain('a preset follows the wind and the fire and so is not recorded');
+    expect(squash(step('Air slices'))).toContain('A line you place is recorded as the run plays, and a preset is not (see Record a line)');
+    // Layers' own sentence about the slice switch is what Help repeats.
+    expect(layersPanel()).toContain('Switching the slice off clears its recording.');
+    expect(help).toContain('switching the slice off in Layers');
+    expect(help).toContain('never changes the fire');
+  });
+
+  it('Air slices: a line is recorded, a preset is not unless it is kept, and what clears the recording', () => {
+    const b = entry('Air slices').body;
+    expect(b).toContain('A line you place with A and B is recorded as the run plays');
+    expect(b).toContain(`A preset follows the wind and the fire, so it is not recorded unless you press “${KEEP_LABEL}”, which fixes it where it is now`);
+    expect(b).toContain(`“${CLEAR_RECORDING_LABEL}” empties the recording`);
+    expect(b).toContain('moving the line, switching the slice off in Layers or starting a new scenario clears it too');
+    expect(b).toContain('never changes the fire');
+  });
+
+  it('Side view and Air from: a recorded picture says "recorded air from", with its age counted from the recorded picture', () => {
+    expect(airFromText(0, 30, 'UTC', abs, 0)).toBe('recorded air from 11:25');
+    expect(airFromText(0, 240, 'UTC', abs, 0)).toBe('recorded air from 11:25 (4 min before the time shown)');
+    expect(airFromText(0, 240, 'UTC', abs, 200)).toBe('recorded air from 11:28');
+    expect(entry('Side view').body).toContain('“recorded air from” when the air comes from a recording of the line');
+    const b = entry('Air from').body;
+    expect(b).toContain('“recorded air from 11:25”');
+    expect(b).toContain('about the spacing the status line gives');
+    expect(b).toContain('which can be ahead of the time shown');
+    expect(b).toContain('“about every 2 min”');
+  });
+
+  it('Diagnosed wind: the recording carries on when the run is switched to the 3-D atmosphere, which is the standard tier on the fast tier’s air grid', () => {
+    expect(entry('Diagnosed wind').body).toContain('A recording of a line carries on across the switch');
+    // "Use the 3-D atmosphere" asks for the standard tier, and the fast and the standard tier are built on one air grid (sliceTimeLapse.test.ts keeps the recording across it); the high tier's is finer.
+    expect(layersPanel()).toContain("setQuality('standard')");
+    expect(ATMOS_TIERS.fast).toEqual(ATMOS_TIERS.standard);
+    expect(ATMOS_TIERS.high).not.toEqual(ATMOS_TIERS.standard);
   });
 });

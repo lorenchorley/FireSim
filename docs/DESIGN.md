@@ -468,8 +468,8 @@ Anything a screen needed that the design system did not have was added to the ri
 | Data sets | `screens/datasets.ts` | `datasets.css` | `appBar`, `stat` / `statRow`, `stackedBar`, `bar`, `sparkbar`, `kv`, `originChip`, `listRow`, `chipChoice` (filters), a heat-map preview canvas, `confirmDialog` before any deletion |
 | How this simulation works | `screens/modelCard.ts` | `modelcard.css` | `appBar`, collapsible groups, `kv`, `badge` (evidence), `callout`, the glossary; its *Speed and memory right now* section is four live `kv` rows and a tonal button that opens Simulation debug statistics |
 | Simulation debug statistics | `screens/debugStats.ts` | `debugstats.css` (and `modelcard.css`) | `appBar` with a Back arrow and a Copy `iconButton`; one `card` with the one-line summary, a state word (Live, Paused, Finished, No run yet, Demo engine: a word, never colour alone), a labelled Copy `button` and its hint; then 18 collapsed groups (the model card's collapsible `card`s, each with its own one-line summary, `kv-stack` rows, a tiny bar chart, `.ds-chart`, in `--series-1` for the speed history); a selectable `textarea` (`.ds-box`) appears only when the phone refuses the clipboard |
-| Air slices tool | `screens/sim/sliceTool.ts` | `slice.css` (block 2) | a bottom tool panel (`.tool-panel.slice-tool`) with the `line` icon in its title ("Air slice", and "Side view" beside it in `.t-secondary`) and Close; the controls are `.row-actions` of `.btn`s: *Set start (A)*, *Set end (B)*, *Swap*, *Presets* (with a chevron and `aria-expanded`), then, while placing, a primary large *Place A here* and *Cancel*; the four presets are a two-column grid of `.btn`s, a disabled one with its reason under it as a `.hint`; one quiet `.hint` note line. Nothing pops up |
-| Air slice side view | `screens/sim/slicePanel.ts` | `slice.css` (block 1) | one Canvas 2-D picture; under it the probe's reading (`.slice-readout`, only while there is one); a row of six filter `chip`s (`chips-scroll`; two rows of three under 412 px); the tool's controls; the reasons for any off chip (`.hint`s) with a tonal `button` *Use the 3-D atmosphere* before them; a legend (a gradient bar and its end words, or class swatches: after the controls where no chip is off, after the reasons where one is); a `toggle` *Show model cells* with its description; the terrain `.hint`; the footer `.hint` |
+| Air slices tool | `screens/sim/sliceTool.ts` | `slice.css` (block 2) | a bottom tool panel (`.tool-panel.slice-tool`) with the `line` icon in its title ("Air slice", and "Side view" beside it in `.t-secondary`) and Close; the controls are `.row-actions` of `.btn`s: *Set start (A)*, *Set end (B)*, *Swap*, *Presets* (with a chevron and `aria-expanded`), then, while placing, a primary large *Place A here* and *Cancel*; the four presets are a two-column grid of `.btn`s, a disabled one with its reason under it as a `.hint`; one quiet `.hint` note line; and, from 0.4.1, a row of two `.btn`s under the note, *Keep this line* (only while the line is a live preset) and *Clear recording* (only while something is recorded). Nothing pops up |
+| Air slice side view | `screens/sim/slicePanel.ts` | `slice.css` (block 1) | one Canvas 2-D picture; under it the probe's reading (`.slice-readout`, only while there is one); a row of six filter `chip`s (`chips-scroll`; two rows of three under 412 px); the tool's controls; the reasons for any off chip (`.hint`s) with a tonal `button` *Use the 3-D atmosphere* before them; a legend (a gradient bar and its end words, or class swatches: after the controls where no chip is off, after the reasons where one is); a `toggle` *Show model cells* with its description and, on a recorded slice, a `.hint` that the recording keeps no cells; the recording's status line (a `.hint` with `tabindex="-1"`, 0.4.1); the terrain `.hint`; the footer `.hint` |
 
 **Full-screen screens** (Settings, Data sets, How this simulation works, Simulation debug statistics) open as overlays over the stage (`app.ts`): an `appBar` with a back
 arrow, cards of rows on the grey background, the TRAINING strip above all of it. The stage behind is `inert`, Back / Escape step back one
@@ -529,6 +529,17 @@ the tool next, and focus goes back to the Tools button. *Presets* folds out a tw
 `aria-pressed`); a preset that cannot be used is disabled and says why under itself. Every button is a 44 px target (a 40 px `.btn` with its
 expander).
 
+*Recording (0.4.1).* The time-lapse recorder adds one row of `.row-actions` of two secondary `.btn`s under the note line, and no other control: *Keep this
+line*, shown only while the line in force is a live preset (it follows the wind and the fire, so it is not recorded; the button writes the line it is now as A and
+B, clears the preset and the probe, and recording starts with the next picture), and *Clear recording*, shown only while the recorder holds a picture (it empties it
+and keeps the line). The two are not on screen together, because a preset has no recording; there is no pause button (switch the slice off to stop). The row sits
+4 px under the rows above it (`.slice-controls .slice-row`, margin 4 px: at 2 px the 44 px hit areas of *Presets* and the new row fought in the repo's tap
+audit, which `e2e/air-slice.spec.ts` now runs on the tool at 412 x 915 and 360 x 640 with *Keep this line* and then *Clear recording* shown). Nothing pops up and
+there is no `role=alert` or toast: a press is announced once through the app's polite live region ("Line kept. Recording starts when the simulation next
+runs." and "Recording cleared. Recording starts when the simulation next runs.") and, because the pressed button is put away, **focus goes to the recording's
+status line** (a `.hint` paragraph with `tabindex="-1"`, so not a stop of the Tab key; `SlicePanelController.focusRecording()`), which scrolls it into view clear of
+the pinned footer (`scroll-padding-bottom`) and is read by a screen reader. With no status line to go to (no slice yet) focus falls back to *Set start (A)*.
+
 *On the map* (inline SVG in `.annotations`, drawn only while the tool is open and only re-projected per frame then): A and B are 15 px discs with
 a white letter (a dashed ring with a teal letter while the point is only tapped and not yet placed), the line is a 4 px stroke with a white
 8 px halo (`.ann-stroke-casing`), and the probe's pin is a white disc with a ring and a dot. They share one token, `--mark-slice` (`#00796b`),
@@ -563,15 +574,30 @@ arrow keys when it has focus (a lattice step; a quarter of the axis with Shift),
 move (after a pause of 0.4 s, so a held key does not queue), not after every drag. The reading is not part of the pinned picture: in short
 landscape it scrolls with the chips and the controls, so it never covers them.
 
+*The recording's status line (0.4.1).* A `.hint` paragraph (14 px, `data-testid="slice-recording"`) after the *Show model cells* switch and, with the switch on over a
+recorded slice, its one-line note ("The recording does not keep the model's own cells, so the smooth picture is shown."), and before the terrain caption and the
+footer, so in short landscape it scrolls with the controls and only the footer stays pinned. It says what the recording holds and what that means for the picture
+shown, in the words of `src/ui/recordingWords.ts` (the statistics row says the same span): "Recorded from 11:30 to 12:40 (every picture kept)." or "(about every 2
+min)."; for a time before the first picture "Recorded from 13:06, as far ahead as the simulation had run. This time is earlier, so it uses the history's saved air,
+which can be older."; "Recording starts when the simulation next runs." while nothing is held; after a drop its reason first ("The line changed, so the old recording
+was dropped."), and "Recording cleared." only until a picture is held again; for a live preset or the Layers line why it is not recorded, with the way to record it;
+"Recording stopped. The slice is not affected." if the recorder failed. It is plain text, not a live region and never a `role=alert`: the spoken answer to a press is the
+polite announcement above. Picture 36 (`docs/screenshots/36-air-slice-recorded.png`, made by `gallery 0.4.1`) shows it at 412 px wide, scrolled to *Clear recording*, with
+the cells switch, the status line and the footer.
+
 *Footer.* A `.hint` that is `position: sticky` at the bottom of the panel's body with a 1 px `--divider` above it, so it is always in view:
 "3-D time-stepped air · model grid 133 m · air from 11:25", or "Diagnosed wind: terrain effects only · model grid 133 m · air from 11:25", with
-"(4 min before the time shown)" added past 90 seconds (the age is in minutes, so an old picture on a small phone can say "239 min before the time shown").
+"(4 min before the time shown)" added past 90 seconds (the age is in minutes, so an old picture on a small phone can say "239 min before the time shown"). Where the slice is read from the time-lapse recording (0.4.1) the third
+part says "recorded air from 11:25" and counts the age from that recorded picture ("recorded air from 11:25 (2 min before the time shown)"), for example "3-D time-stepped
+air · model grid 133 m · recorded air from 11:25"; the word "recorded" is part of the age run, so the one-line footer of short landscape keeps it.
 In short landscape (844 x 390: `orientation: landscape` and `max-height: 540px`) the picture is pinned at the top of the panel at 84 px, as wide as the
 panel (the pinned block reaches the panel's edges), the reading, the chips and the controls scroll beneath it
 (five lines of reading fit under it at a line height of 1.3), and the footer is one line, pinned at the bottom, that keeps the kind, the grid and
 the age and hides their explanations (`.slice-more`); while a reading is shown the footer is hidden and its line goes to the reading, and the
 readout loses its top margin so the clear button's hit area does not reach under the picture. The body keeps `scroll-padding` for the pinned picture
-above and the footer below, so a control that is scrolled to stops clear of both.
+above and the footer below, so a control that is scrolled to stops clear of both. **A consequence for the recording (decided, not fixed):** with a probe shown in short
+landscape the footer is hidden, so nothing in view says "recorded" or how old the air is while probing; keeping the footer would clip the reading, and a word added to the
+reading would lengthen it at 360 x 640, where it already wraps to five lines. At 360 x 640 in portrait the footer stays in view and says it.
 
 *Words, as the rules of this document and `src/ui/content.ts` ask.* Plain words and sentence case; no em dash; "about" for a number ("Wind
 about 32 km/h"); a wind is named by where it comes **from** with the hyphenated eight-point word ("north-west"), never "towards" in words; the
@@ -583,7 +609,11 @@ model's; a disabled thing always says why, in a sentence, near it. The temperatu
 "Warmer or cooler than the average of the slice at that height" and the chip is named "Air temperature against the average of the slice at
 that height" (one constant, `SLICE_THETA_BASIS`), and the legend's sentence and Help say what the average is. **A design point:** because the
 average is taken over the line's own air, on a short line through a plume the Temp chip understates the plume (the plume is part of what it is
-compared with); a longer line, with more ordinary air in each row, would understate it less.
+compared with); a longer line, with more ordinary air in each row, would understate it less. **The recording's words** follow the same rules: a time is
+"11:30" on the scenario's clock; the spacing of a thinned recording is "about every 2 min" ("about every 20 s" under 90 s, hours from 90 minutes), "about" because
+thinning keeps between one and two of its gaps; "every picture kept" is in brackets after the span so that neither reads as a fragment; "recorded air from" and
+"Recording starts when the simulation next runs" say what is recorded and when without promising a time, because the simulation computes ahead of the picture shown and a
+line placed while playing is recorded only from where the worker had got to.
 
 **Never**: a pop-up, a toast or a dialog because of something the simulation did. New insight cards only raise the badge on the Insights tab. Dialogs
 open from a tap (`confirmDialog` for deletions, the safety notice, "Leave this simulation?").
