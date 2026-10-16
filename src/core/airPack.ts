@@ -1,9 +1,9 @@
 /**
  * The 3-D wind of a diagnosed air view, packed for the history of the time scrubber (pure; fix F1 of the 0.4.0 plan).
  *
- * The fast tier publishes its diagnosed wind (u, v, w on 45 x 45 x 20 native levels) in every air view: 12 bytes per cell, 486 kB, more
- * than half again on a 0.3.0 fast keyframe (825 kB). The history keeps its OLDER pictures in a cheaper copy: each of u, v and w as
- * signed 16-bit integers with its own scale, 6 bytes per cell (243 kB). The live view and the engine are never touched; only what the
+ * The fast tier publishes its diagnosed wind (u, v, w on 45 x 45 x 20 native levels) in every air view: 12 bytes per cell, 486 kB, which
+ * makes a keyframe 59 % heavier than the 0.3.0 one (825 kB). The history keeps its OLDER pictures in a cheaper copy: each of u, v and w
+ * as signed 16-bit integers with its own scale, 6 bytes per cell (243 kB). The live view and the engine are never touched; only what the
  * store keeps for pictures that are no longer the newest is packed, and what it hands back for them is a plain Float32 view the
  * sampler reads like any other.
  *

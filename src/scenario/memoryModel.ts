@@ -26,7 +26,7 @@
  * has it) and says plainly when a device does not expose it.
  */
 import { formatBytes, typedArrayFootprint, type LiveMemory, type MemoryWhere, type WorkingMemory, type WorkingMemoryItem } from '../core/datasets';
-import { WIND_PACK_FIXED_BYTES } from '../core/airPack';
+import { WIND_PACK_BYTES_PER_VALUE, WIND_PACK_FIXED_BYTES } from '../core/airPack';
 import type { QualityTier, ScenarioData } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
 import { SIM_PARAMS } from '../sim/params';
@@ -106,7 +106,7 @@ export const KEYFRAME_BYTES_PER_CELL = 20;
  * The fast tier's volume is kept packed in the history (core/airPack.ts: three 16-bit integers per cell and level, 6 B, and a
  * fixed 64 B per volume): `packedPerLevel`.
  */
-export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOnly: 12, packedPerLevel: 6 };
+export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOnly: 12, packedPerLevel: 3 * WIND_PACK_BYTES_PER_VALUE };
 
 /**
  * Bytes of a snapshot's keyframe part (ui/snapshotStore.ts `keyframeBytes`): the fixed part, moisture and four overlay rasters per
@@ -130,6 +130,7 @@ export function keptKeyframeBytesModel(tier: QualityTier, cells: number, columns
   const volume = tier === 'fast' ? columns * nz * KEYFRAME_COLUMN_BYTES.perLevelWindOnly : 0;
   return keyframeBytesModel(tier, cells, columns, nz) - volume;
 }
+
 /** Light frame kept per display step (stats, bookkeeping; ui/snapshotStore.ts FRAME_BYTES). */
 export const FRAME_BYTES = 1024;
 /** Ember particles kept per step after thinning (typical; at most 64 KB each). */
