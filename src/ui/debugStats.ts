@@ -502,7 +502,7 @@ function sliceRecordingRow(f: SliceRecordingFacts, tier: QualityTier | undefined
   if (st.state === 'failed') return R('slice-recording', label, 'Stopped', 'The recorder met an error and stopped; the slice itself is not affected', true);
   if (st.state === 'off') return R('slice-recording', label, 'Off', st.offFor === 'preset' ? 'A preset follows the wind and the fire, so it is not recorded' : st.offFor === 'chord' ? 'The Layers line is not recorded' : undefined, true);
   const span = st.count > 0 ? spanWords(st, f.clock) : null;
-  if (st.state === 'waiting' || !span) return R('slice-recording', label, 'Waiting for the next picture', undefined, true);
+  if (st.state === 'waiting' || !span) return R('slice-recording', label, 'Waiting for the simulation to run', undefined, true);
   const air = tier ? (tier === 'fast' ? 'diagnosed wind' : '3-D air') : null;
   const note = [`Recorded from ${span}`, air, `${bytes(st.bytes / st.count)} a slice`].filter((x): x is string => !!x).join('; ');
   return R('slice-recording', label, `${st.count} ${st.count === 1 ? 'slice' : 'slices'}, ${bytes(st.bytes)} of ${bytes(st.budgetBytes)}`, note, true);

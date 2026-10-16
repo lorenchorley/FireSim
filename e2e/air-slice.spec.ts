@@ -124,6 +124,57 @@ const statusInView = (page: Page): Promise<boolean> =>
     return s.height > 0 && s.top >= 0 && s.bottom <= f.top + 1;
   });
 
+/**
+ * The repo's tap-target rule (scripts/audit-tap-targets.mjs) on the Air slices tool as it stands: every visible control in it is scrolled to the middle of its
+ * scroller and must have a 44 x 44 px hit area, judged by `elementFromPoint` at the four edge middles (21 px out) and the four diagonals (15 px out) of its
+ * centre. The gate runs that script on `?mock=1`, where there is no slice, so the buttons only a real slice shows are audited here. Says what was audited
+ * (by name, so a button that was never reached cannot pass unseen) and what missed.
+ */
+const tapAudit = (page: Page): Promise<{ audited: string[]; misses: string[] }> =>
+  page.evaluate(() => {
+    const sel = 'button, a[href], [role=button], [role=tab], [role=switch], label.toggle, label.check, label.radio, .segmented-option, input:not([type=hidden]), select, textarea, summary, [tabindex="0"]';
+    const probes = [[-21, 0], [21, 0], [0, -21], [0, 21], [-15, -15], [15, 15], [-15, 15], [15, -15]];
+    const audited: string[] = [];
+    const misses: string[] = [];
+    for (const el of new Set(document.querySelector('[data-testid="air-panel"]')!.querySelectorAll<HTMLElement>(sel))) {
+      const cs = getComputedStyle(el);
+      const r0 = el.getBoundingClientRect();
+      if (r0.width === 0 || r0.height === 0 || cs.visibility === 'hidden' || cs.display === 'none') continue;
+      if ((el as HTMLInputElement).disabled || el.getAttribute('aria-disabled') === 'true' || el.closest('[hidden], [inert]')) continue;
+      if (el instanceof HTMLInputElement && el.closest('label.toggle, label.check, label.radio, .segmented-option')) continue;
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue;
+      const name = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('data-testid') || '').trim().slice(0, 30);
+      audited.push(name);
+      const label = el.closest('label');
+      const missed = probes.filter(([dx, dy]) => {
+        const x = cx + dx!;
+        const y = cy + dy!;
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
+        const hit = document.elementFromPoint(x, y);
+        return !(hit && (el === hit || el.contains(hit) || (label && label.contains(hit))));
+      });
+      if (missed.length) misses.push(`${el.tagName.toLowerCase()} ${Math.round(r.width)}x${Math.round(r.height)} "${name}" misses ${missed.length}/8 probes`);
+    }
+    return { audited, misses };
+  });
+
+/** The tap audit of the tool at the two phone sizes the 44 px rule is judged at (this spec's own 412 x 915 first), with `button` among what it reached. */
+async function auditTaps(page: Page, button: string): Promise<void> {
+  for (const [w, h] of [[412, 915], [360, 640]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(800);
+    const { audited, misses } = await tapAudit(page);
+    expect(audited, `"${button}" is among the controls audited at ${w}x${h}`).toContain(button);
+    expect(misses, `every control of the tool has a 44 x 44 px hit area at ${w}x${h}`).toEqual([]);
+  }
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.waitForTimeout(800);
+}
+
 const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
 const cam = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as Handle).__firesim.view.cameraState());
 const frame = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
@@ -925,6 +976,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     // It sits in a row of its own right under Presets: 4 px between the drawn buttons, or their 44 px hit areas fight (scripts/audit-tap-targets.mjs flagged Presets at 2 px).
     const presetsBox = (await page.getByTestId('slice-presets-toggle').boundingBox())!;
     expect((await keep.boundingBox())!.y - (presetsBox.y + presetsBox.height), 'Keep this line is 4 px under Presets').toBeGreaterThanOrEqual(3.5);
+    await auditTaps(page, 'Keep this line'); // (the 4 px is for this: the 44 px hit areas of the two rows do not fight)
     await expect(clear).toBeHidden();
     expect((await recOf(page)).status).toMatchObject({ state: 'off', offFor: 'preset', count: 0 });
     await expect(footer).toContainText(/ · air from \d\d:\d\d/);
@@ -944,9 +996,9 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     // The button that was pressed is put away: focus goes to the status line, which scrolls into view (it is a screen below the controls) and says what happened.
     await expect(status).toBeFocused();
     expect(await statusInView(page), 'the status line is in view after Keep this line, not under the footer').toBe(true);
-    await expect(liveRegion(page)).toHaveText('Line kept. Recording from the next picture.');
+    await expect(liveRegion(page)).toHaveText('Line kept. Recording starts when the simulation next runs.');
     // paused at the head: nothing arrives unless the worker is still computing ahead, so "waiting" or already a picture
-    await expect(status).toHaveText(/^(Recording starts with the next picture\.|Recorded from \d\d:\d\d)/);
+    await expect(status).toHaveText(/^(Recording starts when the simulation next runs\.|Recorded from \d\d:\d\d)/);
     expect((await recOf(page)).status!.state).toMatch(/^(waiting|recording)$/);
     expect((await sliceOf(page))!.source).toBe('endpoints');
     expect(await popups(page), 'nothing pops up by itself').toEqual([]);
@@ -957,10 +1009,11 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(rec.state).toBe('recording');
     expect(rec.bytes).toBeGreaterThan(0);
     expect(rec.bytes).toBeLessThanOrEqual(rec.budgetBytes);
-    await expect(status).toHaveText(/^Recorded from \d\d:\d\d to \d\d:\d\d, (every picture|about every .+)\.$/);
+    await expect(status).toHaveText(/^Recorded from \d\d:\d\d to \d\d:\d\d \((every picture kept|about every .+)\)\.$/);
     await expect(clear).toBeVisible();
     expect((await clear.boundingBox())!.height).toBeGreaterThanOrEqual(40);
     await expect(keep).toBeHidden();
+    await auditTaps(page, 'Clear recording');
   });
 
   await test.step('scrubbed inside the span, the picture reads the recorded air: the footer says "recorded air from" and how old', async () => {
@@ -1013,7 +1066,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(r.recordedAt, 'the 0.4.0 slice').toBeNull();
     await expect(footer).not.toContainText('recorded');
     await expect(footer).toContainText(/air from \d\d:\d\d/);
-    await expect(status).toHaveText(/^Recorded from \d\d:\d\d\. This time is earlier, so it uses the history's saved air, which can be older\.$/);
+    await expect(status).toHaveText(/^Recorded from \d\d:\d\d, as far ahead as the simulation had run\. This time is earlier, so it uses the history's saved air, which can be older\.$/);
   });
 
   await test.step('the Layers panel says what turning the line or switching the slice off does to the recording', async () => {
@@ -1035,7 +1088,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     const again = await recordUntil(page, 4, 150);
     expect(again.dropped).toBe('line');
     expect(again.count).toBeGreaterThanOrEqual(4);
-    await expect(status).toHaveText(/^The line changed, so the old recording was dropped\. Recording again from \d\d:\d\d( to \d\d:\d\d, (every picture|about every .+))?\.$/);
+    await expect(status).toHaveText(/^The line changed, so the old recording was dropped\. Recording again from \d\d:\d\d( to \d\d:\d\d \((every picture kept|about every .+)\))?\.$/);
   });
 
   await test.step('Clear recording empties the recorder at once, says so, and the line stays', async () => {
@@ -1046,11 +1099,11 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await expect(clear).toBeVisible();
     await clear.scrollIntoViewIfNeeded();
     await clear.click();
-    await expect(liveRegion(page)).toHaveText('Recording cleared. Recording again from the next picture.');
+    await expect(liveRegion(page)).toHaveText('Recording cleared. Recording starts when the simulation next runs.');
     await expect(clear).toBeHidden();
     await expect(status, 'focus goes to the status line, as after Keep this line').toBeFocused();
     expect(await statusInView(page), 'the status line is in view after Clear recording, not under the footer').toBe(true);
-    await expect(status).toHaveText(/^Recording cleared\. (Recording starts with the next picture\.|Recording again from \d\d:\d\d\.)/);
+    await expect(status).toHaveText(/^(Recording cleared\. Recording starts when the simulation next runs\.|Recorded from \d\d:\d\d)/);
     const r = await recOf(page);
     expect(r.status).toMatchObject({ dropped: 'cleared', count: 0 });
     expect(r.recordedAt, `the slice shown (recorded at ${shown.recordedAt}) is a live one again`).toBeNull();
@@ -1062,6 +1115,9 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
   await test.step('switching the slice off in the Layers panel clears the recording, and nothing popped up on the way', async () => {
     await recordUntil(page, 2, 30);
     expect((await recOf(page)).status!.count).toBeGreaterThanOrEqual(2);
+    // "Recording cleared." was said at the press (above); once the recording holds pictures again the status line is just the recording
+    await expect(status).toHaveText(/^Recorded from \d\d:\d\d/);
+    await expect(status).not.toContainText('cleared');
     await page.getByTestId('air-close').click();
     await page.getByTestId('layers-fab').click();
     await page.getByTestId('layers-panel').getByTestId('cross-section').click();
