@@ -315,7 +315,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: 'Wind speed map',
     short: 'The ground coloured by wind speed',
-    body: 'A heat map in Layers, under Fire and weather: the wind 10 m above the ground, place by place, in km/h. It works on the 3-D atmosphere and on the fast model too. On the fast model it shows the diagnosed wind, the forecast wind fitted to the terrain, without the night-time, slope-wind and fire effects that the fast model adds for the fire itself. Like the other fire and weather maps it needs a fire marked first.',
+    body: 'A heat map in Layers, under Fire and weather: the wind 10 m above the ground, place by place, in km/h, as the air model gives it. It works on the 3-D atmosphere and on the fast model too. On the fast model it shows the diagnosed wind, the forecast wind fitted to the terrain, without the night-time, slope-wind and fire effects that the fast model adds for the fire itself. It is not always the wind the fire feels. On a windy day or night the two agree closely, but on a calm night they can differ a lot, on both the fast model and the 3-D atmosphere: in places the fire feels much less wind than the map shows, and in others much more. Like the other fire and weather maps it needs a fire marked first.',
   },
   {
     term: 'Canopy height',

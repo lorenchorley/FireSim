@@ -13,7 +13,7 @@ import { compassWord } from '../explain/text';
 import type { MapMarker } from '../render/api';
 import { rockDetailCount } from '../render/cliffDrawing';
 import { LAYER_CATALOG, type AvailabilityContext } from '../render/layerCatalog';
-import { sliceLegend } from '../render/legends';
+import { legendFor, sliceLegend } from '../render/legends';
 import { MIN_HIT_PX } from '../render/markerPick';
 import { sampleRamp, sliceFieldScale } from '../render/palette';
 import { probeSentence } from '../render/slice/probe';
@@ -321,6 +321,12 @@ describe('Help and glossary: the 0.4.0 entries say what the Air slices screens s
     const b = entry('Wind speed map').body;
     expect(b).toContain('on the fast model too');
     expect(b).toContain('needs a fire marked first');
+    // The limitation measured in 0.4.0 (plan 18.4): the map is the air model's 10 m wind, which on a calm night is not the wind the fire feels, on either tier. The map's own words say it too.
+    expect(b).toContain('It is not always the wind the fire feels');
+    expect(b).toContain('on a calm night they can differ a lot, on both the fast model and the 3-D atmosphere');
+    const why = LAYER_CATALOG.find((l) => l.id === 'windSpeed')!.why;
+    expect(why).toContain('on a calm night the wind the fire feels can differ a lot from this map');
+    expect(legendFor('windSpeed')!.note).toContain('on a calm night can differ a lot from the wind the fire feels');
   });
 });
 

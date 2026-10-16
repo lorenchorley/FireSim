@@ -58,8 +58,9 @@ Most new pictures also exist in `-dark` and `-high-contrast` versions in `docs/s
 screen has both, the speed sheet and Settings a `-dark` one, and the others are light only); the design system and the screens on
 their own are in `docs/screenshots/design/` (`scripts/app-screenshots.mjs`).
 
-The pictures of 0.4.0 (Air slices) are made by one more test of the same spec, `gallery 0.4.0: the Air slices tool ...`. They are
-written into `docs/screenshots/` when the pictures are regenerated for the release; until then these four files do not exist.
+The pictures of 0.4.0 (Air slices) are made by two more tests of the same spec, `gallery 0.4.0: the Air slices tool placing a line ...`
+(33, 34 and 35) and `gallery 0.4.0: the side view on the fast model ...` (34b). They are written into `docs/screenshots/` when the pictures
+are regenerated for the release; until then these four files do not exist.
 
 | | | | |
 |---|---|---|---|
@@ -118,7 +119,7 @@ written into `docs/screenshots/` when the pictures are regenerated for the relea
   flames, smoke, embers, wind streaks, insight markers; and *Heat maps*, every data layer as a colour map of the ground (cool = little,
   warm = much), one at a time, optionally **on its own** (the photo and the trees step aside): ground height, landform, slope, aspect,
   sunlight, tree height and cover, shrub height, the four fuel hazards (leaf litter, grass and low shrubs, shrubs, bark), grass curing,
-  fuel type and load, years since fire, wildfire or prescribed burn, homes per hectare, distance to a road, wind speed (on both tiers: the fast model shows its diagnosed 10 m wind), litter moisture
+  fuel type and load, years since fire, wildfire or prescribed burn, homes per hectare, distance to a road, wind speed (on both tiers: the fast model shows its diagnosed 10 m wind; on a calm night it is not the wind the fire feels, see *Limits* under *Air slices and the air picture*), litter moisture
   and the fire results (arrival time with isochrones, spread rate, intensity, spread driver, flame attachment, VLS, dead man zone, ember
   landings). A layer that cannot be shown says why ("Needs a fire: mark one first"). Your choices are remembered for the next run.
 - **Places**: roads, RFS fire trails, homes, residential zones and place names are official NSW open data, bundled for the demo
@@ -166,7 +167,7 @@ written into `docs/screenshots/` when the pictures are regenerated for the relea
 | Version | What it is | State |
 |---|---|---|
 | 0.3.0 (versionCode 6) | night lighting, picture quality, the debug statistics, the honest speed signal, the cliff drawing, tap on an icon | built and checked on the real app in software rendering; not seen on a phone |
-| **0.4.0** (versionCode 7) | the **air data foundation** (every tier publishes a 3-D wind that can be sliced, exact near-ground sampling, capability flags) and **Air slices**, the side view | built and checked the same way; not seen on a phone. What was built and what the checks found: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 18 |
+| **0.4.0** (versionCode 7) | the **air data foundation** (every tier publishes a 3-D wind that can be sliced, exact near-ground sampling, capability flags) and **Air slices**, the side view | built and checked the same way; not seen on a phone. `package.json` and `android/app/build.gradle` still say 0.3.0 (versionCode 6) until the release is cut. What was built and what the checks found: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 18 |
 | 0.3.1 (optional) | rock in the fire model (a wall that means bare rock, part-rock cells) and a speed test button | waits for someone who knows the escarpments to re-label the aerial tiles of spike S6 |
 | 0.4.1 (optional) | a time-lapse recorder for a pinned Air slice line | not started |
 | 0.5.0 (versionCode 8) | a horizontal wind slice and wind glyphs that get more detailed as you zoom (the Air slices tool's Map view tab) | not started |
@@ -521,7 +522,7 @@ ground on the line to 2,000 m over the highest or the model top. It draws:
   while the panel is hidden or the page is in the background), or, when the phone is set to reduce motion, a still lattice of arrows;
 - the **probe**: tap or drag on the picture (or use the arrow keys on the focused picture; Escape or the small X clears it) and one
   sentence reads the air there, for example "Wind about 32 km/h from the north-west, along the line 28 km/h towards B, up 1.4 m/s, 60 m
-  above ground, 3 K warmer than the area", with a pin on the map. Points inside the ground, below the model's own ground or above its top
+  above ground, 3 K warmer than average", with a pin on the map. Points inside the ground, below the model's own ground or above its top
   get a short sentence that says so;
 - the **chips**, a legend and the **footer** (below).
 
@@ -531,7 +532,7 @@ ground on the line to 2,000 m over the highest or the model top. It draws:
 | Along | the wind along the line: purple towards A, green towards B | a 3-D wind |
 | Up/down | air rising (warm colours) or sinking (cool colours), -4 to +8 m/s | a 3-D wind |
 | Across | the wind across the line: purple towards the left, green towards the right of someone walking from A to B | a 3-D wind |
-| Temp | warmer or cooler than the rest of the slice's air at that height, in kelvin (-10 to +20 K) | the 3-D atmosphere |
+| Temp | warmer or cooler than the average of the slice at that height, in kelvin (-10 to +20 K) | the 3-D atmosphere |
 | Smoke | the model's smoke concentration on a **log scale**, four steps of ten from 0.0001 to 1 | the 3-D atmosphere |
 
 On the fast tier Temp and Smoke are off with the reason in words and a *Use the 3-D atmosphere* button, which switches the run over (it
@@ -539,7 +540,9 @@ restores the last checkpoint and computes again). Along and Across share one div
 the wind; wind direction is always reported as where it comes **from**, with the hyphenated eight-point word ("north-west"). The footer
 is always in view: **kind · model grid · age**, for example "3-D time-stepped air · model grid 133 m · air from 11:25" or "Diagnosed wind:
 terrain effects only · model grid 133 m · air from 11:25", and "(4 min before the time shown)" is added when the air is more than 90 s
-older than the picture, as it can be after jumping back (the picture is composed from the saved air at or before that time).
+older than the picture. That is usual, not rare: only the newest picture of a run has air made at its own time, every earlier one is composed
+from the saved air (kept about every 5 minutes, `SnapshotStore` keyframes) at or before its time, so the footer can say 2 to 5 minutes
+while the run plays at 60 x (as seen when the build was checked), and not only after jumping back.
 
 In short landscape (844 x 390) the picture and a one-line footer stay pinned at the top of the panel, the chips and controls scroll
 under them, and the footer keeps the kind, the grid and the age but drops their explanations.
@@ -563,7 +566,7 @@ wind (terrain effects only). Use the 3-D atmosphere to see the plume, temperatur
 | `time` | the simulation time the air was made at, which is what "air from 11:25" says |
 
 The 3-D tier's `view()` ships fresh copies of its native arrays (nothing resampled, no zeros under the ground). The old flat view blended
-the zeros under the ground into every sample near a hill: a test over a 700 m ridge shows it reading up to 97.6 % low at 30 m above the
+the zeros under the ground into every sample near a hill: a test over a 700 m ridge shows it reading up to 96.4 % low at 30 m above the
 ground (33 % on average across the ridge). The fast tier's `view()` now carries the stamp-blended wind it already had inside, the *diagnosed
 wind*: the forecast profile fitted to the terrain by the mass-consistent solve, once per weather record and blended in time, with the
 user's wind edits. It has none of the extras the fire's own 2-D wind adds (night-time decoupling, slope flows, the lee blend, the fire's
@@ -582,18 +585,25 @@ test log). Its allocation-free entry points (`windP` for the wind, `fieldsP` for
 **What it costs** (measured in node on the build machine, one run each; `[atmos perf]`, `[slice perf]` lines in the test logs): the air
 view takes 0.60 ms per snapshot on the fast tier (498 kB, 45 x 45 x 20) and 0.77 ms on the standard tier (815 kB); one slice update
 (resolve the line, the four preset checks, sample, the model's cells) takes a median of 0.5 to 1.0 ms and a 95th percentile of up to
-1.5 ms, and allocates about 6 kB of result objects and 35 bytes in the reused arrays; one streak step takes 0.05 ms. These are desktop
-numbers: the plan's limit of 8 ms at 4x CPU throttle was not measured, and nothing was measured on a phone. **Memory:** the fast tier's
+1.5 ms, and allocates about 6 kB of result objects and 35 bytes in the reused arrays; one streak step takes 0.05 ms. These vary from run to
+run (in later runs `view()` took 0.40 to 0.60 ms on the fast tier, `windP` 100 to 130 ns, `fieldsP` 182 to 260 ns, a streak step 0.041 to 0.05 ms,
+a probe with its sentence 2.9 to 5.5 us and the update's 95th percentile reached 1.59 ms) and they are desktop numbers. Under a 4x CPU throttle in a
+desktop browser (still not a phone) the compute alone had a 95th percentile of 7.1 ms on the fast tier and 8.9 ms on the 3-D tier, against the
+plan's limit of 8 ms, and the whole update with the panel's redraw and the curtain 18 and 33 ms (plan section 18.3, item 18). **Memory:** the fast tier's
 volume adds 474.6 KiB to every keyframe of the history (u, v and w, 12 bytes per cell of 45 x 45 x 20), about 35 MB over the 72 keyframes
 of a 6 hour run, so the history budget (about 6 % of the device's memory) thins old pictures a little earlier on small phones; the Data
 sets memory model (`keyframeBytesModel`) counts it. The panel, its drawing, the streaks, the probe and its styles are one lazy chunk that
 loads the first time the tool opens (gzip size in *Build the phone apps* below); the tool's shell and the scene glue are in the entry.
 
 **Limits.** The side view's picture was judged on still frames and a real browser in software rendering, not on a phone. It reads the
-model's air: the diagnosed wind on the fast tier is the forecast wind where the terrain bends it, and at night or in a valley the wind the
-fire feels there can be quite different. The curtain's ground is the 10 m terrain as received, so a cliff the 3-D view draws steeper is
-drawn at its data slope in the curtain. Temp is "warmer or cooler than the rest of the slice at that height", not a real temperature and
-not against the whole area (the probe sentence and the legend title still say "than the area"). For lines longer than about 4 km the
+model's air, and the air is not always the wind the fire feels: the diagnosed wind on the fast tier is the forecast wind where the terrain
+bends it, and on a calm night the wind the fire feels can differ a lot from the published 10 m wind that the slice and the wind speed map
+show, on both tiers (in the one case measured, a calm-night preset on the fast tier, about 1 cell in 6 had less than half of the
+published 10 m wind and about 1 in 5 more than one and a half times it; on a windy day or night the two agree closely; the numbers are
+in section 18.4 of the plan). The curtain's ground is the 10 m terrain as received, so a cliff the 3-D view draws steeper is
+drawn at its data slope in the curtain. Temp is "warmer or cooler than the average of the slice at that height" (the probe says "than
+average"), not a real temperature and not against the whole area; because the average is of the line's own air, on a short line through a
+plume the chip understates the plume, which is part of what it is compared with. For lines longer than about 4 km the
 true-scale picture is shorter than its box and the room above it is blank. The builders also reported, and this page did not re-check, that
 the landscape panel leaves only about 44 px for the chips and controls to scroll in, that the *Use the 3-D atmosphere* button is just below
 the fold in portrait on the fast tier, and that the Tools dial scrolls at 360 x 640. The time-lapse recorder is 0.4.1.
@@ -790,6 +800,17 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   with the reason and the button on the fast tier, the probe (tap, drag, arrow keys, Escape, the clear button), "Show model cells", the
   honest footer in view, landscape 844 x 390 (the picture and footer pinned, chips and controls scrolling), reduced motion (arrows, a
   picture that holds still) and moving streaks otherwise.
+- `e2e/air-slice.spec.ts` (5 tests): the whole Air slice at once, the tool, the curtain and the panel, on both tiers, for the seams the three
+  lane specs above do not reach. A and B placed with the cross after a real touch pan and a tap (the line the scene computed is the one
+  placed, and the panel draws it), every preset ("Me to fire" off with its reason), the chips (six on the 3-D air; Temp and Smoke off on
+  the fast tier with the scene's reason and the button in view; the panel's chips and the Layers panel's chips are one state, both
+  ways), the probe by tap and arrow keys with the pin moving along the line, "Show model cells", the footer and "air from" also with the
+  time scrubbed back, landscape, Escape, Back and focus return, the curtain staying when the tool closes, one-finger pan and the pinch
+  with the tool open, the button that switches the run to the 3-D atmosphere, reduced motion, high contrast, the dark look, the vertical
+  exaggeration, and the 2-D stand-in map drawing the placed line.
+- `e2e/air-curtain-gpu.spec.ts` (1 test): the curtain leaks no GPU objects. The section is switched on and off, the line, its length (four
+  lengths, so the lattice changes size), the preset and the chip are changed, 60 times, and the renderer holds the same number of
+  geometries and textures at the end as after a warm-up (the Layers spec does the same for every other layer).
 - `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
@@ -984,8 +1005,9 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   a 6 hour run), so thinning starts a little earlier; the whole snapshot size was not measured again.
 - Air slices (0.4.0, see *Air slices and the air picture*): seen only in software rendering and in node tests, never on a phone, so the
   streaks' frame rate, the panel's feel with gloves and the chunk's load time on a phone are open. On the fast tier the slice shows the
-  forecast wind fitted to the terrain, not the wind the fire feels, and it says so in the footer; Temp is relative to the slice's own
-  air at each height; the time-lapse recorder (0.4.1) and the Map view tab (0.5.0) are not built.
+  forecast wind fitted to the terrain, not the wind the fire feels, and it says so in the footer; on a calm night the 10 m wind that both
+  tiers publish, which the slice and the wind speed map show, can differ a lot from the wind the fire feels; Temp is relative to the slice's
+  own air at each height, so on a short line through a plume it understates the plume; the time-lapse recorder (0.4.1) and the Map view tab (0.5.0) are not built.
 - Places data are what the NSW services hold: a track that is not mapped is not drawn, a home without an address point is not
   counted, and the zoning layer is the planning map, not what is built. The 3-D trees are decorative (placed from canopy cover and
   height); the fire and the air do not see individual trees.

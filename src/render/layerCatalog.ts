@@ -127,9 +127,9 @@ export interface LayerScenario {
   /** Pixel size of the aerial photo (m). */
   imageryCellSize?: number;
   /**
-   * True when the 3-D atmosphere is running, false in the fast mode (a surface wind fitted to the terrain: no smoke
-   * field, no wind through the plume). Absent = not known (before the engine reports): the layers are described for
-   * the 3-D atmosphere and the fast mode is not mentioned.
+   * True when the 3-D atmosphere is running, false in the fast mode (the forecast wind fitted to the terrain, published
+   * as a diagnosed 3-D wind: terrain effects only, no smoke field, no plume, no temperature). Absent = not known
+   * (before the engine reports): the layers are described for the 3-D atmosphere and the fast mode is not mentioned.
    */
   atmosphere3d?: boolean;
   /** Resolution (m) of the ground heights as published (5 for the NSW model of the demo sites, about 30 for SRTM). */
@@ -633,7 +633,7 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     group: 'Fire and weather',
     title: 'Wind speed',
     what: 'How fast the wind is blowing near the ground, place by place.',
-    why: 'Wind is the biggest driver of a fire, and ridges and gaps funnel it hardest.',
+    why: 'Wind is the biggest driver of a fire, and ridges and gaps funnel it hardest; on a calm night the wind the fire feels can differ a lot from this map.',
     kind: 'heat',
     heat: heat('windSpeed', 'km/h'),
     dimension: '2.5-D terrain',
@@ -838,12 +838,12 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     available: always,
     source: (sc) =>
       sc?.atmosphere3d === false
-        ? 'The fast mode’s surface wind: the forecast wind bent around the terrain, computed on this device (no wind through the plume)'
+        ? 'The fast mode’s diagnosed wind: the forecast wind fitted to the terrain, computed on this device (terrain effects only, so there is no plume in it)'
         : 'FireSim 3-D atmosphere (or the weather forecast wind where the atmosphere is off), computed on this device',
     resolution: (sc) =>
       sc?.atmosphereCellSize
-        ? `${sc.atmosphereCellSize} m grid${sc.atmosphere3d === false ? ', surface wind only' : ' of atmosphere cells'}, drawn as streaks`
-        : `${sc?.atmosphere3d === false ? 'A surface wind field' : '100 to 270 m atmosphere cells'}, drawn as streaks`,
+        ? `${sc.atmosphereCellSize} m grid of ${sc.atmosphere3d === false ? 'wind cells (the diagnosed wind)' : 'atmosphere cells'}, drawn as streaks`
+        : `${sc?.atmosphere3d === false ? 'Wind cells of the diagnosed wind' : '100 to 270 m atmosphere cells'}, drawn as streaks`,
   },
   {
     id: 'crossSection',
@@ -900,12 +900,12 @@ export function layerFactsOfDatasets(datasets: readonly DatasetRecord[] | undefi
 }
 
 /**
- * How a layer is drawn in THIS scenario. The smoke and the wind streaks are a 3-D volume only with the 3-D atmosphere; in
- * the fast mode (a surface wind fitted to the terrain) the smoke is one drawn column and the streaks follow a surface
- * wind, so both are objects drawn in the 3-D scene, not a field through the air.
+ * How a layer is drawn in THIS scenario. The smoke is a 3-D volume only with the 3-D atmosphere; in the fast mode (no
+ * smoke field) it is one drawn column, an object in the 3-D scene. The wind streaks stay a 3-D volume on both: the fast
+ * mode publishes its diagnosed wind through the air (terrain effects only), and the streaks read it like the 3-D wind.
  */
 export function layerDimension(info: LayerInfo, sc?: LayerScenario): LayerDimension {
-  if (sc?.atmosphere3d === false && (info.id === 'smoke' || info.id === 'wind')) return '3-D objects';
+  if (sc?.atmosphere3d === false && info.id === 'smoke') return '3-D objects';
   return info.dimension;
 }
 

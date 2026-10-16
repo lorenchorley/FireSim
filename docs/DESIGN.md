@@ -109,7 +109,7 @@ wherever that fits on one line (360 px phones and wider at normal text size, 412
 
 Map marks (the same in every theme: they are drawn over the aerial photo and the 3-D terrain, which do not follow the theme): `--map-halo`
 `#fff` (strokes and glyphs on the map), `--map-halo-veil` (white 20 %), `--map-shade` `#000` (the dark halo), `--map-pin` `#202124`, and the
-fire marks' data colours `--mark-observed` `#e02424`, `--mark-spot` `#ff8c1a`, `--mark-backburn` `#7b3fe4`.
+fire marks' data colours `--mark-observed` `#e02424`, `--mark-spot` `#ff8c1a`, `--mark-backburn` `#7b3fe4`, and the Air slice's `--mark-slice` `#00796b` (its line, its A and B discs and the probe's pin).
 
 The look of the 3-D ground is the renderer's, not a design token: it does not follow the theme, and the rock walls of the cliff drawing
 (0.3.0, display only) are sandstone in linear light inside the terrain shader (the palette's `ROCK` `#a4927a` and `ROCK_DARK` `#6d5f50`),
@@ -128,7 +128,7 @@ purple and green, which are neither the blue and red of temperature nor the blue
 | Along | `ALONG_RAMP` | -25 to +25 m/s (-90 to +90 km/h) | pale at 0 | purple towards A, green towards B |
 | Across | `ALONG_RAMP` | the same | pale at 0 | purple towards the left, green towards the right of someone walking from A to B |
 | Up/down | `UPDRAFT_RAMP` | -4 to +8 m/s | pale at 0 | sinking (blue) to rising (orange to red); the range is not symmetric |
-| Temp | `THETA_RAMP` | -10 to +20 K | pale at 0 | warmer or cooler than the rest of the slice's air at the same height |
+| Temp | `THETA_RAMP` | -10 to +20 K | pale at 0 | warmer or cooler than the average of the slice at that height (`SLICE_THETA_BASIS`: the legend's title and the chip's name use these words, the probe says "than average") |
 | Smoke | `SMOKE_RAMP` | 0.0001 to 1, **a log scale** | none: below the first stop is the palest | pale warm grey to dark brown-grey; every step along the bar is ten times more smoke |
 
 `ALONG_RAMP` is new in 0.4.0: a diverging ramp whose stops are mirror images with the same luminance (relative luminance 0.06 at both ends
@@ -530,10 +530,12 @@ the tool next, and focus goes back to the Tools button. *Presets* folds out a tw
 expander).
 
 *On the map* (inline SVG in `.annotations`, drawn only while the tool is open and only re-projected per frame then): A and B are 15 px discs with
-a white letter (a dashed ring with a dark letter while the point is only tapped and not yet placed), the line is a 4 px stroke with a dark halo,
-and the probe's pin is a white disc with a ring and a dot. They share one literal teal, `#00796b`, set inline in `sliceTool.ts` (`SLICE_INK`),
-like the other map marks' inline styles. **It is not a token** and `check:contrast` does not see it (it reads stylesheets): a token for it,
-and a contrast check against the aerial photo, are not done.
+a white letter (a dashed ring with a teal letter while the point is only tapped and not yet placed), the line is a 4 px stroke with a white
+8 px halo (`.ann-stroke-casing`), and the probe's pin is a white disc with a ring and a dot. They share one token, `--mark-slice` (`#00796b`),
+which `sliceTool.ts` reads as `SLICE_INK = 'var(--mark-slice)'`, so `check:contrast` sees it. Its pairs are the teal against its white halo
+`--map-halo` (5.32:1, a UI pair, which `npm run check:contrast` prints) and the white letter on the teal disc, which is the same 5.32:1 and
+bold 19 px, so it counts as large text (3:1 is needed, and 4.5:1 in the high-contrast looks; it would not pass the 7:1 of small text there). What is not done is a
+check against the aerial photo behind the halo: the halo carries the edge there.
 
 *The picture.* A `<canvas class="slice-canvas">` `clamp(180px, 27vh, 230px)` high, `--r-sm` corners, `touch-action: none` (a drag moves the probe,
 not the panel), `role="img"` with a text alternative ("Side view of the air along a 6 km line from A to B, coloured by wind speed. The arrow keys
@@ -567,9 +569,12 @@ about 32 km/h"); a wind is named by where it comes **from** with the hyphenated 
 along and across parts say which way the air goes in the picture ("towards A", "towards B", "to the right", "to the left"); vertical motion in
 metres per second whichever speed unit is chosen; heights are "above sea level" on the axis and "above ground" in the sentence (against the 10 m
 ground); K is a difference, so "3 K warmer" and never a temperature; "diagnosed wind" and "terrain effects only" wherever the air is the fast
-model's; a disabled thing always says why, in a sentence, near it. The probe sentence and the legend's title still say "than the area" for the
-temperature, where the number is against the slice's own air at that height (the legend's teaching sentence says it exactly): a wording the
-lanes left, to be made exact.
+model's; a disabled thing always says why, in a sentence, near it. The temperature is against the slice's own air, so it is never called
+"than the area": the probe says "3 K warmer than average" (or "about average temperature" under half a kelvin), the legend's title says
+"Warmer or cooler than the average of the slice at that height" and the chip is named "Air temperature against the average of the slice at
+that height" (one constant, `SLICE_THETA_BASIS`), and the legend's sentence and Help say what the average is. **A design point:** because the
+average is taken over the line's own air, on a short line through a plume the Temp chip understates the plume (the plume is part of what it is
+compared with); a longer line, with more ordinary air in each row, would understate it less.
 
 **Never**: a pop-up, a toast or a dialog because of something the simulation did. New insight cards only raise the badge on the Insights tab. Dialogs
 open from a tap (`confirmDialog` for deletions, the safety notice, "Leave this simulation?").

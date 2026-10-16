@@ -449,7 +449,7 @@ const LEGENDS: Partial<Record<Exclude<OverlayKind, 'none'>, Legend>> = {
     kind: 'ramp',
     title: 'Wind speed near the ground',
     unit: 'km/h',
-    about: 'Wind is the biggest driver of a fire: it speeds the fire up sharply, and ridges and gaps funnel it hardest.',
+    about: 'Wind is the biggest driver of a fire and ridges and gaps funnel it hardest; this map shows the model’s wind about 10 m above the ground, fitted to the terrain, which on a calm night can differ a lot from the wind the fire feels.',
     stops: [{ colour: '#3f82c8', label: '0' }, { colour: '#4bb3c4', label: '10' }, { colour: '#a8d98a', label: '20' }, { colour: '#f4e04d', label: '30' }, { colour: '#f28c28', label: '40' }, { colour: '#cf2f2f', label: '50' }, { colour: '#6a1150', label: '60+' }],
     gradient: 'linear-gradient(to right, #3f82c8 0%, #48a7c5 13%, #7ac6a7 25%, #bbdb7b 38%, #f4e04d 50%, #f3a131 63%, #e15e2c 75%, #b62837 88%, #6a1150 100%)',
   },

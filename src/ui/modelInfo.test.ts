@@ -178,12 +178,12 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     const lines = block.groups.flatMap((g) => g.layers);
     expect(lines.map((l) => l.id).sort()).toEqual(LAYER_CATALOG.map((l) => l.id).sort());
     expect(lines.find((l) => l.id === 'slope')!.resolution).toContain('30 m cells');
-    expect(lines.find((l) => l.id === 'wind')!.resolution).toContain('100 m grid, surface wind only');
+    expect(lines.find((l) => l.id === 'wind')!.resolution).toContain('100 m grid of wind cells (the diagnosed wind)');
     expect(lines.find((l) => l.id === 'placeNames')!.dimension).toBe('2-D labels');
     expect(block.dimensions.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('fast tier: the smoke is one drawn column and the wind streaks follow a surface wind, never a 3-D volume (as the At a glance rows say)', () => {
+  it('fast tier: the smoke is one drawn column, and the wind streaks follow the diagnosed wind, which is a 3-D volume of wind (as the At a glance rows say)', () => {
     const block = card.sections.find((s) => s.id === 'layers')!.blocks[0]!;
     if (block.type !== 'layers') throw new Error('layers block');
     const lines = block.groups.flatMap((g) => g.layers);
@@ -191,8 +191,9 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expect(smoke.dimension).toBe('3-D objects');
     expect(smoke.resolution).toContain('One drawn column');
     expect(smoke.resolution).toContain('no smoke field');
-    expect(lines.find((l) => l.id === 'wind')!.dimension).toBe('3-D objects');
-    expect(lines.filter((l) => l.dimension === '3-D volume').map((l) => l.id)).toEqual([]);
+    // The fast tier publishes its diagnosed wind through the air (plan 7.3), so the streaks read a field through the air; the smoke does not.
+    expect(lines.find((l) => l.id === 'wind')!.dimension).toBe('3-D volume');
+    expect(lines.filter((l) => l.dimension === '3-D volume').map((l) => l.id)).toEqual(['wind']);
     // The same card says so in the glance row.
     expect(row(card, 'smoke').dimensions).toMatch(/^Drawn only/);
   });
