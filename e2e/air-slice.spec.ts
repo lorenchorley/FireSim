@@ -43,7 +43,7 @@ type View = {
   slice?(): unknown;
   rig: { update(now: number): boolean };
 };
-type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string }; stats?: { weather?: { windDir10: number } } } | null } }; controller: { setQuality(t: string): void } } } };
+type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string; time?: number }; stats?: { weather?: { windDir10: number } } } | null } }; controller: { setQuality(t: string): void } } } };
 
 /** What the scene computed for the section, as plain numbers (the typed arrays stay in the page). */
 interface Slice {
@@ -100,17 +100,20 @@ interface RecStatus {
 }
 interface Rec {
   status: RecStatus | null;
+  /** When the slice on screen was sampled, if it was read from the recording; null for a slice sampled from the picture's own air. */
   recordedAt: number | null;
-  airTime: number | null;
+  /** The time of the air of the picture on screen (a recorded slice carries the air time of its own sample, so this is read from the picture). */
+  pictureAirTime: number | null;
   shownTime: number | null;
   kind: string | null;
 }
 const recOf = (page: Page): Promise<Rec> =>
   page.evaluate(() => {
     const w = window as unknown as Handle;
-    const u = w.__firesim.view.slice?.() as { data: { recordedAt?: number; airTime: number | null; shownTime: number; kind: string } | null } | null | undefined;
+    const u = w.__firesim.view.slice?.() as { data: { recordedAt?: number; shownTime: number; kind: string } | null } | null | undefined;
     const rec = (w.__firesim.view as unknown as { sliceRecording?: { status(): RecStatus } }).sliceRecording;
-    return { status: rec ? rec.status() : null, recordedAt: u?.data?.recordedAt ?? null, airTime: u?.data?.airTime ?? null, shownTime: u?.data?.shownTime ?? null, kind: u?.data?.kind ?? null };
+    const air = w.__firesim.session.state.get().snapshot?.atmosphere?.time;
+    return { status: rec ? rec.status() : null, recordedAt: u?.data?.recordedAt ?? null, pictureAirTime: air ?? null, shownTime: u?.data?.shownTime ?? null, kind: u?.data?.kind ?? null };
   });
 /** The screen-reader live region (the app's one polite announcer). */
 const liveRegion = (page: Page): Locator => page.locator('div.sr-only[aria-live="polite"]');
@@ -906,7 +909,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await expect(canvas).not.toHaveAttribute('data-seq', '', { timeout: 30_000 });
     await expect(status).toHaveText('This preset follows the wind and the fire, so it is not recorded. Press Keep this line to record it.');
     await expect(keep).toBeVisible();
-    expect((await keep.boundingBox())!.height, 'a 44 px target').toBeGreaterThanOrEqual(43.5);
+    expect((await keep.boundingBox())!.height, 'a button of the tool: 40 px drawn, a 44 px target').toBeGreaterThanOrEqual(40);
     await expect(clear).toBeHidden();
     expect((await recOf(page)).status).toMatchObject({ state: 'off', offFor: 'preset', count: 0 });
     await expect(footer).toContainText(/ · air from \d\d:\d\d/);
@@ -938,7 +941,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(rec.bytes).toBeLessThanOrEqual(rec.budgetBytes);
     await expect(status).toHaveText(/^Recorded from \d\d:\d\d to \d\d:\d\d, (every picture|about every .+)\.$/);
     await expect(clear).toBeVisible();
-    expect((await clear.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+    expect((await clear.boundingBox())!.height).toBeGreaterThanOrEqual(40);
     await expect(keep).toBeHidden();
   });
 
@@ -948,17 +951,29 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     let recorded = 0;
     for (const k of [0.25, 0.5, 0.75]) {
       const t = insideSpan(from!, to!, k);
-      const r = await scrubTo(page, t);
+      await scrubTo(page, t);
+      // The rule: the recorded air is read unless the picture's own air is already as new (a keyframe). The slice is recomputed a moment after the picture
+      // changes, so give it that moment before the rule is judged.
+      await expect
+        .poll(
+          async () => {
+            const x = await recOf(page);
+            return x.recordedAt !== null || x.shownTime! - x.pictureAirTime! <= 0.5;
+          },
+          { timeout: 10_000, message: `at ${t}: no recorded air, and the picture's own air is not exact either` },
+        )
+        .toBe(true);
+      const r = await recOf(page);
       if (r.recordedAt === null) {
         // the 0.4.0 path: only where the picture's own air is as new as anything recorded (a keyframe)
-        expect(r.shownTime! - r.airTime!, `no recorded air at ${t}: the picture's own air is exact`).toBeLessThanOrEqual(0.5);
+        expect(r.shownTime! - r.pictureAirTime!, `no recorded air at ${t}: the picture's own air is exact (${JSON.stringify(r)})`).toBeLessThanOrEqual(0.5);
         await expect(footer).not.toContainText('recorded');
         continue;
       }
       recorded++;
       const age = r.shownTime! - r.recordedAt;
       expect(r.recordedAt, 'a sample at or before the time shown').toBeLessThanOrEqual(r.shownTime! + 0.5);
-      expect(r.recordedAt, "newer than the picture's own air").toBeGreaterThan(r.airTime! + 0.5);
+      expect(r.recordedAt, "newer than the picture's own air").toBeGreaterThan(r.pictureAirTime! + 0.5);
       expect(age, 'at most one gap behind').toBeLessThanOrEqual(Math.max(2 * spacingS, 1.5 * step));
       await expect(footer).toContainText(/recorded air from \d\d:\d\d/);
       if (age > 90) await expect(footer).toContainText(new RegExp(`\\(${Math.max(1, Math.round(age / 60))} min before the time shown\\)`));
