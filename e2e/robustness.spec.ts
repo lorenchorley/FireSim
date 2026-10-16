@@ -425,6 +425,19 @@ test('determinism: the same scenario and seed give the same fire (arrival raster
   await setSpeed(page, 600);
   await page.getByTestId('play').click();
   await page.waitForTimeout(1500);
+  // A preset kept as a line of the Air slices tool, so the time-lapse recorder (0.4.1) records the air from the next picture on while the run plays. Run A has no slice
+  // and no recorder at all: a recorder that fed anything back into the simulation would show in the hashes below.
+  await openMenu(page, 'tools');
+  await page.getByTestId('tool-air').click();
+  await expect(page.getByTestId('air-panel')).toBeVisible();
+  await page.getByTestId('slice-presets-toggle').click();
+  await page.getByTestId('slice-preset-along').click();
+  await page.getByTestId('slice-keep').click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __firesim: { view: { sliceRecording?: { status(): { count: number } } } } }).__firesim.view.sliceRecording?.status().count ?? 0), { timeout: 60_000 })
+    .toBeGreaterThan(0);
+  await page.getByTestId('air-close').click();
+  step('B records an Air slice line');
   await pickTool(page, 'layers');
   const controls = await layerControls(page);
   const rand = rng(7);
