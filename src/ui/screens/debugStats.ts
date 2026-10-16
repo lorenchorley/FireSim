@@ -21,6 +21,7 @@ import { buildDebugStats, debugStatsToText, TITLE, type DebugStats, type DebugSt
 import { deviceInfoNow, deviceLater, deviceVolatile, type DeviceLater } from '../deviceInfo';
 import { h, setChildren, svg, text, uniqueId } from '../dom';
 import { eventLog, longTasks } from '../eventLog';
+import { formatClock } from '../format';
 import { icon } from '../icons';
 import type { Services } from '../modules';
 import { iconButton } from '../primitives';
@@ -44,6 +45,15 @@ const REFRESH_MS = 1000;
 /** The battery level and the storage in use are read again every this many refreshes. */
 const VOLATILE_EVERY = 15;
 const SITE_NAMES: Readonly<Record<string, string>> = Object.fromEntries(DEMO_SITES.map((s) => [s.id, s.name]));
+
+/** The Air slice recorder's report with the scenario's clock, or null where the view has no recorder (the 2-D map) or there is no run. */
+function sliceRecordingFacts(o: DebugStatsOptions): DebugStatsInput['sliceRecording'] {
+  const rec = o.view?.sliceRecording;
+  const sc = o.scenario;
+  if (!rec || !sc) return null;
+  const tz = sc.weather.timezone || 'Australia/Sydney';
+  return { status: rec.status(), clock: (t) => formatClock(sc.startTime + t * 1000, tz) };
+}
 
 /** What the app knows right now, gathered for the pure content. */
 function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInput {
@@ -76,6 +86,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInp
           range: snaps.range(),
         }
       : null,
+    sliceRecording: sliceRecordingFacts(o),
     historyBudget: { bytes: snaps?.maxBytes ?? defaultSnapshotBudget(), memoryGb: typeof mem === 'number' ? mem : null },
     heap: heap.available && heap.usedJSHeapBytes !== undefined ? { usedBytes: heap.usedJSHeapBytes, totalBytes: heap.totalJSHeapBytes ?? null, limitBytes: heap.limitBytes ?? null } : null,
     device: deviceInfoNow(),

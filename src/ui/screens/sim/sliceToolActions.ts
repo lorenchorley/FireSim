@@ -10,10 +10,11 @@
 import type { GridSpec } from '../../../core/grid';
 import type { SceneViewApi } from '../../../render/api';
 import type { LayerState } from '../../../render/layers';
-import type { SliceFieldId, SlicePoint, SlicePresetId, SliceProbePos, SliceUpdate } from '../../../render/slice/types';
+import type { SliceFieldId, SlicePoint, SlicePresetId, SliceProbePos, SliceRecordingStatus, SliceUpdate } from '../../../render/slice/types';
 import type { Store } from '../../store';
 import type { UiState } from './context';
 import {
+  CLEAR_SAY,
   backStep,
   cancelPlacing,
   choosePreset,
@@ -22,6 +23,7 @@ import {
   fieldWrite,
   hasStoredLine,
   initialSliceToolState,
+  keepLine,
   lineFacts,
   ownLine,
   placeHere,
@@ -46,7 +48,7 @@ import type { SliceToolState } from './sliceTypes';
 export interface SliceToolHost {
   ui: Store<UiState>;
   layers: Store<LayerState>;
-  view: Pick<SceneViewApi, 'setLayers' | 'slice'>;
+  view: Pick<SceneViewApi, 'setLayers' | 'slice' | 'sliceRecording'>;
   /** The model area's grid (the air's own when a picture exists, else the terrain's), or null. */
   grid(): GridSpec | null;
   /** The ground point under the screen crosshair (`SimContext.pickCrosshair`), or null over the sky. */
@@ -81,6 +83,12 @@ export interface SliceToolActions {
   /** "Place A/B here": the tapped candidate, else the crosshair's point. */
   placeHere(): PlaceOutcome;
   swap(): void;
+  /** "Keep this line": the live preset in force becomes the fixed line it is now, so it can be recorded (nothing for any other line). */
+  keep(): void;
+  /** "Clear recording": the recorder drops what it holds and records again from the next picture. */
+  clearRecording(): void;
+  /** The recorder's state now (the scene's own answer, not the last update's), or null where there is no recorder. */
+  recording(): SliceRecordingStatus | null;
   preset(id: SlicePresetId): void;
   setField(field: SliceFieldId): void;
   setProbe(pos: SliceProbePos | null): void;
@@ -95,6 +103,8 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
   const update = (): SliceUpdate | null => view.slice?.() ?? null;
   const cs = (): CrossSection => layers.get().crossSection;
   const facts = (): LineFacts => lineFacts(update()?.resolved, cs(), host.grid());
+  /** Asked of the recorder itself: the last update's copy of its state is up to a snapshot old, and a button must follow what was just pressed. */
+  const recording = (): SliceRecordingStatus | null => view.sliceRecording?.status() ?? update()?.recording ?? null;
 
   /** The scene's statuses when it has a slice; else what the tool can see (the fire is looked for only then: it is a scan of the fire). */
   const presetsNow = (grid: GridSpec | null): ReturnType<typeof presetStatuses> => {
@@ -123,7 +133,7 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       const grid = host.grid();
       const end = s.placing;
       const verdict = end ? placeVerdict(end, s.candidate ?? host.crosshair(), s, f, grid) : null;
-      return controlsView({ state: s, facts: f, presets: presetsNow(grid), fix: userFixOf(host.user, grid), verdict, switching3d });
+      return controlsView({ state: s, facts: f, presets: presetsNow(grid), fix: userFixOf(host.user, grid), verdict, switching3d, recording: recording() });
     },
     open() {
       const cur = ui.get().slice;
@@ -146,6 +156,13 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       return { verdict, wrote: !!step.crossSection, firstLine: !!step.crossSection && !ownLine(f) };
     },
     swap: () => apply(swapEnds(state(), cs(), facts())),
+    keep: () => apply(keepLine(state(), cs(), facts())),
+    clearRecording() {
+      if (!view.sliceRecording) return;
+      view.sliceRecording.clear();
+      host.announce(CLEAR_SAY);
+    },
+    recording,
     preset(id) {
       apply(choosePreset(state(), cs(), id, presetsNow(host.grid())[id]));
     },

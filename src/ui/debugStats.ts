@@ -13,10 +13,12 @@
 import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
+import type { SliceRecordingStatus } from '../render/slice/types';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import type { EventKind, LogEvent } from './eventLog';
 import { formatDuration, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
+import { spanWords } from './recordingWords';
 import type { PictureQualityAsk } from './settings';
 import { waited } from './runEvents';
 
@@ -72,6 +74,12 @@ export interface StoreFacts {
   range: { start: number; end: number } | null;
 }
 
+/** The Air slice's time-lapse recording (0.4.1): the recorder's own report, and the scenario's clock to say "11:30" for a simulation time. */
+export interface SliceRecordingFacts {
+  status: SliceRecordingStatus;
+  clock(t: number): string;
+}
+
 export interface DebugStatsInput {
   /** The newest engine report; null before the first picture. */
   engine: EngineInfo | null;
@@ -90,6 +98,8 @@ export interface DebugStatsInput {
   /** The cliff drawing's statistics: null when nothing was sharpened, undefined when this build cannot say. */
   terrain: TerrainDrawStats | null | undefined;
   store: StoreFacts | null;
+  /** The slice recorder's report; absent where the view has none (the 2-D map) or there is no run. */
+  sliceRecording?: SliceRecordingFacts | null;
   /** The history budget, and the device-memory class it came from (null: the phone does not say, 3 GB is assumed). */
   historyBudget: { bytes: number; memoryGb: number | null } | null;
   /** The main thread's JavaScript heap (`performance.memory`), or null. */
@@ -485,6 +495,19 @@ function rerunsGroup(i: DebugStatsInput): StatGroup {
   ], `${r.rewinds} rewinds, ${r.tierSwitches} tier switches`);
 }
 
+/** The recorder is on top of the history (its own budget: an eighth of the history budget, at most 12 MiB), so it has its own row: what it holds, of how much, and the span it covers. */
+function sliceRecordingRow(f: SliceRecordingFacts, tier: QualityTier | undefined): StatRow {
+  const st = f.status;
+  const label = 'Air slice recording';
+  if (st.state === 'failed') return R('slice-recording', label, 'Stopped', 'The recorder met an error and stopped; the slice itself is not affected', true);
+  if (st.state === 'off') return R('slice-recording', label, 'Off', st.offFor === 'preset' ? 'A preset follows the wind and the fire, so it is not recorded' : st.offFor === 'chord' ? 'The Layers line is not recorded' : undefined, true);
+  const span = st.count > 0 ? spanWords(st, f.clock) : null;
+  if (st.state === 'waiting' || !span) return R('slice-recording', label, 'Waiting for the next picture', undefined, true);
+  const air = tier ? (tier === 'fast' ? 'diagnosed wind' : '3-D air') : null;
+  const note = [`Recorded from ${span}`, air, `${bytes(st.bytes / st.count)} a slice`].filter((x): x is string => !!x).join('; ');
+  return R('slice-recording', label, `${st.count} ${st.count === 1 ? 'slice' : 'slices'}, ${bytes(st.bytes)} of ${bytes(st.budgetBytes)}`, note, true);
+}
+
 function memoryGroup(i: DebugStatsInput): StatGroup {
   const e = i.engine;
   const s = i.store;
@@ -508,6 +531,7 @@ function memoryGroup(i: DebugStatsInput): StatGroup {
       R('thinned', 'Frames thinned away', s.frames > 0 ? (gone > 0 ? `About ${gone}` : 'None') : NOT_YET, gone > 0 ? `Kept frames are now about ${sec(s.spacingS)} apart (display step ${sec(s.displayStepS)})` : `The display step is ${sec(s.displayStepS)}`, true),
     );
   } else rows.push(R('history-held', 'History held', NO_RUN));
+  if (i.sliceRecording) rows.push(sliceRecordingRow(i.sliceRecording, i.engine?.tier));
   rows.push(
     R('heap', 'JavaScript heap, screen thread', h ? `${bytes(h.usedBytes)} used${h.totalBytes !== null ? ` of ${bytes(h.totalBytes)}` : ''}${h.limitBytes !== null ? `, limit ${bytes(h.limitBytes)}` : ''}` : NA_PHONE, 'The simulation worker and the graphics memory are not in it', true),
     R('storage', 'Storage used by the app', st ? `${bytes(st.usage)} of ${bytes(st.quota)}` : i.deviceLater ? NA : READING, undefined, true),

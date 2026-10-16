@@ -67,6 +67,45 @@ export class LatticeStencil {
   }
 }
 
+/** Below this share of valid air under a point (see `LatticeStencil.coverage`) the point counts as outside the model's air: nothing to read. */
+const IN_AIR_COVERAGE = 0.5;
+
+/**
+ * The wind in the slice's plane at p = [s, z], read from the lattice: `out` = [along the line, up] in m/s. This is what the curtain's
+ * arrows show for a RECORDED slice (the air of the picture on screen is not the air the recording holds, so arrows from the sampler would
+ * disagree with the colours). Validity-weighted like every lattice read, so 30 m above the ground is not pulled towards the zeros below
+ * it. False, with `out` untouched, where the point is not in the model's air (less than half of its cell is valid).
+ */
+export function latticeInPlaneWind(d: SliceData, st: LatticeStencil, p: Float64Array, out: Float32Array): boolean {
+  st.locate(d, p);
+  if (!(st.coverage >= IN_AIR_COVERAGE)) return false; // (a point that is not a number has no coverage)
+  out[0] = st.value(d.values.along);
+  out[1] = st.value(d.values.up);
+  return true;
+}
+
+/**
+ * The mean wind along the line (m/s) at the highest valid cell of `n` evenly spaced columns, 0 when no column has air: the reference
+ * direction of the upper-level wind that decides which arrows are reverse flow. The lattice's top row is 2 km above the highest ground
+ * or the model top, which is where the live curtain reads (300 m under the top).
+ */
+export function upperAlongMean(d: SliceData, n: number): number {
+  let sum = 0;
+  let found = 0;
+  for (let m = 0; m < n; m++) {
+    const c = Math.round(((m + 0.5) / n) * (d.columns - 1));
+    for (let r = d.rows - 1; r >= 0; r--) {
+      const k = r * d.columns + c;
+      if (d.valid[k] === 1) {
+        sum += d.values.along[k]!;
+        found++;
+        break;
+      }
+    }
+  }
+  return found > 0 ? sum / found : 0;
+}
+
 /**
  * True when the point p = [s, z] lies inside the slice, its nearest lattice point is valid air and it is above the 10 m ground
  * under it (the line the filled ground is drawn with). This is the test a streak uses to know it has left the air (the ground,

@@ -15,6 +15,8 @@
  *   - one-finger pan and the pinch still move the camera with the tool open, also while a point is being placed
  *   - the fast tier's button switches the run to the 3-D atmosphere and the chips follow
  *   - reduced motion, high contrast and the dark look; the 2-D stand-in map draws the line that was placed
+ *   - the time-lapse recorder (0.4.1), on both tiers: Keep this line freezes a preset, the recorder fills while the run plays, a scrubbed picture reads the
+ *     recorded air ("recorded air from"), a time before the start does not, Swap drops the recording, Clear recording empties it, and the words say each of these
  * Nothing in the console (the guard of ./fixtures) and nothing pops up by itself.
  */
 import type { CDPSession, Locator, Page } from '@playwright/test';
@@ -41,7 +43,7 @@ type View = {
   slice?(): unknown;
   rig: { update(now: number): boolean };
 };
-type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string }; stats?: { weather?: { windDir10: number } } } | null } }; controller: { setQuality(t: string): void } } } };
+type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string; time?: number }; stats?: { weather?: { windDir10: number } } } | null } }; controller: { setQuality(t: string): void } } } };
 
 /** What the scene computed for the section, as plain numbers (the typed arrays stay in the page). */
 interface Slice {
@@ -83,6 +85,37 @@ const sliceOf = (page: Page): Promise<Slice | null> =>
       windDir10: w.__firesim.session.state.get().snapshot?.stats?.weather?.windDir10 ?? null,
     };
   });
+
+/** The time-lapse recorder as the scene reports it (its own status, asked now), and whether the slice on screen was read from it. */
+interface RecStatus {
+  state: string;
+  offFor: string | null;
+  count: number;
+  from: number | null;
+  to: number | null;
+  spacingS: number;
+  bytes: number;
+  budgetBytes: number;
+  dropped: string | null;
+}
+interface Rec {
+  status: RecStatus | null;
+  /** When the slice on screen was sampled, if it was read from the recording; null for a slice sampled from the picture's own air. */
+  recordedAt: number | null;
+  /** The time of the air of the picture on screen (a recorded slice carries the air time of its own sample, so this is read from the picture). */
+  pictureAirTime: number | null;
+  shownTime: number | null;
+}
+const recOf = (page: Page): Promise<Rec> =>
+  page.evaluate(() => {
+    const w = window as unknown as Handle;
+    const u = w.__firesim.view.slice?.() as { data: { recordedAt?: number; shownTime: number } | null } | null | undefined;
+    const rec = (w.__firesim.view as unknown as { sliceRecording?: { status(): RecStatus } }).sliceRecording;
+    const air = w.__firesim.session.state.get().snapshot?.atmosphere?.time;
+    return { status: rec ? rec.status() : null, recordedAt: u?.data?.recordedAt ?? null, pictureAirTime: air ?? null, shownTime: u?.data?.shownTime ?? null };
+  });
+/** The screen-reader live region (the app's one polite announcer). */
+const liveRegion = (page: Page): Locator => page.locator('div.sr-only[aria-live="polite"]');
 
 const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
 const cam = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as Handle).__firesim.view.cameraState());
@@ -802,6 +835,242 @@ test('fast tier: the slice follows playback, and the footer says how old the air
     await expect(footer).toBeInViewport();
   }
   expect(older, 'at least one of the pictures shown has air older than 90 s').toBeGreaterThan(0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The time-lapse recorder (0.4.1), on both tiers. It reads `view.sliceRecording`, which the scene gets from lane R-core.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A fire at the crosshair, played until the run is past `until` s, then paused. At 120 x the worker computes only an hour ahead of the view (`runTarget`), so
+ * the run is not computed to its end before a line is kept: the recorder sees every picture the worker makes after that, whatever the speed of the machine.
+ */
+async function fireAndRunTo(page: Page, until: number): Promise<void> {
+  await page.getByTestId('tools-menu').click();
+  await page.getByTestId('tool-fire').click();
+  await page.getByTestId('use-crosshair').click();
+  await page.getByTestId('confirm-fire').click();
+  await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
+  await setSpeed(page, 120);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).viewTime, { timeout: 400_000 }).toBeGreaterThan(until);
+  await page.getByTestId('play').click(); // pause
+  await expect.poll(async () => (await session(page)).playing).toBe(false);
+}
+
+/** Back to the head of the run if the view is in the past, then play at 120 x until the recorder holds `count` pictures over `spanS` s or more, then pause. */
+async function recordUntil(page: Page, count: number, spanS: number): Promise<RecStatus> {
+  const s = await session(page);
+  if (s.viewTime < s.headTime - 1) {
+    await tapTimeline(page, s.headTime);
+    await expect.poll(async () => Math.abs((await session(page)).viewTime - s.headTime), { timeout: 120_000 }).toBeLessThan(60);
+  }
+  await setSpeed(page, 120);
+  await page.getByTestId('play').click();
+  await expect
+    .poll(
+      async () => {
+        const st = (await recOf(page)).status;
+        return !!st && st.count >= count && st.to! - st.from! >= spanS;
+      },
+      { timeout: 400_000, intervals: [500] },
+    )
+    .toBe(true);
+  await page.getByTestId('play').click(); // pause
+  await expect.poll(async () => (await session(page)).playing).toBe(false);
+  // The worker is up to an hour ahead of the view and the recording is of what it made after the line was kept: the view may still be before the first picture.
+  const st = (await recOf(page)).status!;
+  if ((await session(page)).viewTime < st.from!) await scrubTo(page, st.to!);
+  return (await recOf(page)).status!;
+}
+
+/** Jump to time t (s), wait until the picture and its slice are for it, and say what the scene reports about the slice. */
+async function scrubTo(page: Page, t: number): Promise<Rec> {
+  await tapTimeline(page, t);
+  await expect.poll(async () => Math.abs((await session(page)).viewTime - t), { timeout: 60_000 }).toBeLessThan(45);
+  await expect.poll(async () => Math.abs(((await recOf(page)).shownTime ?? 0) - (await session(page)).viewTime), { timeout: 30_000 }).toBeLessThan(45);
+  return recOf(page);
+}
+
+/** A time inside a recording, the fraction k of the way along it, moved off the 5-minute keyframes (at one the picture's own air is as new as the recording). */
+function insideSpan(from: number, to: number, k: number): number {
+  const raw = from + (to - from) * k;
+  return Math.min(to - 30, Math.max(from + 30, raw - (raw % 300) + 150));
+}
+
+async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<void> {
+  await lightScene(page);
+  await fireAndRunTo(page, tier === 'diagnosed' ? 370 : 250);
+  await armPopupWatch(page);
+  const canvas = canvasOf(page);
+  const footer = page.getByTestId('slice-footer');
+  const status = page.getByTestId('slice-recording');
+  const keep = page.getByTestId('slice-keep');
+  const clear = page.getByTestId('slice-recording-clear');
+
+  await test.step('a live preset is not recorded: the status line says why and Keep this line is offered', async () => {
+    await openAirTool(page);
+    await choosePreset(page, 'along');
+    await expect(canvas).not.toHaveAttribute('data-seq', '', { timeout: 30_000 });
+    await expect(status).toHaveText('This preset follows the wind and the fire, so it is not recorded. Press Keep this line to record it.');
+    await expect(keep).toBeVisible();
+    expect((await keep.boundingBox())!.height, 'a button of the tool: 40 px drawn, a 44 px target').toBeGreaterThanOrEqual(40);
+    await expect(clear).toBeHidden();
+    expect((await recOf(page)).status).toMatchObject({ state: 'off', offFor: 'preset', count: 0 });
+    await expect(footer).toContainText(/ · air from \d\d:\d\d/);
+    await expect(footer).not.toContainText('recorded');
+  });
+
+  await test.step('Keep this line freezes the preset into a hand-placed line and the recorder waits for the next picture', async () => {
+    const before = (await sliceOf(page))!.line!;
+    await keep.scrollIntoViewIfNeeded();
+    await keep.click();
+    const cs = await page.evaluate(() => (window as unknown as Handle).__firesim.view.getLayers().crossSection);
+    expect(cs.preset ?? null).toBeNull();
+    expect(cs.a, 'A is where the preset had it').toBeDefined();
+    expect(dist(cs.a!, before.a)).toBeLessThan(0.2);
+    expect(dist(cs.b!, before.b)).toBeLessThan(0.2);
+    await expect(keep, 'a fixed line cannot be kept again').toBeHidden();
+    await expect(liveRegion(page)).toHaveText('Line kept. Recording from the next picture.');
+    // paused at the head: nothing arrives unless the worker is still computing ahead, so "waiting" or already a picture
+    await expect(status).toHaveText(/^(Recording starts with the next picture\.|Recorded from \d\d:\d\d)/);
+    expect((await recOf(page)).status!.state).toMatch(/^(waiting|recording)$/);
+    expect((await sliceOf(page))!.source).toBe('endpoints');
+    expect(await popups(page), 'nothing pops up by itself').toEqual([]);
+  });
+
+  await test.step('plays on: the recorder fills, the status says from when to when, Clear recording appears', async () => {
+    const rec = await recordUntil(page, 4, 150);
+    expect(rec.state).toBe('recording');
+    expect(rec.bytes).toBeGreaterThan(0);
+    expect(rec.bytes).toBeLessThanOrEqual(rec.budgetBytes);
+    await expect(status).toHaveText(/^Recorded from \d\d:\d\d to \d\d:\d\d, (every picture|about every .+)\.$/);
+    await expect(clear).toBeVisible();
+    expect((await clear.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+    await expect(keep).toBeHidden();
+  });
+
+  await test.step('scrubbed inside the span, the picture reads the recorded air: the footer says "recorded air from" and how old', async () => {
+    const { from, to, spacingS } = (await recOf(page)).status!;
+    const step = (await session(page)).timeStep;
+    let recorded = 0;
+    for (const k of [0.25, 0.5, 0.75]) {
+      const t = insideSpan(from!, to!, k);
+      await scrubTo(page, t);
+      // The rule: the recorded air is read unless the picture's own air is already as new (a keyframe). The slice is recomputed a moment after the picture
+      // changes, so give it that moment before the rule is judged.
+      await expect
+        .poll(
+          async () => {
+            const x = await recOf(page);
+            return x.recordedAt !== null || x.shownTime! - x.pictureAirTime! <= 0.5;
+          },
+          { timeout: 10_000, message: `at ${t}: no recorded air, and the picture's own air is not exact either` },
+        )
+        .toBe(true);
+      const r = await recOf(page);
+      if (r.recordedAt === null) {
+        // the 0.4.0 path: only where the picture's own air is as new as anything recorded (a keyframe)
+        expect(r.shownTime! - r.pictureAirTime!, `no recorded air at ${t}: the picture's own air is exact (${JSON.stringify(r)})`).toBeLessThanOrEqual(0.5);
+        await expect(footer).not.toContainText('recorded');
+        continue;
+      }
+      recorded++;
+      const age = r.shownTime! - r.recordedAt;
+      expect(r.recordedAt, 'a sample at or before the time shown').toBeLessThanOrEqual(r.shownTime! + 0.5);
+      expect(r.recordedAt, "newer than the picture's own air").toBeGreaterThan(r.pictureAirTime! + 0.5);
+      expect(age, 'at most one gap behind').toBeLessThanOrEqual(Math.max(2 * spacingS, 1.5 * step));
+      await expect(footer).toContainText(/recorded air from \d\d:\d\d/);
+      if (age > 90) await expect(footer).toContainText(new RegExp(`\\(${Math.max(1, Math.round(age / 60))} min before the time shown\\)`));
+      else await expect(footer).not.toContainText('before the time shown');
+      await expect(footer).toBeInViewport();
+      await expect(page.getByTestId('slice-cells-note')).toBeHidden();
+    }
+    expect(recorded, 'most scrubbed pictures read the recording').toBeGreaterThanOrEqual(2);
+    // "Show model cells" on a recorded slice: the recording keeps no cells, and says so
+    await page.getByTestId('slice-cells').click();
+    await expect(page.getByTestId('slice-cells-note')).toHaveText("The recording does not keep the model's own cells, so the smooth picture is shown.");
+    await page.getByTestId('slice-cells').click();
+    await expect(page.getByTestId('slice-cells-note')).toBeHidden();
+  });
+
+  await test.step("a time before the first picture uses the history's air and says so", async () => {
+    const { from } = (await recOf(page)).status!;
+    const r = await scrubTo(page, Math.max(30, from! - 150));
+    expect(r.recordedAt, 'the 0.4.0 slice').toBeNull();
+    await expect(footer).not.toContainText('recorded');
+    await expect(footer).toContainText(/air from \d\d:\d\d/);
+    await expect(status).toHaveText(/^Recorded from \d\d:\d\d\. This time is earlier, so it uses the history's saved air, which can be older\.$/);
+  });
+
+  await test.step('the Layers panel says what turning the line or switching the slice off does to the recording', async () => {
+    await page.getByTestId('air-close').click();
+    await page.getByTestId('layers-fab').click();
+    const layers = page.getByTestId('layers-panel');
+    await expect(layers.getByTestId('slice-line-hint')).toContainText('Turning the compass or Centre on the fire starts a new line, so its recording is dropped.');
+    await expect(layers.getByTestId('cross-section')).toContainText('Switching the slice off clears its recording.');
+    await layers.getByRole('button', { name: 'Close' }).click();
+    await openAirTool(page);
+  });
+
+  await test.step('Swap changes the line, so the old recording is dropped and the status says so', async () => {
+    await page.getByTestId('slice-swap').click();
+    await expect(status).toContainText('The line changed, so the old recording was dropped.');
+    expect((await recOf(page)).status).toMatchObject({ dropped: 'line' });
+    expect((await recOf(page)).recordedAt, 'the picture is the 0.4.0 slice again').toBeNull();
+    // recording again from the head
+    const again = await recordUntil(page, 4, 150);
+    expect(again.dropped).toBe('line');
+    expect(again.count).toBeGreaterThanOrEqual(4);
+    await expect(status).toHaveText(/^The line changed, so the old recording was dropped\. Recording again from \d\d:\d\d( to \d\d:\d\d, (every picture|about every .+))?\.$/);
+  });
+
+  await test.step('Clear recording empties the recorder at once, says so, and the line stays', async () => {
+    // a picture that reads the new recording, so the clear has something to take away from the slice on screen
+    const now0 = (await recOf(page)).status!;
+    const shown = await scrubTo(page, insideSpan(now0.from!, now0.to!, 0.5));
+    const line = (await sliceOf(page))!.line!;
+    await expect(clear).toBeVisible();
+    await clear.scrollIntoViewIfNeeded();
+    await clear.click();
+    await expect(liveRegion(page)).toHaveText('Recording cleared. Recording again from the next picture.');
+    await expect(clear).toBeHidden();
+    await expect(status).toHaveText(/^Recording cleared\. (Recording starts with the next picture\.|Recording again from \d\d:\d\d\.)/);
+    const r = await recOf(page);
+    expect(r.status).toMatchObject({ dropped: 'cleared', count: 0 });
+    expect(r.recordedAt, `the slice shown (recorded at ${shown.recordedAt}) is a live one again`).toBeNull();
+    const now = (await sliceOf(page))!.line!;
+    expect(dist(now.a, line.a) + dist(now.b, line.b), 'Clear recording does not move the line').toBeLessThan(0.2);
+    await expect(footer).not.toContainText('recorded');
+  });
+
+  await test.step('switching the slice off in the Layers panel clears the recording, and nothing popped up on the way', async () => {
+    await recordUntil(page, 2, 30);
+    expect((await recOf(page)).status!.count).toBeGreaterThanOrEqual(2);
+    await page.getByTestId('air-close').click();
+    await page.getByTestId('layers-fab').click();
+    await page.getByTestId('layers-panel').getByTestId('cross-section').click();
+    await expect.poll(() => sliceOf(page)).toBeNull();
+    expect((await recOf(page)).status!.count, 'the recording went with the slice').toBe(0);
+    await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
+    expect(await popups(page), 'nothing pops up by itself').toEqual([]);
+  });
+}
+
+test('fast tier: Keep this line records the air; scrubbed pictures read it back; Swap drops it; Clear recording empties it', async ({ page }) => {
+  test.setTimeout(900_000);
+  await watchPopups(page);
+  await build(page, 'Fast');
+  await expect.poll(() => airKind(page)).toBe('diagnosed');
+  await recordFlow(page, 'diagnosed');
+});
+
+test('3-D tier: the same recording flow on the time-stepped air', async ({ page }) => {
+  test.setTimeout(900_000);
+  await watchPopups(page);
+  await build(page, 'Normal');
+  await ensureKind(page, 'prognostic');
+  await recordFlow(page, 'prognostic');
 });
 
 test('reduced motion, high contrast, the dark look and the vertical exaggeration', async ({ page }) => {

@@ -8,6 +8,7 @@ import { rampLut, type Ramp } from '../../../render/palette';
 import { SLICE_FIELDS, SLICE_KIND_LABEL, type SliceData, type SliceFieldId, type SliceFieldStatus, type SliceFooterInfo, type SliceProbePos, type SliceUpdate } from '../../../render/slice/types';
 import { formatClock, formatDistance, formatNumber } from '../../format';
 import { rampGradient, type ExternalLegend } from '../../legends';
+import { RECORDING_NO_CELLS_WORDS, recordingText } from '../../recordingWords';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout: the canvas is a fixed box, the picture inside it follows the vertical exaggeration where it fits
@@ -355,22 +356,33 @@ export function arrowGrid(l: PlotLayout): { cols: number; rows: number } {
 // Words
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** "air from 14:05", and how much older than the picture it is once that passes `AIR_STALE_S` ("4 min before the time shown"). */
-export function airFromText(airTime: number | null, shownTime: number, tz: string, absTime: (t: number) => number): string {
-  if (airTime === null || !Number.isFinite(airTime)) return 'air time not recorded';
-  const base = `air from ${formatClock(absTime(airTime), tz)}`;
-  const age = Math.max(0, shownTime - airTime);
+/** What the footer states of a slice: the kind of air, the grid, the air's time and how old it is, and whether it was read from the recording. */
+export type FooterInfo = SliceFooterInfo & Pick<SliceData, 'recordedAt'>;
+
+/**
+ * "air from 14:05", and how much older than the picture it is once that passes `AIR_STALE_S` ("4 min before the time shown"). A slice
+ * read from the time-lapse recording (`recordedAt`, 0.4.1) says "recorded air from 14:05" and counts the age from that sample.
+ */
+export function airFromText(airTime: number | null, shownTime: number, tz: string, absTime: (t: number) => number, recordedAt?: number): string {
+  const recorded = recordedAt !== undefined && Number.isFinite(recordedAt);
+  const at = recorded ? recordedAt : airTime;
+  if (at === null || at === undefined || !Number.isFinite(at)) return 'air time not recorded';
+  const base = `${recorded ? 'recorded air' : 'air'} from ${formatClock(absTime(at), tz)}`;
+  const age = Math.max(0, shownTime - at);
   return age > AIR_STALE_S ? `${base} (${Math.max(1, Math.round(age / 60))} min before the time shown)` : base;
 }
 
 /** The footer, as its three parts: the kind of air, the model grid and the age of the air (§8.1 "Honest footer"). */
-export function footerParts(info: SliceFooterInfo, tz: string, absTime: (t: number) => number): [string, string, string] {
-  return [SLICE_KIND_LABEL[info.kind], `model grid ${formatNumber(Math.round(info.cellSizeM))} m`, airFromText(info.airTime, info.shownTime, tz, absTime)];
+export function footerParts(info: FooterInfo, tz: string, absTime: (t: number) => number): [string, string, string] {
+  return [SLICE_KIND_LABEL[info.kind], `model grid ${formatNumber(Math.round(info.cellSizeM))} m`, airFromText(info.airTime, info.shownTime, tz, absTime, info.recordedAt)];
 }
 
-export function footerText(info: SliceFooterInfo, tz: string, absTime: (t: number) => number): string {
+export function footerText(info: FooterInfo, tz: string, absTime: (t: number) => number): string {
   return footerParts(info, tz, absTime).join(' · ');
 }
+
+/** What the footer's words depend on, as one string: the panel rewrites them only when it changes (the recording's tag is part of it: same air time, other words). */
+export const footerCacheKey = (d: FooterInfo | null): string => (d ? `${d.kind}|${d.cellSizeM}|${d.airTime}|${d.shownTime}|${d.recordedAt}` : '');
 
 /** A piece of the footer; `keep: false` pieces are the ones a one-line footer on a short screen drops (CSS hides them). */
 export interface FooterRun {
@@ -378,8 +390,8 @@ export interface FooterRun {
   keep: boolean;
 }
 
-/** The footer as runs: the same words as `footerText`, with the explanations that can go marked, so a short screen still says kind, grid and age. */
-export function footerRuns(info: SliceFooterInfo, tz: string, absTime: (t: number) => number): FooterRun[] {
+/** The footer as runs: the same words as `footerText`, with the explanations that can go marked, so a short screen still says kind, grid and age ("recorded" is part of the age run: it stays). */
+export function footerRuns(info: FooterInfo, tz: string, absTime: (t: number) => number): FooterRun[] {
   const [kind, grid, air] = footerParts(info, tz, absTime);
   const [head, more] = splitKindLabel(kind);
   const gridWords = grid.startsWith('model ') ? ['model ', grid.slice(6)] : ['', grid];
@@ -399,6 +411,20 @@ export function footerRuns(info: SliceFooterInfo, tz: string, absTime: (t: numbe
 export function splitKindLabel(label: string): [string, string] {
   const i = label.indexOf(':');
   return i < 0 ? [label, ''] : [label.slice(0, i), label.slice(i)];
+}
+
+/**
+ * The status line of the time-lapse recording (0.4.1) under the controls: what is recorded and what it means for the picture, or null
+ * when there is nothing to say or no slice is shown. The words are in ui/recordingWords.ts (the statistics row says the same span).
+ */
+export function recordingLine(update: SliceUpdate | null, tz: string, absTime: (t: number) => number): string | null {
+  const data = update?.data;
+  return data ? recordingText(update?.recording, data.shownTime, (t) => formatClock(absTime(t), tz)) : null;
+}
+
+/** The caption under "Show model cells" while the slice is a recording, which keeps no model cells: the smooth picture is drawn instead. */
+export function cellsNote(showCells: boolean, data: Pick<SliceData, 'recordedAt'> | null): string | null {
+  return showCells && data && data.recordedAt !== undefined ? RECORDING_NO_CELLS_WORDS : null;
 }
 
 export interface ChipView {

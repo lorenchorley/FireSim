@@ -7,6 +7,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { EngineInfo, EnginePerfInfo, SimSnapshot } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
+import type { SliceRecordingStatus } from '../render/slice/types';
 import { Simulation } from '../sim/simulation';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
 import { buildDebugStats, debugStatsToText, END_MARKER, pictureQualityWhy, scrubError, TITLE, type DebugStats, type DebugStatsInput, type StatRow } from './debugStats';
@@ -425,6 +426,66 @@ describe('labels and values', () => {
     const noMem = full();
     noMem.historyBudget = { bytes: 48 * 1048576, memoryGb: null };
     expect(rowOf(buildDebugStats(noMem), 'memory', 'history-budget').note).toContain('3 GB assumed');
+  });
+
+  describe('the Air slice recording row (0.4.1)', () => {
+    const status = (o: Partial<SliceRecordingStatus> = {}): SliceRecordingStatus => ({ state: 'recording', offFor: null, count: 42, from: 600, to: 4800, spacingS: 120, bytes: 42 * 48_696, budgetBytes: 6 * 1048576, dropped: null, ...o });
+    const clock = (t: number): string => {
+      const m = 11 * 60 + 20 + Math.floor(t / 60); // t = 0 is 11:20
+      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    };
+    const rowFor = (st: SliceRecordingStatus | null, tune: (i: DebugStatsInput) => void = () => undefined): StatRow | null => {
+      const i = full();
+      if (st) i.sliceRecording = { status: st, clock };
+      tune(i);
+      return buildDebugStats(i).groups.find((g) => g.id === 'memory')!.rows.map((r) => ({ ...r, value: plain(r.value), ...(r.note ? { note: plain(r.note) } : {}) })).find((r) => r.id === 'slice-recording') ?? null;
+    };
+
+    it('recording: how many slices, how much of the budget, and the span, the air and the size of a slice', () => {
+      expect(rowFor(status())).toEqual({
+        id: 'slice-recording',
+        label: 'Air slice recording',
+        value: '42 slices, 2.0 MB of 6.3 MB',
+        note: 'Recorded from 11:30 to 12:40, about every 2 min; 3-D air; 48.7 KB a slice',
+        live: true,
+      });
+    });
+
+    it('says the air of the fast tier, and a single slice in the singular', () => {
+      expect(rowFor(status(), (i) => (i.engine = fastEngine))!.note).toBe('Recorded from 11:30 to 12:40, about every 2 min; diagnosed wind; 48.7 KB a slice');
+      const one = rowFor(status({ count: 1, from: 600, to: 600, spacingS: 0, bytes: 48_696 }))!;
+      expect(one.value).toBe('1 slice, 48.7 KB of 6.3 MB');
+      expect(one.note).toBe('Recorded from 11:30; 3-D air; 48.7 KB a slice');
+      expect(rowFor(status({ spacingS: 0 }))!.note).toContain('11:30 to 12:40, every picture');
+      expect(rowFor(status(), (i) => (i.engine = null))!.note).toBe('Recorded from 11:30 to 12:40, about every 2 min; 48.7 KB a slice');
+    });
+
+    it('off, waiting and stopped', () => {
+      expect(rowFor(status({ state: 'off', count: 0, from: null, to: null }))).toMatchObject({ value: 'Off', live: true });
+      expect(rowFor(status({ state: 'off', offFor: 'preset', count: 0, from: null, to: null }))!.note).toBe('A preset follows the wind and the fire, so it is not recorded');
+      expect(rowFor(status({ state: 'off', offFor: 'chord', count: 0, from: null, to: null }))!.note).toBe('The Layers line is not recorded');
+      expect(rowFor(status({ state: 'waiting', count: 0, from: null, to: null, bytes: 0 }))).toMatchObject({ value: 'Waiting for the next picture', live: true });
+      expect(rowFor(status({ state: 'failed', count: 0, from: null, to: null, bytes: 0 }))).toMatchObject({ value: 'Stopped' });
+    });
+
+    it('is in the Memory group after the history rows and before the heap, and is not there where the view has no recorder', () => {
+      const i = full();
+      i.sliceRecording = { status: status(), clock };
+      const ids = buildDebugStats(i).groups.find((g) => g.id === 'memory')!.rows.map((r) => r.id);
+      expect(ids.indexOf('slice-recording')).toBe(ids.indexOf('thinned') + 1);
+      expect(ids.indexOf('heap')).toBe(ids.indexOf('slice-recording') + 1);
+      expect(rowFor(null)).toBeNull();
+      expect(rowFor(null, (x) => (x.sliceRecording = null))).toBeNull();
+      expect(buildDebugStats(bare()).groups.find((g) => g.id === 'memory')!.rows.map((r) => r.id)).not.toContain('slice-recording');
+    });
+
+    it('never prints undefined, NaN, null or Infinity, in any state, or an em dash', () => {
+      const states: SliceRecordingStatus[] = [status(), status({ state: 'off', offFor: 'preset', count: 0, from: null, to: null }), status({ state: 'waiting', count: 0, from: null, to: null, bytes: 0 }), status({ state: 'failed', count: 0 }), status({ count: 0, from: null, to: null, bytes: 0 })];
+      for (const st of states) {
+        const r = rowFor(st)!;
+        expect(`${r.value} ${r.note ?? ''}`, st.state).not.toMatch(/undefined|NaN|null|Infinity|[\u2013\u2014]/);
+      }
+    });
   });
 
   it('Frames thinned away: when none were, it says so and does not talk of kept frames being "now" apart (the mean spacing can sit under the display step)', () => {

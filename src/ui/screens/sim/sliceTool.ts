@@ -20,6 +20,8 @@ import {
   AIR_PANEL_SUBTITLE,
   AIR_PANEL_TITLE,
   CANCEL_LABEL,
+  CLEAR_RECORDING_LABEL,
+  KEEP_LABEL,
   LOADING_LINE,
   NEEDS_3D_VIEW,
   PRESETS_LABEL,
@@ -131,7 +133,25 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   });
   const presetList = h('div', { class: 'slice-presets', id: presetsId, hidden: true }, presetCells.map((c) => c.wrap));
   const note = h('p', { class: 'hint slice-note', dataset: { testid: 'slice-note' }, hidden: true });
-  const controls = h('div', { class: 'slice-tool-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note]);
+  // The time-lapse recording's two buttons (0.4.1): Keep this line turns a live preset into a line that can be recorded, Clear recording empties the recorder.
+  const keepBtn = makeButton(KEEP_LABEL, {
+    testId: 'slice-keep',
+    onClick: () => {
+      actions.keep();
+      render();
+      focus(setBtn.a.el); // (the button that was pressed is put away: a kept line is no longer a preset)
+    },
+  });
+  const clearBtn = makeButton(CLEAR_RECORDING_LABEL, {
+    testId: 'slice-recording-clear',
+    onClick: () => {
+      actions.clearRecording();
+      render();
+      focus(setBtn.a.el);
+    },
+  });
+  const recordRow = h('div', { class: 'row-actions slice-row', hidden: true }, [keepBtn.el, clearBtn.el]);
+  const controls = h('div', { class: 'slice-tool-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note, recordRow]);
 
   function apply(v: ControlsView): void {
     idleRow.hidden = !!v.placing;
@@ -159,6 +179,9 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     }
     text(note, v.hint);
     note.hidden = !v.hint;
+    keepBtn.el.hidden = !v.keep;
+    clearBtn.el.hidden = !v.clear;
+    recordRow.hidden = !v.keep && !v.clear;
   }
 
   /** Redraw the controls from the model (only when something shows differently); keeps the placement poll running exactly while placing. */

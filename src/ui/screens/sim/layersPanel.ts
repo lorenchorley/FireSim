@@ -775,7 +775,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const lineHint = h(
     'p',
     { class: 'hint', hidden: true, dataset: { testid: 'slice-line-hint' } },
-    'The slice follows the line you placed with Air slices, and the compass shows its direction. Turning the compass swings the line about its middle, out to the edges of the model area. Centre on the fire moves it to the fire.',
+    'The slice follows the line you placed with Air slices, and the compass shows its direction. Turning the compass swings the line about its middle, out to the edges of the model area. Centre on the fire moves it to the fire. Turning the compass or Centre on the fire starts a new line, so its recording is dropped.',
   );
   // The compass shows the line the section really has: with a line placed by Air slices the stored azimuth and centre are stale (sectionCompass).
   let compass: CompassRose | null = null;
@@ -789,7 +789,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const csInfo = plan.switches.find((l) => l.scene === 'crossSection');
   const csToggle = toggle({
     label: csInfo?.title ?? 'Air slice',
-    description: 'A slice through the air along a line, with wind arrows',
+    description: 'A slice through the air along a line, with wind arrows. Switching the slice off clears its recording.',
     checked: layers.get().crossSection.enabled,
     testId: 'cross-section',
     onChange: (v) => {

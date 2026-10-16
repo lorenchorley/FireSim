@@ -9,13 +9,15 @@
  * The curtain does not sample the air itself. It takes the `SliceData` the scene's one `SliceUpdater` computed (shared with the
  * side-view panel): its lattice is the texture, one texel per lattice point, rows linear in height from the lowest ground on the
  * line up (row 0 lowest), so there is no resampling in the shader. The ground profile is drawn from the 10 m ground under each
- * column, and everything under it is cut away; cells outside the model are transparent. The arrows keep reading the sampler.
+ * column, and everything under it is cut away; cells outside the model are transparent. The arrows read the sampler, except for a recorded
+ * slice (0.4.1: `recordedAt`), whose air is not the picture's: they read its lattice, so they agree with its colours.
  */
 import * as THREE from 'three';
 import type { AtmosphereSampler, SectionLine } from './atmosphereSampler';
 import { colourSlice } from './crossSectionColour';
 import { FOG, TONEMAP } from './glsl';
 import { srgbToLinear } from './palette';
+import { LatticeStencil, latticeInPlaneWind, upperAlongMean } from './slice/lattice';
 import type { SliceData, SliceFieldId } from './slice/types';
 import { StreakBatch } from './streaks';
 
@@ -84,6 +86,10 @@ export class CrossSectionLayer {
   private readonly halo: StreakBatch;
   /** The line of the slice shown, or null while nothing is drawn. */
   line: SectionLine | null = null;
+  /** Scratch of the arrows of a recorded slice (its lattice is read, not the sampler): the stencil, the point [s, z] and the answer [along, up]. */
+  private readonly stencil = new LatticeStencil();
+  private readonly at = new Float64Array(2);
+  private readonly inPlane = new Float32Array(2);
 
   constructor(shared: Record<string, THREE.IUniform>) {
     this.mat = new THREE.ShaderMaterial({
@@ -198,10 +204,11 @@ export class CrossSectionLayer {
     this.tex.needsUpdate = true;
   }
 
-  /** Wind arrows in the plane: 15 columns by the heights 30 to 2200 m above the ground, read from the sampler (not from the lattice). */
+  /** Wind arrows in the plane: 15 columns by the heights 30 to 2200 m above the ground, read from the sampler, or from the lattice of a recorded slice. */
   private drawArrows(d: SliceData, heightAt: (x: number, y: number) => number, sampler: AtmosphereSampler, vex: number, dpr: number): void {
     const line = d.line;
-    const top = sampler.top;
+    const recorded = d.recordedAt !== undefined;
+    const top = recorded ? d.topAsl : sampler.top;
     const MA = 15;
     const heightsAgl = [30, 150, 400, 800, 1400, 2200];
     const spacing = line.length / MA;
@@ -209,7 +216,8 @@ export class CrossSectionLayer {
     // Reverse flow is a feature of the 3-D atmosphere: reference direction = mean along-section wind at the upper levels.
     const prognostic = d.kind === 'prognostic';
     let refAlong = 0;
-    if (prognostic) {
+    if (prognostic && recorded) refAlong = upperAlongMean(d, MA);
+    else if (prognostic) {
       for (let m = 0; m < MA; m++) {
         const s = (m + 0.5) / MA;
         const x = line.a[0] + (line.b[0] - line.a[0]) * s;
@@ -235,9 +243,19 @@ export class CrossSectionLayer {
       for (const agl of heightsAgl) {
         const z = g + agl;
         if (z > ceiling) break;
-        sampler.wind(x, y, z, agl, w);
-        const along = w[0]! * line.dir[0] + w[1]! * line.dir[1];
-        const vert = w[2]!;
+        let along: number;
+        let vert: number;
+        if (recorded) {
+          this.at[0] = s * line.length;
+          this.at[1] = z;
+          if (!latticeInPlaneWind(d, this.stencil, this.at, this.inPlane)) continue;
+          along = this.inPlane[0]!;
+          vert = this.inPlane[1]!;
+        } else {
+          sampler.wind(x, y, z, agl, w);
+          along = w[0]! * line.dir[0] + w[1]! * line.dir[1];
+          vert = w[2]!;
+        }
         const sp = Math.hypot(along, vert);
         if (sp < 0.3) continue;
         const len = spacing * 0.85 * Math.min(1, 0.25 + sp / 14);
