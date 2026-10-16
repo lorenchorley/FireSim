@@ -47,6 +47,7 @@ import { deviceFacts, guessQuality, type DeviceFacts } from './qualityGuess';
 import type { RockCopy } from './rockMask';
 import { mapLighting, skyLighting } from './sky';
 import { SkyDome } from './skyDome';
+import { presetWindFromDeg } from './slice/presetWind';
 import { createSliceUpdater } from './slice/sliceUpdater';
 import type { SliceComputed, SliceFieldId, SliceFieldStatus, SliceInputs, SliceUpdate } from './slice/types';
 import { effectiveSliceField, sectionChanged, sliceFieldStatuses } from './sliceFields';
@@ -687,8 +688,9 @@ export class SceneView implements SceneViewApi {
 
   /**
    * What a computation of the slice needs, from what the scene holds: the line state of `layers.crossSection`, the model grid,
-   * the 10 m ground, the map centre (the camera's target), the fire, the wind at the shown time and the phone's position.
-   * Null before the first snapshot of a scenario.
+   * the 10 m ground, the map centre (the camera's target), the fire, the wind and the phone's position. The wind of the Along and
+   * Across presets is the model's own, about 30 m up at the point the preset is centred on (the fire, else the map centre), with the
+   * forecast's 10 m direction at the shown time as the fallback (`presetWindFromDeg`). Null before the first snapshot of a scenario.
    */
   private sliceInputs(): SliceInputs | null {
     const snap = this.snap;
@@ -698,14 +700,18 @@ export class SceneView implements SceneViewApi {
     const t = this.rig.controls.target;
     const c = fireCentroid(snap.fire, snap.time);
     const w = snap.stats?.weather;
+    const mapCentre: [number, number] = [t.x, -t.z];
+    const fire: [number, number] | null = c ? [c.x, c.y] : null;
+    const centre = fire ?? mapCentre; // where 'along' and 'across' are centred (render/slice/sectionLine.ts)
+    const forecastFrom = w && w.windSpeed10 >= CALM_WIND_MS && Number.isFinite(w.windDir10) ? w.windDir10 : null;
     return {
       line: this.layers.crossSection,
       ctx: {
         grid: snap.atmosphere?.grid ?? snap.fire.grid,
         heightAt: (x, y) => terrain.heightAt(x, y),
-        mapCentre: [t.x, -t.z],
-        fire: c ? [c.x, c.y] : null,
-        windFromDeg: w && w.windSpeed10 >= CALM_WIND_MS && Number.isFinite(w.windDir10) ? w.windDir10 : null,
+        mapCentre,
+        fire,
+        windFromDeg: presetWindFromDeg(sampler, centre, terrain.heightAt(centre[0], centre[1]), forecastFrom),
         user: this.user ? [this.user.x, this.user.y] : null,
       },
       sampler,
