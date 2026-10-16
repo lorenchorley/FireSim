@@ -504,6 +504,71 @@ describe('thinning: uniform, doubling, inside the budget', () => {
   });
 });
 
+describe('a random stream of arrivals, replays, cuts and budget changes keeps every invariant at every step', () => {
+  /** A small seeded generator (mulberry32). */
+  function rng(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  for (const seed of [1, 2, 3, 4, 5]) {
+    it(`seed ${seed}: 3,000 operations`, () => {
+      const r = rng(seed);
+      const d = slice(0, { columns: 48, rows: 48 });
+      const per = sliceSampleBytes(48 * 48, 'prognostic');
+      const epoch = 48 * 48 + 2 * 48 * 4 + 192; // the valid flags, the two ground rows and the bookkeeping
+      const rec = new SliceRecorder({ budgetBytes: 20 * per });
+      rec.setLine(sliceLineKey(d.line));
+      const arrivals = new Set<number>();
+      let t = 0;
+      let thinned = 0;
+      for (let op = 0; op < 3000; op++) {
+        const x = r();
+        if (x < 0.72) {
+          // a picture newer than everything stored: nothing is cut, and the first sample stays
+          t += [10, 60, 60, 300][Math.floor(r() * 4)]!;
+          arrivals.add(t);
+          const before = rec.sampleTimes();
+          arriveAndStore(rec, d, t);
+          if (before.length > 0) expect(rec.sampleTimes()[0], `op ${op}: the first stays`).toBe(before[0]);
+          if (rec.status().spacingS > 0) thinned++;
+        } else if (x < 0.82 && rec.count > 0) {
+          t = rec.sampleTimes()[Math.floor(r() * rec.count)]! + Math.floor(r() * 3) * 20; // the session cuts at a time that is near the samples
+          rec.truncateAfter(t);
+        } else if (x < 0.92 && rec.count > 0) {
+          t = Math.max(0, rec.sampleTimes()[Math.floor(r() * rec.count)]! - Math.floor(r() * 2) * 60); // a re-emitted picture at or before one that is stored
+          arrivals.add(t);
+          arriveAndStore(rec, d, t);
+        } else if (x < 0.94) {
+          rec.setBudget((4 + Math.floor(r() * 30)) * per); // never under four samples, so the first is never the one that has to go
+        } else if (x < 0.945) {
+          rec.clear();
+        }
+        const times = rec.sampleTimes();
+        const st = rec.status();
+        expect(rec.bytes, `op ${op}`).toBeLessThanOrEqual(rec.budgetBytes);
+        expect(st.count).toBe(times.length);
+        expect(st.bytes).toBe(times.length === 0 ? 0 : epoch + times.length * per);
+        if (times.length === 0) continue;
+        expect(st.from).toBe(times[0]);
+        expect(st.to).toBe(times[times.length - 1]);
+        for (let k = 1; k < times.length; k++) {
+          expect(times[k]!, `op ${op} order`).toBeGreaterThan(times[k - 1]!);
+          expect(times[k]! - times[k - 1]!, `op ${op}: ${times[k - 1]} to ${times[k]} with a gap of ${st.spacingS}`).toBeGreaterThanOrEqual(st.spacingS - 1e-6);
+        }
+        for (const x2 of times) expect(arrivals.has(x2), `op ${op}: ${x2} is an arrival`).toBe(true);
+      }
+      expect(thinned, 'the stream did thin').toBeGreaterThan(50);
+    });
+  }
+});
+
 describe('dropping a recording', () => {
   it('the same line keeps it; another line, or none, drops it with `dropped: line` and frees the memory', () => {
     const rec = new SliceRecorder();
