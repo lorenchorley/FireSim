@@ -842,28 +842,31 @@ test('fast tier: the slice follows playback, and the footer says how old the air
 // The time-lapse recorder (0.4.1), on both tiers. It reads `view.sliceRecording`, which the scene gets from lane R-core.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A fire at the crosshair, played at Max until the run is past `until` s, then paused: the head of the run is somewhere to record from. */
+/**
+ * A fire at the crosshair, played until the run is past `until` s, then paused. At 120 x the worker computes only an hour ahead of the view (`runTarget`), so
+ * the run is not computed to its end before a line is kept: the recorder sees every picture the worker makes after that, whatever the speed of the machine.
+ */
 async function fireAndRunTo(page: Page, until: number): Promise<void> {
   await page.getByTestId('tools-menu').click();
   await page.getByTestId('tool-fire').click();
   await page.getByTestId('use-crosshair').click();
   await page.getByTestId('confirm-fire').click();
   await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
-  await setSpeed(page, Infinity);
+  await setSpeed(page, 120);
   await page.getByTestId('play').click();
   await expect.poll(async () => (await session(page)).viewTime, { timeout: 400_000 }).toBeGreaterThan(until);
   await page.getByTestId('play').click(); // pause
   await expect.poll(async () => (await session(page)).playing).toBe(false);
 }
 
-/** Back to the head of the run if the view is in the past, then play at Max until the recorder holds `count` pictures over `spanS` s or more, then pause. */
+/** Back to the head of the run if the view is in the past, then play at 120 x until the recorder holds `count` pictures over `spanS` s or more, then pause. */
 async function recordUntil(page: Page, count: number, spanS: number): Promise<RecStatus> {
   const s = await session(page);
   if (s.viewTime < s.headTime - 1) {
     await tapTimeline(page, s.headTime);
     await expect.poll(async () => Math.abs((await session(page)).viewTime - s.headTime), { timeout: 120_000 }).toBeLessThan(60);
   }
-  await setSpeed(page, Infinity);
+  await setSpeed(page, 120);
   await page.getByTestId('play').click();
   await expect
     .poll(
@@ -876,6 +879,9 @@ async function recordUntil(page: Page, count: number, spanS: number): Promise<Re
     .toBe(true);
   await page.getByTestId('play').click(); // pause
   await expect.poll(async () => (await session(page)).playing).toBe(false);
+  // The worker is up to an hour ahead of the view and the recording is of what it made after the line was kept: the view may still be before the first picture.
+  const st = (await recOf(page)).status!;
+  if ((await session(page)).viewTime < st.from!) await scrubTo(page, st.to!);
   return (await recOf(page)).status!;
 }
 
@@ -934,7 +940,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(await popups(page), 'nothing pops up by itself').toEqual([]);
   });
 
-  await test.step('plays on at Max: the recorder fills, the status says from when to when, Clear recording appears', async () => {
+  await test.step('plays on: the recorder fills, the status says from when to when, Clear recording appears', async () => {
     const rec = await recordUntil(page, 4, 150);
     expect(rec.state).toBe('recording');
     expect(rec.bytes).toBeGreaterThan(0);

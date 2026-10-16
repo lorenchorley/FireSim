@@ -72,6 +72,6 @@ describe('recordingText', () => {
 
   it('has no em dash or en dash in any of its fixed words', () => {
     const fixed = [...Object.values(DROP_WORDS), ...Object.values(NOT_RECORDED_WORDS), RECORDING_WAITING_WORDS, RECORDING_FAILED_WORDS, RECORDING_EARLIER_WORDS, RECORDING_NO_CELLS_WORDS];
-    for (const w of fixed) expect(w).not.toMatch(/[–—]/);
+    for (const w of fixed) expect(w).not.toMatch(/[\u2013\u2014]/);
   });
 });
