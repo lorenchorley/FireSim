@@ -112,6 +112,24 @@ describe('paintStatic: the still layers', () => {
     expect(s.sets.filter((x) => x.name === 'imageSmoothingEnabled').map((x) => x.value)).toEqual([false]);
   });
 
+  it('a recorded slice keeps no model cells: with the cells switch on it still draws the smoothed lattice, with finite numbers only', () => {
+    const s = stub();
+    const data = fakeSlice({ cells: false });
+    data.recordedAt = 3000;
+    const v = view({ data, showCells: true });
+    expect(() => paintStatic(s.ctx, v)).not.toThrow();
+    expect(s.count('drawImage')).toBe(1);
+    expect(s.count('fillRect')).toBe(0); // no model cells were drawn
+    expect(s.sets.filter((x) => x.name === 'imageSmoothingEnabled').map((x) => x.value)).toEqual([true]); // unlike a live slice that crosses no cell
+    expect(balanced(s.calls)).toBe(true);
+    for (const n of s.numbers()) expect(Number.isFinite(n)).toBe(true);
+    // and the same slice with the switch off is drawn the same way
+    const off = stub();
+    paintStatic(off.ctx, view({ data, showCells: false }));
+    expect(off.count('drawImage')).toBe(1);
+    expect(off.sets.filter((x) => x.name === 'imageSmoothingEnabled').map((x) => x.value)).toEqual([true]);
+  });
+
   it('draws nothing of the field before the first image exists, and does not throw', () => {
     const s = stub();
     expect(() => paintStatic(s.ctx, view({ raster: null }))).not.toThrow();

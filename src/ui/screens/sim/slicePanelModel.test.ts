@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIR_STALE_S } from '../../../core/airView';
 import { WIND_RAMP } from '../../../render/palette';
-import type { SliceFieldStatus } from '../../../render/slice/types';
+import type { SliceFieldStatus, SliceRecordingStatus } from '../../../render/slice/types';
 import type { ExternalLegend } from '../../legends';
 import { fakeSlice, fakeUpdate } from './slicePanelFixtures';
 import {
@@ -9,6 +9,7 @@ import {
   arrowGrid,
   axisTicks,
   canvasLabel,
+  cellsNote,
   chipModel,
   disabledNotes,
   emptyState,
@@ -16,6 +17,7 @@ import {
   flowSlice,
   flowTick,
   flowTimeScale,
+  footerCacheKey,
   footerParts,
   footerRuns,
   footerText,
@@ -27,6 +29,7 @@ import {
   plotLayout,
   rasterBox,
   rasterize,
+  recordingLine,
   sameFlowSlice,
   scaleCaption,
   scaleTag,
@@ -329,6 +332,140 @@ describe('footer: the honest labels (§8.1)', () => {
   it('says so when the air has no time', () => {
     expect(airFromText(null, 100, tz, abs)).toBe('air time not recorded');
     expect(airFromText(NaN, 100, tz, abs)).toBe('air time not recorded');
+  });
+});
+
+describe('footer: a slice read from the time-lapse recording (0.4.1)', () => {
+  const tz = 'Australia/Sydney';
+  const abs = (t: number): number => Date.UTC(2026, 9, 10, 0, 20, 0) + t * 1000; // 11:20 Sydney at t = 0
+
+  it('says "recorded air from" with the time of the sample, and the same footer otherwise', () => {
+    const rec = { kind: 'prognostic' as const, cellSizeM: 133.3, airTime: 0, shownTime: 300, recordedAt: 300 };
+    expect(footerText(rec, tz, abs)).toBe('3-D time-stepped air · model grid 133 m · recorded air from 11:25');
+    expect(footerText({ ...rec, kind: 'diagnosed' }, tz, abs)).toBe('Diagnosed wind: terrain effects only · model grid 133 m · recorded air from 11:25');
+    // not recorded: the 0.4.0 words, whatever the picture's own air time was
+    const { recordedAt: _none, ...live } = rec;
+    expect(footerText(live, tz, abs)).toBe('3-D time-stepped air · model grid 133 m · air from 11:20 (5 min before the time shown)');
+  });
+
+  it('counts the age from the sample, and says it only beyond 90 s, as for the picture\'s own air', () => {
+    expect(airFromText(0, 300 + AIR_STALE_S, tz, abs, 300)).toBe('recorded air from 11:25');
+    expect(airFromText(0, 300 + AIR_STALE_S + 1, tz, abs, 300)).toBe('recorded air from 11:25 (2 min before the time shown)');
+    expect(airFromText(0, 300 + 600, tz, abs, 300)).toBe('recorded air from 11:25 (10 min before the time shown)');
+    expect(airFromText(0, 100, tz, abs, 300)).toBe('recorded air from 11:25'); // a sample never newer than the picture in practice; still never "before"
+  });
+
+  it('takes the sample\'s time even when the picture\'s air has none, and falls back to the air time for a tag that is not a number', () => {
+    expect(airFromText(null, 300, tz, abs, 300)).toBe('recorded air from 11:25');
+    expect(airFromText(0, 60, tz, abs, NaN)).toBe('air from 11:20');
+    expect(airFromText(null, 60, tz, abs, NaN)).toBe('air time not recorded');
+  });
+
+  it('keeps the word "recorded" when a short screen drops the explanations', () => {
+    const info = { kind: 'diagnosed' as const, cellSizeM: 133.3, airTime: 0, shownTime: 400, recordedAt: 300 };
+    const runs = footerRuns(info, tz, abs);
+    expect(runs.map((r) => r.text).join('')).toBe(footerText(info, tz, abs));
+    const kept = runs.filter((r) => r.keep).map((r) => r.text).join('');
+    expect(kept).toBe('Diagnosed wind · grid 133 m · recorded air from 11:25 (2 min before the time shown)'); // (100 s after the sample)
+    expect(kept).toContain('recorded ');
+  });
+
+  it('has a cache key that changes with the tag, so the words are rewritten when only the tag changes', () => {
+    const base = { kind: 'prognostic' as const, cellSizeM: 133, airTime: 600, shownTime: 900 };
+    const live = footerCacheKey(base);
+    expect(footerCacheKey({ ...base, recordedAt: 800 })).not.toBe(live);
+    expect(footerCacheKey({ ...base, recordedAt: 800 })).not.toBe(footerCacheKey({ ...base, recordedAt: 850 }));
+    expect(footerCacheKey({ ...base })).toBe(live);
+    expect(footerCacheKey(null)).toBe('');
+  });
+});
+
+describe('the recording\'s status line and the cells note (0.4.1, every sentence)', () => {
+  const tz = 'Australia/Sydney';
+  const abs = (t: number): number => Date.UTC(2026, 9, 10, 0, 20, 0) + t * 1000; // 11:20 Sydney at t = 0: 600 s is 11:30, 4800 s is 12:40, 5100 s is 12:45
+  const status = (o: Partial<SliceRecordingStatus> = {}): SliceRecordingStatus => ({ state: 'recording', offFor: null, count: 40, from: 600, to: 4800, spacingS: 0, bytes: 2e6, budgetBytes: 6.3e6, dropped: null, ...o });
+  const line = (rec: SliceRecordingStatus | undefined, shownTime = 2000, withData = true): string | null => {
+    const u = fakeUpdate(withData ? fakeSlice({ shownTime }) : null);
+    if (rec) u.recording = rec;
+    return recordingLine(u, tz, abs);
+  };
+
+  it('recording: the span and how close its pictures are, "about" once pictures were thinned', () => {
+    expect(line(status())).toBe('Recorded from 11:30 to 12:40, every picture.');
+    expect(line(status({ spacingS: 20 }))).toBe('Recorded from 11:30 to 12:40, about every 20 s.');
+    expect(line(status({ spacingS: 120 }))).toBe('Recorded from 11:30 to 12:40, about every 2 min.');
+    expect(line(status({ spacingS: 600 }))).toBe('Recorded from 11:30 to 12:40, about every 10 min.');
+  });
+
+  it('says only the start while the first pictures are all in one minute', () => {
+    expect(line(status({ count: 1, to: 600 }))).toBe('Recorded from 11:30.');
+    expect(line(status({ count: 3, to: 640, spacingS: 0 }))).toBe('Recorded from 11:30.');
+  });
+
+  it('a time before the first picture says why the air can be older', () => {
+    expect(line(status(), 300)).toBe("Recorded from 11:30. This time is earlier, so it uses the history's saved air, which can be older.");
+    expect(line(status(), 600)).toBe('Recorded from 11:30 to 12:40, every picture.'); // the first picture itself is inside
+  });
+
+  it('waiting: nothing recorded yet', () => {
+    expect(line(status({ state: 'waiting', count: 0, from: null, to: null }))).toBe('Recording starts with the next picture.');
+  });
+
+  it('after a drop: the reason, then where it records from', () => {
+    const one = { count: 1, from: 5100, to: 5100 };
+    expect(line(status({ ...one, dropped: 'line' }), 5100)).toBe('The line changed, so the old recording was dropped. Recording again from 12:45.');
+    expect(line(status({ ...one, dropped: 'cleared' }), 5100)).toBe('Recording cleared. Recording again from 12:45.');
+    expect(line(status({ ...one, dropped: 'model' }), 5100)).toBe('The air model changed, so the earlier recording was dropped. Recording again from 12:45.');
+    // the span grows with the new recording; the reason stays with it
+    expect(line(status({ count: 9, from: 5100, to: 6000, dropped: 'line', spacingS: 0 }), 5400)).toBe('The line changed, so the old recording was dropped. Recording again from 12:45 to 13:00, every picture.');
+    // and none of it is lost when the time shown is before the new start
+    expect(line(status({ ...one, dropped: 'cleared' }), 4000)).toBe("Recording cleared. Recording again from 12:45. This time is earlier, so it uses the history's saved air, which can be older.");
+    // dropped and nothing recorded yet
+    expect(line(status({ state: 'waiting', count: 0, from: null, to: null, dropped: 'cleared' }))).toBe('Recording cleared. Recording starts with the next picture.');
+  });
+
+  it('off for a preset or the Layers chord: why, and what to do', () => {
+    const off = (offFor: 'preset' | 'chord' | null): SliceRecordingStatus => status({ state: 'off', offFor, count: 0, from: null, to: null });
+    expect(line(off('preset'))).toBe('This preset follows the wind and the fire, so it is not recorded. Press Keep this line to record it.');
+    expect(line(off('chord'))).toBe('The Layers line is not recorded. Place a line with Set start (A) and Set end (B) to record it.');
+    expect(line(off(null))).toBeNull();
+  });
+
+  it('failed: the slice is not affected', () => {
+    expect(line(status({ state: 'failed', count: 0, from: null, to: null }))).toBe('Recording stopped. The slice is not affected.');
+  });
+
+  it('says nothing without a recorder (the 2-D map, an older scene) or without a slice', () => {
+    expect(line(undefined)).toBeNull();
+    expect(line(status(), 2000, false)).toBeNull();
+    expect(recordingLine(null, tz, abs)).toBeNull();
+  });
+
+  it('every sentence is plain: sentence case, no em or en dash, no exclamation, ends with a full stop', () => {
+    const all: (string | null)[] = [];
+    for (const dropped of [null, 'line', 'cleared', 'model'] as const) {
+      for (const shown of [100, 2000]) {
+        all.push(line(status({ dropped }), shown), line(status({ dropped, count: 1, to: 600 }), shown), line(status({ dropped, state: 'waiting', count: 0, from: null, to: null }), shown));
+      }
+    }
+    for (const offFor of ['preset', 'chord'] as const) all.push(line(status({ state: 'off', offFor, count: 0, from: null, to: null })));
+    all.push(line(status({ state: 'failed', count: 0, from: null, to: null })));
+    const words = all.filter((x): x is string => x !== null);
+    expect(words.length).toBeGreaterThan(20);
+    for (const w of words) {
+      expect(w, w).toMatch(/^[A-Z]/);
+      expect(w, w).toMatch(/\.$/);
+      expect(w, w).not.toMatch(/[\u2013\u2014!]/);
+      expect(w, w).not.toMatch(/undefined|NaN|null/);
+    }
+  });
+
+  it('the cells switch on a recorded slice says why the smooth picture stays', () => {
+    const rec = { recordedAt: 300 };
+    expect(cellsNote(true, rec)).toBe("The recording does not keep the model's own cells, so the smooth picture is shown.");
+    expect(cellsNote(false, rec)).toBeNull();
+    expect(cellsNote(true, {})).toBeNull();
+    expect(cellsNote(true, null)).toBeNull();
   });
 });
 

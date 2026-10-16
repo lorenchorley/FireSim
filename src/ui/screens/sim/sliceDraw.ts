@@ -60,7 +60,10 @@ export function paintStatic(ctx: Ctx, v: StaticView): void {
   drawAxes(ctx, v);
 }
 
-/** The field: the smoothed lattice, or the model's own cells (or the lattice without smoothing when the line crosses none). */
+/**
+ * The field: the smoothed lattice, or the model's own cells (or the lattice without smoothing when the line crosses none). A recorded slice
+ * (0.4.1) keeps no model cells, so with "Show model cells" on it is still the smoothed picture; the panel's caption says so.
+ */
 export function drawField(ctx: Ctx, v: StaticView): void {
   const { layout: l, data } = v;
   if (v.showCells && data.cells && data.cells.count > 0) {
@@ -70,7 +73,7 @@ export function drawField(ctx: Ctx, v: StaticView): void {
   if (!v.raster) return;
   const b = rasterBox(l, data.columns, data.rows);
   if (!ok(b.x, b.y, b.w, b.h)) return;
-  ctx.imageSmoothingEnabled = !v.showCells;
+  ctx.imageSmoothingEnabled = !v.showCells || data.recordedAt !== undefined;
   ctx.drawImage(v.raster, b.x, b.y, b.w, b.h);
 }
 

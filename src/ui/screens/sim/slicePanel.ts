@@ -26,6 +26,7 @@ import {
   arrowGrid,
   axisTicks,
   canvasLabel,
+  cellsNote,
   chipModel,
   disabledNotes,
   emptyState,
@@ -33,6 +34,7 @@ import {
   flowSlice,
   flowTick,
   flowTimeScale,
+  footerCacheKey,
   footerRuns,
   legendView,
   makeLut,
@@ -40,6 +42,7 @@ import {
   pickPos,
   plotLayout,
   rasterize,
+  recordingLine,
   sameFlowSlice,
   scaleCaption,
   scaleTag,
@@ -113,17 +116,21 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     onChange: (on) => {
       showCells = on;
       staticDirty = true;
+      syncRecording();
       paint();
       options.onShowCells(on);
     },
   });
   const scaleWords = h('span', { dataset: { testid: 'slice-scale' } });
   const terrainLine = h('p', { class: 'hint slice-terrain', hidden: true, dataset: { testid: 'slice-terrain' } }, [scaleWords, ' ', TERRAIN_CAPTION]);
+  // The time-lapse recording (0.4.1): what the cells switch cannot do on a recorded slice, and what is recorded. Plain text, nothing announced.
+  const cellsNoteEl = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-cells-note' } });
+  const recordingEl = h('p', { class: 'hint', hidden: true, dataset: { testid: 'slice-recording' } });
   const footer = h('p', { class: 'hint slice-footer', hidden: true, dataset: { testid: 'slice-footer' } });
   const controlsWrap = h('div', { class: 'slice-controls' }, options.controls);
-  // Order: picture, reading, chips, legend, controls, the notes of the chips that are off, the switch, the caption, the footer. When there are notes (the fast
-  // tier) the legend goes after them: the controls stay in reach on a small phone (`arrange`).
-  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, legendHost, controlsWrap, reasons, cellsToggle.el, terrainLine, footer]);
+  // Order: picture, reading, chips, legend, controls, the notes of the chips that are off, the switch (and its note), the recording's status, the caption, the
+  // footer. When there are notes (the fast tier) the legend goes after them: the controls stay in reach on a small phone (`arrange`).
+  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, legendHost, controlsWrap, reasons, cellsToggle.el, cellsNoteEl, recordingEl, terrainLine, footer]);
   let legendLast = false;
   function arrange(last: boolean): void {
     if (last === legendLast) return;
@@ -387,7 +394,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     const d = data;
     footer.hidden = !d;
     terrainLine.hidden = !d;
-    const key = d ? `${d.kind}|${d.cellSizeM}|${d.airTime}|${d.shownTime}` : '';
+    const key = footerCacheKey(d);
     if (key === footerKey) return;
     footerKey = key;
     if (!d) return;
@@ -395,6 +402,16 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       footer,
       footerRuns(d, options.tz, options.absTime).map((r) => (r.keep ? r.text : h('span', { class: 'slice-more' }, r.text))),
     );
+  }
+
+  /** The recording's status line and the note under the cells switch: both follow the update and the switch, and say nothing without a slice. */
+  function syncRecording(): void {
+    const line = recordingLine(update, options.tz, options.absTime);
+    recordingEl.hidden = !line;
+    if (line) text(recordingEl, line);
+    const note = cellsNote(showCells, data);
+    cellsNoteEl.hidden = !note;
+    if (note) text(cellsNoteEl, note);
   }
 
   /** The words for the drawn scale, in the caption under the controls and in the canvas's text alternative. */
@@ -415,6 +432,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     syncScale();
     syncChips();
     syncLegend();
+    syncRecording();
     syncFooter();
   }
 
@@ -613,6 +631,7 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
       showCells = on;
       cellsToggle.set(on);
       staticDirty = true;
+      syncRecording();
       paint();
     },
     setUnits(u) {
