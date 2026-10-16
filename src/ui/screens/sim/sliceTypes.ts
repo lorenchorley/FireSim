@@ -20,9 +20,11 @@
  *     it. Until the chunk arrives the body shows a one-line "Loading" row; a failed load shows one line and a Retry button,
  *     never a toast.
  *   - The tool builds the CONTROLS element (placement buttons, presets, the quiet notice line, the fast-tier callout if it
- *     wants one) and passes it in `SlicePanelOptions.controls`; the panel places it between the legend and the footer and
- *     lays everything out (portrait: canvas, chips, legend, controls, switch, footer; short landscape: the canvas pinned at the
- *     top, the rest scrolling inside the panel). So the buttons' logic and words are the tool's, and their place is the panel's.
+ *     wants one) and passes it in `SlicePanelOptions.controls`; the panel places it and lays everything out (portrait: canvas,
+ *     the reading of a probe, chips, legend, controls, the notes of the chips that are off with the 3-D button, switch, footer;
+ *     with such notes (the fast tier) the legend comes after them so the controls stay near the chips on a small phone; short
+ *     landscape: the canvas and the footer pinned, the reading, chips and controls scrolling between). So the buttons' logic and
+ *     words are the tool's, and their place is the panel's.
  *   - The tool subscribes to `view.onSlice` and calls `panel.setData(update)`; the panel never asks the scene.
  *   - A tap on a chip calls `onField`; the tool writes `crossSection.field` (so the curtain follows) and calls `setField`
  *     back if the layers change it from elsewhere (the Layers panel has the same chips). The panel keeps no field of its own.
