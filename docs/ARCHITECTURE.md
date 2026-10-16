@@ -28,7 +28,10 @@ recorded in the module's top-of-file notes and summarised below.
 src/
   main.ts        entry: settings/theme, loadServices (real modules or ?mock=1), App
   core/          contracts (types.ts, simTypes.ts, datasets.ts = data-set provenance), grid, geo (LocalProjection),
-                 units, rng, shared physics, airView.ts (what an AtmosphereView is and holds: kind, layout, flags, air time)
+                 units, rng, shared physics, airView.ts (what an AtmosphereView is and holds: kind, layout, flags, air time),
+                 airPack.ts (the 16-bit copy of the fast tier's wind volume that the history keeps), sliceRecording.ts (the packing,
+                 the byte model and the budget of the Air slice recorder; the entry needs only its budget functions, for the memory
+                 model and the model card, and the build makes the file a shared chunk of 0.8 kB gzip)
   data/          assets (bundled files in browser / Node), http, cache + area-pack storage, terrain tiles
                  (Terrarium), canopy, demo rasters (DEM, imagery window, GeoJSON), demo sites, synthetic terrain,
                  ledger.ts (request ledger), storage.ts (storage report), bundleManifest.ts (public/demo/provenance.json)
@@ -59,19 +62,21 @@ src/
                  a tap is on), iconAtlas.ts (the icons' drawing), frameLog.ts (frame statistics); render-only pure helpers
                  for the cliff drawing: cliffDrawing.ts (the pipeline), cliffSharpen.ts, terrainMesh.ts, rockMask.ts;
                  atmosphereSampler.ts (the air sampler, v2), sliceFields.ts (which Air slice chips an air can give, and the
-                 words), crossSectionLayer.ts + crossSectionColour.ts (the curtain), slice/ (the Air slice's pure modules)
+                 words), crossSectionLayer.ts + crossSectionColour.ts (the curtain), slice/ (the Air slice's pure modules, among them
+                 the time-lapse recorder: sliceRecorder.ts, and the scene's half sliceTimeLapse.ts)
   ui/            App shell + back stack (app.ts, backStack.ts), screens (notice, setup, building, settings, datasets,
                  modelCard, debugStats, sim/*), session, stores, widgets + primitives (typed builders of the design system),
                  mocks; the speed signal (paceModel.ts, paceSheetModel.ts, paceTypes.ts) and Simulation debug statistics
                  (debugStats.ts, deviceInfo.ts, eventLog.ts, runEvents.ts); the Air slices tool (screens/sim/sliceTool.ts,
                  sliceToolModel.ts, sliceToolActions.ts, sliceToolLoad.ts, sliceTypes.ts: in the entry chunk) and its side-view
-                 panel (screens/sim/slicePanel.ts, slicePanelModel.ts, sliceDraw.ts: one lazy chunk)
+                 panel (screens/sim/slicePanel.ts, slicePanelModel.ts, sliceDraw.ts: one lazy chunk); recordingWords.ts (the words of
+                 the Air slice recording, shared by the panel's status line and the statistics row)
   styles/        design system (tokens, base, components, overlays, data: flat Maps-style look, light / night / high-contrast)
                  + screen CSS (screens, sim, transport, layers, datasets, modelcard, debugstats; slice.css, imported by the lazy
                  side-view chunk and not by main.css); see docs/DESIGN.md
 e2e/             Playwright specs (app.spec.ts real engine end to end, sim.spec.ts, ui.spec.ts mock, layers, datasets,
                  model-card, integration, android; for 0.3.0 debug-stats, pace, night-look, picture-quality, icon-tap, cliffs;
-                 for 0.4.0 air-view, air-tool, airslice-panel, air-slice, air-curtain-gpu)
+                 for 0.4.0 air-view, air-tool, airslice-panel, air-slice, air-curtain-gpu; for 0.4.1 the recorder tests of air-slice)
 docs/research/   literature reviews 01–10, 08b; 00-synthesis.md is the model specification
 docs/screenshots/ produced by the e2e specs and scripts/app-screenshots.mjs (design/ = the style guide and the screens)
 public/demo/     bundled terrain / canopy / imagery / vegetation / fire history of the 9 demo sites (scripts/fetch-demo-site.mjs <id> builds one)
@@ -769,6 +774,145 @@ and `legends` (the new ramps, colour vision and legends), `layerCatalog`, `ui/sc
 the words the code uses. Real app, Playwright: `e2e/air-view.spec.ts`, `air-tool.spec.ts`, `airslice-panel.spec.ts`, `air-slice.spec.ts` (the three together, 5 tests) and `air-curtain-gpu.spec.ts` (no GPU object leaks), plus changes to
 `app.spec.ts` (the slice's note and the tier switch) and `robustness.spec.ts`.
 
+### The Air slice recorder (0.4.1)
+
+The time-lapse recorder of a pinned Air slice line (plan section 8.6, decision D7; what was built, and the corrections to the design, are in plan
+section 19). It keeps the slice of ONE hand-placed line at the pictures the simulation makes, so the side view can show the air of the time shown
+and not the older saved air a composed picture carries (the footer's "N min before the time shown", above). It reads the air and never feeds
+back into the simulation: no module of the simulation imports it, and a test hashes every snapshot of a real run on each tier with and without
+a recorder in the snapshot hook (equal; `render/slice/sliceTimeLapse.test.ts`).
+
+| File | What it holds | Chunk |
+|---|---|---|
+| `core/sliceRecording.ts` | the packing (`packField`, `unpackField`; smoke as a log code, `packSmoke`, `unpackSmoke`), the byte model (`sliceSampleBytes`, `SLICE_SAMPLE_FIXED_BYTES` = 96), the error bound (`sliceFieldErrorBound`) and the budget (`sliceRecorderBudgetBytes`, `SLICE_RECORDER_MAX_BYTES` = 12 MiB) | pure; its budget functions are used by `scenario/memoryModel.ts` and `ui/modelInfo.ts`, so the build makes it a shared chunk (0.8 kB gzip) |
+| `render/slice/sliceRecorder.ts` | `SliceRecorder` and `sliceLineKey`: the epoch (the line and its lattice, with the parts that never change from sample to sample), the samples, `setLine`, `arrive`, `store`, `read`, `truncateAfter`, `truncateFrom`, `clear`, `reset`, `setBudget`, `status` | pure, the render chunk |
+| `render/slice/sliceTimeLapse.ts` | `createSliceTimeLapse(host)`: the scene's half. It is the `SliceRecordingApi` the session uses (`record`, `truncateAfter`, `clear`, `status`, `setHistoryBudget`), the `SliceRecordingReader` the slice updater asks (`read`), and has `follow(resolved)` and `reset()` for the scene only | the render chunk |
+| `render/slice/types.ts`, `render/api.ts` | the contract, appended before the lanes began: `SliceRecordingStatus`, `SliceRecordingReader`, `SliceRecordingApi`, `RecordingState`, `RecordingDrop`, `SliceData.recordedAt?`, `SliceInputs.recording?`, `SliceUpdate.recording?`, `SceneViewApi.sliceRecording?`. `setHistoryBudget?` was added to `SliceRecordingApi` while building, as an optional member | types |
+| `render/SceneView.ts` | `readonly sliceRecording = createSliceTimeLapse({...})` (the host reads the layer state, the 10 m ground as received and 12 MiB until the session says otherwise), `recording` in `sliceInputs()`, `follow()` and `status()` in `applySlice`, `reset()` in `dropSlice` and `dispose`: about 18 lines | the render chunk |
+| `render/slice/sliceUpdater.ts`, `lattice.ts`, `crossSectionLayer.ts` | the read path (below), and the curtain's arrows of a recorded slice read its lattice (`latticeInPlaneWind`, `upperAlongMean`) | `lattice.ts` is a shared chunk of 0.7 kB gzip (the curtain and the panel read it) |
+| `ui/session.ts` | `cutHistory(t)`, the feed (`record` after the store has the picture), `clear()` on `dispose`, `setHistoryBudget` at construction | the entry |
+| `ui/recordingWords.ts` | every sentence about the recording (spacing, span, drop reasons, "not recorded" reasons, waiting, failed, earlier, no cells), pure, shared by the panel's status line and the statistics row | a small shared chunk |
+| `ui/screens/sim/sliceTool*.ts`, `slicePanel.ts`, `slicePanelModel.ts`, `sliceDraw.ts` | *Keep this line* (`keepLine`) and *Clear recording* (`clearRecording`), the status line (`recordingLine`, `focusRecording`), the footer's "recorded air" (`airFromText`, `footerCacheKey`) and the note under *Show model cells* (`cellsNote`) | the tool in the entry, the panel in its lazy chunk |
+| `ui/debugStats.ts`, `ui/screens/debugStats.ts`, `ui/modelInfo.ts`, `scenario/memoryModel.ts`, `ui/screens/sim/layersPanel.ts` | the statistics row, the model card's note, the Data sets memory note (no new row, so no total changes), the two Layers sentences | |
+
+*Feeding it.* `SimSession.onSnapshot` calls `view.sliceRecording?.record(snap)` after the store has the picture, for every picture the worker makes: it is
+not fed from `SceneView.update`, which sees only the composed, rounded picture on screen. `record` does nothing for a slice that is off
+(it resets the recorder), takes the line from the layer state (a live preset or the Layers chord is not recorded: `offFor` says which), resolves
+a hand-placed line with `sectionFromEndpoints` on the picture's atmosphere grid (its fire grid when it has none), tags it with `sliceLineKey` (both ends to 0.1 m), asks the
+recorder's `arrive(t)` (which first drops every sample at or after `t`, as `SnapshotStore.push` does, and then says whether a sample is wanted:
+the first, or one at least the gap after the newest) and, when one is wanted, samples the slice with the existing `sampleSlice` into a reused
+scratch slice (the 10 m ground as received, a fresh `AtmosphereSampler` of the picture's air) and `store`s it packed. The whole body is in a
+`try`: a failure (a sampler that throws) stops the recording for that line with `state: 'failed'`, logs nothing (the e2e console guard counts every
+console message), is never rethrown into `onSnapshot`, and another line tries again. A picture with no 3-D wind yet (the fast tier before it
+publishes) stores nothing and fails nothing. `follow(resolved)`, called from `SceneView.applySlice`, applies a change of line at once, even while
+paused, when the next picture may be minutes away.
+
+*What an epoch is, and a sample.* The epoch is one line on one lattice: `valid`, the 10 m `ground`, the `modelGround`, the height axis and the cell
+size, made once from the first sample (5,772 B at 90 x 54). A sample whose lattice differs (another number of columns or rows; `zMin`, `zMax`, `topAsl` or the cell size
+more than 0.01 m off; the model ground more than 0.5 m off in any column) starts a new epoch with `dropped: 'model'`; the standard and the fast tier share one
+atmosphere grid (`ATMOS_TIERS`: both `nTier` 45, 20 levels), so a switch between them keeps it, and the High tier (60 cells) does not. A sample is
+`Int16Array` `[along | across | up]` and, with the 3-D air, `[theta | smoke]` (`columns x rows` each, row 0 the lowest, the index of `SliceData`), a
+`Float32Array(4)` of scales, its time, the air's time and its kind; `bytes` = the integers + 96. Along, across, up and theta are
+`q = round(f / s)` with `s = max|f| / 32767` (the `airPack.ts` rule, bound `0.502 s`: 0.00046 m/s at 30 m/s, 0.0003 K at 20 K); the speed is not
+stored (`hypot(along, across)`: the pair is the wind turned by a unit vector, so the error is at most the hypot of the two bounds, 0.00065 m/s at 30 m/s);
+smoke is `0` below 1e-6, else `1 + round((log10 s + 6) / 9 x 32766)`, a relative error of at most 3.3e-4 up to 1e3 (above it is clamped) where a linear code
+would put the 1e-4 end on three steps. A value that is not finite is stored as 0. The model's own cells are not recorded (only *Show model cells* needs them); a recorded slice has `cells = null` and the panel says why. The samples are tagged with their `kind`, so the recording crosses a
+tier switch and `read` never mixes the two kinds on screen.
+
+*Sizes.* Computed with the real functions (a throwaway test, and `[recorder bytes]` in `sliceRecorder.perf.test.ts` for the first row):
+
+| Line (lattice) | 3-D air, bytes a sample / fit in 12 MiB / in 6 MiB | Fast tier |
+|---|---|---|
+| 6 km line on the 133 m grid, 90 x 54 | 48,696 / 258 / 129 | 29,256 / 429 / 214 |
+| The longest line on the standard or fast tier, 127 x 56 | 71,216 / 176 / 88 | 42,768 / 294 / 146 |
+| The longest on the High tier, 170 x 56 | 95,296 / 131 / 65 | 57,216 / 219 / 109 |
+| The shortest, 48 x 48 | 23,136 / 543 / 271 | 13,920 / 903 / 451 |
+
+The design file sized the worst case at 192 x 56 (107,616 B, 116 samples). It cannot occur: a lattice has one column for each half model cell of the line,
+the model cell is `clamp(extent / nTier, 100, 270)` m, and the longest line is the model's diagonal, so the columns are at most `2 sqrt(2) nTier`:
+127 on the standard and fast tiers and 170 on the High tier, whatever the area (3, 6 or 9 km). The perf test keeps the 192 x 56 case as a harsher bound.
+
+*The one place the history is cut.* The history (`SnapshotStore`) and the recorder keep the same time order:
+
+```ts
+/** The one place history is cut: the store and the Air slice recorder keep the same time order. Keeps everything at or before t. */
+private cutHistory(t: number): void { this.snapshots.truncateAfter(t); this.view.sliceRecording?.truncateAfter(t); }
+```
+
+| Site in `session.ts` | `cutHistory` is given | What it cuts |
+|---|---|---|
+| `prepareEditAt` (an edit made in the past) | the view time, only when it is before the head | the future of an edit |
+| `rerunWith` (a what-if) | the view time | the old run after the what-if starts |
+| `rerunFromView` (`setSolverStep`) | the view time | after a solver-step change |
+| `removeIgnition` | the ignition's own time, only when it is before the head (it can be well before the view time) | everything after the removed ignition |
+| `onRewound` (the worker restored a checkpoint) | the later of the checkpoint and the view time, or the checkpoint alone after `removeIgnition` | stale results; nothing when its early return applies |
+
+A tier switch is not a site: the worker restores a checkpoint, says `rewound` (the last row) and sends every picture after it again, so the first one
+re-emitted drops the stale samples by time order (`SnapshotStore.push` to `truncateFrom`, `SliceRecorder.arrive` to `truncateFrom`). A source-audit test
+(`session.recorder.test.ts`) holds `session.ts` to exactly one `snapshots.truncate` call, inside `cutHistory`. `session.recorder.sim.test.ts` puts the
+recorder behind a real session on the real engine, with the worker's messages delayed, and after each of the operations above (and a tier switch)
+the recorder holds the pictures of the history that is left, with the content of that run, to the packing bound.
+
+*The read path* (`SliceUpdater.compute`, the scene passes `recording` in `SliceInputs`). After `resolveSlice` gives a line, the updater asks
+`recording.read(line, shownTime, kind, sampler.airTime, held)` (in a `try`: a reader that throws leaves the live slice, which is never lost to the
+recorder). `SliceRecorder.read` answers only when `sliceLineKey(line)` is the recorder's key, the newest sample at or before `shownTime` (a binary
+search) has the asked kind, and its time is more than 0.5 s newer than the air the picture itself carries (`pictureAirTime`, the sampler's `airTime`);
+it refills `held` in place when it has the lattice, with `recordedAt` set, `cells = null`, `kind`, `airTime` and `shownTime`. Anything else is the
+0.4.0 path, and after a `sampleSlice` into a reused object the updater clears `recordedAt`, so a live slice never keeps the tag. Hence the real
+newest picture of a run (whose air is its own) stays live and exact, and a composed picture whose keyframe air is older takes the recorded air. The
+probe, the streaks, the legend and the chips read `SliceData` and need nothing; the curtain's arrows read the sampler for the picture's air, which a
+recorded slice does not have, so for `recordedAt` they read the lattice (`LatticeStencil`, validity-weighted, at the same 15 columns by six heights;
+they equal the sampler's wind at the lattice nodes to within 1e-3 m/s and within 0.05 m/s between nodes at the heights the arrows use, `lattice.test.ts`) and the reverse-flow reference is the mean along-line wind at the
+highest valid cell of each column (`upperAlongMean`).
+
+*Thinning* is uniform and never oldest-first. `store` thins (`fit`) while the recording is over its budget: `thin()` keeps position 0 and every
+second sample after it, and the newest; when the newest sits at an odd position it takes the place of the last one kept; with two samples left the
+first goes. The gap that `arrive` asks for starts at 0 and, at the first thinning, becomes twice the **median** spacing of the stored pictures (twice
+the least let one picture a few seconds after another, the run-end picture of a pause, make the status say "about every 5 s" of pictures 2 minutes
+apart, and every later thinning doubled the gap and the spacing alike); every later thinning doubles it. `spread()` then removes the later of any pair the
+halving left closer than the gap (the earlier when the later is the newest), so no two samples are ever closer than the gap. The stored times are a subset of the arrival times; the first and the newest always stay; with one sample over the budget
+nothing is held. The arrays of dropped samples go to a free list by length and are reused by the next sample of that size (held to what the budget
+has room for: `bytes` counts the live samples and the epoch, not the free list), so a steady stream allocates no arrays. Why uniform: the recorder replays how
+the air changed since the line was placed, an even spacing gives one number to say, bounds the age of any read by it and is easy to test; the history
+already keeps the recent past fine. The price: the newest minutes are no finer than the old ones.
+
+*Budget and memory.* `sliceRecorderBudgetBytes(historyBytes)` = `min(12 MiB, round(historyBytes / 8))`: 6 MiB at the history's 48 MiB floor, 7.7 MiB at
+61.4, 12 MiB from 96 MiB (a 1.6 GB phone), on top of the history. The history is not changed (`snapshotStore.ts` has no diff, and a test in
+`memoryModel.test.ts` holds the `snapshots` item at 48, 61.44 and 122.88 MiB): scrubbing back keeps the same number of pictures as in 0.4.0. Had the
+12 MiB come out of the history instead, the design scout's synthetic replay of the real `SnapshotStore` (a 6 h run at a 60 s step, 40,000 fire
+cells; not run again by the docs lane) gave the mean number of keyframes kept over the last hour as 44.5 down to 29.0 on the fast tier at a 48 MiB
+history (-35 %) and 28.5 down to 19.5 on the standard tier at 61.4 MiB (-32 %), which is why the recorder has its own budget. The session passes the history's budget on at construction (`setHistoryBudget`, which calls
+`SliceRecorder.setBudget` and thins at once if the recording is over). `memoryModel.ts` re-exports `sliceRecorderBudgetBytes`, has
+`sliceSampleBytesModel(columns, rows, tier)` and appends ONE note to `notes` ("An Air slices recording adds up to 6.3 MB while a line is recorded; it
+is not in the figures above." at the floor; it is never `notes[0]`, which `memoryModel.test.ts` pins), and no item, so no total moves. The statistics
+screen's Memory group has the row `slice-recording` ("Air slice recording": Off, Waiting, "N slices, X of Y", Stopped) and the model card's
+"This phone" note adds "an Air slices recording adds up to 6.3 MB on top of it"; both use the recorder's own rule, and a test holds the two to the
+budget the recorder really keeps. The statistics row counts live samples, and the free list's arrays are not in it (a verifier saw 12.4 MB held while the
+row said 6.7 MB; never over the budget).
+
+*What it costs* (node, one run each, `npx vitest run src/render/slice/sliceRecorder.perf.test.ts`): `arrive` + sample + `store` of a picture on a 90 x 54 lattice a
+median of 0.95 ms and a 95th percentile of 1.23 ms on the 3-D air (the sampling alone median 0.73 ms), 0.63 and 0.71 ms on the fast tier; a `read` p95 0.065 and
+0.036 ms; the store that thins a median of 0.25 ms; the whole `record(snapshot)` path on 96 x 56 a median of 1.00 ms and p95 1.31 ms (the design's limit 1.5);
+3,000 arrivals with thinning and a replay among them changed the heap by 70.7 kB (the test allows 256 kB), at 12 MiB (3-D air) and 6 MiB (fast tier). The
+192 x 56 case (which cannot occur) is 1.91 and 2.18 ms. In a real browser in software rendering under a 4x CPU throttle at Max speed on a 6 km line (v-core,
+not repeated by the docs lane) `record()` took a median of 3.8 ms and p95 13.2 ms (maximum 22 ms) on the fast tier, at 14 pictures a second (a mean 6.7 % of the
+time, worst second 132 ms), and a median of 4.7 ms and p95 11.1 ms (maximum 29 ms) on the 3-D tier, at 5 a second (2.7 %): the highest load is in the first 20
+to 50 seconds after *Keep this line* and it falls as thinning halves the rate at which pictures are stored; a single call can exceed a frame at 60 frames a second;
+with the slice off or a preset a call is 0.03 to 0.1 ms and nothing is stored. Nothing was measured on a phone. If frame drops show up, the next step is to sample
+in idle time or to cap the pictures stored per wall second.
+
+*Tests.* Pure, in node: `core/sliceRecording` (each field's round trip within `0.502 s`, smoke's relative bound, zero stays zero, non-finite is 0,
+the byte model, the budget function at 48, 61.44, 96 and 160 MiB, the capacity row), `render/slice/sliceRecorder` (against a live `sampleSlice` at 90 x 54, every field
+to the packing bound with the derived speed within the hypot bound and the flags identical; the read rule: the other key, the other kind, a picture air equal or newer;
+`arrive` and `truncateAfter`; thinning over 2,000 arrivals with a mid-run step change, bytes within the budget after every store, spacing at least the gap, the median
+gap with a pause's run-end picture; the drops; random arrivals, replays, cuts and budget changes), `sliceRecorder.perf` (above), `sliceTimeLapse` (which lines are
+recorded, `follow`, failure inside the recorder, determinism on both tiers on a real run, the standard to fast switch keeping the lattice and the High tier not),
+`sliceUpdater` and `lattice` (the read path and the arrows), `ui/recordingWords`, `slicePanelModel`, `sliceToolModel`, `sliceToolActions`, `sliceDraw`, `debugStats`,
+`modelInfo`, `memoryModel`, `ui/session.recorder` (the five sites, the source audit, time order, dispose) and `session.recorder.sim` (the real engine behind a real
+session). Real app, Playwright: `e2e/air-slice.spec.ts` (two tests, one for each tier: a preset says why it is not recorded, *Keep this line*, the recorder fills,
+scrubbed pictures read it back, a time before it does not, *Swap* drops it, *Clear recording* empties it, switching the slice off clears it, a tap audit of the
+tool), the determinism test of `e2e/robustness.spec.ts` (run B records), and `e2e/gallery.spec.ts` for picture 36.
+
 ### explain/
 
 `explainCell` (spec §10.4) ranks the §6.12 factor decomposition. The fire model's wind and slope factors are those
@@ -793,6 +937,7 @@ export interface SceneViewApi {                       // src/render/api.ts — a
   viewSection?(animate?): void;                        // side-on view of the cross-section (3-D view only); flies to the resolved line
   slice?(): SliceUpdate | null;                        // the air slice the scene computed for LayerState.crossSection, shared by the curtain and the side-view panel (3-D view only)
   onSlice?(cb: (update: SliceUpdate | null) => void): () => void;   // after every new slice, and with null when the section is switched off; returns the unsubscribe
+  sliceRecording?: SliceRecordingApi;                  // the Air slice's time-lapse recorder (0.4.1): record(snap), truncateAfter(t), clear(), status(), setHistoryBudget?(bytes); the session feeds and cuts it, the tool's Clear recording and the statistics screen call clear() and status() (3-D view only)
   setNightLook?(look: 'realistic' | 'brighter' | 'daylight'): void;  readonly nightLook?: NightLook;   // map lighting after dark, uniforms only (3-D view only)
   readonly qualityInfo?: QualityInfo;                  // the picture tier, how it was chosen and what it sets (3-D view only)
   frameStats?(): FrameStatsInfo | null;                // frame rate, slow frames, draw calls, pixel ratio: the debug statistics (3-D view only)
@@ -1082,7 +1227,9 @@ checks for them: the Night lighting row is left out, and the statistics' display
   the first keyframe and the newest snapshot are never dropped. Measured with real fast-tier Katoomba snapshots (40 k fire cells)
   for 6 h under a 64 MiB budget: 60.2 / 59.8 / 57.7 MiB held, 58 / 56 / 55 keyframes, at 10 / 30 / 60 s steps (`src/ui/snapshotStore.sim.test.ts`;
   with the diagnosed wind whole in every keyframe it was 57.2 / 44.7 / 50.4 MiB and 31 / 26 / 31 keyframes); the budgets of the 0.5, 1 and 2 GB
-  classes, and the 0.3.0 comparison, are in the air-data section (`src/ui/snapshotStore.fast6h.sim.test.ts`).
+  classes, and the 0.3.0 comparison, are in the air-data section (`src/ui/snapshotStore.fast6h.sim.test.ts`). Since 0.4.1 the session cuts the history in ONE place,
+  `cutHistory(t)` (the five sites that used to call `truncateAfter`), which cuts the Air slice recorder at the same time; the recorder's memory is on top of the
+  history's budget and takes nothing from it (*The Air slice recorder*, above).
 * Insight flood control (`ui/insightGroups.ts`): a large fire reports the same phenomenon along its whole edge
   (hundreds of cards in 6 h). The Insights tab and the map show one card / marker per kind (the newest of the most
   severe instances, "seen N times since …"). Nothing pops up over the map: `UnseenTracker` counts the cards revealed since
@@ -1310,7 +1457,7 @@ Meta/WRI canopy-height COG (Deflate with predictor 2, checked in research note 0
 `.catch(() => null)` reports a COG in an unsupported compression as "the canopy service did not answer". The plan's T3b and T4b trims
 were not done.
 
-**What 0.4.0 adds** (the air data foundation and Air slices). The bundle rows are to be filled from the release build
+**What 0.4.0 adds** (the air data foundation and Air slices). The bundle rows are from the release build
 (`flock /tmp/firesim-heavy.lock npm run build:cap`, then `npm run check:bundle`, kB of 1024 bytes and `gzip -9` as the script prints them);
 the budgets in `scripts/check-bundle.mjs` did not change (entry 195 kB, all JS 1000 kB gzip: the owner chose to reuse the existing budget,
 so the panel is a lazy chunk). The other rows were measured in node on the build machine, one run each, from the log lines named.
@@ -1338,6 +1485,32 @@ fast-tier snapshot size after the volume (about 0.5 MB more than before from the
 the section on. The plan's budget row for D ("14 to 18 kB, lazy") is met with room (10.5 kB gzip plus 0.9 kB of CSS); for C ("about 3 kB, entry")
 the entry grew by 5.8 kB gzip in all, which includes the tool's shell, the model and the scene glue, so that row was too small.
 
+**What 0.4.1 adds** (the time-lapse recorder). The bundle rows are from the 0.4.1 release build on the tree of this docs round (`flock /tmp/firesim-heavy.lock npm run
+build:cap`, then `npm run check:bundle`; kB of 1024 bytes, `gzip -9`, chunk sizes by a script that reads `dist/assets`); no budget changed (entry 195 kB, all JS 1000 kB
+gzip) and no check was weakened. The node rows are from `npx vitest run src/render/slice/sliceRecorder.perf.test.ts`, one run on this machine.
+
+| Measure | 0.4.0 | 0.4.1 | Budget / verdict |
+| --- | --- | --- | --- |
+| JS, all chunks (raw / gzip, kB) | 2807 / 943.3 | 2823.1 / 949.3 (+6.0 gzip) | gzip <= 1000 (`npm run check:bundle`) |
+| Entry chunk `index-*.js` (raw / gzip, kB) | 477.7 / 165.5 | 479.2 / 166.0 (+0.5 gzip; the share of each part of the feature was not measured) | gzip <= 195 |
+| CSS (raw / gzip, kB) | 127.7 / 23.3 | 127.7 / 23.3 | raw <= 135, gzip <= 25 |
+| `src/styles/slice.css`, source | 4,024 bytes | 4,066 bytes (`wc -c`; the rule for the tool's button rows went from a 2 px to a 4 px margin, with a longer comment) | <= 4,096 bytes: 30 bytes left |
+| The Air slices panel chunk, gzip kB | 10.5 (26.1 raw) plus its CSS 0.9 | 10.3 (25.8 raw) plus its CSS 0.9 (2.3 raw) | lazy |
+| New small shared chunks, gzip kB (raw) | | `lattice` 0.7 (1.4), `sliceRecording` 0.8 (1.5), `recordingWords` 0.8 (1.5) | counted in all JS; `lattice.ts` is shared because the curtain (render chunk) and the panel both read it |
+| The render chunk, gzip kB | | 215.3 (781.2 raw) | |
+| The chunk the build splits `explain/text.ts` into, gzip kB | 12.1 (35.5 raw) | 12.1 (35.5 raw) | counted in all JS |
+| Recorder, one sample of a 90 x 54 line | | 48,696 B on the 3-D air, 29,256 B on the fast tier; the epoch 5,772 B; 258 / 429 samples in 12 MiB | the budget is an eighth of the history's, at most 12 MiB (6 MiB at the 48 MiB floor), **on top of** the history, which is unchanged |
+| Recorder, the longest line (127 x 56; 170 x 56 on the High tier) | | 71,216 B (95,296 B) on the 3-D air, 176 (131) samples in 12 MiB | the design file's 192 x 56 (116 samples) cannot occur |
+| `arrive` + sample + `store`, 90 x 54 (node) | | 3-D air: median 0.95 ms, p95 1.23 ms; fast tier: 0.63 and 0.71 ms | the design's p95 <= 1.5 ms |
+| `read`, 90 x 54 (node) | | p95 0.065 ms (3-D air), 0.036 ms (fast tier) | <= 0.5 ms |
+| The whole `record(snapshot)`, 96 x 56 (node) | | median 1.00 ms, p95 1.31 ms | <= 1.5 ms |
+| `record()` in a browser at a 4x throttle, Max speed, software rendering (v-core, not repeated here) | | fast tier: median 3.8 ms, p95 13.2 ms, max 22 ms, 14 a second (6.7 % of the time); 3-D: 4.7 / 11.1 / 29 ms, 5 a second (2.7 %) | not a phone; a single call can exceed a 60 frames-a-second frame |
+| Heap after 3,000 arrivals, thinning and a replay among them (node) | | changed by 70.7 kB (12 MiB, 3-D air); -14.3 kB (6 MiB, fast tier) | heap-flat (the test allows 256 kB) |
+| Snapshot hash with and without a recorder | | equal, both tiers (`sliceTimeLapse.test.ts`) | the recorder never feeds back |
+
+Not measured: any of the recorder on a phone, the cost of the first minute after *Keep this line* on a phone's main thread, and what the Max-speed load does to the frame
+rate there (the statistics screen's frame-rate rows, and phone check-list 2, are the way to find out).
+
 Rules that keep the budgets (each has a test, a script or a measurement behind it):
 
 * **Nothing is drawn behind a full-screen screen.** `App.updateInert` tells the sim screen when a Settings / Data sets / model-card
@@ -1362,7 +1535,9 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   invalidated); one `SliceUpdater` serves the curtain and the panel; the slice reuses its arrays, and a test holds 3,000 updates to
   a flat heap; the panel is repainted once in the next display frame, however many slices came, and not at all while it is covered; the
   streaks run at most 24 frames a second on any display (20 at 60 Hz) and stop while the panel is hidden, the page is in the background or
-  the phone is set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing.
+  the phone is set to reduce motion (still arrows then); the sampler's hot entry points allocate nothing. The time-lapse recorder (0.4.1) is the same while the slice is off or the line is a preset: a call is 0.03 to
+  0.1 ms (v-core, in a browser at a 4x throttle) and nothing is stored; it keeps to its own budget (an eighth of the history's, at most 12 MiB, a free list so a
+  steady stream allocates nothing) and a test holds 3,000 arrivals to a flat heap.
 * **The APK carries only `dist/`.** `npm run build:cap` (`tsc --noEmit && vite build --mode capacitor`) builds `index.html` as the only
   entry, so dev pages (`src/ui/styleguide.html`, `src/render/dev.html`, `devTrees.html`, `legendGallery.html`) are served by the dev
   server only; `npm run check:bundle` fails the build on a second page, on source maps, or on a JS / CSS / data size over the table.
@@ -1391,10 +1566,11 @@ Rules that keep the budgets (each has a test, a script or a measurement behind i
   old one), the rock rule of `vegetationPlacement` and `vegetationLayer`, the memory rows of `memoryModel`, and `cliffSites`, which holds
   the built code to the plan's table on the bundled sites: Katoomba always, all four with `SLOW=1`). `content.test.ts` pins that the Help
   and Glossary say what the screens say (the checkpoint wording of the fast-model note, the six, four and three rock effects, and for 0.4.0
-  the labels of the Air slices tool, the footer and probe sentences, the 90 second rule and the wind speed map on the fast tier).
+  the labels of the Air slices tool, the footer and probe sentences, the 90 second rule and the wind speed map on the fast tier, and for 0.4.1 the Keep this line and
+  Clear recording labels, the status line's own sentences, "recorded air from" and the tier grids the recording's survival of a tier switch rests on).
   For 0.4.0 the real-app specs are `e2e/air-view.spec.ts` (the air both engines publish and the layers that read it), `e2e/air-tool.spec.ts`
   (the tool's placement flow, the lazy chunk), `e2e/airslice-panel.spec.ts` (the panel on both tiers, landscape, reduced motion),
-  `e2e/air-slice.spec.ts` (5 tests: the tool, the curtain and the panel together on both tiers, the seams the three lane specs do not
-  reach) and `e2e/air-curtain-gpu.spec.ts` (the curtain's GPU objects stay constant over 60 changes); the
+  `e2e/air-slice.spec.ts` (7 tests, the last two of them for 0.4.1: the tool, the curtain and the panel together on both tiers, the seams the three lane specs do not
+  reach, and the time-lapse recorder on each tier) and `e2e/air-curtain-gpu.spec.ts` (the curtain's GPU objects stay constant over 60 changes); the
   pure modules each have a node test beside them (the list is in *The air view and the Air slice*), including the oracle tests that hold the
   sampler and the slice to the engines' own `sample()`.
