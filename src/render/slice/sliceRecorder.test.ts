@@ -491,6 +491,41 @@ describe('thinning: uniform, doubling, inside the budget', () => {
     expect(rec.bytes).toBeLessThanOrEqual(12 * MiB);
   });
 
+  it('a picture a few seconds after another (the run-end picture of a pause) does not make the gap far under the real spacing: the status says what the spacing is', () => {
+    // 60 s steps, and a pause that made an extra picture 3 s after the one at 120 s. The first thinning used to take twice the LEAST spacing (6 s) as the
+    // gap, so the words said "about every 5 s" of pictures 2 min apart, and every later thinning doubled both, so it never corrected itself.
+    for (const [label, extra] of [
+      ['one pause', [123]],
+      ['a pause 1 s after a picture', [61]],
+      ['a pause every half hour, 17 s late', Array.from({ length: 20 }, (_, i) => i * 1800 + 17)],
+    ] as const) {
+      const rec = new SliceRecorder();
+      const d = slice();
+      rec.setLine(sliceLineKey(d.line));
+      const times = [...new Set([...Array.from({ length: 700 }, (_, i) => i * 60), ...extra])].sort((a, b) => a - b);
+      const seen: number[] = [];
+      for (const t of times) {
+        if (rec.arrive(t)) rec.store(d, t);
+        const g = rec.status().spacingS;
+        if (g !== (seen[seen.length - 1] ?? 0)) {
+          seen.push(g);
+          // every time the gap changes, what the status says is what the list is: no two pictures closer, and the typical one (the median) is that far apart
+          const kept = rec.sampleTimes();
+          const sp = kept.slice(1).map((x, i) => x - kept[i]!);
+          const sorted = [...sp].sort((a, b) => a - b);
+          expect(Math.min(...sp), `${label}: closest pair when the gap became ${g}`).toBeGreaterThanOrEqual(g - 1e-6);
+          expect(sorted[sorted.length >> 1], `${label}: median spacing when the gap became ${g}`).toBeLessThanOrEqual(1.5 * g);
+          expect(Math.max(...sp), `${label}: widest pair when the gap became ${g}`).toBeLessThanOrEqual(2 * g + 1e-6);
+          expect(kept[0]).toBe(0);
+          expect(kept[kept.length - 1]).toBe(rec.status().to);
+        }
+      }
+      expect(seen[0], `${label}: the first gap is twice the 60 s of the steps`).toBe(120);
+      for (let i = 1; i < seen.length; i++) expect(seen[i]).toBe(2 * seen[i - 1]!);
+      expect(seen.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it('on the diagnosed wind it holds 429 samples of 29,256 bytes (the 430 of the byte model less the epoch)', () => {
     const rec = new SliceRecorder();
     const d = slice(0, { kind: 'diagnosed' });
