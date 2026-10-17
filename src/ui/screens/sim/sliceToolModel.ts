@@ -12,10 +12,12 @@
  *   - Whoever writes `a` and `b` writes `preset: null`; a preset writes `a: undefined, b: undefined`; the first line also writes
  *     `field: 'speed'` (an existing `field` is never changed here).
  *   - Every line write clears the probe, the candidate and the draft, and switches the section on.
+ *   - "Turn off the slice" (0.5.0) is the one write that takes the line away: the section goes off with no line stored, so the
+ *     tool, the Layers panel and the next opening of the tool all agree that there is nothing to show.
  */
 import type { GridSpec } from '../../../core/grid';
 import type { LayerState } from '../../../render/layers';
-import { sameLine } from '../../../render/sliceFields';
+import { LINE_BY_CENTRE, sameLine } from '../../../render/sliceFields';
 import {
   SLICE_MIN_LENGTH_CELLS,
   SLICE_MIN_LENGTH_M,
@@ -31,7 +33,7 @@ import {
   type SliceRecordingStatus,
   type SliceUpdate,
 } from '../../../render/slice/types';
-import type { SlicePlacing, SliceToolState } from './sliceTypes';
+import type { SlicePlacing, SliceToolState, SliceToolTab } from './sliceTypes';
 
 export type CrossSection = LayerState['crossSection'];
 /** One end of the line: A (left in the side view) or B. */
@@ -43,7 +45,9 @@ export type SliceEnd = 'a' | 'b';
 
 export const AIR_TOOL_LABEL = 'Air slices';
 export const AIR_PANEL_TITLE = 'Air slice';
-export const AIR_PANEL_SUBTITLE = 'Side view';
+/** The two tabs in the tool's header (0.5.0): the side view of the air, and the map with the wind arrows and flow lines. */
+export const TAB_LABEL: Record<SliceToolTab, string> = { side: 'Side view', map: 'Map view' };
+export const TABS_LABEL = 'Air slice view';
 export const NEEDS_3D_VIEW = 'The side view needs the 3-D view.';
 export const LOADING_LINE = 'Loading the side view';
 export const LOAD_FAILED_LINE = 'The side view could not be loaded.';
@@ -70,6 +74,12 @@ export const KEEP_LABEL = 'Keep this line';
 export const CLEAR_RECORDING_LABEL = 'Clear recording';
 export const KEEP_SAY = 'Line kept. Recording starts when the simulation next runs.';
 export const CLEAR_SAY = 'Recording cleared. Recording starts when the simulation next runs.';
+/** "Turn off the slice" (0.5.0): the button, the warning under it while a recording would go, and what the screen reader hears. */
+export const OFF_LABEL = 'Turn off the slice';
+export const OFF_NOTE = 'This also clears the recording.';
+export const OFF_SAY = 'Slice turned off.';
+export const OFF_CLEARED_SAY = 'Slice turned off. The recording was cleared.';
+export const PLACING_CANCELLED_SAY = 'Placing cancelled.';
 const END_WORD: Record<SliceEnd, string> = { a: 'the start (A)', b: 'the end (B)' };
 
 export const PRESET_LABEL: Record<SlicePresetId, string> = { along: 'Along the wind', across: 'Across the wind', slope: 'Up the slope', me: 'Me to fire' };
@@ -291,8 +301,19 @@ export function startPlacing(s: SliceToolState, end: SliceEnd): ToolStep {
 }
 
 export function cancelPlacing(s: SliceToolState): ToolStep {
-  return { state: s.placing || s.candidate ? { ...s, placing: null, candidate: null } : s, crossSection: null, say: s.placing ? 'Placing cancelled.' : null };
+  return { state: s.placing || s.candidate ? { ...s, placing: null, candidate: null } : s, crossSection: null, say: s.placing ? PLACING_CANCELLED_SAY : null };
 }
+
+/**
+ * The Side view / Map view tab changed. A placement under way is dropped first (the crosshair belongs to the side view's buttons, so the Map
+ * view must not leave one hidden on the map); the line, the draft, the probe and the switches stay. The same state back for the tab already shown.
+ */
+export function withTab(s: SliceToolState, tab: SliceToolTab): SliceToolState {
+  return s.tab === tab ? s : { ...s, tab, placing: null, candidate: null };
+}
+
+/** What the screen reader hears for a tab change: only the placement that was dropped, with the words of Cancel. */
+export const tabSay = (s: SliceToolState, tab: SliceToolTab): string | null => (s.tab !== tab && s.placing ? PLACING_CANCELLED_SAY : null);
 
 /** A tap on the map while placing: the tapped point waits in `candidate` until "Place here". Outside placing a tap does nothing. */
 export function tapCandidate(s: SliceToolState, p: SlicePoint): SliceToolState {
@@ -383,6 +404,20 @@ export function keepLine(s: SliceToolState, cs: CrossSection, facts: LineFacts):
   };
 }
 
+/**
+ * "Turn off the slice": the section goes off and its line goes with it (`a`, `b` and `preset` cleared through `LINE_BY_CENTRE`, so the
+ * tool's next opening does not switch it back on, as it would for a line the Layers panel only switched off). The chip (`field`) and the
+ * compass memory (`azimuth`, `centre`) stay. The tool state forgets any placement, candidate, draft end and probe. Writing the layers is what
+ * clears the curtain, the panel's slice, the map marks and the recording, so `recorded` only chooses the words that say so.
+ */
+export function turnOffSlice(s: SliceToolState, cs: CrossSection, recorded: boolean): ToolStep {
+  return {
+    state: { ...s, placing: null, candidate: null, draft: { a: null, b: null }, probe: null },
+    crossSection: { ...cs, enabled: false, ...LINE_BY_CENTRE },
+    say: recorded ? OFF_CLEARED_SAY : OFF_SAY,
+  };
+}
+
 /** A chip was chosen (in the panel): the section is coloured by it. */
 export function fieldWrite(cs: CrossSection, field: SliceFieldId): CrossSection | null {
   return cs.field === field ? null : { ...cs, field };
@@ -420,6 +455,8 @@ export interface ControlsInput {
   switching3d?: boolean;
   /** The time-lapse recorder's state (`SceneViewApi.sliceRecording.status()`), or null where there is no recorder. */
   recording?: Pick<SliceRecordingStatus, 'count'> | null;
+  /** The stored section (`LayerState.crossSection`): whether it is on, and whether it holds a line. */
+  section: CrossSection;
 }
 
 export interface ControlsView {
@@ -436,6 +473,8 @@ export interface ControlsView {
   keep: boolean;
   /** "Clear recording" is offered: the recorder holds at least one picture (and nothing is being placed). */
   clear: boolean;
+  /** "Turn off the slice" is offered: there is a slice, a stored line or a draft end to turn off (and nothing is being placed). Absent when there is nothing, never disabled. */
+  off: boolean;
 }
 
 export function controlsView(i: ControlsInput): ControlsView {
@@ -451,6 +490,7 @@ export function controlsView(i: ControlsInput): ControlsView {
     hint: hintLine(i, next),
     keep: !end && facts.source === 'preset' && !!facts.preset && !!facts.line,
     clear: !end && (i.recording?.count ?? 0) > 0,
+    off: !end && (i.section.enabled || hasStoredLine(i.section) || !!s.draft.a || !!s.draft.b),
   };
 }
 

@@ -33,9 +33,12 @@ import {
   reopened,
   startPlacing,
   swapEnds,
+  tabSay,
+  turnOffSlice,
   userFixOf,
   withProbe,
   withShowCells,
+  withTab,
   type ControlsView,
   type CrossSection,
   type LineFacts,
@@ -43,7 +46,7 @@ import {
   type SliceEnd,
   type ToolStep,
 } from './sliceToolModel';
-import type { SliceToolState } from './sliceTypes';
+import type { SliceToolState, SliceToolTab } from './sliceTypes';
 
 export interface SliceToolHost {
   ui: Store<UiState>;
@@ -87,6 +90,10 @@ export interface SliceToolActions {
   keep(): void;
   /** "Clear recording": the recorder drops what it holds and records again from the next picture. */
   clearRecording(): void;
+  /** "Turn off the slice": the section goes off and its line, recording, probe and marks with it (tool state, then layers store, then the scene, then one announcement). */
+  turnOff(): void;
+  /** The Side view / Map view tab changed: a placement under way is dropped. */
+  setTab(tab: SliceToolTab): void;
   /** The recorder's state now (the scene's own answer, not the last update's), or null where there is no recorder. */
   recording(): SliceRecordingStatus | null;
   preset(id: SlicePresetId): void;
@@ -133,7 +140,7 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       const grid = host.grid();
       const end = s.placing;
       const verdict = end ? placeVerdict(end, s.candidate ?? host.crosshair(), s, f, grid) : null;
-      return controlsView({ state: s, facts: f, presets: presetsNow(grid), fix: userFixOf(host.user, grid), verdict, switching3d, recording: recording() });
+      return controlsView({ state: s, facts: f, presets: presetsNow(grid), fix: userFixOf(host.user, grid), verdict, switching3d, recording: recording(), section: cs() });
     },
     open() {
       const cur = ui.get().slice;
@@ -161,6 +168,15 @@ export function createSliceToolActions(host: SliceToolHost): SliceToolActions {
       if (!view.sliceRecording) return;
       view.sliceRecording.clear();
       host.announce(CLEAR_SAY);
+    },
+    turnOff: () => apply(turnOffSlice(state(), cs(), (recording()?.count ?? 0) > 0)),
+    setTab(tab) {
+      const s = state();
+      const next = withTab(s, tab);
+      if (next === s) return;
+      const say = tabSay(s, tab);
+      ui.set({ slice: next });
+      if (say) host.announce(say);
     },
     recording,
     preset(id) {

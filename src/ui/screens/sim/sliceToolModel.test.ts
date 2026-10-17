@@ -17,8 +17,14 @@ import {
   LINE_PROJECTION_POINTS,
   LOAD_FAILED_LINE,
   NOTE_WORDS,
+  OFF_CLEARED_SAY,
+  OFF_LABEL,
+  OFF_NOTE,
+  OFF_SAY,
   PLACE_LABEL,
   SET_LABEL,
+  TABS_LABEL,
+  TAB_LABEL,
   alongPoints,
   backStep,
   cancelPlacing,
@@ -49,10 +55,13 @@ import {
   sliceMarks,
   startPlacing,
   swapEnds,
+  tabSay,
   tapCandidate,
+  turnOffSlice,
   userFixOf,
   withProbe,
   withShowCells,
+  withTab,
   type ControlsInput,
   type CrossSection,
   type LineFacts,
@@ -67,6 +76,7 @@ const EMPTY: LineFacts = { line: null, source: null, preset: null, issue: null, 
 const withLine = (a: SlicePoint, b: SlicePoint, source: LineFacts['source'] = 'endpoints', extra: Partial<LineFacts> = {}): LineFacts => ({ ...EMPTY, line: { a, b }, source, ...extra });
 const placing = (end: 'a' | 'b', extra: Partial<SliceToolState> = {}): SliceToolState => ({ ...initialSliceToolState(), placing: end, ...extra });
 const allOk = (): Record<SlicePresetId, SlicePresetStatus> => presetStatuses(null, 'ok');
+const input = (over: Partial<ControlsInput> = {}): ControlsInput => ({ state: initialSliceToolState(), facts: EMPTY, presets: allOk(), fix: 'ok', verdict: null, section: CS, ...over });
 
 /** What the scene gives the resolver: a slope rising to the north-east, the wind from the west, a fire at the centre, a phone fix. */
 const ctxOf = (grid: GridSpec): SliceResolveContext => ({ grid, heightAt: (x, y) => 500 + 0.2 * x + 0.2 * y, mapCentre: [0, 0], fire: [0, 0], windFromDeg: 270, user: [-500, -500] });
@@ -473,6 +483,108 @@ describe('Keep this line (the time-lapse recording, 0.4.1)', () => {
   });
 });
 
+describe('Turn off the slice (0.5.0)', () => {
+  const A: SlicePoint = [-1000, 250.5];
+  const B: SlicePoint = [1000, -250.5];
+  const hand: CrossSection = { ...CS, enabled: true, a: A, b: B, preset: null, field: 'up', azimuth: 40, centre: [12, 34] };
+  const busy: SliceToolState = { ...initialSliceToolState(), tab: 'map', showCells: true, placing: 'b', candidate: [5, 5], draft: { a: [1, 1], b: [2, 2] }, probe: { s: 10, z: 10 } };
+
+  it('has the words the owner asked for, and no em dash', () => {
+    expect(OFF_LABEL).toBe('Turn off the slice');
+    expect(OFF_NOTE).toBe('This also clears the recording.');
+    expect(OFF_SAY).toBe('Slice turned off.');
+    expect(OFF_CLEARED_SAY).toBe('Slice turned off. The recording was cleared.');
+    for (const w of [OFF_LABEL, OFF_NOTE, OFF_SAY, OFF_CLEARED_SAY]) expect(w).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it('writes exactly the off state: not enabled, no ends, no preset; the chip, the azimuth and the centre stay', () => {
+    const step = turnOffSlice(initialSliceToolState(), hand, false);
+    // `a` and `b` are written as an explicit undefined (the scene's setLayers spread keeps it, which is what clears the stored line).
+    expect(step.crossSection).toStrictEqual({ enabled: false, azimuth: 40, centre: [12, 34], field: 'up', a: undefined, b: undefined, preset: null });
+    expect(step.crossSection).toHaveProperty('a');
+    expect(step.crossSection).toHaveProperty('b');
+    expect(hasStoredLine(step.crossSection!)).toBe(false);
+  });
+
+  it('takes a preset, the Layers chord and a section that was only switched off with its line stored', () => {
+    expect(turnOffSlice(initialSliceToolState(), { ...CS, enabled: true, preset: 'along', field: 'speed' }, false).crossSection).toStrictEqual({ ...CS, enabled: false, field: 'speed', a: undefined, b: undefined, preset: null });
+    expect(turnOffSlice(initialSliceToolState(), { ...CS, enabled: true, azimuth: 90, centre: [5, 6] }, false).crossSection).toStrictEqual({ enabled: false, azimuth: 90, centre: [5, 6], a: undefined, b: undefined, preset: null });
+    const stored = turnOffSlice(initialSliceToolState(), { ...hand, enabled: false }, false).crossSection!;
+    expect(stored.enabled).toBe(false);
+    expect(hasStoredLine(stored)).toBe(false);
+  });
+
+  it('forgets the placement, the tapped candidate, the draft ends and the probe, and keeps the tab and the model-cells switch', () => {
+    const step = turnOffSlice(busy, hand, false);
+    expect(step.state).toEqual({ tab: 'map', showCells: true, placing: null, candidate: null, draft: { a: null, b: null }, probe: null });
+  });
+
+  it('says one short sentence, and adds that the recording was cleared when there was one', () => {
+    expect(turnOffSlice(initialSliceToolState(), hand, false).say).toBe('Slice turned off.');
+    expect(turnOffSlice(initialSliceToolState(), hand, true).say).toBe('Slice turned off. The recording was cleared.');
+  });
+
+  it('is offered for a preset, a hand line, the Layers chord with the section on, a draft end alone, and a stored line while the section is off', () => {
+    const off = (over: Partial<ControlsInput>) => controlsView(input(over)).off;
+    expect(off({ section: { ...CS, enabled: true, preset: 'along' }, facts: withLine([0, 0], [0, 1000], 'preset', { preset: 'along' }) })).toBe(true);
+    expect(off({ section: hand, facts: withLine(A, B) })).toBe(true);
+    expect(off({ section: { ...CS, enabled: true }, facts: withLine([0, -2000], [0, 2000], 'centre') })).toBe(true); // the Layers panel's section
+    expect(off({ state: { ...initialSliceToolState(), draft: { a: A, b: null } } })).toBe(true);
+    expect(off({ state: { ...initialSliceToolState(), draft: { a: null, b: B } } })).toBe(true);
+    expect(off({ section: { ...hand, enabled: false } })).toBe(true); // switched off in Layers: the line is still stored, and would come back
+    expect(off({ section: { ...CS, enabled: false, preset: 'me' } })).toBe(true);
+  });
+
+  it('is not offered (absent, not disabled) when there is nothing to turn off, or while a placement is under way', () => {
+    const off = (over: Partial<ControlsInput>) => controlsView(input(over)).off;
+    expect(off({})).toBe(false);
+    expect(off({ section: { ...CS, enabled: false, a: undefined, b: undefined, preset: null } })).toBe(false);
+    expect(off({ section: { ...CS, enabled: false, a: A } })).toBe(false); // one stored end is not a line
+    expect(off({ section: hand, state: placing('a'), verdict: { ok: true } })).toBe(false);
+    expect(off({ section: { ...CS, enabled: true }, state: placing('b', { draft: { a: A, b: null } }), verdict: { ok: true } })).toBe(false);
+  });
+
+  it('after the press nothing is left to turn off, and the recording button goes with it', () => {
+    const step = turnOffSlice(busy, hand, true);
+    const v = controlsView(input({ state: step.state, section: step.crossSection!, facts: EMPTY, recording: { count: 0 } }));
+    expect(v).toMatchObject({ off: false, clear: false, keep: false });
+  });
+});
+
+describe('the Side view and Map view tabs (0.5.0)', () => {
+  it('are named in the header, and the group has a name for a screen reader', () => {
+    expect(TAB_LABEL).toEqual({ side: 'Side view', map: 'Map view' });
+    expect(TABS_LABEL.length).toBeGreaterThan(3);
+    expect(initialSliceToolState().tab).toBe('side');
+  });
+
+  it('a change of tab drops a placement under way (no crosshair hidden on the Map view) and keeps everything else', () => {
+    const s: SliceToolState = { ...initialSliceToolState(), placing: 'a', candidate: [3, 4], draft: { a: [1, 1], b: null }, probe: { s: 5, z: 6 }, showCells: true };
+    const map = withTab(s, 'map');
+    expect(map).toEqual({ ...s, tab: 'map', placing: null, candidate: null });
+    expect(withTab(map, 'side')).toEqual({ ...map, tab: 'side' });
+  });
+
+  it('the tab already shown is the same state back, and says nothing', () => {
+    const s = initialSliceToolState();
+    expect(withTab(s, 'side')).toBe(s);
+    expect(tabSay(s, 'side')).toBeNull();
+    expect(tabSay({ ...s, placing: 'a' }, 'side')).toBeNull();
+  });
+
+  it('says that a placement was cancelled, in the words of Cancel, and nothing for a change with no placement', () => {
+    expect(tabSay({ ...initialSliceToolState(), placing: 'b' }, 'map')).toBe('Placing cancelled.');
+    expect(tabSay({ ...initialSliceToolState(), placing: 'b' }, 'map')).toBe(cancelPlacing({ ...initialSliceToolState(), placing: 'b' }).say);
+    expect(tabSay(initialSliceToolState(), 'map')).toBeNull();
+  });
+
+  it('the tab survives closing and opening the tool again (only a placement is dropped)', () => {
+    const s = withTab(initialSliceToolState(), 'map');
+    expect(reopened(s).tab).toBe('map');
+    expect(reopened({ ...s, placing: 'a' }).tab).toBe('map');
+  });
+});
+
 describe('presets', () => {
   it('Me to fire is offered only with a position fix inside the model area', () => {
     expect(presetStatuses(null, 'ok').me).toEqual({ ok: true });
@@ -575,8 +687,6 @@ describe('the field and the switches', () => {
 });
 
 describe('the controls: buttons and the quiet line', () => {
-  const input = (over: Partial<ControlsInput> = {}): ControlsInput => ({ state: initialSliceToolState(), facts: EMPTY, presets: allOk(), fix: 'ok', verdict: null, ...over });
-
   it('idle with nothing placed says nothing, offers every preset and cannot Swap', () => {
     const v = controlsView(input());
     expect(v).toMatchObject({ placing: null, next: null, hint: '', swapDisabled: true });
