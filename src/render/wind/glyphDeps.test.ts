@@ -1,5 +1,5 @@
 /**
- * What the glyph engine may depend on, and what may depend on it (D-CONTRACT-050 sections 2 and 5). The engine is pure: no Three.js,
+ * What the glyph engine may depend on, and what may depend on it (plan 9.3 and the bundle budget of stage E1). The engine is pure: no Three.js,
  * no DOM, no `Math.random`, nothing of the simulation, the fire or the atmosphere model's internals, none of the render layers.
  * And the code of the first screen (src/ui, the layer catalogue) must not import it: it lives in the render chunk, which loads
  * when the simulation screen builds the view, and one stray import would pull it into the entry. Only `glyphTypes.ts` (types and

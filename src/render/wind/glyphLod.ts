@@ -24,7 +24,7 @@ interface LevelSpec {
   maxPx: number;
 }
 
-/** What each level draws (the table of plan 9.2 as the design contract tunes it; to be judged on a phone). */
+/** What each level draws (the table of plan 9.2 as the build tunes it; to be judged on a phone). */
 const LEVEL_SPECS: readonly LevelSpec[] = [
   { spacingPx: 0, curved: false, jitter: 0, pxPerMs: 0, minPx: 0, maxPx: 0 }, // L0: nothing
   { spacingPx: 56, curved: false, jitter: 0, pxPerMs: 4, minPx: 8, maxPx: 45 }, // L1: straight arrows

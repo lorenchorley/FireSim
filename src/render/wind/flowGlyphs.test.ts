@@ -1,5 +1,5 @@
 /**
- * The glyph builder against analytic fields and the rules of the design (plan 9.3, D-CONTRACT-050 section 2): straight and
+ * The glyph builder against analytic fields and the rules of the design (plan 9.3 and 9.4): straight and
  * curved traces, equal steps, length rules per level, arrowheads, draping, calm dots, the raster edge, the near plane, the orbit
  * density, the caps, pan invariance bit for bit, determinism, staging on the clock and the colour table.
  */

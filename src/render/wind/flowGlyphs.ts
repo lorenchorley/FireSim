@@ -6,7 +6,7 @@
  * indices, so a pan never moves a seed. A seed is kept when its exact projection lies on the screen (plus a margin of one glyph
  * length) in front of the near plane, and, toward the horizon of an orbit view, with probability `1 / s2`, where `s2` is the
  * ground area a pixel covers at the seed against the middle of the screen (so the number of glyphs per screen area stays about
- * constant; the contract's `s = mppSeed / mppCentre` counts only the width of that area). When more seeds than the cap remain, a
+ * constant; counting only the width of that area, mppSeed / mppCentre, would leave the density rising toward the horizon). When more seeds than the cap remain, a
  * fixed share is kept by a second hash. A glyph runs downwind from its seed in steps of equal length (RK2 midpoint on the unit
  * direction field, so the arc length is constant): one step for a straight arrow (L1, L2), 3 to 10 for a curved flow line (L3, L4),
  * then an arrowhead of two short chevron segments. A calm seed (under 0.3 m/s) is a short dot. Pixel sizes are scaled by `mppSeed = w / pxPerMetre1`

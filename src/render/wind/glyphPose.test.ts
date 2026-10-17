@@ -1,6 +1,6 @@
 /**
- * When a camera move calls for a rebuild: the built pose against the pose now, with the thresholds of the design (D-CONTRACT-050
- * section 2): moved, zoomed, turned, resized, exaggeration; a drag adds up against the built picture, the cheap path allocates nothing.
+ * When a camera move calls for a rebuild: the built pose against the pose now, with the thresholds of the design (plan 9.4): moved,
+ * zoomed, turned, resized, exaggeration; a drag adds up against the built picture, the cheap path allocates nothing.
  */
 import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
