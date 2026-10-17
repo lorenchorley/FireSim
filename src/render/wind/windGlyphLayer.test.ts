@@ -4,6 +4,8 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { AtmosphereSampler } from '../atmosphereSampler';
@@ -73,6 +75,26 @@ class StubBuilder implements GlyphBuilder {
 const CSS = { w: 400, h: 800, fov: 50 };
 const GROUND = 500;
 
+/** The camera of these tests: `distance` metres from the ground point (x, 0), looking at it from the south-south-west at 55 degrees from the vertical. */
+function cameraAt(distance: number, x = 0): THREE.PerspectiveCamera {
+  const cam = new THREE.PerspectiveCamera(50, CSS.w / CSS.h, 5, 80000);
+  const az = THREE.MathUtils.degToRad(200);
+  const po = THREE.MathUtils.degToRad(55);
+  cam.position.set(x + Math.sin(az) * Math.sin(po) * distance, GROUND + Math.cos(po) * distance, -Math.cos(az) * Math.sin(po) * distance);
+  cam.lookAt(x, GROUND, 0);
+  cam.updateMatrixWorld();
+  return cam;
+}
+
+let gcFn: (() => void) | null = null;
+function gc(): void {
+  if (!gcFn) {
+    v8.setFlagsFromString('--expose-gc');
+    gcFn = vm.runInNewContext('gc') as () => void;
+  }
+  gcFn();
+}
+
 interface Rig {
   layer: WindGlyphLayer;
   stub: StubBuilder;
@@ -109,14 +131,7 @@ function rig(o: { tier?: GlyphTier; warm?: boolean; height?: WindHeight; enabled
     instances: (name) => (mesh(name).geometry as THREE.InstancedBufferGeometry).instanceCount,
     go(distance, g = {}) {
       clock.t += g.dt ?? 0;
-      const cam = new THREE.PerspectiveCamera(50, CSS.w / CSS.h, 5, 80000);
-      const az = THREE.MathUtils.degToRad(200);
-      const po = THREE.MathUtils.degToRad(55);
-      const tx = g.x ?? 0;
-      cam.position.set(tx + Math.sin(az) * Math.sin(po) * distance, GROUND + Math.cos(po) * distance, -Math.cos(az) * Math.sin(po) * distance);
-      cam.lookAt(tx, GROUND, 0);
-      cam.updateMatrixWorld();
-      return layer.tick(clock.t, cam, CSS, g.mode ?? 'orbit', 1, distance, g.tris ?? 0, g.settle ?? false);
+      return layer.tick(clock.t, cameraAt(distance, g.x ?? 0), CSS, g.mode ?? 'orbit', 1, distance, g.tris ?? 0, g.settle ?? false);
     },
   };
 }
@@ -180,6 +195,36 @@ describe('WindGlyphLayer: what is built, when', () => {
     for (let i = 0; i < 50; i++) expect(r.go(L2, { dt: 16 })).toBe(false);
     expect(r.stub.begins).toHaveLength(1);
     expect(r.layer.stats().rebuilds).toBe(1);
+  });
+
+  it('allocates nothing on a frame where nothing changed (the whole idle cost of a map at rest)', () => {
+    // Bytes a frame, as atmosphereSampler.alloc.test.ts measures them: inlining off (so that escape analysis cannot hide an
+    // allocation), the median heap growth of 41 windows, no collection inside.
+    v8.setFlagsFromString('--no-turbo-inlining');
+    try {
+      const r = rig();
+      r.go(L2, { settle: true });
+      const cam = cameraAt(L2);
+      const WINDOW = 500;
+      const frames = (n: number): void => {
+        for (let i = 0; i < n; i++) r.layer.tick(r.clock.t, cam, CSS, 'orbit', 1, L2, 0, false);
+      };
+      frames(20_000); // the JIT first
+      gc();
+      gc();
+      const grown: number[] = [];
+      for (let k = 0; k < 41; k++) {
+        const a0 = process.memoryUsage().heapUsed;
+        frames(WINDOW);
+        grown.push(process.memoryUsage().heapUsed - a0);
+      }
+      grown.sort((a, b) => a - b);
+      const perFrame = grown[grown.length >> 1]! / WINDOW;
+      expect(r.stub.begins).toHaveLength(1);
+      expect(perFrame, 'bytes a frame').toBeLessThan(2);
+    } finally {
+      v8.setFlagsFromString('--turbo-inlining');
+    }
   });
 
   it('copies the builder output into both batches: the same positions, the colours in front, a dark halo behind', () => {

@@ -129,7 +129,6 @@ export class WindGlyphLayer {
   private readonly unproject = new THREE.Matrix4();
   private readonly viewProj = new Float64Array(16);
   private readonly eye = new Float64Array(3);
-  private readonly fwd = new THREE.Vector3();
   private readonly bounds: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private readonly boxNow: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private cam: THREE.PerspectiveCamera | null = null;
@@ -210,19 +209,20 @@ export class WindGlyphLayer {
     if (!d || !this.hasField(d)) return this.hide('no-wind');
 
     // The pose of this frame (the camera, the orbit target it looks at, the canvas, the exaggeration) and the projection's numbers.
-    const q = camera.quaternion;
+    // (The quaternion is copied with `toArray` and the forward direction worked out from the copy: THREE's x, y, z and w are getters, and
+    // a getter that V8 does not inline hands back a boxed number, which would make every frame of a map at rest allocate.)
     const p = camera.position;
-    const f = this.fwd.set(0, 0, -1).applyQuaternion(q);
     const pose = this.pose;
+    camera.quaternion.toArray(pose, 5);
+    const qx = pose[5]!;
+    const qy = pose[6]!;
+    const qz = pose[7]!;
+    const qw = pose[8]!;
     pose[0] = p.x;
     pose[1] = p.y;
     pose[2] = p.z;
-    pose[3] = p.x + f.x * targetDistance;
-    pose[4] = p.z + f.z * targetDistance;
-    pose[5] = q.x;
-    pose[6] = q.y;
-    pose[7] = q.z;
-    pose[8] = q.w;
+    pose[3] = p.x - 2 * (qw * qy + qz * qx) * targetDistance; // the orbit target: the eye plus the distance along the forward axis (0, 0, -1) turned by q
+    pose[4] = p.z + (2 * (qx * qx + qy * qy) - 1) * targetDistance;
     pose[9] = css.w;
     pose[10] = css.h;
     pose[11] = vex;
