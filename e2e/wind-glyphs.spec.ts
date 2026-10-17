@@ -168,7 +168,12 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
   test.setTimeout(900_000);
   await build(page);
   await lightScene(page);
-  await setLayers(page, { windGlyphs: true, windHeight: 'fire' });
+  const enableMs = await page.evaluate(() => {
+    const t0 = performance.now();
+    (window as unknown as Handle).__firesim.view.setLayers({ windGlyphs: true, windHeight: 'fire' });
+    return performance.now() - t0;
+  });
+  console.log(`first switch-on, warm-up included: ${enableMs.toFixed(1)} ms`);
   const hand = await newHand(page);
   const H = await canvasHeight(page);
   expect(H).toBeGreaterThan(500);
@@ -179,7 +184,9 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
     const c = await settle(page);
     const s = await drawAndRead(page);
     expectBand(s, what);
+    console.log(`ladder, ${what}: ${c.distance.toFixed(0)} m out, a model cell is ${s.cellPx.toFixed(1)} px, L${s.level}, ${s.count} glyphs, ${s.segments} segments, rebuild ${s.lastMs.toFixed(1)} ms in ${s.slicesLast} slice(s)`);
     expect(s.idle, `${what}: nothing is said to be missing`).toBeNull();
+    expect(await page.evaluate(() => (window as unknown as Handle).__firesim.view.stats().windGlyphs), `${what}: view.stats().windGlyphs is the level and the count`).toEqual({ level: s.level, count: s.count });
     readings.push({ distance: c.distance, stats: s });
     return s;
   };
@@ -280,7 +287,7 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
   });
 
   // ───────── a 4x slower CPU ─────────
-  await test.step('under a 4x CPU slowdown a rebuild stays in slices while the camera pans for 5 s', async () => {
+  await test.step('under a 4x CPU slowdown a rebuild stays in slices while the camera pans for 5 s (and 30 frames)', async () => {
     const cdp: CDPSession = await page.context().newCDPSession(page);
     await setLayers(page, { windHeight: 300 });
     await lookAt(page, 2500);
@@ -289,24 +296,32 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     try {
       // The drawing is skipped (the test browser's software GL draws a frame a second): the frame loop, the camera and the layer's
-      // rebuilds run at the display rate, as on a phone, and the 5 s of panning make a rebuild about every 250 ms.
+      // rebuilds run at the display rate, as on a phone, and the 5 s of panning ask for a rebuild every time the gap allows.
       const r = await page.evaluate(
         (d) =>
-          new Promise<{ rebuilds0: number; rebuilds1: number; frames: number }>((resolve) => {
+          new Promise<{ rebuilds0: number; rebuilds1: number; frames: number; swapsAt: number[] }>((resolve) => {
             const v = (window as unknown as Handle).__firesim.view;
             const draw = v.renderer.render;
             v.renderer.render = () => undefined;
             const rebuilds0 = v.windGlyphStats!()!.rebuilds;
             const t0 = performance.now();
             let frames = 0;
+            let seen = rebuilds0;
+            const swapsAt: number[] = [];
             const tick = (now: number): void => {
               frames++;
+              const rebuilds = v.windGlyphStats!()!.rebuilds;
+              if (rebuilds !== seen) {
+                seen = rebuilds;
+                swapsAt.push(frames);
+              }
               const a = (now - t0) / 500; // a circle of 1.4 km: about 47 m a frame, so a rebuild is due about as often as the 250 ms gap allows
               v.lookAt(1400 * Math.cos(a), 1400 * Math.sin(a), d, 200, 55, false);
-              if (now - t0 < 5000) requestAnimationFrame(tick);
+              // 5 s of panning, and at least 30 frames of it (a shared machine can draw a frame a second): the slices are what is measured.
+              if ((now - t0 < 5000 || frames < 30) && now - t0 < 90_000) requestAnimationFrame(tick);
               else {
                 v.renderer.render = draw;
-                resolve({ rebuilds0, rebuilds1: v.windGlyphStats!()!.rebuilds, frames });
+                resolve({ rebuilds0, rebuilds1: v.windGlyphStats!()!.rebuilds, frames, swapsAt });
               }
             };
             requestAnimationFrame(tick);
@@ -314,8 +329,9 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
         2500,
       );
       const s = (await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats!()))!;
-      console.log(`4x CPU: ${r.rebuilds1 - r.rebuilds0} rebuilds in ${r.frames} frames, slice p95 ${s.sliceP95Ms.toFixed(2)} ms, max ${s.sliceMaxMs.toFixed(2)} ms, last ${s.slicesLast} slices, ${s.lastMs.toFixed(2)} ms`);
-      expect(r.rebuilds1 - r.rebuilds0, 'the pan made rebuilds').toBeGreaterThanOrEqual(8);
+      console.log(`4x CPU: ${r.rebuilds1 - r.rebuilds0} rebuilds in ${r.frames} frames (swapped at frames ${r.swapsAt.join(', ')}), slice p95 ${s.sliceP95Ms.toFixed(2)} ms, max ${s.sliceMaxMs.toFixed(2)} ms, last ${s.slicesLast} slices, ${s.lastMs.toFixed(2)} ms`);
+      // One slice a frame and at most four rebuilds a second: how many there are depends on how fast this machine draws a frame.
+      expect(r.rebuilds1 - r.rebuilds0, 'the pan made rebuilds').toBeGreaterThanOrEqual(3);
       expect(s.sliceP95Ms, 'p95 of a slice (ms)').toBeLessThanOrEqual(12);
       expect(s.slicesLast, 'slices of the last rebuild').toBeLessThanOrEqual(4);
       expect(s.count).toBeGreaterThan(0);
