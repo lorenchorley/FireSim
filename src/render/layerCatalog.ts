@@ -55,6 +55,7 @@ export type SceneLayerKey =
   | 'smoke'
   | 'embers'
   | 'wind'
+  | 'windGlyphs'
   | 'crossSection'
   | 'insightMarkers'
   | 'roads'
@@ -179,6 +180,8 @@ const LAYER_STATE_ROLE: Record<keyof LayerState, 'scene' | 'setting'> = {
   smoke: 'scene',
   embers: 'scene',
   wind: 'scene',
+  windGlyphs: 'scene',
+  windHeight: 'setting',
   crossSection: 'scene',
   insightMarkers: 'scene',
   verticalExaggeration: 'setting',
@@ -844,6 +847,23 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
       sc?.atmosphereCellSize
         ? `${sc.atmosphereCellSize} m grid of ${sc.atmosphere3d === false ? 'wind cells (the diagnosed wind)' : 'atmosphere cells'}, drawn as streaks`
         : `${sc?.atmosphere3d === false ? 'Wind cells of the diagnosed wind' : '100 to 270 m atmosphere cells'}, drawn as streaks`,
+  },
+  {
+    id: 'windGlyphs',
+    group: 'Simulation visuals',
+    title: 'Arrows and flow lines',
+    what: 'Wind drawn on the map at a height you choose: arrows when you are far away, curved flow lines when you zoom in.',
+    why: 'It shows which way the wind steers the fire and where the hills bend it, at the height that matters for flames, embers or the plume.',
+    kind: 'scene',
+    scene: 'windGlyphs',
+    dimension: '2.5-D terrain',
+    // Any air with a 3-D wind, as for the air slice. C0 stub: G-ui adds the 2-D map and the no-snapshot cases once the layer exists.
+    available: (c) => need(c.hasAirWind ?? c.has3dAtmosphere, 'Needs the air picture, which the simulation makes once it has started'),
+    source: (sc) =>
+      sc?.atmosphere3d === false
+        ? 'FireSim wind model: the forecast wind fitted to the terrain, computed on this device (terrain effects only: the fast mode has no plume)'
+        : 'FireSim 3-D atmosphere, computed on this device',
+    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} wind cells; the curves are a smooth fit through them, not new detail`,
   },
   {
     id: 'crossSection',

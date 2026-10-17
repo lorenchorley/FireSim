@@ -5,6 +5,7 @@
  * (LAYER_CATALOG, LAYER_SETTING_KEYS), and its test fails if a key or an OverlayKind is added without an entry.
  */
 import type { SliceFieldId, SlicePresetId } from './slice/types';
+import type { WindHeight } from './wind/glyphTypes';
 
 export type OverlayKind =
   | 'none'
@@ -56,6 +57,10 @@ export interface LayerState {
   embers: boolean;
   /** Animated wind particles: off, near the surface, or through the plume/boundary layer. */
   wind: 'off' | 'surface' | 'volume';
+  /** Wind arrows and flow lines drawn on the map at {@link windHeight}, zoom-adaptive (render/wind, 0.5.0). Opt-in. */
+  windGlyphs: boolean;
+  /** The height the wind glyphs show: `'fire'` (the model's 10 m wind over open ground) or metres above the ground. */
+  windHeight: WindHeight;
   /**
    * Vertical cross-section of the atmosphere: the 3-D curtain, and the data of the Air slice side view (render/slice/types.ts;
    * plan §8.2). The line is the first of these that applies: `preset` (a live line, from the wind, the fire, the slope or the
@@ -119,6 +124,8 @@ export const DEFAULT_LAYERS: LayerState = {
   smoke: true,
   embers: true,
   wind: 'surface',
+  windGlyphs: false,
+  windHeight: 'fire',
   crossSection: { enabled: false, azimuth: 0, centre: [0, 0] },
   insightMarkers: true,
   verticalExaggeration: 1,

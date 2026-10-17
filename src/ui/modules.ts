@@ -38,6 +38,8 @@ export interface SceneLegends {
   wind(mode: 'surface' | 'volume'): ExternalLegend;
   /** Legend of one chip of the air slice (render/legends.ts `sliceLegend`, workstream D); absent until the render module has it. */
   slice?(field: SliceFieldId, kind: SliceKind): ExternalLegend;
+  /** Legend of the wind glyphs at a height (render/legends.ts `windGlyphLegend`, 0.5.0); absent until the render module has it. */
+  windGlyphs?(heightLabel: string): ExternalLegend;
 }
 
 interface SimModule {

@@ -85,6 +85,27 @@ export interface FrameStatsInfo {
 }
 
 /**
+ * What the wind glyphs (render/wind, 0.5.0) are doing now. `idle` says why nothing is drawn (`off` = the switch is off,
+ * `eye-level` = the eye-level camera, `no-wind` = no air picture yet); `level` and the counts are those of the last build.
+ */
+export interface WindGlyphStats {
+  /** Drawn now. */
+  active: boolean;
+  idle: 'off' | 'eye-level' | 'no-wind' | null;
+  level: 0 | 1 | 2 | 3 | 4;
+  count: number;
+  segments: number;
+  /** Screen pixels one model cell covers at the middle of the screen, and the model cell in metres. */
+  cellPx: number;
+  cellM: number;
+  rebuilds: number;
+  lastMs: number;
+  sliceP95Ms: number;
+  sliceMaxMs: number;
+  slicesLast: number;
+}
+
+/**
  * What the cliff drawing cost and produced for the current scenario (workstream H, §9d.3 and §9d.6). Producer: the 3-D
  * view; null or absent when the scenario has no 10 m terrain (the mock, synthetic terrain), in which case nothing is
  * sharpened. Times are wall ms on this phone for the one build at scenario load.
@@ -147,6 +168,8 @@ export interface SceneViewApi {
    * the member is then absent). `data` inside it is refilled in place by the next update: read it, do not keep it.
    */
   slice?(): SliceUpdate | null;
+  /** The wind glyphs (0.5.0): what is drawn now and what it cost, for the Layers caption and the debug statistics. Absent on the 2-D map. */
+  windGlyphStats?(): WindGlyphStats | null;
   /**
    * Called after every new slice (at most every `SLICE_UPDATE_MIN_MS` while the air changes, at once on a line, field or
    * layer edit) and with null when the section is switched off. Returns the unsubscribe function.
@@ -227,7 +250,7 @@ export interface SceneViewApi {
    */
   pickMarker?(clientX: number, clientY: number): MapMarker | null;
   /** Render statistics for the performance HUD. */
-  stats(): { fps: number; drawCalls: number; triangles: number };
+  stats(): { fps: number; drawCalls: number; triangles: number; windGlyphs?: { level: number; count: number } };
   /**
    * A full-screen screen is open over the view (Settings, Data sets, How this simulation works): stop drawing frames until
    * it is uncovered, so a reading screen does not run the GPU for pixels nobody sees. Snapshots and the camera keep their
