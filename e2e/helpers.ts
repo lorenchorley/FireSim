@@ -3,7 +3,7 @@
  * "no pop-up ever" watcher. The chrome is collapsed by default, so a tool or a camera mode is always reached through its
  * round menu ("tools-menu" / "view-menu"); these helpers open the menu only when it is closed.
  */
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 
 /** Session fields the specs read through the `?debug=1` / `?mock=1` handle (window.__firesim). */
 export interface SessionView {
@@ -278,4 +278,64 @@ export async function composeSideBySide(page: Page, left: Buffer, right: Buffer,
   } finally {
     await p.close();
   }
+}
+
+// ───────────── touch ─────────────
+
+/** Wait for one animation frame of the page. */
+export const frame = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+
+/**
+ * Fingers on a touch screen, through CDP: a touchStart / touchMove carries all the active points (the protocol compares them with
+ * the previous event, one pointer event per changed point), a touchEnd the point that is released.
+ */
+export class Hand {
+  private readonly pts = new Map<number, [number, number]>();
+  constructor(
+    private readonly page: Page,
+    private readonly cdp: CDPSession,
+  ) {}
+  private points(): { x: number; y: number; id: number; radiusX: number; radiusY: number; force: number }[] {
+    return [...this.pts].map(([id, [x, y]]) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
+  }
+  at(id: number): [number, number] {
+    return this.pts.get(id)!;
+  }
+  async down(id: number, x: number, y: number): Promise<void> {
+    this.pts.set(id, [x, y]);
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: this.points() });
+    await frame(this.page);
+  }
+  /** One touchMove carrying the new positions of the given fingers (the others stay). */
+  async move(to: Record<number, [number, number]>): Promise<void> {
+    for (const [id, p] of Object.entries(to)) this.pts.set(Number(id), p);
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.points() });
+    await frame(this.page);
+  }
+  /** Move the given fingers in a straight line to their targets in `steps` hops, a frame after each (a finger at ~60 Hz). */
+  async drag(to: Record<number, [number, number]>, steps = 10): Promise<void> {
+    const from = new Map(Object.keys(to).map((id) => [Number(id), this.at(Number(id))]));
+    for (let s = 1; s <= steps; s++) {
+      const hop: Record<number, [number, number]> = {};
+      for (const [id, p] of Object.entries(to)) {
+        const a = from.get(Number(id))!;
+        hop[Number(id)] = [a[0] + ((p[0] - a[0]) * s) / steps, a[1] + ((p[1] - a[1]) * s) / steps];
+      }
+      await this.move(hop);
+    }
+  }
+  /** Lift one finger: a touchEnd lists the points that are released (the others stay down). */
+  async up(id: number): Promise<void> {
+    const [x, y] = this.at(id);
+    this.pts.delete(id);
+    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x, y, id, radiusX: 4, radiusY: 4, force: 1 }] });
+    await frame(this.page);
+  }
+  async upAll(): Promise<void> {
+    for (const id of [...this.pts.keys()]) await this.up(id);
+  }
+}
+
+export async function newHand(page: Page): Promise<Hand> {
+  return new Hand(page, await page.context().newCDPSession(page));
 }

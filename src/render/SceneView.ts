@@ -16,7 +16,7 @@ import type { GridSpec } from '../core/grid';
 import { SLICE_RECORDER_MAX_BYTES } from '../core/sliceRecording';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats } from './api';
+import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats, WindGlyphStats } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { buildCliffDrawing } from './cliffDrawing';
@@ -57,7 +57,8 @@ import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
 import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
 import type { PlacementCache } from './vegetationPlacement';
-import { WindArrows, WindLayer, type WindDomain } from './windLayer';
+import { WindGlyphLayer } from './wind/windGlyphLayer';
+import { WindLayer, type WindDomain } from './windLayer';
 
 export type RenderQuality = 'low' | 'medium' | 'high';
 
@@ -76,8 +77,6 @@ export interface SceneViewOptions {
   preserveDrawingBuffer?: boolean;
   /** Smoke concentration (AtmosphereView.smoke units) drawn at full puff opacity (default 1). */
   smokeReference?: number;
-  /** Show static surface-wind arrows on a coarse lattice when the wind layer is on (default false). */
-  windArrows?: boolean;
 }
 
 /**
@@ -158,8 +157,9 @@ export class SceneView implements SceneViewApi {
   private readonly flames: FlameLayer;
   private readonly embers: EmberLayer;
   private readonly wind: WindLayer;
-  private readonly windArrows: WindArrows;
-  private windArrowsOn = false;
+  /** Arrows and flow lines at a chosen height (0.5.0): rebuilt from `tick`, never animating. */
+  private readonly glyphs: WindGlyphLayer;
+  private readonly glyphCss = { w: 1, h: 1, fov: 50 };
   private readonly smoke: SmokeLayer;
   private readonly section: CrossSectionLayer;
   private readonly icons: IconLayer;
@@ -346,13 +346,13 @@ export class SceneView implements SceneViewApi {
     this.flames = new FlameLayer(this.u);
     this.embers = new EmberLayer(this.u);
     this.wind = new WindLayer(this.u);
-    this.windArrows = new WindArrows(this.u);
-    this.windArrowsOn = !!opts.windArrows;
+    this.glyphs = new WindGlyphLayer(this.u, this.qualityFacts.tier);
+    this.glyphs.setDpr(this.dpr.dpr);
     this.smoke = new SmokeLayer(this.u);
     this.section = new CrossSectionLayer(this.u);
     this.section.visible = false;
     this.icons = new IconLayer(this.u);
-    this.scene.add(this.sky.mesh, this.flames.mesh, this.embers.group, this.wind.streaks.mesh, this.windArrows.arrows.mesh, this.smoke.mesh, this.section.group, this.icons.mesh);
+    this.scene.add(this.sky.mesh, this.flames.mesh, this.embers.group, this.wind.streaks.mesh, this.glyphs.group, this.smoke.mesh, this.section.group, this.icons.mesh);
 
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -393,6 +393,7 @@ export class SceneView implements SceneViewApi {
     this.sliceFireOf = null;
     this.fire = null;
     this.sampler = null;
+    this.glyphs.setData(null);
     this.dropSlice();
     this.displayTime = this.timeFrom = this.timeTo = 0;
     this.lastUpdateWall = 0;
@@ -661,7 +662,7 @@ export class SceneView implements SceneViewApi {
     const c = fireCentroid(fire, target);
     this.wind.focus = c ? { x: c.x, y: c.y, radius: 900 } : null;
     if (this.layers.crossSection.enabled) this.updateSection(false);
-    this.updateWindArrows();
+    this.glyphs.setData({ sampler: this.sampler, atm: atmView ?? null, sliceGround: this.sliceTerrain ?? hf, drawGround: hf });
     if (SNAPSHOT_OVERLAYS.has(this.layers.overlay)) this.updateOverlay();
     this.refreshMarkers();
     this.applyLighting(this.sunTimeMs());
@@ -858,7 +859,9 @@ export class SceneView implements SceneViewApi {
     this.smoke.mesh.visible = l.smoke;
     this.wind.setMode(l.wind, this.domain);
     this.wind.setDpr(this.dpr.dpr);
-    this.updateWindArrows();
+    this.glyphs.setEnabled(l.windGlyphs);
+    this.glyphs.setHeight(l.windHeight);
+    this.glyphs.setDpr(this.dpr.dpr);
     const overlayChanged = !prev || prev.overlay !== l.overlay;
     if (overlayChanged || !prev || prev.isochroneMinutes !== l.isochroneMinutes) this.updateOverlay();
     // Canopy: style, colour code, sway, understorey, solo heat map. Switching the understorey (or the canopy style) only
@@ -876,19 +879,6 @@ export class SceneView implements SceneViewApi {
       this.updateSection(true);
     }
     if (!prev || prev.insightMarkers !== l.insightMarkers) this.refreshMarkers();
-  }
-
-  /** Toggle the static wind arrows (shown only while the wind layer is on). */
-  setWindArrows(on: boolean): void {
-    this.windArrowsOn = on;
-    this.updateWindArrows();
-    this.dirty = true;
-  }
-
-  private updateWindArrows(): void {
-    const show = this.windArrowsOn && this.layers.wind !== 'off' && !!this.sampler && !!this.domain;
-    this.windArrows.arrows.mesh.visible = show;
-    if (show) this.windArrows.update(this.sampler!, this.domain!, this.vex, this.dpr.dpr);
   }
 
   /** Layers whose visibility depends on the view mode and overlay. */
@@ -1393,6 +1383,12 @@ export class SceneView implements SceneViewApi {
       const sz = this.renderer.getSize(this.tmpSize);
       if (this.placesLayer.updateLabels(this.rig.camera, sz.x, sz.y, now)) this.dirty = true;
     }
+    // Wind glyphs: decide, stage and swap a rebuild (a few ms a frame at most); only a swapped picture draws a frame.
+    const gsz = this.renderer.getSize(this.tmpSize);
+    this.glyphCss.w = gsz.x;
+    this.glyphCss.h = gsz.y;
+    this.glyphCss.fov = this.rig.viewFov;
+    if (this.glyphs.tick(now, this.rig.camera, this.glyphCss, this.rig.mode, this.vex, this.cameraDistance(), this.lastStats.triangles, this.settleNow)) this.dirty = true;
     // Display-time interpolation between snapshots.
     let playing = false;
     if (this.snap && this.displayTime !== this.timeTo) {
@@ -1483,18 +1479,23 @@ export class SceneView implements SceneViewApi {
         this.renderer.setPixelRatio(d);
         this.u.uDpr!.value = d;
         this.wind.setDpr(d);
+        this.glyphs.setDpr(d);
         this.updateViewport();
-        // Pixel-width strokes baked at build time follow the new DPR.
-        this.updateWindArrows();
         if (this.layers.crossSection.enabled) this.drawSection();
         this.dirty = true;
       }
     }
   }
 
-  /** Render statistics of the last frame. */
-  stats(): { fps: number; drawCalls: number; triangles: number } {
-    return { ...this.lastStats };
+  /** Render statistics of the last frame, and the wind glyphs' level and count. */
+  stats(): { fps: number; drawCalls: number; triangles: number; windGlyphs: { level: number; count: number } } {
+    const g = this.glyphs.stats();
+    return { ...this.lastStats, windGlyphs: { level: g.level, count: g.count } };
+  }
+
+  /** The wind glyphs: drawn or why not, the level of detail, how many, the rebuild times (the debug statistics and the controls read it). */
+  windGlyphStats(): WindGlyphStats {
+    return this.glyphs.stats();
   }
 
   /** Frame and draw statistics for the debug statistics screen: the last seconds drawn (nothing is drawn while a screen covers the view). */
@@ -1610,7 +1611,7 @@ export class SceneView implements SceneViewApi {
     this.flames.dispose();
     this.embers.dispose();
     this.wind.dispose();
-    this.windArrows.dispose();
+    this.glyphs.dispose();
     this.smoke.dispose();
     this.section.dispose();
     this.slicer.invalidate();

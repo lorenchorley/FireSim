@@ -16,9 +16,9 @@
  * skip the drawing (renderer.render does nothing but keep the camera matrices current): the frame loop, the camera rig and
  * the touch handling run at the display rate, as on a phone.
  */
-import type { CDPSession, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { acceptNotice, pickViewMode } from './helpers';
+import { acceptNotice, frame, Hand, pickViewMode } from './helpers';
 
 test.use({ deviceScaleFactor: 1 });
 
@@ -58,54 +58,7 @@ const gliding = (page: Page): Promise<boolean> => page.evaluate(() => (window as
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const dist = (a: [number, number], b: [number, number]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const angleDiff = (to: number, from: number): number => ((((to - from) % 360) + 540) % 360) - 180;
-const frame = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
 const whyPanels = (page: Page): Promise<number> => page.evaluate(() => document.querySelectorAll('[data-testid="why-panel"]').length);
-
-/** Fingers through the DevTools protocol (one touchStart / touchMove / touchEnd with every active point, like a touch screen). */
-class Hand {
-  private readonly pts = new Map<number, [number, number]>();
-  constructor(
-    private readonly page: Page,
-    private readonly cdp: CDPSession,
-  ) {}
-  private points(): { x: number; y: number; id: number; radiusX: number; radiusY: number; force: number }[] {
-    return [...this.pts].map(([id, [x, y]]) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
-  }
-  at(id: number): [number, number] {
-    return this.pts.get(id)!;
-  }
-  async down(id: number, x: number, y: number): Promise<void> {
-    this.pts.set(id, [x, y]);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: this.points() });
-    await frame(this.page);
-  }
-  async move(to: Record<number, [number, number]>): Promise<void> {
-    for (const [id, p] of Object.entries(to)) this.pts.set(Number(id), p);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.points() });
-    await frame(this.page);
-  }
-  /** A straight drag in `steps` hops, a frame after each (~60 Hz). */
-  async drag(to: Record<number, [number, number]>, steps = 10): Promise<void> {
-    const from = new Map(Object.keys(to).map((id) => [Number(id), this.at(Number(id))]));
-    for (let s = 1; s <= steps; s++) {
-      const hop: Record<number, [number, number]> = {};
-      for (const [id, p] of Object.entries(to)) {
-        const a = from.get(Number(id))!;
-        hop[Number(id)] = [a[0] + ((p[0] - a[0]) * s) / steps, a[1] + ((p[1] - a[1]) * s) / steps];
-      }
-      await this.move(hop);
-    }
-  }
-  async up(id: number): Promise<void> {
-    const [x, y] = this.at(id);
-    this.pts.delete(id);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x, y, id, radiusX: 4, radiusY: 4, force: 1 }] });
-    await frame(this.page);
-  }
-  async upAll(): Promise<void> {
-    for (const id of [...this.pts.keys()]) await this.up(id);
-  }
-}
 
 test('map gestures with real touch: flat angles, rugged ground, taps, the domain edge, glide, mode and resize', async ({ page }) => {
   test.setTimeout(420_000);

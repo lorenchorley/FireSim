@@ -18,9 +18,9 @@
  * The light glide after a flick is not measured here: the software-GL test browser draws a frame every ~0.3 s, so the finger's
  * release velocity is noise; src/render/cameraRig.gestures.test.ts drives the same rig with exact timing.
  */
-import type { CDPSession, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { acceptNotice, pickTool, pickViewMode } from './helpers';
+import { acceptNotice, frame, newHand, pickTool, pickViewMode } from './helpers';
 
 // The software-GL test browser draws the 3-D view at about one frame per second whatever the resolution; the smaller
 // canvas at least keeps each frame as cheap as it can be.
@@ -88,7 +88,6 @@ const eyePosition = (page: Page): Promise<[number, number, number]> =>
 const lookAt = (page: Page, x: number, y: number, d: number, az: number, tilt: number): Promise<void> =>
   page.evaluate(([a, b, c, e, f]) => (window as unknown as { __firesim: { view: View } }).__firesim.view.lookAt(a!, b!, c!, e!, f!, false), [x, y, d, az, tilt]);
 
-const frame = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
 const dist = (a: [number, number], b: [number, number]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 /** Signed difference of two compass angles in (−180, 180]. */
 const angleDiff = (to: number, from: number): number => ((((to - from) % 360) + 540) % 360) - 180;
@@ -107,61 +106,6 @@ async function settle(page: Page): Promise<CamState> {
   });
   await frame(page);
   return cam(page);
-}
-
-/**
- * Fingers on a touch screen, through CDP: a touchStart / touchMove carries all the active points (the protocol compares them with
- * the previous event, one pointer event per changed point), a touchEnd the point that is released.
- */
-class Hand {
-  private readonly pts = new Map<number, [number, number]>();
-  constructor(
-    private readonly page: Page,
-    private readonly cdp: CDPSession,
-  ) {}
-  private points(): { x: number; y: number; id: number; radiusX: number; radiusY: number; force: number }[] {
-    return [...this.pts].map(([id, [x, y]]) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
-  }
-  at(id: number): [number, number] {
-    return this.pts.get(id)!;
-  }
-  async down(id: number, x: number, y: number): Promise<void> {
-    this.pts.set(id, [x, y]);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: this.points() });
-    await frame(this.page);
-  }
-  /** One touchMove carrying the new positions of the given fingers (the others stay). */
-  async move(to: Record<number, [number, number]>): Promise<void> {
-    for (const [id, p] of Object.entries(to)) this.pts.set(Number(id), p);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: this.points() });
-    await frame(this.page);
-  }
-  /** Move the given fingers in a straight line to their targets in `steps` hops, a frame after each (a finger at ~60 Hz). */
-  async drag(to: Record<number, [number, number]>, steps = 10): Promise<void> {
-    const from = new Map(Object.keys(to).map((id) => [Number(id), this.at(Number(id))]));
-    for (let s = 1; s <= steps; s++) {
-      const hop: Record<number, [number, number]> = {};
-      for (const [id, p] of Object.entries(to)) {
-        const a = from.get(Number(id))!;
-        hop[Number(id)] = [a[0] + ((p[0] - a[0]) * s) / steps, a[1] + ((p[1] - a[1]) * s) / steps];
-      }
-      await this.move(hop);
-    }
-  }
-  /** Lift one finger: a touchEnd lists the points that are released (the others stay down). */
-  async up(id: number): Promise<void> {
-    const [x, y] = this.at(id);
-    this.pts.delete(id);
-    await this.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x, y, id, radiusX: 4, radiusY: 4, force: 1 }] });
-    await frame(this.page);
-  }
-  async upAll(): Promise<void> {
-    for (const id of [...this.pts.keys()]) await this.up(id);
-  }
-}
-
-async function newHand(page: Page): Promise<Hand> {
-  return new Hand(page, await page.context().newCDPSession(page));
 }
 
 /** The element under a point must be the 3-D canvas (not a button or a panel), else a "map gesture" would not be one. */
