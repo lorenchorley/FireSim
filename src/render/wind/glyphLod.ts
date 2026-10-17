@@ -119,6 +119,7 @@ export function visibleBox(
   let x1 = -Infinity;
   let y0 = Infinity;
   let y1 = -Infinity;
+  let down = false; // some ray meets the ground: otherwise nothing of it is in view
   for (let k = 0; k < 16; k += 2) {
     const nx = NDC[k]!;
     const ny = NDC[k + 1]!;
@@ -131,6 +132,7 @@ export function visibleBox(
     const h = Math.sqrt(dx * dx + dz * dz);
     let t: number;
     if (dy < -1e-9) {
+      down = true;
       t = (planeY - ey) / dy;
       if (t * h > maxRangeM) t = maxRangeM / h;
     } else if (h > 1e-12) t = maxRangeM / h;
@@ -142,7 +144,7 @@ export function visibleBox(
     if (hy < y0) y0 = hy;
     if (hy > y1) y1 = hy;
   }
-  if (!(x1 >= x0) || !(y1 >= y0)) return null;
+  if (!down || !(x1 >= x0) || !(y1 >= y0)) return null;
   const gx = (x1 - x0) * margin;
   const gy = (y1 - y0) * margin;
   x0 = Math.max(x0 - gx, bounds.x0);

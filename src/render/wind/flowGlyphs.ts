@@ -114,7 +114,7 @@ const F_HFZ = 30;
 const F_LEN = 31;
 
 const N_BUSY = 0;
-const N_PHASE = 1; // 0 walking the lattice, 1 tracing the kept seeds
+const N_PHASE = 1;
 const N_RNX = 2;
 const N_RNY = 3;
 const N_GNX = 4;
@@ -141,6 +141,13 @@ const N_REBUILDS = 24;
 const N_INTERVAL = 25;
 const N_LEN = 26;
 
+// Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
+const PHASE_SETUP = 3;
+const PHASE_WALK = 0;
+const PHASE_TRACE_START = 4;
+const PHASE_TRACE = 1;
+const PHASE_DONE = 2;
+
 /** Lattice cells between two reads of the clock while walking the lattice. */
 const CELL_CHECK = 2048;
 
@@ -151,8 +158,8 @@ class Builder implements GlyphBuilder {
   private readonly n = new Int32Array(N_LEN);
   /** Projection x view, column-major (THREE's `Matrix4.elements`). */
   private readonly vp = new Float64Array(16);
-  /** Scratch: 0 x, 1 y, 2 ground, 3 metres per pixel, 4 clip depth, 5 u, 6 v, 8..13 the segment being written, 14..17 the seed. */
-  private readonly s = new Float64Array(18);
+  /** Scratch: 0 x, 1 y, 2 ground, 3 metres per pixel, 4 clip depth, 5 u, 6 v, 8..13 the segment being written. */
+  private readonly s = new Float64Array(14);
   private readonly hv = new Uint32Array(1);
   private readonly cand: Int32Array;
   private readonly candH: Uint32Array;
@@ -183,18 +190,17 @@ class Builder implements GlyphBuilder {
 
   cancel(): void {
     this.n[N_BUSY] = 0;
-    this.n[N_PHASE] = 2;
+    this.n[N_PHASE] = PHASE_DONE;
     this.input = null;
   }
 
   begin(input: GlyphInput): void {
     const n = this.n;
-    const f = this.f;
     const out = this.out;
     this.input = input;
     n[N_REBUILDS] = n[N_REBUILDS]! + 1;
     n[N_BUSY] = 0;
-    n[N_PHASE] = 2;
+    n[N_PHASE] = PHASE_DONE;
     n[N_SEEDS] = 0;
     n[N_NSTORE] = 0;
     n[N_TI] = 0;
@@ -207,12 +213,14 @@ class Builder implements GlyphBuilder {
     out.dropped = 0;
     out.calm = 0;
     out.starts[0] = 0;
+    // Is there anything to draw? Comparisons and whole numbers only. This function runs a few times a second, so V8 never optimises
+    // it, and in the interpreter every number made by arithmetic is a heap number: the arithmetic of the set-up is in `walk`, which
+    // is hot, and that is what keeps a rebuild under a kilobyte.
     const lod = input.lod;
     const field = input.field;
     const fg = field.grid;
     const gg = input.ground.grid;
-    const S = lod.spacingM;
-    if (lod.level === 0 || !(S > 0) || !(lod.spacingPx > 0)) return;
+    if (lod.level === 0 || !(lod.spacingM > 0) || !(lod.spacingPx > 0)) return;
     if (fg.nx < 2 || fg.ny < 2 || gg.nx < 2 || gg.ny < 2 || !(fg.cellSize > 0) || !(gg.cellSize > 0)) return;
     if (field.u.length < fg.nx * fg.ny || field.v.length < fg.nx * fg.ny || input.ground.elevation.length < gg.nx * gg.ny) return;
     if (!(input.cssW > 0) || !(input.cssH > 0) || !(input.pxPerMetre1 > 0)) return;
@@ -222,84 +230,16 @@ class Builder implements GlyphBuilder {
     this.fu = field.u;
     this.fv = field.v;
     this.gz = input.ground.elevation;
-    const vp = input.viewProj;
-    for (let k = 0; k < 16; k++) this.vp[k] = vp[k]!;
-    // The raster's domain: glyphs stop at its edge.
-    const rx0 = fg.x0;
-    const ry0 = fg.y0;
-    const rx1 = fg.x0 + (fg.nx - 1) * fg.cellSize;
-    const ry1 = fg.y0 + (fg.ny - 1) * fg.cellSize;
-    f[F_RX0] = rx0;
-    f[F_RY0] = ry0;
-    f[F_RX1] = rx1;
-    f[F_RY1] = ry1;
-    f[F_RINV] = 1 / fg.cellSize;
     n[N_RNX] = fg.nx;
     n[N_RNY] = fg.ny;
-    f[F_GX0] = gg.x0;
-    f[F_GY0] = gg.y0;
-    f[F_GINV] = 1 / gg.cellSize;
     n[N_GNX] = gg.nx;
     n[N_GNY] = gg.ny;
-    f[F_CSSW] = input.cssW;
-    f[F_CSSH] = input.cssH;
-    f[F_PXM1] = input.pxPerMetre1;
-    f[F_WMIN] = GLYPH_NEAR_FACTOR * input.near;
-    f[F_VEX] = input.vex;
-    f[F_S] = S;
-    f[F_JIT] = lod.jitter;
-    f[F_LMIN] = lod.lengthPx.min;
-    f[F_LMAX] = lod.lengthPx.max;
-    f[F_PXMS] = lod.lengthPx.pxPerMs;
-    f[F_MPPC] = lod.mppCentre !== undefined && lod.mppCentre > 0 ? lod.mppCentre : S / lod.spacingPx;
-    // A seed this far outside the screen can still have its glyph on it: one glyph length and its head, at least a tenth of the screen.
-    const reach = lod.lengthPx.max + HEAD_MAX_PX + 1;
-    f[F_MX] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssW, reach)) / input.cssW;
-    f[F_MY] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssH, reach)) / input.cssH;
-    f[F_EX] = input.eye[0]!;
-    f[F_EY] = input.eye[1]!;
-    f[F_EZ] = input.eye[2]!;
-    // Orbit density needs the pitch of the view. The camera's forward axis is the gradient of the clip depth (row 3 of projection x
-    // view): its y part gives sin(pitch) for the centre ray, its horizontal part the way the camera faces (none for a top view).
-    const sinC = Math.max(0.05, -this.vp[7]!);
-    f[F_AK] = sinC / (f[F_MPPC]! * f[F_MPPC]!);
-    const fh = Math.sqrt(this.vp[3]! * this.vp[3]! + this.vp[11]! * this.vp[11]!);
-    f[F_HFX] = fh > 1e-3 ? this.vp[3]! / fh : 0;
-    f[F_HFZ] = fh > 1e-3 ? this.vp[11]! / fh : 0;
-    n[N_CURVED] = lod.curved ? 1 : 0;
-    n[N_SALT] = SALT_JITTER + 2 * (Math.max(-16, Math.min(48, lod.spacingExp)) + 16);
     n[N_CAPG] = capG;
     n[N_CAPS] = capS;
     n[N_MAXSTORE] = Math.min(3 * capG + 16, this.candH.length);
-    f[F_TAU] = U32;
-    // The lattice cells to walk: the box inside the raster's domain; a box of more than GLYPH_MAX_CELLS is cut to a square around the camera.
-    const box = input.box;
-    let bx0 = Math.max(box.x0, rx0);
-    let by0 = Math.max(box.y0, ry0);
-    let bx1 = Math.min(box.x1, rx1);
-    let by1 = Math.min(box.y1, ry1);
-    if (!(bx0 <= bx1) || !(by0 <= by1)) return;
-    if (((bx1 - bx0) / S + 1) * ((by1 - by0) / S + 1) > GLYPH_MAX_CELLS) {
-      const half = 0.5 * S * Math.sqrt(GLYPH_MAX_CELLS);
-      let cx = input.eye[0]!;
-      let cy = -input.eye[2]!;
-      if (!(cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1)) {
-        cx = 0.5 * (bx0 + bx1);
-        cy = 0.5 * (by0 + by1);
-      }
-      bx0 = Math.max(bx0, cx - half);
-      bx1 = Math.min(bx1, cx + half);
-      by0 = Math.max(by0, cy - half);
-      by1 = Math.min(by1, cy + half);
-    }
-    const i0 = Math.floor(bx0 / S);
-    const j0 = Math.floor(by0 / S);
-    n[N_I0] = i0;
-    n[N_I1] = Math.floor(bx1 / S);
-    n[N_J1] = Math.floor(by1 / S);
-    n[N_CI] = i0;
-    n[N_CJ] = j0;
-    n[N_PHASE] = 0;
+    n[N_CURVED] = lod.curved ? 1 : 0;
+    n[N_SALT] = SALT_JITTER + 2 * (Math.max(-16, Math.min(48, lod.spacingExp | 0)) + 16);
+    n[N_PHASE] = PHASE_SETUP;
     n[N_BUSY] = 1;
   }
 
@@ -309,12 +249,13 @@ class Builder implements GlyphBuilder {
     const f = this.f;
     f[F_BUDGET] = budgetMs;
     f[F_DEADLINE] = this.input!.now() + budgetMs;
-    if (n[N_PHASE] === 0) {
+    if (n[N_PHASE] === PHASE_SETUP || n[N_PHASE] === PHASE_WALK) {
       if (!this.walk()) return false;
-      this.startTrace();
+      n[N_PHASE] = PHASE_TRACE_START;
     }
     if (!this.trace()) return false;
     n[N_BUSY] = 0;
+    n[N_PHASE] = PHASE_DONE;
     return true;
   }
 
@@ -474,11 +415,98 @@ class Builder implements GlyphBuilder {
     n[N_NSTORE] = ns + 1;
   }
 
-  /** Walk the lattice cells of the box; true when done, false when the slice ran out of time (the cursor is kept). */
+  /**
+   * Walk the lattice cells of the box; true when done, false when the slice ran out of time (the cursor is kept). The first call of a
+   * rebuild first copies the input into the typed state (what `begin` leaves for it: see there).
+   */
   private walk(): boolean {
     const n = this.n;
+    const f = this.f;
     const input = this.input!;
-    const deadline = this.f[F_DEADLINE]!;
+    if (n[N_PHASE] === PHASE_SETUP) {
+      const lod = input.lod;
+      const fg = input.field.grid;
+      const gg = input.ground.grid;
+      const S = lod.spacingM;
+      const vp = input.viewProj;
+      for (let k = 0; k < 16; k++) this.vp[k] = vp[k]!;
+      // The raster's domain: glyphs stop at its edge.
+      const rx0 = fg.x0;
+      const ry0 = fg.y0;
+      const rx1 = fg.x0 + (fg.nx - 1) * fg.cellSize;
+      const ry1 = fg.y0 + (fg.ny - 1) * fg.cellSize;
+      f[F_RX0] = rx0;
+      f[F_RY0] = ry0;
+      f[F_RX1] = rx1;
+      f[F_RY1] = ry1;
+      f[F_RINV] = 1 / fg.cellSize;
+      f[F_GX0] = gg.x0;
+      f[F_GY0] = gg.y0;
+      f[F_GINV] = 1 / gg.cellSize;
+      f[F_CSSW] = input.cssW;
+      f[F_CSSH] = input.cssH;
+      f[F_PXM1] = input.pxPerMetre1;
+      f[F_WMIN] = GLYPH_NEAR_FACTOR * input.near;
+      f[F_VEX] = input.vex;
+      f[F_S] = S;
+      f[F_JIT] = lod.jitter;
+      f[F_LMIN] = lod.lengthPx.min;
+      f[F_LMAX] = lod.lengthPx.max;
+      f[F_PXMS] = lod.lengthPx.pxPerMs;
+      f[F_MPPC] = lod.mppCentre !== undefined && lod.mppCentre > 0 ? lod.mppCentre : S / lod.spacingPx;
+      // A seed this far outside the screen can still have its glyph on it: one glyph length and its head, at least a tenth of the screen.
+      const reach = lod.lengthPx.max + HEAD_MAX_PX + 1;
+      f[F_MX] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssW, reach)) / input.cssW;
+      f[F_MY] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssH, reach)) / input.cssH;
+      f[F_EX] = input.eye[0]!;
+      f[F_EY] = input.eye[1]!;
+      f[F_EZ] = input.eye[2]!;
+      // Orbit density needs the pitch of the view. The camera's forward axis is the gradient of the clip depth (row 3 of projection x
+      // view): its y part gives sin(pitch) for the centre ray, its horizontal part the way the camera faces (none for a top view).
+      const sinC = Math.max(0.05, -this.vp[7]!);
+      f[F_AK] = sinC / (f[F_MPPC]! * f[F_MPPC]!);
+      const fh = Math.sqrt(this.vp[3]! * this.vp[3]! + this.vp[11]! * this.vp[11]!);
+      f[F_HFX] = fh > 1e-3 ? this.vp[3]! / fh : 0;
+      f[F_HFZ] = fh > 1e-3 ? this.vp[11]! / fh : 0;
+      f[F_TAU] = U32;
+      // The lattice cells to walk: the box inside the raster's domain; a box of more than GLYPH_MAX_CELLS is cut to a square around the camera.
+      const box = input.box;
+      let bx0 = Math.max(box.x0, rx0);
+      let by0 = Math.max(box.y0, ry0);
+      let bx1 = Math.min(box.x1, rx1);
+      let by1 = Math.min(box.y1, ry1);
+      if (((bx1 - bx0) / S + 1) * ((by1 - by0) / S + 1) > GLYPH_MAX_CELLS) {
+        const half = 0.5 * S * Math.sqrt(GLYPH_MAX_CELLS);
+        let cx = input.eye[0]!;
+        let cy = -input.eye[2]!;
+        if (!(cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1)) {
+          cx = 0.5 * (bx0 + bx1);
+          cy = 0.5 * (by0 + by1);
+        }
+        bx0 = Math.max(bx0, cx - half);
+        bx1 = Math.min(bx1, cx + half);
+        by0 = Math.max(by0, cy - half);
+        by1 = Math.min(by1, cy + half);
+      }
+      if (bx0 <= bx1 && by0 <= by1) {
+        const i0 = Math.floor(bx0 / S);
+        const j0 = Math.floor(by0 / S);
+        n[N_I0] = i0;
+        n[N_I1] = Math.floor(bx1 / S);
+        n[N_J1] = Math.floor(by1 / S);
+        n[N_CI] = i0;
+        n[N_CJ] = j0;
+      } else {
+        // Nothing of the box is inside the raster: no cell to walk.
+        n[N_I0] = 0;
+        n[N_I1] = -1;
+        n[N_J1] = -1;
+        n[N_CI] = 0;
+        n[N_CJ] = 0;
+      }
+      n[N_PHASE] = PHASE_WALK;
+    }
+    const deadline = f[F_DEADLINE]!;
     const i0 = n[N_I0]!;
     const i1 = n[N_I1]!;
     const j1 = n[N_J1]!;
@@ -506,27 +534,6 @@ class Builder implements GlyphBuilder {
     return true;
   }
 
-  /** The lattice is walked: decide how many of the stored seeds are traced and how many steps a shaft may have. */
-  private startTrace(): void {
-    const n = this.n;
-    const f = this.f;
-    const count = n[N_SEEDS]!;
-    const capG = n[N_CAPG]!;
-    let p = count > capG ? (CAP_KEEP * capG * U32) / count : U32;
-    if (p > f[F_TAU]!) p = f[F_TAU]!;
-    f[F_PKEEP] = p;
-    let keep = 0;
-    const ns = n[N_NSTORE]!;
-    const candH = this.candH;
-    for (let r = 0; r < ns; r++) if (candH[r]! < p) keep++;
-    if (keep > capG) keep = capG;
-    // All kept glyphs must fit the segments: shaft + 2 for the head each, but at least 3 steps for a curve.
-    n[N_SHAFTCAP] = Math.max(3, Math.floor(n[N_CAPS]! / Math.max(1, keep)) - 2);
-    n[N_PHASE] = 1;
-    n[N_TI] = 0;
-    n[N_INTERVAL] = n[N_REBUILDS]! <= 4 ? 8 : 32;
-  }
-
   /** Trace the stored seeds in order; true when all are done (or the caps are reached), false when the slice ran out of time. */
   private trace(): boolean {
     const n = this.n;
@@ -535,12 +542,28 @@ class Builder implements GlyphBuilder {
     const input = this.input!;
     const deadline = f[F_DEADLINE]!;
     const budget = f[F_BUDGET]!;
-    const pkeep = f[F_PKEEP]!;
     const cand = this.cand;
     const candH = this.candH;
     const ns = n[N_NSTORE]!;
     const capG = n[N_CAPG]!;
     const base = n[N_REBUILDS]! <= 4 ? 8 : 32;
+    if (n[N_PHASE] === PHASE_TRACE_START) {
+      // The lattice is walked: decide how many of the stored seeds are traced and how many steps a shaft may have. When more
+      // seeds than the cap were found, keep the share 0.95 x cap / count of them, by the hash they were stored with.
+      const count = n[N_SEEDS]!;
+      let p = count > capG ? (CAP_KEEP * capG * U32) / count : U32;
+      if (p > f[F_TAU]!) p = f[F_TAU]!;
+      f[F_PKEEP] = p;
+      let keep = 0;
+      for (let r = 0; r < ns; r++) if (candH[r]! < p) keep++;
+      if (keep > capG) keep = capG;
+      // All kept glyphs must fit the segments: shaft + 2 for the head each, but at least 3 steps for a curve.
+      n[N_SHAFTCAP] = Math.max(3, Math.floor(n[N_CAPS]! / Math.max(1, keep)) - 2);
+      n[N_TI] = 0;
+      n[N_INTERVAL] = base;
+      n[N_PHASE] = PHASE_TRACE;
+    }
+    const pkeep = f[F_PKEEP]!;
     let interval = n[N_INTERVAL]!;
     let left = interval;
     let ti = n[N_TI]!;
@@ -589,40 +612,6 @@ class Builder implements GlyphBuilder {
     C[ic + 3] = 1;
   }
 
-  /** A calm seed: a short dot east of the seed (s14 x, s15 y, s16 drawn height in world y, s17 metres per pixel). 1 when there is no room left. */
-  private dot(): number {
-    const n = this.n;
-    const s = this.s;
-    const vp = this.vp;
-    const seg = n[N_SEG]!;
-    if (seg + 1 > n[N_CAPS]!) return 1;
-    const x = s[14]!;
-    const y = s[15]!;
-    const yw = s[16]!;
-    const bx = x + GLYPH_DOT_PX * s[17]!;
-    const wmin = this.f[F_WMIN]!;
-    const w0 = vp[3]! * x + vp[7]! * yw - vp[11]! * y + vp[15]!;
-    const w1 = vp[3]! * bx + vp[7]! * yw - vp[11]! * y + vp[15]!;
-    if (!(w0 > wmin) || !(w1 > wmin)) {
-      n[N_DROPPED] = n[N_DROPPED]! + 1;
-      return 0;
-    }
-    s[8] = x;
-    s[9] = yw;
-    s[10] = -y;
-    s[11] = bx;
-    s[12] = yw;
-    s[13] = -y;
-    this.emit(seg, 0);
-    const gl = n[N_GL]!;
-    this.out.starts[gl] = seg;
-    this.out.starts[gl + 1] = seg + 1;
-    n[N_GL] = gl + 1;
-    n[N_SEG] = seg + 1;
-    n[N_CALM] = n[N_CALM]! + 1;
-    return 0;
-  }
-
   /** Trace the glyph of lattice cell (i, j). 1 when the segments are used up (the build stops), else 0. */
   private glyph(i: number, j: number): number {
     if (this.candidate(i, j) === 0) return 0;
@@ -641,149 +630,170 @@ class Builder implements GlyphBuilder {
     const mpp = s[3]!;
     const lift = Math.max(GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX * mpp);
     const yw0 = (s[2]! + lift) * vex;
-    s[14] = seedX;
-    s[15] = seedY;
-    s[16] = yw0;
-    s[17] = mpp;
     this.sampleField();
     let u = s[5]!;
     let v = s[6]!;
     let sp = Math.sqrt(u * u + v * v);
-    if (!(sp >= GLYPH_CALM_MS)) return this.dot();
+    if (sp >= GLYPH_CALM_MS) {
+      let lenPx = f[F_PXMS]! * sp;
+      const lmin = f[F_LMIN]!;
+      const lmax = f[F_LMAX]!;
+      if (lenPx < lmin) lenPx = lmin;
+      else if (lenPx > lmax) lenPx = lmax;
+      let shaft = 1;
+      if (n[N_CURVED] !== 0) {
+        shaft = Math.ceil(lenPx / 7);
+        if (shaft < 6) shaft = 6;
+        if (shaft > GLYPH_SHAFT_SEGMENTS_MAX) shaft = GLYPH_SHAFT_SEGMENTS_MAX;
+        if (shaft > n[N_SHAFTCAP]!) shaft = n[N_SHAFTCAP]!;
+      }
+      const seg0 = n[N_SEG]!;
+      if (seg0 + shaft + 2 > n[N_CAPS]!) return 1;
+      const ds = (lenPx * mpp) / shaft;
+      const half = 0.5 * ds;
 
-    let lenPx = f[F_PXMS]! * sp;
-    const lmin = f[F_LMIN]!;
-    const lmax = f[F_LMAX]!;
-    if (lenPx < lmin) lenPx = lmin;
-    else if (lenPx > lmax) lenPx = lmax;
-    let shaft = 1;
-    if (n[N_CURVED] !== 0) {
-      shaft = Math.ceil(lenPx / 7);
-      if (shaft < 6) shaft = 6;
-      if (shaft > GLYPH_SHAFT_SEGMENTS_MAX) shaft = GLYPH_SHAFT_SEGMENTS_MAX;
-      if (shaft > n[N_SHAFTCAP]!) shaft = n[N_SHAFTCAP]!;
-    }
-    const seg0 = n[N_SEG]!;
-    if (seg0 + shaft + 2 > n[N_CAPS]!) return 1;
-    const ds = (lenPx * mpp) / shaft;
-    const half = 0.5 * ds;
-
-    let px = seedX;
-    let py = seedY;
-    let ox = seedX;
-    let oyw = yw0;
-    let ozw = -seedY;
-    if (!(vp[3]! * ox + vp[7]! * oyw + vp[11]! * ozw + vp[15]! > wmin)) {
-      n[N_DROPPED] = n[N_DROPPED]! + 1;
-      return 0;
-    }
-    let made = 0;
-    let stop = 0; // 1 calm, 2 raster edge, 3 near plane
-    let dux = 0;
-    let duy = 0;
-    let bin = 0;
-    for (let k = 0; k < shaft; k++) {
-      if (k > 0) {
-        s[0] = px;
-        s[1] = py;
-        this.sampleField();
-        u = s[5]!;
-        v = s[6]!;
-        sp = Math.sqrt(u * u + v * v);
-        if (!(sp >= GLYPH_CALM_MS)) {
-          stop = 1;
-          break;
-        }
-      }
-      const k1 = half / sp;
-      s[0] = px + u * k1;
-      s[1] = py + v * k1;
-      this.sampleField();
-      const u2 = s[5]!;
-      const v2 = s[6]!;
-      const sp2 = Math.sqrt(u2 * u2 + v2 * v2);
-      if (!(sp2 >= GLYPH_CALM_MS)) {
-        stop = 1;
-        break;
-      }
-      const k2 = ds / sp2;
-      const qx = px + u2 * k2;
-      const qy = py + v2 * k2;
-      if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) {
-        stop = 2;
-        break;
-      }
-      s[0] = qx;
-      s[1] = qy;
-      this.groundAt();
-      const qyw = (s[2]! + lift) * vex;
-      const qzw = -qy;
-      if (!(vp[3]! * qx + vp[7]! * qyw + vp[11]! * qzw + vp[15]! > wmin)) {
-        stop = 3;
-        break;
-      }
-      s[8] = ox;
-      s[9] = oyw;
-      s[10] = ozw;
-      s[11] = qx;
-      s[12] = qyw;
-      s[13] = qzw;
-      bin = (sp * BIN_SCALE + 0.5) | 0;
-      if (bin > SPEED_TABLE_BINS - 1) bin = SPEED_TABLE_BINS - 1;
-      this.emit(seg0 + made, bin);
-      made++;
-      ox = qx;
-      oyw = qyw;
-      ozw = qzw;
-      px = qx;
-      py = qy;
-      dux = u2 / sp2;
-      duy = v2 / sp2;
-    }
-    if (stop === 3) {
-      n[N_DROPPED] = n[N_DROPPED]! + 1;
-      return 0;
-    }
-    if (made === 0) return stop === 1 ? this.dot() : 0;
-
-    // Arrowhead: two chevron barbs from the tip, +/- 28 degrees from the way back, in the ground plane (draped on the ground like the shaft).
-    let headPx = HEAD_FRAC * lenPx;
-    if (headPx < HEAD_MIN_PX) headPx = HEAD_MIN_PX;
-    else if (headPx > HEAD_MAX_PX) headPx = HEAD_MAX_PX;
-    const headM = headPx * mpp;
-    const rx = -dux;
-    const ry = -duy;
-    for (let b = 0; b < 2; b++) {
-      const sn = b === 0 ? SIN_HEAD : -SIN_HEAD;
-      let hx = px + headM * (rx * COS_HEAD - ry * sn);
-      let hy = py + headM * (rx * sn + ry * COS_HEAD);
-      if (hx < rx0) hx = rx0;
-      else if (hx > rx1) hx = rx1;
-      if (hy < ry0) hy = ry0;
-      else if (hy > ry1) hy = ry1;
-      s[0] = hx;
-      s[1] = hy;
-      this.groundAt();
-      const hyw = (s[2]! + lift) * vex;
-      const hzw = -hy;
-      if (!(vp[3]! * hx + vp[7]! * hyw + vp[11]! * hzw + vp[15]! > wmin)) {
+      let px = seedX;
+      let py = seedY;
+      let ox = seedX;
+      let oyw = yw0;
+      let ozw = -seedY;
+      if (!(vp[3]! * ox + vp[7]! * oyw + vp[11]! * ozw + vp[15]! > wmin)) {
         n[N_DROPPED] = n[N_DROPPED]! + 1;
         return 0;
       }
-      s[8] = ox;
-      s[9] = oyw;
-      s[10] = ozw;
-      s[11] = hx;
-      s[12] = hyw;
-      s[13] = hzw;
-      this.emit(seg0 + made + b, bin);
+      let made = 0;
+      let stop = 0; // 1 calm, 2 raster edge, 3 near plane
+      let dux = 0;
+      let duy = 0;
+      let bin = 0;
+      for (let k = 0; k < shaft; k++) {
+        if (k > 0) {
+          s[0] = px;
+          s[1] = py;
+          this.sampleField();
+          u = s[5]!;
+          v = s[6]!;
+          sp = Math.sqrt(u * u + v * v);
+          if (!(sp >= GLYPH_CALM_MS)) {
+            stop = 1;
+            break;
+          }
+        }
+        const k1 = half / sp;
+        s[0] = px + u * k1;
+        s[1] = py + v * k1;
+        this.sampleField();
+        const u2 = s[5]!;
+        const v2 = s[6]!;
+        const sp2 = Math.sqrt(u2 * u2 + v2 * v2);
+        if (!(sp2 >= GLYPH_CALM_MS)) {
+          stop = 1;
+          break;
+        }
+        const k2 = ds / sp2;
+        const qx = px + u2 * k2;
+        const qy = py + v2 * k2;
+        if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) {
+          stop = 2;
+          break;
+        }
+        s[0] = qx;
+        s[1] = qy;
+        this.groundAt();
+        const qyw = (s[2]! + lift) * vex;
+        const qzw = -qy;
+        if (!(vp[3]! * qx + vp[7]! * qyw + vp[11]! * qzw + vp[15]! > wmin)) {
+          stop = 3;
+          break;
+        }
+        s[8] = ox;
+        s[9] = oyw;
+        s[10] = ozw;
+        s[11] = qx;
+        s[12] = qyw;
+        s[13] = qzw;
+        bin = (sp * BIN_SCALE + 0.5) | 0;
+        if (bin > SPEED_TABLE_BINS - 1) bin = SPEED_TABLE_BINS - 1;
+        this.emit(seg0 + made, bin);
+        made++;
+        ox = qx;
+        oyw = qyw;
+        ozw = qzw;
+        px = qx;
+        py = qy;
+        dux = u2 / sp2;
+        duy = v2 / sp2;
+      }
+      if (stop === 3) {
+        n[N_DROPPED] = n[N_DROPPED]! + 1;
+        return 0;
+      }
+      if (made === 0 && stop !== 1) return 0; // cut at the raster edge before the first step: nothing to draw
+      if (made > 0) {
+
+        // Arrowhead: two chevron barbs from the tip, +/- 28 degrees from the way back, in the ground plane (draped on the ground like the shaft).
+        let headPx = HEAD_FRAC * lenPx;
+        if (headPx < HEAD_MIN_PX) headPx = HEAD_MIN_PX;
+        else if (headPx > HEAD_MAX_PX) headPx = HEAD_MAX_PX;
+        const headM = headPx * mpp;
+        const rx = -dux;
+        const ry = -duy;
+        for (let b = 0; b < 2; b++) {
+          const sn = b === 0 ? SIN_HEAD : -SIN_HEAD;
+          let hx = px + headM * (rx * COS_HEAD - ry * sn);
+          let hy = py + headM * (rx * sn + ry * COS_HEAD);
+          if (hx < rx0) hx = rx0;
+          else if (hx > rx1) hx = rx1;
+          if (hy < ry0) hy = ry0;
+          else if (hy > ry1) hy = ry1;
+          s[0] = hx;
+          s[1] = hy;
+          this.groundAt();
+          const hyw = (s[2]! + lift) * vex;
+          const hzw = -hy;
+          if (!(vp[3]! * hx + vp[7]! * hyw + vp[11]! * hzw + vp[15]! > wmin)) {
+            n[N_DROPPED] = n[N_DROPPED]! + 1;
+            return 0;
+          }
+          s[8] = ox;
+          s[9] = oyw;
+          s[10] = ozw;
+          s[11] = hx;
+          s[12] = hyw;
+          s[13] = hzw;
+          this.emit(seg0 + made + b, bin);
+        }
+        const end = seg0 + made + 2;
+        const gl = n[N_GL]!;
+        this.out.starts[gl] = seg0;
+        this.out.starts[gl + 1] = end;
+        n[N_GL] = gl + 1;
+        n[N_SEG] = end;
+        return 0;
+      }
     }
-    const end = seg0 + made + 2;
-    const gl = n[N_GL]!;
-    this.out.starts[gl] = seg0;
-    this.out.starts[gl + 1] = end;
-    n[N_GL] = gl + 1;
-    n[N_SEG] = end;
+    // A dot: a calm seed, or a trace that was calm from its first step. (This is in `glyph` and not a method of its own: a method that runs
+    // a few times a rebuild stays in the interpreter, where every number made by arithmetic is a heap number.)
+    const dseg = n[N_SEG]!;
+    if (dseg + 1 > n[N_CAPS]!) return 1;
+    const dbx = seedX + GLYPH_DOT_PX * mpp;
+    if (!(vp[3]! * seedX + vp[7]! * yw0 - vp[11]! * seedY + vp[15]! > wmin) || !(vp[3]! * dbx + vp[7]! * yw0 - vp[11]! * seedY + vp[15]! > wmin)) {
+      n[N_DROPPED] = n[N_DROPPED]! + 1;
+      return 0;
+    }
+    s[8] = seedX;
+    s[9] = yw0;
+    s[10] = -seedY;
+    s[11] = dbx;
+    s[12] = yw0;
+    s[13] = -seedY;
+    this.emit(dseg, 0);
+    const dgl = n[N_GL]!;
+    this.out.starts[dgl] = dseg;
+    this.out.starts[dgl + 1] = dseg + 1;
+    n[N_GL] = dgl + 1;
+    n[N_SEG] = dseg + 1;
+    n[N_CALM] = n[N_CALM]! + 1;
     return 0;
   }
 }

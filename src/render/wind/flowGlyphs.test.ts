@@ -518,8 +518,8 @@ describe('degenerate inputs build nothing, and say they are done', () => {
       mutate(sc);
       const b = createGlyphBuilder('medium');
       b.begin(sc.input);
+      expect(b.step(3)).toBe(true); // at once, with nothing built
       expect(b.busy).toBe(false);
-      expect(b.step(3)).toBe(true);
       expect(outOf(b).glyphs).toBe(0);
       expect(outOf(b).segments).toBe(0);
     });

@@ -181,10 +181,14 @@ export interface ScenarioOptions {
   raster?: FlowRaster;
   /** The ground (m ASL, default flat at 0, which is world height 0 when `vex` is 1). */
   ground?: (x: number, y: number) => number;
+  /** A ready ground raster instead of `ground`. */
+  groundRaster?: GroundRaster;
   /** Ground raster spacing (default 40 m, finer than the wind). */
   groundCell?: number;
   /** Model cell size on screen (default 60 px: L3). */
   cellPx?: number;
+  /** The model's cell in metres for the plan when `raster` is a refined one (default: the raster's own cell). */
+  planCellM?: number;
   camera?: Camera;
   /** Plan override fields (for the length rules etc). */
   plan?: Partial<LodPlan>;
@@ -217,12 +221,12 @@ export function makeScenario(o: ScenarioOptions = {}): Scenario {
   const raster = o.raster ?? rasterOf(grid, o.field ?? (() => [6, 8]));
   const gc = o.groundCell ?? 40;
   const gg: GridSpec = { nx: Math.ceil(((grid.nx - 1) * cell) / gc) + 1, ny: Math.ceil(((grid.ny - 1) * cell) / gc) + 1, cellSize: gc, x0: grid.x0, y0: grid.y0, origin: ORIGIN };
-  const ground = groundOf(gg, o.ground ?? (() => 0));
+  const ground = o.groundRaster ?? groundOf(gg, o.ground ?? (() => 0));
   const cellPx = o.cellPx ?? 60;
   const [cx, cy] = o.centre ?? [0, 0];
   const camera = o.camera ?? topDownCamera(raster.grid.cellSize, cellPx, cx, cy);
   const mppC = metresPerPixelAt(camera.distance, camera.fovDeg, camera.cssH);
-  const plan = planLod(raster.grid.cellSize / mppC, mppC, o.prev ?? null);
+  const plan = planLod((o.planCellM ?? raster.grid.cellSize) / mppC, mppC, o.prev ?? null);
   if (o.plan) Object.assign(plan, o.plan, { lengthPx: { ...plan.lengthPx, ...o.plan.lengthPx } });
   const g = raster.grid;
   const bounds: Box = { x0: g.x0, y0: g.y0, x1: g.x0 + (g.nx - 1) * g.cellSize, y1: g.y0 + (g.ny - 1) * g.cellSize };
@@ -352,7 +356,8 @@ export class DirectOracle {
   constructor(
     private readonly sampler: AtmosphereSampler,
     private readonly ground: GroundRaster,
-    private readonly heightM: number,
+    /** Metres above the ground, or 'surface' for the model's 10 m wind (`surfaceWind`). */
+    private readonly heightM: number | 'surface',
     private readonly dom: Box,
   ) {}
 
@@ -375,6 +380,10 @@ export class DirectOracle {
 
   /** u, v of the air `heightM` above the ground at (x, y). */
   wind(x: number, y: number): [number, number] {
+    if (this.heightM === 'surface') {
+      this.sampler.surfaceWind(x, y, this.w);
+      return [this.w[0]!, this.w[1]!];
+    }
     this.pos[0] = x;
     this.pos[1] = y;
     this.pos[2] = this.groundAt(x, y) + this.heightM;
