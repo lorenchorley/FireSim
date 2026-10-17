@@ -6,7 +6,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { EngineInfo, EnginePerfInfo, SimSnapshot } from '../core/types';
-import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
+import type { FrameStatsInfo, QualityInfo, TerrainDrawStats, WindGlyphStats } from '../render/api';
 import type { SliceRecordingStatus } from '../render/slice/types';
 import { Simulation } from '../sim/simulation';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
@@ -51,7 +51,7 @@ const LABELS: Record<string, string[]> = {
   embers: ['Tracked embers now', 'Embers released, whole run', 'Embers landed, whole run'],
   reruns: ['Rewinds (a change in the past)', 'Simulated time computed again', 'Tier switches', 'Checkpoint restores'],
   memory: ['Engine memory (measured)', 'Checkpoints (rewind points)', 'History budget (the time scrubber)', 'History held', 'Full pictures (keyframes)', 'Light frames kept', 'Frames thinned away', 'JavaScript heap, screen thread', 'Storage used by the app'],
-  display: ['Frame rate, last 10 s', 'Frame time, mean and 95th percentile', 'Frames slower than 30 per second, and over 100 ms', 'Long tasks, last 60 s', 'Draw calls and triangles', 'Textures held by the graphics card', 'Pixel ratio used and its cap', 'Drawing size', 'Last frame drawn', 'Picture quality in use', 'What that tier sets', 'Cliff drawing (once per scenario)'],
+  display: ['Frame rate, last 10 s', 'Frame time, mean and 95th percentile', 'Frames slower than 30 per second, and over 100 ms', 'Long tasks, last 60 s', 'Draw calls and triangles', 'Textures held by the graphics card', 'Pixel ratio used and its cap', 'Drawing size', 'Last frame drawn', 'Picture quality in use', 'What that tier sets', 'Cliff drawing (once per scenario)', 'Wind glyphs'],
   hardware: ['Maker and model', 'Android version', 'CPU cores', 'Architecture and bitness', 'Memory class', 'Screen', 'Window', 'Pixel ratio', 'Refresh rate', 'Touch points', 'Battery'],
   software: ['WebView or browser', 'User agent (as the WebView reports it)', 'WebGL2', 'GPU vendor and renderer', 'Largest texture', 'Float and half-float render targets', 'Compressed textures', 'WebGPU', 'WebAssembly and SIMD', 'Shared memory between threads', 'Offscreen canvas and module workers', 'Reduced motion, contrast, colour scheme'],
   canDo: ['Speed', 'Memory', 'Graphics'],
@@ -160,6 +160,8 @@ beforeAll(async () => {
   device = await fullState();
 });
 
+const glyphs: WindGlyphStats = { active: true, idle: null, level: 3, count: 412, segments: 2980, cellPx: 45, cellM: 133, rebuilds: 14, lastMs: 3.1, sliceP95Ms: 4.2, sliceMaxMs: 6, slicesLast: 2 };
+
 /** Everything present, a custom place. */
 function full(): DebugStatsInput {
   return {
@@ -172,6 +174,7 @@ function full(): DebugStatsInput {
     quality,
     qualityAsk: null,
     terrain,
+    windGlyphs: glyphs,
     store: { bytes: 61e6, maxBytes: 96e6, keyframes: 18, keyframeBytes: 54e6, newestBytes: 4e6, frames: 150, spacingS: 63, displayStepS: 60, range: { start: 0, end: 9600 } },
     historyBudget: { bytes: 96 * 1048576, memoryGb: 4 },
     heap: { usedBytes: 88e6, totalBytes: 120e6, limitBytes: 2.1e9 },
@@ -296,6 +299,13 @@ describe('the groups of the catalogue', () => {
     ['no picture quality facts', (i) => (i.quality = null)],
     ['a terrain view that cannot say, and one with nothing sharpened', (i) => (i.terrain = undefined)],
     ['nothing sharpened', (i) => (i.terrain = null)],
+    ['a view with no wind glyphs (the 2-D map), the layer off, at eye level, waiting for the air, at level 0 and before its first build', (i) => (i.windGlyphs = undefined)],
+    ['the wind glyphs off', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'off' })],
+    ['the wind glyphs at eye level', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'eye-level' })],
+    ['the wind glyphs waiting for the air', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'no-wind' })],
+    ['the wind glyphs at level 0', (i) => (i.windGlyphs = { ...glyphs, active: false, level: 0, count: 0, segments: 0 })],
+    ['the wind glyphs before their first build', (i) => (i.windGlyphs = { ...glyphs, rebuilds: 0, lastMs: 0, sliceP95Ms: 0, sliceMaxMs: 0, slicesLast: 0 })],
+    ['wind glyph numbers that are not numbers', (i) => (i.windGlyphs = { ...glyphs, cellPx: NaN, cellM: Infinity, lastMs: NaN, sliceP95Ms: NaN, sliceMaxMs: Infinity })],
     ['sharpening numbers not measured', (i) => (i.terrain = { ...terrain, sharpenedShare: null, sharpenMs: null, maskMs: null, meshMs: null, gradientMs: null, rockDetail: 'off' })],
     ['no history store', (i) => (i.store = null)],
     ['an empty history store', (i) => (i.store = { bytes: 0, maxBytes: 0, keyframes: 0, keyframeBytes: 0, newestBytes: 0, frames: 0, spacingS: 60, displayStepS: 60, range: null })],
@@ -508,6 +518,29 @@ describe('labels and values', () => {
     expect(rowOf(s, 'display', 'picture-sets').value).toBe('terrain 320 x 320 samples, 32000 trees, 170k canopy triangles, pixel ratio cap for this tier 1.75, 5000 flame sites, 1500 smoke puffs, tree sway on by default');
     expect(rowOf(s, 'display', 'cliffs').value).toBe('5 % of the 10 m cells moved; sharpening 180 ms, rock mask 70 ms, mesh 95 ms, lighting 40 ms');
     expect(rowOf(s, 'display', 'cliffs').note).toBe('102400 vertices, 204000 triangles; rock detail in the shader: high');
+  });
+
+  it('Wind glyphs: the level, what was built and what a rebuild cost, and why nothing is drawn when nothing is', () => {
+    const row = (g: DebugStatsInput['windGlyphs'], run = true): StatRow => rowOf(buildDebugStats({ ...(run ? full() : { ...full(), run: null }), windGlyphs: g }), 'display', 'wind-glyphs');
+    expect(row(glyphs)).toMatchObject({
+      label: 'Wind glyphs',
+      value: 'Level 3, 412 glyphs, 2,980 segments, rebuild 3.1 ms (p95 slice 4.2 ms, max 6.0 ms)',
+      note: 'One model cell is 133 m, about 45 px on screen; 14 rebuilds so far, the last in 2 slices',
+      live: true,
+    });
+    expect(row({ ...glyphs, level: 4, count: 1, segments: 1, rebuilds: 1, slicesLast: 1, sliceP95Ms: 12.4, sliceMaxMs: 31 }).value).toBe('Level 4, 1 glyphs, 1 segments, rebuild 3.1 ms (p95 slice 12 ms, max 31 ms)');
+    expect(row({ ...glyphs, active: false, idle: 'off' }).value).toBe('Off');
+    expect(row({ ...glyphs, active: false, idle: 'eye-level' }).value).toBe('On, not drawn at eye level');
+    expect(row({ ...glyphs, active: false, idle: 'no-wind' }).value).toBe('On, waiting for the wind picture');
+    expect(row({ ...glyphs, active: false, level: 0, count: 0, segments: 0 }).value).toBe('Level 0, nothing drawn at this zoom');
+    expect(row({ ...glyphs, rebuilds: 0, lastMs: 0, sliceP95Ms: 0, sliceMaxMs: 0, slicesLast: 0 }).value).toBe('Level 3, 412 glyphs, 2,980 segments, not built yet');
+    // The 2-D map (and a view that has not heard of glyphs) says so; before a run there is no view at all.
+    expect(row(undefined).value).toBe('Not available (this view draws no wind glyphs)');
+    expect(row(null).value).toBe('Not available (this view draws no wind glyphs)');
+    expect(row(undefined, false).value).toBe('No run yet');
+    // It is part of the copy as text.
+    const text = debugStatsToText(buildDebugStats(full()));
+    expect(text).toMatch(/Wind glyphs: Level 3, 412 glyphs, 2,980 segments, rebuild 3\.1 ms \(p95 slice 4\.2 ms, max 6\.0 ms\)/);
   });
 
   it('the frame rate says "1 frame per second", not "1 frames", in the row and in the group line', () => {

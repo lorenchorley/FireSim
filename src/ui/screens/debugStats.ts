@@ -73,6 +73,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInp
     quality: o.view?.qualityInfo ?? null,
     qualityAsk: o.qualityAsk,
     terrain: o.view ? (o.view.terrainStats ? o.view.terrainStats() : undefined) : undefined,
+    windGlyphs: o.view?.windGlyphStats?.() ?? null,
     store: snaps
       ? {
           bytes: snaps.totalBytes,
