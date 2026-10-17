@@ -194,6 +194,8 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
   await expect(page.getByTestId('debug-group-display-body').locator('[data-row=draw-calls] .mc-fact-value')).toHaveText(/^\d+ and \d+$/);
   // The picture tier comes from the view's `qualityInfo` (workstream G): until that exists the row says it is not reported.
   await expect(page.getByTestId('debug-group-display-body').locator('[data-row=picture-quality] .mc-fact-value')).toHaveText(/^(Low|Medium|High) \(|^Not available \(/);
+  // The wind glyphs' own row (0.5.0): Off until the switch is on, why nothing is drawn, or the level and what was built; "Not available" where the view has no such layer.
+  await expect(page.getByTestId('debug-group-display-body').locator('[data-row=wind-glyphs] .mc-fact-value')).toHaveText(/^(Off|On, |Level \d|Not available \()/);
 
   // Copy as text.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -207,6 +209,7 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
   for (const g of GROUPS) expect(lines, g).toContain(`== ${g} ==`);
   expect(lines[lines.length - 1]).toBe('-- end --');
   expect(clip).toContain('Katoomba');
+  expect(clip).toMatch(/\n {2}Wind glyphs: (Off|On, |Level \d|Not available \()/);
   expect(clip).toContain(await page.evaluate(() => navigator.userAgent));
   expect(clip).not.toMatch(BAD);
   // No coordinates (the user agent's version numbers are the only long decimals), no links.
