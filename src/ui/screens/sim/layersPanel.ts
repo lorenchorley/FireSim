@@ -10,7 +10,8 @@
  *                off; the one on show opens its legend, "Show on its own" (hides the photo and the trees), its strength and,
  *                for arrival time, the arrival-time lines. Roads, homes and shrubs have both a Show and a Heat map button.
  *   Trees        Natural / Simple / Coded (and what colours them, with the legend), and "Trees sway in the wind"
- *   Wind and air wind streaks, the vertical air slice (direction, centre, side view), vertical exaggeration
+ *   Wind and air wind streaks, the wind arrows and flow lines (a switch with its Wind height chips), the vertical air slice
+ *                (direction, centre, side view), vertical exaggeration
  *
  * Every row has an (i) button that opens the catalog text (what it shows, why it matters, source, how fine, how it is
  * drawn, availability) and a link to the data set behind it on the Data sets screen. Choices are remembered for the next
@@ -60,6 +61,7 @@ import {
   type MapType,
 } from './layersModel';
 import { cachedLayerPrefs, forgetLayerPrefs, layerDefaults, rememberLayerChoice, viewHasImagery } from './layersPrefs';
+import { createWindGlyphControls } from './windGlyphControls';
 
 /** Icon of a catalog row in the panel (decoration only; unknown ids get the layers icon). */
 const LAYER_ICONS: Readonly<Record<string, IconName>> = {
@@ -102,6 +104,7 @@ const LAYER_ICONS: Readonly<Record<string, IconName>> = {
   smoke: 'cloud',
   embers: 'ember',
   wind: 'wind',
+  windGlyphs: 'wind',
   crossSection: 'chart',
   insightMarkers: 'info',
 };
@@ -856,12 +859,15 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     renderFieldChips();
     renderNeed3d();
   };
+  // The wind arrows and flow lines: the same switch and Wind height chips as the Map view tab of Air slices (windGlyphControls.ts).
+  const glyphs = createWindGlyphControls(ctx);
+  offs.push(glyphs.destroy);
   const switchRows = plan.switches.map((info) => {
     const infoId = uniqueId('lp-info');
     const box = h('div', { class: 'lp-info', id: infoId, hidden: true, dataset: { testid: `layer-info-${info.id}` } });
     const b = infoButton(info.title, infoId, () => setExpanded(b, box, box.hidden, () => infoContent(info)), `layer-info-btn-${info.id}`);
-    const control = info.scene === 'crossSection' ? csToggle.el : toggle({ label: info.title, checked: sceneLayerOn(layers.get(), info.scene!), onChange: (v) => set({ [info.scene!]: v } as Partial<LayerState>) }).el;
-    return h('div', { class: 'lp-switch', dataset: { layer: info.id, kind: info.kind } }, [h('div', { class: 'lp-switch-row' }, [control, b]), box]);
+    const control = info.scene === 'crossSection' ? csToggle.el : info.scene === 'windGlyphs' ? glyphs.switchEl : toggle({ label: info.title, checked: sceneLayerOn(layers.get(), info.scene!), onChange: (v) => set({ [info.scene!]: v } as Partial<LayerState>) }).el;
+    return h('div', { class: 'lp-switch', dataset: { layer: info.id, kind: info.kind } }, [h('div', { class: 'lp-switch-row' }, [control, b]), box, info.scene === 'windGlyphs' ? glyphs.settingsEl : null]);
   });
   const vex = slider({
     label: 'Vertical exaggeration',

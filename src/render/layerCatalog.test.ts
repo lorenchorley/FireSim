@@ -441,7 +441,7 @@ describe('arrows and flow lines (windGlyphs, 0.5.0)', () => {
   });
 
   it('follows the real snapshots: none (before the first picture), a view with a wind of either kind, a view with no levels', () => {
-    const grid = makeGridSpec(0, 0, 4, 4, 133);
+    const grid = makeGridSpec({ lat: -33.7, lon: 150.3 }, 532, 133);
     const wind = (kind: 'prognostic' | 'diagnosed'): AtmosphereView => {
       const n = grid.nx * grid.ny * 2;
       return { grid, nz: 2, kind, u: new Float32Array(n), v: new Float32Array(n), w: new Float32Array(n), ...(kind === 'prognostic' ? { thetaAnomaly: new Float32Array(n), smoke: new Float32Array(n) } : {}) } as unknown as AtmosphereView;
