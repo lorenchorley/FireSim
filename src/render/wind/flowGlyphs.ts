@@ -727,7 +727,6 @@ class Builder implements GlyphBuilder {
       }
       if (made === 0 && stop !== 1) return 0; // cut at the raster edge before the first step: nothing to draw
       if (made > 0) {
-
         // Arrowhead: two chevron barbs from the tip, +/- 28 degrees from the way back, in the ground plane (draped on the ground like the shaft).
         let headPx = HEAD_FRAC * lenPx;
         if (headPx < HEAD_MIN_PX) headPx = HEAD_MIN_PX;
