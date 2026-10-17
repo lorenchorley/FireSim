@@ -14,6 +14,7 @@ import type { NightLook } from '../../../render/api';
 import type { AvailabilityContext } from '../../../render/layerCatalog';
 import { availabilityContext, layerForOverlay, HEAT_OVERLAY_KINDS } from '../../../render/layerCatalog';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
+import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { getPref, setPref } from '../../prefs';
 import { performanceProfile, type PerformanceMode } from '../../settings';
 import type { SimContext } from './context';
@@ -31,6 +32,8 @@ export const PERSISTED_LAYER_KEYS = [
   'smoke',
   'embers',
   'wind',
+  'windGlyphs',
+  'windHeight',
   'insightMarkers',
   'roads',
   'fireTrails',
@@ -60,7 +63,7 @@ export interface LayerPrefs {
   groups?: Partial<Record<string, boolean>>;
 }
 
-const BOOL_KEYS = new Set<PersistedLayerKey>(['imagery', 'vegetation', 'understorey', 'flames', 'smoke', 'embers', 'insightMarkers', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'windSway', 'soloHeat']);
+const BOOL_KEYS = new Set<PersistedLayerKey>(['imagery', 'vegetation', 'understorey', 'flames', 'smoke', 'embers', 'windGlyphs', 'insightMarkers', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'windSway', 'soloHeat']);
 const OVERLAYS = new Set<string>(['none', ...HEAT_OVERLAY_KINDS]);
 
 /** Keep only well-formed values (an old or damaged record never breaks the start of a run). */
@@ -80,6 +83,8 @@ export function sanitizeLayerPrefs(raw: unknown): LayerPrefs {
       if (typeof v === 'string' && OVERLAYS.has(v)) l[k] = v;
     } else if (k === 'wind') {
       if (v === 'off' || v === 'surface' || v === 'volume') l[k] = v;
+    } else if (k === 'windHeight') {
+      if (v === 'fire' || (typeof v === 'number' && (WIND_HEIGHTS as readonly unknown[]).includes(v))) l[k] = v;
     } else if (k === 'canopyStyle') {
       if (v === 'natural' || v === 'simple' || v === 'coded') l[k] = v;
     } else if (k === 'canopyCode') {

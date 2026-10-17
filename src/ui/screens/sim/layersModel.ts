@@ -5,7 +5,8 @@
  *   Map type     the catalog's imagery row (Aerial photo) plus the two ways of drawing the ground without the photo
  *                (Terrain colours = the vegetation palette with relief, Plain = neutral relief, the best base for a heat map)
  *   Map details  one tile per SCENE layer (kind 'scene' or 'both'), in catalog order, except the imagery (Map type) and the
- *                scene layers that carry their own settings (the vertical air slice: a switch with direction controls)
+ *                scene layers that carry their own settings (the wind arrows and flow lines: a switch with a Wind height row; the
+ *                vertical air slice: a switch with direction controls)
  *   Heat maps    one row per HEAT layer (kind 'heat' or 'both'), grouped by LAYER_GROUPS in catalog order; 'both' rows
  *                carry a Show (scene) and a Heat map button. Only one heat map is on at a time (tap again = off).
  *
@@ -99,7 +100,7 @@ export function nightLookRow(view: { setNightLook?: unknown; nightLook?: NightLo
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Scene layers drawn as a switch row with their own settings instead of a tile. */
-export const SCENE_WITH_SETTINGS: ReadonlySet<SceneLayerKey> = new Set<SceneLayerKey>(['crossSection']);
+export const SCENE_WITH_SETTINGS: ReadonlySet<SceneLayerKey> = new Set<SceneLayerKey>(['windGlyphs', 'crossSection']);
 /** The scene layer the Map type row stands for. */
 export const MAP_TYPE_SCENE_KEY: SceneLayerKey = 'imagery';
 
@@ -113,7 +114,7 @@ export interface PanelPlan {
   mapType: LayerInfo | undefined;
   /** Map details tiles: scene and 'both' rows, catalog order. */
   tiles: LayerInfo[];
-  /** Scene rows with their own settings (the vertical air slice). */
+  /** Scene rows with their own settings (the wind arrows and flow lines, the vertical air slice). */
   switches: LayerInfo[];
   /** Heat and 'both' rows by group, LAYER_GROUPS order, catalog order inside; groups without heat maps are left out. */
   heat: HeatGroup[];
@@ -304,6 +305,7 @@ export const LAYER_DATASET_FAMILY: Readonly<Record<string, readonly string[]>> =
   moisture: ['fuel-moisture', 'weather'],
   windSpeed: ['weather'],
   wind: ['weather'],
+  windGlyphs: ['weather', 'upper-air'],
   smoke: ['weather'],
   crossSection: ['weather', 'upper-air'],
 };
