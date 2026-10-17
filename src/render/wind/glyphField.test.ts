@@ -135,25 +135,26 @@ describe('HeightRaster', () => {
     expect(r300.u[500]! - r.u[500]!).toBeCloseTo(2, 3);
   });
 
-  it('is filled in place: the same storage every time, the new picture replacing the old, no growth up to 60 columns', () => {
+  it('is filled in place, into two storages used in turn: the raster of the last fill is intact when the next one is made', () => {
     const s = new AtmosphereSampler(view(), BASE, null);
     const hr = new HeightRaster();
     const a = hr.fill(s, GROUND, 50, 1);
-    const buffer = a.u.buffer;
-    const before = a.u[700]!;
+    const aBefore = Float32Array.from(a.u);
     const b = hr.fill(s, GROUND, 1000, 1);
-    expect(b.u.buffer).toBe(buffer);
-    expect(b.v.buffer).toBe(a.v.buffer);
-    expect(b.u[700]).not.toBe(before);
-    const c = hr.fill(s, GROUND, 1000, 2);
-    expect(c.u.buffer).toBe(buffer);
+    expect(b.u.buffer).not.toBe(a.u.buffer);
+    expect(b.u[700]).not.toBe(a.u[700]);
+    expect(Float32Array.from(a.u)).toEqual(aBefore); // a build still tracing through `a` is not disturbed by the fill of `b`
+    const c = hr.fill(s, GROUND, 300, 2); // the turn of a's storage again
+    expect(c.u.buffer).toBe(a.u.buffer);
     expect(c.grid.nx).toBe(2 * (GRID.nx - 1) + 1);
+    // The raster objects are reused for the same model, two turns on.
     const d = hr.fill(s, GROUND, 50, 1);
-    expect(d.u.buffer).toBe(buffer);
-    expect(d.u[700]).toBe(before);
-    expect(buffer.byteLength).toBeGreaterThanOrEqual((2 * 60 - 1) ** 2 * 4); // made for the largest case
-    // The raster object and its grid are reused for the same model.
-    expect(hr.fill(s, GROUND, 300, 1)).toBe(d);
+    expect(d).toBe(b);
+    expect(d.u.buffer).toBe(b.u.buffer);
+    const e = hr.fill(s, GROUND, 50, 1);
+    expect(e).toBe(a);
+    expect(Float32Array.from(e.u)).toEqual(aBefore); // the same height gives the same picture in either storage
+    expect(a.u.buffer.byteLength).toBeGreaterThanOrEqual((2 * 60 - 1) ** 2 * 4); // made for the largest case
   });
 
   it('grows, rather than fail, for a model of more than 60 columns', () => {

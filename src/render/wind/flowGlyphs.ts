@@ -7,9 +7,9 @@
  * length) in front of the near plane, and, toward the horizon of an orbit view, with probability `1 / s2`, where `s2` is the
  * ground area a pixel covers at the seed against the middle of the screen (so the number of glyphs per screen area stays about
  * constant; the contract's `s = mppSeed / mppCentre` counts only the width of that area). When more seeds than the cap remain, a
- * fixed share is kept by a second hash. A glyph runs downwind from its seed in steps of equal length (RK2 midpoint on the unit direction field, so the
- * arc length is constant): one step for a straight arrow (L1, L2), 3 to 10 for a curved flow line (L3, L4), then an arrowhead of
- * two short chevron segments. A calm seed (under 0.3 m/s) is a short dot. Pixel sizes are scaled by `mppSeed = w / pxPerMetre1`
+ * fixed share is kept by a second hash. A glyph runs downwind from its seed in steps of equal length (RK2 midpoint on the unit
+ * direction field, so the arc length is constant): one step for a straight arrow (L1, L2), 3 to 10 for a curved flow line (L3, L4),
+ * then an arrowhead of two short chevron segments. A calm seed (under 0.3 m/s) is a short dot. Pixel sizes are scaled by `mppSeed = w / pxPerMetre1`
  * with `w` the clip depth of the seed, which is the true scale of a perspective view across the screen and does not change when
  * a top view pans.
  *
@@ -80,38 +80,36 @@ export interface GlyphOutputDetail extends GlyphOutput {
 }
 
 // Float state (f) and integer state (n) of the job. Typed arrays, so that no field of the builder holds a boxed number.
-const F_CSSW = 0;
-const F_CSSH = 1;
-const F_PXM1 = 2;
-const F_WMIN = 3;
-const F_VEX = 4;
-const F_S = 5;
-const F_JIT = 6;
-const F_LMIN = 7;
-const F_LMAX = 8;
-const F_PXMS = 9;
-const F_MPPC = 10;
-const F_RX0 = 11;
-const F_RY0 = 12;
-const F_RX1 = 13;
-const F_RY1 = 14;
-const F_RINV = 15;
-const F_GX0 = 16;
-const F_GY0 = 17;
-const F_GINV = 18;
-const F_MX = 19;
-const F_MY = 20;
-const F_TAU = 21;
-const F_PKEEP = 22;
-const F_DEADLINE = 23;
-const F_BUDGET = 24;
-const F_EX = 25;
-const F_EY = 26;
-const F_EZ = 27;
-const F_AK = 28;
-const F_HFX = 29;
-const F_HFZ = 30;
-const F_LEN = 31;
+const F_PXM1 = 0;
+const F_WMIN = 1;
+const F_VEX = 2;
+const F_S = 3;
+const F_JIT = 4;
+const F_LMIN = 5;
+const F_LMAX = 6;
+const F_PXMS = 7;
+const F_MPPC = 8;
+const F_RX0 = 9;
+const F_RY0 = 10;
+const F_RX1 = 11;
+const F_RY1 = 12;
+const F_RINV = 13;
+const F_GX0 = 14;
+const F_GY0 = 15;
+const F_GINV = 16;
+const F_MX = 17;
+const F_MY = 18;
+const F_TAU = 19;
+const F_PKEEP = 20;
+const F_DEADLINE = 21;
+const F_BUDGET = 22;
+const F_EX = 23;
+const F_EY = 24;
+const F_EZ = 25;
+const F_AK = 26;
+const F_HFX = 27;
+const F_HFZ = 28;
+const F_LEN = 29;
 
 const N_BUSY = 0;
 const N_PHASE = 1;
@@ -148,8 +146,9 @@ const PHASE_TRACE_START = 4;
 const PHASE_TRACE = 1;
 const PHASE_DONE = 2;
 
-/** Lattice cells between two reads of the clock while walking the lattice. */
+/** Lattice cells between two reads of the clock while walking the lattice (fewer for the first rebuilds of a builder, while the code is cold). */
 const CELL_CHECK = 2048;
+const CELL_CHECK_COLD = 256;
 
 class Builder implements GlyphBuilder {
   readonly out: GlyphOutputDetail;
@@ -158,7 +157,7 @@ class Builder implements GlyphBuilder {
   private readonly n = new Int32Array(N_LEN);
   /** Projection x view, column-major (THREE's `Matrix4.elements`). */
   private readonly vp = new Float64Array(16);
-  /** Scratch: 0 x, 1 y, 2 ground, 3 metres per pixel, 4 clip depth, 5 u, 6 v, 8..13 the segment being written. */
+  /** Scratch: 0 x, 1 y, 2 ground, 3 metres per pixel, 5 u, 6 v, 8..13 the segment being written. */
   private readonly s = new Float64Array(14);
   private readonly hv = new Uint32Array(1);
   private readonly cand: Int32Array;
@@ -357,8 +356,8 @@ class Builder implements GlyphBuilder {
     const mpp = w / f[F_PXM1]!;
     // Orbit density: the ground area one pixel covers here against the middle of the screen, `s2 = A / A_centre`, with A = mpp^2 /
     // sin(angle of the view ray to the ground), the angle taken in the vertical plane the camera faces (a seed's sideways offset
-    // is ignored, so a top view has s2 = 1 everywhere and a pan moves no seed in or out). Keep the seed with probability 1 / s2 (s2
-    // at most 64), so the number of glyphs per screen area stays about constant toward the horizon.
+    // is ignored, so over flat ground a top view has s2 = 1 everywhere and a pan moves no seed in or out). Keep the seed with
+    // probability 1 / s2 (s2 at most 64), so the number of glyphs per screen area stays about constant toward the horizon.
     const dy = f[F_EY]! - yw;
     let ahead = (px - f[F_EX]!) * f[F_HFX]! + (zw - f[F_EZ]!) * f[F_HFZ]!;
     if (ahead < 0) ahead = 0;
@@ -370,7 +369,6 @@ class Builder implements GlyphBuilder {
       if ((this.hv[0]! / U32) * s2 >= 1) return 0;
     }
     s[3] = mpp;
-    s[4] = w;
     return 1;
   }
 
@@ -443,8 +441,6 @@ class Builder implements GlyphBuilder {
       f[F_GX0] = gg.x0;
       f[F_GY0] = gg.y0;
       f[F_GINV] = 1 / gg.cellSize;
-      f[F_CSSW] = input.cssW;
-      f[F_CSSH] = input.cssH;
       f[F_PXM1] = input.pxPerMetre1;
       f[F_WMIN] = GLYPH_NEAR_FACTOR * input.near;
       f[F_VEX] = input.vex;
@@ -512,13 +508,14 @@ class Builder implements GlyphBuilder {
     const j1 = n[N_J1]!;
     let ci = n[N_CI]!;
     let cj = n[N_CJ]!;
-    let check = CELL_CHECK;
+    const every = n[N_REBUILDS]! <= 4 ? CELL_CHECK_COLD : CELL_CHECK;
+    let check = every;
     while (cj <= j1) {
       while (ci <= i1) {
         if (this.candidate(ci, cj) !== 0) this.store(ci, cj);
         ci++;
         if (--check <= 0) {
-          check = CELL_CHECK;
+          check = every;
           if (input.now() >= deadline) {
             n[N_CI] = ci;
             n[N_CJ] = cj;

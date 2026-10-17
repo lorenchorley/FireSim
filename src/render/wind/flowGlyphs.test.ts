@@ -562,14 +562,17 @@ describe('staging', () => {
     const b = createGlyphBuilder('high');
     b.begin({ ...sc.input, now: clock.now });
     let steps = 0;
-    let last = -1;
+    let last = 0;
     while (!b.step(0)) {
       steps++;
-      expect(outOf(b).glyphs).toBeGreaterThan(last);
+      // Walking the lattice finds no glyph yet (a few hundred cells a call while the code is cold); once tracing, every call adds some.
+      if (last > 0) expect(outOf(b).glyphs).toBeGreaterThan(last);
+      expect(outOf(b).glyphs).toBeGreaterThanOrEqual(last);
       last = outOf(b).glyphs;
+      expect(steps).toBeLessThan(200);
     }
     expect(outputBytes(outOf(b)).equals(whole)).toBe(true);
-    expect(steps).toBeLessThan(200);
+    expect(last).toBeGreaterThan(0);
   });
 
   it('reads the clock more often for the first rebuilds of a builder (cold code), and rarely for a warm one', () => {

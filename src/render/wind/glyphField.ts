@@ -37,23 +37,31 @@ interface Cached {
   raster: FlowRaster;
 }
 
+interface Store {
+  u: Float32Array;
+  v: Float32Array;
+  /** The raster object of each refine (1, 2), made for `Cached.nx` and the rest; views of `u` and `v`. */
+  cache: [Cached | null, Cached | null];
+}
+
 /**
  * Rasters of the wind at a height above the ground, filled in place into storage made once for the largest case
  * (`(2 n - 1)^2` texels for `n` columns a side; it grows only if a model asks for more). `fill` returns a raster whose arrays are
- * views of that storage, so it stays valid until the next `fill` (the refine 1 and refine 2 rasters share the storage).
+ * views of that storage. There are two storages, used in turn: a build that is still tracing through the raster of the last `fill`
+ * keeps reading it intact when the next `fill` is made, and it is the one after that which overwrites it (the refine 1 and refine 2
+ * rasters of one turn share their storage).
  */
 export class HeightRaster {
-  private u: Float32Array;
-  private v: Float32Array;
-  private readonly cache: [Cached | null, Cached | null] = [null, null];
+  private readonly stores: [Store, Store];
+  private turn = 0;
   // Scratch of the lookups: allocation-free, and no double goes through an argument (spike S3, rule 1).
   private readonly pos = new Float64Array(4);
   private readonly wind = new Float32Array(3);
 
   constructor(maxN = 60) {
     const cap = (2 * maxN - 1) * (2 * maxN - 1);
-    this.u = new Float32Array(cap);
-    this.v = new Float32Array(cap);
+    const make = (): Store => ({ u: new Float32Array(cap), v: new Float32Array(cap), cache: [null, null] });
+    this.stores = [make(), make()];
   }
 
   fill(sampler: AtmosphereSampler, ground: GroundRaster, heightM: number, refine: 1 | 2): FlowRaster {
@@ -61,17 +69,19 @@ export class HeightRaster {
     const nx = (g.nx - 1) * refine + 1;
     const ny = (g.ny - 1) * refine + 1;
     const count = nx * ny;
-    if (count > this.u.length) {
-      this.u = new Float32Array(count);
-      this.v = new Float32Array(count);
-      this.cache[0] = null;
-      this.cache[1] = null;
+    this.turn ^= 1;
+    const st = this.stores[this.turn]!;
+    if (count > st.u.length) {
+      st.u = new Float32Array(count);
+      st.v = new Float32Array(count);
+      st.cache[0] = null;
+      st.cache[1] = null;
     }
-    let c = this.cache[refine - 1];
-    if (!c || c.nx !== g.nx || c.ny !== g.ny || c.cellSize !== g.cellSize || c.x0 !== g.x0 || c.y0 !== g.y0 || c.raster.u.buffer !== this.u.buffer) {
+    let c = st.cache[refine - 1];
+    if (!c || c.nx !== g.nx || c.ny !== g.ny || c.cellSize !== g.cellSize || c.x0 !== g.x0 || c.y0 !== g.y0) {
       const grid: GridSpec = { nx, ny, cellSize: g.cellSize / refine, x0: g.x0, y0: g.y0, origin: g.origin };
-      c = { nx: g.nx, ny: g.ny, cellSize: g.cellSize, x0: g.x0, y0: g.y0, raster: { grid, u: this.u.subarray(0, count), v: this.v.subarray(0, count) } };
-      this.cache[refine - 1] = c;
+      c = { nx: g.nx, ny: g.ny, cellSize: g.cellSize, x0: g.x0, y0: g.y0, raster: { grid, u: st.u.subarray(0, count), v: st.v.subarray(0, count) } };
+      st.cache[refine - 1] = c;
     }
     const step = g.cellSize / refine;
     const gg = ground.grid;
