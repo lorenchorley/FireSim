@@ -244,7 +244,7 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
         await settle(page);
         const s = await drawAndRead(page);
         expect(s, `${height} ${z.name}`).toMatchObject({ active: true, level: z.level });
-        expect(s.count, `${height} ${z.name}: glyphs`).toBeGreaterThan(30);
+        expect(s.count, `${height} ${z.name}: glyphs`).toBeGreaterThan(10); // far out the 6 km area is a small part of the screen
         bytes[`${height}-${z.name}`] = await shot(page, testInfo, `wind-glyphs-${height === 'fire' ? 'ground' : `${height}m`}-${z.name}.png`);
       }
     }
