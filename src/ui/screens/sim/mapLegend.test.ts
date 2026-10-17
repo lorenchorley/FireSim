@@ -97,6 +97,13 @@ describe('the map legend of the wind arrows and flow lines (0.5.0)', () => {
     expect(currentMapLegend(ctxWith({ ...on, overlay: heat.overlay }), 0)!.title).not.toBe('Wind at 100 m'); // a heat map beats everything
   });
 
+  it('follows the switch, not the picture: before any air exists it is shown as the streaks’ legend is (the control says "Waiting for the wind picture.")', () => {
+    const before = { ...ctxWith({ windGlyphs: true, windHeight: 100 }), session: { state: { get: () => ({ snapshot: null }) } } } as unknown as Parameters<typeof currentMapLegend>[0];
+    expect(currentMapLegend(before, 0)!.title).toBe('Wind at 100 m');
+    const streaks = { ...ctxWith({ wind: 'surface' }), session: { state: { get: () => ({ snapshot: null }) } } } as unknown as Parameters<typeof currentMapLegend>[0];
+    expect(currentMapLegend(streaks, 0)!.title).toBe(windLegend('surface').title);
+  });
+
   it('with a scene that has no glyph legend (an older render module) the streaks’ legend stands, and the 2-D map (no scene legends) shows none', () => {
     expect(currentMapLegend(ctxWith({ windGlyphs: true, wind: 'surface' }, { glyphs: false }), 0)!.title).toBe(windLegend('surface').title);
     expect(currentMapLegend({ ...ctxWith({ windGlyphs: true }), sceneLegends: null }, 0)).toBeNull();

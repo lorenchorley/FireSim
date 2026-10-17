@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AIR_STALE_S } from '../../../core/airView';
 import type { WindGlyphStats } from '../../../render/api';
+import { REFINE_CELL_PX, refineFor } from '../../../render/wind/glyphField';
 import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { airFromText } from './slicePanelModel';
 import {
@@ -240,6 +241,19 @@ describe('words', () => {
       expect(s.length, s).toBeGreaterThan(0);
     }
     for (const s of [DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE, EYE_LEVEL_LINE, NO_WIND_LINE, ...Object.values(LEVEL_LINE)]) expect(s).toMatch(/^[A-Z].*[.]$/);
+  });
+});
+
+describe('the smooth-fit words follow the engine', () => {
+  // glyphWords.ts is in the entry chunk and cannot import the engine, so it holds its own copy of the number; this test (which may) keeps the two together.
+  it('GLYPH_SMOOTH_FIT_PX is the engine REFINE_CELL_PX', () => {
+    expect(GLYPH_SMOOTH_FIT_PX).toBe(REFINE_CELL_PX);
+  });
+
+  it('the caption adds the smooth-fit sentence exactly where the engine starts to refine its raster', () => {
+    for (const cellPx of [REFINE_CELL_PX - 10, REFINE_CELL_PX - 0.01, REFINE_CELL_PX, REFINE_CELL_PX + 0.01, REFINE_CELL_PX + 40]) {
+      expect(glyphCaption(100, air(), cellPx, TZ, abs).includes(SMOOTH_FIT_LINE), `${cellPx} px a cell`).toBe(refineFor(cellPx) === 2);
+    }
   });
 });
 
