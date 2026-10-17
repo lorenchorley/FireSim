@@ -33,6 +33,11 @@ export interface LodPlan {
   curved: boolean;
   jitter: number;
   lengthPx: { min: number; max: number; pxPerMs: number };
+  /**
+   * Metres per CSS pixel at the middle of the screen, as given to `planLod` (additive in G-engine: the builder needs it for the
+   * orbit density, `s = mppSeed / mppCentre`). Absent in a hand-made plan: the builder then uses `spacingM / spacingPx`.
+   */
+  mppCentre?: number;
 }
 /** Texel k = j * nx + i at (x0 + i * cellSize, y0 + j * cellSize); u east, v north, m/s. */
 export interface FlowRaster {
