@@ -627,10 +627,16 @@ button.lp-heat-main:active {
   justify-content: center;
 }
 
-/* The Air slices tool's Side view / Map view tabs sit in its header, between the title and Close. */
+/* The Air slices tool's Side view / Map view tabs sit in its header, between the title and Close. The 44 px tabs fit the header's 48 px row without its
+   padding, so the header is no taller than it was (the short landscape column has no room to spare). */
 .panel-head .slice-tabs {
   flex: 0 1 auto;
   margin: 0;
+}
+
+.slice-tool .panel-head {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 @media (max-width: 399px) {

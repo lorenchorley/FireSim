@@ -407,7 +407,7 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
       const options = [...document.querySelectorAll('[data-testid="slice-tabs"] .segmented-option')].map((o) => o.getBoundingClientRect());
       return { head: head.height, tabsRight: t.right, tabsLeft: t.left, closeLeft: c.left, closeRight: c.right, titleClipped: title.scrollWidth > title.clientWidth + 1, titleHeight: title.getBoundingClientRect().height, optionHeights: options.map((o) => o.height), headRight: head.right };
     });
-    expect(m.head, `one row of header at ${w}x${h}`).toBeLessThanOrEqual(64);
+    expect(m.head, `the header is one row, as tall as it was before the tabs (49 px with its border) at ${w}x${h}`).toBeLessThanOrEqual(50);
     expect(m.tabsRight, `the tabs end before Close at ${w}x${h}`).toBeLessThanOrEqual(m.closeLeft + 1);
     expect(m.closeRight, `Close is inside the panel at ${w}x${h}`).toBeLessThanOrEqual(m.headRight + 1);
     expect(m.titleClipped, `the title is not cut off at ${w}x${h}`).toBe(false);
