@@ -184,6 +184,10 @@ describe('stylesheets: tap targets', () => {
     expect(Number(/margin:\s*([0-9]+)px/.exec(row)![1])).toBeGreaterThanOrEqual(4); // between two rows (blocks) the margins collapse into one
   });
 
+  it('slice.css stays within its 4 KB (the Air slices panel\'s chunk): the tool\'s new rows (Turn off the slice, the tabs) reuse the classes that are there', () => {
+    expect(Buffer.byteLength(css('slice.css'), 'utf8')).toBeLessThanOrEqual(4096);
+  });
+
   it('the statistics screen\'s Copy button is itself 44 px tall (a small button grew to only 42 px at 200 % text)', () => {
     expect(rule('debugstats.css', '.btn.ds-copy')).toContain('min-height: var(--tap)');
   });
