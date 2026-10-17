@@ -12,11 +12,11 @@
  */
 import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
-import type { FrameStatsInfo, QualityInfo, TerrainDrawStats } from '../render/api';
+import type { FrameStatsInfo, QualityInfo, TerrainDrawStats, WindGlyphStats } from '../render/api';
 import type { SliceRecordingStatus } from '../render/slice/types';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import type { EventKind, LogEvent } from './eventLog';
-import { formatDuration, formatSpeedHint } from './format';
+import { formatDuration, formatNumber, formatSpeedHint } from './format';
 import type { PaceInfo } from './paceTypes';
 import { spanWords } from './recordingWords';
 import type { PictureQualityAsk } from './settings';
@@ -100,6 +100,8 @@ export interface DebugStatsInput {
   store: StoreFacts | null;
   /** The slice recorder's report; absent where the view has none (the 2-D map) or there is no run. */
   sliceRecording?: SliceRecordingFacts | null;
+  /** The wind arrows and flow lines' own statistics (0.5.0); absent or null where the view draws none (the 2-D map). */
+  windGlyphs?: WindGlyphStats | null;
   /** The history budget, and the device-memory class it came from (null: the phone does not say, 3 GB is assumed). */
   historyBudget: { bytes: number; memoryGb: number | null } | null;
   /** The main thread's JavaScript heap (`performance.memory`), or null. */
@@ -508,6 +510,22 @@ function sliceRecordingRow(f: SliceRecordingFacts, tier: QualityTier | undefined
   return R('slice-recording', label, `${st.count} ${st.count === 1 ? 'slice' : 'slices'}, ${bytes(st.bytes)} of ${bytes(st.budgetBytes)}`, note, true);
 }
 
+/** The wind arrows and flow lines: off, why nothing is drawn, or the level, what was built and what a rebuild cost (the slice times are the ones that decide whether panning hitches). */
+function windGlyphsRow(i: DebugStatsInput): StatRow {
+  const id = 'wind-glyphs';
+  const label = 'Wind glyphs';
+  const g = i.windGlyphs;
+  if (!g) return R(id, label, i.run ? 'Not available (this view draws no wind glyphs)' : NO_RUN);
+  if (g.idle === 'off') return R(id, label, 'Off', undefined, true);
+  if (g.idle === 'eye-level') return R(id, label, 'On, not drawn at eye level', undefined, true);
+  if (g.idle === 'no-wind') return R(id, label, 'On, waiting for the wind picture', undefined, true);
+  const cell = ok(g.cellM) && ok(g.cellPx) ? `One model cell is ${Math.round(g.cellM)}${NB}m, about ${Math.round(g.cellPx)}${NB}px on screen` : undefined;
+  if (g.level === 0) return R(id, label, 'Level 0, nothing drawn at this zoom', cell, true);
+  const built = g.rebuilds > 0 ? `rebuild ${ms(g.lastMs)} (p95 slice ${ms(g.sliceP95Ms)}, max ${ms(g.sliceMaxMs)})` : 'not built yet';
+  const note = [cell, g.rebuilds > 0 ? `${g.rebuilds} ${g.rebuilds === 1 ? 'rebuild' : 'rebuilds'} so far, the last in ${g.slicesLast} ${g.slicesLast === 1 ? 'slice' : 'slices'}` : null].filter((x): x is string => !!x).join('; ');
+  return R(id, label, `Level ${g.level}, ${formatNumber(g.count)} glyphs, ${formatNumber(g.segments)} segments, ${built}`, note || undefined, true);
+}
+
 function memoryGroup(i: DebugStatsInput): StatGroup {
   const e = i.engine;
   const s = i.store;
@@ -575,6 +593,7 @@ function displayGroup(i: DebugStatsInput): StatGroup {
     );
   else if (t === null) rows.push(R('cliffs', 'Cliff drawing (once per scenario)', 'Nothing sharpened in this run (no 10 m terrain)'));
   else rows.push(R('cliffs', 'Cliff drawing (once per scenario)', i.run ? NA : NO_RUN)); // a view that cannot say
+  rows.push(windGlyphsRow(i));
   const fps = f && ok(f.fps10) ? framesPerSecond(f.fps10) : 'frame rate not measured yet';
   return G('display', 'Display (main thread)', rows, q ? `${cap(q.tier)} picture; ${fps}` : fps);
 }

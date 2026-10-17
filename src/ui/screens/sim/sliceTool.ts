@@ -5,6 +5,11 @@
  * tool opens, shows a "Loading" line until it arrives and a "Try again" button if it does not, and receives the controls to place
  * between its legend and footer. The buttons work either way, because the 3-D curtain draws the line without the panel.
  *
+ * Two tabs in the header (0.5.0), Side view and Map view. The Map view holds the same wind arrows and flow lines controls as the Layers
+ * panel (windGlyphControls.ts, built the first time it is shown), and the side view's panel is taken out of the document while it is
+ * shown and told it is not active, so its streak loop stops. "Turn off the slice" is the last row of the side view's controls and of the
+ * Map view: one factory makes both buttons, so there is one action and only the shown tab's button is in the document.
+ *
  * Thin by design: every decision is in sliceToolModel.ts and every store write in sliceToolActions.ts (both unit-tested). This
  * file builds the elements, wires the events, keeps the keyboard focus where the person is, and passes the scene's slice to the
  * panel. Nothing here pops up by itself: no toast, no role=alert, announcements only for what the person just did.
@@ -13,28 +18,33 @@ import { fireCentroid } from '../../../render/fields';
 import { has3dAtmosphere, type SimContext } from './context';
 import { h, listen, setChildren, svg, text, uniqueId } from '../../dom';
 import { icon } from '../../icons';
+import { segmented } from '../../widgets';
 import type { SlicePresetId, SliceProbePos, SliceUpdate } from '../../../render/slice/types';
 import { createSliceToolActions, type SliceToolActions, type SliceToolHost } from './sliceToolActions';
 import { loadSlicePanel } from './sliceToolLoad';
 import {
-  AIR_PANEL_SUBTITLE,
   AIR_PANEL_TITLE,
   CANCEL_LABEL,
   CLEAR_RECORDING_LABEL,
   KEEP_LABEL,
   LOADING_LINE,
   NEEDS_3D_VIEW,
+  OFF_LABEL,
+  OFF_NOTE,
   PRESETS_LABEL,
   PRESET_LABEL,
   RETRY_LABEL,
   SET_LABEL,
   SWAP_LABEL,
+  TABS_LABEL,
+  TAB_LABEL,
   loadFailedView,
   type ControlsView,
   type SliceAnnMark,
   type SliceEnd,
 } from './sliceToolModel';
-import type { SlicePanelController, SlicePanelLoader, SlicePanelModule, SlicePanelOptions } from './sliceTypes';
+import type { SlicePanelController, SlicePanelLoader, SlicePanelModule, SlicePanelOptions, SliceToolTab } from './sliceTypes';
+import { createWindGlyphControls, type WindGlyphControls } from './windGlyphControls';
 
 const PRESET_IDS: readonly SlicePresetId[] = ['along', 'across', 'slope', 'me'];
 
@@ -45,15 +55,30 @@ function makeButton(label: string, o: { variant?: string; large?: boolean; testI
   return { el, label: (t) => text(span, t) };
 }
 
+/**
+ * "Turn off the slice" with the warning that goes with it, in the row pattern of the other buttons (full width, 48 px, 4 px from the row above). Absent
+ * (hidden, not disabled) when there is nothing to turn off; the warning shows only while the recorder holds a picture, and the button points at it.
+ */
+function makeOffRow(onClick: () => void): { el: HTMLElement; show(off: boolean, clears: boolean): void } {
+  const btn = makeButton(OFF_LABEL, { large: true, testId: 'slice-off', onClick });
+  const warn = h('p', { class: 'hint slice-note', id: uniqueId('slice-off-note'), hidden: true, dataset: { testid: 'slice-off-note' } }, OFF_NOTE);
+  const el = h('div', { class: 'slice-off', hidden: true }, [h('div', { class: 'row-actions slice-row' }, btn.el), warn]);
+  return {
+    el,
+    show(off, clears) {
+      el.hidden = !off;
+      warn.hidden = !clears;
+      if (clears) btn.el.setAttribute('aria-describedby', warn.id);
+      else btn.el.removeAttribute('aria-describedby');
+    },
+  };
+}
+
 export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: SlicePanelLoader = loadSlicePanel): { el: HTMLElement; destroy(): void } {
   const body = h('div', { class: 'panel-body slice-tool-body' });
-  const el = h('section', { class: 'tool-panel slice-tool', dataset: { testid: 'air-panel' }, aria: { label: AIR_PANEL_TITLE } }, [
-    h('header', { class: 'panel-head' }, [
-      h('h2', { class: 'panel-title' }, [icon('line'), AIR_PANEL_TITLE, h('span', { class: 't-secondary' }, AIR_PANEL_SUBTITLE)]),
-      h('button', { type: 'button', class: 'btn btn-ghost btn-icon', aria: { label: 'Close tool' }, dataset: { testid: 'air-close' }, on: { click: onClose } }, icon('close')),
-    ]),
-    body,
-  ]);
+  const closeBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-icon', aria: { label: 'Close tool' }, dataset: { testid: 'air-close' }, on: { click: onClose } }, icon('close'));
+  const head = h('header', { class: 'panel-head' }, [h('h2', { class: 'panel-title' }, [icon('line'), AIR_PANEL_TITLE]), closeBtn]);
+  const el = h('section', { class: 'tool-panel slice-tool', dataset: { testid: 'air-panel' }, aria: { label: AIR_PANEL_TITLE } }, [head, body]);
 
   // The 2-D map has no air and no slice: one line, nothing to place.
   if (typeof ctx.view.slice !== 'function') {
@@ -81,6 +106,18 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   };
   const actions: SliceToolActions = createSliceToolActions(host);
   actions.open();
+  const tab = (): SliceToolTab => actions.state().tab;
+  // The tabs (Side view, Map view) in the header, between the title and Close; the tool's state says which is shown.
+  const tabs = segmented<SliceToolTab>({
+    label: TABS_LABEL,
+    hideLabel: true,
+    options: (['side', 'map'] as const).map((t) => ({ value: t, label: TAB_LABEL[t] })),
+    value: tab(),
+    testId: 'slice-tabs',
+    onChange: (t) => showTab(t),
+  });
+  tabs.el.classList.add('slice-tabs');
+  closeBtn.before(tabs.el);
 
   let destroyed = false;
   let switching3d = false;
@@ -155,7 +192,10 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     },
   });
   const recordRow = h('div', { class: 'row-actions slice-row', hidden: true }, [keepBtn.el, clearBtn.el]);
-  const controls = h('div', { class: 'slice-tool-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note, recordRow]);
+  // "Turn off the slice" (0.5.0): the last row of the side view's controls, and of the Map view (mapBody below); one action, one answer.
+  const sideOff = makeOffRow(() => turnOff());
+  const mapOff = makeOffRow(() => turnOff());
+  const controls = h('div', { class: 'slice-tool-controls', dataset: { testid: 'slice-controls' } }, [idleRow, presetList, placingRow, note, recordRow, sideOff.el]);
 
   function apply(v: ControlsView): void {
     idleRow.hidden = !!v.placing;
@@ -186,6 +226,8 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     keepBtn.el.hidden = !v.keep;
     clearBtn.el.hidden = !v.clear;
     recordRow.hidden = !v.keep && !v.clear;
+    sideOff.show(v.off, v.clear);
+    mapOff.show(v.off, v.clear);
   }
 
   /** Redraw the controls from the model (only when something shows differently); keeps the placement poll running exactly while placing. */
@@ -244,6 +286,39 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
     presetsOpen = !presetsOpen;
     render();
   }
+  /** "Turn off the slice": the button that was pressed is put away, so focus goes to what is next on the tab: Set start (A), or the Map view's own switch. */
+  function turnOff(): void {
+    const onMap = tab() === 'map';
+    actions.turnOff();
+    render();
+    if (onMap) glyphs?.focus();
+    else {
+      focus(setBtn.a.el);
+      showPicture(); // (the empty state says what to do next)
+    }
+  }
+
+  // ───────────── the Map view (built the first time it is shown) ─────────────
+  let glyphs: WindGlyphControls | null = null;
+  let mapEl: HTMLElement | null = null;
+  function mapBody(): HTMLElement {
+    if (!mapEl) {
+      glyphs = createWindGlyphControls(ctx);
+      mapEl = h('div', { class: 'slice-controls slice-map', dataset: { testid: 'slice-map-tab' } }, [glyphs.switchEl, glyphs.settingsEl, mapOff.el]);
+    }
+    return mapEl;
+  }
+  function showTab(t: SliceToolTab): void {
+    actions.setTab(t); // (a placement under way is dropped: no crosshair is left on the map)
+    layoutBody();
+    syncActive();
+    if (t === 'side') {
+      // Back from the Map view: the panel was not told about the slices that came while it was out of the document.
+      panel?.setData(ctx.view.slice?.() ?? null);
+      panel?.setField(actions.field());
+    }
+    render();
+  }
 
   // ───────────── the side-view panel (lazy chunk) ─────────────
   const loadingLine = h('p', { class: 'hint', dataset: { testid: 'slice-loading' } }, LOADING_LINE);
@@ -263,7 +338,9 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   }
 
   function layoutBody(): void {
-    if (loadState === 'ready' && panel) setChildren(body, panel.el);
+    tabs.set(tab());
+    if (tab() === 'map') setChildren(body, mapBody());
+    else if (loadState === 'ready' && panel) setChildren(body, panel.el);
     else setChildren(body, [loadState === 'failed' ? failedBox : loadingLine, controls]);
   }
 
@@ -346,7 +423,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   // ───────────── events from the app ─────────────
   let onScreen = true;
   function syncActive(): void {
-    panel?.setActive(!destroyed && onScreen && document.visibilityState !== 'hidden');
+    panel?.setActive(!destroyed && onScreen && tab() === 'side' && document.visibilityState !== 'hidden');
   }
   const io =
     typeof IntersectionObserver === 'function'
@@ -398,6 +475,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
       if (pollTimer) clearInterval(pollTimer);
       for (const u of unsubs) u();
       io?.disconnect();
+      glyphs?.destroy();
       // Focus goes back to the Tools button the tool was opened from (a press on the panel's own buttons, Back or Escape closed it).
       const returnTo = el.contains(document.activeElement) ? ctx.mapEl.parentElement?.querySelector<HTMLElement>('[data-testid="tools-menu"]') : null;
       panel?.setActive(false);

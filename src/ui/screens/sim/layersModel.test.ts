@@ -15,6 +15,7 @@ import { groundBase, SceneView } from '../../../render/SceneView';
 import { NIGHT_LOOKS } from '../../../render/sky';
 import {
   MAP_TYPES,
+  SCENE_WITH_SETTINGS,
   NIGHT_LOOK_HINT,
   NIGHT_LOOK_OPTIONS,
   UNIT_WORDS,
@@ -56,10 +57,13 @@ describe('panel plan: driven by the catalog only', () => {
     expect(plan.heat.flatMap((g) => g.rows.map((l) => l.heat!.overlay)).sort()).toEqual([...HEAT_OVERLAY_KINDS].sort());
   });
 
-  it('the map type is the aerial photo, the air slice has its own switch row, the rest of the scene layers are tiles in catalog order', () => {
+  it('the map type is the aerial photo, the wind arrows and the air slice have a switch row each (they carry settings), the rest of the scene layers are tiles in catalog order', () => {
     expect(plan.mapType?.scene).toBe('imagery');
-    expect(plan.switches.map((l) => l.scene)).toEqual(['crossSection']);
-    const order = LAYER_CATALOG.filter((l) => l.scene && l.scene !== 'imagery' && l.scene !== 'crossSection').map((l) => l.id);
+    expect(plan.switches.map((l) => l.scene)).toEqual(['windGlyphs', 'crossSection']);
+    expect([...SCENE_WITH_SETTINGS].sort()).toEqual(['crossSection', 'windGlyphs']);
+    // The arrows are not also a tile.
+    expect(plan.tiles.some((l) => l.scene === 'windGlyphs')).toBe(false);
+    const order = LAYER_CATALOG.filter((l) => l.scene && l.scene !== 'imagery' && !SCENE_WITH_SETTINGS.has(l.scene)).map((l) => l.id);
     expect(plan.tiles.map((l) => l.id)).toEqual(order);
     // The places layers the user asked for are tiles.
     for (const k of ['roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'vegetation', 'understorey', 'flames', 'embers', 'smoke', 'wind', 'insightMarkers']) {
@@ -97,6 +101,8 @@ describe('state changes', () => {
     expect(scenePatch({ ...s, wind: 'off' }, 'wind')).toEqual({ wind: 'surface' });
     expect(scenePatch({ ...s, wind: 'volume' }, 'wind')).toEqual({ wind: 'off' });
     expect(scenePatch(s, 'crossSection')).toEqual({ crossSection: { ...s.crossSection, enabled: true } });
+    expect(scenePatch(s, 'windGlyphs')).toEqual({ windGlyphs: true });
+    expect(scenePatch({ ...s, windGlyphs: true }, 'windGlyphs')).toEqual({ windGlyphs: false });
   });
 
   it('solo: a heat map on its own hides the photo and draws plain ground; without a heat map nothing changes', () => {
@@ -241,6 +247,9 @@ describe('the data set behind a layer', () => {
     }
     expect(by('roads')).toEqual(['roads']);
     expect(by('windSpeed')).toEqual(['weather']);
+    // The arrows read the same air as the slice: the forecast and the upper air it starts from.
+    expect(by('windGlyphs')).toEqual(by('crossSection'));
+    expect(by('windGlyphs')).toContain('weather');
   });
 
   it('then the data set a layer is worked out from, and nothing for pure simulation results', () => {

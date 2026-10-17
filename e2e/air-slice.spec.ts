@@ -17,6 +17,8 @@
  *   - reduced motion, high contrast and the dark look; the 2-D stand-in map draws the line that was placed
  *   - the time-lapse recorder (0.4.1), on both tiers: Keep this line freezes a preset, the recorder fills while the run plays, a scrubbed picture reads the
  *     recorded air ("recorded air from"), a time before the start does not, Swap drops the recording, Clear recording empties it, and the words say each of these
+ *   - Turn off the slice (0.5.0, fast tier): in the side view and the Map view tab, one press takes the line, the curtain, the recording, the marks and the probe away,
+ *     says so, leaves the tool open with focus on what is next, and a new line works afterwards
  * Nothing in the console (the guard of ./fixtures) and nothing pops up by itself.
  */
 import type { CDPSession, Locator, Page } from '@playwright/test';
@@ -1111,6 +1113,107 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     expect(dist(now.a, line.a) + dist(now.b, line.b), 'Clear recording does not move the line').toBeLessThan(0.2);
     await expect(footer).not.toContainText('recorded');
   });
+
+  // The owner's requirement (0.5.0): one button turns the whole slice off, in the tool, whatever the line is. Fast tier only (the flow does not depend on the air).
+  if (tier === 'diagnosed') {
+    await test.step('Turn off the slice: the Map view has the button too; one press takes the line, the curtain, the recording, the marks and the probe away, says so, and leaves the tool open', async () => {
+      await recordUntil(page, 2, 30);
+      const off = page.getByTestId('slice-off');
+      const warning = page.getByTestId('slice-off-note');
+      const tabs = page.getByTestId('slice-tabs');
+      const layerOf = () => page.evaluate(() => (window as unknown as Handle).__firesim.view.getLayers().crossSection);
+      const before = await layerOf();
+      expect(before.enabled).toBe(true);
+
+      // The side view: the last row of the controls, a full-width button, with the warning under it while a recording would go.
+      await off.scrollIntoViewIfNeeded();
+      await expect(off).toHaveText('Turn off the slice');
+      expect((await off.boundingBox())!.height, 'a large button: 48 px drawn').toBeGreaterThanOrEqual(44);
+      await expect(warning).toHaveText('This also clears the recording.');
+      await expect(off).toHaveAttribute('aria-describedby', (await warning.getAttribute('id'))!);
+      await expect(clear).toBeVisible();
+
+      // The Map view has it too, and only one of the two is in the document.
+      await tabs.getByRole('radio', { name: 'Map view' }).check({ force: true });
+      await expect(page.getByTestId('slice-map-tab')).toBeVisible();
+      await expect(canvasOf(page), 'the side panel is out of the document while the map view shows').toHaveCount(0);
+      await expect(off).toHaveCount(1);
+      await expect(off).toBeVisible();
+      await expect(warning).toBeVisible();
+      await auditTaps(page, 'Turn off the slice'); // (the tabs, the arrows switch, the Wind height chips and the button: 44 x 44 px hit areas at 412 x 915 and 360 x 640)
+      await tabs.getByRole('radio', { name: 'Side view' }).check({ force: true });
+      await expect(canvasOf(page)).toBeVisible();
+      await expect(page.getByTestId('slice-map-tab')).toHaveCount(0);
+
+      // A probe on the line, so that the pin on the map is something to take away. Both ends of the line are put on the screen first (a mark is only drawn for a point that projects).
+      const line = (await sliceOf(page))!.line!;
+      const mid: Pt = [(line.a[0] + line.b[0]) / 2, (line.a[1] + line.b[1]) / 2];
+      for (const d of [4500, 6500, 9000, 12000, 16000]) {
+        await page.evaluate(([x, y, dd]) => (window as unknown as Handle).__firesim.view.lookAt(x!, y!, dd!, 200, 52, false), [mid[0], mid[1], d]);
+        await settle(page);
+        const framed = await page.evaluate(
+          ([a, b]) => {
+            const v = (window as unknown as Handle).__firesim.view;
+            return !!v.projectToScreen(a![0]!, a![1]!) && !!v.projectToScreen(b![0]!, b![1]!);
+          },
+          [line.a, line.b],
+        );
+        if (framed) break;
+      }
+      await canvasOf(page).scrollIntoViewIfNeeded();
+      await press(page, canvasOf(page), 0.4, 0.4);
+      await expect(page.locator('.annotations .ann-slice-probe')).toHaveCount(1);
+      await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(2);
+
+      await off.scrollIntoViewIfNeeded();
+      await off.click();
+      await expect(liveRegion(page)).toHaveText('Slice turned off. The recording was cleared.');
+      await expect(off, 'nothing left to turn off: the button is put away, not disabled').toBeHidden();
+      await expect(clear).toBeHidden();
+      await expect(keep).toBeHidden();
+      await expect(page.getByTestId('slice-set-a'), 'focus goes to what is next').toBeFocused();
+      const after = await layerOf();
+      expect(after.enabled).toBe(false);
+      expect(after.a ?? null, 'the stored line goes with it, or opening the tool would switch the slice back on').toBeNull();
+      expect(after.b ?? null).toBeNull();
+      expect(after.preset ?? null).toBeNull();
+      expect(after.field, 'the chip stays').toBe(before.field);
+      await expect.poll(() => sliceOf(page), { message: 'the scene has no slice' }).toBeNull();
+      expect((await recOf(page)).status!.count, 'the recording went with it').toBe(0);
+      expect(await page.evaluate(() => (window as unknown as { __firesim: { view: { section: { group: { visible: boolean } } } } }).__firesim.view.section.group.visible), 'the curtain is gone').toBe(false);
+      await expect(page.getByTestId('slice-empty')).toBeVisible();
+      await expect(page.locator('.annotations .ann-slice-end'), 'no A or B on the map').toHaveCount(0);
+      await expect(page.locator('.annotations .ann-slice-probe'), 'no probe pin on the map').toHaveCount(0);
+      await expect(page.getByTestId('air-panel'), 'the tool stays open').toBeVisible();
+      expect(await popups(page), 'nothing pops up by itself').toEqual([]);
+
+      // The Layers panel agrees, and opening the tool again does not bring the slice back.
+      await page.getByTestId('air-close').click();
+      await page.getByTestId('layers-fab').click();
+      await expect(page.getByTestId('layers-panel').getByTestId('cross-section').getByRole('switch')).not.toBeChecked();
+      await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
+      await openAirTool(page);
+      await expect(page.getByTestId('slice-empty')).toBeVisible();
+      expect((await layerOf()).enabled).toBe(false);
+      await expect(off).toBeHidden();
+
+      // A new line with the crosshair works again (the map is put over each end in turn).
+      for (const [end, at] of [['a', [-1200, -300]], ['b', [1200, 300]]] as const) {
+        await page.evaluate(([x, y]) => (window as unknown as Handle).__firesim.view.lookAt(x!, y!, 4500, 200, 52, false), at);
+        await settle(page);
+        await page.getByTestId(`slice-set-${end}`).click();
+        await expect(page.getByTestId('slice-place')).toBeEnabled();
+        await page.getByTestId('slice-place').click();
+      }
+      await expect(canvasOf(page)).not.toHaveAttribute('data-seq', '', { timeout: 30_000 });
+      const placed = (await sliceOf(page))!;
+      expect(placed.source).toBe('endpoints');
+      expect(placed.field).toBe(before.field);
+      await expect(page.getByTestId('slice-empty')).toBeHidden();
+      await expect(off, 'the button is back with the line').toBeVisible();
+      expect((await layerOf()).enabled).toBe(true);
+    });
+  }
 
   await test.step('switching the slice off in the Layers panel clears the recording, and nothing popped up on the way', async () => {
     await recordUntil(page, 2, 30);

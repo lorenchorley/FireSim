@@ -407,3 +407,68 @@ describe('scene layer switches', () => {
     for (const k of keys) expect(k in DEFAULT_LAYERS).toBe(true);
   });
 });
+
+describe('arrows and flow lines (windGlyphs, 0.5.0)', () => {
+  const g = info('windGlyphs');
+  const fastTier = { ...ALL, has3dAtmosphere: false, hasAirWind: true };
+
+  it('is one scene row in Simulation visuals, before the air slice, with its own state keys (the switch, and the height as a setting)', () => {
+    expect(g.group).toBe('Simulation visuals');
+    expect(g.kind).toBe('scene');
+    expect(g.scene).toBe('windGlyphs');
+    expect(g.title).toBe('Arrows and flow lines');
+    expect(g.title.length).toBeLessThanOrEqual(24);
+    expect(g.dimension).toBe('2.5-D terrain');
+    expect(LAYER_CATALOG.findIndex((l) => l.id === 'windGlyphs')).toBeLessThan(LAYER_CATALOG.findIndex((l) => l.id === 'crossSection'));
+    expect(SCENE_LAYER_KEYS).toContain('windGlyphs');
+    expect(LAYER_SETTING_KEYS).toContain('windHeight');
+    expect(SCENE_LAYER_KEYS as string[]).not.toContain('windHeight');
+    expect(DEFAULT_LAYERS.windGlyphs).toBe(false); // opt in
+    expect(DEFAULT_LAYERS.windHeight).toBe('fire');
+  });
+
+  it('is available on any air with a 3-D wind, on both tiers, with or without a fire, and waits for the simulation otherwise', () => {
+    const a = (c: AvailabilityContext) => g.available(c);
+    expect(a(ALL)).toEqual({ ok: true });
+    expect(a({ ...ALL, hasFire: false }).ok).toBe(true); // it draws the air whether or not a fire exists
+    expect(a(fastTier)).toEqual({ ok: true });
+    // Before the first snapshot, and a picture with no wind: the reason is to wait for the simulation, not to change a setting.
+    const waits = { ok: false, reason: 'Needs the air picture, which the simulation makes once it has started' };
+    expect(a({ ...ALL, has3dAtmosphere: false, hasAirWind: false })).toEqual(waits);
+    expect(a({ ...ALL, has3dAtmosphere: true, hasAirWind: false })).toEqual(waits);
+    expect(a({ ...ALL, has3dAtmosphere: false })).toEqual(waits); // a context that does not say: the 3-D atmosphere decides
+    expect(a(NONE)).toEqual(waits);
+  });
+
+  it('follows the real snapshots: none (before the first picture), a view with a wind of either kind, a view with no levels', () => {
+    const grid = makeGridSpec({ lat: -33.7, lon: 150.3 }, 532, 133);
+    const wind = (kind: 'prognostic' | 'diagnosed'): AtmosphereView => {
+      const n = grid.nx * grid.ny * 2;
+      return { grid, nz: 2, kind, u: new Float32Array(n), v: new Float32Array(n), w: new Float32Array(n), ...(kind === 'prognostic' ? { thetaAnomaly: new Float32Array(n), smoke: new Float32Array(n) } : {}) } as unknown as AtmosphereView;
+    };
+    const at = (atmosphere: AtmosphereView | undefined) => g.available(availabilityContext({ snapshot: atmosphere ? { atmosphere } : null }));
+    expect(at(undefined).ok).toBe(false);
+    expect(at(wind('prognostic')).ok).toBe(true);
+    expect(at(wind('diagnosed')).ok).toBe(true);
+    expect(at({ ...wind('diagnosed'), nz: 0, u: new Float32Array(0), v: new Float32Array(0), w: new Float32Array(0) } as AtmosphereView).ok).toBe(false);
+  });
+
+  it('says which air it draws, for both kinds, and that the curves are a fit through the model cells', () => {
+    expect(g.source({ atmosphere3d: true })).toBe('FireSim 3-D atmosphere, computed on this device');
+    expect(g.source()).toBe('FireSim 3-D atmosphere, computed on this device'); // not known yet: described for the 3-D air
+    expect(g.source({ atmosphere3d: false })).toBe('FireSim wind model: the forecast wind fitted to the terrain, computed on this device (terrain effects only: the fast mode has no plume)');
+    expect(g.resolution({ atmosphere3d: true, atmosphereCellSize: 133 })).toBe('133 m wind cells; the curves are a smooth fit through them, not new detail');
+    expect(g.resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toBe('133 m wind cells; the curves are a smooth fit through them, not new detail');
+    expect(g.resolution()).toBe('100 to 270 m wind cells; the curves are a smooth fit through them, not new detail');
+    for (const text of [g.title, g.what, g.why, g.source({ atmosphere3d: false }), g.source({ atmosphere3d: true }), g.resolution({ atmosphereCellSize: 133 }), g.resolution()]) expect(text).not.toMatch(/[—–]/);
+    expect(g.what).toMatch(/^[A-Z].*\.$/);
+    expect(g.why).toMatch(/^[A-Z].*\.$/);
+  });
+
+  it('switches by its own key only, as a plain boolean', () => {
+    const s = { ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection } };
+    expect(sceneLayerPatch(s, 'windGlyphs', true)).toEqual({ windGlyphs: true });
+    expect(sceneLayerPatch({ ...s, windGlyphs: true }, 'windGlyphs', false)).toEqual({ windGlyphs: false });
+    expect(sceneLayerOn({ ...s, windGlyphs: true }, 'windGlyphs')).toBe(true);
+  });
+});

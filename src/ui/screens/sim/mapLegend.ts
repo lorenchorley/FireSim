@@ -1,7 +1,7 @@
 /**
  * The legend on the map, Google-Maps style: a small white card at the bottom of the visible map that collapses to a chip.
  * It shows what is coloured on the map right now — the heat map, else the colour-coded trees, else the cross-section
- * curtain, else the wind streaks — with the site's own ground-height range and the plain-English words of each stop or
+ * curtain, else the wind arrows and flow lines, else the wind streaks — with the site's own ground-height range and the plain-English words of each stop or
  * class (LegendEntry.words). Tap the card to open the Layers panel (the full legend and its explanation are there);
  * the chevron makes it a chip, a tap on the chip brings the card back. Never opens by itself over anything else.
  */
@@ -11,6 +11,7 @@ import { fromExternalLegend, overlayLegend, rampGradient, stopWords, type Extern
 import { sectionColouring, sliceAirOf } from '../../../render/sliceFields';
 import type { SliceFieldId, SliceKind } from '../../../render/slice/types';
 import type { SimContext } from './context';
+import { legendHeightWords } from './glyphWords';
 
 /** Classes listed on the card; the rest are in the Layers panel. */
 const MAX_CLASSES = 4;
@@ -34,6 +35,8 @@ export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvide
     const sc = sectionColour(ctx, s.crossSection.field);
     return fromExternalLegend(sc && sl.slice ? sl.slice(sc.field, sc.kind) : sl.crossSection(), null);
   }
+  // The wind arrows and flow lines wear the wind-speed ramp at the height chosen; they come before the streaks (which have their own legend).
+  if (sl?.windGlyphs && s.windGlyphs) return fromExternalLegend(sl.windGlyphs(legendHeightWords(s.windHeight)), null);
   if (sl && s.wind !== 'off') return fromExternalLegend(sl.wind(s.wind), null);
   return null;
 }
@@ -53,7 +56,7 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     // The arrival-time ramp grows with the elapsed time: refresh it every 30 simulated minutes.
     // The section's legend follows the chip it is coloured by on the air shown (the chip chosen, or the one the air allows).
     const sc = s.crossSection.enabled ? sectionColour(ctx, s.crossSection.field) : null;
-    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
+    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.windGlyphs ? s.windHeight : ''}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
     if (k === key && !force) return;
     key = k;
     const l = currentMapLegend(ctx, vt);
@@ -119,7 +122,7 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     // Keep the focus on the legend for keyboard users (the button they pressed was replaced).
     (el.querySelector('button') as HTMLButtonElement | null)?.focus({ preventScroll: true });
   };
-  const u1 = ctx.layers.subscribe(() => render(), ['overlay', 'isochroneMinutes', 'crossSection', 'wind', 'vegetation', 'canopyStyle', 'canopyCode']);
+  const u1 = ctx.layers.subscribe(() => render(), ['overlay', 'isochroneMinutes', 'crossSection', 'wind', 'windGlyphs', 'windHeight', 'vegetation', 'canopyStyle', 'canopyCode']);
   const u2 = ctx.session.state.subscribe(() => render(), ['viewTime', 'snapshot']);
   render();
   return {

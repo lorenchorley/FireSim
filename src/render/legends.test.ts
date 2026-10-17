@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FuelType, SpreadDriver } from '../core/types';
 import type { OverlayKind } from './layers';
-import { NO_DATA, crossSectionLegend, formatDuration, legendFor, niceArrivalMax, overlayColour, overlayScale, sliceLegend, windLegend } from './legends';
+import { NO_DATA, crossSectionLegend, formatDuration, legendFor, niceArrivalMax, overlayColour, overlayScale, sliceLegend, windGlyphLegend, windLegend } from './legends';
 import { FUEL_TYPE_COLOURS, INTENSITY_CLASSES, MOISTURE_RAMP, hexToRgb, sampleRamp, sliceFieldScale } from './palette';
 import { SLICE_FIELDS, SLICE_FIELD_IDS, SLICE_THETA_BASIS } from './slice/types';
 
@@ -42,6 +42,22 @@ describe('legendFor', () => {
     expect(crossSectionLegend().entries.length).toBeGreaterThan(4);
     expect(windLegend('surface').units).toBe('km/h');
     expect(windLegend('volume').units).toBe('m/s');
+  });
+});
+
+describe('windGlyphLegend (the arrows and flow lines)', () => {
+  it('is the wind-speed ramp in km/h, the one the streaks and the wind speed map wear, titled with the height it was given', () => {
+    const l = windGlyphLegend('at 100 m');
+    expect(l.title).toBe('Wind at 100 m');
+    expect(windGlyphLegend('near the ground').title).toBe('Wind near the ground');
+    expect(l.overlay).toBe('windGlyphs');
+    expect(l.units).toBe('km/h');
+    expect(l.kind).toBe('continuous');
+    expect(l.entries).toEqual(windLegend('surface').entries);
+    expect(l.gradient).toBe(windLegend('surface').gradient);
+    expect(l.entries.map((e) => e.label)[0]).toBe('0');
+    for (let i = 1; i < l.entries.length; i++) expect(l.entries[i]!.value).toBeGreaterThan(l.entries[i - 1]!.value);
+    expect(JSON.stringify(l)).not.toMatch(/[—–]/);
   });
 });
 

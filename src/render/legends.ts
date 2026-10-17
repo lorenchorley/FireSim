@@ -69,7 +69,7 @@ export interface LegendEntry {
 }
 
 export interface LegendSpec {
-  overlay: OverlayKind | 'crossSection' | 'slice' | 'wind' | 'updraft';
+  overlay: OverlayKind | 'crossSection' | 'slice' | 'wind' | 'windGlyphs' | 'updraft';
   title: string;
   /** Units of `entries[].value` (display string, e.g. "km/h"). */
   units: string;
@@ -786,6 +786,15 @@ export function windLegend(mode: 'surface' | 'volume'): LegendSpec {
     entries: WIND_RAMP.stops.map((s) => ({ value: Math.round(s.at * 3.6), colour: s.colour, label: `${Math.round(s.at * 3.6)}` })),
     gradient: gradientCss(WIND_RAMP, 0, 25),
   };
+}
+
+/**
+ * Legend of the wind arrows and flow lines (0.5.0): the strokes wear the same ramp as the wind streaks and the wind speed map (`WIND_RAMP`,
+ * km/h), so the entries are `windLegend('surface')`'s. `heightLabel` is the words after "Wind" in the title ("near the ground", "at 100 m"):
+ * the height is the control's, so the card says which wind it is.
+ */
+export function windGlyphLegend(heightLabel: string): LegendSpec {
+  return { ...windLegend('surface'), overlay: 'windGlyphs', title: `Wind ${heightLabel}` };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

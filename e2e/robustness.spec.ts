@@ -152,6 +152,9 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
   const controls = await layerControls(page);
   expect(controls.heat.length).toBeGreaterThanOrEqual(25); // 14 new + the older ones
   expect(controls.scene.length).toBeGreaterThanOrEqual(12);
+  // The arrows and flow lines (0.5.0) are one of the switches clicked below: the real engine has an air wind by now, so it must be usable (a disabled one changes nothing).
+  expect(controls.scene).toContain('layer-windGlyphs');
+  await expect(page.getByTestId('layer-windGlyphs').getByRole('switch')).toBeEnabled({ timeout: 60_000 });
   const initial = await layerState(page);
 
   const alive = async (what: string): Promise<void> => {
@@ -203,6 +206,14 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
     await domClick(page, 'solo-heat');
   }
   await alive('trees');
+  // Wind height: every chip with the arrows on (each one sets the height and the run goes on).
+  expect(await domClick(page, 'layer-windGlyphs')).toBe(true);
+  for (const [i, height] of ['fire', 50, 100, 300, 1000, 2000].entries()) {
+    expect(await chooseOption(page, 'wind-height', i), `wind height chip ${i}`).toBe(true);
+    expect((await layerState(page)).windHeight, `wind height chip ${i}`).toBe(height);
+    await alive(`wind height ${i}`);
+  }
+  await domClick(page, 'layer-windGlyphs');
 
   // Restore the starting layers (the Reset button does it) and take the baseline.
   await page.getByTestId('layers-reset').click();
@@ -228,7 +239,8 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
       else if (r < 0.88) await chooseOption(page, 'canopy-code', Math.floor(rand() * 4));
       else if (r < 0.93) await domClick(page, 'wind-sway');
       else if (r < 0.97) await domClick(page, 'solo-heat');
-      else await chooseOption(page, 'wind-layer', Math.floor(rand() * 3));
+      else if (r < 0.985) await chooseOption(page, 'wind-layer', Math.floor(rand() * 3));
+      else await chooseOption(page, 'wind-height', Math.floor(rand() * 6));
       if (i % 5 === 0) await page.waitForTimeout(60 + Math.floor(rand() * 200));
       if (i % 10 === 0) await alive(`random toggle ${round}.${i}`);
     }

@@ -11,7 +11,7 @@ import type { ResolvedSlice, SlicePoint, SlicePresetId, SlicePresetStatus, Slice
 import { Store } from '../../store';
 import { DEFAULT_UI, type UiState } from './context';
 import { backFromAirTool, createSliceToolActions, watchLineForProbe, type SliceToolHost } from './sliceToolActions';
-import { CLEAR_SAY, KEEP_SAY } from './sliceToolModel';
+import { CLEAR_SAY, KEEP_SAY, OFF_CLEARED_SAY, OFF_SAY } from './sliceToolModel';
 
 const GRID: GridSpec = { nx: 61, ny: 61, cellSize: 100, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
 
@@ -284,6 +284,178 @@ describe('Keep this line and Clear recording (0.4.1)', () => {
     const r = rig({ recorder: false });
     createSliceToolActions(r.host).clearRecording();
     expect(r.said).toEqual([]);
+  });
+});
+
+describe('Turn off the slice (0.5.0)', () => {
+  const HAND: LayerState['crossSection'] = { ...DEFAULT_LAYERS.crossSection, enabled: true, a: [-1500, 200], b: [1500, -200], preset: null, field: 'up', azimuth: 40, centre: [12, 34] };
+  const OFF_STATE = { enabled: false, azimuth: 40, centre: [12, 34], field: 'up', a: undefined, b: undefined, preset: null };
+  const handScene = (r: Rig): void => {
+    r.layers.set({ crossSection: { ...HAND } });
+    r.scene.update = { resolved: { line: line([-1500, 200], [1500, -200]), source: 'endpoints', preset: null } };
+  };
+
+  it('writes the layers store, then the scene, once each; resets the tool state; announces once', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    handScene(r);
+    t.setProbe({ s: 400, z: 900 });
+    const stored: number[] = [];
+    r.layers.subscribe(() => stored.push(r.calls.length), ['crossSection']);
+    expect(t.controls().off).toBe(true);
+    t.turnOff();
+    expect(r.layers.get().crossSection).toStrictEqual(OFF_STATE);
+    expect(stored).toEqual([0]); // the store was written before the scene was told
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]).toContain('"enabled":false');
+    expect(r.calls[0]).toContain('store=null'); // (the scene found the store already without the line)
+    expect(r.ui.get().slice).toMatchObject({ placing: null, candidate: null, draft: { a: null, b: null }, probe: null });
+    expect(r.said).toEqual([OFF_SAY]);
+    expect(OFF_SAY).toBe('Slice turned off.');
+  });
+
+  it('with a recording the announcement says it was cleared, and the recorder is told by the scene (the layers write), not by a second call', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    handScene(r);
+    r.recorder!.status = recStatus({ state: 'recording', count: 12, from: 600, to: 1500 });
+    expect(t.controls()).toMatchObject({ off: true, clear: true });
+    t.turnOff();
+    expect(r.said).toEqual([OFF_CLEARED_SAY]);
+    expect(r.recorder!.clears).toBe(0); // clear() is the other button's: switching the section off is what drops the recording
+    expect(r.recorder!.status).toMatchObject({ count: 0, state: 'off' });
+    r.scene.update = null; // the scene says null for a slice that is off
+    expect(t.controls()).toMatchObject({ off: false, clear: false, keep: false });
+  });
+
+  it('the tool opened again does not switch the slice back on: the stored line went with it', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    handScene(r);
+    t.turnOff();
+    t.close();
+    t.open();
+    expect(r.layers.get().crossSection).toStrictEqual(OFF_STATE);
+    expect(r.calls).toHaveLength(1); // only the turning off ever reached the scene
+    // (contrast: a section the Layers panel only switched off, with its line stored, does come back when the tool opens)
+    const r2 = rig({ layers: { crossSection: { ...HAND, enabled: false } } });
+    createSliceToolActions(r2.host).open();
+    expect(r2.layers.get().crossSection.enabled).toBe(true);
+  });
+
+  it('the probe watcher stays quiet: the probe was cleared with the line, so the tool state is written once', () => {
+    const r = rig();
+    const off = watchLineForProbe(r.ui, r.layers);
+    const t = createSliceToolActions(r.host);
+    t.open();
+    handScene(r);
+    t.setProbe({ s: 400, z: 900 });
+    let writes = 0;
+    r.ui.subscribe(() => writes++, ['slice']);
+    t.turnOff();
+    expect(writes).toBe(1);
+    expect(r.ui.get().slice!.probe).toBeNull();
+    off();
+  });
+
+  it('takes a preset, the Layers chord, a draft end and a section only switched off in Layers with its line stored', () => {
+    const preset = rig();
+    const tp = createSliceToolActions(preset.host);
+    tp.open();
+    tp.preset('along');
+    expect(tp.controls().off).toBe(true);
+    tp.turnOff();
+    expect(preset.layers.get().crossSection).toMatchObject({ enabled: false, preset: null, a: undefined, b: undefined });
+    expect(tp.controls().off).toBe(false);
+
+    const chord = rig({ layers: { crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, azimuth: 90, centre: [5, 6] } } });
+    chord.scene.update = { resolved: { line: line([0, -2000], [0, 2000]), source: 'centre', preset: null } };
+    const tc = createSliceToolActions(chord.host);
+    expect(tc.controls().off).toBe(true);
+    tc.turnOff();
+    expect(chord.layers.get().crossSection).toMatchObject({ enabled: false, azimuth: 90, centre: [5, 6] });
+
+    const draft = rig();
+    const td = createSliceToolActions(draft.host);
+    td.open();
+    td.startPlacing('a');
+    td.placeHere(); // A goes to the draft
+    expect(td.controls()).toMatchObject({ placing: null, off: true });
+    td.turnOff();
+    expect(draft.ui.get().slice!.draft).toEqual({ a: null, b: null });
+    expect(td.controls().off).toBe(false);
+
+    const layersOff = rig({ layers: { crossSection: { ...HAND, enabled: false } } });
+    const tl = createSliceToolActions(layersOff.host);
+    expect(tl.controls().off).toBe(true);
+    tl.turnOff();
+    expect(layersOff.layers.get().crossSection).toStrictEqual(OFF_STATE);
+  });
+
+  it('is not offered with nothing to turn off, nor while a placement is under way', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    expect(t.controls().off).toBe(false);
+    handScene(r);
+    expect(t.controls().off).toBe(true);
+    t.startPlacing('b');
+    expect(t.controls().off).toBe(false);
+    t.cancelPlacing();
+    expect(t.controls().off).toBe(true);
+  });
+
+  it('a scene without a recorder (the 2-D map has no tool, but a test view may) still turns off, with the shorter sentence', () => {
+    const r = rig({ recorder: false });
+    const t = createSliceToolActions(r.host);
+    t.open();
+    handScene(r);
+    t.turnOff();
+    expect(r.said).toEqual([OFF_SAY]);
+  });
+});
+
+describe('the Side view and Map view tabs (0.5.0)', () => {
+  it('start on the side view, and the tab is kept in the tool\'s state across closing and opening', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    expect(r.ui.get().slice!.tab).toBe('side');
+    t.setTab('map');
+    expect(r.ui.get().slice!.tab).toBe('map');
+    t.close();
+    t.open();
+    expect(r.ui.get().slice!.tab).toBe('map');
+    t.setTab('side');
+    expect(r.ui.get().slice!.tab).toBe('side');
+  });
+
+  it('a change of tab while placing cancels the placement (no hidden crosshair) and says so once; the draft stays', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    t.startPlacing('a');
+    t.placeHere();
+    t.startPlacing('b');
+    r.said.length = 0;
+    t.setTab('map');
+    expect(r.ui.get().slice).toMatchObject({ tab: 'map', placing: null, candidate: null, draft: { a: [0, 0], b: null } });
+    expect(r.said).toEqual(['Placing cancelled.']);
+  });
+
+  it('the tab already shown changes nothing and says nothing; a change with nothing placed is quiet', () => {
+    const r = rig();
+    const t = createSliceToolActions(r.host);
+    t.open();
+    const before = r.ui.get().slice;
+    t.setTab('side');
+    expect(r.ui.get().slice).toBe(before);
+    t.setTab('map');
+    expect(r.said).toEqual([]);
+    expect(r.calls).toEqual([]); // a tab is the tool's own state: the layers and the scene are not touched
   });
 });
 

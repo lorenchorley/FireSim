@@ -51,6 +51,7 @@ interface RenderModule {
   crossSectionLegend?: () => ExternalLegend;
   windLegend?: (mode: 'surface' | 'volume') => ExternalLegend;
   sliceLegend?: (field: SliceFieldId, kind: SliceKind) => ExternalLegend;
+  windGlyphLegend?: (heightLabel: string) => ExternalLegend;
 }
 interface ScenarioModule {
   buildScenario: BuildScenarioFn;
@@ -101,7 +102,12 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
     legendProvider: render && typeof render.legendFor === 'function' ? render.legendFor : null,
     sceneLegends:
       render && typeof render.crossSectionLegend === 'function' && typeof render.windLegend === 'function'
-        ? { crossSection: render.crossSectionLegend, wind: render.windLegend, ...(typeof render.sliceLegend === 'function' ? { slice: render.sliceLegend } : {}) }
+        ? {
+            crossSection: render.crossSectionLegend,
+            wind: render.windLegend,
+            ...(typeof render.sliceLegend === 'function' ? { slice: render.sliceLegend } : {}),
+            ...(typeof render.windGlyphLegend === 'function' ? { windGlyphs: render.windGlyphLegend } : {}),
+          }
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
     createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),

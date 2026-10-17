@@ -857,7 +857,7 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     kind: 'scene',
     scene: 'windGlyphs',
     dimension: '2.5-D terrain',
-    // Any air with a 3-D wind, as for the air slice. C0 stub: G-ui adds the 2-D map and the no-snapshot cases once the layer exists.
+    // Any air with a 3-D wind, as for the air slice; before the first snapshot there is none. (The 2-D map has no air either: the control there says "Needs the 3-D view", glyphWords.ts.)
     available: (c) => need(c.hasAirWind ?? c.has3dAtmosphere, 'Needs the air picture, which the simulation makes once it has started'),
     source: (sc) =>
       sc?.atmosphere3d === false

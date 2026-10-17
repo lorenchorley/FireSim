@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AtmosphereView } from '../../../core/types';
 import { DEFAULT_LAYERS, type LayerState } from '../../../render/layers';
-import { crossSectionLegend, sliceLegend } from '../../../render/legends';
+import { crossSectionLegend, sliceLegend, windGlyphLegend, windLegend } from '../../../render/legends';
 import { currentMapLegend } from './mapLegend';
 
 const lite = (kind: 'prognostic' | 'diagnosed' | 'surface', withThetaAndSmoke: boolean): AtmosphereView => {
@@ -52,5 +52,53 @@ describe('the map legend of the air slice', () => {
 
   it('shows nothing for the section when it is off', () => {
     expect(currentMapLegend(ctxFor(lite('prognostic', true), { enabled: false }), 0)).toBeNull();
+  });
+});
+
+describe('the map legend of the wind arrows and flow lines (0.5.0)', () => {
+  const heat = { overlay: 'slope' } as const;
+  const ctxWith = (over: Partial<LayerState>, opts: { glyphs?: boolean; canopy?: boolean } = {}): Parameters<typeof currentMapLegend>[0] => {
+    const layers: LayerState = { ...DEFAULT_LAYERS, wind: 'off', crossSection: { ...DEFAULT_LAYERS.crossSection }, ...over };
+    return {
+      layers: { get: () => layers },
+      legendProvider: null,
+      sceneLegends: {
+        crossSection: crossSectionLegend,
+        wind: windLegend,
+        slice: sliceLegend,
+        ...(opts.glyphs === false ? {} : { windGlyphs: windGlyphLegend }),
+      },
+      scenario: { terrain: { minElevation: 0, maxElevation: 1 } },
+      session: { state: { get: () => ({ snapshot: { atmosphere: lite('prognostic', true) } }) } },
+      view: opts.canopy ? { canopyLegend: () => ({ title: 'Trees coloured by height', units: 'm', kind: 'continuous', entries: [{ value: 0, colour: '#000000', label: '0' }] }) } : {},
+    } as unknown as Parameters<typeof currentMapLegend>[0];
+  };
+
+  it('says which wind it is: near the ground for Ground, else the height, and the ramp is the wind-speed ramp in km/h', () => {
+    expect(currentMapLegend(ctxWith({ windGlyphs: true, windHeight: 'fire' }), 0)!.title).toBe('Wind near the ground');
+    expect(currentMapLegend(ctxWith({ windGlyphs: true, windHeight: 100 }), 0)!.title).toBe('Wind at 100 m');
+    expect(currentMapLegend(ctxWith({ windGlyphs: true, windHeight: 1000 }), 0)!.title).toBe('Wind at 1 km');
+    const l = currentMapLegend(ctxWith({ windGlyphs: true, windHeight: 300 }), 0)!;
+    expect(l.kind).toBe('ramp');
+    expect(l.kind === 'ramp' && l.unit).toBe('km/h');
+    expect(l.kind === 'ramp' && l.stops.map((x) => x.label)).toEqual(windLegend('surface').entries.map((e) => e.label));
+  });
+
+  it('shows nothing when the arrows are off, and the streaks’ legend when only they are on', () => {
+    expect(currentMapLegend(ctxWith({ windGlyphs: false }), 0)).toBeNull();
+    expect(currentMapLegend(ctxWith({ windGlyphs: false, wind: 'surface' }), 0)!.title).toBe(windLegend('surface').title);
+  });
+
+  it('comes after the heat map, the coded trees and the slice, and before the streaks', () => {
+    const on = { windGlyphs: true, windHeight: 100 as const, wind: 'surface' as const };
+    expect(currentMapLegend(ctxWith(on), 0)!.title).toBe('Wind at 100 m'); // glyphs before streaks
+    expect(currentMapLegend(ctxWith({ ...on, crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, field: 'along' } }), 0)!.title).toBe('Wind along the line');
+    expect(currentMapLegend(ctxWith({ ...on, vegetation: true, canopyStyle: 'coded' }, { canopy: true }), 0)!.title).toBe('Trees coloured by height');
+    expect(currentMapLegend(ctxWith({ ...on, overlay: heat.overlay }), 0)!.title).not.toBe('Wind at 100 m'); // a heat map beats everything
+  });
+
+  it('with a scene that has no glyph legend (an older render module) the streaks’ legend stands, and the 2-D map (no scene legends) shows none', () => {
+    expect(currentMapLegend(ctxWith({ windGlyphs: true, wind: 'surface' }, { glyphs: false }), 0)!.title).toBe(windLegend('surface').title);
+    expect(currentMapLegend({ ...ctxWith({ windGlyphs: true }), sceneLegends: null }, 0)).toBeNull();
   });
 });

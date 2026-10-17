@@ -178,3 +178,64 @@ describe('night lighting (a view setting, remembered with the map type)', () => 
     expect(looks).toEqual([]); // nothing remembered: the view keeps its own default
   });
 });
+
+describe('wind arrows and flow lines (0.5.0: the switch and its height are remembered like the streaks)', () => {
+  it('sanitise keeps the switch as a boolean and the height as Ground or one of the five heights, and drops everything else', () => {
+    expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: true, windHeight: 300 } }).layers).toEqual({ windGlyphs: true, windHeight: 300 });
+    expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: false, windHeight: 'fire' } }).layers).toEqual({ windGlyphs: false, windHeight: 'fire' });
+    for (const h of [50, 100, 300, 1000, 2000]) expect(sanitizeLayerPrefs({ v: 1, layers: { windHeight: h } }).layers).toEqual({ windHeight: h });
+    // 10 m is not a choice (the sampler clamps below its first level), and a chip's string value is not what is stored.
+    for (const bad of [10, 0, -50, 150, 1e9, NaN, Infinity, '50', '300', 'Fire', 'ground', '', null, true, {}, [100]]) expect(sanitizeLayerPrefs({ v: 1, layers: { windHeight: bad } }).layers, String(bad)).toEqual({});
+    for (const bad of ['on', 'yes', 1, 0, null, {}]) expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: bad } }).layers, String(bad)).toEqual({});
+  });
+
+  it('is additive: the version stays 1, so nobody’s remembered layers are wiped, and an old record simply has neither key', () => {
+    expect(LAYER_PREFS_VERSION).toBe(1);
+    expect(sanitizeLayerPrefs({ v: 1, layers: { roads: false, wind: 'volume' } }).layers).toEqual({ roads: false, wind: 'volume' });
+    expect(sanitizeLayerPrefs({ v: 1, layers: { roads: false, windGlyphs: true } }).layers).toEqual({ roads: false, windGlyphs: true });
+  });
+
+  it('round trips through the store and back (numbers stay numbers), and Reset forgets them', async () => {
+    await rememberLayerChoice({ layers: { windGlyphs: true } });
+    await rememberLayerChoice({ layers: { windHeight: 1000 } });
+    await rememberLayerChoice({ layers: { roads: false } });
+    resetLayerPrefsCache();
+    expect((await loadLayerPrefs()).layers).toEqual({ windGlyphs: true, windHeight: 1000, roads: false });
+    const stored = await getPref<{ layers: Record<string, unknown> } | null>(LAYER_PREFS_KEY, null);
+    expect(stored?.layers.windHeight).toBe(1000);
+    await rememberLayerChoice({ layers: { windHeight: 'fire', windGlyphs: false } }); // choosing the defaults again is a choice too
+    resetLayerPrefsCache();
+    expect((await loadLayerPrefs()).layers).toMatchObject({ windGlyphs: false, windHeight: 'fire' });
+    await forgetLayerPrefs();
+    resetLayerPrefsCache();
+    expect((await loadLayerPrefs()).layers).toEqual({});
+  });
+
+  it('the sim-screen hook puts the remembered switch and height on the store and the view, and leaves the defaults alone when nothing was chosen', async () => {
+    await rememberLayerChoice({ layers: { windGlyphs: true, windHeight: 100 } });
+    resetLayerPrefsCache();
+    const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection } });
+    const applied: Partial<LayerState>[] = [];
+    const ctx = {
+      view: { setLayers: (p: Partial<LayerState>) => applied.push(p), hasImagery: true, renderQuality: 'medium' as const },
+      scenario: { fuel: { type: new Uint8Array(4), sources: [] }, context: null, datasets: [] },
+      layers,
+      settings: new Store({ performance: 'auto' }),
+      session: { state: new Store({ snapshot: null, ignitions: [] }) },
+    };
+    const off = restoreLayerPrefs(ctx as never);
+    await loadLayerPrefs();
+    await new Promise((r) => setTimeout(r, 0));
+    off();
+    expect([layers.get().windGlyphs, layers.get().windHeight]).toEqual([true, 100]);
+    expect(applied[0]).toMatchObject({ windGlyphs: true, windHeight: 100 });
+    await forgetLayerPrefs();
+    resetLayerPrefsCache();
+    const fresh = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...DEFAULT_LAYERS.crossSection } });
+    const off2 = restoreLayerPrefs({ ...ctx, layers: fresh } as never);
+    await loadLayerPrefs();
+    await new Promise((r) => setTimeout(r, 0));
+    off2();
+    expect([fresh.get().windGlyphs, fresh.get().windHeight]).toEqual([false, 'fire']);
+  });
+});

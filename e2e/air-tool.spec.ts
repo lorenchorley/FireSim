@@ -356,3 +356,147 @@ test('placing a line with the crosshair after a real touch pan, Swap, a preset, 
   await expect(page.getByTestId('air-panel')).toHaveCount(0);
   expect(await popups(page)).toEqual([]);
 });
+
+const layersOf = (page: Page): Promise<Record<string, unknown>> => page.evaluate(() => ((window as unknown as { __firesim: { view: { getLayers(): Record<string, unknown> } } }).__firesim.view.getLayers()));
+/** The screen-reader live region (the app's one polite announcer). */
+const liveRegion = (page: Page) => page.locator('div.sr-only[aria-live="polite"]');
+
+test('2-D map: no tabs (the tool is one line)', async ({ page }) => {
+  await buildMock(page);
+  await openAirTool(page);
+  await expect(page.getByTestId('slice-needs-3d')).toBeVisible();
+  await expect(page.getByTestId('slice-tabs')).toHaveCount(0);
+});
+
+test('Side view and Map view tabs: the header fits, the Map view is the Layers panel’s arrows controls (one state, both ways), a placement is dropped, the tab is kept, and Turn off the slice works from it', async ({ page }) => {
+  test.setTimeout(480_000);
+  await watchPopups(page);
+  await buildReal(page);
+  await watchLayers(page);
+  await page.evaluate(() => {
+    const v = (window as unknown as Win).__firesim.view;
+    v.setLayers({ vegetation: false, understorey: false, wind: 'off', flames: false, smoke: false, embers: false, roads: false, fireTrails: false, placeNames: false, imagery: false, insightMarkers: false });
+    v.lookAt(0, 0, 3000, 200, 52, false);
+  });
+  await settle(page);
+  await armPopupWatch(page);
+
+  await openAirTool(page);
+  const tabs = page.getByTestId('slice-tabs');
+  const sideTab = tabs.getByRole('radio', { name: 'Side view' });
+  const mapTab = tabs.getByRole('radio', { name: 'Map view' });
+  const mapView = page.getByTestId('slice-map-tab');
+  const glyphLabel = page.getByTestId('layer-windGlyphs');
+  const glyphSwitch = glyphLabel.getByRole('switch');
+  const chips = page.getByTestId('wind-height');
+  const caption = page.getByTestId('wind-glyph-caption');
+  const off = page.getByTestId('slice-off');
+
+  // ───────── the header: the title, the two tabs and Close fit in one row, at the phone sizes the tool is judged at ─────────
+  await expect(sideTab).toBeChecked();
+  await expect(mapTab).not.toBeChecked();
+  await expect(page.getByTestId('air-panel').locator('h2')).toHaveText('Air slice'); // the old subtitle "Side view" is the tab now
+  for (const [w, h] of [[412, 915], [360, 640], [844, 390]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(500);
+    const m = await page.evaluate(() => {
+      const head = document.querySelector('[data-testid="air-panel"] .panel-head')!.getBoundingClientRect();
+      const t = document.querySelector('[data-testid="slice-tabs"]')!.getBoundingClientRect();
+      const c = document.querySelector('[data-testid="air-close"]')!.getBoundingClientRect();
+      const title = document.querySelector('[data-testid="air-panel"] h2') as HTMLElement;
+      const options = [...document.querySelectorAll('[data-testid="slice-tabs"] .segmented-option')].map((o) => o.getBoundingClientRect());
+      return { head: head.height, tabsRight: t.right, tabsLeft: t.left, closeLeft: c.left, closeRight: c.right, titleClipped: title.scrollWidth > title.clientWidth + 1, titleHeight: title.getBoundingClientRect().height, optionHeights: options.map((o) => o.height), headRight: head.right };
+    });
+    expect(m.head, `the header is one row, as tall as it was before the tabs (49 px with its border) at ${w}x${h}`).toBeLessThanOrEqual(50);
+    expect(m.tabsRight, `the tabs end before Close at ${w}x${h}`).toBeLessThanOrEqual(m.closeLeft + 1);
+    expect(m.closeRight, `Close is inside the panel at ${w}x${h}`).toBeLessThanOrEqual(m.headRight + 1);
+    expect(m.titleClipped, `the title is not cut off at ${w}x${h}`).toBe(false);
+    expect(m.titleHeight, `the title stays on one line at ${w}x${h}`).toBeLessThanOrEqual(32);
+    for (const oh of m.optionHeights) expect(oh, `a tab is a 44 px target at ${w}x${h}`).toBeGreaterThanOrEqual(44);
+  }
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.waitForTimeout(500);
+
+  // ───────── the Map view: the arrows switch and nothing of the side view; nothing to turn off yet ─────────
+  await mapTab.check({ force: true });
+  await expect(mapView).toBeVisible();
+  await expect(page.getByTestId('slice-canvas')).toHaveCount(0);
+  await expect(page.getByTestId('slice-set-a')).toHaveCount(0);
+  await expect(off, 'no slice, so nothing to turn off: the button is absent, not disabled').toBeHidden();
+  await expect(chips).toHaveCount(0); // built when the switch is first on
+  await expect(glyphSwitch).not.toBeChecked();
+  await expect(glyphSwitch).toBeEnabled(); // the fast tier's diagnosed wind is a wind to draw
+  await glyphLabel.click();
+  await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(true);
+  await expect(chips).toBeVisible();
+  await expect(chips.getByRole('radio')).toHaveCount(6);
+  await expect(caption).toContainText('Wind about 10 m above open ground');
+  await expect(caption).toContainText('Diagnosed wind: terrain effects only, no plume.'); // the fast tier says what it leaves out
+  await chips.getByRole('radio', { name: '300 m' }).check({ force: true });
+  await expect.poll(async () => (await layersOf(page)).windHeight).toBe(300);
+  await expect(caption).toContainText('Wind at 300 m above the ground');
+
+  // ───────── one state with the Layers panel, both ways ─────────
+  await page.getByTestId('air-close').click();
+  await page.getByTestId('layers-fab').click();
+  const layers = page.getByTestId('layers-panel');
+  await expect(layers.getByTestId('layer-windGlyphs').getByRole('switch')).toBeChecked(); // flipped in the Map view, read in Layers
+  await expect(layers.getByTestId('wind-height').getByRole('radio', { name: '300 m' })).toBeChecked();
+  await layers.getByTestId('wind-height').getByRole('radio', { name: '1 km' }).check({ force: true }); // flipped in Layers, read in the Map view
+  await expect.poll(async () => (await layersOf(page)).windHeight).toBe(1000);
+  await layers.getByRole('button', { name: 'Close' }).click();
+  await openAirTool(page);
+  await expect(mapView, 'the tool opens on the tab it was left on').toBeVisible();
+  await expect(mapTab).toBeChecked();
+  await expect(glyphSwitch).toBeChecked();
+  await expect(chips.getByRole('radio', { name: '1 km' })).toBeChecked();
+  await expect(caption).toContainText('Wind at 1 km above the ground');
+  await glyphLabel.click(); // off in the Map view ...
+  await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(false);
+  await expect(chips).toBeHidden();
+  await page.getByTestId('air-close').click();
+  await page.getByTestId('layers-fab').click();
+  await expect(layers.getByTestId('layer-windGlyphs').getByRole('switch')).not.toBeChecked(); // ... and off in Layers
+  await expect(layers.getByTestId('wind-height')).toBeHidden();
+  await layers.getByRole('button', { name: 'Close' }).click();
+  await openAirTool(page);
+
+  // ───────── a placement under way is dropped by the tab: no crosshair hidden on the map ─────────
+  await sideTab.check({ force: true });
+  await expect(page.getByTestId('slice-set-a')).toBeVisible();
+  await page.getByTestId('slice-set-a').click();
+  await expect(page.locator('.sim-screen .crosshair')).toBeVisible();
+  await mapTab.check({ force: true });
+  await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
+  await expect(liveRegion(page)).toHaveText('Placing cancelled.');
+  await sideTab.check({ force: true });
+  await expect(page.getByTestId('slice-set-a')).toBeVisible();
+  await expect(page.getByTestId('slice-place')).toBeHidden();
+  await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
+
+  // ───────── Turn off the slice from the Map view: focus goes to the Map view's own switch; the tool and its tab stay ─────────
+  await page.getByTestId('slice-presets-toggle').click();
+  await page.getByTestId('slice-preset-along').click();
+  await expect.poll(() => cs(page)).toMatchObject({ enabled: true, preset: 'along' });
+  await mapTab.check({ force: true });
+  await expect(off).toBeVisible();
+  await expect(page.getByTestId('slice-off-note'), 'a recorder with nothing in it: nothing to warn about').toBeHidden();
+  await expect(off).not.toHaveAttribute('aria-describedby', /.+/);
+  await off.click();
+  await expect(liveRegion(page)).toHaveText('Slice turned off.');
+  await expect(off).toBeHidden();
+  await expect(glyphSwitch, 'focus goes to the Map view switch').toBeFocused();
+  await expect.poll(() => cs(page)).toMatchObject({ enabled: false });
+  const gone = (await cs(page))!;
+  expect(gone.a ?? null).toBeNull();
+  expect(gone.b ?? null).toBeNull();
+  expect(gone.preset ?? null).toBeNull();
+  await expect(mapTab).toBeChecked();
+  await expect(page.getByTestId('air-panel')).toBeVisible();
+  await sideTab.check({ force: true });
+  await expect(page.getByTestId('slice-empty')).toBeVisible();
+  await expect(page.getByTestId('slice-set-a')).toBeVisible();
+  await expect(off).toBeHidden();
+  await page.getByTestId('air-close').click();
+  expect(await popups(page)).toEqual([]);
+});

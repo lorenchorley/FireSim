@@ -590,3 +590,57 @@ button.lp-heat-main:active {
   font-size: var(--fs-xs);
   line-height: var(--lh-xs);
 }
+
+/* ───────────────────────── Wind arrows and flow lines (windGlyphControls.ts): the Layers row and the Map view tab of Air slices ───────────────────────── */
+.wg-box,
+.wg-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.wg-box[hidden],
+.wg-options[hidden] {
+  display: none;
+}
+
+.wg-caption,
+.wg-level {
+  margin: 0;
+}
+
+.lp-switch .wg-box {
+  margin-bottom: var(--sp-3); /* the next row (the air slice) starts clear of the caption */
+}
+
+.wg-caption {
+  white-space: pre-line; /* one line of the caption for each sentence */
+}
+
+/* Six chips in two rows of three (four and two would leave a short second row at 412 px, and the landscape side column is narrow too). */
+.wg-options .chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.wg-options .chip {
+  justify-content: center;
+}
+
+/* The Air slices tool's Side view / Map view tabs sit in its header, between the title and Close. The 44 px tabs fit the header's 48 px row without its
+   padding, so the header is no taller than it was (the short landscape column has no room to spare). */
+.panel-head .slice-tabs {
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.slice-tool .panel-head {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+@media (max-width: 399px) {
+  .slice-tool .panel-title .icon {
+    display: none; /* the title gives its icon up so the two tab words fit at 360 px */
+  }
+}

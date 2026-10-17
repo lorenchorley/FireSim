@@ -31,8 +31,9 @@
  *   - A probe press or key calls `onProbe(pos)`; the tool stores it in `SliceToolState.probe` and draws the pin on the map at
  *     `a + dir · s` (`SliceProbePos`). The panel draws the probe and its readout itself from `SliceData` (`probeAt`).
  *
- * Not in this release: the Map view tab (workstream E, 0.5.0): `SliceToolTab` reserves 'map', nothing builds it. The
- * time-lapse recorder (0.4.1) is not defined anywhere.
+ * The Map view tab (workstream E, 0.5.0) is built by the tool itself, not by the panel: `SliceToolState.tab` says which of the two is
+ * shown, the tool swaps the panel's element for the map body (the wind arrows and flow lines' switch and Wind height chips, the same
+ * controls as the Layers panel, and "Turn off the slice") and tells the panel it is not active while it is out of the document.
  *
  * ToolId: the tool adds `'air'` to `ToolId` (context.ts), its label "Air slices" and entry to `TOOLS` (simScreen.ts), a
  * factory entry `air: createAirPanel` to the factory map, and "air tool and placing" to the crosshair condition. It is not added
@@ -45,7 +46,7 @@ import type { ExternalLegend } from '../../legends';
 // The tool's state (lane slicetool only; the panel never reads it)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The tool's tabs: the side view is this release; 'map' (height chips and wind glyphs, workstream E) is reserved for 0.5.0. */
+/** The tool's tabs: the side view of the air, and the map with the wind arrows and flow lines and their Wind height (workstream E, 0.5.0). */
 export type SliceToolTab = 'side' | 'map';
 
 /** Which end the crosshair, or the next tap on the map, is placing: A, B, or neither. */
