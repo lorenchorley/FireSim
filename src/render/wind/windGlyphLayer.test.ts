@@ -2,7 +2,8 @@
  * The wind glyph layer (Three.js objects built in node, no renderer) with a stub builder and a fake clock: when it builds, how it
  * stages, what it draws and hides, how it trims itself, and that it never makes the frame loop animate.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { AtmosphereSampler } from '../atmosphereSampler';
@@ -639,6 +640,25 @@ describe('the layer and the frame loop (source pins)', () => {
     expect(tick).toBeGreaterThan(0);
     expect(idle).toBeGreaterThan(tick);
     expect(scene.slice(tick, tick + 220)).toContain('this.settleNow');
+  });
+
+  it('stays out of the entry chunk: nothing in src/ui, the layer catalog or the layer state imports the engine or the layer', () => {
+    // The UI may read the types and constants (glyphTypes.ts, erased or tiny) and its own words; the tracer, the planner, the raster,
+    // the scheduler and the layer belong to the lazy render chunk (plan section 5).
+    const engine = /from '[^']*\/wind\/(flowGlyphs|glyphField|glyphLod|glyphPose|glyphSchedule|windGlyphLayer)'/;
+    const files: string[] = [];
+    const walk = (dir: URL): void => {
+      for (const name of readdirSync(dir)) {
+        const url = new URL(name, dir);
+        if (statSync(url).isDirectory()) walk(new URL(`${name}/`, dir));
+        else if (/\.ts$/.test(name) && !/\.test\.ts$/.test(name)) files.push(fileURLToPath(url));
+      }
+    };
+    walk(new URL('../../ui/', import.meta.url));
+    files.push(fileURLToPath(new URL('../layerCatalog.ts', import.meta.url)), fileURLToPath(new URL('../layers.ts', import.meta.url)), fileURLToPath(new URL('../legends.ts', import.meta.url)));
+    expect(files.length).toBeGreaterThan(50);
+    const offenders = files.filter((f) => engine.test(readFileSync(f, 'utf8')));
+    expect(offenders).toEqual([]);
   });
 
   it('reaches the view through stats() and windGlyphStats()', () => {

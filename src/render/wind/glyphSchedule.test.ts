@@ -7,16 +7,28 @@ import { REBUILD_MIN_GAP_MS } from './glyphPose';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
 import { FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box } from './glyphTypes';
 
-/** [eye xyz, target x, target z, quaternion xyzw, cssW, cssH, vex] for a camera 3 km out, looking straight ahead. */
-const pose = (o: { eye?: [number, number, number]; q?: [number, number, number, number]; css?: [number, number]; vex?: number } = {}): Float64Array => {
-  const [ex, ey, ez] = o.eye ?? [0, 2500, 1700];
-  const [qx, qy, qz, qw] = o.q ?? [0, 0, 0, 1];
+/** The camera of these tests: 3 km from a target on the ground at (0, 0), looking down at it from the south at about 56 degrees. */
+const EYE: [number, number, number] = [0, 2500, 1700];
+const DISTANCE = Math.hypot(EYE[0], EYE[1], EYE[2]);
+const PITCH = Math.atan2(EYE[1], EYE[2]);
+/** The orientation of that camera turned `yawDeg` about the vertical axis (a yaw times the pitch, as a quaternion x, y, z, w). */
+const quat = (yawDeg = 0): [number, number, number, number] => {
+  const sy = Math.sin((yawDeg * Math.PI) / 360);
+  const cy = Math.cos((yawDeg * Math.PI) / 360);
+  const sx = -Math.sin(PITCH / 2);
+  const cx = Math.cos(PITCH / 2);
+  return [cy * sx, sy * cx, -sy * sx, cy * cx];
+};
+/** [eye xyz, target x, target z, quaternion xyzw, cssW, cssH, vex]. */
+const pose = (o: { eye?: [number, number, number]; yaw?: number; css?: [number, number]; vex?: number } = {}): Float64Array => {
+  const [ex, ey, ez] = o.eye ?? EYE;
+  const [qx, qy, qz, qw] = quat(o.yaw);
   const [w, h] = o.css ?? [400, 800];
   return Float64Array.of(ex, ey, ez, 0, 0, qx, qy, qz, qw, w, h, o.vex ?? 1);
 };
 const BOX: Box = { x0: -2000, y0: -2000, x1: 2000, y1: 2000 };
 const built = (o: Partial<BuiltPicture> = {}): BuiltPicture => ({ dataSerial: 4, height: 'fire', level: 3, spacingExp: 7, pose: pose(), proj: Float64Array.of(50, 0, 0), box: BOX, ...o });
-const now = (o: Partial<PictureNow> = {}): PictureNow => ({ dataSerial: 4, height: 'fire', level: 3, spacingExp: 7, pose: pose(), proj: Float64Array.of(50, 0, 0), distanceM: 3000, ...o });
+const now = (o: Partial<PictureNow> = {}): PictureNow => ({ dataSerial: 4, height: 'fire', level: 3, spacingExp: 7, pose: pose(), proj: Float64Array.of(50, 0, 0), distanceM: DISTANCE, ...o });
 const inside = (): Box => ({ x0: -1500, y0: -1500, x1: 1500, y1: 1500 });
 
 describe('rebuildReason', () => {
@@ -48,9 +60,8 @@ describe('rebuildReason', () => {
   });
 
   it('turns after about 10 degrees, and resizes with the canvas or the exaggeration', () => {
-    const s = Math.sin((15 * Math.PI) / 360); // a turn of 15 degrees about the vertical axis
-    const c = Math.cos((15 * Math.PI) / 360);
-    expect(rebuildReason(built(), now({ pose: pose({ q: [0, s, 0, c] }) }), inside)).toBe('turned');
+    expect(rebuildReason(built(), now({ pose: pose({ yaw: 15 }) }), inside)).toBe('turned');
+    expect(rebuildReason(built(), now({ pose: pose({ yaw: 4 }) }), inside)).toBeNull();
     expect(rebuildReason(built(), now({ pose: pose({ css: [400, 700] }) }), inside)).not.toBeNull();
     expect(rebuildReason(built(), now({ pose: pose({ vex: 2 }) }), inside)).not.toBeNull();
   });

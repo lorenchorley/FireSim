@@ -62,6 +62,20 @@ export interface GlyphLayerDeps {
 
 type Idle = WindGlyphStats['idle'];
 
+const newPlan = (): LodPlan => ({ level: 0, cellPx: 0, spacingPx: 0, spacingExp: 0, spacingM: 0, curved: false, jitter: 0, lengthPx: { min: 0, max: 0, pxPerMs: 0 } });
+const copyPlan = (from: LodPlan, to: LodPlan): void => {
+  to.level = from.level;
+  to.cellPx = from.cellPx;
+  to.spacingPx = from.spacingPx;
+  to.spacingExp = from.spacingExp;
+  to.spacingM = from.spacingM;
+  to.curved = from.curved;
+  to.jitter = from.jitter;
+  to.lengthPx.min = from.lengthPx.min;
+  to.lengthPx.max = from.lengthPx.max;
+  to.lengthPx.pxPerMs = from.lengthPx.pxPerMs;
+  to.mppCentre = from.mppCentre;
+};
 const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
 
 export class WindGlyphLayer {
@@ -81,7 +95,6 @@ export class WindGlyphLayer {
   /** `surfaceRaster` of this data, computed once (undefined = not asked yet). */
   private surface: FlowRaster | null | undefined;
   private heightRaster: HeightRaster | null = null;
-  private heightRasterN = 0;
   /** What the raster in use was filled for. */
   private raster: FlowRaster | null = null;
   private rasterSerial = -1;
@@ -89,7 +102,10 @@ export class WindGlyphLayer {
   private rasterRefine = 0;
   private groundMin: { of: GroundRaster; y: number } | null = null;
 
-  private lod: LodPlan | null = null;
+  /** The plan of this frame (the planner fills it in place, and reads it back for its hysteresis) and the copy a rebuild in progress runs with. */
+  private readonly plan = newPlan();
+  private readonly buildPlan = newPlan();
+  private planKept = false;
   private built: BuiltPicture = newBuilt();
   private next: BuiltPicture = newBuilt();
   private builtValid = false;
@@ -115,10 +131,11 @@ export class WindGlyphLayer {
   private readonly eye = new Float64Array(3);
   private readonly fwd = new THREE.Vector3();
   private readonly bounds: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  private readonly boxNow: Box = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private cam: THREE.PerspectiveCamera | null = null;
   private vex = 1;
   private distance = 1;
-  private readonly visibleNow = (): Box | null => this.boxFor(0);
+  private readonly visibleNow = (): Box | null => this.boxFor(0, this.boxNow);
 
   // Statistics.
   private readonly log = new SliceLog();
@@ -228,8 +245,8 @@ export class WindGlyphLayer {
     // The level of detail from how many pixels one model cell covers at the middle of the screen.
     const grid = d.atm!.grid;
     const mpp = metresPerPixelAt(targetDistance, css.fov, css.h);
-    const lod = planLod(grid.cellSize / mpp, mpp, this.lod);
-    this.lod = lod;
+    const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan);
+    this.planKept = true;
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
@@ -350,12 +367,7 @@ export class WindGlyphLayer {
       return false;
     }
     if (this.raster && this.rasterSerial === this.dataSerial && this.rasterHeight === this.height && this.rasterRefine === refine) return false;
-    const g = d.atm!.grid;
-    const need = Math.max(g.nx, g.ny);
-    if (!this.heightRaster || this.heightRasterN < need) {
-      this.heightRaster = new HeightRaster(need);
-      this.heightRasterN = need;
-    }
+    this.heightRaster ??= new HeightRaster();
     const t0 = this.clock();
     this.raster = this.heightRaster.fill(d.sampler, d.sliceGround, this.height, refine);
     this.log.push(this.clock() - t0);
@@ -368,24 +380,24 @@ export class WindGlyphLayer {
   /** Hand the builder its input, taken from the camera now. False when no ground is in view (nothing to trace). */
   private begin(d: GlyphData, lod: LodPlan, css: GlyphCss, vex: number, framesTriangles: number): boolean {
     const cam = this.cam!;
-    const box = this.boxFor(0.25);
     const next = this.next;
     next.level = lod.level;
     next.spacingExp = lod.spacingExp;
     next.pose.set(this.pose);
     next.proj.set(this.proj);
+    const box = this.boxFor(0.25, next.box);
     if (!box) {
-      next.box = { x0: 0, y0: 0, x1: 0, y1: 0 };
+      next.box.x0 = next.box.y0 = next.box.x1 = next.box.y1 = 0;
       return false;
     }
-    next.box = box;
+    copyPlan(lod, this.buildPlan);
     this.viewProj.set(this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements);
     const caps = GLYPH_CAPS[this.tier];
     const input: GlyphInput = {
       field: this.raster!,
       ground: d.drawGround,
       vex,
-      lod,
+      lod: this.buildPlan,
       eye: this.eye,
       viewProj: this.viewProj,
       cssW: css.w,
@@ -446,8 +458,8 @@ export class WindGlyphLayer {
     return true;
   }
 
-  /** The ground the camera can see (local metres), grown by `margin`, inside the wind's own domain. */
-  private boxFor(margin: number): Box | null {
+  /** The ground the camera can see (local metres), grown by `margin`, inside the wind's own domain, written into `out`. */
+  private boxFor(margin: number, out: Box): Box | null {
     const cam = this.cam!;
     const g: GridSpec = this.data!.atm!.grid;
     const bounds = this.bounds;
@@ -461,7 +473,7 @@ export class WindGlyphLayer {
     this.eye[2] = p.z;
     this.unproject.multiplyMatrices(cam.matrixWorld, cam.projectionMatrixInverse);
     // The lowest ground of the drawn mesh is the plane the rays are cut with: every downward ray meets the real ground before it.
-    return visibleBox(this.unproject.elements, this.eye, this.lowest(this.data!.drawGround) * this.vex, bounds, Math.max(MIN_RANGE_M, RANGE_PER_DISTANCE * this.distance), margin);
+    return visibleBox(this.unproject.elements, this.eye, this.lowest(this.data!.drawGround) * this.vex, bounds, Math.max(MIN_RANGE_M, RANGE_PER_DISTANCE * this.distance), margin, out);
   }
 
   private lowest(g: GroundRaster): number {
