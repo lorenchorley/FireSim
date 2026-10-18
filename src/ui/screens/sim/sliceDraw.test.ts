@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { WIND_RAMP } from '../../../render/palette';
+import { flowArrows } from '../../../render/slice/flow2d';
+import { makeSliceData } from '../../../render/slice/testing';
 import { drawArrows, drawAxes, drawCells, drawGround, drawProbe, drawScaleTag, drawStreaks, fadeTrail, paintStatic, type Ctx, type DrawColours, type StaticView } from './sliceDraw';
 import { fakeSlice } from './slicePanelFixtures';
-import { axisTicks, makeLut, plotLayout, xOfS, yOfZ, type TickFn } from './slicePanelModel';
+import { arrowGrid, axisTicks, makeLut, plotLayout, xOfS, yOfZ, type TickFn } from './slicePanelModel';
 
 interface Call {
   name: string;
@@ -267,7 +269,7 @@ describe('arrows (reduced motion)', () => {
     for (const n of s.numbers()) expect(Number.isFinite(n)).toBe(true);
   });
 
-  it('a stronger wind draws a longer arrow, up to 18 px, and one with no angle is left out', () => {
+  it('a stronger wind draws a longer arrow, from 55% of the longest the cell holds to that longest, and one with no angle is left out', () => {
     const len = (speed: number): number => {
       const s = stub();
       drawArrows(s.ctx, l, { count: 1, s: [1500], z: [1200], angle: [0], speed: [speed] }, COLOURS);
@@ -275,13 +277,94 @@ describe('arrows (reduced motion)', () => {
       const t = s.calls.filter((c) => c.name === 'lineTo')[0]!.args[0] as number;
       return t - m;
     };
-    expect(len(0)).toBeCloseTo(10, 6);
-    expect(len(30)).toBeCloseTo(18, 6);
+    const { longest } = arrowGrid(l);
+    expect(longest).toBeGreaterThan(10); // (a 358 x 230 box: 13 px arrows, not the 18 of 0.5.0)
+    expect(len(0)).toBeCloseTo(0.55 * longest, 6);
+    expect(len(30)).toBeCloseTo(longest, 6);
     expect(len(8)).toBeGreaterThan(len(2));
     const s = stub();
     expect(drawArrows(s.ctx, l, { count: 2, s: [100, 200], z: [900, 900], angle: [NaN, 0], speed: [1, 1] }, COLOURS)).toBe(1);
     expect(balanced(s.calls)).toBe(true);
   });
+
+  it('gives a short arrow a smaller head, never under 3 px and never over 4.5 px', () => {
+    const head = (speed: number): number => {
+      const s = stub();
+      drawArrows(s.ctx, l, { count: 1, s: [1500], z: [1200], angle: [0], speed: [speed] }, COLOURS);
+      const moves = s.calls.filter((c) => c.name === 'moveTo');
+      const lines = s.calls.filter((c) => c.name === 'lineTo');
+      return Math.hypot((lines[1]!.args[0] as number) - (moves[1]!.args[0] as number), (lines[1]!.args[1] as number) - (moves[1]!.args[1] as number));
+    };
+    expect(head(0)).toBeGreaterThanOrEqual(3 - 1e-9);
+    expect(head(30)).toBeLessThanOrEqual(4.5 + 1e-9);
+    expect(head(0)).toBeLessThanOrEqual(head(30));
+    // on a small plot the arrows are shorter and the head follows, down to the floor
+    const small = plotLayout({ width: 140, height: 60, length: 3000, zMin: 350, zMax: 2500, exaggeration: 1, smallPx: 12 });
+    const s = stub();
+    drawArrows(s.ctx, small, { count: 1, s: [1500], z: [1200], angle: [0], speed: [0] }, COLOURS);
+    const moves = s.calls.filter((c) => c.name === 'moveTo');
+    const lines = s.calls.filter((c) => c.name === 'lineTo');
+    expect(Math.hypot((lines[1]!.args[0] as number) - (moves[1]!.args[0] as number), (lines[1]!.args[1] as number) - (moves[1]!.args[1] as number))).toBeCloseTo(3, 6);
+  });
+
+  /** The strokes of each arrow (a shaft and two head strokes) as [x0, y0, x1, y1] segments, from what drawArrows asked the context to draw. */
+  function arrowSegments(s: ReturnType<typeof stub>): number[][][] {
+    const pts = s.calls.filter((c) => c.name === 'moveTo' || c.name === 'lineTo');
+    const segs: number[][] = [];
+    for (let i = 0; i + 1 < pts.length; i += 2) segs.push([pts[i]!.args[0] as number, pts[i]!.args[1] as number, pts[i + 1]!.args[0] as number, pts[i + 1]!.args[1] as number]);
+    const out: number[][][] = [];
+    for (let i = 0; i < segs.length; i += 3) out.push(segs.slice(i, i + 3));
+    return out;
+  }
+
+  /** The distance between two segments: zero where they cross, else the smallest of the four end-to-segment distances. */
+  function segmentGap(p: number[], q: number[]): number {
+    const side = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const crossing =
+      side(p[0]!, p[1]!, p[2]!, p[3]!, q[0]!, q[1]!) * side(p[0]!, p[1]!, p[2]!, p[3]!, q[2]!, q[3]!) < 0 && side(q[0]!, q[1]!, q[2]!, q[3]!, p[0]!, p[1]!) * side(q[0]!, q[1]!, q[2]!, q[3]!, p[2]!, p[3]!) < 0;
+    if (crossing) return 0;
+    const toSegment = (x: number, y: number, a: number[]): number => {
+      const dx = a[2]! - a[0]!;
+      const dy = a[3]! - a[1]!;
+      const t = Math.max(0, Math.min(1, ((x - a[0]!) * dx + (y - a[1]!) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(x - (a[0]! + t * dx), y - (a[1]! + t * dy));
+    };
+    return Math.min(toSegment(p[0]!, p[1]!, q), toSegment(p[2]!, p[3]!, q), toSegment(q[0]!, q[1]!, p), toSegment(q[2]!, q[3]!, p));
+  }
+
+  // The canvas boxes of the real panel on three phones (see slicePanelModel.test.ts), the arrows of the strongest wind (the longest arrows) pointing every way.
+  const WINDS: [string, (s: number, z: number) => [number, number, number]][] = [
+    ['along the line', () => [14, 0, 0]],
+    ['straight up', () => [0, 0, 14]],
+    ['a diagonal', () => [10, 0, 10]],
+    ['a swirl of every direction', (s, z) => [12 * Math.cos(s / 230 + z / 90), 0, 12 * Math.sin(s / 230 + z / 90)]],
+  ];
+
+  for (const [name, width, height] of [['412 x 915 portrait', 380, 160], ['360 x 640 portrait', 328, 138], ['844 x 390 short landscape', 356, 84]] as const) {
+    it(`${name}: no arrow of the doubled lattice touches another, whichever way the wind blows`, () => {
+      const pl = plotLayout({ width, height, length: 6000, zMin: 550, zMax: 3000, exaggeration: 1, smallPx: 12, labelW: 50 });
+      const g = arrowGrid(pl);
+      const cell = Math.min(pl.plot.w / g.cols, pl.plot.h / g.rows);
+      for (const [wind, field] of WINDS) {
+        const data = makeSliceData({ columns: 90, rows: 50, a: [0, 0], b: [6000, 0], zMin: 550, zMax: 3000, ground: () => -500, wind: field });
+        const a = flowArrows(data, g.cols, g.rows, pl.ratio);
+        expect(a.count, `${wind}: one arrow in every cell`).toBe(g.cols * g.rows);
+        const s = stub();
+        expect(drawArrows(s.ctx, pl, a, COLOURS)).toBe(a.count);
+        const arrows = arrowSegments(s);
+        expect(arrows.length).toBe(a.count);
+        let least = Infinity;
+        for (let i = 0; i < arrows.length; i++) {
+          for (let j = i + 1; j < arrows.length; j++) {
+            for (const p of arrows[i]!) for (const q of arrows[j]!) least = Math.min(least, segmentGap(p, q));
+          }
+        }
+        // the longest arrow is 60% of the smaller side of a cell, so there is at least the other 40% between two of them, and that is more than the 4 px of an arrow's halo
+        expect(least, `${name}, ${wind}: the least gap between two arrows (px)`).toBeGreaterThanOrEqual(0.4 * cell - 0.01); // (the arrow positions are 32-bit floats)
+        expect(least, `${name}, ${wind}`).toBeGreaterThan(5);
+      }
+    });
+  }
 });
 
 describe('probe', () => {

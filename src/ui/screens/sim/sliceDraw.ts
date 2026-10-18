@@ -5,7 +5,7 @@
  * and the probe together every frame.
  */
 import type { SliceData, SliceFieldId, SliceProbePos } from '../../../render/slice/types';
-import { lutIndex, rasterBox, xOfS, yOfZ, type Lut, type PlotLayout, type Tick } from './slicePanelModel';
+import { arrowGrid, arrowLength, lutIndex, rasterBox, xOfS, yOfZ, type Lut, type PlotLayout, type Tick } from './slicePanelModel';
 
 /** The 2-D context, whole: a stub in a test, the canvas's own in the app. */
 export type Ctx = CanvasRenderingContext2D;
@@ -281,7 +281,10 @@ export function drawStreaks(ctx: Ctx, l: PlotLayout, f: Streaks, colours: DrawCo
   return n;
 }
 
-/** The lattice of arrows under reduced motion (flowArrows of flow2d): length from 10 px in a light wind to 18 px in a strong one. */
+/**
+ * The lattice of arrows under reduced motion (flowArrows of flow2d): the length goes from 55% of the longest the cell holds in a light wind to
+ * that longest in a strong one (`arrowLength`, `arrowGrid` of slicePanelModel; about 7 to 13 px on a portrait phone, where 0.5.0 drew 10 to 18 px and half as many arrows).
+ */
 export interface Arrows {
   count: number;
   s: ArrayLike<number>;
@@ -290,8 +293,13 @@ export interface Arrows {
   speed: ArrayLike<number>;
 }
 
+/** The two strokes of an arrow's head are 40% of its length, between these (so a short arrow keeps a head that reads, a long one does not grow a big one). */
+const HEAD_SHARE = 0.4;
+const HEAD_MIN_PX = 3;
+const HEAD_MAX_PX = 4.5;
+
 export function drawArrows(ctx: Ctx, l: PlotLayout, a: Arrows, colours: DrawColours): number {
-  const HEAD = 4.5;
+  const { longest } = arrowGrid(l);
   ctx.save();
   ctx.beginPath();
   ctx.rect(l.plot.x, l.plot.y, l.plot.w, l.plot.h);
@@ -305,7 +313,9 @@ export function drawArrows(ctx: Ctx, l: PlotLayout, a: Arrows, colours: DrawColo
     const cy = yOfZ(l, a.z[i]!);
     const ang = a.angle[i]!;
     if (!ok(cx, cy, ang)) continue;
-    const half = (10 + Math.min(8, Math.max(0, a.speed[i] ?? 0) * 0.7)) / 2;
+    const length = arrowLength(a.speed[i] ?? 0, longest);
+    const half = length / 2;
+    const head = Math.min(HEAD_MAX_PX, Math.max(HEAD_MIN_PX, HEAD_SHARE * length));
     const dx = Math.cos(ang); // screen y points down, the angle runs anticlockwise from +s
     const dy = -Math.sin(ang);
     const tx = cx + dx * half;
@@ -315,7 +325,7 @@ export function drawArrows(ctx: Ctx, l: PlotLayout, a: Arrows, colours: DrawColo
     for (const side of [-1, 1]) {
       const back = ang + Math.PI + side * 0.5;
       ctx.moveTo(tx, ty);
-      ctx.lineTo(tx + Math.cos(back) * HEAD, ty - Math.sin(back) * HEAD);
+      ctx.lineTo(tx + Math.cos(back) * head, ty - Math.sin(back) * head);
     }
     n++;
   }

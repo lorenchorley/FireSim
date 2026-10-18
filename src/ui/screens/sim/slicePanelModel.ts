@@ -261,8 +261,8 @@ export function rasterBox(l: PlotLayout, columns: number, rows: number): Box {
 // Streaks and arrows
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** About 300 particles, drawn at most 24 times a second (plan §8.5). */
-export const FLOW_COUNT = 300;
+/** About 600 particles (0.6.0: twice the 300 of 0.5.0, the owner asked for the wind marks of the side view twice as dense), drawn at most 24 times a second (plan §8.5). */
+export const FLOW_COUNT = 600;
 export const FLOW_FRAME_S = 1 / 24;
 /** A display frame may come this early (the clock is rounded to a tenth of a millisecond) and still count as the next streak frame. */
 const FLOW_FRAME_SLACK_S = 0.0005;
@@ -289,9 +289,13 @@ export function flowTick(c: FlowClock, tMs: number): number {
 /** A particle lives this many seconds of the panel's clock before it is re-seeded: longer than the 8 s a 10 m/s wind takes to cross the line (`flowTimeScale`). */
 export const FLOW_LIFE_S = 12;
 
-/** Streaks for a plot: 300 on a full portrait panel, fewer on a small one (about one per 190 square px), never fewer than 60. */
+/** A plot gets about one streak per this many square px (190 in 0.5.0), so a smaller one is not a smear, and never fewer than `FLOW_MIN` (a tiny plot still has some flow to see). */
+const FLOW_AREA_PX2 = 95;
+const FLOW_MIN = 120;
+
+/** Streaks for a plot: 600 on a full portrait panel, fewer on a small one (about one per 95 square px), never fewer than 120. */
 export function flowCount(l: PlotLayout): number {
-  return Math.min(FLOW_COUNT, Math.max(60, Math.round((l.plot.w * l.plot.h) / 190)));
+  return Math.min(FLOW_COUNT, Math.max(FLOW_MIN, Math.round((l.plot.w * l.plot.h) / FLOW_AREA_PX2)));
 }
 
 /** Air seconds per real second: a particle in a 10 m/s wind crosses the whole line in about 8 s, whatever the line's length. */
@@ -347,9 +351,54 @@ export function sameFlowSlice(prev: FlowSlice | null, now: FlowSlice): boolean {
   );
 }
 
-/** The static arrow lattice used under reduced motion: about one arrow per 34 x 30 px. */
-export function arrowGrid(l: PlotLayout): { cols: number; rows: number } {
-  return { cols: Math.max(2, Math.round(l.plot.w / 34)), rows: Math.max(2, Math.round(l.plot.h / 30)) };
+/**
+ * The static arrow lattice of reduced motion has about one arrow per 24 x 21 px, twice as many as the 34 x 30 px of 0.5.0 (the owner asked for the
+ * wind marks of the side view twice as dense: each side of the cell is about the square root of two shorter).
+ */
+const ARROW_CELL_W_PX = 24;
+const ARROW_CELL_H_PX = 21;
+/** The longest arrow fills this share of the smaller side of its cell, so two neighbours, pointing any way, keep 40% of that side clear between them. */
+const ARROW_FILL = 0.6;
+/** An arrow in a calm is this share of the longest; the longest comes at `ARROW_FULL_MS` and above (a longer arrow is a stronger wind). */
+const ARROW_CALM_SHARE = 0.55;
+const ARROW_FULL_MS = 11.4;
+
+export interface ArrowGrid {
+  cols: number;
+  rows: number;
+  /** The longest arrow (CSS px) a cell of this lattice holds with clear air around it; `arrowLength` scales the rest from it. */
+  longest: number;
+}
+
+/**
+ * The lattice of the static arrows: about one arrow per `ARROW_CELL_W_PX` x `ARROW_CELL_H_PX`, the whole number of columns and rows nearest to that
+ * many arrows over the plot whose cells are the least stretched from that shape (so the short landscape plot still gets about twice the arrows it
+ * had, and not a lattice of thin slivers). The arrows are never longer than the cells allow: a small cell shortens them.
+ */
+export function arrowGrid(l: PlotLayout): ArrowGrid {
+  const { w, h } = l.plot;
+  const wanted = (w * h) / (ARROW_CELL_W_PX * ARROW_CELL_H_PX);
+  const shape = ARROW_CELL_W_PX / ARROW_CELL_H_PX;
+  let cols = 2;
+  let rows = 2;
+  let least = Infinity;
+  for (let c = Math.max(2, Math.floor(w / ARROW_CELL_W_PX) - 1); c <= Math.max(2, Math.ceil(w / ARROW_CELL_W_PX) + 1); c++) {
+    for (let r = Math.max(2, Math.floor(h / ARROW_CELL_H_PX) - 1); r <= Math.max(2, Math.ceil(h / ARROW_CELL_H_PX) + 1); r++) {
+      const cost = Math.abs(Math.log((c * r) / wanted)) + 0.5 * Math.abs(Math.log(w / c / (h / r) / shape));
+      if (cost < least) {
+        least = cost;
+        cols = c;
+        rows = r;
+      }
+    }
+  }
+  return { cols, rows, longest: ARROW_FILL * Math.min(w / cols, h / rows) };
+}
+
+/** The length (CSS px) of the arrow for a wind of `speed` m/s: from 55% of `longest` in a calm to `longest` at 11.4 m/s and more, in a straight line between. */
+export function arrowLength(speed: number, longest: number): number {
+  const share = clamp(fin(speed, 0) / ARROW_FULL_MS, 0, 1);
+  return longest * (ARROW_CALM_SHARE + (1 - ARROW_CALM_SHARE) * share);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
