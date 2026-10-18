@@ -11,9 +11,10 @@ import { describe, expect, it } from 'vitest';
 import { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
 import { HeightField } from '../heightfield';
+import { StreakBatch } from '../streaks';
 import { makeAirView } from '../slice/testing';
 import { HALO_INK } from './flowGlyphs';
-import { WindGlyphLayer, type GlyphData } from './windGlyphLayer';
+import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
 import { GLYPH_CAPS, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
 const shared = (): Record<string, THREE.IUniform> => ({
@@ -641,6 +642,41 @@ describe('WindGlyphLayer: strokes and statistics', () => {
       expect(u.uFog!.value).toBe(0);
       expect((r.mesh(name).material as THREE.ShaderMaterial).depthTest).toBe(true);
       expect((r.mesh(name).material as THREE.ShaderMaterial).depthWrite).toBe(false);
+    }
+  });
+
+  it('tests its depth as if 40 m nearer the eye, so a tree crown in front of a stroke does not hide it, and a ridge still does', () => {
+    const r = rig();
+    expect(GLYPH_DEPTH_BIAS_M).toBe(40);
+    for (const name of ['wind-glyph', 'wind-glyph-halo'] as const) {
+      const m = r.mesh(name).material as THREE.ShaderMaterial;
+      expect(m.uniforms.uDepthBias!.value, name).toBe(GLYPH_DEPTH_BIAS_M);
+      expect(m.depthTest, `${name} keeps the depth test: switching it off shows every line behind every ridge`).toBe(true);
+    }
+    // The other users of the streak batch (wind particles, ember trails, the slice's arrows) draw as they did.
+    const plain = new StreakBatch({ capacity: 4, widthPx: 2, shared: shared() });
+    expect(plain.uniforms.uDepthBias!.value).toBe(0);
+    plain.dispose();
+  });
+
+  it('the streak shader slides a stroke toward the eye along its own ray: the depth changes, the place on the screen does not', () => {
+    // The shader's own text: the bias branch sets only the depth (z), and only when a bias is asked for.
+    const vs = (rig().mesh('wind-glyph').material as THREE.ShaderMaterial).vertexShader;
+    expect(vs).toContain('uniform float uDepthBias;');
+    expect(vs).toMatch(/vec3 pa = \(viewMatrix \* vec4\(aA, 1\.0\)\)\.xyz;/);
+    expect(vs).toMatch(/pa \* \(1\.0 - min\(uDepthBias, 0\.5 \* la\) \/ la\)/);
+    expect(vs).toMatch(/gl_Position = c;\s*\n\s*if \(uDepthBias > 0\.0\) gl_Position\.z = mix\(za, zb, position\.x\) \* c\.w;/);
+    // The same algebra in node, with the camera of these tests: a point slid toward the eye keeps its NDC x and y and moves nearer in z.
+    const cam = cameraAt(1500);
+    for (const p of [new THREE.Vector3(0, GROUND, 0), new THREE.Vector3(300, GROUND + 40, -200), new THREE.Vector3(-900, GROUND - 60, 500)]) {
+      const view = p.clone().applyMatrix4(cam.matrixWorldInverse);
+      const len = view.length();
+      const slid = view.clone().multiplyScalar(1 - Math.min(GLYPH_DEPTH_BIAS_M, 0.5 * len) / len);
+      const a = view.clone().applyMatrix4(cam.projectionMatrix);
+      const b = slid.clone().applyMatrix4(cam.projectionMatrix);
+      expect(b.x).toBeCloseTo(a.x, 9);
+      expect(b.y).toBeCloseTo(a.y, 9);
+      expect(b.z).toBeLessThan(a.z);
     }
   });
 

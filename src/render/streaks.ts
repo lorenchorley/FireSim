@@ -10,6 +10,7 @@ const STREAK_VERT = /* glsl */ `
 uniform vec2 uViewport;
 uniform float uWidthPx;
 uniform float uHeadPx;
+uniform float uDepthBias;
 attribute vec3 aA;
 attribute vec3 aB;
 attribute vec4 aC;
@@ -25,6 +26,19 @@ void main() {
     gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
     return;
   }
+  // A depth bias (metres toward the eye along each end's own ray) changes only the depth the stroke is tested at, never where it is on the screen.
+  float za = 0.0;
+  float zb = 0.0;
+  if (uDepthBias > 0.0) {
+    vec3 pa = (viewMatrix * vec4(aA, 1.0)).xyz;
+    vec3 pb = (viewMatrix * vec4(aB, 1.0)).xyz;
+    float la = length(pa);
+    float lb = length(pb);
+    vec4 ba = projectionMatrix * vec4(pa * (1.0 - min(uDepthBias, 0.5 * la) / la), 1.0);
+    vec4 bb = projectionMatrix * vec4(pb * (1.0 - min(uDepthBias, 0.5 * lb) / lb), 1.0);
+    za = ba.z / ba.w;
+    zb = bb.z / bb.w;
+  }
   vec2 sa = ca.xy / ca.w * uViewport * 0.5;
   vec2 sb = cb.xy / cb.w * uViewport * 0.5;
   vec2 d = sb - sa;
@@ -38,6 +52,7 @@ void main() {
   vec2 off = nrm * position.y * halfW + dir * (position.x * ext - (1.0 - position.x) * 1.0);
   c.xy += off / (uViewport * 0.5) * c.w;
   gl_Position = c;
+  if (uDepthBias > 0.0) gl_Position.z = mix(za, zb, position.x) * c.w;
   vC = aC;
   vLenPx = len + ext;
   vUv = vec2(position.x * vLenPx, position.y * halfW);
@@ -94,6 +109,8 @@ export interface StreakOptions {
   fog?: boolean;
   /** Darken the outer pixel of plain streaks (legibility on bright backgrounds). */
   outline?: boolean;
+  /** Test depth as if the strokes were this many metres nearer the eye (0 = as drawn); their place on the screen does not change. */
+  depthBiasM?: number;
   shared: Record<string, THREE.IUniform>;
 }
 
@@ -137,6 +154,7 @@ export class StreakBatch {
       uTailAlpha: { value: o.tailAlpha ?? 0 },
       uFog: { value: o.fog === false ? 0 : 1 },
       uOutline: { value: o.outline ? 1 : 0 },
+      uDepthBias: { value: o.depthBiasM ?? 0 },
     };
     this.mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,

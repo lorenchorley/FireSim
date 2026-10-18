@@ -436,6 +436,62 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
   });
 });
 
+test('wind glyphs: close in over the canopy the crowns do not hide the flow lines, and a ridge still hides what lies behind it', async ({ page }) => {
+  test.setTimeout(600_000);
+  await build(page);
+  await setLayers(page, { vegetation: true, understorey: true, imagery: true, wind: 'off', flames: false, smoke: false, embers: false, insightMarkers: false, roads: false, fireTrails: false, placeNames: false, windGlyphs: true, windHeight: 'fire' });
+  type Glyphs = { halo: { uniforms: { uDepthBias: { value: number } } }; colour: { uniforms: { uDepthBias: { value: number } } } };
+  const bias = (b?: number): Promise<number> =>
+    page.evaluate((to) => {
+      const g = (window as unknown as { __firesim: { view: { glyphs: Glyphs } } }).__firesim.view.glyphs;
+      const was = g.halo.uniforms.uDepthBias.value;
+      if (to !== undefined) g.halo.uniforms.uDepthBias.value = g.colour.uniforms.uDepthBias.value = to;
+      return was;
+    }, b);
+  /** Draw a frame and count the pixels of the halo's dark navy ink (8, 16, 36), a stroke's edge on every ground; the same scene is compared with itself. */
+  const ink = (): Promise<number> =>
+    page.evaluate(() => {
+      const v = (window as unknown as Handle).__firesim.view;
+      v.renderNow();
+      const src = v.renderer.domElement;
+      const c = document.createElement('canvas');
+      c.width = src.width;
+      c.height = src.height;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      g.drawImage(src, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]! - 8) <= 10 && Math.abs(d[i + 1]! - 16) <= 10 && Math.abs(d[i + 2]! - 36) <= 10) n++;
+      return n;
+    });
+  const both = async (what: string): Promise<{ biased: number; plain: number }> => {
+    await settle(page);
+    const asked = await bias();
+    const biased = await ink();
+    await bias(0);
+    const plain = await ink();
+    await bias(asked);
+    console.log(`${what}: halo ink ${biased} px with the depth bias (${asked} m), ${plain} px without`);
+    return { biased, plain };
+  };
+  expect(await bias(), 'the layer asks for a depth bias').toBeGreaterThan(0);
+  await test.step('close in at 55 degrees over the forest: the strokes show through the crowns in front of them', async () => {
+    await lookAt(page, 700, 0, 0, 200, 55);
+    await drawAndRead(page);
+    const r = await both('700 m, 55 degrees');
+    expect(r.plain, 'there are strokes to count').toBeGreaterThan(1500);
+    expect(r.biased, 'the bias shows at least a third more of the strokes than the plain depth test').toBeGreaterThan(r.plain * 1.3);
+  });
+  await test.step('across a valley toward the escarpment: a ridge still hides what is behind it (no more than a crown bias of difference)', async () => {
+    await lookAt(page, 2200, 800, -600, 90, 65);
+    await drawAndRead(page);
+    const r = await both('2200 m, 65 degrees, from the west');
+    expect(r.plain).toBeGreaterThan(1000);
+    // Switching the depth test off showed 35 % more ink here (every line behind the ridge); the bias adds only the lines under crowns.
+    expect(r.biased, 'strokes behind a ridge stay hidden').toBeLessThan(r.plain * 1.25);
+  });
+});
+
 test('wind glyphs: the 2-D stand-in map (?mock=1) has no glyph statistics', async ({ page }) => {
   await page.goto('/?mock=1&debug=1&theme=light');
   await acceptNotice(page);
