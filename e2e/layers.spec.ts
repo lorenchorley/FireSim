@@ -388,6 +388,25 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   await expect(level).not.toHaveText('Not drawn at eye level. Go back to the map view.', { timeout: 15_000 });
 });
 
+test('2-D stand-in map: a remembered "on" says why nothing is drawn, can be turned off, and offers no Wind height chips', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('firesim.layers', JSON.stringify({ v: 1, layers: { windGlyphs: true, windHeight: 300 } })));
+  await page.goto('/?mock=1&theme=light');
+  await acceptNotice(page);
+  await page.getByTestId('site-katoomba').click();
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId('layers-fab').click();
+  const panel = page.getByTestId('layers-panel');
+  const sw = panel.getByTestId('layer-windGlyphs').getByRole('switch');
+  await expect(sw).toBeChecked(); // remembered
+  await expect(sw, 'an "on" switch stays operable, so it can always be turned off').toBeEnabled();
+  await expect(panel.getByTestId('wind-glyph-reason')).toHaveText('Needs the 3-D view');
+  await expect(panel.getByTestId('wind-height'), 'the 2-D map draws no glyphs, so there is no height to choose').toBeHidden();
+  await panel.getByTestId('layer-windGlyphs').click();
+  await expect(sw).not.toBeChecked();
+  await expect(sw).toBeDisabled();
+});
+
 test('2-D stand-in map: the Arrows and flow lines switch cannot be used, and says why', async ({ page }) => {
   await page.goto('/?mock=1&theme=light');
   await acceptNotice(page);
