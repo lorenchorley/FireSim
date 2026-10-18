@@ -11,6 +11,7 @@ export {
   crossSectionLegend,
   sliceLegend,
   windLegend,
+  windGlyphLegend,
   overlayScale,
   overlayColour,
   formatDuration,

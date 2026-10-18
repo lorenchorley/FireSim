@@ -214,7 +214,7 @@ test('Why here? says where you are: nearest road and fire trail, homes nearby, t
 type AirHandle = { __firesim: { session: { state: { get(): { snapshot: { atmosphere?: { nz: number } } | null } } } } };
 /** The air picture exists once the first snapshot is in (the switch waits for it, with its reason). */
 const airPicture = (page: Page): Promise<boolean> => page.evaluate(() => ((window as unknown as AirHandle).__firesim.session.state.get().snapshot?.atmosphere?.nz ?? 0) > 0);
-/** The 3-D view has the glyph layer (the render lane's `windGlyphStats`): the specs that read the layer's own numbers need it. */
+/** The 3-D view has the glyph layer (`windGlyphStats`): the spec that reads the layer's own numbers needs it. */
 const hasGlyphLayer = (page: Page): Promise<boolean> => page.evaluate(() => typeof (window as unknown as { __firesim: { view: { windGlyphStats?: unknown } } }).__firesim.view.windGlyphStats === 'function');
 const layersOf = (page: Page): Promise<Record<string, unknown>> => page.evaluate(() => ((window as unknown as { __firesim: ViewHandle }).__firesim.view.getLayers?.() ?? {}) as Record<string, unknown>);
 
@@ -343,7 +343,7 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   await page.goto('/?debug=1');
   await acceptNotice(page);
   await buildKatoomba(page);
-  test.skip(!(await hasGlyphLayer(page)), 'needs the wind glyph layer of the render lane (SceneViewApi.windGlyphStats), which this tree does not have yet');
+  expect(await hasGlyphLayer(page), 'the real 3-D view has the glyph layer (windGlyphStats)').toBe(true);
   await expect.poll(() => airPicture(page), { timeout: 90_000 }).toBe(true);
   type Stats = { level: 0 | 1 | 2 | 3 | 4; cellPx: number; idle: string | null; active: boolean };
   const statsOf = (): Promise<Stats> => page.evaluate(() => (window as unknown as { __firesim: { view: { windGlyphStats(): Stats } } }).__firesim.view.windGlyphStats());

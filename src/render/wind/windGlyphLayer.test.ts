@@ -468,7 +468,16 @@ describe('WindGlyphLayer: the height', () => {
     expect(r.stub.begins[1]!.field).toBe(first);
     r.layer.setData(r.fresh());
     r.go(L2, { settle: true, dt: 300 });
-    expect(r.stub.begins[2]!.field.u).toBe(first.u); // refilled in place: one raster, never reallocated
+    // Refilled in place into one of the engine's two storages, used in turn (a build still tracing the last raster is never overwritten):
+    // the second fill is in the other one, the third is back in the first. Nothing is reallocated.
+    const second = r.stub.begins[2]!.field;
+    expect(second.u).not.toBe(first.u);
+    r.layer.setData(r.fresh());
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.stub.begins[3]!.field.u).toBe(first.u);
+    r.layer.setData(r.fresh());
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.stub.begins[4]!.field.u).toBe(second.u);
   });
 
   it('throws a build away when its air or height changed under it, and starts the right one', () => {
