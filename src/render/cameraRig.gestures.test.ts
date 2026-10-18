@@ -1,7 +1,8 @@
 /**
  * The touch state machine of CameraRig, driven with a minimal fake element (no browser): one finger grabs the ground and
- * pans, two fingers pinch and turn at once (OrbitControls' DOLLY_ROTATE), lifting or adding a finger switches without a jump,
- * extra fingers are ignored, cancel / interaction off / a flight end a drag, and a released flick glides on.
+ * pans, two fingers pinch and turn at once (OrbitControls' DOLLY_ROTATE, the turn mirrored: a drag to the right turns the camera
+ * anticlockwise seen from above; tilt, zoom, the mouse and eye level are OrbitControls' own), lifting or adding a finger switches
+ * without a jump, extra fingers are ignored, cancel / interaction off / a flight end a drag, and a released flick glides on.
  */
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -600,36 +601,36 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     r = setup();
   });
 
-  it('orbit view: a two-finger drag to the right moves the camera clockwise seen from above (azimuth up), 30° per 100 px', () => {
+  it('orbit view: a two-finger drag to the right turns the camera anticlockwise seen from above (azimuth down), 30° per 100 px', () => {
     const before = r.state();
     const was = planOffset(r);
     twoFingerSwipe(r, 100, 0);
     const after = r.state();
-    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(-degOf(100), 0);
-    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), 'compass azimuth of the camera').toBeCloseTo(degOf(100), 0);
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(degOf(100), 0);
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), 'compass azimuth of the camera').toBeCloseTo(-degOf(100), 0);
     expect(degOf(100)).toBeCloseTo(30, 6);
     expect(after.polarDeg).toBeCloseTo(before.polarDeg, 3);
   });
 
-  it('orbit view: a two-finger drag to the left goes the other way round, by the same amount', () => {
+  it('orbit view: a two-finger drag to the left turns the camera clockwise, by the same amount', () => {
     const before = r.state();
     const was = planOffset(r);
     twoFingerSwipe(r, -100, 0);
-    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(degOf(100), 0);
-    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(-degOf(100), 0);
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(-degOf(100), 0);
+    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
   });
 
-  it('top view: the same direction and speed (the plan view cannot tilt)', () => {
+  it('top view: the same direction and speed (the plan view cannot tilt): to the right turns the camera anticlockwise', () => {
     toTop(r);
     const before = r.state();
     const was = planOffset(r);
     twoFingerSwipe(r, 100, 0);
     const after = r.state();
-    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(-degOf(100), 0);
-    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(degOf(100), 0);
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(-degOf(100), 0);
     expect(after.polarDeg).toBeLessThan(0.2);
     twoFingerSwipe(r, -100, 0);
-    expect(azimuthChange(r.state().azimuthDeg, after.azimuthDeg), 'and back again to the left').toBeCloseTo(-degOf(100), 0);
+    expect(azimuthChange(r.state().azimuthDeg, after.azimuthDeg), 'and back again to the left').toBeCloseTo(degOf(100), 0);
   });
 
   it('the turn goes one way only while the damping runs out (no overshoot, no reversal)', () => {
@@ -648,10 +649,10 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     for (let i = 0; i < 100; i++) {
       r.frames(1);
       const now = wentRound(was, planOffset(r));
-      expect(now, `frame ${i}`).toBeLessThanOrEqual(last + 1e-9);
+      expect(now, `frame ${i}`).toBeGreaterThanOrEqual(last - 1e-9); // anticlockwise only, never back
       last = now;
     }
-    expect(last).toBeCloseTo(-degOf(100), 0);
+    expect(last).toBeCloseTo(degOf(100), 0);
     r.up(2);
     r.up(1);
   });
@@ -668,11 +669,11 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     expect(azimuthChange(again.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(0, 3);
   });
 
-  it('a diagonal drag turns by its horizontal part and tilts by its vertical part, each at its own speed', () => {
+  it('a diagonal drag to the lower right turns anticlockwise by its horizontal part and tilts by its vertical part, each at its own speed', () => {
     const before = r.state();
     twoFingerSwipe(r, 80, 60);
     const after = r.state();
-    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(80), 0);
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(-degOf(80), 0);
     expect(after.polarDeg - before.polarDeg).toBeCloseTo(-degOf(60), 0);
   });
 
@@ -685,7 +686,7 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
       const after = s.state();
       ratios.push(after.distance / before.distance);
       expect(after.polarDeg, `tilt, drift ${dx}`).toBeCloseTo(before.polarDeg, 3);
-      expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), `turn, drift ${dx}`).toBeCloseTo(degOf(dx), 0);
+      expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), `turn, drift ${dx}`).toBeCloseTo(-degOf(dx), 0);
     }
     expect(ratios[0], 'spacing × 2 → distance ÷ 2').toBeCloseTo(0.5, 2);
     expect(ratios[1], 'with a drift to the right').toBeCloseTo(0.5, 1);
@@ -693,13 +694,13 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     expect(Math.abs(ratios[1]! - ratios[2]!), 'the same zoom either way').toBeLessThan(0.01);
   });
 
-  it('a flight does not change it: after a fly-to a two-finger drag to the right still goes the same way round', () => {
+  it('after a fly-to a two-finger drag to the right still turns the camera anticlockwise (the flight leaves nothing behind)', () => {
     r.rig.flyTo(500, 400, 3000);
     for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
     r.frames(5);
     const was = planOffset(r);
     twoFingerSwipe(r, 100, 0);
-    expect(wentRound(was, planOffset(r))).toBeCloseTo(-degOf(100), 0);
+    expect(wentRound(was, planOffset(r))).toBeCloseTo(degOf(100), 0);
   });
 });
 
