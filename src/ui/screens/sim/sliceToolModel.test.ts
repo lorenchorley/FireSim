@@ -22,9 +22,12 @@ import {
   OFF_NOTE,
   OFF_SAY,
   PLACE_LABEL,
+  PLACING_CANCELLED_SAY,
   SET_LABEL,
   TABS_LABEL,
   TAB_LABEL,
+  TAB_ORDER,
+  TAB_SAY,
   alongPoints,
   backStep,
   cancelPlacing,
@@ -55,6 +58,7 @@ import {
   sliceMarks,
   startPlacing,
   swapEnds,
+  tabKeyTarget,
   tabSay,
   tapCandidate,
   turnOffSlice,
@@ -574,10 +578,27 @@ describe('the Side view and Map view tabs (0.5.0)', () => {
     expect(tabSay({ ...s, placing: 'a' }, 'side')).toBeNull();
   });
 
-  it('says that a placement was cancelled, in the words of Cancel, and nothing for a change with no placement', () => {
-    expect(tabSay({ ...initialSliceToolState(), placing: 'b' }, 'map')).toBe('Placing cancelled.');
-    expect(tabSay({ ...initialSliceToolState(), placing: 'b' }, 'map')).toBe(cancelPlacing({ ...initialSliceToolState(), placing: 'b' }).say);
-    expect(tabSay(initialSliceToolState(), 'map')).toBeNull();
+  it('says which view is now shown and what is in it, so a screen reader hears the change (polite, through the live region); with the placement that was dropped, in the words of Cancel', () => {
+    expect(TAB_SAY).toEqual({ side: 'Side view.', map: 'Map view: wind arrows and flow lines.' });
+    expect(tabSay(initialSliceToolState(), 'map')).toBe('Map view: wind arrows and flow lines.');
+    expect(tabSay({ ...initialSliceToolState(), tab: 'map' }, 'side')).toBe('Side view.');
+    expect(tabSay({ ...initialSliceToolState(), placing: 'b' }, 'map')).toBe(`Map view: wind arrows and flow lines. ${PLACING_CANCELLED_SAY}`);
+    expect(PLACING_CANCELLED_SAY).toBe(cancelPlacing({ ...initialSliceToolState(), placing: 'b' }).say);
+    for (const say of [TAB_SAY.side, TAB_SAY.map]) {
+      expect(say).toMatch(/^[A-Z].*[.]$/);
+      expect(say).not.toMatch(/[—–]/);
+    }
+  });
+
+  it('the tabs are two, Side view then Map view, and the keys move between them as the bottom sheet’s tabs do: Left and Right wrap round, Home and End go to the ends, anything else is not a tab key', () => {
+    expect(TAB_ORDER).toEqual(['side', 'map']);
+    expect(tabKeyTarget('ArrowRight', 0, 2)).toBe(1);
+    expect(tabKeyTarget('ArrowRight', 1, 2)).toBe(0);
+    expect(tabKeyTarget('ArrowLeft', 1, 2)).toBe(0);
+    expect(tabKeyTarget('ArrowLeft', 0, 2)).toBe(1);
+    expect(tabKeyTarget('Home', 1, 2)).toBe(0);
+    expect(tabKeyTarget('End', 0, 2)).toBe(1);
+    for (const k of ['ArrowDown', 'ArrowUp', 'Tab', 'Enter', ' ', 'Escape', 'a']) expect(tabKeyTarget(k, 0, 2), k).toBeNull();
   });
 
   it('the tab survives closing and opening the tool again (only a placement is dropped)', () => {

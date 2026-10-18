@@ -617,21 +617,76 @@ button.lp-heat-main:active {
   white-space: pre-line; /* one line of the caption for each sentence */
 }
 
-/* Six chips in two rows of three (four and two would leave a short second row at 412 px, and the landscape side column is narrow too). */
+/* Six chips, three to a row where three fit (four and two would leave a short second row at 412 px, and the landscape side column is narrow too), two or one
+   where they do not (a large text size). A chip is as wide as its label needs (the fixed part is its padding and its check): its words never break inside. */
 .wg-options .chips {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--fs-sm) * 3.2 + 52px), 1fr));
 }
 
 .wg-options .chip {
   justify-content: center;
 }
 
+.wg-options .chip-radio .chip-text {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
 /* The Air slices tool's Side view / Map view tabs sit in its header, between the title and Close. The 44 px tabs fit the header's 48 px row without its
    padding, so the header is no taller than it was (the short landscape column has no room to spare). */
 .panel-head .slice-tabs {
   flex: 0 1 auto;
+  min-width: min-content; /* narrower than its longest word it would spill over the tab next to it */
   margin: 0;
+}
+
+/* The title and the tabs wrap as one group, so Close stays at the end of the first row: at a large text size the tabs go under the title. */
+.slice-head-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--sp-2);
+}
+
+/* The tabs are buttons (tablist, tab, aria-selected), drawn as the segmented control's segments; a label breaks between its words, never inside one. */
+.slice-tab {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.slice-tab:active .segmented-face {
+  background: var(--state-press);
+}
+
+.slice-tab[aria-selected='true'] .segmented-face {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.slice-tab[aria-selected='true'] .segmented-check {
+  display: block;
+}
+
+.slice-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
+}
+
+:root[data-contrast='high'] .slice-tab[aria-selected='true'] .segmented-face {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.slice-tabs .segmented-text {
+  overflow-wrap: normal;
+  hyphens: manual;
 }
 
 .slice-tool .panel-head {

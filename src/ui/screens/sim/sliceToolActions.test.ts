@@ -447,18 +447,22 @@ describe('the Side view and Map view tabs (0.5.0)', () => {
     r.said.length = 0;
     t.setTab('map');
     expect(r.ui.get().slice).toMatchObject({ tab: 'map', placing: null, candidate: null, draft: { a: [0, 0], b: null } });
-    expect(r.said).toEqual(['Placing cancelled.']);
+    expect(r.said).toEqual(['Map view: wind arrows and flow lines. Placing cancelled.']); // one polite announcement: the view, then the dropped placement
   });
 
-  it('the tab already shown changes nothing and says nothing; a change with nothing placed is quiet', () => {
+  it('the tab already shown changes nothing and says nothing; a change says which view is shown, once', () => {
     const r = rig();
     const t = createSliceToolActions(r.host);
     t.open();
     const before = r.ui.get().slice;
     t.setTab('side');
     expect(r.ui.get().slice).toBe(before);
-    t.setTab('map');
     expect(r.said).toEqual([]);
+    t.setTab('map');
+    expect(r.said).toEqual(['Map view: wind arrows and flow lines.']);
+    t.setTab('map');
+    t.setTab('side');
+    expect(r.said).toEqual(['Map view: wind arrows and flow lines.', 'Side view.']);
     expect(r.calls).toEqual([]); // a tab is the tool's own state: the layers and the scene are not touched
   });
 });

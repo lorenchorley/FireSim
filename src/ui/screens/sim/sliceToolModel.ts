@@ -48,6 +48,8 @@ export const AIR_PANEL_TITLE = 'Air slice';
 /** The two tabs in the tool's header (0.5.0): the side view of the air, and the map with the wind arrows and flow lines. */
 export const TAB_LABEL: Record<SliceToolTab, string> = { side: 'Side view', map: 'Map view' };
 export const TABS_LABEL = 'Air slice view';
+/** What the screen reader hears when a tab is chosen. */
+export const TAB_SAY: Record<SliceToolTab, string> = { side: 'Side view.', map: 'Map view: wind arrows and flow lines.' };
 export const NEEDS_3D_VIEW = 'The side view needs the 3-D view.';
 export const LOADING_LINE = 'Loading the side view';
 export const LOAD_FAILED_LINE = 'The side view could not be loaded.';
@@ -312,8 +314,21 @@ export function withTab(s: SliceToolState, tab: SliceToolTab): SliceToolState {
   return s.tab === tab ? s : { ...s, tab, placing: null, candidate: null };
 }
 
-/** What the screen reader hears for a tab change: only the placement that was dropped, with the words of Cancel. */
-export const tabSay = (s: SliceToolState, tab: SliceToolTab): string | null => (s.tab !== tab && s.placing ? PLACING_CANCELLED_SAY : null);
+/**
+ * What the screen reader hears for a tab change (the polite live region; the tab itself says "selected" too): which view is now shown and what is in it, then
+ * the placement that was dropped, with the words of Cancel. Nothing when the tab already shown is pressed.
+ */
+export const tabSay = (s: SliceToolState, tab: SliceToolTab): string | null => (s.tab === tab ? null : [TAB_SAY[tab], s.placing && PLACING_CANCELLED_SAY].filter(Boolean).join(' '));
+
+/** The tabs from left to right, and the one a key moves to (Left and Right wrap round, Home and End go to the ends; null: not a tab key). */
+export const TAB_ORDER: readonly SliceToolTab[] = ['side', 'map'];
+export function tabKeyTarget(key: string, index: number, count: number): number | null {
+  if (key === 'ArrowRight') return (index + 1) % count;
+  if (key === 'ArrowLeft') return (index + count - 1) % count;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return null;
+}
 
 /** A tap on the map while placing: the tapped point waits in `candidate` until "Place here". Outside placing a tap does nothing. */
 export function tapCandidate(s: SliceToolState, p: SlicePoint): SliceToolState {
