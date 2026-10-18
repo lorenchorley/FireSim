@@ -361,6 +361,74 @@ const layersOf = (page: Page): Promise<Record<string, unknown>> => page.evaluate
 /** The screen-reader live region (the app's one polite announcer). */
 const liveRegion = (page: Page) => page.locator('div.sr-only[aria-live="polite"]');
 
+/** Android's font scale at `k` (system text zoom scales text, not layout): every font-size and line-height token times k (as integration.spec does). */
+async function fontScale(page: Page, k: number): Promise<void> {
+  await page.evaluate((scale) => {
+    document.getElementById('font-scale')?.remove();
+    const cs = getComputedStyle(document.documentElement);
+    const decl: string[] = [];
+    for (const n of ['xs', 'sm', 'md', 'lg', 'xl', '2xl']) decl.push(`--fs-${n}: ${parseFloat(cs.getPropertyValue(`--fs-${n}`)) * scale}px !important`);
+    for (const n of ['xs', 'sm', 'md', 'lg', 'xl']) {
+      const v = parseFloat(cs.getPropertyValue(`--lh-${n}`));
+      if (Number.isFinite(v)) decl.push(`--lh-${n}: ${v * scale}px !important`);
+    }
+    const st = document.createElement('style');
+    st.id = 'font-scale';
+    st.textContent = `:root { ${decl.join('; ')} }`;
+    document.head.append(st);
+  }, k);
+  await page.waitForTimeout(250);
+}
+
+/**
+ * What is wrong with the tool's tabs, chips and switch at this text size: a word broken inside itself (a range over the word has rectangles on two
+ * lines), a label that runs out of its tab or chip, a control that sticks out of the panel's sides or has no size, the page scrolling sideways.
+ */
+async function toolDamage(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    const panel = document.querySelector('[data-testid="air-panel"]') as HTMLElement;
+    const pr = panel.getBoundingClientRect();
+    if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) bad.push('the page scrolls sideways');
+    const shown = (el: Element): boolean => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const words = panel.querySelectorAll('[data-testid="slice-tabs"] .segmented-main, [data-testid="wind-height"] .chip-text, [data-testid="layer-windGlyphs"] .toggle-label');
+    for (const el of words) {
+      if (!shown(el)) continue;
+      const node = el.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) continue;
+      for (const m of (node.textContent ?? '').matchAll(/\S+/g)) {
+        const r = document.createRange();
+        r.setStart(node, m.index!);
+        r.setEnd(node, m.index! + m[0].length);
+        const lines = new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top)));
+        if (lines.size > 1) bad.push(`the word "${m[0]}" is broken across lines`);
+      }
+    }
+    const inside = (what: string, el: Element, box: DOMRect, slack = 1): void => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) bad.push(`${what} has no size`);
+      else if (r.left < box.left - slack || r.right > box.right + slack) bad.push(`${what} sticks out (${Math.round(r.left)} to ${Math.round(r.right)} in ${Math.round(box.left)} to ${Math.round(box.right)})`);
+    };
+    for (const el of panel.querySelectorAll('[data-testid="slice-tabs"] .slice-tab, [data-testid="air-close"], [data-testid="wind-height"] label.chip, [data-testid="layer-windGlyphs"]')) {
+      if (el.closest('[hidden]')) continue;
+      inside(el.getAttribute('data-testid') ?? el.textContent!.trim(), el, pr);
+    }
+    for (const face of panel.querySelectorAll('[data-testid="slice-tabs"] .segmented-face')) inside(`the label of the tab "${face.textContent!.trim()}"`, face.querySelector('.segmented-text')!, face.getBoundingClientRect());
+    for (const chip of panel.querySelectorAll('[data-testid="wind-height"] label.chip')) {
+      if (shown(chip)) inside(`the label of the chip "${chip.textContent!.trim()}"`, chip.querySelector('.chip-text')!, chip.getBoundingClientRect());
+    }
+    return bad;
+  });
+}
+
+/** Pictures for a look by eye, when asked for (FIRESIM_SHOTS is a folder). */
+async function shot(page: Page, name: string): Promise<void> {
+  if (process.env.FIRESIM_SHOTS) await page.screenshot({ path: `${process.env.FIRESIM_SHOTS}/${name}.png` });
+}
+
 test('2-D map: no tabs (the tool is one line)', async ({ page }) => {
   await buildMock(page);
   await openAirTool(page);
@@ -383,8 +451,8 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
 
   await openAirTool(page);
   const tabs = page.getByTestId('slice-tabs');
-  const sideTab = tabs.getByRole('radio', { name: 'Side view' });
-  const mapTab = tabs.getByRole('radio', { name: 'Map view' });
+  const sideTab = tabs.getByRole('tab', { name: 'Side view' });
+  const mapTab = tabs.getByRole('tab', { name: 'Map view' });
   const mapView = page.getByTestId('slice-map-tab');
   const glyphLabel = page.getByTestId('layer-windGlyphs');
   const glyphSwitch = glyphLabel.getByRole('switch');
@@ -393,8 +461,8 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   const off = page.getByTestId('slice-off');
 
   // ───────── the header: the title, the two tabs and Close fit in one row, at the phone sizes the tool is judged at ─────────
-  await expect(sideTab).toBeChecked();
-  await expect(mapTab).not.toBeChecked();
+  await expect(sideTab).toHaveAttribute('aria-selected', 'true');
+  await expect(mapTab).toHaveAttribute('aria-selected', 'false');
   await expect(page.getByTestId('air-panel').locator('h2')).toHaveText('Air slice'); // the old subtitle "Side view" is the tab now
   for (const [w, h] of [[412, 915], [360, 640], [844, 390]] as const) {
     await page.setViewportSize({ width: w, height: h });
@@ -404,7 +472,7 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
       const t = document.querySelector('[data-testid="slice-tabs"]')!.getBoundingClientRect();
       const c = document.querySelector('[data-testid="air-close"]')!.getBoundingClientRect();
       const title = document.querySelector('[data-testid="air-panel"] h2') as HTMLElement;
-      const options = [...document.querySelectorAll('[data-testid="slice-tabs"] .segmented-option')].map((o) => o.getBoundingClientRect());
+      const options = [...document.querySelectorAll('[data-testid="slice-tabs"] [role="tab"]')].map((o) => o.getBoundingClientRect());
       return { head: head.height, tabsRight: t.right, tabsLeft: t.left, closeLeft: c.left, closeRight: c.right, titleClipped: title.scrollWidth > title.clientWidth + 1, titleHeight: title.getBoundingClientRect().height, optionHeights: options.map((o) => o.height), headRight: head.right };
     });
     expect(m.head, `the header is one row, as tall as it was before the tabs (49 px with its border) at ${w}x${h}`).toBeLessThanOrEqual(50);
@@ -417,8 +485,42 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await page.setViewportSize({ width: 412, height: 915 });
   await page.waitForTimeout(500);
 
+  // ───────── the tabs are a tablist: roles, one tab in the tab order, arrow keys choose, the change is announced politely ─────────
+  await expect(page.getByRole('tablist', { name: 'Air slice view' })).toHaveCount(1);
+  await expect(tabs.getByRole('tab')).toHaveCount(2);
+  await expect(tabs.getByRole('radio'), 'the tabs are not a radio group any more').toHaveCount(0);
+  await expect(sideTab).toHaveAttribute('tabindex', '0');
+  await expect(mapTab).toHaveAttribute('tabindex', '-1');
+  const panelOf = page.getByTestId('air-panel').getByRole('tabpanel');
+  await expect(panelOf, 'the body is the panel of the chosen tab').toHaveAccessibleName('Side view');
+  await expect(sideTab).toHaveAttribute('aria-controls', /.+/);
+  expect(await sideTab.getAttribute('aria-controls')).toBe(await panelOf.getAttribute('id'));
+  expect(await mapTab.getAttribute('aria-controls')).toBe(await panelOf.getAttribute('id'));
+  await sideTab.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(mapTab).toHaveAttribute('aria-selected', 'true');
+  await expect(mapTab, 'the arrow moves the focus with the choice').toBeFocused();
+  await expect(sideTab).toHaveAttribute('tabindex', '-1');
+  await expect(mapTab).toHaveAttribute('tabindex', '0');
+  await expect(mapView).toBeVisible();
+  await expect(panelOf).toHaveAccessibleName('Map view');
+  await expect(liveRegion(page), 'the change is said politely, in the one live region').toHaveText('Map view: wind arrows and flow lines.');
+  await expect(page.getByTestId('air-panel').locator('[role="alert"]'), 'no alert role in the tool').toHaveCount(0);
+  await page.keyboard.press('ArrowLeft');
+  await expect(sideTab).toHaveAttribute('aria-selected', 'true');
+  await expect(sideTab).toBeFocused();
+  await expect(liveRegion(page)).toHaveText('Side view.');
+  await page.keyboard.press('End');
+  await expect(mapTab).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowRight'); // wraps round
+  await expect(sideTab).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Home');
+  await expect(sideTab).toHaveAttribute('aria-selected', 'true');
+  await expect(sideTab).toBeFocused();
+
   // ───────── the Map view: the arrows switch and nothing of the side view; nothing to turn off yet ─────────
-  await mapTab.check({ force: true });
+  await mapTab.click();
   await expect(mapView).toBeVisible();
   await expect(page.getByTestId('slice-canvas')).toHaveCount(0);
   await expect(page.getByTestId('slice-set-a')).toHaveCount(0);
@@ -426,12 +528,24 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await expect(chips).toHaveCount(0); // built when the switch is first on
   await expect(glyphSwitch).not.toBeChecked();
   await expect(glyphSwitch).toBeEnabled(); // the fast tier's diagnosed wind is a wind to draw
+  // With the switch off the tab is not a lone switch: it is named with "Wind", and one line says what it does (and is its description).
+  await expect(page.getByRole('switch', { name: 'Wind arrows and flow lines' })).toHaveCount(1);
+  const intro = page.getByTestId('wind-glyph-intro');
+  await expect(intro).toBeVisible();
+  await expect(intro).toHaveText('Draws the wind on the map: arrows from far away, flow lines when you zoom in.');
+  await expect(glyphSwitch).toHaveAccessibleDescription('Draws the wind on the map: arrows from far away, flow lines when you zoom in.');
+  expect(await intro.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
+  await shot(page, 'map-tab-off-412x915');
   await glyphLabel.click();
   await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(true);
+  await expect(intro, 'once the switch is on the caption says what is drawn, and the hint goes').toBeHidden();
   await expect(chips).toBeVisible();
   await expect(chips.getByRole('radio')).toHaveCount(6);
-  await expect(caption).toContainText('Wind about 10 m above open ground');
+  await expect(chips.getByRole('radio', { name: '10 m', exact: true }), 'the first chip is the 10 m wind, as the caption says').toBeChecked();
+  await expect(caption).toContainText('Wind about 10 m above open ground, as the model fits it to the terrain'); // the fast tier's own words
+  await expect(caption).toContainText(/ · model grid \d+ m · air from \d\d:\d\d\./);
   await expect(caption).toContainText('Diagnosed wind: terrain effects only, no plume.'); // the fast tier says what it leaves out
+  await expect(caption).toContainText('On a calm night the fire can feel much less wind than this in places, and much more in others.');
   await chips.getByRole('radio', { name: '300 m' }).check({ force: true });
   await expect.poll(async () => (await layersOf(page)).windHeight).toBe(300);
   await expect(caption).toContainText('Wind at 300 m above the ground');
@@ -447,10 +561,25 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await layers.getByRole('button', { name: 'Close' }).click();
   await openAirTool(page);
   await expect(mapView, 'the tool opens on the tab it was left on').toBeVisible();
-  await expect(mapTab).toBeChecked();
+  await expect(mapTab).toHaveAttribute('aria-selected', 'true');
   await expect(glyphSwitch).toBeChecked();
   await expect(chips.getByRole('radio', { name: '1 km' })).toBeChecked();
   await expect(caption).toContainText('Wind at 1 km above the ground');
+
+  // ───────── Escape closes the tool from a chip (a radio) and from the switch (a checkbox) in one press, as from a button; Back does too ─────────
+  await chips.getByRole('radio', { name: '300 m' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('air-panel'), 'Escape on a Wind height chip closes the tool').toHaveCount(0);
+  await openAirTool(page);
+  await glyphSwitch.focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('air-panel'), 'Escape on the switch closes the tool').toHaveCount(0);
+  await openAirTool(page);
+  await chips.getByRole('radio', { name: '2 km' }).focus();
+  await page.goBack(); // Android hardware Back
+  await expect(page.getByTestId('air-panel'), 'Back from a chip closes the tool in one press').toHaveCount(0);
+  await openAirTool(page);
+  await expect(chips.getByRole('radio', { name: '1 km' }), 'the keys closed the tool and changed nothing else').toBeChecked();
   await glyphLabel.click(); // off in the Map view ...
   await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(false);
   await expect(chips).toBeHidden();
@@ -461,15 +590,66 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await layers.getByRole('button', { name: 'Close' }).click();
   await openAirTool(page);
 
+  // ───────── at Android's 200 % text size no word of the tabs, the chips or the switch breaks inside itself, and nothing sticks out or is hidden ─────────
+  // (The text size is set before the tool opens, as a phone's setting is: the screen lays itself out for the panel it opens.)
+  await glyphLabel.click(); // on, so the chips are there
+  await expect(chips).toBeVisible();
+  const reopen = async (tab: 'side' | 'map'): Promise<void> => {
+    await page.getByTestId('air-close').click();
+    await openAirTool(page);
+    await (tab === 'map' ? mapTab : sideTab).click();
+    await page.waitForTimeout(400);
+  };
+  for (const [w, h] of [
+    [412, 915],
+    [360, 640],
+    [844, 390],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    for (const k of [1, 2]) {
+      await fontScale(page, k);
+      await reopen('map');
+      expect(await toolDamage(page), `Map view at ${w}x${h}, text x${k}`).toEqual([]);
+      await shot(page, `map-${w}x${h}-x${k}`);
+    }
+    await sideTab.click();
+    await page.waitForTimeout(400);
+    expect(await toolDamage(page), `Side view at ${w}x${h}, text x2`).toEqual([]);
+    await shot(page, `side-${w}x${h}-x2`);
+    await fontScale(page, 1);
+  }
+  // The check can fail: with the old rules put back (a word may break anywhere, the tabs may shrink below a word, the header does not wrap) the screen the
+  // reviewer found damaged, 844x390 at 200 % text, is reported with a word broken inside itself.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await fontScale(page, 2);
+  await reopen('map');
+  const old = await page.addStyleTag({
+    content: `.wg-options .chip-radio .chip-text { white-space: normal !important; overflow-wrap: anywhere !important; }
+      .wg-options .chips { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+      .slice-tabs .segmented-text { overflow-wrap: anywhere !important; hyphens: auto !important; }
+      .panel-head .slice-tabs { min-width: 0 !important; }
+      .slice-head-main { flex-wrap: nowrap !important; }`,
+  });
+  await page.waitForTimeout(300);
+  expect(await toolDamage(page), 'with the old rules the check sees the broken word').toContain('the word "view" is broken across lines');
+  await old.evaluate((n) => (n as Element).remove());
+  expect(await toolDamage(page), 'and with the rules of the page it does not').toEqual([]);
+  await fontScale(page, 1);
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.waitForTimeout(400);
+  await reopen('map');
+  await glyphLabel.click(); // off again
+  await expect(chips).toBeHidden();
+
   // ───────── a placement under way is dropped by the tab: no crosshair hidden on the map ─────────
-  await sideTab.check({ force: true });
+  await sideTab.click();
   await expect(page.getByTestId('slice-set-a')).toBeVisible();
   await page.getByTestId('slice-set-a').click();
   await expect(page.locator('.sim-screen .crosshair')).toBeVisible();
-  await mapTab.check({ force: true });
+  await mapTab.click();
   await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
-  await expect(liveRegion(page)).toHaveText('Placing cancelled.');
-  await sideTab.check({ force: true });
+  await expect(liveRegion(page)).toHaveText('Map view: wind arrows and flow lines. Placing cancelled.');
+  await sideTab.click();
   await expect(page.getByTestId('slice-set-a')).toBeVisible();
   await expect(page.getByTestId('slice-place')).toBeHidden();
   await expect(page.locator('.sim-screen .crosshair')).toBeHidden();
@@ -478,7 +658,7 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await page.getByTestId('slice-presets-toggle').click();
   await page.getByTestId('slice-preset-along').click();
   await expect.poll(() => cs(page)).toMatchObject({ enabled: true, preset: 'along' });
-  await mapTab.check({ force: true });
+  await mapTab.click();
   await expect(off).toBeVisible();
   await expect(page.getByTestId('slice-off-note'), 'a recorder with nothing in it: nothing to warn about').toBeHidden();
   await expect(off).not.toHaveAttribute('aria-describedby', /.+/);
@@ -491,9 +671,9 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   expect(gone.a ?? null).toBeNull();
   expect(gone.b ?? null).toBeNull();
   expect(gone.preset ?? null).toBeNull();
-  await expect(mapTab).toBeChecked();
+  await expect(mapTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('air-panel')).toBeVisible();
-  await sideTab.check({ force: true });
+  await sideTab.click();
   await expect(page.getByTestId('slice-empty')).toBeVisible();
   await expect(page.getByTestId('slice-set-a')).toBeVisible();
   await expect(off).toBeHidden();

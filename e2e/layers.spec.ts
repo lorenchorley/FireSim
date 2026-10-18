@@ -15,7 +15,7 @@ import { expect, test } from './fixtures';
 import { LAYER_CATALOG } from '../src/render/layerCatalog';
 import { LEVEL_LINE, SMOOTH_FIT_LINE } from '../src/ui/screens/sim/glyphWords';
 import { SCENE_WITH_SETTINGS } from '../src/ui/screens/sim/layersModel';
-import { acceptNotice, openMenu, pickViewMode, session } from './helpers';
+import { acceptNotice, openMenu, pickViewMode, session, viewMenuAction } from './helpers';
 
 async function buildKatoomba(page: Page): Promise<void> {
   await page.getByTestId('site-katoomba').click();
@@ -257,20 +257,23 @@ test('Arrows and flow lines: a switch row with the Wind height chips built when 
   await panel.getByTestId('layer-info-btn-windGlyphs').click();
   await expect(info).toBeHidden();
 
-  // ── On: the view's windGlyphs, the chips (Ground first), the caption ──
+  // ── On: the view's windGlyphs, the chips (the 10 m wind first), the caption ──
   await sw.click();
   await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(true);
   await expect(sw.getByRole('switch')).toBeChecked();
   const chips = panel.getByTestId('wind-height');
   await expect(chips).toBeVisible();
   await expect(chips.getByRole('radio')).toHaveCount(6);
-  for (const l of ['Ground', '50 m', '100 m', '300 m', '1 km', '2 km']) await expect(chips.getByRole('radio', { name: l })).toHaveCount(1);
-  await expect(chips.getByRole('radio', { name: 'Ground' })).toBeChecked();
+  for (const l of ['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']) await expect(chips.getByRole('radio', { name: l, exact: true })).toHaveCount(1);
+  await expect(chips.getByRole('radio', { name: '10 m', exact: true })).toBeChecked();
   expect((await layersOf(page)).windHeight).toBe('fire');
   const caption = panel.getByTestId('wind-glyph-caption');
-  await expect(caption).toContainText('Wind about 10 m above open ground, as the model fits it to the terrain');
-  await expect(caption).toContainText(/ · model grid \d+ m · wind from \d\d:\d\d/);
-  await expect(caption).toContainText('On a calm night the wind the fire feels can differ a lot from this.');
+  // The caption's words follow the air that is drawn: "as the model fits it to the terrain" is how the fast tier makes its wind, so the 3-D atmosphere does not say it.
+  const diagnosed = await page.evaluate(() => (window as unknown as { __firesim: { session: { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null } } } } }).__firesim.session.state.get().snapshot?.atmosphere?.kind === 'diagnosed');
+  await expect(caption).toContainText(diagnosed ? 'Wind about 10 m above open ground, as the model fits it to the terrain' : 'Wind about 10 m above open ground');
+  if (!diagnosed) await expect(caption).not.toContainText('fits it to the terrain');
+  await expect(caption.first()).toContainText(/ · model grid \d+ m · air from \d\d:\d\d\./); // the first line ends in a full stop
+  await expect(caption).toContainText('On a calm night the fire can feel much less wind than this in places, and much more in others.');
   // Each chip sets the height, and the caption says which one.
   for (const [label, h, words] of [
     ['50 m', 50, 'Wind at 50 m above the ground'],
@@ -345,7 +348,7 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   await buildKatoomba(page);
   expect(await hasGlyphLayer(page), 'the real 3-D view has the glyph layer (windGlyphStats)').toBe(true);
   await expect.poll(() => airPicture(page), { timeout: 90_000 }).toBe(true);
-  type Stats = { level: 0 | 1 | 2 | 3 | 4; cellPx: number; idle: string | null; active: boolean };
+  type Stats = { level: 0 | 1 | 2 | 3 | 4; cellPx: number; cellM: number; idle: string | null; active: boolean };
   const statsOf = (): Promise<Stats> => page.evaluate(() => (window as unknown as { __firesim: { view: { windGlyphStats(): Stats } } }).__firesim.view.windGlyphStats());
   const lookAt = (d: number): Promise<void> =>
     page.evaluate((dist) => {
@@ -353,6 +356,13 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
       v.lookAt(0, 0, dist, 200, 52, false);
       v.renderNow();
     }, d);
+
+  // A fire to fly to (the View menu's "Fly to the fire" has nothing to do without one).
+  await openMenu(page, 'tools');
+  await page.getByTestId('tool-fire').click();
+  await page.getByTestId('use-crosshair').click();
+  await page.getByTestId('confirm-fire').click();
+  await page.getByTestId('fire-panel').getByRole('button', { name: 'Close tool' }).click();
 
   await page.getByTestId('layers-fab').click();
   const panel = page.getByTestId('layers-panel');
@@ -365,7 +375,7 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   const legend = page.getByTestId('map-legend');
   await expect(legend).toContainText('Wind at 100 m');
   await expect(legend).toContainText(/km\/h/);
-  await panel.getByTestId('wind-height').getByRole('radio', { name: 'Ground' }).check({ force: true });
+  await panel.getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true }).check({ force: true });
   await expect(legend).toContainText('Wind near the ground');
 
   // From far to close, the line about the zoom says what the layer reports, and the smooth-fit sentence comes once a model cell is wider than 60 px.
@@ -381,11 +391,47 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   expect(seen, 'the level never falls as the camera comes closer').toEqual([...seen].sort((a, b) => a - b));
   expect(seen[seen.length - 1]!, 'curved flow lines or longer close in').toBeGreaterThanOrEqual(3);
 
-  // At eye level nothing is drawn, and the line says why and how to get back.
+  // At eye level nothing is drawn, and the line says why and how to get back; the legend card for the arrows (something not drawn there) is not shown either.
+  // (The Layers panel is open, so the card is covered whatever it holds: its text is what is read. The wind streaks, on by default, keep their own card.)
+  const ARROWS_CARD = 'Wind near the ground';
+  await expect(legend).toContainText(ARROWS_CARD);
   await pickViewMode(page, 'ground');
   await expect(level).toHaveText('Not drawn at eye level. Go back to the map view.', { timeout: 15_000 });
+  await expect(legend, 'no card for arrows that are not drawn').not.toContainText(ARROWS_CARD);
   await pickViewMode(page, 'orbit');
   await expect(level).not.toHaveText('Not drawn at eye level. Go back to the map view.', { timeout: 15_000 });
+  await expect(legend).toContainText(ARROWS_CARD);
+  // "Fly to the fire" from eye level puts the camera back in the 3-D view: the arrows and their card come back with it.
+  await pickViewMode(page, 'ground');
+  await expect(legend).not.toContainText(ARROWS_CARD);
+  await viewMenuAction(page, 'fly-fire');
+  await expect(level).not.toHaveText('Not drawn at eye level. Go back to the map view.', { timeout: 15_000 });
+  await expect(legend, 'the card is back once the camera is').toContainText(ARROWS_CARD);
+  await openMenu(page, 'view');
+  await expect(page.locator('.view-btn[data-mode="orbit"]'), 'the View menu says 3D view too').toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+
+  // The farthest zoom on a short landscape phone: a model cell is under 4 px there, so "Zoom in to see the wind arrows." is a line a person can reach
+  // (the unit test holds the arithmetic; this reads what the real layer says, once the view has taken the new size).
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(1000);
+  const far = await page.evaluate(() => {
+    const v = (window as unknown as { __firesim: { view: { rig: { controls: { maxDistance: number } }; lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void; renderNow(): void } } }).__firesim.view;
+    const d = v.rig.controls.maxDistance;
+    v.lookAt(0, 0, d, 200, 52, false);
+    v.renderNow();
+    return d;
+  });
+  await page.waitForTimeout(500);
+  const canvasH = await page.evaluate(() => Math.round(document.querySelector('canvas')!.getBoundingClientRect().height));
+  const st = await statsOf();
+  expect(canvasH, 'the view has taken the landscape size').toBeLessThan(400);
+  expect(st.level, `at the farthest zoom of 844x390 (${Math.round(far)} m out, a ${canvasH} px canvas, ${st.cellPx.toFixed(2)} px a cell of ${st.cellM} m) nothing is drawn: level 0`).toBe(0);
+  await level.scrollIntoViewIfNeeded(); // (the caption reads the layer only while it is on screen)
+  await expect(level).toHaveText(LEVEL_LINE[0], { timeout: 15_000 });
+  await expect(level).toHaveText('Zoom in to see the wind arrows.');
+  console.log(`[layers] 844x390 at the farthest zoom (${Math.round(far)} m out, a ${canvasH} px canvas): level ${st.level}, ${st.cellPx.toFixed(2)} px a cell of ${st.cellM} m`);
+  test.info().annotations.push({ type: 'farthest zoom at 844x390', description: `level ${st.level}, ${st.cellPx.toFixed(2)} px a cell` });
 });
 
 test('2-D stand-in map: a remembered "on" says why nothing is drawn, can be turned off, and offers no Wind height chips', async ({ page }) => {

@@ -200,13 +200,15 @@ describe('the line about the zoom', () => {
   });
 
   it('level 0 can be reached: a short landscape phone (844 x 390) at its farthest zoom over a 6 km area on a 133 m grid has cells under 4 px, so "Zoom in" is a line a person reads', () => {
-    // The camera's farthest distance is three times the area (cameraRig.setHeightField); the view's vertical field is 50 degrees (cameraRig.baseFov).
-    const farthest = 3 * 6000;
-    const level = (cssH: number): number => planLod(cellPxAt(133, farthest, 50, cssH), metresPerPixelAt(farthest, 50, cssH), null).level;
-    expect(level(390)).toBe(0);
-    expect(level(640)).toBe(1); // a portrait phone still draws its arrows at the farthest zoom
-    expect(level(915)).toBe(1);
-    expect(glyphLevelLine(stats({ level: level(390) as 0, active: false, idle: null }))).toBe('Zoom in to see the wind arrows.');
+    // The camera's farthest distance is three times the area (cameraRig.setHeightField); the view's vertical field is 50 degrees (cameraRig.baseFov); the canvas is
+    // the screen less the 24 px training strip. (The real layer reported level 0, 2.91 px a cell, at 844 x 390: e2e/layers.spec.ts.)
+    const farthest = 3 * 5990;
+    const level = (cssH: number): number => planLod(cellPxAt(133.33, farthest, 50, cssH), metresPerPixelAt(farthest, 50, cssH), null).level;
+    expect(cellPxAt(133.33, farthest, 50, 366)).toBeCloseTo(2.91, 1);
+    expect(level(366)).toBe(0);
+    expect(level(616)).toBe(1); // a portrait phone still draws its arrows at the farthest zoom
+    expect(level(891)).toBe(1);
+    expect(glyphLevelLine(stats({ level: level(366) as 0, active: false, idle: null }))).toBe('Zoom in to see the wind arrows.');
   });
 
   it('says why nothing is drawn: eye level, no wind picture yet; nothing when the layer is off or has said nothing', () => {
