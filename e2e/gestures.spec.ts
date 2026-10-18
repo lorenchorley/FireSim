@@ -8,7 +8,10 @@
  *   one finger        displaces the view like grabbing the map: the ground point under the finger stays under it, and the
  *                     azimuth, tilt and distance do not change
  *   two fingers       the drag of their midpoint turns (horizontal) and tilts (vertical) the view, the change of their
- *                     distance zooms ~1 : 1 - all at once, in any mix; target and the other quantities stay where they are
+ *                     distance zooms ~1 : 1 - all at once, in any mix; target and the other quantities stay where they are.
+ *                     A drag to the right turns the camera anticlockwise seen from above (its compass azimuth goes down),
+ *                     to the left clockwise; a drag down tilts towards the plan view (the tilt, the zoom and the mouse are
+ *                     not mirrored)
  *   lifting / adding  a finger continues / switches without a jump; a third finger is ignored
  *   taps              a quick tap still asks "Why here?", a pan drag does not
  *   eye level         one finger still looks around (the eye does not move)
@@ -206,18 +209,19 @@ test('map gestures with real touch: one finger pans, two fingers turn / tilt / z
     await hand.drag({ 1: [c2[0] + 30, c2[1]], 2: [c2[0] + 130, c2[1]] }, 10); // 80 px to the right
     const turned = await settle(page);
     const expected = (80 / H) * DEG_PER_HEIGHT;
-    expect(Math.abs(angleDiff(turned.azimuthDeg, s0.azimuthDeg)), 'azimuth change').toBeGreaterThan(expected * 0.95);
-    expect(Math.abs(angleDiff(turned.azimuthDeg, s0.azimuthDeg)), 'azimuth change').toBeLessThan(expected * 1.05);
+    // To the right: the camera goes anticlockwise round the target seen from above, so its compass azimuth goes down.
+    expect(angleDiff(turned.azimuthDeg, s0.azimuthDeg), 'azimuth change (anticlockwise)').toBeLessThan(-expected * 0.95);
+    expect(angleDiff(turned.azimuthDeg, s0.azimuthDeg), 'azimuth change (anticlockwise)').toBeGreaterThan(-expected * 1.05);
     expect(Math.abs(turned.polarDeg - s0.polarDeg), 'tilt unchanged').toBeLessThan(1);
     expect(Math.abs(turned.distance / s0.distance - 1), 'distance unchanged').toBeLessThan(0.03);
     expect(dist(turned.target, s0.target), 'target unchanged').toBeLessThan(25 * mpp);
-    // Vertical: 60 px down tilts (down = more top-down in this view).
+    // Vertical: 60 px down tilts (down = more top-down in this view: the polar angle goes down, as it always did).
     const before = turned;
     await hand.drag({ 1: [c2[0] + 30, c2[1] + 60], 2: [c2[0] + 130, c2[1] + 60] }, 10);
     const tilted = await settle(page);
     const expectedTilt = (60 / H) * DEG_PER_HEIGHT;
-    expect(Math.abs(tilted.polarDeg - before.polarDeg), 'tilt change').toBeGreaterThan(expectedTilt * 0.95);
-    expect(Math.abs(tilted.polarDeg - before.polarDeg), 'tilt change').toBeLessThan(expectedTilt * 1.05);
+    expect(before.polarDeg - tilted.polarDeg, 'tilt change (towards the plan view)').toBeGreaterThan(expectedTilt * 0.95);
+    expect(before.polarDeg - tilted.polarDeg, 'tilt change (towards the plan view)').toBeLessThan(expectedTilt * 1.05);
     expect(Math.abs(angleDiff(tilted.azimuthDeg, before.azimuthDeg)), 'azimuth unchanged').toBeLessThan(1);
     expect(Math.abs(tilted.distance / before.distance - 1)).toBeLessThan(0.03);
     expect(dist(tilted.target, before.target)).toBeLessThan(25 * mpp);
@@ -235,8 +239,8 @@ test('map gestures with real touch: one finger pans, two fingers turn / tilt / z
     await hand.drag({ 1: [c3[0] - 80 + 70, c3[1] + 50], 2: [c3[0] + 80 + 70, c3[1] + 50] }, 12);
     const r = await settle(page);
     expect(r.distance / s0.distance, 'zoom').toBeLessThan(0.65);
-    expect(Math.abs(angleDiff(r.azimuthDeg, s0.azimuthDeg)), 'turn').toBeGreaterThan(8);
-    expect(Math.abs(r.polarDeg - s0.polarDeg), 'tilt').toBeGreaterThan(5);
+    expect(angleDiff(r.azimuthDeg, s0.azimuthDeg), 'turn (the midpoint went right: anticlockwise)').toBeLessThan(-8);
+    expect(s0.polarDeg - r.polarDeg, 'tilt (the midpoint went down: towards the plan view)').toBeGreaterThan(5);
     await hand.upAll();
     await settle(page);
   });
@@ -364,7 +368,7 @@ test('map gestures with real touch: top view, eye level, Draw mode and the mouse
     const r = await settle(page);
     expect(r.polarDeg).toBeLessThan(0.2);
     expect(r.distance / panned.distance).toBeLessThan(0.65);
-    expect(Math.abs(angleDiff(r.azimuthDeg, panned.azimuthDeg))).toBeGreaterThan(5);
+    expect(angleDiff(r.azimuthDeg, panned.azimuthDeg), 'turn (the midpoint went right: anticlockwise)').toBeLessThan(-5);
     await hand.upAll();
     await settle(page);
   });
@@ -382,7 +386,7 @@ test('map gestures with real touch: top view, eye level, Draw mode and the mouse
     await hand.drag({ 1: [x + 80, y + 20] }, 10);
     await hand.up(1);
     const s1 = await settle(page);
-    expect(Math.abs(angleDiff(s1.headingDeg, h0)), 'the view turned').toBeGreaterThan(5);
+    expect(angleDiff(s1.headingDeg, h0), 'the view turned (a finger dragged to the right: anticlockwise, as it always did)').toBeLessThan(-5);
     const eye1 = await eyePosition(page);
     expect(Math.hypot(eye1[0] - eye0[0], eye1[1] - eye0[1], eye1[2] - eye0[2]), 'the eye stayed').toBeLessThan(0.5);
     // Two fingers look around too; a third is ignored.
@@ -461,8 +465,9 @@ test('map gestures with real touch: top view, eye level, Draw mode and the mouse
     await page.mouse.move(c[0] + 60, c[1] + 40, { steps: 8 });
     await page.mouse.up({ button: 'right' });
     const r = await settle(page);
-    expect(Math.abs(angleDiff(r.azimuthDeg, p.azimuthDeg)), 'right drag turns').toBeGreaterThan(5);
-    expect(Math.abs(r.polarDeg - p.polarDeg), 'right drag tilts').toBeGreaterThan(3);
+    // The mouse is not mirrored: a right-button drag to the right turns the camera clockwise (azimuth up), one down tilts to the plan view.
+    expect(angleDiff(r.azimuthDeg, p.azimuthDeg), 'right drag turns (clockwise)').toBeGreaterThan(5);
+    expect(p.polarDeg - r.polarDeg, 'right drag tilts (towards the plan view)').toBeGreaterThan(3);
     await page.mouse.move(c[0], c[1]);
     await page.mouse.wheel(0, -300);
     const z = await settle(page);
