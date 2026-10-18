@@ -8,7 +8,7 @@
  *   site=katoomba  cell=20  t=10800 (s)  start=13 (local hour)  view=orbit|top|ground  overlay=<OverlayKind>
  *   wind=off|surface|volume  cross=1  crossAz=<deg>  imagery=0|1  veg=0|1  vex=1  iso=30  hud=0  play=1
  *   cam=x,y,dist,az,tilt (camera target & pose)  user=x,y,heading  quality=low|medium|high  focus=1
- *   smoke=0 flames=0 embers=0 legend=0 dpr=<fixed dpr>  arrows=1 (wind arrows and flow lines)  wh=fire|50|100|300|1000|2000 (their height)  brush=x,y,radius  crossAt=x,y
+ *   smoke=0 flames=0 embers=0 legend=0 dpr=<fixed dpr>  arrows=1 (wind arrows and flow lines)  wh=fire|50|100|300|1000|2000 (their height; any other value stops the page with a message)  brush=x,y,radius  crossAt=x,y
  *   Cliff drawing (workstream H): hires=1 feeds the 10 m DEM to setScenario as `hiRes` the way the app does (the fire-grid terrain is its
  *   block average, cell=30 by default), which is what turns the sharpened cliffs on; without it the old path runs. marks=0 leaves out the
  *   ignition, insight and user markers; eye=ux,uy,lx,ly[,h] stands at eye level (h m, default 1.7) at (ux, uy) looking at the ground point (lx, ly).
@@ -26,6 +26,7 @@ import type { ContextLayers } from '../core/places';
 import { fireTerrainFromHiRes } from '../scenario/terrain';
 import { buildTerrain } from '../terrain';
 import { loadDemoImagery } from './demoAssets';
+import { devWindHeight } from './devParams';
 import { fabricateFuel, SyntheticFire } from './devScenario';
 import { fireCentroid } from './fields';
 import type { OverlayKind } from './layers';
@@ -43,6 +44,7 @@ declare global {
 }
 
 async function main(): Promise<void> {
+  const windHeight = devWindHeight(q); // first: a typo in wh= stops the page before the data loads
   setAssetBase(`${location.origin}/`);
   const siteId = q.get('site') ?? 'katoomba';
   const site = DEMO_SITES.find((s) => s.id === siteId) ?? DEMO_SITES[0]!;
@@ -98,7 +100,7 @@ async function main(): Promise<void> {
     vegetation: q.get('veg') !== '0',
     wind: (q.get('wind') as 'off' | 'surface' | 'volume') ?? 'surface',
     windGlyphs: q.get('arrows') === '1',
-    windHeight: q.get('wh') === 'fire' || q.get('wh') === null ? 'fire' : (num('wh', 100) as 50 | 100 | 300 | 1000 | 2000),
+    windHeight,
     isochroneMinutes: num('iso', 30),
     smoke: q.get('smoke') !== '0',
     flames: q.get('flames') !== '0',

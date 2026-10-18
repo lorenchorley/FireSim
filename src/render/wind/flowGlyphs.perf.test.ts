@@ -42,24 +42,65 @@ function slices(b: GlyphBuilder, sc: Scenario): number[] {
 }
 
 describe('glyph rebuild cost', () => {
-  // First of all: this is the first code that runs in this worker, so the builder is as cold as it will ever be.
-  it('the cold start: the first rebuilds of a fresh builder overshoot a slice by a bounded amount', () => {
+  // The cold start is two tests. What it protects is that a slice of the first rebuilds of a builder (code still in the interpreter, 4 to 7
+  // times slower) stops near its budget, because the clock is read every 8 glyphs there (every 32 later). That rule is counted on a fake
+  // clock, so it cannot fail because the machine is busy; the wall clock is only asked about the typical slice (the median), and the worst
+  // is logged: one descheduled slice is no news (it took 66.7 ms against a limit of 43.4 on a loaded run), and the cold rebuilds are only
+  // about nine slices in all, so no percentile above the median is steadier than the worst.
+
+  it('the cold start reads the clock every 8 glyphs in the first four rebuilds: a slice cannot run past its budget by more than that, counted on a fake clock', () => {
+    const sc = heavy();
+    const b = createGlyphBuilder('high');
+    let reads = 0;
+    const clock = (): number => ++reads; // one fake millisecond a read
+    let worstCold = 0;
+    let worstWarm = 0;
+    const perRebuild: string[] = [];
+    for (let r = 1; r <= 8; r++) {
+      b.begin({ ...sc.input, now: clock });
+      let slicesOfThis = 0;
+      let glyphsBefore = 0;
+      for (;;) {
+        const reads0 = reads;
+        const done = b.step(BUDGET_MS);
+        slicesOfThis++;
+        const readsInSlice = reads - reads0;
+        const glyphsInSlice = b.out.glyphs - glyphsBefore;
+        glyphsBefore = b.out.glyphs;
+        // Every clock read lets at most `interval` glyphs through: 8 while the builder is cold, 32 after its fourth rebuild.
+        const interval = r <= 4 ? 8 : 32;
+        expect(glyphsInSlice, `rebuild ${r}, slice ${slicesOfThis}: ${glyphsInSlice} glyphs for ${readsInSlice} clock reads`).toBeLessThanOrEqual(interval * readsInSlice);
+        if (r <= 4) worstCold = Math.max(worstCold, glyphsInSlice);
+        else worstWarm = Math.max(worstWarm, glyphsInSlice);
+        if (done) break;
+        if (slicesOfThis > 5000) throw new Error('no progress');
+      }
+      perRebuild.push(`#${r}: ${slicesOfThis} slices`);
+      expect(slicesOfThis, `rebuild ${r} is cut into slices of the clock, not run through`).toBeGreaterThan(1);
+    }
+    log(`cold start on a fake clock (1 ms a read, budget ${BUDGET_MS} ms): ${perRebuild.join('; ')}; most glyphs in one slice: ${worstCold} cold, ${worstWarm} warm`);
+    expect(b.out.glyphs).toBeGreaterThan(1800); // thinned to 95 % of the cap, so the hard stop is rarely reached
+    expect(b.out.glyphs).toBeLessThanOrEqual(2000);
+    expect(worstCold, 'a cold slice is a few clock intervals of 8 glyphs, not a whole rebuild').toBeLessThanOrEqual(8 * (BUDGET_MS + 2));
+  });
+
+  it('the cold start on the wall clock: the typical slice of the first six rebuilds is near its budget (the worst is only reported)', () => {
     const sc = heavy();
     const b = createGlyphBuilder('high');
     const firsts: string[] = [];
-    let worst = 0;
+    const all: number[] = [];
     for (let r = 0; r < 6; r++) {
       const t0 = now();
       const s = slices(b, sc);
       const total = now() - t0;
-      worst = Math.max(worst, ...s);
+      all.push(...s);
       firsts.push(`#${r + 1}: ${total.toFixed(1)} ms in ${s.length} slices (longest ${Math.max(...s).toFixed(1)} ms)`);
     }
-    log(`cold start, ${b.out.glyphs} glyphs, ${b.out.segments} segments: ${firsts.join('; ')}`);
-    expect(b.out.glyphs).toBeGreaterThan(1800); // thinned to 95 % of the cap, so the hard stop is rarely reached
+    log(`cold start, ${b.out.glyphs} glyphs, ${b.out.segments} segments: ${firsts.join('; ')}; all ${all.length} slices: median ${median(all).toFixed(2)} ms, worst ${Math.max(...all).toFixed(1)} ms`);
+    expect(b.out.glyphs).toBeGreaterThan(1800);
     expect(b.out.glyphs).toBeLessThanOrEqual(2000);
-    // The spike measured 4 to 7 times a steady rebuild for the first one; reading the clock every 8 glyphs keeps a slice near its budget.
-    expect(worst).toBeLessThan(BUDGET_MS + 40);
+    // The median does not move when a busy machine takes one slice away for a while; slices that do not stop on the clock would move it.
+    expect(median(all)).toBeLessThan(BUDGET_MS + 10);
   });
 
   it('a warm rebuild of the High cap: one to three slices of 3.4 ms, the slice p95 within its budget plus one check interval', () => {
