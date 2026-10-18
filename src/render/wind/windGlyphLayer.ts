@@ -27,6 +27,13 @@ import { GLYPH_CAPS, type Box, type FlowRaster, type GlyphBuilder, type GlyphInp
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
 const HALO_WIDTH_PX = GLYPH_WIDTH_PX + 2 * 1.25;
+/**
+ * The strokes lie 1.5 m or so above the ground, under the canopy, which is drawn (a crown of 20 to 30 m would hide most of every flow
+ * line close in). They are drawn where they are but tested for depth as if this many metres nearer the eye, so a crown in front of a
+ * stroke does not hide it while a ridge, which stands well over this much in front of what is behind it, still does. (Switching the
+ * depth test off instead shows every line behind every ridge.)
+ */
+export const GLYPH_DEPTH_BIAS_M = 40;
 /** What one slice of a rebuild may take on the main thread (ms, the device's own clock). */
 const SLICE_BUDGET_MS = 8;
 /** How far the ground is enumerated toward the horizon: this many camera distances, at least `MIN_RANGE_M`. */
@@ -153,8 +160,8 @@ export class WindGlyphLayer {
     this.builder = (deps.createBuilder ?? createGlyphBuilder)(tier);
     const capacity = GLYPH_CAPS[tier].segments;
     // Plain strokes of one colour at full alpha (the segments overlap by about a pixel, so no translucency), no fog (the legend's
-    // colours stay exact), tested against the ground so a ridge hides what is behind it.
-    const stroke = { capacity, headPx: 0, tailAlpha: 1, fog: false, depthTest: true, shared };
+    // colours stay exact), tested against the ground so a ridge hides what is behind it (see GLYPH_DEPTH_BIAS_M for the trees).
+    const stroke = { capacity, headPx: 0, tailAlpha: 1, fog: false, depthTest: true, depthBiasM: GLYPH_DEPTH_BIAS_M, shared };
     this.halo = new StreakBatch({ ...stroke, widthPx: HALO_WIDTH_PX });
     this.colour = new StreakBatch({ ...stroke, widthPx: GLYPH_WIDTH_PX });
     this.halo.mesh.name = 'wind-glyph-halo';
