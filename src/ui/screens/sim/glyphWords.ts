@@ -59,7 +59,7 @@ export function windFromText(airTime: number | null, shownTime: number, tz: stri
 
 export const DIAGNOSED_LINE = 'Diagnosed wind: terrain effects only, no plume.';
 export const GROUND_LINE = 'On a calm night the wind the fire feels can differ a lot from this.';
-export const SMOOTH_FIT_LINE = 'Closer than this the curves are a smooth fit through the model, not new detail.';
+export const SMOOTH_FIT_LINE = 'At this zoom the curves are a smooth fit through the model, not new detail.';
 
 /** What the caption needs to know about the air that is drawn. */
 export interface GlyphAir {

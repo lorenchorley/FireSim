@@ -127,7 +127,8 @@ describe('the caption', () => {
 
   it('says the curves are a smooth fit once one model cell covers more than 60 px, and not before', () => {
     expect(GLYPH_SMOOTH_FIT_PX).toBe(60);
-    expect(SMOOTH_FIT_LINE).toBe('Closer than this the curves are a smooth fit through the model, not new detail.');
+    // (The line is shown only once a cell is wider than 60 px, so it speaks of the zoom the person is at: "Closer than this" had nothing to point at.)
+    expect(SMOOTH_FIT_LINE).toBe('At this zoom the curves are a smooth fit through the model, not new detail.');
     expect(glyphCaption(100, air(), 60, TZ, abs)).not.toContain(SMOOTH_FIT_LINE); // exactly 60: not more than
     expect(glyphCaption(100, air(), 60.5, TZ, abs)).toContain(SMOOTH_FIT_LINE);
     expect(glyphCaption(100, air(), 45, TZ, abs)).not.toContain(SMOOTH_FIT_LINE);
