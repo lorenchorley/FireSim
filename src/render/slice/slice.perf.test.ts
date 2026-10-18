@@ -2,7 +2,7 @@
  * What the slice costs and allocates (plan 8.4, 8.5 and 11). The whole update the scene runs (resolve the line, the four preset
  * statuses, sample the lattice, the model's cells) at a 90 x 50 lattice on the standard tier's 45 x 45 x 20 model, which the plan
  * budgets at 8 ms p95. That a steady stream of updates allocates only its small result objects, so the heap stays flat. And the
- * per-frame work of the panel: 300 streaks stepped, one probe read. Timings go to stderr like the `[atmos perf]` lines; the
+ * per-frame work of the panel: 600 streaks stepped (the 0.6.0 count, twice that of 0.5.0), one probe read. Timings go to stderr like the `[atmos perf]` lines; the
  * assertions are the plan's own budget, which a shared machine will not threaten (the build machine measures about a tenth of it).
  */
 import * as v8 from 'node:v8';
@@ -172,9 +172,9 @@ describe('slice update allocation', () => {
     expect(bytes).toBeLessThan(16 * 1024);
   });
 
-  it('the panel’s per-frame work allocates nothing: 300 streaks stepped, and a probe read costs one small object', () => {
+  it('the panel’s per-frame work allocates nothing: 600 streaks stepped, and a probe read costs one small object', () => {
     const data = sampleSlice(sampler, terrain, spec)!;
-    const flow = createFlow(300, 5);
+    const flow = createFlow(600, 5);
     seedFlow(flow, data);
     const opts = { exaggeration: 2, timeScale: 40, maxAgeS: 6 };
     const stepBytes = bytesPerCall(() => stepFlow(flow, data, 1 / 24, opts), 41, 100, 50);
@@ -190,7 +190,7 @@ describe('slice update allocation', () => {
     let sentence = '';
     for (let i = 0; i < 5000; i++) sentence = probeSentence(probeAt(data, moveProbe(data, { s: (i * 13) % 5000, z: data.zMin + 800 }, 'right')), { units: 'kmh', kind: 'prognostic' });
     const probeMs = (performance.now() - t1) / 5000;
-    log(`stepFlow (300 particles): ${stepBytes.toFixed(1)} bytes per step, ${stepMs.toFixed(3)} ms per step; probe: ${probeBytes.toFixed(0)} bytes per read, ${(probeMs * 1000).toFixed(1)} us per read with its sentence ("${sentence}")`);
+    log(`stepFlow (600 particles): ${stepBytes.toFixed(1)} bytes per step, ${stepMs.toFixed(3)} ms per step; probe: ${probeBytes.toFixed(0)} bytes per read, ${(probeMs * 1000).toFixed(1)} us per read with its sentence ("${sentence}")`);
     expect(stepBytes).toBeLessThan(50);
     expect(probeBytes).toBeLessThan(600); // the reading and its position object
     expect(stepMs).toBeLessThan(2);

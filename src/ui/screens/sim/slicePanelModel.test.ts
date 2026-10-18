@@ -7,6 +7,7 @@ import { fakeSlice, fakeUpdate } from './slicePanelFixtures';
 import {
   airFromText,
   arrowGrid,
+  arrowLength,
   axisTicks,
   canvasLabel,
   cellsNote,
@@ -42,6 +43,7 @@ import {
   zOfY,
   type FlowClock,
   type LayoutInput,
+  type PlotLayout,
   type TickFn,
 } from './slicePanelModel';
 
@@ -281,19 +283,82 @@ describe('streak helpers', () => {
     expect(sameFlowSlice(base, flowSlice(taller))).toBe(false);
   });
 
-  it('gives a smaller plot fewer streaks, between 60 and 300', () => {
-    expect(flowCount(plotLayout(BASE))).toBe(300);
+  it('gives a smaller plot fewer streaks, between 120 and 600', () => {
+    expect(flowCount(plotLayout(BASE))).toBe(600);
     const landscape = flowCount(plotLayout({ ...BASE, width: 356, height: 96 }));
-    expect(landscape).toBeGreaterThanOrEqual(60);
-    expect(landscape).toBeLessThan(150);
-    expect(flowCount(plotLayout({ ...BASE, width: 60, height: 40 }))).toBe(60);
+    expect(landscape).toBeGreaterThanOrEqual(120);
+    expect(landscape).toBeLessThan(300);
+    expect(flowCount(plotLayout({ ...BASE, width: 60, height: 40 }))).toBe(120);
   });
 
-  it('sizes the static arrow lattice to the plot', () => {
-    const g = arrowGrid(plotLayout(BASE));
-    expect(g.cols).toBeGreaterThanOrEqual(2);
-    expect(g.rows).toBeGreaterThanOrEqual(2);
-    expect(arrowGrid(plotLayout({ ...BASE, width: 100, height: 60 })).cols).toBeGreaterThanOrEqual(2);
+  // The wind marks of 0.5.0, to hold the 0.6.0 ones against: the owner asked for them about twice as dense.
+  const oldFlowCount = (l: PlotLayout): number => Math.min(300, Math.max(60, Math.round((l.plot.w * l.plot.h) / 190)));
+  const oldArrowCount = (l: PlotLayout): number => Math.max(2, Math.round(l.plot.w / 34)) * Math.max(2, Math.round(l.plot.h / 30));
+  /** The canvas boxes of the real panel on three phones (Playwright, Pixel 7 profile: 412 x 915 gives 380 x 160, 360 x 640 gives 328 x 138, 844 x 390 landscape gives 356 x 84), with a 6 km line from 550 m to 3 000 m at true scale. */
+  const PLOTS: [string, PlotLayout][] = (
+    [
+      ['412 x 915 portrait', 380, 160],
+      ['360 x 640 portrait', 328, 138],
+      ['844 x 390 short landscape', 356, 84],
+    ] as const
+  ).map(([name, width, height]) => [name, plotLayout({ width, height, length: 6000, zMin: 550, zMax: 3000, exaggeration: 1, smallPx: 12, labelW: 50 })]);
+
+  it('gives the plots of three phones about twice the streaks of 0.5.0, the short landscape one still far fewer than a portrait one', () => {
+    const counts: number[] = [];
+    for (const [name, l] of PLOTS) {
+      const n = flowCount(l);
+      counts.push(n);
+      expect(n / oldFlowCount(l), `${name}: ${n} streaks against ${oldFlowCount(l)}`).toBeGreaterThan(1.9);
+      expect(n / oldFlowCount(l), name).toBeLessThan(2.1);
+      expect(n).toBeLessThanOrEqual(600);
+    }
+    expect(counts[2]!).toBeLessThan(counts[0]! / 2); // the short plot (52 px high) is no smear: well under half of the tall one's
+  });
+
+  it('lays about one arrow per 24 x 21 px, twice as many as the 34 x 30 px of 0.5.0, and at least 2 x 2', () => {
+    for (const [name, l] of PLOTS) {
+      const g = arrowGrid(l);
+      const area = l.plot.w * l.plot.h;
+      expect((g.cols * g.rows) / (area / (24 * 21)), `${name}: ${g.cols} x ${g.rows}`).toBeGreaterThan(0.9);
+      expect((g.cols * g.rows) / (area / (24 * 21)), name).toBeLessThan(1.15);
+      // (the old lattice rounded its columns and its rows apart, so what it had is itself a few tenths off the 34 x 30 px: hence the wider band here)
+      expect((g.cols * g.rows) / oldArrowCount(l), `${name}: ${g.cols * g.rows} arrows against ${oldArrowCount(l)}`).toBeGreaterThan(1.8);
+      expect((g.cols * g.rows) / oldArrowCount(l), name).toBeLessThan(2.4);
+      // the cells stay near the shape asked for: not slivers
+      const aspect = l.plot.w / g.cols / (l.plot.h / g.rows);
+      expect(aspect, name).toBeGreaterThan(0.7);
+      expect(aspect, name).toBeLessThan(1.7);
+    }
+    const tiny = arrowGrid(plotLayout({ ...BASE, width: 100, height: 60 }));
+    expect(tiny.cols).toBeGreaterThanOrEqual(2);
+    expect(tiny.rows).toBeGreaterThanOrEqual(2);
+  });
+
+  it('holds the longest arrow to 60% of the smaller side of the cell, so a small cell shortens the arrows with it', () => {
+    for (const [name, l] of PLOTS) {
+      const g = arrowGrid(l);
+      expect(g.longest, name).toBeCloseTo(0.6 * Math.min(l.plot.w / g.cols, l.plot.h / g.rows), 9);
+      expect(g.longest, `${name}: arrows of 7 to 13 px or a little under on the short plot`).toBeGreaterThan(9);
+      expect(g.longest, name).toBeLessThan(14);
+    }
+    const phone = arrowGrid(PLOTS[0]![1]).longest;
+    const landscape = arrowGrid(PLOTS[2]![1]).longest;
+    expect(landscape).toBeLessThan(phone); // 17 px cells against 22 px ones
+    // a plot so small that the cell is tiny: the arrows follow it down
+    const small = plotLayout({ ...BASE, width: 70, height: 56 });
+    const sg = arrowGrid(small);
+    expect(sg.longest).toBeLessThanOrEqual(0.6 * Math.min(small.plot.w / sg.cols, small.plot.h / sg.rows) + 1e-9);
+    expect(sg.longest).toBeLessThan(landscape);
+  });
+
+  it('makes an arrow longer the stronger the wind, from 55% of the longest in a calm to the longest at 11.4 m/s and above', () => {
+    expect(arrowLength(0, 13)).toBeCloseTo(0.55 * 13, 9);
+    expect(arrowLength(11.4, 13)).toBeCloseTo(13, 9);
+    expect(arrowLength(40, 13)).toBeCloseTo(13, 9);
+    expect(arrowLength(5.7, 13)).toBeCloseTo(13 * (0.55 + 0.45 / 2), 9);
+    for (let s = 0; s < 12; s += 0.5) expect(arrowLength(s + 0.5, 13)).toBeGreaterThanOrEqual(arrowLength(s, 13));
+    expect(arrowLength(-3, 13)).toBeCloseTo(arrowLength(0, 13), 9); // (no wind has no sign)
+    expect(arrowLength(NaN, 13)).toBeCloseTo(arrowLength(0, 13), 9);
   });
 });
 
