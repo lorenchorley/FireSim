@@ -16,7 +16,8 @@
  *   lifting / adding    a finger continues / switches without a jump; fingers beyond the second are ignored
  *   mouse               left drag pans, right drag rotates (as OrbitControls does: a drag to the right turns the camera
  *                       clockwise seen from above), middle drag and the wheel zoom (desktop development)
- * Eye level is a first-person look-around: one or two fingers turn the view; the eye itself cannot be displaced.
+ * Eye level is a first-person look-around: one finger turns the view (a second finger pauses it, OrbitControls has no two-finger
+ * rotate); the eye itself cannot be displaced. Neither this nor the mouse is mirrored.
  *
  * The orbit target is kept on the terrain under the middle of the screen without moving the picture: see {@link SEAT}.
  */
