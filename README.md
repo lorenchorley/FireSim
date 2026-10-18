@@ -77,6 +77,18 @@ preset and *Clear recording* only while something is recorded, so the two are ne
 | ![The panel of a recorded line](docs/screenshots/36-air-slice-recorded.png) | | | |
 | The panel of a recorded line, scrolled to its controls: *Clear recording*, the status line "Recorded from 12:23 to 12:37 (every picture kept).", and the footer "3-D time-stepped air · model grid 133 m · recorded air from 12:32" | | | |
 
+The pictures of 0.5.0 (the wind arrows and flow lines, the Map view tab of Air slices, *Turn off the slice*) are made by two more tests of the same spec,
+`gallery 0.5.0: the wind arrows and flow lines at three zooms ...` (37, 37b, 38 and 39) and `gallery 0.5.0: the Air slices tool, the Map view tab, and Turn off
+the slice ...` (40 and 41); `-g "gallery 0.5.0"` runs them alone and writes only those pictures. They are Katoomba at 6 km on the fast model (so the wind is the
+diagnosed wind), with the animated Wind streaks off and the 10 m chip; 40 and 41 were taken after *Keep this line* and a minute of recording at 120x.
+
+| | | | |
+|---|---|---|---|
+| ![Straight arrows from far away](docs/screenshots/37b-wind-arrows-far.png) | ![Flow lines at a middle zoom](docs/screenshots/37-wind-flow-lines.png) | ![Long flow lines close in, through the trees](docs/screenshots/38-wind-flow-lines-trees.png) | ![The Layers row](docs/screenshots/39-layers-wind-arrows.png) |
+| Level 1, straight arrows: the whole 6 km area across the screen, one model cell about 9 px, the 10 m chip; the card says "Wind near the ground" | Level 3, one model cell about 50 px, top view: flow lines with arrowheads (over this smooth part of the model's field they are nearly straight; the colour carries the speed) | Level 4, one model cell about 150 px at a tilt of 55 degrees, with the trees and the aerial photo on: the long flow lines show through the crowns (the depth bias) | Layers, Wind and air: the *Arrows and flow lines* switch, the six *Wind height* chips, the caption (the fast model's diagnosed wind) and the zoom line |
+| ![The Map view tab](docs/screenshots/40-air-slice-map-view.png) | ![Turn off the slice](docs/screenshots/41-air-slice-turn-off.png) | | |
+| The Air slices tool's *Map view* tab: the same switch, chips and caption as Layers, the zoom line, and *Turn off the slice* with its hint "This also clears the recording." | The *Side view* tab after *Keep this line*, scrolled to *Clear recording* and *Turn off the slice* with the same hint | | |
+
 ## Features
 
 - **Where**: GPS, a pasted **Google Maps link** (or typed coordinates), or nine bundled **demo sites** (Katoomba, Blackheath, Mount Tomah, Kanangra, Thredbo, Gospers, Pigeon House, Barrington, Warrumbungles) with the NSW 5 m elevation model (bundled at 10 m),
@@ -115,8 +127,17 @@ preset and *Clear recording* only while something is recorded, so the two are ne
   wind** (the forecast wind fitted to the terrain, terrain effects only) and says so; Temp and Smoke need the 3-D atmosphere. A line you
   place with A and B is also **recorded** while the run plays (0.4.1; a preset is recorded once you press **Keep this line**), so scrubbing
   back shows the air recorded at that time ("recorded air from 11:25") instead of the older saved air, and **Clear recording** empties it.
-  It only reads the air and never changes the fire. See *Air slices and the air picture*.
-- **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume),
+  Since 0.5.0 the tool has two tabs, **Side view** and **Map view** (the wind arrows and flow lines), and a **Turn off the slice** button that
+  takes the line, the curtain and the recording away in one press and leaves the tool open. It only reads the air and never changes the fire.
+  See *Air slices and the air picture*.
+- **Wind arrows and flow lines** (Layers, Wind and air, 0.5.0): the wind drawn on the map at a height you choose (10 m, 50 m, 100 m, 300 m, 1 km or
+  2 km), with marks that get more detailed as you zoom: straight arrows from far away, closer-set arrows, curved flow lines with arrowheads and,
+  close in, long flow lines. They keep their size on the screen, wear the colours of the wind streaks (pale for a light wind, violet for a strong
+  one, with a km/h legend card), show through the trees, never run down a cliff face and stop at the edge of the model. A caption says which wind
+  it is, how fine the model grid is and when the air is from, and says plainly that the curves are a smooth fit through the model once one cell is
+  wider than about 60 px. Off until you switch it on (the animated wind streaks are a separate control), on both tiers, also in the Air slices tool's
+  Map view, where it is the same setting. It only reads the air. See *Wind arrows and flow lines*.
+- **Views**: 3-D orbit, top view, eye level ("what you would see from here"), wind particles (surface or through the plume), wind arrows and flow lines,
   the air slice's curtain, vertical exaggeration, compass and zoom buttons for gloved hands. One finger slides the map, two fingers
   turn, tilt and zoom it, all at once (see *Controls*).
 - **Cliffs**: in the 3-D view, cliff faces are drawn as near-vertical rock walls, lit from the sharpened ground, with ledges that catch
@@ -128,7 +149,7 @@ preset and *Clear recording* only while something is recorded, so the two are ne
   matters, where the data come from, how fine it is". *Map type* (aerial photo, terrain colours, plain), with **Night lighting**
   (Realistic, Brighter, Daylight: see *Night lighting* below); *Map details*, a switch for
   each: 3-D canopy, shrubs, **roads and tracks**, **fire trails**, **homes**, **residential and built-up areas**, **place names**,
-  flames, smoke, embers, wind streaks, insight markers; and *Heat maps*, every data layer as a colour map of the ground (cool = little,
+  flames, smoke, embers, wind streaks, **wind arrows and flow lines**, insight markers; and *Heat maps*, every data layer as a colour map of the ground (cool = little,
   warm = much), one at a time, optionally **on its own** (the photo and the trees step aside): ground height, landform, slope, aspect,
   sunlight, tree height and cover, shrub height, the four fuel hazards (leaf litter, grass and low shrubs, shrubs, bark), grass curing,
   fuel type and load, years since fire, wildfire or prescribed burn, homes per hectare, distance to a road, wind speed (on both tiers: the fast model shows its diagnosed 10 m wind; on a calm night it is not the wind the fire feels, see *Limits* under *Air slices and the air picture*), litter moisture
@@ -181,8 +202,9 @@ preset and *Clear recording* only while something is recorded, so the two are ne
 | 0.3.0 (versionCode 6) | night lighting, picture quality, the debug statistics, the honest speed signal, the cliff drawing, tap on an icon | built and checked on the real app in software rendering; not seen on a phone |
 | **0.4.0** (versionCode 7) | the **air data foundation** (every tier publishes a 3-D wind that can be sliced, exact near-ground sampling, capability flags) and **Air slices**, the side view | built and checked the same way; not seen on a phone. `package.json` and `android/app/build.gradle` say 0.4.0 (versionCode 7). What was built and what the checks found: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 18 |
 | 0.3.1 (optional) | rock in the fire model (a wall that means bare rock, part-rock cells) and a speed test button | waits for someone who knows the escarpments to re-label the aerial tiles of spike S6 |
-| **0.4.1** (versionCode 8) | a **time-lapse recorder** for a pinned Air slice line: the side view reads the air recorded at the time shown instead of the older saved air, with *Keep this line* and *Clear recording* | built and checked the same way (an independent check on the real app of the recorder and of the tool, the words and the statistics); not seen on a phone. `package.json` and `android/app/build.gradle` still say 0.4.0 (versionCode 7) until the release is cut. What was built, the corrections to the plan and the limits: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 19 |
-| 0.5.0 (versionCode 9) | a horizontal wind slice and wind glyphs that get more detailed as you zoom (the Air slices tool's Map view tab) | not started |
+| **0.4.1** (versionCode 8) | a **time-lapse recorder** for a pinned Air slice line: the side view reads the air recorded at the time shown instead of the older saved air, with *Keep this line* and *Clear recording* | built and checked the same way (an independent check on the real app of the recorder and of the tool, the words and the statistics); not seen on a phone. `package.json` and `android/app/build.gradle` say 0.4.1 (versionCode 8). What was built, the corrections to the plan and the limits: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 19 |
+| **0.5.0** (versionCode 9) | the **wind arrows and flow lines** (zoom-adaptive, at a height you choose), the Air slices tool's **Map view** tab and a **Turn off the slice** button: stage E1 of workstream E only | built and checked the same way (three independent checks on the real app, two fix rounds); not seen on a phone. `package.json` and `android/app/build.gradle` still say 0.4.1 (versionCode 8) until the release is cut. What was built, the corrections to the plan and the limits: `docs/plans/air-slice-wind-detail-honest-speed.md`, section 20 |
+| 0.5.1 (optional, not scheduled) | colouring the map by wind speed (E1b) and a 60 m "wind the fire feels" raster (E2) | not built: the owner split E, so 0.5.0 has no "What the fire feels" chip and no change to the simulation or its snapshot |
 
 ## Choosing a place from a Google Maps link
 
@@ -493,8 +515,8 @@ while the scenario is set up and then released. The render chunk grew by about 7
 ## Air slices and the air picture
 
 **What it is.** *Tools, Air slices* shows a vertical slice of the air along a line you choose, from the side, in a flat panel above the
-timeline (a Canvas 2-D drawing, `src/ui/screens/sim/slicePanel.ts`) and as a curtain in the 3-D view. The panel has a *Side view* tab;
-its *Map view* tab is planned for 0.5.0 and is not there. It works on every run, because since 0.4.0 both tiers publish a 3-D wind for it
+timeline (a Canvas 2-D drawing, `src/ui/screens/sim/slicePanel.ts`) and as a curtain in the 3-D view. The tool has two
+tabs, *Side view* and, since 0.5.0, *Map view* (the wind arrows and flow lines on the map, *The two tabs*, below). It works on every run, because since 0.4.0 both tiers publish a 3-D wind for it
 to read (see *The air view*, below). It only reads the air: nothing it does reaches the simulation, so the fire is the same with a
 slice on or off. The 2-D demo map (`?mock=1`) has no air, so the tool there says "The side view needs the 3-D view."
 
@@ -712,6 +734,31 @@ may read the status line (focused) and the polite announcement twice (not checke
 probe reading is shown (the 0.4.0 rule: the reading takes its line), so nothing in view says "recorded" while probing; keeping the footer would clip
 the reading, and a word added to the reading would lengthen it at 360 x 640, so it was left (at 360 x 640 in portrait the footer stays).
 
+**The two tabs and Turn off the slice** (0.5.0, plan section 20). The tool's header has two tabs, *Side view* and *Map view*, a real tablist (`role="tablist"` and
+`tab`, `aria-selected`, only the chosen tab in the Tab order, Left, Right, Home and End to move, a tabpanel named by the chosen tab, a polite announcement:
+"Map view: wind arrows and flow lines." or "Side view."), in the segmented control's look, in the header where the subtitle "Side view" was (the header is no
+taller, at most 50 px at 412 x 915, 360 x 640 and 844 x 390; under 400 px the title gives up its icon so that the two words fit). The *Map view* holds the
+arrows' switch (named "Wind arrows and flow lines" there, with one line while it is off: "Draws the wind on the map: arrows from far away, flow lines when
+you zoom in."), the *Wind height* chips, the caption and the zoom line, the very controls of Layers (*Wind arrows and flow lines*, below), so the two are one
+setting: flip it in one, open the other, and it is the same. The side view's panel and its streaks are taken out of the document and stopped while the Map
+view shows; a tab press drops a placement under way (no crosshair is left on the map); the tab you chose is kept when you close and reopen the tool; on the
+2-D map the tool is one line and has no tabs.
+
+**Turn off the slice** is the last button of the side view's controls and of the Map view (`slice-off`, a plain secondary large button, the row pattern of
+*Keep this line*, no new CSS: `slice.css` is 4,066 bytes under a guard of 4,096). One press (`turnOffSlice` in `sliceToolModel.ts`, written through the
+tool's one `apply`) sets the section off and clears its stored line (`a` and `b` unset, `preset` null; the colour chip and the Layers compass setting stay) and
+the tool's placement, tapped candidate, draft end and probe; the one write to the layers clears the curtain, the panel's slice, the A and B marks and the
+probe's pin on the map, **and the recording**, and the Layers panel reads Off. The tool **stays open** on its empty placement state, and focus goes to *Set
+start (A)* (side view) or to the arrows switch (Map view), because the pressed button is put away. The polite announcement is "Slice turned off." or, when a
+recording was held, "Slice turned off. The recording was cleared." While the recorder holds a picture a hint under the button reads "This also clears the
+recording." (the button points at it with `aria-describedby`); there is no pop-up, no confirmation and no undo, so the hint is the whole safeguard. The
+button is **absent** (hidden, not disabled) when there is nothing to turn off, while a placement is under way and when only one end is set (a draft end is
+not a slice: the row made the sheet grow by 72 px after "Place A here" and moved the cross), and shown for a live preset, a hand line, the Layers panel's
+line and a line that Layers switched off but the tool still holds. It is **not** the same as the Layers panel's own switch-off, which keeps the line (so
+opening the tool brings it back) and clears only the recording, and **closing the tool** (X, Back, Escape) still does not turn the slice off. Why it stays out
+of the 3-D map beside the line: the marks are in an `aria-hidden` layer with no hit targets, and a 44 px target there would fight the one-finger pan and the
+tap-to-place candidate. Pictures 40 and 41 show both tabs with the button and its hint.
+
 **The air view** (workstream C). Every picture the engine sends carries `atmosphere: AtmosphereView`, and since 0.4.0 it says what it is:
 
 | Field | Meaning |
@@ -783,6 +830,58 @@ and a reading of five lines is about 112 px where 80 to 90 px are left under the
 things were left as they are: a tapped candidate on the map beats the crosshair until Cancel (the hint says so), and a preset centred on
 the map because there is no fire follows the camera at the rate of the pictures, not at once. That the Tools dial scrolls at 360 x 640 is as
 the builders reported and was not re-checked. The time-lapse recorder is 0.4.1 (*Recording a line*, above, with its own limits).
+
+## Wind arrows and flow lines
+
+**What it is** (0.5.0, stage E1 of plan section 9; what was built and what the verifiers found is plan section 20). In *Layers*, under *Wind and air*, the switch **Arrows and flow lines** draws the wind on the map as marks that get more detailed as you zoom in: straight arrows from far away, closer-set arrows, short curved flow lines with arrowheads, and longer flow lines close in. You choose the height of the wind (*Wind height*: 10 m, 50 m, 100 m, 300 m, 1 km or 2 km). The same switch, chips and caption are on the Air slices tool's **Map view** tab, and the two are one setting (below). It is **off at first** (decision D9) and the animated *Wind streaks* are a separate control that stays as it was, so either or both can be on. It reads the air and never feeds back: nothing it does reaches the simulation, so the fire is the same with it on or off. Colouring the map by wind speed (E1b) and the 60 m "wind the fire feels" raster (E2) are **not** in 0.5.0 (the owner split E; they may become 0.5.1), so "What the fire feels" is not offered.
+
+**The ladder.** The level follows how many screen pixels one cell of the wind model covers at the middle of the screen (`cellPx`, from the camera distance, the field of view and the canvas height), with 15 % of give at every edge (a level goes up at 1.15 times its edge and down at under its lower edge divided by 1.15), so a pinch that hovers on an edge does not flicker:
+
+| Level | One model cell on screen | What is drawn | Lattice (on screen) | Length of a mark (4 px per m/s, clamped) |
+|---|---|---|---|---|
+| L0 | under 4 px | nothing (the zoom line says "Zoom in to see the wind arrows.") | none | none |
+| L1 | 4 to 12 px | straight arrows | 56 px, rounded to a power of two of metres (0.7 to 1.4 times) | 8 to 45 px |
+| L2 | 12 to 32 px | straight arrows, closer together | 40 px, rounded (0.7 to 1.4 times) | 8 to 32 px |
+| L3 | 32 to 90 px | curved flow lines with arrowheads, 6 to 8 equal steps | at least 36 px (36 to 72 px) | 28 to 56 px |
+| L4 | over 90 px | longer flow lines, 10 steps | at least 56 px (56 to 112 px), jitter as L3 | 90 to 140 px at 6 px per m/s |
+
+With the 133 m model cell of a 6 km area on a 412 px wide screen the curves begin when about 1.7 km of ground is across the width of the screen and the long lines at about 600 m (the plan's estimate, and 133 / 32 and 133 / 90 metres a pixel across 412 px agree; the real distances follow `cellPx`, and `e2e/wind-glyphs.spec.ts` asserts the level against it, not against distances). A mark's length is constant in screen pixels and saturates (L1 at 11.25 m/s, L2 at 8, L3 at 14, L4 at 23.3), so above that the **colour** carries the speed: the colours of the Wind streaks near the ground (`WIND_RAMP`, pale grey-blue at 0 m/s, near white at 4, pale cyan at 8, blue at 12 and 17, violet at 25: 0 to 90 km/h on the legend card). They are not the Wind speed map's cool-to-warm colours (0 to 60 km/h and over): the 10 m chip shares that map's *field*, not its colours. Every stroke is 2.5 px of colour on a dark navy halo (5 px in all), so the pale stops stay readable on the aerial photo, plain relief and the night looks; the colour of a segment is the wind speed at its start.
+
+**How a picture is made** (`src/render/wind`, no DOM and no Three.js in the engine, node-tested):
+
+- *Seeds* sit on a world-anchored lattice (a power-of-two spacing in metres; at L3 and L4 each seed is moved inside its cell by an integer hash of its indices, never `Math.random`), so sliding the map never reshuffles them and zooming changes the spacing in steps. Only seeds whose exact projection is on the screen (plus the length of a mark) and in front of the near plane are kept. The lattice spacing of the curved levels is the next power of two that is **not denser** than the level's spacing, and the straight levels' the nearest, with 0.06 octave of give past an edge, so the same zoom gives the same lattice from either direction (a verifier found 200 glyphs when pinching in and 819, a mat, when pinching out before this rule). In an orbit view a seed is also kept with probability 1 / s2, where s2 is the ground area one pixel covers there against the middle of the screen (at most 64), so the number of marks per screen area stays about constant toward the horizon; over a top view of flat ground s2 is 1 everywhere.
+- *Tracing*: from a seed the mark runs downwind in equal steps (RK2, the midpoint rule, on the unit direction field, so the arc length is constant and the length is exactly the pixel length asked for). L1 and L2 are one chord; L3 and L4 are 6 to 10 steps through the same field, so a curve is only as curved as the model's field is: **a model cell is 100 to 270 m wide, so the curves are a smooth fit through it and show no detail finer than that** (the caption says so once a cell covers more than about 60 px). A wind under 0.3 m/s is a 3 px dot, and a trace that falls under it stops. The head is two chevron segments at 28 degrees to the way back, 0.35 of the length clamped to 5 to 9 px. A mark stops at the edge of the model's domain, and a mark with any point behind 1.5 near-plane distances is dropped whole.
+- *The cliff rule*: a mark is draped on the drawn ground, so a flow line that met an escarpment ran down its face as an upright streak that reads as an updraft. No step may now climb or fall more than 1 m per metre along the ground (45 degrees of true slope, whatever the vertical exaggeration): a mark is cut at the foot or the lip of a wall with its head there, one that starts on a wall is not drawn, and a head over a wall drops its mark. Before this rule 3.4 to 6.8 % of the segments (8 to 21 % of the marks) at three Katoomba escarpment views were upright; after it 0.0 % in 12 cliff views. In node 8 % of the marks are cut or dropped over 16 L3 pictures (Katoomba is cliff-heavy).
+- *Drawn through the trees*: the strokes lie 1.5 m (or 3 px) above the ground, under the drawn canopy, so a crown in front of a stroke would hide half of every flow line close in. The streak shader takes a depth bias (`uDepthBias`, 40 m toward the eye along each end's own ray, for the depth test only, so a stroke stays where it is on the screen), which shows a stroke through a crown of up to about 25 m, while a ridge still hides what is behind it (switching the depth test off showed every line behind every ridge). Halo pixels at 700 m and 55 degrees: 6,645 without the bias and 16,243 with it (a verifier's count).
+- *Eye level draws nothing* (the target is one metre away, so "model cells a pixel" means nothing there; the control says "Not drawn at eye level. Go back to the map view."). The 2-D demo map (`?mock=1`) has no air and draws no glyphs.
+
+**Height, and where the numbers come from.** *10 m* (the key `'fire'`) is `surfaceU/V` as the air view publishes it, used as it is with no copy and no refinement: the model's wind about 10 m above open ground, as the model fits it to the terrain, the field the Wind speed map shows, on both tiers. It is **not** the wind the fire feels: on a calm night the fire can feel much less wind in places and much more in others (plan 18.4 measured, on the fast tier, p10 0.34 and p90 2.2 of the published wind), and the caption says so. There is no chip between 10 m and 50 m, because the model's lowest level is about 15 m above the ground (`dz1 / 2`; 12.5 m on the High tier). The other chips are metres above the 10 m ground **as received**: a raster of (u, v) is filled once for each snapshot and height, a texel being `windP` of the sampler at (x, y, ground + h), at the model's own column spacing and at half of it where a cell covers more than 60 px (refined: up to 119 x 119 texels on the High tier, 89 x 89 on the others), by rows on the clock, never for a camera move; the marks are traced through it, and a rebuild reads rasters only. The ground is the 10 m terrain as received (plan section 4, rule 10) and the marks are drawn on the render mesh, so the Map view and the Air slices' side view agree at the same height (the same `zAsl = ground + h` rule). Measured by a verifier: the render mesh and the 10 m ground differ 0.8 m on average (the verifier also reported 14 m and a 95th percentile of 36 m on slopes over 45 degrees); the wind read at the two grounds differs 0.1 % overall and 2 % on average (7 % at the 95th percentile) on steep slopes at 50 to 100 m; the 1.5 m lift buries 0.03 % of the samples. Against tracing straight through the sampler (the test oracle, `glyphOracle.testing.ts`), on real Katoomba air the end points of the raster's marks differ by a mean of 0.064 to 0.139 px at 1x (95th percentile 0.27 to 0.51 px) and 0.02 to 0.05 px at 2x, at most 0.2 % of the marks over 3 px; through the real sampler a uniform wind deviates 8e-5 m, a solid-body rotation recovers its radius within 2e-7 and a saddle within 6e-6, and the steps of a mark are equal to 1.5e-5 (verifier measurements; the builders' synthetic field had said 0.45 to 0.56 px). The direction was checked against the independent snapshot wind on the preset *hot-nw-sw-change* (the mean surface wind blows to the south-east): the first segment of every mark has a cosine of 1.000 with it at the 10 m wind and at 300 m, in top, orbit and orbit-east views, on both tiers, and the animated streaks agree (cosine 0.99998).
+
+**The words** (`src/ui/screens/sim/glyphWords.ts`, pure, node-tested; pinned to Help by `content.test.ts`). The caption under the chips says which wind is drawn, how fine the model grid is and when the air is from, parts joined by " · " and ending in a full stop: "Wind at 100 m above the ground · model grid 133 m · air from 14:05." For the 10 m chip: "Wind about 10 m above open ground · model grid 133 m · air from 14:05." and, on the fast tier only, "Wind about 10 m above open ground, as the model fits it to the terrain · ...". "air from" is the footer's own phrase (a pinned test holds the two equal: "wind from" read as a compass direction), with "(4 min before the time shown)" past 90 seconds, and "air time not recorded" when there is none. Further lines: "Diagnosed wind: terrain effects only, no plume." on the fast tier; for the 10 m chip "On a calm night the fire can feel much less wind than this in places, and much more in others."; above 60 px a cell "At this zoom the curves are a smooth fit through the model, not new detail." Under the caption a zoom line says what is drawn ("Showing straight arrows. Zoom in for more.", "Showing straight arrows, closer together. Zoom in for flow lines.", "Showing curved flow lines.", "Showing long flow lines.") or why nothing is ("Not drawn at eye level. Go back to the map view.", "Waiting for the wind picture.", "Not drawn here: this view already uses all the phone can draw. Zoom out or switch a layer off."). The legend card (`windGlyphLegend`, "Wind near the ground" or "Wind at 100 m", in km/h) follows the switch, with the precedence heat map, coded trees, Air slice, then the arrows, then the streaks, and is hidden at eye level; it is still shown at level 0.
+
+**The controls** (`windGlyphControls.ts`, one builder for both places). In Layers, Wind and air, one switch row "Arrows and flow lines" sits after the Wind streaks control and before Air slice; once it is on, the six Wind height chips (three to a row, fewer at a large text size), the caption and the zoom line appear (built the first time it is on, in the panel's DOM, and hidden when it goes off: the Layers panel's DOM was 940 nodes open without the row, 955 with the row off and 991 with it on, 1,118 with the air slice's box, a heat map and the coded trees also shown, so the headroom under 1,000 is 9 nodes and any next row must build lazily; these are the `layers.spec.ts` annotation, not repeated by the docs lane). The Air slices tool's Map view holds the same switch (named "Wind arrows and flow lines" there, with one line while it is off: "Draws the wind on the map: arrows from far away, flow lines when you zoom in."), chips, caption and zoom line: both read and write the layer store, the scene and the remembered choice, so a change in one is there when the other is shown. The caption follows the layer's own statistics (`view.windGlyphStats()`), read twice a second only while the control is on screen and the switch is on, and text is rewritten only when it changed. On the 2-D map the switch is disabled with "Needs the 3-D view" and its chips are hidden (a remembered "on" can still be turned off); before the first picture of the air it says "Needs the air picture, which the simulation makes once it has started". Two additive remembered keys, `windGlyphs` and `windHeight` (the layer prefs version stays 1; a height that is not one of the six, such as 10, 150 or the chip's text "300", is dropped and the default stays, and Reset puts both back). The debug statistics' Display group has a row **Wind glyphs**: "Off", why nothing is drawn, or for example "Level 3, 412 glyphs, 2,980 segments, rebuild 3.1 ms (p95 slice 4.2 ms, max 6.0 ms)" with "One model cell is 133 m, about 45 px on screen; 14 rebuilds so far, the last in 2 slices" as its note (the example of `debugStats.test.ts`), "Level 0, nothing drawn at this zoom", "On, not drawn at eye level", "On, waiting for the wind picture", "On, not drawn: the view already uses all the triangles a frame may have", and "Not available (this view draws no wind glyphs)" on the 2-D map; it is in the copy as text. The dev page (`src/render/dev.html`, never built into the app) takes `?arrows=1&wh=fire|50|100|300|1000|2000` (any other `wh` stops the page with a message).
+
+**Cost and budgets.**
+
+| Item | Figure | Where it comes from |
+|---|---|---|
+| Draw calls | +2 while marks are drawn (a halo batch and a colour batch of `StreakBatch`, `renderOrder` 5 and 6) | `wind-glyphs.spec.ts` counts them; the plan's limit of 25 was already exceeded by the 0.4.1 layers with everything on (16 to 29), the layer makes it 18 to 31 |
+| Triangles | 4 a segment, for both batches; caps per picture tier of 600 / 1,200 / 2,000 glyphs and 4,000 / 8,000 / 12,000 segments (at most 12 a glyph); the layer trims itself from `renderer.info` against 550,000 triangles | the plan's 48k assumed one batch: it is 96k at the High cap. Verified by a verifier: the largest High frame with everything on 546,580, Medium 380.9k, Low 243.9k, and at a faked 546k, 549k and 552k the trim left room for 1,000, 250 and 0 segments, with no flapping |
+| Rebuilds | at most four a second (250 ms from the last swap; the first picture and a settled frame are never held), staged: the raster fill in clocked slices of its own, then the trace, each slice at most 8 ms, the batches change only at the swap; a rebuild is 1 to 3 slices | at a 4x CPU slowdown in software rendering a slice's 95th percentile was 8.1 to 8.5 ms (maximum up to 13 ms on a loaded machine); the numeric height's raster fill alone had been one slice of 14.0 ms |
+| Frame loop | the layer never switches `animating` on: a still map stays still (no frame in 3 s with the glyphs on, an idle tick of 0.04 bytes) | v-render |
+| Memory | typed arrays of the High tier: the builder's output 560,196 bytes and the two batches' own copies 960,000 bytes (1.45 MiB), and 226,576 bytes for the raster of a numeric height, made the first time one is used; the same 0.96 MB on the graphics side | derived from the allocations in the code (equal to the verifier's 1.45 MiB); the layer is not built lazily (it would save under 2 % of the ArrayBuffer memory) |
+| Engine cost (node) | a docs-lane run (`npx vitest run src/render/wind/flowGlyphs.perf.test.ts src/render/wind/flowGlyphs.alloc.test.ts`, one run, a desktop core): a rebuild of 1,864 glyphs and 11,082 segments (L3 at its densest, near the High cap) a median of 1.52 ms (p95 2.11 ms), in slices of 3.4 ms a slice p95 of 1.70 ms and a maximum of 2.29 ms; the raster of a numeric height on 45 x 45 columns 0.26 ms at the model's spacing and 1.00 ms at half of it; a builder's first (cold) picture 14.0 ms in 4 slices; an orbit view over a 32 m lattice (about 132,000 cells in its box) 11.2 ms in 4 slices; 93 to 413 bytes allocated a rebuild with inlining off (L1 93, L2 157, L3 413, L4 221, calm dots 381); heap +27.4 kB over 3,000 rebuilds. The lanes' and verifiers' runs on a loaded machine: a median of 1.2 to 1.45 ms, a slice p95 of 1.2 to 2.9 ms, a cold rebuild 25 to 65 ms over 9 to 10 slices | the tests allow 1 kB a rebuild and 100 kB of heap; `flowGlyphs.perf.test.ts` has a wall-clock test that failed once under load (it passes alone) |
+| First switch-on | no work by itself; the first picture comes about two frames later, a synchronous cost of 0.1 to 1.2 ms at 4x | the design's warm-up rebuild was measured to buy nothing and dropped |
+| Leak | geometries 14 and textures 17 unchanged after 60 toggles and 20 zooms; 5 *New scenario* cycles clean | v-render |
+| Bundle | the engine, the layer and `streaks.ts` are in the lazy render chunk; the entry holds the words, the controls and `glyphTypes.ts` | see *Build the phone apps* |
+
+When the rest of the frame already uses every triangle a frame may have, the layer trims itself to nothing and says so (the `'budget'` state, above); it looks again by itself once a tenth of the tier's cap fits.
+
+**The Map view tab and Turn off the slice** are described under *Air slices and the air picture* (*The two tabs*, *Turn off the slice*).
+
+**Pictures.** 37 (curved flow lines at a zoom where one model cell is about 50 px, top view, the 10 m chip), 37b (straight arrows, the whole 6 km area across the screen), 38 (close in over the forest, one cell about 150 px, trees and the aerial photo on: the strokes show through the crowns) and 39 (the Layers row with its chips and caption) are in the table at the top; 40 and 41 are under *Air slices and the air picture*.
+
+**Limits.** Seen only in software rendering and in node, never on a phone: the ladder's edges while pinching, the halo's legibility in sunlight and on the aerial photo, 2.5 px strokes at a pixel ratio of 3, rebuild hitching while panning, the battery, TalkBack. In an orbit view at a tilt of 68 to 82 degrees the L3 rows stack about 10 to 13 px apart near the horizon and convergent flow makes bundles (thinning by the nominal pixel area would also thin the default tilt-55 view by about 0.57 at the centre, and cannot be tuned without a phone; not fixed). L1 and L2 marks are one chord, so over relief 6 to 17 % are partly under the ground (2 to 5 % of their length). Pan invariance is bit-exact only for an overhead camera over flat ground (over relief a mark's length in metres changes by 2 to 15 %, constant in pixels). The far zoom shows few marks (26 to 30 at 12 to 18 km). A model cell is 100 to 270 m, so there is no detail finer than that, and the animated streaks and the marks can clutter when both are on. See plan 20.4.
 
 ## Data sources and licences
 
@@ -900,7 +999,7 @@ signal on the timeline without a slow phone (screenshots and layout audits).
 ### Tests
 
 ```bash
-npm test                          # Vitest: every module incl. the §15 validation scenarios (3,331 tests at the 0.3.0 gate; the 0.4.0 and 0.4.1 counts are in the plan, sections 18.2 and 19.2)
+npm test                          # Vitest: every module incl. the §15 validation scenarios (3,331 tests at the 0.3.0 gate; the 0.4.0, 0.4.1 and 0.5.0 counts are in the plan, sections 18.2, 19.2 and 20.2)
 npm run check:contrast            # WCAG contrast of every text pair of every stylesheet in the four looks
 npm run build:cap && npm run check:bundle   # the APK build: one page, no source maps, JS / CSS / data within the budgets (docs/ARCHITECTURE.md, Performance budgets)
 FIRESIM_SKIP_SLOW=1 npm test      # skip the long 3-h Katoomba validation (src/sim/validation.test.ts)
@@ -929,7 +1028,7 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   exact landing, a 10 s picture interval) and a whole scenario at maximum speed without a pop-up or a pause.
 - `e2e/ui.spec.ts` — the UI on the mock engine (`?mock=1`): the collapsed menus and dock, the speed options, the
   timeline, the opt-in pause on Danger cards, settings and the belt weather kit.
-- `e2e/layers.spec.ts` — the Layers panel against the catalogue, heat maps, solo and plain ground, remembered choices, no GPU leaks.
+- `e2e/layers.spec.ts` — the Layers panel against the catalogue, heat maps, solo and plain ground, remembered choices, no GPU leaks. Since 0.5.0 also the *Arrows and flow lines* row: a switch row in Wind and air whose six *Wind height* chips are built when it is first on, remembered (and back after Reset), with the panel's DOM counted (at most 1,000 nodes with the row on); on the real layer, the map legend card and the caption and zoom line following the camera, and the card giving way at eye level and coming back; on the 2-D stand-in map, "Needs the 3-D view" and no chips.
 - `e2e/datasets.spec.ts`, `e2e/model-card.spec.ts` — the two information screens: their numbers equal `window.__firesim`'s.
 - `e2e/integration.spec.ts` — the seams: every entry point to Data sets and the model card, the Back order, focus returning, the stage
   inert behind a screen, the reviewers' follow-ups (the weather chip is not a button, Tab never leaves Settings for the map, Play has
@@ -938,7 +1037,7 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
 - `e2e/truth.spec.ts` — the truth audit of the two information screens on the real engine: the tier the Data sets screen names is the
   engine's (whatever the auto-tune picked), its memory is sized for that tier, the places figures are for the model area, a designed weather
   is never "real data", and the card's layer list agrees with the tier about the smoke and the wind.
-- `e2e/gallery.spec.ts`: takes the pictures of the new screens for `docs/screenshots/` (see above; the 0.4.0 tests are `gallery 0.4.0`, the 0.4.1 test is `gallery 0.4.1`).
+- `e2e/gallery.spec.ts`: takes the pictures of the new screens for `docs/screenshots/` (see above; the 0.4.0 tests are `gallery 0.4.0`, the 0.4.1 test is `gallery 0.4.1`, the two 0.5.0 tests are `gallery 0.5.0`).
 - `e2e/android.spec.ts` — the app under an emulated Capacitor Android runtime.
 - `e2e/maps-link.spec.ts` — Setup's "paste a Google Maps link or coordinates" box: a long Mount Tomah link, Google's share text, the Paste button,
   a short link under the emulated Android runtime (`e2e/androidBridge.ts` fakes the native HTTP plugin's redirect, so no real network is used) and in the
@@ -972,7 +1071,7 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   chunk loaded, the panel's chunk asked for when the tool opens and not at start-up (and a failed chunk leaves one line, Try again and
   working buttons, and a failed retry says "Close and reopen FireSim to load it" and puts the button away), a real one-finger touch pan
   under the cross, the two-step tap confirm, "Make the line longer than 300 m", what is written to the layers, Swap, a preset, "Me to fire"
-  off with its reason, Back and Escape, focus, and nothing popping up by itself.
+  off with its reason, Back and Escape, focus, and nothing popping up by itself. Since 0.5.0: the two tabs (the header fits in one row, at most 50 px, at 412 x 915, 360 x 640 and 844 x 390, and no word of a tab or a chip breaks at 200 % text), the tablist (roles, one tab in the Tab order, Left, Right, Home and End, the polite announcement, no `role=alert`), the Map view as the Layers panel's own controls (one state, both ways), a placement dropped by a tab press, the tab kept, Escape and Back from a chip or the switch, and *Turn off the slice* from the Map view; the 2-D map has no tabs.
 - `e2e/airslice-panel.spec.ts`: the side-view panel on both tiers: the painted picture, six chips on the 3-D air and Temp and Smoke off
   with the reason and the button on the fast tier, the probe (tap, drag, arrow keys, Escape, the clear button), "Show model cells", the
   honest footer in view, landscape 844 x 390 (the picture and footer pinned, the chips and controls scrolling, also with a reading on, when
@@ -988,6 +1087,7 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   at the middle of the line (30 m up, read from the slice's own lattice), the panel redrawn in the next frame and not inside the update that
   made the slice, the Layers compass showing the placed line's bearing and swinging that line about its middle (and clearing the probe),
   and, at 390 x 844 and 360 x 640, that the controls follow the chips and a tap on a chip that is off scrolls to its reason and the button.
+  (Since 0.5.0 the recording flow also presses *Turn off the slice*: the button is the last row of the controls with "This also clears the recording." under it, one press clears the stored line, the scene's slice, the recording, the curtain, the marks and the probe, says "Slice turned off. The recording was cleared.", puts focus on *Set start (A)*, leaves the tool open, does not come back when the tool is reopened and lets a new line work; it is not offered while only A is set.)
   The two tests of 0.4.1, one for each tier, run the time-lapse recorder end to end: a preset says it is not recorded and offers *Keep this
   line* (a 4 px gap under *Presets* and the repo's tap-target rule on the tool); keeping it writes A and B, clears the preset, moves focus to the
   status line and announces "Line kept. Recording starts when the simulation next runs."; playing at 120 x fills the recorder (inside its budget)
@@ -999,11 +1099,19 @@ Chromium runs with SwiftShader WebGL (no GPU needed). The server is reused if on
   the Android runtime, builds that fail, storage). Since 0.4.1 the determinism test's run B keeps an Air slices preset with *Keep this line* before it
   plays and waits for the recorder to hold pictures (run A has no slice and no recorder), and the fire's hashes must still be equal. "Real engine:
   Settings changed mid-run" gives the engine 30 s to reach 300 s of run time (it needs about 5 to 6 s on a busy machine, over the 5 s default; it
-  failed the same way on 0.4.0 under load).
+  failed the same way on 0.4.0 under load). Since 0.5.0 the layer cycle needs the *Arrows and flow lines* switch to be usable on the real engine, a block picks each of the six *Wind height* chips with the arrows on and checks the height and that the run goes on, and the random rounds include a height choice.
+- `e2e/wind-glyphs.spec.ts` (4 tests, the fast tier, the High picture tier, Katoomba at 6 km, `?debug=1`): a real CDP pinch zoom from 12 km to under 1 km walks the
+  ladder (the level never goes down, starts at L1 or L2 and ends at L4, and always agrees with `cellPx` within the planner's 15 %), a one-finger pan keeps the level
+  and redraws, three zooms at two heights (the 10 m wind and 300 m) are drawn and kept as screenshots in the report (`WIND_GLYPH_SHOTS=<dir>` also writes them), eye
+  level draws nothing and says why, under a 4x CPU slowdown a rebuild stays in slices (slice p95 at most 12 ms, at most 4 slices) while the camera pans and five
+  height changes at a close zoom each finish; at the High tier with everything on the layer adds two draw calls, 4 triangles a segment, and the frame stays inside
+  550,000; 60 toggles and height changes and 20 zooms leave `renderer.info.memory` and the JS heap where they were; the frame loop stops with the glyphs on; close in
+  over the canopy the depth bias shows at least a third more of the strokes than the plain depth test while a ridge still hides what is behind it; and the 2-D
+  stand-in map has no glyph statistics.
 - `e2e/air-curtain-gpu.spec.ts` (1 test): the curtain leaks no GPU objects. The section is switched on and off, the line, its length (four
   lengths, so the lattice changes size), the preset and the chip are changed, 60 times, and the renderer holds the same number of
   geometries and textures at the end as after a warm-up (the Layers spec does the same for every other layer).
-- `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher) and the `test` every spec
+- `e2e/helpers.ts`, `e2e/fixtures.ts` — shared helpers (menus, speed, timeline, the "no pop-up" watcher, and since 0.5.0 the CDP multi-touch `Hand` that both gesture specs use) and the `test` every spec
   uses, which fails a test on any `console.error`, `console.warn` or page error (`FIRESIM_CONSOLE=report` only prints them).
 
 ## Try it on an Android phone
@@ -1044,7 +1152,7 @@ For iOS, after `cap add ios`, add the location permission the "Use my location" 
 Notes: the app is served from `https://localhost` (Android) / `capacitor://localhost` (iOS); `CapacitorHttp` routes
 `fetch` through the native stack, so no service depends on CORS on device (in the browser the NSW, RFS and
 Open-Meteo services are called directly and only the canopy bucket is proxied). The simulation runs in an ES-module Web Worker (Android System WebView 108+, which `capacitor.config.ts` enforces, iOS 16+; the build target is ES2022). The bundle
-is about 36 MB (about 3.0 MB of app code and styles, 2.8 MB of it JavaScript, from `npm run build:cap`; all JavaScript 949.3 kB gzip, the entry chunk 166.0 kB gzip, the lazy Air slices chunk 10.3 kB gzip plus 0.9 kB of CSS, against budgets that did not change: 1000 and 195), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
+is about 36 MB (about 3.0 MB of app code and styles, 2.8 MB of it JavaScript, from `npm run build:cap`; all JavaScript 963.5 kB gzip, the entry chunk 169.2 kB gzip, the lazy render chunk (with the wind arrows' engine and layer) 224.1 kB gzip, the lazy Air slices chunk 10.3 kB gzip plus 0.9 kB of CSS, against budgets that did not change: 1000 and 195; 0.4.1 was 949.3 and 166.0), of which ~35 MB are the nine demo sites and replays; remove sites from `public/demo/` (and `src/data/demoSites.ts`) for a
 smaller app.
 
 ## Offline use and area packs
@@ -1168,6 +1276,7 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `src/scenario` | the build pipeline, weather sources (Open-Meteo), presets, replays, belt kit, area packs, live feeds |
 | `src/sim` | `Simulation` (coupling loop, records, checkpoints, rewind, tiers), `SimHost`, worker, `SimClient` |
 | `src/render` | `SceneView`: terrain, vegetation, flames, embers, smoke, wind particles, overlays, the air slice's curtain, camera rig; the air sampler (`atmosphereSampler.ts`) |
+| `src/render/wind` | the wind arrows and flow lines (0.5.0): the pure engine (`glyphLod` the level and the visible ground, `glyphPose` and `glyphSchedule` when to rebuild and how much room there is, `glyphField` the wind raster, `flowGlyphs` the builder), `windGlyphLayer` (the Three.js side: two `StreakBatch`es, staged rebuilds, the self-trim); the engine has no Three.js and no DOM |
 | `src/render/slice` | the Air slice's pure modules: `sampleSlice`, the line and its presets (`sectionFromEndpoints`, `resolveSlice`, `presetWindFromDeg` for the wind the presets follow), axis ticks, flow streaks, the probe, the shared `SliceUpdater`, and the time-lapse recorder (`sliceRecorder.ts`, the scene's half `sliceTimeLapse.ts`); no Three.js and no DOM |
 | `src/ui` | app shell, setup / building / simulation screens, session (time, playback, edits; `cutHistory`, the one place the history and the slice recorder are cut), panels, mocks, `recordingWords.ts` (the words of the recording) |
 
@@ -1202,13 +1311,22 @@ loop: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   streaks' frame rate, the panel's feel with gloves and the chunk's load time on a phone are open. On the fast tier the slice shows the
   forecast wind fitted to the terrain, not the wind the fire feels, and it says so in the footer; on a calm night the 10 m wind that both
   tiers publish, which the slice and the wind speed map show, can differ a lot from the wind the fire feels; Temp is relative to the slice's
-  own air at each height, so on a short line through a plume it understates the plume; the Map view tab (0.5.0) is not built.
+  own air at each height, so on a short line through a plume it understates the plume.
 - The Air slice recorder (0.4.1, see *Recording a line*): seen only in software rendering and in node tests, never on a phone. A line placed while
   the run plays is recorded only from where the simulation had computed to, which can be well after the time shown, and nothing is filled in
   backwards; its cost at Max speed is a main-thread load in the first minute after *Keep this line* (a 4x-throttled browser measured a 95th
   percentile of 11 to 13 ms for one picture, and a single one can exceed a frame); it comes on top of the history (6 to 12 MiB); the
   statistics row counts live samples only; in short landscape the footer is hidden while a probe reading is shown, so nothing in view says "recorded"
   then; *Clear recording* cannot be undone.
+- The wind arrows and flow lines (0.5.0, see *Wind arrows and flow lines*): seen only in software rendering and in node, never on a phone, so the ladder's edges (4,
+  12, 32 and 90 px a model cell) while pinching, the halo's legibility in sunlight, 2.5 px strokes at a pixel ratio of 3, rebuild hitching while panning, the battery
+  and TalkBack on the tabs, the chips and *Turn off the slice* are open. The marks are a smooth fit through a model whose cells are 100 to 270 m wide, not new detail;
+  a stronger wind than about 8 to 14 m/s is told by colour and not by length; in an orbit view at a tilt of 68 to 82 degrees the L3 rows stack about 10 to 13 px apart
+  near the horizon and convergent flow makes bundles (not fixed); the map legend card still shows at level 0; the arrows and the animated streaks can clutter when both
+  are on. The first chip is the model's 10 m wind over open ground, which on a calm night is not what the fire feels: "What the fire feels" and colouring the map by
+  speed are not built (E1b and E2 may become 0.5.1). *Turn off the slice* clears the recording without asking (the hint is the safeguard) and cannot be undone. On the
+  fast tier the *Use the 3-D atmosphere* button is one row lower than in 0.4.1 and was never in view unscrolled; at 844 x 390 with a recording the real-engine tap audit
+  misses 3 of 8 bottom probes of every control below the picture.
 - Places data are what the NSW services hold: a track that is not mapped is not drawn, a home without an address point is not
   counted, and the zoning layer is the planning map, not what is built. The 3-D trees are decorative (placed from canopy cover and
   height); the fire and the air do not see individual trees.
