@@ -607,7 +607,21 @@ export interface WindEdit {
   time: number;
 }
 
-export type ScenarioEdit = FuelEdit | WindEdit;
+/**
+ * "From `time` the wind comes from `dir`" (the Wind direction tool): turns the whole forecast wind, keeps its speed.
+ * The turn starts at `time` and is finished `WIND_TURN_S` (15 min) later; the direction then holds until the next
+ * change. `WindEdit` stays for Setup's belt-kit readings; this is the global, timed edit.
+ */
+export interface WindDirectionEdit {
+  kind: 'windDirection';
+  id: string;
+  /** Compass direction the wind comes FROM, degrees clockwise from north, [0, 360). */
+  dir: number;
+  /** Simulation time (s from the scenario start) at which the wind starts to turn: a whole number of minutes. */
+  time: number;
+}
+
+export type ScenarioEdit = FuelEdit | WindEdit | WindDirectionEdit;
 
 export interface SimOptions {
   /** Random seed for embers/turbulence. */

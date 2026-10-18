@@ -18,7 +18,7 @@
  *  - Only the user (pause, the timeline, menus), the end of the scenario, or the app going to the background stops
  *    playback: nothing else in here pauses it (a worker error does, since there is nothing to play).
  */
-import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire } from '../core/types';
+import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire, WeatherSeries } from '../core/types';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import type { EngineInfo, PerfEvent } from '../core/simTypes';
@@ -204,6 +204,15 @@ export class SimSession {
 
   get duration(): number {
     return this.scenario.duration;
+  }
+
+  /**
+   * The forecast with the user's Wind direction changes applied (what the top bar chip and the Weather tab read for
+   * the wind). One object while the list of changes is unchanged. STUB (C0): the forecast itself until W-core
+   * wires `applyWindDirection(scenario.weather, scenario.startTime, the windDirection edits of state.edits)`.
+   */
+  windWeather(): WeatherSeries {
+    return this.scenario.weather;
   }
 
   /**

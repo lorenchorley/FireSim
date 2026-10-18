@@ -4,7 +4,7 @@
  * the start of the first atmosphere step whose time is ≥ the record time, in (time, insertion) order, so a rewind
  * followed by a re-run replays them bitwise identically.
  */
-import type { FuelEdit, Ignition, QualityTier, ScenarioEdit, WindEdit } from '../core/types';
+import type { FuelEdit, Ignition, QualityTier, ScenarioEdit, WindDirectionEdit, WindEdit } from '../core/types';
 import type { SimOptionKey } from './protocol';
 
 export type RecordBody =
@@ -27,9 +27,13 @@ export const recordOrder = (a: SimRecord, b: SimRecord): number => a.time - b.ti
 
 /**
  * Active edits after applying `applied` (record seqs in application order): an edit replaces an active edit with the
- * same id (moving to the end), a removal drops it. Returns the active fuel and wind edits in application order.
+ * same id (moving to the end), a removal drops it. Returns the active fuel, local wind and wind direction edits in
+ * application order.
  */
-export function activeEdits(records: ReadonlyMap<number, SimRecord>, applied: readonly number[]): { fuel: FuelEdit[]; wind: WindEdit[] } {
+export function activeEdits(
+  records: ReadonlyMap<number, SimRecord>,
+  applied: readonly number[],
+): { fuel: FuelEdit[]; wind: WindEdit[]; windDirection: WindDirectionEdit[] } {
   const list: ScenarioEdit[] = [];
   for (const seq of applied) {
     const r = records.get(seq);
@@ -46,17 +50,19 @@ export function activeEdits(records: ReadonlyMap<number, SimRecord>, applied: re
   }
   const fuel: FuelEdit[] = [];
   const wind: WindEdit[] = [];
+  const windDirection: WindDirectionEdit[] = [];
   for (const e of list) {
     if (e.kind === 'fuel') fuel.push(e);
-    else wind.push(e);
+    else if (e.kind === 'wind') wind.push(e);
+    else windDirection.push(e);
   }
-  return { fuel, wind };
+  return { fuel, wind, windDirection };
 }
 
 /** The seqs of records that change the fuel map (fuel edits and removals of fuel edits), in application order. */
 export function fuelSequence(records: ReadonlyMap<number, SimRecord>, applied: readonly number[]): number[] {
   const out: number[] = [];
-  const kindOf = new Map<string, 'fuel' | 'wind'>();
+  const kindOf = new Map<string, ScenarioEdit['kind']>();
   for (const seq of applied) {
     const r = records.get(seq);
     if (!r) continue;
