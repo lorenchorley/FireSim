@@ -44,12 +44,21 @@ interface Store {
   cache: [Cached | null, Cached | null];
 }
 
+/** Rows of texels between two reads of the clock while a fill is sliced: a slice overshoots its budget by at most this many rows (about 0.3 ms for 4 rows of a 60 column model at 4x CPU). */
+export const FILL_ROWS_PER_CHECK = 4;
+
 /**
  * Rasters of the wind at a height above the ground, filled in place into storage made once for the largest case
  * (`(2 n - 1)^2` texels for `n` columns a side; it grows only if a model asks for more). `fill` returns a raster whose arrays are
  * views of that storage. There are two storages, used in turn: a build that is still tracing through the raster of the last `fill`
  * keeps reading it intact when the next `fill` is made, and it is the one after that which overwrites it (the refine 1 and refine 2
  * rasters of one turn share their storage).
+ *
+ * A fill is also resumable, by rows, so the layer can run it in clocked slices on the main thread (a 60 column model at half spacing
+ * is 14,000 texels, 10 ms and more at 4x CPU): `begin` takes the turn and sets the job up, `step(budgetMs, now)` does rows until the
+ * budget is used (the clock is read every `FILL_ROWS_PER_CHECK` rows, and one batch is always done, so every call makes progress)
+ * and says when the raster is complete, `cancel` drops a job. `fill` is `begin` and one unclocked `step`. Slices change nothing in the
+ * numbers: the texels are the same, bit for bit, however the rows are cut.
  */
 export class HeightRaster {
   private readonly stores: [Store, Store];
@@ -57,6 +66,16 @@ export class HeightRaster {
   // Scratch of the lookups: allocation-free, and no double goes through an argument (spike S3, rule 1).
   private readonly pos = new Float64Array(4);
   private readonly wind = new Float32Array(3);
+  // The job in progress (null sampler = none): what it reads, where it writes and the next row.
+  private sampler: AtmosphereSampler | null = null;
+  private ground: GroundRaster | null = null;
+  private out: FlowRaster | null = null;
+  private grid: GridSpec | null = null;
+  private heightM = 0;
+  private refine = 1;
+  private row = 0;
+  /** The complete raster of the last finished job (null while one is under way, or after `cancel`). */
+  private ready: FlowRaster | null = null;
 
   constructor(maxN = 60) {
     const cap = (2 * maxN - 1) * (2 * maxN - 1);
@@ -64,7 +83,17 @@ export class HeightRaster {
     this.stores = [make(), make()];
   }
 
-  fill(sampler: AtmosphereSampler, ground: GroundRaster, heightM: number, refine: 1 | 2): FlowRaster {
+  /** The raster of the last finished fill, or null while a fill is under way (its storage is half written) or was cancelled. */
+  get raster(): FlowRaster | null {
+    return this.ready;
+  }
+
+  get busy(): boolean {
+    return this.sampler !== null;
+  }
+
+  /** Set up a fill (no texel is written yet): the next storage, in turn, and the raster that will be complete when `step` says so. */
+  begin(sampler: AtmosphereSampler, ground: GroundRaster, heightM: number, refine: 1 | 2): void {
     const g: GridSpec = sampler.atm?.grid ?? ground.grid;
     const nx = (g.nx - 1) * refine + 1;
     const ny = (g.ny - 1) * refine + 1;
@@ -83,19 +112,69 @@ export class HeightRaster {
       c = { nx: g.nx, ny: g.ny, cellSize: g.cellSize, x0: g.x0, y0: g.y0, raster: { grid, u: st.u.subarray(0, count), v: st.v.subarray(0, count) } };
       st.cache[refine - 1] = c;
     }
-    const step = g.cellSize / refine;
-    const gg = ground.grid;
-    const ge = ground.elevation;
+    this.sampler = sampler;
+    this.ground = ground;
+    this.out = c.raster;
+    this.grid = g;
+    this.heightM = heightM;
+    this.refine = refine;
+    this.row = 0;
+    this.ready = null;
+  }
+
+  /**
+   * Fill rows until `budgetMs` of `now()` is used; true when the raster is complete (or no fill is under way). At least one batch of
+   * rows is done per call. `Infinity` finishes the job without reading the clock.
+   */
+  step(budgetMs: number, now: () => number): boolean {
+    if (this.sampler === null) return true;
+    const ny = this.out!.grid.ny;
+    const deadline = budgetMs === Infinity ? Infinity : now() + budgetMs;
+    for (;;) {
+      const to = Math.min(ny, this.row + FILL_ROWS_PER_CHECK);
+      this.rows(this.row, to);
+      this.row = to;
+      if (to >= ny) {
+        this.ready = this.out;
+        this.sampler = this.ground = this.out = this.grid = null;
+        return true;
+      }
+      if (deadline !== Infinity && now() >= deadline) return false;
+    }
+  }
+
+  /** Drop the job (its storage stays half written and is not offered as a raster). */
+  cancel(): void {
+    this.sampler = this.ground = this.out = this.grid = null;
+    this.ready = null;
+  }
+
+  fill(sampler: AtmosphereSampler, ground: GroundRaster, heightM: number, refine: 1 | 2): FlowRaster {
+    this.begin(sampler, ground, heightM, refine);
+    this.step(Infinity, never);
+    return this.ready!;
+  }
+
+  /** Texel rows `rowFrom` up to (not including) `rowTo` of the job in progress. */
+  private rows(rowFrom: number, rowTo: number): void {
+    const g = this.grid!;
+    const sampler = this.sampler!;
+    const raster = this.out!;
+    const nx = raster.grid.nx;
+    const step = g.cellSize / this.refine;
+    const gg = this.ground!.grid;
+    const ge = this.ground!.elevation;
     const gmx = gg.nx - 1;
     const gmy = gg.ny - 1;
     const ginv = 1 / gg.cellSize;
+    const heightM = this.heightM;
     const pos = this.pos;
     const w = this.wind;
-    const u = c.raster.u;
-    const v = c.raster.v;
+    const u = raster.u;
+    const v = raster.v;
     pos[3] = heightM; // the height above ground, for the ambient fallback of a view without wind
-    let o = 0;
-    for (let j = 0; j < ny; j++) {
+    let o = rowFrom * nx;
+    for (let j = rowFrom; j < rowTo; j++) {
       const y = g.y0 + j * step;
       for (let i = 0; i < nx; i++) {
         const x = g.x0 + i * step;
@@ -121,6 +200,8 @@ export class HeightRaster {
         o++;
       }
     }
-    return c.raster;
   }
 }
+
+/** The clock of an unclocked step (never read). */
+const never = (): number => 0;

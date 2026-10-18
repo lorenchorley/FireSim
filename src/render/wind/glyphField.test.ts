@@ -10,7 +10,7 @@ import type { WeatherHour } from '../../core/types';
 import { AtmosphereSampler, profileFactor } from '../atmosphereSampler';
 import { HeightField } from '../heightfield';
 import { makeAirView } from '../slice/testing';
-import { HeightRaster, REFINE_CELL_PX, refineFor, surfaceRaster } from './glyphField';
+import { FILL_ROWS_PER_CHECK, HeightRaster, REFINE_CELL_PX, refineFor, surfaceRaster } from './glyphField';
 import { bilinear, groundOf, ORIGIN } from './glyphOracle.testing';
 
 const GRID = makeGridSpec(ORIGIN, 45 * 133, 133);
@@ -188,5 +188,209 @@ describe('HeightRaster', () => {
     gc();
     const grew = process.memoryUsage().heapUsed - before;
     expect(grew).toBeLessThan(64 * 1024);
+  });
+});
+
+/** FNV-1a over the bytes of a raster's array: two rasters with the same hash have the same bits. */
+function fnv(a: Float32Array): string {
+  const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < b.length; i++) {
+    h ^= b[i]!;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+describe('HeightRaster in slices', () => {
+  // Hashes of the one-shot fill as it was before the fill became resumable (the 0.5.0 tree at c916f10), for the same air and ground as
+  // `view()` and GROUND above. They pin that cutting the fill into rows changes no bit; they are not to be re-baselined.
+  const BEFORE: Record<string, string> = {
+    '1 50': '45x45 u bda2eb39 v ccf70878',
+    '1 300': '45x45 u ad73012a v 5b20f34c',
+    '1 2000': '45x45 u 38ca0402 v 3444510d',
+    '2 50': '89x89 u ac0d1c2f v b61c66c4',
+    '2 300': '89x89 u 1a9dc65f v 057464e0',
+    '2 2000': '89x89 u e3d98aab v 76ea98f8',
+  };
+  const sig = (r: { grid: { nx: number; ny: number }; u: Float32Array; v: Float32Array }): string => `${r.grid.nx}x${r.grid.ny} u ${fnv(r.u)} v ${fnv(r.v)}`;
+
+  /** A sampler whose every wind lookup costs `ms` of a fake clock: a texel has a price, so the length of a slice can be asserted exactly. */
+  function priced(ms: number, air = view()): { sampler: AtmosphereSampler; clock: { t: number } } {
+    const sampler = new AtmosphereSampler(air, BASE, null);
+    const clock = { t: 0 };
+    const real = sampler.windP.bind(sampler);
+    sampler.windP = (pos, out) => {
+      clock.t += ms;
+      real(pos, out);
+    };
+    return { sampler, clock };
+  }
+
+  it('the one-shot fill gives the very bits of the build before it was resumable', () => {
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    for (const refine of [1, 2] as const) for (const h of [50, 300, 2000]) expect(sig(hr.fill(s, GROUND, h, refine)), `refine ${refine} at ${h} m`).toBe(BEFORE[`${refine} ${h}`]);
+  });
+
+  for (const refine of [1, 2] as const) {
+    it(`refine ${refine}: cut into slices of any size (a batch of rows, a few, the lot) it gives the same bits as before`, () => {
+      const hr = new HeightRaster();
+      for (const budget of [0, 0.01, 0.5, 3, 1e9]) {
+        for (const h of [50, 300, 2000]) {
+          const { sampler, clock } = priced(0.001);
+          hr.begin(sampler, GROUND, h, refine);
+          let slices = 1;
+          while (!hr.step(budget, () => clock.t)) {
+            slices++;
+            expect(hr.raster, 'a half written raster is not offered').toBeNull();
+            expect(hr.busy).toBe(true);
+            if (slices > 10_000) throw new Error('no progress');
+          }
+          expect(hr.busy).toBe(false);
+          expect(sig(hr.raster!), `refine ${refine}, ${h} m, slices of ${budget} ms (${slices} of them)`).toBe(BEFORE[`${refine} ${h}`]);
+        }
+      }
+    });
+  }
+
+  it('stops on the clock: no slice is longer than its budget by more than one batch of rows, and every slice but the last uses the budget up', () => {
+    const cost = 0.001; // ms a texel
+    const { sampler, clock } = priced(cost);
+    const hr = new HeightRaster();
+    const BUDGET = 0.4;
+    for (const refine of [1, 2] as const) {
+      hr.begin(sampler, GROUND, 100, refine);
+      const nx = (GRID.nx - 1) * refine + 1;
+      const ny = (GRID.ny - 1) * refine + 1;
+      const batch = FILL_ROWS_PER_CHECK * nx * cost; // the longest a slice can run past its budget
+      const lengths: number[] = [];
+      for (;;) {
+        const t0 = clock.t;
+        const done = hr.step(BUDGET, () => clock.t);
+        lengths.push(clock.t - t0);
+        if (done) break;
+      }
+      const whole = nx * ny * cost;
+      expect(lengths.length, `refine ${refine}`).toBeGreaterThan(1);
+      expect(lengths.length).toBeLessThanOrEqual(Math.ceil(whole / BUDGET) + 1);
+      for (const l of lengths) expect(l, `a slice of ${l.toFixed(3)} ms`).toBeLessThanOrEqual(BUDGET + batch + 1e-9);
+      for (const l of lengths.slice(0, -1)) expect(l).toBeGreaterThanOrEqual(BUDGET - 1e-9);
+      expect(lengths.reduce((a, b) => a + b, 0)).toBeCloseTo(whole, 6); // every texel once
+    }
+  });
+
+  it('a 60 column model at half spacing (the worst case: 14,161 texels) is more than one slice at 8 ms on a slow phone, and no slice passes 8 ms by a batch of rows', () => {
+    const grid = makeGridSpec(ORIGIN, 60 * 133, 133);
+    const atm = makeAirView({ grid, baseM: BASE, nz: 6, u: () => 5, v: () => 1 });
+    expect(atm.grid.nx).toBe(60);
+    const MS = 0.0008; // 4x CPU measured 5.6 ms for 7,921 texels: 0.7 us a texel
+    const { sampler, clock } = priced(MS, atm);
+    const hr = new HeightRaster();
+    hr.begin(sampler, GROUND, 100, 2);
+    const lengths: number[] = [];
+    for (;;) {
+      const t0 = clock.t;
+      const done = hr.step(8, () => clock.t);
+      lengths.push(clock.t - t0);
+      if (done) break;
+    }
+    expect(119 * 119 * MS).toBeGreaterThan(8); // more than one slice's worth
+    expect(lengths).toHaveLength(2);
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(8 + FILL_ROWS_PER_CHECK * 119 * MS + 1e-9);
+    expect(sig(hr.raster!).startsWith('119x119')).toBe(true);
+  });
+
+  it('always makes progress, whatever the budget (zero or negative): a call does at least one batch of rows', () => {
+    const { sampler, clock } = priced(0.001);
+    const hr = new HeightRaster();
+    hr.begin(sampler, GROUND, 300, 1);
+    const at: number[] = [];
+    while (!hr.step(-5, () => clock.t)) {
+      at.push(clock.t);
+      if (at.length > 1000) throw new Error('no progress');
+    }
+    expect(at).toHaveLength(Math.ceil(GRID.ny / FILL_ROWS_PER_CHECK) - 1); // a batch of rows each; the last call finishes
+    for (let i = 1; i < at.length; i++) expect(at[i]! - at[i - 1]!).toBeCloseTo(FILL_ROWS_PER_CHECK * GRID.nx * 0.001, 9);
+  });
+
+  it('does not read the clock for an unclocked step', () => {
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    hr.begin(s, GROUND, 50, 1);
+    const never = (): number => {
+      throw new Error('the clock was read');
+    };
+    expect(hr.step(Infinity, never)).toBe(true);
+    expect(hr.raster).not.toBeNull();
+  });
+
+  it('keeps the raster of the last fill intact while the next one is under way, slice by slice', () => {
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    const a = hr.fill(s, GROUND, 50, 1);
+    const before = fnv(a.u) + fnv(a.v);
+    hr.begin(s, GROUND, 2000, 1);
+    let t = 0;
+    let slices = 0;
+    while (!hr.step(0, () => t++)) {
+      slices++;
+      expect(fnv(a.u) + fnv(a.v), `after ${slices} slices`).toBe(before);
+    }
+    expect(slices).toBeGreaterThan(5);
+    expect(fnv(a.u) + fnv(a.v)).toBe(before);
+    expect(hr.raster!.u.buffer).not.toBe(a.u.buffer);
+  });
+
+  it('can be cancelled: no raster is offered, nothing is left running, and the half written storage is overwritten whole by a later fill', () => {
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    hr.begin(s, GROUND, 300, 2);
+    expect(hr.step(0, () => 0)).toBe(false); // one batch of rows
+    hr.cancel();
+    expect(hr.busy).toBe(false);
+    expect(hr.raster).toBeNull();
+    expect(hr.step(0, () => 0)).toBe(true); // nothing to do
+    // The turn after the cancelled one is the other storage; the one after that is the half written one again, and comes out whole.
+    hr.fill(s, GROUND, 50, 1);
+    expect(sig(hr.fill(s, GROUND, 300, 2))).toBe(BEFORE['2 300']);
+  });
+
+  it('a new begin drops the job before it: a fill never mixes two jobs', () => {
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    hr.begin(s, GROUND, 50, 2);
+    hr.step(0, () => 0);
+    hr.begin(s, GROUND, 2000, 2); // the first is abandoned half done
+    expect(hr.raster).toBeNull();
+    while (!hr.step(0, () => 0)) {
+      // slice after slice
+    }
+    expect(sig(hr.raster!)).toBe(BEFORE['2 2000']);
+  });
+
+  it('allocates next to nothing when it fills in slices: 100 fills of many slices grow the heap by a few tens of kilobytes', () => {
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc') as () => void;
+    const s = new AtmosphereSampler(view(), BASE, null);
+    const hr = new HeightRaster();
+    let t = 0;
+    const clock = (): number => (t += 0.4);
+    const run = (n: number): void => {
+      for (let k = 0; k < n; k++) {
+        hr.begin(s, GROUND, 50 + (k % 9) * 100, (1 + (k & 1)) as 1 | 2);
+        while (!hr.step(1, clock)) {
+          // slice after slice
+        }
+      }
+    };
+    run(20);
+    gc();
+    gc();
+    const before = process.memoryUsage().heapUsed;
+    run(100);
+    gc();
+    const grew = process.memoryUsage().heapUsed - before;
+    expect(grew).toBeLessThan(96 * 1024);
   });
 });

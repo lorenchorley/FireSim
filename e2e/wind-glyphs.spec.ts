@@ -8,7 +8,8 @@
  *   - three zooms x two heights ('Ground' and 300 m): the picture is drawn, the numbers fit the zoom, the heights draw differently;
  *     the screenshots go to the report (and to $WIND_GLYPH_SHOTS when it is set) for the docs gallery and for looking at
  *   - eye level draws nothing and says why; going back draws again
- *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s
+ *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s, and five height
+ *     changes at a close zoom (the raster at half the model's spacing, filled in clocked slices) each finish in turn
  *   - at the High tier with everything on: two more draw calls, 4 triangles a segment, the frame inside 550,000 triangles; off draws nothing extra
  *   - 60 on / off and height changes and 20 zooms leave renderer.info.memory and the JS heap where they were
  *   - with the glyphs on and nothing else moving the frame loop stops (the layer never keeps `animating` on)
@@ -173,7 +174,7 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
     (window as unknown as Handle).__firesim.view.setLayers({ windGlyphs: true, windHeight: 'fire' });
     return performance.now() - t0;
   });
-  console.log(`first switch-on, warm-up included: ${enableMs.toFixed(1)} ms`);
+  console.log(`first switch-on: ${enableMs.toFixed(1)} ms`);
   const hand = await newHand(page);
   const H = await canvasHeight(page);
   expect(H).toBeGreaterThan(500);
@@ -335,6 +336,48 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
       expect(s.sliceP95Ms, 'p95 of a slice (ms)').toBeLessThanOrEqual(12);
       expect(s.slicesLast, 'slices of the last rebuild').toBeLessThanOrEqual(4);
       expect(s.count).toBeGreaterThan(0);
+
+      // A numeric height at a close zoom (a model cell over 60 px) is a raster at half the model's spacing, 14,000 texels at most: its fill
+      // is cut into clocked slices too, so five height changes in a row stay inside the slice budget at 4x CPU, each one finished in turn.
+      const h = await canvasHeight(page);
+      const close = (s.cellM * h) / (2 * Math.tan((50 * Math.PI) / 360) * 90); // the camera distance at which a model cell is 90 px (the rig's field of view is 50)
+      await lookAt(page, close);
+      const heights: Height[] = [50, 300, 1000, 2000, 100];
+      const f = await page.evaluate(
+        (hs) =>
+          new Promise<{ finished: number; frames: number }>((resolve) => {
+            const v = (window as unknown as Handle).__firesim.view;
+            const draw = v.renderer.render;
+            v.renderer.render = () => undefined;
+            const r0 = v.windGlyphStats!()!.rebuilds;
+            let seen = r0;
+            let i = 0;
+            let frames = 0;
+            v.setLayers({ windHeight: hs[0] });
+            const tick = (): void => {
+              frames++;
+              const now = v.windGlyphStats!()!.rebuilds;
+              if (now !== seen && i < hs.length) {
+                seen = now;
+                i++;
+                if (i < hs.length) v.setLayers({ windHeight: hs[i] });
+              }
+              if (i >= hs.length || frames > 4000) {
+                v.renderer.render = draw;
+                resolve({ finished: seen - r0, frames });
+              } else requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }),
+        heights,
+      );
+      const t = (await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats!()))!;
+      console.log(`4x CPU, ${heights.length} height changes at ${t.cellPx.toFixed(0)} px a cell: ${f.finished} rebuilds in ${f.frames} frames, slice p95 ${t.sliceP95Ms.toFixed(2)} ms, max ${t.sliceMaxMs.toFixed(2)} ms`);
+      expect(t.cellPx, 'a close zoom: the raster is at half spacing').toBeGreaterThan(60);
+      expect(f.finished, 'every height change finished its rebuild').toBe(heights.length);
+      expect(t.active).toBe(true);
+      expect(t.idle).toBeNull();
+      expect(t.sliceP95Ms, 'p95 of a slice (ms), the raster fills included').toBeLessThanOrEqual(12);
     } finally {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     }

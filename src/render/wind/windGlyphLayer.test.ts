@@ -14,6 +14,7 @@ import { HeightField } from '../heightfield';
 import { StreakBatch } from '../streaks';
 import { makeAirView } from '../slice/testing';
 import { HALO_INK } from './flowGlyphs';
+import { FILL_ROWS_PER_CHECK } from './glyphField';
 import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
 import { GLYPH_CAPS, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
@@ -107,15 +108,23 @@ interface Rig {
   fresh(): GlyphData;
 }
 
-function rig(o: { tier?: GlyphTier; warm?: boolean; height?: WindHeight; enabled?: boolean; data?: boolean; u?: (x: number, y: number, z: number) => number; drawElevation?: number } = {}): Rig {
+function rig(o: { tier?: GlyphTier; height?: WindHeight; enabled?: boolean; data?: boolean; u?: (x: number, y: number, z: number) => number; drawElevation?: number; windMs?: number } = {}): Rig {
   const tier = o.tier ?? 'high';
   const clock = { t: 0 };
   const stub = new StubBuilder(clock, tier);
-  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, now: () => clock.t, warm: o.warm ?? false });
+  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, now: () => clock.t });
   const view = makeAirView({ u: o.u ?? (() => 8), v: () => 2, w: () => 0, baseM: GROUND, groundAt: () => GROUND });
   view.surfaceU.fill(8);
   view.surfaceV.fill(2);
   const sampler = new AtmosphereSampler(view, GROUND, null);
+  if (o.windMs) {
+    // Every wind lookup of a raster fill costs `windMs` of the fake clock: a texel has a price, so the length of a slice can be asserted.
+    const real = sampler.windP.bind(sampler);
+    sampler.windP = (pos, out) => {
+      clock.t += o.windMs!;
+      real(pos, out);
+    };
+  }
   const hf = new HeightField(view.grid, new Float32Array(view.grid.nx * view.grid.ny).fill(GROUND));
   const drawn = new HeightField(view.grid, new Float32Array(view.grid.nx * view.grid.ny).fill(o.drawElevation ?? GROUND));
   const fresh = (): GlyphData => ({ sampler, atm: view, sliceGround: hf, drawGround: drawn });
@@ -518,6 +527,102 @@ describe('WindGlyphLayer: the height', () => {
   });
 });
 
+describe('WindGlyphLayer: the raster fill in clocked slices', () => {
+  // 31 columns of 200 m: at L4 (a model cell over 60 px) the raster is made at half spacing, 61 x 61 texels.
+  const TEXELS = 61 * 61;
+  const ROW_BATCH_MS = (rows: number, ms: number): number => rows * 61 * ms;
+  const SLICE_MS = 8;
+
+  it('is cut into slices that stop on the clock: none passes 8 ms by more than a batch of rows, and the trace starts after the last one', () => {
+    const MS = 0.01; // 37 ms of lookups for the whole raster
+    const r = rig({ height: 100, windMs: MS });
+    expect(TEXELS * MS).toBeGreaterThan(4 * SLICE_MS);
+    let fillFrames = 0;
+    while (r.stub.begins.length === 0) {
+      r.go(L4, { dt: 16 });
+      if (r.stub.begins.length === 0) fillFrames++;
+      if (fillFrames > 50) throw new Error('the fill did not finish');
+    }
+    expect(fillFrames, 'frames of fill, one slice each, before the trace begins').toBeGreaterThanOrEqual(4);
+    expect(fillFrames).toBeLessThanOrEqual(Math.ceil((TEXELS * MS) / SLICE_MS) + 1);
+    expect(r.layer.stats().sliceMaxMs).toBeLessThanOrEqual(SLICE_MS + ROW_BATCH_MS(FILL_ROWS_PER_CHECK, MS) + 1e-9);
+    expect(r.layer.stats().sliceMaxMs).toBeGreaterThanOrEqual(SLICE_MS - 1e-9); // and it used the slice, it did not stop early
+    r.go(L4);
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, rebuilds: 1, slicesLast: fillFrames + 2 });
+    // The raster the builder got is complete: the analytic wind at every texel.
+    const field = r.stub.begins[0]!.field;
+    expect(field.grid.nx).toBe(61);
+    for (let k = 0; k < field.u.length; k++) expect(field.u[k]!).toBeCloseTo(8, 3);
+  });
+
+  it('is one slice, as before, when the whole fill fits the budget', () => {
+    const r = rig({ height: 100, windMs: 0.0005 }); // 1.9 ms
+    r.go(L4);
+    expect(r.stub.begins).toHaveLength(0); // the fill took this frame
+    r.go(L4);
+    expect(r.stub.begins).toHaveLength(1);
+    r.go(L4);
+    expect(r.layer.stats()).toMatchObject({ rebuilds: 1, slicesLast: 3 }); // one slice of fill, two of trace
+    expect(r.layer.stats().sliceMaxMs).toBeLessThan(SLICE_MS);
+  });
+
+  it('is finished in one call when the frame is settled, whatever the budget', () => {
+    const r = rig({ height: 100, windMs: 0.01 });
+    r.go(L4, { settle: true });
+    expect(r.stub.begins).toHaveLength(1);
+    expect(r.layer.stats()).toMatchObject({ active: true, rebuilds: 1, slicesLast: 2 });
+    expect(r.layer.stats().sliceMaxMs).toBeGreaterThan(30); // one unclocked slice of the whole fill
+  });
+
+  it('is thrown away when the height changes under it: the raster that is traced is the new height\'s, whole, with no texel of the old one', () => {
+    const r = rig({ height: 100, windMs: 0.01, u: (_x, _y, z) => z / 100 }); // 100 m above the 500 m ground reads 6, 50 m reads 5.5
+    r.go(L4, { dt: 16 });
+    r.go(L4, { dt: 16 });
+    expect(r.stub.begins).toHaveLength(0); // still filling
+    r.layer.setHeight(50);
+    for (let i = 0; i < 40 && r.stub.begins.length === 0; i++) r.go(L4, { dt: 16 });
+    expect(r.stub.begins).toHaveLength(1);
+    const field = r.stub.begins[0]!.field;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let k = 0; k < field.u.length; k++) {
+      lo = Math.min(lo, field.u[k]!);
+      hi = Math.max(hi, field.u[k]!);
+    }
+    expect(lo).toBeCloseTo(5.5, 3);
+    expect(hi).toBeCloseTo(5.5, 3);
+  });
+
+  it('is dropped when the layer hides (eye level) in the middle of it, and fills whole on the way back', () => {
+    const r = rig({ height: 100, windMs: 0.01, u: (_x, _y, z) => z / 100 });
+    r.go(L4, { dt: 16 });
+    r.go(L4, { mode: 'ground', dt: 16 });
+    expect(r.layer.stats().idle).toBe('eye-level');
+    for (let i = 0; i < 40 && r.stub.begins.length === 0; i++) r.go(L4, { dt: 16 });
+    expect(r.stub.begins).toHaveLength(1);
+    const field = r.stub.begins[0]!.field;
+    for (let k = 0; k < field.u.length; k++) expect(field.u[k]!).toBeCloseTo(6, 3);
+  });
+
+  it('does not refill for a camera move or a level change at the same refinement, and never traces a half filled raster', () => {
+    const r = rig({ height: 100, windMs: 0.01 });
+    for (let i = 0; i < 40 && r.layer.stats().rebuilds === 0; i++) r.go(L4, { dt: 16 });
+    const first = r.stub.begins[0]!.field;
+    r.go(L4, { x: 3000, dt: 300 });
+    r.go(L4, { x: 3000 });
+    expect(r.stub.begins).toHaveLength(2);
+    expect(r.stub.begins[1]!.field).toBe(first); // the same raster, straight to the trace
+  });
+
+  it('keeps `Ground` free of a fill: the model raster is traced at once', () => {
+    const r = rig({ height: 'fire', windMs: 0.01 });
+    r.go(L4);
+    expect(r.stub.begins).toHaveLength(1);
+    r.go(L4);
+    expect(r.layer.stats()).toMatchObject({ rebuilds: 1, slicesLast: 2 }); // the trace's two slices, no fill
+  });
+});
+
 describe('WindGlyphLayer: what goes to the builder', () => {
   it('gives it the view as it is: the eye, the projection, the canvas, the pixels a metre covers, a box and the tier caps', () => {
     const r = rig();
@@ -589,6 +694,96 @@ describe('WindGlyphLayer: the triangle budget', () => {
     expect(r.stub.begins[1]!.cap.segments).toBe(650);
   });
 
+  it('says `budget` when the rest of the frame already fills the limit: nothing drawn, and the reason stays while it does', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true }); // the other layers alone are over 550,000 triangles
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 3, count: 0, segments: 0, rebuilds: 1 });
+    expect(r.instances('wind-glyph')).toBe(0);
+    expect(r.mesh('wind-glyph').visible).toBe(false);
+    expect(r.mesh('wind-glyph-halo').visible).toBe(false);
+    // A still camera in the same crowded frame asks for nothing and does not flap (the stub counts every rebuild).
+    for (let i = 0; i < 60; i++) expect(r.go(L3, { dt: 300, tris: 560_000 })).toBe(false);
+    expect(r.layer.stats()).toMatchObject({ idle: 'budget', rebuilds: 1 });
+    expect(r.stub.begins).toHaveLength(1);
+  });
+
+  it('says `budget` too when the build began with room and the frame filled up before the swap', () => {
+    const r = rig();
+    r.go(L3, { tris: 100_000 }); // the first slice, with room
+    expect(r.stub.begins[0]!.cap.segments).toBe(GLYPH_CAPS.high.segments);
+    r.go(L3, { tris: 551_000 }); // the swap: the room is gone
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', segments: 0, count: 0 });
+  });
+
+  it('does not say `budget` while some of the picture fits, even a little', () => {
+    const r = rig();
+    r.go(L3, { tris: 549_000, settle: true }); // room for 250 segments
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, segments: 250 });
+    const none = rig();
+    none.go(L3, { tris: 550_000, settle: true }); // exactly full: not one segment
+    expect(none.layer.stats()).toMatchObject({ active: false, idle: 'budget', segments: 0 });
+  });
+
+  it('builds the picture again when the frame has room, without a camera move, and the reason goes', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true });
+    expect(r.layer.stats().idle).toBe('budget');
+    // A layer was switched off: the next frame is drawn with 400,000 triangles.
+    r.go(L3, { dt: 100, tris: 400_000 });
+    expect(r.stub.begins).toHaveLength(1); // the 250 ms gap since the last swap holds it back, as for any rebuild
+    r.go(L3, { dt: 200, tris: 400_000 });
+    expect(r.stub.begins).toHaveLength(2);
+    expect(r.stub.begins[1]!.cap.segments).toBe(GLYPH_CAPS.high.segments);
+    r.go(L3, { tris: 400_000 });
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, segments: 400 });
+  });
+
+  it('waits for real room before it tries again: a tenth of the tier cap, not a handful of segments', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true });
+    const tenth = GLYPH_CAPS.high.segments / 10;
+    r.go(L3, { dt: 1000, tris: 550_000 - 4 * (tenth - 1) }); // room for one segment fewer than a tenth
+    r.go(L3, { dt: 1000, tris: 550_000 - 4 * (tenth - 1) });
+    expect(r.stub.begins).toHaveLength(1);
+    expect(r.layer.stats().idle).toBe('budget');
+    r.go(L3, { dt: 1000, tris: 550_000 - 4 * tenth });
+    expect(r.stub.begins).toHaveLength(2);
+  });
+
+  it('keeps saying `budget` through a camera move that finds the frame still full, and a build begun with no room stays `budget` at its swap', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true });
+    r.go(L3, { x: 3000, dt: 300, tris: 560_000 }); // a rebuild for the new pose: starts, one slice
+    expect(r.stub.begins).toHaveLength(2);
+    expect(r.stub.begins[1]!.cap.segments).toBe(0);
+    expect(r.layer.stats().idle).toBe('budget');
+    // The frame has room by the time it swaps, but the build was given none and drew nothing: still `budget`, never "Showing flow lines" over nothing.
+    r.go(L3, { x: 3000, tris: 480_000 });
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', segments: 0, rebuilds: 2 });
+    // And the room is used at once: the next build (the 250 ms gap) has it.
+    r.go(L3, { x: 3000, dt: 300, tris: 480_000 });
+    r.go(L3, { x: 3000, tris: 480_000 });
+    expect(r.stub.begins).toHaveLength(3);
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, segments: 400, rebuilds: 3 });
+  });
+
+  it('forgets `budget` when it hides: eye level and switching off give their own reasons, and the next build starts clean', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true });
+    expect(r.go(L3, { mode: 'ground', tris: 560_000 })).toBe(false); // nothing was shown, so nothing to redraw
+    expect(r.layer.stats().idle).toBe('eye-level');
+    r.go(L3, { dt: 300, tris: 400_000, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null });
+    r.go(L3, { tris: 560_000, x: 3000, dt: 300, settle: true });
+    expect(r.layer.stats().idle).toBe('budget');
+    r.layer.setEnabled(false);
+    r.go(L3);
+    expect(r.layer.stats().idle).toBe('off');
+    r.layer.setEnabled(true);
+    r.go(L3, { dt: 300, tris: 400_000, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null });
+  });
+
   it('keeps the full cap when the frame has room, on every tier', () => {
     for (const tier of ['low', 'medium', 'high'] as const) {
       const r = rig({ tier });
@@ -599,22 +794,36 @@ describe('WindGlyphLayer: the triangle budget', () => {
 });
 
 describe('WindGlyphLayer: the first switch-on', () => {
-  it('warms the tracer once with a throw-away 48 glyph rebuild that is never drawn', () => {
-    const r = rig({ warm: true, enabled: false });
-    expect(r.stub.begins).toHaveLength(0);
-    r.layer.setEnabled(true);
-    expect(r.stub.begins).toHaveLength(1);
-    expect(r.stub.begins[0]!.cap.glyphs).toBe(48);
-    expect(r.stub.begins[0]!.lod.curved).toBe(true);
-    expect(r.layer.stats()).toMatchObject({ active: false, rebuilds: 0, count: 0 });
-    expect(r.instances('wind-glyph')).toBe(0);
-    r.layer.setEnabled(false);
-    r.layer.setEnabled(true);
-    expect(r.stub.begins).toHaveLength(1);
+  // A throw-away warm-up rebuild used to run inside setEnabled (12 to 21 ms at 4x CPU) and bought nothing: in the real app at 4x CPU the first
+  // picture took 46 to 59 ms of work with it (the warm-up included) and 30 to 64 ms without, so the first picture is just built, in clocked slices.
+  it('does no work by itself: switching on makes no rebuild, not even a throw-away one', () => {
+    const clock = { t: 0 };
+    const stub = new StubBuilder(clock, 'high');
+    const layer = new WindGlyphLayer(shared(), 'high', { createBuilder: () => stub, now: () => clock.t }); // the defaults, as the app builds it
+    layer.setEnabled(true);
+    expect(stub.begins).toHaveLength(0);
+    expect(clock.t).toBe(0);
+    expect(layer.stats()).toMatchObject({ active: false, rebuilds: 0, count: 0, slicesLast: 0 });
+    layer.setEnabled(false);
+    layer.setEnabled(true);
+    expect(stub.begins).toHaveLength(0);
   });
 
-  it('does not warm anything while it stays off', () => {
-    const r = rig({ warm: true, enabled: false });
+  it('builds the first picture from the real air, as the first and only rebuild', () => {
+    const r = rig();
+    r.layer.setEnabled(false);
+    r.layer.setEnabled(true);
+    r.go(L3);
+    expect(r.stub.begins).toHaveLength(1);
+    const input = r.stub.begins[0]!;
+    expect(input.field.grid.nx).toBe(r.fresh().atm!.grid.nx); // the model's own grid, not a made-up 24 x 24 wind
+    expect(input.cap.glyphs).toBe(GLYPH_CAPS.high.glyphs);
+    r.go(L3);
+    expect(r.layer.stats()).toMatchObject({ active: true, rebuilds: 1, slicesLast: 2 });
+  });
+
+  it('does not build anything while it stays off', () => {
+    const r = rig({ enabled: false });
     r.go(L2);
     expect(r.stub.begins).toHaveLength(0);
   });

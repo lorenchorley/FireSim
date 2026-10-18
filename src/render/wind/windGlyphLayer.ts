@@ -6,8 +6,10 @@
  *  - it lives inside the frame loop (`tick`, once per frame before the idle return) and never sets `animating`: nothing here
  *    moves, so a still map stays still and the loop only draws when `tick` says a new picture was swapped in;
  *  - a rebuild starts when the drawn picture is out of date (`glyphSchedule.rebuildReason`), at most once per 250 ms, and is
- *    staged: the raster fill in its own slice, then the trace in slices of at most 8 ms; the batches change only at the swap;
- *  - the segment cap follows `renderer.info`, so a frame never crosses `FRAME_TRIANGLE_LIMIT`;
+ *    staged: the raster fill in slices of its own (resumable by rows), then the trace in slices of at most 8 ms; the batches
+ *    change only at the swap;
+ *  - the segment cap follows `renderer.info`, so a frame never crosses `FRAME_TRIANGLE_LIMIT`; when that leaves no room at all
+ *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room);
  *  - the picture is draped on the drawn mesh a little above the ground; the numbers come from the 10 m ground as received.
  * Eye level, a view without air wind and a map zoomed so far out that a model cell is under 4 px draw nothing (`stats().idle`).
  */
@@ -39,8 +41,8 @@ const SLICE_BUDGET_MS = 8;
 /** How far the ground is enumerated toward the horizon: this many camera distances, at least `MIN_RANGE_M`. */
 const RANGE_PER_DISTANCE = 6;
 const MIN_RANGE_M = 3000;
-/** The throw-away rebuild that warms the tracer when the layer is first switched on (a cold tracer is 4 to 7 times slower). */
-const WARM_GLYPHS = 48;
+/** Room (a share of the tier's segment cap) a frame must have again before a picture that was trimmed to nothing is built afresh. */
+const BUDGET_RETRY_SHARE = 0.1;
 
 /** What the layer reads, per snapshot: the air, the ground the numbers come from and the ground the picture is draped on. */
 export interface GlyphData {
@@ -63,8 +65,6 @@ export interface GlyphCss {
 export interface GlyphLayerDeps {
   createBuilder?: (tier: GlyphTier) => GlyphBuilder;
   now?: () => number;
-  /** Run the warm-up rebuild on first enable (default true). */
-  warm?: boolean;
 }
 
 type Idle = WindGlyphStats['idle'];
@@ -92,7 +92,6 @@ export class WindGlyphLayer {
   private readonly builder: GlyphBuilder;
   private readonly tier: GlyphTier;
   private readonly clock: () => number;
-  private readonly warmOnEnable: boolean;
 
   private enabled = false;
   private height: WindHeight = 'fire';
@@ -120,9 +119,15 @@ export class WindGlyphLayer {
   private working = false;
   private begun = false;
   private waiting = false;
+  /** The raster fill of a rebuild is under way (in slices; `fillRefine` is its refinement). */
+  private filling = false;
+  private fillRefine: 1 | 2 = 1;
+  /** The last picture was trimmed to nothing by the triangle limit (`stats().idle` is `budget` until one is drawn or the glyphs hide). */
+  private noRoom = false;
+  /** The segment cap the rebuild in progress was begun with. */
+  private beginSegments = 0;
   private lastSwapAt = -Infinity;
   private shown = false;
-  private warmed = false;
 
   // The pose of this frame and of the previous one, the projection's numbers, and scratch for the view maths (no allocation per frame).
   private readonly pose = new Float64Array(12);
@@ -156,7 +161,6 @@ export class WindGlyphLayer {
   constructor(shared: Record<string, THREE.IUniform>, tier: GlyphTier, deps: GlyphLayerDeps = {}) {
     this.tier = tier;
     this.clock = deps.now ?? (() => performance.now());
-    this.warmOnEnable = deps.warm ?? true;
     this.builder = (deps.createBuilder ?? createGlyphBuilder)(tier);
     const capacity = GLYPH_CAPS[tier].segments;
     // Plain strokes of one colour at full alpha (the segments overlap by about a pixel, so no translucency), no fog (the legend's
@@ -184,7 +188,6 @@ export class WindGlyphLayer {
   setEnabled(on: boolean): void {
     if (on === this.enabled) return;
     this.enabled = on;
-    if (on) this.warm();
   }
 
   setHeight(h: WindHeight): void {
@@ -237,8 +240,10 @@ export class WindGlyphLayer {
     proj[0] = camera.fov;
     proj[1] = camera.projectionMatrix.elements[8]!;
     proj[2] = camera.projectionMatrix.elements[9]!;
+    // A picture trimmed to nothing is built again once the frame has room (a layer switched off, a smaller view), with no camera move needed.
+    const retry = this.noRoom && segmentCap(GLYPH_CAPS[this.tier].segments, framesTriangles, 0) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
     // Nothing changed since the last frame and nothing is waiting: the whole idle cost is this comparison.
-    if (this.sigValid && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
+    if (this.sigValid && !retry && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
     this.lastPose.set(pose);
     this.lastProj.set(proj);
     this.lastSerial = this.dataSerial;
@@ -257,7 +262,7 @@ export class WindGlyphLayer {
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
-    this.idle = null;
+    this.idle = this.noRoom ? 'budget' : null;
     this.planLevel = lod.level;
 
     const n = this.current;
@@ -269,7 +274,7 @@ export class WindGlyphLayer {
     // A rebuild under way is thrown away when it is about a different picture; a camera that moved only makes the next one.
     if (this.working && (this.next.dataSerial !== n.dataSerial || this.next.height !== n.height || this.next.level !== n.level || this.next.spacingExp !== n.spacingExp)) this.cancel();
     if (!this.working) {
-      const reason = rebuildReason(this.builtValid ? this.built : null, n, this.visibleNow);
+      const reason = rebuildReason(this.builtValid ? this.built : null, n, this.visibleNow) ?? (retry ? 'room' : null);
       if (reason === null) {
         this.waiting = false;
         return false;
@@ -309,6 +314,7 @@ export class WindGlyphLayer {
 
   dispose(): void {
     this.builder.cancel();
+    this.heightRaster?.cancel();
     this.halo.dispose();
     this.colour.dispose();
   }
@@ -331,6 +337,7 @@ export class WindGlyphLayer {
     this.glyphs = 0;
     this.segments = 0;
     this.waiting = false;
+    this.noRoom = false;
     if (!keepSig) this.sigValid = false;
     if (this.working) this.cancel();
     this.builtValid = false;
@@ -341,6 +348,11 @@ export class WindGlyphLayer {
     return true;
   }
 
+  private setNoRoom(on: boolean): void {
+    this.noRoom = on;
+    this.idle = on ? 'budget' : null;
+  }
+
   private setShown(on: boolean): void {
     this.shown = on;
     this.halo.mesh.visible = this.colour.mesh.visible = on;
@@ -348,16 +360,18 @@ export class WindGlyphLayer {
 
   private cancel(): void {
     this.builder.cancel();
+    this.heightRaster?.cancel();
+    this.filling = false;
     this.log.abandon();
     this.working = false;
     this.begun = false;
   }
 
-  /** One frame's share of a rebuild: the raster fill (its own slice), then the builder's slices; the swap on the last one. */
+  /** One frame's share of a rebuild: the raster fill (its own slices), then the builder's slices; the swap on the last one. */
   private advance(now: number, d: GlyphData, lod: LodPlan, css: GlyphCss, vex: number, framesTriangles: number, settle: boolean): boolean {
     if (!this.begun) {
-      const filled = this.fill(d, refineFor(lod.cellPx));
-      if (filled && !settle) return false; // the trace starts next frame, from the camera as it is then
+      const filled = this.fill(d, refineFor(lod.cellPx), settle);
+      if (filled === 'more' || (filled === 'done' && !settle)) return false; // the trace starts a frame after the fill, from the camera as it is then
       if (!this.begin(d, lod, css, vex, framesTriangles)) return this.swapEmpty(now);
     }
     const t0 = this.clock();
@@ -366,22 +380,37 @@ export class WindGlyphLayer {
     return done ? this.swap(now, framesTriangles) : false;
   }
 
-  /** Fill the raster for this data, height and refinement when it is not already; true when a fill ran (timed as a slice). */
-  private fill(d: GlyphData, refine: 1 | 2): boolean {
+  /**
+   * Make the raster for this data, height and refinement, in slices (one per call, each stopping on the clock; `settle` runs it to the
+   * end): `ready` when there is nothing to do, `more` while the fill is under way, `done` on the call that completed it. A fill that
+   * is begun invalidates the last raster (its storage may be reused), and one that is cancelled leaves none.
+   */
+  private fill(d: GlyphData, refine: 1 | 2, settle: boolean): 'ready' | 'more' | 'done' {
     if (this.height === 'fire') {
       this.raster = this.surface!;
       this.rasterHeight = null; // a later numeric height must fill afresh
-      return false;
+      return 'ready';
     }
-    if (this.raster && this.rasterSerial === this.dataSerial && this.rasterHeight === this.height && this.rasterRefine === refine) return false;
-    this.heightRaster ??= new HeightRaster();
+    const hr = (this.heightRaster ??= new HeightRaster());
+    if (!this.filling) {
+      if (this.raster && this.rasterSerial === this.dataSerial && this.rasterHeight === this.height && this.rasterRefine === refine) return 'ready';
+      hr.begin(d.sampler, d.sliceGround, this.height, refine);
+      this.filling = true;
+      this.fillRefine = refine;
+      this.raster = null;
+      this.rasterSerial = -1;
+      this.rasterHeight = null;
+    }
     const t0 = this.clock();
-    this.raster = this.heightRaster.fill(d.sampler, d.sliceGround, this.height, refine);
+    const done = hr.step(settle ? Infinity : SLICE_BUDGET_MS, this.clock);
     this.log.push(this.clock() - t0);
+    if (!done) return 'more';
+    this.filling = false;
+    this.raster = hr.raster;
     this.rasterSerial = this.dataSerial;
     this.rasterHeight = this.height;
-    this.rasterRefine = refine;
-    return true;
+    this.rasterRefine = this.fillRefine;
+    return 'done';
   }
 
   /** Hand the builder its input, taken from the camera now. False when no ground is in view (nothing to trace). */
@@ -400,6 +429,7 @@ export class WindGlyphLayer {
     copyPlan(lod, this.buildPlan);
     this.viewProj.set(this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements);
     const caps = GLYPH_CAPS[this.tier];
+    this.beginSegments = segmentCap(caps.segments, framesTriangles, this.shown ? this.segments : 0);
     const input: GlyphInput = {
       field: this.raster!,
       ground: d.drawGround,
@@ -412,7 +442,7 @@ export class WindGlyphLayer {
       pxPerMetre1: css.h / (2 * Math.tan((css.fov * Math.PI) / 360)),
       near: cam.near,
       box,
-      cap: { glyphs: caps.glyphs, segments: segmentCap(caps.segments, framesTriangles, this.shown ? this.segments : 0) },
+      cap: { glyphs: caps.glyphs, segments: this.beginSegments },
       now: this.clock,
     };
     this.builder.begin(input);
@@ -424,7 +454,11 @@ export class WindGlyphLayer {
   private swap(now: number, framesTriangles: number): boolean {
     const out = this.builder.out;
     // The room may have changed since the build began (the frame's other layers moved): the cap is applied again.
-    const n = Math.min(out.segments, segmentCap(this.halo.capacity, framesTriangles, this.shown ? this.segments : 0), this.halo.capacity);
+    const room = Math.min(segmentCap(this.halo.capacity, framesTriangles, this.shown ? this.segments : 0), this.halo.capacity);
+    const n = Math.min(out.segments, room);
+    // The rest of the frame already uses every triangle: nothing of ours fits, and the control says so. (A build that was given no room
+    // at its start drew nothing for that reason too, whatever the frame has by now: the next rebuild is due as soon as there is room.)
+    this.setNoRoom(room === 0 || this.beginSegments === 0);
     const a = out.a.subarray(0, n * 3);
     const b = out.b.subarray(0, n * 3);
     this.halo.a.set(a);
@@ -448,6 +482,7 @@ export class WindGlyphLayer {
     this.setShown(false);
     this.segments = 0;
     this.glyphs = 0;
+    this.setNoRoom(false);
     this.finish(now);
     return wasShown;
   }
@@ -490,50 +525,6 @@ export class WindGlyphLayer {
       this.groundMin = { of: g, y: Number.isFinite(lo) ? lo : 0 };
     }
     return this.groundMin.y;
-  }
-
-  /** One throw-away rebuild of a few glyphs on a made-up wind, so the first real one does not pay for a cold tracer. */
-  private warm(): void {
-    if (this.warmed || !this.warmOnEnable) return;
-    this.warmed = true;
-    const n = 24;
-    const grid: GridSpec = { nx: n, ny: n, cellSize: 100, x0: -1150, y0: -1150, origin: { lat: 0, lon: 0 } };
-    const u = new Float32Array(n * n);
-    const v = new Float32Array(n * n);
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        u[j * n + i] = 6 + 2 * Math.sin(i * 0.3);
-        v[j * n + i] = 2 * Math.cos(j * 0.3);
-      }
-    }
-    const cam = new THREE.PerspectiveCamera(50, 0.5, 5, 60000);
-    cam.position.set(0, 2600, 1800);
-    cam.lookAt(0, 0, 0);
-    cam.updateMatrixWorld();
-    const cssH = 800;
-    const mpp = metresPerPixelAt(Math.hypot(2600, 1800), 50, cssH);
-    const lod = planLod(40, mpp, null); // a curved level: the trace the real rebuilds run
-    const p = cam.position;
-    this.builder.begin({
-      field: { grid, u, v },
-      ground: { grid, elevation: new Float32Array(n * n) },
-      vex: 1,
-      lod,
-      eye: [p.x, p.y, p.z],
-      viewProj: this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements,
-      cssW: 400,
-      cssH,
-      pxPerMetre1: cssH / (2 * Math.tan((50 * Math.PI) / 360)),
-      near: cam.near,
-      box: { x0: -1000, y0: -1000, x1: 1000, y1: 1000 },
-      cap: { glyphs: WARM_GLYPHS, segments: WARM_GLYPHS * 12 },
-      now: this.clock,
-    });
-    let guard = 0;
-    while (!this.builder.step(Infinity) && guard++ < 1000) {
-      // run to the end
-    }
-    this.builder.cancel();
   }
 }
 

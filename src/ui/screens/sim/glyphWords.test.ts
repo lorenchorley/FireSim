@@ -11,6 +11,7 @@ import { REFINE_CELL_PX, refineFor } from '../../../render/wind/glyphField';
 import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { airFromText } from './slicePanelModel';
 import {
+  BUDGET_LINE,
   DIAGNOSED_LINE,
   EYE_LEVEL_LINE,
   GLYPH_SMOOTH_FIT_PX,
@@ -174,6 +175,14 @@ describe('the line about the zoom', () => {
   });
 });
 
+describe('when the view is already full (idle `budget`)', () => {
+  it('says so in plain words, with what to do, instead of the level the layer would have drawn', () => {
+    expect(BUDGET_LINE).toBe('Not drawn here: this view already uses all the phone can draw. Zoom out or switch a layer off.');
+    expect(glyphLevelLine(stats({ active: false, idle: 'budget', level: 4, count: 0, segments: 0 }))).toBe(BUDGET_LINE);
+    for (const level of [1, 2, 3, 4] as const) expect(glyphLevelLine(stats({ active: false, idle: 'budget', level }))).not.toBe(LEVEL_LINE[level]);
+  });
+});
+
 describe('what the control shows (glyphView)', () => {
   const base = (over: Partial<GlyphViewInput> = {}): GlyphViewInput => ({ height: 100, on: true, has3dView: true, availability: { ok: true }, stats: stats(), air: air(), tz: TZ, absTime: abs, ...over });
 
@@ -210,6 +219,15 @@ describe('what the control shows (glyphView)', () => {
     expect(v.level).toBe('Not drawn at eye level. Go back to the map view.');
   });
 
+  it('on in a view that is already full: the caption stays and the level line gives the reason, never "Showing long flow lines" over nothing', () => {
+    const v = glyphView(base({ stats: stats({ active: false, idle: 'budget', level: 4, count: 0, segments: 0 }) }));
+    expect(v.reason).toBeNull();
+    expect(v.caption).toHaveLength(1);
+    expect(v.level).toBe(BUDGET_LINE);
+    expect(v.level).not.toMatch(/Showing/);
+    expect(glyphView(base({ on: false, stats: stats({ active: false, idle: 'budget' }) })).level).toBe(''); // off: nothing is said
+  });
+
   it('close in on a diagnosed Ground picture: every line, in order', () => {
     const v = glyphView(base({ height: 'fire', air: air({ diagnosed: true }), stats: stats({ level: 4, cellPx: 180 }) }));
     expect(v.caption).toEqual([captionHeadline('fire', air(), TZ, abs), DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE]);
@@ -232,6 +250,7 @@ describe('words', () => {
       SMOOTH_FIT_LINE,
       EYE_LEVEL_LINE,
       NO_WIND_LINE,
+      BUDGET_LINE,
       ...Object.values(LEVEL_LINE),
       ...WIND_HEIGHT_CHIPS.map((c) => c.label),
       ...WIND_HEIGHTS.map(legendHeightWords),
@@ -241,7 +260,7 @@ describe('words', () => {
       expect(s, s).not.toMatch(NO_DASH);
       expect(s.length, s).toBeGreaterThan(0);
     }
-    for (const s of [DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE, EYE_LEVEL_LINE, NO_WIND_LINE, ...Object.values(LEVEL_LINE)]) expect(s).toMatch(/^[A-Z].*[.]$/);
+    for (const s of [DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE, EYE_LEVEL_LINE, NO_WIND_LINE, BUDGET_LINE, ...Object.values(LEVEL_LINE)]) expect(s).toMatch(/^[A-Z].*[.]$/);
   });
 });
 

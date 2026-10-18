@@ -519,6 +519,7 @@ function windGlyphsRow(i: DebugStatsInput): StatRow {
   if (g.idle === 'off') return R(id, label, 'Off', undefined, true);
   if (g.idle === 'eye-level') return R(id, label, 'On, not drawn at eye level', undefined, true);
   if (g.idle === 'no-wind') return R(id, label, 'On, waiting for the wind picture', undefined, true);
+  if (g.idle === 'budget') return R(id, label, 'On, not drawn: the view already uses all the triangles a frame may have', undefined, true);
   const cell = ok(g.cellM) && ok(g.cellPx) ? `One model cell is ${Math.round(g.cellM)}${NB}m, about ${Math.round(g.cellPx)}${NB}px on screen` : undefined;
   if (g.level === 0) return R(id, label, 'Level 0, nothing drawn at this zoom', cell, true);
   const built = g.rebuilds > 0 ? `rebuild ${ms(g.lastMs)} (p95 slice ${ms(g.sliceP95Ms)}, max ${ms(g.sliceMaxMs)})` : 'not built yet';

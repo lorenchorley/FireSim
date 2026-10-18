@@ -86,12 +86,13 @@ export interface FrameStatsInfo {
 
 /**
  * What the wind glyphs (render/wind, 0.5.0) are doing now. `idle` says why nothing is drawn (`off` = the switch is off,
- * `eye-level` = the eye-level camera, `no-wind` = no air picture yet); `level` and the counts are those of the last build.
+ * `eye-level` = the eye-level camera, `no-wind` = no air picture yet, `budget` = the rest of the frame already uses every
+ * triangle a frame may have, so the glyphs trimmed themselves to nothing); `level` and the counts are those of the last build.
  */
 export interface WindGlyphStats {
   /** Drawn now. */
   active: boolean;
-  idle: 'off' | 'eye-level' | 'no-wind' | null;
+  idle: 'off' | 'eye-level' | 'no-wind' | 'budget' | null;
   level: 0 | 1 | 2 | 3 | 4;
   count: number;
   segments: number;
