@@ -21,7 +21,7 @@ import { WIND_RAMP, sampleRamp, srgbToLinear, type Rgb } from '../palette';
 import { GLYPH_CAPS, GLYPH_SHAFT_SEGMENTS_MAX, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier } from './glyphTypes';
 
 export const SPEED_TABLE_BINS = 64;
-/** The table's last bin is this speed (m/s), as the Wind speed map's ramp ends. */
+/** The table's last bin is this speed (m/s), where the wind streaks' ramp (`WIND_RAMP`, 0 to 90 km/h) ends. */
 export const SPEED_TABLE_MAX_MS = 25;
 /** A wind under this (m/s) is calm: a dot, and a trace that falls under it stops. */
 export const GLYPH_CALM_MS = 0.3;
@@ -63,7 +63,7 @@ const SALT_ORBIT = 17;
 const SALT_CAP = 19;
 const SALT_JITTER = 32;
 
-/** 64 entries of display-space linear rgb (3 floats each) for the speeds 0 to 25 m/s, from `WIND_RAMP`: the colours of the Wind speed map, computed once. */
+/** 64 entries of display-space linear rgb (3 floats each) for the speeds 0 to 25 m/s, from `WIND_RAMP`: the colours of the animated wind streaks and the side view's Speed chip (not the Wind speed map's `WIND_SPEED_RAMP`), computed once. */
 export function buildSpeedTable(): Float32Array {
   const t = new Float32Array(SPEED_TABLE_BINS * 3);
   const c: Rgb = [0, 0, 0];

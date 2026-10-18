@@ -789,8 +789,8 @@ export function windLegend(mode: 'surface' | 'volume'): LegendSpec {
 }
 
 /**
- * Legend of the wind arrows and flow lines (0.5.0): the strokes wear the same ramp as the wind streaks and the wind speed map (`WIND_RAMP`,
- * km/h), so the entries are `windLegend('surface')`'s. `heightLabel` is the words after "Wind" in the title ("near the ground", "at 100 m"):
+ * Legend of the wind arrows and flow lines (0.5.0): the strokes wear the same ramp as the wind streaks and the side view's Speed chip (`WIND_RAMP`,
+ * km/h; not the Wind speed map's `WIND_SPEED_RAMP`), so the entries are `windLegend('surface')`'s. `heightLabel` is the words after "Wind" in the title ("near the ground", "at 100 m"):
  * the height is the control's, so the card says which wind it is.
  */
 export function windGlyphLegend(heightLabel: string): LegendSpec {
