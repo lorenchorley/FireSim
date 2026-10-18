@@ -26,8 +26,8 @@ const quantile = (xs: number[], q: number): number => [...xs].sort((a, b) => a -
 const median = (xs: number[]): number => quantile(xs, 0.5);
 const now = (): number => performance.now();
 
-/** The High cap: 2000 glyphs of 4-step shafts and heads, 12,000 segments (a tablet screen at L3). */
-const heavy = (): Scenario => makeScenario({ cellPx: 60, field: rotate, camera: topDownCamera(133, 60, 0, 0, BIG), cap: { glyphs: 2000, segments: 12000 } });
+/** The High cap: 2000 glyphs of 4-step shafts and heads, 12,000 segments (a tablet screen at L3, a model cell of 38 px: the lattice is at its densest, 128 m on 36.6 px). */
+const heavy = (): Scenario => makeScenario({ cellPx: 38, field: rotate, camera: topDownCamera(133, 38, 0, 0, BIG), cap: { glyphs: 2000, segments: 12000 } });
 
 /** One rebuild cut into slices of `BUDGET_MS`; each slice's duration (ms). */
 function slices(b: GlyphBuilder, sc: Scenario): number[] {

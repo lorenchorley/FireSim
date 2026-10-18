@@ -36,6 +36,13 @@ export const GLYPH_NEAR_FACTOR = 1.5;
 /** Drawn this far above the ground: at least this many metres and at least this many pixels. */
 export const GLYPH_LIFT_MIN_M = 1.5;
 export const GLYPH_LIFT_PX = 3;
+/**
+ * A glyph drapes on the drawn ground, so a flow line that meets a cliff would run down its face as a long upright streak, which
+ * reads as an updraft or a downdraft and not as the wind over the map. No step of a glyph may climb or fall more than this much per
+ * metre along the ground (the true slope, whatever the exaggeration; 1 is 45 degrees): a glyph is cut short at the foot or the lip of
+ * a steeper wall (its head sits there), and one that starts on a wall is not drawn.
+ */
+export const GLYPH_MAX_SLOPE = 1;
 /** Seeds are kept this far (a share of the screen, and at least one glyph length) outside the screen. */
 export const GLYPH_SCREEN_MARGIN = 0.1;
 /** Orbit density: a seed is kept with probability 1 / s2, `s2` (ground area of a pixel here against the middle of the screen) clamped to 1..64. */
@@ -77,6 +84,8 @@ export const HALO_INK: readonly [number, number, number] = [srgbToLinear(8 / 255
 export interface GlyphOutputDetail extends GlyphOutput {
   /** `starts[g]` is the first segment of glyph g; `starts[glyphs]` is the end. A dot is one segment, any other glyph is its shaft and two barbs. */
   starts: Int32Array;
+  /** Glyphs cut short or not drawn at all because they met a wall steeper than `GLYPH_MAX_SLOPE` (`dropped` is the near plane's). */
+  steep: number;
 }
 
 // Float state (f) and integer state (n) of the job. Typed arrays, so that no field of the builder holds a boxed number.
@@ -137,7 +146,8 @@ const N_SHAFTCAP = 22;
 const N_CURVED = 23;
 const N_REBUILDS = 24;
 const N_INTERVAL = 25;
-const N_LEN = 26;
+const N_STEEP = 26;
+const N_LEN = 27;
 
 // Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
 const PHASE_SETUP = 3;
@@ -177,7 +187,7 @@ class Builder implements GlyphBuilder {
     this.A = new Float32Array(3 * caps.segments);
     this.B = new Float32Array(3 * caps.segments);
     this.C = new Float32Array(4 * caps.segments);
-    this.out = { a: this.A, b: this.B, c: this.C, starts: new Int32Array(caps.glyphs + 1), glyphs: 0, segments: 0, dropped: 0, calm: 0 };
+    this.out = { a: this.A, b: this.B, c: this.C, starts: new Int32Array(caps.glyphs + 1), glyphs: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
     const store = 3 * caps.glyphs + 16;
     this.cand = new Int32Array(2 * store);
     this.candH = new Uint32Array(store);
@@ -207,10 +217,12 @@ class Builder implements GlyphBuilder {
     n[N_SEG] = 0;
     n[N_DROPPED] = 0;
     n[N_CALM] = 0;
+    n[N_STEEP] = 0;
     out.glyphs = 0;
     out.segments = 0;
     out.dropped = 0;
     out.calm = 0;
+    out.steep = 0;
     out.starts[0] = 0;
     // Is there anything to draw? Comparisons and whole numbers only. This function runs a few times a second, so V8 never optimises
     // it, and in the interpreter every number made by arithmetic is a heap number: the arithmetic of the set-up is in `walk`, which
@@ -585,6 +597,7 @@ class Builder implements GlyphBuilder {
     out.segments = n[N_SEG]!;
     out.dropped = n[N_DROPPED]!;
     out.calm = n[N_CALM]!;
+    out.steep = n[N_STEEP]!;
     return ti >= ns;
   }
 
@@ -648,6 +661,7 @@ class Builder implements GlyphBuilder {
       if (seg0 + shaft + 2 > n[N_CAPS]!) return 1;
       const ds = (lenPx * mpp) / shaft;
       const half = 0.5 * ds;
+      const maxRise = GLYPH_MAX_SLOPE * ds * vex; // the drawn rise of one step at the steepest slope allowed (the exaggeration is part of the drawing)
 
       let px = seedX;
       let py = seedY;
@@ -659,7 +673,7 @@ class Builder implements GlyphBuilder {
         return 0;
       }
       let made = 0;
-      let stop = 0; // 1 calm, 2 raster edge, 3 near plane
+      let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall
       let dux = 0;
       let duy = 0;
       let bin = 0;
@@ -703,6 +717,10 @@ class Builder implements GlyphBuilder {
           stop = 3;
           break;
         }
+        if (qyw - oyw > maxRise || oyw - qyw > maxRise) {
+          stop = 4;
+          break;
+        }
         s[8] = ox;
         s[9] = oyw;
         s[10] = ozw;
@@ -725,7 +743,8 @@ class Builder implements GlyphBuilder {
         n[N_DROPPED] = n[N_DROPPED]! + 1;
         return 0;
       }
-      if (made === 0 && stop !== 1) return 0; // cut at the raster edge before the first step: nothing to draw
+      if (stop === 4) n[N_STEEP] = n[N_STEEP]! + 1; // cut at a wall, or not drawn when the first step is the wall
+      if (made === 0 && stop !== 1) return 0; // cut at the raster edge or a wall before the first step: nothing to draw
       if (made > 0) {
         // Arrowhead: two chevron barbs from the tip, +/- 28 degrees from the way back, in the ground plane (draped on the ground like the shaft).
         let headPx = HEAD_FRAC * lenPx;
@@ -749,6 +768,10 @@ class Builder implements GlyphBuilder {
           const hzw = -hy;
           if (!(vp[3]! * hx + vp[7]! * hyw + vp[11]! * hzw + vp[15]! > wmin)) {
             n[N_DROPPED] = n[N_DROPPED]! + 1;
+            return 0;
+          }
+          if (hyw - oyw > GLYPH_MAX_SLOPE * headM * vex || oyw - hyw > GLYPH_MAX_SLOPE * headM * vex) {
+            n[N_STEEP] = n[N_STEEP]! + 1; // a barb over a wall: the head would hang down it
             return 0;
           }
           s[8] = ox;

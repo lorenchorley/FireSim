@@ -114,51 +114,116 @@ describe('planLod: hysteresis of +/- 15 %', () => {
 });
 
 describe('planLod: the lattice spacing', () => {
-  it('is a power of two of metres: round(log2(spacing px x metres per pixel))', () => {
-    const p = planLod(60, 2.2167, null); // 36 px x 2.2167 m = 79.8 m -> log2 = 6.32
-    expect(p.spacingExp).toBe(6);
-    expect(p.spacingM).toBe(64);
+  it('is a power of two of metres: the next one up for the curved levels, the nearest for the straight ones', () => {
+    const p = planLod(60, 2.2167, null); // L3: 36 px x 2.2167 m = 79.8 m -> log2 = 6.32 -> 7: never denser than 36 px
+    expect(p.spacingExp).toBe(7);
+    expect(p.spacingM).toBe(128);
     expect(planLod(60, 3, null).spacingExp).toBe(7); // 108 m -> 6.75
     expect(planLod(60, 0.1, null).spacingExp).toBe(2); // 3.6 m -> 1.85
     expect(planLod(60, 0.01, null).spacingM).toBe(2 ** -1); // 0.36 m -> -1.47
+    expect(planLod(200, 2, null).spacingM).toBe(128); // L4: 56 px x 2 m = 112 m -> 6.81 -> 7
+    expect(planLod(20, 2, null).spacingM).toBe(64); // L2: 40 px x 2 m = 80 m -> 6.32, the nearest is 6
+    expect(planLod(20, 2.8, null).spacingM).toBe(128); // 112 m -> 6.81 -> 7
+    expect(planLod(8, 10, null).spacingM).toBe(512); // L1: 56 px x 10 m = 560 m -> 9.13 -> 9
   });
 
-  it('keeps the exponent until the exact value is more than 0.5 + 0.15 octave from it', () => {
-    const exact = (e: number): number => 2 ** e / 36; // the mpp that makes log2(36 mpp) = e
-    let prev: LodPlan = planLod(60, exact(6.0), null);
+  it('the curved levels are never denser than their spacing on the screen, and never sparser than twice it (the straight ones stay within 0.7 to 1.4 times)', () => {
+    for (let c = 4; c < 600; c *= 1.01) {
+      for (const mpp of [0.7, 1.3, 2.9, 7.1, 19]) {
+        const p = planLod(c, mpp, null);
+        if (p.level === 0) continue;
+        const px = p.spacingM / mpp;
+        if (p.curved) {
+          expect(px).toBeGreaterThanOrEqual(p.spacingPx * (1 - 1e-9));
+          expect(px).toBeLessThan(2 * p.spacingPx);
+        } else {
+          expect(px).toBeGreaterThanOrEqual(p.spacingPx * 0.7);
+          expect(px).toBeLessThan(p.spacingPx * 1.42);
+        }
+      }
+    }
+  });
+
+  it('keeps the exponent only within 0.06 octave of the edge between two exponents', () => {
+    const exact = (e: number): number => 2 ** e / 36; // the mpp that makes log2(36 mpp) = e (L3)
+    let prev: LodPlan = planLod(60, exact(5.9), null); // 5.9 is in (5, 6]
     expect(prev.spacingExp).toBe(6);
-    for (const e of [6.2, 6.5, 6.6, 6.64, 6.3, 6.0, 5.6, 5.4, 5.36]) {
+    for (const e of [5.5, 5.2, 5.0, 4.95, 5.6, 5.95, 6.0, 6.03, 6.05]) {
       prev = planLod(60, exact(e), prev);
-      expect(prev.spacingExp).toBe(6);
+      expect(prev.spacingExp, `at ${e}`).toBe(6);
     }
-    expect(planLod(60, exact(6.66), prev).spacingExp).toBe(7); // past 0.65 up: the plain rounding
-    expect(planLod(60, exact(5.34), prev).spacingExp).toBe(5);
-    // And back the other way: from 7, 6.4 is 0.6 away and stays, 6.3 is 0.7 away and goes.
-    const seven = planLod(60, exact(7.0), null);
-    expect(planLod(60, exact(6.4), seven).spacingExp).toBe(7);
-    expect(planLod(60, exact(6.3), seven).spacingExp).toBe(6);
+    expect(planLod(60, exact(6.08), prev).spacingExp).toBe(7); // past 6.06 up: the plain rule
+    expect(planLod(60, exact(4.92), prev).spacingExp).toBe(5); // under 4.94 down
+    // And back the other way: from 7, 5.95 is inside the band and stays, 5.92 is not and goes.
+    const seven = planLod(60, exact(6.5), null);
+    expect(seven.spacingExp).toBe(7);
+    expect(planLod(60, exact(5.95), seven).spacingExp).toBe(7);
+    expect(planLod(60, exact(5.92), seven).spacingExp).toBe(6);
   });
 
-  it('a hover around a rounding point (.5) of the exponent does not flip it', () => {
-    let prev: LodPlan | null = null;
-    let flips = 0;
-    let last = NaN;
-    for (let k = 0; k < 300; k++) {
-      const e = 6.5 + 0.12 * Math.sin(k * 0.7);
-      prev = planLod(60, 2 ** e / 36, prev);
-      if (prev.spacingExp !== last && !Number.isNaN(last)) flips++;
-      last = prev.spacingExp;
+  it('a hover around an octave edge (+/- 0.05 octave, 3.5 % of the zoom) does not flip it, from either side', () => {
+    for (const start of [-0.04, 0.04]) {
+      let prev: LodPlan | null = planLod(60, 2 ** (6 + start) / 36, null);
+      let flips = 0;
+      let last = prev.spacingExp;
+      for (let k = 0; k < 300; k++) {
+        const e = 6 + 0.05 * Math.sin(k * 0.7 + 1);
+        prev = planLod(60, 2 ** e / 36, prev);
+        if (prev.spacingExp !== last) flips++;
+        last = prev.spacingExp;
+      }
+      expect(flips).toBe(0);
     }
-    expect(flips).toBe(0);
+  });
+
+  it('one zoom gives one lattice whichever way it is reached: in and out agree except within 0.06 octave of an edge (and in a level hysteresis band)', () => {
+    // A model cell of 133 m; the zoom steps 0.5 % at a time, in from 3 px a cell to 600 and back out. Each step is one frame of a pinch.
+    const grid: number[] = [];
+    for (let c = 3; c < 600; c *= 1.005) grid.push(c);
+    const sweep = (order: number[]): LodPlan[] => {
+      const plans: LodPlan[] = [];
+      let prev: LodPlan | null = null;
+      for (const i of order) {
+        const c = grid[i]!;
+        prev = planLod(c, 133 / c, prev);
+        plans[i] = { ...prev, lengthPx: { ...prev.lengthPx } };
+      }
+      return plans;
+    };
+    const idx = grid.map((_, i) => i);
+    const inward = sweep(idx);
+    const outward = sweep([...idx].reverse());
+    let compared = 0;
+    let mismatches = 0;
+    let worstBand = 0;
+    for (const i of idx) {
+      const a = inward[i]!;
+      const b = outward[i]!;
+      if (a.level !== b.level || a.level === 0) continue; // the level has its own hysteresis band (+/- 15 %)
+      const t = Math.log2(a.spacingPx * (133 / grid[i]!)) - (a.curved ? 0 : 0.5);
+      const toEdge = Math.abs(t - Math.round(t));
+      compared++;
+      if (a.spacingExp !== b.spacingExp) {
+        mismatches++;
+        worstBand = Math.max(worstBand, toEdge);
+        expect(Math.abs(a.spacingExp - b.spacingExp), `one step at ${grid[i]!.toFixed(1)} px`).toBe(1);
+        expect(toEdge, `a different lattice at ${grid[i]!.toFixed(1)} px, ${toEdge.toFixed(3)} octave from an edge`).toBeLessThanOrEqual(0.06 + 1e-6);
+      }
+    }
+    expect(compared).toBeGreaterThan(700);
+    // The two paths disagree somewhere (the hysteresis does its work at the edges), but only in the narrow bands: under 14 % of the zoom range.
+    expect(mismatches).toBeGreaterThan(0);
+    expect(mismatches / compared).toBeLessThan(0.14);
+    expect(worstBand).toBeLessThanOrEqual(0.06 + 1e-6);
   });
 
   it('takes a new exponent when the level changes the spacing in pixels, and has none for a level of nothing', () => {
-    const l3 = planLod(60, 2, null); // 72 m
-    const l4 = planLod(200, 2, l3); // 112 m
+    const l3 = planLod(60, 1.5, null); // 54 m -> 5.75
+    const l4 = planLod(200, 1.5, l3); // 84 m -> 6.39
     expect(l3.spacingExp).toBe(6);
     expect(l4.spacingExp).toBe(7);
-    expect(planLod(2, 2, l4)).toMatchObject({ level: 0, spacingExp: 0, spacingM: 0 });
-    expect(planLod(60, 2, planLod(2, 2, l4)).spacingExp).toBe(6); // a level of nothing kept no exponent
+    expect(planLod(2, 1.5, l4)).toMatchObject({ level: 0, spacingExp: 0, spacingM: 0 });
+    expect(planLod(60, 1.5, planLod(2, 1.5, l4)).spacingExp).toBe(6); // a level of nothing kept no exponent
     for (const mpp of [0, -1, NaN, Infinity]) expect(planLod(60, mpp, null)).toMatchObject({ level: 3, spacingExp: 0 });
   });
 

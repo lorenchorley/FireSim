@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { luminance, rgbToLinear, sampleRamp, srgbToLinear, WIND_RAMP, type Rgb } from '../palette';
-import { buildSpeedTable, createGlyphBuilder, GLYPH_DOT_PX, GLYPH_HEAD_DEG, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_NEAR_FACTOR, HALO_INK, SPEED_TABLE_BINS, type GlyphOutputDetail } from './flowGlyphs';
+import { buildSpeedTable, createGlyphBuilder, GLYPH_DOT_PX, GLYPH_HEAD_DEG, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE, GLYPH_NEAR_FACTOR, HALO_INK, SPEED_TABLE_BINS, type GlyphOutputDetail } from './flowGlyphs';
 import { buildAll, clipW, counterClock, glyphsOf, latticeSeed, makeCamera, makeScenario, outputBytes, segmentLength, segmentXY, topDownCamera, type Glyph, type Scenario, type ScenarioOptions } from './glyphOracle.testing';
 import { GLYPH_SHAFT_SEGMENTS_MAX } from './glyphTypes';
 
@@ -257,6 +257,58 @@ describe('arrowheads and draping', () => {
   });
 });
 
+describe('cliff faces: no glyph runs up or down a wall', () => {
+  // A wall along x = 0: 160 m high over 40 m (slope 4, 76 degrees), flat above and below; a steady wind from the west carries
+  // every flow line toward it. The ground raster is fine enough (10 m) to hold the wall.
+  const wall = (x: number): number => (x < -20 ? 300 : x > 20 ? 460 : 300 + 4 * (x + 20));
+  const scene = (vex: number, ground: (x: number, y: number) => number = (x) => wall(x)): Scenario =>
+    makeScenario({ cellPx: 60, groundCell: 10, ground, field: () => [8, 0], vex, camera: topDownCamera(133, 60, 0, 0, { near: 30 }, 460 * vex) });
+  const trueSlopes = (out: GlyphOutputDetail, glyphs: Glyph[], vex: number): number[] => {
+    const s: number[] = [];
+    for (const g of glyphs) {
+      for (let k = g.seg; k < g.seg + g.shaft; k++) {
+        const h = Math.hypot(out.b[3 * k]! - out.a[3 * k]!, out.b[3 * k + 2]! - out.a[3 * k + 2]!);
+        if (h > 0) s.push(Math.abs(out.b[3 * k + 1]! - out.a[3 * k + 1]!) / vex / h);
+      }
+    }
+    return s;
+  };
+
+  it('cuts a glyph at the foot of the wall (its head sits there), and draws none that starts on the wall', () => {
+    const sc = scene(1);
+    const { out, glyphs } = build(sc);
+    const shafts = glyphs.filter((g) => !g.dot);
+    expect(shafts.length).toBeGreaterThan(50);
+    expect(Math.max(...trueSlopes(out, shafts, 1))).toBeLessThanOrEqual(GLYPH_MAX_SLOPE * 1.001);
+    expect(out.steep, 'glyphs cut or dropped at the wall').toBeGreaterThan(5);
+    // Seeds west of the wall that would have crossed it end before it (the head is at the foot); none starts on the wall.
+    const west = shafts.filter((g) => g.seed[0] < -20);
+    expect(west.length).toBeGreaterThan(20);
+    for (const g of west) expect(g.tip[0], 'a glyph from the west stops at the foot').toBeLessThan(0);
+    for (const g of glyphs) expect(g.seed[0] < -19 || g.seed[0] > 10, `seed at x = ${g.seed[0].toFixed(1)} is on the wall`).toBe(true);
+    // The glyphs that were cut are shorter than the length rule gives (10 m/s -> 32 px at L3 would be 28 px minimum).
+    const full = Math.max(...shafts.map((g) => Math.hypot(g.tip[0] - g.seed[0], g.tip[1] - g.seed[1])));
+    expect(Math.min(...west.map((g) => Math.hypot(g.tip[0] - g.seed[0], g.tip[1] - g.seed[1])))).toBeLessThan(0.5 * full);
+  });
+
+  it('judges the true slope: a hillside of 0.5 drawn at an exaggeration of 3 (steeper than 1 on screen) is not cut; the wall still is', () => {
+    const hill = (x: number): number => 300 + 0.5 * x;
+    for (const vex of [1, 3]) {
+      const { out, glyphs } = build(scene(vex, (x) => hill(x)));
+      expect(out.steep, `a gentle hillside, exaggeration ${vex}`).toBe(0);
+      expect(glyphs.length).toBeGreaterThan(100);
+    }
+    const { out, glyphs } = build(scene(3));
+    expect(out.steep).toBeGreaterThan(5);
+    expect(Math.max(...trueSlopes(out, glyphs.filter((g) => !g.dot), 3))).toBeLessThanOrEqual(GLYPH_MAX_SLOPE * 1.001);
+  });
+
+  it('flat ground cuts nothing', () => {
+    const { out } = build(scene(1, () => 300));
+    expect(out.steep).toBe(0);
+  });
+});
+
 describe('calm dots, and what happens when the wind drops', () => {
   it('a calm field is all dots: one segment of 3 px, counted in out.calm', () => {
     const sc = makeScenario({ cellPx: 60, field: () => [0.1, 0] });
@@ -366,7 +418,7 @@ describe('orbit view density', () => {
     expect(thin.b.far / thin.b.mid).toBeGreaterThan(0.6);
     expect(thin.b.far / thin.b.mid).toBeLessThan(1.6);
     expect(thin.glyphs.length).toBeLessThan(flat.glyphs.length / 2);
-    expect(thin.b.far).toBeGreaterThan(30);
+    expect(thin.b.far).toBeGreaterThan(15); // the L3 lattice is never denser than 36 px on the screen: about half the seeds of a rounded one
   });
 
   it('keeps a seed or drops it by the camera alone: a wider box adds seeds and changes none of the others', () => {

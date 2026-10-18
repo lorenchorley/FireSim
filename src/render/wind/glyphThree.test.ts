@@ -55,7 +55,7 @@ describe('with a real THREE camera', () => {
     const seeds = (bld: ReturnType<typeof createGlyphBuilder>): Set<string> => new Set(glyphsOf(bld.out as GlyphOutputDetail).map((g) => `${g.seed[0].toFixed(3)},${g.seed[1].toFixed(3)}`));
     const s1 = seeds(own);
     const s2 = seeds(viaThree);
-    expect(s1.size).toBeGreaterThan(100);
+    expect(s1.size).toBeGreaterThan(60);
     expect(s2.size).toBe(s1.size);
     let common = 0;
     for (const k of s1) if (s2.has(k)) common++;
