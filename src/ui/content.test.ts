@@ -1,26 +1,32 @@
 /**
  * The Help tab's words (content.ts: the how-to list and the glossary), pinned two ways: their shape and voice (plain words, no
- * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0 and 0.4.1 features, that what they say is what the code says (the
+ * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0, 0.4.1 and 0.5.0 features, that what they say is what the code says (the
  * labels the screens use, the sheet's own sentences, the tap radius, the words of the icons, the footer and the probe
- * sentence of the Air slices panel, the buttons and the status line of its time-lapse recording), so a change to a screen
- * cannot leave a stale sentence in Help.
+ * sentence of the Air slices panel, the buttons and the status line of its time-lapse recording, the zoom levels, the Wind height
+ * chips, the caption and the tab and button words of the wind arrows and flow lines), so a change to a screen cannot leave a stale
+ * sentence in Help.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ATMOS_TIERS } from '../atmosphere/params';
 import { AIR_STALE_S } from '../core/airView';
+import type { GridSpec } from '../core/grid';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
 import { compassWord } from '../explain/text';
 import type { MapMarker } from '../render/api';
 import { rockDetailCount } from '../render/cliffDrawing';
 import { LAYER_CATALOG, type AvailabilityContext } from '../render/layerCatalog';
-import { legendFor, sliceLegend } from '../render/legends';
+import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
+import { legendFor, sliceLegend, windGlyphLegend, windLegend } from '../render/legends';
 import { MIN_HIT_PX } from '../render/markerPick';
 import { sampleRamp, sliceFieldScale } from '../render/palette';
 import { probeSentence } from '../render/slice/probe';
 import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceProbeReading, type SliceRecordingStatus } from '../render/slice/types';
 import { USE_3D_LABEL, sliceFieldStatuses } from '../render/sliceFields';
+import { GLYPH_CALM_MS } from '../render/wind/flowGlyphs';
+import { LEVEL_EDGES, LOD_HYSTERESIS, planLod } from '../render/wind/glyphLod';
+import { WIND_HEIGHTS, type WindHeight } from '../render/wind/glyphTypes';
 import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
@@ -28,12 +34,37 @@ import { formatClock } from './format';
 import { forcedPace } from './paceModel';
 import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
+import { BUDGET_LINE, DIAGNOSED_LINE, EYE_LEVEL_LINE, GLYPH_INTRO, GLYPH_SMOOTH_FIT_PX, GLYPH_SWITCH_LABEL, GROUND_LINE, LEVEL_LINE, NEEDS_3D, SMOOTH_FIT_LINE, WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, captionHeadline, heightLabel, windFromText } from './screens/sim/glyphWords';
 import { AIR_SLICE_NOTE, NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
+import { PERSISTED_LAYER_KEYS } from './screens/sim/layersPrefs';
 import { NOT_RECORDED_WORDS, RECORDING_EARLIER_WORDS, recordingText, spacingWords } from './recordingWords';
 import { airFromText, scaleTag, TERRAIN_CAPTION } from './screens/sim/slicePanelModel';
-import { AIR_TOOL_LABEL, CLEAR_RECORDING_LABEL, KEEP_LABEL, PLACE_LABEL, PRESET_LABEL, SET_LABEL } from './screens/sim/sliceToolModel';
+import { DEFAULT_UI, type UiState } from './screens/sim/context';
+import { createSliceToolActions, type SliceToolHost } from './screens/sim/sliceToolActions';
+import {
+  AIR_TOOL_LABEL,
+  CLEAR_RECORDING_LABEL,
+  KEEP_LABEL,
+  NEEDS_3D_VIEW,
+  OFF_CLEARED_SAY,
+  OFF_LABEL,
+  OFF_NOTE,
+  OFF_SAY,
+  PLACE_LABEL,
+  PRESET_LABEL,
+  SET_LABEL,
+  TAB_LABEL,
+  controlsView,
+  hasStoredLine,
+  initialSliceToolState,
+  reopened,
+  turnOffSlice,
+  withTab,
+  type CrossSection,
+} from './screens/sim/sliceToolModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
 import { resolveRenderQuality } from './settings';
+import { Store } from './store';
 
 const entry = (term: string): GlossaryEntry => {
   const e = GLOSSARY.find((g) => g.term === term);
@@ -466,5 +497,223 @@ describe('Help and glossary: the 0.4.1 entries say what the recording of a line 
     expect(layersPanel()).toContain("setQuality('standard')");
     expect(ATMOS_TIERS.fast).toEqual(ATMOS_TIERS.standard);
     expect(ATMOS_TIERS.high).not.toEqual(ATMOS_TIERS.standard);
+  });
+});
+
+describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map view tab and Turn off the slice say', () => {
+  const noAir: AvailabilityContext = { hasFire: true, has3dAtmosphere: false, hasContext: false, hasGrass: false, hasCanopyData: false, hasImagery: false };
+  const abs = (t: number): number => Date.UTC(2025, 0, 5, 14, 5) + t * 1000;
+  const glyphInfo = LAYER_CATALOG.find((l) => l.id === 'windGlyphs')!;
+  const squashed = (term: string): string => squash(entry(term).body);
+  const read = (file: string): string => readFileSync(resolve(__dirname, file), 'utf8');
+
+  it('every term the release notes ask for has an entry', () => {
+    for (const t of ['Arrows and flow lines', 'Wind height', 'Map view', 'Turn off the slice']) expect(entry(t).body.length, t).toBeGreaterThan(200);
+  });
+
+  it('Layers: the Help step names the switch and its heading as the panel does, the range of the chips, and says it is off at first and separate from the Wind streaks', () => {
+    const layers = squash(step('Layers'));
+    expect(glyphInfo.title).toBe('Arrows and flow lines');
+    expect(layers).toContain(`“${glyphInfo.title}”`);
+    expect(read('screens/sim/layersPanel.ts')).toContain("sectionHeader('Wind and air')");
+    expect(layers).toContain('Under Wind and air');
+    expect(read('screens/sim/layersPanel.ts')).toContain("label: 'Wind streaks'");
+    expect(layers).toContain('moving Wind streaks');
+    expect(layers).toContain(`a ${WIND_HEIGHT_LABEL} you choose, from ${heightLabel(WIND_HEIGHTS[0]!)} to ${heightLabel(WIND_HEIGHTS[WIND_HEIGHTS.length - 1]!)} above the ground`);
+    expect(layers).toContain('It is off until you switch it on');
+    // Off at first (the opt-in of plan decision D9), while the streaks stay on as they were.
+    expect(DEFAULT_LAYERS.windGlyphs).toBe(false);
+    expect(DEFAULT_LAYERS.wind).toBe('surface');
+    expect(layers).toContain('Your choices are remembered');
+    expect(squashed('Layer')).toContain('wind arrows and flow lines');
+  });
+
+  it('Arrows and flow lines: the zoom ladder is the planner’s (4, 12, 32 and 90 px, 15 % of give at an edge), a calm dot is under the engine’s 0.3 m/s, and the 60 px sentence is the caption’s', () => {
+    const b = squashed('Arrows and flow lines');
+    expect([...LEVEL_EDGES]).toEqual([4, 12, 32, 90]);
+    expect(b).toContain('under about 4 px, nothing is drawn');
+    expect(b).toContain('From about 4 px a cell you get straight arrows, from about 12 px the arrows are closer together, from about 32 px they become curved flow lines with arrowheads, and from about 90 px the flow lines are longer');
+    // The levels are what each step of the ladder draws, in the words of the zoom line under the chips.
+    expect(LEVEL_LINE[0]).toBe('Zoom in to see the wind arrows.');
+    expect(LEVEL_LINE[1]).toContain('straight arrows');
+    expect(LEVEL_LINE[2]).toContain('closer together');
+    expect(LEVEL_LINE[3]).toContain('curved flow lines');
+    expect(LEVEL_LINE[4]).toContain('long flow lines');
+    // Each edge is held 15 % past before the level changes, both ways.
+    expect(LOD_HYSTERESIS).toBe(1.15);
+    const at = (cellPx: number, level: 0 | 1 | 2 | 3 | 4) => planLod(cellPx, 10, { level, spacingExp: 6 }).level;
+    expect(at(4 * LOD_HYSTERESIS - 0.01, 0)).toBe(0);
+    expect(at(4 * LOD_HYSTERESIS + 0.01, 0)).toBe(1);
+    expect(at(4 / LOD_HYSTERESIS + 0.01, 1)).toBe(1);
+    expect(at(4 / LOD_HYSTERESIS - 0.01, 1)).toBe(0);
+    expect(b).toContain('holds a little past each edge, so it does not flicker while you pinch');
+    // Straight arrows up to the second level, curved flow lines from the third; a longer mark is a stronger wind, up to a limit.
+    expect([1, 2, 3, 4].map((l) => planLod(LEVEL_EDGES[l - 1]! * 1.2, 10, null).curved)).toEqual([false, false, true, true]);
+    const plan = planLod(50, 10, null);
+    expect(plan.lengthPx.pxPerMs).toBeGreaterThan(0);
+    expect(plan.lengthPx.max).toBeGreaterThan(plan.lengthPx.min);
+    expect(b).toContain('A longer mark means a stronger wind, up to a limit');
+    expect(GLYPH_CALM_MS).toBe(0.3);
+    expect(b).toContain('under about 0.3 m/s) gets a small dot');
+    // The smooth-fit sentence: the caption says it from 60 px a cell, in these words.
+    expect(GLYPH_SMOOTH_FIT_PX).toBe(60);
+    expect(SMOOTH_FIT_LINE).toContain('smooth fit through the model, not new detail');
+    expect(b).toContain('more than about 60 px, the curves are a smooth fit through the model, not new detail');
+    expect(b).toContain('stay the same size on the screen whatever the zoom');
+  });
+
+  it('Arrows and flow lines: the colours are the Wind streaks’ ramp in km/h, it needs the 3-D view and the air picture but no fire, and nothing is drawn at eye level or when the view is full', () => {
+    const b = squashed('Arrows and flow lines');
+    const legend = windGlyphLegend('near the ground');
+    expect(legend.units).toBe('km/h');
+    expect(legend.entries).toEqual(windLegend('surface').entries); // the streaks' ramp, not the Wind speed map's
+    expect(legend.title).toBe('Wind near the ground');
+    expect(b).toContain('the colours of the Wind streaks near the ground');
+    expect(b).toContain('speeds in km/h on the legend card');
+    expect(NEEDS_3D).toBe('Needs the 3-D view');
+    expect(b).toContain('needs the 3-D view and the air picture, which the simulation makes once it has started');
+    expect(glyphInfo.available({ ...noAir, hasAirWind: false })).toEqual({ ok: false, reason: 'Needs the air picture, which the simulation makes once it has started' });
+    expect(glyphInfo.available({ ...noAir, hasAirWind: true, hasFire: false }).ok).toBe(true); // the diagnosed wind of the fast tier counts, and no fire is needed
+    expect(EYE_LEVEL_LINE).toContain('Not drawn at eye level');
+    expect(b).toContain('Nothing is drawn at eye level');
+    expect(BUDGET_LINE).toContain('already uses all the phone can draw');
+    expect(b).toContain('if the picture already uses all the phone can draw, nothing is drawn and the line under the chips says why');
+    expect(b).toContain('never changes the fire');
+  });
+
+  it('Wind height: the six chips, 10 m is the model’s open-ground wind and not what the fire feels, and the caption is the very sentence the code writes', () => {
+    const b = squashed('Wind height');
+    const labels = WIND_HEIGHT_CHIPS.map((c) => c.label);
+    expect(labels).toEqual(['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
+    expect(WIND_HEIGHTS).toEqual<WindHeight[]>(['fire', 50, 100, 300, 1000, 2000]);
+    expect(b).toContain('10 m, 50 m, 100 m, 300 m, 1 km and 2 km');
+    expect(b).toContain('Except for the first, the number is metres above the ground');
+    // 10 m is the same field as the Wind speed map's (the model's 10 m wind), and the chip says what the caption says.
+    expect(b).toContain('the model’s own wind about 10 m above open ground, the same wind as the Wind speed map');
+    expect(captionHeadline('fire', { cellM: 133.3, airTime: 0, shownTime: 0, diagnosed: false }, 'UTC', abs)).toBe('Wind about 10 m above open ground · model grid 133 m · air from 14:05.');
+    // The calm-night sentence is the caption's (and the Wind speed map's limit, in the same words as its own Help).
+    expect(GROUND_LINE).toBe('On a calm night the fire can feel much less wind than this in places, and much more in others.');
+    expect(b).toContain('on a calm night the fire can feel much less wind than this in places, and much more in others');
+    expect(b).toContain('It is not the wind the fire feels');
+    // No chip between 10 m and 50 m: the model's lowest level is its first level's middle, 15 m above the ground (12.5 m on the High tier).
+    expect(ATMOS_TIERS.standard.dz1 / 2).toBe(15);
+    expect(ATMOS_TIERS.fast.dz1 / 2).toBe(15);
+    expect(b).toContain('the model’s lowest level is about 15 m above the ground');
+    // The headline: the height, the model grid and when the air is from, ending in a full stop; older air says how much older, past the same 90 seconds as the footer.
+    const example = captionHeadline(100, { cellM: 133.3, airTime: 0, shownTime: 0, diagnosed: false }, 'UTC', abs);
+    expect(example).toBe('Wind at 100 m above the ground · model grid 133 m · air from 14:05.');
+    expect(b).toContain(`“${example}”`);
+    expect(windFromText(0, 240, 'UTC', abs)).toBe(airFromText(0, 240, 'UTC', abs));
+    expect(windFromText(0, 240, 'UTC', abs)).toBe('air from 14:05 (4 min before the time shown)');
+    expect(b).toContain(`more than ${AIR_STALE_S} seconds older than the picture`);
+    // The fast tier adds the diagnosed-wind line, which starts with the footer's own words.
+    expect(DIAGNOSED_LINE.startsWith(SLICE_KIND_LABEL.diagnosed)).toBe(true);
+    expect(b).toContain('on the fast model it adds that this is the diagnosed wind');
+    expect(entry('Diagnosed wind').body).toContain(`“${DIAGNOSED_LINE}”`);
+    // The choice is one of the remembered layer choices.
+    expect(PERSISTED_LAYER_KEYS).toContain('windHeight');
+    expect(PERSISTED_LAYER_KEYS).toContain('windGlyphs');
+    expect(b).toContain('remembered for the next run');
+    expect(entry('Wind speed map').body).toContain('the 10 m Wind height');
+  });
+
+  it('Map view: the tab labels, the switch’s name and its one line are the tool’s, and it is one setting with Layers', () => {
+    expect(TAB_LABEL).toEqual({ side: 'Side view', map: 'Map view' });
+    const b = squashed('Map view');
+    expect(b).toContain('two tabs in its header, Side view and Map view');
+    expect(GLYPH_SWITCH_LABEL).toBe('Wind arrows and flow lines');
+    expect(b).toContain(`“${GLYPH_SWITCH_LABEL}”`);
+    expect(GLYPH_INTRO).toBe('Draws the wind on the map: arrows from far away, flow lines when you zoom in.');
+    expect(b).toContain(`“${GLYPH_INTRO}”`);
+    // One builder serves the Layers row and the Map view, so a change in one is the other's.
+    for (const f of ['screens/sim/layersPanel.ts', 'screens/sim/sliceTool.ts']) expect(read(f), f).toContain('createWindGlyphControls(ctx');
+    expect(b).toContain('they are one setting, so a change made in either is there in the other');
+    // A tab press drops a placement under way (no crosshair left on the map); the tab is kept when the tool is closed and opened again.
+    const placing = { ...initialSliceToolState(), placing: 'a' as const, candidate: [1, 2] as [number, number] };
+    expect(withTab(placing, 'map')).toMatchObject({ tab: 'map', placing: null, candidate: null });
+    expect(reopened({ ...initialSliceToolState(), tab: 'map' }).tab).toBe('map');
+    expect(b).toContain('Pressing a tab drops a line you are placing, so no cross is left on the map, and the tab you chose is kept when you close and reopen the tool');
+    // The 2-D map has no tabs: the tool is one line.
+    expect(NEEDS_3D_VIEW).toBe('The side view needs the 3-D view.');
+    expect(b).toContain('on the 2-D map it says so and has no tabs');
+    expect(squash(step('Air slices'))).toContain(`The tool has a second tab, ${TAB_LABEL.map}, for the wind arrows and flow lines`);
+    expect(squashed('Air slices')).toContain('The tool has a second tab for the wind arrows and flow lines (see Map view)');
+    expect(entry('Side view').body.startsWith('The picture in the Side view tab of the Air slices tool.')).toBe(true);
+  });
+
+  describe('Turn off the slice', () => {
+    const GRID: GridSpec = { nx: 61, ny: 61, cellSize: 100, x0: -3000, y0: -3000, origin: { lat: -33.7, lon: 150.3 } };
+    const hand: CrossSection = { ...DEFAULT_LAYERS.crossSection, enabled: true, a: [0, 0], b: [0, 1000], preset: null, field: 'along', azimuth: 40 };
+    /** The real actions on the real stores with a fake scene that only counts what it is told. */
+    const rig = (): { tool: ReturnType<typeof createSliceToolActions>; layers: Store<LayerState>; writes: unknown[]; said: string[] } => {
+      const ui = new Store<UiState>({ ...DEFAULT_UI, wind: { ...DEFAULT_UI.wind }, tool: 'air', panelOpen: true });
+      const layers = new Store<LayerState>({ ...DEFAULT_LAYERS, crossSection: { ...hand } });
+      const writes: unknown[] = [];
+      const said: string[] = [];
+      const host: SliceToolHost = { ui, layers, view: { setLayers: (p) => writes.push(p), slice: () => null }, grid: () => GRID, crosshair: () => null, user: null, hasFire: () => false, announce: (m) => said.push(m) };
+      return { tool: createSliceToolActions(host), layers, writes, said };
+    };
+
+    it('the words: the button, the warning under it and the two announcements', () => {
+      const b = squashed('Turn off the slice');
+      expect(OFF_LABEL).toBe('Turn off the slice');
+      expect(entry('Turn off the slice').term).toBe(OFF_LABEL);
+      expect(OFF_NOTE).toBe('This also clears the recording.');
+      expect(b).toContain(`“${OFF_NOTE}”`);
+      expect(OFF_SAY).toBe('Slice turned off.');
+      expect(OFF_CLEARED_SAY).toBe('Slice turned off. The recording was cleared.');
+      expect(b).toContain(`“${OFF_SAY}” or, when there was a recording, “${OFF_CLEARED_SAY}”`);
+      expect(b).toContain('There is no confirmation and no undo');
+      expect(squash(step('Air slices'))).toContain(`“${OFF_LABEL}”, the last button on either tab`);
+      expect(squash(step('Record a line'))).toContain(`switching the slice off in Layers or with “${OFF_LABEL}”`);
+    });
+
+    it('one press writes the line away and keeps the chip and the compass; the probe and a placement go too', () => {
+      const s = { ...initialSliceToolState(), placing: 'b' as const, candidate: [5, 5] as [number, number], draft: { a: [1, 1] as [number, number], b: null }, probe: { s: 3, z: 4 } };
+      const step = turnOffSlice(s, hand, false);
+      expect(step.crossSection).toMatchObject({ enabled: false, a: undefined, b: undefined, preset: null, field: 'along', azimuth: 40 });
+      expect(step.state).toMatchObject({ placing: null, candidate: null, draft: { a: null, b: null }, probe: null });
+      const b = squashed('Turn off the slice');
+      expect(b).toContain('the probe and its pin on the map');
+      expect(b).toContain('It keeps the colour chip you chose and the Layers compass setting');
+      expect(b).toContain('nothing placed, ready for a new line');
+    });
+
+    it('the tool stays open and the slice does not come back on opening it; Layers switching it off keeps the line, and opening the tool brings it back; closing the tool leaves it on', () => {
+      const r = rig();
+      r.tool.open();
+      r.tool.close();
+      expect(r.layers.get().crossSection.enabled, 'closing the tool leaves the slice on').toBe(true);
+      expect(r.writes).toEqual([]);
+      // The Layers panel's own off keeps the line, and the tool's next opening shows it again.
+      r.layers.set({ crossSection: { ...r.layers.get().crossSection, enabled: false } });
+      expect(hasStoredLine(r.layers.get().crossSection)).toBe(true);
+      r.tool.open();
+      expect(r.layers.get().crossSection.enabled).toBe(true);
+      // The tool's own off clears the line, so opening it again does not.
+      r.tool.turnOff();
+      expect(r.layers.get().crossSection).toMatchObject({ enabled: false, a: undefined, b: undefined, preset: null });
+      expect(hasStoredLine(r.layers.get().crossSection)).toBe(false);
+      r.tool.open();
+      expect(r.layers.get().crossSection.enabled).toBe(false);
+      expect(r.said).toEqual([OFF_SAY]);
+      const b = squashed('Turn off the slice');
+      expect(b).toContain('switching the slice off in Layers, which keeps the line so that opening the tool brings it back, or as closing the tool, which leaves the slice as it is');
+      expect(squashed('Air slices')).toContain('switching the slice off in Layers instead keeps the line, and opening the tool brings it back. Closing the tool leaves the slice as it is');
+      expect(squash(step('Air slices'))).toContain('closing the tool leaves the slice as it is');
+    });
+
+    it('the button is there only while there is a slice or a stored line to turn off, and not while placing', () => {
+      const view = (section: CrossSection, over: Partial<Parameters<typeof controlsView>[0]> = {}) =>
+        controlsView({ state: initialSliceToolState(), facts: { line: null, source: null, preset: null, issue: null, notes: [], minLengthM: 300 }, presets: { along: { ok: true }, across: { ok: true }, slope: { ok: true }, me: { ok: true } }, fix: 'ok', verdict: null, section, ...over }).off;
+      expect(view(hand)).toBe(true);
+      expect(view({ ...hand, enabled: false })).toBe(true); // switched off in Layers, line stored
+      expect(view({ ...DEFAULT_LAYERS.crossSection })).toBe(false);
+      expect(view({ ...DEFAULT_LAYERS.crossSection }, { state: { ...initialSliceToolState(), draft: { a: [0, 0], b: null } } })).toBe(false); // one end only
+      expect(view(hand, { state: { ...initialSliceToolState(), placing: 'a' }, verdict: { ok: true } })).toBe(false);
+      const b = squashed('Turn off the slice');
+      expect(b).toContain('only while there is a slice to turn off, or a line that Layers switched off, and not while you are placing a line or when only one end is set');
+      expect(b).toContain('a line under the button says “This also clears the recording.”');
+    });
   });
 });

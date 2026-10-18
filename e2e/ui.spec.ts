@@ -431,7 +431,7 @@ test('the dock tabs share one scrolling body: each tab opens at its top; a gloss
   expect(ring.offset).toBeLessThan(0);
 });
 
-test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, night lighting, picture quality, cliffs and rock, the slow-run button, the debug statistics) and the 0.4.0 Air slices words; the icon words are a list under their text and fit the screen', async ({ page }) => {
+test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, night lighting, picture quality, cliffs and rock, the slow-run button, the debug statistics) the 0.4.0 Air slices words and the 0.5.0 wind arrows words; the icon words are a list under their text and fit the screen', async ({ page }) => {
   await buildMock(page);
   await page.getByTestId('tab-help').click();
   await page.getByTestId('sheet-grip').click();
@@ -449,6 +449,8 @@ test('Help: the how-to list and the glossary carry the 0.3.0 features (icons, ni
   for (const t of ['Night lighting', 'Map icons', 'Picture quality', 'Cliffs and rock', 'Why is it slow?', 'Simulation debug statistics']) expect(terms, t).toContain(t);
   // 0.4.0: the Air slices words.
   for (const t of ['Air slices', 'Side view', 'Diagnosed wind', 'Air from', 'Model cells', 'Probe', 'Along and across', 'Wind speed map']) expect(terms, t).toContain(t);
+  // 0.5.0: the wind arrows and flow lines, the Map view tab and the button that turns the slice off.
+  for (const t of ['Arrows and flow lines', 'Wind height', 'Map view', 'Turn off the slice']) expect(terms, t).toContain(t);
   // Map icons: seven lines under the paragraph, none cut off, none under 14 px, nothing wider than the screen.
   const icons = help.locator('.gloss', { hasText: 'What the icons on the map mean' });
   await icons.locator('summary').click();
