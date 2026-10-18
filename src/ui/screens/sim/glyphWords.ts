@@ -106,12 +106,14 @@ export const LEVEL_LINE: Record<GlyphLevel, string> = {
 
 export const EYE_LEVEL_LINE = 'Not drawn at eye level. Go back to the map view.';
 export const NO_WIND_LINE = 'Waiting for the wind picture.';
+export const BUDGET_LINE = 'Not drawn here: this view already uses all the phone can draw. Zoom out or switch a layer off.';
 
 /** The line under the caption, from the layer's own statistics; '' when the layer says nothing yet (or is off). */
 export function glyphLevelLine(stats: Pick<WindGlyphStats, 'idle' | 'level'> | null | undefined): string {
   if (!stats) return '';
   if (stats.idle === 'eye-level') return EYE_LEVEL_LINE;
   if (stats.idle === 'no-wind') return NO_WIND_LINE;
+  if (stats.idle === 'budget') return BUDGET_LINE;
   if (stats.idle === 'off') return '';
   return LEVEL_LINE[stats.level] ?? '';
 }

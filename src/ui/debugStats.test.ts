@@ -303,6 +303,7 @@ describe('the groups of the catalogue', () => {
     ['the wind glyphs off', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'off' })],
     ['the wind glyphs at eye level', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'eye-level' })],
     ['the wind glyphs waiting for the air', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'no-wind' })],
+    ['the wind glyphs trimmed to nothing by the triangle limit', (i) => (i.windGlyphs = { ...glyphs, active: false, idle: 'budget', count: 0, segments: 0 })],
     ['the wind glyphs at level 0', (i) => (i.windGlyphs = { ...glyphs, active: false, level: 0, count: 0, segments: 0 })],
     ['the wind glyphs before their first build', (i) => (i.windGlyphs = { ...glyphs, rebuilds: 0, lastMs: 0, sliceP95Ms: 0, sliceMaxMs: 0, slicesLast: 0 })],
     ['wind glyph numbers that are not numbers', (i) => (i.windGlyphs = { ...glyphs, cellPx: NaN, cellM: Infinity, lastMs: NaN, sliceP95Ms: NaN, sliceMaxMs: Infinity })],
@@ -532,6 +533,7 @@ describe('labels and values', () => {
     expect(row({ ...glyphs, active: false, idle: 'off' }).value).toBe('Off');
     expect(row({ ...glyphs, active: false, idle: 'eye-level' }).value).toBe('On, not drawn at eye level');
     expect(row({ ...glyphs, active: false, idle: 'no-wind' }).value).toBe('On, waiting for the wind picture');
+    expect(row({ ...glyphs, active: false, idle: 'budget', count: 0, segments: 0 }).value).toBe('On, not drawn: the view already uses all the triangles a frame may have');
     expect(row({ ...glyphs, active: false, level: 0, count: 0, segments: 0 }).value).toBe('Level 0, nothing drawn at this zoom');
     expect(row({ ...glyphs, rebuilds: 0, lastMs: 0, sliceP95Ms: 0, sliceMaxMs: 0, slicesLast: 0 }).value).toBe('Level 3, 412 glyphs, 2,980 segments, not built yet');
     // The 2-D map (and a view that has not heard of glyphs) says so; before a run there is no view at all.
