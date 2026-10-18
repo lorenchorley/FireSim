@@ -8,7 +8,8 @@
  *   - three zooms x two heights ('Ground' and 300 m): the picture is drawn, the numbers fit the zoom, the heights draw differently;
  *     the screenshots go to the report (and to $WIND_GLYPH_SHOTS when it is set) for the docs gallery and for looking at
  *   - eye level draws nothing and says why; going back draws again
- *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s
+ *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s, and five height
+ *     changes at a close zoom (the raster at half the model's spacing, filled in clocked slices) each finish in turn
  *   - at the High tier with everything on: two more draw calls, 4 triangles a segment, the frame inside 550,000 triangles; off draws nothing extra
  *   - 60 on / off and height changes and 20 zooms leave renderer.info.memory and the JS heap where they were
  *   - with the glyphs on and nothing else moving the frame loop stops (the layer never keeps `animating` on)
