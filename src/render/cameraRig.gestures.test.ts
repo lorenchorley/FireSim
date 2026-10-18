@@ -554,6 +554,242 @@ describe('CameraRig gestures: two fingers turn, tilt and zoom at the same time',
   });
 });
 
+// ───────────── which way each gesture goes ─────────────
+
+/** Degrees one screen height of drag turns or tilts the view: 360° · rotateSpeed. */
+const DEG_PER_HEIGHT = 360 * GESTURE.rotateSpeed;
+const degOf = (px: number): number => (px / H) * DEG_PER_HEIGHT;
+/** Signed change (deg) of a compass azimuth, in (-180, 180]. */
+const azimuthChange = (to: number, from: number): number => ((((to - from) % 360) + 540) % 360) - 180;
+type Plan = [number, number];
+/** The camera's offset from the orbit target seen from above with north up: x towards the east (screen right), y towards the north (screen up). */
+const planOffset = (r: Rig): Plan => [r.rig.camera.position.x - r.rig.controls.target.x, -(r.rig.camera.position.z - r.rig.controls.target.z)];
+/** Degrees the camera went round the target between two plan offsets, seen from above: positive anticlockwise, negative clockwise. */
+const wentRound = (a: Plan, b: Plan): number => (Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) * 180) / Math.PI;
+
+/** Fly to the plan view and let the flight end. */
+function toTop(r: Rig): void {
+  r.rig.setMode('top');
+  for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+  r.frames(5);
+}
+
+/**
+ * Two fingers 100 px apart around the canvas middle, moved so that their midpoint goes (dx, dy) while the spacing is multiplied by
+ * `spread`, then lifted once the view has come to rest.
+ */
+function twoFingerSwipe(r: Rig, dx: number, dy: number, spread = 1, steps = 12): void {
+  r.down(1, 150, 400);
+  r.down(2, 250, 400);
+  drag(
+    r,
+    [
+      { id: 1, to: [200 + dx - 50 * spread, 400 + dy] },
+      { id: 2, to: [200 + dx + 50 * spread, 400 + dy] },
+    ],
+    steps,
+  );
+  r.frames(120);
+  r.up(2);
+  r.up(1);
+}
+
+describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom as ever)', () => {
+  let r: Rig;
+  beforeEach(() => {
+    r = setup();
+  });
+
+  it('orbit view: a two-finger drag to the right moves the camera clockwise seen from above (azimuth up), 30° per 100 px', () => {
+    const before = r.state();
+    const was = planOffset(r);
+    twoFingerSwipe(r, 100, 0);
+    const after = r.state();
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(-degOf(100), 0);
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), 'compass azimuth of the camera').toBeCloseTo(degOf(100), 0);
+    expect(degOf(100)).toBeCloseTo(30, 6);
+    expect(after.polarDeg).toBeCloseTo(before.polarDeg, 3);
+  });
+
+  it('orbit view: a two-finger drag to the left goes the other way round, by the same amount', () => {
+    const before = r.state();
+    const was = planOffset(r);
+    twoFingerSwipe(r, -100, 0);
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(degOf(100), 0);
+    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(-degOf(100), 0);
+  });
+
+  it('top view: the same direction and speed (the plan view cannot tilt)', () => {
+    toTop(r);
+    const before = r.state();
+    const was = planOffset(r);
+    twoFingerSwipe(r, 100, 0);
+    const after = r.state();
+    expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(-degOf(100), 0);
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
+    expect(after.polarDeg).toBeLessThan(0.2);
+    twoFingerSwipe(r, -100, 0);
+    expect(azimuthChange(r.state().azimuthDeg, after.azimuthDeg), 'and back again to the left').toBeCloseTo(-degOf(100), 0);
+  });
+
+  it('the turn goes one way only while the damping runs out (no overshoot, no reversal)', () => {
+    const was = planOffset(r);
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    drag(
+      r,
+      [
+        { id: 1, to: [250, 400] },
+        { id: 2, to: [350, 400] },
+      ],
+      8,
+    );
+    let last = wentRound(was, planOffset(r));
+    for (let i = 0; i < 100; i++) {
+      r.frames(1);
+      const now = wentRound(was, planOffset(r));
+      expect(now, `frame ${i}`).toBeLessThanOrEqual(last + 1e-9);
+      last = now;
+    }
+    expect(last).toBeCloseTo(-degOf(100), 0);
+    r.up(2);
+    r.up(1);
+  });
+
+  it('a vertical two-finger drag tilts exactly as before (down: towards the plan view, up: towards the horizon) and does not turn', () => {
+    const before = r.state();
+    twoFingerSwipe(r, 0, 100);
+    const down = r.state();
+    expect(down.polarDeg - before.polarDeg).toBeCloseTo(-degOf(100), 0);
+    expect(azimuthChange(down.azimuthDeg, before.azimuthDeg)).toBeCloseTo(0, 3);
+    const again = setup();
+    twoFingerSwipe(again, 0, -100);
+    expect(again.state().polarDeg - before.polarDeg).toBeCloseTo(degOf(100), 0);
+    expect(azimuthChange(again.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(0, 3);
+  });
+
+  it('a diagonal drag turns by its horizontal part and tilts by its vertical part, each at its own speed', () => {
+    const before = r.state();
+    twoFingerSwipe(r, 80, 60);
+    const after = r.state();
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(80), 0);
+    expect(after.polarDeg - before.polarDeg).toBeCloseTo(-degOf(60), 0);
+  });
+
+  it('a pinch zooms 1 : 1 whichever way the fingers also drift sideways, and the sideways drift does not change the zoom or the tilt', () => {
+    const before = r.state();
+    const ratios: number[] = [];
+    for (const dx of [0, 80, -80]) {
+      const s = setup();
+      twoFingerSwipe(s, dx, 0, 2);
+      const after = s.state();
+      ratios.push(after.distance / before.distance);
+      expect(after.polarDeg, `tilt, drift ${dx}`).toBeCloseTo(before.polarDeg, 3);
+      expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), `turn, drift ${dx}`).toBeCloseTo(degOf(dx), 0);
+    }
+    expect(ratios[0], 'spacing × 2 → distance ÷ 2').toBeCloseTo(0.5, 2);
+    expect(ratios[1], 'with a drift to the right').toBeCloseTo(0.5, 1);
+    expect(ratios[2], 'with a drift to the left').toBeCloseTo(0.5, 1);
+    expect(Math.abs(ratios[1]! - ratios[2]!), 'the same zoom either way').toBeLessThan(0.01);
+  });
+
+  it('a flight does not change it: after a fly-to a two-finger drag to the right still goes the same way round', () => {
+    r.rig.flyTo(500, 400, 3000);
+    for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+    r.frames(5);
+    const was = planOffset(r);
+    twoFingerSwipe(r, 100, 0);
+    expect(wentRound(was, planOffset(r))).toBeCloseTo(-degOf(100), 0);
+  });
+});
+
+describe('CameraRig gestures: eye level and the mouse keep their directions', () => {
+  let r: Rig;
+  beforeEach(() => {
+    r = setup();
+  });
+
+  /** Eye level looking roughly level (pitch room for 100 px either way), the flight ended. */
+  function toEyeLevel(): void {
+    r.rig.setMode('ground', { user: [100, -200], lookAt: [900, 600] });
+    for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+    r.frames(5);
+  }
+
+  it('eye level: a finger dragged to the right turns the view anticlockwise (heading down), one dragged down looks up, 0.35 of the orbit-view speed', () => {
+    toEyeLevel();
+    const before = r.state();
+    r.down(1, 150, 400);
+    drag(r, [{ id: 1, to: [250, 500] }]);
+    r.frames(120);
+    r.up(1);
+    const after = r.state();
+    expect(azimuthChange(after.headingDeg, before.headingDeg)).toBeCloseTo(-(100 / H) * 360 * 0.35, 0);
+    expect(after.polarDeg - before.polarDeg).toBeCloseTo((100 / H) * 360 * 0.35, 0);
+  });
+
+  it('eye level: a second finger stops the look-around, as it always did (OrbitControls has no two-finger rotate), and the first resumes it', () => {
+    toEyeLevel();
+    const before = r.state();
+    r.down(1, 100, 400);
+    r.down(2, 200, 400);
+    expect(r.oc.state, 'no gesture with two fingers').toBe(-1);
+    drag(r, [
+      { id: 1, to: [200, 500] },
+      { id: 2, to: [300, 500] },
+    ]);
+    r.frames(120);
+    const two = r.state();
+    expect(azimuthChange(two.headingDeg, before.headingDeg)).toBeCloseTo(0, 3);
+    expect(two.polarDeg).toBeCloseTo(before.polarDeg, 3);
+    r.up(2); // the finger that is left turns the view again, from where it is
+    drag(r, [{ id: 1, to: [300, 500] }]);
+    r.frames(120);
+    r.up(1);
+    expect(azimuthChange(r.state().headingDeg, before.headingDeg)).toBeCloseTo(-(100 / H) * 360 * 0.35, 0);
+  });
+
+  it('the mouse: a right-button drag to the right moves the camera clockwise (azimuth up) and one down tilts to the plan view, 30° per 100 px', () => {
+    const before = r.state();
+    r.down(1, 200, 400, { pointerType: 'mouse', button: 2, isPrimary: true });
+    for (let i = 1; i <= 10; i++) {
+      r.move(1, 200 + 10 * i, 400 + 5 * i, { pointerType: 'mouse' });
+      r.frames(1);
+    }
+    r.up(1, { pointerType: 'mouse', button: 2 });
+    r.frames(120);
+    const after = r.state();
+    expect(azimuthChange(after.azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
+    expect(after.polarDeg - before.polarDeg).toBeCloseTo(-degOf(50), 0);
+  });
+
+  it('the mouse in the top view: a right-button drag to the right moves the camera clockwise too', () => {
+    toTop(r);
+    const before = r.state();
+    r.down(1, 200, 400, { pointerType: 'mouse', button: 2, isPrimary: true });
+    for (let i = 1; i <= 10; i++) {
+      r.move(1, 200 + 10 * i, 400, { pointerType: 'mouse' });
+      r.frames(1);
+    }
+    r.up(1, { pointerType: 'mouse', button: 2 });
+    r.frames(120);
+    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
+  });
+
+  it('the mouse keeps its direction after a two-finger turn (nothing of it leaks into the next gesture)', () => {
+    twoFingerSwipe(r, 100, 0);
+    const before = r.state();
+    r.down(1, 200, 400, { pointerType: 'mouse', button: 2, isPrimary: true });
+    for (let i = 1; i <= 10; i++) {
+      r.move(1, 200 + 10 * i, 400, { pointerType: 'mouse' });
+      r.frames(1);
+    }
+    r.up(1, { pointerType: 'mouse', button: 2 });
+    r.frames(120);
+    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(degOf(100), 0);
+  });
+});
+
 describe('CameraRig gestures: switching between one and two fingers', () => {
   let r: Rig;
   beforeEach(() => {
