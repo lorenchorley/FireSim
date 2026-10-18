@@ -473,7 +473,11 @@ export interface ControlsView {
   keep: boolean;
   /** "Clear recording" is offered: the recorder holds at least one picture (and nothing is being placed). */
   clear: boolean;
-  /** "Turn off the slice" is offered: there is a slice, a stored line or a draft end to turn off (and nothing is being placed). Absent when there is nothing, never disabled. */
+  /**
+   * "Turn off the slice" is offered: there is a slice or a stored line to turn off (and nothing is being placed). Absent when there is nothing, never disabled.
+   * A draft end alone is not a slice: the button would be named for something that is not there, and its row would make the sheet grow, and the cross move,
+   * between "Place A here" and "Set end (B)" (Set A again replaces a draft end; turning off the slice clears it along with the rest).
+   */
   off: boolean;
 }
 
@@ -490,7 +494,7 @@ export function controlsView(i: ControlsInput): ControlsView {
     hint: hintLine(i, next),
     keep: !end && facts.source === 'preset' && !!facts.preset && !!facts.line,
     clear: !end && (i.recording?.count ?? 0) > 0,
-    off: !end && (i.section.enabled || hasStoredLine(i.section) || !!s.draft.a || !!s.draft.b),
+    off: !end && (i.section.enabled || hasStoredLine(i.section)),
   };
 }
 

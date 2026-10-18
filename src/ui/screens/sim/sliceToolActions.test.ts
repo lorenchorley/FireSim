@@ -361,7 +361,7 @@ describe('Turn off the slice (0.5.0)', () => {
     off();
   });
 
-  it('takes a preset, the Layers chord, a draft end and a section only switched off in Layers with its line stored', () => {
+  it('takes a preset, the Layers chord, a line with a draft end over it and a section only switched off in Layers with its line stored', () => {
     const preset = rig();
     const tp = createSliceToolActions(preset.host);
     tp.open();
@@ -378,12 +378,16 @@ describe('Turn off the slice (0.5.0)', () => {
     tc.turnOff();
     expect(chord.layers.get().crossSection).toMatchObject({ enabled: false, azimuth: 90, centre: [5, 6] });
 
+    // A draft end alone is not a slice: no button until there is a line (the sheet does not grow between "Place A here" and "Set end (B)").
     const draft = rig();
     const td = createSliceToolActions(draft.host);
     td.open();
     td.startPlacing('a');
     td.placeHere(); // A goes to the draft
-    expect(td.controls()).toMatchObject({ placing: null, off: true });
+    expect(td.controls()).toMatchObject({ placing: null, off: false });
+    expect(draft.ui.get().slice!.draft.a).not.toBeNull();
+    handScene(draft); // ... B placed: the line is there, and so is the button
+    expect(td.controls().off).toBe(true);
     td.turnOff();
     expect(draft.ui.get().slice!.draft).toEqual({ a: null, b: null });
     expect(td.controls().off).toBe(false);

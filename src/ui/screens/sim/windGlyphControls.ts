@@ -116,7 +116,8 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
       settingsEl.append(options.el);
     }
     if (options) {
-      options.el.hidden = !s.windGlyphs;
+      // (A remembered "on" in the 2-D map has nothing to choose a height for: the reason above says so, and the switch stays operable to turn it off.)
+      options.el.hidden = !s.windGlyphs || !has3dView;
       if (options.chips.get() !== String(s.windHeight)) options.chips.set(String(s.windHeight));
       text(options.caption, v.caption.join('\n'));
       options.caption.hidden = v.caption.length === 0;

@@ -418,9 +418,10 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await expect(page.locator('.annotations .ann-slice-end')).toHaveCount(1);
     await page.getByTestId('slice-place').click();
     await expect(page.getByTestId('slice-note')).toHaveText('Start (A) is set. Now set the end (B).');
+    // A draft end is not a slice: "Turn off the slice" waits for the line, so the sheet does not grow (and the cross does not move) between A and B.
+    await expect(page.getByTestId('slice-off'), 'nothing to turn off while only A is set').toBeHidden();
     await page.getByTestId('slice-set-b').click();
-    // "Turn off the slice" shows as soon as A is set (a draft is something to turn off), so the sheet is taller and the cross sits higher than it did for A:
-    // the drag is measured from the cross as it is now. (Measured from A's cross it put B about 430 m nearer: a 1.2 km line instead of 1.6 km.)
+    // The drag is measured from the cross as it is now (the sheet is the placing sheet again, so the cross sits where it did for A once the layout has settled).
     await expect(page.locator('.sim-screen .crosshair')).toBeVisible();
     await settle(page);
     const c1 = await crosshair(page);
