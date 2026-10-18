@@ -54,7 +54,8 @@ const view = (() => {
 })();
 const SAMPLER = new AtmosphereSampler(view, BASE, null);
 const DOM = { x0: GRID.x0, y0: GRID.y0, x1: GRID.x0 + (GRID.nx - 1) * CELL, y1: GRID.y0 + (GRID.ny - 1) * CELL };
-const CENTRES: [number, number][] = [[0, 0], [-1500, 900], [1400, -1100], [-900, -1700], [1700, 1500], [300, 1900]];
+// Twelve views: the L3 lattice is never denser than 36 px (a power of two of metres, 57 px here), so a view holds about a quarter of the glyphs it did.
+const CENTRES: [number, number][] = [[0, 0], [-1500, 900], [1400, -1100], [-900, -1700], [1700, 1500], [300, 1900], [-1900, -300], [1000, 200], [-300, -1000], [900, 1300], [-1300, 1800], [1900, -1700]];
 
 /** Distances (px) between the tip of every glyph of the builder and the tip of the same glyph traced directly. */
 function tipErrors(raster: FlowRaster, oracle: DirectOracle, cellPx: number): number[] {

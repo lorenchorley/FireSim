@@ -12,8 +12,11 @@ import type { Box, GlyphLevel, LodPlan } from './glyphTypes';
 export const LEVEL_EDGES = [4, 12, 32, 90] as const;
 /** Going up needs `edge x 1.15`, going down needs less than `lower edge / 1.15`. */
 export const LOD_HYSTERESIS = 1.15;
-/** The lattice exponent changes only when the exact exponent is more than 0.5 + 0.15 octave from the kept one. */
-export const SPACING_EXP_HYSTERESIS = 0.15;
+/**
+ * The lattice exponent holds this far (octaves) past an octave edge, so a pinch that hovers on an edge does not flip it. It is narrow
+ * on purpose: inside the band the kept lattice wins, outside it the zoom alone decides, so one zoom gives the same lattice from either side.
+ */
+export const SPACING_EXP_HYSTERESIS = 0.06;
 
 interface LevelSpec {
   spacingPx: number;
@@ -24,7 +27,12 @@ interface LevelSpec {
   maxPx: number;
 }
 
-/** What each level draws (the table of plan 9.2 as the build tunes it; to be judged on a phone). */
+/**
+ * What each level draws (the table of plan 9.2 as the build tunes it; to be judged on a phone). `spacingPx` is the lattice spacing on
+ * the screen. For the curved levels it is the closest the lattice may get: it is the next power of two of metres that is not denser,
+ * so it runs from `spacingPx` to twice that (flow lines of 28 to 56 px at a spacing of 24 px pile up into a mat). For the straight
+ * arrows it is the middle of the range: the nearest power of two, 0.7 to 1.4 times `spacingPx`.
+ */
 const LEVEL_SPECS: readonly LevelSpec[] = [
   { spacingPx: 0, curved: false, jitter: 0, pxPerMs: 0, minPx: 0, maxPx: 0 }, // L0: nothing
   { spacingPx: 56, curved: false, jitter: 0, pxPerMs: 4, minPx: 8, maxPx: 45 }, // L1: straight arrows
@@ -55,7 +63,8 @@ function rawLevel(cellPx: number): GlyphLevel {
  * The plan for one frame. `prev` (the plan kept from the last call, or null) gives the hysteresis: up when
  * `cellPx >= edge x 1.15`, down when `cellPx < lowerEdge / 1.15`, one edge at a time so a fast pinch can cross several. With
  * `prev` null the level is the raw one. `mppCentre` (metres per pixel at the middle of the screen) sets the lattice spacing:
- * `spacingExp = round(log2(spacingPx x mppCentre))`, kept while the exact value is within 0.65 octave of `prev.spacingExp`.
+ * `spacingExp = ceil(log2(spacingPx x mppCentre))` for the curved levels and the rounded value for the straight ones, so the zoom
+ * alone decides the lattice; the kept exponent holds only within `SPACING_EXP_HYSTERESIS` octave of an edge between two exponents.
  * `out` (optional) is filled and returned instead of a new object; it may be `prev` itself.
  */
 export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, 'level' | 'spacingExp'> | null, out?: LodPlan): LodPlan {
@@ -70,9 +79,10 @@ export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, '
   const spec = LEVEL_SPECS[level]!;
   let exp = 0;
   if (level > 0 && mppCentre > 0 && Number.isFinite(mppCentre)) {
-    const exact = Math.log2(spec.spacingPx * mppCentre);
-    exp = Math.round(exact);
-    if (prev && prev.level > 0 && Math.abs(exact - prev.spacingExp) <= 0.5 + SPACING_EXP_HYSTERESIS) exp = prev.spacingExp;
+    // `t` is the exact exponent moved so that the edges between two exponents sit on the whole numbers: the exponent `k` owns (k - 1, k].
+    const t = Math.log2(spec.spacingPx * mppCentre) - (spec.curved ? 0 : 0.5);
+    exp = Math.ceil(t);
+    if (prev && prev.level > 0 && t > prev.spacingExp - 1 - SPACING_EXP_HYSTERESIS && t <= prev.spacingExp + SPACING_EXP_HYSTERESIS) exp = prev.spacingExp;
   }
   const plan: LodPlan = out ?? { level: 0, cellPx: 0, spacingPx: 0, spacingExp: 0, spacingM: 0, curved: false, jitter: 0, lengthPx: { min: 0, max: 0, pxPerMs: 0 } };
   plan.level = level as GlyphLevel;
