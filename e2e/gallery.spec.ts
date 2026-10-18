@@ -5,7 +5,10 @@
  * high contrast) and at Android's 200 % font scale. Real engine, the bundled Katoomba demo (offline), one build; the looks are
  * switched on <html> (the same attributes Settings sets). Pictures are 412 x 915 CSS pixels (Pixel 7), a few hundred kB each.
  *
- * Release 0.4.1 (the time-lapse recorder of an Air slice line) adds the test "gallery 0.4.1" at the very end (run alone with
+ * Release 0.5.0 (the wind arrows and flow lines, the Map view tab, Turn off the slice) adds the two tests "gallery 0.5.0" at the very end
+ * (run alone with `-g "gallery 0.5.0"`): pictures 37, 37b, 38, 39, 40 and 41.
+ *
+ * Release 0.4.1 (the time-lapse recorder of an Air slice line) adds the test "gallery 0.4.1" (run alone with
  * `-g "gallery 0.4.1"`): picture 36, the side view of a recorded line with its status line and Clear recording.
  *
  * Release 0.4.0 (Air slices) adds the two tests named "gallery 0.4.0" (run alone with `-g "gallery 0.4.0"`): pictures 33,
@@ -557,4 +560,175 @@ test('gallery 0.4.1: the side view of a recorded line, with its status line and 
   await clear.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await page.waitForTimeout(500);
   await shot(page, '36-air-slice-recorded', ['light']);
+});
+
+// ───────────────────────────────────────── 0.5.0 ─────────────────────────────────────────
+// The pictures of the wind arrows and flow lines (README.md, docs/DESIGN.md), run alone with `-g "gallery 0.5.0"` (they write only the new pictures):
+//   37, 37b  the glyphs at a zoom where one model cell is about 50 px (curved flow lines, L3) and about 9 px (straight arrows, L1), top view, the
+//            10 m chip, the animated streaks off so the glyphs stand alone;
+//   38       close in over the forest (L4, long flow lines) with the trees and the aerial photo on: the strokes show through the crowns (the depth bias);
+//   39       the Layers panel's row: the switch, the six Wind height chips, the caption and the line about the zoom;
+//   40       the Air slices tool's Map view tab with the same switch, chips and caption, and Turn off the slice with its hint;
+//   41       the side view after Keep this line, scrolled to Turn off the slice and "This also clears the recording."
+// Real engine, the fast tier, the bundled Katoomba demo at 6 km (offline). The glyph rebuild is finished by `renderNow()` before each picture.
+
+type GlyphStats = { active: boolean; idle: string | null; level: number; count: number; cellPx: number; cellM: number };
+type GW = {
+  __firesim: {
+    view: {
+      setLayers(p: Record<string, unknown>): void;
+      lookAt(x: number, y: number, distance: number, azimuthDeg?: number, tiltDeg?: number, animate?: boolean): void;
+      renderNow?(): void;
+      windGlyphStats?(): GlyphStats | null;
+      rig: { update(now: number): boolean };
+    };
+  };
+};
+const glyphStats = (page: Page): Promise<GlyphStats> => page.evaluate(() => (window as unknown as GW).__firesim.view.windGlyphStats!()!);
+
+/** Let the camera come to rest (the rig's per-frame update, run many times without drawing), then draw a frame with the glyph rebuild finished in it. */
+async function drawGlyphs(page: Page): Promise<GlyphStats> {
+  await page.evaluate(() => {
+    const v = (window as unknown as GW).__firesim.view;
+    const t0 = performance.now() + 4000;
+    for (let i = 0; i < 100; i++) v.rig.update(t0 + i * 16);
+  });
+  await page.waitForTimeout(300);
+  return page.evaluate(() => {
+    const v = (window as unknown as GW).__firesim.view;
+    v.renderNow?.();
+    return v.windGlyphStats!()!;
+  });
+}
+
+/** The camera distance at which one model cell covers `px` screen pixels (the rig's field of view is 50 degrees). */
+async function distanceForCell(page: Page, px: number): Promise<number> {
+  const s = await glyphStats(page);
+  const h = await page.evaluate(() => document.querySelector('canvas')!.clientHeight);
+  return (s.cellM * h) / (2 * Math.tan((25 * Math.PI) / 180) * px);
+}
+
+test('gallery 0.5.0: the wind arrows and flow lines at three zooms, and the Layers row with its Wind height chips and caption', async ({ page }) => {
+  test.setTimeout(900_000);
+  await page.goto('/?debug=1&theme=light');
+  await acceptNotice(page);
+  // Picture quality High, chosen in Settings (it applies to the model built next): the close-up has the trees and the canopy of the High tier.
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('settings')).toBeVisible();
+  await page.getByTestId('picture-quality').getByRole('radio', { name: 'High' }).check();
+  await page.getByTestId('close-settings').click();
+  await expect(page.getByTestId('settings')).toHaveCount(0);
+  await page.getByTestId('site-katoomba').click();
+  await page.getByTestId('extent').getByRole('radio', { name: '6 km' }).check({ force: true });
+  await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
+  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
+  await page.getByTestId('preset-hot-nw-sw-change').click();
+  const online = page.getByTestId('online').getByRole('switch');
+  if (await online.isChecked()) await page.getByTestId('online').click();
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
+  await expect.poll(() => airKindOf(page), { timeout: 60_000 }).toBe('diagnosed');
+
+  // The arrows on, at the 10 m chip, and the animated streaks off (they would move in a picture that is meant to stand still), both through the
+  // Layers panel, so that the panel, the scene and the legend card say the same thing.
+  await pickTool(page, 'layers');
+  await expect(page.getByTestId('layers-panel')).toBeVisible();
+  await page.getByTestId('wind-layer').getByRole('radio', { name: 'Off' }).check({ force: true });
+  await page.getByTestId('layer-windGlyphs').click();
+  await expect(page.getByTestId('wind-height')).toBeVisible();
+  await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('layers-panel')).toHaveCount(0);
+  await pickViewMode(page, 'top');
+  const centre: [number, number] = [-600, 300]; // the escarpment's edge and the Megalong valley, both on the screen
+  const lookAt = (d: number, tilt: number, az = 0): Promise<void> =>
+    page.evaluate(([x, y, dd, a, t]) => (window as unknown as GW).__firesim.view.lookAt(x!, y!, dd!, a!, t!, false), [centre[0], centre[1], d, az, tilt]);
+
+  // ── 37b: far away, straight arrows (the whole 6 km area across the screen); 37: one model cell about 50 px, curved flow lines ──
+  await lookAt(1000, 0);
+  await drawGlyphs(page);
+  await lookAt(await distanceForCell(page, 9), 0);
+  const far = await drawGlyphs(page);
+  expect(far).toMatchObject({ active: true, level: 1 });
+  await shot(page, '37b-wind-arrows-far', ['light']);
+  await lookAt(await distanceForCell(page, 50), 0);
+  const mid = await drawGlyphs(page);
+  expect(mid).toMatchObject({ active: true, level: 3 });
+  await page.waitForTimeout(600);
+  await shot(page, '37-wind-flow-lines', ['light']);
+
+  // ── 39: the Layers panel's row: the switch, the six chips, the caption and the zoom line ──
+  await pickTool(page, 'layers');
+  await expect(page.getByTestId('layers-panel')).toBeVisible();
+  await expect(page.getByTestId('wind-height')).toBeVisible();
+  await expect(page.getByTestId('wind-glyph-caption')).toContainText('Wind about 10 m above open ground');
+  await expect(page.getByTestId('wind-glyph-level')).toHaveText('Showing curved flow lines.');
+  await page.getByTestId('layer-windGlyphs').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.waitForTimeout(500);
+  await shot(page, '39-layers-wind-arrows', ['light']);
+  await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('layers-panel')).toHaveCount(0);
+
+  // ── 38: close in over the forest, one model cell about 150 px, 55 degrees, the trees and the aerial photo on: the strokes show through the crowns ──
+  await pickViewMode(page, 'orbit');
+  await setLayers(page, { vegetation: true, understorey: true, imagery: true });
+  await lookAt(await distanceForCell(page, 150), 55, 200);
+  await page.waitForTimeout(2500); // the canopy is placed a frame at a time
+  const close = await drawGlyphs(page);
+  expect(close).toMatchObject({ active: true, level: 4 });
+  await shot(page, '38-wind-flow-lines-trees', ['light']);
+});
+
+test('gallery 0.5.0: the Air slices tool, the Map view tab, and Turn off the slice with its hint after Keep this line', async ({ page }) => {
+  test.setTimeout(900_000);
+  await buildKatoomba6km(page, 'hot-nw-sw-change', 'Fast');
+  await expect.poll(() => airKindOf(page), { timeout: 60_000 }).toBe('diagnosed');
+  await markEscarpmentFire(page);
+  await playTo(page, 600, 900);
+  await setLayers(page, { wind: 'off' });
+
+  // A preset, kept where it is now, so the recorder has a line to record; play on until it holds pictures, then pause.
+  await alongTheWind(page);
+  await expect(page.getByTestId('slice-keep')).toBeVisible();
+  await page.getByTestId('slice-keep').click();
+  await expect(page.getByTestId('slice-keep')).toBeHidden();
+  await setSpeed(page, 120);
+  await page.getByTestId('play').click();
+  await expect
+    .poll(
+      async () => {
+        const st = await recStatusOf(page);
+        return !!st && st.count >= 6 && st.to! - st.from! >= 400;
+      },
+      { timeout: 400_000, intervals: [500] },
+    )
+    .toBe(true);
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).playing).toBe(false);
+
+  // ── 40: the Map view tab: the same switch, chips and caption as Layers, here with the arrows on, and the button under them ──
+  await page.getByTestId('slice-tab-map').click();
+  await expect(page.getByTestId('slice-map-tab')).toBeVisible();
+  await page.getByTestId('layer-windGlyphs').click(); // the Map view's own switch: the same setting as Layers'
+  await expect(page.getByTestId('wind-height')).toBeVisible();
+  // From above, so that the curtain of the slice is a line and not a wall in front of the arrows.
+  await pickViewMode(page, 'top');
+  await drawGlyphs(page); // (the layer has seen the camera, so it knows the size of a model cell on the screen)
+  const mapZoom = await distanceForCell(page, 40);
+  await page.evaluate(([d]) => (window as unknown as GW).__firesim.view.lookAt(-600, 300, d!, 0, 0, false), [mapZoom]);
+  await expect(page.getByTestId('slice-off')).toBeVisible();
+  await expect(page.getByTestId('slice-off-note')).toHaveText('This also clears the recording.');
+  await drawGlyphs(page);
+  await page.getByTestId('slice-map-tab').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.waitForTimeout(600);
+  await shot(page, '40-air-slice-map-view', ['light']);
+
+  // ── 41: back on the side view, scrolled to Turn off the slice and the hint that it also clears the recording ──
+  await page.getByTestId('slice-tab-side').click();
+  await expect(page.getByTestId('slice-canvas')).toBeVisible();
+  const off = page.getByTestId('slice-off');
+  await expect(off).toBeVisible();
+  await expect(page.getByTestId('slice-off-note')).toBeVisible();
+  await off.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(600);
+  await shot(page, '41-air-slice-turn-off', ['light']);
 });
