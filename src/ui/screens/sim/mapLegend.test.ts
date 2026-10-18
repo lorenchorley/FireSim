@@ -57,7 +57,7 @@ describe('the map legend of the air slice', () => {
 
 describe('the map legend of the wind arrows and flow lines (0.5.0)', () => {
   const heat = { overlay: 'slope' } as const;
-  const ctxWith = (over: Partial<LayerState>, opts: { glyphs?: boolean; canopy?: boolean } = {}): Parameters<typeof currentMapLegend>[0] => {
+  const ctxWith = (over: Partial<LayerState>, opts: { glyphs?: boolean; canopy?: boolean; viewMode?: 'orbit' | 'top' | 'ground' } = {}): Parameters<typeof currentMapLegend>[0] => {
     const layers: LayerState = { ...DEFAULT_LAYERS, wind: 'off', crossSection: { ...DEFAULT_LAYERS.crossSection }, ...over };
     return {
       layers: { get: () => layers },
@@ -70,6 +70,7 @@ describe('the map legend of the wind arrows and flow lines (0.5.0)', () => {
       },
       scenario: { terrain: { minElevation: 0, maxElevation: 1 } },
       session: { state: { get: () => ({ snapshot: { atmosphere: lite('prognostic', true) } }) } },
+      ui: { get: () => ({ viewMode: opts.viewMode ?? 'orbit' }) },
       view: opts.canopy ? { canopyLegend: () => ({ title: 'Trees coloured by height', units: 'm', kind: 'continuous', entries: [{ value: 0, colour: '#000000', label: '0' }] }) } : {},
     } as unknown as Parameters<typeof currentMapLegend>[0];
   };
@@ -102,6 +103,16 @@ describe('the map legend of the wind arrows and flow lines (0.5.0)', () => {
     expect(currentMapLegend(before, 0)!.title).toBe('Wind at 100 m');
     const streaks = { ...ctxWith({ wind: 'surface' }), session: { state: { get: () => ({ snapshot: null }) } } } as unknown as Parameters<typeof currentMapLegend>[0];
     expect(currentMapLegend(streaks, 0)!.title).toBe(windLegend('surface').title);
+  });
+
+  it('at eye level nothing is drawn, so there is no card for the arrows there: none, or the streaks’ legend when they are on; the 3-D and top views have it', () => {
+    const glyphs = { windGlyphs: true, windHeight: 100 as const };
+    expect(currentMapLegend(ctxWith(glyphs, { viewMode: 'ground' }), 0)).toBeNull();
+    expect(currentMapLegend(ctxWith({ ...glyphs, wind: 'surface' }, { viewMode: 'ground' }), 0)!.title).toBe(windLegend('surface').title);
+    for (const viewMode of ['orbit', 'top'] as const) expect(currentMapLegend(ctxWith(glyphs, { viewMode }), 0)!.title, viewMode).toBe('Wind at 100 m');
+    // Only the arrows' card gives way: a heat map, the slice or the coded trees are drawn at eye level as anywhere.
+    expect(currentMapLegend(ctxWith({ ...glyphs, overlay: heat.overlay }, { viewMode: 'ground' }), 0)).not.toBeNull();
+    expect(currentMapLegend(ctxWith({ ...glyphs, crossSection: { ...DEFAULT_LAYERS.crossSection, enabled: true, field: 'along' } }, { viewMode: 'ground' }), 0)!.title).toBe('Wind along the line');
   });
 
   it('with a scene that has no glyph legend (an older render module) the streaks’ legend stands, and the 2-D map (no scene legends) shows none', () => {

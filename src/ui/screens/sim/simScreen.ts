@@ -34,7 +34,7 @@ import { createAirPanel, sliceMarkElement } from './sliceTool';
 import { backFromAirTool, watchLineForProbe } from './sliceToolActions';
 import { AIR_TOOL_LABEL, lineFacts, sliceAnnotationMarks, sliceMarks, tapCandidate, type SliceAnnMark } from './sliceToolModel';
 import { createMapMenu } from './mapMenu';
-import { backLayer, reduceMenu } from './layoutModel';
+import { backLayer, controlOwnsKey, reduceMenu } from './layoutModel';
 import { markerShownAt, tapTarget } from './markerWords';
 import { mapCredits } from './mapCredits';
 import { createMapLegend } from './mapLegend';
@@ -246,7 +246,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         },
       })),
       { id: 'fly-fire', label: 'Fly to the fire', icon: 'flame' as const, testId: 'fly-fire', onSelect: () => flyToFire() },
-      ...(o.user ? [{ id: 'fly-me', label: 'My position', icon: 'gps' as const, testId: 'fly-me', onSelect: () => view.flyTo(o.user!.x, o.user!.y, 1500) }] : []),
+      ...(o.user ? [{ id: 'fly-me', label: 'My position', icon: 'gps' as const, testId: 'fly-me', onSelect: () => flyTo(o.user!.x, o.user!.y, 1500) }] : []),
       { id: 'compass', label: 'North up', iconEl: needle, testId: 'compass', onSelect: () => view.setHeading(0) },
       { id: 'zoom', el: zoomRow },
     ],
@@ -516,6 +516,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   syncCompass();
   scheduleInsets();
 
+  /** A fly-to from eye level puts the camera back in the 3-D view (the rig does it), so the state the View menu and the map legend read says so too. */
+  function flyTo(x: number, y: number, distance: number): void {
+    if (ui.get().viewMode === 'ground') ui.set({ viewMode: 'orbit' });
+    view.flyTo(x, y, distance);
+  }
+
   /** Fly to the fire, far enough back to see the whole burnt area (1.5–12 km). */
   function flyToFire(): void {
     const snap = session.state.get().snapshot;
@@ -561,7 +567,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       }
     }
     const span = Number.isFinite(x0) ? Math.max(x1 - x0, y1 - y0) : 0;
-    if (n) view.flyTo(sx / n, sy / n, Math.min(12000, Math.max(1500, 1.6 * span)));
+    if (n) flyTo(sx / n, sy / n, Math.min(12000, Math.max(1500, 1.6 * span)));
     else o.announce('No fire marked yet.');
   }
 
@@ -912,7 +918,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     }),
     listen(document, 'keydown', (e) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (controlOwnsKey(e.key, t)) return;
       if (e.key === ' ' && !(t instanceof HTMLButtonElement)) {
         e.preventDefault();
         session.toggle();

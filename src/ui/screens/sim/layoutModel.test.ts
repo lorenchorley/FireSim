@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backLayer, badgeText, cycleDetent, detentHeights, DOCK_H, fitMenu, GRIP_H, pressTab, reduceMenu, snapDetent, tapHandle } from './layoutModel';
+import { backLayer, badgeText, controlOwnsKey, cycleDetent, detentHeights, DOCK_H, fitMenu, GRIP_H, pressTab, reduceMenu, snapDetent, tapHandle } from './layoutModel';
 import { DEFAULT_UI, type MenuId } from './context';
 import { Store } from '../../store';
 
@@ -141,6 +141,35 @@ describe('Back and Escape: one layer per press, top-most first', () => {
       else s = { ...s, sheet: 'closed' };
     }
     expect(seen).toEqual(['popover', 'menu', 'panel', 'sheet']);
+  });
+});
+
+describe('which key presses belong to the control they were aimed at', () => {
+  const input = (type: string) => ({ tagName: 'INPUT', type });
+
+  it('Escape goes to the screen from a radio, a checkbox or a slider (the Air slices tabs and chips, every switch): it closes the top layer as it does from a button', () => {
+    for (const type of ['radio', 'checkbox', 'range']) expect(controlOwnsKey('Escape', input(type)), type).toBe(false);
+    expect(controlOwnsKey('Escape', { tagName: 'BUTTON' })).toBe(false);
+    expect(controlOwnsKey('Escape', { tagName: 'DIV' })).toBe(false);
+    expect(controlOwnsKey('Escape', null)).toBe(false);
+    expect(controlOwnsKey('Escape', {} as { tagName: string })).toBe(false); // a key aimed at the document itself
+  });
+
+  it('a field that is typed in, a list and an editable element keep every key, Escape too', () => {
+    for (const type of ['text', 'number', 'search', 'email', 'url', 'tel', 'password', '']) expect(controlOwnsKey('Escape', input(type)), type).toBe(true);
+    expect(controlOwnsKey('Escape', { tagName: 'SELECT' })).toBe(true);
+    expect(controlOwnsKey('Escape', { tagName: 'TEXTAREA' })).toBe(true);
+    expect(controlOwnsKey('Escape', { tagName: 'DIV', isContentEditable: true })).toBe(true);
+  });
+
+  it('Space and every other key stay with an input, a radio and a checkbox included (Space switches a switch, it does not play or pause the run)', () => {
+    for (const key of [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'a']) for (const type of ['radio', 'checkbox', 'range', 'text']) expect(controlOwnsKey(key, input(type)), `${key} on ${type}`).toBe(true);
+    expect(controlOwnsKey(' ', { tagName: 'BUTTON' })).toBe(false); // (the screen itself lets a focused button have its Space)
+  });
+
+  it('is case-blind about the tag and the type (an upper-case type is still a radio)', () => {
+    expect(controlOwnsKey('Escape', { tagName: 'input', type: 'RADIO' })).toBe(false);
+    expect(controlOwnsKey('Escape', { tagName: 'input', type: 'Text' })).toBe(true);
   });
 });
 
