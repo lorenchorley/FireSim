@@ -18,7 +18,6 @@ import { fireCentroid } from '../../../render/fields';
 import { has3dAtmosphere, type SimContext } from './context';
 import { h, listen, setChildren, svg, text, uniqueId } from '../../dom';
 import { icon } from '../../icons';
-import { segmented } from '../../widgets';
 import type { SlicePresetId, SliceProbePos, SliceUpdate } from '../../../render/slice/types';
 import { createSliceToolActions, type SliceToolActions, type SliceToolHost } from './sliceToolActions';
 import { loadSlicePanel } from './sliceToolLoad';
@@ -38,12 +37,15 @@ import {
   SWAP_LABEL,
   TABS_LABEL,
   TAB_LABEL,
+  TAB_ORDER,
   loadFailedView,
+  tabKeyTarget,
   type ControlsView,
   type SliceAnnMark,
   type SliceEnd,
 } from './sliceToolModel';
 import type { SlicePanelController, SlicePanelLoader, SlicePanelModule, SlicePanelOptions, SliceToolTab } from './sliceTypes';
+import { GLYPH_SWITCH_LABEL } from './glyphWords';
 import { createWindGlyphControls, type WindGlyphControls } from './windGlyphControls';
 
 const PRESET_IDS: readonly SlicePresetId[] = ['along', 'across', 'slope', 'me'];
@@ -74,10 +76,58 @@ function makeOffRow(onClick: () => void): { el: HTMLElement; show(off: boolean, 
   };
 }
 
+/**
+ * The Side view / Map view tabs, in the header: the tabs pattern of the bottom sheet (a `tablist` of `tab` buttons, `aria-selected`, only the chosen one in the
+ * tab order, Left and Right move to the other and choose it, Home and End go to the ends) in the segmented control's look. `panelId` is the body they switch;
+ * the body is named by the chosen tab (`tabId`).
+ */
+function makeTabs(o: { value: SliceToolTab; panelId: string; onChange(t: SliceToolTab): void }): { el: HTMLElement; set(t: SliceToolTab): void; tabId(t: SliceToolTab): string } {
+  const ids: Record<SliceToolTab, string> = { side: uniqueId('slice-tab-side'), map: uniqueId('slice-tab-map') };
+  const btns = TAB_ORDER.map((t) =>
+    h(
+      'button',
+      { type: 'button', class: 'segmented-option slice-tab', id: ids[t], attrs: { role: 'tab', 'aria-controls': o.panelId }, dataset: { testid: `slice-tab-${t}`, value: t }, on: { click: () => o.onChange(t) } },
+      h('span', { class: 'segmented-face' }, [icon('check', { class: 'segmented-check', size: 18 }), h('span', { class: 'segmented-text' }, h('span', { class: 'segmented-main' }, TAB_LABEL[t]))]),
+    ),
+  );
+  const set = (t: SliceToolTab): void => {
+    btns.forEach((b, i) => {
+      const on = TAB_ORDER[i] === t;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+  };
+  set(o.value);
+  const el = h(
+    'div',
+    {
+      class: 'segmented slice-tabs',
+      attrs: { role: 'tablist' },
+      aria: { label: TABS_LABEL },
+      dataset: { testid: 'slice-tabs' },
+      on: {
+        keydown: (e) => {
+          const i = btns.findIndex((b) => b === document.activeElement);
+          const n = i < 0 ? null : tabKeyTarget(e.key, i, btns.length);
+          if (n === null) return;
+          e.preventDefault();
+          btns[n]!.focus();
+          o.onChange(TAB_ORDER[n]!);
+        },
+      },
+    },
+    h('div', { class: 'segmented-options' }, btns),
+  );
+  return { el, set, tabId: (t) => ids[t] };
+}
+
 export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: SlicePanelLoader = loadSlicePanel): { el: HTMLElement; destroy(): void } {
-  const body = h('div', { class: 'panel-body slice-tool-body' });
+  const bodyId = uniqueId('slice-body');
+  const body = h('div', { class: 'panel-body slice-tool-body', id: bodyId });
   const closeBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-icon', aria: { label: 'Close tool' }, dataset: { testid: 'air-close' }, on: { click: onClose } }, icon('close'));
-  const head = h('header', { class: 'panel-head' }, [h('h2', { class: 'panel-title' }, [icon('line'), AIR_PANEL_TITLE]), closeBtn]);
+  // The title and the tabs share a group that wraps (at a large text size the tabs go under the title); Close stays at the end of the row.
+  const headMain = h('div', { class: 'slice-head-main' }, h('h2', { class: 'panel-title' }, [icon('line'), AIR_PANEL_TITLE]));
+  const head = h('header', { class: 'panel-head' }, [headMain, closeBtn]);
   const el = h('section', { class: 'tool-panel slice-tool', dataset: { testid: 'air-panel' }, aria: { label: AIR_PANEL_TITLE } }, [head, body]);
 
   // The 2-D map has no air and no slice: one line, nothing to place.
@@ -108,16 +158,9 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   actions.open();
   const tab = (): SliceToolTab => actions.state().tab;
   // The tabs (Side view, Map view) in the header, between the title and Close; the tool's state says which is shown.
-  const tabs = segmented<SliceToolTab>({
-    label: TABS_LABEL,
-    hideLabel: true,
-    options: (['side', 'map'] as const).map((t) => ({ value: t, label: TAB_LABEL[t] })),
-    value: tab(),
-    testId: 'slice-tabs',
-    onChange: (t) => showTab(t),
-  });
-  tabs.el.classList.add('slice-tabs');
-  closeBtn.before(tabs.el);
+  const tabs = makeTabs({ value: tab(), panelId: bodyId, onChange: (t) => showTab(t) });
+  headMain.append(tabs.el);
+  body.setAttribute('role', 'tabpanel'); // (named by the chosen tab, in layoutBody)
 
   let destroyed = false;
   let switching3d = false;
@@ -303,12 +346,13 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
   let mapEl: HTMLElement | null = null;
   function mapBody(): HTMLElement {
     if (!mapEl) {
-      glyphs = createWindGlyphControls(ctx);
+      glyphs = createWindGlyphControls(ctx, { intro: true, label: GLYPH_SWITCH_LABEL });
       mapEl = h('div', { class: 'slice-controls slice-map', dataset: { testid: 'slice-map-tab' } }, [glyphs.switchEl, glyphs.settingsEl, mapOff.el]);
     }
     return mapEl;
   }
   function showTab(t: SliceToolTab): void {
+    if (t === tab()) return; // (a press on the tab already shown does nothing, as a radio did)
     actions.setTab(t); // (a placement under way is dropped: no crosshair is left on the map)
     layoutBody();
     syncActive();
@@ -339,6 +383,7 @@ export function createAirPanel(ctx: SimContext, onClose: () => void, loadPanel: 
 
   function layoutBody(): void {
     tabs.set(tab());
+    body.setAttribute('aria-labelledby', tabs.tabId(tab()));
     if (tab() === 'map') setChildren(body, mapBody());
     else if (loadState === 'ready' && panel) setChildren(body, panel.el);
     else setChildren(body, [loadState === 'failed' ? failedBox : loadingLine, controls]);

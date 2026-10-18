@@ -4,8 +4,8 @@
  * (glyphWords.test.ts). It is in the entry chunk, so it imports only the types and constants of `render/wind/glyphTypes.ts` and the air
  * helpers the Layers panel already uses: nothing of the glyph engine (a dependency test holds that).
  *
- * Truth in captions (plan section 4 rule 4, section 9.2): the height, the model grid and the age of the wind are always stated; a diagnosed
- * wind says what it leaves out; `Ground` says why it is not "what the fire feels"; and once one model cell is wider than 60 px on screen the
+ * Truth in captions (plan section 4 rule 4, section 9.2): the height, the model grid and the age of the air are always stated; a diagnosed
+ * wind says what it leaves out; the 10 m chip says why it is not "what the fire feels"; and once one model cell is wider than 60 px on screen the
  * curves are said to be a smooth fit through the model, not new detail.
  */
 import { AIR_STALE_S } from '../../../core/airView';
@@ -21,13 +21,22 @@ export const NEEDS_3D = 'Needs the 3-D view';
 
 export const WIND_HEIGHT_LABEL = 'Wind height';
 
+/** The switch's name on the Map view tab (the Layers row is "Arrows and flow lines", under its "Wind and air" heading, and the catalog keeps its titles to 24 characters). */
+export const GLYPH_SWITCH_LABEL = 'Wind arrows and flow lines';
+
+/** The one line under the switch while it is off and can be used (the Map view tab has no (i) button to say what the switch does). */
+export const GLYPH_INTRO = 'Draws the wind on the map: arrows from far away, flow lines when you zoom in.';
+
+/** The hint under the switch: what it does while it is off and usable; nothing once it is on (the caption says what is drawn) or when `reason` says why it cannot be used. */
+export const glyphIntro = (on: boolean, reason: string | null): string => (on || reason ? '' : GLYPH_INTRO);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The height
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The chip of a height: `Ground`, `50 m`, `100 m`, `300 m`, `1 km`, `2 km`. */
+/** The chip of a height: `10 m` (the model's 10 m wind over open ground, so the chip and the caption agree), `50 m`, `100 m`, `300 m`, `1 km`, `2 km`. */
 export function heightLabel(h: WindHeight): string {
-  if (h === 'fire') return 'Ground';
+  if (h === 'fire') return '10 m';
   return h >= 1000 ? `${h / 1000} km` : `${h} m`;
 }
 
@@ -47,18 +56,19 @@ export const legendHeightWords = (h: WindHeight): string => (h === 'fire' ? 'nea
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * "wind from 14:05", and how much older than the picture it is once that passes `AIR_STALE_S` ("4 min before the time shown"). The slice
- * footer says the same in `airFromText` (slicePanelModel.ts, a lazy chunk, so not imported here): only the first word differs, and a test pins it.
+ * "air from 14:05" ("wind from" would read as a compass direction), and how much older than the picture it is once that passes `AIR_STALE_S`
+ * ("4 min before the time shown"). The slice footer says the same in `airFromText` (slicePanelModel.ts, a lazy chunk, so not imported here):
+ * the same words, and a test pins it.
  */
 export function windFromText(airTime: number | null, shownTime: number, tz: string, absTime: (t: number) => number): string {
-  if (airTime === null || !Number.isFinite(airTime)) return 'wind time not recorded';
-  const base = `wind from ${formatClock(absTime(airTime), tz)}`;
+  if (airTime === null || !Number.isFinite(airTime)) return 'air time not recorded';
+  const base = `air from ${formatClock(absTime(airTime), tz)}`;
   const age = Math.max(0, shownTime - airTime);
   return age > AIR_STALE_S ? `${base} (${Math.max(1, Math.round(age / 60))} min before the time shown)` : base;
 }
 
 export const DIAGNOSED_LINE = 'Diagnosed wind: terrain effects only, no plume.';
-export const GROUND_LINE = 'On a calm night the wind the fire feels can differ a lot from this.';
+export const GROUND_LINE = 'On a calm night the fire can feel much less wind than this in places, and much more in others.';
 export const SMOOTH_FIT_LINE = 'At this zoom the curves are a smooth fit through the model, not new detail.';
 
 /** What the caption needs to know about the air that is drawn. */
@@ -72,11 +82,15 @@ export interface GlyphAir {
   diagnosed: boolean;
 }
 
-/** The first line: what is drawn, the model grid and the age of the wind, parts joined as the slice footer does. */
+/**
+ * The first line: what is drawn, the model grid and the age of the air, parts joined as the slice footer does, ending in a full stop (a screen
+ * reader would run it into the next line otherwise). "As the model fits it to the terrain" is how the fast tier makes its wind, so only that tier says it.
+ */
 export function captionHeadline(height: WindHeight, air: GlyphAir, tz: string, absTime: (t: number) => number): string {
-  const what = height === 'fire' ? 'Wind about 10 m above open ground, as the model fits it to the terrain' : `Wind at ${heightLabel(height)} above the ground`;
+  const ground = air.diagnosed ? 'Wind about 10 m above open ground, as the model fits it to the terrain' : 'Wind about 10 m above open ground';
+  const what = height === 'fire' ? ground : `Wind at ${heightLabel(height)} above the ground`;
   const grid = air.cellM !== null && Number.isFinite(air.cellM) && air.cellM > 0 ? `model grid ${formatNumber(Math.round(air.cellM))} m` : null;
-  return [what, grid, windFromText(air.airTime, air.shownTime, tz, absTime)].filter((x): x is string => !!x).join(' · ');
+  return `${[what, grid, windFromText(air.airTime, air.shownTime, tz, absTime)].filter((x): x is string => !!x).join(' · ')}.`;
 }
 
 /**

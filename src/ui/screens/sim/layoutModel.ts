@@ -77,6 +77,29 @@ export function backLayer(s: ChromeState): ChromeLayer | null {
   return null;
 }
 
+/** What the screen's key shortcuts (Space plays and pauses, Escape closes the top layer) need to know about the element a key was pressed on. */
+export interface KeyTarget {
+  tagName: string;
+  /** An input's type (`radio`, `checkbox`, `text`, ...). */
+  type?: string;
+  isContentEditable?: boolean;
+}
+
+/** Inputs that have no use for Escape: choosing from a group, switching, moving a slider. (A text field, a number field or a list keep it.) */
+const ESCAPE_FREE_INPUTS: ReadonlySet<string> = new Set(['radio', 'checkbox', 'range']);
+
+/**
+ * True when a key press belongs to the control it was aimed at (typing, choosing in a list, Space on a switch) and the screen's shortcuts must leave it
+ * alone. Escape is the exception for a radio, a checkbox or a slider: the tab, chip and switch controls of the tools are all of those, and Escape
+ * from them closes the top layer as it does from a button, instead of doing nothing.
+ */
+export function controlOwnsKey(key: string, t: KeyTarget | null): boolean {
+  if (!t) return false;
+  const tag = (t.tagName ?? '').toUpperCase(); // (a key aimed at the document itself has no tag)
+  if (tag === 'INPUT' && key === 'Escape' && ESCAPE_FREE_INPUTS.has((t.type ?? '').toLowerCase())) return false;
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || !!t.isContentEditable;
+}
+
 // ───────────── bottom dock ─────────────
 
 export interface DockState {

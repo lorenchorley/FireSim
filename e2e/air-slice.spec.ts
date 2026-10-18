@@ -1156,14 +1156,14 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
       await expect(clear).toBeVisible();
 
       // The Map view has it too, and only one of the two is in the document.
-      await tabs.getByRole('radio', { name: 'Map view' }).check({ force: true });
+      await tabs.getByRole('tab', { name: 'Map view' }).click();
       await expect(page.getByTestId('slice-map-tab')).toBeVisible();
       await expect(canvasOf(page), 'the side panel is out of the document while the map view shows').toHaveCount(0);
       await expect(off).toHaveCount(1);
       await expect(off).toBeVisible();
       await expect(warning).toBeVisible();
       await auditTaps(page, 'Turn off the slice'); // (the tabs, the arrows switch, the Wind height chips and the button: 44 x 44 px hit areas at 412 x 915 and 360 x 640)
-      await tabs.getByRole('radio', { name: 'Side view' }).check({ force: true });
+      await tabs.getByRole('tab', { name: 'Side view' }).click();
       await expect(canvasOf(page)).toBeVisible();
       await expect(page.getByTestId('slice-map-tab')).toHaveCount(0);
 

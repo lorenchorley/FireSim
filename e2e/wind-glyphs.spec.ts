@@ -5,7 +5,7 @@
  *
  *   - a REAL pinch zoom (CDP touch) from 12 km to under 1 km walks the ladder: the level never goes down, starts at L1 or L2 and ends
  *     at L4, and always agrees with the pixels a model cell covers (`cellPx`, within the planner's 15 % hysteresis); a pan keeps it
- *   - three zooms x two heights ('Ground' and 300 m): the picture is drawn, the numbers fit the zoom, the heights draw differently;
+ *   - three zooms x two heights (the 10 m wind, `'fire'`, and 300 m): the picture is drawn, the numbers fit the zoom, the heights draw differently;
  *     the screenshots go to the report (and to $WIND_GLYPH_SHOTS when it is set) for the docs gallery and for looking at
  *   - eye level draws nothing and says why; going back draws again
  *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s, and five height
@@ -256,7 +256,7 @@ test('wind glyphs: a real pinch walks the ladder, a pan keeps the level, three z
         bytes[`${height}-${z.name}`] = await shot(page, testInfo, `wind-glyphs-${height === 'fire' ? 'ground' : `${height}m`}-${z.name}.png`);
       }
     }
-    for (const z of zooms) expect(bytes[`fire-${z.name}`]!.equals(bytes[`300-${z.name}`]!), `Ground and 300 m differ at the ${z.name} zoom`).toBe(false);
+    for (const z of zooms) expect(bytes[`fire-${z.name}`]!.equals(bytes[`300-${z.name}`]!), `the 10 m wind and 300 m differ at the ${z.name} zoom`).toBe(false);
     // The same two for the sake of looking: the aerial photo and the canopy under the glyphs (the halo has to carry the pale stops).
     await setLayers(page, { windHeight: 'fire', imagery: true, vegetation: true, understorey: true });
     await lookAt(page, at(50));

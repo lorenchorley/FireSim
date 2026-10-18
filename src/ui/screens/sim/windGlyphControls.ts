@@ -15,7 +15,7 @@ import type { LayerState } from '../../../render/layers';
 import { h, listen, text, uniqueId } from '../../dom';
 import { chipChoice, toggle, type Segmented } from '../../widgets';
 import type { SimContext } from './context';
-import { WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, glyphView, windHeightOf, type GlyphAir } from './glyphWords';
+import { WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, glyphIntro, glyphView, windHeightOf, type GlyphAir } from './glyphWords';
 import { rememberLayerChoice } from './layersPrefs';
 
 /** How often the caption looks at the layer's statistics while it is on screen (ms). */
@@ -31,7 +31,11 @@ export interface WindGlyphControls {
   destroy(): void;
 }
 
-export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' | 'session' | 'tz' | 'absTime'>): WindGlyphControls {
+/**
+ * `intro`: one line under the switch while it is off, and `label`: the switch's name where "Wind" is not already in the heading above it. Both are for the
+ * Map view tab, which has neither the Layers panel's "Wind and air" heading nor its (i) button; the Layers row keeps the catalog's title.
+ */
+export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' | 'session' | 'tz' | 'absTime'>, opts: { intro?: boolean; label?: string } = {}): WindGlyphControls {
   const { layers, view } = ctx;
   const info = layerById('windGlyphs')!;
   // The 3-D view draws the glyphs and reports on them; the 2-D stand-in map has neither (nor an air, nor a slice).
@@ -59,10 +63,12 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
   };
 
   // ───────────── the switch ─────────────
-  const sw = toggle({ label: info.title, checked: layers.get().windGlyphs, testId: 'layer-windGlyphs', onChange: (v) => set({ windGlyphs: v }) });
+  const sw = toggle({ label: opts.label ?? info.title, checked: layers.get().windGlyphs, testId: 'layer-windGlyphs', onChange: (v) => set({ windGlyphs: v }) });
   const input = sw.el.querySelector('input')!;
   const reasonId = uniqueId('wg-reason');
   const reason = h('p', { class: 'hint wg-reason', id: reasonId, hidden: true, dataset: { testid: 'wind-glyph-reason' } });
+  const introId = uniqueId('wg-intro');
+  const intro = h('p', { class: 'hint wg-intro', id: introId, hidden: true, dataset: { testid: 'wind-glyph-intro' } });
 
   // ───────────── the chips, the caption and the zoom line (built the first time the switch is on) ─────────────
   interface Options {
@@ -87,7 +93,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     const level = h('p', { class: 'hint wg-level', hidden: true, dataset: { testid: 'wind-glyph-level' } });
     return { el: h('div', { class: 'wg-options' }, [chips.el, caption, level]), chips, caption, level };
   };
-  const settingsEl = h('div', { class: 'wg-box', dataset: { testid: 'wind-glyph-box' } }, reason);
+  const settingsEl = h('div', { class: 'wg-box', dataset: { testid: 'wind-glyph-box' } }, opts.intro ? [reason, intro] : reason);
 
   let lastOk = availability().ok;
   const paint = (): void => {
@@ -109,7 +115,10 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     input.disabled = !!v.reason && !s.windGlyphs;
     text(reason, v.reason ?? '');
     reason.hidden = !v.reason;
-    if (v.reason) input.setAttribute('aria-describedby', reasonId);
+    const hint = opts.intro ? glyphIntro(s.windGlyphs, v.reason) : '';
+    text(intro, hint);
+    intro.hidden = !hint;
+    if (v.reason || hint) input.setAttribute('aria-describedby', v.reason ? reasonId : introId);
     else input.removeAttribute('aria-describedby');
     if (s.windGlyphs && !options) {
       options = buildOptions();

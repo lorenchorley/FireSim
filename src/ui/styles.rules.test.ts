@@ -188,6 +188,21 @@ describe('stylesheets: tap targets', () => {
     expect(Buffer.byteLength(css('slice.css'), 'utf8')).toBeLessThanOrEqual(4096);
   });
 
+  it('the Wind height chips and the Side view / Map view tabs never break a word at a large text size: their words wrap between words (or the chip moves to the next row), not inside them', () => {
+    // components.css lets a chip's or a segment's label break anywhere (`overflow-wrap: anywhere`) so a long word cannot widen the page; these two do not need it.
+    const chipText = rule('layers.css', '.wg-options .chip-radio .chip-text');
+    expect(chipText).toMatch(/white-space:\s*nowrap/);
+    expect(chipText).toMatch(/overflow-wrap:\s*normal/);
+    const tabText = rule('layers.css', '.slice-tabs .segmented-text');
+    expect(tabText).toMatch(/overflow-wrap:\s*normal/);
+    expect(tabText).toMatch(/hyphens:\s*manual/);
+    // The chips are laid out by what their label needs (the columns follow the text size), never a fixed three that a larger label would spill out of.
+    expect(rule('layers.css', '.wg-options .chips')).toMatch(/repeat\(auto-fill,\s*minmax\(calc\(var\(--fs-sm\)/);
+    // The tabs do not shrink below their longest word, and the title and tabs wrap as a group so the tabs can go under the title (Close stays in the first row).
+    expect(rule('layers.css', '.panel-head .slice-tabs')).toContain('min-width: min-content');
+    expect(rule('layers.css', '.slice-head-main')).toContain('flex-wrap: wrap');
+  });
+
   it('the statistics screen\'s Copy button is itself 44 px tall (a small button grew to only 42 px at 200 % text)', () => {
     expect(rule('debugstats.css', '.btn.ds-copy')).toContain('min-height: var(--tap)');
   });

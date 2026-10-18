@@ -28,7 +28,7 @@ import { formatClock } from './format';
 import { forcedPace } from './paceModel';
 import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
-import { NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
+import { AIR_SLICE_NOTE, NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
 import { NOT_RECORDED_WORDS, RECORDING_EARLIER_WORDS, recordingText, spacingWords } from './recordingWords';
 import { airFromText, scaleTag, TERRAIN_CAPTION } from './screens/sim/slicePanelModel';
 import { AIR_TOOL_LABEL, CLEAR_RECORDING_LABEL, KEEP_LABEL, PLACE_LABEL, PRESET_LABEL, SET_LABEL } from './screens/sim/sliceToolModel';
@@ -433,7 +433,8 @@ describe('Help and glossary: the 0.4.1 entries say what the recording of a line 
     expect(help).toContain('a preset follows the wind and the fire and so is not recorded');
     expect(squash(step('Air slices'))).toContain('A line you place is recorded as the run plays, and a preset is not (see Record a line)');
     // Layers' own sentence about the slice switch is what Help repeats.
-    expect(layersPanel()).toContain('Switching the slice off clears its recording.');
+    expect(AIR_SLICE_NOTE).toContain('Switching the slice off clears its recording.');
+    expect(layersPanel()).toContain('description: AIR_SLICE_NOTE');
     expect(help).toContain('switching the slice off in Layers');
     expect(help).toContain('never changes the fire');
   });
