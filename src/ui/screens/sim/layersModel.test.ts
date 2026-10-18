@@ -14,6 +14,7 @@ import { DEFAULT_LAYERS } from '../../../render/layers';
 import { groundBase, SceneView } from '../../../render/SceneView';
 import { NIGHT_LOOKS } from '../../../render/sky';
 import {
+  AIR_SLICE_NOTE,
   MAP_TYPES,
   SCENE_WITH_SETTINGS,
   NIGHT_LOOK_HINT,
@@ -268,5 +269,19 @@ describe('the data set behind a layer', () => {
     const offline = fixture('offline-synthetic');
     const offIds = new Set(offline.map((d) => d.id));
     for (const l of LAYER_CATALOG) for (const d of datasetsForLayer(l, offline)) expect(offIds.has(d.id)).toBe(true);
+  });
+});
+
+describe('the Air slice row and the wind arrows and flow lines row sit side by side (0.5.0)', () => {
+  it('the slice\'s note does not talk of "wind arrows": that is the next row\'s name, and the slice is a side view', () => {
+    expect(AIR_SLICE_NOTE).toBe('A slice through the air along a line, seen from the side. Switching the slice off clears its recording.');
+    expect(AIR_SLICE_NOTE.toLowerCase()).not.toContain('wind arrows');
+    expect(AIR_SLICE_NOTE).not.toMatch(/[—–]/);
+    // The catalog's own words for the two rows do not collide either: the slice's arrows are in the slice, the other row's are on the map.
+    const slice = LAYER_CATALOG.find((l) => l.id === 'crossSection')!;
+    const glyphs = LAYER_CATALOG.find((l) => l.id === 'windGlyphs')!;
+    expect(slice.what.toLowerCase()).not.toContain('wind arrows');
+    expect(glyphs.title.toLowerCase()).toContain('arrows');
+    expect(slice.title).not.toBe(glyphs.title);
   });
 });

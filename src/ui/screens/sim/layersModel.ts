@@ -104,6 +104,9 @@ export const SCENE_WITH_SETTINGS: ReadonlySet<SceneLayerKey> = new Set<SceneLaye
 /** The scene layer the Map type row stands for. */
 export const MAP_TYPE_SCENE_KEY: SceneLayerKey = 'imagery';
 
+/** The note under the Air slice switch. It does not say "wind arrows": the row just above it is the wind arrows and flow lines. */
+export const AIR_SLICE_NOTE = 'A slice through the air along a line, seen from the side. Switching the slice off clears its recording.';
+
 export interface HeatGroup {
   group: LayerGroup;
   rows: LayerInfo[];

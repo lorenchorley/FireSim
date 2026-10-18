@@ -8,12 +8,15 @@ import { describe, expect, it } from 'vitest';
 import { AIR_STALE_S } from '../../../core/airView';
 import type { WindGlyphStats } from '../../../render/api';
 import { REFINE_CELL_PX, refineFor } from '../../../render/wind/glyphField';
+import { cellPxAt, metresPerPixelAt, planLod } from '../../../render/wind/glyphLod';
 import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { airFromText } from './slicePanelModel';
 import {
   DIAGNOSED_LINE,
   EYE_LEVEL_LINE,
+  GLYPH_INTRO,
   GLYPH_SMOOTH_FIT_PX,
+  GLYPH_SWITCH_LABEL,
   GROUND_LINE,
   LEVEL_LINE,
   NEEDS_3D,
@@ -22,6 +25,7 @@ import {
   WIND_HEIGHT_CHIPS,
   captionHeadline,
   glyphCaption,
+  glyphIntro,
   glyphLevelLine,
   glyphView,
   heightLabel,
@@ -55,8 +59,8 @@ const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
 const NO_DASH = /[—–]/;
 
 describe('the Wind height chips', () => {
-  it('are Ground, 50 m, 100 m, 300 m, 1 km and 2 km, in that order, one for each height', () => {
-    expect(WIND_HEIGHT_CHIPS.map((c) => c.label)).toEqual(['Ground', '50 m', '100 m', '300 m', '1 km', '2 km']);
+  it('are 10 m, 50 m, 100 m, 300 m, 1 km and 2 km, in that order, one for each height (the first is the model’s 10 m wind: the chip says what the caption says)', () => {
+    expect(WIND_HEIGHT_CHIPS.map((c) => c.label)).toEqual(['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
     expect(WIND_HEIGHT_CHIPS.map((c) => c.value)).toEqual(['fire', '50', '100', '300', '1000', '2000']);
     expect(WIND_HEIGHT_CHIPS).toHaveLength(WIND_HEIGHTS.length);
     expect(WIND_HEIGHTS.map(heightLabel)).toEqual(WIND_HEIGHT_CHIPS.map((c) => c.label));
@@ -65,8 +69,8 @@ describe('the Wind height chips', () => {
   it('give back the height they stand for, and nothing for anything else (the chip value is a string, the stored height a number)', () => {
     for (const h of WIND_HEIGHTS) expect(windHeightOf(String(h))).toBe(h);
     expect(windHeightOf('50')).toBe(50);
-    expect(windHeightOf('10')).toBeNull(); // no 10 m chip: the sampler clamps below its first level
-    for (const bad of ['', 'Ground', 'FIRE', '50 m', '1e3', ' 100', 'null']) expect(windHeightOf(bad), bad).toBeNull();
+    expect(windHeightOf('10')).toBeNull(); // the 10 m chip carries 'fire', not 10: the sampler clamps below its first level
+    for (const bad of ['', 'Ground', '10 m', 'FIRE', '50 m', '1e3', ' 100', 'null']) expect(windHeightOf(bad), bad).toBeNull();
   });
 
   it('say the same height in the legend’s title: near the ground, or at a height', () => {
@@ -79,22 +83,40 @@ describe('the Wind height chips', () => {
 
 describe('the caption', () => {
   it('a height above the ground: the height, the model grid and the age of the wind', () => {
-    expect(captionHeadline(100, air(), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · wind from 14:05');
-    expect(captionHeadline(50, air(), TZ, abs)).toBe('Wind at 50 m above the ground · model grid 133 m · wind from 14:05');
-    expect(captionHeadline(300, air({ cellM: 266.4 }), TZ, abs)).toBe('Wind at 300 m above the ground · model grid 266 m · wind from 14:05');
+    expect(captionHeadline(100, air(), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · air from 14:05.');
+    expect(captionHeadline(50, air(), TZ, abs)).toBe('Wind at 50 m above the ground · model grid 133 m · air from 14:05.');
+    expect(captionHeadline(300, air({ cellM: 266.4 }), TZ, abs)).toBe('Wind at 300 m above the ground · model grid 266 m · air from 14:05.');
   });
 
   it('kilometre heights are said in kilometres', () => {
-    expect(captionHeadline(1000, air(), TZ, abs)).toBe('Wind at 1 km above the ground · model grid 133 m · wind from 14:05');
-    expect(captionHeadline(2000, air(), TZ, abs)).toBe('Wind at 2 km above the ground · model grid 133 m · wind from 14:05');
+    expect(captionHeadline(1000, air(), TZ, abs)).toBe('Wind at 1 km above the ground · model grid 133 m · air from 14:05.');
+    expect(captionHeadline(2000, air(), TZ, abs)).toBe('Wind at 2 km above the ground · model grid 133 m · air from 14:05.');
   });
 
-  it('Ground is the model’s 10 m wind over open ground, fitted to the terrain, and always says it differs on a calm night', () => {
-    expect(captionHeadline('fire', air(), TZ, abs)).toBe('Wind about 10 m above open ground, as the model fits it to the terrain · model grid 133 m · wind from 14:05');
+  it('the 10 m chip is the model’s 10 m wind over open ground, and always says it differs on a calm night', () => {
+    expect(captionHeadline('fire', air({ diagnosed: true }), TZ, abs)).toBe('Wind about 10 m above open ground, as the model fits it to the terrain · model grid 133 m · air from 14:05.');
+    expect(captionHeadline('fire', air(), TZ, abs)).toBe('Wind about 10 m above open ground · model grid 133 m · air from 14:05.');
     const lines = glyphCaption('fire', air(), 20, TZ, abs);
     expect(lines).toEqual([captionHeadline('fire', air(), TZ, abs), GROUND_LINE]);
-    expect(GROUND_LINE).toBe('On a calm night the wind the fire feels can differ a lot from this.');
+    expect(GROUND_LINE).toBe('On a calm night the fire can feel much less wind than this in places, and much more in others.');
     for (const h of WIND_HEIGHTS) expect(glyphCaption(h, air(), null, TZ, abs).includes(GROUND_LINE), String(h)).toBe(h === 'fire');
+  });
+
+  it('"as the model fits it to the terrain" is how the fast tier makes its wind: only the diagnosed wind says it, at no height on the 3-D atmosphere', () => {
+    for (const h of WIND_HEIGHTS) {
+      const own = glyphCaption(h, air({ diagnosed: false }), 200, TZ, abs).join('\n');
+      expect(own, `3-D atmosphere at ${String(h)}`).not.toMatch(/fits it|fitted|fit to the terrain/);
+      expect(glyphCaption(h, air({ diagnosed: true }), null, TZ, abs).join('\n').includes('as the model fits it to the terrain'), `fast tier at ${String(h)}`).toBe(h === 'fire');
+    }
+  });
+
+  it('the 10 m chip and its caption agree: the chip is "10 m" and the caption says "about 10 m above open ground", never "Ground"', () => {
+    expect(heightLabel('fire')).toBe('10 m');
+    for (const diagnosed of [true, false]) {
+      expect(captionHeadline('fire', air({ diagnosed }), TZ, abs)).toMatch(/^Wind about 10 m above open ground/);
+      expect(glyphCaption('fire', air({ diagnosed }), 200, TZ, abs).join('\n')).not.toMatch(/\bGround\b/);
+    }
+    expect(WIND_HEIGHT_CHIPS.map((c) => c.label)).not.toContain('Ground');
   });
 
   it('a diagnosed wind says what it leaves out, at every height; the 3-D atmosphere does not', () => {
@@ -104,25 +126,25 @@ describe('the caption', () => {
       expect(glyphCaption(h, air({ diagnosed: false }), null, TZ, abs), String(h)).not.toContain(DIAGNOSED_LINE);
     }
     // The order: what it is, what it leaves out, why Ground is not the fire's wind.
-    expect(glyphCaption('fire', air({ diagnosed: true }), null, TZ, abs)).toEqual([captionHeadline('fire', air(), TZ, abs), DIAGNOSED_LINE, GROUND_LINE]);
+    expect(glyphCaption('fire', air({ diagnosed: true }), null, TZ, abs)).toEqual([captionHeadline('fire', air({ diagnosed: true }), TZ, abs), DIAGNOSED_LINE, GROUND_LINE]);
   });
 
   it('old wind says how much older it is than the picture, past the same limit the slice footer uses', () => {
-    expect(windFromText(300, 300, TZ, abs)).toBe('wind from 14:05');
-    expect(windFromText(300, 300 + AIR_STALE_S, TZ, abs)).toBe('wind from 14:05'); // at the limit: not yet
-    expect(windFromText(300, 300 + AIR_STALE_S + 1, TZ, abs)).toBe('wind from 14:05 (2 min before the time shown)');
-    expect(windFromText(300, 300 + 240, TZ, abs)).toBe('wind from 14:05 (4 min before the time shown)');
-    expect(windFromText(300, 300 + 3600 * 3, TZ, abs)).toBe('wind from 14:05 (180 min before the time shown)');
-    expect(windFromText(300, 100, TZ, abs)).toBe('wind from 14:05'); // air from after the picture: never a negative age
-    expect(captionHeadline(100, air({ airTime: 300, shownTime: 540 }), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · wind from 14:05 (4 min before the time shown)');
+    expect(windFromText(300, 300, TZ, abs)).toBe('air from 14:05');
+    expect(windFromText(300, 300 + AIR_STALE_S, TZ, abs)).toBe('air from 14:05'); // at the limit: not yet
+    expect(windFromText(300, 300 + AIR_STALE_S + 1, TZ, abs)).toBe('air from 14:05 (2 min before the time shown)');
+    expect(windFromText(300, 300 + 240, TZ, abs)).toBe('air from 14:05 (4 min before the time shown)');
+    expect(windFromText(300, 300 + 3600 * 3, TZ, abs)).toBe('air from 14:05 (180 min before the time shown)');
+    expect(windFromText(300, 100, TZ, abs)).toBe('air from 14:05'); // air from after the picture: never a negative age
+    expect(captionHeadline(100, air({ airTime: 300, shownTime: 540 }), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · air from 14:05 (4 min before the time shown).');
   });
 
   it('a wind with no time says so, and a grid that is not known is left out', () => {
-    expect(windFromText(null, 300, TZ, abs)).toBe('wind time not recorded');
-    expect(windFromText(NaN, 300, TZ, abs)).toBe('wind time not recorded');
-    expect(captionHeadline(100, air({ airTime: null }), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · wind time not recorded');
-    expect(captionHeadline(100, air({ cellM: null }), TZ, abs)).toBe('Wind at 100 m above the ground · wind from 14:05');
-    expect(captionHeadline(100, air({ cellM: 0 }), TZ, abs)).toBe('Wind at 100 m above the ground · wind from 14:05');
+    expect(windFromText(null, 300, TZ, abs)).toBe('air time not recorded');
+    expect(windFromText(NaN, 300, TZ, abs)).toBe('air time not recorded');
+    expect(captionHeadline(100, air({ airTime: null }), TZ, abs)).toBe('Wind at 100 m above the ground · model grid 133 m · air time not recorded.');
+    expect(captionHeadline(100, air({ cellM: null }), TZ, abs)).toBe('Wind at 100 m above the ground · air from 14:05.');
+    expect(captionHeadline(100, air({ cellM: 0 }), TZ, abs)).toBe('Wind at 100 m above the ground · air from 14:05.');
   });
 
   it('says the curves are a smooth fit once one model cell covers more than 60 px, and not before', () => {
@@ -134,11 +156,10 @@ describe('the caption', () => {
     expect(glyphCaption(100, air(), 45, TZ, abs)).not.toContain(SMOOTH_FIT_LINE);
     expect(glyphCaption(100, air(), 400, TZ, abs).at(-1)).toBe(SMOOTH_FIT_LINE);
     expect(glyphCaption(100, air(), null, TZ, abs)).not.toContain(SMOOTH_FIT_LINE); // no statistics: nothing said
-    expect(glyphCaption('fire', air({ diagnosed: true }), 100, TZ, abs)).toEqual([captionHeadline('fire', air(), TZ, abs), DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE]);
+    expect(glyphCaption('fire', air({ diagnosed: true }), 100, TZ, abs)).toEqual([captionHeadline('fire', air({ diagnosed: true }), TZ, abs), DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE]);
   });
 
-  it('is the slice footer’s age of the air in its words, as the footer words it (pinned against airFromText)', () => {
-    const asWind = (s: string): string => s.replace(/^air /, 'wind ');
+  it('is the slice footer’s age of the air in the footer’s own words (pinned against airFromText): "air from 14:05", not a "wind from" that reads as a compass direction', () => {
     for (const [airT, shown] of [
       [300, 300],
       [300, 389],
@@ -148,7 +169,22 @@ describe('the caption', () => {
       [300, 100],
       [null, 300],
     ] as const) {
-      expect(windFromText(airT, shown, TZ, abs), `${airT} ${shown}`).toBe(asWind(airFromText(airT, shown, TZ, abs)));
+      expect(windFromText(airT, shown, TZ, abs), `${airT} ${shown}`).toBe(airFromText(airT, shown, TZ, abs));
+    }
+    expect(windFromText(300, 300, TZ, abs)).not.toMatch(/^wind from|\bwind from \d/);
+  });
+
+  it('the first line ends in a full stop, in every case (a screen reader runs a line with no stop into the next one), and so does every other line', () => {
+    const cases: GlyphAir[] = [air(), air({ diagnosed: true }), air({ airTime: 0, shownTime: 900 }), air({ airTime: null }), air({ cellM: null })];
+    for (const h of WIND_HEIGHTS) {
+      for (const a of cases) {
+        const head = captionHeadline(h, a, TZ, abs);
+        expect(head, `${String(h)} ${JSON.stringify(a)}`).toMatch(/[a-z0-9)]\.$/);
+        expect(head.endsWith('..'), head).toBe(false);
+        const lines = glyphCaption(h, a, 200, TZ, abs);
+        expect(lines[0]).toBe(head);
+        for (const line of lines) expect(line, line).toMatch(/\.$/);
+      }
     }
   });
 });
@@ -163,6 +199,16 @@ describe('the line about the zoom', () => {
     expect(Object.keys(LEVEL_LINE)).toEqual(['0', '1', '2', '3', '4']);
   });
 
+  it('level 0 can be reached: a short landscape phone (844 x 390) at its farthest zoom over a 6 km area on a 133 m grid has cells under 4 px, so "Zoom in" is a line a person reads', () => {
+    // The camera's farthest distance is three times the area (cameraRig.setHeightField); the view's vertical field is 50 degrees (cameraRig.baseFov).
+    const farthest = 3 * 6000;
+    const level = (cssH: number): number => planLod(cellPxAt(133, farthest, 50, cssH), metresPerPixelAt(farthest, 50, cssH), null).level;
+    expect(level(390)).toBe(0);
+    expect(level(640)).toBe(1); // a portrait phone still draws its arrows at the farthest zoom
+    expect(level(915)).toBe(1);
+    expect(glyphLevelLine(stats({ level: level(390) as 0, active: false, idle: null }))).toBe('Zoom in to see the wind arrows.');
+  });
+
   it('says why nothing is drawn: eye level, no wind picture yet; nothing when the layer is off or has said nothing', () => {
     expect(glyphLevelLine(stats({ active: false, idle: 'eye-level' }))).toBe('Not drawn at eye level. Go back to the map view.');
     expect(glyphLevelLine(stats({ active: false, idle: 'no-wind' }))).toBe('Waiting for the wind picture.');
@@ -174,13 +220,28 @@ describe('the line about the zoom', () => {
   });
 });
 
+describe('the Map view tab’s switch', () => {
+  it('is named with "Wind" in front, since the tab has no "Wind and air" heading above it, and keeps the catalog’s words', () => {
+    expect(GLYPH_SWITCH_LABEL).toBe('Wind arrows and flow lines');
+    expect(GLYPH_SWITCH_LABEL.toLowerCase().endsWith('arrows and flow lines')).toBe(true);
+  });
+
+  it('has one line under it while it is off and usable, and nothing once it is on or when it says why it cannot be used', () => {
+    expect(GLYPH_INTRO).toBe('Draws the wind on the map: arrows from far away, flow lines when you zoom in.');
+    expect(glyphIntro(false, null)).toBe(GLYPH_INTRO);
+    expect(glyphIntro(true, null)).toBe('');
+    expect(glyphIntro(false, NEEDS_3D)).toBe('');
+    expect(glyphIntro(true, NEEDS_3D)).toBe('');
+  });
+});
+
 describe('what the control shows (glyphView)', () => {
   const base = (over: Partial<GlyphViewInput> = {}): GlyphViewInput => ({ height: 100, on: true, has3dView: true, availability: { ok: true }, stats: stats(), air: air(), tz: TZ, absTime: abs, ...over });
 
   it('on and available: no reason, the caption, the level line', () => {
     const v = glyphView(base());
     expect(v.reason).toBeNull();
-    expect(v.caption).toEqual(['Wind at 100 m above the ground · model grid 133 m · wind from 14:05']);
+    expect(v.caption).toEqual(['Wind at 100 m above the ground · model grid 133 m · air from 14:05.']);
     expect(v.level).toBe('Showing curved flow lines.');
   });
 
@@ -212,7 +273,7 @@ describe('what the control shows (glyphView)', () => {
 
   it('close in on a diagnosed Ground picture: every line, in order', () => {
     const v = glyphView(base({ height: 'fire', air: air({ diagnosed: true }), stats: stats({ level: 4, cellPx: 180 }) }));
-    expect(v.caption).toEqual([captionHeadline('fire', air(), TZ, abs), DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE]);
+    expect(v.caption).toEqual([captionHeadline('fire', air({ diagnosed: true }), TZ, abs), DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE]);
     expect(v.level).toBe('Showing long flow lines.');
   });
 
@@ -227,6 +288,8 @@ describe('words', () => {
   it('are plain: no em or en dash anywhere, sentence case, nothing shouted', () => {
     const all = [
       NEEDS_3D,
+      GLYPH_INTRO,
+      GLYPH_SWITCH_LABEL,
       DIAGNOSED_LINE,
       GROUND_LINE,
       SMOOTH_FIT_LINE,
@@ -241,7 +304,7 @@ describe('words', () => {
       expect(s, s).not.toMatch(NO_DASH);
       expect(s.length, s).toBeGreaterThan(0);
     }
-    for (const s of [DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE, EYE_LEVEL_LINE, NO_WIND_LINE, ...Object.values(LEVEL_LINE)]) expect(s).toMatch(/^[A-Z].*[.]$/);
+    for (const s of [GLYPH_INTRO, DIAGNOSED_LINE, GROUND_LINE, SMOOTH_FIT_LINE, EYE_LEVEL_LINE, NO_WIND_LINE, ...Object.values(LEVEL_LINE)]) expect(s).toMatch(/^[A-Z].*[.]$/);
   });
 });
 

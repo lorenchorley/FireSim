@@ -43,6 +43,7 @@ import {
 } from '../../../render/sliceFields';
 import { has3dAtmosphere, type SimContext } from './context';
 import {
+  AIR_SLICE_NOTE,
   MAP_TYPES,
   availabilityOf,
   availabilitySignature,
@@ -792,7 +793,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const csInfo = plan.switches.find((l) => l.scene === 'crossSection');
   const csToggle = toggle({
     label: csInfo?.title ?? 'Air slice',
-    description: 'A slice through the air along a line, with wind arrows. Switching the slice off clears its recording.',
+    description: AIR_SLICE_NOTE,
     checked: layers.get().crossSection.enabled,
     testId: 'cross-section',
     onChange: (v) => {
