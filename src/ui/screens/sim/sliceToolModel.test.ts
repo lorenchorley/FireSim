@@ -524,13 +524,11 @@ describe('Turn off the slice (0.5.0)', () => {
     expect(turnOffSlice(initialSliceToolState(), hand, true).say).toBe('Slice turned off. The recording was cleared.');
   });
 
-  it('is offered for a preset, a hand line, the Layers chord with the section on, a draft end alone, and a stored line while the section is off', () => {
+  it('is offered for a preset, a hand line, the Layers chord with the section on, and a stored line while the section is off', () => {
     const off = (over: Partial<ControlsInput>) => controlsView(input(over)).off;
     expect(off({ section: { ...CS, enabled: true, preset: 'along' }, facts: withLine([0, 0], [0, 1000], 'preset', { preset: 'along' }) })).toBe(true);
     expect(off({ section: hand, facts: withLine(A, B) })).toBe(true);
     expect(off({ section: { ...CS, enabled: true }, facts: withLine([0, -2000], [0, 2000], 'centre') })).toBe(true); // the Layers panel's section
-    expect(off({ state: { ...initialSliceToolState(), draft: { a: A, b: null } } })).toBe(true);
-    expect(off({ state: { ...initialSliceToolState(), draft: { a: null, b: B } } })).toBe(true);
     expect(off({ section: { ...hand, enabled: false } })).toBe(true); // switched off in Layers: the line is still stored, and would come back
     expect(off({ section: { ...CS, enabled: false, preset: 'me' } })).toBe(true);
   });
@@ -538,6 +536,10 @@ describe('Turn off the slice (0.5.0)', () => {
   it('is not offered (absent, not disabled) when there is nothing to turn off, or while a placement is under way', () => {
     const off = (over: Partial<ControlsInput>) => controlsView(input(over)).off;
     expect(off({})).toBe(false);
+    // A draft end is not a slice: the button (and its row, which moves the sheet and the cross between "Place A here" and "Set end (B)") waits for the line.
+    expect(off({ state: { ...initialSliceToolState(), draft: { a: A, b: null } } })).toBe(false);
+    expect(off({ state: { ...initialSliceToolState(), draft: { a: null, b: B } } })).toBe(false);
+    expect(off({ state: { ...initialSliceToolState(), draft: { a: A, b: null } }, section: hand, facts: withLine(A, B) })).toBe(true); // ... and a line with a draft end over it still has one
     expect(off({ section: { ...CS, enabled: false, a: undefined, b: undefined, preset: null } })).toBe(false);
     expect(off({ section: { ...CS, enabled: false, a: A } })).toBe(false); // one stored end is not a line
     expect(off({ section: hand, state: placing('a'), verdict: { ok: true } })).toBe(false);
