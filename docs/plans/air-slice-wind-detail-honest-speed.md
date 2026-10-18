@@ -1208,7 +1208,7 @@ The verdict cells are inferred from the fixes each verifier merged; the verifier
 | `npx playwright test` (the whole e2e suite) | [orchestrator] *to be filled*. New or changed specs: `wind-glyphs.spec.ts` (4 tests), `air-tool.spec.ts` (2 new), `air-slice.spec.ts` (Turn off the slice in the recording flow), `layers.spec.ts` (5 new), `robustness.spec.ts` (the switch and every chip), `debug-stats.spec.ts`, `ui.spec.ts` (the four new Help terms), `gestures.spec.ts` and `gestures-edge.spec.ts` (the `Hand` move, no assertion changed), `gallery.spec.ts` (`gallery 0.5.0`, 2 tests). `robustness.spec.ts` was not re-run by fix lane B after Escape began to close the top layer from a radio, a checkbox or a slider in every panel of the sim screen (any spec that pressed Escape on a focused input expecting nothing would now see the layer close); the gate runs it |
 | Debug APK | [orchestrator] *to be filled* (`npm run build:cap`, `npx cap sync android`, `./gradlew assembleDebug`). **Nothing has been seen on a phone** |
 
-Not run by the docs lane: the whole unit and e2e suites (it ran the two test files it changed, `tsc`, and the `gallery 0.5.0` tests), the contrast and layout audits, the APK, and the phone.
+Not run by the docs lane: the whole unit and e2e suites (it ran by path the two test files it changed, `flowGlyphs.perf.test.ts` and `flowGlyphs.alloc.test.ts` for the node figures, `tsc`, the `gallery 0.5.0` tests and the Help test of `ui.spec.ts`, which passed), the contrast and layout audits, the APK, and the phone.
 
 ### 20.3 Corrections to the plan and the design (what the builds and verifiers proved)
 
