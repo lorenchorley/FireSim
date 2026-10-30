@@ -92,8 +92,11 @@ export interface GlyphBuilder {
 export const DETAIL_LEVEL = 4 as const;
 /** `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, or drawn standing still (reduced motion). */
 export type DetailMotion = 'off' | 'moving' | 'still';
-/** First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. */
-export const DETAIL_GEOMETRY = { spacingPx: 40, jitter: 0.35, minPx: 90, maxPx: 220, pxPerMs: 16, stepPx: 9, minSegments: 8, maxSegments: 24 } as const;
+/**
+ * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. The lattice is 32 px, so it runs from 32 to
+ * 64 px (a power of two of metres): at 40 the sparse end of each octave was 80 px, about 70 lines in a 412 x 915 forest view.
+ */
+export const DETAIL_GEOMETRY = { spacingPx: 32, jitter: 0.35, minPx: 90, maxPx: 220, pxPerMs: 16, stepPx: 9, minSegments: 8, maxSegments: 24 } as const;
 /** How long the detailed streaks take to fade in on entering the level, and out on leaving it (ms of capped frame time). */
 export const DETAIL_FADE_IN_MS = 400;
 export const DETAIL_FADE_OUT_MS = 250;
