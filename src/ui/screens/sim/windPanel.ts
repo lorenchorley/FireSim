@@ -13,6 +13,8 @@ import { panelShell } from './editPanels';
 import {
   DIAL_LABEL,
   LIST_TITLE,
+  READINGS_NOTE,
+  READINGS_TITLE,
   TIME_FIELD_LABEL,
   TIME_FIELD_SPOKEN,
   WHEN_LABEL,
@@ -23,15 +25,20 @@ import {
   defaultClock,
   dialSize,
   dialStart,
+  holdsDirection,
   problemText,
   removeAnnouncement,
+  removeReadingAnnouncement,
   resolveWhen,
   reviewingText,
   windList,
+  windReadingEdits,
+  windReadings,
   windView,
   type WhenChoice,
   type WhenState,
   type WindEnv,
+  type WindListItem,
 } from './windPanelModel';
 
 /** Show or hide with the `hidden` attribute, touching the DOM only when it changes (the panel is brought up to date on every tick of the clock). */
@@ -41,7 +48,8 @@ const setShown = (el: HTMLElement, shown: boolean): void => {
 
 export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTMLElement; destroy(): void } {
   const { ui, session } = ctx;
-  const env: WindEnv = { startMs: ctx.scenario.startTime, tz: ctx.tz, durationS: ctx.scenario.duration };
+  const g = ctx.scenario.terrain.grid;
+  const env: WindEnv = { startMs: ctx.scenario.startTime, tz: ctx.tz, durationS: ctx.scenario.duration, centre: { x: g.x0 + ((g.nx - 1) * g.cellSize) / 2, y: g.y0 + ((g.ny - 1) * g.cellSize) / 2 } };
   /** The wind direction (from) at a simulation time, with the changes made so far counted. */
   const directionAt = (t: number): number => weatherAt(session.windWeather(), ctx.absTime(t)).windDir10;
   const viewNow = session.state.get().viewTime;
@@ -128,9 +136,15 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
   function apply(): void {
     const w = resolveWhen(when, session.state.get().viewTime, env);
     if (!w.ok) return;
+    const holds = holdsDirection(ui.get().wind.dir, directionAt(w.time)); // before the change is made: after it the wind there is the new one
     const edit = session.setWindDirection(uniqueId('winddir'), ui.get().wind.dir, w.time);
-    ctx.announce(edit ? applyAnnouncement(edit, env) : problemText('late', when.choice, session.state.get().viewTime, env));
+    ctx.announce(edit ? applyAnnouncement(edit, env, holds) : problemText('late', when.choice, session.state.get().viewTime, env));
   }
+
+  /** The button that had focus is gone after a removal: keep the keyboard in the panel (the next Remove, or the dial). */
+  const keepFocus = (hadFocus: boolean): void => {
+    if (hadFocus) (list.querySelector<HTMLElement>('button') ?? dial.el.querySelector<HTMLElement>('.rose'))?.focus();
+  };
 
   function remove(id: string, trigger: HTMLElement): void {
     const s = session.state.get();
@@ -139,38 +153,48 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
     const hadFocus = document.activeElement === trigger;
     session.removeWindDirection(id);
     ctx.announce(removeAnnouncement(edit, s.headTime, env));
-    // The button that had focus is gone: keep the keyboard in the panel (the next Remove, or the dial).
-    if (hadFocus) (list.querySelector<HTMLElement>('button') ?? dial.el.querySelector<HTMLElement>('.rose'))?.focus();
+    keepFocus(hadFocus);
   }
+
+  /** A local wind reading (Setup's belt kit): the session's ordinary edit removal. */
+  function removeReading(id: string, trigger: HTMLElement): void {
+    if (!windReadingEdits(session.state.get().edits).some((e) => e.id === id)) return;
+    const hadFocus = document.activeElement === trigger;
+    session.removeEdit(id);
+    ctx.announce(removeReadingAnnouncement);
+    keepFocus(hadFocus);
+  }
+
+  /** One section of the list: a title and a row per item, each with its Remove (bin) button. */
+  const section = (title: string, items: readonly WindListItem[], removeId: string, onRemove: (id: string, trigger: HTMLElement) => void, testId?: string): HTMLElement[] => [
+    h('h3', { class: 'sub-title' }, title),
+    h(
+      'ul',
+      { class: 'plain-list', dataset: { testid: testId } },
+      items.map((i) => {
+        const span = h('span');
+        const btn = button({ label: i.removeLabel, icon: 'trash', variant: 'ghost', iconOnly: true, testId: removeId, onClick: () => onRemove(i.id, btn) });
+        rows.set(i.id, span);
+        return h('li', { class: 'edit-item', dataset: { testid: testId && `${testId}-row` } }, [span, btn]);
+      }),
+    ),
+  ];
 
   const renderList = (): void => {
     const s = session.state.get();
-    const items = windList(windDirectionEdits(s.edits), s.viewTime, env);
-    const ids = items.map((i) => i.id).join('|');
+    const changes = windList(windDirectionEdits(s.edits), s.viewTime, env);
+    const readings = windReadings(windReadingEdits(s.edits), s.viewTime, env);
+    const ids = `${changes.map((i) => i.id).join('|')}#${readings.map((i) => i.id).join('|')}`;
     if (ids !== listIds) {
       listIds = ids;
       rows.clear();
-      setChildren(
-        list,
-        items.length
-          ? [
-              h('h3', { class: 'sub-title' }, LIST_TITLE),
-              h(
-                'ul',
-                { class: 'plain-list' },
-                items.map((i) => {
-                  const span = h('span');
-                  const btn = button({ label: i.removeLabel, icon: 'trash', variant: 'ghost', iconOnly: true, testId: 'remove-wind-direction', onClick: () => remove(i.id, btn) });
-                  rows.set(i.id, span);
-                  return h('li', { class: 'edit-item' }, [span, btn]);
-                }),
-              ),
-            ]
-          : null,
-      );
+      setChildren(list, [
+        changes.length ? section(LIST_TITLE, changes, 'remove-wind-direction', remove) : null,
+        readings.length ? [...section(READINGS_TITLE, readings, 'remove-wind-reading', removeReading, 'wind-readings'), h('p', { class: 'hint wind-readings-note' }, READINGS_NOTE)] : null,
+      ]);
     }
     // The words follow the clock (not started, turning, done) without rebuilding the buttons, so a tap is never lost to a redraw.
-    for (const i of items) {
+    for (const i of [...changes, ...readings]) {
       const span = rows.get(i.id);
       if (span) text(span, i.text);
     }
@@ -194,7 +218,7 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
     setShown(reviewing, s.reviewing);
     text(plan, v.plan);
     setShown(plan, v.plan !== '');
-    text(applyText, applyLabel(dir));
+    text(applyText, v.label);
     applyBtn.disabled = !v.canApply;
     renderList();
   };

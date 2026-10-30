@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { WindDirectionEdit } from '../../../core/types';
+import type { WindDirectionEdit, WindEdit } from '../../../core/types';
 import { windDirectionTime } from '../../../scenario/windDirection';
 import {
   DIAL_LABEL,
+  READINGS_NOTE,
+  READINGS_TITLE,
   WHEN_OPTIONS,
   WIND_HINT,
   applyAnnouncement,
@@ -10,13 +12,18 @@ import {
   defaultClock,
   dialSize,
   dialStart,
+  holdsDirection,
   nextClockTime,
   problemText,
+  readingPlace,
   removeAnnouncement,
+  removeReadingAnnouncement,
   resolveWhen,
   reviewingText,
   windClock,
   windList,
+  windReadingEdits,
+  windReadings,
   windView,
   type WhenState,
   type WindEnv,
@@ -198,6 +205,53 @@ describe('the status lines and Apply', () => {
   it('words the button after the dial', () => {
     expect(applyLabel(225)).toBe('Turn wind to SW');
     expect(applyLabel(0)).toBe('Turn wind to N');
+    expect(applyLabel(0, false)).toBe('Turn wind to N');
+    expect(applyLabel(315, true)).toBe('Hold wind from NW');
+  });
+  it('turns for a dial that has been moved: the label, the status and the plan are the turn\'s', () => {
+    const v = windView({ when: now, viewTime: V, env: ENV, dir: 225, directionAt: dirAt });
+    expect(v.holds).toBe(false);
+    expect(v.label).toBe('Turn wind to SW');
+  });
+  it('holds for a dial left on the wind: "Hold wind from NW", and the status says it holds and what that does to the forecast', () => {
+    // The dial opens on the wind to the nearest 5 degrees (dialStart): the wind is 318 degrees, the dial 320.
+    const near = (t: number): number => (t < 50 * MIN ? 318 : 270);
+    const v = windView({ when: now, viewTime: V, env: ENV, dir: dialStart(318), directionAt: near });
+    expect(dialStart(318)).toBe(320);
+    expect(v.holds).toBe(true);
+    expect(v.canApply).toBe(true);
+    expect(v.label).toBe('Hold wind from NW');
+    expect(v.lines).toEqual(['Before the change: from NW (318°).', "Holds NW (320°) from 14:41. The forecast's later wind changes no longer apply."]);
+    expect(v.plan).toBe('Holds NW (320°) from 14:41.');
+  });
+  it('holds exactly when the dial is within half a dial step of the direction in force at the start, not before it', () => {
+    expect(holdsDirection(315, 315)).toBe(true);
+    expect(holdsDirection(315, 317.5)).toBe(true);
+    expect(holdsDirection(315, 312.5)).toBe(true);
+    expect(holdsDirection(315, 317.6)).toBe(false);
+    expect(holdsDirection(315, 310)).toBe(false);
+    // Across north.
+    expect(holdsDirection(0, 358)).toBe(true);
+    expect(holdsDirection(355, 2)).toBe(false);
+    // The direction in force at the START of the change is what counts: the wind is NW now and W when this one starts.
+    const early = windView({ when: now, viewTime: V, env: ENV, dir: 315, directionAt: dirAt });
+    expect(early.holds).toBe(true);
+    const later = windView({ when: { choice: '30', clock: '' }, viewTime: V, env: ENV, dir: 315, directionAt: dirAt });
+    expect(later.holds).toBe(false);
+    expect(later.label).toBe('Turn wind to NW');
+    expect(later.lines[0]).toBe('Before the change: from W (270°).');
+  });
+  it('a hold in a scenario of more than 20 h names the day, like a turn', () => {
+    const v = windView({ when: now, viewTime: V, env: { ...ENV, durationS: 30 * 3600 }, dir: 315, directionAt: dirAt });
+    expect(v.plan).toBe('Holds NW (315°) from Sat 14:41.');
+  });
+  it('keeps the label of the wind now while the time is not valid, so it does not change its words when the time is put right', () => {
+    const v = windView({ when: at(''), viewTime: V, env: ENV, dir: 315, directionAt: dirAt });
+    expect(v.canApply).toBe(false);
+    expect(v.label).toBe('Hold wind from NW');
+    expect(v.plan).toBe('');
+    const late = windView({ when: now, viewTime: D - 5, env: ENV, dir: 225, directionAt: dirAt });
+    expect(late.label).toBe('Turn wind to SW');
   });
   it('words the note for a person who is viewing an earlier time', () => {
     expect(reviewingText(10 * MIN, ENV)).toBe('You are viewing 14:10. Applying re-runs the simulation from then.');
@@ -230,9 +284,63 @@ describe('the list of changes', () => {
   });
 });
 
+describe('the local wind readings', () => {
+  // The middle of the map is at (4000, 3000) m; a reading of the belt kit: 1000 m radius, from E (84 degrees).
+  const centre = { x: 4000, y: 3000 };
+  const env: WindEnv = { ...ENV, centre };
+  const reading = (over: Partial<WindEdit> = {}): WindEdit => ({ kind: 'wind', id: 'belt-kit-1', x: 4000, y: 3000, radius: 1000, speed: 5, dir: 84, time: 0, ...over });
+
+  it('says where it is, which way it comes from, how far it reaches and where it came from', () => {
+    expect(windReadings([reading()], 0, env).map((i) => i.text)).toEqual(['Wind reading near the middle: from E, within 1 km (from the belt kit)']);
+  });
+  it('names a reading that is away from the middle by distance and compass point (x east, y north)', () => {
+    expect(readingPlace(reading({ x: 4000, y: 5100 }), centre)).toBe('2.1 km N of the middle');
+    expect(readingPlace(reading({ x: 6000, y: 3000 }), centre)).toBe('2 km E of the middle');
+    expect(readingPlace(reading({ x: 3000, y: 2000 }), centre)).toBe('1.4 km SW of the middle');
+    expect(readingPlace(reading({ x: 4000, y: 2000 }), centre)).toBe('1 km S of the middle');
+    expect(readingPlace(reading({ x: 4200, y: 3100 }), centre)).toBe('near the middle');
+    expect(windReadings([reading({ x: 3000, y: 2000, radius: 500 })], 0, env)[0]!.text).toBe('Wind reading 1.4 km SW of the middle: from E, within 500 m (from the belt kit)');
+  });
+  it('does not say where without the middle of the map, and does not claim the belt kit for a reading that is not from it', () => {
+    expect(windReadings([reading({ id: 'wind-7' })], 0, ENV).map((i) => i.text)).toEqual(['Wind reading on the map: from E, within 1 km']);
+  });
+  it('says when a reading starts only while it has not started', () => {
+    expect(windReadings([reading({ time: 40 * MIN })], 30 * MIN, env)[0]!.text).toBe('Wind reading near the middle: from E, within 1 km, starts 14:40 (from the belt kit)');
+    expect(windReadings([reading({ time: 40 * MIN })], 40 * MIN, env)[0]!.text).toBe('Wind reading near the middle: from E, within 1 km (from the belt kit)');
+    expect(windReadings([reading({ time: 0 })], 0, env)[0]!.text).not.toContain('starts');
+  });
+  it('labels each Remove button with the reading it removes, and keeps the id, in list order', () => {
+    const items = windReadings([reading({ id: 'belt-kit-1' }), reading({ id: 'belt-kit-2', x: 6000, y: 3000, dir: 270 })], 0, env);
+    expect(items.map((i) => i.id)).toEqual(['belt-kit-1', 'belt-kit-2']);
+    expect(items[0]!.removeLabel).toBe('Remove the wind reading near the middle, from E');
+    expect(items[1]!.removeLabel).toBe('Remove the wind reading 2 km E of the middle, from W');
+  });
+  it('is empty with no readings', () => {
+    expect(windReadings([], 0, env)).toEqual([]);
+  });
+  it('picks the readings (kind wind) out of the session edits, in list order, and nothing else', () => {
+    const a = reading({ id: 'a' });
+    const b = reading({ id: 'b' });
+    const fuel = { kind: 'fuel' as const, id: 'f', shape: { kind: 'circle' as const, x: 0, y: 0, radius: 100 }, surfaceHazardDelta: 1 };
+    const out = windReadingEdits([{ edit: a }, { edit: fuel }, { edit: edit('w', 225, 600) }, { edit: b }]);
+    expect(out).toEqual([a, b]);
+    expect(out[0]).toBe(a);
+    expect(windReadingEdits([])).toEqual([]);
+  });
+  it('has the words of the section: a title, and a note that a reading keeps its own direction', () => {
+    expect(READINGS_TITLE).toBe('Wind readings');
+    expect(READINGS_NOTE).toBe('A reading keeps its own direction when you turn the wind.');
+    expect(removeReadingAnnouncement).toBe('Wind reading removed.');
+  });
+});
+
 describe('the announcements', () => {
   it('say what was set and when it is done', () => {
     expect(applyAnnouncement({ dir: 225, time: 40 * MIN }, ENV)).toBe('Wind direction change set. The wind turns to come from SW, starting at 14:40 and done by 14:55.');
+  });
+  it('say a hold in its own words: the wind is held, nothing turns', () => {
+    expect(applyAnnouncement({ dir: 315, time: 40 * MIN }, ENV, true)).toBe('Wind direction change set. The wind is held from NW, starting at 14:40.');
+    expect(applyAnnouncement({ dir: 315, time: 40 * MIN }, ENV, false)).toBe('Wind direction change set. The wind turns to come from NW, starting at 14:40 and done by 14:55.');
   });
   it('say a removal, and the re-run only when the simulation had computed past the change', () => {
     expect(removeAnnouncement({ time: 40 * MIN }, 50 * MIN, ENV)).toBe('Wind change removed. The simulation re-runs from 14:40 without it.');
