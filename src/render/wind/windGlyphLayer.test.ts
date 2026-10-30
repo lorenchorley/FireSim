@@ -1,6 +1,7 @@
 /**
- * The wind glyph layer (Three.js objects built in node, no renderer) with a stub builder and a fake clock: when it builds, how it
- * stages, what it draws and hides, how it trims itself, and that it never makes the frame loop animate.
+ * The wind glyph layer (Three.js objects built in node, no renderer) with stub builders and a fake clock: when it builds, how it
+ * stages, what it draws and hides, how it trims itself, and that the frame loop animates only for the detailed streaks of the most
+ * detailed level (0.6.0): which picture each level draws, how they fade and hand over, reduced motion, the budget.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ import { makeAirView } from '../slice/testing';
 import { HALO_INK } from './flowGlyphs';
 import { FILL_ROWS_PER_CHECK } from './glyphField';
 import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
-import { GLYPH_CAPS, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
 const shared = (): Record<string, THREE.IUniform> => ({
   uExposure: { value: 1 },
@@ -26,37 +27,51 @@ const shared = (): Record<string, THREE.IUniform> => ({
 });
 
 /** A builder that needs `steps` calls to finish and takes `stepMs` of the fake clock for each; `Infinity` finishes in one. */
-class StubBuilder implements GlyphBuilder {
-  readonly begins: GlyphInput[] = [];
+abstract class StubBase<I extends GlyphInput> {
+  readonly begins: I[] = [];
   cancels = 0;
   steps = 2;
   glyphs = 40;
   segments = 400;
   private left = 0;
   private working = false;
-  readonly out: GlyphOutput;
   constructor(
     private readonly clock: { t: number },
-    tier: GlyphTier,
-    private readonly stepMs = 3,
-  ) {
-    const cap = GLYPH_CAPS[tier].segments;
-    this.out = { a: new Float32Array(cap * 3), b: new Float32Array(cap * 3), c: new Float32Array(cap * 4), glyphs: 0, segments: 0, dropped: 0, calm: 0 };
-  }
+    public stepMs = 3,
+  ) {}
   get busy(): boolean {
     return this.working;
   }
-  begin(input: GlyphInput): void {
+  begin(input: I): void {
     this.begins.push(input);
     this.left = this.steps;
     this.working = true;
   }
+  protected abstract write(n: number, count: number): void;
   step(budgetMs: number): boolean {
     this.clock.t += this.stepMs;
     this.left = budgetMs === Infinity ? 0 : this.left - 1;
     if (this.left > 0) return false;
     const input = this.begins[this.begins.length - 1]!;
     const n = Math.min(this.segments, input.cap.segments);
+    this.write(n, n < this.segments ? Math.ceil(n / 10) : this.glyphs);
+    this.working = false;
+    return true;
+  }
+  cancel(): void {
+    this.cancels++;
+    this.working = false;
+  }
+}
+
+class StubBuilder extends StubBase<GlyphInput> implements GlyphBuilder {
+  readonly out: GlyphOutput;
+  constructor(clock: { t: number }, tier: GlyphTier, stepMs = 3) {
+    super(clock, stepMs);
+    const cap = GLYPH_CAPS[tier].segments;
+    this.out = { a: new Float32Array(cap * 3), b: new Float32Array(cap * 3), c: new Float32Array(cap * 4), glyphs: 0, segments: 0, dropped: 0, calm: 0 };
+  }
+  protected write(n: number, count: number): void {
     for (let i = 0; i < n; i++) {
       this.out.a[i * 3] = i;
       this.out.b[i * 3] = i + 0.5;
@@ -64,13 +79,29 @@ class StubBuilder implements GlyphBuilder {
       this.out.c[i * 4 + 3] = 1;
     }
     this.out.segments = n;
-    this.out.glyphs = n < this.segments ? Math.ceil(n / 10) : this.glyphs;
-    this.working = false;
-    return true;
+    this.out.glyphs = count;
   }
-  cancel(): void {
-    this.cancels++;
-    this.working = false;
+}
+
+/** The same for the detailed streaks: segment i is at x = i with the line's numbers (seed, speed, tail) written so a copy can be told apart. */
+class StubDetail extends StubBase<DetailInput> implements DetailBuilder {
+  readonly out: DetailOutput;
+  constructor(clock: { t: number }, tier: GlyphTier, stepMs = 3) {
+    super(clock, stepMs);
+    const cap = GLYPH_CAPS[tier].segments;
+    this.out = { a: new Float32Array(cap * 3), b: new Float32Array(cap * 3), c: new Float32Array(cap * 4), d: new Float32Array(cap * 4), e: new Float32Array(cap * 4), lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
+  }
+  protected write(n: number, count: number): void {
+    for (let i = 0; i < n; i++) {
+      this.out.a[i * 3] = i;
+      this.out.b[i * 3] = i + 0.5;
+      this.out.c[i * 4] = 0.5;
+      this.out.c[i * 4 + 3] = 1;
+      this.out.d.set([i * 9, i * 9 + 9, 150, 0.25], i * 4);
+      this.out.e.set([6, 0.5, 0, 40], i * 4);
+    }
+    this.out.segments = n;
+    this.out.lines = count;
   }
 }
 
@@ -100,11 +131,13 @@ function gc(): void {
 interface Rig {
   layer: WindGlyphLayer;
   stub: StubBuilder;
+  /** The builder of the detailed streaks (what the most detailed level builds with). */
+  detail: StubDetail;
   clock: { t: number };
   /** One frame: the camera looks at (x, 0) from `distance` metres, at the fake time plus `dt`. Returns what `tick` returned. */
   go(distance: number, o?: { x?: number; dt?: number; mode?: ViewMode; tris?: number; settle?: boolean }): boolean;
-  instances(name: 'wind-glyph' | 'wind-glyph-halo'): number;
-  mesh(name: 'wind-glyph' | 'wind-glyph-halo'): THREE.Mesh;
+  instances(name: 'wind-glyph' | 'wind-glyph-halo' | 'wind-detail'): number;
+  mesh(name: 'wind-glyph' | 'wind-glyph-halo' | 'wind-detail'): THREE.Mesh;
   fresh(): GlyphData;
 }
 
@@ -112,7 +145,8 @@ function rig(o: { tier?: GlyphTier; height?: WindHeight; enabled?: boolean; data
   const tier = o.tier ?? 'high';
   const clock = { t: 0 };
   const stub = new StubBuilder(clock, tier);
-  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, now: () => clock.t });
+  const detail = new StubDetail(clock, tier);
+  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, createDetailBuilder: () => detail, now: () => clock.t });
   const view = makeAirView({ u: o.u ?? (() => 8), v: () => 2, w: () => 0, baseM: GROUND, groundAt: () => GROUND });
   view.surfaceU.fill(8);
   view.surfaceV.fill(2);
@@ -135,6 +169,7 @@ function rig(o: { tier?: GlyphTier; height?: WindHeight; enabled?: boolean; data
   return {
     layer,
     stub,
+    detail,
     clock,
     fresh,
     mesh: (name) => mesh(name),
@@ -253,10 +288,11 @@ describe('WindGlyphLayer: what is built, when', () => {
     expect(r.mesh('wind-glyph-halo').renderOrder).toBeLessThan(r.mesh('wind-glyph').renderOrder);
   });
 
-  it('is two draw calls, one batch for the halo and one for the colour', () => {
+  it('is three batches of which at most two are drawn at once: the halo and the colour of the glyphs, or the detailed streaks alone', () => {
     const r = rig();
-    expect(r.layer.group.children.map((c) => c.name).sort()).toEqual(['wind-glyph', 'wind-glyph-halo']);
+    expect(r.layer.group.children.map((c) => c.name).sort()).toEqual(['wind-detail', 'wind-glyph', 'wind-glyph-halo']);
     expect(r.layer.group.name).toBe('wind-glyphs');
+    expect(r.layer.group.children.map((c) => c.visible)).toEqual([false, false, false]); // nothing is drawn until a picture is swapped in
   });
 
   it('holds a camera move back until 250 ms after the last swap, then rebuilds', () => {
@@ -528,7 +564,8 @@ describe('WindGlyphLayer: the height', () => {
 });
 
 describe('WindGlyphLayer: the raster fill in clocked slices', () => {
-  // 31 columns of 200 m: at L4 (a model cell over 60 px) the raster is made at half spacing, 61 x 61 texels.
+  // 31 columns of 200 m: at L4 (a model cell over 60 px) the raster is made at half spacing, 61 x 61 texels. L4 builds the detailed streaks,
+  // so these tests read what the detail builder was given (`r.detail`): the fill is the glyphs' own, the same for both.
   const TEXELS = 61 * 61;
   const ROW_BATCH_MS = (rows: number, ms: number): number => rows * 61 * ms;
   const SLICE_MS = 8;
@@ -538,9 +575,9 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
     const r = rig({ height: 100, windMs: MS });
     expect(TEXELS * MS).toBeGreaterThan(4 * SLICE_MS);
     let fillFrames = 0;
-    while (r.stub.begins.length === 0) {
+    while (r.detail.begins.length === 0) {
       r.go(L4, { dt: 16 });
-      if (r.stub.begins.length === 0) fillFrames++;
+      if (r.detail.begins.length === 0) fillFrames++;
       if (fillFrames > 50) throw new Error('the fill did not finish');
     }
     expect(fillFrames, 'frames of fill, one slice each, before the trace begins').toBeGreaterThanOrEqual(4);
@@ -550,7 +587,7 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
     r.go(L4);
     expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, rebuilds: 1, slicesLast: fillFrames + 2 });
     // The raster the builder got is complete: the analytic wind at every texel.
-    const field = r.stub.begins[0]!.field;
+    const field = r.detail.begins[0]!.field;
     expect(field.grid.nx).toBe(61);
     for (let k = 0; k < field.u.length; k++) expect(field.u[k]!).toBeCloseTo(8, 3);
   });
@@ -558,9 +595,9 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
   it('is one slice, as before, when the whole fill fits the budget', () => {
     const r = rig({ height: 100, windMs: 0.0005 }); // 1.9 ms
     r.go(L4);
-    expect(r.stub.begins).toHaveLength(0); // the fill took this frame
+    expect(r.detail.begins).toHaveLength(0); // the fill took this frame
     r.go(L4);
-    expect(r.stub.begins).toHaveLength(1);
+    expect(r.detail.begins).toHaveLength(1);
     r.go(L4);
     expect(r.layer.stats()).toMatchObject({ rebuilds: 1, slicesLast: 3 }); // one slice of fill, two of trace
     expect(r.layer.stats().sliceMaxMs).toBeLessThan(SLICE_MS);
@@ -569,7 +606,7 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
   it('is finished in one call when the frame is settled, whatever the budget', () => {
     const r = rig({ height: 100, windMs: 0.01 });
     r.go(L4, { settle: true });
-    expect(r.stub.begins).toHaveLength(1);
+    expect(r.detail.begins).toHaveLength(1);
     expect(r.layer.stats()).toMatchObject({ active: true, rebuilds: 1, slicesLast: 2 });
     expect(r.layer.stats().sliceMaxMs).toBeGreaterThan(30); // one unclocked slice of the whole fill
   });
@@ -578,11 +615,11 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
     const r = rig({ height: 100, windMs: 0.01, u: (_x, _y, z) => z / 100 }); // 100 m above the 500 m ground reads 6, 50 m reads 5.5
     r.go(L4, { dt: 16 });
     r.go(L4, { dt: 16 });
-    expect(r.stub.begins).toHaveLength(0); // still filling
+    expect(r.detail.begins).toHaveLength(0); // still filling
     r.layer.setHeight(50);
-    for (let i = 0; i < 40 && r.stub.begins.length === 0; i++) r.go(L4, { dt: 16 });
-    expect(r.stub.begins).toHaveLength(1);
-    const field = r.stub.begins[0]!.field;
+    for (let i = 0; i < 40 && r.detail.begins.length === 0; i++) r.go(L4, { dt: 16 });
+    expect(r.detail.begins).toHaveLength(1);
+    const field = r.detail.begins[0]!.field;
     let lo = Infinity;
     let hi = -Infinity;
     for (let k = 0; k < field.u.length; k++) {
@@ -598,26 +635,26 @@ describe('WindGlyphLayer: the raster fill in clocked slices', () => {
     r.go(L4, { dt: 16 });
     r.go(L4, { mode: 'ground', dt: 16 });
     expect(r.layer.stats().idle).toBe('eye-level');
-    for (let i = 0; i < 40 && r.stub.begins.length === 0; i++) r.go(L4, { dt: 16 });
-    expect(r.stub.begins).toHaveLength(1);
-    const field = r.stub.begins[0]!.field;
+    for (let i = 0; i < 40 && r.detail.begins.length === 0; i++) r.go(L4, { dt: 16 });
+    expect(r.detail.begins).toHaveLength(1);
+    const field = r.detail.begins[0]!.field;
     for (let k = 0; k < field.u.length; k++) expect(field.u[k]!).toBeCloseTo(6, 3);
   });
 
   it('does not refill for a camera move or a level change at the same refinement, and never traces a half filled raster', () => {
     const r = rig({ height: 100, windMs: 0.01 });
     for (let i = 0; i < 40 && r.layer.stats().rebuilds === 0; i++) r.go(L4, { dt: 16 });
-    const first = r.stub.begins[0]!.field;
+    const first = r.detail.begins[0]!.field;
     r.go(L4, { x: 3000, dt: 300 });
     r.go(L4, { x: 3000 });
-    expect(r.stub.begins).toHaveLength(2);
-    expect(r.stub.begins[1]!.field).toBe(first); // the same raster, straight to the trace
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.field).toBe(first); // the same raster, straight to the trace
   });
 
   it('keeps `Ground` free of a fill: the model raster is traced at once', () => {
     const r = rig({ height: 'fire', windMs: 0.01 });
     r.go(L4);
-    expect(r.stub.begins).toHaveLength(1);
+    expect(r.detail.begins).toHaveLength(1);
     r.go(L4);
     expect(r.layer.stats()).toMatchObject({ rebuilds: 1, slicesLast: 2 }); // the trace's two slices, no fill
   });
@@ -840,6 +877,11 @@ describe('WindGlyphLayer: strokes and statistics', () => {
     r.layer.setDpr(2);
     expect(widthOf(r.mesh('wind-glyph'))).toBe(5);
     expect(widthOf(r.mesh('wind-glyph-halo'))).toBe(10);
+    // The detailed streaks are 3.2 px of colour (the ring is the shader's), baked the same way.
+    r.layer.setDpr(1);
+    expect(widthOf(r.mesh('wind-detail'))).toBe(3.2);
+    r.layer.setDpr(2);
+    expect(widthOf(r.mesh('wind-detail'))).toBe(6.4);
   });
 
   it('draws plain, opaque, unfogged strokes tested against the ground', () => {
@@ -908,11 +950,468 @@ describe('WindGlyphLayer: strokes and statistics', () => {
   it('disposes its batches', () => {
     const r = rig();
     let disposed = 0;
-    for (const name of ['wind-glyph', 'wind-glyph-halo'] as const) {
+    for (const name of ['wind-glyph', 'wind-glyph-halo', 'wind-detail'] as const) {
       r.mesh(name).geometry.addEventListener('dispose', () => disposed++);
     }
     r.layer.dispose();
-    expect(disposed).toBe(2);
+    expect(disposed).toBe(3);
+    expect(r.stub.cancels).toBe(1); // both builders are told to stop
+    expect(r.detail.cancels).toBe(1);
+  });
+});
+
+describe('WindGlyphLayer: the detailed streaks of the most detailed level', () => {
+  const detailU = (r: Rig): Record<string, THREE.IUniform> => (r.mesh('wind-detail').material as THREE.ShaderMaterial).uniforms;
+  const fadeOf = (r: Rig): number => detailU(r).uFade!.value as number;
+  const visible = (r: Rig, name: 'wind-glyph' | 'wind-glyph-halo' | 'wind-detail'): boolean => r.mesh(name).visible;
+  /** A rig with the detail stub taking no time of its own, so that the fade reads exact numbers off the fake clock. */
+  const fadeRig = (o: Parameters<typeof rig>[0] = {}): Rig => {
+    const r = rig(o);
+    r.detail.stepMs = 0;
+    r.stub.stepMs = 0;
+    return r;
+  };
+  /** At L4 and swapped in, still at fade 0. */
+  const atL4 = (o: Parameters<typeof rig>[0] = {}): Rig => {
+    const r = fadeRig(o);
+    r.go(L4);
+    r.go(L4);
+    return r;
+  };
+
+  it('draws the detailed streaks and no glyphs at the most detailed level, and the glyphs and no streaks below it', () => {
+    const r = rig();
+    r.go(L3, { settle: true });
+    expect([r.instances('wind-glyph'), r.instances('wind-glyph-halo'), r.instances('wind-detail')]).toEqual([400, 400, 0]);
+    expect([visible(r, 'wind-glyph'), visible(r, 'wind-glyph-halo'), visible(r, 'wind-detail')]).toEqual([true, true, false]);
+    expect(r.layer.stats()).toMatchObject({ active: true, level: 3, count: 40, segments: 400, detail: 'off', detailSegments: 0 });
+    r.go(L4, { settle: true, dt: 300 });
+    expect([r.instances('wind-glyph'), r.instances('wind-glyph-halo'), r.instances('wind-detail')]).toEqual([0, 0, 400]);
+    expect([visible(r, 'wind-glyph'), visible(r, 'wind-glyph-halo'), visible(r, 'wind-detail')]).toEqual([false, false, true]);
+    // `count` is the lines, `segments` all that is drawn, `detailSegments` the streaks' share of them.
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, count: 40, segments: 400, detail: 'moving', detailSegments: 400 });
+    expect(r.stub.begins).toHaveLength(1); // the glyph builder made the L3 picture and nothing else
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L3, { settle: true, dt: 300 });
+    expect([r.instances('wind-glyph'), r.instances('wind-glyph-halo'), r.instances('wind-detail')]).toEqual([400, 400, 0]);
+    expect([visible(r, 'wind-glyph'), visible(r, 'wind-detail')]).toEqual([true, false]);
+    expect(r.layer.stats()).toMatchObject({ level: 3, detail: 'off', detailSegments: 0, segments: 400 });
+  });
+
+  it('copies all five arrays of the builder into the batch', () => {
+    const r = rig();
+    r.go(L4, { settle: true });
+    const at = (name: string): Float32Array => (r.mesh('wind-detail').geometry.getAttribute(name) as THREE.InstancedBufferAttribute).array as Float32Array;
+    expect(at('aA')[3 * 7]).toBe(7);
+    expect(at('aB')[3 * 7]).toBe(7.5);
+    expect(at('aC')[4 * 7]).toBe(0.5);
+    expect(at('aC')[4 * 7 + 3]).toBe(1);
+    expect(Array.from(at('aD').subarray(4 * 7, 4 * 7 + 4))).toEqual([63, 72, 150, 0.25]);
+    expect(Array.from(at('aE').subarray(4 * 7, 4 * 7 + 4))).toEqual([6, 0.5, 0, 40]);
+    expect(r.layer.stats().detailSegments).toBe(400);
+  });
+
+  it('gives the detailed builder the detailed plan, the 10 m ground and a seed of 0, and the glyph builder the 0.5.0 plan below it', () => {
+    const r = rig({ drawElevation: 560 });
+    r.go(L4, { settle: true });
+    const input = r.detail.begins[0]!;
+    expect(input.lod.level).toBe(4);
+    expect(input.lod).toMatchObject({ spacingPx: DETAIL_GEOMETRY.spacingPx, curved: true, jitter: DETAIL_GEOMETRY.jitter });
+    expect(input.lod.lengthPx).toEqual({ min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs });
+    // 1.4 m a pixel at 1.2 km: a lattice of 40 px is 56 m, so the next power of two of metres, 64.
+    expect(input.lod.spacingM).toBe(64);
+    expect(input.lod.spacingExp).toBe(6);
+    expect(input.ground10.elevation[0]).toBe(GROUND); // the 10 m ground as received: the numbers come from it
+    expect(input.ground.elevation[0]).toBe(560); // the drawn mesh: the picture sits on it
+    expect(input.seed).toBe(0);
+    expect(input.cap).toEqual({ glyphs: GLYPH_CAPS.high.glyphs, segments: GLYPH_CAPS.high.segments });
+    expect(input.field.u).toBe(r.fresh().atm!.surfaceU);
+    r.go(L3, { settle: true, dt: 300 });
+    expect(r.stub.begins[0]!.lod).toMatchObject({ level: 3, spacingPx: 36, curved: true, jitter: 0.3 });
+    expect('ground10' in r.stub.begins[0]!).toBe(false);
+  });
+
+  it('keeps the lattice of the zoom: the same power of two from either side, held inside the narrow band at an octave edge', () => {
+    const r = rig();
+    const exps: number[] = [];
+    for (const d of [1500, 1000, 600, 300, 150, 80]) {
+      r.go(d, { settle: true, dt: 300 });
+      exps.push(r.detail.begins[r.detail.begins.length - 1]!.lod.spacingExp);
+    }
+    for (let i = 1; i < exps.length; i++) expect(exps[i]!).toBeLessThanOrEqual(exps[i - 1]!); // zooming in never coarsens the lattice
+    expect(new Set(exps).size).toBeGreaterThan(2);
+  });
+
+  it('builds nothing below the most detailed level with only the Wind streaks on, but says which level the zoom is at', () => {
+    const r = rig({ enabled: false });
+    r.layer.setStreaksDetail(true);
+    for (const [d, level] of [[L1, 1], [L2, 2], [L3, 3]] as const) {
+      expect(r.go(d, { settle: true, dt: 300 })).toBe(false);
+      expect(r.layer.stats(), `L${level}`).toMatchObject({ active: false, idle: 'off', level, count: 0, segments: 0, detail: 'off', cellM: 200 });
+      expect(r.layer.stats().cellPx).toBeCloseTo(CELL_PX_M / d, 6);
+    }
+    expect(r.go(L0, { settle: true, dt: 300 })).toBe(false);
+    expect(r.layer.stats()).toMatchObject({ level: 0, idle: null });
+    expect(r.stub.begins).toHaveLength(0);
+    expect(r.detail.begins).toHaveLength(0);
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, detail: 'moving', detailSegments: 400 });
+    expect(r.instances('wind-detail')).toBe(400);
+    expect(r.stub.begins).toHaveLength(0); // the arrows were never built
+    r.go(L3, { settle: true, dt: 300 });
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'off', level: 3, detail: 'off', detailSegments: 0 }); // the streaks leave, the arrows do not come
+    expect(r.stub.begins).toHaveLength(0);
+  });
+
+  it('says nothing is on when neither switch is: no level, `off`', () => {
+    const r = rig({ enabled: false });
+    expect(r.go(L3)).toBe(false);
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'off', level: 0, cellPx: 0 });
+    r.layer.setStreaksDetail(true);
+    r.go(L3, { settle: true });
+    expect(r.layer.stats().level).toBe(3);
+    r.layer.setStreaksDetail(false);
+    r.go(L3);
+    expect(r.layer.stats()).toMatchObject({ idle: 'off', level: 0, cellPx: 0 });
+  });
+
+  it('builds the arrows as soon as the glyph switch comes on at a level below the most detailed one, and takes them away when it goes off', () => {
+    const r = rig({ enabled: false });
+    r.layer.setStreaksDetail(true);
+    r.go(L3, { settle: true });
+    expect(r.stub.begins).toHaveLength(0);
+    r.layer.setEnabled(true);
+    r.go(L3, { settle: true });
+    expect(r.stub.begins).toHaveLength(1);
+    expect(r.layer.stats()).toMatchObject({ active: true, level: 3, count: 40 });
+    r.layer.setEnabled(false);
+    expect(r.go(L3)).toBe(true); // hiding what was drawn needs a frame
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'off', level: 3, count: 0 });
+    expect(r.instances('wind-glyph')).toBe(0);
+    expect(r.go(L3)).toBe(false);
+  });
+
+  it('draws the detailed streaks from either switch: glyphs alone, streaks alone, and keeps them when only one of the two goes off', () => {
+    const glyphsOnly = rig();
+    glyphsOnly.go(L4, { settle: true });
+    expect(glyphsOnly.layer.detailShown).toBe(true);
+    const both = rig();
+    both.layer.setStreaksDetail(true);
+    both.go(L4, { settle: true });
+    both.layer.setEnabled(false); // the streaks keep it
+    both.go(L4, { settle: true, dt: 300 });
+    expect(both.layer.detailShown).toBe(true);
+    expect(both.detail.begins).toHaveLength(1); // the same picture: no rebuild for a switch
+    both.layer.setStreaksDetail(false); // now neither
+    expect(both.go(L4)).toBe(true);
+    expect(both.layer.detailShown).toBe(false);
+    expect(both.layer.stats()).toMatchObject({ active: false, idle: 'off', detail: 'off', detailSegments: 0 });
+    expect(both.instances('wind-detail')).toBe(0);
+    expect(both.mesh('wind-detail').visible).toBe(false);
+  });
+
+  it('fades the streaks in over 400 ms of frame time, from nothing, and then asks for no more frames', () => {
+    const r = atL4();
+    expect(r.layer.detailShown).toBe(true);
+    expect(fadeOf(r)).toBe(0); // swapped in, drawn at nothing: the picture grows, it does not pop
+    expect(r.mesh('wind-detail').visible).toBe(true);
+    const seen: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      expect(r.go(L4, { dt: 100 }), 'a step of the fade draws a frame').toBe(true);
+      seen.push(fadeOf(r));
+    }
+    expect(seen).toEqual([0.25, 0.5, 0.75, 1]);
+    expect(DETAIL_FADE_IN_MS).toBe(400);
+    expect(r.go(L4, { dt: 100 }), 'the fade is over: nothing changes').toBe(false);
+    expect(fadeOf(r)).toBe(1);
+  });
+
+  it('takes its fade from the frame time capped at 0.1 s: a page that was hidden for a minute resumes with one short step', () => {
+    const r = atL4();
+    r.go(L4, { dt: 60_000 });
+    expect(fadeOf(r)).toBe(0.25);
+    r.go(L4, { dt: 1 });
+    expect(fadeOf(r)).toBeCloseTo(0.25 + 1 / 400, 9);
+    r.go(L4, { dt: -50 }); // a clock that stepped back moves nothing
+    expect(fadeOf(r)).toBeCloseTo(0.25 + 1 / 400, 9);
+  });
+
+  it('settles at once: a settled frame is at full strength, and a settled hand-over takes the streaks away', () => {
+    const r = rig();
+    r.go(L4, { settle: true });
+    expect(fadeOf(r)).toBe(1);
+    r.go(L3, { settle: true, dt: 300 });
+    expect(r.mesh('wind-detail').visible).toBe(false);
+    expect(fadeOf(r)).toBe(0);
+  });
+
+  it('keeps the picture it had until the new one swaps in, in both directions: never an empty frame at the edge of the level', () => {
+    const r = fadeRig();
+    r.go(L3, { settle: true });
+    // In: the arrows stay while the streaks are built (a slice a frame), and go at the swap.
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(1);
+    expect([r.instances('wind-glyph'), r.instances('wind-detail')], 'building').toEqual([400, 0]);
+    r.go(L4);
+    expect([r.instances('wind-glyph'), r.instances('wind-detail')], 'swapped').toEqual([0, 400]);
+    for (let i = 0; i < 5; i++) r.go(L4, { dt: 100 });
+    expect(fadeOf(r)).toBe(1);
+    // Out: the streaks stay at full strength while the arrows are built, and fade out as they swap in.
+    r.go(L3, { dt: 300 });
+    expect(r.stub.begins).toHaveLength(2);
+    expect([r.instances('wind-glyph'), r.instances('wind-detail'), fadeOf(r)], 'building').toEqual([0, 400, 1]);
+    expect(r.layer.detailShown).toBe(true);
+    r.go(L3);
+    expect([r.instances('wind-glyph'), r.instances('wind-detail')], 'swapped: both for a moment').toEqual([400, 400]);
+    expect(r.layer.detailShown).toBe(true);
+    expect(r.go(L3, { dt: 100 })).toBe(true);
+    expect(fadeOf(r)).toBeCloseTo(0.6, 9);
+    expect(DETAIL_FADE_OUT_MS).toBe(250);
+    expect(r.go(L3, { dt: 100 })).toBe(true);
+    expect(fadeOf(r)).toBeCloseTo(0.2, 9);
+    expect(r.layer.detailShown, 'still fading').toBe(true);
+    expect(r.go(L3, { dt: 50 })).toBe(true);
+    expect(r.layer.detailShown, 'faded out after 250 ms').toBe(false);
+    expect(r.mesh('wind-detail').visible).toBe(false);
+    expect(r.instances('wind-detail')).toBe(0);
+    expect(r.go(L3, { dt: 100 })).toBe(false);
+  });
+
+  it('does not flicker at the edge of the level: a pinch that hovers around it keeps the streaks and never brings the arrows back', () => {
+    const r = fadeRig();
+    r.go(L3, { settle: true });
+    const at = (px: number): number => CELL_PX_M / px;
+    r.go(at(110), { dt: 300 }); // above the edge, 103.5 px
+    r.go(at(110));
+    expect(r.layer.stats().level).toBe(4);
+    for (let i = 0; i < 12; i++) {
+      r.go(at(i % 2 ? 110 : 95), { dt: 300 }); // 95 px is below the edge going up, but above the 78 px of going down
+      r.go(at(i % 2 ? 110 : 95), { dt: 20 });
+      r.go(at(i % 2 ? 110 : 95), { dt: 20 });
+      expect(r.layer.stats().level, `step ${i}`).toBe(4);
+      expect(r.instances('wind-glyph'), `step ${i}: no arrows`).toBe(0);
+      expect(r.instances('wind-detail'), `step ${i}: the streaks stay`).toBeGreaterThan(0);
+    }
+    expect(r.stub.begins, 'the glyph builder is not asked again').toHaveLength(1);
+    // From L3 the same 100 px is still L3: the edge is 103.5 going up.
+    const up = fadeRig();
+    up.go(L3, { settle: true });
+    up.go(at(100), { settle: true, dt: 300 });
+    expect(up.layer.stats().level).toBe(3);
+    expect(up.instances('wind-glyph')).toBeGreaterThan(0);
+    expect(up.instances('wind-detail')).toBe(0);
+  });
+
+  it('swaps a rebuild at the same level in place: the streaks keep their fade and the lines their phase', () => {
+    const r = atL4();
+    for (let i = 0; i < 4; i++) r.go(L4, { dt: 100 });
+    expect(fadeOf(r)).toBe(1);
+    r.go(L4, { x: 1500, dt: 300 });
+    r.go(L4, { x: 1500 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.layer.stats().rebuilds).toBe(2);
+    expect(fadeOf(r)).toBe(1); // not faded in again
+    expect(r.instances('wind-detail')).toBe(400);
+    expect(r.layer.detailShown).toBe(true);
+  });
+
+  it('comes back from a fade-out: the zoom returns before the streaks are gone, and they fade up from where they were', () => {
+    const r = fadeRig({ enabled: false });
+    r.layer.setStreaksDetail(true);
+    r.go(L4, { settle: true, dt: 300 });
+    expect(fadeOf(r)).toBe(1);
+    r.go(L3, { dt: 300 }); // the Wind streaks alone: nothing is built at this level, so the fade-out starts at once
+    r.go(L3, { dt: 100 });
+    expect(fadeOf(r)).toBeCloseTo(0.6, 9);
+    r.go(L4, { dt: 100 }); // back: the picture was dropped with the level, so it is built again (a slice a frame)
+    expect(fadeOf(r)).toBeCloseTo(0.2, 9);
+    r.go(L4, { dt: 20 }); // and swapped in: the fade turns round where it was, it does not start over
+    expect(fadeOf(r)).toBeCloseTo(0.12, 9);
+    expect(r.layer.detailShown).toBe(true);
+    for (let i = 0; i < 10; i++) r.go(L4, { dt: 100 });
+    expect(fadeOf(r)).toBe(1);
+    expect(r.instances('wind-detail')).toBe(400);
+  });
+
+  it('moves only while the streaks are drawn and motion is allowed: `animating`, and `detail` in the statistics', () => {
+    const r = rig();
+    expect(r.layer.animating).toBe(false);
+    r.go(L3, { settle: true });
+    expect(r.layer.animating, 'arrows do not move').toBe(false);
+    expect(r.layer.stats().detail).toBe('off');
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.layer.animating).toBe(true);
+    expect(r.layer.stats().detail).toBe('moving');
+    expect(detailU(r).uMoving!.value).toBe(1);
+    r.layer.setMotion(false); // reduced motion
+    expect(r.layer.animating).toBe(false);
+    expect(r.layer.stats()).toMatchObject({ detail: 'still', detailSegments: 400, active: true });
+    expect(detailU(r).uMoving!.value).toBe(0);
+    expect(r.layer.detailShown, 'still drawn, only not moving').toBe(true);
+    r.layer.setMotion(true);
+    expect(r.layer.animating).toBe(true);
+    expect(detailU(r).uMoving!.value).toBe(1);
+    r.go(L3, { settle: true, dt: 300 });
+    expect(r.layer.animating).toBe(false);
+  });
+
+  it('stands still from the start under reduced motion, and still fades in (the fade is a frame step, not motion)', () => {
+    const r = fadeRig();
+    r.layer.setMotion(false);
+    r.go(L4);
+    r.go(L4);
+    expect(r.layer.stats().detail).toBe('still');
+    expect(r.layer.animating).toBe(false);
+    expect(r.go(L4, { dt: 100 }), 'the fade still draws its frames').toBe(true);
+    expect(fadeOf(r)).toBe(0.25);
+    for (let i = 0; i < 3; i++) r.go(L4, { dt: 100 });
+    expect(fadeOf(r)).toBe(1);
+    expect(r.go(L4, { dt: 100 }), 'and then nothing').toBe(false);
+  });
+
+  it('hides the streaks at once at eye level, when nothing is switched on, when the air goes and when the zoom is far out', () => {
+    for (const how of ['eye-level', 'off', 'no-wind', 'far'] as const) {
+      const r = rig();
+      r.layer.setStreaksDetail(true);
+      r.go(L4, { settle: true });
+      expect(r.layer.detailShown, how).toBe(true);
+      if (how === 'eye-level') expect(r.go(L4, { mode: 'ground' }), how).toBe(true);
+      if (how === 'off') {
+        r.layer.setEnabled(false);
+        r.layer.setStreaksDetail(false);
+        expect(r.go(L4), how).toBe(true);
+      }
+      if (how === 'no-wind') {
+        r.layer.setData(null);
+        expect(r.go(L4), how).toBe(true);
+      }
+      if (how === 'far') expect(r.go(L0, { dt: 300 }), how).toBe(true);
+      expect(r.layer.detailShown, how).toBe(false);
+      expect(r.layer.animating, how).toBe(false);
+      expect(r.instances('wind-detail'), how).toBe(0);
+      expect(r.mesh('wind-detail').visible, how).toBe(false);
+      expect(r.layer.stats(), how).toMatchObject({ active: false, detail: 'off', detailSegments: 0 });
+    }
+  });
+
+  it('gives the old Wind streaks back when the detailed picture is trimmed to nothing: `detailShown` is false while nothing is drawn', () => {
+    const none = rig();
+    none.detail.segments = 0; // a builder that finds no line (the stub of the 0.6.0 C0 commit does)
+    none.go(L4, { settle: true });
+    expect(none.layer.detailShown).toBe(false);
+    expect(none.layer.animating).toBe(false);
+    expect(none.layer.stats()).toMatchObject({ active: false, idle: null, level: 4, detail: 'off', detailSegments: 0, count: 0 });
+    const budget = rig();
+    budget.go(L4, { tris: 560_000, settle: true });
+    expect(budget.layer.detailShown).toBe(false);
+    expect(budget.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 4, detail: 'off', detailSegments: 0 });
+  });
+
+  it('takes the 2 triangles a segment of one batch, not the 4 of the glyph pair, out of the frame\'s budget', () => {
+    const r = rig();
+    r.go(L4, { tris: 549_000 });
+    expect(r.detail.begins[0]!.cap.segments).toBe(500); // (550,000 - 549,000) / 2
+    r.go(L4, { tris: 549_000 });
+    expect(r.layer.stats()).toMatchObject({ detailSegments: 400, segments: 400, idle: null }); // the stub makes 400: they fit
+    // Of the next frame's 549,800 triangles 800 are ours (400 segments of 2): the rest is 549,000 and the same 500 fit.
+    r.go(L4, { x: 1500, dt: 300, tris: 549_800 });
+    expect(r.detail.begins[1]!.cap.segments).toBe(500);
+    const trimmed = rig();
+    trimmed.go(L4, { tris: 549_800, settle: true });
+    expect(trimmed.detail.begins[0]!.cap.segments).toBe(100);
+    expect(trimmed.layer.stats()).toMatchObject({ detailSegments: 100, segments: 100, active: true });
+    expect(trimmed.instances('wind-detail')).toBe(100);
+    expect(trimmed.layer.stats().count).toBeLessThan(40);
+  });
+
+  it('does not count the arrows it is about to drop, nor the streaks it is about to replace, against the picture that replaces them', () => {
+    const r = rig();
+    r.go(L3, { settle: true }); // 400 segments of 4 triangles: 1,600 of the frame's 549,000 are the arrows'
+    r.go(L4, { settle: true, dt: 300, tris: 549_000 });
+    expect(r.detail.begins[0]!.cap.segments).toBe(1300); // (550,000 - (549,000 - 1,600)) / 2
+  });
+
+  it('says `budget` for the streaks as for the arrows, keeps saying it while the frame is full, and builds again when it has room', () => {
+    const r = rig();
+    r.go(L4, { tris: 560_000, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 4, segments: 0, detailSegments: 0, rebuilds: 1 });
+    expect(r.instances('wind-detail')).toBe(0);
+    for (let i = 0; i < 40; i++) expect(r.go(L4, { dt: 300, tris: 560_000 })).toBe(false);
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L4, { dt: 300, tris: 400_000 });
+    r.go(L4, { tris: 400_000 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, detailSegments: 400, detail: 'moving' });
+    // A tenth of the tier's cap is the room it waits for: 1,200 segments of 2 triangles.
+    const w = rig();
+    w.go(L4, { tris: 560_000, settle: true });
+    const tenth = GLYPH_CAPS.high.segments / 10;
+    w.go(L4, { dt: 1000, tris: 550_000 - 2 * (tenth - 1) });
+    w.go(L4, { dt: 1000, tris: 550_000 - 2 * (tenth - 1) });
+    expect(w.detail.begins).toHaveLength(1);
+    w.go(L4, { dt: 1000, tris: 550_000 - 2 * tenth });
+    expect(w.detail.begins).toHaveLength(2);
+  });
+
+  it('cancels a detail build that the zoom made out of date, with the detail builder', () => {
+    const r = rig();
+    r.detail.steps = 3;
+    r.go(L4); // slice one of three, for the detailed streaks
+    r.go(L3);
+    expect(r.detail.cancels).toBe(1);
+    expect(r.stub.cancels).toBe(0);
+    expect(r.stub.begins).toHaveLength(1);
+    expect(r.stub.begins[0]!.lod.level).toBe(3);
+  });
+
+  it('tells the shader how many pixels a metre covers at distance 1, from the canvas and the field of view of the frame', () => {
+    const r = rig();
+    r.go(L4, { settle: true });
+    expect(detailU(r).uPxPerM1!.value).toBeCloseTo(800 / (2 * Math.tan((25 * Math.PI) / 180)), 9);
+    const tall = rig();
+    const cam = new THREE.PerspectiveCamera(50, 0.5, 5, 80000);
+    cam.position.set(0, GROUND + 600, 700);
+    cam.lookAt(0, GROUND, 0);
+    cam.updateMatrixWorld();
+    tall.layer.tick(0, cam, { w: 400, h: 1600, fov: 50 }, 'orbit', 1, 900, 0, true);
+    expect((tall.mesh('wind-detail').material as THREE.ShaderMaterial).uniforms.uPxPerM1!.value).toBeCloseTo(1600 / (2 * Math.tan((25 * Math.PI) / 180)), 9);
+  });
+
+  it('allocates nothing on a frame where nothing changed with the streaks drawn and moving (the animation is the GPU\'s)', async () => {
+    v8.setFlagsFromString('--no-turbo-inlining');
+    try {
+      const r = rig();
+      r.go(L4, { settle: true });
+      const cam = cameraAt(L4);
+      // A frame time that changes every frame, and is a fraction as the browser's is: the numbers are made beforehand (in an array that
+      // also holds an object, so that they are boxed), because a caller that works one out allocates it, and that is not the layer's.
+      const WINDOW = 500;
+      const times: unknown[] = [{}];
+      for (let k = 1; k <= WINDOW; k++) times.push(100_000.25 + k * 16.7);
+      const frames = (n: number): void => {
+        for (let i = 0; i < n; i++) r.layer.tick(times[1 + (i % WINDOW)] as number, cam, CSS, 'orbit', 1, L4, 0, false);
+      };
+      // The JIT first: in rounds with a pause between them, so that the optimising compiler (which works on another thread) is not starved when
+      // the machine is busy with other test files, and the code measured is the code that runs in the app.
+      for (let round = 0; round < 4; round++) {
+        frames(20_000);
+        await new Promise((done) => setTimeout(done, 25));
+      }
+      gc();
+      gc();
+      const grown: number[] = [];
+      for (let k = 0; k < 41; k++) {
+        const a0 = process.memoryUsage().heapUsed;
+        frames(WINDOW);
+        grown.push(process.memoryUsage().heapUsed - a0);
+      }
+      grown.sort((a, b) => a - b);
+      expect(r.detail.begins).toHaveLength(1);
+      expect(r.layer.animating).toBe(true);
+      expect(grown[grown.length >> 1]! / WINDOW, 'bytes a frame').toBeLessThan(2);
+    } finally {
+      v8.setFlagsFromString('--turbo-inlining');
+    }
   });
 });
 
@@ -928,9 +1427,32 @@ describe('the layer and the frame loop (source pins)', () => {
     expect(dev).toMatch(/windGlyphs: q\.get\('arrows'\) === '1'/);
   });
 
-  it('never switches the frame loop on: the glyph layer is not part of `animating`', () => {
+  it('switches the frame loop on only for the detailed streaks: the glyph layer is in `animating` through its own `animating` and nothing else', () => {
     const animating = /const animating =([\s\S]*?);\n/.exec(scene)![1]!;
-    expect(animating).not.toMatch(/glyph/i);
+    expect(animating).toMatch(/this\.glyphs\.animating/);
+    expect(animating.replace(/this\.glyphs\.animating/g, '')).not.toMatch(/glyph/i);
+    // The old Wind streaks leave it while the detailed streaks stand in for them.
+    expect(animating).toMatch(/\(this\.wind\.currentMode !== 'off' && !detailInstead\)/);
+  });
+
+  it('puts the Wind streaks switch and the system\'s reduced motion into the layer, and follows the setting while the app runs', () => {
+    expect(scene).toMatch(/this\.glyphs\.setStreaksDetail\(l\.wind === 'surface'\)/); // the volume streaks are another picture, not the detailed one
+    expect(scene).toMatch(/window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)/);
+    expect(scene).toMatch(/this\.glyphs\.setMotion\(!this\.motionQuery\?\.matches\)/);
+    expect(scene).toMatch(/this\.motionQuery\?\.addEventListener\?\.\('change', this\.onMotion\)/);
+    expect(scene).toMatch(/this\.motionQuery\?\.removeEventListener\?\.\('change', this\.onMotion\)/);
+    // A change of the setting draws a frame, so the streaks stop (or start) at once.
+    expect(/private readonly onMotion = \(\): void => \{([\s\S]*?)\};/.exec(scene)![1]).toContain('this.dirty = true');
+  });
+
+  it('steps the old Wind streaks aside while the detailed streaks are drawn: decided after the tick and before `animating`, and only for the surface kind', () => {
+    const tick = scene.indexOf('this.glyphs.tick(');
+    const aside = scene.indexOf('this.wind.setSuppressed(detailInstead)');
+    const animating = scene.indexOf('const animating =');
+    expect(tick).toBeGreaterThan(0);
+    expect(aside).toBeGreaterThan(tick);
+    expect(animating).toBeGreaterThan(aside);
+    expect(scene).toMatch(/const detailInstead = this\.glyphs\.detailShown && this\.layers\.wind === 'surface';/);
   });
 
   it('is ticked every frame, before the idle return, with the settle flag of renderNow', () => {
@@ -944,7 +1466,7 @@ describe('the layer and the frame loop (source pins)', () => {
   it('stays out of the entry chunk: nothing in src/ui, the layer catalog or the layer state imports the engine or the layer', () => {
     // The UI may read the types and constants (glyphTypes.ts, erased or tiny) and its own words; the tracer, the planner, the raster,
     // the scheduler and the layer belong to the lazy render chunk (plan section 5).
-    const engine = /from '[^']*\/wind\/(flowGlyphs|glyphField|glyphLod|glyphPose|glyphSchedule|windGlyphLayer)'/;
+    const engine = /from '[^']*\/wind\/(flowGlyphs|glyphField|glyphLod|glyphPose|glyphSchedule|windGlyphLayer|detailBatch|detailStreaks)'/;
     const files: string[] = [];
     const walk = (dir: URL): void => {
       for (const name of readdirSync(dir)) {

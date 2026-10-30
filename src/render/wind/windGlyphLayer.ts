@@ -3,8 +3,10 @@
  * (`flowGlyphs.ts`) traces the glyphs into flat arrays; this layer decides when, copies them into two `StreakBatch`es (a dark halo
  * under a coloured stroke, so the pale stops of the wind ramp stay readable on every ground) and keeps the work off the frame:
  *
- *  - it lives inside the frame loop (`tick`, once per frame before the idle return) and never sets `animating`: nothing here
- *    moves, so a still map stays still and the loop only draws when `tick` says a new picture was swapped in;
+ *  - it lives inside the frame loop (`tick`, once per frame before the idle return). The arrows and flow lines never move, so a
+ *    still map stays still and the loop only draws when `tick` says a new picture was swapped in. The one thing that moves is the
+ *    most detailed level (0.6.0), which draws the detailed streaks instead (`detailBatch.ts`, animated on the GPU from the clock:
+ *    no work per frame here but a fade ramp while it comes in or goes out); `animating` is true only while those are drawn in motion;
  *  - a rebuild starts when the drawn picture is out of date (`glyphSchedule.rebuildReason`), at most once per 250 ms, and is
  *    staged: the raster fill in slices of its own (resumable by rows), then the trace in slices of at most 8 ms; the batches
  *    change only at the swap;
@@ -12,6 +14,13 @@
  *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room);
  *  - the picture is draped on the drawn mesh a little above the ground; the numbers come from the 10 m ground as received.
  * Eye level, a view without air wind and a map zoomed so far out that a model cell is under 4 px draw nothing (`stats().idle`).
+ *
+ * The detailed streaks (0.6.0) are what the most detailed level draws, whichever of the two switches asked for it (the arrows and flow lines,
+ * or the Wind streaks, `setStreaksDetail`): at that level the glyph batches are empty and the detail batch holds the picture, below it the
+ * reverse. With only the Wind streaks on, nothing is built below the most detailed level (the old particles draw there) but the level is
+ * still told. The hand-over never goes through an empty frame: the old picture stays until the new one swaps in, the detailed streaks fade in
+ * over 400 ms and out over 250 ms (from the frame time capped at 0.1 s, so a page that was hidden resumes without a jump), and the old
+ * particles step aside only while the detailed streaks are drawn (`detailShown`), so a picture trimmed to nothing gives them back.
  */
 import * as THREE from 'three';
 import type { GridSpec } from '../../core/grid';
@@ -20,11 +29,13 @@ import type { WindGlyphStats } from '../api';
 import type { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
 import { StreakBatch } from '../streaks';
+import { DETAIL_DEPTH_BIAS_M, DETAIL_WIDTH_PX, DetailBatch } from './detailBatch';
+import { createDetailBuilder } from './detailStreaks';
 import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
-import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { GLYPH_CAPS, type Box, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
+import { detailPlan, mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, GLYPH_CAPS, type Box, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
@@ -43,6 +54,11 @@ const RANGE_PER_DISTANCE = 6;
 const MIN_RANGE_M = 3000;
 /** Room (a share of the tier's segment cap) a frame must have again before a picture that was trimmed to nothing is built afresh. */
 const BUDGET_RETRY_SHARE = 0.1;
+/** The frame time a fade may take in one step (ms): a page that was hidden for a minute resumes with a short step, not a jump. */
+const MAX_FADE_STEP_MS = 100;
+/** Triangles a segment of each kind costs the frame: the glyph pair draws a quad in two batches, the detailed streaks one. */
+const GLYPH_TRIANGLES = 4;
+const DETAIL_TRIANGLES = 2;
 
 /** What the layer reads, per snapshot: the air, the ground the numbers come from and the ground the picture is draped on. */
 export interface GlyphData {
@@ -64,6 +80,7 @@ export interface GlyphCss {
 /** Seams for tests: a stub builder, a fake clock. The app passes nothing. */
 export interface GlyphLayerDeps {
   createBuilder?: (tier: GlyphTier) => GlyphBuilder;
+  createDetailBuilder?: (tier: GlyphTier) => DetailBuilder;
   now?: () => number;
 }
 
@@ -89,11 +106,18 @@ export class WindGlyphLayer {
   readonly group = new THREE.Group();
   private readonly halo: StreakBatch;
   private readonly colour: StreakBatch;
+  /** The detailed streaks of the most detailed level (0.6.0): one batch, animated on the GPU. */
+  private readonly detail: DetailBatch;
   private readonly builder: GlyphBuilder;
+  private readonly detailBuilder: DetailBuilder;
   private readonly tier: GlyphTier;
   private readonly clock: () => number;
 
   private enabled = false;
+  /** The Wind streaks switch is on (and is the surface kind): the detailed streaks are wanted at the most detailed level even with the glyph switch off. */
+  private streaksDetail = false;
+  /** Motion is allowed (false under reduced motion: the detailed streaks stand still). */
+  private motion = true;
   private height: WindHeight = 'fire';
   private data: GlyphData | null = null;
   /** One per `setData`: a picture of the air is the same picture until it changes. */
@@ -128,6 +152,15 @@ export class WindGlyphLayer {
   private beginSegments = 0;
   private lastSwapAt = -Infinity;
   private shown = false;
+  /** The detailed streaks are on screen (a picture of at least one segment, not yet faded out), what they hold, and how far they have faded in (0 to 1) toward `fadeTo`. */
+  private detailOn = false;
+  private detailSegments = 0;
+  private detailLines = 0;
+  private fade = 0;
+  private fadeTo = 0;
+  /** The time of the last tick (ms), for the fade; and the lattice exponent the detailed plan gave last, while the most detailed level lasts (null otherwise). */
+  private lastTickMs = -1;
+  private detailExp: number | null = null;
 
   // The pose of this frame and of the previous one, the projection's numbers, and scratch for the view maths (no allocation per frame).
   private readonly pose = new Float64Array(12);
@@ -162,6 +195,7 @@ export class WindGlyphLayer {
     this.tier = tier;
     this.clock = deps.now ?? (() => performance.now());
     this.builder = (deps.createBuilder ?? createGlyphBuilder)(tier);
+    this.detailBuilder = (deps.createDetailBuilder ?? createDetailBuilder)(tier);
     const capacity = GLYPH_CAPS[tier].segments;
     // Plain strokes of one colour at full alpha (the segments overlap by about a pixel, so no translucency), no fog (the legend's
     // colours stay exact), tested against the ground so a ridge hides what is behind it (see GLYPH_DEPTH_BIAS_M for the trees).
@@ -181,40 +215,49 @@ export class WindGlyphLayer {
       c[i * 4 + 2] = HALO_INK[2];
       c[i * 4 + 3] = 1;
     }
+    this.detail = new DetailBatch({ capacity, widthPx: DETAIL_WIDTH_PX, depthBiasM: DETAIL_DEPTH_BIAS_M, shared });
     this.group.name = 'wind-glyphs';
-    this.group.add(this.halo.mesh, this.colour.mesh);
+    this.group.add(this.halo.mesh, this.colour.mesh, this.detail.mesh);
   }
 
   setEnabled(on: boolean): void {
     if (on === this.enabled) return;
     this.enabled = on;
+    this.sigValid = false; // a layer that sat idle with nothing changed looks again
   }
 
   setHeight(h: WindHeight): void {
     this.height = h;
   }
 
-  // 0.6.0 C0 stubs: the D-render lane writes these four (the detailed streaks of the most detailed level).
   /** Whether the Wind streaks switch wants the detailed picture at the most detailed level (the glyph switch may be off). */
-  setStreaksDetail(_on: boolean): void {}
+  setStreaksDetail(on: boolean): void {
+    if (on === this.streaksDetail) return;
+    this.streaksDetail = on;
+    this.sigValid = false;
+  }
 
-  /** Whether motion is allowed (false under reduced motion: the detailed streaks stand still). */
-  setMotion(_allowed: boolean): void {}
+  /** Whether motion is allowed (false under reduced motion: the detailed streaks stand still, at the frozen frame of the shader). The caller draws a frame. */
+  setMotion(allowed: boolean): void {
+    this.motion = allowed;
+    this.detail.setMoving(allowed);
+  }
 
   /** The detailed streaks are drawn in motion, so the frame loop must keep drawing. */
   get animating(): boolean {
-    return false;
+    return this.detailOn && this.motion;
   }
 
   /** The detailed streaks are on screen (the old Wind streaks step aside while they are). */
   get detailShown(): boolean {
-    return false;
+    return this.detailOn;
   }
 
   /** Strokes are baked in device pixels: a new pixel ratio changes the widths and nothing else. */
   setDpr(dpr: number): void {
     this.halo.widthPx = HALO_WIDTH_PX * dpr;
     this.colour.widthPx = GLYPH_WIDTH_PX * dpr;
+    this.detail.widthPx = DETAIL_WIDTH_PX * dpr;
   }
 
   /** A new picture of the air (or none: a new scenario). The traces are redone at the next rebuild, never per camera move. */
@@ -225,12 +268,36 @@ export class WindGlyphLayer {
   }
 
   /**
-   * Once per frame, before the idle return. Decides, stages and swaps; true when what is drawn changed (a swapped picture, or
-   * the glyphs hidden or shown), so the frame must be drawn. `settle` (screenshots, tests) skips the throttle and the slice
-   * budget: the picture is finished in this call.
+   * Once per frame, before the idle return. Decides, stages and swaps; true when what is drawn changed (a swapped picture, the
+   * glyphs hidden or shown, a step of the detailed streaks' fade), so the frame must be drawn. `settle` (screenshots, tests) skips
+   * the throttle, the slice budget and the fade: the picture is finished in this call.
    */
   tick(now: number, camera: THREE.PerspectiveCamera, css: GlyphCss, mode: ViewMode, vex: number, targetDistance: number, framesTriangles: number, settle: boolean): boolean {
-    if (!this.enabled) return this.hide('off');
+    const fading = this.ramp(now, settle);
+    return this.update(now, camera, css, mode, vex, targetDistance, framesTriangles, settle) || fading;
+  }
+
+  /**
+   * One step of the detailed streaks' fade (400 ms in, 250 ms out) from the time since the last frame, never more than 0.1 s of it; true while it
+   * moves. A batch that has faded out is taken off the screen. (The step is worked out here and not passed in: a number made by the caller is
+   * a number allocated every frame.)
+   */
+  private ramp(now: number, settle: boolean): boolean {
+    const last = this.lastTickMs;
+    this.lastTickMs = now;
+    if (this.fade === this.fadeTo) return false;
+    const dtMs = last < 0 ? 0 : Math.min(MAX_FADE_STEP_MS, Math.max(0, now - last));
+    if (settle) this.fade = this.fadeTo;
+    else if (this.fadeTo > this.fade) this.fade = Math.min(this.fadeTo, this.fade + dtMs / DETAIL_FADE_IN_MS);
+    else this.fade = Math.max(this.fadeTo, this.fade - dtMs / DETAIL_FADE_OUT_MS);
+    this.detail.setFade(this.fade);
+    if (this.fade === 0 && this.fadeTo === 0) this.hideDetail();
+    return true;
+  }
+
+  /** The decisions of a frame (see `tick`). */
+  private update(now: number, camera: THREE.PerspectiveCamera, css: GlyphCss, mode: ViewMode, vex: number, targetDistance: number, framesTriangles: number, settle: boolean): boolean {
+    if (!this.enabled && !this.streaksDetail) return this.hide('off');
     if (mode === 'ground') return this.hide('eye-level'); // the target is 1 m away: a cell on screen means nothing there
     const d = this.data;
     if (!d || !this.hasField(d)) return this.hide('no-wind');
@@ -258,11 +325,12 @@ export class WindGlyphLayer {
     proj[1] = camera.projectionMatrix.elements[8]!;
     proj[2] = camera.projectionMatrix.elements[9]!;
     // A picture trimmed to nothing is built again once the frame has room (a layer switched off, a smaller view), with no camera move needed.
-    const retry = this.noRoom && segmentCap(GLYPH_CAPS[this.tier].segments, framesTriangles, 0) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
+    const retry = this.noRoom && segmentCap(GLYPH_CAPS[this.tier].segments, framesTriangles, 0, this.planLevel === DETAIL_LEVEL ? DETAIL_TRIANGLES : GLYPH_TRIANGLES) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
     // Nothing changed since the last frame and nothing is waiting: the whole idle cost is this comparison.
     if (this.sigValid && !retry && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
     this.lastPose.set(pose);
     this.lastProj.set(proj);
+    this.detail.setPxPerM1(css.h / (2 * Math.tan((css.fov * Math.PI) / 360))); // the eddies' octaves count by the pixels a metre covers
     this.lastSerial = this.dataSerial;
     this.lastHeight = this.height;
     this.sigValid = true;
@@ -276,11 +344,14 @@ export class WindGlyphLayer {
     const mpp = metresPerPixelAt(targetDistance, css.fov, css.h);
     const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan);
     this.planKept = true;
+    // The most detailed level draws the detailed streaks: their own spacing and lengths go into the plan (the level, the hysteresis stay).
+    this.detailExp = lod.level === DETAIL_LEVEL ? detailPlan(lod, mpp, this.detailExp) : null;
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
     this.idle = this.noRoom ? 'budget' : null;
     this.planLevel = lod.level;
+    if (lod.level < DETAIL_LEVEL && !this.enabled) return this.rest(settle); // the Wind streaks alone: the zoom is told, nothing is built here
 
     const n = this.current;
     n.dataSerial = this.dataSerial;
@@ -314,11 +385,11 @@ export class WindGlyphLayer {
   stats(): WindGlyphStats {
     const log = this.log;
     return {
-      active: this.shown,
+      active: this.shown || this.detailOn,
       idle: this.idle,
       level: this.planLevel,
       count: this.glyphs,
-      segments: this.segments,
+      segments: this.segments + this.detailSegments,
       cellPx: this.cellPx,
       cellM: this.cellM,
       rebuilds: this.rebuilds,
@@ -326,16 +397,18 @@ export class WindGlyphLayer {
       sliceP95Ms: log.p95(),
       sliceMaxMs: log.max(),
       slicesLast: log.slicesLast,
-      detail: 'off',
-      detailSegments: 0,
+      detail: this.detailOn ? (this.motion ? 'moving' : 'still') : 'off',
+      detailSegments: this.detailSegments,
     };
   }
 
   dispose(): void {
     this.builder.cancel();
+    this.detailBuilder.cancel();
     this.heightRaster?.cancel();
     this.halo.dispose();
     this.colour.dispose();
+    this.detail.dispose();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -348,7 +421,7 @@ export class WindGlyphLayer {
     return this.surface !== null;
   }
 
-  /** Draw nothing: the stroke batches empty, a rebuild under way dropped, the next picture built afresh. True when something was shown. */
+  /** Draw nothing: the stroke batches and the detailed streaks empty (at once), a rebuild under way dropped, the next picture built afresh. True when something was shown. */
   private hide(idle: Idle, keepSig = false): boolean {
     this.idle = idle;
     if (idle) this.cellPx = 0;
@@ -357,14 +430,74 @@ export class WindGlyphLayer {
     this.segments = 0;
     this.waiting = false;
     this.noRoom = false;
+    this.detailExp = null;
     if (!keepSig) this.sigValid = false;
     if (this.working) this.cancel();
     this.builtValid = false;
+    const detailWas = this.detailOn;
+    if (detailWas) this.hideDetail();
+    if (!this.shown) return detailWas;
+    this.halo.commit(0);
+    this.colour.commit(0);
+    this.setShown(false);
+    return true;
+  }
+
+  /**
+   * The Wind streaks alone are on and the zoom is short of the most detailed level: the level is told (`stats().level`), nothing is built, what the
+   * layer drew goes (the arrows and flow lines of a glyph switch that was just turned off at once, the detailed streaks by their fade). `idle` is
+   * `off`, as for the glyphs themselves. True when something that was shown is gone from the frame.
+   */
+  private rest(settle: boolean): boolean {
+    this.idle = 'off';
+    this.glyphs = 0;
+    this.segments = 0;
+    this.waiting = false;
+    this.noRoom = false;
+    if (this.working) this.cancel();
+    this.builtValid = false;
+    this.fadeDetailOut(settle);
     if (!this.shown) return false;
     this.halo.commit(0);
     this.colour.commit(0);
     this.setShown(false);
     return true;
+  }
+
+  /** The detailed streaks leave: their fade runs down (at once when settled), and `ramp` takes the batch off the screen at the end of it. */
+  private fadeDetailOut(settle: boolean): void {
+    if (!this.detailOn) return;
+    if (settle) this.hideDetail();
+    else this.fadeTo = 0;
+  }
+
+  /** The detailed streaks are drawn: the batch shows, fading in from nothing when it was not there before (a picture swapped in place keeps its fade). */
+  private showDetail(settle: boolean): void {
+    const was = this.detailOn;
+    this.detailOn = true;
+    this.detail.mesh.visible = true;
+    this.fadeTo = 1;
+    if (!was || settle) {
+      this.fade = settle ? 1 : 0;
+      this.detail.setFade(this.fade);
+    }
+  }
+
+  /** Take the detailed streaks off the screen at once (nothing to fade: switched off, a level with no wind, nothing in view, trimmed to nothing). */
+  private hideDetail(): void {
+    this.detail.commit(0);
+    this.detail.mesh.visible = false;
+    this.detailOn = false;
+    this.detailSegments = 0;
+    this.detailLines = 0;
+    this.fade = 0;
+    this.fadeTo = 0;
+    this.detail.setFade(0);
+  }
+
+  /** The triangles of the frame that are not ours (what we draw now is replaced at the swap, so it does not count against the picture that replaces it). */
+  private othersTriangles(framesTriangles: number): number {
+    return Math.max(0, framesTriangles - GLYPH_TRIANGLES * (this.shown ? this.segments : 0) - DETAIL_TRIANGLES * this.detailSegments);
   }
 
   private setNoRoom(on: boolean): void {
@@ -378,7 +511,7 @@ export class WindGlyphLayer {
   }
 
   private cancel(): void {
-    this.builder.cancel();
+    (this.next.level === DETAIL_LEVEL ? this.detailBuilder : this.builder).cancel();
     this.heightRaster?.cancel();
     this.filling = false;
     this.log.abandon();
@@ -394,9 +527,9 @@ export class WindGlyphLayer {
       if (!this.begin(d, lod, css, vex, framesTriangles)) return this.swapEmpty(now);
     }
     const t0 = this.clock();
-    const done = this.builder.step(settle ? Infinity : SLICE_BUDGET_MS);
+    const done = (this.next.level === DETAIL_LEVEL ? this.detailBuilder : this.builder).step(settle ? Infinity : SLICE_BUDGET_MS);
     this.log.push(this.clock() - t0);
-    return done ? this.swap(now, framesTriangles) : false;
+    return done ? this.swap(now, framesTriangles, settle) : false;
   }
 
   /**
@@ -448,7 +581,8 @@ export class WindGlyphLayer {
     copyPlan(lod, this.buildPlan);
     this.viewProj.set(this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements);
     const caps = GLYPH_CAPS[this.tier];
-    this.beginSegments = segmentCap(caps.segments, framesTriangles, this.shown ? this.segments : 0);
+    const detailed = lod.level === DETAIL_LEVEL;
+    this.beginSegments = segmentCap(caps.segments, this.othersTriangles(framesTriangles), 0, detailed ? DETAIL_TRIANGLES : GLYPH_TRIANGLES);
     const input: GlyphInput = {
       field: this.raster!,
       ground: d.drawGround,
@@ -464,16 +598,21 @@ export class WindGlyphLayer {
       cap: { glyphs: caps.glyphs, segments: this.beginSegments },
       now: this.clock,
     };
-    this.builder.begin(input);
+    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0 });
+    else this.builder.begin(input);
     this.begun = true;
     return true;
   }
 
-  /** The finished picture replaces the drawn one: copied into both batches, which change only here. */
-  private swap(now: number, framesTriangles: number): boolean {
+  /**
+   * The finished picture replaces the drawn one: the glyph pair is copied into both batches, the detailed streaks into theirs, and the other
+   * kind of picture leaves (the batches change only here). The detailed streaks fade in over 400 ms; leaving, they fade out over 250.
+   */
+  private swap(now: number, framesTriangles: number, settle: boolean): boolean {
+    if (this.next.level === DETAIL_LEVEL) return this.swapDetail(now, framesTriangles, settle);
     const out = this.builder.out;
     // The room may have changed since the build began (the frame's other layers moved): the cap is applied again.
-    const room = Math.min(segmentCap(this.halo.capacity, framesTriangles, this.shown ? this.segments : 0), this.halo.capacity);
+    const room = Math.min(segmentCap(this.halo.capacity, this.othersTriangles(framesTriangles), 0, GLYPH_TRIANGLES), this.halo.capacity);
     const n = Math.min(out.segments, room);
     // The rest of the frame already uses every triangle: nothing of ours fits, and the control says so. (A build that was given no room
     // at its start drew nothing for that reason too, whatever the frame has by now: the next rebuild is due as soon as there is room.)
@@ -490,15 +629,41 @@ export class WindGlyphLayer {
     this.setShown(n > 0);
     this.segments = n;
     this.glyphs = n === out.segments ? out.glyphs : Math.round((out.glyphs * n) / Math.max(1, out.segments));
+    this.fadeDetailOut(settle); // the zoom left the most detailed level: its streaks go as the arrows come in
+    return this.finish(now);
+  }
+
+  /** The detailed streaks' picture swaps in (the arrows and flow lines of the lower levels go at once, the streaks fade in). */
+  private swapDetail(now: number, framesTriangles: number, settle: boolean): boolean {
+    const out = this.detailBuilder.out;
+    const room = Math.min(segmentCap(this.detail.capacity, this.othersTriangles(framesTriangles), 0, DETAIL_TRIANGLES), this.detail.capacity);
+    const n = Math.min(out.segments, room);
+    this.setNoRoom(room === 0 || this.beginSegments === 0);
+    this.detail.a.set(out.a.subarray(0, n * 3));
+    this.detail.b.set(out.b.subarray(0, n * 3));
+    this.detail.c.set(out.c.subarray(0, n * 4));
+    this.detail.d.set(out.d.subarray(0, n * 4));
+    this.detail.e.set(out.e.subarray(0, n * 4));
+    this.detail.commit(n);
+    this.detailSegments = n;
+    this.detailLines = n === 0 ? 0 : n === out.segments ? out.lines : Math.round((out.lines * n) / Math.max(1, out.segments));
+    this.halo.commit(0);
+    this.colour.commit(0);
+    this.setShown(false);
+    this.segments = 0;
+    this.glyphs = this.detailLines;
+    if (n > 0) this.showDetail(settle);
+    else this.hideDetail(); // trimmed to nothing: the old Wind streaks come back (`detailShown` is false)
     return this.finish(now);
   }
 
   /** No ground in view: an empty picture, so the frame loop does not ask again until the camera sees ground. */
   private swapEmpty(now: number): boolean {
-    const wasShown = this.shown;
+    const wasShown = this.shown || this.detailOn;
     this.halo.commit(0);
     this.colour.commit(0);
     this.setShown(false);
+    this.hideDetail();
     this.segments = 0;
     this.glyphs = 0;
     this.setNoRoom(false);
