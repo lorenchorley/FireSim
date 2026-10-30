@@ -15,6 +15,7 @@
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { crownIncursions, type PlacedTree } from '../src/render/wind/detailStreaks.testing';
 import { DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS } from '../src/render/wind/glyphTypes';
 import { acceptNotice, frame } from './helpers';
 
@@ -162,16 +163,16 @@ const pixels = (page: Page): Promise<{ png: string; streak: number }> =>
   });
 
 /**
- * The vertices of the detail batch inside the disc a placed tree shows at the vertex's own height (the ellipsoid of the builder: centre 0.7 h, half height 0.3 h,
- * the line stops at 0.85 radii), out of the vertices that are at a height where some tree of the batch's box is cut at all.
+ * The vertices of the detail batch (the start of every segment) and the placed trees near them, read out of the page: the trees are the vegetation layer's own
+ * placement (what `crownSource()` gives the layer), taken by their feet's place and size. `crownIncursions` (the unit-tested reader, `detailStreaks.testing.ts`)
+ * then counts the vertices inside a crown's disc at the vertex's own height.
  */
-const insideCrowns = (page: Page): Promise<{ vertices: number; cut: number; inside: number; trees: number }> =>
+const batchAndTrees = (page: Page): Promise<{ n: number; a: number[]; trees: PlacedTree[] }> =>
   page.evaluate(() => {
     const v = (window as unknown as Handle).__firesim.view;
     const m = v.scene.getObjectByName('wind-detail')!;
     const n = m.geometry.instanceCount;
     const aA = m.geometry.getAttribute('aA').array;
-    const aB = m.geometry.getAttribute('aB').array;
     let x0 = Infinity;
     let x1 = -Infinity;
     let y0 = Infinity;
@@ -185,48 +186,17 @@ const insideCrowns = (page: Page): Promise<{ vertices: number; cut: number; insi
       if (y > y1) y1 = y;
     }
     const sets = (v.vegetation!.crownSource() as { sets(): { group: number; count: number; position: Float32Array; size: Float32Array }[] }).sets();
-    const xs: number[] = [];
-    const ys: number[] = [];
-    const gz: number[] = [];
-    const hs: number[] = [];
-    const ws: number[] = [];
+    const trees: { x: number; y: number; ground: number; height: number; width: number }[] = [];
     for (const set of sets) {
       if (set.group > 6) continue;
       for (let t = 0; t < set.count; t++) {
         const x = set.position[3 * t]!;
         const y = set.position[3 * t + 1]!;
         if (x < x0 - 12 || x > x1 + 12 || y < y0 - 12 || y > y1 + 12) continue;
-        xs.push(x);
-        ys.push(y);
-        gz.push(set.position[3 * t + 2]!);
-        hs.push(set.size[2 * t]!);
-        ws.push(set.size[2 * t + 1]!);
+        trees.push({ x, y, ground: set.position[3 * t + 2]!, height: set.size[2 * t]!, width: set.size[2 * t + 1]! });
       }
     }
-    let inside = 0;
-    let cut = 0;
-    for (const arr of [aA, aB]) {
-      for (let i = 0; i < n; i++) {
-        const x = arr[3 * i]!;
-        const y = -arr[3 * i + 2]!;
-        const wy = arr[3 * i + 1]!;
-        let any = false;
-        for (let t = 0; t < xs.length; t++) {
-          const tt = (wy - gz[t]! - 0.7 * hs[t]!) / (0.3 * hs[t]!);
-          if (!(tt > -1 && tt < 1)) continue;
-          any = true;
-          const r = 0.5 * ws[t]! * Math.sqrt(1 - tt * tt);
-          const dx = x - xs[t]!;
-          const dy = y - ys[t]!;
-          if (dx * dx + dy * dy < (0.85 * r - 0.05) ** 2) {
-            inside++;
-            break;
-          }
-        }
-        if (any) cut++;
-      }
-    }
-    return { vertices: 2 * n, cut, inside, trees: xs.length };
+    return { n, a: Array.from(aA.subarray(0, 3 * n)), trees };
   });
 
 test('wind detail looks: the early compile, the cold first zoom, the relief in the forest, the caps, the kill switch', async ({ page }) => {
@@ -322,17 +292,24 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     await relief(page, false);
     await drawAndRead(page);
     const off = await pixels(page);
-    const offIn = await insideCrowns(page);
+    const offPic = await batchAndTrees(page);
     await relief(page, true);
     await drawAndRead(page);
     const on = await pixels(page);
-    const onIn = await insideCrowns(page);
-    console.log(`forest, 120 m, 45 degrees: streak pixels ${off.streak} off, ${on.streak} on; vertices in a crown's disc at their own height: ${offIn.inside} of ${offIn.vertices} off (${offIn.cut} at a height some crown is cut), ${onIn.inside} of ${onIn.vertices} on (${onIn.cut} cut), ${onIn.trees} trees in the box`);
+    const onPic = await batchAndTrees(page);
+    const fractions = [0.5, 0.75, 0.85, 1.2];
+    const offIn = crownIncursions(offPic.a, offPic.n, offPic.trees, fractions);
+    const onIn = crownIncursions(onPic.a, onPic.n, onPic.trees, fractions);
+    console.log(`forest, 120 m, 45 degrees: streak pixels ${off.streak} off, ${on.streak} on; segment starts inside 0.5, 0.75, 0.85 and 1.2 radii of a crown's disc at their own height: ${offIn.join(', ')} of ${offPic.n} off, ${onIn.join(', ')} of ${onPic.n} on, ${onPic.trees.length} trees in the box`);
     expect(off.streak).toBeGreaterThan(500);
     expect(on.streak).toBeGreaterThan(500);
-    expect(onIn.trees, 'the vegetation layer has placed trees here').toBeGreaterThan(20);
-    expect(onIn.cut, 'the strokes ride at heights where crowns are cut, so the test has something to test').toBeGreaterThan(50);
-    expect(onIn.inside, 'no vertex of the relief picture is inside a crown\'s disc (a few at the edge of the crowns the layer left out for being too small on the screen)').toBeLessThanOrEqual(Math.ceil(0.01 * onIn.vertices));
+    expect(onPic.trees.length, 'the vegetation layer has placed trees here').toBeGreaterThan(20);
+    expect(onIn[3], 'the strokes ride at heights where crowns are cut, so the test has something to test').toBeGreaterThan(20);
+    // The lines part round the crowns they know (the layer scans the placed trees that are big enough on the screen; a seed stands outside 0.8 radii, a line ends at 0.85):
+    // the vertices of a crown the scan left out (too small on the screen, on the margin, a tree the scan's box missed) are allowed in the hundredths, a picture that
+    // ignores the crowns has many more (see the reader's unit test, `crownIncursions`).
+    expect(onIn[0], 'nothing deep inside a crown').toBeLessThanOrEqual(Math.ceil(0.02 * onPic.n));
+    expect(onIn[1], 'few inside 0.75 radii').toBeLessThanOrEqual(Math.ceil(0.05 * onPic.n));
   });
 
   await test.step('the kill switch draws the 0.6.0 picture: relief off twice is the same bytes, on is another picture', async () => {

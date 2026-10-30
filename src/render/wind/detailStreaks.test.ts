@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
 import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERRAIN, detailGroundFactor, pulseIntensity } from './detailStreaks';
-import { detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
+import { crownIncursions, detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
 import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { crownDiscRadius } from './detailObstacles';
 import { planLod } from './glyphLod';
@@ -1397,6 +1397,26 @@ describe('the relief: a tree the view has faded out is no crown', () => {
     const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 }); // 45 degrees: the rays to the crowns' feet are far from steep
     const side = withRelief(makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 }), { relief: DETAIL_RELIEF, canopyH: 24, crowns: list });
     expect(build(side).out.blocked, 'from the side the same trees are crowns').toBeGreaterThan(0);
+  });
+});
+
+describe('the relief: the e2e reader of a picture finds no line inside a crown (crownIncursions)', () => {
+  it('counts no vertex of the builder\'s picture inside 0.75 radii of a crown at its own height, and does count them in a picture whose lines ignore the crowns', () => {
+    const list: [number, number, number, number][] = Array.from({ length: 60 }, (_, i) => [(hash01(i, 5, 1) - 0.5) * 70, (hash01(i, 5, 2) - 0.5) * 70, 30 + hash01(i, 5, 3) * 12, 8 + hash01(i, 5, 4) * 6]);
+    const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 });
+    const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 });
+    const trees = list.map(([x, y, height, width]) => ({ x, y, ground: 0, height, width }));
+    const fractions = [0.5, 0.75, 0.85, 1.2];
+    const on = build(withRelief(sc, { relief: DETAIL_RELIEF, canopyH: 24, crowns: [stand(list)] }));
+    const got = crownIncursions(on.out.a, on.out.segments, trees, fractions);
+    expect(on.out.blocked, 'there are crowns in the way').toBeGreaterThan(20);
+    expect(got[0], 'none deep inside').toBe(0);
+    expect(got[1], 'none inside 0.75 radii (a seed stands outside 0.8)').toBe(0);
+    expect(got[3], 'the reader does see the crowns: vertices stand just outside them').toBeGreaterThan(20);
+    // The same canopy with no crowns given: the lines run over the discs, and the reader says so.
+    const blind = build(withRelief(sc, { relief: DETAIL_RELIEF, canopyH: 24 }));
+    const ignored = crownIncursions(blind.out.a, blind.out.segments, trees, fractions);
+    expect(ignored[0], 'lines that know no crown run through them').toBeGreaterThan(20);
   });
 });
 
