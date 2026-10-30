@@ -132,6 +132,32 @@ describe('the demo engine and a Wind direction change', () => {
     r.sim.dispose();
   }, 60000);
 
+  it('the Danger card for the forecast swing is not raised once a change that has started replaces the swing', async () => {
+    // The preset's forecast swings from NW to SW 4 hours in: the card is due 30 minutes before, with fire on the ground.
+    const site = await mockBuildScenario(
+      {
+        centre: { lat: -33.715, lon: 150.285 },
+        extent: 3000,
+        demoSiteId: 'katoomba',
+        weather: { kind: 'preset', presetId: 'hot-nw-sw-change', start: Date.UTC(2026, 0, 10, 0) },
+        duration: 6 * 3600,
+        options: { fireCellSize: 60, snapshotInterval: 60 },
+        online: false,
+      },
+      () => undefined,
+    );
+    const start = { ...site, ignitions: [pointIgnition('a', -300, -200, 0, 60)] };
+    const titles = (r: Rig): string[] => [...r.snaps.values()].flatMap((s) => s.insights.map((i) => i.title));
+    const plain = await rig(start);
+    await plain.runTo(4 * 3600);
+    expect(titles(plain)).toContain('Wind change in 30 minutes');
+    const r = await rig({ ...start, edits: [SOUTH] }); // starts at 600 s, long before the swing
+    await r.runTo(4 * 3600);
+    expect(titles(r)).not.toContain('Wind change in 30 minutes');
+    plain.sim.dispose();
+    r.sim.dispose();
+  }, 120000);
+
   it('explain reads the changed wind too', async () => {
     const r = await rig(scenario([SOUTH]));
     await r.runTo(1800);

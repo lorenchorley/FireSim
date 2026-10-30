@@ -2,7 +2,9 @@
  * The Wind direction tool (0.6.0 item 4), mock engine (?mock=1). It asserts what the UI itself does: the tool's name and its
  * lack of any map placement, the dial, the When choices and the status lines, Apply (the edit in `session.state.edits`, the list
  * entry, the announcement), a change that is under way and done, Remove, the "At a time" field and its messages, the note for a
- * person who is viewing the past, and the layout at three phone sizes. The mock engine and the simulation engine decide what the
+ * person who is viewing the past, a dial left on the wind ("Hold wind from ..."), the local wind readings (Setup's belt kit) that the
+ * panel lists and removes, the forecast's own wind changes that a change replaces (the Weather tab, the timeline and the Insights
+ * list), and the layout at three phone sizes. The mock engine and the simulation engine decide what the
  * wind then DOES to the fire; that is for the simulation's own tests, and the chip is checked against the wind the session
  * reports (`windWeather()`), so it also turns by itself once the engine applies the change.
  * Needs the production build (`npx playwright test` builds and serves it).
@@ -91,6 +93,10 @@ const chipDir = (page: Page) => page.getByTestId('weather-chip').locator('.wx-di
 const dialValue = async (page: Page): Promise<number> => Number(await page.getByTestId('wind-dial').getAttribute('aria-valuenow'));
 const choose = (page: Page, label: string) => page.getByTestId('wind-when').getByRole('radio', { name: label }).check();
 const STARTS = /^Starts turning at (\d\d:\d\d) and reaches ([A-Z]+) \((\d+)°\) by (\d\d:\d\d)\.$/;
+const HOLDS = /^Holds ([A-Z]+) \((\d+)°\) from (\d\d:\d\d)\. The forecast's later wind changes no longer apply\.$/;
+/** What a dial that is left alone says: the wind may be turning at that moment (the mock forecast ramps), so it is a turn or a hold. */
+const STARTS_OR_HOLDS = new RegExp(`(${STARTS.source})|(${HOLDS.source})`);
+const PLAN = /^(Starts turning at \d\d:\d\d, done by \d\d:\d\d|Holds [A-Z]+ \(\d+°\) from \d\d:\d\d)\.$/;
 
 test('the tool is called Wind direction and has no map placement: a dial, when, a status, Apply, the list and the announcement', async ({ page }) => {
   const errors: string[] = [];
@@ -213,6 +219,19 @@ test('a change that is done says so, the top bar follows the wind the session re
     // The engine applies the change (applyWindDirection is real): the wind has turned all the way to the new direction.
     await expect(chipDir(page)).toHaveText(compassName(to));
     expect(Math.abs(((changed.dir - to + 540) % 360) - 180)).toBeLessThanOrEqual(1);
+    // The dial is still where it was turned to and the wind is there now: Apply would hold it, not turn it, and the words say so.
+    const hold = page.getByTestId('apply-wind');
+    await expect(hold).toHaveText(`Hold wind from ${compassName(to)}`);
+    const holdStatus = page.getByTestId('wind-status').locator('p').nth(1);
+    await expect(holdStatus).toHaveText(HOLDS);
+    await expect(holdStatus).toContainText(`Holds ${compassName(to)} (${to}°) from `);
+    // That is for the choice "In 10 min" too (the direction is held); a dial turned off the wind is a turn again, and back on it a hold.
+    await dial.focus();
+    await page.keyboard.press('PageUp');
+    await expect(hold).toHaveText(`Turn wind to ${compassName((to + 45) % 360)}`);
+    await expect(page.getByTestId('wind-status').locator('p').nth(1)).toHaveText(STARTS);
+    await page.keyboard.press('PageDown');
+    await expect(hold).toHaveText(`Hold wind from ${compassName(to)}`);
   } else test.info().annotations.push({ type: 'wind-engine', description: 'applyWindDirection is still the C0 stub: only the chip reading windWeather() was checked' });
 
   // Remove: the list empties, the session has no change, the chip reads the forecast again, and the announcement says it.
@@ -244,6 +263,8 @@ test('"At a time": an empty field, a time that has passed and a time that is not
   await expect.poll(async () => (await windState(page)).viewTime).toBe(1800);
   await pickTool(page, 'wind');
   const panel = page.getByTestId('wind-panel');
+  await page.getByTestId('wind-dial').focus();
+  await page.keyboard.press('PageUp'); // a dial moved off the wind: the status says "Starts turning" (left alone it may say it holds)
   const field = page.getByTestId('wind-time');
   const msg = page.getByTestId('wind-time-msg');
   const apply = page.getByTestId('apply-wind');
@@ -322,6 +343,192 @@ test('viewing the past: the note shows, and applying cuts what was computed back
   expect(errors).toEqual([]);
 });
 
+/** The ids of the local wind readings (`kind: 'wind'`) in the session's edits: Setup's belt kit puts them there. */
+const readingIds = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __firesim: { session: { state: { get(): { edits: { edit: { kind: string; id: string } }[] } } } } }).__firesim.session.state.get().edits.filter((e) => e.edit.kind === 'wind').map((e) => e.edit.id));
+
+/** Add a local wind reading the way Setup's belt kit makes one (online only): 1000 m, from E (84 degrees), `dx` / `dy` metres from the middle of the map. */
+async function addReading(page: Page, id: string, dx = 0, dy = 0): Promise<void> {
+  await page.evaluate(
+    ([rid, ox, oy]) => {
+      const fs = (window as unknown as { __firesim: { scenario: { terrain: { grid: { x0: number; y0: number; nx: number; ny: number; cellSize: number } } }; session: { edit(e: unknown): void } } }).__firesim;
+      const g = fs.scenario.terrain.grid;
+      fs.session.edit({ kind: 'wind', id: rid, x: g.x0 + ((g.nx - 1) * g.cellSize) / 2 + Number(ox), y: g.y0 + ((g.ny - 1) * g.cellSize) / 2 + Number(oy), radius: 1000, speed: 5, dir: 84, time: 0 });
+    },
+    [id, dx, dy] as const,
+  );
+}
+
+test('a local wind reading is listed in its own row with a Remove button that works, and a turn of the whole wind leaves it in place', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await watchPopups(page);
+  await buildMock(page);
+  await armPopupWatch(page);
+  await addReading(page, 'belt-kit-1');
+  expect(await readingIds(page)).toEqual(['belt-kit-1']);
+
+  await pickTool(page, 'wind');
+  const panel = page.getByTestId('wind-panel');
+  const readings = page.getByTestId('wind-readings');
+  await expect(readings).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Wind readings' })).toBeVisible();
+  const row = readings.locator('li');
+  await expect(row).toHaveCount(1);
+  await expect(row).toHaveText('Wind reading near the middle: from E, within 1 km (from the belt kit)');
+  await expect(panel.getByRole('heading', { name: 'Your wind changes' })).toHaveCount(0);
+  // The one line that says what a reading does when the wind is turned.
+  await expect(panel.locator('.wind-readings-note')).toHaveText('A reading keeps its own direction when you turn the wind.');
+  const bin = page.getByTestId('remove-wind-reading');
+  await expect(bin).toHaveAccessibleName('Remove the wind reading near the middle, from E');
+  await bin.scrollIntoViewIfNeeded();
+  expect(await hitArea(bin), 'a 44 x 44 px hit area, as the Remove of a change has').toEqual([]);
+
+  // Turn the whole wind: the change is listed under its own title, the reading stays as it was, in the session and in the list.
+  await page.getByTestId('wind-dial').focus();
+  await page.keyboard.press('PageUp');
+  await page.getByTestId('apply-wind').click();
+  expect((await windState(page)).edits).toHaveLength(1);
+  await expect(panel.getByRole('heading', { name: 'Your wind changes' })).toBeVisible();
+  await expect(page.getByTestId('remove-wind-direction')).toHaveCount(1);
+  await expect(row).toHaveCount(1);
+  await expect(row).toHaveText('Wind reading near the middle: from E, within 1 km (from the belt kit)');
+  expect(await readingIds(page)).toEqual(['belt-kit-1']);
+
+  // Remove the reading with the keyboard: it leaves the session and the list, the change stays, and the focus stays in the panel.
+  await bin.focus();
+  await page.keyboard.press('Enter');
+  await expect(readings).toHaveCount(0);
+  expect(await readingIds(page)).toEqual([]);
+  expect((await windState(page)).edits).toHaveLength(1);
+  await expect(page.getByTestId('remove-wind-direction')).toHaveCount(1);
+  await expect(liveRegion(page)).toHaveText('Wind reading removed.');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[data-testid=wind-panel]'))).toBe(true);
+  await expect(panel.getByRole('heading', { name: 'Wind readings' })).toHaveCount(0);
+
+  expect(await popups(page)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('readings away from the middle say where they are, and the last Remove sends the focus to the dial', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await buildMock(page);
+  await addReading(page, 'belt-kit-1', 0, 2100);
+  await addReading(page, 'belt-kit-2', -1500, -1500);
+  await pickTool(page, 'wind');
+  const rows = page.getByTestId('wind-readings').locator('li');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveText('Wind reading 2.1 km N of the middle: from E, within 1 km (from the belt kit)');
+  await expect(rows.nth(1)).toHaveText('Wind reading 2.1 km SW of the middle: from E, within 1 km (from the belt kit)');
+  const bins = page.getByTestId('remove-wind-reading');
+  await bins.nth(0).focus();
+  await page.keyboard.press('Enter');
+  await expect(rows).toHaveCount(1);
+  expect(await readingIds(page)).toEqual(['belt-kit-2']);
+  // The next Remove has the focus; removing that one too leaves the dial with it.
+  await expect(bins.first()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('wind-readings')).toHaveCount(0);
+  expect(await readingIds(page)).toEqual([]);
+  await expect(page.getByTestId('wind-dial')).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+/** The forecast's own wind change (the mock's forecast has one) is not shown as coming once a Wind direction change replaces it, and is back when that change is removed. */
+test('the forecast wind change card, the timeline marks and the insight cards say nothing about a swing that a Wind direction change replaces', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await buildMock(page);
+  const swingCards = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { __firesim: { session: { visibleInsights(): { kind: string }[] } } }).__firesim.session.visibleInsights().filter((i) => i.kind === 'wind-change').length);
+  const mapCards = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { __firesim: { session: { mapInsights(): { kind: string }[] } } }).__firesim.session.mapInsights().filter((i) => i.kind === 'wind-change').length);
+  const marks = page.locator('.tl-mark-change');
+  const summary = page.locator('.wx-summary');
+  const swing = summary.locator('.callout-danger');
+  const replaced = page.getByTestId('wx-wind-replaced');
+  await page.getByTestId('tab-weather').click();
+  await expect(page.getByTestId('tab-weather')).toHaveAttribute('aria-selected', 'true');
+
+  // The forecast's swing is on the Weather tab as a card (and, inside the scenario, on the timeline and in the insight list).
+  await expect(swing).toHaveCount(1);
+  await expect(swing).toContainText('Wind change');
+  await expect(replaced).toHaveCount(0);
+  const cards0 = await swingCards();
+  const onMap0 = await mapCards();
+  const marks0 = await marks.count();
+
+  // A change from now on replaces it: one plain line in the card's place, no swing in the list, on the map or on the timeline.
+  await page.evaluate(() => (window as unknown as { __firesim: { session: { setWindDirection(id: string, dir: number): unknown } } }).__firesim.session.setWindDirection('winddir-e2e', 180));
+  await expect(replaced).toHaveCount(1);
+  await expect(replaced).toHaveText("You changed the wind direction, so the forecast's later wind changes no longer apply.");
+  await expect(summary.locator('.callout')).toHaveCount(1); // the one line takes the card's place: nothing else, nothing added below
+  await expect(swing).toHaveCount(0);
+  await expect(marks).toHaveCount(0);
+  expect(await swingCards()).toBe(0);
+  expect(await mapCards()).toBe(0);
+
+  // Removing the change brings all of it back.
+  await page.evaluate(() => (window as unknown as { __firesim: { session: { removeWindDirection(id: string): void } } }).__firesim.session.removeWindDirection('winddir-e2e'));
+  await expect(replaced).toHaveCount(0);
+  await expect(swing).toHaveCount(1);
+  await expect(swing).toContainText('Wind change');
+  await expect(marks).toHaveCount(marks0);
+  expect(await swingCards()).toBe(cards0);
+  expect(await mapCards()).toBe(onMap0);
+  expect(errors).toEqual([]);
+});
+
+/** The panel with a reading and a change in its list, at the sizes where it is tight: Apply stays whole on screen, the rows can be reached by scrolling the body, nothing is wider than the screen. */
+for (const [width, height] of [
+  [360, 640],
+  [844, 390],
+] as const) {
+  test(`layout at ${width}x${height} with a reading and a change listed: Apply stays on screen, the list scrolls, every Remove is a tap target`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width, height });
+    await buildMock(page);
+    await addReading(page, 'belt-kit-1');
+    await pickTool(page, 'wind');
+    const panel = page.getByTestId('wind-panel');
+    await expect(panel).toBeVisible();
+    await page.waitForTimeout(600);
+    await page.getByTestId('wind-dial').focus();
+    await page.keyboard.press('PageUp');
+    await page.getByTestId('apply-wind').click();
+    await expect(page.getByTestId('wind-list').locator('li')).toHaveCount(2); // the change and the reading
+    const geometry = (): Promise<{ apply: DOMRect; body: DOMRect; scrollW: number; innerW: number; innerH: number }> =>
+      page.evaluate(() => {
+        const q = (id: string): HTMLElement => document.querySelector(`[data-testid=${id}]`) as HTMLElement;
+        const body = q('wind-panel').querySelector('.panel-body') as HTMLElement;
+        const box = (e: HTMLElement): DOMRect => e.getBoundingClientRect().toJSON();
+        return { apply: box(q('apply-wind')), body: box(body), scrollW: document.documentElement.scrollWidth, innerW: innerWidth, innerH: innerHeight };
+      });
+    const g = await geometry();
+    expect(g.apply.bottom).toBeLessThanOrEqual(g.innerH);
+    expect(g.apply.height).toBeGreaterThanOrEqual(44);
+    expect(g.scrollW).toBeLessThanOrEqual(g.innerW);
+    // Both rows can be reached by scrolling the body alone, and each Remove has a 44 x 44 px hit area and is inside the body when scrolled to.
+    for (const id of ['remove-wind-direction', 'remove-wind-reading']) {
+      const bin = page.getByTestId(id);
+      await bin.evaluate((el) => el.scrollIntoView({ block: 'center' })); // not flush with the edge of the scrolling body, where the probe of the hit area would leave it
+      const b = (await bin.boundingBox())!;
+      const g2 = await geometry();
+      expect(b.y, id).toBeGreaterThanOrEqual(g2.body.top - 0.5);
+      expect(b.y + b.height, id).toBeLessThanOrEqual(g2.body.bottom + 0.5);
+      expect(g2.apply.top, 'Apply does not move').toBe(g.apply.top);
+      expect(g2.scrollW).toBeLessThanOrEqual(g2.innerW);
+      expect(await hitArea(bin), id).toEqual([]);
+    }
+    const reading = page.getByTestId('wind-readings').locator('li > span');
+    const rb = (await reading.boundingBox())!;
+    expect(rb.x + rb.width, 'the words stay inside the screen').toBeLessThanOrEqual(g.innerW);
+    expect(errors).toEqual([]);
+  });
+}
+
 /** The panel at a phone size: Apply on screen and a tap target, the dial whole when it opens, the time field within reach, nothing too small, nothing wider than the screen. */
 for (const [width, height] of [
   [360, 640],
@@ -367,7 +574,7 @@ for (const [width, height] of [
     const plan = page.getByTestId('wind-plan');
     if (width < height && height < 700) {
       await expect(plan).toBeVisible();
-      await expect(plan).toHaveText(/^Starts turning at \d\d:\d\d, done by \d\d:\d\d\.$/);
+      await expect(plan).toHaveText(PLAN);
       const pb = (await plan.boundingBox())!;
       expect(pb.height, 'one line, so the dial keeps its room').toBeLessThanOrEqual(24);
       expect(pb.y).toBeGreaterThanOrEqual(g.body.bottom - 0.5);
@@ -377,7 +584,7 @@ for (const [width, height] of [
       await expect(page.getByTestId('wind-status').locator('p').nth(1)).toBeHidden(); // the long sentence is the bar's line, not said twice
     } else {
       await expect(plan).toBeHidden();
-      await expect(page.getByTestId('wind-status').locator('p').nth(1)).toHaveText(STARTS);
+      await expect(page.getByTestId('wind-status').locator('p').nth(1)).toHaveText(STARTS_OR_HOLDS);
     }
 
     // "At a time": the field is reached by scrolling the body alone, Apply stays where it was.

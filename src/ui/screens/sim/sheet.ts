@@ -7,6 +7,7 @@
  */
 import type { Insight } from '../../../core/types';
 import { msToKmh } from '../../../core/units';
+import { forecastSwingNotice, forecastSwingsKept, windDirectionEdits } from '../../../scenario/windDirection';
 import { h, listen, prefersReducedMotion, setChildren, text } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { GLOSSARY, HELP_STEPS } from '../../content';
@@ -39,6 +40,9 @@ import { groupInsights, UnseenTracker, type InsightGroup } from '../../insightGr
 import { badgeText, cycleDetent, detentHeights, DOCK_H, pressTab, snapDetent, tapHandle } from './layoutModel';
 import { dataUsed } from './dataSummary';
 import { chartHeight, drawWeatherChart, litterEstimate } from './weatherChart';
+
+/** The Weather tab's line in the place of the "Wind change" card, once a Wind direction change replaces the forecast's later swings. */
+const FORECAST_SWINGS_REPLACED = "You changed the wind direction, so the forecast's later wind changes no longer apply.";
 
 const TABS: { id: SheetTab; label: string; icon: IconName }[] = [
   { id: 'insights', label: 'Insights', icon: 'list' },
@@ -325,7 +329,9 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const abs = ctx.absTime(s.viewTime);
     const unit = ctx.settings.get().units;
     const w = sampleSeries(session.windWeather(), abs, abs, 2)[0]!;
-    const next = changes.find((c) => c.time > abs);
+    // A Wind direction change replaces the forecast's later swings: they are not shown as coming (one line says so), and they are not marked on the chart.
+    const userChanges = windDirectionEdits(s.edits);
+    const { next, replaced } = forecastSwingNotice(changes, ctx.scenario.startTime, userChanges, abs);
     setChildren(wxSummary, [
       statRow(
         [
@@ -341,7 +347,9 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
             icon('wind'),
             h('span', null, `Wind change ${formatRelative((next.time - abs) / 1000)} (${formatClock(next.time, ctx.tz)}): ${compassName(next.fromDir)} → ${compassName(next.toDir)} ${Math.round(next.speedAfterKmh)} km/h. The side of the fire (flank) becomes the head fire.`),
           ])
-        : null,
+        : replaced
+          ? h('p', { class: 'callout callout-info', dataset: { testid: 'wx-wind-replaced' } }, [icon('wind'), h('span', null, FORECAST_SWINGS_REPLACED)])
+          : null,
     ]);
     text(wxSource, `Source: ${ctx.scenario.weather.source}. Tap or drag the chart to read values; wind speed in ${unit === 'kmh' ? 'km/h' : 'm/s'} at 10 m.`);
     const obs = session.snapshots
@@ -349,7 +357,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       .filter((sn) => Number.isFinite(sn.stats.deadFuelMoistureMean))
       .map((sn) => ({ time: sn.time, value: sn.stats.deadFuelMoistureMean }));
     if (!panels.weather.hidden && canvas.isConnected) {
-      mapper = drawWeatherChart(canvas, { series: session.windWeather(), start: ctx.scenario.startTime, duration: ctx.scenario.duration, viewTime: s.viewTime, tz: ctx.tz, units: unit, changes, moistureObs: obs, inspect });
+      mapper = drawWeatherChart(canvas, { series: session.windWeather(), start: ctx.scenario.startTime, duration: ctx.scenario.duration, viewTime: s.viewTime, tz: ctx.tz, units: unit, changes: forecastSwingsKept(changes, ctx.scenario.startTime, userChanges), moistureObs: obs, inspect });
     }
     if (details.open) renderTable();
   };

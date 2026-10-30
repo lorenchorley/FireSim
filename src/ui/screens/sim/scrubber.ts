@@ -10,6 +10,7 @@ import { icon } from '../../icons';
 import { formatClock, formatElapsedShort, formatStepLabel, tzOffsetHours } from '../../format';
 import { PACE_ANNOUNCEMENT, PACE_BUTTON_LABEL, shouldAnnounce } from '../../paceModel';
 import type { PaceLevel } from '../../paceTypes';
+import { forecastSwingsKept, windDirectionEdits } from '../../../scenario/windDirection';
 import { detectWindChanges } from '../../weatherCalc';
 import type { SimContext } from './context';
 import {
@@ -247,6 +248,9 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: 
 
   // ── ticks (rebuilt when the track width, the step or the revealed cards change) ──
   const changes = detectWindChanges(scenario.weather.hours).filter((c) => c.time > startMs && c.time < startMs + D * 1000);
+  // The forecast's swings that a Wind direction change replaces are not marked: only the ones before the first change start.
+  let editsSeen: unknown = null;
+  let shownChanges: readonly (typeof changes)[number][] = changes;
   let hoursKey = '';
   const buildHours = (): void => {
     const w = Math.round(areaW);
@@ -371,18 +375,22 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: 
       lastInsights = s.insights;
       insightGen++;
     }
-    const mk = `${insightGen}|${nShown}|${Math.round(areaW)}`;
+    if (s.edits !== editsSeen) {
+      editsSeen = s.edits;
+      shownChanges = forecastSwingsKept(changes, startMs, windDirectionEdits(s.edits));
+    }
+    const mk = `${insightGen}|${nShown}|${Math.round(areaW)}|${shownChanges.length}`;
     if (mk !== marksKey) {
       marksKey = mk;
       const revealed = s.insights.filter((i) => i.severity !== 'info' && i.time <= s.viewTime + 1);
       setChildren(marks, [
-        ...changes.map((c) => h('span', { class: 'tl-mark tl-mark-change', style: { left: pct((c.time - startMs) / 1000 / D) } })),
+        ...shownChanges.map((c) => h('span', { class: 'tl-mark tl-mark-change', style: { left: pct((c.time - startMs) / 1000 / D) } })),
         ...cardMarks(revealed, D, areaW).map((m) => h('span', { class: `tl-mark tl-mark-${m.severity}`, style: { left: pct(m.frac) } })),
       ]);
     }
   }
 
-  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep', 'pace']);
+  const unsub = session.state.subscribe(render, ['viewTime', 'headTime', 'playing', 'insights', 'forecastInsights', 'edits', 'reviewing', 'seekTarget', 'seekProgress', 'timeStep', 'pace']);
   // Closing the sheet (a tap outside, Escape, Back) changes aria-expanded on the button: it may then have to go.
   const paceWatch = typeof MutationObserver === 'function' ? new MutationObserver(render) : null;
   paceWatch?.observe(paceBtn, { attributes: true, attributeFilter: ['aria-expanded'] });

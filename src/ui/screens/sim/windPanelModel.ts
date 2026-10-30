@@ -3,17 +3,18 @@
  * lines, the list of the user's changes, the announcements and the dial size. The panel (windPanel.ts) only lays them out.
  * Tested in windPanelModel.test.ts.
  */
-import type { WindDirectionEdit } from '../../../core/types';
-import { wrapDeg } from '../../../core/units';
+import type { ScenarioEdit, WindDirectionEdit, WindEdit } from '../../../core/types';
+import { angleDiffDeg, wrapDeg } from '../../../core/units';
 import { WIND_TURN_S, windChangePhase, windDirectionTime } from '../../../scenario/windDirection';
-import { compassName, formatClock, formatDayClock, formatDirFrom, formatRelative, zonedDate, zonedTime } from '../../format';
+import { compassName, formatClock, formatDayClock, formatDirFrom, formatDistance, formatRelative, zonedDate, zonedTime } from '../../format';
 import { clockToSimTime, parseTimeOfDay } from './timelineModel';
 
-/** The scenario the panel works in: its start (unix ms), the time zone its clock is read in, and its length (s). */
+/** The scenario the panel works in: its start (unix ms), the time zone its clock is read in, its length (s), and the middle of the map (local metres, where a wind reading is placed). */
 export interface WindEnv {
   startMs: number;
   tz: string;
   durationS: number;
+  centre?: { x: number; y: number };
 }
 
 /** A scenario longer than this shows the day with its clock ("Sat 14:41"): the same clock time comes round twice. */
@@ -127,14 +128,24 @@ export const TIME_FIELD_LABEL = 'Local time';
 export const TIME_FIELD_SPOKEN = 'Time the wind starts to turn';
 export const LIST_TITLE = 'Your wind changes';
 
-/** The text of the primary button. */
-export const applyLabel = (dir: number): string => `Turn wind to ${compassName(dir)}`;
+/** The dial's own step (degrees): the dial opens on the wind rounded to it, so a dial left alone is within half a step of the wind. */
+const DIAL_STEP_DEG = 5;
+
+/** Whether the chosen direction is the one already in force (within half a dial step): then the change turns nothing, it holds the wind there. */
+export const holdsDirection = (dir: number, inForce: number): boolean => Math.abs(angleDiffDeg(dir, inForce)) <= DIAL_STEP_DEG / 2 + 1e-9;
+
+/** The text of the primary button: "Turn wind to SW", or "Hold wind from NW" when the dial is already on the wind. */
+export const applyLabel = (dir: number, holds = false): string => (holds ? `Hold wind from ${compassName(dir)}` : `Turn wind to ${compassName(dir)}`);
 
 /** The note shown while the person is looking at an earlier time (an edit then re-runs the simulation from there). */
 export const reviewingText = (viewTime: number, env: WindEnv): string => `You are viewing ${windClock(env, viewTime)}. Applying re-runs the simulation from then.`;
 
 export interface WindView {
   when: When;
+  /** The chosen direction is the one in force at the start, so the change holds it (and drops the forecast's later swings) rather than turning it. */
+  holds: boolean;
+  /** The text of Apply. */
+  label: string;
   /** The message under the time field ('' = none). */
   message: string;
   /** The status lines, in order. */
@@ -153,19 +164,25 @@ export function windView(input: { when: WhenState; viewTime: number; env: WindEn
   const { when: state, viewTime, env, dir, directionAt } = input;
   const when = resolveWhen(state, viewTime, env);
   const before = (t: number): string => `Before the change: from ${formatDirFrom(directionAt(t))}.`;
+  // With no valid start the button still follows the wind now, so it does not change its words when the time is put right.
+  const holds = holdsDirection(dir, directionAt(when.ok ? when.time : nowTime(viewTime, env)));
+  const label = applyLabel(dir, holds);
   if (when.ok) {
+    const start = windClock(env, when.time);
     return {
       when,
+      holds,
+      label,
       message: '',
-      lines: [before(when.time), `Starts turning at ${windClock(env, when.time)} and reaches ${formatDirFrom(dir)} by ${windClock(env, when.time + WIND_TURN_S)}.`],
-      plan: `Starts turning at ${windClock(env, when.time)}, done by ${windClock(env, when.time + WIND_TURN_S)}.`,
+      lines: [before(when.time), holds ? `Holds ${formatDirFrom(dir)} from ${start}. The forecast's later wind changes no longer apply.` : `Starts turning at ${start} and reaches ${formatDirFrom(dir)} by ${windClock(env, when.time + WIND_TURN_S)}.`],
+      plan: holds ? `Holds ${formatDirFrom(dir)} from ${start}.` : `Starts turning at ${start}, done by ${windClock(env, when.time + WIND_TURN_S)}.`,
       canApply: true,
     };
   }
   const text = problemText(when.problem, state.choice, viewTime, env);
   // With no time left the reason is the status; otherwise it sits under the field (and the status still says what is there now).
-  if (when.problem === 'late') return { when, message: '', lines: [text], plan: '', canApply: false };
-  return { when, message: text, lines: [before(nowTime(viewTime, env))], plan: '', canApply: false };
+  if (when.problem === 'late') return { when, holds, label, message: '', lines: [text], plan: '', canApply: false };
+  return { when, holds, label, message: text, lines: [before(nowTime(viewTime, env))], plan: '', canApply: false };
 }
 
 // ───────────────────────────── the list of changes ─────────────────────────────
@@ -191,9 +208,53 @@ export function windList(edits: readonly WindDirectionEdit[], viewTime: number, 
   });
 }
 
+// ───────────────────────────── the wind readings ─────────────────────────────
+
+export const READINGS_TITLE = 'Wind readings';
+/** Said once under the readings: the turn does not move them (the engine holds a reading's own direction inside its radius). */
+export const READINGS_NOTE = 'A reading keeps its own direction when you turn the wind.';
+
+/** A reading closer to the middle of the map than this (m) is "near the middle". */
+const NEAR_MIDDLE_M = 250;
+
+/** Where a reading is, in words: "near the middle", or "2.1 km NE of the middle" (x east, y north, from the middle of the map). */
+export function readingPlace(e: Pick<WindEdit, 'x' | 'y'>, centre?: { x: number; y: number }): string {
+  if (!centre) return 'on the map';
+  const dx = e.x - centre.x;
+  const dy = e.y - centre.y;
+  const d = Math.hypot(dx, dy);
+  if (!(d > NEAR_MIDDLE_M)) return 'near the middle';
+  return `${formatDistance(d)} ${compassName(wrapDeg((Math.atan2(dx, dy) * 180) / Math.PI))} of the middle`;
+}
+
+/**
+ * One line per local wind reading (a `WindEdit`: Setup's belt kit makes them; the Wind direction turn does not move them), in
+ * list order. Only the direction and radius are said: the speed is the reading's own and the panel does not change it.
+ */
+export function windReadings(edits: readonly WindEdit[], viewTime: number, env: WindEnv): WindListItem[] {
+  return edits.map((e) => {
+    const where = readingPlace(e, env.centre);
+    const starts = e.time > viewTime + 1 ? `, starts ${windClock(env, e.time)}` : '';
+    const source = e.id.startsWith('belt-kit') ? ' (from the belt kit)' : '';
+    return {
+      id: e.id,
+      text: `Wind reading ${where}: from ${compassName(e.dir)}, within ${formatDistance(e.radius)}${starts}${source}`,
+      removeLabel: `Remove the wind reading ${where}, from ${compassName(e.dir)}`,
+    };
+  });
+}
+
+/** The local wind readings among `list` (as `SessionState.edits` holds them), in list order. */
+export function windReadingEdits(list: readonly { edit: ScenarioEdit }[]): WindEdit[] {
+  const out: WindEdit[] = [];
+  for (const { edit } of list) if (edit.kind === 'wind') out.push(edit);
+  return out;
+}
+
 // ───────────────────────────── announcements ─────────────────────────────
 
-export function applyAnnouncement(edit: Pick<WindDirectionEdit, 'dir' | 'time'>, env: WindEnv): string {
+export function applyAnnouncement(edit: Pick<WindDirectionEdit, 'dir' | 'time'>, env: WindEnv, holds = false): string {
+  if (holds) return `Wind direction change set. The wind is held from ${compassName(edit.dir)}, starting at ${windClock(env, edit.time)}.`;
   return `Wind direction change set. The wind turns to come from ${compassName(edit.dir)}, starting at ${windClock(env, edit.time)} and done by ${windClock(env, edit.time + WIND_TURN_S)}.`;
 }
 
@@ -201,6 +262,9 @@ export function applyAnnouncement(edit: Pick<WindDirectionEdit, 'dir' | 'time'>,
 export function removeAnnouncement(edit: Pick<WindDirectionEdit, 'time'>, headTime: number, env: WindEnv): string {
   return `Wind change removed.${headTime > edit.time ? ` The simulation re-runs from ${windClock(env, edit.time)} without it.` : ''}`;
 }
+
+/** A reading stops applying from now on; what was simulated before stays. */
+export const removeReadingAnnouncement = 'Wind reading removed.';
 
 // ───────────────────────────── the dial ─────────────────────────────
 

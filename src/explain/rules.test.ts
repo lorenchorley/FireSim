@@ -448,6 +448,37 @@ describe('weather and diurnal cards', () => {
     expect(kinds(r.all)).not.toContain('dead-man-zone');
   });
 
+  it('a Wind direction change that has started replaces the forecast change: no wind-change card, no dead-man-zone, no DMZ layer; one that starts after the swing leaves it', () => {
+    const swing = (): TestWorld => {
+      const w = neutral({ windSpeed: 30 / 3.6, windDir: 315 });
+      for (const h of w.view.series.hours) {
+        if (h.time >= w.startMs + 45 * 60e3) {
+          h.windDir10 = 225;
+          h.windSpeed10 = 40 / 3.6;
+        }
+      }
+      return w;
+    };
+    // Control: the swing at 45 min raises both cards and the layer.
+    const c = run(swing(), 3);
+    expect(kinds(c.all)).toContain('wind-change');
+    expect(kinds(c.all)).toContain('dead-man-zone');
+    // A change that has started at 10 min replaces the swing at 45 min.
+    const w = swing();
+    w.view.windOverrideFromMs = w.startMs + 10 * 60e3;
+    const r = run(w, 3);
+    expect(kinds(r.all)).not.toContain('wind-change');
+    expect(kinds(r.all)).not.toContain('dead-man-zone');
+    expect(r.eng.layers().dmz).toBeUndefined();
+    // A change that starts at 90 min comes after the swing (the hourly stamp at 60 min): the swing is real until then.
+    const late = swing();
+    late.view.windOverrideFromMs = late.startMs + 90 * 60e3;
+    const l = run(late, 3);
+    expect(kinds(l.all)).toContain('wind-change');
+    expect(kinds(l.all)).toContain('dead-man-zone');
+    expect(l.eng.layers().dmz).toBeInstanceOf(Float32Array);
+  });
+
   it('V12: the wind-change card comes ≥ 60 min before the change with the exposed flank length within 20 %', () => {
     const r0 = 1000;
     const w = new TestWorld({ windSpeed: 30 / 3.6, windDir: 315 });

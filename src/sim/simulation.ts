@@ -103,7 +103,7 @@ import { getFireModelOptions } from '../fire/models/params';
 import { SPREAD_PARAMS } from '../fire/spread/params';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
-import { applyWindDirection, windDirectionTime } from '../scenario/windDirection';
+import { applyWindDirection, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
 import { SIM_PARAMS } from './params';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
@@ -299,6 +299,8 @@ export class Simulation {
   private wx: WeatherSeries;
   /** Identity of the changes `wx` was made from ('' for none, when `wx` is the forecast itself). */
   private wxKey = '';
+  /** When the first of those changes starts (s from the scenario start), or null for none. */
+  private wxFromS: number | null = null;
   private diag: AtmosDiagnostics | null = null;
   private plumeTopAGL = NaN;
   private lastSun: InsolationResult | null = null;
@@ -981,6 +983,7 @@ export class Simulation {
     const key = list.length ? JSON.stringify(list.map((e) => [e.id, e.dir, e.time])) : '';
     if (key === this.wxKey) return false;
     this.wxKey = key;
+    this.wxFromS = windOverrideFrom(list);
     this.wx = list.length ? applyWindDirection(this.scenario.weather, this.startMs, list) : this.scenario.weather;
     return true;
   }
@@ -1668,6 +1671,7 @@ export class Simulation {
       airRH: this.moisture.airRH,
       weather: env.weather,
       series: this.scenario.weather,
+      ...(this.wxFromS === null ? {} : { windOverrideFromMs: this.startMs + this.wxFromS * 1000 }),
       droughtFactor: this.droughtFactor,
       kbdi: this.kbdi,
       sunElevation: env.sunElevation,

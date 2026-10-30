@@ -19,7 +19,7 @@ export interface ChartInput {
   viewTime: number;
   tz: string;
   units: SpeedUnit;
-  changes: WindChange[];
+  changes: readonly WindChange[];
   /** Mean litter moisture from snapshots (model values). */
   moistureObs: { time: number; value: number }[];
   /** Time (s) the user is inspecting, or null. */

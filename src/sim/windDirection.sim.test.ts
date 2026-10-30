@@ -9,7 +9,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { cellAt } from '../core/grid';
 import { angleDiffDeg, uvToWind } from '../core/units';
-import type { SimSnapshot, WindDirectionEdit } from '../core/types';
+import type { SimSnapshot, WindDirectionEdit, WindEdit } from '../core/types';
 import { Simulation, type SimulationOptions } from './simulation';
 import { LocalSimController } from './client';
 import { snapshotHash, snapshotPartHashes } from './testing/hash';
@@ -227,6 +227,37 @@ describe('Wind direction in the engine (fast tier)', () => {
     expect(dir(900)).toBeCloseTo(246.67, 1);
     expect(dir(1800)).toBeCloseTo(90, 6);
     expect(Math.abs(angleDiffDeg(r.snaps.get(1800)!.stats.headDir, 270))).toBeLessThan(30); // wind from the east pushes the head west
+  }, 240000);
+
+  it('a forecast swing that the change replaces raises no wind-change card and no dead-man-zone; with no change it does', () => {
+    // The forecast swings from 270 to 200 degrees (40 km/h) at its 4 h stamp: the card comes 3 h ahead, from 3600 s on.
+    const swung = (edits: WindDirectionEdit[]): ReturnType<typeof syntheticScenario> => {
+      const sc = scenario({ duration: 7200 }, edits);
+      return { ...sc, weather: { ...sc.weather, hours: sc.weather.hours.map((h) => (h.time >= sc.startTime + 3.2 * 3.6e6 ? { ...h, windDir10: 200, windSpeed10: 40 / 3.6 } : h)) } };
+    };
+    const kindsAfter = (r: Run, after: number): string[] => [...r.snaps.values()].filter((sn) => sn.time > after).flatMap((sn) => sn.insights.map((i) => i.kind));
+    const none = run(swung([]), 3900);
+    expect(kindsAfter(none, 3000)).toContain('wind-change');
+    const replaced = run(swung([SOUTH]), 3900); // the change starts at 600 s, long before the card would come
+    expect(kindsAfter(replaced, 600)).not.toContain('wind-change');
+    expect(kindsAfter(replaced, 600)).not.toContain('dead-man-zone');
+  }, 240000);
+
+  it('a local wind reading (Setup\'s belt kit) keeps its own direction through a turn of the whole wind, and removing it frees its place from then on', () => {
+    // A reading at the middle, 1000 m, from the east (84 degrees); the whole wind turns to come from the south from 600 s.
+    const reading: WindEdit = { kind: 'wind', id: 'belt-kit-1', x: 0, y: 0, radius: 1000, speed: 10, dir: 84, time: 0 };
+    const r = run({ ...scenario({ ignitions: [] }), edits: [reading, SOUTH] }, 1500);
+    const dirAt = (x: number, y: number): number => {
+      const v = r.sim.stateView();
+      const k = cellAt(v.terrain.grid, x, y);
+      return uvToWind(v.windU[k]!, v.windV[k]!)[1];
+    };
+    expect(r.snaps.get(1500)!.stats.weather.windDir10).toBeCloseTo(180, 6); // the wind of the whole map has turned
+    expect(Math.abs(angleDiffDeg(dirAt(-1300, 1300), 180))).toBeLessThan(5); // away from the reading
+    expect(Math.abs(angleDiffDeg(dirAt(0, 0), 84))).toBeLessThan(20); // the reading's own place has not
+    r.sim.removeEdit('belt-kit-1'); // the panel's Remove: the session's removeEdit, from now on
+    r.sim.advance(1560);
+    expect(Math.abs(angleDiffDeg(dirAt(0, 0), 180))).toBeLessThan(5);
   }, 240000);
 
   it('the in-thread controller (the app without a Worker) gives the same results as the bare simulation, for an edit and a removal', async () => {

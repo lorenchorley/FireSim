@@ -20,7 +20,7 @@
  */
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire, WeatherSeries, WindDirectionEdit } from '../core/types';
 import { wrapDeg } from '../core/units';
-import { applyWindDirection, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
+import { applyWindDirection, windDirectionEdits, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import type { EngineInfo, PerfEvent } from '../core/simTypes';
@@ -146,6 +146,7 @@ export class SimSession {
   private shownIgnitionCount = -1;
   private keyInsights: readonly Insight[] | null = null;
   private keyForecast: readonly Insight[] | null = null;
+  private keyEdits: readonly unknown[] | null = null;
   private keyGeneration = 0;
   /** Watches whether the engine keeps up with the playback speed. It only looks: it never changes a tier, a step or an option. */
   private readonly pace = createPaceTracker();
@@ -770,9 +771,10 @@ export class SimSession {
    * are a prefix of it and the list identity plus the prefix length (plus the forecast list identity) define the set.
    */
   private visibleInsightKey(s: Readonly<SessionState>): string {
-    if (s.insights !== this.keyInsights || s.forecastInsights !== this.keyForecast) {
+    if (s.insights !== this.keyInsights || s.forecastInsights !== this.keyForecast || s.edits !== this.keyEdits) {
       this.keyInsights = s.insights;
       this.keyForecast = s.forecastInsights;
+      this.keyEdits = s.edits;
       this.keyGeneration++;
     }
     let n = 0;
@@ -788,13 +790,22 @@ export class SimSession {
   mapInsights(s: Readonly<SessionState> = this.state.get()): Insight[] {
     const vt = s.viewTime;
     const past = s.insights.filter((i) => i.time <= vt + 1);
-    return [...s.forecastInsights, ...groupInsights(past).map((g) => g.lead)];
+    return [...this.forecastCards(s), ...groupInsights(past).map((g) => g.lead)];
+  }
+
+  /**
+   * The forecast cards that still apply: a Wind direction change replaces the forecast's later wind changes, so their
+   * "wind change" cards (the ones at or after the first change starts) are not listed or marked. Removing the change brings them back.
+   */
+  private forecastCards(s: Readonly<SessionState>): readonly Insight[] {
+    const from = windOverrideFrom(windDirectionEdits(s.edits));
+    return from === null ? s.forecastInsights : s.forecastInsights.filter((i) => i.kind !== 'wind-change' || i.time < from);
   }
 
   /** Insights visible at the view time (forecast cards are always visible), newest first. */
   visibleInsights(s: Readonly<SessionState> = this.state.get()): Insight[] {
     const vt = s.viewTime;
-    return [...s.forecastInsights, ...s.insights.filter((i) => i.time <= vt + 1)].sort((a, b) => b.time - a.time);
+    return [...this.forecastCards(s), ...s.insights.filter((i) => i.time <= vt + 1)].sort((a, b) => b.time - a.time);
   }
 
   // ───────────────────────────── pace ─────────────────────────────

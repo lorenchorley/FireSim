@@ -322,6 +322,11 @@ export interface SimStateView {
   airRH: Float32Array;
   weather: WeatherHour;
   series: WeatherSeries;
+  /**
+   * Unix ms from which an applied Wind direction change replaces the forecast's wind direction (absent: none is applied).
+   * `series` stays the forecast; the explain engine reads this to leave out the forecast's own later wind changes.
+   */
+  windOverrideFromMs?: number;
   droughtFactor: number;
   kbdi: number;
   sunElevation: number;
