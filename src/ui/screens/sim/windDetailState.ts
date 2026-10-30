@@ -1,6 +1,6 @@
 /**
  * The state of the Wind detail chip (0.6.0): which of the four steps of wind detail the map is showing now, what the picture is, and what
- * limits it (the zoom, the model's cells, a full view, an estimated wind, reduced motion). Pure (no DOM, no Three), unit-tested
+ * limits it (the zoom, the model's cells, a full view, an estimated wind, reduced motion, the pause after a minute without a touch). Pure (no DOM, no Three), unit-tested
  * (windDetailState.test.ts), and in the entry chunk: it imports only types of the render API and the glyph engine, the air helpers and the words
  * the Layers panel already holds. The words of the sheet are in windDetailWords.ts (loaded on the first tap).
  *
