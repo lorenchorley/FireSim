@@ -115,20 +115,28 @@ export const LEVEL_LINE: Record<GlyphLevel, string> = {
   1: 'Showing straight arrows. Zoom in for more.',
   2: 'Showing straight arrows, closer together. Zoom in for flow lines.',
   3: 'Showing curved flow lines.',
-  4: 'Showing long flow lines.',
+  4: 'Showing moving streaks with small eddies. This is the most detailed level.',
 };
+/** The closest zoom when the detailed streaks are not drawn (0.5.0's picture: the layer is trimmed, or the detail has not been built yet), and when they stand still (reduced motion). */
+export const LONG_LINES_LINE = 'Showing long flow lines.';
+export const STILL_STREAKS_LINE = 'Showing streaks with small eddies, standing still. This is the most detailed level.';
 
 export const EYE_LEVEL_LINE = 'Not drawn at eye level. Go back to the map view.';
 export const NO_WIND_LINE = 'Waiting for the wind picture.';
 export const BUDGET_LINE = 'Not drawn here: this view already uses all the phone can draw. Zoom out or switch a layer off.';
 
-/** The line under the caption, from the layer's own statistics; '' when the layer says nothing yet (or is off). */
-export function glyphLevelLine(stats: Pick<WindGlyphStats, 'idle' | 'level'> | null | undefined): string {
+/**
+ * The line under the caption, from the layer's own statistics; '' when the layer says nothing yet (or is off). At the closest zoom it says what is
+ * drawn: moving streaks, streaks standing still (`detail` 'still') or, when the detailed streaks are not drawn (`detail` 'off'), the long flow lines.
+ */
+export function glyphLevelLine(stats: (Pick<WindGlyphStats, 'idle' | 'level'> & Partial<Pick<WindGlyphStats, 'detail'>>) | null | undefined): string {
   if (!stats) return '';
   if (stats.idle === 'eye-level') return EYE_LEVEL_LINE;
   if (stats.idle === 'no-wind') return NO_WIND_LINE;
   if (stats.idle === 'budget') return BUDGET_LINE;
   if (stats.idle === 'off') return '';
+  if (stats.level === 4 && stats.detail === 'still') return STILL_STREAKS_LINE;
+  if (stats.level === 4 && stats.detail === 'off') return LONG_LINES_LINE;
   return LEVEL_LINE[stats.level] ?? '';
 }
 
