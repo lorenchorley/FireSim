@@ -256,7 +256,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     speed.ctl = ctl;
     speed.running = true;
     speed.stopped = false;
-    paintSpeed();
+    refresh(); // the row and the button say "Testing" at once, not at the next tick
     try {
       speed.last = await runSpeedTest({ signal: ctl.signal });
       speed.failed = false;
