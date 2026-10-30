@@ -16,16 +16,16 @@
  *
  * The speed of the view is therefore the touched ground's own: ground near the camera (the bottom of the screen) moves the view
  * slowly, far ground (the top) fast, because that is how fast it moves on the screen when the camera moves. The orbit target and
- * its distance set nothing. Two limits hold the pan back, and only where there is no ground to hold:
+ * its distance set nothing. Two limits keep the pan from running away; neither touches ground more than the margin below the horizon:
  *
  *   - Terrain under the finger is held exactly down to {@link PAN.HORIZON_MARGIN_DEG} below the horizon. Nearer the horizon one
  *     pixel covers kilometres (the speed goes with 1 / sin² of the angle below the horizon), so a finger that lands or goes there
  *     holds the line at the margin: the speed stops rising and nothing runs away (a few pixels of drag cannot throw the camera
  *     across the domain). A finger that landed beyond the line keeps its offset to it (no dead zone going down, no pull going up).
- *   - A finger with NO terrain under it (the sky, or beyond the edge of the domain, which is not drawn) drags the horizontal plane
- *     through the orbit target, steepened to the line where that would move the view {@link PAN.SKY_SPEEDUP} times faster than
- *     a finger at the target (see {@link GroundGrab.begin}): there is no ground for the finger to hold, so the middle of the view
- *     sets the pace.
+ *   - A finger with NO terrain under it (the sky, or beyond the edge of the domain, which is not drawn) has no ground to hold. Its
+ *     ray is steepened to the line where the horizontal plane through the orbit target would move the view {@link PAN.SKY_SPEEDUP}
+ *     times faster than ground at the target (see {@link GroundGrab.begin}), and it holds what that ray meets first, the terrain or
+ *     that plane: here the middle of the view sets the pace.
  *
  * As a last resort (a camera below its target) a view-plane drag at the target distance. A finger that is dragged towards the
  * horizon is rubber-banded at {@link PAN.FAR} camera–target distances.
@@ -43,8 +43,9 @@ export const PAN = {
   /**
    * Terrain under the finger is held exactly, at any tilt, down to this angle below the horizon (degrees). A finger nearer the
    * horizon, or above it, holds the line at this angle: one pixel there covers ground at 1 / sin² of the angle (some 20 times the
-   * camera's height at 3°, without bound at 0°), so a few pixels of drag would throw the camera across the domain. At 3° it is
-   * at most about 2 % of the domain per pixel, and the band is about 5 % of the screen's height (50 px of 915).
+   * camera's height at 3°, without bound at 0°), so a few pixels of drag would throw the camera across the domain. At 3° the view
+   * moves by at most about 1.5 % of the domain per pixel (134 m a pixel on Katoomba's 9 km, measured over views from 600 m to 3 km
+   * at every tilt), and the band is about 6 % of the screen's height (50 px of 915).
    */
   HORIZON_MARGIN_DEG: 3,
   /**
