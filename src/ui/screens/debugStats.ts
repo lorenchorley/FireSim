@@ -242,7 +242,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
   const speedStatus = h('p', { class: 'hint', id: speedStatusId, attrs: { role: 'status', 'aria-live': 'polite' }, dataset: { testid: 'speed-test-status' } });
   const speedButton = button({ label: SPEED_TEST_LABEL, icon: 'speed', variant: 'tonal', testId: 'speed-test', onClick: () => void runTest() });
   speedButton.setAttribute('aria-describedby', speedStatusId);
-  const speedBox = h('div', { class: 'mc-actions cluster' }, [speedButton, speedStatus]);
+  const speedBox = h('div', null, [h('div', { class: 'mc-actions cluster' }, speedButton), speedStatus]);
   /** The button and the status line follow the facts: off with the reason while a run plays or computes, busy while the test runs. */
   const paintSpeed = (): void => {
     const f = speedFacts();
