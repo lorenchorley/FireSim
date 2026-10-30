@@ -5,7 +5,7 @@
  * windPanelModel.ts; the change itself is made and undone by the session (`setWindDirection`, `removeWindDirection`).
  */
 import { windDirectionEdits } from '../../../scenario/windDirection';
-import { h, listen, setChildren, show, text, uniqueId } from '../../dom';
+import { h, listen, setChildren, text, uniqueId } from '../../dom';
 import { weatherAt } from '../../weatherSeries';
 import { button, compassRose, segmented } from '../../widgets';
 import type { SimContext } from './context';
@@ -33,6 +33,11 @@ import {
   type WhenState,
   type WindEnv,
 } from './windPanelModel';
+
+/** Show or hide with the `hidden` attribute, touching the DOM only when it changes (the panel is brought up to date on every tick of the clock). */
+const setShown = (el: HTMLElement, shown: boolean): void => {
+  if (el.hidden === shown) el.hidden = !shown;
+};
 
 export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTMLElement; destroy(): void } {
   const { ui, session } = ctx;
@@ -173,17 +178,18 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
     const s = session.state.get();
     const dir = ui.get().wind.dir;
     const v = windView({ when, viewTime: s.viewTime, env, dir, directionAt });
-    show(timeField, when.choice === 'at');
+    setShown(timeField, when.choice === 'at');
     const newMessage = v.message !== '' && msg.textContent !== v.message;
     text(msg, v.message);
-    show(msg, v.message !== '');
+    setShown(msg, v.message !== '');
     if (newMessage) msg.scrollIntoView({ block: 'nearest' }); // the reason Apply is off: not to be left under the fold
-    timeInput.setAttribute('aria-invalid', String(when.choice === 'at' && !v.when.ok && v.message !== ''));
+    const invalid = String(when.choice === 'at' && !v.when.ok && v.message !== '');
+    if (timeInput.getAttribute('aria-invalid') !== invalid) timeInput.setAttribute('aria-invalid', invalid);
     text(line1, v.lines[0] ?? '');
     text(line2, v.lines[1] ?? '');
-    show(line2, !!v.lines[1]);
+    setShown(line2, !!v.lines[1]);
     text(reviewing, s.reviewing ? reviewingText(s.viewTime, env) : '');
-    show(reviewing, s.reviewing);
+    setShown(reviewing, s.reviewing);
     text(applyText, applyLabel(dir));
     applyBtn.disabled = !v.canApply;
     renderList();
