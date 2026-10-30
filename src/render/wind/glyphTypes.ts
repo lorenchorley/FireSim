@@ -16,6 +16,7 @@ export const GLYPH_CAPS: Record<GlyphTier, { glyphs: number; segments: number }>
   medium: { glyphs: 1200, segments: 8000 },
   high: { glyphs: 2000, segments: 12000 },
 };
+/** The whole frame's triangles; the glyph layer trims its picture to it (the detailed streaks keep `DETAIL_MIN_SEGMENTS` over it). */
 export const FRAME_TRIANGLE_LIMIT = 550_000;
 export const GLYPH_SHAFT_SEGMENTS_MAX = 10; // plus 2 for the arrowhead: 12 per glyph
 export interface Box {

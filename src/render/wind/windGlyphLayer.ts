@@ -11,7 +11,9 @@
  *    staged: the raster fill in slices of its own (resumable by rows), then the trace in slices of at most 8 ms; the batches
  *    change only at the swap;
  *  - the segment cap follows `renderer.info`, so a frame never crosses `FRAME_TRIANGLE_LIMIT`; when that leaves no room at all
- *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room);
+ *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room). The one exception is the
+ *    detailed streaks, which keep `DETAIL_MIN_SEGMENTS` however full the frame is (a dense forest at the High tier is over the limit
+ *    without them), so the closest zoom always has its picture and the limit is exceeded by at most 2 triangles a segment of that;
  *  - the picture is draped on the drawn mesh a little above the ground; the numbers come from the 10 m ground as received.
  * Eye level, a view without air wind and a map zoomed so far out that a model cell is under 4 px draw nothing (`stats().idle`).
  *

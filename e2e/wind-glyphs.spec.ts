@@ -22,6 +22,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CDPSession, Page, TestInfo } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT } from '../src/render/wind/glyphTypes';
 import { acceptNotice, frame, newHand } from './helpers';
 
 // The software-GL test browser draws about one frame per second whatever the resolution; the smaller canvas keeps each frame cheap.
@@ -418,7 +419,7 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
     const c = await read();
     expect(c.level).toBe(4);
     expect(close.calls).toBeLessThanOrEqual(25);
-    expect(close.triangles).toBeLessThanOrEqual(550_000);
+    expect(close.triangles).toBeLessThanOrEqual(FRAME_TRIANGLE_LIMIT + 2 * DETAIL_MIN_SEGMENTS); // the picture here is the detailed streaks: 2 x their floor over the limit at the most
     // At this zoom (0.6.0) the picture is the detailed streaks, one draw call, which the Wind streaks switch (on by default) draws too: the glyph switch
     // off changes nothing, and both off draws nothing extra.
     await setLayers(page, { windGlyphs: false });
