@@ -882,7 +882,7 @@ describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, th
     expect(read('screens/sim/layersPanel.ts')).toContain("{ value: 'volume', label: 'Through the plume' }");
     expect(squash(step('Layers'))).toContain('but at the closest zoom both (the Wind streaks set to “Near the ground”) draw the same detailed streaks');
     // What is the model's and what is added, in the sheet's words.
-    expect(EDDIES_LINE).toContain('The small eddies are added for looks, from the shape of the ground.');
+    expect(EDDIES_LINE).toContain('These bends and eddies are added for looks, from the shape of the ground and the trees.');
     expect(b).toContain('are added for looks, from the shape of the ground; the model does not calculate them, and the Wind detail sheet says so');
     expect(EDDIES_LINE).toContain('The streaks also move faster than the real wind so that you can see them.');
     expect(b).toContain('The streaks also move faster than the real wind so that you can see them.');

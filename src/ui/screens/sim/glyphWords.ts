@@ -124,6 +124,8 @@ export const LEVEL_LINE: Record<GlyphLevel, string> = {
 /** The closest zoom when the detailed streaks are not drawn (0.5.0's picture: the layer is trimmed, or the detail has not been built yet), and when they stand still (reduced motion). */
 export const LONG_LINES_LINE = 'Showing long flow lines.';
 export const STILL_STREAKS_LINE = 'Showing streaks with small eddies, standing still. This is the most detailed level.';
+/** The same picture held after a minute without a touch (0.7.0): it moves again at the next touch. */
+export const PAUSED_STREAKS_LINE = 'Showing streaks with small eddies, paused to save battery. This is the most detailed level.';
 
 export const EYE_LEVEL_LINE = 'Not drawn at eye level. Go back to the map view.';
 export const NO_WIND_LINE = 'Waiting for the wind picture.';
@@ -131,7 +133,8 @@ export const BUDGET_LINE = 'Not drawn here: this view already uses all the phone
 
 /**
  * The line under the caption, from the layer's own statistics; '' when the layer says nothing yet (or is off). At the closest zoom it says what is
- * drawn: moving streaks, streaks standing still (`detail` 'still') or, when the detailed streaks are not drawn (`detail` 'off'), the long flow lines.
+ * drawn: moving streaks, streaks standing still (`detail` 'still'), streaks paused to save battery (`detail` 'paused') or, when the detailed streaks are not
+ * drawn (`detail` 'off'), the long flow lines.
  */
 export function glyphLevelLine(stats: (Pick<WindGlyphStats, 'idle' | 'level'> & Partial<Pick<WindGlyphStats, 'detail'>>) | null | undefined): string {
   if (!stats) return '';
@@ -140,6 +143,7 @@ export function glyphLevelLine(stats: (Pick<WindGlyphStats, 'idle' | 'level'> & 
   if (stats.idle === 'budget') return BUDGET_LINE;
   if (stats.idle === 'off') return '';
   if (stats.level === 4 && stats.detail === 'still') return STILL_STREAKS_LINE;
+  if (stats.level === 4 && stats.detail === 'paused') return PAUSED_STREAKS_LINE;
   if (stats.level === 4 && stats.detail === 'off') return LONG_LINES_LINE;
   return LEVEL_LINE[stats.level] ?? '';
 }

@@ -17,7 +17,7 @@ import { GLYPH_SMOOTH_FIT_PX } from './glyphWords';
 /** What the wind picture is: nothing drawn, the straight arrows, the curved flow lines, the detailed streaks of the closest zoom, the Wind streaks over the whole area, or through the air. */
 export type DetailKind = 'none' | 'arrows' | 'curves' | 'detailed' | 'overview' | 'volume';
 /** What holds the picture back, in the order the sheet says it. */
-export type DetailLimit = 'budget' | 'zoom' | 'cells' | 'estimated' | 'still';
+export type DetailLimit = 'budget' | 'zoom' | 'cells' | 'estimated' | 'still' | 'paused';
 export interface WindDetailInput {
   glyphsOn: boolean;
   streaks: 'off' | 'surface' | 'volume';
@@ -75,7 +75,10 @@ export function windDetailState(i: WindDetailInput): WindDetailState {
   if (level < 4 && stats.level < 4 && (kind === 'arrows' || kind === 'curves' || kind === 'overview')) limits.push('zoom');
   if (onGlyphs && (kind === 'detailed' || stats.cellPx > GLYPH_SMOOTH_FIT_PX)) limits.push('cells');
   if (i.air === 'diagnosed') limits.push('estimated');
-  if (stats.detail === 'still') limits.push('still');
+  // Reduced motion stills the detailed streaks at the closest zoom and, since 0.7.0, the old Wind streaks at every zoom (while one of those switches is on);
+  // the pause after a minute without a touch (`detail` 'paused') is a moving picture that has been held.
+  if (stats.detail === 'still' || (stats.reduced && streaks !== 'off')) limits.push('still');
+  if (stats.detail === 'paused') limits.push('paused');
 
   return { visible: true, level, kind, limits, key: `true|${level}|${kind}|${limits.join(',')}|${i.height}` };
 }

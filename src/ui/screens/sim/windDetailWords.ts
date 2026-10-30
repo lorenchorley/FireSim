@@ -3,8 +3,9 @@
  * is read, and what holds it back. Pure (no DOM, no Three), unit-tested (windDetailWords.test.ts); loaded with the sheet on the first tap, not in the entry.
  *
  * Truth in the sheet (plan section 4 rule 4): numbers are "about"; the model's cells are named, since between its points the wind is a smooth fit;
- * at the closest zoom the streaks wear small eddies that the model does not calculate, and the sheet says so in plain words and never calls them the
- * model's; an estimated wind (the fast tier) says it is not simulated.
+ * at the closest zoom the streaks bend around ridges and trees and wear small eddies that the model does not calculate, and the sheet says so in plain
+ * words and never calls the bends or the eddies the model's; an estimated wind (the fast tier) says it is not simulated; reduced motion and the pause
+ * after a minute without a touch (0.7.0) say why the streaks do not move.
  */
 import type { WindHeight } from '../../../render/wind/glyphTypes';
 import { BUDGET_LINE, LEVEL_LINE } from './glyphWords';
@@ -15,9 +16,11 @@ export const NOTHING_LINE = 'Nothing is drawn at this zoom.';
 export const ZOOM_LINE = 'Zoom in for more detail.';
 export const MOST_DETAILED_LINE = 'This is the most detailed level.';
 export const OVERVIEW_LINE = 'These streaks do not get more detailed as you zoom in, until the closest level.';
-export const EDDIES_LINE = 'The small eddies are added for looks, from the shape of the ground. The streaks also move faster than the real wind so that you can see them.';
+export const EDDIES_LINE =
+  'Where the ground rises or trees stand, the streaks bend around them, and small eddies are added behind them. These bends and eddies are added for looks, from the shape of the ground and the trees. The streaks also move faster than the real wind so that you can see them.';
 export const ESTIMATED_LINE = "The fast tier's wind is estimated from the forecast and the shape of the ground. It is not simulated.";
 export const STILL_LINE = 'Your phone is set to reduce motion, so the streaks stand still.';
+export const PAUSED_LINE = 'The streaks paused to save battery. Touch the screen to move them again.';
 
 /** What the picture is, after "Level N of 4:". The arrows are two steps: far apart, then closer together. */
 const KIND_NAME: Record<Exclude<DetailKind, 'none'>, string> = {
@@ -57,5 +60,6 @@ export function windDetailWords(s: WindDetailState, o: { heightLabel: string; he
   if (s.limits.includes('budget')) lines.push(BUDGET_LINE);
   if (s.limits.includes('estimated')) lines.push(ESTIMATED_LINE);
   if (s.limits.includes('still')) lines.push(STILL_LINE);
+  if (s.limits.includes('paused')) lines.push(PAUSED_LINE);
   return { title: SHEET_TITLE, lines };
 }
