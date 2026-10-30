@@ -188,6 +188,18 @@ describe('stylesheets: tap targets', () => {
     expect(Buffer.byteLength(css('slice.css'), 'utf8')).toBeLessThanOrEqual(4096);
   });
 
+  it('in short landscape the Air slices body reserves 96 px under the pinned picture and 48 px over the pinned footer: a control scrolled to the middle clears a footer that wraps to two lines with a recording (0.7.0, F3)', () => {
+    // The footer is about 26 px on one line and 43 px on two (a 17 px line, 8 px of padding, the 1 px rule); the reserve must clear the two-line one and a few px
+    // more, or the control's lower hit area ends under it (3 of 8 probes missed at 844 x 390 with a recording until 0.7.0). The e2e (air-slice.spec.ts) judges it on the real panel.
+    const text = css('slice.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const media = /@media \(orientation: landscape\) and \(max-height: 540px\) \{([\s\S]*?)\n\}/.exec(text)?.[1];
+    expect(media, 'the short-landscape block is there').toBeTruthy();
+    const pad = /\.slice-tool-body \{[^}]*scroll-padding:\s*(\d+)px 0 (\d+)px/.exec(media!);
+    expect(pad, 'it sets scroll-padding: top 0 bottom').toBeTruthy();
+    expect(Number(pad![1]), 'the pinned picture: 8 px of padding and the 84 px canvas, and a few px more').toBeGreaterThanOrEqual(92);
+    expect(Number(pad![2]), 'the pinned footer on two lines').toBeGreaterThanOrEqual(46);
+  });
+
   it('the Wind height chips and the Side view / Map view tabs never break a word at a large text size: their words wrap between words (or the chip moves to the next row), not inside them', () => {
     // components.css lets a chip's or a segment's label break anywhere (`overflow-wrap: anywhere`) so a long word cannot widen the page; these two do not need it.
     const chipText = rule('layers.css', '.wg-options .chip-radio .chip-text');
