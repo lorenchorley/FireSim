@@ -105,12 +105,12 @@ describe('the engine is pure', () => {
 });
 
 describe('the obstacles of the detailed streaks (0.7.0)', () => {
-  it('are imported by the builder alone (and the tests): nothing else of the app reads them', () => {
+  it('are imported by the builder and the layer (its `canopyPlane`) alone, and the tests: nothing else of the app reads them', () => {
     const importers = sourcesUnder(SRC)
       .filter((f) => importsOf(f, true).some((spec) => /(^|[\\/])detailObstacles$/.test(spec.replace(/\.ts$/, ''))))
       .map((f) => relative(SRC, f))
       .sort();
-    expect(importers).toEqual([join('render', 'wind', 'detailStreaks.ts')]);
+    expect(importers).toEqual([join('render', 'wind', 'detailStreaks.ts'), join('render', 'wind', 'windGlyphLayer.ts')]);
   });
 
   it('draw no random number, touch no DOM and import nothing but types of the app (the engine test above reads the same file)', () => {

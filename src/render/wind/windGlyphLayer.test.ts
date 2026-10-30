@@ -14,6 +14,8 @@ import type { ViewMode } from '../cameraRig';
 import { HeightField } from '../heightfield';
 import { StreakBatch } from '../streaks';
 import { makeAirView } from '../slice/testing';
+import type { GridSpec } from '../../core/grid';
+import type { FuelMap } from '../../core/types';
 import { HALO_INK } from './flowGlyphs';
 import { FILL_ROWS_PER_CHECK } from './glyphField';
 import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData, type PrecompileTarget } from './windGlyphLayer';
@@ -1711,6 +1713,12 @@ describe('WindGlyphLayer: the cold first zoom (0.7.0)', () => {
   });
 });
 
+/** A canopy of 24 m trees and full cover over a grid: the stroke's plane is 0.85 x 24 = 20.4 m. */
+const canopyOf = (grid: GridSpec, height = 24, cover = 1): FuelMap => {
+  const n = grid.nx * grid.ny;
+  return { grid, canopyHeight: new Float32Array(n).fill(height), canopyCover: new Float32Array(n).fill(cover) } as unknown as FuelMap;
+};
+
 describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', () => {
   /** A source with one placed tree (`serial` is a plain number the test moves). */
   const tree = { group: 0, count: 1, position: new Float32Array([5, 5, 0]), size: new Float32Array([30, 10]) };
@@ -1724,7 +1732,7 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
 
   it('gives the detailed builder the relief, the canopy, the crowns and the plume, and the glyph builder none of them', () => {
     const r = rig();
-    const fuel = { grid: r.fresh().atm!.grid } as never;
+    const fuel = canopyOf(r.fresh().atm!.grid);
     const src = crowns();
     r.layer.setCanopy(fuel);
     r.layer.setCrowns(src);
@@ -1741,7 +1749,7 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
 
   it('rides on the canopy and bends round crowns only while trees are drawn: no canopy for a source with no tree placed or drawn', () => {
     const r = rig();
-    const fuel = { grid: r.fresh().atm!.grid } as never;
+    const fuel = canopyOf(r.fresh().atm!.grid);
     r.layer.setCanopy(fuel);
     r.layer.setCrowns({ serial: 1, sets: () => [] });
     r.go(L4, { settle: true });
@@ -1791,7 +1799,7 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     r.go(L4, { dt: 300 });
     r.go(L4, { dt: 300 });
     expect(r.detail.begins).toHaveLength(3);
-    r.layer.setCanopy({ grid: r.fresh().atm!.grid } as never);
+    r.layer.setCanopy(canopyOf(r.fresh().atm!.grid));
     r.go(L4, { dt: 300 });
     r.go(L4, { dt: 300 });
     expect(r.detail.begins).toHaveLength(4);
@@ -1817,10 +1825,55 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     const lowRig = rig();
     lowRig.go(L3, { settle: true });
     lowRig.layer.setCrowns(crowns());
-    lowRig.layer.setCanopy({ grid: lowRig.fresh().atm!.grid } as never);
+    lowRig.layer.setCanopy(canopyOf(lowRig.fresh().atm!.grid));
     lowRig.go(L3, { dt: 1000 });
     lowRig.go(L3, { dt: 1000 });
     expect(lowRig.stub.begins, 'the arrows do not read the relief').toHaveLength(1);
+  });
+
+  it('plans the lattice for the strokes riding on the canopy: nearer the eye than the ground, so a pixel covers fewer metres there (and only then)', () => {
+    const D = 150; // 86 m up at 55 degrees: a 20.4 m plane is a quarter of the way down
+    const plain = rig();
+    plain.go(D, { settle: true });
+    const base = plain.detail.begins[0]!.lod;
+    expect(base.mppCentre).toBeCloseTo((2 * D * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h, 9);
+    const riding = rig();
+    riding.layer.setCanopy(canopyOf(riding.fresh().atm!.grid));
+    riding.layer.setCrowns(crowns());
+    riding.go(D, { settle: true });
+    const lod = riding.detail.begins[0]!.lod;
+    const eyeHeight = Math.cos(THREE.MathUtils.degToRad(55)) * D;
+    expect(lod.mppCentre).toBeCloseTo(base.mppCentre! * (1 - 20.4 / eyeHeight), 6);
+    expect(lod.level).toBe(base.level);
+    expect(lod.spacingM, 'a finer lattice for the finer pixels').toBeLessThanOrEqual(base.spacingM);
+    // No tree drawn, a wind read high over the ground, the relief off, bare ground: the 0.6.0 plan.
+    const bare = rig();
+    bare.layer.setCanopy(canopyOf(bare.fresh().atm!.grid, 24, 0));
+    bare.layer.setCrowns(crowns());
+    bare.go(D, { settle: true });
+    expect(bare.detail.begins[0]!.lod.mppCentre, 'cover 0: the plane is the ground').toBe(base.mppCentre);
+    const high = rig({ height: 50 });
+    high.layer.setCanopy(canopyOf(high.fresh().atm!.grid));
+    high.layer.setCrowns(crowns());
+    high.go(D, { settle: true });
+    expect(high.detail.begins[0]!.lod.mppCentre, 'the 50 m wind flies over the canopy').toBe(base.mppCentre);
+    const none = rig();
+    none.layer.setCanopy(canopyOf(none.fresh().atm!.grid));
+    none.layer.setCrowns({ serial: 1, sets: () => [] });
+    none.go(D, { settle: true });
+    expect(none.detail.begins[0]!.lod.mppCentre, 'no tree is drawn').toBe(base.mppCentre);
+    const off = rig();
+    off.layer.setCanopy(canopyOf(off.fresh().atm!.grid));
+    off.layer.setCrowns(crowns());
+    off.layer.setRelief(false);
+    off.go(D, { settle: true });
+    expect(off.detail.begins[0]!.lod.mppCentre, 'the kill switch').toBe(base.mppCentre);
+    // A camera below the plane does not make the pixels vanish: the ratio holds at a quarter.
+    const low = rig();
+    low.layer.setCanopy(canopyOf(low.fresh().atm!.grid, 40));
+    low.layer.setCrowns(crowns());
+    low.go(30, { settle: true });
+    expect(low.detail.begins[0]!.lod.mppCentre).toBeCloseTo(((2 * 30 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h) * 0.25, 9);
   });
 
   it('says `paused` for streaks that move while the view holds still, never over `still` or `off`, and animates as before', () => {

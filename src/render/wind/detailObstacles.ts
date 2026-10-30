@@ -116,6 +116,41 @@ export function crownDiscRadius(height: number, width: number, zs: number, centr
   return 0.5 * width * Math.sqrt(1 - t * t);
 }
 
+/**
+ * The stroke's plane over the ground at (`x`, `y`) for a canopy: what `Obstacles.canopyAt` gives (`topShare` x canopy height x cover weight; bilinear, clamped
+ * to the grid's edge), as a plain function for the layer, which needs it once a frame at the middle of the screen (to keep the lines as far apart on the
+ * screen as they were when they ran along the ground: a stroke on the canopy is nearer the eye, so its lattice looks coarser). 0 for a grid that is no use.
+ */
+export function canopyPlane(fuel: FuelMap, x: number, y: number, canopy: DetailRelief['canopy']): number {
+  const g: GridSpec = fuel.grid;
+  const n = g.nx * g.ny;
+  if (!(g.nx >= 2 && g.ny >= 2 && g.cellSize > 0 && fuel.canopyHeight.length >= n && fuel.canopyCover.length >= n)) return 0;
+  const mx = g.nx - 1;
+  const my = g.ny - 1;
+  let fx = (x - g.x0) / g.cellSize;
+  let fy = (y - g.y0) / g.cellSize;
+  fx = fx < 0 ? 0 : fx > mx ? mx : fx;
+  fy = fy < 0 ? 0 : fy > my ? my : fy;
+  let i0 = fx | 0;
+  let j0 = fy | 0;
+  if (i0 >= mx) i0 = mx - 1;
+  if (j0 >= my) j0 = my - 1;
+  const tx = fx - i0;
+  const ty = fy - j0;
+  const q = j0 * g.nx + i0;
+  const nx = g.nx;
+  const h = fuel.canopyHeight;
+  const c = fuel.canopyCover;
+  let hh = (h[q]! * (1 - tx) + h[q + 1]! * tx) * (1 - ty) + (h[q + nx]! * (1 - tx) + h[q + nx + 1]! * tx) * ty;
+  const cover = (c[q]! * (1 - tx) + c[q + 1]! * tx) * (1 - ty) + (c[q + nx]! * (1 - tx) + c[q + nx + 1]! * tx) * ty;
+  if (!(hh > 0)) hh = 0;
+  else if (hh > canopy.maxHeightM) hh = canopy.maxHeightM;
+  let cw = cover / canopy.coverFull;
+  if (!(cw > 0)) cw = 0;
+  else if (cw > 1) cw = 1;
+  return canopy.topShare * hh * cw;
+}
+
 export class Obstacles {
   readonly io = new Float64Array(IO_LEN);
   /** Projection x view of the picture, column-major (what the builder holds). */

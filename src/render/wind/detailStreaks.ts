@@ -277,7 +277,7 @@ const LINE_CHECK = 16;
 const LINE_CHECK_WARMING = 4;
 const LINE_CHECK_COLD = 1;
 /** The trees (the canopy to ride on, the crowns, the plume) are for the wind read at most this high over the ground (m): the 10 m wind and the wind the fire feels. */
-const RELIEF_TREE_MAX_M = 20;
+export const RELIEF_TREE_MAX_M = 20;
 /** A wind high above the ground does not care about its ridges: under this share of the ground terms the ridge slide is off. */
 const RELIEF_MIN_GFAC = 0.02;
 /** The lee sites' lattice is at most this many cells a side, and its points are moved by up to this share of a spacing. */
@@ -590,7 +590,15 @@ class Builder implements DetailBuilder {
     s[0] = px;
     s[1] = py;
     this.groundAt();
-    const yw = s[2]! * f[F_VEX]!;
+    let yw = s[2]! * f[F_VEX]!;
+    if (this.n[N_CANOPY] !== 0) {
+      // The stroke rides on the canopy's top, up to 40 m over the ground: a seed is on the screen where its line is drawn, not where its foot is.
+      const io = this.ob.io;
+      io[IO_X] = px;
+      io[IO_Y] = py;
+      this.ob.canopyAt();
+      yw += io[IO_ZC]!;
+    }
     const zw = -py;
     const w = vp[3]! * px + vp[7]! * yw + vp[11]! * zw + vp[15]!;
     if (!(w > f[F_WMIN]!)) return 0;
@@ -638,7 +646,14 @@ class Builder implements DetailBuilder {
       s[0] = x;
       s[1] = y;
       this.groundAt();
-      const yw = (s[2]! + lift) * vex;
+      let yw = (s[2]! + lift) * vex;
+      if (this.n[N_CANOPY] !== 0) {
+        const io = this.ob.io;
+        io[IO_X] = x;
+        io[IO_Y] = y;
+        this.ob.canopyAt();
+        yw += io[IO_ZC]!;
+      }
       const zw = -y;
       const w = vp[3]! * x + vp[7]! * yw + vp[11]! * zw + vp[15]!;
       if (!(w > wmin)) continue;

@@ -40,12 +40,13 @@ import type { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
 import { StreakBatch } from '../streaks';
 import { DETAIL_DEPTH_BIAS_M, DETAIL_WIDTH_PX, DetailBatch } from './detailBatch';
-import { createDetailBuilder } from './detailStreaks';
+import { canopyPlane } from './detailObstacles';
+import { createDetailBuilder, RELIEF_TREE_MAX_M } from './detailStreaks';
 import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, GLYPH_CAPS, type Box, type CrownSet, type CrownSource, type DetailBuilder, type DetailInput, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight, type DetailRelief } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, GLYPH_CAPS, type Box, type CrownSet, type CrownSource, type DetailBuilder, type DetailInput, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphLevel, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight, type DetailRelief } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
@@ -175,6 +176,8 @@ export class WindGlyphLayer {
   private readonly plan = newPlan();
   private readonly buildPlan = newPlan();
   private planKept = false;
+  /** The level and lattice exponent the plan held before this frame's call: the hysteresis of the second call of a frame that plans twice. */
+  private readonly prevPlan = { level: 0 as GlyphLevel, spacingExp: 0 };
   private built: BuiltPicture = newBuilt();
   private next: BuiltPicture = newBuilt();
   private builtValid = false;
@@ -467,8 +470,19 @@ export class WindGlyphLayer {
     const grid = d.atm!.grid;
     const mpp = metresPerPixelAt(targetDistance, css.fov, css.h);
     // The most detailed level draws the detailed streaks: `planLod` gives it their lattice and line lengths (`detail`), the lower levels the 0.5.0 ones.
-    const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan, true);
+    const prev = this.planKept ? this.prevPlan : null;
+    if (prev) {
+      prev.level = this.plan.level;
+      prev.spacingExp = this.plan.spacingExp;
+    }
+    let lod = planLod(grid.cellSize / mpp, mpp, prev, this.plan, true);
     this.planKept = true;
+    if (lod.level === DETAIL_LEVEL) {
+      // The strokes that ride on the canopy are nearer the eye than the ground the lattice was laid for: the lattice is planned for the metres a pixel
+      // covers at the strokes' own height, so the lines stay as far apart on the screen as they were on the ground (0.6.0).
+      const ratio = this.liftRatio(targetDistance);
+      if (ratio < 1) lod = planLod(grid.cellSize / mpp, mpp * ratio, prev, this.plan, true);
+    }
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
@@ -644,6 +658,23 @@ export class WindGlyphLayer {
   /** The relief of the detailed streaks is wanted: the switch and the constant. */
   private reliefActive(): boolean {
     return this.reliefOn && DETAIL_RELIEF.enabled;
+  }
+
+  /**
+   * How much nearer the eye the strokes are than the ground at the middle of the screen when they ride on the canopy, as a share of the distance
+   * (`1 - plane / eye height`, from 0.25 to 1; 1 where they do not ride on one: no relief, no canopy, no trees drawn, a wind read high over the ground).
+   * The pose of this frame is read, and nothing is allocated.
+   */
+  private liftRatio(targetDistance: number): number {
+    if (!this.reliefActive() || this.canopy === null || this.crownSrc === null) return 1;
+    if ((typeof this.height === 'number' ? this.height : 10) > RELIEF_TREE_MAX_M) return 1;
+    if (!placed(this.crownSrc.sets())) return 1;
+    const pose = this.pose;
+    const eyeHeight = -2 * (pose[8]! * pose[5]! - pose[6]! * pose[7]!) * targetDistance; // the eye over the middle of the screen: the forward axis's height, by the distance
+    if (!(eyeHeight > 0)) return 1;
+    const plane = canopyPlane(this.canopy, pose[3]!, -pose[4]!, DETAIL_RELIEF.canopy);
+    const ratio = 1 - plane / eyeHeight;
+    return ratio < 0.25 ? 0.25 : ratio > 1 ? 1 : ratio;
   }
 
   private setNoRoom(on: boolean): void {

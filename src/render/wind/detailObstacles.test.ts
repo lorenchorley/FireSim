@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { hash01 } from '../fields';
 import {
+  canopyPlane,
   crownDiscRadius,
   IO_BLOCK,
   IO_DX,
@@ -423,6 +424,18 @@ describe('the canopy the strokes ride on', () => {
     expect(zc(make(fuel(() => NaN, () => 1)), 0, 0)).toBe(0);
     expect(zc(make(fuel(() => 24, () => NaN)), 0, 0)).toBe(0);
     expect(zc(make(fuel(() => -3, () => 1)), 0, 0)).toBe(0);
+  });
+
+  it('is the same plane for the layer\'s plain `canopyPlane` as for the builder\'s `canopyAt`, everywhere (edges and outside the grid included)', () => {
+    const f = fuel((i, j) => 6 + ((i * 7 + j * 3) % 40), (i, j) => ((i * 5 + j * 11) % 10) / 9);
+    const ob = make(f);
+    for (let k = 0; k < 200; k++) {
+      const x = -380 + (k * 37.7) % 760;
+      const y = -380 + (k * 91.3) % 760;
+      expect(canopyPlane(f, x, y, DETAIL_RELIEF.canopy), `${x}, ${y}`).toBeCloseTo(zc(ob, x, y), 4);
+    }
+    const bad = { grid, canopyHeight: new Float32Array(3), canopyCover: new Float32Array(3) } as unknown as FuelMap;
+    expect(canopyPlane(bad, 0, 0, DETAIL_RELIEF.canopy)).toBe(0);
   });
 
   it('climbs smoothly across the edge of a stand: bilinear, a ramp of one cell, no step', () => {

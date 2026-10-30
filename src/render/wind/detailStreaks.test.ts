@@ -12,6 +12,7 @@ import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERR
 import { detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
 import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { crownDiscRadius } from './detailObstacles';
+import { planLod } from './glyphLod';
 import { hash01 } from '../fields';
 import { DETAIL_GEOMETRY, DETAIL_RELIEF, GLYPH_CAPS, type CrownSet, type DetailBuilder, type DetailInput, type DetailOutput, type DetailRelief, type GlyphTier, type Plume } from './glyphTypes';
 import type { FuelMap } from '../../core/types';
@@ -1211,17 +1212,27 @@ describe('the relief: off, absent, or with nothing to bend round, is the 0.6.0 p
     expect(hashOf(build(withRelief(flat)).out)).toBe(hashOf(build(flat).out));
   });
 
-  it('draws the same lines in the same places with the crowns too far to count (a 5 m crown under 8 px across): nothing is blocked, only the canopy lifts them', () => {
+  it('draws the same lines from the same seeds with the crowns too far to count (a 5 m crown under 8 px across): nothing is blocked, only the canopy lifts them', () => {
     const sc = makeDetailScenario({ field: () => [6, 8], cellPx: 150 }); // 0.89 m a pixel
     const trees = stand([[0, 0, 30, 10], [20, 10, 31, 9]]);
     const a = build(withRelief(sc, { canopyH: 24, crowns: [trees] }));
     const b = build(sc);
-    expect(a.out.lines).toBe(b.out.lines);
     expect(a.out.blocked).toBe(0);
-    for (let k = 0; k < b.out.segments; k++) {
-      expect(a.out.a[3 * k]).toBe(b.out.a[3 * k]);
-      expect(a.out.a[3 * k + 2]).toBe(b.out.a[3 * k + 2]);
+    // The canopy lifts the strokes (a seed is on the screen where its line is drawn, so a few lines come and go at the edge of the picture), the crowns change nothing.
+    const key = (l: Line): string => `${l.seed[0]},${l.seed[1]}`;
+    const inB = new Map(b.lines.map((l) => [key(l), l]));
+    let shared = 0;
+    for (const l of a.lines) {
+      const m = inB.get(key(l));
+      if (!m) continue;
+      shared++;
+      expect(l.count).toBe(m.count);
+      // The same seed, and a line of the same number of steps (it is as many pixels long, so a little other metres where it is drawn higher), 20 m or so higher.
+      expect(a.out.a[3 * l.seg]).toBe(b.out.a[3 * m.seg]);
+      expect(a.out.a[3 * l.seg + 2]).toBe(b.out.a[3 * m.seg + 2]);
+      for (let k = 0; k < l.count; k++) expect(a.out.a[3 * (l.seg + k) + 1]).toBeGreaterThan(b.out.a[3 * (m.seg + k) + 1]! + 10);
     }
+    expect(shared).toBeGreaterThan(0.9 * b.lines.length);
   });
 });
 
@@ -1370,6 +1381,38 @@ describe('the relief: the strokes ride on the canopy', () => {
   });
 });
 
+describe('the relief: a seed is on the screen where its line is drawn', () => {
+  it('fills the bottom of a tilted close view as the 0.6.0 picture does: a line lifted onto a 20 m canopy shows where its foot is below the screen', () => {
+    // A camera 40 m up and 30 m south of the target (a 53 degree view), the canopy plane 20.4 m: the strokes are drawn 20 m up, which moves a whole line's picture
+    // up the screen by 300 px or so; seeds are chosen for where that picture is, so the bottom of the screen is not empty.
+    const camera = makeCamera({ eye: [0, 40, 30], target: [0, 0, 0], near: 8 });
+    const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 });
+    const share = (sc2: DetailScenario): { bottom: number; total: number } => {
+      const { out, lines } = build(sc2);
+      const vp = camera.viewProj;
+      let bottom = 0;
+      let total = 0;
+      for (const l of lines) {
+        const x = out.a[3 * l.seg]!;
+        const y = out.a[3 * l.seg + 1]!;
+        const z = out.a[3 * l.seg + 2]!;
+        const w = clipW(vp, x, y, z);
+        const ndcY = (vp[1]! * x + vp[5]! * y + vp[9]! * z + vp[13]!) / w;
+        total++;
+        if (ndcY < -0.5) bottom++;
+      }
+      return { bottom, total };
+    };
+    // (The layer plans the relief picture's lattice for the strokes' own height: a pixel covers fewer metres there, 1 - 20.4 / 40 of them.)
+    const lifted = planLod(sc.plan.cellPx, sc.plan.mppCentre! * (1 - 20.4 / 40), null, undefined, true);
+    const off = share(sc);
+    const on = share(withRelief({ ...sc, input: { ...sc.input, lod: lifted } }, { canopyH: 24, cover: 1 }));
+    expect(off.bottom, 'the 0.6.0 picture has lines in the bottom quarter').toBeGreaterThan(30);
+    expect(on.bottom, 'so does the relief picture').toBeGreaterThan(0.75 * off.bottom);
+    expect(on.total, 'and as many lines in all').toBeGreaterThan(0.75 * off.total);
+  });
+});
+
 describe('the relief: the lines part round a crown', () => {
   /** A top view at 0.133 m a pixel (412 px = 55 m), a wind of 12 m/s from the west (lines of 25 m), a canopy of 24 m (the stroke at 20.4 m) and one tree of 40 m x 16 m at the middle: a disc of 6.2 m at the stroke. */
   const view = (o: DetailScenarioOptions = {}): DetailScenario => makeDetailScenario({ field: () => [12, 0], camera: topDownCamera(133, 1000, 0, 0, { near: 5 }, 0), ...o });
@@ -1388,8 +1431,9 @@ describe('the relief: the lines part round a crown', () => {
     expect(out.blocked).toBeGreaterThan(0);
     expect(base.out.blocked).toBe(0);
     for (const l of lines) expect(Math.hypot(l.seed[0], l.seed[1]), `seed ${l.seed}`).toBeGreaterThanOrEqual(0.8 * R - 1e-3);
+    // Every vertex after a seed is outside the rim; a seed itself is outside 0.8 radii (the seed block), and may stand between the two.
     let nearest = Infinity;
-    for (let k = 0; k < out.segments; k++) for (const [x, y] of [[out.a[3 * k]!, -out.a[3 * k + 2]!], [out.b[3 * k]!, -out.b[3 * k + 2]!]] as const) nearest = Math.min(nearest, Math.hypot(x, y));
+    for (const l of lines) for (let k = l.seg; k < l.seg + l.count; k++) nearest = Math.min(nearest, Math.hypot(out.b[3 * k]!, out.b[3 * k + 2]!));
     expect(nearest).toBeGreaterThanOrEqual(0.85 * R - 1e-3);
     expect(nearest, 'some line does end at the rim').toBeLessThan(0.85 * R + 0.5);
     // The lines that were blocked are the ones the crown took: the others are the straight picture's (before the crown) or bent ones.
