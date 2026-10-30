@@ -638,6 +638,10 @@ button.lp-heat-main:active {
   grid-column: 1 / -1;
 }
 
+.wg-options > .chip {
+  align-self: flex-start; /* Colour the map by speed: the chip is a direct child (no wrapper node), and is as wide as its label */
+}
+
 .wg-options .chip[data-value='felt'] .chip-text {
   white-space: normal;
 }

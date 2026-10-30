@@ -184,6 +184,8 @@ export interface GlyphViewInput {
   air: GlyphAir | null;
   /** The ground is coloured by the Wind speed map (0.7.0, E1b): the caption says so. */
   mapOn?: boolean;
+  /** "Colour the map by speed" is greyed (0.7.0, E1b): the caption line that says why (`windMapReasonLine`), or '' / absent when the chip can be used. */
+  mapReason?: string;
   tz: string;
   absTime(t: number): number;
 }
@@ -200,6 +202,7 @@ export function glyphView(i: GlyphViewInput): GlyphView {
   if (!i.on || !i.has3dView) return { reason, caption: [], level: '' };
   const caption = i.air && !reason ? glyphCaption(i.height, i.air, dataCellPx(i.stats, i.height === 'felt' && !!i.air.felt), i.tz, i.absTime) : [];
   if (caption.length && i.mapOn) caption.push(MAP_COLOURED_LINE);
+  if (caption.length && i.mapReason) caption.push(i.mapReason);
   return { reason, caption, level: glyphLevelLine(i.stats) };
 }
 

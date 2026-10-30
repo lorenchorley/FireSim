@@ -104,11 +104,12 @@ test('Colour the map by speed: chip, map at the chosen height, legend and number
   await expect(chip).toHaveText('Colour the map by speed');
   await expect(chip).toBeEnabled();
   await expect(chip).toHaveAttribute('aria-pressed', 'false');
-  await expect(panel.getByTestId('wind-map-reason')).toHaveCount(0); // (made only when it is needed)
+  await expect(panel.getByTestId('wind-glyph-caption')).not.toContainText('Needs a fire'); // (a fire is marked: nothing to explain)
   expect(await chip.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
   const chipsBox = (await chips.boundingBox())!;
   const chipBox = (await chip.boundingBox())!;
   expect(chipBox.y, 'the chip sits under the height chips').toBeGreaterThan(chipsBox.y + chipsBox.height - 1);
+  expect(chipBox.width, 'and is as wide as its label, not the whole row').toBeLessThan(chipsBox.width * 0.85);
   expect((await layersOf(page)).overlay).toBe('none');
   expect(await stats(page), 'no heat map: no overlay statistics').toBeNull();
 
@@ -197,8 +198,9 @@ test('Colour the map by speed: one heat map at a time, solo heat, off, remembere
     await openArrows(page);
     const chip = page.getByTestId('layers-panel').getByTestId('wind-map-chip');
     await expect(chip).toBeDisabled();
-    await expect(page.getByTestId('layers-panel').getByTestId('wind-map-reason')).toHaveText('Needs a fire: mark one first');
-    await expect(chip).toHaveAccessibleDescription('Needs a fire: mark one first');
+    // The chip is the one node it adds: the reason is a line of the caption under it, and the chip's description.
+    await expect(page.getByTestId('layers-panel').getByTestId('wind-glyph-caption')).toContainText('Colour the map by speed. Needs a fire: mark one first.');
+    await expect(chip).toHaveAccessibleDescription(/Colour the map by speed\. Needs a fire: mark one first\./);
     expect((await layersOf(page)).overlay).toBe('none');
     await page.getByTestId('layer-windGlyphs').click(); // arrows off again
     await expect(page.getByTestId('wind-height')).toBeHidden();
@@ -211,7 +213,7 @@ test('Colour the map by speed: one heat map at a time, solo heat, off, remembere
   const panel = page.getByTestId('layers-panel');
   const chip = panel.getByTestId('wind-map-chip');
   await expect(chip).toBeEnabled();
-  await expect(panel.getByTestId('wind-map-reason')).toBeHidden();
+  await expect(panel.getByTestId('wind-glyph-caption')).not.toContainText('Needs a fire');
   await panel.getByTestId('wind-height').getByRole('radio', { name: '100 m', exact: true }).check({ force: true });
   await expect.poll(async () => (await layersOf(page)).windHeight).toBe(100);
 

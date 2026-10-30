@@ -18,6 +18,7 @@ import type { SimContext } from './context';
 import { WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, glyphIntro, glyphView, windHeightOf, type GlyphAir } from './glyphWords';
 import { rememberLayerChoice } from './layersPrefs';
 import { createWindMapSwitch, type WindMapSwitch } from './windMapSwitch';
+import { windMapReasonLine } from './windMapWords';
 
 /** How often the caption looks at the layer's statistics while it is on screen (ms). */
 const POLL_MS = 500;
@@ -92,7 +93,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
         if (height !== null) set({ windHeight: height });
       },
     });
-    const caption = h('p', { class: 'hint wg-caption', hidden: true, dataset: { testid: 'wind-glyph-caption' } });
+    const caption = h('p', { class: 'hint wg-caption', id: uniqueId('wg-caption'), hidden: true, dataset: { testid: 'wind-glyph-caption' } });
     const level = h('p', { class: 'hint wg-level', hidden: true, dataset: { testid: 'wind-glyph-level' } });
     const mapSwitch = createWindMapSwitch(ctx); // "Colour the map by speed" (0.7.0, E1b): its chip sits under the height chips
     return { el: h('div', { class: 'wg-options' }, [chips.el, mapSwitch.el, caption, level]), chips, caption, level, mapSwitch };
@@ -105,6 +106,10 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     const a = availability();
     lastOk = a.ok;
     sw.set(s.windGlyphs);
+    if (s.windGlyphs && !options) {
+      options = buildOptions(); // (before the caption is worked out: it carries the map chip's reason)
+      settingsEl.append(options.el);
+    }
     const v = glyphView({
       height: s.windHeight,
       on: s.windGlyphs,
@@ -113,6 +118,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
       stats: has3dView ? (view.windGlyphStats?.() ?? null) : null,
       air: airNow(),
       mapOn: s.overlay === 'windSpeed',
+      mapReason: options ? windMapReasonLine(options.mapSwitch.reason()) : '',
       tz: ctx.tz,
       absTime: ctx.absTime,
     });
@@ -125,15 +131,11 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     intro.hidden = !hint;
     if (v.reason || hint) input.setAttribute('aria-describedby', v.reason ? reasonId : introId);
     else input.removeAttribute('aria-describedby');
-    if (s.windGlyphs && !options) {
-      options = buildOptions();
-      settingsEl.append(options.el);
-    }
     if (options) {
       // (A remembered "on" in the 2-D map has nothing to choose a height for: the reason above says so, and the switch stays operable to turn it off.)
       options.el.hidden = !s.windGlyphs || !has3dView;
       if (options.chips.get() !== String(s.windHeight)) options.chips.set(String(s.windHeight));
-      options.mapSwitch.update();
+      options.mapSwitch.update(options.caption.id);
       text(options.caption, v.caption.join('\n'));
       options.caption.hidden = v.caption.length === 0;
       text(options.level, v.level);

@@ -17,6 +17,9 @@ export function mapHeightNow(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>, s
   return shownWindHeight(windMapHeight(l), !!snapshot?.fireWind);
 }
 
+/** The caption line under the chip while it cannot be used: its name and the Wind speed row's own reason ("Colour the map by speed. Needs a fire: mark one first."); '' when it can be used. */
+export const windMapReasonLine = (reason: string): string => (reason ? `${MAP_CHIP_LABEL}. ${reason}.` : '');
+
 /** What pressing the chip writes: the Wind speed map on, or no heat map. It writes the one `overlay` key and nothing else (one heat map at a time, solo heat as for any heat map). */
 export const windMapPatch = (on: boolean): Pick<LayerState, 'overlay'> => ({ overlay: on ? 'windSpeed' : 'none' });
 

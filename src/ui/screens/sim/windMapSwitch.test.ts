@@ -10,7 +10,7 @@ import { LAYER_CATALOG, availabilityContext, layerById } from '../../../render/l
 import { DEFAULT_LAYERS } from '../../../render/layers';
 import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { heightLabel } from './glyphWords';
-import { MAP_CHIP_LABEL, mapHeightNow, windMapChipState, windMapPatch, windSpeedSubline } from './windMapWords';
+import { MAP_CHIP_LABEL, mapHeightNow, windMapChipState, windMapPatch, windMapReasonLine, windSpeedSubline } from './windMapWords';
 
 const read = (f: string): string => readFileSync(join(__dirname, f), 'utf8');
 
@@ -44,6 +44,18 @@ describe('the chip', () => {
     expect(windMapChipState('none', { ok: false })).toMatchObject({ disabled: true, reason: 'Not available here' });
   });
 
+  it('says why it is greyed in one caption line, the Wind speed row\'s own reason after its name, and nothing when it can be used', () => {
+    expect(windMapReasonLine('Needs a fire: mark one first')).toBe('Colour the map by speed. Needs a fire: mark one first.');
+    expect(windMapReasonLine('')).toBe('');
+    expect(windMapReasonLine('Needs a fire: mark one first')).not.toMatch(/[—–]/);
+  });
+
+  it('is the chip itself, with no wrapper and no node of its own for the reason (the Layers panel has no node to spare)', () => {
+    const src = read('windMapSwitch.ts');
+    expect(src).toContain('el: button,');
+    expect(src).not.toMatch(/h\(\s*'(div|p|span)'/);
+  });
+
   it('works out "a fire is marked" the way the Layers panel does (an ignition, or ground already burnt), not as "a snapshot exists"', () => {
     const fire = 'st.ignitions.length > 0 || (st.snapshot?.stats?.burntAreaHa ?? 0) > 0';
     expect(read('windMapSwitch.ts')).toContain(fire);
@@ -53,7 +65,8 @@ describe('the chip', () => {
   it('is built with the Wind height chips and told to repaint with them (the one pre-wired hook of windGlyphControls)', () => {
     const c = read('windGlyphControls.ts');
     expect(c).toContain('createWindMapSwitch(ctx)');
-    expect(c).toContain('options.mapSwitch.update()');
+    expect(c).toContain('options.mapSwitch.update(options.caption.id)');
+    expect(c).toContain('windMapReasonLine(options.mapSwitch.reason())'); // (the reason is a caption line: the chip is the only node it adds)
     expect(c).toContain('options?.mapSwitch.destroy()');
     expect(c).toContain("[chips.el, mapSwitch.el, caption, level]");
   });

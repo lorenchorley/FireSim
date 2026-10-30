@@ -54,7 +54,7 @@ const clockOf = (page: Page, t: number): Promise<string> =>
 /** Katoomba, 6 km, the hot NW wind preset, offline, at the fast tier or the 3-D tier; waits for the air. */
 async function build(page: Page, detail: 'Fast' | 'Normal' = 'Fast'): Promise<void> {
   await page.goto('/?debug=1');
-  if (await page.getByTestId('notice').isVisible()) await acceptNotice(page);
+  await acceptNotice(page); // (a new profile: the first-run notice waits to be accepted)
   await buildOpen(page, detail);
 }
 async function buildOpen(page: Page, detail: 'Fast' | 'Normal' = 'Fast'): Promise<void> {

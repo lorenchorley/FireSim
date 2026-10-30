@@ -166,6 +166,15 @@ describe('the control: the line about the coloured map, and the smooth-fit rule 
     ...over,
   });
 
+  it('says why "Colour the map by speed" is greyed as the last caption line, only with a caption', () => {
+    const line = 'Colour the map by speed. Needs a fire: mark one first.';
+    expect(glyphView(input({ mapReason: line })).caption.at(-1)).toBe(line);
+    expect(glyphView(input({ mapReason: '' })).caption).not.toContain(line);
+    expect(glyphView(input({ mapReason: line, air: null })).caption).toEqual([]);
+    expect(glyphView(input({ mapReason: line, on: false })).caption).toEqual([]);
+    for (const l of glyphView(input({ mapReason: line, mapOn: true })).caption) expect(l).toMatch(/\.$/);
+  });
+
   it('adds the map line only while the ground is coloured, and only with a caption', () => {
     expect(glyphView(input()).caption).not.toContain(MAP_COLOURED_LINE);
     expect(glyphView(input({ mapOn: false })).caption).not.toContain(MAP_COLOURED_LINE);
