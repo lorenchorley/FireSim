@@ -23,11 +23,14 @@ import {
   type SimSnapshot,
   type SimStats,
   type SpotFire,
+  type WeatherSeries,
+  type WindDirectionEdit,
   type WindEdit,
 } from '../core/types';
 import { cellAt } from '../core/grid';
 import { Rng } from '../core/rng';
 import { compassName, msToKmh, wrapDeg, windToUV } from '../core/units';
+import { applyWindDirection, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
 import { Emitter } from './store';
 import { weatherAt } from './weatherSeries';
@@ -81,6 +84,8 @@ export class MockSimController implements SimController {
   private options: Opts = { coupling: 1, embers: true, mountainPhenomena: true };
   private lastInsight = new Map<string, number>();
   private windChanges: WindChange[] = [];
+  /** The forecast with the Wind direction changes applied, and the changes it was made from (the forecast itself when there are none). */
+  private wx: { key: string; series: WeatherSeries } | null = null;
   private msPerSimMinute = 0;
   private insightSeq = 0;
   private disposed = false;
@@ -96,7 +101,8 @@ export class MockSimController implements SimController {
     this.baseFuel = scenario.fuel;
     this.fuel = cloneFuel(scenario.fuel);
     this.ignitions = [...scenario.ignitions];
-    this.edits = scenario.edits.map((edit) => ({ edit, time: 0 }));
+    this.edits = scenario.edits.map((edit) => ({ edit, time: edit.kind === 'windDirection' ? edit.time : 0 }));
+    this.wx = null;
     this.options = { coupling: scenario.options.coupling, embers: scenario.options.embers, mountainPhenomena: scenario.options.mountainPhenomena };
     this.maxEmbers = scenario.options.maxEmbers ?? 4000;
     this.step = Math.max(1, scenario.options.snapshotInterval || 60);
@@ -139,17 +145,23 @@ export class MockSimController implements SimController {
   }
 
   edit(edit: ScenarioEdit, time: number): void {
-    this.edits = this.edits.filter((e) => e.edit.id !== edit.id);
-    this.edits.push({ edit, time });
+    // A Wind direction change carries its own start time, a whole minute like the engine's.
+    const e = edit.kind === 'windDirection' ? { ...edit, time: windDirectionTime(edit.time, this.scenario?.duration ?? Infinity) } : edit;
+    const at = e.kind === 'windDirection' ? e.time : time;
+    this.edits = this.edits.filter((x) => x.edit.id !== e.id);
+    this.edits.push({ edit: e, time: at });
     this.rebuildFuel();
     this.dirty = true;
-    if (time < this.time) this.rewindTo(time);
+    if (at < this.time) this.rewindTo(at);
   }
 
   removeEdit(id: string): void {
+    // A Wind direction change is removed as if never made (like an ignition): results after its start are computed again.
+    const gone = this.edits.find((e) => e.edit.id === id && e.edit.kind === 'windDirection');
     this.edits = this.edits.filter((e) => e.edit.id !== id);
     this.rebuildFuel();
     this.dirty = true;
+    if (gone && gone.time < this.time) this.rewindTo(gone.time);
   }
 
   removeIgnition(id: string): void {
@@ -263,6 +275,27 @@ export class MockSimController implements SimController {
     return this.edits.map((e) => e.edit).filter((e): e is WindEdit => e.kind === 'wind');
   }
 
+  /** The series the wind is read from: the forecast with the active Wind direction changes applied (memoised). */
+  private windSeries(): WeatherSeries {
+    const sc = this.scenario!;
+    const list = windDirectionEdits(this.edits);
+    const key = JSON.stringify(list.map((e) => [e.id, e.dir, e.time]));
+    if (this.wx?.key !== key) this.wx = { key, series: list.length ? this.turnedSeries(list) : sc.weather };
+    return this.wx.series;
+  }
+
+  /**
+   * The forecast with `list` applied, for the demo's own `weatherAt`, which reads the speed between stamps as a plain
+   * magnitude where the real series mixes the vectors (a dip when the direction turns): the added stamps get the speed
+   * that `weatherAt` gives the forecast there, so a change turns the wind and nothing else.
+   */
+  private turnedSeries(list: WindDirectionEdit[]): WeatherSeries {
+    const sc = this.scenario!;
+    const turned = applyWindDirection(sc.weather, sc.startTime, list);
+    const have = new Set(sc.weather.hours.map((h) => h.time));
+    return { ...turned, hours: turned.hours.map((h) => (have.has(h.time) ? h : { ...h, windSpeed10: weatherAt(sc.weather, h.time).windSpeed10 })) };
+  }
+
   private seeds(): Seed[] {
     const s: Seed[] = [];
     const cs = this.scenario!.terrain.grid.cellSize;
@@ -292,7 +325,7 @@ export class MockSimController implements SimController {
     return {
       terrain: sc.terrain,
       fuel: this.fuel!,
-      weather: sc.weather,
+      weather: this.windSeries(),
       startTime: sc.startTime,
       horizon: sc.duration,
       seeds: this.seeds(),
@@ -343,7 +376,7 @@ export class MockSimController implements SimController {
       if (rng.next() > Math.min(0.75, bestI / 12000)) continue;
       const bx = g.x0 + (best % g.nx) * g.cellSize;
       const by = g.y0 + Math.floor(best / g.nx) * g.cellSize;
-      const w = windAt({ weather: sc.weather, startTime: sc.startTime, windEdits: this.windEdits() }, bx, by, t);
+      const w = windAt({ weather: this.windSeries(), startTime: sc.startTime, windEdits: this.windEdits() }, bx, by, t);
       if (msToKmh(w.speed) < 15) continue;
       const dist = Math.min(2500, Math.max(180, rng.logNormal(450, 0.55)));
       const az = wrapDeg(w.dir + 180 + rng.range(-18, 18));
@@ -370,7 +403,7 @@ export class MockSimController implements SimController {
     const n = g.nx * g.ny;
     const fuel = this.fuel!;
     const nowMs = sc.startTime + t * 1000;
-    const w = weatherAt(sc.weather, nowMs);
+    const w = weatherAt(this.windSeries(), nowMs);
     const hourLocal = localHour(nowMs, sc.weather.timezone);
     const fire: FireField = {
       grid: g,
@@ -796,7 +829,7 @@ export class MockSimController implements SimController {
     if (k < 0) k = 0;
     const res = this.result!;
     const nowMs = sc.startTime + t * 1000;
-    const w = weatherAt(sc.weather, nowMs);
+    const w = weatherAt(this.windSeries(), nowMs);
     const input = this.solveInput();
     const wind = windAt(input, x, y, t);
     const moisture = isBurnable(fuel.type[k]!) ? cellMoisture(terrain, fuel, k, w, localHour(nowMs, sc.weather.timezone), this.moistureDelta?.[k] ?? 0) : 0;

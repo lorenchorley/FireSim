@@ -182,7 +182,7 @@ export class SimSession {
       insights: [],
       forecastInsights: [],
       ignitions: [...scenario.ignitions],
-      edits: scenario.edits.map((edit) => ({ edit, time: 0 })),
+      edits: scenario.edits.map((edit) => ({ edit, time: edit.kind === 'windDirection' ? edit.time : 0 })),
       options: { coupling: scenario.options.coupling, embers: scenario.options.embers, mountainPhenomena: scenario.options.mountainPhenomena },
       compare: null,
       error: null,
@@ -518,7 +518,7 @@ export class SimSession {
    */
   setWindDirection(id: string, dir: number, at?: number): WindDirectionEdit | null {
     const s = this.state.get();
-    const time = windDirectionTime(Math.max(s.viewTime, at ?? s.viewTime), this.duration);
+    const time = windDirectionTime(Math.max(s.viewTime, at !== undefined && Number.isFinite(at) ? at : s.viewTime), this.duration);
     if (time < s.viewTime - 1e-6) return null;
     this.prepareEditAt();
     const edit: WindDirectionEdit = { kind: 'windDirection', id, dir: wrapDeg(Math.round(dir)), time };
