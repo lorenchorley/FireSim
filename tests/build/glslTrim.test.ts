@@ -1,6 +1,7 @@
 /**
- * scripts/glslTrim.ts (used by vite.config.ts in builds only) leaves out three's built-in material shaders that the app never
- * draws with. This fences what it does:
+ * scripts/glslTrim.ts (used by vite.config.ts in builds only): the GLSL of the 3-D view loses its comments and indentation, and
+ * three's built-in material shaders that the app never draws with are left out. This fences what it does:
+ *  - no shader token moves or changes (the minified GLSL has the same tokens on the same lines as the source),
  *  - every `#include` of the app's own shaders is a chunk that is kept, and the app draws with ShaderMaterial and no light only,
  *  - three's file still has the shape the stub reads (a three update that moves it fails here, not silently),
  *  - a build with the app's own vite.config.ts has the stub in it, and what the renderer and the app's shaders need is whole.
@@ -10,7 +11,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { build, type Rolldown } from 'vite';
-import { KEPT_BUILT_IN_SHADERS, KEPT_SHADER_CHUNKS, LEFT_OUT_SHADER_TEXT, keptThreeChunks, stubUnusedThreeShaders } from '../../scripts/glslTrim';
+import {
+  KEPT_BUILT_IN_SHADERS,
+  KEPT_SHADER_CHUNKS,
+  LEFT_OUT_SHADER_TEXT,
+  keptThreeChunks,
+  minifyGlsl,
+  minifyGlslTemplates,
+  stubUnusedThreeShaders,
+} from '../../scripts/glslTrim';
 import type * as ThreeEntry from './threeEntry';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -25,11 +34,68 @@ function appSources(dir = path.join(ROOT, 'src')): string[] {
   });
 }
 
-/** The templates tagged `/* glsl *\/` as they are written (none of these has a backtick in it). */
+/** The templates tagged `/* glsl *\/` as they are written (no `${}` inside a nested string, none of these has a backtick in it). */
 const glslTemplates = (code: string): string[] => [...code.matchAll(/\/\* glsl \*\/\s*`([^`]*)`/g)].map((m) => m[1]!);
+
+/** The tokens of each line of some GLSL, comments out and empty lines kept: the shape that a trim must not change. */
+function tokenLines(glsl: string): string[][] {
+  const noComments = glsl.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => ' ' + '\n'.repeat(c.split('\n').length - 1));
+  return noComments.split('\n').map((line) => line.match(/#?\w+(?:\.\w+)?|\S/g) ?? []);
+}
 
 const shaderFiles = appSources().filter((f) => glslTemplates(readFileSync(f, 'utf8')).length > 0);
 const threeText = readFileSync(THREE_FILE, 'utf8');
+
+describe('minifyGlsl', () => {
+  it('takes out comments, indentation, trailing spaces and runs of spaces, and keeps every line where it was', () => {
+    const src = ['', '  uniform float uA;   // a comment', '#ifdef X', '\tfloat f(float a) {  /* one */', '    return  a; /* two', '    lines */', '  }', '#endif', ''].join('\n');
+    const out = minifyGlsl(src);
+    expect(out.split('\n')).toEqual(['', 'uniform float uA;', '#ifdef X', 'float f(float a) {', 'return a;', '', '}', '#endif', '']);
+  });
+
+  it('turns a block comment into a space, as GLSL does, so two words never join', () => {
+    expect(minifyGlsl('float/**/x')).toBe('float x');
+  });
+
+  it('leaves text with an unterminated block comment as it is', () => {
+    expect(minifyGlsl('a /* b')).toBe('a /* b');
+  });
+});
+
+describe('minifyGlslTemplates', () => {
+  it('minifies the text of a tagged template and keeps its ${} expressions and everything outside it', () => {
+    const src = 'const A = 1; // keep\nconst S = /* glsl */ `\n  ${A}  // c\n  uniform vec4 u[${N}];   // d\n`;\nconst B = `  not glsl  // kept `;\n';
+    expect(minifyGlslTemplates(src)).toBe('const A = 1; // keep\nconst S = /* glsl */ `\n${A}\nuniform vec4 u[${N}];\n`;\nconst B = `  not glsl  // kept `;\n');
+  });
+
+  it('leaves a shader alone when an expression sits in a comment, has a nested string, or the text has an escape', () => {
+    for (const body of ['a // ${X}\nb', 'a ${f("x")}', 'a \\n b  // c']) {
+      const src = `const S = /* glsl */ \`${body}\`;\nconst T = /* glsl */ \`  x  // y\n\`;\n`;
+      expect(minifyGlslTemplates(src)).toBe(`const S = /* glsl */ \`${body}\`;\nconst T = /* glsl */ \`x\n\`;\n`);
+    }
+  });
+
+  it('returns null where there is nothing tagged', () => {
+    expect(minifyGlslTemplates('const A = `  x  // y`;')).toBeNull();
+  });
+
+  describe.each(shaderFiles.map((f) => [path.relative(ROOT, f), f] as const))('%s', (_name, file) => {
+    const code = readFileSync(file, 'utf8');
+    const out = minifyGlslTemplates(code) ?? code;
+
+    it('keeps every line in place and every token of every shader', () => {
+      expect(out.split('\n').length).toBe(code.split('\n').length);
+      const before = glslTemplates(code);
+      const after = glslTemplates(out);
+      expect(after.length).toBe(before.length);
+      before.forEach((glsl, i) => expect(tokenLines(after[i]!), `template ${i}`).toEqual(tokenLines(glsl)));
+    });
+
+    it('has no comment left in any shader (none was left alone for an expression, an escape or a nested string)', () => {
+      for (const glsl of glslTemplates(out)) expect(glsl).not.toMatch(/\/\/|\/\*/);
+    });
+  });
+});
 
 describe('what the app asks of three.js', () => {
   it('draws with ShaderMaterial only: no other material, no light, no shadow', () => {
