@@ -4,8 +4,9 @@
  *   SPEEDTEST_REF=1 npx vitest run src/ui/speedTest.reference.test.ts          (SPEEDTEST_RUNS=9 by default; each run is about 2 s)
  *
  * It runs the same two kernels as the app (`measureAll`) in this node process, on one core, several times, and prints every run (wall clock, which is what the
- * app measures, and CPU time, which a busy machine cannot steal from) and the best of the wall-clock runs: a machine can only be slowed by other work, so the best is
- * the nearest to what it does when nothing else is using it. Paste the "best" line into speedTest.ts with the date, and say how many runs and how loaded the machine was.
+ * app measures, and CPU time, which a busy machine cannot steal from), the best of them and the MEDIAN of the wall-clock runs. Paste the median line into speedTest.ts
+ * with the date, and say how many runs and how loaded the machine was: a phone's number is one run of 0.8 s, so the typical run is the fair thing to divide it by
+ * (the best run is a little above what one run usually gives). Take it under the heavy lock (`flock /tmp/firesim-heavy.lock ...`) so nothing heavy runs beside it.
  */
 import { appendFileSync } from 'node:fs';
 import os from 'node:os';
@@ -33,8 +34,8 @@ describe.skipIf(!process.env.SPEEDTEST_REF)('the speed test reference (SPEEDTEST
     }
     const best = (xs: typeof wall, k: 'stencilMcellsPerS' | 'copyGBps'): number => Math.max(...xs.map((x) => x[k]));
     const median = (xs: typeof wall, k: 'stencilMcellsPerS' | 'copyGBps'): number => xs.map((x) => x[k]).sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
-    lines.push(`best of ${runs} (wall): { stencilMcellsPerS: ${best(wall, 'stencilMcellsPerS').toFixed(1)}, copyGBps: ${best(wall, 'copyGBps').toFixed(2)} }`);
-    lines.push(`median of ${runs} (wall): ${median(wall, 'stencilMcellsPerS').toFixed(1)} Mcells/s, ${median(wall, 'copyGBps').toFixed(2)} GB/s; best by cpu time: ${best(cpu, 'stencilMcellsPerS').toFixed(1)} Mcells/s, ${best(cpu, 'copyGBps').toFixed(2)} GB/s`);
+    lines.push(`paste (median of ${runs}, wall): { stencilMcellsPerS: ${median(wall, 'stencilMcellsPerS').toFixed(1)}, copyGBps: ${median(wall, 'copyGBps').toFixed(2)} }`);
+    lines.push(`best of ${runs} (wall): ${best(wall, 'stencilMcellsPerS').toFixed(1)} Mcells/s, ${best(wall, 'copyGBps').toFixed(2)} GB/s; best by cpu time: ${best(cpu, 'stencilMcellsPerS').toFixed(1)} Mcells/s, ${best(cpu, 'copyGBps').toFixed(2)} GB/s`);
     const out = `\n${lines.join('\n')}\n`;
     process.stdout.write(out);
     if (process.env.SPEEDTEST_OUT) appendFileSync(process.env.SPEEDTEST_OUT, out);

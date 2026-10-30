@@ -30,11 +30,12 @@ export interface SpeedTestResult {
 }
 
 /**
- * The same code measured on the build machine, in node 22 on one core (the machine this app is built on: a shared 4-core cloud container, so these are
- * the best of several runs, which is what the machine does when nothing else is using it). Measure again with
- * `SPEEDTEST_REF=1 npx vitest run src/ui/speedTest.reference.test.ts` and paste the two numbers and the date; a new kernel version needs new numbers.
+ * The same code measured on the build machine, in node 22 on one core: the median of 12 wall-clock runs of `measureAll` (the best run was 56.8 Mcells/s and 4.75 GB/s, the
+ * spread about 8 percent), taken under the heavy lock on 2026-10-30 on the shared 4-core container this app is built on (Xeon at 2.1 GHz, node 22.22, load average
+ * about 5 from other work). A phone's number is one run, so it is divided by the typical run. Measure again with
+ * `flock /tmp/firesim-heavy.lock env SPEEDTEST_REF=1 npx vitest run src/ui/speedTest.reference.test.ts` and paste the two numbers and the date; a new kernel version needs new numbers.
  */
-export const SPEED_TEST_REFERENCE = { stencilMcellsPerS: 33.2, copyGBps: 3.23 };
+export const SPEED_TEST_REFERENCE = { stencilMcellsPerS: 53.5, copyGBps: 4.26 };
 /** When `SPEED_TEST_REFERENCE` was measured. */
 export const SPEED_TEST_REFERENCE_DATE = '2026-10-30';
 
