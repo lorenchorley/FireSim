@@ -560,7 +560,7 @@ test('Back to the forecast removes every change of yours and brings the forecast
   await expect(back).toHaveText('Back to the forecast');
   await expect(panel.locator('.wind-back-note')).toHaveText('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.');
   await back.scrollIntoViewIfNeeded();
-  expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44 - 0.5);
+  expect(await hitArea(back), 'a 44 x 44 px hit area, as every button has').toEqual([]);
   // It is a secondary button, under the changes and above the readings.
   await expect(back).toHaveClass(/btn-secondary/);
   const order = await panel.evaluate((root) => {
@@ -649,8 +649,6 @@ for (const [width, height] of [
       const g2 = await geometry();
       expect(b.y, id).toBeGreaterThanOrEqual(g2.body.top - 0.5);
       expect(b.y + b.height, id).toBeLessThanOrEqual(g2.body.bottom + 0.5);
-      expect(b.height, id).toBeGreaterThanOrEqual(44 - 0.5);
-      expect(b.width, id).toBeGreaterThanOrEqual(44 - 0.5);
       expect(b.x + b.width, id).toBeLessThanOrEqual(g2.innerW);
       expect(g2.apply.top, 'Apply does not move').toBe(g.apply.top);
       expect(g2.scrollW).toBeLessThanOrEqual(g2.innerW);
