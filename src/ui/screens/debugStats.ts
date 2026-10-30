@@ -266,7 +266,10 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     }
     speed.ctl = null;
     speed.running = false;
-    if (!destroyed) refresh();
+    if (destroyed) return;
+    refresh();
+    // The button was off while the test ran, which drops the focus it had: a keyboard or screen reader user is put back on it (nowhere else on the screen moved).
+    if (!el.contains(document.activeElement) || document.activeElement === speedButton) speedButton.focus({ preventScroll: true });
   };
   // The app going to the background mid-test would make the number unfair: stop it (the screen is not patched while hidden, so this is its one reaction).
   const onHidden = (): void => {
