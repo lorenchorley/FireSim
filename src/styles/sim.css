@@ -643,6 +643,89 @@ button.map-credit:active {
   display: none;
 }
 
+/* ───────────────────────── wind detail chip ───────────────────────── */
+/* The Wind detail chip (windDetailChip.ts): a 44 px pill in the bottom-left stack, standing on the legend card (simScreen.ts sets its left, bottom and max
+   width); its sheet is the top bar's (.tp-wind-detail, transport sheet). Four pips: a filled circle for each step reached, a ring for the rest, so the
+   shape carries the step and not the colour. It steps aside for the same things as the legend. */
+.chip.wind-detail {
+  position: absolute;
+  z-index: 9;
+  min-height: var(--tap);
+  padding: 0 var(--sp-3);
+  gap: var(--sp-2);
+}
+
+.chip.wind-detail[hidden] {
+  display: none;
+}
+
+.wd-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wd-pips {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--sp-1);
+}
+
+.wd-pip {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.wd-pip.is-on {
+  background: currentColor;
+}
+
+.panel-open .wind-detail,
+.sheet-full .wind-detail,
+.drawing .wind-detail {
+  display: none;
+}
+
+.menu-open .wind-detail {
+  visibility: hidden;
+}
+
+/* The sheet: the step as pips and a lead line, then short paragraphs. */
+.wd-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.wd-head .wd-pip {
+  width: 12px;
+  height: 12px;
+}
+
+.wd-lead {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+}
+
+.wd-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.wd-line {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
 /* ───────────────────────── simulation failure strip ───────────────────────── */
 /* A thin danger strip under the top bar (never a modal, never over the middle of the map). */
 .error-chip {
@@ -1926,6 +2009,9 @@ button.map-credit:active {
   }
   .sheet-full .map-legend:not([hidden]) {
     display: flex;
+  }
+  .sheet-full .wind-detail:not([hidden]) {
+    display: inline-flex;
   }
 }
 

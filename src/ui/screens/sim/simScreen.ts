@@ -40,6 +40,7 @@ import { mapCredits } from './mapCredits';
 import { createMapLegend } from './mapLegend';
 import { restoreLayerPrefs } from './layersPrefs';
 import { createTopBar } from './topBar';
+import { createWindDetail } from './windDetailChip';
 import { createLayersPanel, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
 
@@ -172,8 +173,10 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   // Debug hook (a dev build, or ?debug in the address): ?paceLevel=behind|waiting|ok shows the speed signal for screenshots and audits.
   const forcedPace = debugPaceLevel(window.location.search, import.meta.env.DEV);
   if (forcedPace) session.debugForcePace(forcedPace);
+  const windDetail = createWindDetail(ctx);
   const topBar = createTopBar(ctx, {
     paceButton: scrubber.paceButton,
+    windDetailButton: windDetail.button,
     openHelp: () => {
       if (ui.get().panelOpen || ui.get().pending) closePanel();
       ui.set({ tab: 'help', sheet: ui.get().sheet === 'closed' || ui.get().sheet === 'peek' ? 'half' : ui.get().sheet, menu: null });
@@ -319,8 +322,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   };
 
   const mapLegend = createMapLegend(ctx, () => selectTool('layers'));
-  root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, credit, panelHost, sheet.el, scrubber.el);
-  unsubs.push(() => mapLegend.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
+  root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, windDetail.button, credit, panelHost, sheet.el, scrubber.el);
+  unsubs.push(() => mapLegend.destroy(), () => windDetail.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────
   // The top bar, the error chip, the timeline, the dock and an open tool panel cover parts of the full-screen 3-D view.
@@ -481,6 +484,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     ls.bottom = `${Math.round(base + 12 + (creditH ? creditH + 8 : 0))}px`;
     ls.left = `${Math.round(colL + 12)}px`;
     ls.maxWidth = `${Math.max(0, Math.round(colR - colL - 24))}px`;
+    // The Wind detail chip stands on the legend (or on the attribution line, or on the base when neither shows), 8 px above it.
+    const legendH = mapLegend.el.hidden ? 0 : mapLegend.el.getBoundingClientRect().height;
+    const ws = windDetail.button.style;
+    ws.bottom = `${Math.round(base + 12 + (creditH ? creditH + 8 : 0) + (legendH ? legendH + 8 : 0))}px`;
+    ws.left = `${Math.round(colL + 12)}px`;
+    ws.maxWidth = `${Math.max(0, Math.round(colR - colL - 24))}px`;
   };
   let insetRaf = 0;
   let insetTimer: ReturnType<typeof setTimeout> | undefined;

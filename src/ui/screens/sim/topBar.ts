@@ -34,6 +34,8 @@ export interface TopBarOptions {
   openHelp(): void;
   /** The timeline's speed button: it opens the slow-run sheet, which joins this bar's popovers (the strip is made first, so it is handed in). */
   paceButton?: HTMLElement;
+  /** The Wind detail chip (0.6.0): it opens the explanation sheet, which joins this bar's popovers (the chip is made first, so it is handed in). */
+  windDetailButton?: HTMLElement;
 }
 
 export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
@@ -114,6 +116,20 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
     void paceMount.then((p) => p?.refresh());
   };
 
+  // ── the Wind detail sheet (0.6.0): the shell is made here, its words are loaded on the first tap ──
+  const windSheetEl = opts.windDetailButton ? transportSheet({ title: 'Wind detail', testId: 'wind-detail-sheet', class: 'tp tp-2col tp-wind-detail', body: [], onClose: () => popovers.closeAll() }) : null;
+  let windMount: Promise<{ refresh(): void; destroy(): void } | null> | null = null;
+  const openWind = (): void => {
+    if (!windSheetEl) return;
+    windMount ??= import('./windDetailSheet')
+      .then((m) => m.mountWindDetailSheet(ctx, windSheetEl, { close: () => popovers.closeAll() }))
+      .catch(() => {
+        windSheetEl.querySelector('.tb-sheet-body')?.replaceChildren(h('p', { class: 'tp-hint' }, 'The details are not available right now.'));
+        return null;
+      });
+    void windMount.then((p) => p?.refresh());
+  };
+
   // ── play / pause: the one blue control of the bar ──
   const playBtn = h(
     'button',
@@ -143,18 +159,20 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
   const setChipLabel = (): void => chips.setAttribute('aria-label', `${wxLabel}. ${ratingLabel}`);
 
   const pill = h('div', { class: 'search-bar tb-pill' }, [menuBtn, clockBtn, playBtn, speed.button]);
-  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel, paceSheetEl]);
+  const el = h('header', { class: 'sim-topbar' }, [pill, chips, menuPanel, timePop.panel, speed.panel, paceSheetEl, windSheetEl]);
 
   const popovers = createPopoverGroup(el, [
     { id: 'menu', button: menuBtn, panel: menuPanel, dim: true },
     { id: 'time', button: clockBtn, panel: timePop.panel, onOpen: () => timePop.refresh() },
     { id: 'speed', button: speed.button, panel: speed.panel },
     ...(opts.paceButton && paceSheetEl ? [{ id: 'pace', button: opts.paceButton, panel: paceSheetEl, onOpen: openPace }] : []),
+    ...(opts.windDetailButton && windSheetEl ? [{ id: 'wind-detail', button: opts.windDetailButton, panel: windSheetEl, onOpen: openWind }] : []),
   ]);
   menuBtn.addEventListener('click', () => popovers.toggle('menu'));
   clockBtn.addEventListener('click', () => popovers.toggle('time'));
   speed.button.addEventListener('click', () => popovers.toggle('speed'));
   opts.paceButton?.addEventListener('click', () => popovers.toggle('pace'));
+  opts.windDetailButton?.addEventListener('click', () => popovers.toggle('wind-detail'));
 
   // The settings screen changes the picture interval and the solver step: pass them on to the running session.
   const offSteps = bindStepSettings(session, ctx.settings);
@@ -267,6 +285,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       timePop.destroy();
       speed.destroy();
       void paceMount?.then((p) => p?.destroy());
+      void windMount?.then((p) => p?.destroy());
     },
   };
 }
