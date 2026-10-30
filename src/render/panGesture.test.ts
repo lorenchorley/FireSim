@@ -1,10 +1,12 @@
 /**
  * The pointer bookkeeping of PanGesture on its own (a fake element and a fake host, no OrbitControls): a pen is captured while
  * it is down (the browser captures a finger by itself, but not a pen: a stroke that leaves the canvas would lose its end), a
- * press whose end never arrived starts afresh, and every capture that was taken is given back.
+ * press whose end never arrived starts afresh, and every capture that was taken is given back. And the glide of a flick: it
+ * carries on at the speed the finger had over the ground it touched, near or far, whatever the scale at the orbit target.
  */
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { GrabSurface } from './groundPan';
 import { PanGesture, type PanHost } from './panGesture';
 
 type Handler = (e: FakePointer) => void;
@@ -64,11 +66,22 @@ interface Setup {
   camera: THREE.PerspectiveCamera;
   events: string[];
   host: { canPan: boolean; accepts: boolean };
+  /** The host's `metresPerPixel` (ground metres a pixel stands for at the orbit target). */
+  mpp: { value: number };
   /** Run the per-frame step (16 ms) n times. */
   frames(n: number): void;
 }
 
-function setup(): Setup {
+/** The ground plane y = 0 as a grab surface (so a finger holds a real point of it, near or far). */
+const plane: GrabSurface = {
+  raycast: (_ox, oy, _oz, _dx, dy, _dz, maxT = Infinity) => {
+    const t = -oy / dy;
+    return dy < 0 && t > 0 && t <= maxT ? { t } : null;
+  },
+};
+
+function setup(surface: GrabSurface | null = null): Setup {
+  const mpp = { value: 5 };
   const el = new FakeElement();
   const camera = new THREE.PerspectiveCamera(50, 0.5, 1, 100000);
   camera.position.set(0, 3000, 4000);
@@ -82,8 +95,8 @@ function setup(): Setup {
     target: () => target,
     accepts: () => flags.accepts,
     canPan: () => flags.canPan,
-    surface: () => null,
-    metresPerPixel: () => 5,
+    surface: () => surface,
+    metresPerPixel: () => mpp.value,
     started: () => events.push('start'),
     ended: () => events.push('end'),
   };
@@ -95,10 +108,15 @@ function setup(): Setup {
     camera,
     events,
     host: flags,
+    mpp,
     frames(n) {
       for (let i = 0; i < n; i++) {
         clock += 16;
+        // As CameraRig.update does: the pan or glide moves the camera, then the clamps (none here), then settle() is told how far it went.
+        const x = camera.position.x;
+        const z = camera.position.z;
         gesture.step(clock);
+        gesture.settle(camera.position.x - x, camera.position.z - z);
       }
     },
   };
@@ -185,3 +203,67 @@ describe('PanGesture pointer bookkeeping', () => {
     expect(s.events.at(-1)).toBe('end');
   });
 });
+
+describe('PanGesture: the glide carries on at the speed the finger had over the ground it touched', () => {
+  /**
+   * A finger lands at (100, row) of the 400 × 800 canvas over the ground plane, moves `step` px to the right every frame (16 ms)
+   * for 10 frames (so it stays on its row, over the same distance of ground) and lifts. Returns whether a glide began, the camera's
+   * speed over the ground in the last frame of the drag and in the first of the glide (m/s), and the metres one pixel of the finger
+   * covered (the drag's last frame).
+   */
+  function flick(row: number, step: number, hostMpp: number): { gliding: boolean; drag: number; glide: number; perPx: number } {
+    const s = setup(plane);
+    s.mpp.value = hostMpp;
+    s.el.fire('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 100, clientY: row });
+    s.frames(1);
+    let x = 100;
+    let before = s.camera.position.clone();
+    let last = 0;
+    for (let i = 0; i < 10; i++) {
+      x += step;
+      s.el.fire('pointermove', { pointerId: 1, pointerType: 'touch', clientX: x, clientY: row });
+      before = s.camera.position.clone();
+      s.frames(1);
+      last = s.camera.position.distanceTo(before);
+    }
+    s.el.fire('pointerup', { pointerId: 1, pointerType: 'touch', clientX: x, clientY: row });
+    const gliding = s.gesture.gliding;
+    before = s.camera.position.clone();
+    s.frames(1);
+    return { gliding, drag: last / 0.016, glide: s.camera.position.distanceTo(before) / 0.016, perPx: last / step };
+  }
+  const NEAR = 760; // the bottom of the screen: ground 3.5 km from the camera, about 4 m a pixel
+  const FAR = 120; // the upper part: ground 9 km away, about 11 m a pixel
+
+  it('over near ground a flick of 300 px/s glides, though a pixel at the orbit target is many more metres than a pixel there', () => {
+    // The host says a pixel at the orbit target is 20 m: scaled by that, the finger would have been 300 · 4 / 20 ≈ 60 px/s, too slow to glide.
+    const f = flick(NEAR, 4.8, 20);
+    expect(f.perPx, 'metres per pixel of the near ground').toBeLessThan(5);
+    expect(f.gliding).toBe(true);
+    expect(f.glide / f.drag, 'the glide goes on at the speed of the drag').toBeGreaterThan(0.85);
+    expect(f.glide / f.drag).toBeLessThan(1.05);
+  });
+
+  it('over far ground a fast flick keeps its speed: it is not scaled down by the orbit target’s idea of a wild flick', () => {
+    // A pixel there is ~11 m; the host says half a metre at the target: scaled by that the finger would have been ~20 000 px/s and its glide cut to 3000 / 20 000 of the speed.
+    const f = flick(FAR, 16, 0.5);
+    expect(f.perPx, 'metres per pixel of the far ground').toBeGreaterThan(8);
+    expect(f.gliding).toBe(true);
+    expect(f.glide / f.drag, 'the glide goes on at the speed of the drag').toBeGreaterThan(0.85);
+    expect(f.glide / f.drag).toBeLessThan(1.05);
+  });
+
+  it('the same finger speed glides the view farther over far ground than over near ground, in proportion to the ground a pixel covers', () => {
+    const near = flick(NEAR, 6, 5);
+    const far = flick(FAR, 6, 5);
+    expect(far.glide / near.glide).toBeGreaterThan(2);
+    expect(far.glide / near.glide / (far.perPx / near.perPx)).toBeGreaterThan(0.9);
+    expect(far.glide / near.glide / (far.perPx / near.perPx)).toBeLessThan(1.1);
+  });
+
+  it('a slow finger (60 px/s) still just stops the view, whatever the ground', () => {
+    expect(flick(NEAR, 1, 20).gliding).toBe(false);
+    expect(flick(FAR, 1, 0.5).gliding).toBe(false);
+  });
+});
+
