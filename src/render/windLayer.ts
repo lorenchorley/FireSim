@@ -39,6 +39,8 @@ export interface WindDomain {
 export class WindLayer {
   readonly streaks: StreakBatch;
   private mode: WindMode = 'off';
+  /** The detailed streaks of the most detailed level are drawn instead (0.6.0): the particles are hidden and not advanced. */
+  private suppressed = false;
   private readonly cap: number;
   private readonly p: Float32Array; // x, y, z
   private readonly age: Float32Array;
@@ -66,7 +68,7 @@ export class WindLayer {
     this.mode = mode;
     this.n = mode === 'surface' ? Math.min(this.cap, 1300) : mode === 'volume' ? Math.min(this.cap, 2600) : 0;
     if (domain) for (let i = 0; i < this.n; i++) this.spawn(i, domain, true);
-    this.streaks.mesh.visible = mode !== 'off';
+    this.streaks.mesh.visible = mode !== 'off' && !this.suppressed;
     if (mode === 'off') this.streaks.commit(0);
   }
 
@@ -74,8 +76,15 @@ export class WindLayer {
     return this.mode;
   }
 
-  /** 0.6.0 C0 stub (the D-render lane writes it): hide the particles and skip their animation while the detailed streaks are drawn instead. */
-  setSuppressed(_on: boolean): void {}
+  /**
+   * Hide the particles and skip their animation while the detailed streaks are drawn instead (the particles keep their places and their
+   * ages, and carry on from them when they are given back). The caller draws the frame it changes this in.
+   */
+  setSuppressed(on: boolean): void {
+    if (on === this.suppressed) return;
+    this.suppressed = on;
+    this.streaks.mesh.visible = this.mode !== 'off' && !on;
+  }
 
   private spawn(i: number, d: WindDomain, initial: boolean): void {
     const r = this.rng;
@@ -104,7 +113,7 @@ export class WindLayer {
 
   /** Advance particles by `dt` wall seconds and write the streak buffers (world coordinates). */
   animate(dt: number, sampler: AtmosphereSampler, d: WindDomain, vex: number): void {
-    if (this.mode === 'off' || this.n === 0) return;
+    if (this.mode === 'off' || this.n === 0 || this.suppressed) return;
     const k = this.visualSpeed;
     const tt = this.trailSeconds * k;
     const w = this.w;
