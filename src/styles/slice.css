@@ -144,7 +144,7 @@
     height: 84px;
   }
   .slice-tool-body {
-    scroll-padding: 96px 0 30px; /* and clear of the picture */
+    scroll-padding: 96px 0 48px; /* the picture, and a 2-line footer */
   }
   .slice-readout {
     margin-top: 2px; /* the clear button's hit area must not reach under the picture */
