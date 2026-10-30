@@ -285,7 +285,7 @@ class Builder implements DetailBuilder {
     this.C = new Float32Array(4 * caps.segments);
     this.D = new Float32Array(4 * caps.segments);
     this.E = new Float32Array(4 * caps.segments);
-    this.out = { a: this.A, b: this.B, c: this.C, d: this.D, e: this.E, lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
+    this.out = { a: this.A, b: this.B, c: this.C, d: this.D, e: this.E, lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0, blocked: 0 };
     const store = 3 * this.capLines + 16;
     this.cand = new Int32Array(3 * store);
     this.candH = new Uint32Array(store);
@@ -321,6 +321,7 @@ class Builder implements DetailBuilder {
     out.dropped = 0;
     out.calm = 0;
     out.steep = 0;
+    out.blocked = 0;
     // Is there anything to draw? Comparisons and whole numbers only (see the glyph builder: this function runs a few times a second, so
     // V8 never optimises it, and in the interpreter every number made by arithmetic is a heap number: the arithmetic is in `walk`).
     const lod = input.lod;

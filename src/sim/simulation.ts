@@ -105,6 +105,7 @@ import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
 import { applyWindDirection, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
 import { SIM_PARAMS } from './params';
+import { publishFireWind } from './fireWindPublish';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
 import { autoTuneDecision, autoTuneEventText, engineMemory, formatSimTime, medianStampS, MEMORY_REFRESH_WALL_MS, spreadModelUse, tierReasonText } from './engineInfo';
@@ -1801,6 +1802,8 @@ export class Simulation {
       stats,
       insights,
       layers,
+      // The wind the fire feels (0.7.0): a pure read of the fire-grid wind the spread model was last given (core/fireWind.ts).
+      fireWind: publishFireWind(this.terrain.grid, this.env.windU, this.env.windV, this.t),
       engine: this.engineInfo(stats, decimated),
     };
   }

@@ -71,6 +71,8 @@ describe('mock scenario + controller', () => {
     expect(last.time).toBe(6 * 3600);
     expect(last.stats.burntAreaHa).toBeGreaterThan(20);
     expect(snaps[3]!.stats.burntAreaHa).toBeLessThan(last.stats.burntAreaHa);
+    // The demo engine has no air, so it publishes no wind the fire feels (0.7.0): the picture's chip says it is waiting, nothing is made up.
+    expect(snaps.some((s) => s.fireWind !== undefined || s.atmosphere !== undefined)).toBe(false);
     expect(insights.length).toBeGreaterThan(1);
     expect(insights.some((i) => i.severity === 'danger')).toBe(true);
     const ex = await sim.explain(-800, -600);

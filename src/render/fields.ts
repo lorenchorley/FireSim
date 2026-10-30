@@ -230,6 +230,11 @@ export interface OverlaySources {
   context?: ContextLayers | null;
   /** The latest snapshot's atmosphere view, for the 'windSpeed' heat map: its 10 m wind (`surfaceU/V`), published by both tiers (null before the first snapshot: no field). */
   atmosphere?: AtmosphereView | null;
+  /**
+   * 0.7.0 (E1b): the Wind speed map at the Wind height chosen for the arrows (km/h, its own grid), made by the view; when given, 'windSpeed' returns it
+   * instead of the 10 m field above. Absent: the 0.6.0 field, bit for bit. Unread until the E1b lane.
+   */
+  windMap?: OverlayField | null;
 }
 
 export interface OverlayField {

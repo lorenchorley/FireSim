@@ -17,6 +17,7 @@ import { chipChoice, toggle, type Segmented } from '../../widgets';
 import type { SimContext } from './context';
 import { WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, glyphIntro, glyphView, windHeightOf, type GlyphAir } from './glyphWords';
 import { rememberLayerChoice } from './layersPrefs';
+import { createWindMapSwitch, type WindMapSwitch } from './windMapSwitch';
 
 /** How often the caption looks at the layer's statistics while it is on screen (ms). */
 const POLL_MS = 500;
@@ -76,6 +77,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     chips: Segmented<string>;
     caption: HTMLElement;
     level: HTMLElement;
+    mapSwitch: WindMapSwitch;
   }
   let options: Options | null = null;
   const buildOptions = (): Options => {
@@ -91,7 +93,8 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     });
     const caption = h('p', { class: 'hint wg-caption', hidden: true, dataset: { testid: 'wind-glyph-caption' } });
     const level = h('p', { class: 'hint wg-level', hidden: true, dataset: { testid: 'wind-glyph-level' } });
-    return { el: h('div', { class: 'wg-options' }, [chips.el, caption, level]), chips, caption, level };
+    const mapSwitch = createWindMapSwitch(ctx); // "Colour the map by speed" (0.7.0, E1b): its chip sits under the height chips
+    return { el: h('div', { class: 'wg-options' }, [chips.el, mapSwitch.el, caption, level]), chips, caption, level, mapSwitch };
   };
   const settingsEl = h('div', { class: 'wg-box', dataset: { testid: 'wind-glyph-box' } }, opts.intro ? [reason, intro] : reason);
 
@@ -128,6 +131,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
       // (A remembered "on" in the 2-D map has nothing to choose a height for: the reason above says so, and the switch stays operable to turn it off.)
       options.el.hidden = !s.windGlyphs || !has3dView;
       if (options.chips.get() !== String(s.windHeight)) options.chips.set(String(s.windHeight));
+      options.mapSwitch.update();
       text(options.caption, v.caption.join('\n'));
       options.caption.hidden = v.caption.length === 0;
       text(options.level, v.level);
@@ -176,6 +180,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     destroy() {
       for (const u of unsubs) u();
       io?.disconnect();
+      options?.mapSwitch.destroy();
       if (timer) clearInterval(timer);
       timer = null;
     },

@@ -20,6 +20,7 @@ import { canopyCodeLegend, canopyCodeScale, swayParams, type CanopyCode, type Ca
 import type { LayerState } from './layers';
 import type { LegendSpec } from './legends';
 import { hexToRgb, srgbToLinear } from './palette';
+import type { CrownSource } from './wind/glyphTypes';
 import { treeModel, type Lod, type MeshData, type ModelFamily } from './treeModels';
 import { TREE_FRAG, TREE_VERT } from './treeShaders';
 import { impostorAtlas, leafAtlas, type TextureImage } from './treeTextures';
@@ -140,6 +141,8 @@ export const TOP_FADE: [number, number] = [0.87, 0.99];
 const TOP_HIDDEN = 0.992;
 /** The plan is made again when the pixels per radian differ from the plan's by more than this factor (one step of the adaptive pixel ratio, at most a fifth, keeps it). */
 const PLAN_PX_TOLERANCE = 1.25;
+/** The crowns `crownSource()` answers with until the detailed streaks' lane builds it: none. */
+const NO_CROWNS: CrownSource = { serial: 0, sets: () => [] };
 
 export class VegetationLayer {
   readonly group = new THREE.Group();
@@ -292,6 +295,17 @@ export class VegetationLayer {
     if (speed > 1e-3) dir.set(u / speed, -v / speed);
     (this.uniforms.uSwayAmp!.value as THREE.Vector3).set(p.lean, p.amp, p.flutter);
   }
+
+  /**
+   * C0 STUB (0.7.0, lane E-A): the placed crowns by reference, for the detailed streaks to flow around (`serial` bumps when `pump` swaps `sets`).
+   * Empty until built.
+   */
+  crownSource(): CrownSource {
+    return NO_CROWNS;
+  }
+
+  /** C0 STUB (0.7.0, lane E-B, F4): whether motion is allowed (false under reduced motion: the sway stops, the lean stays). Inert until built. */
+  setMotion(_allowed: boolean): void {}
 
   /** True while the trees sway (the caller must keep rendering frames). */
   get animating(): boolean {

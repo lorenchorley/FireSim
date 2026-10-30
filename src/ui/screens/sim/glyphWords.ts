@@ -34,8 +34,12 @@ export const glyphIntro = (on: boolean, reason: string | null): string => (on ||
 // The height
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The chip of a height: `10 m` (the model's 10 m wind over open ground, so the chip and the caption agree), `50 m`, `100 m`, `300 m`, `1 km`, `2 km`. */
+/**
+ * The chip of a height: `10 m` (the model's 10 m wind over open ground, so the chip and the caption agree), `50 m`, `100 m`, `300 m`, `1 km`, `2 km`,
+ * and `What the fire feels` (0.7.0, the wind the fire model uses in 60 m cells; not a chip until the E2 picture lane).
+ */
 export function heightLabel(h: WindHeight): string {
+  if (h === 'felt') return 'What the fire feels';
   if (h === 'fire') return '10 m';
   return h >= 1000 ? `${h / 1000} km` : `${h} m`;
 }

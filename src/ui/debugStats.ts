@@ -21,6 +21,7 @@ import type { PaceInfo } from './paceTypes';
 import { spanWords } from './recordingWords';
 import type { PictureQualityAsk } from './settings';
 import { waited } from './runEvents';
+import type { SpeedTestResult } from './speedTest';
 
 export const TITLE = 'Simulation debug statistics';
 export const END_MARKER = '-- end --';
@@ -102,6 +103,8 @@ export interface DebugStatsInput {
   sliceRecording?: SliceRecordingFacts | null;
   /** The wind arrows and flow lines' own statistics (0.5.0); absent or null where the view draws none (the 2-D map). */
   windGlyphs?: WindGlyphStats | null;
+  /** The speed test (0.7.0, item C): idle, running, or blocked (with the reason in words) and the last result of this visit; absent where the screen has no test. Unread until lane C. */
+  speedTest?: { state: 'idle' | 'running' | 'blocked'; reason?: string; last: SpeedTestResult | null };
   /** The history budget, and the device-memory class it came from (null: the phone does not say, 3 GB is assumed). */
   historyBudget: { bytes: number; memoryGb: number | null } | null;
   /** The main thread's JavaScript heap (`performance.memory`), or null. */

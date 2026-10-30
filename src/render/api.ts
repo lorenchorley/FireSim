@@ -2,10 +2,10 @@
 import type { ContextLayers } from '../core/places';
 import type { GridSpec } from '../core/grid';
 import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
-import type { LayerState } from './layers';
+import type { LayerState, OverlayKind } from './layers';
 import type { LegendSpec } from './legends';
 import type { SliceRecordingApi, SliceUpdate } from './slice/types';
-import type { DetailMotion } from './wind/glyphTypes';
+import type { DetailMotion, WindHeight } from './wind/glyphTypes';
 
 export interface SceneImagery {
   /** Image covering the scenario domain exactly; row 0 = north. */
@@ -110,9 +110,41 @@ export interface WindGlyphStats {
   sliceP95Ms: number;
   sliceMaxMs: number;
   slicesLast: number;
-  /** The detailed streaks of the most detailed level (0.6.0): not drawn (or trimmed to nothing), drawn and moving, or drawn standing still (reduced motion), and how many segments they hold. */
+  /**
+   * The detailed streaks of the most detailed level (0.6.0): not drawn (or trimmed to nothing), drawn and moving, drawn standing still (reduced motion),
+   * or paused after a minute without a touch (0.7.0), and how many segments they hold.
+   */
   detail: DetailMotion;
   detailSegments: number;
+  /** 0.7.0 (F5): the arrows and flow lines switch is on. */
+  glyphs: boolean;
+  /** 0.7.0 (F5): the Wind streaks switch wants the detailed streaks at the most detailed level. */
+  streaks: boolean;
+  /** 0.7.0 (F5, F4): reduced motion is on (the streaks stand still). */
+  reduced: boolean;
+  /** 0.7.0 (E4): the longest `tick()` of the layer (ms) since the last read of the statistics; 0 until measured. */
+  tickMaxMs: number;
+  /** 0.7.0 (item B): the data cell in metres (60 for What the fire feels; absent: the model cell, `cellM`). */
+  dataCellM?: number;
+  /** 0.7.0 (item B): which raster the picture reads: the 10 m surface wind, the fire-felt wind, or a height raster (absent: not known). */
+  source?: 'surface' | 'felt' | 'height';
+}
+
+/**
+ * 0.7.0 (E1b): what the overlay on the ground is made of now, for the e2e and the verifier to check the numbers (`SceneViewApi.overlayStats`).
+ * `source` is where the Wind speed map's values come from (`other` for every other heat map); `height` the Wind height it follows; `nx` x `ny`
+ * the raster in cells of `cellM` metres; `minKmh`, `maxKmh` the range of the finite values; `time` the simulation time (s) of the picture, or null.
+ */
+export interface OverlayStats {
+  overlay: OverlayKind;
+  source: 'surface' | 'height' | 'felt' | 'other';
+  height: WindHeight;
+  nx: number;
+  ny: number;
+  cellM: number;
+  minKmh: number;
+  maxKmh: number;
+  time: number | null;
 }
 
 /**
@@ -180,6 +212,8 @@ export interface SceneViewApi {
   slice?(): SliceUpdate | null;
   /** The wind glyphs (0.5.0): what is drawn now and what it cost, for the Layers caption and the debug statistics. Absent on the 2-D map. */
   windGlyphStats?(): WindGlyphStats | null;
+  /** The overlay's raster and its range (0.7.0, E1b), or null when no overlay is drawn. Absent on the 2-D map. */
+  overlayStats?(): OverlayStats | null;
   /**
    * Called after every new slice (at most every `SLICE_UPDATE_MIN_MS` while the air changes, at once on a line, field or
    * layer edit) and with null when the section is switched off. Returns the unsubscribe function.

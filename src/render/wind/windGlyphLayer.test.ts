@@ -89,7 +89,7 @@ class StubDetail extends StubBase<DetailInput> implements DetailBuilder {
   constructor(clock: { t: number }, tier: GlyphTier, stepMs = 3) {
     super(clock, stepMs);
     const cap = GLYPH_CAPS[tier].segments;
-    this.out = { a: new Float32Array(cap * 3), b: new Float32Array(cap * 3), c: new Float32Array(cap * 4), d: new Float32Array(cap * 4), e: new Float32Array(cap * 4), lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
+    this.out = { a: new Float32Array(cap * 3), b: new Float32Array(cap * 3), c: new Float32Array(cap * 4), d: new Float32Array(cap * 4), e: new Float32Array(cap * 4), lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0, blocked: 0 };
   }
   protected write(n: number, count: number): void {
     for (let i = 0; i < n; i++) {

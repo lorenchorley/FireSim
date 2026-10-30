@@ -4,10 +4,15 @@
  * be built side by side from one contract. The caps are per picture tier; `FRAME_TRIANGLE_LIMIT` is the whole frame's budget.
  */
 import type { GridSpec } from '../../core/grid';
+import type { FuelMap } from '../../core/types';
+import type { VegInstances } from '../vegetationPlacement';
 
 export type GlyphLevel = 0 | 1 | 2 | 3 | 4;
-/** What the glyphs show the wind of: `'fire'` is the model's 10 m wind over open ground, the numbers are metres above the ground. */
-export type WindHeight = 'fire' | 50 | 100 | 300 | 1000 | 2000;
+/**
+ * What the glyphs show the wind of: `'fire'` is the model's 10 m wind over open ground, the numbers are metres above the ground, and `'felt'`
+ * (0.7.0, "What the fire feels") is the wind the fire model uses in each 60 m cell (`SimSnapshot.fireWind`). `'felt'` is not in `WIND_HEIGHTS` yet.
+ */
+export type WindHeight = 'felt' | 'fire' | 50 | 100 | 300 | 1000 | 2000;
 export const WIND_HEIGHTS: readonly WindHeight[] = ['fire', 50, 100, 300, 1000, 2000];
 export type GlyphTier = 'low' | 'medium' | 'high';
 /** Per tier: glyphs, and segments per batch (shaft + arrowhead; triangles are 4 x segments: halo batch and colour batch). */
@@ -56,6 +61,8 @@ export interface FlowRaster {
 export interface GroundRaster {
   grid: GridSpec;
   elevation: Float32Array;
+  /** Additive (0.7.0): the lowest ground (m ASL) when the raster already knows it (`HeightField` does), so the layer need not walk the cells for it. */
+  minElevation?: number;
 }
 export interface GlyphInput {
   field: FlowRaster;
@@ -97,8 +104,11 @@ export interface GlyphBuilder {
 
 /** The level that draws the detailed streaks (the last of `GlyphLevel`). */
 export const DETAIL_LEVEL = 4 as const;
-/** `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, or drawn standing still (reduced motion). */
-export type DetailMotion = 'off' | 'moving' | 'still';
+/**
+ * `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, drawn standing still (reduced motion), or drawn standing still because
+ * the view paused after a minute without a touch (0.7.0, `idleStop.ts`; reduced motion wins: a layer that stands still for it says `'still'`).
+ */
+export type DetailMotion = 'off' | 'moving' | 'still' | 'paused';
 /**
  * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. `spacingPx` is how far apart the lines are on
  * the screen, on average, at every zoom (a lattice of one line to 32 x 32 px, about 400 to 630 lines over a 412 x 915 view): the lattice is a nested one,
@@ -122,12 +132,159 @@ export const DETAIL_FADE_OUT_MS = 250;
  */
 export const DETAIL_MIN_SEGMENTS = GLYPH_CAPS.high.segments;
 
+/**
+ * A set of placed trees as the vegetation layer holds them (by reference: nothing is copied): `group` 0 to 6 are trees (the others are heath,
+ * understorey and grass), `position` is [x, y, ground z] and `size` [height, crown width] per tree, in metres.
+ */
+export type CrownSet = Pick<VegInstances, 'group' | 'count' | 'position' | 'size'>;
+/** Where the layer reads the placed crowns from (`VegetationLayer.crownSource()`): `serial` changes whenever `sets()` would answer differently. */
+export interface CrownSource {
+  readonly serial: number;
+  sets(): readonly CrownSet[];
+}
+/** The fire's plume as a site for an eddy pair (local metres): its base, its radius and how strong it is (0 to 1). */
+export interface Plume {
+  x: number;
+  y: number;
+  radiusM: number;
+  strength: number;
+}
+
+/**
+ * The numbers of the detailed streaks' look (0.7.0, docs/plans/0.7.0/D-CONTRACT-070-detail-looks.md section 2: flow around ridges and tree crowns,
+ * and eddies). First guesses, tuned on real pictures by the lane that builds them. `DETAIL_RELIEF.enabled` is the kill switch: false draws the
+ * 0.6.0 picture whatever else is given. `DetailInput.relief` absent is the 0.6.0 picture too, byte for byte.
+ */
+export interface DetailRelief {
+  enabled: boolean;
+  /** T2: where the ground rises ahead of a step (rise per metre along the flow, smoothstep between `riseLo` and `riseHi`) the line slides along the contour by `beta`; `forwardM` is the forward difference. */
+  ridge: { riseLo: number; riseHi: number; beta: number; forwardM: number; maxTurnDeg: number };
+  /** T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`. */
+  canopy: { topShare: number; coverFull: number; maxHeightM: number };
+  /** T3: crowns as obstacles. */
+  crowns: {
+    /** Only when a `gateCrownM` crown would be at least `gatePx` across on the screen (a camera nearer than about 580 m at 412 x 868). */
+    gateCrownM: number;
+    gatePx: number;
+    /** Tree groups 0 to `maxGroup` count (trees, not heath, understorey or grass). */
+    maxGroup: number;
+    /** A tree is an obstacle when it stands `clearM` over the stroke; the crown is an ellipsoid whose middle is at `centreShare` x height and half height `halfShare` x height. */
+    clearM: number;
+    centreShare: number;
+    halfShare: number;
+    /** A disc under `minRadiusPx` on the screen is not an obstacle; at most `maxCrowns` are kept (the bound is the screen); the clock is read every `clockEvery` trees. */
+    minRadiusPx: number;
+    maxCrowns: number;
+    clockEvery: number;
+    /** The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, the stop at the rim (x r) and the seed block (x r). */
+    gridM: number;
+    reach: number;
+    soften: number;
+    maxTurnDeg: number;
+    rim: number;
+    seedBlock: number;
+    /** The per-line pin written into the colour alpha: `1 - pinDepth x (near an obstacle)` within `pinReach` x r, never under `pinMin` (the shader multiplies the meander by it). */
+    pinMin: number;
+    pinDepth: number;
+    pinReach: number;
+  };
+  /** D6: counter-rotating Rankine vortex pairs behind proud crowns, in the lee of ridges and behind the plume. */
+  eddies: {
+    /** The pair stands `downwind` x r downwind and `lateral` x r either side; core `core` x r, strength `kappa`, faded to 0 at `reach` x r (fade from `fadeFromCores` core radii). */
+    downwind: number;
+    lateral: number;
+    core: number;
+    kappa: number;
+    reach: number;
+    fadeFromCores: number;
+    /** A site is used only when its core is at least `minCorePx` across; at most `maxEddies`; kept by a hash priority under `keep`. */
+    minCorePx: number;
+    maxEddies: number;
+    keep: number;
+    /** (a) a crown standing `proudM` over the stand with no other obstacle within `freeReach` x r. */
+    proudM: number;
+    freeReach: number;
+    /** (b) ridge lee: a world lattice of `latticeM`, kept where the lee factor is at least `leeMin`, the ground falls `fallMin` along the flow and is `upwindRiseM` higher `upwindM` upwind; r = clamp(`radiusPerDrop` x drop, `radiusMinM`, `radiusMaxM`). */
+    latticeM: number;
+    leeMin: number;
+    fallMin: number;
+    upwindM: number;
+    upwindRiseM: number;
+    radiusPerDrop: number;
+    radiusMinM: number;
+    radiusMaxM: number;
+    /** (c) the plume: at most `plumeSites`; strength = min(1, intensity / `plumeIntensityKwM`), radius `plumeRadiusM` + `plumeRadiusGainM` x strength. */
+    plumeSites: number;
+    plumeIntensityKwM: number;
+    plumeRadiusM: number;
+    plumeRadiusGainM: number;
+  };
+}
+export const DETAIL_RELIEF: DetailRelief = {
+  enabled: true,
+  ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 30 },
+  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60 },
+  crowns: {
+    gateCrownM: 5,
+    gatePx: 8,
+    maxGroup: 6,
+    clearM: 1.5,
+    centreShare: 0.7,
+    halfShare: 0.3,
+    minRadiusPx: 4,
+    maxCrowns: 1024,
+    clockEvery: 4096,
+    gridM: 32,
+    reach: 3,
+    soften: 0.35,
+    maxTurnDeg: 30,
+    rim: 0.85,
+    seedBlock: 0.8,
+    pinMin: 0.2,
+    pinDepth: 0.8,
+    pinReach: 2.5,
+  },
+  eddies: {
+    downwind: 1.7,
+    lateral: 0.9,
+    core: 0.7,
+    kappa: 0.6,
+    reach: 3.2,
+    fadeFromCores: 2,
+    minCorePx: 10,
+    maxEddies: 32,
+    keep: 0.5,
+    proudM: 3,
+    freeReach: 2.2,
+    latticeM: 48,
+    leeMin: 0.6,
+    fallMin: 0.25,
+    upwindM: 60,
+    upwindRiseM: 12,
+    radiusPerDrop: 0.25,
+    radiusMinM: 10,
+    radiusMaxM: 40,
+    plumeSites: 2,
+    plumeIntensityKwM: 20_000,
+    plumeRadiusM: 30,
+    plumeRadiusGainM: 90,
+  },
+};
+
 /** A `GlyphInput` plus the 10 m ground as received (the lift and lee come from it) and the seed of the line lifetimes (0 in the app). */
 export interface DetailInput extends GlyphInput {
   ground10: GroundRaster;
   seed: number;
   /** Additive (D-engine): metres above the ground the wind is read at (`'fire'` is 10), so the ground terms fade with height; absent is 10. */
   heightM?: number;
+  /** Additive (0.7.0): the look of the lines round ridges, crowns and eddies. Absent (or `enabled` false) is the 0.6.0 picture, byte for byte. */
+  relief?: DetailRelief;
+  /** Additive (0.7.0): the canopy height and cover per fire cell, by reference (the strokes ride on the crowns' tops); absent or no `relief`: not read. */
+  canopy?: FuelMap;
+  /** Additive (0.7.0): the placed crowns, by reference (null when the canopy layer is off); absent or no `relief`: not read. */
+  crowns?: readonly CrownSet[];
+  /** Additive (0.7.0): the fire's plume as an eddy site; absent or no `relief`: not read. */
+  plumes?: readonly Plume[];
 }
 /**
  * Per segment, flat typed arrays: `a`, `b` the world ends (3 each), `c` colour rgb in display-linear light and alpha 1 (4), `d` the arc
@@ -144,6 +301,8 @@ export interface DetailOutput {
   dropped: number;
   calm: number;
   steep: number;
+  /** 0.7.0: seeds not drawn because they fell inside an obstacle's disc (0 while `relief` is absent). */
+  blocked: number;
 }
 export interface DetailBuilder {
   begin(input: DetailInput): void;

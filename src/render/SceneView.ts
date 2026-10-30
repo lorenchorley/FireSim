@@ -77,6 +77,8 @@ export interface SceneViewOptions {
   preserveDrawingBuffer?: boolean;
   /** Smoke concentration (AtmosphereView.smoke units) drawn at full puff opacity (default 1). */
   smokeReference?: number;
+  /** 0.7.0 (E3, lane E-B): ms without activity before the view holds still (default `IDLE_STOP_MS`; 0 = never; tests). Unread until built. */
+  idleStopMs?: number;
 }
 
 /**

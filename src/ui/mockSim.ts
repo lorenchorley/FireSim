@@ -494,6 +494,8 @@ export class MockSimController implements SimController {
       fireDangerRating: ratingFromIndex(fi).label,
       msPerSimMinute: this.msPerSimMinute,
     };
+    // No `atmosphere`, `layers` or `fireWind` (0.7.0): the demo engine has no air, so it has no "wind the fire feels" either. Nothing is faked
+    // here: the picture's chip says "Waiting for the wind picture." (the layer's `no-wind` idle), as the arrows do without an air view.
     const snap: SimSnapshot = { time: t, fire, moisture, embers, spotFires: spots, stats, insights: [], engine: this.engineInfo(embers.count) };
     snap.insights = this.detectInsights(prevT, t, snap, headK);
     return snap;
@@ -502,7 +504,8 @@ export class MockSimController implements SimController {
   /**
    * The demo engine's EngineInfo, flagged `mock: true`: it has NO atmosphere model (the wind is the weather series at the
    * grid point plus wind edits), no level set (a travel-time search on the terrain grid), no ember physics (particles are
-   * drawn downwind of intense cells) and no tiers, so every atmosphere number is 0 and the transparency card says so.
+   * drawn downwind of intense cells) and no tiers, so every atmosphere number is 0 and the transparency card says so. Its snapshots carry no
+   * `fireWind` either (the 60 m wind the fire feels is the real engine's fire-grid wind; the mock's is a point read of the weather series).
    */
   private engineInfo(activeEmbers: number): EngineInfo {
     const sc = this.scenario!;

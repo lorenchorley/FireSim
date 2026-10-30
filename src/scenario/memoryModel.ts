@@ -27,6 +27,7 @@
  */
 import { formatBytes, typedArrayFootprint, type LiveMemory, type MemoryWhere, type WorkingMemory, type WorkingMemoryItem } from '../core/datasets';
 import { WIND_PACK_BYTES_PER_VALUE, WIND_PACK_FIXED_BYTES } from '../core/airPack';
+import { fireWindBytesModel } from '../core/fireWind';
 import { sliceRecorderBudgetBytes, sliceSampleBytes } from '../core/sliceRecording';
 import type { QualityTier, ScenarioData } from '../core/types';
 import { ATMOS_PARAMS, ATMOS_TIERS } from '../atmosphere/params';
@@ -111,11 +112,13 @@ export const KEYFRAME_COLUMN_BYTES = { surface: 12, perLevel: 20, perLevelWindOn
 
 /**
  * Bytes of a snapshot's keyframe part (ui/snapshotStore.ts `keyframeBytes`): the fixed part, moisture and four overlay rasters per
- * fire cell, the air view as the engine publishes it. This is what the newest snapshot holds, and what a 3-D-tier keyframe keeps.
+ * fire cell, the air view as the engine publishes it, and the wind the fire feels (`fireWindBytes`: `fireWindBytesModel` of the fire
+ * grid, 10 kB at 3 km to 160 kB at 12 km; 0 for a snapshot without one). This is what the newest snapshot holds, and what a
+ * 3-D-tier keyframe keeps.
  */
-export function keyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
+export function keyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number, fireWindBytes = 0): number {
   const perLevel = tier === 'fast' ? KEYFRAME_COLUMN_BYTES.perLevelWindOnly : KEYFRAME_COLUMN_BYTES.perLevel;
-  return 256 + KEYFRAME_BYTES_PER_CELL * cells + columns * (KEYFRAME_COLUMN_BYTES.surface + nz * perLevel) + 4 * nz;
+  return 256 + KEYFRAME_BYTES_PER_CELL * cells + columns * (KEYFRAME_COLUMN_BYTES.surface + nz * perLevel) + 4 * nz + fireWindBytes;
 }
 
 /**
@@ -127,9 +130,9 @@ export function windVolumeBytesModel(tier: QualityTier, columns: number, nz: num
 }
 
 /** Bytes of a keyframe as the store keeps it: {@link keyframeBytesModel} without the fast tier's wind volume, which is in the wind list. */
-export function keptKeyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number): number {
+export function keptKeyframeBytesModel(tier: QualityTier, cells: number, columns: number, nz: number, fireWindBytes = 0): number {
   const volume = tier === 'fast' ? columns * nz * KEYFRAME_COLUMN_BYTES.perLevelWindOnly : 0;
-  return keyframeBytesModel(tier, cells, columns, nz) - volume;
+  return keyframeBytesModel(tier, cells, columns, nz, fireWindBytes) - volume;
 }
 
 /**
@@ -174,6 +177,8 @@ export interface MemoryModelInput {
   fireNx: number;
   fireNy: number;
   extentM: number;
+  /** Fire grid cell size (m), for the size of the wind the fire feels (it is blocked to about 60 m); default `extentM / fireNx`. */
+  fireCellM?: number;
   /** Ember budget; default the tier default (sim/params.ts maxEmbersByTier). */
   maxEmbers?: number;
   /** Simulated duration (s): sets the number of ring checkpoints and the snapshot history. */
@@ -301,8 +306,10 @@ export function workingMemory(i: MemoryModelInput): WorkingMemory {
   // ── snapshot history (main) ──
   // The newest snapshot holds the air as published; every older keyframe holds it as the store keeps it (the fast tier's wind volume packed,
   // in a list of its own that the store holds to a small share once the budget is reached: the figure here is the most it can be before that).
-  const kfBytes = keyframeBytesModel(tier, cells, atm.columns, atm.nz);
-  const keptBytes = keptKeyframeBytesModel(tier, cells, atm.columns, atm.nz);
+  const fireNx = Math.max(0, Math.round(i.fireNx));
+  const fireWind = fireNx > 0 ? fireWindBytesModel(fireNx, Math.max(0, Math.round(i.fireNy)), i.fireCellM ?? i.extentM / fireNx) : 0;
+  const kfBytes = keyframeBytesModel(tier, cells, atm.columns, atm.nz, fireWind);
+  const keptBytes = keptKeyframeBytesModel(tier, cells, atm.columns, atm.nz, fireWind);
   const windBytes = windVolumeBytesModel(tier, atm.columns, atm.nz);
   const keyEvery = Math.max(300, step);
   const nKeys = Math.floor(i.durationS / keyEvery) + 1;
@@ -375,6 +382,7 @@ export function workingMemoryForScenario(s: ScenarioData, o: Partial<Pick<Memory
     fireNx: g.nx,
     fireNy: g.ny,
     extentM: s.extent,
+    fireCellM: g.cellSize,
     maxEmbers,
     durationS: s.duration,
     snapshotIntervalS: s.options.snapshotInterval,

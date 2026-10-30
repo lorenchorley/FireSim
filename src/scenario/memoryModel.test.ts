@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeGridSpec } from '../core/grid';
 import { formatBytes, typedArrayFootprint } from '../core/datasets';
+import { fireWindBytesModel } from '../core/fireWind';
 import { atmosCellSize } from '../atmosphere/grid';
 import { Simulation } from '../sim/simulation';
 import { SnapshotStore, keyframeBytes } from '../ui/snapshotStore';
@@ -64,8 +65,13 @@ describe('model vs the real allocated arrays', () => {
       const snap = sim.snapshot();
       const atm = atmosphereGrid(scenario.extent, tier);
       const kfReal = keyframeBytes(snap);
-      const kfModel = keyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz);
+      // The wind the fire feels (0.7.0): the snapshot carries it and the keyframe counts it, exactly what the byte model says.
+      const fw = fireWindBytesModel(g.nx, g.ny, g.cellSize);
+      expect(snap.fireWind).toBeDefined();
+      expect(kfReal - keyframeBytes({ ...snap, fireWind: undefined })).toBe(fw);
+      const kfModel = keyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz, fw);
       expect(Math.abs(kfModel - kfReal) / kfReal, `keyframe: model ${kfModel} vs measured ${kfReal}`).toBeLessThan(0.03);
+      expect(kfModel - keyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz)).toBe(fw);
       expect(snap.atmosphere!.nz).toBe(atm.nz);
       // The keyframe as the history keeps it (a store that has demoted the snapshot): the fast tier's wind volume is packed, 6 B per cell
       // and level, in a list beside the keyframes; the 3-D tiers keep their air whole.
@@ -74,7 +80,7 @@ describe('model vs the real allocated arrays', () => {
       store.push({ ...snap, time: snap.time + 300 });
       expect(store.keyframeCount).toBe(1);
       const keptReal = store.keyframeBytes;
-      const keptModel = keptKeyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz) + windVolumeBytesModel(tier, atm.columns, atm.nz);
+      const keptModel = keptKeyframeBytesModel(tier, g.nx * g.ny, atm.columns, atm.nz, fw) + windVolumeBytesModel(tier, atm.columns, atm.nz);
       expect(Math.abs(keptModel - keptReal) / keptReal, `kept keyframe: model ${keptModel} vs measured ${keptReal}`).toBeLessThan(0.03);
       expect(store.windFrameCount).toBe(tier === 'fast' ? 1 : 0);
       if (tier === 'fast') expect(keptReal).toBeLessThan(kfReal - 0.4 * atm.columns * atm.nz * 12); // the volume costs half of what the live one does
@@ -221,7 +227,11 @@ describe('the Air slices recording (0.4.1): it comes on top of the history and t
   it('the history item and the totals are exactly what they were: the figures of 0.4.0 at budgets of 48, 61.44 and 122.88 MiB', () => {
     // Taken from the model before the recorder existed (a long run, which the budget caps; a short one, which it does not).
     const capped = { fast: [50331648, 64424509, 128849019], standard: [50331648, 64424509, 128849019] } as const;
-    const small = { fast: 3903328, standard: 5810880 } as const;
+    // The short run is under every cap, so it is the sum of its parts, and 0.7.0 adds one: each keyframe (7, with the newest picture 8) holds
+    // the wind the fire feels, 10,064 B at 100 x 100 cells of 30 m (`fireWindBytesModel`). The figures of 0.4.0 plus that, nothing else.
+    const FIRE_WIND = fireWindBytesModel(100, 100, 30);
+    expect(FIRE_WIND).toBe(10_064);
+    const small = { fast: 3903328 + 8 * FIRE_WIND, standard: 5810880 + 8 * FIRE_WIND } as const;
     for (const tier of ['fast', 'standard'] as const) {
       [48, 61.44, 122.88].forEach((b, k) => {
         const long = workingMemory({ ...run, tier, snapshotBudgetBytes: Math.round(b * MiB) });
