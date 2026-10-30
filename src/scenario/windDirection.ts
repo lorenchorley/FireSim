@@ -9,9 +9,9 @@
  *  - The speed is untouched; the whole column (profile and pressure levels) turns by the same angle as the 10 m wind.
  *  - A change is a whole minute of simulation time, so the step grid (which follows the display step) cannot move it
  *    (plan section 4, rule 1: the results do not depend on the display).
- *  - Not built: a user change does not raise the "wind change coming" card or the Danger zone (they read the
- *    forecast), and there is no "Back to the forecast" change. The old per-place Local wind tool is gone as a tool;
- *    `WindEdit` stays in the union for Setup's belt-kit readings.
+ *  - Not built: a user change does not raise a "wind change coming" card or a Danger zone of its own, and there is no "Back
+ *    to the forecast" change. The forecast's own swings that it replaces are not shown as coming (`forecastSwingsKept`).
+ *    The old per-place Local wind tool is gone as a tool; `WindEdit` stays in the union for Setup's belt-kit readings.
  *
  * Light imports on purpose (core/types, core/units, atmosphere/weatherInterp): the Session, which sits in the entry chunk,
  * imports this module, and `scenario/weather.ts` is a separate lazy chunk.
@@ -64,6 +64,27 @@ export function windDirectionEdits(list: readonly { edit: ScenarioEdit }[]): Win
   const out: WindDirectionEdit[] = [];
   for (const { edit } of list) if (edit.kind === 'windDirection') out.push(edit);
   return out.sort((a, b) => a.time - b.time); // a stable sort: equal times keep their list order
+}
+
+/**
+ * When the first change starts (s from the scenario start), or null for none: from then on the 10 m direction is the plan's
+ * and the forecast's own swings are replaced (`applyWindDirection`). A change whose time or direction is not a number
+ * is left out, as `planSwings` leaves it out.
+ */
+export function windOverrideFrom(edits: readonly Pick<WindDirectionEdit, 'dir' | 'time'>[]): number | null {
+  let from: number | null = null;
+  for (const e of edits) if (Number.isFinite(e.time) && Number.isFinite(e.dir) && (from === null || e.time < from)) from = e.time;
+  return from;
+}
+
+/**
+ * The forecast's own wind changes (anything with a `time`, unix ms) that still come once the changes in `edits` are made:
+ * those that happen before the first change starts. The later ones are replaced by the held direction, so the "wind change
+ * coming" cards, marks and warnings built from the forecast must not show them. `changes` itself when there is no change.
+ */
+export function forecastSwingsKept<T extends { time: number }>(changes: readonly T[], startMs: number, edits: readonly Pick<WindDirectionEdit, 'dir' | 'time'>[]): readonly T[] {
+  const from = windOverrideFrom(edits);
+  return from === null ? changes : changes.filter((c) => c.time < startMs + from * 1000);
 }
 
 /** One swing of a plan: from `t0` (unix ms) the 10 m direction goes from `from` to `to` over `WIND_TURN_S`. */

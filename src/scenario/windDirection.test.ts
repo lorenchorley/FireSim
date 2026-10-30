@@ -8,6 +8,7 @@ import { angleDiffDeg } from '../core/units';
 import { weatherAt } from './weather';
 import {
   applyWindDirection,
+  forecastSwingsKept,
   planSwings,
   turnDirection,
   turnFraction,
@@ -15,6 +16,7 @@ import {
   windDirectionAt,
   windDirectionEdits,
   windDirectionTime,
+  windOverrideFrom,
   WIND_TURN_S,
   WIND_TURN_STEP_DEG,
 } from './windDirection';
@@ -105,6 +107,45 @@ describe('windDirectionEdits', () => {
     const list = [{ edit: change('a', 10, 900) }, { edit: change('b', 20, 300) }];
     windDirectionEdits(list);
     expect(list.map((x) => x.edit.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('windOverrideFrom and forecastSwingsKept', () => {
+  const t0 = Date.UTC(2025, 11, 20, 2);
+  // Forecast wind changes at 1 h, 2 h and 3 h after the start (unix ms), as the detectors report them.
+  const swings = [1, 2, 3].map((h) => ({ time: t0 + h * 3.6e6, name: `h${h}` }));
+
+  it('windOverrideFrom is null for no change and the earliest start otherwise, whatever the list order', () => {
+    expect(windOverrideFrom([])).toBeNull();
+    expect(windOverrideFrom([change('a', 90, 7200), change('b', 180, 3600), change('c', 0, 5400)])).toBe(3600);
+  });
+  it('windOverrideFrom leaves out a change whose time or direction is not a number, as the series transform does', () => {
+    expect(windOverrideFrom([change('a', 90, NaN)])).toBeNull();
+    expect(windOverrideFrom([change('a', NaN, 600), change('b', 90, 1200)])).toBe(1200);
+  });
+  it('with no change every forecast swing is kept, as the same array', () => {
+    expect(forecastSwingsKept(swings, t0, [])).toBe(swings);
+  });
+  it('a change replaces the swings from its start on and keeps the ones before it', () => {
+    expect(forecastSwingsKept(swings, t0, [change('a', 90, 0)]).map((s) => s.name)).toEqual([]);
+    expect(forecastSwingsKept(swings, t0, [change('a', 90, 3600 + 1800)]).map((s) => s.name)).toEqual(['h1']);
+    expect(forecastSwingsKept(swings, t0, [change('a', 90, 3 * 3600 + 60)]).map((s) => s.name)).toEqual(['h1', 'h2', 'h3']);
+  });
+  it('a swing that happens at the very start of a change is replaced by it', () => {
+    expect(forecastSwingsKept(swings, t0, [change('a', 90, 7200)]).map((s) => s.name)).toEqual(['h1']);
+  });
+  it('the first change decides, a later one does not bring a replaced swing back', () => {
+    const edits = [change('late', 270, 3 * 3600), change('early', 90, 1800)];
+    expect(forecastSwingsKept(swings, t0, edits)).toEqual([]);
+  });
+  it('agrees with the series transform: the direction after a replaced swing is the plan, before a kept one it is the forecast', () => {
+    const series = flat(270, 10, {});
+    // A forecast that swings from 270 to 180 between 1 h and 2 h after the start.
+    const swung: WeatherSeries = { ...series, hours: series.hours.map((h) => (h.time >= START + 2 * 3.6e6 ? { ...h, windDir10: 180 } : h)) };
+    const turned = applyWindDirection(swung, START, [change('a', 90, 1800)]);
+    expect(weatherAt(turned, START + 3 * 3.6e6).windDir10).toBeCloseTo(90, 6);
+    expect(weatherAt(swung, START + 3 * 3.6e6).windDir10).toBeCloseTo(180, 6);
+    expect(windOverrideFrom([change('a', 90, 1800)])).toBe(1800);
   });
 });
 
