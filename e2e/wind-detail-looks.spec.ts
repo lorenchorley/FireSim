@@ -10,7 +10,7 @@
  *   - the relief in the forest: the strokes ride on the canopy (lifted well over the 0.6.0 stroke), bend round the crowns (no vertex lies inside the disc
  *     a placed crown shows at the stroke's height, read from the vegetation layer's own placement), keep their colours (the same 64 colours of the Wind
  *     speed ramp), carry their pin (0.05 to 1, 1 with the relief off), and never exceed the tier's caps or the frame's triangle budget
- *   - the kill switch draws the 0.6.0 picture: the relief off twice gives the same bytes, on gives other ones
+ *   - the kill switch draws the 0.6.0 picture: the relief off, on and off again gives the same builder output twice, on gives another one
  * The layer is fed the canopy, the crowns and the plume here as the scene view does (lane looks-B wires it); feeding twice is harmless.
  */
 import type { Page } from '@playwright/test';
@@ -312,16 +312,18 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     expect(onIn[1], 'few inside 0.75 radii').toBeLessThanOrEqual(Math.ceil(0.05 * onPic.n));
   });
 
-  await test.step('the kill switch draws the 0.6.0 picture: relief off twice is the same bytes, on is another picture', async () => {
-    const shotOf = async (on: boolean): Promise<string> => {
+  await test.step('the kill switch draws the 0.6.0 picture: relief off, on, off again gives the same picture twice (the builder\'s bytes), and on is another picture', async () => {
+    // (The builder's own output is compared, not the frame: the trees sway with the clock, which the scene view of this commit does not stop under reduced motion.)
+    const pictureOf = async (on: boolean): Promise<string> => {
       await relief(page, on);
       await drawAndRead(page);
-      return (await pixels(page)).png;
+      const b = await batch(page);
+      return JSON.stringify([b.n, b.a, b.c]);
     };
-    const a = await shotOf(false);
-    const b = await shotOf(false);
-    const c = await shotOf(true);
-    expect(b === a, 'relief off is a still picture (same clock, same bytes)').toBe(true);
+    const a = await pictureOf(false);
+    const c = await pictureOf(true);
+    const b = await pictureOf(false);
+    expect(b === a, 'relief off is the same picture after the relief was on in between').toBe(true);
     expect(c === a, 'relief on is not the 0.6.0 picture in the forest').toBe(false);
   });
 });
