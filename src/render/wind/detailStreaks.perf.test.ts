@@ -14,7 +14,9 @@ import { describe, expect, it } from 'vitest';
 import { createDetailBuilder } from './detailStreaks';
 import { linesOf, makeDetailScenario, type DetailScenario } from './detailStreaks.testing';
 import { buildAll, makeCamera, topDownCamera } from './glyphOracle.testing';
-import type { DetailBuilder } from './glyphTypes';
+import { DETAIL_RELIEF, type CrownSet, type DetailBuilder, type DetailInput } from './glyphTypes';
+import { hash01 } from '../fields';
+import type { FuelMap } from '../../core/types';
 
 const log = (s: string): void => {
   process.stderr.write(`[detail perf] ${s}\n`);
@@ -189,5 +191,121 @@ describe('detailed streaks rebuild cost', () => {
     const grew = process.memoryUsage().heapUsed - before;
     log(`3000 rebuilds: heap after collection changed by ${(grew / 1024).toFixed(1)} kB; last build ${linesOf(b.out).length} lines`);
     expect(grew).toBeLessThan(40 * 1024); // 17 to 25 kB measured (the contract said 30): a leak of one small object a rebuild would be over it
+  });
+});
+
+// ───────────────────────── the relief (0.7.0) ─────────────────────────
+
+/** `n` trees of 28 to 42 m over an area `w` x `h` m about the origin, as one set. */
+function forestOf(n: number, w: number, h: number): CrownSet {
+  const position = new Float32Array(3 * n);
+  const size = new Float32Array(2 * n);
+  for (let i = 0; i < n; i++) {
+    position.set([(hash01(i, 9, 1) - 0.5) * w, (hash01(i, 9, 2) - 0.5) * h, 0], 3 * i);
+    size.set([28 + hash01(i, 9, 3) * 14, 8 + hash01(i, 9, 4) * 6], 2 * i);
+  }
+  return { group: 0, count: n, position, size };
+}
+const canopyOf = (sc: DetailScenario): FuelMap => {
+  const g = sc.grid;
+  const n = g.nx * g.ny;
+  return { grid: g, canopyHeight: new Float32Array(n).fill(24), canopyCover: new Float32Array(n).fill(1) } as unknown as FuelMap;
+};
+const bumpy = (x: number, y: number): number => 400 + 6 * Math.sin(x / 7) * Math.cos(y / 9) + 0.15 * x + 40 * Math.sin(x / 90);
+/** The High cap on a tablet screen at 300 px a model cell (0.44 m a pixel: crowns count), a canopy, 700 crowns on the screen and a plume, over rolling ground (a ridge slide and lee sites). */
+const relieved = (): DetailScenario => {
+  const sc = makeDetailScenario({ field: swirl, camera: topDownCamera(133, 300, 0, 0, BIG, 800), cap: { glyphs: 2000, segments: 12000 }, ground: bumpy, groundCell: 10 });
+  const input: DetailInput = { ...sc.input, relief: DETAIL_RELIEF, canopy: canopyOf(sc), crowns: [forestOf(700, 1100, 620)], plumes: [{ x: -200, y: 0, radiusM: 60, strength: 1 }] };
+  return { ...sc, input };
+};
+
+/** Whole rebuilds of two inputs, interleaved (so that whatever else the machine is doing is shared), after a warm-up: the medians (ms). */
+function compare(plain: DetailInput, withRelief: DetailInput, rounds: number): { plain: number; relief: number; b: DetailBuilder } {
+  const a = createDetailBuilder('high');
+  const b = createDetailBuilder('high');
+  for (let r = 0; r < 60; r++) {
+    buildAll(a, { ...plain, now });
+    buildAll(b, { ...withRelief, now });
+  }
+  const ta: number[] = [];
+  const tb: number[] = [];
+  for (let r = 0; r < rounds; r++) {
+    let t0 = now();
+    buildAll(a, { ...plain, now });
+    ta.push(now() - t0);
+    t0 = now();
+    buildAll(b, { ...withRelief, now });
+    tb.push(now() - t0);
+  }
+  return { plain: median(ta), relief: median(tb), b };
+}
+
+describe('the relief costs', () => {
+  it('a warm rebuild of the High cap with a canopy, 700 crowns, a plume and rolling ground costs under three times the rebuild without the relief (the contract: 2.4 to 7 ms), and its slices keep their budget', () => {
+    const sc = relieved();
+    const { relief: _r, canopy: _c, crowns: _k, plumes: _p, ...plain } = sc.input;
+    const c = compare(plain, sc.input, 120);
+    log(`relief, High cap: ${c.b.out.lines} lines, ${c.b.out.segments} segments, ${c.b.out.blocked} seeds blocked: whole rebuild median ${c.relief.toFixed(2)} ms against ${c.plain.toFixed(2)} ms without the relief (x${(c.relief / c.plain).toFixed(2)})`);
+    expect(c.b.out.lines).toBeGreaterThan(300);
+    expect(c.b.out.blocked).toBeGreaterThan(20);
+    expect(c.relief / c.plain, 'a shared machine slows both: the ratio is what is pinned').toBeLessThan(3);
+    expect(c.relief, 'and an order of magnitude over the contract is a slowdown, not a busy machine').toBeLessThan(30);
+    const all: number[] = [];
+    const b = createDetailBuilder('high');
+    for (let r = 0; r < 60; r++) buildAll(b, { ...sc.input, now });
+    for (let r = 0; r < 100; r++) all.push(...slices(b, sc));
+    log(`relief, High cap slices of ${BUDGET_MS} ms: p95 ${quantile(all, 0.95).toFixed(2)} ms, max ${Math.max(...all).toFixed(2)} ms`);
+    expect(quantile(all, 0.95)).toBeLessThan(BUDGET_MS * 3 + 1);
+  });
+
+  it('a phone picture with the relief (a canopy, 300 crowns, rolling ground) costs under four times the picture without it', () => {
+    const sc = makeDetailScenario({ field: swirl, camera: topDownCamera(133, 1000, 0, 0, {}, 800), ground: bumpy, groundCell: 10 });
+    const input: DetailInput = { ...sc.input, relief: DETAIL_RELIEF, canopy: canopyOf(sc), crowns: [forestOf(300, 55, 115)] };
+    const c = compare(sc.input, input, 150);
+    log(`relief, phone at the closest zoom: ${c.b.out.lines} lines, ${c.b.out.segments} segments: whole rebuild median ${c.relief.toFixed(2)} ms against ${c.plain.toFixed(2)} ms (x${(c.relief / c.plain).toFixed(2)})`);
+    expect(c.b.out.lines).toBeGreaterThan(100);
+    expect(c.relief / c.plain).toBeLessThan(4);
+    expect(c.relief).toBeLessThan(20);
+  });
+
+  it('choosing the crowns reads the clock every 256 trees in the first two rebuilds, every 1,024 in the next two, and every 4,096 after: counted on a fake clock', () => {
+    const sc = makeDetailScenario({ field: swirl, camera: topDownCamera(133, 300, 0, 0, {}, 0) });
+    const trees = 60000;
+    const input: DetailInput = { ...sc.input, relief: DETAIL_RELIEF, canopy: canopyOf(sc), crowns: [forestOf(trees, 3000, 3000)] };
+    const b = createDetailBuilder('high');
+    const reads: number[] = [];
+    for (let r = 1; r <= 6; r++) {
+      let n = 0;
+      const clock = (): number => ++n * 1e-6; // a read costs a nanosecond: never past the budget, so a build is one slice
+      b.begin({ ...input, now: clock });
+      while (!b.step(1e9)) {
+        /* one slice */
+      }
+      reads.push(n);
+    }
+    log(`crowns scan, ${trees} trees: clock reads per rebuild ${reads.join(', ')}`);
+    expect(reads[0]! - reads[4]!, 'cold: 60,000 / 256 reads against 60,000 / 4,096').toBeGreaterThan(trees / 256 - trees / 4096 - 8);
+    expect(reads[2]! - reads[4]!, 'warming: 60,000 / 1,024').toBeGreaterThan(trees / 1024 - trees / 4096 - 8);
+    expect(reads[0]).toBe(reads[1]);
+    expect(reads[2]).toBe(reads[3]);
+    expect(reads[4]).toBe(reads[5]);
+    expect(reads[4]!).toBeLessThan(reads[2]!);
+  });
+
+  it('passing over 60,000 placed trees (the whole forest of the app, almost all of it off the screen) costs under 2.5 ms warm over the same picture made from the few trees near it', () => {
+    const sc = makeDetailScenario({ field: swirl, camera: topDownCamera(133, 300, 0, 0, {}, 0) });
+    const all = forestOf(60000, 6000, 6000);
+    // The same trees that are within 500 m of the middle, as a set of their own: the same crowns, none of the passing over.
+    const keep: number[] = [];
+    for (let i = 0; i < all.count; i++) if (Math.abs(all.position[3 * i]!) < 500 && Math.abs(all.position[3 * i + 1]!) < 500) keep.push(i);
+    const near: CrownSet = { group: 0, count: keep.length, position: new Float32Array(3 * keep.length), size: new Float32Array(2 * keep.length) };
+    keep.forEach((i, k) => {
+      near.position.set(all.position.subarray(3 * i, 3 * i + 3), 3 * k);
+      near.size.set(all.size.subarray(2 * i, 2 * i + 2), 2 * k);
+    });
+    expect(keep.length).toBeGreaterThan(300);
+    const c = compare({ ...sc.input, relief: DETAIL_RELIEF, canopy: canopyOf(sc), crowns: [near] }, { ...sc.input, relief: DETAIL_RELIEF, canopy: canopyOf(sc), crowns: [all] }, 100);
+    log(`60,000 trees: whole rebuild ${c.relief.toFixed(2)} ms against ${c.plain.toFixed(2)} ms with only the ${keep.length} near ones`);
+    expect(c.relief - c.plain).toBeLessThan(2.5);
   });
 });

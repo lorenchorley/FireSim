@@ -12,9 +12,11 @@ import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { createDetailBuilder } from './detailStreaks';
-import { makeDetailScenario, type DetailScenarioOptions } from './detailStreaks.testing';
+import { makeDetailScenario, type DetailScenario, type DetailScenarioOptions } from './detailStreaks.testing';
+import { hash01 } from '../fields';
 import { counterClock, topDownCamera } from './glyphOracle.testing';
-import type { DetailBuilder, DetailInput } from './glyphTypes';
+import { DETAIL_RELIEF, type CrownSet, type DetailBuilder, type DetailInput } from './glyphTypes';
+import type { FuelMap } from '../../core/types';
 
 let gcFn: (() => void) | null = null;
 function gc(): void {
@@ -43,7 +45,27 @@ const rotate = (x: number, y: number): [number, number] => [3 - 0.004 * y, 1 + 0
 const swirl = (x: number, y: number): [number, number] => [5 - 0.004 * y, 2 + 0.004 * x];
 const bumpy = (x: number, y: number): number => 400 + 6 * Math.sin(x / 7) * Math.cos(y / 9) + 0.15 * x; // rough and sloping: every ground term is exercised
 const wall = (x: number): number => (x < -20 ? 300 : x > 20 ? 460 : 300 + 4 * (x + 20));
-const CASES: [string, DetailScenarioOptions, number][] = [
+/** What the relief is given (0.7.0): `forest` a canopy, 120 crowns of which many are proud, and a plume; `ridge` nothing but the 10 m ground (the ridge slide and the lee sites). */
+type ReliefKind = 'forest' | 'ridge';
+function reliefInput(sc: DetailScenario, kind: ReliefKind): DetailInput {
+  const g = sc.grid;
+  const n = g.nx * g.ny;
+  const input: DetailInput = { ...sc.input, relief: DETAIL_RELIEF };
+  if (kind === 'forest') {
+    input.canopy = { grid: g, canopyHeight: new Float32Array(n).fill(24), canopyCover: new Float32Array(n).fill(1) } as unknown as FuelMap;
+    const count = 120;
+    const position = new Float32Array(3 * count);
+    const size = new Float32Array(2 * count);
+    for (let i = 0; i < count; i++) {
+      position.set([(hash01(i, 1, 1) - 0.5) * 90, (hash01(i, 1, 2) - 0.5) * 180, 0], 3 * i);
+      size.set([28 + hash01(i, 1, 3) * 14, 8 + hash01(i, 1, 4) * 6], 2 * i);
+    }
+    input.crowns = [{ group: 0, count, position, size } as CrownSet];
+    input.plumes = [{ x: -30, y: 0, radiusM: 15, strength: 1 }];
+  }
+  return input;
+}
+const CASES: [string, DetailScenarioOptions, number, ReliefKind?][] = [
   // About 840 lines and 11,400 segments: the High cap of 12,000 segments is nearly full.
   ['a tablet at the first level-4 zoom, nearly the High cap (12,000 segments)', { field: swirl, camera: topDownCamera(133, 104, 0, 0, BIG_SCREEN) }, 600],
   ['a tablet with a calm point', { field: rotate, camera: topDownCamera(133, 104, 0, 0, BIG_SCREEN) }, 600],
@@ -52,6 +74,9 @@ const CASES: [string, DetailScenarioOptions, number][] = [
   ['rough ground and a slope (the 10 m ground terms)', { field: swirl, cellPx: 150, ground: bumpy, groundCell: 5, camera: topDownCamera(133, 150, 0, 0, {}, 800) }, 40],
   ['a wall (lines cut at its foot)', { field: () => [8, 0], cellPx: 150, ground: wall, groundCell: 10, camera: topDownCamera(133, 150, 0, 0, { near: 30 }, 460) }, 40],
   ['calm', { field: () => [0.1, 0], cellPx: 150 }, 0],
+  // 0.7.0: the relief (obstacle scan, grid, field, eddy sites, ridge slide, canopy reads) allocates nothing either.
+  ['the relief in a forest at 1000 px a cell: a canopy, 120 crowns, their wakes and a plume', { field: swirl, cellPx: 1000, camera: topDownCamera(133, 1000, 0, 0, {}, 0) }, 100, 'forest'],
+  ['the relief on rough ground and a slope (the ridge slide, the lee sites)', { field: swirl, cellPx: 300, ground: bumpy, groundCell: 5, camera: topDownCamera(133, 300, 0, 0, {}, 800) }, 100, 'ridge'],
 ];
 
 /** Bytes per rebuild over a window of rebuilds, and the rebuild of the given builder and input. */
@@ -91,10 +116,10 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => 
     v8.setFlagsFromString('--no-turbo-inlining');
     try {
       const lines: string[] = [];
-      for (const [name, opts, minLines] of CASES) {
+      for (const [name, opts, minLines, relief] of CASES) {
         const sc = makeDetailScenario({ ...opts, cap: { glyphs: 2000, segments: 12000 } });
         const b = createDetailBuilder('high');
-        const rebuild = makeRebuild(b, { ...sc.input, now: browserClock() });
+        const rebuild = makeRebuild(b, { ...(relief ? reliefInput(sc, relief) : sc.input), now: browserClock() });
         const settled = settle(rebuild);
         expect(b.out.lines, name).toBeGreaterThanOrEqual(minLines);
         gc();
