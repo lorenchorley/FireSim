@@ -11,6 +11,8 @@ import { button, compassRose, segmented } from '../../widgets';
 import type { SimContext } from './context';
 import { panelShell } from './editPanels';
 import {
+  BACK_TO_FORECAST_HINT,
+  BACK_TO_FORECAST_LABEL,
   DIAL_LABEL,
   LIST_TITLE,
   READINGS_NOTE,
@@ -22,6 +24,7 @@ import {
   WIND_HINT,
   applyAnnouncement,
   applyLabel,
+  backToForecastAnnouncement,
   defaultClock,
   dialSize,
   dialStart,
@@ -156,6 +159,23 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
     keepFocus(hadFocus);
   }
 
+  /** Every change comes away at once; the button is gone after it, so the keyboard goes to the dial (not to a reading's Remove). */
+  function backToForecast(trigger: HTMLElement): void {
+    const s = session.state.get();
+    const first = windDirectionEdits(s.edits)[0];
+    if (!first) return;
+    const hadFocus = document.activeElement === trigger;
+    const removed = session.backToForecast();
+    if (removed > 0) ctx.announce(backToForecastAnnouncement(removed, first.time, s.headTime, env));
+    if (hadFocus) dial.el.querySelector<HTMLElement>('.rose')?.focus();
+  }
+
+  /** The secondary button under the changes (it is shown while there is one) and the sentence that says what it does. */
+  const backBlock = (): HTMLElement[] => {
+    const back = button({ label: BACK_TO_FORECAST_LABEL, icon: 'undo', variant: 'secondary', class: 'wind-back', testId: 'wind-back-to-forecast', onClick: () => backToForecast(back) });
+    return [back, h('p', { class: 'hint wind-back-note' }, BACK_TO_FORECAST_HINT)];
+  };
+
   /** A local wind reading (Setup's belt kit): the session's ordinary edit removal. */
   function removeReading(id: string, trigger: HTMLElement): void {
     if (!windReadingEdits(session.state.get().edits).some((e) => e.id === id)) return;
@@ -189,7 +209,7 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
       listIds = ids;
       rows.clear();
       setChildren(list, [
-        changes.length ? section(LIST_TITLE, changes, 'remove-wind-direction', remove) : null,
+        changes.length ? [...section(LIST_TITLE, changes, 'remove-wind-direction', remove), ...backBlock()] : null,
         readings.length ? [...section(READINGS_TITLE, readings, 'remove-wind-reading', removeReading, 'wind-readings'), h('p', { class: 'hint wind-readings-note' }, READINGS_NOTE)] : null,
       ]);
     }

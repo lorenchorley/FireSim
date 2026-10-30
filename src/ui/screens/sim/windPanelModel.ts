@@ -127,6 +127,9 @@ export const WHEN_LABEL = 'When';
 export const TIME_FIELD_LABEL = 'Local time';
 export const TIME_FIELD_SPOKEN = 'Time the wind starts to turn';
 export const LIST_TITLE = 'Your wind changes';
+/** "Back to the forecast" (0.7.0): the button under the list, and the sentence under it. It is the bin of every change at once. */
+export const BACK_TO_FORECAST_LABEL = 'Back to the forecast';
+export const BACK_TO_FORECAST_HINT = 'Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.';
 
 /** The dial's own step (degrees): the dial opens on the wind rounded to it, so a dial left alone is within half a step of the wind. */
 const DIAL_STEP_DEG = 5;
@@ -261,6 +264,15 @@ export function applyAnnouncement(edit: Pick<WindDirectionEdit, 'dir' | 'time'>,
 /** The re-run is only mentioned when the simulation had computed past the change (`headTime` before the removal). */
 export function removeAnnouncement(edit: Pick<WindDirectionEdit, 'time'>, headTime: number, env: WindEnv): string {
   return `Wind change removed.${headTime > edit.time ? ` The simulation re-runs from ${windClock(env, edit.time)} without it.` : ''}`;
+}
+
+/**
+ * "Back to the forecast": how many changes came away, and (as for one removal) that the simulation re-runs from the first one's start, only when
+ * it had computed past it (`headTime` after the start).
+ */
+export function backToForecastAnnouncement(removed: number, firstTime: number, headTime: number, env: WindEnv): string {
+  const rerun = headTime > firstTime ? ` The simulation re-runs from ${windClock(env, firstTime)} without ${removed === 1 ? 'it' : 'them'}.` : '';
+  return `Back to the forecast. ${removed} wind ${removed === 1 ? 'change' : 'changes'} removed.${rerun}`;
 }
 
 /** A reading stops applying from now on; what was simulated before stays. */
