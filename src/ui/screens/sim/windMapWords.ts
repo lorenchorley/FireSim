@@ -3,7 +3,7 @@
  * speed row say about it. Pure (no DOM, no Three), unit-tested (windMapSwitch.test.ts); in the entry chunk, so it imports only the layer rules and the
  * words the controls already hold. The chip itself is windMapSwitch.ts.
  */
-import { shownWindHeight, windMapHeight, type LayerState } from '../../../render/layers';
+import { shownWindHeight, windMapHeight, type LayerState, type OverlayKind } from '../../../render/layers';
 import type { WindHeight } from '../../../render/wind/glyphTypes';
 import { heightLabel } from './glyphWords';
 
@@ -15,6 +15,18 @@ export const MAP_CHIP_LABEL = 'Colour the map by speed';
  */
 export function mapHeightNow(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>, snapshot: { fireWind?: unknown } | null | undefined): WindHeight {
   return shownWindHeight(windMapHeight(l), !!snapshot?.fireWind);
+}
+
+/** What pressing the chip writes: the Wind speed map on, or no heat map. It writes the one `overlay` key and nothing else (one heat map at a time, solo heat as for any heat map). */
+export const windMapPatch = (on: boolean): Pick<LayerState, 'overlay'> => ({ overlay: on ? 'windSpeed' : 'none' });
+
+/**
+ * What the chip shows: pressed exactly while the Wind speed map is the heat map; one that cannot be used (the Wind speed row's rule: a fire marked) is
+ * greyed with the reason beside it, and one that is on stays operable so it can always be turned off.
+ */
+export function windMapChipState(overlay: OverlayKind, availability: { ok: boolean; reason?: string }): { pressed: boolean; disabled: boolean; reason: string } {
+  const pressed = overlay === 'windSpeed';
+  return { pressed, disabled: !availability.ok && !pressed, reason: availability.ok ? '' : (availability.reason ?? 'Not available here') };
 }
 
 /** The second line of the Wind speed row ("In km/h") says which wind it is once the map follows a height other than the 10 m one. */

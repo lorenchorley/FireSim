@@ -11,7 +11,7 @@ import { h, text, uniqueId } from '../../dom';
 import { chip, setChipSelected } from '../../primitives';
 import type { SimContext } from './context';
 import { rememberLayerChoice } from './layersPrefs';
-import { MAP_CHIP_LABEL } from './windMapWords';
+import { MAP_CHIP_LABEL, windMapChipState, windMapPatch } from './windMapWords';
 
 export interface WindMapSwitch {
   /** The element `windGlyphControls` appends under the Wind height chips. */
@@ -44,24 +44,24 @@ export function createWindMapSwitch(ctx: Pick<SimContext, 'layers' | 'view' | 's
     kind: 'filter',
     selected: layers.get().overlay === 'windSpeed',
     testId: 'wind-map-chip',
-    onToggle: (on) => set({ overlay: on ? 'windSpeed' : 'none' }),
+    onToggle: (on) => set(windMapPatch(on)),
   }) as HTMLButtonElement;
   const el = h('div', { class: 'wg-map', dataset: { testid: 'wind-map-switch' } }, button);
   let reason: HTMLElement | null = null; // made the first time it is needed
   return {
     el,
     update() {
-      const on = layers.get().overlay === 'windSpeed';
       const a = availability();
-      setChipSelected(button, on);
+      const st = windMapChipState(layers.get().overlay, a);
+      setChipSelected(button, st.pressed);
       // Like the arrows' own switch: one that cannot be used says why in words next to it, and one that is on stays operable so it can be turned off.
-      button.disabled = !a.ok && !on;
+      button.disabled = st.disabled;
       if (!a.ok && !reason) {
         reason = h('p', { class: 'hint wg-reason', dataset: { testid: 'wind-map-reason' } });
         el.append(reason);
       }
       if (reason) {
-        text(reason, a.ok ? '' : (a.reason ?? 'Not available here'));
+        text(reason, st.reason);
         reason.hidden = a.ok;
         if (a.ok) button.removeAttribute('aria-describedby');
         else {
