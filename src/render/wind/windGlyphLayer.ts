@@ -13,7 +13,8 @@
  *  - the segment cap follows `renderer.info`, so a frame never crosses `FRAME_TRIANGLE_LIMIT`; when that leaves no room at all
  *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room). The one exception is the
  *    detailed streaks, which keep `DETAIL_MIN_SEGMENTS` however full the frame is (a dense forest at the High tier is over the limit
- *    without them), so the closest zoom always has its picture and the limit is exceeded by at most 2 triangles a segment of that;
+ *    without them): that is the High tier's whole cap, so they are never trimmed, the closest zoom always has its picture, the same view
+ *    gives the same picture, and the limit is exceeded by at most 2 triangles a segment of it;
  *  - the picture is draped on the drawn mesh a little above the ground; the numbers come from the 10 m ground as received.
  * Eye level, a view without air wind and a map zoomed so far out that a model cell is under 4 px draw nothing (`stats().idle`).
  *
@@ -503,7 +504,8 @@ export class WindGlyphLayer {
 
   /**
    * The segments a picture of this kind may hold with `others` triangles in the rest of the frame: the tier's cap trimmed to the limit, and for the
-   * detailed streaks never under `DETAIL_MIN_SEGMENTS`, so that the closest zoom of a full frame (dense forest, High tier) still has its picture.
+   * detailed streaks never under `DETAIL_MIN_SEGMENTS` (the whole cap of every tier, so no trim), so that the closest zoom of a full frame (dense
+   * forest, High tier) has its picture, the same one whatever the frame held when it was built.
    */
   private roomFor(detailed: boolean, others: number): number {
     return segmentCap(GLYPH_CAPS[this.tier].segments, others, 0, detailed ? DETAIL_TRIANGLES : GLYPH_TRIANGLES, detailed ? DETAIL_MIN_SEGMENTS : 0);

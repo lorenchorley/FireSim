@@ -1366,57 +1366,36 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     }
   });
 
-  it('gives the same picture for the same view whatever the frame held when it was built: a jump into a forest and a smooth zoom (a picture of a phone is under the floor)', () => {
+  it('gives the same picture for the same view whatever the frame held when it was built: a jump into a forest and a smooth zoom (the floor is the whole cap)', () => {
     // The first frame after a jump still holds the last view's triangles (the canopy is not placed yet); a smooth zoom has met the full frame all along.
-    const sizes = [100_000, 480_000, 527_000, 540_000, 549_000, 560_000, 580_000].map((tris) => {
+    // A view whose lines fill the cap (a fast wind: 12,000 segments and more) is the cap in every one of them.
+    const sizes = [0, 100_000, 480_000, 527_000, 540_000, 549_000, 560_000, 580_000, 640_000].map((tris) => {
       const r = rig();
-      r.detail.segments = DETAIL_MIN_SEGMENTS;
+      r.detail.segments = 12000;
       r.go(L4, { tris, settle: true });
       return r.layer.stats().detailSegments;
     });
-    expect(new Set(sizes)).toEqual(new Set([DETAIL_MIN_SEGMENTS]));
+    expect(new Set(sizes)).toEqual(new Set([GLYPH_CAPS.high.segments]));
   });
 
-  it('keeps the tier\'s own cap as the floor on the Low and Medium tiers (their frames have room anyway), and above the floor trims to the frame at the High tier', () => {
-    for (const tier of ['low', 'medium'] as const) {
-      const r = rig({ tier });
-      r.detail.segments = GLYPH_CAPS[tier].segments;
-      r.go(L4, { tris: 580_000, settle: true });
-      expect(r.detail.begins[0]!.cap.segments, tier).toBe(Math.min(DETAIL_MIN_SEGMENTS, GLYPH_CAPS[tier].segments));
+  it('is never trimmed to the frame, at any tier: the cap is the tier\'s own whatever the frame holds (the floor is the High tier\'s cap), 2 triangles a segment on top of it', () => {
+    expect(DETAIL_MIN_SEGMENTS).toBe(GLYPH_CAPS.high.segments);
+    for (const tier of ['low', 'medium', 'high'] as const) {
+      for (const tris of [0, 300_000, 530_000, 549_800, 580_000]) {
+        const r = rig({ tier });
+        r.detail.segments = GLYPH_CAPS[tier].segments;
+        r.go(L4, { tris, settle: true });
+        expect(r.detail.begins[0]!.cap.segments, `${tier}, ${tris} triangles`).toBe(GLYPH_CAPS[tier].segments);
+        expect(r.layer.stats().detailSegments, `${tier}, ${tris} triangles`).toBe(GLYPH_CAPS[tier].segments);
+      }
     }
-    // Room above the floor is still used (a tablet screen has more lines than the floor): 530,000 leaves 10,000 segments of 2 triangles.
-    const room = rig();
-    room.detail.segments = 12000;
-    room.go(L4, { tris: 530_000, settle: true });
-    expect(room.detail.begins[0]!.cap.segments).toBe(10_000);
-    expect(room.layer.stats().detailSegments).toBe(10_000);
   });
 
-  it('takes the 2 triangles a segment of one batch, not the 4 of the glyph pair, out of the frame\'s budget (above the floor)', () => {
+  it('does not count the streaks it is about to drop against the arrows that replace them (the glyph pair has no floor)', () => {
     const r = rig();
-    r.detail.segments = 12000;
-    r.go(L4, { tris: 530_000 });
-    expect(r.detail.begins[0]!.cap.segments).toBe(10_000); // (550,000 - 530,000) / 2
-    r.go(L4, { tris: 530_000 });
-    expect(r.layer.stats()).toMatchObject({ detailSegments: 10_000, segments: 10_000, idle: null });
-    // Of the next frame's 550,000 triangles 20,000 are ours (10,000 segments of 2): the rest is 530,000 and the same 10,000 fit.
-    r.go(L4, { x: 1500, dt: 300, tris: 550_000 });
-    expect(r.detail.begins[1]!.cap.segments).toBe(10_000);
-    const trimmed = rig();
-    trimmed.detail.segments = 12000;
-    trimmed.go(L4, { tris: 549_800, settle: true });
-    expect(trimmed.detail.begins[0]!.cap.segments).toBe(DETAIL_MIN_SEGMENTS); // the 100 segments that fit are under the floor
-    expect(trimmed.layer.stats()).toMatchObject({ detailSegments: DETAIL_MIN_SEGMENTS, segments: DETAIL_MIN_SEGMENTS, active: true });
-    expect(trimmed.instances('wind-detail')).toBe(DETAIL_MIN_SEGMENTS);
-    expect(trimmed.layer.stats().count).toBeLessThan(12000 / 10);
-  });
-
-  it('does not count the arrows it is about to drop, nor the streaks it is about to replace, against the picture that replaces them', () => {
-    const r = rig();
-    r.detail.segments = 12000;
-    r.go(L3, { settle: true }); // 400 segments of 4 triangles: 1,600 of the frame's 531,000 are the arrows'
-    r.go(L4, { settle: true, dt: 300, tris: 531_000 });
-    expect(r.detail.begins[0]!.cap.segments).toBe(10_300); // (550,000 - (531,000 - 1,600)) / 2
+    r.go(L4, { settle: true }); // 400 segments of 2 triangles: 800 of the frame's 549,800 are the streaks'
+    r.go(L3, { settle: true, dt: 300, tris: 549_800 });
+    expect(r.stub.begins[0]!.cap.segments).toBe(250); // (550,000 - (549,800 - 800)) / 4
   });
 
   it('is `budget` at no level but the arrows\': the detailed streaks keep their floor in a full frame, so the reason never shows at the closest zoom', () => {

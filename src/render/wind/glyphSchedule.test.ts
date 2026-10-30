@@ -220,7 +220,16 @@ describe('segmentCap for the detailed streaks (2 triangles a segment, one batch)
 
 describe('segmentCap with a floor (the detailed streaks keep DETAIL_MIN_SEGMENTS in a full frame)', () => {
   const tier = GLYPH_CAPS.high.segments;
-  const floor = DETAIL_MIN_SEGMENTS;
+  const floor = 8000; // a floor under the cap, to see the trim above it (the app's own floor is the whole cap)
+
+  it('the app\'s floor is the High tier\'s cap: the detailed streaks are never trimmed to the frame at any tier, and the worst case is 2 triangles of it over the limit', () => {
+    expect(DETAIL_MIN_SEGMENTS).toBe(GLYPH_CAPS.high.segments);
+    for (const t of ['low', 'medium', 'high'] as const) {
+      for (const others of [0, 300_000, 540_000, 563_000, 600_000]) expect(segmentCap(GLYPH_CAPS[t].segments, others, 0, 2, DETAIL_MIN_SEGMENTS), `${t}, ${others}`).toBe(GLYPH_CAPS[t].segments);
+    }
+    expect(2 * DETAIL_MIN_SEGMENTS).toBe(24_000);
+    expect(2 * DETAIL_MIN_SEGMENTS).toBeLessThan(0.05 * FRAME_TRIANGLE_LIMIT); // the number the plan is told: under 5 % of 550,000 (4.4 %)
+  });
 
   it('is the floor where the frame leaves less room (or none, or a frame over the limit), and the room where it leaves more', () => {
     expect(segmentCap(tier, FRAME_TRIANGLE_LIMIT - 2 * 100, 0, 2, floor)).toBe(floor); // room for 100
@@ -245,7 +254,6 @@ describe('segmentCap with a floor (the detailed streaks keep DETAIL_MIN_SEGMENTS
   });
 
   it('exceeds the limit by at most 2 triangles a segment of the floor, and only by the floor: the worst case of the detailed streaks', () => {
-    expect(2 * floor).toBeLessThanOrEqual(0.03 * FRAME_TRIANGLE_LIMIT); // the number the plan is told: under 3 % of 550,000
     for (const others of [0, 400_000, 520_000, 534_000, 540_000, 549_999, 550_000, 563_000, 600_000]) {
       const cap = segmentCap(tier, others, 0, 2, floor);
       expect(others + 2 * cap).toBeLessThanOrEqual(Math.max(FRAME_TRIANGLE_LIMIT, others + 2 * floor));

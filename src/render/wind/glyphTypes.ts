@@ -111,13 +111,16 @@ export const DETAIL_GEOMETRY = { spacingPx: 32, jitter: 0.35, minPx: 90, maxPx: 
 export const DETAIL_FADE_IN_MS = 400;
 export const DETAIL_FADE_OUT_MS = 250;
 /**
- * The segments of the detailed streaks that the frame's triangle budget never takes away (at most the tier's own cap, so the Low and Medium tiers
- * keep their whole picture). A dense forest at the High tier fills the frame (terrain and canopy come to 548,000 to 563,000 triangles against
- * `FRAME_TRIANGLE_LIMIT`), and without a floor the closest zoom, which is the owner's request, draws nothing. The picture of a phone is about this
- * size, so the same view gives the same picture however the frame was filled. It costs the frame 2 triangles a segment: the limit is exceeded
- * by at most `2 x DETAIL_MIN_SEGMENTS` triangles, and only by the detailed streaks (the glyph pair of the lower levels has no floor).
+ * The segments of the detailed streaks that the frame's triangle budget never takes away (at most the tier's own cap). It is the High tier's cap, so
+ * at no tier does the frame trim them: they are `min(what the view holds, the tier's cap)` and the same view gives the same picture however the frame
+ * was filled when it was built. Why: a dense forest at the High tier fills the frame without them (terrain and canopy come to 548,000 to 578,000
+ * triangles in the Katoomba valley, against `FRAME_TRIANGLE_LIMIT`), so a trim to the frame left the closest zoom, which is the owner's request,
+ * with nothing at all, and a picture trimmed to a floor under the natural one (the lines of a phone come to 6,000 to 12,000 segments) was the size of
+ * whatever the frame held when it was built (a jump) and not of the view (a smooth zoom). The cost is 2 triangles a segment: at most 8,000, 16,000
+ * and 24,000 triangles at the Low, Medium and High tiers, a quarter of what the glyph pair of the lower levels may take, and only the detailed streaks
+ * go over the limit (by at most `2 x DETAIL_MIN_SEGMENTS`, 4.4 % of it). Lower it to bring the trim back above that floor (`segmentCap`).
  */
-export const DETAIL_MIN_SEGMENTS = 8000;
+export const DETAIL_MIN_SEGMENTS = GLYPH_CAPS.high.segments;
 
 /** A `GlyphInput` plus the 10 m ground as received (the lift and lee come from it) and the seed of the line lifetimes (0 in the app). */
 export interface DetailInput extends GlyphInput {
