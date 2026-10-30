@@ -100,6 +100,14 @@ export const DETAIL_GEOMETRY = { spacingPx: 32, jitter: 0.35, minPx: 90, maxPx: 
 /** How long the detailed streaks take to fade in on entering the level, and out on leaving it (ms of capped frame time). */
 export const DETAIL_FADE_IN_MS = 400;
 export const DETAIL_FADE_OUT_MS = 250;
+/**
+ * The segments of the detailed streaks that the frame's triangle budget never takes away (at most the tier's own cap, so the Low and Medium tiers
+ * keep their whole picture). A dense forest at the High tier fills the frame (terrain and canopy come to 548,000 to 563,000 triangles against
+ * `FRAME_TRIANGLE_LIMIT`), and without a floor the closest zoom, which is the owner's request, draws nothing. The picture of a phone is about this
+ * size, so the same view gives the same picture however the frame was filled. It costs the frame 2 triangles a segment: the limit is exceeded
+ * by at most `2 x DETAIL_MIN_SEGMENTS` triangles, and only by the detailed streaks (the glyph pair of the lower levels has no floor).
+ */
+export const DETAIL_MIN_SEGMENTS = 8000;
 
 /** A `GlyphInput` plus the 10 m ground as received (the lift and lee come from it) and the seed of the line lifetimes (0 in the app). */
 export interface DetailInput extends GlyphInput {

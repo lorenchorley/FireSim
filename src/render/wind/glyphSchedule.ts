@@ -63,11 +63,14 @@ export function mayRebuild(reason: RebuildReason, nowMs: number, lastSwapMs: num
 /**
  * Segments a batch may hold so that the frame stays inside `FRAME_TRIANGLE_LIMIT`. `trianglesPerSegment` is 4 for the glyph pair (a
  * quad in the halo batch and one in the colour batch) and 2 for the detailed streaks (one batch); the rest of the frame is what the
- * last frame drew minus our own share of it (`ownSegments` of the same kind).
+ * last frame drew minus our own share of it (`ownSegments` of the same kind). `floorSegments` (0.6.0, `DETAIL_MIN_SEGMENTS` for the
+ * detailed streaks) is a share that stays whatever the frame holds, at most the tier's cap: a frame that is already over the limit
+ * without us (a dense forest at the High tier) still gets that picture, and the limit is exceeded by at most `trianglesPerSegment x floorSegments`.
  */
-export function segmentCap(tierSegments: number, framesTriangles: number, ownSegments: number, trianglesPerSegment = 4): number {
+export function segmentCap(tierSegments: number, framesTriangles: number, ownSegments: number, trianglesPerSegment = 4, floorSegments = 0): number {
   const others = Math.max(0, framesTriangles - trianglesPerSegment * ownSegments);
-  return Math.max(0, Math.min(tierSegments, Math.floor((FRAME_TRIANGLE_LIMIT - others) / trianglesPerSegment)));
+  const room = Math.max(0, Math.min(tierSegments, Math.floor((FRAME_TRIANGLE_LIMIT - others) / trianglesPerSegment)));
+  return Math.max(room, Math.min(tierSegments, Math.max(0, Math.floor(floorSegments))));
 }
 
 /** The times of the last 64 slices of rebuild work, and the slices and work of the last whole rebuild ("rebuild 3.1 ms (p95 slice 4.2 ms)"). */
