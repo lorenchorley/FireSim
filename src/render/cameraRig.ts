@@ -83,8 +83,9 @@ const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t 
  * fingers (stock OrbitControls moves it clockwise). The turn and the tilt of the two fingers are {@link TwoFingerTurn}'s, which
  * holds OrbitControls' own off while they are down and hands over its damped step here, in the public `update()`, before
  * OrbitControls' own work; the pinch (zoom to the fingers) is stock, and so are the mouse's rotate and the one-finger look-around at
- * eye level, which never go through DOLLY_ROTATE. The step is made before the damping, the limits and the zoom-to-cursor of
- * OrbitControls see it, so the speed, the damping and the top view are as they were; only the direction flips.
+ * eye level, which never go through DOLLY_ROTATE. The step is made before OrbitControls' own work (its limits, its zoom-to-cursor
+ * and its look-at all see the turned camera), with OrbitControls' damping and polar limits, so the speed, the damping and the top
+ * view are as they were; only the direction flips.
  */
 class TwoFingerTurnControls extends OrbitControls {
   private turn: TwoFingerTurn | null = null;
