@@ -362,6 +362,8 @@ const ARROW_FILL = 0.6;
 /** An arrow in a calm is this share of the longest; the longest comes at `ARROW_FULL_MS` and above (a longer arrow is a stronger wind). */
 const ARROW_CALM_SHARE = 0.55;
 const ARROW_FULL_MS = 11.4;
+/** No arrow is shorter than this (CSS px), so the doubled density of 0.6.0 does not leave a calm arrow too short to read; a cell too small to hold it keeps its own `longest`. */
+const ARROW_MIN_PX = 8;
 
 export interface ArrowGrid {
   cols: number;
@@ -395,10 +397,13 @@ export function arrowGrid(l: PlotLayout): ArrowGrid {
   return { cols, rows, longest: ARROW_FILL * Math.min(w / cols, h / rows) };
 }
 
-/** The length (CSS px) of the arrow for a wind of `speed` m/s: from 55% of `longest` in a calm to `longest` at 11.4 m/s and more, in a straight line between. */
+/**
+ * The length (CSS px) of the arrow for a wind of `speed` m/s: from 55% of `longest` in a calm to `longest` at 11.4 m/s and more, in a straight line
+ * between, but never under `ARROW_MIN_PX` (8) and never over what the cell holds (`longest`), so the 40% of clear air between neighbours stands.
+ */
 export function arrowLength(speed: number, longest: number): number {
   const share = clamp(fin(speed, 0) / ARROW_FULL_MS, 0, 1);
-  return longest * (ARROW_CALM_SHARE + (1 - ARROW_CALM_SHARE) * share);
+  return Math.max(Math.min(ARROW_MIN_PX, longest), longest * (ARROW_CALM_SHARE + (1 - ARROW_CALM_SHARE) * share));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -283,7 +283,7 @@ export function drawStreaks(ctx: Ctx, l: PlotLayout, f: Streaks, colours: DrawCo
 
 /**
  * The lattice of arrows under reduced motion (flowArrows of flow2d): the length goes from 55% of the longest the cell holds in a light wind to
- * that longest in a strong one (`arrowLength`, `arrowGrid` of slicePanelModel; about 7 to 13 px on a portrait phone, where 0.5.0 drew 10 to 18 px and half as many arrows).
+ * that longest in a strong one (`arrowLength`, `arrowGrid` of slicePanelModel; 8 to 13 px on a portrait phone, where 0.5.0 drew 10 to 18 px and half as many arrows; 0.7.0 keeps a floor of 8 px).
  */
 export interface Arrows {
   count: number;
