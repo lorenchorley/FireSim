@@ -505,6 +505,8 @@ test('a change of yours raises its own wind change card, which says it is yours,
   // A little later (the demo engine computes it at once) the card is in the Insights tab.
   await jumpWithPopover(page, 300);
   await waitForSeekEnd(page);
+  await page.getByTestId('wind-panel').getByRole('button', { name: 'Close tool' }).click(); // the tool's panel is over the tabs
+  await expect(page.getByTestId('wind-panel')).toBeHidden();
   await page.getByTestId('tab-insights').click();
   const card = page.locator('[data-testid=insight-card][data-kind=wind-change]', { hasText: 'Your wind change' });
   await expect(card).toHaveCount(1);
