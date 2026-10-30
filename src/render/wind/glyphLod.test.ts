@@ -247,7 +247,7 @@ describe('planLod: the detailed streaks level (0.6.0)', () => {
     expect(planLod(200, 2, null, undefined, false).spacingM).toBe(128);
   });
 
-  it('with the flag, L4 takes the numbers of DETAIL_GEOMETRY: 40 px lattice, jitter 0.35, 16 px per m/s from 90 to 220 px, curved', () => {
+  it('with the flag, L4 takes the numbers of DETAIL_GEOMETRY: 32 px lattice, jitter 0.35, 16 px per m/s from 90 to 220 px, curved', () => {
     const p = planLod(200, 1, null, undefined, true);
     expect(p).toMatchObject({
       level: 4,
@@ -256,7 +256,7 @@ describe('planLod: the detailed streaks level (0.6.0)', () => {
       jitter: DETAIL_GEOMETRY.jitter,
       lengthPx: { min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs },
     });
-    expect(p).toMatchObject({ spacingPx: 40, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
+    expect(p).toMatchObject({ spacingPx: 32, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
     expect(p.mppCentre).toBe(1);
   });
 
@@ -273,22 +273,22 @@ describe('planLod: the detailed streaks level (0.6.0)', () => {
     expect(planLod(78.2, 1, { level: 4, spacingExp: 5 }, undefined, true).level).toBe(3);
   });
 
-  it('the lattice is a power of two, never denser than 40 px on the screen and never sparser than 80 px', () => {
-    const p = planLod(200, 2, null, undefined, true); // 40 px x 2 m = 80 m -> log2 6.32 -> 7
+  it('the lattice is a power of two, never denser than 32 px on the screen and never sparser than 64 px', () => {
+    const p = planLod(200, 2.5, null, undefined, true); // 32 px x 2.5 m = 80 m -> log2 6.32 -> 7
     expect(p.spacingExp).toBe(7);
-    expect(p.spacingM).toBe(128); // 64 px
+    expect(p.spacingM).toBe(128); // 51 px
     for (let c = 104; c < 3500; c *= 1.01) {
       for (const mpp of [0.04, 0.3, 0.9, 1.3, 2.9]) {
         const q = planLod(c, mpp, null, undefined, true);
         const px = q.spacingM / mpp;
-        expect(px).toBeGreaterThanOrEqual(40 * (1 - 1e-9));
-        expect(px).toBeLessThan(80);
+        expect(px).toBeGreaterThanOrEqual(32 * (1 - 1e-9));
+        expect(px).toBeLessThan(64);
       }
     }
   });
 
   it('keeps the exponent only within 0.06 octave of an edge between two exponents, as the 0.5.0 spec does', () => {
-    const exact = (e: number): number => 2 ** e / 40; // the mpp that makes log2(40 mpp) = e
+    const exact = (e: number): number => 2 ** e / 32; // the mpp that makes log2(32 mpp) = e
     let prev: LodPlan = planLod(200, exact(5.9), null, undefined, true);
     expect(prev.spacingExp).toBe(6);
     for (const e of [5.5, 5.2, 5.0, 4.95, 5.6, 5.95, 6.0, 6.03, 6.05]) {
@@ -339,7 +339,7 @@ describe('planLod: the detailed streaks level (0.6.0)', () => {
     const again = planLod(200, 2, out, out, true);
     expect(again).toBe(out);
     expect(out.lengthPx).toBe(nested);
-    expect(out).toMatchObject({ level: 4, spacingPx: 40, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
+    expect(out).toMatchObject({ level: 4, spacingPx: 32, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
     // Back to a level below L4: the 0.5.0 numbers of that level, not a leftover of the detail spec.
     planLod(60, 2, out, out, true);
     expect(out).toMatchObject({ level: 3, spacingPx: 36, jitter: 0.3, lengthPx: { min: 28, max: 56, pxPerMs: 4 } });

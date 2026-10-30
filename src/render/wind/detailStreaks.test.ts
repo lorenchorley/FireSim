@@ -48,7 +48,7 @@ describe('a uniform wind', () => {
 
   it('is at the level of the detailed streaks, and draws straight lines in equal steps, 10 m/s to the north-north-east', () => {
     expect(sc.plan.level).toBe(4);
-    expect(sc.plan).toMatchObject({ spacingPx: 40, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
+    expect(sc.plan).toMatchObject({ spacingPx: 32, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
     const full = lines.filter((l) => l.count === 18);
     expect(full.length).toBeGreaterThan(10);
     let dev = 0;

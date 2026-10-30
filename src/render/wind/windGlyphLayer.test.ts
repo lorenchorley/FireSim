@@ -1035,7 +1035,7 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     expect(input.lod.level).toBe(4);
     expect(input.lod).toMatchObject({ spacingPx: DETAIL_GEOMETRY.spacingPx, curved: true, jitter: DETAIL_GEOMETRY.jitter });
     expect(input.lod.lengthPx).toEqual({ min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs });
-    // 1.4 m a pixel at 1.2 km: a lattice of 40 px is 56 m, so the next power of two of metres, 64.
+    // 1.4 m a pixel at 1.2 km: a lattice of 32 px is 45 m, so the next power of two of metres, 64.
     expect(input.lod.spacingM).toBe(64);
     expect(input.lod.spacingExp).toBe(6);
     expect(input.ground10.elevation[0]).toBe(GROUND); // the 10 m ground as received: the numbers come from it
