@@ -204,13 +204,13 @@ export class CrossSectionLayer {
     this.tex.needsUpdate = true;
   }
 
-  /** Wind arrows in the plane: 15 columns by the heights 30 to 2200 m above the ground, read from the sampler, or from the lattice of a recorded slice. */
+  /** Wind arrows in the plane: 21 columns by the heights 30 to 2200 m above the ground (about twice as many as the first 15 by six), read from the sampler, or from the lattice of a recorded slice. */
   private drawArrows(d: SliceData, heightAt: (x: number, y: number) => number, sampler: AtmosphereSampler, vex: number, dpr: number): void {
     const line = d.line;
     const recorded = d.recordedAt !== undefined;
     const top = recorded ? d.topAsl : sampler.top;
-    const MA = 15;
-    const heightsAgl = [30, 150, 400, 800, 1400, 2200];
+    const MA = 21;
+    const heightsAgl = [30, 100, 200, 350, 550, 800, 1100, 1500, 2200];
     const spacing = line.length / MA;
     const w = new Float32Array(3);
     // Reverse flow is a feature of the 3-D atmosphere: reference direction = mean along-section wind at the upper levels.

@@ -161,6 +161,19 @@ describe('CrossSectionLayer', () => {
       expect(cyanCount(l)).toBe(0);
     });
 
+    it('are about twice as dense as the first 15 columns by six heights: 21 columns by nine, the top row cut on a flat line as before', () => {
+      const l = new CrossSectionLayer(shared());
+      // A flat ground: the curtain ends 2 km over it, so the 2,200 m row is cut (15 x 5 = 75 arrows before).
+      const view = makeAirView({ groundAt: () => 500, u: () => 8, v: () => 0, w: () => 0.5 });
+      const sampler = new AtmosphereSampler(view, 500, null);
+      const line = sectionFromEndpoints([-1500, 0], [1500, 0], view.grid).line!;
+      const data = sampleSlice(sampler, { heightAt: () => 500 }, { line, shownTime: 600 })!;
+      l.update(data, 'speed', () => 500, sampler, 1, 1);
+      expect(instances(l)).toBe(21 * 8);
+      expect(instances(l)).toBeGreaterThanOrEqual(2 * 75);
+      expect(instances(l)).toBeLessThanOrEqual(l.arrows.capacity);
+    });
+
     it('stay inside the curtain and follow the vertical exaggeration', () => {
       const l = new CrossSectionLayer(shared());
       const { data, sampler } = slice();
