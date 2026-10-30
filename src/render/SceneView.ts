@@ -37,6 +37,7 @@ import {
   type RenderGrid,
 } from './fields';
 import { HeightField } from './heightfield';
+import { IdleClock, idleStopLimit } from './idleStop';
 import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
 import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
@@ -44,6 +45,7 @@ import { homeCandidates, homeDrawnPx, iconCandidate, pickMarkerAt, projectPoint,
 import { AdaptiveDpr, FrameMeter } from './perf';
 import { lineOfSightClear, sameOrigin } from './placesGeometry';
 import { PlacesLayer } from './placesLayer';
+import { plumeSites } from './plumeSite';
 import { deviceFacts, guessQuality, type DeviceFacts } from './qualityGuess';
 import type { RockCopy } from './rockMask';
 import { mapLighting, skyLighting } from './sky';
@@ -57,6 +59,7 @@ import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
 import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
 import type { PlacementCache } from './vegetationPlacement';
+import type { CrownSource } from './wind/glyphTypes';
 import { WindGlyphLayer } from './wind/windGlyphLayer';
 import { WindLayer, type WindDomain } from './windLayer';
 
@@ -77,7 +80,7 @@ export interface SceneViewOptions {
   preserveDrawingBuffer?: boolean;
   /** Smoke concentration (AtmosphereView.smoke units) drawn at full puff opacity (default 1). */
   smokeReference?: number;
-  /** 0.7.0 (E3, lane E-B): ms without activity before the view holds still (default `IDLE_STOP_MS`; 0 = never; tests). Unread until built. */
+  /** 0.7.0 (E3): ms without activity before the view holds still (default `IDLE_STOP_MS`; 0 = never; tests; else `window.__firesimIdleStopMs`, read once). */
   idleStopMs?: number;
 }
 
@@ -147,6 +150,10 @@ const CALM_WIND_MS = 0.2;
 const FIRE_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver']);
 /** Overlays whose values change with every snapshot. */
 const SNAPSHOT_OVERLAYS = new Set<OverlayKind>(['arrival', 'ros', 'intensity', 'driver', 'moisture', 'insolation', 'windSpeed']);
+/** What a person does to a phone or a desktop (0.7.0, the idle stop): any of these anywhere in the page is activity. */
+const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'] as const;
+/** A gap (ms) between two frames that is not the view's own: the page was suspended (a locked screen), and the time it was away is not time left alone. */
+const STALL_MS = 5000;
 
 export class SceneView implements SceneViewApi {
   private readonly container: HTMLElement;
@@ -271,6 +278,13 @@ export class SceneView implements SceneViewApi {
   private dprDrops = 0;
   private lastDrawMs: number | null = null;
   private wasCapped = false;
+  /** The idle stop (0.7.0, render/idleStop.ts): the time since the last activity, and whether the last frame found the view holding still (so a change is seen once). */
+  private readonly activity: IdleClock;
+  private heldStill = false;
+  /** What the glyph layer was last given to flow round (a repeat says nothing new; undefined: not told yet), and whether its programs are still to be compiled ahead (`precompileGlyphs`). */
+  private canopyGiven: FuelMap | null | undefined;
+  private crownsGiven: CrownSource | null | undefined;
+  private glyphsCompile: 'wait' | 'pending' | 'done' = 'wait';
   private readonly resizeObserver: ResizeObserver | null = null;
   private readonly onLost = (e: Event): void => {
     e.preventDefault();
@@ -289,16 +303,24 @@ export class SceneView implements SceneViewApi {
   private readonly onChange = (): void => {
     this.dirty = true;
   };
-  /** Reduced motion (a system setting that can change while the app runs): the detailed wind streaks stand still. */
+  /** Reduced motion (a system setting that can change while the app runs): the wind streaks (the detailed ones and the old ones) and the tree sway stand still. */
   private readonly motionQuery: MediaQueryList | null = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   private readonly onMotion = (): void => {
     this.glyphs.setMotion(!this.motionQuery?.matches);
+    this.wind.setMotion(!this.motionQuery?.matches);
+    this.vegetation?.setMotion(!this.motionQuery?.matches);
     this.dirty = true;
+  };
+  /** Activity anywhere in the page, and the page coming back to the front: the idle stop counts from now and a view that had stopped wakes. */
+  private readonly onActivity = (): void => this.wake();
+  private readonly onVisible = (): void => {
+    if (!document.hidden) this.wake();
   };
 
   constructor(container: HTMLElement, opts: SceneViewOptions = {}) {
     this.container = container;
     this.opts = opts;
+    this.activity = new IdleClock(idleStopLimit(opts.idleStopMs ?? (typeof window !== 'undefined' ? (window as unknown as { __firesimIdleStopMs?: unknown }).__firesimIdleStopMs : undefined)));
     this.qualityFacts = describeQuality(opts, deviceFacts(), guessQuality());
     this.quality = QUALITY[this.qualityFacts.tier];
     const maxDpr = opts.maxDpr ?? Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, this.quality.dpr);
@@ -357,7 +379,13 @@ export class SceneView implements SceneViewApi {
     this.glyphs = new WindGlyphLayer(this.u, this.qualityFacts.tier);
     this.glyphs.setDpr(this.dpr.dpr);
     this.glyphs.setMotion(!this.motionQuery?.matches);
+    this.wind.setMotion(!this.motionQuery?.matches);
     this.motionQuery?.addEventListener?.('change', this.onMotion);
+    if (typeof window !== 'undefined') {
+      // Capture and passive: they hear every touch without taking part in it (the controls stop propagation of some).
+      for (const type of ACTIVITY_EVENTS) window.addEventListener(type, this.onActivity, { capture: true, passive: true });
+      document.addEventListener('visibilitychange', this.onVisible);
+    }
     this.smoke = new SmokeLayer(this.u);
     this.section = new CrossSectionLayer(this.u);
     this.section.visible = false;
@@ -448,6 +476,8 @@ export class SceneView implements SceneViewApi {
     // Three levels of detail within a triangle budget per quality tier (see CANOPY_BUDGETS).
     this.vegetation.setBudget(CANOPY_BUDGETS[this.quality.canopy]);
     this.vegetation.staged = true; // placement, planning and buffer building take one frame each (no hitch)
+    this.vegetation.setMotion(!this.motionQuery?.matches);
+    this.canopyGiven = this.crownsGiven = undefined; // a new layer has new crowns: the glyph layer is told again
     this.vegetation.setLayers(this.layers);
     this.scene.add(this.vegetation.group);
     this.placesLayer = new PlacesLayer(tl.uniforms, hf, tl);
@@ -467,11 +497,14 @@ export class SceneView implements SceneViewApi {
     this.applyLayers(this.layers, null);
     this.refreshMarkers();
     this.applyLighting(this.sunTimeMs());
+    this.wake();
     this.dirty = true;
   }
 
   refreshFuel(fuel: FuelMap): void {
     this.fuel = fuel;
+    this.syncCanopy();
+    this.wake();
     if (!this.terrain || !this.terrainLayer) return;
     this.terrainLayer.setFuel(fuel, this.terrain);
     this.vegCache = {}; // fuel edits mutate the map in place: recompute demand
@@ -620,6 +653,7 @@ export class SceneView implements SceneViewApi {
   update(snapshot: SimSnapshot): void {
     if (!this.terrainLayer || !this.hf || !this.terrain) return;
     const now = performance.now();
+    this.wake(); // a new picture of the fire (the head moving, a scrub): a running simulation never lets the view stop
     this.snap = snapshot;
     this.fire = snapshot.fire;
     // Scenario clock for the sun. SimSnapshot has no start time, so unless setStartTime() was called it is derived
@@ -671,8 +705,10 @@ export class SceneView implements SceneViewApi {
     this.updateSmoke();
     const c = fireCentroid(fire, target);
     this.wind.focus = c ? { x: c.x, y: c.y, radius: 900 } : null;
+    this.glyphs.setPlumes(plumeSites(c)); // the plume is a place for eddies in the detailed streaks (display only)
     if (this.layers.crossSection.enabled) this.updateSection(false);
     this.glyphs.setData({ sampler: this.sampler, atm: atmView ?? null, sliceGround: this.sliceTerrain ?? hf, drawGround: hf });
+    this.armCompile();
     if (SNAPSHOT_OVERLAYS.has(this.layers.overlay)) this.updateOverlay();
     this.refreshMarkers();
     this.applyLighting(this.sunTimeMs());
@@ -837,6 +873,7 @@ export class SceneView implements SceneViewApi {
     const next: LayerState = { ...prev, ...partial, crossSection: { ...prev.crossSection, ...(partial.crossSection ?? {}) } };
     this.layers = next;
     this.applyLayers(next, prev);
+    this.wake();
     this.dirty = true;
   }
 
@@ -879,6 +916,7 @@ export class SceneView implements SceneViewApi {
     // re-plans which already-placed instances are drawn (the shrubs are always placed, so the switch is visibility only);
     // trees thin out under a heat map that is NOT shown on its own (a new, staged placement at 40 % density).
     this.vegetation?.setLayers(l);
+    this.syncCanopy();
     const thinTrees = (s: LayerState): boolean => s.overlay !== 'none' && !s.soloHeat;
     if (prev && (thinTrees(prev) !== thinTrees(l) || (!prev.vegetation && l.vegetation))) this.placeVegetation(true);
     this.updateViewDependentLayers();
@@ -890,6 +928,40 @@ export class SceneView implements SceneViewApi {
       this.updateSection(true);
     }
     if (!prev || prev.insightMarkers !== l.insightMarkers) this.refreshMarkers();
+    this.armCompile();
+  }
+
+  /**
+   * The detailed streaks flow round the canopy and the placed crowns where the canopy layer is on and drawn (0.7.0, E1): the fuel map's canopy and
+   * the vegetation layer's crowns, by reference, given to the glyph layer; withdrawn (null) while the canopy is off, so that a streak never bends
+   * round a tree that is not there. Said once per change.
+   */
+  private syncCanopy(): void {
+    const on = this.vegetation?.visible ?? false;
+    const canopy = on ? this.fuel : null;
+    const crowns = on ? this.vegetation!.crownSource() : null;
+    if (canopy !== this.canopyGiven) this.glyphs.setCanopy((this.canopyGiven = canopy));
+    if (crowns !== this.crownsGiven) this.glyphs.setCrowns((this.crownsGiven = crowns));
+  }
+
+  /** The first time the wind marks are wanted with a picture of the air to draw them from, their programs are to be compiled ahead (`precompileGlyphs`, at a frame's end). */
+  private armCompile(): void {
+    if (this.glyphsCompile === 'wait' && this.sampler && (this.layers.windGlyphs || this.layers.wind === 'surface')) this.glyphsCompile = 'pending';
+  }
+
+  /**
+   * Compile the programs of the wind marks ahead of the first zoom to the most detailed level (0.7.0, E4): three compiles a program when it is first
+   * drawn, and the detailed streaks' vertex shader (three octaves of noise) is the longest, so a cold first zoom stopped for it. `compileAsync` starts
+   * it after a frame has been drawn, off the main thread where the browser has parallel shader compile, and a driver without it compiles here, at a
+   * quiet moment, and not at the zoom. Hidden meshes are compiled too (three's `compile` walks every object, not only the visible ones).
+   */
+  private precompileGlyphs(): void {
+    this.glyphsCompile = 'done';
+    try {
+      void this.renderer.compileAsync(this.glyphs.group, this.rig.camera, this.scene).catch(() => undefined);
+    } catch {
+      // A driver that cannot compile ahead compiles at the first draw, as before.
+    }
   }
 
   /** Layers whose visibility depends on the view mode and overlay. */
@@ -970,6 +1042,7 @@ export class SceneView implements SceneViewApi {
   setIgnitions(ignitions: Ignition[], spots: SpotFire[]): void {
     this.ignitions = ignitions.slice();
     this.userSpots = spots.slice();
+    this.wake();
     this.refreshMarkers();
   }
 
@@ -1010,6 +1083,7 @@ export class SceneView implements SceneViewApi {
 
   setInsights(insights: Insight[]): void {
     this.insights = insights.slice();
+    this.wake();
     this.refreshMarkers();
   }
 
@@ -1192,6 +1266,7 @@ export class SceneView implements SceneViewApi {
     // Eye level: clear the few trees right in front of the viewer's face.
     this.vegetation?.setNearCull(mode === 'ground' ? 24 : 0);
     this.refreshMarkers();
+    this.wake();
     this.dirty = true;
   }
 
@@ -1368,6 +1443,11 @@ export class SceneView implements SceneViewApi {
   // Loop
   // ───────────────────────────────────────────────────────────────────────────
 
+  /** Something a person would call activity happened: the idle stop counts from now, and a view that had stopped wakes (the next frame tells the layers). */
+  private wake(): void {
+    if (this.activity.poke(performance.now())) this.dirty = true;
+  }
+
   private frame(now: number): void {
     if (this.disposed || this.contextLost) return;
     if (this.covered && !this.settleNow) {
@@ -1378,8 +1458,8 @@ export class SceneView implements SceneViewApi {
       return;
     }
     const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0;
+    if (this.lastFrame && now - this.lastFrame > STALL_MS) this.activity.poke(now); // frames were not running (the page was in the background): the idle stop counts again from now
     this.lastFrame = now;
-    this.u.uClock!.value = (this.u.uClock!.value as number) + dt;
 
     this.rig.update(now);
     // Camera motion since the previous frame (also catches programmatic jumps made outside the loop).
@@ -1416,19 +1496,34 @@ export class SceneView implements SceneViewApi {
     // A slice that waited for its interval (the air changed, the line did not) is computed here and redraws the curtain.
     if (this.layers.crossSection.enabled) this.pollSlice();
 
+    // The idle stop (render/idleStop.ts): a camera that moves, a hand on it or time that runs is activity; a minute of none holds every ambient
+    // animation still (the shader clock that the streaks, the sway, the flames and the pulses all read, and the CPU particles) and the loop stops
+    // drawing them. Any activity carries on from where the clock stopped, and the first frame's step is capped, so nothing jumps.
+    if (moved || playing || this.interacting || this.rig.flying) this.activity.poke(now);
+    const idle = this.activity.idle(now);
+    if (idle !== this.heldStill) {
+      this.heldStill = idle;
+      this.glyphs.setPaused(idle);
+      if (!idle) this.dirty = true;
+    }
+    if (!idle) this.u.uClock!.value = (this.u.uClock!.value as number) + dt;
+
+    // What moves by itself, apart from the picture changing: it asks for frames only while the view is being used.
+    const ambient =
+      (this.flames.mesh.visible && this.flames.count > 0) ||
+      (this.embers.group.visible && this.embers.active > 0) ||
+      this.wind.animating || // (on, not stepping aside for the detailed streaks, and allowed to move)
+      this.glyphs.animating || // the detailed streaks move on the GPU: the loop draws, nothing else is done for them
+      this.focus !== null ||
+      this.user !== null ||
+      (this.vegetation?.animating ?? false) || // trees sway in the wind
+      this.userSpots.length + (this.snap?.spotFires.length ?? 0) > 0;
     const animating =
       playing ||
       this.rig.flying ||
       this.smoke.animating ||
-      (this.flames.mesh.visible && this.flames.count > 0) ||
-      (this.embers.group.visible && this.embers.active > 0) ||
-      (this.wind.currentMode !== 'off' && !detailInstead) ||
-      this.glyphs.animating || // the detailed streaks move on the GPU: the loop draws, nothing else is done for them
-      this.focus !== null ||
-      this.user !== null ||
       (this.vegetation?.placing ?? false) || // the forest is being re-placed a few ms per frame
-      (this.vegetation?.animating ?? false) || // trees sway in the wind
-      this.userSpots.length + (this.snap?.spotFires.length ?? 0) > 0;
+      (ambient && !idle);
     if (!this.dirty && !moved && !animating) {
       this.meter.tick(-1e9); // break the frame-interval chain while idle
       return;
@@ -1457,8 +1552,9 @@ export class SceneView implements SceneViewApi {
     const vex = this.vex;
     if (this.hf && this.domain) {
       const heightAt = this.domain.heightAt;
-      if (this.embers.group.visible && this.embers.active > 0) this.embers.animate(rdt, this.sampler, heightAt, vex);
-      if (this.wind.currentMode !== 'off' && this.sampler) this.wind.animate(rdt, this.sampler, this.domain, vex);
+      // (Held still: a frame drawn for another reason redraws the particles where they were, from the buffers they were last written to.)
+      if (!idle && this.embers.group.visible && this.embers.active > 0) this.embers.animate(rdt, this.sampler, heightAt, vex);
+      if (!idle && this.wind.currentMode !== 'off' && this.sampler) this.wind.animate(rdt, this.sampler, this.domain, vex);
     }
     this.smoke.animate(rdt);
     if (this.smoke.mesh.visible && this.smoke.count > 0) this.smoke.sort(this.rig.camera.position, vex);
@@ -1476,6 +1572,7 @@ export class SceneView implements SceneViewApi {
 
     this.renderer.render(this.scene, cam);
     this.lastDrawMs = now;
+    if (this.glyphsCompile === 'pending' && !this.interacting) this.precompileGlyphs(); // the first frame of the picture is drawn: the wind marks' shaders compile now, not at the first zoom
     const info = this.renderer.info.render;
     // The adaptive DPR judges the frame rate against the cap in force (30 fps playback vs uncapped interaction).
     if (capped !== this.wasCapped) {
@@ -1588,6 +1685,7 @@ export class SceneView implements SceneViewApi {
     this.covered = covered;
     if (!covered) {
       this.lastRender = 0;
+      this.wake();
       this.dirty = true;
     }
   }
@@ -1598,6 +1696,7 @@ export class SceneView implements SceneViewApi {
     this.renderer.setSize(w, h, false);
     this.rig.resize(w / h, w, h);
     this.updateViewport();
+    this.wake(); // (a turn of the phone)
     this.dirty = true;
   }
 
@@ -1616,6 +1715,10 @@ export class SceneView implements SceneViewApi {
     canvas.removeEventListener('webglcontextlost', this.onLost);
     canvas.removeEventListener('webglcontextrestored', this.onRestored);
     this.motionQuery?.removeEventListener?.('change', this.onMotion);
+    if (typeof window !== 'undefined') {
+      for (const type of ACTIVITY_EVENTS) window.removeEventListener(type, this.onActivity, { capture: true });
+      document.removeEventListener('visibilitychange', this.onVisible);
+    }
     this.rig.controls.removeEventListener('start', this.onStart);
     this.rig.controls.removeEventListener('end', this.onEnd);
     this.rig.controls.removeEventListener('change', this.onChange);
