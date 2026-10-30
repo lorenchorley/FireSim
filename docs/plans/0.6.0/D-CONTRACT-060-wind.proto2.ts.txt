@@ -1,0 +1,66 @@
+// PROTOTYPE 2 of applyWindDirection for the design scout: light imports only (core/units, atmosphere/weatherInterp). Scratch, not the repo's code.
+import type { WeatherHour, WeatherSeries, WindDirectionEdit } from '/home/user/FireSim/src/core/types';
+import { angleDiffDeg, wrapDeg } from '/home/user/FireSim/src/core/units';
+import { interpolateHour } from '/home/user/FireSim/src/atmosphere/weatherInterp';
+import { WIND_TURN_S, WIND_TURN_STEP_DEG, turnDirection, turnFraction } from '/home/user/FireSim/src/scenario/windDirection';
+
+export interface Swing { t0: number; from: number; to: number }
+
+/** The forecast stamp at tMs: the stamp itself, or the interpolation of its bracket (nearest stamp held outside the span). */
+function stampAt(hours: readonly WeatherHour[], tMs: number): WeatherHour {
+  const n = hours.length;
+  if (tMs <= hours[0]!.time) return { ...hours[0]!, time: tMs };
+  if (tMs >= hours[n - 1]!.time) return { ...hours[n - 1]!, time: tMs };
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (hours[m]!.time <= tMs) lo = m;
+    else hi = m;
+  }
+  const a = hours[lo]!;
+  const b = hours[hi]!;
+  return a.time === tMs ? a : { ...interpolateHour(a, b, (tMs - a.time) / (b.time - a.time)), time: tMs };
+}
+
+export function planSwings(series: WeatherSeries, startMs: number, edits: readonly WindDirectionEdit[]): Swing[] {
+  const order = edits.map((e, i) => ({ e, i })).sort((a, b) => a.e.time - b.e.time || a.i - b.i).map((x) => x.e);
+  const swings: Swing[] = [];
+  for (const e of order) {
+    const t0 = startMs + e.time * 1000;
+    const from = (swings.length ? dirAtSwings(swings, t0) : null) ?? stampAt(series.hours, t0).windDir10;
+    swings.push({ t0, from, to: wrapDeg(e.dir) });
+  }
+  return swings;
+}
+export function dirAtSwings(swings: readonly Swing[], tMs: number): number | null {
+  let s: Swing | null = null;
+  for (const x of swings) {
+    if (x.t0 <= tMs) s = x;
+    else break;
+  }
+  return s ? turnDirection(s.from, s.to, turnFraction((tMs - s.t0) / 1000)) : null;
+}
+export function applyTwo(series: WeatherSeries, startMs: number, edits: readonly WindDirectionEdit[]): WeatherSeries {
+  if (edits.length === 0) return series;
+  const swings = planSwings(series, startMs, edits);
+  const times = new Set<number>();
+  for (const s of swings) {
+    const m = Math.max(1, Math.ceil((Math.abs(angleDiffDeg(s.to, s.from)) * 1.5) / WIND_TURN_STEP_DEG));
+    for (let k = 0; k <= m; k++) times.add(s.t0 + Math.round((k * WIND_TURN_S * 1000) / m));
+  }
+  const have = new Set(series.hours.map((h) => h.time));
+  const merged = [...series.hours, ...[...times].filter((t) => !have.has(t)).map((t) => stampAt(series.hours, t))].sort((a, b) => a.time - b.time);
+  const first = swings[0]!.t0;
+  const hours = merged.map((h) => {
+    if (h.time < first) return h;
+    const d = dirAtSwings(swings, h.time);
+    if (d === null) return h;
+    const R = angleDiffDeg(d, h.windDir10);
+    const o: WeatherHour = { ...h, windDir10: d };
+    if (h.windProfile) o.windProfile = h.windProfile.map((p) => ({ ...p, dir: wrapDeg(p.dir + R) }));
+    if (h.pressureLevels) o.pressureLevels = h.pressureLevels.map((l) => ({ ...l, windDir: wrapDeg(l.windDir + R) }));
+    return o;
+  });
+  return { ...series, hours };
+}
