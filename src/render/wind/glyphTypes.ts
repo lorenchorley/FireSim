@@ -240,8 +240,8 @@ export const DETAIL_RELIEF: DetailRelief = {
     maxTurnDeg: 30,
     rim: 0.85,
     seedBlock: 0.8,
-    pinMin: 0.2,
-    pinDepth: 0.8,
+    pinMin: 0.05,
+    pinDepth: 0.95,
     pinReach: 2.5,
   },
   eddies: {

@@ -84,6 +84,7 @@ const K_E_FREE = 26;
 const K_GATE_M = 27;
 const K_GATE_PX = 28;
 const K_CLOCK = 29;
+const K_PIN_MIN = 30;
 const K_LEN = 32;
 
 // Slots of `p`, the picture's numbers the builder hands over.
@@ -101,7 +102,12 @@ export const P_BX1 = 9;
 export const P_BY1 = 10;
 
 const SALT_PROUD = 0x51a1;
-
+/**
+ * How much faster than linear the nearness (the pin's depth) rises toward an obstacle: 1 at `1 / PIN_GAIN` of the way in from `pinReach` radii. The shader's
+ * low octave of meander carries a whole line sideways by several metres at the closest zoom (20 m x 0.44), more than a crown's radius, so a line that was bent
+ * round a crown must be nearly still within about one and a half radii of it (looked at on the real picture: with a linear pin the lines run through the crowns).
+ */
+export const PIN_GAIN = 2;
 /**
  * The radius (m) of the disc a crown of `height` and `width` shows at a stroke `zs` metres over its trunk's foot, or 0 when the stroke passes under the
  * crown's base or over its top: the cross-section of the ellipsoid whose centre is at `centre` x height and whose half height is `half` x height.
@@ -186,6 +192,7 @@ export class Obstacles {
     k[K_RIM] = w.rim;
     k[K_BLOCK] = w.seedBlock;
     k[K_PIN_DEPTH] = w.pinDepth;
+    k[K_PIN_MIN] = w.pinMin;
     k[K_PIN_REACH] = w.pinReach;
     k[K_E_DOWN] = e.downwind;
     k[K_E_LAT] = e.lateral;
@@ -594,7 +601,7 @@ export class Obstacles {
 
   /**
    * What the obstacles do to a line at (`io[IO_X]`, `io[IO_Y]`) where the unperturbed wind is the unit vector (`io[IO_DX]`, `io[IO_DY]`): the perturbation to add
-   * to that vector into `io[IO_PX]`, `io[IO_PY]`, how near the point is to an obstacle (0 to 1: 1 on it, 0 at `pinReach` radii) into `io[IO_NEAR]`, and 1 into
+   * to that vector into `io[IO_PX]`, `io[IO_PY]`, how near the point is to an obstacle (0 to 1: 1 from `1 / PIN_GAIN` of the way in, 0 at `pinReach` radii) into `io[IO_NEAR]`, and 1 into
    * `io[IO_HIT]` when it is inside a crown's rim (`rim` x its radius). With `io[IO_MODE]` 1 only the rim test is made (the end of a step).
    */
   perturb(): void {
@@ -635,7 +642,7 @@ export class Obstacles {
           const reach = reachF * r;
           if (d2 >= reach * reach) continue;
           const d = Math.sqrt(d2);
-          const pin = 1 - d / (pinF * r);
+          const pin = PIN_GAIN * (1 - d / (pinF * r));
           if (pin > near) near = pin;
           // The soft doublet in the frame of the wind: `a` along it, `b` across it.
           const a = rx * dx + ry * dy;
@@ -681,7 +688,7 @@ export class Obstacles {
           const rv2 = rx * rx + ry * ry;
           if (rv2 >= reach * reach) continue;
           const rv = Math.sqrt(rv2);
-          const pin = 1 - rv / (pinF * r);
+          const pin = PIN_GAIN * (1 - rv / (pinF * r));
           if (pin > near) near = pin;
           if (rv < 1e-6) continue;
           let t = rv < a ? (ks * rv) / a : (ks * a) / rv;
@@ -702,8 +709,12 @@ export class Obstacles {
     io[IO_HIT] = hit;
   }
 
-  /** The depth of the pin: the factor the shader multiplies a line's meander by is `1 - pinDepth x near` (1 free, 0.2 on an obstacle). */
+  /** The depth of the pin: the factor the shader multiplies a line's meander by is `1 - pinDepth x near`, never under `pinMin` (1 free, `pinMin` near an obstacle). */
   get pinDepth(): number {
     return this.k[K_PIN_DEPTH]!;
+  }
+
+  get pinMin(): number {
+    return this.k[K_PIN_MIN]!;
   }
 }

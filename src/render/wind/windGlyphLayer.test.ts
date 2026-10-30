@@ -1712,7 +1712,9 @@ describe('WindGlyphLayer: the cold first zoom (0.7.0)', () => {
 });
 
 describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', () => {
-  const crowns = (serial = 1): CrownSource & { serial: number } => ({ serial, sets: () => [] });
+  /** A source with one placed tree (`serial` is a plain number the test moves). */
+  const tree = { group: 0, count: 1, position: new Float32Array([5, 5, 0]), size: new Float32Array([30, 10]) };
+  const crowns = (serial = 1): CrownSource & { serial: number } => ({ serial, sets: () => [tree] });
   /** At L4 with a picture swapped in, `gap` ms since. */
   const atL4 = (): Rig => {
     const r = rig();
@@ -1733,8 +1735,24 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     const input = r.detail.begins[0]!;
     expect(input.relief).toBe(DETAIL_RELIEF);
     expect(input.canopy).toBe(fuel);
-    expect(input.crowns).toEqual([]);
+    expect(input.crowns).toEqual([tree]);
     expect(input.plumes).toEqual([{ x: 10, y: 20, radiusM: 60, strength: 0.5 }]);
+  });
+
+  it('rides on the canopy and bends round crowns only while trees are drawn: no canopy for a source with no tree placed or drawn', () => {
+    const r = rig();
+    const fuel = { grid: r.fresh().atm!.grid } as never;
+    r.layer.setCanopy(fuel);
+    r.layer.setCrowns({ serial: 1, sets: () => [] });
+    r.go(L4, { settle: true });
+    expect([r.detail.begins[0]!.canopy, r.detail.begins[0]!.crowns], 'the canopy layer is off or hidden: the sets are empty').toEqual([undefined, undefined]);
+    r.layer.setCrowns({ serial: 1, sets: () => [{ ...tree, count: 0 }] });
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins[1]!.canopy, 'a set with no tree in it').toBeUndefined();
+    r.layer.setCrowns(crowns());
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins[2]!.canopy).toBe(fuel);
+    expect(r.detail.begins[2]!.crowns).toEqual([tree]);
   });
 
   it('gives nothing of it while it is not set, with the canopy layer off (null), or with the relief switched off', () => {
@@ -1765,7 +1783,7 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     r.go(L4, { dt: 300 });
     r.go(L4, { dt: 300 });
     expect(r.detail.begins).toHaveLength(2);
-    expect(r.detail.begins[1]!.crowns).toEqual([]);
+    expect(r.detail.begins[1]!.crowns).toEqual([tree]);
     r.go(L4, { dt: 300 });
     r.go(L4, { dt: 300 });
     expect(r.detail.begins, 'an unchanged serial gives no rebuild').toHaveLength(2);

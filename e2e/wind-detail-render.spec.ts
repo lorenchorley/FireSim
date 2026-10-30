@@ -205,7 +205,9 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
       v.renderNow();
       return { before, after };
     });
-    expect(r.after, 'the detail program was built').toBeGreaterThan(r.before);
+    // (0.7.0: the scene view compiles the layer's programs ahead, when the first air arrives, so the program may be there already: it is built either way.)
+    expect(r.after, 'the detail program was built').toBeGreaterThanOrEqual(r.before);
+    expect(r.after, 'and there is a program for it').toBeGreaterThan(0);
   });
 
   // ───────── the ladder, by real pinches, with the Wind streaks alone ─────────

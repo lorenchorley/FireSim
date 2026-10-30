@@ -79,7 +79,7 @@ describe('the shader text', () => {
     expect(vs).toMatch(/float turbF = \(0\.25 \+ 0\.75 \* aE\.y\) \* aC\.a;/); // rough ground and the lee of ridges meander more, calm ground a quarter, and a pinned line (0.7.0: bent round a crown) less
   });
 
-  it('multiplies the meander by the line\'s pin, the colour alpha (1 free, 0.2 to 1 where the builder bent a line round a crown), and still drops a segment at alpha 0', () => {
+  it('multiplies the meander by the line\'s pin, the colour alpha (1 free, `pinMin` to 1 where the builder bent a line round a crown), and still drops a segment at alpha 0', () => {
     expect(vs).toMatch(/pa\.xz \+= meander\(aA\.xz, pxA, t\) \* turbF;/);
     expect(vs.match(/aC\.a/g)).toHaveLength(2); // the drop test and the pin: nothing else reads the alpha
     expect(vs).toMatch(/aC\.a <= 0\.0 \|\|/);

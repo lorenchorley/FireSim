@@ -174,7 +174,7 @@ export class VegetationLayer {
   private crownSerial = 1;
   private readonly crowns: CrownSource = new Crowns(
     () => this.crownSerial,
-    () => (this.layerVisible ? this.sets : NO_SETS),
+    () => (this.group.visible ? this.sets : NO_SETS),
   );
   private job: PlacementJob | null = null;
   private plan: LodPlan | null = null;
@@ -258,10 +258,8 @@ export class VegetationLayer {
     const next = { vegetation: l.vegetation, understorey: l.understorey, style: l.canopyStyle, code: l.canopyCode, sway: l.windSway, solo: l.soloHeat };
     this.layers = next;
     this.overlayOn = l.overlay !== 'none';
-    const visible = next.vegetation && !(next.solo && this.overlayOn);
-    if (visible !== this.layerVisible) this.crownSerial++; // trees that are not drawn are no obstacle
-    this.layerVisible = visible;
-    this.group.visible = this.layerVisible && this.viewDown < TOP_HIDDEN;
+    this.layerVisible = next.vegetation && !(next.solo && this.overlayOn);
+    this.showGroup(this.layerVisible && this.viewDown < TOP_HIDDEN);
     this.uniforms.uStyle!.value = next.style === 'natural' ? 0 : next.style === 'simple' ? 1 : 2;
     this.uniforms.uSway!.value = next.sway ? 1 : 0;
     if (next.style === 'coded' && (next.code !== prev.code || prev.style !== 'coded')) this.applyCode(next.code);
@@ -319,8 +317,8 @@ export class VegetationLayer {
 
   /**
    * The placed trees by reference, for the detailed streaks to flow around (0.7.0): `sets()` is the CPU copy of every tree placed (`group` 0 to 6 are the
-   * trees), empty while the canopy is switched off or hidden by a solo heat map; `serial` moves whenever `sets()` would answer differently (a placement
-   * swapped in by `pump`, `setInstances`, the canopy shown or hidden). The same object every call.
+   * trees), empty while the canopy is not drawn (switched off, hidden by a solo heat map, or faded out in a top view); `serial` moves whenever `sets()`
+   * would answer differently (a placement swapped in by `pump`, `setInstances`, the canopy shown or hidden). The same object every call.
    */
   crownSource(): CrownSource {
     return this.crowns;
@@ -356,7 +354,13 @@ export class VegetationLayer {
    */
   setViewDown(sinDown: number): void {
     this.viewDown = sinDown;
-    this.group.visible = this.layerVisible && sinDown < TOP_HIDDEN;
+    this.showGroup(this.layerVisible && sinDown < TOP_HIDDEN);
+  }
+
+  /** Show or hide the canopy. Trees that are not drawn (switched off, behind a solo heat map, or faded out in a top view) are no obstacle: the crown source says so by its serial. */
+  private showGroup(on: boolean): void {
+    if (on !== this.group.visible) this.crownSerial++;
+    this.group.visible = on;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import {
   IO_ZC,
   MAX_CROWNS_CAP,
   Obstacles,
+  PIN_GAIN,
   P_BX0,
   P_BX1,
   P_BY0,
@@ -164,7 +165,9 @@ describe('the soft doublet round a crown', () => {
     expect(at(ob, 0.5, 0).hit).toBe(1);
     expect(at(ob, 4.2, 0).hit).toBe(1);
     expect(at(ob, 4.3, 0).hit).toBe(0);
-    expect(at(ob, 4.3, 0).near).toBeCloseTo(1 - 4.3 / 12.5, 9);
+    expect(at(ob, 4.3, 0).near).toBe(1); // PIN_GAIN x (1 - 4.3 / 12.5) is over 1
+    expect(at(ob, 8, 0).near).toBeCloseTo(PIN_GAIN * (1 - 8 / 12.5), 9);
+    expect(at(ob, 6.25, 0).near, 'the whole depth from half way in').toBe(1);
     expect(at(ob, 12.5, 0).near).toBe(0);
     expect(at(ob, 30, 0).near).toBe(0);
     expect(at(ob, 4.2, 0, 1, 0, 1).hit, 'the rim test alone').toBe(1);
@@ -265,6 +268,7 @@ describe('the Rankine pair behind a site', () => {
     expect(Math.hypot(edge.px, edge.py)).toBeLessThanOrEqual(0.6 + 0.05);
     expect(at(ob, 8.5, 4.5).near, 'the pin is 1 at a core').toBe(1);
     expect(at(ob, 8.5 + 12.5, 4.5).near, 'and 0 at 2.5 r from it').toBeCloseTo(0, 6);
+    expect(at(ob, 8.5 + 9.4, 4.5).near, 'and rising by PIN_GAIN toward it').toBeCloseTo(PIN_GAIN * (1 - 9.4 / 12.5), 9);
   });
 
   it('scales with the strength of the site, and is turned with the wind', () => {
@@ -515,6 +519,24 @@ describe('which trees count as crowns', () => {
     ob.p[P_MX] = 1;
     ob.p[P_MY] = 1;
     expect(chosen(ob, trees([[500, 0, 30, 10], [3, 0, 30, 10]]))).toHaveLength(1);
+  });
+
+  it('passes over a tree outside the box of the seeds (grown by the builder) before it projects it', () => {
+    const ob = scene(1000, flat(24));
+    const list: [number, number, number, number][] = [[0, 0, 30, 10], [3, 3, 30, 10], [3000, 0, 30, 10], [0, -3000, 30, 10]];
+    // Wide open: the two trees near the middle count (the far ones are off the screen as well: the screen test passes them over too).
+    expect(chosen(ob, trees(list))).toHaveLength(2);
+    // The same two with the box shrunk to a few metres: one is inside it.
+    const small = scene(1000, flat(24));
+    small.p[P_BX0] = -1;
+    small.p[P_BX1] = 1;
+    small.p[P_BY0] = -1;
+    small.p[P_BY1] = 1;
+    expect(chosen(small, trees(list))).toEqual([[0, 0, expect.any(Number)]]);
+    // And a box that excludes everything leaves nothing, whatever the trees.
+    small.p[P_BX0] = 100;
+    small.p[P_BX1] = 200;
+    expect(chosen(small, trees(list))).toHaveLength(0);
   });
 
   it('gates the crowns by the zoom: a 5 m crown must be at least 8 px across at the middle of the screen (a camera nearer than about 580 m)', () => {

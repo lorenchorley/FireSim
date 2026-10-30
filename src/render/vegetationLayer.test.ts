@@ -426,4 +426,25 @@ describe('VegetationLayer.crownSource (0.7.0: the detailed streaks flow round th
     expect(src.sets(), 'a solo heat map hides the canopy').toHaveLength(0);
     l.dispose();
   });
+
+  it('answers nothing in a top view that has faded the canopy out, and the trees are back (with a new serial) when the camera tilts again', () => {
+    const l = layer();
+    l.setInstances(sets);
+    const src = l.crownSource();
+    l.setViewDown(0.5);
+    const seen = src.serial;
+    expect(src.sets()).toBe(sets);
+    l.setViewDown(0.6);
+    expect(src.serial, 'still drawn: no change').toBe(seen);
+    l.setViewDown(0.999); // straight down: not drawn at all
+    expect(src.sets()).toHaveLength(0);
+    expect(src.serial).not.toBe(seen);
+    const hidden = src.serial;
+    l.setViewDown(0.9995);
+    expect(src.serial).toBe(hidden);
+    l.setViewDown(0.5);
+    expect(src.sets()).toBe(sets);
+    expect(src.serial).not.toBe(hidden);
+    l.dispose();
+  });
 });

@@ -45,14 +45,14 @@ import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, GLYPH_CAPS, type Box, type CrownSource, type DetailBuilder, type DetailInput, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight, type DetailRelief } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, GLYPH_CAPS, type Box, type CrownSet, type CrownSource, type DetailBuilder, type DetailInput, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight, type DetailRelief } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
 const HALO_WIDTH_PX = GLYPH_WIDTH_PX + 2 * 1.25;
 /**
  * The strokes lie 1.5 m or so above the ground, under the canopy, which is drawn (a crown of 20 to 30 m would hide most of every flow
- * line close in). They are drawn where they are but tested for depth as if this many metres nearer the eye, so a crown in front of a
+ * line close in); with the relief (0.7.0) and trees drawn they ride on the canopy's top instead. They are drawn where they are but tested for depth as if this many metres nearer the eye, so a crown in front of a
  * stroke does not hide it while a ridge, which stands well over this much in front of what is behind it, still does. (Switching the
  * depth test off instead shows every line behind every ridge.)
  */
@@ -295,8 +295,9 @@ export class WindGlyphLayer {
   }
 
   /**
-   * The canopy height and cover per fire cell, by reference (null when the canopy layer is off or there is none): the strokes ride on the crowns' tops
-   * (0.7.0, T1). A different object makes the `'canopy'` rebuild reason.
+   * The canopy height and cover per fire cell, by reference (null when there is none): the strokes ride on the crowns' tops (0.7.0, T1), but only while
+   * trees are drawn (`setCrowns` gives trees: with none placed or drawn the strokes stay at the ground, as in 0.6.0). A different object makes the
+   * `'canopy'` rebuild reason.
    */
   setCanopy(fuel: FuelMap | null): void {
     if (fuel === this.canopy) return;
@@ -750,8 +751,13 @@ export class WindGlyphLayer {
       const detail: DetailInput = { ...input, ground10: d.sliceGround, seed: 0, heightM: typeof this.height === 'number' ? this.height : 10 }; // the ground terms fade with the wind's height
       if (this.reliefActive()) {
         detail.relief = DETAIL_RELIEF;
-        if (this.canopy) detail.canopy = this.canopy;
-        if (this.crownSrc) detail.crowns = this.crownSrc.sets();
+        // The strokes ride on the canopy and bend round crowns only while there are trees drawn to ride on and bend round: the canopy layer on, and
+        // not faded out by a top view (the crown source is empty then).
+        const trees = this.crownSrc ? this.crownSrc.sets() : undefined;
+        if (trees && placed(trees)) {
+          detail.crowns = trees;
+          if (this.canopy) detail.canopy = this.canopy;
+        }
         if (this.plumes.length > 0) detail.plumes = this.plumes;
       }
       this.detailBuilder.begin(detail);
@@ -869,6 +875,12 @@ export class WindGlyphLayer {
     return this.groundMin.y;
   }
 }
+
+/** Is any tree placed in these sets? */
+const placed = (sets: readonly CrownSet[]): boolean => {
+  for (let i = 0; i < sets.length; i++) if (sets[i]!.count > 0) return true;
+  return false;
+};
 
 const same = (a: Float64Array, b: Float64Array): boolean => {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;

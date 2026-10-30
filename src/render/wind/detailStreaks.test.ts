@@ -1479,7 +1479,7 @@ describe('the relief: the lines part round a crown', () => {
     expect(exact / checked).toBeGreaterThan(0.95);
   });
 
-  it('writes the pin into the colour alpha: 1 on a line with no obstacle within 2.5 radii, from 0.2 to 1 on the others, and never 0', () => {
+  it('writes the pin into the colour alpha: 1 on a line with no obstacle within 2.5 radii, from `pinMin` to 1 on the others, and never 0', () => {
     const second = crownDiscRadius(41, 14, 0.85 * 24, 0.7, 0.3);
     // (The wakes have their own pin, round their cores; leave them out here.)
     const { out, lines } = build(withRelief(view(), { relief: { ...DETAIL_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } }, canopyH: 24, crowns: [stand([[0, 0, 40, 16], [14, 4, 41, 14]])] }));
@@ -1494,7 +1494,7 @@ describe('the relief: the lines part round a crown', () => {
       }
       expect(pins.size, 'one pin to a line').toBe(1);
       const pin = [...pins][0]!;
-      expect(pin).toBeGreaterThanOrEqual(0.2 - 1e-6);
+      expect(pin).toBeGreaterThanOrEqual(DETAIL_RELIEF.crowns.pinMin - 1e-6);
       expect(pin).toBeLessThanOrEqual(1);
       if (nearest > 3) {
         expect(pin, `a line ${nearest.toFixed(1)} radii away`).toBe(1);
@@ -1613,7 +1613,7 @@ describe('the relief: eddies curl behind obstacles', () => {
     for (const l of lines) {
       const pin = out.c[4 * l.seg + 3]!;
       if (pin < 1) pinned++;
-      expect(pin).toBeGreaterThanOrEqual(0.2 - 1e-6);
+      expect(pin).toBeGreaterThanOrEqual(DETAIL_RELIEF.crowns.pinMin - 1e-6);
     }
     expect(pinned).toBeGreaterThan(5);
   });

@@ -40,7 +40,7 @@
  * there is canopy (`canopy`), slide along the contour of a windward slope (a ridge) and part round the tree crowns that stand in their way and curl
  * behind the proud ones, a ridge's lee and the plume (`detailObstacles.ts`). All of it bends the DIRECTION of the traced line, a step at a time and at
  * most `maxTurnDeg`; the speed (the colour bin, the pulse's pace) is the model's, as before. A seed inside a crown's disc is not drawn (`out.blocked`),
- * a line that meets a crown's rim ends there, and each line carries a pin in its colour alpha (1 free, down to 0.2 at an obstacle) that the shader
+ * a line that meets a crown's rim ends there, and each line carries a pin in its colour alpha (1 free, down to `pinMin` at an obstacle) that the shader
  * multiplies the meander by, so that the noise does not carry a line off the crown it was bent round.
  */
 import {
@@ -214,6 +214,7 @@ const F_RFWD = 43;
 const F_COSCAP = 44;
 const F_SINCAP = 45;
 const F_PIN = 46;
+const F_PINMIN = 47;
 const F_LEN = 48;
 
 const N_BUSY = 0;
@@ -1108,6 +1109,7 @@ class Builder implements DetailBuilder {
     f[F_COSCAP] = Math.cos(cap);
     f[F_SINCAP] = Math.sin(cap);
     f[F_PIN] = ob.pinDepth;
+    f[F_PINMIN] = ob.pinMin;
     const crowns = input.crowns;
     if (crowns !== undefined && crowns.length > 0 && ob.crownsWanted()) {
       ob.beginScan(crowns);
@@ -1569,8 +1571,9 @@ class Builder implements DetailBuilder {
       for (let k = 0; k < made; k++) D[4 * (seg0 + k) + 2] = drawn;
     }
     if (obstOn && s[28]! > 0) {
-      // The pin: the shader multiplies the meander of this line by it (1 free, down to 0.2 at an obstacle).
-      const pin = 1 - f[F_PIN]! * s[28]!;
+      // The pin: the shader multiplies the meander of this line by it (1 free, down to `pinMin` at an obstacle).
+      let pin = 1 - f[F_PIN]! * s[28]!;
+      if (pin < f[F_PINMIN]!) pin = f[F_PINMIN]!;
       const C = this.C;
       for (let k = 0; k < made; k++) C[4 * (seg0 + k) + 3] = pin;
     }
