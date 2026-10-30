@@ -14,9 +14,10 @@
  *                         └──finger lifts──▶ idle (+ glide when it was clearly moving)
  *
  * The two-finger gesture itself (pinch to zoom towards the fingers while the midpoint's drag turns and tilts the view,
- * both at once) is OrbitControls' TOUCH.DOLLY_ROTATE, which sees the same pointers; with TOUCH.ONE disabled it does nothing
- * for one finger. Fingers beyond the second are IGNORED: their events are stopped here, before OrbitControls would see them
- * (which would end the two-finger gesture), so the first two fingers carry on undisturbed. A pen is handled like a finger
+ * both at once) is OrbitControls' TOUCH.DOLLY_ROTATE for the pinch and {@link TwoFingerTurn} for the turn and tilt; both see
+ * the same pointers, and with TOUCH.ONE disabled OrbitControls does nothing for one finger. Fingers beyond the second are
+ * IGNORED: their events are stopped here, before TwoFingerTurn or OrbitControls would see them (which would end the two-finger
+ * gesture), so the first two fingers carry on undisturbed. A pen is handled like a finger
  * and likewise hidden from OrbitControls (which would take it for a mouse and pan a second time). The mouse is not touched.
  *
  * Cancelled by: any new touch, a flight ({@link PanGesture.cancel}, fingers stay tracked until they lift), a mode change,
