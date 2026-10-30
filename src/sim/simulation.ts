@@ -19,7 +19,7 @@
  *
  * One atmosphere step (normative order §12.2 — never reorder, the determinism test depends on it):
  *   1  due records (ignitions, edits, removals, options, quality) in (time, seq) order; ember spot ignitions
- *   2  stamp pair → atm.setAmbient; atm.setTime; w = weatherAt(t); stableNight(night, …, Δt) → atm.setNightState
+ *   2  stamp pair → atm.setAmbient; atm.setTime; w = weatherNow(t); stableNight(night, …, Δt) → atm.setNightState
  *   3  every 600 s (and t0): insolation → atm.setSurfaceHeating, moisture.update, fire.refreshMoistureCache
  *   4  every 60 s or on a 22.5° wind-sector change: fire.refreshMasks (previous step's U_ridge);
  *      atm.surfaceWindForFire (κ-scaled U_bg10, U_fire with c_f and m_f, U_ridge, slope flows, lee blend); atm.airAt
@@ -39,8 +39,14 @@
  *
  * Deviations / interpretations (see the sim/ report): records at a time < now trigger a rewind to that time; option
  * records later than a rewind target are moved to the target (the UI's "what-if from the view time"); a removed edit
- * stays active before its removal time; fuel edits do not change the atmosphere's canopy drag / albedo (static at
- * construction); explain(x, y, time) evaluates at min(time, now) with the current environment.
+ * stays active before its removal time (except a Wind direction change, like an ignition: removed as if never added);
+ * fuel edits do not change the atmosphere's canopy drag / albedo (static at construction); explain(x, y, time)
+ * evaluates at min(time, now) with the current environment.
+ *
+ * Wind direction (0.6.0): the user's changes are records; the series the WIND is read from is `wx`, the forecast with the
+ * active changes applied (scenario/windDirection.ts), which IS the forecast object while there is no change, so every
+ * result without a change is bitwise what it was. `wx` feeds only the atmosphere's stamp pair and the direction fields of
+ * `weatherNow`; moisture, heating, the stable night, the speed and the forecast cards keep reading `scenario.weather`.
  */
 import { Rng } from '../core/rng';
 import { typedArrayFootprint } from '../core/datasets';
@@ -81,6 +87,7 @@ import {
   type TerrainDerived,
   type TerrainFeatures,
   type WeatherHour,
+  type WeatherSeries,
   type WindEdit,
 } from '../core/types';
 import { insolation, solarPosition, terrainDerived } from '../terrain';
@@ -96,6 +103,7 @@ import { getFireModelOptions } from '../fire/models/params';
 import { SPREAD_PARAMS } from '../fire/spread/params';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
+import { applyWindDirection, windDirectionTime } from '../scenario/windDirection';
 import { SIM_PARAMS } from './params';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
@@ -287,6 +295,10 @@ export class Simulation {
   private night: StableNightState;
   private lastNightMs: number;
   private stampIdx = 0;
+  /** The series the wind is read from: the forecast with the active Wind direction changes applied (`refreshWx`). */
+  private wx: WeatherSeries;
+  /** Identity of the changes `wx` was made from ('' for none, when `wx` is the forecast itself). */
+  private wxKey = '';
   private diag: AtmosDiagnostics | null = null;
   private plumeTopAGL = NaN;
   private lastSun: InsolationResult | null = null;
@@ -385,6 +397,7 @@ export class Simulation {
       c = now;
     };
     this.scenario = scenario;
+    this.wx = scenario.weather;
     const terrain = (this.terrain = scenario.terrain);
     const g = terrain.grid;
     const fg = scenario.fuel.grid;
@@ -427,10 +440,15 @@ export class Simulation {
     this.fuelBase = base;
     this.fuel = cloneFuelMap(base);
     this.history = scenario.fuelHistory ?? { recStart: new Uint32Array(n + 1), recIndex: new Uint32Array(0), tb: new Float64Array(0), kind: new Uint8Array(0) };
-    for (const e of scenario.edits) this.addRecord({ kind: 'edit', edit: e }, e.kind === 'wind' ? Math.max(0, e.time) : 0);
+    for (const scenarioEdit of scenario.edits) {
+      const e = this.wholeMinute(scenarioEdit);
+      this.addRecord({ kind: 'edit', edit: e }, e.kind === 'fuel' ? 0 : Math.max(0, e.time));
+    }
     for (const ign of scenario.ignitions) this.addRecord({ kind: 'ignite', ignition: ign }, Math.max(0, ign.time));
     for (const r of [...this.records.values()].sort(recordOrder)) {
-      if (r.time > 0 || r.body.kind !== 'edit') continue;
+      // A Wind direction change at time 0 is applied by the first step, like an ignition: the atmosphere spins up on the
+      // forecast, and removing the change later restores a checkpoint that does not hold it.
+      if (r.time > 0 || r.body.kind !== 'edit' || r.body.edit.kind === 'windDirection') continue;
       if (r.body.edit.kind === 'fuel') applyFuelEdit(this.fuel, r.body.edit, this.fuelBase, this.history, this.startMs);
       this.markApplied(r.seq);
     }
@@ -464,7 +482,7 @@ export class Simulation {
 
     // ── environment arrays ──
     const f32 = (v = 0): Float32Array => new Float32Array(n).fill(v);
-    const w0 = weatherAt(series, this.startMs);
+    const w0 = this.weatherNow(this.startMs);
     const sun0 = solarPosition(this.startMs, g.origin.lat, g.origin.lon).elevation;
     this.env = {
       windU: f32(), windV: f32(), windBgU: f32(), windBgV: f32(), fireIndU: f32(), fireIndV: f32(), uRidge: f32(NaN),
@@ -608,11 +626,18 @@ export class Simulation {
 
   /** A fuel or wind edit applying from `time` (s). An edit with the id of an earlier one replaces it from `time`. */
   edit(edit: ScenarioEdit, time: number): void {
-    this.addUserRecord({ kind: 'edit', edit: structuredCloneSafe(edit) }, Math.max(0, Number.isFinite(time) ? time : this.logicalNow));
+    const e = this.wholeMinute(structuredCloneSafe(edit));
+    // A Wind direction change carries its own start time (a whole minute); the other edits apply from `time`.
+    const at = e.kind === 'windDirection' ? e.time : Math.max(0, Number.isFinite(time) ? time : this.logicalNow);
+    this.addUserRecord({ kind: 'edit', edit: e }, at);
   }
 
-  /** Remove an edit from now on (the remaining edits are re-applied in order, §4.8). */
+  /**
+   * Remove an edit from now on (the remaining edits are re-applied in order, §4.8). A Wind direction change is removed
+   * as if it had never been made, like an ignition (see {@link undoRecords}).
+   */
   removeEdit(id: string): void {
+    if (this.undoRecords((r) => r.body.kind === 'edit' && r.body.edit.kind === 'windDirection' && r.body.edit.id === id)) return;
     this.addUserRecord({ kind: 'removeEdit', id }, this.logicalNow);
   }
 
@@ -623,10 +648,19 @@ export class Simulation {
    * Returns false for an unknown id.
    */
   removeIgnition(id: string): boolean {
+    return this.undoRecords((r) => r.body.kind === 'ignite' && r.body.ignition.id === id);
+  }
+
+  /**
+   * Delete the records `match` picks as if they had never been made (the body of {@link removeIgnition}, shared with the
+   * removal of a Wind direction change): when one had already been applied, the latest checkpoint ≤ its time is
+   * restored and the run is repeated to the current logical time without it. Returns false when none matches.
+   */
+  private undoRecords(match: (r: SimRecord) => boolean): boolean {
     let t = Infinity;
     let applied = false;
     for (const [seq, r] of [...this.records]) {
-      if (r.body.kind !== 'ignite' || r.body.ignition.id !== id) continue;
+      if (!match(r)) continue;
       t = Math.min(t, r.time);
       if (this.appliedSet.has(seq)) applied = true;
       this.records.delete(seq);
@@ -909,15 +943,18 @@ export class Simulation {
             applyFuelEdit(this.fuel, b.edit, this.fuelBase, this.history, this.startMs);
             this.afterFuelChange(cellsInBrush(this.fuel.grid, b.edit.shape));
           }
-        } else this.setWindEdits(activeEdits(this.records, this.applied).wind);
+        } else if (b.edit.kind === 'windDirection') this.windChanged(t);
+        else this.setWindEdits(activeEdits(this.records, this.applied).wind);
         break;
       }
       case 'removeEdit': {
         const wasFuel = before!.fuel.some((e) => e.id === b.id);
         const wasWind = before!.wind.some((e) => e.id === b.id);
+        const wasTurn = before!.windDirection.some((e) => e.id === b.id);
         const after = activeEdits(this.records, this.applied);
         if (wasFuel) this.rebuildFuel(after.fuel);
         if (wasWind) this.setWindEdits(after.wind);
+        if (wasTurn) this.windChanged(t);
         break;
       }
       case 'option':
@@ -927,6 +964,57 @@ export class Simulation {
         this.switchTier(b.tier, t);
         break;
     }
+  }
+
+  /** A Wind direction change was applied or removed at step time `t`: make `wx` again and, if it differs, re-bind the stamp pair. */
+  private windChanged(t: number): void {
+    if (this.refreshWx()) this.rebindWind(this.startMs + t * 1000);
+  }
+
+  /**
+   * `wx` = the forecast with the Wind direction changes of the applied records (`activeEdits`: application order, so equal
+   * times resolve the same way in every run). Returns false when they are the ones it was made from. With no change `wx`
+   * is the forecast object itself, so everything that compares or reads it behaves as before.
+   */
+  private refreshWx(): boolean {
+    const list = activeEdits(this.records, this.applied).windDirection;
+    const key = list.length ? JSON.stringify(list.map((e) => [e.id, e.dir, e.time])) : '';
+    if (key === this.wxKey) return false;
+    this.wxKey = key;
+    this.wx = list.length ? applyWindDirection(this.scenario.weather, this.startMs, list) : this.scenario.weather;
+    return true;
+  }
+
+  /**
+   * The stamps moved (the series has other stamps inserted): find the pair around `tMs` in the new series and give it to
+   * the atmosphere, which keeps the solved stamps whose time and values are unchanged.
+   */
+  private rebindWind(tMs: number): void {
+    const hs = this.wx.hours;
+    this.stampIdx = Math.max(0, Math.min(stampIndex(hs, tMs), hs.length - 2));
+    this.atm.setAmbient(hs[this.stampIdx]!, hs[Math.min(this.stampIdx + 1, hs.length - 1)]!);
+    this.windDirty = true;
+  }
+
+  /**
+   * The weather at `tMs`: the forecast's, with the wind direction (10 m, profile, pressure levels) of `wx` while a Wind
+   * direction change is active. The speed and every other field stay the forecast's, bitwise.
+   */
+  private weatherNow(tMs: number): WeatherHour {
+    const w = weatherAt(this.scenario.weather, tMs);
+    if (this.wx === this.scenario.weather) return w;
+    const d = weatherAt(this.wx, tMs);
+    w.windDir10 = d.windDir10;
+    if (d.windProfile) w.windProfile = d.windProfile;
+    if (d.pressureLevels) w.pressureLevels = d.pressureLevels;
+    return w;
+  }
+
+  /** A Wind direction change starts on a whole minute (the step grid follows the display step: it must not move the change). */
+  private wholeMinute(edit: ScenarioEdit): ScenarioEdit {
+    if (edit.kind !== 'windDirection') return edit;
+    const time = windDirectionTime(edit.time, this.duration);
+    return time === edit.time ? edit : { ...edit, time };
   }
 
   /** Hand the active wind edits to the atmosphere (re-solves u_bg of the cached stamps) when they changed. */
@@ -1033,7 +1121,8 @@ export class Simulation {
       scenarioStartMs: this.startMs,
       windEdits: wind as WindEdit[],
     });
-    const hs = s.weather.hours;
+    // The atmosphere keeps the forecast for its static fields (grid-point height, night template); its stamps come from `wx`.
+    const hs = this.wx.hours;
     const tMs = this.startMs + this.t * 1000;
     this.stampIdx = Math.max(0, Math.min(stampIndex(hs, tMs), hs.length - 2));
     a.setAmbient(hs[this.stampIdx]!, hs[Math.min(this.stampIdx + 1, hs.length - 1)]!);
@@ -1149,7 +1238,7 @@ export class Simulation {
     const t = this.t;
     const tMs = this.startMs + t * 1000;
     const env = this.env;
-    const series = this.scenario.weather;
+    const series = this.scenario.weather; // the forecast: the stable night and the rain read it, not `wx`
     const grid = this.terrain.grid;
 
     // 1 records and scheduled spot ignitions
@@ -1157,8 +1246,8 @@ export class Simulation {
     this.applyPendingSpots(t);
     lap('records');
 
-    // 2 stamps, weather, stable night
-    const hs = series.hours;
+    // 2 stamps, weather, stable night (`wx` is read after the records: a Wind direction change replaces it)
+    const hs = this.wx.hours;
     while (this.stampIdx < hs.length - 2 && tMs >= hs[this.stampIdx + 1]!.time) {
       this.stampIdx++;
       this.atm.setAmbient(hs[this.stampIdx]!, hs[this.stampIdx + 1]!);
@@ -1166,7 +1255,7 @@ export class Simulation {
     }
     this.atm.setTime(tMs);
     lap('stamps');
-    const w = weatherAt(series, tMs);
+    const w = this.weatherNow(tMs);
     const sunPos = solarPosition(tMs, grid.origin.lat, grid.origin.lon);
     env.weather = w;
     env.time = t;
@@ -1600,7 +1689,7 @@ export class Simulation {
     const aux = this.fire.aux();
     const fs = fireStats(f, aux, this.t);
     const es = this.embers.stats();
-    const w = weatherAt(this.scenario.weather, this.startMs + this.t * 1000);
+    const w = this.weatherNow(this.startMs + this.t * 1000);
     const u10kmh = 3.6 * w.windSpeed10;
     let rating = 'No rating';
     try {
@@ -1915,6 +2004,8 @@ export class Simulation {
     const fuelCp = fuelSequence(this.records, cp.applied);
     this.applied = cp.applied.slice();
     this.appliedSet = new Set(this.applied);
+    // `wx` of the checkpoint's own records, before the atmosphere is built or restored: `cp.stampIdx` indexes its stamps.
+    this.refreshWx();
     if (!sameSequence(fuelNow, fuelCp)) this.rebuildFuel(activeEdits(this.records, this.applied).fuel);
     this.opts = { ...cp.opts };
     this.night = { ...cp.night };
@@ -1967,7 +2058,7 @@ export class Simulation {
     this.frontRos.set(a.frontRos);
     env.mountainPhenomena = this.opts.mountainPhenomena;
     env.time = this.t;
-    env.weather = weatherAt(this.scenario.weather, this.startMs + this.t * 1000);
+    env.weather = this.weatherNow(this.startMs + this.t * 1000);
     this.updatePyrogenic();
     this.windDirty = cp.windDirty;
     if (this.opts.maxEmbersUser !== null) this.embers.setMaxEmbers(this.opts.maxEmbersUser);
