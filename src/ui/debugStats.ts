@@ -22,6 +22,7 @@ import { spanWords } from './recordingWords';
 import type { PictureQualityAsk } from './settings';
 import { waited } from './runEvents';
 import type { SpeedTestResult } from './speedTest';
+import { speedTestRowValue } from './speedTestModel';
 
 export const TITLE = 'Simulation debug statistics';
 export const END_MARKER = '-- end --';
@@ -103,7 +104,7 @@ export interface DebugStatsInput {
   sliceRecording?: SliceRecordingFacts | null;
   /** The wind arrows and flow lines' own statistics (0.5.0); absent or null where the view draws none (the 2-D map). */
   windGlyphs?: WindGlyphStats | null;
-  /** The speed test (0.7.0, item C): idle, running, or blocked (with the reason in words) and the last result of this visit; absent where the screen has no test. Unread until lane C. */
+  /** The speed test (0.7.0, item C): idle, running, or blocked (with the reason in words) and the last result of this visit; absent where the screen has no test. */
   speedTest?: { state: 'idle' | 'running' | 'blocked'; reason?: string; last: SpeedTestResult | null };
   /** The history budget, and the device-memory class it came from (null: the phone does not say, 3 GB is assumed). */
   historyBudget: { bytes: number; memoryGb: number | null } | null;
@@ -675,7 +676,10 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
     : l.gl.ok
       ? `WebGL2 on ${l.gl.renderer ?? 'a GPU whose name is hidden'}, float render targets ${l.gl.floatTargets ? 'yes' : 'no'}, WebGPU ${l.gpu.present ? 'present' : 'absent'}.`
       : 'WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.';
-  return G('canDo', 'What this phone can do', [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)], 'Three sentences from the measurements above');
+  const rows = [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)];
+  // The speed test (0.7.0): a fourth row where the screen has the button; its numbers are never read by the engine or the pace tracker (speedTest.deps.test.ts).
+  if (i.speedTest) rows.push(R('speed-test', 'Speed test', speedTestRowValue(i.speedTest, i.clock.tzOffsetMin)));
+  return G('canDo', 'What this phone can do', rows, 'Three sentences from the measurements above');
 }
 
 /** The short word beside each event line: what kind of event it is. */

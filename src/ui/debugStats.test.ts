@@ -774,3 +774,54 @@ describe('Recent events', () => {
     expect(buildDebugStats(none).groups.find((g) => g.id === 'events')!.rows[0]!.value).toBe('Nothing yet');
   });
 });
+
+describe('the speed test row (0.7.0, item C)', () => {
+  const NOW_TEST = Date.UTC(2026, 9, 30, 14, 5, 0);
+  const done = { version: 1, stencilMcellsPerS: 25.1, copyGBps: 3.8, ratioStencil: 3.2, ratioCopy: 2.1, at: NOW_TEST };
+  const canDo = (i: DebugStatsInput): StatRow[] => buildDebugStats(i).groups.find((g) => g.id === 'canDo')!.rows;
+
+  it('is not there where the screen has no test: the three sentences stay three', () => {
+    expect(canDo(full()).map((r) => r.id)).toEqual(['speed', 'memory', 'graphics']);
+  });
+
+  it('is the fourth row of "What this phone can do" where it has one, in every state, and the labels of the other rows do not move', () => {
+    for (const speedTest of [
+      { state: 'idle' as const, last: null },
+      { state: 'running' as const, last: null },
+      { state: 'blocked' as const, reason: 'Pause first so the test is fair.', last: null },
+      { state: 'idle' as const, last: done },
+      { state: 'running' as const, last: done },
+    ]) {
+      const i = { ...full(), speedTest };
+      const rows = canDo(i);
+      expect(rows.map((r) => r.id)).toEqual(['speed', 'memory', 'graphics', 'speed-test']);
+      expect(rows.map((r) => r.label)).toEqual(['Speed', 'Memory', 'Graphics', 'Speed test']);
+      expectClean(buildDebugStats(i));
+    }
+  });
+
+  it('says what each state says: idle, running, and the result with both kernels and their ratios', () => {
+    const value = (speedTest: NonNullable<DebugStatsInput['speedTest']>): string => rowOf(buildDebugStats({ ...full(), speedTest }), 'canDo', 'speed-test').value;
+    expect(value({ state: 'idle', last: null })).toBe('Not run yet. Takes about 2 seconds.');
+    expect(value({ state: 'running', last: null })).toBe('Testing, about 2 seconds.');
+    expect(value({ state: 'blocked', reason: 'Pause first so the test is fair.', last: null })).toBe('Not run yet. Takes about 2 seconds.');
+    const r = value({ state: 'idle', last: done });
+    expect(r).toContain('Air kernel 25.1 million cell updates a second (about 3.2 times slower than the build machine)');
+    expect(r).toContain('Memory copy 3.8 GB a second (about 2.1 times slower)');
+    expect(r).toContain('Test version 1, ');
+    expect(r).toContain('does not predict a run');
+  });
+
+  it('is in the copied text, under its group, with the number of the last result', () => {
+    const text = debugStatsToText(buildDebugStats({ ...full(), speedTest: { state: 'idle', last: done } }));
+    const group = text.slice(text.indexOf('== What this phone can do =='), text.indexOf('== Recent events =='));
+    expect(group).toContain('  Speed test: Air kernel 25.1 million cell updates a second');
+    expect(group.indexOf('  Graphics:')).toBeLessThan(group.indexOf('  Speed test:'));
+    expect(debugStatsToText(buildDebugStats(full()))).not.toContain('Speed test:');
+  });
+
+  it("reads the time in the phone's zone from the clock the statistics were given", () => {
+    const i = { ...full(), speedTest: { state: 'idle' as const, last: done }, clock: { ...full().clock, tzOffsetMin: 600 } };
+    expect(rowOf(buildDebugStats(i), 'canDo', 'speed-test').value).toContain('Test version 1, 00:05.');
+  });
+});
