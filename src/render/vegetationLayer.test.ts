@@ -196,6 +196,37 @@ describe('VegetationLayer', () => {
     l.dispose();
   });
 
+  it('stops swaying when motion is not allowed (reduced motion): the swing and the flutter go to 0, the lean and the direction stay, and no frames are asked for', () => {
+    const l = layer();
+    l.updateLod([0, 0, 505], 1, 700, true);
+    l.setInstances(sets);
+    l.setLayers({ ...onLayers, windSway: true });
+    l.setWind(8.4853, 8.4853);
+    const amp = l.uniforms.uSwayAmp!.value as THREE.Vector3;
+    const p = swayParams(12);
+    expect(l.animating).toBe(true);
+    l.setMotion(false);
+    expect(amp.x, 'the lean stays').toBeCloseTo(p.lean, 4);
+    expect(amp.y).toBe(0);
+    expect(amp.z).toBe(0);
+    expect(l.animating).toBe(false);
+    // A new snapshot's wind keeps it still: the direction follows, the lean follows, nothing swings.
+    l.setWind(-3, 0);
+    const dir = l.uniforms.uWindDir!.value as THREE.Vector2;
+    expect(dir.x).toBeCloseTo(-1, 3);
+    expect(amp.x).toBeCloseTo(swayParams(3).lean, 4);
+    expect(amp.y).toBe(0);
+    expect(amp.z).toBe(0);
+    // Allowed again: the swing returns for the wind in force, and the layer asks for frames.
+    l.setMotion(true);
+    expect(amp.y).toBeCloseTo(swayParams(3).amp, 4);
+    expect(amp.z).toBeCloseTo(swayParams(3).flutter, 4);
+    expect(l.animating).toBe(true);
+    l.setMotion(true); // a plain flag: asking twice changes nothing
+    expect(amp.y).toBeCloseTo(swayParams(3).amp, 4);
+    l.dispose();
+  });
+
   it('places incrementally: a job pumped a few ms at a time ends with the same trees as a one-shot placement', () => {
     const l = layer();
     l.updateLod([0, 0, 505], 1, 700, true);

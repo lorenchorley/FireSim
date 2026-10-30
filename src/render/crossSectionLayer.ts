@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import type { AtmosphereSampler, SectionLine } from './atmosphereSampler';
 import { colourSlice } from './crossSectionColour';
+import { ARROW_COLUMNS, arrowStride, columnDrawn, foreshortening, pixelsPerMetre } from './curtainArrows';
 import { FOG, TONEMAP } from './glsl';
 import { srgbToLinear } from './palette';
 import { LatticeStencil, latticeInPlaneWind, upperAlongMean } from './slice/lattice';
@@ -86,6 +87,20 @@ export class CrossSectionLayer {
   private readonly halo: StreakBatch;
   /** The line of the slice shown, or null while nothing is drawn. */
   line: SectionLine | null = null;
+  /**
+   * The arrows as the slice made them, before the thinning for the view (0.7.0, F2): ends and colours in the batch's own layout, and the lattice column
+   * each belongs to. The batch and its halo hold the columns that `stride` keeps; a new view that changes the stride commits them again from here.
+   */
+  private readonly fullA = new Float32Array(400 * 3);
+  private readonly fullB = new Float32Array(400 * 3);
+  private readonly fullC = new Float32Array(400 * 4);
+  private readonly columnOf = new Uint8Array(400);
+  private fullN = 0;
+  private stride = 1;
+  /** What `setView` needs of the slice shown: the gap between columns (m) and the middle of the curtain (scene axes). */
+  private spacingM = 0;
+  private readonly middle = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
   /** Scratch of the arrows of a recorded slice (its lattice is read, not the sampler): the stencil, the point [s, z] and the answer [along, up]. */
   private readonly stencil = new LatticeStencil();
   private readonly at = new Float64Array(2);
@@ -120,6 +135,7 @@ export class CrossSectionLayer {
   /** Draw nothing: there is no slice (no line, the air holds no 3-D wind, a new scenario). */
   clear(): void {
     this.line = null;
+    this.fullN = 0;
     if (this.mesh) this.mesh.visible = false;
     this.arrows.commit(0);
     this.halo.commit(0);
@@ -137,7 +153,27 @@ export class CrossSectionLayer {
     this.buildGeometry(data);
     this.paint(data, field);
     this.mesh!.visible = true;
+    this.spacingM = data.line.length / ARROW_COLUMNS;
+    this.middle.set((data.line.a[0] + data.line.b[0]) / 2, ((data.zMin + data.zMax) / 2) * vex, -(data.line.a[1] + data.line.b[1]) / 2);
     this.drawArrows(data, heightAt, sampler, vex, dpr);
+  }
+
+  /**
+   * The camera looks at the curtain from where it is now (called every frame while the slice is shown; a few multiplications): where the line is seen
+   * nearly end on, the 21 columns of arrows land on one screen column and their heads stack, so only every `stride`-th column is drawn (see
+   * `curtainArrows.ts`). The batch and its halo are committed again only when the stride changes, so the frame that changes it draws it.
+   * `viewportH` is the view's height in CSS px.
+   */
+  setView(camera: THREE.PerspectiveCamera, viewportH: number): void {
+    const line = this.line;
+    if (!line || this.fullN === 0 || !this.group.visible) return;
+    const f = camera.getWorldDirection(this.forward);
+    const p = camera.position;
+    const depth = (this.middle.x - p.x) * f.x + (this.middle.y - p.y) * f.y + (this.middle.z - p.z) * f.z;
+    const stride = arrowStride(this.spacingM, foreshortening(f.x, f.z, line.dir), pixelsPerMetre(viewportH, camera.fov, depth), this.stride);
+    if (stride === this.stride) return;
+    this.stride = stride;
+    this.commitArrows();
   }
 
   /** The curtain's two vertices per lattice column (bottom and top), rebuilt when the line or the lattice changes; the ground under each column is refreshed every time. */
@@ -204,12 +240,15 @@ export class CrossSectionLayer {
     this.tex.needsUpdate = true;
   }
 
-  /** Wind arrows in the plane: 21 columns by the heights 30 to 2200 m above the ground (about twice as many as the first 15 by six), read from the sampler, or from the lattice of a recorded slice. */
+  /**
+   * Wind arrows in the plane: 21 columns by the heights 30 to 2200 m above the ground (about twice as many as the first 15 by six), read from the sampler, or
+   * from the lattice of a recorded slice. They are built whole and committed through `commitArrows`, which leaves out the columns that the view would stack.
+   */
   private drawArrows(d: SliceData, heightAt: (x: number, y: number) => number, sampler: AtmosphereSampler, vex: number, dpr: number): void {
     const line = d.line;
     const recorded = d.recordedAt !== undefined;
     const top = recorded ? d.topAsl : sampler.top;
-    const MA = 21;
+    const MA = ARROW_COLUMNS;
     const heightsAgl = [30, 100, 200, 350, 550, 800, 1100, 1500, 2200];
     const spacing = line.length / MA;
     const w = new Float32Array(3);
@@ -230,9 +269,9 @@ export class CrossSectionLayer {
     // Arrows stay inside the curtain: it ends at the model top or 2 km over the highest ground on the line, whichever is lower.
     const ceiling = Math.min(top - 50, d.zMax);
     let o = 0;
-    const A = this.arrows.a;
-    const B = this.arrows.b;
-    const C = this.arrows.c;
+    const A = this.fullA;
+    const B = this.fullB;
+    const C = this.fullC;
     const white = [1, 1, 1];
     const cyan = [srgbToLinear(0.2), srgbToLinear(0.95), srgbToLinear(1.0)];
     for (let m = 0; m < MA; m++) {
@@ -278,26 +317,43 @@ export class CrossSectionLayer {
         C[o * 4 + 1] = col[1]!;
         C[o * 4 + 2] = col[2]!;
         C[o * 4 + 3] = 0.95;
+        this.columnOf[o] = m;
         o++;
         if (o >= this.arrows.capacity) break;
       }
     }
-    this.arrows.commit(o);
+    this.fullN = o;
     this.arrows.widthPx = 2.4 * dpr;
     this.arrows.uniforms.uHeadPx!.value = 10 * dpr;
-    // Halo: same segments, black, wider.
-    this.halo.a.set(A.subarray(0, o * 3));
-    this.halo.b.set(B.subarray(0, o * 3));
-    const HC = this.halo.c;
-    for (let i = 0; i < o; i++) {
-      HC[i * 4] = 0.01;
-      HC[i * 4 + 1] = 0.01;
-      HC[i * 4 + 2] = 0.015;
-      HC[i * 4 + 3] = 0.7;
-    }
-    this.halo.commit(o);
     this.halo.widthPx = 5.4 * dpr;
     this.halo.uniforms.uHeadPx!.value = 14 * dpr;
+    this.commitArrows();
+  }
+
+  /** Commit the arrows of the columns that the stride keeps to the batch, and the same segments, black and wider, to the halo under them. */
+  private commitArrows(): void {
+    const A = this.arrows.a;
+    const B = this.arrows.b;
+    const C = this.arrows.c;
+    const HC = this.halo.c;
+    let o = 0;
+    for (let i = 0; i < this.fullN; i++) {
+      if (!columnDrawn(this.columnOf[i]!, this.stride)) continue;
+      for (let k = 0; k < 3; k++) {
+        A[o * 3 + k] = this.fullA[i * 3 + k]!;
+        B[o * 3 + k] = this.fullB[i * 3 + k]!;
+      }
+      for (let k = 0; k < 4; k++) C[o * 4 + k] = this.fullC[i * 4 + k]!;
+      HC[o * 4] = 0.01;
+      HC[o * 4 + 1] = 0.01;
+      HC[o * 4 + 2] = 0.015;
+      HC[o * 4 + 3] = 0.7;
+      o++;
+    }
+    this.arrows.commit(o);
+    this.halo.a.set(A.subarray(0, o * 3));
+    this.halo.b.set(B.subarray(0, o * 3));
+    this.halo.commit(o);
   }
 
   set visible(v: boolean) {

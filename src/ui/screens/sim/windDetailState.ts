@@ -1,6 +1,6 @@
 /**
  * The state of the Wind detail chip (0.6.0): which of the four steps of wind detail the map is showing now, what the picture is, and what
- * limits it (the zoom, the model's cells, a full view, an estimated wind, reduced motion). Pure (no DOM, no Three), unit-tested
+ * limits it (the zoom, the model's cells, a full view, an estimated wind, reduced motion, the pause after a minute without a touch). Pure (no DOM, no Three), unit-tested
  * (windDetailState.test.ts), and in the entry chunk: it imports only types of the render API and the glyph engine, the air helpers and the words
  * the Layers panel already holds. The words of the sheet are in windDetailWords.ts (loaded on the first tap).
  *
@@ -18,7 +18,7 @@ import { GLYPH_SMOOTH_FIT_PX, dataCellPx } from './glyphWords';
 /** What the wind picture is: nothing drawn, the straight arrows, the curved flow lines, the detailed streaks of the closest zoom, the Wind streaks over the whole area, or through the air. */
 export type DetailKind = 'none' | 'arrows' | 'curves' | 'detailed' | 'overview' | 'volume';
 /** What holds the picture back, in the order the sheet says it. */
-export type DetailLimit = 'budget' | 'zoom' | 'cells' | 'estimated' | 'still';
+export type DetailLimit = 'budget' | 'zoom' | 'cells' | 'estimated' | 'still' | 'paused';
 export interface WindDetailInput {
   glyphsOn: boolean;
   streaks: 'off' | 'surface' | 'volume';
@@ -76,7 +76,10 @@ export function windDetailState(i: WindDetailInput): WindDetailState {
   if (level < 4 && stats.level < 4 && (kind === 'arrows' || kind === 'curves' || kind === 'overview')) limits.push('zoom');
   if (onGlyphs && (kind === 'detailed' || (dataCellPx(stats, i.height === 'felt') ?? 0) > GLYPH_SMOOTH_FIT_PX)) limits.push('cells'); // (a cell of the data drawn: What the fire feels has finer cells than the model's)
   if (i.air === 'diagnosed') limits.push('estimated');
-  if (stats.detail === 'still') limits.push('still');
+  // Reduced motion stills the detailed streaks at the closest zoom and, since 0.7.0, the old Wind streaks at every zoom (while one of those switches is on);
+  // the pause after a minute without a touch (`detail` 'paused') is a moving picture that has been held.
+  if (stats.detail === 'still' || (stats.reduced && streaks !== 'off')) limits.push('still');
+  if (stats.detail === 'paused') limits.push('paused');
 
   return { visible: true, level, kind, limits, key: `true|${level}|${kind}|${limits.join(',')}|${i.height}` };
 }

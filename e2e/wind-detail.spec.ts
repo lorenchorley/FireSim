@@ -350,7 +350,7 @@ test('the Wind detail chip, in the real app: three sizes, the sheet, a real pinc
     else expect(text).toContain('Wind about 10 m above open ground.');
     expect(text).toContain('wide');
     if (want === 4) {
-      expect(text).toContain('The small eddies are added for looks, from the shape of the ground.');
+      expect(text).toContain('These bends and eddies are added for looks, from the shape of the ground and the trees.');
       expect(text).toContain('This is the most detailed level.');
     } else expect(text).not.toContain('eddies');
     await page.keyboard.press('Escape');

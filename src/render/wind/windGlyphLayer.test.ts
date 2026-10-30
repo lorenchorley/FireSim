@@ -1488,11 +1488,13 @@ describe('the layer and the frame loop (source pins)', () => {
   });
 
   it('switches the frame loop on only for the detailed streaks: the glyph layer is in `animating` through its own `animating` and nothing else', () => {
-    const animating = /const animating =([\s\S]*?);\n/.exec(scene)![1]!;
-    expect(animating).toMatch(/this\.glyphs\.animating/);
-    expect(animating.replace(/this\.glyphs\.animating/g, '')).not.toMatch(/glyph/i);
-    // The old Wind streaks leave it while the detailed streaks stand in for them.
-    expect(animating).toMatch(/\(this\.wind\.currentMode !== 'off' && !detailInstead\)/);
+    // (0.7.0: the ambient terms, which the idle stop holds back, are `ambient`; `animating` is `ambient && !idle` and the picture's own changes.)
+    const ambient = /const ambient =([\s\S]*?);\n/.exec(scene)![1]!;
+    expect(ambient).toMatch(/this\.glyphs\.animating/);
+    expect(ambient.replace(/this\.glyphs\.animating/g, '')).not.toMatch(/glyph/i);
+    // The old Wind streaks leave it while the detailed streaks stand in for them (through their own `animating`: on, not suppressed, allowed to move).
+    expect(ambient).toMatch(/this\.wind\.animating/);
+    expect(/const animating =([\s\S]*?);\n/.exec(scene)![1]).toMatch(/\(ambient && !idle\)/);
   });
 
   it('puts the Wind streaks switch and the system\'s reduced motion into the layer, and follows the setting while the app runs', () => {

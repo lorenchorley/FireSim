@@ -148,6 +148,13 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
   await page.getByTestId('play').click();
   await expect.poll(async () => (await session(page)).playing).toBe(true);
   await expect.poll(async () => (await session(page)).headTime, { timeout: 120_000 }).toBeGreaterThan(300);
+  // The closest zoom, with the default Wind streaks on (the arrows switch is off): the wind glyphs' row then has the detailed streaks to describe (0.7.0, F5).
+  await page.evaluate(() => {
+    const v = (window as unknown as { __firesim: { view: { lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void; renderNow(): void } } }).__firesim.view;
+    v.lookAt(0, 0, 300, 200, 55, false);
+    v.renderNow();
+    v.renderNow();
+  });
 
   // The row sits directly under Settings in the main menu.
   const menu = page.getByTestId('menu');
@@ -196,6 +203,11 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
   await expect(page.getByTestId('debug-group-display-body').locator('[data-row=picture-quality] .mc-fact-value')).toHaveText(/^(Low|Medium|High) \(|^Not available \(/);
   // The wind glyphs' own row (0.5.0): Off until the switch is on, why nothing is drawn, or the level and what was built; "Not available" where the view has no such layer.
   await expect(page.getByTestId('debug-group-display-body').locator('[data-row=wind-glyphs] .mc-fact-value')).toHaveText(/^(Off|On, |Level \d|Not available \()/);
+  // At the closest zoom with only the Wind streaks on the row says what is drawn (the detailed streaks, not "glyphs") and which switch feeds it (0.7.0, F5).
+  const glyphRow = page.getByTestId('debug-group-display-body').locator('[data-row=wind-glyphs]');
+  await expect(glyphRow.locator('.mc-fact-value')).toHaveText(/^Level 4, detailed streaks (moving|standing still), [\d,]+ lines, [\d,]+ segments, rebuild /, { timeout: 30_000 });
+  await expect(glyphRow.locator('.mc-fact-note')).toContainText('Drawn for the Wind streaks switch.');
+  await expect(glyphRow.locator('.mc-fact-value')).not.toContainText('glyphs'); // (the lines of the detailed streaks are not glyphs)
 
   // Copy as text.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -210,6 +222,7 @@ test('on the real engine: the menu row under Settings, live in-place values, Cop
   expect(lines[lines.length - 1]).toBe('-- end --');
   expect(clip).toContain('Katoomba');
   expect(clip).toMatch(/\n {2}Wind glyphs: (Off|On, |Level \d|Not available \()/);
+  expect(clip).toMatch(/\n {2}Wind glyphs: Level 4, detailed streaks (moving|standing still), [\d,]+ lines, /);
   expect(clip).toContain(await page.evaluate(() => navigator.userAgent));
   expect(clip).not.toMatch(BAD);
   // No coordinates (the user agent's version numbers are the only long decimals), no links.

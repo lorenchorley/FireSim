@@ -11,6 +11,7 @@ import { sampleSlice } from './slice/sliceField';
 import { makeAirView } from './slice/testing';
 import type { AirViewOptions } from './slice/testing';
 import type { SliceData, SliceKind } from './slice/types';
+import type { StreakBatch } from './streaks';
 
 const shared = (): Record<string, THREE.IUniform> => ({
   uVex: { value: 1 },
@@ -172,6 +173,191 @@ describe('CrossSectionLayer', () => {
       expect(instances(l)).toBe(21 * 8);
       expect(instances(l)).toBeGreaterThanOrEqual(2 * 75);
       expect(instances(l)).toBeLessThanOrEqual(l.arrows.capacity);
+    });
+
+    describe('thinned where the curtain is seen edge on (0.7.0, F2)', () => {
+      // A flat ground, so that every column has all eight of its arrows (21 x 8 = 168), on a line that runs east and west for 3 km (143 m between columns).
+      const flat = (): { data: SliceData; sampler: AtmosphereSampler } => {
+        const view = makeAirView({ groundAt: () => 500, u: () => 8, v: () => 0, w: () => 0.5 });
+        const sampler = new AtmosphereSampler(view, 500, null);
+        const line = sectionFromEndpoints([-1500, 0], [1500, 0], view.grid).line!;
+        return { data: sampleSlice(sampler, { heightAt: () => 500 }, { line, shownTime: 600 })!, sampler };
+      };
+      /** A camera of the view's 50 degrees at (x, y, z) in the scene's axes (z is south), looking at the middle of the curtain, 1,000 m up. */
+      const camera = (x: number, y: number, z: number): THREE.PerspectiveCamera => {
+        const c = new THREE.PerspectiveCamera(50, 360 / 640, 10, 60000);
+        c.position.set(x, y, z);
+        c.lookAt(0, 1000, 0);
+        c.updateMatrixWorld();
+        return c;
+      };
+      const SOUTH = (): THREE.PerspectiveCamera => camera(0, 1500, 2500); // face-on: the curtain runs across the screen
+      const EAST_END = (): THREE.PerspectiveCamera => camera(6000, 1100, 0); // along the line: the 21 columns land on one screen column
+      const haloOf = (l: CrossSectionLayer): StreakBatch => (l as unknown as { halo: StreakBatch }).halo;
+      const haloCount = (l: CrossSectionLayer): number => (haloOf(l).mesh.geometry as THREE.InstancedBufferGeometry).instanceCount;
+      const version = (l: CrossSectionLayer): number => (l.arrows.mesh.geometry.getAttribute('aA') as THREE.BufferAttribute).version;
+      const first = (l: CrossSectionLayer, n: number): number[] => [...l.arrows.a.subarray(0, n * 3), ...l.arrows.b.subarray(0, n * 3), ...l.arrows.c.subarray(0, n * 4)];
+
+      it('draws every column face-on, and only columns 0, 7 and 14 along the line, the batch and the halo together', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        expect(instances(l)).toBe(168);
+        l.setView(SOUTH(), 640);
+        expect(instances(l), 'face-on: nothing is thinned').toBe(168);
+        expect(haloCount(l)).toBe(168);
+        l.setView(EAST_END(), 640);
+        expect(instances(l), '3 columns of 8 arrows').toBe(24);
+        expect(haloCount(l), 'the halo holds the same arrows').toBe(24);
+        const n = 24;
+        expect([...haloOf(l).a.subarray(0, n * 3)]).toEqual([...l.arrows.a.subarray(0, n * 3)]);
+        expect([...haloOf(l).b.subarray(0, n * 3)]).toEqual([...l.arrows.b.subarray(0, n * 3)]);
+      });
+
+      it('keeps the same arrows at each stride (column 0 first, then every stride-th): the subset is the full set’s, bit for bit', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        const all = [...l.arrows.a.subarray(0, 168 * 3)];
+        // Halfway between face-on and end on: a stride of 2 or 3.
+        const mid = camera(5000, 2500, 2500);
+        l.setView(mid, 640);
+        const kept = instances(l);
+        expect(kept).toBeGreaterThan(24);
+        expect(kept).toBeLessThan(168);
+        expect(kept % 8).toBe(0); // whole columns
+        const columns = kept / 8;
+        const stride = Math.ceil(21 / columns);
+        expect([2, 3, 4, 5, 6]).toContain(stride);
+        // Column c of the thinned set is column c x stride of the full one.
+        for (let c = 0; c < columns; c++) expect([...l.arrows.a.subarray(c * 8 * 3, (c * 8 + 8) * 3)]).toEqual(all.slice(c * stride * 8 * 3, (c * stride * 8 + 8) * 3));
+      });
+
+      it('goes back to every column when the camera comes round, and the arrows are the ones it started with', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        const start = first(l, 168);
+        l.setView(EAST_END(), 640);
+        expect(instances(l)).toBe(24);
+        l.setView(SOUTH(), 640);
+        expect(instances(l)).toBe(168);
+        expect(first(l, 168)).toEqual(start);
+        expect([...haloOf(l).a.subarray(0, 168 * 3)]).toEqual([...l.arrows.a.subarray(0, 168 * 3)]);
+      });
+
+      it('commits again only when the stride changes: the same view, or a small move of it, uploads nothing', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        l.setView(EAST_END(), 640);
+        const v = version(l);
+        l.setView(EAST_END(), 640);
+        l.setView(camera(6040, 1100, 30), 640);
+        l.setView(camera(5980, 1120, -20), 640);
+        expect(version(l), 'nothing was uploaded for a camera that stays end on').toBe(v);
+        expect(instances(l)).toBe(24);
+        l.setView(SOUTH(), 640);
+        expect(version(l), 'a new stride uploads').toBeGreaterThan(v);
+      });
+
+      it('a new slice (a new snapshot, a new pixel ratio) is drawn with the stride in use, not all at once', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        l.setView(EAST_END(), 640);
+        l.update(data, 'speed', () => 500, sampler, 1, 2);
+        expect(instances(l)).toBe(24);
+        expect(haloCount(l)).toBe(24);
+        l.update(data, 'speed', () => 500, sampler, 2, 2); // a new vertical exaggeration too
+        expect(instances(l)).toBe(24);
+      });
+
+      it('a smaller screen thins more (the columns are fewer pixels apart), a taller one less', () => {
+        const l = new CrossSectionLayer(shared());
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        const slanted = camera(3000, 1800, 3000); // about 45 degrees to the line
+        l.setView(slanted, 1280);
+        const tall = instances(l);
+        l.setView(slanted, 320);
+        const short = instances(l);
+        expect(short).toBeLessThan(tall);
+      });
+
+      it('thins what it is for: the heads that stand on each other on a 360 x 640 screen, at any tilt, and leaves a curtain seen face-on as it was', () => {
+        const W = 360;
+        const H = 640;
+        /** A camera `dist` m from the middle of the curtain, `az` degrees round from north (the line runs east to west), `dip` degrees above the horizon. */
+        const view = (dist: number, az: number, dip: number): THREE.PerspectiveCamera => {
+          const a = (az * Math.PI) / 180;
+          const d = (dip * Math.PI) / 180;
+          const c = new THREE.PerspectiveCamera(50, W / H, 10, 60000);
+          c.position.set(Math.sin(a) * Math.cos(d) * dist, 1100 + Math.sin(d) * dist, -Math.cos(a) * Math.cos(d) * dist);
+          c.lookAt(0, 1100, 0);
+          c.updateMatrixWorld();
+          c.updateProjectionMatrix();
+          return c;
+        };
+        /** Pairs of arrow heads on the screen that are closer than 8 px (a head is 10 px across), among those on the screen. */
+        const stacked = (l: CrossSectionLayer, cam: THREE.PerspectiveCamera): number => {
+          const pts: [number, number][] = [];
+          for (let i = 0; i < instances(l); i++) {
+            const v = new THREE.Vector3(l.arrows.b[i * 3]!, l.arrows.b[i * 3 + 1]!, l.arrows.b[i * 3 + 2]!).project(cam);
+            const x = ((v.x + 1) / 2) * W;
+            const y = ((1 - v.y) / 2) * H;
+            if (x >= 0 && x <= W && y >= 0 && y <= H && v.z < 1) pts.push([x, y]);
+          }
+          let n = 0;
+          for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) if (Math.hypot(pts[i]![0] - pts[j]![0], pts[i]![1] - pts[j]![1]) < 8) n++;
+          return n;
+        };
+        const { data, sampler } = flat();
+        const at = (dist: number, az: number, dip: number): { before: number; after: number; arrows: number } => {
+          const l = new CrossSectionLayer(shared());
+          l.update(data, 'speed', () => 500, sampler, 1, 1);
+          const cam = view(dist, az, dip);
+          const before = stacked(l, cam); // every column drawn
+          l.setView(cam, H);
+          return { before, after: stacked(l, cam), arrows: instances(l) };
+        };
+        // Looking along the line, low and at the orbit's usual 35 degrees: the curtain is a line on the screen, and 700 to 1,200 pairs of heads stand on each other.
+        for (const [dist, dip] of [
+          [6000, 10],
+          [6000, 35],
+          [4000, 35],
+          [8000, 35],
+        ] as const) {
+          const r = at(dist, 90, dip);
+          expect(r.before, `${dist} m, ${dip} degrees, along the line: heads on heads`).toBeGreaterThan(400);
+          expect(r.after, `${dist} m, ${dip} degrees, along the line`).toBeLessThanOrEqual(r.before / 20);
+          expect(r.arrows).toBeLessThanOrEqual(56);
+        }
+        // A little off the line: still thinned, and the stacking is nearly gone.
+        for (const dip of [10, 35]) {
+          const r = at(6000, 110, dip);
+          expect(r.before).toBeGreaterThan(90);
+          expect(r.after, `a little off the line, ${dip} degrees`).toBeLessThanOrEqual(r.before / 10);
+        }
+        // Seen face-on, at any tilt and zoom: every arrow, exactly as before.
+        for (const dist of [2500, 4000, 6000, 8000]) {
+          for (const dip of [10, 35, 60]) expect(at(dist, 180, dip).arrows, `face-on at ${dist} m, ${dip} degrees`).toBe(168);
+        }
+      });
+
+      it('does nothing without a slice (never shown, or cleared) and does not break the next one', () => {
+        const l = new CrossSectionLayer(shared());
+        l.setView(EAST_END(), 640);
+        expect(instances(l)).toBe(0);
+        const { data, sampler } = flat();
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        l.setView(EAST_END(), 640);
+        l.clear();
+        l.setView(SOUTH(), 640);
+        expect(instances(l)).toBe(0);
+        l.update(data, 'speed', () => 500, sampler, 1, 1);
+        expect(instances(l), 'it is drawn again, at the stride the view asks for next').toBeGreaterThan(0);
+      });
     });
 
     it('stay inside the curtain and follow the vertical exaggeration', () => {

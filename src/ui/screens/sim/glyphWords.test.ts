@@ -24,6 +24,7 @@ import {
   NEEDS_3D,
   NO_WIND_LINE,
   SMOOTH_FIT_LINE,
+  PAUSED_STREAKS_LINE,
   STILL_STREAKS_LINE,
   WIND_HEIGHT_CHIPS,
   captionHeadline,
@@ -216,12 +217,16 @@ describe('the line about the zoom', () => {
     expect(glyphLevelLine(stats({ level: 4, detail: 'moving' }))).toBe(LEVEL_LINE[4]);
     expect(glyphLevelLine(stats({ level: 4, detail: 'still' }))).toBe('Showing streaks with small eddies, standing still. This is the most detailed level.');
     expect(glyphLevelLine(stats({ level: 4, detail: 'off' }))).toBe('Showing long flow lines.');
+    // After a minute without a touch (0.7.0) the same picture is held, and says so.
+    expect(glyphLevelLine(stats({ level: 4, detail: 'paused' }))).toBe('Showing streaks with small eddies, paused to save battery. This is the most detailed level.');
+    expect(PAUSED_STREAKS_LINE).toBe('Showing streaks with small eddies, paused to save battery. This is the most detailed level.');
+    expect(PAUSED_STREAKS_LINE).not.toMatch(/\bmoving\b/);
     expect(STILL_STREAKS_LINE).not.toMatch(/\bmoving\b/);
     expect(LONG_LINES_LINE).toBe('Showing long flow lines.');
     // A reading with no `detail` field at all (a hand-made statistics object) gets the level's own line.
     expect(glyphLevelLine({ idle: null, level: 4 })).toBe(LEVEL_LINE[4]);
     // The other steps never depend on it.
-    for (const level of [0, 1, 2, 3] as const) for (const detail of ['off', 'moving', 'still'] as const) expect(glyphLevelLine(stats({ level, detail, active: level > 0 })), `${level} ${detail}`).toBe(LEVEL_LINE[level]);
+    for (const level of [0, 1, 2, 3] as const) for (const detail of ['off', 'moving', 'still', 'paused'] as const) expect(glyphLevelLine(stats({ level, detail, active: level > 0 })), `${level} ${detail}`).toBe(LEVEL_LINE[level]);
   });
 
   it('level 0 can be reached: a short landscape phone (844 x 390) at its farthest zoom over a 6 km area on a 133 m grid has cells under 4 px, so "Zoom in" is a line a person reads', () => {

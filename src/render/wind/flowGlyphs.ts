@@ -270,7 +270,16 @@ class Builder implements GlyphBuilder {
     return true;
   }
 
-  /** Hash of three integers into `hv[0]`: `hash3` of render/fields.ts (lowbias32), without a returned number. */
+  /**
+   * Hash of three integers into `hv[0]`: `hash3` of render/fields.ts (lowbias32), without a returned number.
+   *
+   * Known, and left as it is (0.7.0, F7): the xor of the three products collides for a cell (i, j) and its point reflection (-i, -j) whenever i and j have
+   * as many trailing zero bits (about one cell in three), because `imul(-a, K)` is the negation of `imul(a, K)` and `(-u) ^ (-v)` is `u ^ v` for such u and v.
+   * Away from the origin there is nothing (a window of the lattice not touching it has no two cells with one hash, pinned in flowGlyphs.test.ts). The twin
+   * is on the other side of the picture, through the world origin, with the same jitter offset and the same keep or drop for the cap, not a mirrored one,
+   * so no repeated row, no pair of neighbours and no pattern shows. A sum of the products in place of the xor (as `hashSum` of detailStreaks.ts does) would
+   * remove it and move every glyph inside its cell for nothing a person can see, so the results stay as they are.
+   */
   private hash(a: number, b: number, c: number): void {
     let h = (Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ Math.imul(c | 0, 0x9e3779b1)) >>> 0;
     h ^= h >>> 16;

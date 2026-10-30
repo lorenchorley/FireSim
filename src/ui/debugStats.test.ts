@@ -545,6 +545,55 @@ describe('labels and values', () => {
     expect(text).toMatch(/Wind glyphs: Level 3, 412 glyphs, 2,980 segments, rebuild 3\.1 ms \(p95 slice 4\.2 ms, max 6\.0 ms\)/);
   });
 
+  it('Wind glyphs at the closest zoom: the detailed streaks are lines, not glyphs, and the row says what they are doing and which switch asked for them (0.7.0)', () => {
+    const row = (g: Partial<WindGlyphStats>): StatRow => rowOf(buildDebugStats({ ...full(), windGlyphs: { ...glyphs, level: 4, count: 612, segments: 6100, detail: 'moving', detailSegments: 6100, ...g } }), 'display', 'wind-glyphs');
+    const built = 'rebuild 3.1 ms (p95 slice 4.2 ms, max 6.0 ms)';
+    const cell = 'One model cell is 133 m, about 45 px on screen; 14 rebuilds so far, the last in 2 slices';
+    // Moving, for the arrows and flow lines switch alone, the Wind streaks alone, and both.
+    expect(row({ glyphs: true, streaks: false })).toMatchObject({ value: `Level 4, detailed streaks moving, 612 lines, 6,100 segments, ${built}`, note: `Drawn for the arrows and flow lines switch. ${cell}`, live: true });
+    expect(row({ glyphs: false, streaks: true })).toMatchObject({ value: `Level 4, detailed streaks moving, 612 lines, 6,100 segments, ${built}`, note: `Drawn for the Wind streaks switch. ${cell}` });
+    expect(row({ glyphs: true, streaks: true })).toMatchObject({ value: `Level 4, detailed streaks moving, 612 lines, 6,100 segments, ${built}`, note: `Drawn for both switches. ${cell}` });
+    // Standing still under reduced motion, and paused after a minute without a touch.
+    expect(row({ detail: 'still', reduced: true }).value).toBe(`Level 4, detailed streaks standing still, 612 lines, 6,100 segments, ${built}`);
+    expect(row({ detail: 'paused' }).value).toBe(`Level 4, detailed streaks paused, 612 lines, 6,100 segments, ${built}`);
+    // The Wind streaks alone, not built yet (or trimmed to nothing): not called glyphs.
+    expect(row({ glyphs: false, streaks: true, detail: 'off', detailSegments: 0, count: 0, segments: 0, rebuilds: 0, lastMs: 0, sliceP95Ms: 0, sliceMaxMs: 0, slicesLast: 0 }).value).toBe('Level 4, detailed streaks not built yet');
+    expect(row({ glyphs: false, streaks: true, detail: 'off', detailSegments: 0, count: 0, segments: 0 }).value).toBe('Level 4, detailed streaks not built yet');
+    // With the arrows on and the detailed streaks not drawn, the closest zoom is the 0.5.0 flow lines, which are glyphs, as before.
+    expect(row({ glyphs: true, streaks: false, detail: 'off', detailSegments: 0 }).value).toBe(`Level 4, 612 glyphs, 6,100 segments, ${built}`);
+    expect(row({ glyphs: true, streaks: true, detail: 'off', detailSegments: 0 }).value).toBe(`Level 4, 612 glyphs, 6,100 segments, ${built}`);
+  });
+
+  it('Wind glyphs with only the Wind streaks on, short of the closest zoom: Off, and the note says the arrows are off and which level the zoom is at', () => {
+    const row = (g: Partial<WindGlyphStats>): StatRow => rowOf(buildDebugStats({ ...full(), windGlyphs: { ...glyphs, glyphs: false, streaks: true, active: false, idle: 'off', count: 0, segments: 0, rebuilds: 0, ...g } }), 'display', 'wind-glyphs');
+    for (const level of [1, 2, 3] as const) {
+      expect(row({ level })).toMatchObject({ value: 'Off', note: `Arrows and flow lines are off. The Wind streaks are on; the zoom is at level ${level}.`, live: true });
+    }
+    // The layer says level 0 with `idle` null when the model cell is under 4 px: still Off for the arrows, never "Level 0, nothing drawn".
+    expect(row({ level: 0, idle: null })).toMatchObject({ value: 'Off', note: 'Arrows and flow lines are off. The Wind streaks are on; the zoom is at level 0.' });
+    // Both switches off: Off, and no note.
+    expect(row({ streaks: false, level: 0 })).toEqual(expect.objectContaining({ value: 'Off' }));
+    expect(row({ streaks: false, level: 0 }).note).toBeUndefined();
+    // Not said for a state that is not this one: with the arrows on, level 3 is a glyph level as before.
+    expect(rowOf(buildDebugStats({ ...full(), windGlyphs: { ...glyphs, streaks: true } }), 'display', 'wind-glyphs').value).toBe('Level 3, 412 glyphs, 2,980 segments, rebuild 3.1 ms (p95 slice 4.2 ms, max 6.0 ms)');
+  });
+
+  it('Wind glyphs: the new words never carry a dash, "undefined" or a number that is not one, and are part of the copy as text', () => {
+    const states: Partial<WindGlyphStats>[] = [
+      { glyphs: true, streaks: false, detail: 'moving' },
+      { glyphs: false, streaks: true, detail: 'paused' },
+      { glyphs: true, streaks: true, detail: 'still', reduced: true },
+      { glyphs: false, streaks: true, detail: 'off', detailSegments: 0 },
+      { glyphs: false, streaks: true, level: 2, idle: 'off', active: false },
+    ];
+    for (const st of states) {
+      const r = rowOf(buildDebugStats({ ...full(), windGlyphs: { ...glyphs, level: 4, count: 612, segments: 6100, detail: 'moving', ...st } }), 'display', 'wind-glyphs');
+      expect(`${r.value} ${r.note ?? ''}`, JSON.stringify(st)).not.toMatch(/undefined|NaN|null|Infinity|[–—]/);
+    }
+    const text = debugStatsToText(buildDebugStats({ ...full(), windGlyphs: { ...glyphs, level: 4, count: 612, segments: 6100, detail: 'paused', glyphs: false, streaks: true } }));
+    expect(text).toMatch(/Wind glyphs: Level 4, detailed streaks paused, 612 lines, 6,100 segments, rebuild 3\.1 ms/);
+  });
+
   it('the frame rate says "1 frame per second", not "1 frames", in the row and in the group line', () => {
     const at = (fps10: number): DebugStats => buildDebugStats({ ...full(), frames: { ...frames, fps10 } });
     expect(rowOf(at(1), 'display', 'fps').value).toBe('1 frame per second');
