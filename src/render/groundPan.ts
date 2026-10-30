@@ -151,10 +151,10 @@ export class GroundGrab {
    *   1. Terrain under the finger: the first hit of the finger's ray within the reach is held, exactly, as long as the ray is not
    *      within {@link PAN.HORIZON_MARGIN_DEG} of the horizon; a ray that is (or that points above it) is steepened to that line
    *      first and the terrain hit there is held. Nothing about the orbit target enters: the speed is the touched ground's.
-   *   2. No terrain under the finger (the sky, beyond the domain, farther than the reach): the horizontal plane through the orbit
-   *      target, with the ray steepened to the line where that plane would move the view {@link PAN.SKY_SPEEDUP} times faster
-   *      than ground at the target (flat ground covers (sin of the view axis' angle to the ground ÷ sin of the ray's)² times as
-   *      much per pixel as the ground at the target).
+   *   2. No terrain under the finger (the sky, beyond the domain, farther than the reach): the ray is steepened to the line where
+   *      the horizontal plane through the orbit target would move the view {@link PAN.SKY_SPEEDUP} times faster than ground at the
+   *      target (flat ground covers (sin of the view axis' angle to the ground ÷ sin of the ray's)² times as much per pixel as the
+   *      ground at the target), and what that ray meets first, the terrain or the plane, is held.
    *   3. Neither (a camera below its target): the view plane at the target distance.
    */
   begin(camera: THREE.PerspectiveCamera, ndcX: number, ndcY: number, target: THREE.Vector3, surface: GrabSurface | null): void {
@@ -183,16 +183,22 @@ export class GroundGrab {
         this.offY = 0;
       }
     }
-    // 2. The horizontal plane through the orbit target, with a ray no flatter than the line of SKY_SPEEDUP.
+    // 2. No terrain under the finger. The ray is steepened to the line of SKY_SPEEDUP, and what it meets there is held: the terrain
+    // (a finger in the sky holds the far ground the steepest line allows) or the horizontal plane through the orbit target,
+    // whichever is nearer (the plane is the pace limit where the terrain is below it, and the ground where there is none).
     this.sinMin = THREE.MathUtils.clamp((o.y - target.y) / dist, 0.05, 1) / Math.sqrt(PAN.SKY_SPEEDUP);
     this.steepenWithOffset(camera, d, ndcX, ndcY, dist);
+    let t = Infinity;
+    const hit = surface ? surface.raycast(o.x, o.y, o.z, d.x, d.y, d.z, this.reach) : null;
+    if (hit && hit.t > 0 && hit.t <= this.reach) t = hit.t;
     if (d.y < -1e-3) {
-      const t = (target.y - o.y) / d.y;
-      if (t > 0 && t <= this.reach) {
-        this.anchor.copy(o).addScaledVector(d, t);
-        this.kind = 'ground';
-        return;
-      }
+      const tp = (target.y - o.y) / d.y;
+      if (tp > 0 && tp <= this.reach) t = Math.min(t, tp);
+    }
+    if (t < Infinity) {
+      this.anchor.copy(o).addScaledVector(d, t);
+      this.kind = 'ground';
+      return;
     }
     // 3. Nothing to grab (the plane is out of reach, or the camera is below the target): drag the view plane at the target distance.
     this.fwd.set(0, 0, -1).transformDirection(camera.matrixWorld);

@@ -383,6 +383,19 @@ describe('GroundGrab: no runaway near the horizon', () => {
     }
   });
 
+  it('a finger in the sky holds what its steepened ray meets first: the terrain when that is nearer than the plane through the target (high ground behind it), else the plane (a valley)', () => {
+    const target = new THREE.Vector3(0, 0, 0);
+    const cam = orbitCamera(target, 3000, 200, 75);
+    const high = new GroundGrab();
+    high.begin(cam, 0.1, 0.95, target, terrain(() => 300));
+    expect(high.mode).toBe('ground');
+    expect(high.anchor.y).toBeCloseTo(300, 3);
+    const valley = new GroundGrab();
+    valley.begin(cam, 0.1, 0.95, target, terrain(() => -300));
+    expect(valley.mode).toBe('ground');
+    expect(valley.anchor.y).toBeCloseTo(0, 6); // (the pace limit: the plane through the target is held, not the ground far below it)
+  });
+
   it('is exact over the whole canvas at the default tilt (the top row of ground included)', () => {
     const hf = flat();
     const target = new THREE.Vector3(0, 0, 0);
