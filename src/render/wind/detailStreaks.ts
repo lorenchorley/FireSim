@@ -44,24 +44,6 @@ import {
 } from './flowGlyphs';
 import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
 
-/** The fading tail of a line's pulse, in screen px: `6 px per m/s of speed + 20`, from 24 to 90 (longer when faster). */
-export const DETAIL_TAIL = { pxPerMs: 6, basePx: 20, minPx: 24, maxPx: 90 } as const;
-/** A line of fewer segments than this (the raster's edge, a calm patch or a wall cut it) is not drawn. */
-export const DETAIL_MIN_LINE_SEGMENTS = 3;
-/**
- * What the 10 m ground says about a line, first guesses to be tuned on a phone. The roughness is the spread of the heights in a 5 x 5
- * patch of `patchStepM` about their best plane (a plain slope is not rough), over `roughM`; the slope is read along the flow
- * `slopeReachM` either side of the seed; the lee is a fall along the flow, over `leeSlope`; `turb = turbBase + 0.5 (rough + lee) g` and
- * `lift = speed x slope x g / liftMs`, with `g = exp(-(height - baseHeightM) / heightScaleM)` above `baseHeightM`; a line is drawn up to
- * `liftM` higher at `lift` 1.
- */
-export const DETAIL_TERRAIN = { patchStepM: 10, roughM: 3, slopeReachM: 30, leeSlope: 0.35, turbBase: 0.25, noGroundTurb: 0.5, liftMs: 3, liftM: 3, baseHeightM: 10, heightScaleM: 300 } as const;
-
-/** How much of the ground terms is left at a wind height (m above the ground): 1 at 10 m, 0.38 at 300 m, 0.04 at 1,000 m. */
-export function detailGroundFactor(heightM: number): number {
-  return heightM > DETAIL_TERRAIN.baseHeightM ? Math.exp(-(heightM - DETAIL_TERRAIN.baseHeightM) / DETAIL_TERRAIN.heightScaleM) : 1;
-}
-
 /**
  * How bright a point `s` px along a line is when the pulse's head is at `head` px and its tail is `tail` px long: 1 at the head, falling
  * linearly to 0 a tail's length behind it, 0 ahead of it. The vertex shader's `pulse` written in TypeScript (the shader test pins the two
@@ -74,9 +56,67 @@ export function pulseIntensity(s: number, head: number, tail: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
+// The rules of the glyph builder and the contract's geometry, copied once into constants of this module. A number that stays an imported
+// binding is, where the modules are transformed one by one (the tests), a property read of an object, which V8 cannot fold into the
+// code: a conditional that mixes it with a computed number then boxes the computed one, a heap number a call.
+const CALM_MS = GLYPH_CALM_MS;
+const DENSITY_S2_MAX = GLYPH_DENSITY_S2_MAX;
+const LIFT_MIN_M = GLYPH_LIFT_MIN_M;
+const LIFT_PX = GLYPH_LIFT_PX;
+const MAX_SLOPE = GLYPH_MAX_SLOPE;
+const NEAR_FACTOR = GLYPH_NEAR_FACTOR;
+const SCREEN_MARGIN = GLYPH_SCREEN_MARGIN;
+const MAX_CELLS = GLYPH_MAX_CELLS;
+const SPEED_BINS = SPEED_TABLE_BINS;
 const STEP_PX = DETAIL_GEOMETRY.stepPx;
 const MIN_SEG = DETAIL_GEOMETRY.minSegments;
 const MAX_SEG = DETAIL_GEOMETRY.maxSegments;
+const MIN_LINE_SEG = 3;
+// The numbers of `DETAIL_TAIL` and `DETAIL_TERRAIN` below (the exported tables are built from these, so that the two cannot differ).
+const TAIL_PX_PER_MS = 6;
+const TAIL_BASE_PX = 20;
+const TAIL_MIN_PX = 24;
+const TAIL_MAX_PX = 90;
+const T_STEP_M = 10;
+const T_ROUGH_M = 3;
+const T_SLOPE_REACH_M = 30;
+const T_LEE_SLOPE = 0.35;
+const T_TURB_BASE = 0.25;
+const T_NO_GROUND_TURB = 0.5;
+const T_LIFT_MS = 3;
+const T_LIFT_M = 3;
+const T_BASE_HEIGHT_M = 10;
+const T_HEIGHT_SCALE_M = 300;
+
+/** The fading tail of a line's pulse, in screen px: `6 px per m/s of speed + 20`, from 24 to 90 (longer when faster). */
+export const DETAIL_TAIL = { pxPerMs: TAIL_PX_PER_MS, basePx: TAIL_BASE_PX, minPx: TAIL_MIN_PX, maxPx: TAIL_MAX_PX } as const;
+/** A line of fewer segments than this (the raster's edge, a calm patch or a wall cut it) is not drawn. */
+export const DETAIL_MIN_LINE_SEGMENTS = MIN_LINE_SEG;
+/**
+ * What the 10 m ground says about a line, first guesses to be tuned on a phone. The roughness is the spread of the heights in a 5 x 5
+ * patch of `patchStepM` about their best plane (a plain slope is not rough), over `roughM`; the slope is read along the flow
+ * `slopeReachM` either side of the seed; the lee is a fall along the flow, over `leeSlope`; `turb = turbBase + 0.5 (rough + lee) g` and
+ * `lift = speed x slope x g / liftMs`, with `g = exp(-(height - baseHeightM) / heightScaleM)` above `baseHeightM`; a line is drawn up to
+ * `liftM` higher at `lift` 1.
+ */
+export const DETAIL_TERRAIN = {
+  patchStepM: T_STEP_M,
+  roughM: T_ROUGH_M,
+  slopeReachM: T_SLOPE_REACH_M,
+  leeSlope: T_LEE_SLOPE,
+  turbBase: T_TURB_BASE,
+  noGroundTurb: T_NO_GROUND_TURB,
+  liftMs: T_LIFT_MS,
+  liftM: T_LIFT_M,
+  baseHeightM: T_BASE_HEIGHT_M,
+  heightScaleM: T_HEIGHT_SCALE_M,
+} as const;
+
+/** How much of the ground terms is left at a wind height (m above the ground): 1 at 10 m, 0.38 at 300 m, 0.04 at 1,000 m. */
+export function detailGroundFactor(heightM: number): number {
+  return heightM > DETAIL_TERRAIN.baseHeightM ? Math.exp(-(heightM - DETAIL_TERRAIN.baseHeightM) / DETAIL_TERRAIN.heightScaleM) : 1;
+}
+
 /** A vertex is drawn under the glyph's halo (a few px of it): seeds this much further out than the longest line still count. */
 const REACH_EXTRA_PX = 3;
 /** Keep this share of the segment cap when thinning to it, so the hard stop is rarely reached. */
@@ -264,7 +304,7 @@ class Builder implements DetailBuilder {
     if (!(input.cssW > 0) || !(input.cssH > 0) || !(input.pxPerMetre1 > 0)) return;
     const capG = Math.min(input.cap.glyphs | 0, this.capLines);
     const capS = Math.min(input.cap.segments | 0, this.capSegments);
-    if (capG < 1 || capS < DETAIL_MIN_LINE_SEGMENTS) return;
+    if (capG < 1 || capS < MIN_LINE_SEG) return;
     this.fu = field.u;
     this.fv = field.v;
     this.gz = input.ground.elevation;
@@ -413,7 +453,7 @@ class Builder implements DetailBuilder {
     const v = s[6]!;
     const sp = Math.sqrt(u * u + v * v);
     s[7] = sp;
-    if (!(sp >= GLYPH_CALM_MS)) return 0;
+    if (!(sp >= CALM_MS)) return 0;
     let lenPx = f[F_PXMS]! * sp;
     const lmin = f[F_LMIN]!;
     const lmax = f[F_LMAX]!;
@@ -463,20 +503,21 @@ class Builder implements DetailBuilder {
     const cx = Math.abs(vp[0]! * px + vp[4]! * yw + vp[8]! * zw + vp[12]!);
     const cy = Math.abs(vp[1]! * px + vp[5]! * yw + vp[9]! * zw + vp[13]!);
     if (cx > f[F_MX]! * w || cy > f[F_MY]! * w) return 0;
+    const outer = cx > f[F_MXT]! * w || cy > f[F_MYT]! * w ? 1 : 0; // a whole number: nothing but this lives on across the hash below
     const mpp = w / f[F_PXM1]!;
     // Orbit density: the ground area one pixel covers here against the middle of the screen, as in the glyph builder.
     const dy = f[F_EY]! - yw;
     let ahead = (px - f[F_EX]!) * f[F_HFX]! + (zw - f[F_EZ]!) * f[F_HFZ]!;
     if (ahead < 0) ahead = 0;
     const slant = Math.sqrt(dy * dy + ahead * ahead);
-    let s2 = dy > 0.02 * slant ? mpp * mpp * (slant / dy) * f[F_AK]! : GLYPH_DENSITY_S2_MAX;
-    if (s2 > GLYPH_DENSITY_S2_MAX) s2 = GLYPH_DENSITY_S2_MAX;
+    let s2 = dy > 0.02 * slant ? mpp * mpp * (slant / dy) * f[F_AK]! : DENSITY_S2_MAX;
+    if (s2 > DENSITY_S2_MAX) s2 = DENSITY_S2_MAX;
     if (s2 > 1) {
       this.hash(i, j, SALT_ORBIT);
       if ((this.hv[0]! / U32) * s2 >= 1) return 0;
     }
     s[3] = mpp;
-    this.n[N_OUTER] = cx > f[F_MXT]! * w || cy > f[F_MYT]! * w ? 1 : 0;
+    this.n[N_OUTER] = outer;
     return 1;
   }
 
@@ -496,7 +537,7 @@ class Builder implements DetailBuilder {
     const reachM = s[4]! * s[3]!;
     const kx = (s[5]! / s[7]!) * reachM;
     const ky = (s[6]! / s[7]!) * reachM;
-    const lift = Math.max(GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX * s[3]!);
+    const lift = Math.max(LIFT_MIN_M, LIFT_PX * s[3]!);
     for (let t = 1; t <= 2; t++) {
       const x = x0 + 0.5 * t * kx;
       const y = y0 + 0.5 * t * ky;
@@ -603,11 +644,11 @@ class Builder implements DetailBuilder {
       }
       const h = input.heightM;
       // (`detailGroundFactor` written out: a double through an argument is a heap number in code V8 does not inline.)
-      f[F_GFAC] = h !== undefined && h > DETAIL_TERRAIN.baseHeightM ? Math.exp(-(h - DETAIL_TERRAIN.baseHeightM) / DETAIL_TERRAIN.heightScaleM) : 1;
+      f[F_GFAC] = h !== undefined && h > T_BASE_HEIGHT_M ? Math.exp(-(h - T_BASE_HEIGHT_M) / T_HEIGHT_SCALE_M) : 1;
       // The life of a line is a hash of its lattice cell and the input seed (whole numbers: a seed of 0 is the app's).
       n[N_LIFE] = (SALT_LIFE + Math.imul(Math.floor(input.seed * 4096) | 0, 0x2545f491)) | 0;
       f[F_PXM1] = input.pxPerMetre1;
-      f[F_WMIN] = GLYPH_NEAR_FACTOR * input.near;
+      f[F_WMIN] = NEAR_FACTOR * input.near;
       f[F_VEX] = input.vex;
       f[F_S] = S;
       f[F_JIT] = lod.jitter;
@@ -618,10 +659,10 @@ class Builder implements DetailBuilder {
       // A seed this far outside the screen can still have its line on it: one line length, at least a tenth of the screen. Seeds outside
       // the screen's own margin (a tenth of it) are kept only when their line runs onto the screen.
       const reach = lod.lengthPx.max + REACH_EXTRA_PX;
-      f[F_MX] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssW, reach)) / input.cssW;
-      f[F_MY] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssH, reach)) / input.cssH;
-      f[F_MXT] = 1 + 2 * GLYPH_SCREEN_MARGIN;
-      f[F_MYT] = 1 + 2 * GLYPH_SCREEN_MARGIN;
+      f[F_MX] = 1 + (2 * Math.max(SCREEN_MARGIN * input.cssW, reach)) / input.cssW;
+      f[F_MY] = 1 + (2 * Math.max(SCREEN_MARGIN * input.cssH, reach)) / input.cssH;
+      f[F_MXT] = 1 + 2 * SCREEN_MARGIN;
+      f[F_MYT] = 1 + 2 * SCREEN_MARGIN;
       f[F_EX] = input.eye[0]!;
       f[F_EY] = input.eye[1]!;
       f[F_EZ] = input.eye[2]!;
@@ -638,8 +679,8 @@ class Builder implements DetailBuilder {
       let by0 = Math.max(box.y0, ry0);
       let bx1 = Math.min(box.x1, rx1);
       let by1 = Math.min(box.y1, ry1);
-      if (((bx1 - bx0) / S + 1) * ((by1 - by0) / S + 1) > GLYPH_MAX_CELLS) {
-        const half = 0.5 * S * Math.sqrt(GLYPH_MAX_CELLS);
+      if (((bx1 - bx0) / S + 1) * ((by1 - by0) / S + 1) > MAX_CELLS) {
+        const half = 0.5 * S * Math.sqrt(MAX_CELLS);
         let cx = input.eye[0]!;
         let cy = -input.eye[2]!;
         if (!(cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1)) {
@@ -749,7 +790,7 @@ class Builder implements DetailBuilder {
     while (ti < ns) {
       const r = ti++;
       if (candH[r]! >= pkeep) continue;
-      if (n[N_LINES]! >= capG || n[N_SEG]! + DETAIL_MIN_LINE_SEGMENTS > capS) {
+      if (n[N_LINES]! >= capG || n[N_SEG]! + MIN_LINE_SEG > capS) {
         ti = ns; // a cap is reached: the rest is not drawn
         break;
       }
@@ -811,13 +852,13 @@ class Builder implements DetailBuilder {
   private terrain(): void {
     const s = this.s;
     if (this.n[N_HAS10] === 0) {
-      s[19] = DETAIL_TERRAIN.noGroundTurb;
+      s[19] = T_NO_GROUND_TURB;
       s[20] = 0;
       return;
     }
     const x0 = s[0]!;
     const y0 = s[1]!;
-    const step = DETAIL_TERRAIN.patchStepM;
+    const step = T_STEP_M;
     s[22] = x0;
     s[23] = y0;
     this.ground10At();
@@ -844,11 +885,11 @@ class Builder implements DetailBuilder {
     const py = syz / 50;
     const mean = sz / 25;
     const v = sz2 / 25 - mean * mean - 2 * (px * px + py * py);
-    const rough = v > 0 ? Math.min(1, Math.sqrt(v) / DETAIL_TERRAIN.roughM) : 0;
+    const rough = v > 0 ? Math.min(1, Math.sqrt(v) / T_ROUGH_M) : 0;
     // The slope along the flow, central over the reach either side.
     const sp = s[7]!;
-    const kx = (s[5]! / sp) * DETAIL_TERRAIN.slopeReachM;
-    const ky = (s[6]! / sp) * DETAIL_TERRAIN.slopeReachM;
+    const kx = (s[5]! / sp) * T_SLOPE_REACH_M;
+    const ky = (s[6]! / sp) * T_SLOPE_REACH_M;
     s[22] = x0 + kx;
     s[23] = y0 + ky;
     this.ground10At();
@@ -856,14 +897,14 @@ class Builder implements DetailBuilder {
     s[22] = x0 - kx;
     s[23] = y0 - ky;
     this.ground10At();
-    const slope = (zf - s[24]!) / (2 * DETAIL_TERRAIN.slopeReachM);
-    let lee = -slope / DETAIL_TERRAIN.leeSlope;
+    const slope = (zf - s[24]!) / (2 * T_SLOPE_REACH_M);
+    let lee = -slope / T_LEE_SLOPE;
     if (lee < 0) lee = 0;
     else if (lee > 1) lee = 1;
     const g = this.f[F_GFAC]!;
-    let turb = DETAIL_TERRAIN.turbBase + 0.5 * (rough + lee) * g;
+    let turb = T_TURB_BASE + 0.5 * (rough + lee) * g;
     if (turb > 1) turb = 1;
-    let lift = (sp * slope * g) / DETAIL_TERRAIN.liftMs;
+    let lift = (sp * slope * g) / T_LIFT_MS;
     if (lift < -1) lift = -1;
     else if (lift > 1) lift = 1;
     s[19] = turb;
@@ -902,19 +943,19 @@ class Builder implements DetailBuilder {
     const stepPx = lenPx / steps;
     const ds = stepPx * mpp;
     const half = 0.5 * ds;
-    const maxRise = GLYPH_MAX_SLOPE * ds * vex; // the drawn rise of one step at the steepest slope allowed (the exaggeration is part of the drawing)
+    const maxRise = MAX_SLOPE * ds * vex; // the drawn rise of one step at the steepest slope allowed (the exaggeration is part of the drawing)
     // The line's own numbers, the same on every segment: the life (a hash of the lattice cell and the seed), the speed, the terrain, the tail.
     this.hashSum(i, j, n[N_LIFE]!);
     s[17] = (this.hv[0]! >>> 8) / 16777216; // 24 bits: exact in Float32 and under 1
     s[18] = sp;
     this.terrain();
-    let tail = DETAIL_TAIL.pxPerMs * sp + DETAIL_TAIL.basePx;
-    if (tail < DETAIL_TAIL.minPx) tail = DETAIL_TAIL.minPx;
-    else if (tail > DETAIL_TAIL.maxPx) tail = DETAIL_TAIL.maxPx;
+    let tail = TAIL_PX_PER_MS * sp + TAIL_BASE_PX;
+    if (tail < TAIL_MIN_PX) tail = TAIL_MIN_PX;
+    else if (tail > TAIL_MAX_PX) tail = TAIL_MAX_PX;
     s[21] = tail;
     s[16] = lenPx;
     // The drawn height: the ground, the lift off it that keeps a stroke on top (at least 1.5 m, at least 3 px) and what the wind's rise adds.
-    const yoff = Math.max(GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX * mpp) + DETAIL_TERRAIN.liftM * s[20]!;
+    const yoff = Math.max(LIFT_MIN_M, LIFT_PX * mpp) + T_LIFT_M * s[20]!;
     let px = seedX;
     let py = seedY;
     let ox = seedX;
@@ -934,7 +975,7 @@ class Builder implements DetailBuilder {
         u = s[5]!;
         v = s[6]!;
         sp = Math.sqrt(u * u + v * v);
-        if (!(sp >= GLYPH_CALM_MS)) {
+        if (!(sp >= CALM_MS)) {
           stop = 1;
           break;
         }
@@ -946,7 +987,7 @@ class Builder implements DetailBuilder {
       const u2 = s[5]!;
       const v2 = s[6]!;
       const sp2 = Math.sqrt(u2 * u2 + v2 * v2);
-      if (!(sp2 >= GLYPH_CALM_MS)) {
+      if (!(sp2 >= CALM_MS)) {
         stop = 1;
         break;
       }
@@ -979,7 +1020,7 @@ class Builder implements DetailBuilder {
       s[14] = made * stepPx;
       s[15] = (made + 1) * stepPx;
       let bin = (sp2 * BIN_SCALE + 0.5) | 0;
-      if (bin > SPEED_TABLE_BINS - 1) bin = SPEED_TABLE_BINS - 1;
+      if (bin > SPEED_BINS - 1) bin = SPEED_BINS - 1;
       this.emit(seg0 + made, bin);
       made++;
       ox = qx;
@@ -993,7 +1034,7 @@ class Builder implements DetailBuilder {
       return;
     }
     if (stop === 4) n[N_STEEP] = n[N_STEEP]! + 1; // cut at a wall, or not drawn when the first step is the wall
-    if (made < DETAIL_MIN_LINE_SEGMENTS) {
+    if (made < MIN_LINE_SEG) {
       if (stop === 1) n[N_CALM] = n[N_CALM]! + 1;
       return;
     }
