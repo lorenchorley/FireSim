@@ -635,7 +635,7 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
     id: 'windSpeed',
     group: 'Fire and weather',
     title: 'Wind speed',
-    what: 'How fast the wind is blowing near the ground, place by place.',
+    what: 'How fast the wind is blowing near the ground, place by place, or at the height you chose for the arrows.',
     why: 'Wind is the biggest driver of a fire, and ridges and gaps funnel it hardest; on a calm night the wind the fire feels can differ a lot from this map.',
     kind: 'heat',
     heat: heat('windSpeed', 'km/h'),
@@ -863,7 +863,7 @@ export const LAYER_CATALOG: readonly LayerInfo[] = [
       sc?.atmosphere3d === false
         ? 'FireSim wind model: the forecast wind fitted to the terrain, computed on this device (terrain effects only: the fast mode has no plume)'
         : 'FireSim 3-D atmosphere, computed on this device',
-    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} wind cells; the curves are a smooth fit through them, not new detail`,
+    resolution: (sc) => `${sc?.atmosphereCellSize ? `${sc.atmosphereCellSize} m` : '100 to 270 m'} wind cells (60 m for What the fire feels); the curves are a smooth fit through them, not new detail`,
   },
   {
     id: 'crossSection',

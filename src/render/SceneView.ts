@@ -16,7 +16,7 @@ import type { GridSpec } from '../core/grid';
 import { SLICE_RECORDER_MAX_BYTES } from '../core/sliceRecording';
 import type { FireField, FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from '../core/types';
 import { castShadows, insolation, multiHillshade, skyViewFactor, solarPosition } from '../terrain';
-import type { CameraState, FrameStatsInfo, MapMarker, NightLook, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats, WindGlyphStats } from './api';
+import type { CameraState, FrameStatsInfo, MapMarker, NightLook, OverlayStats, QualityInfo, SceneImagery, SceneViewApi, TerrainDrawStats, WindGlyphStats } from './api';
 import { AtmosphereSampler } from './atmosphereSampler';
 import { CameraRig, type ViewMode } from './cameraRig';
 import { buildCliffDrawing } from './cliffDrawing';
@@ -38,7 +38,7 @@ import {
 } from './fields';
 import { HeightField } from './heightfield';
 import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
-import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from './layers';
+import { DEFAULT_LAYERS, shownWindHeight, windMapHeight, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
 import { homeCandidates, homeDrawnPx, iconCandidate, pickMarkerAt, projectPoint, type PickCandidate } from './markerPick';
 import { AdaptiveDpr, FrameMeter } from './perf';
@@ -57,7 +57,10 @@ import { plumeColumn, puffsFromAtmosphere, SmokeLayer } from './smokeLayer';
 import { TerrainLayer, type TerrainDecals } from './terrainLayer';
 import { CANOPY_BUDGETS, VegetationLayer } from './vegetationLayer';
 import type { PlacementCache } from './vegetationPlacement';
+import { HeightRaster } from './wind/glyphField';
+import type { WindHeight } from './wind/glyphTypes';
 import { WindGlyphLayer } from './wind/windGlyphLayer';
+import { fieldRange, windMapField, windMapSource } from './wind/windMapField';
 import { WindLayer, type WindDomain } from './windLayer';
 
 export type RenderQuality = 'low' | 'medium' | 'high';
@@ -210,6 +213,12 @@ export class SceneView implements SceneViewApi {
   // Simulation state.
   private snap: SimSnapshot | null = null;
   private fire: FireField | null = null;
+  /** The overlay's field as last painted, and the Wind speed map's cache (E1b): the snapshot and height it was made for, and the height raster of the numeric heights. */
+  private overlayShown: OverlayField | null = null;
+  private windMapCache: OverlayField | null = null;
+  private windMapSnap: SimSnapshot | null = null;
+  private windMapHeightOf: WindHeight | null = null;
+  private windHr: HeightRaster | null = null;
   private sampler: AtmosphereSampler | null = null;
   private atmBase = 0;
   private displayTime = 0;
@@ -672,7 +681,7 @@ export class SceneView implements SceneViewApi {
     const c = fireCentroid(fire, target);
     this.wind.focus = c ? { x: c.x, y: c.y, radius: 900 } : null;
     if (this.layers.crossSection.enabled) this.updateSection(false);
-    this.glyphs.setData({ sampler: this.sampler, atm: atmView ?? null, sliceGround: this.sliceTerrain ?? hf, drawGround: hf });
+    this.glyphs.setData({ sampler: this.sampler, atm: atmView ?? null, sliceGround: this.sliceTerrain ?? hf, drawGround: hf, fireWind: snapshot.fireWind ?? null });
     if (SNAPSHOT_OVERLAYS.has(this.layers.overlay)) this.updateOverlay();
     this.refreshMarkers();
     this.applyLighting(this.sunTimeMs());
@@ -874,7 +883,9 @@ export class SceneView implements SceneViewApi {
     this.glyphs.setHeight(l.windHeight);
     this.glyphs.setDpr(this.dpr.dpr);
     const overlayChanged = !prev || prev.overlay !== l.overlay;
-    if (overlayChanged || !prev || prev.isochroneMinutes !== l.isochroneMinutes) this.updateOverlay();
+    // The Wind speed map follows the Wind height while the arrows are on (E1b): a change of either redraws it.
+    const windMapChanged = l.overlay === 'windSpeed' && !!prev && (prev.windGlyphs !== l.windGlyphs || prev.windHeight !== l.windHeight);
+    if (overlayChanged || !prev || prev.isochroneMinutes !== l.isochroneMinutes || windMapChanged) this.updateOverlay();
     // Canopy: style, colour code, sway, understorey, solo heat map. Switching the understorey (or the canopy style) only
     // re-plans which already-placed instances are drawn (the shrubs are always placed, so the switch is visibility only);
     // trees thin out under a heat map that is NOT shown on its own (a new, staged placement at 40 % density).
@@ -909,10 +920,12 @@ export class SceneView implements SceneViewApi {
     tl.uniforms.uIsoMinutes!.value = iso;
     tl.uniforms.uIsoStrong!.value = kind === 'arrival' ? 1 : 0;
     if (kind === 'none') {
+      this.overlayShown = null;
       tl.setOverlay(null, null, false);
       return;
     }
     let field: OverlayField | null;
+    const windHeight = this.windMapShown();
     if (kind === 'insolation') field = this.insolationField();
     else {
       // `context` feeds the 'homeDensity' / 'roadAccess' heat maps (contextFields.ts), `atmosphere` the 'windSpeed' one.
@@ -924,11 +937,45 @@ export class SceneView implements SceneViewApi {
         layers: this.snap?.layers ?? null,
         context: this.contextLayers,
         atmosphere: this.snap?.atmosphere ?? null,
+        windMap: kind === 'windSpeed' ? this.windMapOf(windHeight) : null,
       });
     }
+    this.overlayShown = field;
     const arrivalMax = Math.max(this.snap?.time ?? 0, this.maxArrival, 1800);
-    const scale = overlayScale(kind, { arrivalMaxSeconds: arrivalMax, elevationRange: [this.terrain.minElevation, this.terrain.maxElevation] });
+    const scale = overlayScale(kind, { arrivalMaxSeconds: arrivalMax, elevationRange: [this.terrain.minElevation, this.terrain.maxElevation], windHeight });
     tl.setOverlay(field, scale, fireOv);
+  }
+
+  /** The Wind height the Wind speed map follows now: the arrows' height while they are on, 10 m otherwise, and 10 m when the picture has no `fireWind` for `'felt'` (E1b). */
+  private windMapShown(): WindHeight {
+    return shownWindHeight(windMapHeight(this.layers), !!this.snap?.fireWind);
+  }
+
+  /**
+   * The Wind speed map at `height` for the latest snapshot, or null for the 10 m map (`overlayField` makes that one, as it always has). Made once per snapshot
+   * and height; the values array and the `HeightRaster` (226 kB) are kept for the next one.
+   */
+  private windMapOf(height: WindHeight): OverlayField | null {
+    const snap = this.snap;
+    if (height === 'fire' || !snap) return null;
+    if (this.windMapCache && this.windMapSnap === snap && this.windMapHeightOf === height) return this.windMapCache;
+    const f = windMapField({ atm: snap.atmosphere ?? null, sampler: this.sampler, ground10: this.sliceTerrain ?? this.hf, fireWind: snap.fireWind ?? null }, height, (this.windHr ??= new HeightRaster()), this.windMapCache?.values);
+    this.windMapCache = f;
+    this.windMapSnap = snap;
+    this.windMapHeightOf = height;
+    return f;
+  }
+
+  overlayStats(): OverlayStats | null {
+    const f = this.overlayShown;
+    const kind = this.layers.overlay;
+    if (kind === 'none' || !f) return null;
+    const range = fieldRange(f);
+    const wind = kind === 'windSpeed';
+    const height = wind ? this.windMapShown() : 'fire';
+    const source = wind ? windMapSource(height, this.snap?.fireWind) : 'other';
+    const time = source === 'felt' ? this.snap!.fireWind!.time : wind ? (this.snap?.atmosphere?.time ?? null) : (this.snap?.time ?? null);
+    return { overlay: kind, source, height, nx: f.grid.nx, ny: f.grid.ny, cellM: f.grid.cellSize, minKmh: range?.min ?? NaN, maxKmh: range?.max ?? NaN, time };
   }
 
   /**
@@ -959,6 +1006,7 @@ export class SceneView implements SceneViewApi {
     return legendFor(this.layers.overlay, {
       arrivalMaxSeconds: Math.max(this.snap?.time ?? 0, this.maxArrival, 1800),
       isochroneMinutes: this.layers.isochroneMinutes,
+      windHeight: this.windMapShown(),
       ...(this.terrain ? { elevationRange: [this.terrain.minElevation, this.terrain.maxElevation] as const } : {}),
     });
   }

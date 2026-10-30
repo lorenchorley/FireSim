@@ -10,9 +10,10 @@
  */
 import { airKind, type AirKind } from '../../../core/airView';
 import type { WindGlyphStats } from '../../../render/api';
+import { shownWindHeight } from '../../../render/layers';
 import type { WindHeight } from '../../../render/wind/glyphTypes';
 import type { SimContext } from './context';
-import { GLYPH_SMOOTH_FIT_PX } from './glyphWords';
+import { GLYPH_SMOOTH_FIT_PX, dataCellPx } from './glyphWords';
 
 /** What the wind picture is: nothing drawn, the straight arrows, the curved flow lines, the detailed streaks of the closest zoom, the Wind streaks over the whole area, or through the air. */
 export type DetailKind = 'none' | 'arrows' | 'curves' | 'detailed' | 'overview' | 'volume';
@@ -73,7 +74,7 @@ export function windDetailState(i: WindDetailInput): WindDetailState {
   const limits: DetailLimit[] = [];
   if (stats.idle === 'budget') limits.push('budget');
   if (level < 4 && stats.level < 4 && (kind === 'arrows' || kind === 'curves' || kind === 'overview')) limits.push('zoom');
-  if (onGlyphs && (kind === 'detailed' || stats.cellPx > GLYPH_SMOOTH_FIT_PX)) limits.push('cells');
+  if (onGlyphs && (kind === 'detailed' || (dataCellPx(stats, i.height === 'felt') ?? 0) > GLYPH_SMOOTH_FIT_PX)) limits.push('cells'); // (a cell of the data drawn: What the fire feels has finer cells than the model's)
   if (i.air === 'diagnosed') limits.push('estimated');
   if (stats.detail === 'still') limits.push('still');
 
@@ -88,12 +89,13 @@ export function chipLabel(level: number): string {
 /** What the chip and the sheet read from the screen: the layer switches, the camera mode, the layer's statistics and the kind of air. */
 export function windDetailInput(ctx: Pick<SimContext, 'layers' | 'ui' | 'view' | 'session'>): WindDetailInput {
   const l = ctx.layers.get();
+  const snap = ctx.session.state.get().snapshot;
   return {
     glyphsOn: l.windGlyphs,
     streaks: l.wind,
     viewMode: ctx.ui.get().viewMode,
     stats: ctx.view.windGlyphStats?.() ?? null,
-    air: airKind(ctx.session.state.get().snapshot?.atmosphere),
-    height: l.windHeight,
+    air: airKind(snap?.atmosphere),
+    height: shownWindHeight(l.windHeight, !!snap?.fireWind), // (What the fire feels without a picture of it is the 10 m wind)
   };
 }

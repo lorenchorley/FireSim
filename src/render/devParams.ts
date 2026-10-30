@@ -5,7 +5,7 @@
 import { WIND_HEIGHTS, type WindHeight } from './wind/glyphTypes';
 
 /**
- * `wh=` must be one of `WIND_HEIGHTS` as text (`fire`, `50`, `100`, `300`, `1000`, `2000`) and is `fire` when absent. Anything else
+ * `wh=` must be one of `WIND_HEIGHTS` as text (`felt`, `fire`, `50`, `100`, `300`, `1000`, `2000`) and is `fire` when absent (the page has no `fireWind`, so `felt` draws the 10 m wind there). Anything else
  * (`abc`, `7`, `100.5`, an empty value) is a typo, and the dev page says so instead of drawing a height the engine never made.
  */
 export function devWindHeight(q: URLSearchParams): WindHeight {

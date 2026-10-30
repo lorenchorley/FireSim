@@ -35,8 +35,8 @@ export const glyphIntro = (on: boolean, reason: string | null): string => (on ||
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The chip of a height: `10 m` (the model's 10 m wind over open ground, so the chip and the caption agree), `50 m`, `100 m`, `300 m`, `1 km`, `2 km`,
- * and `What the fire feels` (0.7.0, the wind the fire model uses in 60 m cells; not a chip until the E2 picture lane).
+ * The chip of a height: `What the fire feels` (0.7.0, the wind the fire model uses in 60 m cells, the first chip), `10 m` (the model's 10 m wind over
+ * open ground, so the chip and the caption agree), `50 m`, `100 m`, `300 m`, `1 km`, `2 km`.
  */
 export function heightLabel(h: WindHeight): string {
   if (h === 'felt') return 'What the fire feels';
@@ -52,8 +52,8 @@ export function windHeightOf(value: string): WindHeight | null {
   return WIND_HEIGHTS.find((h) => String(h) === value) ?? null;
 }
 
-/** The words after "Wind" in the map legend's title: `near the ground` or `at 100 m`. */
-export const legendHeightWords = (h: WindHeight): string => (h === 'fire' ? 'near the ground' : `at ${heightLabel(h)}`);
+/** The words after "Wind" in the map legend's title: `near the ground`, `the fire feels` or `at 100 m`. */
+export const legendHeightWords = (h: WindHeight): string => (h === 'fire' ? 'near the ground' : h === 'felt' ? 'the fire feels' : `at ${heightLabel(h)}`);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The caption
@@ -73,7 +73,16 @@ export function windFromText(airTime: number | null, shownTime: number, tz: stri
 
 export const DIAGNOSED_LINE = 'Diagnosed wind: terrain effects only, no plume.';
 export const GROUND_LINE = 'On a calm night the fire can feel much less wind than this in places, and much more in others.';
+/** The 10 m caption's calm-night sentence once the picture also has What the fire feels (0.7.0): it says where to see the difference. */
+export const GROUND_LINE_CHOOSE = `${GROUND_LINE} Choose What the fire feels to see it.`;
 export const SMOOTH_FIT_LINE = 'At this zoom the curves are a smooth fit through the model, not new detail.';
+/** What the fire feels (0.7.0): what the numbers are (the fire model's own wind in each cell, not a measurement), and how often they are refitted on the fast model. */
+export const feltLine = (cellM: number): string => `The wind the fire model uses in each ${formatNumber(Math.round(cellM))} m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.`;
+export const FELT_FAST_LINE = 'On the fast model it is refitted once a minute.';
+/** What the fire feels was chosen but the picture has no such wind (a replay from before 0.7.0, a demo engine): the 10 m wind is drawn, and this says so. */
+export const FELT_MISSING_LINE = 'The wind the fire feels is not in this picture, so the 10 m wind is shown.';
+/** The caption line while the ground is coloured by the Wind speed map (0.7.0, E1b). */
+export const MAP_COLOURED_LINE = 'The ground is coloured by wind speed at this height; the legend shows the colours.';
 
 /** What the caption needs to know about the air that is drawn. */
 export interface GlyphAir {
@@ -84,6 +93,8 @@ export interface GlyphAir {
   shownTime: number;
   /** The fast tier's diagnosed wind (terrain effects only), not the 3-D atmosphere. */
   diagnosed: boolean;
+  /** 0.7.0: the picture's wind the fire feels (its cell in metres and its simulation time in seconds), or null when it has none (then What the fire feels shows the 10 m wind). */
+  felt?: { cellM: number; time: number } | null;
 }
 
 /**
@@ -91,21 +102,28 @@ export interface GlyphAir {
  * reader would run it into the next line otherwise). "As the model fits it to the terrain" is how the fast tier makes its wind, so only that tier says it.
  */
 export function captionHeadline(height: WindHeight, air: GlyphAir, tz: string, absTime: (t: number) => number): string {
+  const felt = height === 'felt' ? (air.felt ?? null) : null;
+  if (felt) return `${['Wind the fire feels', `${formatNumber(Math.round(felt.cellM))} m cells`, windFromText(felt.time, air.shownTime, tz, absTime)].join(' · ')}.`;
   const ground = air.diagnosed ? 'Wind about 10 m above open ground, as the model fits it to the terrain' : 'Wind about 10 m above open ground';
-  const what = height === 'fire' ? ground : `Wind at ${heightLabel(height)} above the ground`;
+  const what = height === 'fire' || height === 'felt' ? ground : `Wind at ${heightLabel(height)} above the ground`;
   const grid = air.cellM !== null && Number.isFinite(air.cellM) && air.cellM > 0 ? `model grid ${formatNumber(Math.round(air.cellM))} m` : null;
   return `${[what, grid, windFromText(air.airTime, air.shownTime, tz, absTime)].filter((x): x is string => !!x).join(' · ')}.`;
 }
 
 /**
- * The caption lines under the Wind height chips. In 0.5.0 every field is the atmosphere's (the 60 m "wind the fire feels" raster is a later
- * stage), so the smooth-fit sentence follows the size of a model cell alone: `cellPx` is the screen pixels one model cell covers at the middle
- * of the screen (`WindGlyphStats.cellPx`).
+ * The caption lines under the Wind height chips. The smooth-fit sentence follows the size of one cell of the data that is drawn: `cellPx` is the
+ * screen pixels it covers at the middle of the screen (the model's cell, `WindGlyphStats.cellPx`; for What the fire feels the 60 m cell, `glyphView`
+ * scales it). What the fire feels without a picture of it is the 10 m wind, and says so.
  */
 export function glyphCaption(height: WindHeight, air: GlyphAir, cellPx: number | null, tz: string, absTime: (t: number) => number): string[] {
   const lines = [captionHeadline(height, air, tz, absTime)];
+  const felt = height === 'felt' && !!air.felt;
   if (air.diagnosed) lines.push(DIAGNOSED_LINE);
-  if (height === 'fire') lines.push(GROUND_LINE);
+  if (felt) {
+    lines.push(feltLine(air.felt!.cellM));
+    if (air.diagnosed) lines.push(FELT_FAST_LINE);
+  } else if (height === 'felt') lines.push(FELT_MISSING_LINE, GROUND_LINE);
+  else if (height === 'fire') lines.push(air.felt ? GROUND_LINE_CHOOSE : GROUND_LINE);
   if (cellPx !== null && Number.isFinite(cellPx) && cellPx > GLYPH_SMOOTH_FIT_PX) lines.push(SMOOTH_FIT_LINE);
   return lines;
 }
@@ -158,6 +176,8 @@ export interface GlyphViewInput {
   stats: WindGlyphStats | null;
   /** The air that is drawn, or null before there is one. */
   air: GlyphAir | null;
+  /** The ground is coloured by the Wind speed map (0.7.0, E1b): the caption says so. */
+  mapOn?: boolean;
   tz: string;
   absTime(t: number): number;
 }
@@ -172,9 +192,14 @@ export interface GlyphView {
 export function glyphView(i: GlyphViewInput): GlyphView {
   const reason = !i.has3dView ? NEEDS_3D : i.availability.ok ? null : (i.availability.reason ?? 'Not available here');
   if (!i.on || !i.has3dView) return { reason, caption: [], level: '' };
-  return {
-    reason,
-    caption: i.air && !reason ? glyphCaption(i.height, i.air, i.stats?.cellPx ?? null, i.tz, i.absTime) : [],
-    level: glyphLevelLine(i.stats),
-  };
+  const caption = i.air && !reason ? glyphCaption(i.height, i.air, dataCellPx(i.stats, i.height === 'felt' && !!i.air.felt), i.tz, i.absTime) : [];
+  if (caption.length && i.mapOn) caption.push(MAP_COLOURED_LINE);
+  return { reason, caption, level: glyphLevelLine(i.stats) };
+}
+
+/** The screen pixels one cell of the data covers: the model's cell, or for What the fire feels (`felt`) the 60 m cell, scaled from it (the layer's own `dataCellM`). */
+export function dataCellPx(s: Pick<WindGlyphStats, 'cellPx' | 'cellM' | 'dataCellM'> | null | undefined, felt: boolean): number | null {
+  if (!s) return null;
+  if (felt && s.dataCellM && s.cellM > 0) return (s.cellPx * s.dataCellM) / s.cellM;
+  return s.cellPx;
 }

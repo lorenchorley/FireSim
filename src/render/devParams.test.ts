@@ -26,7 +26,7 @@ describe('wh= on the dev page', () => {
     for (const bad of ['abc', '7', '10', '0', '-100', '100.5', '1e3', ' 100', '100 ', 'Fire', 'FIRE', 'NaN', 'Infinity', '']) {
       expect(() => devWindHeight(q(`wh=${encodeURIComponent(bad)}`)), JSON.stringify(bad)).toThrow(RangeError);
     }
-    expect(() => devWindHeight(q('wh=abc'))).toThrow('wh=abc is not a wind height: use fire, 50, 100, 300, 1000, 2000');
+    expect(() => devWindHeight(q('wh=abc'))).toThrow('wh=abc is not a wind height: use felt, fire, 50, 100, 300, 1000, 2000');
   });
 });
 

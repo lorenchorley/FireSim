@@ -60,7 +60,8 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
     const snap = ctx.session.state.get().snapshot;
     const atm = snap?.atmosphere;
     if (!snap || !atm || !hasAirWind(atm)) return null;
-    return { cellM: atm.grid.cellSize, airTime: airTime(atm), shownTime: snap.time, diagnosed: airKind(atm) === 'diagnosed' };
+    const fw = snap.fireWind;
+    return { cellM: atm.grid.cellSize, airTime: airTime(atm), shownTime: snap.time, diagnosed: airKind(atm) === 'diagnosed', felt: fw ? { cellM: fw.grid.cellSize, time: fw.time } : null };
   };
 
   // ───────────── the switch ─────────────
@@ -111,6 +112,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
       availability: a,
       stats: has3dView ? (view.windGlyphStats?.() ?? null) : null,
       air: airNow(),
+      mapOn: s.overlay === 'windSpeed',
       tz: ctx.tz,
       absTime: ctx.absTime,
     });
@@ -164,7 +166,7 @@ export function createWindGlyphControls(ctx: Pick<SimContext, 'layers' | 'view' 
   io?.observe(settingsEl);
 
   const unsubs = [
-    layers.subscribe(paint, ['windGlyphs', 'windHeight']),
+    layers.subscribe(paint, ['windGlyphs', 'windHeight', 'overlay']),
     // The air arrives a moment after Play: the switch comes alive then (only a change of the answer repaints; the poll does the rest).
     ctx.session.state.subscribe(() => {
       if (availability().ok !== lastOk) paint();

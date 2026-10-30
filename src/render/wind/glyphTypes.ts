@@ -10,10 +10,10 @@ import type { VegInstances } from '../vegetationPlacement';
 export type GlyphLevel = 0 | 1 | 2 | 3 | 4;
 /**
  * What the glyphs show the wind of: `'fire'` is the model's 10 m wind over open ground, the numbers are metres above the ground, and `'felt'`
- * (0.7.0, "What the fire feels") is the wind the fire model uses in each 60 m cell (`SimSnapshot.fireWind`). `'felt'` is not in `WIND_HEIGHTS` yet.
+ * (0.7.0, "What the fire feels") is the wind the fire model uses in each 60 m cell (`SimSnapshot.fireWind`). `'felt'` is the first chip and the default.
  */
 export type WindHeight = 'felt' | 'fire' | 50 | 100 | 300 | 1000 | 2000;
-export const WIND_HEIGHTS: readonly WindHeight[] = ['fire', 50, 100, 300, 1000, 2000];
+export const WIND_HEIGHTS: readonly WindHeight[] = ['felt', 'fire', 50, 100, 300, 1000, 2000];
 export type GlyphTier = 'low' | 'medium' | 'high';
 /** Per tier: glyphs, and segments per batch (shaft + arrowhead; triangles are 4 x segments: halo batch and colour batch). */
 export const GLYPH_CAPS: Record<GlyphTier, { glyphs: number; segments: number }> = {

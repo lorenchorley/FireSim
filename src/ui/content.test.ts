@@ -525,7 +525,8 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     expect(layers).toContain('Under Wind and air');
     expect(read('screens/sim/layersPanel.ts')).toContain("label: 'Wind streaks'");
     expect(layers).toContain('moving Wind streaks');
-    expect(layers).toContain(`a ${WIND_HEIGHT_LABEL} you choose, from ${heightLabel(WIND_HEIGHTS[0]!)} to ${heightLabel(WIND_HEIGHTS[WIND_HEIGHTS.length - 1]!)} above the ground`);
+    // (The Help still names the six numbered heights; 0.7.0 adds What the fire feels before them, which the docs lane puts in the Help.)
+    expect(layers).toContain(`a ${WIND_HEIGHT_LABEL} you choose, from ${heightLabel(WIND_HEIGHTS[1]!)} to ${heightLabel(WIND_HEIGHTS[WIND_HEIGHTS.length - 1]!)} above the ground`);
     expect(layers).toContain('It is off until you switch it on');
     // Off at first (the opt-in of plan decision D9), while the streaks stay on as they were.
     expect(DEFAULT_LAYERS.windGlyphs).toBe(false);
@@ -590,8 +591,9 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
   it('Wind height: the six chips, 10 m is the model’s open-ground wind and not what the fire feels, and the caption is the very sentence the code writes', () => {
     const b = squashed('Wind height');
     const labels = WIND_HEIGHT_CHIPS.map((c) => c.label);
-    expect(labels).toEqual(['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
-    expect(WIND_HEIGHTS).toEqual<WindHeight[]>(['fire', 50, 100, 300, 1000, 2000]);
+    // (0.7.0: What the fire feels is the first of seven chips; the Help text still describes the six numbered ones, which the docs lane extends.)
+    expect(labels).toEqual(['What the fire feels', '10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
+    expect(WIND_HEIGHTS).toEqual<WindHeight[]>(['felt', 'fire', 50, 100, 300, 1000, 2000]);
     expect(b).toContain('10 m, 50 m, 100 m, 300 m, 1 km and 2 km');
     expect(b).toContain('Except for the first, the number is metres above the ground');
     // 10 m is the same field as the Wind speed map's (the model's 10 m wind), and the chip says what the caption says.
