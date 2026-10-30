@@ -273,30 +273,64 @@ describe('planLod: the detailed streaks level (0.6.0)', () => {
     expect(planLod(78.2, 1, { level: 4, spacingExp: 5 }, undefined, true).level).toBe(3);
   });
 
-  it('the lattice is a power of two, never denser than 32 px on the screen and never sparser than 64 px', () => {
-    const p = planLod(200, 2.5, null, undefined, true); // 32 px x 2.5 m = 80 m -> log2 6.32 -> 7
-    expect(p.spacingExp).toBe(7);
-    expect(p.spacingM).toBe(128); // 51 px
+  it('the finest lattice is a power of two, 16 to 32 px apart on the screen, and the lines it keeps are 32 px apart on average at every zoom', () => {
+    const p = planLod(200, 2.5, null, undefined, true); // 32 px x 2.5 m = 80 m: the octave below, 64 m, is the finest lattice (26 px)
+    expect(p.spacingExp).toBe(6);
+    expect(p.spacingM).toBe(64);
+    expect(p.thin).toBeCloseTo((64 / 80) ** 2, 12); // 0.64 of its points: (26 / 32) squared
     for (let c = 104; c < 3500; c *= 1.01) {
       for (const mpp of [0.04, 0.3, 0.9, 1.3, 2.9]) {
         const q = planLod(c, mpp, null, undefined, true);
         const px = q.spacingM / mpp;
-        expect(px).toBeGreaterThanOrEqual(32 * (1 - 1e-9));
-        expect(px).toBeLessThan(64);
+        expect(px).toBeGreaterThanOrEqual(16 * (1 - 1e-9));
+        expect(px).toBeLessThan(32);
+        expect(q.thin!).toBeGreaterThanOrEqual(0.25 - 1e-9);
+        expect(q.thin!).toBeLessThanOrEqual(1);
+        // The density is the share kept over the lattice's own: one line to 32 x 32 px, whatever the zoom.
+        expect(q.thin! / (px * px)).toBeCloseTo(1 / (32 * 32), 9);
       }
     }
   });
 
-  it('keeps the exponent only within 0.06 octave of an edge between two exponents, as the 0.5.0 spec does', () => {
+  it('the share is 1 for every other plan: the levels below the last, and the last without the flag', () => {
+    for (const px of [0.1, 2, 8, 20, 60, 89.9]) expect(planLod(px, 1.7, null, undefined, true).thin).toBe(1);
+    expect(planLod(200, 1.7, null).thin).toBe(1);
+    expect(planLod(200, 1.7, null, undefined, false).thin).toBe(1);
+  });
+
+  it('is continuous through an octave edge: the share runs 1 to 1/4 as the zoom goes out, and the coarser lattice at 1 is the finer one at 1/4', () => {
+    const edge = (e: number): number => 2 ** e / 32; // the mpp that makes log2(32 mpp) = e
+    const inside = planLod(200, edge(6) * 0.999, null, undefined, true); // zoomed in just short of the edge
+    const outside = planLod(200, edge(6) * 1.001, null, undefined, true);
+    expect(inside.spacingExp).toBe(5);
+    expect(outside.spacingExp).toBe(6);
+    expect(inside.thin!).toBeLessThan(0.26); // the finer lattice at 1/4: four times the points of the coarser one, a quarter of them kept
+    expect(outside.thin!).toBeGreaterThan(0.99); // the coarser lattice with all of its points
+    expect(inside.spacingM * 2).toBe(outside.spacingM);
+    // And it moves smoothly inside an exponent: a hundredth of an octave of zoom is 1.4 % of the share (the share goes as 4 to the minus octaves).
+    let prev = planLod(200, edge(5.01), null, undefined, true);
+    for (let e = 5.02; e < 5.99; e += 0.01) {
+      const q = planLod(200, edge(e), null, undefined, true);
+      expect(q.spacingExp).toBe(prev.spacingExp);
+      expect(Math.abs(Math.log(q.thin! / prev.thin!))).toBeCloseTo(0.01 * 2 * Math.LN2, 6);
+      prev = q;
+    }
+  });
+
+  it('keeps the exponent only within 0.06 octave of an edge between two exponents, as the 0.5.0 spec does, and holds the share to its range there', () => {
     const exact = (e: number): number => 2 ** e / 32; // the mpp that makes log2(32 mpp) = e
     let prev: LodPlan = planLod(200, exact(5.9), null, undefined, true);
-    expect(prev.spacingExp).toBe(6);
+    expect(prev.spacingExp).toBe(5); // the finest lattice is the octave below the one 32 px apart
     for (const e of [5.5, 5.2, 5.0, 4.95, 5.6, 5.95, 6.0, 6.03, 6.05]) {
       prev = planLod(200, exact(e), prev, undefined, true);
-      expect(prev.spacingExp, `at ${e}`).toBe(6);
+      expect(prev.spacingExp, `at ${e}`).toBe(5);
+      expect(prev.thin!, `at ${e}`).toBeGreaterThanOrEqual(0.25);
+      expect(prev.thin!, `at ${e}`).toBeLessThanOrEqual(1);
     }
-    expect(planLod(200, exact(6.08), prev, undefined, true).spacingExp).toBe(7);
-    expect(planLod(200, exact(4.92), prev, undefined, true).spacingExp).toBe(5);
+    expect(prev.thin).toBe(0.25); // a little past the edge: the coarser lattice's points and no more
+    expect(planLod(200, exact(6.08), prev, undefined, true).spacingExp).toBe(6);
+    expect(planLod(200, exact(4.92), prev, undefined, true).spacingExp).toBe(4);
+    expect(planLod(200, exact(4.97), prev, undefined, true).thin).toBe(1); // a little short of it: all of the lattice's points
   });
 
   it('one zoom gives one lattice whichever way it is reached, from the first level-4 zoom to the closest (the two paths differ only inside the narrow bands)', () => {

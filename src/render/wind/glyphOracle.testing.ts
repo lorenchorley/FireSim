@@ -343,6 +343,18 @@ export function latticeSeed(i: number, j: number, k: number, jitter: number): [n
   return [(i + 0.5 + jitter * (hash01(i, j, salt) - 0.5) * 2) * S, (j + 0.5 + jitter * (hash01(i, j, salt + 1) - 0.5) * 2) * S];
 }
 
+/**
+ * Seed of the point of identity (ia, ja) born at level `a` (the coarsest lattice that holds it) in the detailed streaks' nested lattice, the plain way:
+ * its lattice point at spacing 2^a metres moved by `jitter` of that spacing with `hash01`, the salts of the builder. Its place does not depend on the
+ * level the picture is built at.
+ */
+export function nestedSeed(ia: number, ja: number, a: number, jitter: number): [number, number] {
+  const S = 2 ** a;
+  if (jitter <= 0) return [ia * S, ja * S];
+  const salt = 32 + 2 * (Math.max(-16, Math.min(48, a)) + 16);
+  return [(ia + jitter * (hash01(ia, ja, salt) - 0.5) * 2) * S, (ja + jitter * (hash01(ia, ja, salt + 1) - 0.5) * 2) * S];
+}
+
 // ───────────────────────── direct tracing (the oracle) ─────────────────────────
 
 /**

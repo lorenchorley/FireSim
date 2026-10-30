@@ -22,7 +22,7 @@ export const POSE = { eye: 0, target: 3, quat: 5, cssW: 9, cssH: 10, vex: 11, si
 export type PoseSig = Float64Array;
 export const createPoseSig = (): PoseSig => new Float64Array(POSE.size);
 
-export type RebuildReason = 'first' | 'snapshot' | 'height' | 'level' | 'lattice' | 'moved' | 'turned' | 'zoomed' | 'resized' | 'left-box' | 'exaggeration' | 'room';
+export type RebuildReason = 'first' | 'snapshot' | 'height' | 'level' | 'lattice' | 'density' | 'moved' | 'turned' | 'zoomed' | 'resized' | 'left-box' | 'exaggeration' | 'room';
 
 /**
  * Compares the pose of the BUILT picture with now. `distanceM` is the distance from the eye to the target now. Returns the first

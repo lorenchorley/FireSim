@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { REBUILD_MIN_GAP_MS } from './glyphPose';
-import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
+import { mayRebuild, rebuildReason, segmentCap, SliceLog, THIN_REBUILD_RATIO, type BuiltPicture, type PictureNow } from './glyphSchedule';
 import { DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box } from './glyphTypes';
 
 /** The camera of these tests: 3 km from a target on the ground at (0, 0), looking down at it from the south at about 56 degrees. */
@@ -48,6 +48,26 @@ describe('rebuildReason', () => {
     expect(rebuildReason(built(), now({ dataSerial: 5, height: 300, level: 4, spacingExp: 8 }), inside)).toBe('snapshot');
     expect(rebuildReason(built(), now({ height: 300, level: 4, spacingExp: 8 }), inside)).toBe('height');
     expect(rebuildReason(built(), now({ level: 4, spacingExp: 8 }), inside)).toBe('level');
+  });
+
+  it('asks for a new picture when the density the zoom asks for has drifted by a tenth from the one that was built (the detailed streaks follow the zoom), and not before', () => {
+    expect(THIN_REBUILD_RATIO).toBe(1.1);
+    const b = built({ level: 4, thin: 0.5 });
+    const n = (thin: number | undefined): PictureNow => now({ level: 4, thin });
+    expect(rebuildReason(b, n(0.5), inside)).toBeNull();
+    expect(rebuildReason(b, n(0.54), inside)).toBeNull(); // 8 % more
+    expect(rebuildReason(b, n(0.46), inside)).toBeNull();
+    expect(rebuildReason(b, n(0.56), inside)).toBe('density'); // 12 % more: a zoom of about 6 %
+    expect(rebuildReason(b, n(0.44), inside)).toBe('density');
+    // The drift is against what was BUILT, so a slow zoom adds up; and either way round.
+    expect(rebuildReason(built({ level: 4, thin: 0.9 }), n(0.8), inside)).toBe('density');
+    expect(rebuildReason(built({ level: 4, thin: 0.25 }), n(1), inside)).toBe('density');
+    // A picture or a plan without a share (the arrows and flow lines, and the pictures of before) never asks.
+    expect(rebuildReason(built({ level: 4 }), n(0.3), inside)).toBeNull();
+    expect(rebuildReason(b, n(undefined), inside)).toBeNull();
+    // It comes after the cheaper facts and before the pose.
+    expect(rebuildReason(b, now({ level: 4, thin: 0.3, spacingExp: 8 }), inside)).toBe('lattice');
+    expect(rebuildReason(b, now({ level: 4, thin: 0.3, pose: pose({ eye: [450, 2500, 1700] }) }), inside)).toBe('density');
   });
 
   it('compares the pose with the BUILT picture, so small drifts add up', () => {
@@ -101,7 +121,7 @@ describe('mayRebuild (the 250 ms throttle, counted from the last swap)', () => {
 
   it('holds every other reason until 250 ms after the last swap', () => {
     expect(REBUILD_MIN_GAP_MS).toBe(250);
-    for (const r of ['snapshot', 'height', 'level', 'lattice', 'moved', 'turned', 'zoomed', 'resized', 'left-box', 'exaggeration'] as const) {
+    for (const r of ['snapshot', 'height', 'level', 'lattice', 'density', 'moved', 'turned', 'zoomed', 'resized', 'left-box', 'exaggeration'] as const) {
       expect(mayRebuild(r, 1100, 1000, false), r).toBe(false);
       expect(mayRebuild(r, 1249, 1000, false), r).toBe(false);
       expect(mayRebuild(r, 1250, 1000, false), r).toBe(true);

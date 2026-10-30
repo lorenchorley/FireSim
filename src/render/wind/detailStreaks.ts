@@ -3,9 +3,16 @@
  * no Three.js, no DOM, no `Math.random`. Same input and seed, same bytes; time never enters (the animation is the shader's, a pure
  * function of the view's clock).
  *
- * It is a fork of the glyph builder's seeding (`flowGlyphs.ts`): a world lattice of `lod.spacingM` metres, each seed moved inside its
- * own cell by an integer hash of its indices (so a pan never moves a seed), kept when its projection lies on the screen plus a margin
- * in front of the near plane, thinned toward the horizon of an orbit view, thinned to the caps by a second hash. What differs is the
+ * It is a fork of the glyph builder's seeding (`flowGlyphs.ts`), with a lattice that nests so that the picture does not pop when the zoom
+ * crosses an octave (0.6.0, the verifier's second finding): the world points of a finest lattice of `lod.spacingM` = 2^j metres, and of every
+ * coarser one of 2^(j+1), 2^(j+2) ... metres, which is a quarter as many and a subset of it. A point has one identity, the coarsest lattice
+ * that holds it (its `birth` level a) and its indices there, and everything about it (where it is, whether it is thinned, its life, its place
+ * in the caps) is an integer hash of that identity, so it is the same point at every zoom and after a pan. Its place is its lattice point
+ * moved by up to `jitter` lattice spacings of its own level. The picture keeps every point born at a coarser level than j, and of those born
+ * at j a share `thin` (by a hash priority): `thin` runs from 1/4 (the points of the next coarser lattice and no more) to 1 (the whole of
+ * this lattice) as the zoom goes through an octave, so the number of lines follows the zoom continuously, and where the finest lattice
+ * changes the picture is the same on both sides. Seeds are kept when their projection lies on the screen plus a margin in front of the near
+ * plane, thinned toward the horizon of an orbit view, thinned to the caps by a second hash. What differs from the glyphs is the
  * line. A line runs downwind from its seed in `n = clamp(ceil(L / 9), 8, 24)` equal steps (RK2 midpoint on the unit direction field),
  * `L = clamp(16 px per m/s x speed, 90, 220)` px long, and each segment says where it sits along the line so that the shader can run
  * a pulse along it: `d = (s0, s1, L, seed)` in pixels, `e = (speed, turb, lift, tail)`. The five ingredients of the picture
@@ -129,12 +136,25 @@ const U32 = 4294967296;
 const BUCKETS = 256;
 const BUCKET_SIZE = U32 / BUCKETS;
 
-// Salts of the integer hash (`hash3` of render/fields.ts, written out below). The first three are the glyph builder's, so a seed is
-// the same seed there; the life salt is far from the jitter salts (32 to 161).
-const SALT_ORBIT = 17;
-const SALT_CAP = 19;
+// Salts of the integer hash (`hash3` of render/fields.ts, written out below). A point is hashed by its identity (its indices at its birth
+// level and that level), so each kind of hash has a range of salts, one for each level (`level + 16`, the level held to -16 to 48): the
+// jitter one (32 to 161, as the glyph builder's lattice has it), the orbit density, the caps, the thinning priority and, far from
+// them, the life salt.
 const SALT_JITTER = 32;
+const SALT_ORBIT = 512;
+const SALT_CAP = 640;
+const SALT_PRIO = 768;
 const SALT_LIFE = 977;
+const LEVEL_MIN = -16;
+const LEVEL_MAX = 48;
+/** The coarser lattices walked after the finest one: 2^0 to 2^PASSES times its spacing. The points born beyond are 4^-PASSES of the picture. */
+const PASSES = 12;
+/** A point born this many levels above the lattice that holds it counts as born there (the origin, which is on every lattice, is the only one that gets near). */
+const MAX_REDUCE = 24;
+/** The level `a` as the offset of its salts (0 to 64): the level held to -16 to 48, plus 16. */
+const levelIndex = (a: number): number => (a < LEVEL_MIN ? LEVEL_MIN : a > LEVEL_MAX ? LEVEL_MAX : a) + 16;
+/** 2^k as a double, for the spacing of a lattice k levels above the finest. */
+const POW2 = new Float64Array(PASSES + MAX_REDUCE + 2).map((_, k) => 2 ** k);
 
 const SPEED_TABLE = buildSpeedTable();
 
@@ -174,7 +194,12 @@ const F_TX0 = 31;
 const F_TY0 = 32;
 const F_TINV = 33;
 const F_GFAC = 34;
-const F_LEN = 35;
+const F_BX0 = 35;
+const F_BY0 = 36;
+const F_BX1 = 37;
+const F_BY1 = 38;
+const F_PRIO = 39;
+const F_LEN = 40;
 
 const N_BUSY = 0;
 const N_PHASE = 1;
@@ -190,7 +215,7 @@ const N_I1 = 10;
 const N_J1 = 11;
 const N_CI = 12;
 const N_CJ = 13;
-const N_SALT = 14;
+const N_LEVEL = 14;
 const N_LIFE = 15;
 const N_OUTER = 16;
 const N_NSTORE = 17;
@@ -205,7 +230,8 @@ const N_CAPG = 25;
 const N_CAPS = 26;
 const N_REBUILDS = 27;
 const N_INTERVAL = 28;
-const N_LEN = 29;
+const N_PASS = 29;
+const N_LEN = 30;
 
 // Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
 const PHASE_SETUP = 3;
@@ -231,6 +257,7 @@ class Builder implements DetailBuilder {
    */
   private readonly s = new Float64Array(26);
   private readonly hv = new Uint32Array(1);
+  /** The stored seeds' identities, three ints each: the indices at the birth level, then the level. */
   private readonly cand: Int32Array;
   private readonly candH: Uint32Array;
   /** The segments a stored seed's line takes at most (8 to 24; calm seeds are not stored). */
@@ -260,7 +287,7 @@ class Builder implements DetailBuilder {
     this.E = new Float32Array(4 * caps.segments);
     this.out = { a: this.A, b: this.B, c: this.C, d: this.D, e: this.E, lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
     const store = 3 * this.capLines + 16;
-    this.cand = new Int32Array(2 * store);
+    this.cand = new Int32Array(3 * store);
     this.candH = new Uint32Array(store);
     this.candN = new Uint8Array(store);
   }
@@ -326,7 +353,7 @@ class Builder implements DetailBuilder {
     n[N_CAPG] = capG;
     n[N_CAPS] = capS;
     n[N_MAXSTORE] = Math.min(3 * capG + 16, this.candH.length);
-    n[N_SALT] = SALT_JITTER + 2 * (Math.max(-16, Math.min(48, lod.spacingExp | 0)) + 16);
+    n[N_LEVEL] = Math.max(LEVEL_MIN, Math.min(LEVEL_MAX, lod.spacingExp | 0));
     n[N_PHASE] = PHASE_SETUP;
     n[N_BUSY] = 1;
   }
@@ -469,30 +496,33 @@ class Builder implements DetailBuilder {
   }
 
   /**
-   * Is lattice cell (i, j) a seed? 1 or 0. On 1 the seed is left in the scratch: s0, s1 its position, s2 the ground under it, s3 its
-   * metres per pixel, and `N_OUTER` says whether it lies outside the screen's own margin (inside the wide one only a line that runs
-   * onto the screen keeps it: see `reaches`). The tests, in the order of their cost: inside the raster's domain; clip depth beyond
-   * the near plane; on the screen plus margin; the orbit density.
+   * Is the point of identity (ia, ja) born at level `a` a seed? 1 or 0. On 1 the seed is left in the scratch: s0, s1 its position, s2 the
+   * ground under it, s3 its metres per pixel, and `N_OUTER` says whether it lies outside the screen's own margin (inside the wide one only a
+   * line that runs onto the screen keeps it: see `reaches`). The point is its lattice point (indices x 2^a metres) moved by up to `jitter`
+   * spacings of that lattice by the hash of its identity. The tests, in the order of their cost: inside the raster's domain; clip depth
+   * beyond the near plane; on the screen plus margin; the orbit density.
    */
-  private candidate(i: number, j: number): number {
+  private candidate(ia: number, ja: number, a: number): number {
     const f = this.f;
     const s = this.s;
     const vp = this.vp;
-    const S = f[F_S]!;
     const jit = f[F_JIT]!;
+    const level = this.n[N_LEVEL]!;
+    const sa = f[F_S]! * POW2[a - level]!; // the spacing of the lattice the point was born on (metres)
+    const lv = levelIndex(a);
     let px: number;
     let py: number;
     if (jit > 0) {
-      const salt = this.n[N_SALT]!;
-      this.hash(i, j, salt);
+      const salt = SALT_JITTER + 2 * lv;
+      this.hash(ia, ja, salt);
       const hx = this.hv[0]! / U32;
-      this.hash(i, j, salt + 1);
+      this.hash(ia, ja, salt + 1);
       const hy = this.hv[0]! / U32;
-      px = (i + 0.5 + jit * (hx - 0.5) * 2) * S;
-      py = (j + 0.5 + jit * (hy - 0.5) * 2) * S;
+      px = (ia + jit * (hx - 0.5) * 2) * sa;
+      py = (ja + jit * (hy - 0.5) * 2) * sa;
     } else {
-      px = (i + 0.5) * S;
-      py = (j + 0.5) * S;
+      px = ia * sa;
+      py = ja * sa;
     }
     if (px < f[F_RX0]! || px > f[F_RX1]! || py < f[F_RY0]! || py > f[F_RY1]!) return 0;
     s[0] = px;
@@ -515,7 +545,7 @@ class Builder implements DetailBuilder {
     let s2 = dy > 0.02 * slant ? mpp * mpp * (slant / dy) * f[F_AK]! : DENSITY_S2_MAX;
     if (s2 > DENSITY_S2_MAX) s2 = DENSITY_S2_MAX;
     if (s2 > 1) {
-      this.hash(i, j, SALT_ORBIT);
+      this.hash(ia, ja, SALT_ORBIT + lv);
       if ((this.hv[0]! / U32) * s2 >= 1) return 0;
     }
     s[3] = mpp;
@@ -561,10 +591,10 @@ class Builder implements DetailBuilder {
    * Keep a seed for the trace phase: when its cap hash is under the threshold (which halves when the store is full), its wind is not
    * calm and, outside the screen's margin, its line reaches the screen. The wind at the seed gives the segments the line takes at most.
    */
-  private store(i: number, j: number): void {
+  private store(ia: number, ja: number, a: number): void {
     const n = this.n;
     const f = this.f;
-    this.hash(i, j, SALT_CAP);
+    this.hash(ia, ja, SALT_CAP + levelIndex(a));
     const h = this.hv[0]!;
     let tau = f[F_TAU]!;
     if (h >= tau) return;
@@ -587,8 +617,9 @@ class Builder implements DetailBuilder {
         for (let r = 0; r < ns; r++) {
           if (candH[r]! < tau) {
             if (w !== r) {
-              cand[2 * w] = cand[2 * r]!;
-              cand[2 * w + 1] = cand[2 * r + 1]!;
+              cand[3 * w] = cand[3 * r]!;
+              cand[3 * w + 1] = cand[3 * r + 1]!;
+              cand[3 * w + 2] = cand[3 * r + 2]!;
               candH[w] = candH[r]!;
               candN[w] = candN[r]!;
             }
@@ -603,8 +634,9 @@ class Builder implements DetailBuilder {
         return;
       }
     }
-    cand[2 * ns] = i;
-    cand[2 * ns + 1] = j;
+    cand[3 * ns] = ia;
+    cand[3 * ns + 1] = ja;
+    cand[3 * ns + 2] = a;
     candH[ns] = h;
     candN[ns] = steps;
     n[N_NSTORE] = ns + 1;
@@ -694,51 +726,93 @@ class Builder implements DetailBuilder {
         by0 = Math.max(by0, cy - half);
         by1 = Math.min(by1, cy + half);
       }
-      if (bx0 <= bx1 && by0 <= by1) {
-        const i0 = Math.floor(bx0 / S);
-        const j0 = Math.floor(by0 / S);
-        n[N_I0] = i0;
-        n[N_I1] = Math.floor(bx1 / S);
-        n[N_J1] = Math.floor(by1 / S);
-        n[N_CI] = i0;
-        n[N_CJ] = j0;
-      } else {
-        // Nothing of the box is inside the raster: no cell to walk.
-        n[N_I0] = 0;
-        n[N_I1] = -1;
-        n[N_J1] = -1;
-        n[N_CI] = 0;
-        n[N_CJ] = 0;
-      }
+      f[F_BX0] = bx0;
+      f[F_BY0] = by0;
+      f[F_BX1] = bx1;
+      f[F_BY1] = by1;
+      // The share of the finest lattice's own points that the picture keeps: `thin` runs from 1/4 (no points of its own, only the next
+      // coarser lattice's) to 1 (all), and `(4 thin - 1) / 3` of them are kept (a hash priority under it). A plan without `thin` keeps all.
+      const thin = lod.thin !== undefined && lod.thin < 1 ? Math.max(0, (4 * lod.thin - 1) / 3) : 1;
+      f[F_PRIO] = thin * U32;
+      if (bx0 <= bx1 && by0 <= by1) this.startPass(0);
+      else n[N_PASS] = PASSES + 1; // nothing of the box is inside the raster: no cell to walk
       n[N_PHASE] = PHASE_WALK;
     }
     const deadline = f[F_DEADLINE]!;
-    const i0 = n[N_I0]!;
-    const i1 = n[N_I1]!;
-    const j1 = n[N_J1]!;
-    let ci = n[N_CI]!;
-    let cj = n[N_CJ]!;
+    const level = n[N_LEVEL]!;
     const every = n[N_REBUILDS]! <= 4 ? CELL_CHECK_COLD : CELL_CHECK;
     let check = every;
-    while (cj <= j1) {
-      while (ci <= i1) {
-        if (this.candidate(ci, cj) !== 0) this.store(ci, cj);
-        ci++;
-        if (--check <= 0) {
-          check = every;
-          if (input.now() >= deadline) {
-            n[N_CI] = ci;
-            n[N_CJ] = cj;
-            return false;
+    let pass = n[N_PASS]!;
+    while (pass <= PASSES) {
+      const i0 = n[N_I0]!;
+      const i1 = n[N_I1]!;
+      const j1 = n[N_J1]!;
+      let ci = n[N_CI]!;
+      let cj = n[N_CJ]!;
+      const born = level + pass;
+      // The finest lattice keeps only a share of its own points (the ones born on it); the coarser ones keep all of theirs.
+      const thinned = pass === 0 && f[F_PRIO]! < U32;
+      while (cj <= j1) {
+        while (ci <= i1) {
+          let ia = ci;
+          let ja = cj;
+          let a = born;
+          let use = 1;
+          // A point with both indices even is on the next coarser lattice too, and is that lattice's: skipped here, found by the next pass. The
+          // last pass takes them all, and gives each the identity of the coarsest lattice that holds it.
+          if (pass < PASSES) {
+            if (((ia | ja) & 1) === 0) use = 0;
+          } else {
+            const k = Math.min(ia === 0 ? MAX_REDUCE : 31 - Math.clz32(ia & -ia), ja === 0 ? MAX_REDUCE : 31 - Math.clz32(ja & -ja), MAX_REDUCE);
+            ia >>= k;
+            ja >>= k;
+            a += k;
+          }
+          if (use !== 0) {
+            if (thinned) {
+              this.hash(ia, ja, SALT_PRIO + levelIndex(a));
+              if (this.hv[0]! >= f[F_PRIO]!) use = 0;
+            }
+            if (use !== 0 && this.candidate(ia, ja, a) !== 0) this.store(ia, ja, a);
+          }
+          ci++;
+          if (--check <= 0) {
+            check = every;
+            if (input.now() >= deadline) {
+              n[N_CI] = ci;
+              n[N_CJ] = cj;
+              n[N_PASS] = pass;
+              return false;
+            }
           }
         }
+        ci = i0;
+        cj++;
       }
-      ci = i0;
-      cj++;
+      pass++;
+      if (pass <= PASSES) {
+        n[N_PASS] = pass;
+        this.startPass(pass);
+      }
     }
-    n[N_CI] = ci;
-    n[N_CJ] = cj;
+    n[N_PASS] = pass;
     return true;
+  }
+
+  /**
+   * The cells of pass `pass` (the lattice `pass` octaves above the finest) to walk, from the box in F_BX0..F_BY1: the points of the lattice that lie
+   * inside it, with one more on each side for the jitter (under one spacing), and the cursor at the first of them. The coarse passes are a few cells.
+   */
+  private startPass(pass: number): void {
+    const n = this.n;
+    const f = this.f;
+    const sa = f[F_S]! * POW2[pass]!;
+    n[N_PASS] = pass;
+    n[N_I0] = Math.floor(f[F_BX0]! / sa) - 1;
+    n[N_I1] = Math.floor(f[F_BX1]! / sa) + 1;
+    n[N_J1] = Math.floor(f[F_BY1]! / sa) + 1;
+    n[N_CI] = n[N_I0]!;
+    n[N_CJ] = Math.floor(f[F_BY0]! / sa) - 1;
   }
 
   /** Trace the stored seeds in order; true when all are done (or the caps are reached), false when the slice ran out of time. */
@@ -920,9 +994,10 @@ class Builder implements DetailBuilder {
     const s = this.s;
     const vp = this.vp;
     const cand = this.cand;
-    const i = cand[2 * r]!;
-    const j = cand[2 * r + 1]!;
-    if (this.candidate(i, j) === 0) return;
+    const ia = cand[3 * r]!;
+    const ja = cand[3 * r + 1]!;
+    const a = cand[3 * r + 2]!;
+    if (this.candidate(ia, ja, a) === 0) return;
     const vex = f[F_VEX]!;
     const wmin = f[F_WMIN]!;
     const rx0 = f[F_RX0]!;
@@ -947,7 +1022,7 @@ class Builder implements DetailBuilder {
     const half = 0.5 * ds;
     const maxRise = MAX_SLOPE * ds * vex; // the drawn rise of one step at the steepest slope allowed (the exaggeration is part of the drawing)
     // The line's own numbers, the same on every segment: the life (a hash of the lattice cell and the seed), the speed, the terrain, the tail.
-    this.hashSum(i, j, n[N_LIFE]!);
+    this.hashSum(ia, ja, n[N_LIFE]! + levelIndex(a));
     s[17] = (this.hv[0]! >>> 8) / 16777216; // 24 bits: exact in Float32 and under 1
     s[18] = sp;
     this.terrain();

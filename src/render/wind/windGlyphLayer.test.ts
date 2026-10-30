@@ -1035,9 +1035,11 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     expect(input.lod.level).toBe(4);
     expect(input.lod).toMatchObject({ spacingPx: DETAIL_GEOMETRY.spacingPx, curved: true, jitter: DETAIL_GEOMETRY.jitter });
     expect(input.lod.lengthPx).toEqual({ min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs });
-    // 1.4 m a pixel at 1.2 km: a lattice of 32 px is 45 m, so the next power of two of metres, 64.
-    expect(input.lod.spacingM).toBe(64);
-    expect(input.lod.spacingExp).toBe(6);
+    // 1.4 m a pixel at 1.2 km: lines 32 px apart are 45 m, so the finest lattice is the power of two of metres under that, 32 (23 px), and it is
+    // kept to (23 / 32)^2 of its points: 32 px between the lines on average.
+    expect(input.lod.spacingM).toBe(32);
+    expect(input.lod.spacingExp).toBe(5);
+    expect(input.lod.thin).toBeCloseTo((32 / ((32 * 2 * L4 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h)) ** 2, 6);
     expect(input.ground10.elevation[0]).toBe(GROUND); // the 10 m ground as received: the numbers come from it
     expect(input.ground.elevation[0]).toBe(560); // the drawn mesh: the picture sits on it
     expect(input.seed).toBe(0);
@@ -1064,6 +1066,30 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     }
     for (let i = 1; i < exps.length; i++) expect(exps[i]!).toBeLessThanOrEqual(exps[i - 1]!); // zooming in never coarsens the lattice
     expect(new Set(exps).size).toBeGreaterThan(2);
+  });
+
+  it('follows the zoom with its density: a zoom of 6 % rebuilds the detailed streaks although the lattice and the pose rule do not, and a zoom of 2 % does not; the arrows never do', () => {
+    // The share of the lattice kept is 4^-octaves: 12 % for 6 % of distance, and the pose rule asks for 10 % (the lattice is the same power of two here).
+    const r = rig();
+    r.go(L4, { settle: true });
+    const thin0 = r.detail.begins[0]!.lod.thin!;
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L4 * 0.98, { dt: 300 });
+    r.go(L4 * 0.98, { dt: 300 });
+    expect(r.detail.begins, 'a zoom of 2 % keeps the picture').toHaveLength(1);
+    r.go(L4 * 0.94, { dt: 300 });
+    expect(r.detail.begins, 'a zoom of 6 % rebuilds').toHaveLength(2);
+    r.go(L4 * 0.9, { dt: 100 }); // and the next one is held back by the 250 ms gap, like any rebuild
+    r.go(L4 * 0.9, { dt: 100 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.lod.spacingExp).toBe(r.detail.begins[0]!.lod.spacingExp);
+    expect(r.detail.begins[1]!.lod.thin!).toBeGreaterThan(thin0 * 1.1);
+    // The arrows below the last level have no share (always 1): a zoom of 6 % is not a reason for them.
+    const a = rig();
+    a.go(L3, { settle: true });
+    a.go(L3 * 0.94, { dt: 300 });
+    a.go(L3 * 0.94, { dt: 300 });
+    expect(a.stub.begins).toHaveLength(1);
   });
 
   it('builds nothing below the most detailed level with only the Wind streaks on, but says which level the zoom is at', () => {
@@ -1583,7 +1609,7 @@ describe('WindGlyphLayer with the real detailed-streak builder: what the shader 
       // The ends are in metres (world axes), a few metres apart at this zoom.
       const run = Math.hypot(b[3 * i]! - a[3 * i]!, b[3 * i + 2]! - a[3 * i + 2]!);
       expect(run, at).toBeGreaterThan(0.5);
-      expect(run, at).toBeLessThan(40);
+      expect(run, at).toBeLessThan(60); // (a step of 9 px reaches 40 m or so near the horizon of an orbit view)
     }
     expect(lifted, 'the rolling ground lifts and sinks some lines').toBeGreaterThan(n / 10);
   });

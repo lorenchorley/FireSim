@@ -99,8 +99,9 @@ const copyPlan = (from: LodPlan, to: LodPlan): void => {
   to.lengthPx.max = from.lengthPx.max;
   to.lengthPx.pxPerMs = from.lengthPx.pxPerMs;
   to.mppCentre = from.mppCentre;
+  to.thin = from.thin;
 };
-const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
+const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
 
 export class WindGlyphLayer {
   readonly group = new THREE.Group();
@@ -169,7 +170,7 @@ export class WindGlyphLayer {
   private sigValid = false;
   private lastSerial = -1;
   private lastHeight: WindHeight | null = null;
-  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, pose: this.pose, proj: this.proj, distanceM: 0 };
+  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: this.pose, proj: this.proj, distanceM: 0 };
   private readonly unproject = new THREE.Matrix4();
   private readonly viewProj = new Float64Array(16);
   private readonly eye = new Float64Array(3);
@@ -356,6 +357,7 @@ export class WindGlyphLayer {
     n.height = this.height;
     n.level = lod.level;
     n.spacingExp = lod.spacingExp;
+    n.thin = lod.thin;
     n.distanceM = targetDistance;
     // A rebuild under way is thrown away when it is about a different picture; a camera that moved only makes the next one.
     if (this.working && (this.next.dataSerial !== n.dataSerial || this.next.height !== n.height || this.next.level !== n.level || this.next.spacingExp !== n.spacingExp)) this.cancel();
@@ -576,6 +578,7 @@ export class WindGlyphLayer {
     const next = this.next;
     next.level = lod.level;
     next.spacingExp = lod.spacingExp;
+    next.thin = lod.thin;
     next.pose.set(this.pose);
     next.proj.set(this.proj);
     const box = this.boxFor(0.25, next.box);

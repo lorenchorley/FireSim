@@ -38,6 +38,12 @@ export interface LodPlan {
    * orbit density, `s = mppSeed / mppCentre`). Absent in a hand-made plan: the builder then uses `spacingM / spacingPx`.
    */
   mppCentre?: number;
+  /**
+   * Additive (0.6.0): the share of the finest lattice's density the picture keeps, 1/4 to 1 (absent is 1). Only the detailed streaks' builder
+   * reads it: it runs a nested lattice (see `detailStreaks.ts`) whose finest octave is thinned by this, so the line count follows the zoom
+   * continuously and the picture is the same on both sides of an octave edge. `planLod` gives 1 to every other level.
+   */
+  thin?: number;
 }
 /** Texel k = j * nx + i at (x0 + i * cellSize, y0 + j * cellSize); u east, v north, m/s. */
 export interface FlowRaster {
@@ -93,8 +99,11 @@ export const DETAIL_LEVEL = 4 as const;
 /** `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, or drawn standing still (reduced motion). */
 export type DetailMotion = 'off' | 'moving' | 'still';
 /**
- * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. The lattice is 32 px, so it runs from 32 to
- * 64 px (a power of two of metres): at 40 the sparse end of each octave was 80 px, about 70 lines in a 412 x 915 forest view.
+ * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. `spacingPx` is how far apart the lines are on
+ * the screen, on average, at every zoom (a lattice of one line to 32 x 32 px, about 400 to 630 lines over a 412 x 915 view): the lattice is a nested one,
+ * its finest octave 16 to 32 px apart thinned to that by `LodPlan.thin`, so the count of lines follows the zoom and nothing pops where the octave changes
+ * (a lattice of one power of two of metres, 32 to 64 px apart, lost three quarters of its lines through each octave and got them back, with the whole
+ * picture replaced, at the edge).
  */
 export const DETAIL_GEOMETRY = { spacingPx: 32, jitter: 0.35, minPx: 90, maxPx: 220, pxPerMs: 16, stepPx: 9, minSegments: 8, maxSegments: 24 } as const;
 /** How long the detailed streaks take to fade in on entering the level, and out on leaving it (ms of capped frame time). */
