@@ -11,7 +11,10 @@
  *    staged: the raster fill in slices of its own (resumable by rows), then the trace in slices of at most 8 ms; the batches
  *    change only at the swap;
  *  - the segment cap follows `renderer.info`, so a frame never crosses `FRAME_TRIANGLE_LIMIT`; when that leaves no room at all
- *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room);
+ *    nothing is drawn and `stats().idle` says `budget` (the layer looks again when the frame has room). The one exception is the
+ *    detailed streaks, which keep `DETAIL_MIN_SEGMENTS` however full the frame is (a dense forest at the High tier is over the limit
+ *    without them): that is the High tier's whole cap, so they are never trimmed, the closest zoom always has its picture, the same view
+ *    gives the same picture, and the limit is exceeded by at most 2 triangles a segment of it;
  *  - the picture is draped on the drawn mesh a little above the ground; the numbers come from the 10 m ground as received.
  * Eye level, a view without air wind and a map zoomed so far out that a model cell is under 4 px draw nothing (`stats().idle`).
  *
@@ -35,7 +38,7 @@ import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, GLYPH_CAPS, type Box, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, GLYPH_CAPS, type Box, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
@@ -99,8 +102,9 @@ const copyPlan = (from: LodPlan, to: LodPlan): void => {
   to.lengthPx.max = from.lengthPx.max;
   to.lengthPx.pxPerMs = from.lengthPx.pxPerMs;
   to.mppCentre = from.mppCentre;
+  to.thin = from.thin;
 };
-const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
+const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
 
 export class WindGlyphLayer {
   readonly group = new THREE.Group();
@@ -169,7 +173,7 @@ export class WindGlyphLayer {
   private sigValid = false;
   private lastSerial = -1;
   private lastHeight: WindHeight | null = null;
-  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, pose: this.pose, proj: this.proj, distanceM: 0 };
+  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: this.pose, proj: this.proj, distanceM: 0 };
   private readonly unproject = new THREE.Matrix4();
   private readonly viewProj = new Float64Array(16);
   private readonly eye = new Float64Array(3);
@@ -324,7 +328,7 @@ export class WindGlyphLayer {
     proj[1] = camera.projectionMatrix.elements[8]!;
     proj[2] = camera.projectionMatrix.elements[9]!;
     // A picture trimmed to nothing is built again once the frame has room (a layer switched off, a smaller view), with no camera move needed.
-    const retry = this.noRoom && segmentCap(GLYPH_CAPS[this.tier].segments, framesTriangles, 0, this.planLevel === DETAIL_LEVEL ? DETAIL_TRIANGLES : GLYPH_TRIANGLES) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
+    const retry = this.noRoom && this.roomFor(this.planLevel === DETAIL_LEVEL, framesTriangles) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
     // Nothing changed since the last frame and nothing is waiting: the whole idle cost is this comparison.
     if (this.sigValid && !retry && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
     this.lastPose.set(pose);
@@ -356,6 +360,7 @@ export class WindGlyphLayer {
     n.height = this.height;
     n.level = lod.level;
     n.spacingExp = lod.spacingExp;
+    n.thin = lod.thin;
     n.distanceM = targetDistance;
     // A rebuild under way is thrown away when it is about a different picture; a camera that moved only makes the next one.
     if (this.working && (this.next.dataSerial !== n.dataSerial || this.next.height !== n.height || this.next.level !== n.level || this.next.spacingExp !== n.spacingExp)) this.cancel();
@@ -497,6 +502,15 @@ export class WindGlyphLayer {
     return Math.max(0, framesTriangles - GLYPH_TRIANGLES * (this.shown ? this.segments : 0) - DETAIL_TRIANGLES * this.detailSegments);
   }
 
+  /**
+   * The segments a picture of this kind may hold with `others` triangles in the rest of the frame: the tier's cap trimmed to the limit, and for the
+   * detailed streaks never under `DETAIL_MIN_SEGMENTS` (the whole cap of every tier, so no trim), so that the closest zoom of a full frame (dense
+   * forest, High tier) has its picture, the same one whatever the frame held when it was built.
+   */
+  private roomFor(detailed: boolean, others: number): number {
+    return segmentCap(GLYPH_CAPS[this.tier].segments, others, 0, detailed ? DETAIL_TRIANGLES : GLYPH_TRIANGLES, detailed ? DETAIL_MIN_SEGMENTS : 0);
+  }
+
   private setNoRoom(on: boolean): void {
     this.noRoom = on;
     this.idle = on ? 'budget' : null;
@@ -568,6 +582,7 @@ export class WindGlyphLayer {
     const next = this.next;
     next.level = lod.level;
     next.spacingExp = lod.spacingExp;
+    next.thin = lod.thin;
     next.pose.set(this.pose);
     next.proj.set(this.proj);
     const box = this.boxFor(0.25, next.box);
@@ -579,7 +594,7 @@ export class WindGlyphLayer {
     this.viewProj.set(this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements);
     const caps = GLYPH_CAPS[this.tier];
     const detailed = lod.level === DETAIL_LEVEL;
-    this.beginSegments = segmentCap(caps.segments, this.othersTriangles(framesTriangles), 0, detailed ? DETAIL_TRIANGLES : GLYPH_TRIANGLES);
+    this.beginSegments = this.roomFor(detailed, this.othersTriangles(framesTriangles));
     const input: GlyphInput = {
       field: this.raster!,
       ground: d.drawGround,
@@ -609,7 +624,7 @@ export class WindGlyphLayer {
     if (this.next.level === DETAIL_LEVEL) return this.swapDetail(now, framesTriangles, settle);
     const out = this.builder.out;
     // The room may have changed since the build began (the frame's other layers moved): the cap is applied again.
-    const room = Math.min(segmentCap(this.halo.capacity, this.othersTriangles(framesTriangles), 0, GLYPH_TRIANGLES), this.halo.capacity);
+    const room = this.roomFor(false, this.othersTriangles(framesTriangles));
     const n = Math.min(out.segments, room);
     // The rest of the frame already uses every triangle: nothing of ours fits, and the control says so. (A build that was given no room
     // at its start drew nothing for that reason too, whatever the frame has by now: the next rebuild is due as soon as there is room.)
@@ -633,7 +648,7 @@ export class WindGlyphLayer {
   /** The detailed streaks' picture swaps in (the arrows and flow lines of the lower levels go at once, the streaks fade in). */
   private swapDetail(now: number, framesTriangles: number, settle: boolean): boolean {
     const out = this.detailBuilder.out;
-    const room = Math.min(segmentCap(this.detail.capacity, this.othersTriangles(framesTriangles), 0, DETAIL_TRIANGLES), this.detail.capacity);
+    const room = this.roomFor(true, this.othersTriangles(framesTriangles));
     const n = Math.min(out.segments, room);
     this.setNoRoom(room === 0 || this.beginSegments === 0);
     this.detail.a.set(out.a.subarray(0, n * 3));

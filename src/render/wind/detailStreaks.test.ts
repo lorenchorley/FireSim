@@ -9,7 +9,7 @@ import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
 import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERRAIN, detailGroundFactor, pulseIntensity } from './detailStreaks';
 import { detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
-import { buildAll, clipW, counterClock, groundOf, latticeSeed, makeCamera, ORIGIN, topDownCamera } from './glyphOracle.testing';
+import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { DETAIL_GEOMETRY, type DetailBuilder, type DetailOutput, type GlyphTier } from './glyphTypes';
 
 /** Metres per pixel of a flat top view. */
@@ -718,21 +718,144 @@ describe('deterministic seeds and lifetimes', () => {
     expect(shared).toBeGreaterThan(30);
   });
 
-  it('a seed is the lattice formula: cell centre moved by the hash, anchored to the world', () => {
-    const sc = makeDetailScenario({ field: () => [6, 8] });
+  it('a seed is the nested lattice formula: the lattice point of the level it was born at, moved by the hash of its identity, anchored to the world', () => {
+    const sc = makeDetailScenario({ field: () => [6, 8], plan: { thin: 1 } });
     const { lines } = build(sc);
-    const S = sc.plan.spacingM;
-    expect(S).toBe(2 ** sc.plan.spacingExp);
+    const j = sc.plan.spacingExp;
+    expect(sc.plan.spacingM).toBe(2 ** j);
     expect(sc.plan.jitter).toBe(0.35);
     let worst = 0;
+    const born = new Array<number>(14).fill(0);
     for (const l of lines) {
-      const i = Math.floor(l.seed[0] / S);
-      const j = Math.floor(l.seed[1] / S);
-      const [x, y] = latticeSeed(i, j, sc.plan.spacingExp, sc.plan.jitter);
-      worst = Math.max(worst, Math.abs(x - l.seed[0]), Math.abs(y - l.seed[1]));
+      // The identity is the one lattice level (j to j + 12) whose indices, not both even, put the formula on the seed.
+      let best = Infinity;
+      let bornAt = -1;
+      for (let t = 0; t <= 12; t++) {
+        const S = 2 ** (j + t);
+        const ia = Math.round(l.seed[0] / S);
+        const ja = Math.round(l.seed[1] / S);
+        if (t < 12 && (ia & 1) === 0 && (ja & 1) === 0) continue;
+        const [x, y] = nestedSeed(ia, ja, j + t, sc.plan.jitter);
+        const d = Math.max(Math.abs(x - l.seed[0]), Math.abs(y - l.seed[1]));
+        if (d < best) {
+          best = d;
+          bornAt = t;
+        }
+      }
+      worst = Math.max(worst, best);
+      born[bornAt]!++;
     }
-    expect(lines.length).toBeGreaterThan(50);
+    expect(lines.length).toBeGreaterThan(200);
     expect(worst).toBeLessThan(5e-4); // Float32 at 3 km
+    // A quarter of the points are on the next lattice too: three quarters of a full picture are born at the finest level, a sixteenth at the next.
+    expect(born[0]! / lines.length).toBeGreaterThan(0.65);
+    expect(born[0]! / lines.length).toBeLessThan(0.85);
+    expect(born[1]!).toBeGreaterThan(0);
+  });
+});
+
+describe('the nested lattice: nothing pops where the lattice changes, and the line count follows the zoom', () => {
+  const field = (x: number, y: number): [number, number] => [5 + Math.sin(y / 700), 2 + Math.cos(x / 500)];
+  const key = (l: Line): string => `${l.seed[0]},${l.seed[1]}`;
+  /** The same view planned with the finest lattice `exp` and the share `thin` of it. */
+  const planned = (exp: number, thin: number, o: DetailScenarioOptions = {}): DetailScenario => makeDetailScenario({ field, seed: 5, plan: { spacingExp: exp, spacingM: 2 ** exp, thin }, ...o });
+  const bytesOf = (b: { out: DetailOutput }, l: Line): string => {
+    const out = b.out;
+    const parts: number[] = [];
+    for (let k = 0; k < l.count; k++) {
+      const i = l.seg + k;
+      for (let c = 0; c < 3; c++) parts.push(out.a[3 * i + c]!, out.b[3 * i + c]!);
+      for (let c = 0; c < 4; c++) parts.push(out.c[4 * i + c]!, out.d[4 * i + c]!, out.e[4 * i + c]!);
+    }
+    return parts.join(',');
+  };
+
+  it('is the same picture either side of an octave edge: the finer lattice at 1/4 of its points is the coarser lattice at all of its own, line for line', () => {
+    // (Two octaves up from the scenario's own lattice, so that even the finer lattice at all of its points fits the caps: a cap thins by its own hash.)
+    const j = makeDetailScenario({ field, seed: 5 }).plan.spacingExp + 2;
+    const coarse = build(planned(j, 1));
+    const fine = build(planned(j - 1, 0.25));
+    expect(coarse.lines.length).toBeGreaterThan(80);
+    expect(fine.lines.length).toBe(coarse.lines.length);
+    expect(fine.out.segments).toBe(coarse.out.segments);
+    const inCoarse = new Map(coarse.lines.map((l) => [key(l), bytesOf(coarse, l)]));
+    for (const l of fine.lines) expect(bytesOf(fine, l), `the line at ${key(l)}`).toBe(inCoarse.get(key(l)));
+    // And the other way: the finer lattice at all of its points holds the coarser one at all of its own, and four times the lines.
+    const full = build(planned(j - 1, 1));
+    expect(full.lines.length / coarse.lines.length).toBeGreaterThan(3.3);
+    expect(full.lines.length / coarse.lines.length).toBeLessThan(4.7);
+    const inFull = new Map(full.lines.map((l) => [key(l), bytesOf(full, l)]));
+    for (const l of coarse.lines) expect(inFull.get(key(l)), `the line at ${key(l)}`).toBe(bytesOf(coarse, l));
+  });
+
+  it('adds lines and never moves or removes one as the share rises: the lines of a lower share are all in a higher one, and their count goes with the share', () => {
+    const j = makeDetailScenario({ field, seed: 5 }).plan.spacingExp + 1;
+    const shares = [0.25, 0.35, 0.5, 0.7, 0.85, 1];
+    const builds = shares.map((t) => build(planned(j, t)));
+    const full = builds[builds.length - 1]!.lines.length;
+    for (let k = 1; k < builds.length; k++) {
+      const lo = builds[k - 1]!;
+      const hi = builds[k]!;
+      const inHi = new Map(hi.lines.map((l) => [key(l), bytesOf(hi, l)]));
+      for (const l of lo.lines) expect(inHi.get(key(l)), `share ${shares[k - 1]} in ${shares[k]}`).toBe(bytesOf(lo, l));
+      expect(hi.lines.length).toBeGreaterThan(lo.lines.length);
+      expect(hi.lines.length / full).toBeCloseTo(shares[k]!, 1); // the count is the share of the whole lattice (within a tenth)
+    }
+    expect(builds[0]!.lines.length / full).toBeCloseTo(0.25, 1);
+  });
+
+  it('a plan without a share keeps all of the finest lattice, as a share of 1 does', () => {
+    const j = makeDetailScenario({ field, seed: 5 }).plan.spacingExp + 1;
+    const a = build(planned(j, 1));
+    const sc = planned(j, 1);
+    delete (sc.input.lod as { thin?: number }).thin;
+    const b = build(sc);
+    expect(detailBytes(b.out).equals(detailBytes(a.out))).toBe(true);
+  });
+
+  it('a line keeps its life, place and shape across rebuilds at different zooms (its lines are the same line, not a new one with the same seed)', () => {
+    const near = build(makeDetailScenario({ field, seed: 5, cellPx: 150 }));
+    const far = build(makeDetailScenario({ field, seed: 5, cellPx: 135 }));
+    const inFar = new Map(far.lines.map((l) => [key(l), l]));
+    let shared = 0;
+    for (const l of near.lines) {
+      const m = inFar.get(key(l));
+      if (!m) continue;
+      shared++;
+      expect(m.life).toBe(l.life);
+      expect(m.speed).toBe(l.speed);
+      expect(m.turb).toBe(l.turb);
+    }
+    expect(shared).toBeGreaterThan(near.lines.length * 0.3);
+  });
+
+  it('the line count of a continuous zoom changes by under 12 % for a step of 6 %, through every octave edge, over flat ground and a rolling one', () => {
+    const rolling = groundOf(makeDetailScenario({ field }).raster.grid, (x, y) => 40 * Math.sin(x / 400) + 20 * Math.cos(y / 300));
+    for (const [name, o, baseY] of [['flat', {}, 0], ['rolling', { groundRaster: rolling }, 80]] as const) {
+      const counts: number[] = [];
+      const exps = new Set<number>();
+      for (let px = 104; px < 3300; px *= 1.06) {
+        const sc = makeDetailScenario({ field, seed: 5, camera: topDownCamera(133, px, 0, 0, {}, baseY), ...o });
+        exps.add(sc.plan.spacingExp);
+        counts.push(build(sc).lines.length);
+      }
+      expect(exps.size, name).toBeGreaterThanOrEqual(5); // five octaves of zoom: four edges crossed
+      for (let k = 1; k < counts.length; k++) {
+        const r = Math.max(counts[k]! / counts[k - 1]!, counts[k - 1]! / counts[k]!);
+        expect(r, `${name}: ${counts[k - 1]} to ${counts[k]} lines at step ${k}`).toBeLessThan(1.12);
+      }
+      // With a lattice 4 x as dense as the old sparse end: about one line to 32 x 32 px of screen and margin, not one to 64 x 64.
+      for (const c of counts) expect(c, name).toBeGreaterThan(300);
+    }
+  });
+
+  it('the same lines are drawn for a view whichever way its zoom was reached: the picture is a function of the plan alone', () => {
+    const j = makeDetailScenario({ field, seed: 5 }).plan.spacingExp;
+    const a = build(planned(j, 0.6));
+    const used = createDetailBuilder('high'); // a builder that built another zoom first
+    buildAll(used, planned(j + 1, 0.3).input);
+    buildAll(used, planned(j, 0.6).input);
+    expect(detailBytes(used.out).equals(detailBytes(a.out))).toBe(true);
   });
 });
 
@@ -790,7 +913,7 @@ describe('pan invariance', () => {
 
   it('after a pan of a kilometre (a tablet screen, the same lattice) the lines both views hold are the same bytes', () => {
     const field = (x: number, y: number): [number, number] => [5 + Math.sin(y / 800), 2 + Math.cos(x / 600)];
-    const screen = { cssW: 1280, cssH: 800 };
+    const screen = { cssW: 900, cssH: 560 };
     const A = makeDetailScenario({ field, camera: topDownCamera(133, 105, 0, 0, screen) });
     const S = A.plan.spacingM;
     const dx = Math.round(1000 / S) * S;
@@ -943,7 +1066,7 @@ describe('staging', () => {
     while (!b.step(1e9)) {
       /* done in one */
     }
-    expect(clock.reads()).toBeLessThan(60);
+    expect(clock.reads()).toBeLessThan(200); // a read every 256 cells of the walk while the builder is cold (and the lattice is four times as dense as it was): not one a cell
   });
 });
 

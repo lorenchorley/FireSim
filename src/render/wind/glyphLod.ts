@@ -7,7 +7,10 @@
  * whose spacing is a power of two of metres, so panning never moves a seed and zooming changes the spacing in steps.
  *
  * 0.6.0: the last level draws the detailed streaks when `planLod` is asked for them (`detail`), with the numbers of `DETAIL_GEOMETRY`
- * (more, longer lines whose tails fade); without it the plan keeps the 0.5.0 numbers, so the flow-line glyphs and their tests stand.
+ * (more, longer lines whose tails fade); without it the plan keeps the 0.5.0 numbers, so the flow-line glyphs and their tests stand. The
+ * detailed streaks' lattice is not one lattice per octave of zoom but a nested one (`detailStreaks.ts`): the plan gives its finest octave,
+ * `spacingExp`, and `thin`, the share of that octave's own points the picture keeps, which follows the zoom continuously, so that the density
+ * of the lines stays `DETAIL_GEOMETRY.spacingPx` apart on the screen at every zoom and nothing pops where the exponent changes.
  */
 import { DETAIL_GEOMETRY, type Box, type GlyphLevel, type LodPlan } from './glyphTypes';
 
@@ -44,7 +47,7 @@ const LEVEL_SPECS: readonly LevelSpec[] = [
   { spacingPx: 56, curved: true, jitter: 0.3, pxPerMs: 6, minPx: 90, maxPx: 140 }, // L4: long flow lines
 ];
 
-/** The last level with the detailed streaks (0.6.0): the lattice, jitter and line lengths of `DETAIL_GEOMETRY`, always curved. */
+/** The last level with the detailed streaks (0.6.0): the line spacing, jitter and line lengths of `DETAIL_GEOMETRY`, always curved. */
 const DETAIL_SPEC: LevelSpec = {
   spacingPx: DETAIL_GEOMETRY.spacingPx,
   curved: true,
@@ -80,6 +83,9 @@ function rawLevel(cellPx: number): GlyphLevel {
  * alone decides the lattice; the kept exponent holds only within `SPACING_EXP_HYSTERESIS` octave of an edge between two exponents.
  * `out` (optional) is filled and returned instead of a new object; it may be `prev` itself. `detail` (0.6.0) gives the last level the
  * numbers of the detailed streaks (`DETAIL_SPEC`) instead of the 0.5.0 flow lines; the other levels and the level itself do not depend on it.
+ * For the detailed streaks the exponent is that of the finest lattice, the octave below the one that would be `spacingPx` apart: the lines
+ * are `spacingPx` apart on average at every zoom, `thin` (1/4 to 1: `4^(exponent - u - 1)` for `u = log2(spacingPx x mppCentre)`) is the share
+ * of that lattice's own points the picture keeps, 1 where the zoom has just brought the lattice in and 1/4 where the next one takes over.
  */
 export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, 'level' | 'spacingExp'> | null, out?: LodPlan, detail = false): LodPlan {
   let level: number;
@@ -90,13 +96,19 @@ export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, '
     while (level < 4 && cellPx >= LEVEL_EDGES[level]! * LOD_HYSTERESIS) level++;
     while (level > 0 && cellPx < LEVEL_EDGES[level - 1]! / LOD_HYSTERESIS) level--;
   }
-  const spec = detail && level === 4 ? DETAIL_SPEC : LEVEL_SPECS[level]!;
+  const nested = detail && level === 4;
+  const spec = nested ? DETAIL_SPEC : LEVEL_SPECS[level]!;
   let exp = 0;
+  let thin = 1;
   if (level > 0 && mppCentre > 0 && Number.isFinite(mppCentre)) {
-    // `t` is the exact exponent moved so that the edges between two exponents sit on the whole numbers: the exponent `k` owns (k - 1, k].
-    const t = Math.log2(spec.spacingPx * mppCentre) - (spec.curved ? 0 : 0.5);
+    // `t` is the exact exponent moved so that the edges between two exponents sit on the whole numbers: the exponent `k` owns (k - 1, k]. The detailed
+    // streaks' lattice is the octave finer than the one `spacingPx` apart (so `t` is one lower), and the part of it kept is `4^(k - u)`, u = t + 1.
+    const t = Math.log2(spec.spacingPx * mppCentre) - (nested ? 1 : spec.curved ? 0 : 0.5);
     exp = Math.ceil(t);
     if (prev && prev.level > 0 && t > prev.spacingExp - 1 - SPACING_EXP_HYSTERESIS && t <= prev.spacingExp + SPACING_EXP_HYSTERESIS) exp = prev.spacingExp;
+    // (Inside the hysteresis band the kept exponent can be one the zoom has just left: the share is held to its range, so the picture is the
+    // whole of the lattice or the whole of the coarser one there.)
+    if (nested) thin = Math.min(1, Math.max(0.25, 4 ** (exp - t - 1)));
   }
   const plan: LodPlan = out ?? { level: 0, cellPx: 0, spacingPx: 0, spacingExp: 0, spacingM: 0, curved: false, jitter: 0, lengthPx: { min: 0, max: 0, pxPerMs: 0 } };
   plan.level = level as GlyphLevel;
@@ -110,6 +122,7 @@ export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, '
   plan.lengthPx.max = spec.maxPx;
   plan.lengthPx.pxPerMs = spec.pxPerMs;
   plan.mppCentre = mppCentre;
+  plan.thin = thin;
   return plan;
 }
 

@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { REBUILD_MIN_GAP_MS } from './glyphPose';
-import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box } from './glyphTypes';
+import { mayRebuild, rebuildReason, segmentCap, SliceLog, THIN_REBUILD_RATIO, type BuiltPicture, type PictureNow } from './glyphSchedule';
+import { DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box } from './glyphTypes';
 
 /** The camera of these tests: 3 km from a target on the ground at (0, 0), looking down at it from the south at about 56 degrees. */
 const EYE: [number, number, number] = [0, 2500, 1700];
@@ -48,6 +48,26 @@ describe('rebuildReason', () => {
     expect(rebuildReason(built(), now({ dataSerial: 5, height: 300, level: 4, spacingExp: 8 }), inside)).toBe('snapshot');
     expect(rebuildReason(built(), now({ height: 300, level: 4, spacingExp: 8 }), inside)).toBe('height');
     expect(rebuildReason(built(), now({ level: 4, spacingExp: 8 }), inside)).toBe('level');
+  });
+
+  it('asks for a new picture when the density the zoom asks for has drifted by a tenth from the one that was built (the detailed streaks follow the zoom), and not before', () => {
+    expect(THIN_REBUILD_RATIO).toBe(1.1);
+    const b = built({ level: 4, thin: 0.5 });
+    const n = (thin: number | undefined): PictureNow => now({ level: 4, thin });
+    expect(rebuildReason(b, n(0.5), inside)).toBeNull();
+    expect(rebuildReason(b, n(0.54), inside)).toBeNull(); // 8 % more
+    expect(rebuildReason(b, n(0.46), inside)).toBeNull();
+    expect(rebuildReason(b, n(0.56), inside)).toBe('density'); // 12 % more: a zoom of about 6 %
+    expect(rebuildReason(b, n(0.44), inside)).toBe('density');
+    // The drift is against what was BUILT, so a slow zoom adds up; and either way round.
+    expect(rebuildReason(built({ level: 4, thin: 0.9 }), n(0.8), inside)).toBe('density');
+    expect(rebuildReason(built({ level: 4, thin: 0.25 }), n(1), inside)).toBe('density');
+    // A picture or a plan without a share (the arrows and flow lines, and the pictures of before) never asks.
+    expect(rebuildReason(built({ level: 4 }), n(0.3), inside)).toBeNull();
+    expect(rebuildReason(b, n(undefined), inside)).toBeNull();
+    // It comes after the cheaper facts and before the pose.
+    expect(rebuildReason(b, now({ level: 4, thin: 0.3, spacingExp: 8 }), inside)).toBe('lattice');
+    expect(rebuildReason(b, now({ level: 4, thin: 0.3, pose: pose({ eye: [450, 2500, 1700] }) }), inside)).toBe('density');
   });
 
   it('compares the pose with the BUILT picture, so small drifts add up', () => {
@@ -101,7 +121,7 @@ describe('mayRebuild (the 250 ms throttle, counted from the last swap)', () => {
 
   it('holds every other reason until 250 ms after the last swap', () => {
     expect(REBUILD_MIN_GAP_MS).toBe(250);
-    for (const r of ['snapshot', 'height', 'level', 'lattice', 'moved', 'turned', 'zoomed', 'resized', 'left-box', 'exaggeration'] as const) {
+    for (const r of ['snapshot', 'height', 'level', 'lattice', 'density', 'moved', 'turned', 'zoomed', 'resized', 'left-box', 'exaggeration'] as const) {
       expect(mayRebuild(r, 1100, 1000, false), r).toBe(false);
       expect(mayRebuild(r, 1249, 1000, false), r).toBe(false);
       expect(mayRebuild(r, 1250, 1000, false), r).toBe(true);
@@ -195,6 +215,55 @@ describe('segmentCap for the detailed streaks (2 triangles a segment, one batch)
         expect(cap).toBeLessThanOrEqual(tier);
       }
     }
+  });
+});
+
+describe('segmentCap with a floor (the detailed streaks keep DETAIL_MIN_SEGMENTS in a full frame)', () => {
+  const tier = GLYPH_CAPS.high.segments;
+  const floor = 8000; // a floor under the cap, to see the trim above it (the app's own floor is the whole cap)
+
+  it('the app\'s floor is the High tier\'s cap: the detailed streaks are never trimmed to the frame at any tier, and the worst case is 2 triangles of it over the limit', () => {
+    expect(DETAIL_MIN_SEGMENTS).toBe(GLYPH_CAPS.high.segments);
+    for (const t of ['low', 'medium', 'high'] as const) {
+      for (const others of [0, 300_000, 540_000, 563_000, 600_000]) expect(segmentCap(GLYPH_CAPS[t].segments, others, 0, 2, DETAIL_MIN_SEGMENTS), `${t}, ${others}`).toBe(GLYPH_CAPS[t].segments);
+    }
+    expect(2 * DETAIL_MIN_SEGMENTS).toBe(24_000);
+    expect(2 * DETAIL_MIN_SEGMENTS).toBeLessThan(0.05 * FRAME_TRIANGLE_LIMIT); // the number the plan is told: under 5 % of 550,000 (4.4 %)
+  });
+
+  it('is the floor where the frame leaves less room (or none, or a frame over the limit), and the room where it leaves more', () => {
+    expect(segmentCap(tier, FRAME_TRIANGLE_LIMIT - 2 * 100, 0, 2, floor)).toBe(floor); // room for 100
+    expect(segmentCap(tier, FRAME_TRIANGLE_LIMIT, 0, 2, floor)).toBe(floor);
+    expect(segmentCap(tier, 563_000, 0, 2, floor)).toBe(floor); // a dense forest at the High tier: the frame is over the limit without us
+    expect(segmentCap(tier, FRAME_TRIANGLE_LIMIT - 2 * floor, 0, 2, floor)).toBe(floor); // exactly room for the floor
+    expect(segmentCap(tier, FRAME_TRIANGLE_LIMIT - 2 * (floor + 1), 0, 2, floor)).toBe(floor + 1);
+    expect(segmentCap(tier, 530_000, 0, 2, floor)).toBe(10_000);
+    expect(segmentCap(tier, 0, 0, 2, floor)).toBe(tier);
+  });
+
+  it('never exceeds the tier\'s cap: a floor above it is the cap', () => {
+    for (const t of ['low', 'medium', 'high'] as const) {
+      const cap = GLYPH_CAPS[t].segments;
+      expect(segmentCap(cap, 900_000, 0, 2, floor)).toBe(Math.min(floor, cap));
+      expect(segmentCap(cap, 0, 0, 2, 1_000_000)).toBe(cap);
+    }
+  });
+
+  it('is the same as no floor when the floor is 0, which is how the glyph pair is asked', () => {
+    for (const frame of [0, 300_000, 540_000, 550_000, 560_000]) for (const own of [0, 3000]) expect(segmentCap(tier, frame, own, 4, 0)).toBe(segmentCap(tier, frame, own, 4));
+  });
+
+  it('exceeds the limit by at most 2 triangles a segment of the floor, and only by the floor: the worst case of the detailed streaks', () => {
+    for (const others of [0, 400_000, 520_000, 534_000, 540_000, 549_999, 550_000, 563_000, 600_000]) {
+      const cap = segmentCap(tier, others, 0, 2, floor);
+      expect(others + 2 * cap).toBeLessThanOrEqual(Math.max(FRAME_TRIANGLE_LIMIT, others + 2 * floor));
+      expect(cap).toBeGreaterThanOrEqual(floor);
+    }
+  });
+
+  it('does not count its own picture against itself, and still keeps the floor', () => {
+    expect(segmentCap(tier, 540_000, 3000, 2, floor)).toBe(8000); // as without a floor: 534,000 of the others leaves 16,000 triangles
+    expect(segmentCap(tier, 563_000 + 2 * 5000, 5000, 2, floor)).toBe(floor);
   });
 });
 

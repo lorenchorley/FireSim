@@ -14,6 +14,8 @@ export interface BuiltPicture {
   height: WindHeight;
   level: GlyphLevel;
   spacingExp: number;
+  /** The share of the finest lattice the picture kept (`LodPlan.thin`; absent is 1): the detailed streaks follow the zoom with it. */
+  thin?: number;
   pose: PoseSig;
   /** The projection's own numbers (fov and the two view-offset terms): a panel opening shifts the picture without moving the camera. */
   proj: Float64Array;
@@ -27,14 +29,22 @@ export interface PictureNow {
   height: WindHeight;
   level: GlyphLevel;
   spacingExp: number;
+  thin?: number;
   pose: PoseSig;
   proj: ArrayLike<number>;
   distanceM: number;
 }
 
 /**
+ * The picture's density follows the zoom: a rebuild is due when the share the picture kept (`thin`, which runs 1/4 to 1 through an octave of
+ * zoom, so it changes by a tenth for about a 5 % zoom) is more than this far, as a ratio, from the share the zoom asks for now. Every rebuild
+ * still waits for `mayRebuild`, so a pinch costs four a second at most.
+ */
+export const THIN_REBUILD_RATIO = 1.1;
+
+/**
  * Why the drawn picture is out of date, or null while it is good enough. The first fact that differs wins: no picture yet,
- * new data, another height, another level of detail or lattice, then the pose (`poseChange`, always against the BUILT picture
+ * new data, another height, another level of detail or lattice, a density that has drifted by a tenth (`THIN_REBUILD_RATIO`), then the pose (`poseChange`, always against the BUILT picture
  * and never against the last frame, so a slow drift adds up), then the projection, then the visible ground leaving the built box.
  * `visible` is asked last and only when nothing else decided: it is the dearest question.
  */
@@ -44,6 +54,7 @@ export function rebuildReason(built: BuiltPicture | null, now: PictureNow, visib
   if (built.height !== now.height) return 'height';
   if (built.level !== now.level) return 'level';
   if (built.spacingExp !== now.spacingExp) return 'lattice';
+  if (built.thin !== undefined && now.thin !== undefined && (now.thin > built.thin * THIN_REBUILD_RATIO || built.thin > now.thin * THIN_REBUILD_RATIO)) return 'density';
   const moved = poseChange(built.pose, now.pose, now.distanceM);
   if (moved) return moved;
   for (let i = 0; i < now.proj.length; i++) if (built.proj[i] !== now.proj[i]) return 'resized';
@@ -63,11 +74,14 @@ export function mayRebuild(reason: RebuildReason, nowMs: number, lastSwapMs: num
 /**
  * Segments a batch may hold so that the frame stays inside `FRAME_TRIANGLE_LIMIT`. `trianglesPerSegment` is 4 for the glyph pair (a
  * quad in the halo batch and one in the colour batch) and 2 for the detailed streaks (one batch); the rest of the frame is what the
- * last frame drew minus our own share of it (`ownSegments` of the same kind).
+ * last frame drew minus our own share of it (`ownSegments` of the same kind). `floorSegments` (0.6.0, `DETAIL_MIN_SEGMENTS` for the
+ * detailed streaks) is a share that stays whatever the frame holds, at most the tier's cap: a frame that is already over the limit
+ * without us (a dense forest at the High tier) still gets that picture, and the limit is exceeded by at most `trianglesPerSegment x floorSegments`.
  */
-export function segmentCap(tierSegments: number, framesTriangles: number, ownSegments: number, trianglesPerSegment = 4): number {
+export function segmentCap(tierSegments: number, framesTriangles: number, ownSegments: number, trianglesPerSegment = 4, floorSegments = 0): number {
   const others = Math.max(0, framesTriangles - trianglesPerSegment * ownSegments);
-  return Math.max(0, Math.min(tierSegments, Math.floor((FRAME_TRIANGLE_LIMIT - others) / trianglesPerSegment)));
+  const room = Math.max(0, Math.min(tierSegments, Math.floor((FRAME_TRIANGLE_LIMIT - others) / trianglesPerSegment)));
+  return Math.max(room, Math.min(tierSegments, Math.max(0, Math.floor(floorSegments))));
 }
 
 /** The times of the last 64 slices of rebuild work, and the slices and work of the last whole rebuild ("rebuild 3.1 ms (p95 slice 4.2 ms)"). */

@@ -16,6 +16,7 @@ export const GLYPH_CAPS: Record<GlyphTier, { glyphs: number; segments: number }>
   medium: { glyphs: 1200, segments: 8000 },
   high: { glyphs: 2000, segments: 12000 },
 };
+/** The whole frame's triangles; the glyph layer trims its picture to it (the detailed streaks keep `DETAIL_MIN_SEGMENTS` over it). */
 export const FRAME_TRIANGLE_LIMIT = 550_000;
 export const GLYPH_SHAFT_SEGMENTS_MAX = 10; // plus 2 for the arrowhead: 12 per glyph
 export interface Box {
@@ -38,6 +39,12 @@ export interface LodPlan {
    * orbit density, `s = mppSeed / mppCentre`). Absent in a hand-made plan: the builder then uses `spacingM / spacingPx`.
    */
   mppCentre?: number;
+  /**
+   * Additive (0.6.0): the share of the finest lattice's density the picture keeps, 1/4 to 1 (absent is 1). Only the detailed streaks' builder
+   * reads it: it runs a nested lattice (see `detailStreaks.ts`) whose finest octave is thinned by this, so the line count follows the zoom
+   * continuously and the picture is the same on both sides of an octave edge. `planLod` gives 1 to every other level.
+   */
+  thin?: number;
 }
 /** Texel k = j * nx + i at (x0 + i * cellSize, y0 + j * cellSize); u east, v north, m/s. */
 export interface FlowRaster {
@@ -93,13 +100,27 @@ export const DETAIL_LEVEL = 4 as const;
 /** `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, or drawn standing still (reduced motion). */
 export type DetailMotion = 'off' | 'moving' | 'still';
 /**
- * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. The lattice is 32 px, so it runs from 32 to
- * 64 px (a power of two of metres): at 40 the sparse end of each octave was 80 px, about 70 lines in a 412 x 915 forest view.
+ * First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. `spacingPx` is how far apart the lines are on
+ * the screen, on average, at every zoom (a lattice of one line to 32 x 32 px, about 400 to 630 lines over a 412 x 915 view): the lattice is a nested one,
+ * its finest octave 16 to 32 px apart thinned to that by `LodPlan.thin`, so the count of lines follows the zoom and nothing pops where the octave changes
+ * (a lattice of one power of two of metres, 32 to 64 px apart, lost three quarters of its lines through each octave and got them back, with the whole
+ * picture replaced, at the edge).
  */
 export const DETAIL_GEOMETRY = { spacingPx: 32, jitter: 0.35, minPx: 90, maxPx: 220, pxPerMs: 16, stepPx: 9, minSegments: 8, maxSegments: 24 } as const;
 /** How long the detailed streaks take to fade in on entering the level, and out on leaving it (ms of capped frame time). */
 export const DETAIL_FADE_IN_MS = 400;
 export const DETAIL_FADE_OUT_MS = 250;
+/**
+ * The segments of the detailed streaks that the frame's triangle budget never takes away (at most the tier's own cap). It is the High tier's cap, so
+ * at no tier does the frame trim them: they are `min(what the view holds, the tier's cap)` and the same view gives the same picture however the frame
+ * was filled when it was built. Why: a dense forest at the High tier fills the frame without them (terrain and canopy come to 548,000 to 578,000
+ * triangles in the Katoomba valley, against `FRAME_TRIANGLE_LIMIT`), so a trim to the frame left the closest zoom, which is the owner's request,
+ * with nothing at all, and a picture trimmed to a floor under the natural one (the lines of a phone come to 6,000 to 12,000 segments) was the size of
+ * whatever the frame held when it was built (a jump) and not of the view (a smooth zoom). The cost is 2 triangles a segment: at most 8,000, 16,000
+ * and 24,000 triangles at the Low, Medium and High tiers, a quarter of what the glyph pair of the lower levels may take, and only the detailed streaks
+ * go over the limit (by at most `2 x DETAIL_MIN_SEGMENTS`, 4.4 % of it). Lower it to bring the trim back above that floor (`segmentCap`).
+ */
+export const DETAIL_MIN_SEGMENTS = GLYPH_CAPS.high.segments;
 
 /** A `GlyphInput` plus the 10 m ground as received (the lift and lee come from it) and the seed of the line lifetimes (0 in the app). */
 export interface DetailInput extends GlyphInput {

@@ -7,7 +7,9 @@
  *   - the shader compiles and links in a real GL stack, and the console stays empty
  *   - with only the Wind streaks on (the default: the glyph switch is off) a REAL pinch from 12 km to the closest zoom walks the level 1 to 4,
  *     and the level always agrees with the pixels a model cell covers; nothing is built below level 4
- *   - at the closest zoom the draw calls are at most those one level out, and the frame stays inside 550,000 triangles
+ *   - at the closest zoom the draw calls are at most those one level out, and the frame stays inside 550,000 triangles (the detailed streaks
+ *     may take 2 x DETAIL_MIN_SEGMENTS more, in a frame that is full without them)
+ *   - through two octaves of zoom, in steps of 6 %, the number of lines never changes by more than 1.35 times between neighbours
  *   - eye level draws no detailed streaks
  *
  * The streaks themselves, built by `detailStreaks.ts`:
@@ -24,6 +26,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT } from '../src/render/wind/glyphTypes';
 import { acceptNotice, frame, newHand } from './helpers';
 
 test.use({ deviceScaleFactor: 1, actionTimeout: 45_000 });
@@ -249,7 +252,7 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
   });
 
   // ───────── draw calls and triangles ─────────
-  await test.step('at the closest zoom the draw calls are at most those one level out, and the frame stays inside 550,000 triangles (both switches on)', async () => {
+  await test.step('at the closest zoom the draw calls are at most those one level out, and the frame stays inside 550,000 triangles, 2 x DETAIL_MIN_SEGMENTS more for the streaks (both switches on)', async () => {
     const cellM = (await drawAndRead(page)).cellM;
     expect(cellM).toBeGreaterThan(50);
     const measure = async (px: number, glyphs: boolean, wind: 'off' | 'surface'): Promise<{ info: Info; s: Stats }> => {
@@ -272,14 +275,37 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
     expect(extra3, 'L3: the glyph pair and the old Wind streaks').toBe(3);
     expect(extra4, 'L4: at most what L3 adds').toBeLessThanOrEqual(extra3);
     expect(on4.info.calls).toBeLessThanOrEqual(base4.info.calls + extra3);
-    expect(on3.info.triangles).toBeLessThanOrEqual(550_000);
-    expect(on4.info.triangles).toBeLessThanOrEqual(550_000);
+    expect(on3.info.triangles).toBeLessThanOrEqual(FRAME_TRIANGLE_LIMIT);
+    // The detailed streaks keep a floor in a full frame (a dense forest at the High tier is over the limit without them): at most that much over it.
+    expect(on4.info.triangles).toBeLessThanOrEqual(FRAME_TRIANGLE_LIMIT + 2 * DETAIL_MIN_SEGMENTS);
     expect(on4.s.detailSegments).toBeGreaterThan(500);
     expect(on4.s.detailSegments).toBeLessThanOrEqual(12_000);
     expect(extra4, 'L4: the detailed streaks are one draw call, and the old Wind streaks are not drawn').toBe(1);
     expect(on4.info.triangles - base4.info.triangles, 'two triangles a segment').toBe(2 * on4.s.detailSegments);
     expect(on4.s.segments, 'everything drawn is the streaks').toBe(on4.s.detailSegments);
     await setLayers(page, { windGlyphs: false, wind: 'surface' });
+  });
+
+  // ───────── the zoom through the lattice's octaves ─────────
+  await test.step('the line count follows the zoom: over two octaves, in steps of 6 %, no two neighbours differ by more than 1.35 times, and the picture is never empty', async () => {
+    await setLayers(page, { windGlyphs: false, wind: 'surface', windHeight: 'fire' });
+    const cellM = (await drawAndRead(page)).cellM;
+    const counts: number[] = [];
+    for (let px = 120; px < 580; px *= 1.06) {
+      await lookAt(page, distanceFor(cellM, H, px));
+      await settle(page);
+      const s = await drawAndRead(page);
+      expect(s.level, `a model cell of ${px.toFixed(0)} px`).toBe(4);
+      expect(s.detail).toBe('moving');
+      counts.push(s.count);
+    }
+    console.log(`lines through two octaves of zoom (6 % steps): ${counts.join(' ')}`);
+    expect(counts.length).toBeGreaterThan(20);
+    expect(Math.min(...counts), 'a picture at every step').toBeGreaterThan(100);
+    for (let i = 1; i < counts.length; i++) {
+      const r = Math.max(counts[i]! / counts[i - 1]!, counts[i - 1]! / counts[i]!);
+      expect(r, `${counts[i - 1]} to ${counts[i]} lines at step ${i}`).toBeLessThan(1.35);
+    }
   });
 
   // ───────── eye level ─────────

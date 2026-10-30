@@ -17,7 +17,7 @@ import { makeAirView } from '../slice/testing';
 import { HALO_INK } from './flowGlyphs';
 import { FILL_ROWS_PER_CHECK } from './glyphField';
 import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
 const shared = (): Record<string, THREE.IUniform> => ({
   uExposure: { value: 1 },
@@ -1035,9 +1035,11 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     expect(input.lod.level).toBe(4);
     expect(input.lod).toMatchObject({ spacingPx: DETAIL_GEOMETRY.spacingPx, curved: true, jitter: DETAIL_GEOMETRY.jitter });
     expect(input.lod.lengthPx).toEqual({ min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs });
-    // 1.4 m a pixel at 1.2 km: a lattice of 32 px is 45 m, so the next power of two of metres, 64.
-    expect(input.lod.spacingM).toBe(64);
-    expect(input.lod.spacingExp).toBe(6);
+    // 1.4 m a pixel at 1.2 km: lines 32 px apart are 45 m, so the finest lattice is the power of two of metres under that, 32 (23 px), and it is
+    // kept to (23 / 32)^2 of its points: 32 px between the lines on average.
+    expect(input.lod.spacingM).toBe(32);
+    expect(input.lod.spacingExp).toBe(5);
+    expect(input.lod.thin).toBeCloseTo((32 / ((32 * 2 * L4 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h)) ** 2, 6);
     expect(input.ground10.elevation[0]).toBe(GROUND); // the 10 m ground as received: the numbers come from it
     expect(input.ground.elevation[0]).toBe(560); // the drawn mesh: the picture sits on it
     expect(input.seed).toBe(0);
@@ -1064,6 +1066,30 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     }
     for (let i = 1; i < exps.length; i++) expect(exps[i]!).toBeLessThanOrEqual(exps[i - 1]!); // zooming in never coarsens the lattice
     expect(new Set(exps).size).toBeGreaterThan(2);
+  });
+
+  it('follows the zoom with its density: a zoom of 6 % rebuilds the detailed streaks although the lattice and the pose rule do not, and a zoom of 2 % does not; the arrows never do', () => {
+    // The share of the lattice kept is 4^-octaves: 12 % for 6 % of distance, and the pose rule asks for 10 % (the lattice is the same power of two here).
+    const r = rig();
+    r.go(L4, { settle: true });
+    const thin0 = r.detail.begins[0]!.lod.thin!;
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L4 * 0.98, { dt: 300 });
+    r.go(L4 * 0.98, { dt: 300 });
+    expect(r.detail.begins, 'a zoom of 2 % keeps the picture').toHaveLength(1);
+    r.go(L4 * 0.94, { dt: 300 });
+    expect(r.detail.begins, 'a zoom of 6 % rebuilds').toHaveLength(2);
+    r.go(L4 * 0.9, { dt: 100 }); // and the next one is held back by the 250 ms gap, like any rebuild
+    r.go(L4 * 0.9, { dt: 100 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.lod.spacingExp).toBe(r.detail.begins[0]!.lod.spacingExp);
+    expect(r.detail.begins[1]!.lod.thin!).toBeGreaterThan(thin0 * 1.1);
+    // The arrows below the last level have no share (always 1): a zoom of 6 % is not a reason for them.
+    const a = rig();
+    a.go(L3, { settle: true });
+    a.go(L3 * 0.94, { dt: 300 });
+    a.go(L3 * 0.94, { dt: 300 });
+    expect(a.stub.begins).toHaveLength(1);
   });
 
   it('builds nothing below the most detailed level with only the Wind streaks on, but says which level the zoom is at', () => {
@@ -1318,63 +1344,71 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     }
   });
 
-  it('gives the old Wind streaks back when the detailed picture is trimmed to nothing: `detailShown` is false while nothing is drawn', () => {
+  it('gives the old Wind streaks back when the builder finds no line: `detailShown` is false while nothing is drawn', () => {
     const none = rig();
     none.detail.segments = 0; // a builder that finds no line (the stub of the 0.6.0 C0 commit does)
     none.go(L4, { settle: true });
     expect(none.layer.detailShown).toBe(false);
     expect(none.layer.animating).toBe(false);
     expect(none.layer.stats()).toMatchObject({ active: false, idle: null, level: 4, detail: 'off', detailSegments: 0, count: 0 });
-    const budget = rig();
-    budget.go(L4, { tris: 560_000, settle: true });
-    expect(budget.layer.detailShown).toBe(false);
-    expect(budget.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 4, detail: 'off', detailSegments: 0 });
   });
 
-  it('takes the 2 triangles a segment of one batch, not the 4 of the glyph pair, out of the frame\'s budget', () => {
-    const r = rig();
-    r.go(L4, { tris: 549_000 });
-    expect(r.detail.begins[0]!.cap.segments).toBe(500); // (550,000 - 549,000) / 2
-    r.go(L4, { tris: 549_000 });
-    expect(r.layer.stats()).toMatchObject({ detailSegments: 400, segments: 400, idle: null }); // the stub makes 400: they fit
-    // Of the next frame's 549,800 triangles 800 are ours (400 segments of 2): the rest is 549,000 and the same 500 fit.
-    r.go(L4, { x: 1500, dt: 300, tris: 549_800 });
-    expect(r.detail.begins[1]!.cap.segments).toBe(500);
-    const trimmed = rig();
-    trimmed.go(L4, { tris: 549_800, settle: true });
-    expect(trimmed.detail.begins[0]!.cap.segments).toBe(100);
-    expect(trimmed.layer.stats()).toMatchObject({ detailSegments: 100, segments: 100, active: true });
-    expect(trimmed.instances('wind-detail')).toBe(100);
-    expect(trimmed.layer.stats().count).toBeLessThan(40);
+  it('is never trimmed to nothing by a full frame: the floor (DETAIL_MIN_SEGMENTS) is drawn over 550,000 triangles, and the old streaks stay away', () => {
+    // A dense forest at the High tier is 548,000 to 563,000 triangles on its own: with no floor the closest zoom drew nothing and said `budget`.
+    for (const tris of [FRAME_TRIANGLE_LIMIT, 560_000, 600_000]) {
+      const r = rig();
+      r.detail.segments = 12000;
+      r.go(L4, { tris, settle: true });
+      expect(r.detail.begins[0]!.cap.segments, `${tris} triangles`).toBe(DETAIL_MIN_SEGMENTS);
+      expect(r.layer.detailShown, `${tris} triangles`).toBe(true);
+      expect(r.layer.stats(), `${tris} triangles`).toMatchObject({ active: true, idle: null, level: 4, detail: 'moving', detailSegments: DETAIL_MIN_SEGMENTS });
+      expect(r.instances('wind-detail')).toBe(DETAIL_MIN_SEGMENTS);
+    }
   });
 
-  it('does not count the arrows it is about to drop, nor the streaks it is about to replace, against the picture that replaces them', () => {
-    const r = rig();
-    r.go(L3, { settle: true }); // 400 segments of 4 triangles: 1,600 of the frame's 549,000 are the arrows'
-    r.go(L4, { settle: true, dt: 300, tris: 549_000 });
-    expect(r.detail.begins[0]!.cap.segments).toBe(1300); // (550,000 - (549,000 - 1,600)) / 2
+  it('gives the same picture for the same view whatever the frame held when it was built: a jump into a forest and a smooth zoom (the floor is the whole cap)', () => {
+    // The first frame after a jump still holds the last view's triangles (the canopy is not placed yet); a smooth zoom has met the full frame all along.
+    // A view whose lines fill the cap (a fast wind: 12,000 segments and more) is the cap in every one of them.
+    const sizes = [0, 100_000, 480_000, 527_000, 540_000, 549_000, 560_000, 580_000, 640_000].map((tris) => {
+      const r = rig();
+      r.detail.segments = 12000;
+      r.go(L4, { tris, settle: true });
+      return r.layer.stats().detailSegments;
+    });
+    expect(new Set(sizes)).toEqual(new Set([GLYPH_CAPS.high.segments]));
   });
 
-  it('says `budget` for the streaks as for the arrows, keeps saying it while the frame is full, and builds again when it has room', () => {
+  it('is never trimmed to the frame, at any tier: the cap is the tier\'s own whatever the frame holds (the floor is the High tier\'s cap), 2 triangles a segment on top of it', () => {
+    expect(DETAIL_MIN_SEGMENTS).toBe(GLYPH_CAPS.high.segments);
+    for (const tier of ['low', 'medium', 'high'] as const) {
+      for (const tris of [0, 300_000, 530_000, 549_800, 580_000]) {
+        const r = rig({ tier });
+        r.detail.segments = GLYPH_CAPS[tier].segments;
+        r.go(L4, { tris, settle: true });
+        expect(r.detail.begins[0]!.cap.segments, `${tier}, ${tris} triangles`).toBe(GLYPH_CAPS[tier].segments);
+        expect(r.layer.stats().detailSegments, `${tier}, ${tris} triangles`).toBe(GLYPH_CAPS[tier].segments);
+      }
+    }
+  });
+
+  it('does not count the streaks it is about to drop against the arrows that replace them (the glyph pair has no floor)', () => {
     const r = rig();
-    r.go(L4, { tris: 560_000, settle: true });
-    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 4, segments: 0, detailSegments: 0, rebuilds: 1 });
-    expect(r.instances('wind-detail')).toBe(0);
-    for (let i = 0; i < 40; i++) expect(r.go(L4, { dt: 300, tris: 560_000 })).toBe(false);
-    expect(r.detail.begins).toHaveLength(1);
-    r.go(L4, { dt: 300, tris: 400_000 });
-    r.go(L4, { tris: 400_000 });
-    expect(r.detail.begins).toHaveLength(2);
-    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, detailSegments: 400, detail: 'moving' });
-    // A tenth of the tier's cap is the room it waits for: 1,200 segments of 2 triangles.
-    const w = rig();
-    w.go(L4, { tris: 560_000, settle: true });
-    const tenth = GLYPH_CAPS.high.segments / 10;
-    w.go(L4, { dt: 1000, tris: 550_000 - 2 * (tenth - 1) });
-    w.go(L4, { dt: 1000, tris: 550_000 - 2 * (tenth - 1) });
-    expect(w.detail.begins).toHaveLength(1);
-    w.go(L4, { dt: 1000, tris: 550_000 - 2 * tenth });
-    expect(w.detail.begins).toHaveLength(2);
+    r.go(L4, { settle: true }); // 400 segments of 2 triangles: 800 of the frame's 549,800 are the streaks'
+    r.go(L3, { settle: true, dt: 300, tris: 549_800 });
+    expect(r.stub.begins[0]!.cap.segments).toBe(250); // (550,000 - (549,800 - 800)) / 4
+  });
+
+  it('is `budget` at no level but the arrows\': the detailed streaks keep their floor in a full frame, so the reason never shows at the closest zoom', () => {
+    const r = rig();
+    r.go(L3, { tris: 560_000, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 3 }); // the glyph pair has no floor
+    r.go(L4, { tris: 560_000, dt: 300, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, detail: 'moving', detailSegments: 400 });
+    expect(r.layer.detailShown).toBe(true);
+    // And back out to the arrows in the full frame: the reason is the glyphs' again.
+    r.go(L3, { tris: 560_000, dt: 300, settle: true });
+    expect(r.layer.stats()).toMatchObject({ active: false, idle: 'budget', level: 3 });
+    expect(r.layer.detailShown).toBe(false);
   });
 
   it('cancels a detail build that the zoom made out of date, with the detail builder', () => {
@@ -1554,7 +1588,7 @@ describe('WindGlyphLayer with the real detailed-streak builder: what the shader 
       // The ends are in metres (world axes), a few metres apart at this zoom.
       const run = Math.hypot(b[3 * i]! - a[3 * i]!, b[3 * i + 2]! - a[3 * i + 2]!);
       expect(run, at).toBeGreaterThan(0.5);
-      expect(run, at).toBeLessThan(40);
+      expect(run, at).toBeLessThan(60); // (a step of 9 px reaches 40 m or so near the horizon of an orbit view)
     }
     expect(lifted, 'the rolling ground lifts and sinks some lines').toBeGreaterThan(n / 10);
   });
