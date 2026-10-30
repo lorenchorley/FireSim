@@ -86,9 +86,13 @@ export interface FrameStatsInfo {
 }
 
 /**
- * What the wind glyphs (render/wind, 0.5.0) are doing now. `idle` says why nothing is drawn (`off` = the switch is off,
- * `eye-level` = the eye-level camera, `no-wind` = no air picture yet, `budget` = the rest of the frame already uses every
- * triangle a frame may have, so the glyphs trimmed themselves to nothing); `level` and the counts are those of the last build.
+ * What the wind glyphs (render/wind, 0.5.0) are doing now. `idle` says why nothing is drawn (`off` = the switch is off, or only
+ * the Wind streaks are on and the zoom is short of the most detailed level, so nothing is built; `eye-level` = the eye-level
+ * camera, `no-wind` = no air picture yet, `budget` = the rest of the frame already uses every triangle a frame may have, so the
+ * glyphs trimmed themselves to nothing). `level` is the zoom's level whenever the layer plans (the glyph switch or the Wind streaks are
+ * on, not at eye level, not under `budget`), even when only the Wind streaks are on; the counts are those of the picture drawn.
+ * At the most detailed level (4) the picture is the detailed streaks (0.6.0): `count` is their lines, `segments` all the segments drawn
+ * (the glyph pair has 4 triangles a segment, the detailed streaks 2) and `detailSegments` the share of them that are streaks.
  */
 export interface WindGlyphStats {
   /** Drawn now. */
@@ -105,7 +109,7 @@ export interface WindGlyphStats {
   sliceP95Ms: number;
   sliceMaxMs: number;
   slicesLast: number;
-  /** The detailed streaks of the most detailed level (0.6.0): not drawn, drawn and moving, or drawn standing still (reduced motion), and how many segments they hold. */
+  /** The detailed streaks of the most detailed level (0.6.0): not drawn (or trimmed to nothing), drawn and moving, or drawn standing still (reduced motion), and how many segments they hold. */
   detail: DetailMotion;
   detailSegments: number;
 }

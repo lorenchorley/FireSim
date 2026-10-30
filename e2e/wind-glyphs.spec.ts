@@ -11,6 +11,8 @@
  *   - under a 4x CPU slowdown a rebuild stays in slices (p95 <= 12 ms, at most 4 slices) while the camera pans for 5 s, and five height
  *     changes at a close zoom (the raster at half the model's spacing, filled in clocked slices) each finish in turn
  *   - at the High tier with everything on: two more draw calls, 4 triangles a segment, the frame inside 550,000 triangles; off draws nothing extra
+ *     (at the closest zoom (0.6.0) the arrows and flow lines give way to the detailed streaks, one draw call: see wind-detail-render.spec.ts;
+ *     the Wind streaks switch, on by default, draws the same picture there, so the glyph switch alone no longer changes the draw calls at L4)
  *   - 60 on / off and height changes and 20 zooms leave renderer.info.memory and the JS heap where they were
  *   - with the glyphs on and nothing else moving the frame loop stops (the layer never keeps `animating` on)
  *   - the 2-D stand-in map (?mock=1) has no glyph statistics
@@ -417,11 +419,17 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
     expect(c.level).toBe(4);
     expect(close.calls).toBeLessThanOrEqual(25);
     expect(close.triangles).toBeLessThanOrEqual(550_000);
-    // Switched off again: nothing extra is drawn.
+    // At this zoom (0.6.0) the picture is the detailed streaks, one draw call, which the Wind streaks switch (on by default) draws too: the glyph switch
+    // off changes nothing, and both off draws nothing extra.
     await setLayers(page, { windGlyphs: false });
     for (let i = 0; i < 2; i++) await read();
+    const viaStreaks = await infoOf(page);
+    expect(viaStreaks.calls, 'the Wind streaks draw the same picture at the closest zoom').toBe(close.calls);
+    await setLayers(page, { wind: 'off' });
+    for (let i = 0; i < 2; i++) await read();
     const gone = await infoOf(page);
-    expect(gone.calls).toBe(close.calls - 2);
+    expect(gone.calls, 'one draw call for the closest zoom, whichever switch asked for it').toBe(close.calls - 1);
+    await setLayers(page, { wind: 'surface' });
   });
 
   await lightScene(page);
@@ -435,9 +443,12 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
 
   await test.step('60 on / off and height changes and 20 zooms leave the GPU objects and the heap where they were', async () => {
     const heights: Height[] = ['fire', 50, 100, 300, 1000, 2000];
+    await lookAt(page, 900);
+    await settle(page);
+    await read(); // the closest zoom makes the batch of the detailed streaks (0.6.0) ...
     await lookAt(page, 3000);
     await settle(page);
-    await read(); // the first picture makes its two batches: the baseline is taken after it
+    await read(); // ... and the first picture the two of the arrows: the baseline is taken after both
     await setLayers(page, { windGlyphs: false });
     await read();
     const base = await probe();
@@ -519,9 +530,11 @@ test('wind glyphs: close in over the canopy the crowns do not hide the flow line
   };
   expect(await bias(), 'the layer asks for a depth bias').toBeGreaterThan(0);
   await test.step('close in at 55 degrees over the forest: the strokes show through the crowns in front of them', async () => {
-    await lookAt(page, 700, 0, 0, 200, 55);
+    // (1,800 m: the closest zoom, which this test used to look at from 700 m, draws the detailed streaks since 0.6.0, which have their own twin of this
+    // test in wind-detail-render.spec.ts; this is the closest the arrows and flow lines are drawn, a model cell of about 70 px.)
+    await lookAt(page, 1800, 0, 0, 200, 55);
     await drawAndRead(page);
-    const r = await both('700 m, 55 degrees');
+    const r = await both('1,800 m, 55 degrees');
     expect(r.plain, 'there are strokes to count').toBeGreaterThan(1500);
     expect(r.biased, 'the bias shows at least a third more of the strokes than the plain depth test').toBeGreaterThan(r.plain * 1.3);
   });

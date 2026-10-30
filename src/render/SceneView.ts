@@ -157,7 +157,7 @@ export class SceneView implements SceneViewApi {
   private readonly flames: FlameLayer;
   private readonly embers: EmberLayer;
   private readonly wind: WindLayer;
-  /** Arrows and flow lines at a chosen height (0.5.0): rebuilt from `tick`, never animating. */
+  /** Arrows and flow lines at a chosen height (0.5.0): rebuilt from `tick`, still. At the most detailed level it draws the detailed wind streaks (0.6.0), moving on the GPU. */
   private readonly glyphs: WindGlyphLayer;
   private readonly glyphCss = { w: 1, h: 1, fov: 50 };
   private readonly smoke: SmokeLayer;
@@ -287,6 +287,12 @@ export class SceneView implements SceneViewApi {
   private readonly onChange = (): void => {
     this.dirty = true;
   };
+  /** Reduced motion (a system setting that can change while the app runs): the detailed wind streaks stand still. */
+  private readonly motionQuery: MediaQueryList | null = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  private readonly onMotion = (): void => {
+    this.glyphs.setMotion(!this.motionQuery?.matches);
+    this.dirty = true;
+  };
 
   constructor(container: HTMLElement, opts: SceneViewOptions = {}) {
     this.container = container;
@@ -348,6 +354,8 @@ export class SceneView implements SceneViewApi {
     this.wind = new WindLayer(this.u);
     this.glyphs = new WindGlyphLayer(this.u, this.qualityFacts.tier);
     this.glyphs.setDpr(this.dpr.dpr);
+    this.glyphs.setMotion(!this.motionQuery?.matches);
+    this.motionQuery?.addEventListener?.('change', this.onMotion);
     this.smoke = new SmokeLayer(this.u);
     this.section = new CrossSectionLayer(this.u);
     this.section.visible = false;
@@ -860,6 +868,7 @@ export class SceneView implements SceneViewApi {
     this.wind.setMode(l.wind, this.domain);
     this.wind.setDpr(this.dpr.dpr);
     this.glyphs.setEnabled(l.windGlyphs);
+    this.glyphs.setStreaksDetail(l.wind === 'surface'); // the Wind streaks reach the same detailed picture at the closest zoom
     this.glyphs.setHeight(l.windHeight);
     this.glyphs.setDpr(this.dpr.dpr);
     const overlayChanged = !prev || prev.overlay !== l.overlay;
@@ -1389,6 +1398,9 @@ export class SceneView implements SceneViewApi {
     this.glyphCss.h = gsz.y;
     this.glyphCss.fov = this.rig.viewFov;
     if (this.glyphs.tick(now, this.rig.camera, this.glyphCss, this.rig.mode, this.vex, this.cameraDistance(), this.lastStats.triangles, this.settleNow)) this.dirty = true;
+    // The detailed streaks stand in for the old Wind streaks while they are drawn (trimmed to nothing, they give the old ones back).
+    const detailInstead = this.glyphs.detailShown && this.layers.wind === 'surface';
+    this.wind.setSuppressed(detailInstead);
     // Display-time interpolation between snapshots.
     let playing = false;
     if (this.snap && this.displayTime !== this.timeTo) {
@@ -1408,7 +1420,8 @@ export class SceneView implements SceneViewApi {
       this.smoke.animating ||
       (this.flames.mesh.visible && this.flames.count > 0) ||
       (this.embers.group.visible && this.embers.active > 0) ||
-      this.wind.currentMode !== 'off' ||
+      (this.wind.currentMode !== 'off' && !detailInstead) ||
+      this.glyphs.animating || // the detailed streaks move on the GPU: the loop draws, nothing else is done for them
       this.focus !== null ||
       this.user !== null ||
       (this.vegetation?.placing ?? false) || // the forest is being re-placed a few ms per frame
@@ -1600,6 +1613,7 @@ export class SceneView implements SceneViewApi {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('webglcontextlost', this.onLost);
     canvas.removeEventListener('webglcontextrestored', this.onRestored);
+    this.motionQuery?.removeEventListener?.('change', this.onMotion);
     this.rig.controls.removeEventListener('start', this.onStart);
     this.rig.controls.removeEventListener('end', this.onEnd);
     this.rig.controls.removeEventListener('change', this.onChange);
