@@ -9,6 +9,7 @@
  *   - a tap on the screen wakes it (frames at once, `moving` again, two frames 500 ms apart differ); so does a layer change and a time change
  *   - a running simulation never pauses, 10 s
  *   - nothing opens by itself, no `role=alert`
+ *   - the programs of the wind marks are compiled before the first zoom to the closest level (`compileAsync` after the first drawn frame)
  * Reduced motion (`emulateMedia`):
  *   - the old Wind streaks (levels 1 to 3, the default) stay on screen and stand still: the mesh is visible with marks, no frame in 3 s, and a new
  *     snapshot redraws them once; the trees stop swaying
@@ -48,7 +49,7 @@ type View = {
   windGlyphStats?(): Stats | null;
   slice?(): unknown;
   scene: { getObjectByName(n: string): Mesh | undefined };
-  renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } } };
+  renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } }; properties: { get(o: unknown): { currentProgram?: unknown } } };
   /** (private members, read here the way the other specs read the rig) */
   vegetation: { animating: boolean; placing: boolean } | null;
   wind: { animating: boolean };
@@ -156,6 +157,17 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   await build(page, 3000);
   await armPopupWatch(page, true);
   await pauseRun(page);
+
+  await test.step('the detailed streaks\' program is compiled before the first zoom to the closest level: the mesh has not been drawn, and its material already has a program', async () => {
+    const before = await page.evaluate(() => {
+      const v = (window as unknown as Handle).__firesim.view;
+      const m = v.scene.getObjectByName('wind-detail')!;
+      return { visible: m.visible, compiled: v.renderer.properties.get(m.material)?.currentProgram !== undefined };
+    });
+    expect(before.visible, 'nothing has asked for the detailed streaks yet').toBe(false);
+    expect(before.compiled, 'compileAsync has run on the glyph group').toBe(true);
+  });
+
   await setLayers(page, { windGlyphs: false, wind: 'surface', windHeight: 'fire' }); // the default Wind streaks, the closest zoom draws them as the detailed streaks
   await lookAt(page, 150);
   await renderNow(page);
