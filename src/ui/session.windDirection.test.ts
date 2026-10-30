@@ -406,6 +406,22 @@ describe('madeAt (0.7.0)', () => {
   });
 });
 
+describe('the cards of a change of the user\'s (0.7.0)', () => {
+  const card = (id: string, key: string): Insight => ({ id, kind: 'wind-change', severity: 'watch', time: 60, x: 0, y: 0, key, title: id, body: '', factors: [] });
+
+  it('are not taken for the forecast\'s wind change card standing at the same place in the same minute (the domain centre, before there is a fire)', async () => {
+    const { e, s } = await make();
+    e.history(0);
+    const at = (t: number, insights: Insight[]): void => e.emit('snapshot', { time: t, insights, spotFires: [], stats: { time: t } } as unknown as SimSnapshot);
+    at(60, [card('forecast', 'wind-change:domain'), card('own', 'wind-change:user:w1')]);
+    expect(s.state.get().insights.map((i) => i.id).sort()).toEqual(['forecast', 'own']);
+    // The same two re-reported after a rewind under new ids are still the same two cards (the key is part of the signature).
+    at(60, [card('forecast-2', 'wind-change:domain'), card('own-2', 'wind-change:user:w1')]);
+    expect(s.state.get().insights.map((i) => i.id).sort()).toEqual(['forecast', 'own']);
+    s.dispose();
+  });
+});
+
 describe('backToForecast', () => {
   const reading: ScenarioEdit = { kind: 'wind', id: 'belt-kit-1', x: 0, y: 0, radius: 800, speed: 5, dir: 84, time: 0 };
 

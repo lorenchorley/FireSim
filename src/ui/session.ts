@@ -545,10 +545,7 @@ export class SimSession {
     this.cancelSeek();
     const list = windDirectionEdits(this.state.get().edits);
     if (list.length === 0) return 0;
-    this.dropWindDirection(
-      list.map((e) => e.id),
-      list[0]!.time,
-    );
+    this.dropWindDirection(list.map((e) => e.id), list[0]!.time);
     return list.length;
   }
 
@@ -949,9 +946,12 @@ const DUPLICATE_KEY_WINDOW_S = 1800;
 
 const severityRank = (s: Insight['severity']): number => (s === 'danger' ? 2 : s === 'watch' ? 1 : 0);
 
-/** Identity of an insight by content: kind, place (100 m) and time (minute). */
-export function insightSignature(i: Pick<Insight, 'kind' | 'x' | 'y' | 'time'>): string {
-  return `sig:${i.kind}@${Math.round(i.x / 100)},${Math.round(i.y / 100)}@${Math.round(i.time / 60)}`;
+/**
+ * Identity of an insight by content: kind, place (100 m) and time (minute). A card of the user's own Wind direction change (key `...:user:<id>`) is
+ * its own: the forecast's wind change card can stand at the same place in the same minute (the domain centre, before there is a fire).
+ */
+export function insightSignature(i: Pick<Insight, 'kind' | 'x' | 'y' | 'time'> & { key?: string }): string {
+  return `sig:${i.kind}@${Math.round(i.x / 100)},${Math.round(i.y / 100)}@${Math.round(i.time / 60)}${i.key?.includes(':user:') ? `#${i.key}` : ''}`;
 }
 
 function pickStats(s: SimStats): CompareInfo['baseline'][number] {
