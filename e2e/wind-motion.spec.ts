@@ -346,8 +346,8 @@ test('the 3-D curtain: its arrows are drawn whole face-on and thinned where the 
       const s = (window as unknown as Handle).__firesim.view.section;
       return { arrows: s.arrows.mesh.geometry.instanceCount, halo: s.halo.mesh.geometry.instanceCount };
     });
-  const look = async (name: string, az: number): Promise<{ arrows: number; halo: number }> => {
-    await lookAt(page, 3500, az, 80); // a low view (10 degrees below the horizon), 3.5 km from the middle of the line
+  const look = async (name: string, az: number, tilt = 80): Promise<{ arrows: number; halo: number }> => {
+    await lookAt(page, 3500, az, tilt); // 3.5 km from the middle of the line; a tilt of 80 is a low view (10 degrees below the horizon), 55 the orbit's usual
     await renderNow(page);
     await attach(page, testInfo, `curtain-360x640-${name}.png`);
     return counts();
@@ -358,9 +358,12 @@ test('the 3-D curtain: its arrows are drawn whole face-on and thinned where the 
   expect(faceOn.halo).toBe(faceOn.arrows);
   const slanted = await look('slanted', 135);
   const edgeOn = await look('edge-on', 90); // from the east: the camera looks along the line
+  const edgeOnHigh = await look('edge-on-tilt55', 90, 55); // along the line from higher up: the curtain is edge on at any height, so it is thinned as much
   expect(edgeOn.arrows, 'along the line only every few columns are drawn').toBeLessThanOrEqual(faceOn.arrows * 0.5);
   expect(edgeOn.arrows, 'but some are').toBeGreaterThanOrEqual(3);
   expect(edgeOn.halo, 'the halo under them is the same arrows').toBe(edgeOn.arrows);
+  expect(edgeOnHigh.arrows, 'along the line at the usual tilt too').toBeLessThanOrEqual(faceOn.arrows * 0.5);
+  expect(edgeOnHigh.halo).toBe(edgeOnHigh.arrows);
   expect(slanted.arrows, 'in between it is in between').toBeLessThanOrEqual(faceOn.arrows);
   expect(slanted.arrows).toBeGreaterThanOrEqual(edgeOn.arrows);
   const back = await look('face-on-again', 180);

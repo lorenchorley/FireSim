@@ -19,15 +19,23 @@ describe('foreshortening', () => {
   it('is 1 face-on and from straight above, 0 looking along the line, either way', () => {
     expect(fore(looking(0, 35), EAST)).toBeCloseTo(1, 12); // looking north at a line that runs east: face-on
     expect(fore(looking(180, 60), EAST)).toBeCloseTo(1, 12);
-    expect(fore(looking(0, 90), EAST)).toBeCloseTo(1, 12); // from straight above
+    expect(fore(looking(0, 90), EAST)).toBe(1); // from straight above: no way across the ground to look along
     expect(fore(looking(90, 0), EAST)).toBeCloseTo(0, 12); // looking east along it
     expect(fore(looking(270, 0), EAST)).toBeCloseTo(0, 12); // looking west along it
   });
 
-  it('is the sine of the angle between the line and the view direction', () => {
+  it('is the sine of the angle between the way the camera looks across the ground and the line', () => {
     expect(fore(looking(45, 0), EAST)).toBeCloseTo(Math.SQRT1_2, 12);
-    expect(fore(looking(90, 35), EAST)).toBeCloseTo(Math.sin((35 * Math.PI) / 180), 12); // along the line but looking down at 35 degrees: the ground runs away at the sine of the dip
-    expect(fore(looking(30, 20), EAST)).toBeCloseTo(Math.sqrt(1 - (Math.sin((30 * Math.PI) / 180) * Math.cos((20 * Math.PI) / 180)) ** 2), 12);
+    expect(fore(looking(30, 20), EAST)).toBeCloseTo(Math.cos((30 * Math.PI) / 180), 12); // 30 degrees from north, the line runs east: 60 degrees across it
+    expect(fore(looking(120, 40), EAST)).toBeCloseTo(0.5, 12);
+  });
+
+  it('does not depend on how high the camera is: a vertical curtain seen along its line is edge on from the ground and from a hill top alike', () => {
+    for (const dip of [0, 10, 35, 60, 85]) {
+      expect(fore(looking(90, dip), EAST), `along it, ${dip} degrees down`).toBeCloseTo(0, 12);
+      expect(fore(looking(0, dip), EAST), `face-on, ${dip} degrees down`).toBeCloseTo(1, 12);
+      expect(fore(looking(60, dip), EAST), `60 degrees round, ${dip} degrees down`).toBeCloseTo(Math.cos((60 * Math.PI) / 180), 12);
+    }
   });
 
   it('follows the line, not the camera: the same view of a line that runs north is the turned answer', () => {
@@ -35,13 +43,16 @@ describe('foreshortening', () => {
     expect(fore(looking(0, 0), north)).toBeCloseTo(0, 12);
     expect(fore(looking(90, 0), north)).toBeCloseTo(1, 12);
     const sw: [number, number] = [-Math.SQRT1_2, -Math.SQRT1_2];
-    expect(fore(looking(225, 10), sw)).toBeCloseTo(Math.sin((10 * Math.PI) / 180), 12); // along it, 10 degrees down
+    expect(fore(looking(225, 10), sw)).toBeCloseTo(0, 12); // along it, 10 degrees down
+    expect(fore(looking(135, 10), sw)).toBeCloseTo(1, 12); // across it
   });
 
   it('never goes below 0 or over 1 (rounding at the ends)', () => {
     expect(fore([1, 0, 0], [1, 0])).toBe(0);
     expect(fore([1 + 1e-12, 0, 0], [1, 0])).toBe(0);
     expect(fore([0, -1, 0], [1, 0])).toBe(1);
+    expect(fore([0, 0, -1], [1, 0])).toBe(1);
+    expect(fore([0, 0, -1 - 1e-12], [1, 0])).toBe(1);
   });
 });
 

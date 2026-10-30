@@ -17,12 +17,16 @@ export const STRIDE_HYSTERESIS = 0.15;
 
 /**
  * How much a line is foreshortened for a camera looking along the unit vector whose scene-axes parts (x east, z south) are `forwardX` and `forwardZ`:
- * 1 where it is seen face-on or from straight above, 0 where the camera looks along it. `dir` is the line's unit direction (east, north).
+ * the sine of the angle between the way the camera looks across the ground and the line, 1 where it is seen face-on (or from straight above, where there
+ * is no across-the-ground way), 0 where the camera looks along it. `dir` is the line's unit direction (east, north). The tilt of the camera does not
+ * count: a curtain is a vertical plane, so looking along its line from any height sees it edge on, however much of the line the screen's vertical
+ * axis shows (measured on the real layer at 360 x 640: the heads that stand on each other at a 35 degree tilt along the line are what this thins).
  */
 export function foreshortening(forwardX: number, forwardZ: number, dir: ArrayLike<number>): number {
-  const along = forwardX * dir[0]! - forwardZ * dir[1]!; // (the line runs along x and, northward, along -z)
-  const f = 1 - along * along;
-  return f > 0 ? Math.sqrt(f) : 0;
+  const across = Math.hypot(forwardX, forwardZ);
+  if (!(across > 1e-9)) return 1;
+  const f = Math.abs(forwardX * dir[1]! + forwardZ * dir[0]!) / across; // the line runs along x and, northward, along -z: the cross product of the two directions
+  return f < 1 ? f : 1;
 }
 
 /** CSS pixels one metre covers at `depthM` metres along the view axis, for a vertical field of view of `fovDeg` degrees in a view `viewportH` px tall. */

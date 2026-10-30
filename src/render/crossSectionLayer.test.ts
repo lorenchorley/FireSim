@@ -285,6 +285,66 @@ describe('CrossSectionLayer', () => {
         expect(short).toBeLessThan(tall);
       });
 
+      it('thins what it is for: the heads that stand on each other on a 360 x 640 screen, at any tilt, and leaves a curtain seen face-on as it was', () => {
+        const W = 360;
+        const H = 640;
+        /** A camera `dist` m from the middle of the curtain, `az` degrees round from north (the line runs east to west), `dip` degrees above the horizon. */
+        const view = (dist: number, az: number, dip: number): THREE.PerspectiveCamera => {
+          const a = (az * Math.PI) / 180;
+          const d = (dip * Math.PI) / 180;
+          const c = new THREE.PerspectiveCamera(50, W / H, 10, 60000);
+          c.position.set(Math.sin(a) * Math.cos(d) * dist, 1100 + Math.sin(d) * dist, -Math.cos(a) * Math.cos(d) * dist);
+          c.lookAt(0, 1100, 0);
+          c.updateMatrixWorld();
+          c.updateProjectionMatrix();
+          return c;
+        };
+        /** Pairs of arrow heads on the screen that are closer than 8 px (a head is 10 px across), among those on the screen. */
+        const stacked = (l: CrossSectionLayer, cam: THREE.PerspectiveCamera): number => {
+          const pts: [number, number][] = [];
+          for (let i = 0; i < instances(l); i++) {
+            const v = new THREE.Vector3(l.arrows.b[i * 3]!, l.arrows.b[i * 3 + 1]!, l.arrows.b[i * 3 + 2]!).project(cam);
+            const x = ((v.x + 1) / 2) * W;
+            const y = ((1 - v.y) / 2) * H;
+            if (x >= 0 && x <= W && y >= 0 && y <= H && v.z < 1) pts.push([x, y]);
+          }
+          let n = 0;
+          for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) if (Math.hypot(pts[i]![0] - pts[j]![0], pts[i]![1] - pts[j]![1]) < 8) n++;
+          return n;
+        };
+        const { data, sampler } = flat();
+        const at = (dist: number, az: number, dip: number): { before: number; after: number; arrows: number } => {
+          const l = new CrossSectionLayer(shared());
+          l.update(data, 'speed', () => 500, sampler, 1, 1);
+          const cam = view(dist, az, dip);
+          const before = stacked(l, cam); // every column drawn
+          l.setView(cam, H);
+          return { before, after: stacked(l, cam), arrows: instances(l) };
+        };
+        // Looking along the line, low and at the orbit's usual 35 degrees: the curtain is a line on the screen, and 700 to 1,200 pairs of heads stand on each other.
+        for (const [dist, dip] of [
+          [6000, 10],
+          [6000, 35],
+          [4000, 35],
+          [8000, 35],
+        ] as const) {
+          const r = at(dist, 90, dip);
+          expect(r.before, `${dist} m, ${dip} degrees, along the line: heads on heads`).toBeGreaterThan(400);
+          expect(r.after, `${dist} m, ${dip} degrees, along the line`).toBeLessThanOrEqual(r.before / 20);
+          expect(r.arrows).toBeLessThanOrEqual(56);
+        }
+        // A little off the line: still thinned, and the stacking is nearly gone.
+        for (const dip of [10, 35]) {
+          const r = at(6000, 110, dip);
+          expect(r.before).toBeGreaterThan(90);
+          expect(r.after, `a little off the line, ${dip} degrees`).toBeLessThanOrEqual(r.before / 10);
+        }
+        // Seen face-on, at any tilt and zoom: every arrow, exactly as before.
+        for (const dist of [2500, 4000, 6000, 8000]) {
+          for (const dip of [10, 35, 60]) expect(at(dist, 180, dip).arrows, `face-on at ${dist} m, ${dip} degrees`).toBe(168);
+        }
+      });
+
       it('does nothing without a slice (never shown, or cleared) and does not break the next one', () => {
         const l = new CrossSectionLayer(shared());
         l.setView(EAST_END(), 640);
