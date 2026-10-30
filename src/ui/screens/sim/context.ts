@@ -53,7 +53,8 @@ export interface UiState {
   firePointRadius: number;
   fuelPreset: string;
   brushRadius: number;
-  wind: { dir: number; kmh: number; radius: number };
+  /** The Wind direction tool's dial: the direction (from) it will turn the wind to. */
+  wind: { dir: number };
   viewMode: 'orbit' | 'top' | 'ground';
   /** The Air slices tool's own state (placement, probe, tab, model cells); undefined until the tool is first opened (sliceTypes.ts). */
   slice?: SliceToolState;
@@ -109,7 +110,7 @@ export const DEFAULT_UI: UiState = {
   firePointRadius: 40,
   fuelPreset: 'litter',
   brushRadius: 100,
-  wind: { dir: 225, kmh: 25, radius: 500 },
+  wind: { dir: 225 },
   viewMode: 'orbit',
 };
 

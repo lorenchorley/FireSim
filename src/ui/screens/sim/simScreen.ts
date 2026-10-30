@@ -6,7 +6,7 @@
  * engine fails, a thin error strip. Everything is collapsed by default. Nothing pops up over the map because of a
  * simulation event: new insight cards only raise a badge on the Insights tab, and playback stops only when the user, the
  * end of the scenario or the app going to the background says so. Owns the map gesture layer that turns taps and finger
- * strokes into "Why here?" queries, fire marks, fuel brush strokes and local wind observations.
+ * strokes into "Why here?" queries, fire marks and fuel brush strokes.
  */
 import type { Insight, ScenarioData } from '../../../core/types';
 import { BurnState } from '../../../core/types';
@@ -15,7 +15,7 @@ import { DEFAULT_LAYERS, type LayerState, type OverlayKind } from '../../../rend
 import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey } from '../../../render/layerCatalog';
 import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
-import { thinPath, windScreenRotation, type Pt } from '../../brushGeometry';
+import { thinPath, type Pt } from '../../brushGeometry';
 import { presetById } from '../../fuelPresets';
 import { fuelWithEdits } from '../../fuelDisplay';
 import { showMePatch } from '../../showMe';
@@ -27,7 +27,7 @@ import { performanceProfile, pictureQualityAsk, resolveRenderQuality, settingsSt
 import { Store } from '../../store';
 import { debugPaceLevel } from '../../paceModel';
 import { DEFAULT_UI, type SimContext, type ToolId, type UiState } from './context';
-import { createFirePanel, createFuelPanel, createWindPanel } from './editPanels';
+import { createFirePanel, createFuelPanel } from './editPanels';
 import { createScrubber } from './scrubber';
 import { createSheet } from './sheet';
 import { createAirPanel, sliceMarkElement } from './sliceTool';
@@ -43,6 +43,7 @@ import { createTopBar } from './topBar';
 import { createWindDetail } from './windDetailChip';
 import { createLayersPanel, createWhatIfPanel } from './viewPanels';
 import { createWhyPanel } from './whyPanel';
+import { createWindPanel } from './windPanel';
 
 export interface SimScreenOptions {
   scenario: ScenarioData;
@@ -89,7 +90,7 @@ const TOOLS: { id: ToolId; label: string; icon: IconName }[] = [
   { id: 'why', label: 'Why here?', icon: 'why' },
   { id: 'fire', label: 'Fire', icon: 'flame' },
   { id: 'fuel', label: 'Fuel', icon: 'brush' },
-  { id: 'wind', label: 'Wind', icon: 'wind' },
+  { id: 'wind', label: 'Wind direction', icon: 'wind' },
   { id: 'layers', label: 'Layers', icon: 'layers' },
   { id: 'whatif', label: 'What if', icon: 'whatif' },
   { id: 'air', label: AIR_TOOL_LABEL, icon: 'line' },
@@ -620,7 +621,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     const s = ui.get();
     drawLayer.hidden = !s.drawing;
     view.setInteractionEnabled(!s.drawing);
-    const wantsCrosshair = s.panelOpen && ((s.tool === 'fire' && s.fireInput === 'point') || (s.tool === 'fuel' && !s.drawing) || s.tool === 'wind' || (s.tool === 'air' && !!s.slice?.placing));
+    const wantsCrosshair = s.panelOpen && ((s.tool === 'fire' && s.fireInput === 'point') || (s.tool === 'fuel' && !s.drawing) || (s.tool === 'air' && !!s.slice?.placing));
     crosshair.hidden = !wantsCrosshair;
     root.classList.toggle('drawing', s.drawing);
     viewMenu.setPressed(s.viewMode);
@@ -632,7 +633,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
     else if (s.tool !== 'fuel' || !p) view.setBrushPreview(null);
     scheduleAnnotations();
   };
-  unsubs.push(ui.subscribe(renderModes, ['drawing', 'tool', 'panelOpen', 'fireInput', 'pending', 'viewMode', 'why', 'wind', 'fuelPreset']));
+  unsubs.push(ui.subscribe(renderModes, ['drawing', 'tool', 'panelOpen', 'fireInput', 'pending', 'viewMode', 'why', 'fuelPreset']));
   // The Air slices tool: the crosshair follows its placement; its marks follow every change of its state (a dragged probe is not worth a full renderModes).
   unsubs.push(
     ui.subscribe((s, prev) => (s.slice?.placing !== prev.slice?.placing ? renderModes() : scheduleAnnotations()), ['slice']),
@@ -732,9 +733,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
         break;
       case 'fuel':
         if (!s.drawing) ui.set({ pending: { kind: 'brush', points: [p], radius: s.brushRadius } });
-        break;
-      case 'wind':
-        ui.set({ pending: { kind: 'point', at: p } });
         break;
       case 'air':
         if (s.slice?.placing) ui.set({ slice: tapCandidate(s.slice, p) });
@@ -848,10 +846,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
       live = true;
       if (p.kind === 'point') {
         const q = project(p.at);
-        if (q) {
-          if (s.tool === 'wind') marks.push({ kind: 'wind', at: q, rotate: windScreenRotation(p.at, s.wind.dir, q, project) });
-          else marks.push({ kind: 'pin', at: q, colour: s.tool === 'fire' ? originColour(s.fireOrigin) : '#1a73e8' });
-        }
+        if (q) marks.push({ kind: 'pin', at: q, colour: s.tool === 'fire' ? originColour(s.fireOrigin) : '#1a73e8' });
       } else if (p.kind === 'line' || (p.kind === 'brush' && p.points.length > 1)) {
         const pts = p.points.map(project).filter((q): q is [number, number] => !!q);
         if (pts.length > 1) {
@@ -1013,7 +1008,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 type AnnMark =
   | { kind: 'stroke'; d: string; colour: string; width?: number }
   | { kind: 'pin'; at: [number, number]; colour: string }
-  | { kind: 'wind'; at: [number, number]; rotate: number }
   | { kind: 'why'; at: [number, number] }
   | SliceAnnMark;
 
@@ -1031,8 +1025,6 @@ function markElement(m: AnnMark): SVGElement | SVGElement[] {
       ];
     case 'pin':
       return pinGlyph(m.at, m.colour);
-    case 'wind':
-      return windGlyph(m.at, m.rotate);
     case 'why':
       return svg('g', { class: 'ann-why', transform: `translate(${m.at[0]},${m.at[1]})` }, [svg('circle', { r: 16, class: 'ann-why-ring' }), svg('circle', { r: 5, class: 'ann-why-dot' })]);
   }
@@ -1048,13 +1040,3 @@ function pinGlyph([x, y]: [number, number], colour: string): SVGElement {
     svg('circle', { r: 10, class: 'ann-pin-dot', style: `fill:${colour}` }),
   ]);
 }
-
-function windGlyph([x, y]: [number, number], rotate: number): SVGElement {
-  // Arrow drawn blowing downwards (towards +y on screen), rotated to the on-screen downwind direction.
-  return svg('g', { class: 'ann-wind', transform: `translate(${x},${y}) rotate(${rotate})` }, [
-    svg('path', { d: 'M0 -46 L0 10 M-12 -4 L0 14 L12 -4', class: 'ann-wind-casing' }),
-    svg('path', { d: 'M0 -46 L0 10 M-12 -4 L0 14 L12 -4', class: 'ann-wind-arrow' }),
-    svg('circle', { r: 6, cy: 0, class: 'ann-pin-dot', style: 'fill:#1a73e8' }),
-  ]);
-}
-

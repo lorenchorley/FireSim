@@ -1,17 +1,16 @@
 /**
  * Tool panels that change the scenario: Mark fire (point / finger-drawn line; current fire, spot fire ahead, back
- * burn), Fuel brush (plain-language presets, radius, tap or paint) and Local wind (point + direction dial + speed).
- * Placement is two-step (place → confirm) because wet screens and gloves cause phantom touches (doc 09 §9);
- * every tool also works from the screen-centre crosshair for gloved hands.
+ * burn) and Fuel brush (plain-language presets, radius, tap or paint); the Wind direction panel is in windPanel.ts and
+ * builds on the same frame (`panelShell`). Placement is two-step (place → confirm) because wet screens and gloves cause
+ * phantom touches (doc 09 §9); every tool that places something also works from the screen-centre crosshair for gloved hands.
  */
-import type { Ignition, WindEdit } from '../../../core/types';
-import { kmhToMs } from '../../../core/units';
+import type { Ignition } from '../../../core/types';
 import { h, setChildren, uniqueId } from '../../dom';
 import { icon } from '../../icons';
 import { polygonArea, polylineLength, strokeToPolygon } from '../../brushGeometry';
-import { formatArea, formatClock, formatDistance, formatElapsedShort, formatWind, compassName } from '../../format';
+import { formatArea, formatClock, formatDistance, formatElapsedShort } from '../../format';
 import { FUEL_PRESETS, fuelEditFor, presetById } from '../../fuelPresets';
-import { button, compassRose, segmented, slider } from '../../widgets';
+import { button, segmented, slider } from '../../widgets';
 import type { SimContext } from './context';
 
 const ORIGIN_LABEL: Record<Ignition['origin'], string> = { observed: 'Current fire', spot: 'Spot fire ahead', backburn: 'Back burn' };
@@ -21,7 +20,7 @@ const ORIGIN_LABEL: Record<Ignition['origin'], string> = { observed: 'Current fi
  * whatever is being placed. The bar sits outside the scroll area so "Add fire" / "Apply" is always in thumb reach,
  * even after scrolling down to the crosshair button; it collapses when empty.
  */
-function panelShell(title: string, iconName: Parameters<typeof icon>[0], testId: string, onClose: () => void, body: HTMLElement, actions: HTMLElement): HTMLElement {
+export function panelShell(title: string, iconName: Parameters<typeof icon>[0], testId: string, onClose: () => void, body: HTMLElement, actions: HTMLElement): HTMLElement {
   actions.classList.add('panel-foot', 'pending-box');
   actions.setAttribute('aria-live', 'polite');
   return h('section', { class: 'tool-panel', dataset: { testid: testId }, aria: { label: title } }, [
@@ -296,92 +295,4 @@ function describeFuelEdit(e: { setType?: number; moistureDelta?: number; barkHaz
   if (e.barkHazardDelta) return 'Stringybark';
   if (e.elevatedHazardDelta) return 'Denser understorey';
   return 'More leaf litter';
-}
-
-// ─────────────────────────────── Local wind ───────────────────────────────
-
-export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTMLElement; destroy(): void } {
-  const { ui, session } = ctx;
-  const unit = (): 'kmh' | 'ms' => ctx.settings.get().units;
-  const dial = compassRose({ label: 'Wind comes FROM — drag the arrow', value: ui.get().wind.dir, size: 200, testId: 'wind-dial', onChange: (d) => ui.set({ wind: { ...ui.get().wind, dir: d } }) });
-  const speed = slider({
-    label: 'Wind speed',
-    min: 0,
-    max: 90,
-    step: 5,
-    value: ui.get().wind.kmh,
-    format: (v) => (unit() === 'kmh' ? `${v} km/h` : `${(v / 3.6).toFixed(1)} m/s`),
-    onInput: (v) => ui.set({ wind: { ...ui.get().wind, kmh: v } }),
-  });
-  const radius = slider({
-    label: 'Applies within',
-    min: 100,
-    max: 2000,
-    step: 100,
-    value: ui.get().wind.radius,
-    format: (v) => formatDistance(v),
-    onInput: (v) => ui.set({ wind: { ...ui.get().wind, radius: v } }),
-  });
-  const crossBtn = crosshairButton(ctx, 'Place at crosshair', (p) => ui.set({ pending: { kind: 'point', at: p } }));
-  const meBtn = ctx.user ? button({ label: 'At my position', icon: 'gps', variant: 'secondary', onClick: () => ui.set({ pending: { kind: 'point', at: ctx.user! } }) }) : null;
-  const pendingBox = h('div');
-  const list = h('div', { class: 'edit-list' });
-  const apply = (): void => {
-    const s = ui.get();
-    const p = s.pending;
-    if (!p || p.kind !== 'point') return;
-    const e: WindEdit = { kind: 'wind', id: uniqueId('wind'), x: p.at[0], y: p.at[1], radius: s.wind.radius, speed: kmhToMs(s.wind.kmh), dir: s.wind.dir, time: session.state.get().viewTime };
-    session.edit(e);
-    ui.set({ pending: null });
-    ctx.announce(`Local wind from ${compassName(e.dir)} applied.`);
-  };
-  const render = (): void => {
-    const s = ui.get();
-    const p = s.pending;
-    setChildren(
-      pendingBox,
-      p && p.kind === 'point'
-        ? h('div', { class: 'row-actions' }, [
-            button({ label: `Apply ${compassName(s.wind.dir)} ${unit() === 'kmh' ? `${s.wind.kmh} km/h` : `${(s.wind.kmh / 3.6).toFixed(1)} m/s`}`, icon: 'check', variant: 'primary', size: 'lg', testId: 'apply-wind', onClick: apply }),
-            button({ label: 'Clear', icon: 'close', variant: 'secondary', onClick: () => ui.set({ pending: null }) }),
-          ])
-        : null,
-    );
-    const edits = session.state.get().edits.filter((e) => e.edit.kind === 'wind');
-    setChildren(
-      list,
-      edits.length
-        ? [
-            h('h3', { class: 'sub-title' }, 'Your wind observations'),
-            h(
-              'ul',
-              { class: 'plain-list' },
-              edits.map(({ edit, time }) =>
-                h('li', { class: 'edit-item' }, [
-                  h('span', null, edit.kind === 'wind' ? `From ${compassName(edit.dir)} ${formatWind(edit.speed, unit())} within ${formatDistance(edit.radius)} · from ${formatClock(ctx.absTime(time), ctx.tz)}` : ''),
-                  button({ label: 'Remove', icon: 'trash', variant: 'ghost', iconOnly: true, onClick: () => session.removeEdit(edit.id) }),
-                ]),
-              ),
-            ),
-          ]
-        : null,
-    );
-  };
-  const body = h('div', { class: 'panel-body' }, [
-    h('p', { class: 'hint' }, 'Tap the map where you observed the wind (or use the crosshair), then set where it comes from and how strong it is.'),
-    h('div', { class: 'row-actions' }, [crossBtn, meBtn]),
-    h('div', { class: 'wind-controls' }, [dial.el, h('div', { class: 'wind-sliders' }, [speed.el, radius.el])]),
-    list,
-  ]);
-  const el = panelShell('Local wind', 'wind', 'wind-panel', onClose, body, pendingBox);
-  const u1 = ui.subscribe(render, ['pending', 'wind']);
-  const u2 = session.state.subscribe(render, ['edits']);
-  render();
-  return {
-    el,
-    destroy() {
-      u1();
-      u2();
-    },
-  };
 }

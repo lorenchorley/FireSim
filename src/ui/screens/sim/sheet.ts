@@ -324,7 +324,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
     const s = session.state.get();
     const abs = ctx.absTime(s.viewTime);
     const unit = ctx.settings.get().units;
-    const w = sampleSeries(ctx.scenario.weather, abs, abs, 2)[0]!;
+    const w = sampleSeries(session.windWeather(), abs, abs, 2)[0]!;
     const next = changes.find((c) => c.time > abs);
     setChildren(wxSummary, [
       statRow(
@@ -349,13 +349,13 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       .filter((sn) => Number.isFinite(sn.stats.deadFuelMoistureMean))
       .map((sn) => ({ time: sn.time, value: sn.stats.deadFuelMoistureMean }));
     if (!panels.weather.hidden && canvas.isConnected) {
-      mapper = drawWeatherChart(canvas, { series: ctx.scenario.weather, start: ctx.scenario.startTime, duration: ctx.scenario.duration, viewTime: s.viewTime, tz: ctx.tz, units: unit, changes, moistureObs: obs, inspect });
+      mapper = drawWeatherChart(canvas, { series: session.windWeather(), start: ctx.scenario.startTime, duration: ctx.scenario.duration, viewTime: s.viewTime, tz: ctx.tz, units: unit, changes, moistureObs: obs, inspect });
     }
     if (details.open) renderTable();
   };
   const renderTable = (): void => {
     const unit = ctx.settings.get().units;
-    const hrs = sampleSeries(ctx.scenario.weather, ctx.scenario.startTime, ctx.scenario.startTime + ctx.scenario.duration * 1000, Math.round(ctx.scenario.duration / 3600) + 1);
+    const hrs = sampleSeries(session.windWeather(), ctx.scenario.startTime, ctx.scenario.startTime + ctx.scenario.duration * 1000, Math.round(ctx.scenario.duration / 3600) + 1);
     setChildren(
       tableHost,
       h('table', { class: 'data-table' }, [
@@ -555,7 +555,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
       renderActive();
     }, 250);
   };
-  unsubs.push(session.state.subscribe(schedule, ['viewTime', 'snapshot', 'insights', 'forecastInsights', 'compare', 'workerSpeed', 'error']));
+  unsubs.push(session.state.subscribe(schedule, ['viewTime', 'snapshot', 'insights', 'forecastInsights', 'compare', 'workerSpeed', 'error', 'edits']));
   unsubs.push(ui.subscribe(renderTabs, ['tab', 'sheet', 'panelOpen']));
   unsubs.push(ctx.settings.subscribe(renderActive, ['units', 'theme', 'highContrast']));
   // Re-fit the detent heights when the chrome above or below the dock changes size (top bar, timeline, error chip, rotation).

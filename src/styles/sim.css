@@ -1598,22 +1598,94 @@ button.map-credit:active {
   margin: var(--sp-1) 0 0;
 }
 
+/* Wind direction panel (windPanel.ts): the dial with the hint beside it, then When, the time field, the status and the list of changes. */
 .wind-controls {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--sp-2) var(--sp-4);
 }
 
 .wind-controls .rose-wrap {
-  flex: 0 0 auto;
-  margin-left: auto;
-  margin-right: auto;
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
 }
 
-.wind-sliders {
-  flex: 1 1 220px;
-  min-width: 0;
+/* The dial is named for a screen reader by its own label (it is the same sentence as the hint, which is the text to read). */
+.wind-controls .rose-wrap > .field-label {
+  display: none;
+}
+
+.wind-hint {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+}
+
+.wind-time-field {
+  margin: 0 0 var(--sp-2);
+}
+
+.wind-time-field .input {
+  max-width: 180px;
+}
+
+.wind-time-msg {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm); /* not the 12 px of a field error elsewhere: this one explains why Apply is off */
+  line-height: var(--lh-sm);
+}
+
+.wind-status {
+  margin: var(--sp-2) 0;
+}
+
+.wind-status-line {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.wind-status-line + .wind-status-line {
+  margin-top: var(--sp-1);
+}
+
+/* A short landscape screen leaves the panel about 240 px: the header and the Apply bar give up padding, the dial's read-out goes beside
+   it and the hint under both, so the whole dial is on screen when the panel opens (the hint, When and the rest are reached by scrolling). */
+@media (orientation: landscape) and (max-height: 540px) {
+  .wind-panel .panel-head {
+    min-height: var(--tap);
+  }
+
+  .wind-panel .panel-body {
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-2);
+  }
+
+  .wind-panel .panel-foot {
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-2);
+  }
+
+  .wind-controls .rose-wrap {
+    display: contents;
+  }
+
+  .wind-controls .rose {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .wind-controls .rose-readout-text {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .wind-hint {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 /* ── "Why here?" panel (whyPanel.ts; its builder may refine these in layers.css, which loads later) ── */
@@ -1948,23 +2020,6 @@ button.map-credit:active {
   fill: var(--map-pin);
   stroke: var(--map-halo);
   stroke-width: 2px;
-}
-
-.ann-wind-casing {
-  fill: none;
-  stroke: var(--map-shade);
-  stroke-width: 9px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.6;
-}
-
-.ann-wind-arrow {
-  fill: none;
-  stroke: var(--map-halo);
-  stroke-width: 5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 /*
