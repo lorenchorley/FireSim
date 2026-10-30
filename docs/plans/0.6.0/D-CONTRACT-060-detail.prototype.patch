@@ -1,0 +1,762 @@
+diff --git a/e2e/zz-scout-detail.spec.ts b/e2e/zz-scout-detail.spec.ts
+new file mode 100644
+index 0000000..dac34ef
+--- /dev/null
++++ b/e2e/zz-scout-detail.spec.ts
+@@ -0,0 +1,122 @@
++/** THROWAWAY scout spec (not for merging): layout shots at three sizes, the 0.5.0 L4 look, and (second run) the prototype. */
++import { mkdirSync, writeFileSync } from 'node:fs';
++import { join } from 'node:path';
++import type { Page } from '@playwright/test';
++import { expect, test } from './fixtures';
++import { acceptNotice } from './helpers';
++
++test.use({ deviceScaleFactor: 1, actionTimeout: 45_000 });
++
++const OUT = process.env.SCOUT_SHOTS ?? '/tmp/scout-shots';
++mkdirSync(OUT, { recursive: true });
++
++type Pt = [number, number];
++type View = {
++  cameraState(): { target: Pt; distance: number; mode: string };
++  lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void;
++  setLayers(l: Record<string, unknown>): void;
++  setViewMode(m: 'orbit' | 'top' | 'ground'): void;
++  renderNow(): void;
++  windGlyphStats?(): { level: number; cellPx: number; cellM: number; count: number; segments: number } | null;
++  stats(): { drawCalls: number; triangles: number };
++  rig: { update(now: number): boolean };
++  renderer: { domElement: HTMLCanvasElement; info: { render: { calls: number; triangles: number } } };
++};
++type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null } } } } };
++const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
++const setLayers = (page: Page, l: Record<string, unknown>): Promise<void> => page.evaluate((v) => (window as unknown as Handle).__firesim.view.setLayers(v), l);
++const lookAt = (page: Page, d: number, x = 0, y = 0, az = 200, tilt = 55): Promise<void> =>
++  page.evaluate(([px, py, pd, a, t]) => (window as unknown as Handle).__firesim.view.lookAt(px!, py!, pd!, a!, t!, false), [x, y, d, az, tilt]);
++const settle = async (page: Page): Promise<void> => {
++  await page.evaluate(() => {
++    const rig = (window as unknown as Handle).__firesim.view.rig;
++    const t0 = performance.now() + 4000;
++    for (let i = 0; i < 100; i++) rig.update(t0 + i * 16);
++  });
++};
++const canvasShot = async (page: Page, name: string): Promise<void> => {
++  const url = await page.evaluate(() => {
++    const v = (window as unknown as Handle).__firesim.view;
++    v.renderNow();
++    return v.renderer.domElement.toDataURL('image/png');
++  });
++  writeFileSync(join(OUT, name), Buffer.from(url.split(',')[1]!, 'base64'));
++};
++const pageShot = async (page: Page, name: string): Promise<void> => {
++  await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++  await page.screenshot({ path: join(OUT, name) });
++};
++
++async function build(page: Page): Promise<void> {
++  await page.goto('/?debug=1');
++  await acceptNotice(page);
++  await page.getByTestId('open-settings').click();
++  await page.getByTestId('picture-quality').getByRole('radio', { name: 'High' }).check();
++  await page.getByTestId('close-settings').click();
++  await page.getByTestId('site-katoomba').click();
++  await page.getByTestId('extent').getByRole('radio', { name: '6 km' }).check({ force: true });
++  await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
++  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
++  await page.getByTestId('preset-hot-nw-sw-change').click();
++  const online = page.getByTestId('online').getByRole('switch');
++  if (await online.isChecked()) await page.getByTestId('online').click();
++  await page.getByTestId('build').click();
++  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
++  await expect.poll(() => airKind(page), { timeout: 60_000 }).not.toBeNull();
++}
++
++test('scout: layout at three sizes and the look of L4', async ({ page }) => {
++  test.setTimeout(900_000);
++  await build(page);
++  const cellM = (await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats?.()?.cellM)) ?? 133;
++  const sizes: [number, number][] = [
++    [412, 915],
++    [360, 640],
++    [844, 390],
++  ];
++  for (const [w, h] of sizes) {
++    await page.setViewportSize({ width: w, height: h });
++    await page.waitForTimeout(1200);
++    await lookAt(page, 1500);
++    await settle(page);
++    // The default layers: the wind streaks on (their legend card shows), glyphs off.
++    await pageShot(page, `layout-${w}x${h}-streaks.png`);
++    // Rects of what floats, for the placement of an icon.
++    const rects = await page.evaluate(() => {
++      const q = (sel: string): { sel: string; l: number; t: number; r: number; b: number }[] =>
++        [...document.querySelectorAll(sel)]
++          .filter((e) => {
++            const cs = getComputedStyle(e);
++            const b = e.getBoundingClientRect();
++            return cs.display !== 'none' && cs.visibility !== 'hidden' && !(e as HTMLElement).hidden && b.width > 0 && b.height > 0;
++          })
++          .map((e) => {
++            const b = e.getBoundingClientRect();
++            return { sel, l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), b: Math.round(b.bottom) };
++          });
++      return [...q('.sim-topbar .tb-pill'), ...q('.sim-topbar .tb-wx > *'), ...q('.map-fabs .fab'), ...q('.menu-fab'), ...q('.map-legend'), ...q('.map-credit'), ...q('[data-testid=dock]'), ...q('.scrubber'), ...q('.crosshair')];
++    });
++    writeFileSync(join(OUT, `rects-${w}x${h}.json`), JSON.stringify(rects, null, 1));
++  }
++  await page.setViewportSize({ width: 412, height: 915 });
++  await page.waitForTimeout(800);
++  // The 0.5.0 L4 look: glyphs only, three zooms, in plan-ish tilt 55 and in a top view.
++  await setLayers(page, { vegetation: false, understorey: false, wind: 'off', flames: false, smoke: false, embers: false, roads: false, fireTrails: false, placeNames: false, imagery: false, insightMarkers: false, windSway: false, windGlyphs: true, windHeight: 'fire' });
++  const H = await page.evaluate(() => document.querySelector('canvas')!.clientHeight);
++  const at = (px: number): number => (cellM * H) / (2 * Math.tan((25 * Math.PI) / 180) * px);
++  const log: string[] = [];
++  for (const px of [120, 300, 900, 2000]) {
++    await lookAt(page, at(px), 400, -300, 200, 55);
++    await settle(page);
++    await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++    const s = await page.evaluate(() => (window as unknown as Handle).__firesim.view.windGlyphStats?.());
++    log.push(`px/cell ${px}: distance ${at(px).toFixed(0)} m, level ${s?.level}, cellPx ${s?.cellPx.toFixed(0)}, count ${s?.count}, segments ${s?.segments}`);
++    await canvasShot(page, `base-L4-${px}px.png`);
++  }
++  // With the trees, the way a user sees it.
++  await setLayers(page, { vegetation: true, understorey: true, imagery: false });
++  await lookAt(page, at(300), 400, -300, 200, 55);
++  await settle(page);
++  await canvasShot(page, 'base-L4-300px-trees.png');
++  writeFileSync(join(OUT, 'log.txt'), `${log.join('\n')}\ncellM ${cellM} canvasH ${H}\n`);
++});
+diff --git a/e2e/zz-scout-proto.spec.ts b/e2e/zz-scout-proto.spec.ts
+new file mode 100644
+index 0000000..2bc7e1c
+--- /dev/null
++++ b/e2e/zz-scout-proto.spec.ts
+@@ -0,0 +1,161 @@
++/** THROWAWAY scout spec (not for merging): layout shots at three sizes, the 0.5.0 L4 look, and (second run) the prototype. */
++import { mkdirSync, writeFileSync } from 'node:fs';
++import { join } from 'node:path';
++import type { Page } from '@playwright/test';
++import { expect, test } from './fixtures';
++import { acceptNotice } from './helpers';
++
++test.use({ deviceScaleFactor: 1, actionTimeout: 45_000 });
++
++const OUT = process.env.SCOUT_SHOTS ?? '/tmp/scout-shots';
++mkdirSync(OUT, { recursive: true });
++
++type Pt = [number, number];
++type View = {
++  cameraState(): { target: Pt; distance: number; mode: string };
++  lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void;
++  setLayers(l: Record<string, unknown>): void;
++  setViewMode(m: 'orbit' | 'top' | 'ground'): void;
++  renderNow(): void;
++  windGlyphStats?(): { level: number; cellPx: number; cellM: number; count: number; segments: number } | null;
++  stats(): { drawCalls: number; triangles: number };
++  rig: { update(now: number): boolean };
++  renderer: { domElement: HTMLCanvasElement; info: { render: { calls: number; triangles: number } } };
++};
++type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null } } } } };
++const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
++const setLayers = (page: Page, l: Record<string, unknown>): Promise<void> => page.evaluate((v) => (window as unknown as Handle).__firesim.view.setLayers(v), l);
++const lookAt = (page: Page, d: number, x = 0, y = 0, az = 200, tilt = 55): Promise<void> =>
++  page.evaluate(([px, py, pd, a, t]) => (window as unknown as Handle).__firesim.view.lookAt(px!, py!, pd!, a!, t!, false), [x, y, d, az, tilt]);
++const settle = async (page: Page): Promise<void> => {
++  await page.evaluate(() => {
++    const rig = (window as unknown as Handle).__firesim.view.rig;
++    const t0 = performance.now() + 4000;
++    for (let i = 0; i < 100; i++) rig.update(t0 + i * 16);
++  });
++};
++const canvasShot = async (page: Page, name: string): Promise<void> => {
++  const url = await page.evaluate(() => {
++    const v = (window as unknown as Handle).__firesim.view;
++    v.renderNow();
++    return v.renderer.domElement.toDataURL('image/png');
++  });
++  writeFileSync(join(OUT, name), Buffer.from(url.split(',')[1]!, 'base64'));
++};
++
++async function build(page: Page): Promise<void> {
++  await page.goto('/?debug=1');
++  await acceptNotice(page);
++  await page.getByTestId('open-settings').click();
++  await page.getByTestId('picture-quality').getByRole('radio', { name: 'High' }).check();
++  await page.getByTestId('close-settings').click();
++  await page.getByTestId('site-katoomba').click();
++  await page.getByTestId('extent').getByRole('radio', { name: '6 km' }).check({ force: true });
++  await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
++  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
++  await page.getByTestId('preset-hot-nw-sw-change').click();
++  const online = page.getByTestId('online').getByRole('switch');
++  if (await online.isChecked()) await page.getByTestId('online').click();
++  await page.getByTestId('build').click();
++  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
++  await expect.poll(() => airKind(page), { timeout: 60_000 }).not.toBeNull();
++}
++
++
++type Proto = { proto: { lines: number; segments: number; lastMs: number } };
++const protoInfo = (page: Page): Promise<{ lines: number; segments: number; lastMs: number; level: number }> =>
++  page.evaluate(() => {
++    const v = (window as unknown as { __firesim: { view: { glyphs: Proto; windGlyphStats(): { level: number } } } }).__firesim.view;
++    return { lines: v.glyphs.proto.lines, segments: v.glyphs.proto.segments, lastMs: v.glyphs.proto.lastMs, level: v.windGlyphStats().level };
++  });
++const setT = (page: Page, t: number, still = false, eddy = 1): Promise<void> =>
++  page.evaluate(([a, b, c]) => {
++    const w = window as unknown as { __protoTime?: number; __protoStill?: boolean; __protoEddy?: number };
++    w.__protoTime = a as number;
++    w.__protoStill = b as boolean;
++    w.__protoEddy = c as number;
++  }, [t, still, eddy] as const);
++
++test('scout: the prototype detailed streaks and the chip placement', async ({ page }) => {
++  test.setTimeout(900_000);
++  await build(page);
++  const log: string[] = [];
++  await setLayers(page, { vegetation: false, understorey: false, wind: 'off', flames: false, smoke: false, embers: false, roads: false, fireTrails: false, placeNames: false, imagery: false, insightMarkers: false, windSway: false, windGlyphs: true, windHeight: 'fire' });
++  const shotAt = async (name: string, d: number, x: number, y: number, tilt: number, t: number, still = false, eddy = 1): Promise<void> => {
++    await lookAt(page, d, x, y, 200, tilt);
++    await settle(page);
++    await setT(page, t, still, eddy);
++    await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++    const info = await protoInfo(page);
++    log.push(`${name}: d ${d} m tilt ${tilt}, level ${info.level}, lines ${info.lines}, segments ${info.segments}, build ${info.lastMs.toFixed(1)} ms`);
++    await canvasShot(page, `proto-${name}.png`);
++  };
++  await shotAt('d1200-t1', 1200, 400, -300, 55, 1.0);
++  await shotAt('d700-t1', 700, 400, -300, 55, 1.0);
++  await shotAt('d700-t2', 700, 400, -300, 55, 1.8);
++  await shotAt('d250-t1', 250, 400, -300, 55, 1.0);
++  await shotAt('d250-t2', 250, 400, -300, 55, 1.8);
++  await shotAt('d250-t3', 250, 400, -300, 55, 2.4);
++  await shotAt('d250-t4', 250, 400, -300, 55, 3.0);
++  await shotAt('d250-still', 250, 400, -300, 55, 0, true);
++  await shotAt('d250-noeddy', 250, 400, -300, 55, 1.0, false, 0);
++  await shotAt('d70-t1', 70, 400, -300, 55, 1.0);
++  await shotAt('d120-top-t1', 120, 400, -300, 5, 1.0);
++  await shotAt('d250-cliff-t1', 250, -300, 600, 60, 1.0);
++  // With the trees and the aerial photo, the way a user sees it.
++  await setLayers(page, { vegetation: true, understorey: true, imagery: true });
++  await shotAt('d250-trees-t1', 250, 400, -300, 55, 1.0);
++  await shotAt('d700-trees-t1', 700, 0, 0, 55, 1.0);
++  await setLayers(page, { vegetation: true, understorey: true, imagery: false });
++  await shotAt('d250-trees-plain-t1', 250, 400, -300, 55, 1.0);
++  writeFileSync(join(OUT, 'proto-log.txt'), log.join('\n'));
++
++  // The chip: a stand-in for the real thing, placed above the legend (or the credit line) at three sizes, with its open card, and measured against every floating control.
++  await setLayers(page, { windGlyphs: false, wind: 'surface' });
++  for (const [w, h] of [[412, 915], [360, 640], [844, 390]] as [number, number][]) {
++    await page.setViewportSize({ width: w, height: h });
++    await page.waitForTimeout(1200);
++    await lookAt(page, 300, 400, -300, 200, 55);
++    await settle(page);
++    const res = await page.evaluate(() => {
++      const vis = (sel: string): DOMRect[] =>
++        [...document.querySelectorAll(sel)]
++          .filter((e) => {
++            const cs = getComputedStyle(e);
++            const b = e.getBoundingClientRect();
++            return cs.display !== 'none' && cs.visibility !== 'hidden' && !(e as HTMLElement).hidden && b.width > 0 && b.height > 0;
++          })
++          .map((e) => e.getBoundingClientRect());
++      const legend = vis('.map-legend')[0];
++      const credit = vis('.map-credit')[0];
++      const anchor = legend ?? credit;
++      const left = (legend ?? credit)?.left ?? 12;
++      const bottomOf = anchor ? innerHeight - anchor.top + 8 : 80;
++      const chip = document.createElement('div');
++      chip.id = 'mock-chip';
++      chip.style.cssText = `position:fixed;z-index:60;left:${left}px;bottom:${bottomOf}px;height:44px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:22px;background:#fff;color:#1b1b1f;font:600 14px system-ui;box-shadow:0 1px 4px rgba(0,0,0,.4)`;
++      chip.innerHTML = '<span>Wind detail</span><span style="letter-spacing:3px">&#9679;&#9679;&#9679;&#9675;</span>';
++      document.body.append(chip);
++      const cb = chip.getBoundingClientRect();
++      const card = document.createElement('div');
++      card.id = 'mock-card';
++      card.style.cssText = `position:fixed;z-index:61;left:${left}px;bottom:${innerHeight - cb.top + 8}px;width:${Math.min(300, innerWidth - 80)}px;padding:12px;border-radius:12px;background:#fff;color:#1b1b1f;font:14px/1.35 system-ui;box-shadow:0 2px 8px rgba(0,0,0,.45)`;
++      card.innerHTML = '<b style="font-size:16px">Wind detail: level 4 of 4</b><p>Moving streaks with small eddies, about 10 m above open ground.</p><p>This is the most detailed level.</p><p>The air model works on cells about 133 m wide. The small eddies are added for looks, from the shape of the ground. The direction and speed along the flow are the model\'s.</p><p>The fast tier\'s wind is estimated from the forecast and the shape of the ground. It is not simulated.</p><button style="height:44px;min-width:88px">Close</button>';
++      document.body.append(card);
++      const kb = card.getBoundingClientRect();
++      const others = [...vis('.sim-topbar .tb-pill'), ...vis('.sim-topbar .tb-wx > *'), ...vis('.map-fabs .fab'), ...vis('.menu-fab'), ...vis('.map-credit'), ...vis('[data-testid=dock]'), ...vis('.scrubber')];
++      const hit = (a: DOMRect, b: DOMRect): boolean => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
++      const chipHits = others.filter((o) => hit(cb, o)).length;
++      const cardHits = others.filter((o) => hit(kb, o)).length;
++      return { chip: [cb.left, cb.top, cb.right, cb.bottom].map(Math.round), card: [kb.left, kb.top, kb.right, kb.bottom].map(Math.round), legend: legend ? [legend.left, legend.top, legend.right, legend.bottom].map(Math.round) : null, chipHits, cardHits };
++    });
++    log.push(`${w}x${h}: ${JSON.stringify(res)}`);
++    await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++    await page.screenshot({ path: join(OUT, `chip-${w}x${h}.png`) });
++    await page.evaluate(() => document.getElementById('mock-card')?.remove());
++    await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++    await page.screenshot({ path: join(OUT, `chip-${w}x${h}-closed.png`) });
++    await page.evaluate(() => document.getElementById('mock-chip')?.remove());
++  }
++  writeFileSync(join(OUT, 'proto-log.txt'), log.join('\n'));
++});
+diff --git a/src/render/wind/detailProto.ts b/src/render/wind/detailProto.ts
+new file mode 100644
+index 0000000..c52aaee
+--- /dev/null
++++ b/src/render/wind/detailProto.ts
+@@ -0,0 +1,367 @@
++/** THROWAWAY prototype of the detailed streaks (scout D-CONTRACT-060). Not for merging: unoptimised, allocates, no slicing. */
++import * as THREE from 'three';
++import { hash01 as hash3 } from '../fields';
++import { buildSpeedTable, GLYPH_CALM_MS, SPEED_TABLE_BINS, SPEED_TABLE_MAX_MS, HALO_INK } from './flowGlyphs';
++import type { GlyphInput } from './glyphTypes';
++
++const VERT = /* glsl */ `
++uniform vec2 uViewport;
++uniform float uWidthPx;
++uniform float uDepthBias;
++uniform float uTime;
++uniform float uMoving;
++uniform float uFade;
++uniform float uPxPerM1;
++uniform float uEddy;
++attribute vec3 aA;
++attribute vec3 aB;
++attribute vec4 aC;
++attribute vec4 aD; // s0, s1, L, seed
++attribute vec4 aE; // speed, turb, lift, tail
++varying vec4 vC;
++varying vec2 vUv;
++varying float vHalf;
++varying float vAlpha;
++
++float h21(vec2 p) {
++  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
++  p3 += dot(p3, p3.yzx + 33.33);
++  return fract((p3.x + p3.y) * p3.z);
++}
++float vn(vec2 p) {
++  vec2 i = floor(p);
++  vec2 f = fract(p);
++  f = f * f * (3.0 - 2.0 * f);
++  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
++}
++vec2 vn2(vec2 p) { return vec2(vn(p), vn(p + vec2(31.7, 17.3))) - 0.5; }
++
++float pulse(float s, float head, float tail) {
++  return s <= head ? clamp(1.0 - (head - s) / tail, 0.0, 1.0) : 0.0;
++}
++
++void main() {
++  float t = uMoving > 0.5 ? uTime : 3.7;
++  float seed = aD.w;
++  float L = aD.z;
++  float tail = aE.w;
++  float speed = aE.x;
++  float vpx = clamp(14.0 * speed, 40.0, 260.0);
++  float life = L + tail;
++  float T = life / vpx * (0.7 + 0.6 * h21(vec2(seed * 91.7, 3.1)));
++  float gap = 0.6 * h21(vec2(seed * 53.3, 7.7));
++  float ph = fract(t / T + h21(vec2(seed * 17.9, 1.3)));
++  float head = ph * (1.0 + gap) * life;
++  float ia = pulse(aD.x, head, tail);
++  float ib = pulse(aD.y, head, tail);
++  vec4 ca0 = projectionMatrix * viewMatrix * vec4(aA, 1.0);
++  vec4 cb0 = projectionMatrix * viewMatrix * vec4(aB, 1.0);
++  if (ca0.w <= 0.01 || cb0.w <= 0.01 || (ia <= 0.0 && ib <= 0.0)) {
++    gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
++    return;
++  }
++  vec2 dir = normalize((aB - aA).xz + vec2(1e-6));
++  // Eddy meander: three octaves, the finer ones only when their amplitude is over about a pixel.
++  vec3 pa = aA;
++  vec3 pb = aB;
++  float turbF = 0.25 + 0.75 * aE.y;
++  float adv = vpx * t / max(uPxPerM1 / ca0.w, 1e-4);
++  float wA = 0.0;
++  vec2 offA = vec2(0.0);
++  vec2 offB = vec2(0.0);
++  for (int k = 0; k < 3; k++) {
++    float lam = k == 0 ? 60.0 : (k == 1 ? 15.0 : 4.0);
++    float amp = k == 0 ? 20.0 : (k == 1 ? 5.0 : 1.2);
++    float wk = smoothstep(0.75, 3.0, amp * uPxPerM1 / ca0.w) * turbF * uEddy;
++    vec2 qa = (aA.xz - dir * adv) / lam + vec2(t * 0.05, t * 0.07) * (float(k) + 1.0);
++    vec2 qb = (aB.xz - dir * adv) / lam + vec2(t * 0.05, t * 0.07) * (float(k) + 1.0);
++    offA += vn2(qa) * 2.0 * amp * wk;
++    offB += vn2(qb) * 2.0 * amp * wk;
++  }
++  pa.xz += offA;
++  pb.xz += offB;
++  // Gust band: a brightness envelope that travels along the flow.
++  float gphase = dot(0.5 * (aA.xz + aB.xz), dir) / 120.0 - t / 4.0;
++  float gust = 0.5 + 0.5 * sin(6.2831853 * gphase + 5.0 * vn(0.5 * (aA.xz + aB.xz) / 300.0));
++  float lift = 1.0 + 0.12 * aE.z;
++  float k0 = (0.85 + 0.3 * gust) * lift * uFade;
++  vec4 ca = projectionMatrix * viewMatrix * vec4(pa, 1.0);
++  vec4 cb = projectionMatrix * viewMatrix * vec4(pb, 1.0);
++  if (ca.w <= 0.01 || cb.w <= 0.01) {
++    gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
++    return;
++  }
++  float za = 0.0;
++  float zb = 0.0;
++  if (uDepthBias > 0.0) {
++    vec3 va = (viewMatrix * vec4(pa, 1.0)).xyz;
++    vec3 vb = (viewMatrix * vec4(pb, 1.0)).xyz;
++    float la = length(va);
++    float lb = length(vb);
++    vec4 ba = projectionMatrix * vec4(va * (1.0 - min(uDepthBias, 0.5 * la) / la), 1.0);
++    vec4 bb = projectionMatrix * vec4(vb * (1.0 - min(uDepthBias, 0.5 * lb) / lb), 1.0);
++    za = ba.z / ba.w;
++    zb = bb.z / bb.w;
++  }
++  vec2 sa = ca.xy / ca.w * uViewport * 0.5;
++  vec2 sb = cb.xy / cb.w * uViewport * 0.5;
++  vec2 d = sb - sa;
++  float len = length(d);
++  vec2 sdir = len > 1e-3 ? d / len : vec2(1.0, 0.0);
++  vec2 nrm = vec2(-sdir.y, sdir.x);
++  float wEnd = mix(0.35, 1.0, ia) ;
++  float wEnd2 = mix(0.35, 1.0, ib);
++  float half0 = 0.5 * uWidthPx * mix(wEnd, wEnd2, position.x);
++  float quad = half0 + 2.0;
++  vec4 c = mix(ca, cb, position.x);
++  vec2 off = nrm * position.y * quad + sdir * (-(1.0 - position.x) * 1.0 + position.x * 1.0);
++  c.xy += off / (uViewport * 0.5) * c.w;
++  gl_Position = c;
++  if (uDepthBias > 0.0) gl_Position.z = mix(za, zb, position.x) * c.w;
++  vC = aC;
++  vAlpha = mix(ia, ib, position.x) * k0;
++  vHalf = half0;
++  vUv = vec2(position.x * len, position.y * quad);
++}
++`;
++
++const FRAG = /* glsl */ `
++uniform vec3 uHalo;
++varying vec4 vC;
++varying vec2 vUv;
++varying float vHalf;
++varying float vAlpha;
++void main() {
++  float across = abs(vUv.y);
++  float core = 1.0 - smoothstep(vHalf * 0.62 - 0.5, vHalf * 0.62 + 0.5, across);
++  float halo = (1.0 - smoothstep(vHalf + 0.2, vHalf + 1.6, across)) * 0.6;
++  float a = max(core, halo) * vAlpha;
++  if (a < 0.01) discard;
++  vec3 col = mix(uHalo, vC.rgb, core);
++  gl_FragColor = vec4(col, a);
++  #include <colorspace_fragment>
++}
++`;
++
++export class DetailProto {
++  readonly mesh: THREE.Mesh;
++  readonly cap: number;
++  readonly a: Float32Array;
++  readonly b: Float32Array;
++  readonly c: Float32Array;
++  readonly d: Float32Array;
++  readonly e: Float32Array;
++  private readonly geom = new THREE.InstancedBufferGeometry();
++  private readonly attrs: THREE.InstancedBufferAttribute[] = [];
++  readonly uniforms: Record<string, THREE.IUniform>;
++  segments = 0;
++  lines = 0;
++  lastMs = 0;
++
++  constructor(shared: Record<string, THREE.IUniform>, cap = 12000) {
++    this.cap = cap;
++    this.a = new Float32Array(cap * 3);
++    this.b = new Float32Array(cap * 3);
++    this.c = new Float32Array(cap * 4);
++    this.d = new Float32Array(cap * 4);
++    this.e = new Float32Array(cap * 4);
++    const g = this.geom;
++    g.setAttribute('position', new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3));
++    g.setIndex([0, 1, 2, 0, 2, 3]);
++    const mk = (name: string, arr: Float32Array, n: number): void => {
++      const at = new THREE.InstancedBufferAttribute(arr, n).setUsage(THREE.DynamicDrawUsage);
++      g.setAttribute(name, at);
++      this.attrs.push(at);
++    };
++    mk('aA', this.a, 3);
++    mk('aB', this.b, 3);
++    mk('aC', this.c, 4);
++    mk('aD', this.d, 4);
++    mk('aE', this.e, 4);
++    g.instanceCount = 0;
++    this.uniforms = {
++      uViewport: shared.uViewport!,
++      uWidthPx: { value: 2.8 },
++      uDepthBias: { value: 40 },
++      uTime: { value: 0 },
++      uMoving: { value: 1 },
++      uFade: { value: 1 },
++      uPxPerM1: { value: 800 },
++      uEddy: { value: 1 },
++      uHalo: { value: new THREE.Vector3(HALO_INK[0], HALO_INK[1], HALO_INK[2]) },
++    };
++    const mat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, depthTest: true, toneMapped: false });
++    this.mesh = new THREE.Mesh(g, mat);
++    this.mesh.frustumCulled = false;
++    this.mesh.renderOrder = 6;
++    this.mesh.name = 'wind-detail';
++    this.mesh.visible = false;
++  }
++
++  commit(n: number): void {
++    this.segments = n;
++    this.geom.instanceCount = n;
++    for (const at of this.attrs) {
++      at.clearUpdateRanges();
++      at.addUpdateRange(0, n * at.itemSize);
++      at.needsUpdate = true;
++    }
++  }
++
++  /** Build the picture synchronously from the same input as the glyph builder. */
++  build(input: GlyphInput, ground10: { grid: { nx: number; ny: number; cellSize: number; x0: number; y0: number }; elevation: Float32Array }): void {
++    const t0 = performance.now();
++    const speedTable = buildSpeedTable();
++    const lod = input.lod;
++    const S = lod.spacingM;
++    const f = input.field;
++    const fg = f.grid;
++    const gg = input.ground.grid;
++    const g10 = ground10.grid;
++    const vp = input.viewProj;
++    const rx0 = fg.x0;
++    const ry0 = fg.y0;
++    const rx1 = fg.x0 + (fg.nx - 1) * fg.cellSize;
++    const ry1 = fg.y0 + (fg.ny - 1) * fg.cellSize;
++    const bil = (arr: Float32Array, g: { nx: number; ny: number; cellSize: number; x0: number; y0: number }, x: number, y: number): number => {
++      let fx = (x - g.x0) / g.cellSize;
++      let fy = (y - g.y0) / g.cellSize;
++      fx = Math.max(0, Math.min(g.nx - 1, fx));
++      fy = Math.max(0, Math.min(g.ny - 1, fy));
++      let i0 = Math.floor(fx);
++      let j0 = Math.floor(fy);
++      if (i0 >= g.nx - 1) i0 = g.nx - 2;
++      if (j0 >= g.ny - 1) j0 = g.ny - 2;
++      const tx = fx - i0;
++      const ty = fy - j0;
++      const k = j0 * g.nx + i0;
++      return (arr[k]! * (1 - tx) + arr[k + 1]! * tx) * (1 - ty) + (arr[k + g.nx]! * (1 - tx) + arr[k + g.nx + 1]! * tx) * ty;
++    };
++    const wind = (x: number, y: number): [number, number] => [bil(f.u, fg, x, y), bil(f.v, fg, x, y)];
++    const ground = (x: number, y: number): number => bil(input.ground.elevation, gg, x, y);
++    const ground10At = (x: number, y: number): number => bil(ground10.elevation, g10, x, y);
++    const proj = (x: number, yw: number, zw: number): [number, number, number] => {
++      const w = vp[3]! * x + vp[7]! * yw + vp[11]! * zw + vp[15]!;
++      const cx = vp[0]! * x + vp[4]! * yw + vp[8]! * zw + vp[12]!;
++      const cy = vp[1]! * x + vp[5]! * yw + vp[9]! * zw + vp[13]!;
++      return [cx / w, cy / w, w];
++    };
++    const pxM1 = input.pxPerMetre1;
++    const mppC = lod.mppCentre ?? S / lod.spacingPx;
++    const box = input.box;
++    const i0 = Math.floor(Math.max(box.x0, rx0) / S);
++    const i1 = Math.floor(Math.min(box.x1, rx1) / S);
++    const j0 = Math.floor(Math.max(box.y0, ry0) / S);
++    const j1 = Math.floor(Math.min(box.y1, ry1) / S);
++    let seg = 0;
++    let lines = 0;
++    const cap = this.cap;
++    const salt = 40 + 2 * (lod.spacingExp + 16);
++    const margin = 0.1;
++    for (let j = j0; j <= j1 && seg < cap; j++) {
++      for (let i = i0; i <= i1 && seg < cap; i++) {
++        const hx = hash3(i, j, salt);
++        const hy = hash3(i, j, salt + 1);
++        const px = (i + 0.5 + lod.jitter * (hx - 0.5) * 2) * S;
++        const py = (j + 0.5 + lod.jitter * (hy - 0.5) * 2) * S;
++        if (px < rx0 || px > rx1 || py < ry0 || py > ry1) continue;
++        const gz = ground(px, py);
++        const lift0 = Math.max(1.5, 3 * (S / lod.spacingPx));
++        const [nx, ny, w] = proj(px, (gz + lift0) * input.vex, -py);
++        if (!(w > 1.5 * input.near)) continue;
++        if (Math.abs(nx) > 1 + 2 * Math.max(margin, 230 / input.cssW) || Math.abs(ny) > 1 + 2 * Math.max(margin, 230 / input.cssH)) continue;
++        const mpp = w / pxM1;
++        const s2 = Math.min(64, Math.max(1, (mpp / mppC) * (mpp / mppC)));
++        if (s2 > 1 && hash3(i, j, 17) * s2 >= 1) continue;
++        let [u, v] = wind(px, py);
++        let sp = Math.hypot(u, v);
++        if (sp < GLYPH_CALM_MS) continue;
++        const lenPx = Math.min(lod.lengthPx.max, Math.max(lod.lengthPx.min, lod.lengthPx.pxPerMs * sp));
++        const n = Math.max(8, Math.min(24, Math.ceil(lenPx / 9)));
++        const ds = (lenPx * mpp) / n;
++        // Terrain features at the seed (10 m ground).
++        const e = 20;
++        let sum = 0;
++        let sum2 = 0;
++        let cnt = 0;
++        for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
++          const z = ground10At(px + a * 10, py + b * 10);
++          sum += z;
++          sum2 += z * z;
++          cnt++;
++        }
++        const mean = sum / cnt;
++        const rough = Math.min(1, Math.sqrt(Math.max(0, sum2 / cnt - mean * mean)) / 8);
++        const dzx = (ground10At(px + 30, py) - ground10At(px - 30, py)) / 60;
++        const dzy = (ground10At(px, py + 30) - ground10At(px, py - 30)) / 60;
++        const slope = (dzx * u + dzy * v) / sp;
++        const lee = Math.min(1, Math.max(0, -slope / 0.35));
++        const turb = Math.min(1, 0.25 + 0.5 * rough + 0.5 * lee);
++        const lift = Math.max(-1, Math.min(1, (sp * slope) / 3));
++        void e;
++        const tail = Math.min(90, Math.max(24, 6 * sp + 20));
++        const seedHash = hash3(i, j, 977);
++        // Trace.
++        let x = px;
++        let y = py;
++        let ox = x;
++        let oyw = (gz + lift0 + 3 * lift) * input.vex;
++        let ozw = -y;
++        let s0 = 0;
++        const made: number[] = [];
++        for (let k = 0; k < n; k++) {
++          const [u1, v1] = wind(x, y);
++          const sp1 = Math.hypot(u1, v1);
++          if (sp1 < GLYPH_CALM_MS) break;
++          const [u2, v2] = wind(x + (u1 / sp1) * 0.5 * ds, y + (v1 / sp1) * 0.5 * ds);
++          const sp2 = Math.hypot(u2, v2);
++          if (sp2 < GLYPH_CALM_MS) break;
++          const qx = x + (u2 / sp2) * ds;
++          const qy = y + (v2 / sp2) * ds;
++          if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) break;
++          const qyw = (ground(qx, qy) + lift0 + 3 * lift) * input.vex;
++          const qzw = -qy;
++          if (Math.abs(qyw - oyw) > ds * input.vex) break; // cliff rule
++          const o = seg + made.length;
++          if (o >= cap) break;
++          this.a[3 * o] = ox;
++          this.a[3 * o + 1] = oyw;
++          this.a[3 * o + 2] = ozw;
++          this.b[3 * o] = qx;
++          this.b[3 * o + 1] = qyw;
++          this.b[3 * o + 2] = qzw;
++          let bin = Math.round((sp2 * (SPEED_TABLE_BINS - 1)) / SPEED_TABLE_MAX_MS);
++          if (bin > SPEED_TABLE_BINS - 1) bin = SPEED_TABLE_BINS - 1;
++          this.c[4 * o] = speedTable[3 * bin]!;
++          this.c[4 * o + 1] = speedTable[3 * bin + 1]!;
++          this.c[4 * o + 2] = speedTable[3 * bin + 2]!;
++          this.c[4 * o + 3] = 1;
++          this.d[4 * o] = s0;
++          this.d[4 * o + 1] = s0 + lenPx / n;
++          this.d[4 * o + 2] = lenPx;
++          this.d[4 * o + 3] = seedHash;
++          this.e[4 * o] = sp;
++          this.e[4 * o + 1] = turb;
++          this.e[4 * o + 2] = lift;
++          this.e[4 * o + 3] = tail;
++          made.push(o);
++          s0 += lenPx / n;
++          ox = qx;
++          oyw = qyw;
++          ozw = qzw;
++          x = qx;
++          y = qy;
++        }
++        if (made.length >= 3) {
++          seg += made.length;
++          lines++;
++        }
++        void u;
++        void v;
++      }
++    }
++    this.lines = lines;
++    this.commit(seg);
++    this.lastMs = performance.now() - t0;
++  }
++}
+diff --git a/src/render/wind/glyphLod.ts b/src/render/wind/glyphLod.ts
+index d4cc99b..dfda7e7 100644
+--- a/src/render/wind/glyphLod.ts
++++ b/src/render/wind/glyphLod.ts
+@@ -38,7 +38,7 @@ const LEVEL_SPECS: readonly LevelSpec[] = [
+   { spacingPx: 56, curved: false, jitter: 0, pxPerMs: 4, minPx: 8, maxPx: 45 }, // L1: straight arrows
+   { spacingPx: 40, curved: false, jitter: 0, pxPerMs: 4, minPx: 8, maxPx: 32 }, // L2: straight arrows, denser
+   { spacingPx: 36, curved: true, jitter: 0.3, pxPerMs: 4, minPx: 28, maxPx: 56 }, // L3: curved flow lines
+-  { spacingPx: 56, curved: true, jitter: 0.3, pxPerMs: 6, minPx: 90, maxPx: 140 }, // L4: long flow lines
++  { spacingPx: 40, curved: true, jitter: 0.35, pxPerMs: 16, minPx: 90, maxPx: 220 }, // L4: PROTOTYPE detailed streaks
+ ];
+ 
+ /** Metres one CSS pixel covers across the view at `distanceM` from the camera: `2 d tan(fov / 2) / cssH`. */
+diff --git a/src/render/wind/windGlyphLayer.ts b/src/render/wind/windGlyphLayer.ts
+index d019b8a..a830c93 100644
+--- a/src/render/wind/windGlyphLayer.ts
++++ b/src/render/wind/windGlyphLayer.ts
+@@ -21,6 +21,7 @@ import type { AtmosphereSampler } from '../atmosphereSampler';
+ import type { ViewMode } from '../cameraRig';
+ import { StreakBatch } from '../streaks';
+ import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
++import { DetailProto } from './detailProto';
+ import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
+ import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
+ import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
+@@ -89,6 +90,7 @@ export class WindGlyphLayer {
+   readonly group = new THREE.Group();
+   private readonly halo: StreakBatch;
+   private readonly colour: StreakBatch;
++  private readonly proto: DetailProto;
+   private readonly builder: GlyphBuilder;
+   private readonly tier: GlyphTier;
+   private readonly clock: () => number;
+@@ -182,7 +184,8 @@ export class WindGlyphLayer {
+       c[i * 4 + 3] = 1;
+     }
+     this.group.name = 'wind-glyphs';
+-    this.group.add(this.halo.mesh, this.colour.mesh);
++    this.proto = new DetailProto(shared, capacity);
++    this.group.add(this.halo.mesh, this.colour.mesh, this.proto.mesh);
+   }
+ 
+   setEnabled(on: boolean): void {
+@@ -198,6 +201,7 @@ export class WindGlyphLayer {
+   setDpr(dpr: number): void {
+     this.halo.widthPx = HALO_WIDTH_PX * dpr;
+     this.colour.widthPx = GLYPH_WIDTH_PX * dpr;
++    this.proto.uniforms.uWidthPx!.value = 2.8 * dpr;
+   }
+ 
+   /** A new picture of the air (or none: a new scenario). The traces are redone at the next rebuild, never per camera move. */
+@@ -214,6 +218,14 @@ export class WindGlyphLayer {
+    */
+   tick(now: number, camera: THREE.PerspectiveCamera, css: GlyphCss, mode: ViewMode, vex: number, targetDistance: number, framesTriangles: number, settle: boolean): boolean {
+     if (!this.enabled) return this.hide('off');
++    {
++      const w = window as unknown as { __protoTime?: number; __protoStill?: boolean; __protoEddy?: number };
++      const U = this.proto.uniforms;
++      U.uTime!.value = w.__protoTime ?? now / 1000;
++      U.uMoving!.value = w.__protoStill ? 0 : 1;
++      U.uEddy!.value = w.__protoEddy ?? 1;
++      U.uPxPerM1!.value = css.h / (2 * Math.tan((css.fov * Math.PI) / 360));
++    }
+     if (mode === 'ground') return this.hide('eye-level'); // the target is 1 m away: a cell on screen means nothing there
+     const d = this.data;
+     if (!d || !this.hasField(d)) return this.hide('no-wind');
+@@ -341,6 +353,7 @@ export class WindGlyphLayer {
+     if (!keepSig) this.sigValid = false;
+     if (this.working) this.cancel();
+     this.builtValid = false;
++    this.proto.mesh.visible = false;
+     if (!this.shown) return false;
+     this.halo.commit(0);
+     this.colour.commit(0);
+@@ -430,6 +443,7 @@ export class WindGlyphLayer {
+     this.viewProj.set(this.unproject.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).elements);
+     const caps = GLYPH_CAPS[this.tier];
+     this.beginSegments = segmentCap(caps.segments, framesTriangles, this.shown ? this.segments : 0);
++    this.proto.mesh.visible = lod.level === 4;
+     const input: GlyphInput = {
+       field: this.raster!,
+       ground: d.drawGround,
+@@ -442,9 +456,10 @@ export class WindGlyphLayer {
+       pxPerMetre1: css.h / (2 * Math.tan((css.fov * Math.PI) / 360)),
+       near: cam.near,
+       box,
+-      cap: { glyphs: caps.glyphs, segments: this.beginSegments },
++      cap: { glyphs: caps.glyphs, segments: lod.level === 4 ? 0 : this.beginSegments },
+       now: this.clock,
+     };
++    if (lod.level === 4) this.proto.build({ ...input, cap: { glyphs: caps.glyphs, segments: caps.segments } }, d.sliceGround);
+     this.builder.begin(input);
+     this.begun = true;
+     return true;
