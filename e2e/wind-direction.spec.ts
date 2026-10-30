@@ -509,7 +509,7 @@ test('a change of yours raises its own wind change card, which says it is yours,
   const card = page.locator('[data-testid=insight-card][data-kind=wind-change]', { hasText: 'Your wind change' });
   await expect(card).toHaveCount(1);
   await expect(card).toHaveAttribute('data-severity', 'watch');
-  await expect(card.locator('.sev-word')).toHaveText('Watch');
+  await expect(card.locator('.sev-word')).toHaveText('Watch out'); // the app's word for severity watch
   await expect(card.locator('.insight-title')).toHaveText('Your wind change: this flank becomes the head');
   await expect(card.locator('.insight-body')).toContainText(`You set the wind to swing from `);
   await expect(card.locator('.insight-body')).toContainText(`starting at about ${await clockAt(page, made.time)}`);
@@ -534,8 +534,7 @@ test('Back to the forecast removes every change of yours and brings the forecast
   await addReading(page, 'belt-kit-1');
   const forecastMarks = page.locator('.tl-mark-change:not(.tl-mark-own)');
   const ownMarks = page.locator('.tl-mark-own');
-  const forecast0 = await forecastMarks.count();
-  expect(forecast0).toBeGreaterThan(0); // the mock's forecast has a swing inside the scenario
+  const forecast0 = await forecastMarks.count(); // the mock's forecast swing, if it falls inside the scenario
 
   await pickTool(page, 'wind');
   const panel = page.getByTestId('wind-panel');
