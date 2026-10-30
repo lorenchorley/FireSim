@@ -177,6 +177,27 @@ async function auditTaps(page: Page, button: string): Promise<void> {
   await page.waitForTimeout(800);
 }
 
+/** One box of the page, as plain numbers (a DOMRect does not cross from the page). */
+interface Box {
+  top: number;
+  bottom: number;
+  height: number;
+}
+
+/**
+ * 0.7.0, F8: on the fast tier the block of the disabled chips' reasons (the "Use the 3-D atmosphere" button, then the words) sits directly under the chips, above the
+ * controls. Where the pieces are now, in page pixels, and the top of the pinned footer: the pins below read them at three screen sizes.
+ */
+const blockBoxes = (page: Page): Promise<{ chipsBottom: number; button: Box; reasons: Box; setA: Box; presets: Box; footerTop: number; sheet: Box }> =>
+  page.evaluate(() => {
+    const r = (id: string): Box => {
+      const b = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom, height: b.height };
+    };
+    const chips = ['speed', 'along', 'up', 'across', 'theta', 'smoke'].map((id) => r(`slice-chip-${id}`));
+    return { chipsBottom: Math.max(...chips.map((c) => c.bottom)), button: r('slice-use3d'), reasons: r('slice-reasons'), setA: r('slice-set-a'), presets: r('slice-presets-toggle'), footerTop: r('slice-footer').top, sheet: r('air-panel') };
+  });
+
 const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
 const cam = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as Handle).__firesim.view.cameraState());
 const frame = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
@@ -603,17 +624,17 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
       await expect(button).toBeVisible();
       await expect(button).toHaveText('Use the 3-D atmosphere');
       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0)); // (the earlier steps scrolled to the controls)
-      // "Turn off the slice" is the last row of the controls, which come above this button, so with a line placed the button is one row lower than it was
-      // in 0.4.1 (there it sat 2 px inside the page's viewport, under the timeline strip, which this check did not see): it needs one short scroll of the body
-      // and is then wholly inside the sheet. (An open question for the owner: should the 3-D button come before the controls on the fast tier?)
-      const sheetBox = (await page.getByTestId('air-panel').boundingBox())!;
-      const offBox = (await page.getByTestId('slice-off').boundingBox())!;
-      const below = (await button.boundingBox())!.y - (sheetBox.y + sheetBox.height);
-      expect(below, 'the button is no more than the off row (and a little) below the sheet, so one short scroll brings it in').toBeLessThanOrEqual(offBox.height + 12);
-      await button.scrollIntoViewIfNeeded();
-      const reached = (await button.boundingBox())!;
-      expect(reached.y + reached.height, 'after that scroll the button is wholly inside the sheet, not under the timeline').toBeLessThanOrEqual(sheetBox.y + sheetBox.height);
-      await expect(button, 'the button is in view after one short scroll').toBeInViewport({ ratio: 1 });
+      // 0.7.0 (F8): the block of the button and the words is directly under the chips, above the controls. At 412 x 915 the button is wholly in view and inside the
+      // sheet with no scroll at all, and the Set start row follows the block, not the chips. (0.4.1 to 0.6.0 had the controls first: the button was a row lower than
+      // "Turn off the slice" and needed a short scroll of the body; it once sat 2 px inside the page's viewport, under the timeline strip, which only a check of the
+      // sheet's own bottom sees.)
+      const at = await blockBoxes(page);
+      expect(at.button.top - at.chipsBottom, 'the button is within 16 px of the last chip').toBeLessThanOrEqual(16);
+      expect(at.button.top - at.chipsBottom, 'and under it, not over it').toBeGreaterThanOrEqual(-1);
+      expect(at.button.bottom, 'the button is wholly inside the sheet and above the pinned footer with no scroll').toBeLessThanOrEqual(Math.min(at.sheet.bottom, at.footerTop) + 0.5);
+      await expect(button, 'the button is in view with no scroll').toBeInViewport({ ratio: 1 });
+      expect(at.setA.top - at.reasons.bottom, 'the Set start row follows the block (px between them)').toBeLessThan(24);
+      expect(at.setA.top, 'and is under the button, not over it').toBeGreaterThan(at.button.bottom);
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(40);
       await page.getByTestId('slice-chip-theta').click({ force: true });
       await expect(canvas).toHaveAttribute('data-field', 'speed');
@@ -767,6 +788,62 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
     await page.waitForTimeout(900);
     await expect(canvas).toBeInViewport();
   });
+
+  // ───────── 8b. the 3-D button's block under the chips, at three sizes (0.7.0, F8) ─────────
+  if (fastTier) {
+    await test.step('the 3-D button and its words sit directly under the chips at 412 x 915, 360 x 640 and 844 x 390, clear of the pinned footer, and Set start follows them', async () => {
+      const button = page.getByTestId('slice-use3d');
+      const onTop = (loc: Locator): Promise<boolean> =>
+        loc.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return !!hit && (el === hit || el.contains(hit));
+        });
+      for (const [w, h] of [[412, 915], [360, 640], [844, 390]] as const) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(900);
+        await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0));
+        const at = await blockBoxes(page);
+        expect(at.button.top - at.chipsBottom, `${w} x ${h}: the button is within 16 px of the last chip`).toBeLessThanOrEqual(16);
+        expect(at.button.top - at.chipsBottom, `${w} x ${h}: and under it`).toBeGreaterThanOrEqual(-1);
+        expect(at.setA.top - at.reasons.bottom, `${w} x ${h}: Set start follows the block, not the chips (px between them)`).toBeLessThan(24);
+        expect(at.presets.top, `${w} x ${h}: Presets is under the block too`).toBeGreaterThan(at.reasons.bottom);
+        if (w === 412) {
+          expect(at.button.bottom, 'wholly inside the sheet and above the pinned footer with no scroll').toBeLessThanOrEqual(Math.min(at.sheet.bottom, at.footerTop) + 0.5);
+          await expect(button).toBeInViewport({ ratio: 1 });
+        } else {
+          await button.evaluate((el) => el.scrollIntoView({ block: 'nearest' })); // (the way a focus or a tap scrolls: clear of the pinned picture and footer by the body's scroll-padding)
+          const reached = await blockBoxes(page);
+          expect(reached.button.bottom, `${w} x ${h}: after that scroll the button is wholly clear of the pinned footer`).toBeLessThanOrEqual(reached.footerTop + 0.5);
+          await expect(button).toBeInViewport({ ratio: 1 });
+          expect(await onTop(button), `${w} x ${h}: and nothing covers it`).toBe(true);
+        }
+      }
+      await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0));
+      await page.setViewportSize({ width: 412, height: 915 });
+      await page.waitForTimeout(900);
+    });
+
+    // The Layers panel's callout was already there: it stays directly under that panel's own chips (pinned so a move of the section's controls cannot take it away).
+    await test.step('the Layers panel keeps its 3-D callout directly under the slice chips', async () => {
+      await page.getByTestId('air-close').click();
+      await page.getByTestId('layers-fab').click();
+      const layers = page.getByTestId('layers-panel');
+      const note = layers.getByTestId('slice-diagnosed');
+      await expect(note).toBeVisible();
+      await note.scrollIntoViewIfNeeded();
+      const gap = await page.evaluate(() => {
+        const chips = document.querySelector('[data-testid="slice-field"]')!.getBoundingClientRect();
+        const callout = document.querySelector('[data-testid="slice-diagnosed"]')!.getBoundingClientRect();
+        return callout.top - chips.bottom;
+      });
+      expect(gap, 'the callout starts within 24 px under the chips').toBeLessThan(24);
+      expect(gap, 'and not over them').toBeGreaterThanOrEqual(-1);
+      await expect(layers.getByTestId('use-3d-slice')).toBeVisible();
+      await layers.getByRole('button', { name: 'Close' }).click();
+      await openAirTool(page);
+    });
+  }
 
   // ───────── 9. one-finger pan and pinch with the tool open ─────────
   await test.step('one-finger pan and the pinch still move the camera with the tool open', async () => {
@@ -1084,6 +1161,32 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
     await expect(page.getByTestId('slice-cells-note')).toBeHidden();
   });
 
+  // 0.7.0, F3 (the real-engine audit at 844 x 390 with a recording missed 3 of 8 probes for every control below the picture): the footer is pinned and, with a
+  // recording, wraps to two lines, so a control scrolled to the middle of the window used to end under it. `tapAudit` is the repo's tap rule (scripts/audit-tap-targets.mjs).
+  await test.step('844 x 390 with a recording: every control below the picture, scrolled to the middle of the window, has all eight probes on itself', async () => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(900);
+    await expect(footer).toBeInViewport();
+    const win = await page.evaluate(() => {
+      const f = document.querySelector('[data-testid="slice-footer"]')!.getBoundingClientRect();
+      const b = document.querySelector('.slice-tool-body')!.getBoundingClientRect();
+      const c = document.querySelector('[data-testid="slice-canvas"]')!.getBoundingClientRect();
+      return { bodyH: Math.round(b.height), footerH: Math.round(f.height), freeBand: Math.round(f.top - c.bottom) };
+    });
+    console.log(`F3 at 844x390 with a recording: body ${win.bodyH} px, footer ${win.footerH} px, free band between the picture and the footer ${win.freeBand} px`);
+    const audit = await tapAudit(page);
+    for (const name of ['Set start', 'Presets', 'Clear recording', 'Turn off the slice']) expect(audit.audited.some((n) => n.startsWith(name)), `"${name}" is among the controls audited (${audit.audited.join(', ')})`).toBe(true);
+    expect(audit.misses, 'with the scroll-padding of 48 px at the foot, every probe lands on its control').toEqual([]);
+    // The old reserve of 30 px (a one-line footer) for the same body, to see that this audit can fail: the misses it finds are logged.
+    const old = await page.addStyleTag({ content: '.slice-tool-body { scroll-padding-bottom: 30px !important; }' });
+    const before = await tapAudit(page);
+    console.log(`F3 with the old 30 px: ${before.misses.length} controls miss: ${before.misses.join('; ')}`);
+    await old.evaluate((el) => (el as Element).remove());
+    expect((await tapAudit(page)).misses, 'and again without the old rule').toEqual([]);
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.waitForTimeout(800);
+  });
+
   await test.step("a time before the first picture uses the history's air and says so", async () => {
     const { from } = (await recOf(page)).status!;
     const r = await scrubTo(page, Math.max(30, from! - 150));
@@ -1293,16 +1396,11 @@ test('reduced motion, high contrast, the dark look and the vertical exaggeration
     }
     await expect(canvas).toBeInViewport();
     await expect(page.getByTestId('slice-chip-smoke')).toBeInViewport();
-    // The placement controls come right after the chips (they were under the notes of the chips that are off and the legend, below the fold): on a
-    // 390 x 844 phone both rows of buttons are in view; on a 360 x 640 one the first row is within a short scroll (the window is 230 px: the picture and
-    // the chips fill it). The 3-D button comes with the notes after them, a scroll away: a tap on a chip that is off scrolls to it.
-    if (w === 390) {
-      await expect(page.getByTestId('slice-set-a'), 'Set start is in view on a 390 x 844 phone').toBeInViewport({ ratio: 1 });
-      await expect(page.getByTestId('slice-presets-toggle'), 'Presets is in view on a 390 x 844 phone').toBeInViewport({ ratio: 1 });
-    }
-    const lastChip = (await page.getByTestId('slice-chip-smoke').boundingBox())!;
-    const setA = (await page.getByTestId('slice-set-a').boundingBox())!;
-    expect(setA.y - (lastChip.y + lastChip.height), `Set start follows the chips directly at ${w} px (px between them)`).toBeLessThan(40);
+    // 0.7.0 (F8): the block of the 3-D button and its words comes right after the chips (the button within 16 px of them) and the placement controls follow the
+    // block: Set start is under the words, not under the chips (it was, from 0.4.1 to 0.6.0, with the block a scroll further down).
+    const block = await blockBoxes(page);
+    expect(block.button.top - block.chipsBottom, `the 3-D button is within 16 px of the last chip at ${w} px`).toBeLessThanOrEqual(16);
+    expect(block.setA.top - block.reasons.bottom, `Set start follows the block at ${w} px (px between them)`).toBeLessThan(24);
     await page.getByTestId('slice-chip-theta').click({ force: true });
     await expect(page.getByTestId('slice-reasons'), 'a tap on a chip that is off brings its reason into view').toBeInViewport({ ratio: 1 });
     await expect(page.getByTestId('slice-use3d'), 'and the 3-D button').toBeInViewport({ ratio: 1 });
