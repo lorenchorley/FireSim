@@ -257,7 +257,12 @@ test('What the fire feels: the words on the fast tier, with the 10 m sentence po
   // The model's own words, in order: what it is, what the fast tier leaves out, what the numbers are, how often the fast tier makes them.
   const lines = (await caption.innerText()).split('\n');
   expect(lines[0]).toMatch(/^Wind the fire feels · \d+ m cells · air from \d\d:\d\d\.$/);
-  expect(lines.slice(1, 4)).toEqual(['Diagnosed wind: terrain effects only, no plume.', expect.stringMatching(/^The wind the fire model uses in each \d+ m cell: .* It is not a measurement\.$/), 'On the fast model it is refitted once a minute.']);
+  expect(lines.slice(1, 5)).toEqual([
+    'Diagnosed wind: terrain effects only, no plume.',
+    expect.stringMatching(/^The wind the fire model uses in each \d+ m cell: .* It is not a measurement\.$/),
+    'On the fast model it is refitted once a minute.',
+    'On a calm night much of it is air draining downhill.', // (the contract's V6 check on calm-night-katabatic: the fire grid's wind drains downhill over most steep ground)
+  ]);
   for (const line of lines) expect(line).toMatch(/\.$/);
   // Every other height keeps its own words: no calm-night sentence on a height above the ground, the 10 m one points to this chip.
   const chips = page.getByTestId('layers-panel').getByTestId('wind-height');

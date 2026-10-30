@@ -79,6 +79,11 @@ export const SMOOTH_FIT_LINE = 'At this zoom the curves are a smooth fit through
 /** What the fire feels (0.7.0): what the numbers are (the fire model's own wind in each cell, not a measurement), and how often they are refitted on the fast model. */
 export const feltLine = (cellM: number): string => `The wind the fire model uses in each ${formatNumber(Math.round(cellM))} m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.`;
 export const FELT_FAST_LINE = 'On the fast model it is refitted once a minute.';
+/**
+ * The calm-night sentence of What the fire feels (0.7.0, plan 20.3 item 2): on `calm-night-katabatic` the fire grid's wind drains downslope over most steep ground
+ * (checked on both tiers, the Katoomba demo at 03:00: the 10 m open-ground wind does not), so the picture says so. It is about the wind, not the time of day, like the 10 m sentence.
+ */
+export const FELT_NIGHT_LINE = 'On a calm night much of it is air draining downhill.';
 /** What the fire feels was chosen but the picture has no such wind (a replay from before 0.7.0, a demo engine): the 10 m wind is drawn, and this says so. */
 export const FELT_MISSING_LINE = 'The wind the fire feels is not in this picture, so the 10 m wind is shown.';
 /** The caption line while the ground is coloured by the Wind speed map (0.7.0, E1b). */
@@ -122,6 +127,7 @@ export function glyphCaption(height: WindHeight, air: GlyphAir, cellPx: number |
   if (felt) {
     lines.push(feltLine(air.felt!.cellM));
     if (air.diagnosed) lines.push(FELT_FAST_LINE);
+    lines.push(FELT_NIGHT_LINE);
   } else if (height === 'felt') lines.push(FELT_MISSING_LINE, GROUND_LINE);
   else if (height === 'fire') lines.push(air.felt ? GROUND_LINE_CHOOSE : GROUND_LINE);
   if (cellPx !== null && Number.isFinite(cellPx) && cellPx > GLYPH_SMOOTH_FIT_PX) lines.push(SMOOTH_FIT_LINE);

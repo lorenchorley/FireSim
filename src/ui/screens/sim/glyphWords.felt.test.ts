@@ -10,6 +10,7 @@ import {
   DIAGNOSED_LINE,
   FELT_FAST_LINE,
   FELT_MISSING_LINE,
+  FELT_NIGHT_LINE,
   GROUND_LINE,
   GROUND_LINE_CHOOSE,
   MAP_COLOURED_LINE,
@@ -67,17 +68,25 @@ describe('the caption of What the fire feels', () => {
     expect(glyphCaption('felt', air(), null, TZ, abs)).toEqual([
       'Wind the fire feels · 60 m cells · air from 14:05.',
       "The wind the fire model uses in each 60 m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.",
+      'On a calm night much of it is air draining downhill.',
     ]);
     expect(feltLine(60)).toContain('It is not a measurement.');
+    expect(FELT_NIGHT_LINE).toBe('On a calm night much of it is air draining downhill.');
   });
 
   it('on the fast model adds the diagnosed line, then that the wind is refitted once a minute', () => {
-    expect(glyphCaption('felt', air({ diagnosed: true }), null, TZ, abs)).toEqual(['Wind the fire feels · 60 m cells · air from 14:05.', DIAGNOSED_LINE, feltLine(60), FELT_FAST_LINE]);
+    expect(glyphCaption('felt', air({ diagnosed: true }), null, TZ, abs)).toEqual(['Wind the fire feels · 60 m cells · air from 14:05.', DIAGNOSED_LINE, feltLine(60), FELT_FAST_LINE, FELT_NIGHT_LINE]);
     expect(FELT_FAST_LINE).toBe('On the fast model it is refitted once a minute.');
     expect(glyphCaption('felt', air({ diagnosed: false }), null, TZ, abs)).not.toContain(FELT_FAST_LINE);
   });
 
-  it('never says the 10 m calm-night sentence (it is about the 10 m wind), and says the smooth-fit line by the cell it is given', () => {
+  it('says its own calm-night sentence (the air drains downhill: checked on both tiers), never the 10 m one, and the 10 m or missing-picture captions never say it', () => {
+    expect(glyphCaption('felt', air(), null, TZ, abs)).toContain(FELT_NIGHT_LINE);
+    for (const h of [50, 100, 300, 1000, 2000, 'fire'] as const) expect(glyphCaption(h, air(), null, TZ, abs), String(h)).not.toContain(FELT_NIGHT_LINE);
+    expect(glyphCaption('felt', air({ felt: null }), null, TZ, abs)).not.toContain(FELT_NIGHT_LINE);
+  });
+
+  it('says the smooth-fit line by the cell it is given, and not the 10 m calm-night sentence', () => {
     expect(glyphCaption('felt', air(), 400, TZ, abs).join('\n')).not.toContain('On a calm night the fire can feel much less');
     expect(glyphCaption('felt', air(), 61, TZ, abs).at(-1)).toBe(SMOOTH_FIT_LINE);
     expect(glyphCaption('felt', air(), 60, TZ, abs)).not.toContain(SMOOTH_FIT_LINE);
