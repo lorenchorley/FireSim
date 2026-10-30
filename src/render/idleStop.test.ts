@@ -2,6 +2,7 @@
  * The idle clock (idleStop.ts): idle after a limit without a poke, woken by the next poke, never idle for a limit of 0 or Infinity or a clock that goes
  * backwards; and the option that sets the limit.
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IDLE_STOP_MS, IdleClock, idleStopLimit } from './idleStop';
 
@@ -101,5 +102,78 @@ describe('idleStopLimit', () => {
     for (const raw of [undefined, null, -1, -Infinity, NaN, 'soon', '', '  ', 'NaN', '-3', {}, [], true, () => 5]) {
       expect(idleStopLimit(raw), String(raw)).toBe(IDLE_STOP_MS);
     }
+  });
+});
+
+describe('SceneView and the idle stop (source pins: the loop is not run here, so the wiring is read; each line is one thing the stop needs)', () => {
+  const scene = readFileSync(new URL('./SceneView.ts', import.meta.url), 'utf8');
+  /** The text of a method of SceneView, from its signature to the closing brace at two spaces. */
+  const body = (name: string): string => {
+    const m = new RegExp(`\\n  (?:private )?${name}\\([^\\n]*\\{\\n([\\s\\S]*?)\\n  \\}\\n`).exec(scene);
+    expect(m, `a method ${name}`).not.toBeNull();
+    return m![1]!;
+  };
+
+  it('the shader clock advances only while the view is not held still, and nowhere else', () => {
+    expect(scene).toMatch(/if \(!idle\) this\.u\.uClock!\.value = \(this\.u\.uClock!\.value as number\) \+ dt;/);
+    expect(scene.match(/uClock!\.value = /g)).toHaveLength(1);
+  });
+
+  it('the camera moving, a hand on it, time running and a flight are activity in the frame, and a gap between frames (the page was away) is too', () => {
+    expect(scene).toMatch(/if \(moved \|\| playing \|\| this\.interacting \|\| this\.rig\.flying\) this\.activity\.poke\(now\);/);
+    expect(scene).toMatch(/if \(this\.lastFrame && now - this\.lastFrame > STALL_MS\) this\.activity\.poke\(now\);/);
+  });
+
+  it('every ambient term of `animating` is held back while idle, and the layers are told when it changes (and a wake draws a frame)', () => {
+    expect(scene).toMatch(/const animating =[\s\S]*?\(ambient && !idle\);/);
+    const ambient = /const ambient =([\s\S]*?);\n/.exec(scene)![1]!;
+    for (const term of ['this.flames.count', 'this.embers.active', 'this.wind.animating', 'this.glyphs.animating', 'this.focus !== null', 'this.user !== null', 'this.vegetation?.animating', 'this.snap?.spotFires']) {
+      expect(ambient, term).toContain(term);
+    }
+    expect(scene).toMatch(/if \(idle !== this\.heldStill\) \{\s+this\.heldStill = idle;\s+this\.glyphs\.setPaused\(idle\);\s+if \(!idle\) this\.dirty = true;\s+\}/);
+  });
+
+  it('the CPU particles and the embers are not advanced while idle', () => {
+    expect(scene).toMatch(/if \(!idle && this\.embers\.group\.visible && this\.embers\.active > 0\) this\.embers\.animate\(/);
+    expect(scene).toMatch(/if \(!idle && this\.wind\.currentMode !== 'off' && this\.sampler\) this\.wind\.animate\(/);
+  });
+
+  it('a touch, the wheel, a key, the pointer or the page coming back to the front anywhere in the page is activity, and the listeners go with the view', () => {
+    expect(scene).toMatch(/const ACTIVITY_EVENTS = \['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'\] as const;/);
+    expect(scene).toMatch(/window\.addEventListener\(type, this\.onActivity, \{ capture: true, passive: true \}\)/);
+    expect(scene).toMatch(/window\.removeEventListener\(type, this\.onActivity, \{ capture: true \}\)/);
+    expect(scene).toMatch(/document\.addEventListener\('visibilitychange', this\.onVisible\)/);
+    expect(scene).toMatch(/document\.removeEventListener\('visibilitychange', this\.onVisible\)/);
+    expect(scene).toMatch(/private readonly onVisible = \(\): void => \{\s+if \(!document\.hidden\) this\.wake\(\);/);
+  });
+
+  it('a new picture, a layer, view mode, scenario, fuel, ignition, insight, size or uncovering change wakes it', () => {
+    for (const name of ['setScenario', 'refreshFuel', 'update', 'setLayers', 'setIgnitions', 'setInsights', 'setViewMode', 'setCovered', 'resize']) {
+      expect(body(name), name).toContain('this.wake();');
+    }
+  });
+
+  it('the limit is the option, else the test seam window.__firesimIdleStopMs, read once through idleStopLimit', () => {
+    expect(scene).toMatch(/new IdleClock\(idleStopLimit\(opts\.idleStopMs \?\? \(typeof window !== 'undefined' \? \(window as unknown as \{ __firesimIdleStopMs\?: unknown \}\)\.__firesimIdleStopMs : undefined\)\)\)/);
+  });
+
+  it('reduced motion reaches the old Wind streaks and the tree sway: at the start, on a change of the setting, and for every new vegetation layer', () => {
+    expect(scene.match(/this\.wind\.setMotion\(!this\.motionQuery\?\.matches\)/g)).toHaveLength(2); // the constructor and onMotion
+    const onMotion = /private readonly onMotion = \(\): void => \{([\s\S]*?)\};/.exec(scene)![1]!;
+    expect(onMotion).toContain('this.vegetation?.setMotion(!this.motionQuery?.matches)');
+    expect(body('setScenario')).toContain('this.vegetation.setMotion(!this.motionQuery?.matches);');
+  });
+
+  it('the glyph layer is given the canopy and the crowns only while the canopy is drawn, the plume per snapshot, and compiles ahead after a drawn frame', () => {
+    const sync = body('syncCanopy');
+    expect(sync).toContain('this.vegetation?.visible');
+    expect(sync).toContain('this.glyphs.setCanopy(');
+    expect(sync).toContain('this.glyphs.setCrowns(');
+    expect(sync).toContain('crownSource()');
+    expect(body('applyLayers')).toContain('this.syncCanopy();');
+    expect(body('refreshFuel')).toContain('this.syncCanopy();');
+    expect(body('update')).toContain('this.glyphs.setPlumes(plumeSites(c));');
+    expect(scene).toMatch(/this\.renderer\.render\(this\.scene, cam\);\s+this\.lastDrawMs = now;\s+if \(this\.glyphsCompile === 'pending' && !this\.interacting\) this\.precompileGlyphs\(\);/);
+    expect(body('precompileGlyphs')).toContain('this.renderer.compileAsync(this.glyphs.group, this.rig.camera, this.scene)');
   });
 });
