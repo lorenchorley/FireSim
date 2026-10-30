@@ -13,10 +13,10 @@
  *    forecast), and there is no "Back to the forecast" change. The old per-place Local wind tool is gone as a tool;
  *    `WindEdit` stays in the union for Setup's belt-kit readings.
  *
- * C0 contract: the constants and the three small helpers are real; `windDirectionAt` and `applyWindDirection` are stubs
+ * C0/C1 contract: the constants and the five small helpers are real; `windDirectionAt` and `applyWindDirection` are stubs
  * (no change, so nothing in the simulation moves) until the W-core lane fills them in.
  */
-import type { WeatherSeries, WindDirectionEdit } from '../core/types';
+import type { ScenarioEdit, WeatherSeries, WindDirectionEdit } from '../core/types';
 import { angleDiffDeg, smoothstep, wrapDeg } from '../core/units';
 
 /** A swing takes this long (s), from the change time: a step is not physical, research doc 02 asks 15 to 30 min. */
@@ -44,6 +44,22 @@ export function turnFraction(elapsedS: number): number {
 /** `from` to `to` by fraction `f` along the shortest arc; an exact half turn goes clockwise. Degrees in [0, 360). */
 export function turnDirection(from: number, to: number, f: number): number {
   return wrapDeg(from + angleDiffDeg(to, from) * f);
+}
+
+/** Where a change is at a given simulation time: not started, turning (the 15 minutes), or finished. */
+export type WindChangePhase = 'scheduled' | 'turning' | 'done';
+
+/** The phase of a change at `nowS` (s from the scenario start); scrubbing back to before `time` gives 'scheduled' again. */
+export function windChangePhase(edit: Pick<WindDirectionEdit, 'time'>, nowS: number): WindChangePhase {
+  if (nowS < edit.time) return 'scheduled';
+  return nowS < edit.time + WIND_TURN_S ? 'turning' : 'done';
+}
+
+/** The Wind direction changes among `list` (as `SessionState.edits` holds them), in (time, list index) order. */
+export function windDirectionEdits(list: readonly { edit: ScenarioEdit }[]): WindDirectionEdit[] {
+  const out: WindDirectionEdit[] = [];
+  for (const { edit } of list) if (edit.kind === 'windDirection') out.push(edit);
+  return out.sort((a, b) => a.time - b.time); // a stable sort: equal times keep their list order
 }
 
 /**

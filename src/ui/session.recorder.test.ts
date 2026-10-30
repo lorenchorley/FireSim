@@ -386,7 +386,7 @@ describe('the five places the history is cut, and the one helper that cuts it', 
     expect(helper).toContain('this.snapshots.truncateAfter(t)');
     expect(helper).toContain('this.view.sliceRecording?.truncateAfter(t)');
     expect(src.match(/sliceRecording\?\.truncateAfter\(/g) ?? []).toHaveLength(1);
-    expect((src.match(/this\.cutHistory\(/g) ?? []).length).toBe(5); // the five sites
+    expect((src.match(/this\.cutHistory\(/g) ?? []).length).toBe(6); // the five sites above, plus removeWindDirection (0.6.0; its cut is tested in session.windDirection.test.ts)
     // the recorder is fed once, right after the store has the snapshot
     expect(src.match(/sliceRecording\?\.record\(/g) ?? []).toHaveLength(1);
     expect(src.indexOf('this.snapshots.push(snap)')).toBeLessThan(src.indexOf('sliceRecording?.record('));

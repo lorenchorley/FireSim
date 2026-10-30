@@ -18,7 +18,9 @@
  *  - Only the user (pause, the timeline, menus), the end of the scenario, or the app going to the background stops
  *    playback: nothing else in here pauses it (a worker error does, since there is nothing to play).
  */
-import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire, WeatherSeries } from '../core/types';
+import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire, WeatherSeries, WindDirectionEdit } from '../core/types';
+import { wrapDeg } from '../core/units';
+import { applyWindDirection, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import type { EngineInfo, PerfEvent } from '../core/simTypes';
@@ -206,13 +208,21 @@ export class SimSession {
     return this.scenario.duration;
   }
 
+  private wwKey = '';
+  private ww: WeatherSeries | null = null;
+
   /**
    * The forecast with the user's Wind direction changes applied (what the top bar chip and the Weather tab read for
-   * the wind). One object while the list of changes is unchanged. STUB (C0): the forecast itself until W-core
-   * wires `applyWindDirection(scenario.weather, scenario.startTime, the windDirection edits of state.edits)`.
+   * the wind). One object while the list of changes is unchanged; the forecast itself when there is none.
    */
   windWeather(): WeatherSeries {
-    return this.scenario.weather;
+    const list = windDirectionEdits(this.state.get().edits);
+    const key = list.map((e) => `${e.id}|${e.dir}|${e.time}`).join(';');
+    if (this.ww === null || key !== this.wwKey) {
+      this.wwKey = key;
+      this.ww = list.length ? applyWindDirection(this.scenario.weather, this.scenario.startTime, list) : this.scenario.weather;
+    }
+    return this.ww;
   }
 
   /**
@@ -499,6 +509,46 @@ export class SimSession {
     this.controller.removeEdit(id);
     this.state.set((s) => ({ edits: s.edits.filter((x) => x.edit.id !== id) }));
     this.afterEdit();
+  }
+
+  /**
+   * From `at` (s, default the view time; raised to a whole minute at or after the view time) the whole wind turns to
+   * come from `dir`. Returns the edit, or null (nothing sent) when the scenario ends within a minute. `id` comes from
+   * the caller (`uniqueId('winddir')`).
+   */
+  setWindDirection(id: string, dir: number, at?: number): WindDirectionEdit | null {
+    const s = this.state.get();
+    const time = windDirectionTime(Math.max(s.viewTime, at ?? s.viewTime), this.duration);
+    if (time < s.viewTime - 1e-6) return null;
+    this.prepareEditAt();
+    const edit: WindDirectionEdit = { kind: 'windDirection', id, dir: wrapDeg(Math.round(dir)), time };
+    this.controller.edit(edit, time);
+    this.state.set((st) => ({ edits: [...st.edits.filter((x) => x.edit.id !== id), { edit, time }] }));
+    this.afterEdit();
+    return edit;
+  }
+
+  /** Undo a change as if never made (rewind to its time, re-run without it), like removeIgnition. */
+  removeWindDirection(id: string): void {
+    this.cancelSeek();
+    const s = this.state.get();
+    const found = s.edits.find((x) => x.edit.kind === 'windDirection' && x.edit.id === id);
+    if (!found) return;
+    const t = found.time;
+    this.controller.removeEdit(id);
+    this.rewindFloor = t;
+    if (t < s.headTime) {
+      this.cutHistory(t);
+      this.requestedUntil = Math.min(this.requestedUntil, t);
+    }
+    this.state.set((st) => ({
+      edits: st.edits.filter((x) => x.edit.id !== id),
+      insights: st.insights.filter((i) => i.time <= t),
+      headTime: t < st.headTime ? (this.snapshots.headTime() ?? t) : st.headTime,
+      reviewing: false,
+    }));
+    this.afterEdit();
+    if (!this.state.get().playing && this.state.get().viewTime > this.state.get().headTime) this.controller.run(this.state.get().viewTime);
   }
 
   /** What-if: change coupling / embers / mountain phenomena and re-run from the view time. */
