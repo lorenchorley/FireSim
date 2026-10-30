@@ -1319,3 +1319,243 @@ describe('CameraRig gestures: a drag on rugged terrain at a flat viewing angle i
     });
   }
 });
+
+// ───────────── the turn is the rig's own (twoFingerTurn.ts): OrbitControls' own turn is only held off while two fingers are down ─────────────
+
+describe('CameraRig gestures: the two-finger turn holds OrbitControls’ own turn off only while two fingers are down', () => {
+  let r: Rig;
+  const rotateOn = (): boolean => r.rig.controls.enableRotate;
+  beforeEach(() => {
+    r = setup();
+  });
+
+  it('one finger leaves it on, two fingers switch it off, and it is back when either lifts', () => {
+    expect(rotateOn()).toBe(true);
+    r.down(1, 150, 400);
+    expect(rotateOn(), 'one finger').toBe(true);
+    r.down(2, 250, 400);
+    expect(rotateOn(), 'two fingers').toBe(false);
+    drag(r, [{ id: 2, to: [260, 400] }], 3);
+    expect(rotateOn(), 'turning').toBe(false);
+    r.up(2);
+    expect(rotateOn(), 'one finger lifted').toBe(true);
+    r.down(2, 250, 400);
+    expect(rotateOn(), 'the finger comes back').toBe(false);
+    r.up(1);
+    expect(rotateOn(), 'the other one lifted').toBe(true);
+    r.up(2);
+    expect(rotateOn()).toBe(true);
+    expect(r.rig.controls.touches.TWO, 'the pinch stays OrbitControls’').toBe(THREE.TOUCH.DOLLY_ROTATE);
+  });
+
+  it('a pointercancel, a lost capture and the first of three fingers lifting give it back', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn()).toBe(false);
+    r.cancel(2);
+    expect(rotateOn(), 'cancel').toBe(true);
+    r.up(1);
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn()).toBe(false);
+    r.el.fire('lostpointercapture', { pointerId: 1 });
+    expect(rotateOn(), 'lost capture').toBe(true);
+    r.at.clear();
+    r.up(2);
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    r.down(3, 200, 650);
+    expect(rotateOn(), 'a third finger changes nothing').toBe(false);
+    r.up(1);
+    expect(rotateOn(), 'the first of three lifted').toBe(true);
+    r.up(3);
+    r.up(2);
+    expect(rotateOn()).toBe(true);
+  });
+
+  it('a finger that starts a new group gives it back when the last group never sent its end', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn()).toBe(false);
+    r.at.clear(); // (neither up nor cancel ever arrives)
+    r.down(1, 200, 500);
+    expect(rotateOn()).toBe(true);
+    r.up(1);
+  });
+
+  it('a view-mode change ends the turn and hands over to that mode (eye level: OrbitControls’ own one-finger look-around; top: a new pair turns)', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn()).toBe(false);
+    r.rig.setMode('ground', { user: [100, -200], lookAt: [900, 600] });
+    expect(rotateOn(), 'eye level').toBe(true);
+    r.up(2);
+    r.up(1);
+    for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+    r.frames(5);
+    const h0 = r.state().headingDeg;
+    r.down(1, 200, 400);
+    drag(r, [{ id: 1, to: [300, 400] }], 8);
+    r.frames(60);
+    expect(Math.abs(((r.state().headingDeg - h0 + 540) % 360) - 180), 'one finger looks around at eye level').toBeGreaterThan(5);
+    r.up(1);
+    r.rig.setMode('orbit');
+    for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+    r.frames(5);
+    toTop(r);
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn(), 'two fingers in the top view').toBe(false);
+    r.rig.setMode('orbit');
+    expect(rotateOn(), 'top to orbit').toBe(true);
+    r.up(1);
+    r.up(2);
+    expect(rotateOn()).toBe(true);
+  });
+
+  it('a flight does not give it back while the two fingers are still down (OrbitControls would turn the other way round), and the lift does', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    r.rig.flyTo(500, 400, 3000);
+    expect(rotateOn(), 'during the flight').toBe(false);
+    for (let i = 0; i < 400 && r.rig.flying; i++) r.frames(1);
+    r.frames(5);
+    expect(rotateOn(), 'the flight has landed, the fingers are down').toBe(false);
+    const was = planOffset(r);
+    drag(
+      r,
+      [
+        { id: 1, to: [250, 400] },
+        { id: 2, to: [350, 400] },
+      ],
+      10,
+    );
+    r.frames(100);
+    // The first move after the flight carries the whole drift since the last event (OrbitControls ignored the fingers meanwhile);
+    // whatever it makes of it, the turn is the mirrored one: to the right, anticlockwise.
+    expect(wentRound(was, planOffset(r)), 'anticlockwise').toBeGreaterThan(0);
+    r.up(1);
+    r.up(2);
+    expect(rotateOn(), 'lifted').toBe(true);
+  });
+
+  it('interaction switched off and on with the fingers down: still held, still mirrored, back on the lift', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    r.rig.setInteractionEnabled(false);
+    expect(rotateOn()).toBe(false);
+    r.rig.setInteractionEnabled(true);
+    const was = planOffset(r);
+    drag(
+      r,
+      [
+        { id: 1, to: [230, 400] },
+        { id: 2, to: [330, 400] },
+      ],
+      8,
+    );
+    r.frames(100);
+    expect(wentRound(was, planOffset(r)), 'anticlockwise').toBeGreaterThan(0);
+    r.up(2);
+    r.up(1);
+    expect(rotateOn()).toBe(true);
+  });
+
+  it('dispose gives it back', () => {
+    r.down(1, 150, 400);
+    r.down(2, 250, 400);
+    expect(rotateOn()).toBe(false);
+    r.rig.dispose();
+    expect(rotateOn()).toBe(true);
+    expect(r.el.listeners.length).toBe(0);
+  });
+
+  it('the mouse still turns with the right button after a turn of two fingers (OrbitControls’ own turn was only held off)', () => {
+    twoFingerSwipe(r, 100, 0);
+    expect(rotateOn()).toBe(true);
+    const before = r.state();
+    r.down(1, 200, 400, { pointerType: 'mouse', button: 2, isPrimary: true });
+    for (let i = 1; i <= 10; i++) {
+      r.move(1, 200 + 10 * i, 400, { pointerType: 'mouse' });
+      r.frames(1);
+    }
+    r.up(1, { pointerType: 'mouse', button: 2 });
+    r.frames(120);
+    expect(azimuthChange(r.state().azimuthDeg, before.azimuthDeg), 'right drag to the right: clockwise').toBeCloseTo(degOf(100), 0);
+  });
+});
+
+describe('CameraRig gestures: the damping and the limits of the two-finger turn are OrbitControls’ own', () => {
+  let r: Rig;
+  beforeEach(() => {
+    r = setup();
+  });
+
+  /** Two fingers dragged `dx` px to the right in 12 hops (a frame after each), then lifted; returns the azimuth of every frame after the lift. */
+  function swipeThenRecord(rig: Rig, dx: number, frames: number): number[] {
+    rig.down(1, 150, 400);
+    rig.down(2, 250, 400);
+    drag(
+      rig,
+      [
+        { id: 1, to: [150 + dx, 400] },
+        { id: 2, to: [250 + dx, 400] },
+      ],
+      12,
+    );
+    rig.up(2);
+    rig.up(1);
+    const az: number[] = [];
+    for (let i = 0; i < frames; i++) {
+      rig.frames(1);
+      az.push(rig.state().azimuthDeg);
+    }
+    return az;
+  }
+
+  it('after the fingers lift the turn goes on and dies away by the factor 1 - dampingFactor per frame (inertia), 30° in all for 100 px', () => {
+    const f = r.rig.controls.dampingFactor;
+    expect(f).toBe(0.12);
+    const start = r.state().azimuthDeg;
+    const az = swipeThenRecord(r, 100, 40);
+    const steps = az.map((a, i) => azimuthChange(a, i === 0 ? start : az[i - 1]!));
+    // (the first entry still holds the turn of the drag; from the second on it is only what is left of it)
+    for (let i = 2; i < steps.length; i++) expect(steps[i]! / steps[i - 1]!, `frame ${i}`).toBeCloseTo(1 - f, 6);
+    expect(Math.sign(steps[5]!), 'anticlockwise only').toBe(-1);
+    r.frames(200);
+    expect(azimuthChange(r.state().azimuthDeg, start), 'the whole turn').toBeCloseTo(-30, 1);
+  });
+
+  it('without damping the whole step is made at once and nothing is left after the lift', () => {
+    r.rig.controls.enableDamping = false;
+    const start = r.state().azimuthDeg;
+    const az = swipeThenRecord(r, 100, 10);
+    expect(azimuthChange(az[0]!, start), 'at the lift').toBeCloseTo(-30, 3);
+    expect(azimuthChange(az[9]!, az[0]!), 'and no inertia').toBeCloseTo(0, 6);
+  });
+
+  it('the tilt stops at the polar limits however far the fingers go: 86° to the horizon, straight down in the orbit view', () => {
+    twoFingerSwipe(r, 0, -700); // fingers up: towards the horizon
+    twoFingerSwipe(r, 0, -700);
+    const flat = r.state().polarDeg;
+    expect(flat).toBeLessThanOrEqual(86 + 1e-6);
+    expect(flat).toBeGreaterThan(85.9);
+    twoFingerSwipe(r, 0, 700); // fingers down: towards the plan view
+    twoFingerSwipe(r, 0, 700);
+    twoFingerSwipe(r, 0, 700);
+    const down = r.state().polarDeg;
+    expect(down).toBeGreaterThanOrEqual(0);
+    expect(down).toBeLessThan(0.01);
+    expect(r.rig.controls.enableRotate).toBe(true);
+  });
+
+  it('the top view keeps its plan angle (0.001 rad at most) under any vertical drag, and still turns', () => {
+    toTop(r);
+    const before = r.state();
+    twoFingerSwipe(r, 0, -400);
+    expect(r.state().polarDeg).toBeLessThan(0.07);
+    twoFingerSwipe(r, 100, 0);
+    expect(Math.abs(azimuthChange(r.state().azimuthDeg, before.azimuthDeg))).toBeGreaterThan(20);
+    expect(r.state().mode).toBe('top');
+  });
+});

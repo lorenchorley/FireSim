@@ -795,7 +795,7 @@ function compare(name: string, o: Sim, n: Sim): Worst {
   expect(n.trace.length, `${name}: frames`).toBe(o.trace.length);
   expect(n.events, `${name}: start / end events`).toEqual(o.events);
   const w: Worst = { metres: 0, rel: 0, degrees: 0, frames: o.trace.length, travel: 0, held: 0 };
-  let first: string | null = null;
+  let first = null as string | null; // (set by note(), which the compiler does not follow)
   const note = (i: number, what: string, a: unknown, b: unknown): void => {
     first ??= `frame ${i}${o.trace[i]!.op ? ` (${o.trace[i]!.op})` : ''}: ${what}: old ${String(a)}, new ${String(b)}`;
   };
