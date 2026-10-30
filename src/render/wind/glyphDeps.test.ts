@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '..', '..');
 const WIND = join(SRC, 'render', 'wind');
-const ENGINE = ['flowGlyphs.ts', 'glyphLod.ts', 'glyphPose.ts', 'glyphField.ts'].map((f) => join(WIND, f));
+const ENGINE = ['flowGlyphs.ts', 'glyphLod.ts', 'glyphPose.ts', 'glyphField.ts', 'detailStreaks.ts'].map((f) => join(WIND, f));
 
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
@@ -69,6 +69,13 @@ describe('the engine is pure', () => {
     expect(files).toContain(join('render', 'wind', 'glyphTypes.ts'));
   });
 
+  it('the detailed streaks builder reaches the glyph builder and the types, and nothing that draws', () => {
+    const { files } = closure(join(WIND, 'detailStreaks.ts'));
+    expect(files).toContain(join('render', 'wind', 'flowGlyphs.ts'));
+    expect(files).toContain(join('render', 'wind', 'glyphTypes.ts'));
+    expect(files.filter((f) => /detailBatch|windGlyphLayer|streaks\.ts$/.test(f))).toEqual([]);
+  });
+
   it('no engine file reaches Three.js, the simulation, the fire, the atmosphere model, the UI, the data code or a render layer', () => {
     for (const entry of ENGINE) {
       const { files, packages } = closure(entry);
@@ -97,7 +104,7 @@ describe('the engine is pure', () => {
 });
 
 describe('the first screen stays out of the engine', () => {
-  const FORBIDDEN = /(^|[\\/])(flowGlyphs|glyphField|glyphLod|glyphPose|glyphOracle\.testing|windGlyphLayer)$/;
+  const FORBIDDEN = /(^|[\\/])(flowGlyphs|glyphField|glyphLod|glyphPose|glyphOracle\.testing|windGlyphLayer|detailStreaks|detailStreaks\.testing|detailBatch)$/;
   const entryFiles = [...sourcesUnder(join(SRC, 'ui')), join(SRC, 'render', 'layerCatalog.ts')];
 
   it('finds the files it checks', () => {
@@ -105,7 +112,7 @@ describe('the first screen stays out of the engine', () => {
     expect(entryFiles).toContain(join(SRC, 'ui', 'screens', 'sim', 'layersPanel.ts'));
   });
 
-  it('nothing in src/ui or the layer catalogue imports flowGlyphs, glyphField, glyphLod, glyphPose or windGlyphLayer (types included)', () => {
+  it('nothing in src/ui or the layer catalogue imports flowGlyphs, glyphField, glyphLod, glyphPose, windGlyphLayer, detailStreaks or detailBatch (types included)', () => {
     const offenders: string[] = [];
     for (const f of entryFiles) {
       for (const spec of importsOf(f, true)) if (FORBIDDEN.test(spec.replace(/\.ts$/, ''))) offenders.push(`${relative(SRC, f)} imports ${spec}`);

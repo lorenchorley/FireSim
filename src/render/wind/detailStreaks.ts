@@ -1,30 +1,1014 @@
-/** Stub (0.6.0 C0): the D-engine lane writes the body. The pure builder of the detailed streaks of the most detailed wind level; for now every build finishes with no lines. */
-import { GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier } from './glyphTypes';
+/**
+ * The detailed wind streaks' builder (0.6.0, lane D-engine): what the most detailed level draws instead of the long flow lines. Pure:
+ * no Three.js, no DOM, no `Math.random`. Same input and seed, same bytes; time never enters (the animation is the shader's, a pure
+ * function of the view's clock).
+ *
+ * It is a fork of the glyph builder's seeding (`flowGlyphs.ts`): a world lattice of `lod.spacingM` metres, each seed moved inside its
+ * own cell by an integer hash of its indices (so a pan never moves a seed), kept when its projection lies on the screen plus a margin
+ * in front of the near plane, thinned toward the horizon of an orbit view, thinned to the caps by a second hash. What differs is the
+ * line. A line runs downwind from its seed in `n = clamp(ceil(L / 9), 8, 24)` equal steps (RK2 midpoint on the unit direction field),
+ * `L = clamp(16 px per m/s x speed, 90, 220)` px long, and each segment says where it sits along the line so that the shader can run
+ * a pulse along it: `d = (s0, s1, L, seed)` in pixels, `e = (speed, turb, lift, tail)`. The five ingredients of the picture
+ * (contract 3.1) are the shader's work on these numbers:
+ *  - tapered fading tails: `tail` px of fade behind a head that travels the line (`pulseIntensity` is the formula);
+ *  - random lifetimes: `seed` (0 to 1, a hash of the lattice cell and the input seed) sets each line's cycle, phase and dead gap;
+ *  - gust bands: a brightness envelope along the flow, from `speed` and the position;
+ *  - eddy noise that gains octaves as you zoom: its amplitude is `turb`, the 10 m ground's roughness and lee, bounded by the shader;
+ *  - lift and lee: `lift` (the along-flow slope times the speed, -1 to 1) raises a segment up to 3 m, already baked into the y of `a`
+ *    and `b`, and brightens it a little in the shader.
+ * `turb` and `lift` come from `ground10` (the 10 m ground as received), about 30 reads a line, and fade with the height the wind is
+ * read at (`DetailInput.heightM`, 10 m when absent): a 300 m wind does not care about the shape of the ground below. Without
+ * `ground10`, `turb` is 0.5 and `lift` 0.
+ *
+ * A calm seed (under 0.3 m/s) draws nothing. A line that meets a wall steeper than `GLYPH_MAX_SLOPE` is cut at its foot or lip (a
+ * line that starts on a wall is not drawn), one that falls under three segments is not drawn, and one with a vertex under 1.5 near
+ * planes is dropped whole. How many lines fit the caps is worked out before tracing (the segments a line takes follow from the
+ * wind at its seed), so the thinning is by hash over the whole screen and not by the order of the lattice.
+ *
+ * Cost, as in the glyph builder: the tracer reads rasters only, hash and lookups go through scratch arrays and no double travels
+ * through an argument or a return value, state lives in typed arrays, so a rebuild allocates nothing even when V8 does not inline.
+ * The job is cut into slices that stop on the clock and resume.
+ */
+import {
+  buildSpeedTable,
+  GLYPH_CALM_MS,
+  GLYPH_DENSITY_S2_MAX,
+  GLYPH_LIFT_MIN_M,
+  GLYPH_LIFT_PX,
+  GLYPH_MAX_CELLS,
+  GLYPH_MAX_SLOPE,
+  GLYPH_NEAR_FACTOR,
+  GLYPH_SCREEN_MARGIN,
+  SPEED_TABLE_BINS,
+  SPEED_TABLE_MAX_MS,
+} from './flowGlyphs';
+import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
+
+/** The fading tail of a line's pulse, in screen px: `6 px per m/s of speed + 20`, from 24 to 90 (longer when faster). */
+export const DETAIL_TAIL = { pxPerMs: 6, basePx: 20, minPx: 24, maxPx: 90 } as const;
+/** A line of fewer segments than this (the raster's edge, a calm patch or a wall cut it) is not drawn. */
+export const DETAIL_MIN_LINE_SEGMENTS = 3;
+/**
+ * What the 10 m ground says about a line, first guesses to be tuned on a phone. The roughness is the spread of the heights in a 5 x 5
+ * patch of `patchStepM` about their best plane (a plain slope is not rough), over `roughM`; the slope is read along the flow
+ * `slopeReachM` either side of the seed; the lee is a fall along the flow, over `leeSlope`; `turb = turbBase + 0.5 (rough + lee) g` and
+ * `lift = speed x slope x g / liftMs`, with `g = exp(-(height - baseHeightM) / heightScaleM)` above `baseHeightM`; a line is drawn up to
+ * `liftM` higher at `lift` 1.
+ */
+export const DETAIL_TERRAIN = { patchStepM: 10, roughM: 3, slopeReachM: 30, leeSlope: 0.35, turbBase: 0.25, noGroundTurb: 0.5, liftMs: 3, liftM: 3, baseHeightM: 10, heightScaleM: 300 } as const;
+
+/** How much of the ground terms is left at a wind height (m above the ground): 1 at 10 m, 0.38 at 300 m, 0.04 at 1,000 m. */
+export function detailGroundFactor(heightM: number): number {
+  return heightM > DETAIL_TERRAIN.baseHeightM ? Math.exp(-(heightM - DETAIL_TERRAIN.baseHeightM) / DETAIL_TERRAIN.heightScaleM) : 1;
+}
+
+/**
+ * How bright a point `s` px along a line is when the pulse's head is at `head` px and its tail is `tail` px long: 1 at the head, falling
+ * linearly to 0 a tail's length behind it, 0 ahead of it. The vertex shader's `pulse` written in TypeScript (the shader test pins the two
+ * to each other at the same points).
+ */
+export function pulseIntensity(s: number, head: number, tail: number): number {
+  if (!(s <= head)) return 0;
+  if (!(tail > 0)) return 1;
+  const v = 1 - (head - s) / tail;
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+const STEP_PX = DETAIL_GEOMETRY.stepPx;
+const MIN_SEG = DETAIL_GEOMETRY.minSegments;
+const MAX_SEG = DETAIL_GEOMETRY.maxSegments;
+/** A vertex is drawn under the glyph's halo (a few px of it): seeds this much further out than the longest line still count. */
+const REACH_EXTRA_PX = 3;
+/** Keep this share of the segment cap when thinning to it, so the hard stop is rarely reached. */
+const CAP_KEEP = 0.95;
+const BIN_SCALE = (SPEED_TABLE_BINS - 1) / SPEED_TABLE_MAX_MS;
+const U32 = 4294967296;
+/** The hash of a seed is cut in this many buckets (the top 8 bits) to find the share of seeds that fits the caps. */
+const BUCKETS = 256;
+const BUCKET_SIZE = U32 / BUCKETS;
+
+// Salts of the integer hash (`hash3` of render/fields.ts, written out below). The first three are the glyph builder's, so a seed is
+// the same seed there; the life salt is far from the jitter salts (32 to 161).
+const SALT_ORBIT = 17;
+const SALT_CAP = 19;
+const SALT_JITTER = 32;
+const SALT_LIFE = 977;
+
+const SPEED_TABLE = buildSpeedTable();
+
+// Float state (f) and integer state (n) of the job. Typed arrays, so that no field of the builder holds a boxed number.
+const F_PXM1 = 0;
+const F_WMIN = 1;
+const F_VEX = 2;
+const F_S = 3;
+const F_JIT = 4;
+const F_LMIN = 5;
+const F_LMAX = 6;
+const F_PXMS = 7;
+const F_MPPC = 8;
+const F_RX0 = 9;
+const F_RY0 = 10;
+const F_RX1 = 11;
+const F_RY1 = 12;
+const F_RINV = 13;
+const F_GX0 = 14;
+const F_GY0 = 15;
+const F_GINV = 16;
+const F_MX = 17;
+const F_MY = 18;
+const F_MXT = 19;
+const F_MYT = 20;
+const F_TAU = 21;
+const F_PKEEP = 22;
+const F_DEADLINE = 23;
+const F_BUDGET = 24;
+const F_EX = 25;
+const F_EY = 26;
+const F_EZ = 27;
+const F_AK = 28;
+const F_HFX = 29;
+const F_HFZ = 30;
+const F_TX0 = 31;
+const F_TY0 = 32;
+const F_TINV = 33;
+const F_GFAC = 34;
+const F_LEN = 35;
+
+const N_BUSY = 0;
+const N_PHASE = 1;
+const N_RNX = 2;
+const N_RNY = 3;
+const N_GNX = 4;
+const N_GNY = 5;
+const N_TNX = 6;
+const N_TNY = 7;
+const N_HAS10 = 8;
+const N_I0 = 9;
+const N_I1 = 10;
+const N_J1 = 11;
+const N_CI = 12;
+const N_CJ = 13;
+const N_SALT = 14;
+const N_LIFE = 15;
+const N_OUTER = 16;
+const N_NSTORE = 17;
+const N_MAXSTORE = 18;
+const N_TI = 19;
+const N_LINES = 20;
+const N_SEG = 21;
+const N_DROPPED = 22;
+const N_CALM = 23;
+const N_STEEP = 24;
+const N_CAPG = 25;
+const N_CAPS = 26;
+const N_REBUILDS = 27;
+const N_INTERVAL = 28;
+const N_LEN = 29;
+
+// Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
+const PHASE_SETUP = 3;
+const PHASE_WALK = 0;
+const PHASE_TRACE_START = 4;
+const PHASE_TRACE = 1;
+const PHASE_DONE = 2;
+
+/** Lattice cells between two reads of the clock while walking the lattice (fewer for the first rebuilds of a builder, while the code is cold). */
+const CELL_CHECK = 2048;
+const CELL_CHECK_COLD = 256;
+
+class Builder implements DetailBuilder {
+  readonly out: DetailOutput;
+  private input: DetailInput | null = null;
+  private readonly f = new Float64Array(F_LEN);
+  private readonly n = new Int32Array(N_LEN);
+  /** Projection x view, column-major (THREE's `Matrix4.elements`). */
+  private readonly vp = new Float64Array(16);
+  /**
+   * Scratch: 0 x, 1 y, 2 drawn ground, 3 metres per pixel, 4 line length (px), 5 u, 6 v, 7 speed, 8..13 the segment being written,
+   * 14 s0, 15 s1, 16 L, 17 seed, 18 speed, 19 turb, 20 lift, 21 tail (the rest of the segment), 22 x, 23 y of a 10 m ground read, 24 its height.
+   */
+  private readonly s = new Float64Array(26);
+  private readonly hv = new Uint32Array(1);
+  private readonly cand: Int32Array;
+  private readonly candH: Uint32Array;
+  /** The segments a stored seed's line takes at most (8 to 24; calm seeds are not stored). */
+  private readonly candN: Uint8Array;
+  private readonly histS = new Int32Array(BUCKETS);
+  private readonly histC = new Int32Array(BUCKETS);
+  private readonly capLines: number;
+  private readonly capSegments: number;
+  private fu: Float32Array = new Float32Array(0);
+  private fv: Float32Array = new Float32Array(0);
+  private gz: Float32Array = new Float32Array(0);
+  private tz: Float32Array = new Float32Array(0);
+  private readonly A: Float32Array;
+  private readonly B: Float32Array;
+  private readonly C: Float32Array;
+  private readonly D: Float32Array;
+  private readonly E: Float32Array;
+
+  constructor(caps: { glyphs: number; segments: number }) {
+    this.capSegments = caps.segments;
+    // Every line takes at least `MIN_SEG` segments: no more lines than that fit the segments.
+    this.capLines = Math.min(caps.glyphs, Math.floor(caps.segments / MIN_SEG));
+    this.A = new Float32Array(3 * caps.segments);
+    this.B = new Float32Array(3 * caps.segments);
+    this.C = new Float32Array(4 * caps.segments);
+    this.D = new Float32Array(4 * caps.segments);
+    this.E = new Float32Array(4 * caps.segments);
+    this.out = { a: this.A, b: this.B, c: this.C, d: this.D, e: this.E, lines: 0, segments: 0, dropped: 0, calm: 0, steep: 0 };
+    const store = 3 * this.capLines + 16;
+    this.cand = new Int32Array(2 * store);
+    this.candH = new Uint32Array(store);
+    this.candN = new Uint8Array(store);
+  }
+
+  get busy(): boolean {
+    return this.n[N_BUSY] !== 0;
+  }
+
+  cancel(): void {
+    this.n[N_BUSY] = 0;
+    this.n[N_PHASE] = PHASE_DONE;
+    this.input = null;
+  }
+
+  begin(input: DetailInput): void {
+    const n = this.n;
+    const out = this.out;
+    this.input = input;
+    n[N_REBUILDS] = n[N_REBUILDS]! + 1;
+    n[N_BUSY] = 0;
+    n[N_PHASE] = PHASE_DONE;
+    n[N_NSTORE] = 0;
+    n[N_TI] = 0;
+    n[N_LINES] = 0;
+    n[N_SEG] = 0;
+    n[N_DROPPED] = 0;
+    n[N_CALM] = 0;
+    n[N_STEEP] = 0;
+    out.lines = 0;
+    out.segments = 0;
+    out.dropped = 0;
+    out.calm = 0;
+    out.steep = 0;
+    // Is there anything to draw? Comparisons and whole numbers only (see the glyph builder: this function runs a few times a second, so
+    // V8 never optimises it, and in the interpreter every number made by arithmetic is a heap number: the arithmetic is in `walk`).
+    const lod = input.lod;
+    const field = input.field;
+    const fg = field.grid;
+    const gg = input.ground.grid;
+    if (lod.level === 0 || !(lod.spacingM > 0) || !(lod.spacingPx > 0)) return;
+    if (fg.nx < 2 || fg.ny < 2 || gg.nx < 2 || gg.ny < 2 || !(fg.cellSize > 0) || !(gg.cellSize > 0)) return;
+    if (field.u.length < fg.nx * fg.ny || field.v.length < fg.nx * fg.ny || input.ground.elevation.length < gg.nx * gg.ny) return;
+    if (!(input.cssW > 0) || !(input.cssH > 0) || !(input.pxPerMetre1 > 0)) return;
+    const capG = Math.min(input.cap.glyphs | 0, this.capLines);
+    const capS = Math.min(input.cap.segments | 0, this.capSegments);
+    if (capG < 1 || capS < DETAIL_MIN_LINE_SEGMENTS) return;
+    this.fu = field.u;
+    this.fv = field.v;
+    this.gz = input.ground.elevation;
+    // The 10 m ground is optional at run time: a missing or ill-formed raster gives lines with no terrain terms.
+    const g10 = input.ground10 as GroundRaster | undefined;
+    const tg = g10 ? g10.grid : null;
+    n[N_HAS10] = tg && tg.nx >= 2 && tg.ny >= 2 && tg.cellSize > 0 && g10!.elevation.length >= tg.nx * tg.ny ? 1 : 0;
+    if (n[N_HAS10] !== 0) {
+      this.tz = g10!.elevation;
+      n[N_TNX] = tg!.nx;
+      n[N_TNY] = tg!.ny;
+    }
+    n[N_RNX] = fg.nx;
+    n[N_RNY] = fg.ny;
+    n[N_GNX] = gg.nx;
+    n[N_GNY] = gg.ny;
+    n[N_CAPG] = capG;
+    n[N_CAPS] = capS;
+    n[N_MAXSTORE] = Math.min(3 * capG + 16, this.candH.length);
+    n[N_SALT] = SALT_JITTER + 2 * (Math.max(-16, Math.min(48, lod.spacingExp | 0)) + 16);
+    n[N_PHASE] = PHASE_SETUP;
+    n[N_BUSY] = 1;
+  }
+
+  step(budgetMs: number): boolean {
+    const n = this.n;
+    if (n[N_BUSY] === 0) return true;
+    const f = this.f;
+    f[F_BUDGET] = budgetMs;
+    f[F_DEADLINE] = this.input!.now() + budgetMs;
+    if (n[N_PHASE] === PHASE_SETUP || n[N_PHASE] === PHASE_WALK) {
+      if (!this.walk()) return false;
+      n[N_PHASE] = PHASE_TRACE_START;
+    }
+    if (!this.trace()) return false;
+    n[N_BUSY] = 0;
+    n[N_PHASE] = PHASE_DONE;
+    return true;
+  }
+
+  /** Hash of three integers into `hv[0]`: `hash3` of render/fields.ts (lowbias32), without a returned number. */
+  private hash(a: number, b: number, c: number): void {
+    let h = (Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ Math.imul(c | 0, 0x9e3779b1)) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x7feb352d);
+    h ^= h >>> 15;
+    h = Math.imul(h, 0x846ca68b);
+    h ^= h >>> 16;
+    this.hv[0] = h >>> 0;
+  }
+
+  /**
+   * Hash of three integers into `hv[0]` that does not collide for cells a few apart: `hash` combines its three with xor, and the products
+   * of nearby cells cancel under it (cells 2 apart in x and 10 in y share a hash about one time in eight); the sum of products
+   * collides only for cells 65,000 apart, then the same finishing mix. For the life of a line, where two lines with the same life would show.
+   */
+  private hashSum(a: number, b: number, c: number): void {
+    let h = (Math.imul(a | 0, 0x27d4eb2d) + Math.imul(b | 0, 0x165667b1) + Math.imul(c | 0, 0x9e3779b1)) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x7feb352d);
+    h ^= h >>> 15;
+    h = Math.imul(h, 0x846ca68b);
+    h ^= h >>> 16;
+    this.hv[0] = h >>> 0;
+  }
+
+  /** The drawn ground (bilinear, clamped to its edge) under (s0, s1) into s2: the arithmetic of `HeightField.heightAt`. */
+  private groundAt(): void {
+    const f = this.f;
+    const s = this.s;
+    const gnx = this.n[N_GNX]!;
+    const mx = gnx - 1;
+    const my = this.n[N_GNY]! - 1;
+    const inv = f[F_GINV]!;
+    let fx = (s[0]! - f[F_GX0]!) * inv;
+    let fy = (s[1]! - f[F_GY0]!) * inv;
+    fx = Math.max(0, Math.min(mx, fx));
+    fy = Math.max(0, Math.min(my, fy));
+    let i0 = fx | 0;
+    let j0 = fy | 0;
+    if (i0 >= mx) i0 = mx - 1;
+    if (j0 >= my) j0 = my - 1;
+    const tx = fx - i0;
+    const ty = fy - j0;
+    const e = this.gz;
+    const k = j0 * gnx + i0;
+    s[2] = (e[k]! * (1 - tx) + e[k + 1]! * tx) * (1 - ty) + (e[k + gnx]! * (1 - tx) + e[k + gnx + 1]! * tx) * ty;
+  }
+
+  /** The 10 m ground (bilinear, clamped to its edge) under (s22, s23) into s24. */
+  private ground10At(): void {
+    const f = this.f;
+    const s = this.s;
+    const tnx = this.n[N_TNX]!;
+    const mx = tnx - 1;
+    const my = this.n[N_TNY]! - 1;
+    const inv = f[F_TINV]!;
+    let fx = (s[22]! - f[F_TX0]!) * inv;
+    let fy = (s[23]! - f[F_TY0]!) * inv;
+    fx = Math.max(0, Math.min(mx, fx));
+    fy = Math.max(0, Math.min(my, fy));
+    let i0 = fx | 0;
+    let j0 = fy | 0;
+    if (i0 >= mx) i0 = mx - 1;
+    if (j0 >= my) j0 = my - 1;
+    const tx = fx - i0;
+    const ty = fy - j0;
+    const e = this.tz;
+    const k = j0 * tnx + i0;
+    s[24] = (e[k]! * (1 - tx) + e[k + 1]! * tx) * (1 - ty) + (e[k + tnx]! * (1 - tx) + e[k + tnx + 1]! * tx) * ty;
+  }
+
+  /** The wind raster (bilinear, clamped to its edge) at (s0, s1) into s5 (u) and s6 (v). */
+  private sampleField(): void {
+    const f = this.f;
+    const s = this.s;
+    const nx = this.n[N_RNX]!;
+    const mx = nx - 1;
+    const my = this.n[N_RNY]! - 1;
+    const inv = f[F_RINV]!;
+    let fx = (s[0]! - f[F_RX0]!) * inv;
+    let fy = (s[1]! - f[F_RY0]!) * inv;
+    fx = Math.max(0, Math.min(mx, fx));
+    fy = Math.max(0, Math.min(my, fy));
+    let i0 = fx | 0;
+    let j0 = fy | 0;
+    if (i0 >= mx) i0 = mx - 1;
+    if (j0 >= my) j0 = my - 1;
+    const tx = fx - i0;
+    const ty = fy - j0;
+    const k = j0 * nx + i0;
+    const u = this.fu;
+    const v = this.fv;
+    s[5] = (u[k]! * (1 - tx) + u[k + 1]! * tx) * (1 - ty) + (u[k + nx]! * (1 - tx) + u[k + nx + 1]! * tx) * ty;
+    s[6] = (v[k]! * (1 - tx) + v[k + 1]! * tx) * (1 - ty) + (v[k + nx]! * (1 - tx) + v[k + nx + 1]! * tx) * ty;
+  }
+
+  /**
+   * What the wind in (s5, s6) makes of a line: its speed into s7 and its length in px into s4, and the number of steps it takes
+   * (`clamp(ceil(L / 9), 8, 24)`), 0 when the wind is calm (under 0.3 m/s: no dot, no line).
+   */
+  private shape(): number {
+    const f = this.f;
+    const s = this.s;
+    const u = s[5]!;
+    const v = s[6]!;
+    const sp = Math.sqrt(u * u + v * v);
+    s[7] = sp;
+    if (!(sp >= GLYPH_CALM_MS)) return 0;
+    let lenPx = f[F_PXMS]! * sp;
+    const lmin = f[F_LMIN]!;
+    const lmax = f[F_LMAX]!;
+    if (lenPx < lmin) lenPx = lmin;
+    else if (lenPx > lmax) lenPx = lmax;
+    s[4] = lenPx;
+    let steps = Math.ceil(lenPx / STEP_PX);
+    if (steps < MIN_SEG) steps = MIN_SEG;
+    else if (steps > MAX_SEG) steps = MAX_SEG;
+    return steps | 0;
+  }
+
+  /**
+   * Is lattice cell (i, j) a seed? 1 or 0. On 1 the seed is left in the scratch: s0, s1 its position, s2 the ground under it, s3 its
+   * metres per pixel, and `N_OUTER` says whether it lies outside the screen's own margin (inside the wide one only a line that runs
+   * onto the screen keeps it: see `reaches`). The tests, in the order of their cost: inside the raster's domain; clip depth beyond
+   * the near plane; on the screen plus margin; the orbit density.
+   */
+  private candidate(i: number, j: number): number {
+    const f = this.f;
+    const s = this.s;
+    const vp = this.vp;
+    const S = f[F_S]!;
+    const jit = f[F_JIT]!;
+    let px: number;
+    let py: number;
+    if (jit > 0) {
+      const salt = this.n[N_SALT]!;
+      this.hash(i, j, salt);
+      const hx = this.hv[0]! / U32;
+      this.hash(i, j, salt + 1);
+      const hy = this.hv[0]! / U32;
+      px = (i + 0.5 + jit * (hx - 0.5) * 2) * S;
+      py = (j + 0.5 + jit * (hy - 0.5) * 2) * S;
+    } else {
+      px = (i + 0.5) * S;
+      py = (j + 0.5) * S;
+    }
+    if (px < f[F_RX0]! || px > f[F_RX1]! || py < f[F_RY0]! || py > f[F_RY1]!) return 0;
+    s[0] = px;
+    s[1] = py;
+    this.groundAt();
+    const yw = s[2]! * f[F_VEX]!;
+    const zw = -py;
+    const w = vp[3]! * px + vp[7]! * yw + vp[11]! * zw + vp[15]!;
+    if (!(w > f[F_WMIN]!)) return 0;
+    const cx = Math.abs(vp[0]! * px + vp[4]! * yw + vp[8]! * zw + vp[12]!);
+    const cy = Math.abs(vp[1]! * px + vp[5]! * yw + vp[9]! * zw + vp[13]!);
+    if (cx > f[F_MX]! * w || cy > f[F_MY]! * w) return 0;
+    const mpp = w / f[F_PXM1]!;
+    // Orbit density: the ground area one pixel covers here against the middle of the screen, as in the glyph builder.
+    const dy = f[F_EY]! - yw;
+    let ahead = (px - f[F_EX]!) * f[F_HFX]! + (zw - f[F_EZ]!) * f[F_HFZ]!;
+    if (ahead < 0) ahead = 0;
+    const slant = Math.sqrt(dy * dy + ahead * ahead);
+    let s2 = dy > 0.02 * slant ? mpp * mpp * (slant / dy) * f[F_AK]! : GLYPH_DENSITY_S2_MAX;
+    if (s2 > GLYPH_DENSITY_S2_MAX) s2 = GLYPH_DENSITY_S2_MAX;
+    if (s2 > 1) {
+      this.hash(i, j, SALT_ORBIT);
+      if ((this.hv[0]! / U32) * s2 >= 1) return 0;
+    }
+    s[3] = mpp;
+    this.n[N_OUTER] = cx > f[F_MXT]! * w || cy > f[F_MYT]! * w ? 1 : 0;
+    return 1;
+  }
+
+  /**
+   * A seed outside the screen's own margin (the wind is in s5, s6, its line length in s4, the seed in s0, s1): does its line run onto
+   * the screen? The line is taken straight, and its middle and its end are projected at the seed's drawn height plus the ground
+   * under them. 1 or 0. (Without it every seed within a line length of the screen is traced, and most of those lines never show.)
+   */
+  private reaches(): number {
+    const f = this.f;
+    const s = this.s;
+    const vp = this.vp;
+    const vex = f[F_VEX]!;
+    const wmin = f[F_WMIN]!;
+    const x0 = s[0]!;
+    const y0 = s[1]!;
+    const reachM = s[4]! * s[3]!;
+    const kx = (s[5]! / s[7]!) * reachM;
+    const ky = (s[6]! / s[7]!) * reachM;
+    const lift = Math.max(GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX * s[3]!);
+    for (let t = 1; t <= 2; t++) {
+      const x = x0 + 0.5 * t * kx;
+      const y = y0 + 0.5 * t * ky;
+      s[0] = x;
+      s[1] = y;
+      this.groundAt();
+      const yw = (s[2]! + lift) * vex;
+      const zw = -y;
+      const w = vp[3]! * x + vp[7]! * yw + vp[11]! * zw + vp[15]!;
+      if (!(w > wmin)) continue;
+      const cx = Math.abs(vp[0]! * x + vp[4]! * yw + vp[8]! * zw + vp[12]!);
+      const cy = Math.abs(vp[1]! * x + vp[5]! * yw + vp[9]! * zw + vp[13]!);
+      if (cx <= f[F_MXT]! * w && cy <= f[F_MYT]! * w) return 1;
+    }
+    return 0;
+  }
+
+  /**
+   * Keep a seed for the trace phase: when its cap hash is under the threshold (which halves when the store is full), its wind is not
+   * calm and, outside the screen's margin, its line reaches the screen. The wind at the seed gives the segments the line takes at most.
+   */
+  private store(i: number, j: number): void {
+    const n = this.n;
+    const f = this.f;
+    this.hash(i, j, SALT_CAP);
+    const h = this.hv[0]!;
+    let tau = f[F_TAU]!;
+    if (h >= tau) return;
+    this.sampleField();
+    const steps = this.shape();
+    if (steps === 0) {
+      n[N_CALM] = n[N_CALM]! + 1;
+      return;
+    }
+    if (n[N_OUTER] !== 0 && this.reaches() === 0) return;
+    let ns = n[N_NSTORE]!;
+    const max = n[N_MAXSTORE]!;
+    const cand = this.cand;
+    const candH = this.candH;
+    const candN = this.candN;
+    if (ns >= max) {
+      while (ns >= max && tau > 1) {
+        tau *= 0.5;
+        let w = 0;
+        for (let r = 0; r < ns; r++) {
+          if (candH[r]! < tau) {
+            if (w !== r) {
+              cand[2 * w] = cand[2 * r]!;
+              cand[2 * w + 1] = cand[2 * r + 1]!;
+              candH[w] = candH[r]!;
+              candN[w] = candN[r]!;
+            }
+            w++;
+          }
+        }
+        ns = w;
+      }
+      f[F_TAU] = tau;
+      if (h >= tau) {
+        n[N_NSTORE] = ns;
+        return;
+      }
+    }
+    cand[2 * ns] = i;
+    cand[2 * ns + 1] = j;
+    candH[ns] = h;
+    candN[ns] = steps;
+    n[N_NSTORE] = ns + 1;
+  }
+
+  /**
+   * Walk the lattice cells of the box; true when done, false when the slice ran out of time (the cursor is kept). The first call of a
+   * rebuild first copies the input into the typed state (what `begin` leaves for it: see there).
+   */
+  private walk(): boolean {
+    const n = this.n;
+    const f = this.f;
+    const input = this.input!;
+    if (n[N_PHASE] === PHASE_SETUP) {
+      const lod = input.lod;
+      const fg = input.field.grid;
+      const gg = input.ground.grid;
+      const S = lod.spacingM;
+      const vp = input.viewProj;
+      for (let k = 0; k < 16; k++) this.vp[k] = vp[k]!;
+      // The raster's domain: lines stop at its edge.
+      const rx0 = fg.x0;
+      const ry0 = fg.y0;
+      const rx1 = fg.x0 + (fg.nx - 1) * fg.cellSize;
+      const ry1 = fg.y0 + (fg.ny - 1) * fg.cellSize;
+      f[F_RX0] = rx0;
+      f[F_RY0] = ry0;
+      f[F_RX1] = rx1;
+      f[F_RY1] = ry1;
+      f[F_RINV] = 1 / fg.cellSize;
+      f[F_GX0] = gg.x0;
+      f[F_GY0] = gg.y0;
+      f[F_GINV] = 1 / gg.cellSize;
+      if (n[N_HAS10] !== 0) {
+        const tg = input.ground10.grid;
+        f[F_TX0] = tg.x0;
+        f[F_TY0] = tg.y0;
+        f[F_TINV] = 1 / tg.cellSize;
+      }
+      const h = input.heightM;
+      // (`detailGroundFactor` written out: a double through an argument is a heap number in code V8 does not inline.)
+      f[F_GFAC] = h !== undefined && h > DETAIL_TERRAIN.baseHeightM ? Math.exp(-(h - DETAIL_TERRAIN.baseHeightM) / DETAIL_TERRAIN.heightScaleM) : 1;
+      // The life of a line is a hash of its lattice cell and the input seed (whole numbers: a seed of 0 is the app's).
+      n[N_LIFE] = (SALT_LIFE + Math.imul(Math.floor(input.seed * 4096) | 0, 0x2545f491)) | 0;
+      f[F_PXM1] = input.pxPerMetre1;
+      f[F_WMIN] = GLYPH_NEAR_FACTOR * input.near;
+      f[F_VEX] = input.vex;
+      f[F_S] = S;
+      f[F_JIT] = lod.jitter;
+      f[F_LMIN] = lod.lengthPx.min;
+      f[F_LMAX] = lod.lengthPx.max;
+      f[F_PXMS] = lod.lengthPx.pxPerMs;
+      f[F_MPPC] = lod.mppCentre !== undefined && lod.mppCentre > 0 ? lod.mppCentre : S / lod.spacingPx;
+      // A seed this far outside the screen can still have its line on it: one line length, at least a tenth of the screen. Seeds outside
+      // the screen's own margin (a tenth of it) are kept only when their line runs onto the screen.
+      const reach = lod.lengthPx.max + REACH_EXTRA_PX;
+      f[F_MX] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssW, reach)) / input.cssW;
+      f[F_MY] = 1 + (2 * Math.max(GLYPH_SCREEN_MARGIN * input.cssH, reach)) / input.cssH;
+      f[F_MXT] = 1 + 2 * GLYPH_SCREEN_MARGIN;
+      f[F_MYT] = 1 + 2 * GLYPH_SCREEN_MARGIN;
+      f[F_EX] = input.eye[0]!;
+      f[F_EY] = input.eye[1]!;
+      f[F_EZ] = input.eye[2]!;
+      // Orbit density needs the pitch of the view: see the glyph builder.
+      const sinC = Math.max(0.05, -this.vp[7]!);
+      f[F_AK] = sinC / (f[F_MPPC]! * f[F_MPPC]!);
+      const fh = Math.sqrt(this.vp[3]! * this.vp[3]! + this.vp[11]! * this.vp[11]!);
+      f[F_HFX] = fh > 1e-3 ? this.vp[3]! / fh : 0;
+      f[F_HFZ] = fh > 1e-3 ? this.vp[11]! / fh : 0;
+      f[F_TAU] = U32;
+      // The lattice cells to walk: the box inside the raster's domain; a box of more than GLYPH_MAX_CELLS is cut to a square around the camera.
+      const box = input.box;
+      let bx0 = Math.max(box.x0, rx0);
+      let by0 = Math.max(box.y0, ry0);
+      let bx1 = Math.min(box.x1, rx1);
+      let by1 = Math.min(box.y1, ry1);
+      if (((bx1 - bx0) / S + 1) * ((by1 - by0) / S + 1) > GLYPH_MAX_CELLS) {
+        const half = 0.5 * S * Math.sqrt(GLYPH_MAX_CELLS);
+        let cx = input.eye[0]!;
+        let cy = -input.eye[2]!;
+        if (!(cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1)) {
+          cx = 0.5 * (bx0 + bx1);
+          cy = 0.5 * (by0 + by1);
+        }
+        bx0 = Math.max(bx0, cx - half);
+        bx1 = Math.min(bx1, cx + half);
+        by0 = Math.max(by0, cy - half);
+        by1 = Math.min(by1, cy + half);
+      }
+      if (bx0 <= bx1 && by0 <= by1) {
+        const i0 = Math.floor(bx0 / S);
+        const j0 = Math.floor(by0 / S);
+        n[N_I0] = i0;
+        n[N_I1] = Math.floor(bx1 / S);
+        n[N_J1] = Math.floor(by1 / S);
+        n[N_CI] = i0;
+        n[N_CJ] = j0;
+      } else {
+        // Nothing of the box is inside the raster: no cell to walk.
+        n[N_I0] = 0;
+        n[N_I1] = -1;
+        n[N_J1] = -1;
+        n[N_CI] = 0;
+        n[N_CJ] = 0;
+      }
+      n[N_PHASE] = PHASE_WALK;
+    }
+    const deadline = f[F_DEADLINE]!;
+    const i0 = n[N_I0]!;
+    const i1 = n[N_I1]!;
+    const j1 = n[N_J1]!;
+    let ci = n[N_CI]!;
+    let cj = n[N_CJ]!;
+    const every = n[N_REBUILDS]! <= 4 ? CELL_CHECK_COLD : CELL_CHECK;
+    let check = every;
+    while (cj <= j1) {
+      while (ci <= i1) {
+        if (this.candidate(ci, cj) !== 0) this.store(ci, cj);
+        ci++;
+        if (--check <= 0) {
+          check = every;
+          if (input.now() >= deadline) {
+            n[N_CI] = ci;
+            n[N_CJ] = cj;
+            return false;
+          }
+        }
+      }
+      ci = i0;
+      cj++;
+    }
+    n[N_CI] = ci;
+    n[N_CJ] = cj;
+    return true;
+  }
+
+  /** Trace the stored seeds in order; true when all are done (or the caps are reached), false when the slice ran out of time. */
+  private trace(): boolean {
+    const n = this.n;
+    const f = this.f;
+    const out = this.out;
+    const input = this.input!;
+    const deadline = f[F_DEADLINE]!;
+    const budget = f[F_BUDGET]!;
+    const candH = this.candH;
+    const ns = n[N_NSTORE]!;
+    const capG = n[N_CAPG]!;
+    const capS = n[N_CAPS]!;
+    const base = n[N_REBUILDS]! <= 4 ? 4 : 16;
+    if (n[N_PHASE] === PHASE_TRACE_START) {
+      // The lattice is walked: decide which of the stored seeds are traced. Each took the segments its wind gives its line, so add them
+      // up by the bucket of their hash and keep the buckets, from the lowest, that fit 0.95 of the segment cap and the line cap, and the
+      // next one too (the caps stop it where they bind). The share is by hash, so the picture thins evenly over the screen.
+      const histS = this.histS;
+      const histC = this.histC;
+      const candN = this.candN;
+      histS.fill(0);
+      histC.fill(0);
+      for (let r = 0; r < ns; r++) {
+        const b = candH[r]! >>> 24;
+        histS[b] = histS[b]! + candN[r]!;
+        histC[b] = histC[b]! + 1;
+      }
+      const room = Math.floor(CAP_KEEP * capS);
+      let cumS = 0;
+      let cumC = 0;
+      let last = -1;
+      for (let b = 0; b < BUCKETS; b++) {
+        if (cumS + histS[b]! > room || cumC + histC[b]! > capG) break;
+        cumS += histS[b]!;
+        cumC += histC[b]!;
+        last = b;
+      }
+      let p = (last + 2) * BUCKET_SIZE;
+      if (p > f[F_TAU]!) p = f[F_TAU]!;
+      f[F_PKEEP] = p;
+      n[N_TI] = 0;
+      n[N_INTERVAL] = base;
+      n[N_PHASE] = PHASE_TRACE;
+    }
+    const pkeep = f[F_PKEEP]!;
+    let interval = n[N_INTERVAL]!;
+    let left = interval;
+    let ti = n[N_TI]!;
+    while (ti < ns) {
+      const r = ti++;
+      if (candH[r]! >= pkeep) continue;
+      if (n[N_LINES]! >= capG || n[N_SEG]! + DETAIL_MIN_LINE_SEGMENTS > capS) {
+        ti = ns; // a cap is reached: the rest is not drawn
+        break;
+      }
+      this.line(r);
+      if (--left <= 0) {
+        const now = input.now();
+        if (now >= deadline) break;
+        // Plenty of the slice left: read the clock less often (a clock read allocates its number).
+        if (deadline - now > 0.75 * budget && interval < 4 * base) interval *= 2;
+        left = interval;
+      }
+    }
+    n[N_TI] = ti;
+    n[N_INTERVAL] = interval;
+    out.lines = n[N_LINES]!;
+    out.segments = n[N_SEG]!;
+    out.dropped = n[N_DROPPED]!;
+    out.calm = n[N_CALM]!;
+    out.steep = n[N_STEEP]!;
+    return ti >= ns;
+  }
+
+  /** Write the segment held in the scratch (s8..s21) at index `seg` with the colour of speed bin `bin`. */
+  private emit(seg: number, bin: number): void {
+    const s = this.s;
+    const A = this.A;
+    const B = this.B;
+    const C = this.C;
+    const D = this.D;
+    const E = this.E;
+    const ia = 3 * seg;
+    A[ia] = s[8]!;
+    A[ia + 1] = s[9]!;
+    A[ia + 2] = s[10]!;
+    B[ia] = s[11]!;
+    B[ia + 1] = s[12]!;
+    B[ia + 2] = s[13]!;
+    const ib = 3 * bin;
+    const ic = 4 * seg;
+    C[ic] = SPEED_TABLE[ib]!;
+    C[ic + 1] = SPEED_TABLE[ib + 1]!;
+    C[ic + 2] = SPEED_TABLE[ib + 2]!;
+    C[ic + 3] = 1;
+    D[ic] = s[14]!;
+    D[ic + 1] = s[15]!;
+    D[ic + 2] = s[16]!;
+    D[ic + 3] = s[17]!;
+    E[ic] = s[18]!;
+    E[ic + 1] = s[19]!;
+    E[ic + 2] = s[20]!;
+    E[ic + 3] = s[21]!;
+  }
+
+  /**
+   * What the 10 m ground says about the line that starts at (s0, s1) and runs along (s5, s6) at speed s7: `turb` into s19 and `lift`
+   * into s20. The roughness is the spread of a 5 x 5 patch about its best plane, the slope is read along the flow either side of the
+   * seed, the lee is a fall along it (`DETAIL_TERRAIN`).
+   */
+  private terrain(): void {
+    const s = this.s;
+    if (this.n[N_HAS10] === 0) {
+      s[19] = DETAIL_TERRAIN.noGroundTurb;
+      s[20] = 0;
+      return;
+    }
+    const x0 = s[0]!;
+    const y0 = s[1]!;
+    const step = DETAIL_TERRAIN.patchStepM;
+    s[22] = x0;
+    s[23] = y0;
+    this.ground10At();
+    const z0 = s[24]!;
+    // Heights against the middle one; a, b are the patch offsets in steps (-2 to 2): the plane fit of a symmetric patch is a sum each.
+    let sz = 0;
+    let sz2 = 0;
+    let sxz = 0;
+    let syz = 0;
+    for (let a = -2; a <= 2; a++) {
+      for (let b = -2; b <= 2; b++) {
+        s[22] = x0 + step * a;
+        s[23] = y0 + step * b;
+        this.ground10At();
+        const dz = s[24]! - z0;
+        sz += dz;
+        sz2 += dz * dz;
+        sxz += a * dz;
+        syz += b * dz;
+      }
+    }
+    // Variance of the heights, less what the plane takes: each offset has a variance of 2 steps squared (sum of a squared is 50 of 25).
+    const px = sxz / 50;
+    const py = syz / 50;
+    const mean = sz / 25;
+    const v = sz2 / 25 - mean * mean - 2 * (px * px + py * py);
+    const rough = v > 0 ? Math.min(1, Math.sqrt(v) / DETAIL_TERRAIN.roughM) : 0;
+    // The slope along the flow, central over the reach either side.
+    const sp = s[7]!;
+    const kx = (s[5]! / sp) * DETAIL_TERRAIN.slopeReachM;
+    const ky = (s[6]! / sp) * DETAIL_TERRAIN.slopeReachM;
+    s[22] = x0 + kx;
+    s[23] = y0 + ky;
+    this.ground10At();
+    const zf = s[24]!;
+    s[22] = x0 - kx;
+    s[23] = y0 - ky;
+    this.ground10At();
+    const slope = (zf - s[24]!) / (2 * DETAIL_TERRAIN.slopeReachM);
+    let lee = -slope / DETAIL_TERRAIN.leeSlope;
+    if (lee < 0) lee = 0;
+    else if (lee > 1) lee = 1;
+    const g = this.f[F_GFAC]!;
+    let turb = DETAIL_TERRAIN.turbBase + 0.5 * (rough + lee) * g;
+    if (turb > 1) turb = 1;
+    let lift = (sp * slope * g) / DETAIL_TERRAIN.liftMs;
+    if (lift < -1) lift = -1;
+    else if (lift > 1) lift = 1;
+    s[19] = turb;
+    s[20] = lift;
+  }
+
+  /** Trace the line of stored seed `r`. Nothing is returned: a line that is dropped, cut or skipped leaves its mark in the counts. */
+  private line(r: number): void {
+    const n = this.n;
+    const f = this.f;
+    const s = this.s;
+    const vp = this.vp;
+    const cand = this.cand;
+    const i = cand[2 * r]!;
+    const j = cand[2 * r + 1]!;
+    if (this.candidate(i, j) === 0) return;
+    const vex = f[F_VEX]!;
+    const wmin = f[F_WMIN]!;
+    const rx0 = f[F_RX0]!;
+    const ry0 = f[F_RY0]!;
+    const rx1 = f[F_RX1]!;
+    const ry1 = f[F_RY1]!;
+    const seedX = s[0]!;
+    const seedY = s[1]!;
+    const ground0 = s[2]!;
+    const mpp = s[3]!;
+    this.sampleField();
+    let u = s[5]!;
+    let v = s[6]!;
+    const steps = this.shape();
+    if (steps === 0) return;
+    const seg0 = n[N_SEG]!;
+    if (seg0 + steps > n[N_CAPS]!) return; // does not fit the room that is left: a smaller line may
+    let sp = s[7]!;
+    const lenPx = s[4]!;
+    const stepPx = lenPx / steps;
+    const ds = stepPx * mpp;
+    const half = 0.5 * ds;
+    const maxRise = GLYPH_MAX_SLOPE * ds * vex; // the drawn rise of one step at the steepest slope allowed (the exaggeration is part of the drawing)
+    // The line's own numbers, the same on every segment: the life (a hash of the lattice cell and the seed), the speed, the terrain, the tail.
+    this.hashSum(i, j, n[N_LIFE]!);
+    s[17] = (this.hv[0]! >>> 8) / 16777216; // 24 bits: exact in Float32 and under 1
+    s[18] = sp;
+    this.terrain();
+    let tail = DETAIL_TAIL.pxPerMs * sp + DETAIL_TAIL.basePx;
+    if (tail < DETAIL_TAIL.minPx) tail = DETAIL_TAIL.minPx;
+    else if (tail > DETAIL_TAIL.maxPx) tail = DETAIL_TAIL.maxPx;
+    s[21] = tail;
+    s[16] = lenPx;
+    // The drawn height: the ground, the lift off it that keeps a stroke on top (at least 1.5 m, at least 3 px) and what the wind's rise adds.
+    const yoff = Math.max(GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX * mpp) + DETAIL_TERRAIN.liftM * s[20]!;
+    let px = seedX;
+    let py = seedY;
+    let ox = seedX;
+    let oyw = (ground0 + yoff) * vex;
+    let ozw = -seedY;
+    if (!(vp[3]! * ox + vp[7]! * oyw + vp[11]! * ozw + vp[15]! > wmin)) {
+      n[N_DROPPED] = n[N_DROPPED]! + 1;
+      return;
+    }
+    let made = 0;
+    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall
+    for (let k = 0; k < steps; k++) {
+      if (k > 0) {
+        s[0] = px;
+        s[1] = py;
+        this.sampleField();
+        u = s[5]!;
+        v = s[6]!;
+        sp = Math.sqrt(u * u + v * v);
+        if (!(sp >= GLYPH_CALM_MS)) {
+          stop = 1;
+          break;
+        }
+      }
+      const k1 = half / sp;
+      s[0] = px + u * k1;
+      s[1] = py + v * k1;
+      this.sampleField();
+      const u2 = s[5]!;
+      const v2 = s[6]!;
+      const sp2 = Math.sqrt(u2 * u2 + v2 * v2);
+      if (!(sp2 >= GLYPH_CALM_MS)) {
+        stop = 1;
+        break;
+      }
+      const k2 = ds / sp2;
+      const qx = px + u2 * k2;
+      const qy = py + v2 * k2;
+      if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) {
+        stop = 2;
+        break;
+      }
+      s[0] = qx;
+      s[1] = qy;
+      this.groundAt();
+      const qyw = (s[2]! + yoff) * vex;
+      const qzw = -qy;
+      if (!(vp[3]! * qx + vp[7]! * qyw + vp[11]! * qzw + vp[15]! > wmin)) {
+        stop = 3;
+        break;
+      }
+      if (qyw - oyw > maxRise || oyw - qyw > maxRise) {
+        stop = 4;
+        break;
+      }
+      s[8] = ox;
+      s[9] = oyw;
+      s[10] = ozw;
+      s[11] = qx;
+      s[12] = qyw;
+      s[13] = qzw;
+      s[14] = made * stepPx;
+      s[15] = (made + 1) * stepPx;
+      let bin = (sp2 * BIN_SCALE + 0.5) | 0;
+      if (bin > SPEED_TABLE_BINS - 1) bin = SPEED_TABLE_BINS - 1;
+      this.emit(seg0 + made, bin);
+      made++;
+      ox = qx;
+      oyw = qyw;
+      ozw = qzw;
+      px = qx;
+      py = qy;
+    }
+    if (stop === 3) {
+      n[N_DROPPED] = n[N_DROPPED]! + 1;
+      return;
+    }
+    if (stop === 4) n[N_STEEP] = n[N_STEEP]! + 1; // cut at a wall, or not drawn when the first step is the wall
+    if (made < DETAIL_MIN_LINE_SEGMENTS) {
+      if (stop === 1) n[N_CALM] = n[N_CALM]! + 1;
+      return;
+    }
+    if (made < steps) {
+      // A line cut short is as long as it is drawn, on every one of its segments.
+      const D = this.D;
+      const drawn = made * stepPx;
+      for (let k = 0; k < made; k++) D[4 * (seg0 + k) + 2] = drawn;
+    }
+    n[N_LINES] = n[N_LINES]! + 1;
+    n[N_SEG] = seg0 + made;
+  }
+}
 
 /** A builder with room for the caps of the picture tier, made once; `out` is written in place by every build. */
 export function createDetailBuilder(tier: GlyphTier): DetailBuilder {
-  const n = GLYPH_CAPS[tier].segments;
-  const out: DetailOutput = {
-    a: new Float32Array(3 * n),
-    b: new Float32Array(3 * n),
-    c: new Float32Array(4 * n),
-    d: new Float32Array(4 * n),
-    e: new Float32Array(4 * n),
-    lines: 0,
-    segments: 0,
-    dropped: 0,
-    calm: 0,
-    steep: 0,
-  };
-  return {
-    begin(_input: DetailInput): void {
-      out.lines = out.segments = out.dropped = out.calm = out.steep = 0;
-    },
-    step(_budgetMs: number): boolean {
-      return true;
-    },
-    busy: false,
-    out,
-    cancel(): void {},
-  };
+  return new Builder(GLYPH_CAPS[tier]);
 }
