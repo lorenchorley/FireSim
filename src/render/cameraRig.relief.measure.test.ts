@@ -13,7 +13,7 @@
  * percentile, worst); step/avg = the camera's largest step in the drag over its average step; jerk = its largest change of step
  * (in average steps); flips = frames in which it stepped against its previous step (a flip-flop); path/net = length of the
  * camera's path over the straight distance; grab = the ground that was under the finger, from the finger at the end (px: large
- * only where the grab holds a nearer point than the ground at a flat angle, by design); dist = the orbit distance after the drag
+ * only for a finger within PAN.HORIZON_MARGIN_DEG of the horizon or in the sky, by design); dist = the orbit distance after the drag
  * over before (10th / 50th / 90th percentile, smallest, largest; the picture's scale at the middle of the screen changes the same
  * way); minAGL = the camera's lowest height above the ground. Drags that reached the edge of the domain or whose camera flew into
  * the terrain (clearance clamp) are counted apart and left out of the smoothness and scale columns.

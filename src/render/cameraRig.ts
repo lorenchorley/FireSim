@@ -35,12 +35,15 @@ export type ViewMode = 'orbit' | 'top' | 'ground';
  * Touch / mouse sensitivity of the orbit and top views.
  *  - zoomSpeed 1: OrbitControls maps a pinch by distance ← distance · (spacing before ÷ spacing after)^zoomSpeed, so 1 is exactly
  *    1 : 1 (fingers twice as far apart = half the distance); the wheel then gives the stock 5 % per notch.
- *  - rotateSpeed 2/3: OrbitControls turns 2π · rotateSpeed per screen height of midpoint drag, so one full turn takes
- *    1.5 screen heights (the old 0.6 took 1.67: about the same feel, a round number). The two-finger turn runs the other way
- *    round from OrbitControls' own, at this speed: a two-finger drag to the right turns the camera anticlockwise seen from
- *    above ({@link TwoFingerTurnControls}); the mouse's right-button rotate keeps OrbitControls' direction.
+ *  - rotateSpeed 2/3 · 1.15 = 23/30 ≈ 0.7667: OrbitControls turns 2π · rotateSpeed per screen height of midpoint drag, so
+ *    one screen height turns the view 276° and a full turn takes about 1.3 screen heights (0.7.0: 15 % faster than the 2/3 of
+ *    0.6.0, which took 1.5; before that 0.6 took 1.67); 100 px on an 800 px canvas turn or tilt it 34.5°. It is the one speed
+ *    of the orbit and top views' rotation: the two-finger turn and tilt, and the mouse's right-button drag. The two-finger turn
+ *    runs the other way round from OrbitControls' own, at this speed: a two-finger drag to the right turns the camera
+ *    anticlockwise seen from above ({@link TwoFingerTurnControls}); the mouse's right-button rotate keeps OrbitControls'
+ *    direction. The eye-level look-around has its own speed (-0.35, set in `applyModeControls`).
  */
-export const GESTURE = { zoomSpeed: 1, rotateSpeed: 2 / 3 } as const;
+export const GESTURE = { zoomSpeed: 1, rotateSpeed: (2 / 3) * 1.15 } as const;
 
 interface Flight {
   t0: number;

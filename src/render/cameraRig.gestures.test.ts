@@ -449,7 +449,7 @@ describe('CameraRig gestures: two fingers turn, tilt and zoom at the same time',
     expect(r.rig.controls.mouseButtons.MIDDLE).toBe(THREE.MOUSE.DOLLY);
   });
 
-  it('a parallel horizontal drag turns the view (100 px ≈ 30°), target and distance unchanged', () => {
+  it('a parallel horizontal drag turns the view (100 px ≈ 34.5°), target and distance unchanged', () => {
     const before = r.state();
     r.down(1, 150, 400);
     r.down(2, 250, 400);
@@ -462,7 +462,7 @@ describe('CameraRig gestures: two fingers turn, tilt and zoom at the same time',
     r.up(1);
     const after = r.state();
     const turn = ((after.azimuthDeg - before.azimuthDeg + 540) % 360) - 180;
-    expect(Math.abs(turn)).toBeCloseTo(((2 * Math.PI * GESTURE.rotateSpeed * 100) / H) * (180 / Math.PI), 0); // = 30°
+    expect(Math.abs(turn)).toBeCloseTo(((2 * Math.PI * GESTURE.rotateSpeed * 100) / H) * (180 / Math.PI), 0); // = 34.5° (360° · 23/30 · 100 / 800)
     expect(after.polarDeg).toBeCloseTo(before.polarDeg, 3);
     expect(Math.abs(after.distance / before.distance - 1)).toBeLessThan(0.002); // (the target slides along the line of sight onto the terrain: gently here)
     // The target stays: OrbitControls' zoom-to-cursor, run once per finger event, leaves a small residue (a few px per 100 px).
@@ -481,7 +481,7 @@ describe('CameraRig gestures: two fingers turn, tilt and zoom at the same time',
     r.up(1);
     r.up(2);
     const after = r.state();
-    expect(Math.abs(after.polarDeg - before.polarDeg)).toBeCloseTo(30, 0);
+    expect(Math.abs(after.polarDeg - before.polarDeg)).toBeCloseTo(degOf(100), 0); // 34.5°: 52° → 17.5°, inside the limits
     expect(after.azimuthDeg).toBeCloseTo(before.azimuthDeg, 3);
     expect(Math.abs(after.distance / before.distance - 1)).toBeLessThan(0.002);
     expect(dist2(after.target, before.target)).toBeLessThan(15 * mppOf(before.distance));
@@ -601,14 +601,14 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     r = setup();
   });
 
-  it('orbit view: a two-finger drag to the right turns the camera anticlockwise seen from above (azimuth down), 30° per 100 px', () => {
+  it('orbit view: a two-finger drag to the right turns the camera anticlockwise seen from above (azimuth down), 34.5° per 100 px', () => {
     const before = r.state();
     const was = planOffset(r);
     twoFingerSwipe(r, 100, 0);
     const after = r.state();
     expect(wentRound(was, planOffset(r)), 'degrees anticlockwise').toBeCloseTo(degOf(100), 0);
     expect(azimuthChange(after.azimuthDeg, before.azimuthDeg), 'compass azimuth of the camera').toBeCloseTo(-degOf(100), 0);
-    expect(degOf(100)).toBeCloseTo(30, 6);
+    expect(degOf(100)).toBeCloseTo(34.5, 6); // 360° · 23/30 · 100 / 800: rotateSpeed 2/3 · 1.15 since 0.7.0 (30° before)
     expect(after.polarDeg).toBeCloseTo(before.polarDeg, 3);
   });
 
@@ -665,7 +665,11 @@ describe('CameraRig gestures: which way the two-finger turn goes (tilt and zoom 
     expect(azimuthChange(down.azimuthDeg, before.azimuthDeg)).toBeCloseTo(0, 3);
     const again = setup();
     twoFingerSwipe(again, 0, -100);
-    expect(again.state().polarDeg - before.polarDeg).toBeCloseTo(degOf(100), 0);
+    // (100 px up is 34.5°, which from the 52° of the default view would be 86.5°: the polar limit of 86° holds it at 34°)
+    expect(again.state().polarDeg - before.polarDeg).toBeCloseTo(Math.min(degOf(100), 86 - before.polarDeg), 0);
+    const half = setup();
+    twoFingerSwipe(half, 0, -50);
+    expect(half.state().polarDeg - before.polarDeg, '50 px up, short of the limit').toBeCloseTo(degOf(50), 0);
     expect(azimuthChange(again.state().azimuthDeg, before.azimuthDeg)).toBeCloseTo(0, 3);
   });
 
@@ -750,7 +754,7 @@ describe('CameraRig gestures: eye level and the mouse keep their directions', ()
     expect(azimuthChange(r.state().headingDeg, before.headingDeg)).toBeCloseTo(-(100 / H) * 360 * 0.35, 0);
   });
 
-  it('the mouse: a right-button drag to the right moves the camera clockwise (azimuth up) and one down tilts to the plan view, 30° per 100 px', () => {
+  it('the mouse: a right-button drag to the right moves the camera clockwise (azimuth up) and one down tilts to the plan view, 34.5° per 100 px', () => {
     const before = r.state();
     r.down(1, 200, 400, { pointerType: 'mouse', button: 2, isPrimary: true });
     for (let i = 1; i <= 10; i++) {
@@ -1513,7 +1517,7 @@ describe('CameraRig gestures: the damping and the limits of the two-finger turn 
     return az;
   }
 
-  it('after the fingers lift the turn goes on and dies away by the factor 1 - dampingFactor per frame (inertia), 30° in all for 100 px', () => {
+  it('after the fingers lift the turn goes on and dies away by the factor 1 - dampingFactor per frame (inertia), 34.5° in all for 100 px', () => {
     const f = r.rig.controls.dampingFactor;
     expect(f).toBe(0.12);
     const start = r.state().azimuthDeg;
@@ -1523,14 +1527,14 @@ describe('CameraRig gestures: the damping and the limits of the two-finger turn 
     for (let i = 2; i < steps.length; i++) expect(steps[i]! / steps[i - 1]!, `frame ${i}`).toBeCloseTo(1 - f, 6);
     expect(Math.sign(steps[5]!), 'anticlockwise only').toBe(-1);
     r.frames(200);
-    expect(azimuthChange(r.state().azimuthDeg, start), 'the whole turn').toBeCloseTo(-30, 1);
+    expect(azimuthChange(r.state().azimuthDeg, start), 'the whole turn').toBeCloseTo(-degOf(100), 1);
   });
 
   it('without damping the whole step is made at once and nothing is left after the lift', () => {
     r.rig.controls.enableDamping = false;
     const start = r.state().azimuthDeg;
     const az = swipeThenRecord(r, 100, 10);
-    expect(azimuthChange(az[0]!, start), 'at the lift').toBeCloseTo(-30, 3);
+    expect(azimuthChange(az[0]!, start), 'at the lift').toBeCloseTo(-degOf(100), 3);
     expect(azimuthChange(az[9]!, az[0]!), 'and no inertia').toBeCloseTo(0, 6);
   });
 
