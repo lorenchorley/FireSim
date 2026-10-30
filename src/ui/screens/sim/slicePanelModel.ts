@@ -399,7 +399,8 @@ export function arrowGrid(l: PlotLayout): ArrowGrid {
 
 /**
  * The length (CSS px) of the arrow for a wind of `speed` m/s: from 55% of `longest` in a calm to `longest` at 11.4 m/s and more, in a straight line
- * between, but never under `ARROW_MIN_PX` (8) and never over what the cell holds (`longest`), so the 40% of clear air between neighbours stands.
+ * between, but never under `ARROW_MIN_PX` (8) and never over what the cell holds (`longest`): the floor never makes an arrow longer than its cell allows (at 8 px in
+ * a 21 px cell the clear air between two neighbours is 38% of the side, against the 40% the longest arrow leaves).
  */
 export function arrowLength(speed: number, longest: number): number {
   const share = clamp(fin(speed, 0) / ARROW_FULL_MS, 0, 1);
