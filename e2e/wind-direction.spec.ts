@@ -362,6 +362,24 @@ for (const [width, height] of [
     expect(g.dial.width).toBeGreaterThanOrEqual(44);
     expect(g.scrollW).toBeLessThanOrEqual(g.innerW);
 
+    // What Apply will do is on screen when the panel opens: on a small portrait phone (under 700 px high, where the body scrolls and the
+    // status under "When" is below the fold) as one line in the bar over the button; elsewhere the status has the sentence.
+    const plan = page.getByTestId('wind-plan');
+    if (width < height && height < 700) {
+      await expect(plan).toBeVisible();
+      await expect(plan).toHaveText(/^Starts turning at \d\d:\d\d, done by \d\d:\d\d\.$/);
+      const pb = (await plan.boundingBox())!;
+      expect(pb.height, 'one line, so the dial keeps its room').toBeLessThanOrEqual(24);
+      expect(pb.y).toBeGreaterThanOrEqual(g.body.bottom - 0.5);
+      expect(pb.y + pb.height).toBeLessThanOrEqual(g.apply.top + 0.5);
+      expect(pb.x + pb.width).toBeLessThanOrEqual(g.innerW);
+      await expect(plan).toBeInViewport({ ratio: 1 });
+      await expect(page.getByTestId('wind-status').locator('p').nth(1)).toBeHidden(); // the long sentence is the bar's line, not said twice
+    } else {
+      await expect(plan).toBeHidden();
+      await expect(page.getByTestId('wind-status').locator('p').nth(1)).toHaveText(STARTS);
+    }
+
     // "At a time": the field is reached by scrolling the body alone, Apply stays where it was.
     await choose(page, 'At a time');
     const field = page.getByTestId('wind-time');

@@ -139,6 +139,8 @@ export interface WindView {
   message: string;
   /** The status lines, in order. */
   lines: string[];
+  /** One short line for the bar over Apply ('' when there is no valid time): a small portrait phone cannot show `lines` without scrolling. */
+  plan: string;
   canApply: boolean;
 }
 
@@ -156,13 +158,14 @@ export function windView(input: { when: WhenState; viewTime: number; env: WindEn
       when,
       message: '',
       lines: [before(when.time), `Starts turning at ${windClock(env, when.time)} and reaches ${formatDirFrom(dir)} by ${windClock(env, when.time + WIND_TURN_S)}.`],
+      plan: `Starts turning at ${windClock(env, when.time)}, done by ${windClock(env, when.time + WIND_TURN_S)}.`,
       canApply: true,
     };
   }
   const text = problemText(when.problem, state.choice, viewTime, env);
   // With no time left the reason is the status; otherwise it sits under the field (and the status still says what is there now).
-  if (when.problem === 'late') return { when, message: '', lines: [text], canApply: false };
-  return { when, message: text, lines: [before(nowTime(viewTime, env))], canApply: false };
+  if (when.problem === 'late') return { when, message: '', lines: [text], plan: '', canApply: false };
+  return { when, message: text, lines: [before(nowTime(viewTime, env))], plan: '', canApply: false };
 }
 
 // ───────────────────────────── the list of changes ─────────────────────────────
@@ -204,7 +207,10 @@ export function removeAnnouncement(edit: Pick<WindDirectionEdit, 'time'>, headTi
 /** The dial's value when the panel opens: the direction now, to the nearest 5 degrees (the dial's own step). */
 export const dialStart = (dirNow: number): number => wrapDeg(Math.round(dirNow / 5) * 5);
 
-/** The dial's size (px) for the window height: the panel is short on a small phone, so the dial gives way. */
+/**
+ * The dial's size (px) for the window height: the panel is short on a small phone, so the dial gives way. A portrait phone under
+ * 700 px (360 x 640) also shows the plan line over Apply (sim.css), and the dial and its read-out give it the room.
+ */
 export function dialSize(innerHeight: number): number {
-  return innerHeight >= 800 ? 184 : innerHeight >= 560 ? 148 : 120;
+  return innerHeight >= 800 ? 184 : innerHeight >= 700 ? 148 : innerHeight >= 560 ? 140 : 120;
 }

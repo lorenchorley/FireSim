@@ -1651,6 +1651,29 @@ button.map-credit:active {
   margin-top: var(--sp-1);
 }
 
+/* The plan over Apply ("Starts turning at 14:41, done by 14:56."): on a small portrait phone the body scrolls and the status under
+   "When" is below the fold when the panel opens, so the line that says what Apply will do sits in the bar that stays in view. */
+.wind-plan {
+  display: none;
+}
+
+@media (orientation: portrait) and (max-height: 699px) {
+  .wind-plan {
+    display: block;
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  .wind-status-line:nth-child(2) {
+    display: none; /* the same sentence, longer: the bar has it */
+  }
+
+  .wind-controls .rose-wrap {
+    gap: var(--sp-1);
+  }
+}
+
 /* A short landscape screen leaves the panel about 240 px: the header and the Apply bar give up padding, the dial's read-out goes beside
    it and the hint under both, so the whole dial is on screen when the panel opens (the hint, When and the rest are reached by scrolling). */
 @media (orientation: landscape) and (max-height: 540px) {
