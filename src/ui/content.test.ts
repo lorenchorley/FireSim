@@ -538,7 +538,7 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     expect(LEVEL_LINE[1]).toContain('straight arrows');
     expect(LEVEL_LINE[2]).toContain('closer together');
     expect(LEVEL_LINE[3]).toContain('curved flow lines');
-    expect(LEVEL_LINE[4]).toContain('long flow lines');
+    expect(LEVEL_LINE[4]).toContain('moving streaks with small eddies');
     // Each edge is held 15 % past before the level changes, both ways.
     expect(LOD_HYSTERESIS).toBe(1.15);
     const at = (cellPx: number, level: 0 | 1 | 2 | 3 | 4) => planLod(cellPx, 10, { level, spacingExp: 6 }).level;
