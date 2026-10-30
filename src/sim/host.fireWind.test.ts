@@ -55,7 +55,7 @@ describe('snapshotTransferables', () => {
     const { host, pump } = drive(false);
     pump(120);
     const s = host.simulation!.snapshot();
-    const list = new Set<ArrayBufferLike>(snapshotTransferables(s));
+    const list = new Set<unknown>(snapshotTransferables(s));
     const missing: string[] = [];
     const walk = (v: unknown, path: string, depth: number): void => {
       if (v === null || typeof v !== 'object' || depth > 4) return;
