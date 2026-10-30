@@ -30,7 +30,7 @@ import {
 import { cellAt } from '../core/grid';
 import { Rng } from '../core/rng';
 import { compassName, msToKmh, wrapDeg, windToUV } from '../core/units';
-import { applyWindDirection, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
+import { applyWindDirection, forecastSwingsKept, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
 import { Emitter } from './store';
 import { weatherAt } from './weatherSeries';
@@ -616,8 +616,10 @@ export class MockSimController implements SimController {
     const hx = headK >= 0 ? g.x0 + (headK % g.nx) * g.cellSize : 0;
     const hy = headK >= 0 ? g.y0 + Math.floor(headK / g.nx) * g.cellSize : 0;
 
-    // Wind change approaching: Danger 30 min before, when there is fire on the ground.
-    for (const c of this.windChanges) {
+    // Wind change approaching: Danger 30 min before, when there is fire on the ground. A Wind direction change that has started
+    // replaces the forecast's later swings (as the engine does): they do not come.
+    const started = windDirectionEdits(this.edits).filter((e) => e.time <= t);
+    for (const c of forecastSwingsKept(this.windChanges, sc.startTime, started)) {
       const ct = (c.time - sc.startTime) / 1000;
       if (hasFire && ct - 1800 > prevT && ct - 1800 <= t && this.cool(`wc-${c.time}`, t, 1e9)) {
         // The flank that becomes the head: cells burning on the side facing the new wind-to direction.

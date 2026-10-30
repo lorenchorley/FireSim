@@ -8,6 +8,7 @@ import { angleDiffDeg } from '../core/units';
 import { weatherAt } from './weather';
 import {
   applyWindDirection,
+  forecastSwingNotice,
   forecastSwingsKept,
   planSwings,
   turnDirection,
@@ -137,6 +138,26 @@ describe('windOverrideFrom and forecastSwingsKept', () => {
   it('the first change decides, a later one does not bring a replaced swing back', () => {
     const edits = [change('late', 270, 3 * 3600), change('early', 90, 1800)];
     expect(forecastSwingsKept(swings, t0, edits)).toEqual([]);
+  });
+  it('forecastSwingNotice: the next swing as before with no change; with a change that replaces it, no swing and one line to say so', () => {
+    const now = t0 + 1800 * 1000; // 30 minutes in: the swings at 1 h, 2 h and 3 h are ahead
+    const none = forecastSwingNotice(swings, t0, [], now);
+    expect(none.next).toBe(swings[0]);
+    expect(none.replaced).toBe(false);
+    const replaced = forecastSwingNotice(swings, t0, [change('a', 90, 600)], now);
+    expect(replaced).toEqual({ next: null, replaced: true });
+    // A change after the first swing leaves it as the next one; the later ones are the replaced ones.
+    const keeps = forecastSwingNotice(swings, t0, [change('a', 90, 5400)], now);
+    expect(keeps.next).toBe(swings[0]);
+    expect(keeps.replaced).toBe(false);
+    // Past the last swing the card shows nothing, with or without a change: there is nothing to say was replaced.
+    const past = t0 + 4 * 3.6e6;
+    expect(forecastSwingNotice(swings, t0, [change('a', 90, 600)], past)).toEqual({ next: null, replaced: false });
+    expect(forecastSwingNotice(swings, t0, [], past)).toEqual({ next: null, replaced: false });
+    // Viewing a time between the swings: the one ahead is replaced, the one behind is not mentioned.
+    expect(forecastSwingNotice(swings, t0, [change('a', 90, 7200)], t0 + 2.5 * 3.6e6)).toEqual({ next: null, replaced: true });
+    // No swings in the forecast at all.
+    expect(forecastSwingNotice([], t0, [change('a', 90, 600)], now)).toEqual({ next: null, replaced: false });
   });
   it('agrees with the series transform: the direction after a replaced swing is the plan, before a kept one it is the forecast', () => {
     const series = flat(270, 10, {});

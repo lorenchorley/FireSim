@@ -87,6 +87,16 @@ export function forecastSwingsKept<T extends { time: number }>(changes: readonly
   return from === null ? changes : changes.filter((c) => c.time < startMs + from * 1000);
 }
 
+/**
+ * What the forecast's "wind change" card says at `nowMs`: the next swing that still comes (null for none), and whether the
+ * card would have shown a swing that the changes replaced, so one line can say they no longer apply.
+ */
+export function forecastSwingNotice<T extends { time: number }>(changes: readonly T[], startMs: number, edits: readonly Pick<WindDirectionEdit, 'dir' | 'time'>[], nowMs: number): { next: T | null; replaced: boolean } {
+  const kept = forecastSwingsKept(changes, startMs, edits);
+  const next = kept.find((c) => c.time > nowMs) ?? null;
+  return { next, replaced: next === null && kept !== changes && changes.some((c) => c.time > nowMs) };
+}
+
 /** One swing of a plan: from `t0` (unix ms) the 10 m direction goes from `from` to `to` over `WIND_TURN_S`. */
 export interface WindSwing {
   t0: number;

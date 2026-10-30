@@ -166,7 +166,10 @@ export class InsightEngine {
     const tSim = s.time > 1e11 ? (s.time - (Number.isFinite(this.startMs) ? this.startMs : (s.series.hours[0]?.time ?? s.time))) / 1000 : s.time;
     if (mem.lastRunT === mem.lastRunT && tSim - mem.lastRunT < E.cadenceS - 1e-6 && tSim >= mem.lastRunT) return [];
     const lon = this.terrain.grid.origin.lon;
-    ctx.prepare(s, mem, this.startMs, this.analysis(s.series, lon));
+    // A Wind direction change replaces the forecast's later wind changes: they do not come, so no card and no Danger zone is made for them.
+    const fc = this.analysis(s.series, lon);
+    const from = s.windOverrideFromMs;
+    ctx.prepare(s, mem, this.startMs, fc && from !== undefined ? { ...fc, changes: fc.changes.filter((c) => c.time < from) } : fc);
     const fbiFn = this.fbiFn;
     ctx.afdrsFbi = fbiFn ? (w: WeatherHour) => fbiFn(this.opts.fbiFuelType ?? FuelType.DryForestShrubby, w, lon, s.droughtFactor, s.kbdi).fbi : null;
     // New spot fires since the last cycle.

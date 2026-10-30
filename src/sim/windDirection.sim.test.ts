@@ -229,6 +229,20 @@ describe('Wind direction in the engine (fast tier)', () => {
     expect(Math.abs(angleDiffDeg(r.snaps.get(1800)!.stats.headDir, 270))).toBeLessThan(30); // wind from the east pushes the head west
   }, 240000);
 
+  it('a forecast swing that the change replaces raises no wind-change card and no dead-man-zone; with no change it does', () => {
+    // The forecast swings from 270 to 200 degrees (40 km/h) at its 4 h stamp: the card comes 3 h ahead, from 3600 s on.
+    const swung = (edits: WindDirectionEdit[]): ReturnType<typeof syntheticScenario> => {
+      const sc = scenario({ duration: 7200 }, edits);
+      return { ...sc, weather: { ...sc.weather, hours: sc.weather.hours.map((h) => (h.time >= sc.startTime + 3.2 * 3.6e6 ? { ...h, windDir10: 200, windSpeed10: 40 / 3.6 } : h)) } };
+    };
+    const kindsAfter = (r: Run, after: number): string[] => [...r.snaps.values()].filter((sn) => sn.time > after).flatMap((sn) => sn.insights.map((i) => i.kind));
+    const none = run(swung([]), 3900);
+    expect(kindsAfter(none, 3000)).toContain('wind-change');
+    const replaced = run(swung([SOUTH]), 3900); // the change starts at 600 s, long before the card would come
+    expect(kindsAfter(replaced, 600)).not.toContain('wind-change');
+    expect(kindsAfter(replaced, 600)).not.toContain('dead-man-zone');
+  }, 240000);
+
   it('the in-thread controller (the app without a Worker) gives the same results as the bare simulation, for an edit and a removal', async () => {
     const sc = scenario();
     const c = new LocalSimController({ chunkMs: 30, simulation: { minSnapshotWallMs: 0 } });

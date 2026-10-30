@@ -309,3 +309,60 @@ describe('removeWindDirection', () => {
     s.dispose();
   });
 });
+
+describe('the forecast cards after a change', () => {
+  const card = (id: string, kind: Insight['kind'], time: number): Insight => ({ id, kind, severity: kind === 'wind-change' ? 'danger' : 'info', time, x: 0, y: 0, title: id, body: '', factors: [] });
+  const early = card('early', 'wind-change', 900); // a forecast swing at 900 s
+  const late = card('late', 'wind-change', 3600); // and one at 3600 s
+  const peak = card('peak', 'afternoon-peak', 3600); // a forecast card that is not about the wind direction
+  class WithForecast extends FakeEngine {
+    override async init(): Promise<Insight[]> {
+      return [early, late, peak];
+    }
+  }
+  async function makeWith(edits: ScenarioEdit[] = []): Promise<{ e: FakeEngine; s: SimSession }> {
+    const e = new WithForecast();
+    const s = new SimSession(sc(edits), e, nullView, { maxBytes: 1e9 });
+    await s.start();
+    e.history(600);
+    s.seek(600);
+    return { e, s };
+  }
+  const ids = (xs: Insight[]): string[] => xs.map((i) => i.id).sort();
+
+  it('lists and marks every forecast card while there is no change', async () => {
+    const { s } = await makeWith();
+    expect(ids(s.visibleInsights())).toEqual(['early', 'late', 'peak']);
+    expect(ids(s.mapInsights())).toEqual(['early', 'late', 'peak']);
+    s.dispose();
+  });
+
+  it('drops the wind-change cards from the first change on, and keeps the ones before it and the other kinds', async () => {
+    const { s } = await makeWith();
+    s.setWindDirection('w1', 180, 1200); // starts after the swing at 900 s and before the one at 3600 s
+    expect(ids(s.visibleInsights())).toEqual(['early', 'peak']);
+    expect(ids(s.mapInsights())).toEqual(['early', 'peak']);
+    s.setWindDirection('w0', 90, 600); // an earlier change: now it replaces both
+    expect(ids(s.visibleInsights())).toEqual(['peak']);
+    expect(ids(s.mapInsights())).toEqual(['peak']);
+    s.dispose();
+  });
+
+  it('brings them back when the last change is removed', async () => {
+    const { s } = await makeWith();
+    s.setWindDirection('w1', 180, 600);
+    expect(ids(s.visibleInsights())).toEqual(['peak']);
+    s.removeWindDirection('w1');
+    expect(ids(s.visibleInsights())).toEqual(['early', 'late', 'peak']);
+    expect(ids(s.mapInsights())).toEqual(['early', 'late', 'peak']);
+    s.dispose();
+  });
+
+  it('is the same for a change that came with the scenario', async () => {
+    const e = new WithForecast();
+    const s = new SimSession(sc([{ kind: 'windDirection', id: 'given', dir: 200, time: 600 }]), e, nullView, { maxBytes: 1e9 });
+    await s.start();
+    expect(ids(s.visibleInsights())).toEqual(['peak']);
+    s.dispose();
+  });
+});
