@@ -89,10 +89,12 @@ export interface GlyphData {
   fireWind?: FireWindRaster | null;
 }
 
-/** The part of the renderer `precompile` uses (`THREE.WebGLRenderer` has both). */
+/** The part of the renderer `precompile` uses (`THREE.WebGLRenderer` has all three). */
 export interface PrecompileTarget {
   compile?(scene: THREE.Object3D, camera: THREE.Camera, targetScene?: THREE.Object3D | null): unknown;
   compileAsync?(scene: THREE.Object3D, camera: THREE.Camera, targetScene?: THREE.Object3D | null): Promise<unknown>;
+  /** `has` does not warn for an extension the context lacks (`get` does, and `compileAsync` asks for `KHR_parallel_shader_compile` with `get`). */
+  extensions?: { has(name: string): boolean };
 }
 
 /** What `tick` needs to know about the canvas: its CSS size and its vertical field of view (the rig's, without the panel insets). */
@@ -342,14 +344,17 @@ export class WindGlyphLayer {
   /**
    * Compile the layer's shaders now (0.7.0, D12 c): the first frame of the most detailed level used to compile the streaks' program in the middle of
    * the zoom. Called once by the scene view when the first data arrives (`compileAsync` uses `KHR_parallel_shader_compile` where the browser has it,
-   * so the link does not block the thread; without it the compile is a short synchronous one at this quiet moment instead of at the first zoom).
+   * so the link does not block the thread; without the extension (software GL, an old WebView) the compile is a short synchronous one at this quiet
+   * moment instead of at the first zoom, and `compileAsync` is not called: three.js writes a console warning when it asks a context for an extension it
+   * lacks, which the e2e console guard fails on).
    * `compile` visits hidden objects too, so the batches need not be shown. Resolves when the programs are ready; never rejects.
    */
   precompile(renderer: PrecompileTarget, camera: THREE.Camera, scene?: THREE.Object3D): Promise<void> {
     if (this.compiled) return Promise.resolve();
     this.compiled = true;
     try {
-      const done = typeof renderer.compileAsync === 'function' ? renderer.compileAsync(this.group, camera, scene ?? null) : (renderer.compile?.(this.group, camera, scene ?? null), Promise.resolve());
+      const parallel = typeof renderer.compileAsync === 'function' && (renderer.extensions === undefined || renderer.extensions.has('KHR_parallel_shader_compile'));
+      const done = parallel ? renderer.compileAsync!(this.group, camera, scene ?? null) : (renderer.compile?.(this.group, camera, scene ?? null), Promise.resolve());
       return Promise.resolve(done).then(
         () => undefined,
         () => undefined,

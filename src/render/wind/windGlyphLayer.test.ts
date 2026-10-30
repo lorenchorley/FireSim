@@ -1707,6 +1707,13 @@ describe('WindGlyphLayer: the cold first zoom (0.7.0)', () => {
     const sync: unknown[][] = [];
     await rig().layer.precompile({ compile: (...a) => void sync.push(a) }, camera);
     expect(sync).toHaveLength(1);
+    // A context without KHR_parallel_shader_compile (software GL): three.js would warn on the console for compileAsync, so the synchronous compile is used.
+    const noExt: string[] = [];
+    await rig().layer.precompile({ compile: () => void noExt.push('compile'), compileAsync: () => (noExt.push('compileAsync'), Promise.resolve()), extensions: { has: () => false } }, camera);
+    expect(noExt).toEqual(['compile']);
+    const withExt: string[] = [];
+    await rig().layer.precompile({ compile: () => void withExt.push('compile'), compileAsync: () => (withExt.push('compileAsync'), Promise.resolve()), extensions: { has: (n) => n === 'KHR_parallel_shader_compile' } }, camera);
+    expect(withExt).toEqual(['compileAsync']);
     await rig().layer.precompile({ compileAsync: () => Promise.reject(new Error('no GL')) }, camera);
     await rig().layer.precompile({ compile: () => { throw new Error('no GL'); } }, camera);
     await rig().layer.precompile({}, camera);
