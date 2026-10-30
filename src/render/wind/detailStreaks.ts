@@ -252,6 +252,7 @@ const N_RIDGE = 31;
 const N_CANOPY = 32;
 const N_OBST = 33;
 const N_BLOCKED = 34;
+const N_PLUME = 35;
 const N_LEN = 36;
 
 // Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
@@ -275,6 +276,8 @@ const WARMING_REBUILDS = 4;
 const LINE_CHECK = 16;
 const LINE_CHECK_WARMING = 4;
 const LINE_CHECK_COLD = 1;
+/** The trees (the canopy to ride on, the crowns, the plume) are for the wind read at most this high over the ground (m): the 10 m wind and the wind the fire feels. */
+const RELIEF_TREE_MAX_M = 20;
 /** A wind high above the ground does not care about its ridges: under this share of the ground terms the ridge slide is off. */
 const RELIEF_MIN_GFAC = 0.02;
 /** The lee sites' lattice is at most this many cells a side, and its points are moved by up to this share of a spacing. */
@@ -1107,14 +1110,18 @@ class Builder implements DetailBuilder {
   /**
    * The relief's set-up for this picture, after `walk` has worked out its numbers: the canopy is ridden on where there is one; with crowns to choose
    * (they are given, and a crown would be big enough on the screen at this zoom) the phase becomes `PHASE_CROWNS`; without, the eddy sites that need no
-   * crown (a ridge's lee, the plume) are made at once.
+   * crown (a ridge's lee, the plume) are made at once. The trees and the plume are the wind at the ground's own level: a wind read higher than
+   * `RELIEF_TREE_MAX_M` over the ground (the 50 m chip and up) flies over the canopy and bends for none of them.
    */
   private reliefStart(): void {
     const n = this.n;
     const input = this.input!;
     const ob = this.ob;
-    n[N_CANOPY] = ob.hasCanopy ? 1 : 0;
-    const crowns = input.crowns;
+    const h = input.heightM;
+    const low = h === undefined || h <= RELIEF_TREE_MAX_M;
+    n[N_CANOPY] = low && ob.hasCanopy ? 1 : 0;
+    n[N_PLUME] = low ? 1 : 0;
+    const crowns = low ? input.crowns : undefined;
     if (crowns !== undefined && crowns.length > 0 && ob.crownsWanted()) {
       ob.beginScan(crowns);
       n[N_PHASE] = PHASE_CROWNS;
@@ -1154,7 +1161,7 @@ class Builder implements DetailBuilder {
     ob.buildGrid();
     // (c) the plume.
     const plumes = input.plumes;
-    if (plumes !== undefined) {
+    if (plumes !== undefined && n[N_PLUME] !== 0) {
       const np = Math.min(plumes.length, e.plumeSites);
       for (let i = 0; i < np; i++) {
         const q = plumes[i]!;
@@ -1262,7 +1269,7 @@ class Builder implements DetailBuilder {
         io[IO_X] = x;
         io[IO_Y] = y;
         io[IO_R] = r;
-        io[IO_K] = 1;
+        io[IO_K] = f[F_GFAC]!; // a wind read high above the ground feels its ridges less
         io[IO_Z] = z0 * vex;
         ob.addSite();
         if (io[IO_BLOCK] !== 0) kept++;

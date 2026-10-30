@@ -1634,6 +1634,31 @@ describe('the relief: eddies curl behind obstacles', () => {
   });
 });
 
+describe('the relief: the trees are for the wind at the ground\'s own level', () => {
+  const view = (o: DetailScenarioOptions = {}): DetailScenario => makeDetailScenario({ field: () => [12, 0], camera: topDownCamera(133, 1000, 0, 0, { near: 5 }, 0), ...o });
+  const trees = stand([[0, 0, 40, 16], [9, 6, 41, 14], [-8, -7, 39, 14]]);
+
+  it('rides the canopy, bends round the crowns and blocks seeds at 10 m and 20 m, and does none of it at 50 m and up (the wind flies over the trees)', () => {
+    const full = (hm: number | undefined): { y: number; blocked: number } => {
+      const sc = withRelief(view(hm === undefined ? {} : { heightM: hm }), { canopyH: 24, crowns: [trees], plumes: [{ x: -20, y: 0, radiusM: 12, strength: 1 }] });
+      const { out } = build(sc);
+      return { y: out.a[1]!, blocked: out.blocked };
+    };
+    expect(full(undefined).y, 'the surface wind').toBeCloseTo(0.85 * 24, 3);
+    expect(full(undefined).blocked).toBeGreaterThan(0);
+    expect(full(20).y).toBeCloseTo(0.85 * 24, 3);
+    for (const hm of [50, 100, 300, 1000]) {
+      const r = full(hm);
+      expect(r.y, `${hm} m: the stroke stays at its 1.5 m of 0.6.0`).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
+      expect(r.blocked, `${hm} m: no seed is blocked`).toBe(0);
+    }
+    // At 300 m the picture is the 0.6.0 one with only the faded ground terms: the same bytes as with no trees given at all.
+    const a = build(withRelief(view({ heightM: 300 }), { canopyH: 24, crowns: [trees], plumes: [{ x: -20, y: 0, radiusM: 12, strength: 1 }] })).out;
+    const b = build(withRelief(view({ heightM: 300 }))).out;
+    expect(hashOf(a)).toBe(hashOf(b));
+  });
+});
+
 describe('the relief: the lee of a ridge', () => {
   /** A ridge across the wind: the ground falls 60 m over 120 m from x = -40 to x = 80 (a slope of 0.5) and is flat beyond; wind from the west. */
   const lee = (o: DetailScenarioOptions = {}): DetailScenario => {
