@@ -13,9 +13,14 @@
  *   - the old Wind streaks (levels 1 to 3, the default) stay on screen and stand still: the mesh is visible with marks, no frame in 3 s, and a new
  *     snapshot redraws them once; the trees stop swaying
  *   - at the closest zoom the detailed streaks say `still`, and stay `still` (never `paused`) after the idle time
+ * The 3-D curtain (0.7.0, F2), at 360 x 640:
+ *   - seen face-on all its arrows are drawn; seen along the line only every few columns are, the halo under them the same; the pictures are attached
+ *     (a person judges the 14 px of `ARROW_MIN_SPACING_PX`)
  * Nothing in the console (the guard of ./fixtures).
  */
-import type { Page } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Page, TestInfo } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { acceptNotice, armPopupWatch, popups, watchPopups } from './helpers';
 
@@ -32,17 +37,23 @@ interface Mesh {
   geometry: { instanceCount: number };
   material: { uniforms: Record<string, { value: number }> };
 }
+/** A `StreakBatch`: the curtain's arrows, and the halo under them. */
+interface Batch {
+  mesh: Mesh;
+}
 type View = {
   lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void;
   setLayers(l: Record<string, unknown>): void;
   renderNow(): void;
   windGlyphStats?(): Stats | null;
+  slice?(): unknown;
   scene: { getObjectByName(n: string): Mesh | undefined };
   renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } } };
   /** (private members, read here the way the other specs read the rig) */
   vegetation: { animating: boolean; placing: boolean } | null;
   wind: { animating: boolean };
   activity: { setLimit(ms: number): void };
+  section: { arrows: Batch; halo: Batch };
 };
 type Session = { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null; viewTime: number; headTime: number; playing: boolean } }; play(): void; pause(): void; scrub(t: number): void };
 type Handle = { __firesim: { view: View; session: Session } };
@@ -120,6 +131,17 @@ async function expectStopped(page: Page, what: string, ms = 1500): Promise<void>
 async function expectDrawing(page: Page, what: string, within = 5000): Promise<void> {
   const f0 = await frames(page);
   await expect.poll(async () => (await frames(page)) - f0, { message: `${what}: frames are drawn again`, timeout: within, intervals: [50] }).toBeGreaterThan(0);
+}
+
+/** One frame of the 3-D view, drawn and read in the same task, attached to the report (and put on disk with $WIND_MOTION_SHOTS, for looking at). */
+async function attach(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const png = Buffer.from((await shot(page)).split(',')[1]!, 'base64');
+  await testInfo.attach(name, { body: png, contentType: 'image/png' });
+  const dir = process.env.WIND_MOTION_SHOTS;
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, name), png);
+  }
 }
 
 /** A touch on the screen, in the middle of the picture. */
@@ -285,4 +307,50 @@ test('reduced motion: the old Wind streaks and the trees stand still (and are no
     expect((await stats(page)).detail).toBe('moving');
     expect(await treesSway(page), 'the trees sway again').toBe(true);
   });
+});
+
+test('the 3-D curtain: its arrows are drawn whole face-on and thinned where the line is seen edge on, the halo with them (360 x 640)', async ({ page }, testInfo) => {
+  test.setTimeout(900_000);
+  await page.setViewportSize({ width: 360, height: 640 });
+  await build(page, 0);
+  await pauseRun(page);
+  await setLayers(page, {
+    wind: 'off',
+    windGlyphs: false,
+    vegetation: false,
+    understorey: false,
+    flames: false,
+    smoke: false,
+    embers: false,
+    roads: false,
+    fireTrails: false,
+    placeNames: false,
+    insightMarkers: false,
+    crossSection: { enabled: true, azimuth: 90, centre: [0, 0], a: [-1500, 0], b: [1500, 0], preset: null, field: 'speed' }, // a line of 3 km, east to west
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as Handle).__firesim.view.slice!() !== null), { timeout: 30_000 }).toBe(true);
+  const counts = (): Promise<{ arrows: number; halo: number }> =>
+    page.evaluate(() => {
+      const s = (window as unknown as Handle).__firesim.view.section;
+      return { arrows: s.arrows.mesh.geometry.instanceCount, halo: s.halo.mesh.geometry.instanceCount };
+    });
+  const look = async (name: string, az: number): Promise<{ arrows: number; halo: number }> => {
+    await lookAt(page, 3500, az, 80); // a low view (10 degrees below the horizon), 3.5 km from the middle of the line
+    await renderNow(page);
+    await attach(page, testInfo, `curtain-360x640-${name}.png`);
+    return counts();
+  };
+
+  const faceOn = await look('face-on', 180); // from the south: the line runs across the screen
+  expect(faceOn.arrows, 'face-on the curtain has its arrows (21 columns of up to 9)').toBeGreaterThan(100);
+  expect(faceOn.halo).toBe(faceOn.arrows);
+  const slanted = await look('slanted', 135);
+  const edgeOn = await look('edge-on', 90); // from the east: the camera looks along the line
+  expect(edgeOn.arrows, 'along the line only every few columns are drawn').toBeLessThanOrEqual(faceOn.arrows * 0.5);
+  expect(edgeOn.arrows, 'but some are').toBeGreaterThanOrEqual(3);
+  expect(edgeOn.halo, 'the halo under them is the same arrows').toBe(edgeOn.arrows);
+  expect(slanted.arrows, 'in between it is in between').toBeLessThanOrEqual(faceOn.arrows);
+  expect(slanted.arrows).toBeGreaterThanOrEqual(edgeOn.arrows);
+  const back = await look('face-on-again', 180);
+  expect(back, 'coming round again gives the arrows back').toEqual(faceOn);
 });
