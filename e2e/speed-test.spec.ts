@@ -150,7 +150,9 @@ test('from Setup: about two seconds in a worker, both numbers with their ratio t
 /** Build Katoomba on the fast tier with the shortest run (1 h), the real engine, and mark a fire at the crosshair. */
 async function buildFast1h(page: Page): Promise<void> {
   await page.goto('/?debug=1');
-  await acceptNotice(page);
+  await page.getByTestId('setup').waitFor();
+  await page.waitForTimeout(1200);
+  if (await page.getByTestId('notice').count()) await acceptNotice(page); // (a second build in the same browser has accepted it already)
   await page.getByTestId('site-katoomba').click();
   await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
   await page.getByTestId('preset-hot-nw-sw-change').click();
