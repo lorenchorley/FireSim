@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { boxContains, cellPxAt, LEVEL_EDGES, LOD_HYSTERESIS, metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { makeCamera, topDownCamera } from './glyphOracle.testing';
-import type { Box, GlyphLevel, LodPlan } from './glyphTypes';
+import { DETAIL_GEOMETRY, type Box, type GlyphLevel, type LodPlan } from './glyphTypes';
 
 const BIG: Box = { x0: -1e5, y0: -1e5, x1: 1e5, y1: 1e5 };
 
@@ -235,6 +235,114 @@ describe('planLod: the lattice spacing', () => {
     expect(out.lengthPx).toBe(nested);
     expect(out).toMatchObject(planLod(60, 2, planLod(8, 2, null)));
     expect(out.level).toBe(3);
+  });
+});
+
+describe('planLod: the detailed streaks level (0.6.0)', () => {
+  it('without the flag, or with it false, L4 keeps the 0.5.0 numbers exactly (flowGlyphs.test.ts and wind-glyphs.spec.ts pin them)', () => {
+    const old = { level: 4, spacingPx: 56, curved: true, jitter: 0.3, lengthPx: { min: 90, max: 140, pxPerMs: 6 } };
+    expect(planLod(200, 1, null)).toMatchObject(old);
+    expect(planLod(200, 1, null, undefined, false)).toMatchObject(old);
+    expect(planLod(200, 2, null).spacingM).toBe(128);
+    expect(planLod(200, 2, null, undefined, false).spacingM).toBe(128);
+  });
+
+  it('with the flag, L4 takes the numbers of DETAIL_GEOMETRY: 40 px lattice, jitter 0.35, 16 px per m/s from 90 to 220 px, curved', () => {
+    const p = planLod(200, 1, null, undefined, true);
+    expect(p).toMatchObject({
+      level: 4,
+      spacingPx: DETAIL_GEOMETRY.spacingPx,
+      curved: true,
+      jitter: DETAIL_GEOMETRY.jitter,
+      lengthPx: { min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs },
+    });
+    expect(p).toMatchObject({ spacingPx: 40, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
+    expect(p.mppCentre).toBe(1);
+  });
+
+  it('the flag changes nothing below L4 and does not move the level or its hysteresis', () => {
+    for (const px of [0.1, 2, 8, 20, 60, 89.9]) {
+      const a = planLod(px, 1.7, null);
+      const b = planLod(px, 1.7, null, undefined, true);
+      expect(b).toEqual(a);
+    }
+    // The edges and the 15 % band are the same with the flag on: up from 103.5, down under 78.3.
+    expect(planLod(103.4, 1, { level: 3, spacingExp: 5 }, undefined, true).level).toBe(3);
+    expect(planLod(103.5, 1, { level: 3, spacingExp: 5 }, undefined, true).level).toBe(4);
+    expect(planLod(78.4, 1, { level: 4, spacingExp: 5 }, undefined, true).level).toBe(4);
+    expect(planLod(78.2, 1, { level: 4, spacingExp: 5 }, undefined, true).level).toBe(3);
+  });
+
+  it('the lattice is a power of two, never denser than 40 px on the screen and never sparser than 80 px', () => {
+    const p = planLod(200, 2, null, undefined, true); // 40 px x 2 m = 80 m -> log2 6.32 -> 7
+    expect(p.spacingExp).toBe(7);
+    expect(p.spacingM).toBe(128); // 64 px
+    for (let c = 104; c < 3500; c *= 1.01) {
+      for (const mpp of [0.04, 0.3, 0.9, 1.3, 2.9]) {
+        const q = planLod(c, mpp, null, undefined, true);
+        const px = q.spacingM / mpp;
+        expect(px).toBeGreaterThanOrEqual(40 * (1 - 1e-9));
+        expect(px).toBeLessThan(80);
+      }
+    }
+  });
+
+  it('keeps the exponent only within 0.06 octave of an edge between two exponents, as the 0.5.0 spec does', () => {
+    const exact = (e: number): number => 2 ** e / 40; // the mpp that makes log2(40 mpp) = e
+    let prev: LodPlan = planLod(200, exact(5.9), null, undefined, true);
+    expect(prev.spacingExp).toBe(6);
+    for (const e of [5.5, 5.2, 5.0, 4.95, 5.6, 5.95, 6.0, 6.03, 6.05]) {
+      prev = planLod(200, exact(e), prev, undefined, true);
+      expect(prev.spacingExp, `at ${e}`).toBe(6);
+    }
+    expect(planLod(200, exact(6.08), prev, undefined, true).spacingExp).toBe(7);
+    expect(planLod(200, exact(4.92), prev, undefined, true).spacingExp).toBe(5);
+  });
+
+  it('one zoom gives one lattice whichever way it is reached, from the first level-4 zoom to the closest (the two paths differ only inside the narrow bands)', () => {
+    // A model cell of 133 m; from 104 px a cell (just inside L4 going up) to 3,300 px (the closest zoom of a tall phone), 0.5 % a step.
+    const grid: number[] = [];
+    for (let c = 104; c < 3300; c *= 1.005) grid.push(c);
+    const sweep = (order: number[]): LodPlan[] => {
+      const plans: LodPlan[] = [];
+      let prev: LodPlan | null = null;
+      for (const i of order) {
+        const c = grid[i]!;
+        prev = planLod(c, 133 / c, prev, undefined, true);
+        plans[i] = { ...prev, lengthPx: { ...prev.lengthPx } };
+      }
+      return plans;
+    };
+    const idx = grid.map((_, i) => i);
+    const inward = sweep(idx);
+    const outward = sweep([...idx].reverse());
+    let mismatches = 0;
+    for (const i of idx) {
+      const a = inward[i]!;
+      const b = outward[i]!;
+      expect(a.level).toBe(4);
+      expect(b.level).toBe(4);
+      if (a.spacingExp === b.spacingExp) continue;
+      mismatches++;
+      const t = Math.log2(a.spacingPx * (133 / grid[i]!));
+      expect(Math.abs(a.spacingExp - b.spacingExp)).toBe(1);
+      expect(Math.abs(t - Math.round(t)), `a different lattice at ${grid[i]!.toFixed(1)} px`).toBeLessThanOrEqual(0.06 + 1e-6);
+    }
+    expect(grid.length).toBeGreaterThan(600);
+    expect(mismatches).toBeGreaterThan(0);
+    expect(mismatches / grid.length).toBeLessThan(0.14);
+  });
+
+  it('fills `out` in place with the flag too, and a plan made with it can be its own history', () => {
+    const out: LodPlan = planLod(60, 2, null);
+    const nested = out.lengthPx;
+    const again = planLod(200, 2, out, out, true);
+    expect(again).toBe(out);
+    expect(out.lengthPx).toBe(nested);
+    expect(out).toMatchObject({ level: 4, spacingPx: 40, jitter: 0.35, lengthPx: { min: 90, max: 220, pxPerMs: 16 } });
+    // Back to a level below L4: the 0.5.0 numbers of that level, not a leftover of the detail spec.
+    planLod(60, 2, out, out, true);
+    expect(out).toMatchObject({ level: 3, spacingPx: 36, jitter: 0.3, lengthPx: { min: 28, max: 56, pxPerMs: 4 } });
   });
 });
 

@@ -102,6 +102,8 @@ export const DETAIL_FADE_OUT_MS = 250;
 export interface DetailInput extends GlyphInput {
   ground10: GroundRaster;
   seed: number;
+  /** Additive (D-engine): metres above the ground the wind is read at (`'fire'` is 10), so the ground terms fade with height; absent is 10. */
+  heightM?: number;
 }
 /**
  * Per segment, flat typed arrays: `a`, `b` the world ends (3 each), `c` colour rgb in display-linear light and alpha 1 (4), `d` the arc

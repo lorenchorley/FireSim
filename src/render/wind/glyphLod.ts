@@ -5,8 +5,11 @@
  * drawn, then straight arrows, denser straight arrows, curved flow lines, longer flow lines. Crossing an edge needs 15 % more
  * (going up) or 15 % less (going down) so a pinch that hovers on an edge does not flicker. The seeds sit on a world lattice
  * whose spacing is a power of two of metres, so panning never moves a seed and zooming changes the spacing in steps.
+ *
+ * 0.6.0: the last level draws the detailed streaks when `planLod` is asked for them (`detail`), with the numbers of `DETAIL_GEOMETRY`
+ * (more, longer lines whose tails fade); without it the plan keeps the 0.5.0 numbers, so the flow-line glyphs and their tests stand.
  */
-import type { Box, GlyphLevel, LodPlan } from './glyphTypes';
+import { DETAIL_GEOMETRY, type Box, type GlyphLevel, type LodPlan } from './glyphTypes';
 
 /** Upper edges (model cell in screen px) of levels L0 to L3; L4 is everything above the last. */
 export const LEVEL_EDGES = [4, 12, 32, 90] as const;
@@ -41,6 +44,16 @@ const LEVEL_SPECS: readonly LevelSpec[] = [
   { spacingPx: 56, curved: true, jitter: 0.3, pxPerMs: 6, minPx: 90, maxPx: 140 }, // L4: long flow lines
 ];
 
+/** The last level with the detailed streaks (0.6.0): the lattice, jitter and line lengths of `DETAIL_GEOMETRY`, always curved. */
+const DETAIL_SPEC: LevelSpec = {
+  spacingPx: DETAIL_GEOMETRY.spacingPx,
+  curved: true,
+  jitter: DETAIL_GEOMETRY.jitter,
+  pxPerMs: DETAIL_GEOMETRY.pxPerMs,
+  minPx: DETAIL_GEOMETRY.minPx,
+  maxPx: DETAIL_GEOMETRY.maxPx,
+};
+
 /** Metres one CSS pixel covers across the view at `distanceM` from the camera: `2 d tan(fov / 2) / cssH`. */
 export function metresPerPixelAt(distanceM: number, fovDeg: number, cssH: number): number {
   return (2 * distanceM * Math.tan((fovDeg * Math.PI) / 360)) / cssH;
@@ -65,9 +78,10 @@ function rawLevel(cellPx: number): GlyphLevel {
  * `prev` null the level is the raw one. `mppCentre` (metres per pixel at the middle of the screen) sets the lattice spacing:
  * `spacingExp = ceil(log2(spacingPx x mppCentre))` for the curved levels and the rounded value for the straight ones, so the zoom
  * alone decides the lattice; the kept exponent holds only within `SPACING_EXP_HYSTERESIS` octave of an edge between two exponents.
- * `out` (optional) is filled and returned instead of a new object; it may be `prev` itself.
+ * `out` (optional) is filled and returned instead of a new object; it may be `prev` itself. `detail` (0.6.0) gives the last level the
+ * numbers of the detailed streaks (`DETAIL_SPEC`) instead of the 0.5.0 flow lines; the other levels and the level itself do not depend on it.
  */
-export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, 'level' | 'spacingExp'> | null, out?: LodPlan): LodPlan {
+export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, 'level' | 'spacingExp'> | null, out?: LodPlan, detail = false): LodPlan {
   let level: number;
   if (!(cellPx > 0)) level = 0;
   else if (!prev) level = rawLevel(cellPx);
@@ -76,7 +90,7 @@ export function planLod(cellPx: number, mppCentre: number, prev: Pick<LodPlan, '
     while (level < 4 && cellPx >= LEVEL_EDGES[level]! * LOD_HYSTERESIS) level++;
     while (level > 0 && cellPx < LEVEL_EDGES[level - 1]! / LOD_HYSTERESIS) level--;
   }
-  const spec = LEVEL_SPECS[level]!;
+  const spec = detail && level === 4 ? DETAIL_SPEC : LEVEL_SPECS[level]!;
   let exp = 0;
   if (level > 0 && mppCentre > 0 && Number.isFinite(mppCentre)) {
     // `t` is the exact exponent moved so that the edges between two exponents sit on the whole numbers: the exponent `k` owns (k - 1, k].
