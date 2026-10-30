@@ -166,6 +166,11 @@ export interface DetailRelief {
     /** Only when a `gateCrownM` crown would be at least `gatePx` across on the screen (a camera nearer than about 580 m at 412 x 868). */
     gateCrownM: number;
     gatePx: number;
+    /**
+     * A tree whose ray to the eye is steeper than this (the sine of its elevation) is no obstacle: the canopy's shader fades the trees under a steep view out
+     * (`TOP_FADE`, 0.87 to 0.99, half way at 0.93), and a line must not part round a crown that is hardly there. 1 or more: none.
+     */
+    fadeSin: number;
     /** Tree groups 0 to `maxGroup` count (trees, not heath, understorey or grass). */
     maxGroup: number;
     /** A tree is an obstacle when it stands `clearM` over the stroke; the crown is an ellipsoid whose middle is at `centreShare` x height and half height `halfShare` x height. */
@@ -227,6 +232,7 @@ export const DETAIL_RELIEF: DetailRelief = {
   crowns: {
     gateCrownM: 5,
     gatePx: 8,
+    fadeSin: 0.93,
     maxGroup: 6,
     clearM: 1.5,
     centreShare: 0.7,

@@ -14,7 +14,10 @@ import { describe, expect, it } from 'vitest';
 import { createDetailBuilder } from './detailStreaks';
 import { linesOf, makeDetailScenario, type DetailScenario } from './detailStreaks.testing';
 import { buildAll, makeCamera, topDownCamera } from './glyphOracle.testing';
-import { DETAIL_RELIEF, type CrownSet, type DetailBuilder, type DetailInput } from './glyphTypes';
+import { DETAIL_RELIEF as TUNED, type CrownSet, type DetailBuilder, type DetailInput, type DetailRelief } from './glyphTypes';
+
+/** The tuned relief with no tree faded out: these pictures are seen from straight above, where the canopy's shader fades every tree out (and the crowns would not count). */
+const DETAIL_RELIEF: DetailRelief = { ...TUNED, crowns: { ...TUNED.crowns, fadeSin: 1 } };
 import { hash01 } from '../fields';
 import type { FuelMap } from '../../core/types';
 

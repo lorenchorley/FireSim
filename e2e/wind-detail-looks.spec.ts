@@ -7,9 +7,9 @@
  *     call and the first frame of the most detailed level builds no program of its own; the console stays empty (the guard of ./fixtures)
  *   - the cold first zoom into the most detailed level: the layer's own share of a frame (`tickMaxMs`) and its slices are reported, and held to a
  *     generous bound that software GL cannot move (the numbers are logged for the verifier's trace)
- *   - the relief in the forest: the strokes ride on the canopy (the lines are nowhere under the canopy plane there), bend round the crowns (fewer
- *     streak pixels over the crowns' green than with the relief off), keep their colours (the same 64 colours of the Wind speed ramp), carry their pin
- *     (0.05 to 1, 1 with the relief off), and never exceed the tier's caps or the frame's triangle budget
+ *   - the relief in the forest: the strokes ride on the canopy (lifted well over the 0.6.0 stroke), bend round the crowns (no vertex lies inside the disc
+ *     a placed crown shows at the stroke's height, read from the vegetation layer's own placement), keep their colours (the same 64 colours of the Wind
+ *     speed ramp), carry their pin (0.05 to 1, 1 with the relief off), and never exceed the tier's caps or the frame's triangle budget
  *   - the kill switch draws the 0.6.0 picture: the relief off twice gives the same bytes, on gives other ones
  * The layer is fed the canopy, the crowns and the plume here as the scene view does (lane looks-B wires it); feeding twice is harmless.
  */
@@ -59,7 +59,6 @@ type View = {
   fuel: unknown;
 };
 type Handle = { __firesim: { view: View; session: { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null } } } } };
-const H = (): Handle => window as unknown as Handle;
 
 /** Build the Katoomba demo at the fast tier and the High picture tier, and wait for the air. */
 async function build(page: Page): Promise<void> {
@@ -79,17 +78,17 @@ async function build(page: Page): Promise<void> {
   if (await online.isChecked()) await page.getByTestId('online').click();
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
-  await expect.poll(() => page.evaluate(() => H().__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null), { timeout: 60_000 }).not.toBeNull();
-  expect(await page.evaluate(() => H().__firesim.view.renderQuality)).toBe('high');
+  await expect.poll(() => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null), { timeout: 60_000 }).not.toBeNull();
+  expect(await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderQuality)).toBe('high');
 }
 
 const lookAt = (page: Page, d: number, tilt = 55, x = 0, y = 0, az = 200): Promise<void> =>
-  page.evaluate(([px, py, pd, a, t]) => H().__firesim.view.lookAt(px!, py!, pd!, a!, t!, false), [x, y, d, az, tilt]);
-const setLayers = (page: Page, l: Record<string, unknown>): Promise<void> => page.evaluate((v) => H().__firesim.view.setLayers(v), l);
+  page.evaluate(([px, py, pd, a, t]) => (window as unknown as Handle).__firesim.view.lookAt(px!, py!, pd!, a!, t!, false), [x, y, d, az, tilt]);
+const setLayers = (page: Page, l: Record<string, unknown>): Promise<void> => page.evaluate((v) => (window as unknown as Handle).__firesim.view.setLayers(v), l);
 /** The detail batch's program, as three.js keeps it for the material (undefined until it is compiled): kept in a global so that a later call can say whether it is the same one. */
 const detailProgram = (page: Page, keep: boolean): Promise<{ has: boolean; same: boolean }> =>
   page.evaluate((k) => {
-    const v = H().__firesim.view;
+    const v = (window as unknown as Handle).__firesim.view;
     const m = v.scene.getObjectByName('wind-detail')!;
     const prog = v.renderer.properties.get(m.material).currentProgram;
     const w = window as unknown as { __detailProgram?: unknown };
@@ -99,7 +98,7 @@ const detailProgram = (page: Page, keep: boolean): Promise<{ has: boolean; same:
   }, keep);
 async function settle(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const rig = H().__firesim.view.rig;
+    const rig = (window as unknown as Handle).__firesim.view.rig;
     const t0 = performance.now() + 4000;
     for (let i = 0; i < 100; i++) rig.update(t0 + i * 16);
   });
@@ -108,7 +107,7 @@ async function settle(page: Page): Promise<void> {
 /** Draw a frame (a rebuild is finished in it) and read what the layer says. */
 const drawAndRead = (page: Page): Promise<Stats> =>
   page.evaluate(() => {
-    const v = H().__firesim.view;
+    const v = (window as unknown as Handle).__firesim.view;
     v.renderNow();
     v.renderNow();
     return v.windGlyphStats!()!;
@@ -117,7 +116,7 @@ const drawAndRead = (page: Page): Promise<Stats> =>
 /** What the scene view does in 0.7.0: the layer is given the canopy, the crowns of the vegetation layer and (here, no fire) no plume. */
 const feed = (page: Page): Promise<boolean> =>
   page.evaluate(() => {
-    const v = H().__firesim.view;
+    const v = (window as unknown as Handle).__firesim.view;
     if (!v.vegetation) return false;
     v.glyphs.setCanopy(v.fuel);
     v.glyphs.setCrowns(v.vegetation.crownSource());
@@ -125,20 +124,20 @@ const feed = (page: Page): Promise<boolean> =>
     v.glyphs.setData(v.glyphs.data);
     return true;
   });
-const relief = (page: Page, on: boolean): Promise<void> => page.evaluate((o) => H().__firesim.view.glyphs.setRelief(o), on);
+const relief = (page: Page, on: boolean): Promise<void> => page.evaluate((o) => (window as unknown as Handle).__firesim.view.glyphs.setRelief(o), on);
 
 /** The detail batch as the builder wrote it: the world ends, the colour and pin, per segment. */
 const batch = (page: Page): Promise<{ n: number; a: number[]; c: number[] }> =>
   page.evaluate(() => {
-    const m = H().__firesim.view.scene.getObjectByName('wind-detail')!;
+    const m = (window as unknown as Handle).__firesim.view.scene.getObjectByName('wind-detail')!;
     const n = m.geometry.instanceCount;
     return { n, a: Array.from(m.geometry.getAttribute('aA').array.subarray(0, 3 * n)), c: Array.from(m.geometry.getAttribute('aC').array.subarray(0, 4 * n)) };
   });
 
 /** The frame as bytes (drawn and read in the same task) and the pixels the streaks change: the frame as it is against the same frame with the batch hidden. */
-const pixels = (page: Page): Promise<{ png: string; streak: number; overGreen: number }> =>
+const pixels = (page: Page): Promise<{ png: string; streak: number }> =>
   page.evaluate(() => {
-    const v = H().__firesim.view;
+    const v = (window as unknown as Handle).__firesim.view;
     const m = v.scene.getObjectByName('wind-detail')!;
     const read = (): Uint8ClampedArray => {
       v.renderNow();
@@ -156,14 +155,78 @@ const pixels = (page: Page): Promise<{ png: string; streak: number; overGreen: n
     const without = read();
     m.visible = true;
     let streak = 0;
-    let overGreen = 0;
     for (let i = 0; i < withStreaks.length; i += 4) {
-      if (Math.abs(withStreaks[i]! - without[i]!) + Math.abs(withStreaks[i + 1]! - without[i + 1]!) + Math.abs(withStreaks[i + 2]! - without[i + 2]!) <= 40) continue;
-      streak++;
-      // The canopy is green (the ground is brown or grey): what is under the streak, in the frame without it.
-      if (without[i + 1]! > without[i]! + 6 && without[i + 1]! > without[i + 2]! + 6) overGreen++;
+      if (Math.abs(withStreaks[i]! - without[i]!) + Math.abs(withStreaks[i + 1]! - without[i + 1]!) + Math.abs(withStreaks[i + 2]! - without[i + 2]!) > 40) streak++;
     }
-    return { png, streak, overGreen };
+    return { png, streak };
+  });
+
+/**
+ * The vertices of the detail batch inside the disc a placed tree shows at the vertex's own height (the ellipsoid of the builder: centre 0.7 h, half height 0.3 h,
+ * the line stops at 0.85 radii), out of the vertices that are at a height where some tree of the batch's box is cut at all.
+ */
+const insideCrowns = (page: Page): Promise<{ vertices: number; cut: number; inside: number; trees: number }> =>
+  page.evaluate(() => {
+    const v = (window as unknown as Handle).__firesim.view;
+    const m = v.scene.getObjectByName('wind-detail')!;
+    const n = m.geometry.instanceCount;
+    const aA = m.geometry.getAttribute('aA').array;
+    const aB = m.geometry.getAttribute('aB').array;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const x = aA[3 * i]!;
+      const y = -aA[3 * i + 2]!;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    const sets = (v.vegetation!.crownSource() as { sets(): { group: number; count: number; position: Float32Array; size: Float32Array }[] }).sets();
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const gz: number[] = [];
+    const hs: number[] = [];
+    const ws: number[] = [];
+    for (const set of sets) {
+      if (set.group > 6) continue;
+      for (let t = 0; t < set.count; t++) {
+        const x = set.position[3 * t]!;
+        const y = set.position[3 * t + 1]!;
+        if (x < x0 - 12 || x > x1 + 12 || y < y0 - 12 || y > y1 + 12) continue;
+        xs.push(x);
+        ys.push(y);
+        gz.push(set.position[3 * t + 2]!);
+        hs.push(set.size[2 * t]!);
+        ws.push(set.size[2 * t + 1]!);
+      }
+    }
+    let inside = 0;
+    let cut = 0;
+    for (const arr of [aA, aB]) {
+      for (let i = 0; i < n; i++) {
+        const x = arr[3 * i]!;
+        const y = -arr[3 * i + 2]!;
+        const wy = arr[3 * i + 1]!;
+        let any = false;
+        for (let t = 0; t < xs.length; t++) {
+          const tt = (wy - gz[t]! - 0.7 * hs[t]!) / (0.3 * hs[t]!);
+          if (!(tt > -1 && tt < 1)) continue;
+          any = true;
+          const r = 0.5 * ws[t]! * Math.sqrt(1 - tt * tt);
+          const dx = x - xs[t]!;
+          const dy = y - ys[t]!;
+          if (dx * dx + dy * dy < (0.85 * r - 0.05) ** 2) {
+            inside++;
+            break;
+          }
+        }
+        if (any) cut++;
+      }
+    }
+    return { vertices: 2 * n, cut, inside, trees: xs.length };
   });
 
 test('wind detail looks: the early compile, the cold first zoom, the relief in the forest, the caps, the kill switch', async ({ page }) => {
@@ -177,7 +240,7 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     await drawAndRead(page);
     const before = await detailProgram(page, false);
     await page.evaluate(() => {
-      const v = H().__firesim.view;
+      const v = (window as unknown as Handle).__firesim.view;
       return v.glyphs.precompile(v.renderer, v.rig.camera, v.scene);
     });
     const compiled = await detailProgram(page, true);
@@ -198,7 +261,7 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     const cold = await page.evaluate(
       () =>
         new Promise<Stats>((resolve) => {
-          const v = H().__firesim.view;
+          const v = (window as unknown as Handle).__firesim.view;
           v.windGlyphStats!(); // a new window for tickMaxMs
           v.lookAt(0, 0, 250, 200, 55, false);
           const t0 = performance.now();
@@ -232,7 +295,7 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
       expect(s.detailSegments, `${what}: the High tier's cap`).toBeLessThanOrEqual(GLYPH_CAPS.high.segments);
       expect(s.count, `${what}: the High tier's lines`).toBeLessThanOrEqual(GLYPH_CAPS.high.glyphs);
     }
-    const tris = await page.evaluate(() => H().__firesim.view.renderer.info.render.triangles);
+    const tris = await page.evaluate(() => (window as unknown as Handle).__firesim.view.renderer.info.render.triangles);
     expect(tris, 'the frame stays inside its budget, 2 triangles a segment more for the streaks').toBeLessThanOrEqual(FRAME_TRIANGLE_LIMIT + 2 * DETAIL_MIN_SEGMENTS);
     // The pin: 1 everywhere with the relief off; 0.05 to 1 on, and some lines are pinned in the forest.
     expect(Math.min(...offBatch.c.filter((_, i) => i % 4 === 3))).toBe(1);
@@ -251,29 +314,28 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     expect(mean(heights) - mean(offBatch.a.filter((_, i) => i % 3 === 1)), 'the strokes are lifted onto the canopy (metres, mean over the picture)').toBeGreaterThan(5);
   });
 
-  await test.step('the crowns count: with the relief on fewer streak pixels lie over the canopy\'s green than with it off (the streaks keep to the gaps), and both pictures have streaks', async () => {
-    await page.evaluate(() => {
-      H().__firesim.view.scene.getObjectByName('wind-detail')!.material.uniforms.uTime!.value = 2.4;
-    });
+  // Reduced motion freezes the picture at one clock (the frame loop's `renderNow` moves the clock by up to 0.1 s a call otherwise), so that two frames can be compared.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await test.step('the crowns count: the lines part round the placed trees (no vertex inside a crown\'s disc at its height), and both pictures have streaks', async () => {
     await lookAt(page, 120, 45);
     await settle(page);
     await relief(page, false);
     await drawAndRead(page);
     const off = await pixels(page);
+    const offIn = await insideCrowns(page);
     await relief(page, true);
     await drawAndRead(page);
     const on = await pixels(page);
-    const share = (p: { streak: number; overGreen: number }): number => p.overGreen / Math.max(1, p.streak);
-    console.log(`forest, 120 m, 45 degrees: streak pixels ${off.streak} off (${(100 * share(off)).toFixed(1)} % over green), ${on.streak} on (${(100 * share(on)).toFixed(1)} % over green)`);
+    const onIn = await insideCrowns(page);
+    console.log(`forest, 120 m, 45 degrees: streak pixels ${off.streak} off, ${on.streak} on; vertices in a crown's disc at their own height: ${offIn.inside} of ${offIn.vertices} off (${offIn.cut} at a height some crown is cut), ${onIn.inside} of ${onIn.vertices} on (${onIn.cut} cut), ${onIn.trees} trees in the box`);
     expect(off.streak).toBeGreaterThan(500);
     expect(on.streak).toBeGreaterThan(500);
-    expect(share(on), 'less of the streaks over the crowns').toBeLessThanOrEqual(share(off));
+    expect(onIn.trees, 'the vegetation layer has placed trees here').toBeGreaterThan(20);
+    expect(onIn.cut, 'the strokes ride at heights where crowns are cut, so the test has something to test').toBeGreaterThan(50);
+    expect(onIn.inside, 'no vertex of the relief picture is inside a crown\'s disc (a few at the edge of the crowns the layer left out for being too small on the screen)').toBeLessThanOrEqual(Math.ceil(0.01 * onIn.vertices));
   });
 
   await test.step('the kill switch draws the 0.6.0 picture: relief off twice is the same bytes, on is another picture', async () => {
-    await page.evaluate(() => {
-      H().__firesim.view.scene.getObjectByName('wind-detail')!.material.uniforms.uTime!.value = 2.4;
-    });
     const shotOf = async (on: boolean): Promise<string> => {
       await relief(page, on);
       await drawAndRead(page);

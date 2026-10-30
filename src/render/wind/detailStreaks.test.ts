@@ -1161,11 +1161,17 @@ describe('the 0.6.0 picture is what the builder draws when `relief` is absent', 
 
 // ───────────────────────── the relief (0.7.0) ─────────────────────────
 
+/**
+ * The tuned relief with no tree faded out: most of these pictures are seen from straight above, where the canopy's shader fades every tree out and the
+ * real constant (`fadeSin` 0.93) would leave no crown; the fade rule has its own tests.
+ */
+const PLAN_RELIEF: DetailRelief = { ...DETAIL_RELIEF, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+
 /** A scenario with the relief on (its `canopy`, `crowns` and `plumes` as given), seen from above. */
 function withRelief(sc: DetailScenario, o: { relief?: DetailRelief; canopyH?: number; cover?: number; crowns?: readonly CrownSet[]; plumes?: readonly Plume[] } = {}): DetailScenario {
   const g = sc.grid;
   const n = g.nx * g.ny;
-  const input = { ...sc.input, relief: o.relief ?? DETAIL_RELIEF } as DetailInput;
+  const input = { ...sc.input, relief: o.relief ?? PLAN_RELIEF } as DetailInput;
   if (o.canopyH !== undefined) input.canopy = { grid: g, canopyHeight: new Float32Array(n).fill(o.canopyH), canopyCover: new Float32Array(n).fill(o.cover ?? 1) } as unknown as FuelMap;
   if (o.crowns) input.crowns = o.crowns;
   if (o.plumes) input.plumes = o.plumes;
@@ -1356,7 +1362,7 @@ describe('the relief: the strokes ride on the canopy', () => {
     const height = new Float32Array(n);
     for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) height[j * g.nx + i] = i >= Math.floor(g.nx / 2) ? 24 : 0; // a stand from the middle column east
     // The middle column is at x = x0 + 22 cells = 0 (the grid is centred on 0): the edge ramps from -133 m to 0.
-    const input: DetailInput = { ...base.input, relief: DETAIL_RELIEF, canopy: { grid: g, canopyHeight: height, canopyCover: new Float32Array(n).fill(1) } as unknown as FuelMap };
+    const input: DetailInput = { ...base.input, relief: PLAN_RELIEF, canopy: { grid: g, canopyHeight: height, canopyCover: new Float32Array(n).fill(1) } as unknown as FuelMap };
     const { out, lines } = build({ ...base, input });
     expect(out.steep).toBe(0);
     expect(lines.length).toBeGreaterThan(30);
@@ -1378,6 +1384,19 @@ describe('the relief: the strokes ride on the canopy', () => {
     const sc = makeDetailScenario({ groundCell: 10, ground: (x) => wall(x), field: () => [8, 0], camera: topDownCamera(133, 150, 0, 0, { near: 30 }, 460) });
     const { out } = build(withRelief(sc, { canopyH: 24, cover: 1 }));
     expect(out.steep, 'lines cut or dropped at the wall').toBeGreaterThan(3);
+  });
+});
+
+describe('the relief: a tree the view has faded out is no crown', () => {
+  it('has no crown under a camera looking steeply down, and the same crowns once it looks from the side', () => {
+    const list = [stand([[0, 0, 40, 16], [14, 4, 41, 14], [-16, 6, 38, 12]])];
+    const top = withRelief(makeDetailScenario({ field: () => [8, 3], cellPx: 1500 }), { relief: DETAIL_RELIEF, canopyH: 24, crowns: list });
+    expect(build(top).out.blocked, 'straight down: every tree is faded out, so no seed is blocked').toBe(0);
+    const topPlan = build({ ...top, input: { ...top.input, relief: PLAN_RELIEF } });
+    expect(topPlan.out.blocked, 'the same view with the fade rule off blocks the seeds in the crowns').toBeGreaterThan(0);
+    const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 }); // 45 degrees: the rays to the crowns' feet are far from steep
+    const side = withRelief(makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 }), { relief: DETAIL_RELIEF, canopyH: 24, crowns: list });
+    expect(build(side).out.blocked, 'from the side the same trees are crowns').toBeGreaterThan(0);
   });
 });
 
@@ -1526,7 +1545,7 @@ describe('the relief: the lines part round a crown', () => {
   it('writes the pin into the colour alpha: 1 on a line with no obstacle within 2.5 radii, from `pinMin` to 1 on the others, and never 0', () => {
     const second = crownDiscRadius(41, 14, 0.85 * 24, 0.7, 0.3);
     // (The wakes have their own pin, round their cores; leave them out here.)
-    const { out, lines } = build(withRelief(view(), { relief: { ...DETAIL_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } }, canopyH: 24, crowns: [stand([[0, 0, 40, 16], [14, 4, 41, 14]])] }));
+    const { out, lines } = build(withRelief(view(), { relief: { ...PLAN_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } }, canopyH: 24, crowns: [stand([[0, 0, 40, 16], [14, 4, 41, 14]])] }));
     let pinned = 0;
     let free = 0;
     for (const l of lines) {
@@ -1665,7 +1684,7 @@ describe('the relief: eddies curl behind obstacles', () => {
   it('makes no wake for a crown that stands no taller than the stand, nor one that has a neighbour, and makes one for a proud crown that stands free', () => {
     const wakeOf = (list: [number, number, number, number][]): number => {
       const sc = withRelief(view(), { canopyH: 24, crowns: [stand(list)] });
-      const noWake = withRelief(view(), { relief: { ...DETAIL_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } }, canopyH: 24, crowns: [stand(list)] });
+      const noWake = withRelief(view(), { relief: { ...PLAN_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } }, canopyH: 24, crowns: [stand(list)] });
       return hashOf(build(sc).out) === hashOf(build(noWake).out) ? 0 : 1;
     };
     // 22.5 m: a crown (the stroke is at 20.4) but under 3 m proud. 40 m: proud. Priority is by the tree's own place: try some places for the proud one.
@@ -1715,7 +1734,7 @@ describe('the relief: the lee of a ridge', () => {
 
   it('draws the lee with a pair of eddies where the ground falls along the flow and is much higher upwind, and not on level ground or on the windward side', () => {
     const on = build(withRelief(lee()));
-    const noWake = build(withRelief(lee(), { relief: { ...DETAIL_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } } }));
+    const noWake = build(withRelief(lee(), { relief: { ...PLAN_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } } }));
     expect(on.lines.length).toBeGreaterThan(50);
     expect(hashOf(on.out), 'the lee sites change the lines').not.toBe(hashOf(noWake.out));
     // Level ground: no site, the ridge slide has nothing to do either: the 0.6.0 picture.
@@ -1724,7 +1743,7 @@ describe('the relief: the lee of a ridge', () => {
     // Wind from the east (up the slope): the slope rises ahead, no lee.
     const up = lee({ field: () => [-8, 0] });
     const a = build(withRelief(up));
-    const b = build(withRelief(up, { relief: { ...DETAIL_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } } }));
+    const b = build(withRelief(up, { relief: { ...PLAN_RELIEF, eddies: { ...DETAIL_RELIEF.eddies, maxEddies: 0 } } }));
     expect(hashOf(a.out), 'a windward slope has no lee eddies').toBe(hashOf(b.out));
   });
 

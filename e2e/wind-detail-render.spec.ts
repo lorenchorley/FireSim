@@ -73,6 +73,7 @@ type View = {
   renderNow(): void;
   windGlyphStats?(): Stats | null;
   renderQuality: 'low' | 'medium' | 'high';
+  glyphs: { setRelief(on: boolean): void };
   rig: { update(now: number): boolean };
   scene: { getObjectByName(n: string): Mesh | undefined };
   renderer: {
@@ -433,7 +434,10 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
 
   await test.step('the depth bias of the glyph strokes carries over: the streaks show through the crowns in front of them, a ridge still hides what is behind it', async () => {
     // Reduced motion freezes the picture, so that a frame can be compared with itself. The streaks' pixels are those that change when the batch is hidden.
+    // (0.7.0: the relief rides the strokes on the canopy where trees are drawn, which is a different depth story: the numbers below are about the 0.6.0 stroke,
+    // 1.5 m over the ground, so the relief is switched off for them and measured on its own after.)
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => (window as unknown as Handle).__firesim.view.glyphs.setRelief(false));
     await setLayers(page, { vegetation: true, understorey: true, imagery: true, windGlyphs: true, wind: 'off' });
     const bias = (b?: number): Promise<number> =>
       page.evaluate((to) => {
@@ -489,6 +493,17 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
     expect(across.plain).toBeGreaterThan(3000);
     // The bias adds only the streaks under crowns: here it shows 10 % more (switching the depth test off would show every streak behind the ridge).
     expect(across.biased, 'streaks behind a ridge stay hidden').toBeLessThan(across.plain * 1.25);
+    // With the relief the strokes ride the canopy's top, so the plain depth test already shows most of them: the bias still never shows fewer, and a ridge still hides.
+    await page.evaluate(() => (window as unknown as Handle).__firesim.view.glyphs.setRelief(true));
+    await lookAt(page, 700, 0, 0, 200, 55);
+    await drawAndRead(page);
+    const ridden = await both('700 m, 55 degrees, over the forest, with the relief');
+    expect(ridden.plain, 'there are streaks to count').toBeGreaterThan(1000);
+    expect(ridden.biased, 'the bias never shows fewer streaks').toBeGreaterThanOrEqual(ridden.plain * 0.98);
+    await lookAt(page, 1000, 800, -600, 90, 65);
+    await drawAndRead(page);
+    const ridgeSide = await both('1000 m, 65 degrees, from the west, with the relief');
+    expect(ridgeSide.biased, 'streaks behind a ridge stay hidden').toBeLessThan(ridgeSide.plain * 1.25);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await setLayers(page, { vegetation: false, understorey: false, imagery: false, windGlyphs: false, wind: 'surface' });
   });

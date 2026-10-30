@@ -28,6 +28,9 @@ import {
   P_BX1,
   P_BY0,
   P_BY1,
+  P_EX,
+  P_EY,
+  P_EZ,
   P_MPPC,
   P_MX,
   P_MY,
@@ -532,6 +535,28 @@ describe('which trees count as crowns', () => {
     ob.p[P_MX] = 1;
     ob.p[P_MY] = 1;
     expect(chosen(ob, trees([[500, 0, 30, 10], [3, 0, 30, 10]]))).toHaveLength(1);
+  });
+
+  it('leaves out a tree the view has faded out (the ray from its foot to the eye steeper than fadeSin), and fades none while the eye is unset', () => {
+    const list: [number, number, number, number][] = [[0, 0, 30, 10], [10, 0, 30, 10], [30, 0, 30, 10], [-40, 0, 30, 10], [0, 50, 30, 10]];
+    const ob = scene(1000, flat(24));
+    expect(chosen(ob, trees(list)), 'no eye: nothing is faded').toHaveLength(5);
+    // The eye 100 m up over the middle: the sine of the elevation is 100 / sqrt(100^2 + d^2): 1, 0.995, 0.958, 0.928 and 0.894 (the last at 50 m south, z = 50 in world axes).
+    ob.p[P_EX] = 0;
+    ob.p[P_EY] = 100;
+    ob.p[P_EZ] = 0;
+    expect(DETAIL_RELIEF.crowns.fadeSin).toBe(0.93);
+    expect(chosen(ob, trees(list)).map(([x, y]) => [x, y])).toEqual([[-40, 0], [0, 50]]);
+    // Where the ground is higher the ray is the steeper for it (the exaggerated elevation counts): a tree on a 20 m hill 60 m off to the side is faded.
+    const hill = trees([[-60, 0, 30, 10]]);
+    hill.position[2] = 20;
+    expect(chosen(ob, hill)).toHaveLength(0);
+    hill.position[2] = 0;
+    expect(chosen(ob, hill)).toHaveLength(1);
+    // fadeSin of 1 is the old rule: every tree counts.
+    const off = scene(1000, flat(24), relief((r) => (r.crowns.fadeSin = 1)));
+    off.p[P_EY] = 100;
+    expect(chosen(off, trees(list))).toHaveLength(5);
   });
 
   it('passes over a tree outside the box of the seeds (grown by the builder) before it projects it', () => {

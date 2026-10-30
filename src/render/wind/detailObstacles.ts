@@ -82,6 +82,7 @@ const K_E_FREE = 26;
 const K_GATE_M = 27;
 const K_GATE_PX = 28;
 const K_CLOCK = 29;
+const K_FADE = 30;
 const K_LEN = 32;
 
 // Slots of `p`, the picture's numbers the builder hands over.
@@ -97,6 +98,10 @@ export const P_BX0 = 7;
 export const P_BY0 = 8;
 export const P_BX1 = 9;
 export const P_BY1 = 10;
+/** The eye (world axes: x east, y up, z south) for the trees faded out under a steep view; 0, 0, 0 (unset) is no fade. */
+export const P_EX = 11;
+export const P_EY = 12;
+export const P_EZ = 13;
 
 const SALT_PROUD = 0x51a1;
 /**
@@ -156,7 +161,7 @@ export class Obstacles {
   /** Projection x view of the picture, column-major (what the builder holds). */
   readonly view = new Float64Array(16);
   /** The picture's numbers: pixels a metre covers at distance 1, the smallest clip w, the screen bounds (NDC, with the margin), the base lift (m), the exaggeration, the m a pixel at the middle, the box of the seeds (grown). */
-  readonly p = new Float64Array(12);
+  readonly p = new Float64Array(16);
   private readonly k = new Float64Array(K_LEN);
   private readonly hv = new Uint32Array(1);
   private readonly pv = new Float64Array(1);
@@ -238,6 +243,7 @@ export class Obstacles {
     k[K_GATE_M] = w.gateCrownM;
     k[K_GATE_PX] = w.gatePx;
     k[K_CLOCK] = w.clockEvery;
+    k[K_FADE] = w.fadeSin;
     this.canopy = false;
     this.nCrowns = 0;
     this.nSites = 0;
@@ -349,6 +355,10 @@ export class Obstacles {
     const by0 = p[P_BY0]!;
     const bx1 = p[P_BX1]!;
     const by1 = p[P_BY1]!;
+    const ex = p[P_EX]!;
+    const ey = p[P_EY]!;
+    const ez = p[P_EZ]!;
+    const fade2 = k[K_FADE]! * k[K_FADE]!;
     const hMin = zb + clear;
     const cxA = this.cx;
     const cyA = this.cy;
@@ -385,6 +395,13 @@ export class Obstacles {
         const h = size[2 * t]!;
         if (!(h >= hMin)) continue;
         const gz = pos[3 * t + 2]! * vex;
+        // Not a tree that the view has faded out: the ray from its foot to the eye is steeper than `fadeSin` (a camera over it looking steeply down).
+        const ddy = ey - gz;
+        if (ddy > 0) {
+          const ddx = ex - x;
+          const ddz = ez + y;
+          if (ddy * ddy > fade2 * (ddx * ddx + ddy * ddy + ddz * ddz)) continue;
+        }
         // On the screen (the tree at half its height; the margin is a whole line long, so a crown's own radius does not matter here).
         const zw = -y;
         const w0 = v[3]! * x + v[7]! * (gz + 0.5 * h) + v[11]! * zw + v[15]!;
