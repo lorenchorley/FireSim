@@ -148,6 +148,16 @@ async function attach(page: Page, testInfo: TestInfo, name: string): Promise<voi
   }
 }
 
+/** A different picture of the run: 150 s back from the view time, or 150 s on from it near the start (the run has more than 400 s computed). A new time is a new snapshot for the view. */
+const scrubAway = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const s = (window as unknown as Handle).__firesim.session;
+    const st = s.state.get();
+    const to = st.viewTime > 150 ? st.viewTime - 150 : Math.min(st.headTime, st.viewTime + 150);
+    s.scrub(to);
+    return `from ${Math.round(st.viewTime)} s to ${Math.round(to)} s of ${Math.round(st.headTime)} s computed`;
+  });
+
 /** A touch on the screen, in the middle of the picture. */
 async function tapScreen(page: Page): Promise<void> {
   const box = (await page.locator('canvas').first().boundingBox())!;
@@ -217,11 +227,8 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   await test.step('a time change (a scrub back over the run) wakes it', async () => {
     await expectStopped(page, 'hands off a third time');
     expect((await stats(page)).detail).toBe('paused');
-    await page.evaluate(() => {
-      const s = (window as unknown as Handle).__firesim.session;
-      s.scrub(Math.max(0, s.state.get().viewTime - 180));
-    });
-    await expectDrawing(page, 'a new snapshot');
+    const moved = await scrubAway(page);
+    await expectDrawing(page, `a new snapshot (${moved})`);
     expect((await stats(page)).detail).toBe('moving');
   });
 
@@ -291,11 +298,8 @@ test('reduced motion: the old Wind streaks and the trees stand still (and are no
 
   await test.step('a new snapshot (a scrub) redraws the standing marks once, and the loop stops again', async () => {
     const f0 = await frames(page);
-    await page.evaluate(() => {
-      const s = (window as unknown as Handle).__firesim.session;
-      s.scrub(Math.max(0, s.state.get().viewTime - 240));
-    });
-    await expect.poll(async () => (await frames(page)) - f0, { timeout: 10_000 }).toBeGreaterThan(0);
+    const moved = await scrubAway(page);
+    await expect.poll(async () => (await frames(page)) - f0, { message: `a new snapshot (${moved}): frames are drawn`, timeout: 10_000 }).toBeGreaterThan(0);
     await page.waitForTimeout(1000);
     const f1 = await frames(page);
     await page.waitForTimeout(2000);
