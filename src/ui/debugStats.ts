@@ -513,13 +513,23 @@ function sliceRecordingRow(f: SliceRecordingFacts, tier: QualityTier | undefined
   return R('slice-recording', label, `${st.count} ${st.count === 1 ? 'slice' : 'slices'}, ${bytes(st.bytes)} of ${bytes(st.budgetBytes)}`, note, true);
 }
 
-/** The wind arrows and flow lines: off, why nothing is drawn, or the level, what was built and what a rebuild cost (the slice times are the ones that decide whether panning hitches). */
+/** What the detailed streaks are doing, as the row says it. */
+const STREAKS_STATE = { moving: 'moving', still: 'standing still', paused: 'paused' } as const;
+
+/**
+ * The wind arrows and flow lines: off, why nothing is drawn, or the level, what was built and what a rebuild cost (the slice times are the ones that decide
+ * whether panning hitches). At the closest zoom the layer draws the detailed streaks, for either switch: the row then says so (they are lines, not glyphs),
+ * what they are doing (moving, standing still under reduced motion, paused after a minute without a touch) and which switch asked for them (0.7.0). With
+ * the Wind streaks alone short of that zoom the layer builds nothing and the row stays "Off", with a note that says why that is not a fault.
+ */
 function windGlyphsRow(i: DebugStatsInput): StatRow {
   const id = 'wind-glyphs';
   const label = 'Wind glyphs';
   const g = i.windGlyphs;
   if (!g) return R(id, label, i.run ? 'Not available (this view draws no wind glyphs)' : NO_RUN);
-  if (g.idle === 'off') return R(id, label, 'Off', undefined, true);
+  if (g.idle === 'off' || (!g.glyphs && g.idle === null && g.level < 4)) {
+    return R(id, label, 'Off', g.streaks ? `Arrows and flow lines are off. The Wind streaks are on; the zoom is at level ${g.level}.` : undefined, true);
+  }
   if (g.idle === 'eye-level') return R(id, label, 'On, not drawn at eye level', undefined, true);
   if (g.idle === 'no-wind') return R(id, label, 'On, waiting for the wind picture', undefined, true);
   if (g.idle === 'budget') return R(id, label, 'On, not drawn: the view already uses all the triangles a frame may have', undefined, true);
@@ -527,6 +537,12 @@ function windGlyphsRow(i: DebugStatsInput): StatRow {
   if (g.level === 0) return R(id, label, 'Level 0, nothing drawn at this zoom', cell, true);
   const built = g.rebuilds > 0 ? `rebuild ${ms(g.lastMs)} (p95 slice ${ms(g.sliceP95Ms)}, max ${ms(g.sliceMaxMs)})` : 'not built yet';
   const note = [cell, g.rebuilds > 0 ? `${g.rebuilds} ${g.rebuilds === 1 ? 'rebuild' : 'rebuilds'} so far, the last in ${g.slicesLast} ${g.slicesLast === 1 ? 'slice' : 'slices'}` : null].filter((x): x is string => !!x).join('; ');
+  if (g.level === 4 && g.detail !== 'off') {
+    const feed = g.glyphs ? (g.streaks ? 'Drawn for both switches.' : 'Drawn for the arrows and flow lines switch.') : g.streaks ? 'Drawn for the Wind streaks switch.' : null;
+    const detailNote = [feed, note].filter((x): x is string => !!x).join(' ');
+    return R(id, label, `Level 4, detailed streaks ${STREAKS_STATE[g.detail]}, ${formatNumber(g.count)} lines, ${formatNumber(g.segments)} segments, ${built}`, detailNote || undefined, true);
+  }
+  if (g.level === 4 && !g.glyphs) return R(id, label, 'Level 4, detailed streaks not built yet', note || undefined, true);
   return R(id, label, `Level ${g.level}, ${formatNumber(g.count)} glyphs, ${formatNumber(g.segments)} segments, ${built}`, note || undefined, true);
 }
 
