@@ -45,12 +45,13 @@ function slices(b: DetailBuilder, sc: DetailScenario): number[] {
 }
 
 describe('detailed streaks rebuild cost', () => {
-  it('the cold start reads the clock every 4 lines in the first four rebuilds (16 later): a slice cannot run past its budget by more than that, counted on a fake clock', () => {
+  it('the cold start reads the clock after every line in the first two rebuilds, every 4 in the next two (16 later): a slice cannot run past its budget by more than that, counted on a fake clock', () => {
     const sc = heavy();
     const b = createDetailBuilder('high');
     let reads = 0;
     const clock = (): number => ++reads; // one fake millisecond a read
     let worstCold = 0;
+    let worstFirst = 0;
     let worstWarm = 0;
     const perRebuild: string[] = [];
     for (let r = 1; r <= 8; r++) {
@@ -64,9 +65,10 @@ describe('detailed streaks rebuild cost', () => {
         const readsInSlice = reads - reads0;
         const linesInSlice = b.out.lines - linesBefore;
         linesBefore = b.out.lines;
-        // Every clock read lets at most `interval` lines through: 4 while the builder is cold, 16 after its fourth rebuild.
-        const interval = r <= 4 ? 4 : 16;
+        // Every clock read lets at most `interval` lines through: 1 while the builder is cold (its first two rebuilds), 4 while it warms up, 16 after its fourth rebuild.
+        const interval = r <= 2 ? 1 : r <= 4 ? 4 : 16;
         expect(linesInSlice, `rebuild ${r}, slice ${slicesOfThis}: ${linesInSlice} lines for ${readsInSlice} clock reads`).toBeLessThanOrEqual(interval * readsInSlice);
+        if (r <= 2) worstFirst = Math.max(worstFirst, linesInSlice);
         if (r <= 4) worstCold = Math.max(worstCold, linesInSlice);
         else worstWarm = Math.max(worstWarm, linesInSlice);
         if (done) break;
@@ -75,10 +77,12 @@ describe('detailed streaks rebuild cost', () => {
       perRebuild.push(`#${r}: ${slicesOfThis} slices`);
       expect(slicesOfThis, `rebuild ${r} is cut into slices of the clock, not run through`).toBeGreaterThan(1);
     }
-    log(`cold start on a fake clock (1 ms a read, budget ${BUDGET_MS} ms): ${perRebuild.join('; ')}; most lines in one slice: ${worstCold} cold, ${worstWarm} warm`);
+    log(`cold start on a fake clock (1 ms a read, budget ${BUDGET_MS} ms): ${perRebuild.join('; ')}; most lines in one slice: ${worstFirst} in the first two rebuilds, ${worstCold} in the first four, ${worstWarm} warm`);
     expect(b.out.lines).toBeGreaterThan(600);
     expect(b.out.segments).toBeLessThanOrEqual(12000);
     expect(worstCold, 'a cold slice is a few clock intervals of 4 lines, not a whole rebuild').toBeLessThanOrEqual(4 * (BUDGET_MS + 2));
+    // 0.7.0: the first two rebuilds read the clock after every line, so a slice there runs one line (one fake millisecond) past its budget at most.
+    expect(worstFirst, 'a slice of the first two rebuilds stops within a line of its budget').toBeLessThanOrEqual(BUDGET_MS + 2);
   });
 
   it('the cold start on the wall clock: the typical slice of the first six rebuilds is near its budget (the worst is only reported)', () => {

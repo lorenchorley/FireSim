@@ -4,6 +4,7 @@
  * the caps, the near plane, the walls, calm, the raster edge, the orbit density, pan invariance, determinism, staging on the clock,
  * and the pulse formula.
  */
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
@@ -1106,4 +1107,39 @@ describe('pulseIntensity: the vertex shader\'s pulse in TypeScript', () => {
     expect(pulseIntensity(9, 10, 0)).toBe(1);
     expect(pulseIntensity(11, 10, 0)).toBe(0);
   });
+});
+
+/** The 0.6.0 picture, pinned (0.7.0): scenarios whose bytes were hashed with the builder as 0.6.0 left it, before the relief terms existed. */
+export function goldenScenarios(): [string, DetailScenario][] {
+  const sc0 = makeDetailScenario();
+  const g = sc0.grid;
+  const e = (g.nx - 1) * g.cellSize;
+  const ten = (fn: (x: number, y: number) => number) => groundOf({ nx: Math.ceil(e / 10) + 1, ny: Math.ceil(e / 10) + 1, cellSize: 10, x0: g.x0, y0: g.y0, origin: ORIGIN }, fn);
+  const hills = (x: number, y: number): number => 300 + 60 * Math.sin(x / 700) + 40 * Math.cos(y / 500) + 6 * Math.sin(x / 37) * Math.cos(y / 41);
+  const wall = (x: number): number => (x < -20 ? 300 : x > 20 ? 460 : 300 + 4 * (x + 20));
+  const rotate = (x: number, y: number): [number, number] => [3 - 0.004 * y, 1 + 0.004 * x];
+  return [
+    ['uniform wind, tiny scene', tiny()],
+    ['a shear over rolling hills, seen from above', makeDetailScenario({ field: (_x, y) => [5 + 0.001 * y, 3], ground: hills, ground10: ten(hills), camera: topDownCamera(133, 150, 0, 0, { near: 30 }, 300), seed: 4 })],
+    ['a turning wind over hills, tilted camera', makeDetailScenario({ field: rotate, ground: hills, ground10: ten(hills), camera: makeCamera({ eye: [300, 900, 1300], target: [0, 300, 0], near: 30 }), seed: 2 })],
+    ['a wall across the wind', makeDetailScenario({ groundCell: 10, ground: (x) => wall(x), field: () => [8, 0], camera: topDownCamera(133, 150, 0, 0, { near: 30 }, 460) })],
+  ];
+}
+
+/** sha1 of `detailBytes` and the line and segment counts of each golden scenario, taken with the 0.6.0 builder (commit 1332ba1, before the relief terms). */
+const GOLDEN: Record<string, [string, number, number]> = {
+  'uniform wind, tiny scene': ['3e6ba882b39aaef93182d43f73f9b1da0b615092', 312, 4962],
+  'a shear over rolling hills, seen from above': ['35009013f569a604b4571dd4d1848e33b8780a7d', 584, 6283],
+  'a turning wind over hills, tilted camera': ['65c39de799917dd6e2a6f0d91daec9c7bfbec361', 356, 2847],
+  'a wall across the wind': ['7c1a06218e83afa4a18df5ba4bc0f5b805222d93', 566, 7854],
+};
+
+describe('the 0.6.0 picture is what the builder draws when `relief` is absent', () => {
+  for (const [name, sc] of goldenScenarios()) {
+    it(`${name}: the bytes are the 0.6.0 bytes`, () => {
+      const { out } = build(sc);
+      expect([createHash('sha1').update(detailBytes(out)).digest('hex'), out.lines, out.segments]).toEqual(GOLDEN[name]);
+      expect(out.blocked).toBe(0);
+    });
+  }
 });

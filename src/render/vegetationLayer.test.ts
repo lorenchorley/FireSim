@@ -368,3 +368,62 @@ describe('VegetationLayer staged work', () => {
     l.dispose();
   });
 });
+
+describe('VegetationLayer.crownSource (0.7.0: the detailed streaks flow round the placed crowns)', () => {
+  it('is the same object, empty before any tree is placed, and holds the placed trees by reference with their positions and sizes', () => {
+    const l = layer();
+    const src = l.crownSource();
+    expect(l.crownSource()).toBe(src);
+    expect(src.sets()).toHaveLength(0);
+    l.setInstances(sets);
+    expect(src.sets()).toBe(sets); // nothing copied
+    const trees = src.sets().filter((q) => q.group <= VegGroup.Conifer);
+    expect(trees.length).toBeGreaterThan(2);
+    for (const q of trees) {
+      expect(q.position.length).toBeGreaterThanOrEqual(3 * q.count);
+      expect(q.size.length).toBeGreaterThanOrEqual(2 * q.count);
+    }
+    l.dispose();
+  });
+
+  it('moves its serial when a placement is swapped in, when instances are set and when the layer is disposed, and not otherwise', () => {
+    const l = layer();
+    l.staged = true;
+    const src = l.crownSource();
+    const s0 = src.serial;
+    l.setProjection(1000, 2600);
+    l.updateLod([0, 0, 520], 1, 700, true);
+    expect(src.serial, 'a plan or a projection is not a new placement').toBe(s0);
+    l.startPlacement(fm, { budget: 3000, heightAt, focus: [0, 0], focusRadius: 700, seed: 2 });
+    expect(src.serial, 'a job under way does not change what is placed').toBe(s0);
+    l.pump(Infinity);
+    const s1 = src.serial;
+    expect(s1).toBeGreaterThan(s0);
+    expect(src.sets().length).toBeGreaterThan(0);
+    l.pump(4);
+    expect(src.serial).toBe(s1);
+    l.setInstances(sets);
+    expect(src.serial).toBeGreaterThan(s1);
+    l.dispose();
+    expect(src.sets()).toHaveLength(0);
+  });
+
+  it('answers nothing while the canopy is not drawn (switched off, or hidden by a solo heat map), and says so by its serial', () => {
+    const l = layer();
+    l.setInstances(sets);
+    const src = l.crownSource();
+    const on = src.serial;
+    l.setLayers({ ...onLayers, vegetation: false });
+    expect(src.sets()).toHaveLength(0);
+    const off = src.serial;
+    expect(off).not.toBe(on);
+    l.setLayers({ ...onLayers, vegetation: false });
+    expect(src.serial, 'the same state again is no change').toBe(off);
+    l.setLayers({ ...onLayers, vegetation: true });
+    expect(src.sets()).toBe(sets);
+    expect(src.serial).not.toBe(off);
+    l.setLayers({ ...onLayers, vegetation: true, soloHeat: true, overlay: 'intensity' });
+    expect(src.sets(), 'a solo heat map hides the canopy').toHaveLength(0);
+    l.dispose();
+  });
+});

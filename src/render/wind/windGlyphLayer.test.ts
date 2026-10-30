@@ -16,8 +16,8 @@ import { StreakBatch } from '../streaks';
 import { makeAirView } from '../slice/testing';
 import { HALO_INK } from './flowGlyphs';
 import { FILL_ROWS_PER_CHECK } from './glyphField';
-import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
+import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData, type PrecompileTarget } from './windGlyphLayer';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type CrownSource, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
 const shared = (): Record<string, THREE.IUniform> => ({
   uExposure: { value: 1 },
@@ -29,6 +29,8 @@ const shared = (): Record<string, THREE.IUniform> => ({
 /** A builder that needs `steps` calls to finish and takes `stepMs` of the fake clock for each; `Infinity` finishes in one. */
 abstract class StubBase<I extends GlyphInput> {
   readonly begins: I[] = [];
+  /** The budget (ms) of every `step` call, in order. */
+  readonly budgets: number[] = [];
   cancels = 0;
   steps = 2;
   glyphs = 40;
@@ -49,6 +51,7 @@ abstract class StubBase<I extends GlyphInput> {
   }
   protected abstract write(n: number, count: number): void;
   step(budgetMs: number): boolean {
+    this.budgets.push(budgetMs);
     this.clock.t += this.stepMs;
     this.left = budgetMs === Infinity ? 0 : this.left - 1;
     if (this.left > 0) return false;
@@ -1632,5 +1635,196 @@ describe('WindGlyphLayer with the real detailed-streak builder: what the shader 
     expect(turb10).toBeGreaterThan(0.01);
     expect(turb300 / turb10, 'turbulence above the base').toBeGreaterThan(0.3);
     expect(turb300 / turb10).toBeLessThan(0.46);
+  });
+});
+
+describe('WindGlyphLayer: the cold first zoom (0.7.0)', () => {
+  it('takes the lowest ground of a HeightField from the field itself, without reading a cell of the mesh, and walks a plain raster once', () => {
+    const r = rig();
+    const d = r.fresh();
+    const hf = d.drawGround as HeightField;
+    Object.defineProperty(hf, 'elevation', {
+      get() {
+        throw new Error('the layer walked the mesh');
+      },
+    });
+    r.layer.setData({ ...d, drawGround: hf });
+    expect(() => r.go(L4, { settle: true })).not.toThrow();
+    expect(r.layer.stats()).toMatchObject({ active: true, level: 4, detail: 'moving' });
+    // A plain raster (no `minElevation`) is walked, and once: the answer is kept for the same object.
+    const plain = r.fresh();
+    let reads = 0;
+    const cells = (plain.sliceGround as HeightField).elevation;
+    const counted = { grid: plain.drawGround.grid, get elevation() { reads++; return cells; } };
+    r.layer.setData({ ...plain, drawGround: counted });
+    r.go(L4, { settle: true, dt: 300 });
+    r.go(L4, { settle: true, dt: 300, x: 200 });
+    expect(reads, 'the plain raster is read').toBeGreaterThan(0);
+    const after = reads;
+    r.layer.setData({ ...plain, drawGround: counted });
+    r.go(L4, { settle: true, dt: 300 });
+    expect(reads, 'the same raster is walked once, not per rebuild').toBe(after);
+  });
+
+  it('gives the first two slices of each builder half the budget (4 ms), the later ones 8 ms, and a settled frame none', () => {
+    const r = rig();
+    r.detail.steps = 6;
+    r.stub.steps = 4;
+    for (let i = 0; i < 12 && r.detail.begins.length < 2; i++) r.go(L4, { dt: 16 });
+    expect(r.detail.budgets.slice(0, 6)).toEqual([4, 4, 8, 8, 8, 8]);
+    for (let i = 0; i < 12; i++) r.go(L3, { dt: 300 });
+    expect(r.stub.budgets.slice(0, 4), 'the glyph builder is cold on its own').toEqual([4, 4, 8, 8]);
+    r.go(L4, { dt: 300, settle: true });
+    expect(r.detail.budgets[r.detail.budgets.length - 1]).toBe(Infinity);
+  });
+
+  it('reports the longest tick since the statistics were last read, and starts a new window with each read', () => {
+    const r = rig();
+    r.detail.stepMs = 5;
+    expect(r.layer.stats().tickMaxMs).toBe(0);
+    r.go(L4, { dt: 16 }); // one slice of 5 ms on the fake clock
+    r.go(L4, { dt: 16 }); // the second, which swaps
+    const first = r.layer.stats().tickMaxMs;
+    expect(first).toBeGreaterThanOrEqual(5);
+    expect(first).toBeLessThan(10);
+    r.go(L4, { dt: 16 });
+    expect(r.layer.stats().tickMaxMs, 'a tick that did nothing took no time on the fake clock').toBe(0);
+  });
+
+  it('compiles its programs ahead through the renderer (compileAsync when there is one), once, and never throws or rejects', async () => {
+    const r = rig();
+    const calls: unknown[][] = [];
+    const camera = cameraAt(L4);
+    const scene = new THREE.Scene();
+    const target: PrecompileTarget = { compileAsync: (...a) => (calls.push(a), Promise.resolve(scene)) };
+    await r.layer.precompile(target, camera, scene);
+    await r.layer.precompile(target, camera, scene);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([r.layer.group, camera, scene]);
+    // Without compileAsync the synchronous compile is used; a renderer that throws or rejects costs nothing.
+    const sync: unknown[][] = [];
+    await rig().layer.precompile({ compile: (...a) => void sync.push(a) }, camera);
+    expect(sync).toHaveLength(1);
+    await rig().layer.precompile({ compileAsync: () => Promise.reject(new Error('no GL')) }, camera);
+    await rig().layer.precompile({ compile: () => { throw new Error('no GL'); } }, camera);
+    await rig().layer.precompile({}, camera);
+  });
+});
+
+describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', () => {
+  const crowns = (serial = 1): CrownSource & { serial: number } => ({ serial, sets: () => [] });
+  /** At L4 with a picture swapped in, `gap` ms since. */
+  const atL4 = (): Rig => {
+    const r = rig();
+    r.go(L4, { settle: true });
+    return r;
+  };
+
+  it('gives the detailed builder the relief, the canopy, the crowns and the plume, and the glyph builder none of them', () => {
+    const r = rig();
+    const fuel = { grid: r.fresh().atm!.grid } as never;
+    const src = crowns();
+    r.layer.setCanopy(fuel);
+    r.layer.setCrowns(src);
+    r.layer.setPlumes([{ x: 10, y: 20, radiusM: 60, strength: 0.5 }]);
+    r.go(L3, { settle: true });
+    expect('relief' in r.stub.begins[0]!).toBe(false);
+    r.go(L4, { settle: true, dt: 300 });
+    const input = r.detail.begins[0]!;
+    expect(input.relief).toBe(DETAIL_RELIEF);
+    expect(input.canopy).toBe(fuel);
+    expect(input.crowns).toEqual([]);
+    expect(input.plumes).toEqual([{ x: 10, y: 20, radiusM: 60, strength: 0.5 }]);
+  });
+
+  it('gives nothing of it while it is not set, with the canopy layer off (null), or with the relief switched off', () => {
+    const r = atL4();
+    const input = r.detail.begins[0]!;
+    expect(input.relief).toBe(DETAIL_RELIEF);
+    expect([input.canopy, input.crowns, input.plumes]).toEqual([undefined, undefined, undefined]);
+    r.layer.setRelief(false);
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.relief, 'the 0.6.0 picture: no relief at all').toBeUndefined();
+    expect(r.detail.begins[1]!.canopy).toBeUndefined();
+    const k = DETAIL_RELIEF.enabled;
+    try {
+      DETAIL_RELIEF.enabled = false; // the constant of the kill switch
+      r.layer.setRelief(true);
+      r.go(L4, { settle: true, dt: 300 });
+      expect(r.detail.begins.length, 'no change of picture: the constant keeps it off').toBe(2);
+    } finally {
+      DETAIL_RELIEF.enabled = k;
+    }
+  });
+
+  it('rebuilds once for a new crown source, a new serial or a new canopy, and for nothing else the relief reads', () => {
+    const r = atL4();
+    const src = crowns();
+    r.layer.setCrowns(src);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.crowns).toEqual([]);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins, 'an unchanged serial gives no rebuild').toHaveLength(2);
+    src.serial = 2; // the forest was placed again
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(3);
+    r.layer.setCanopy({ grid: r.fresh().atm!.grid } as never);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(4);
+    r.layer.setCrowns(null); // the canopy layer went off
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(5);
+    expect(r.detail.begins[4]!.crowns).toBeUndefined();
+    r.layer.setPlumes([{ x: 0, y: 0, radiusM: 50, strength: 1 }]);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins, 'a plume alone waits for the next snapshot').toHaveLength(5);
+  });
+
+  it('holds a rebuild for new crowns to the 250 ms gap, like any other, and not at all below the most detailed level', () => {
+    const r = atL4();
+    const src = crowns();
+    r.layer.setCrowns(src);
+    r.go(L4, { dt: 100 });
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L4, { dt: 200 });
+    expect(r.detail.begins).toHaveLength(2);
+    const lowRig = rig();
+    lowRig.go(L3, { settle: true });
+    lowRig.layer.setCrowns(crowns());
+    lowRig.layer.setCanopy({ grid: lowRig.fresh().atm!.grid } as never);
+    lowRig.go(L3, { dt: 1000 });
+    lowRig.go(L3, { dt: 1000 });
+    expect(lowRig.stub.begins, 'the arrows do not read the relief').toHaveLength(1);
+  });
+
+  it('says `paused` for streaks that move while the view holds still, never over `still` or `off`, and animates as before', () => {
+    const r = rig();
+    r.layer.setPaused(true);
+    expect(r.layer.stats().detail).toBe('off');
+    r.go(L4, { settle: true });
+    expect(r.layer.stats().detail).toBe('paused');
+    expect(r.layer.animating, 'the frame loop (not the layer) holds the clock still').toBe(true);
+    r.layer.setMotion(false);
+    expect(r.layer.stats().detail, 'reduced motion wins').toBe('still');
+    r.layer.setMotion(true);
+    r.layer.setPaused(false);
+    expect(r.layer.stats().detail).toBe('moving');
+  });
+
+  it('tells which switches asked for the picture and whether motion is reduced', () => {
+    const r = rig({ enabled: false });
+    expect(r.layer.stats()).toMatchObject({ glyphs: false, streaks: false, reduced: false });
+    r.layer.setStreaksDetail(true);
+    r.layer.setEnabled(true);
+    r.layer.setMotion(false);
+    expect(r.layer.stats()).toMatchObject({ glyphs: true, streaks: true, reduced: true });
   });
 });

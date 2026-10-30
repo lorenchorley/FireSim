@@ -16,6 +16,8 @@ export interface BuiltPicture {
   spacingExp: number;
   /** The share of the finest lattice the picture kept (`LodPlan.thin`; absent is 1): the detailed streaks follow the zoom with it. */
   thin?: number;
+  /** 0.7.0: what the detailed streaks' relief was built from (the layer's count of changes of the canopy, the crowns and the switch; 0 for the arrows and flow lines, and absent is 0). */
+  crownSerial?: number;
   pose: PoseSig;
   /** The projection's own numbers (fov and the two view-offset terms): a panel opening shifts the picture without moving the camera. */
   proj: Float64Array;
@@ -30,6 +32,7 @@ export interface PictureNow {
   level: GlyphLevel;
   spacingExp: number;
   thin?: number;
+  crownSerial?: number;
   pose: PoseSig;
   proj: ArrayLike<number>;
   distanceM: number;
@@ -44,7 +47,7 @@ export const THIN_REBUILD_RATIO = 1.1;
 
 /**
  * Why the drawn picture is out of date, or null while it is good enough. The first fact that differs wins: no picture yet,
- * new data, another height, another level of detail or lattice, a density that has drifted by a tenth (`THIN_REBUILD_RATIO`), then the pose (`poseChange`, always against the BUILT picture
+ * new data, another height, other canopy or crowns (0.7.0, the detailed streaks flow round them), another level of detail or lattice, a density that has drifted by a tenth (`THIN_REBUILD_RATIO`), then the pose (`poseChange`, always against the BUILT picture
  * and never against the last frame, so a slow drift adds up), then the projection, then the visible ground leaving the built box.
  * `visible` is asked last and only when nothing else decided: it is the dearest question.
  */
@@ -52,6 +55,7 @@ export function rebuildReason(built: BuiltPicture | null, now: PictureNow, visib
   if (!built) return 'first';
   if (built.dataSerial !== now.dataSerial) return 'snapshot';
   if (built.height !== now.height) return 'height';
+  if ((built.crownSerial ?? 0) !== (now.crownSerial ?? 0)) return 'canopy';
   if (built.level !== now.level) return 'level';
   if (built.spacingExp !== now.spacingExp) return 'lattice';
   if (built.thin !== undefined && now.thin !== undefined && (now.thin > built.thin * THIN_REBUILD_RATIO || built.thin > now.thin * THIN_REBUILD_RATIO)) return 'density';

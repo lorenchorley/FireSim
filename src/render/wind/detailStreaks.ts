@@ -240,9 +240,19 @@ const PHASE_TRACE_START = 4;
 const PHASE_TRACE = 1;
 const PHASE_DONE = 2;
 
-/** Lattice cells between two reads of the clock while walking the lattice (fewer for the first rebuilds of a builder, while the code is cold). */
+/**
+ * Lattice cells between two reads of the clock while walking the lattice, and lines between two reads while tracing. A builder is interpreted
+ * for its first rebuilds (a cold line costs 0.3 ms, a warm one 3 us): the first `COLD_REBUILDS` read the clock after every 64 cells and every
+ * line, the next two after 256 cells and 4 lines, the rest after 2048 and 16 (0.7.0: a cold slice used to run up to 5 ms over its budget).
+ */
 const CELL_CHECK = 2048;
-const CELL_CHECK_COLD = 256;
+const CELL_CHECK_WARMING = 256;
+const CELL_CHECK_COLD = 64;
+const COLD_REBUILDS = 2;
+const WARMING_REBUILDS = 4;
+const LINE_CHECK = 16;
+const LINE_CHECK_WARMING = 4;
+const LINE_CHECK_COLD = 1;
 
 class Builder implements DetailBuilder {
   readonly out: DetailOutput;
@@ -741,7 +751,8 @@ class Builder implements DetailBuilder {
     }
     const deadline = f[F_DEADLINE]!;
     const level = n[N_LEVEL]!;
-    const every = n[N_REBUILDS]! <= 4 ? CELL_CHECK_COLD : CELL_CHECK;
+    const rebuilds = n[N_REBUILDS]!;
+    const every = rebuilds <= COLD_REBUILDS ? CELL_CHECK_COLD : rebuilds <= WARMING_REBUILDS ? CELL_CHECK_WARMING : CELL_CHECK;
     let check = every;
     let pass = n[N_PASS]!;
     while (pass <= PASSES) {
@@ -828,7 +839,8 @@ class Builder implements DetailBuilder {
     const ns = n[N_NSTORE]!;
     const capG = n[N_CAPG]!;
     const capS = n[N_CAPS]!;
-    const base = n[N_REBUILDS]! <= 4 ? 4 : 16;
+    const rebuilds = n[N_REBUILDS]!;
+    const base = rebuilds <= COLD_REBUILDS ? LINE_CHECK_COLD : rebuilds <= WARMING_REBUILDS ? LINE_CHECK_WARMING : LINE_CHECK;
     if (n[N_PHASE] === PHASE_TRACE_START) {
       // The lattice is walked: decide which of the stored seeds are traced. Each took the segments its wind gives its line, so add them
       // up by the bucket of their hash and keep the buckets, from the lowest, that fit 0.95 of the segment cap and the line cap, and the
@@ -875,8 +887,8 @@ class Builder implements DetailBuilder {
       if (--left <= 0) {
         const now = input.now();
         if (now >= deadline) break;
-        // Plenty of the slice left: read the clock less often (a clock read allocates its number).
-        if (deadline - now > 0.75 * budget && interval < 4 * base) interval *= 2;
+        // Plenty of the slice left: read the clock less often (a clock read allocates its number), but never while the code is cold.
+        if (base > LINE_CHECK_COLD && deadline - now > 0.75 * budget && interval < 4 * base) interval *= 2;
         left = interval;
       }
     }
