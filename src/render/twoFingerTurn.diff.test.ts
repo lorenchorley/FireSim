@@ -13,13 +13,13 @@
  */
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type * as THREE from 'three';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { makeGridSpec } from '../core/grid';
 import type { CameraState } from './api';
 import { CameraRig } from './cameraRig';
 import { HeightField } from './heightfield';
 import { CameraRig as CameraRig060 } from './testing/cameraRig060';
-import { FakeElement, FakeTarget, H, W } from './testing/rigHarness';
+import { FakeElement, FakeTarget, H, W, katoombaHeightField } from './testing/rigHarness';
 
 let fake = 5_000_000;
 vi.spyOn(performance, 'now').mockImplementation(() => fake);
@@ -87,10 +87,10 @@ class Sim {
   readonly log: { frame: number; op: string }[] = [];
   private readonly oc: { state: number; _pointers: number[] };
 
-  constructor(Rig: RigCtor) {
+  constructor(Rig: RigCtor, hf: HeightField = terrain()) {
     fake = 5_000_000;
     this.rig = new Rig(this.el as unknown as HTMLElement, W / H);
-    this.rig.setHeightField(terrain());
+    this.rig.setHeightField(hf);
     this.rig.resize(W / H, W, H);
     this.rig.home(false);
     this.rig.controls.addEventListener('start', () => this.events.push('start'));
@@ -832,11 +832,11 @@ function compare(name: string, o: Sim, n: Sim): Worst {
   return w;
 }
 
-function bothRigs(setup: ((s: Sim) => void) | undefined, run: (s: Sim) => void): [Sim, Sim] {
-  const o = new Sim(CameraRig060);
+function bothRigs(setup: ((s: Sim) => void) | undefined, run: (s: Sim) => void, hf?: HeightField): [Sim, Sim] {
+  const o = new Sim(CameraRig060, hf);
   setup?.(o);
   run(o);
-  const n = new Sim(CameraRig);
+  const n = new Sim(CameraRig, hf);
   setup?.(n);
   run(n);
   return [o, n];
@@ -861,6 +861,21 @@ describe('the 0.7.0 two-finger turn against the 0.6.0 rig, frame by frame', () =
       expect(n.rig.controls.enableRotate, 'OrbitControls’ own turn is given back').toBe(true);
     });
   }
+
+  describe('on the real Katoomba relief (the bundled 10 m DEM: ridges and cliffs under the view, where the target slides onto the ground)', () => {
+    let hf: HeightField;
+    beforeAll(async () => {
+      hf = await katoombaHeightField(320);
+    });
+    for (let seed = 101; seed <= 112; seed++) {
+      it(`a random walk (seed ${seed})`, () => {
+        const { ops } = walk(seed, 260);
+        const [o, n] = bothRigs(undefined, (s) => play(s, ops), hf);
+        compare(`Katoomba walk ${seed}`, o, n);
+        expect(n.rig.controls.enableRotate).toBe(true);
+      });
+    }
+  });
 
   it('the random walks have two fingers turning the view in a good share of their frames (so they test the turn, not an idle rig)', () => {
     const walks = [...report].filter(([k]) => k.startsWith('random walk'));
