@@ -32,6 +32,8 @@ export interface WindChange {
   preSpeed: number;
   /** m/s */
   postSpeed: number;
+  /** 0.7.0 (item D): the id of the user's Wind direction change this stands for (absent: a change of the forecast's own). */
+  user?: string;
 }
 
 export interface AfternoonPeak {

@@ -552,6 +552,14 @@ export class SimSession {
     if (!this.state.get().playing && this.state.get().viewTime > this.state.get().headTime) this.controller.run(this.state.get().viewTime);
   }
 
+  /**
+   * C0 STUB (0.7.0, lane W7-ui): "Back to the forecast" takes away every Wind direction change as if never made (the bin's path, once, from the
+   * earliest start; the belt-kit readings stay) and returns how many it removed. Inert until built: removes nothing, returns 0.
+   */
+  backToForecast(): number {
+    return 0;
+  }
+
   /** What-if: change coupling / embers / mountain phenomena and re-run from the view time. */
   rerunWith(options: WhatIfOptions, label: string): void {
     this.cancelSeek();

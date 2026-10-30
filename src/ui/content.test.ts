@@ -730,7 +730,7 @@ describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, th
   /** Help and the screens may spell an apostrophe either way (Help uses the curly one). */
   const straight = (s: string): string => s.replace(/’/g, "'");
   const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
-    active: true, idle: null, level: 4, count: 600, segments: 6000, cellPx: 120, cellM: 133, rebuilds: 3, lastMs: 2, sliceP95Ms: 3, sliceMaxMs: 5, slicesLast: 1, detail: 'moving', detailSegments: 6000, ...over,
+    active: true, idle: null, level: 4, count: 600, segments: 6000, cellPx: 120, cellM: 133, rebuilds: 3, lastMs: 2, sliceP95Ms: 3, sliceMaxMs: 5, slicesLast: 1, detail: 'moving', detailSegments: 6000, glyphs: true, streaks: false, reduced: false, tickMaxMs: 0, ...over,
   });
   const wind = (over: Partial<WindDetailInput> = {}): WindDetailInput => ({ glyphsOn: true, streaks: 'off', viewMode: 'orbit', stats: stats(), air: 'prognostic', height: 'fire', ...over });
   const env = { startMs: Date.UTC(2025, 0, 5, 14, 0), tz: 'UTC', durationS: 4 * 3600 };

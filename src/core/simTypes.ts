@@ -296,6 +296,21 @@ export interface EmberStats {
   ignitionCapableShare: number;
 }
 
+/**
+ * A Wind direction change of the user's, as the explain engine counts it (0.7.0, item D): the forecast's `WindChange` shape without the stamp
+ * bookkeeping. `time` is the unix ms the turn starts, `fromDir` the direction in force at the start (the earlier swings' value, else the forecast's
+ * 10 m direction), `toDir` the edit's direction, `preSpeed` and `postSpeed` the forecast's 10 m speed (m/s) at the start and 15 minutes later (a turn
+ * leaves the speed alone). Built by the simulation (`knownWindChanges`, from the record list and the step time), never by explain.
+ */
+export interface SimWindChange {
+  id: string;
+  time: number;
+  fromDir: number;
+  toDir: number;
+  preSpeed: number;
+  postSpeed: number;
+}
+
 export interface SimStateView {
   time: number;
   terrain: Terrain;
@@ -323,10 +338,13 @@ export interface SimStateView {
   weather: WeatherHour;
   series: WeatherSeries;
   /**
-   * Unix ms from which an applied Wind direction change replaces the forecast's wind direction (absent: none is applied).
+   * Unix ms from which a Wind direction change replaces the forecast's wind direction (absent: none): the start of the first change the engine may
+   * count, that is one applied, or one made (`WindDirectionEdit.madeAt` at or before the step time) and still ahead.
    * `series` stays the forecast; the explain engine reads this to leave out the forecast's own later wind changes.
    */
   windOverrideFromMs?: number;
+  /** 0.7.0 (item D): the user's Wind direction changes the engine may count, by start time (absent: none). Unread until lane W7-engine. */
+  windUserChanges?: readonly SimWindChange[];
   droughtFactor: number;
   kbdi: number;
   sunElevation: number;

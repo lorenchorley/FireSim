@@ -27,7 +27,7 @@
  */
 import * as THREE from 'three';
 import type { GridSpec } from '../../core/grid';
-import type { AtmosphereView } from '../../core/types';
+import type { AtmosphereView, FireWindRaster, FuelMap } from '../../core/types';
 import type { WindGlyphStats } from '../api';
 import type { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
@@ -38,7 +38,7 @@ import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, GLYPH_CAPS, type Box, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, GLYPH_CAPS, type Box, type CrownSource, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
@@ -71,6 +71,8 @@ export interface GlyphData {
   sliceGround: GroundRaster;
   /** The drawn mesh (the glyphs sit on it). */
   drawGround: GroundRaster;
+  /** 0.7.0 (item B): the wind the fire feels, for the `'felt'` height (null or absent: none, so `'felt'` has no field and the layer is idle `no-wind`). Unread until the E2 picture lane. */
+  fireWind?: FireWindRaster | null;
 }
 
 /** What `tick` needs to know about the canvas: its CSS size and its vertical field of view (the rig's, without the panel insets). */
@@ -246,6 +248,21 @@ export class WindGlyphLayer {
     this.detail.setMoving(allowed);
   }
 
+  /**
+   * C0 stub (0.7.0, lane E-A): the view holds still after a minute without activity (`idleStop.ts`); the detailed streaks then say `'paused'`
+   * (only while moving, never over `'still'`). Inert until built.
+   */
+  setPaused(_on: boolean): void {}
+
+  /** C0 stub (0.7.0, lane E-A): the canopy height and cover, by reference (null when the canopy layer is off), for the strokes to ride on the crowns' tops. Inert until built. */
+  setCanopy(_fuel: FuelMap | null): void {}
+
+  /** C0 stub (0.7.0, lane E-A): where the placed crowns are read from (null when the canopy layer is off); a new `serial` gives the `'canopy'` rebuild reason. Inert until built. */
+  setCrowns(_src: CrownSource | null): void {}
+
+  /** C0 stub (0.7.0, lane E-A): the fire's plume as an eddy site, per snapshot (empty: none). Inert until built. */
+  setPlumes(_plumes: readonly Plume[]): void {}
+
   /** The detailed streaks are drawn in motion, so the frame loop must keep drawing. */
   get animating(): boolean {
     return this.detailOn && this.motion;
@@ -402,6 +419,10 @@ export class WindGlyphLayer {
       slicesLast: log.slicesLast,
       detail: this.detailOn ? (this.motion ? 'moving' : 'still') : 'off',
       detailSegments: this.detailSegments,
+      glyphs: this.enabled,
+      streaks: this.streaksDetail,
+      reduced: !this.motion,
+      tickMaxMs: 0, // C0: lane E-A measures it
     };
   }
 
@@ -419,7 +440,7 @@ export class WindGlyphLayer {
   /** Air with wind to draw: the view has it, and for `'fire'` the model's 10 m wind raster too. */
   private hasField(d: GlyphData): boolean {
     if (!d.atm || !d.sampler.hasWind) return false;
-    if (this.height !== 'fire') return true;
+    if (this.height !== 'fire' && this.height !== 'felt') return true; // ('felt' is read like 'fire' until the E2 picture lane gives it its own raster)
     if (this.surface === undefined) this.surface = surfaceRaster(d.atm);
     return this.surface !== null;
   }
@@ -549,7 +570,7 @@ export class WindGlyphLayer {
    * is begun invalidates the last raster (its storage may be reused), and one that is cancelled leaves none.
    */
   private fill(d: GlyphData, refine: 1 | 2, settle: boolean): 'ready' | 'more' | 'done' {
-    if (this.height === 'fire') {
+    if (this.height === 'fire' || this.height === 'felt') {
       this.raster = this.surface!;
       this.rasterHeight = null; // a later numeric height must fill afresh
       return 'ready';
@@ -557,7 +578,7 @@ export class WindGlyphLayer {
     const hr = (this.heightRaster ??= new HeightRaster());
     if (!this.filling) {
       if (this.raster && this.rasterSerial === this.dataSerial && this.rasterHeight === this.height && this.rasterRefine === refine) return 'ready';
-      hr.begin(d.sampler, d.sliceGround, this.height, refine);
+      hr.begin(d.sampler, d.sliceGround, typeof this.height === 'number' ? this.height : 10, refine);
       this.filling = true;
       this.fillRefine = refine;
       this.raster = null;
@@ -610,7 +631,7 @@ export class WindGlyphLayer {
       cap: { glyphs: caps.glyphs, segments: this.beginSegments },
       now: this.clock,
     };
-    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0, heightM: this.height === 'fire' ? 10 : this.height }); // the ground terms fade with the wind's height
+    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0, heightM: typeof this.height === 'number' ? this.height : 10 }); // the ground terms fade with the wind's height
     else this.builder.begin(input);
     this.begun = true;
     return true;

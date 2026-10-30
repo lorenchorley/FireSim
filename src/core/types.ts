@@ -619,6 +619,13 @@ export interface WindDirectionEdit {
   dir: number;
   /** Simulation time (s from the scenario start) at which the wind starts to turn: a whole number of minutes. */
   time: number;
+  /**
+   * 0.7.0: the simulation time (s) at which the user made the change (the view time when Apply was pressed), at most `time`. The
+   * explain engine counts the change from then, so the forecast's later swings stop raising cards from `madeAt` on, not only from
+   * `time`. Absent means `time` (scenario edits, tests and the harness behave as in 0.6.0). It never reaches the weather, the
+   * atmosphere, the fire or a snapshot hash.
+   */
+  madeAt?: number;
 }
 
 export type ScenarioEdit = FuelEdit | WindEdit | WindDirectionEdit;
@@ -940,6 +947,20 @@ export interface SimStats {
   msPerSimMinute: number;
 }
 
+/**
+ * The wind the fire feels (0.7.0, item B; `core/fireWind.ts` has the helpers): the fire-grid wind `env.windU/V` (m/s east and north, the
+ * wind the spread model is given at each cell) block-averaged to about 60 m and quantised to Int16 at `FIRE_WIND_QUANTUM` (0.01 m/s).
+ * `grid` is the grid of the block centres (`fireWindGrid`); `u`, `v` are `round(mean x 100)` on it (clamped to +-32767, a non-finite
+ * mean is 0); `block` is the number of fire cells to a side of one block; `time` is the simulation time (s) the picture was made at.
+ */
+export interface FireWindRaster {
+  grid: GridSpec;
+  u: Int16Array;
+  v: Int16Array;
+  block: number;
+  time: number;
+}
+
 /** Periodic output from the simulation worker. Arrays are copies the UI may keep. */
 export interface SimSnapshot {
   time: number;
@@ -953,6 +974,12 @@ export interface SimSnapshot {
   insights: Insight[];
   /** Extra overlay rasters on the fire grid, keyed by OverlayKind ('vls', 'attach', 'trench', 'dmz', 'landing'). */
   layers?: Record<string, Float32Array>;
+  /**
+   * 0.7.0 (item B): the wind the fire feels at about 60 m, see {@link FireWindRaster}. Kept by the history in the newest snapshot and in
+   * every keyframe. Absent from the demo engine (it has no air), from older producers and from test fixtures. It is a field of its own,
+   * not in `layers` (which the overlay code reads), and it changes `snapshotHash` against 0.6.0 (skip it to compare).
+   */
+  fireWind?: FireWindRaster;
   /**
    * What the engine really runs now (tier, grids, steps, models, measured memory): see {@link EngineInfo} in
    * simTypes.ts. Optional: absent from older producers and from test fixtures.

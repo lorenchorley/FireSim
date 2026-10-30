@@ -77,6 +77,17 @@ export class WindLayer {
   }
 
   /**
+   * C0 STUB (0.7.0, lane E-B, F4): whether motion is allowed (false under reduced motion: the particles stand still, drawn once from the current
+   * wind). Inert until built.
+   */
+  setMotion(_allowed: boolean): void {}
+
+  /** The particles need frames drawn. C0: the 0.6.0 rule (on, and not stepping aside for the detailed streaks); lane E-B adds the motion flag. */
+  get animating(): boolean {
+    return this.mode !== 'off' && !this.suppressed;
+  }
+
+  /**
    * Hide the particles and skip their animation while the detailed streaks are drawn instead (the particles keep their places and their
    * ages, and carry on from them when they are given back). The caller draws the frame it changes this in.
    */

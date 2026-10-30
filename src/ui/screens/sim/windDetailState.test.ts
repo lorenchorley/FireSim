@@ -25,6 +25,10 @@ const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
   slicesLast: 2,
   detail: 'off',
   detailSegments: 0,
+  glyphs: true,
+  streaks: false,
+  reduced: false,
+  tickMaxMs: 0,
   ...over,
 });
 /** The default: the arrows and flow lines on, the Wind streaks off, the 3-D view, the standard tier's air. */

@@ -9,6 +9,7 @@
  */
 import { FireHistoryKind, FuelType, Landform, SpreadDriver, FUEL_TYPE_COUNT } from '../core/types';
 import type { OverlayKind } from './layers';
+import type { WindHeight } from './wind/glyphTypes';
 import {
   ARRIVAL_RAMP,
   ASPECT_RAMP,
@@ -98,6 +99,19 @@ export interface LegendContext {
    * range; SceneView.legend() does. Without it the legend only says "lowest … highest" and the scale spans 0 – 1 000 m.
    */
   elevationRange?: readonly [number, number];
+  /**
+   * 0.7.0 (E1b): the Wind height the 'windSpeed' heat map follows (`windMapHeight(layers)`); absent is `'fire'`, the 10 m map. The scale and the
+   * legend must be given the same height; SceneView.legend() and the UI's legend request do. Unread until the E1b lane.
+   */
+  windHeight?: WindHeight;
+}
+
+/**
+ * The top of the Wind speed map's range (km/h) at a Wind height (0.7.0, E1b): 60 for the 10 m wind, What the fire feels and up to 100 m, 90 from
+ * 300 m (where the arrows' card also ends, 25 m/s). The colours are the same ramp over either range.
+ */
+export function windSpeedRangeKmh(h: WindHeight): 60 | 90 {
+  return typeof h === 'number' && h >= 300 ? 90 : 60;
 }
 
 const DEFAULT_ARRIVAL_MAX = 6 * 3600;

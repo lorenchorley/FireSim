@@ -141,3 +141,11 @@ export const DEFAULT_LAYERS: LayerState = {
   windSway: true,
   soloHeat: true,
 };
+
+/**
+ * The Wind height the Wind speed map follows (0.7.0, E1b): the height chosen for the arrows and flow lines while that layer is on, else `'fire'`
+ * (the 10 m map, as before). One rule for the view, the legend and the Layers panel.
+ */
+export function windMapHeight(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>): WindHeight {
+  return l.windGlyphs ? l.windHeight : 'fire';
+}
