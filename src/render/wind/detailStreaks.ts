@@ -85,6 +85,7 @@ const T_TURB_BASE = 0.25;
 const T_NO_GROUND_TURB = 0.5;
 const T_LIFT_MS = 3;
 const T_LIFT_M = 3;
+const T_MIN_ABOVE_M = 0.5;
 const T_BASE_HEIGHT_M = 10;
 const T_HEIGHT_SCALE_M = 300;
 
@@ -97,7 +98,7 @@ export const DETAIL_MIN_LINE_SEGMENTS = MIN_LINE_SEG;
  * patch of `patchStepM` about their best plane (a plain slope is not rough), over `roughM`; the slope is read along the flow
  * `slopeReachM` either side of the seed; the lee is a fall along the flow, over `leeSlope`; `turb = turbBase + 0.5 (rough + lee) g` and
  * `lift = speed x slope x g / liftMs`, with `g = exp(-(height - baseHeightM) / heightScaleM)` above `baseHeightM`; a line is drawn up to
- * `liftM` higher at `lift` 1.
+ * `liftM` higher at `lift` 1, and sinks the same in the lee, but never nearer the ground than `minAboveM`.
  */
 export const DETAIL_TERRAIN = {
   patchStepM: T_STEP_M,
@@ -108,6 +109,7 @@ export const DETAIL_TERRAIN = {
   noGroundTurb: T_NO_GROUND_TURB,
   liftMs: T_LIFT_MS,
   liftM: T_LIFT_M,
+  minAboveM: T_MIN_ABOVE_M,
   baseHeightM: T_BASE_HEIGHT_M,
   heightScaleM: T_HEIGHT_SCALE_M,
 } as const;
@@ -954,8 +956,9 @@ class Builder implements DetailBuilder {
     else if (tail > TAIL_MAX_PX) tail = TAIL_MAX_PX;
     s[21] = tail;
     s[16] = lenPx;
-    // The drawn height: the ground, the lift off it that keeps a stroke on top (at least 1.5 m, at least 3 px) and what the wind's rise adds.
-    const yoff = Math.max(LIFT_MIN_M, LIFT_PX * mpp) + T_LIFT_M * s[20]!;
+    // The drawn height: the ground, the lift off it that keeps a stroke on top (at least 1.5 m, at least 3 px) and what the wind's rise adds (or takes).
+    let yoff = Math.max(LIFT_MIN_M, LIFT_PX * mpp) + T_LIFT_M * s[20]!;
+    if (yoff < T_MIN_ABOVE_M) yoff = T_MIN_ABOVE_M; // the lee sinks a line, but not into the ground
     let px = seedX;
     let py = seedY;
     let ox = seedX;

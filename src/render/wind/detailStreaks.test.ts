@@ -422,7 +422,7 @@ describe('draping, lift and lee from the 10 m ground', () => {
   /** Lines well inside the domain, so that the 10 m ground is read inside its edge. */
   const inside = (lines: Line[]): Line[] => lines.filter((l) => Math.abs(l.seed[0]) < 1500 && Math.abs(l.seed[1]) < 1500);
 
-  it('drapes every vertex on the ground plus the lift (max(1.5 m, 3 px)) plus 3 m x the line lift, times the exaggeration', () => {
+  it('drapes every vertex on the ground plus the lift (max(1.5 m, 3 px)) plus 3 m x the line lift (not under half a metre), times the exaggeration', () => {
     const ground = (x: number, y: number): number => 300 + 60 * Math.sin(x / 700) + 40 * Math.cos(y / 500);
     for (const vex of [1, 2]) {
       const cam = topDownCamera(133, 150, 0, 0, { near: 30 }, 300 * vex);
@@ -439,12 +439,27 @@ describe('draping, lift and lee from the 10 m ground', () => {
         if (Math.abs(l.lift) > 0.05) lifted++;
         for (let k = l.seg; k < l.seg + l.count; k++) {
           for (const [x, yw, zw] of [[out.a[3 * k]!, out.a[3 * k + 1]!, out.a[3 * k + 2]!], [out.b[3 * k]!, out.b[3 * k + 1]!, out.b[3 * k + 2]!]] as const) {
-            worst = Math.max(worst, Math.abs(yw - (hf.heightAt(x, -zw) + drape + DETAIL_TERRAIN.liftM * l.lift) * vex));
+            worst = Math.max(worst, Math.abs(yw - (hf.heightAt(x, -zw) + Math.max(DETAIL_TERRAIN.minAboveM, drape + DETAIL_TERRAIN.liftM * l.lift)) * vex));
           }
         }
       }
       expect(lifted).toBeGreaterThan(10);
       expect(worst).toBeLessThan(5e-3 * vex);
+    }
+  });
+
+  it('the lee sinks a line by up to 3 m, but never under half a metre above the ground (at the closest zoom the lift is only 1.5 m)', () => {
+    const ramp = (x: number): number => 300 + 0.2 * x;
+    const sc = makeDetailScenario({ cellPx: 3000, field: () => [-10, 0], ground: ramp, ground10: ten((x) => ramp(x)), camera: topDownCamera(133, 3000, 0, 0, { near: 5 }, 300) });
+    const { out, lines } = build(sc);
+    const hf = new HeightField(sc.ground.grid, sc.ground.elevation);
+    expect(lines.length).toBeGreaterThan(5);
+    for (const l of lines) {
+      expect(l.lift).toBeCloseTo(-0.667, 2);
+      for (let k = l.seg; k < l.seg + l.count; k++) {
+        const above = out.a[3 * k + 1]! - hf.heightAt(out.a[3 * k]!, -out.a[3 * k + 2]!);
+        expect(above).toBeCloseTo(DETAIL_TERRAIN.minAboveM, 2); // 1.5 - 3 x 0.667 = -0.5, held at 0.5
+      }
     }
   });
 
