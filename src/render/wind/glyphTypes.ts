@@ -159,8 +159,12 @@ export interface DetailRelief {
   enabled: boolean;
   /** T2: where the ground rises ahead of a step (rise per metre along the flow, smoothstep between `riseLo` and `riseHi`) the line slides along the contour by `beta`; `forwardM` is the forward difference. */
   ridge: { riseLo: number; riseHi: number; beta: number; forwardM: number; maxTurnDeg: number };
-  /** T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`. */
-  canopy: { topShare: number; coverFull: number; maxHeightM: number };
+  /**
+   * T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`, and the
+   * plane never rises over `eyeShare` of the eye's height over the ground (`DetailInput.planeCapM`): a camera hardly higher than the canopy would otherwise look
+   * along its strokes and see none of them in the lower half of the screen.
+   */
+  canopy: { topShare: number; coverFull: number; maxHeightM: number; eyeShare: number };
   /** T3: crowns as obstacles. */
   crowns: {
     /** Only when a `gateCrownM` crown would be at least `gatePx` across on the screen (a camera nearer than about 580 m at 412 x 868). */
@@ -228,7 +232,7 @@ export interface DetailRelief {
 export const DETAIL_RELIEF: DetailRelief = {
   enabled: true,
   ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 30 },
-  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60 },
+  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.6 },
   crowns: {
     gateCrownM: 5,
     gatePx: 8,
@@ -287,6 +291,8 @@ export interface DetailInput extends GlyphInput {
   relief?: DetailRelief;
   /** Additive (0.7.0): the canopy height and cover per fire cell, by reference (the strokes ride on the crowns' tops); absent or no `relief`: not read. */
   canopy?: FuelMap;
+  /** Additive (0.7.0): the highest the canopy plane may be over the ground, in metres (`DETAIL_RELIEF.canopy.eyeShare` of the eye's height); absent or 0: no cap. */
+  planeCapM?: number;
   /** Additive (0.7.0): the placed crowns, by reference (null when the canopy layer is off); absent or no `relief`: not read. */
   crowns?: readonly CrownSet[];
   /** Additive (0.7.0): the fire's plume as an eddy site; absent or no `relief`: not read. */

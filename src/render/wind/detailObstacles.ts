@@ -102,6 +102,8 @@ export const P_BY1 = 10;
 export const P_EX = 11;
 export const P_EY = 12;
 export const P_EZ = 13;
+/** The highest the canopy plane may be over the ground (m); 0 is no cap. */
+export const P_ZCAP = 14;
 
 const SALT_PROUD = 0x51a1;
 /**
@@ -126,7 +128,7 @@ export function crownDiscRadius(height: number, width: number, zs: number, centr
  * to the grid's edge), as a plain function for the layer, which needs it once a frame at the middle of the screen (to keep the lines as far apart on the
  * screen as they were when they ran along the ground: a stroke on the canopy is nearer the eye, so its lattice looks coarser). 0 for a grid that is no use.
  */
-export function canopyPlane(fuel: FuelMap, x: number, y: number, canopy: DetailRelief['canopy']): number {
+export function canopyPlane(fuel: FuelMap, x: number, y: number, canopy: DetailRelief['canopy'], cap = 0): number {
   const g: GridSpec = fuel.grid;
   const n = g.nx * g.ny;
   if (!(g.nx >= 2 && g.ny >= 2 && g.cellSize > 0 && fuel.canopyHeight.length >= n && fuel.canopyCover.length >= n)) return 0;
@@ -153,7 +155,8 @@ export function canopyPlane(fuel: FuelMap, x: number, y: number, canopy: DetailR
   let cw = cover / canopy.coverFull;
   if (!(cw > 0)) cw = 0;
   else if (cw > 1) cw = 1;
-  return canopy.topShare * hh * cw;
+  const zc = canopy.topShare * hh * cw;
+  return cap > 0 && zc > cap ? cap : zc;
 }
 
 export class Obstacles {
@@ -309,7 +312,10 @@ export class Obstacles {
     let cw = cover / k[K_COVER_FULL]!;
     if (!(cw > 0)) cw = 0;
     else if (cw > 1) cw = 1;
-    io[IO_ZC] = k[K_TOP]! * hh * cw;
+    let zc = k[K_TOP]! * hh * cw;
+    const cap = this.p[P_ZCAP]!;
+    if (cap > 0 && zc > cap) zc = cap;
+    io[IO_ZC] = zc;
   }
 
   // ───────────────────────── the crowns ─────────────────────────

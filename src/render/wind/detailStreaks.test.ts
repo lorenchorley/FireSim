@@ -1331,6 +1331,23 @@ describe('the relief: the strokes ride on the canopy', () => {
     for (let k = 0; k < without.out.segments; k++) expect(without.out.a[3 * k + 1]).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
   });
 
+  it('keeps the plane under the cap it is given (the eye\'s height): a camera hardly higher than the canopy does not look along its strokes', () => {
+    const sc = closest();
+    const capped = (cap: number | undefined): DetailOutput => {
+      const s = withRelief(sc, { canopyH: 24, cover: 1 });
+      if (cap !== undefined) s.input.planeCapM = cap;
+      return build(s).out;
+    };
+    for (const [cap, want] of [[12, 12], [0, 0.85 * 24], [undefined, 0.85 * 24], [30, 0.85 * 24]] as const) {
+      const out = capped(cap);
+      expect(out.segments).toBeGreaterThan(100);
+      for (let k = 0; k < out.segments; k++) expect(out.a[3 * k + 1], `cap ${cap}`).toBeCloseTo(want, 3);
+    }
+    // A cap under the base lift leaves the base lift (the stroke is never under it).
+    const tiny = capped(0.5);
+    for (let k = 0; k < tiny.segments; k++) expect(tiny.a[3 * k + 1]).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
+  });
+
   it('weighs the plane by the cover, and keeps the 1.5 m lift (the stroke is never under it) where the plane is lower', () => {
     const sc = closest();
     const half = build(withRelief(sc, { canopyH: 24, cover: 0.15 }));

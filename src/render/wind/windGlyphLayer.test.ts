@@ -1875,12 +1875,18 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     off.layer.setRelief(false);
     off.go(D, { settle: true });
     expect(off.detail.begins[0]!.lod.mppCentre, 'the kill switch').toBe(base.mppCentre);
-    // A camera below the plane does not make the pixels vanish: the ratio holds at a quarter.
+    // A plane that would be higher than the eye allows is held at `eyeShare` of the eye's height, and says so to the builder: the ratio is then 1 - eyeShare.
     const low = rig();
     low.layer.setCanopy(canopyOf(low.fresh().atm!.grid, 40));
     low.layer.setCrowns(crowns());
     low.go(30, { settle: true });
-    expect(low.detail.begins[0]!.lod.mppCentre).toBeCloseTo(((2 * 30 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h) * 0.25, 9);
+    const share = DETAIL_RELIEF.canopy.eyeShare;
+    expect(low.detail.begins[0]!.lod.mppCentre).toBeCloseTo(((2 * 30 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h) * (1 - share), 9);
+    expect(low.detail.begins[0]!.planeCapM).toBeCloseTo(share * Math.cos(THREE.MathUtils.degToRad(55)) * 30, 6);
+    // Where the plane is already under the cap the cap is still given (it is the eye's, not the plane's), and without trees nothing is.
+    expect(riding.detail.begins[0]!.planeCapM).toBeCloseTo(share * Math.cos(THREE.MathUtils.degToRad(55)) * D, 6);
+    expect(plain.detail.begins[0]!.planeCapM).toBeUndefined();
+    expect(none.detail.begins[0]!.planeCapM).toBeUndefined();
   });
 
   it('says `paused` for streaks that move while the view holds still, never over `still` or `off`, and animates as before', () => {

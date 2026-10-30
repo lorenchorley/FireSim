@@ -675,11 +675,18 @@ export class WindGlyphLayer {
     if ((typeof this.height === 'number' ? this.height : 10) > RELIEF_TREE_MAX_M) return 1;
     if (!placed(this.crownSrc.sets())) return 1;
     const pose = this.pose;
-    const eyeHeight = -2 * (pose[8]! * pose[5]! - pose[6]! * pose[7]!) * targetDistance; // the eye over the middle of the screen: the forward axis's height, by the distance
+    const eyeHeight = this.eyeHeightOverTarget(targetDistance);
     if (!(eyeHeight > 0)) return 1;
-    const plane = canopyPlane(this.canopy, pose[3]!, -pose[4]!, DETAIL_RELIEF.canopy);
+    const plane = canopyPlane(this.canopy, pose[3]!, -pose[4]!, DETAIL_RELIEF.canopy, DETAIL_RELIEF.canopy.eyeShare * eyeHeight);
     const ratio = 1 - plane / eyeHeight;
     return ratio < 0.25 ? 0.25 : ratio > 1 ? 1 : ratio;
+  }
+
+  /** The eye's height over the middle of the screen (m): the forward axis's height, negated, by the distance to the target; 0 for a view that does not look down. */
+  private eyeHeightOverTarget(targetDistance: number): number {
+    const pose = this.pose;
+    const h = -2 * (pose[8]! * pose[5]! - pose[6]! * pose[7]!) * targetDistance;
+    return h > 0 ? h : 0;
   }
 
   private setNoRoom(on: boolean): void {
@@ -792,7 +799,12 @@ export class WindGlyphLayer {
         const trees = this.crownSrc ? this.crownSrc.sets() : undefined;
         if (trees && placed(trees)) {
           detail.crowns = trees;
-          if (this.canopy) detail.canopy = this.canopy;
+          if (this.canopy) {
+            detail.canopy = this.canopy;
+            // (the plane stays under the eye: see `DetailRelief.canopy.eyeShare`)
+            const eyeHeight = this.eyeHeightOverTarget(this.distance);
+            if (eyeHeight > 0) detail.planeCapM = DETAIL_RELIEF.canopy.eyeShare * eyeHeight;
+          }
         }
         if (this.plumes.length > 0) detail.plumes = this.plumes;
       }

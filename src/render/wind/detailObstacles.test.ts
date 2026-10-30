@@ -38,6 +38,7 @@ import {
   P_VEX,
   P_WMIN,
   P_ZBASE,
+  P_ZCAP,
 } from './detailObstacles';
 import { ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { DETAIL_RELIEF, type CrownSet, type DetailRelief } from './glyphTypes';
@@ -439,6 +440,21 @@ describe('the canopy the strokes ride on', () => {
     }
     const bad = { grid, canopyHeight: new Float32Array(3), canopyCover: new Float32Array(3) } as unknown as FuelMap;
     expect(canopyPlane(bad, 0, 0, DETAIL_RELIEF.canopy)).toBe(0);
+  });
+
+  it('holds the plane under the cap the builder hands over (p[P_ZCAP], 0 is none), for the builder\'s reader and the layer\'s plain function alike', () => {
+    const f = fuel(() => 24, () => 1);
+    const ob = make(f);
+    expect(zc(ob, 0, 0)).toBeCloseTo(0.85 * 24, 5);
+    ob.p[P_ZCAP] = 12;
+    expect(zc(ob, 0, 0)).toBe(12);
+    ob.p[P_ZCAP] = 30;
+    expect(zc(ob, 0, 0)).toBeCloseTo(0.85 * 24, 5);
+    ob.p[P_ZCAP] = 0;
+    expect(zc(ob, 0, 0)).toBeCloseTo(0.85 * 24, 5);
+    expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy, 12)).toBe(12);
+    expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy, 30)).toBeCloseTo(0.85 * 24, 5);
+    expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy)).toBeCloseTo(0.85 * 24, 5);
   });
 
   it('climbs smoothly across the edge of a stand: bilinear, a ramp of one cell, no step', () => {
