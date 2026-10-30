@@ -659,12 +659,6 @@ button.map-credit:active {
   display: none;
 }
 
-.wd-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .wd-pips {
   display: inline-flex;
   flex: 0 0 auto;
@@ -693,6 +687,13 @@ button.map-credit:active {
   visibility: hidden;
 }
 
+@media (forced-colors: active) {
+  .wd-pip.is-on {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
+
 /* The sheet: the step as pips and a lead line, then short paragraphs. */
 .wd-head {
   display: flex;
@@ -705,9 +706,15 @@ button.map-credit:active {
   height: 12px;
 }
 
-.wd-lead {
+.wd-lead,
+.wd-line {
   margin: 0;
   color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.wd-lead {
   font-size: var(--fs-md);
   line-height: var(--lh-md);
 }
@@ -717,13 +724,6 @@ button.map-credit:active {
   flex-direction: column;
   gap: var(--sp-2);
   margin-top: var(--sp-3);
-}
-
-.wd-line {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
 }
 
 /* ───────────────────────── simulation failure strip ───────────────────────── */
@@ -2016,6 +2016,19 @@ button.map-credit:active {
 }
 
 @media (orientation: landscape) and (max-height: 540px) {
+  /* The Wind detail sheet's paragraphs run in two balanced columns under its lead line (its two columns of width come from .tp-2col). */
+  .tb-sheet.tp-wind-detail .tb-sheet-body {
+    display: block;
+  }
+  .tp-wind-detail .wd-lines {
+    display: block;
+    column-count: 2;
+    column-gap: var(--sp-4);
+  }
+  .tp-wind-detail .wd-line {
+    break-inside: avoid;
+    margin-bottom: var(--sp-2);
+  }
   .tool-panel {
     max-height: calc(100vh - var(--strip-h) - var(--safe-top) - var(--map-top, var(--topbar-h)) - var(--scrub-h) - var(--sp-2));
     max-height: calc(100dvh - var(--strip-h) - var(--safe-top) - var(--map-top, var(--topbar-h)) - var(--scrub-h) - var(--sp-2));

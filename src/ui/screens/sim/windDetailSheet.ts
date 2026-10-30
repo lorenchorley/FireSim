@@ -8,7 +8,7 @@
 import { h, text } from '../../dom';
 import type { SimContext } from './context';
 import { heightLabel } from './glyphWords';
-import { createPips } from './windDetailChip';
+import { createPips } from './windDetailPips';
 import { windDetailInput, windDetailState } from './windDetailState';
 import { windDetailWords } from './windDetailWords';
 

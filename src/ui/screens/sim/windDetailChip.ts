@@ -12,19 +12,12 @@
 import { h, listen } from '../../dom';
 import { icon } from '../../icons';
 import type { SimContext } from './context';
+import { createPips } from './windDetailPips';
 import { chipLabel, windDetailInput, windDetailState } from './windDetailState';
 
 /** How often the chip looks at the layer's statistics (ms): a zoom changes them and no store says so. */
 const POLL_MS = 250;
-/** The steps of wind detail, one pip each. */
-const STEPS = 4;
 export const WIND_DETAIL_LABEL = 'Wind detail';
-
-/** The four pips: a filled circle for each step reached and a ring for the rest. Decorative (the words carry the step); the chip and the sheet draw the same ones. */
-export function createPips(): { el: HTMLElement; set(level: number): void } {
-  const pips = Array.from({ length: STEPS }, () => h('span', { class: 'wd-pip' }));
-  return { el: h('span', { class: 'wd-pips', aria: { hidden: true } }, pips), set: (level) => pips.forEach((p, n) => p.classList.toggle('is-on', n < level)) };
-}
 
 export interface WindDetail {
   /** The chip (a button, hidden until there is a wind mark to describe): the top bar hangs the explanation sheet on it. */
