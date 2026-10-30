@@ -217,7 +217,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       setChildren(playBtn, icon(pk === 'pause' ? 'pause' : pk === 'again' ? 'replay' : 'play'));
     }
     // Weather: interpolated from the scenario series at the view time; rating from the snapshot when available.
-    const w = weatherAt(ctx.scenario.weather, abs);
+    const w = weatherAt(session.windWeather(), abs);
     const unit = ctx.settings.get().units;
     const temp = formatTemp(w.temperature);
     const rh = formatRH(w.relativeHumidity);
@@ -248,7 +248,7 @@ export function createTopBar(ctx: SimContext, opts: TopBarOptions): TopBar {
       setChipLabel();
     }
   };
-  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep', 'pace']);
+  const unsub = session.state.subscribe(render, ['viewTime', 'playing', 'speed', 'computing', 'headTime', 'snapshot', 'reviewing', 'seekTarget', 'timeStep', 'pace', 'edits']);
   const unsub2 = ctx.settings.subscribe(() => {
     wxKey = '';
     render();
