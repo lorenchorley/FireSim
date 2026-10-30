@@ -55,6 +55,8 @@ const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
   sliceP95Ms: 4.2,
   sliceMaxMs: 6,
   slicesLast: 2,
+  detail: 'off',
+  detailSegments: 0,
   ...over,
 });
 const NO_DASH = /[—–]/;

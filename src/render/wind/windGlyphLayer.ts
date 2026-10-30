@@ -194,6 +194,23 @@ export class WindGlyphLayer {
     this.height = h;
   }
 
+  // 0.6.0 C0 stubs: the D-render lane writes these four (the detailed streaks of the most detailed level).
+  /** Whether the Wind streaks switch wants the detailed picture at the most detailed level (the glyph switch may be off). */
+  setStreaksDetail(_on: boolean): void {}
+
+  /** Whether motion is allowed (false under reduced motion: the detailed streaks stand still). */
+  setMotion(_allowed: boolean): void {}
+
+  /** The detailed streaks are drawn in motion, so the frame loop must keep drawing. */
+  get animating(): boolean {
+    return false;
+  }
+
+  /** The detailed streaks are on screen (the old Wind streaks step aside while they are). */
+  get detailShown(): boolean {
+    return false;
+  }
+
   /** Strokes are baked in device pixels: a new pixel ratio changes the widths and nothing else. */
   setDpr(dpr: number): void {
     this.halo.widthPx = HALO_WIDTH_PX * dpr;
@@ -309,6 +326,8 @@ export class WindGlyphLayer {
       sliceP95Ms: log.p95(),
       sliceMaxMs: log.max(),
       slicesLast: log.slicesLast,
+      detail: 'off',
+      detailSegments: 0,
     };
   }
 

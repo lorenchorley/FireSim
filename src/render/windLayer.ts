@@ -74,6 +74,9 @@ export class WindLayer {
     return this.mode;
   }
 
+  /** 0.6.0 C0 stub (the D-render lane writes it): hide the particles and skip their animation while the detailed streaks are drawn instead. */
+  setSuppressed(_on: boolean): void {}
+
   private spawn(i: number, d: WindDomain, initial: boolean): void {
     const r = this.rng;
     let x: number;

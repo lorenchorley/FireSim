@@ -160,7 +160,7 @@ beforeAll(async () => {
   device = await fullState();
 });
 
-const glyphs: WindGlyphStats = { active: true, idle: null, level: 3, count: 412, segments: 2980, cellPx: 45, cellM: 133, rebuilds: 14, lastMs: 3.1, sliceP95Ms: 4.2, sliceMaxMs: 6, slicesLast: 2 };
+const glyphs: WindGlyphStats = { active: true, idle: null, level: 3, count: 412, segments: 2980, cellPx: 45, cellM: 133, rebuilds: 14, lastMs: 3.1, sliceP95Ms: 4.2, sliceMaxMs: 6, slicesLast: 2, detail: 'off', detailSegments: 0 };
 
 /** Everything present, a custom place. */
 function full(): DebugStatsInput {

@@ -5,6 +5,7 @@ import type { FuelMap, Ignition, Insight, SimSnapshot, SpotFire, Terrain } from 
 import type { LayerState } from './layers';
 import type { LegendSpec } from './legends';
 import type { SliceRecordingApi, SliceUpdate } from './slice/types';
+import type { DetailMotion } from './wind/glyphTypes';
 
 export interface SceneImagery {
   /** Image covering the scenario domain exactly; row 0 = north. */
@@ -104,6 +105,9 @@ export interface WindGlyphStats {
   sliceP95Ms: number;
   sliceMaxMs: number;
   slicesLast: number;
+  /** The detailed streaks of the most detailed level (0.6.0): not drawn, drawn and moving, or drawn standing still (reduced motion), and how many segments they hold. */
+  detail: DetailMotion;
+  detailSegments: number;
 }
 
 /**

@@ -83,3 +83,46 @@ export interface GlyphBuilder {
   readonly out: GlyphOutput;
   cancel(): void;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The detailed streaks (0.6.0): what the most detailed level draws instead of the long flow lines.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The level that draws the detailed streaks (the last of `GlyphLevel`). */
+export const DETAIL_LEVEL = 4 as const;
+/** `WindGlyphStats.detail`: no detailed streaks drawn, drawn and moving, or drawn standing still (reduced motion). */
+export type DetailMotion = 'off' | 'moving' | 'still';
+/** First guesses for the look of the detailed streaks, in screen pixels (and px per m/s), tuned on a phone. */
+export const DETAIL_GEOMETRY = { spacingPx: 40, jitter: 0.35, minPx: 90, maxPx: 220, pxPerMs: 16, stepPx: 9, minSegments: 8, maxSegments: 24 } as const;
+/** How long the detailed streaks take to fade in on entering the level, and out on leaving it (ms of capped frame time). */
+export const DETAIL_FADE_IN_MS = 400;
+export const DETAIL_FADE_OUT_MS = 250;
+
+/** A `GlyphInput` plus the 10 m ground as received (the lift and lee come from it) and the seed of the line lifetimes (0 in the app). */
+export interface DetailInput extends GlyphInput {
+  ground10: GroundRaster;
+  seed: number;
+}
+/**
+ * Per segment, flat typed arrays: `a`, `b` the world ends (3 each), `c` colour rgb in display-linear light and alpha 1 (4), `d` the arc
+ * lengths `s0`, `s1`, the line length `L` (all px) and the `seed` of the line (4), `e` the line's `speed` (m/s), `turb`, `lift` and `tail` (px) (4).
+ */
+export interface DetailOutput {
+  a: Float32Array;
+  b: Float32Array;
+  c: Float32Array;
+  d: Float32Array;
+  e: Float32Array;
+  lines: number;
+  segments: number;
+  dropped: number;
+  calm: number;
+  steep: number;
+}
+export interface DetailBuilder {
+  begin(input: DetailInput): void;
+  step(budgetMs: number): boolean;
+  readonly busy: boolean;
+  readonly out: DetailOutput;
+  cancel(): void;
+}
