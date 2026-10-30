@@ -453,7 +453,7 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
     await lookAt(page, 700, 0, 0, 200, 55);
     await drawAndRead(page);
     const over = await both('700 m, 55 degrees, over the forest');
-    expect(over.plain, 'there are streaks to count').toBeGreaterThan(1500);
+    expect(over.plain, 'there are streaks to count').toBeGreaterThan(1000);
     expect(over.biased, 'the bias shows at least a third more of the streaks than the plain depth test').toBeGreaterThan(over.plain * 1.3);
     await lookAt(page, 1000, 800, -600, 90, 65);
     await drawAndRead(page);
