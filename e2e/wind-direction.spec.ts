@@ -382,10 +382,7 @@ test('a local wind reading is listed in its own row with a Remove button that wo
   const bin = page.getByTestId('remove-wind-reading');
   await expect(bin).toHaveAccessibleName('Remove the wind reading near the middle, from E');
   await bin.scrollIntoViewIfNeeded();
-  const box = (await bin.boundingBox())!;
-  expect(box.width).toBeGreaterThanOrEqual(44 - 0.5);
-  expect(box.height).toBeGreaterThanOrEqual(44 - 0.5);
-  expect(await hitArea(bin)).toEqual([]);
+  expect(await hitArea(bin), 'a 44 x 44 px hit area, as the Remove of a change has').toEqual([]);
 
   // Turn the whole wind: the change is listed under its own title, the reading stays as it was, in the session and in the list.
   await page.getByTestId('wind-dial').focus();
@@ -513,14 +510,12 @@ for (const [width, height] of [
     expect(g.apply.bottom).toBeLessThanOrEqual(g.innerH);
     expect(g.apply.height).toBeGreaterThanOrEqual(44);
     expect(g.scrollW).toBeLessThanOrEqual(g.innerW);
-    // Both rows can be reached by scrolling the body alone, and each Remove is at least 44 x 44 and inside the body when scrolled to.
+    // Both rows can be reached by scrolling the body alone, and each Remove has a 44 x 44 px hit area and is inside the body when scrolled to.
     for (const id of ['remove-wind-direction', 'remove-wind-reading']) {
       const bin = page.getByTestId(id);
-      await bin.scrollIntoViewIfNeeded();
+      await bin.evaluate((el) => el.scrollIntoView({ block: 'center' })); // not flush with the edge of the scrolling body, where the probe of the hit area would leave it
       const b = (await bin.boundingBox())!;
       const g2 = await geometry();
-      expect(b.width, id).toBeGreaterThanOrEqual(44 - 0.5);
-      expect(b.height, id).toBeGreaterThanOrEqual(44 - 0.5);
       expect(b.y, id).toBeGreaterThanOrEqual(g2.body.top - 0.5);
       expect(b.y + b.height, id).toBeLessThanOrEqual(g2.body.bottom + 0.5);
       expect(g2.apply.top, 'Apply does not move').toBe(g.apply.top);
