@@ -158,6 +158,76 @@ describe('the demo engine and a Wind direction change', () => {
     r.sim.dispose();
   }, 120000);
 
+  it('a change made for later replaces the forecast swing from the moment it was made (madeAt), so its Danger card is not raised; without madeAt it is until the change starts (0.7.0)', async () => {
+    const site = await mockBuildScenario(
+      {
+        centre: { lat: -33.715, lon: 150.285 },
+        extent: 3000,
+        demoSiteId: 'katoomba',
+        weather: { kind: 'preset', presetId: 'hot-nw-sw-change', start: Date.UTC(2026, 0, 10, 0) },
+        duration: 6 * 3600,
+        options: { fireCellSize: 60, snapshotInterval: 60 },
+        online: false,
+      },
+      () => undefined,
+    );
+    const start = { ...site, ignitions: [pointIgnition('a', -300, -200, 0, 60)] };
+    const titles = (r: Rig): string[] => [...r.snaps.values()].flatMap((s) => s.insights.map((i) => i.title));
+    // The change starts at 3 h 45 min, after the card is due (30 minutes before the swing at 4 h, so at 3 h 30 min) and before the swing.
+    const later = turn('later', 90, 13500);
+    const unmade = await rig({ ...start, edits: [later] });
+    await unmade.runTo(4 * 3600);
+    expect(titles(unmade)).toContain('Wind change in 30 minutes');
+    const made = await rig({ ...start, edits: [{ ...later, madeAt: 600 }] });
+    await made.runTo(4 * 3600);
+    expect(titles(made)).not.toContain('Wind change in 30 minutes');
+    unmade.sim.dispose();
+    made.sim.dispose();
+  }, 180000);
+
+  it('a change of the user\'s raises its own wind-change card (Watch, its own key, in the user\'s words), once, from when it was made or 30 minutes before it starts', async () => {
+    const own = (r: Rig): SimSnapshot['insights'] => [...r.snaps.values()].flatMap((s) => s.insights).filter((i) => i.key?.startsWith('wind-change:user:'));
+    // Made at 0 for 1800: due at once.
+    const r = await rig(scenario([{ ...SOUTH, time: 1800, madeAt: 0 }]));
+    await r.runTo(2400);
+    const cards = own(r);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ kind: 'wind-change', severity: 'watch', key: 'wind-change:user:w1', title: 'Your wind change: this flank becomes the head', time: 0 });
+    expect(cards[0]!.body).toMatch(/^You set the wind to swing from W to S, starting at about .+ \(in 30 min\)\. It takes 15 minutes to turn, and the wind will then be about 36 km\/h\./);
+    expect(cards[0]!.factors.map((f) => f.label)).toEqual(['New wind', 'Change time']);
+    r.sim.dispose();
+
+    // Set later, at the head (1200) for 3300: due 30 minutes before it starts, which is 1500.
+    const l = await rig(scenario());
+    await l.runTo(1200);
+    l.sim.edit({ ...turn('w2', 180, 3300), madeAt: 1200 }, 3300);
+    await l.runTo(3000);
+    const later = own(l);
+    expect(later).toHaveLength(1);
+    expect(later[0]).toMatchObject({ key: 'wind-change:user:w2', time: 1500 });
+    // Made at the head for "now" (it starts at the head): raised when it was made, with no countdown.
+    const n = await rig(scenario());
+    await n.runTo(600);
+    n.sim.edit({ ...turn('w3', 180, 600), madeAt: 600 }, 600);
+    await n.runTo(1200);
+    expect(own(n)).toHaveLength(1);
+    expect(own(n)[0]).toMatchObject({ time: 600 });
+    expect(own(n)[0]!.body).toMatch(/starting at about [^()]+\. It takes/);
+    l.sim.dispose();
+    n.sim.dispose();
+  }, 120000);
+
+  it('a turn of 30 degrees, or a wind of 12 km/h after it, raises no card of its own', async () => {
+    const small = await rig(scenario([{ ...turn('h', 240, 1800), madeAt: 0 }]));
+    await small.runTo(1800);
+    expect([...small.snaps.values()].flatMap((s) => s.insights).filter((i) => i.key?.startsWith('wind-change:user:'))).toEqual([]);
+    const slow = await rig({ ...syntheticScenario({ windFromDeg: 270, windKmh: 12, slopeDeg: 0, extent: 3000, duration: 3600, ignitions: [pointIgnition('a', -600, 0, 0, 60)], options: { snapshotInterval: 60 } }), edits: [{ ...turn('s', 180, 1800), madeAt: 0 }] });
+    await slow.runTo(1800);
+    expect([...slow.snaps.values()].flatMap((s) => s.insights).filter((i) => i.key?.startsWith('wind-change:user:'))).toEqual([]);
+    small.sim.dispose();
+    slow.sim.dispose();
+  }, 120000);
+
   it('explain reads the changed wind too', async () => {
     const r = await rig(scenario([SOUTH]));
     await r.runTo(1800);

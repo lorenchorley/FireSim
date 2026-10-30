@@ -29,8 +29,8 @@ import {
 } from '../core/types';
 import { cellAt } from '../core/grid';
 import { Rng } from '../core/rng';
-import { compassName, msToKmh, wrapDeg, windToUV } from '../core/units';
-import { applyWindDirection, forecastSwingsKept, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
+import { angleDiffDeg, compassName, msToKmh, wrapDeg, windToUV } from '../core/units';
+import { WIND_TURN_S, applyWindDirection, forecastSwingsKept, userWindChanges, windDirectionEdits, windDirectionTime } from '../scenario/windDirection';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
 import { Emitter } from './store';
 import { weatherAt } from './weatherSeries';
@@ -601,6 +601,46 @@ export class MockSimController implements SimController {
     );
   }
 
+  /**
+   * The cards of the user's own Wind direction changes (as the engine raises them, but with no Dead man zone: the demo has none for a forecast swing
+   * either): one per change that turns the wind 45 degrees or more to 15 km/h or more, Watch, from when it was made, or 30 minutes before it starts
+   * when that is later, once (a rewind that goes back past it raises it again).
+   */
+  private ownWindChangeCards(prevT: number, t: number, known: readonly WindDirectionEdit[], at: readonly [number, number]): Insight[] {
+    const sc = this.scenario!;
+    const out: Insight[] = [];
+    for (const c of userWindChanges(sc.weather, sc.startTime, known, (ms) => weatherAt(sc.weather, ms).windSpeed10)) {
+      const shift = Math.abs(angleDiffDeg(c.toDir, c.fromDir));
+      if (shift < 45 || c.postSpeed * 3.6 < 15) continue;
+      const e = known.find((x) => x.id === c.id)!;
+      const start = (c.time - sc.startTime) / 1000;
+      const raised = Math.max(e.madeAt ?? e.time, start - 1800);
+      if (raised < prevT || raised > t || !this.cool(`own-${c.id}`, t, 1e9)) continue;
+      const inS = start - raised;
+      const clock = formatClock(c.time, sc.weather.timezone);
+      const kmh = Math.round(msToKmh(c.postSpeed));
+      const card = this.insight(
+        'wind-change',
+        'watch',
+        raised,
+        at[0],
+        at[1],
+        'Your wind change: this flank becomes the head',
+        `You set the wind to swing from ${compassName(c.fromDir)} to ${compassName(c.toDir)}, starting at about ${clock}${inS >= 60 ? ` (in ${formatDuration(inS)})` : ''}. ` +
+          `It takes ${WIND_TURN_S / 60} minutes to turn, and the wind will then be about ${kmh} km/h. When it has turned, the long side of the fire facing the new wind becomes the front and runs at full speed almost at once.`,
+        'Know the change time; move off the flank that will become the head, or into the black, before it. Education only. LACES first. Follow your Crew Leader.',
+        [
+          { label: 'New wind', value: `${compassName(c.toDir)} ${kmh} km/h`, effect: `${Math.round(shift)}° turn` },
+          { label: 'Change time', value: `about ${clock}` },
+        ],
+        'Cheney 2001; Linton coroner 2002',
+      );
+      card.key = `wind-change:user:${c.id}`;
+      out.push(card);
+    }
+    return out;
+  }
+
   private cool(kind: string, t: number, cooldown = 3600): boolean {
     const last = this.lastInsight.get(kind);
     if (last !== undefined && t - last < cooldown) return false;
@@ -619,10 +659,10 @@ export class MockSimController implements SimController {
     const hx = headK >= 0 ? g.x0 + (headK % g.nx) * g.cellSize : 0;
     const hy = headK >= 0 ? g.y0 + Math.floor(headK / g.nx) * g.cellSize : 0;
 
-    // Wind change approaching: Danger 30 min before, when there is fire on the ground. A Wind direction change that has started
-    // replaces the forecast's later swings (as the engine does): they do not come.
-    const started = windDirectionEdits(this.edits).filter((e) => e.time <= t);
-    for (const c of forecastSwingsKept(this.windChanges, sc.startTime, started)) {
+    // Wind change approaching: Danger 30 min before, when there is fire on the ground. A Wind direction change that has been made
+    // (from `madeAt`, so one set for later counts at once) replaces the forecast's later swings, as the engine does: they do not come.
+    const known = windDirectionEdits(this.edits).filter((e) => (e.madeAt ?? e.time) <= t);
+    for (const c of forecastSwingsKept(this.windChanges, sc.startTime, known)) {
       const ct = (c.time - sc.startTime) / 1000;
       if (hasFire && ct - 1800 > prevT && ct - 1800 <= t && this.cool(`wc-${c.time}`, t, 1e9)) {
         // The flank that becomes the head: cells burning on the side facing the new wind-to direction.
@@ -645,6 +685,7 @@ export class MockSimController implements SimController {
         );
       }
     }
+    out.push(...this.ownWindChangeCards(prevT, t, known, hasFire ? [hx, hy] : [0, 0]));
     if (!hasFire || headK < 0) return out;
     const terrain = sc.terrain;
     const fuel = this.fuel!;

@@ -229,18 +229,19 @@ describe('Wind direction in the engine (fast tier)', () => {
     expect(Math.abs(angleDiffDeg(r.snaps.get(1800)!.stats.headDir, 270))).toBeLessThan(30); // wind from the east pushes the head west
   }, 240000);
 
-  it('a forecast swing that the change replaces raises no wind-change card and no dead-man-zone; with no change it does', () => {
+  it('a forecast swing that the change replaces raises no card of the forecast\'s (its own keys); with no change it does', () => {
     // The forecast swings from 270 to 200 degrees (40 km/h) at its 4 h stamp: the card comes 3 h ahead, from 3600 s on.
     const swung = (edits: WindDirectionEdit[]): ReturnType<typeof syntheticScenario> => {
       const sc = scenario({ duration: 7200 }, edits);
       return { ...sc, weather: { ...sc.weather, hours: sc.weather.hours.map((h) => (h.time >= sc.startTime + 3.2 * 3.6e6 ? { ...h, windDir10: 200, windSpeed10: 40 / 3.6 } : h)) } };
     };
-    const kindsAfter = (r: Run, after: number): string[] => [...r.snaps.values()].filter((sn) => sn.time > after).flatMap((sn) => sn.insights.map((i) => i.kind));
+    // (0.7.0: the change of the user's has cards of its own, `wind-change:user:<id>`; only the forecast's keys, `:domain`, are the swing's.)
+    const keysAfter = (r: Run, after: number): string[] => [...r.snaps.values()].filter((sn) => sn.time > after).flatMap((sn) => sn.insights.map((i) => i.key ?? ''));
     const none = run(swung([]), 3900);
-    expect(kindsAfter(none, 3000)).toContain('wind-change');
+    expect(keysAfter(none, 3000)).toContain('wind-change:domain');
     const replaced = run(swung([SOUTH]), 3900); // the change starts at 600 s, long before the card would come
-    expect(kindsAfter(replaced, 600)).not.toContain('wind-change');
-    expect(kindsAfter(replaced, 600)).not.toContain('dead-man-zone');
+    expect(keysAfter(replaced, 600).filter((k) => k.endsWith(':domain') && (k.startsWith('wind-change') || k.startsWith('dead-man-zone')))).toEqual([]);
+    expect(keysAfter(replaced, 600)).toContain('wind-change:user:w1');
   }, 240000);
 
   it('a local wind reading (Setup\'s belt kit) keeps its own direction through a turn of the whole wind, and removing it frees its place from then on', () => {
@@ -346,5 +347,137 @@ describe('Wind direction in the engine (3-D air)', () => {
     a.sim.advance(1200);
     for (const [t, s] of a.snaps) expect(snapshotHash(s), `t=${t}`).toBe(hashes.get(t));
     expect(a.snaps.size).toBeGreaterThan(0);
+  }, 600000);
+});
+
+/**
+ * The cards of a change of the user's, and the Danger-gate gap (0.7.0, contract D-CONTRACT-070-wind-small, items 1.2 and 1.3). `madeAt` is
+ * the view time at which the user pressed Apply: from then on the engine counts the change (the forecast's swings after its start stop
+ * raising cards, its own cards come), though the record only applies at its start. The physics never sees `madeAt`.
+ */
+describe('Wind direction cards (0.7.0)', () => {
+  const made = (id: string, dir: number, time: number, madeAt?: number): WindDirectionEdit => ({ kind: 'windDirection', id, dir, time, ...(madeAt === undefined ? {} : { madeAt }) });
+  /** The forecast swings from 270 to 200 degrees at 40 km/h from its 4 h stamp (the card comes 3 h ahead, from 3600 s on). */
+  const swung = (edits: WindDirectionEdit[], o: Parameters<typeof syntheticScenario>[0] = {}): ReturnType<typeof syntheticScenario> => {
+    const sc = scenario({ duration: 7200, ...o }, edits);
+    return { ...sc, weather: { ...sc.weather, hours: sc.weather.hours.map((h) => (h.time >= sc.startTime + 3.2 * 3.6e6 ? { ...h, windDir10: 200, windSpeed10: 40 / 3.6 } : h)) } };
+  };
+  const cards = (r: Run, from = 0, to = Infinity): { key: string; severity: string; body: string; time: number }[] =>
+    [...r.snaps.values()]
+      .filter((sn) => sn.time > from && sn.time <= to)
+      .flatMap((sn) => sn.insights.filter((i) => i.kind === 'wind-change' || i.kind === 'dead-man-zone').map((i) => ({ key: i.key ?? '', severity: i.severity, body: i.body, time: i.time })));
+  const dmzAt = (r: Run, t: number): Float32Array | undefined => r.snaps.get(t)?.layers?.dmz;
+  /** What the engine said, snapshot by snapshot (id, severity and words of every card): the same list means the same cards at every cycle. */
+  const said = (r: Run, times: number[]): string[][] => times.map((t) => (r.snaps.get(t)?.insights ?? []).map((i) => `${i.id}|${i.severity}|${i.body}`));
+
+  it('the gap is closed: a swing that a change made earlier replaces raises no card from the moment of making it, and the physics does not see madeAt', () => {
+    // A hold from 240 degrees (30 degrees, so the change has no card of its own) at 6000 s; the forecast's swing is at 14400 s.
+    const ctrl = run(swung([made('h', 240, 6000)]), 3900); // not made until its start: the swing's card comes 3 h ahead, from 3600 s on
+    expect(cards(ctrl, 3000).map((c) => c.key)).toContain('wind-change:domain');
+    const gap = run(swung([made('h', 240, 6000, 0)]), 3900);
+    expect(cards(gap)).toEqual([]);
+    for (const t of every(60, 3900)) expect(dmzAt(gap, t), `dmz t=${t}`).toBeUndefined();
+    gap.sim.advance(5400);
+    expect(cards(gap)).toEqual([]);
+    // madeAt is no part of the physics: every snapshot, but the cards and the layers, is bitwise the run that does not have it.
+    expectSame(gap, ctrl, every(60, 3900), 'madeAt', WINDOWED);
+    expect(gap.snaps.get(3900)!.stats.weather.windDir10).toBeCloseTo(270, 6); // the hold is still ahead
+  }, 600000);
+
+  it('a change made now gets its own card at the next cycle: Watch, its own key, in the user\'s words; a zone while its start is ahead, none once it has started', () => {
+    const r = run(scenario({ duration: 7200 }, [made('w1', 180, 3600, 0)]), 3720);
+    const first = cards(r).find((c) => c.key === 'wind-change:user:w1')!;
+    expect(first).toBeDefined();
+    expect(first.severity).toBe('watch');
+    expect(first.body.startsWith('You set the wind to swing from the west to the south, starting at about ')).toBe(true);
+    expect(first.time).toBeLessThanOrEqual(120);
+    const zone = cards(r).filter((c) => c.key === 'dead-man-zone:user:w1');
+    expect(zone.length).toBeGreaterThan(0);
+    expect(zone[0]!.severity).toBe('watch');
+    expect(zone[0]!.body).toContain('The change you set, to the south,');
+    // The layer is there while the start is ahead (at most an hour: from the first cycle for a start at 3600 s) and gone at the start.
+    for (const t of every(120, 3480, 360)) {
+      const layer = dmzAt(r, t);
+      expect(layer, `dmz t=${t}`).toBeInstanceOf(Float32Array);
+      expect(Math.max(...layer!), `dmz t=${t}`).toBeGreaterThan(0);
+    }
+    for (const t of [3600, 3660, 3720]) expect(dmzAt(r, t), `dmz t=${t}`).toBeUndefined();
+    expect(cards(r).filter((c) => c.severity === 'danger')).toEqual([]); // never Danger: it never pauses the run
+  }, 600000);
+
+  it('a turn of 30 degrees, or a wind of 12 km/h after it, raises neither card; "now" (the start within a minute) raises the card and no zone', () => {
+    const small = run(scenario({ duration: 7200 }, [made('w1', 240, 3600, 0)]), 420);
+    expect(cards(small)).toEqual([]);
+    expect(dmzAt(small, 420)).toBeUndefined();
+    const slow = run(scenario({ duration: 7200, windKmh: 12 }, [made('w1', 180, 3600, 0)]), 420);
+    expect(cards(slow)).toEqual([]);
+    const now = run(scenario({ duration: 7200 }, [made('w1', 180, 60, 60)]), 300);
+    expect(cards(now).map((c) => c.key)).toEqual(['wind-change:user:w1']);
+    for (const t of every(60, 300)) expect(dmzAt(now, t), `dmz t=${t}`).toBeUndefined();
+  }, 600000);
+
+  it('the changes the engine may count are those made before the step time; a change that starts inside an earlier one starts from the value it has reached', () => {
+    const sc = scenario({ duration: 7200, extent: 1500, ignitions: [] }, [made('a', 180, 1800, 0), made('b', 90, 2100, 1000), made('c', 0, 4000, 1500)]);
+    const r = start(sc);
+    r.sim.spinUp();
+    const none = r.sim.stateView();
+    expect(none.windUserChanges).toBeUndefined(); // before the first step nothing has been made yet
+    expect(none.windOverrideFromMs).toBeUndefined();
+    const ids = (t: number): string[] => {
+      r.sim.advance(t);
+      return (r.sim.stateView().windUserChanges ?? []).map((c) => c.id);
+    };
+    expect(ids(120)).toEqual(['a']);
+    const s0 = sc.startTime + 1800_000;
+    expect(r.sim.stateView().windOverrideFromMs).toBe(s0); // the forecast's later swings are left out from the start of `a`, which has not started
+    expect(ids(900)).toEqual(['a']);
+    expect(ids(1100)).toEqual(['a', 'b']);
+    expect(r.sim.stateView().windOverrideFromMs).toBe(s0);
+    const [a, b] = r.sim.stateView().windUserChanges!;
+    expect(a!.time).toBe(s0);
+    expect(a!.fromDir).toBeCloseTo(270, 6);
+    expect(a!.toDir).toBe(180);
+    expect(b!.time).toBe(s0 + 300_000);
+    expect(b!.fromDir).toBeCloseTo(246.67, 1); // 300 s into a's turn
+    expect(b!.toDir).toBe(90);
+    expect(a!.preSpeed).toBeCloseTo(10, 6); // the forecast's 36 km/h: a turn leaves it alone
+    expect(a!.postSpeed).toBeCloseTo(10, 6);
+    expect(ids(1400)).toEqual(['a', 'b']);
+    expect(ids(1600)).toEqual(['a', 'b', 'c']);
+    expect(r.sim.stateView().windUserChanges![2]!.fromDir).toBeCloseTo(90, 6); // b has finished by 4000 s
+  }, 600000);
+
+  it('explain is a function of the record list and the step time: an edit added during the run and one given from the start say the same at every cycle, and a replay says it again', () => {
+    // The change was made at 1200 (madeAt) for a start at 3000: the first run did not know it before 1200, so neither does a run that has it from the start.
+    const e = made('w1', 180, 3000, 1200);
+    const fresh = run(scenario({ duration: 7200 }, [e]), 2100);
+    const added = run(scenario({ duration: 7200 }), 1200);
+    added.sim.edit(e, 3000); // the record is for later than now: nothing is rewound
+    expect(added.rewound).toEqual([]);
+    added.sim.advance(2100);
+    const times = every(60, 2100);
+    expect(said(added, times)).toEqual(said(fresh, times));
+    expect(cards(fresh, 0, 1200)).toEqual([]);
+    expect(cards(fresh, 1200).map((c) => c.key)).toContain('wind-change:user:w1');
+    // A replay from the checkpoint at 0 reproduces the first run's cards, not only its hashes.
+    added.snaps.clear();
+    added.sim.rewind(0);
+    added.sim.advance(2100);
+    expect(said(added, times)).toEqual(said(fresh, times));
+    expectSame(added, fresh, times, 'replay', WINDOWED);
+  }, 600000);
+
+  it('removing a change that has not started drops it from the next cycle and keeps the cards it raised', () => {
+    const r = run(scenario({ duration: 7200 }, [made('w1', 180, 3600, 0)]), 600);
+    const raised = cards(r).filter((c) => c.key === 'wind-change:user:w1');
+    expect(raised.length).toBe(1);
+    expect(dmzAt(r, 600)).toBeInstanceOf(Float32Array);
+    r.rewound.length = 0;
+    r.sim.removeEdit('w1'); // not applied: no rewind, the record just goes
+    expect(r.rewound).toEqual([]);
+    r.sim.advance(900);
+    expect(cards(r, 600).filter((c) => c.key.includes('user'))).toEqual([]);
+    expect(cards(r).filter((c) => c.key === 'wind-change:user:w1')).toEqual(raised); // history stays
+    for (const t of every(660, 900)) expect(dmzAt(r, t), `dmz t=${t}`).toBeUndefined();
   }, 600000);
 });

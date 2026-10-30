@@ -9,14 +9,15 @@
  *  - The speed is untouched; the whole column (profile and pressure levels) turns by the same angle as the 10 m wind.
  *  - A change is a whole minute of simulation time, so the step grid (which follows the display step) cannot move it
  *    (plan section 4, rule 1: the results do not depend on the display).
- *  - Not built: a user change does not raise a "wind change coming" card or a Danger zone of its own, and there is no "Back
- *    to the forecast" change. The forecast's own swings that it replaces are not shown as coming (`forecastSwingsKept`).
- *    The old per-place Local wind tool is gone as a tool; `WindEdit` stays in the union for Setup's belt-kit readings.
+ *  - The forecast's own swings that a change replaces are not shown as coming (`forecastSwingsKept`). A change of the user's
+ *    has cards of its own (0.7.0: `userWindChanges` hands the engine the changes it may count) and "Back to the forecast"
+ *    takes every change away as if never made. The old per-place Local wind tool is gone as a tool; `WindEdit` stays in the
+ *    union for Setup's belt-kit readings.
  *
  * Light imports on purpose (core/types, core/units, atmosphere/weatherInterp): the Session, which sits in the entry chunk,
  * imports this module, and `scenario/weather.ts` is a separate lazy chunk.
  */
-import type { ScenarioEdit, WeatherHour, WeatherSeries, WindDirectionEdit } from '../core/types';
+import type { ScenarioEdit, SimWindChange, WeatherHour, WeatherSeries, WindDirectionEdit } from '../core/types';
 import { angleDiffDeg, smoothstep, wrapDeg } from '../core/units';
 import { interpolateHour } from '../atmosphere/weatherInterp';
 
@@ -133,25 +134,46 @@ function swingsAt(swings: readonly WindSwing[], tMs: number): number | null {
   return f <= 0 ? s.from : f >= 1 ? s.to : turnDirection(s.from, s.to, f);
 }
 
+/** The changes a plan uses, in (time, list index) order; those with a time or direction that is not a number are left out. */
+function planOrder(edits: readonly WindDirectionEdit[]): WindDirectionEdit[] {
+  return edits
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => Number.isFinite(e.time) && Number.isFinite(e.dir))
+    .sort((a, b) => a.e.time - b.e.time || a.i - b.i)
+    .map((x) => x.e);
+}
+
 /**
  * The swings the changes make, in (time, list index) order. A change starts from the direction the earlier swings have
  * reached at its time (it cuts a swing that is still turning), else from the forecast's 10 m direction at that time.
  * Changes with a time or direction that is not a number are left out.
  */
 export function planSwings(series: WeatherSeries, startMs: number, edits: readonly WindDirectionEdit[]): WindSwing[] {
-  const order = edits
-    .map((e, i) => ({ e, i }))
-    .filter(({ e }) => Number.isFinite(e.time) && Number.isFinite(e.dir))
-    .sort((a, b) => a.e.time - b.e.time || a.i - b.i)
-    .map((x) => x.e);
   const swings: WindSwing[] = [];
-  for (const e of order) {
+  for (const e of planOrder(edits)) {
     const t0 = startMs + e.time * 1000;
     const to = wrapDeg(e.dir);
     const from = swingsAt(swings, t0) ?? (series.hours.length ? wrapDeg(stampAt(series.hours, t0).windDir10) : to);
     swings.push({ t0, from, to });
   }
   return swings;
+}
+
+/**
+ * The changes as the explain engine counts them (0.7.0): one per swing of the plan, in the plan's order, with the direction in
+ * force at its start (`planSwings`), the direction it turns to, and the forecast's 10 m speed (`speedAt`, m/s at unix ms) at its
+ * start and when the turn is over (a turn leaves the speed alone). The simulation builds this; explain reads it from the view.
+ */
+export function userWindChanges(series: WeatherSeries, startMs: number, edits: readonly WindDirectionEdit[], speedAt: (tMs: number) => number): SimWindChange[] {
+  const order = planOrder(edits);
+  return planSwings(series, startMs, edits).map((s, i) => ({
+    id: order[i]!.id,
+    time: s.t0,
+    fromDir: s.from,
+    toDir: s.to,
+    preSpeed: speedAt(s.t0),
+    postSpeed: speedAt(s.t0 + WIND_TURN_S * 1000),
+  }));
 }
 
 /**

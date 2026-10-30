@@ -621,8 +621,8 @@ export interface WindDirectionEdit {
   time: number;
   /**
    * 0.7.0: the simulation time (s) at which the user made the change (the view time when Apply was pressed), at most `time`. The
-   * explain engine counts the change from then, so the forecast's later swings stop raising cards from `madeAt` on, not only from
-   * `time`. Absent means `time` (scenario edits, tests and the harness behave as in 0.6.0). It never reaches the weather, the
+   * explain engine counts the change from the first cycle after that, so the forecast's later swings stop raising cards from `madeAt`
+   * on, not only from `time`. Absent means `time` (scenario edits, tests and the harness behave as in 0.6.0). It never reaches the weather, the
    * atmosphere, the fire or a snapshot hash.
    */
   madeAt?: number;

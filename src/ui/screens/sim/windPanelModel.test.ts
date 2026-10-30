@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { WindDirectionEdit, WindEdit } from '../../../core/types';
 import { windDirectionTime } from '../../../scenario/windDirection';
 import {
+  BACK_TO_FORECAST_HINT,
+  BACK_TO_FORECAST_LABEL,
   DIAL_LABEL,
   READINGS_NOTE,
   READINGS_TITLE,
@@ -9,6 +11,7 @@ import {
   WIND_HINT,
   applyAnnouncement,
   applyLabel,
+  backToForecastAnnouncement,
   defaultClock,
   dialSize,
   dialStart,
@@ -346,6 +349,23 @@ describe('the announcements', () => {
     expect(removeAnnouncement({ time: 40 * MIN }, 50 * MIN, ENV)).toBe('Wind change removed. The simulation re-runs from 14:40 without it.');
     expect(removeAnnouncement({ time: 40 * MIN }, 40 * MIN, ENV)).toBe('Wind change removed.');
     expect(removeAnnouncement({ time: 40 * MIN }, 10 * MIN, ENV)).toBe('Wind change removed.');
+  });
+});
+
+describe('Back to the forecast (0.7.0)', () => {
+  it('has its words: the label, and a sentence that says it takes away every change as if never made and that the run is computed again from the first', () => {
+    expect(BACK_TO_FORECAST_LABEL).toBe('Back to the forecast');
+    expect(BACK_TO_FORECAST_HINT).toBe('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.');
+    for (const w of [BACK_TO_FORECAST_LABEL, BACK_TO_FORECAST_HINT]) expect(w).not.toMatch(/—|–/); // no dashes: the repo's voice
+  });
+  it('announces how many changes came away: two, one', () => {
+    expect(backToForecastAnnouncement(2, 40 * MIN, 30 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed.');
+    expect(backToForecastAnnouncement(1, 40 * MIN, 30 * MIN, ENV)).toBe('Back to the forecast. 1 wind change removed.');
+  });
+  it('says the simulation re-runs from the first start only when it had computed past it', () => {
+    expect(backToForecastAnnouncement(2, 40 * MIN, 50 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed. The simulation re-runs from 14:40 without them.');
+    expect(backToForecastAnnouncement(1, 40 * MIN, 50 * MIN, ENV)).toBe('Back to the forecast. 1 wind change removed. The simulation re-runs from 14:40 without it.');
+    expect(backToForecastAnnouncement(2, 40 * MIN, 40 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed.'); // the head is at the start: nothing is computed again
   });
 });
 

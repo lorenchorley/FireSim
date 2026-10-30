@@ -251,6 +251,8 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: 
   // The forecast's swings that a Wind direction change replaces are not marked: only the ones before the first change start.
   let editsSeen: unknown = null;
   let shownChanges: readonly (typeof changes)[number][] = changes;
+  /** The user's own Wind direction changes, by start time (s): each is marked too, always (the person knows it; it is no prediction). */
+  let ownChanges: readonly { id: string; time: number }[] = [];
   let hoursKey = '';
   const buildHours = (): void => {
     const w = Math.round(areaW);
@@ -377,14 +379,17 @@ export function createScrubber(ctx: SimContext): { el: HTMLElement; paceButton: 
     }
     if (s.edits !== editsSeen) {
       editsSeen = s.edits;
-      shownChanges = forecastSwingsKept(changes, startMs, windDirectionEdits(s.edits));
+      const own = windDirectionEdits(s.edits);
+      shownChanges = forecastSwingsKept(changes, startMs, own);
+      ownChanges = own.map((e) => ({ id: e.id, time: e.time }));
     }
-    const mk = `${insightGen}|${nShown}|${Math.round(areaW)}|${shownChanges.length}`;
+    const mk = `${insightGen}|${nShown}|${Math.round(areaW)}|${shownChanges.length}|${ownChanges.map((c) => `${c.id}@${c.time}`).join(',')}`;
     if (mk !== marksKey) {
       marksKey = mk;
       const revealed = s.insights.filter((i) => i.severity !== 'info' && i.time <= s.viewTime + 1);
       setChildren(marks, [
         ...shownChanges.map((c) => h('span', { class: 'tl-mark tl-mark-change', style: { left: pct((c.time - startMs) / 1000 / D) } })),
+        ...ownChanges.map((c) => h('span', { class: 'tl-mark tl-mark-change tl-mark-own', style: { left: pct(c.time / D) } })),
         ...cardMarks(revealed, D, areaW).map((m) => h('span', { class: `tl-mark tl-mark-${m.severity}`, style: { left: pct(m.frac) } })),
       ]);
     }

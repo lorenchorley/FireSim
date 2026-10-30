@@ -1623,6 +1623,11 @@ button.map-credit:active {
   margin: 0;
 }
 
+/* "Back to the forecast" under the list of changes: room under the last row; the sentence under it is a plain hint. */
+.wind-back {
+  margin-top: var(--sp-2);
+}
+
 .wind-time-field {
   margin: 0 0 var(--sp-2);
 }

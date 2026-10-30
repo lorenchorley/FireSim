@@ -244,6 +244,40 @@ describe('checkpoint / restore', () => {
     expect(runCycles(C2, wC, 12, 30)).toEqual(full.slice(12));
   });
 
+  it("the cards of a change of the user's (windUserChanges) are rewind-deterministic too: a restored engine says the same, and a card already shown is not raised twice", () => {
+    const mk = (): TestWorld => {
+      const w = new TestWorld({ windSpeed: 30 / 3.6, windDir: 315 });
+      w.igniteDisc(0, 0, 150);
+      const time = w.startMs + 30 * 60e3;
+      w.view.windOverrideFromMs = time;
+      w.view.windUserChanges = [{ id: 'w1', time, fromDir: 315, toDir: 225, preSpeed: 30 / 3.6, postSpeed: 30 / 3.6 }];
+      return w;
+    };
+    const runCycles = (eng: InsightEngine, w: TestWorld, from: number, to: number): Insight[][] => {
+      const out: Insight[][] = [];
+      for (let c = from; c < to; c++) {
+        w.setTime(60 + 60 * c);
+        out.push(eng.update(w.view));
+      }
+      return out;
+    };
+    const wA = mk();
+    const A = new InsightEngine(wA.terrain, wA.derived, wA.fuel, wA.features, { startTime: wA.startMs });
+    const full = runCycles(A, wA, 0, 12);
+    const keys = full.flat().map((i) => i.key);
+    expect(keys.filter((k) => k === 'wind-change:user:w1')).toHaveLength(1); // once, though the change is ahead for every cycle
+    expect(keys).toContain('dead-man-zone:user:w1');
+    const wB = mk();
+    const B = new InsightEngine(wB.terrain, wB.derived, wB.fuel, wB.features, { startTime: wB.startMs });
+    runCycles(B, wB, 0, 5);
+    const cp = structuredClone(B.checkpoint());
+    const wC = mk();
+    const C2 = new InsightEngine(wC.terrain, wC.derived, wC.fuel, wC.features, { startTime: wC.startMs });
+    C2.restore(cp);
+    expect(runCycles(C2, wC, 5, 12)).toEqual(full.slice(5));
+    expect(C2.layers().dmz).toEqual(A.layers().dmz);
+  });
+
   it('rejects an unknown checkpoint', () => {
     const w = world();
     const eng = engineWith(w, []);
