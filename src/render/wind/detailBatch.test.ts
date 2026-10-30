@@ -79,9 +79,10 @@ describe('the shader text', () => {
     expect(vs).toMatch(/float turbF = 0\.25 \+ 0\.75 \* aE\.y;/); // rough ground and the lee of ridges meander more, calm ground a quarter
   });
 
-  it('slides the stroke toward the eye by uDepthBias along its own ray, as the glyph strokes do: the depth changes, the place on the screen does not', () => {
+  it('slides the stroke toward the eye by uDepthBias along its own ray, as the glyph strokes do (but up to 0.8 of the way to the eye, not half): the depth changes, the place on the screen does not', () => {
     expect(vs).toMatch(/vec3 v = \(viewMatrix \* vec4\(p, 1\.0\)\)\.xyz;/);
-    expect(vs).toMatch(/v \* \(1\.0 - min\(uDepthBias, 0\.5 \* l\) \/ l\)/);
+    expect(vs).toMatch(/v \* \(1\.0 - min\(uDepthBias, 0\.8 \* l\) \/ l\)/);
+    expect(vs).toMatch(/return max\(b\.z \/ b\.w, -0\.999\);/); // so far a slide never puts a stroke in front of the near plane, where it would be clipped
     expect(vs).toMatch(/gl_Position = c;\s*\n\s*if \(uDepthBias > 0\.0\) gl_Position\.z = mix\(za, zb, position\.x\) \* c\.w;/);
     expect(vs).toMatch(/if \(uDepthBias > 0\.0\) \{\s*za = biasedDepth\(pa\);\s*zb = biasedDepth\(pb\);/);
     expect(material(b).uniforms.uDepthBias!.value).toBe(40);
