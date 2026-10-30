@@ -531,9 +531,9 @@ describe('weather and diurnal cards', () => {
       expect(both(own(225, 14.9))).not.toContain('dead-man-zone');
     });
 
-    it('is no Danger and leaves the forecast\'s card alone: a swing before the change keeps its own card and key, the one after it is left out', () => {
+    it('is Watch, never Danger, and leaves the forecast\'s card alone: a swing before the change keeps its own card and key, the one after it is left out', () => {
       const w = own(225, 30, 90);
-      swingAt(w, 45); // the forecast's swing comes before the user's change at 90 min (which has no swing to cut: it turns 315 to 225 as well)
+      swingAt(w, 45); // the forecast's swing (at its 1 h stamp) comes before the user's change at 90 min
       const { all } = run(w, 3);
       const wc = of(all, 'wind-change');
       expect(wc.map((i) => [i.key, i.severity]).sort()).toEqual([
