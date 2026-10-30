@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { hash3 } from '../fields';
 import { HeightField } from '../heightfield';
 import { luminance, rgbToLinear, sampleRamp, srgbToLinear, WIND_RAMP, type Rgb } from '../palette';
 import { buildSpeedTable, createGlyphBuilder, GLYPH_DOT_PX, GLYPH_HEAD_DEG, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE, GLYPH_NEAR_FACTOR, HALO_INK, SPEED_TABLE_BINS, type GlyphOutputDetail } from './flowGlyphs';
@@ -506,6 +507,32 @@ describe('deterministic seeds', () => {
       const q = l1.plan.spacingM;
       expect(((g.seed[0] / q - 0.5) % 1) + 1).toBeCloseTo(1, 4);
     }
+  });
+});
+
+describe('the cell hash (F7, 0.7.0: a comment and this check only; the results are as they were)', () => {
+  // The builder's own `hash` is a copy of `hash3` (the test above, "a seed is the lattice formula", pins the builder's seeds to `hash01`, which is `hash3`).
+  const SALT = 32; // the first jitter salt
+  it('has no twin among neighbours away from the origin: 16,384 cells of a window at (300, 300) have 16,384 different hashes', () => {
+    const seen = new Set<number>();
+    for (let i = 300; i < 428; i++) for (let j = 300; j < 428; j++) seen.add(hash3(i, j, SALT));
+    expect(seen.size).toBe(128 * 128);
+  });
+
+  it('collides at the origin only between a cell and its point reflection (-i, -j): the twin is on the other side of the picture, not a neighbour', () => {
+    const at = new Map<number, [number, number]>();
+    let twins = 0;
+    for (let i = -50; i <= 50; i++) {
+      for (let j = -50; j <= 50; j++) {
+        const h = hash3(i, j, SALT);
+        const other = at.get(h);
+        if (other) {
+          expect([other[0], other[1]], `cells (${i}, ${j}) and (${other[0]}, ${other[1]}) share a hash`).toEqual([-i, -j]);
+          twins++;
+        } else at.set(h, [i, j]);
+      }
+    }
+    expect(twins, 'the twins exist (about one cell in three has one): the comment on `hash` says so').toBeGreaterThan(1000);
   });
 });
 

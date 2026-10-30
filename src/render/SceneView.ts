@@ -1494,7 +1494,10 @@ export class SceneView implements SceneViewApi {
     this.updateShadows(now);
     this.u.uTime!.value = this.displayTime;
     // A slice that waited for its interval (the air changed, the line did not) is computed here and redraws the curtain.
-    if (this.layers.crossSection.enabled) this.pollSlice();
+    if (this.layers.crossSection.enabled) {
+      this.pollSlice();
+      this.section.setView(this.rig.camera, this.glyphCss.h); // where the curtain is seen edge on its arrows are thinned so that their heads do not stack (0.7.0)
+    }
 
     // The idle stop (render/idleStop.ts): a camera that moves, a hand on it or time that runs is activity; a minute of none holds every ambient
     // animation still (the shader clock that the streaks, the sway, the flames and the pulses all read, and the CPU particles) and the loop stops
