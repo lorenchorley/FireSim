@@ -34,7 +34,7 @@ export function mountWindDetailSheet(ctx: SimContext, panel: HTMLElement, opts: 
       opts.close();
       return;
     }
-    const w = windDetailWords(s, { heightLabel: heightLabel(input.height), height: input.height, cellM: input.stats?.cellM ?? null });
+    const w = windDetailWords(s, { heightLabel: heightLabel(input.height), height: input.height, cellM: input.stats?.cellM ?? null, feltCellM: input.stats?.dataCellM ?? null });
     const k = `${w.title}\n${s.level}\n${w.lines.join('\n')}`;
     if (k === shown) return;
     shown = k;

@@ -232,7 +232,7 @@ export interface OverlaySources {
   atmosphere?: AtmosphereView | null;
   /**
    * 0.7.0 (E1b): the Wind speed map at the Wind height chosen for the arrows (km/h, its own grid), made by the view; when given, 'windSpeed' returns it
-   * instead of the 10 m field above. Absent: the 0.6.0 field, bit for bit. Unread until the E1b lane.
+   * instead of the 10 m field above. Absent: the 0.6.0 field, bit for bit.
    */
   windMap?: OverlayField | null;
 }
@@ -380,6 +380,7 @@ export function overlayField(kind: OverlayKind, s: OverlaySources): OverlayField
       return map(s.fuel.grid, (k) => v[k]!);
     }
     case 'windSpeed': {
+      if (s.windMap) return s.windMap;
       const a = s.atmosphere;
       if (!a || a.surfaceU.length !== a.grid.nx * a.grid.ny) return null;
       return map(a.grid, (k) => Math.hypot(a.surfaceU[k]!, a.surfaceV[k]!) * 3.6);

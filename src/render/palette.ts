@@ -572,6 +572,8 @@ export const CANOPY_COVER_RAMP = amountRamp([0, 25, 50, 75, 100]);
 export const ELEVATED_HEIGHT_RAMP = amountRamp([0, 0.5, 1, 1.5, 2, 2.5, 3]);
 export const CURING_RAMP = amountRamp([0, 25, 50, 75, 100]);
 export const WIND_SPEED_RAMP = amountRamp([0, 10, 20, 30, 40, 50, 60]);
+/** The same colours over 0 to 90 km/h: the Wind speed map at 300 m and above (0.7.0, E1b; the arrows' card also ends at 25 m/s). */
+export const WIND_SPEED_RAMP_90 = amountRamp([0, 15, 30, 45, 60, 75, 90]);
 
 /** Landform classes (Terrain.landform codes) by position on the slope: high and exposed = warm, low and sheltered = cool. */
 export const LANDFORM_LABELS: Record<Landform, string> = {

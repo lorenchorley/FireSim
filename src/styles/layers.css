@@ -617,8 +617,9 @@ button.lp-heat-main:active {
   white-space: pre-line; /* one line of the caption for each sentence */
 }
 
-/* Six chips, three to a row where three fit (four and two would leave a short second row at 412 px, and the landscape side column is narrow too), two or one
-   where they do not (a large text size). A chip is as wide as its label needs (the fixed part is its padding and its check): its words never break inside. */
+/* Six numbered chips, three to a row where three fit (four and two would leave a short second row at 412 px, and the landscape side column is narrow too), two or one
+   where they do not (a large text size). A chip is as wide as its label needs (the fixed part is its padding and its check): its words never break inside.
+   What the fire feels (0.7.0) has the long label: its chip is the first row to itself, and its words may wrap at a large text size. */
 .wg-options .chips {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--fs-sm) * 3.2 + 52px), 1fr));
@@ -631,6 +632,18 @@ button.lp-heat-main:active {
 .wg-options .chip-radio .chip-text {
   white-space: nowrap;
   overflow-wrap: normal;
+}
+
+.wg-options .chip[data-value='felt'] {
+  grid-column: 1 / -1;
+}
+
+.wg-options > .chip {
+  align-self: flex-start; /* Colour the map by speed: the chip is a direct child (no wrapper node), and is as wide as its label */
+}
+
+.wg-options .chip[data-value='felt'] .chip-text {
+  white-space: normal;
 }
 
 /* The Air slices tool's Side view / Map view tabs sit in its header, between the title and Close. The 44 px tabs fit the header's 48 px row without its

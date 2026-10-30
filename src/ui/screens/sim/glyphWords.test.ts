@@ -68,9 +68,9 @@ const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
 const NO_DASH = /[—–]/;
 
 describe('the Wind height chips', () => {
-  it('are 10 m, 50 m, 100 m, 300 m, 1 km and 2 km, in that order, one for each height (the first is the model’s 10 m wind: the chip says what the caption says)', () => {
-    expect(WIND_HEIGHT_CHIPS.map((c) => c.label)).toEqual(['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
-    expect(WIND_HEIGHT_CHIPS.map((c) => c.value)).toEqual(['fire', '50', '100', '300', '1000', '2000']);
+  it('are What the fire feels, 10 m, 50 m, 100 m, 300 m, 1 km and 2 km, in that order, one for each height (the 10 m chip is the model’s 10 m wind: the chip says what the caption says)', () => {
+    expect(WIND_HEIGHT_CHIPS.map((c) => c.label)).toEqual(['What the fire feels', '10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
+    expect(WIND_HEIGHT_CHIPS.map((c) => c.value)).toEqual(['felt', 'fire', '50', '100', '300', '1000', '2000']);
     expect(WIND_HEIGHT_CHIPS).toHaveLength(WIND_HEIGHTS.length);
     expect(WIND_HEIGHTS.map(heightLabel)).toEqual(WIND_HEIGHT_CHIPS.map((c) => c.label));
   });
@@ -84,6 +84,8 @@ describe('the Wind height chips', () => {
 
   it('say the same height in the legend’s title: near the ground, or at a height', () => {
     expect(legendHeightWords('fire')).toBe('near the ground');
+    expect(legendHeightWords('felt')).toBe('the fire feels');
+    expect(`Wind ${legendHeightWords('felt')}`).toBe('Wind the fire feels');
     expect(legendHeightWords(100)).toBe('at 100 m');
     expect(legendHeightWords(1000)).toBe('at 1 km');
     expect(legendHeightWords(2000)).toBe('at 2 km');
@@ -108,14 +110,15 @@ describe('the caption', () => {
     const lines = glyphCaption('fire', air(), 20, TZ, abs);
     expect(lines).toEqual([captionHeadline('fire', air(), TZ, abs), GROUND_LINE]);
     expect(GROUND_LINE).toBe('On a calm night the fire can feel much less wind than this in places, and much more in others.');
-    for (const h of WIND_HEIGHTS) expect(glyphCaption(h, air(), null, TZ, abs).includes(GROUND_LINE), String(h)).toBe(h === 'fire');
+    // (What the fire feels with no picture of it is the 10 m wind, and its caption says that and gives the same sentence: glyphWords.felt.test.ts.)
+    for (const h of WIND_HEIGHTS) expect(glyphCaption(h, air(), null, TZ, abs).includes(GROUND_LINE), String(h)).toBe(h === 'fire' || h === 'felt');
   });
 
   it('"as the model fits it to the terrain" is how the fast tier makes its wind: only the diagnosed wind says it, at no height on the 3-D atmosphere', () => {
     for (const h of WIND_HEIGHTS) {
       const own = glyphCaption(h, air({ diagnosed: false }), 200, TZ, abs).join('\n');
       expect(own, `3-D atmosphere at ${String(h)}`).not.toMatch(/fits it|fitted|fit to the terrain/);
-      expect(glyphCaption(h, air({ diagnosed: true }), null, TZ, abs).join('\n').includes('as the model fits it to the terrain'), `fast tier at ${String(h)}`).toBe(h === 'fire');
+      expect(glyphCaption(h, air({ diagnosed: true }), null, TZ, abs).join('\n').includes('as the model fits it to the terrain'), `fast tier at ${String(h)}`).toBe(h === 'fire' || h === 'felt');
     }
   });
 

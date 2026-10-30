@@ -84,7 +84,7 @@ export function sanitizeLayerPrefs(raw: unknown): LayerPrefs {
     } else if (k === 'wind') {
       if (v === 'off' || v === 'surface' || v === 'volume') l[k] = v;
     } else if (k === 'windHeight') {
-      if (v === 'fire' || (typeof v === 'number' && (WIND_HEIGHTS as readonly unknown[]).includes(v))) l[k] = v;
+      if (v === 'felt' || v === 'fire' || (typeof v === 'number' && (WIND_HEIGHTS as readonly unknown[]).includes(v))) l[k] = v;
     } else if (k === 'canopyStyle') {
       if (v === 'natural' || v === 'simple' || v === 'coded') l[k] = v;
     } else if (k === 'canopyCode') {

@@ -136,8 +136,9 @@ for (const [level, kind] of PICTURES)
       }
 
 describe('plain words, every picture, every height, every limit', () => {
-  it('covers 7 pictures x 32 limit sets x 6 heights x 3 cell sizes', () => {
-    expect(all).toHaveLength(7 * 32 * 6 * 3);
+  it('covers 7 pictures x 32 limit sets x 7 heights (What the fire feels and six more) x 3 cell sizes', () => {
+    expect(WIND_HEIGHTS).toHaveLength(7);
+    expect(all).toHaveLength(7 * 32 * 7 * 3);
   });
 
   it('no em or en dash, no exclamation mark, no shouting, no "undefined" or "NaN"; every line is a sentence that ends in a full stop', () => {
@@ -202,12 +203,14 @@ describe('plain words, every picture, every height, every limit', () => {
 
   it('the height is said as the chip says it: the 10 m wind over open ground, or a number above the ground', () => {
     for (const { s, height, lines } of all) {
-      const where = lines.find((l) => /^Wind (about|at about) /.test(l));
+      const where = lines.find((l) => /^(Wind (about|at about) |The wind the fire feels)/.test(l));
       if (!(s.kind === 'arrows' || s.kind === 'curves' || s.kind === 'detailed')) {
         expect(where, `${s.kind}`).toBeUndefined();
         continue;
       }
-      expect(where, `${s.kind} ${String(height)}`).toBe(height === 'fire' ? 'Wind about 10 m above open ground.' : `Wind at about ${heightLabel(height)} above the ground.`);
+      expect(where, `${s.kind} ${String(height)}`).toBe(
+        height === 'fire' ? 'Wind about 10 m above open ground.' : height === 'felt' ? 'The wind the fire feels, in cells about 60 m wide.' : `Wind at about ${heightLabel(height)} above the ground.`,
+      );
     }
   });
 });

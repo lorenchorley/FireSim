@@ -424,7 +424,7 @@ describe('arrows and flow lines (windGlyphs, 0.5.0)', () => {
     expect(LAYER_SETTING_KEYS).toContain('windHeight');
     expect(SCENE_LAYER_KEYS as string[]).not.toContain('windHeight');
     expect(DEFAULT_LAYERS.windGlyphs).toBe(false); // opt in
-    expect(DEFAULT_LAYERS.windHeight).toBe('fire');
+    expect(DEFAULT_LAYERS.windHeight).toBe('felt'); // What the fire feels (0.7.0); a remembered 10 m choice is kept by the sanitizer
   });
 
   it('is available on any air with a 3-D wind, on both tiers, with or without a fire, and waits for the simulation otherwise', () => {
@@ -457,9 +457,9 @@ describe('arrows and flow lines (windGlyphs, 0.5.0)', () => {
     expect(g.source({ atmosphere3d: true })).toBe('FireSim 3-D atmosphere, computed on this device');
     expect(g.source()).toBe('FireSim 3-D atmosphere, computed on this device'); // not known yet: described for the 3-D air
     expect(g.source({ atmosphere3d: false })).toBe('FireSim wind model: the forecast wind fitted to the terrain, computed on this device (terrain effects only: the fast mode has no plume)');
-    expect(g.resolution({ atmosphere3d: true, atmosphereCellSize: 133 })).toBe('133 m wind cells; the curves are a smooth fit through them, not new detail');
-    expect(g.resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toBe('133 m wind cells; the curves are a smooth fit through them, not new detail');
-    expect(g.resolution()).toBe('100 to 270 m wind cells; the curves are a smooth fit through them, not new detail');
+    expect(g.resolution({ atmosphere3d: true, atmosphereCellSize: 133 })).toBe('133 m wind cells (60 m for What the fire feels); the curves are a smooth fit through them, not new detail');
+    expect(g.resolution({ atmosphere3d: false, atmosphereCellSize: 133 })).toBe('133 m wind cells (60 m for What the fire feels); the curves are a smooth fit through them, not new detail');
+    expect(g.resolution()).toBe('100 to 270 m wind cells (60 m for What the fire feels); the curves are a smooth fit through them, not new detail');
     for (const text of [g.title, g.what, g.why, g.source({ atmosphere3d: false }), g.source({ atmosphere3d: true }), g.resolution({ atmosphereCellSize: 133 }), g.resolution()]) expect(text).not.toMatch(/[—–]/);
     expect(g.what).toMatch(/^[A-Z].*\.$/);
     expect(g.why).toMatch(/^[A-Z].*\.$/);
