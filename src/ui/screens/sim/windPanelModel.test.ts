@@ -175,6 +175,12 @@ describe('the status lines and Apply', () => {
     expect(p.message).toBe('That time has passed. Choose a time after 14:41.');
     expect(p.canApply).toBe(false);
   });
+  it('puts a preset that starts after the last minute under the choices, with Apply off', () => {
+    const v = windView({ when: { choice: '60', clock: '' }, viewTime: 3 * 3600 + 30 * MIN, env: ENV, dir: 225, directionAt: dirAt });
+    expect(v.canApply).toBe(false);
+    expect(v.message).toBe('The scenario ends before that time.');
+    expect(v.lines).toEqual(['Before the change: from W (270°).']);
+  });
   it('puts "no time left" in the status, with Apply off', () => {
     const v = windView({ when: now, viewTime: D - 5, env: ENV, dir: 225, directionAt: dirAt });
     expect(v.canApply).toBe(false);
