@@ -951,14 +951,17 @@ export class SceneView implements SceneViewApi {
 
   /**
    * Compile the programs of the wind marks ahead of the first zoom to the most detailed level (0.7.0, E4): three compiles a program when it is first
-   * drawn, and the detailed streaks' vertex shader (three octaves of noise) is the longest, so a cold first zoom stopped for it. `compileAsync` starts
-   * it after a frame has been drawn, off the main thread where the browser has parallel shader compile, and a driver without it compiles here, at a
-   * quiet moment, and not at the zoom. Hidden meshes are compiled too (three's `compile` walks every object, not only the visible ones).
+   * drawn, and the detailed streaks' vertex shader (three octaves of noise) is the longest, so a cold first zoom stopped for it. With parallel shader
+   * compile `compileAsync` starts it after a frame has been drawn and the browser links it off the main thread; a driver without the extension compiles
+   * here, in one go, at a quiet moment, and not at the zoom. (Asked with `extensions.has`, which is silent: `compileAsync` asks with `get`, which warns
+   * in the console where the extension is missing.) Hidden meshes are compiled too: three's `compile` walks every object, not only the visible ones.
    */
   private precompileGlyphs(): void {
     this.glyphsCompile = 'done';
+    const camera = this.rig.camera;
     try {
-      void this.renderer.compileAsync(this.glyphs.group, this.rig.camera, this.scene).catch(() => undefined);
+      if (this.renderer.extensions.has('KHR_parallel_shader_compile')) void this.renderer.compileAsync(this.glyphs.group, camera, this.scene).catch(() => undefined);
+      else this.renderer.compile(this.glyphs.group, camera, this.scene);
     } catch {
       // A driver that cannot compile ahead compiles at the first draw, as before.
     }

@@ -9,7 +9,8 @@
  *   - a tap on the screen wakes it (frames at once, `moving` again, two frames 500 ms apart differ); so does a layer change and a time change
  *   - a running simulation never pauses, 10 s
  *   - nothing opens by itself, no `role=alert`
- *   - the programs of the wind marks are compiled before the first zoom to the closest level (`compileAsync` after the first drawn frame)
+ *   - the programs of the wind marks are compiled before the first zoom to the closest level (after the first drawn frame, `compileAsync` or, in this
+ *     browser, which has no parallel shader compile, `compile`)
  * Reduced motion (`emulateMedia`):
  *   - the old Wind streaks (levels 1 to 3, the default) stay on screen and stand still: the mesh is visible with marks, no frame in 3 s, and a new
  *     snapshot redraws them once; the trees stop swaying
@@ -105,6 +106,8 @@ async function build(page: Page, idleMs: number): Promise<void> {
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
   await expect.poll(() => airKind(page), { timeout: 60_000 }).not.toBeNull();
+  // The run is not playing yet: play it until there is some time to scrub back over (the tests pause it).
+  await page.evaluate(() => (window as unknown as Handle).__firesim.session.play());
   await expect.poll(async () => (await page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get())).headTime, { timeout: 120_000 }).toBeGreaterThan(400);
 }
 

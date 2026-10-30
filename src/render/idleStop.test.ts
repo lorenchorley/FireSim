@@ -174,6 +174,9 @@ describe('SceneView and the idle stop (source pins: the loop is not run here, so
     expect(body('refreshFuel')).toContain('this.syncCanopy();');
     expect(body('update')).toContain('this.glyphs.setPlumes(plumeSites(c));');
     expect(scene).toMatch(/this\.renderer\.render\(this\.scene, cam\);\s+this\.lastDrawMs = now;\s+if \(this\.glyphsCompile === 'pending' && !this\.interacting\) this\.precompileGlyphs\(\);/);
-    expect(body('precompileGlyphs')).toContain('this.renderer.compileAsync(this.glyphs.group, this.rig.camera, this.scene)');
+    const compile = body('precompileGlyphs');
+    expect(compile).toContain("this.renderer.extensions.has('KHR_parallel_shader_compile')"); // the silent question: `compileAsync` asks with `get`, which warns in the console where there is none
+    expect(compile).toContain('this.renderer.compileAsync(this.glyphs.group, camera, this.scene)');
+    expect(compile).toContain('this.renderer.compile(this.glyphs.group, camera, this.scene)'); // without it, in one go at a quiet moment
   });
 });
