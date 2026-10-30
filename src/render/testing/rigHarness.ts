@@ -18,7 +18,7 @@ interface Listener {
   fn: (e: FakeEvent) => void;
   capture: boolean;
 }
-interface FakeEvent {
+export interface FakeEvent {
   type: string;
   pointerId: number;
   pointerType: string;
@@ -38,7 +38,7 @@ interface FakeEvent {
   preventDefault(): void;
 }
 
-class FakeTarget {
+export class FakeTarget {
   readonly listeners: Listener[] = [];
   addEventListener(type: string, fn: (e: FakeEvent) => void, opts?: boolean | { capture?: boolean }): void {
     this.listeners.push({ type, fn, capture: typeof opts === 'boolean' ? opts : !!opts?.capture });
@@ -54,7 +54,7 @@ class FakeTarget {
 export const W = 400;
 export const H = 800;
 
-class FakeElement extends FakeTarget {
+export class FakeElement extends FakeTarget {
   readonly style: Record<string, string> = {};
   clientWidth = W;
   clientHeight = H;
