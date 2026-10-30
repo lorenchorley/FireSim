@@ -351,14 +351,36 @@ describe('streak helpers', () => {
     expect(sg.longest).toBeLessThan(landscape);
   });
 
-  it('makes an arrow longer the stronger the wind, from 55% of the longest in a calm to the longest at 11.4 m/s and above', () => {
-    expect(arrowLength(0, 13)).toBeCloseTo(0.55 * 13, 9);
+  it('makes an arrow longer the stronger the wind, from 55% of the longest in a calm to the longest at 11.4 m/s and above, never under 8 px', () => {
+    expect(arrowLength(0, 15.8)).toBeCloseTo(0.55 * 15.8, 9); // 8.69 px: the share is over the floor, so it stands
+    expect(arrowLength(0, 13)).toBe(8); // 0.55 x 13 = 7.15 px lifted to the floor (0.6.0 drew it at 7.15)
     expect(arrowLength(11.4, 13)).toBeCloseTo(13, 9);
     expect(arrowLength(40, 13)).toBeCloseTo(13, 9);
     expect(arrowLength(5.7, 13)).toBeCloseTo(13 * (0.55 + 0.45 / 2), 9);
     for (let s = 0; s < 12; s += 0.5) expect(arrowLength(s + 0.5, 13)).toBeGreaterThanOrEqual(arrowLength(s, 13));
     expect(arrowLength(-3, 13)).toBeCloseTo(arrowLength(0, 13), 9); // (no wind has no sign)
     expect(arrowLength(NaN, 13)).toBeCloseTo(arrowLength(0, 13), 9);
+  });
+
+  it('floors a calm arrow at 8 px on the lattices of the three phones, but never past what the cell holds', () => {
+    for (const [name, l] of PLOTS) {
+      const g = arrowGrid(l);
+      const calm = arrowLength(0, g.longest);
+      expect(calm, `${name}: longest ${g.longest.toFixed(2)} px`).toBeGreaterThanOrEqual(Math.min(8, g.longest));
+      expect(calm, name).toBeGreaterThanOrEqual(8 - 1e-9); // all three phones hold at least 8 px
+      for (let s = 0; s <= 14; s += 0.25) {
+        const a = arrowLength(s, g.longest);
+        expect(a, `${name} at ${s} m/s`).toBeLessThanOrEqual(g.longest + 1e-9);
+        expect(a, `${name} at ${s} m/s`).toBeGreaterThanOrEqual(8 - 1e-9);
+      }
+      expect(arrowLength(40, g.longest), `${name}: a strong wind is not touched by the floor`).toBeCloseTo(g.longest, 9);
+    }
+    // a cell too small for 8 px: the arrow is what the cell holds, every wind alike, the floor never makes it overlap a neighbour
+    expect(arrowLength(0, 5)).toBe(5);
+    expect(arrowLength(6, 5)).toBe(5);
+    expect(arrowLength(0, 8)).toBe(8);
+    // the floor leaves every length over it as it was
+    expect(arrowLength(2, 13)).toBeCloseTo(13 * (0.55 + (0.45 * 2) / 11.4), 9);
   });
 });
 

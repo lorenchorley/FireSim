@@ -269,7 +269,7 @@ describe('arrows (reduced motion)', () => {
     for (const n of s.numbers()) expect(Number.isFinite(n)).toBe(true);
   });
 
-  it('a stronger wind draws a longer arrow, from 55% of the longest the cell holds to that longest, and one with no angle is left out', () => {
+  it('a stronger wind draws a longer arrow, from 55% of the longest the cell holds (but never under 8 px) to that longest, and one with no angle is left out', () => {
     const len = (speed: number): number => {
       const s = stub();
       drawArrows(s.ctx, l, { count: 1, s: [1500], z: [1200], angle: [0], speed: [speed] }, COLOURS);
@@ -279,7 +279,7 @@ describe('arrows (reduced motion)', () => {
     };
     const { longest } = arrowGrid(l);
     expect(longest).toBeGreaterThan(10); // (a 358 x 230 box: 13 px arrows, not the 18 of 0.5.0)
-    expect(len(0)).toBeCloseTo(0.55 * longest, 6);
+    expect(len(0)).toBeCloseTo(Math.max(8, 0.55 * longest), 6); // (0.55 x 13.2 = 7.26 px, lifted to the 8 px floor of 0.7.0)
     expect(len(30)).toBeCloseTo(longest, 6);
     expect(len(8)).toBeGreaterThan(len(2));
     const s = stub();
@@ -298,13 +298,24 @@ describe('arrows (reduced motion)', () => {
     expect(head(0)).toBeGreaterThanOrEqual(3 - 1e-9);
     expect(head(30)).toBeLessThanOrEqual(4.5 + 1e-9);
     expect(head(0)).toBeLessThanOrEqual(head(30));
-    // on a small plot the arrows are shorter and the head follows, down to the floor
-    const small = plotLayout({ width: 140, height: 60, length: 3000, zMin: 350, zMax: 2500, exaggeration: 1, smallPx: 12 });
-    const s = stub();
-    drawArrows(s.ctx, small, { count: 1, s: [1500], z: [1200], angle: [0], speed: [0] }, COLOURS);
-    const moves = s.calls.filter((c) => c.name === 'moveTo');
-    const lines = s.calls.filter((c) => c.name === 'lineTo');
-    expect(Math.hypot((lines[1]!.args[0] as number) - (moves[1]!.args[0] as number), (lines[1]!.args[1] as number) - (moves[1]!.args[1] as number))).toBeCloseTo(3, 6);
+    // on a small plot the arrows are shorter and the head follows: here the cell holds 8.4 px, so a calm arrow is the 8 px floor (0.7.0) and its head 40% of that
+    const headOn = (plot: ReturnType<typeof plotLayout>): { head: number; shaft: number } => {
+      const s = stub();
+      drawArrows(s.ctx, plot, { count: 1, s: [1500], z: [1200], angle: [0], speed: [0] }, COLOURS);
+      const moves = s.calls.filter((c) => c.name === 'moveTo');
+      const lines = s.calls.filter((c) => c.name === 'lineTo');
+      return {
+        head: Math.hypot((lines[1]!.args[0] as number) - (moves[1]!.args[0] as number), (lines[1]!.args[1] as number) - (moves[1]!.args[1] as number)),
+        shaft: (lines[0]!.args[0] as number) - (moves[0]!.args[0] as number),
+      };
+    };
+    const small = headOn(plotLayout({ width: 140, height: 60, length: 3000, zMin: 350, zMax: 2500, exaggeration: 1, smallPx: 12 }));
+    expect(small.shaft).toBeCloseTo(8, 6);
+    expect(small.head).toBeCloseTo(0.4 * 8, 6);
+    // a plot so small that its cell holds under 8 px: the arrow is what the cell holds (the floor never reaches past it) and the head is down at its 3 px floor
+    const tiny = headOn(plotLayout({ width: 100, height: 40, length: 3000, zMin: 350, zMax: 2500, exaggeration: 1, smallPx: 12 }));
+    expect(tiny.shaft).toBeLessThan(8);
+    expect(tiny.head).toBeCloseTo(3, 6);
   });
 
   /** The strokes of each arrow (a shaft and two head strokes) as [x0, y0, x1, y1] segments, from what drawArrows asked the context to draw. */
