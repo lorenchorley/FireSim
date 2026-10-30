@@ -34,7 +34,7 @@ import { createDetailBuilder } from './detailStreaks';
 import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
-import { detailPlan, mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
+import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
 import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, GLYPH_CAPS, type Box, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type WindHeight } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
@@ -158,9 +158,8 @@ export class WindGlyphLayer {
   private detailLines = 0;
   private fade = 0;
   private fadeTo = 0;
-  /** The time of the last tick (ms), for the fade; and the lattice exponent the detailed plan gave last, while the most detailed level lasts (null otherwise). */
+  /** The time of the last tick (ms), for the fade. */
   private lastTickMs = -1;
-  private detailExp: number | null = null;
 
   // The pose of this frame and of the previous one, the projection's numbers, and scratch for the view maths (no allocation per frame).
   private readonly pose = new Float64Array(12);
@@ -342,10 +341,9 @@ export class WindGlyphLayer {
     // The level of detail from how many pixels one model cell covers at the middle of the screen.
     const grid = d.atm!.grid;
     const mpp = metresPerPixelAt(targetDistance, css.fov, css.h);
-    const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan);
+    // The most detailed level draws the detailed streaks: `planLod` gives it their lattice and line lengths (`detail`), the lower levels the 0.5.0 ones.
+    const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan, true);
     this.planKept = true;
-    // The most detailed level draws the detailed streaks: their own spacing and lengths go into the plan (the level, the hysteresis stay).
-    this.detailExp = lod.level === DETAIL_LEVEL ? detailPlan(lod, mpp, this.detailExp) : null;
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
@@ -430,7 +428,6 @@ export class WindGlyphLayer {
     this.segments = 0;
     this.waiting = false;
     this.noRoom = false;
-    this.detailExp = null;
     if (!keepSig) this.sigValid = false;
     if (this.working) this.cancel();
     this.builtValid = false;
@@ -598,7 +595,7 @@ export class WindGlyphLayer {
       cap: { glyphs: caps.glyphs, segments: this.beginSegments },
       now: this.clock,
     };
-    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0 });
+    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0, heightM: this.height === 'fire' ? 10 : this.height }); // the ground terms fade with the wind's height
     else this.builder.begin(input);
     this.begun = true;
     return true;
