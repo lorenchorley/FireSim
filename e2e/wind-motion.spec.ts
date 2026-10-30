@@ -253,7 +253,7 @@ test('reduced motion: the old Wind streaks and the trees stand still (and are no
   await pauseRun(page);
   await quietScene(page);
   await setLayers(page, { windGlyphs: false, wind: 'surface', windHeight: 'fire' });
-  await lookAt(page, 2500); // a model cell of about 45 px: level 3, the old Wind streaks (the detailed ones come at level 4)
+  await lookAt(page, 1800); // a model cell of about 70 px: level 3, the old Wind streaks (the detailed ones come at level 4), and trees near enough to be drawn in detail (they sway)
   await renderNow(page);
   await expect.poll(() => vegetationPlacing(page), { timeout: 60_000 }).toBe(false);
   await renderNow(page);
