@@ -204,7 +204,7 @@ export class CameraRig {
   setMode(mode: ViewMode, opts: { user?: [number, number] | null; lookAt?: [number, number] | null } = {}): void {
     const prev = this._mode;
     this._mode = mode;
-    if (mode !== prev) this.turn.cancel(); // two fingers that were turning the old view stop (OrbitControls' own turn comes back with the mode's settings)
+    if (mode !== prev) this.turn.cancel(); // two fingers that were turning the old view stop (OrbitControls' turn is back)
     this.applyModeControls();
     // A finger that is still down keeps the gesture OrbitControls began for the old mode (one finger rotating at eye level):
     // end it, so that the finger does nothing until it lifts (the pan of this mode starts with the next touch).
