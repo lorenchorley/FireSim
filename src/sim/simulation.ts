@@ -624,7 +624,7 @@ export class Simulation {
     this.addUserRecord({ kind: 'ignite', ignition: { ...ignition, points: ignition.points.map((p) => [p[0], p[1]] as [number, number]) } }, time);
   }
 
-  /** A fuel or wind edit applying from `time` (s). An edit with the id of an earlier one replaces it from `time`. */
+  /** A fuel or wind edit applying from `time` (s); a Wind direction change applies from its own `edit.time`. An edit with the id of an earlier one replaces it from then on. */
   edit(edit: ScenarioEdit, time: number): void {
     const e = this.wholeMinute(structuredCloneSafe(edit));
     // A Wind direction change carries its own start time (a whole minute); the other edits apply from `time`.

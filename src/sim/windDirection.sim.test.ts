@@ -277,6 +277,26 @@ describe('Wind direction in the engine (3-D air)', () => {
     expect(Math.abs(angleDiffDeg(centreDir(none), 270))).toBeLessThan(5);
   }, 600000);
 
+  it('the 3-D air runs within 25 degrees of the ambient while it turns and 30 minutes after the change it is within 5 degrees (lag table of contract 7.4)', () => {
+    const big = scenario({ extent: 3000, duration: 3600, ignitions: [], options: { snapshotInterval: 60, tier: 'standard' } }, [turn('w1', 180, 300)]);
+    const r = start(big, { tier: 'standard' });
+    r.sim.spinUp();
+    const ambient = (t: number): number => r.snaps.get(t)!.stats.weather.windDir10;
+    const worst: number[] = [];
+    let last = 0;
+    for (const t of [600, 900, 1200, 1500, 1800, 2100]) {
+      r.sim.advance(t);
+      const v = r.sim.stateView();
+      const k = cellAt(v.terrain.grid, 0, 0);
+      const fire = uvToWind(v.windU[k]!, v.windV[k]!)[1];
+      worst.push(Math.abs(angleDiffDeg(fire, ambient(t))));
+      last = fire;
+    }
+    expect(Math.max(...worst)).toBeLessThan(25);
+    expect(worst.at(-1)!).toBeLessThan(5);
+    expect(Math.abs(angleDiffDeg(last, 180))).toBeLessThan(5);
+  }, 600000);
+
   it('switching to the standard tier after the change keeps the new wind', () => {
     const r = run(scenario({ extent: 1500, duration: 1800 }, [turn('w1', 180, 300)]), 900);
     expect(r.sim.tier).toBe('fast');
