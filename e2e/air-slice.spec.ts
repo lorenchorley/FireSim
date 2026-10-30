@@ -19,6 +19,8 @@
  *     recorded air ("recorded air from"), a time before the start does not, Swap drops the recording, Clear recording empties it, and the words say each of these
  *   - Turn off the slice (0.5.0, fast tier): in the side view and the Map view tab, one press takes the line, the curtain, the recording, the marks and the probe away,
  *     says so, leaves the tool open with focus on what is next, and a new line works afterwards
+ *   - 0.7.0: on the fast tier the "Use the 3-D atmosphere" button and its words sit directly under the chips at 412 x 915, 360 x 640 and 844 x 390 (and the Layers callout
+ *     under its chips); at 844 x 390 with a recording every control below the picture passes the repo's tap audit (the pinned footer wraps to two lines on the 3-D tier)
  * Nothing in the console (the guard of ./fixtures) and nothing pops up by itself.
  */
 import type { CDPSession, Locator, Page } from '@playwright/test';
