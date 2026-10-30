@@ -206,12 +206,20 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
     await domClick(page, 'solo-heat');
   }
   await alive('trees');
-  // Wind height: every chip with the arrows on (each one sets the height and the run goes on).
+  // Wind height: every chip with the arrows on (each one sets the height and the run goes on), What the fire feels first (0.7.0), and with each one the
+  // "Colour the map by speed" chip on and off (the Wind speed map follows the height: a fire is marked, so the chip is usable).
   expect(await domClick(page, 'layer-windGlyphs')).toBe(true);
-  for (const [i, height] of ['fire', 50, 100, 300, 1000, 2000].entries()) {
+  for (const [i, height] of ['felt', 'fire', 50, 100, 300, 1000, 2000].entries()) {
     expect(await chooseOption(page, 'wind-height', i), `wind height chip ${i}`).toBe(true);
     expect((await layerState(page)).windHeight, `wind height chip ${i}`).toBe(height);
     await alive(`wind height ${i}`);
+    expect(await domClick(page, 'wind-map-chip'), `the map chip at height ${i}`).toBe(true);
+    await expect.poll(async () => (await layerState(page)).overlay, { message: `the Wind speed map at height ${i}` }).toBe('windSpeed');
+    await alive(`wind speed map at height ${i}`);
+    await page.waitForTimeout(120);
+    expect(await domClick(page, 'wind-map-chip')).toBe(true);
+    await expect.poll(async () => (await layerState(page)).overlay).toBe('none');
+    await alive(`wind speed map at height ${i} off`);
   }
   await domClick(page, 'layer-windGlyphs');
 
@@ -239,8 +247,9 @@ test('real engine: a 6 h run with every layer, heat map, tree style and screen s
       else if (r < 0.88) await chooseOption(page, 'canopy-code', Math.floor(rand() * 4));
       else if (r < 0.93) await domClick(page, 'wind-sway');
       else if (r < 0.97) await domClick(page, 'solo-heat');
-      else if (r < 0.985) await chooseOption(page, 'wind-layer', Math.floor(rand() * 3));
-      else await chooseOption(page, 'wind-height', Math.floor(rand() * 6));
+      else if (r < 0.98) await chooseOption(page, 'wind-layer', Math.floor(rand() * 3));
+      else if (r < 0.99) await chooseOption(page, 'wind-height', Math.floor(rand() * 7)); // (What the fire feels is one of the seven)
+      else await domClick(page, 'wind-map-chip'); // (only there while the arrows are on; a click on nothing does nothing)
       if (i % 5 === 0) await page.waitForTimeout(60 + Math.floor(rand() * 200));
       if (i % 10 === 0) await alive(`random toggle ${round}.${i}`);
     }

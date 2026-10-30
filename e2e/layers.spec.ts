@@ -218,7 +218,7 @@ const airPicture = (page: Page): Promise<boolean> => page.evaluate(() => ((windo
 const hasGlyphLayer = (page: Page): Promise<boolean> => page.evaluate(() => typeof (window as unknown as { __firesim: { view: { windGlyphStats?: unknown } } }).__firesim.view.windGlyphStats === 'function');
 const layersOf = (page: Page): Promise<Record<string, unknown>> => page.evaluate(() => ((window as unknown as { __firesim: ViewHandle }).__firesim.view.getLayers?.() ?? {}) as Record<string, unknown>);
 
-test('Arrows and flow lines: a switch row with the Wind height chips built when it is first on, remembered, and the Layers panel stays under 1,000 nodes', async ({ page }) => {
+test('Arrows and flow lines: a switch row with the seven Wind height chips (What the fire feels first) built when it is first on, remembered, and the Layers panel stays under 1,000 nodes', async ({ page }) => {
   test.setTimeout(420_000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -254,27 +254,41 @@ test('Arrows and flow lines: a switch row with the Wind height chips built when 
   await expect(info).toBeVisible();
   for (const k of ['What it shows', 'Why it matters', 'Where the data come from', 'How fine', 'How it is drawn', 'Available here']) await expect(info).toContainText(k);
   await expect(info).toContainText('smooth fit through them, not new detail');
+  await expect(info).toContainText('60 m for What the fire feels'); // (0.7.0) the finer cells of the new chip are said in the row's own words
   await panel.getByTestId('layer-info-btn-windGlyphs').click();
   await expect(info).toBeHidden();
 
-  // ── On: the view's windGlyphs, the chips (the 10 m wind first), the caption ──
+  // ── On: the view's windGlyphs, the chips (What the fire feels first, and the new default), the caption ──
   await sw.click();
   await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(true);
   await expect(sw.getByRole('switch')).toBeChecked();
   const chips = panel.getByTestId('wind-height');
   await expect(chips).toBeVisible();
-  await expect(chips.getByRole('radio')).toHaveCount(6);
-  for (const l of ['10 m', '50 m', '100 m', '300 m', '1 km', '2 km']) await expect(chips.getByRole('radio', { name: l, exact: true })).toHaveCount(1);
-  await expect(chips.getByRole('radio', { name: '10 m', exact: true })).toBeChecked();
-  expect((await layersOf(page)).windHeight).toBe('fire');
+  await expect(chips.getByRole('radio')).toHaveCount(7);
+  for (const l of ['What the fire feels', '10 m', '50 m', '100 m', '300 m', '1 km', '2 km']) await expect(chips.getByRole('radio', { name: l, exact: true })).toHaveCount(1);
+  await expect(chips.getByRole('radio').first()).toHaveAccessibleName('What the fire feels');
+  await expect(chips.getByRole('radio', { name: 'What the fire feels', exact: true })).toBeChecked();
+  expect((await layersOf(page)).windHeight).toBe('felt');
   const caption = panel.getByTestId('wind-glyph-caption');
+  // What the fire feels is drawn from the picture's 60 m wind when the engine publishes it (the caption names it), and from the 10 m wind, with a line that says so, when it does not.
+  const hasFelt = await page.evaluate(() => !!(window as unknown as { __firesim: { session: { state: { get(): { snapshot: { fireWind?: unknown } | null } } } } }).__firesim.session.state.get().snapshot?.fireWind);
+  if (hasFelt) await expect(caption).toContainText(/^Wind the fire feels · \d+ m cells · air from \d\d:\d\d/);
+  else await expect(caption).toContainText('The wind the fire feels is not in this picture, so the 10 m wind is shown.');
+  // The 10 m chip is the wind the Wind speed map has always shown (and the caption's words are checked at it, as they were).
+  await chips.getByRole('radio', { name: '10 m', exact: true }).check({ force: true });
+  await expect.poll(async () => (await layersOf(page)).windHeight).toBe('fire');
+  await expect(chips.getByRole('radio', { name: '10 m', exact: true })).toBeChecked();
   // The caption's words follow the air that is drawn: "as the model fits it to the terrain" is how the fast tier makes its wind, so the 3-D atmosphere does not say it.
   const diagnosed = await page.evaluate(() => (window as unknown as { __firesim: { session: { state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null } } } } }).__firesim.session.state.get().snapshot?.atmosphere?.kind === 'diagnosed');
   await expect(caption).toContainText(diagnosed ? 'Wind about 10 m above open ground, as the model fits it to the terrain' : 'Wind about 10 m above open ground');
   if (!diagnosed) await expect(caption).not.toContainText('fits it to the terrain');
   await expect(caption.first()).toContainText(/ · model grid \d+ m · air from \d\d:\d\d\./); // the first line ends in a full stop
   await expect(caption).toContainText('On a calm night the fire can feel much less wind than this in places, and much more in others.');
+  if (hasFelt) await expect(caption).toContainText('Choose What the fire feels to see it.');
   // Each chip sets the height, and the caption says which one.
+  await chips.getByRole('radio', { name: 'What the fire feels', exact: true }).check({ force: true });
+  await expect.poll(async () => (await layersOf(page)).windHeight).toBe('felt');
+  await expect(caption).not.toContainText('Choose What the fire feels to see it.');
   for (const [label, h, words] of [
     ['50 m', 50, 'Wind at 50 m above the ground'],
     ['300 m', 300, 'Wind at 300 m above the ground'],
@@ -303,7 +317,7 @@ test('Arrows and flow lines: a switch row with the Wind height chips built when 
   console.log(line);
   test.info().annotations.push({ type: 'Layers panel DOM nodes', description: line });
   expect(onNodes, 'the open Layers panel with this row on stays within 1,000 DOM nodes').toBeLessThanOrEqual(1000);
-  expect(onNodes - offNodes, 'the chips, the caption and the zoom line cost about 40 nodes, built once').toBeLessThan(80);
+  expect(onNodes - offNodes, 'the chips (seven), the map chip, the caption and the zoom line cost about 50 nodes, built once').toBeLessThan(80);
   await panel.getByTestId('overlay-slope').click();
   await panel.getByTestId('cross-section').click();
 
@@ -314,7 +328,7 @@ test('Arrows and flow lines: a switch row with the Wind height chips built when 
   await panel.getByTestId('layers-reset').click();
   await expect(sw.getByRole('switch')).not.toBeChecked();
   await expect(chips).toBeHidden();
-  expect(await layersOf(page)).toMatchObject({ windGlyphs: false, windHeight: 'fire' });
+  expect(await layersOf(page)).toMatchObject({ windGlyphs: false, windHeight: 'felt' });
   expect(await page.evaluate(() => localStorage.getItem('firesim.layers'))).toBeNull();
   expect((await session(page)).error).toBeNull();
   expect(errors).toEqual([]);

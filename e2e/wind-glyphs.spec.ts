@@ -50,7 +50,7 @@ interface Stats {
   sliceMaxMs: number;
   slicesLast: number;
 }
-type Height = 'fire' | 50 | 100 | 300 | 1000 | 2000;
+type Height = 'felt' | 'fire' | 50 | 100 | 300 | 1000 | 2000;
 interface Info {
   calls: number;
   triangles: number;
@@ -443,7 +443,7 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
   };
 
   await test.step('60 on / off and height changes and 20 zooms leave the GPU objects and the heap where they were', async () => {
-    const heights: Height[] = ['fire', 50, 100, 300, 1000, 2000];
+    const heights: Height[] = ['felt', 'fire', 50, 100, 300, 1000, 2000]; // (What the fire feels, 0.7.0: with no picture of it in the build under test it draws the 10 m wind)
     await lookAt(page, 900);
     await settle(page);
     await read(); // the closest zoom makes the batch of the detailed streaks (0.6.0) ...
@@ -454,7 +454,7 @@ test('wind glyphs: two draw calls, 4 triangles a segment, inside 550,000 at High
     await read();
     const base = await probe();
     for (let i = 0; i < 60; i++) {
-      await setLayers(page, { windGlyphs: i % 4 !== 3, windHeight: heights[i % 6]! });
+      await setLayers(page, { windGlyphs: i % 4 !== 3, windHeight: heights[i % 7]! });
       await read();
     }
     for (let i = 0; i < 20; i++) {

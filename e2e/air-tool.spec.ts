@@ -540,8 +540,15 @@ test('Side view and Map view tabs: the header fits, the Map view is the Layers p
   await expect.poll(async () => (await layersOf(page)).windGlyphs).toBe(true);
   await expect(intro, 'once the switch is on the caption says what is drawn, and the hint goes').toBeHidden();
   await expect(chips).toBeVisible();
-  await expect(chips.getByRole('radio')).toHaveCount(6);
-  await expect(chips.getByRole('radio', { name: '10 m', exact: true }), 'the first chip is the 10 m wind, as the caption says').toBeChecked();
+  await expect(chips.getByRole('radio')).toHaveCount(7);
+  await expect(chips.getByRole('radio', { name: 'What the fire feels', exact: true }), 'the first chip is What the fire feels (0.7.0), and the default').toBeChecked();
+  // Its caption names the picture's 60 m wind when the engine publishes it, and says the 10 m wind is shown when it does not.
+  const hasFelt = await page.evaluate(() => !!(window as unknown as { __firesim: { session: { state: { get(): { snapshot: { fireWind?: unknown } | null } } } } }).__firesim.session.state.get().snapshot?.fireWind);
+  if (hasFelt) await expect(caption).toContainText(/Wind the fire feels · \d+ m cells · air from \d\d:\d\d\./);
+  else await expect(caption).toContainText('The wind the fire feels is not in this picture, so the 10 m wind is shown.');
+  await chips.getByRole('radio', { name: '10 m', exact: true }).check({ force: true });
+  await expect.poll(async () => (await layersOf(page)).windHeight).toBe('fire');
+  await expect(chips.getByRole('radio', { name: '10 m', exact: true }), 'the 10 m chip is the 10 m wind, as the caption says').toBeChecked();
   await expect(caption).toContainText('Wind about 10 m above open ground, as the model fits it to the terrain'); // the fast tier's own words
   await expect(caption).toContainText(/ · model grid \d+ m · air from \d\d:\d\d\./);
   await expect(caption).toContainText('Diagnosed wind: terrain effects only, no plume.'); // the fast tier says what it leaves out
