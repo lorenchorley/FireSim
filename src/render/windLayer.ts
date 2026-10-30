@@ -41,6 +41,8 @@ export class WindLayer {
   private mode: WindMode = 'off';
   /** The detailed streaks of the most detailed level are drawn instead (0.6.0): the particles are hidden and not advanced. */
   private suppressed = false;
+  /** Whether motion is allowed (0.7.0): false under reduced motion, when the particles stand still where they are. */
+  private motion = true;
   private readonly cap: number;
   private readonly p: Float32Array; // x, y, z
   private readonly age: Float32Array;
@@ -77,14 +79,17 @@ export class WindLayer {
   }
 
   /**
-   * C0 STUB (0.7.0, lane E-B, F4): whether motion is allowed (false under reduced motion: the particles stand still, drawn once from the current
-   * wind). Inert until built.
+   * Whether motion is allowed (0.7.0, F4): false under reduced motion, when the particles stand still where they are and are drawn, once, from the
+   * wind as it is now (see `animate`). The streaks are not hidden: the person keeps the picture and loses the movement, as with the detailed streaks.
+   * The caller draws a frame.
    */
-  setMotion(_allowed: boolean): void {}
+  setMotion(allowed: boolean): void {
+    this.motion = allowed;
+  }
 
-  /** The particles need frames drawn. C0: the 0.6.0 rule (on, and not stepping aside for the detailed streaks); lane E-B adds the motion flag. */
+  /** The particles need frames drawn: they are on, not stepping aside for the detailed streaks, and allowed to move. */
   get animating(): boolean {
-    return this.mode !== 'off' && !this.suppressed;
+    return this.mode !== 'off' && !this.suppressed && this.motion;
   }
 
   /**
@@ -122,9 +127,14 @@ export class WindLayer {
     this.age[i] = initial ? r.next() * this.life[i]! : 0;
   }
 
-  /** Advance particles by `dt` wall seconds and write the streak buffers (world coordinates). */
+  /**
+   * Advance particles by `dt` wall seconds and write the streak buffers (world coordinates). Where motion is not allowed `dt` is 0: nothing travels or
+   * ages, the tails follow the current wind (a new snapshot redraws the dashes), and every dash is drawn at full strength (a frozen frame holds no
+   * half-faded comets).
+   */
   animate(dt: number, sampler: AtmosphereSampler, d: WindDomain, vex: number): void {
     if (this.mode === 'off' || this.n === 0 || this.suppressed) return;
+    if (!this.motion) dt = 0;
     const k = this.visualSpeed;
     const tt = this.trailSeconds * k;
     const w = this.w;
@@ -182,7 +192,7 @@ export class WindLayer {
       if (surface) sampleRamp(WIND_RAMP, speed, c);
       else sampleRamp(UPDRAFT_RAMP, ww, c);
       const life = this.life[i]!;
-      const fade = Math.min(1, age / 0.4) * Math.min(1, (life - age) / 0.5);
+      const fade = this.motion ? Math.min(1, age / 0.4) * Math.min(1, (life - age) / 0.5) : 1;
       C[i * 4] = srgbToLinear(c[0]);
       C[i * 4 + 1] = srgbToLinear(c[1]);
       C[i * 4 + 2] = srgbToLinear(c[2]);
