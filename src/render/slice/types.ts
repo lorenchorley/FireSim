@@ -478,7 +478,7 @@ export type CreateSliceUpdater = (opts?: { minIntervalMs?: number }) => SliceUpd
  * `exaggeration` (the on-screen ratio of vertical to horizontal scale, so a streak points the way the picture shows),
  * re-seeds one that leaves valid air or passes `maxAgeS`, and is deterministic for a seed (no Math.random). `flowArrows` is
  * the static lattice of arrows used under reduced motion (`angle`: screen angle of the same exaggerated vector, radians
- * anticlockwise from +s, `speed` in m/s). Tests: against analytic fields (uniform, shear, rotation). About 300 particles.
+ * anticlockwise from +s, `speed` in m/s). Tests: against analytic fields (uniform, shear, rotation). About 600 particles (300 before 0.6.0).
  *
  * ── src/render/slice/probe.ts ──
  *
