@@ -24,6 +24,9 @@ export const STEEP_NOTE = '(steeper than the tested range, so it could be faster
 /** §10.1 sub-grid note. */
 export const SUBGRID_NOTE = "The model can't see this precisely.";
 
+/** How long a Wind direction change of the user's takes to turn, in minutes (the words of its cards). */
+const TURN_MIN = Math.round(EXPLAIN_PARAMS.windChange.turnS / 60);
+
 /** Detector output (spec §10.1). */
 export interface Candidate {
   key: string;
@@ -397,21 +400,31 @@ const windChange: Render = (c) => {
   const time = str(c, 'clock');
   const L = num(c, 'flankM');
   const inS = num(c, 'inS');
-  const countdown = Number.isFinite(inS) && inS > 0 ? ` That is in ${duration(inS)}.` : '';
-  const body =
-    Number.isFinite(L) && L > 0
+  const ahead = Number.isFinite(inS) && inS > 0;
+  const countdown = ahead ? ` That is in ${duration(inS)}.` : '';
+  const flank = Number.isFinite(L) && L > 0;
+  // A change of the user's (0.7.0, `values.user`): their own words. They know what they set, so the body leads with it (and says when it starts).
+  const own = num(c, 'user', 0) === 1;
+  const from = compassWord(num(c, 'fromDir'));
+  const sets = `You set the wind to swing from the ${from} to the ${dir}, starting at about ${time}${ahead ? ` (in ${duration(inS)})` : ''}.`;
+  const body = own
+    ? flank
+      ? `${sets} It takes ${TURN_MIN} minutes to turn. When it has, this ${km(L)} km flank becomes the front and runs at full speed almost at once. A wide front moves fast and is hard to stop.`
+      : `${sets} It takes ${TURN_MIN} minutes to turn, and the wind will then be about ${kmh(num(c, 'postSpeed'))} km/h. ` +
+        'When it has turned, the long side of the fire facing the new wind becomes the front and runs at full speed almost at once.'
+    : flank
       ? `When the wind swings to the ${dir} at about ${time}, this ${km(L)} km flank becomes the front and runs at full speed almost at once.${countdown} A wide front moves fast and is hard to stop.`
-      : `The forecast has the wind swinging from the ${compassWord(num(c, 'fromDir'))} to the ${dir} at about ${time} (about ${kmh(num(c, 'postSpeed'))} km/h). ` +
+      : `The forecast has the wind swinging from the ${from} to the ${dir} at about ${time} (about ${kmh(num(c, 'postSpeed'))} km/h). ` +
         `When it swings, the long side of the fire facing the new wind becomes the front and runs at full speed almost at once.${countdown}`;
   return {
-    title: 'Wind change: this flank becomes the head',
+    title: own ? 'Your wind change: this flank becomes the head' : 'Wind change: this flank becomes the head',
     body,
     safety: safetyLine('Know the change time; move off the flank that will become the head, or into the black, before it.'),
     factors: [
       f('New wind', `from the ${dir}, about ${kmh(num(c, 'postSpeed'))} km/h`),
       f('Wind shift', `about ${int(num(c, 'shift'))}°`),
       f('Change time', `about ${time}`),
-      ...(Number.isFinite(L) && L > 0 ? [f('Exposed flank', `about ${km(L)} km`)] : []),
+      ...(flank ? [f('Exposed flank', `about ${km(L)} km`)] : []),
     ],
     source: 'Cheney 2001; Linton coroner 2002',
     confidence: 'rule-of-thumb',
@@ -419,18 +432,26 @@ const windChange: Render = (c) => {
   };
 };
 
-const deadManZone: Render = (c) => ({
-  title: 'Dead-man zone',
-  body:
-    'If the wind changed now, fire could reach anywhere in the shaded zone within 5 minutes. ' +
-    `The change to the ${compassWord(num(c, 'toDir'))} is due in ${duration(num(c, 'inS'))}, and the zone covers about ${int(num(c, 'areaHa'))} ha. ` +
-    "The model leaves out the fire's own winds here, so the real zone is at least this big.",
-  safety: safetyLine('Work close to the black or move out of the zone.'),
-  factors: [f('Zone area', `about ${int(num(c, 'areaHa'))} ha`), f('Time to the change', duration(num(c, 'inS')))],
-  source: 'Cheney, Gould & McCaw 2001',
-  confidence: 'model-estimate',
-  showLayers: ['dmz'],
-});
+const deadManZone: Render = (c) => {
+  const own = num(c, 'user', 0) === 1;
+  const toDir = compassWord(num(c, 'toDir'));
+  const inS = num(c, 'inS');
+  return {
+    title: own ? 'Dead-man zone for your wind change' : 'Dead-man zone',
+    body: own
+      ? 'If the wind had already turned, fire could reach anywhere in the shaded zone within 5 minutes. ' +
+        `The change you set, to the ${toDir}, starts in ${duration(inS)} and takes ${TURN_MIN} minutes to turn. The zone covers about ${int(num(c, 'areaHa'))} ha. ` +
+        "The model leaves out the fire's own winds, which could make it bigger, and the slow turn means the first minutes reach less than this."
+      : 'If the wind changed now, fire could reach anywhere in the shaded zone within 5 minutes. ' +
+        `The change to the ${toDir} is due in ${duration(inS)}, and the zone covers about ${int(num(c, 'areaHa'))} ha. ` +
+        "The model leaves out the fire's own winds here, so the real zone is at least this big.",
+    safety: safetyLine('Work close to the black or move out of the zone.'),
+    factors: [f('Zone area', `about ${int(num(c, 'areaHa'))} ha`), f('Time to the change', duration(inS))],
+    source: 'Cheney, Gould & McCaw 2001',
+    confidence: 'model-estimate',
+    showLayers: ['dmz'],
+  };
+};
 
 const plumeDominated: Render = (c) => ({
   title: 'The fire is making its own weather',

@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { InsightKind } from '../core/types';
+import { WIND_TURN_S } from '../scenario/windDirection';
+import { EXPLAIN_PARAMS } from './params';
 import { INSIGHT_KINDS } from './registry';
 import { CARD_TEXT, DOCTRINE, GENERAL_SUBS, STEEP_NOTE, SUBGRID_NOTE, clock, compassWord, duration, kataburn, km, rate, slopeFactorText, times, windName, type Candidate } from './text';
 
@@ -26,7 +28,8 @@ const VARIANTS: Partial<Record<InsightKind, string[]>> = {
   'gully-chimney': ['wind', 'anabatic'],
   'vorticity-lateral-spread': ['', 'pre'],
   spotting: ['', 'bark'],
-  'wind-change': ['', 'noflank'],
+  'wind-change': ['', 'noflank', 'own', 'ownnoflank'],
+  'dead-man-zone': ['', 'own'],
   'pyroconvection-risk': ['ch', 'plume', 'synthetic'],
   'katabatic-wind': ['', 'S17'],
   'thermal-belt': ['', 'ridge'],
@@ -45,7 +48,7 @@ const cases: [InsightKind, string][] = INSIGHT_KINDS.flatMap((k) => (VARIANTS[k]
 
 describe('card templates', () => {
   it.each(cases)('%s / %s', (kind, variant) => {
-    const values = { ...V, variant, sub: variant, ...(variant === 'noflank' ? { flankM: 0 } : {}) };
+    const values = { ...V, variant, sub: variant, ...(variant.endsWith('noflank') ? { flankM: 0 } : {}), ...(variant.startsWith('own') ? { user: 1 } : {}) };
     const c: Candidate = { key: 'k', x: 0, y: 0, score: 1, severity: 'info', values };
     const t = CARD_TEXT[kind](c);
     expect(t.title.length).toBeGreaterThan(3);
@@ -97,6 +100,35 @@ describe('card templates', () => {
     expect(body(15, 0.3)).not.toContain(SUBGRID_NOTE);
     expect(body(15, 0)).toContain('about ×2.8 faster');
     expect(body(25, 0)).toContain('at least ×5.7 faster');
+  });
+
+  it("the cards of a change of the user's say that it is theirs, when it starts and how long it takes (0.7.0)", () => {
+    const own = (k: InsightKind, v: Record<string, number | string> = {}) => CARD_TEXT[k]({ key: 'k', x: 0, y: 0, score: 1, severity: 'watch', values: { ...V, user: 1, ...v } });
+    expect(EXPLAIN_PARAMS.windChange.turnS).toBe(WIND_TURN_S); // explain does not import scenario/: the number is repeated and pinned here
+    const c = own('wind-change', { fromDir: 315, toDir: 225, clock: '2:40 pm', inS: 600, flankM: 1200, postSpeed: 25 / 3.6 });
+    expect(c.title).toBe('Your wind change: this flank becomes the head');
+    expect(c.body).toBe(
+      'You set the wind to swing from the north-west to the south-west, starting at about 2:40 pm (in about 10 min). It takes 15 minutes to turn. ' +
+        'When it has, this 1.2 km flank becomes the front and runs at full speed almost at once. A wide front moves fast and is hard to stop.',
+    );
+    expect(c.factors.map((f) => f.label)).toEqual(['New wind', 'Wind shift', 'Change time', 'Exposed flank']);
+    expect(c.showLayers).toEqual(['wind', 'dmz']);
+    // No flank: the speed is said, and a start that is not ahead has no "in about".
+    expect(own('wind-change', { fromDir: 315, toDir: 225, clock: '2:40 pm', inS: 0, flankM: 0, postSpeed: 25 / 3.6 }).body).toBe(
+      'You set the wind to swing from the north-west to the south-west, starting at about 2:40 pm. It takes 15 minutes to turn, and the wind will then be about 25 km/h. ' +
+        'When it has turned, the long side of the fire facing the new wind becomes the front and runs at full speed almost at once.',
+    );
+    const z = own('dead-man-zone', { toDir: 225, inS: 600, areaHa: 40 });
+    expect(z.title).toBe('Dead-man zone for your wind change');
+    expect(z.body).toBe(
+      'If the wind had already turned, fire could reach anywhere in the shaded zone within 5 minutes. ' +
+        'The change you set, to the south-west, starts in about 10 min and takes 15 minutes to turn. The zone covers about 40 ha. ' +
+        "The model leaves out the fire's own winds, which could make it bigger, and the slow turn means the first minutes reach less than this.",
+    );
+    // The forecast's own cards keep their words.
+    expect(CARD_TEXT['wind-change']({ key: 'k', x: 0, y: 0, score: 1, severity: 'danger', values: { ...V } }).title).toBe('Wind change: this flank becomes the head');
+    expect(CARD_TEXT['dead-man-zone']({ key: 'k', x: 0, y: 0, score: 1, severity: 'danger', values: { ...V } }).body).toContain('so the real zone is at least this big');
+    for (const s of [c.body, z.body]) expect(s).not.toMatch(/—|–| - /); // no dashes: the repo's voice
   });
 
   it('templates carry the spec wording', () => {

@@ -25,23 +25,17 @@ const H = P.engine.hysteresis;
  */
 const domainXY = (ctx: CycleContext): [number, number] => (ctx.headK >= 0 ? [ctx.headX, ctx.headY] : [ctx.cx, ctx.cy]);
 
-/** The next forecast change with time ∈ [now − hold, now + horizon], or null. */
-export function nextChange(ctx: CycleContext, horizonS: number): WindChange | null {
-  const ch = ctx.forecast?.changes;
-  if (!ch) return null;
-  for (const c of ch) {
-    const dt = (c.time - ctx.nowMs) / 1000;
-    if (dt >= -P.windChange.holdAfterS && dt <= horizonS) return c;
-  }
-  return null;
-}
+/**
+ * The key of a wind-change or dead-man-zone card: `kind:domain` for the forecast's change, `kind:user:<id>` for one of the user's, so a
+ * forecast card that is shown never holds the machine for a change the user made, and each change of the user's has its own card.
+ */
+const changeKey = (kind: string, c: WindChange): string => (c.user === undefined ? `${kind}:domain` : `${kind}:user:${c.user}`);
 
 // ── wind-change ──────────────────────────────────────────────────────────────────────────────────────
 
-function detectWindChange(ctx: CycleContext): Candidate[] {
+/** The card for change `c`: the exposed flank (front cells whose outward normal is within 45° of the new windTo) is its place and its length. */
+function windChangeCandidate(ctx: CycleContext, c: WindChange): Candidate {
   const W = P.windChange;
-  const c = nextChange(ctx, W.horizonS);
-  if (!c) return [];
   const newTo = wrapDeg(c.toDir + 180);
   // Exposed flank: front cells whose outward normal is within 45° of the new windTo.
   let n = 0;
@@ -73,28 +67,57 @@ function detectWindChange(ctx: CycleContext): Candidate[] {
       }
     }
   }
-  return [
-    cand('wind-change:domain', x, y, 2, 'danger', {
-      fromDir: c.fromDir,
-      toDir: c.toDir,
-      shift: c.shift,
-      postSpeed: c.postSpeed,
-      clock: clock(c.time, ctx.timeZone),
-      inS: (c.time - ctx.nowMs) / 1000,
-      flankM,
-      changeTime: c.time,
-    }),
-  ];
+  // A change of the user's is Watch, not Danger: the Danger gate (vibrate, pause) is for what comes at you, not for what you just did.
+  return cand(changeKey('wind-change', c), x, y, 2, c.user === undefined ? 'danger' : 'watch', {
+    fromDir: c.fromDir,
+    toDir: c.toDir,
+    shift: c.shift,
+    postSpeed: c.postSpeed,
+    clock: clock(c.time, ctx.timeZone),
+    inS: (c.time - ctx.nowMs) / 1000,
+    flankM,
+    changeTime: c.time,
+    ...(c.user === undefined ? {} : { user: 1 }),
+  });
+}
+
+/**
+ * The next forecast change gets its card as before; every change of the user's that is in range gets one of its own (one card per
+ * change made), whatever the forecast does.
+ */
+function detectWindChange(ctx: CycleContext): Candidate[] {
+  const W = P.windChange;
+  const out: Candidate[] = [];
+  let forecast = false;
+  for (const c of ctx.forecast?.changes ?? []) {
+    const dt = (c.time - ctx.nowMs) / 1000;
+    if (dt < -W.holdAfterS || dt > W.horizonS) continue;
+    if (c.user === undefined) {
+      if (forecast) continue;
+      forecast = true;
+    }
+    out.push(windChangeCandidate(ctx, c));
+  }
+  return out;
 }
 
 // ── dead-man-zone (P1) ───────────────────────────────────────────────────────────────────────────────
 
 function detectDmz(ctx: CycleContext): Candidate[] {
   const D = P.dmz;
-  const c = nextChange(ctx, D.horizonS);
   const mem = ctx.mem;
-  if (!c || ctx.nFront === 0 || c.time < ctx.nowMs) {
-    if (!c || c.time < ctx.nowMs) mem.dmzCells = 0;
+  // The zone is the area the new wind would reach from now, so it is for the next change that is still ahead (not for one held after its
+  // time, as its wind-change card is): a change of the user's is gone the moment its turn starts, so the next one of theirs can have a zone.
+  let c: WindChange | null = null;
+  for (const x of ctx.forecast?.changes ?? []) {
+    const dt = (x.time - ctx.nowMs) / 1000;
+    if ((x.user === undefined ? dt >= 0 : dt > 0) && dt <= D.horizonS) {
+      c = x;
+      break;
+    }
+  }
+  if (!c || ctx.nFront === 0) {
+    if (!c) mem.dmzCells = 0;
     return [];
   }
   const due = !(mem.dmzT === mem.dmzT) || ctx.t - mem.dmzT >= D.refreshS || mem.dmzChange !== c.time;
@@ -105,10 +128,11 @@ function detectDmz(ctx: CycleContext): Candidate[] {
   }
   if (mem.dmzCells < D.minCells) return [];
   return [
-    cand('dead-man-zone:domain', mem.dmzX, mem.dmzY, 2, 'danger', {
+    cand(changeKey('dead-man-zone', c), mem.dmzX, mem.dmzY, 2, c.user === undefined ? 'danger' : 'watch', {
       toDir: c.toDir,
       inS: (c.time - ctx.nowMs) / 1000,
       areaHa: mem.dmzAreaHa,
+      ...(c.user === undefined ? {} : { user: 1 }),
     }),
   ];
 }

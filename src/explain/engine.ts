@@ -31,7 +31,7 @@ import {
 import { CycleContext, freshMemory, type EngineMemory } from './context';
 import { afdrsFbi, fuelSummary } from './deps';
 import { explainCell, localFuelSummary, type ExplainOptions, type MoistureReasonParts } from './explainCell';
-import { analyseSeries, buildForecastInsights, type ForecastAnalysis } from './forecast';
+import { analyseSeries, buildForecastInsights, type ForecastAnalysis, type WindChange } from './forecast';
 import { EXPLAIN_PARAMS } from './params';
 import { INSIGHT_RULES, RULE_LIST } from './registry';
 import { ridgeGeometry } from './rules/general';
@@ -39,6 +39,7 @@ import { SEV_RANK, type InsightRule } from './rules/types';
 import { DmzComputer, type DmzRosFn } from './safety';
 import { StaticMaps } from './statics';
 import type { Candidate } from './text';
+import { angDist } from './util';
 
 const E = EXPLAIN_PARAMS.engine;
 
@@ -167,9 +168,11 @@ export class InsightEngine {
     if (mem.lastRunT === mem.lastRunT && tSim - mem.lastRunT < E.cadenceS - 1e-6 && tSim >= mem.lastRunT) return [];
     const lon = this.terrain.grid.origin.lon;
     // A Wind direction change replaces the forecast's later wind changes: they do not come, so no card and no Danger zone is made for them.
+    // The changes of the user's own that the simulation says may be counted (made, or applied) are cards of their own, from when they were made.
     const fc = this.analysis(s.series, lon);
     const from = s.windOverrideFromMs;
-    ctx.prepare(s, mem, this.startMs, fc && from !== undefined ? { ...fc, changes: fc.changes.filter((c) => c.time < from) } : fc);
+    const own = userChanges(s.windUserChanges);
+    ctx.prepare(s, mem, this.startMs, fc && (from !== undefined || own.length) ? { ...fc, changes: mergeChanges(from === undefined ? fc.changes : fc.changes.filter((c) => c.time < from), own) } : fc);
     const fbiFn = this.fbiFn;
     ctx.afdrsFbi = fbiFn ? (w: WeatherHour) => fbiFn(this.opts.fbiFuelType ?? FuelType.DryForestShrubby, w, lon, s.droughtFactor, s.kbdi).fbi : null;
     // New spot fires since the last cycle.
@@ -392,5 +395,20 @@ function defaultFuelSummary(fuel: FuelMap, k: number): string {
   }
   return localFuelSummary(fuel, k);
 }
+
+/** The user's Wind direction changes that count as a "wind change" (the forecast's own thresholds: a turn of 45 degrees or more, 15 km/h or more after it). */
+function userChanges(list: SimStateView['windUserChanges']): WindChange[] {
+  const W = EXPLAIN_PARAMS.windChange;
+  const out: WindChange[] = [];
+  for (const c of list ?? []) {
+    const shift = angDist(c.toDir, c.fromDir);
+    if (shift < W.minShiftDeg || c.postSpeed * 3.6 < W.minPostKmh) continue;
+    out.push({ time: c.time, hour: c.time, fromDir: c.fromDir, toDir: c.toDir, shift, preSpeed: c.preSpeed, postSpeed: c.postSpeed, user: c.id });
+  }
+  return out;
+}
+
+/** Both sorts by time (the forecast's first at equal times). */
+const mergeChanges = (forecast: readonly WindChange[], own: readonly WindChange[]): WindChange[] => (own.length ? [...forecast, ...own].sort((a, b) => a.time - b.time) : [...forecast]);
 
 export { INSIGHT_RULES };

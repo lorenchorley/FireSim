@@ -78,6 +78,7 @@ import {
   type SimSnapshot,
   type SimStateView,
   type SimStats,
+  type SimWindChange,
   type SpotFire,
   type SpotProvenance,
   type SpreadEnvironment,
@@ -88,6 +89,7 @@ import {
   type TerrainFeatures,
   type WeatherHour,
   type WeatherSeries,
+  type WindDirectionEdit,
   type WindEdit,
 } from '../core/types';
 import { insolation, solarPosition, terrainDerived } from '../terrain';
@@ -103,7 +105,7 @@ import { getFireModelOptions } from '../fire/models/params';
 import { SPREAD_PARAMS } from '../fire/spread/params';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
-import { applyWindDirection, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
+import { applyWindDirection, userWindChanges, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
 import { SIM_PARAMS } from './params';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
 import { dominantFuelType, fireStats, frontRosAt, frontRosBlocks, moistureMean } from './stats';
@@ -299,8 +301,10 @@ export class Simulation {
   private wx: WeatherSeries;
   /** Identity of the changes `wx` was made from ('' for none, when `wx` is the forecast itself). */
   private wxKey = '';
-  /** When the first of those changes starts (s from the scenario start), or null for none. */
-  private wxFromS: number | null = null;
+  /** What the explain engine knows of the Wind direction changes at the last `view()` (`windKnown`), keyed by the changes it was made from. */
+  private wkKey = '';
+  private wkFromMs: number | null = null;
+  private wkChanges: readonly SimWindChange[] = [];
   private diag: AtmosDiagnostics | null = null;
   private plumeTopAGL = NaN;
   private lastSun: InsolationResult | null = null;
@@ -983,7 +987,6 @@ export class Simulation {
     const key = list.length ? JSON.stringify(list.map((e) => [e.id, e.dir, e.time])) : '';
     if (key === this.wxKey) return false;
     this.wxKey = key;
-    this.wxFromS = windOverrideFrom(list);
     this.wx = list.length ? applyWindDirection(this.scenario.weather, this.startMs, list) : this.scenario.weather;
     return true;
   }
@@ -1640,6 +1643,37 @@ export class Simulation {
     return out;
   }
 
+  /**
+   * The Wind direction changes the explain engine may count at step time `time` (0.7.0, item D): those of the record list made BEFORE it,
+   * `min(madeAt ?? time, time) < time`, so one scheduled for later counts from the first cycle after it was made, though its record
+   * only applies at its start (an applied one always qualifies: a record applies at a step that ends after its time). Strictly before,
+   * because the cycle at the step that ends at `madeAt` has already run when the change is made, and a replay of it must say the same.
+   * A pure function of the records and `time`: a replay from any checkpoint reproduces the first run's cards, and `madeAt` never reaches
+   * `wx` or a hash. A later record with the id of an earlier one replaces it. `windOverrideFromMs` (the forecast's later swings are left
+   * out from there) is the earliest start, `windUserChanges` the changes with their directions and speeds. Memoised on what they say.
+   */
+  private windKnown(time: number): Pick<SimStateView, 'windOverrideFromMs' | 'windUserChanges'> {
+    const byId = new Map<string, WindDirectionEdit>();
+    for (const r of this.records.values()) {
+      const b = r.body;
+      if (b.kind !== 'edit' || b.edit.kind !== 'windDirection') continue;
+      const e = b.edit;
+      if (Math.min(e.madeAt ?? e.time, e.time) >= time - EPS) continue;
+      byId.delete(e.id); // a later record with the id of an earlier one replaces it and goes to the end, as `activeEdits` does
+      byId.set(e.id, e);
+    }
+    if (byId.size === 0) return {};
+    const known = [...byId.values()];
+    const key = JSON.stringify(known.map((e) => [e.id, e.dir, e.time]));
+    if (key !== this.wkKey) {
+      this.wkKey = key;
+      const from = windOverrideFrom(known);
+      this.wkFromMs = from === null ? null : this.startMs + from * 1000;
+      this.wkChanges = userWindChanges(this.scenario.weather, this.startMs, known, (tMs) => weatherAt(this.scenario.weather, tMs).windSpeed10);
+    }
+    return { ...(this.wkFromMs === null ? {} : { windOverrideFromMs: this.wkFromMs }), windUserChanges: this.wkChanges };
+  }
+
   private view(time: number): SimStateView {
     const env = this.env;
     const fire = this.fire;
@@ -1671,7 +1705,7 @@ export class Simulation {
       airRH: this.moisture.airRH,
       weather: env.weather,
       series: this.scenario.weather,
-      ...(this.wxFromS === null ? {} : { windOverrideFromMs: this.startMs + this.wxFromS * 1000 }),
+      ...this.windKnown(time),
       droughtFactor: this.droughtFactor,
       kbdi: this.kbdi,
       sunElevation: env.sunElevation,

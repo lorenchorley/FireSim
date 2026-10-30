@@ -158,6 +158,8 @@ export const EXPLAIN_PARAMS = Object.freeze({
     flankAngleDeg: 45,
     /** The card stays active this long after the change time. */
     holdAfterS: 1200,
+    /** A Wind direction change of the user's takes this long to turn (s): `WIND_TURN_S` of scenario/windDirection.ts, which explain does not import (a test pins them equal). */
+    turnS: 900,
   }),
 
   /** dead-man-zone (P1) and the §10.5 DMZ overlay [H doc 10 §9.3]. */
