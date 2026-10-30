@@ -1,9 +1,10 @@
 /**
  * The Help tab's words (content.ts: the how-to list and the glossary), pinned two ways: their shape and voice (plain words, no
- * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0, 0.4.1 and 0.5.0 features, that what they say is what the code says (the
+ * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0, 0.4.1, 0.5.0 and 0.6.0 features, that what they say is what the code says (the
  * labels the screens use, the sheet's own sentences, the tap radius, the words of the icons, the footer and the probe
  * sentence of the Air slices panel, the buttons and the status line of its time-lapse recording, the zoom levels, the Wind height
- * chips, the caption and the tab and button words of the wind arrows and flow lines), so a change to a screen cannot leave a stale
+ * chips, the caption and the tab and button words of the wind arrows and flow lines, and in 0.6.0 the Wind detail chip and its sheet, the
+ * detailed streaks of the closest zoom, the Wind direction tool and the two-finger turn), so a change to a screen cannot leave a stale
  * sentence in Help.
  */
 import { describe, expect, it } from 'vitest';
@@ -14,7 +15,7 @@ import { AIR_STALE_S } from '../core/airView';
 import type { GridSpec } from '../core/grid';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
 import { compassWord } from '../explain/text';
-import type { MapMarker } from '../render/api';
+import type { MapMarker, WindGlyphStats } from '../render/api';
 import { rockDetailCount } from '../render/cliffDrawing';
 import { LAYER_CATALOG, type AvailabilityContext } from '../render/layerCatalog';
 import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
@@ -26,7 +27,8 @@ import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceP
 import { USE_3D_LABEL, sliceFieldStatuses } from '../render/sliceFields';
 import { GLYPH_CALM_MS } from '../render/wind/flowGlyphs';
 import { LEVEL_EDGES, LOD_HYSTERESIS, planLod } from '../render/wind/glyphLod';
-import { WIND_HEIGHTS, type WindHeight } from '../render/wind/glyphTypes';
+import { detailGroundFactor } from '../render/wind/detailStreaks';
+import { DETAIL_GEOMETRY, WIND_HEIGHTS, type WindHeight } from '../render/wind/glyphTypes';
 import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
@@ -62,6 +64,10 @@ import {
   withTab,
   type CrossSection,
 } from './screens/sim/sliceToolModel';
+import { WIND_TURN_S, windDirectionTime } from '../scenario/windDirection';
+import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, SHEET_TITLE, STILL_LINE, levelLine, windDetailWords } from './screens/sim/windDetailWords';
+import { chipLabel, windDetailState, type WindDetailInput } from './screens/sim/windDetailState';
+import { LIST_TITLE, READINGS_NOTE, READINGS_TITLE, WHEN_OPTIONS, WIND_HINT, applyLabel, dialStart, holdsDirection, problemText, reviewingText } from './screens/sim/windPanelModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
 import { resolveRenderQuality } from './settings';
 import { Store } from './store';
@@ -532,7 +538,7 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     const b = squashed('Arrows and flow lines');
     expect([...LEVEL_EDGES]).toEqual([4, 12, 32, 90]);
     expect(b).toContain('under about 4 px, nothing is drawn');
-    expect(b).toContain('From about 4 px a cell you get straight arrows, from about 12 px the arrows are closer together, from about 32 px they become curved flow lines with arrowheads, and from about 90 px the flow lines are longer');
+    expect(b).toContain('From about 4 px a cell you get straight arrows, from about 12 px the arrows are closer together, from about 32 px they become curved flow lines with arrowheads, and from about 90 px the picture changes to detailed streaks (see Detailed streaks)');
     // The levels are what each step of the ladder draws, in the words of the zoom line under the chips.
     expect(LEVEL_LINE[0]).toBe('Zoom in to see the wind arrows.');
     expect(LEVEL_LINE[1]).toContain('straight arrows');
@@ -715,5 +721,189 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
       expect(b).toContain('only while there is a slice to turn off, or a line that Layers switched off, and not while you are placing a line or when only one end is set');
       expect(b).toContain('a line under the button says “This also clears the recording.”');
     });
+  });
+});
+
+describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, the detailed streaks, the Wind direction tool and the two-finger turn say', () => {
+  const squashed = (term: string): string => squash(entry(term).body);
+  const read = (file: string): string => readFileSync(resolve(__dirname, file), 'utf8');
+  /** Help and the screens may spell an apostrophe either way (Help uses the curly one). */
+  const straight = (s: string): string => s.replace(/’/g, "'");
+  const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
+    active: true, idle: null, level: 4, count: 600, segments: 6000, cellPx: 120, cellM: 133, rebuilds: 3, lastMs: 2, sliceP95Ms: 3, sliceMaxMs: 5, slicesLast: 1, detail: 'moving', detailSegments: 6000, ...over,
+  });
+  const wind = (over: Partial<WindDetailInput> = {}): WindDetailInput => ({ glyphsOn: true, streaks: 'off', viewMode: 'orbit', stats: stats(), air: 'prognostic', height: 'fire', ...over });
+  const env = { startMs: Date.UTC(2025, 0, 5, 14, 0), tz: 'UTC', durationS: 4 * 3600 };
+
+  it('every term and step the release notes ask for is there, the old Local wind name is gone, and the Tools list names the tool as the Tools menu does', () => {
+    for (const t of ['Wind direction (tool)', 'Wind detail', 'Detailed streaks']) expect(entry(t).body.length, t).toBeGreaterThan(300);
+    for (const l of ['Wind direction', 'Fuel']) expect(step(l).length, l).toBeGreaterThan(30);
+    expect(HELP_STEPS.map((x) => x.label)).not.toContain('Fuel / Wind');
+    for (const t of everything()) expect(t).not.toContain('Local wind');
+    expect(read('screens/sim/simScreen.ts')).toContain("{ id: 'wind', label: 'Wind direction', icon: 'wind' }");
+    expect(read('screens/sim/windPanel.ts')).toContain("panelShell('Wind direction'");
+    expect(squash(step('Tools'))).toContain('opens Why here?, Fire, Fuel, Wind direction, Layers, What if and Air slices');
+  });
+
+  it('Wind direction: the turn takes 15 minutes, the choices of When, the button words, and the dial opening on the wind are the panel’s', () => {
+    expect(WIND_TURN_S).toBe(900);
+    expect(WIND_HINT).toContain(`It turns over ${WIND_TURN_S / 60} minutes and then holds that direction`);
+    const b = squashed('Wind direction (tool)');
+    const h = squash(step('Wind direction'));
+    expect(b).toContain('takes 15 minutes to reach the new direction, the short way round');
+    expect(h).toContain('takes 15 minutes to reach the new direction, the short way round');
+    expect(WHEN_OPTIONS.map((o) => o.label)).toEqual(['Now', 'In 10 min', 'In 30 min', 'In 1 h', 'At a time']);
+    expect(b).toContain('Now, In 10 min, In 30 min, In 1 h or At a time');
+    expect(h).toContain('Now, In 10 min, In 30 min, In 1 h or At a time');
+    expect(applyLabel(225)).toBe('Turn wind to SW');
+    expect(applyLabel(315, true)).toBe('Hold wind from NW');
+    expect(holdsDirection(315, 315)).toBe(true);
+    expect(holdsDirection(225, 315)).toBe(false);
+    for (const t of [b, h]) {
+      expect(t).toContain(`“${applyLabel(225)}”`);
+      expect(t).toContain(`“${applyLabel(315, true)}”`);
+    }
+    expect(b).toContain('the dial opens on the wind as it is now');
+    expect(dialStart(312)).toBe(310); // the dial opens on the wind rounded to its own step
+    // A change cannot start in the last minute of a scenario: the last time is the last whole minute before the end minus one.
+    expect(windDirectionTime(env.durationS, env.durationS)).toBe(env.durationS - 60);
+    expect(problemText('late', 'now', env.durationS, env)).toBe('There is no time left in this scenario for a wind change.');
+    expect(b).toContain('a change cannot start in the last minute of a scenario');
+    expect(h).toContain('The last minute of a scenario takes no change');
+  });
+
+  it('Wind direction: the speed stays, the whole column turns, the forecast’s later changes are replaced, and the Weather tab says it in the very words', () => {
+    const b = squashed('Wind direction (tool)');
+    expect(WIND_HINT).toContain('Wind speed stays as forecast.');
+    expect(b).toContain('The wind speed stays as forecast, and the whole column of air turns, near the ground and high up');
+    expect(squash(step('Wind direction'))).toContain('The wind speed stays as forecast, and the whole column of air turns, near the ground and high up');
+    expect(WIND_HINT).toContain("the forecast's later wind changes no longer apply");
+    const swings = /const FORECAST_SWINGS_REPLACED = "([^"]+)"/.exec(read('screens/sim/sheet.ts'))?.[1];
+    expect(swings).toBe("You changed the wind direction, so the forecast's later wind changes no longer apply.");
+    expect(straight(b)).toContain(`“${swings}”`);
+    expect(squash(step('Wind direction'))).toContain('so the forecast’s later wind changes no longer apply');
+  });
+
+  it('Wind direction: it changes the simulation (the panel says so for an earlier time), Remove is as if never made, and the readings are listed apart and keep their direction', () => {
+    const b = squashed('Wind direction (tool)');
+    const note = reviewingText(600, env);
+    expect(note).toBe('You are viewing 14:10. Applying re-runs the simulation from then.');
+    expect(b).toContain(`“${note}”`);
+    expect(b).toContain('Unlike the air slices and the wind marks, this changes the simulation');
+    expect(squash(step('Wind direction'))).toContain('Unlike the wind marks and the air slices, a change alters the simulation');
+    expect(LIST_TITLE).toBe('Your wind changes');
+    expect(b).toContain(`“${LIST_TITLE}”`);
+    expect(b).toContain('Remove takes it away as if you had never made it, and the simulation is computed again from its time');
+    expect(READINGS_TITLE).toBe('Wind readings');
+    expect(READINGS_NOTE).toBe('A reading keeps its own direction when you turn the wind.');
+    expect(b).toContain(`“${READINGS_TITLE}”`);
+    expect(b).toContain('keeps its own direction near its place when the wind is turned');
+    expect(b).toContain('Remove stops it from then on');
+    // A turn is its own kind of edit; the belt kit's reading stays the older one.
+    expect(read('../core/types.ts')).toContain("kind: 'windDirection'");
+    expect(b).toContain('A change of yours raises no wind change card and no Danger zone');
+  });
+
+  it('Wind direction: the fast model follows the turn closely and the 3-D settings can lag, which is what the engine tests allow', () => {
+    const b = squashed('Wind direction (tool)');
+    expect(b).toContain('On the fast model the fire’s wind follows the turn closely. On the 3-D settings the wind near the ground can lag a little behind it, during a big turn and for a few minutes after');
+    expect(squash(step('Wind direction'))).toContain('On the 3-D settings the wind near the ground can lag a little behind a big turn, during it and for a few minutes after');
+    expect(read('../sim/windDirection.sim.test.ts')).toContain('the 3-D air runs within 25 degrees of the ambient while it turns and 30 minutes after the change it is within 5 degrees');
+  });
+
+  it('Wind detail: the button’s words, four steps, and where it shows and where it does not (no wind mark, the Wind speed map, eye level with only the arrows, the 2-D map)', () => {
+    const b = squashed('Wind detail');
+    expect(SHEET_TITLE).toBe('Wind detail');
+    expect(entry('Wind detail').term).toBe(SHEET_TITLE);
+    expect(read('screens/sim/windDetailChip.ts')).toContain("WIND_DETAIL_LABEL = 'Wind detail'");
+    expect(b).toContain('the words “Wind detail” and four dots, one filled for each step reached');
+    expect(squash(step('Layers'))).toContain('a small “Wind detail” button at the bottom left of the map shows how detailed the wind is at this zoom: four dots, one filled for each step reached');
+    expect(squash(step('Layers'))).toContain('it is not shown for the Wind speed map');
+    expect(chipLabel(4)).toBe('Wind detail: level 4 of 4. Open the explanation.');
+    // Shown only while one of the two wind layers is on, in the 3-D view (the Wind speed map is a heat map: neither layer).
+    expect(windDetailState(wind({ glyphsOn: false, streaks: 'off' })).visible).toBe(false);
+    expect(windDetailState(wind({ stats: null })).visible).toBe(false);
+    expect(windDetailState(wind({ viewMode: 'ground', stats: stats({ active: false, idle: 'eye-level', level: 0, detail: 'off', detailSegments: 0 }) })).visible).toBe(false);
+    expect(windDetailState(wind({ glyphsOn: false, streaks: 'surface', viewMode: 'ground', stats: stats({ active: false, idle: 'off', level: 0, detail: 'off', detailSegments: 0 }) })).visible).toBe(true);
+    expect(b).toContain('It is not shown at eye level when only the arrows and flow lines are on, for the Wind speed map (a coloured map, not marks), in the 2-D map, or while a panel covers the map');
+    expect(read('../styles/sim.css')).toContain('.panel-open .wind-detail');
+    // Above the legend, at the bottom left; polled four times a second; a tap opens the sheet, nothing opens by itself.
+    expect(read('screens/sim/simScreen.ts')).toContain('The Wind detail chip stands on the legend');
+    expect(read('screens/sim/windDetailChip.ts')).toContain('POLL_MS = 250');
+    expect(b).toContain('about four times a second');
+    expect(b).toContain('never opens by itself and says nothing aloud as you zoom');
+  });
+
+  it('Wind detail: the steps and what holds the picture back are the sheet’s own', () => {
+    const b = squashed('Wind detail');
+    expect(levelLine({ level: 4, kind: 'detailed' })).toBe('Level 4 of 4: detailed streaks.');
+    expect(levelLine({ level: 3, kind: 'curves' })).toBe('Level 3 of 4: curved flow lines.');
+    expect(levelLine({ level: 1, kind: 'overview' })).toBe('Level 1 of 4: moving streaks over the whole area.');
+    expect(b).toContain('from level 0 to level 4');
+    expect(b).toContain('Level 4 of 4 is the detailed streaks of the closest zoom');
+    expect(b).toContain('straight arrows, curved flow lines, detailed streaks, or the Wind streaks moving over the whole area');
+    // The five limits, in the sheet's words and in Help's.
+    const words = (s: ReturnType<typeof windDetailState>): string[] => windDetailWords(s, { heightLabel: '10 m', height: 'fire', cellM: 133 }).lines;
+    const zoom = windDetailState(wind({ stats: stats({ level: 2, detail: 'off', detailSegments: 0, cellPx: 20 }) }));
+    expect(zoom.limits).toContain('zoom');
+    expect(words(zoom)).toContain('Zoom in for more detail.');
+    expect(b).toContain('you can zoom in for more');
+    const cells = windDetailState(wind({ stats: stats({ level: 3, detail: 'off', detailSegments: 0, cellPx: 90 }) }));
+    expect(cells.limits).toContain('cells');
+    expect(words(cells).join(' ')).toContain('The air model works on cells about 133 m wide. Between its points the wind is a smooth fit.');
+    expect(b).toContain('the air model works on cells about 100 to 270 m wide so between its points the wind is a smooth fit');
+    expect(windDetailState(wind({ stats: stats({ idle: 'budget', active: false, level: 3, detail: 'off', detailSegments: 0 }) })).limits).toContain('budget');
+    expect(BUDGET_LINE).toContain('already uses all the phone can draw');
+    expect(b).toContain('the view already uses all the phone can draw');
+    expect(windDetailState(wind({ air: 'diagnosed' })).limits).toContain('estimated');
+    expect(ESTIMATED_LINE).toBe("The fast tier's wind is estimated from the forecast and the shape of the ground. It is not simulated.");
+    expect(b).toContain('the wind of the fast model is estimated from the forecast and not simulated');
+    expect(windDetailState(wind({ stats: stats({ detail: 'still' }) })).limits).toContain('still');
+    expect(STILL_LINE).toContain('set to reduce motion');
+    expect(b).toContain('the phone is set to reduce motion so the streaks stand still');
+    expect(MOST_DETAILED_LINE).toBe('This is the most detailed level.');
+  });
+
+  it('Detailed streaks: the last step is from about 90 px a cell, both switches (the near-ground streaks and the arrows) feed one picture, and the model’s part and the added part are said apart', () => {
+    const b = squashed('Detailed streaks');
+    expect(LEVEL_EDGES[3]).toBe(90);
+    expect(b).toContain('From about 90 px a model cell');
+    const plan = planLod(90 * 1.2, 10, null, undefined, true);
+    expect(plan.level).toBe(4);
+    expect(plan.lengthPx.pxPerMs).toBe(DETAIL_GEOMETRY.pxPerMs);
+    expect(planLod(90 * 1.2, 10, null).lengthPx.pxPerMs).not.toBe(DETAIL_GEOMETRY.pxPerMs); // without the flag the 0.5.0 flow lines stand
+    expect(windDetailState(wind({ glyphsOn: false, streaks: 'surface' })).kind).toBe('detailed');
+    expect(windDetailState(wind({ glyphsOn: false, streaks: 'volume' })).kind).not.toBe('detailed');
+    expect(read('../render/SceneView.ts')).toContain("this.glyphs.setStreaksDetail(l.wind === 'surface')");
+    expect(read('../render/SceneView.ts')).toContain('this.wind.setSuppressed(detailInstead)');
+    expect(b).toContain('The Wind streaks set to “Near the ground” and the Arrows and flow lines both draw this one picture');
+    expect(b).toContain('“Through the plume” is not changed');
+    expect(read('screens/sim/layersPanel.ts')).toContain("{ value: 'surface', label: 'Near the ground' }");
+    expect(read('screens/sim/layersPanel.ts')).toContain("{ value: 'volume', label: 'Through the plume' }");
+    expect(squash(step('Layers'))).toContain('but at the closest zoom both (the Wind streaks set to “Near the ground”) draw the same detailed streaks');
+    // What is the model's and what is added, in the sheet's words.
+    expect(EDDIES_LINE).toContain('The small eddies are added for looks, from the shape of the ground.');
+    expect(b).toContain('are added for looks, from the shape of the ground; the model does not calculate them, and the Wind detail sheet says so');
+    expect(EDDIES_LINE).toContain('The streaks also move faster than the real wind so that you can see them.');
+    expect(b).toContain('The streaks also move faster than the real wind so that you can see them.');
+    expect(b).toContain('the direction and the speed along each streak, and the colour, are the air model’s');
+    // The eddies fade with the Wind height: under half at 300 m.
+    expect(detailGroundFactor(10)).toBe(1);
+    expect(detailGroundFactor(300)).toBeLessThan(0.5);
+    expect(detailGroundFactor(300)).toBeGreaterThan(0.3);
+    expect(b).toContain('so the eddies fade (to under half at 300 m)');
+    expect(b).toContain('If the phone is set to reduce motion the picture stands still');
+    expect(squashed('Arrows and flow lines')).toContain('(the detailed streaks also move along the wind)');
+  });
+
+  it('Moving around the map: a two-finger drag to the right turns the camera anticlockwise seen from above (touch only; the mouse and eye level are as they were)', () => {
+    const t = squash(step('Moving around the map'));
+    expect(t).toContain('Put two fingers on it and move them together: sideways turns the view (drag to the right and the camera turns anticlockwise seen from above, so the map seems to turn clockwise under your fingers), up or down tilts it, or pinch to zoom.');
+    expect(t).toContain('At eye level you cannot slide: one finger turns your head.');
+    expect(t).toContain('With a mouse: left button slides, right button turns, wheel zooms.');
+    const rig = read('../render/cameraRig.ts').replace(/\s*\n\s*\*?\s*/g, ' '); // the code's comments wrap
+    expect(rig).toContain('class TwoFingerTurnControls extends OrbitControls');
+    expect(rig).toContain('A two-finger drag to the right turns the camera anticlockwise seen from above');
+    expect(rig).toContain("the mouse's right-button rotate keeps OrbitControls' direction");
   });
 });
