@@ -265,12 +265,13 @@ const PHASE_DONE = 2;
 
 /**
  * Lattice cells between two reads of the clock while walking the lattice, and lines between two reads while tracing. A builder is interpreted
- * for its first rebuilds (a cold line costs 0.3 ms, a warm one 3 us): the first `COLD_REBUILDS` read the clock after every 64 cells and every
- * line, the next two after 256 cells and 4 lines, the rest after 2048 and 16 (0.7.0: a cold slice used to run up to 5 ms over its budget).
+ * for its first rebuilds (a cold line costs 0.3 ms, a warm one 3 us; a cold cell with the relief about 0.1 to 0.5 ms): the first `COLD_REBUILDS` read the
+ * clock after every 8 cells and every line, the next two after 256 cells and 4 lines, the rest after 2048 and 16 (0.7.0: a cold slice used to run up to
+ * 5 ms over its budget; with the relief's work in every cell, 64 cells took 30 ms in the first slices of a real build, so 8).
  */
 const CELL_CHECK = 2048;
 const CELL_CHECK_WARMING = 256;
-const CELL_CHECK_COLD = 64;
+const CELL_CHECK_COLD = 8;
 const COLD_REBUILDS = 2;
 const WARMING_REBUILDS = 4;
 const LINE_CHECK = 16;
@@ -289,8 +290,8 @@ const SALT_LEE = 0x1ee5;
 const NO_CROWNS: readonly never[] = [];
 /** The widest reach of a crown (3 radii of a crown of 8 m), added to the box of the trees the scan looks at. */
 const REACH_CROWN_M = 24;
-/** Trees between two reads of the clock while choosing the crowns (the contract's 4,096 when warm). */
-const CROWN_CHECK_COLD = 256;
+/** Trees between two reads of the clock while choosing the crowns (the contract's 4,096 when warm; a cold tree costs about 35 us, so 32 when cold). */
+const CROWN_CHECK_COLD = 32;
 const CROWN_CHECK_WARMING = 1024;
 
 class Builder implements DetailBuilder {
