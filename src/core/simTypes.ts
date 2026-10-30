@@ -339,11 +339,11 @@ export interface SimStateView {
   series: WeatherSeries;
   /**
    * Unix ms from which a Wind direction change replaces the forecast's wind direction (absent: none): the start of the first change the engine may
-   * count, that is one applied, or one made (`WindDirectionEdit.madeAt` at or before the step time) and still ahead.
+   * count, that is one applied, or one made (`WindDirectionEdit.madeAt` before the step time) and still ahead.
    * `series` stays the forecast; the explain engine reads this to leave out the forecast's own later wind changes.
    */
   windOverrideFromMs?: number;
-  /** 0.7.0 (item D): the user's Wind direction changes the engine may count, by start time (absent: none). Unread until lane W7-engine. */
+  /** 0.7.0 (item D): the user's Wind direction changes the engine may count, by start time (absent: none): the explain engine gives each its own card. */
   windUserChanges?: readonly SimWindChange[];
   droughtFactor: number;
   kbdi: number;
