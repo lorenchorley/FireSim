@@ -718,7 +718,7 @@ function windSpeedLegend(overlay: DataOverlayKind, height: WindHeight): LegendSp
       ramp,
       labels,
       none,
-      'The wind the fire model uses in each 60 m cell: slope flow, lee eddies and the fire’s own draw are included. It is not a measurement.',
+      'The wind the fire model uses in cells of about 60 m: slope flow, lee eddies and the fire’s own draw are included. It is not a measurement.',
     );
   }
   return rampSpec(

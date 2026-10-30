@@ -269,7 +269,7 @@ describe('the scale and the legend of the map at each height', () => {
       expect(n, String(h)).not.toMatch(/[—–]/);
     }
     expect(legendFor('windSpeed', { windHeight: 'fire' })!.note).toContain('on a calm night can differ a lot from the wind the fire feels');
-    expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('60 m cell');
+    expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('cells of about 60 m');
     expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('not a measurement');
     expect(legendFor('windSpeed', { windHeight: 300 })!.note).toContain('about 300 m above the ground');
   });
