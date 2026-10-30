@@ -22,8 +22,8 @@ const IGNORED: RegExp[] = [
 
 export const test = base.extend<{ consoleGuard: void; idleStop: void }>({
   // The view holds still after a minute without a touch (0.7.0, E3); many specs wait longer than that with the view up and expect it to move, so the
-  // page starts with the idle stop set to never (the seam `window.__firesimIdleStopMs`, read when the view is built). A spec that tests the stop
-  // sets its own value in an init script of its own, which runs after this one.
+  // page starts with the idle stop set to never (the seam `window.__firesimIdleStopMs`, read once when the view is built). A spec that tests the stop
+  // sets its own value after the page has loaded and before it builds the view (e2e/wind-motion.spec.ts).
   idleStop: [
     async ({ page }, use) => {
       await page.addInitScript(() => {
