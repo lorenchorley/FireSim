@@ -122,6 +122,8 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
   // ── apply ──
   const applyBtn = button({ label: applyLabel(ui.get().wind.dir), icon: 'check', variant: 'primary', size: 'lg', testId: 'apply-wind', onClick: () => apply() });
   const applyText = applyBtn.querySelector('.btn-text') as HTMLElement;
+  // The short plan over the button: on a small portrait phone the status under "When" is below the fold, this line is not (sim.css shows one or the other).
+  const plan = h('p', { class: 'wind-plan', hidden: true, dataset: { testid: 'wind-plan' } });
 
   function apply(): void {
     const w = resolveWhen(when, session.state.get().viewTime, env);
@@ -190,13 +192,15 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
     setShown(line2, !!v.lines[1]);
     text(reviewing, s.reviewing ? reviewingText(s.viewTime, env) : '');
     setShown(reviewing, s.reviewing);
+    text(plan, v.plan);
+    setShown(plan, v.plan !== '');
     text(applyText, applyLabel(dir));
     applyBtn.disabled = !v.canApply;
     renderList();
   };
 
   const body = h('div', { class: 'panel-body' }, [h('div', { class: 'wind-controls' }, [h('p', { class: 'hint wind-hint' }, WIND_HINT), dial.el]), whenSeg.el, timeField, msg, status, reviewing, list]);
-  const foot = h('div', null, applyBtn);
+  const foot = h('div', null, [plan, applyBtn]);
   const el = panelShell('Wind direction', 'wind', 'wind-panel', onClose, body, foot);
   el.classList.add('wind-panel');
   // The foot is a live region in the other panels (their Add / Apply bar comes and goes); here the button stays, and its words follow the dial.

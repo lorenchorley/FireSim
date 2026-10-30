@@ -162,6 +162,14 @@ describe('the status lines and Apply', () => {
     expect(v.message).toBe('');
     expect(v.lines).toEqual(['Before the change: from NW (315°).', 'Starts turning at 14:41 and reaches SW (225°) by 14:56.']);
   });
+  it('has a one-line plan for the bar over Apply: where the turn starts and ends, nothing when there is no valid time', () => {
+    // On a small portrait phone the body scrolls and the long sentence is under the fold: this line sits over the button instead.
+    expect(windView({ when: now, viewTime: V, env: ENV, dir: 225, directionAt: dirAt }).plan).toBe('Starts turning at 14:41, done by 14:56.');
+    expect(windView({ when: { choice: '10', clock: '' }, viewTime: V, env: ENV, dir: 180, directionAt: dirAt }).plan).toBe('Starts turning at 14:51, done by 15:06.');
+    expect(windView({ when: at(''), viewTime: V, env: ENV, dir: 225, directionAt: dirAt }).plan).toBe('');
+    expect(windView({ when: now, viewTime: D - 5, env: ENV, dir: 225, directionAt: dirAt }).plan).toBe('');
+    expect(windView({ when: now, viewTime: V, env: { ...ENV, durationS: 30 * 3600 }, dir: 225, directionAt: dirAt }).plan).toBe('Starts turning at Sat 14:41, done by Sat 14:56.');
+  });
   it('reads "before" at the change time, so an earlier change counts', () => {
     const v = windView({ when: { choice: '10', clock: '' }, viewTime: V, env: ENV, dir: 180, directionAt: dirAt });
     expect(v.lines).toEqual(['Before the change: from W (270°).', 'Starts turning at 14:51 and reaches S (180°) by 15:06.']);
@@ -246,8 +254,11 @@ describe('the dial', () => {
     expect(dialSize(915)).toBe(184);
     expect(dialSize(800)).toBe(184);
     expect(dialSize(799)).toBe(148);
-    expect(dialSize(640)).toBe(148);
-    expect(dialSize(560)).toBe(148);
+    expect(dialSize(700)).toBe(148);
+    // A small portrait phone (360 x 640) also shows the plan line over Apply: the dial gives that line its room.
+    expect(dialSize(699)).toBe(140);
+    expect(dialSize(640)).toBe(140);
+    expect(dialSize(560)).toBe(140);
     expect(dialSize(559)).toBe(120);
     expect(dialSize(390)).toBe(120);
   });
