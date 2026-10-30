@@ -273,3 +273,27 @@ test('What the fire feels: the words on the fast tier, with the 10 m sentence po
   await expect(caption).toContainText('Wind about 10 m above open ground, as the model fits it to the terrain');
   await expect(caption).toContainText('Choose What the fire feels to see it.');
 });
+
+test('What the fire feels: the words on the 3-D tier: no fast-model lines, and the calm-night sentence', async ({ page }, info) => {
+  test.setTimeout(600_000);
+  await build(page, 'Normal');
+  const kind = await airKind(page);
+  test.skip(kind !== 'prognostic', `the machine chose the ${kind} air for the Normal detail; the 3-D tier's words need the 3-D atmosphere`);
+  const felt = await ensureFireWind(page);
+  info.annotations.push({ type: 'the 60 m wind', description: `${felt.source}, 3-D tier: ${felt.nx} x ${felt.ny} cells of ${felt.cellM} m` });
+  await openArrows(page);
+  const caption = page.getByTestId('layers-panel').getByTestId('wind-glyph-caption');
+  await expect(caption).toContainText(/^Wind the fire feels · \d+ m cells · air from \d\d:\d\d/);
+  const lines = (await caption.innerText()).split('\n');
+  expect(lines.slice(0, 3)).toEqual([expect.stringMatching(/^Wind the fire feels · \d+ m cells · air from \d\d:\d\d\.$/), expect.stringMatching(/^The wind the fire model uses in each \d+ m cell: .* It is not a measurement\.$/), 'On a calm night much of it is air draining downhill.']);
+  // The fast model's own lines are not said of the 3-D atmosphere.
+  await expect(caption).not.toContainText('Diagnosed wind');
+  await expect(caption).not.toContainText('refitted once a minute');
+  await expect(caption).not.toContainText('as the model fits it to the terrain');
+  for (const line of lines) expect(line).toMatch(/\.$/);
+  // The 10 m caption of the 3-D atmosphere: no "fits it to the terrain", and it points to the new chip.
+  await page.getByTestId('layers-panel').getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true }).check({ force: true });
+  await expect(caption).toContainText('Wind about 10 m above open ground');
+  await expect(caption).not.toContainText('fits it to the terrain');
+  await expect(caption).toContainText('Choose What the fire feels to see it.');
+});
