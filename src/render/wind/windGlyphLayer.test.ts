@@ -141,13 +141,25 @@ interface Rig {
   fresh(): GlyphData;
 }
 
-function rig(o: { tier?: GlyphTier; height?: WindHeight; enabled?: boolean; data?: boolean; u?: (x: number, y: number, z: number) => number; drawElevation?: number; windMs?: number } = {}): Rig {
+function rig(
+  o: {
+    tier?: GlyphTier;
+    height?: WindHeight;
+    enabled?: boolean;
+    data?: boolean;
+    u?: (x: number, y: number, z: number) => number;
+    drawElevation?: number;
+    windMs?: number;
+    /** The ground (m ASL) of the air view and of both rasters; with it the layer builds its detailed streaks with the real builder, not the stub. */
+    groundAt?: (x: number, y: number) => number;
+  } = {},
+): Rig {
   const tier = o.tier ?? 'high';
   const clock = { t: 0 };
   const stub = new StubBuilder(clock, tier);
   const detail = new StubDetail(clock, tier);
-  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, createDetailBuilder: () => detail, now: () => clock.t });
-  const view = makeAirView({ u: o.u ?? (() => 8), v: () => 2, w: () => 0, baseM: GROUND, groundAt: () => GROUND });
+  const layer = new WindGlyphLayer(shared(), tier, { createBuilder: () => stub, ...(o.groundAt ? {} : { createDetailBuilder: () => detail }), now: () => clock.t });
+  const view = makeAirView({ u: o.u ?? (() => 8), v: () => 2, w: () => 0, baseM: GROUND, groundAt: o.groundAt ?? (() => GROUND) });
   view.surfaceU.fill(8);
   view.surfaceV.fill(2);
   const sampler = new AtmosphereSampler(view, GROUND, null);
@@ -159,8 +171,13 @@ function rig(o: { tier?: GlyphTier; height?: WindHeight; enabled?: boolean; data
       real(pos, out);
     };
   }
-  const hf = new HeightField(view.grid, new Float32Array(view.grid.nx * view.grid.ny).fill(GROUND));
-  const drawn = new HeightField(view.grid, new Float32Array(view.grid.nx * view.grid.ny).fill(o.drawElevation ?? GROUND));
+  const raster = (at: (x: number, y: number) => number): Float32Array => {
+    const e = new Float32Array(view.grid.nx * view.grid.ny);
+    for (let k = 0; k < e.length; k++) e[k] = at(view.grid.x0 + (k % view.grid.nx) * view.grid.cellSize, view.grid.y0 + Math.floor(k / view.grid.nx) * view.grid.cellSize);
+    return e;
+  };
+  const hf = new HeightField(view.grid, o.groundAt ? raster(o.groundAt) : new Float32Array(view.grid.nx * view.grid.ny).fill(GROUND));
+  const drawn = new HeightField(view.grid, o.groundAt ? raster(o.groundAt) : new Float32Array(view.grid.nx * view.grid.ny).fill(o.drawElevation ?? GROUND));
   const fresh = (): GlyphData => ({ sampler, atm: view, sliceGround: hf, drawGround: drawn });
   if (o.height !== undefined) layer.setHeight(o.height);
   if (o.enabled !== false) layer.setEnabled(true);
@@ -1024,11 +1041,18 @@ describe('WindGlyphLayer: the detailed streaks of the most detailed level', () =
     expect(input.ground10.elevation[0]).toBe(GROUND); // the 10 m ground as received: the numbers come from it
     expect(input.ground.elevation[0]).toBe(560); // the drawn mesh: the picture sits on it
     expect(input.seed).toBe(0);
+    expect(input.heightM).toBe(10); // the Wind height 'fire' is the model's 10 m wind: the ground terms in full
     expect(input.cap).toEqual({ glyphs: GLYPH_CAPS.high.glyphs, segments: GLYPH_CAPS.high.segments });
     expect(input.field.u).toBe(r.fresh().atm!.surfaceU);
     r.go(L3, { settle: true, dt: 300 });
     expect(r.stub.begins[0]!.lod).toMatchObject({ level: 3, spacingPx: 36, curved: true, jitter: 0.3 });
     expect('ground10' in r.stub.begins[0]!).toBe(false);
+  });
+
+  it('tells the detailed builder the height the wind is read at, so that the ground terms fade with it', () => {
+    const r = rig({ height: 300, windMs: 0.01 });
+    for (let i = 0; i < 40 && r.detail.begins.length === 0; i++) r.go(L4, { dt: 16 });
+    expect(r.detail.begins[0]!.heightM).toBe(300);
   });
 
   it('keeps the lattice of the zoom: the same power of two from either side, held inside the narrow band at an octave edge', () => {
@@ -1485,5 +1509,94 @@ describe('the layer and the frame loop (source pins)', () => {
   it('reaches the view through stats() and windGlyphStats()', () => {
     expect(scene).toMatch(/windGlyphs: \{ level: g\.level, count: g\.count \}/);
     expect(scene).toMatch(/windGlyphStats\(\): WindGlyphStats/);
+  });
+});
+
+describe('WindGlyphLayer with the real detailed-streak builder: what the shader is given', () => {
+  /** A ground that rolls from east to west (a slope of 0.2 at the steepest), under a wind that blows from the west-south-west at 8.2 m/s. */
+  const ROLLING = (x: number): number => GROUND + 60 * Math.sin(x / 300);
+  const attr = (r: Rig, name: string): Float32Array => (r.mesh('wind-detail').geometry.getAttribute(name) as THREE.InstancedBufferAttribute).array as Float32Array;
+  const build = (height: WindHeight): { r: Rig; n: number } => {
+    const r = rig({ groundAt: (x) => ROLLING(x), height });
+    r.go(L4, { settle: true });
+    return { r, n: r.layer.stats().detailSegments };
+  };
+
+  it('hands the shader 18 floats a segment in the ranges it reads: arc lengths that grow along the line, a seed, a tail, the terrain terms, alpha 1', () => {
+    const { r, n } = build('fire');
+    expect(n).toBeGreaterThan(200);
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 4, detail: 'moving', detailSegments: n });
+    const geom = r.mesh('wind-detail').geometry as THREE.InstancedBufferGeometry;
+    expect(['aA', 'aB', 'aC', 'aD', 'aE'].map((name) => geom.getAttribute(name).itemSize)).toEqual([3, 3, 4, 4, 4]); // 18 floats = 72 bytes
+    const [a, b, c, d, e] = ['aA', 'aB', 'aC', 'aD', 'aE'].map((name) => attr(r, name)) as [Float32Array, Float32Array, Float32Array, Float32Array, Float32Array];
+    let lifted = 0;
+    for (let i = 0; i < n; i++) {
+      const at = `segment ${i}`;
+      expect(c[4 * i + 3], at).toBe(1); // the shader draws nothing at alpha 0
+      const [s0, s1, len, seed] = [d[4 * i]!, d[4 * i + 1]!, d[4 * i + 2]!, d[4 * i + 3]!];
+      expect(s0, at).toBeGreaterThanOrEqual(0);
+      expect(s1, at).toBeGreaterThan(s0);
+      expect(s1 - s0, at).toBeLessThanOrEqual(12); // the lines are in steps of 9 px or so
+      expect(s1, at).toBeLessThanOrEqual(len + 1e-3);
+      expect(len, at).toBeGreaterThanOrEqual(26); // 90 to 220 px, or as much as is drawn of a line that a wall or the raster's edge cut short
+      expect(len, at).toBeLessThanOrEqual(220 + 1e-3);
+      expect(seed, at).toBeGreaterThanOrEqual(0);
+      expect(seed, at).toBeLessThan(1);
+      const [speed, turb, lift, tail] = [e[4 * i]!, e[4 * i + 1]!, e[4 * i + 2]!, e[4 * i + 3]!];
+      expect(speed, at).toBeGreaterThan(0.3); // m/s, not px
+      expect(speed, at).toBeLessThan(30);
+      expect(turb, at).toBeGreaterThanOrEqual(0.25 - 1e-6);
+      expect(turb, at).toBeLessThanOrEqual(1);
+      expect(Math.abs(lift), at).toBeLessThanOrEqual(1);
+      expect(tail, at).toBeGreaterThanOrEqual(24);
+      expect(tail, at).toBeLessThanOrEqual(90);
+      if (Math.abs(lift) > 0.05) lifted++;
+      // The ends are in metres (world axes), a few metres apart at this zoom.
+      const run = Math.hypot(b[3 * i]! - a[3 * i]!, b[3 * i + 2]! - a[3 * i + 2]!);
+      expect(run, at).toBeGreaterThan(0.5);
+      expect(run, at).toBeLessThan(40);
+    }
+    expect(lifted, 'the rolling ground lifts and sinks some lines').toBeGreaterThan(n / 10);
+  });
+
+  it('bakes the lift into the heights once: the arrays hold it above the ground, and the shader reads it only to brighten', () => {
+    const { r, n } = build('fire');
+    const [a, e] = ['aA', 'aE'].map((name) => attr(r, name)) as [Float32Array, Float32Array];
+    for (let i = 0; i < n; i++) expect(a[3 * i + 1]! - ROLLING(a[3 * i]!), `segment ${i}: never under the ground`).toBeGreaterThan(-3); // (the ground is a raster of 200 m cells: a few metres of give)
+    // Lines that rise over the rolling ground and lines that sink in the lee both exist, so the heights above did carry a lift.
+    let up = 0;
+    let down = 0;
+    for (let i = 0; i < n; i++) {
+      if (e[4 * i + 2]! > 0.3) up++;
+      if (e[4 * i + 2]! < -0.3) down++;
+    }
+    expect(up).toBeGreaterThan(0);
+    expect(down).toBeGreaterThan(0);
+    // The shader moves a vertex across the ground (the meander) and never up or down, and uses `lift` (aE.z) in one place: the brightness.
+    const src = (r.mesh('wind-detail').material as THREE.ShaderMaterial).vertexShader;
+    expect(src.match(/aE\.z/g)).toHaveLength(1);
+    expect(src).toMatch(/float lift = 1\.0 \+ 0\.12 \* aE\.z;/);
+    expect(src).not.toMatch(/\b(pa|pb)\.y\b/);
+  });
+
+  it('fades the ground terms with the wind height: a 300 m wind keeps about 0.38 of the lift and the turbulence the 10 m wind has', () => {
+    const near = build('fire');
+    const high = build(300);
+    const mean = (b: { r: Rig; n: number }, off: number, f: (v: number) => number): number => {
+      const e = attr(b.r, 'aE');
+      let sum = 0;
+      for (let i = 0; i < b.n; i++) sum += f(e[4 * i + off]!);
+      return sum / b.n;
+    };
+    const lift10 = mean(near, 2, Math.abs);
+    const lift300 = mean(high, 2, Math.abs);
+    const turb10 = mean(near, 1, (v) => v - 0.25);
+    const turb300 = mean(high, 1, (v) => v - 0.25);
+    expect(lift10).toBeGreaterThan(0.1);
+    expect(lift300 / lift10, 'lift at 300 m over lift at 10 m').toBeGreaterThan(0.3);
+    expect(lift300 / lift10).toBeLessThan(0.46);
+    expect(turb10).toBeGreaterThan(0.01);
+    expect(turb300 / turb10, 'turbulence above the base').toBeGreaterThan(0.3);
+    expect(turb300 / turb10).toBeLessThan(0.46);
   });
 });

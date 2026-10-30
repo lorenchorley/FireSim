@@ -4,9 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { REBUILD_MIN_GAP_MS } from './glyphPose';
-import { LEVEL_EDGES, metresPerPixelAt, planLod } from './glyphLod';
-import { detailPlan, mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_GEOMETRY, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box, type LodPlan } from './glyphTypes';
+import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
+import { FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type Box } from './glyphTypes';
 
 /** The camera of these tests: 3 km from a target on the ground at (0, 0), looking down at it from the south at about 56 degrees. */
 const EYE: [number, number, number] = [0, 2500, 1700];
@@ -196,86 +195,6 @@ describe('segmentCap for the detailed streaks (2 triangles a segment, one batch)
         expect(cap).toBeLessThanOrEqual(tier);
       }
     }
-  });
-});
-
-describe('detailPlan (what the most detailed level draws: the detailed streaks)', () => {
-  const FOV = 50;
-  const H = 800;
-  /** The plan `planLod` gives at the middle of a screen `distance` metres from a 133 m cell, then the streaks' numbers on top. */
-  const plan = (distance: number, prev: LodPlan | null, prevExp: number | null): { lod: LodPlan; exp: number } => {
-    const mpp = metresPerPixelAt(distance, FOV, H);
-    const lod = planLod(133 / mpp, mpp, prev, prev ?? undefined);
-    return { lod, exp: lod.level === 4 ? detailPlan(lod, mpp, prevExp) : -99 };
-  };
-
-  it('puts the streaks\' geometry in the plan and leaves what the zoom decided alone', () => {
-    const mpp = metresPerPixelAt(300, FOV, H);
-    const lod = planLod(133 / mpp, mpp, null);
-    const before = { level: lod.level, cellPx: lod.cellPx, mppCentre: lod.mppCentre };
-    detailPlan(lod, mpp, null);
-    expect(before.level).toBe(4);
-    expect({ level: lod.level, cellPx: lod.cellPx, mppCentre: lod.mppCentre }).toEqual(before);
-    expect(lod).toMatchObject({ spacingPx: DETAIL_GEOMETRY.spacingPx, curved: true, jitter: DETAIL_GEOMETRY.jitter });
-    expect(lod.lengthPx).toEqual({ min: DETAIL_GEOMETRY.minPx, max: DETAIL_GEOMETRY.maxPx, pxPerMs: DETAIL_GEOMETRY.pxPerMs });
-  });
-
-  it('puts the lattice on a power of two of metres that is not denser than 40 px, as the curved levels do', () => {
-    for (const mpp of [0.05, 0.3, 0.9, 1.31, 2.6]) {
-      const lod = planLod(133 / mpp, mpp, null);
-      const exp = detailPlan(lod, mpp, null);
-      expect(lod.spacingM).toBe(2 ** exp);
-      expect(lod.spacingM / mpp, `at ${mpp} m a pixel`).toBeGreaterThanOrEqual(DETAIL_GEOMETRY.spacingPx - 1e-9); // never denser than 40 px
-      expect(lod.spacingM / mpp).toBeLessThan(2 * DETAIL_GEOMETRY.spacingPx + 1e-9); // and under twice that
-    }
-  });
-
-  it('gives one lattice per zoom from either side, except inside the narrow band at an octave edge', () => {
-    // Zoom in, then out, over about five octaves of the most detailed level: the exponent at each distance is the same going either way, but for the band.
-    const dists: number[] = [];
-    for (let d = 1100; d > 40; d /= 1.04) dists.push(d);
-    const up = new Map<number, number>();
-    let prev: LodPlan | null = null;
-    let prevExp: number | null = null;
-    for (const d of dists) {
-      const r = plan(d, prev, prevExp);
-      prev = r.lod;
-      prevExp = r.exp;
-      up.set(d, r.exp);
-    }
-    prev = null;
-    prevExp = null;
-    let differs = 0;
-    for (const d of [...dists].reverse()) {
-      const r = plan(d, prev, prevExp);
-      prev = r.lod;
-      prevExp = r.exp;
-      const a = up.get(d)!;
-      if (r.exp !== a) {
-        differs++;
-        expect(Math.abs(r.exp - a)).toBe(1); // one octave at the very most
-        const t = Math.log2(DETAIL_GEOMETRY.spacingPx * metresPerPixelAt(d, FOV, H));
-        expect(Math.abs(t - Math.round(t)), `at ${d.toFixed(0)} m`).toBeLessThanOrEqual(0.06 + 1e-9); // and only within the band of an octave edge
-      }
-    }
-    expect(differs, 'the two ways do differ somewhere: the band is there').toBeGreaterThan(0);
-  });
-
-  it('holds the kept lattice inside the band and takes the new one outside it', () => {
-    const mpp = (px: number): number => px / DETAIL_GEOMETRY.spacingPx; // log2(40 x mpp) = log2(px)
-    const lod = planLod(500, mpp(64), null);
-    expect(detailPlan(lod, mpp(64), null)).toBe(6); // 64 m on the lattice edge: the exponent 6 owns (5, 6]
-    expect(detailPlan(lod, mpp(64 * 2 ** 0.04), 6)).toBe(6); // 0.04 of an octave past the edge: still 6
-    expect(detailPlan(lod, mpp(64 * 2 ** 0.1), 6)).toBe(7); // 0.1: 7
-    expect(detailPlan(lod, mpp(64 * 2 ** 0.1), null)).toBe(7);
-    expect(detailPlan(lod, mpp(64 * 2 ** 0.04), null)).toBe(7); // no previous lattice: the zoom alone decides
-  });
-
-  it('does nothing odd for a plan with no metres a pixel', () => {
-    const lod = planLod(500, 0.5, null);
-    expect(detailPlan(lod, 0, null)).toBe(0);
-    expect(lod.spacingM).toBe(1);
-    expect(LEVEL_EDGES[3]).toBe(90); // (the level edges are planLod's, untouched)
   });
 });
 

@@ -100,12 +100,14 @@ vec2 meander(vec2 p, float pxPerM, float t) {
 float gust(float alongM, vec2 p, float t) {
   return 0.85 + 0.15 * (1.0 + sin(6.2831853 * (alongM / 120.0 - t / 4.0 + 0.8 * vn(p / 300.0))));
 }
-// Depth of a point slid toward the eye by uDepthBias metres along its own ray (the place on the screen does not change).
+// Depth of a point slid toward the eye by uDepthBias metres along its own ray (the place on the screen does not change), at most 0.8 of the way to
+// the eye (at the closest zoom, a point 40 m away with the camera among the crowns, half of it would leave the streaks behind every leaf in
+// front) and never nearer than the near plane (its clip depth stops at -0.999: the near plane is a quarter of the camera's height).
 float biasedDepth(vec3 p) {
   vec3 v = (viewMatrix * vec4(p, 1.0)).xyz;
   float l = length(v);
-  vec4 b = projectionMatrix * vec4(v * (1.0 - min(uDepthBias, 0.5 * l) / l), 1.0);
-  return b.z / b.w;
+  vec4 b = projectionMatrix * vec4(v * (1.0 - min(uDepthBias, 0.8 * l) / l), 1.0);
+  return max(b.z / b.w, -0.999);
 }
 
 void main() {

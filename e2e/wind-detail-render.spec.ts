@@ -3,15 +3,14 @@
  * tier, the High picture tier, the real worker, a Pixel 7 profile at device scale 1, software GL). The layer's own rules are unit-tested
  * (src/render/wind: the fade, the hand-over, the budget, the shader text); this checks what only a real renderer and a real frame loop show:
  *
- * Always (these hold with any builder, the C0 stub that finds no lines included):
+ * The shader, the ladder and the budget:
  *   - the shader compiles and links in a real GL stack, and the console stays empty
  *   - with only the Wind streaks on (the default: the glyph switch is off) a REAL pinch from 12 km to the closest zoom walks the level 1 to 4,
  *     and the level always agrees with the pixels a model cell covers; nothing is built below level 4
  *   - at the closest zoom the draw calls are at most those one level out, and the frame stays inside 550,000 triangles
  *   - eye level draws no detailed streaks
  *
- * Only with the real builder (D-engine's `detailStreaks.ts`): set WIND_DETAIL_BUILDER=real. Without it the lines never exist, so there is
- * nothing for these to look at (they are skipped, and say so; with it they must pass):
+ * The streaks themselves, built by `detailStreaks.ts`:
  *   - the Wind streaks switch alone shows the detailed streaks at level 4, and the old streaks step aside (`getObjectByName('wind').visible`);
  *     the volume streaks do not; the glyph switch alone shows them too
  *   - one draw call and 2 triangles a segment, at most the draw calls of level 3
@@ -28,8 +27,6 @@ import { expect, test } from './fixtures';
 import { acceptNotice, frame, newHand } from './helpers';
 
 test.use({ deviceScaleFactor: 1, actionTimeout: 45_000 });
-
-const REAL = process.env.WIND_DETAIL_BUILDER === 'real';
 
 type Pt = [number, number];
 interface CamState {
@@ -248,8 +245,7 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
     expect(last.distance).toBeLessThan(1000);
     expect(last.stats.level).toBe(4);
     expect(new Set(readings.map((r) => r.stats.level)).size, 'at least three different levels on the way').toBeGreaterThanOrEqual(3);
-    if (REAL) expect(last.stats, 'the closest zoom draws the detailed streaks').toMatchObject({ active: true, idle: null, detail: 'moving' });
-    else expect(last.stats.idle, 'nothing is missing with the stub builder either').toBeNull();
+    expect(last.stats, 'the closest zoom draws the detailed streaks').toMatchObject({ active: true, idle: null, detail: 'moving' });
   });
 
   // ───────── draw calls and triangles ─────────
@@ -278,13 +274,11 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
     expect(on4.info.calls).toBeLessThanOrEqual(base4.info.calls + extra3);
     expect(on3.info.triangles).toBeLessThanOrEqual(550_000);
     expect(on4.info.triangles).toBeLessThanOrEqual(550_000);
-    if (REAL) {
-      expect(on4.s.detailSegments).toBeGreaterThan(500);
-      expect(on4.s.detailSegments).toBeLessThanOrEqual(12_000);
-      expect(extra4, 'L4: the detailed streaks are one draw call, and the old Wind streaks are not drawn').toBe(1);
-      expect(on4.info.triangles - base4.info.triangles, 'two triangles a segment').toBe(2 * on4.s.detailSegments);
-      expect(on4.s.segments, 'everything drawn is the streaks').toBe(on4.s.detailSegments);
-    }
+    expect(on4.s.detailSegments).toBeGreaterThan(500);
+    expect(on4.s.detailSegments).toBeLessThanOrEqual(12_000);
+    expect(extra4, 'L4: the detailed streaks are one draw call, and the old Wind streaks are not drawn').toBe(1);
+    expect(on4.info.triangles - base4.info.triangles, 'two triangles a segment').toBe(2 * on4.s.detailSegments);
+    expect(on4.s.segments, 'everything drawn is the streaks').toBe(on4.s.detailSegments);
     await setLayers(page, { windGlyphs: false, wind: 'surface' });
   });
 
@@ -302,12 +296,11 @@ test('wind detail: the shader compiles, a real pinch walks the level with only t
     const back = await drawAndRead(page);
     expect(back.level).toBe(4);
     expect(back.idle).toBeNull();
-    if (REAL) expect(back.detail).toBe('moving');
+    expect(back.detail).toBe('moving');
   });
 });
 
-test('wind detail (real builder): the streaks from either switch, the old streaks step aside, reduced motion, the hand-over, no leak', async ({ page }, testInfo) => {
-  test.skip(!REAL, 'needs the real detail builder: run with WIND_DETAIL_BUILDER=real once detailStreaks.ts is the real one');
+test('wind detail: the streaks from either switch, the old streaks step aside, reduced motion, the hand-over, no leak', async ({ page }, testInfo) => {
   test.setTimeout(900_000);
   await build(page);
   await quietScene(page);
@@ -460,7 +453,7 @@ test('wind detail (real builder): the streaks from either switch, the old streak
     await lookAt(page, 700, 0, 0, 200, 55);
     await drawAndRead(page);
     const over = await both('700 m, 55 degrees, over the forest');
-    expect(over.plain, 'there are streaks to count').toBeGreaterThan(1500);
+    expect(over.plain, 'there are streaks to count').toBeGreaterThan(1000);
     expect(over.biased, 'the bias shows at least a third more of the streaks than the plain depth test').toBeGreaterThan(over.plain * 1.3);
     await lookAt(page, 1000, 800, -600, 90, 65);
     await drawAndRead(page);

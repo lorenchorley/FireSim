@@ -3,9 +3,9 @@
  * rebuilt now, how many segments the frame still has room for, and the log of slice times the statistics read. No Three.js and
  * no DOM, so the rules are tested in node with a fake clock; `windGlyphLayer.ts` applies them inside the frame loop.
  */
-import { boxContains, SPACING_EXP_HYSTERESIS } from './glyphLod';
+import { boxContains } from './glyphLod';
 import { poseChange, REBUILD_MIN_GAP_MS, type PoseSig, type RebuildReason } from './glyphPose';
-import { DETAIL_GEOMETRY, FRAME_TRIANGLE_LIMIT, type Box, type GlyphLevel, type LodPlan, type WindHeight } from './glyphTypes';
+import { FRAME_TRIANGLE_LIMIT, type Box, type GlyphLevel, type WindHeight } from './glyphTypes';
 
 /** What a drawn picture was made from. The pose is the one at the start of its build, not of the frame it was swapped in. */
 export interface BuiltPicture {
@@ -68,31 +68,6 @@ export function mayRebuild(reason: RebuildReason, nowMs: number, lastSwapMs: num
 export function segmentCap(tierSegments: number, framesTriangles: number, ownSegments: number, trianglesPerSegment = 4): number {
   const others = Math.max(0, framesTriangles - trianglesPerSegment * ownSegments);
   return Math.max(0, Math.min(tierSegments, Math.floor((FRAME_TRIANGLE_LIMIT - others) / trianglesPerSegment)));
-}
-
-/**
- * Put the numbers of the detailed streaks (`DETAIL_GEOMETRY`) into a plan that `planLod` made at the most detailed level, and return the
- * lattice exponent they give. The level, the pixels a cell covers and the 15 % hysteresis stay as `planLod` decided them; what changes is
- * what the level draws: curved lines of 90 to 220 px on a lattice of about 40 px. The exponent is worked out as `planLod` does it for a
- * curved level (`ceil(log2(spacingPx x mppCentre))`, kept inside the narrow band `SPACING_EXP_HYSTERESIS` around an edge), against
- * `prevExp`, the exponent this function gave last time at this level (null on arriving at it): the zoom alone decides the lattice.
- */
-export function detailPlan(plan: LodPlan, mppCentre: number, prevExp: number | null): number {
-  let exp = 0;
-  if (mppCentre > 0 && Number.isFinite(mppCentre)) {
-    const t = Math.log2(DETAIL_GEOMETRY.spacingPx * mppCentre);
-    exp = Math.ceil(t);
-    if (prevExp !== null && t > prevExp - 1 - SPACING_EXP_HYSTERESIS && t <= prevExp + SPACING_EXP_HYSTERESIS) exp = prevExp;
-  }
-  plan.spacingPx = DETAIL_GEOMETRY.spacingPx;
-  plan.spacingExp = exp;
-  plan.spacingM = 2 ** exp;
-  plan.curved = true;
-  plan.jitter = DETAIL_GEOMETRY.jitter;
-  plan.lengthPx.min = DETAIL_GEOMETRY.minPx;
-  plan.lengthPx.max = DETAIL_GEOMETRY.maxPx;
-  plan.lengthPx.pxPerMs = DETAIL_GEOMETRY.pxPerMs;
-  return exp;
 }
 
 /** The times of the last 64 slices of rebuild work, and the slices and work of the last whole rebuild ("rebuild 3.1 ms (p95 slice 4.2 ms)"). */
