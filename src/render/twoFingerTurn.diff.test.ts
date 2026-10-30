@@ -16,10 +16,16 @@ import type * as THREE from 'three';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { makeGridSpec } from '../core/grid';
 import type { CameraState } from './api';
-import { CameraRig } from './cameraRig';
+import { CameraRig, GESTURE } from './cameraRig';
 import { HeightField } from './heightfield';
-import { CameraRig as CameraRig060 } from './testing/cameraRig060';
+import { CameraRig as CameraRig060, GESTURE as GESTURE060 } from './testing/cameraRig060';
 import { FakeElement, FakeTarget, H, W, katoombaHeightField } from './testing/rigHarness';
+
+// 0.7.0 made the rotation 15 % faster on purpose (`GESTURE.rotateSpeed` 2/3 → 2/3 · 1.15, a change of that one constant). The frozen
+// reference still says 2/3, so it is set to the new value here, before any rig is built (its constructor and every mode change read it):
+// this file proves that the new turn is the old ARITHMETIC (OrbitControls' step, damping, limits), frame by frame, and the speed is the
+// one thing that differs between the sources. Nothing else of the reference is touched and no tolerance below is wider for it.
+(GESTURE060 as { rotateSpeed: number }).rotateSpeed = GESTURE.rotateSpeed;
 
 let fake = 5_000_000;
 vi.spyOn(performance, 'now').mockImplementation(() => fake);
@@ -886,14 +892,26 @@ describe('the 0.7.0 two-finger turn against the 0.6.0 rig, frame by frame', () =
     expect(walks.filter(([, w]) => w.held > 20).length, 'walks with a real turn').toBeGreaterThan(25);
   });
 
-  it('both turn the way the owner asked: a two-finger drag to the right takes the compass azimuth of the camera down, about 30 degrees per 100 px', () => {
+  it('both turn the way the owner asked: a two-finger drag to the right takes the compass azimuth of the camera down, 34.5 degrees per 100 px (rotateSpeed 2/3 · 1.15: 30 × 1.15)', () => {
     const o = new Sim(CameraRig060);
     o.two(100, 0);
     const n = new Sim(CameraRig);
     n.two(100, 0);
     const d = (s: Sim): number => wrap(s.trace.at(-1)!.az - s.trace[2]!.az);
-    expect(d(o)).toBeCloseTo(-30, 0);
-    expect(d(n)).toBeCloseTo(-30, 0);
+    expect(d(o)).toBeCloseTo(-34.5, 0);
+    expect(d(n)).toBeCloseTo(-34.5, 0);
+  });
+
+  it('the reference runs at the speed of the 0.7.0 rig (the one constant set at the top of this file), also after a mode change re-applies it', () => {
+    expect(GESTURE060.rotateSpeed).toBe(GESTURE.rotateSpeed);
+    expect(GESTURE.rotateSpeed).toBeCloseTo(23 / 30, 12);
+    const o = new Sim(CameraRig060);
+    const n = new Sim(CameraRig);
+    for (const s of [o, n]) {
+      s.rig.setMode('top');
+      s.rig.setMode('orbit');
+      expect(s.rig.controls.rotateSpeed).toBe(GESTURE.rotateSpeed);
+    }
   });
 
   afterAll(() => {

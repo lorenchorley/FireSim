@@ -117,8 +117,8 @@ async function expectCanvasAt(page: Page, x: number, y: number): Promise<void> {
   expect(tag, `what is under (${x}, ${y})`).toBe('CANVAS');
 }
 
-/** Degrees one screen height of two-finger drag turns the view: 360° · rotateSpeed (2/3) → 240°, i.e. a full turn per 1.5 heights. */
-const DEG_PER_HEIGHT = 240;
+/** Degrees one screen height of two-finger drag turns the view: 360° · rotateSpeed (2/3 · 1.15 = 23/30 since 0.7.0) → 276°, i.e. a full turn per 1.3 heights (240° and 1.5 heights before). */
+const DEG_PER_HEIGHT = 276;
 
 test('map gestures with real touch: one finger pans, two fingers turn / tilt / zoom together, switching fingers does not jump, taps still work', async ({ page }) => {
   test.setTimeout(420_000);

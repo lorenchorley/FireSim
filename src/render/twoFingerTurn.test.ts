@@ -10,6 +10,7 @@ import { join, relative, resolve } from 'node:path';
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { GESTURE } from './cameraRig';
 import { TwoFingerTurn } from './twoFingerTurn';
 
 // ───────────── a fake element and fake controls ─────────────
@@ -62,7 +63,7 @@ const setupAt = (): { el: FakeElement; c: FakeControls; turn: TwoFingerTurn } =>
     enableRotate: true,
     enableDamping: false,
     dampingFactor: 0.12,
-    rotateSpeed: 2 / 3,
+    rotateSpeed: GESTURE.rotateSpeed, // (2/3 · 1.15 since 0.7.0)
     minPolarAngle: 0,
     maxPolarAngle: THREE.MathUtils.degToRad(86),
     touches: { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE },
@@ -79,6 +80,8 @@ const view = (c: FakeControls): { round: number; polar: number } => {
   return { round: (Math.atan2(-p.z, p.x) * 180) / Math.PI, polar: (Math.acos(p.y / p.length()) * 180) / Math.PI };
 };
 const wrap = (a: number): number => ((((a + 180) % 360) + 360) % 360) - 180;
+/** Degrees 100 px of drag of the midpoint turn or tilt the view on the 800 px screen of these tests: 360° · rotateSpeed · 100 / 800. */
+const DEG_PER_100_PX = (360 * GESTURE.rotateSpeed * 100) / 800;
 
 describe('TwoFingerTurn: the midpoint of two fingers turns and tilts the view, the turn mirrored', () => {
   let el: FakeElement;
@@ -98,34 +101,36 @@ describe('TwoFingerTurn: the midpoint of two fingers turns and tilts the view, t
     el.fire('pointermove', 2, from[1][0] + dx, from[1][1] + dy);
   };
 
-  it('100 px to the right turns the camera 30° anticlockwise seen from above (rotateSpeed 2/3 on an 800 px screen), the tilt does not change', () => {
+  it('100 px to the right turns the camera 34.5° anticlockwise seen from above (rotateSpeed 2/3 · 1.15 on an 800 px screen: 360° · 23/30 ÷ 8), the tilt does not change', () => {
+    expect(DEG_PER_100_PX, '360° · 23/30 · 100 / 800').toBeCloseTo(34.5, 9);
     const a = view(c);
     twoDown();
     shift(100, 0);
     turn.step();
     const b = view(c);
-    expect(wrap(b.round - a.round)).toBeCloseTo(30, 9);
+    expect(wrap(b.round - a.round)).toBeCloseTo(DEG_PER_100_PX, 9);
     expect(b.polar).toBeCloseTo(a.polar, 9);
     expect(c.object.position.length(), 'the distance stays').toBeCloseTo(5000, 9);
   });
 
-  it('100 px to the left turns it the other way, 100 px down tilts 30° towards the plan view, 100 px up 30° towards the horizon', () => {
+  it('100 px to the left turns it the other way, 100 px down tilts 34.5° towards the plan view, 50 px up 17.25° towards the horizon', () => {
     const a = view(c);
     twoDown();
     shift(-100, 0);
     turn.step();
-    expect(wrap(view(c).round - a.round)).toBeCloseTo(-30, 9);
+    expect(wrap(view(c).round - a.round)).toBeCloseTo(-DEG_PER_100_PX, 9);
     ({ c, el, turn } = setupAt());
     twoDown();
     shift(0, 100);
     turn.step();
-    expect(view(c).polar - a.polar).toBeCloseTo(-30, 9);
+    expect(view(c).polar - a.polar).toBeCloseTo(-DEG_PER_100_PX, 9);
     expect(wrap(view(c).round - a.round)).toBeCloseTo(0, 9);
     ({ c, el, turn } = setupAt());
     twoDown();
-    shift(0, -100);
+    // (100 px up would be 34.5°: from the start polar angle of 53.13° that is 87.6°, past the 86° limit, which a test below covers: half the drag here)
+    shift(0, -50);
     turn.step();
-    expect(view(c).polar - a.polar).toBeCloseTo(30, 9);
+    expect(view(c).polar - a.polar).toBeCloseTo(DEG_PER_100_PX / 2, 9);
   });
 
   it('only the midpoint counts: fingers that move apart or together turn nothing', () => {
@@ -163,9 +168,9 @@ describe('TwoFingerTurn: the midpoint of two fingers turns and tilts the view, t
       steps.push(wrap(now - last));
       last = now;
     }
-    expect(steps[0]).toBeCloseTo(30 * 0.12, 9);
+    expect(steps[0]).toBeCloseTo(DEG_PER_100_PX * 0.12, 9);
     for (let i = 1; i < steps.length; i++) expect(steps[i]! / steps[i - 1]!).toBeCloseTo(0.88, 9);
-    expect(wrap(last - a.round)).toBeCloseTo(30 * (1 - 0.88 ** 60), 9);
+    expect(wrap(last - a.round)).toBeCloseTo(DEG_PER_100_PX * (1 - 0.88 ** 60), 9);
   });
 
   it('the tilt stays within the polar limits; at the plan view the azimuth is not lost (the angle is kept just off the pole)', () => {
