@@ -68,7 +68,6 @@ const K_REACH = 10;
 const K_SOFT = 11;
 const K_RIM = 12;
 const K_BLOCK = 13;
-const K_PIN_DEPTH = 14;
 const K_PIN_REACH = 15;
 const K_E_DOWN = 16;
 const K_E_LAT = 17;
@@ -77,14 +76,12 @@ const K_E_KAPPA = 19;
 const K_E_REACH = 20;
 const K_E_FADE = 21;
 const K_E_MIN_PX = 22;
-const K_E_MAX = 23;
 const K_E_KEEP = 24;
 const K_E_PROUD = 25;
 const K_E_FREE = 26;
 const K_GATE_M = 27;
 const K_GATE_PX = 28;
 const K_CLOCK = 29;
-const K_PIN_MIN = 30;
 const K_LEN = 32;
 
 // Slots of `p`, the picture's numbers the builder hands over.
@@ -191,8 +188,6 @@ export class Obstacles {
     k[K_SOFT] = w.soften;
     k[K_RIM] = w.rim;
     k[K_BLOCK] = w.seedBlock;
-    k[K_PIN_DEPTH] = w.pinDepth;
-    k[K_PIN_MIN] = w.pinMin;
     k[K_PIN_REACH] = w.pinReach;
     k[K_E_DOWN] = e.downwind;
     k[K_E_LAT] = e.lateral;
@@ -201,14 +196,13 @@ export class Obstacles {
     k[K_E_REACH] = e.reach;
     k[K_E_FADE] = e.fadeFromCores;
     k[K_E_MIN_PX] = e.minCorePx;
-    k[K_E_MAX] = Math.min(MAX_SITES_CAP, e.maxEddies);
+    this.maxSites = Math.min(MAX_SITES_CAP, e.maxEddies);
     k[K_E_KEEP] = e.keep;
     k[K_E_PROUD] = e.proudM;
     k[K_E_FREE] = e.freeReach;
     k[K_GATE_M] = w.gateCrownM;
     k[K_GATE_PX] = w.gatePx;
     k[K_CLOCK] = w.clockEvery;
-    this.maxSites = k[K_E_MAX]!;
     this.canopy = false;
     this.nCrowns = 0;
     this.nSites = 0;
@@ -709,12 +703,4 @@ export class Obstacles {
     io[IO_HIT] = hit;
   }
 
-  /** The depth of the pin: the factor the shader multiplies a line's meander by is `1 - pinDepth x near`, never under `pinMin` (1 free, `pinMin` near an obstacle). */
-  get pinDepth(): number {
-    return this.k[K_PIN_DEPTH]!;
-  }
-
-  get pinMin(): number {
-    return this.k[K_PIN_MIN]!;
-  }
 }

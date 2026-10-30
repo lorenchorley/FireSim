@@ -301,7 +301,7 @@ class Builder implements DetailBuilder {
    * Scratch: 0 x, 1 y, 2 drawn ground, 3 metres per pixel, 4 line length (px), 5 u, 6 v, 7 speed, 8..13 the segment being written,
    * 14 s0, 15 s1, 16 L, 17 seed, 18 speed, 19 turb, 20 lift, 21 tail (the rest of the segment), 22 x, 23 y of a 10 m ground read, 24 its height;
    * of the relief: 26, 27 the heading of the line (unit), 28 how near an obstacle it has been (0 to 1), 29 the base lift (m), 30 the metres over it
-   * that the canopy asks for at the last vertex.
+   * that the canopy asks for at the last vertex, 31 how near an obstacle the last step's midpoint was.
    */
   private readonly s = new Float64Array(36);
   private readonly hv = new Uint32Array(1);
@@ -807,7 +807,42 @@ class Builder implements DetailBuilder {
       if (bx0 <= bx1 && by0 <= by1) this.startPass(0);
       else n[N_PASS] = PASSES + 1; // nothing of the box is inside the raster: no cell to walk
       n[N_PHASE] = PHASE_WALK;
-      if (n[N_RELIEF] !== 0) this.reliefSetup();
+      if (n[N_RELIEF] !== 0) {
+        // The relief's numbers are worked out here, in `walk`, which V8 optimises (it has the hot loops): a function that runs once a rebuild stays interpreted,
+        // and there every number made by arithmetic is a heap number (see `begin`).
+        const relief = input.relief!;
+        const ob = this.ob;
+        ob.configure(relief, input.canopy);
+        ob.view.set(this.vp);
+        const p = ob.p;
+        p[P_PXM1] = input.pxPerMetre1;
+        p[P_WMIN] = f[F_WMIN]!;
+        p[P_MX] = f[F_MX]!;
+        p[P_MY] = f[F_MY]!;
+        p[P_ZBASE] = Math.max(LIFT_MIN_M, LIFT_PX * f[F_MPPC]!);
+        p[P_VEX] = input.vex;
+        p[P_MPPC] = f[F_MPPC]!;
+        // A tree that no line from the picture's seeds can reach is passed over: the box of the seeds grown by one and a half line lengths at the middle of
+        // the screen (far from the camera a line is longer in metres, but a crown there is small on the screen and does not count) and the widest crown.
+        const grow = 1.5 * f[F_LMAX]! * f[F_MPPC]! + REACH_CROWN_M;
+        p[P_BX0] = f[F_BX0]! - grow;
+        p[P_BY0] = f[F_BY0]! - grow;
+        p[P_BX1] = f[F_BX1]! + grow;
+        p[P_BY1] = f[F_BY1]! + grow;
+        const rd = relief.ridge;
+        const g = f[F_GFAC]!;
+        n[N_RIDGE] = n[N_HAS10] !== 0 && rd.beta > 0 && g > RELIEF_MIN_GFAC ? 1 : 0;
+        f[F_RBETA] = rd.beta * g; // a wind high above the ground does not care about its ridges
+        f[F_RLO] = rd.riseLo;
+        f[F_RHI] = rd.riseHi;
+        f[F_RFWD] = rd.forwardM;
+        const cap = (Math.max(rd.maxTurnDeg, relief.crowns.maxTurnDeg) * Math.PI) / 180;
+        f[F_COSCAP] = Math.cos(cap);
+        f[F_SINCAP] = Math.sin(cap);
+        f[F_PIN] = relief.crowns.pinDepth;
+        f[F_PINMIN] = relief.crowns.pinMin;
+        this.reliefStart();
+      }
     }
     if (n[N_PHASE] === PHASE_CROWNS) {
       // The trees that count as crowns are chosen in slices of the clock too, before any seed is looked at.
@@ -1070,46 +1105,15 @@ class Builder implements DetailBuilder {
   }
 
   /**
-   * The relief's set-up for this picture (`walk`'s first call, after the typed state is filled): the obstacles' constants, the canopy and the view's numbers,
-   * the ridge's constants and the turn cap. With crowns to choose (they are given, and a crown would be big enough on the screen at this zoom) the phase
-   * becomes `PHASE_CROWNS`; without, the eddy sites that need no crown (a ridge's lee, the plume) are made at once.
+   * The relief's set-up for this picture, after `walk` has worked out its numbers: the canopy is ridden on where there is one; with crowns to choose
+   * (they are given, and a crown would be big enough on the screen at this zoom) the phase becomes `PHASE_CROWNS`; without, the eddy sites that need no
+   * crown (a ridge's lee, the plume) are made at once.
    */
-  private reliefSetup(): void {
+  private reliefStart(): void {
     const n = this.n;
-    const f = this.f;
     const input = this.input!;
-    const relief = input.relief!;
     const ob = this.ob;
-    ob.configure(relief, input.canopy);
-    ob.view.set(this.vp);
-    const p = ob.p;
-    p[P_PXM1] = input.pxPerMetre1;
-    p[P_WMIN] = f[F_WMIN]!;
-    p[P_MX] = f[F_MX]!;
-    p[P_MY] = f[F_MY]!;
-    p[P_ZBASE] = Math.max(LIFT_MIN_M, LIFT_PX * f[F_MPPC]!);
-    p[P_VEX] = input.vex;
-    p[P_MPPC] = f[F_MPPC]!;
-    // A tree that no line from the picture's seeds can reach is passed over: the box of the seeds grown by one and a half line lengths at the middle of the
-    // screen (far from the camera a line is longer in metres, but a crown there is small on the screen and does not count) and the widest crown.
-    const grow = 1.5 * f[F_LMAX]! * f[F_MPPC]! + REACH_CROWN_M;
-    p[P_BX0] = f[F_BX0]! - grow;
-    p[P_BY0] = f[F_BY0]! - grow;
-    p[P_BX1] = f[F_BX1]! + grow;
-    p[P_BY1] = f[F_BY1]! + grow;
     n[N_CANOPY] = ob.hasCanopy ? 1 : 0;
-    const rd = relief.ridge;
-    const g = f[F_GFAC]!;
-    n[N_RIDGE] = n[N_HAS10] !== 0 && rd.beta > 0 && g > RELIEF_MIN_GFAC ? 1 : 0;
-    f[F_RBETA] = rd.beta * g; // a wind high above the ground does not care about its ridges
-    f[F_RLO] = rd.riseLo;
-    f[F_RHI] = rd.riseHi;
-    f[F_RFWD] = rd.forwardM;
-    const cap = (Math.max(rd.maxTurnDeg, relief.crowns.maxTurnDeg) * Math.PI) / 180;
-    f[F_COSCAP] = Math.cos(cap);
-    f[F_SINCAP] = Math.sin(cap);
-    f[F_PIN] = ob.pinDepth;
-    f[F_PINMIN] = ob.pinMin;
     const crowns = input.crowns;
     if (crowns !== undefined && crowns.length > 0 && ob.crownsWanted()) {
       ob.beginScan(crowns);
@@ -1293,6 +1297,7 @@ class Builder implements DetailBuilder {
       io[IO_MODE] = 0;
       ob.perturb();
       if (io[IO_HIT] !== 0) return 0;
+      s[31] = io[IO_NEAR]!; // (no obstacle within reach of the midpoint: the end of the step cannot be inside a rim, `line` does not ask)
       if (io[IO_NEAR]! > s[28]!) s[28] = io[IO_NEAR]!;
       const qx = io[IO_PX]!;
       const qy = io[IO_PY]!;
@@ -1510,7 +1515,7 @@ class Builder implements DetailBuilder {
       }
       s[0] = qx;
       s[1] = qy;
-      if (obstOn && this.rimHit() !== 0) {
+      if (obstOn && s[31]! > 0 && this.rimHit() !== 0) {
         stop = 5; // the line meets a crown's rim
         break;
       }

@@ -90,14 +90,14 @@ function windows(rebuild: () => void, count: number, size: number): number[] {
   return per;
 }
 
-/** Rebuilds until the code has settled: three quiet windows of 20 in a row (at most 1200 rebuilds). */
-function settle(rebuild: () => void): number {
+/** Rebuilds until the code has settled: three quiet windows of 20 in a row (at most `limit` rebuilds: 1200, or more for the relief, whose functions run once a rebuild and are optimised later). */
+function settle(rebuild: () => void, limit = 1200): number {
   let quiet = 0;
   let done = 0;
-  while (quiet < 3 && done < 1200) {
+  while (quiet < 3 && done < limit) {
     const w = windows(rebuild, 1, 20)[0]!;
     done += 20;
-    quiet = w < 800 ? quiet + 1 : 0;
+    quiet = w < 700 ? quiet + 1 : 0;
   }
   return done;
 }
@@ -120,7 +120,7 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => 
         const sc = makeDetailScenario({ ...opts, cap: { glyphs: 2000, segments: 12000 } });
         const b = createDetailBuilder('high');
         const rebuild = makeRebuild(b, { ...(relief ? reliefInput(sc, relief) : sc.input), now: browserClock() });
-        const settled = settle(rebuild);
+        const settled = settle(rebuild, relief ? 4000 : 1200);
         expect(b.out.lines, name).toBeGreaterThanOrEqual(minLines);
         gc();
         gc();
