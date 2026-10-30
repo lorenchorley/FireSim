@@ -236,12 +236,20 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
     await page.evaluate(() => (window as unknown as Handle).__firesim.session.play());
     await expect.poll(() => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().playing)).toBe(true);
     const t0 = await page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().viewTime);
-    for (let second = 0; second < 10; second++) {
-      const f0 = await frames(page);
+    await expect.poll(async () => (await stats(page)).detail, { message: 'running the simulation wakes the view', timeout: 8000 }).toBe('moving');
+    // Once a second for 10 s: the frame counter and what the layer says. (A frame of the whole scene in the software GL takes a good part of a second, so
+    // the test asks for frames in every 3 s, not in every one.)
+    const seen: { frame: number; detail: Stats['detail'] }[] = [{ frame: await frames(page), detail: (await stats(page)).detail }];
+    for (let second = 1; second <= 10; second++) {
       await page.waitForTimeout(1000);
-      expect((await frames(page)) - f0, `second ${second + 1} of the run: frames are drawn`).toBeGreaterThan(0);
-      expect((await stats(page)).detail, `second ${second + 1} of the run`).toBe('moving');
+      seen.push({ frame: await frames(page), detail: (await stats(page)).detail });
     }
+    expect(
+      seen.map((x) => x.detail),
+      'the detailed streaks move all through the run',
+    ).toEqual(Array(11).fill('moving'));
+    for (let i = 3; i < seen.length; i++) expect(seen[i]!.frame - seen[i - 3]!.frame, `frames drawn in seconds ${i - 2} to ${i} of the run (${seen.map((x) => x.frame).join(', ')})`).toBeGreaterThan(0);
+    expect(seen[10]!.frame - seen[0]!.frame, 'the loop drew all through the run').toBeGreaterThanOrEqual(5);
     expect(await page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().viewTime), 'the run really ran').toBeGreaterThan(t0);
     await pauseRun(page);
   });
