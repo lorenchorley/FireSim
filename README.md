@@ -615,7 +615,7 @@ its reason and the button. Under 412 px wide the six chips sit in two rows of th
 **The curtain** is the same slice standing over the terrain in the 3-D view. The scene computes the slice once (`SliceUpdater`,
 `src/render/slice/sliceUpdater.ts`: at once for a new line, chip or layer change, otherwise at most every 250 ms after a new picture
 of the air) and both the curtain and the panel read that one result, so they cannot disagree. The curtain's colours are the slice's
-lattice, drawn with the same ramps as the panel and the legends; its wind arrows still read the sampler at 15 columns by six heights
+lattice, drawn with the same ramps as the panel and the legends; its wind arrows still read the sampler at 21 columns by nine heights (about twice as many as the 15 by six before 0.6.0)
 (30 to 2,200 m above the ground; for a recorded slice they read its lattice instead, so they agree with its colours), and the cyan arrows
 that mark air blowing against the main wind are drawn on the 3-D atmosphere only.
 With no chip chosen it keeps its old colouring (temperature on the 3-D atmosphere, wind speed on the fast tier); the first line you place

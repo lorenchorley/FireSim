@@ -690,7 +690,7 @@ inverse, units, the model's cells, and the preset geometry from fixtures with ev
 the effective field, uses the slice's own lattice as its texture (one texel per lattice point, row 0 the lowest, so nothing is
 resampled in the shader), colours it with `sliceFieldScale(field)` (the same ramp as the panel and the legend), and draws the ground
 from the 10 m terrain under each column. Cells outside the model are transparent; strong values are more opaque (wind chips are more
-see-through at light winds so the ground behind shows). Its arrows keep reading the sampler (15 columns by six heights, 30 to 2,200 m above
+see-through at light winds so the ground behind shows). Its arrows keep reading the sampler (21 columns by nine heights since 0.6.0, twice the 15 by six before, 30 to 2,200 m above
 the ground, through the sampler's boxed `wind(x, y, z, agl, out)`, not `windP`); the cyan arrows that mark air blowing against the main wind are drawn on the prognostic air only, and smoke greys the
 other chips only where the air has smoke. `render/sliceFields.ts` is the one place that says which chips an air can give and why not (so
 the scene, the Layers panel, the map legend and the Air slices panel never disagree): wind chips on any air with a wind, Temp and Smoke on
@@ -869,7 +869,7 @@ it refills `held` in place when it has the lattice, with `recordedAt` set, `cell
 0.4.0 path, and after a `sampleSlice` into a reused object the updater clears `recordedAt`, so a live slice never keeps the tag. Hence the real
 newest picture of a run (whose air is its own) stays live and exact, and a composed picture whose keyframe air is older takes the recorded air. The
 probe, the streaks, the legend and the chips read `SliceData` and need nothing; the curtain's arrows read the sampler for the picture's air, which a
-recorded slice does not have, so for `recordedAt` they read the lattice (`LatticeStencil`, validity-weighted, at the same 15 columns by six heights;
+recorded slice does not have, so for `recordedAt` they read the lattice (`LatticeStencil`, validity-weighted, at the same 21 columns by nine heights;
 they equal the sampler's wind at the lattice nodes to within 1e-3 m/s and within 0.05 m/s between nodes at the heights the arrows use, `lattice.test.ts`) and the reverse-flow reference is the mean along-line wind at the
 highest valid cell of each column (`upperAlongMean`).
 
