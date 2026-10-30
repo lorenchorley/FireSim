@@ -260,8 +260,8 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   });
 
   await test.step('nothing opened by itself, nothing said aloud: no pop-up, no role=alert', async () => {
-    expect(await popups(page)).toEqual([]);
-    await expect(page.locator('[role=alert]')).toHaveCount(0);
+    expect(await popups(page)).toEqual([]); // (the watcher also looks for a visible role=alert; the failure strip is in the page hidden)
+    await expect(page.locator('[role=alert]:visible')).toHaveCount(0);
   });
 });
 
