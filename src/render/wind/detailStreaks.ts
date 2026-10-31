@@ -1317,9 +1317,9 @@ class Builder implements DetailBuilder {
   }
 
   /**
-   * The direction of a step: the wind at its midpoint (the unit vector (s5, s6) / s7, the midpoint (s0, s1)) bent by the crowns and the eddies and slid
-   * along the contour of a windward slope, never more than the turn cap from the line's heading (s26, s27), written back to (s5, s6) with the same speed.
-   * Folds the nearest approach to an obstacle into s28 (and into s31 for the step).
+   * The direction of a step: the wind at its midpoint (the unit vector (s5, s6) / s7, the midpoint (s0, s1)) bent by the crowns and the eddies, slid
+   * along the contour of a windward slope and steered round the crowns in its way (`Obstacles.steer`), never more than the turn cap from the line's heading
+   * (s26, s27), written back to (s5, s6) with the same speed. Folds the nearest approach to an obstacle into s28 (s31 is the step's length in metres).
    */
   private bend(): void {
     const s = this.s;

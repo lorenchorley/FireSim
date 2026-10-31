@@ -51,7 +51,7 @@ export const IO_PX = 4;
 export const IO_PY = 5;
 /** Out of `perturb`: 0 to 1, how near the point is to an obstacle (the line's pin). */
 export const IO_NEAR = 6;
-/** In to `slide`: where the step started. */
+/** In to `steer`: the unit direction of the step before. In to `leave`: where the try starts from (with `IO_L`: how far a try goes). */
 export const IO_FX = 7;
 export const IO_FY = 8;
 /** Out of `canopyAt`: the height (m over the ground) of the stroke's plane. */
@@ -60,11 +60,11 @@ export const IO_ZC = 9;
 export const IO_R = 10;
 export const IO_K = 11;
 export const IO_Z = 12;
-/** Out of `relocate` and `slide`: 1 when the point was moved, else 0 (and out of `addSite`: 1 when the site was added). */
+/** Out of `relocate`: 1 when the point was moved, 2 when it has nowhere to go, else 0 (and out of `addSite`: 1 when the site was added). */
 export const IO_BLOCK = 13;
 /** In to `canopyAt`: the drawn height (world y) of the ground under the point, for the plane's cap under the eye. */
 export const IO_G = 14;
-/** In to `leave`: how far (m) one try goes (`io[IO_FX]`, `io[IO_FY]` is where from, `io[IO_DX]`, `io[IO_DY]` the heading). */
+/** In to `leave`: how far (m) one try goes (`io[IO_FX]`, `io[IO_FY]` is where from, `io[IO_DX]`, `io[IO_DY]` the heading). In to `steer`: the length of a step (m). */
 export const IO_L = 15;
 /** Out of `perturb`: 1 when a crown's steering reach holds the point (`steer` has something to do), else 0. */
 export const IO_S = 16;
@@ -141,18 +141,19 @@ const HIST_BINS = 64;
  * round a crown must be nearly still within about one and a half radii of it (looked at on the real picture: with a linear pin the lines run through the crowns).
  */
 export const PIN_GAIN = 2;
-/** The steering round crowns never turns a line to more than this many degrees from the wind (unless it was already): a line does not double back on itself. */
+/** The steering round crowns never turns a line to more than this many degrees from the wind (unless the flow had already): a line does not double back on itself. */
 export const STEER_BACK_DEG = 55;
-/** The steering aims at a circle this much wider than the rim, the reach of its look is this many pixels past it at least, and it takes the whole turn from this share of the way in. */
+/** The steering keeps clear of a circle this much wider than the rim (`rim` x `STEER_MARGIN` x the crown's radius). */
 export const STEER_MARGIN = 1.15;
+/** The reach of the steering is at least this many pixels (at the crown) past that circle, so that a crown of a few pixels is looked at from a few steps away (the doublet's `reach` is 3 radii). */
 export const STEER_LOOK_PX = 24;
-/** The cost of a candidate direction per (1 - cosine) of its angle from the asked one, against the depth of the circles its points are in (0 to 1 each, weighted 1, 0.75, 0.5). */
+/** The cost of a candidate direction per (1 - cosine) of its angle from the asked one, against the depth of the circles its points are in (0 to 1 each, weighted 1, 0.75 and 0.5). */
 export const STEER_LAMBDA = 1;
-/** And per (1 - cosine) of its angle from the wind's own direction: a line that is not blocked goes back to the wind, and one that is takes the way that leaves it least off it. */
+/** And per (1 - cosine) of its angle from the wind's own direction: a line that is not blocked goes back to the wind, and one that is blocked takes the way that leaves it least off it. */
 export const STEER_MU = 0.5;
-/** The far-field turn takes its whole size from this share of the way in from a crown's reach. */
+/** The far-field turn (the first part of the steering) takes its whole size from this share of the way in from a crown's reach. */
 export const STEER_RAMP = 0.4;
-/** The most crowns the choice looks at (those whose reach holds the middle of the step: a few). */
+/** The most crowns the steering looks at at once (those whose reach holds the middle of the step: a few). */
 const LOCAL_MAX = 24;
 const COS_BACK = Math.cos((STEER_BACK_DEG * Math.PI) / 180);
 /** A point put on a crown's circle is on it to the rounding of a Float32 position: inside is under this share of the circle's radius. */
@@ -763,16 +764,18 @@ export class Obstacles {
   }
 
   /**
-   * Steering round the crowns: where a line goes from the vertex it is at, a choice among the directions it may take. In: the middle of the step (`io[IO_X]`,
-   * `io[IO_Y]`), the unit direction the wind and the flow round the crowns ask for (`io[IO_DX]`, `io[IO_DY]`), the unit direction of the step before
-   * (`io[IO_FX]`, `io[IO_FY]`), the wind's own unit direction (`io[IO_PX]`, `io[IO_PY]`) and the
-   * step's length (`io[IO_L]`). Out: the unit direction (`io[IO_PX]`, `io[IO_PY]`), never more than `maxTurnDeg` from the step before (so the line has no corner,
-   * whatever stands in its way), and never more than `STEER_BACK_DEG` from the wind unless it asked for that itself (it does not double back).
-   * The candidates are the asked direction (taken within the turn cap) and seven that the cap allows, a third of it apart, round the step before; each is
-   * walked three steps ahead (a third of a step less each time, the middle of the step is the start) and costs the depth of the crowns' circles
-   * (`rim` x `STEER_MARGIN` radii) that its points are in, plus `STEER_LAMBDA` of how far it is from the asked direction. The cheapest is taken, the asked
-   * one if it is free: a line goes round a crown, and between two, by curves that start before them, and passes over the edge of one that it could not turn
-   * from in time by an arc, not through a corner.
+   * Steering round the crowns: where a line goes from the vertex it is at, in two parts, for the crowns whose reach (`cs`: the doublet's, or a circle and
+   * `STEER_LOOK_PX` px) holds the middle of the step. In: that point (`io[IO_X]`, `io[IO_Y]`), the unit direction that the wind and the flow round the crowns ask
+   * for (`io[IO_DX]`, `io[IO_DY]`), the unit direction of the step before (`io[IO_FX]`, `io[IO_FY]`), the wind's own (`io[IO_PX]`, `io[IO_PY]`) and the step's
+   * length (`io[IO_L]`). Out: the unit direction (`io[IO_PX]`, `io[IO_PY]`), never more than `maxTurnDeg` from the step before (so the line has no corner, whatever
+   * stands in its way) and never more than `STEER_BACK_DEG` from the wind unless the asked direction was (it does not double back).
+   * Far field: the crown that stands most in the way (the direction passes within its circle, or the point is inside it) turns the direction away from its
+   * centre, to the side the centre is not on, by the part of its half angle `asin(circle / distance)` that the direction is within, in full from `STEER_RAMP` of the
+   * way in from its reach: a curve that starts several steps before the crown. Twice, for the next crown in the way.
+   * Near field: the asked direction (within the turn cap) is the first candidate, and seven that the cap allows, a third of it apart, round the step before are
+   * the others; each is walked three steps ahead (at half a step, a step and a half, two and a half) against the circles, and costs the depth it goes in plus
+   * `STEER_LAMBDA` and `STEER_MU` of how far it is from the asked direction and from the wind. The cheapest is taken, the asked one when it is free (nearly always):
+   * a line goes between two crowns that stand apart and round a pair that do not, and one that has no room passes over the edge of a crown by an arc, not through a corner.
    */
   steer(): void {
     const io = this.io;
