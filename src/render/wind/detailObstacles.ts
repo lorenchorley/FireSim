@@ -1072,8 +1072,10 @@ export class Obstacles {
           const ry = y - cy[i]!;
           const r = cr[i]!;
           const d2 = rx * rx + ry * ry;
-          // (A crown the line has passed, or stands beside, out of its circle, is none the steering looks at.)
-          if (d2 < cs[i]! * cs[i]! && (rx * dx + ry * dy < 0 || d2 < rimA * rimA * r * r)) steer = 1;
+          const rs = cs[i]!;
+          if (d2 >= rs * rs) continue; // (beyond the steering's reach, which is the doublet's or more)
+          // A crown the line has passed, or stands beside, out of its circle, is none the steering looks at.
+          if (rx * dx + ry * dy < 0 || d2 < rimA * rimA * r * r) steer = 1;
           const reach = reachF * r;
           if (d2 >= reach * reach) continue;
           const d = Math.sqrt(d2);
