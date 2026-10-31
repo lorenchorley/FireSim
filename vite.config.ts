@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
+import { trimGlsl } from './scripts/glslTrim.ts';
 
 /**
  * Leaves out what the app never uses of the GeoTIFF reader. src/data/canopy.ts reads only the Meta / WRI canopy-height
@@ -43,7 +44,7 @@ const proxy = {
 // build works from a web server sub-path, `vite preview` and inside Capacitor (https://localhost / capacitor://localhost).
 // `vite build --mode capacitor` (npm run build:cap) leaves out the source maps (~12 MB) from the app bundle.
 export default defineConfig(({ mode }) => ({
-  plugins: [stubUnusedTiffCode()],
+  plugins: [stubUnusedTiffCode(), ...trimGlsl()],
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: { host: true, port: 5173, proxy },
