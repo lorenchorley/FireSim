@@ -252,7 +252,8 @@ describe('the relief costs', () => {
     expect(c.b.out.lines).toBeGreaterThan(300);
     // The crowns bend the picture (the same input without them is another one).
     const without = createDetailBuilder('high');
-    buildAll(without, { ...sc.input, crowns: undefined, now });
+    const noCrowns: DetailInput = { ...sc.input, crowns: undefined, now };
+    buildAll(without, noCrowns);
     expect(c.b.out.lines, 'the crowns move seeds onto their rims and keep the lines').toBeGreaterThan(0.9 * without.out.lines);
     expect(detailBytes(c.b.out).equals(detailBytes(without.out)), 'the crowns bend the lines').toBe(false);
     expect(c.relief / c.plain, 'a shared machine slows both: the ratio is what is pinned').toBeLessThan(3);
