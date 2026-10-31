@@ -39,10 +39,12 @@
  * The relief (0.7.0, `DetailInput.relief`; absent, or `enabled` false, is the picture above byte for byte): the lines ride on the canopy's top where
  * there is canopy (`canopy`), slide along the contour of a windward slope (a ridge) and part round the tree crowns that stand in their way and curl
  * behind the proud ones, a ridge's lee and the plume (`detailObstacles.ts`). All of it bends the DIRECTION of the traced line, a step at a time and at
- * most `maxTurnDeg`; the speed (the colour bin, the pulse's pace) is the model's, as before. A line never ends at a crown: a step that would end inside the
- * circle of `rim` x its radius slides along the circle, and a seed inside it is moved onto it (all but the share of a wide crown's seeds that its rim cannot
- * hold, `out.blocked`), so the picture keeps about the lines of 0.6.0 in a forest. Each line carries a pin in its colour alpha (1 free, down to `pinMin`
- * at an obstacle) that the shader multiplies the meander by, so that the noise does not carry a line off the crown it was bent round.
+ * most `maxTurnDeg` (on every path: a vertex never turns more, so there is no corner), the speed (the colour bin, the pulse's pace) is the model's, as before.
+ * A line never ends at a crown: a seed inside the circle of `rim` x its radius is moved out along the wind to the downwind side of it (all but the share of a
+ * wide crown's seeds that its rim cannot hold, `out.blocked`), and a line that comes to one is steered round it, a few steps ahead, by a curve that starts before
+ * it (`Obstacles.steer`); one that cannot turn in time passes over the edge of the crown by an arc. So the picture keeps about the lines of 0.6.0 in a
+ * forest. Each line carries a pin in its colour alpha (1 free, down to `pinMin` at an obstacle) that the shader multiplies the meander by, so that the
+ * noise does not carry a line off the crown it was bent round.
  */
 import {
   buildSpeedTable,
@@ -57,7 +59,7 @@ import {
   SPEED_TABLE_BINS,
   SPEED_TABLE_MAX_MS,
 } from './flowGlyphs';
-import { IO_BLOCK, IO_DX, IO_DY, IO_FX, IO_FY, IO_G, IO_K, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_ESHARE, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
+import { IO_BLOCK, IO_DX, IO_DY, IO_FX, IO_FY, IO_G, IO_K, IO_L, IO_NEAR, IO_PX, IO_PY, IO_R, IO_S, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_ESHARE, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
 import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
 
 /**
@@ -693,6 +695,8 @@ class Builder implements DetailBuilder {
       const io = this.ob.io;
       io[IO_X] = this.s[0]!;
       io[IO_Y] = this.s[1]!;
+      io[IO_DX] = this.s[5]! / this.s[7]!;
+      io[IO_DY] = this.s[6]! / this.s[7]!;
       this.ob.relocate();
       if (io[IO_BLOCK] === 2) {
         n[N_BLOCKED] = n[N_BLOCKED]! + 1; // in a lens of crowns: nowhere to start from
@@ -1337,7 +1341,6 @@ class Builder implements DetailBuilder {
       io[IO_DX] = ix;
       io[IO_DY] = iy;
       ob.perturb();
-      s[31] = io[IO_NEAR]!; // (no obstacle within reach of the midpoint: the end of the step cannot be inside a rim, `line` does not ask)
       if (io[IO_NEAR]! > s[28]!) s[28] = io[IO_NEAR]!;
       const qx = io[IO_PX]!;
       const qy = io[IO_PY]!;
@@ -1393,8 +1396,29 @@ class Builder implements DetailBuilder {
         }
       }
     }
-    // A step never turns more than the cap from the one before, bent or not: a line that was bent round a crown comes back to the wind's direction over a
-    // few steps and not in a corner.
+    if (n[N_OBST] !== 0 && io[IO_S] !== 0) {
+      // (Only where a crown's reach holds the middle of the step: `perturb` said so, and the rest is the turn cap below.)
+      // Steered away from the crown that stands in its way (the flow round it bends a line that is not on the way to its middle; one that is gets round by this).
+      io[IO_X] = mx;
+      io[IO_Y] = my;
+      io[IO_DX] = bx;
+      io[IO_DY] = by;
+      io[IO_FX] = s[26]!;
+      io[IO_FY] = s[27]!;
+      io[IO_PX] = ix;
+      io[IO_PY] = iy;
+      io[IO_L] = s[31]!;
+      ob.steer();
+      const sx = io[IO_PX]!;
+      const sy = io[IO_PY]!;
+      if (sx !== bx || sy !== by) {
+        bx = sx;
+        by = sy;
+        bent = 1;
+      }
+    }
+    // A step never turns more than the cap from the one before, bent or not, and on every path (the first step's heading is the steered one): a line that was
+    // bent round a crown comes back to the wind's direction over a few steps and not in a corner.
     const hx = s[26]!;
     const hy = s[27]!;
     const cs = f[F_COSCAP]!;
@@ -1438,8 +1462,12 @@ class Builder implements DetailBuilder {
     if (n[N_OBST] !== 0) {
       // A seed inside a crown's circle starts on it (`store` decided that it is drawn at all).
       const io = this.ob.io;
+      this.sampleField();
+      const sp0 = Math.sqrt(s[5]! * s[5]! + s[6]! * s[6]!);
       io[IO_X] = s[0]!;
       io[IO_Y] = s[1]!;
+      io[IO_DX] = sp0 > 1e-9 ? s[5]! / sp0 : 1;
+      io[IO_DY] = sp0 > 1e-9 ? s[6]! / sp0 : 0;
       this.ob.relocate();
       if (io[IO_BLOCK] !== 0) {
         s[0] = io[IO_X]!;
@@ -1493,6 +1521,7 @@ class Builder implements DetailBuilder {
       s[27] = v / sp;
       s[28] = 0;
       s[29] = Math.max(LIFT_MIN_M, LIFT_PX * mpp);
+      s[31] = ds; // (the step's length, for the steering)
     }
     let px = seedX;
     let py = seedY;
@@ -1511,7 +1540,7 @@ class Builder implements DetailBuilder {
       return;
     }
     let made = 0;
-    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall, 5 a lens of crowns
+    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall
     for (let k = 0; k < steps; k++) {
       if (k > 0) {
         s[0] = px;
@@ -1549,32 +1578,6 @@ class Builder implements DetailBuilder {
       if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) {
         stop = 2;
         break;
-      }
-      if (obstOn && s[31]! > 0) {
-        // A step that would end inside a crown's circle slides along it instead, and the line's heading is the chord it made.
-        const io = this.ob.io;
-        io[IO_X] = qx;
-        io[IO_Y] = qy;
-        io[IO_FX] = px;
-        io[IO_FY] = py;
-        io[IO_DX] = u2 / sp2;
-        io[IO_DY] = v2 / sp2;
-        this.ob.slide();
-        if (io[IO_BLOCK] === 2) {
-          stop = 5; // in a lens of crowns with no way round: the line ends at the last vertex
-          break;
-        }
-        if (io[IO_BLOCK] !== 0) {
-          qx = io[IO_X]!;
-          qy = io[IO_Y]!;
-          const hx = qx - px;
-          const hy = qy - py;
-          const hl = Math.sqrt(hx * hx + hy * hy);
-          if (hl > 1e-9) {
-            s[26] = hx / hl;
-            s[27] = hy / hl;
-          }
-        }
       }
       s[0] = qx;
       s[1] = qy;
