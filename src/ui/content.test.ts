@@ -1115,9 +1115,9 @@ describe('Help and glossary: the 0.7.0 entries say what What the fire feels, Col
     // Crowns are trees, not heath, shrubs or grass (the placement's groups 0 to 6).
     expect(DETAIL_RELIEF.crowns.maxGroup).toBe(6);
     expect(b).toContain('part round each crown that stands in their way and close up behind it, and slide along a slope that rises ahead of them');
-    // A line that meets a crown slides along its rim and a seed in a crown starts on it, so a forest keeps about the lines of open ground (detailObstacles.ts: `slide`, `relocate`).
+    // A line that meets a crown is steered round it and a seed in a crown starts on its downwind side, so a forest keeps about the lines of open ground (detailObstacles.ts: `steer`, `relocate`).
     expect(b).toContain('A streak that meets a crown slides round its edge and goes on, so a forest still has about as many streaks as open ground');
-    expect(read('../render/wind/detailObstacles.ts')).toMatch(/slide\(\): void/);
+    expect(read('../render/wind/detailObstacles.ts')).toMatch(/steer\(\): void/);
     expect(read('../render/wind/detailObstacles.ts')).toMatch(/relocate\(\): void/);
     expect(DETAIL_RELIEF.crowns.rim).toBeGreaterThan(1);
     expect(EDDIES_LINE).toContain('Where the ground rises or trees stand, the streaks bend around them, and small eddies are added behind them.');
