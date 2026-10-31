@@ -436,82 +436,85 @@ export class Obstacles {
     let si = this.si;
     let ti = this.ti;
     let check = every;
-    scanning: while (si < sets.length) {
-      const set = sets[si]!;
-      if (set.group > maxGroup) {
+    scanning: for (;;) {
+      while (si < sets.length) {
+        const set = sets[si]!;
+        if (set.group > maxGroup) {
+          si++;
+          ti = 0;
+          continue;
+        }
+        const pos = set.position;
+        const size = set.size;
+        const count = set.count;
+        while (ti < count) {
+          if (--check <= 0) {
+            check = every;
+            if (now() >= deadline) {
+              this.si = si;
+              this.ti = ti;
+              this.nCrowns = nc;
+              this.total = total;
+              return false;
+            }
+          }
+          const t = ti++;
+          const x = pos[3 * t]!;
+          const y = pos[3 * t + 1]!;
+          if (x < bx0 || x > bx1 || y < by0 || y > by1) continue; // nowhere near the picture's seeds
+          const h = size[2 * t]!;
+          if (!(h >= hMin)) continue;
+          const gz = pos[3 * t + 2]! * vex;
+          // Not a tree that the view has faded out: the ray from its foot to the eye is steeper than `fadeSin` (a camera over it looking steeply down).
+          const ddy = ey - gz;
+          if (ddy > 0) {
+            const ddx = ex - x;
+            const ddz = ez + y;
+            if (ddy * ddy > fade2 * (ddx * ddx + ddy * ddy + ddz * ddz)) continue;
+          }
+          // On the screen (the tree at half its height; the margin is a whole line long, so a crown's own radius does not matter here).
+          const zw = -y;
+          const w0 = v[3]! * x + v[7]! * (gz + 0.5 * h) + v[11]! * zw + v[15]!;
+          if (!(w0 > wmin)) continue;
+          if (Math.abs(v[0]! * x + v[4]! * (gz + 0.5 * h) + v[8]! * zw + v[12]!) > mxs * w0) continue;
+          if (Math.abs(v[1]! * x + v[5]! * (gz + 0.5 * h) + v[9]! * zw + v[13]!) > mys * w0) continue;
+          // Where the stroke runs over this tree, and what its crown shows there.
+          io[IO_X] = x;
+          io[IO_Y] = y;
+          io[IO_G] = gz;
+          this.canopyAt();
+          const zc = io[IO_ZC]!;
+          const zs = zc > zb ? zc : zb;
+          if (!(h >= zs + clear)) continue;
+          const tt = (zs - centre * h) / (half * h);
+          if (!(tt > -1 && tt < 1)) continue;
+          const r = 0.5 * size[2 * t + 1]! * Math.sqrt(1 - tt * tt);
+          const rpx = (r * pxm1) / w0; // the radius on the screen (px)
+          if (!(rpx >= minPx)) continue;
+          if (pass === 0) {
+            // Count it by its radius, and keep the first `maxCrowns` (all of them, when that is enough).
+            let bin = Math.floor(HIST_PER_OCTAVE * Math.log2(rpx / minR));
+            bin = bin < 0 ? 0 : bin >= HIST_BINS ? HIST_BINS - 1 : bin;
+            hist[bin] = hist[bin]! + 1;
+            total++;
+            if (nc >= maxCrowns) continue;
+          } else if (rpx < floorHi) {
+            // The bucket that only some of fit: a hash of the tree's place says which (so the count is the cap within the sample's spread, and the room is there for it).
+            this.priority(Math.floor(x * 8), Math.floor(y * 8), SALT_CROWN);
+            if (!(this.pv[0]! < pKeep)) continue;
+          }
+          if (nc >= (pass === 0 ? maxCrowns : MAX_CROWNS_CAP)) continue;
+          cxA[nc] = x;
+          cyA[nc] = y;
+          crA[nc] = r;
+          cfA[nc] = h - zs >= proud ? 1 : 0;
+          nc++;
+        }
         si++;
         ti = 0;
-        continue;
       }
-      const pos = set.position;
-      const size = set.size;
-      const count = set.count;
-      while (ti < count) {
-        if (--check <= 0) {
-          check = every;
-          if (now() >= deadline) {
-            this.si = si;
-            this.ti = ti;
-            this.nCrowns = nc;
-            this.total = total;
-            return false;
-          }
-        }
-        const t = ti++;
-        const x = pos[3 * t]!;
-        const y = pos[3 * t + 1]!;
-        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue; // nowhere near the picture's seeds
-        const h = size[2 * t]!;
-        if (!(h >= hMin)) continue;
-        const gz = pos[3 * t + 2]! * vex;
-        // Not a tree that the view has faded out: the ray from its foot to the eye is steeper than `fadeSin` (a camera over it looking steeply down).
-        const ddy = ey - gz;
-        if (ddy > 0) {
-          const ddx = ex - x;
-          const ddz = ez + y;
-          if (ddy * ddy > fade2 * (ddx * ddx + ddy * ddy + ddz * ddz)) continue;
-        }
-        // On the screen (the tree at half its height; the margin is a whole line long, so a crown's own radius does not matter here).
-        const zw = -y;
-        const w0 = v[3]! * x + v[7]! * (gz + 0.5 * h) + v[11]! * zw + v[15]!;
-        if (!(w0 > wmin)) continue;
-        if (Math.abs(v[0]! * x + v[4]! * (gz + 0.5 * h) + v[8]! * zw + v[12]!) > mxs * w0) continue;
-        if (Math.abs(v[1]! * x + v[5]! * (gz + 0.5 * h) + v[9]! * zw + v[13]!) > mys * w0) continue;
-        // Where the stroke runs over this tree, and what its crown shows there.
-        io[IO_X] = x;
-        io[IO_Y] = y;
-        io[IO_G] = gz;
-        this.canopyAt();
-        const zc = io[IO_ZC]!;
-        const zs = zc > zb ? zc : zb;
-        if (!(h >= zs + clear)) continue;
-        const tt = (zs - centre * h) / (half * h);
-        if (!(tt > -1 && tt < 1)) continue;
-        const r = 0.5 * size[2 * t + 1]! * Math.sqrt(1 - tt * tt);
-        const rpx = (r * pxm1) / w0; // the radius on the screen (px)
-        if (!(rpx >= minPx)) continue;
-        if (pass === 0) {
-          // Count it by its radius, and keep the first `maxCrowns` (all of them, when that is enough).
-          let bin = Math.floor(HIST_PER_OCTAVE * Math.log2(rpx / minR));
-          bin = bin < 0 ? 0 : bin >= HIST_BINS ? HIST_BINS - 1 : bin;
-          hist[bin] = hist[bin]! + 1;
-          total++;
-          if (nc >= maxCrowns) continue;
-        } else if (rpx < floorHi) {
-          // The bucket that only some of fit: a hash of the tree's place says which (so the count is the cap within the sample's spread, and the room is there for it).
-          this.priority(Math.floor(x * 8), Math.floor(y * 8), SALT_CROWN);
-          if (!(this.pv[0]! < pKeep)) continue;
-        }
-        if (nc >= (pass === 0 ? maxCrowns : MAX_CROWNS_CAP)) continue;
-        cxA[nc] = x;
-        cyA[nc] = y;
-        crA[nc] = r;
-        cfA[nc] = h - zs >= proud ? 1 : 0;
-        nc++;
-      }
-      si++;
-      ti = 0;
-      if (si >= sets.length && pass === 0 && total > maxCrowns) {
+      // Every set is done (also when the last ones are of a group that is not counted: the check is here and not after a set that was looked at).
+      if (pass === 0 && total > maxCrowns) {
         // Too many qualified: the floor is where the count of the larger ones passes `maxCrowns`; look at every tree again for the largest.
         let kept = 0;
         let bin = HIST_BINS - 1;
@@ -528,6 +531,7 @@ export class Obstacles {
         ti = 0;
         continue scanning;
       }
+      break;
     }
     this.si = si;
     this.ti = ti;

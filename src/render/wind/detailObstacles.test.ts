@@ -784,6 +784,29 @@ describe('which trees count as crowns', () => {
     expect(chosen(scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 0))), trees(list))).toHaveLength(0);
   });
 
+  it('chooses the largest and counts the others when the last set is of a group that does not count (shrubs after the trees): exactly maxCrowns kept with nothing left out was a bug', () => {
+    // The verifier saw 1,536 crowns kept and overflow 0 in a view that held more: the check for "too many" came after a set that was looked at, so a trailing set of
+    // another group (heath, understorey, grass) skipped it, and the first crowns in the order of the trees were kept with nothing counted as left out.
+    const n = 5000;
+    const raw: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 8, 1) - 0.5) * 50, (hash01(i, 8, 2) - 0.5) * 50, 28 + hash01(i, 8, 3) * 6, 6 + 4 * hash01(i, 8, 4)]);
+    const list = [...raw].sort((a, b) => a[0] - b[0]);
+    const shrubs = trees([[0, 0, 3, 2], [4, 4, 3, 2]], 8);
+    const kept = (...sets: CrownSet[]): { crowns: [number, number, number][]; overflow: number } => {
+      const ob = scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 600)));
+      const crowns = chosen(ob, ...sets);
+      return { crowns, overflow: ob.overflow };
+    };
+    const plain = kept(trees(list));
+    const trailing = kept(trees(list), shrubs);
+    const leading = kept(shrubs, trees(list));
+    expect(plain.overflow, 'the trees alone: the others are counted').toBe(n - plain.crowns.length);
+    expect(trailing.overflow, 'a set of shrubs after them changes nothing').toBe(plain.overflow);
+    expect(trailing.crowns).toEqual(plain.crowns);
+    expect(leading.crowns).toEqual(plain.crowns);
+    // From everywhere, not the first in the order of the trees (all of those are in the west).
+    expect(trailing.crowns.filter(([x]) => x > 0).length, 'the east keeps its share').toBeGreaterThan(0.3 * trailing.crowns.length);
+  });
+
   it('scans in slices that stop on the clock and resume, and finds the same crowns as one pass', () => {
     const n = 5000;
     const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 2, 1) - 0.5) * 50, (hash01(i, 2, 2) - 0.5) * 50, 28 + hash01(i, 2, 3) * 6, 5 + hash01(i, 2, 4)]);
