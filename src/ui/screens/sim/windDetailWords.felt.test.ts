@@ -27,7 +27,7 @@ describe('the words', () => {
       'Level 4 of 4: detailed streaks.',
       'The wind the fire feels, in cells about 60 m wide.',
       MOST_DETAILED_LINE,
-      "Direction and speed come from the air model, with the fire model's slope flow and the fire's own draw added, in cells about 60 m wide.",
+      "Direction and speed come from the air model, with the fire model's slope flow and the fire's own effect on the wind added, in cells about 60 m wide.",
       EDDIES_LINE,
     ]);
   });

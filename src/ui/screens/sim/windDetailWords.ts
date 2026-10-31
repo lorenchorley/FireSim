@@ -60,7 +60,7 @@ export function windDetailWords(s: WindDetailState, o: { heightLabel: string; he
   const felt = o.height === 'felt';
   if (s.kind === 'detailed') {
     // The model's part and the added part, said apart.
-    lines.push(felt ? `Direction and speed come from the air model, with the fire model's slope flow and the fire's own draw added, in ${cellWords(o.feltCellM ?? 60)}.` : `Direction and speed come from the air model, which works on ${cellWords(o.cellM)}.`, EDDIES_LINE);
+    lines.push(felt ? `Direction and speed come from the air model, with the fire model's slope flow and the fire's own effect on the wind added, in ${cellWords(o.feltCellM ?? 60)}.` : `Direction and speed come from the air model, which works on ${cellWords(o.cellM)}.`, EDDIES_LINE);
   } else if (s.limits.includes('cells')) lines.push(felt ? `The wind the fire model uses is in ${cellWords(o.feltCellM ?? 60)}. Between its points the wind is a smooth fit.` : `The air model works on ${cellWords(o.cellM)}. Between its points the wind is a smooth fit.`);
   if (s.limits.includes('budget')) lines.push(BUDGET_LINE);
   if (s.limits.includes('estimated')) lines.push(ESTIMATED_LINE);

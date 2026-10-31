@@ -312,6 +312,114 @@ describe('removeWindDirection', () => {
   });
 });
 
+describe('removing a change from when it was made, not from its start (0.7.0)', () => {
+  /** A card of the user's change (the engine raises these after it was made, from the first cycle). */
+  const own = (id: string, time: number, kind: Insight['kind'] = 'wind-change'): Insight => ({ id: `${kind}-${id}-${time}`, kind, severity: 'watch', time, x: 0, y: 0, key: `${kind}:user:${id}`, title: id, body: '', factors: [] });
+  const withCards = (e: FakeEngine, t: number, insights: Insight[]): void => e.emit('snapshot', { time: t, insights, spotFires: [], stats: { time: t } } as unknown as SimSnapshot);
+  /** The engine's run to `to` with the cards it raised after the change `id` was made at 600: its own at 660 and its zone at 900. */
+  function computed(e: FakeEngine, to: number, id = 'w1'): void {
+    for (let t = 660; t <= to; t += 60) {
+      e.time = t;
+      withCards(e, t, t === 660 ? [own(id, 660)] : t === 900 ? [own(id, 900, 'dead-man-zone')] : []);
+    }
+  }
+
+  it('Remove cuts the history and the cards at the time it was made (not at its start, an hour later), tells the engine and runs on to the view', async () => {
+    const { e, s } = await make();
+    e.history(600);
+    s.seek(600);
+    s.setWindDirection('w1', 180, 4200); // made at 600, for 70 minutes later
+    computed(e, 1800);
+    s.seek(1500);
+    expect(s.state.get().insights.map((i) => i.time)).toEqual([660, 900]);
+    e.calls.length = 0;
+    s.removeWindDirection('w1');
+    expect(e.names()).toEqual(['removeEdit', 'run']);
+    expect(s.snapshots.headTime()).toBe(600); // not 1500, and not the start at 4200
+    expect(s.state.get().headTime).toBe(600);
+    expect(s.state.get().insights).toEqual([]);
+    expect(s.visibleInsights()).toEqual([]);
+    expect(s.mapInsights()).toEqual([]);
+    expect(e.calls[1]!.args).toEqual([1500]);
+    // the engine goes back to the time it was told (its own 'rewound' report) and keeps the cut
+    e.emit('rewound', 600);
+    expect(s.snapshots.headTime()).toBe(600);
+    s.dispose();
+  });
+
+  it('a change made at the head and removed at once cuts nothing (nothing was computed with it)', async () => {
+    const { e, s } = await make();
+    e.history(600);
+    s.seek(600);
+    s.setWindDirection('w1', 180, 4200);
+    e.calls.length = 0;
+    s.removeWindDirection('w1');
+    expect(e.names()).toEqual(['removeEdit']);
+    expect(s.state.get().headTime).toBe(600);
+    s.dispose();
+  });
+
+  it('the cards of the removed change go whatever their time (the demo engine raises one at the moment it was made), the other cards stay', async () => {
+    const { e, s } = await make();
+    e.history(600);
+    s.seek(600);
+    s.setWindDirection('w1', 180, 4200);
+    withCards(e, 660, [own('w1', 600), { ...own('x', 300, 'afternoon-peak'), key: 'afternoon-peak:1:1' }]);
+    expect(s.state.get().insights.map((i) => i.key)).toEqual(['afternoon-peak:1:1', 'wind-change:user:w1']);
+    s.removeWindDirection('w1');
+    expect(s.state.get().insights.map((i) => i.key)).toEqual(['afternoon-peak:1:1']);
+    s.dispose();
+  });
+
+  it('Remove of one of two leaves the other\'s cards that came before the cut, and cuts from the removed one\'s making', async () => {
+    const { e, s } = await make();
+    e.history(600);
+    s.seek(600);
+    s.setWindDirection('a', 180, 4200); // made at 600
+    computed(e, 1200, 'a');
+    s.seek(1200);
+    s.setWindDirection('b', 90, 3000); // made at 1200, rewinds nothing (at the head)
+    withCards(e, 1260, [own('b', 1260)]);
+    s.removeWindDirection('b');
+    expect(s.state.get().headTime).toBe(1200);
+    expect(s.state.get().insights.some((i) => i.key?.endsWith(':user:b'))).toBe(false);
+    expect(s.state.get().insights.some((i) => i.key?.endsWith(':user:a'))).toBe(true);
+    s.dispose();
+  });
+
+  it('Back to the forecast removes the one made first before the one that starts first, and cuts at when the first was made', async () => {
+    const { e, s } = await make();
+    e.history(600);
+    s.seek(600);
+    s.setWindDirection('a', 180, 4200); // made at 600, starts last
+    computed(e, 1200, 'a');
+    s.seek(1200);
+    s.setWindDirection('b', 90, 1500); // made at 1200, starts first
+    for (let t = 1260; t <= 2400; t += 60) {
+      e.time = t;
+      withCards(e, t, t === 1260 ? [own('b', 1260)] : []);
+    }
+    s.seek(2000);
+    e.calls.length = 0;
+    expect(s.backToForecast()).toBe(2);
+    expect(e.calls.filter((c) => c.name === 'removeEdit').map((c) => c.args[0])).toEqual(['a', 'b']); // by when they touch the run: not by their starts (b first)
+    expect(s.snapshots.headTime()).toBe(600);
+    expect(s.state.get().insights).toEqual([]);
+    expect(e.calls.at(-1)).toEqual({ name: 'run', args: [2000] });
+    s.dispose();
+  });
+
+  it('a change that came with the scenario (no madeAt) is cut from its start, as before', async () => {
+    const given: WindDirectionEdit = { kind: 'windDirection', id: 'given', dir: 200, time: 900 };
+    const { e, s } = await make([given]);
+    e.history(1800);
+    s.seek(1800);
+    s.removeWindDirection('given');
+    expect(s.snapshots.headTime()).toBe(900);
+    s.dispose();
+  });
+});
+
 describe('the forecast cards after a change', () => {
   const card = (id: string, kind: Insight['kind'], time: number): Insight => ({ id, kind, severity: kind === 'wind-change' ? 'danger' : 'info', time, x: 0, y: 0, title: id, body: '', factors: [] });
   const early = card('early', 'wind-change', 900); // a forecast swing at 900 s
@@ -544,10 +652,14 @@ describe('backToForecast with the real engine (in-thread controller)', () => {
     s.seek(t);
     await until(() => s.state.get().seekTarget === null && s.state.get().headTime >= t - 1e-6, `the head at ${t}`);
   }
-  /** What the engine reported at `t` in the parts that are the physics (the store keeps the air and the fire's diagnostic fields of an old picture thinner, so only the newest one is compared in those). */
+  /**
+   * What the engine reported at `t` in the parts that are the physics (the store keeps the air and the fire's diagnostic fields of an old picture
+   * thinner, so only the newest one is compared in those; the moisture it keeps at a keyframe, every 300 s, and a picture in between shows the
+   * keyframe's: the first picture after a cut is a keyframe of its own, so the moisture is compared at the keyframes and the newest).
+   */
   const physics = (s: SimSession, t: number, newest = false): string => {
     const p = snapshotPartHashes(s.snapshots.at(t)!);
-    return JSON.stringify(['time', 'moisture', 'embers', 'spotFires', 'stats', 'fire.arrivalTime', 'fire.burnState', ...(newest ? ['atmosphere', 'fire.ros', 'fire.intensity'] : [])].map((k) => [k, p[k]]));
+    return JSON.stringify(['time', ...(newest || t % 300 === 0 ? ['moisture'] : []), 'embers', 'spotFires', 'stats', 'fire.arrivalTime', 'fire.burnState', ...(newest ? ['atmosphere', 'fire.ros', 'fire.intensity'] : [])].map((k) => [k, p[k]]));
   };
 
   it('two changes then Back to the forecast equals a run that never had them, with one checkpoint restore', async () => {
@@ -568,6 +680,37 @@ describe('backToForecast with the real engine (in-thread controller)', () => {
       for (const t of [660, 900, 1200, 1500]) expect(physics(s, t), `t=${t}`).toBe(physics(control, t));
       expect(physics(s, 1800, true)).toBe(physics(control, 1800, true));
       expect((s.snapshots.latest()!.engine?.perf?.reruns.restores ?? 0) - before).toBe(1);
+    } finally {
+      s.dispose();
+      control.dispose();
+    }
+  }, 300000);
+
+  const ownCards = (s: SimSession): string[] => s.state.get().insights.filter((i) => i.key?.includes(':user:')).map((i) => i.key!);
+  /** The times, of those asked, at which the store shows a Dead man zone (it keeps the layers at its keyframes, every 300 s, and the newest). */
+  const zones = (s: SimSession, times: number[]): number[] => times.filter((t) => s.snapshots.at(t)?.layers?.dmz !== undefined);
+
+  it('"In 30 min" made at the start and taken away at 905: its cards, its zone and its map markers are gone, and stay gone as the run goes on (0.7.0)', async () => {
+    const s = await open();
+    const control = await open();
+    try {
+      s.setWindDirection('w1', 180, 1800); // made at 0, for 30 minutes later: the cards come at once
+      await reach(s, 1200);
+      expect(ownCards(s)).toEqual(expect.arrayContaining(['wind-change:user:w1', 'dead-man-zone:user:w1']));
+      expect(zones(s, [300, 600, 900, 1200])).toEqual([300, 600, 900, 1200]);
+      expect(s.mapInsights().some((i) => i.key === 'wind-change:user:w1')).toBe(true);
+      s.seek(905);
+      expect(s.backToForecast()).toBe(1);
+      expect(ownCards(s)).toEqual([]);
+      expect(s.visibleInsights().filter((i) => i.key?.includes(':user:'))).toEqual([]);
+      expect(s.mapInsights().filter((i) => i.key?.includes(':user:'))).toEqual([]);
+      await until(() => s.state.get().headTime >= 905 - 1e-6, 're-run up to the view');
+      await reach(s, 1500);
+      await reach(control, 1500);
+      expect(ownCards(s)).toEqual([]);
+      expect(zones(s, [300, 600, 900, 1200, 1500])).toEqual([]);
+      for (const t of [300, 600, 900, 1200, 1500]) expect(physics(s, t, t === 1500), `t=${t}`).toBe(physics(control, t, t === 1500));
+      expect(s.snapshots.at(1500)!.stats.weather.windDir10).toBeCloseTo(270, 6);
     } finally {
       s.dispose();
       control.dispose();

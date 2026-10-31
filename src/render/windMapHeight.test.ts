@@ -3,7 +3,9 @@
  * its range. The map itself (the field, the legend text, the chip) is lane R's.
  */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LAYERS, windMapHeight } from './layers';
+import { DEFAULT_LAYERS, windMapHeight, windMapNoData } from './layers';
+import type { AtmosphereView } from '../core/types';
+import { makeGridSpec } from '../core/grid';
 import { windSpeedRangeKmh } from './legends';
 import { WIND_HEIGHTS, type WindHeight } from './wind/glyphTypes';
 
@@ -21,6 +23,27 @@ describe('windMapHeight', () => {
   it('reads only the two fields it names (the layer state as it is)', () => {
     expect(windMapHeight(DEFAULT_LAYERS)).toBe(DEFAULT_LAYERS.windGlyphs ? DEFAULT_LAYERS.windHeight : 'fire');
     expect(windMapHeight({ ...DEFAULT_LAYERS, windGlyphs: true, windHeight: 300 })).toBe(300);
+  });
+});
+
+describe('windMapNoData', () => {
+  const grid = makeGridSpec({ x: 0, y: 0 } as never, 600, 150);
+  const n = grid.nx * grid.ny;
+  /** A picture's air: with its 3-D wind volume, or with the 10 m wind only (a scrubbed frame the history thinned: the arrays are empty). */
+  const air = (volume: boolean): AtmosphereView =>
+    ({ grid, nz: 2, levels: new Float32Array(2), terrainHeight: new Float32Array(n), surfaceU: new Float32Array(n), surfaceV: new Float32Array(n), u: new Float32Array(volume ? 2 * n : 0), v: new Float32Array(volume ? 2 * n : 0), w: new Float32Array(volume ? 2 * n : 0), thetaAnomaly: new Float32Array(0), smoke: new Float32Array(0) }) as unknown as AtmosphereView;
+
+  it('is true for a height in metres on a picture with no 3-D wind: the map is empty there, not the 10 m wind (0.7.0, raster verifier F1)', () => {
+    for (const h of [50, 100, 300, 1000, 2000] as const) {
+      expect(windMapNoData(h, air(false)), `${h} m thinned`).toBe(true);
+      expect(windMapNoData(h, null), `${h} m, no air`).toBe(true);
+      expect(windMapNoData(h, undefined), `${h} m, no air yet`).toBe(true);
+      expect(windMapNoData(h, air(true)), `${h} m with the volume`).toBe(false);
+    }
+  });
+
+  it('is false for the 10 m wind and What the fire feels, which fall back to the surface wind and say so (`shownWindHeight`)', () => {
+    for (const h of ['fire', 'felt'] as const) for (const a of [air(false), air(true), null]) expect(windMapNoData(h, a), String(h)).toBe(false);
   });
 });
 

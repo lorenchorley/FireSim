@@ -9,6 +9,7 @@ import type { InsightKind } from '../core/types';
 import { WIND_TURN_S } from '../scenario/windDirection';
 import { EXPLAIN_PARAMS } from './params';
 import { INSIGHT_KINDS } from './registry';
+import { compassWord as unitsCompassWord } from '../core/units';
 import { CARD_TEXT, DOCTRINE, GENERAL_SUBS, STEEP_NOTE, SUBGRID_NOTE, clock, compassWord, duration, kataburn, km, rate, slopeFactorText, times, windName, type Candidate } from './text';
 
 /** Representative values for every template field. */
@@ -166,6 +167,7 @@ describe('formatting helpers', () => {
     expect(compassWord(224)).toBe('south-west');
     expect(compassWord(359)).toBe('north');
     expect(compassWord(NaN)).toBe('');
+    expect(compassWord).toBe(unitsCompassWord); // one function: the demo engine's card of a Wind direction change says "from the west to the south" with it too (0.7.0)
     expect(windName(315)).toBe('north-westerly');
     expect(windName(NaN)).toBe('variable');
   });

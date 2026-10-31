@@ -60,6 +60,13 @@ export function windChangePhase(edit: Pick<WindDirectionEdit, 'time'>, nowS: num
   return nowS < edit.time + WIND_TURN_S ? 'turning' : 'done';
 }
 
+/**
+ * From when a change touches the run (s): its `madeAt` (the explain engine counts it from there, so the cards and the Dead man zone from then on
+ * carry it) or, for one without, its start, whichever is first. Taking the change away as if never made means running again from here, not from
+ * the start: the cards it raised between the two are part of what has to go.
+ */
+export const windRerunFrom = (e: Pick<WindDirectionEdit, 'time' | 'madeAt'>): number => Math.min(e.madeAt ?? e.time, e.time);
+
 /** The Wind direction changes among `list` (as `SessionState.edits` holds them), in (time, list index) order. */
 export function windDirectionEdits(list: readonly { edit: ScenarioEdit }[]): WindDirectionEdit[] {
   const out: WindDirectionEdit[] = [];

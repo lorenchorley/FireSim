@@ -467,17 +467,69 @@ describe('Wind direction cards (0.7.0)', () => {
     expectSame(added, fresh, times, 'replay', WINDOWED);
   }, 600000);
 
-  it('removing a change that has not started drops it from the next cycle and keeps the cards it raised', () => {
-    const r = run(scenario({ duration: 7200 }, [made('w1', 180, 3600, 0)]), 600);
-    const raised = cards(r).filter((c) => c.key === 'wind-change:user:w1');
-    expect(raised.length).toBe(1);
-    expect(dmzAt(r, 600)).toBeInstanceOf(Float32Array);
-    r.rewound.length = 0;
-    r.sim.removeEdit('w1'); // not applied: no rewind, the record just goes
+  it('removing a change that has not started takes it away as if never made, from when it was made: its cards and its zone are gone from then on, and the run is the one that never had it', () => {
+    // Made at 600 (the view time) for a start at 3600; removed at 1500, when its card and zone have been up for fifteen minutes.
+    const e = made('w1', 180, 3600, 600);
+    const control = run(scenario({ duration: 7200 }), 2400);
+    const r = run(scenario({ duration: 7200 }), 600);
+    r.sim.edit(e, 3600); // the record is for later than now: nothing is rewound
+    r.sim.advance(1500);
     expect(r.rewound).toEqual([]);
-    r.sim.advance(900);
-    expect(cards(r, 600).filter((c) => c.key.includes('user'))).toEqual([]);
-    expect(cards(r).filter((c) => c.key === 'wind-change:user:w1')).toEqual(raised); // history stays
-    for (const t of every(660, 900)) expect(dmzAt(r, t), `dmz t=${t}`).toBeUndefined();
+    expect(cards(r, 600).map((c) => c.key)).toEqual(expect.arrayContaining(['wind-change:user:w1', 'dead-man-zone:user:w1']));
+    expect(dmzAt(r, 1500)).toBeInstanceOf(Float32Array);
+    expect(cards(control)).toEqual([]);
+    r.sim.removeEdit('w1');
+    expect(r.rewound).toEqual([600]); // the results after 600 are stale: they were computed with the change known
+    for (const t of every(660, 1500)) r.snaps.delete(t); // what the receiver is told to drop; the run now sends them again
+    r.sim.advance(2400);
+    // Nothing the change raised is left, and every snapshot (physics, cards, layers, the lot) is the run that never had it.
+    expect(cards(r, 600).filter((c) => c.key.includes(':user:'))).toEqual([]);
+    for (const t of every(660, 2400)) expect(dmzAt(r, t), `dmz t=${t}`).toBeUndefined();
+    expectSame(r, control, every(660, 2400), 'removed');
+  }, 600000);
+
+  it('a change that has started comes away from when it was made too: the cards it raised before its start go, and the run equals the one that never had it', () => {
+    const e = made('w1', 180, 1200, 600);
+    const control = run(scenario({ duration: 7200 }), 3000);
+    const r = run(scenario({ duration: 7200 }), 600);
+    r.sim.edit(e, 1200);
+    r.sim.advance(2400); // it started at 1200 and has turned (done at 2100)
+    expect(r.snaps.get(2400)!.stats.weather.windDir10).toBeCloseTo(180, 6);
+    expect(cards(r, 600, 1200).map((c) => c.key)).toContain('wind-change:user:w1');
+    r.rewound.length = 0;
+    r.sim.removeEdit('w1');
+    expect(r.rewound).toEqual([600]); // not 1200, its start
+    for (const t of every(660, 2400)) r.snaps.delete(t);
+    r.sim.advance(3000);
+    expect(cards(r, 600).filter((c) => c.key.includes(':user:'))).toEqual([]);
+    expect(r.snaps.get(2400)!.stats.weather.windDir10).toBeCloseTo(270, 6); // the forecast again
+    expectSame(r, control, every(660, 3000), 'removed after the start');
+  }, 600000);
+
+  it('a change without madeAt (a scenario edit) is taken away from its start, as before: nothing earlier is recomputed', () => {
+    const r = run(scenario({ duration: 7200 }, [made('w1', 180, 1200)]), 1800);
+    r.rewound.length = 0;
+    r.sim.removeEdit('w1');
+    expect(r.rewound).toEqual([1200]);
+  }, 600000);
+
+  it('two changes made at different times: removing the later one leaves the earlier one\'s cards and takes its own', () => {
+    const control = run(scenario({ duration: 7200 }), 600);
+    control.sim.edit(made('a', 180, 3600, 600), 3600);
+    control.sim.advance(2100);
+    const r = run(scenario({ duration: 7200 }), 600);
+    r.sim.edit(made('a', 180, 3600, 600), 3600);
+    r.sim.advance(1200);
+    r.sim.edit(made('b', 90, 3000, 1200), 3000);
+    r.sim.advance(1800);
+    expect(cards(r, 1200).filter((c) => c.key.includes(':user:b'))).not.toEqual([]);
+    r.rewound.length = 0;
+    r.sim.removeEdit('b');
+    expect(r.rewound).toEqual([1200]);
+    for (const t of every(1260, 1800)) r.snaps.delete(t);
+    r.sim.advance(2100);
+    expect(cards(r, 1200).filter((c) => c.key.includes(':user:b'))).toEqual([]);
+    expect(cards(r).filter((c) => c.key === 'wind-change:user:a')).toEqual(cards(control).filter((c) => c.key === 'wind-change:user:a'));
+    expectSame(r, control, every(1260, 2100), 'b removed');
   }, 600000);
 });

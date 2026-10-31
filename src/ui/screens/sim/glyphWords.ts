@@ -77,7 +77,7 @@ export const GROUND_LINE = 'On a calm night the fire can feel much less wind tha
 export const GROUND_LINE_CHOOSE = `${GROUND_LINE} Choose What the fire feels to see it.`;
 export const SMOOTH_FIT_LINE = 'At this zoom the curves are a smooth fit through the model, not new detail.';
 /** What the fire feels (0.7.0): what the numbers are (the fire model's own wind in each cell, not a measurement), and how often they are refitted on the fast model. */
-export const feltLine = (cellM: number): string => `The wind the fire model uses in each ${formatNumber(Math.round(cellM))} m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.`;
+export const feltLine = (cellM: number): string => `The wind the fire model uses in each ${formatNumber(Math.round(cellM))} m cell: slope flow, lee eddies and the fire's own effect on the wind are included. It is not a measurement.`;
 export const FELT_FAST_LINE = 'On the fast model it is refitted once a minute.';
 /**
  * The calm-night sentence of What the fire feels (0.7.0, plan 20.3 item 2): on `calm-night-katabatic` the fire grid's wind drains downslope over most steep ground

@@ -350,19 +350,24 @@ describe('the announcements', () => {
     expect(removeAnnouncement({ time: 40 * MIN }, 40 * MIN, ENV)).toBe('Wind change removed.');
     expect(removeAnnouncement({ time: 40 * MIN }, 10 * MIN, ENV)).toBe('Wind change removed.');
   });
+  it('say the re-run starts when the change was made, not at its start (its cards and zone since then go with it)', () => {
+    expect(removeAnnouncement({ time: 40 * MIN, madeAt: 10 * MIN }, 50 * MIN, ENV)).toBe('Wind change removed. The simulation re-runs from 14:10 without it.');
+    expect(removeAnnouncement({ time: 40 * MIN, madeAt: 10 * MIN }, 30 * MIN, ENV)).toBe('Wind change removed. The simulation re-runs from 14:10 without it.'); // computed past it, though not yet past the start
+    expect(removeAnnouncement({ time: 40 * MIN, madeAt: 10 * MIN }, 10 * MIN, ENV)).toBe('Wind change removed.'); // the head is where it was made: nothing is computed again
+  });
 });
 
 describe('Back to the forecast (0.7.0)', () => {
-  it('has its words: the label, and a sentence that says it takes away every change as if never made and that the run is computed again from the first', () => {
+  it('has its words: the label, and a sentence that says it takes away every change as if never made and that the run is computed again from when the first was made', () => {
     expect(BACK_TO_FORECAST_LABEL).toBe('Back to the forecast');
-    expect(BACK_TO_FORECAST_HINT).toBe('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.');
+    expect(BACK_TO_FORECAST_HINT).toBe('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from when you made the first one.');
     for (const w of [BACK_TO_FORECAST_LABEL, BACK_TO_FORECAST_HINT]) expect(w).not.toMatch(/—|–/); // no dashes: the repo's voice
   });
   it('announces how many changes came away: two, one', () => {
     expect(backToForecastAnnouncement(2, 40 * MIN, 30 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed.');
     expect(backToForecastAnnouncement(1, 40 * MIN, 30 * MIN, ENV)).toBe('Back to the forecast. 1 wind change removed.');
   });
-  it('says the simulation re-runs from the first start only when it had computed past it', () => {
+  it('says the simulation re-runs from the point given (when the earliest was made) only when it had computed past it', () => {
     expect(backToForecastAnnouncement(2, 40 * MIN, 50 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed. The simulation re-runs from 14:40 without them.');
     expect(backToForecastAnnouncement(1, 40 * MIN, 50 * MIN, ENV)).toBe('Back to the forecast. 1 wind change removed. The simulation re-runs from 14:40 without it.');
     expect(backToForecastAnnouncement(2, 40 * MIN, 40 * MIN, ENV)).toBe('Back to the forecast. 2 wind changes removed.'); // the head is at the start: nothing is computed again

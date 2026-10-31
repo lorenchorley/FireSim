@@ -105,7 +105,7 @@ import { getFireModelOptions } from '../fire/models/params';
 import { SPREAD_PARAMS } from '../fire/spread/params';
 import { InsightEngine } from '../explain';
 import { ghiAt, stampIndex, weatherAt } from '../scenario/weather';
-import { applyWindDirection, userWindChanges, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
+import { applyWindDirection, userWindChanges, windDirectionTime, windOverrideFrom, windRerunFrom } from '../scenario/windDirection';
 import { SIM_PARAMS } from './params';
 import { publishFireWind } from './fireWindPublish';
 import { activeEdits, fuelSequence, recordOrder, sameSequence, type RecordBody, type SimRecord } from './records';
@@ -662,14 +662,19 @@ export class Simulation {
    * Delete the records `match` picks as if they had never been made (the body of {@link removeIgnition}, shared with the
    * removal of a Wind direction change): when one had already been applied, the latest checkpoint ≤ its time is
    * restored and the run is repeated to the current logical time without it. Returns false when none matches.
+   *
+   * A Wind direction change reaches the explain engine from its `madeAt` (see {@link windKnown}), before it applies: the cards and the Dead man
+   * zone since then, and the checkpoints taken since, carry it. So for it "its time" is {@link windRerunFrom} (0.7.0), and one that is still
+   * ahead but was made before now is stale from there too (the physics, the fire and the weather, never saw it).
    */
   private undoRecords(match: (r: SimRecord) => boolean): boolean {
     let t = Infinity;
     let applied = false;
     for (const [seq, r] of [...this.records]) {
       if (!match(r)) continue;
-      t = Math.min(t, r.time);
-      if (this.appliedSet.has(seq)) applied = true;
+      const wind = r.body.kind === 'edit' && r.body.edit.kind === 'windDirection' ? windRerunFrom(r.body.edit) : null;
+      t = Math.min(t, wind ?? r.time);
+      if (this.appliedSet.has(seq) || (wind !== null && wind < this.t - EPS)) applied = true;
       this.records.delete(seq);
     }
     if (!Number.isFinite(t)) return false;
@@ -1659,7 +1664,7 @@ export class Simulation {
       const b = r.body;
       if (b.kind !== 'edit' || b.edit.kind !== 'windDirection') continue;
       const e = b.edit;
-      if (Math.min(e.madeAt ?? e.time, e.time) >= time - EPS) continue;
+      if (windRerunFrom(e) >= time - EPS) continue;
       byId.delete(e.id); // a later record with the id of an earlier one replaces it and goes to the end, as `activeEdits` does
       byId.set(e.id, e);
     }
