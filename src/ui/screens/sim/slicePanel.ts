@@ -98,8 +98,10 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const view = h('div', { class: 'slice-view' }, h('div', { class: 'slice-stage' }, [canvas, empty]));
 
   const reasonsId = uniqueId('slice-reasons');
-  // The button comes first (it is what a person can act on), the words follow it, and the chips are described by the words. The whole block sits directly under the chips
-  // (0.7.0): the button is beside the chips it explains, not below the controls, where it was a scroll away on a short screen.
+  // The button (it is what a person can act on) sits directly under the chips, beside the thing it explains (0.7.0, owner question 6): below the controls it was a
+  // scroll away on a short screen. The words stay where 0.6.0 had them, under the controls, and describe the chips: with them under the chips as well, Set start sat
+  // behind the footer at 412 x 915 and Presets was hidden.
+  const use3dRow = h('div', { class: 'slice-use3d-row', hidden: true, dataset: { testid: 'slice-use3d-row' } });
   const reasons = h('div', { class: 'slice-reasons', hidden: true, dataset: { testid: 'slice-reasons' } });
   const chipEls = new Map<SliceFieldId, HTMLButtonElement>();
   for (const f of SLICE_FIELDS) {
@@ -129,9 +131,9 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const recordingEl = h('p', { class: 'hint', hidden: true, tabIndex: -1, dataset: { testid: 'slice-recording' } }); // (tabIndex -1: focused by Keep this line and Clear recording, not a stop of the Tab key)
   const footer = h('p', { class: 'hint slice-footer', hidden: true, dataset: { testid: 'slice-footer' } });
   const controlsWrap = h('div', { class: 'slice-controls' }, options.controls);
-  // Order: picture, reading, chips, the notes of the chips that are off (the button and the words), legend, controls, the switch (and its note), the recording's
-  // status, the caption, the footer. When there are notes (the fast tier) the legend goes after the controls, which stay as near the chips as the notes allow (`arrange`).
-  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, reasons, legendHost, controlsWrap, cellsToggle.el, cellsNoteEl, recordingEl, terrainLine, footer]);
+  // Order: picture, reading, chips, the 3-D button (while some chip is off), legend, controls, the words of the chips that are off, the switch (and its note), the
+  // recording's status, the caption, the footer. When there are notes (the fast tier) the legend goes after the words, as in 0.6.0 (`arrange`).
+  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, use3dRow, legendHost, controlsWrap, reasons, cellsToggle.el, cellsNoteEl, recordingEl, terrainLine, footer]);
   let legendLast = false;
   function arrange(last: boolean): void {
     if (last === legendLast) return;
@@ -361,13 +363,12 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
     const notes = disabledNotes(chips);
     const key = notes.map((n) => `${n.labels.join('+')}:${n.reason}:${n.use3d}`).join('|');
     reasons.hidden = !data || notes.length === 0; // with no slice the chips are put away, and so are their reasons
+    use3dRow.hidden = reasons.hidden || !notes.some((n) => n.use3d);
     arrange(!reasons.hidden);
     if (key !== notesKey) {
       notesKey = key;
-      setChildren(reasons, [
-        notes.some((n) => n.use3d) ? button({ label: SLICE_USE_3D_LABEL, variant: 'tonal', class: 'slice-use3d', testId: 'slice-use3d', onClick: () => options.onUse3d() }) : null,
-        h('div', { id: reasonsId }, notes.map((n) => h('p', { class: 'hint' }, n.reason))),
-      ]);
+      setChildren(use3dRow, notes.some((n) => n.use3d) ? button({ label: SLICE_USE_3D_LABEL, variant: 'tonal', class: 'slice-use3d', testId: 'slice-use3d', onClick: () => options.onUse3d() }) : null);
+      setChildren(reasons, h('div', { id: reasonsId }, notes.map((n) => h('p', { class: 'hint' }, n.reason))));
     }
     canvas.dataset.field = field;
   }

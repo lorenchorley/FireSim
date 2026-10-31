@@ -187,18 +187,39 @@ interface Box {
 }
 
 /**
- * 0.7.0, F8: on the fast tier the block of the disabled chips' reasons (the "Use the 3-D atmosphere" button, then the words) sits directly under the chips, above the
- * controls. Where the pieces are now, in page pixels, and the top of the pinned footer: the pins below read them at three screen sizes.
+ * 0.7.0, F8 with the owner's question 6: on the fast tier the "Use the 3-D atmosphere" button sits directly under the chips, above the controls, and the words of the
+ * disabled chips stay under the controls (as in 0.6.0). The first F8 build moved the words up as well: on a 412 x 915 phone Set start then sat behind the pinned footer and
+ * Presets was hidden. Where the pieces are now, in page pixels, and the top of the pinned footer: the pins below read them at three screen sizes.
  */
-const blockBoxes = (page: Page): Promise<{ chipsBottom: number; button: Box; reasons: Box; setA: Box; presets: Box; footerTop: number; sheet: Box }> =>
+const blockBoxes = (
+  page: Page,
+): Promise<{ chipsBottom: number; button: Box; reasons: Box; setA: Box; setB: Box; swap: Box; presets: Box; footerTop: number; sheet: Box }> =>
   page.evaluate(() => {
     const r = (id: string): Box => {
       const b = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
       return { top: b.top, bottom: b.bottom, height: b.height };
     };
     const chips = ['speed', 'along', 'up', 'across', 'theta', 'smoke'].map((id) => r(`slice-chip-${id}`));
-    return { chipsBottom: Math.max(...chips.map((c) => c.bottom)), button: r('slice-use3d'), reasons: r('slice-reasons'), setA: r('slice-set-a'), presets: r('slice-presets-toggle'), footerTop: r('slice-footer').top, sheet: r('air-panel') };
+    return {
+      chipsBottom: Math.max(...chips.map((c) => c.bottom)),
+      button: r('slice-use3d'),
+      reasons: r('slice-reasons'),
+      setA: r('slice-set-a'),
+      setB: r('slice-set-b'),
+      swap: r('slice-swap'),
+      presets: r('slice-presets-toggle'),
+      footerTop: r('slice-footer').top,
+      sheet: r('air-panel'),
+    };
   });
+
+/** What the first F8 build got wrong: with the body scrolled to the top, the controls under the button are on the screen, none under the pinned footer (`presets` false: the row of Set start, Set end and Swap only). */
+const expectControlsInView = (at: Awaited<ReturnType<typeof blockBoxes>>, label: string, presets = true): void => {
+  const boxes = [['Set start', at.setA], ['Set end', at.setB], ['Swap', at.swap], ...(presets ? [['Presets', at.presets] as const] : [])] as const;
+  for (const [name, box] of boxes) {
+    expect(box.bottom, `${label}: ${name} is above the pinned footer (bottom ${Math.round(box.bottom)}, footer ${Math.round(at.footerTop)})`).toBeLessThanOrEqual(Math.min(at.footerTop, at.sheet.bottom) + 0.5);
+  }
+};
 
 const airKind = (page: Page): Promise<string | null> => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null);
 const cam = (page: Page): Promise<CamState> => page.evaluate(() => (window as unknown as Handle).__firesim.view.cameraState());
@@ -626,17 +647,20 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
       await expect(button).toBeVisible();
       await expect(button).toHaveText('Use the 3-D atmosphere');
       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0)); // (the earlier steps scrolled to the controls)
-      // 0.7.0 (F8): the block of the button and the words is directly under the chips, above the controls. At 412 x 915 the button is wholly in view and inside the
-      // sheet with no scroll at all, and the Set start row follows the block, not the chips. (0.4.1 to 0.6.0 had the controls first: the button was a row lower than
-      // "Turn off the slice" and needed a short scroll of the body; it once sat 2 px inside the page's viewport, under the timeline strip, which only a check of the
-      // sheet's own bottom sees.)
+      // 0.7.0 (F8, owner question 6): the button is directly under the chips, above the controls, and the words stay under the controls as in 0.6.0. At 412 x 915 the
+      // button is wholly in view and inside the sheet with no scroll at all, and Set start, Set end, Swap and Presets are all above the footer, with the Set start row
+      // following the button. (The first F8 build moved the words up too: Set start then sat at y 772 to 812 behind the footer at 802 and Presets was hidden. 0.4.1 to
+      // 0.6.0 had the controls first: the button was a row lower than "Turn off the slice" and needed a short scroll of the body; it once sat 2 px inside the page's
+      // viewport, under the timeline strip, which only a check of the sheet's own bottom sees.)
       const at = await blockBoxes(page);
       expect(at.button.top - at.chipsBottom, 'the button is within 16 px of the last chip').toBeLessThanOrEqual(16);
       expect(at.button.top - at.chipsBottom, 'and under it, not over it').toBeGreaterThanOrEqual(-1);
       expect(at.button.bottom, 'the button is wholly inside the sheet and above the pinned footer with no scroll').toBeLessThanOrEqual(Math.min(at.sheet.bottom, at.footerTop) + 0.5);
       await expect(button, 'the button is in view with no scroll').toBeInViewport({ ratio: 1 });
-      expect(at.setA.top - at.reasons.bottom, 'the Set start row follows the block (px between them)').toBeLessThan(24);
+      expect(at.setA.top - at.button.bottom, 'the Set start row follows the button (px between them)').toBeLessThan(24);
       expect(at.setA.top, 'and is under the button, not over it').toBeGreaterThan(at.button.bottom);
+      expectControlsInView(at, '412 x 915');
+      expect(at.reasons.top, 'the words of the chips that are off stay under the controls, as in 0.6.0').toBeGreaterThan(at.presets.bottom);
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(40);
       await page.getByTestId('slice-chip-theta').click({ force: true });
       await expect(canvas).toHaveAttribute('data-field', 'speed');
@@ -889,9 +913,10 @@ test('fast tier: place, presets, chips with Temp and Smoke off, probe, cells, fo
   });
 });
 
-// 0.7.0, F8 (plan 20.5): on the fast tier the "Use the 3-D atmosphere" button and its words sit directly under the disabled chips, in the Air slices tool and in the Layers
-// panel's callout. A test of its own (it changes the screen size three times and opens the Layers panel, which the long flow above does not want in front of its gestures).
-test('fast tier: the 3-D button and its words sit directly under the chips at 412 x 915, 360 x 640 and 844 x 390, clear of the pinned footer, with Set start after them; the Layers callout stays under its chips', async ({ page }) => {
+// 0.7.0, F8 (plan 20.5) with the owner's question 6: on the fast tier the "Use the 3-D atmosphere" button sits directly under the disabled chips, in the Air slices tool and in
+// the Layers panel's callout; in the tool the words of the chips stay under the controls, as in 0.6.0 (the first F8 build moved them up as well, and Set start then sat behind
+// the footer at 412 x 915). A test of its own (it changes the screen size four times and opens the Layers panel, which the long flow above does not want in front of its gestures).
+test('fast tier: the 3-D button sits directly under the chips, Set start, Set end, Swap and Presets stay in view at 412 x 915 and 390 x 844, and it is clear of the pinned footer at 360 x 640 and 844 x 390; the Layers callout stays under its chips', async ({ page }) => {
   test.setTimeout(600_000);
   await watchPopups(page);
   await build(page, 'Fast');
@@ -912,26 +937,45 @@ test('fast tier: the 3-D button and its words sit directly under the chips at 41
     });
 
   await test.step('the Air slices tool, at three sizes', async () => {
-    for (const [w, h] of [[412, 915], [360, 640], [844, 390]] as const) {
+    for (const [w, h] of [[412, 915], [390, 844], [360, 640], [844, 390]] as const) {
       await page.setViewportSize({ width: w, height: h });
       await page.waitForTimeout(900);
       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0));
       const at = await blockBoxes(page);
-      console.log(`F8 at ${w} x ${h}: chips end ${Math.round(at.chipsBottom)}, button ${Math.round(at.button.top)} to ${Math.round(at.button.bottom)}, words end ${Math.round(at.reasons.bottom)}, Set start ${Math.round(at.setA.top)} to ${Math.round(at.setA.bottom)}, Presets ${Math.round(at.presets.top)} to ${Math.round(at.presets.bottom)}, footer top ${Math.round(at.footerTop)}`);
+      console.log(
+        `F8 at ${w} x ${h}: chips end ${Math.round(at.chipsBottom)}, button ${Math.round(at.button.top)} to ${Math.round(at.button.bottom)}, Set start ${Math.round(at.setA.top)} to ${Math.round(at.setA.bottom)}, Presets ${Math.round(at.presets.top)} to ${Math.round(at.presets.bottom)}, words ${Math.round(at.reasons.top)} to ${Math.round(at.reasons.bottom)}, footer top ${Math.round(at.footerTop)}`,
+      );
       expect(at.button.top - at.chipsBottom, `${w} x ${h}: the button is within 16 px of the last chip`).toBeLessThanOrEqual(16);
       expect(at.button.top - at.chipsBottom, `${w} x ${h}: and under it`).toBeGreaterThanOrEqual(-1);
-      expect(at.setA.top - at.reasons.bottom, `${w} x ${h}: Set start follows the block, not the chips (px between them)`).toBeLessThan(24);
+      expect(at.setA.top - at.button.bottom, `${w} x ${h}: Set start follows the button, not the words (px between them)`).toBeLessThan(24);
       expect(at.setA.top, `${w} x ${h}: and is under the button`).toBeGreaterThan(at.button.bottom);
-      expect(at.presets.top, `${w} x ${h}: Presets is under the block too`).toBeGreaterThan(at.reasons.bottom);
-      if (w === 412) {
-        expect(at.button.bottom, 'wholly inside the sheet and above the pinned footer with no scroll').toBeLessThanOrEqual(Math.min(at.sheet.bottom, at.footerTop) + 0.5);
+      expect(at.reasons.top, `${w} x ${h}: the words of the chips that are off are under the controls, as in 0.6.0`).toBeGreaterThan(at.presets.bottom);
+      if (w <= 412 && h >= 800) {
+        // The two portrait phones that have the room (Pixel 7 and a 390 x 844): the button and the row of Set start, Set end and Swap are on the screen with no scroll. Presets
+        // too at 412 x 915. At 390 x 844 the sheet is 71 px shorter and the six chips are in two rows (the media query under 412 px), and the button costs 52 px: Presets is
+        // then one short scroll further (measured: its bottom 38 px under the footer's top; without the button, 0.6.0 had it 6 px above it).
+        expect(at.button.bottom, `${w} x ${h}: wholly inside the sheet and above the pinned footer with no scroll`).toBeLessThanOrEqual(Math.min(at.sheet.bottom, at.footerTop) + 0.5);
         await expect(button).toBeInViewport({ ratio: 1 });
+        const roomy = h >= 900;
+        expectControlsInView(at, `${w} x ${h}`, roomy);
+        for (const id of roomy ? ['slice-set-a', 'slice-set-b', 'slice-swap', 'slice-presets-toggle'] : ['slice-set-a', 'slice-set-b', 'slice-swap']) {
+          await expect(page.getByTestId(id), `${w} x ${h}: ${id} is in view with no scroll`).toBeInViewport({ ratio: 1 });
+          expect(await onTop(page.getByTestId(id)), `${w} x ${h}: ${id} is not under the footer`).toBe(true);
+        }
+        if (!roomy) {
+          expect(at.presets.bottom - at.footerTop, `${w} x ${h}: Presets is less than 48 px (the body's scroll-padding) under the footer`).toBeLessThan(48);
+          await page.getByTestId('slice-presets-toggle').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+          expect(await onTop(page.getByTestId('slice-presets-toggle')), `${w} x ${h}: and clear of it once scrolled to`).toBe(true);
+        }
       } else {
         await button.evaluate((el) => el.scrollIntoView({ block: 'nearest' })); // (the way a focus or a tap scrolls: clear of the pinned picture and footer by the body's scroll-padding)
         const reached = await blockBoxes(page);
         expect(reached.button.bottom, `${w} x ${h}: after that scroll the button is wholly clear of the pinned footer`).toBeLessThanOrEqual(reached.footerTop + 0.5);
         await expect(button).toBeInViewport({ ratio: 1 });
         expect(await onTop(button), `${w} x ${h}: and nothing covers it`).toBe(true);
+        // and the controls are one short scroll further, none under the footer once reached
+        await page.getByTestId('slice-set-a').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+        expect(await onTop(page.getByTestId('slice-set-a')), `${w} x ${h}: Set start, once scrolled to, is not under the footer`).toBe(true);
       }
     }
     await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0));
@@ -1419,14 +1463,24 @@ test('reduced motion, high contrast, the dark look and the vertical exaggeration
     }
     await expect(canvas).toBeInViewport();
     await expect(page.getByTestId('slice-chip-smoke')).toBeInViewport();
-    // 0.7.0 (F8): the block of the 3-D button and its words comes right after the chips (the button within 16 px of them) and the placement controls follow the
-    // block: Set start is under the words, not under the chips (it was, from 0.4.1 to 0.6.0, with the block a scroll further down).
+    // 0.7.0 (F8, owner question 6): the 3-D button comes right after the chips (within 16 px of them) and the placement controls follow it: Set start is under the button, not
+    // under the words, which stay under the controls as in 0.6.0. On the 390 x 844 phone Set start, Set end, Swap and Presets are all above the footer with no scroll (with the
+    // words under the chips as well, the first F8 build put Set start behind the footer on a 412 x 915 phone).
     const block = await blockBoxes(page);
     expect(block.button.top - block.chipsBottom, `the 3-D button is within 16 px of the last chip at ${w} px`).toBeLessThanOrEqual(16);
-    expect(block.setA.top - block.reasons.bottom, `Set start follows the block at ${w} px (px between them)`).toBeLessThan(24);
+    expect(block.setA.top - block.button.bottom, `Set start follows the button at ${w} px (px between them)`).toBeLessThan(24);
+    expect(block.reasons.top, `the words are under the controls at ${w} px`).toBeGreaterThan(block.presets.bottom);
+    if (h >= 800) {
+      // (Presets is not in this list: on this phone the six chips are in two rows and the button costs 52 px, so Presets is one short scroll further; the test above measures it.)
+      expectControlsInView(block, `${w} x ${h}`, false);
+      for (const id of ['slice-set-a', 'slice-set-b', 'slice-swap']) await expect(page.getByTestId(id), `${id} is in view with no scroll at ${w} x ${h}`).toBeInViewport({ ratio: 1 });
+    }
     await page.getByTestId('slice-chip-theta').click({ force: true });
     await expect(page.getByTestId('slice-reasons'), 'a tap on a chip that is off brings its reason into view').toBeInViewport({ ratio: 1 });
-    await expect(page.getByTestId('slice-use3d'), 'and the 3-D button').toBeInViewport({ ratio: 1 });
+    // The button is under the chips and the words under the controls: the two are on the screen together only where the body is as tall as the 412 x 915 phone's
+    // (e2e/airslice-panel.spec.ts); on these two the tap shows the words and the button is one scroll up.
+    await page.getByTestId('slice-use3d').evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+    await expect(page.getByTestId('slice-use3d'), 'and the button is a scroll away, clear of the picture and the footer').toBeInViewport({ ratio: 1 });
     await expect(canvas).toHaveAttribute('data-field', 'speed');
     // Scrolled down to the controls, "Presets, Across the wind" brings the picture back into view (the panel's focus does not scroll it there)
     await page.getByTestId('slice-presets-toggle').evaluate((el) => el.scrollIntoView({ block: 'start' })); // (the controls at the top of the window: the person scrolled down to them)
