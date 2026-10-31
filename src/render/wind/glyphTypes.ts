@@ -161,8 +161,11 @@ export interface DetailRelief {
   ridge: { riseLo: number; riseHi: number; beta: number; forwardM: number; maxTurnDeg: number };
   /**
    * T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`, and the
-   * plane never rises over `eyeShare` of the eye's height over the ground (`DetailInput.planeCapM`): a camera hardly higher than the canopy would otherwise look
-   * along its strokes and see none of them in the lower half of the screen.
+   * plane never rises over `eyeShare` of the eye's height over the ground, at the middle of the screen (`DetailInput.planeCapM`) and under every point of
+   * the picture (the builder, from the eye and the ground there). A camera hardly higher than the canopy would otherwise look along its strokes: they
+   * ride within 9 m of the eye, the near plane takes the bottom of the screen, and the horizon takes the rest (at 40 to 60 m and a tilt of 55 degrees the
+   * share 0.6 gave 55 % of the segments to the top tenth of the screen and 0.5 % to the bottom three tenths; 0.6.0 had 4 % and 7 %). 0.3 keeps the
+   * picture within a few points of 0.6.0's at every zoom and tilt tried, and leaves the plane at the canopy's top from an eye height of about 70 m.
    */
   canopy: { topShare: number; coverFull: number; maxHeightM: number; eyeShare: number };
   /** T3: crowns as obstacles. */
@@ -232,7 +235,7 @@ export interface DetailRelief {
 export const DETAIL_RELIEF: DetailRelief = {
   enabled: true,
   ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 30 },
-  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.6 },
+  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.3 },
   crowns: {
     gateCrownM: 5,
     gatePx: 8,

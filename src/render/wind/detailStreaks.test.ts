@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
 import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERRAIN, detailGroundFactor, pulseIntensity } from './detailStreaks';
-import { crownIncursions, detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
+import { crownIncursions, detailBytes, katoombaScene, linesOf, makeDetailScenario, screenShares, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
 import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { crownDiscRadius } from './detailObstacles';
 import { planLod } from './glyphLod';
@@ -1162,10 +1162,11 @@ describe('the 0.6.0 picture is what the builder draws when `relief` is absent', 
 // ───────────────────────── the relief (0.7.0) ─────────────────────────
 
 /**
- * The tuned relief with no tree faded out: most of these pictures are seen from straight above, where the canopy's shader fades every tree out and the
- * real constant (`fadeSin` 0.93) would leave no crown; the fade rule has its own tests.
+ * The tuned relief with no tree faded out and no cap under the eye: most of these pictures are seen from straight above, where the canopy's shader fades
+ * every tree out and the real constant (`fadeSin` 0.93) would leave no crown, and from a camera so near the canopy that the plane's cap under the eye
+ * (`eyeShare`, 0.3 of the eye's height) would hold every stroke well under it; both rules have their own tests.
  */
-const PLAN_RELIEF: DetailRelief = { ...DETAIL_RELIEF, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+const PLAN_RELIEF: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 }, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
 
 /** A scenario with the relief on (its `canopy`, `crowns` and `plumes` as given), seen from above. */
 function withRelief(sc: DetailScenario, o: { relief?: DetailRelief; canopyH?: number; cover?: number; crowns?: readonly CrownSet[]; plumes?: readonly Plume[] } = {}): DetailScenario {
@@ -1348,6 +1349,33 @@ describe('the relief: the strokes ride on the canopy', () => {
     for (let k = 0; k < tiny.segments; k++) expect(tiny.a[3 * k + 1]).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
   });
 
+  it('keeps every vertex under `eyeShare` of the eye\'s height over the ground under it: over a hillside that rises to the camera no stroke comes near the eye', () => {
+    // The ground rises 0.4 m a metre to the south beyond y = -10, where the camera is (100 m south and 70 m over the target): a cap at the middle of the screen
+    // alone (the eye's 70 m over the target) leaves the plane 20 m over a ground that is 30 m under the eye.
+    const hill = (_x: number, y: number): number => (y < -10 ? 0.4 * (-10 - y) : 0);
+    const camera = makeCamera({ eye: [0, 70, 100], target: [0, 0, 0], near: 8 });
+    const sc = makeDetailScenario({ field: () => [8, 0], camera, cellPx: 1500, ground: hill, groundCell: 10 }); // (a wind along the contour: no lift)
+    const hf = new HeightField(sc.ground.grid, sc.ground.elevation);
+    const share = 0.3;
+    const capped: DetailRelief = { ...PLAN_RELIEF, canopy: { ...PLAN_RELIEF.canopy, eyeShare: share } };
+    const worst = (relief: DetailRelief): { n: number; over: number } => {
+      const s = withRelief(sc, { relief, canopyH: 24, cover: 1 });
+      s.input.planeCapM = share * 70;
+      const { out } = build(s);
+      let over = 0;
+      for (let k = 0; k < out.segments; k++) {
+        const above = out.a[3 * k + 1]! - hf.heightAt(out.a[3 * k]!, -out.a[3 * k + 2]!);
+        over = Math.max(over, above - share * (70 - hf.heightAt(out.a[3 * k]!, -out.a[3 * k + 2]!)));
+      }
+      return { n: out.segments, over };
+    };
+    const on = worst(capped);
+    expect(on.n).toBeGreaterThan(300);
+    expect(on.over, 'no vertex over the cap under it').toBeLessThanOrEqual(1e-3);
+    const off = worst(PLAN_RELIEF);
+    expect(off.over, 'the same picture without the cap under the eye has strokes over it').toBeGreaterThan(5);
+  });
+
   it('weighs the plane by the cover, and keeps the 1.5 m lift (the stroke is never under it) where the plane is lower', () => {
     const sc = closest();
     const half = build(withRelief(sc, { canopyH: 24, cover: 0.15 }));
@@ -1401,6 +1429,40 @@ describe('the relief: the strokes ride on the canopy', () => {
     const sc = makeDetailScenario({ groundCell: 10, ground: (x) => wall(x), field: () => [8, 0], camera: topDownCamera(133, 150, 0, 0, { near: 30 }, 460) });
     const { out } = build(withRelief(sc, { canopyH: 24, cover: 1 }));
     expect(out.steep, 'lines cut or dropped at the wall').toBeGreaterThan(3);
+  });
+});
+
+describe('the relief: a camera near the canopy does not look along its strokes (the real escarpment scene)', () => {
+  // The verifier's finding on the real app (Katoomba, 0.7.0 with `eyeShare` 0.6): at 40 to 60 m and a tilt of 55 or 65 degrees the plane rode within 9 m of the
+  // eye, the near plane took the bottom of the screen and the horizon band took the rest: 55 % of the segments in the top tenth of the screen (0.6.0: 4 %), 0.5 %
+  // in the bottom three tenths (0.6.0: 7 %). The scene is cut out of that picture's input (`katoombaScene`), without its crowns.
+  const run = (d: number, tilt: number, relief: DetailRelief | null): { top: number; bottom: number; on: number; segments: number } => {
+    const input = katoombaScene(d, tilt, relief);
+    const b = createDetailBuilder('high');
+    buildAll(b, input);
+    return { ...screenShares(b.out, input.viewProj), segments: b.out.segments };
+  };
+  const OLD: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0.6 } };
+  const poses = [[40, 35], [40, 55], [50, 55], [60, 55], [80, 55], [40, 65], [50, 65], [60, 65], [80, 65]] as const;
+
+  it('puts as many segments in the top tenth and the bottom three tenths of the screen as the 0.6.0 picture does, within a few points, from 40 to 80 m and at 35, 55 and 65 degrees', () => {
+    for (const [d, tilt] of poses) {
+      const ref = run(d, tilt, null);
+      const got = run(d, tilt, DETAIL_RELIEF);
+      const name = `${d} m, ${tilt} degrees`;
+      expect(got.top, `${name}: the top tenth (0.6.0 ${ref.top.toFixed(1)} %)`).toBeLessThanOrEqual(ref.top + 8);
+      expect(got.bottom, `${name}: the bottom three tenths (0.6.0 ${ref.bottom.toFixed(1)} %)`).toBeGreaterThanOrEqual(0.6 * ref.bottom);
+      expect(got.bottom, name).toBeLessThanOrEqual(ref.bottom + 8);
+      expect(got.segments, `${name}: about as many segments as 0.6.0's (${ref.segments})`).toBeGreaterThan(0.75 * ref.segments);
+    }
+  });
+
+  it('fails on the old share of 0.6: the control run piles the top tenth up and empties the bottom', () => {
+    const ref = run(40, 55, null);
+    const old = run(40, 55, OLD);
+    expect(old.top, `0.6.0 has ${ref.top.toFixed(1)} %`).toBeGreaterThan(ref.top + 20);
+    expect(run(50, 55, OLD).top).toBeGreaterThan(run(50, 55, null).top + 12);
+    expect(run(40, 55, OLD).bottom).toBeLessThan(0.7 * ref.bottom);
   });
 });
 

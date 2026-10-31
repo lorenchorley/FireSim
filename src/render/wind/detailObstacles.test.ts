@@ -10,6 +10,7 @@ import {
   IO_BLOCK,
   IO_DX,
   IO_DY,
+  IO_G,
   IO_HIT,
   IO_K,
   IO_MODE,
@@ -28,6 +29,7 @@ import {
   P_BX1,
   P_BY0,
   P_BY1,
+  P_ESHARE,
   P_EX,
   P_EY,
   P_EZ,
@@ -455,6 +457,25 @@ describe('the canopy the strokes ride on', () => {
     expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy, 12)).toBe(12);
     expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy, 30)).toBeCloseTo(0.85 * 24, 5);
     expect(canopyPlane(f, 0, 0, DETAIL_RELIEF.canopy)).toBeCloseTo(0.85 * 24, 5);
+  });
+
+  it('holds the plane to a share of the eye\'s height over the ground under the point (p[P_ESHARE], 0 is none): over a hillside that rises to the camera it comes down, over ground above the eye it is nothing', () => {
+    const ob = make(fuel(() => 24, () => 1));
+    ob.p[P_EY] = 100;
+    const under = (ground: number): number => {
+      ob.io[IO_G] = ground;
+      return zc(ob, 0, 0);
+    };
+    expect(under(90), 'no share: the canopy plane').toBeCloseTo(0.85 * 24, 5);
+    ob.p[P_ESHARE] = 0.3;
+    expect(under(0), 'an eye 100 m over the ground: 0.3 of it is over the canopy plane').toBeCloseTo(0.85 * 24, 5);
+    expect(under(70), '30 m over the ground: 9 m').toBeCloseTo(9, 5);
+    expect(under(90), '10 m over the ground: 3 m').toBeCloseTo(3, 5);
+    expect(under(100), 'at the eye: nothing').toBe(0);
+    expect(under(130), 'over the eye: nothing, never negative').toBe(0);
+    ob.p[P_ZCAP] = 5;
+    expect(under(0), 'the cap at the middle of the screen as well: the lower of the two').toBe(5);
+    expect(under(90)).toBeCloseTo(3, 5);
   });
 
   it('climbs smoothly across the edge of a stand: bilinear, a ramp of one cell, no step', () => {

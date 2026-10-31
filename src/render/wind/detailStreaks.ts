@@ -56,7 +56,7 @@ import {
   SPEED_TABLE_BINS,
   SPEED_TABLE_MAX_MS,
 } from './flowGlyphs';
-import { IO_BLOCK, IO_DX, IO_DY, IO_HIT, IO_K, IO_MODE, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
+import { IO_BLOCK, IO_DX, IO_G, IO_DY, IO_HIT, IO_K, IO_MODE, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_ESHARE, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
 import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
 
 /**
@@ -597,6 +597,7 @@ class Builder implements DetailBuilder {
       const io = this.ob.io;
       io[IO_X] = px;
       io[IO_Y] = py;
+      io[IO_G] = s[2]! * f[F_VEX]!;
       this.ob.canopyAt();
       yw += io[IO_ZC]!;
     }
@@ -652,6 +653,7 @@ class Builder implements DetailBuilder {
         const io = this.ob.io;
         io[IO_X] = x;
         io[IO_Y] = y;
+        io[IO_G] = s[2]! * vex;
         this.ob.canopyAt();
         yw += io[IO_ZC]!;
       }
@@ -845,6 +847,7 @@ class Builder implements DetailBuilder {
         p[P_EY] = f[F_EY]!;
         p[P_EZ] = f[F_EZ]!;
         p[P_ZCAP] = input.planeCapM !== undefined && input.planeCapM > 0 ? input.planeCapM : 0;
+        p[P_ESHARE] = relief.canopy.eyeShare;
         // A tree that no line from the picture's seeds can reach is passed over: the box of the seeds grown by one and a half line lengths at the middle of
         // the screen (far from the camera a line is longer in metres, but a crown there is small on the screen and does not count) and the widest crown.
         const grow = 1.5 * f[F_LMAX]! * f[F_MPPC]! + REACH_CROWN_M;
@@ -1418,6 +1421,7 @@ class Builder implements DetailBuilder {
     const io = this.ob.io;
     io[IO_X] = this.s[0]!;
     io[IO_Y] = this.s[1]!;
+    io[IO_G] = this.s[2]! * this.f[F_VEX]!;
     this.ob.canopyAt();
     const zc = io[IO_ZC]!;
     this.s[30] = zc > this.s[29]! ? zc - this.s[29]! : 0;

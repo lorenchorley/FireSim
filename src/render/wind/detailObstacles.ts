@@ -51,6 +51,8 @@ export const IO_K = 11;
 export const IO_Z = 12;
 /** Out of `blocked`: 1 when the point is inside a crown's seed block. */
 export const IO_BLOCK = 13;
+/** In to `canopyAt`: the drawn height (world y) of the ground under the point, for the plane's cap under the eye. */
+export const IO_G = 14;
 const IO_LEN = 16;
 
 // Slots of the copied constants.
@@ -104,6 +106,8 @@ export const P_EY = 12;
 export const P_EZ = 13;
 /** The highest the canopy plane may be over the ground (m); 0 is no cap. */
 export const P_ZCAP = 14;
+/** The share of the eye's height over the ground under a point that the plane may rise to there (`DetailRelief.canopy.eyeShare`); 0 is no cap. */
+export const P_ESHARE = 15;
 
 const SALT_PROUD = 0x51a1;
 /**
@@ -315,6 +319,12 @@ export class Obstacles {
     let zc = k[K_TOP]! * hh * cw;
     const cap = this.p[P_ZCAP]!;
     if (cap > 0 && zc > cap) zc = cap;
+    // Under the eye as well as at the middle of the screen: over ground that rises toward the camera (a hillside) the plane would otherwise reach the eye.
+    const share = this.p[P_ESHARE]!;
+    if (share > 0) {
+      const room = share * (this.p[P_EY]! - io[IO_G]!);
+      if (zc > room) zc = room > 0 ? room : 0;
+    }
     io[IO_ZC] = zc;
   }
 
@@ -417,6 +427,7 @@ export class Obstacles {
         // Where the stroke runs over this tree, and what its crown shows there.
         io[IO_X] = x;
         io[IO_Y] = y;
+        io[IO_G] = gz;
         this.canopyAt();
         const zc = io[IO_ZC]!;
         const zs = zc > zb ? zc : zb;
