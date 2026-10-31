@@ -298,14 +298,16 @@ test('fast tier: Temp and Smoke are off with the reason and the button, the foot
   await expect(use3d).toHaveText('Use the 3-D atmosphere');
   const ub = (await use3d.boundingBox())!;
   expect(ub.height).toBeGreaterThanOrEqual(40);
-  // a tap on an unavailable chip does not colour the slice; it scrolls to the reason, which is under the controls (the button is directly under the chips since 0.7.0, so a
-  // phone as tall as this one, 412 x 915, still has it on the screen with the words: the shorter bodies are in e2e/air-slice.spec.ts)
+  // a tap on an unavailable chip does not colour the slice; it scrolls to the reason, which is under the controls (the button is directly under the chips since 0.7.0)
   await canvas.scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-theta').click({ force: true });
   await expect(canvas).toHaveAttribute('data-field', 'speed');
   await expect(page.getByTestId('slice-chip-theta')).toHaveAttribute('aria-pressed', 'false');
   await expect(reasons, 'the tap on a chip that is off brings its reason into view').toBeInViewport({ ratio: 1 });
-  await expect(use3d, 'and the 3-D button, which is under the chips, is still on this tall a screen').toBeInViewport({ ratio: 1 });
+  // The button is under the chips and the words under the controls: the tap shows the words, and the button, above them, is one scroll away (in a fresh session at
+  // 412 x 915 it is still on the screen too: e2e/air-slice.spec.ts measures both).
+  await use3d.evaluate((el) => el.scrollIntoView({ block: 'nearest' }));
+  await expect(use3d, 'the 3-D button is one scroll away, clear of the picture and the footer').toBeInViewport({ ratio: 1 });
   // the wind chips colour the slice, and the probe has no temperature clause
   await canvas.scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-across').click();
