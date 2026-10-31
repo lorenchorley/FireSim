@@ -308,7 +308,10 @@ test('reduced motion: the old Wind streaks and the trees stand still (and are no
     const f0 = await frames(page);
     const moved = await scrubAway(page);
     await expect.poll(async () => (await frames(page)) - f0, { message: `a new snapshot (${moved}): frames are drawn`, timeout: 10_000 }).toBeGreaterThan(0);
-    await page.waitForTimeout(1000);
+    // The display time glides to the new snapshot (up to 1.5 s of the view's clock), and the last frame of the glide comes with the next animation
+    // frame after that: under software GL they are far apart (the first frame of a scrub at 0.5 s, its last at 3.1 s), so a fixed 1 s wait put it in the
+    // window below. The loop must stop (polled, as after every other change here), and then it draws nothing for 2 s.
+    await expectStopped(page, 'after a new snapshot (the glide of the display time over)');
     const f1 = await frames(page);
     await page.waitForTimeout(2000);
     expect((await frames(page)) - f1, 'frames drawn in 2 s after it').toBe(0);

@@ -161,8 +161,11 @@ export interface DetailRelief {
   ridge: { riseLo: number; riseHi: number; beta: number; forwardM: number; maxTurnDeg: number };
   /**
    * T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`, and the
-   * plane never rises over `eyeShare` of the eye's height over the ground (`DetailInput.planeCapM`): a camera hardly higher than the canopy would otherwise look
-   * along its strokes and see none of them in the lower half of the screen.
+   * plane never rises over `eyeShare` of the eye's height over the ground, at the middle of the screen (`DetailInput.planeCapM`) and under every point of
+   * the picture (the builder, from the eye and the ground there). A camera hardly higher than the canopy would otherwise look along its strokes: they
+   * ride within 9 m of the eye, the near plane takes the bottom of the screen, and the horizon takes the rest (at 40 to 60 m and a tilt of 55 degrees the
+   * share 0.6 gave 55 % of the segments to the top tenth of the screen and 0.5 % to the bottom three tenths; 0.6.0 had 4 % and 7 %). 0.3 keeps the
+   * picture within a few points of 0.6.0's at every zoom and tilt tried, and leaves the plane at the canopy's top from an eye height of about 70 m.
    */
   canopy: { topShare: number; coverFull: number; maxHeightM: number; eyeShare: number };
   /** T3: crowns as obstacles. */
@@ -181,17 +184,25 @@ export interface DetailRelief {
     clearM: number;
     centreShare: number;
     halfShare: number;
-    /** A disc under `minRadiusPx` on the screen is not an obstacle; at most `maxCrowns` are kept (the bound is the screen); the clock is read every `clockEvery` trees. */
+    /**
+     * A disc under `minRadiusPx` on the screen is not an obstacle; about `maxCrowns` are kept (when more qualify, the smallest on the screen go, wherever they
+     * are: the scratch has room for the hash sample of the last bucket of radii); the clock is read every `clockEvery` trees.
+     */
     minRadiusPx: number;
     maxCrowns: number;
     clockEvery: number;
-    /** The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, the stop at the rim (x r) and the seed block (x r). */
+    /**
+     * The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, and the rim:
+     * a line slides along the circle of `rim` x r instead of ending at a crown, and a seed inside it is moved onto it. A crown more than `ringPx` px wide in
+     * radius moves only `ringPx` / its radius of the seeds inside it onto its rim (by a hash of the seed): a rim holds about one line to the lattice's own
+     * spacing, and the seeds of a disc many spacings across would bunch there.
+     */
     gridM: number;
     reach: number;
     soften: number;
     maxTurnDeg: number;
     rim: number;
-    seedBlock: number;
+    ringPx: number;
     /** The per-line pin written into the colour alpha: `1 - pinDepth x (near an obstacle)` within `pinReach` x r, never under `pinMin` (the shader multiplies the meander by it). */
     pinMin: number;
     pinDepth: number;
@@ -232,7 +243,7 @@ export interface DetailRelief {
 export const DETAIL_RELIEF: DetailRelief = {
   enabled: true,
   ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 30 },
-  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.6 },
+  canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.3 },
   crowns: {
     gateCrownM: 5,
     gatePx: 8,
@@ -242,14 +253,14 @@ export const DETAIL_RELIEF: DetailRelief = {
     centreShare: 0.7,
     halfShare: 0.3,
     minRadiusPx: 4,
-    maxCrowns: 1024,
+    maxCrowns: 1536,
     clockEvery: 4096,
     gridM: 32,
     reach: 3,
     soften: 0.35,
     maxTurnDeg: 30,
-    rim: 0.85,
-    seedBlock: 0.8,
+    rim: 1.1,
+    ringPx: 80,
     pinMin: 0.05,
     pinDepth: 0.95,
     pinReach: 2.5,
@@ -313,7 +324,7 @@ export interface DetailOutput {
   dropped: number;
   calm: number;
   steep: number;
-  /** 0.7.0: seeds not drawn because they fell inside an obstacle's disc (0 while `relief` is absent). */
+  /** 0.7.0: seeds not drawn because they fell inside a crown's circle and its rim had no room for them (0 while `relief` is absent). */
   blocked: number;
 }
 export interface DetailBuilder {

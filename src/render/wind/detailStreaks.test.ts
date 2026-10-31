@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
 import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERRAIN, detailGroundFactor, pulseIntensity } from './detailStreaks';
-import { crownIncursions, detailBytes, linesOf, makeDetailScenario, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
+import { crownIncursions, detailBytes, katoombaScene, linesOf, makeDetailScenario, screenShares, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
 import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { crownDiscRadius } from './detailObstacles';
 import { planLod } from './glyphLod';
@@ -1162,10 +1162,11 @@ describe('the 0.6.0 picture is what the builder draws when `relief` is absent', 
 // ───────────────────────── the relief (0.7.0) ─────────────────────────
 
 /**
- * The tuned relief with no tree faded out: most of these pictures are seen from straight above, where the canopy's shader fades every tree out and the
- * real constant (`fadeSin` 0.93) would leave no crown; the fade rule has its own tests.
+ * The tuned relief with no tree faded out and no cap under the eye: most of these pictures are seen from straight above, where the canopy's shader fades
+ * every tree out and the real constant (`fadeSin` 0.93) would leave no crown, and from a camera so near the canopy that the plane's cap under the eye
+ * (`eyeShare`, 0.3 of the eye's height) would hold every stroke well under it; both rules have their own tests.
  */
-const PLAN_RELIEF: DetailRelief = { ...DETAIL_RELIEF, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+const PLAN_RELIEF: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 }, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
 
 /** A scenario with the relief on (its `canopy`, `crowns` and `plumes` as given), seen from above. */
 function withRelief(sc: DetailScenario, o: { relief?: DetailRelief; canopyH?: number; cover?: number; crowns?: readonly CrownSet[]; plumes?: readonly Plume[] } = {}): DetailScenario {
@@ -1348,6 +1349,33 @@ describe('the relief: the strokes ride on the canopy', () => {
     for (let k = 0; k < tiny.segments; k++) expect(tiny.a[3 * k + 1]).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
   });
 
+  it('keeps every vertex under `eyeShare` of the eye\'s height over the ground under it: over a hillside that rises to the camera no stroke comes near the eye', () => {
+    // The ground rises 0.4 m a metre to the south beyond y = -10, where the camera is (100 m south and 70 m over the target): a cap at the middle of the screen
+    // alone (the eye's 70 m over the target) leaves the plane 20 m over a ground that is 30 m under the eye.
+    const hill = (_x: number, y: number): number => (y < -10 ? 0.4 * (-10 - y) : 0);
+    const camera = makeCamera({ eye: [0, 70, 100], target: [0, 0, 0], near: 8 });
+    const sc = makeDetailScenario({ field: () => [8, 0], camera, cellPx: 1500, ground: hill, groundCell: 10 }); // (a wind along the contour: no lift)
+    const hf = new HeightField(sc.ground.grid, sc.ground.elevation);
+    const share = 0.3;
+    const capped: DetailRelief = { ...PLAN_RELIEF, canopy: { ...PLAN_RELIEF.canopy, eyeShare: share } };
+    const worst = (relief: DetailRelief): { n: number; over: number } => {
+      const s = withRelief(sc, { relief, canopyH: 24, cover: 1 });
+      s.input.planeCapM = share * 70;
+      const { out } = build(s);
+      let over = 0;
+      for (let k = 0; k < out.segments; k++) {
+        const above = out.a[3 * k + 1]! - hf.heightAt(out.a[3 * k]!, -out.a[3 * k + 2]!);
+        over = Math.max(over, above - share * (70 - hf.heightAt(out.a[3 * k]!, -out.a[3 * k + 2]!)));
+      }
+      return { n: out.segments, over };
+    };
+    const on = worst(capped);
+    expect(on.n).toBeGreaterThan(300);
+    expect(on.over, 'no vertex over the cap under it').toBeLessThanOrEqual(1e-3);
+    const off = worst(PLAN_RELIEF);
+    expect(off.over, 'the same picture without the cap under the eye has strokes over it').toBeGreaterThan(5);
+  });
+
   it('weighs the plane by the cover, and keeps the 1.5 m lift (the stroke is never under it) where the plane is lower', () => {
     const sc = closest();
     const half = build(withRelief(sc, { canopyH: 24, cover: 0.15 }));
@@ -1404,17 +1432,79 @@ describe('the relief: the strokes ride on the canopy', () => {
   });
 });
 
+describe('the relief: a camera near the canopy does not look along its strokes (the real escarpment scene)', () => {
+  // The verifier's finding on the real app (Katoomba, 0.7.0 with `eyeShare` 0.6): at 40 to 60 m and a tilt of 55 or 65 degrees the plane rode within 9 m of the
+  // eye, the near plane took the bottom of the screen and the horizon band took the rest: 55 % of the segments in the top tenth of the screen (0.6.0: 4 %), 0.5 %
+  // in the bottom three tenths (0.6.0: 7 %). The scene is cut out of that picture's input (`katoombaScene`), without its crowns.
+  const run = (d: number, tilt: number, relief: DetailRelief | null): { top: number; bottom: number; on: number; segments: number } => {
+    const input = katoombaScene(d, tilt, relief);
+    const b = createDetailBuilder('high');
+    buildAll(b, input);
+    return { ...screenShares(b.out, input.viewProj), segments: b.out.segments };
+  };
+  const OLD: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0.6 } };
+  const poses = [[40, 35], [40, 55], [50, 55], [60, 55], [80, 55], [40, 65], [50, 65], [60, 65], [80, 65]] as const;
+
+  it('puts as many segments in the top tenth and the bottom three tenths of the screen as the 0.6.0 picture does, within a few points, from 40 to 80 m and at 35, 55 and 65 degrees', () => {
+    for (const [d, tilt] of poses) {
+      const ref = run(d, tilt, null);
+      const got = run(d, tilt, DETAIL_RELIEF);
+      const name = `${d} m, ${tilt} degrees`;
+      expect(got.top, `${name}: the top tenth (0.6.0 ${ref.top.toFixed(1)} %)`).toBeLessThanOrEqual(ref.top + 8);
+      expect(got.bottom, `${name}: the bottom three tenths (0.6.0 ${ref.bottom.toFixed(1)} %)`).toBeGreaterThanOrEqual(0.6 * ref.bottom);
+      expect(got.bottom, name).toBeLessThanOrEqual(ref.bottom + 8);
+      expect(got.segments, `${name}: about as many segments as 0.6.0's (${ref.segments})`).toBeGreaterThan(0.75 * ref.segments);
+    }
+  });
+
+  it('fails on the old share of 0.6: the control run piles the top tenth up and empties the bottom', () => {
+    const ref = run(40, 55, null);
+    const old = run(40, 55, OLD);
+    expect(old.top, `0.6.0 has ${ref.top.toFixed(1)} %`).toBeGreaterThan(ref.top + 20);
+    expect(run(50, 55, OLD).top).toBeGreaterThan(run(50, 55, null).top + 12);
+    expect(run(40, 55, OLD).bottom).toBeLessThan(0.7 * ref.bottom);
+  });
+});
+
 describe('the relief: a tree the view has faded out is no crown', () => {
   it('has no crown under a camera looking steeply down, and the same crowns once it looks from the side', () => {
     const list = [stand([[0, 0, 40, 16], [14, 4, 41, 14], [-16, 6, 38, 12]])];
-    const top = withRelief(makeDetailScenario({ field: () => [8, 3], cellPx: 1500 }), { relief: DETAIL_RELIEF, canopyH: 24, crowns: list });
-    expect(build(top).out.blocked, 'straight down: every tree is faded out, so no seed is blocked').toBe(0);
-    const topPlan = build({ ...top, input: { ...top.input, relief: PLAN_RELIEF } });
-    expect(topPlan.out.blocked, 'the same view with the fade rule off blocks the seeds in the crowns').toBeGreaterThan(0);
+    const sky = (sc: DetailScenario, o: { relief: DetailRelief; crowns: boolean }): string => hashOf(build(withRelief(sc, { relief: o.relief, canopyH: 24, crowns: o.crowns ? list : undefined })).out);
+    const topSc = makeDetailScenario({ field: () => [8, 3], cellPx: 1500 });
+    const fade = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 } }; // (the camera is low over the canopy here: leave its cap out)
+    expect(sky(topSc, { relief: fade, crowns: true }), 'straight down: every tree is faded out, so the picture is the one with no crown').toBe(sky(topSc, { relief: fade, crowns: false }));
+    const plan = { ...PLAN_RELIEF };
+    expect(sky(topSc, { relief: plan, crowns: true }), 'the same view with the fade rule off bends round the crowns').not.toBe(sky(topSc, { relief: plan, crowns: false }));
     const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 }); // 45 degrees: the rays to the crowns' feet are far from steep
-    const side = withRelief(makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 }), { relief: DETAIL_RELIEF, canopyH: 24, crowns: list });
-    expect(build(side).out.blocked, 'from the side the same trees are crowns').toBeGreaterThan(0);
+    const sideSc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 });
+    expect(sky(sideSc, { relief: fade, crowns: true }), 'from the side the same trees are crowns').not.toBe(sky(sideSc, { relief: fade, crowns: false }));
   });
+});
+
+describe('the relief: a forest keeps the lines of the picture without it, and none ends in a stub because of a crown', () => {
+  // The verifier's third finding on the real app: 64 % of 0.6.0's segments (49 to 105 %), 5 to 18 % of the lines under 50 px, bare stands. Seeds inside a crown's
+  // disc were dropped and a line that met a rim ended there.
+  for (const [n, keep, shortMore, what] of [[130, 0.9, 0.04, 'a stand of 130 crowns (a cover of about 0.7)'], [300, 0.65, 0.08, 'a mat of 300 crowns, most of them overlapped by several others (lines shut in between them end)']] as const) {
+    it(`${what}: about the lines and segments of the same picture with no crown, and no more short lines`, () => {
+      const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 8, 1) - 0.5) * 120, (hash01(i, 8, 2) - 0.5) * 120, 30 + hash01(i, 8, 3) * 12, 8 + hash01(i, 8, 4) * 6]);
+      const camera = makeCamera({ eye: [0, 90, 90], target: [0, 0, 0], near: 12 });
+      const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 700 });
+      const noCap: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 }, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+      const forest = build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] }));
+      const open = build(withRelief(sc, { relief: noCap, canopyH: 24 }));
+      expect(open.lines.length).toBeGreaterThan(300);
+      expect(forest.lines.length, `lines (${forest.lines.length} of ${open.lines.length})`).toBeGreaterThan(keep * open.lines.length);
+      expect(forest.out.segments, `segments (${forest.out.segments} of ${open.out.segments})`).toBeGreaterThan(keep * open.out.segments);
+      const stubs = (ls: Line[]): number => ls.filter((l) => l.lengthPx < 50).length / Math.max(1, ls.length);
+      expect(stubs(forest.lines), 'lines under 50 px').toBeLessThanOrEqual(stubs(open.lines) + shortMore);
+      // And the crowns did something: the pictures differ, and the lines of the forest have none inside the discs but a few where crowns overlap.
+      expect(hashOf(forest.out)).not.toBe(hashOf(open.out));
+      const trees = list.map(([x, y, height, width]) => ({ x, y, ground: 0, height, width }));
+      const [deep, inside] = crownIncursions(forest.out.a, forest.out.segments, trees, [0.5, 0.95]);
+      expect(deep, 'deep inside a crown').toBeLessThanOrEqual(Math.ceil(0.01 * forest.out.segments));
+      expect(inside, 'inside a disc').toBeLessThanOrEqual(Math.ceil(0.03 * forest.out.segments));
+    });
+  }
 });
 
 describe('the relief: the e2e reader of a picture finds no line inside a crown (crownIncursions)', () => {
@@ -1423,15 +1513,16 @@ describe('the relief: the e2e reader of a picture finds no line inside a crown (
     const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 });
     const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 });
     const trees = list.map(([x, y, height, width]) => ({ x, y, ground: 0, height, width }));
-    const fractions = [0.5, 0.75, 0.85, 1.2];
-    const on = build(withRelief(sc, { relief: DETAIL_RELIEF, canopyH: 24, crowns: [stand(list)] }));
+    const fractions = [0.5, 0.75, 1, 1.3];
+    const noCap: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 } }; // (the camera is low over the canopy here: leave its cap out)
+    const on = build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] }));
     const got = crownIncursions(on.out.a, on.out.segments, trees, fractions);
-    expect(on.out.blocked, 'there are crowns in the way').toBeGreaterThan(20);
     expect(got[0], 'none deep inside').toBe(0);
-    expect(got[1], 'none inside 0.75 radii (a seed stands outside 0.8)').toBe(0);
-    expect(got[3], 'the reader does see the crowns: vertices stand just outside them').toBeGreaterThan(20);
+    expect(got[1], 'none inside 0.75 radii').toBe(0);
+    expect(got[2], 'none inside the disc itself (the lines slide along the circle of 1.1 radii)').toBe(0);
+    expect(got[3], 'the reader does see the crowns: vertices stand just outside them, on the circles').toBeGreaterThan(20);
     // The same canopy with no crowns given: the lines run over the discs, and the reader says so.
-    const blind = build(withRelief(sc, { relief: DETAIL_RELIEF, canopyH: 24 }));
+    const blind = build(withRelief(sc, { relief: noCap, canopyH: 24 }));
     const ignored = crownIncursions(blind.out.a, blind.out.segments, trees, fractions);
     expect(ignored[0], 'lines that know no crown run through them').toBeGreaterThan(20);
   });
@@ -1481,20 +1572,42 @@ describe('the relief: the lines part round a crown', () => {
     expect(R).toBeLessThan(6.3);
   });
 
-  it('draws no seed inside 0.8 radii of the crown, counts them, and ends every line at its rim (0.85 radii): no vertex inside it', () => {
+  it('moves the seeds in the crown onto its rim (1.1 radii), slides the lines that meet it along the rim, and so keeps the lines it covers: no vertex inside the disc, the lines of the picture without the crown, and none ended short at it', () => {
     const { out, lines } = build(alone());
     const base = build(speedOnly());
-    expect(out.blocked).toBeGreaterThan(0);
     expect(base.out.blocked).toBe(0);
-    for (const l of lines) expect(Math.hypot(l.seed[0], l.seed[1]), `seed ${l.seed}`).toBeGreaterThanOrEqual(0.8 * R - 1e-3);
-    // Every vertex after a seed is outside the rim; a seed itself is outside 0.8 radii (the seed block), and may stand between the two.
+    expect(out.blocked, 'a crown of 46 px of radius has room on its rim for every seed in it').toBe(0);
+    // Not a vertex inside the circle of 1.1 radii (the seeds that stood in the disc are on it), and the circle is where the nearest ones are.
     let nearest = Infinity;
-    for (const l of lines) for (let k = l.seg; k < l.seg + l.count; k++) nearest = Math.min(nearest, Math.hypot(out.b[3 * k]!, out.b[3 * k + 2]!));
-    expect(nearest).toBeGreaterThanOrEqual(0.85 * R - 1e-3);
-    expect(nearest, 'some line does end at the rim').toBeLessThan(0.85 * R + 0.5);
-    // The lines that were blocked are the ones the crown took: the others are the straight picture's (before the crown) or bent ones.
-    expect(lines.length).toBeLessThanOrEqual(base.lines.length);
-    expect(lines.length + out.blocked).toBeGreaterThanOrEqual(base.lines.length - 15); // (a few more end short, under three segments, at the rim)
+    let onRim = 0;
+    for (const l of lines) {
+      for (let k = l.seg; k < l.seg + l.count; k++) {
+        for (const d of [Math.hypot(out.a[3 * k]!, out.a[3 * k + 2]!), Math.hypot(out.b[3 * k]!, out.b[3 * k + 2]!)]) {
+          nearest = Math.min(nearest, d);
+          if (Math.abs(d - 1.1 * R) < 1e-3) onRim++;
+        }
+      }
+    }
+    expect(nearest).toBeGreaterThanOrEqual(1.1 * R - 1e-3);
+    expect(onRim, 'vertices on the circle: seeds and the lines that slide along it').toBeGreaterThan(20);
+    // The lines of the crown-free picture are all there (a few more lines than it, where the sliding lines are longer than the straight ones were cut).
+    expect(lines.length).toBeGreaterThanOrEqual(base.lines.length - 3);
+    expect(lines.length).toBeLessThanOrEqual(base.lines.length + 3);
+    // None is ended short by the crown: the lines of under 14 steps are the ones at the edge of the picture, as they were.
+    const short = (ls: Line[]): number => ls.filter((l) => l.count < 14).length;
+    expect(short(lines)).toBeLessThanOrEqual(short(base.lines) + 2);
+  });
+
+  it('wide crowns move only the share of the seeds in them that their rim can hold (ringPx over the radius in px): about as many lines as the rim holds, never more than were in them', () => {
+    // The same crown seen from twice as near (0.067 m a pixel): 93 px of radius, so 80 / 93 of the seeds in it are drawn from its rim.
+    const near = (crowns: boolean): DetailScenario => withRelief(view({ camera: topDownCamera(133, 2000, 0, 0, { near: 5 }, 0) }), { canopyH: 24, crowns: crowns ? [stand([[0, 0, 40, 16]])] : undefined });
+    const a = build(near(true));
+    const b = build(near(false));
+    expect(a.out.blocked, 'the seeds the rim has no room for').toBeGreaterThan(5);
+    expect(a.lines.length + a.out.blocked).toBeGreaterThanOrEqual(b.lines.length - 3);
+    expect(a.lines.length).toBeLessThanOrEqual(b.lines.length);
+    const kept = a.lines.length / (a.lines.length + a.out.blocked);
+    expect(kept).toBeGreaterThan(0.9);
   });
 
   it('pushes a line that passes beside the crown outward, and brings it back toward its own track behind it', () => {
@@ -1534,21 +1647,27 @@ describe('the relief: the lines part round a crown', () => {
     expect(far).toBeGreaterThan(100);
   });
 
-  it('bends by at most 30 degrees a step in a stagnation point, a saddle between two crowns and the curl of a vortex pair', () => {
+  it('bends by at most 30 degrees a step in a saddle between two crowns and the curl of a vortex pair, and by at most 110 degrees where a line slides onto a rim or leaves a lens of crowns (a few lines in a hundred)', () => {
     const two = withRelief(view(), { canopyH: 24, crowns: [stand([[0, 5, 40, 16], [0, -5, 40, 16]])] });
     const plume = withRelief(view(), { plumes: [{ x: -14, y: 0, radiusM: 12, strength: 1 }] });
     const wake = withRelief(view(), { canopyH: 24, crowns: [stand([[0, 0, 44, 16]])] }); // a proud crown: it makes its wake as well
     let bent = 0;
-    for (const [name, sc] of [['one crown', alone()], ['two crowns', two], ['plume', plume], ['proud crown', wake]] as const) {
+    for (const [name, sc, crowns] of [['one crown', alone(), true], ['two crowns', two, true], ['plume', plume, false], ['proud crown', wake, true]] as const) {
       const { out, lines } = build(sc);
       expect(lines.length, name).toBeGreaterThan(100);
       let worst = 0;
+      let kinked = 0;
       for (const l of lines) {
         const t = turns(out, l);
         worst = Math.max(worst, t.worst);
+        if (t.worst > 30 + 1e-6) kinked++;
         if (Math.abs(t.total) > 20) bent++;
       }
-      expect(worst, name).toBeLessThanOrEqual(30 + 1e-6);
+      // The field bends a line by 30 degrees a step at most; a line that meets a crown head-on, in the thin lane the doublet does not turn away, slides onto the rim
+      // and takes the circle's direction there (up to a quarter turn), and one that meets a lens of crowns leaves it by the nearest free direction (105 degrees at
+      // the most): a handful of lines in a hundred.
+      expect(worst, name).toBeLessThanOrEqual(crowns ? 110 : 30 + 1e-6);
+      expect(kinked, `${name}: lines that slide onto a rim`).toBeLessThanOrEqual(Math.ceil((name === 'two crowns' ? 0.05 : 0.02) * lines.length)); // (two crowns 10 m apart overlap: a saddle)
       expect(worst, `${name}: some line really turns`).toBeGreaterThan(8);
     }
     expect(bent).toBeGreaterThan(20);
@@ -1559,7 +1678,8 @@ describe('the relief: the lines part round a crown', () => {
     const field = (x: number): [number, number] => [3 + (x + 100) / 18, 0]; // 3 to 14 m/s across a 200 m view
     const sc = withRelief(view({ field }), { canopyH: 24, crowns: [stand([[0, 0, 40, 16], [12, 9, 41, 14], [-9, -11, 39, 14]])] });
     const { out, lines } = build(sc);
-    expect(out.blocked).toBeGreaterThan(3);
+    const blind = build(withRelief(view({ field }), { canopyH: 24 }));
+    expect(hashOf(out), 'the crowns bend the lines').not.toBe(hashOf(blind.out));
     let checked = 0;
     let exact = 0;
     for (const l of lines) {
@@ -1654,6 +1774,7 @@ describe('the relief: the lines part round a crown', () => {
     const b = build(withRelief(view(), { canopyH: 24, crowns: [stand([...list].reverse())] }));
     expect(b.out.lines).toBe(a.out.lines);
     expect(b.out.blocked).toBe(a.out.blocked);
+    expect(b.out.segments).toBe(a.out.segments);
     for (let k = 0; k < a.out.segments; k++) {
       for (const c of [0, 1, 2]) {
         expect(b.out.a[3 * k + c]).toBeCloseTo(a.out.a[3 * k + c]!, 4);
@@ -1739,18 +1860,20 @@ describe('the relief: the trees are for the wind at the ground\'s own level', ()
   const trees = stand([[0, 0, 40, 16], [9, 6, 41, 14], [-8, -7, 39, 14]]);
 
   it('rides the canopy, bends round the crowns and blocks seeds at 10 m and 20 m, and does none of it at 50 m and up (the wind flies over the trees)', () => {
-    const full = (hm: number | undefined): { y: number; blocked: number } => {
-      const sc = withRelief(view(hm === undefined ? {} : { heightM: hm }), { canopyH: 24, crowns: [trees], plumes: [{ x: -20, y: 0, radiusM: 12, strength: 1 }] });
+    const full = (hm: number | undefined): { y: number; moved: boolean } => {
+      const o = hm === undefined ? {} : { heightM: hm };
+      const sc = withRelief(view(o), { canopyH: 24, crowns: [trees], plumes: [{ x: -20, y: 0, radiusM: 12, strength: 1 }] });
+      const bare = withRelief(view(o), { canopyH: 24 });
       const { out } = build(sc);
-      return { y: out.a[1]!, blocked: out.blocked };
+      return { y: out.a[1]!, moved: hashOf(out) !== hashOf(build(bare).out) };
     };
     expect(full(undefined).y, 'the surface wind').toBeCloseTo(0.85 * 24, 3);
-    expect(full(undefined).blocked).toBeGreaterThan(0);
+    expect(full(undefined).moved, 'the crowns and the plume bend the lines').toBe(true);
     expect(full(20).y).toBeCloseTo(0.85 * 24, 3);
     for (const hm of [50, 100, 300, 1000]) {
       const r = full(hm);
       expect(r.y, `${hm} m: the stroke stays at its 1.5 m of 0.6.0`).toBeCloseTo(GLYPH_LIFT_MIN_M, 3);
-      expect(r.blocked, `${hm} m: no seed is blocked`).toBe(0);
+      expect(r.moved, `${hm} m: no crown and no plume bends a line`).toBe(false);
     }
     // At 300 m the picture is the 0.6.0 one with only the faded ground terms: the same bytes as with no trees given at all.
     const a = build(withRelief(view({ heightM: 300 }), { canopyH: 24, crowns: [trees], plumes: [{ x: -20, y: 0, radiusM: 12, strength: 1 }] })).out;
