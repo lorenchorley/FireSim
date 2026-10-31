@@ -193,7 +193,8 @@ describe('the demo engine and a Wind direction change', () => {
     const cards = own(r);
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({ kind: 'wind-change', severity: 'watch', key: 'wind-change:user:w1', title: 'Your wind change: this flank becomes the head', time: 0 });
-    expect(cards[0]!.body).toMatch(/^You set the wind to swing from W to S, starting at about .+ \(in 30 min\)\. It takes 15 minutes to turn, and the wind will then be about 36 km\/h\./);
+    expect(cards[0]!.body).toMatch(/^You set the wind to swing from the west to the south, starting at about .+ \(in 30 min\)\. It takes 15 minutes to turn, and the wind will then be about 36 km\/h\./); // the words of the real engine's card (explain/text.ts), not letters
+    expect(cards[0]!.factors[0]).toMatchObject({ label: 'New wind', value: 'from the south, about 36 km/h' });
     expect(cards[0]!.factors.map((f) => f.label)).toEqual(['New wind', 'Change time']);
     r.sim.dispose();
 

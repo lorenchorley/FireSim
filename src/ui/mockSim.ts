@@ -29,7 +29,7 @@ import {
 } from '../core/types';
 import { cellAt } from '../core/grid';
 import { Rng } from '../core/rng';
-import { angleDiffDeg, compassName, msToKmh, wrapDeg, windToUV } from '../core/units';
+import { angleDiffDeg, compassName, compassWord, msToKmh, wrapDeg, windToUV } from '../core/units';
 import { WIND_TURN_S, applyWindDirection, forecastSwingsKept, userWindChanges, windDirectionEdits, windDirectionTime, windRerunFrom } from '../scenario/windDirection';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
 import { Emitter } from './store';
@@ -628,11 +628,11 @@ export class MockSimController implements SimController {
         at[0],
         at[1],
         'Your wind change: this flank becomes the head',
-        `You set the wind to swing from ${compassName(c.fromDir)} to ${compassName(c.toDir)}, starting at about ${clock}${inS >= 60 ? ` (in ${formatDuration(inS)})` : ''}. ` +
+        `You set the wind to swing from the ${compassWord(c.fromDir)} to the ${compassWord(c.toDir)}, starting at about ${clock}${inS >= 60 ? ` (in ${formatDuration(inS)})` : ''}. ` +
           `It takes ${WIND_TURN_S / 60} minutes to turn, and the wind will then be about ${kmh} km/h. When it has turned, the long side of the fire facing the new wind becomes the front and runs at full speed almost at once.`,
         'Know the change time; move off the flank that will become the head, or into the black, before it. Education only. LACES first. Follow your Crew Leader.',
         [
-          { label: 'New wind', value: `${compassName(c.toDir)} ${kmh} km/h`, effect: `${Math.round(shift)}° turn` },
+          { label: 'New wind', value: `from the ${compassWord(c.toDir)}, about ${kmh} km/h`, effect: `${Math.round(shift)}° turn` },
           { label: 'Change time', value: `about ${clock}` },
         ],
         'Cheney 2001; Linton coroner 2002',

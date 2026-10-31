@@ -14,7 +14,7 @@
  * Doctrine wording still needs NSW RFS instructor review (spec §16 item 19).
  */
 import type { Insight, InsightFactor, InsightKind, InsightSeverity } from '../core/types';
-import { wrapDeg } from '../core/units';
+import { compassWord } from '../core/units';
 import { EXPLAIN_PARAMS } from './params';
 
 /** The doctrine line every card ends with (spec preamble and §10.1). */
@@ -93,12 +93,8 @@ export function duration(s: number): string {
   return r === 0 ? `about ${h} h` : `about ${h} h ${r} min`;
 }
 
-const WORDS8 = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'] as const;
-/** 8-point compass word of an azimuth ("south-west"); "" for NaN. */
-export function compassWord(azDeg: number): string {
-  if (!Number.isFinite(azDeg)) return '';
-  return WORDS8[Math.round(wrapDeg(azDeg) / 45) % 8]!;
-}
+/** 8-point compass word of an azimuth ("south-west"); "" for NaN (defined in core/units, which the demo engine's cards use too). */
+export { compassWord };
 /** Wind name from its FROM direction: "north-westerly". */
 export function windName(fromDeg: number): string {
   const w = compassWord(fromDeg);

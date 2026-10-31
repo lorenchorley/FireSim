@@ -64,4 +64,14 @@ const COMPASS16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW',
 /** 16-point compass name for an azimuth in degrees. */
 export const compassName = (azDeg: number): string => COMPASS16[Math.round(wrapDeg(azDeg) / 22.5) % 16]!;
 
+const WORDS8 = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'] as const;
+/**
+ * 8-point compass word of an azimuth ("south-west"); "" for NaN. The words of the explain cards (`explain/text.ts` re-exports it) and of the demo engine's card of a
+ * Wind direction change, so both say "from the west to the south", not "from W to S".
+ */
+export function compassWord(azDeg: number): string {
+  if (!Number.isFinite(azDeg)) return '';
+  return WORDS8[Math.round(wrapDeg(azDeg) / 45) % 8]!;
+}
+
 export const celsiusToKelvin = (c: number): number => c + 273.15;
