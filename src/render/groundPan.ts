@@ -42,12 +42,15 @@ export const PAN = {
   FAR: 12,
   /**
    * Terrain under the finger is held exactly, at any tilt, down to this angle below the horizon (degrees). A finger nearer the
-   * horizon, or above it, holds the line at this angle: one pixel there covers ground at 1 / sin² of the angle (some 20 times the
-   * camera's height at 3°, without bound at 0°), so a few pixels of drag would throw the camera across the domain. At 3° the view
-   * moves by at most about 1.5 % of the domain per pixel (134 m a pixel on Katoomba's 9 km, measured over views from 600 m to 3 km
-   * at every tilt), and the band is about 6 % of the screen's height (50 px of 915).
+   * horizon, or above it, holds the line at this angle: one pixel there covers ground at 1 / sin² of the angle (some 130 times
+   * the camera's height at 5°, without bound at 0°), so a few pixels of drag would throw the camera across the domain. The view
+   * still moves far faster for a finger on that ground than for one in the middle of the screen (an independent check found 25 m
+   * a pixel at 5° against 1.4 m in the middle for a camera 600 m out at a tilt of 65°; it is a true grab, which is what was
+   * asked for). 3° was tried first (134 m a pixel on Katoomba's 9 km, measured, a band of about 6 % of the screen's height);
+   * 5° was chosen after the check as a gentler line: about 0.4 of that speed (scaled by sin², not re-measured) and a band of
+   * about 10 % of the screen's height.
    */
-  HORIZON_MARGIN_DEG: 3,
+  HORIZON_MARGIN_DEG: 5,
   /**
    * For a finger with no terrain under it (the sky, beyond the domain): the most the view may speed up compared with a finger on
    * the ground at the orbit target. The plane through the target is dragged there, and near the horizon it covers hundreds of

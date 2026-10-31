@@ -307,13 +307,13 @@ describe('GroundGrab: no runaway near the horizon', () => {
     }
   });
 
-  it('the speed stops rising at the margin: ground between 0.6° and 3° below the horizon moves the view as fast as ground at the margin', () => {
+  it('the speed stops rising at the margin: ground between 0.6° and the margin below the horizon moves the view as fast as ground at the margin', () => {
     const hf = flat();
     const polar = 84; // the horizon is 6° above the view axis
     const D = 300; // a low camera: the ground at 0.6° is 3 km away, inside the 8 km domain
     const ndcOfEl = (el: number): number => Math.tan(rad(6 - el)) / TAN25;
     const edge = metresPerPixel(polar, ndcOfEl(PAN.HORIZON_MARGIN_DEG), hf, D);
-    for (const el of [0.6, 1, 2, 2.9]) {
+    for (const el of [0.6, 1, 2, PAN.HORIZON_MARGIN_DEG - 0.1]) {
       expect(metresPerPixel(polar, ndcOfEl(el), hf, D) / edge, `${el}° below the horizon`).toBeGreaterThan(0.95);
       expect(metresPerPixel(polar, ndcOfEl(el), hf, D) / edge, `${el}° below the horizon`).toBeLessThan(1.05);
     }
@@ -321,7 +321,7 @@ describe('GroundGrab: no runaway near the horizon', () => {
     expect(edge).toBeLessThan(atMargin(D * Math.cos(rad(polar))) * 1.05);
     expect(edge).toBeGreaterThan(atMargin(D * Math.cos(rad(polar))) * 0.7);
     // Just outside the margin the ground is held as it is, so it moves the view slower
-    expect(metresPerPixel(polar, ndcOfEl(3.5), hf, D)).toBeLessThan(edge * 0.8);
+    expect(metresPerPixel(polar, ndcOfEl(PAN.HORIZON_MARGIN_DEG + 1), hf, D)).toBeLessThan(edge * 0.8);
   });
 
   it('a finger that goes on from steep ground into the sky never speeds the view up beyond the margin’s pace, and the camera stays near', () => {
