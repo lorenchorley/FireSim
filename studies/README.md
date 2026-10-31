@@ -12,6 +12,7 @@ a plan in [`docs/plans/`](../docs/plans/) first.
 | [cliff-from-photo](cliff-from-photo/) | Can photographs of a cliff improve how FireSim draws it, and what the fire model knows about it? | ongoing, 1 study; a stretch goal in no release |
 | [adaptive-simulation-quality](adaptive-simulation-quality/) | Can the simulation spend more detail where the terrain is complex and where it matters to the fire? | not started; a stretch goal in no release; not to be studied straight away |
 | [simulation-validity](simulation-validity/) | How can we verify that the simulation is valid: against a precomputed high-quality run, other models, real fires, or checks that need no reference? | not started; a stretch goal in no release; recorded, with a first desk search (2026-10-31); nothing run |
+| [desktop-simulation](desktop-simulation/) | Can there be a desktop version that runs more detailed simulations than a phone can? | not started; a stretch goal in no release; low-detail desk note only (2026-10-31); nothing run |
 
 ## How a topic is laid out
 
