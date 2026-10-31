@@ -209,9 +209,13 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
     await tapScreen(page);
     await expectDrawing(page, 'a tap');
     expect((await stats(page)).detail).toBe('moving');
+    // Two pictures 500 ms apart take the software GL a few seconds (each is a whole frame and a PNG), and the picture's idle limit is 3 s: the view would
+    // hold still again between them and the two would be the same picture, rightly. So the limit is long while they are taken, and short again after.
+    await setIdleLimit(page, 120_000);
     const a = await shot(page);
     await page.waitForTimeout(500);
     const b = await shot(page);
+    await setIdleLimit(page, 3000);
     expect(a === b, 'half a second later the streaks are somewhere else').toBe(false);
   });
 
