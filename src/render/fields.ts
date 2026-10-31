@@ -10,6 +10,7 @@ import { clamp } from '../core/units';
 import { contextFieldValues } from './contextFields';
 import type { OverlayKind } from './layers';
 import { NO_DATA, NOT_BURNT } from './legends';
+import type { WindHeight } from './wind/glyphTypes';
 import { CURED_GRASS, FUEL_GROUND, LITTER, ROCK, ROCK_DARK, hexToRgb, mixRgb, type Rgb } from './palette';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,6 +236,12 @@ export interface OverlaySources {
    * instead of the 10 m field above. Absent: the 0.6.0 field, bit for bit.
    */
   windMap?: OverlayField | null;
+  /**
+   * 0.7.0: the Wind height the 'windSpeed' map is drawn at (`SceneView.windMapShown`). A NUMERIC height is never the 10 m field: when `windMap` is absent or null (the
+   * picture has no 3-D wind to read it from) the map is empty, 'no data', not the surface wind under a height's title (raster verifier F1). Absent, 'fire' and 'felt':
+   * as before, the 10 m field when there is no `windMap`.
+   */
+  windHeight?: WindHeight;
 }
 
 export interface OverlayField {
@@ -381,6 +388,7 @@ export function overlayField(kind: OverlayKind, s: OverlaySources): OverlayField
     }
     case 'windSpeed': {
       if (s.windMap) return s.windMap;
+      if (typeof s.windHeight === 'number') return null;
       const a = s.atmosphere;
       if (!a || a.surfaceU.length !== a.grid.nx * a.grid.ny) return null;
       return map(a.grid, (k) => Math.hypot(a.surfaceU[k]!, a.surfaceV[k]!) * 3.6);

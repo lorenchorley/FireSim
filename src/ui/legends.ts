@@ -489,6 +489,8 @@ export interface LegendRequest {
   elevationRange?: readonly [number, number];
   /** The Wind height the Wind speed map follows (0.7.0, E1b; `mapHeightNow`): its title, range and note. Absent is the 10 m map. */
   windHeight?: WindHeight;
+  /** 0.7.0: the Wind speed map at that height has no data for the picture on screen (`windMapNoData`): the legend says so. */
+  windNoData?: boolean;
 }
 
 export type LegendProvider = (overlay: OverlayKind, ctx: LegendRequest) => ExternalLegend | null;

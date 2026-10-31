@@ -105,6 +105,11 @@ export interface LegendContext {
    * legend must be given the same height (the one really drawn: `shownWindHeight`); SceneView.legend() and the UI's legend request do.
    */
   windHeight?: WindHeight;
+  /**
+   * 0.7.0: the Wind speed map at a numeric `windHeight` has no data for this picture (`windMapNoData`): the legend says so in its no-data entry, as the other heat
+   * maps do ('Not burnt', 'No fire on record'). Absent or false: the legend as it was.
+   */
+  windNoData?: boolean;
 }
 
 /**
@@ -683,7 +688,7 @@ function dataLegend(overlay: DataOverlayKind, ctx: LegendContext): LegendSpec {
         note: 'Roads and fire trails are where trucks can reach, make a stand or get out: the further from one, the longer the walk and the harder the retreat.',
       };
     case 'windSpeed':
-      return windSpeedLegend(overlay, ctx.windHeight ?? 'fire');
+      return windSpeedLegend(overlay, ctx.windHeight ?? 'fire', ctx.windNoData === true);
   }
 }
 
@@ -694,7 +699,7 @@ const heightWords = (m: number): string => (m >= 1000 ? `${m / 1000} km` : `${m}
  * The Wind speed map's legend (0.7.0, E1b: it follows the Wind height while the arrows are on): the same colours over 0 to 60 km/h, or 0 to 90 from 300 m
  * (`windSpeedRangeKmh`). The Beaufort words are the 10 m map's only (they are for the wind near the ground); the title and the note say which wind it is.
  */
-function windSpeedLegend(overlay: DataOverlayKind, height: WindHeight): LegendSpec {
+function windSpeedLegend(overlay: DataOverlayKind, height: WindHeight, noData = false): LegendSpec {
   const wide = windSpeedRangeKmh(height) === 90;
   const ramp = wide ? WIND_SPEED_RAMP_90 : WIND_SPEED_RAMP;
   const labels = ramp.stops.map((st, i) => (i === ramp.stops.length - 1 ? `${st.at}+` : `${st.at}`));
@@ -718,7 +723,7 @@ function windSpeedLegend(overlay: DataOverlayKind, height: WindHeight): LegendSp
       ramp,
       labels,
       none,
-      'The wind the fire model uses in cells of about 60 m: slope flow, lee eddies and the fire’s own draw are included. It is not a measurement.',
+      'The wind the fire model uses in cells of about 60 m: slope flow, lee eddies and the fire’s own effect on the wind are included. It is not a measurement.',
     );
   }
   return rampSpec(
@@ -729,6 +734,7 @@ function windSpeedLegend(overlay: DataOverlayKind, height: WindHeight): LegendSp
     labels,
     none,
     `The model’s wind about ${heightWords(height)} above the ground, in its 100 to 270 m cells, the height of the arrows. ${wide ? 'Wind is stronger higher up, so the colours run to 90 km/h here.' : 'The colours run to 60 km/h.'}`,
+    noData && typeof height === 'number' ? { colour: TRANSPARENT, label: `No wind data at ${heightWords(height)} in this picture` } : undefined,
   );
 }
 

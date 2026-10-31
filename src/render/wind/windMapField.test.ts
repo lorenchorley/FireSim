@@ -271,7 +271,24 @@ describe('the scale and the legend of the map at each height', () => {
     expect(legendFor('windSpeed', { windHeight: 'fire' })!.note).toContain('on a calm night can differ a lot from the wind the fire feels');
     expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('cells of about 60 m');
     expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('not a measurement');
+    // The fire's effect on the wind, not its "draw": on the fast tier it points toward the fire (99.6 % of the changed cells), on the 3-D tier at 25 min only 4 % do
+    // (the plume's own flow, not a radial indraft), so the words say the thing that is true on both (0.7.0, raster verifier F4).
+    expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('the fire’s own effect on the wind are included');
+    expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).not.toMatch(/draw|indraft/i);
     expect(legendFor('windSpeed', { windHeight: 300 })!.note).toContain('about 300 m above the ground');
+  });
+
+  it('has a no-data entry only when the map has none to draw (a height in metres, no 3-D wind), worded as the other heat maps\' are (0.7.0, raster verifier F1)', () => {
+    const none = legendFor('windSpeed', { windHeight: 300, windNoData: true })!;
+    expect(none.noData).toEqual({ colour: '#00000000', label: 'No wind data at 300 m in this picture' });
+    expect(legendFor('windSpeed', { windHeight: 1000, windNoData: true })!.noData!.label).toBe('No wind data at 1 km in this picture');
+    expect(legendFor('windSpeed', { windHeight: 300, windNoData: false })!.noData).toBeUndefined();
+    expect(legendFor('windSpeed', { windHeight: 300 })!.noData).toBeUndefined();
+    // The 10 m map and What the fire feels fall back to the surface wind, so they never say "no data" (and the title stays the wind that is drawn).
+    for (const h of ['fire', 'felt'] as const) expect(legendFor('windSpeed', { windHeight: h, windNoData: true })!.noData, String(h)).toBeUndefined();
+    expect(none.title).toBe('Wind speed at 300 m');
+    expect({ ...none, noData: undefined }).toEqual({ ...legendFor('windSpeed', { windHeight: 300 })!, noData: undefined }); // nothing else differs
+    expect(none.noData!.label).not.toMatch(/[—–]/);
   });
 
   it('the 10 m legend is what it was (title, units, stops, words, gradient)', () => {
