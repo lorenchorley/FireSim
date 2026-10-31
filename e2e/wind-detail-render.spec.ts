@@ -474,7 +474,20 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
     const both = async (what: string): Promise<{ biased: number; plain: number }> => {
       await settle(page);
       const asked = await bias();
-      const biased = await strokes();
+      // The first read after a camera jump and a layer change can come before the picture that replaces the old one has painted (the layer rebuilds, and the
+      // forest is placed again a moment later, which is one more rebuild): 0 px then says nothing about the bias. Read again, with the bound of a few seconds,
+      // until the streaks have painted; a picture that never does fails here.
+      let biased = 0;
+      await expect
+        .poll(
+          async () => {
+            await settle(page);
+            biased = await strokes();
+            return biased;
+          },
+          { message: `${what}: the streaks paint`, timeout: 15_000, intervals: [250, 500, 1000] },
+        )
+        .toBeGreaterThan(1000);
       await bias(0);
       const plain = await strokes();
       await bias(asked);
@@ -499,10 +512,13 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
     await drawAndRead(page);
     const ridden = await both('700 m, 55 degrees, over the forest, with the relief');
     expect(ridden.plain, 'there are streaks to count').toBeGreaterThan(1000);
+    expect(ridden.biased, 'there are streaks to count with the bias too (a blank read says nothing)').toBeGreaterThan(1000);
     expect(ridden.biased, 'the bias never shows fewer streaks').toBeGreaterThanOrEqual(ridden.plain * 0.98);
     await lookAt(page, 1000, 800, -600, 90, 65);
     await drawAndRead(page);
     const ridgeSide = await both('1000 m, 65 degrees, from the west, with the relief');
+    expect(ridgeSide.plain, 'there are streaks to count').toBeGreaterThan(3000);
+    expect(ridgeSide.biased, 'the bias never shows fewer streaks here either').toBeGreaterThanOrEqual(ridgeSide.plain * 0.98);
     expect(ridgeSide.biased, 'streaks behind a ridge stay hidden').toBeLessThan(ridgeSide.plain * 1.25);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await setLayers(page, { vegetation: false, understorey: false, imagery: false, windGlyphs: false, wind: 'surface' });

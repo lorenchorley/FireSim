@@ -3,10 +3,13 @@
  * scenarios it builds on): a scenario whose plan is the level-4 plan with the detail flag, a reader of the output by line, and the bytes
  * of the used part of it for the determinism tests.
  */
-import { crownDiscRadius } from './detailObstacles';
-import { metresPerPixelAt, planLod } from './glyphLod';
-import { makeScenario, type Scenario, type ScenarioOptions } from './glyphOracle.testing';
-import type { DetailInput, DetailOutput, GroundRaster } from './glyphTypes';
+import type { GridSpec } from '../../core/grid';
+import type { FuelMap } from '../../core/types';
+import { canopyPlane, crownDiscRadius } from './detailObstacles';
+import { KATOOMBA } from './detailStreaks.katoomba.testing';
+import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
+import { makeCamera, makeScenario, ORIGIN, type Scenario, type ScenarioOptions } from './glyphOracle.testing';
+import { DETAIL_RELIEF, type DetailInput, type DetailOutput, type DetailRelief, type GroundRaster } from './glyphTypes';
 
 export interface DetailScenarioOptions extends ScenarioOptions {
   /** The 10 m ground the terrain terms come from (default: the scenario's own ground raster). */
@@ -121,4 +124,100 @@ export function crownIncursions(vertices: ArrayLike<number>, count: number, tree
     }
   }
   return inside;
+}
+
+const int16 = (b64: string): Int16Array => {
+  const buf = Buffer.from(b64, 'base64');
+  return new Int16Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+};
+
+/**
+ * The builder's input for a camera `d` metres from the point the Katoomba scene (`detailStreaks.katoomba.testing.ts`) is cut out around, `tiltDeg` degrees
+ * from the vertical, looking north-north-east (the verifier's views of the real app: 412 x 891 px, a field of view of 50 degrees, the air view's cell 53.3 m),
+ * made as the layer makes it: the camera's near plane a quarter of its height over the ground it stands on, the box of the ground in view, the lattice
+ * planned for the metres a pixel covers at the strokes' own height, and the plane's cap (`eyeShare` of the eye's height) given as `planeCapM`.
+ * `relief` is what the builder is given (the tuned constants by default; `null` is the 0.6.0 picture, strokes at the ground and a lattice planned for it).
+ * No crown is placed: the scene is the ground, the canopy and the wind.
+ */
+export function katoombaScene(d: number, tiltDeg: number, relief: DetailRelief | null = DETAIL_RELIEF): DetailInput {
+  const { ground: G, canopy: C, wind: W } = KATOOMBA;
+  const grid = (nx: number, x0: number, y0: number, cell: number): GridSpec => ({ nx, ny: nx, cellSize: cell, x0, y0, origin: ORIGIN });
+  const dm = int16(G.dm);
+  const elevation = Float32Array.from(dm, (v) => G.min + v / 10);
+  const gGrid = grid(G.n, G.x0, G.y0, G.cell);
+  const ground: GroundRaster = { grid: gGrid, elevation, minElevation: G.min };
+  const heightAt = (x: number, y: number): number => {
+    const fx = (x - G.x0) / G.cell;
+    const fy = (y - G.y0) / G.cell;
+    const i = Math.min(G.n - 2, Math.max(0, Math.floor(fx)));
+    const j = Math.min(G.n - 2, Math.max(0, Math.floor(fy)));
+    const tx = Math.min(1, Math.max(0, fx - i));
+    const ty = Math.min(1, Math.max(0, fy - j));
+    const e = (a: number, b: number): number => elevation[(j + b) * G.n + i + a]!;
+    return (e(0, 0) * (1 - tx) + e(1, 0) * tx) * (1 - ty) + (e(0, 1) * (1 - tx) + e(1, 1) * tx) * ty;
+  };
+  const field = { grid: grid(W.n, W.x0, W.y0, W.cell), u: Float32Array.from(int16(W.u), (v) => v / 100), v: Float32Array.from(int16(W.v), (v) => v / 100) };
+  const cGrid = grid(C.n, C.x0, C.y0, C.cell);
+  const canopy = { grid: cGrid, canopyHeight: Float32Array.from(int16(C.dm), (v) => v / 10), canopyCover: new Float32Array(C.n * C.n).fill(1) } as unknown as FuelMap;
+  const tiltR = (tiltDeg * Math.PI) / 180;
+  const az = (200 * Math.PI) / 180;
+  const targetY = heightAt(0, 0);
+  const eye: [number, number, number] = [d * Math.sin(tiltR) * Math.sin(az), targetY + d * Math.cos(tiltR), -d * Math.sin(tiltR) * Math.cos(az)];
+  const agl = eye[1] - heightAt(eye[0], -eye[2]);
+  const camera = makeCamera({ eye, target: [0, targetY, 0], cssW: 412, cssH: 891, near: Math.min(60, Math.max(0.3, 0.25 * agl)) });
+  const f = field.grid;
+  const bounds = { x0: f.x0, y0: f.y0, x1: f.x0 + (f.nx - 1) * f.cellSize, y1: f.y0 + (f.ny - 1) * f.cellSize };
+  const box = visibleBox(camera.unproject, camera.eye, G.min, bounds, Math.max(3000, 6 * d), 0.25);
+  if (!box) throw new Error('the camera sees no ground');
+  const mpp = metresPerPixelAt(camera.distance, camera.fovDeg, camera.cssH);
+  const eyeHeight = d * Math.cos(tiltR);
+  const cap = relief ? relief.canopy.eyeShare * eyeHeight : 0;
+  const ratio = relief ? Math.min(1, Math.max(0.25, 1 - canopyPlane(canopy, 0, 0, relief.canopy, cap) / eyeHeight)) : 1;
+  const input: DetailInput = {
+    field,
+    ground,
+    vex: 1,
+    lod: planLod(160 / 3 / (mpp * ratio), mpp * ratio, null, undefined, true),
+    eye: camera.eye,
+    viewProj: camera.viewProj,
+    cssW: camera.cssW,
+    cssH: camera.cssH,
+    pxPerMetre1: camera.pxPerMetre1,
+    near: camera.near,
+    box,
+    cap: { glyphs: 2000, segments: 12000 },
+    now: () => 0,
+    ground10: ground,
+    seed: 0,
+    heightM: 10,
+  };
+  if (relief) {
+    input.relief = relief;
+    input.canopy = canopy;
+    if (cap > 0) input.planeCapM = cap;
+  }
+  return input;
+}
+
+/** Where the segments of a picture are on the screen: the share (percent) of those on it in the top tenth of its height and in the bottom three tenths, and how many are on it. */
+export function screenShares(out: DetailOutput, viewProj: ArrayLike<number>): { top: number; bottom: number; on: number } {
+  const v = viewProj;
+  let on = 0;
+  let top = 0;
+  let bottom = 0;
+  for (let k = 0; k < out.segments; k++) {
+    const mx = 0.5 * (out.a[3 * k]! + out.b[3 * k]!);
+    const my = 0.5 * (out.a[3 * k + 1]! + out.b[3 * k + 1]!);
+    const mz = 0.5 * (out.a[3 * k + 2]! + out.b[3 * k + 2]!);
+    const w = v[3]! * mx + v[7]! * my + v[11]! * mz + v[15]!;
+    if (!(w > 0)) continue;
+    const sx = (v[0]! * mx + v[4]! * my + v[8]! * mz + v[12]!) / w;
+    const sy = (v[1]! * mx + v[5]! * my + v[9]! * mz + v[13]!) / w;
+    if (Math.abs(sx) > 1 || Math.abs(sy) > 1) continue;
+    on++;
+    const row = (1 - sy) / 2;
+    if (row < 0.1) top++;
+    if (row >= 0.7) bottom++;
+  }
+  return { top: on > 0 ? (100 * top) / on : 0, bottom: on > 0 ? (100 * bottom) / on : 0, on };
 }

@@ -39,9 +39,10 @@
  * The relief (0.7.0, `DetailInput.relief`; absent, or `enabled` false, is the picture above byte for byte): the lines ride on the canopy's top where
  * there is canopy (`canopy`), slide along the contour of a windward slope (a ridge) and part round the tree crowns that stand in their way and curl
  * behind the proud ones, a ridge's lee and the plume (`detailObstacles.ts`). All of it bends the DIRECTION of the traced line, a step at a time and at
- * most `maxTurnDeg`; the speed (the colour bin, the pulse's pace) is the model's, as before. A seed inside a crown's disc is not drawn (`out.blocked`),
- * a line that meets a crown's rim ends there, and each line carries a pin in its colour alpha (1 free, down to `pinMin` at an obstacle) that the shader
- * multiplies the meander by, so that the noise does not carry a line off the crown it was bent round.
+ * most `maxTurnDeg`; the speed (the colour bin, the pulse's pace) is the model's, as before. A line never ends at a crown: a step that would end inside the
+ * circle of `rim` x its radius slides along the circle, and a seed inside it is moved onto it (all but the share of a wide crown's seeds that its rim cannot
+ * hold, `out.blocked`), so the picture keeps about the lines of 0.6.0 in a forest. Each line carries a pin in its colour alpha (1 free, down to `pinMin`
+ * at an obstacle) that the shader multiplies the meander by, so that the noise does not carry a line off the crown it was bent round.
  */
 import {
   buildSpeedTable,
@@ -56,7 +57,7 @@ import {
   SPEED_TABLE_BINS,
   SPEED_TABLE_MAX_MS,
 } from './flowGlyphs';
-import { IO_BLOCK, IO_DX, IO_DY, IO_HIT, IO_K, IO_MODE, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
+import { IO_BLOCK, IO_DX, IO_DY, IO_FX, IO_FY, IO_G, IO_K, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_ESHARE, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
 import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
 
 /**
@@ -153,6 +154,7 @@ const SALT_ORBIT = 512;
 const SALT_CAP = 640;
 const SALT_PRIO = 768;
 const SALT_LIFE = 977;
+const SALT_RING = 1031;
 const LEVEL_MIN = -16;
 const LEVEL_MAX = 48;
 /** The coarser lattices walked after the finest one: 2^0 to 2^PASSES times its spacing. The points born beyond are 4^-PASSES of the picture. */
@@ -215,7 +217,8 @@ const F_COSCAP = 44;
 const F_SINCAP = 45;
 const F_PIN = 46;
 const F_PINMIN = 47;
-const F_LEN = 48;
+const F_RING = 48;
+const F_LEN = 49;
 
 const N_BUSY = 0;
 const N_PHASE = 1;
@@ -597,6 +600,7 @@ class Builder implements DetailBuilder {
       const io = this.ob.io;
       io[IO_X] = px;
       io[IO_Y] = py;
+      io[IO_G] = s[2]! * f[F_VEX]!;
       this.ob.canopyAt();
       yw += io[IO_ZC]!;
     }
@@ -652,6 +656,7 @@ class Builder implements DetailBuilder {
         const io = this.ob.io;
         io[IO_X] = x;
         io[IO_Y] = y;
+        io[IO_G] = s[2]! * vex;
         this.ob.canopyAt();
         yw += io[IO_ZC]!;
       }
@@ -683,14 +688,22 @@ class Builder implements DetailBuilder {
       return;
     }
     if (n[N_OBST] !== 0) {
-      // A seed inside a crown's disc is not drawn (the seed is still in s0, s1: `reaches` moves them).
+      // A seed inside a crown's circle is drawn from the circle (`line` moves it), but a wide crown's rim holds only about a line to the lattice's own spacing:
+      // of the seeds of a crown `rpx` px in radius, the share `ringPx / rpx` is kept, by a hash of the seed (the seed is still in s0, s1: `reaches` moves them).
       const io = this.ob.io;
       io[IO_X] = this.s[0]!;
       io[IO_Y] = this.s[1]!;
-      this.ob.blocked();
-      if (io[IO_BLOCK] !== 0) {
-        n[N_BLOCKED] = n[N_BLOCKED]! + 1;
+      this.ob.relocate();
+      if (io[IO_BLOCK] === 2) {
+        n[N_BLOCKED] = n[N_BLOCKED]! + 1; // in a lens of crowns: nowhere to start from
         return;
+      }
+      if (io[IO_BLOCK] !== 0) {
+        this.hash(ia, ja, SALT_RING + levelIndex(a));
+        if ((this.hv[0]! / U32) * (io[IO_R]! / this.s[3]!) >= f[F_RING]!) {
+          n[N_BLOCKED] = n[N_BLOCKED]! + 1;
+          return;
+        }
       }
     }
     if (n[N_OUTER] !== 0 && this.reaches() === 0) return;
@@ -845,6 +858,7 @@ class Builder implements DetailBuilder {
         p[P_EY] = f[F_EY]!;
         p[P_EZ] = f[F_EZ]!;
         p[P_ZCAP] = input.planeCapM !== undefined && input.planeCapM > 0 ? input.planeCapM : 0;
+        p[P_ESHARE] = relief.canopy.eyeShare;
         // A tree that no line from the picture's seeds can reach is passed over: the box of the seeds grown by one and a half line lengths at the middle of
         // the screen (far from the camera a line is longer in metres, but a crown there is small on the screen and does not count) and the widest crown.
         const grow = 1.5 * f[F_LMAX]! * f[F_MPPC]! + REACH_CROWN_M;
@@ -864,6 +878,7 @@ class Builder implements DetailBuilder {
         f[F_SINCAP] = Math.sin(cap);
         f[F_PIN] = relief.crowns.pinDepth;
         f[F_PINMIN] = relief.crowns.pinMin;
+        f[F_RING] = relief.crowns.ringPx;
         this.reliefStart();
       }
     }
@@ -1300,9 +1315,9 @@ class Builder implements DetailBuilder {
   /**
    * The direction of a step: the wind at its midpoint (the unit vector (s5, s6) / s7, the midpoint (s0, s1)) bent by the crowns and the eddies and slid
    * along the contour of a windward slope, never more than the turn cap from the line's heading (s26, s27), written back to (s5, s6) with the same speed.
-   * Folds the nearest approach to an obstacle into s28. 0 when the midpoint is inside a crown's rim (the line ends there), else 1.
+   * Folds the nearest approach to an obstacle into s28 (and into s31 for the step).
    */
-  private bend(): number {
+  private bend(): void {
     const s = this.s;
     const f = this.f;
     const n = this.n;
@@ -1321,9 +1336,7 @@ class Builder implements DetailBuilder {
       io[IO_Y] = my;
       io[IO_DX] = ix;
       io[IO_DY] = iy;
-      io[IO_MODE] = 0;
       ob.perturb();
-      if (io[IO_HIT] !== 0) return 0;
       s[31] = io[IO_NEAR]!; // (no obstacle within reach of the midpoint: the end of the step cannot be inside a rim, `line` does not ask)
       if (io[IO_NEAR]! > s[28]!) s[28] = io[IO_NEAR]!;
       const qx = io[IO_PX]!;
@@ -1398,19 +1411,6 @@ class Builder implements DetailBuilder {
     }
     s[26] = bx;
     s[27] = by;
-    return 1;
-  }
-
-  /** 1 when the point (s0, s1) is inside a crown's rim (the line ends there), else 0. */
-  private rimHit(): number {
-    const io = this.ob.io;
-    io[IO_X] = this.s[0]!;
-    io[IO_Y] = this.s[1]!;
-    io[IO_DX] = 1;
-    io[IO_DY] = 0;
-    io[IO_MODE] = 1;
-    this.ob.perturb();
-    return io[IO_HIT]! !== 0 ? 1 : 0;
   }
 
   /** The metres over the base lift (s29) that the canopy's top asks of a stroke at (s0, s1), into s30: 0 where there is no canopy to ride on. */
@@ -1418,6 +1418,7 @@ class Builder implements DetailBuilder {
     const io = this.ob.io;
     io[IO_X] = this.s[0]!;
     io[IO_Y] = this.s[1]!;
+    io[IO_G] = this.s[2]! * this.f[F_VEX]!;
     this.ob.canopyAt();
     const zc = io[IO_ZC]!;
     this.s[30] = zc > this.s[29]! ? zc - this.s[29]! : 0;
@@ -1434,6 +1435,18 @@ class Builder implements DetailBuilder {
     const ja = cand[3 * r + 1]!;
     const a = cand[3 * r + 2]!;
     if (this.candidate(ia, ja, a) === 0) return;
+    if (n[N_OBST] !== 0) {
+      // A seed inside a crown's circle starts on it (`store` decided that it is drawn at all).
+      const io = this.ob.io;
+      io[IO_X] = s[0]!;
+      io[IO_Y] = s[1]!;
+      this.ob.relocate();
+      if (io[IO_BLOCK] !== 0) {
+        s[0] = io[IO_X]!;
+        s[1] = io[IO_Y]!;
+        this.groundAt();
+      }
+    }
     const vex = f[F_VEX]!;
     const wmin = f[F_WMIN]!;
     const rx0 = f[F_RX0]!;
@@ -1498,7 +1511,7 @@ class Builder implements DetailBuilder {
       return;
     }
     let made = 0;
-    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall, 5 a crown's rim
+    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall, 5 a lens of crowns
     for (let k = 0; k < steps; k++) {
       if (k > 0) {
         s[0] = px;
@@ -1526,26 +1539,45 @@ class Builder implements DetailBuilder {
       if (bendOn) {
         // The direction is bent, the speed (so the colour bin below) is the model's.
         s[7] = sp2;
-        if (this.bend() === 0) {
-          stop = 5;
-          break;
-        }
+        this.bend();
         u2 = s[5]!;
         v2 = s[6]!;
       }
       const k2 = ds / sp2;
-      const qx = px + u2 * k2;
-      const qy = py + v2 * k2;
+      let qx = px + u2 * k2;
+      let qy = py + v2 * k2;
       if (qx < rx0 || qx > rx1 || qy < ry0 || qy > ry1) {
         stop = 2;
         break;
       }
+      if (obstOn && s[31]! > 0) {
+        // A step that would end inside a crown's circle slides along it instead, and the line's heading is the chord it made.
+        const io = this.ob.io;
+        io[IO_X] = qx;
+        io[IO_Y] = qy;
+        io[IO_FX] = px;
+        io[IO_FY] = py;
+        io[IO_DX] = u2 / sp2;
+        io[IO_DY] = v2 / sp2;
+        this.ob.slide();
+        if (io[IO_BLOCK] === 2) {
+          stop = 5; // in a lens of crowns with no way round: the line ends at the last vertex
+          break;
+        }
+        if (io[IO_BLOCK] !== 0) {
+          qx = io[IO_X]!;
+          qy = io[IO_Y]!;
+          const hx = qx - px;
+          const hy = qy - py;
+          const hl = Math.sqrt(hx * hx + hy * hy);
+          if (hl > 1e-9) {
+            s[26] = hx / hl;
+            s[27] = hy / hl;
+          }
+        }
+      }
       s[0] = qx;
       s[1] = qy;
-      if (obstOn && s[31]! > 0 && this.rimHit() !== 0) {
-        stop = 5; // the line meets a crown's rim
-        break;
-      }
       this.groundAt();
       let qyw = (s[2]! + yoff) * vex;
       if (canopyOn) {
