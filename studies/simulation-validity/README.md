@@ -69,6 +69,45 @@ from reading the repository. Dataset and tool names are from memory, and their a
 | 8 | **Measured fire experiments** (published grass, shrub and forest burns, which are also the sources of the spread formulas) and **hindcasts of recorded fires**, scored by overlap of burnt area, area ratio and arrival-time error | the formulas in a controlled setting; the whole chain (weather, fuel, spread, spotting) on real terrain | which part is wrong: in a hindcast the inputs usually swamp the model error, so it needs idea 5 | perimeter and weather data; which recorded fires crossed the bundled sites is unchecked |
 | 9 | **Expert review:** experienced fire behaviour analysts and instructors watch replays of the note 10 cases and say what is wrong or misleading | whether it teaches the right lesson; plausibility | numbers | people's time |
 
+## External comparison: what is possible (the owner asked, 2026-10-31)
+
+The owner asked whether the simulation can be compared with another simulation or checked some other external way. The answer is yes,
+and it is recorded here with the stretch goal. **Nothing below has been researched, run or built.** Tool and dataset names are from memory;
+their availability, access and licences are unchecked. Ideas 6 to 9 in the table above are the short form of this section.
+
+**Compare with another simulation**
+- **Open-source spread models.** ELMFIRE and FARSITE/FlamMap are free and run on an ordinary computer. They use US Rothermel-type fuel models,
+  while FireSim is calibrated to Australian rules (the repository refers to the McArthur Mk5 spotting distances). So compare simple cases where
+  models should roughly agree (flat ground, a uniform slope, a steady wind) after mapping fuels by hand. That would catch large discrepancies,
+  not small ones.
+- **Australian operational tools.** Phoenix RapidFire and CSIRO's Spark are the natural peers. As far as I know they are licensed to agencies
+  or researchers, so access is the question.
+- **Coupled fire-atmosphere models.** WRF-SFIRE and ACCESS-Fire are the useful comparison for the plume and the wind, where no simple formula
+  exists. They need serious computing, so this is a research-collaboration job and not a script.
+
+**Compare with real-world data**
+- **Published experiments:** grass fires (the Cheney experiments) and Project Vesta's dry-forest burns, which are also where the spread
+  formulas come from. Compare rate of spread under set conditions.
+- **Recorded fires:** hindcasts such as Black Saturday or the 2019-20 NSW fires, scored by burnt-area overlap and arrival-time error. The app
+  already has a Gospers Mountain replay preset. Inputs (weather, fuel, ignition) usually matter more than the model, so one run says little;
+  it needs many runs with plausible input errors (idea 5).
+- **Weather data:** Bureau of Meteorology station records for wind and moisture (awkward to get), and the hill-flow field campaigns
+  (Askervein Hill) as the benchmark for the terrain-wind solver.
+- **Expert review:** experienced fire behaviour analysts watch replays and say what is wrong or misleading. For a training app, "does it
+  teach the right lesson?" is a validity question.
+
+**No outside data needed**
+- **Convergence check:** run the same model at finer detail, once, offline, to measure numerical error, including how much the Fast tier loses
+  against Detailed (nothing in the repository measures that today).
+- **Properties that must hold:** more wind never slows the head, a firebreak never raises the burnt area, rotating the terrain and wind rotates
+  the result.
+
+**Two limits.** Agreement between models of one lineage is not accuracy. Fire results are compared as statistics over several runs, not as one
+trajectory.
+
+**The cheapest first step, when the owner decides to start:** a desk study that picks the first two or three comparisons, checks which datasets
+and tools are really available and licensed, and fixes the pass marks before any run (open questions 1, 5, 6 and 7 below).
+
 ## Pitfalls to design against
 
 - **Agreement is not accuracy.** A reference from the same code shares its formulas, and models of one lineage agree with each other (as in
@@ -108,3 +147,6 @@ Suggested order; none is started.
 ## Log
 
 No studies yet. Rules for adding one are in [`../README.md`](../README.md).
+
+- 2026-10-31: the owner confirmed this stays a stretch goal and is **not for implementation yet**, and asked whether an external comparison with
+  another simulation or other data is possible. The answer is recorded in *External comparison: what is possible* above. Nothing was run.
