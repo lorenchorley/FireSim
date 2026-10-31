@@ -636,7 +636,11 @@ test('gallery 0.5.0: the wind arrows and flow lines at three zooms, and the Laye
   await page.getByTestId('wind-layer').getByRole('radio', { name: 'Off' }).check({ force: true });
   await page.getByTestId('layer-windGlyphs').click();
   await expect(page.getByTestId('wind-height')).toBeVisible();
-  await page.getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true }).check({ force: true }); // (0.7.0: the default is What the fire feels; these pictures are the 0.5.0 ones)
+  // (0.7.0: the default is What the fire feels; these pictures are the 0.5.0 ones.) A forced click skips the wait for the panel to stop sliding in, and a
+  // click on the chip while the panel is still a few pixels low lands on the timeline bar under it, so the slide is waited for first.
+  await animationsDone(page);
+  await page.getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true }).check({ force: true });
+  await expect(page.getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true })).toBeChecked();
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('layers-panel')).toHaveCount(0);
   await pickViewMode(page, 'top');
