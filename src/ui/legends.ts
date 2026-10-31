@@ -4,6 +4,7 @@
  */
 import { FuelType, SpreadDriver } from '../core/types';
 import type { OverlayKind } from '../render/layers';
+import type { WindHeight } from '../render/wind/glyphTypes';
 import { DRIVER_LABELS, FUEL_LABELS } from './labels';
 
 export interface LegendStop {
@@ -486,6 +487,8 @@ export interface LegendRequest {
   isochroneMinutes?: number;
   /** Lowest and highest ground of the scenario (m): the 'elevation' heat map and its legend stretch over it. */
   elevationRange?: readonly [number, number];
+  /** The Wind height the Wind speed map follows (0.7.0, E1b; `mapHeightNow`): its title, range and note. Absent is the 10 m map. */
+  windHeight?: WindHeight;
 }
 
 export type LegendProvider = (overlay: OverlayKind, ctx: LegendRequest) => ExternalLegend | null;

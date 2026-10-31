@@ -210,6 +210,8 @@ export class VegetationLayer {
   private viewDown = 0;
   private layerVisible = true;
   private windSpeed = 0;
+  /** Whether motion is allowed (0.7.0): false under reduced motion, when the trees stand still and keep their lean. */
+  private motion = true;
   private disposed = false;
 
   constructor(shared: Record<string, THREE.IUniform>) {
@@ -309,10 +311,15 @@ export class VegetationLayer {
   setWind(u: number, v: number): void {
     const speed = Math.hypot(u, v);
     this.windSpeed = speed;
-    const p = swayParams(speed);
     const dir = this.uniforms.uWindDir!.value as THREE.Vector2;
     if (speed > 1e-3) dir.set(u / speed, -v / speed);
-    (this.uniforms.uSwayAmp!.value as THREE.Vector3).set(p.lean, p.amp, p.flutter);
+    this.applySway();
+  }
+
+  /** The sway uniforms from the wind speed: the lean always, the swing and the flutter only where motion is allowed. */
+  private applySway(): void {
+    const p = swayParams(this.windSpeed);
+    (this.uniforms.uSwayAmp!.value as THREE.Vector3).set(p.lean, this.motion ? p.amp : 0, this.motion ? p.flutter : 0);
   }
 
   /**
@@ -324,12 +331,19 @@ export class VegetationLayer {
     return this.crowns;
   }
 
-  /** C0 STUB (0.7.0, lane E-B, F4): whether motion is allowed (false under reduced motion: the sway stops, the lean stays). Inert until built. */
-  setMotion(_allowed: boolean): void {}
+  /**
+   * Whether motion is allowed (0.7.0, F4): false under reduced motion, when the trees stop swaying (the swing and the flutter go to 0 and the layer no
+   * longer asks for frames) and keep their lean, so the direction of the wind still shows. The caller draws a frame.
+   */
+  setMotion(allowed: boolean): void {
+    if (allowed === this.motion) return;
+    this.motion = allowed;
+    this.applySway();
+  }
 
   /** True while the trees sway (the caller must keep rendering frames). */
   get animating(): boolean {
-    return this.layers.sway && this.group.visible && this.windSpeed > 0.5 && (this.plan?.counts[0] ?? 0) + (this.plan?.counts[1] ?? 0) > 0;
+    return this.motion && this.layers.sway && this.group.visible && this.windSpeed > 0.5 && (this.plan?.counts[0] ?? 0) + (this.plan?.counts[1] ?? 0) > 0;
   }
 
   /** Radius (m) inside which trees fade out around the camera (eye-level views); 0 = off. */

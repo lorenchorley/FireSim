@@ -188,6 +188,21 @@ describe('stylesheets: tap targets', () => {
     expect(Buffer.byteLength(css('slice.css'), 'utf8')).toBeLessThanOrEqual(4096);
   });
 
+  it('in short landscape the Air slices body reserves 96 px under the pinned picture and 52 px over the pinned footer: a control scrolled to the middle clears a footer that wraps to two lines with a recording (0.7.0, F3)', () => {
+    // MEASURED on the real panel at 844 x 390 (e2e/air-slice.spec.ts logs it): the body is 190 px, the footer 29 px on one line (the fast model's words) and 49 px on two
+    // (the 3-D air's longer ones, with a recording), so the free band under the pinned 92 px picture is 49 px. A control scrolled to the middle of [96, H - reserve] has its
+    // lower probe (21 px under its centre) clear of the footer when reserve > 138 + 2 x footer - H (46 px here) and its upper hit area clear of the picture when
+    // reserve <= H - 132 (58 px): 52 sits in the middle of the two. With the old 30 px, 7 controls missed 3 of 8 probes on the 3-D tier.
+    const text = css('slice.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const media = /@media \(orientation: landscape\) and \(max-height: 540px\) \{([\s\S]*?)\n\}/.exec(text)?.[1];
+    expect(media, 'the short-landscape block is there').toBeTruthy();
+    const pad = /\.slice-tool-body \{[^}]*scroll-padding:\s*(\d+)px 0 (\d+)px/.exec(media!);
+    expect(pad, 'it sets scroll-padding: top 0 bottom').toBeTruthy();
+    expect(Number(pad![1]), 'the pinned picture: 8 px of padding and the 84 px canvas, and a few px more').toBeGreaterThanOrEqual(92);
+    expect(Number(pad![2]), 'the pinned footer on two lines (49 px)').toBeGreaterThanOrEqual(50);
+    expect(Number(pad![2]), 'and not so much that the control rides up under the picture').toBeLessThanOrEqual(58);
+  });
+
   it('the Wind height chips and the Side view / Map view tabs never break a word at a large text size: their words wrap between words (or the chip moves to the next row), not inside them', () => {
     // components.css lets a chip's or a segment's label break anywhere (`overflow-wrap: anywhere`) so a long word cannot widen the page; these two do not need it.
     const chipText = rule('layers.css', '.wg-options .chip-radio .chip-text');

@@ -9,6 +9,8 @@ import v8 from 'node:v8';
 import vm from 'node:vm';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { FIRE_WIND_QUANTUM } from '../../core/fireWind';
+import type { FireWindRaster } from '../../core/types';
 import { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
 import { HeightField } from '../heightfield';
@@ -1491,11 +1493,13 @@ describe('the layer and the frame loop (source pins)', () => {
   });
 
   it('switches the frame loop on only for the detailed streaks: the glyph layer is in `animating` through its own `animating` and nothing else', () => {
-    const animating = /const animating =([\s\S]*?);\n/.exec(scene)![1]!;
-    expect(animating).toMatch(/this\.glyphs\.animating/);
-    expect(animating.replace(/this\.glyphs\.animating/g, '')).not.toMatch(/glyph/i);
-    // The old Wind streaks leave it while the detailed streaks stand in for them.
-    expect(animating).toMatch(/\(this\.wind\.currentMode !== 'off' && !detailInstead\)/);
+    // (0.7.0: the ambient terms, which the idle stop holds back, are `ambient`; `animating` is `ambient && !idle` and the picture's own changes.)
+    const ambient = /const ambient =([\s\S]*?);\n/.exec(scene)![1]!;
+    expect(ambient).toMatch(/this\.glyphs\.animating/);
+    expect(ambient.replace(/this\.glyphs\.animating/g, '')).not.toMatch(/glyph/i);
+    // The old Wind streaks leave it while the detailed streaks stand in for them (through their own `animating`: on, not suppressed, allowed to move).
+    expect(ambient).toMatch(/this\.wind\.animating/);
+    expect(/const animating =([\s\S]*?);\n/.exec(scene)![1]).toMatch(/\(ambient && !idle\)/);
   });
 
   it('puts the Wind streaks switch and the system\'s reduced motion into the layer, and follows the setting while the app runs', () => {
@@ -1910,5 +1914,135 @@ describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', 
     r.layer.setEnabled(true);
     r.layer.setMotion(false);
     expect(r.layer.stats()).toMatchObject({ glyphs: true, streaks: true, reduced: true });
+  });
+});
+
+describe("WindGlyphLayer: 'felt' (What the fire feels, 0.7.0) reads the fire's own wind", () => {
+  /** A 60 m picture over the air view's domain: u = a + i x 0.1 m/s, v = b, Int16 at 0.01 m/s. */
+  const picture = (r: Rig, a: number, b: number, time = 600): FireWindRaster => {
+    const g = r.fresh().atm!.grid;
+    const n = 20;
+    const grid = { nx: n, ny: n, cellSize: 60, x0: g.x0 + 15, y0: g.y0 + 15, origin: g.origin };
+    const u = new Int16Array(n * n);
+    const v = new Int16Array(n * n);
+    for (let k = 0; k < n * n; k++) {
+      u[k] = Math.round((a + (k % n) * 0.1) / FIRE_WIND_QUANTUM);
+      v[k] = Math.round(b / FIRE_WIND_QUANTUM);
+    }
+    return { grid, u, v, block: 2, time };
+  };
+  const withFelt = (r: Rig, fw: FireWindRaster | null): GlyphData => ({ ...r.fresh(), fireWind: fw });
+
+  it('traces through the decoded picture: its own grid, its values as m/s in Float32, not the 10 m surface wind', () => {
+    const r = rig({ height: 'felt' });
+    const fw = picture(r, 3, -1);
+    r.layer.setData(withFelt(r, fw));
+    r.go(L2);
+    r.go(L2);
+    expect(r.stub.begins).toHaveLength(1);
+    const f = r.stub.begins[0]!.field;
+    expect(f.grid).toBe(fw.grid);
+    expect(f.grid.cellSize).toBe(60);
+    expect(f.u).toHaveLength(400);
+    expect(f.u[0]).toBeCloseTo(3, 6);
+    expect(f.u[5]).toBeCloseTo(3.5, 6);
+    expect(f.v[7]).toBeCloseTo(-1, 6);
+    expect(f.u).not.toBe(r.fresh().atm!.surfaceU);
+    expect(r.layer.stats()).toMatchObject({ active: true, idle: null, level: 2, source: 'felt', dataCellM: 60, cellM: 200 }); // the ladder keeps the model's cell
+  });
+
+  it('keeps the zoom ladder on the model cell: the same levels as the 10 m wind at the same zoom', () => {
+    for (const d of [L1, L2, L3, L4, L0]) {
+      const a = rig({ height: 'felt' });
+      a.layer.setData(withFelt(a, picture(a, 3, -1)));
+      a.go(d, { settle: true });
+      const b = rig({ height: 'fire' });
+      b.go(d, { settle: true });
+      expect(a.layer.stats().level, String(d)).toBe(b.layer.stats().level);
+      expect(a.layer.stats().cellPx, String(d)).toBe(b.layer.stats().cellPx);
+    }
+  });
+
+  it('feeds the detailed streaks the 10 m ground terms, as the 10 m height does', () => {
+    const r = rig({ height: 'felt' });
+    r.layer.setData(withFelt(r, picture(r, 3, -1)));
+    r.go(L4, { settle: true });
+    expect(r.detail.begins).toHaveLength(1);
+    expect(r.detail.begins[0]!.heightM).toBe(10);
+    expect(r.detail.begins[0]!.field.grid.cellSize).toBe(60);
+    expect(r.layer.stats()).toMatchObject({ level: 4, source: 'felt' });
+  });
+
+  it('with no picture of it draws the 10 m wind (the surface raster as it is), and says the source is the surface', () => {
+    for (const none of [null, undefined]) {
+      const r = rig({ height: 'felt' });
+      r.layer.setData(none === null ? withFelt(r, null) : r.fresh());
+      r.go(L2);
+      r.go(L2);
+      expect(r.stub.begins[0]!.field.u).toBe(r.fresh().atm!.surfaceU);
+      const s = r.layer.stats();
+      expect(s).toMatchObject({ active: true, idle: null, source: 'surface' });
+      expect(s.dataCellM).toBeUndefined();
+    }
+  });
+
+  it('a picture too short for its grid is no picture (the 10 m wind), never a read past its end', () => {
+    const r = rig({ height: 'felt' });
+    const fw = picture(r, 3, -1);
+    r.layer.setData(withFelt(r, { ...fw, u: new Int16Array(10) }));
+    r.go(L2);
+    r.go(L2);
+    expect(r.stub.begins[0]!.field.u).toBe(r.fresh().atm!.surfaceU);
+  });
+
+  it('is idle no-wind only when the air itself has no wind (a picture alone is not enough)', () => {
+    const r = rig({ height: 'felt' });
+    r.layer.setData({ ...withFelt(r, picture(r, 3, -1)), atm: null });
+    expect(r.go(L2)).toBe(false);
+    expect(r.layer.stats().idle).toBe('no-wind');
+  });
+
+  it('a new picture is a new rebuild with the new values, decoded into the other store while the last is intact', () => {
+    const r = rig({ height: 'felt' });
+    r.layer.setData(withFelt(r, picture(r, 3, -1)));
+    r.go(L2, { settle: true });
+    const first = r.stub.begins[0]!.field;
+    const firstU = first.u[0]!;
+    r.layer.setData(withFelt(r, picture(r, 9, 2, 660)));
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.stub.begins).toHaveLength(2);
+    const second = r.stub.begins[1]!.field;
+    expect(second.u).not.toBe(first.u); // the other store
+    expect(second.u[0]).toBeCloseTo(9, 6);
+    expect(first.u[0]).toBe(firstU); // the picture the last build traced is intact
+    // A third picture comes back to the first store: two stores, no allocation per snapshot.
+    r.layer.setData(withFelt(r, picture(r, 5, 5, 720)));
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.stub.begins[2]!.field.u).toBe(first.u);
+    expect(r.stub.begins[2]!.field.u[0]).toBeCloseTo(5, 6);
+  });
+
+  it('a change of the Wind height to or from What the fire feels is a rebuild', () => {
+    const r = rig({ height: 'fire' });
+    r.layer.setData(withFelt(r, picture(r, 3, -1)));
+    r.go(L2, { settle: true });
+    expect(r.layer.stats().source).toBe('surface');
+    r.layer.setHeight('felt');
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.stub.begins).toHaveLength(2);
+    expect(r.stub.begins[1]!.field.grid.cellSize).toBe(60);
+    expect(r.layer.stats().source).toBe('felt');
+    r.layer.setHeight(300);
+    r.go(L2, { settle: true, dt: 300 });
+    expect(r.layer.stats().source).toBe('height');
+    expect(r.layer.stats().dataCellM).toBeUndefined();
+  });
+
+  it('costs no new geometry: the batches are the same three, and the frame loop stops when nothing moves', () => {
+    const r = rig({ height: 'felt' });
+    r.layer.setData(withFelt(r, picture(r, 3, -1)));
+    r.go(L2, { settle: true });
+    expect(r.layer.group.children.map((c) => c.name).sort()).toEqual(['wind-detail', 'wind-glyph', 'wind-glyph-halo']);
+    expect(r.layer.animating).toBe(false);
   });
 });

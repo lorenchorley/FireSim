@@ -5,7 +5,7 @@
  *   - the fuel-hazard scales quoted next to the numbers are the scales of the fuel module;
  *   - no user-visible text calls the NSW elevation model LiDAR (the service says "derived from stereo imagery");
  *   - the README does not describe the terrain as LiDAR;
- *   - the wind arrows and flow lines: the first Wind height chip is "10 m", nothing calls it "Ground", and no text says the arrows wear the
+ *   - the wind arrows and flow lines: the first Wind height chip is "What the fire feels" (0.7.0) and the next is "10 m", nothing calls it "Ground", and no text says the arrows wear the
  *     Wind speed map's colours (they wear the Wind streaks' ramp: the two are different ramps, 0 to 90 km/h and 0 to 60 km/h).
  * (The terrain record's 30 m / interpolated wording is checked against a real build in scenario/datasets.test.ts.)
  */
@@ -58,8 +58,9 @@ describe('wording that must not claim more than the model does', () => {
     expect(readme).not.toMatch(/10 m LiDAR model/);
   });
 
-  it('the wind arrows and flow lines: the first Wind height chip is "10 m" and is not called Ground; their colours are the Wind streaks\' ramp and no text says they are the Wind speed map\'s', () => {
-    expect(WIND_HEIGHT_CHIPS[0]).toEqual({ value: 'fire', label: '10 m' });
+  it('the wind arrows and flow lines: the Wind height chips are What the fire feels and then "10 m", which is not called Ground; their colours are the Wind streaks\' ramp and no text says they are the Wind speed map\'s', () => {
+    expect(WIND_HEIGHT_CHIPS[0]).toEqual({ value: 'felt', label: 'What the fire feels' });
+    expect(WIND_HEIGHT_CHIPS[1]).toEqual({ value: 'fire', label: '10 m' });
     for (const t of [...GLOSSARY.map((g) => `${g.term}\n${g.body}`), ...HELP_STEPS.map((x) => x.text)]) if (/Wind height|Arrows and flow lines/.test(t)) expect(t).not.toMatch(/\bGround\b/);
     // Two ramps: the arrows' (the streaks' pale-to-violet, to 90 km/h) and the Wind speed map's (cool to warm, to 60 km/h).
     const arrows = windGlyphLegend('near the ground').entries.map((e) => e.colour);

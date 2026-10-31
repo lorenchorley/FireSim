@@ -184,6 +184,7 @@ describe('wind arrows and flow lines (0.5.0: the switch and its height are remem
     expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: true, windHeight: 300 } }).layers).toEqual({ windGlyphs: true, windHeight: 300 });
     expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: false, windHeight: 'fire' } }).layers).toEqual({ windGlyphs: false, windHeight: 'fire' });
     for (const h of [50, 100, 300, 1000, 2000]) expect(sanitizeLayerPrefs({ v: 1, layers: { windHeight: h } }).layers).toEqual({ windHeight: h });
+    expect(sanitizeLayerPrefs({ v: 1, layers: { windHeight: 'felt' } }).layers).toEqual({ windHeight: 'felt' }); // What the fire feels (0.7.0), and a saved 'fire' (10 m) is still kept above
     // 10 m is not a choice (the sampler clamps below its first level), and a chip's string value is not what is stored.
     for (const bad of [10, 0, -50, 150, 1e9, NaN, Infinity, '50', '300', 'Fire', 'ground', '', null, true, {}, [100]]) expect(sanitizeLayerPrefs({ v: 1, layers: { windHeight: bad } }).layers, String(bad)).toEqual({});
     for (const bad of ['on', 'yes', 1, 0, null, {}]) expect(sanitizeLayerPrefs({ v: 1, layers: { windGlyphs: bad } }).layers, String(bad)).toEqual({});
@@ -236,6 +237,6 @@ describe('wind arrows and flow lines (0.5.0: the switch and its height are remem
     await loadLayerPrefs();
     await new Promise((r) => setTimeout(r, 0));
     off2();
-    expect([fresh.get().windGlyphs, fresh.get().windHeight]).toEqual([false, 'fire']);
+    expect([fresh.get().windGlyphs, fresh.get().windHeight]).toEqual([false, 'felt']); // (the default is What the fire feels since 0.7.0)
   });
 });

@@ -344,10 +344,13 @@ test('the Wind detail chip, in the real app: three sizes, the sheet, a real pinc
     const lead = await page.getByTestId('wind-detail-lead').innerText();
     expect(lead).toBe(want === 4 ? 'Level 4 of 4: detailed streaks.' : 'Level 3 of 4: curved flow lines.');
     const text = await sheet.innerText();
-    expect(text).toContain('Wind about 10 m above open ground.');
+    // The default Wind height is What the fire feels (0.7.0): its sheet names the fire model's cells when the picture has the 60 m wind, and it is the 10 m wind's words when it has not.
+    const hasFelt = await page.evaluate(() => !!(window as unknown as { __firesim: { session: { state: { get(): { snapshot: { fireWind?: unknown } | null } } } } }).__firesim.session.state.get().snapshot?.fireWind);
+    if (hasFelt) expect(text).toMatch(/The wind the fire feels, in cells about \d+ m wide\./);
+    else expect(text).toContain('Wind about 10 m above open ground.');
     expect(text).toContain('wide');
     if (want === 4) {
-      expect(text).toContain('The small eddies are added for looks, from the shape of the ground.');
+      expect(text).toContain('These bends and eddies are added for looks, from the shape of the ground and the trees.');
       expect(text).toContain('This is the most detailed level.');
     } else expect(text).not.toContain('eddies');
     await page.keyboard.press('Escape');

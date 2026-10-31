@@ -12,6 +12,7 @@ import { sectionColouring, sliceAirOf } from '../../../render/sliceFields';
 import type { SliceFieldId, SliceKind } from '../../../render/slice/types';
 import type { SimContext } from './context';
 import { legendHeightWords } from './glyphWords';
+import { mapHeightNow } from './windMapWords';
 
 /** Classes listed on the card; the rest are in the Layers panel. */
 const MAX_CLASSES = 4;
@@ -25,6 +26,7 @@ export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvide
       arrivalMaxSeconds: Math.max(1800, viewTime),
       isochroneMinutes: s.isochroneMinutes,
       ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
+      windHeight: mapHeightNow(s, ctx.session.state.get().snapshot),
     });
   }
   // The colour-coded trees (canopy style 'coded'): the renderer describes its own code.
@@ -37,7 +39,7 @@ export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvide
   }
   // The wind arrows and flow lines wear the wind-speed ramp at the height chosen; they come before the streaks (which have their own legend). At eye
   // level nothing of them is drawn (the control says so), so the card is not shown for them there: the streaks' legend, or none.
-  if (sl?.windGlyphs && s.windGlyphs && ctx.ui.get().viewMode !== 'ground') return fromExternalLegend(sl.windGlyphs(legendHeightWords(s.windHeight)), null);
+  if (sl?.windGlyphs && s.windGlyphs && ctx.ui.get().viewMode !== 'ground') return fromExternalLegend(sl.windGlyphs(legendHeightWords(mapHeightNow(s, ctx.session.state.get().snapshot))), null);
   if (sl && s.wind !== 'off') return fromExternalLegend(sl.wind(s.wind), null);
   return null;
 }
@@ -57,7 +59,7 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     // The arrival-time ramp grows with the elapsed time: refresh it every 30 simulated minutes.
     // The section's legend follows the chip it is coloured by on the air shown (the chip chosen, or the one the air allows).
     const sc = s.crossSection.enabled ? sectionColour(ctx, s.crossSection.field) : null;
-    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.windGlyphs ? `${s.windHeight}.${ctx.ui.get().viewMode === 'ground'}` : ''}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
+    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.windGlyphs ? `${mapHeightNow(s, ctx.session.state.get().snapshot)}.${ctx.ui.get().viewMode === 'ground'}` : ''}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
     if (k === key && !force) return;
     key = k;
     const l = currentMapLegend(ctx, vt);

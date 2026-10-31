@@ -59,7 +59,7 @@ export interface LayerState {
   wind: 'off' | 'surface' | 'volume';
   /** Wind arrows and flow lines drawn on the map at {@link windHeight}, zoom-adaptive (render/wind, 0.5.0). Opt-in. */
   windGlyphs: boolean;
-  /** The height the wind glyphs show: `'fire'` (the model's 10 m wind over open ground) or metres above the ground. */
+  /** The height the wind glyphs show: `'felt'` (the wind the fire feels, 60 m cells, 0.7.0), `'fire'` (the model's 10 m wind over open ground) or metres above the ground. */
   windHeight: WindHeight;
   /**
    * Vertical cross-section of the atmosphere: the 3-D curtain, and the data of the Air slice side view (render/slice/types.ts;
@@ -125,7 +125,7 @@ export const DEFAULT_LAYERS: LayerState = {
   embers: true,
   wind: 'surface',
   windGlyphs: false,
-  windHeight: 'fire',
+  windHeight: 'felt',
   crossSection: { enabled: false, azimuth: 0, centre: [0, 0] },
   insightMarkers: true,
   verticalExaggeration: 1,
@@ -148,4 +148,12 @@ export const DEFAULT_LAYERS: LayerState = {
  */
 export function windMapHeight(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>): WindHeight {
   return l.windGlyphs ? l.windHeight : 'fire';
+}
+
+/**
+ * The Wind height that is really drawn (0.7.0): `'felt'` needs the snapshot's `fireWind`; a picture without one (a replay recorded before it, an engine
+ * that does not publish it) shows the 10 m wind, `'fire'`, and every caption and legend says that. Any other height is itself.
+ */
+export function shownWindHeight(h: WindHeight, haveFelt: boolean): WindHeight {
+  return h === 'felt' && !haveFelt ? 'fire' : h;
 }

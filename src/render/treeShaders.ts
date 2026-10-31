@@ -197,7 +197,8 @@ void main() {
   // Wind: lean and sway of the crown (bending grows with height), flutter of leaves and streamers.
   if (uSway > 0.5 && uLod < 2.5 && !isDecal) {
     float bend = pow(clamp(h01, 0.0, 1.0), 1.7);
-    float gust = 0.65 + 0.35 * sin(uClock * 0.41 + base.x * 0.013 + base.z * 0.011);
+    // (Reduced motion sets the swing and the flutter to 0 and leaves the lean: the gust then stays at its mean, or the lean would still breathe with the clock.)
+    float gust = (uSwayAmp.y + uSwayAmp.z > 0.0) ? 0.65 + 0.35 * sin(uClock * 0.41 + base.x * 0.013 + base.z * 0.011) : 0.825;
     float osc = sin(uClock * (0.75 + 0.4 * aRand.y) + aRand.x * 40.0 + base.x * 0.02);
     float sway = uSwayAmp.x * gust + uSwayAmp.y * osc * gust;
     sp.xz += uWindDir * sway * bend * H;

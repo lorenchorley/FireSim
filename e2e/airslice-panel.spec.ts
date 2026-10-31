@@ -298,7 +298,7 @@ test('fast tier: Temp and Smoke are off with the reason and the button, the foot
   await expect(use3d).toHaveText('Use the 3-D atmosphere');
   const ub = (await use3d.boundingBox())!;
   expect(ub.height).toBeGreaterThanOrEqual(40);
-  // a tap on an unavailable chip does not colour the slice; it scrolls to the reason and the button (they are below the controls)
+  // a tap on an unavailable chip does not colour the slice; it scrolls to the reason and the button (they are directly under the chips since 0.7.0, so a short screen may already show them)
   await canvas.scrollIntoViewIfNeeded();
   await page.getByTestId('slice-chip-theta').click({ force: true });
   await expect(canvas).toHaveAttribute('data-field', 'speed');

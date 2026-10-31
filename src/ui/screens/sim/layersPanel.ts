@@ -25,6 +25,7 @@ import { button, chipChoice, compassRose, segmented, slider, toggle, type Compas
 import { LAYER_GROUP_BLURBS, availabilityContext, sceneLayerOn, type AvailabilityContext, type LayerGroup, type LayerInfo } from '../../../render/layerCatalog';
 import type { NightLook } from '../../../render/api';
 import type { LayerState, OverlayKind } from '../../../render/layers';
+import type { WindHeight } from '../../../render/wind/glyphTypes';
 import { canopyCodeLegend, type CanopyCode } from '../../../render/canopyStyle';
 import { placesLegend, type PlacesLayerId } from '../../../render/placesLegend';
 import { hasAirWind } from '../../../core/airView';
@@ -63,6 +64,7 @@ import {
 } from './layersModel';
 import { cachedLayerPrefs, forgetLayerPrefs, layerDefaults, rememberLayerChoice, viewHasImagery } from './layersPrefs';
 import { createWindGlyphControls } from './windGlyphControls';
+import { mapHeightNow, windSpeedSubline } from './windMapWords';
 
 /** Icon of a catalog row in the panel (decoration only; unknown ids get the layers icon). */
 const LAYER_ICONS: Readonly<Record<string, IconName>> = {
@@ -158,6 +160,7 @@ export function currentLegend(ctx: SimContext): Legend | null {
     arrivalMaxSeconds: Math.max(1800, ctx.session.state.get().viewTime),
     isochroneMinutes: s.isochroneMinutes,
     ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
+    windHeight: mapHeightNow(s, ctx.session.state.get().snapshot),
   });
 }
 
@@ -430,12 +433,13 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   offs.push(() => tilesRo?.disconnect());
 
   // ───────────── Heat maps ─────────────
-  const legendRequest = (): { arrivalMaxSeconds: number; isochroneMinutes: number; elevationRange?: readonly [number, number] } => {
+  const legendRequest = (): { arrivalMaxSeconds: number; isochroneMinutes: number; elevationRange?: readonly [number, number]; windHeight: WindHeight } => {
     const t = ctx.scenario.terrain;
     return {
       arrivalMaxSeconds: Math.max(1800, ctx.session.state.get().viewTime),
       isochroneMinutes: layers.get().isochroneMinutes,
       ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
+      windHeight: mapHeightNow(layers.get(), ctx.session.state.get().snapshot),
     };
   };
   const saved = cachedLayerPrefs()?.groups;
@@ -577,7 +581,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const renderActive = (force = false): void => {
     const s = layers.get();
     const vt = ctx.session.state.get().viewTime;
-    const key = `${s.overlay}|${s.overlay === 'arrival' ? `${s.isochroneMinutes}|${Math.floor(vt / 1800)}` : ''}|${s.overlay !== 'none' && SNAPSHOT_LAYER_OVERLAYS.has(s.overlay) ? !!ctx.session.state.get().snapshot?.layers : ''}`;
+    const key = `${s.overlay}|${s.overlay === 'arrival' ? `${s.isochroneMinutes}|${Math.floor(vt / 1800)}` : ''}|${s.overlay !== 'none' && SNAPSHOT_LAYER_OVERLAYS.has(s.overlay) ? !!ctx.session.state.get().snapshot?.layers : ''}|${s.overlay === 'windSpeed' ? mapHeightNow(s, ctx.session.state.get().snapshot) : ''}`;
     if (key === activeKey && !force) return;
     const prevOverlay = activeKey.split('|')[0];
     activeKey = key;
@@ -618,7 +622,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
       // A row with both forms says what its heat map shows ("Heat map: Distance to nearest road or trail, in metres").
       const hl = r.showBtn && a.ok ? legendFor(r.info.heat!.overlay) : null;
       const line = heatSubline(r.info, a);
-      r.sub.textContent = hl ? `Heat map: ${hl.title}, ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line;
+      r.sub.textContent = hl ? `Heat map: ${hl.title}, ${line.charAt(0).toLowerCase()}${line.slice(1)}` : r.info.id === 'windSpeed' && a.ok ? windSpeedSubline(line, mapHeightNow(s, ctx.session.state.get().snapshot)) : line;
     }
     for (const g of groups) {
       const shown = g.rows.find((r) => r.info.heat!.overlay === s.overlay);
@@ -936,6 +940,8 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
     }, ['imagery', 'vegetation', 'understorey', 'flames', 'smoke', 'embers', 'wind', 'insightMarkers', 'roads', 'fireTrails', 'homes', 'zones', 'placeNames', 'overlay']),
     // The arrival-time lines change the legend only: the controls (and the keyboard focus on them) stay.
     layers.subscribe(() => renderActive(), ['isochroneMinutes']),
+    // The Wind speed map follows the Wind height while the arrows are on (E1b): its legend and its row say which wind it is.
+    layers.subscribe(() => renderHeat(), ['windGlyphs', 'windHeight']),
     layers.subscribe(renderTrees, ['canopyStyle', 'canopyCode', 'windSway', 'vegetation', 'soloHeat', 'overlay']),
     layers.subscribe(() => wind.set(layers.get().wind), ['wind']),
     layers.subscribe(renderNeed3d, ['crossSection', 'wind']),

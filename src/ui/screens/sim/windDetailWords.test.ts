@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { WIND_HEIGHTS, type WindHeight } from '../../../render/wind/glyphTypes';
 import { BUDGET_LINE, heightLabel } from './glyphWords';
 import type { DetailKind, DetailLimit, WindDetailState } from './windDetailState';
-import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, NOTHING_LINE, OVERVIEW_LINE, SHEET_TITLE, STILL_LINE, ZOOM_LINE, levelLine, windDetailWords } from './windDetailWords';
+import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, NOTHING_LINE, OVERVIEW_LINE, PAUSED_LINE, SHEET_TITLE, STILL_LINE, ZOOM_LINE, levelLine, windDetailWords } from './windDetailWords';
 
 const state = (level: WindDetailState['level'], kind: DetailKind, limits: DetailLimit[] = []): WindDetailState => ({ visible: true, level, kind, limits, key: 'k' });
 const words = (s: WindDetailState, height: WindHeight = 'fire', cellM: number | null = 133.33): string[] => windDetailWords(s, { heightLabel: heightLabel(height), height, cellM }).lines;
@@ -41,7 +41,7 @@ describe('the sheet, one picture at a time (exact strings)', () => {
       'Wind about 10 m above open ground.',
       'This is the most detailed level.',
       'Direction and speed come from the air model, which works on cells about 133 m wide.',
-      'The small eddies are added for looks, from the shape of the ground. The streaks also move faster than the real wind so that you can see them.',
+      'Where the ground rises or trees stand, the streaks bend around them, and small eddies are added behind them. These bends and eddies are added for looks, from the shape of the ground and the trees. The streaks also move faster than the real wind so that you can see them.',
     ]);
   });
 
@@ -55,6 +55,28 @@ describe('the sheet, one picture at a time (exact strings)', () => {
       "The fast tier's wind is estimated from the forecast and the shape of the ground. It is not simulated.",
       'Your phone is set to reduce motion, so the streaks stand still.',
     ]);
+  });
+
+  it('level 4 paused after a minute without a touch: the pause comes last, and says how to move them again', () => {
+    expect(words(state(4, 'detailed', ['cells', 'paused']))).toEqual([
+      'Level 4 of 4: detailed streaks.',
+      'Wind about 10 m above open ground.',
+      'This is the most detailed level.',
+      'Direction and speed come from the air model, which works on cells about 133 m wide.',
+      EDDIES_LINE,
+      'The streaks paused to save battery. Touch the screen to move them again.',
+    ]);
+    expect(PAUSED_LINE).toBe('The streaks paused to save battery. Touch the screen to move them again.');
+  });
+
+  it('reduced motion with the Wind streaks over the whole area (0.7.0: the old streaks stand still at every zoom): the picture and why they do not move', () => {
+    expect(words(state(1, 'overview', ['zoom', 'still']))).toEqual([
+      'Level 1 of 4: moving streaks over the whole area.',
+      OVERVIEW_LINE,
+      ZOOM_LINE,
+      'Your phone is set to reduce motion, so the streaks stand still.',
+    ]);
+    expect(words(state(1, 'volume', ['still']))).toEqual(['Level 1 of 4: moving streaks through the air.', 'Your phone is set to reduce motion, so the streaks stand still.']);
   });
 
   it('the Wind streaks over the whole area: they do not follow the zoom until the closest level', () => {
@@ -113,7 +135,7 @@ describe('the cell size', () => {
 
 /** Every picture the state can describe, at every height, with every combination of limits. */
 const all: { s: WindDetailState; height: WindHeight; cellM: number | null; lines: string[] }[] = [];
-const LIMITS: DetailLimit[] = ['budget', 'zoom', 'cells', 'estimated', 'still'];
+const LIMITS: DetailLimit[] = ['budget', 'zoom', 'cells', 'estimated', 'still', 'paused'];
 const PICTURES: [WindDetailState['level'], DetailKind][] = [
   [0, 'none'],
   [1, 'arrows'],
@@ -136,8 +158,9 @@ for (const [level, kind] of PICTURES)
       }
 
 describe('plain words, every picture, every height, every limit', () => {
-  it('covers 7 pictures x 32 limit sets x 6 heights x 3 cell sizes', () => {
-    expect(all).toHaveLength(7 * 32 * 6 * 3);
+  it('covers 7 pictures x 64 limit sets x 7 heights (What the fire feels and six more) x 3 cell sizes', () => {
+    expect(WIND_HEIGHTS).toHaveLength(7);
+    expect(all).toHaveLength(7 * 64 * 7 * 3);
   });
 
   it('no em or en dash, no exclamation mark, no shouting, no "undefined" or "NaN"; every line is a sentence that ends in a full stop', () => {
@@ -168,20 +191,28 @@ describe('plain words, every picture, every height, every limit', () => {
     }
   });
 
-  it('the detailed streaks always say the eddies are added for looks; the sheet never says they are the model’s', () => {
+  it('the detailed streaks always say the bends and eddies are added for looks; the sheet never says they are the model’s', () => {
     for (const { s, lines } of all) {
       const text = lines.join(' ');
       if (s.kind === 'detailed') {
         expect(lines, `${s.limits}`).toContain(EDDIES_LINE);
-        expect(text).toContain('eddies are added for looks');
+        expect(text).toContain('bends and eddies are added for looks');
         expect(text).toContain('from the air model');
       } else {
-        expect(text, `${s.kind}`).not.toMatch(/eddies/);
+        expect(text, `${s.kind}`).not.toMatch(/eddies|bend/);
       }
-      // The eddies are never described as coming from the model or the simulation.
-      expect(text).not.toMatch(/eddies?[^.]*\b(calculated|computed|simulated|modelled|come from the (air )?model)\b/i);
-      expect(text).not.toMatch(/\b(calculates?|computes?|simulates?) the (small )?eddies/i);
+      // The eddies and the bends are never described as coming from the model or the simulation.
+      expect(text).not.toMatch(/(eddies|bends?)[^.]*\b(calculated|computed|simulated|modelled|come from the (air )?model)\b/i);
+      expect(text).not.toMatch(/\b(calculates?|computes?|simulates?) the (small )?(eddies|bends)/i);
     }
+  });
+
+  it('the eddies line says what happens at ridges and trees, then that it is for looks, then that the streaks are faster than the wind', () => {
+    const sentences = EDDIES_LINE.split('. ');
+    expect(sentences).toHaveLength(3);
+    expect(sentences[0]).toMatch(/^Where the ground rises or trees stand, the streaks bend around them/);
+    expect(sentences[1]).toMatch(/^These bends and eddies are added for looks/);
+    expect(sentences[2]).toMatch(/^The streaks also move faster than the real wind/);
   });
 
   it('every limit that is on gets its line; one that is off gets none', () => {
@@ -190,6 +221,7 @@ describe('plain words, every picture, every height, every limit', () => {
       expect(text.includes(BUDGET_LINE), `budget ${s.kind} ${s.limits}`).toBe(s.limits.includes('budget'));
       expect(text.includes(ESTIMATED_LINE), `estimated ${s.kind}`).toBe(s.limits.includes('estimated'));
       expect(text.includes(STILL_LINE), `still ${s.kind}`).toBe(s.limits.includes('still'));
+      expect(text.includes(PAUSED_LINE), `paused ${s.kind}`).toBe(s.limits.includes('paused'));
       expect(text.includes(ZOOM_LINE), `zoom ${s.kind}`).toBe(s.limits.includes('zoom'));
     }
   });
@@ -202,12 +234,14 @@ describe('plain words, every picture, every height, every limit', () => {
 
   it('the height is said as the chip says it: the 10 m wind over open ground, or a number above the ground', () => {
     for (const { s, height, lines } of all) {
-      const where = lines.find((l) => /^Wind (about|at about) /.test(l));
+      const where = lines.find((l) => /^(Wind (about|at about) |The wind the fire feels)/.test(l));
       if (!(s.kind === 'arrows' || s.kind === 'curves' || s.kind === 'detailed')) {
         expect(where, `${s.kind}`).toBeUndefined();
         continue;
       }
-      expect(where, `${s.kind} ${String(height)}`).toBe(height === 'fire' ? 'Wind about 10 m above open ground.' : `Wind at about ${heightLabel(height)} above the ground.`);
+      expect(where, `${s.kind} ${String(height)}`).toBe(
+        height === 'fire' ? 'Wind about 10 m above open ground.' : height === 'felt' ? 'The wind the fire feels, in cells about 60 m wide.' : `Wind at about ${heightLabel(height)} above the ground.`,
+      );
     }
   });
 });

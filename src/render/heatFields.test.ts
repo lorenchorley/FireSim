@@ -254,4 +254,16 @@ describe('windSpeed', () => {
     const bad = atmosphere([1, 2, 3], [1, 2, 3]);
     expect(overlayField('windSpeed', { terrain, fuel: fuelOn(grid), atmosphere: bad })).toBeNull();
   });
+
+  it('is the view\'s own field when it gives one (the Wind speed map at the Wind height, 0.7.0), and the 10 m field when it does not or gives null', () => {
+    const u = new Array<number>(m).fill(3);
+    const v = new Array<number>(m).fill(4);
+    const own = { grid: makeGridSpec(origin, 600, 60), values: new Float32Array(100).fill(7), categorical: false };
+    expect(overlayField('windSpeed', { terrain, fuel: fuelOn(grid), atmosphere: atmosphere(u, v), windMap: own })).toBe(own);
+    expect(overlayField('windSpeed', { terrain, fuel: fuelOn(grid), atmosphere: null, windMap: own })).toBe(own); // (it is the view's, made from its own sources)
+    const plain = overlayField('windSpeed', { terrain, fuel: fuelOn(grid), atmosphere: atmosphere(u, v) })!;
+    for (const windMap of [undefined, null]) expect(overlayField('windSpeed', { terrain, fuel: fuelOn(grid), atmosphere: atmosphere(u, v), windMap })!.values).toEqual(plain.values);
+    // No other heat map reads it.
+    expect(overlayField('slope', { terrain, fuel: fuelOn(grid), windMap: own })!.values).not.toBe(own.values);
+  });
 });

@@ -52,6 +52,7 @@ export function snapshotTransferables(s: SimSnapshot): Transferable[] {
     for (const a of [v.levels, v.terrainHeight, v.surfaceU, v.surfaceV, v.u, v.v, v.w, v.thetaAnomaly, v.smoke]) add(a);
   }
   if (s.layers) for (const a of Object.values(s.layers)) add(a);
+  if (s.fireWind) for (const a of [s.fireWind.u, s.fireWind.v]) add(a);
   return [...set] as Transferable[];
 }
 

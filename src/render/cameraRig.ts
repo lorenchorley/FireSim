@@ -8,11 +8,12 @@
  * Gestures in orbit and top view (the same in both):
  *   ONE finger drag     displaces the view like grabbing the map: the ground under the finger stays under it
  *                       ({@link PanGesture} / {@link GroundGrab}), with a light glide after the finger lifts
- *   TWO fingers         OrbitControls' TOUCH.DOLLY_ROTATE: the drag of their midpoint turns (horizontal) and tilts
- *                       (vertical) the view around the target, the change of their distance zooms towards the midpoint,
- *                       all at the same time (no lock, no threshold); the top view cannot tilt. A two-finger drag to the
+ *   TWO fingers         the drag of their midpoint turns (horizontal) and tilts (vertical) the view around the target, the
+ *                       change of their distance zooms towards the midpoint (OrbitControls' TOUCH.DOLLY_ROTATE), all at the
+ *                       same time (no lock, no threshold); the top view cannot tilt. A two-finger drag to the
  *                       right turns the camera anticlockwise seen from above (the world appears to turn clockwise under the
- *                       fingers), to the left clockwise: the turn is mirrored, tilt and zoom are not ({@link TwoFingerTurnControls})
+ *                       fingers), to the left clockwise: the turn is mirrored, tilt and zoom are not. The turn and the tilt
+ *                       are the rig's own ({@link TwoFingerTurn}, applied in {@link TwoFingerTurnControls}); the pinch is stock
  *   lifting / adding    a finger continues / switches without a jump; fingers beyond the second are ignored
  *   mouse               left drag pans, right drag rotates (as OrbitControls does: a drag to the right turns the camera
  *                       clockwise seen from above), middle drag and the wheel zoom (desktop development)
@@ -26,6 +27,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CameraState } from './api';
 import type { HeightField } from './heightfield';
 import { PanGesture } from './panGesture';
+import { TwoFingerTurn } from './twoFingerTurn';
 
 export type ViewMode = 'orbit' | 'top' | 'ground';
 
@@ -33,12 +35,15 @@ export type ViewMode = 'orbit' | 'top' | 'ground';
  * Touch / mouse sensitivity of the orbit and top views.
  *  - zoomSpeed 1: OrbitControls maps a pinch by distance ← distance · (spacing before ÷ spacing after)^zoomSpeed, so 1 is exactly
  *    1 : 1 (fingers twice as far apart = half the distance); the wheel then gives the stock 5 % per notch.
- *  - rotateSpeed 2/3: OrbitControls turns 2π · rotateSpeed per screen height of midpoint drag, so one full turn takes
- *    1.5 screen heights (the old 0.6 took 1.67: about the same feel, a round number). The two-finger turn runs the other way
- *    round from OrbitControls' own, at this speed: a two-finger drag to the right turns the camera anticlockwise seen from
- *    above ({@link TwoFingerTurnControls}); the mouse's right-button rotate keeps OrbitControls' direction.
+ *  - rotateSpeed 2/3 · 1.15 = 23/30 ≈ 0.7667: OrbitControls turns 2π · rotateSpeed per screen height of midpoint drag, so
+ *    one screen height turns the view 276° and a full turn takes about 1.3 screen heights (0.7.0: 15 % faster than the 2/3 of
+ *    0.6.0, which took 1.5; before that 0.6 took 1.67); 100 px on an 800 px canvas turn or tilt it 34.5°. It is the one speed
+ *    of the orbit and top views' rotation: the two-finger turn and tilt, and the mouse's right-button drag. The two-finger turn
+ *    runs the other way round from OrbitControls' own, at this speed: a two-finger drag to the right turns the camera
+ *    anticlockwise seen from above ({@link TwoFingerTurnControls}); the mouse's right-button rotate keeps OrbitControls'
+ *    direction. The eye-level look-around has its own speed (-0.35, set in `applyModeControls`).
  */
-export const GESTURE = { zoomSpeed: 1, rotateSpeed: 2 / 3 } as const;
+export const GESTURE = { zoomSpeed: 1, rotateSpeed: (2 / 3) * 1.15 } as const;
 
 interface Flight {
   t0: number;
@@ -75,36 +80,27 @@ const SEAT = {
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
-/** The members of OrbitControls (three r186) that {@link TwoFingerTurnControls} reaches into; its type declarations leave them out. */
-interface OrbitControlsInternals {
-  _rotateLeft(angle: number): void;
-  _handleTouchMoveDollyRotate(event: PointerEvent): void;
-}
-const orbit = OrbitControls.prototype as unknown as OrbitControlsInternals;
-
 /**
  * OrbitControls whose two-finger gesture (TOUCH.DOLLY_ROTATE) turns the other way round: a drag of the fingers' midpoint to the
  * right moves the camera anticlockwise around the target seen from above, so the world appears to turn clockwise under the
- * fingers (stock OrbitControls moves it clockwise). Only the horizontal step, the azimuth, is mirrored, here and nowhere else:
- * the vertical drag (tilt) and the pinch (zoom) are stock, and so are the mouse's rotate and the one-finger look-around at eye
- * level, which never go through DOLLY_ROTATE. The step is mirrored where it is made (before the damping, the limits and the
- * zoom-to-cursor see it), so the speed, the damping and the top view are as they were; only the direction flips.
+ * fingers (stock OrbitControls moves it clockwise). The turn and the tilt of the two fingers are {@link TwoFingerTurn}'s, which
+ * holds OrbitControls' own off while they are down and hands over its damped step here, in the public `update()`, before
+ * OrbitControls' own work; the pinch (zoom to the fingers) is stock, and so are the mouse's rotate and the one-finger look-around at
+ * eye level, which never go through DOLLY_ROTATE. The step is made before OrbitControls' own work (its limits, its zoom-to-cursor
+ * and its look-at all see the turned camera), with OrbitControls' damping and polar limits, so the speed, the damping and the top
+ * view are as they were; only the direction flips.
  */
 class TwoFingerTurnControls extends OrbitControls {
-  /** True while a two-finger move is being handled: its azimuth step is mirrored. */
-  private mirrorTurn = false;
+  private turn: TwoFingerTurn | null = null;
 
-  _rotateLeft(angle: number): void {
-    orbit._rotateLeft.call(this, this.mirrorTurn ? -angle : angle);
+  constructor(camera: THREE.Camera, dom: HTMLElement, turn: TwoFingerTurn) {
+    super(camera, dom);
+    this.turn = turn; // (OrbitControls' constructor calls update() once, before this)
   }
 
-  _handleTouchMoveDollyRotate(event: PointerEvent): void {
-    this.mirrorTurn = true;
-    try {
-      orbit._handleTouchMoveDollyRotate.call(this, event);
-    } finally {
-      this.mirrorTurn = false;
-    }
+  override update(deltaTime?: number | null): boolean {
+    this.turn?.step();
+    return super.update(deltaTime);
   }
 }
 
@@ -136,6 +132,8 @@ export class CameraRig {
   private insetsShown = { top: 0, right: 0, bottom: 0, left: 0 };
   /** One-finger pan (its pointer listeners are registered before OrbitControls' own, see PanGesture). */
   private readonly pan: PanGesture;
+  /** The turn and tilt of two fingers (likewise, after the pan's), applied by the controls' update(). */
+  private readonly turn: TwoFingerTurn;
 
   constructor(dom: HTMLElement, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(50, aspect, 2, 200000);
@@ -150,7 +148,8 @@ export class CameraRig {
       started: () => this.controls.dispatchEvent({ type: 'start' }),
       ended: () => this.controls.dispatchEvent({ type: 'end' }),
     });
-    this.controls = new TwoFingerTurnControls(this.camera, dom);
+    this.turn = new TwoFingerTurn(dom, () => this.controls);
+    this.controls = new TwoFingerTurnControls(this.camera, dom, this.turn);
     const c = this.controls;
     // Wheel zoom or a mouse drag (OrbitControls dispatches 'start') ends a glide.
     c.addEventListener('start', this.stopGlide);
@@ -209,6 +208,7 @@ export class CameraRig {
   setMode(mode: ViewMode, opts: { user?: [number, number] | null; lookAt?: [number, number] | null } = {}): void {
     const prev = this._mode;
     this._mode = mode;
+    if (mode !== prev) this.turn.cancel(); // two fingers that were turning the old view stop (OrbitControls' turn is back)
     this.applyModeControls();
     // A finger that is still down keeps the gesture OrbitControls began for the old mode (one finger rotating at eye level):
     // end it, so that the finger does nothing until it lifts (the pan of this mode starts with the next touch).
@@ -311,6 +311,7 @@ export class CameraRig {
       c.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
       c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     }
+    this.turn.keepHeld(); // fingers that still turn this view (the mode was set again) keep OrbitControls' own turn off
   }
 
   setInteractionEnabled(on: boolean): void {
@@ -676,6 +677,7 @@ export class CameraRig {
 
   dispose(): void {
     this.pan.dispose();
+    this.turn.dispose();
     this.controls.removeEventListener('start', this.stopGlide);
     this.controls.dispose();
   }

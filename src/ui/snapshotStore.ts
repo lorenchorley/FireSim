@@ -15,8 +15,9 @@
  *    the exact front at ANY time, independent of the snapshot cadence, at the cost of two scratch buffers. After a
  *    rewind the worker re-simulates deterministically from a checkpoint, and the new newest arrays are authoritative
  *    for earlier times too (the edit applies from the rewind time on).
- *  - KEYFRAMES (default every 300 s, or the display step if larger): moisture, overlay rasters and the atmosphere
- *    view. The composed snapshot for a time uses the nearest keyframe at or before it.
+ *  - KEYFRAMES (default every 300 s, or the display step if larger): moisture, overlay rasters, the atmosphere
+ *    view and the wind the fire feels (`fireWind`, 10 to 160 kB). The composed snapshot for a time uses the nearest
+ *    keyframe at or before it, so its `fireWind` is that keyframe's own (its `time` says how old).
  *  - EVERY STEP keeps a light frame: time, stats and the number of spot fires (the spot fires themselves live in one
  *    append-only log shared by all frames); embers (up to 64 KB each) are kept per step too, but thinned first.
  *  - WIND VOLUMES. The fast tier's diagnosed 3-D wind (u, v, w; 12 bytes per cell, 486 kB at 45 x 45 x 20) is not kept in the
@@ -43,8 +44,9 @@
  * {@link truncateAfter} / {@link truncateFrom}.
  */
 import { airHas, airKind } from '../core/airView';
+import { fireWindBytes } from '../core/fireWind';
 import { packedWindBytes, packWind, unpackWind, type PackedWind } from '../core/airPack';
-import { BurnState, type AtmosphereView, type EmberParticles, type FireField, type SimSnapshot, type SimStats, type SpotFire } from '../core/types';
+import { BurnState, type AtmosphereView, type EmberParticles, type FireField, type FireWindRaster, type SimSnapshot, type SimStats, type SpotFire } from '../core/types';
 
 /** Burning band (s) after a cell's arrival when its burn-out cannot be bracketed (the renderer's uBurnBand in terrainLayer.ts). */
 export const FLAME_BAND_S = 420;
@@ -78,6 +80,8 @@ interface Keyframe {
   moisture: Float32Array;
   atmosphere: AtmosphereView | undefined;
   layers: Record<string, Float32Array> | undefined;
+  /** The wind the fire feels (SimSnapshot.fireWind) of the snapshot this keyframe was made from; its own `time` stamps it. */
+  fireWind: FireWindRaster | undefined;
   bytes: number;
 }
 
@@ -350,6 +354,7 @@ export class SnapshotStore {
     const key = this.keys[atOrBeforeIndex(this.keys, tq)] ?? this.keys[0];
     const head = this.head;
     const emb = nearest(this.embs, tq);
+    const fireWind = key ? key.fireWind : head?.fireWind;
     const snap = {
       time: tq,
       fire: this.rebuildFire(tq),
@@ -360,6 +365,8 @@ export class SnapshotStore {
       stats: frame.stats,
       insights: [],
       layers: key ? key.layers : head?.layers,
+      // The keyframe's own, up to a key interval older than the picture; `fireWind.time` says which (like the air's).
+      ...(fireWind ? { fireWind } : {}),
       // The engine info describes the engine NOW (tier, grids, memory), so every picture carries the newest one.
       ...(this.engine ? { engine: this.engine } : {}),
     } as SimSnapshot;
@@ -464,7 +471,7 @@ export class SnapshotStore {
         this.windBytes += bytes;
         atmosphere = { ...atmosphere, u: NO_WIND, v: NO_WIND, w: NO_WIND };
       }
-      const k: Keyframe = { time: h.time, moisture: h.moisture, atmosphere, layers: h.layers, bytes: 0 };
+      const k: Keyframe = { time: h.time, moisture: h.moisture, atmosphere, layers: h.layers, fireWind: h.fireWind, bytes: 0 };
       k.bytes = keyframeBytes(k);
       this.keys.push(k);
       this.keyBytes += k.bytes;
@@ -643,11 +650,11 @@ function atmosphereBytes(a: AtmosphereView | undefined): number {
 }
 
 /**
- * Retained bytes of the parts a keyframe holds (moisture, overlay rasters, atmosphere view). Of a live snapshot this counts its air
+ * Retained bytes of the parts a keyframe holds (moisture, overlay rasters, atmosphere view, the wind the fire feels). Of a live snapshot this counts its air
  * view as it is, the fast tier's diagnosed wind at 12 bytes per cell; a kept keyframe holds that wind packed, in the wind list.
  */
-export function keyframeBytes(s: Pick<SimSnapshot, 'moisture' | 'atmosphere' | 'layers'>): number {
-  let b = 256 + typedBytes(s.moisture) + atmosphereBytes(s.atmosphere);
+export function keyframeBytes(s: Pick<SimSnapshot, 'moisture' | 'atmosphere' | 'layers' | 'fireWind'>): number {
+  let b = 256 + typedBytes(s.moisture) + atmosphereBytes(s.atmosphere) + fireWindBytes(s.fireWind);
   if (s.layers) for (const v of Object.values(s.layers)) b += typedBytes(v);
   return b;
 }

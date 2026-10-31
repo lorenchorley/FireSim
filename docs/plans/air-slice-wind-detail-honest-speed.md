@@ -1350,4 +1350,19 @@ These were taken on the owner's behalf, by the orchestrator in the lane files an
 
 ### 21.x Verification
 
-*(The orchestrator fills the verdicts, the gate results of 21.2 on the release tree and the phone check-list 4 outcome here.)*
+**The release gate, on the tree at `08cf01d` (source as merged at `fe3a07b`; the commits after it change only markdown), run by the orchestrator on 2026-10-30 on a 4-core software-rendering machine (nothing on a phone):**
+
+| Gate | Result |
+|---|---|
+| `npx tsc --noEmit` | clean (18 s) |
+| `SLOW=1 npx vitest run` | 267 files passed, 6 skipped; 4,775 tests passed, 1 expected fail, 34 skipped (668 s) |
+| `npm run build:cap`, `npm run check:bundle` | ok: entry 172.7 kB gzip (budget 195), all JS 982.3 kB (1000), CSS 130.9 kB (135) and 23.9 kB gzip (25), demo data 33.1 MB (36), none of the 4 left-out decoders found. No budget was raised (0.5.0 ended at 169.2 and 963.5) |
+| `npm run check:contrast` | ok: every checked pair meets its threshold |
+| `node scripts/layout-budget.mjs` | ok at 390x844, 412x915, 360x740, 360x640 and 844x390 |
+| tap-target audits (Setup, then the run at 412x915, 844x390 and 360x640, mock engine) | ok: every visible control has a 44 x 44 px hit area |
+| `npx playwright test` (170 tests, 2 workers, Pixel 7 profile, software GL) | first full run: 163 passed, 7 failed (80 minutes, with seven other agents using the machine, load average 9 to 15); the 7 were re-run one at a time: 6 passed (`air-tool.spec.ts:151` a browser that did not start in time, `airslice-panel.spec.ts:247`, `app.spec.ts:74`, `layers.spec.ts:344`, `pace.spec.ts:72`, `wind-detail-render.spec.ts:329`: all timing under load, the known load-sensitive set plus two new ones that passed alone). **One fails alone and is not a regression:** `air-tool.spec.ts:439` ("Side view and Map view tabs"), whose last step checks that the old CSS rules would have broken the word "view" across two lines; in this environment the word does not break. It fails the same way on the 0.5.0 tree (`git archive b7baf25`), so it is environmental (fonts and widths of this machine), not caused by 0.6.0 |
+| debug APK | see the release commit and the final report |
+
+An earlier gate run on the same tree was lost to a container restart during its Playwright step (steps 1 to 10 had passed); only the Playwright step was repeated. The gallery specs of that run rewrote `docs/screenshots/`; only the pictures the 0.6.0 changes show were kept (05, 09, 13b, 18, 33 to 41 and their dark and high-contrast versions), the rest were restored. **No new gallery picture was made for the chip, the detailed streaks or the Wind direction panel in 0.6.0** (there is no `gallery 0.6.0` test yet); that is a task of 0.7.0's docs.
+
+**Verifier verdicts, from their hand-backs:** Wind direction (engine, session, panel): pass, one should-fix fixed (the plan line on a 360 x 640 phone, `9c228dc`), and the findings F2 to F4 fixed by the W-fix lane (21.1). Two-finger turn: pass, mirrored frame by frame against 0.5.0 on the real app, everything else bit-identical. Side view and slice density: pass with findings (the curtain's arrows, doubled by the orchestrator in `4a9573e`; arrows 29 to 42 % shorter, a floor of about 8 px is a follow-up). Wind detail chip: pass. Detailed streaks: pass with fixes (spacing, the High-tier budget cliff, the density pop: the D-fix lane, 21.3 items 17 to 20). **Phone check-list 4 (section 12): not done; nothing has been seen on a phone.**

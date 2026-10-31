@@ -521,8 +521,8 @@ export class SimSession {
     const s = this.state.get();
     const time = windDirectionTime(Math.max(s.viewTime, at !== undefined && Number.isFinite(at) ? at : s.viewTime), this.duration);
     if (time < s.viewTime - 1e-6) return null;
-    this.prepareEditAt();
-    const edit: WindDirectionEdit = { kind: 'windDirection', id, dir: wrapDeg(Math.round(dir)), time };
+    const madeAt = Math.min(this.prepareEditAt(), time); // the explain engine counts the change from here, though it applies at `time`
+    const edit: WindDirectionEdit = { kind: 'windDirection', id, dir: wrapDeg(Math.round(dir)), time, madeAt };
     this.controller.edit(edit, time);
     this.state.set((st) => ({ edits: [...st.edits.filter((x) => x.edit.id !== id), { edit, time }] }));
     this.afterEdit();
@@ -532,32 +532,43 @@ export class SimSession {
   /** Undo a change as if never made (rewind to its time, re-run without it), like removeIgnition. */
   removeWindDirection(id: string): void {
     this.cancelSeek();
+    const found = this.state.get().edits.find((x) => x.edit.kind === 'windDirection' && x.edit.id === id);
+    if (found) this.dropWindDirection([id], found.time);
+  }
+
+  /**
+   * "Back to the forecast" (0.7.0): every Wind direction change comes away as if never made, the belt-kit readings stay (they have their own
+   * Remove). The same path as the bin, once: earliest first, so the first removal restores the checkpoint before the earliest start and the
+   * later ones only drop their records. Returns how many it removed (0: nothing was sent).
+   */
+  backToForecast(): number {
+    this.cancelSeek();
+    const list = windDirectionEdits(this.state.get().edits);
+    if (list.length === 0) return 0;
+    this.dropWindDirection(list.map((e) => e.id), list[0]!.time);
+    return list.length;
+  }
+
+  /**
+   * The body of the two removals above: the worker drops the changes `ids` (earliest first) as if never made, so every result after the earliest
+   * start `t` is stale here and is cut, and the run is computed again from there (up to the view time when paused beyond what it holds).
+   */
+  private dropWindDirection(ids: readonly string[], t: number): void {
     const s = this.state.get();
-    const found = s.edits.find((x) => x.edit.kind === 'windDirection' && x.edit.id === id);
-    if (!found) return;
-    const t = found.time;
-    this.controller.removeEdit(id);
+    for (const id of ids) this.controller.removeEdit(id);
     this.rewindFloor = t;
     if (t < s.headTime) {
       this.cutHistory(t);
       this.requestedUntil = Math.min(this.requestedUntil, t);
     }
     this.state.set((st) => ({
-      edits: st.edits.filter((x) => x.edit.id !== id),
+      edits: st.edits.filter((x) => !ids.includes(x.edit.id)),
       insights: st.insights.filter((i) => i.time <= t),
       headTime: t < st.headTime ? (this.snapshots.headTime() ?? t) : st.headTime,
       reviewing: false,
     }));
     this.afterEdit();
     if (!this.state.get().playing && this.state.get().viewTime > this.state.get().headTime) this.controller.run(this.state.get().viewTime);
-  }
-
-  /**
-   * C0 STUB (0.7.0, lane W7-ui): "Back to the forecast" takes away every Wind direction change as if never made (the bin's path, once, from the
-   * earliest start; the belt-kit readings stay) and returns how many it removed. Inert until built: removes nothing, returns 0.
-   */
-  backToForecast(): number {
-    return 0;
   }
 
   /** What-if: change coupling / embers / mountain phenomena and re-run from the view time. */
@@ -935,9 +946,12 @@ const DUPLICATE_KEY_WINDOW_S = 1800;
 
 const severityRank = (s: Insight['severity']): number => (s === 'danger' ? 2 : s === 'watch' ? 1 : 0);
 
-/** Identity of an insight by content: kind, place (100 m) and time (minute). */
-export function insightSignature(i: Pick<Insight, 'kind' | 'x' | 'y' | 'time'>): string {
-  return `sig:${i.kind}@${Math.round(i.x / 100)},${Math.round(i.y / 100)}@${Math.round(i.time / 60)}`;
+/**
+ * Identity of an insight by content: kind, place (100 m) and time (minute). A card of the user's own Wind direction change (key `...:user:<id>`) is
+ * its own: the forecast's wind change card can stand at the same place in the same minute (the domain centre, before there is a fire).
+ */
+export function insightSignature(i: Pick<Insight, 'kind' | 'x' | 'y' | 'time'> & { key?: string }): string {
+  return `sig:${i.kind}@${Math.round(i.x / 100)},${Math.round(i.y / 100)}@${Math.round(i.time / 60)}${i.key?.includes(':user:') ? `#${i.key}` : ''}`;
 }
 
 function pickStats(s: SimStats): CompareInfo['baseline'][number] {

@@ -34,6 +34,7 @@
  */
 import * as THREE from 'three';
 import type { GridSpec } from '../../core/grid';
+import { decodeFireWind } from '../../core/fireWind';
 import type { AtmosphereView, FireWindRaster, FuelMap } from '../../core/types';
 import type { WindGlyphStats } from '../api';
 import type { AtmosphereSampler } from '../atmosphereSampler';
@@ -85,7 +86,7 @@ export interface GlyphData {
   sliceGround: GroundRaster;
   /** The drawn mesh (the glyphs sit on it). */
   drawGround: GroundRaster;
-  /** 0.7.0 (item B): the wind the fire feels, for the `'felt'` height (null or absent: none, so `'felt'` has no field and the layer is idle `no-wind`). Unread until the E2 picture lane. */
+  /** 0.7.0 (item B): the wind the fire feels, for the `'felt'` height (null or absent: none, so `'felt'` draws the 10 m wind, and the controls say so). */
   fireWind?: FireWindRaster | null;
 }
 
@@ -166,6 +167,10 @@ export class WindGlyphLayer {
   private dataSerial = 0;
   /** `surfaceRaster` of this data, computed once (undefined = not asked yet). */
   private surface: FlowRaster | null | undefined;
+  /** The decode of this data's `fireWind` (0.7.0, `'felt'`), made once per picture into one of two stores, used in turn (undefined = not asked yet, null = none). */
+  private felt: FlowRaster | null | undefined;
+  private readonly feltStores: [{ u: Float32Array; v: Float32Array }, { u: Float32Array; v: Float32Array }] = [{ u: new Float32Array(0), v: new Float32Array(0) }, { u: new Float32Array(0), v: new Float32Array(0) }];
+  private feltTurn = 0;
   private heightRaster: HeightRaster | null = null;
   /** What the raster in use was filled for. */
   private raster: FlowRaster | null = null;
@@ -386,6 +391,7 @@ export class WindGlyphLayer {
     this.data = d;
     this.dataSerial++;
     this.surface = undefined;
+    this.felt = undefined;
   }
 
   /**
@@ -551,6 +557,8 @@ export class WindGlyphLayer {
       streaks: this.streaksDetail,
       reduced: !this.motion,
       tickMaxMs,
+      source: this.height === 'felt' && this.felt ? 'felt' : typeof this.height === 'number' ? 'height' : 'surface',
+      ...(this.height === 'felt' && this.felt ? { dataCellM: this.felt.grid.cellSize } : {}),
     };
   }
 
@@ -565,12 +573,33 @@ export class WindGlyphLayer {
 
   // ───────────────────────────────────────────────────────────────────────────
 
-  /** Air with wind to draw: the view has it, and for `'fire'` the model's 10 m wind raster too. */
+  /** Air with wind to draw: the view has it, and for `'fire'` the model's 10 m wind raster too (`'felt'` reads the fire's own wind when the picture has it, else this one). */
   private hasField(d: GlyphData): boolean {
     if (!d.atm || !d.sampler.hasWind) return false;
-    if (this.height !== 'fire' && this.height !== 'felt') return true; // ('felt' is read like 'fire' until the E2 picture lane gives it its own raster)
+    if (this.height === 'felt' && this.feltRaster(d)) return true;
+    if (this.height !== 'fire' && this.height !== 'felt') return true;
     if (this.surface === undefined) this.surface = surfaceRaster(d.atm);
     return this.surface !== null;
+  }
+
+  /**
+   * The wind the fire feels as a raster the tracer reads (0.7.0): `fireWind` decoded to Float32 once per picture (0.07 ms at 12 km) into the store that
+   * the last decode did not use, so a rebuild that is still tracing through the last picture keeps reading it intact. Null when the picture has none.
+   */
+  private feltRaster(d: GlyphData): FlowRaster | null {
+    if (this.felt !== undefined) return this.felt;
+    const fw = d.fireWind;
+    const g = fw?.grid;
+    if (!fw || !g || g.nx < 2 || g.ny < 2 || fw.u.length < g.nx * g.ny || fw.v.length < g.nx * g.ny) return (this.felt = null);
+    this.feltTurn ^= 1;
+    const st = this.feltStores[this.feltTurn]!;
+    const n = fw.u.length;
+    if (st.u.length !== n) {
+      st.u = new Float32Array(n);
+      st.v = new Float32Array(n);
+    }
+    decodeFireWind(fw, st);
+    return (this.felt = { grid: g, u: st.u, v: st.v });
   }
 
   /** Draw nothing: the stroke batches and the detailed streaks empty (at once), a rebuild under way dropped, the next picture built afresh. True when something was shown. */
@@ -730,7 +759,7 @@ export class WindGlyphLayer {
    */
   private fill(d: GlyphData, refine: 1 | 2, settle: boolean): 'ready' | 'more' | 'done' {
     if (this.height === 'fire' || this.height === 'felt') {
-      this.raster = this.surface!;
+      this.raster = (this.height === 'felt' ? this.felt : null) ?? this.surface!;
       this.rasterHeight = null; // a later numeric height must fill afresh
       return 'ready';
     }

@@ -27,6 +27,8 @@ import type { Services } from '../modules';
 import { iconButton } from '../primitives';
 import { defaultSnapshotBudget, type SimSession } from '../session';
 import type { PictureQualityAsk } from '../settings';
+import { runSpeedTest, type SpeedTestResult } from '../speedTest';
+import { SPEED_TEST_BLOCKED, SPEED_TEST_FAILED, SPEED_TEST_LABEL, SPEED_TEST_STOPPED, speedTestStatus } from '../speedTestModel';
 import { appBar, button, copyText } from '../widgets';
 
 export interface DebugStatsOptions {
@@ -56,7 +58,7 @@ function sliceRecordingFacts(o: DebugStatsOptions): DebugStatsInput['sliceRecord
 }
 
 /** What the app knows right now, gathered for the pure content. */
-function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInput {
+function collect(o: DebugStatsOptions, later: DeviceLater | null, speedTest: DebugStatsInput['speedTest']): DebugStatsInput {
   const st = o.session?.state.get() ?? null;
   const snaps = o.session?.snapshots ?? null;
   const sc = o.scenario;
@@ -74,6 +76,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null): DebugStatsInp
     qualityAsk: o.qualityAsk,
     terrain: o.view ? (o.view.terrainStats ? o.view.terrainStats() : undefined) : undefined,
     windGlyphs: o.view?.windGlyphStats?.() ?? null,
+    speedTest,
     store: snaps
       ? {
           bytes: snaps.totalBytes,
@@ -146,8 +149,18 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
   const titleId = uniqueId('ds-title');
   const el = h('section', { class: 'screen debugstats-screen', attrs: { role: 'dialog', 'aria-labelledby': titleId }, aria: { modal: 'true' }, dataset: { testid: 'debug-stats' } });
   let later: DeviceLater | null = null;
-  let stats: DebugStats = buildDebugStats(collect(opts, later));
   let destroyed = false;
+
+  // ───────────── the speed test (0.7.0): a button under the three sentences of "What this phone can do" ─────────────
+  // It reads nothing of the run but whether it is playing or computing (the test is off then, so it is fair) and writes nothing the engine reads.
+  const speed: { running: boolean; last: SpeedTestResult | null; failed: boolean; stopped: boolean; ctl: AbortController | null } = { running: false, last: null, failed: false, stopped: false, ctl: null };
+  const speedFacts = (): NonNullable<DebugStatsInput['speedTest']> => {
+    if (speed.running) return { state: 'running', last: speed.last };
+    const st = opts.session?.state.get();
+    const reason = speed.failed ? SPEED_TEST_FAILED : typeof document !== 'undefined' && document.hidden ? SPEED_TEST_BLOCKED.hidden : st && (st.playing || st.seekTarget !== null) ? SPEED_TEST_BLOCKED.playing : st?.computing ? SPEED_TEST_BLOCKED.computing : null;
+    return reason ? { state: 'blocked', reason, last: speed.last } : { state: 'idle', last: speed.last };
+  };
+  let stats: DebugStats = buildDebugStats(collect(opts, later, speedFacts()));
 
   // ───────────── header: state, one line, Copy ─────────────
   const status = h('p', { class: 'mc-status t-secondary', attrs: { role: 'status', 'aria-live': 'polite' }, dataset: { testid: 'debug-stats-status' } });
@@ -171,7 +184,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     // within about two seconds at the most) and takes the battery and the storage as they are now.
     later ??= await deviceLater();
     await rereadVolatile();
-    const body = debugStatsToText(buildDebugStats(collect(opts, later)));
+    const body = debugStatsToText(buildDebugStats(collect(opts, later, speedFacts())));
     if (await copyText(body)) {
       box.hidden = true;
       say('Copied: these statistics as text, ready to paste.');
@@ -225,9 +238,49 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
     return h('div', { class: 'kv-row', dataset: { row: r.id } }, [label, h('dd', { class: 'kv-val' }, h('span', { class: 'mc-fact' }, [c.chart ?? null, c.chart ? null : value, note]))]);
   };
 
+  const speedStatusId = uniqueId('ds-speed-status');
+  const speedStatus = h('p', { class: 'hint', id: speedStatusId, attrs: { role: 'status', 'aria-live': 'polite' }, dataset: { testid: 'speed-test-status' } });
+  const speedButton = button({ label: SPEED_TEST_LABEL, icon: 'speed', variant: 'tonal', testId: 'speed-test', onClick: () => void runTest() });
+  speedButton.setAttribute('aria-describedby', speedStatusId);
+  const speedBox = h('div', null, [h('div', { class: 'mc-actions cluster' }, speedButton), speedStatus]);
+  /** The button and the status line follow the facts: off with the reason while a run plays or computes, busy while the test runs. */
+  const paintSpeed = (): void => {
+    const f = speedFacts();
+    speedButton.disabled = f.state !== 'idle';
+    speedButton.setAttribute('aria-busy', String(f.state === 'running'));
+    text(speedStatus, speed.stopped && f.state === 'idle' ? SPEED_TEST_STOPPED : speedTestStatus(f));
+  };
+  const runTest = async (): Promise<void> => {
+    if (speedFacts().state !== 'idle') return;
+    const ctl = new AbortController();
+    speed.ctl = ctl;
+    speed.running = true;
+    speed.stopped = false;
+    refresh(); // the row and the button say "Testing" at once, not at the next tick
+    try {
+      speed.last = await runSpeedTest({ signal: ctl.signal });
+      speed.failed = false;
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') speed.stopped = !destroyed;
+      else speed.failed = true;
+    }
+    speed.ctl = null;
+    speed.running = false;
+    if (destroyed) return;
+    refresh();
+    // The button was off while the test ran, which drops the focus it had: a keyboard or screen reader user is put back on it (nowhere else on the screen moved).
+    if (!el.contains(document.activeElement) || document.activeElement === speedButton) speedButton.focus({ preventScroll: true });
+  };
+  // The app going to the background mid-test would make the number unfair: stop it (the screen is not patched while hidden, so this is its one reaction).
+  const onHidden = (): void => {
+    if (document.hidden) speed.ctl?.abort();
+  };
+  document.addEventListener('visibilitychange', onHidden);
+
   const renderBody = (g: StatGroup, r: Pick<Rendered, 'body' | 'cells'>): void => {
     r.cells.clear();
     setChildren(r.body, h('div', { class: 'mc-facts' }, h('dl', { class: 'kv kv-stack kv-dense', aria: { label: g.title } }, g.rows.map((row) => renderRow(row, r.cells)))));
+    if (g.rows.some((row) => row.id === 'speed-test')) r.body.append(speedBox);
   };
 
   const setOpen = (r: Rendered, on: boolean, id: string): void => {
@@ -295,7 +348,8 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
   };
 
   const refresh = (): void => {
-    stats = buildDebugStats(collect(opts, later));
+    stats = buildDebugStats(collect(opts, later, speedFacts()));
+    paintSpeed();
     paintHeader();
     for (const g of stats.groups) {
       const r = rendered.get(g.id);
@@ -304,6 +358,7 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
   };
 
   paintAll();
+  paintSpeed();
   // The slow phone facts (Client Hints, battery, graphics probe, refresh rate) arrive a moment after the page opens.
   void deviceLater().then(async (l) => {
     later = l;
@@ -353,6 +408,8 @@ export function createDebugStatsScreen(opts: DebugStatsOptions): { el: HTMLEleme
       destroyed = true;
       clearInterval(timer);
       clearTimeout(statusTimer);
+      document.removeEventListener('visibilitychange', onHidden);
+      speed.ctl?.abort(); // closing the screen stops a test in progress: the worker is terminated and nothing is shown
     },
   };
 }

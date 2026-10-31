@@ -98,7 +98,8 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const view = h('div', { class: 'slice-view' }, h('div', { class: 'slice-stage' }, [canvas, empty]));
 
   const reasonsId = uniqueId('slice-reasons');
-  // The button comes first (it is what a person can act on, and it stays in view on a short screen); the words follow it, and the chips are described by the words.
+  // The button comes first (it is what a person can act on), the words follow it, and the chips are described by the words. The whole block sits directly under the chips
+  // (0.7.0): the button is beside the chips it explains, not below the controls, where it was a scroll away on a short screen.
   const reasons = h('div', { class: 'slice-reasons', hidden: true, dataset: { testid: 'slice-reasons' } });
   const chipEls = new Map<SliceFieldId, HTMLButtonElement>();
   for (const f of SLICE_FIELDS) {
@@ -128,9 +129,9 @@ export function createSlicePanel(options: SlicePanelOptions): SlicePanelControll
   const recordingEl = h('p', { class: 'hint', hidden: true, tabIndex: -1, dataset: { testid: 'slice-recording' } }); // (tabIndex -1: focused by Keep this line and Clear recording, not a stop of the Tab key)
   const footer = h('p', { class: 'hint slice-footer', hidden: true, dataset: { testid: 'slice-footer' } });
   const controlsWrap = h('div', { class: 'slice-controls' }, options.controls);
-  // Order: picture, reading, chips, legend, controls, the notes of the chips that are off, the switch (and its note), the recording's status, the caption, the
-  // footer. When there are notes (the fast tier) the legend goes after them: the controls stay in reach on a small phone (`arrange`).
-  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, legendHost, controlsWrap, reasons, cellsToggle.el, cellsNoteEl, recordingEl, terrainLine, footer]);
+  // Order: picture, reading, chips, the notes of the chips that are off (the button and the words), legend, controls, the switch (and its note), the recording's
+  // status, the caption, the footer. When there are notes (the fast tier) the legend goes after the controls, which stay as near the chips as the notes allow (`arrange`).
+  const root = h('div', { class: 'slice-panel', dataset: { testid: 'slice-panel' } }, [view, readout, chipRow, reasons, legendHost, controlsWrap, cellsToggle.el, cellsNoteEl, recordingEl, terrainLine, footer]);
   let legendLast = false;
   function arrange(last: boolean): void {
     if (last === legendLast) return;

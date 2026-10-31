@@ -567,7 +567,7 @@ test('gallery 0.4.1: the side view of a recorded line, with its status line and 
 //   37, 37b  the glyphs at a zoom where one model cell is about 50 px (curved flow lines, L3) and about 9 px (straight arrows, L1), top view, the
 //            10 m chip, the animated streaks off so the glyphs stand alone;
 //   38       close in over the forest (L4, long flow lines) with the trees and the aerial photo on: the strokes show through the crowns (the depth bias);
-//   39       the Layers panel's row: the switch, the six Wind height chips, the caption and the line about the zoom;
+//   39       the Layers panel's row: the switch, the seven Wind height chips (What the fire feels first, 0.7.0), the caption and the line about the zoom;
 //   40       the Air slices tool's Map view tab with the same switch, chips and caption, and Turn off the slice with its hint;
 //   41       the side view after Keep this line, scrolled to Turn off the slice and "This also clears the recording."
 // Real engine, the fast tier, the bundled Katoomba demo at 6 km (offline). The glyph rebuild is finished by `renderNow()` before each picture.
@@ -636,6 +636,7 @@ test('gallery 0.5.0: the wind arrows and flow lines at three zooms, and the Laye
   await page.getByTestId('wind-layer').getByRole('radio', { name: 'Off' }).check({ force: true });
   await page.getByTestId('layer-windGlyphs').click();
   await expect(page.getByTestId('wind-height')).toBeVisible();
+  await page.getByTestId('wind-height').getByRole('radio', { name: '10 m', exact: true }).check({ force: true }); // (0.7.0: the default is What the fire feels; these pictures are the 0.5.0 ones)
   await page.getByTestId('layers-panel').getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('layers-panel')).toHaveCount(0);
   await pickViewMode(page, 'top');
@@ -656,7 +657,7 @@ test('gallery 0.5.0: the wind arrows and flow lines at three zooms, and the Laye
   await page.waitForTimeout(600);
   await shot(page, '37-wind-flow-lines', ['light']);
 
-  // ── 39: the Layers panel's row: the switch, the six chips, the caption and the zoom line ──
+  // ── 39: the Layers panel's row: the switch, the seven chips (the 10 m one chosen above), the caption and the zoom line ──
   await pickTool(page, 'layers');
   await expect(page.getByTestId('layers-panel')).toBeVisible();
   await expect(page.getByTestId('wind-height')).toBeVisible();

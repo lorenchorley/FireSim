@@ -479,6 +479,110 @@ describe('weather and diurnal cards', () => {
     expect(l.eng.layers().dmz).toBeInstanceOf(Float32Array);
   });
 
+  /**
+   * The user's own Wind direction changes (0.7.0): the view's `windUserChanges` (what the simulation says the engine may count) become cards of their own
+   * (key `wind-change:user:<id>`, `dead-man-zone:user:<id>`, severity watch) with the forecast's thresholds; the forecast's later swings are left out.
+   */
+  describe('a Wind direction change of the user\'s', () => {
+    const MIN = 60e3;
+    /** A fire in a 315° wind of 30 km/h; the user's change starts `inMin` minutes after the start, turning from 315° to `toDir` (post speed `kmh`). */
+    function own(toDir: number, kmh: number, inMin = 30, id = 'w1'): TestWorld {
+      const w = neutral({ windSpeed: 30 / 3.6, windDir: 315 });
+      const time = w.startMs + inMin * MIN;
+      w.view.windOverrideFromMs = time;
+      w.view.windUserChanges = [{ id, time, fromDir: 315, toDir, preSpeed: 30 / 3.6, postSpeed: kmh / 3.6 }];
+      return w;
+    }
+    const swingAt = (w: TestWorld, min: number): void => {
+      for (const h of w.view.series.hours) {
+        if (h.time >= w.startMs + min * MIN) {
+          h.windDir10 = 225;
+          h.windSpeed10 = 40 / 3.6;
+        }
+      }
+    };
+
+    it('raises a wind-change card of its own: Watch, its own key, in its own words, and a dead-man-zone card with its layer', () => {
+      const { all, eng } = run(own(225, 30), 3);
+      const c = of(all, 'wind-change');
+      expect(c).toHaveLength(1);
+      expect(c[0]!.severity).toBe('watch');
+      expect(c[0]!.key).toBe('wind-change:user:w1');
+      expect(c[0]!.title).toBe('Your wind change: this flank becomes the head');
+      expect(c[0]!.body).toMatch(/^You set the wind to swing from the north-west to the south-west, starting at about \d+:\d\d [ap]m \(in about 2\d min\)\. It takes 15 minutes to turn\. When it has, this \d\.\d km flank/);
+      expect(c[0]!.factors.map((f) => f.label)).toContain('Exposed flank');
+      const d = of(all, 'dead-man-zone');
+      expect(d).toHaveLength(1);
+      expect(d[0]!.severity).toBe('watch');
+      expect(d[0]!.key).toBe('dead-man-zone:user:w1');
+      expect(d[0]!.body).toContain('The change you set, to the south-west, starts in about');
+      expect(d[0]!.body).toContain('the slow turn means the first minutes reach less than this');
+      expect(eng.layers().dmz).toBeInstanceOf(Float32Array);
+      expect(Math.max(...eng.layers().dmz!)).toBeGreaterThan(0.5);
+    });
+
+    it('needs the forecast\'s thresholds: a turn of 45 degrees and 15 km/h, not 44 degrees or 14.9 km/h', () => {
+      const both = (w: TestWorld): InsightKind[] => kinds(run(w, 3).all);
+      expect(both(own(270, 20))).toContain('wind-change'); // 45 degrees
+      expect(both(own(271, 20))).not.toContain('wind-change'); // 44 degrees
+      expect(both(own(271, 20))).not.toContain('dead-man-zone');
+      expect(both(own(225, 15.1))).toContain('wind-change');
+      expect(both(own(225, 14.9))).not.toContain('wind-change');
+      expect(both(own(225, 14.9))).not.toContain('dead-man-zone');
+    });
+
+    it('is Watch, never Danger, and leaves the forecast\'s card alone: a swing before the change keeps its own card and key, the one after it is left out', () => {
+      const w = own(225, 30, 90);
+      swingAt(w, 45); // the forecast's swing (at its 1 h stamp) comes before the user's change at 90 min
+      const { all } = run(w, 3);
+      const wc = of(all, 'wind-change');
+      expect(wc.map((i) => [i.key, i.severity]).sort()).toEqual([
+        ['wind-change:domain', 'danger'],
+        ['wind-change:user:w1', 'watch'],
+      ]);
+      // Control: the same forecast swing with the user's change before it (the swing is then replaced): only the user's card.
+      const early = own(225, 30, 10);
+      swingAt(early, 45);
+      expect(of(run(early, 3).all, 'wind-change').map((i) => i.key)).toEqual(['wind-change:user:w1']);
+    });
+
+    it('has no zone when its start is not ahead (a "now" change, or one that has started) and its layer goes then, and it gets its card all the same', () => {
+      // The cycle at 60 s with the start at 60 s: the turn is starting, not ahead.
+      const now = run(own(225, 30, 1), 1, {}, undefined, 60);
+      expect(of(now.all, 'wind-change')).toHaveLength(1);
+      expect(of(now.all, 'dead-man-zone')).toEqual([]);
+      expect(now.eng.layers().dmz).toBeUndefined();
+      // A start 2 minutes ahead has the zone, which is gone at the cycle at the start.
+      const w = own(225, 30, 3);
+      const r = run(w, 2); // cycles at 60 s and 120 s
+      expect(of(r.all, 'dead-man-zone')).toHaveLength(1);
+      expect(r.eng.layers().dmz).toBeInstanceOf(Float32Array);
+      w.setTime(180);
+      r.eng.update(w.view);
+      expect(r.eng.layers().dmz).toBeUndefined();
+    });
+
+    it('gives each change its own card, and the zone is for the next one that is still ahead', () => {
+      const w = own(225, 30, 30, 'a');
+      const t2 = w.startMs + 50 * MIN;
+      w.view.windUserChanges = [...w.view.windUserChanges!, { id: 'b', time: t2, fromDir: 225, toDir: 315, preSpeed: 30 / 3.6, postSpeed: 30 / 3.6 }];
+      const r = run(w, 3);
+      expect(of(r.all, 'wind-change').map((i) => i.key).sort()).toEqual(['wind-change:user:a', 'wind-change:user:b']);
+      expect(of(r.all, 'dead-man-zone').map((i) => i.key)).toEqual(['dead-man-zone:user:a']); // one layer: the first change ahead
+      // Once `a` has started (and is held for its card), the zone is for `b`.
+      const late = run(w, 2, {}, undefined, 31 * 60);
+      expect(of(late.all, 'dead-man-zone').map((i) => i.key)).toEqual(['dead-man-zone:user:b']);
+    });
+
+    it('cards of a change of the user\'s are the same with no change: none, and the forecast\'s own cards are as before', () => {
+      const w = neutral({ windSpeed: 30 / 3.6, windDir: 315 });
+      swingAt(w, 45);
+      const { all } = run(w, 3);
+      expect(of(all, 'wind-change').map((i) => [i.key, i.severity])).toEqual([['wind-change:domain', 'danger']]);
+      expect(of(all, 'dead-man-zone').map((i) => [i.key, i.severity])).toEqual([['dead-man-zone:domain', 'danger']]);
+    });
+  });
+
   it('V12: the wind-change card comes ≥ 60 min before the change with the exposed flank length within 20 %', () => {
     const r0 = 1000;
     const w = new TestWorld({ windSpeed: 30 / 3.6, windDir: 315 });

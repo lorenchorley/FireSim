@@ -146,10 +146,34 @@ describe('what limits the picture, in the order the sheet says it', () => {
     expect(read({ air: 'diagnosed', streaks: 'surface', stats: stats({ active: false, idle: 'budget', level: 3 }) })).toBe('1 overview [budget,zoom,estimated]');
   });
 
-  it('reduced motion is said only while the detailed streaks stand still', () => {
+  it('reduced motion is said while the detailed streaks stand still, and, with a Wind streaks switch on, at every zoom (the old streaks stand still too)', () => {
     expect(read({ stats: stats({ level: 4, cellPx: 150, detail: 'moving' }) })).not.toContain('still');
     expect(read({ stats: stats({ level: 3, cellPx: 45 }) })).not.toContain('still');
     expect(read({ stats: stats({ level: 4, cellPx: 150, detail: 'still' }) })).toContain('still');
+    // 0.7.0: the old Wind streaks freeze under reduced motion, so the sheet says why they do not move at the lower levels too.
+    const reduced = (over: Partial<WindGlyphStats>): Partial<WindGlyphStats> => ({ reduced: true, ...over });
+    expect(read({ glyphsOn: false, streaks: 'surface', stats: stats(reduced({ active: false, idle: 'off', level: 2, cellPx: 20 })) })).toBe('1 overview [zoom,still]');
+    expect(read({ glyphsOn: false, streaks: 'volume', stats: stats(reduced({ active: false, idle: 'off', level: 2, cellPx: 20 })) })).toBe('1 volume [still]');
+    expect(read({ streaks: 'surface', stats: stats(reduced({ level: 3, cellPx: 45 })) })).toBe('3 curves [zoom,still]');
+    // The arrows alone have nothing that moves below the closest zoom: nothing to explain there.
+    expect(read({ streaks: 'off', stats: stats(reduced({ level: 3, cellPx: 45 })) })).toBe('3 curves [zoom]');
+    // And without reduced motion, a Wind streaks switch says nothing about it.
+    expect(read({ glyphsOn: false, streaks: 'surface', stats: stats({ active: false, idle: 'off', level: 2, cellPx: 20 }) })).toBe('1 overview [zoom]');
+    // At the closest zoom it is said once, whichever way it is reached.
+    expect(read({ streaks: 'surface', stats: stats(reduced({ level: 4, cellPx: 150, detail: 'still' })) })).toBe('4 detailed [cells,still]');
+  });
+
+  it('the pause after a minute without a touch is a limit of the detailed streaks, said after reduced motion, and a different key', () => {
+    expect(read({ stats: stats({ level: 4, cellPx: 150, detail: 'paused', detailSegments: 3200 }) })).toBe('4 detailed [cells,paused]');
+    expect(read({ glyphsOn: false, streaks: 'surface', stats: stats({ level: 4, cellPx: 150, detail: 'paused', detailSegments: 3200 }) })).toBe('4 detailed [cells,paused]');
+    expect(read({ air: 'diagnosed', stats: stats({ level: 4, cellPx: 150, detail: 'paused' }) })).toBe('4 detailed [cells,estimated,paused]');
+    // Still the fourth step: a pause is not a lower level.
+    expect(windDetailState(input({ stats: stats({ level: 4, cellPx: 150, detail: 'paused' }) })).level).toBe(4);
+    // Never said for a picture that is not the detailed streaks.
+    expect(read({ stats: stats({ level: 3, cellPx: 45, detail: 'off' }) })).not.toContain('paused');
+    const moving = windDetailState(input({ stats: stats({ level: 4, cellPx: 150, detail: 'moving' }) }));
+    const paused = windDetailState(input({ stats: stats({ level: 4, cellPx: 150, detail: 'paused' }) }));
+    expect(paused.key).not.toBe(moving.key);
   });
 });
 
@@ -175,11 +199,12 @@ describe('the key (the DOM is touched only when it changes)', () => {
       key({ stats: stats({ level: 3, cellPx: 70 }) }),
       key({ stats: stats({ level: 4, cellPx: 150, detail: 'moving' }) }),
       key({ stats: stats({ level: 4, cellPx: 150, detail: 'still' }) }),
+      key({ stats: stats({ level: 4, cellPx: 150, detail: 'paused' }) }),
       key({ air: 'diagnosed' }),
       key({ height: 300 }),
       key({ glyphsOn: false, streaks: 'volume' }),
     ]);
-    expect(keys.size).toBe(8);
+    expect(keys.size).toBe(9);
   });
 
   it('is different for every height (the sheet says where the wind is read)', () => {
@@ -213,10 +238,17 @@ describe('what it reads from the screen (windDetailInput)', () => {
 });
 
 describe('the whole space of inputs (property test)', () => {
-  const ORDER: DetailLimit[] = ['budget', 'zoom', 'cells', 'estimated', 'still'];
+  const ORDER: DetailLimit[] = ['budget', 'zoom', 'cells', 'estimated', 'still', 'paused'];
   const KINDS = new Set<DetailKind>(['none', 'arrows', 'curves', 'detailed', 'overview', 'volume']);
   const IDLE = [null, 'off', 'eye-level', 'no-wind', 'budget'] as const;
-  const DETAIL = ['off', 'moving', 'still'] as const;
+  /** What the layer can say about the detailed streaks and reduced motion together: not drawn (either way), moving, standing still (reduced motion), paused (not reduced). */
+  const MOTION = [
+    ['off', false],
+    ['off', true],
+    ['moving', false],
+    ['still', true],
+    ['paused', false],
+  ] as const;
   const AIRS: AirKind[] = ['prognostic', 'diagnosed', 'surface', 'none'];
 
   const all: { i: WindDetailInput; s: ReturnType<typeof windDetailState> }[] = [];
@@ -228,13 +260,13 @@ describe('the whole space of inputs (property test)', () => {
             for (const active of [false, true])
               for (const air of AIRS)
                 for (const cellPx of [2, 30, 61, 500])
-                  for (const detail of DETAIL) {
-                    const i = input({ glyphsOn, streaks, viewMode, air, stats: stats({ idle, level, active, cellPx, detail }) });
+                  for (const [detail, reduced] of MOTION) {
+                    const i = input({ glyphsOn, streaks, viewMode, air, stats: stats({ idle, level, active, cellPx, detail, reduced }) });
                     all.push({ i, s: windDetailState(i) });
                   }
 
-  it('covers 43,200 inputs', () => {
-    expect(all).toHaveLength(2 * 3 * 3 * 5 * 5 * 2 * 4 * 4 * 3);
+  it('covers 72,000 inputs', () => {
+    expect(all).toHaveLength(2 * 3 * 3 * 5 * 5 * 2 * 4 * 4 * 5);
   });
 
   it('never more than four steps, and a whole number of them', () => {
@@ -277,7 +309,8 @@ describe('the whole space of inputs (property test)', () => {
       if (!s.visible) continue;
       expect(s.limits.includes('budget')).toBe(i.stats!.idle === 'budget');
       expect(s.limits.includes('estimated')).toBe(i.air === 'diagnosed');
-      expect(s.limits.includes('still')).toBe(i.stats!.detail === 'still');
+      expect(s.limits.includes('still')).toBe(i.stats!.detail === 'still' || (i.stats!.reduced && i.streaks !== 'off'));
+      expect(s.limits.includes('paused')).toBe(i.stats!.detail === 'paused');
       if (s.limits.includes('zoom')) {
         expect(s.level).toBeLessThan(4);
         expect(s.kind === 'arrows' || s.kind === 'curves' || s.kind === 'overview').toBe(true);

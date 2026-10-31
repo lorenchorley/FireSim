@@ -14,9 +14,10 @@
  *                         └──finger lifts──▶ idle (+ glide when it was clearly moving)
  *
  * The two-finger gesture itself (pinch to zoom towards the fingers while the midpoint's drag turns and tilts the view,
- * both at once) is OrbitControls' TOUCH.DOLLY_ROTATE, which sees the same pointers; with TOUCH.ONE disabled it does nothing
- * for one finger. Fingers beyond the second are IGNORED: their events are stopped here, before OrbitControls would see them
- * (which would end the two-finger gesture), so the first two fingers carry on undisturbed. A pen is handled like a finger
+ * both at once) is OrbitControls' TOUCH.DOLLY_ROTATE for the pinch and {@link TwoFingerTurn} for the turn and tilt; both see
+ * the same pointers, and with TOUCH.ONE disabled OrbitControls does nothing for one finger. Fingers beyond the second are
+ * IGNORED: their events are stopped here, before TwoFingerTurn or OrbitControls would see them (which would end the two-finger
+ * gesture), so the first two fingers carry on undisturbed. A pen is handled like a finger
  * and likewise hidden from OrbitControls (which would take it for a mouse and pan a second time). The mouse is not touched.
  *
  * Cancelled by: any new touch, a flight ({@link PanGesture.cancel}, fingers stay tracked until they lift), a mode change,
@@ -34,7 +35,10 @@ export interface PanHost {
   /** One finger pans (orbit and top view); false at eye level, where the finger looks around instead (OrbitControls). */
   canPan(): boolean;
   surface(): GrabSurface | null;
-  /** Ground metres one screen pixel stands for at the target (turns the glide's speed into the finger's px/s). */
+  /**
+   * Ground metres one screen pixel stands for at the target. Only a fallback of the glide: it turns the view's speed into the
+   * finger's px/s with the scale of the ground the finger touched, which the drag measures itself (see {@link PanMomentum}).
+   */
   metresPerPixel(): number;
   /** A drag began (the view's "interacting" flag; OrbitControls only reports its own gestures and never sees a pen). */
   started(): void;
@@ -61,6 +65,10 @@ export class PanGesture {
   private lastT = -1;
   private dt = 0;
   private intended = 0;
+  /** Where the finger was at the previous frame (CSS px), and how far it went in this one: with `intended` they give the glide the ground one pixel stood for. */
+  private fx = 0;
+  private fy = 0;
+  private fingerStep = 0;
   /** `started` was reported and `ended` not yet. */
   private live = false;
   private readonly move = new THREE.Vector3();
@@ -239,6 +247,8 @@ export class PanGesture {
   private startPan(cx: number, cy: number): void {
     this.xs[0] = cx;
     this.ys[0] = cy;
+    this.fx = cx;
+    this.fy = cy;
     this.regrab();
     this.momentum.stop();
     this.state = 'pan';
@@ -287,6 +297,7 @@ export class PanGesture {
     this.lastT = now;
     this.dt = dt;
     this.intended = 0;
+    this.fingerStep = 0;
     if (this.state === 'pan') {
       if (!this.host.accepts() || !this.host.canPan()) {
         this.cancel();
@@ -295,6 +306,9 @@ export class PanGesture {
       this.move.set(0, 0, 0);
       this.flush();
       this.intended = Math.hypot(this.move.x, this.move.z);
+      this.fingerStep = Math.hypot(this.xs[0]! - this.fx, this.ys[0]! - this.fy);
+      this.fx = this.xs[0]!;
+      this.fy = this.ys[0]!;
     } else if (this.momentum.gliding) {
       if (!this.host.accepts() || !this.host.canPan()) {
         this.momentum.stop();
@@ -314,7 +328,7 @@ export class PanGesture {
    */
   settle(dx: number, dz: number): void {
     if (this.state === 'pan') {
-      this.momentum.track(dx, dz, this.dt);
+      this.momentum.track(dx, dz, this.dt, this.fingerStep, this.intended);
       // The edge of the domain held the view back (the clamp took part of the translation away): the finger is now ahead of the
       // ground it grabbed. Grab again where it is, so that a finger that turns back is followed at once instead of having to
       // travel back over everything it dragged beyond the edge first.

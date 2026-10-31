@@ -10,10 +10,15 @@
  * therefore also gives the last hour, one instant every 5 min, not only the 6 h instant). Run it alone to see the table:
  *   npx vitest run src/ui/snapshotStore.fast6h.sim.test.ts --reporter=verbose --silent=false
  * and, for what a restored view differs by, the second test.
+ *
+ * 0.7.0: every real snapshot also carries the wind the fire feels (`fireWind`, 40,064 B at 6 km: a keyframe holds it, 4.6 % of 0.86 MB). Both
+ * stores above carry it (so the comparison still isolates the 3-D volume, and the "0.3.0" keyframe is 40,064 B above its old 824,6xx B). A third
+ * replay of the current build without it measures what it costs the history: the table's "no E2" rows.
  */
 import { describe, expect, it } from 'vitest';
 import { packWind, windPackErrorBound } from '../core/airPack';
 import { airAgeS, hasAirWind } from '../core/airView';
+import { fireWindBytes } from '../core/fireWind';
 import type { AtmosphereView, SimSnapshot } from '../core/types';
 import { Simulation } from '../sim/simulation';
 import { demoScenario, pointIgnition, withIgnitions } from '../sim/testing/scenarios';
@@ -52,7 +57,7 @@ function maxGap(times: number[]): number {
   return g / 60;
 }
 
-function replay(seed: SimSnapshot[], template: SimSnapshot, budget: number, strip: boolean): Row {
+function replay(seed: SimSnapshot[], template: SimSnapshot, budget: number, strip: boolean, fireWind = true): Row {
   const store = new SnapshotStore({ maxBytes: budget, minInterval: STEP });
   const n = Math.round((HOURS * 3600) / STEP);
   const last = { keyframes: [] as number[], maxGapMin: [] as number[] };
@@ -60,8 +65,9 @@ function replay(seed: SimSnapshot[], template: SimSnapshot, budget: number, stri
     const src = seed[i % seed.length]!;
     const t = i * STEP;
     const air = { ...src.atmosphere!, time: t };
+    const { fireWind: _picture, ...withoutE2 } = src;
     // The same arrays every time (no extra memory in the test), advancing time, a stamped air view.
-    store.push({ ...src, time: t, stats: { ...src.stats, time: t }, fire: template.fire, insights: [], atmosphere: strip ? without3d(air) : air });
+    store.push({ ...(fireWind ? src : withoutE2), time: t, stats: { ...src.stats, time: t }, fire: template.fire, insights: [], atmosphere: strip ? without3d(air) : air });
     if (t > (HOURS - 1) * 3600 && t % 300 === 0) {
       last.keyframes.push(store.keyframeCount);
       last.maxGapMin.push(maxGap(store.keyframeTimes()));
@@ -114,13 +120,16 @@ describe('6 h of fast-tier history under the budgets of weak phones', () => {
       'budget MiB | build   | keyframes | mean gap min | max gap min | keyframe B | store MiB | wind volumes | pictures with wind | oldest air min | last hour: keyframes min / mean, longest gap min',
     ];
     const pairs: [number, Row, Row][] = [];
+    const e2: [number, Row, Row][] = [];
     for (const mib of BUDGETS_MIB) {
       const old = replay(seed, template, mib * MIB, true);
       const now = replay(seed, template, mib * MIB, false);
+      const noE2 = replay(seed, template, mib * MIB, false, false);
       const line = (name: string, r: Row): string =>
         `${mib.toFixed(2).padStart(10)} | ${name} | ${String(r.keyframes).padStart(9)} | ${r.meanGapMin.toFixed(1).padStart(12)} | ${r.maxGapMin.toFixed(1).padStart(11)} | ${Math.round(r.keyframeBytes).toLocaleString('en-AU').padStart(10)} | ${r.totalMiB.toFixed(1).padStart(9)} | ${String(r.windFrames).padStart(12)} | ${(100 * r.windShare).toFixed(0).padStart(17)}% | ${r.maxAirAgeMin.toFixed(0).padStart(14)} | ${Math.min(...r.last.keyframes)} / ${mean(r.last.keyframes).toFixed(1)}, ${Math.max(...r.last.maxGapMin).toFixed(0)}`;
-      rows.push(line('0.3.0  ', old), line('now    ', now));
+      rows.push(line('0.3.0  ', old), line('now    ', now), line('no E2  ', noE2));
       pairs.push([mib, old, now]);
+      e2.push([mib, noE2, now]);
     }
     // eslint-disable-next-line no-console
     console.log(rows.join('\n'));
@@ -128,8 +137,11 @@ describe('6 h of fast-tier history under the budgets of weak phones', () => {
       const at = `${mib} MiB`;
       // No picture is lost to the wind beyond the sawtooth. The volume held whole in every keyframe kept 0.6 of the 0.3.0 count with a longest
       // gap 4 times as long at 48 to 64 MiB; now it is within about 5 % on average over the last hour. The bounds leave room for the
-      // sawtooth (one instant is partly luck, and the gaps come in steps of 2: 5, 10, 20, 40 min), none for the 0.6.
-      expect(now.keyframes, `${at}: keyframes at the 6 h instant`).toBeGreaterThanOrEqual(0.85 * old.keyframes);
+      // sawtooth (one instant is partly luck, and the gaps come in steps of 2: 5, 10, 20, 40 min), none for the 0.6. The count at the one 6 h
+      // instant is held against the fewest the 0.3.0 store had in the last hour, not against its count at that instant: the keyframes of both
+      // stores are 4.6 % heavier since 0.7.0 (the wind the fire feels), which moves where each one's thinning peaks and troughs fall (at 61.44 MiB
+      // the 0.3.0 store was at a peak of 41 at the 6 h instant and the current one at a trough of 33; the means over the hour are 40.7 and 50.4).
+      expect(now.keyframes, `${at}: keyframes at the 6 h instant`).toBeGreaterThanOrEqual(0.85 * Math.min(old.keyframes, ...old.last.keyframes));
       expect(now.maxGapMin, `${at}: longest gap at the 6 h instant`).toBeLessThanOrEqual(2 * old.maxGapMin);
       expect(Math.max(...now.last.maxGapMin), `${at}: longest gap in the last hour`).toBeLessThanOrEqual(2 * Math.max(...old.last.maxGapMin));
       expect(mean(now.last.keyframes), `${at}: mean keyframes in the last hour`).toBeGreaterThanOrEqual(0.85 * mean(old.last.keyframes));
@@ -141,6 +153,18 @@ describe('6 h of fast-tier history under the budgets of weak phones', () => {
       // A keyframe with its wind is about 5 % heavier than the 0.3.0 one where the budget thins (the volumes are a share of the budget
       // of their own, held at 4 %), and 30 % where nothing is thinned (the wind, packed, is on every keyframe).
       expect(now.keyframeBytes / old.keyframeBytes, `${at}: keyframe growth`).toBeLessThanOrEqual(now.windFrames === now.keyframes ? 1.31 : 1.1);
+    }
+    // What the wind the fire feels costs the history of a weak phone: each keyframe is its 40,064 B heavier (so 4.6 % fewer fit once the budget
+    // thins), which shows as a few percent fewer keyframes on average over the last hour (3.6, 6.7, 4.6 and 0 % in the table) and nothing at 2 GB.
+    const picture = template.fireWind!;
+    expect(picture.u.length).toBe(100 * 100); // 6 km at 30 m: 200 x 200 fire cells in blocks of 2
+    expect(keyframeBytes(template) - keyframeBytes({ ...template, fireWind: undefined })).toBe(fireWindBytes(picture));
+    expect(fireWindBytes(picture)).toBe(40_064);
+    for (const [mib, noE2, now] of e2) {
+      const at = `${mib} MiB`;
+      expect(mean(now.last.keyframes), `${at}: mean keyframes in the last hour with the wind the fire feels`).toBeGreaterThanOrEqual(0.9 * mean(noE2.last.keyframes));
+      expect(now.totalMiB, `${at}: store size`).toBeLessThanOrEqual(mib);
+      if (mib >= 122) expect([now.keyframes, now.maxGapMin]).toEqual([noE2.keyframes, noE2.maxGapMin]);
     }
     // At 2 GB nothing is thinned: every keyframe has its own volume, at most one keyframe interval older than the picture.
     const big = pairs.find(([m]) => m === 122.88)![2];

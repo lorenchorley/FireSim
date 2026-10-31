@@ -13,6 +13,7 @@ import {
   planSwings,
   turnDirection,
   turnFraction,
+  userWindChanges,
   windChangePhase,
   windDirectionAt,
   windDirectionEdits,
@@ -360,5 +361,42 @@ describe('several changes', () => {
   it('returns the series itself when it has no stamps', () => {
     const empty: WeatherSeries = { ...series, hours: [] };
     expect(applyWindDirection(empty, START, [change('a', 180, 0)])).toBe(empty);
+  });
+});
+
+describe('userWindChanges and madeAt (0.7.0)', () => {
+  const series = flat(270, 10);
+  const speedAt = (tMs: number): number => weatherAt(series, tMs).windSpeed10;
+
+  it('gives one change per swing of the plan, in the plan order, with the id, start, directions and the forecast speed', () => {
+    const list = [change('late', 90, 900), change('early', 180, 600)];
+    const out = userWindChanges(series, START, list, speedAt);
+    expect(out.map((c) => c.id)).toEqual(['early', 'late']);
+    expect(out[0]).toEqual({ id: 'early', time: at(600), fromDir: 270, toDir: 180, preSpeed: 10, postSpeed: 10 });
+    expect(out[1]!.time).toBe(at(900));
+    expect(out[1]!.fromDir).toBeCloseTo(246.6667, 3); // `early`'s value 300 s into its turn
+    expect(out[1]!.toDir).toBe(90);
+  });
+  it('starts from the forecast direction of that moment (the forecast itself is not turning here), and reads the speed 15 minutes after the start', () => {
+    const turning = flat(270, 10);
+    turning.hours = turning.hours.map((h) => (h.time > START ? { ...h, windSpeed10: 20 } : h)); // 10 m/s at the start, 20 m/s an hour on, from the west throughout
+    const [c] = userWindChanges(turning, START, [change('a', 90, 1800)], (t) => weatherAt(turning, t).windSpeed10);
+    expect(c!.fromDir).toBeCloseTo(270, 6);
+    expect(c!.preSpeed).toBeCloseTo(15, 6); // half way through the hour
+    expect(c!.postSpeed).toBeCloseTo(17.5, 6); // 15 minutes later
+  });
+  it('leaves out a change whose time or direction is not a number, and gives nothing for no change', () => {
+    expect(userWindChanges(series, START, [change('a', NaN, 600), change('b', 90, NaN)], speedAt)).toEqual([]);
+    expect(userWindChanges(series, START, [], speedAt)).toEqual([]);
+    expect(userWindChanges(series, START, [change('a', NaN, 600), change('b', 90, 1200)], speedAt).map((c) => c.id)).toEqual(['b']);
+  });
+  it('madeAt is no part of the weather: the series, the ideal curve and the plan are the same with it', () => {
+    const plain = [change('a', 180, 600), change('b', 90, 900)];
+    const made = plain.map((e, i) => ({ ...e, madeAt: i * 100 }));
+    expect(applyWindDirection(series, START, made)).toEqual(applyWindDirection(series, START, plain));
+    expect(planSwings(series, START, made)).toEqual(planSwings(series, START, plain));
+    expect(windDirectionAt(series, START, made, at(1050))).toBe(windDirectionAt(series, START, plain, at(1050)));
+    expect(userWindChanges(series, START, made, speedAt)).toEqual(userWindChanges(series, START, plain, speedAt));
+    expect(windOverrideFrom(made)).toBe(windOverrideFrom(plain));
   });
 });
