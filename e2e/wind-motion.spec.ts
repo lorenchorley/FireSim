@@ -131,6 +131,15 @@ async function expectStopped(page: Page, what: string, ms = 1500): Promise<void>
     .toBe(0);
 }
 
+/**
+ * The view says it is paused, and has then drawn nothing for `ms`. The wait is on what the layer says and not on the frame counter alone: a frame of the whole scene
+ * takes the software GL up to a second, so "no frame in 1.5 s" can be true of a view that is still moving.
+ */
+async function expectPaused(page: Page, what: string, ms = 1500): Promise<void> {
+  await expect.poll(async () => (await stats(page)).detail, { message: `${what}: the detailed streaks say they are paused`, timeout: 90_000, intervals: [250] }).toBe('paused');
+  await expectStopped(page, what, ms);
+}
+
 /** The renderer is drawing: its frame counter moves within `within` ms. */
 async function expectDrawing(page: Page, what: string, within = 5000): Promise<void> {
   const f0 = await frames(page);
@@ -191,7 +200,7 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   });
 
   await test.step('hands off: no frame is drawn, the shader clock stands still, the layer says paused, and two frames drawn by hand are the same frame', async () => {
-    await expectStopped(page, 'hands off');
+    await expectPaused(page, 'hands off');
     expect((await stats(page)).detail, 'the detailed streaks say they are paused').toBe('paused');
     const t0 = await clock(page);
     await page.waitForTimeout(1500);
@@ -220,7 +229,7 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   });
 
   await test.step('a layer change wakes it', async () => {
-    await expectStopped(page, 'hands off again');
+    await expectPaused(page, 'hands off again');
     expect((await stats(page)).detail).toBe('paused');
     await setLayers(page, { windHeight: 300 });
     await expectDrawing(page, 'a layer change');
@@ -229,7 +238,7 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   });
 
   await test.step('a time change (a scrub back over the run) wakes it', async () => {
-    await expectStopped(page, 'hands off a third time');
+    await expectPaused(page, 'hands off a third time');
     expect((await stats(page)).detail).toBe('paused');
     const moved = await scrubAway(page);
     await expectDrawing(page, `a new snapshot (${moved})`);
@@ -259,7 +268,7 @@ test('idle stop: hands off, the view holds still and stops drawing; a touch, a l
   });
 
   await test.step('it pauses again once the run is paused and nobody touches', async () => {
-    await expectStopped(page, 'the run is paused, hands off');
+    await expectPaused(page, 'the run is paused, hands off');
     expect((await stats(page)).detail).toBe('paused');
   });
 
