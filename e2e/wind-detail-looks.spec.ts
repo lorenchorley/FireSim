@@ -260,7 +260,7 @@ test('wind detail looks: the early compile, the cold first zoom, the relief in t
     console.log(`forest, 120 m: relief off ${off.count} lines ${off.detailSegments} segments; on ${on.count} lines ${on.detailSegments} segments`);
     expect(off.detailSegments).toBeGreaterThan(500);
     expect(on.detailSegments).toBeGreaterThan(500);
-    expect(on.count, 'in thick forest the streaks keep to the gaps, and the picture still has them').toBeGreaterThan(off.count * 0.3);
+    expect(on.count, 'in thick forest the streaks bend round the crowns, and the picture still has them').toBeGreaterThan(off.count * 0.3);
     for (const [what, s] of [['off', off], ['on', on]] as const) {
       expect(s.detailSegments, `${what}: the High tier's cap`).toBeLessThanOrEqual(GLYPH_CAPS.high.segments);
       expect(s.count, `${what}: the High tier's lines`).toBeLessThanOrEqual(GLYPH_CAPS.high.glyphs);
