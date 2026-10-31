@@ -1481,6 +1481,32 @@ describe('the relief: a tree the view has faded out is no crown', () => {
   });
 });
 
+describe('the relief: a forest keeps the lines of the picture without it, and none ends in a stub because of a crown', () => {
+  // The verifier's third finding on the real app: 64 % of 0.6.0's segments (49 to 105 %), 5 to 18 % of the lines under 50 px, bare stands. Seeds inside a crown's
+  // disc were dropped and a line that met a rim ended there.
+  for (const [n, keep, shortMore, what] of [[130, 0.9, 0.04, 'a stand of 130 crowns (a cover of about 0.7)'], [300, 0.65, 0.08, 'a mat of 300 crowns, most of them overlapped by several others (lines shut in between them end)']] as const) {
+    it(`${what}: about the lines and segments of the same picture with no crown, and no more short lines`, () => {
+      const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 8, 1) - 0.5) * 120, (hash01(i, 8, 2) - 0.5) * 120, 30 + hash01(i, 8, 3) * 12, 8 + hash01(i, 8, 4) * 6]);
+      const camera = makeCamera({ eye: [0, 90, 90], target: [0, 0, 0], near: 12 });
+      const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 700 });
+      const noCap: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 }, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+      const forest = build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] }));
+      const open = build(withRelief(sc, { relief: noCap, canopyH: 24 }));
+      expect(open.lines.length).toBeGreaterThan(300);
+      expect(forest.lines.length, `lines (${forest.lines.length} of ${open.lines.length})`).toBeGreaterThan(keep * open.lines.length);
+      expect(forest.out.segments, `segments (${forest.out.segments} of ${open.out.segments})`).toBeGreaterThan(keep * open.out.segments);
+      const stubs = (ls: Line[]): number => ls.filter((l) => l.lengthPx < 50).length / Math.max(1, ls.length);
+      expect(stubs(forest.lines), 'lines under 50 px').toBeLessThanOrEqual(stubs(open.lines) + shortMore);
+      // And the crowns did something: the pictures differ, and the lines of the forest have none inside the discs but a few where crowns overlap.
+      expect(hashOf(forest.out)).not.toBe(hashOf(open.out));
+      const trees = list.map(([x, y, height, width]) => ({ x, y, ground: 0, height, width }));
+      const [deep, inside] = crownIncursions(forest.out.a, forest.out.segments, trees, [0.5, 0.95]);
+      expect(deep, 'deep inside a crown').toBeLessThanOrEqual(Math.ceil(0.01 * forest.out.segments));
+      expect(inside, 'inside a disc').toBeLessThanOrEqual(Math.ceil(0.03 * forest.out.segments));
+    });
+  }
+});
+
 describe('the relief: the e2e reader of a picture finds no line inside a crown (crownIncursions)', () => {
   it('counts no vertex of the builder\'s picture inside 0.75 radii of a crown at its own height, and does count them in a picture whose lines ignore the crowns', () => {
     const list: [number, number, number, number][] = Array.from({ length: 60 }, (_, i) => [(hash01(i, 5, 1) - 0.5) * 70, (hash01(i, 5, 2) - 0.5) * 70, 30 + hash01(i, 5, 3) * 12, 8 + hash01(i, 5, 4) * 6]);

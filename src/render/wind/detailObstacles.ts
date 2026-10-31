@@ -516,9 +516,8 @@ export class Obstacles {
         let kept = 0;
         let bin = HIST_BINS - 1;
         while (bin > 0 && kept + hist[bin]! <= maxCrowns) kept += hist[bin--]!;
-        const edge = (b: number): number => minR * 2 ** (b / HIST_PER_OCTAVE);
-        k[K_MIN_NOW] = edge(bin);
-        k[K_FLOOR_HI] = edge(bin + 1);
+        k[K_MIN_NOW] = minR * 2 ** (bin / HIST_PER_OCTAVE); // (the bucket's own floor)
+        k[K_FLOOR_HI] = minR * 2 ** ((bin + 1) / HIST_PER_OCTAVE);
         k[K_PKEEP] = hist[bin]! > 0 ? (maxCrowns - kept) / hist[bin]! : 0;
         this.pass = pass = 1;
         minPx = k[K_MIN_NOW]!;

@@ -185,8 +185,8 @@ export interface DetailRelief {
     centreShare: number;
     halfShare: number;
     /**
-     * A disc under `minRadiusPx` on the screen is not an obstacle; at most `maxCrowns` are kept (when more qualify the radius is doubled and the trees are scanned
-     * again: the smallest go, wherever they are); the clock is read every `clockEvery` trees.
+     * A disc under `minRadiusPx` on the screen is not an obstacle; about `maxCrowns` are kept (when more qualify, the smallest on the screen go, wherever they
+     * are: the scratch has room for the hash sample of the last bucket of radii); the clock is read every `clockEvery` trees.
      */
     minRadiusPx: number;
     maxCrowns: number;
