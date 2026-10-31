@@ -50,6 +50,22 @@ describe('rebuildReason', () => {
     expect(rebuildReason(built(), now({ level: 4, spacingExp: 8 }), inside)).toBe('level');
   });
 
+  it('names other canopy or crowns (0.7.0) after the height and before the level, the lattice and the pose; an absent count is 0', () => {
+    expect(rebuildReason(built({ crownSerial: 3 }), now({ crownSerial: 4 }), inside)).toBe('canopy');
+    expect(rebuildReason(built({ crownSerial: 3 }), now({ crownSerial: 3 }), inside)).toBeNull();
+    expect(rebuildReason(built(), now({ crownSerial: 0 }), inside)).toBeNull();
+    expect(rebuildReason(built({ crownSerial: 0 }), now({ crownSerial: 2 }), inside)).toBe('canopy');
+    expect(rebuildReason(built({ crownSerial: 3 }), now({ crownSerial: 4, height: 300 }), inside)).toBe('height');
+    expect(rebuildReason(built({ crownSerial: 3 }), now({ crownSerial: 4, level: 4, spacingExp: 8, pose: pose({ eye: [450, 2500, 1700] }) }), inside)).toBe('canopy');
+    expect(rebuildReason(built({ crownSerial: 3 }), now({ crownSerial: 4, dataSerial: 5 }), inside)).toBe('snapshot');
+  });
+
+  it('holds a rebuild for new crowns to the gap like every other reason, and lets the first picture and a settled frame through', () => {
+    expect(mayRebuild('canopy', 100, 0, false)).toBe(false);
+    expect(mayRebuild('canopy', REBUILD_MIN_GAP_MS, 0, false)).toBe(true);
+    expect(mayRebuild('canopy', 100, 0, true)).toBe(true);
+  });
+
   it('asks for a new picture when the density the zoom asks for has drifted by a tenth from the one that was built (the detailed streaks follow the zoom), and not before', () => {
     expect(THIN_REBUILD_RATIO).toBe(1.1);
     const b = built({ level: 4, thin: 0.5 });

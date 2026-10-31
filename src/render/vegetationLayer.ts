@@ -141,8 +141,21 @@ export const TOP_FADE: [number, number] = [0.87, 0.99];
 const TOP_HIDDEN = 0.992;
 /** The plan is made again when the pixels per radian differ from the plan's by more than this factor (one step of the adaptive pixel ratio, at most a fifth, keeps it). */
 const PLAN_PX_TOLERANCE = 1.25;
-/** The crowns `crownSource()` answers with until the detailed streaks' lane builds it: none. */
-const NO_CROWNS: CrownSource = { serial: 0, sets: () => [] };
+const NO_SETS: readonly VegInstances[] = [];
+
+/** The placed trees as the detailed streaks read them (`VegetationLayer.crownSource()`): a view of the layer's own arrays, nothing copied. */
+class Crowns implements CrownSource {
+  constructor(
+    private readonly version: () => number,
+    private readonly placed: () => readonly VegInstances[],
+  ) {}
+  get serial(): number {
+    return this.version();
+  }
+  sets(): readonly VegInstances[] {
+    return this.placed();
+  }
+}
 
 export class VegetationLayer {
   readonly group = new THREE.Group();
@@ -157,6 +170,12 @@ export class VegetationLayer {
   private readonly shared: Record<string, THREE.IUniform>;
 
   private sets: VegInstances[] = [];
+  /** Counts every change of `sets` (a placement swapped in, `setInstances`) and of the canopy's visibility: what `crownSource()` reports. */
+  private crownSerial = 1;
+  private readonly crowns: CrownSource = new Crowns(
+    () => this.crownSerial,
+    () => (this.group.visible ? this.sets : NO_SETS),
+  );
   private job: PlacementJob | null = null;
   private plan: LodPlan | null = null;
   private lodCam: [number, number, number] | null = null;
@@ -242,7 +261,7 @@ export class VegetationLayer {
     this.layers = next;
     this.overlayOn = l.overlay !== 'none';
     this.layerVisible = next.vegetation && !(next.solo && this.overlayOn);
-    this.group.visible = this.layerVisible && this.viewDown < TOP_HIDDEN;
+    this.showGroup(this.layerVisible && this.viewDown < TOP_HIDDEN);
     this.uniforms.uStyle!.value = next.style === 'natural' ? 0 : next.style === 'simple' ? 1 : 2;
     this.uniforms.uSway!.value = next.sway ? 1 : 0;
     if (next.style === 'coded' && (next.code !== prev.code || prev.style !== 'coded')) this.applyCode(next.code);
@@ -304,11 +323,12 @@ export class VegetationLayer {
   }
 
   /**
-   * C0 STUB (0.7.0, lane E-A): the placed crowns by reference, for the detailed streaks to flow around (`serial` bumps when `pump` swaps `sets`).
-   * Empty until built.
+   * The placed trees by reference, for the detailed streaks to flow around (0.7.0): `sets()` is the CPU copy of every tree placed (`group` 0 to 6 are the
+   * trees), empty while the canopy is not drawn (switched off, hidden by a solo heat map, or faded out in a top view); `serial` moves whenever `sets()`
+   * would answer differently (a placement swapped in by `pump`, `setInstances`, the canopy shown or hidden). The same object every call.
    */
   crownSource(): CrownSource {
-    return NO_CROWNS;
+    return this.crowns;
   }
 
   /**
@@ -348,7 +368,13 @@ export class VegetationLayer {
    */
   setViewDown(sinDown: number): void {
     this.viewDown = sinDown;
-    this.group.visible = this.layerVisible && sinDown < TOP_HIDDEN;
+    this.showGroup(this.layerVisible && sinDown < TOP_HIDDEN);
+  }
+
+  /** Show or hide the canopy. Trees that are not drawn (switched off, behind a solo heat map, or faded out in a top view) are no obstacle: the crown source says so by its serial. */
+  private showGroup(on: boolean): void {
+    if (on !== this.group.visible) this.crownSerial++;
+    this.group.visible = on;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -395,6 +421,7 @@ export class VegetationLayer {
     }
     if (this.pendingSets) {
       this.sets = this.pendingSets;
+      this.crownSerial++;
       this.pendingSets = null;
       this.planSig = '';
       this.planDirty = true;
@@ -416,6 +443,7 @@ export class VegetationLayer {
   /** Replace all instances at once (tests, and after a finished placement job). */
   setInstances(sets: VegInstances[]): void {
     this.sets = sets;
+    this.crownSerial++;
     this.planSig = '';
     this.requestPlan();
   }
@@ -607,6 +635,7 @@ export class VegetationLayer {
     this.impTex.dispose();
     this.codeTex.dispose();
     this.sets = [];
+    this.crownSerial++;
     this.plan = null;
     this.job = null;
   }

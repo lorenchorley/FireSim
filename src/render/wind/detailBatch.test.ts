@@ -76,7 +76,17 @@ describe('the shader text', () => {
       expect(vs, `${amp} m`).toMatch(new RegExp(`smoothstep\\(0\\.75, 3\\.0, ${amp.toFixed(1)} \\* pxPerM\\)`));
       expect(vs, `${lam} m`).toMatch(new RegExp(`p / ${lam}\\.0 \\+ vec2`));
     }
-    expect(vs).toMatch(/float turbF = 0\.25 \+ 0\.75 \* aE\.y;/); // rough ground and the lee of ridges meander more, calm ground a quarter
+    expect(vs).toMatch(/float turbF = \(0\.25 \+ 0\.75 \* aE\.y\) \* aC\.a;/); // rough ground and the lee of ridges meander more, calm ground a quarter, and a pinned line (0.7.0: bent round a crown) less
+  });
+
+  it('multiplies the meander by the line\'s pin, the colour alpha (1 free, `pinMin` to 1 where the builder bent a line round a crown), and still drops a segment at alpha 0', () => {
+    expect(vs).toMatch(/pa\.xz \+= meander\(aA\.xz, pxA, t\) \* turbF;/);
+    expect(vs.match(/aC\.a/g)).toHaveLength(2); // the drop test and the pin: nothing else reads the alpha
+    expect(vs).toMatch(/aC\.a <= 0\.0 \|\|/);
+    expect(vs).toMatch(/vC = aC\.rgb;/); // the colour is the model's, the alpha is not a colour
+    expect(fs).not.toMatch(/aC|vC\.a/);
+    // The uniforms are the ones of 0.6.0: the pin needs none.
+    expect(Object.keys(material(b).uniforms).sort()).toEqual(['uDepthBias', 'uFade', 'uMoving', 'uPxPerM1', 'uTime', 'uViewport', 'uWidthPx']);
   });
 
   it('slides the stroke toward the eye by uDepthBias along its own ray, as the glyph strokes do (but up to 0.8 of the way to the eye, not half): the depth changes, the place on the screen does not', () => {

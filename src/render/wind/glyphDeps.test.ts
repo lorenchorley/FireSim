@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '..', '..');
 const WIND = join(SRC, 'render', 'wind');
-const ENGINE = ['flowGlyphs.ts', 'glyphLod.ts', 'glyphPose.ts', 'glyphField.ts', 'detailStreaks.ts'].map((f) => join(WIND, f));
+const ENGINE = ['flowGlyphs.ts', 'glyphLod.ts', 'glyphPose.ts', 'glyphField.ts', 'detailStreaks.ts', 'detailObstacles.ts'].map((f) => join(WIND, f));
 
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
@@ -69,9 +69,10 @@ describe('the engine is pure', () => {
     expect(files).toContain(join('render', 'wind', 'glyphTypes.ts'));
   });
 
-  it('the detailed streaks builder reaches the glyph builder and the types, and nothing that draws', () => {
+  it('the detailed streaks builder reaches the glyph builder, the obstacles and the types, and nothing that draws', () => {
     const { files } = closure(join(WIND, 'detailStreaks.ts'));
     expect(files).toContain(join('render', 'wind', 'flowGlyphs.ts'));
+    expect(files).toContain(join('render', 'wind', 'detailObstacles.ts'));
     expect(files).toContain(join('render', 'wind', 'glyphTypes.ts'));
     expect(files.filter((f) => /detailBatch|windGlyphLayer|streaks\.ts$/.test(f))).toEqual([]);
   });
@@ -103,8 +104,25 @@ describe('the engine is pure', () => {
   });
 });
 
+describe('the obstacles of the detailed streaks (0.7.0)', () => {
+  it('are imported by the builder, the layer (its `canopyPlane`) and the test fixtures alone, and the tests: nothing else of the app reads them', () => {
+    const importers = sourcesUnder(SRC)
+      .filter((f) => importsOf(f, true).some((spec) => /(^|[\\/])detailObstacles$/.test(spec.replace(/\.ts$/, ''))))
+      .map((f) => relative(SRC, f))
+      .sort();
+    expect(importers).toEqual([join('render', 'wind', 'detailStreaks.testing.ts'), join('render', 'wind', 'detailStreaks.ts'), join('render', 'wind', 'windGlyphLayer.ts')]);
+  });
+
+  it('draw no random number, touch no DOM and import nothing but types of the app (the engine test above reads the same file)', () => {
+    const text = strip(readFileSync(join(WIND, 'detailObstacles.ts'), 'utf8'));
+    expect(text).not.toMatch(/Math\s*\.\s*random\s*\(/);
+    expect(importsOf(join(WIND, 'detailObstacles.ts'))).toEqual([]); // type imports only
+    expect(importsOf(join(WIND, 'detailObstacles.ts'), true).sort()).toEqual(['../../core/grid', '../../core/types', './glyphTypes']);
+  });
+});
+
 describe('the first screen stays out of the engine', () => {
-  const FORBIDDEN = /(^|[\\/])(flowGlyphs|glyphField|glyphLod|glyphPose|glyphOracle\.testing|windGlyphLayer|detailStreaks|detailStreaks\.testing|detailBatch)$/;
+  const FORBIDDEN = /(^|[\\/])(flowGlyphs|glyphField|glyphLod|glyphPose|glyphOracle\.testing|windGlyphLayer|detailStreaks|detailStreaks\.testing|detailObstacles|detailBatch)$/;
   const entryFiles = [...sourcesUnder(join(SRC, 'ui')), join(SRC, 'render', 'layerCatalog.ts')];
 
   it('finds the files it checks', () => {

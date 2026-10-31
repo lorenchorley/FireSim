@@ -35,6 +35,13 @@
  * Cost, as in the glyph builder: the tracer reads rasters only, hash and lookups go through scratch arrays and no double travels
  * through an argument or a return value, state lives in typed arrays, so a rebuild allocates nothing even when V8 does not inline.
  * The job is cut into slices that stop on the clock and resume.
+ *
+ * The relief (0.7.0, `DetailInput.relief`; absent, or `enabled` false, is the picture above byte for byte): the lines ride on the canopy's top where
+ * there is canopy (`canopy`), slide along the contour of a windward slope (a ridge) and part round the tree crowns that stand in their way and curl
+ * behind the proud ones, a ridge's lee and the plume (`detailObstacles.ts`). All of it bends the DIRECTION of the traced line, a step at a time and at
+ * most `maxTurnDeg`; the speed (the colour bin, the pulse's pace) is the model's, as before. A seed inside a crown's disc is not drawn (`out.blocked`),
+ * a line that meets a crown's rim ends there, and each line carries a pin in its colour alpha (1 free, down to `pinMin` at an obstacle) that the shader
+ * multiplies the meander by, so that the noise does not carry a line off the crown it was bent round.
  */
 import {
   buildSpeedTable,
@@ -49,6 +56,7 @@ import {
   SPEED_TABLE_BINS,
   SPEED_TABLE_MAX_MS,
 } from './flowGlyphs';
+import { IO_BLOCK, IO_DX, IO_DY, IO_HIT, IO_K, IO_MODE, IO_NEAR, IO_PX, IO_PY, IO_R, IO_X, IO_Y, IO_Z, IO_ZC, MAX_SITES_CAP, Obstacles, P_BX0, P_BX1, P_BY0, P_BY1, P_EX, P_EY, P_EZ, P_MPPC, P_MX, P_MY, P_PXM1, P_VEX, P_WMIN, P_ZBASE, P_ZCAP } from './detailObstacles';
 import { DETAIL_GEOMETRY, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphTier, type GroundRaster } from './glyphTypes';
 
 /**
@@ -199,7 +207,15 @@ const F_BY0 = 36;
 const F_BX1 = 37;
 const F_BY1 = 38;
 const F_PRIO = 39;
-const F_LEN = 40;
+const F_RBETA = 40;
+const F_RLO = 41;
+const F_RHI = 42;
+const F_RFWD = 43;
+const F_COSCAP = 44;
+const F_SINCAP = 45;
+const F_PIN = 46;
+const F_PINMIN = 47;
+const F_LEN = 48;
 
 const N_BUSY = 0;
 const N_PHASE = 1;
@@ -231,18 +247,52 @@ const N_CAPS = 26;
 const N_REBUILDS = 27;
 const N_INTERVAL = 28;
 const N_PASS = 29;
-const N_LEN = 30;
+const N_RELIEF = 30;
+const N_RIDGE = 31;
+const N_CANOPY = 32;
+const N_OBST = 33;
+const N_BLOCKED = 34;
+const N_PLUME = 35;
+const N_LEN = 36;
 
 // Phases of a job: set-up pending, walking the lattice, about to trace, tracing, done.
 const PHASE_SETUP = 3;
+const PHASE_CROWNS = 5;
 const PHASE_WALK = 0;
 const PHASE_TRACE_START = 4;
 const PHASE_TRACE = 1;
 const PHASE_DONE = 2;
 
-/** Lattice cells between two reads of the clock while walking the lattice (fewer for the first rebuilds of a builder, while the code is cold). */
+/**
+ * Lattice cells between two reads of the clock while walking the lattice, and lines between two reads while tracing. A builder is interpreted
+ * for its first rebuilds (a cold line costs 0.3 ms, a warm one 3 us; a cold cell with the relief about 0.1 to 0.5 ms): the first `COLD_REBUILDS` read the
+ * clock after every 8 cells and every line, the next two after 256 cells and 4 lines, the rest after 2048 and 16 (0.7.0: a cold slice used to run up to
+ * 5 ms over its budget; with the relief's work in every cell, 64 cells took 30 ms in the first slices of a real build, so 8).
+ */
 const CELL_CHECK = 2048;
-const CELL_CHECK_COLD = 256;
+const CELL_CHECK_WARMING = 256;
+const CELL_CHECK_COLD = 8;
+const COLD_REBUILDS = 2;
+const WARMING_REBUILDS = 4;
+const LINE_CHECK = 16;
+const LINE_CHECK_WARMING = 4;
+const LINE_CHECK_COLD = 1;
+/** The trees (the canopy to ride on, the crowns, the plume) are for the wind read at most this high over the ground (m): the 10 m wind and the wind the fire feels. */
+export const RELIEF_TREE_MAX_M = 20;
+/** A wind high above the ground does not care about its ridges: under this share of the ground terms the ridge slide is off. */
+const RELIEF_MIN_GFAC = 0.02;
+/** The lee sites' lattice is at most this many cells a side, and its points are moved by up to this share of a spacing. */
+const LEE_WINDOW = 22;
+const LEE_JITTER = 0.35;
+const RIDGE_SITES = 12;
+const LEE_GFAC_MIN = 0.2;
+const SALT_LEE = 0x1ee5;
+const NO_CROWNS: readonly never[] = [];
+/** The widest reach of a crown (3 radii of a crown of 8 m), added to the box of the trees the scan looks at. */
+const REACH_CROWN_M = 24;
+/** Trees between two reads of the clock while choosing the crowns (the contract's 4,096 when warm; a cold tree costs about 35 us, so 32 when cold). */
+const CROWN_CHECK_COLD = 32;
+const CROWN_CHECK_WARMING = 1024;
 
 class Builder implements DetailBuilder {
   readonly out: DetailOutput;
@@ -253,9 +303,11 @@ class Builder implements DetailBuilder {
   private readonly vp = new Float64Array(16);
   /**
    * Scratch: 0 x, 1 y, 2 drawn ground, 3 metres per pixel, 4 line length (px), 5 u, 6 v, 7 speed, 8..13 the segment being written,
-   * 14 s0, 15 s1, 16 L, 17 seed, 18 speed, 19 turb, 20 lift, 21 tail (the rest of the segment), 22 x, 23 y of a 10 m ground read, 24 its height.
+   * 14 s0, 15 s1, 16 L, 17 seed, 18 speed, 19 turb, 20 lift, 21 tail (the rest of the segment), 22 x, 23 y of a 10 m ground read, 24 its height;
+   * of the relief: 26, 27 the heading of the line (unit), 28 how near an obstacle it has been (0 to 1), 29 the base lift (m), 30 the metres over it
+   * that the canopy asks for at the last vertex, 31 how near an obstacle the last step's midpoint was.
    */
-  private readonly s = new Float64Array(26);
+  private readonly s = new Float64Array(36);
   private readonly hv = new Uint32Array(1);
   /** The stored seeds' identities, three ints each: the indices at the birth level, then the level. */
   private readonly cand: Int32Array;
@@ -275,6 +327,9 @@ class Builder implements DetailBuilder {
   private readonly C: Float32Array;
   private readonly D: Float32Array;
   private readonly E: Float32Array;
+  /** The relief's obstacles and the scratch of the eddy sites chosen from the proud crowns. */
+  private readonly ob = new Obstacles();
+  private readonly siteIdx = new Int16Array(MAX_SITES_CAP);
 
   constructor(caps: { glyphs: number; segments: number }) {
     this.capSegments = caps.segments;
@@ -316,6 +371,11 @@ class Builder implements DetailBuilder {
     n[N_DROPPED] = 0;
     n[N_CALM] = 0;
     n[N_STEEP] = 0;
+    n[N_BLOCKED] = 0;
+    n[N_RELIEF] = 0;
+    n[N_RIDGE] = 0;
+    n[N_CANOPY] = 0;
+    n[N_OBST] = 0;
     out.lines = 0;
     out.segments = 0;
     out.dropped = 0;
@@ -355,6 +415,8 @@ class Builder implements DetailBuilder {
     n[N_CAPS] = capS;
     n[N_MAXSTORE] = Math.min(3 * capG + 16, this.candH.length);
     n[N_LEVEL] = Math.max(LEVEL_MIN, Math.min(LEVEL_MAX, lod.spacingExp | 0));
+    const relief = input.relief;
+    n[N_RELIEF] = relief !== undefined && relief.enabled ? 1 : 0;
     n[N_PHASE] = PHASE_SETUP;
     n[N_BUSY] = 1;
   }
@@ -365,7 +427,7 @@ class Builder implements DetailBuilder {
     const f = this.f;
     f[F_BUDGET] = budgetMs;
     f[F_DEADLINE] = this.input!.now() + budgetMs;
-    if (n[N_PHASE] === PHASE_SETUP || n[N_PHASE] === PHASE_WALK) {
+    if (n[N_PHASE] === PHASE_SETUP || n[N_PHASE] === PHASE_CROWNS || n[N_PHASE] === PHASE_WALK) {
       if (!this.walk()) return false;
       n[N_PHASE] = PHASE_TRACE_START;
     }
@@ -529,7 +591,15 @@ class Builder implements DetailBuilder {
     s[0] = px;
     s[1] = py;
     this.groundAt();
-    const yw = s[2]! * f[F_VEX]!;
+    let yw = s[2]! * f[F_VEX]!;
+    if (this.n[N_CANOPY] !== 0) {
+      // The stroke rides on the canopy's top, up to 40 m over the ground: a seed is on the screen where its line is drawn, not where its foot is.
+      const io = this.ob.io;
+      io[IO_X] = px;
+      io[IO_Y] = py;
+      this.ob.canopyAt();
+      yw += io[IO_ZC]!;
+    }
     const zw = -py;
     const w = vp[3]! * px + vp[7]! * yw + vp[11]! * zw + vp[15]!;
     if (!(w > f[F_WMIN]!)) return 0;
@@ -577,7 +647,14 @@ class Builder implements DetailBuilder {
       s[0] = x;
       s[1] = y;
       this.groundAt();
-      const yw = (s[2]! + lift) * vex;
+      let yw = (s[2]! + lift) * vex;
+      if (this.n[N_CANOPY] !== 0) {
+        const io = this.ob.io;
+        io[IO_X] = x;
+        io[IO_Y] = y;
+        this.ob.canopyAt();
+        yw += io[IO_ZC]!;
+      }
       const zw = -y;
       const w = vp[3]! * x + vp[7]! * yw + vp[11]! * zw + vp[15]!;
       if (!(w > wmin)) continue;
@@ -604,6 +681,17 @@ class Builder implements DetailBuilder {
     if (steps === 0) {
       n[N_CALM] = n[N_CALM]! + 1;
       return;
+    }
+    if (n[N_OBST] !== 0) {
+      // A seed inside a crown's disc is not drawn (the seed is still in s0, s1: `reaches` moves them).
+      const io = this.ob.io;
+      io[IO_X] = this.s[0]!;
+      io[IO_Y] = this.s[1]!;
+      this.ob.blocked();
+      if (io[IO_BLOCK] !== 0) {
+        n[N_BLOCKED] = n[N_BLOCKED]! + 1;
+        return;
+      }
     }
     if (n[N_OUTER] !== 0 && this.reaches() === 0) return;
     let ns = n[N_NSTORE]!;
@@ -738,10 +826,59 @@ class Builder implements DetailBuilder {
       if (bx0 <= bx1 && by0 <= by1) this.startPass(0);
       else n[N_PASS] = PASSES + 1; // nothing of the box is inside the raster: no cell to walk
       n[N_PHASE] = PHASE_WALK;
+      if (n[N_RELIEF] !== 0) {
+        // The relief's numbers are worked out here, in `walk`, which V8 optimises (it has the hot loops): a function that runs once a rebuild stays interpreted,
+        // and there every number made by arithmetic is a heap number (see `begin`).
+        const relief = input.relief!;
+        const ob = this.ob;
+        ob.configure(relief, input.canopy);
+        ob.view.set(this.vp);
+        const p = ob.p;
+        p[P_PXM1] = input.pxPerMetre1;
+        p[P_WMIN] = f[F_WMIN]!;
+        p[P_MX] = f[F_MX]!;
+        p[P_MY] = f[F_MY]!;
+        p[P_ZBASE] = Math.max(LIFT_MIN_M, LIFT_PX * f[F_MPPC]!);
+        p[P_VEX] = input.vex;
+        p[P_MPPC] = f[F_MPPC]!;
+        p[P_EX] = f[F_EX]!;
+        p[P_EY] = f[F_EY]!;
+        p[P_EZ] = f[F_EZ]!;
+        p[P_ZCAP] = input.planeCapM !== undefined && input.planeCapM > 0 ? input.planeCapM : 0;
+        // A tree that no line from the picture's seeds can reach is passed over: the box of the seeds grown by one and a half line lengths at the middle of
+        // the screen (far from the camera a line is longer in metres, but a crown there is small on the screen and does not count) and the widest crown.
+        const grow = 1.5 * f[F_LMAX]! * f[F_MPPC]! + REACH_CROWN_M;
+        p[P_BX0] = f[F_BX0]! - grow;
+        p[P_BY0] = f[F_BY0]! - grow;
+        p[P_BX1] = f[F_BX1]! + grow;
+        p[P_BY1] = f[F_BY1]! + grow;
+        const rd = relief.ridge;
+        const g = f[F_GFAC]!;
+        n[N_RIDGE] = n[N_HAS10] !== 0 && rd.beta > 0 && g > RELIEF_MIN_GFAC ? 1 : 0;
+        f[F_RBETA] = rd.beta * g; // a wind high above the ground does not care about its ridges
+        f[F_RLO] = rd.riseLo;
+        f[F_RHI] = rd.riseHi;
+        f[F_RFWD] = rd.forwardM;
+        const cap = (Math.max(rd.maxTurnDeg, relief.crowns.maxTurnDeg) * Math.PI) / 180;
+        f[F_COSCAP] = Math.cos(cap);
+        f[F_SINCAP] = Math.sin(cap);
+        f[F_PIN] = relief.crowns.pinDepth;
+        f[F_PINMIN] = relief.crowns.pinMin;
+        this.reliefStart();
+      }
+    }
+    if (n[N_PHASE] === PHASE_CROWNS) {
+      // The trees that count as crowns are chosen in slices of the clock too, before any seed is looked at.
+      const rb = n[N_REBUILDS]!;
+      const every = rb <= COLD_REBUILDS ? CROWN_CHECK_COLD : rb <= WARMING_REBUILDS ? CROWN_CHECK_WARMING : this.input!.relief!.crowns.clockEvery | 0;
+      if (!this.ob.scan(this.input!.now, f[F_DEADLINE]!, every)) return false;
+      this.reliefSites();
+      n[N_PHASE] = PHASE_WALK;
     }
     const deadline = f[F_DEADLINE]!;
     const level = n[N_LEVEL]!;
-    const every = n[N_REBUILDS]! <= 4 ? CELL_CHECK_COLD : CELL_CHECK;
+    const rebuilds = n[N_REBUILDS]!;
+    const every = rebuilds <= COLD_REBUILDS ? CELL_CHECK_COLD : rebuilds <= WARMING_REBUILDS ? CELL_CHECK_WARMING : CELL_CHECK;
     let check = every;
     let pass = n[N_PASS]!;
     while (pass <= PASSES) {
@@ -828,7 +965,8 @@ class Builder implements DetailBuilder {
     const ns = n[N_NSTORE]!;
     const capG = n[N_CAPG]!;
     const capS = n[N_CAPS]!;
-    const base = n[N_REBUILDS]! <= 4 ? 4 : 16;
+    const rebuilds = n[N_REBUILDS]!;
+    const base = rebuilds <= COLD_REBUILDS ? LINE_CHECK_COLD : rebuilds <= WARMING_REBUILDS ? LINE_CHECK_WARMING : LINE_CHECK;
     if (n[N_PHASE] === PHASE_TRACE_START) {
       // The lattice is walked: decide which of the stored seeds are traced. Each took the segments its wind gives its line, so add them
       // up by the bucket of their hash and keep the buckets, from the lowest, that fit 0.95 of the segment cap and the line cap, and the
@@ -875,8 +1013,8 @@ class Builder implements DetailBuilder {
       if (--left <= 0) {
         const now = input.now();
         if (now >= deadline) break;
-        // Plenty of the slice left: read the clock less often (a clock read allocates its number).
-        if (deadline - now > 0.75 * budget && interval < 4 * base) interval *= 2;
+        // Plenty of the slice left: read the clock less often (a clock read allocates its number), but never while the code is cold.
+        if (base > LINE_CHECK_COLD && deadline - now > 0.75 * budget && interval < 4 * base) interval *= 2;
         left = interval;
       }
     }
@@ -887,6 +1025,7 @@ class Builder implements DetailBuilder {
     out.dropped = n[N_DROPPED]!;
     out.calm = n[N_CALM]!;
     out.steep = n[N_STEEP]!;
+    out.blocked = n[N_BLOCKED]!;
     return ti >= ns;
   }
 
@@ -988,6 +1127,302 @@ class Builder implements DetailBuilder {
     s[20] = lift;
   }
 
+  /**
+   * The relief's set-up for this picture, after `walk` has worked out its numbers: the canopy is ridden on where there is one; with crowns to choose
+   * (they are given, and a crown would be big enough on the screen at this zoom) the phase becomes `PHASE_CROWNS`; without, the eddy sites that need no
+   * crown (a ridge's lee, the plume) are made at once. The trees and the plume are the wind at the ground's own level: a wind read higher than
+   * `RELIEF_TREE_MAX_M` over the ground (the 50 m chip and up) flies over the canopy and bends for none of them.
+   */
+  private reliefStart(): void {
+    const n = this.n;
+    const input = this.input!;
+    const ob = this.ob;
+    const h = input.heightM;
+    const low = h === undefined || h <= RELIEF_TREE_MAX_M;
+    n[N_CANOPY] = low && ob.hasCanopy ? 1 : 0;
+    n[N_PLUME] = low ? 1 : 0;
+    const crowns = low ? input.crowns : undefined;
+    if (crowns !== undefined && crowns.length > 0 && ob.crownsWanted()) {
+      ob.beginScan(crowns);
+      n[N_PHASE] = PHASE_CROWNS;
+    } else {
+      ob.beginScan(NO_CROWNS);
+      this.reliefSites();
+    }
+  }
+
+  /** The unit wind at (s0, s1) into io[IO_DX], io[IO_DY]; false (0) when it is calm. */
+  private siteWind(): number {
+    const io = this.ob.io;
+    this.sampleField();
+    const sp = Math.sqrt(this.s[5]! * this.s[5]! + this.s[6]! * this.s[6]!);
+    if (!(sp >= CALM_MS)) return 0;
+    io[IO_DX] = this.s[5]! / sp;
+    io[IO_DY] = this.s[6]! / sp;
+    return 1;
+  }
+
+  /**
+   * The crowns are chosen: put them in the grid and choose the eddy sites. The plume's (at most `plumeSites`, behind the fire's base by the wind there),
+   * the ridges' lee (a fixed world lattice of `latticeM`, jittered by a hash of its indices, where the ground falls along the flow, the ground upwind is
+   * higher, and a hash priority keeps about half), and the proud crowns that stand free (`Obstacles.proudCandidates`). A site is used only when its core is
+   * big enough on the screen (`Obstacles.addSite`). Whole numbers and the scratch only: nothing is allocated.
+   */
+  private reliefSites(): void {
+    const n = this.n;
+    const f = this.f;
+    const s = this.s;
+    const input = this.input!;
+    const relief = input.relief!;
+    const ob = this.ob;
+    const io = ob.io;
+    const e = relief.eddies;
+    const vex = f[F_VEX]!;
+    ob.buildGrid();
+    // (c) the plume.
+    const plumes = input.plumes;
+    if (plumes !== undefined && n[N_PLUME] !== 0) {
+      const np = Math.min(plumes.length, e.plumeSites);
+      for (let i = 0; i < np; i++) {
+        const q = plumes[i]!;
+        s[0] = q.x;
+        s[1] = q.y;
+        if (this.siteWind() === 0) continue;
+        this.groundAt();
+        io[IO_X] = q.x;
+        io[IO_Y] = q.y;
+        io[IO_R] = q.radiusM;
+        io[IO_K] = q.strength;
+        io[IO_Z] = s[2]! * vex;
+        ob.addSite();
+      }
+    }
+    // (b) the lee of a ridge.
+    if (n[N_RIDGE] !== 0 && f[F_GFAC]! >= LEE_GFAC_MIN) this.leeSites();
+    // (a) the proud crowns that stand free.
+    const room = ob.siteRoom;
+    if (room > 0 && ob.nCrowns > 0) {
+      const m = ob.proudCandidates(this.siteIdx, room);
+      for (let c = 0; c < m; c++) {
+        const i = this.siteIdx[c]!;
+        s[0] = ob.cx[i]!;
+        s[1] = ob.cy[i]!;
+        if (this.siteWind() === 0) continue;
+        this.groundAt();
+        io[IO_X] = s[0]!;
+        io[IO_Y] = s[1]!;
+        io[IO_R] = ob.cr[i]!;
+        io[IO_K] = 1;
+        io[IO_Z] = s[2]! * vex;
+        ob.addSite();
+      }
+    }
+    n[N_OBST] = ob.nCrowns > 0 || ob.nSites > 0 ? 1 : 0;
+  }
+
+  /**
+   * Sites in the lee of ridges: the lattice points of `latticeM` metres (at most 22 x 22 of them, the ones nearest the eye when the picture holds more),
+   * each moved by up to 0.35 of a spacing by a hash of its indices; a point is a site where the 10 m ground falls at least `fallMin` along the flow, the
+   * lee factor is at least `leeMin`, the ground `upwindM` upwind is at least `upwindRiseM` higher, and its priority is under `keep`. The radius is
+   * `radiusPerDrop` x the drop, held to `radiusMinM` to `radiusMaxM`. At most 12 of them.
+   */
+  private leeSites(): void {
+    const f = this.f;
+    const s = this.s;
+    const ob = this.ob;
+    const io = ob.io;
+    const e = this.input!.relief!.eddies;
+    const lat = e.latticeM;
+    const reach = T_SLOPE_REACH_M;
+    const vex = f[F_VEX]!;
+    // The lattice cells of the picture's box, cut to a window of `LEE_WINDOW` cells a side around the eye when it is bigger.
+    let i0 = Math.floor(f[F_BX0]! / lat);
+    let i1 = Math.ceil(f[F_BX1]! / lat);
+    let j0 = Math.floor(f[F_BY0]! / lat);
+    let j1 = Math.ceil(f[F_BY1]! / lat);
+    if (i1 - i0 + 1 > LEE_WINDOW) {
+      const c = Math.floor(f[F_EX]! / lat) - (LEE_WINDOW >> 1);
+      i0 = Math.max(i0, Math.min(c, i1 - LEE_WINDOW + 1));
+      i1 = Math.min(i1, i0 + LEE_WINDOW - 1);
+    }
+    if (j1 - j0 + 1 > LEE_WINDOW) {
+      const c = Math.floor(-f[F_EZ]! / lat) - (LEE_WINDOW >> 1);
+      j0 = Math.max(j0, Math.min(c, j1 - LEE_WINDOW + 1));
+      j1 = Math.min(j1, j0 + LEE_WINDOW - 1);
+    }
+    let kept = 0;
+    for (let j = j0; j <= j1 && kept < RIDGE_SITES; j++) {
+      for (let i = i0; i <= i1 && kept < RIDGE_SITES; i++) {
+        this.hash(i, j, SALT_LEE);
+        if (this.hv[0]! >= e.keep * U32) continue;
+        this.hash(i, j, SALT_LEE + 1);
+        const x = (i + LEE_JITTER * (this.hv[0]! / U32 - 0.5) * 2) * lat;
+        this.hash(i, j, SALT_LEE + 2);
+        const y = (j + LEE_JITTER * (this.hv[0]! / U32 - 0.5) * 2) * lat;
+        if (x < f[F_RX0]! || x > f[F_RX1]! || y < f[F_RY0]! || y > f[F_RY1]!) continue;
+        s[0] = x;
+        s[1] = y;
+        if (this.siteWind() === 0) continue;
+        const ex = io[IO_DX]!;
+        const ey = io[IO_DY]!;
+        s[22] = x;
+        s[23] = y;
+        this.ground10At();
+        const z0 = s[24]!;
+        s[22] = x + ex * reach;
+        s[23] = y + ey * reach;
+        this.ground10At();
+        const zf = s[24]!;
+        s[22] = x - ex * reach;
+        s[23] = y - ey * reach;
+        this.ground10At();
+        const slope = (zf - s[24]!) / (2 * reach);
+        if (!(-slope >= e.fallMin) || !(-slope / T_LEE_SLOPE >= e.leeMin)) continue;
+        s[22] = x - ex * e.upwindM;
+        s[23] = y - ey * e.upwindM;
+        this.ground10At();
+        const drop = s[24]! - z0;
+        if (!(drop >= e.upwindRiseM)) continue;
+        let r = e.radiusPerDrop * drop;
+        if (r < e.radiusMinM) r = e.radiusMinM;
+        else if (r > e.radiusMaxM) r = e.radiusMaxM;
+        io[IO_X] = x;
+        io[IO_Y] = y;
+        io[IO_R] = r;
+        io[IO_K] = f[F_GFAC]!; // a wind read high above the ground feels its ridges less
+        io[IO_Z] = z0 * vex;
+        ob.addSite();
+        if (io[IO_BLOCK] !== 0) kept++;
+      }
+    }
+  }
+
+  /**
+   * The direction of a step: the wind at its midpoint (the unit vector (s5, s6) / s7, the midpoint (s0, s1)) bent by the crowns and the eddies and slid
+   * along the contour of a windward slope, never more than the turn cap from the line's heading (s26, s27), written back to (s5, s6) with the same speed.
+   * Folds the nearest approach to an obstacle into s28. 0 when the midpoint is inside a crown's rim (the line ends there), else 1.
+   */
+  private bend(): number {
+    const s = this.s;
+    const f = this.f;
+    const n = this.n;
+    const ob = this.ob;
+    const io = ob.io;
+    const sp2 = s[7]!;
+    const ix = s[5]! / sp2;
+    const iy = s[6]! / sp2;
+    const mx = s[0]!;
+    const my = s[1]!;
+    let bx = ix;
+    let by = iy;
+    let bent = 0;
+    if (n[N_OBST] !== 0) {
+      io[IO_X] = mx;
+      io[IO_Y] = my;
+      io[IO_DX] = ix;
+      io[IO_DY] = iy;
+      io[IO_MODE] = 0;
+      ob.perturb();
+      if (io[IO_HIT] !== 0) return 0;
+      s[31] = io[IO_NEAR]!; // (no obstacle within reach of the midpoint: the end of the step cannot be inside a rim, `line` does not ask)
+      if (io[IO_NEAR]! > s[28]!) s[28] = io[IO_NEAR]!;
+      const qx = io[IO_PX]!;
+      const qy = io[IO_PY]!;
+      if (qx !== 0 || qy !== 0) {
+        bx = ix + qx;
+        by = iy + qy;
+        const l = Math.sqrt(bx * bx + by * by);
+        if (l > 1e-6) {
+          bx /= l;
+          by /= l;
+        } else {
+          bx = ix;
+          by = iy;
+        }
+        bent = 1;
+      }
+    }
+    if (n[N_RIDGE] !== 0) {
+      // The ground's gradient by a forward difference of `forwardM` on the 10 m ground; where it rises along the flow the line slides along the contour.
+      const fwd = f[F_RFWD]!;
+      s[22] = mx;
+      s[23] = my;
+      this.ground10At();
+      const z0 = s[24]!;
+      s[22] = mx + fwd;
+      this.ground10At();
+      const gx = (s[24]! - z0) / fwd;
+      s[22] = mx;
+      s[23] = my + fwd;
+      this.ground10At();
+      const gy = (s[24]! - z0) / fwd;
+      const rise = gx * bx + gy * by;
+      const lo = f[F_RLO]!;
+      if (rise > lo) {
+        let t = (rise - lo) / (f[F_RHI]! - lo);
+        if (t > 1) t = 1;
+        const w = t * t * (3 - 2 * t);
+        const gm = Math.sqrt(gx * gx + gy * gy);
+        const hx = gx / gm;
+        const hy = gy / gm;
+        const dn = hx * bx + hy * by;
+        const k = f[F_RBETA]! * w * dn;
+        bx -= k * hx;
+        by -= k * hy;
+        const l = Math.sqrt(bx * bx + by * by);
+        if (l > 1e-6) {
+          bx /= l;
+          by /= l;
+          bent = 1;
+        } else {
+          bx = ix;
+          by = iy;
+        }
+      }
+    }
+    // A step never turns more than the cap from the one before, bent or not: a line that was bent round a crown comes back to the wind's direction over a
+    // few steps and not in a corner.
+    const hx = s[26]!;
+    const hy = s[27]!;
+    const cs = f[F_COSCAP]!;
+    if (bx * hx + by * hy < cs) {
+      const sg = hx * by - hy * bx >= 0 ? 1 : -1;
+      const sn = f[F_SINCAP]!;
+      bx = hx * cs - sg * hy * sn;
+      by = sg * hx * sn + hy * cs;
+      bent = 1;
+    }
+    if (bent !== 0) {
+      s[5] = bx * sp2;
+      s[6] = by * sp2;
+    }
+    s[26] = bx;
+    s[27] = by;
+    return 1;
+  }
+
+  /** 1 when the point (s0, s1) is inside a crown's rim (the line ends there), else 0. */
+  private rimHit(): number {
+    const io = this.ob.io;
+    io[IO_X] = this.s[0]!;
+    io[IO_Y] = this.s[1]!;
+    io[IO_DX] = 1;
+    io[IO_DY] = 0;
+    io[IO_MODE] = 1;
+    this.ob.perturb();
+    return io[IO_HIT]! !== 0 ? 1 : 0;
+  }
+
+  /** The metres over the base lift (s29) that the canopy's top asks of a stroke at (s0, s1), into s30: 0 where there is no canopy to ride on. */
+  private canopyExtra(): void {
+    const io = this.ob.io;
+    io[IO_X] = this.s[0]!;
+    io[IO_Y] = this.s[1]!;
+    this.ob.canopyAt();
+    const zc = io[IO_ZC]!;
+    this.s[30] = zc > this.s[29]! ? zc - this.s[29]! : 0;
+  }
+
   /** Trace the line of stored seed `r`. Nothing is returned: a line that is dropped, cut or skipped leaves its mark in the counts. */
   private line(r: number): void {
     const n = this.n;
@@ -1035,17 +1470,35 @@ class Builder implements DetailBuilder {
     // The drawn height: the ground, the lift off it that keeps a stroke on top (at least 1.5 m, at least 3 px) and what the wind's rise adds (or takes).
     let yoff = Math.max(LIFT_MIN_M, LIFT_PX * mpp) + T_LIFT_M * s[20]!;
     if (yoff < T_MIN_ABOVE_M) yoff = T_MIN_ABOVE_M; // the lee sinks a line, but not into the ground
+    // The relief (0.7.0): the line bends where there are obstacles or a ridge, and rides on the canopy's top where there is canopy.
+    const rel = n[N_RELIEF]!;
+    const bendOn = rel !== 0 && (n[N_OBST] !== 0 || n[N_RIDGE] !== 0);
+    const obstOn = rel !== 0 && n[N_OBST] !== 0;
+    const canopyOn = rel !== 0 && n[N_CANOPY] !== 0;
+    if (rel !== 0) {
+      s[26] = u / sp;
+      s[27] = v / sp;
+      s[28] = 0;
+      s[29] = Math.max(LIFT_MIN_M, LIFT_PX * mpp);
+    }
     let px = seedX;
     let py = seedY;
     let ox = seedX;
     let oyw = (ground0 + yoff) * vex;
+    if (canopyOn) {
+      s[0] = seedX;
+      s[1] = seedY;
+      this.canopyExtra();
+      oyw += s[30]!;
+    }
+    let og = ground0;
     let ozw = -seedY;
     if (!(vp[3]! * ox + vp[7]! * oyw + vp[11]! * ozw + vp[15]! > wmin)) {
       n[N_DROPPED] = n[N_DROPPED]! + 1;
       return;
     }
     let made = 0;
-    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall
+    let stop = 0; // 1 calm, 2 raster edge, 3 near plane, 4 a wall, 5 a crown's rim
     for (let k = 0; k < steps; k++) {
       if (k > 0) {
         s[0] = px;
@@ -1063,12 +1516,22 @@ class Builder implements DetailBuilder {
       s[0] = px + u * k1;
       s[1] = py + v * k1;
       this.sampleField();
-      const u2 = s[5]!;
-      const v2 = s[6]!;
+      let u2 = s[5]!;
+      let v2 = s[6]!;
       const sp2 = Math.sqrt(u2 * u2 + v2 * v2);
       if (!(sp2 >= CALM_MS)) {
         stop = 1;
         break;
+      }
+      if (bendOn) {
+        // The direction is bent, the speed (so the colour bin below) is the model's.
+        s[7] = sp2;
+        if (this.bend() === 0) {
+          stop = 5;
+          break;
+        }
+        u2 = s[5]!;
+        v2 = s[6]!;
       }
       const k2 = ds / sp2;
       const qx = px + u2 * k2;
@@ -1079,14 +1542,30 @@ class Builder implements DetailBuilder {
       }
       s[0] = qx;
       s[1] = qy;
+      if (obstOn && s[31]! > 0 && this.rimHit() !== 0) {
+        stop = 5; // the line meets a crown's rim
+        break;
+      }
       this.groundAt();
-      const qyw = (s[2]! + yoff) * vex;
+      let qyw = (s[2]! + yoff) * vex;
+      if (canopyOn) {
+        this.canopyExtra();
+        qyw += s[30]!;
+      }
       const qzw = -qy;
       if (!(vp[3]! * qx + vp[7]! * qyw + vp[11]! * qzw + vp[15]! > wmin)) {
         stop = 3;
         break;
       }
-      if (qyw - oyw > maxRise || oyw - qyw > maxRise) {
+      if (canopyOn) {
+        // The wall test judges the ground only: the canopy's edge is a ramp of a cell and must not cut a line.
+        const gq = s[2]!;
+        if ((gq - og) * vex > maxRise || (og - gq) * vex > maxRise) {
+          stop = 4;
+          break;
+        }
+        og = gq;
+      } else if (qyw - oyw > maxRise || oyw - qyw > maxRise) {
         stop = 4;
         break;
       }
@@ -1122,6 +1601,13 @@ class Builder implements DetailBuilder {
       const D = this.D;
       const drawn = made * stepPx;
       for (let k = 0; k < made; k++) D[4 * (seg0 + k) + 2] = drawn;
+    }
+    if (obstOn && s[28]! > 0) {
+      // The pin: the shader multiplies the meander of this line by it (1 free, down to `pinMin` at an obstacle).
+      let pin = 1 - f[F_PIN]! * s[28]!;
+      if (pin < f[F_PINMIN]!) pin = f[F_PINMIN]!;
+      const C = this.C;
+      for (let k = 0; k < made; k++) C[4 * (seg0 + k) + 3] = pin;
     }
     n[N_LINES] = n[N_LINES]! + 1;
     n[N_SEG] = seg0 + made;

@@ -16,10 +16,12 @@ import type { ViewMode } from '../cameraRig';
 import { HeightField } from '../heightfield';
 import { StreakBatch } from '../streaks';
 import { makeAirView } from '../slice/testing';
+import type { GridSpec } from '../../core/grid';
+import type { FuelMap } from '../../core/types';
 import { HALO_INK } from './flowGlyphs';
 import { FILL_ROWS_PER_CHECK } from './glyphField';
-import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData } from './windGlyphLayer';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, DETAIL_MIN_SEGMENTS, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
+import { GLYPH_DEPTH_BIAS_M, WindGlyphLayer, type GlyphData, type PrecompileTarget } from './windGlyphLayer';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_GEOMETRY, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, FRAME_TRIANGLE_LIMIT, GLYPH_CAPS, type CrownSource, type DetailBuilder, type DetailInput, type DetailOutput, type GlyphBuilder, type GlyphInput, type GlyphOutput, type GlyphTier, type WindHeight } from './glyphTypes';
 
 const shared = (): Record<string, THREE.IUniform> => ({
   uExposure: { value: 1 },
@@ -31,6 +33,8 @@ const shared = (): Record<string, THREE.IUniform> => ({
 /** A builder that needs `steps` calls to finish and takes `stepMs` of the fake clock for each; `Infinity` finishes in one. */
 abstract class StubBase<I extends GlyphInput> {
   readonly begins: I[] = [];
+  /** The budget (ms) of every `step` call, in order. */
+  readonly budgets: number[] = [];
   cancels = 0;
   steps = 2;
   glyphs = 40;
@@ -51,6 +55,7 @@ abstract class StubBase<I extends GlyphInput> {
   }
   protected abstract write(n: number, count: number): void;
   step(budgetMs: number): boolean {
+    this.budgets.push(budgetMs);
     this.clock.t += this.stepMs;
     this.left = budgetMs === Infinity ? 0 : this.left - 1;
     if (this.left > 0) return false;
@@ -1636,6 +1641,279 @@ describe('WindGlyphLayer with the real detailed-streak builder: what the shader 
     expect(turb10).toBeGreaterThan(0.01);
     expect(turb300 / turb10, 'turbulence above the base').toBeGreaterThan(0.3);
     expect(turb300 / turb10).toBeLessThan(0.46);
+  });
+});
+
+describe('WindGlyphLayer: the cold first zoom (0.7.0)', () => {
+  it('takes the lowest ground of a HeightField from the field itself, without reading a cell of the mesh, and walks a plain raster once', () => {
+    const r = rig();
+    const d = r.fresh();
+    const hf = d.drawGround as HeightField;
+    Object.defineProperty(hf, 'elevation', {
+      get() {
+        throw new Error('the layer walked the mesh');
+      },
+    });
+    r.layer.setData({ ...d, drawGround: hf });
+    expect(() => r.go(L4, { settle: true })).not.toThrow();
+    expect(r.layer.stats()).toMatchObject({ active: true, level: 4, detail: 'moving' });
+    // A plain raster (no `minElevation`) is walked, and once: the answer is kept for the same object.
+    const plain = r.fresh();
+    let reads = 0;
+    const cells = (plain.sliceGround as HeightField).elevation;
+    const counted = { grid: plain.drawGround.grid, get elevation() { reads++; return cells; } };
+    r.layer.setData({ ...plain, drawGround: counted });
+    r.go(L4, { settle: true, dt: 300 });
+    r.go(L4, { settle: true, dt: 300, x: 200 });
+    expect(reads, 'the plain raster is read').toBeGreaterThan(0);
+    const after = reads;
+    r.layer.setData({ ...plain, drawGround: counted });
+    r.go(L4, { settle: true, dt: 300 });
+    expect(reads, 'the same raster is walked once, not per rebuild').toBe(after);
+  });
+
+  it('gives the first two slices of each builder half the budget (4 ms), the later ones 8 ms, and a settled frame none', () => {
+    const r = rig();
+    r.detail.steps = 6;
+    r.stub.steps = 4;
+    for (let i = 0; i < 12 && r.detail.begins.length < 2; i++) r.go(L4, { dt: 16 });
+    expect(r.detail.budgets.slice(0, 6)).toEqual([4, 4, 8, 8, 8, 8]);
+    for (let i = 0; i < 12; i++) r.go(L3, { dt: 300 });
+    expect(r.stub.budgets.slice(0, 4), 'the glyph builder is cold on its own').toEqual([4, 4, 8, 8]);
+    r.go(L4, { dt: 300, settle: true });
+    expect(r.detail.budgets[r.detail.budgets.length - 1]).toBe(Infinity);
+  });
+
+  it('reports the longest tick since the statistics were last read, and starts a new window with each read', () => {
+    const r = rig();
+    r.detail.stepMs = 5;
+    expect(r.layer.stats().tickMaxMs).toBe(0);
+    r.go(L4, { dt: 16 }); // one slice of 5 ms on the fake clock
+    r.go(L4, { dt: 16 }); // the second, which swaps
+    const first = r.layer.stats().tickMaxMs;
+    expect(first).toBeGreaterThanOrEqual(5);
+    expect(first).toBeLessThan(10);
+    r.go(L4, { dt: 16 });
+    expect(r.layer.stats().tickMaxMs, 'a tick that did nothing took no time on the fake clock').toBe(0);
+  });
+
+  it('compiles its programs ahead through the renderer (compileAsync when there is one), once, and never throws or rejects', async () => {
+    const r = rig();
+    const calls: unknown[][] = [];
+    const camera = cameraAt(L4);
+    const scene = new THREE.Scene();
+    const target: PrecompileTarget = { compileAsync: (...a) => (calls.push(a), Promise.resolve(scene)) };
+    await r.layer.precompile(target, camera, scene);
+    await r.layer.precompile(target, camera, scene);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([r.layer.group, camera, scene]);
+    // Without compileAsync the synchronous compile is used; a renderer that throws or rejects costs nothing.
+    const sync: unknown[][] = [];
+    await rig().layer.precompile({ compile: (...a) => void sync.push(a) }, camera);
+    expect(sync).toHaveLength(1);
+    // A context without KHR_parallel_shader_compile (software GL): three.js would warn on the console for compileAsync, so the synchronous compile is used.
+    const noExt: string[] = [];
+    await rig().layer.precompile({ compile: () => void noExt.push('compile'), compileAsync: () => (noExt.push('compileAsync'), Promise.resolve()), extensions: { has: () => false } }, camera);
+    expect(noExt).toEqual(['compile']);
+    const withExt: string[] = [];
+    await rig().layer.precompile({ compile: () => void withExt.push('compile'), compileAsync: () => (withExt.push('compileAsync'), Promise.resolve()), extensions: { has: (n) => n === 'KHR_parallel_shader_compile' } }, camera);
+    expect(withExt).toEqual(['compileAsync']);
+    await rig().layer.precompile({ compileAsync: () => Promise.reject(new Error('no GL')) }, camera);
+    await rig().layer.precompile({ compile: () => { throw new Error('no GL'); } }, camera);
+    await rig().layer.precompile({}, camera);
+  });
+});
+
+/** A canopy of 24 m trees and full cover over a grid: the stroke's plane is 0.85 x 24 = 20.4 m. */
+const canopyOf = (grid: GridSpec, height = 24, cover = 1): FuelMap => {
+  const n = grid.nx * grid.ny;
+  return { grid, canopyHeight: new Float32Array(n).fill(height), canopyCover: new Float32Array(n).fill(cover) } as unknown as FuelMap;
+};
+
+describe('WindGlyphLayer: what the relief reads, and when it rebuilds (0.7.0)', () => {
+  /** A source with one placed tree (`serial` is a plain number the test moves). */
+  const tree = { group: 0, count: 1, position: new Float32Array([5, 5, 0]), size: new Float32Array([30, 10]) };
+  const crowns = (serial = 1): CrownSource & { serial: number } => ({ serial, sets: () => [tree] });
+  /** At L4 with a picture swapped in, `gap` ms since. */
+  const atL4 = (): Rig => {
+    const r = rig();
+    r.go(L4, { settle: true });
+    return r;
+  };
+
+  it('gives the detailed builder the relief, the canopy, the crowns and the plume, and the glyph builder none of them', () => {
+    const r = rig();
+    const fuel = canopyOf(r.fresh().atm!.grid);
+    const src = crowns();
+    r.layer.setCanopy(fuel);
+    r.layer.setCrowns(src);
+    r.layer.setPlumes([{ x: 10, y: 20, radiusM: 60, strength: 0.5 }]);
+    r.go(L3, { settle: true });
+    expect('relief' in r.stub.begins[0]!).toBe(false);
+    r.go(L4, { settle: true, dt: 300 });
+    const input = r.detail.begins[0]!;
+    expect(input.relief).toBe(DETAIL_RELIEF);
+    expect(input.canopy).toBe(fuel);
+    expect(input.crowns).toEqual([tree]);
+    expect(input.plumes).toEqual([{ x: 10, y: 20, radiusM: 60, strength: 0.5 }]);
+  });
+
+  it('rides on the canopy and bends round crowns only while trees are drawn: no canopy for a source with no tree placed or drawn', () => {
+    const r = rig();
+    const fuel = canopyOf(r.fresh().atm!.grid);
+    r.layer.setCanopy(fuel);
+    r.layer.setCrowns({ serial: 1, sets: () => [] });
+    r.go(L4, { settle: true });
+    expect([r.detail.begins[0]!.canopy, r.detail.begins[0]!.crowns], 'the canopy layer is off or hidden: the sets are empty').toEqual([undefined, undefined]);
+    r.layer.setCrowns({ serial: 1, sets: () => [{ ...tree, count: 0 }] });
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins[1]!.canopy, 'a set with no tree in it').toBeUndefined();
+    r.layer.setCrowns(crowns());
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins[2]!.canopy).toBe(fuel);
+    expect(r.detail.begins[2]!.crowns).toEqual([tree]);
+  });
+
+  it('gives nothing of it while it is not set, with the canopy layer off (null), or with the relief switched off', () => {
+    const r = atL4();
+    const input = r.detail.begins[0]!;
+    expect(input.relief).toBe(DETAIL_RELIEF);
+    expect([input.canopy, input.crowns, input.plumes]).toEqual([undefined, undefined, undefined]);
+    r.layer.setRelief(false);
+    r.go(L4, { settle: true, dt: 300 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.relief, 'the 0.6.0 picture: no relief at all').toBeUndefined();
+    expect(r.detail.begins[1]!.canopy).toBeUndefined();
+    const k = DETAIL_RELIEF.enabled;
+    try {
+      DETAIL_RELIEF.enabled = false; // the constant of the kill switch
+      r.layer.setRelief(true);
+      r.go(L4, { settle: true, dt: 300 });
+      expect(r.detail.begins.length, 'no change of picture: the constant keeps it off').toBe(2);
+    } finally {
+      DETAIL_RELIEF.enabled = k;
+    }
+  });
+
+  it('rebuilds once for a new crown source, a new serial or a new canopy, and for nothing else the relief reads', () => {
+    const r = atL4();
+    const src = crowns();
+    r.layer.setCrowns(src);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(2);
+    expect(r.detail.begins[1]!.crowns).toEqual([tree]);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins, 'an unchanged serial gives no rebuild').toHaveLength(2);
+    src.serial = 2; // the forest was placed again
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(3);
+    r.layer.setCanopy(canopyOf(r.fresh().atm!.grid));
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(4);
+    r.layer.setCrowns(null); // the canopy layer went off
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins).toHaveLength(5);
+    expect(r.detail.begins[4]!.crowns).toBeUndefined();
+    r.layer.setPlumes([{ x: 0, y: 0, radiusM: 50, strength: 1 }]);
+    r.go(L4, { dt: 300 });
+    r.go(L4, { dt: 300 });
+    expect(r.detail.begins, 'a plume alone waits for the next snapshot').toHaveLength(5);
+  });
+
+  it('holds a rebuild for new crowns to the 250 ms gap, like any other, and not at all below the most detailed level', () => {
+    const r = atL4();
+    const src = crowns();
+    r.layer.setCrowns(src);
+    r.go(L4, { dt: 100 });
+    expect(r.detail.begins).toHaveLength(1);
+    r.go(L4, { dt: 200 });
+    expect(r.detail.begins).toHaveLength(2);
+    const lowRig = rig();
+    lowRig.go(L3, { settle: true });
+    lowRig.layer.setCrowns(crowns());
+    lowRig.layer.setCanopy(canopyOf(lowRig.fresh().atm!.grid));
+    lowRig.go(L3, { dt: 1000 });
+    lowRig.go(L3, { dt: 1000 });
+    expect(lowRig.stub.begins, 'the arrows do not read the relief').toHaveLength(1);
+  });
+
+  it('plans the lattice for the strokes riding on the canopy: nearer the eye than the ground, so a pixel covers fewer metres there (and only then)', () => {
+    const D = 150; // 86 m up at 55 degrees: a 20.4 m plane is a quarter of the way down
+    const plain = rig();
+    plain.go(D, { settle: true });
+    const base = plain.detail.begins[0]!.lod;
+    expect(base.mppCentre).toBeCloseTo((2 * D * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h, 9);
+    const riding = rig();
+    riding.layer.setCanopy(canopyOf(riding.fresh().atm!.grid));
+    riding.layer.setCrowns(crowns());
+    riding.go(D, { settle: true });
+    const lod = riding.detail.begins[0]!.lod;
+    const eyeHeight = Math.cos(THREE.MathUtils.degToRad(55)) * D;
+    expect(lod.mppCentre).toBeCloseTo(base.mppCentre! * (1 - 20.4 / eyeHeight), 6);
+    expect(lod.level).toBe(base.level);
+    expect(lod.spacingM, 'a finer lattice for the finer pixels').toBeLessThanOrEqual(base.spacingM);
+    // No tree drawn, a wind read high over the ground, the relief off, bare ground: the 0.6.0 plan.
+    const bare = rig();
+    bare.layer.setCanopy(canopyOf(bare.fresh().atm!.grid, 24, 0));
+    bare.layer.setCrowns(crowns());
+    bare.go(D, { settle: true });
+    expect(bare.detail.begins[0]!.lod.mppCentre, 'cover 0: the plane is the ground').toBe(base.mppCentre);
+    const high = rig({ height: 50 });
+    high.layer.setCanopy(canopyOf(high.fresh().atm!.grid));
+    high.layer.setCrowns(crowns());
+    high.go(D, { settle: true });
+    expect(high.detail.begins[0]!.lod.mppCentre, 'the 50 m wind flies over the canopy').toBe(base.mppCentre);
+    const none = rig();
+    none.layer.setCanopy(canopyOf(none.fresh().atm!.grid));
+    none.layer.setCrowns({ serial: 1, sets: () => [] });
+    none.go(D, { settle: true });
+    expect(none.detail.begins[0]!.lod.mppCentre, 'no tree is drawn').toBe(base.mppCentre);
+    const off = rig();
+    off.layer.setCanopy(canopyOf(off.fresh().atm!.grid));
+    off.layer.setCrowns(crowns());
+    off.layer.setRelief(false);
+    off.go(D, { settle: true });
+    expect(off.detail.begins[0]!.lod.mppCentre, 'the kill switch').toBe(base.mppCentre);
+    // A plane that would be higher than the eye allows is held at `eyeShare` of the eye's height, and says so to the builder: the ratio is then 1 - eyeShare.
+    const low = rig();
+    low.layer.setCanopy(canopyOf(low.fresh().atm!.grid, 40));
+    low.layer.setCrowns(crowns());
+    low.go(30, { settle: true });
+    const share = DETAIL_RELIEF.canopy.eyeShare;
+    expect(low.detail.begins[0]!.lod.mppCentre).toBeCloseTo(((2 * 30 * Math.tan(THREE.MathUtils.degToRad(25))) / CSS.h) * (1 - share), 9);
+    expect(low.detail.begins[0]!.planeCapM).toBeCloseTo(share * Math.cos(THREE.MathUtils.degToRad(55)) * 30, 6);
+    // Where the plane is already under the cap the cap is still given (it is the eye's, not the plane's), and without trees nothing is.
+    expect(riding.detail.begins[0]!.planeCapM).toBeCloseTo(share * Math.cos(THREE.MathUtils.degToRad(55)) * D, 6);
+    expect(plain.detail.begins[0]!.planeCapM).toBeUndefined();
+    expect(none.detail.begins[0]!.planeCapM).toBeUndefined();
+  });
+
+  it('says `paused` for streaks that move while the view holds still, never over `still` or `off`, and animates as before', () => {
+    const r = rig();
+    r.layer.setPaused(true);
+    expect(r.layer.stats().detail).toBe('off');
+    r.go(L4, { settle: true });
+    expect(r.layer.stats().detail).toBe('paused');
+    expect(r.layer.animating, 'the frame loop (not the layer) holds the clock still').toBe(true);
+    r.layer.setMotion(false);
+    expect(r.layer.stats().detail, 'reduced motion wins').toBe('still');
+    r.layer.setMotion(true);
+    r.layer.setPaused(false);
+    expect(r.layer.stats().detail).toBe('moving');
+  });
+
+  it('tells which switches asked for the picture and whether motion is reduced', () => {
+    const r = rig({ enabled: false });
+    expect(r.layer.stats()).toMatchObject({ glyphs: false, streaks: false, reduced: false });
+    r.layer.setStreaksDetail(true);
+    r.layer.setEnabled(true);
+    r.layer.setMotion(false);
+    expect(r.layer.stats()).toMatchObject({ glyphs: true, streaks: true, reduced: true });
   });
 });
 

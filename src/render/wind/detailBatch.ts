@@ -12,7 +12,8 @@
  *  - the colour is the model's speed as the glyph builder baked it (display-linear in `aC`); nothing here ever changes a colour.
  * No texture is read and no extension is needed: the shaders use only what the neighbouring streak batch does (WebGL1 is enough).
  *
- * Per segment, flat typed arrays (the builder's `DetailOutput`): `a`, `b` the world ends (y exaggerated and lifted), `c` colour rgb and alpha 1,
+ * Per segment, flat typed arrays (the builder's `DetailOutput`): `a`, `b` the world ends (y exaggerated and lifted), `c` colour rgb and the line's pin
+ * (alpha: 1, or `pinMin` to 1 on a line the builder bent round a crown, which multiplies the meander; 0 would drop the segment),
  * `d` (`s0`, `s1` arc length in px, `L` the line's length in px, `seed` 0..1), `e` (`speed` of the line in m/s, `turb`, `lift`, `tail` in px).
  * The stroke is drawn like the glyphs': the colour on a dark navy ring so the pale stops of the wind ramp read on every ground, tested for
  * depth as if `depthBiasM` metres nearer the eye (a crown of trees does not hide it, a ridge does).
@@ -125,7 +126,7 @@ void main() {
   }
   float pxA = uPxPerM1 / ca0.w;
   float pxB = uPxPerM1 / cb0.w;
-  float turbF = 0.25 + 0.75 * aE.y;
+  float turbF = (0.25 + 0.75 * aE.y) * aC.a; // the line's pin (0.7.0): 1 free, down to pinMin (0.05) where the builder bent it round a crown, so the noise does not carry it off
   vec3 pa = aA;
   vec3 pb = aB;
   pa.xz += meander(aA.xz, pxA, t) * turbF;

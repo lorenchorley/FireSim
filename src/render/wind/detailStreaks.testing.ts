@@ -3,6 +3,7 @@
  * scenarios it builds on): a scenario whose plan is the level-4 plan with the detail flag, a reader of the output by line, and the bytes
  * of the used part of it for the determinism tests.
  */
+import { crownDiscRadius } from './detailObstacles';
 import { metresPerPixelAt, planLod } from './glyphLod';
 import { makeScenario, type Scenario, type ScenarioOptions } from './glyphOracle.testing';
 import type { DetailInput, DetailOutput, GroundRaster } from './glyphTypes';
@@ -84,4 +85,40 @@ export function segmentLength(out: DetailOutput, k: number): number {
 export function detailBytes(out: DetailOutput): Buffer {
   const n = out.segments;
   return Buffer.concat([out.a.subarray(0, 3 * n), out.b.subarray(0, 3 * n), out.c.subarray(0, 4 * n), out.d.subarray(0, 4 * n), out.e.subarray(0, 4 * n)].map((a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength)));
+}
+
+/** A placed tree as the vegetation layer holds it: the foot (local metres and the ground's height over the datum), the tree's height and the crown's width. */
+export interface PlacedTree {
+  x: number;
+  y: number;
+  ground: number;
+  height: number;
+  width: number;
+}
+
+/**
+ * How many of the `count` vertices (world axes, three numbers each: x east, y up, z south) lie inside `fraction` of the radius of the disc that a tree's crown
+ * shows at the vertex's own height, for each of `fractions`: the crown is the builder's ellipsoid (centre at 0.7 of the height, half height 0.3 of it) and
+ * a tree counts only where the builder's own rules would count it (it stands `clearM` over the vertex, and the disc is at least `minRadiusM` across the radius).
+ * A line that parts round the crowns has none inside 0.8 radii (a seed may stand between 0.8 and 0.85); the e2e spec reads a real picture with it.
+ */
+export function crownIncursions(vertices: ArrayLike<number>, count: number, trees: readonly PlacedTree[], fractions: readonly number[], clearM = 1.5, minRadiusM = 0.5): number[] {
+  const inside = fractions.map(() => 0);
+  for (let i = 0; i < count; i++) {
+    const x = vertices[3 * i]!;
+    const y = -vertices[3 * i + 2]!;
+    const wy = vertices[3 * i + 1]!;
+    for (const t of trees) {
+      const zv = wy - t.ground;
+      if (!(t.height - zv >= clearM)) continue;
+      const r = crownDiscRadius(t.height, t.width, zv, 0.7, 0.3);
+      if (!(r >= minRadiusM)) continue;
+      const d2 = (x - t.x) * (x - t.x) + (y - t.y) * (y - t.y);
+      for (let f = 0; f < fractions.length; f++) {
+        const rf = fractions[f]! * r;
+        if (d2 < rf * rf) inside[f]!++;
+      }
+    }
+  }
+  return inside;
 }

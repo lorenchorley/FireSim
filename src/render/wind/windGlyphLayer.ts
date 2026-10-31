@@ -24,6 +24,13 @@
  * still told. The hand-over never goes through an empty frame: the old picture stays until the new one swaps in, the detailed streaks fade in
  * over 400 ms and out over 250 ms (from the frame time capped at 0.1 s, so a page that was hidden resumes without a jump), and the old
  * particles step aside only while the detailed streaks are drawn (`detailShown`), so a picture trimmed to nothing gives them back.
+ *
+ * 0.7.0 (docs/plans/0.7.0/D-CONTRACT-070-detail-looks.md): the detailed builder is also given the canopy (`setCanopy`, a `FuelMap` by reference),
+ * the placed crowns (`setCrowns`, a `CrownSource` by reference) and the fire's plume (`setPlumes`), so that the streaks ride on the canopy top, bend
+ * round ridges and crowns and curl into eddies (display only: the direction of a line, never its speed or colour). A change of the crowns (the
+ * forest was placed again) or of the canopy makes the `'canopy'` rebuild reason; `DETAIL_RELIEF.enabled` (or `setRelief(false)`) draws the 0.6.0
+ * picture, byte for byte. `setPaused` is the idle stop's word (`detail: 'paused'`), `precompile` the shader's early compile, and `stats().tickMaxMs`
+ * the layer's own share of a frame.
  */
 import * as THREE from 'three';
 import type { GridSpec } from '../../core/grid';
@@ -34,25 +41,32 @@ import type { AtmosphereSampler } from '../atmosphereSampler';
 import type { ViewMode } from '../cameraRig';
 import { StreakBatch } from '../streaks';
 import { DETAIL_DEPTH_BIAS_M, DETAIL_WIDTH_PX, DetailBatch } from './detailBatch';
-import { createDetailBuilder } from './detailStreaks';
+import { canopyPlane } from './detailObstacles';
+import { createDetailBuilder, RELIEF_TREE_MAX_M } from './detailStreaks';
 import { createGlyphBuilder, HALO_INK } from './flowGlyphs';
 import { HeightRaster, refineFor, surfaceRaster } from './glyphField';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { mayRebuild, rebuildReason, segmentCap, SliceLog, type BuiltPicture, type PictureNow } from './glyphSchedule';
-import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, GLYPH_CAPS, type Box, type CrownSource, type DetailBuilder, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight } from './glyphTypes';
+import { DETAIL_FADE_IN_MS, DETAIL_FADE_OUT_MS, DETAIL_LEVEL, DETAIL_MIN_SEGMENTS, DETAIL_RELIEF, GLYPH_CAPS, type Box, type CrownSet, type CrownSource, type DetailBuilder, type DetailInput, type FlowRaster, type GlyphBuilder, type GlyphInput, type GlyphLevel, type GlyphTier, type GroundRaster, type LodPlan, type Plume, type WindHeight, type DetailRelief } from './glyphTypes';
 
 /** Stroke widths in CSS pixels (baked at the device pixel ratio by `setDpr`): the colour stroke, and the halo that shows 1.25 px either side of it. */
 const GLYPH_WIDTH_PX = 2.5;
 const HALO_WIDTH_PX = GLYPH_WIDTH_PX + 2 * 1.25;
 /**
  * The strokes lie 1.5 m or so above the ground, under the canopy, which is drawn (a crown of 20 to 30 m would hide most of every flow
- * line close in). They are drawn where they are but tested for depth as if this many metres nearer the eye, so a crown in front of a
+ * line close in); with the relief (0.7.0) and trees drawn they ride on the canopy's top instead. They are drawn where they are but tested for depth as if this many metres nearer the eye, so a crown in front of a
  * stroke does not hide it while a ridge, which stands well over this much in front of what is behind it, still does. (Switching the
  * depth test off instead shows every line behind every ridge.)
  */
 export const GLYPH_DEPTH_BIAS_M = 40;
 /** What one slice of a rebuild may take on the main thread (ms, the device's own clock). */
 const SLICE_BUDGET_MS = 8;
+/**
+ * The first slices of a builder run in code that is still interpreted (a cold line costs 100 times a warm one) and cannot stop on the clock any
+ * sooner than its next check: they are given half the budget (0.7.0: the cold first zoom into the most detailed level overshot 8 ms by 2 to 7).
+ */
+const COLD_SLICE_BUDGET_MS = 4;
+const COLD_SLICES = 2;
 /** How far the ground is enumerated toward the horizon: this many camera distances, at least `MIN_RANGE_M`. */
 const RANGE_PER_DISTANCE = 6;
 const MIN_RANGE_M = 3000;
@@ -76,6 +90,14 @@ export interface GlyphData {
   fireWind?: FireWindRaster | null;
 }
 
+/** The part of the renderer `precompile` uses (`THREE.WebGLRenderer` has all three). */
+export interface PrecompileTarget {
+  compile?(scene: THREE.Object3D, camera: THREE.Camera, targetScene?: THREE.Object3D | null): unknown;
+  compileAsync?(scene: THREE.Object3D, camera: THREE.Camera, targetScene?: THREE.Object3D | null): Promise<unknown>;
+  /** `has` does not warn for an extension the context lacks (`get` does, and `compileAsync` asks for `KHR_parallel_shader_compile` with `get`). */
+  extensions?: { has(name: string): boolean };
+}
+
 /** What `tick` needs to know about the canvas: its CSS size and its vertical field of view (the rig's, without the panel insets). */
 export interface GlyphCss {
   w: number;
@@ -92,6 +114,7 @@ export interface GlyphLayerDeps {
 
 type Idle = WindGlyphStats['idle'];
 
+const NO_PLUMES: readonly Plume[] = [];
 const newPlan = (): LodPlan => ({ level: 0, cellPx: 0, spacingPx: 0, spacingExp: 0, spacingM: 0, curved: false, jitter: 0, lengthPx: { min: 0, max: 0, pxPerMs: 0 } });
 const copyPlan = (from: LodPlan, to: LodPlan): void => {
   to.level = from.level;
@@ -107,7 +130,7 @@ const copyPlan = (from: LodPlan, to: LodPlan): void => {
   to.mppCentre = from.mppCentre;
   to.thin = from.thin;
 };
-const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
+const newBuilt = (): BuiltPicture => ({ dataSerial: -1, height: 'fire', level: 0, spacingExp: 0, thin: 1, crownSerial: 0, pose: new Float64Array(12), proj: new Float64Array(3), box: { x0: 0, y0: 0, x1: 0, y1: 0 } });
 
 export class WindGlyphLayer {
   readonly group = new THREE.Group();
@@ -125,6 +148,19 @@ export class WindGlyphLayer {
   private streaksDetail = false;
   /** Motion is allowed (false under reduced motion: the detailed streaks stand still). */
   private motion = true;
+  /** The view holds still after a minute without a touch (`setPaused`): the streaks are drawn but do not move. */
+  private paused = false;
+  /** The relief terms of the detailed streaks are on (the switch of the tests and of the tuning; `DETAIL_RELIEF.enabled` is the constant that kills them). */
+  private reliefOn = true;
+  /** What the relief reads: the canopy, the placed crowns (and the serial of them the last frame saw), the plume. */
+  private canopy: FuelMap | null = null;
+  private crownSrc: CrownSource | null = null;
+  private crownSeen = 0;
+  private plumes: readonly Plume[] = NO_PLUMES;
+  /** Counts every change of what the relief reads (the canopy, the crowns, the switch): a picture built for another count is out of date (`'canopy'`). From 1, so that 0 is "no relief". */
+  private reliefSerial = 1;
+  private lastRelief = -1;
+  private compiled = false;
   private height: WindHeight = 'fire';
   private data: GlyphData | null = null;
   /** One per `setData`: a picture of the air is the same picture until it changes. */
@@ -147,6 +183,8 @@ export class WindGlyphLayer {
   private readonly plan = newPlan();
   private readonly buildPlan = newPlan();
   private planKept = false;
+  /** The level and lattice exponent the plan held before this frame's call: the hysteresis of the second call of a frame that plans twice. */
+  private readonly prevPlan = { level: 0 as GlyphLevel, spacingExp: 0 };
   private built: BuiltPicture = newBuilt();
   private next: BuiltPicture = newBuilt();
   private builtValid = false;
@@ -162,6 +200,8 @@ export class WindGlyphLayer {
   /** The segment cap the rebuild in progress was begun with. */
   private beginSegments = 0;
   private lastSwapAt = -Infinity;
+  /** Slices run so far by the glyph builder (0) and by the detailed one (1): the first `COLD_SLICES` of each take the cold budget. */
+  private readonly coldSlices = new Int32Array(2);
   private shown = false;
   /** The detailed streaks are on screen (a picture of at least one segment, not yet faded out), what they hold, and how far they have faded in (0 to 1) toward `fadeTo`. */
   private detailOn = false;
@@ -180,7 +220,7 @@ export class WindGlyphLayer {
   private sigValid = false;
   private lastSerial = -1;
   private lastHeight: WindHeight | null = null;
-  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, thin: 1, pose: this.pose, proj: this.proj, distanceM: 0 };
+  private readonly current: PictureNow = { dataSerial: 0, height: 'fire', level: 0, spacingExp: 0, thin: 1, crownSerial: 0, pose: this.pose, proj: this.proj, distanceM: 0 };
   private readonly unproject = new THREE.Matrix4();
   private readonly viewProj = new Float64Array(16);
   private readonly eye = new Float64Array(3);
@@ -193,6 +233,8 @@ export class WindGlyphLayer {
 
   // Statistics.
   private readonly log = new SliceLog();
+  /** The longest `tick` since the statistics were last read (ms, the layer's own clock). */
+  private tickMax = 0;
   private idle: Idle = 'off';
   private planLevel: WindGlyphStats['level'] = 0;
   private glyphs = 0;
@@ -254,19 +296,78 @@ export class WindGlyphLayer {
   }
 
   /**
-   * C0 stub (0.7.0, lane E-A): the view holds still after a minute without activity (`idleStop.ts`); the detailed streaks then say `'paused'`
-   * (only while moving, never over `'still'`). Inert until built.
+   * The view holds still after a minute without activity (`idleStop.ts`): the detailed streaks then say `'paused'` in the statistics (only while they
+   * are moving: reduced motion says `'still'` whatever else, and nothing drawn says `'off'`). The frame loop freezes the shader's clock; the layer
+   * itself does nothing else, so a rebuild that is due still runs (the picture it makes is as still as the one it replaces).
    */
-  setPaused(_on: boolean): void {}
+  setPaused(on: boolean): void {
+    this.paused = on;
+  }
 
-  /** C0 stub (0.7.0, lane E-A): the canopy height and cover, by reference (null when the canopy layer is off), for the strokes to ride on the crowns' tops. Inert until built. */
-  setCanopy(_fuel: FuelMap | null): void {}
+  /**
+   * The canopy height and cover per fire cell, by reference (null when there is none): the strokes ride on the crowns' tops (0.7.0, T1), but only while
+   * trees are drawn (`setCrowns` gives trees: with none placed or drawn the strokes stay at the ground, as in 0.6.0). A different object makes the
+   * `'canopy'` rebuild reason.
+   */
+  setCanopy(fuel: FuelMap | null): void {
+    if (fuel === this.canopy) return;
+    this.canopy = fuel;
+    this.reliefSerial++;
+  }
 
-  /** C0 stub (0.7.0, lane E-A): where the placed crowns are read from (null when the canopy layer is off); a new `serial` gives the `'canopy'` rebuild reason. Inert until built. */
-  setCrowns(_src: CrownSource | null): void {}
+  /**
+   * Where the placed crowns are read from (`VegetationLayer.crownSource()`; null when the canopy layer is off: a stroke does not bend round trees
+   * that are not drawn). The source's `serial` is read once a frame, and a new one gives the `'canopy'` rebuild reason (0.7.0, T3).
+   */
+  setCrowns(src: CrownSource | null): void {
+    if (src === this.crownSrc) return;
+    this.crownSrc = src;
+    this.crownSeen = src ? src.serial : 0;
+    this.reliefSerial++;
+  }
 
-  /** C0 stub (0.7.0, lane E-A): the fire's plume as an eddy site, per snapshot (empty: none). Inert until built. */
-  setPlumes(_plumes: readonly Plume[]): void {}
+  /** The fire's plume as a site for an eddy pair (local metres), made by the caller per snapshot (empty: none). Read at the next rebuild, which a new snapshot makes anyway. */
+  setPlumes(plumes: readonly Plume[]): void {
+    this.plumes = plumes;
+  }
+
+  /**
+   * The relief of the detailed streaks on or off (0.7.0): off draws the 0.6.0 picture, byte for byte. The seam of the e2e specs and of the tuning
+   * on the real picture; the app leaves it on (`DETAIL_RELIEF.enabled` is the constant that switches it off for good).
+   */
+  setRelief(on: boolean): void {
+    if (on === this.reliefOn) return;
+    this.reliefOn = on;
+    this.reliefSerial++;
+  }
+
+  /** The live numbers of the relief (`DETAIL_RELIEF`), for the tuning on the real picture: change a field, then `setRelief(false)` and `setRelief(true)` to build again. */
+  get reliefSettings(): DetailRelief {
+    return DETAIL_RELIEF;
+  }
+
+  /**
+   * Compile the layer's shaders now (0.7.0, D12 c): the first frame of the most detailed level used to compile the streaks' program in the middle of
+   * the zoom. Called once by the scene view when the first data arrives (`compileAsync` uses `KHR_parallel_shader_compile` where the browser has it,
+   * so the link does not block the thread; without the extension (software GL, an old WebView) the compile is a short synchronous one at this quiet
+   * moment instead of at the first zoom, and `compileAsync` is not called: three.js writes a console warning when it asks a context for an extension it
+   * lacks, which the e2e console guard fails on).
+   * `compile` visits hidden objects too, so the batches need not be shown. Resolves when the programs are ready; never rejects.
+   */
+  precompile(renderer: PrecompileTarget, camera: THREE.Camera, scene?: THREE.Object3D): Promise<void> {
+    if (this.compiled) return Promise.resolve();
+    this.compiled = true;
+    try {
+      const parallel = typeof renderer.compileAsync === 'function' && (renderer.extensions === undefined || renderer.extensions.has('KHR_parallel_shader_compile'));
+      const done = parallel ? renderer.compileAsync!(this.group, camera, scene ?? null) : (renderer.compile?.(this.group, camera, scene ?? null), Promise.resolve());
+      return Promise.resolve(done).then(
+        () => undefined,
+        () => undefined,
+      );
+    } catch {
+      return Promise.resolve();
+    }
+  }
 
   /** The detailed streaks are drawn in motion, so the frame loop must keep drawing. */
   get animating(): boolean {
@@ -299,8 +400,12 @@ export class WindGlyphLayer {
    * the throttle, the slice budget and the fade: the picture is finished in this call.
    */
   tick(now: number, camera: THREE.PerspectiveCamera, css: GlyphCss, mode: ViewMode, vex: number, targetDistance: number, framesTriangles: number, settle: boolean): boolean {
+    const t0 = this.clock();
     const fading = this.ramp(now, settle);
-    return this.update(now, camera, css, mode, vex, targetDistance, framesTriangles, settle) || fading;
+    const changed = this.update(now, camera, css, mode, vex, targetDistance, framesTriangles, settle) || fading;
+    const took = this.clock() - t0;
+    if (took > this.tickMax) this.tickMax = took;
+    return changed;
   }
 
   /**
@@ -352,12 +457,19 @@ export class WindGlyphLayer {
     proj[2] = camera.projectionMatrix.elements[9]!;
     // A picture trimmed to nothing is built again once the frame has room (a layer switched off, a smaller view), with no camera move needed.
     const retry = this.noRoom && this.roomFor(this.planLevel === DETAIL_LEVEL, framesTriangles) >= BUDGET_RETRY_SHARE * GLYPH_CAPS[this.tier].segments;
+    // The forest was placed again (the crowns' serial moved): the relief is out of date, like new data.
+    const src = this.crownSrc;
+    if (src !== null && src.serial !== this.crownSeen) {
+      this.crownSeen = src.serial;
+      this.reliefSerial++;
+    }
     // Nothing changed since the last frame and nothing is waiting: the whole idle cost is this comparison.
-    if (this.sigValid && !retry && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
+    if (this.sigValid && !retry && !this.working && !this.waiting && this.dataSerial === this.lastSerial && this.reliefSerial === this.lastRelief && this.height === this.lastHeight && same(pose, this.lastPose) && same(proj, this.lastProj)) return false;
     this.lastPose.set(pose);
     this.lastProj.set(proj);
     this.detail.setPxPerM1(css.h / (2 * Math.tan((css.fov * Math.PI) / 360))); // the eddies' octaves count by the pixels a metre covers
     this.lastSerial = this.dataSerial;
+    this.lastRelief = this.reliefSerial;
     this.lastHeight = this.height;
     this.sigValid = true;
     camera.updateMatrixWorld();
@@ -369,8 +481,19 @@ export class WindGlyphLayer {
     const grid = d.atm!.grid;
     const mpp = metresPerPixelAt(targetDistance, css.fov, css.h);
     // The most detailed level draws the detailed streaks: `planLod` gives it their lattice and line lengths (`detail`), the lower levels the 0.5.0 ones.
-    const lod = planLod(grid.cellSize / mpp, mpp, this.planKept ? this.plan : null, this.plan, true);
+    const prev = this.planKept ? this.prevPlan : null;
+    if (prev) {
+      prev.level = this.plan.level;
+      prev.spacingExp = this.plan.spacingExp;
+    }
+    let lod = planLod(grid.cellSize / mpp, mpp, prev, this.plan, true);
     this.planKept = true;
+    if (lod.level === DETAIL_LEVEL) {
+      // The strokes that ride on the canopy are nearer the eye than the ground the lattice was laid for: the lattice is planned for the metres a pixel
+      // covers at the strokes' own height, so the lines stay as far apart on the screen as they were on the ground (0.6.0).
+      const ratio = this.liftRatio(targetDistance);
+      if (ratio < 1) lod = planLod(grid.cellSize / mpp, mpp * ratio, prev, this.plan, true);
+    }
     this.cellPx = lod.cellPx;
     this.cellM = grid.cellSize;
     if (lod.level === 0) return this.hide(null, true);
@@ -384,6 +507,7 @@ export class WindGlyphLayer {
     n.level = lod.level;
     n.spacingExp = lod.spacingExp;
     n.thin = lod.thin;
+    n.crownSerial = lod.level === DETAIL_LEVEL && this.reliefActive() ? this.reliefSerial : 0;
     n.distanceM = targetDistance;
     // A rebuild under way is thrown away when it is about a different picture; a camera that moved only makes the next one.
     if (this.working && (this.next.dataSerial !== n.dataSerial || this.next.height !== n.height || this.next.level !== n.level || this.next.spacingExp !== n.spacingExp)) this.cancel();
@@ -402,14 +526,18 @@ export class WindGlyphLayer {
       this.begun = false;
       this.next.dataSerial = n.dataSerial;
       this.next.height = n.height;
+      this.next.crownSerial = n.crownSerial;
       this.next.level = n.level;
       this.next.spacingExp = n.spacingExp;
     }
     return this.advance(now, d, lod, css, vex, framesTriangles, settle);
   }
 
+  /** The layer's statistics. `tickMaxMs` is the longest `tick` since the last call, so every read starts a new window. */
   stats(): WindGlyphStats {
     const log = this.log;
+    const tickMaxMs = this.tickMax;
+    this.tickMax = 0;
     return {
       active: this.shown || this.detailOn,
       idle: this.idle,
@@ -423,12 +551,12 @@ export class WindGlyphLayer {
       sliceP95Ms: log.p95(),
       sliceMaxMs: log.max(),
       slicesLast: log.slicesLast,
-      detail: this.detailOn ? (this.motion ? 'moving' : 'still') : 'off',
+      detail: this.detailOn ? (this.motion ? (this.paused ? 'paused' : 'moving') : 'still') : 'off',
       detailSegments: this.detailSegments,
       glyphs: this.enabled,
       streaks: this.streaksDetail,
       reduced: !this.motion,
-      tickMaxMs: 0, // C0: lane E-A measures it
+      tickMaxMs,
       source: this.height === 'felt' && this.felt ? 'felt' : typeof this.height === 'number' ? 'height' : 'surface',
       ...(this.height === 'felt' && this.felt ? { dataCellM: this.felt.grid.cellSize } : {}),
     };
@@ -561,6 +689,35 @@ export class WindGlyphLayer {
     return segmentCap(GLYPH_CAPS[this.tier].segments, others, 0, detailed ? DETAIL_TRIANGLES : GLYPH_TRIANGLES, detailed ? DETAIL_MIN_SEGMENTS : 0);
   }
 
+  /** The relief of the detailed streaks is wanted: the switch and the constant. */
+  private reliefActive(): boolean {
+    return this.reliefOn && DETAIL_RELIEF.enabled;
+  }
+
+  /**
+   * How much nearer the eye the strokes are than the ground at the middle of the screen when they ride on the canopy, as a share of the distance
+   * (`1 - plane / eye height`, from 0.25 to 1; 1 where they do not ride on one: no relief, no canopy, no trees drawn, a wind read high over the ground).
+   * The pose of this frame is read, and nothing is allocated.
+   */
+  private liftRatio(targetDistance: number): number {
+    if (!this.reliefActive() || this.canopy === null || this.crownSrc === null) return 1;
+    if ((typeof this.height === 'number' ? this.height : 10) > RELIEF_TREE_MAX_M) return 1;
+    if (!placed(this.crownSrc.sets())) return 1;
+    const pose = this.pose;
+    const eyeHeight = this.eyeHeightOverTarget(targetDistance);
+    if (!(eyeHeight > 0)) return 1;
+    const plane = canopyPlane(this.canopy, pose[3]!, -pose[4]!, DETAIL_RELIEF.canopy, DETAIL_RELIEF.canopy.eyeShare * eyeHeight);
+    const ratio = 1 - plane / eyeHeight;
+    return ratio < 0.25 ? 0.25 : ratio > 1 ? 1 : ratio;
+  }
+
+  /** The eye's height over the middle of the screen (m): the forward axis's height, negated, by the distance to the target; 0 for a view that does not look down. */
+  private eyeHeightOverTarget(targetDistance: number): number {
+    const pose = this.pose;
+    const h = -2 * (pose[8]! * pose[5]! - pose[6]! * pose[7]!) * targetDistance;
+    return h > 0 ? h : 0;
+  }
+
   private setNoRoom(on: boolean): void {
     this.noRoom = on;
     this.idle = on ? 'budget' : null;
@@ -587,8 +744,10 @@ export class WindGlyphLayer {
       if (filled === 'more' || (filled === 'done' && !settle)) return false; // the trace starts a frame after the fill, from the camera as it is then
       if (!this.begin(d, lod, css, vex, framesTriangles)) return this.swapEmpty(now);
     }
+    const kind = this.next.level === DETAIL_LEVEL ? 1 : 0;
     const t0 = this.clock();
-    const done = (this.next.level === DETAIL_LEVEL ? this.detailBuilder : this.builder).step(settle ? Infinity : SLICE_BUDGET_MS);
+    const done = (kind === 1 ? this.detailBuilder : this.builder).step(settle ? Infinity : this.coldSlices[kind]! < COLD_SLICES ? COLD_SLICE_BUDGET_MS : SLICE_BUDGET_MS);
+    this.coldSlices[kind]!++;
     this.log.push(this.clock() - t0);
     return done ? this.swap(now, framesTriangles, settle) : false;
   }
@@ -660,8 +819,26 @@ export class WindGlyphLayer {
       cap: { glyphs: caps.glyphs, segments: this.beginSegments },
       now: this.clock,
     };
-    if (detailed) this.detailBuilder.begin({ ...input, ground10: d.sliceGround, seed: 0, heightM: typeof this.height === 'number' ? this.height : 10 }); // the ground terms fade with the wind's height
-    else this.builder.begin(input);
+    if (detailed) {
+      const detail: DetailInput = { ...input, ground10: d.sliceGround, seed: 0, heightM: typeof this.height === 'number' ? this.height : 10 }; // the ground terms fade with the wind's height
+      if (this.reliefActive()) {
+        detail.relief = DETAIL_RELIEF;
+        // The strokes ride on the canopy and bend round crowns only while there are trees drawn to ride on and bend round: the canopy layer on, and
+        // not faded out by a top view (the crown source is empty then).
+        const trees = this.crownSrc ? this.crownSrc.sets() : undefined;
+        if (trees && placed(trees)) {
+          detail.crowns = trees;
+          if (this.canopy) {
+            detail.canopy = this.canopy;
+            // (the plane stays under the eye: see `DetailRelief.canopy.eyeShare`)
+            const eyeHeight = this.eyeHeightOverTarget(this.distance);
+            if (eyeHeight > 0) detail.planeCapM = DETAIL_RELIEF.canopy.eyeShare * eyeHeight;
+          }
+        }
+        if (this.plumes.length > 0) detail.plumes = this.plumes;
+      }
+      this.detailBuilder.begin(detail);
+    } else this.builder.begin(input);
     this.begun = true;
     return true;
   }
@@ -764,15 +941,23 @@ export class WindGlyphLayer {
     return visibleBox(this.unproject.elements, this.eye, this.lowest(this.data!.drawGround) * this.vex, bounds, Math.max(MIN_RANGE_M, RANGE_PER_DISTANCE * this.distance), margin, out);
   }
 
+  /** The lowest ground (m ASL) of a raster: what a `HeightField` already knows (0.7.0: no walk of 160,000 cells in the one frame that cannot be sliced), else a walk, once. */
   private lowest(g: GroundRaster): number {
     if (this.groundMin?.of !== g) {
       let lo = Infinity;
-      for (let k = 0; k < g.elevation.length; k++) if (g.elevation[k]! < lo) lo = g.elevation[k]!;
+      if (typeof g.minElevation === 'number') lo = g.minElevation;
+      else for (let k = 0; k < g.elevation.length; k++) if (g.elevation[k]! < lo) lo = g.elevation[k]!;
       this.groundMin = { of: g, y: Number.isFinite(lo) ? lo : 0 };
     }
     return this.groundMin.y;
   }
 }
+
+/** Is any tree placed in these sets? */
+const placed = (sets: readonly CrownSet[]): boolean => {
+  for (let i = 0; i < sets.length; i++) if (sets[i]!.count > 0) return true;
+  return false;
+};
 
 const same = (a: Float64Array, b: Float64Array): boolean => {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
