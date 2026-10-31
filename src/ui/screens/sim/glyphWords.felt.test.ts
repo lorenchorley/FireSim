@@ -67,7 +67,7 @@ describe('the caption of What the fire feels', () => {
   it('says what the numbers are and that they are not a measurement', () => {
     expect(glyphCaption('felt', air(), null, TZ, abs)).toEqual([
       'Wind the fire feels · 60 m cells · air from 14:05.',
-      "The wind the fire model uses in each 60 m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.",
+      "The wind the fire model uses in each 60 m cell: slope flow, lee eddies and the fire's own effect on the wind are included. It is not a measurement.",
       'On a calm night much of it is air draining downhill.',
     ]);
     expect(feltLine(60)).toContain('It is not a measurement.');

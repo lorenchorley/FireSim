@@ -124,7 +124,7 @@ test('What the fire feels: the snapshot carries the 60 m wind and the chip draws
   const caption = panel.getByTestId('wind-glyph-caption');
   const clock = await clockOf(page, felt.time);
   await expect(caption).toContainText(`Wind the fire feels · ${felt.cellM} m cells · air from ${clock}`);
-  await expect(caption).toContainText(`The wind the fire model uses in each ${felt.cellM} m cell: slope flow, lee eddies and the fire's own draw are included. It is not a measurement.`);
+  await expect(caption).toContainText(`The wind the fire model uses in each ${felt.cellM} m cell: slope flow, lee eddies and the fire's own effect on the wind are included. It is not a measurement.`);
   await expect(caption).not.toContainText('The wind the fire feels is not in this picture');
   await expect(caption).not.toContainText('On a calm night the fire can feel much less');
   expect(await caption.innerText()).not.toMatch(/[—–]/);
