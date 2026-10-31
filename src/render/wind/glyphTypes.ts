@@ -184,17 +184,25 @@ export interface DetailRelief {
     clearM: number;
     centreShare: number;
     halfShare: number;
-    /** A disc under `minRadiusPx` on the screen is not an obstacle; at most `maxCrowns` are kept (the bound is the screen); the clock is read every `clockEvery` trees. */
+    /**
+     * A disc under `minRadiusPx` on the screen is not an obstacle; at most `maxCrowns` are kept (when more qualify the radius is doubled and the trees are scanned
+     * again: the smallest go, wherever they are); the clock is read every `clockEvery` trees.
+     */
     minRadiusPx: number;
     maxCrowns: number;
     clockEvery: number;
-    /** The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, the stop at the rim (x r) and the seed block (x r). */
+    /**
+     * The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, and the rim:
+     * a line slides along the circle of `rim` x r instead of ending at a crown, and a seed inside it is moved onto it. A crown more than `ringPx` px wide in
+     * radius moves only `ringPx` / its radius of the seeds inside it onto its rim (by a hash of the seed): a rim holds about one line to the lattice's own
+     * spacing, and the seeds of a disc many spacings across would bunch there.
+     */
     gridM: number;
     reach: number;
     soften: number;
     maxTurnDeg: number;
     rim: number;
-    seedBlock: number;
+    ringPx: number;
     /** The per-line pin written into the colour alpha: `1 - pinDepth x (near an obstacle)` within `pinReach` x r, never under `pinMin` (the shader multiplies the meander by it). */
     pinMin: number;
     pinDepth: number;
@@ -245,14 +253,14 @@ export const DETAIL_RELIEF: DetailRelief = {
     centreShare: 0.7,
     halfShare: 0.3,
     minRadiusPx: 4,
-    maxCrowns: 1024,
+    maxCrowns: 1536,
     clockEvery: 4096,
     gridM: 32,
     reach: 3,
     soften: 0.35,
     maxTurnDeg: 30,
-    rim: 0.85,
-    seedBlock: 0.8,
+    rim: 1.1,
+    ringPx: 80,
     pinMin: 0.05,
     pinDepth: 0.95,
     pinReach: 2.5,
@@ -316,7 +324,7 @@ export interface DetailOutput {
   dropped: number;
   calm: number;
   steep: number;
-  /** 0.7.0: seeds not drawn because they fell inside an obstacle's disc (0 while `relief` is absent). */
+  /** 0.7.0: seeds not drawn because they fell inside a crown's circle and its rim had no room for them (0 while `relief` is absent). */
   blocked: number;
 }
 export interface DetailBuilder {

@@ -12,7 +12,7 @@ import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { createDetailBuilder } from './detailStreaks';
-import { linesOf, makeDetailScenario, type DetailScenario } from './detailStreaks.testing';
+import { detailBytes, linesOf, makeDetailScenario, type DetailScenario } from './detailStreaks.testing';
 import { buildAll, makeCamera, topDownCamera } from './glyphOracle.testing';
 import { DETAIL_RELIEF as TUNED, type CrownSet, type DetailBuilder, type DetailInput, type DetailRelief } from './glyphTypes';
 
@@ -248,9 +248,13 @@ describe('the relief costs', () => {
     const sc = relieved();
     const { relief: _r, canopy: _c, crowns: _k, plumes: _p, ...plain } = sc.input;
     const c = compare(plain, sc.input, 120);
-    log(`relief, High cap: ${c.b.out.lines} lines, ${c.b.out.segments} segments, ${c.b.out.blocked} seeds blocked: whole rebuild median ${c.relief.toFixed(2)} ms against ${c.plain.toFixed(2)} ms without the relief (x${(c.relief / c.plain).toFixed(2)})`);
+    log(`relief, High cap: ${c.b.out.lines} lines, ${c.b.out.segments} segments, ${c.b.out.blocked} seeds not drawn: whole rebuild median ${c.relief.toFixed(2)} ms against ${c.plain.toFixed(2)} ms without the relief (x${(c.relief / c.plain).toFixed(2)})`);
     expect(c.b.out.lines).toBeGreaterThan(300);
-    expect(c.b.out.blocked).toBeGreaterThan(20);
+    // The crowns bend the picture (the same input without them is another one).
+    const without = createDetailBuilder('high');
+    buildAll(without, { ...sc.input, crowns: undefined, now });
+    expect(c.b.out.lines, 'the crowns move seeds onto their rims and keep the lines').toBeGreaterThan(0.9 * without.out.lines);
+    expect(detailBytes(c.b.out).equals(detailBytes(without.out)), 'the crowns bend the lines').toBe(false);
     expect(c.relief / c.plain, 'a shared machine slows both: the ratio is what is pinned').toBeLessThan(3);
     expect(c.relief, 'and an order of magnitude over the contract is a slowdown, not a busy machine').toBeLessThan(30);
     const all: number[] = [];

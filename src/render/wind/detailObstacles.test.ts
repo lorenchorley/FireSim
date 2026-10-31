@@ -10,10 +10,10 @@ import {
   IO_BLOCK,
   IO_DX,
   IO_DY,
+  IO_FX,
+  IO_FY,
   IO_G,
-  IO_HIT,
   IO_K,
-  IO_MODE,
   IO_NEAR,
   IO_PX,
   IO_PY,
@@ -25,6 +25,7 @@ import {
   MAX_CROWNS_CAP,
   Obstacles,
   PIN_GAIN,
+  SLIDE_MIN,
   P_BX0,
   P_BX1,
   P_BY0,
@@ -67,16 +68,15 @@ function field(crowns: readonly [number, number, number][], r: DetailRelief = DE
   return ob;
 }
 
-/** The perturbation, nearness and rim hit at (x, y) for a unit wind along (dx, dy). */
-function at(ob: Obstacles, x: number, y: number, dx = 1, dy = 0, mode = 0): { px: number; py: number; near: number; hit: number } {
+/** The perturbation and nearness at (x, y) for a unit wind along (dx, dy). */
+function at(ob: Obstacles, x: number, y: number, dx = 1, dy = 0): { px: number; py: number; near: number } {
   const io = ob.io;
   io[IO_X] = x;
   io[IO_Y] = y;
   io[IO_DX] = dx;
   io[IO_DY] = dy;
-  io[IO_MODE] = mode;
   ob.perturb();
-  return { px: io[IO_PX]!, py: io[IO_PY]!, near: io[IO_NEAR]!, hit: io[IO_HIT]! };
+  return { px: io[IO_PX]!, py: io[IO_PY]!, near: io[IO_NEAR]! };
 }
 
 /** The same by the textbook formula, summed over every crown (no grid): the soft doublet of potential flow past a cylinder, faded to 0 at 3 r. */
@@ -110,7 +110,6 @@ describe('the soft doublet round a crown', () => {
     const bare = -(25 * 25) / (25 + 0.1225 * 25) ** 2;
     expect(p.px).toBeCloseTo(bare * (1 - 25 / 225) ** 2, 9);
     expect(p.py).toBeCloseTo(0, 12);
-    expect(p.hit).toBe(0);
   });
 
   it('is symmetric about the axis: the along part is the same either side, the across part has the opposite sign', () => {
@@ -168,32 +167,146 @@ describe('the soft doublet round a crown', () => {
     expect(worst).toBeLessThanOrEqual(1.2);
   });
 
-  it('says how near it is (1 on the crown, 0 from 2.5 r) and when a point is inside the rim (0.85 r)', () => {
-    expect(at(ob, 0.5, 0).hit).toBe(1);
-    expect(at(ob, 4.2, 0).hit).toBe(1);
-    expect(at(ob, 4.3, 0).hit).toBe(0);
+  it('says how near it is (1 on the crown, 0 from 2.5 r)', () => {
+    expect(at(ob, 0.5, 0).near).toBe(1);
     expect(at(ob, 4.3, 0).near).toBe(1); // PIN_GAIN x (1 - 4.3 / 12.5) is over 1
     expect(at(ob, 8, 0).near).toBeCloseTo(PIN_GAIN * (1 - 8 / 12.5), 9);
     expect(at(ob, 6.25, 0).near, 'the whole depth from half way in').toBe(1);
     expect(at(ob, 12.5, 0).near).toBe(0);
     expect(at(ob, 30, 0).near).toBe(0);
-    expect(at(ob, 4.2, 0, 1, 0, 1).hit, 'the rim test alone').toBe(1);
-    expect(at(ob, 6, 0, 1, 0, 1)).toMatchObject({ px: 0, py: 0, hit: 0 });
+  });
+});
+
+describe('a seed in a crown starts on its rim, and a line that meets the rim slides along it', () => {
+  const RIM = DETAIL_RELIEF.crowns.rim; // the circle of 1.1 r
+  const ob = field([[0, 0, 5]]);
+  const io = ob.io;
+  const relocated = (x: number, y: number): { moved: number; x: number; y: number; r: number } => {
+    io[IO_X] = x;
+    io[IO_Y] = y;
+    ob.relocate();
+    return { moved: io[IO_BLOCK]!, x: io[IO_X]!, y: io[IO_Y]!, r: io[IO_R]! };
+  };
+  /** The end of a step from (fx, fy) to (x, y) along the heading (dx, dy). */
+  const slid = (o: Obstacles, fx: number, fy: number, x: number, y: number, dx: number, dy: number): { moved: number; x: number; y: number } => {
+    const q = o.io;
+    q[IO_FX] = fx;
+    q[IO_FY] = fy;
+    q[IO_X] = x;
+    q[IO_Y] = y;
+    q[IO_DX] = dx;
+    q[IO_DY] = dy;
+    o.slide();
+    return { moved: q[IO_BLOCK]!, x: q[IO_X]!, y: q[IO_Y]! };
+  };
+
+  it('moves a seed inside the circle of 1.1 r straight out onto it, and says the crown\'s radius; a seed outside it stays where it is', () => {
+    const a = relocated(2, 0);
+    expect(a).toMatchObject({ moved: 1, r: 5 });
+    expect(a.x).toBeCloseTo(5.5, 5);
+    expect(a.y).toBeCloseTo(0, 5);
+    const b = relocated(-3, -4);
+    expect(Math.hypot(b.x, b.y)).toBeCloseTo(5.5, 5);
+    expect(b.x / b.y).toBeCloseTo(3 / 4, 5); // along the ray it stood on
+    expect(relocated(5.4, 0).moved, 'inside 1.1 r').toBe(1);
+    expect(relocated(5.6, 0)).toMatchObject({ moved: 0, x: 5.6, y: 0 });
+    expect(relocated(100, 100).moved).toBe(0);
+    expect(relocated(0, 0)).toMatchObject({ moved: 1, x: -5.5, y: 0 }); // the middle has no outward: west
+    expect(field([]).relocate()).toBeUndefined();
+    const none = field([]);
+    none.io[IO_X] = 1;
+    none.io[IO_Y] = 1;
+    none.relocate();
+    expect(none.io[IO_BLOCK]).toBe(0);
   });
 
-  it('seeds inside 0.8 r of a crown are blocked, and none outside it', () => {
-    const io = ob.io;
-    const blocked = (x: number, y: number): number => {
-      io[IO_X] = x;
-      io[IO_Y] = y;
-      ob.blocked();
-      return io[IO_BLOCK]!;
-    };
-    expect(blocked(0, 0)).toBe(1);
-    expect(blocked(3.9, 0)).toBe(1);
-    expect(blocked(4.1, 0)).toBe(0);
-    expect(blocked(100, 100)).toBe(0);
-    expect(field([]).io[IO_BLOCK]).toBe(0);
+  it('puts a seed that two crowns hold on a circle of one of them when that leaves it outside the other, and finds a place round about for one in the lens they make', () => {
+    const outside = (o: Obstacles, apart: number): number => Math.min(Math.hypot(o.io[IO_X]!, o.io[IO_Y]!), Math.hypot(o.io[IO_X]! - apart, o.io[IO_Y]!));
+    const light = field([[0, 0, 5], [10.5, 0, 5]]); // the circles of 5.5 m overlap by half a metre
+    light.io[IO_X] = 5.2;
+    light.io[IO_Y] = 0.1;
+    light.relocate();
+    expect(light.io[IO_BLOCK]).toBe(1);
+    expect(outside(light, 10.5)).toBeGreaterThanOrEqual(5.5 * 0.9999);
+    for (const apart of [9, 7, 3]) {
+      const two = field([[0, 0, 5], [apart, 0, 5]]);
+      two.io[IO_X] = apart / 2 - 0.4;
+      two.io[IO_Y] = 0.3;
+      two.relocate();
+      expect(two.io[IO_BLOCK], `${apart} m apart: the lens`).toBe(1);
+      expect(outside(two, apart), `${apart} m apart: left it`).toBeGreaterThanOrEqual(5.5 * 0.9999);
+      expect(Math.hypot(two.io[IO_X]! - (apart / 2 - 0.4), two.io[IO_Y]! - 0.3), 'not far').toBeLessThan(20);
+    }
+    const far = field([[0, 0, 5], [12, 0, 5]]); // the circles do not meet
+    far.io[IO_X] = 3;
+    far.io[IO_Y] = 0;
+    far.relocate();
+    expect(far.io[IO_BLOCK]).toBe(1);
+    expect(outside(far, 12)).toBeGreaterThanOrEqual(5.5 * 0.9999);
+  });
+
+  it('flags a seed that is shut in (no place round about is free) as not drawable, and a line that is shut in as ended', () => {
+    // A ring of crowns whose circles cover the whole neighbourhood of the middle, for 30 m round.
+    const ring: [number, number, number][] = [[0, 0, 40]];
+    const shut = field(ring);
+    shut.io[IO_X] = 1;
+    shut.io[IO_Y] = 1;
+    shut.relocate();
+    expect(shut.io[IO_BLOCK], 'a crown of 40 m: its circle is 44 m').toBe(1); // the radial push leaves it
+    const sealed = field([[0, 0, 40], [60, 0, 40], [-60, 0, 40], [0, 60, 40], [0, -60, 40], [60, 60, 40], [-60, 60, 40], [60, -60, 40], [-60, -60, 40]]);
+    sealed.io[IO_X] = 30;
+    sealed.io[IO_Y] = 30;
+    sealed.relocate();
+    expect(sealed.io[IO_BLOCK], 'a seed in the lenses of a field of overlapping crowns').toBe(2);
+  });
+
+  it('leaves a step that ends outside every circle alone', () => {
+    expect(slid(ob, -9, 0, -7, 0, 1, 0)).toMatchObject({ moved: 0, x: -7, y: 0 });
+    expect(slid(field([]), -9, 0, -2, 0, 1, 0).moved).toBe(0);
+  });
+
+  it('slides a line that meets the crown head-on to the side its tiny offset says, onto the circle, by a good part of a step, and never into the crown', () => {
+    // From (-8, 0.01) east, 4 m a step: the end (-4, 0.01) is inside the circle (5.5). The line was a hair north of the axis: it goes round the north.
+    const north = slid(ob, -8, 0.01, -4, 0.01, 1, 0);
+    expect(north.moved).toBe(1);
+    expect(Math.hypot(north.x, north.y)).toBeCloseTo(RIM * 5, 5);
+    expect(north.y, 'north').toBeGreaterThan(0.5);
+    const south = slid(ob, -8, -0.01, -4, -0.01, 1, 0);
+    expect(south.y, 'south').toBeLessThan(-0.5);
+    expect(south.y).toBeCloseTo(-north.y, 3); // mirror images
+    // It advances by at least SLIDE_MIN of the step's length along the circle (4 m a step: 2.4 m, 0.44 radians of the circle of 5.5).
+    const angle = Math.atan2(north.y, north.x);
+    expect(Math.abs(Math.abs(angle) - Math.PI)).toBeGreaterThanOrEqual((SLIDE_MIN * 4) / (RIM * 5) - 1e-3);
+    // Exactly on the axis it takes the anticlockwise side (south, from the west): the same every time.
+    expect(slid(ob, -8, 0, -4, 0, 1, 0).y).toBeLessThan(-0.5);
+    expect(slid(ob, -8, 0, -4, 0, 1, 0)).toEqual(slid(ob, -8, 0, -4, 0, 1, 0));
+  });
+
+  it('follows the circle round a crown met head-on and leaves it on the far side: never inside, never stopped, getting past it', () => {
+    let x = -9;
+    let y = 0.02;
+    const ds = 2;
+    let slides = 0;
+    let nearest = Infinity;
+    for (let k = 0; k < 40; k++) {
+      const qx = x + ds;
+      const qy = y;
+      const r = slid(ob, x, y, qx, qy, 1, 0);
+      if (r.moved) slides++;
+      nearest = Math.min(nearest, Math.hypot(r.x, r.y));
+      x = r.x;
+      y = r.y;
+    }
+    expect(slides, 'it slid along the circle for a while').toBeGreaterThan(2);
+    expect(nearest).toBeGreaterThanOrEqual(RIM * 5 - 1e-6);
+    expect(x, 'and is past the crown, on its way').toBeGreaterThan(5);
+  });
+
+  it('turns about the crown the way the heading points when the line comes in at an angle (clockwise to the north of the axis, anticlockwise to the south)', () => {
+    const up = slid(ob, -8, 2, -4, 2, 1, 0); // north of the axis: the circle's point it reaches is on the north side
+    expect(up.y).toBeGreaterThan(2);
+    const down = slid(ob, -8, -2, -4, -2, 1, 0);
+    expect(down.y).toBeLessThan(-2);
   });
 });
 
@@ -331,8 +444,6 @@ describe('the grid finds every crown within reach', () => {
         const ang = hash01(k, n, 6) * 2 * Math.PI;
         const dx = Math.cos(ang);
         const dy = Math.sin(ang);
-        // Inside a rim the point is a hit and the field is not wanted.
-        if (crowns.some(([cx, cy, r]) => Math.hypot(x - cx, y - cy) < 0.85 * r)) continue;
         const p = at(ob, x, y, dx, dy);
         const [bx, by] = brute(crowns, x, y, dx, dy);
         worst = Math.max(worst, Math.abs(p.px - bx), Math.abs(p.py - by));
@@ -350,7 +461,6 @@ describe('the grid finds every crown within reach', () => {
     for (let k = 0; k < 100; k++) {
       const x = (hash01(k, 7, 4) - 0.5) * 440;
       const y = (hash01(k, 7, 5) - 0.5) * 440;
-      if (crowns.some(([cx, cy, r]) => Math.hypot(x - cx, y - cy) < 0.85 * r)) continue;
       const p = at(a, x, y, 0.6, 0.8);
       const q = at(b, x, y, 0.6, 0.8);
       expect(q.px).toBeCloseTo(p.px, 9);
@@ -364,8 +474,8 @@ describe('the grid finds every crown within reach', () => {
     const p = at(ob, crowns[10]![0] + crowns[10]![2] * 1.5, crowns[10]![1]);
     expect(Math.hypot(p.px, p.py)).toBeGreaterThan(0);
     // A point nowhere near any crown is not an error.
-    expect(at(ob, 1e6, 1e6)).toMatchObject({ px: 0, py: 0, near: 0, hit: 0 });
-    expect(at(field([]), 0, 0)).toMatchObject({ px: 0, py: 0, near: 0, hit: 0 });
+    expect(at(ob, 1e6, 1e6)).toMatchObject({ px: 0, py: 0, near: 0 });
+    expect(at(field([]), 0, 0)).toMatchObject({ px: 0, py: 0, near: 0 });
   });
 });
 
@@ -626,18 +736,52 @@ describe('which trees count as crowns', () => {
     expect(wide.crownsWanted()).toBe(false);
   });
 
-  it('never holds more than maxCrowns, counts what did not fit, and the same trees give the same crowns every time', () => {
-    const n = 3000;
-    const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 1, 1) - 0.5) * 50, (hash01(i, 1, 2) - 0.5) * 50, 28 + hash01(i, 1, 3) * 6, 5 + hash01(i, 1, 4)]);
-    const ob = scene(1000, flat(24));
-    const a = chosen(ob, trees(list));
-    expect(ob.nCrowns).toBeLessThanOrEqual(MAX_CROWNS_CAP);
-    expect(ob.nCrowns).toBe(DETAIL_RELIEF.crowns.maxCrowns);
-    expect(ob.overflow).toBeGreaterThan(0);
-    const b = chosen(scene(1000, flat(24)), trees(list));
-    expect(b).toEqual(a);
-    const small = scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 10)));
-    expect(chosen(small, trees(list))).toHaveLength(10);
+  it('never holds more than maxCrowns, and when more qualify keeps the largest on the screen from everywhere (not the first in the order of the trees)', () => {
+    // 6,000 trees in a square of 50 m sorted from west to east (the first 600 in this order would all be in the west), of 3 to 5 m of crown radius.
+    const n = 6000;
+    const raw: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 1, 1) - 0.5) * 50, (hash01(i, 1, 2) - 0.5) * 50, 28 + hash01(i, 1, 3) * 6, 6 + 4 * hash01(i, 1, 4)]);
+    const list = [...raw].sort((a, b) => a[0] - b[0]);
+    const ob = scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 600)));
+    const kept = chosen(ob, trees(list));
+    expect(kept.length, 'as many as fit, within the spread of a hash sample of the last bucket').toBeGreaterThan(540);
+    expect(kept.length).toBeLessThanOrEqual(660);
+    expect(ob.overflow, 'and the others are counted').toBe(n - kept.length);
+    expect(ob.keptFromPx).toBeGreaterThan(DETAIL_RELIEF.crowns.minRadiusPx);
+    // Which are kept: the largest radii. (Every tree is on the screen and cut by the stroke here; the radius is the ellipsoid's at the stroke at 20.4 m.)
+    const every = list.map(([, , h, w]) => 0.5 * w * Math.sqrt(1 - ((20.4 - 0.7 * h) / (0.3 * h)) ** 2)).sort((a, b) => a - b);
+    const radii = kept.map((c) => c[2]).sort((a, b) => a - b);
+    const cut = every[n - kept.length]!; // the smallest radius that would be kept by a perfect choice
+    // Everything kept is within one bucket (a quarter of an octave, 19 %) of the perfect choice's smallest, and every crown bigger than that bucket is kept.
+    expect(radii[0]!).toBeGreaterThan(cut / 2 ** 0.25 - 1e-3);
+    expect(kept.filter((c) => c[2] >= cut * 2 ** 0.25).length).toBe(every.filter((r) => r >= cut * 2 ** 0.25 - 1e-6).length);
+    // From everywhere: every fifth of the square from west to east holds its share (the crowns are alike west to east).
+    for (let f = 0; f < 5; f++) {
+      const inFifth = kept.filter(([x]) => x >= -25 + f * 10 && x < -15 + f * 10).length;
+      expect(inFifth, `fifth ${f}`).toBeGreaterThan(0.12 * kept.length);
+    }
+    // Deterministic; the same crowns whatever the order of the trees; and with room for all of them nothing is counted as left out.
+    const key = (c: [number, number, number][]): string[] => c.map(([x, y, r]) => `${x.toFixed(3)},${y.toFixed(3)},${r.toFixed(3)}`).sort();
+    expect(chosen(scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 600))), trees(list))).toEqual(kept);
+    expect(key(chosen(scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 600))), trees([...list].reverse())))).toEqual(key(kept));
+    const roomy = scene(1000, flat(24));
+    expect(chosen(roomy, trees(list.slice(0, 500)))).toHaveLength(500);
+    expect(roomy.overflow).toBe(0);
+    expect(roomy.keptFromPx).toBe(DETAIL_RELIEF.crowns.minRadiusPx);
+    expect(DETAIL_RELIEF.crowns.maxCrowns).toBeLessThanOrEqual(MAX_CROWNS_CAP);
+  });
+
+  it('keeps as many as fit of crowns that are all the same size (all or nothing would leave the picture with none): by a hash of the tree\'s place, so from everywhere', () => {
+    const n = 5000;
+    const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 6, 1) - 0.5) * 50, (hash01(i, 6, 2) - 0.5) * 50, 30, 10]);
+    const ob = scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 400)));
+    const kept = chosen(ob, trees(list));
+    expect(kept.length, 'about the cap (the hash is a sample, within three standard deviations of it)').toBeGreaterThan(400 - 3 * 19);
+    expect(kept.length).toBeLessThan(400 + 3 * 19);
+    for (const half of [[-25, 0], [0, 25]] as const) expect(kept.filter(([x]) => x >= half[0] && x < half[1]).length, `x from ${half}`).toBeGreaterThan(0.4 * kept.length);
+    for (const half of [[-25, 0], [0, 25]] as const) expect(kept.filter(([, y]) => y >= half[0] && y < half[1]).length, `y from ${half}`).toBeGreaterThan(0.4 * kept.length);
+    expect(ob.overflow).toBe(n - kept.length);
+    // A cap of nothing keeps nothing and still ends.
+    expect(chosen(scene(1000, flat(24), relief((r) => (r.crowns.maxCrowns = 0))), trees(list))).toHaveLength(0);
   });
 
   it('scans in slices that stop on the clock and resume, and finds the same crowns as one pass', () => {
