@@ -4,7 +4,7 @@ A topic that has **not started**. **Question:** how can we verify that the simul
 simulation, and what other checks are there?
 
 **Status:** a stretch goal in no release ([plan](../../docs/plans/air-slice-wind-detail-honest-speed.md) section 15d, decision D31).
-**Recorded only: nothing has been researched, run or built.** This page keeps the question, what the repository already has, and the ideas
+**Recorded only: nothing has been run or built. A first desk search (web search results only; the papers were not read) was done on 2026-10-31 and is in *Desk research* below.** This page keeps the question, what the repository already has, and the ideas
 that came up, so that a study can start from here when you decide. There is no study folder yet. The ideas come from general knowledge and
 from reading the repository. Dataset and tool names are from memory, and their availability, access and licences have not been checked.
 
@@ -108,6 +108,82 @@ trajectory.
 **The cheapest first step, when the owner decides to start:** a desk study that picks the first two or three comparisons, checks which datasets
 and tools are really available and licensed, and fixes the pass marks before any run (open questions 1, 5, 6 and 7 below).
 
+## Desk research (2026-10-31): published practice and further proposals
+
+The owner asked what else could be done to check validity and reliability, and asked for research. **What follows is a first desk search
+(web search results, standard mode; the full papers were NOT read, so every figure is as the search summary gave it and needs checking
+against the paper before anyone relies on it). Nothing was run or built.** Part A is what the literature says, with links. Part B is what I
+propose because of it; those are my inferences, not findings.
+
+### A. What the published literature says
+
+| Topic | What I found | Source |
+|---|---|---|
+| Scores for a simulated fire against an observed one | Overlap scores (Sørensen-Dice, Jaccard and about a dozen relatives; the choice changes how over-burn and under-burn are weighted; Dice and Jaccard rank models alike); arrival-time agreement and shape agreement that account for how the fire moved between observations; Procrustes-based indices for orientation, size and shape of a perimeter; vector measures along the spread direction. No single score captures the error. Duff et al. (2018) scored PHOENIX by summed Area Difference Indices. | [CSIRO, representation and evaluation of propagation simulations](https://www.publish.csiro.au/WF/fulltext/WF12202); [distance metrics for perimeters (2016)](https://escholarship.org/uc/item/0nz4z9mf); [BNHCRC Procrustes indices](https://bnhcrc.com.au/node/579); [Duff et al. 2018](https://www.mdpi.com/1999-4907/9/4/189) |
+| How good operational simulators are | An AFAC-commissioned evaluation compared Australis, Phoenix, Prometheus and Spark on 10 Australian historical fires and found no simulator clearly superior; each had strengths and weaknesses, and some were more sensitive to particular inputs. Duff et al.: two PHOENIX versions on nine wildfires, the newer slightly ahead but not significantly, worse on three of nine fires. AUSTRALIS validation: lower accuracy in extreme fire danger and a tendency to under-predict head rate of spread. | [CSIRO 2024 evaluation](https://www.publish.csiro.au/wf/Fulltext/WF23028); [Duff et al. 2018](https://www.mdpi.com/1999-4907/9/4/189); [UWA, techniques for evaluating wildfire simulators](https://research-repository.uwa.edu.au/en/publications/techniques-for-evaluating-wildfire-simulators-via-the-simulation-/) |
+| What error is normal | A review of 49 evaluation datasets (1,278 paired observations) found mean absolute percentage errors from 20 % to 310 %, similar across fuel types, and proposed a +-35 % interval as a standard for model adequacy (Cruz and Alexander 2013, as quoted in the search result). The Cheney grassland models are listed at about 21 % MAPE on 120 field fires. A forest model built on Vesta data showed 35 to 46 % MAPE on its own development data and 81 to 84 % on an independent wildfire set. | [grass model comparison table and Annaburroo](https://research.csiro.au/pyropage/wp-content/uploads/sites/17/2024/08/CSIRO-Pyropage-Issue-39-Annaburroo-Grassland-Fire-Experiment-Data.pdf); [Vesta literature](https://publish.csiro.au/wf/Fulltext/WF21068); [10 % wind rule evaluation](https://www.iawfonline.org/article/evaluating-the-10-wind-speed-rule-of-thumb-for-estimating-a-wildfires-forward-spread-rate/) |
+| Open data that exist | **Annaburroo 1986 grassland fires** (over a hundred experiments; Gould, Cruz and Sullivan 2024; dataset DOI 10.25919/ycd3-w209; Creative Commons Attribution per the CSIRO page, version not checked). **Project Vesta**: 116 experimental fires in dry eucalypt forest; I did not find the raw rate-of-spread tables or their licence. **NSW Fire History** (RFS) and the NPWS fire history on SEED: licences read inconsistently (Creative Commons on one page, 'not specified' on another); I could not confirm that the Gospers Mountain 2019 perimeter is in them. The **National Historical Bushfire Boundaries** compilation: licence not found. NSW **FESM 2019-20** (fire extent and severity mapping) exists on data.gov.au. | [Annaburroo data paper](https://publish.csiro.au/wf/WF23100); [NSW Fire History](https://data.nsw.gov.au/data/dataset/fa2fe6c7-2530-4b5a-87dc-5afdb290141a); [NPWS fire history on SEED](https://datasets.seed.nsw.gov.au/dataset/fire-history-wildfires-and-prescribed-burns-1e8b6/metaexport/iso19115_html); [Vesta book](https://www.publishing.csiro.au/book/9780643065345) |
+| Weather inputs matter | PHOENIX on the 2009 Kilmore fire: coarser weather inputs (30-minute steps, 1,200 m spacing) matched the fire's progress better than very fine data. Sensitivity studies found considerable sensitivity to input weather. A WRF-Fire study of the Camp Fire found rate-of-spread and direction discrepancies that improved with a finer atmospheric grid over complex terrain. | [Kilmore weather-input and sensitivity studies](https://bnhcrc.com.au/node/471); [CSIRO 2024 evaluation](https://www.publish.csiro.au/wf/Fulltext/WF23028) |
+| Spotting | Lab validation of firebrand transport models exists (a firebrand generator giving controlled, repeatable sets of burning and non-burning particles; Manzello lab data are cited). Theory tends to give a few hundred metres of maximum spotting distance while field observation exceeds a kilometre. Rare long-distance spotting is studied as a tail-of-the-distribution problem. | [firebrand transport model validation](https://vu-9.eprints-hosting.org/43615/3/Burning_firebrand_IJWF_revised2_NoHighlight.pdf); [rare events in spotting](https://ar5iv.arxiv.org/html/2205.02838); [Koo et al. (USFS)](https://fs.usda.gov/rm/pubs_other/rmrs_2012_koo_e001.pdf) |
+| Open-source peers | ELMFIRE (Eulerian level-set model, Rothermel surface spread, Eclipse Public License 2.0, documentation at elmfire.io, used operationally in the US). I found no dedicated validation report or standard benchmark suite for ELMFIRE or FARSITE. FARSITE was able to reconstruct spread rate and size of fires when spotting was minimal, and failed to give realistic perimeters when spotting drove the spread (a Santa Barbara study); its accuracy depended heavily on fuel-model choice (a New England poster). | [Berkeley Fire Lab software page](https://firelab.berkeley.edu/software); [Santa Barbara FARSITE study (Fire, 2020)](https://doaj.org/article/5e3d0458ede84cd0b876de427e9fd669) |
+| Testing without an oracle | Metamorphic testing (checking how the output must change when the input changes, not what it must equal) is the main approach in the literature for scientific and simulation software with no test oracle; examples include ocean software (relations from the periodicity of tides found a real defect) and PDE solvers (solutions that improve with grid or step refinement). It gives partial checks, not proof of correctness. I found no work applying it to wildfire spread simulators. | [Testing Ocean Software with Metamorphic Testing](https://arxiv.org/abs/2206.05457v1); [Kanewala and Bieman, automatic detection of metamorphic relations](https://mountainscholar.org/handle/10217/166910) |
+
+### B. What I propose, beyond ideas 1 to 9 above (my inferences)
+
+1. **Set pass marks from published error, not from perfection.** Operational simulators are 20 to 80 % off on average and no simulator is clearly best. Use the
+   published figures as a yardstick (for example the +-35 % adequacy interval, and about 21 % for grass spread models on the Annaburroo-type data)
+   and write the marks before any run. For a training app the claim to test is *relative* behaviour; absolute error is secondary.
+2. **Grass-fire rate-of-spread test on open data.** The Annaburroo data are open, large and well documented, and the grass models have a known
+   error (about 21 % MAPE). Run FireSim's grass fuel on the experiments' recorded wind, moisture and fuel and score the rate of spread. It is the
+   cheapest external comparison with real fire behaviour, needs no perimeter data and no network at run time. The forest equivalent (Project Vesta)
+   needs its data tables found first.
+3. **A hold-out discipline for any tuning.** If a constant is ever tuned (the coupling factor, the ember generation rate and the acceleration constant
+   are flagged as uncalibrated), tune on one set of cases and score on cases never used for tuning. The published example went from 35 to 46 % error
+   on development data to 81 to 84 % on independent wildfires. Record in the claims register which constants were tuned and on what.
+4. **Score hindcasts with a fixed metric set chosen in advance:** an overlap score at each observation time (Sørensen-Dice and the area ratio),
+   arrival-time error, and one shape measure; report all, because no single score is enough. Use the Gospers Mountain preset first (check the perimeter
+   source and licence), then fires that crossed the other bundled sites.
+5. **Extreme-conditions bias check.** AUSTRALIS under-predicted head rate of spread at extreme danger, and the README already says real fires on steep slopes
+   and in extreme weather are often faster. Quantify FireSim's bias at the top of the weather range against the experiments and hindcasts, and show
+   it in *How sure are we?* instead of leaving it as a sentence.
+6. **Spotting tail test.** The current check is a factor of 2 on Mk5 distances. Add the shape of the distance distribution: how often embers
+   land beyond one kilometre under strong wind and a tall plume, compared with the field observation that spotting beyond a kilometre happens and
+   with the lab-scale firebrand transport benchmarks for the single-ember flight. Spotting-driven fires are the hardest case for every model
+   (FARSITE failed there), so expect and state wider error.
+7. **Input-uncertainty ensembles with the published design:** perturb wind, moisture, ignition place and weather time resolution, and report the
+   spread of burnt area and arrival time. The Kilmore result (coarser weather inputs matched better) means the *time resolution of the weather input*
+   is itself a parameter to vary. It also gives a teachable output: a range, not one line.
+8. **Metamorphic relations specific to this model** (the fire-specific ones are new work; I found no precedent): grid and step refinement converge
+   (the convergence ladder, already idea 4); rotating terrain, wind and ignition rotates the result; a uniform wind rise never reduces the burnt
+   area at a fixed time; adding a firebreak never raises it; doubling the time step with half the steps agrees within a tolerance; a
+   wind change at time t leaves everything before t unchanged (the Wind direction feature already has this one as a test). Run them over randomised
+   terrains with a property-based testing library, in the slow suite.
+9. **Peer comparison on simple cases only, and say what it is.** ELMFIRE (open source, EPL-2.0) or FARSITE on flat ground, uniform slope and steady wind,
+   after mapping fuels by hand. I found no published benchmark suite for them and little published validation of ELMFIRE itself, so agreement is
+   consistency with another Rothermel-lineage model, not accuracy.
+10. **Reliability, not validity: reproducibility across engines.** The simulation is deterministic (V18) on one machine. The ECMAScript specification lets
+    an engine approximate Math functions such as exp, pow and sin, so a phone's WebView and the Node test machine may not agree bit for bit
+    (general knowledge, not from the search). Run the same scenario in Node, in a desktop browser worker and on a phone, compare snapshot hashes and
+    summary numbers, and if they differ find out how far: the golden scenarios (idea 3) then need tolerances, not exact hashes, if they are to be
+    checked on a phone.
+11. **Reliability: stress and fuzz tests.** Random terrains, weather and ignitions, including extremes (calm, gale, 0 and 100 % moisture, a tiny and a
+    huge domain), checking for NaN, negative areas, runaway growth, a burnt cell that un-burns, and run time.
+12. **Tier agreement over real terrain with a fire.** Nothing measures how far Fast, Standard and High differ with a fire on real terrain (only the 1 to 4 %
+    wind-scale check on flat ground). Compare arrival-time rasters and perimeters across tiers on the bundled sites; the same experiment as idea 4.
+13. **A structured face-validity review.** A written protocol for the expert review (idea 9): five to ten fire behaviour analysts, a fixed list of cases
+    (note 10), the same questions for each ("is the head where you expect, is the speed plausible, what would mislead a trainee"), findings kept in
+    this folder and turned into claims-register entries. It is the one check that tests the teaching, not the numbers.
+14. **Make the evidence visible in the app.** A per-release *validation card* generated from the checks (which of V1 to V22 pass, golden-scenario
+    summary changes since the last release, the convergence figures, the Annaburroo error once it exists, the known bias) and shown in *How sure are we?*,
+    so a learner sees how far each number can be trusted, as plan rule 4 asks.
+
+### C. What I could not establish
+
+- Whether Project Vesta's raw data and the Gospers Mountain perimeter are available, and under what licence.
+- Whether any standard benchmark suite exists for ELMFIRE or FARSITE (I found none).
+- The exact figures above: they are from search summaries, not from the papers.
+- Which of these checks the simulation would pass. None was run.
+
 ## Pitfalls to design against
 
 - **Agreement is not accuracy.** A reference from the same code shares its formulas, and models of one lineage agree with each other (as in
@@ -148,5 +224,7 @@ Suggested order; none is started.
 
 No studies yet. Rules for adding one are in [`../README.md`](../README.md).
 
+- 2026-10-31: desk research: published evaluation practice, open datasets, peer simulators and 14 further proposals, recorded in *Desk research*
+  above. Search summaries only; nothing run.
 - 2026-10-31: the owner confirmed this stays a stretch goal and is **not for implementation yet**, and asked whether an external comparison with
   another simulation or other data is possible. The answer is recorded in *External comparison: what is possible* above. Nothing was run.
