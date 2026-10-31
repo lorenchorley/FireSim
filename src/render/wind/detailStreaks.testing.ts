@@ -9,7 +9,8 @@ import { canopyPlane, crownDiscRadius } from './detailObstacles';
 import { KATOOMBA } from './detailStreaks.katoomba.testing';
 import { metresPerPixelAt, planLod, visibleBox } from './glyphLod';
 import { makeCamera, makeScenario, ORIGIN, type Scenario, type ScenarioOptions } from './glyphOracle.testing';
-import { DETAIL_RELIEF, type DetailInput, type DetailOutput, type DetailRelief, type GroundRaster } from './glyphTypes';
+import { DETAIL_RELIEF, type CrownSet, type DetailInput, type DetailOutput, type DetailRelief, type GroundRaster } from './glyphTypes';
+import { hash01 } from '../fields';
 
 export interface DetailScenarioOptions extends ScenarioOptions {
   /** The 10 m ground the terrain terms come from (default: the scenario's own ground raster). */
@@ -137,9 +138,9 @@ const int16 = (b64: string): Int16Array => {
  * made as the layer makes it: the camera's near plane a quarter of its height over the ground it stands on, the box of the ground in view, the lattice
  * planned for the metres a pixel covers at the strokes' own height, and the plane's cap (`eyeShare` of the eye's height) given as `planeCapM`.
  * `relief` is what the builder is given (the tuned constants by default; `null` is the 0.6.0 picture, strokes at the ground and a lattice planned for it).
- * No crown is placed: the scene is the ground, the canopy and the wind.
+ * No crown is placed unless `trees` is set: then a stand of them (`katoombaTrees`) grows over the whole crop, as tall as the canopy, so that the lines have crowns to go round.
  */
-export function katoombaScene(d: number, tiltDeg: number, relief: DetailRelief | null = DETAIL_RELIEF): DetailInput {
+export function katoombaScene(d: number, tiltDeg: number, relief: DetailRelief | null = DETAIL_RELIEF, trees = false): DetailInput {
   const { ground: G, canopy: C, wind: W } = KATOOMBA;
   const grid = (nx: number, x0: number, y0: number, cell: number): GridSpec => ({ nx, ny: nx, cellSize: cell, x0, y0, origin: ORIGIN });
   const dm = int16(G.dm);
@@ -195,8 +196,87 @@ export function katoombaScene(d: number, tiltDeg: number, relief: DetailRelief |
     input.relief = relief;
     input.canopy = canopy;
     if (cap > 0) input.planeCapM = cap;
+    if (trees) input.crowns = [katoombaTrees(G.x0, G.y0, G.cell * (G.n - 1), heightAt, canopy)];
   }
   return input;
+}
+
+/**
+ * A stand of trees over a square of the Katoomba crop (`x0`, `y0`, `size` m): a lattice of 8 m moved by up to 3 m a tree (a hash of its place), as tall as the canopy
+ * at its foot (1.15 x, 0.85 to 1.15 of that, at least 14 m) and 6 to 12 m of crown: some 7,000 of them over the crop, in no pattern, standing on the real ground.
+ */
+export function katoombaTrees(x0: number, y0: number, size: number, heightAt: (x: number, y: number) => number, canopy: FuelMap): CrownSet {
+  const step = 8;
+  const n = Math.floor(size / step);
+  const position = new Float32Array(3 * n * n);
+  const sizes = new Float32Array(2 * n * n);
+  const g = canopy.grid;
+  let count = 0;
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const x = x0 + (i + 0.5) * step + (hash01(i, j, 71) - 0.5) * 6;
+      const y = y0 + (j + 0.5) * step + (hash01(i, j, 72) - 0.5) * 6;
+      const ci = Math.min(g.nx - 1, Math.max(0, Math.round((x - g.x0) / g.cellSize)));
+      const cj = Math.min(g.ny - 1, Math.max(0, Math.round((y - g.y0) / g.cellSize)));
+      const ch = canopy.canopyHeight[cj * g.nx + ci]!;
+      const h = Math.max(14, 1.15 * ch * (0.85 + 0.3 * hash01(i, j, 73)));
+      position.set([x, y, heightAt(x, y)], 3 * count);
+      sizes.set([h, 6 + 6 * hash01(i, j, 74)], 2 * count);
+      count++;
+    }
+  }
+  return { group: 0, count, position, size: sizes };
+}
+
+/**
+ * How sharply the lines of a picture turn (the look verifier's measure of a corner, from the vertices of the builder's own output): the share (percent) of lines
+ * (of two segments or more) that have at least one vertex where the heading, in plan, turns by more than each of `anglesDeg` between one segment and the next;
+ * the worst single turn (degrees); and the share of lines that double back (`backShare`: a heading more than `backDeg` from the line's first one at some vertex,
+ * a hairpin or a loop; the wind itself turns a long line a few tens of degrees at most).
+ */
+export function cornerShares(out: DetailOutput, anglesDeg: readonly number[], backDeg = 100): { lines: number; over: number[]; worstDeg: number; backShare: number } {
+  const over = anglesDeg.map(() => 0);
+  let lines = 0;
+  let back = 0;
+  let worst = 0;
+  const cosBack = Math.cos((backDeg * Math.PI) / 180);
+  let start = 0;
+  for (let k = 1; k <= out.segments; k++) {
+    if (k < out.segments && out.d[4 * k] !== 0) continue;
+    if (k - start >= 2) {
+      lines++;
+      let maxTurn = 0;
+      let doubled = false;
+      let fx = 0;
+      let fz = 0;
+      let px = 0;
+      let pz = 0;
+      for (let s = start; s < k; s++) {
+        let hx = out.b[3 * s]! - out.a[3 * s]!;
+        let hz = out.b[3 * s + 2]! - out.a[3 * s + 2]!;
+        const hl = Math.sqrt(hx * hx + hz * hz);
+        if (!(hl > 1e-6)) continue;
+        hx /= hl;
+        hz /= hl;
+        if (s === start) {
+          fx = hx;
+          fz = hz;
+        } else {
+          const c = Math.max(-1, Math.min(1, px * hx + pz * hz));
+          const turn = (Math.acos(c) * 180) / Math.PI;
+          if (turn > maxTurn) maxTurn = turn;
+          if (fx * hx + fz * hz < cosBack) doubled = true;
+        }
+        px = hx;
+        pz = hz;
+      }
+      for (let a = 0; a < anglesDeg.length; a++) if (maxTurn > anglesDeg[a]!) over[a]!++;
+      if (maxTurn > worst) worst = maxTurn;
+      if (doubled) back++;
+    }
+    start = k;
+  }
+  return { lines, over: over.map((n) => (lines > 0 ? (100 * n) / lines : 0)), worstDeg: worst, backShare: lines > 0 ? (100 * back) / lines : 0 };
 }
 
 /** Where the segments of a picture are on the screen: the share (percent) of those on it in the top tenth of its height and in the bottom three tenths, and how many are on it. */

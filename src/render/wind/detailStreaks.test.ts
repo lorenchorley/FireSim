@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HeightField } from '../heightfield';
 import { buildSpeedTable, GLYPH_NEAR_FACTOR, GLYPH_LIFT_MIN_M, GLYPH_LIFT_PX, GLYPH_MAX_SLOPE } from './flowGlyphs';
 import { createDetailBuilder, DETAIL_MIN_LINE_SEGMENTS, DETAIL_TAIL, DETAIL_TERRAIN, detailGroundFactor, pulseIntensity } from './detailStreaks';
-import { crownIncursions, detailBytes, katoombaScene, linesOf, makeDetailScenario, screenShares, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
+import { cornerShares, crownIncursions, detailBytes, katoombaScene, linesOf, makeDetailScenario, screenShares, segmentLength, segmentXY, type DetailScenario, type DetailScenarioOptions, type Line } from './detailStreaks.testing';
 import { buildAll, clipW, counterClock, groundOf, makeCamera, nestedSeed, ORIGIN, topDownCamera } from './glyphOracle.testing';
 import { crownDiscRadius } from './detailObstacles';
 import { planLod } from './glyphLod';
@@ -1483,8 +1483,8 @@ describe('the relief: a tree the view has faded out is no crown', () => {
 
 describe('the relief: a forest keeps the lines of the picture without it, and none ends in a stub because of a crown', () => {
   // The verifier's third finding on the real app: 64 % of 0.6.0's segments (49 to 105 %), 5 to 18 % of the lines under 50 px, bare stands. Seeds inside a crown's
-  // disc were dropped and a line that met a rim ended there.
-  for (const [n, keep, shortMore, what] of [[130, 0.9, 0.04, 'a stand of 130 crowns (a cover of about 0.7)'], [300, 0.65, 0.08, 'a mat of 300 crowns, most of them overlapped by several others (lines shut in between them end)']] as const) {
+  // disc were dropped and a line that met a rim ended there. (L12: and the lines that slid along the rim had corners: see 'no corner' below.)
+  for (const [n, keep, shortMore, maxDeep, maxInside, what] of [[130, 0.9, 0.04, 0.01, 0.06, 'a stand of 130 crowns (a cover of about 0.7)'], [300, 0.65, 0.08, 0.04, 0.28, 'a mat of 300 crowns, most of them overlapped by several others (no way round: lines pass over their edges)']] as const) {
     it(`${what}: about the lines and segments of the same picture with no crown, and no more short lines`, () => {
       const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 8, 1) - 0.5) * 120, (hash01(i, 8, 2) - 0.5) * 120, 30 + hash01(i, 8, 3) * 12, 8 + hash01(i, 8, 4) * 6]);
       const camera = makeCamera({ eye: [0, 90, 90], target: [0, 0, 0], near: 12 });
@@ -1497,18 +1497,20 @@ describe('the relief: a forest keeps the lines of the picture without it, and no
       expect(forest.out.segments, `segments (${forest.out.segments} of ${open.out.segments})`).toBeGreaterThan(keep * open.out.segments);
       const stubs = (ls: Line[]): number => ls.filter((l) => l.lengthPx < 50).length / Math.max(1, ls.length);
       expect(stubs(forest.lines), 'lines under 50 px').toBeLessThanOrEqual(stubs(open.lines) + shortMore);
-      // And the crowns did something: the pictures differ, and the lines of the forest have none inside the discs but a few where crowns overlap.
+      // And the crowns did something: the pictures differ, and the lines of the forest keep out of the discs but where crowns overlap.
       expect(hashOf(forest.out)).not.toBe(hashOf(open.out));
       const trees = list.map(([x, y, height, width]) => ({ x, y, ground: 0, height, width }));
       const [deep, inside] = crownIncursions(forest.out.a, forest.out.segments, trees, [0.5, 0.95]);
-      expect(deep, 'deep inside a crown').toBeLessThanOrEqual(Math.ceil(0.01 * forest.out.segments));
-      expect(inside, 'inside a disc').toBeLessThanOrEqual(Math.ceil(0.03 * forest.out.segments));
+      // (The lines are steered round the crowns, a few steps ahead and by at most the turn cap a vertex: where the crowns stand too close for that they pass over the
+      // edge of one, by an arc. A stand has a few vertices deep inside a crown; a mat of overlapping crowns, where there is no way round, more.)
+      expect(deep, 'deep inside a crown').toBeLessThanOrEqual(Math.ceil(maxDeep * forest.out.segments));
+      expect(inside, 'inside a disc').toBeLessThanOrEqual(Math.ceil(maxInside * forest.out.segments));
     });
   }
 });
 
-describe('the relief: the e2e reader of a picture finds no line inside a crown (crownIncursions)', () => {
-  it('counts no vertex of the builder\'s picture inside 0.75 radii of a crown at its own height, and does count them in a picture whose lines ignore the crowns', () => {
+describe('the relief: the e2e reader of a picture finds the lines out of the crowns (crownIncursions)', () => {
+  it('counts few vertices of the builder\'s picture inside the crowns at their own height (a share of them on their edges), and many in a picture whose lines ignore the crowns', () => {
     const list: [number, number, number, number][] = Array.from({ length: 60 }, (_, i) => [(hash01(i, 5, 1) - 0.5) * 70, (hash01(i, 5, 2) - 0.5) * 70, 30 + hash01(i, 5, 3) * 12, 8 + hash01(i, 5, 4) * 6]);
     const camera = makeCamera({ eye: [0, 60, 60], target: [0, 0, 0], near: 8 });
     const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 1500 });
@@ -1517,14 +1519,102 @@ describe('the relief: the e2e reader of a picture finds no line inside a crown (
     const noCap: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 } }; // (the camera is low over the canopy here: leave its cap out)
     const on = build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] }));
     const got = crownIncursions(on.out.a, on.out.segments, trees, fractions);
-    expect(got[0], 'none deep inside').toBe(0);
-    expect(got[1], 'none inside 0.75 radii').toBe(0);
-    expect(got[2], 'none inside the disc itself (the lines slide along the circle of 1.1 radii)').toBe(0);
+    // (Steered round the crowns by the turn cap a vertex, a line that has no room passes over an edge: vertices inside 0.5, 0.75 and 1 radius are a share of the picture.)
+    expect(got[0], 'deep inside').toBeLessThanOrEqual(Math.ceil(0.015 * on.out.segments));
+    expect(got[1], 'inside 0.75 radii').toBeLessThanOrEqual(Math.ceil(0.06 * on.out.segments));
+    expect(got[2], 'inside the disc itself').toBeLessThanOrEqual(Math.ceil(0.16 * on.out.segments));
     expect(got[3], 'the reader does see the crowns: vertices stand just outside them, on the circles').toBeGreaterThan(20);
     // The same canopy with no crowns given: the lines run over the discs, and the reader says so.
     const blind = build(withRelief(sc, { relief: noCap, canopyH: 24 }));
     const ignored = crownIncursions(blind.out.a, blind.out.segments, trees, fractions);
     expect(ignored[0], 'lines that know no crown run through them').toBeGreaterThan(20);
+  });
+});
+
+describe('the relief: no corner (the look verifier\'s measure: the share of lines with a vertex that turns by more than 30, 45 and 60 degrees)', () => {
+  // The verifier measured the app's own builder at 40, 60, 150 and 300 m, tilt 55: over 30 degrees 5, 16, 22 and 41 % of the lines, over 45 degrees 2, 7, 13 and 21 %, over 60 degrees
+  // 1, 4, 9 and 14 % (a line that met a crown slid along its circle and took its direction there); before L11 3 to 4 % and 0; 0.6.0 none. The targets: over 30 at most 8 %, over 45
+  // at most 2 %, over 60 at most 0.5 %; the turn cap makes them none, on every path.
+  const CAP = Math.max(DETAIL_RELIEF.ridge.maxTurnDeg, DETAIL_RELIEF.crowns.maxTurnDeg);
+  const forestPicture = (d: number, tilt: number): DetailOutput => {
+    const input = katoombaScene(d, tilt, DETAIL_RELIEF, true);
+    const b = createDetailBuilder('high');
+    buildAll(b, input);
+    return b.out;
+  };
+
+  it('has none of the Katoomba crop\'s lines turn by more than 30 degrees at a vertex, with a stand of 7,000 trees on it, at 40, 60, 150 and 300 m (the cap is 25), and none double back', () => {
+    for (const d of [40, 60, 150, 300]) {
+      const out = forestPicture(d, 55);
+      const c = cornerShares(out, [30, 45, 60]);
+      const name = `${d} m, 55 degrees (${c.lines} lines)`;
+      expect(c.lines, name).toBeGreaterThan(300);
+      expect(c.over[0]!, `${name}: over 30 degrees`).toBeLessThanOrEqual(8);
+      expect(c.over[1]!, `${name}: over 45 degrees`).toBeLessThanOrEqual(2);
+      expect(c.over[2]!, `${name}: over 60 degrees`).toBeLessThanOrEqual(0.5);
+      expect(c.worstDeg, `${name}: the largest turn`).toBeLessThanOrEqual(CAP + 0.01);
+      const back = cornerShares(out, [30], 120).backShare;
+      expect(back, `${name}: lines that double back (a heading over 120 degrees from their first)`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('has the same at 35 and 65 degrees of tilt, and the crowns do bend the picture (the same scene with no trees draws other lines)', () => {
+    for (const [d, tilt] of [[60, 35], [150, 35], [60, 65], [150, 65]] as const) {
+      const out = forestPicture(d, tilt);
+      const c = cornerShares(out, [30, 45, 60]);
+      expect(c.lines, `${d} m, ${tilt} degrees`).toBeGreaterThan(300);
+      expect(c.worstDeg, `${d} m, ${tilt} degrees`).toBeLessThanOrEqual(CAP + 0.01);
+      const back = cornerShares(out, [30], 120).backShare;
+      expect(back, `${d} m, ${tilt} degrees: back`).toBeLessThanOrEqual(1);
+    }
+    const input = katoombaScene(150, 55, DETAIL_RELIEF, false);
+    const bare = createDetailBuilder('high');
+    buildAll(bare, input);
+    expect(hashOf(bare.out), 'the trees change the picture').not.toBe(hashOf(forestPicture(150, 55)));
+  });
+
+  it('has none on the synthetic stands either: 130 crowns, and a mat of 300 overlapping ones (where there is no way round a line passes over the edge of a crown, by an arc)', () => {
+    for (const n of [130, 300]) {
+      const list: [number, number, number, number][] = Array.from({ length: n }, (_, i) => [(hash01(i, 8, 1) - 0.5) * 120, (hash01(i, 8, 2) - 0.5) * 120, 30 + hash01(i, 8, 3) * 12, 8 + hash01(i, 8, 4) * 6]);
+      const camera = makeCamera({ eye: [0, 90, 90], target: [0, 0, 0], near: 12 });
+      const sc = makeDetailScenario({ field: () => [8, 3], camera, cellPx: 700 });
+      const noCap: DetailRelief = { ...DETAIL_RELIEF, canopy: { ...DETAIL_RELIEF.canopy, eyeShare: 0 }, crowns: { ...DETAIL_RELIEF.crowns, fadeSin: 1 } };
+      const c = cornerShares(build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] })).out, [30, 45, 60]);
+      expect(c.lines, `${n} crowns`).toBeGreaterThan(300);
+      expect(c.worstDeg, `${n} crowns: the largest turn`).toBeLessThanOrEqual(CAP + 0.01);
+      expect(c.over[0]!, `${n} crowns`).toBe(0);
+      const back = cornerShares(build(withRelief(sc, { relief: noCap, canopyH: 24, crowns: [stand(list)] })).out, [30], 120).backShare;
+      expect(back, `${n} crowns: back`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('measures what it says: a polyline with a right angle is one corner over 60 degrees, a straight one none, and the double back of a hairpin is counted', () => {
+    const mk = (pts: [number, number][]): DetailOutput => {
+      const n = pts.length - 1;
+      const out = { a: new Float32Array(3 * n), b: new Float32Array(3 * n), c: new Float32Array(4 * n), d: new Float32Array(4 * n), e: new Float32Array(4 * n), lines: 1, segments: n, dropped: 0, calm: 0, steep: 0, blocked: 0 } as DetailOutput;
+      for (let k = 0; k < n; k++) {
+        out.a.set([pts[k]![0], 0, -pts[k]![1]], 3 * k);
+        out.b.set([pts[k + 1]![0], 0, -pts[k + 1]![1]], 3 * k);
+        out.d[4 * k] = k === 0 ? 0 : 10 * k;
+      }
+      return out;
+    };
+    const right = cornerShares(mk([[0, 0], [1, 0], [2, 0], [2, 1], [2, 2]]), [30, 45, 60]);
+    expect(right.over).toEqual([100, 100, 100]);
+    expect(right.worstDeg).toBeCloseTo(90, 4);
+    expect(cornerShares(mk([[0, 0], [1, 0], [2, 0], [3, 0]]), [30]).over).toEqual([0]);
+    const gentle = cornerShares(mk([[0, 0], [1, 0], [2, 0.3], [3, 0.9]]), [10, 30]);
+    expect(gentle.over[0]).toBe(100);
+    expect(gentle.over[1]).toBe(0);
+    // A line that turns by 22.5 degrees a vertex for half a turn: no corner, and it ends going back the way it came.
+    const turn: [number, number][] = [[-2, 0], [-1, 0], [0, 0]];
+    for (let k = 1; k <= 8; k++) turn.push([1.2 * Math.sin((k * Math.PI) / 8), 1.2 - 1.2 * Math.cos((k * Math.PI) / 8)]);
+    turn.push([-0.5, 2.4], [-1.5, 2.4]);
+    const hairpin = cornerShares(mk(turn), [30], 120);
+    expect(hairpin.backShare).toBe(100);
+    expect(hairpin.over[0]).toBe(0);
+    expect(hairpin.worstDeg).toBeLessThan(30);
+    expect(cornerShares(mk(turn), [30], 179).backShare, 'but not by 179 degrees: the last heading is 180 from the first only to the rounding of a chord').toBeLessThanOrEqual(100);
   });
 });
 
@@ -1572,25 +1662,36 @@ describe('the relief: the lines part round a crown', () => {
     expect(R).toBeLessThan(6.3);
   });
 
-  it('moves the seeds in the crown onto its rim (1.1 radii), slides the lines that meet it along the rim, and so keeps the lines it covers: no vertex inside the disc, the lines of the picture without the crown, and none ended short at it', () => {
+  it('moves the seeds in the crown out along the wind onto its rim (1.1 radii), steers the lines that meet it round it, and so keeps the lines it covers: the lines of the picture without the crown, none ended short at it, and no vertex deep in the disc', () => {
     const { out, lines } = build(alone());
     const base = build(speedOnly());
     expect(base.out.blocked).toBe(0);
     expect(out.blocked, 'a crown of 46 px of radius has room on its rim for every seed in it').toBe(0);
-    // Not a vertex inside the circle of 1.1 radii (the seeds that stood in the disc are on it), and the circle is where the nearest ones are.
+    // The seeds that stood in the disc are on the circle of 1.1 radii (on its downwind side: the wind is from the west); the lines go round the crown.
     let nearest = Infinity;
     let onRim = 0;
+    let downwind = 0;
+    let inside = 0;
+    let vertices = 0;
     for (const l of lines) {
       for (let k = l.seg; k < l.seg + l.count; k++) {
-        for (const d of [Math.hypot(out.a[3 * k]!, out.a[3 * k + 2]!), Math.hypot(out.b[3 * k]!, out.b[3 * k + 2]!)]) {
+        for (const [x, z] of [[out.a[3 * k]!, out.a[3 * k + 2]!], [out.b[3 * k]!, out.b[3 * k + 2]!]] as const) {
+          const d = Math.hypot(x, z);
           nearest = Math.min(nearest, d);
-          if (Math.abs(d - 1.1 * R) < 1e-3) onRim++;
+          vertices++;
+          if (d < R) inside++;
+          if (k === l.seg && x === out.a[3 * k]! && Math.abs(d - 1.1 * R) < 1e-3) {
+            onRim++;
+            if (x > 0) downwind++;
+          }
         }
       }
     }
-    expect(nearest).toBeGreaterThanOrEqual(1.1 * R - 1e-3);
-    expect(onRim, 'vertices on the circle: seeds and the lines that slide along it').toBeGreaterThan(20);
-    // The lines of the crown-free picture are all there (a few more lines than it, where the sliding lines are longer than the straight ones were cut).
+    expect(nearest, 'a line clips the edge of the disc at the most').toBeGreaterThan(0.75 * R);
+    expect(inside / vertices, 'a very few vertices in the disc').toBeLessThan(0.01);
+    expect(onRim, 'seeds on the circle').toBeGreaterThan(5);
+    expect(downwind, 'all on its downwind side').toBe(onRim);
+    // The lines of the crown-free picture are all there (a few more lines than it, where the lines go round it are longer than the straight ones were cut).
     expect(lines.length).toBeGreaterThanOrEqual(base.lines.length - 3);
     expect(lines.length).toBeLessThanOrEqual(base.lines.length + 3);
     // None is ended short by the crown: the lines of under 14 steps are the ones at the edge of the picture, as they were.
@@ -1599,15 +1700,20 @@ describe('the relief: the lines part round a crown', () => {
   });
 
   it('wide crowns move only the share of the seeds in them that their rim can hold (ringPx over the radius in px): about as many lines as the rim holds, never more than were in them', () => {
-    // The same crown seen from twice as near (0.067 m a pixel): 93 px of radius, so 80 / 93 of the seeds in it are drawn from its rim.
-    const near = (crowns: boolean): DetailScenario => withRelief(view({ camera: topDownCamera(133, 2000, 0, 0, { near: 5 }, 0) }), { canopyH: 24, crowns: crowns ? [stand([[0, 0, 40, 16]])] : undefined });
+    // The same crown seen from three times as near (0.044 m a pixel): 154 px of radius for the circle of 1.1, so 120 / 154 of the seeds in it are drawn from its rim
+    // (the lines that start on its lee side, on or off the screen).
+    const near = (crowns: boolean): DetailScenario => withRelief(view({ camera: topDownCamera(133, 3000, 0, 0, { near: 5 }, 0) }), { canopyH: 24, crowns: crowns ? [stand([[0, 0, 40, 16]])] : undefined });
     const a = build(near(true));
     const b = build(near(false));
     expect(a.out.blocked, 'the seeds the rim has no room for').toBeGreaterThan(5);
     expect(a.lines.length + a.out.blocked).toBeGreaterThanOrEqual(b.lines.length - 3);
     expect(a.lines.length).toBeLessThanOrEqual(b.lines.length);
     const kept = a.lines.length / (a.lines.length + a.out.blocked);
-    expect(kept).toBeGreaterThan(0.9);
+    expect(kept, 'about the rim\'s share of them (and all the seeds outside the crown)').toBeGreaterThan(0.6);
+    expect(kept).toBeLessThan(0.92);
+    // From twice as near again the crown is wider than the screen and its lee side is off it: a picture with the lines of what is outside the crown, not none.
+    const wide = (crowns: boolean): DetailScenario => withRelief(view({ camera: topDownCamera(133, 4000, 0, 0, { near: 5 }, 0) }), { canopyH: 24, crowns: crowns ? [stand([[0, 0, 40, 16]])] : undefined });
+    expect(build(wide(true)).lines.length, 'a crown that fills the screen').toBeGreaterThan(5);
   });
 
   it('pushes a line that passes beside the crown outward, and brings it back toward its own track behind it', () => {
@@ -1647,27 +1753,24 @@ describe('the relief: the lines part round a crown', () => {
     expect(far).toBeGreaterThan(100);
   });
 
-  it('bends by at most 30 degrees a step in a saddle between two crowns and the curl of a vortex pair, and by at most 110 degrees where a line slides onto a rim or leaves a lens of crowns (a few lines in a hundred)', () => {
+  it('bends by at most the turn cap (25 degrees) a step on every path: in a saddle between two crowns, round a crown met head-on, in the curl of a vortex pair and behind a proud crown', () => {
     const two = withRelief(view(), { canopyH: 24, crowns: [stand([[0, 5, 40, 16], [0, -5, 40, 16]])] });
     const plume = withRelief(view(), { plumes: [{ x: -14, y: 0, radiusM: 12, strength: 1 }] });
     const wake = withRelief(view(), { canopyH: 24, crowns: [stand([[0, 0, 44, 16]])] }); // a proud crown: it makes its wake as well
+    const CAP = Math.max(DETAIL_RELIEF.ridge.maxTurnDeg, DETAIL_RELIEF.crowns.maxTurnDeg);
+    expect(CAP).toBe(25);
     let bent = 0;
-    for (const [name, sc, crowns] of [['one crown', alone(), true], ['two crowns', two, true], ['plume', plume, false], ['proud crown', wake, true]] as const) {
+    for (const [name, sc] of [['one crown', alone()], ['two crowns', two], ['plume', plume], ['proud crown', wake]] as const) {
       const { out, lines } = build(sc);
       expect(lines.length, name).toBeGreaterThan(100);
       let worst = 0;
-      let kinked = 0;
       for (const l of lines) {
         const t = turns(out, l);
         worst = Math.max(worst, t.worst);
-        if (t.worst > 30 + 1e-6) kinked++;
         if (Math.abs(t.total) > 20) bent++;
       }
-      // The field bends a line by 30 degrees a step at most; a line that meets a crown head-on, in the thin lane the doublet does not turn away, slides onto the rim
-      // and takes the circle's direction there (up to a quarter turn), and one that meets a lens of crowns leaves it by the nearest free direction (105 degrees at
-      // the most): a handful of lines in a hundred.
-      expect(worst, name).toBeLessThanOrEqual(crowns ? 110 : 30 + 1e-6);
-      expect(kinked, `${name}: lines that slide onto a rim`).toBeLessThanOrEqual(Math.ceil((name === 'two crowns' ? 0.05 : 0.02) * lines.length)); // (two crowns 10 m apart overlap: a saddle)
+      // (L11 slid a line along a circle and left the rim by the nearest free direction: corners of up to 135 degrees in a few lines of a hundred, and 5 to 40 % of the lines of a forest.)
+      expect(worst, `${name}: the largest turn at a vertex`).toBeLessThanOrEqual(CAP + 0.01);
       expect(worst, `${name}: some line really turns`).toBeGreaterThan(8);
     }
     expect(bent).toBeGreaterThan(20);

@@ -157,7 +157,7 @@ export interface Plume {
  */
 export interface DetailRelief {
   enabled: boolean;
-  /** T2: where the ground rises ahead of a step (rise per metre along the flow, smoothstep between `riseLo` and `riseHi`) the line slides along the contour by `beta`; `forwardM` is the forward difference. */
+  /** T2: where the ground rises ahead of a step (rise per metre along the flow, smoothstep between `riseLo` and `riseHi`) the line slides along the contour by `beta`; `forwardM` is the forward difference. `maxTurnDeg` (with the crowns') is the most a vertex of any line turns, on every path (25 degrees: 0.7.0, L12). */
   ridge: { riseLo: number; riseHi: number; beta: number; forwardM: number; maxTurnDeg: number };
   /**
    * T1: the stroke rides at `topShare` x canopy height x cover weight (cover over `coverFull` counts as 1); the canopy height is clamped to `maxHeightM`, and the
@@ -192,10 +192,11 @@ export interface DetailRelief {
     maxCrowns: number;
     clockEvery: number;
     /**
-     * The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the turn cap per step, and the rim:
-     * a line slides along the circle of `rim` x r instead of ending at a crown, and a seed inside it is moved onto it. A crown more than `ringPx` px wide in
-     * radius moves only `ringPx` / its radius of the seeds inside it onto its rim (by a hash of the seed): a rim holds about one line to the lattice's own
-     * spacing, and the seeds of a disc many spacings across would bunch there.
+     * The grid of crowns (`gridM` cells), the reach of one (`reach` x its radius), the doublet's softening (`soften` x r), the most a vertex turns (`maxTurnDeg`, for
+     * every line, whatever it meets: there is no corner), and the rim: a line is steered round the circle of `rim` x r (and a little wider) instead of ending at a
+     * crown, and a seed inside it is moved out along the wind to the downwind side of it. A crown more than `ringPx` px wide in radius moves only `ringPx` / its
+     * radius of the seeds inside it (by a hash of the seed): the rim holds about one line to the lattice's own spacing, and the seeds of a disc many spacings
+     * across would bunch there.
      */
     gridM: number;
     reach: number;
@@ -242,7 +243,7 @@ export interface DetailRelief {
 }
 export const DETAIL_RELIEF: DetailRelief = {
   enabled: true,
-  ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 30 },
+  ridge: { riseLo: 0.1, riseHi: 0.35, beta: 0.6, forwardM: 12, maxTurnDeg: 25 },
   canopy: { topShare: 0.85, coverFull: 0.3, maxHeightM: 60, eyeShare: 0.3 },
   crowns: {
     gateCrownM: 5,
@@ -258,9 +259,9 @@ export const DETAIL_RELIEF: DetailRelief = {
     gridM: 32,
     reach: 3,
     soften: 0.35,
-    maxTurnDeg: 30,
+    maxTurnDeg: 25,
     rim: 1.1,
-    ringPx: 80,
+    ringPx: 120,
     pinMin: 0.05,
     pinDepth: 0.95,
     pinReach: 2.5,

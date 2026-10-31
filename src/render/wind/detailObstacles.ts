@@ -10,10 +10,13 @@
  * ellipsoid's cross-section at that height, a disc at the trunk. A stroke under the crown's base passes the trunk; one over its top flies over. The disc is
  * the soft doublet of potential flow past a cylinder (in the frame of the unperturbed wind, speed 1: `du = -r^2 (x^2 - y^2) / (x^2 + y^2 + a^2)^2` along,
  * `dv = -2 r^2 x y / (...)^2` across, `a = soften x r`), faded to 0 at `reach x r`; the tracer takes `normalize(wind + perturbation)` as its direction.
- * A line never ends at a crown and never runs over one: a step that would end inside the circle of `rim` x r slides along it instead (`slide`: a head-on
- * line takes the side its tiny lateral offset says, and goes on along the circle until the wind carries it off), and a seed inside the circle is moved onto
- * it (`relocate`), so that the lines a crown covers are not lost (0.7.0, the verifier's third finding: seeds dropped inside crowns and lines ended at
- * their rims took a third of the picture in a forest, and left whole stands bare).
+ * A line never ends at a crown: a seed inside the circle of `rim` x r is moved out along the wind to the downwind side of it (`relocate`: the line there is the
+ * one that crossed the crown, from where it leaves it), so that the lines a crown covers are not lost (0.7.0, the verifier's third finding: seeds dropped inside
+ * crowns took a third of the picture in a forest and left whole stands bare); and a line that comes to a crown is steered round it (`steer`: a look of a few steps
+ * ahead at the crowns' circles, and of the directions the turn cap leaves it, so that it bends by a curve that starts before the crown, goes between two that
+ * stand apart and round a pair that do not), never by a corner: no step turns by more than `maxTurnDeg` from the one before, on any path (the L11 builder
+ * slid a line along a circle and left corners of up to 135 degrees, in 5 to 40 % of the lines), and a line is not turned from the wind by more than
+ * `STEER_BACK_DEG` for a crown (it does not double back). A line that could not turn in time passes over the edge of a crown by an arc.
  *
  * Eddies. A site (a proud crown standing free, a ridge's lee, the plume) has a pair of counter-rotating Rankine vortices `downwind x r` behind it and
  * `lateral x r` either side of its axis: the upper one (to the left of the wind) clockwise, the lower anticlockwise, so that on the axis the flow runs
@@ -48,7 +51,7 @@ export const IO_PX = 4;
 export const IO_PY = 5;
 /** Out of `perturb`: 0 to 1, how near the point is to an obstacle (the line's pin). */
 export const IO_NEAR = 6;
-/** In to `slide`: where the step started. */
+/** In to `steer`: the unit direction of the step before. In to `leave`: where the try starts from (with `IO_L`: how far a try goes). */
 export const IO_FX = 7;
 export const IO_FY = 8;
 /** Out of `canopyAt`: the height (m over the ground) of the stroke's plane. */
@@ -57,13 +60,15 @@ export const IO_ZC = 9;
 export const IO_R = 10;
 export const IO_K = 11;
 export const IO_Z = 12;
-/** Out of `relocate` and `slide`: 1 when the point was moved, else 0 (and out of `addSite`: 1 when the site was added). */
+/** Out of `relocate`: 1 when the point was moved, 2 when it has nowhere to go, else 0 (and out of `addSite`: 1 when the site was added). */
 export const IO_BLOCK = 13;
 /** In to `canopyAt`: the drawn height (world y) of the ground under the point, for the plane's cap under the eye. */
 export const IO_G = 14;
-/** In to `leave`: how far (m) one try goes (`io[IO_FX]`, `io[IO_FY]` is where from, `io[IO_DX]`, `io[IO_DY]` the heading). */
-const IO_L = 15;
-const IO_LEN = 16;
+/** In to `leave`: how far (m) one try goes (`io[IO_FX]`, `io[IO_FY]` is where from, `io[IO_DX]`, `io[IO_DY]` the heading). In to `steer`: the length of a step (m). */
+export const IO_L = 15;
+/** Out of `perturb`: 1 when a crown's steering reach holds the point (`steer` has something to do), else 0. */
+export const IO_S = 16;
+const IO_LEN = 17;
 
 // Slots of the copied constants.
 const K_TOP = 0;
@@ -100,7 +105,8 @@ const K_GATE_M = 27;
 const K_GATE_PX = 28;
 const K_CLOCK = 29;
 const K_FADE = 30;
-const K_LEN = 32;
+const K_TABLE = 32;
+const K_LEN = 33;
 
 // Slots of `p`, the picture's numbers the builder hands over.
 export const P_PXM1 = 0;
@@ -135,8 +141,21 @@ const HIST_BINS = 64;
  * round a crown must be nearly still within about one and a half radii of it (looked at on the real picture: with a linear pin the lines run through the crowns).
  */
 export const PIN_GAIN = 2;
-/** The least share of a step that a line sliding along a crown's circle advances along it (a line that meets the crown head-on has none of its heading along the circle). */
-export const SLIDE_MIN = 0.6;
+/** The steering round crowns never turns a line to more than this many degrees from the wind (unless the flow had already): a line does not double back on itself. */
+export const STEER_BACK_DEG = 55;
+/** The steering keeps clear of a circle this much wider than the rim (`rim` x `STEER_MARGIN` x the crown's radius). */
+export const STEER_MARGIN = 1.15;
+/** The reach of the steering is at least this many pixels (at the crown) past that circle, so that a crown of a few pixels is looked at from a few steps away (the doublet's `reach` is 3 radii). */
+export const STEER_LOOK_PX = 24;
+/** The cost of a candidate direction per (1 - cosine) of its angle from the asked one, against the depth of the circles its points are in (0 to 1 each, weighted 1, 0.75 and 0.5). */
+export const STEER_LAMBDA = 1;
+/** And per (1 - cosine) of its angle from the wind's own direction: a line that is not blocked goes back to the wind, and one that is blocked takes the way that leaves it least off it. */
+export const STEER_MU = 0.5;
+/** The far-field turn (the first part of the steering) takes its whole size from this share of the way in from a crown's reach. */
+export const STEER_RAMP = 0.4;
+/** The most crowns the steering looks at at once (those whose reach holds the middle of the step: a few). */
+const LOCAL_MAX = 24;
+const COS_BACK = Math.cos((STEER_BACK_DEG * Math.PI) / 180);
 /** A point put on a crown's circle is on it to the rounding of a Float32 position: inside is under this share of the circle's radius. */
 const ON_RIM = 0.9999;
 /** The directions tried, in this order, from the heading, when a point has to leave a lens of crowns: straight on, then 35 degrees either side, 70 and 105 (cosine, sine, of the anticlockwise one, then the clockwise one). */
@@ -200,6 +219,13 @@ export class Obstacles {
   private readonly k = new Float64Array(K_LEN);
   private readonly hv = new Uint32Array(1);
   private readonly pv = new Float64Array(1);
+  /** The crowns `steer` looks at (centre minus the middle of the step, and the circle it keeps clear), and the cosines and sines of the directions it tries: the cap's thirds. */
+  private readonly lx = new Float64Array(LOCAL_MAX);
+  private readonly ly = new Float64Array(LOCAL_MAX);
+  private readonly lr = new Float64Array(LOCAL_MAX);
+  private readonly ls = new Float64Array(LOCAL_MAX);
+  private readonly candC = new Float64Array(7);
+  private readonly candS = new Float64Array(7);
 
   /** The canopy (by reference) and its grid. */
   private ch: Float32Array = new Float32Array(0);
@@ -215,6 +241,8 @@ export class Obstacles {
   readonly cx = new Float32Array(MAX_CROWNS_CAP);
   readonly cy = new Float32Array(MAX_CROWNS_CAP);
   readonly cr = new Float32Array(MAX_CROWNS_CAP);
+  /** The reach (m) of the steering round each crown: 3 radii, or farther where that is under a few steps of a line (a crown of a few pixels is passed in one). */
+  readonly cs = new Float32Array(MAX_CROWNS_CAP);
   private readonly cf = new Uint8Array(MAX_CROWNS_CAP);
   nCrowns = 0;
   /** How many crowns qualified and were left out because more than `maxCrowns` did, the smallest on the screen (0: every crown that counts is here). */
@@ -283,6 +311,16 @@ export class Obstacles {
     k[K_GATE_PX] = w.gatePx;
     k[K_CLOCK] = w.clockEvery;
     k[K_FADE] = w.fadeSin;
+    // The directions `steer` tries (trigonometry, once for a cap: `configure` runs every rebuild and allocates nothing when it has nothing to compute).
+    const capDeg = Math.max(relief.ridge.maxTurnDeg, w.maxTurnDeg);
+    if (k[K_TABLE] !== capDeg) {
+      k[K_TABLE] = capDeg;
+      const cap = (capDeg * Math.PI) / 180;
+      for (let c = 0; c < 7; c++) {
+        this.candC[c] = Math.cos(((c - 3) / 3) * cap);
+        this.candS[c] = Math.sin(((c - 3) / 3) * cap);
+      }
+    }
     this.canopy = false;
     this.nCrowns = 0;
     this.nSites = 0;
@@ -432,86 +470,96 @@ export class Obstacles {
     const cyA = this.cy;
     const crA = this.cr;
     const cfA = this.cf;
+    const csA = this.cs;
+    const reachFS = k[K_REACH]!;
+    const rimFS = k[K_RIM]!;
     let nc = this.nCrowns;
     let si = this.si;
     let ti = this.ti;
     let check = every;
-    scanning: while (si < sets.length) {
-      const set = sets[si]!;
-      if (set.group > maxGroup) {
+    scanning: for (;;) {
+      while (si < sets.length) {
+        const set = sets[si]!;
+        if (set.group > maxGroup) {
+          si++;
+          ti = 0;
+          continue;
+        }
+        const pos = set.position;
+        const size = set.size;
+        const count = set.count;
+        while (ti < count) {
+          if (--check <= 0) {
+            check = every;
+            if (now() >= deadline) {
+              this.si = si;
+              this.ti = ti;
+              this.nCrowns = nc;
+              this.total = total;
+              return false;
+            }
+          }
+          const t = ti++;
+          const x = pos[3 * t]!;
+          const y = pos[3 * t + 1]!;
+          if (x < bx0 || x > bx1 || y < by0 || y > by1) continue; // nowhere near the picture's seeds
+          const h = size[2 * t]!;
+          if (!(h >= hMin)) continue;
+          const gz = pos[3 * t + 2]! * vex;
+          // Not a tree that the view has faded out: the ray from its foot to the eye is steeper than `fadeSin` (a camera over it looking steeply down).
+          const ddy = ey - gz;
+          if (ddy > 0) {
+            const ddx = ex - x;
+            const ddz = ez + y;
+            if (ddy * ddy > fade2 * (ddx * ddx + ddy * ddy + ddz * ddz)) continue;
+          }
+          // On the screen (the tree at half its height; the margin is a whole line long, so a crown's own radius does not matter here).
+          const zw = -y;
+          const w0 = v[3]! * x + v[7]! * (gz + 0.5 * h) + v[11]! * zw + v[15]!;
+          if (!(w0 > wmin)) continue;
+          if (Math.abs(v[0]! * x + v[4]! * (gz + 0.5 * h) + v[8]! * zw + v[12]!) > mxs * w0) continue;
+          if (Math.abs(v[1]! * x + v[5]! * (gz + 0.5 * h) + v[9]! * zw + v[13]!) > mys * w0) continue;
+          // Where the stroke runs over this tree, and what its crown shows there.
+          io[IO_X] = x;
+          io[IO_Y] = y;
+          io[IO_G] = gz;
+          this.canopyAt();
+          const zc = io[IO_ZC]!;
+          const zs = zc > zb ? zc : zb;
+          if (!(h >= zs + clear)) continue;
+          const tt = (zs - centre * h) / (half * h);
+          if (!(tt > -1 && tt < 1)) continue;
+          const r = 0.5 * size[2 * t + 1]! * Math.sqrt(1 - tt * tt);
+          const rpx = (r * pxm1) / w0; // the radius on the screen (px)
+          if (!(rpx >= minPx)) continue;
+          if (pass === 0) {
+            // Count it by its radius, and keep the first `maxCrowns` (all of them, when that is enough).
+            let bin = Math.floor(HIST_PER_OCTAVE * Math.log2(rpx / minR));
+            bin = bin < 0 ? 0 : bin >= HIST_BINS ? HIST_BINS - 1 : bin;
+            hist[bin] = hist[bin]! + 1;
+            total++;
+            if (nc >= maxCrowns) continue;
+          } else if (rpx < floorHi) {
+            // The bucket that only some of fit: a hash of the tree's place says which (so the count is the cap within the sample's spread, and the room is there for it).
+            this.priority(Math.floor(x * 8), Math.floor(y * 8), SALT_CROWN);
+            if (!(this.pv[0]! < pKeep)) continue;
+          }
+          if (nc >= (pass === 0 ? maxCrowns : MAX_CROWNS_CAP)) continue;
+          cxA[nc] = x;
+          cyA[nc] = y;
+          crA[nc] = r;
+          cfA[nc] = h - zs >= proud ? 1 : 0;
+          const lookM = STEER_LOOK_PX * (r / rpx); // (the metres a pixel is at the crown)
+          const reachD = reachFS * r;
+          const reachS = rimFS * STEER_MARGIN * r + lookM;
+          csA[nc] = reachS > reachD ? reachS : reachD;
+          nc++;
+        }
         si++;
         ti = 0;
-        continue;
       }
-      const pos = set.position;
-      const size = set.size;
-      const count = set.count;
-      while (ti < count) {
-        if (--check <= 0) {
-          check = every;
-          if (now() >= deadline) {
-            this.si = si;
-            this.ti = ti;
-            this.nCrowns = nc;
-            this.total = total;
-            return false;
-          }
-        }
-        const t = ti++;
-        const x = pos[3 * t]!;
-        const y = pos[3 * t + 1]!;
-        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue; // nowhere near the picture's seeds
-        const h = size[2 * t]!;
-        if (!(h >= hMin)) continue;
-        const gz = pos[3 * t + 2]! * vex;
-        // Not a tree that the view has faded out: the ray from its foot to the eye is steeper than `fadeSin` (a camera over it looking steeply down).
-        const ddy = ey - gz;
-        if (ddy > 0) {
-          const ddx = ex - x;
-          const ddz = ez + y;
-          if (ddy * ddy > fade2 * (ddx * ddx + ddy * ddy + ddz * ddz)) continue;
-        }
-        // On the screen (the tree at half its height; the margin is a whole line long, so a crown's own radius does not matter here).
-        const zw = -y;
-        const w0 = v[3]! * x + v[7]! * (gz + 0.5 * h) + v[11]! * zw + v[15]!;
-        if (!(w0 > wmin)) continue;
-        if (Math.abs(v[0]! * x + v[4]! * (gz + 0.5 * h) + v[8]! * zw + v[12]!) > mxs * w0) continue;
-        if (Math.abs(v[1]! * x + v[5]! * (gz + 0.5 * h) + v[9]! * zw + v[13]!) > mys * w0) continue;
-        // Where the stroke runs over this tree, and what its crown shows there.
-        io[IO_X] = x;
-        io[IO_Y] = y;
-        io[IO_G] = gz;
-        this.canopyAt();
-        const zc = io[IO_ZC]!;
-        const zs = zc > zb ? zc : zb;
-        if (!(h >= zs + clear)) continue;
-        const tt = (zs - centre * h) / (half * h);
-        if (!(tt > -1 && tt < 1)) continue;
-        const r = 0.5 * size[2 * t + 1]! * Math.sqrt(1 - tt * tt);
-        const rpx = (r * pxm1) / w0; // the radius on the screen (px)
-        if (!(rpx >= minPx)) continue;
-        if (pass === 0) {
-          // Count it by its radius, and keep the first `maxCrowns` (all of them, when that is enough).
-          let bin = Math.floor(HIST_PER_OCTAVE * Math.log2(rpx / minR));
-          bin = bin < 0 ? 0 : bin >= HIST_BINS ? HIST_BINS - 1 : bin;
-          hist[bin] = hist[bin]! + 1;
-          total++;
-          if (nc >= maxCrowns) continue;
-        } else if (rpx < floorHi) {
-          // The bucket that only some of fit: a hash of the tree's place says which (so the count is the cap within the sample's spread, and the room is there for it).
-          this.priority(Math.floor(x * 8), Math.floor(y * 8), SALT_CROWN);
-          if (!(this.pv[0]! < pKeep)) continue;
-        }
-        if (nc >= (pass === 0 ? maxCrowns : MAX_CROWNS_CAP)) continue;
-        cxA[nc] = x;
-        cyA[nc] = y;
-        crA[nc] = r;
-        cfA[nc] = h - zs >= proud ? 1 : 0;
-        nc++;
-      }
-      si++;
-      ti = 0;
-      if (si >= sets.length && pass === 0 && total > maxCrowns) {
+      // Every set is done (also when the last ones are of a group that is not counted: the check is here and not after a set that was looked at).
+      if (pass === 0 && total > maxCrowns) {
         // Too many qualified: the floor is where the count of the larger ones passes `maxCrowns`; look at every tree again for the largest.
         let kept = 0;
         let bin = HIST_BINS - 1;
@@ -528,6 +576,7 @@ export class Obstacles {
         ti = 0;
         continue scanning;
       }
+      break;
     }
     this.si = si;
     this.ti = ti;
@@ -544,23 +593,24 @@ export class Obstacles {
     this.gny = 0;
     if (n === 0) return;
     const k = this.k;
-    const reachF = k[K_REACH]!;
     const cx = this.cx;
     const cy = this.cy;
-    const cr = this.cr;
+    const cs = this.cs;
+    const reachF = k[K_REACH]!;
     let x0 = Infinity;
     let y0 = Infinity;
     let x1 = -Infinity;
     let y1 = -Infinity;
-    let rmax = 0;
+    let reachMax = 0;
     for (let i = 0; i < n; i++) {
       if (cx[i]! < x0) x0 = cx[i]!;
       if (cx[i]! > x1) x1 = cx[i]!;
       if (cy[i]! < y0) y0 = cy[i]!;
       if (cy[i]! > y1) y1 = cy[i]!;
-      if (cr[i]! > rmax) rmax = cr[i]!;
+      // (A crown put in by hand, without a steering reach, has the doublet's.)
+      if (!(cs[i]! >= reachF * this.cr[i]!)) cs[i] = reachF * this.cr[i]!;
+      if (cs[i]! > reachMax) reachMax = cs[i]!;
     }
-    const reachMax = reachF * rmax;
     const extent = Math.max(x1 - x0, y1 - y0) + 2 * reachMax;
     let cell = Math.max(k[K_GRID_M]!, 2 * reachMax);
     if (extent / cell > GRID_MAX - 2) cell = extent / (GRID_MAX - 2);
@@ -580,7 +630,7 @@ export class Obstacles {
     const nodeNext = this.nodeNext;
     let used = 0;
     for (let i = 0; i < n; i++) {
-      const reach = reachF * cr[i]!;
+      const reach = cs[i]!;
       let i0 = Math.floor((cx[i]! - reach - gx0) * inv);
       let i1 = Math.floor((cx[i]! + reach - gx0) * inv);
       let j0 = Math.floor((cy[i]! - reach - gy0) * inv);
@@ -612,11 +662,11 @@ export class Obstacles {
   }
 
   /**
-   * A seed at (`io[IO_X]`, `io[IO_Y]`) that is inside the circle of a crown (`rim` x its radius) is moved onto the circle, straight out from the crown's
-   * middle (to the west when it is at the middle): 1 into `io[IO_BLOCK]`, the crown's radius into `io[IO_R]` and the new place into
-   * `io[IO_X]`, `io[IO_Y]`; else 0 and nothing changes. Up to three crowns are asked in turn (a place on one circle may be inside the next); a seed that
-   * is left inside a circle after them (in a lens of crowns that overlap) goes to the nearest place round about that is outside them all (`leave`), and one
-   * that has none is not drawn: 2 into `io[IO_BLOCK]`.
+   * A seed at (`io[IO_X]`, `io[IO_Y]`) that is inside the circle of a crown (`rim` x its radius) is moved out along the wind (the unit vector `io[IO_DX]`,
+   * `io[IO_DY]`) to where it leaves the circle, the downwind side of the crown, where the line goes on away from it: 1 into `io[IO_BLOCK]`, the crown's radius
+   * into `io[IO_R]` and the new place into `io[IO_X]`, `io[IO_Y]`; else 0 and nothing changes. Up to three crowns are asked in turn (a place on one circle may
+   * be inside the next); a seed that is left inside a circle after them (in a lens of crowns that overlap) goes to the nearest place round about that is outside
+   * them all (`leave`), and one that has none is not drawn: 2 into `io[IO_BLOCK]`.
    */
   relocate(): void {
     const io = this.io;
@@ -646,10 +696,13 @@ export class Obstacles {
       const rx = x - this.cx[best]!;
       const ry = y - this.cy[best]!;
       const rim = rimF * this.cr[best]!;
-      const d = Math.sqrt(rx * rx + ry * ry);
-      // (At the middle there is no outward: west.)
-      io[IO_X] = this.cx[best]! + (d > 1e-6 ? rx / d : -1) * rim;
-      io[IO_Y] = this.cy[best]! + (d > 1e-6 ? ry / d : 0) * rim;
+      // Out along the wind: where the line that passes the seed leaves the circle, on the downwind side of the crown, from where the line goes on away from it.
+      const wx = io[IO_DX]!;
+      const wy = io[IO_DY]!;
+      const b = rx * wx + ry * wy;
+      const t = -b + Math.sqrt(b * b - (rx * rx + ry * ry - rim * rim));
+      io[IO_X] = x + t * wx;
+      io[IO_Y] = y + t * wy;
       io[IO_R] = this.cr[best]!;
       io[IO_BLOCK] = 1;
     }
@@ -659,8 +712,6 @@ export class Obstacles {
       const y = io[IO_Y]!;
       io[IO_FX] = x;
       io[IO_FY] = y;
-      io[IO_DX] = -1;
-      io[IO_DY] = 0;
       io[IO_L] = 0.5 * this.k[K_RIM]! * io[IO_R]!;
       if (!this.leave()) {
         io[IO_X] = x;
@@ -713,84 +764,169 @@ export class Obstacles {
   }
 
   /**
-   * The end of a step, (`io[IO_X]`, `io[IO_Y]`), for a line that left (`io[IO_FX]`, `io[IO_FY]`) along the unit heading (`io[IO_DX]`, `io[IO_DY]`): when it is
-   * inside the circle of a crown (`rim` x its radius) the line slides along the circle instead, from the angle it started at, to the side its heading
-   * points (the side of a head-on line is the one its tiny lateral offset says), by the step's length times how much of the heading is along the circle,
-   * but at least `SLIDE_MIN` of it so that a line that meets a crown head-on still gets round. 1 into `io[IO_BLOCK]` and the new end into `io[IO_X]`,
-   * `io[IO_Y]` when it moved; else 0. Two crowns at most: a line that is still inside a circle after them (in a lens of crowns that overlap) takes a step
-   * of its length from where it was, in the nearest direction to its heading that ends outside them all (`leave`); one with none (it is shut in) ends:
-   * 2 into `io[IO_BLOCK]`, and the end is left where it was.
+   * Steering round the crowns: where a line goes from the vertex it is at, in two parts, for the crowns whose reach (`cs`: the doublet's, or a circle and
+   * `STEER_LOOK_PX` px) holds the middle of the step. In: that point (`io[IO_X]`, `io[IO_Y]`), the unit direction that the wind and the flow round the crowns ask
+   * for (`io[IO_DX]`, `io[IO_DY]`), the unit direction of the step before (`io[IO_FX]`, `io[IO_FY]`), the wind's own (`io[IO_PX]`, `io[IO_PY]`) and the step's
+   * length (`io[IO_L]`). Out: the unit direction (`io[IO_PX]`, `io[IO_PY]`), never more than `maxTurnDeg` from the step before (so the line has no corner, whatever
+   * stands in its way) and never more than `STEER_BACK_DEG` from the wind unless the asked direction was (it does not double back).
+   * Far field: the crown that stands most in the way (the direction passes within its circle, or the point is inside it) turns the direction away from its
+   * centre, to the side the centre is not on, by the part of its half angle `asin(circle / distance)` that the direction is within, in full from `STEER_RAMP` of the
+   * way in from its reach: a curve that starts several steps before the crown. Twice, for the next crown in the way.
+   * Near field: the asked direction (within the turn cap) is the first candidate, and seven that the cap allows, a third of it apart, round the step before are
+   * the others; each is walked three steps ahead (at half a step, a step and a half, two and a half) against the circles, and costs the depth it goes in plus
+   * `STEER_LAMBDA` and `STEER_MU` of how far it is from the asked direction and from the wind. The cheapest is taken, the asked one when it is free (nearly always):
+   * a line goes between two crowns that stand apart and round a pair that do not, and one that has no room passes over the edge of a crown by an arc, not through a corner.
    */
-  slide(): void {
+  steer(): void {
     const io = this.io;
-    io[IO_BLOCK] = 0;
-    if (this.gnx === 0) return;
-    const rimF = this.k[K_RIM]!;
-    const fx = io[IO_FX]!;
-    const fy = io[IO_FY]!;
-    const dx = io[IO_DX]!;
-    const dy = io[IO_DY]!;
-    let step = Math.sqrt((io[IO_X]! - fx) * (io[IO_X]! - fx) + (io[IO_Y]! - fy) * (io[IO_Y]! - fy));
-    for (let pass = 0; pass < 2; pass++) {
+    const mx = io[IO_X]!;
+    const my = io[IO_Y]!;
+    const bx = io[IO_DX]!;
+    const by = io[IO_DY]!;
+    const hx = io[IO_FX]!;
+    const hy = io[IO_FY]!;
+    const wx = io[IO_PX]!;
+    const wy = io[IO_PY]!;
+    const ds = io[IO_L]!;
+    const tc = this.candC;
+    const ts = this.candS;
+    // The crowns whose reach holds the middle of the step, as (centre - middle, the circle kept clear, the reach).
+    let nl = 0;
+    if (this.gnx > 0) {
       const c = this.cellOfIo();
-      if (c < 0) return;
-      const x = io[IO_X]!;
-      const y = io[IO_Y]!;
-      let best = -1;
-      let deepest = 1;
-      for (let nd = this.heads[c]!; nd >= 0; nd = this.nodeNext[nd]!) {
-        const i = this.nodeId[nd]!;
-        const rim = rimF * ON_RIM * this.cr[i]!;
-        const ex = x - this.cx[i]!;
-        const ey = y - this.cy[i]!;
-        const depth = (ex * ex + ey * ey) / (rim * rim);
-        if (depth < deepest || (depth === deepest && best >= 0 && this.cx[i]! < this.cx[best]!)) {
-          deepest = depth;
-          best = i;
+      if (c >= 0) {
+        const rimF = this.k[K_RIM]! * STEER_MARGIN;
+        const cx = this.cx;
+        const cy = this.cy;
+        const cr = this.cr;
+        const cs = this.cs;
+        const lx = this.lx;
+        const ly = this.ly;
+        const lr = this.lr;
+        const ls = this.ls;
+        for (let nd = this.heads[c]!; nd >= 0 && nl < LOCAL_MAX; nd = this.nodeNext[nd]!) {
+          const i = this.nodeId[nd]!;
+          const ex = cx[i]! - mx;
+          const ey = cy[i]! - my;
+          const reach = cs[i]!;
+          if (ex * ex + ey * ey >= reach * reach) continue;
+          lx[nl] = ex;
+          ly[nl] = ey;
+          lr[nl] = rimF * cr[i]!;
+          ls[nl] = reach;
+          nl++;
         }
       }
-      if (best < 0) return;
-      const rim = rimF * this.cr[best]!;
-      // Where the line stood, as an angle about the crown (at the middle, the angle of the step's end).
-      let px = fx - this.cx[best]!;
-      let py = fy - this.cy[best]!;
-      let pl = Math.sqrt(px * px + py * py);
-      if (pl < 1e-6) {
-        px = x - this.cx[best]!;
-        py = y - this.cy[best]!;
-        pl = Math.sqrt(px * px + py * py);
-      }
-      if (pl < 1e-6) {
-        px = -dx;
-        py = -dy;
-        pl = 1;
-      }
-      px /= pl;
-      py /= pl;
-      const along = px * dy - py * dx; // the heading along the circle, anticlockwise when positive
-      const side = along >= 0 ? 1 : -1;
-      const advance = (step * Math.max(Math.abs(along), SLIDE_MIN)) / rim;
-      const a = Math.atan2(py, px) + side * advance;
-      io[IO_X] = this.cx[best]! + rim * Math.cos(a);
-      io[IO_Y] = this.cy[best]! + rim * Math.sin(a);
-      io[IO_BLOCK] = 1;
-      step = Math.sqrt((io[IO_X]! - fx) * (io[IO_X]! - fx) + (io[IO_Y]! - fy) * (io[IO_Y]! - fy));
     }
-    if (this.insideAny()) {
-      const x = io[IO_X]!;
-      const y = io[IO_Y]!;
-      io[IO_FX] = fx;
-      io[IO_FY] = fy;
-      io[IO_DX] = dx;
-      io[IO_DY] = dy;
-      io[IO_L] = step > 1e-6 ? step : 1e-6;
-      if (this.leave()) io[IO_BLOCK] = 1;
-      else {
-        io[IO_X] = x;
-        io[IO_Y] = y;
-        io[IO_BLOCK] = 2;
+    // Far field: the crown that stands most in the way turns the direction away from its centre, by the part of its half angle (`asin(circle / distance)`)
+    // that the direction is within, from `STEER_RAMP` of the way in from its reach (the whole turn from there): a line is turned several steps before the crown.
+    let dx0 = bx;
+    let dy0 = by;
+    let inWay = 0;
+    if (nl > 0) {
+      const lx = this.lx;
+      const ly = this.ly;
+      const lr = this.lr;
+      const ls = this.ls;
+      for (let pass = 0; pass < 2; pass++) {
+        let most = 0;
+        let side = 0;
+        let tie = Infinity;
+        for (let i = 0; i < nl; i++) {
+          const ex = lx[i]!;
+          const ey = ly[i]!;
+          const rim = lr[i]!;
+          const cross = dx0 * ey - dy0 * ex;
+          const along = dx0 * ex + dy0 * ey;
+          // In the way: inside the circle, or the circle is ahead and the direction passes within it (the cheap form of: the angle to the centre is under the half angle).
+          if (ex * ex + ey * ey >= rim * rim && (along <= 0 || cross * cross >= rim * rim)) continue;
+          inWay = 1;
+          const d = Math.sqrt(ex * ex + ey * ey);
+          let phi = Math.PI / 2;
+          let near = 1;
+          if (d > rim) {
+            phi = Math.asin(rim / d);
+            near = (ls[i]! - d) / (STEER_RAMP * (ls[i]! - rim));
+            if (near > 1) near = 1;
+          }
+          const theta = Math.atan2(cross < 0 ? -cross : cross, along);
+          if (theta >= phi) continue;
+          const turn = (phi - theta) * near;
+          if (turn > most || (turn === most && most > 0 && ex < tie)) {
+            most = turn;
+            tie = ex;
+            side = cross > 0 ? -1 : 1; // the centre is to the left (or ahead): turn right
+          }
+        }
+        if (!(most > 1e-6)) break;
+        const a = side * most;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const nx = dx0 * ca - dy0 * sa;
+        dy0 = dx0 * sa + dy0 * ca;
+        dx0 = nx;
       }
     }
+    // Not further from the wind than STEER_BACK_DEG, or than the direction asked for was.
+    const cosB = bx * wx + by * wy;
+    const lim = (cosB < COS_BACK ? cosB : COS_BACK) - 1e-9;
+    if (dx0 * wx + dy0 * wy < lim) {
+      const sg = wx * dy0 - wy * dx0 >= 0 ? 1 : -1;
+      const sl = Math.sqrt(1 - lim * lim);
+      dx0 = wx * lim - sg * wy * sl;
+      dy0 = sg * wx * sl + wy * lim;
+    }
+    // The asked direction within the turn cap of the step before (the first candidate; with no crown near, the answer).
+    const cosCap = tc[6]!;
+    let ax = dx0;
+    let ay = dy0;
+    if (dx0 * hx + dy0 * hy < cosCap) {
+      const sg = hx * dy0 - hy * dx0 >= 0 ? 1 : -1;
+      const sn = ts[6]!;
+      ax = hx * cosCap - sg * hy * sn;
+      ay = sg * hx * sn + hy * cosCap;
+    }
+    let ox = ax;
+    let oy = ay;
+    // (No crown in the way of the direction asked for, and it needs no cap: it is free, which the walk below would find at its first candidate. Nearly every step.)
+    if (nl > 0 && (inWay !== 0 || ax !== bx || ay !== by)) {
+      const lx = this.lx;
+      const ly = this.ly;
+      const lr = this.lr;
+      let best = Infinity;
+      for (let c = -1; c < 7; c++) {
+        let dx = ax;
+        let dy = ay;
+        if (c >= 0) {
+          dx = hx * tc[c]! - hy * ts[c]!;
+          dy = hx * ts[c]! + hy * tc[c]!;
+          if (dx * wx + dy * wy < lim) continue;
+        }
+        let pen = 0;
+        for (let j = 1; j <= 3; j++) {
+          const t = (j - 0.5) * ds;
+          const qx = dx * t;
+          const qy = dy * t;
+          const w = j === 1 ? 1 : j === 2 ? 0.75 : 0.5;
+          for (let i = 0; i < nl; i++) {
+            const ex = qx - lx[i]!;
+            const ey = qy - ly[i]!;
+            const r = lr[i]!;
+            const d2 = ex * ex + ey * ey;
+            if (d2 < r * r) pen += (w * (r - Math.sqrt(d2))) / r;
+          }
+        }
+        if (c < 0 && pen === 0) break; // the asked direction is free: that is the answer (no other is nearer to it, and it is as near the wind as the flow asks)
+        const cost = pen + STEER_LAMBDA * (1 - (dx * ax + dy * ay)) + STEER_MU * (1 - (dx * wx + dy * wy));
+        if (cost < best) {
+          best = cost;
+          ox = dx;
+          oy = dy;
+        }
+      }
+    }
+    io[IO_PX] = ox;
+    io[IO_PY] = oy;
   }
 
   // ───────────────────────── the eddy sites ─────────────────────────
@@ -918,6 +1054,7 @@ export class Obstacles {
     let px = 0;
     let py = 0;
     let near = 0;
+    let steer = 0;
     if (this.gnx > 0) {
       const c = this.cellOfIo();
       if (c >= 0) {
@@ -927,12 +1064,18 @@ export class Obstacles {
         const cx = this.cx;
         const cy = this.cy;
         const cr = this.cr;
+        const cs = this.cs;
+        const rimA = k[K_RIM]! * STEER_MARGIN;
         for (let nd = this.heads[c]!; nd >= 0; nd = this.nodeNext[nd]!) {
           const i = this.nodeId[nd]!;
           const rx = x - cx[i]!;
           const ry = y - cy[i]!;
           const r = cr[i]!;
           const d2 = rx * rx + ry * ry;
+          const rs = cs[i]!;
+          if (d2 >= rs * rs) continue; // (beyond the steering's reach, which is the doublet's or more)
+          // A crown the line has passed, or stands beside, out of its circle, is none the steering looks at.
+          if (rx * dx + ry * dy < 0 || d2 < rimA * rimA * r * r) steer = 1;
           const reach = reachF * r;
           if (d2 >= reach * reach) continue;
           const d = Math.sqrt(d2);
@@ -1000,6 +1143,7 @@ export class Obstacles {
     io[IO_PX] = px;
     io[IO_PY] = py;
     io[IO_NEAR] = near > 0 ? (near > 1 ? 1 : near) : 0;
+    io[IO_S] = steer;
   }
 
 }
