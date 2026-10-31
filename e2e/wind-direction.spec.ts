@@ -28,20 +28,20 @@ interface WindState {
   headTime: number;
   playing: boolean;
   reviewing: boolean;
-  /** The Wind direction changes of `state.edits`, with the time the entry is stored at. */
-  edits: { id: string; dir: number; time: number; entryTime: number }[];
+  /** The Wind direction changes of `state.edits`, with the time the entry is stored at and the view time Apply was pressed at (`madeAt`, NaN for a scenario's own). */
+  edits: { id: string; dir: number; time: number; madeAt: number; entryTime: number }[];
 }
 
 const windState = (page: Page): Promise<WindState> =>
   page.evaluate(() => {
-    type Edit = { edit: { kind: string; id: string; dir?: number; time?: number }; time: number };
+    type Edit = { edit: { kind: string; id: string; dir?: number; time?: number; madeAt?: number }; time: number };
     const s = (window as unknown as { __firesim: { session: { state: { get(): { viewTime: number; headTime: number; playing: boolean; reviewing: boolean; edits: Edit[] } } } } }).__firesim.session.state.get();
     return {
       viewTime: s.viewTime,
       headTime: s.headTime,
       playing: s.playing,
       reviewing: s.reviewing,
-      edits: s.edits.filter((e) => e.edit.kind === 'windDirection').map((e) => ({ id: e.edit.id, dir: e.edit.dir ?? NaN, time: e.edit.time ?? NaN, entryTime: e.time })),
+      edits: s.edits.filter((e) => e.edit.kind === 'windDirection').map((e) => ({ id: e.edit.id, dir: e.edit.dir ?? NaN, time: e.edit.time ?? NaN, madeAt: e.edit.madeAt ?? NaN, entryTime: e.time })),
     };
   });
 
@@ -89,6 +89,14 @@ const hitArea = (loc: Locator): Promise<string[]> =>
     return missed;
   });
 const liveRegion = (page: Page) => page.locator('div.sr-only[aria-live="polite"]');
+/** The keys of the cards of the person's own changes (`wind-change:user:<id>`, `dead-man-zone:user:<id>`) that the Insights list holds and the map marks. */
+const ownCards = (page: Page): Promise<{ listed: string[]; mapped: string[] }> =>
+  page.evaluate(() => {
+    type Cards = { key?: string }[];
+    const s = (window as unknown as { __firesim: { session: { visibleInsights(): Cards; mapInsights(): Cards; state: { get(): { insights: Cards } } } } }).__firesim.session;
+    const own = (list: Cards): string[] => list.filter((i) => i.key?.includes(':user:')).map((i) => i.key!);
+    return { listed: own(s.visibleInsights()), mapped: own(s.mapInsights()) };
+  });
 const chipDir = (page: Page) => page.getByTestId('weather-chip').locator('.wx-dir');
 const dialValue = async (page: Page): Promise<number> => Number(await page.getByTestId('wind-dial').getAttribute('aria-valuenow'));
 const choose = (page: Page, label: string) => page.getByTestId('wind-when').getByRole('radio', { name: label }).check();
@@ -236,16 +244,22 @@ test('a change that is done says so, the top bar follows the wind the session re
 
   // Remove: the list empties, the session has no change, the chip reads the forecast again, and the announcement says it.
   const before = await windState(page);
+  const raised = await ownCards(page);
+  expect(raised.listed).toContain(`wind-change:user:${made.id}`); // the change's own card is in the list and on the map until it is removed
+  expect(raised.mapped).toContain(`wind-change:user:${made.id}`);
   await page.getByTestId('remove-wind-direction').click();
   await expect(item).toHaveCount(0);
   expect((await windState(page)).edits).toHaveLength(0);
   const after = await seriesDir(page, 'changed');
   expect(after.stamps).toBe(forecastStamps);
   await expect(chipDir(page)).toHaveText(compassName((await seriesDir(page, 'forecast')).dir));
+  // The simulation is computed again from when it was made (its card was raised from then), not from its start; and as if it had never been made, its card is gone.
+  const rerun = Math.min(made.madeAt, made.time);
   await expect(liveRegion(page)).toHaveText(
-    before.headTime > made.time ? `Wind change removed. The simulation re-runs from ${await clockAt(page, made.time)} without it.` : 'Wind change removed.',
+    before.headTime > rerun ? `Wind change removed. The simulation re-runs from ${await clockAt(page, rerun)} without it.` : 'Wind change removed.',
   );
   expect(before.headTime).toBeGreaterThan(made.time);
+  expect(await ownCards(page)).toEqual({ listed: [], mapped: [] });
 
   expect(await popups(page)).toEqual([]);
   expect(errors).toEqual([]);
@@ -518,6 +532,15 @@ test('a change of yours raises its own wind change card, which says it is yours,
   const keys = await page.evaluate(() => (window as unknown as { __firesim: { session: { visibleInsights(): { kind: string; key?: string }[] } } }).__firesim.session.visibleInsights().filter((i) => i.kind === 'wind-change').map((i) => i.key));
   expect(keys).toContain(`wind-change:user:${made.id}`);
 
+  // Taking the change away takes its card away, from the Insights list and the map (as if never made).
+  expect((await ownCards(page)).mapped).toContain(`wind-change:user:${made.id}`);
+  await pickTool(page, 'wind');
+  await page.getByTestId('remove-wind-direction').click();
+  await page.getByTestId('wind-panel').getByRole('button', { name: 'Close tool' }).click();
+  await expect(page.getByTestId('wind-panel')).toBeHidden();
+  await expect(card).toHaveCount(0);
+  expect(await ownCards(page)).toEqual({ listed: [], mapped: [] });
+
   // It does not stop the run: nothing was paused or popped up for it.
   expect(await popups(page)).toEqual([]);
   expect(errors).toEqual([]);
@@ -547,6 +570,7 @@ test('Back to the forecast removes every change of yours and brings the forecast
   const dial = page.getByTestId('wind-dial');
   await dial.focus();
   await page.keyboard.press('PageUp');
+  await page.keyboard.press('PageUp'); // a quarter turn: the change has a card of its own
   await choose(page, 'In 10 min');
   await page.getByTestId('apply-wind').click();
   await dial.focus();
@@ -558,7 +582,7 @@ test('Back to the forecast removes every change of yours and brings the forecast
   await expect(page.getByTestId('remove-wind-direction')).toHaveCount(2);
   await expect(back).toBeVisible();
   await expect(back).toHaveText('Back to the forecast');
-  await expect(panel.locator('.wind-back-note')).toHaveText('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.');
+  await expect(panel.locator('.wind-back-note')).toHaveText('Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from when you made the first one.');
   await back.scrollIntoViewIfNeeded();
   expect(await hitArea(back), 'a 44 x 44 px hit area, as every button has').toEqual([]);
   // It is a secondary button, under the changes and above the readings.
@@ -572,11 +596,15 @@ test('Back to the forecast removes every change of yours and brings the forecast
   await expect(ownMarks).toHaveCount(2);
   await expect(forecastMarks).toHaveCount(0); // the forecast's swing is replaced by the first change
 
-  // Go past the first start, so the simulation has computed beyond it and says it re-runs.
+  // Go past the first start, so the simulation has computed beyond it and says it re-runs (from when the first was made, which is where its card begins).
   const first = Math.min(...two.map((e) => e.time));
+  const rerun = Math.min(...two.map((e) => Math.min(e.madeAt, e.time)));
   await jumpWithPopover(page, first + 120);
   await waitForSeekEnd(page);
   await expect.poll(async () => (await windState(page)).viewTime).toBe(first + 120);
+  const raised = await ownCards(page);
+  expect(raised.listed.some((k) => k.startsWith('wind-change:user:'))).toBe(true); // their own cards are there until they are taken back
+  expect(raised.mapped.some((k) => k.startsWith('wind-change:user:'))).toBe(true);
 
   await back.click();
   await expect(page.getByTestId('remove-wind-direction')).toHaveCount(0);
@@ -586,7 +614,8 @@ test('Back to the forecast removes every change of yours and brings the forecast
   expect(await readingIds(page)).toEqual(['belt-kit-1']); // the belt kit's reading stays, with its own Remove
   await expect(page.getByTestId('remove-wind-reading')).toHaveCount(1);
   await expect(dial).toBeFocused();
-  await expect(liveRegion(page)).toHaveText(`Back to the forecast. 2 wind changes removed. The simulation re-runs from ${await clockAt(page, first)} without them.`);
+  await expect(liveRegion(page)).toHaveText(`Back to the forecast. 2 wind changes removed. The simulation re-runs from ${await clockAt(page, rerun)} without them.`);
+  expect(await ownCards(page)).toEqual({ listed: [], mapped: [] }); // as if never made: their cards and marks are gone from the Insights list and the map
 
   // The forecast is back: its mark, no mark of the person's, and the chip reads the forecast's wind.
   await expect(forecastMarks).toHaveCount(forecast0);

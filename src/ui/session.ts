@@ -20,7 +20,7 @@
  */
 import type { CellExplanation, Ignition, Insight, ScenarioData, ScenarioEdit, SimSnapshot, SimStats, SpotFire, WeatherSeries, WindDirectionEdit } from '../core/types';
 import { wrapDeg } from '../core/units';
-import { applyWindDirection, windDirectionEdits, windDirectionTime, windOverrideFrom } from '../scenario/windDirection';
+import { applyWindDirection, windDirectionEdits, windDirectionTime, windOverrideFrom, windRerunFrom } from '../scenario/windDirection';
 import type { SceneViewApi } from '../render/api';
 import type { SimController } from '../sim/protocol';
 import type { EngineInfo, PerfEvent } from '../core/simTypes';
@@ -529,29 +529,32 @@ export class SimSession {
     return edit;
   }
 
-  /** Undo a change as if never made (rewind to its time, re-run without it), like removeIgnition. */
+  /** Undo a change as if never made (rewind to when it was made, re-run without it), like removeIgnition. */
   removeWindDirection(id: string): void {
     this.cancelSeek();
-    const found = this.state.get().edits.find((x) => x.edit.kind === 'windDirection' && x.edit.id === id);
-    if (found) this.dropWindDirection([id], found.time);
+    const found = windDirectionEdits(this.state.get().edits).find((e) => e.id === id);
+    if (found) this.dropWindDirection([id], windRerunFrom(found));
   }
 
   /**
    * "Back to the forecast" (0.7.0): every Wind direction change comes away as if never made, the belt-kit readings stay (they have their own
-   * Remove). The same path as the bin, once: earliest first, so the first removal restores the checkpoint before the earliest start and the
-   * later ones only drop their records. Returns how many it removed (0: nothing was sent).
+   * Remove). The same path as the bin, once: earliest first (by when each touches the run, `windRerunFrom`, which is not always the order of the
+   * starts), so the first removal restores the checkpoint before the earliest and the later ones only drop their records. Returns how many it
+   * removed (0: nothing was sent).
    */
   backToForecast(): number {
     this.cancelSeek();
-    const list = windDirectionEdits(this.state.get().edits);
+    const list = windDirectionEdits(this.state.get().edits).sort((a, b) => windRerunFrom(a) - windRerunFrom(b));
     if (list.length === 0) return 0;
-    this.dropWindDirection(list.map((e) => e.id), list[0]!.time);
+    this.dropWindDirection(list.map((e) => e.id), windRerunFrom(list[0]!));
     return list.length;
   }
 
   /**
    * The body of the two removals above: the worker drops the changes `ids` (earliest first) as if never made, so every result after the earliest
-   * start `t` is stale here and is cut, and the run is computed again from there (up to the view time when paused beyond what it holds).
+   * time `t` they touch the run (when the first was made, or its start if that is earlier) is stale here and is cut, and the run is computed
+   * again from there (up to the view time when paused beyond what it holds). The cards of the changes themselves go whatever their time: the
+   * engine raises them after `t`, the demo engine at it.
    */
   private dropWindDirection(ids: readonly string[], t: number): void {
     const s = this.state.get();
@@ -563,7 +566,7 @@ export class SimSession {
     }
     this.state.set((st) => ({
       edits: st.edits.filter((x) => !ids.includes(x.edit.id)),
-      insights: st.insights.filter((i) => i.time <= t),
+      insights: st.insights.filter((i) => i.time <= t && !ids.some((id) => i.key === `wind-change:user:${id}` || i.key === `dead-man-zone:user:${id}`)),
       headTime: t < st.headTime ? (this.snapshots.headTime() ?? t) : st.headTime,
       reviewing: false,
     }));
