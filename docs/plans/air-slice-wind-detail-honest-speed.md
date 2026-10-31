@@ -928,6 +928,22 @@ GPU or WebGPU solver and finer time-stepped grids; adaptive simulation quality, 
 8. Measured fire experiments (published grass, shrub and forest burns, also the sources of the spread formulas) and hindcasts of recorded fires, scored by overlap of burnt area, area ratio and arrival-time error.
 9. Expert review: experienced fire behaviour analysts and instructors watch replays of the note 10 cases and say what is wrong or misleading. For a training app, "does it teach the right lesson?" is a validity question.
 
+**Further proposals from the desk search of 2026-10-31** (my inferences from web search summaries; the papers were not read; full text, figures and links are in `studies/simulation-validity/README.md`, section *Desk research*; nothing was run)
+10. Set pass marks from published error (operational simulators are 20 to 80 % off on average; a +-35 % adequacy interval is proposed in the literature), written before any run; test relative behaviour first.
+11. A grass-fire rate-of-spread test on the open 1986 Annaburroo experiments (Creative Commons Attribution; the grass models have about 21 % known error): the cheapest comparison with real fire behaviour.
+12. A hold-out discipline for any tuning of the uncalibrated constants (coupling factor, ember generation rate, acceleration constant): tune on one set, score on cases never used.
+13. Hindcasts scored with a fixed metric set chosen in advance (overlap at each observation time, area ratio, arrival-time error, one shape measure); the Gospers Mountain preset first, after checking the perimeter's source and licence.
+14. Quantify the bias at extreme conditions (published simulators under-predict head rate of spread there) and show it in *How sure are we?*.
+15. A spotting tail test: how often embers land beyond one kilometre, against field observation and lab-scale firebrand benchmarks; spotting-driven fires are the hardest case for every model.
+16. Input-uncertainty ensembles, including the time resolution of the weather input (a published Kilmore study found coarser weather matched better).
+17. Fire-specific metamorphic relations (rotation, more wind never reduces burnt area, a firebreak never raises it, step and grid refinement converge, a change at time t leaves earlier results unchanged), run over randomised terrains in the slow suite; no wildfire precedent was found.
+18. A peer comparison with ELMFIRE or FARSITE on simple cases only (flat, uniform slope, steady wind, hand-mapped fuels), stated as consistency with a Rothermel-lineage model, not accuracy; no published benchmark suite was found for either.
+19. Reproducibility across engines: JavaScript engines may approximate Math functions differently, so compare snapshot hashes and summaries between Node, a desktop browser worker and a phone, and give golden scenarios tolerances if they differ (general knowledge, not from the search).
+20. Stress and fuzz tests (random terrains, weather and ignitions, extremes), checking for NaN, negative areas, runaway growth and a burnt cell that un-burns.
+21. Measure how far Fast, Standard and High differ on real terrain with a fire (nothing measures it today).
+22. A structured face-validity review with a written protocol, five to ten analysts and a fixed case list, kept as claims-register entries.
+23. A per-release validation card shown in *How sure are we?*.
+
 **Pitfalls**
 - Agreement is not accuracy: a reference from the same code shares its formulas, and models of one lineage agree with each other (as in the cliff study). A reference run measures numerical error only.
 - In a hindcast the inputs (weather, fuel, ignition time) usually matter more than the model, so one run says little; it needs idea 5.
