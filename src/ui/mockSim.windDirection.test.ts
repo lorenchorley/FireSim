@@ -193,7 +193,8 @@ describe('the demo engine and a Wind direction change', () => {
     const cards = own(r);
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({ kind: 'wind-change', severity: 'watch', key: 'wind-change:user:w1', title: 'Your wind change: this flank becomes the head', time: 0 });
-    expect(cards[0]!.body).toMatch(/^You set the wind to swing from W to S, starting at about .+ \(in 30 min\)\. It takes 15 minutes to turn, and the wind will then be about 36 km\/h\./);
+    expect(cards[0]!.body).toMatch(/^You set the wind to swing from the west to the south, starting at about .+ \(in 30 min\)\. It takes 15 minutes to turn, and the wind will then be about 36 km\/h\./); // the words of the real engine's card (explain/text.ts), not letters
+    expect(cards[0]!.factors[0]).toMatchObject({ label: 'New wind', value: 'from the south, about 36 km/h' });
     expect(cards[0]!.factors.map((f) => f.label)).toEqual(['New wind', 'Change time']);
     r.sim.dispose();
 
@@ -215,6 +216,22 @@ describe('the demo engine and a Wind direction change', () => {
     expect(own(n)[0]!.body).toMatch(/starting at about [^()]+\. It takes/);
     l.sim.dispose();
     n.sim.dispose();
+  }, 120000);
+
+  it('removing a change made for later rewinds to when it was made (not to its start), and its card is not raised again (0.7.0)', async () => {
+    const own = (r: Rig): SimSnapshot['insights'] => [...r.snaps.values()].flatMap((s) => s.insights).filter((i) => i.key?.startsWith('wind-change:user:'));
+    const r = await rig(scenario());
+    await r.runTo(600);
+    r.sim.edit({ ...turn('w1', 180, 3300), madeAt: 600 }, 3300); // made at 600, due 30 minutes before it starts: 1500
+    await r.runTo(1800);
+    expect(own(r)).toHaveLength(1);
+    r.rewound.length = 0;
+    r.sim.removeEdit('w1');
+    expect(r.rewound).toEqual([600]); // not 3300: it has not started, but its card was raised from the first minute after it was made
+    for (const t of [...r.snaps.keys()].filter((t) => t > 600)) r.snaps.delete(t);
+    await r.runTo(3000);
+    expect(own(r)).toEqual([]);
+    r.sim.dispose();
   }, 120000);
 
   it('a turn of 30 degrees, or a wind of 12 km/h after it, raises no card of its own', async () => {

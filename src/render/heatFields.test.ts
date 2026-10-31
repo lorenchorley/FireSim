@@ -266,4 +266,17 @@ describe('windSpeed', () => {
     // No other heat map reads it.
     expect(overlayField('slope', { terrain, fuel: fuelOn(grid), windMap: own })!.values).not.toBe(own.values);
   });
+
+  it('a numeric Wind height with no map of its own is EMPTY, never the 10 m field under the height\'s title (0.7.0, raster verifier F1); 10 m, What the fire feels and no height keep the fallback', () => {
+    const u = new Array<number>(m).fill(3);
+    const v = new Array<number>(m).fill(4);
+    const own = { grid: makeGridSpec(origin, 600, 60), values: new Float32Array(100).fill(7), categorical: false };
+    const base = { terrain, fuel: fuelOn(grid), atmosphere: atmosphere(u, v) }; // a picture with its 10 m wind but no 3-D wind volume (a scrubbed frame the history thinned)
+    const plain = overlayField('windSpeed', base)!;
+    for (const windHeight of [50, 100, 300, 1000, 2000] as const) {
+      for (const windMap of [undefined, null]) expect(overlayField('windSpeed', { ...base, windHeight, windMap }), `${windHeight} m, ${String(windMap)}`).toBeNull();
+      expect(overlayField('windSpeed', { ...base, windHeight, windMap: own }), `${windHeight} m with a map`).toBe(own);
+    }
+    for (const windHeight of ['fire', 'felt', undefined] as const) for (const windMap of [undefined, null]) expect(overlayField('windSpeed', { ...base, windHeight, windMap })!.values).toEqual(plain.values);
+  });
 });

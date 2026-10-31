@@ -3,7 +3,8 @@
  * speed row say about it. Pure (no DOM, no Three), unit-tested (windMapSwitch.test.ts); in the entry chunk, so it imports only the layer rules and the
  * words the controls already hold. The chip itself is windMapSwitch.ts.
  */
-import { shownWindHeight, windMapHeight, type LayerState, type OverlayKind } from '../../../render/layers';
+import type { AtmosphereView } from '../../../core/types';
+import { shownWindHeight, windMapHeight, windMapNoData, type LayerState, type OverlayKind } from '../../../render/layers';
 import type { WindHeight } from '../../../render/wind/glyphTypes';
 import { heightLabel } from './glyphWords';
 
@@ -15,6 +16,14 @@ export const MAP_CHIP_LABEL = 'Colour the map by speed';
  */
 export function mapHeightNow(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>, snapshot: { fireWind?: unknown } | null | undefined): WindHeight {
   return shownWindHeight(windMapHeight(l), !!snapshot?.fireWind);
+}
+
+/**
+ * Whether the Wind speed map has no data for the picture on screen (a numeric Wind height and a picture with no 3-D wind: a scrubbed frame whose volume the history
+ * thinned away). The map is then empty and its legend says so (`legendFor`'s `windNoData`). Asked of the same picture `mapHeightNow` is.
+ */
+export function mapNoDataNow(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>, snapshot: { fireWind?: unknown; atmosphere?: AtmosphereView | null } | null | undefined): boolean {
+  return !!snapshot && windMapNoData(mapHeightNow(l, snapshot), snapshot.atmosphere);
 }
 
 /** The caption line under the chip while it cannot be used: its name and the Wind speed row's own reason ("Colour the map by speed. Needs a fire: mark one first."); '' when it can be used. */

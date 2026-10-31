@@ -4,7 +4,7 @@
  * change is for the whole scenario, so there is no crosshair and nothing to place on the map. Its words and maths are in
  * windPanelModel.ts; the change itself is made and undone by the session (`setWindDirection`, `removeWindDirection`).
  */
-import { windDirectionEdits } from '../../../scenario/windDirection';
+import { windDirectionEdits, windRerunFrom } from '../../../scenario/windDirection';
 import { h, listen, setChildren, text, uniqueId } from '../../dom';
 import { weatherAt } from '../../weatherSeries';
 import { button, compassRose, segmented } from '../../widgets';
@@ -162,11 +162,12 @@ export function createWindPanel(ctx: SimContext, onClose: () => void): { el: HTM
   /** Every change comes away at once; the button is gone after it, so the keyboard goes to the dial (not to a reading's Remove). */
   function backToForecast(trigger: HTMLElement): void {
     const s = session.state.get();
-    const first = windDirectionEdits(s.edits)[0];
-    if (!first) return;
+    const list = windDirectionEdits(s.edits);
+    if (list.length === 0) return;
+    const from = Math.min(...list.map(windRerunFrom)); // where the run starts again: the earliest made or start, as the session cuts
     const hadFocus = document.activeElement === trigger;
     const removed = session.backToForecast();
-    if (removed > 0) ctx.announce(backToForecastAnnouncement(removed, first.time, s.headTime, env));
+    if (removed > 0) ctx.announce(backToForecastAnnouncement(removed, from, s.headTime, env));
     if (hadFocus) dial.el.querySelector<HTMLElement>('.rose')?.focus();
   }
 

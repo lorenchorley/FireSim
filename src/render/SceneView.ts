@@ -39,7 +39,7 @@ import {
 import { HeightField } from './heightfield';
 import { IdleClock, idleStopLimit } from './idleStop';
 import { Icon, IconLayer, severityIcon, type IconInstance } from './iconLayer';
-import { DEFAULT_LAYERS, shownWindHeight, windMapHeight, type LayerState, type OverlayKind } from './layers';
+import { DEFAULT_LAYERS, shownWindHeight, windMapHeight, windMapNoData, type LayerState, type OverlayKind } from './layers';
 import { legendFor, overlayScale, type LegendSpec } from './legends';
 import { homeCandidates, homeDrawnPx, iconCandidate, pickMarkerAt, projectPoint, type PickCandidate } from './markerPick';
 import { AdaptiveDpr, FrameMeter } from './perf';
@@ -1012,6 +1012,7 @@ export class SceneView implements SceneViewApi {
         context: this.contextLayers,
         atmosphere: this.snap?.atmosphere ?? null,
         windMap: kind === 'windSpeed' ? this.windMapOf(windHeight) : null,
+        ...(kind === 'windSpeed' ? { windHeight } : {}), // a numeric height with no map is empty ('no data'), never the 10 m field
       });
     }
     this.overlayShown = field;
@@ -1081,6 +1082,7 @@ export class SceneView implements SceneViewApi {
       arrivalMaxSeconds: Math.max(this.snap?.time ?? 0, this.maxArrival, 1800),
       isochroneMinutes: this.layers.isochroneMinutes,
       windHeight: this.windMapShown(),
+      windNoData: windMapNoData(this.windMapShown(), this.snap?.atmosphere),
       ...(this.terrain ? { elevationRange: [this.terrain.minElevation, this.terrain.maxElevation] as const } : {}),
     });
   }

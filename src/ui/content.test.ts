@@ -1,25 +1,31 @@
 /**
  * The Help tab's words (content.ts: the how-to list and the glossary), pinned two ways: their shape and voice (plain words, no
- * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0, 0.4.1, 0.5.0 and 0.6.0 features, that what they say is what the code says (the
+ * em dashes, nothing undefined), and, for the 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0 and 0.7.0 features, that what they say is what the code says (the
  * labels the screens use, the sheet's own sentences, the tap radius, the words of the icons, the footer and the probe
  * sentence of the Air slices panel, the buttons and the status line of its time-lapse recording, the zoom levels, the Wind height
  * chips, the caption and the tab and button words of the wind arrows and flow lines, and in 0.6.0 the Wind detail chip and its sheet, the
- * detailed streaks of the closest zoom, the Wind direction tool and the two-finger turn), so a change to a screen cannot leave a stale
- * sentence in Help.
+ * detailed streaks of the closest zoom, the Wind direction tool and the two-finger turn, and in 0.7.0 What the fire feels, Colour the map by speed, the speed
+ * test, the idle stop, reduced motion, the cards of a change of your own and Back to the forecast, and the one-finger pan), so a change to a screen cannot leave a
+ * stale sentence in Help.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ATMOS_TIERS } from '../atmosphere/params';
 import { AIR_STALE_S } from '../core/airView';
+import { FIRE_WIND_TARGET_CELL_M, fireWindBlock } from '../core/fireWind';
 import type { GridSpec } from '../core/grid';
 import type { Ignition, Insight, InsightKind, InsightSeverity, SpotFire } from '../core/types';
+import { EXPLAIN_PARAMS } from '../explain/params';
 import { compassWord } from '../explain/text';
 import type { MapMarker, WindGlyphStats } from '../render/api';
 import { rockDetailCount } from '../render/cliffDrawing';
+import { GESTURE } from '../render/cameraRig';
+import { PAN } from '../render/groundPan';
+import { IDLE_STOP_MS } from '../render/idleStop';
 import { LAYER_CATALOG, type AvailabilityContext } from '../render/layerCatalog';
-import { DEFAULT_LAYERS, type LayerState } from '../render/layers';
-import { legendFor, sliceLegend, windGlyphLegend, windLegend } from '../render/legends';
+import { DEFAULT_LAYERS, windMapHeight, type LayerState } from '../render/layers';
+import { legendFor, sliceLegend, windGlyphLegend, windLegend, windSpeedRangeKmh } from '../render/legends';
 import { MIN_HIT_PX } from '../render/markerPick';
 import { sampleRamp, sliceFieldScale } from '../render/palette';
 import { probeSentence } from '../render/slice/probe';
@@ -27,16 +33,17 @@ import { SLICE_FIELDS, SLICE_KIND_LABEL, SLICE_PRESET_HALF_LENGTH_M, type SliceP
 import { USE_3D_LABEL, sliceFieldStatuses } from '../render/sliceFields';
 import { GLYPH_CALM_MS } from '../render/wind/flowGlyphs';
 import { LEVEL_EDGES, LOD_HYSTERESIS, planLod } from '../render/wind/glyphLod';
-import { detailGroundFactor } from '../render/wind/detailStreaks';
-import { DETAIL_GEOMETRY, WIND_HEIGHTS, type WindHeight } from '../render/wind/glyphTypes';
+import { detailGroundFactor, RELIEF_TREE_MAX_M } from '../render/wind/detailStreaks';
+import { DETAIL_GEOMETRY, DETAIL_RELIEF, WIND_HEIGHTS, type WindHeight } from '../render/wind/glyphTypes';
 import { TERRAIN_DRAWING_NOTE } from '../scenario/datasetRecords';
+import { SIM_PARAMS } from '../sim/params';
 import { GLOSSARY, HELP_STEPS, type GlossaryEntry } from './content';
 import { TITLE as DEBUG_STATS_TITLE } from './debugStats';
 import { formatClock } from './format';
 import { forcedPace } from './paceModel';
 import { FAST_NOTE, paceSheet } from './paceSheetModel';
 import { markerRow, stackedLine } from './screens/sim/markerWords';
-import { BUDGET_LINE, DIAGNOSED_LINE, EYE_LEVEL_LINE, GLYPH_INTRO, GLYPH_SMOOTH_FIT_PX, GLYPH_SWITCH_LABEL, GROUND_LINE, LEVEL_LINE, NEEDS_3D, SMOOTH_FIT_LINE, WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, captionHeadline, heightLabel, windFromText } from './screens/sim/glyphWords';
+import { BUDGET_LINE, DIAGNOSED_LINE, EYE_LEVEL_LINE, FELT_FAST_LINE, FELT_NIGHT_LINE, GLYPH_INTRO, GLYPH_SMOOTH_FIT_PX, GLYPH_SWITCH_LABEL, GROUND_LINE, GROUND_LINE_CHOOSE, LEVEL_LINE, NEEDS_3D, PAUSED_STREAKS_LINE, SMOOTH_FIT_LINE, WIND_HEIGHT_CHIPS, WIND_HEIGHT_LABEL, captionHeadline, feltLine, heightLabel, windFromText } from './screens/sim/glyphWords';
 import { AIR_SLICE_NOTE, NIGHT_LOOK_HINT, NIGHT_LOOK_OPTIONS } from './screens/sim/layersModel';
 import { PERSISTED_LAYER_KEYS } from './screens/sim/layersPrefs';
 import { NOT_RECORDED_WORDS, RECORDING_EARLIER_WORDS, recordingText, spacingWords } from './recordingWords';
@@ -65,9 +72,13 @@ import {
   type CrossSection,
 } from './screens/sim/sliceToolModel';
 import { WIND_TURN_S, windDirectionTime } from '../scenario/windDirection';
-import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, SHEET_TITLE, STILL_LINE, levelLine, windDetailWords } from './screens/sim/windDetailWords';
+import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, PAUSED_LINE, SHEET_TITLE, STILL_LINE, levelLine, windDetailWords } from './screens/sim/windDetailWords';
 import { chipLabel, windDetailState, type WindDetailInput } from './screens/sim/windDetailState';
-import { LIST_TITLE, READINGS_NOTE, READINGS_TITLE, WHEN_OPTIONS, WIND_HINT, applyLabel, dialStart, holdsDirection, problemText, reviewingText } from './screens/sim/windPanelModel';
+import { BACK_TO_FORECAST_HINT, BACK_TO_FORECAST_LABEL, LIST_TITLE, READINGS_NOTE, READINGS_TITLE, WHEN_OPTIONS, WIND_HINT, applyLabel, dialStart, holdsDirection, problemText, reviewingText } from './screens/sim/windPanelModel';
+import { MAP_CHIP_LABEL, windMapPatch, windMapReasonLine, windSpeedSubline } from './screens/sim/windMapWords';
+import { SPEED_TEST_BUDGET_MS, SPEED_TEST_REFERENCE, SPEED_TEST_VERSION } from './speedTest';
+import { COPY_FLOATS, STENCIL_NX, STENCIL_NY, STENCIL_NZ } from './speedTestKernels';
+import { SPEED_TEST_BLOCKED, SPEED_TEST_IDLE, SPEED_TEST_LABEL } from './speedTestModel';
 import { PICTURE_QUALITY_HINT } from './screens/settings';
 import { resolveRenderQuality } from './settings';
 import { Store } from './store';
@@ -525,8 +536,9 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     expect(layers).toContain('Under Wind and air');
     expect(read('screens/sim/layersPanel.ts')).toContain("label: 'Wind streaks'");
     expect(layers).toContain('moving Wind streaks');
-    // (The Help still names the six numbered heights; 0.7.0 adds What the fire feels before them, which the docs lane puts in the Help.)
-    expect(layers).toContain(`a ${WIND_HEIGHT_LABEL} you choose, from ${heightLabel(WIND_HEIGHTS[1]!)} to ${heightLabel(WIND_HEIGHTS[WIND_HEIGHTS.length - 1]!)} above the ground`);
+    // (0.7.0: What the fire feels is the first of the seven heights and the one the app starts with; the numbered ones run from 10 m to 2 km.)
+    expect(layers).toContain(`a ${WIND_HEIGHT_LABEL} you choose: ${heightLabel(WIND_HEIGHTS[0]!)}, or from ${heightLabel(WIND_HEIGHTS[1]!)} to ${heightLabel(WIND_HEIGHTS[WIND_HEIGHTS.length - 1]!)} above the ground`);
+    expect(layers).toContain('it is the first choice at the start');
     expect(layers).toContain('It is off until you switch it on');
     // Off at first (the opt-in of plan decision D9), while the streaks stay on as they were.
     expect(DEFAULT_LAYERS.windGlyphs).toBe(false);
@@ -588,14 +600,17 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     expect(b).toContain('never changes the fire');
   });
 
-  it('Wind height: the six chips, 10 m is the model’s open-ground wind and not what the fire feels, and the caption is the very sentence the code writes', () => {
+  it('Wind height: the seven chips, 10 m is the model’s open-ground wind and not what the fire feels, and the caption is the very sentence the code writes', () => {
     const b = squashed('Wind height');
     const labels = WIND_HEIGHT_CHIPS.map((c) => c.label);
-    // (0.7.0: What the fire feels is the first of seven chips; the Help text still describes the six numbered ones, which the docs lane extends.)
+    // (0.7.0: What the fire feels is the first of seven chips and the one the app starts with.)
     expect(labels).toEqual(['What the fire feels', '10 m', '50 m', '100 m', '300 m', '1 km', '2 km']);
     expect(WIND_HEIGHTS).toEqual<WindHeight[]>(['felt', 'fire', 50, 100, 300, 1000, 2000]);
-    expect(b).toContain('10 m, 50 m, 100 m, 300 m, 1 km and 2 km');
-    expect(b).toContain('Except for the first, the number is metres above the ground');
+    expect(b).toContain('The seven chips under');
+    expect(b).toContain('What the fire feels, 10 m, 50 m, 100 m, 300 m, 1 km and 2 km');
+    expect(b).toContain('What the fire feels is the first, and the one the app starts with');
+    expect(DEFAULT_LAYERS.windHeight).toBe('felt');
+    expect(b).toContain('From 50 m up, the number is metres above the ground');
     // 10 m is the same field as the Wind speed map's (the model's 10 m wind), and the chip says what the caption says.
     expect(b).toContain('the model’s own wind about 10 m above open ground, the same wind as the Wind speed map');
     expect(captionHeadline('fire', { cellM: 133.3, airTime: 0, shownTime: 0, diagnosed: false }, 'UTC', abs)).toBe('Wind about 10 m above open ground · model grid 133 m · air from 14:05.');
@@ -603,6 +618,9 @@ describe('Help and glossary: the 0.5.0 entries say what the wind arrows, the Map
     expect(GROUND_LINE).toBe('On a calm night the fire can feel much less wind than this in places, and much more in others.');
     expect(b).toContain('on a calm night the fire can feel much less wind than this in places, and much more in others');
     expect(b).toContain('It is not the wind the fire feels');
+    // The 10 m caption says where to see the difference once the picture has the fire's own wind, in the glossary's words.
+    expect(GROUND_LINE_CHOOSE).toBe(`${GROUND_LINE} Choose What the fire feels to see it.`);
+    expect(b).toContain('the caption says to choose What the fire feels to see it');
     // No chip between 10 m and 50 m: the model's lowest level is its first level's middle, 15 m above the ground (12.5 m on the High tier).
     expect(ATMOS_TIERS.standard.dz1 / 2).toBe(15);
     expect(ATMOS_TIERS.fast.dz1 / 2).toBe(15);
@@ -795,15 +813,37 @@ describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, th
     expect(squash(step('Wind direction'))).toContain('Unlike the wind marks and the air slices, a change alters the simulation');
     expect(LIST_TITLE).toBe('Your wind changes');
     expect(b).toContain(`“${LIST_TITLE}”`);
-    expect(b).toContain('Remove takes it away as if you had never made it, and the simulation is computed again from its time');
+    expect(b).toContain('Remove takes it away as if you had never made it, and the simulation is computed again from when you made it, so its cards and its zone go too');
+    expect(squash(step('Wind direction'))).toContain('Remove takes it away as if you had never made it. The simulation is computed again from when you made it, so its cards and its zone go too.');
     expect(READINGS_TITLE).toBe('Wind readings');
     expect(READINGS_NOTE).toBe('A reading keeps its own direction when you turn the wind.');
     expect(b).toContain(`“${READINGS_TITLE}”`);
     expect(b).toContain('keeps its own direction near its place when the wind is turned');
     expect(b).toContain('Remove stops it from then on');
+    // Back to the forecast: the button's words and what it does, as the panel and the session say it.
+    expect(BACK_TO_FORECAST_LABEL).toBe('Back to the forecast');
+    expect(b).toContain(`“${BACK_TO_FORECAST_LABEL}”, under the list, takes away every change you made in one press, and the simulation is computed again from when you made the first one`);
+    expect(squash(step('Wind direction'))).toContain(`“${BACK_TO_FORECAST_LABEL}”, under the list, takes away every change you made in one press`);
+    expect(BACK_TO_FORECAST_HINT).toContain('takes away every wind change you made, as if you had never made them');
+    expect(BACK_TO_FORECAST_HINT).toContain('computed again from when you made the first one');
+    expect(b).toContain('Readings stay when you go back to the forecast');
+    expect(read('screens/sim/windPanel.ts')).toContain("testId: 'wind-back-to-forecast'");
+    expect(read('session.ts')).toContain('backToForecast(): number');
     // A turn is its own kind of edit; the belt kit's reading stays the older one.
     expect(read('../core/types.ts')).toContain("kind: 'windDirection'");
-    expect(b).toContain('A change of yours raises no wind change card and no Danger zone');
+    // (0.7.0) A change of yours has its own cards: Watch out, never Danger, from when it was made (src/explain/rules/weather.ts, text.ts).
+    const weather = read('../explain/rules/weather.ts');
+    expect(weather).toContain("c.user === undefined ? 'danger' : 'watch'");
+    expect(weather).toContain('`${kind}:user:${c.user}`');
+    const cardText = read('../explain/text.ts');
+    expect(cardText).toContain("'Your wind change: this flank becomes the head'");
+    expect(b).toContain('“Your wind change: this flank becomes the head”');
+    expect(b).toContain('Both say Watch out and never Danger, so they never pause the run');
+    expect(b).toContain('While the change is still ahead, and at most an hour away, it also gets a Dead man zone');
+    expect(EXPLAIN_PARAMS.dmz.horizonS).toBe(3600);
+    expect(squash(step('Wind direction'))).toContain('A change of yours gets a wind change card of its own and, while it is still ahead, a Dead man zone of its own. Both say Watch out and never Danger, so they never pause the run');
+    expect(b).toContain('From when you make a change, the forecast’s wind changes that it replaces raise no cards and no zone, and cards raised before that stay in the list as history');
+    expect(entry('Wind change').body).toContain('a change you make gets a wind change card of its own');
   });
 
   it('Wind direction: the fast model follows the turn closely and the 3-D settings can lag, which is what the engine tests allow', () => {
@@ -885,7 +925,7 @@ describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, th
     expect(squash(step('Layers'))).toContain('but at the closest zoom both (the Wind streaks set to “Near the ground”) draw the same detailed streaks');
     // What is the model's and what is added, in the sheet's words.
     expect(EDDIES_LINE).toContain('These bends and eddies are added for looks, from the shape of the ground and the trees.');
-    expect(b).toContain('are added for looks, from the shape of the ground; the model does not calculate them, and the Wind detail sheet says so');
+    expect(b).toContain('are added for looks, from the shape of the ground and the trees; the model does not calculate them, and the Wind detail sheet says so');
     expect(EDDIES_LINE).toContain('The streaks also move faster than the real wind so that you can see them.');
     expect(b).toContain('The streaks also move faster than the real wind so that you can see them.');
     expect(b).toContain('the direction and the speed along each streak, and the colour, are the air model’s');
@@ -907,5 +947,185 @@ describe('Help and glossary: the 0.6.0 entries say what the Wind detail chip, th
     expect(rig).toContain('class TwoFingerTurnControls extends OrbitControls');
     expect(rig).toContain('A two-finger drag to the right turns the camera anticlockwise seen from above');
     expect(rig).toContain("the mouse's right-button rotate keeps OrbitControls' direction");
+  });
+});
+
+describe('Help and glossary: the 0.7.0 entries say what What the fire feels, Colour the map by speed, the speed test, the idle stop, reduced motion and the pan say', () => {
+  const squashed = (term: string): string => squash(entry(term).body);
+  const read = (file: string): string => readFileSync(resolve(__dirname, file), 'utf8');
+  const abs = (t: number): number => Date.UTC(2025, 0, 5, 14, 5) + t * 1000;
+  const stats = (over: Partial<WindGlyphStats> = {}): WindGlyphStats => ({
+    active: true, idle: null, level: 4, count: 600, segments: 6000, cellPx: 120, cellM: 133, rebuilds: 3, lastMs: 2, sliceP95Ms: 3, sliceMaxMs: 5, slicesLast: 1, detail: 'moving', detailSegments: 6000, glyphs: true, streaks: false, reduced: false, tickMaxMs: 0, ...over,
+  });
+  const wind = (over: Partial<WindDetailInput> = {}): WindDetailInput => ({ glyphsOn: true, streaks: 'off', viewMode: 'orbit', stats: stats(), air: 'prognostic', height: 'felt', ...over });
+
+  it('every term the release notes ask for has an entry, and none calls a height "Ground"', () => {
+    for (const t of ['Wind the fire feels', 'Colour the map by speed', 'Speed test', 'Paused to save battery', 'Reduced motion']) expect(entry(t).body.length, t).toBeGreaterThan(300);
+    expect(entry('Colour the map by speed').term).toBe(MAP_CHIP_LABEL);
+    for (const t of everything()) expect(t).not.toMatch(/\bGround\b/);
+  });
+
+  it('Wind the fire feels: the chip, the 60 m cells, the refit once a minute on the fast model, the calm-night sentence and the caption are the code’s', () => {
+    const b = squashed('Wind the fire feels');
+    expect(heightLabel('felt')).toBe('What the fire feels');
+    expect(b).toContain('The first Wind height chip, “What the fire feels”, and the one the app starts with');
+    // The cells: 20 m and 30 m fire cells are averaged in blocks of 3 and 2, so about 60 m either way.
+    expect([fireWindBlock(20) * 20, fireWindBlock(30) * 30]).toEqual([60, 60]);
+    expect(FIRE_WIND_TARGET_CELL_M).toBe(60);
+    expect(b).toContain('The cells are about 60 m wide: the model’s 20 m or 30 m cells are averaged in blocks, and every picture of the run carries one');
+    // What it includes and that it is no measurement: the caption's own sentence.
+    expect(feltLine(60)).toBe("The wind the fire model uses in each 60 m cell: slope flow, lee eddies and the fire's own effect on the wind are included. It is not a measurement.");
+    expect(b).toContain('It includes slope flow (air running up or down a slope), the eddies in the lee of ridges and the fire’s own effect on the wind');
+    expect(b).toContain('It is not a measurement.');
+    // The fast model's wind is refitted once a minute (the engine's own interval), and the caption says so.
+    expect(SIM_PARAMS.fastWindIntervalS).toBe(60);
+    expect(FELT_FAST_LINE).toBe('On the fast model it is refitted once a minute.');
+    expect(b).toContain('On the fast model it is refitted once a minute');
+    // The calm-night sentence (checked on both tiers in 0.7.0: plan 22.3).
+    expect(FELT_NIGHT_LINE).toBe('On a calm night much of it is air draining downhill.');
+    expect(b).toContain('On a calm night much of it is air draining downhill');
+    // The caption's first line, in the Wind height entry's own quotes.
+    const head = captionHeadline('felt', { cellM: 133.3, airTime: 0, shownTime: 0, diagnosed: false, felt: { cellM: 60, time: 0 } }, 'UTC', abs);
+    expect(head).toBe('Wind the fire feels · 60 m cells · air from 14:05.');
+    expect(squashed('Wind height')).toContain(`“${head}”`);
+    // A jumped-back picture carries its keyframe's wind: up to a keyframe interval (300 s) older, stamped (ui/snapshotStore.ts).
+    expect(read('snapshotStore.ts')).toContain('const fireWind = key ? key.fireWind : head?.fireWind;');
+    expect(b).toContain('up to about 5 minutes older, and the caption says which');
+    expect(b).toContain('never changes the fire');
+  });
+
+  it('Colour the map by speed: the chip is the Wind speed map on and off, follows the Wind height while the arrows are on, and its legend runs to 60 or 90 km/h', () => {
+    const b = squashed('Colour the map by speed');
+    expect(MAP_CHIP_LABEL).toBe('Colour the map by speed');
+    expect(squash(step('Layers'))).toContain(`“${MAP_CHIP_LABEL}”, under the Wind height chips, colours the ground by the wind speed at that height. It needs a fire marked.`);
+    expect(windMapPatch(true)).toEqual({ overlay: 'windSpeed' });
+    expect(windMapPatch(false)).toEqual({ overlay: 'none' });
+    expect(b).toContain('It is the same thing as the Wind speed row under Heat maps, so only one heat map shows at a time');
+    // With the arrows off the map is the 10 m one, as before; with them on it follows the height.
+    expect(windMapHeight({ windGlyphs: false, windHeight: 'felt' })).toBe('fire');
+    expect(windMapHeight({ windGlyphs: true, windHeight: 'felt' })).toBe('felt');
+    expect(entry('Wind speed map').body).toContain('With the arrows off it is the 10 m map, as before');
+    expect(entry('Wind speed map').body).toContain('While Arrows and flow lines is on, the map follows the Wind height you chose for them, from What the fire feels to 2 km');
+    // It needs a fire, like the row, and the line under the chips says why.
+    expect(windMapReasonLine('Needs a fire: mark one first')).toBe('Colour the map by speed. Needs a fire: mark one first.');
+    expect(b).toContain('until then the chip is greyed and the line under the chips says why');
+    expect(b).toContain('it needs a fire marked first');
+    // The ranges: 60 km/h up to 100 m, 90 km/h from 300 m.
+    expect([...WIND_HEIGHTS].map((h) => windSpeedRangeKmh(h))).toEqual([60, 60, 60, 60, 90, 90, 90]);
+    expect(b).toContain('up to 60 km/h for What the fire feels and from 10 m to 100 m, and up to 90 km/h from 300 m');
+    // The legend names the wind, and says plainly when a picture has none at the height.
+    expect(legendFor('windSpeed', { windHeight: 100 })!.title).toBe('Wind speed at 100 m');
+    expect(legendFor('windSpeed', { windHeight: 'felt' })!.title).toBe('Wind speed the fire feels');
+    expect(legendFor('windSpeed', { windHeight: 'felt' })!.note).toContain('cells of about 60 m');
+    expect(b).toContain('for example “Wind speed at 100 m”, and for What the fire feels it says the cells are about 60 m');
+    const none = legendFor('windSpeed', { windHeight: 300, windNoData: true })!.noData!.label;
+    expect(none).toBe('No wind data at 300 m in this picture');
+    expect(b).toContain(`“${none}”`);
+    // The arrows keep their own ramp over the map (the legend card is the map's).
+    expect(windGlyphLegend('at 100 m').entries.map((e) => e.colour)).not.toEqual(legendFor('windSpeed', { windHeight: 100 })!.entries.map((e) => e.colour));
+    expect(b).toContain('The arrows keep their own colours on top of the map');
+    expect(windSpeedSubline('In km/h', 'felt')).toBe('In km/h, the wind the fire feels');
+    expect(squashed('Map view')).toContain('the “Colour the map by speed” chip');
+  });
+
+  it('Speed test: the button’s words, what the two jobs are, the reference and the reasons it is off are the code’s', () => {
+    const b = squashed('Speed test');
+    expect(SPEED_TEST_LABEL).toBe('Run the speed test');
+    expect(b).toContain(`“${SPEED_TEST_LABEL}”`);
+    expect(squash(step('Statistics'))).toContain(`“${SPEED_TEST_LABEL}”`);
+    expect(SPEED_TEST_BUDGET_MS).toBe(2000);
+    expect(SPEED_TEST_IDLE).toBe('Not run yet. Takes about 2 seconds.');
+    expect(b).toContain('for about 2 seconds, off the main thread');
+    expect([STENCIL_NX, STENCIL_NY, STENCIL_NZ]).toEqual([45, 45, 20]);
+    expect((COPY_FLOATS * Float32Array.BYTES_PER_ELEMENT) / 1048576).toBe(16);
+    expect(b).toContain('over 45 by 45 by 20 cells, and a memory copy of 16 MiB');
+    // The jobs are frozen and the reference is another computer's: the build machine, with the version and the date.
+    expect(SPEED_TEST_VERSION).toBe(1);
+    expect(SPEED_TEST_REFERENCE.stencilMcellsPerS).toBeGreaterThan(0);
+    expect(SPEED_TEST_REFERENCE.copyGBps).toBeGreaterThan(0);
+    expect(b).toContain('the computer the app was built on, the build machine');
+    expect(b).toContain('so two phones can be compared before any run');
+    expect(b).toContain('It does not predict a run, and the simulation’s own measured speed is the better number once a run exists');
+    // Off while a run plays, and nothing the engine, Auto or the pace button reads.
+    expect(SPEED_TEST_BLOCKED.playing).toBe('Pause first so the test is fair.');
+    expect(b).toContain('off, with the reason beside it, while a run plays or the simulation is computing and while the app is in the background');
+    expect(b).toContain('nothing in the simulation, in Auto or in the speed button of the timeline reads it');
+    expect(read('speedTest.deps.test.ts')).toContain('speedTest');
+    expect(entry('Simulation debug statistics').body).toContain('(see Speed test)');
+  });
+
+  it('Paused to save battery: a minute without a touch, what wakes it, that a running simulation never pauses, and where it says so', () => {
+    const b = squashed('Paused to save battery');
+    expect(IDLE_STOP_MS).toBe(60_000);
+    expect(b).toContain('After a minute with no touch, no camera move and no change of time, layers or screen size');
+    // The events that count as a touch (anywhere in the page) and the rule that a new picture is activity, so a running simulation never stops.
+    const scene = read('../render/SceneView.ts');
+    expect(scene).toContain("const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'] as const;");
+    expect(scene).toContain('a running simulation never lets the view stop');
+    expect(b).toContain('A running simulation never lets the view hold still, because the picture changes with the time');
+    expect(b).toContain('Only a touch wakes it, so a screen that a class only watches will look stuck after a minute until someone touches it');
+    expect(squashed('Detailed streaks')).toContain('On a classroom screen nobody touches, the view will look stuck after a minute until someone does');
+    // What it says where: the sheet, the line under the chips (the statistics say "paused").
+    expect(PAUSED_LINE).toBe('The streaks paused to save battery. Touch the screen to move them again.');
+    expect(PAUSED_STREAKS_LINE).toBe('Showing streaks with small eddies, paused to save battery. This is the most detailed level.');
+    expect(b).toContain('the Wind detail sheet and the line under the Wind height chips say “paused to save battery”, and the debug statistics say “paused”');
+    const paused = windDetailState(wind({ stats: stats({ detail: 'paused' }) }));
+    expect(paused.limits).toContain('paused');
+    expect(windDetailWords(paused, { heightLabel: 'What the fire feels', height: 'felt', cellM: 133 }).lines).toContain(PAUSED_LINE);
+    expect(read('debugStats.ts')).toContain("paused: 'paused'");
+    // The Help's Layers step and the Wind detail entry say it too.
+    expect(squash(step('Layers'))).toContain('After a minute without a touch the view holds still to save battery, and any touch starts it again. A running simulation never lets it hold still.');
+    expect(squashed('Wind detail')).toContain('or the view has paused to save battery after a minute without a touch');
+  });
+
+  it('Reduced motion: the Wind streaks and the trees stand still at every zoom, the fire does not, and the sheet says it', () => {
+    const b = squashed('Reduced motion');
+    // The old Wind streaks (streaks 'surface' at level 2, where nothing of level 4 is drawn) raise the "still" limit; reduced motion is what stills them.
+    const old = windDetailState(wind({ glyphsOn: false, streaks: 'surface', stats: stats({ level: 2, detail: 'off', detailSegments: 0, reduced: true, glyphs: false, streaks: true }) }));
+    expect(old.limits).toContain('still');
+    expect(windDetailWords(old, { heightLabel: '10 m', height: 'fire', cellM: 133 }).lines).toContain(STILL_LINE);
+    expect(squashed('Wind detail')).toContain('the phone is set to reduce motion so the streaks stand still (the Wind streaks too, at every zoom)');
+    expect(read('../render/windLayer.ts')).toContain('if (!this.motion) dt = 0;');
+    expect(read('../render/vegetationLayer.ts')).toContain('this.motion ? p.amp : 0, this.motion ? p.flutter : 0');
+    expect(b).toContain('the trees stop swaying but keep their lean');
+    expect(b).toContain('The fire itself keeps moving: flames, embers and smoke show where the fire is and how hot it is, so they are not stilled');
+    expect(squash(step('Layers'))).toContain('If the phone is set to reduce motion, the Wind streaks and the trees stand still too.');
+  });
+
+  it('Moving around the map: the spot you touch stays under your finger, and far ground near the horizon is the one place the map moves fast', () => {
+    const t = squash(step('Moving around the map'));
+    expect(t).toContain('The spot you touch stays under your finger. Far away, near the horizon, each pixel covers a lot of country, so the map moves fast when you slide there.');
+    // The pan holds the touched ground exactly down to 5 degrees below the horizon, as far as 12 camera-to-target distances (render/groundPan.ts).
+    expect(PAN.HORIZON_MARGIN_DEG).toBe(5);
+    expect(PAN.FAR).toBe(12);
+    expect(PAN).not.toHaveProperty('MAX_SPEEDUP');
+    // Turning and tilting are 15 % faster than 0.6.0's 2/3.
+    expect(GESTURE.rotateSpeed).toBeCloseTo((2 / 3) * 1.15, 12);
+    // The turn and the tilt of two fingers are the rig's own (no private member of OrbitControls), and the Help's other sentences about them stand (above).
+    expect(read('../render/twoFingerTurn.ts')).not.toMatch(/_rotateLeft\s*\(|_handleTouchMoveDollyRotate\s*\(/);
+  });
+
+  it('Detailed streaks, 0.7.0: they ride on the trees, part round crowns and ridges, and curl into eddies, for What the fire feels and the 10 m wind only; the sheet says they are added', () => {
+    const b = squashed('Detailed streaks');
+    expect(DETAIL_RELIEF.enabled).toBe(true); // the one switch that draws the 0.6.0 picture again is a constant of the code, not a setting
+    // The trees and the plume are for the wind read at the ground's own level: What the fire feels and 10 m both read at 10 m; 50 m and up fly over them.
+    expect(RELIEF_TREE_MAX_M).toBeGreaterThanOrEqual(10);
+    expect(RELIEF_TREE_MAX_M).toBeLessThan(50);
+    expect(b).toContain('The trees and the plume count only for What the fire feels and the 10 m wind: higher up the streaks fly over the trees');
+    // Crowns are trees, not heath, shrubs or grass (the placement's groups 0 to 6).
+    expect(DETAIL_RELIEF.crowns.maxGroup).toBe(6);
+    expect(b).toContain('part round each crown that stands in their way and close up behind it, and slide along a slope that rises ahead of them');
+    expect(b).toContain('In thick forest the streaks keep to the gaps between the crowns, so fewer are drawn there');
+    expect(EDDIES_LINE).toContain('Where the ground rises or trees stand, the streaks bend around them, and small eddies are added behind them.');
+    expect(EDDIES_LINE).not.toMatch(/model's/);
+    // The eddies come in pairs that turn opposite ways (Rankine vortex pairs: detailObstacles.ts).
+    expect(read('../render/wind/detailObstacles.ts')).toContain('counter-rotating Rankine vortices');
+    expect(b).toContain('a pair of eddies that turn opposite ways');
+  });
+
+  it('Air slices: the 3-D button sits under the chips and the reasons stay under the controls', () => {
+    expect(squash(step('Air slices'))).toContain(`Then a “${USE_3D_LABEL}” button sits right under the chips, and the reasons are further down, under the controls.`);
+    const panel = read('screens/sim/slicePanel.ts');
+    expect(panel).toContain('[view, readout, chipRow, use3dRow, legendHost, controlsWrap, reasons, cellsToggle.el');
   });
 });

@@ -10,7 +10,7 @@ import { LAYER_CATALOG, availabilityContext, layerById } from '../../../render/l
 import { DEFAULT_LAYERS } from '../../../render/layers';
 import { WIND_HEIGHTS } from '../../../render/wind/glyphTypes';
 import { heightLabel } from './glyphWords';
-import { MAP_CHIP_LABEL, mapHeightNow, windMapChipState, windMapPatch, windMapReasonLine, windSpeedSubline } from './windMapWords';
+import { MAP_CHIP_LABEL, mapHeightNow, mapNoDataNow, windMapChipState, windMapPatch, windMapReasonLine, windSpeedSubline } from './windMapWords';
 
 const read = (f: string): string => readFileSync(join(__dirname, f), 'utf8');
 
@@ -90,6 +90,32 @@ describe('the Wind height the map follows', () => {
     expect(DEFAULT_LAYERS.windHeight).toBe('felt');
     expect(DEFAULT_LAYERS.windGlyphs).toBe(false);
     expect(mapHeightNow(DEFAULT_LAYERS, snap)).toBe('fire');
+  });
+});
+
+describe('a Wind height in metres on a picture with no 3-D wind (0.7.0, raster verifier F1)', () => {
+  const grid = { nx: 4, ny: 4, cellSize: 150 };
+  const withAir = (volume: boolean): { fireWind: unknown; atmosphere: never } => ({ fireWind: {}, atmosphere: { grid, nz: 2, u: new Float32Array(volume ? 32 : 0), v: new Float32Array(volume ? 32 : 0), w: new Float32Array(volume ? 32 : 0), thetaAnomaly: new Float32Array(0), smoke: new Float32Array(0) } as never });
+
+  it('has no data: asked of the same picture as the height, true only for a height in metres without the volume', () => {
+    expect(mapNoDataNow({ windGlyphs: true, windHeight: 300 }, withAir(false))).toBe(true);
+    expect(mapNoDataNow({ windGlyphs: true, windHeight: 300 }, withAir(true))).toBe(false);
+    for (const h of ['felt', 50, 2000] as const) expect(mapNoDataNow({ windGlyphs: true, windHeight: h }, withAir(false)), String(h)).toBe(h !== 'felt');
+    // With the arrows off the map is the 10 m one, whatever height is chosen, and the 10 m wind is always there to draw.
+    expect(mapNoDataNow({ windGlyphs: false, windHeight: 300 }, withAir(false))).toBe(false);
+    // No picture yet: nothing to say.
+    for (const none of [null, undefined]) expect(mapNoDataNow({ windGlyphs: true, windHeight: 300 }, none)).toBe(false);
+  });
+
+  it('is said by every legend the map has and drawn as nothing by the view: the map legend, the Layers panel (twice) and the scene pass it on, and the scene gives the field its height', () => {
+    expect(read('mapLegend.ts')).toContain('windNoData: mapNoDataNow(s, ctx.session.state.get().snapshot)');
+    expect(read('mapLegend.ts')).toMatch(/\$\{s\.overlay === 'windSpeed' && mapNoDataNow\(s, ctx\.session\.state\.get\(\)\.snapshot\) \? '\|nodata' : ''\}/); // (a thinned frame comes and goes as the time is scrubbed: the card redraws)
+    const panel = read('layersPanel.ts');
+    expect(panel.match(/windNoData: mapNoDataNow\(/g)).toHaveLength(2);
+    expect(panel).toMatch(/mapNoDataNow\(s, ctx\.session\.state\.get\(\)\.snapshot\) \? '\.nodata' : ''/);
+    const scene = readFileSync(join(__dirname, '../../../render/SceneView.ts'), 'utf8');
+    expect(scene).toMatch(/\.\.\.\(kind === 'windSpeed' \? \{ windHeight \} : \{\}\)/); // overlayField then returns no field for a height with no map, not the 10 m wind
+    expect(scene).toContain('windNoData: windMapNoData(this.windMapShown(), this.snap?.atmosphere)');
   });
 });
 

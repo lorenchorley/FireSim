@@ -5,7 +5,7 @@
  */
 import type { ScenarioEdit, WindDirectionEdit, WindEdit } from '../../../core/types';
 import { angleDiffDeg, wrapDeg } from '../../../core/units';
-import { WIND_TURN_S, windChangePhase, windDirectionTime } from '../../../scenario/windDirection';
+import { WIND_TURN_S, windChangePhase, windDirectionTime, windRerunFrom } from '../../../scenario/windDirection';
 import { compassName, formatClock, formatDayClock, formatDirFrom, formatDistance, formatRelative, zonedDate, zonedTime } from '../../format';
 import { clockToSimTime, parseTimeOfDay } from './timelineModel';
 
@@ -129,7 +129,7 @@ export const TIME_FIELD_SPOKEN = 'Time the wind starts to turn';
 export const LIST_TITLE = 'Your wind changes';
 /** "Back to the forecast" (0.7.0): the button under the list, and the sentence under it. It is the bin of every change at once. */
 export const BACK_TO_FORECAST_LABEL = 'Back to the forecast';
-export const BACK_TO_FORECAST_HINT = 'Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from the first one.';
+export const BACK_TO_FORECAST_HINT = 'Back to the forecast takes away every wind change you made, as if you had never made them. The simulation is computed again from when you made the first one.';
 
 /** The dial's own step (degrees): the dial opens on the wind rounded to it, so a dial left alone is within half a step of the wind. */
 const DIAL_STEP_DEG = 5;
@@ -261,17 +261,22 @@ export function applyAnnouncement(edit: Pick<WindDirectionEdit, 'dir' | 'time'>,
   return `Wind direction change set. The wind turns to come from ${compassName(edit.dir)}, starting at ${windClock(env, edit.time)} and done by ${windClock(env, edit.time + WIND_TURN_S)}.`;
 }
 
-/** The re-run is only mentioned when the simulation had computed past the change (`headTime` before the removal). */
-export function removeAnnouncement(edit: Pick<WindDirectionEdit, 'time'>, headTime: number, env: WindEnv): string {
-  return `Wind change removed.${headTime > edit.time ? ` The simulation re-runs from ${windClock(env, edit.time)} without it.` : ''}`;
+/**
+ * The re-run starts when the change was made (`windRerunFrom`: what its cards and zone said since then goes with it), or at its start if that is
+ * earlier; it is only mentioned when the simulation had computed past that (`headTime` after it). For a change set for later it is the lead time
+ * that is run again, at most the hour the zone looks ahead.
+ */
+export function removeAnnouncement(edit: Pick<WindDirectionEdit, 'time' | 'madeAt'>, headTime: number, env: WindEnv): string {
+  const from = windRerunFrom(edit);
+  return `Wind change removed.${headTime > from ? ` The simulation re-runs from ${windClock(env, from)} without it.` : ''}`;
 }
 
 /**
- * "Back to the forecast": how many changes came away, and (as for one removal) that the simulation re-runs from the first one's start, only when
- * it had computed past it (`headTime` after the start).
+ * "Back to the forecast": how many changes came away, and (as for one removal) that the simulation re-runs from `from` (the earliest
+ * `windRerunFrom` of them), only when it had computed past it (`headTime` after it).
  */
-export function backToForecastAnnouncement(removed: number, firstTime: number, headTime: number, env: WindEnv): string {
-  const rerun = headTime > firstTime ? ` The simulation re-runs from ${windClock(env, firstTime)} without ${removed === 1 ? 'it' : 'them'}.` : '';
+export function backToForecastAnnouncement(removed: number, from: number, headTime: number, env: WindEnv): string {
+  const rerun = headTime > from ? ` The simulation re-runs from ${windClock(env, from)} without ${removed === 1 ? 'it' : 'them'}.` : '';
   return `Back to the forecast. ${removed} wind ${removed === 1 ? 'change' : 'changes'} removed.${rerun}`;
 }
 

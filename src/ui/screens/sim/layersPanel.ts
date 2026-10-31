@@ -64,7 +64,7 @@ import {
 } from './layersModel';
 import { cachedLayerPrefs, forgetLayerPrefs, layerDefaults, rememberLayerChoice, viewHasImagery } from './layersPrefs';
 import { createWindGlyphControls } from './windGlyphControls';
-import { mapHeightNow, windSpeedSubline } from './windMapWords';
+import { mapHeightNow, mapNoDataNow, windSpeedSubline } from './windMapWords';
 
 /** Icon of a catalog row in the panel (decoration only; unknown ids get the layers icon). */
 const LAYER_ICONS: Readonly<Record<string, IconName>> = {
@@ -161,6 +161,7 @@ export function currentLegend(ctx: SimContext): Legend | null {
     isochroneMinutes: s.isochroneMinutes,
     ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
     windHeight: mapHeightNow(s, ctx.session.state.get().snapshot),
+    windNoData: mapNoDataNow(s, ctx.session.state.get().snapshot),
   });
 }
 
@@ -433,13 +434,14 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   offs.push(() => tilesRo?.disconnect());
 
   // ───────────── Heat maps ─────────────
-  const legendRequest = (): { arrivalMaxSeconds: number; isochroneMinutes: number; elevationRange?: readonly [number, number]; windHeight: WindHeight } => {
+  const legendRequest = (): { arrivalMaxSeconds: number; isochroneMinutes: number; elevationRange?: readonly [number, number]; windHeight: WindHeight; windNoData: boolean } => {
     const t = ctx.scenario.terrain;
     return {
       arrivalMaxSeconds: Math.max(1800, ctx.session.state.get().viewTime),
       isochroneMinutes: layers.get().isochroneMinutes,
       ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
       windHeight: mapHeightNow(layers.get(), ctx.session.state.get().snapshot),
+      windNoData: mapNoDataNow(layers.get(), ctx.session.state.get().snapshot),
     };
   };
   const saved = cachedLayerPrefs()?.groups;
@@ -581,7 +583,7 @@ export function createLayersPanel(ctx: SimContext, onClose: () => void): { el: H
   const renderActive = (force = false): void => {
     const s = layers.get();
     const vt = ctx.session.state.get().viewTime;
-    const key = `${s.overlay}|${s.overlay === 'arrival' ? `${s.isochroneMinutes}|${Math.floor(vt / 1800)}` : ''}|${s.overlay !== 'none' && SNAPSHOT_LAYER_OVERLAYS.has(s.overlay) ? !!ctx.session.state.get().snapshot?.layers : ''}|${s.overlay === 'windSpeed' ? mapHeightNow(s, ctx.session.state.get().snapshot) : ''}`;
+    const key = `${s.overlay}|${s.overlay === 'arrival' ? `${s.isochroneMinutes}|${Math.floor(vt / 1800)}` : ''}|${s.overlay !== 'none' && SNAPSHOT_LAYER_OVERLAYS.has(s.overlay) ? !!ctx.session.state.get().snapshot?.layers : ''}|${s.overlay === 'windSpeed' ? `${mapHeightNow(s, ctx.session.state.get().snapshot)}${mapNoDataNow(s, ctx.session.state.get().snapshot) ? '.nodata' : ''}` : ''}`;
     if (key === activeKey && !force) return;
     const prevOverlay = activeKey.split('|')[0];
     activeKey = key;

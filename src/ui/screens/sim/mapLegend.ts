@@ -12,7 +12,7 @@ import { sectionColouring, sliceAirOf } from '../../../render/sliceFields';
 import type { SliceFieldId, SliceKind } from '../../../render/slice/types';
 import type { SimContext } from './context';
 import { legendHeightWords } from './glyphWords';
-import { mapHeightNow } from './windMapWords';
+import { mapHeightNow, mapNoDataNow } from './windMapWords';
 
 /** Classes listed on the card; the rest are in the Layers panel. */
 const MAX_CLASSES = 4;
@@ -27,6 +27,7 @@ export function currentMapLegend(ctx: Pick<SimContext, 'layers' | 'legendProvide
       isochroneMinutes: s.isochroneMinutes,
       ...(Number.isFinite(t.minElevation) && Number.isFinite(t.maxElevation) ? { elevationRange: [t.minElevation, t.maxElevation] as const } : {}),
       windHeight: mapHeightNow(s, ctx.session.state.get().snapshot),
+      windNoData: mapNoDataNow(s, ctx.session.state.get().snapshot),
     });
   }
   // The colour-coded trees (canopy style 'coded'): the renderer describes its own code.
@@ -59,7 +60,7 @@ export function createMapLegend(ctx: SimContext, onOpenLayers: () => void): { el
     // The arrival-time ramp grows with the elapsed time: refresh it every 30 simulated minutes.
     // The section's legend follows the chip it is coloured by on the air shown (the chip chosen, or the one the air allows).
     const sc = s.crossSection.enabled ? sectionColour(ctx, s.crossSection.field) : null;
-    const k = `${collapsed}|${s.overlay}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.windGlyphs ? `${mapHeightNow(s, ctx.session.state.get().snapshot)}.${ctx.ui.get().viewMode === 'ground'}` : ''}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
+    const k = `${collapsed}|${s.overlay}${s.overlay === 'windSpeed' && mapNoDataNow(s, ctx.session.state.get().snapshot) ? '|nodata' : ''}|${s.isochroneMinutes}|${s.overlay === 'arrival' ? Math.floor(vt / 1800) : ''}|${s.crossSection.enabled}|${sc ? `${sc.field}.${sc.kind}` : ''}|${s.wind}|${s.windGlyphs ? `${mapHeightNow(s, ctx.session.state.get().snapshot)}.${ctx.ui.get().viewMode === 'ground'}` : ''}|${s.vegetation}|${s.canopyStyle}|${s.canopyCode}`;
     if (k === key && !force) return;
     key = k;
     const l = currentMapLegend(ctx, vt);

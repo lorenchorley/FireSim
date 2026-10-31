@@ -4,6 +4,7 @@
  * canopyStyle, ...); layerCatalog.ts describes every layer and heat map in plain English and lists the settings
  * (LAYER_CATALOG, LAYER_SETTING_KEYS), and its test fails if a key or an OverlayKind is added without an entry.
  */
+import { hasAirWind } from '../core/airView';
 import type { SliceFieldId, SlicePresetId } from './slice/types';
 import type { WindHeight } from './wind/glyphTypes';
 
@@ -156,4 +157,14 @@ export function windMapHeight(l: Pick<LayerState, 'windGlyphs' | 'windHeight'>):
  */
 export function shownWindHeight(h: WindHeight, haveFelt: boolean): WindHeight {
   return h === 'felt' && !haveFelt ? 'fire' : h;
+}
+
+/**
+ * Whether the Wind speed map at the height really drawn has no data for this picture (0.7.0, raster verifier F1): a numeric Wind height reads the picture's 3-D
+ * wind, and a picture without one (a scrubbed frame whose volume the history thinned away) has nothing at that height. The map is then EMPTY and the legend says so;
+ * the 10 m wind under the title "Wind speed at 300 m" would be the wrong picture. The 10 m map and What the fire feels fall back to the surface wind instead, and
+ * say that (`shownWindHeight`).
+ */
+export function windMapNoData(h: WindHeight, atm: Parameters<typeof hasAirWind>[0]): boolean {
+  return typeof h === 'number' && !hasAirWind(atm);
 }
