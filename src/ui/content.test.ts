@@ -1101,8 +1101,7 @@ describe('Help and glossary: the 0.7.0 entries say what What the fire feels, Col
     expect(PAN).not.toHaveProperty('MAX_SPEEDUP');
     // Turning and tilting are 15 % faster than 0.6.0's 2/3.
     expect(GESTURE.rotateSpeed).toBeCloseTo((2 / 3) * 1.15, 12);
-    // The turn and the tilt of two fingers are the rig's own (no private member of OrbitControls), and the Help's other sentences about them stand (above).
-    expect(read('../render/twoFingerTurn.ts')).not.toMatch(/_rotateLeft\s*\(|_handleTouchMoveDollyRotate\s*\(/);
+    // (That the two-finger turn names no private member of OrbitControls is pinned in twoFingerTurn.test.ts, over all of src, this file included.)
   });
 
   it('Detailed streaks, 0.7.0: they ride on the trees, part round crowns and ridges, and curl into eddies, for What the fire feels and the 10 m wind only; the sheet says they are added', () => {
