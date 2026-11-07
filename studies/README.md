@@ -12,7 +12,7 @@ a plan in [`docs/plans/`](../docs/plans/) first.
 | [cliff-from-photo](cliff-from-photo/) | Can photographs of a cliff improve how FireSim draws it, and what the fire model knows about it? | ongoing, 1 study; a stretch goal in no release |
 | [adaptive-simulation-quality](adaptive-simulation-quality/) | Can the simulation spend more detail where the terrain is complex and where it matters to the fire? | desk analysis done 2026-11-07 (the quality map, nine sites, one scenario each); nothing designed or built; a stretch goal in no release |
 | [simulation-validity](simulation-validity/) | How can we verify that the simulation is valid: against a precomputed high-quality run, other models, real fires, or checks that need no reference? | not started; a stretch goal in no release; recorded, with a first desk search (2026-10-31); nothing run |
-| [desktop-simulation](desktop-simulation/) | Can there be a desktop version that runs more detailed simulations than a phone can? | first measurement done 2026-11-07 (cost against detail, Node, 55 rows); the host is built in 0.8.0; one TypeScript solver on the desktop, the phone a viewer of it (D34); the Desktop detail setting and any speed work are not started |
+| [desktop-simulation](desktop-simulation/) | Can there be a desktop version that runs more detailed simulations than a phone can? | first measurement done 2026-11-07 (cost against detail, Node, 55 rows); **the host was built in 0.8.0** (`npm run desktop`, `desktop/`; plan section 23); one TypeScript solver on the desktop, the phone a viewer of it (D34); the Desktop detail profile and any speed work are not started and stay stretch goals in no release |
 
 ## How a topic is laid out
 

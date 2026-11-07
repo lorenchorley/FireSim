@@ -72,6 +72,9 @@ import {
   type CrossSection,
 } from './screens/sim/sliceToolModel';
 import { WIND_TURN_S, windDirectionTime } from '../scenario/windDirection';
+import { codeFromHash, hashWithoutCode, startDesktopHost, type HostEnv } from './desktopHost';
+import type { HostInfo } from './desktopTypes';
+import { CLOSED_LINK, CODE_LABEL, CONTINUE_HERE, ENGINE_LABEL, ENGINE_PROBLEM, ENGINE_THIS_DEVICE, RESTARTED_HERE, RUNNING_ON_DESKTOP } from './desktopWords';
 import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, PAUSED_LINE, SHEET_TITLE, STILL_LINE, levelLine, windDetailWords } from './screens/sim/windDetailWords';
 import { chipLabel, windDetailState, type WindDetailInput } from './screens/sim/windDetailState';
 import { BACK_TO_FORECAST_HINT, BACK_TO_FORECAST_LABEL, LIST_TITLE, READINGS_NOTE, READINGS_TITLE, WHEN_OPTIONS, WIND_HINT, applyLabel, dialStart, holdsDirection, problemText, reviewingText } from './screens/sim/windPanelModel';
@@ -1131,5 +1134,128 @@ describe('Help and glossary: the 0.7.0 entries say what What the fire feels, Col
     expect(squash(step('Air slices'))).toContain(`Then a “${USE_3D_LABEL}” button sits right under the chips, and the reasons are further down, under the controls.`);
     const panel = read('screens/sim/slicePanel.ts');
     expect(panel).toContain('[view, readout, chipRow, use3dRow, legendHost, controlsWrap, reasons, cellsToggle.el');
+  });
+});
+
+describe('Help and glossary: the 0.8.0 entry says what the desktop engine says', () => {
+  const body = (): string => squash(entry('Desktop engine').body);
+  const read = (file: string): string => readFileSync(resolve(__dirname, file), 'utf8');
+  /** A source file with its comment lines joined (a sentence of a header comment wraps across lines). */
+  const prose = (file: string): string => squash(read(file).replace(/\n\s*\*/g, ' '));
+  const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Studio PC', cores: 8, node: '22.11.0', sessions: 0, maxSessions: 3 };
+  const env = (over: Partial<HostEnv> = {}): HostEnv => ({
+    origin: 'http://192.168.1.20:4300',
+    protocol: 'http:',
+    native: false,
+    hash: '',
+    replaceHash: () => undefined,
+    detect: async () => INFO,
+    connect: async () => {
+      throw new Error('not used');
+    },
+    publishRun: () => undefined,
+    ...over,
+  });
+
+  it('there is a glossary entry and a Help step, in the repo’s voice', () => {
+    expect(entry('Desktop engine').body.length).toBeGreaterThan(1500);
+    expect(step('Desktop engine').length).toBeGreaterThan(300);
+    expect(squash(step('Desktop engine'))).toContain('The Glossary has the rest, under Desktop engine.');
+  });
+
+  it('it is the same simulation code on the desktop’s processor, and a run is that program’s result, not guaranteed identical to a phone’s', () => {
+    expect(body()).toContain('Desktop runs the same simulation code on the desktop’s processor, and the device only draws what comes back.');
+    expect(body()).toContain('A run is that program’s result. It is not guaranteed to be identical to a phone’s run of the same scenario, because a different JavaScript engine or version may round differently.');
+    // The same code: the host's worker thread runs SimHost, the class the Web Worker runs.
+    expect(read('../../desktop/engineWorker.ts')).toContain("import { SimHost } from '../src/sim/host';");
+    expect(read('../sim/worker.ts')).toContain('SimHost');
+    // Nothing the desktop host does is allowed to change a result: the host passes frames to the engine and reads none of the simulation's own messages.
+    expect(prose('../../desktop/engine.ts')).toContain('The host never decodes a simulation message');
+  });
+
+  it('This device needs no network and changes nothing; a page that no desktop serves has no Engine row; the Engine row sits under Run on Setup', () => {
+    expect(ENGINE_LABEL).toBe('Engine');
+    expect(ENGINE_THIS_DEVICE).toBe('This device');
+    expect(body()).toContain('On Setup, under Run, the Engine row then offers This device or Desktop.');
+    expect(body()).toContain('This device is the default. It runs the simulation on the device itself, needs no network and works as it always did; a page that no desktop serves has no Engine row at all, and nothing about this device changes.');
+    expect(squash(step('Desktop engine'))).toContain('Setup has an Engine row under Run: This device or Desktop. This device is the default and needs no network.');
+    const setup = read('screens/setup.ts');
+    expect(setup).toContain("section('Run', [durChips.el");
+    expect(setup).toContain('host.mount(runCard');
+    // Without a host nothing is drawn, and the Capacitor app never asks one.
+    expect(read('screens/engineRow.ts')).toContain('drawn only when the page was served by a desktop host');
+    expect(read('desktop.ts')).toContain('native: Capacitor.isNativePlatform()');
+    expect(body()).toContain('The Android app does not connect to a desktop in this release: open the desktop’s link in the phone’s browser.');
+  });
+
+  it('Desktop is opt in and is chosen only when the link brought a code; the choice is not remembered', async () => {
+    expect(body()).toContain('Choosing Desktop is opt in.');
+    expect(body()).toContain('The choice is not remembered: each time the page opens it starts on This device, unless the link brought a code.');
+    const without = await startDesktopHost(env());
+    expect(without?.state.get().engine).toBe('device');
+    const withCode = await startDesktopHost(env({ hash: '#code=ABCD2345' }));
+    expect(withCode?.state.get().engine).toBe('desktop');
+    // Never stored: the pairing code and the choice live in the page's memory only.
+    for (const f of ['desktopHost.ts', 'desktop.ts', 'screens/engineRow.ts', 'desktopRestart.ts']) expect(read(f), f).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
+    expect(prose('desktopHost.ts')).toContain('the code lives in this object\'s memory for the page load and nowhere else');
+  });
+
+  it('the code comes in the link after #code=, leaves the address at once, is never stored and is forgotten when the page closes; nothing goes to another origin', async () => {
+    for (const w of ['after #code=', 'is taken out of the address at once, is never stored and is forgotten when the page closes', 'you can type it into the box on Setup instead', 'Nothing is sent anywhere else']) expect(body(), w).toContain(w);
+    expect(codeFromHash('#code=abcd2345')).toBe('ABCD2345');
+    expect(hashWithoutCode('#code=ABCD2345')).toBe('');
+    const replaced: string[] = [];
+    await startDesktopHost(env({ hash: '#code=ABCD2345', replaceHash: (h) => void replaced.push(h) }));
+    expect(replaced).toEqual(['']);
+    // The page asks its own origin and nothing else (the one question to /__firesim/host, and the socket on that same host).
+    let asked: string | undefined;
+    await startDesktopHost(env({ detect: async (o) => ((asked = o?.base), INFO) }));
+    expect(asked).toBe('http://192.168.1.20:4300');
+    expect(read('../sim/remote/index.ts')).toContain('`http://host:port/` to `ws://host:port/__firesim/engine`');
+    expect(CODE_LABEL).toBe('Desktop code');
+  });
+
+  it('there is no TLS, and the host and the README say so', () => {
+    expect(body()).toContain('The link is not encrypted (there is no TLS), so use it only on a network you trust.');
+    expect(read('../../desktop/main.ts')).toContain('There is no TLS: use this only on a network you trust.');
+    expect(read('../../desktop/README.md')).toContain('**There is no TLS.**');
+    expect(read('../../README.md')).toContain('There is no TLS');
+  });
+
+  it('when the link is lost nothing switches by itself: the chip says so, and "Continue on this device" restarts the same scenario here from the start', () => {
+    expect(CLOSED_LINK).toBe('The desktop connection closed.');
+    expect(CONTINUE_HERE).toBe('Continue on this device');
+    expect(RESTARTED_HERE).toBe('Running on this device again, from the start.');
+    expect(RUNNING_ON_DESKTOP).toBe('Running on the desktop');
+    expect(body()).toContain('While a run computes on the desktop the map says “Running on the desktop”');
+    expect(body()).toContain(`the error chip says “${CLOSED_LINK}” “${CONTINUE_HERE}” in the chip then runs the same scenario again on this device’s own engine, from the start, with the fires and changes you marked.`);
+    expect(body()).toContain('If the connection is lost, nothing switches by itself. The last picture stays');
+    expect(body()).toContain('Nothing the desktop computed is carried over, because the two engines cannot hand a run to each other.');
+    expect(squash(step('Desktop engine'))).toContain('the last picture stays and the error chip offers “Continue on this device”, which runs the same scenario again here, from the start.');
+    // The controller's own sentence is the one the chip shows.
+    expect(read('../sim/remote/RemoteSimController.ts')).toContain(`'${CLOSED_LINK}'`);
+    // Nothing starts it but the tap: the one call that gives up the desktop's link is in the chip's click handler.
+    const bar = read('screens/desktopBar.ts');
+    expect(bar.match(/host\.leave\(\)/g)).toHaveLength(1);
+    expect(bar).toContain('click: () => {');
+    expect(bar.indexOf('click: () => {')).toBeLessThan(bar.indexOf('host.leave()'));
+    // What the restart drops is what the engine computed; what the person marked stays (SimSession.restart), and the restart is the person's scenario in full.
+    const restart = read('session.ts').slice(read('session.ts').indexOf('  restart(): void {'));
+    expect(restart).toContain('this.snapshots.clear();');
+    expect(restart).toContain('error: null');
+    expect(read('desktopRestart.ts')).toContain('const plan = restartPlan({ scenario: d.session.scenario');
+  });
+
+  it('a wrong code is a different message, next to the code box, and has no Continue on this device', () => {
+    expect(body()).toContain('A wrong code is a different message, next to the code box, and nothing is built.');
+    expect(ENGINE_PROBLEM.refused).toContain('did not accept that code');
+    expect(ENGINE_PROBLEM.refused).not.toContain(CLOSED_LINK);
+    // Only an unreachable desktop gets the action on Setup (a wrong code is not a lost link).
+    expect(read('screens/engineRow.ts')).toContain("s.problem === 'unreachable'");
+  });
+
+  it('the statistics row the entry names is the one the screen shows', () => {
+    expect(body()).toContain('have a row, Engine runs on, with the desktop’s name, its cores, its Node version and how long a message takes to go there and back.');
+    expect(read('debugStats.ts')).toContain("R('engine-where', 'Engine runs on'");
   });
 });
