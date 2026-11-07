@@ -103,21 +103,22 @@ class Encoder {
         return this.fail('a symbol');
     }
     if (v === null) return null;
+    const obj = v as object;
     if (this.path.length >= MAX_DEPTH) return this.fail('a value nested too deeply (a cycle?)');
-    if (ArrayBuffer.isView(v)) return this.typedArray(v);
-    if (Array.isArray(v)) {
-      const out = new Array<unknown>(v.length);
-      for (let i = 0; i < v.length; i++) {
+    if (ArrayBuffer.isView(obj)) return this.typedArray(obj);
+    if (Array.isArray(obj)) {
+      const out = new Array<unknown>(obj.length);
+      for (let i = 0; i < obj.length; i++) {
         this.path.push(i);
-        out[i] = this.walk(v[i]);
+        out[i] = this.walk(obj[i]);
         this.path.pop();
       }
       return out;
     }
-    if (!isPlainObject(v)) return this.fail(`${describeClass(v)} (only plain objects, arrays and typed arrays are carried)`);
+    if (!isPlainObject(obj)) return this.fail(`${describeClass(obj)} (only plain objects, arrays and typed arrays are carried)`);
     const out: Record<string, unknown> = {};
-    for (const k of Object.keys(v)) {
-      const x = (v as Record<string, unknown>)[k];
+    for (const k of Object.keys(obj)) {
+      const x = (obj as Record<string, unknown>)[k];
       if (x === undefined) continue;
       this.path.push(k);
       if (k === '$ta' || k === '$num') this.fail(`the reserved key "${k}"`);
