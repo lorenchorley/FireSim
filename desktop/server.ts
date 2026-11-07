@@ -177,15 +177,13 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
       ws.terminate();
     };
     ws.once('close', forget);
-    ws.once('error', gone);
+    ws.on('error', gone); // stays for the life of the socket: an 'error' event with no listener would end the process
     ws.once('message', (data: Data, isBinary: boolean) => {
       ws.off('close', forget);
-      ws.off('error', gone);
       forget();
       const refusal = checkHello(data, isBinary, address);
       if (refusal) {
         log(`refused ${address}: ${refusal.log}`);
-        ws.on('error', () => undefined);
         ws.close(refusal.code, refusal.reason);
       } else start(ws, address);
     });

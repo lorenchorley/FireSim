@@ -328,6 +328,27 @@ describe('frames', () => {
   }, 30000);
 });
 
+describe('a client that breaks the WebSocket protocol', () => {
+  /** An unmasked frame from a client (RFC 6455 forbids it): the receiver of the host raises an error. */
+  const broken = Buffer.from([0x82, 0x01, 0x00]);
+  const inject = (c: TestClient): void => void (c.ws as unknown as { _socket: { write(b: Buffer): void } })._socket.write(broken);
+
+  it('before the hello, and after the welcome, ends that connection and nothing else (the host and its other sessions go on)', async () => {
+    const { h, engines } = await host({ maxSessions: 3 });
+    const other = await join_(h.port);
+    const early = await connect(h.port);
+    inject(early);
+    expect((await early.closed).code).toBe(1002);
+    const late = await join_(h.port);
+    inject(late.c);
+    expect((await late.c.closed).code).toBe(1002);
+    await waitFor(() => h.sessions === 1, 3000, 'the broken session to be freed');
+    expect(engines[1]!.terminated).toBe(1);
+    expect(other.c.ws.readyState).toBe(other.c.ws.OPEN);
+    expect((await join_(h.port)).welcome?.type).toBe('welcome');
+  });
+});
+
 describe('/__firesim/host and the static routes of the host', () => {
   it('says who the host is, with exactly these fields and nothing that is a secret', async () => {
     const { h } = await host({ name: 'Test desk', maxSessions: 3 });
