@@ -144,7 +144,7 @@ test('from Setup: about two seconds in a worker, both numbers with their ratio t
 
   expect(await popups(page), 'nothing pops up by itself').toEqual([]);
   expect(await page.locator('[role=alert]').count()).toBe(0);
-  expect(external, 'no network call').toEqual([]);
+  expect(external, 'no network call (a request to another origin; the page\'s one question to its own origin, whether a desktop host serves it, stays on it)').toEqual([]);
 });
 
 /** Build Katoomba on the fast tier with the shortest run (1 h), the real engine, and mark a fire at the crosshair. */

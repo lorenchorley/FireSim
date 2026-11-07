@@ -242,6 +242,7 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       taken = null;
       run = null;
       env.publishRun(null);
+      state.set({ problem: null }); // what was said on the last Setup is not said again on the next
     },
   };
 }

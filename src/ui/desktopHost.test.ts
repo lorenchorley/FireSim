@@ -15,7 +15,7 @@ function fakeController(): SimController & { emit(message: string): void; listen
       if (event === 'error') errors.add(cb);
       return () => errors.delete(cb);
     }) as SimController['on'],
-    emit: (m) => errors.forEach((cb) => cb(m)),
+    emit: (m: string) => errors.forEach((cb) => cb(m)),
     listeners: () => errors.size,
   } as unknown as SimController & { emit(message: string): void; listeners(): number };
 }
@@ -275,6 +275,15 @@ describe('choosing the engine and starting the run', () => {
     expect(b.closed).toBe(1);
     expect(b.controller.listeners()).toBe(0);
     expect(r.runs[r.runs.length - 1]).toBeNull();
+  });
+
+  it('a Setup shown again does not repeat what the last one said next to the code box', async () => {
+    const { host, r } = await start({ hash: '#code=ABCD2345' });
+    r.connect.mockRejectedValueOnce(new Error('socket hang up'));
+    await host.beforeBuild();
+    expect(host.state.get().problem).toBe('unreachable');
+    host.release();
+    expect(host.state.get().problem).toBeNull();
   });
 
   it('building again after a Cancel closes the link that was opened for the first try', async () => {

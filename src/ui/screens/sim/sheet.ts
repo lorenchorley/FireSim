@@ -8,6 +8,8 @@
 import type { Insight } from '../../../core/types';
 import { msToKmh } from '../../../core/units';
 import { forecastSwingNotice, forecastSwingsKept, windDirectionEdits } from '../../../scenario/windDirection';
+import { desktopSlot } from '../../desktopSlot';
+import { CLOSED_LINK_HELP } from '../../desktopWords';
 import { h, listen, prefersReducedMotion, setChildren, text } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { GLOSSARY, HELP_STEPS } from '../../content';
@@ -256,7 +258,7 @@ export function createSheet(ctx: SimContext, onShowInsight: (i: Insight) => void
             h('div', null, [
               h('p', { class: 'callout-title' }, 'The simulation stopped with a problem'),
               h('p', null, s.error),
-              h('p', { class: 'hint' }, 'The view keeps what was already computed. Open the menu (top left) and start a new scenario, or try Play again.'),
+              h('p', { class: 'hint' }, desktopSlot.get().run ? CLOSED_LINK_HELP : 'The view keeps what was already computed. Open the menu (top left) and start a new scenario, or try Play again.'),
             ]),
           ])
         : null,

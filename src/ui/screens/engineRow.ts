@@ -56,6 +56,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement): () => void
   let shown = '';
   const draw = (s: Readonly<DesktopView>): void => {
     choice.set(s.engine);
+    if (!s.hasCode && input.value) input.value = ''; // a refused code is forgotten, in the box too
     const wantsCode = s.engine === 'desktop' && !(s.hasCode && s.fromLink);
     show(field, wantsCode);
     input.disabled = s.busy;
@@ -65,6 +66,8 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement): () => void
     shown = says;
     if (!s.busy && s.problem) {
       setChildren(note, h('div', { class: 'callout callout-warn', dataset: { testid: 'engine-problem' } }, [icon('warning'), h('div', null, PROBLEM_WORDS[s.problem])]));
+      // Build is pressed at the bottom of the screen: the words must not be left out of sight above it.
+      row.scrollIntoView({ block: 'center' });
       if (s.problem !== 'unreachable' && wantsCode) input.focus({ preventScroll: true });
       return;
     }

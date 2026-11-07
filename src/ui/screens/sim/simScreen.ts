@@ -116,6 +116,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const root = h('div', { class: ['screen', 'sim-screen', `hand-${settingsStore.get().handedness}`], dataset: { testid: 'sim' } }, [sceneHost, dim, annotations, drawLayer, crosshair]);
 
   // ───────────── scene + session ─────────────
+  // First: on the desktop engine this throws when the link closed while the model was built, and no 3-D view has been made yet to leak.
+  const controller = services.createController();
   const { pictureQuality, performance: performanceMode } = settingsStore.get();
   const view = services.createSceneView(sceneHost, { quality: resolveRenderQuality(pictureQuality, performanceMode) });
   const pictureAsk = pictureQualityAsk(pictureQuality, performanceMode); // kept for the statistics: the settings may change during the run
@@ -127,7 +129,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   view.setStartTime?.(scenario.startTime);
   view.setLayers(layers.get());
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
-  const controller = services.createController();
   const session = new SimSession(scenario, controller, view);
   // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
   let stopEvents = (): void => undefined;

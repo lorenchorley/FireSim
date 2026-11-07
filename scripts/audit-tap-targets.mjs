@@ -9,6 +9,7 @@
 //   --click a,b,c   click these data-testid values in order first (waits 500 ms after each)
 //   --wait id       wait until [data-testid=id] is visible before auditing
 //   --width 390 --height 844   viewport (default phone portrait)
+//   --init file.js  a script to run in the page before its own (e.g. e2e/desktop-stub.init.js: a stand-in desktop host, with ?debug=1 in the url)
 // Env: PW_CHROMIUM = path of the Chromium binary (default /opt/pw-browsers/chromium). Exit code 1 when something fails.
 import { chromium } from '@playwright/test';
 
@@ -19,7 +20,7 @@ const opt = (name, fallback) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 if (!url) {
-  console.error('usage: node scripts/audit-tap-targets.mjs <url> [--click id,id] [--wait id] [--width 390] [--height 844]');
+  console.error('usage: node scripts/audit-tap-targets.mjs <url> [--click id,id] [--wait id] [--width 390] [--height 844] [--init file.js]');
   process.exit(2);
 }
 
@@ -28,6 +29,7 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await (await browser.newContext({ viewport: { width: Number(opt('width', 390)), height: Number(opt('height', 844)) }, hasTouch: true })).newPage();
+if (opt('init', '')) await page.addInitScript({ path: opt('init', '') });
 await page.goto(url);
 for (const id of (opt('click', '') ?? '').split(',').filter(Boolean)) {
   await page.getByTestId(id).click();

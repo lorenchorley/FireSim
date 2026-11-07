@@ -3,7 +3,8 @@
  *   Setup lists nine demo cards with Mount Tomah right after Blackheath, its photo thumbnail drawn from the bundled aerial image;
  *   choosing it and building gives the 3-D terrain of the NSW 5 m model (ground heights read from the scenario against the bundle's
  *   own range: the summit is about 1,000 m), the roads and Bells Line of Road from the bundle, a fire on the ridge that burns, and
- *   not a single request outside the app's own files.
+ *   not a single request outside the app's own origin. (Since 0.8.0 the page puts one question to its own origin at start-up, GET /__firesim/host, to
+ *   learn whether a desktop host serves it: the only request that is not a file of the app, at most one, and it never leaves the origin.)
  * Pictures go to test-results/tomah/ (looked at by hand; not README pictures).
  */
 import { mkdirSync } from 'node:fs';
@@ -22,9 +23,11 @@ type Handle = {
 test('Mount Tomah: the card on the Setup screen, the build from the bundle, the ground heights, a fire on the ridge', async ({ page }) => {
   test.setTimeout(420_000);
   const outside: string[] = [];
+  const hostQuestions: string[] = [];
   page.on('request', (r) => {
     const u = new URL(r.url());
     if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && u.protocol.startsWith('http')) outside.push(r.url());
+    if (u.pathname === '/__firesim/host') hostQuestions.push(`${r.method()} ${r.url()}`);
   });
   await page.goto('/?debug=1');
   await acceptNotice(page);
@@ -110,6 +113,8 @@ test('Mount Tomah: the card on the Setup screen, the build from the bundle, the 
   await page.screenshot({ path: `${SHOTS}/05-fire-burning.png` });
   test.info().annotations.push({ type: 'fire', description: `${s.area.toFixed(1)} ha after ${Math.round(s.viewTime / 60)} min` });
 
-  // Everything came from the app's own files: no request left the machine.
+  // Everything came from the app's own origin: no request left the machine. The page's one question to its own origin (is a desktop host serving
+  // this page?) is the only request that is not a file of the app, and it is asked at most once.
   expect(outside).toEqual([]);
+  expect(hostQuestions.length).toBeLessThanOrEqual(1);
 });

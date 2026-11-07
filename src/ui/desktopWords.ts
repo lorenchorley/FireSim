@@ -15,6 +15,9 @@ export const RUNNING_ON_DESKTOP = 'Running on the desktop';
 /** What the error chip says when the link goes (the controller's own sentence, the same words). */
 export const CLOSED_LINK = 'The desktop connection closed.';
 
+/** The help line of the Insights tab's error note on a run that computed on the desktop (the note itself keeps the link's sentence). */
+export const CLOSED_LINK_HELP = 'The view keeps what was already computed. The desktop engine is gone, so this run cannot go on. Open the menu (top left) and start a new scenario on This device.';
+
 /** The sentence under the Engine chips, by what is chosen and what is known. */
 export const ENGINE_HINT = {
   device: 'The simulation runs on this device.',

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLOSED_LINK,
+  CLOSED_LINK_HELP,
   CODE_LABEL,
   CODE_PLACEHOLDER,
   cleanName,
@@ -14,7 +15,7 @@ import {
   RUNNING_ON_DESKTOP,
 } from './desktopWords';
 
-const ALL: string[] = [ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
+const ALL: string[] = [CLOSED_LINK_HELP, ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
 
 describe('the words of the desktop engine are pinned (the Help entry and the README say the same in more words)', () => {
   it('the labels', () => {
@@ -23,6 +24,7 @@ describe('the words of the desktop engine are pinned (the Help entry and the REA
     expect(CODE_LABEL).toBe('Desktop code');
     expect(RUNNING_ON_DESKTOP).toBe('Running on the desktop');
     expect(CLOSED_LINK).toBe('The desktop connection closed.');
+    expect(CLOSED_LINK_HELP).toBe('The view keeps what was already computed. The desktop engine is gone, so this run cannot go on. Open the menu (top left) and start a new scenario on This device.');
     expect(desktopChoiceLabel({ name: 'Studio PC', cores: 8 })).toBe('Desktop (Studio PC, 8 cores)');
     expect(desktopChoiceLabel({ name: 'Laptop', cores: 1 })).toBe('Desktop (Laptop, 1 core)');
   });

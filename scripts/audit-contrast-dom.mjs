@@ -8,6 +8,7 @@
 //   node scripts/audit-contrast-dom.mjs "http://localhost:5173/src/ui/styleguide.html?theme=dark&contrast=high" [--high] [--click a,b] [--wait id]
 //   --high        use the high-contrast thresholds (text 7, boundaries 4.5)
 //   --width 390 --height 844   viewport
+//   --init file.js  a script to run in the page before its own (e.g. e2e/desktop-stub.init.js: a stand-in desktop host, with ?debug=1 in the url)
 //   --all         print every measured element, not only the failures
 // Env: PW_CHROMIUM = path of the Chromium binary (default /opt/pw-browsers/chromium). Exit code 1 when something fails.
 import { chromium } from '@playwright/test';
@@ -19,7 +20,7 @@ const opt = (name, fallback) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 if (!url) {
-  console.error('usage: node scripts/audit-contrast-dom.mjs <url> [--high] [--click id,id] [--wait id] [--width 390] [--height 844] [--all]');
+  console.error('usage: node scripts/audit-contrast-dom.mjs <url> [--high] [--click id,id] [--wait id] [--width 390] [--height 844] [--all] [--init file.js]');
   process.exit(2);
 }
 const high = args.includes('--high') || /contrast=high/.test(url);
@@ -29,6 +30,7 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await (await browser.newContext({ viewport: { width: Number(opt('width', 390)), height: Number(opt('height', 844)) } })).newPage();
+if (opt('init', '')) await page.addInitScript({ path: opt('init', '') });
 await page.goto(url);
 for (const id of (opt('click', '') ?? '').split(',').filter(Boolean)) {
   await page.getByTestId(id).click();
