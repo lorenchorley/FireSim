@@ -23,6 +23,18 @@ interface Staged {
   heard: [(typeof EVENTS)[number], never[]][];
 }
 
+/**
+ * Is a standby engine still any use? One that reported an error before it was asked anything (its script could not be loaded, its worker
+ * died) is not: a restart then makes a fresh engine at once instead of waiting for one that cannot answer. `stop` ends the watching.
+ */
+export function watchStandby(engine: SimController): { bad(): boolean; stop(): void } {
+  let bad = false;
+  const stop = engine.on('error', () => {
+    bad = true;
+  });
+  return { bad: () => bad, stop };
+}
+
 export class SwitchableController implements SimController {
   private readonly events = new Emitter<SimEvents>();
   private stops: (() => void)[] = [];
@@ -30,6 +42,7 @@ export class SwitchableController implements SimController {
   private calls = 0;
   /** id of an ignition or an edit to the number of the call that sent it (the newest call for an edit that was sent again). */
   readonly order = new Map<string, number>();
+  private watch: ReturnType<typeof watchStandby> | null;
 
   constructor(
     private target: SimController,
@@ -37,6 +50,7 @@ export class SwitchableController implements SimController {
     public standby: SimController | null = null,
   ) {
     this.stops = this.attach(this.target);
+    this.watch = standby ? watchStandby(standby) : null;
   }
 
   /** What the calls go to now. */
@@ -44,10 +58,17 @@ export class SwitchableController implements SimController {
     return this.target;
   }
 
-  /** The standby, handed over (the controller no longer owns it). */
+  /** The standby, handed over (the controller no longer owns it); null when there is none, or when it reported a failure (it is finished with). */
   takeStandby(): SimController | null {
     const s = this.standby;
+    const bad = this.watch?.bad() ?? false;
+    this.watch?.stop();
+    this.watch = null;
     this.standby = null;
+    if (s && bad) {
+      s.dispose();
+      return null;
+    }
     return s;
   }
 
@@ -133,6 +154,8 @@ export class SwitchableController implements SimController {
     for (const stop of this.stops) stop();
     this.abandon();
     this.events.clear();
+    this.watch?.stop();
+    this.watch = null;
     this.standby?.dispose();
     this.standby = null;
     this.target.dispose();

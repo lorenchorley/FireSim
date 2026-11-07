@@ -12,7 +12,7 @@
 import type { SimController } from '../sim/protocol';
 import { CLOSED_LINK, CLOSED_LINK_HELP, ENGINE_PROBLEM, RUNNING_ON_DESKTOP } from './desktopWords';
 import type { DesktopLink, DesktopRun, DetectFn, HostInfo } from './desktopTypes';
-import { SwitchableController } from './runController';
+import { SwitchableController, watchStandby } from './runController';
 import { Store } from './store';
 
 export type EngineChoice = 'device' | 'desktop';
@@ -166,6 +166,8 @@ interface Entry {
   proxy?: SwitchableController;
   /** This device's own engine, idle, until `take` gives it to the run's controller (or the link is let go before). */
   standby: SimController | null;
+  /** Whether that engine has reported a failure since it was made. */
+  watch?: ReturnType<typeof watchStandby>;
   /** The sentence the link ended with, once it ended. */
   dead: string | null;
   off(): void;
@@ -196,6 +198,7 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
   const close = (e: Entry | null): void => {
     if (!e) return;
     e.off();
+    e.watch?.stop();
     e.standby?.dispose();
     e.standby = null;
     try {
@@ -235,6 +238,7 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
         // The link is open while the host is surely up: this device's own engine is made now (its script comes from the host), and what the running screen can still ask for is loaded.
         try {
           pending.standby = env.standby?.() ?? null;
+          if (pending.standby) pending.watch = watchStandby(pending.standby);
         } catch {
           pending.standby = null;
         }
@@ -267,8 +271,12 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       const l = e.link;
       run = { label: RUNNING_ON_DESKTOP, help: CLOSED_LINK_HELP, name: l.info.name, cores: l.info.cores, node: l.info.node, rttMs: () => l.rttMs(), closed: false };
       env.publishRun(run);
-      const proxy = new SwitchableController(l.controller, e.standby);
-      e.standby = null; // the run's controller owns it now
+      // The run's controller owns the standby now (and a standby that reported a failure meanwhile is not handed over).
+      const usable = e.standby && !e.watch?.bad() ? e.standby : null;
+      if (e.standby && !usable) e.standby.dispose();
+      e.watch?.stop();
+      const proxy = new SwitchableController(l.controller, usable);
+      e.standby = null;
       return (e.proxy = proxy);
     },
     proxy: () => taken?.proxy ?? null,

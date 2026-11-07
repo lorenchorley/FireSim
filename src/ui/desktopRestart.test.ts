@@ -352,6 +352,22 @@ describe('continueOnDevice, through the real session', () => {
     session.dispose();
   });
 
+  it('a standby that failed while it was idle is not asked at all: a fresh engine is made at once', async () => {
+    const desktop = new Engine('desktop');
+    const standby = new Engine('standby');
+    const proxy = new SwitchableController(desktop, standby);
+    const session = new SimSession(syntheticScenario({ duration: 7200 }), proxy, nullView, { maxBytes: 1e9 });
+    await session.start();
+    desktop.ev.emit('error', 'The desktop connection closed.');
+    standby.ev.emit('error', 'simulation worker failed'); // its script could not be loaded
+    const fresh = new Engine('fresh');
+    await continueOnDevice({ session, proxy, makeController: () => fresh, announce: () => undefined });
+    expect(standby.calls).toEqual([]); // never asked: it could not have answered
+    expect(standby.disposed).toBe(1);
+    expect(proxy.inner).toBe(fresh);
+    session.dispose();
+  });
+
   it('a standby that starts is the run\'s engine, with what it said while it started (ready, the first picture) heard by the session once it is committed', async () => {
     const desktop = new Engine('desktop');
     const standby = new Engine('standby');

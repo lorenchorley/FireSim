@@ -440,6 +440,19 @@ describe('the end of the link (onClosed), the standby engine and what is warmed'
     expect(disposed).toEqual([first, second]);
   });
 
+  it('a standby that reported a failure while the model was being built is not handed to the run (it is finished with)', async () => {
+    const standby = fakeController();
+    let disposed = 0;
+    standby.dispose = () => void disposed++;
+    const { host } = await startOn({ standby: () => standby });
+    await host.beforeBuild();
+    standby.emit('simulation worker failed');
+    const proxy = host.take() as SwitchableController;
+    expect(proxy.standby).toBeNull();
+    expect(disposed).toBe(1);
+    expect(standby.listeners()).toBe(0); // nobody listens to it any more
+  });
+
   it('no standby is made on a page without the means, or when making it fails: the run still starts, without one', async () => {
     const { host } = await startOn();
     await host.beforeBuild();

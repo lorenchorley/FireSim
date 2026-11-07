@@ -166,6 +166,21 @@ describe('SwitchableController', () => {
     expect(d.standby).toBeNull();
   });
 
+  it('a standby that reported a failure before it was used is no use: it is finished with and not handed over (a restart then makes a fresh engine at once)', () => {
+    const standby = new Engine();
+    const c = new SwitchableController(new Engine(), standby);
+    standby.ev.emit('error', 'simulation worker failed');
+    expect(c.takeStandby()).toBeNull();
+    expect(standby.disposed).toBe(1);
+    expect(c.standby).toBeNull();
+    // a healthy one is handed over, and watching ends with the hand-over
+    const ok = new Engine();
+    const d = new SwitchableController(new Engine(), ok);
+    expect(d.takeStandby()).toBe(ok);
+    ok.ev.emit('error', 'late');
+    expect(ok.disposed).toBe(0);
+  });
+
   it('dispose also finishes an engine that was staged', () => {
     const b = new Engine();
     const c = new SwitchableController(new Engine());
