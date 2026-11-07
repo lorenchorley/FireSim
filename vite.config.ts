@@ -53,7 +53,7 @@ export default defineConfig(({ mode }) => ({
   worker: { format: 'es' as const },
   build: { target: 'es2022', sourcemap: mode !== 'capacitor', chunkSizeWarningLimit: 2000 },
   test: {
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts', 'desktop/**/*.test.ts'],
     environment: 'node',
     testTimeout: 60000,
   },

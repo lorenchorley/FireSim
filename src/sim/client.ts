@@ -40,7 +40,7 @@ class Events {
 }
 
 /** Shared protocol client: sends ToWorker messages through `send`, dispatches FromWorker messages to listeners. */
-abstract class ProtocolController implements SimController {
+export abstract class ProtocolController implements SimController {
   protected readonly events = new Events();
   private readonly pendingExplain = new Map<number, { resolve: (e: CellExplanation) => void; reject: (e: Error) => void }>();
   private reqId = 1;

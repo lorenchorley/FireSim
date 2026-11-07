@@ -19,7 +19,8 @@
     "test:fast": "FIRESIM_SKIP_SLOW=1 vitest run",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "provenance": "node scripts/build-demo-provenance.mjs"
+    "provenance": "node scripts/build-demo-provenance.mjs",
+    "desktop": "node desktop/run.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -39,8 +40,10 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
     "typescript": "~5.9.3",
     "vite": "^8.3.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "ws": "^8.22.1"
   }
 }
