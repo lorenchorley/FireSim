@@ -223,7 +223,9 @@ class Decoder {
     const o = v as Record<string, unknown>;
     if ('$ta' in o) return this.typedArray(o);
     if ('$num' in o) return this.number(o);
-    // In place: an own key `__proto__` (JSON.parse makes it a plain data property) is assigned as one, never as a prototype.
+    // JSON.parse makes an own key `__proto__` a plain data property. The encoder never writes one, and a consumer that copies or merges
+    // the object (Object.assign, a deep merge) would take it for a prototype: so it is not a frame.
+    if (Object.hasOwn(o, '__proto__')) throw new CodecError('The frame has a "__proto__" field.');
     for (const k of Object.keys(o)) o[k] = this.walk(o[k], depth + 1);
     return o;
   }

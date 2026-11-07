@@ -30,7 +30,6 @@ const forClient = (msg: FromWorker): FromWorker => (msg.type === 'error' ? { typ
 /** A message of the protocol is only for a simulation that exists: until the first `init` everything else would wait in a queue without a limit. */
 let initialised = false;
 let dropped = false;
-const limits = { ...(options.maxHeaderBytes !== undefined ? { maxHeaderBytes: options.maxHeaderBytes } : {}), ...(options.maxArrays !== undefined ? { maxArrays: options.maxArrays } : {}) };
 
 function post(msg: FromWorker): void {
   let bytes: Uint8Array;
@@ -51,7 +50,7 @@ port.on('message', (m: unknown) => {
   if (m instanceof Uint8Array) {
     let msg: ReturnType<typeof decodeMessage>;
     try {
-      msg = decodeMessage(m, limits);
+      msg = decodeMessage(m); // the decoder's own limits: a header of at most 8 MiB, at most 4096 typed arrays
     } catch (e) {
       post({ type: 'error', message: e instanceof CodecError ? `The desktop could not read a message: ${e.message}` : 'The desktop could not read a message.' });
       return;

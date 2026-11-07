@@ -385,13 +385,15 @@ describe('codec decoder meets damaged and hostile frames', () => {
     expect(() => decodeValue(frame(`${'{"a":'.repeat(depth)}1${'}'.repeat(depth)}`))).toThrow(CodecError);
   });
 
-  it('keeps __proto__ as an ordinary field and the prototype of every object untouched', () => {
-    const v = decodeValue(frame('{"type":"x","__proto__":{"polluted":1},"a":{"__proto__":{"deep":2}}}')) as Record<string, unknown>;
-    expect(Object.getPrototypeOf(v)).toBe(Object.prototype);
-    expect(Object.hasOwn(v, '__proto__')).toBe(true);
+  it('refuses a header with an own __proto__ field (the encoder never writes one), so that nothing a consumer copies or merges can change a prototype, and leaves every prototype alone', () => {
+    for (const header of ['{"type":"x","__proto__":{"polluted":1}}', '{"type":"x","a":{"__proto__":{"deep":2}}}', '{"type":"x","list":[{"__proto__":[1]}]}']) {
+      expect(() => decodeValue(frame(header)), header).toThrow(/"__proto__" field/);
+    }
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(({} as Record<string, unknown>).deep).toBeUndefined();
-    expect((v.a as object) instanceof Object).toBe(true);
-    expect(Object.getPrototypeOf(v.a)).toBe(Object.prototype);
+    // a key that merely contains the word, and a "constructor" field, are ordinary names
+    const ok = decodeValue(frame('{"type":"x","proto":1,"__proto":2,"constructor":{"a":1}}')) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(ok)).toBe(Object.prototype);
+    expect(ok.proto).toBe(1);
   });
 });

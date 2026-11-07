@@ -10,9 +10,6 @@ import { Worker } from 'node:worker_threads';
 export interface EngineWorkerData {
   simulation?: { minSnapshotWallMs?: number; tier?: 'auto' | 'fast' | 'standard' | 'high' };
   chunkMs?: number;
-  /** What the worker's decoder accepts of a frame (codec.ts DecodeLimits). */
-  maxHeaderBytes?: number;
-  maxArrays?: number;
 }
 
 /** The limits of a worker thread (`--worker-heap-mib`): its JavaScript heap. Typed arrays are outside it. */
