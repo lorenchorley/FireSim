@@ -4,6 +4,7 @@ import {
   CLOSED_LINK_HELP,
   CODE_LABEL,
   CODE_PLACEHOLDER,
+  CONTINUE_HERE,
   cleanName,
   coresWords,
   desktopChoiceLabel,
@@ -12,10 +13,11 @@ import {
   ENGINE_PROBLEM,
   ENGINE_THIS_DEVICE,
   engineWhereText,
+  RESTARTED_HERE,
   RUNNING_ON_DESKTOP,
 } from './desktopWords';
 
-const ALL: string[] = [CLOSED_LINK_HELP, ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
+const ALL: string[] = [CLOSED_LINK_HELP, CONTINUE_HERE, RESTARTED_HERE, ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
 
 describe('the words of the desktop engine are pinned (the Help entry and the README say the same in more words)', () => {
   it('the labels', () => {
@@ -24,7 +26,9 @@ describe('the words of the desktop engine are pinned (the Help entry and the REA
     expect(CODE_LABEL).toBe('Desktop code');
     expect(RUNNING_ON_DESKTOP).toBe('Running on the desktop');
     expect(CLOSED_LINK).toBe('The desktop connection closed.');
-    expect(CLOSED_LINK_HELP).toBe('The view keeps what was already computed. The desktop engine is gone, so this run cannot go on. Open the menu (top left) and start a new scenario on This device.');
+    expect(CONTINUE_HERE).toBe('Continue on this device');
+    expect(RESTARTED_HERE).toBe('Running on this device again, from the start.');
+    expect(CLOSED_LINK_HELP).toBe('Tap “Continue on this device” to run this scenario again here, from the start, with the fires and changes you marked. Until then the view keeps what the desktop had computed. Or open the menu (top left) and start a new scenario.');
     expect(desktopChoiceLabel({ name: 'Studio PC', cores: 8 })).toBe('Desktop (Studio PC, 8 cores)');
     expect(desktopChoiceLabel({ name: 'Laptop', cores: 1 })).toBe('Desktop (Laptop, 1 core)');
   });
@@ -48,6 +52,13 @@ describe('the words of the desktop engine are pinned (the Help entry and the REA
     for (const t of [...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM), CLOSED_LINK]) expect(t, t).toMatch(/[.…]$/);
     // a number is "about" (the voice of content.ts): the one minute a wrong code can cost
     expect(ENGINE_PROBLEM.refused).toContain('about a minute');
+  });
+
+  it('the action is said the same way everywhere, and the help line leads with it', () => {
+    expect(CLOSED_LINK_HELP.startsWith(`Tap “${CONTINUE_HERE}”`)).toBe(true);
+    expect(RESTARTED_HERE).toContain('again');
+    expect(RESTARTED_HERE).toContain('from the start');
+    expect(CONTINUE_HERE.length).toBeLessThan(26); // it must fit its button beside "Details" on a 360 px phone
   });
 
   it('the wrong-code sentence says what to do and does not blame the person', () => {
@@ -86,5 +97,6 @@ describe('the engine row of the debug statistics', () => {
     expect(engineWhereText({ ...run, rttMs: null })).toBe('Desktop Studio PC, 8 cores, Node v22.11.0, link not measured yet');
     expect(engineWhereText({ ...run, rttMs: Number.NaN })).toBe('Desktop Studio PC, 8 cores, Node v22.11.0, link not measured yet');
     expect(engineWhereText({ ...run, closed: true })).toBe('Desktop Studio PC, 8 cores, Node v22.11.0 (the connection closed)');
+    expect(engineWhereText({ ...run, closed: true, restarted: true })).toBe('This device (the run was started again here, from the start, after the desktop connection closed)');
   });
 });

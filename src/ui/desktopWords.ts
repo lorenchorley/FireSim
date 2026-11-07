@@ -15,8 +15,13 @@ export const RUNNING_ON_DESKTOP = 'Running on the desktop';
 /** What the error chip says when the link goes (the controller's own sentence, the same words). */
 export const CLOSED_LINK = 'The desktop connection closed.';
 
-/** The help line of the Insights tab's error note on a run that computed on the desktop (the note itself keeps the link's sentence). */
-export const CLOSED_LINK_HELP = 'The view keeps what was already computed. The desktop engine is gone, so this run cannot go on. Open the menu (top left) and start a new scenario on This device.';
+/** The action in the error chip (and in the note on Setup) when the desktop is gone: start the same scenario again on this device. Never automatic. */
+export const CONTINUE_HERE = 'Continue on this device';
+/** What is said when it was tapped: the label on the map for the rest of that run, and the announcement. */
+export const RESTARTED_HERE = 'Running on this device again, from the start.';
+/** The help line of the Insights tab's error note on a run whose desktop went away (the note itself keeps the link's sentence). It leads with the action. */
+export const CLOSED_LINK_HELP =
+  'Tap “Continue on this device” to run this scenario again here, from the start, with the fires and changes you marked. Until then the view keeps what the desktop had computed. Or open the menu (top left) and start a new scenario.';
 
 /** The sentence under the Engine chips, by what is chosen and what is known. */
 export const ENGINE_HINT = {
@@ -50,8 +55,9 @@ export const coresWords = (n: number): string => `${n} ${n === 1 ? 'core' : 'cor
 export const desktopChoiceLabel = (h: Pick<HostInfo, 'name' | 'cores'>): string => `Desktop (${cleanName(h.name, CHIP_NAME_MAX)}, ${coresWords(h.cores)})`;
 
 /** The engine row of the debug statistics for a run on the desktop: its computer, Node and the round trip. */
-export function engineWhereText(run: { name: string; cores: number; node: string; rttMs: number | null; closed: boolean }): string {
+export function engineWhereText(run: { name: string; cores: number; node: string; rttMs: number | null; closed: boolean; restarted?: boolean }): string {
   const who = `Desktop ${cleanName(run.name)}, ${coresWords(run.cores)}, Node ${cleanName(run.node, 20)}`;
+  if (run.restarted) return 'This device (the run was started again here, from the start, after the desktop connection closed)';
   if (run.closed) return `${who} (the connection closed)`;
   const rtt = run.rttMs;
   return `${who}, link ${typeof rtt === 'number' && Number.isFinite(rtt) ? `${rtt < 10 ? rtt.toFixed(1) : Math.round(rtt)} ms` : 'not measured yet'}`;

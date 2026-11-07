@@ -58,6 +58,8 @@ export interface DesktopFacts {
   rttMs: number | null;
   /** The link is gone. */
   closed: boolean;
+  /** The person chose "Continue on this device": the run was started again here, so the computing is this phone's. */
+  restarted?: boolean;
 }
 
 /** The session's state that the statistics read. */
@@ -316,7 +318,7 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
   else {
     const s = e.perf?.speed.s10 ?? e.run.simSecondsPerWallSecond;
     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
-    const where = i.desktop ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
+    const where = i.desktop && !i.desktop.restarted ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
     line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
   }
   return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
@@ -331,7 +333,7 @@ function runGroup(i: DebugStatsInput): StatGroup {
     R('engine-source', 'Engine', i.engineSource === 'mock' ? 'Demo engine (nothing is simulated)' : 'Full model'),
   ];
   // Only a run that computes on the desktop has this row: on this device the line above says it all, and a paste from a phone is the same as before.
-  if (i.desktop) rows.push(R('engine-where', 'Engine runs on', engineWhereText(i.desktop), 'The desktop computes the run and this phone draws it', true));
+  if (i.desktop) rows.push(R('engine-where', 'Engine runs on', engineWhereText(i.desktop), i.desktop.restarted ? 'This phone computes the run again, from the start; nothing of the desktop run is in it' : 'The desktop computes the run and this phone draws it', true));
   const km = r ? `${fix(r.extentM / 1000, r.extentM % 1000 ? 1 : 0)}${NB}km` : '';
   if (!r) rows.push(R('place', 'Place', NO_RUN), R('clock', 'Run clock', NO_RUN, undefined, true));
   else
@@ -699,7 +701,7 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
       ? 'The demo engine is running, so nothing was measured.'
       : 'No run has measured this phone yet. Start a run, or look here again during one.'
     : e.atmosphere.kind === '3d'
-      ? `On ${i.desktop ? 'the desktop' : 'this phone'} the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
+      ? `On ${i.desktop && !i.desktop.restarted ? 'the desktop' : 'this phone'} the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
       : `The fast model has computed this run at about ${speedX(real)} real time${a && a.chosen === 'fast' ? `; the 3-D air step took about ${test} in the timing test` : ''}.`;
   const mem = e?.memory
     ? `The engine holds ${bytes(e.memory.totalBytes)}; ${heap && heap.limitBytes !== null ? `the screen thread's JavaScript heap is ${bytes(heap.usedBytes)} of a ${bytes(heap.limitBytes)} limit (the engine's own memory is not in that heap).` : "this phone does not report the screen thread's heap limit."}`
