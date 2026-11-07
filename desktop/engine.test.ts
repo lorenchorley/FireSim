@@ -293,6 +293,25 @@ describe('flow control with the real engine', () => {
   }, 240_000);
 });
 
+describe('a worker thread that dies', () => {
+  it('is reported to the page as one error line (no stack, no path) and ends the session with 1011, the worker gone', async () => {
+    const dying = join(work, 'dying-worker.mjs');
+    writeFileSync(dying, "import { parentPort } from 'node:worker_threads';\nparentPort.on('message', () => { throw new Error('boom\\n    at /secret/path/engine.js:1:1'); });\n");
+    const logs: string[] = [];
+    const h = await startHost({ distDir: work, port: 0, bind: '127.0.0.1', code: CODE, name: 'x', maxSessions: 1, engines: workerEngines(pathToFileURL(dying)), log: (l) => logs.push(l) });
+    hosts.push(h);
+    const c = await openClient(h.port);
+    hello(c, CODE);
+    expect((await welcomeOf(c))?.type).toBe('welcome');
+    c.ws.send(encodeMessage({ type: 'run', until: 10 }));
+    expect((await c.closed).code).toBe(1011);
+    const frame = c.received.find((m): m is Uint8Array => typeof m !== 'string')!;
+    expect(decodeMessage(frame)).toEqual({ type: 'error', message: 'The simulation engine stopped: boom' });
+    await waitFor(() => h.sessions === 0 && h.liveEngines === 0, 10000, 'the slot to be freed');
+    expect(logs.join('\n')).not.toContain('/secret/path');
+  }, 30_000);
+});
+
 describe('a session that ends leaves no worker behind', () => {
   it('closing the controller ends its worker thread and frees its slot, again and again', async () => {
     const h = await realHost({ maxSessions: 1 });
