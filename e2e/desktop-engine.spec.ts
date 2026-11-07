@@ -287,20 +287,21 @@ async function markThings(page: Page): Promise<void> {
   });
 }
 
-type Made = { kind: string; log: unknown[][] };
+type Made = { demoEngine: boolean; log: unknown[][] };
 
 /** Watch the engines the page makes from now on (its own `createController`, which gives the in-app engine once This device is chosen) and what each is sent. */
 async function watchLocalEngines(page: Page): Promise<void> {
   await page.evaluate(() => {
     type Engine = Record<string, (...a: unknown[]) => unknown>;
-    const w = window as unknown as { __local: { kind: string; log: unknown[][] }[]; __firesim: { services: { createController(): Engine } } };
+    const w = window as unknown as { __local: { demoEngine: boolean; log: unknown[][] }[]; __firesim: { services: { createController(): Engine } } };
     w.__local = [];
     const services = w.__firesim.services;
     const make = services.createController;
     services.createController = () => {
       const c = make();
       const log: unknown[][] = [];
-      w.__local.push({ kind: (c as unknown as object).constructor.name, log });
+      // (class names do not survive the production build: the demo engine is the one that holds its ignitions in a list of its own)
+      w.__local.push({ demoEngine: Array.isArray((c as unknown as { ignitions?: unknown }).ignitions), log });
       const say: Record<string, (a: any[]) => unknown[]> = {
         init: (a) => ['init', a[0].name, a[0].ignitions.length, a[0].edits.length],
         ignite: (a) => ['ignite', a[0].id, a[0].time],
@@ -358,7 +359,7 @@ test('the desktop link is cut mid-run: the chip offers "Continue on this device"
   await expect(go).toHaveCount(0);
   const made = await localEngines(page);
   expect(made).toHaveLength(1);
-  expect(made[0]!.kind).toBe('MockSimController'); // the in-app engine of this page (the demo engine under ?mock=1), through the page's own choice
+  expect(made[0]!.demoEngine).toBe(true); // the in-app engine of this page (the demo engine under ?mock=1), through the page's own choice
   // the same scenario, then the options, then the marks in the order they were made, each with its time
   expect(made[0]!.log.filter((c) => c[0] !== 'run')).toEqual([
     ['init', expect.any(String), 0, 0],

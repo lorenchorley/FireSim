@@ -8,6 +8,7 @@
 //   node scripts/audit-contrast-dom.mjs "http://localhost:5173/src/ui/styleguide.html?theme=dark&contrast=high" [--high] [--click a,b] [--wait id]
 //   --high        use the high-contrast thresholds (text 7, boundaries 4.5)
 //   --width 390 --height 844   viewport
+//   --settle ms     how long to wait before measuring (default 600; the screen's layout follows its own animation frames, slow in a software-GL browser)
 //   --init file.js  a script to run in the page before its own (e.g. e2e/desktop-stub.init.js: a stand-in desktop host, with ?debug=1 in the url)
 //   --all         print every measured element, not only the failures
 // Env: PW_CHROMIUM = path of the Chromium binary (default /opt/pw-browsers/chromium). Exit code 1 when something fails.
@@ -38,7 +39,7 @@ for (const id of (opt('click', '') ?? '').split(',').filter(Boolean)) {
 }
 const waitFor = opt('wait', '');
 if (waitFor) await page.getByTestId(waitFor).waitFor({ timeout: 90_000 });
-await page.waitForTimeout(600);
+await page.waitForTimeout(Number(opt('settle', 600)));
 
 const report = await page.evaluate((highContrast) => {
   const parse = (c) => {

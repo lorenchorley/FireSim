@@ -9,6 +9,7 @@
 //   --click a,b,c   click these data-testid values in order first (waits 500 ms after each)
 //   --wait id       wait until [data-testid=id] is visible before auditing
 //   --width 390 --height 844   viewport (default phone portrait)
+//   --settle ms     how long to wait before measuring (default 500; the screen's layout follows its own animation frames, slow in a software-GL browser)
 //   --init file.js  a script to run in the page before its own (e.g. e2e/desktop-stub.init.js: a stand-in desktop host, with ?debug=1 in the url)
 // Env: PW_CHROMIUM = path of the Chromium binary (default /opt/pw-browsers/chromium). Exit code 1 when something fails.
 import { chromium } from '@playwright/test';
@@ -37,7 +38,7 @@ for (const id of (opt('click', '') ?? '').split(',').filter(Boolean)) {
 }
 const waitFor = opt('wait', '');
 if (waitFor) await page.getByTestId(waitFor).waitFor({ timeout: 90_000 });
-await page.waitForTimeout(500);
+await page.waitForTimeout(Number(opt('settle', 500)));
 
 const problems = await page.evaluate(() => {
   const sel =
