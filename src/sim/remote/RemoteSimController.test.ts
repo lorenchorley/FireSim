@@ -170,7 +170,8 @@ describe('after the welcome', () => {
     c.on('snapshot', (x) => events.push(`snapshot ${x.time}`));
     c.on('status', (x) => events.push(`status ${x.time} ${x.running}`));
     c.on('rewound', (t) => events.push(`rewound ${t}`));
-    const scenario = { ...syntheticScenario({ extent: 1500, ignitions: [pointIgnition('a', 0, 0, 0, 30)] }), context: EMPTY_CONTEXT };
+    const base = syntheticScenario({ extent: 1500, ignitions: [pointIgnition('a', 0, 0, 0, 30)] });
+    const scenario = { ...base, context: { ...EMPTY_CONTEXT(base.origin), homes: new Float32Array(1000) } };
     const ready = c.init(scenario);
     c.run(600);
     c.pause();
