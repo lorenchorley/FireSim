@@ -3,7 +3,7 @@
  * only when the user starts a run on the desktop engine. `detect.ts` (the check that a host is there) is the only part in
  * the entry chunk.
  */
-import { detectHost, hostUrl, type RemoteHostInfo } from './detect';
+import { detectHost, type RemoteHostInfo } from './detect';
 import { RemoteAuthError, RemoteSimController, type SocketLike } from './RemoteSimController';
 import type { SimController } from '../protocol';
 
@@ -20,7 +20,7 @@ export interface RemoteConnection {
 
 /** `http://host:port/` to `ws://host:port/__firesim/engine` (and `https:` to `wss:`). */
 function engineUrl(base: string): string {
-  const u = new URL(hostUrl(base, '__firesim/engine'));
+  const u = new URL(`${base.replace(/\/$/, '')}/__firesim/engine`);
   u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
   return u.href;
 }

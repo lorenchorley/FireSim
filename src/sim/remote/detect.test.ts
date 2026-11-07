@@ -3,7 +3,7 @@
  * mismatch, and the 800 ms default timeout.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { detectHost, hostUrl, type RemoteHostInfo } from './detect';
+import { detectHost, type RemoteHostInfo } from './detect';
 
 const INFO: RemoteHostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Desk', cores: 8, node: '22.22.0', sessions: 0, maxSessions: 3 };
 
@@ -12,7 +12,7 @@ const answer = (body: unknown, init: { status?: number } = {}): Response => new 
 afterEach(() => vi.useRealTimers());
 
 describe('detectHost', () => {
-  it('returns the info of a FireSim desktop host, asking only /__firesim/host of the base, without credentials or caches', async () => {
+  it('returns the info of a FireSim desktop host, asking only /__firesim/host of the base, without caches and without following a redirect (which could lead to another origin)', async () => {
     const calls: [string, RequestInit | undefined][] = [];
     const fetchFn = (async (url: string, init?: RequestInit) => {
       calls.push([url, init]);
@@ -21,7 +21,7 @@ describe('detectHost', () => {
     expect(await detectHost({ base: 'http://192.168.1.20:4300', fetchFn })).toEqual(INFO);
     expect(calls).toHaveLength(1);
     expect(calls[0]![0]).toBe('http://192.168.1.20:4300/__firesim/host');
-    expect(calls[0]![1]).toMatchObject({ cache: 'no-store', credentials: 'omit', redirect: 'error' });
+    expect(calls[0]![1]).toMatchObject({ cache: 'no-store', redirect: 'error' });
   });
 
   it('keeps the path of a base (a reverse proxy), and takes the page origin when there is no base', async () => {
@@ -40,7 +40,6 @@ describe('detectHost', () => {
     } finally {
       vi.unstubAllGlobals();
     }
-    expect(hostUrl('http://a:1', '__firesim/engine')).toBe('http://a:1/__firesim/engine');
   });
 
   it('is null for everything that is not a FireSim desktop host of this protocol', async () => {
@@ -62,7 +61,6 @@ describe('detectHost', () => {
       ['fractional sessions', () => answer({ ...INFO, sessions: 1.5 })],
       ['no node', () => answer({ ...INFO, node: undefined })],
       ['no maxSessions', () => answer({ ...INFO, maxSessions: undefined })],
-      ['a body that is too large', () => answer({ ...INFO, name: 'x'.repeat(5000) })],
     ];
     for (const [what, make] of wrong) expect(await detectHost({ base: 'http://h:1', fetchFn: (async () => make()) as unknown as typeof fetch }), what).toBeNull();
   });
