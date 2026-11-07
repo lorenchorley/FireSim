@@ -79,6 +79,13 @@ from one address, that address is refused for 60 seconds (close code 4429), also
 also have been served by this host: the handshake of a page from any other origin is refused (the Origin check; a client with
 no Origin header, such as a script, is accepted and still needs the code).
 
+## What it costs
+
+Measured on a 4-core machine with the Katoomba demo site (6 km, fast tier): the idle host is about 70 MB; each session is a
+worker thread that adds about 110 MB when the scenario is loaded and about 100 MB more after half an hour of simulated fire
+(two such sessions at once: about 470 MB at the peak). A scenario is about 6.5 MB on the wire and one snapshot about 2.2 MB; a
+run at full speed streams about 27 MB/s to the page (more than a Wi-Fi link carries: see the flow control below).
+
 ## What it serves
 
 | Path | |
