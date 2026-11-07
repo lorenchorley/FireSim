@@ -51,7 +51,10 @@ export class RemoteSimController extends ProtocolController {
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private rtt: number | null = null;
   private erroredOnce = false;
+  private lastError: string | null = null;
   private sessionId: string | null = null;
+  private closedReason: string | null = null;
+  private readonly closeListeners = new Set<(reason: string) => void>();
 
   /** The host's id of this session (after `connect()`). */
   get session(): string | null {
@@ -61,6 +64,23 @@ export class RemoteSimController extends ProtocolController {
   /** The last measured round trip of the link (ms), or null before the first answer. */
   rttMs(): number | null {
     return this.rtt;
+  }
+
+  /**
+   * `cb(reason)` once when the link ends for any reason of its own (the socket closed or failed, the host ended the session): the
+   * reason is a plain sentence. `dispose()` is not such a reason and calls nothing. An engine error that the host forwards as an
+   * 'error' message is an 'error' event only, not the end of the link (unless the host then closes it). Registered after the link has
+   * ended, it is called at once (in a microtask). Returns the way to take `cb` off again.
+   */
+  onClosed(cb: (reason: string) => void): () => void {
+    if (this.closedReason !== null) {
+      const reason = this.closedReason;
+      let live = true;
+      queueMicrotask(() => live && cb(reason));
+      return () => void (live = false);
+    }
+    this.closeListeners.add(cb);
+    return () => void this.closeListeners.delete(cb);
   }
 
   /** Open the socket, say hello with the pairing `code`, wait for the welcome (10 s). Rejects with {@link RemoteAuthError} when the code is refused. */
@@ -92,6 +112,7 @@ export class RemoteSimController extends ProtocolController {
       ws.onopen = (): void => ws.send(JSON.stringify({ type: 'hello', protocol: PROTOCOL, code: o.code }));
       ws.onerror = (): void => {
         if (!settled) refuse(new Error('Could not reach the desktop.'));
+        else this.linkClosed(1006); // a socket that fails after the welcome is a link that has ended (the close that follows is then no news)
       };
       ws.onclose = (ev): void => {
         if (!settled) {
@@ -149,19 +170,38 @@ export class RemoteSimController extends ProtocolController {
   private linkClosed(code: number): void {
     this.socket = null;
     // The host reports why a session failed in an 'error' message just before it closes with 1011: that is the one error.
-    if (code === CLOSE_HOST_FAILED && this.erroredOnce) this.dispose();
+    if (code === CLOSE_HOST_FAILED && this.erroredOnce) this.end(this.lastError ?? 'The desktop connection closed.', false);
     else this.fail('The desktop connection closed.');
   }
 
   /** Say so once (waiting `init` and `explain` calls reject with the same sentence), then let go of the socket. */
   private fail(message: string): void {
     if (this.disposed) return;
-    this.receive({ type: 'error', message });
+    this.end(message, true);
+  }
+
+  /** The link is over: tell the listeners once, say `message` as an 'error' event if asked, and let go. */
+  private end(reason: string, asError: boolean): void {
+    if (this.disposed || this.closedReason !== null) return;
+    this.closedReason = reason; // first: a listener that asks to be told, while the 'error' event is being said, is told at once
+    const listeners = [...this.closeListeners];
+    this.closeListeners.clear();
+    if (asError) this.receive({ type: 'error', message: reason });
     this.dispose();
+    for (const cb of listeners) {
+      try {
+        cb(reason);
+      } catch (e) {
+        if (typeof console !== 'undefined') console.error('[FireSim] desktop link listener failed', e);
+      }
+    }
   }
 
   protected override receive(msg: FromWorker): void {
-    if (msg.type === 'error') this.erroredOnce = true;
+    if (msg.type === 'error') {
+      this.erroredOnce = true;
+      this.lastError = msg.message;
+    }
     super.receive(msg);
   }
 
@@ -178,7 +218,9 @@ export class RemoteSimController extends ProtocolController {
     }
   }
 
+  /** Let go of the link. This is the page's own doing, not an end of the link: no `onClosed` call (and none later). */
   override dispose(): void {
+    this.closeListeners.clear();
     this.disposeSocket(1000);
     super.dispose();
   }

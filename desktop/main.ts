@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { parseArgs, UsageError, USAGE } from './cli';
 import { workerEngines } from './engine';
 import { bindAddress, pageUrls } from './lan';
-import { generateCode } from './security';
+import { allowedHostNames, generateCode } from './security';
 import { startHost } from './server';
 
 export interface MainEnvironment {
@@ -59,7 +59,9 @@ export async function main(argv: readonly string[], env: MainEnvironment): Promi
       code,
       name: options.name,
       maxSessions: options.maxSessions,
-      engines: workerEngines(env.workerFile),
+      allowedHosts: allowedHostNames(hostname(), options.allowHosts),
+      maxFrameBytes: options.maxFrameMib * 1024 * 1024,
+      engines: workerEngines(env.workerFile, {}, { maxOldGenerationSizeMb: options.workerHeapMib }),
     });
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
@@ -73,13 +75,17 @@ export async function main(argv: readonly string[], env: MainEnvironment): Promi
     return 1;
   }
   const urls = pageUrls({ lan: options.lan, port: host.port, code, interfaces: networkInterfaces() });
-  // The one place the pairing code is printed. It is in the address, after the #, which a browser never sends to a server.
+  // The one place the pairing code is printed: in the address, after the #, which a browser never sends to a server (with --lan, in each address).
   console.log(`FireSim desktop host "${options.name}"`);
   console.log(options.lan ? 'Open one of these on this computer or on a phone on the same network:' : 'Open this on this computer:');
   for (const u of urls) console.log(`  ${u}`);
   if (options.lan && urls.length === 0) console.log('  (no network address found: connect to a network, or leave out --lan)');
-  console.log(`Pairing code: ${code}`);
+  console.log('Pairing code: the part of the address after #code= (the page asks for it when the address has none)');
   console.log(`Up to ${options.maxSessions} simulation${options.maxSessions === 1 ? '' : 's'} at once. ${options.lan ? 'There is no TLS: use this only on a network you trust. ' : ''}Ctrl+C stops it.`);
+  // A V8 flag is for every thread of the process, and it wins over the limit given to a worker.
+  if (/max-old-space-size/.test(`${process.env.NODE_OPTIONS ?? ''} ${process.execArgv.join(' ')}`)) {
+    console.log(`Note: --max-old-space-size is set for Node itself (NODE_OPTIONS or the command line), and it replaces --worker-heap-mib (${options.workerHeapMib}) for the simulation threads.`);
+  }
   if (options.open && urls[0]) openInBrowser(urls[0]);
 
   return new Promise<number>((resolve) => {

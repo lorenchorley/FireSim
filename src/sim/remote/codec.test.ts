@@ -10,7 +10,7 @@ import type { FromWorker, ToWorker } from '../protocol';
 import { Simulation } from '../simulation';
 import { difference } from '../testing/compare';
 import { demoScenario, pointIgnition, syntheticScenario } from '../testing/scenarios';
-import { CodecError, decodeMessage, decodeValue, encodeMessage, encodeValue } from './codec';
+import { CodecError, decodeMessage, decodeValue, encodeMessage, encodeValue, MAX_ARRAYS, MAX_HEADER_BYTES } from './codec';
 
 const isView = (v: unknown): v is ArrayBufferView => ArrayBuffer.isView(v);
 const bytesOf = (v: ArrayBufferView): Uint8Array => new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
@@ -187,6 +187,13 @@ describe('codec with real data', () => {
     const msg: ToWorker = { type: 'init', scenario: sent };
     const frame = encodeMessage(msg);
     expect(frame.byteLength).toBeGreaterThan(1_000_000);
+    // What the decoder's limits must leave room for: the real scenario's header and its number of arrays.
+    const headerBytes = new DataView(frame.buffer).getUint32(0, true);
+    let arrays = 0;
+    everyArray(msg, () => arrays++);
+    process.stderr.write(`[codec] Katoomba init: header ${headerBytes} bytes, ${arrays} typed arrays, frame ${frame.byteLength} bytes\n`);
+    expect(headerBytes).toBeLessThan(MAX_HEADER_BYTES / 8);
+    expect(arrays).toBeLessThan(MAX_ARRAYS / 8);
     const back = decodeMessage(frame) as { type: 'init'; scenario: ScenarioData };
     expect(difference(back, msg)).toBeNull();
     expect(back.scenario.context).toBeUndefined();
@@ -214,6 +221,7 @@ describe('codec refuses what it cannot carry', () => {
     ['a typed array subclass of nothing known (a boxed number)', { n: new Number(1) }, /a Number .* at n/],
     ['the reserved key $ta', { $ta: 'f32' }, /reserved key "\$ta"/],
     ['the reserved key $num', { a: { $num: 'NaN' } }, /reserved key "\$num"/],
+    ['an own __proto__ key (it would be dropped, not carried)', { a: JSON.parse('{"__proto__":{"x":1},"k":2}') }, /reserved key "__proto__" at a\.__proto__/],
   ];
   for (const [name, value, message] of cases) {
     it(`${name}`, () => {
@@ -337,19 +345,55 @@ describe('codec decoder meets damaged and hostile frames', () => {
     expect(Date.now() - t0).toBeLessThan(1000);
   });
 
+  it('refuses arrays that share bytes even when the total fits the body (the comment said they never do: now it is checked)', () => {
+    const body = new Uint8Array(64);
+    // 16 + 8 bytes claimed of 64, but the second starts inside the first.
+    expect(() => decodeValue(frame('{"type":"x","a":{"$ta":"f64","o":0,"n":2},"b":{"$ta":"f64","o":8,"n":1}}', body))).toThrow(/share bytes/);
+    expect(() => decodeValue(frame('{"type":"x","a":{"$ta":"u8","o":0,"n":8},"b":{"$ta":"u8","o":0,"n":8}}', body))).toThrow(/share bytes/);
+    // in the other order in the header too
+    expect(() => decodeValue(frame('{"type":"x","b":{"$ta":"f64","o":8,"n":1},"a":{"$ta":"f64","o":0,"n":2}}', body))).toThrow(/share bytes/);
+    // next to each other, or in any order, or empty ones anywhere, is fine
+    const ok = decodeValue(frame('{"type":"x","b":{"$ta":"f64","o":8,"n":1},"a":{"$ta":"f64","o":0,"n":1},"e":{"$ta":"u8","o":8,"n":0},"f":{"$ta":"u8","o":8,"n":0}}', body)) as { a: Float64Array; b: Float64Array };
+    expect(ok.a.length + ok.b.length).toBe(2);
+  });
+
+  it('refuses a message of more than 4096 typed arrays (a million empty ones cost the heap about 1 GB) before it has made them, and the limit can be set', () => {
+    const empties = (n: number): string => `{"type":"x","list":[${Array.from({ length: n }, () => '{"$ta":"u8","o":0,"n":0}').join(',')}]}`;
+    expect((decodeValue(frame(empties(4096))) as { list: unknown[] }).list).toHaveLength(4096);
+    expect(() => decodeValue(frame(empties(4097)))).toThrow(/more than 4096 typed arrays/);
+    const t0 = Date.now();
+    const heap = process.memoryUsage().heapUsed;
+    expect(() => decodeValue(frame(empties(200_000)))).toThrow(/more than 4096/); // a 5 MB header, under the header limit
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(process.memoryUsage().heapUsed - heap).toBeLessThan(200 * 1024 * 1024);
+    expect(() => decodeValue(frame(empties(4)), { maxArrays: 3 })).toThrow(/more than 3 typed arrays/);
+    expect(decodeValue(frame(empties(3)), { maxArrays: 3 })).toBeDefined();
+  });
+
+  it('refuses a header of more than 8 MiB (or the limit given) before it parses a byte of it', () => {
+    const pad = (bytes: number): string => `{"type":"x","pad":"${'a'.repeat(bytes - 21)}"}`;
+    expect(() => decodeValue(frame(pad(8 * 1024 * 1024 + 1)))).toThrow(/header is larger than 8388608 bytes/);
+    expect((decodeValue(frame(pad(8 * 1024 * 1024))) as { type: string }).type).toBe('x');
+    expect(() => decodeValue(frame(pad(1000)), { maxHeaderBytes: 999 })).toThrow(/larger than 999 bytes/);
+    // refused on its length alone: a header that is not even JSON gets the size message, not the parse one
+    expect(() => decodeValue(frame('x'.repeat(9 * 1024 * 1024)))).toThrow(/larger than/);
+  });
+
   it('refuses a header nested deeper than any message, however long (an error, not a stack overflow)', () => {
     const depth = 50_000;
     expect(() => decodeValue(frame(`${'['.repeat(depth)}${']'.repeat(depth)}`))).toThrow(CodecError);
     expect(() => decodeValue(frame(`${'{"a":'.repeat(depth)}1${'}'.repeat(depth)}`))).toThrow(CodecError);
   });
 
-  it('keeps __proto__ as an ordinary field and the prototype of every object untouched', () => {
-    const v = decodeValue(frame('{"type":"x","__proto__":{"polluted":1},"a":{"__proto__":{"deep":2}}}')) as Record<string, unknown>;
-    expect(Object.getPrototypeOf(v)).toBe(Object.prototype);
-    expect(Object.hasOwn(v, '__proto__')).toBe(true);
+  it('refuses a header with an own __proto__ field (the encoder never writes one), so that nothing a consumer copies or merges can change a prototype, and leaves every prototype alone', () => {
+    for (const header of ['{"type":"x","__proto__":{"polluted":1}}', '{"type":"x","a":{"__proto__":{"deep":2}}}', '{"type":"x","list":[{"__proto__":[1]}]}']) {
+      expect(() => decodeValue(frame(header)), header).toThrow(/"__proto__" field/);
+    }
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(({} as Record<string, unknown>).deep).toBeUndefined();
-    expect((v.a as object) instanceof Object).toBe(true);
-    expect(Object.getPrototypeOf(v.a)).toBe(Object.prototype);
+    // a key that merely contains the word, and a "constructor" field, are ordinary names
+    const ok = decodeValue(frame('{"type":"x","proto":1,"__proto":2,"constructor":{"a":1}}')) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(ok)).toBe(Object.prototype);
+    expect(ok.proto).toBe(1);
   });
 });

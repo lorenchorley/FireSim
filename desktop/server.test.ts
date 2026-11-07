@@ -6,12 +6,13 @@
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { connect as connectTcp } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { decodeMessage, encodeMessage } from '../src/sim/remote/codec';
 import { CLOSE, startHost, type HostHandle, type HostOptions } from './server';
-import { fakeEngines, hello, openClient, waitFor, welcomeOf, type FakeEngine, type TestClient } from './testHelpers';
+import { fakeEngines, hello, openClient, rawUpgrade, waitFor, welcomeOf, type FakeEngine, type TestClient } from './testHelpers';
 
 const CODE = 'ABCD2345';
 const SECRET_ENV = 'env-secret-value-4f9a1c';
@@ -59,9 +60,9 @@ async function join_(port: number, code = CODE, o: Parameters<typeof openClient>
 }
 
 /** A raw GET with the path exactly as given. */
-function get(port: number, path: string, method = 'GET'): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+function get(port: number, path: string, method = 'GET', headers: Record<string, string> = {}): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, method }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), headers: res.headers }));
@@ -470,4 +471,205 @@ describe('flow control, heartbeat and stop', () => {
     await connect(h.port);
     await expect(openClient(h.port)).rejects.toMatchObject({ status: 503 });
   });
+});
+
+describe('host allowlist (DNS rebinding)', () => {
+  const ALLOWED = ['desk-pc', 'desk-pc.local', 'rebinder-friend.lan'];
+
+  it('refuses a request whose Host header is not a name of this computer: 421 and an empty body, for the app, the host info and every other path', async () => {
+    const { h, logs } = await host({ allowedHosts: ALLOWED });
+    const evil = `attacker.example:${h.port}`;
+    for (const path of ['/__firesim/host', '/', '/index.html', '/assets/x.js', '/__firesim/engine', '/nope']) {
+      const r = await get(h.port, path, 'GET', { Host: evil });
+      expect(r.status, path).toBe(421);
+      expect(r.body, path).toBe('');
+      expect(r.headers['content-length'], path).toBe('0');
+    }
+    for (const host_ of ['localhost.attacker.example', '127.0.0.1.attacker.example', 'desk-pc.attacker.example', 'xdesk-pc.local', 'attacker.example']) {
+      expect((await get(h.port, '/__firesim/host', 'GET', { Host: host_ })).status, host_).toBe(421);
+    }
+    expect((await get(h.port, '/__firesim/host', 'HEAD', { Host: evil })).status).toBe(421);
+    expect((await get(h.port, '/__firesim/host', 'POST', { Host: evil })).status).toBe(421);
+    // and it says so, once for each name
+    expect(logs.filter((l) => l.includes('"attacker.example:'))).toHaveLength(1);
+    expect(logs.find((l) => l.includes('"attacker.example:'))).toContain('--allow-host');
+  });
+
+  it('refuses a request with no Host header at all (HTTP/1.0) and one with a Host that is not a host', async () => {
+    const { h } = await host({ allowedHosts: ALLOWED });
+    const rawStatus = (text: string): Promise<string> =>
+      new Promise((resolve) => {
+        const s = connectTcp(h.port, '127.0.0.1');
+        let buf = '';
+        s.on('data', (d: Buffer) => (buf += d.toString('latin1')));
+        s.on('close', () => resolve(/^HTTP\/1\.\d (\d+)/.exec(buf)?.[1] ?? 'none'));
+        s.on('connect', () => s.write(text));
+        setTimeout(() => s.destroy(), 1500);
+      });
+    expect(await rawStatus('GET /__firesim/host HTTP/1.0\r\n\r\n')).toBe('421');
+    expect(await rawStatus('GET /__firesim/host HTTP/1.1\r\nHost: user@127.0.0.1\r\nConnection: close\r\n\r\n')).toBe('421');
+    expect(await rawStatus('GET /__firesim/host HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')).toBe('200');
+  });
+
+  it('serves every allowed form: an IPv4 literal, an IPv6 literal, localhost, the computer name and its .local name, and an --allow-host name, with or without a port', async () => {
+    const { h } = await host({ allowedHosts: ALLOWED });
+    for (const host_ of [`127.0.0.1:${h.port}`, '127.0.0.1', '192.168.1.20:4300', `[::1]:${h.port}`, `localhost:${h.port}`, 'LOCALHOST', 'desk-pc', `DESK-PC.local:${h.port}`, 'rebinder-friend.lan', `Rebinder-Friend.LAN:${h.port}`]) {
+      const r = await get(h.port, '/__firesim/host', 'GET', { Host: host_ });
+      expect(r.status, host_).toBe(200);
+      expect(JSON.parse(r.body).app, host_).toBe('firesim-desktop-host');
+      expect((await get(h.port, '/', 'GET', { Host: host_ })).status, host_).toBe(200);
+    }
+  });
+
+  it('refuses the WebSocket handshake of a rebound page (Origin and Host are both the attacker\'s name) with the same 421, and an allowed name gets through', async () => {
+    const { h, engines } = await host({ allowedHosts: ALLOWED, maxSessions: 10 });
+    const evil = `attacker.example:${h.port}`;
+    await expect(openClient(h.port, { host: evil, origin: `http://${evil}` })).rejects.toMatchObject({ status: 421 });
+    await expect(openClient(h.port, { host: evil })).rejects.toMatchObject({ status: 421 });
+    await expect(openClient(h.port, { host: 'xdesk-pc.local', origin: 'http://xdesk-pc.local' })).rejects.toMatchObject({ status: 421 });
+    expect(engines).toHaveLength(0);
+    for (const name of [`localhost:${h.port}`, `desk-pc.local:${h.port}`, `rebinder-friend.lan:${h.port}`, `[::1]:${h.port}`, `127.0.0.1:${h.port}`]) {
+      expect((await join_(h.port, CODE, { host: name, origin: `http://${name}` })).welcome?.type, name).toBe('welcome');
+    }
+  });
+
+  it('does not touch the rate-limit counter: any number of refused-Host handshakes, with wrong codes ready to send, leave the owner his five tries and a right code', async () => {
+    const { h, engines } = await host({ allowedHosts: ALLOWED });
+    const evil = `attacker.example:${h.port}`;
+    for (let i = 0; i < 12; i++) {
+      try {
+        const c = await connect(h.port, { host: evil, origin: `http://${evil}` });
+        hello(c, `WRONGWR${i % 10}`);
+        await c.closed;
+      } catch {
+        /* refused at the handshake: nothing to send */
+      }
+    }
+    expect(engines).toHaveLength(0);
+    for (let i = 0; i < 4; i++) {
+      const { c } = await join_(h.port, 'WRONGWRO');
+      expect((await c.closed).code).toBe(4401); // not 4429: the twelve did not count
+    }
+    expect((await join_(h.port, CODE)).welcome?.type).toBe('welcome');
+  });
+
+  it('keeps the log short under a flood of forged names', async () => {
+    const { h, logs } = await host({ allowedHosts: ALLOWED });
+    for (let i = 0; i < 100; i++) await get(h.port, '/__firesim/host', 'GET', { Host: `n${i}.attacker.example` });
+    expect(logs.filter((l) => l.includes('is not a name of this computer')).length).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('connections that have not said hello', () => {
+  it('a silent connection that never answers a close gives its slot back within a second of the hello time, and the socket is dropped', async () => {
+    const { h } = await host({ helloTimeoutMs: 300 });
+    const socks: Awaited<ReturnType<typeof rawUpgrade>>[] = [];
+    for (let i = 0; i < 4; i++) socks.push(await rawUpgrade(h.port));
+    expect(h.pending).toBe(4);
+    await waitFor(() => h.pending === 0, 1000, 'the slots to be given back after the hello time (300 ms)');
+    await waitFor(() => socks.every((s) => s.closed()), 3000, 'the sockets to be dropped');
+    expect((await join_(h.port)).welcome?.type).toBe('welcome');
+  });
+
+  it('16 silent connections from one address take 4 slots and leave the rest free: another address is not blocked', async () => {
+    const { h } = await host({ helloTimeoutMs: 5000 });
+    const statuses: number[] = [];
+    const socks = [];
+    for (let i = 0; i < 16; i++) {
+      const r = await rawUpgrade(h.port).catch(() => ({ status: 0, socket: null }));
+      statuses.push(r.status);
+      if (r.socket) socks.push(r.socket);
+    }
+    expect(statuses.filter((s) => s === 101)).toHaveLength(4);
+    expect(statuses.filter((s) => s === 503)).toHaveLength(12);
+    expect(h.pending).toBe(4);
+    // another address (127.0.0.2 is this computer too) gets in, and so does a welcome
+    expect((await join_(h.port, CODE, { localAddress: '127.0.0.2' })).welcome?.type).toBe('welcome');
+    expect((await rawUpgrade(h.port, { localAddress: '127.0.0.3' })).status).toBe(101);
+    for (const s of socks) s.destroy();
+  });
+
+  it('the per-address count follows connections that say hello or go away, and the limit can be set', async () => {
+    const { h } = await host({ maxPendingPerAddress: 2, helloTimeoutMs: 5000 });
+    const a = await connect(h.port);
+    const b = await connect(h.port);
+    await expect(openClient(h.port)).rejects.toMatchObject({ status: 503 });
+    hello(a, CODE); // a is no longer waiting
+    await welcomeOf(a);
+    const c = await connect(h.port);
+    await expect(openClient(h.port)).rejects.toMatchObject({ status: 503 });
+    b.ws.terminate(); // b goes away
+    await waitFor(() => h.pending === 1, 3000, 'b to be forgotten');
+    const d = await connect(h.port);
+    expect(h.pending).toBe(2);
+    c.ws.terminate();
+    d.ws.terminate();
+  });
+});
+
+describe('limits on what a session may send and may owe', () => {
+  it('a session that pings more than 20 times in a second is closed (1008) and its engine ended; 20 pings are fine', async () => {
+    const { h, engines, logs } = await host();
+    const ok = await join_(h.port);
+    for (let i = 0; i < 20; i++) ok.c.ws.send(encodeMessage({ type: 'ping', t: i }));
+    await waitFor(() => ok.c.received.length === 21, 3000, 'twenty pongs');
+    expect(ok.c.ws.readyState).toBe(ok.c.ws.OPEN);
+    const { c } = await join_(h.port);
+    for (let i = 0; i < 25; i++) c.ws.send(encodeMessage({ type: 'ping', t: i }));
+    expect((await c.closed).code).toBe(1008);
+    await waitFor(() => engines[1]!.terminated === 1, 3000, 'the engine to end');
+    expect(logs.some((l) => l.includes('more than 20 pings in a second'))).toBe(true);
+    expect(c.received.filter((m) => typeof m !== 'string').length).toBeLessThanOrEqual(20); // no more than the pongs it was owed
+  });
+
+  it('a session that sends more messages of any kind than the limit in a second is closed (1008)', async () => {
+    const { h, engines } = await host({ messagesPerSecond: 50 });
+    const { c } = await join_(h.port);
+    const pause = encodeMessage({ type: 'pause' });
+    for (let i = 0; i < 60; i++) c.ws.send(pause);
+    expect((await c.closed).code).toBe(1008);
+    expect(engines[0]!.frames.length).toBeLessThanOrEqual(50);
+    await waitFor(() => engines[0]!.terminated === 1, 3000, 'the engine to end');
+  });
+
+  it('closes a session that has had more than the limit waiting to be sent for longer than the grace time, and not one that catches up in time', async () => {
+    const flood = (e: FakeEngine, mib: number): void => {
+      for (let i = 0; i < mib; i++) e.events.frame(new Uint8Array(1024 * 1024));
+    };
+    const { h, engines, logs } = await host({ maxBufferedBytes: 4 * 1024 * 1024, maxBufferedMs: 600, highWaterBytes: 1 << 30, lowWaterBytes: 1 << 29 });
+    // one that reads too slowly for too long
+    const slow = await join_(h.port);
+    (slow.c.ws as unknown as { _socket: { pause(): void } })._socket.pause();
+    flood(engines[0]!, 80);
+    // The host gives up on it after 600 ms (its close frame is queued behind the frames it owes, and the socket is dropped soon after).
+    await waitFor(() => engines[0]!.terminated === 1 && h.sessions === 0, 8000, 'the session to end');
+    expect(logs.some((l) => l.includes('waited to be sent for over 600 ms'))).toBe(true);
+    (slow.c.ws as unknown as { _socket: { resume(): void } })._socket.resume();
+    await slow.c.closed;
+    // one that is behind for a moment and then reads
+    const brief = await join_(h.port);
+    (brief.c.ws as unknown as { _socket: { pause(): void; resume(): void } })._socket.pause();
+    flood(engines[1]!, 80);
+    await new Promise((r) => setTimeout(r, 100));
+    (brief.c.ws as unknown as { _socket: { resume(): void } })._socket.resume();
+    await waitFor(() => brief.c.received.length === 81, 10000, 'all frames');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(brief.c.ws.readyState).toBe(brief.c.ws.OPEN);
+  }, 30000);
+
+  it('takes frames up to 128 MiB by default and says 1009 above it', async () => {
+    const { h, engines } = await host();
+    const { c } = await join_(h.port);
+    // the header of a masked 128 MiB + 1 frame: ws refuses it from the header, before any of the payload is sent
+    const header = Buffer.alloc(14);
+    header[0] = 0x82;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(128 * 1024 * 1024 + 1), 2);
+    (c.ws as unknown as { _socket: { write(b: Buffer): void } })._socket.write(header);
+    expect((await c.closed).code).toBe(1009);
+    expect(engines[0]!.frames).toHaveLength(0);
+    const ok = await join_(h.port);
+    ok.c.ws.send(new Uint8Array(20 * 1024 * 1024));
+    await waitFor(() => engines[1]!.frames.length === 1, 10000, 'the 20 MiB frame');
+  }, 30000);
 });

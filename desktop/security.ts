@@ -3,6 +3,7 @@
  * wrong ones and the check of where a browser page came from. Pure functions and one small class, so each is tested alone.
  */
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { isIPv4, isIPv6 } from 'node:net';
 
 /** No I, O, 0 or 1: a code is read aloud and typed on a phone. */
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -46,6 +47,36 @@ export function originAllowed(origin: string | undefined, host: string | undefin
     return false; // includes the literal "null" of a sandboxed or file page
   }
   return (u.protocol === 'http:' || u.protocol === 'https:') && u.host.toLowerCase() === host.toLowerCase();
+}
+
+/**
+ * The names under which a browser may reach this host (the `Host` header of every request and handshake). A page that a
+ * DNS-rebinding attacker serves from his own name reaches this computer with that name in `Host` and an `Origin` that matches it,
+ * so the Origin check alone lets it through; the host name is what it cannot fake. Allowed: an IPv4 literal, a bracketed IPv6
+ * literal, `localhost`, and the names in `names` (this computer's name, `<name>.local` and the `--allow-host` ones). Anything else,
+ * and a header that is missing or is not a host and an optional port, is refused.
+ */
+export function hostAllowed(header: string | undefined, names: readonly string[]): boolean {
+  if (!header || header.length > 255) return false;
+  const m = /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$/.exec(header);
+  if (!m || (m[2] !== undefined && Number(m[2]) > 65535)) return false;
+  const host = m[1]!.toLowerCase();
+  if (host.startsWith('[')) return isIPv6(host.slice(1, -1));
+  return isIPv4(host) || host === 'localhost' || names.includes(host);
+}
+
+/** This computer's names for `hostAllowed`: its host name, the same with `.local` (what a phone's mDNS finds), and the extra names, in lower case. */
+export function allowedHostNames(hostname: string, extra: readonly string[] = []): string[] {
+  const own = hostname.trim().toLowerCase();
+  const names = own ? [own, ...(own.endsWith('.local') ? [] : [`${own}.local`])] : [];
+  return [...new Set([...names, ...extra.map((x) => x.toLowerCase())])];
+}
+
+/** A name for `--allow-host`: letters, digits, dots and hyphens (no port, no brackets), at most 253 characters; lower-cased, or null. */
+export function normaliseHostName(s: unknown): string | null {
+  if (typeof s !== 'string') return null;
+  const t = s.trim().toLowerCase();
+  return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(t) && t.length <= 253 ? t : null;
 }
 
 /** The address a connection counts under: IPv4-mapped IPv6 addresses are the IPv4 address. */
@@ -113,5 +144,25 @@ export class RateLimiter {
     for (const [k, e] of this.entries) if (e.blockedUntil <= now && now - e.last > this.forgetMs) this.entries.delete(k);
     // Still full of addresses that are refused or recent: the oldest go (a flood of addresses cannot grow the table).
     while (this.entries.size >= this.capacity) this.entries.delete(this.entries.keys().next().value as string);
+  }
+}
+
+/** Counts events in windows of `windowMs` (default one second); the time is passed in. For the ping and message limits of a session. */
+export class FixedWindowCounter {
+  private start = -Infinity;
+  private count = 0;
+
+  constructor(
+    private readonly limit: number,
+    private readonly windowMs = 1000,
+  ) {}
+
+  /** Count one event at `now`; true when this window has now had more than `limit` of them. */
+  exceeded(now: number): boolean {
+    if (now - this.start >= this.windowMs) {
+      this.start = now;
+      this.count = 0;
+    }
+    return ++this.count > this.limit;
   }
 }

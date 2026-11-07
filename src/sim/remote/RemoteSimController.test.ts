@@ -299,3 +299,117 @@ describe('after the welcome', () => {
     await expect(p).rejects.toThrow();
   });
 });
+
+describe('onClosed (the end of the link, told once)', () => {
+  /** A connected controller with a listener that records what it is told. */
+  async function watched(): Promise<{ c: RemoteSimController; s: FakeSocket; errors: string[]; told: string[] }> {
+    const { c, s, errors } = await connected();
+    const told: string[] = [];
+    c.onClosed((r) => told.push(r));
+    return { c, s, errors, told };
+  }
+
+  it('is told once, with a plain sentence, for a close with any code (the host ending the session with 1011, 1001, 4xxx included), and the controller still says its error event once', async () => {
+    for (const code of [1006, 1005, 1000, 1001, 1008, 1011, 4400, 4401, 4429, 4503, 4999]) {
+      const { s, errors, told } = await watched();
+      s.hangUp(code);
+      s.hangUp(code); // a second close event changes nothing
+      expect(told, String(code)).toEqual(['The desktop connection closed.']);
+      expect(errors, String(code)).toEqual(['The desktop connection closed.']);
+    }
+  });
+
+  it('is told for a socket that fails after the welcome, and once only when the close follows', async () => {
+    const { s, errors, told } = await watched();
+    s.onerror?.({});
+    expect(told).toEqual(['The desktop connection closed.']);
+    s.hangUp(1006);
+    expect(told).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("is told the engine's own sentence when the host reports a failure and then closes with 1011, and there is the one error event", async () => {
+    const { s, errors, told } = await watched();
+    s.frame({ type: 'error', message: 'The simulation engine stopped: boom' });
+    expect(told).toEqual([]); // the message alone is not the end of the link
+    s.hangUp(1011);
+    expect(told).toEqual(['The simulation engine stopped: boom']);
+    expect(errors).toEqual(['The simulation engine stopped: boom']);
+  });
+
+  it('is not told of an engine error that the host forwards, and is told when the link then ends', async () => {
+    const { c, s, errors, told } = await watched();
+    s.frame({ type: 'error', message: 'Cannot read properties of undefined' });
+    s.frame({ type: 'error', message: 'and again' });
+    expect(errors).toEqual(['Cannot read properties of undefined', 'and again']);
+    expect(told).toEqual([]);
+    expect(s.closedWith).toBeNull();
+    c.run(5); // the link works
+    expect(s.messages().at(-1)).toEqual({ type: 'run', until: 5 });
+    s.hangUp(1006);
+    expect(told).toEqual(['The desktop connection closed.']);
+  });
+
+  it('is not told when the page lets go (dispose), not then and not when the socket closes afterwards', async () => {
+    const { c, s, errors, told } = await watched();
+    c.dispose();
+    s.hangUp(1000);
+    s.onerror?.({});
+    expect(told).toEqual([]);
+    expect(errors).toEqual([]);
+    // and a listener added after dispose is never told either
+    const later: string[] = [];
+    c.onClosed((r) => later.push(r));
+    s.hangUp(1006);
+    await Promise.resolve();
+    expect(later).toEqual([]);
+  });
+
+  it('is told when the host sends something unreadable, and when the controller cannot send', async () => {
+    const a = await watched();
+    a.s.say(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer);
+    expect(a.told).toEqual(['The desktop sent a message this page could not read.']);
+    expect(a.s.closedWith).toBe(1000);
+    const b = await watched();
+    void b.c.init({ ...syntheticScenario({ extent: 1500 }), name: new Map() } as never).catch(() => undefined);
+    expect(b.told).toEqual(['The desktop connection could not send a message.']);
+  });
+
+  it('tells every listener once, in order, survives a listener that throws, and the unsubscribe takes one off', async () => {
+    const { c, s } = await connected();
+    const log: string[] = [];
+    const off = c.onClosed(() => log.push('removed'));
+    c.onClosed(() => {
+      throw new Error('a listener that fails');
+    });
+    c.onClosed((r) => log.push(`a:${r}`));
+    c.onClosed((r) => log.push(`b:${r}`));
+    off();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    s.hangUp(1006);
+    expect(log).toEqual(['a:The desktop connection closed.', 'b:The desktop connection closed.']);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('is told at once (in a microtask) by a listener added after the link ended, unless it is taken off first', async () => {
+    const { c, s } = await connected();
+    s.hangUp(1001);
+    const got: string[] = [];
+    c.onClosed((r) => got.push(r));
+    const off = c.onClosed((r) => got.push(`never ${r}`));
+    off();
+    expect(got).toEqual([]);
+    await Promise.resolve();
+    expect(got).toEqual(['The desktop connection closed.']);
+  });
+
+  it('can register from inside the error event of the very failure', async () => {
+    const { c, s } = await connected();
+    const got: string[] = [];
+    c.on('error', () => void c.onClosed((r) => got.push(r)));
+    s.hangUp(1006);
+    await Promise.resolve();
+    expect(got).toEqual(['The desktop connection closed.']);
+  });
+});

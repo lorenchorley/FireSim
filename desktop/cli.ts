@@ -2,7 +2,7 @@
  * The flags of `npm run desktop` (contract 0.8.0 J, 3.2): `--port N`, `--lan`, `--code XXXXXXXX`, `--max-sessions N`,
  * `--open`, `--name TEXT`, and `--help`. Pure parsing, so it is tested without a process.
  */
-import { normaliseCode } from './security';
+import { normaliseCode, normaliseHostName } from './security';
 
 export interface CliOptions {
   port: number;
@@ -12,12 +12,20 @@ export interface CliOptions {
   maxSessions: number;
   open: boolean;
   name: string;
+  /** Extra names under which a browser may reach the host (`--allow-host`, repeatable). */
+  allowHosts: string[];
+  /** The largest frame a client may send, in MiB (`--max-frame-mib`). */
+  maxFrameMib: number;
+  /** The JavaScript heap of one session's worker thread, in MiB (`--worker-heap-mib`). */
+  workerHeapMib: number;
   help: boolean;
 }
 
 export class UsageError extends Error {}
 
 export const DEFAULT_PORT = 4300;
+export const DEFAULT_MAX_FRAME_MIB = 128;
+export const DEFAULT_WORKER_HEAP_MIB = 4096;
 
 /** At most 4 sessions and always one core left for the host itself and the browser. */
 export const defaultMaxSessions = (cores: number): number => Math.max(1, Math.min(4, cores - 1));
@@ -31,6 +39,11 @@ export const USAGE = `Usage: npm run desktop [-- flags]
   --max-sessions N  simulations that may run at once (default: cores - 1, at most 4, at least 1)
   --open            open the page in the default browser
   --name TEXT       the name users see (default: this computer's name)
+  --allow-host NAME a name a browser may use to reach this computer, besides an IP address, localhost, this computer's
+                    own name and its .local name (repeat it for more): a request that names the host any other way is
+                    refused with 421 (DNS rebinding), so a router's name for this computer needs this
+  --max-frame-mib N the largest message a page may send, in MiB (default ${DEFAULT_MAX_FRAME_MIB}; a 6 km scenario is 6.5 MB, a 9 km one at 10 m about 83 MB)
+  --worker-heap-mib N  the JavaScript heap of one simulation's worker thread, in MiB (default ${DEFAULT_WORKER_HEAP_MIB})
   --help            this text
 `;
 
@@ -47,7 +60,7 @@ export function cleanName(s: string): string {
 }
 
 export function parseArgs(argv: readonly string[], defaults: { cores: number; hostname: string }): CliOptions {
-  const o: CliOptions = { port: DEFAULT_PORT, lan: false, code: null, maxSessions: defaultMaxSessions(defaults.cores), open: false, name: cleanName(defaults.hostname) || 'FireSim desktop', help: false };
+  const o: CliOptions = { port: DEFAULT_PORT, lan: false, code: null, maxSessions: defaultMaxSessions(defaults.cores), open: false, name: cleanName(defaults.hostname) || 'FireSim desktop', allowHosts: [], maxFrameMib: DEFAULT_MAX_FRAME_MIB, workerHeapMib: DEFAULT_WORKER_HEAP_MIB, help: false };
   const args = [...argv];
   while (args.length) {
     const raw = args.shift()!;
@@ -71,6 +84,18 @@ export function parseArgs(argv: readonly string[], defaults: { cores: number; ho
       case '--max-sessions':
         o.maxSessions = integer(flag, value(), 1, 256);
         break;
+      case '--max-frame-mib':
+        o.maxFrameMib = integer(flag, value(), 1, 1024);
+        break;
+      case '--worker-heap-mib':
+        o.workerHeapMib = integer(flag, value(), 64, 1_048_576);
+        break;
+      case '--allow-host': {
+        const name = normaliseHostName(value());
+        if (!name) throw new UsageError('--allow-host needs a name of letters, digits, dots and hyphens (no port).');
+        o.allowHosts.push(name);
+        break;
+      }
       case '--code': {
         const code = normaliseCode(value());
         if (!code) throw new UsageError('--code must be 8 to 32 letters and digits.');

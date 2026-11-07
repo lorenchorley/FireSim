@@ -68,6 +68,20 @@ const NON_FINITE: Readonly<Record<string, number>> = { NaN: NaN, Infinity: Infin
 /** Nesting deeper than any message of the protocol (a cycle, or a hostile header, hits this and not the call stack). */
 const MAX_DEPTH = 128;
 
+/**
+ * What a decoder accepts before it allocates. A scenario of the 6 km Katoomba site has about 60 typed arrays and a header of
+ * a few KB; a header of tens of MB or a million empty arrays is not a message, and an 8 MiB header already costs the heap
+ * of the thread that reads it about 150 MB.
+ */
+export interface DecodeLimits {
+  /** The most bytes of header (default 8 MiB). */
+  maxHeaderBytes?: number;
+  /** The most typed arrays in one message (default 4096). */
+  maxArrays?: number;
+}
+export const MAX_HEADER_BYTES = 8 * 1024 * 1024;
+export const MAX_ARRAYS = 4096;
+
 const align8 = (n: number): number => Math.ceil(n / 8) * 8;
 
 function requireLittleEndian(): void {
@@ -121,7 +135,8 @@ class Encoder {
       const x = (obj as Record<string, unknown>)[k];
       if (x === undefined) continue;
       this.path.push(k);
-      if (k === '$ta' || k === '$num') this.fail(`the reserved key "${k}"`);
+      // `__proto__` could not come back as the field it was (JSON.parse would make it one, but a consumer that copies the object would change a prototype).
+      if (k === '$ta' || k === '$num' || k === '__proto__') this.fail(`the reserved key "${k}"`);
       out[k] = this.walk(x);
       this.path.pop();
     }
@@ -183,11 +198,19 @@ export function encodeMessage(msg: WireMessage): Uint8Array {
 // ── decoding ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 class Decoder {
-  /** Bytes of the body not yet claimed by an array: arrays never share bytes, so a header cannot make the decoder allocate more than the frame holds. */
+  /** Bytes of the body not yet claimed by an array: a header cannot make the decoder allocate more than the frame holds. */
   private budget: number;
+  private arrays = 0;
+  /** [start, end) of every array that has bytes, to check at the end that no two share any (the encoder never lets them). */
+  private readonly ranges: [number, number][] = [];
+  private readonly maxArrays: number;
 
-  constructor(private readonly body: Uint8Array) {
+  constructor(
+    private readonly body: Uint8Array,
+    limits: DecodeLimits,
+  ) {
     this.budget = body.byteLength;
+    this.maxArrays = limits.maxArrays ?? MAX_ARRAYS;
   }
 
   walk(v: unknown, depth: number): unknown {
@@ -200,9 +223,17 @@ class Decoder {
     const o = v as Record<string, unknown>;
     if ('$ta' in o) return this.typedArray(o);
     if ('$num' in o) return this.number(o);
-    // In place: an own key `__proto__` (JSON.parse makes it a plain data property) is assigned as one, never as a prototype.
+    // JSON.parse makes an own key `__proto__` a plain data property. The encoder never writes one, and a consumer that copies or merges
+    // the object (Object.assign, a deep merge) would take it for a prototype: so it is not a frame.
+    if (Object.hasOwn(o, '__proto__')) throw new CodecError('The frame has a "__proto__" field.');
     for (const k of Object.keys(o)) o[k] = this.walk(o[k], depth + 1);
     return o;
+  }
+
+  /** After the walk: two arrays that share a byte are not a frame an encoder made. */
+  checkRanges(): void {
+    this.ranges.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < this.ranges.length; i++) if (this.ranges[i]![0] < this.ranges[i - 1]![1]) throw new CodecError('Two typed arrays of the frame share bytes.');
   }
 
   private number(o: Record<string, unknown>): number {
@@ -212,6 +243,7 @@ class Decoder {
   }
 
   private typedArray(o: Record<string, unknown>): ArrayBufferView {
+    if (++this.arrays > this.maxArrays) throw new CodecError(`The frame has more than ${this.maxArrays} typed arrays.`);
     const { $ta: tag, o: offset, n } = o;
     const keys = Object.keys(o);
     const kind = typeof tag === 'string' && Object.hasOwn(KINDS, tag) ? KINDS[tag] : undefined;
@@ -222,18 +254,21 @@ class Decoder {
     const bytes = (n as number) * size;
     if ((offset as number) % 8 !== 0 || (offset as number) + bytes > this.body.byteLength || bytes > this.budget) throw new CodecError('A typed array of the frame lies outside its body.');
     this.budget -= bytes;
+    if (bytes > 0) this.ranges.push([offset as number, (offset as number) + bytes]);
     const out = new Ctor(n as number);
     new Uint8Array(out.buffer).set(this.body.subarray(offset as number, (offset as number) + bytes));
     return out;
   }
 }
 
-/** Decode one frame to the value it carries. */
-export function decodeValue(bytes: Uint8Array): unknown {
+/** Decode one frame to the value it carries (or throw a CodecError: see {@link DecodeLimits} for what is refused before anything is allocated). */
+export function decodeValue(bytes: Uint8Array, limits: DecodeLimits = {}): unknown {
   requireLittleEndian();
   if (bytes.byteLength < 4) throw new CodecError('The frame is too short.');
   const headerLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true);
   if (4 + headerLength > bytes.byteLength) throw new CodecError('The frame is shorter than its header says.');
+  const maxHeader = limits.maxHeaderBytes ?? MAX_HEADER_BYTES;
+  if (headerLength > maxHeader) throw new CodecError(`The frame header is larger than ${maxHeader} bytes.`);
   let tree: unknown;
   try {
     tree = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(4, 4 + headerLength)));
@@ -242,15 +277,18 @@ export function decodeValue(bytes: Uint8Array): unknown {
   }
   const bodyStart = align8(4 + headerLength);
   try {
-    return new Decoder(bytes.subarray(Math.min(bodyStart, bytes.byteLength))).walk(tree, 0);
+    const d = new Decoder(bytes.subarray(Math.min(bodyStart, bytes.byteLength)), limits);
+    const v = d.walk(tree, 0);
+    d.checkRanges();
+    return v;
   } catch (e) {
     if (e instanceof CodecError) throw e;
     throw new CodecError('The frame could not be decoded.');
   }
 }
 
-export function decodeMessage(bytes: Uint8Array): WireMessage {
-  const v = decodeValue(bytes);
+export function decodeMessage(bytes: Uint8Array, limits: DecodeLimits = {}): WireMessage {
+  const v = decodeValue(bytes, limits);
   if (v === null || typeof v !== 'object' || Array.isArray(v) || typeof (v as { type?: unknown }).type !== 'string') throw new CodecError('The frame is not a message.');
   return v as WireMessage;
 }

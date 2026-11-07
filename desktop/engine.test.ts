@@ -8,6 +8,7 @@
  *  - a worker that is terminated on close (no leak);
  *  - a throughput figure (MB/s and ms for a real scenario upload and a real snapshot), printed and not asserted.
  */
+import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -310,6 +311,114 @@ describe('a worker thread that dies', () => {
     await waitFor(() => h.sessions === 0 && h.liveEngines === 0, 10000, 'the slot to be freed');
     expect(logs.join('\n')).not.toContain('/secret/path');
   }, 30_000);
+});
+
+describe('what the engine takes of a client', () => {
+  it('drops everything but init until the first init (one log line, nothing waits in a queue), and then works', async () => {
+    const logs: string[] = [];
+    const h = await realHost({ maxSessions: 1, logs });
+    const c = await openRaw(h.port);
+    const before = [
+      { type: 'run', until: 100 },
+      { type: 'ignite', ignition: pointIgnition('early', 0, 0, 0, 60) },
+      { type: 'rewind', time: 0 },
+      { type: 'setOption', key: 'embers', value: false },
+    ] as const;
+    for (const m of before) c.send(encodeMessage(m as never));
+    await waitFor(() => logs.some((l) => l.includes('came before init')), 10000, 'the log line');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(c.all()).toHaveLength(0); // nothing came back: no error either
+    expect(logs.filter((l) => l.includes('came before init'))).toHaveLength(1);
+    expect(logs.find((l) => l.includes('came before init'))).toContain('dropped a "run" message');
+    expect(logs.join('\n')).not.toContain('early');
+    // The fire marked before init was dropped, not kept for later: a scenario with no ignitions has no fire.
+    c.send(encodeMessage({ type: 'init', scenario: syntheticScenario({ extent: 2400, ignitions: [], options: { snapshotInterval: 300 } }) }));
+    await waitFor(() => c.all().length >= 1, 30000, 'ready');
+    c.send(encodeMessage({ type: 'run', until: 600 }));
+    const snapshotAt600 = (): SimSnapshot | undefined =>
+      c
+        .all()
+        .filter((f) => f.byteLength > 5000)
+        .map((f) => decodeMessage(f))
+        .map((m) => (m as { snapshot?: SimSnapshot }).snapshot)
+        .find((s) => s?.time === 600);
+    await waitFor(() => snapshotAt600() !== undefined, 60000, 'the snapshot at 600 s');
+    expect(Array.from(snapshotAt600()!.fire.burnState).some((x) => x === 1 || x === 2)).toBe(false);
+    expect(logs.filter((l) => l.includes('came before init'))).toHaveLength(1);
+  }, 120_000);
+
+  it('refuses a message of more than 4096 typed arrays and a header of more than 8 MiB with an error, before it allocates, and goes on', async () => {
+    const h = await realHost({ maxSessions: 1 });
+    const c = await openRaw(h.port);
+    const frame = (header: string): Uint8Array => {
+      const bytes = new TextEncoder().encode(header);
+      const out = new Uint8Array(Math.ceil((4 + bytes.byteLength) / 8) * 8);
+      new DataView(out.buffer).setUint32(0, bytes.byteLength, true);
+      out.set(bytes, 4);
+      return out;
+    };
+    const errorAfter = async (f: Uint8Array, n: number): Promise<string> => {
+      c.send(f);
+      await waitFor(() => c.all().length >= n, 20000, 'the error');
+      const m = decodeMessage(c.all()[n - 1]!);
+      return m.type === 'error' ? m.message : m.type;
+    };
+    const empties = `{"type":"init","scenario":[${Array.from({ length: 5000 }, () => '{"$ta":"u8","o":0,"n":0}').join(',')}]}`;
+    expect(await errorAfter(frame(empties), 1)).toContain('more than 4096 typed arrays');
+    // the verifier's attack: a header of millions of empty arrays. 9 MiB of it is refused on its size.
+    const t0 = Date.now();
+    const huge = `{"type":"init","scenario":[${new Array(380_000).fill('{"$ta":"u8","o":0,"n":0}').join(',')}]}`;
+    expect(huge.length).toBeGreaterThan(8 * 1024 * 1024);
+    expect(await errorAfter(frame(huge), 2)).toContain('header is larger than 8388608 bytes');
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(h.sessions).toBe(1); // the session is still there
+    c.close();
+  }, 60_000);
+});
+
+describe("a worker thread's heap limit (--worker-heap-mib)", () => {
+  /**
+   * `workerEngines` run in a process of its own with a worker that fills the heap with about 300 MB of small objects, and what
+   * the host side was told. The process has no NODE_OPTIONS: a `--max-old-space-size` there is a V8 flag for every thread and wins
+   * over a worker's resourceLimits (this machine sets one, and so may a user's).
+   */
+  function fillHeap(limitMib: number | null, nodeOptions = ''): Promise<string> {
+    const hungry = join(work, 'hungry-worker.mjs');
+    writeFileSync(hungry, "import { parentPort } from 'node:worker_threads';\nparentPort.on('message', () => {\n  const keep = [];\n  for (let i = 0; i < 4_000_000; i++) keep.push({ a: i, b: [i, i + 1] });\n  parentPort.postMessage(new Uint8Array(1));\n});\n");
+    const script = `
+      import { workerEngines } from ${JSON.stringify(pathToFileURL(join(built.dir, 'engine.mjs')).href)};
+      const engine = workerEngines(new URL(${JSON.stringify(pathToFileURL(hungry).href)}), {}, ${limitMib === null ? '{}' : `{ maxOldGenerationSizeMb: ${limitMib} }`})({
+        frame: () => { console.log('survived'); process.exit(0); },
+        note: () => {},
+        failed: (m) => { console.log('failed: ' + m); process.exit(0); },
+        exited: () => {},
+      });
+      engine.receive(new Uint8Array([1]));
+      setTimeout(() => { console.log('nothing happened'); process.exit(1); }, 45000);
+    `;
+    const file = join(work, 'fill-heap.mjs'); // a file, not -e: the worker would inherit the -e of its parent
+    writeFileSync(file, script);
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [file], { env: { ...process.env, NODE_OPTIONS: nodeOptions }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      child.stdout.on('data', (d: Buffer) => (out += d.toString()));
+      child.stderr.on('data', (d: Buffer) => (out += d.toString()));
+      child.on('exit', () => resolve(out.trim()));
+    });
+  }
+
+  it('ends a worker that runs out of its heap, as an engine failure with a plain sentence', async () => {
+    const out = await fillHeap(48);
+    expect(out).toMatch(/^failed: The simulation engine stopped: Worker terminated due to reaching memory limit: JS heap out of memory/);
+  }, 60_000);
+
+  it('lets the same worker finish when no limit is given (so the limit above is the flag, nothing else)', async () => {
+    expect(await fillHeap(null)).toBe('survived');
+  }, 60_000);
+
+  it('is overridden by a --max-old-space-size in NODE_OPTIONS (a V8 flag of the whole process): said in the README', async () => {
+    expect(await fillHeap(48, '--max-old-space-size=8192')).toBe('survived');
+  }, 60_000);
 });
 
 describe('a session that ends leaves no worker behind', () => {

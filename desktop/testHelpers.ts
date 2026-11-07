@@ -3,6 +3,7 @@
  * read the close code and see the status of a refused handshake) and a small engine to stand in for the worker thread.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
+import { connect as tcpConnect, type Socket } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
@@ -16,7 +17,7 @@ import type { Engine, EngineEvents, EngineFactory } from './engine';
 export async function buildForTests(): Promise<{ dir: string; remove(): void }> {
   const here = fileURLToPath(new URL('.', import.meta.url));
   const dir = mkdtempSync(join(here, '.build-test-'));
-  await buildDesktop({ root: join(here, '..'), outDir: dir, logLevel: 'silent' });
+  await buildDesktop({ root: join(here, '..'), outDir: dir, logLevel: 'silent', extra: { engine: 'desktop/engine.ts' } });
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -45,6 +46,8 @@ export interface OpenOptions {
   path?: string;
   localAddress?: string;
   autoPong?: boolean;
+  /** The Host header to send instead of the address's own. */
+  host?: string;
 }
 
 /** Open a connection and wait for the handshake; rejects with the HTTP status when the handshake is refused (`error.status`). */
@@ -54,6 +57,7 @@ export function openClient(port: number, o: OpenOptions = {}): Promise<TestClien
       ...(o.origin !== undefined ? { origin: o.origin } : {}),
       ...(o.localAddress ? { localAddress: o.localAddress } : {}),
       ...(o.autoPong === false ? { autoPong: false } : {}),
+      ...(o.host !== undefined ? { headers: { Host: o.host } } : {}),
     });
     const received: (string | Uint8Array)[] = [];
     const closed = new Promise<{ code: number; reason: string }>((res) => ws.on('close', (code, reason) => res({ code, reason: reason.toString() })));
@@ -105,4 +109,28 @@ export function fakeEngines(): { factory: EngineFactory; made: FakeEngine[] } {
     return e;
   };
   return { factory, made };
+}
+
+/**
+ * A WebSocket upgrade written by hand on a bare socket, so that nothing answers the host's closing frame and nothing reads:
+ * the silent connection of a slow-loris. Resolves with the HTTP status of the answer; `socket` stays open until the test destroys it.
+ */
+export function rawUpgrade(port: number, o: { localAddress?: string; host?: string } = {}): Promise<{ status: number; socket: Socket; closed: () => boolean }> {
+  return new Promise((resolve, reject) => {
+    const socket = tcpConnect({ host: '127.0.0.1', port, ...(o.localAddress ? { localAddress: o.localAddress } : {}) });
+    let buf = '';
+    let isClosed = false;
+    socket.on('close', () => (isClosed = true));
+    socket.on('error', (e) => (isClosed ? undefined : reject(e)));
+    socket.on('connect', () =>
+      socket.write(`GET /__firesim/engine HTTP/1.1\r\nHost: ${o.host ?? `127.0.0.1:${port}`}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`),
+    );
+    const onData = (d: Buffer): void => {
+      buf += d.toString('latin1');
+      if (!buf.includes('\r\n\r\n')) return;
+      socket.off('data', onData); // what comes next is thrown away and never answered: the host's close frame included
+      resolve({ status: Number(/^HTTP\/1\.1 (\d+)/.exec(buf)![1]), socket, closed: () => isClosed });
+    };
+    socket.on('data', onData);
+  });
 }
