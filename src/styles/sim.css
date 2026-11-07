@@ -98,6 +98,12 @@
   line-height: var(--lh-sm);
 }
 
+/* After "Continue on this device" the label says what happened, in a sentence: it may take two lines, and keeps clear of the round buttons on the other side. */
+.mock-banner.engine-banner-note {
+  max-width: calc(100% - 2 * var(--edge) - var(--safe-left) - var(--safe-right) - 72px);
+  border-radius: var(--r-md);
+}
+
 /* ───────────────────────── map controls ───────────────────────── */
 /* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
 .map-fabs {
@@ -777,6 +783,17 @@ button.map-credit:active {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   white-space: normal;
+}
+
+/* With "Continue on this device" the chip has two rows: the sentence (the first row is all of it), then the actions. */
+.error-chip.error-chip-acts {
+  flex-wrap: wrap;
+  row-gap: var(--sp-1);
+  padding-block: var(--sp-1);
+}
+
+.error-chip-acts .error-chip-says {
+  flex: 1 1 calc(100% - 40px);
 }
 
 .sim-error p {

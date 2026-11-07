@@ -61,7 +61,7 @@ function sliceRecordingFacts(o: DebugStatsOptions): DebugStatsInput['sliceRecord
 /** The desktop the run computes on, with the link's round trip as it is now; null when the run computes on this device. */
 function desktopFacts(): DebugStatsInput['desktop'] {
   const r = desktopSlot.get().run;
-  return r ? { name: r.name, cores: r.cores, node: r.node, rttMs: r.rttMs(), closed: r.closed } : null;
+  return r ? { name: r.name, cores: r.cores, node: r.node, rttMs: r.rttMs(), closed: r.closed, restarted: !!r.restarted } : null;
 }
 
 /** What the app knows right now, gathered for the pure content. */

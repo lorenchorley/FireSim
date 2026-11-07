@@ -6,14 +6,30 @@
  *   run   the run that computes on the desktop (null: it computes on this device); the map's label, the statistics and the
  *         closed-link message read it
  */
+import type { SimController } from '../sim/protocol';
 import type { DesktopHost } from './desktopHost';
 import type { DesktopRun } from './desktopTypes';
+import type { SimSession } from './session';
 import { Store } from './store';
 
-/** The desktop's object: the page's logic of it (desktopHost.ts) and the one thing that draws, the Engine row. */
+/** What the simulation screen hands over for a run that computes on the desktop. */
+export interface DecorateOptions {
+  root: HTMLElement;
+  /** The error chip, and the label on the map (the demo engine's slot) when the screen made one. */
+  chip: HTMLElement;
+  notice: HTMLElement | null;
+  session: Pick<SimSession, 'scenario' | 'state' | 'restart'>;
+  /** The page's `createController`: with This device chosen it is a fresh in-app engine. */
+  makeController(): SimController;
+  announce(message: string): void;
+}
+
+/** The desktop's object: the page's logic of it (desktopHost.ts) and the two things that draw, the Engine row and the run's label and error chip. */
 export interface DesktopApi extends DesktopHost {
-  /** Adds the Engine row to `card` (its chunk loads now) and keeps it in step; returns the function that takes it out again. */
-  mount(card: HTMLElement): () => void;
+  /** Adds the Engine row to `card` (its chunk loads now) and keeps it in step; `build` presses Build. Returns the function that takes it out again. */
+  mount(card: HTMLElement, build: () => void): () => void;
+  /** Labels the run on the map, puts the link's sentence in the error chip and adds "Continue on this device" to it. Returns the stop function. */
+  decorate(o: DecorateOptions): () => void;
 }
 
 export const desktopSlot = new Store<{ host: DesktopApi | null; run: DesktopRun | null }>({ host: null, run: null });

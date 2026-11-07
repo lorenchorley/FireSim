@@ -832,7 +832,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   const runCard = section('Run', [durChips.el, h('div', { class: 'list card-list' }, onlineToggle.el)], { icon: 'clock', id: 'setup-run' });
   // The Engine row (0.8.0, workstream J) joins this card only when a desktop host serves the page; without one nothing is added.
   let unmountEngine: (() => void) | undefined;
-  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard)));
+  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard, () => buildBtn.click())));
 
   // ───────────── Data for this run (planned, before anything is downloaded) ─────────────
   const planHead = h('p', { class: 'plan-total', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'plan-total' } }, 'Working out the data this run needs…');

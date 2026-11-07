@@ -69,6 +69,11 @@
   text-overflow: ellipsis;
 }
 
+/* "Continue on this device" under the note that the desktop could not be reached. */
+.engine-row .engine-act {
+  margin-top: var(--sp-2);
+}
+
 .card > .section-header,
 .card .setup-sub {
   padding-left: 0;

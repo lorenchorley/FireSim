@@ -75,7 +75,7 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
       historyBudgetBytes: historyBudget,
       engineSource: opts.services.sources.sim,
       phone: { cores: nav?.hardwareConcurrency ?? null, memoryGb: nav?.deviceMemory ?? null },
-      onDesktop: !!opts.scenario && !!desktopSlot.get().run,
+      onDesktop: !!opts.scenario && !!desktopSlot.get().run && !desktopSlot.get().run?.restarted,
     };
   };
 

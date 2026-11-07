@@ -7,15 +7,19 @@
  * page without a host has exactly the Setup it always had.
  */
 import type { DesktopHost, DesktopView, EngineChoice } from '../desktopHost';
-import { CODE_LABEL, CODE_PLACEHOLDER, desktopChoiceLabel, ENGINE_HINT, ENGINE_LABEL, ENGINE_PROBLEM, ENGINE_THIS_DEVICE } from '../desktopWords';
+import { CODE_LABEL, CODE_PLACEHOLDER, CONTINUE_HERE, desktopChoiceLabel, ENGINE_HINT, ENGINE_LABEL, ENGINE_PROBLEM, ENGINE_THIS_DEVICE } from '../desktopWords';
 import { h, setChildren, show, uniqueId } from '../dom';
 import { icon } from '../icons';
-import { chipChoice } from '../widgets';
+import { button, chipChoice } from '../widgets';
 
 const PROBLEM_WORDS = { 'needs-code': ENGINE_PROBLEM.needsCode, refused: ENGINE_PROBLEM.refused, unreachable: ENGINE_PROBLEM.unreachable } as const;
 
-/** Adds the row to `card` and keeps it in step with `host`. Returns the function that takes it out again. */
-export function mountEngineRow(host: DesktopHost, card: HTMLElement): () => void {
+/**
+ * Adds the row to `card` and keeps it in step with `host`. `build` presses Setup's Build button. Returns the function that takes it out again.
+ * When the desktop cannot be reached the note offers "Continue on this device": a tap chooses This device and presses Build (the model is
+ * built, and the run starts on this device from its start); nothing of it is automatic.
+ */
+export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () => void): () => void {
   // A Setup shown again forgets the run that ended (and closes a link nobody used).
   host.release();
   const hintId = uniqueId('engine-hint');
@@ -65,7 +69,19 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement): () => void
     if (says === shown) return;
     shown = says;
     if (!s.busy && s.problem) {
-      setChildren(note, h('div', { class: 'callout callout-warn', dataset: { testid: 'engine-problem' } }, [icon('warning'), h('div', null, PROBLEM_WORDS[s.problem])]));
+      const act =
+        s.problem === 'unreachable'
+          ? button({
+              label: CONTINUE_HERE,
+              variant: 'secondary',
+              testId: 'continue-here-setup',
+              onClick: () => {
+                host.choose('device');
+                build();
+              },
+            })
+          : null;
+      setChildren(note, h('div', { class: 'callout callout-warn', dataset: { testid: 'engine-problem' } }, [icon('warning'), h('div', null, [PROBLEM_WORDS[s.problem], act && h('div', { class: 'engine-act' }, act)])]));
       // Build is pressed at the bottom of the screen: the words must not be left out of sight above it.
       row.scrollIntoView({ block: 'center' });
       if (s.problem !== 'unreachable' && wantsCode) input.focus({ preventScroll: true });
