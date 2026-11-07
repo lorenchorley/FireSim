@@ -20,6 +20,8 @@ export interface DesktopStubOptions {
   unreachable?: boolean;
   /** Hold the answer of `connectRemote` back (ms), to see the "Connecting" state. */
   delayMs?: number;
+  /** The link is cut by itself this long (ms) after the engine was initialised (`?stubfail=N` in the address does the same). */
+  failAfterMs?: number;
 }
 
 export type RemoteCall = [string, ...unknown[]];
