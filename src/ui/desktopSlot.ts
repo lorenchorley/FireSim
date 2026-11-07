@@ -19,7 +19,7 @@ export interface DecorateOptions {
   chip: HTMLElement;
   notice: HTMLElement | null;
   session: Pick<SimSession, 'scenario' | 'state' | 'restart'>;
-  /** The page's `createController`: with This device chosen it is a fresh in-app engine. */
+  /** The page's `createLocalController`: a fresh in-app engine, never the desktop's. */
   makeController(): SimController;
   announce(message: string): void;
 }

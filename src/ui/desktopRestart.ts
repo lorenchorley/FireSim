@@ -92,7 +92,7 @@ export interface ContinueDeps {
   session: Pick<SimSession, 'scenario' | 'state' | 'restart'>;
   /** The run's controller, as `take` handed it out. */
   proxy: SwitchableController;
-  /** A fresh in-app engine (the page's own `createController` choice, with This device chosen), for when the standby is gone. May throw. */
+  /** A fresh in-app engine (the page's `createLocalController`), for when the standby is gone or failed. May throw. */
   makeController(): SimController;
   announce(message: string): void;
   /** The new engine has started, just before the run is switched to it: the desktop gives its link up here (and not before). */
