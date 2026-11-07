@@ -23,12 +23,14 @@ It prints the address to open **on this computer**:
 
 ```
 FireSim desktop host "my-computer"
-Open this on this computer (the pairing code is after the #):
+Open this on this computer:
   http://127.0.0.1:4300/#code=ABCD2345
+Pairing code: the part of the address after #code= (the page asks for it when the address has none)
 Up to 3 simulations at once. Ctrl+C stops it.
 ```
 
-The pairing code is printed there and nowhere else, once (with `--lan`, once in each address). The page picks it up from the
+The pairing code is printed in the address and nowhere else, once (with `--lan`, once in each address; the `Pairing code:` line says
+where to find it and does not repeat it). The page picks it up from the
 address (after the `#`, which a browser never sends to a server) and offers the *Desktop* engine on its Setup screen. Without
 the code in the address, the page asks for it: type the part after `#code=`.
 
@@ -46,7 +48,7 @@ npm run desktop -- --lan
 prints one address for every network address of the computer, each with the code:
 
 ```
-Open one of these on this computer or on a phone on the same network (the pairing code is after the #):
+Open one of these on this computer or on a phone on the same network:
   http://192.168.1.20:4300/#code=ABCD2345
 ```
 

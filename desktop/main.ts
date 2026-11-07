@@ -77,9 +77,10 @@ export async function main(argv: readonly string[], env: MainEnvironment): Promi
   const urls = pageUrls({ lan: options.lan, port: host.port, code, interfaces: networkInterfaces() });
   // The one place the pairing code is printed: in the address, after the #, which a browser never sends to a server (with --lan, in each address).
   console.log(`FireSim desktop host "${options.name}"`);
-  console.log(options.lan ? 'Open one of these on this computer or on a phone on the same network (the pairing code is after the #):' : 'Open this on this computer (the pairing code is after the #):');
+  console.log(options.lan ? 'Open one of these on this computer or on a phone on the same network:' : 'Open this on this computer:');
   for (const u of urls) console.log(`  ${u}`);
   if (options.lan && urls.length === 0) console.log('  (no network address found: connect to a network, or leave out --lan)');
+  console.log('Pairing code: the part of the address after #code= (the page asks for it when the address has none)');
   console.log(`Up to ${options.maxSessions} simulation${options.maxSessions === 1 ? '' : 's'} at once. ${options.lan ? 'There is no TLS: use this only on a network you trust. ' : ''}Ctrl+C stops it.`);
   // A V8 flag is for every thread of the process, and it wins over the limit given to a worker.
   if (/max-old-space-size/.test(`${process.env.NODE_OPTIONS ?? ''} ${process.execArgv.join(' ')}`)) {

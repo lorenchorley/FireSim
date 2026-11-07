@@ -64,7 +64,7 @@ function run(args: string[], distDir = dist, env: Record<string, string> = {}): 
 
 /** Wait for the banner and read the port of the first address it prints. */
 async function started(r: Running): Promise<{ port: number; code: string }> {
-  await waitFor(() => r.out().includes('Ctrl+C stops it.') || r.err().length > 0, 20000, 'the banner');
+  await waitFor(() => /Pairing code: /.test(r.out()) || r.err().length > 0, 20000, 'the banner'); // the way the e2e spec of the real host waits for it
   const m = /http:\/\/[\d.]+:(\d+)\/#code=([A-Z0-9]+)/.exec(r.out());
   if (!m) throw new Error(`no address in the output: ${r.out()} ${r.err()}`);
   return { port: Number(m[1]), code: m[2]! };
@@ -91,8 +91,8 @@ describe('npm run desktop', () => {
     const out = r.out();
     expect(out).toContain('FireSim desktop host "Workbench"');
     expect(out).toContain(`http://127.0.0.1:${port}/#code=${code}`);
-    expect(out).toContain('Open this on this computer (the pairing code is after the #):');
-    expect(out).not.toContain('Pairing code:');
+    expect(out).toContain('Open this on this computer:');
+    expect(out).toContain('Pairing code: the part of the address after #code=');
     expect(out).not.toContain('TLS'); // the warning is for --lan
     // Served on 127.0.0.1 and on no other address of this computer.
     expect(await canConnect('127.0.0.1', port)).toBe(true);
@@ -135,7 +135,7 @@ describe('npm run desktop', () => {
       expect(await canConnect(a, port), `${a} must answer with --lan`).toBe(true);
     }
     expect(r.out().split('ABCD2345').length - 1).toBe(Math.max(1, lan.length)); // in each address printed, nowhere else
-    expect(r.out()).not.toContain('Pairing code:');
+    expect(r.out()).toContain('Pairing code: the part of the address after #code=');
     expect(r.out()).toContain('There is no TLS: use this only on a network you trust.');
     expect(r.out()).toContain('Up to 3 simulations at once.');
     expect(JSON.parse(await (await fetch(`http://127.0.0.1:${port}/__firesim/host`)).text())).toMatchObject({ maxSessions: 3 });
