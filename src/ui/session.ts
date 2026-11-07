@@ -921,6 +921,21 @@ export class SimSession {
     this.raf = 0;
   }
 
+  /**
+   * Start the run over (the desktop engine went away and the person chose to go on here: desktopRestart.ts): what the engine computed is
+   * dropped, the error too; what the person marked stays, and so do the speed and the display step. Paused at time 0.
+   */
+  restart(): void {
+    this.pause();
+    this.snapshots.clear();
+    this.view.sliceRecording?.clear();
+    this.revealed.clear();
+    this.requestedUntil = 0;
+    this.rewindFloor = null;
+    this.engine = null;
+    this.state.set({ viewTime: 0, headTime: 0, snapshot: null, reviewing: false, computing: false, workerSpeed: 0, insights: [], forecastInsights: [], compare: null, error: null });
+  }
+
   dispose(): void {
     this.disposed = true;
     this.stopLoop();

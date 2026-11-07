@@ -53,8 +53,8 @@ export interface RemoteSeam {
 export interface DesktopRun {
   /** The label on the map ("Running on the desktop"). */
   label: string;
-  /** The help line of the Insights tab's error note, for a run whose desktop went away. */
-  help: string;
+  /** The help line of the Insights tab's error note, for a run whose desktop went away (absent once the run was started again on this device). */
+  help?: string;
   name: string;
   cores: number;
   node: string;
@@ -62,4 +62,6 @@ export interface DesktopRun {
   rttMs(): number | null;
   /** The link is gone: the run's engine is no longer there. */
   closed: boolean;
+  /** The person chose "Continue on this device": the run was started again on this device's own engine. */
+  restarted?: boolean;
 }

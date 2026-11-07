@@ -12,6 +12,7 @@
 import type { SimController } from '../sim/protocol';
 import { CLOSED_LINK_HELP, ENGINE_PROBLEM, RUNNING_ON_DESKTOP } from './desktopWords';
 import type { DesktopLink, DesktopRun, DetectFn, HostInfo } from './desktopTypes';
+import { SwitchableController } from './runController';
 import { Store } from './store';
 
 export type EngineChoice = 'device' | 'desktop';
@@ -47,6 +48,12 @@ export interface DesktopHost {
    * build screen shows, when Desktop was chosen and the link is not there (closed while the model was built).
    */
   take(): SimController | null;
+  /**
+   * "Continue on this device": the run that computes on the desktop gives up its link. The engine choice goes back to This device (so
+   * `take` gives the in-app engine), the link is closed, and the run is marked as started again on this device. Returns the run's
+   * controller, which the caller points at the new engine (desktopRestart.ts), or null when no run holds a desktop link.
+   */
+  leave(): SwitchableController | null;
   /** Setup is shown again: closes a link no run took, closes the last run's, and forgets that run. */
   release(): void;
 }
@@ -146,6 +153,8 @@ export async function startDesktopHost(env: HostEnv): Promise<DesktopHost | null
 
 interface Entry {
   link: DesktopLink;
+  /** The controller the run holds, once `take` handed it out. */
+  proxy?: SwitchableController;
   /** The sentence of the link's error, once it said one. */
   dead: string | null;
   off(): void;
@@ -233,7 +242,18 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       const l = e.link;
       run = { label: RUNNING_ON_DESKTOP, help: CLOSED_LINK_HELP, name: l.info.name, cores: l.info.cores, node: l.info.node, rttMs: () => l.rttMs(), closed: false };
       env.publishRun(run);
-      return l.controller;
+      return (e.proxy = new SwitchableController(l.controller));
+    },
+    leave() {
+      const e = taken;
+      if (!e?.proxy || !run) return null;
+      close(e);
+      close(pending);
+      taken = pending = null;
+      state.set({ engine: 'device', problem: null });
+      run = { ...run, help: undefined, closed: true, restarted: true };
+      env.publishRun(run);
+      return e.proxy;
     },
     release() {
       close(pending);

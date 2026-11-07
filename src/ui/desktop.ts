@@ -57,23 +57,28 @@ export async function startDesktop(params: URLSearchParams): Promise<void> {
     replaceHash: (hash) => history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`),
     detect: seam?.detectHost ?? realDetect ?? (() => Promise.resolve(null)),
     connect,
-    publishRun: (run) => desktopSlot.set({ run }),
+    publishRun: (run) => {
+      desktopSlot.set({ run });
+      if (run) void import('./screens/desktopBar'); // the run's label and chip: ready by the time the screen asks
+    },
   });
   if (!host) return;
+  // The two things that draw are chunks of their own, loaded only now that a host is there; each hands back the function that undoes it.
+  const later = <T>(load: () => Promise<T>, use: (m: T) => (() => void) | void): (() => void) => {
+    let undo: (() => void) | void;
+    let gone = false;
+    void load().then((m) => {
+      if (!gone) undo = use(m);
+    });
+    return () => {
+      gone = true;
+      undo?.();
+    };
+  };
   const api: DesktopApi = {
     ...host,
-    // The Engine row is a chunk of its own, loaded only now that a host is there; the function it hands back takes the row out again.
-    mount(card) {
-      let undo: (() => void) | undefined;
-      let gone = false;
-      void import('./screens/engineRow').then((m) => {
-        if (!gone) undo = m.mountEngineRow(api, card);
-      });
-      return () => {
-        gone = true;
-        undo?.();
-      };
-    },
+    mount: (card, build) => later(() => import('./screens/engineRow'), (m) => m.mountEngineRow(api, card, build)),
+    decorate: (o) => later(() => import('./screens/desktopBar'), (m) => m.decorateSim(api, o)),
   };
   desktopSlot.set({ host: api });
 }

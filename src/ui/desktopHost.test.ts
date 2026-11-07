@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimController, SimEvents } from '../sim/protocol';
 import { CodeRefused, codeFromHash, DETECT_TIMEOUT_MS, hashWithoutCode, isHostInfo, normaliseCode, startDesktopHost, type HostEnv } from './desktopHost';
 import type { DesktopLink, DesktopRun, HostInfo } from './desktopTypes';
+import type { SwitchableController } from './runController';
 
 const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Studio PC', cores: 8, node: 'v22.11.0', sessions: 0, maxSessions: 3 };
 const ORIGIN = 'http://192.168.1.20:4300';
@@ -16,6 +17,7 @@ function fakeController(): SimController & { emit(message: string): void; listen
       return () => errors.delete(cb);
     }) as SimController['on'],
     emit: (m: string) => errors.forEach((cb) => cb(m)),
+    dispose: () => undefined,
     listeners: () => errors.size,
   } as unknown as SimController & { emit(message: string): void; listeners(): number };
 }
@@ -228,13 +230,13 @@ describe('choosing the engine and starting the run', () => {
     const link = fakeLink(12.6);
     const { host, r } = await start({ hash: '#code=ABCD2345', connect: vi.fn(async () => link as DesktopLink) });
     expect(await host.beforeBuild()).toBe(true);
-    expect(host.take()).toBe(link.controller);
+    expect((host.take() as SwitchableController).inner).toBe(link.controller); // the run holds the link's controller through the switchable one
     const run = r.runs[r.runs.length - 1]!;
     expect(run).toMatchObject({ name: 'Studio PC', cores: 8, node: 'v22.11.0', closed: false });
     expect(run.rttMs()).toBe(12.6);
     // the words the first screen shows come with the run (it carries none of the desktop's words itself)
     expect(run.label).toBe('Running on the desktop');
-    expect(run.help).toMatch(/start a new scenario on This device\.$/);
+    expect(run.help).toMatch(/^Tap “Continue on this device”/);
     expect(() => host.take()).toThrow(/not open/);
   });
 
@@ -273,11 +275,35 @@ describe('choosing the engine and starting the run', () => {
     expect(a.closed).toBe(1);
     expect(r.runs[r.runs.length - 1]).toBeNull();
     await host.beforeBuild();
-    host.take();
+    (host.take() as SwitchableController).dispose(); // the session does this when the run is left
     host.release(); // leaving the run
     expect(b.closed).toBe(1);
     expect(b.controller.listeners()).toBe(0);
     expect(r.runs[r.runs.length - 1]).toBeNull();
+  });
+
+  it('leave (Continue on this device): the link is closed, the choice goes back to This device, the run is marked, and the run keeps its controller to point elsewhere', async () => {
+    const link = fakeLink();
+    const { host, r } = await start({ hash: '#code=ABCD2345', connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    const proxy = host.take() as SwitchableController;
+    link.controller.emit('The desktop connection closed.');
+    expect(host.leave()).toBe(proxy);
+    expect(link.closed).toBe(1);
+    expect(host.state.get()).toMatchObject({ engine: 'device', problem: null });
+    expect(host.take()).toBeNull(); // the page's own choice now gives the in-app engine
+    const run = r.runs[r.runs.length - 1]!;
+    expect(run).toMatchObject({ name: 'Studio PC', closed: true, restarted: true });
+    expect(run.help).toBeUndefined(); // the Insights help for a lost desktop no longer applies
+    expect(host.leave()).toBeNull(); // nothing left to leave
+  });
+
+  it('leave with no run on the desktop does nothing', async () => {
+    const { host, r } = await start({ hash: '#code=ABCD2345' });
+    const before = r.runs.length;
+    expect(host.leave()).toBeNull();
+    expect(host.state.get().engine).toBe('desktop'); // untouched
+    expect(r.runs.length).toBe(before);
   });
 
   it('a Setup shown again does not repeat what the last one said next to the code box', async () => {
@@ -297,7 +323,7 @@ describe('choosing the engine and starting the run', () => {
     await host.beforeBuild();
     await host.beforeBuild();
     expect(a.closed).toBe(1);
-    expect(host.take()).toBe(b.controller);
+    expect((host.take() as SwitchableController).inner).toBe(b.controller);
     // and choosing This device after a link was opened closes it
     const c = fakeLink();
     const { host: h2 } = await start({ hash: '#code=ABCD2345', connect: vi.fn(async () => c as DesktopLink) });

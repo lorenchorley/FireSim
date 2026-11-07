@@ -910,6 +910,16 @@ describe('a run that computes on the desktop (0.8.0, workstream J)', () => {
     expect(r.length).toBeLessThan(140);
   });
 
+  it('a run started again on this device says This device again, and the numbers are the phone\'s', () => {
+    const s = withDesktop({ ...desktop, closed: true, restarted: true, rttMs: null });
+    const r = rowOf(s, 'run', 'engine-where');
+    expect(r.value).toBe('This device (the run was started again here, from the start, after the desktop connection closed)');
+    expect(r.note).toBe('This phone computes the run again, from the start; nothing of the desktop run is in it');
+    expect(rowOf(s, 'summary', 'headline').value).toMatch(/^Standard \(3-D air\), computing about 871×/); // no "On the desktop" prefix
+    expect(rowOf(s, 'canDo', 'speed').value).toMatch(/^On this phone the 3-D air step/);
+    expectClean(s);
+  });
+
   it('is in the copied text', () => {
     expect(debugStatsToText(withDesktop())).toContain('  Engine runs on: Desktop Studio PC, 8 cores, Node v22.11.0, link 4.2 ms (The desktop computes the run and this phone draws it)');
   });

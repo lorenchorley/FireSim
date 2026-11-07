@@ -292,20 +292,12 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const compassTimer = setInterval(syncCompass, 200);
   unsubs.push(() => clearInterval(compassTimer));
 
-  // The run that computes on the desktop (the controller above is its link's) says so with the same label the demo engine has.
-  const desktopRun = desktopSlot.get().run;
-  const mapIs2d = services.sources.scene === 'mock';
-  const simNotice =
-    desktopRun || services.sources.sim === 'mock' || mapIs2d
-      ? h('p', { class: ['mock-banner', desktopRun && 'engine-banner'], dataset: { testid: desktopRun ? 'engine-banner' : undefined } }, desktopRun ? (mapIs2d ? `${desktopRun.label} · 2-D map` : desktopRun.label) : services.sources.sim === 'mock' ? 'Demo engine' : '2-D map')
-      : null;
+  const simNotice = services.sources.sim === 'mock' || services.sources.scene === 'mock' ? h('p', { class: 'mock-banner' }, services.sources.sim === 'mock' ? 'Demo engine' : '2-D map') : null;
 
   // Simulation failure: the only thing that ever appears uninvited, as a thin strip under the top bar (never a modal).
-  // On a run that computes on the desktop the chip says what the link said ("The desktop connection closed."), so the person knows to start over on This device.
-  const errorText = h('span', { class: ['error-chip-text', desktopRun && 'error-chip-says'] }, 'Simulation problem');
   const errorChip = h('div', { class: 'error-chip', hidden: true, attrs: { role: 'alert' }, dataset: { testid: 'error-chip' } }, [
     icon('warning'),
-    errorText,
+    h('span', { class: 'error-chip-text' }, 'Simulation problem'),
     h(
       'button',
       { type: 'button', class: 'btn btn-text btn-sm error-chip-btn', dataset: { testid: 'error-details' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half', panelOpen: false, menu: null }) } },
@@ -334,6 +326,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 
   const mapLegend = createMapLegend(ctx, () => selectTool('layers'));
   root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, windDetail.button, credit, panelHost, sheet.el, scrubber.el);
+  // A run that computes on the desktop (the controller above is its link's): a lazy chunk labels it, puts the link's sentence in the chip and adds "Continue on this device".
+  const desktop = desktopSlot.get();
+  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createController(), announce: o.announce }));
   unsubs.push(() => mapLegend.destroy(), () => windDetail.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────
@@ -958,7 +953,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 
   const unsubErr = session.state.subscribe((s) => {
     errorChip.hidden = !s.error;
-    if (desktopRun && s.error) text(errorText, s.error);
     if (s.error) o.announce(`Simulation error: ${s.error}`);
   }, ['error']);
   unsubs.push(unsubErr);
