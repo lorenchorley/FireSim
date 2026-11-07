@@ -153,8 +153,9 @@ A `--max-old-space-size` in `NODE_OPTIONS` or on the command line is a V8 flag o
    is dropped after 5 s (its slot is free at once) and counts against a limit of 4 from one address and 16 in all (further ones
    get HTTP 503). A session is closed with **1008** when it sends more than 20 pings or 1000 messages of any kind in one second,
    or when more than 64 MiB have waited to be sent to it for over 10 s. The decoder takes a header of at most 8 MiB and at most
-   4096 typed arrays in a message, and refuses arrays that share bytes or lie outside the message, before it makes any (a real
-   6 km scenario is a 123 kB header and 42 arrays). Until the first `init` the engine takes nothing else: any other message is
+   4096 typed arrays in a message, and refuses an array that lies outside the message or claims more bytes than the message has
+   left (so it never makes more than the message is long), and, once all are read, arrays that share bytes (a real 6 km scenario
+   is a 123 kB header and 42 arrays). A header with its own `__proto__` field is refused by the decoder and by the encoder. Until the first `init` the engine takes nothing else: any other message is
    dropped, with one log line.
 5. When the link is behind (more than 16 MiB waiting to be sent), the host holds the engine back (the run waits between chunks)
    until the link has caught up (below 4 MiB): the run gets slower and nothing changes in its results.
@@ -175,6 +176,20 @@ Each is a later decision (contract `docs/plans/0.8.0/J-CONTRACT-desktop-host.md`
 - Several viewers sharing one session (the welcome carries `session` so that it can come later), and a reconnect after a lost link
   (the session goes with its worker).
 - A "Desktop detail" profile with finer cells or more embers, worker threads that split one run, WebAssembly, WebGPU.
+
+## What the page does for a host that goes away
+
+The host cannot help a page once it is gone, and a page that the host served can fetch nothing from it then: not the worker script
+of the page's own engine, not a screen it has not opened yet. So that *Continue on this device* can start the run on the phone
+with no host, the page does two things when it opens the engine link, while the host is surely up: it makes this device's own
+engine, idle, and keeps it for the run (one idle worker, whose script, 484,365 bytes or 170,621 gzipped, is fetched from the host
+then), and, in idle time, it loads the screens that a running view can still open (the run's label and chip, the debug statistics,
+the model card, the Air slice panel, the speed and Wind detail sheets and the Data sets storage report; about 150 kB, 59 kB
+gzipped). This is on the page's side and costs this host one more fetch of its own files when a link opens; it needs a page that
+was loaded from the host while it was up. What still needs the host is a fresh engine made after it is gone (it cannot fetch its
+script), the offer on Setup after the host died at start (it cannot fetch the bundled demo data), the speed test's worker and the
+planning chunk of Setup. The page is told that the link has ended by the link itself (`RemoteConnection.onClosed`: the socket
+closed or failed with any code, or the host ended the session), not by an error message of the engine, which is only a message.
 
 Results are the same program's. They are not guaranteed identical to a phone's: a different JavaScript engine and version may
 round differently. What is tested is that the transport changes nothing: the same scenario and seed through the in-thread
