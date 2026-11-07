@@ -5,13 +5,14 @@
  * socket. Every frame leaves as one transferred buffer.
  *
  * Flow control: when the link to the client is behind, the main thread says `{ hold: true }` and the next chunk of the run
- * waits (`schedule` below) until it says `{ hold: false }`. The run only gets slower; the results do not change.
+ * waits (holdGate.ts) until it says `{ hold: false }`. The run only gets slower; the results do not change.
  */
 import { MessageChannel, parentPort, workerData } from 'node:worker_threads';
 import { SimHost } from '../src/sim/host';
 import type { FromWorker, ToWorker } from '../src/sim/protocol';
 import { CodecError, decodeMessage, encodeMessage } from '../src/sim/remote/codec';
 import type { EngineWorkerData, HoldMessage } from './engine';
+import { HoldGate } from './holdGate';
 
 const port = parentPort;
 if (!port) throw new Error('desktop/engineWorker.ts runs as a worker thread.');
@@ -19,21 +20,9 @@ const options = (workerData ?? {}) as EngineWorkerData;
 
 /** Yield to this thread's message queue, then run `fn` (like src/sim/worker.ts), unless the link is behind. */
 const channel = new MessageChannel();
-const pending: (() => void)[] = [];
-let held = false;
-channel.port1.on('message', () => {
-  if (held) return; // the function stays in `pending` until the hold is lifted
-  pending.shift()?.();
-});
+const gate = new HoldGate(() => channel.port2.postMessage(0));
+channel.port1.on('message', () => gate.onWake());
 channel.port1.unref();
-const schedule = (fn: () => void): void => {
-  pending.push(fn);
-  if (!held) channel.port2.postMessage(0);
-};
-const hold = (on: boolean): void => {
-  held = on;
-  if (!on) for (let i = 0; i < pending.length; i++) channel.port2.postMessage(0);
-};
 
 /** A failure of the engine goes to the client as the engine's own sentence: the first line only (the rest of a stack names this computer's files). */
 const forClient = (msg: FromWorker): FromWorker => (msg.type === 'error' ? { type: 'error', message: msg.message.split('\n')[0]! } : msg);
@@ -50,7 +39,7 @@ function post(msg: FromWorker): void {
 
 const host = new SimHost(
   { post: (msg) => post(msg) },
-  { schedule, transfer: true, ...(options.chunkMs !== undefined ? { chunkMs: options.chunkMs } : {}), ...(options.simulation ? { simulation: options.simulation } : {}) },
+  { schedule: gate.schedule, transfer: true, ...(options.chunkMs !== undefined ? { chunkMs: options.chunkMs } : {}), ...(options.simulation ? { simulation: options.simulation } : {}) },
 );
 
 port.on('message', (m: unknown) => {
@@ -64,6 +53,6 @@ port.on('message', (m: unknown) => {
     }
     if (msg.type !== 'ping' && msg.type !== 'pong') host.handle(msg as ToWorker);
   } else if (m && typeof (m as HoldMessage).hold === 'boolean') {
-    hold((m as HoldMessage).hold);
+    gate.hold((m as HoldMessage).hold);
   }
 });

@@ -54,8 +54,10 @@ afterAll(() => {
   built.remove();
 });
 
-async function realHost(extra: { maxSessions?: number } = {}): Promise<HostHandle> {
+async function realHost(extra: { maxSessions?: number; highWaterBytes?: number; lowWaterBytes?: number; logs?: string[] } = {}): Promise<HostHandle> {
   const h = await startHost({
+    ...(extra.highWaterBytes !== undefined ? { highWaterBytes: extra.highWaterBytes } : {}),
+    ...(extra.lowWaterBytes !== undefined ? { lowWaterBytes: extra.lowWaterBytes } : {}),
     distDir: work,
     port: 0,
     bind: '127.0.0.1',
@@ -64,7 +66,7 @@ async function realHost(extra: { maxSessions?: number } = {}): Promise<HostHandl
     maxSessions: extra.maxSessions ?? 2,
     // Every snapshot is sent (no wall-clock coalescing), so that the times are the same as an in-thread run's.
     engines: workerEngines(workerFile, { simulation: { minSnapshotWallMs: 0 } }),
-    log: () => undefined,
+    log: (l) => void extra.logs?.push(l),
   });
   hosts.push(h);
   return h;
@@ -263,6 +265,34 @@ describe('RemoteSimController against the real host', () => {
   });
 });
 
+describe('flow control with the real engine', () => {
+  it('a client that stops reading holds the run back, and the run finishes with every snapshot once it reads again', async () => {
+    const logs: string[] = [];
+    const h = await realHost({ maxSessions: 1, highWaterBytes: 2 * 1024 * 1024, lowWaterBytes: 512 * 1024, logs });
+    const c = await openRaw(h.port);
+    c.send(encodeMessage({ type: 'init', scenario: withoutContext(await katoomba()) }));
+    await c.next(); // ready
+    c.pause();
+    c.send(encodeMessage({ type: 'run', until: 3600 }));
+    await waitFor(() => logs.some((l) => l.includes('slow link')), 60000, 'the host to see that the link is behind');
+    expect(logs.filter((l) => l.includes('slow link'))).toHaveLength(1); // said once, not at every change
+    c.resume();
+    const status = (): { time: number; running: boolean } | undefined =>
+      c
+        .all()
+        .filter((f) => f.byteLength < 400)
+        .map((f) => decodeMessage(f))
+        .filter((m) => m.type === 'status')
+        .pop() as { time: number; running: boolean } | undefined;
+    await waitFor(() => status() !== undefined && !status()!.running && status()!.time >= 3600 - 1e-6, 120000, 'the end of the run');
+    const times = c
+      .all()
+      .filter((f) => f.byteLength > 100_000)
+      .map((f) => (decodeMessage(f) as { snapshot: SimSnapshot }).snapshot.time);
+    expect(times).toEqual(Array.from({ length: 61 }, (_, i) => i * 60)); // none lost, none repeated, in order
+  }, 240_000);
+});
+
 describe('a session that ends leaves no worker behind', () => {
   it('closing the controller ends its worker thread and frees its slot, again and again', async () => {
     const h = await realHost({ maxSessions: 1 });
@@ -381,7 +411,7 @@ describe('throughput of a real scenario and a real snapshot (printed, not assert
 });
 
 /** A bare client of the host after the welcome: send frames, take the next frame, close. */
-async function openRaw(port: number): Promise<{ send(b: Uint8Array): void; next(): Promise<Uint8Array>; close(): void; terminate(): void }> {
+async function openRaw(port: number): Promise<{ send(b: Uint8Array): void; next(): Promise<Uint8Array>; all(): Uint8Array[]; pause(): void; resume(): void; close(): void; terminate(): void }> {
   const c = await openClient(port);
   hello(c, CODE);
   expect((await welcomeOf(c))?.type).toBe('welcome');
@@ -392,6 +422,10 @@ async function openRaw(port: number): Promise<{ send(b: Uint8Array): void; next(
       await waitFor(() => c.received.length > taken, 60000, 'a frame');
       return c.received[taken++] as Uint8Array;
     },
+    all: () => c.received.slice(1) as Uint8Array[],
+    // A client that stops reading: the socket is paused, the kernel's buffers fill, and the host's queue grows.
+    pause: () => (c.ws as unknown as { _socket: { pause(): void } })._socket.pause(),
+    resume: () => (c.ws as unknown as { _socket: { resume(): void } })._socket.resume(),
     close: () => c.ws.close(1000),
     terminate: () => c.ws.terminate(),
   };

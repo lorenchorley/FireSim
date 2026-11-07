@@ -72,6 +72,8 @@ interface Session {
   engine: Engine;
   lastSeen: number;
   held: boolean;
+  /** The link has been behind at least once (logged once, not at every change). */
+  wasHeld: boolean;
   closing: boolean;
 }
 
@@ -222,7 +224,7 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
     }
     receiver._maxPayload = maxFrameBytes;
     const id = randomBytes(6).toString('hex');
-    const s: Session = { id, ws, address, engine: undefined as unknown as Engine, lastSeen: now(), held: false, closing: false };
+    const s: Session = { id, ws, address, engine: undefined as unknown as Engine, lastSeen: now(), held: false, wasHeld: false, closing: false };
     sessions.set(id, s);
     ws.send(JSON.stringify({ type: 'welcome', session: id, protocol: PROTOCOL }));
     try {
@@ -278,6 +280,8 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
     s.ws.send(bytes, { binary: true }, () => relieve(s));
     if (!s.held && s.ws.bufferedAmount > highWater) {
       s.held = true;
+      if (!s.wasHeld) log(`slow link ${s.address} session ${s.id}: the run is held back while the link catches up`);
+      s.wasHeld = true;
       s.engine.hold(true);
     }
   }
