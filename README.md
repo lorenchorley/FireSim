@@ -1413,7 +1413,7 @@ synthetic fallbacks — each fallback is listed as a warning on the build screen
 
 **What uses the network, since 0.8.0.** The simulation, the 3-D view, the bundled demo sites, the presets, the replays and a saved area pack need none, and **this device's own engine never does**. Three things can: live data
 and area-pack downloads, when *Use the network* is on (as before); **one same-origin question** that the web build asks at start-up, `GET /__firesim/host`, to the page's own origin, to find out whether a desktop host serves
-the page (it carries nothing of yours, only pages with an `http:` or `https:` address ask it, and it gets no answer from an ordinary web server); and the **opt-in desktop link**, a WebSocket to that same host on the local
+the page (it carries nothing of yours, only pages with an `http:` or `https:` address ask it, and an ordinary web server answers it with an error or not at all, which the page takes as "no host" and shows nothing of the desktop); and the **opt-in desktop link**, a WebSocket to that same host on the local
 network, opened only when *Desktop* is chosen on Setup and Build is pressed (see *The desktop host (0.8.0)*). **The Android app makes neither of the last two**: it does not ask, does not load the code that would, and does
 not connect to a desktop in this release. The e2e specs check that no request goes to any origin but the page's own.
 
