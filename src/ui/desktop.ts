@@ -12,6 +12,8 @@
  * controller behind it).
  */
 import { Capacitor } from '@capacitor/core';
+import type { Services } from './modules';
+import { loadSlicePanel } from './screens/sim/sliceToolLoad';
 import { CodeRefused, startDesktopHost } from './desktopHost';
 import { desktopSlot, type DesktopApi } from './desktopSlot';
 import type { ConnectFn, DetectFn, RemoteModule, RemoteSeam } from './desktopTypes';
@@ -24,9 +26,13 @@ const remoteLoaders = import.meta.glob('../sim/remote/index.ts') as Record<strin
 
 const isRemote = (m: unknown): m is RemoteModule => typeof (m as RemoteModule | null)?.connectRemote === 'function';
 
-/** Is this the error of a refused code? `RemoteAuthError` of the loaded module, or (a stub, a copy of the class) one that says so by name. */
-function refused(e: unknown, m?: RemoteModule): boolean {
-  return (!!m?.RemoteAuthError && e instanceof m.RemoteAuthError) || (e instanceof Error && e.name === 'RemoteAuthError');
+/**
+ * Is this the error of a refused code, and which? `RemoteAuthError` of the loaded module, or (a stub, a copy of the class) one that says so by
+ * name; its `reason` tells a wrong code from an address the desktop has stopped taking codes from for a while.
+ */
+function refusal(e: unknown, m?: RemoteModule): 'wrong-code' | 'rate-limited' | null {
+  if (!((!!m?.RemoteAuthError && e instanceof m.RemoteAuthError) || (e instanceof Error && e.name === 'RemoteAuthError'))) return null;
+  return (e as { reason?: unknown }).reason === 'rate-limited' ? 'rate-limited' : 'wrong-code';
 }
 
 async function loadRemote(): Promise<RemoteModule> {
@@ -36,7 +42,35 @@ async function loadRemote(): Promise<RemoteModule> {
   return m;
 }
 
-export async function startDesktop(params: URLSearchParams): Promise<void> {
+/**
+ * What a running screen, and the statistics, can still ask the host for: the lazy chunks they open on first use (the run's own label and chip, the
+ * statistics, the model card, the Air slice panel, the two top-bar sheets, the storage report of the Data sets screen). A page the host serves
+ * cannot fetch any of them once the host is gone, so they are loaded once, one at a time and when the page is idle, as soon as a link opens.
+ */
+const WARM: (() => Promise<unknown>)[] = [
+  () => import('./screens/desktopBar'),
+  () => import('./screens/debugStats'),
+  () => import('./screens/modelCard'),
+  () => loadSlicePanel(),
+  () => import('./screens/sim/paceSheet'),
+  () => import('./screens/sim/windDetailSheet'),
+  () => import('../data/storage'),
+];
+let warmed = false;
+async function warm(): Promise<void> {
+  if (warmed) return;
+  warmed = true;
+  for (const load of WARM) {
+    await new Promise<void>((resolve) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(() => resolve(), { timeout: 2000 }) : setTimeout(resolve, 300)));
+    try {
+      await load();
+    } catch {
+      /* a chunk that cannot be loaded now is asked for again when it is needed */
+    }
+  }
+}
+
+export async function startDesktop(params: URLSearchParams, services: Pick<Services, 'createLocalController'>): Promise<void> {
   const seam = params.has('debug') ? (window as unknown as { __firesimRemote?: RemoteSeam }).__firesimRemote : undefined;
   const connect: ConnectFn = async (o) => {
     let m: RemoteModule | undefined;
@@ -45,7 +79,8 @@ export async function startDesktop(params: URLSearchParams): Promise<void> {
       m = await loadRemote();
       return await m.connectRemote(o);
     } catch (e) {
-      throw refused(e, m) ? new CodeRefused() : e;
+      const why = refusal(e, m);
+      throw why ? new CodeRefused(why) : e;
     }
   };
   const host = await startDesktopHost({
@@ -57,10 +92,9 @@ export async function startDesktop(params: URLSearchParams): Promise<void> {
     replaceHash: (hash) => history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`),
     detect: seam?.detectHost ?? realDetect ?? (() => Promise.resolve(null)),
     connect,
-    publishRun: (run) => {
-      desktopSlot.set({ run });
-      if (run) void import('./screens/desktopBar'); // the run's label and chip: ready by the time the screen asks
-    },
+    publishRun: (run) => desktopSlot.set({ run }),
+    standby: () => services.createLocalController(),
+    warm: () => void warm(),
   });
   if (!host) return;
   // The two things that draw are chunks of their own, loaded only now that a host is there; each hands back the function that undoes it.

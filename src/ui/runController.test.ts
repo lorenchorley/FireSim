@@ -82,7 +82,8 @@ describe('SwitchableController', () => {
     c.on('error', (m) => seen.push(`error ${m}`));
     c.on('status', (s) => seen.push(`status ${s.time}`));
     a.ev.emit('error', 'link lost');
-    c.switchTo(b);
+    c.stage(b);
+    c.commit();
     a.ev.emit('error', 'a ghost'); // the old engine is no longer listened to
     b.ev.emit('status', { time: 5, running: true, speed: 1 });
     b.ev.emit('error', 'local');
@@ -92,15 +93,108 @@ describe('SwitchableController', () => {
     expect(b.disposed).toBe(0);
   });
 
-  it('after a switch the calls go to the new target only', () => {
+  it('a staged engine is on the side: the calls and the listeners stay with the current target until commit, which then says what the new engine said meanwhile, in order', () => {
+    const a = new Engine();
+    const b = new Engine();
+    const c = new SwitchableController(a);
+    const seen: string[] = [];
+    c.on('ready', () => seen.push('ready'));
+    c.on('snapshot', (s) => seen.push(`snapshot ${s.time}`));
+    c.on('error', (m) => seen.push(`error ${m}`));
+    c.stage(b);
+    c.run(1);
+    b.ev.emit('ready', []);
+    b.ev.emit('snapshot', { time: 0 } as never);
+    a.ev.emit('error', 'the old one still talks'); // the current target is still the one heard
+    expect(seen).toEqual(['error the old one still talks']);
+    expect(a.calls).toEqual([['run', 1]]);
+    expect(b.calls).toEqual([]);
+    c.commit();
+    expect(seen).toEqual(['error the old one still talks', 'ready', 'snapshot 0']);
+    c.run(2);
+    expect(b.calls).toEqual([['run', 2]]);
+    expect(a.calls).toEqual([['run', 1]]);
+  });
+
+  it('abandon throws a staged engine away and the controller is as it was; a second stage starts clean', () => {
+    const a = new Engine();
+    const b = new Engine();
+    const c2 = new Engine();
+    const c = new SwitchableController(a);
+    const seen: string[] = [];
+    c.on('error', (m) => seen.push(m));
+    c.stage(b);
+    b.ev.emit('error', 'it failed to start');
+    c.abandon();
+    expect(b.disposed).toBe(1);
+    expect(a.disposed).toBe(0);
+    expect(c.inner).toBe(a);
+    expect(seen).toEqual([]); // what a failed start said never reached the listeners
+    c.commit(); // nothing staged: nothing happens
+    expect(c.inner).toBe(a);
+    c.stage(c2);
+    c.stage(b); // staging again abandons the earlier one
+    expect(c2.disposed).toBe(1);
+    c.abandon();
+    expect(b.disposed).toBe(2);
+  });
+
+  it('after a commit the calls go to the new target only', () => {
     const a = new Engine();
     const b = new Engine();
     const c = new SwitchableController(a);
     c.run(1);
-    c.switchTo(b);
+    c.stage(b);
+    c.commit();
     c.run(2);
     expect(a.calls).toEqual([['run', 1]]);
     expect(b.calls).toEqual([['run', 2]]);
+  });
+
+  it('holds a standby, idle, and hands it over once; dispose finishes it with the rest', () => {
+    const a = new Engine();
+    const standby = new Engine();
+    const c = new SwitchableController(a, standby);
+    expect(c.standby).toBe(standby);
+    expect(standby.calls).toEqual([]); // idle: it was sent nothing
+    expect(c.takeStandby()).toBe(standby);
+    expect(c.takeStandby()).toBeNull();
+    const other = new Engine();
+    const d = new SwitchableController(new Engine(), other);
+    d.dispose();
+    expect(other.disposed).toBe(1);
+    expect(d.standby).toBeNull();
+  });
+
+  it('a standby that reported a failure before it was used is no use: it is finished with and not handed over (a restart then makes a fresh engine at once)', () => {
+    const standby = new Engine();
+    const c = new SwitchableController(new Engine(), standby);
+    standby.ev.emit('error', 'simulation worker failed');
+    expect(c.takeStandby()).toBeNull();
+    expect(standby.disposed).toBe(1);
+    expect(c.standby).toBeNull();
+    // a healthy one is handed over, and watching ends with the hand-over
+    const ok = new Engine();
+    const d = new SwitchableController(new Engine(), ok);
+    expect(d.takeStandby()).toBe(ok);
+    ok.ev.emit('error', 'late');
+    expect(ok.disposed).toBe(0);
+  });
+
+  it('dispose also finishes an engine that was staged', () => {
+    const b = new Engine();
+    const c = new SwitchableController(new Engine());
+    c.stage(b);
+    c.dispose();
+    expect(b.disposed).toBe(1);
+  });
+
+  it('fail tells the listeners of an end the target did not report, as an error', () => {
+    const c = new SwitchableController(new Engine());
+    const seen: string[] = [];
+    c.on('error', (m) => seen.push(m));
+    c.fail('The desktop connection closed.');
+    expect(seen).toEqual(['The desktop connection closed.']);
   });
 
   it('keeps the order the fires and changes were sent in: the newest call for a mark sent again, nothing for a mark taken away', () => {

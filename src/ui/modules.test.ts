@@ -44,6 +44,23 @@ describe('the controller of a run (0.8.0, workstream J: the desktop engine)', ()
     expect(s.createController().constructor.name).toBe('MockSimController');
   });
 
+  it('createLocalController is always this device\'s engine, whatever the desktop host says (the standby of a desktop run, and the engine Continue on this device starts)', async () => {
+    const s = await loadServices(true);
+    const link = { id: 'the desktop link' } as unknown as SimController;
+    desktopSlot.set({ host: hostWith(() => link) });
+    const a = s.createLocalController();
+    const b = s.createLocalController();
+    expect(a).not.toBe(link);
+    expect(a).not.toBe(b); // a new one each time: an engine that failed to start is never reused
+    expect(a.constructor.name).toBe('MockSimController');
+    desktopSlot.set({
+      host: hostWith(() => {
+        throw new Error('The desktop connection closed.');
+      }),
+    });
+    expect(() => s.createLocalController()).not.toThrow(); // a gone link does not stop a run on this device
+  });
+
   it('a desktop engine whose link is gone stops the run from starting (the build screen says why) instead of computing on this device in silence', async () => {
     const s = await loadServices(true);
     desktopSlot.set({

@@ -12,7 +12,7 @@ import { h, setChildren, show, uniqueId } from '../dom';
 import { icon } from '../icons';
 import { button, chipChoice } from '../widgets';
 
-const PROBLEM_WORDS = { 'needs-code': ENGINE_PROBLEM.needsCode, refused: ENGINE_PROBLEM.refused, unreachable: ENGINE_PROBLEM.unreachable } as const;
+const PROBLEM_WORDS = { 'needs-code': ENGINE_PROBLEM.needsCode, refused: ENGINE_PROBLEM.refused, 'rate-limited': ENGINE_PROBLEM.rateLimited, unreachable: ENGINE_PROBLEM.unreachable } as const;
 
 /**
  * Adds the row to `card` and keeps it in step with `host`. `build` presses Setup's Build button. Returns the function that takes it out again.
@@ -84,7 +84,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
       setChildren(note, h('div', { class: 'callout callout-warn', dataset: { testid: 'engine-problem' } }, [icon('warning'), h('div', null, [PROBLEM_WORDS[s.problem], act && h('div', { class: 'engine-act' }, act)])]));
       // Build is pressed at the bottom of the screen: the words must not be left out of sight above it.
       row.scrollIntoView({ block: 'center' });
-      if (s.problem !== 'unreachable' && wantsCode) input.focus({ preventScroll: true });
+      if ((s.problem === 'needs-code' || s.problem === 'refused') && wantsCode) input.focus({ preventScroll: true });
       return;
     }
     const hint = s.busy ? ENGINE_HINT.connecting : s.engine === 'device' ? ENGINE_HINT.device : s.hasCode && s.fromLink ? ENGINE_HINT.desktopLink : ENGINE_HINT.desktopCode;

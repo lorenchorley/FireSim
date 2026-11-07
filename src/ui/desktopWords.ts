@@ -19,6 +19,10 @@ export const CLOSED_LINK = 'The desktop connection closed.';
 export const CONTINUE_HERE = 'Continue on this device';
 /** What is said when it was tapped: the label on the map for the rest of that run, and the announcement. */
 export const RESTARTED_HERE = 'Running on this device again, from the start.';
+/** On the button while this device starts the run (the model is set up again: a few seconds). */
+export const CONTINUE_BUSY = 'Starting on this device…';
+/** In the chip when this device could not start it: the button stays, and a second tap tries again with a fresh engine. */
+export const CONTINUE_FAILED = 'This device could not start the run. Tap to try again.';
 /** The help line of the Insights tab's error note on a run whose desktop went away (the note itself keeps the link's sentence). It leads with the action. */
 export const CLOSED_LINK_HELP =
   'Tap “Continue on this device” to run this scenario again here, from the start, with the fires and changes you marked. Until then the view keeps what the desktop had computed. Or open the menu (top left) and start a new scenario.';
@@ -35,6 +39,8 @@ export const ENGINE_HINT = {
 export const ENGINE_PROBLEM = {
   needsCode: 'Type the code the desktop shows, then build again.',
   refused: 'The desktop did not accept that code. Check the code it shows and type it again. After several wrong tries it waits about a minute.',
+  /** The right code or not, the desktop has stopped taking codes from this device for a while (after several wrong tries). */
+  rateLimited: 'The desktop is waiting before it takes another code. Try again in about a minute.',
   unreachable: 'Could not reach the desktop. Check that it is still running, then try again.',
   noLink: 'The desktop connection is not open. Go back to Setup and try again.',
 } as const;

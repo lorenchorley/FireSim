@@ -328,7 +328,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, windDetail.button, credit, panelHost, sheet.el, scrubber.el);
   // A run that computes on the desktop (the controller above is its link's): a lazy chunk labels it, puts the link's sentence in the chip and adds "Continue on this device".
   const desktop = desktopSlot.get();
-  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createController(), announce: o.announce }));
+  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createLocalController(), announce: o.announce }));
   unsubs.push(() => mapLegend.destroy(), () => windDetail.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
 
   // ───────────── visible map area ─────────────
