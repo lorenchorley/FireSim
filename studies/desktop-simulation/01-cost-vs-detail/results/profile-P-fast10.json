@@ -1,0 +1,220 @@
+{
+ "totalMs": 69461,
+ "gcMs": 788,
+ "programMs": 0,
+ "idleMs": 0,
+ "files": [
+  {
+   "name": "src/fire/spread/levelSet.ts",
+   "selfMs": 26814,
+   "pct": 38.6
+  },
+  {
+   "name": "src/atmosphere/pyrogenic.ts",
+   "selfMs": 16201,
+   "pct": 23.3
+  },
+  {
+   "name": "src/fire/spread/FireSpreadModel.ts",
+   "selfMs": 6373,
+   "pct": 9.2
+  },
+  {
+   "name": "src/atmosphere/diagnosticWind.ts",
+   "selfMs": 2088,
+   "pct": 3
+  },
+  {
+   "name": "src/fire/spread/math.ts",
+   "selfMs": 1984,
+   "pct": 2.9
+  },
+  {
+   "name": "src/atmosphere/base.ts",
+   "selfMs": 1802,
+   "pct": 2.6
+  },
+  {
+   "name": "src/sim/simulation.ts",
+   "selfMs": 1746,
+   "pct": 2.5
+  },
+  {
+   "name": "src/embers/EmberModel.ts",
+   "selfMs": 1563,
+   "pct": 2.3
+  },
+  {
+   "name": "src/fire/spread/geometry.ts",
+   "selfMs": 1401,
+   "pct": 2
+  },
+  {
+   "name": "src/sim/stats.ts",
+   "selfMs": 1006,
+   "pct": 1.4
+  },
+  {
+   "name": "((garbage collector))",
+   "selfMs": 788,
+   "pct": 1.1
+  },
+  {
+   "name": "src/fuel/moisture/model.ts",
+   "selfMs": 667,
+   "pct": 1
+  },
+  {
+   "name": "src/explain/rules/terrain.ts",
+   "selfMs": 450,
+   "pct": 0.6
+  },
+  {
+   "name": "src/core/datasets.ts",
+   "selfMs": 383,
+   "pct": 0.6
+  },
+  {
+   "name": "(slopeFactor)",
+   "selfMs": 378,
+   "pct": 0.5
+  },
+  {
+   "name": "src/atmosphere/solver.ts",
+   "selfMs": 353,
+   "pct": 0.5
+  },
+  {
+   "name": "src/embers/stats.ts",
+   "selfMs": 340,
+   "pct": 0.5
+  },
+  {
+   "name": "src/core/types.ts",
+   "selfMs": 326,
+   "pct": 0.5
+  },
+  {
+   "name": "src/explain/rules/weather.ts",
+   "selfMs": 326,
+   "pct": 0.5
+  },
+  {
+   "name": "src/atmosphere/surface.ts",
+   "selfMs": 279,
+   "pct": 0.4
+  },
+  {
+   "name": "src/fire/terrainFeatures.ts",
+   "selfMs": 273,
+   "pct": 0.4
+  },
+  {
+   "name": "src/explain/rules/fire.ts",
+   "selfMs": 250,
+   "pct": 0.4
+  }
+ ],
+ "functions": [
+  {
+   "name": "solve @ src/atmosphere/pyrogenic.ts:65",
+   "selfMs": 15296,
+   "pct": 22
+  },
+  {
+   "name": "reinit @ src/fire/spread/levelSet.ts:403",
+   "selfMs": 15059,
+   "pct": 21.7
+  },
+  {
+   "name": "evaluate @ src/fire/spread/levelSet.ts:163",
+   "selfMs": 9990,
+   "pct": 14.4
+  },
+  {
+   "name": "computeCell @ src/fire/spread/FireSpreadModel.ts:1256",
+   "selfMs": 2326,
+   "pct": 3.3
+  },
+  {
+   "name": "apply @ src/fire/spread/levelSet.ts:362",
+   "selfMs": 1698,
+   "pct": 2.4
+  },
+  {
+   "name": "compute @ src/fire/spread/geometry.ts:95",
+   "selfMs": 1391,
+   "pct": 2
+  },
+  {
+   "name": "addFireHeat @ src/atmosphere/diagnosticWind.ts:108",
+   "selfMs": 968,
+   "pct": 1.4
+  },
+  {
+   "name": "refreshMasks @ src/fire/spread/FireSpreadModel.ts:590",
+   "selfMs": 917,
+   "pct": 1.3
+  },
+  {
+   "name": "gradientToFire @ src/atmosphere/pyrogenic.ts:159",
+   "selfMs": 905,
+   "pct": 1.3
+  },
+  {
+   "name": "(garbage collector) @ ((garbage collector)):0",
+   "selfMs": 788,
+   "pct": 1.1
+  },
+  {
+   "name": "surfaceWindForFire @ src/atmosphere/base.ts:603",
+   "selfMs": 783,
+   "pct": 1.1
+  },
+  {
+   "name": "stepOnce @ src/sim/simulation.ts:1148",
+   "selfMs": 599,
+   "pct": 0.9
+  },
+  {
+   "name": "advance @ src/fuel/moisture/model.ts:264",
+   "selfMs": 589,
+   "pct": 0.8
+  },
+  {
+   "name": "emit @ src/embers/EmberModel.ts:368",
+   "selfMs": 543,
+   "pct": 0.8
+  },
+  {
+   "name": "makeSnapshot @ src/sim/simulation.ts:1711",
+   "selfMs": 528,
+   "pct": 0.8
+  },
+  {
+   "name": "sampleBg @ src/atmosphere/diagnosticWind.ts:138",
+   "selfMs": 515,
+   "pct": 0.7
+  },
+  {
+   "name": "prepareCell @ src/fire/spread/FireSpreadModel.ts:1350",
+   "selfMs": 507,
+   "pct": 0.7
+  },
+  {
+   "name": "fireWindTier @ src/atmosphere/diagnosticWind.ts:46",
+   "selfMs": 506,
+   "pct": 0.7
+  },
+  {
+   "name": "fireStats @ src/sim/stats.ts:23",
+   "selfMs": 505,
+   "pct": 0.7
+  },
+  {
+   "name": "moistureMean @ src/sim/stats.ts:120",
+   "selfMs": 494,
+   "pct": 0.7
+  }
+ ]
+}
