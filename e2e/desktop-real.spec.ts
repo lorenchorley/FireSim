@@ -4,17 +4,17 @@
  * of e2e/desktop-engine.spec.ts (that spec checks the page's side alone; this one checks the two sides together).
  *
  *   1. a page served by the host, opened with `#code=`: the Engine row with Desktop preselected, the code gone from the address bar, the
- *      Katoomba demo (6 km, fast tier) computed BY THE HOST (snapshots arrive, the time advances on Play, no engine worker in the page),
- *      the map and the debug statistics say so, the page asks `GET /__firesim/host` once, the host counts one session while the run is
- *      on and none after the page leaves it, and everything stays on the host's own origin
+ *      Katoomba demo (6 km, fast tier) computed BY THE HOST (snapshots arrive, the time advances on Play; the page holds one idle standby
+ *      engine worker and the host does the computing), the map and the debug statistics say so, the page asks `GET /__firesim/host` once,
+ *      the host counts one session while the run is on and none after the page leaves it, and everything stays on the host's own origin
  *   2. the same page choosing This device runs on the in-page engine and the host stays at 0 sessions
  *   3. a wrong code is said next to the box, nothing is built and the host has no session; after 5 wrong tries the address is refused
- *      (the right code too: close 4429) and the page keeps its words
- *   4. the host is killed mid-run: the chip says the connection closed, nothing switches by itself, the last picture stays; "Continue on
- *      this device" restarts the same scenario on the page's own engine from the start with the fire and the wind change marked before,
- *      and Play computes there (the page's own engine script is fetched first: see 4b)
- *  4b. the same with nothing fetched first: KNOWN DEFECT, marked `test.fail()`: the worker script of the page's own engine comes from the
- *      host that is gone, so "Continue on this device" ends in "simulation worker failed"
+ *      (the right code too: close 4429) and the page says so in its own words (the desktop is waiting, the code is not wrong)
+ *   4. the host is killed mid-run: the chip says the connection closed, nothing switches by itself, the last picture stays, the statistics
+ *      still open (their chunk was warmed while the host was there); "Continue on this device" restarts the same scenario on the page's
+ *      standby engine from the start with the fire and the wind change marked before, and Play computes there
+ *  4b. the same with nothing opened or fetched since the link opened (the case the first verification found failing): the standby engine
+ *      and the warmed chunks are what make it work, with the host really gone
  *   5. a host started with `--lan`, opened through this machine's non-loopback IPv4 address (a phone's browser would do the same; an
  *      insecure context): it runs on the desktop as in 1; a host started without `--lan` cannot be reached through that address
  *   6. a page of another origin cannot open the engine link (Origin check: refused at the handshake), cannot read the host's answer,
@@ -23,11 +23,9 @@
  * Each test starts its own host (so the rate limit of 3 cannot reach another) and stops it by its process id.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { availableParallelism, networkInterfaces } from 'node:os';
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as plain, type Locator, type Page } from '@playwright/test';
 import WebSocket from 'ws';
@@ -156,9 +154,9 @@ async function chooseAndBuild(page: Page): Promise<void> {
 type SessionState = { snapshot: unknown; headTime: number; viewTime: number; playing: boolean; error: string | null; ignitions: { id: string; time: number }[]; edits: { edit: { id: string }; time: number }[] };
 type Handle = {
   __firesim: {
-    session: { state: { get(): SessionState }; play(): void; pause(): void; ignite(i: unknown): unknown; setWindDirection(id: string, dir: number, at?: number): unknown };
+    session: { controller: { standby: Record<string, (...a: unknown[]) => unknown> | null }; state: { get(): SessionState }; play(): void; pause(): void; ignite(i: unknown): unknown; setWindDirection(id: string, dir: number, at?: number): unknown };
     scenario: { name: string };
-    services: { createController(): Record<string, (...a: unknown[]) => unknown> };
+    services: { createLocalController(): Record<string, (...a: unknown[]) => unknown> };
   };
 };
 /** The session's numbers and marks, small (the snapshot itself is megabytes of arrays and stays in the page). */
@@ -248,7 +246,7 @@ test('1. a page served by the host: the Engine row, Desktop preselected, the cod
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { message: 'the time advances on Play (the host computes)', timeout: 120_000 }).toBeGreaterThan(200);
     lap('1 time advanced past 200 s', t0);
-    expect(simWorkers(page), 'the page runs no simulation worker of its own').toBe(0);
+    await expect.poll(() => simWorkers(page), { message: 'the page holds one idle standby worker, and the host does the computing', timeout: 30_000 }).toBe(1);
 
     // the map and the debug statistics say where it runs
     await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
@@ -316,11 +314,11 @@ test('3. a wrong code: said next to the box, nothing is built, no session; after
     await page.goto(`${host.origin}/?mock=1&debug=1#code=WRONGWRO`);
     await acceptNotice(page);
     await expect(chip(page, 'desktop').locator('input')).toBeChecked();
-    const wrongTry = async (code: string | null, n: number): Promise<void> => {
+    const wrongTry = async (code: string | null, n: number, words = ['The desktop did not accept that code.', 'After several wrong tries it waits about a minute.']): Promise<void> => {
       if (code !== null) await codeBox(page).fill(code);
       await page.getByTestId('build').click();
-      await expect(page.getByTestId('engine-problem'), `try ${n}`).toContainText('The desktop did not accept that code.', { timeout: 15_000 });
-      await expect(page.getByTestId('engine-problem')).toContainText('After several wrong tries it waits about a minute.');
+      await expect(page.getByTestId('engine-problem'), `try ${n}`).toContainText(words[0]!, { timeout: 15_000 });
+      await expect(page.getByTestId('engine-problem')).toContainText(words[1]!);
       await expect(page.getByTestId('setup')).toBeVisible();
       await expect(page.getByTestId('building')).toHaveCount(0); // nothing is built
       expect(await sessionsOf(host), `try ${n}: no session`).toBe(0);
@@ -348,24 +346,15 @@ test('3. a wrong code: said next to the box, nothing is built, no session; after
       ws.on('error', reject);
     });
     expect(close, 'the right code, from the refused address').toBe(4429);
-    await wrongTry(CODE, 6); // the page keeps its words (it does not tell a refusal from a wrong code), builds nothing and gets no session
+    // the page says the desktop is waiting (the code was not wrong), keeps the code for the next try, builds nothing and gets no session
+    await wrongTry(CODE, 6, ['The desktop is waiting before it takes another code.', 'Try again in about a minute.']);
+    await expect(page.getByTestId('engine-problem')).not.toContainText('did not accept');
+    await expect(codeBox(page)).toHaveValue(CODE);
     lap('3 total', t0);
   } finally {
     await host.stop();
   }
 });
-
-/**
- * The page's own engine is a Web Worker whose script (`assets/worker-HASH.js`) is fetched when the first `new SimClient()` is made. A run on the
- * desktop makes none, so on a page that the host serves that script has not been fetched when the host goes away. This puts it in the browser's
- * cache first (the file is `immutable` under /assets/), which is what test 4 needs and test 4b shows is missing from the product.
- */
-async function warmTheLocalEngine(page: Page, host: Host): Promise<void> {
-  const file = readdirSync(join(ROOT, 'dist', 'assets')).find((f) => /^worker-[\w-]+\.js$/.test(f));
-  expect(file, 'dist/assets has the simulation worker').toBeTruthy();
-  const bytes = await page.evaluate(async (u) => (await (await fetch(u)).arrayBuffer()).byteLength, `${host.origin}/assets/${file}`);
-  expect(bytes).toBeGreaterThan(100_000);
-}
 
 test('4. the host is killed mid-run: the chip says the link closed, nothing switches by itself, the last picture stays; Continue on this device restarts the same scenario here with the fire and the wind change, and Play computes locally', async ({ page, context }) => {
   test.setTimeout(360_000);
@@ -375,9 +364,6 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
     const requests: string[] = [];
     context.on('request', (r) => requests.push(r.url()));
     await runOnDesktop(page, `${host.origin}/?debug=1#code=${CODE}`, host);
-    await warmTheLocalEngine(page, host);
-    // The statistics screen is a chunk that loads on first use: open it now, while the host is there (with the host gone it cannot be fetched, see 4b).
-    expect(await runStatistics(page)).toContain(`Desktop ${NAME}`);
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { timeout: 120_000 }).toBeGreaterThan(150);
     // mark one fire and one wind change, then let it play on
@@ -395,15 +381,12 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
     const turnTime = marked.edits.find((e) => e.edit.id === 'e2e-turn')!.time;
     // (marking in the past rewinds the host's run to a checkpoint and replays: the head falls back and climbs again)
     await expect.poll(() => head(page), { message: 'the host computes on after the marks', timeout: 120_000 }).toBeGreaterThan(100);
-    expect(simWorkers(page)).toBe(0);
-    // what the page's own engine is made and sent from now on (the page's `createController`, which gives its in-app engine once This device is chosen)
+    expect(simWorkers(page), 'the one idle standby worker, nothing else').toBe(1);
+    // what the page's own engines are sent from now on: the standby the run holds (idle until the tap), and any engine the page makes (`createLocalController`)
     await page.evaluate(() => {
       const w = window as unknown as { __local: unknown[][]; __firesim: Handle['__firesim'] };
       w.__local = [];
-      const services = w.__firesim.services;
-      const make = services.createController;
-      services.createController = () => {
-        const c = make();
+      const watch = (c: Record<string, (...a: unknown[]) => unknown>): Record<string, (...a: unknown[]) => unknown> => {
         const say: Record<string, (a: any[]) => unknown[]> = { init: (a) => ['init', a[0].name], ignite: (a) => ['ignite', a[0].id, a[0].time], edit: (a) => ['edit', a[0].id, a[1]], run: (a) => ['run', a[0]] };
         for (const m of Object.keys(say)) {
           const f = (c[m] as (...a: unknown[]) => unknown).bind(c);
@@ -411,6 +394,11 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
         }
         return c;
       };
+      const fs = w.__firesim;
+      if (fs.session.controller.standby) watch(fs.session.controller.standby);
+      const services = fs.services;
+      const make = services.createLocalController;
+      services.createLocalController = () => watch(make());
     });
     const scenarioName = await page.evaluate(() => (window as unknown as Handle).__firesim.scenario.name);
     lap('4 marked, about to kill', t0);
@@ -426,9 +414,13 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
     const later = await state(page);
     expect(later.headTime, 'nothing computes after the link is lost').toBe(frozen.headTime);
     expect(later.hasSnapshot).toBe(true);
-    expect(simWorkers(page), 'nothing switches by itself').toBe(0);
-    expect(await page.evaluate(() => (window as unknown as { __local: unknown[] }).__local)).toEqual([]);
+    expect(simWorkers(page), 'nothing switches by itself: still the one idle standby').toBe(1);
+    expect(await page.evaluate(() => (window as unknown as { __local: unknown[] }).__local), 'nothing was sent to the standby').toEqual([]);
     await expect(page.getByTestId('engine-banner')).toContainText('Running on the desktop');
+    // what the person opens meanwhile still opens, with the host gone: the statistics (a chunk that was warmed while the host was there)
+    const meanwhile = await runStatistics(page);
+    expect(meanwhile).toContain(`Desktop ${NAME}`);
+    expect(meanwhile).toContain('(the connection closed)');
     lap('4 chip shown', t0);
 
     // the tap: the same scenario again, here, from the start, with what was marked
@@ -439,7 +431,7 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
     expect(restarted).toMatchObject({ viewTime: 0, playing: false, error: null });
     expect(restarted.ignitions.map((i) => i.id)).toContain('e2e-fire');
     expect(restarted.edits.map((e) => e.edit.id)).toContain('e2e-turn');
-    await expect.poll(() => simWorkers(page), { message: 'the page now has its own simulation worker', timeout: 30_000 }).toBe(1);
+    expect(simWorkers(page), 'the standby is the run\'s engine now (no second worker)').toBe(1);
     await expect
       .poll(async () => (await page.evaluate(() => (window as unknown as { __local: unknown[][] }).__local)).map((c) => c[0]), { timeout: 30_000 })
       .toEqual(expect.arrayContaining(['init', 'ignite', 'edit']));
@@ -458,8 +450,7 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
   }
 });
 
-test('4b. the host dies and the page never fetched its own engine: Continue on this device still starts the run here (KNOWN DEFECT, expected to fail)', async ({ page }) => {
-  test.fail(true, 'finding of the verification of 80ce2e9: the worker script of the in-page engine (and every other chunk not fetched yet, such as the statistics screen) comes from the host that has just died, so the restart ends in "simulation worker failed". Remove test.fail() when the page has its own engine ready before a desktop run (or falls back to the in-thread engine).');
+test('4b. the host dies and nothing was opened or fetched since the link opened: Continue on this device still starts the run here (the standby engine and the warmed chunks)', async ({ page }) => {
   test.setTimeout(240_000);
   const host = await startHost();
   try {
@@ -521,7 +512,7 @@ test('5. --lan: the page opened through the non-loopback IPv4 address (as a phon
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { timeout: 120_000 }).toBeGreaterThan(200);
     await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
-    expect(simWorkers(page)).toBe(0);
+    expect(simWorkers(page), 'the one idle standby worker, nothing else').toBe(1);
     expect(requests.filter((u) => /^https?:/.test(u) && !sameOrigin(u, origin))).toEqual([]);
     await leaveToSetup(page);
     await expect.poll(async () => (await (await fetch(`${origin}/__firesim/host`)).json() as HostAnswer).sessions, { timeout: 20_000 }).toBe(0);

@@ -20,8 +20,12 @@ export interface DesktopStubOptions {
   unreachable?: boolean;
   /** Hold the answer of `connectRemote` back (ms), to see the "Connecting" state. */
   delayMs?: number;
-  /** The link is cut by itself this long (ms) after the engine was initialised (`?stubfail=N` in the address does the same). */
+  /** The link ends by itself this long (ms) after the engine was initialised (`?stubfail=N` in the address does the same). */
   failAfterMs?: number;
+  /** The desktop refuses the code as it does after several wrong ones (`reason: 'rate-limited'`). */
+  rateLimited?: boolean;
+  /** The link has no `onClosed` (an older module): the page then takes an `error` event of the controller for the end of the link. */
+  noOnClosed?: boolean;
 }
 
 export type RemoteCall = [string, ...unknown[]];
@@ -35,5 +39,9 @@ export async function installDesktopStub(page: Page, options: DesktopStubOptions
 /** What the page asked of the stub so far. */
 export const remoteCalls = (page: Page): Promise<RemoteCall[]> => page.evaluate(() => (window as unknown as { __remote: { calls: RemoteCall[] } }).__remote.calls.map((c) => [...c] as RemoteCall));
 
-/** Make the open link fail the way a closed one does (the controller says so with an `error`). */
-export const failLink = (page: Page, message = 'The desktop connection closed.'): Promise<void> => page.evaluate((m) => (window as unknown as { __remote: { fail(m: string): void } }).__remote.fail(m), message);
+/** The link ends (the controller says so with an `error` event and `onClosed` is called once; `quiet`: `onClosed` only). */
+export const failLink = (page: Page, reason = 'The desktop connection closed.', quiet = false): Promise<void> =>
+  page.evaluate(([m, q]) => (window as unknown as { __remote: { close(m: string, how: { quiet: boolean }): void } }).__remote.close(m as string, { quiet: q as boolean }), [reason, quiet]);
+
+/** An engine's error message while the link is still open (not the end of the link). */
+export const engineError = (page: Page, message = 'The engine had a problem.'): Promise<void> => page.evaluate((m) => (window as unknown as { __remote: { fail(m: string): void } }).__remote.fail(m), message);

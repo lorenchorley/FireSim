@@ -14,6 +14,11 @@
  *   - the link closing during the run: the existing error chip says so and offers "Continue on this device" (never by itself); the tap
  *     restarts the same scenario on this device's engine, from the start, with the marks in their original order and times, and says so;
  *     the Engine row and the statistics say This device again. The desktop that cannot be reached at the start offers the same on Setup;
+ *   - the end of the link is what the link's own `onClosed` says (an engine's error message with the link open is only a message in the
+ *     chip); the action is all or nothing (an engine that fails to start leaves the run as it was and the same button tries again with a
+ *     fresh one); a host that is really gone (nothing of its origin can be fetched) still lets the run continue here, because the page
+ *     made an idle standby engine and warmed its lazy chunks while the link was open; a code the desktop is not taking for a while has
+ *     its own words;
  *   - the layout of the row at 360 x 640, 390 x 844, 412 x 915 and 844 x 390 in light, dark and high contrast: inside the screen,
  *     44 x 44 px hit areas, text at least 14 px.
  * `EXPECT_REAL_DETECT=1` (after lane J1's `detectHost` is merged) also asks for exactly one same-origin question on a page with no host.
@@ -21,7 +26,7 @@
 import { mkdirSync } from 'node:fs';
 import type { Locator, Page } from '@playwright/test';
 import { emulateCapacitorAndroid } from './androidBridge';
-import { failLink, installDesktopStub, remoteCalls, type DesktopStubOptions } from './desktopStub';
+import { engineError, failLink, installDesktopStub, remoteCalls, type DesktopStubOptions } from './desktopStub';
 import { expect, test } from './fixtures';
 import { acceptNotice, armPopupWatch, popups, session, watchPopups } from './helpers';
 
@@ -82,6 +87,9 @@ async function missedProbes(loc: Locator): Promise<number> {
 }
 
 const sameOrigin = (url: string, origin: string): boolean => new URL(url).origin === origin;
+
+/** The simulation's own Web Worker (the in-page engine); the speed test's and any other worker do not match. */
+const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url())).length;
 
 /** The Setup form for the real builder: the Katoomba demo, preset weather, offline (the build then takes seconds). */
 async function chooseKatoombaOffline(page: Page): Promise<void> {
@@ -205,7 +213,9 @@ test('a code in the address, on the real modules: Desktop is preselected, the ad
   await armPopupWatch(page);
   const calls = await remoteCalls(page);
   expect(calls.filter((c) => c[0] === 'connect')).toEqual([['connect', { base: origin, rightCode: true }]]); // the page's own origin only
+  expect(calls.filter((c) => c[0] === 'info'), 'the start-up answer goes with the connection (it does not ask again)').toEqual([['info', true]]);
   expect(calls.filter((c) => c[0] === 'init')).toHaveLength(1); // the run is the stub's
+  await expect.poll(() => simWorkers(page), { message: 'one idle standby engine is held while the run is the desktop\'s', timeout: 30_000 }).toBe(1);
   expect(calls.filter((c) => c[0] === 'detect')).toEqual([['detect', { base: origin, timeoutMs: 800 }]]);
   expect(await whereIsTheCode(page, CODE)).toEqual([]);
 
@@ -228,6 +238,12 @@ test('a code in the address, on the real modules: Desktop is preselected, the ad
   // everything the page asked for stayed on its own origin
   expect(requests.filter((u) => /^https?:/.test(u) && !sameOrigin(u, origin))).toEqual([]);
   expect(await popups(page)).toEqual([]);
+
+  // leaving the run lets the standby engine go with it
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-new').click();
+  await expect(page.getByTestId('setup')).toBeVisible();
+  await expect.poll(() => simWorkers(page), { message: 'the standby engine is finished with when the run ends', timeout: 30_000 }).toBe(0);
 });
 
 test('This device on a host page: the run never touches the desktop, and the label is the demo engine\'s, not the desktop\'s', async ({ page }) => {
@@ -287,21 +303,21 @@ async function markThings(page: Page): Promise<void> {
   });
 }
 
-type Made = { demoEngine: boolean; log: unknown[][] };
+type Made = { demoEngine: boolean; standby: boolean; log: unknown[][] };
 
-/** Watch the engines the page makes from now on (its own `createController`, which gives the in-app engine once This device is chosen) and what each is sent. */
+/**
+ * Watch the engines of this device and what each is sent: the standby the run holds from the moment the link opened (it is idle until the tap),
+ * and every engine the page makes from now on (`createLocalController`: the fresh one of a second try).
+ */
 async function watchLocalEngines(page: Page): Promise<void> {
   await page.evaluate(() => {
     type Engine = Record<string, (...a: unknown[]) => unknown>;
-    const w = window as unknown as { __local: { demoEngine: boolean; log: unknown[][] }[]; __firesim: { services: { createController(): Engine } } };
+    const w = window as unknown as { __local: { demoEngine: boolean; standby: boolean; log: unknown[][] }[]; __firesim: { session: { controller: { standby: Engine | null } }; services: { createLocalController(): Engine } } };
     w.__local = [];
-    const services = w.__firesim.services;
-    const make = services.createController;
-    services.createController = () => {
-      const c = make();
+    const watch = (c: Engine, standby: boolean): Engine => {
       const log: unknown[][] = [];
       // (class names do not survive the production build: the demo engine is the one that holds its ignitions in a list of its own)
-      w.__local.push({ demoEngine: Array.isArray((c as unknown as { ignitions?: unknown }).ignitions), log });
+      w.__local.push({ demoEngine: Array.isArray((c as unknown as { ignitions?: unknown }).ignitions), standby, log });
       const say: Record<string, (a: any[]) => unknown[]> = {
         init: (a) => ['init', a[0].name, a[0].ignitions.length, a[0].edits.length],
         ignite: (a) => ['ignite', a[0].id, a[0].time],
@@ -315,6 +331,10 @@ async function watchLocalEngines(page: Page): Promise<void> {
       }
       return c;
     };
+    const fs = w.__firesim;
+    if (fs.session.controller.standby) watch(fs.session.controller.standby, true);
+    const make = fs.services.createLocalController;
+    fs.services.createLocalController = () => watch(make(), false);
   });
 }
 
@@ -346,7 +366,7 @@ test('the desktop link is cut mid-run: the chip offers "Continue on this device"
   expect(await missedProbes(go), 'a 44 x 44 px hit area').toBe(0);
   expect(await go.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
   await page.waitForTimeout(2000);
-  expect(await localEngines(page), 'no engine is made before the tap').toEqual([]);
+  expect((await localEngines(page)).map((m) => [m.standby, m.log]), 'the standby engine is there and idle (nothing was sent to it), and no other engine is made before the tap').toEqual([[true, []]]);
   await expect(page.getByTestId('engine-banner')).toContainText('Running on the desktop');
   expect((await session(page)).error).toBe('The desktop connection closed.');
   expect(await popups(page)).toEqual([]);
@@ -358,7 +378,8 @@ test('the desktop link is cut mid-run: the chip offers "Continue on this device"
   await expect(chipEl).toBeHidden();
   await expect(go).toHaveCount(0);
   const made = await localEngines(page);
-  expect(made).toHaveLength(1);
+  expect(made, 'the tap used the standby: no other engine was made').toHaveLength(1);
+  expect(made[0]!.standby).toBe(true);
   expect(made[0]!.demoEngine).toBe(true); // the in-app engine of this page (the demo engine under ?mock=1), through the page's own choice
   // the same scenario, then the options, then the marks in the order they were made, each with its time
   expect(made[0]!.log.filter((c) => c[0] !== 'run')).toEqual([
@@ -438,6 +459,203 @@ test('a wrong code is not a lost link: it keeps its own wording next to the box 
   await expect(page.getByTestId('engine-problem')).toContainText('The desktop did not accept that code.', { timeout: 10_000 });
   await expect(page.getByTestId('continue-here-setup')).toHaveCount(0);
   await expect(page.getByTestId('continue-here')).toHaveCount(0);
+});
+
+test('an engine error while the link is open is only a message in the chip (no action: the run is still the desktop\'s); the end of the link, said by onClosed alone, is what offers "Continue on this device"', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openSetup(page, { hash: `#code=${CODE}` });
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
+  const chipEl = page.getByTestId('error-chip');
+  const go = page.getByTestId('continue-here');
+  await engineError(page, 'The engine had a problem.');
+  await expect(chipEl).toBeVisible();
+  await expect(chipEl).toContainText('The engine had a problem.');
+  await expect(go).toBeHidden();
+  await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
+  await page.waitForTimeout(500);
+  expect((await remoteCalls(page)).filter((c) => c[0] === 'close'), 'the link is not let go of').toEqual([]);
+  // the link ends, and only its callback says so: the chip now has the link's sentence and the action
+  await failLink(page, 'The desktop connection closed.', true);
+  await expect(chipEl).toContainText('The desktop connection closed.');
+  await expect(chipEl).not.toContainText('The engine had a problem.');
+  await expect(go).toBeVisible();
+  await expect(go).toHaveText('Continue on this device');
+});
+
+test('the link ends with no word from the engine (onClosed only): the run stops, the chip has the link\'s own sentence and the action, the statistics say the connection closed', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openSetup(page, { hash: `#code=${CODE}` });
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
+  await page.getByTestId('play').click();
+  await failLink(page, 'The desktop stopped answering.', true);
+  const chipEl = page.getByTestId('error-chip');
+  await expect(chipEl).toContainText('The desktop stopped answering.');
+  await expect(page.getByTestId('continue-here')).toBeVisible();
+  expect((await session(page)).playing, 'the run stops').toBe(false);
+  expect((await session(page)).error).toBe('The desktop stopped answering.');
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-debug-stats').click();
+  await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('debug-group-run').click();
+  await expect(page.getByTestId('debug-group-run-body')).toContainText('Desktop Studio PC, 8 cores, Node v22.11.0 (the connection closed)');
+});
+
+test('a link of an older module (no onClosed): an error of the controller is taken for the end of the link, as it was', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openSetup(page, { stub: { noOnClosed: true }, hash: `#code=${CODE}` });
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
+  await failLink(page);
+  await expect(page.getByTestId('error-chip')).toContainText('The desktop connection closed.');
+  await expect(page.getByTestId('continue-here')).toBeVisible();
+});
+
+test('Continue on this device is all or nothing: an engine that fails to start leaves the run as it was, says so in a sentence, keeps the button, and the second tap tries a fresh engine', async ({ page }) => {
+  test.setTimeout(240_000);
+  await watchPopups(page);
+  await openSetup(page, { hash: `#code=${CODE}` });
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
+  await armPopupWatch(page);
+  await markThings(page);
+  await watchLocalEngines(page);
+  // the standby cannot start (as when its script cannot be fetched), after a moment
+  await page.evaluate(() => {
+    const c = (window as unknown as { __firesim: { session: { controller: { standby: { init(): Promise<unknown> } | null } } } }).__firesim.session.controller;
+    c.standby!.init = async () => {
+      await new Promise((r) => setTimeout(r, 1200));
+      throw new Error('worker failed');
+    };
+  });
+  await failLink(page);
+  const chipEl = page.getByTestId('error-chip');
+  const go = page.getByTestId('continue-here');
+  await expect(go).toBeVisible();
+  await go.click();
+  await expect(go).toHaveText('Starting on this device…'); // busy: the button stays, and cannot be tapped twice
+  await expect(go).toBeDisabled();
+  await expect(go).toHaveText('Continue on this device', { timeout: 15_000 });
+  await expect(go).toBeEnabled();
+  await expect(chipEl).toContainText('This device could not start the run. Tap to try again.');
+  // the run is exactly as it was: still the desktop's, nothing let go of, the old sentence still the session's error, the marks kept
+  await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
+  expect((await remoteCalls(page)).filter((c) => c[0] === 'close'), 'the desktop link is kept until the new engine has started').toEqual([]);
+  const failed = await session(page);
+  expect(failed.error).toBe('The desktop connection closed.');
+  expect(failed.ignitions).toEqual(['observed', 'observed']);
+  expect(await page.locator('[role=alert]').count()).toBe(1);
+  expect(await popups(page)).toEqual([]);
+  // the second tap makes a fresh engine and works
+  await go.click();
+  await expect(page.getByTestId('engine-banner')).toHaveText('Running on this device again, from the start.');
+  await expect(chipEl).toBeHidden();
+  await expect(go).toHaveCount(0);
+  const made = await localEngines(page);
+  expect(made.map((m) => m.standby), 'the standby that failed, then one fresh engine').toEqual([true, false]);
+  expect(made[1]!.log.filter((c) => c[0] !== 'run')).toEqual([
+    ['init', expect.any(String), 0, 0],
+    ['setOption', 'snapshotInterval', 120],
+    ['ignite', 'fire-a', 0],
+    ['edit', 'brush-1', 0],
+    ['ignite', 'fire-b', 0],
+    ['edit', 'turn-1', 1800],
+  ]);
+  expect((await remoteCalls(page)).filter((c) => c[0] === 'close').length).toBeGreaterThanOrEqual(1);
+  expect(await session(page)).toMatchObject({ viewTime: 0, playing: false, error: null });
+  expect(await popups(page)).toEqual([]);
+});
+
+test('a code the desktop is not taking for a while has its own words (not "did not accept"), the code is kept for the next try, and Setup stays', async ({ page }) => {
+  await openSetup(page, { stub: { rateLimited: true } });
+  await chip(page, 'desktop').click();
+  await codeBox(page).fill(CODE);
+  await page.getByTestId('build').click();
+  const problem = page.getByTestId('engine-problem');
+  await expect(problem).toContainText('The desktop is waiting before it takes another code. Try again in about a minute.', { timeout: 10_000 });
+  await expect(problem).not.toContainText('did not accept');
+  await expect(problem).not.toContainText('Check the code');
+  await expect(codeBox(page)).toHaveValue(CODE); // not forgotten: the code was not wrong
+  await expect(page.getByTestId('setup')).toBeVisible();
+  await expect(page.getByTestId('building')).toHaveCount(0);
+  await expect(page.getByTestId('continue-here-setup')).toHaveCount(0);
+  expect(await page.locator('[role=alert], [role=alertdialog], .toast, dialog[open]').count()).toBe(0);
+  // the same code goes again with no retyping
+  await page.getByTestId('build').click();
+  await expect.poll(async () => (await remoteCalls(page)).filter((c) => c[0] === 'connect').length, { timeout: 10_000 }).toBe(2);
+  await expect(problem).toContainText('The desktop is waiting before it takes another code.');
+  // typing a new code takes the words away, as for any other
+  await codeBox(page).fill('EFGH2345');
+  await expect(problem).toHaveCount(0);
+});
+
+test('the host is really gone (nothing of the page\'s own origin can be fetched any more): Continue on this device still starts the run here, and what the person opens meanwhile still opens', async ({ page, context, baseURL }) => {
+  test.setTimeout(300_000);
+  test.info().annotations.push({ type: 'network-failures' }); // the requests this test refuses are reported by the browser
+  const origin = new URL(baseURL!).origin;
+  const asked: string[] = [];
+  context.on('request', (r) => {
+    if (sameOrigin(r.url(), origin)) asked.push(new URL(r.url()).pathname);
+  });
+  await openSetup(page, { query: 'debug=1', hash: `#code=${CODE}` });
+  await chooseKatoombaOffline(page);
+  const atBuild = asked.length;
+  await page.getByTestId('build').click();
+  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
+  // the page warms what a running screen may still ask its host for, one chunk after the other when it is idle: wait until it has been quiet
+  let quiet = 0;
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        quiet = asked.length === last ? quiet + 1 : 0;
+        last = asked.length;
+        return quiet;
+      },
+      { message: 'the page has finished asking for chunks', timeout: 90_000, intervals: [1000] },
+    )
+    .toBeGreaterThanOrEqual(5);
+  const before = [...asked];
+  expect(before.filter((u) => /\/assets\/worker-/.test(u)), 'the standby engine\'s script was fetched while the host was there').not.toEqual([]);
+  expect(before.filter((u) => /\/assets\/(debugStats|modelCard)-/.test(u)).length, 'the statistics and the model card were warmed').toBeGreaterThanOrEqual(1);
+  console.log(`[desktop-engine] asked of the host from Build until the page was quiet: ${before.slice(atBuild).filter((u) => /\/assets\//.test(u)).map((u) => u.replace('/assets/', '')).join(' ')}`);
+  await markThings(page);
+
+  // the host goes: every request to its origin now fails, and the link ends
+  const refused: string[] = [];
+  await page.route(
+    (u) => sameOrigin(u.href, origin),
+    (route) => {
+      refused.push(new URL(route.request().url()).pathname);
+      return route.abort('connectionrefused');
+    },
+  );
+  await failLink(page);
+  const chipEl = page.getByTestId('error-chip');
+  const go = page.getByTestId('continue-here');
+  await expect(chipEl).toContainText('The desktop connection closed.');
+  await expect(go).toBeVisible();
+  // what the person opens meanwhile still opens (these chunks were warmed): the statistics say the connection closed
+  await page.getByTestId('menu').click();
+  await page.getByTestId('menu-debug-stats').click();
+  await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('debug-group-run').click();
+  await expect(page.getByTestId('debug-group-run-body')).toContainText('(the connection closed)');
+  await page.getByTestId('debug-stats-close').click();
+  await expect(page.getByTestId('debug-stats')).toHaveCount(0);
+
+  await go.click();
+  await expect(page.getByTestId('engine-banner')).toHaveText('Running on this device again, from the start.', { timeout: 60_000 });
+  await expect(chipEl).toBeHidden();
+  expect((await session(page)).error).toBeNull();
+  await page.waitForTimeout(3000);
+  expect((await session(page)).error, 'still no error once the engine had time to start').toBeNull();
+  await page.getByTestId('play').click();
+  await expect.poll(async () => (await session(page)).headTime, { message: 'Play computes on this device', timeout: 120_000 }).toBeGreaterThan(0);
+  expect((await session(page)).ignitions).toEqual(['observed', 'observed']);
+  expect(refused.filter((u) => /\/assets\//.test(u)), 'nothing under /assets was needed from the gone host').toEqual([]);
+  console.log(`[desktop-engine] asked of the gone host: ${refused.join(' ') || 'nothing'}`);
 });
 
 for (const [w, h] of SIZES) {
