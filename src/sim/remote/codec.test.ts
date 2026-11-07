@@ -8,30 +8,12 @@ import type { ScenarioData, SimSnapshot } from '../../core/types';
 import { withoutContext } from '../client';
 import type { FromWorker, ToWorker } from '../protocol';
 import { Simulation } from '../simulation';
+import { difference } from '../testing/compare';
 import { demoScenario, pointIgnition, syntheticScenario } from '../testing/scenarios';
 import { CodecError, decodeMessage, decodeValue, encodeMessage, encodeValue } from './codec';
 
 const isView = (v: unknown): v is ArrayBufferView => ArrayBuffer.isView(v);
 const bytesOf = (v: ArrayBufferView): Uint8Array => new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-
-/** The first place where two values differ (bitwise for typed arrays, `Object.is` for numbers), or null. */
-function difference(a: unknown, b: unknown, path = ''): string | null {
-  if (isView(a) || isView(b)) {
-    if (!isView(a) || !isView(b) || a.constructor !== b.constructor) return `${path}: not the same kind of array`;
-    if (a.byteLength !== b.byteLength) return `${path}: length ${a.byteLength} against ${b.byteLength}`;
-    return Buffer.compare(bytesOf(a), bytesOf(b)) === 0 ? null : `${path}: bytes differ`;
-  }
-  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return Object.is(a, b) ? null : `${path}: ${String(a)} against ${String(b)}`;
-  if (Array.isArray(a) !== Array.isArray(b)) return `${path}: array against object`;
-  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
-  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
-  if (ka.length !== kb.length) return `${path}: ${ka.length} fields against ${kb.length}`;
-  for (const k of ka) {
-    const d = difference((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}.${k}`);
-    if (d) return d;
-  }
-  return null;
-}
 
 function everyArray(v: unknown, f: (a: ArrayBufferView, path: string) => void, path = ''): void {
   if (isView(v)) return f(v, path);
