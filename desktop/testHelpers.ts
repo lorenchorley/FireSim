@@ -2,8 +2,23 @@
  * Helpers of the desktop host's tests: a client on the `ws` library (so a test can set the Origin and the local address,
  * read the close code and see the status of a refused handshake) and a small engine to stand in for the worker thread.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
+import { buildDesktop } from './build.mjs';
 import type { Engine, EngineEvents, EngineFactory } from './engine';
+
+/**
+ * The built host (main.mjs and engineWorker.mjs), in a folder of its own inside the repository so that `ws` resolves from it
+ * (the way desktop/.build does for `npm run desktop`). `remove()` deletes it.
+ */
+export async function buildForTests(): Promise<{ dir: string; remove(): void }> {
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  const dir = mkdtempSync(join(here, '.build-test-'));
+  await buildDesktop({ root: join(here, '..'), outDir: dir, logLevel: 'silent' });
+  return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
+}
 
 export interface TestClient {
   ws: WebSocket;

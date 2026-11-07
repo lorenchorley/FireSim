@@ -1,6 +1,7 @@
 node_modules/
 dist/
 desktop/.build/
+desktop/.build-test-*/
 coverage/
 test-results/
 playwright-report/

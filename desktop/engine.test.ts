@@ -22,10 +22,9 @@ import { difference } from '../src/sim/testing/compare';
 import { snapshotHash } from '../src/sim/testing/hash';
 import { demoScenario, pointIgnition, syntheticScenario, withIgnitions } from '../src/sim/testing/scenarios';
 import { Simulation } from '../src/sim/simulation';
-import { buildDesktop } from './build.mjs';
 import { workerEngines } from './engine';
 import { startHost, type HostHandle } from './server';
-import { fakeEngines, hello, openClient, waitFor, welcomeOf } from './testHelpers';
+import { buildForTests, fakeEngines, hello, openClient, waitFor, welcomeOf } from './testHelpers';
 
 const CODE = 'KATOOMBA';
 const log = (s: string): void => {
@@ -33,6 +32,7 @@ const log = (s: string): void => {
 };
 
 let work: string;
+let built: Awaited<ReturnType<typeof buildForTests>>;
 let workerFile: URL;
 const hosts: HostHandle[] = [];
 const open: RemoteConnection[] = [];
@@ -40,8 +40,8 @@ const open: RemoteConnection[] = [];
 beforeAll(async () => {
   work = mkdtempSync(join(tmpdir(), 'firesim-engine-'));
   writeFileSync(join(work, 'index.html'), '<!doctype html><title>FireSim</title>');
-  await buildDesktop({ root: new URL('..', import.meta.url).pathname, outDir: join(work, 'build'), logLevel: 'silent' });
-  workerFile = pathToFileURL(join(work, 'build', 'engineWorker.mjs'));
+  built = await buildForTests();
+  workerFile = pathToFileURL(join(built.dir, 'engineWorker.mjs'));
 }, 120_000);
 
 afterEach(async () => {
@@ -49,7 +49,10 @@ afterEach(async () => {
   for (const h of hosts.splice(0)) await h.close();
 });
 
-afterAll(() => rmSync(work, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(work, { recursive: true, force: true });
+  built.remove();
+});
 
 async function realHost(extra: { maxSessions?: number } = {}): Promise<HostHandle> {
   const h = await startHost({
