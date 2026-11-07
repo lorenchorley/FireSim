@@ -92,24 +92,48 @@ export interface ContinueDeps {
   session: Pick<SimSession, 'scenario' | 'state' | 'restart'>;
   /** The run's controller, as `take` handed it out. */
   proxy: SwitchableController;
-  /** A fresh in-app engine (the page's own `createController` choice, with This device chosen). May throw. */
+  /** A fresh in-app engine (the page's own `createController` choice, with This device chosen), for when the standby is gone. May throw. */
   makeController(): SimController;
   announce(message: string): void;
+  /** The new engine has started, just before the run is switched to it: the desktop gives its link up here (and not before). */
+  started?(): void;
+  /** How long the new engine may take to answer (ms). */
+  timeoutMs?: number;
 }
 
+/** A start that does not answer in this long has failed (an engine whose script cannot be loaded says so at once; this is for one that says nothing). */
+export const START_TIMEOUT_MS = 90_000;
+
 /**
- * Switch the run to a fresh in-app engine and start it over: the controller's calls go to the new engine, the session drops what the
- * desktop computed, and the scenario is initialised with the person's marks sent behind it. Paused at the start: the person presses Play.
- * Rejects when no engine could be made; an engine that fails after that says so through its own error event, as any run does.
+ * Start the run over on this device's engine, all or nothing. The engine is the standby made when the link opened (its script is already
+ * here, so no network is needed), or a fresh one. It is started on the side: initialised with the scenario while the run goes on
+ * showing what it showed and hearing the desktop's last word. Only when it has answered is the run switched: `started` is called (the
+ * desktop gives its link up and the run is marked as started again here), the session drops what the desktop computed, the controller
+ * points at the new engine, the person's marks are sent behind the scenario, and it is announced. If the engine fails, nothing was
+ * changed: it is thrown away, the promise rejects, and the next try takes a fresh engine. Paused at the start: the person presses Play.
  */
 export async function continueOnDevice(d: ContinueDeps): Promise<void> {
-  const next = d.makeController();
+  const next = d.proxy.takeStandby() ?? d.makeController();
   const s = d.session.state.get();
   const plan = restartPlan({ scenario: d.session.scenario, ignitions: s.ignitions, edits: s.edits, options: s.options, timeStep: s.timeStep, solverStep: s.solverStep, order: d.proxy.order });
+  d.proxy.stage(next);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      next.init(plan.scenario),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('This device did not answer in time.')), d.timeoutMs ?? START_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (e) {
+    d.proxy.abandon();
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  d.started?.();
   d.session.restart(); // its pause goes to the old engine
-  d.proxy.switchTo(next);
-  d.announce(RESTARTED_HERE);
-  const ready = d.proxy.init(plan.scenario);
+  d.proxy.commit();
   applyPlan(d.proxy, plan.steps);
-  await ready.catch(() => undefined);
+  d.announce(RESTARTED_HERE);
 }

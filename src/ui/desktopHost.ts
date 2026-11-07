@@ -10,7 +10,7 @@
  * No result depends on any of this: the controller is the same protocol (src/sim/protocol.ts) whoever computes.
  */
 import type { SimController } from '../sim/protocol';
-import { CLOSED_LINK_HELP, ENGINE_PROBLEM, RUNNING_ON_DESKTOP } from './desktopWords';
+import { CLOSED_LINK, CLOSED_LINK_HELP, ENGINE_PROBLEM, RUNNING_ON_DESKTOP } from './desktopWords';
 import type { DesktopLink, DesktopRun, DetectFn, HostInfo } from './desktopTypes';
 import { SwitchableController } from './runController';
 import { Store } from './store';
@@ -27,7 +27,7 @@ export interface DesktopView {
   /** The link is being opened. */
   busy: boolean;
   /** What to say next to the code box. */
-  problem: 'needs-code' | 'refused' | 'unreachable' | null;
+  problem: 'needs-code' | 'refused' | 'rate-limited' | 'unreachable' | null;
 }
 
 export interface DesktopHost {
@@ -48,19 +48,21 @@ export interface DesktopHost {
    * build screen shows, when Desktop was chosen and the link is not there (closed while the model was built).
    */
   take(): SimController | null;
+  /** The controller the run that computes on the desktop holds (the one `take` handed out), or null. */
+  proxy(): SwitchableController | null;
   /**
-   * "Continue on this device": the run that computes on the desktop gives up its link. The engine choice goes back to This device (so
-   * `take` gives the in-app engine), the link is closed, and the run is marked as started again on this device. Returns the run's
-   * controller, which the caller points at the new engine (desktopRestart.ts), or null when no run holds a desktop link.
+   * The new engine of "Continue on this device" has started (desktopRestart.ts calls this then, and not before): the run gives up its
+   * link. The engine choice goes back to This device, the link is closed, and the run is marked as started again on this device.
+   * Returns the run's controller, or null when no run holds a desktop link.
    */
   leave(): SwitchableController | null;
   /** Setup is shown again: closes a link no run took, closes the last run's, and forgets that run. */
   release(): void;
 }
 
-/** The code was refused (a wrong code, or too many wrong ones): the row says so next to the code box. */
+/** The code was refused: a wrong code, or the desktop has stopped taking codes from this device for a while. The row says which, next to the code box. */
 export class CodeRefused extends Error {
-  constructor() {
+  constructor(readonly reason: 'wrong-code' | 'rate-limited' = 'wrong-code') {
     super('The desktop did not accept the code.');
     this.name = 'CodeRefused';
   }
@@ -78,10 +80,17 @@ export interface HostEnv {
   /** Replace the address's fragment (`history.replaceState`, keeping the history entry and its state). */
   replaceHash(hash: string): void;
   detect: DetectFn;
-  /** Opens the link; a refused code rejects with {@link CodeRefused}, any other failure with its own error. */
-  connect(o: { base: string; code: string }): Promise<DesktopLink>;
+  /** Opens the link (`info`: what the start-up check found, so the connection does not ask again); a refused code rejects with {@link CodeRefused}, any other failure with its own error. */
+  connect(o: { base: string; code: string; info: HostInfo }): Promise<DesktopLink>;
   /** Tells the screens which run computes on the desktop (null: none). */
   publishRun(run: DesktopRun | null): void;
+  /**
+   * This device's own engine, made idle when the link opens (null: it could not be made). On a page the desktop host serves, that engine's
+   * script comes from the host: made at once, it is here when the host is gone. The run's controller holds it for the fallback.
+   */
+  standby?(): SimController | null;
+  /** The link has opened: the moment to load, once and idle, what the running screen can still ask the host for. */
+  warm?(): void;
 }
 
 /** The host's own answer is allowed this long (ms). */
@@ -155,7 +164,9 @@ interface Entry {
   link: DesktopLink;
   /** The controller the run holds, once `take` handed it out. */
   proxy?: SwitchableController;
-  /** The sentence of the link's error, once it said one. */
+  /** This device's own engine, idle, until `take` gives it to the run's controller (or the link is let go before). */
+  standby: SimController | null;
+  /** The sentence the link ended with, once it ended. */
   dead: string | null;
   off(): void;
 }
@@ -169,20 +180,24 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
   const state = new Store<DesktopView>({ engine: code ? 'desktop' : 'device', hasCode: code !== '', fromLink, busy: false, problem: null });
 
   const open = (link: DesktopLink): Entry => {
-    const e: Entry = { link, dead: null, off: () => undefined };
-    e.off = link.controller.on('error', (message) => {
-      e.dead = message;
+    const e: Entry = { link, standby: null, dead: null, off: () => undefined };
+    const ended = (reason: string): void => {
+      e.dead = reason || CLOSED_LINK;
       if (e !== taken || !run) return;
-      // The run's engine is gone: the map's chip says so (the session shows the error), and the next Setup starts on This device.
-      run = { ...run, closed: true };
+      // The run's engine is gone: the map's chip says so with the link's own sentence, and the next Setup starts on This device.
+      run = { ...run, closed: true, closedReason: e.dead };
       env.publishRun(run);
       state.set({ engine: 'device' });
-    });
+    };
+    // The link says when it ends. A link that cannot says it with an `error` event of its controller, and then any error ends the run.
+    e.off = link.onClosed ? link.onClosed(ended) : link.controller.on('error', ended);
     return e;
   };
   const close = (e: Entry | null): void => {
     if (!e) return;
     e.off();
+    e.standby?.dispose();
+    e.standby = null;
     try {
       e.link.close();
     } catch {
@@ -216,10 +231,20 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       pending = null;
       state.set({ busy: true, problem: null });
       try {
-        pending = open(await env.connect({ base: env.origin, code }));
+        pending = open(await env.connect({ base: env.origin, code, info }));
+        // The link is open while the host is surely up: this device's own engine is made now (its script comes from the host), and what the running screen can still ask for is loaded.
+        try {
+          pending.standby = env.standby?.() ?? null;
+        } catch {
+          pending.standby = null;
+        }
+        env.warm?.();
         return true;
       } catch (e) {
-        if (e instanceof CodeRefused) {
+        if (e instanceof CodeRefused && e.reason === 'rate-limited') {
+          // The code may be the right one: it is kept, so the same button works again in a minute.
+          state.set({ problem: 'rate-limited' });
+        } else if (e instanceof CodeRefused) {
           code = '';
           fromLink = false;
           state.set({ problem: 'refused', hasCode: false, fromLink: false });
@@ -242,8 +267,11 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       const l = e.link;
       run = { label: RUNNING_ON_DESKTOP, help: CLOSED_LINK_HELP, name: l.info.name, cores: l.info.cores, node: l.info.node, rttMs: () => l.rttMs(), closed: false };
       env.publishRun(run);
-      return (e.proxy = new SwitchableController(l.controller));
+      const proxy = new SwitchableController(l.controller, e.standby);
+      e.standby = null; // the run's controller owns it now
+      return (e.proxy = proxy);
     },
+    proxy: () => taken?.proxy ?? null,
     leave() {
       const e = taken;
       if (!e?.proxy || !run) return null;

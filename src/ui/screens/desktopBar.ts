@@ -4,10 +4,14 @@
  * chip, and, in the chip's own pattern, the one way out when the desktop is gone: "Continue on this device". A tap starts the same
  * scenario again on this device's engine, from the start (src/ui/desktopRestart.ts); nothing switches by itself, the last picture stays
  * until the tap, and nothing pops up: the chip is the one strip the screen has for a failure, and the label is where the person looks.
+ *
+ * The link's END is what offers the action (`run.closed`, from the link's own `onClosed`); an engine's error message with the link still
+ * open is only a message in the chip. The action is all or nothing: the button stays, busy, until this device's engine has started; if it
+ * cannot, the chip says so in a sentence and the same button tries again with a fresh engine.
  */
 import { continueOnDevice } from '../desktopRestart';
 import { desktopSlot, type DecorateOptions, type DesktopApi } from '../desktopSlot';
-import { CONTINUE_HERE, RESTARTED_HERE } from '../desktopWords';
+import { CLOSED_LINK, CONTINUE_BUSY, CONTINUE_FAILED, CONTINUE_HERE, RESTARTED_HERE } from '../desktopWords';
 import { h, show, text } from '../dom';
 
 export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
@@ -24,7 +28,9 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
   const details = o.chip.querySelector('.error-chip-btn');
   errorText.classList.add('error-chip-says');
   o.chip.classList.add('error-chip-acts');
-  let again = false;
+  let again = false; // the run is this device's now
+  let busy = false;
+  let failed = false;
   const go = h(
     'button',
     {
@@ -34,16 +40,35 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
       dataset: { testid: 'continue-here' },
       on: {
         click: () => {
-          const proxy = host.leave();
-          if (!proxy) return;
-          again = true;
-          go.remove();
-          errorText.classList.remove('error-chip-says');
-          o.chip.classList.remove('error-chip-acts');
-          text(errorText, 'Simulation problem');
-          text(banner, RESTARTED_HERE);
-          banner.classList.add('engine-banner-note');
-          continueOnDevice({ session: o.session, proxy, makeController: o.makeController, announce: o.announce }).catch((e: unknown) => o.session.state.set({ error: e instanceof Error ? e.message : String(e) }));
+          const proxy = host.proxy();
+          if (!proxy || busy || again) return;
+          busy = true;
+          failed = false;
+          refresh();
+          continueOnDevice({
+            session: o.session,
+            proxy,
+            makeController: o.makeController,
+            announce: o.announce,
+            // The new engine has answered: only now the desktop gives up its link, and the run, the chip and the label are this device's.
+            started: () => {
+              again = true;
+              host.leave();
+              go.remove();
+              errorText.classList.remove('error-chip-says');
+              o.chip.classList.remove('error-chip-acts');
+              text(errorText, 'Simulation problem');
+              text(banner, RESTARTED_HERE);
+              banner.classList.add('engine-banner-note');
+            },
+          })
+            .catch(() => {
+              failed = true;
+            })
+            .finally(() => {
+              busy = false;
+              refresh();
+            });
         },
       },
     },
@@ -51,15 +76,27 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
   );
   if (details) o.chip.insertBefore(go, details);
   else o.chip.append(go);
-  const show1 = (s: { error: string | null }): void => {
+
+  /** The chip says what it knows: the link's sentence once the link ended (and the action), else the engine's message; after a failed start, that. */
+  function refresh(): void {
     if (again) return;
-    if (s.error) text(errorText, s.error);
-    show(go, !!s.error);
-  };
-  show1(o.session.state.get());
-  const stop = o.session.state.subscribe(show1, ['error']);
+    const r = desktopSlot.get().run;
+    const s = o.session.state.get();
+    const ended = !!r?.closed;
+    // The link ended, and the session has not heard of it (a link that only says so through onClosed): it hears of it now, as an error, so playback stops and the chip shows.
+    if (ended && !s.error) {
+      host.proxy()?.fail(r?.closedReason ?? CLOSED_LINK);
+      return;
+    }
+    if (s.error) text(errorText, failed ? CONTINUE_FAILED : ended ? (r?.closedReason ?? s.error) : s.error);
+    text(go, busy ? CONTINUE_BUSY : CONTINUE_HERE);
+    go.disabled = busy;
+    show(go, ended && !!s.error);
+  }
+  refresh();
+  const stops = [o.session.state.subscribe(refresh, ['error']), desktopSlot.subscribe(refresh, ['run'])];
   return () => {
-    stop();
+    for (const stop of stops) stop();
     go.remove();
   };
 }

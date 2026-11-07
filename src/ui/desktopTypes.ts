@@ -28,11 +28,19 @@ export interface DesktopLink {
   info: HostInfo;
   /** The round trip to the desktop in ms, or null before the first ping came back. */
   rttMs(): number | null;
+  /** The page closes the link (this does not call `onClosed`). */
   close(): void;
+  /**
+   * `cb(reason)` is called exactly once when the link ends for any reason but `close()`: THE signal that the link is closed (the reason is a
+   * plain sentence). Returns the function that stops listening. An engine's own error message is not this: it stays a controller `error` event.
+   * Optional: an older module has none, and then an `error` event of the controller is taken for the link's end.
+   */
+  onClosed?(cb: (reason: string) => void): () => void;
 }
 
 export type DetectFn = (opts?: { base?: string; timeoutMs?: number }) => Promise<HostInfo | null>;
-export type ConnectFn = (o: { base: string; code: string }) => Promise<DesktopLink>;
+/** `info` is the answer of the check made at start-up: the connection does not ask the host again when it has it. */
+export type ConnectFn = (o: { base: string; code: string; info?: HostInfo }) => Promise<DesktopLink>;
 
 /** The lazy remote module as the page checks it after loading (src/sim/remote/index.ts). */
 export interface RemoteModule {
@@ -62,6 +70,8 @@ export interface DesktopRun {
   rttMs(): number | null;
   /** The link is gone: the run's engine is no longer there. */
   closed: boolean;
+  /** The link's own sentence for it (what `onClosed` said). */
+  closedReason?: string;
   /** The person chose "Continue on this device": the run was started again on this device's own engine. */
   restarted?: boolean;
 }

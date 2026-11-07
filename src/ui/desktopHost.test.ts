@@ -22,9 +22,24 @@ function fakeController(): SimController & { emit(message: string): void; listen
   } as unknown as SimController & { emit(message: string): void; listeners(): number };
 }
 
-function fakeLink(rtt: number | null = 4.2): DesktopLink & { controller: ReturnType<typeof fakeController>; closed: number } {
+type FakeLink = DesktopLink & { controller: ReturnType<typeof fakeController>; closed: number; end(reason: string): void };
+
+/** A link: with `onClosed` (the signal of the module, `end(reason)` calls it) or without (an older module: an error of the controller then ends the run). */
+function fakeLink(rtt: number | null = 4.2, withOnClosed = false): FakeLink {
   const controller = fakeController();
-  const link = { controller, info: INFO, rttMs: () => rtt, closed: 0, close: () => void link.closed++ };
+  const ended = new Set<(reason: string) => void>();
+  const link: FakeLink = {
+    controller,
+    info: INFO,
+    rttMs: () => rtt,
+    closed: 0,
+    close: () => void link.closed++,
+    end: (reason) => {
+      for (const cb of [...ended]) cb(reason);
+      ended.clear();
+    },
+  };
+  if (withOnClosed) link.onClosed = (cb) => (ended.add(cb), () => ended.delete(cb));
   return link;
 }
 
@@ -177,7 +192,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
     expect(r.connect).toHaveBeenCalledTimes(1);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' }); // the page's own origin, the code as the host wants it
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', info: INFO }); // the page's own origin, the code as the host wants it, and what the start-up check found (no second question)
   });
 
   it('a code from the address is used but never shown back, and never held in the state the row reads', async () => {
@@ -185,7 +200,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('');
     expect(JSON.stringify(host.state.get())).not.toContain('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' });
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', info: INFO });
     expect(JSON.stringify(r.runs)).not.toContain('ABCD2345');
   });
 
@@ -332,6 +347,149 @@ describe('choosing the engine and starting the run', () => {
     expect(await h2.beforeBuild()).toBe(true);
     expect(c.closed).toBe(1);
     expect(h2.take()).toBeNull();
+  });
+});
+
+describe('the end of the link (onClosed), the standby engine and what is warmed', () => {
+  const startOn = async (over: Partial<HostEnv> = {}): Promise<{ host: NonNullable<Awaited<ReturnType<typeof startDesktopHost>>>; r: Rig }> => {
+    const r = rig({ hash: '#code=ABCD2345', ...over });
+    return { host: (await startDesktopHost(r.env))!, r };
+  };
+
+  it('with onClosed, an engine error while the link is open is only a message: the run is not closed, the Engine row stays on Desktop; onClosed ends it, with the link\'s sentence', async () => {
+    const link = fakeLink(4, true);
+    const { host, r } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    host.take();
+    link.controller.emit('The engine had a problem.');
+    expect(r.runs[r.runs.length - 1]).toMatchObject({ closed: false });
+    expect(host.state.get().engine).toBe('desktop');
+    link.end('The desktop connection closed.');
+    expect(r.runs[r.runs.length - 1]).toMatchObject({ closed: true, closedReason: 'The desktop connection closed.' });
+    expect(host.state.get().engine).toBe('device');
+  });
+
+  it('with onClosed, a link that ended while the model was being built is said at once, with its sentence', async () => {
+    const link = fakeLink(4, true);
+    const { host } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    link.controller.emit('an engine message does not end it');
+    expect(() => host.take()).not.toThrow();
+    const again = fakeLink(4, true);
+    const { host: h2 } = await startOn({ connect: vi.fn(async () => again as DesktopLink) });
+    await h2.beforeBuild();
+    again.end('The desktop connection closed.');
+    expect(() => h2.take()).toThrow('The desktop connection closed.');
+    expect(again.closed).toBe(1);
+  });
+
+  it('the page closing the link does not call onClosed (nothing marks the run closed by the page\'s own hand)', async () => {
+    const link = fakeLink(4, true);
+    const { host, r } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    host.take();
+    host.release();
+    link.end('late'); // the listener is gone: nothing happens
+    expect(r.runs[r.runs.length - 1]).toBeNull();
+  });
+
+  it('without onClosed (an older module) an error of the controller is taken for the end of the link', async () => {
+    const link = fakeLink(4, false);
+    const { host, r } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    host.take();
+    link.controller.emit('The desktop connection closed.');
+    expect(r.runs[r.runs.length - 1]).toMatchObject({ closed: true, closedReason: 'The desktop connection closed.' });
+    expect(host.state.get().engine).toBe('device');
+  });
+
+  it('an empty reason becomes the plain sentence', async () => {
+    const link = fakeLink(4, true);
+    const { host, r } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    host.take();
+    link.end('');
+    expect(r.runs[r.runs.length - 1]!.closedReason).toBe('The desktop connection closed.');
+  });
+
+  it('the standby is made when the link opens, once, with the warm-up started; the run\'s controller gets it, idle', async () => {
+    const standby = fakeController();
+    const made = vi.fn(() => standby);
+    const warm = vi.fn();
+    const { host } = await startOn({ standby: made, warm });
+    expect(made).not.toHaveBeenCalled(); // not before a link is open: This device never needs one
+    await host.beforeBuild();
+    expect(made).toHaveBeenCalledTimes(1);
+    expect(warm).toHaveBeenCalledTimes(1);
+    const proxy = host.take() as SwitchableController;
+    expect(proxy.standby).toBe(standby);
+    expect(host.proxy()).toBe(proxy);
+  });
+
+  it('a link let go before a run took it lets its standby go too (Cancel, or building again)', async () => {
+    const first = fakeController();
+    const second = fakeController();
+    const engines = [first, second];
+    const disposed: unknown[] = [];
+    for (const e of engines) e.dispose = () => void disposed.push(e);
+    const { host } = await startOn({ standby: () => engines.shift() ?? null });
+    await host.beforeBuild();
+    await host.beforeBuild(); // the first link and its standby go, a second pair is made
+    expect(disposed).toEqual([first]);
+    host.release(); // Setup shown again
+    expect(disposed).toEqual([first, second]);
+  });
+
+  it('no standby is made on a page without the means, or when making it fails: the run still starts, without one', async () => {
+    const { host } = await startOn();
+    await host.beforeBuild();
+    expect((host.take() as SwitchableController).standby).toBeNull();
+    const { host: h2 } = await startOn({
+      standby: () => {
+        throw new Error('no worker');
+      },
+    });
+    expect(await h2.beforeBuild()).toBe(true);
+    expect((h2.take() as SwitchableController).standby).toBeNull();
+  });
+
+  it('proxy() is null until a run took the link, and again after Continue on this device gave it up', async () => {
+    const { host } = await startOn();
+    expect(host.proxy()).toBeNull();
+    await host.beforeBuild();
+    expect(host.proxy()).toBeNull(); // pending, not taken
+    const p = host.take() as SwitchableController;
+    expect(host.proxy()).toBe(p);
+    expect(host.leave()).toBe(p);
+    expect(host.proxy()).toBeNull();
+  });
+
+  it('leave marks the run started again only when it is called (the restart calls it once the new engine has started)', async () => {
+    const link = fakeLink(4, true);
+    const { host, r } = await startOn({ connect: vi.fn(async () => link as DesktopLink) });
+    await host.beforeBuild();
+    host.take();
+    link.end('The desktop connection closed.');
+    expect(r.runs[r.runs.length - 1]).toMatchObject({ closed: true });
+    expect(r.runs[r.runs.length - 1]!.restarted).toBeUndefined(); // closed is not restarted
+    expect(link.closed).toBe(0);
+    host.leave();
+    expect(r.runs[r.runs.length - 1]).toMatchObject({ restarted: true });
+    expect(link.closed).toBe(1);
+  });
+
+  it('a code the desktop refuses for a while (rate-limited) has its own words and is kept for the next try; a wrong code is forgotten', async () => {
+    const { host, r } = await startOn();
+    r.connect.mockRejectedValueOnce(new CodeRefused('rate-limited'));
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'rate-limited', hasCode: true, fromLink: true, busy: false });
+    expect(await host.beforeBuild()).toBe(true); // the same code goes again, with no retyping
+    expect(r.connect).toHaveBeenCalledTimes(2);
+    const { host: h2, r: r2 } = await startOn();
+    r2.connect.mockRejectedValueOnce(new CodeRefused('wrong-code'));
+    expect(await h2.beforeBuild()).toBe(false);
+    expect(h2.state.get()).toMatchObject({ problem: 'refused', hasCode: false });
+    expect(new CodeRefused().reason).toBe('wrong-code');
   });
 });
 

@@ -9,7 +9,7 @@ import type { CellExplanation, Ignition, Insight, QualityTier, ScenarioData, Sce
 import type { SceneViewApi } from '../render/api';
 import type { SimController, SimEvents, SimOptionKey } from '../sim/protocol';
 import { pointIgnition, syntheticScenario } from '../sim/testing/scenarios';
-import { applyPlan, continueOnDevice, restartPlan, type RestartInput } from './desktopRestart';
+import { applyPlan, continueOnDevice, restartPlan, START_TIMEOUT_MS, type RestartInput } from './desktopRestart';
 import { RESTARTED_HERE } from './desktopWords';
 import { SwitchableController } from './runController';
 import { SimSession } from './session';
@@ -294,27 +294,93 @@ describe('continueOnDevice, through the real session', () => {
     session.dispose();
   });
 
-  it('an engine that cannot be made leaves the desktop run as it was (the person may tap again); one that fails after it was made says so through its own error', async () => {
+  it('an engine that cannot be made, or that fails to start, leaves the desktop run exactly as it was: nothing is marked started, the error stays, the person may tap again', async () => {
     const { desktop, proxy, session } = await desktopRun();
     desktop.ev.emit('error', 'The desktop connection closed.');
+    let started = 0;
+    const said: string[] = [];
+    const deps = { session, proxy, announce: (m: string) => said.push(m), started: () => void started++ };
     await expect(
       continueOnDevice({
-        session,
-        proxy,
+        ...deps,
         makeController: () => {
           throw new Error('no engine');
         },
-        announce: () => undefined,
       }),
     ).rejects.toThrow('no engine');
-    expect(proxy.inner).toBe(desktop);
-    expect(session.state.get().error).toBe('The desktop connection closed.');
-    // an engine that fails to start: its init rejects, and its own error event is what the screen shows
+    // an engine that is made but whose init rejects (the worker script cannot be fetched): it is thrown away, nothing of it reaches the run
     const bad = new Engine('bad');
     bad.failInit = true;
-    await continueOnDevice({ session, proxy, makeController: () => bad, announce: () => undefined });
-    bad.ev.emit('error', 'init failed');
-    expect(session.state.get().error).toBe('init failed');
+    await expect(continueOnDevice({ ...deps, makeController: () => bad })).rejects.toThrow('init failed');
+    bad.ev.emit('error', 'init failed'); // a late word of the engine that failed: nobody listens
+    expect(bad.disposed).toBe(1);
+    expect(proxy.inner).toBe(desktop);
+    expect(desktop.disposed).toBe(0);
+    expect(started).toBe(0);
+    expect(said).toEqual([]);
+    expect(session.state.get().error).toBe('The desktop connection closed.'); // the chip still has its sentence, and the same action
+    // the second tap, with a fresh engine, works
+    const good = new Engine('good');
+    await continueOnDevice({ ...deps, makeController: () => good });
+    expect(proxy.inner).toBe(good);
+    expect(desktop.disposed).toBe(1);
+    expect(started).toBe(1);
+    expect(said).toEqual([RESTARTED_HERE]);
+    expect(session.state.get().error).toBeNull();
+    session.dispose();
+  });
+
+  it('the standby engine is used first and not made again; if it fails, it is thrown away and the second tap makes a fresh one', async () => {
+    const desktop = new Engine('desktop');
+    const standby = new Engine('standby');
+    const proxy = new SwitchableController(desktop, standby);
+    const session = new SimSession(syntheticScenario({ duration: 7200 }), proxy, nullView, { maxBytes: 1e9 });
+    await session.start();
+    desktop.ev.emit('error', 'The desktop connection closed.');
+    let made = 0;
+    const makeController = (): Engine => (made++, new Engine('fresh'));
+    standby.failInit = true;
+    await expect(continueOnDevice({ session, proxy, makeController, announce: () => undefined })).rejects.toThrow('init failed');
+    expect(made).toBe(0); // the standby was the one asked
+    expect(standby.disposed).toBe(1);
+    expect(proxy.standby).toBeNull(); // it is spent either way
+    expect(proxy.inner).toBe(desktop);
+    await continueOnDevice({ session, proxy, makeController, announce: () => undefined });
+    expect(made).toBe(1); // the retry makes a fresh engine
+    expect(proxy.inner).not.toBe(desktop);
+    expect(desktop.disposed).toBe(1);
+    session.dispose();
+  });
+
+  it('a standby that starts is the run\'s engine, with what it said while it started (ready, the first picture) heard by the session once it is committed', async () => {
+    const desktop = new Engine('desktop');
+    const standby = new Engine('standby');
+    const proxy = new SwitchableController(desktop, standby);
+    const session = new SimSession(syntheticScenario({ duration: 7200 }), proxy, nullView, { maxBytes: 1e9 });
+    await session.start();
+    desktop.ev.emit('error', 'The desktop connection closed.');
+    const init = standby.init.bind(standby);
+    standby.init = async (sc) => {
+      const out = await init(sc);
+      standby.snapshot(0, [insight('card-1', 0)]); // the first picture arrives with, or before, the answer of init
+      return out;
+    };
+    await continueOnDevice({ session, proxy, makeController: () => new Engine('unused'), announce: () => undefined });
+    expect(proxy.inner).toBe(standby);
+    expect(session.state.get().insights.map((i) => i.id)).toEqual(['card-1']);
+    expect(session.state.get().headTime).toBe(0);
+    session.dispose();
+  });
+
+  it('an engine that never answers is given up on after the time given: the run is as it was, and the engine is thrown away', async () => {
+    const { desktop, proxy, session } = await desktopRun();
+    desktop.ev.emit('error', 'The desktop connection closed.');
+    const silent = new Engine('silent');
+    silent.init = () => new Promise<Insight[]>(() => undefined);
+    await expect(continueOnDevice({ session, proxy, makeController: () => silent, announce: () => undefined, timeoutMs: 5 })).rejects.toThrow('This device did not answer in time.');
+    expect(silent.disposed).toBe(1);
+    expect(proxy.inner).toBe(desktop);
+    expect(START_TIMEOUT_MS).toBeGreaterThan(30_000); // a slow device is given time; the sentence is for one that is stuck
     session.dispose();
   });
 

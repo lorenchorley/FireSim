@@ -27,6 +27,8 @@ export interface Services {
   buildScenario: BuildScenarioFn;
   /** The controller of a run: the desktop link's when the run was started on the desktop engine (desktopSlot.ts), else the in-app one. */
   createController(): SimController;
+  /** This device's own engine, whatever the Engine choice: the standby a run on the desktop keeps ready for "Continue on this device". */
+  createLocalController(): SimController;
   /**
    * Create the scene view; falls back to the 2-D mock if the real one throws (reported via `sceneSource`). `quality` is the
    * picture quality tier to ask for (undefined lets the view guess from the phone); the 2-D mock ignores it.
@@ -103,6 +105,7 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
     sim: (sim ? 'real' : 'mock') as ModuleSource,
     scene: (render ? 'real' : 'mock') as ModuleSource,
   };
+  const local = (): SimController => (sim ? new sim.SimClient() : new mocks.MockSimController());
   const services: Services = {
     sources,
     legendProvider: render && typeof render.legendFor === 'function' ? render.legendFor : null,
@@ -116,7 +119,8 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
           }
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
-    createController: () => desktopSlot.get().host?.take() ?? (sim ? new sim.SimClient() : new mocks.MockSimController()),
+    createController: () => desktopSlot.get().host?.take() ?? local(),
+    createLocalController: local,
     createSceneView(container: HTMLElement, opts?: { quality?: RenderQuality }): SceneViewApi {
       if (render) {
         try {

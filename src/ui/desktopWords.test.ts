@@ -4,6 +4,8 @@ import {
   CLOSED_LINK_HELP,
   CODE_LABEL,
   CODE_PLACEHOLDER,
+  CONTINUE_BUSY,
+  CONTINUE_FAILED,
   CONTINUE_HERE,
   cleanName,
   coresWords,
@@ -17,7 +19,7 @@ import {
   RUNNING_ON_DESKTOP,
 } from './desktopWords';
 
-const ALL: string[] = [CLOSED_LINK_HELP, CONTINUE_HERE, RESTARTED_HERE, ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
+const ALL: string[] = [CLOSED_LINK_HELP, CONTINUE_HERE, CONTINUE_BUSY, CONTINUE_FAILED, RESTARTED_HERE, ENGINE_LABEL, ENGINE_THIS_DEVICE, CODE_LABEL, CODE_PLACEHOLDER, RUNNING_ON_DESKTOP, CLOSED_LINK, ...Object.values(ENGINE_HINT), ...Object.values(ENGINE_PROBLEM)];
 
 describe('the words of the desktop engine are pinned (the Help entry and the README say the same in more words)', () => {
   it('the labels', () => {
@@ -41,6 +43,9 @@ describe('the words of the desktop engine are pinned (the Help entry and the REA
     expect(ENGINE_PROBLEM.needsCode).toBe('Type the code the desktop shows, then build again.');
     expect(ENGINE_PROBLEM.refused).toBe('The desktop did not accept that code. Check the code it shows and type it again. After several wrong tries it waits about a minute.');
     expect(ENGINE_PROBLEM.unreachable).toBe('Could not reach the desktop. Check that it is still running, then try again.');
+    expect(ENGINE_PROBLEM.rateLimited).toBe('The desktop is waiting before it takes another code. Try again in about a minute.');
+    expect(CONTINUE_BUSY).toBe('Starting on this device…');
+    expect(CONTINUE_FAILED).toBe('This device could not start the run. Tap to try again.');
   });
 
   it('plain words in the voice of the app: no em dash, no jargon the person has not met, sentences end with a full stop', () => {
@@ -64,6 +69,19 @@ describe('the words of the desktop engine are pinned (the Help entry and the REA
   it('the wrong-code sentence says what to do and does not blame the person', () => {
     expect(ENGINE_PROBLEM.refused).toMatch(/Check the code/);
     expect(ENGINE_PROBLEM.refused).not.toMatch(/wrong code!|invalid|error|failed/i);
+  });
+
+  it('the waiting-for-a-minute sentence is its own: it does not say the code was wrong, and it says when to try again', () => {
+    expect(ENGINE_PROBLEM.rateLimited).not.toBe(ENGINE_PROBLEM.refused);
+    expect(ENGINE_PROBLEM.rateLimited).not.toMatch(/wrong|did not accept|invalid|error|failed/i);
+    expect(ENGINE_PROBLEM.rateLimited).toContain('about a minute');
+    expect(ENGINE_PROBLEM.refused).toMatch(/did not accept that code/); // the wrong-code wording is as it was
+  });
+
+  it('the Continue action says what it is doing and what failed, in plain words, and keeps the button\'s own text short', () => {
+    expect(CONTINUE_FAILED).toContain('try again');
+    expect(CONTINUE_FAILED).not.toMatch(/error|exception|worker|script|chunk|network/i);
+    expect(CONTINUE_BUSY.length).toBeLessThan(26); // the busy text takes the button's place and must fit beside "Details" as well
   });
 });
 
