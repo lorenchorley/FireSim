@@ -54,6 +54,21 @@
   margin: 0 0 var(--sp-2);
 }
 
+/* The Engine row of Setup (only on a page a desktop host serves): a long computer name shortens inside its chip instead of running past the card. */
+.engine-row {
+  margin-top: var(--sp-2);
+}
+
+.engine-row .chip {
+  max-width: 100%;
+}
+
+.engine-row .chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .card > .section-header,
 .card .setup-sub {
   padding-left: 0;

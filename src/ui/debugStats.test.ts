@@ -874,3 +874,43 @@ describe('the speed test row (0.7.0, item C)', () => {
     expect(rowOf(buildDebugStats(i), 'canDo', 'speed-test').value).toContain('Test version 1, 00:05.');
   });
 });
+
+describe('a run that computes on the desktop (0.8.0, workstream J)', () => {
+  const desktop = { name: 'Studio PC', cores: 8, node: 'v22.11.0', rttMs: 4.2, closed: false };
+  const withDesktop = (d: DebugStatsInput['desktop'] = desktop): DebugStats => buildDebugStats({ ...full(), desktop: d });
+
+  it('the Run group names the engine: the computer, its cores, Node and the link', () => {
+    const r = rowOf(withDesktop(), 'run', 'engine-where');
+    expect(r.label).toBe('Engine runs on');
+    expect(r.value).toBe('Desktop Studio PC, 8 cores, Node v22.11.0, link 4.2 ms');
+    expect(r.live).toBe(true);
+    expect(rowOf(withDesktop({ ...desktop, rttMs: 31.6 }), 'run', 'engine-where').value).toBe('Desktop Studio PC, 8 cores, Node v22.11.0, link 32 ms');
+    expect(rowOf(withDesktop({ ...desktop, rttMs: null }), 'run', 'engine-where').value).toBe('Desktop Studio PC, 8 cores, Node v22.11.0, link not measured yet');
+    expect(rowOf(withDesktop({ ...desktop, closed: true }), 'run', 'engine-where').value).toBe('Desktop Studio PC, 8 cores, Node v22.11.0 (the connection closed)');
+    expectClean(withDesktop());
+  });
+
+  it('on this device nothing changes: no row, and the copied text is the one it always was', () => {
+    expect(buildDebugStats(full()).groups.find((g) => g.id === 'run')!.rows.some((r) => r.id === 'engine-where')).toBe(false);
+    expect(debugStatsToText(buildDebugStats({ ...full(), desktop: null }))).toBe(debugStatsToText(buildDebugStats(full())));
+    expect(debugStatsToText(buildDebugStats(full()))).not.toContain('Engine runs on');
+  });
+
+  it('the speed and the one-line summary say the numbers are the desktop, not this phone', () => {
+    const s = withDesktop();
+    expect(rowOf(s, 'summary', 'headline').value).toMatch(/^On the desktop \(Studio PC, 8 cores\): Standard \(3-D air\), computing about 871×/);
+    expect(rowOf(s, 'canDo', 'speed').value).toMatch(/^On the desktop the 3-D air step takes about 6\.2 ms/);
+    // the phone's own facts are still the phone's
+    expect(rowOf(s, 'summary', 'headline').value).toMatch(/this phone: 8 cores, about 6 GB memory class\.$/);
+  });
+
+  it('a computer name with a line break or a very long one is one short line', () => {
+    const r = rowOf(withDesktop({ ...desktop, name: `Evil\nPC ${'x'.repeat(200)}` }), 'run', 'engine-where').value;
+    expect(r).not.toContain('\n');
+    expect(r.length).toBeLessThan(140);
+  });
+
+  it('is in the copied text', () => {
+    expect(debugStatsToText(withDesktop())).toContain('  Engine runs on: Desktop Studio PC, 8 cores, Node v22.11.0, link 4.2 ms (The desktop computes the run and this phone draws it)');
+  });
+});

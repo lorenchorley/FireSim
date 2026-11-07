@@ -14,6 +14,7 @@ import { formatBytes } from '../core/datasets';
 import type { EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats, WindGlyphStats } from '../render/api';
 import type { SliceRecordingStatus } from '../render/slice/types';
+import { cleanName, coresWords, engineWhereText } from './desktopWords';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import type { EventKind, LogEvent } from './eventLog';
 import { formatDuration, formatNumber, formatSpeedHint } from './format';
@@ -46,6 +47,17 @@ export interface RunFacts {
   /** Scenario start (ms since the epoch): a date in the model, not a place. */
   startTimeMs: number;
   seed: number;
+}
+
+/** The computer a run computes on, when it is not this device (the page's DesktopRun with the link's round trip read at this moment). */
+export interface DesktopFacts {
+  name: string;
+  cores: number;
+  node: string;
+  /** The round trip to the desktop (ms), or null before the first ping came back. */
+  rttMs: number | null;
+  /** The link is gone. */
+  closed: boolean;
 }
 
 /** The session's state that the statistics read. */
@@ -87,6 +99,8 @@ export interface DebugStatsInput {
   engine: EngineInfo | null;
   /** 'mock' = the demo engine runs (nothing is simulated). */
   engineSource: 'real' | 'mock';
+  /** The run computes on the desktop (0.8.0, workstream J): its computer, Node and link; absent or null when it computes on this device. */
+  desktop?: DesktopFacts | null;
   /** The run, or null when no run was started (opened from Setup). */
   run: RunFacts | null;
   playback: PlaybackFacts | null;
@@ -302,7 +316,8 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
   else {
     const s = e.perf?.speed.s10 ?? e.run.simSecondsPerWallSecond;
     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
-    line = `${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
+    const where = i.desktop ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
+    line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
   }
   return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
 }
@@ -315,6 +330,8 @@ function runGroup(i: DebugStatsInput): StatGroup {
     R('platform', 'Platform', d.platform === 'web' ? 'Web browser' : `${d.platform} (the app)`),
     R('engine-source', 'Engine', i.engineSource === 'mock' ? 'Demo engine (nothing is simulated)' : 'Full model'),
   ];
+  // Only a run that computes on the desktop has this row: on this device the line above says it all, and a paste from a phone is the same as before.
+  if (i.desktop) rows.push(R('engine-where', 'Engine runs on', engineWhereText(i.desktop), 'The desktop computes the run and this phone draws it', true));
   const km = r ? `${fix(r.extentM / 1000, r.extentM % 1000 ? 1 : 0)}${NB}km` : '';
   if (!r) rows.push(R('place', 'Place', NO_RUN), R('clock', 'Run clock', NO_RUN, undefined, true));
   else
@@ -682,7 +699,7 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
       ? 'The demo engine is running, so nothing was measured.'
       : 'No run has measured this phone yet. Start a run, or look here again during one.'
     : e.atmosphere.kind === '3d'
-      ? `On this phone the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
+      ? `On ${i.desktop ? 'the desktop' : 'this phone'} the 3-D air step takes about ${ms(airStepMs(e))} on average${a && a.chosen !== 'fast' ? ` (${test} in the timing test)` : ''}, and the run computes at about ${speedX(real)} real time.`
       : `The fast model has computed this run at about ${speedX(real)} real time${a && a.chosen === 'fast' ? `; the 3-D air step took about ${test} in the timing test` : ''}.`;
   const mem = e?.memory
     ? `The engine holds ${bytes(e.memory.totalBytes)}; ${heap && heap.limitBytes !== null ? `the screen thread's JavaScript heap is ${bytes(heap.usedBytes)} of a ${bytes(heap.limitBytes)} limit (the engine's own memory is not in that heap).` : "this phone does not report the screen thread's heap limit."}`

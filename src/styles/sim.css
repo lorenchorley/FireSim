@@ -92,6 +92,12 @@
   display: none;
 }
 
+/* "Running on the desktop": the demo engine's label at the body size, so it reads on a phone (nothing else of it differs). */
+.mock-banner.engine-banner {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
 /* ───────────────────────── map controls ───────────────────────── */
 /* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
 .map-fabs {
@@ -763,6 +769,14 @@ button.map-credit:active {
 .error-chip .error-chip-btn {
   flex: 0 0 auto;
   color: var(--danger-ink);
+}
+
+/* On a run that computes on the desktop the chip carries the link's own sentence ("The desktop connection closed."): up to two lines. */
+.error-chip-text.error-chip-says {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .sim-error p {

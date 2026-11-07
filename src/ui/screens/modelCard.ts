@@ -15,6 +15,7 @@
  * Opened from Setup (no scenario) it shows the plan of the Setup's current choice.
  */
 import type { ScenarioData, SimSnapshot } from '../../core/types';
+import { desktopSlot } from '../desktopSlot';
 import { h, setChildren, uniqueId } from '../dom';
 import { icon } from '../icons';
 import { cardToText, describeModel, EVIDENCE, type CardBlock, type CardBullet, type ModelCard, type ModelRow, type ModelSection } from '../modelInfo';
@@ -74,6 +75,7 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
       historyBudgetBytes: historyBudget,
       engineSource: opts.services.sources.sim,
       phone: { cores: nav?.hardwareConcurrency ?? null, memoryGb: nav?.deviceMemory ?? null },
+      onDesktop: !!opts.scenario && !!desktopSlot.get().run,
     };
   };
 
