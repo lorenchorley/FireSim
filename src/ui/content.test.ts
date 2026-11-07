@@ -72,9 +72,10 @@ import {
   type CrossSection,
 } from './screens/sim/sliceToolModel';
 import { WIND_TURN_S, windDirectionTime } from '../scenario/windDirection';
-import { codeFromHash, hashWithoutCode, startDesktopHost, type HostEnv } from './desktopHost';
-import type { HostInfo } from './desktopTypes';
-import { CLOSED_LINK, CODE_LABEL, CONTINUE_HERE, ENGINE_LABEL, ENGINE_PROBLEM, ENGINE_THIS_DEVICE, RESTARTED_HERE, RUNNING_ON_DESKTOP } from './desktopWords';
+import { CodeRefused, codeFromHash, hashWithoutCode, startDesktopHost, type HostEnv } from './desktopHost';
+import type { DesktopLink, HostInfo } from './desktopTypes';
+import type { SimController } from '../sim/protocol';
+import { CLOSED_LINK, CODE_LABEL, CONTINUE_BUSY, CONTINUE_FAILED, CONTINUE_HERE, ENGINE_LABEL, ENGINE_PROBLEM, ENGINE_THIS_DEVICE, RESTARTED_HERE, RUNNING_ON_DESKTOP } from './desktopWords';
 import { EDDIES_LINE, ESTIMATED_LINE, MOST_DETAILED_LINE, PAUSED_LINE, SHEET_TITLE, STILL_LINE, levelLine, windDetailWords } from './screens/sim/windDetailWords';
 import { chipLabel, windDetailState, type WindDetailInput } from './screens/sim/windDetailState';
 import { BACK_TO_FORECAST_HINT, BACK_TO_FORECAST_LABEL, LIST_TITLE, READINGS_NOTE, READINGS_TITLE, WHEN_OPTIONS, WIND_HINT, applyLabel, dialStart, holdsDirection, problemText, reviewingText } from './screens/sim/windPanelModel';
@@ -1257,5 +1258,55 @@ describe('Help and glossary: the 0.8.0 entry says what the desktop engine says',
   it('the statistics row the entry names is the one the screen shows', () => {
     expect(body()).toContain('have a row, Engine runs on, with the desktop’s name, its cores, its Node version and how long a message takes to go there and back.');
     expect(read('debugStats.ts')).toContain("R('engine-where', 'Engine runs on'");
+  });
+
+  it('the fix pass: the button says where it is, Continue is all or nothing, and the page keeps a spare engine for it', () => {
+    expect(CONTINUE_BUSY).toBe('Starting on this device…');
+    expect(CONTINUE_FAILED).toBe('This device could not start the run. Tap to try again.');
+    expect(body()).toContain(`The button says “${CONTINUE_BUSY}” while this device sets the run up, and the desktop’s link is given up only when this device has started: if it cannot, the chip says “${CONTINUE_FAILED}” and the same button tries again.`);
+    expect(body()).toContain('a page the desktop serves keeps a spare engine of this device ready, made when the link opens, and loads a few screens in advance; so the page must have been loaded from the desktop while it was up.');
+    expect(squash(step('Desktop engine'))).toContain('The desktop engine keeps a spare engine ready on this device for that, so the page must have been loaded from the desktop while it was up.');
+    // The words are on the button and in the chip, and the link is given up only after the new engine answered `init`.
+    const bar = read('screens/desktopBar.ts');
+    expect(bar).toContain('text(go, busy ? CONTINUE_BUSY : CONTINUE_HERE)');
+    expect(bar).toContain('failed ? CONTINUE_FAILED');
+    expect(bar.indexOf('started: () => {')).toBeLessThan(bar.indexOf('host.leave()'));
+    const restart = read('desktopRestart.ts');
+    expect(restart.indexOf('next.init(plan.scenario)')).toBeLessThan(restart.indexOf('d.started?.()'));
+    expect(restart.indexOf('d.started?.()')).toBeLessThan(restart.indexOf('d.session.restart()'));
+    expect(restart).toContain('abandon()');
+    // The standby is this device's own engine, made by the page, and a page of the desktop makes it when the link opens.
+    expect(read('desktop.ts')).toContain('standby: () => services.createLocalController()');
+    expect(read('modules.ts')).toContain('createLocalController: local');
+    expect(read('desktopHost.ts')).toContain('pending.standby = env.standby?.() ?? null;');
+  });
+
+  it('the spare engine is made when the link opens and only for a run on the desktop; a rate-limited code is kept and a wrong one is forgotten', async () => {
+    let made = 0;
+    let warmed = 0;
+    const engine = (): SimController => ({ on: () => () => undefined, dispose: () => undefined }) as unknown as SimController;
+    const link = (): DesktopLink => ({ controller: engine(), info: INFO, rttMs: () => 1, close: () => undefined, onClosed: () => () => undefined });
+    const open = (hash: string, connect: HostEnv['connect'] = async () => link()): ReturnType<typeof startDesktopHost> =>
+      startDesktopHost(env({ hash, connect, standby: () => (made++, engine()), warm: () => void warmed++ }));
+    const onDevice = await open('');
+    expect(await onDevice!.beforeBuild()).toBe(true);
+    expect([made, warmed], 'This device: no spare engine and nothing warmed').toEqual([0, 0]);
+    const onDesktop = await open('#code=ABCD2345');
+    expect(await onDesktop!.beforeBuild()).toBe(true);
+    expect([made, warmed]).toEqual([1, 1]);
+    expect((onDesktop!.take() as unknown as { standby: unknown }).standby).not.toBeNull();
+    // A code the desktop is not taking for a while has its own words and is kept; a wrong code is forgotten.
+    expect(ENGINE_PROBLEM.rateLimited).toBe('The desktop is waiting before it takes another code. Try again in about a minute.');
+    expect(body()).toContain(`(“${ENGINE_PROBLEM.rateLimited}”)`);
+    const waiting = await open('#code=ABCD2345', async () => {
+      throw new CodeRefused('rate-limited');
+    });
+    expect(await waiting!.beforeBuild()).toBe(false);
+    expect(waiting!.state.get()).toMatchObject({ problem: 'rate-limited', hasCode: true });
+    const wrong = await open('#code=ABCD2345', async () => {
+      throw new CodeRefused('wrong-code');
+    });
+    expect(await wrong!.beforeBuild()).toBe(false);
+    expect(wrong!.state.get()).toMatchObject({ problem: 'refused', hasCode: false });
   });
 });
