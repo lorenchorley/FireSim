@@ -37,7 +37,7 @@ async function boot(): Promise<void> {
   const app = new App(root, services, params);
   // The desktop engine (0.8.0, workstream J): on the web build only, one lazy chunk reads the pairing code from the address and asks the
   // page's own origin once whether a desktop host serves it. Without a host it does nothing visible; an optional extra never stops the start.
-  if (!Capacitor.isNativePlatform() && /^https?:$/.test(location.protocol)) void import('./ui/desktop').then((m) => m.startDesktop(params, services)).catch(() => undefined);
+  if (!Capacitor.isNativePlatform() && /^https?:$/.test(location.protocol)) void import('./ui/desktop').then((m) => m.startDesktop(params)).catch(() => undefined);
   await app.start();
   bootDone();
   document.documentElement.classList.add('booted');

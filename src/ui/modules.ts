@@ -8,7 +8,7 @@
  *
  * One more choice is made when a run starts: on a page a desktop host serves, the person may have chosen the desktop engine on
  * Setup, and the run's controller is then the open link's (src/ui/desktopHost.ts `take`); otherwise it is the in-app one. The
- * desktop engine's module (src/sim/remote) is loaded by `loadRemote`, only for that run.
+ * desktop engine's own module (src/sim/remote) is loaded by the lazy desktop chunk (src/ui/desktop.ts), only for that run.
  */
 import type { ScenarioData } from '../core/types';
 import type { SceneViewApi } from '../render/api';
@@ -17,7 +17,6 @@ import type { SliceFieldId, SliceKind } from '../render/slice/types';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import type { SimController } from '../sim/protocol';
 import { desktopSlot } from './desktopSlot';
-import type { RemoteModule } from './desktopTypes';
 import type { ExternalLegend, LegendProvider } from './legends';
 
 export type BuildScenarioFn = (req: ScenarioRequest, onProgress: (p: BuildProgress) => void, signal?: AbortSignal) => Promise<ScenarioData>;
@@ -28,8 +27,6 @@ export interface Services {
   buildScenario: BuildScenarioFn;
   /** The controller of a run: the desktop link's when the run was started on the desktop engine (desktopSlot.ts), else the in-app one. */
   createController(): SimController;
-  /** The lazy desktop engine module (src/sim/remote); loaded only when a run starts on the desktop engine. Null when this build has none. */
-  loadRemote(): Promise<RemoteModule | null>;
   /**
    * Create the scene view; falls back to the 2-D mock if the real one throws (reported via `sceneSource`). `quality` is the
    * picture quality tier to ask for (undefined lets the view guess from the phone); the 2-D mock ignores it.
@@ -70,7 +67,6 @@ type Loader = () => Promise<unknown>;
 const simLoaders = import.meta.glob('../sim/index.ts') as Record<string, Loader>;
 const renderLoaders = import.meta.glob('../render/index.ts') as Record<string, Loader>;
 const scenarioLoaders = import.meta.glob('../scenario/index.ts') as Record<string, Loader>;
-const remoteLoaders = import.meta.glob('../sim/remote/index.ts') as Record<string, Loader>;
 
 async function tryLoad<T>(loaders: Record<string, Loader>, key: string, check: (m: unknown) => m is T, label: string): Promise<T | null> {
   const load = loaders[key];
@@ -91,7 +87,6 @@ async function tryLoad<T>(loaders: Record<string, Loader>, key: string, check: (
 const isSim = (m: unknown): m is SimModule => typeof (m as SimModule | null)?.SimClient === 'function';
 const isRender = (m: unknown): m is RenderModule => typeof (m as RenderModule | null)?.SceneView === 'function';
 const isScenario = (m: unknown): m is ScenarioModule => typeof (m as ScenarioModule | null)?.buildScenario === 'function';
-const isRemote = (m: unknown): m is RemoteModule => typeof (m as RemoteModule | null)?.connectRemote === 'function';
 
 /** Resolve the services. `forceMock` (URL ?mock=1) skips the real modules entirely. */
 export async function loadServices(forceMock: boolean): Promise<Services> {
@@ -122,7 +117,6 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
     createController: () => desktopSlot.get().host?.take() ?? (sim ? new sim.SimClient() : new mocks.MockSimController()),
-    loadRemote: () => tryLoad(remoteLoaders, '../sim/remote/index.ts', isRemote, 'Desktop engine (src/sim/remote)'),
     createSceneView(container: HTMLElement, opts?: { quality?: RenderQuality }): SceneViewApi {
       if (render) {
         try {

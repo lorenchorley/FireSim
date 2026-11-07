@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { SimController } from '../sim/protocol';
-import type { DesktopHost } from './desktopHost';
-import { desktopSlot } from './desktopSlot';
+import { desktopSlot, type DesktopApi } from './desktopSlot';
 import { loadServices } from './modules';
 
 describe('loadServices (the render module as the app loads it)', () => {
@@ -26,7 +25,7 @@ describe('loadServices (the render module as the app loads it)', () => {
 
 describe('the controller of a run (0.8.0, workstream J: the desktop engine)', () => {
   afterEach(() => desktopSlot.set({ host: null, run: null }));
-  const hostWith = (take: () => SimController | null): DesktopHost => ({ take }) as unknown as DesktopHost;
+  const hostWith = (take: () => SimController | null): DesktopApi => ({ take }) as unknown as DesktopApi;
 
   it('without a desktop host the in-app controller is made, as always (the demo engine in ?mock=1)', async () => {
     const s = await loadServices(true);
@@ -53,16 +52,5 @@ describe('the controller of a run (0.8.0, workstream J: the desktop engine)', ()
       }),
     });
     expect(() => s.createController()).toThrow('The desktop connection closed.');
-  });
-
-  it('the desktop engine module is a lazy load that answers null when this build has none', async () => {
-    const s = await loadServices(true);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    try {
-      const m = await s.loadRemote();
-      expect(m === null || typeof m.connectRemote === 'function').toBe(true);
-    } finally {
-      warn.mockRestore();
-    }
   });
 });

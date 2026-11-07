@@ -285,9 +285,9 @@ test('a typed code works, is remembered for the page load only, and the choice i
   expect(await whereIsTheCode(page, CODE.toLowerCase())).toEqual([]);
   await page.getByTestId('menu').click();
   await page.getByTestId('menu-new').click();
-  // back on Setup (same page load): still Desktop, the typed code is still in the box
+  // back on Setup (same page load): still Desktop, the typed code is still in the box (as the page keeps it: capitals, no dash)
   await expect(chip(page, 'desktop').locator('input')).toBeChecked();
-  await expect(codeBox(page)).toHaveValue(`${CODE.slice(0, 4)}-${CODE.slice(4).toLowerCase()}`);
+  await expect(codeBox(page)).toHaveValue(CODE);
   // a reload forgets both
   await page.reload();
   await pastNotice(page);

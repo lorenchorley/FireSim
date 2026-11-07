@@ -232,6 +232,9 @@ describe('choosing the engine and starting the run', () => {
     const run = r.runs[r.runs.length - 1]!;
     expect(run).toMatchObject({ name: 'Studio PC', cores: 8, node: 'v22.11.0', closed: false });
     expect(run.rttMs()).toBe(12.6);
+    // the words the first screen shows come with the run (it carries none of the desktop's words itself)
+    expect(run.label).toBe('Running on the desktop');
+    expect(run.help).toMatch(/start a new scenario on This device\.$/);
     expect(() => host.take()).toThrow(/not open/);
   });
 

@@ -46,8 +46,15 @@ export interface RemoteSeam {
   connectRemote?: ConnectFn;
 }
 
-/** The run that computes on the desktop, as the screens read it (the line on the map, the statistics, the closed-link chip). */
+/**
+ * The run that computes on the desktop, as the screens read it (the label on the map, the statistics, the closed-link chip). The
+ * two sentences come with it so that the first screen, which only reads this, carries none of the desktop's words.
+ */
 export interface DesktopRun {
+  /** The label on the map ("Running on the desktop"). */
+  label: string;
+  /** The help line of the Insights tab's error note, for a run whose desktop went away. */
+  help: string;
   name: string;
   cores: number;
   node: string;

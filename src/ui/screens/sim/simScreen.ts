@@ -17,7 +17,6 @@ import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { thinPath, type Pt } from '../../brushGeometry';
 import { desktopSlot } from '../../desktopSlot';
-import { RUNNING_ON_DESKTOP } from '../../desktopWords';
 import { presetById } from '../../fuelPresets';
 import { fuelWithEdits } from '../../fuelDisplay';
 import { showMePatch } from '../../showMe';
@@ -298,7 +297,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const mapIs2d = services.sources.scene === 'mock';
   const simNotice =
     desktopRun || services.sources.sim === 'mock' || mapIs2d
-      ? h('p', { class: ['mock-banner', desktopRun && 'engine-banner'], dataset: { testid: desktopRun ? 'engine-banner' : undefined } }, desktopRun ? (mapIs2d ? `${RUNNING_ON_DESKTOP} · 2-D map` : RUNNING_ON_DESKTOP) : services.sources.sim === 'mock' ? 'Demo engine' : '2-D map')
+      ? h('p', { class: ['mock-banner', desktopRun && 'engine-banner'], dataset: { testid: desktopRun ? 'engine-banner' : undefined } }, desktopRun ? (mapIs2d ? `${desktopRun.label} · 2-D map` : desktopRun.label) : services.sources.sim === 'mock' ? 'Demo engine' : '2-D map')
       : null;
 
   // Simulation failure: the only thing that ever appears uninvited, as a thin strip under the top bar (never a modal).

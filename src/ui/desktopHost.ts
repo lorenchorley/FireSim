@@ -10,7 +10,7 @@
  * No result depends on any of this: the controller is the same protocol (src/sim/protocol.ts) whoever computes.
  */
 import type { SimController } from '../sim/protocol';
-import { ENGINE_PROBLEM } from './desktopWords';
+import { CLOSED_LINK_HELP, ENGINE_PROBLEM, RUNNING_ON_DESKTOP } from './desktopWords';
 import type { DesktopLink, DesktopRun, DetectFn, HostInfo } from './desktopTypes';
 import { Store } from './store';
 
@@ -231,7 +231,7 @@ function createHost(env: HostEnv, info: HostInfo, initialCode: string, fromLinkA
       }
       taken = e;
       const l = e.link;
-      run = { name: l.info.name, cores: l.info.cores, node: l.info.node, rttMs: () => l.rttMs(), closed: false };
+      run = { label: RUNNING_ON_DESKTOP, help: CLOSED_LINK_HELP, name: l.info.name, cores: l.info.cores, node: l.info.node, rttMs: () => l.rttMs(), closed: false };
       env.publishRun(run);
       return l.controller;
     },
