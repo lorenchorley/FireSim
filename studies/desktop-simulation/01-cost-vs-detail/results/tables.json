@@ -1,0 +1,6881 @@
+{
+ "generatedFrom": "analyze.mjs",
+ "rows": 55,
+ "ladderKat6": {
+  "label": "Katoomba 6 km, fast tier, 4 h",
+  "rows": [
+   {
+    "id": "L30",
+    "cell_m": 30,
+    "cells": 40000,
+    "wallPerSimHourS": 5.301966723749998,
+    "simSPerWallS": 678.993322208891,
+    "timeRatioToFirst": 1,
+    "cellsRatioToFirst": 1,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 1774.75,
+    "subStepRatioToFirst": 1,
+    "peakRssMB": 526.1,
+    "rssAboveBaselineMB": 186.70000000000005,
+    "snapshotMB": 2.28206,
+    "areaHa": 2482.83
+   },
+   {
+    "id": "L20",
+    "cell_m": 20,
+    "cells": 90000,
+    "wallPerSimHourS": 11.70546782174999,
+    "simSPerWallS": 307.5485794178018,
+    "timeRatioToFirst": 2.2077595789720266,
+    "cellsRatioToFirst": 2.25,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 2814.25,
+    "subStepRatioToFirst": 1.5857162980701507,
+    "peakRssMB": 643.9,
+    "rssAboveBaselineMB": 303,
+    "snapshotMB": 4.434956,
+    "areaHa": 2963.68
+   },
+   {
+    "id": "L15",
+    "cell_m": 15,
+    "cells": 160000,
+    "wallPerSimHourS": 17.723596394250006,
+    "simSPerWallS": 203.11904649148596,
+    "timeRatioToFirst": 3.342834332561481,
+    "cellsRatioToFirst": 4,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 3512.5,
+    "subStepRatioToFirst": 1.9791519932384842,
+    "peakRssMB": 799.4,
+    "rssAboveBaselineMB": 458.20000000000005,
+    "snapshotMB": 7.4491,
+    "areaHa": 2716.3125
+   },
+   {
+    "id": "L10",
+    "cell_m": 10,
+    "cells": 360000,
+    "wallPerSimHourS": 47.01242437375,
+    "simSPerWallS": 76.5755020711101,
+    "timeRatioToFirst": 8.866978391840764,
+    "cellsRatioToFirst": 9,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 5271.25,
+    "subStepRatioToFirst": 2.9701366389632344,
+    "peakRssMB": 1234.5,
+    "rssAboveBaselineMB": 884.4000000000001,
+    "snapshotMB": 16.043292,
+    "areaHa": 2738.04
+   }
+  ],
+  "fits": {
+   "timeVsCells": {
+    "exponent": 0.9757547947585238,
+    "prefactor": 0.00016686379396002,
+    "r2": 0.9919620961742018
+   },
+   "subStepsVsCells": {
+    "exponent": 0.4883724887390005,
+    "prefactor": 10.255930419425756,
+    "r2": 0.9957246929977418
+   },
+   "rssAboveBaselineVsCells": {
+    "exponent": 0.7085958091235878,
+    "prefactor": 0.09794587414583503,
+    "r2": 0.9942172665350059
+   },
+   "snapshotVsCells": {
+    "exponent": 0.8884602609955765,
+    "prefactor": 181.1351442032224,
+    "r2": 0.9986908822977848
+   }
+  },
+  "phaseMsPerH": {
+   "records": {
+    "values": [
+     5.87422074999904,
+     9.98216525001044,
+     11.853238750038145,
+     22.781745000000228
+    ],
+    "fit": {
+     "exponent": 0.5964395299253711,
+     "prefactor": 0.010482751347365562,
+     "r2": 0.979211194762943
+    }
+   },
+   "stamps": {
+    "values": [
+     253.21792449999793,
+     278.4576184999787,
+     306.9803054999611,
+     364.8504944999877
+    ],
+    "fit": {
+     "exponent": 0.16643593641976895,
+     "prefactor": 42.56096474248429,
+     "r2": 0.9792972533343067
+    }
+   },
+   "weatherNight": {
+    "values": [
+     22.828465250012414,
+     26.806106000023647,
+     28.91394775003937,
+     29.302444999993895
+    ],
+    "fit": {
+     "exponent": 0.11477715017065857,
+     "prefactor": 7.009813695927676,
+     "r2": 0.8612966354523687
+    }
+   },
+   "solarMoisture": {
+    "values": [
+     96.473876499992,
+     184.19673324998257,
+     344.61509274998025,
+     685.13582675012
+    ],
+    "fit": {
+     "exponent": 0.9048041534997092,
+     "prefactor": 0.006457082993850801,
+     "r2": 0.9969815291052214
+    }
+   },
+   "fireMasks": {
+    "values": [
+     161.39645524999287,
+     341.12430750000203,
+     570.6815110000061,
+     1290.4713207500026
+    ],
+    "fit": {
+     "exponent": 0.9428246656978034,
+     "prefactor": 0.007298100580356355,
+     "r2": 0.9993218039467859
+    }
+   },
+   "surfaceWind": {
+    "values": [
+     121.463814000007,
+     263.327753999989,
+     421.2527479999735,
+     928.8595257499328
+    ],
+    "fit": {
+     "exponent": 0.9188557752980092,
+     "prefactor": 0.007199860171389177,
+     "r2": 0.9991183605554561
+    }
+   },
+   "firePrepare": {
+    "values": [
+     820.1790965000037,
+     1442.0541527500282,
+     1632.8721412500308,
+     3038.9978092499514
+    ],
+    "fit": {
+     "exponent": 0.57170592156119,
+     "prefactor": 1.9424292671114536,
+     "r2": 0.9732305426027904
+    }
+   },
+   "fireStep": {
+    "values": [
+     1995.447659999999,
+     5515.233662250064,
+     8521.37100149993,
+     25385.963514999792
+    ],
+    "fit": {
+     "exponent": 1.131762728340027,
+     "prefactor": 0.01246662284880541,
+     "r2": 0.9920851561615399
+    }
+   },
+   "fireHeat": {
+    "values": [
+     446.3708117500155,
+     1489.600048499995,
+     3068.8840387500604,
+     9880.33910300002
+    ],
+    "fit": {
+     "exponent": 1.3997363548324855,
+     "prefactor": 0.0001646701214510973,
+     "r2": 0.9992164674278193
+    }
+   },
+   "atmosphere": {
+    "values": [
+     11.342696250005247,
+     34.33118774998911,
+     61.11686624997674,
+     142.36440374993253
+    ],
+    "fit": {
+     "exponent": 1.1418082299937242,
+     "prefactor": 0.00006808335633745227,
+     "r2": 0.9939164156147535
+    }
+   },
+   "embers": {
+    "values": [
+     678.0599717500027,
+     820.2741262499967,
+     950.8613312500202,
+     1423.9295730000522
+    ],
+    "fit": {
+     "exponent": 0.33247920173183393,
+     "prefactor": 19.075945716275516,
+     "r2": 0.9583259131763396
+    }
+   },
+   "fireMinute": {
+    "values": [
+     116.84879700000056,
+     291.19524249999813,
+     435.3692480000136,
+     960.5465569999724
+    ],
+    "fit": {
+     "exponent": 0.9420980214987849,
+     "prefactor": 0.005665125950494227,
+     "r2": 0.9938535235937482
+    }
+   },
+   "diagnostics": {
+    "values": [
+     35.09791699999823,
+     35.47103999999854,
+     32.10849124998276,
+     34.821469000089564
+    ],
+    "fit": {
+     "exponent": -0.014475913246121503,
+     "prefactor": 40.6847217495079,
+     "r2": 0.08669330758642702
+    }
+   },
+   "explain": {
+    "values": [
+     264.5820872500035,
+     444.52715475000696,
+     530.0104542499976,
+     974.2348282499734
+    ],
+    "fit": {
+     "exponent": 0.5747963584478425,
+     "prefactor": 0.5975260189930849,
+     "r2": 0.9828974873587214
+    }
+   },
+   "snapshot": {
+    "values": [
+     237.70122349999292,
+     464.4159232499951,
+     711.4546885000163,
+     1660.801158249982
+    ],
+    "fit": {
+     "exponent": 0.8755660879979122,
+     "prefactor": 0.02146307766562589,
+     "r2": 0.9944147652694559
+    }
+   },
+   "checkpoint": {
+    "values": [
+     30.388759750001554,
+     57.046443249999356,
+     88.62180075000288,
+     182.02965649998077
+    ],
+    "fit": {
+     "exponent": 0.8115583836598366,
+     "prefactor": 0.00549039947774741,
+     "r2": 0.9985903782753776
+    }
+   }
+  }
+ },
+ "ladderKat6Exact10m": {
+  "label": "Katoomba 6 km, fast tier, 4 h, without the 15 m row (its DEM is 5 m)",
+  "rows": [
+   {
+    "id": "L30",
+    "cell_m": 30,
+    "cells": 40000,
+    "wallPerSimHourS": 5.301966723749998,
+    "simSPerWallS": 678.993322208891,
+    "timeRatioToFirst": 1,
+    "cellsRatioToFirst": 1,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 1774.75,
+    "subStepRatioToFirst": 1,
+    "peakRssMB": 526.1,
+    "rssAboveBaselineMB": 186.70000000000005,
+    "snapshotMB": 2.28206,
+    "areaHa": 2482.83
+   },
+   {
+    "id": "L20",
+    "cell_m": 20,
+    "cells": 90000,
+    "wallPerSimHourS": 11.70546782174999,
+    "simSPerWallS": 307.5485794178018,
+    "timeRatioToFirst": 2.2077595789720266,
+    "cellsRatioToFirst": 2.25,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 2814.25,
+    "subStepRatioToFirst": 1.5857162980701507,
+    "peakRssMB": 643.9,
+    "rssAboveBaselineMB": 303,
+    "snapshotMB": 4.434956,
+    "areaHa": 2963.68
+   },
+   {
+    "id": "L10",
+    "cell_m": 10,
+    "cells": 360000,
+    "wallPerSimHourS": 47.01242437375,
+    "simSPerWallS": 76.5755020711101,
+    "timeRatioToFirst": 8.866978391840764,
+    "cellsRatioToFirst": 9,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 5271.25,
+    "subStepRatioToFirst": 2.9701366389632344,
+    "peakRssMB": 1234.5,
+    "rssAboveBaselineMB": 884.4000000000001,
+    "snapshotMB": 16.043292,
+    "areaHa": 2738.04
+   }
+  ],
+  "fits": {
+   "timeVsCells": {
+    "exponent": 0.9942682812837094,
+    "prefactor": 0.000140072067858383,
+    "r2": 0.999951651164336
+   },
+   "subStepsVsCells": {
+    "exponent": 0.4908434774167385,
+    "prefactor": 10.019128821740521,
+    "r2": 0.9961666405340432
+   },
+   "rssAboveBaselineVsCells": {
+    "exponent": 0.7148731792064298,
+    "prefactor": 0.09230245075245694,
+    "r2": 0.9958496450734705
+   },
+   "snapshotVsCells": {
+    "exponent": 0.8918773815093232,
+    "prefactor": 175.3771851405741,
+    "r2": 0.9989852239568655
+   }
+  },
+  "phaseMsPerH": {
+   "records": {
+    "values": [
+     5.87422074999904,
+     9.98216525001044,
+     22.781745000000228
+    ],
+    "fit": {
+     "exponent": 0.6145330055561944,
+     "prefactor": 0.008834645827416877,
+     "r2": 0.9993715611525775
+    }
+   },
+   "stamps": {
+    "values": [
+     253.21792449999793,
+     278.4576184999787,
+     364.8504944999877
+    ],
+    "fit": {
+     "exponent": 0.1693167814061721,
+     "prefactor": 41.41747483056975,
+     "r2": 0.9856362690922864
+    }
+   },
+   "weatherNight": {
+    "values": [
+     22.828465250012414,
+     26.806106000023647,
+     29.302444999993895
+    ],
+    "fit": {
+     "exponent": 0.10830726525752421,
+     "prefactor": 7.451947652779698,
+     "r2": 0.904548292297807
+    }
+   },
+   "solarMoisture": {
+    "values": [
+     96.473876499992,
+     184.19673324998257,
+     685.13582675012
+    ],
+    "fit": {
+     "exponent": 0.898154806542126,
+     "prefactor": 0.006876010057709214,
+     "r2": 0.9980749766144668
+    }
+   },
+   "fireMasks": {
+    "values": [
+     161.39645524999287,
+     341.12430750000203,
+     1290.4713207500026
+    ],
+    "fit": {
+     "exponent": 0.9476139729799283,
+     "prefactor": 0.006975035938163959,
+     "r2": 0.9998952630726781
+    }
+   },
+   "surfaceWind": {
+    "values": [
+     121.463814000007,
+     263.327753999989,
+     928.8595257499328
+    ],
+    "fit": {
+     "exponent": 0.9240844572302911,
+     "prefactor": 0.006852621313144385,
+     "r2": 0.9998369489428925
+    }
+   },
+   "firePrepare": {
+    "values": [
+     820.1790965000037,
+     1442.0541527500282,
+     3038.9978092499514
+    ],
+    "fit": {
+     "exponent": 0.5898130316614129,
+     "prefactor": 1.6368281808788079,
+     "r2": 0.9950573724542072
+    }
+   },
+   "fireStep": {
+    "values": [
+     1995.447659999999,
+     5515.233662250064,
+     25385.963514999792
+    ],
+    "fit": {
+     "exponent": 1.1514613466572488,
+     "prefactor": 0.010348382373158015,
+     "r2": 0.9987908216009153
+    }
+   },
+   "fireHeat": {
+    "values": [
+     446.3708117500155,
+     1489.600048499995,
+     9880.33910300002
+    ],
+    "fit": {
+     "exponent": 1.404755147649056,
+     "prefactor": 0.00015703961263855147,
+     "r2": 0.999485285834686
+    }
+   },
+   "atmosphere": {
+    "values": [
+     11.342696250005247,
+     34.33118774998911,
+     142.36440374993253
+    ],
+    "fit": {
+     "exponent": 1.1378687141387132,
+     "prefactor": 0.0000706667917165365,
+     "r2": 0.9938791627008069
+    }
+   },
+   "embers": {
+    "values": [
+     678.0599717500027,
+     820.2741262499967,
+     1423.9295730000522
+    ],
+    "fit": {
+     "exponent": 0.34415154011941496,
+     "prefactor": 17.0829596259331,
+     "r2": 0.9847254197990082
+    }
+   },
+   "fireMinute": {
+    "values": [
+     116.84879700000056,
+     291.19524249999813,
+     960.5465569999724
+    ],
+    "fit": {
+     "exponent": 0.9482302634650087,
+     "prefactor": 0.005346043719604761,
+     "r2": 0.9946290283688958
+    }
+   },
+   "diagnostics": {
+    "values": [
+     35.09791699999823,
+     35.47103999999854,
+     34.821469000089564
+    ],
+    "fit": {
+     "exponent": -0.004647039039674082,
+     "prefactor": 37.07465111739513,
+     "r2": 0.310021823829557
+    }
+   },
+   "explain": {
+    "values": [
+     264.5820872500035,
+     444.52715475000696,
+     974.2348282499734
+    ],
+    "fit": {
+     "exponent": 0.5903144765774767,
+     "prefactor": 0.5159935719082326,
+     "r2": 0.9989201556917638
+    }
+   },
+   "snapshot": {
+    "values": [
+     237.70122349999292,
+     464.4159232499951,
+     1660.801158249982
+    ],
+    "fit": {
+     "exponent": 0.8884779616677896,
+     "prefactor": 0.01899677549543351,
+     "r2": 0.9992390314264296
+    }
+   },
+   "checkpoint": {
+    "values": [
+     30.388759750001554,
+     57.046443249999356,
+     182.02965649998077
+    ],
+    "fit": {
+     "exponent": 0.8171067023967671,
+     "prefactor": 0.005209838809800598,
+     "r2": 0.9996231638976321
+    }
+   }
+  }
+ },
+ "ladderKat9": {
+  "label": "Katoomba 9 km, fast tier, 4 h (30 and 20 m only: 10 m ran 2 h)",
+  "rows": [
+   {
+    "id": "X30",
+    "cell_m": 30,
+    "cells": 90000,
+    "wallPerSimHourS": 8.070311012750002,
+    "simSPerWallS": 446.07946265174735,
+    "timeRatioToFirst": 1,
+    "cellsRatioToFirst": 1,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 1768.25,
+    "subStepRatioToFirst": 1,
+    "peakRssMB": 637,
+    "rssAboveBaselineMB": 295.30000000000007,
+    "snapshotMB": 4.48222,
+    "areaHa": 4083.39
+   },
+   {
+    "id": "X20",
+    "cell_m": 20,
+    "cells": 202500,
+    "wallPerSimHourS": 20.293029919249996,
+    "simSPerWallS": 177.40081270885207,
+    "timeRatioToFirst": 2.514528856098575,
+    "cellsRatioToFirst": 2.25,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 2818.5,
+    "subStepRatioToFirst": 1.5939488194542626,
+    "peakRssMB": 859,
+    "rssAboveBaselineMB": 514.9,
+    "snapshotMB": 9.32244,
+    "areaHa": 5251.44
+   }
+  ],
+  "fits": {
+   "timeVsCells": {
+    "exponent": 1.1370712719840042,
+    "prefactor": 0.000018774286452275356,
+    "r2": 1
+   },
+   "subStepsVsCells": {
+    "exponent": 0.574913182765359,
+    "prefactor": 2.507750568062863,
+    "r2": 1
+   },
+   "rssAboveBaselineVsCells": {
+    "exponent": 0.6856088319119941,
+    "prefactor": 0.11846526412693152,
+    "r2": 1
+   },
+   "snapshotVsCells": {
+    "exponent": 0.9030443347162634,
+    "prefactor": 150.51942068855303,
+    "r2": 1
+   }
+  },
+  "phaseMsPerH": {
+   "records": {
+    "values": [
+     10.353370999997423,
+     26.087875500004884
+    ],
+    "fit": {
+     "exponent": 1.1396276529358509,
+     "prefactor": 0.00002339322045479479,
+     "r2": 1
+    }
+   },
+   "stamps": {
+    "values": [
+     268.76704024999344,
+     299.40095474994087
+    ],
+    "fit": {
+     "exponent": 0.13310476744649166,
+     "prefactor": 58.87659853492039,
+     "r2": 1
+    }
+   },
+   "weatherNight": {
+    "values": [
+     24.86278050000692,
+     30.536258250034734
+    ],
+    "fit": {
+     "exponent": 0.2534655169591962,
+     "prefactor": 1.379812442975309,
+     "r2": 1
+    }
+   },
+   "solarMoisture": {
+    "values": [
+     212.2795689999857,
+     417.4566444999946
+    ],
+    "fit": {
+     "exponent": 0.83395161784046,
+     "prefactor": 0.01567868523351389,
+     "r2": 1
+    }
+   },
+   "fireMasks": {
+    "values": [
+     375.57829474999744,
+     773.344208750008
+    ],
+    "fit": {
+     "exponent": 0.8906528170122238,
+     "prefactor": 0.014527485096518189,
+     "r2": 1
+    }
+   },
+   "surfaceWind": {
+    "values": [
+     275.4314202500209,
+     561.2331720000075
+    ],
+    "fit": {
+     "exponent": 0.8777546723582738,
+     "prefactor": 0.01234252373014421,
+     "r2": 1
+    }
+   },
+   "firePrepare": {
+    "values": [
+     1066.3796927499989,
+     2167.066582750009
+    ],
+    "fit": {
+     "exponent": 0.8744340595301295,
+     "prefactor": 0.04963105153572348,
+     "r2": 1
+    }
+   },
+   "fireStep": {
+    "values": [
+     2511.368242750008,
+     8372.241571499995
+    ],
+    "fit": {
+     "exponent": 1.4848305236728405,
+     "prefactor": 0.00011058593606853342,
+     "r2": 1
+    }
+   },
+   "fireHeat": {
+    "values": [
+     1331.3170117499958,
+     4214.2341585000395
+    ],
+    "fit": {
+     "exponent": 1.4209597458858,
+     "prefactor": 0.00012147930658097677,
+     "r2": 1
+    }
+   },
+   "atmosphere": {
+    "values": [
+     33.52868725001463,
+     74.99788525000258
+    ],
+    "fit": {
+     "exponent": 0.9927592931761746,
+     "prefactor": 0.00040461898650113917,
+     "r2": 1
+    }
+   },
+   "embers": {
+    "values": [
+     740.8456827499758,
+     971.3115879999968
+    ],
+    "fit": {
+     "exponent": 0.3340052659446546,
+     "prefactor": 16.40531854095772,
+     "r2": 1
+    }
+   },
+   "fireMinute": {
+    "values": [
+     264.1677465000048,
+     598.1353752499745
+    ],
+    "fit": {
+     "exponent": 1.0077720465123985,
+     "prefactor": 0.002686164954907764,
+     "r2": 1
+    }
+   },
+   "diagnostics": {
+    "values": [
+     35.89683399999558,
+     35.27554850002343
+    ],
+    "fit": {
+     "exponent": -0.021529664287407834,
+     "prefactor": 45.89013388330237,
+     "r2": 1
+    }
+   },
+   "explain": {
+    "values": [
+     381.61725125000885,
+     710.518772749987
+    ],
+    "fit": {
+     "exponent": 0.7664990284167055,
+     "prefactor": 0.06084234284585824,
+     "r2": 1
+    }
+   },
+   "snapshot": {
+    "values": [
+     483.70509599999605,
+     924.389944999999
+    ],
+    "fit": {
+     "exponent": 0.7986613062808438,
+     "prefactor": 0.0534341454921149,
+     "r2": 1
+    }
+   },
+   "checkpoint": {
+    "values": [
+     48.23640175000037,
+     110.25541374999739
+    ],
+    "fit": {
+     "exponent": 1.0194288507816731,
+     "prefactor": 0.00042941494555841627,
+     "r2": 1
+    }
+   }
+  }
+ },
+ "ladderWar6": {
+  "label": "Warrumbungles 6 km, fast tier, 2 h",
+  "rows": [
+   {
+    "id": "W30",
+    "cell_m": 30,
+    "cells": 40000,
+    "wallPerSimHourS": 4.231820097499998,
+    "simSPerWallS": 850.6977889080744,
+    "timeRatioToFirst": 1,
+    "cellsRatioToFirst": 1,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 1256,
+    "subStepRatioToFirst": 1,
+    "peakRssMB": 473.9,
+    "rssAboveBaselineMB": 137.5,
+    "snapshotMB": 2.44758,
+    "areaHa": 1810.8
+   },
+   {
+    "id": "W20",
+    "cell_m": 20,
+    "cells": 90000,
+    "wallPerSimHourS": 8.524107590499996,
+    "simSPerWallS": 422.33160032050176,
+    "timeRatioToFirst": 2.0142887443480224,
+    "cellsRatioToFirst": 2.25,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 1868,
+    "subStepRatioToFirst": 1.4872611464968153,
+    "peakRssMB": 586,
+    "rssAboveBaselineMB": 247.89999999999998,
+    "snapshotMB": 4.80326,
+    "areaHa": 1821.8
+   },
+   {
+    "id": "W10",
+    "cell_m": 10,
+    "cells": 360000,
+    "wallPerSimHourS": 31.871151700999995,
+    "simSPerWallS": 112.95481361243202,
+    "timeRatioToFirst": 7.531310633887363,
+    "cellsRatioToFirst": 9,
+    "outerStepsPerH": 360,
+    "subStepsPerH": 3469.5,
+    "subStepRatioToFirst": 2.7623407643312103,
+    "peakRssMB": 1117.9,
+    "rssAboveBaselineMB": 776.7,
+    "snapshotMB": 17.48958,
+    "areaHa": 1851.03
+   }
+  ],
+  "fits": {
+   "timeVsCells": {
+    "exponent": 0.9224065450938127,
+    "prefactor": 0.00023633934996962434,
+    "r2": 0.9993745799373046
+   },
+   "subStepsVsCells": {
+    "exponent": 0.4607336286469645,
+    "prefactor": 9.606887112748554,
+    "r2": 0.999402200645911
+   },
+   "rssAboveBaselineVsCells": {
+    "exponent": 0.7918619957497146,
+    "prefactor": 0.03056644917999977,
+    "r2": 0.9989646492013449
+   },
+   "snapshotVsCells": {
+    "exponent": 0.8990020359135981,
+    "prefactor": 174.6880656281833,
+    "r2": 0.9991316701247658
+   }
+  },
+  "phaseMsPerH": {
+   "records": {
+    "values": [
+     5.7756289999961155,
+     4.72562199999993,
+     8.979465000018536
+    ],
+    "fit": {
+     "exponent": 0.22907770271390213,
+     "prefactor": 0.4389846131968243,
+     "r2": 0.600699861510253
+    }
+   },
+   "stamps": {
+    "values": [
+     219.373387000006,
+     266.93049900000915,
+     339.7623069999463
+    ],
+    "fit": {
+     "exponent": 0.19640197109535396,
+     "prefactor": 27.76753374712616,
+     "r2": 0.9918013717262611
+    }
+   },
+   "weatherNight": {
+    "values": [
+     21.309203500007243,
+     26.407949499991446,
+     31.478675500045938
+    ],
+    "fit": {
+     "exponent": 0.17209645876574295,
+     "prefactor": 3.5413119229556345,
+     "r2": 0.9575508216602127
+    }
+   },
+   "solarMoisture": {
+    "values": [
+     113.60491199999433,
+     289.9799240000084,
+     800.6634335000053
+    ],
+    "fit": {
+     "exponent": 0.8719095706704713,
+     "prefactor": 0.012063223265036702,
+     "r2": 0.9840002827463076
+    }
+   },
+   "fireMasks": {
+    "values": [
+     237.4296460000005,
+     545.0214234999821,
+     1678.5266280000142
+    ],
+    "fit": {
+     "exponent": 0.8816465961678012,
+     "prefactor": 0.02175871940688233,
+     "r2": 0.9959721333085747
+    }
+   },
+   "surfaceWind": {
+    "values": [
+     147.60773049999807,
+     311.6789700000136,
+     951.5955480000193
+    ],
+    "fit": {
+     "exponent": 0.8435213616814738,
+     "prefactor": 0.01985277794545833,
+     "r2": 0.9986828938117707
+    }
+   },
+   "firePrepare": {
+    "values": [
+     630.0009675000047,
+     980.8872649999976,
+     2201.4413829999976
+    ],
+    "fit": {
+     "exponent": 0.5708989584163265,
+     "prefactor": 1.4744577349342285,
+     "r2": 0.9997069452394702
+    }
+   },
+   "fireStep": {
+    "values": [
+     1107.2672034999978,
+     2422.3837895000215,
+     11562.770396499953
+    ],
+    "fit": {
+     "exponent": 1.0741057520473034,
+     "prefactor": 0.01219945538689491,
+     "r2": 0.9984283932396536
+    }
+   },
+   "fireHeat": {
+    "values": [
+     451.62860249999267,
+     1505.0149979999878,
+     9074.573005500017
+    ],
+    "fit": {
+     "exponent": 1.3580437790435391,
+     "prefactor": 0.00026435635354266865,
+     "r2": 0.998673031131394
+    }
+   },
+   "atmosphere": {
+    "values": [
+     11.315161999993506,
+     33.919976999994105,
+     116.39500150003005
+    ],
+    "fit": {
+     "exponent": 1.0423567338743474,
+     "prefactor": 0.0001991170068389602,
+     "r2": 0.9864681603901276
+    }
+   },
+   "embers": {
+    "values": [
+     520.458401000019,
+     738.8225460000103,
+     1225.0127104999992
+    ],
+    "fit": {
+     "exponent": 0.38690681391549964,
+     "prefactor": 8.749145431907735,
+     "r2": 0.9979146094373851
+    }
+   },
+   "fireMinute": {
+    "values": [
+     124.45892499999809,
+     303.7163115000003,
+     1010.4168479999935
+    ],
+    "fit": {
+     "exponent": 0.9438237910884566,
+     "prefactor": 0.005926335017081543,
+     "r2": 0.9958048937838291
+    }
+   },
+   "diagnostics": {
+    "values": [
+     37.64426300000105,
+     41.072527499998614,
+     46.30637350000325
+    ],
+    "fit": {
+     "exponent": 0.09342177430523345,
+     "prefactor": 14.05016878928604,
+     "r2": 0.9965331529893939
+    }
+   },
+   "explain": {
+    "values": [
+     312.39265149999756,
+     458.94794449999426,
+     989.2733410000073
+    ],
+    "fit": {
+     "exponent": 0.5277865202737345,
+     "prefactor": 1.1442399660312432,
+     "r2": 0.9984284724495142
+    }
+   },
+   "snapshot": {
+    "values": [
+     254.25111050000032,
+     522.638687500008,
+     1657.816319499987
+    ],
+    "fit": {
+     "exponent": 0.8510988842982552,
+     "prefactor": 0.031157302870516598,
+     "r2": 0.999702309792048
+    }
+   },
+   "checkpoint": {
+    "values": [
+     32.2928165000003,
+     66.13325799999802,
+     169.21901049999724
+    ],
+    "fit": {
+     "exponent": 0.7456406908643892,
+     "prefactor": 0.012487262848413994,
+     "r2": 0.9947414875246322
+    }
+   }
+  }
+ },
+ "kat9TwoHours": [
+  {
+   "id": "X30",
+   "cells": 90000,
+   "wallFirst2hS": 12.65,
+   "subStepsNote": "sub-steps are for the whole run",
+   "peakRssMB": 637
+  },
+  {
+   "id": "X20",
+   "cells": 202500,
+   "wallFirst2hS": 28.43,
+   "subStepsNote": "sub-steps are for the whole run",
+   "peakRssMB": 859
+  },
+  {
+   "id": "X10",
+   "cells": 810000,
+   "wallFirst2hS": 129.83,
+   "subStepsNote": "sub-steps are for the whole run",
+   "peakRssMB": 1931.5
+  }
+ ],
+ "hourly": {
+  "A-high10": [
+   71.31,
+   102.94
+  ],
+  "A-high20": [
+   45.37,
+   61.36000000000001,
+   67.10000000000001,
+   38.869999999999976
+  ],
+  "A-high30": [
+   43.24,
+   54.79,
+   56.66,
+   38.25
+  ],
+  "A-std10": [
+   44.54,
+   70.9
+  ],
+  "A-std20": [
+   21.16,
+   28.23,
+   35.61,
+   24.959999999999994
+  ],
+  "A-std30": [
+   17.79,
+   22.300000000000004,
+   26.519999999999996,
+   16.5
+  ],
+  "AA-fast": [
+   1.11,
+   1.2099999999999997
+  ],
+  "AA-high": [
+   29.44,
+   30.150000000000002
+  ],
+  "AA-std": [
+   9.95,
+   10.34
+  ],
+  "D-fast-a": [
+   3.61,
+   5.110000000000001,
+   7.109999999999999,
+   7.749999999999998
+  ],
+  "D-fast-b": [
+   3.86,
+   4.93,
+   7.41,
+   6.780000000000001
+  ],
+  "D-fast-chunk60": [
+   3.56,
+   4.6899999999999995,
+   6.869999999999999,
+   6.1899999999999995
+  ],
+  "D-fast-seed2": [
+   3.94,
+   6.370000000000001,
+   6.159999999999998,
+   5.220000000000002
+  ],
+  "D-std-a": [
+   23.66,
+   26.37
+  ],
+  "D-std-b": [
+   17.11,
+   24.560000000000002
+  ],
+  "E-32000": [
+   9.41,
+   9.21,
+   9.75,
+   5.739999999999998
+  ],
+  "E-8000": [
+   4.83,
+   5.130000000000001,
+   6.859999999999999,
+   6.559999999999999
+  ],
+  "E-off": [
+   2.45,
+   3.8999999999999995,
+   4.1,
+   3.8100000000000005
+  ],
+  "H-fast10": [
+   24.97,
+   43.86,
+   74.10000000000001,
+   65.03999999999999
+  ],
+  "H-fast20": [
+   7.96,
+   15.05,
+   18.63,
+   11.93
+  ],
+  "H-fast30": [
+   4.83,
+   6.109999999999999,
+   7.910000000000002,
+   8.259999999999998
+  ],
+  "H-std30": [
+   18.61,
+   22.08,
+   25.49000000000001,
+   16.349999999999994
+  ],
+  "L10-r2": [
+   28.16,
+   40.08,
+   59.75,
+   56.769999999999996
+  ],
+  "L10-r3": [
+   24.58,
+   47.07000000000001,
+   60.370000000000005,
+   57.53
+  ],
+  "L10": [
+   24.99,
+   40.38000000000001,
+   62.19999999999999,
+   60.48000000000002
+  ],
+  "L15": [
+   10.77,
+   16.14,
+   23.24,
+   20.740000000000002
+  ],
+  "L20": [
+   7.51,
+   11.860000000000001,
+   15.470000000000002,
+   11.979999999999997
+  ],
+  "L30-r2": [
+   3.47,
+   4.4,
+   6.64,
+   6.26
+  ],
+  "L30-r3": [
+   3.28,
+   4.65,
+   7.540000000000001,
+   6.450000000000001
+  ],
+  "L30": [
+   3.43,
+   4.58,
+   6.620000000000001,
+   6.58
+  ],
+  "LN10": [
+   18.27,
+   33.84,
+   46.31,
+   52.83999999999999
+  ],
+  "LN15": [
+   7.83,
+   12.38,
+   17.839999999999996,
+   18.400000000000006
+  ],
+  "LN20": [
+   4.78,
+   7.46,
+   10.72,
+   10.719999999999999
+  ],
+  "LN30": [
+   2.28,
+   3.23,
+   3.5,
+   3.5500000000000007
+  ],
+  "N-display10": [
+   4.36,
+   5.53,
+   7.239999999999998,
+   7.400000000000002
+  ],
+  "N-nosnap": [
+   3.08,
+   4.41,
+   5.68,
+   5.950000000000001
+  ],
+  "NT-step2": [
+   4.63,
+   7.36,
+   7.9399999999999995,
+   7.149999999999999
+  ],
+  "NT-step5": [
+   3.46,
+   4.989999999999999,
+   6.58,
+   5.790000000000001
+  ],
+  "P-fast10": [
+   25.5,
+   43.879999999999995
+  ],
+  "P-fast30": [
+   3.57,
+   5.0600000000000005,
+   6.76,
+   6.460000000000001
+  ],
+  "P-std30": [
+   21.02,
+   24.680000000000003
+  ],
+  "T-step2": [
+   7.35,
+   11.62,
+   13.39,
+   10.82
+  ],
+  "T-step5-c20": [
+   7.72,
+   12.84,
+   18.930000000000003,
+   13.39
+  ],
+  "T-step5": [
+   5.15,
+   7.539999999999999,
+   8.040000000000001,
+   6.099999999999998
+  ],
+  "W-std30": [
+   20.73,
+   24.360000000000003
+  ],
+  "W10": [
+   20.84,
+   42.900000000000006
+  ],
+  "W20": [
+   7.73,
+   9.32
+  ],
+  "W30": [
+   3.87,
+   4.590000000000001
+  ],
+  "WN10": [
+   18.42,
+   36.07
+  ],
+  "WN20": [
+   5.36,
+   8.600000000000001
+  ],
+  "WN30": [
+   2.64,
+   4.209999999999999
+  ],
+  "X-std30": [
+   17.36,
+   20.17,
+   25.439999999999998,
+   20.599999999999994
+  ],
+  "X10": [
+   52.71,
+   77.12
+  ],
+  "X20": [
+   11,
+   17.43,
+   28.340000000000003,
+   24.4
+  ],
+  "X30": [
+   5.45,
+   7.2,
+   10.15,
+   9.48
+  ]
+ },
+ "knobs": [
+  {
+   "id": "L30",
+   "wallPerSimHourS": 5.301966723749998,
+   "ratioToRef": 1,
+   "stepsPerH": 360,
+   "subStepsPerH": 1774.75,
+   "emberShareMs": 678.0599717500027,
+   "peakRssMB": 526.1,
+   "areaHa": 2482.83,
+   "areaRatioToRef": 1,
+   "spots": 27,
+   "activeEmbers": 730,
+   "snapshotMB": 2.28206
+  },
+  {
+   "id": "E-off",
+   "wallPerSimHourS": 3.5652055695000002,
+   "ratioToRef": 0.6724307705534572,
+   "stepsPerH": 360,
+   "subStepsPerH": 1765.25,
+   "emberShareMs": 0,
+   "peakRssMB": 502.3,
+   "areaHa": 1001.79,
+   "areaRatioToRef": 0.40348714974444483,
+   "spots": 3,
+   "activeEmbers": 0,
+   "snapshotMB": 2.27038
+  },
+  {
+   "id": "E-8000",
+   "wallPerSimHourS": 5.844885209749998,
+   "ratioToRef": 1.1023994518049338,
+   "stepsPerH": 360,
+   "subStepsPerH": 1765.25,
+   "emberShareMs": 1734.1002707500074,
+   "peakRssMB": 521.9,
+   "areaHa": 2032.47,
+   "areaRatioToRef": 0.81861021495632,
+   "spots": 19,
+   "activeEmbers": 2472,
+   "snapshotMB": 2.309932
+  },
+  {
+   "id": "E-32000",
+   "wallPerSimHourS": 8.52642677525,
+   "ratioToRef": 1.6081630118605106,
+   "stepsPerH": 360,
+   "subStepsPerH": 1772.5,
+   "emberShareMs": 3828.003935250006,
+   "peakRssMB": 546.7,
+   "areaHa": 2932.56,
+   "areaRatioToRef": 1.1811360423387827,
+   "spots": 35,
+   "activeEmbers": 1324,
+   "snapshotMB": 2.291564
+  },
+  {
+   "id": "T-step5",
+   "wallPerSimHourS": 6.708408885999996,
+   "ratioToRef": 1.265268010066884,
+   "stepsPerH": 720,
+   "subStepsPerH": 2119,
+   "emberShareMs": 814.0351607499842,
+   "peakRssMB": 528.4,
+   "areaHa": 2874.06,
+   "areaRatioToRef": 1.1575742197411825,
+   "spots": 30,
+   "activeEmbers": 890,
+   "snapshotMB": 2.28462
+  },
+  {
+   "id": "T-step2",
+   "wallPerSimHourS": 10.79616654675,
+   "ratioToRef": 2.036256941860631,
+   "stepsPerH": 1800,
+   "subStepsPerH": 1800,
+   "emberShareMs": 1410.2373472500312,
+   "peakRssMB": 538.3,
+   "areaHa": 2837.88,
+   "areaRatioToRef": 1.1430021386885127,
+   "spots": 32,
+   "activeEmbers": 893,
+   "snapshotMB": 2.284668
+  },
+  {
+   "id": "N-nosnap",
+   "wallPerSimHourS": 4.779963350750002,
+   "ratioToRef": 0.9015453321006905,
+   "stepsPerH": 360,
+   "subStepsPerH": 1774.75,
+   "emberShareMs": 627.4378057499989,
+   "peakRssMB": 527.3,
+   "areaHa": 2482.83,
+   "areaRatioToRef": 1,
+   "spots": 27,
+   "activeEmbers": 730,
+   "snapshotMB": 2.28206
+  },
+  {
+   "id": "N-display10",
+   "wallPerSimHourS": 6.131341868750003,
+   "ratioToRef": 1.1564278291836207,
+   "stepsPerH": 360,
+   "subStepsPerH": 1774.75,
+   "emberShareMs": 650.4645725000246,
+   "peakRssMB": 526.9,
+   "areaHa": 2482.83,
+   "areaRatioToRef": 1,
+   "spots": 27,
+   "activeEmbers": 730,
+   "snapshotMB": 2.28206
+  }
+ ],
+ "knobs20": [
+  {
+   "id": "L20",
+   "wallPerSimHourS": 11.70546782174999,
+   "ratioToRef": 1,
+   "stepsPerH": 360,
+   "subStepsPerH": 2814.25,
+   "emberShareMs": 820.2741262499967,
+   "peakRssMB": 643.9,
+   "areaHa": 2963.68,
+   "areaRatioToRef": 1,
+   "spots": 46,
+   "activeEmbers": 911,
+   "snapshotMB": 4.434956
+  },
+  {
+   "id": "T-step5-c20",
+   "wallPerSimHourS": 13.220145612499998,
+   "ratioToRef": 1.1293991674502388,
+   "stepsPerH": 720,
+   "subStepsPerH": 2820.75,
+   "emberShareMs": 1173.839586749953,
+   "peakRssMB": 650.8,
+   "areaHa": 2690.08,
+   "areaRatioToRef": 0.9076823408735086,
+   "spots": 35,
+   "activeEmbers": 1008,
+   "snapshotMB": 4.436508
+  }
+ ],
+ "tiers": [
+  {
+   "id": "L30",
+   "tier": "fast",
+   "fire": "30 m",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 5.301966723749998,
+   "simSPerWallS": 678.993322208891,
+   "outerStepsPerH": 360,
+   "airMsPerOuterStep": 0.03150748958334791,
+   "airMsMeanReported": 1.6088258944445215,
+   "spinUpS": 0.00006445499999972526,
+   "constructS": 1.3599582600000004,
+   "peakRssMB": 526.1,
+   "snapshotMB": 2.28206,
+   "atmosphereShare": 0.21412327788783636,
+   "simWindowS": 14400
+  },
+  {
+   "id": "A-std30",
+   "tier": "standard",
+   "fire": "30 m",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 20.777597534499996,
+   "simSPerWallS": 173.26353511383635,
+   "outerStepsPerH": 437.25,
+   "airMsPerOuterStep": 29.210559398513535,
+   "airMsMeanReported": 32.81490954831346,
+   "spinUpS": 2.0371992760000004,
+   "constructS": 1.6474693020000004,
+   "peakRssMB": 554.1,
+   "snapshotMB": 2.615372,
+   "atmosphereShare": 61.49542118449262,
+   "simWindowS": 14400
+  },
+  {
+   "id": "A-high30",
+   "tier": "high",
+   "fire": "30 m",
+   "airGrid": "60x60x24 @ 100 m",
+   "wallPerSimHourS": 48.23402478224998,
+   "simSPerWallS": 74.63611042727648,
+   "outerStepsPerH": 580.75,
+   "airMsPerOuterStep": 66.44108105639239,
+   "airMsMeanReported": 70.02589153809691,
+   "spinUpS": 5.962962892,
+   "constructS": 1.8884611479999998,
+   "peakRssMB": 600.4,
+   "snapshotMB": 3.5532,
+   "atmosphereShare": 80.01429772728785,
+   "simWindowS": 14400
+  },
+  {
+   "id": "L20",
+   "tier": "fast",
+   "fire": "20 m",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 11.70546782174999,
+   "simSPerWallS": 307.5485794178018,
+   "outerStepsPerH": 360,
+   "airMsPerOuterStep": 0.09536441041663643,
+   "airMsMeanReported": 4.964608306249925,
+   "spinUpS": 0.0000688929999996617,
+   "constructS": 2.2479036640000003,
+   "peakRssMB": 643.9,
+   "snapshotMB": 4.434956,
+   "atmosphereShare": 0.2934780270183566,
+   "simWindowS": 14400
+  },
+  {
+   "id": "A-std20",
+   "tier": "standard",
+   "fire": "20 m",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 27.489298524999995,
+   "simSPerWallS": 130.96005329950486,
+   "outerStepsPerH": 442.5,
+   "airMsPerOuterStep": 29.137872015819106,
+   "airMsMeanReported": 36.884764322598876,
+   "spinUpS": 2.1212785809999994,
+   "constructS": 2.3327813600000002,
+   "peakRssMB": 667.6,
+   "snapshotMB": 4.76142,
+   "atmosphereShare": 46.91778457409233,
+   "simWindowS": 14400
+  },
+  {
+   "id": "A-high20",
+   "tier": "high",
+   "fire": "20 m",
+   "airGrid": "60x60x24 @ 100 m",
+   "wallPerSimHourS": 53.17383436774997,
+   "simSPerWallS": 67.70247139039134,
+   "outerStepsPerH": 571.5,
+   "airMsPerOuterStep": 64.31675139195066,
+   "airMsMeanReported": 71.7756969181978,
+   "spinUpS": 5.538145761999999,
+   "constructS": 2.589400316,
+   "peakRssMB": 702.5,
+   "snapshotMB": 5.705136,
+   "atmosphereShare": 69.14171390669172,
+   "simWindowS": 14400
+  },
+  {
+   "id": "AA-fast",
+   "tier": "fast",
+   "fire": "none",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 1.160006108,
+   "simSPerWallS": 3103.4319346877096,
+   "outerStepsPerH": 360,
+   "airMsPerOuterStep": 0.01576566666666521,
+   "airMsMeanReported": 0.48936294583333695,
+   "spinUpS": 0.00010100299999976414,
+   "constructS": 1.4634811130000003,
+   "peakRssMB": 469.7,
+   "snapshotMB": 2.27038,
+   "atmosphereShare": 0.4907748854613637,
+   "simWindowS": 7200
+  },
+  {
+   "id": "AA-std",
+   "tier": "standard",
+   "fire": "none",
+   "airGrid": "45x45x20 @ 133 m",
+   "wallPerSimHourS": 10.144948513499997,
+   "simSPerWallS": 354.8564090995079,
+   "outerStepsPerH": 356.5,
+   "airMsPerOuterStep": 21.794585906030836,
+   "airMsMeanReported": 25.11882792566623,
+   "spinUpS": 2.171392175,
+   "constructS": 1.6372303869999996,
+   "peakRssMB": 495.3,
+   "snapshotMB": 2.59438,
+   "atmosphereShare": 76.6361602179881,
+   "simWindowS": 7200
+  },
+  {
+   "id": "AA-high",
+   "tier": "high",
+   "fire": "none",
+   "airGrid": "60x60x24 @ 100 m",
+   "wallPerSimHourS": 29.796211049999993,
+   "simSPerWallS": 120.82073099693663,
+   "outerStepsPerH": 420,
+   "airMsPerOuterStep": 62.76285097023815,
+   "airMsMeanReported": 66.4172818452381,
+   "spinUpS": 7.765253073000001,
+   "constructS": 2.8748665960000004,
+   "peakRssMB": 532.1,
+   "snapshotMB": 3.531296,
+   "atmosphereShare": 88.49951757327078,
+   "simWindowS": 7200
+  }
+ ],
+ "phases": {
+  "L30": {
+   "laps": {
+    "records": 0.11089139427726077,
+    "stamps": 4.780155513189304,
+    "weatherNight": 0.43094743090550125,
+    "solarMoisture": 1.8211986119891943,
+    "fireMasks": 3.0467833463838003,
+    "surfaceWind": 2.2929495267430737,
+    "firePrepare": 15.483041485624161,
+    "fireStep": 37.66933226415324,
+    "fireHeat": 8.426425186632628,
+    "atmosphere": 0.21412327788783636,
+    "embers": 12.80016854507385,
+    "fireMinute": 2.205828921045023,
+    "diagnostics": 0.662565660706233,
+    "explain": 4.9946840278254,
+    "snapshot": 4.487236897818201,
+    "checkpoint": 0.5736679097452927
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 4.99427879107714,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 10.719374713375702,
+    "fire (prepare, level-set step, masks, minute tasks)": 58.40498601720623,
+    "embers": 12.80016854507385,
+    "moisture, weather, records": 2.3630374371719562,
+    "detectors and insight cards": 5.657249688531633,
+    "picture (snapshot) and checkpoints": 5.060904807563494
+   },
+   "totalMs": 21189.095108000096,
+   "otherMs": 18.771786999895994
+  },
+  "A-std30": {
+   "laps": {
+    "records": 0.038178484606523004,
+    "stamps": 1.6554565059692319,
+    "weatherNight": 0.19145957685765502,
+    "solarMoisture": 0.7172405509909328,
+    "fireMasks": 0.8246422026915788,
+    "surfaceWind": 7.057559660458812,
+    "firePrepare": 6.296138788023276,
+    "fireStep": 11.664512874831402,
+    "fireHeat": 0.5304850440056585,
+    "atmosphere": 61.49542118449262,
+    "embers": 5.9182293921975395,
+    "fireMinute": 0.7031742655931922,
+    "diagnostics": 0.14280475006810392,
+    "explain": 1.3548521202595767,
+    "snapshot": 1.2366817222333302,
+    "checkpoint": 0.17316287672056177
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 63.150877690461854,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 7.58804470446447,
+    "fire (prepare, level-set step, masks, minute tasks)": 19.48846813113945,
+    "embers": 5.9182293921975395,
+    "moisture, weather, records": 0.9468786124551107,
+    "detectors and insight cards": 1.4976568703276807,
+    "picture (snapshot) and checkpoints": 1.409844598953892
+   },
+   "totalMs": 83078.16647800017,
+   "otherMs": 32.22365999981412
+  },
+  "A-high30": {
+   "laps": {
+    "records": 0.021890591483110976,
+    "stamps": 1.4625656880264013,
+    "weatherNight": 0.11092124866271333,
+    "solarMoisture": 0.36933856206594085,
+    "fireMasks": 0.32447320177591504,
+    "surfaceWind": 4.008342315119975,
+    "firePrepare": 3.259488011373828,
+    "fireStep": 5.08772493392328,
+    "fireHeat": 0.3088073853124091,
+    "atmosphere": 80.01429772728785,
+    "embers": 3.325804195806467,
+    "fireMinute": 0.3152883588012246,
+    "diagnostics": 0.09175519814233928,
+    "explain": 0.546136985750122,
+    "snapshot": 0.6810232309269881,
+    "checkpoint": 0.07214236554143175
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 81.47686341531426,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 4.317149700432385,
+    "fire (prepare, level-set step, masks, minute tasks)": 8.986974505874246,
+    "embers": 3.325804195806467,
+    "moisture, weather, records": 0.5021504022117652,
+    "detectors and insight cards": 0.6378921838924613,
+    "picture (snapshot) and checkpoints": 0.7531655964684199
+   },
+   "totalMs": 192893.81482800035,
+   "otherMs": 42.284300999570405
+  },
+  "L10": {
+   "laps": {
+    "records": 0.04846619906656353,
+    "stamps": 0.7761879827893063,
+    "weatherNight": 0.06233842633682007,
+    "solarMoisture": 1.4575674236940832,
+    "fireMasks": 2.745366516970502,
+    "surfaceWind": 1.9760685882433318,
+    "firePrepare": 6.465205926322023,
+    "fireStep": 54.006449515367954,
+    "fireHeat": 21.01956991490976,
+    "atmosphere": 0.302867999450296,
+    "embers": 3.029287446672177,
+    "fireMinute": 2.0434800163140445,
+    "diagnostics": 0.07407967424569517,
+    "explain": 2.0726006336890377,
+    "snapshot": 3.533211329760828,
+    "checkpoint": 0.38725240616757667
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 1.0790559822396024,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 22.995638503153092,
+    "fire (prepare, level-set step, masks, minute tasks)": 65.26050197497452,
+    "embers": 3.029287446672177,
+    "moisture, weather, records": 1.5683720490974669,
+    "detectors and insight cards": 2.1466803079347327,
+    "picture (snapshot) and checkpoints": 3.9204637359284047
+   },
+   "totalMs": 188021.71772299914,
+   "otherMs": 27.979772000864614
+  },
+  "L20": {
+   "laps": {
+    "records": 0.0853319198938928,
+    "stamps": 2.3803776636195733,
+    "weatherNight": 0.22915033287580813,
+    "solarMoisture": 1.5745943382762386,
+    "fireMasks": 2.9160799638554757,
+    "surfaceWind": 2.251040956283735,
+    "firePrepare": 12.327310394404877,
+    "fireStep": 47.146632546754454,
+    "fireHeat": 12.733753532321805,
+    "atmosphere": 0.2934780270183566,
+    "embers": 7.012062441274895,
+    "fireMinute": 2.489264451564408,
+    "diagnostics": 0.30322198320948224,
+    "explain": 3.800012783774343,
+    "snapshot": 3.970030686496139,
+    "checkpoint": 0.48765797837652064
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 2.67385569063793,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 14.984794488605539,
+    "fire (prepare, level-set step, masks, minute tasks)": 64.87928735657921,
+    "embers": 7.012062441274895,
+    "moisture, weather, records": 1.8890765910459397,
+    "detectors and insight cards": 4.103234766983825,
+    "picture (snapshot) and checkpoints": 4.457688664872659
+   },
+   "totalMs": 46792.17466300023,
+   "otherMs": 29.696623999727308
+  },
+  "AA-std": {
+   "laps": {
+    "records": 0.018842391476230562,
+    "stamps": 3.344620107534017,
+    "weatherNight": 0.34344013674586704,
+    "solarMoisture": 2.2076876468690503,
+    "fireMasks": 1.6619142480019051,
+    "surfaceWind": 10.989028466967307,
+    "firePrepare": 0.08224702168092236,
+    "fireStep": 0.028159479282432665,
+    "fireHeat": 0.6999820569560757,
+    "atmosphere": 76.6361602179881,
+    "embers": 0.18106364180943932,
+    "fireMinute": 0.5734517673363888,
+    "diagnostics": 0.20086171056256757,
+    "explain": 0.638687903136411,
+    "snapshot": 2.181793321430455,
+    "checkpoint": 0.21205988222281938
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 79.98078032552212,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 11.689010523923383,
+    "fire (prepare, level-set step, masks, minute tasks)": 2.3457725163016487,
+    "embers": 0.18106364180943932,
+    "moisture, weather, records": 2.5699701750911474,
+    "detectors and insight cards": 0.8395496136989786,
+    "picture (snapshot) and checkpoints": 2.3938532036532743
+   },
+   "totalMs": 20277.033330999966,
+   "otherMs": 12.86369600002945
+  },
+  "W30": {
+   "laps": {
+    "records": 0.13664272028099406,
+    "stamps": 5.190045336526332,
+    "weatherNight": 0.5041437968512568,
+    "solarMoisture": 2.6877218417202022,
+    "fireMasks": 5.617229345031568,
+    "surfaceWind": 3.4921775325314623,
+    "firePrepare": 14.904878062444222,
+    "fireStep": 26.196281437791534,
+    "fireHeat": 10.68485541615368,
+    "atmosphere": 0.2676997632812436,
+    "embers": 12.313265222850507,
+    "fireMinute": 2.944511511258669,
+    "diagnostics": 0.890606806513503,
+    "explain": 7.390741631219895,
+    "snapshot": 6.015199967519905,
+    "checkpoint": 0.7639996080250269
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 5.457745099807576,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 14.177032948685142,
+    "fire (prepare, level-set step, masks, minute tasks)": 49.66290035652599,
+    "embers": 12.313265222850507,
+    "moisture, weather, records": 3.328508358852453,
+    "detectors and insight cards": 8.281348437733397,
+    "picture (snapshot) and checkpoints": 6.779199575544932
+   },
+   "totalMs": 8453.621222000014,
+   "otherMs": 10.018972999981997
+  },
+  "X30": {
+   "laps": {
+    "records": 0.12838468196976177,
+    "stamps": 3.3327861028507675,
+    "weatherNight": 0.30830539805616713,
+    "solarMoisture": 2.6323257376508624,
+    "fireMasks": 4.657275386561137,
+    "surfaceWind": 3.4154262696939512,
+    "firePrepare": 13.22340498691247,
+    "fireStep": 31.14166517885812,
+    "fireHeat": 16.50870148036802,
+    "atmosphere": 0.4157650536678156,
+    "embers": 9.186692659670975,
+    "fireMinute": 3.275753580266775,
+    "diagnostics": 0.4451307324746607,
+    "explain": 4.732160127935071,
+    "snapshot": 5.998077816116899,
+    "checkpoint": 0.5981448069465489
+   },
+   "groups": {
+    "air (3-D step; fast tier: hourly diagnostic solve)": 3.748551156518583,
+    "fire to air coupling (wind on the fire grid, fire heat, pyrogenic solve)": 19.924127750061974,
+    "fire (prepare, level-set step, masks, minute tasks)": 52.2980991325985,
+    "embers": 9.186692659670975,
+    "moisture, weather, records": 3.069015817676791,
+    "detectors and insight cards": 5.177290860409731,
+    "picture (snapshot) and checkpoints": 6.596222623063448
+   },
+   "totalMs": 32257.340490000002,
+   "otherMs": 23.903561000006448
+  }
+ },
+ "amdahl": {
+  "L30": {
+   "air only": {
+    "parallelShare": 0.049942787910771405,
+    "on4": 1.0389147232608975,
+    "on8": 1.045696890780817,
+    "limit": 1.0525681898682127
+   },
+   "fire only": {
+    "parallelShare": 0.5840498601720623,
+    "on4": 1.779477835948952,
+    "on8": 2.0451722414312328,
+    "limit": 2.4041343042068957
+   },
+   "air + coupling": {
+    "parallelShare": 0.1571365350445284,
+    "on4": 1.133597145709918,
+    "on8": 1.1594128537022532,
+    "limit": 1.1864317787849896
+   },
+   "air + fire + coupling": {
+    "parallelShare": 0.7411863952165907,
+    "on4": 2.251693367821594,
+    "on8": 2.845258584475922,
+    "limit": 3.8637845210527466
+   },
+   "everything but output and moisture": {
+    "parallelShare": 0.8691880806673292,
+    "on4": 2.872663946630499,
+    "on8": 4.176055319195966,
+    "limit": 7.644563317329495
+   }
+  },
+  "A-std30": {
+   "air only": {
+    "parallelShare": 0.6315087769046186,
+    "on4": 1.8998100324646616,
+    "on8": 2.2349873764205017,
+    "limit": 2.7137688425788014
+   },
+   "fire only": {
+    "parallelShare": 0.1948846813113945,
+    "on4": 1.1711844280067178,
+    "on8": 1.2055805302546643,
+    "limit": 1.2420580962598353
+   },
+   "air + coupling": {
+    "parallelShare": 0.7073892239492633,
+    "on4": 2.130115633878775,
+    "on8": 2.624434759105428,
+    "limit": 3.4175091344776956
+   },
+   "air + fire + coupling": {
+    "parallelShare": 0.9022739052606578,
+    "on4": 3.093154322815407,
+    "on8": 4.750360641392582,
+    "limit": 10.23268148253778
+   },
+   "everything but output and moisture": {
+    "parallelShare": 0.9614561991826331,
+    "on4": 3.5854135973657657,
+    "on8": 6.300171982058636,
+    "limit": 25.944509332079814
+   }
+  },
+  "A-high30": {
+   "air only": {
+    "parallelShare": 0.8147686341531426,
+    "on4": 2.5711995734403565,
+    "on8": 3.483380589498862,
+    "limit": 5.398653707638068
+   },
+   "fire only": {
+    "parallelShare": 0.08986974505874246,
+    "on4": 1.0722737247042708,
+    "on8": 1.085347407999985,
+    "limit": 1.0987438276783172
+   },
+   "air + coupling": {
+    "parallelShare": 0.8579401311574665,
+    "on4": 2.8046958333242644,
+    "on8": 4.011193070008045,
+    "limit": 7.039285676861011
+   },
+   "air + fire + coupling": {
+    "parallelShare": 0.9478098762162089,
+    "on4": 3.4585011851257046,
+    "on8": 5.859385586577071,
+    "limit": 19.160713320832834
+   },
+   "everything but output and moisture": {
+    "parallelShare": 0.9810679181742736,
+    "on4": 3.7850248021971966,
+    "on8": 7.063864389592766,
+    "limit": 52.82039287624055
+   }
+  },
+  "L10": {
+   "air only": {
+    "parallelShare": 0.010790559822396024,
+    "on4": 1.0081589495920427,
+    "on8": 1.0095317360163303,
+    "limit": 1.0109082661205282
+   },
+   "fire only": {
+    "parallelShare": 0.6526050197497452,
+    "on4": 1.9586864637878916,
+    "on8": 2.3311620470163295,
+    "limit": 2.8785677883993155
+   },
+   "air + coupling": {
+    "parallelShare": 0.24074694485392695,
+    "on4": 1.2203459125909335,
+    "on8": 1.266870882722322,
+    "limit": 1.3170839329814874
+   },
+   "air + fire + coupling": {
+    "parallelShare": 0.8933519646036722,
+    "on4": 3.0304313502705993,
+    "on8": 4.580494684948469,
+    "limit": 9.376637800066147
+   },
+   "everything but output and moisture": {
+    "parallelShare": 0.923644839070394,
+    "on4": 3.254505196032173,
+    "on8": 5.213471703526831,
+    "limit": 13.09669166858188
+   }
+  }
+ },
+ "noise": {
+  "L30": {
+   "ids": [
+    "L30",
+    "L30-r2",
+    "L30-r3"
+   ],
+   "values": [
+    5.301966723749998,
+    5.192612513500002,
+    5.480420735
+   ],
+   "mean": 5.32499999075,
+   "sd": 0.14528004554056284,
+   "cvPct": 2.728263770759197,
+   "rangePct": 5.404849239435615,
+   "loads": [
+    [
+     0.9,
+     1.01
+    ],
+    [
+     2.71,
+     2.23
+    ],
+    [
+     2.13,
+     2.26
+    ]
+   ],
+   "cpuOverWall": [
+    1.0960261168689314,
+    1.1207993538645924,
+    1.1089835149308112
+   ],
+   "steps": [
+    1440,
+    1440,
+    1440
+   ],
+   "area": [
+    2482.83,
+    2482.83,
+    2482.83
+   ]
+  },
+  "L10": {
+   "ids": [
+    "L10",
+    "L10-r2",
+    "L10-r3"
+   ],
+   "values": [
+    47.01242437375,
+    46.19024942025002,
+    47.388227414250025
+   ],
+   "mean": 46.86363373608335,
+   "sd": 0.6126922628204197,
+   "cvPct": 1.307393844597817,
+   "rangePct": 2.556306241096291,
+   "loads": [
+    [
+     1.46,
+     1.13
+    ],
+    [
+     1.34,
+     1.07
+    ],
+    [
+     2.6,
+     1.12
+    ]
+   ],
+   "cpuOverWall": [
+    0.9847088533866083,
+    1.0122058570115193,
+    0.9976727940615719
+   ],
+   "steps": [
+    1440,
+    1440,
+    1440
+   ],
+   "area": [
+    2738.04,
+    2738.04,
+    2738.04
+   ]
+  },
+  "L30rss": {
+   "ids": [
+    "L30",
+    "L30-r2",
+    "L30-r3"
+   ],
+   "values": [
+    526.1,
+    522.4,
+    522.8
+   ],
+   "mean": 523.7666666666667,
+   "sd": 2.0305992547357694,
+   "cvPct": 0.38769157794229675,
+   "rangePct": 0.7064214344810117,
+   "loads": [
+    [
+     0.9,
+     1.01
+    ],
+    [
+     2.71,
+     2.23
+    ],
+    [
+     2.13,
+     2.26
+    ]
+   ],
+   "cpuOverWall": [
+    1.0960261168689314,
+    1.1207993538645924,
+    1.1089835149308112
+   ],
+   "steps": [
+    1440,
+    1440,
+    1440
+   ],
+   "area": [
+    2482.83,
+    2482.83,
+    2482.83
+   ]
+  },
+  "L10rss": {
+   "ids": [
+    "L10",
+    "L10-r2",
+    "L10-r3"
+   ],
+   "values": [
+    1234.5,
+    1211.4,
+    1236.5
+   ],
+   "mean": 1227.4666666666667,
+   "sd": 13.950029868546228,
+   "cvPct": 1.1364895069964882,
+   "rangePct": 2.0448620464914113,
+   "loads": [
+    [
+     1.46,
+     1.13
+    ],
+    [
+     1.34,
+     1.07
+    ],
+    [
+     2.6,
+     1.12
+    ]
+   ],
+   "cpuOverWall": [
+    0.9847088533866083,
+    1.0122058570115193,
+    0.9976727940615719
+   ],
+   "steps": [
+    1440,
+    1440,
+    1440
+   ],
+   "area": [
+    2738.04,
+    2738.04,
+    2738.04
+   ]
+  }
+ },
+ "determinism": {
+  "fastSameSeedTwoProcesses": {
+   "a": "D-fast-a",
+   "b": "D-fast-b",
+   "snapshotsA": 240,
+   "snapshotsB": 240,
+   "identical": 240,
+   "firstDifferentAtS": null,
+   "finalHashEqual": true,
+   "finalHashes": [
+    988016189,
+    988016189
+   ],
+   "areaHa": [
+    2482.83,
+    2482.83
+   ]
+  },
+  "fastOtherChunking": {
+   "a": "D-fast-a",
+   "b": "D-fast-chunk60",
+   "snapshotsA": 240,
+   "snapshotsB": 240,
+   "identical": 240,
+   "firstDifferentAtS": null,
+   "finalHashEqual": true,
+   "finalHashes": [
+    988016189,
+    988016189
+   ],
+   "areaHa": [
+    2482.83,
+    2482.83
+   ]
+  },
+  "fastOtherSeed": {
+   "a": "D-fast-a",
+   "b": "D-fast-seed2",
+   "snapshotsA": 240,
+   "snapshotsB": 240,
+   "identical": 0,
+   "firstDifferentAtS": 60,
+   "finalHashEqual": false,
+   "finalHashes": [
+    988016189,
+    2483471968
+   ],
+   "areaHa": [
+    2482.83,
+    2882.34
+   ]
+  },
+  "standardSameSeedTwoProcesses": {
+   "a": "D-std-a",
+   "b": "D-std-b",
+   "snapshotsA": 120,
+   "snapshotsB": 120,
+   "identical": 120,
+   "firstDifferentAtS": null,
+   "finalHashEqual": true,
+   "finalHashes": [
+    3370674856,
+    3370674856
+   ],
+   "areaHa": [
+    1006.38,
+    1006.38
+   ]
+  }
+ },
+ "convergenceKat6": {
+  "label": "Katoomba 6 km, fast tier, 4 h, seed 1, embers 2000",
+  "rows": {
+   "L30": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     14.49,
+     29.97,
+     45.27,
+     73.08,
+     110.97,
+     168.48,
+     263.25,
+     381.24,
+     441.54,
+     502.47,
+     567.99,
+     639,
+     772.38,
+     981.27,
+     1222.2,
+     1494.45,
+     1722.78,
+     1968.93,
+     2137.14,
+     2214.99,
+     2280.69,
+     2374.11,
+     2444.22,
+     2482.83
+    ],
+    "perimeterM": [
+     2215.2186130069786,
+     3044.92424049175,
+     4560.731598529184,
+     5659.554108468271,
+     6446.833329081849,
+     8714.772721475249,
+     11816.681810065349,
+     13849.768388716362,
+     15318.002153624991,
+     17573.5151391472,
+     18962.926394116737,
+     20672.043276571058,
+     26208.582233137677,
+     32214.20235878393,
+     37007.65473669954,
+     42633.827894001566,
+     43021.6958596456,
+     45211.178541364505,
+     40510.99997449109,
+     40184.01512639275,
+     41426.80733252853,
+     43689.59953866432,
+     41120.41122946064,
+     40765.55841571825
+    ],
+    "appPerimeterKmAtMarks": [
+     2.1676989309769574,
+     2.8745572780346604,
+     4.3825217517577615,
+     5.46637121724624,
+     6.126105674500097,
+     8.293804605477053,
+     11.333295497825178,
+     13.288936924684826,
+     14.773339453506,
+     16.941038384482958,
+     18.142697574481055,
+     19.650662048204154,
+     25.117033265450395,
+     30.889709766421642,
+     35.41360318759094,
+     40.5972310660141,
+     40.809288570131415,
+     43.02411139091221,
+     38.2881604656256,
+     37.93473129209675,
+     39.230638261702545,
+     41.53970886209104,
+     38.877209088173686,
+     38.57090380444869
+    ],
+    "headRosMeanPerHour": [
+     3.1257949734727544,
+     3.784838660558065,
+     4.619752446810405,
+     3.5513845761617024
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     2.3926877257724604,
+     3.6104247629642487,
+     4.398975209395091,
+     2.846576968828837
+    ],
+    "spots": 27
+   },
+   "L20": {
+    "cellM": 20,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     15.08,
+     37.28,
+     64.28,
+     132.56,
+     233.64,
+     346.8,
+     446.72,
+     560.04,
+     659.92,
+     754.44,
+     855.08,
+     1009.64,
+     1361.24,
+     1959.32,
+     2381.24,
+     2670.72,
+     2747.68,
+     2790.16,
+     2828.96,
+     2858.8,
+     2888.76,
+     2913.84,
+     2939,
+     2963.68
+    ],
+    "perimeterM": [
+     1971.370849898476,
+     4339.898987322333,
+     8650.33621333629,
+     13887.636354360398,
+     18848.61181906598,
+     20983.170260293136,
+     24025.668093913693,
+     29356.349186104046,
+     33711.984104714444,
+     37816.14716074871,
+     40044.67529817257,
+     45341.38669416621,
+     54819.00212811608,
+     58678.90111543842,
+     59078.90111543842,
+     57241.49996173664,
+     54111.47904132611,
+     54099.763312573574,
+     54009.468940058345,
+     54179.17456754312,
+     54192.31165253297,
+     54084.0273812855,
+     54680.00717874996,
+     55041.42853498728
+    ],
+    "appPerimeterKmAtMarks": [
+     1.9163715186897738,
+     4.052654523130833,
+     8.293804605477053,
+     13.226105071613029,
+     18.158405537749005,
+     19.949113350295185,
+     22.8079626650619,
+     28.132962212896597,
+     32.107076919687685,
+     36.11260755301467,
+     38.15464277784803,
+     43.21260695012761,
+     52.19756193939441,
+     55.98318108697011,
+     56.21880053598935,
+     54.679420135730346,
+     51.427871739264916,
+     51.396455812729016,
+     51.380747849461066,
+     51.569243408676456,
+     51.63207526174825,
+     51.52211951887261,
+     52.11902212305467,
+     52.43318138841365
+    ],
+    "headRosMeanPerHour": [
+     3.675906427204609,
+     4.595820359388987,
+     5.718541042009989,
+     2.2427922328313192
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     4.1559953689575195
+    ],
+    "maxRosMeanPerHour": [
+     3.7266535659631095,
+     4.361958682537079,
+     4.89815825621287,
+     1.609063229461511
+    ],
+    "spots": 46
+   },
+   "L15": {
+    "cellM": 15,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     15.5925,
+     38.9925,
+     68.4,
+     115.8975,
+     185.085,
+     273.375,
+     406.035,
+     488.835,
+     548.6175,
+     613.755,
+     685.125,
+     817.2,
+     1030.9275,
+     1467.585,
+     2039.9625,
+     2429.5725,
+     2509.065,
+     2548.17,
+     2581.6275,
+     2612.475,
+     2642.1075,
+     2670.5475,
+     2692.395,
+     2716.3125
+    ],
+    "perimeterM": [
+     2075.5129855222067,
+     5058.3051916579925,
+     8030.80302527855,
+     11284.844148224613,
+     14953.113626507924,
+     19925.682886877843,
+     23364.871196081524,
+     25073.363620130698,
+     26611.891757554553,
+     27801.155826266484,
+     31688.83655951933,
+     35835.156903078976,
+     44648.89932075093,
+     54081.09844909737,
+     59945.94693008087,
+     53333.489142593884,
+     49199.28297670286,
+     49320.34899388085,
+     49453.84141793002,
+     49789.613062592776,
+     50039.907435108,
+     50317.18665572158,
+     50778.10548664194,
+     51014.02431756231
+    ],
+    "appPerimeterKmAtMarks": [
+     2.0027653166634933,
+     4.759512870188537,
+     7.563384313517426,
+     10.767808820179017,
+     14.20785277585984,
+     19.03805148075415,
+     22.360285711925354,
+     23.750440461138833,
+     25.246623962410975,
+     26.318692455448492,
+     30.041479749952394,
+     33.999886493475536,
+     42.56465346532471,
+     51.43572572089889,
+     57.055249580007626,
+     50.717086401390226,
+     46.687993823161314,
+     46.80580354767093,
+     46.95895618953343,
+     47.32416633551325,
+     47.453757032473824,
+     47.712938426394985,
+     48.13705343462961,
+     48.3844538560998
+    ],
+    "headRosMeanPerHour": [
+     4.0039542585611345,
+     4.616006525357564,
+     4.878117309014002,
+     3.0813808540503183
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.026671796043714,
+     4.505522012710571,
+     4.998980514208475,
+     2.7023360689481097
+    ],
+    "spots": 49
+   },
+   "L10": {
+    "cellM": 10,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     18.01,
+     41.29,
+     67.92,
+     118.94,
+     198.78,
+     309.29,
+     444.99,
+     519.82,
+     601.76,
+     695.83,
+     756.62,
+     817.2,
+     959.47,
+     1295.27,
+     1763.67,
+     2174.17,
+     2416.36,
+     2513.28,
+     2556,
+     2597.44,
+     2639,
+     2676.7,
+     2705.69,
+     2738.04
+    ],
+    "perimeterM": [
+     2521.0764773832475,
+     5860.142853498728,
+     9534.183976444792,
+     12942.367235014586,
+     16572.976900455575,
+     17580.256121069153,
+     20543.586565896563,
+     23083.830432072955,
+     29238.531726798843,
+     32258.18684794478,
+     34319.73013727029,
+     37066.57825931629,
+     43597.79759019826,
+     55518.37766971096,
+     61855.92167691146,
+     64400.135239284544,
+     58716.02268958912,
+     56232.01728001774,
+     56315.154365007584,
+     57229.83473932294,
+     58217.11395993653,
+     59326.941520509485,
+     59985.053352329924,
+     60535.46965793335
+    ],
+    "appPerimeterKmAtMarks": [
+     2.4033183799961915,
+     5.513495107050087,
+     9.047786842338605,
+     12.377875055143784,
+     15.896458827164354,
+     16.728980880365647,
+     19.682077974740057,
+     21.944024685324706,
+     27.77167905773377,
+     30.52057262962484,
+     32.342696368706925,
+     35.02875808752619,
+     41.49258497228719,
+     52.621676947629034,
+     58.70065873232528,
+     61.1589549837593,
+     55.59048200527139,
+     53.20287158854315,
+     53.30497334978482,
+     54.23959716422778,
+     55.05641125416113,
+     56.132406738015625,
+     56.84711906670731,
+     57.36548185454962
+    ],
+    "headRosMeanPerHour": [
+     3.755658452709516,
+     4.878877182801564,
+     5.211221369107564,
+     3.5828158140182493
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.123069905241331,
+     5.148674726486206,
+     5.312299211819966,
+     4.093798057238261
+    ],
+    "spots": 84
+   }
+  },
+  "pairs": [
+   {
+    "a": "L30",
+    "b": "L20",
+    "areaRatioBoverA": [
+     1.0407177363699103,
+     1.2439105772439107,
+     1.4199248950740004,
+     1.8139025725232623,
+     2.105433901054339,
+     2.0584045584045585,
+     1.6969420702754037,
+     1.4689959080893924,
+     1.4945871268741222,
+     1.501462773896949,
+     1.5054490395957676,
+     1.5800312989045384,
+     1.7623967477148554,
+     1.996718538220877,
+     1.9483226967763048,
+     1.7870922412927832,
+     1.594910551550401,
+     1.4170945640525563,
+     1.3237129996163097,
+     1.2906604544490046,
+     1.2666166817936677,
+     1.2273399294893665,
+     1.202428586624772,
+     1.1936701264283096
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.1936701264283096,
+    "perimeterRatioAtEnd": 1.350194396301084,
+    "coarseBlocksBurntInBoth": 6948,
+    "coarseBlocksOnlyA": 39,
+    "coarseBlocksOnlyB": 1288,
+    "jaccard": 0.8396374622356495,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -69.05,
+     "p25": -34.86666666666667,
+     "p50": -19.65,
+     "p75": -5.316666666666666,
+     "p95": -0.03333333333333333,
+     "n": 6948
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 19.683333333333334,
+     "p90": 56,
+     "p95": 69.05,
+     "max": 162.45
+    }
+   },
+   {
+    "a": "L30",
+    "b": "L15",
+    "areaRatioBoverA": [
+     1.076086956521739,
+     1.3010510510510511,
+     1.510934393638171,
+     1.5858990147783252,
+     1.6678832116788322,
+     1.622596153846154,
+     1.5423931623931626,
+     1.2822237960339942,
+     1.2425091724419077,
+     1.221475909009493,
+     1.206227222310252,
+     1.2788732394366198,
+     1.334741319039851,
+     1.4955975419609282,
+     1.6690905743740796,
+     1.625730201746462,
+     1.4564047643924356,
+     1.2941902454632719,
+     1.2079823970352903,
+     1.1794522774369185,
+     1.1584684897991397,
+     1.1248625800826415,
+     1.101535459164887,
+     1.0940388588828072
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.0940388588828072,
+    "perimeterRatioAtEnd": 1.25140011078304,
+    "coarseBlocksBurntInBoth": 6372,
+    "coarseBlocksOnlyA": 615,
+    "coarseBlocksOnlyB": 1207,
+    "jaccard": 0.7776421772028314,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -67.68333333333334,
+     "p25": -31.95,
+     "p50": -9.733333333333333,
+     "p75": -2.816666666666667,
+     "p95": 1.3166666666666667,
+     "n": 6372
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 10.483333333333333,
+     "p90": 55.93333333333333,
+     "p95": 68.45,
+     "max": 127.33333333333333
+    }
+   },
+   {
+    "a": "L30",
+    "b": "L10",
+    "areaRatioBoverA": [
+     1.2429261559696343,
+     1.377711044377711,
+     1.5003313452617626,
+     1.6275314723590586,
+     1.7912949445796162,
+     1.8357668566001901,
+     1.6903703703703703,
+     1.3634980589654813,
+     1.3628663314761968,
+     1.384818994168806,
+     1.3321009172696703,
+     1.2788732394366198,
+     1.2422253295010228,
+     1.319993477839942,
+     1.4430289641629848,
+     1.4548295359496806,
+     1.402593482626917,
+     1.2764699608416754,
+     1.1959909037311547,
+     1.172664436408291,
+     1.1571059635461198,
+     1.1274540775279998,
+     1.106974822233678,
+     1.1027899614552747
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.1027899614552747,
+    "perimeterRatioAtEnd": 1.4849660353135816,
+    "coarseBlocksBurntInBoth": 6607,
+    "coarseBlocksOnlyA": 380,
+    "coarseBlocksOnlyB": 1021,
+    "jaccard": 0.8250499500499501,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -62.56666666666667,
+     "p25": -27.25,
+     "p50": -11.3,
+     "p75": -4.583333333333333,
+     "p95": 1.05,
+     "n": 6607
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 12.083333333333334,
+     "p90": 51.56666666666667,
+     "p95": 64.21666666666667,
+     "max": 158.53333333333333
+    }
+   },
+   {
+    "a": "L20",
+    "b": "L15",
+    "areaRatioBoverA": [
+     1.0339854111405835,
+     1.0459361587982832,
+     1.0640945861854387,
+     0.8743022027761014,
+     0.7921802773497689,
+     0.7882785467128027,
+     0.9089250537249284,
+     0.8728572959074352,
+     0.8313394047763365,
+     0.8135239382853506,
+     0.8012408195724376,
+     0.8093974089774574,
+     0.7573444065704799,
+     0.7490277239042117,
+     0.8566807629638341,
+     0.9097069329618981,
+     0.9131576457229372,
+     0.9132702067264961,
+     0.9125712275889373,
+     0.913836224989506,
+     0.9146164790429111,
+     0.9165045095132197,
+     0.9160922082340932,
+     0.9165336676024403
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9165336676024403,
+    "perimeterRatioAtEnd": 0.9268295841038185,
+    "coarseBlocksBurntInBoth": 7468,
+    "coarseBlocksOnlyA": 768,
+    "coarseBlocksOnlyB": 111,
+    "jaccard": 0.8946927039654966,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -10.55,
+     "p25": 0,
+     "p50": 1.6833333333333333,
+     "p75": 6.3,
+     "p95": 24.383333333333333,
+     "n": 7468
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 3.1166666666666667,
+     "p90": 18.866666666666667,
+     "p95": 27.333333333333332,
+     "max": 120.78333333333333
+    }
+   },
+   {
+    "a": "L20",
+    "b": "L10",
+    "areaRatioBoverA": [
+     1.1942970822281167,
+     1.1075643776824033,
+     1.0566272557560672,
+     0.8972540736270368,
+     0.8507960965588085,
+     0.8918396770472895,
+     0.9961273280802292,
+     0.9281837011642027,
+     0.9118681052248758,
+     0.9223132389586979,
+     0.884852879262759,
+     0.8093974089774574,
+     0.7048499897152596,
+     0.6610813955862238,
+     0.7406519292469471,
+     0.8140763539420083,
+     0.8794182728702034,
+     0.9007655474954842,
+     0.9035122447825349,
+     0.9085770253253113,
+     0.9135407579722787,
+     0.918615984405458,
+     0.9206158557332427,
+     0.9238649246882255
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9238649246882255,
+    "perimeterRatioAtEnd": 1.0998164704147124,
+    "coarseBlocksBurntInBoth": 7480,
+    "coarseBlocksOnlyA": 756,
+    "coarseBlocksOnlyB": 148,
+    "jaccard": 0.892175572519084,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -19.05,
+     "p25": -1.35,
+     "p50": 2.933333333333333,
+     "p75": 13.766666666666667,
+     "p95": 35.516666666666666,
+     "n": 7480
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 7.4,
+     "p90": 27.316666666666666,
+     "p95": 37.483333333333334,
+     "max": 127.01666666666667
+    }
+   },
+   {
+    "a": "L15",
+    "b": "L10",
+    "areaRatioBoverA": [
+     1.155042488375822,
+     1.0589215874847726,
+     0.9929824561403509,
+     1.0262516447723204,
+     1.073993030229354,
+     1.1313763145861913,
+     1.0959400051719679,
+     1.0633853958902288,
+     1.0968662137099163,
+     1.1337259981588745,
+     1.1043532202152893,
+     1,
+     0.9306862024730158,
+     0.8825860171642528,
+     0.8645600102943068,
+     0.8948775967788571,
+     0.9630519735439298,
+     0.9863078209067684,
+     0.9900731224779717,
+     0.9942449210040288,
+     0.998823855577413,
+     1.0023038347005622,
+     1.0049379827254175,
+     1.007998895561538
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.007998895561538,
+    "perimeterRatioAtEnd": 1.1866436821588517,
+    "coarseBlocksBurntInBoth": 7314,
+    "coarseBlocksOnlyA": 265,
+    "coarseBlocksOnlyB": 314,
+    "jaccard": 0.9266438616495629,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -19.3,
+     "p25": -3.966666666666667,
+     "p50": 0.31666666666666665,
+     "p75": 7.25,
+     "p95": 25.8,
+     "n": 7314
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 5.216666666666667,
+     "p90": 23.216666666666665,
+     "p95": 36.75,
+     "max": 134.85
+    }
+   }
+  ]
+ },
+ "convergenceWar6": {
+  "label": "Warrumbungles 6 km, fast tier, 2 h, seed 1, embers 2000",
+  "rows": {
+   "W30": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     13.68,
+     49.59,
+     137.25,
+     318.42,
+     566.28,
+     831.6,
+     1181.16,
+     1400.76,
+     1598.13,
+     1679.22,
+     1745.73,
+     1810.8
+    ],
+    "perimeterM": [
+     1840.6601717798212,
+     4822.569260369921,
+     9864.549775709384,
+     16098.002153624991,
+     19331.454531540596,
+     19567.190462828672,
+     25167.99348810722,
+     22404.871196081524,
+     16877.377695219853,
+     15949.509729575819,
+     14985.245660863888,
+     14912.819253992695
+    ],
+    "appPerimeterKmAtMarks": [
+     1.7907078125461822,
+     4.71238898038469,
+     9.707521299592461,
+     15.362388076054089,
+     18.661060362323372,
+     18.708184252127218,
+     24.457298808196537,
+     21.724113199573416,
+     15.904312808798327,
+     15.24457835154447,
+     14.34922444527138,
+     14.278538610565608
+    ],
+    "headRosMeanPerHour": [
+     4.031331106026967,
+     3.91903798977534
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     3.8475571314493817,
+     4.069730031490326
+    ],
+    "spots": 4
+   },
+   "W20": {
+    "cellM": 20,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     13.72,
+     41.76,
+     84.36,
+     202.68,
+     385.32,
+     595.08,
+     834.36,
+     1096.28,
+     1475.8,
+     1629.08,
+     1741.96,
+     1821.8
+    ],
+    "perimeterM": [
+     2084.5079348883237,
+     4091.025971044414,
+     6524.650788387052,
+     10741.707063234768,
+     13344.20489685532,
+     14492.489168102784,
+     19572.632021601512,
+     24771.597385039327,
+     22208.266940211914,
+     21191.870837144023,
+     18265.10893481154,
+     18275.403307326767
+    ],
+    "appPerimeterKmAtMarks": [
+     2.0420352248333655,
+     3.9584067435231396,
+     6.440264939859076,
+     10.304423903774522,
+     12.817698026646356,
+     13.728759896187395,
+     18.629644435787473,
+     23.84468824074653,
+     21.299998191338798,
+     20.310396505458012,
+     17.35729941108361,
+     17.32588348454771
+    ],
+    "headRosMeanPerHour": [
+     3.8644799346725147,
+     4.210382775465647
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.201118454833826,
+     4.3851920445760095
+    ],
+    "spots": 2
+   },
+   "W10": {
+    "cellM": 10,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     15.01,
+     44.2,
+     85.74,
+     210.21,
+     382.17,
+     583.86,
+     812.21,
+     1057.72,
+     1387.52,
+     1621.63,
+     1757.82,
+     1851.03
+    ],
+    "perimeterM": [
+     2224.5079348883237,
+     4288.599564173221,
+     7158.376618407356,
+     11415.26045382804,
+     14684.032457428291,
+     15023.19984622144,
+     20614.64212286928,
+     24604.246737676385,
+     28042.135623730945,
+     24488.891398617056,
+     23972.789668064393,
+     21849.825022501573
+    ],
+    "appPerimeterKmAtMarks": [
+     2.151990967709008,
+     4.09977841293468,
+     6.864379948093697,
+     10.948450397760428,
+     14.058627124814324,
+     14.168582867689967,
+     19.383626672649026,
+     23.216369710028573,
+     26.64855968407542,
+     23.153537856956778,
+     22.485949418068945,
+     20.593139844281094
+    ],
+    "headRosMeanPerHour": [
+     3.907427478333314,
+     4.317080819606781
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.779829500615596,
+     4.807711974779765
+    ],
+    "spots": 5
+   }
+  },
+  "pairs": [
+   {
+    "a": "W30",
+    "b": "W20",
+    "areaRatioBoverA": [
+     1.0029239766081872,
+     0.8421052631578947,
+     0.6146448087431694,
+     0.6365178066704352,
+     0.6804407713498623,
+     0.7155844155844157,
+     0.7063903281519861,
+     0.7826322853308204,
+     0.9234542871981628,
+     0.9701408987506104,
+     0.9978404449714446,
+     1.0060746631323172
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 1.0060746631323172,
+    "perimeterRatioAtEnd": 1.2254827873967418,
+    "coarseBlocksBurntInBoth": 5002,
+    "coarseBlocksOnlyA": 61,
+    "coarseBlocksOnlyB": 66,
+    "jaccard": 0.9752388379801131,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -6.283333333333333,
+     "p25": -0.4,
+     "p50": 1.8833333333333333,
+     "p75": 19.466666666666665,
+     "p95": 33.25,
+     "n": 5002
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 3.2,
+     "p90": 26.766666666666666,
+     "p95": 33.25,
+     "max": 54.86666666666667
+    }
+   },
+   {
+    "a": "W30",
+    "b": "W10",
+    "areaRatioBoverA": [
+     1.0972222222222223,
+     0.8913087315991127,
+     0.6246994535519125,
+     0.6601658187299793,
+     0.6748781521508794,
+     0.7020923520923521,
+     0.6876375766195942,
+     0.7551043719123904,
+     0.8682147259609668,
+     0.9657043150986768,
+     1.0069254695743328,
+     1.0222166998011928
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 1.0222166998011928,
+    "perimeterRatioAtEnd": 1.4651706461641445,
+    "coarseBlocksBurntInBoth": 5041,
+    "coarseBlocksOnlyA": 22,
+    "coarseBlocksOnlyB": 125,
+    "jaccard": 0.9716653816499614,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -8.333333333333334,
+     "p25": -0.5166666666666667,
+     "p50": 4.933333333333334,
+     "p75": 17.416666666666668,
+     "p95": 36.46666666666667,
+     "n": 5041
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 6.633333333333334,
+     "p90": 31.016666666666666,
+     "p95": 36.483333333333334,
+     "max": 61.43333333333333
+    }
+   },
+   {
+    "a": "W20",
+    "b": "W10",
+    "areaRatioBoverA": [
+     1.0940233236151602,
+     1.0584291187739465,
+     1.0163584637268848,
+     1.0371521610420367,
+     0.9918249766427905,
+     0.9811453922161726,
+     0.9734527062658804,
+     0.9648265041777648,
+     0.9401815964222795,
+     0.9954268666977681,
+     1.0091046866747801,
+     1.0160445713031068
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 1.0160445713031068,
+    "perimeterRatioAtEnd": 1.1955864751691574,
+    "coarseBlocksBurntInBoth": 5055,
+    "coarseBlocksOnlyA": 13,
+    "coarseBlocksOnlyB": 111,
+    "jaccard": 0.9760571538907125,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -6.783333333333333,
+     "p25": -1.3833333333333333,
+     "p50": 1.05,
+     "p75": 3.6166666666666667,
+     "p95": 6.283333333333333,
+     "n": 5055
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 2.6666666666666665,
+     "p90": 6.4,
+     "p95": 7.4,
+     "max": 32.25
+    }
+   }
+  ]
+ },
+ "convergenceKat6NoEmbers": {
+  "label": "Katoomba 6 km, fast tier, EMBERS OFF, 4 h, seed 1",
+  "rows": {
+   "LN30": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     13.86,
+     28.98,
+     42.21,
+     68.67,
+     106.11,
+     156.06,
+     235.53,
+     361.35,
+     418.59,
+     461.43,
+     498.78,
+     542.52,
+     615.15,
+     690.66,
+     757.62,
+     845.91,
+     891.72,
+     917.91,
+     931.95,
+     944.55,
+     958.86,
+     972.18,
+     987.84,
+     1001.79
+    ],
+    "perimeterM": [
+     1798.2337649086282,
+     2850.365799264592,
+     3811.614716074871,
+     5252.863632885149,
+     6443.818177180199,
+     7506.244584051393,
+     9382.051942088827,
+     12060.945878777276,
+     12141.534623807735,
+     13677.930726875627,
+     13698.519471906084,
+     14002.783540618013,
+     16560.428560496184,
+     19608.367952889585,
+     21583.586565896563,
+     24176.37877203235,
+     22620.277041479683,
+     21653.88093841179,
+     21342.337649086287,
+     21286.60171779821,
+     21334.17531092702,
+     21481.16015902537,
+     21558.733752154178,
+     21386.89609031344
+    ],
+    "appPerimeterKmAtMarks": [
+     1.7435839227423353,
+     2.6389378290154264,
+     3.628539514896211,
+     4.99513231920777,
+     6.220353454107791,
+     7.0685834705770345,
+     8.859291283123216,
+     11.639600781550184,
+     11.592476891746337,
+     13.006193585861743,
+     12.91194580625405,
+     13.288936924684826,
+     15.739379194484863,
+     18.51968869291183,
+     20.4988920646734,
+     22.996458224277283,
+     21.512055695456105,
+     20.522454009575323,
+     20.0983390013407,
+     20.192586780948396,
+     20.216148725850317,
+     20.42820622996763,
+     20.475330119771474,
+     20.216148725850317
+    ],
+    "headRosMeanPerHour": [
+     2.962875436246395,
+     3.8654987096786497,
+     3.3404982030391692,
+     0.6365900921324888
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     1.9049882888793945
+    ],
+    "maxRosMeanPerHour": [
+     2.555044860392809,
+     3.706724637746811,
+     3.385559682051341,
+     0.5413331645230453
+    ],
+    "spots": 3
+   },
+   "LN20": {
+    "cellM": 20,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     15.08,
+     33.28,
+     54.88,
+     92.4,
+     140.96,
+     213.32,
+     333.08,
+     442.04,
+     495.08,
+     540.84,
+     572.44,
+     619.4,
+     730.4,
+     895.48,
+     1157.84,
+     1432.6,
+     1580.8,
+     1664.44,
+     1715.4,
+     1752.92,
+     1786.28,
+     1816.52,
+     1847.76,
+     1881.24
+    ],
+    "perimeterM": [
+     1971.370849898476,
+     3174.213562373095,
+     5421.564209736038,
+     6817.544007200504,
+     8647.49350086167,
+     10868.56997824492,
+     14300.184694319789,
+     16419.839815465726,
+     18315.230867899736,
+     19200.08368164212,
+     20175.47473407613,
+     21623.170260293136,
+     27038.46030004948,
+     32631.151493507597,
+     38686.44153326394,
+     39774.969670687795,
+     37555.486988968885,
+     36791.811665287416,
+     36093.821766555186,
+     36200.68468156533,
+     36130.39030905011,
+     36060.68468156533,
+     36362.106037802645,
+     36450.97905408056
+    ],
+    "appPerimeterKmAtMarks": [
+     1.9163715186897738,
+     2.9530970943744057,
+     5.215043804959056,
+     6.440264939859076,
+     8.19955682586936,
+     10.367255756846317,
+     13.697343969651499,
+     15.739379194484863,
+     17.46725515395925,
+     18.1898214642849,
+     19.210839076701586,
+     20.467476138137503,
+     25.603980126756813,
+     31.054643380735104,
+     36.69380219392879,
+     37.87189943902496,
+     35.562828838636456,
+     34.71459882216722,
+     34.086280291449256,
+     34.1334041812531,
+     34.1334041812531,
+     34.03915640164541,
+     34.30619177720054,
+     34.27477585066464
+    ],
+    "headRosMeanPerHour": [
+     3.3691624358296393,
+     3.5954960942268372,
+     4.929687893390655,
+     2.5636801679929095
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     5.43778133392334
+    ],
+    "maxRosMeanPerHour": [
+     3.1962599913279215,
+     4.072553400198618,
+     4.666386067867279,
+     2.166266945997874
+    ],
+    "spots": 7
+   },
+   "LN15": {
+    "cellM": 15,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     15.5925,
+     33.4575,
+     56.07,
+     91.89,
+     140.6925,
+     212.4,
+     322.965,
+     440.91,
+     496.98,
+     557.6175,
+     598.4775,
+     648.3375,
+     742.95,
+     890.7525,
+     1134.81,
+     1399.95,
+     1540.8675,
+     1625.175,
+     1681.515,
+     1730.43,
+     1769.85,
+     1802.5875,
+     1833.7275,
+     1860.1425
+    ],
+    "perimeterM": [
+     2075.5129855222067,
+     3314.92424049175,
+     6021.061684419096,
+     7130.178566873409,
+     8882.346314604056,
+     11535.76297914498,
+     14008.555185280766,
+     17139.839815465726,
+     19815.352800987934,
+     21181.16015902537,
+     20718.55085252188,
+     21824.65258307454,
+     28002.551929334375,
+     32053.100628231263,
+     39434.639584797886,
+     40657.5432638166,
+     37961.70019240448,
+     38190.65203191384,
+     38029.733200993476,
+     37899.25592884595,
+     37977.895539152734,
+     38070.46913228155,
+     38167.74835289513,
+     38209.10874258834
+    ],
+    "appPerimeterKmAtMarks": [
+     2.0027653166634933,
+     3.0866147821519716,
+     5.701990666265475,
+     6.738716241950106,
+     8.411614329986671,
+     11.026990214100174,
+     13.383184704292518,
+     16.304865872131025,
+     18.77887008683299,
+     20.16902483604647,
+     19.60353815840031,
+     20.734511513692635,
+     26.683902601428304,
+     30.46559475818702,
+     37.38102558690155,
+     38.51199894219388,
+     35.87306111317845,
+     36.12046153464865,
+     35.943746947884215,
+     35.68456555396306,
+     35.767032361119796,
+     35.8259372233746,
+     35.943746947884215,
+     35.95552792033518
+    ],
+    "headRosMeanPerHour": [
+     3.11620068748792,
+     4.271282601356506,
+     4.560204462210337,
+     3.1020839313666024
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     3.478752679626147,
+     4.330872102578481,
+     4.817426482836406,
+     2.987813220421473
+    ],
+    "spots": 17
+   },
+   "LN10": {
+    "cellM": 10,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     17.19,
+     32.37,
+     53,
+     87.89,
+     133.24,
+     196.64,
+     283.11,
+     410.96,
+     477.65,
+     537.18,
+     575.94,
+     619,
+     679.78,
+     746.36,
+     844.22,
+     966.73,
+     1062.4,
+     1156.66,
+     1232.08,
+     1302.57,
+     1362.73,
+     1413.7,
+     1471.03,
+     1519.67
+    ],
+    "perimeterM": [
+     2052.375900532359,
+     3109.360748630709,
+     5468.010819142764,
+     6946.244584051392,
+     7683.229432149742,
+     8989.919907732863,
+     10209.747468305832,
+     12714.255403194156,
+     15225.037508062174,
+     16351.311678041871,
+     16408.88527117068,
+     17482.26622233692,
+     21305.3022946491,
+     24023.119753954303,
+     29400.541828066605,
+     32320.024509785515,
+     33531.86217162626,
+     34069.43576475506,
+     34820.26837596191,
+     35673.11108843653,
+     35725.53749530772,
+     36362.522343406075,
+     36770.21786962308,
+     36731.7254455739
+    ],
+    "appPerimeterKmAtMarks": [
+     1.9477874452256718,
+     2.8745572780346604,
+     5.136503988619312,
+     6.628760499074463,
+     7.3042029195962686,
+     8.482300164692441,
+     9.628981483252716,
+     12.00088393671301,
+     14.451326206513048,
+     15.409511965857934,
+     15.448781874027807,
+     16.59546319258808,
+     20.278980578922113,
+     22.666590995650356,
+     27.84236489243954,
+     30.709068188840227,
+     31.78506367269473,
+     32.20132469929538,
+     32.94745295452295,
+     33.709289173018476,
+     33.764267044456304,
+     34.36902363027234,
+     34.80099262014093,
+     34.72245280380118
+    ],
+    "headRosMeanPerHour": [
+     3.4097863763570784,
+     4.509710592031479,
+     4.530100584030151,
+     2.8059271335601808
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     3.7904077718655267,
+     4.515387455622355,
+     5.023488966623942,
+     3.1313493569691975
+    ],
+    "spots": 40
+   }
+  },
+  "pairs": [
+   {
+    "a": "LN30",
+    "b": "LN20",
+    "areaRatioBoverA": [
+     1.0880230880230881,
+     1.1483781918564528,
+     1.3001658374792704,
+     1.345565749235474,
+     1.3284327584582039,
+     1.3669101627579137,
+     1.4141722922769921,
+     1.223301508233015,
+     1.1827325067488474,
+     1.172095442428971,
+     1.1476803400296727,
+     1.1417090614170906,
+     1.187352678208567,
+     1.296556916572554,
+     1.5282595496423008,
+     1.6935607806977102,
+     1.7727537792132058,
+     1.8132932422568662,
+     1.840656687590536,
+     1.8558255253824574,
+     1.8629205514882254,
+     1.868501717788887,
+     1.8705053449951408,
+     1.8778785973108136
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.8778785973108136,
+    "perimeterRatioAtEnd": 1.7043604130376802,
+    "coarseBlocksBurntInBoth": 2812,
+    "coarseBlocksOnlyA": 19,
+    "coarseBlocksOnlyB": 2416,
+    "jaccard": 0.5359252906422718,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -28.333333333333332,
+     "p25": -9.15,
+     "p50": -4.633333333333334,
+     "p75": -1.2666666666666666,
+     "p95": 0.4166666666666667,
+     "n": 2812
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 4.7,
+     "p90": 17.066666666666666,
+     "p95": 28.333333333333332,
+     "max": 121.53333333333333
+    }
+   },
+   {
+    "a": "LN30",
+    "b": "LN15",
+    "areaRatioBoverA": [
+     1.125,
+     1.1545031055900623,
+     1.328358208955224,
+     1.3381389252948885,
+     1.3259117896522477,
+     1.3610149942329872,
+     1.3712265953381733,
+     1.2201743462017434,
+     1.1872715545044077,
+     1.2084552369806902,
+     1.199882713821725,
+     1.1950481088254812,
+     1.2077542062911486,
+     1.2897120145947356,
+     1.4978617248752673,
+     1.6549632939674435,
+     1.7279723455793299,
+     1.770516717325228,
+     1.8042974408498311,
+     1.832015245354931,
+     1.8457856204242538,
+     1.8541705239770414,
+     1.856300109329446,
+     1.856818794358099
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.856818794358099,
+    "perimeterRatioAtEnd": 1.7865663432990644,
+    "coarseBlocksBurntInBoth": 2820,
+    "coarseBlocksOnlyA": 11,
+    "coarseBlocksOnlyB": 2365,
+    "jaccard": 0.5427251732101617,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -33.96666666666667,
+     "p25": -8.533333333333333,
+     "p50": -4.916666666666667,
+     "p75": -2.1,
+     "p95": 1.0166666666666666,
+     "n": 2820
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 5.166666666666667,
+     "p90": 22.216666666666665,
+     "p95": 33.96666666666667,
+     "max": 122.36666666666666
+    }
+   },
+   {
+    "a": "LN30",
+    "b": "LN10",
+    "areaRatioBoverA": [
+     1.2402597402597404,
+     1.1169772256728778,
+     1.255626628760957,
+     1.2798893257608854,
+     1.255678069927434,
+     1.2600281942842495,
+     1.2020124824863074,
+     1.137290715372907,
+     1.1410927160228386,
+     1.1641635784409334,
+     1.1546974618068089,
+     1.1409717614097177,
+     1.1050638055758757,
+     1.0806474965974575,
+     1.1143053245690453,
+     1.1428284332848648,
+     1.191405373884179,
+     1.2601017528951641,
+     1.3220451740973227,
+     1.3790376369699857,
+     1.4211980893978267,
+     1.454154580427493,
+     1.4891379170715904,
+     1.5169546511743979
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 1.5169546511743979,
+    "perimeterRatioAtEnd": 1.717487441396905,
+    "coarseBlocksBurntInBoth": 2821,
+    "coarseBlocksOnlyA": 10,
+    "coarseBlocksOnlyB": 1404,
+    "jaccard": 0.6661157024793388,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -38.61666666666667,
+     "p25": -9.683333333333334,
+     "p50": -4.566666666666666,
+     "p75": -1.0333333333333334,
+     "p95": 2.1166666666666667,
+     "n": 2821
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 4.766666666666667,
+     "p90": 25.716666666666665,
+     "p95": 38.61666666666667,
+     "max": 127.58333333333333
+    }
+   },
+   {
+    "a": "LN20",
+    "b": "LN15",
+    "areaRatioBoverA": [
+     1.0339854111405835,
+     1.0053335336538463,
+     1.0216836734693877,
+     0.9944805194805194,
+     0.998102298524404,
+     0.9956872304519033,
+     0.9696319202593972,
+     0.9974436702560854,
+     1.0038377635937628,
+     1.0310211892611492,
+     1.0454851163440708,
+     1.046718598643849,
+     1.0171823658269443,
+     0.9947207084468666,
+     0.9801095142679472,
+     0.9772092698589977,
+     0.9747390561740892,
+     0.9764094830693806,
+     0.9802465897166842,
+     0.9871699792346484,
+     0.9908021138903195,
+     0.9923301147248585,
+     0.9924056695674763,
+     0.9887853224468967
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9887853224468967,
+    "perimeterRatioAtEnd": 1.048232715118552,
+    "coarseBlocksBurntInBoth": 5105,
+    "coarseBlocksOnlyA": 123,
+    "coarseBlocksOnlyB": 80,
+    "jaccard": 0.9617558402411455,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -8.883333333333333,
+     "p25": -0.9666666666666667,
+     "p50": 0.8,
+     "p75": 2.716666666666667,
+     "p95": 13.05,
+     "n": 5105
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 1.85,
+     "p90": 10.633333333333333,
+     "p95": 17.75,
+     "max": 121.31666666666666
+    }
+   },
+   {
+    "a": "LN20",
+    "b": "LN10",
+    "areaRatioBoverA": [
+     1.139920424403183,
+     0.9726562499999999,
+     0.9657434402332361,
+     0.9511904761904761,
+     0.9452326901248581,
+     0.9218076129758109,
+     0.8499759817461271,
+     0.9296896208487919,
+     0.9647935687161671,
+     0.9932327490570223,
+     1.006114177905108,
+     0.999354213755247,
+     0.9306955093099671,
+     0.8334747844731317,
+     0.7291335590409729,
+     0.6748080413234678,
+     0.6720647773279353,
+     0.6949244190238159,
+     0.7182464731258015,
+     0.743085822513292,
+     0.76288711736122,
+     0.7782463171338604,
+     0.7961152963588345,
+     0.8078023006102358
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.8078023006102358,
+    "perimeterRatioAtEnd": 1.0077020260848635,
+    "coarseBlocksBurntInBoth": 4116,
+    "coarseBlocksOnlyA": 1112,
+    "coarseBlocksOnlyB": 109,
+    "jaccard": 0.7712197863968522,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -13.283333333333333,
+     "p25": -1.5333333333333334,
+     "p50": 1.9166666666666667,
+     "p75": 7.95,
+     "p95": 66.98333333333333,
+     "n": 4116
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 4.183333333333334,
+     "p90": 50.416666666666664,
+     "p95": 68.28333333333333,
+     "max": 113.46666666666667
+    }
+   },
+   {
+    "a": "LN15",
+    "b": "LN10",
+    "areaRatioBoverA": [
+     1.1024531024531026,
+     0.9674960771127549,
+     0.945247012662743,
+     0.9564696920230711,
+     0.9470298701067933,
+     0.9258003766478342,
+     0.8765965352282756,
+     0.9320723050055566,
+     0.9611050746508913,
+     0.9633485319237649,
+     0.9623419426795495,
+     0.9547496481385082,
+     0.9149740897772393,
+     0.8378982938582827,
+     0.7439307020558508,
+     0.690546090931819,
+     0.6894817367489418,
+     0.711714123094436,
+     0.732720195775833,
+     0.7527435377333956,
+     0.7699692064299235,
+     0.7842615129640031,
+     0.8022075253820429,
+     0.8169642917142101
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.8169642917142101,
+    "perimeterRatioAtEnd": 0.9613342643774434,
+    "coarseBlocksBurntInBoth": 4166,
+    "coarseBlocksOnlyA": 1019,
+    "coarseBlocksOnlyB": 59,
+    "jaccard": 0.7944317315026698,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -6.916666666666667,
+     "p25": -0.7833333333333333,
+     "p50": 1.2666666666666666,
+     "p75": 7.75,
+     "p95": 64.25,
+     "n": 4166
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 2.816666666666667,
+     "p90": 46.56666666666667,
+     "p95": 64.25,
+     "max": 112.5
+    }
+   }
+  ]
+ },
+ "convergenceWar6NoEmbers": {
+  "label": "Warrumbungles 6 km, fast tier, EMBERS OFF, 2 h, seed 1",
+  "rows": {
+   "WN30": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     13.68,
+     43.02,
+     83.43,
+     194.04,
+     379.26,
+     599.13,
+     841.41,
+     1109.34,
+     1486.08,
+     1643.31,
+     1746.54,
+     1826.28
+    ],
+    "perimeterM": [
+     1840.6601717798212,
+     3578.8939366884497,
+     6228.670990922585,
+     10248.15367264149,
+     13707.04760932994,
+     14968.29652614022,
+     19055.058428472705,
+     23217.627688842626,
+     20889.322497184632,
+     19446.566004423534,
+     15899.804102091046,
+     15999.215357060588
+    ],
+    "appPerimeterKmAtMarks": [
+     1.7907078125461822,
+     3.4871678454846706,
+     6.07898178469625,
+     9.801769079200154,
+     13.194689145077131,
+     14.41991027997715,
+     18.236945354088746,
+     22.430971546631124,
+     19.933405387027236,
+     18.613936472519523,
+     15.150330571936777,
+     15.338826131152166
+    ],
+    "headRosMeanPerHour": [
+     3.7389600694179537,
+     4.038265236218771
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     3.6279459993044534,
+     4.20818701783816
+    ],
+    "spots": 0
+   },
+   "WN20": {
+    "cellM": 20,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     13.72,
+     41.76,
+     84.36,
+     202.68,
+     385.32,
+     595.08,
+     834.08,
+     1094.96,
+     1473.12,
+     1630.08,
+     1746.04,
+     1823.8
+    ],
+    "perimeterM": [
+     2084.5079348883237,
+     4091.025971044414,
+     6524.650788387052,
+     10741.707063234768,
+     13344.20489685532,
+     14492.489168102784,
+     19572.632021601512,
+     24165.91196009009,
+     22869.688296449225,
+     21323.586565896563,
+     18503.098833543772,
+     18055.403307326767
+    ],
+    "appPerimeterKmAtMarks": [
+     2.0420352248333655,
+     3.9584067435231396,
+     6.440264939859076,
+     10.304423903774522,
+     12.817698026646356,
+     13.728759896187395,
+     18.629644435787473,
+     23.184953783492674,
+     21.928316722056756,
+     20.388936321797758,
+     17.608626823370788,
+     17.16880385186822
+    ],
+    "headRosMeanPerHour": [
+     3.8644799346725147,
+     4.142702527840933
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.201118454833826,
+     4.371990370750427
+    ],
+    "spots": 0
+   },
+   "WN10": {
+    "cellM": 10,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaHa": [
+     15.01,
+     44.2,
+     85.74,
+     207.47,
+     364.39,
+     541.14,
+     753.06,
+     984.24,
+     1244.03,
+     1596.15,
+     1766.92,
+     1864.61
+    ],
+    "perimeterM": [
+     2224.5079348883237,
+     4288.599564173221,
+     7158.376618407356,
+     10522.295808265222,
+     13369.646455628164,
+     14039.940828143393,
+     19288.956697920043,
+     22278.14500712372,
+     26677.038943812167,
+     27133.60748630709,
+     23890.363261193197,
+     22244.97220875919
+    ],
+    "appPerimeterKmAtMarks": [
+     2.151990967709008,
+     4.09977841293468,
+     6.864379948093697,
+     10.02168056495144,
+     12.75486617357456,
+     13.226105071613029,
+     18.158405537749005,
+     21.12721059539136,
+     25.258404934861936,
+     25.674665961462587,
+     22.41526358336317,
+     20.8680292014702
+    ],
+    "headRosMeanPerHour": [
+     4.01051377505064,
+     4.390406664212545
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6
+    ],
+    "maxRosMeanPerHour": [
+     4.832943779726823,
+     4.801059353351593
+    ],
+    "spots": 0
+   }
+  },
+  "pairs": [
+   {
+    "a": "WN30",
+    "b": "WN20",
+    "areaRatioBoverA": [
+     1.0029239766081872,
+     0.9707112970711296,
+     1.0111470693994964,
+     1.044526901669759,
+     1.0159784844170225,
+     0.993240198287517,
+     0.9912884325120929,
+     0.9870373375160006,
+     0.9912790697674418,
+     0.9919491757489457,
+     0.99971371969723,
+     0.9986420483167969
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 0.9986420483167969,
+    "perimeterRatioAtEnd": 1.1285180494403912,
+    "coarseBlocksBurntInBoth": 5029,
+    "coarseBlocksOnlyA": 83,
+    "coarseBlocksOnlyB": 44,
+    "jaccard": 0.9753685027152832,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -4.35,
+     "p25": -0.9166666666666666,
+     "p50": 0.5333333333333333,
+     "p75": 1.7,
+     "p95": 3.15,
+     "n": 5029
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 1.4166666666666667,
+     "p90": 3.783333333333333,
+     "p95": 5.366666666666666,
+     "max": 31.416666666666668
+    }
+   },
+   {
+    "a": "WN30",
+    "b": "WN10",
+    "areaRatioBoverA": [
+     1.0972222222222223,
+     1.0274291027429103,
+     1.027687882056814,
+     1.0692125334982479,
+     0.9607920687654907,
+     0.9032096539982976,
+     0.8949976824615823,
+     0.8872302450105469,
+     0.8371218238587425,
+     0.9713018237581468,
+     1.0116687851409072,
+     1.0209880193617626
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 1.0209880193617626,
+    "perimeterRatioAtEnd": 1.3903789474864652,
+    "coarseBlocksBurntInBoth": 5081,
+    "coarseBlocksOnlyA": 31,
+    "coarseBlocksOnlyB": 125,
+    "jaccard": 0.9702119534084399,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -6.766666666666667,
+     "p25": -1.3666666666666667,
+     "p50": 3.533333333333333,
+     "p75": 8.2,
+     "p95": 11.366666666666667,
+     "n": 5081
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 5.233333333333333,
+     "p90": 10.85,
+     "p95": 11.916666666666666,
+     "max": 39.5
+    }
+   },
+   {
+    "a": "WN20",
+    "b": "WN10",
+    "areaRatioBoverA": [
+     1.0940233236151602,
+     1.0584291187739465,
+     1.0163584637268848,
+     1.0236333135977895,
+     0.9456815114709851,
+     0.9093567251461987,
+     0.90286303472089,
+     0.8988821509461533,
+     0.844486531986532,
+     0.9791850706713782,
+     1.011958488923507,
+     1.0223763570566948
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200
+    ],
+    "areaRatioAtEnd": 1.0223763570566948,
+    "perimeterRatioAtEnd": 1.2320396188398806,
+    "coarseBlocksBurntInBoth": 5057,
+    "coarseBlocksOnlyA": 16,
+    "coarseBlocksOnlyB": 149,
+    "jaccard": 0.9684029107621601,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -7.333333333333333,
+     "p25": -0.15,
+     "p50": 3.3,
+     "p75": 6.783333333333333,
+     "p95": 9.666666666666666,
+     "n": 5057
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 4.6,
+     "p90": 9.2,
+     "p95": 10.55,
+     "max": 34.81666666666667
+    }
+   }
+  ]
+ },
+ "convergenceStepNoEmbers": {
+  "label": "Katoomba 6 km, 30 m cells, EMBERS OFF, solver step 10 s (automatic), 5 s, 2 s (rows named by their ids; the cell size is 30 m in all three)",
+  "rows": {
+   "LN30": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     13.86,
+     28.98,
+     42.21,
+     68.67,
+     106.11,
+     156.06,
+     235.53,
+     361.35,
+     418.59,
+     461.43,
+     498.78,
+     542.52,
+     615.15,
+     690.66,
+     757.62,
+     845.91,
+     891.72,
+     917.91,
+     931.95,
+     944.55,
+     958.86,
+     972.18,
+     987.84,
+     1001.79
+    ],
+    "perimeterM": [
+     1798.2337649086282,
+     2850.365799264592,
+     3811.614716074871,
+     5252.863632885149,
+     6443.818177180199,
+     7506.244584051393,
+     9382.051942088827,
+     12060.945878777276,
+     12141.534623807735,
+     13677.930726875627,
+     13698.519471906084,
+     14002.783540618013,
+     16560.428560496184,
+     19608.367952889585,
+     21583.586565896563,
+     24176.37877203235,
+     22620.277041479683,
+     21653.88093841179,
+     21342.337649086287,
+     21286.60171779821,
+     21334.17531092702,
+     21481.16015902537,
+     21558.733752154178,
+     21386.89609031344
+    ],
+    "appPerimeterKmAtMarks": [
+     1.7435839227423353,
+     2.6389378290154264,
+     3.628539514896211,
+     4.99513231920777,
+     6.220353454107791,
+     7.0685834705770345,
+     8.859291283123216,
+     11.639600781550184,
+     11.592476891746337,
+     13.006193585861743,
+     12.91194580625405,
+     13.288936924684826,
+     15.739379194484863,
+     18.51968869291183,
+     20.4988920646734,
+     22.996458224277283,
+     21.512055695456105,
+     20.522454009575323,
+     20.0983390013407,
+     20.192586780948396,
+     20.216148725850317,
+     20.42820622996763,
+     20.475330119771474,
+     20.216148725850317
+    ],
+    "headRosMeanPerHour": [
+     2.962875436246395,
+     3.8654987096786497,
+     3.3404982030391692,
+     0.6365900921324888
+    ],
+    "headRosMaxPerHour": [
+     6,
+     6,
+     6,
+     1.9049882888793945
+    ],
+    "maxRosMeanPerHour": [
+     2.555044860392809,
+     3.706724637746811,
+     3.385559682051341,
+     0.5413331645230453
+    ],
+    "spots": 3
+   },
+   "NT-step5": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     13.86,
+     27.9,
+     40.95,
+     69.21,
+     106.56,
+     156.87,
+     235.62,
+     364.86,
+     431.19,
+     476.82,
+     511.47,
+     553.23,
+     623.34,
+     700.83,
+     767.97,
+     856.44,
+     893.88,
+     914.13,
+     927.81,
+     941.76,
+     956.88,
+     973.17,
+     987.21,
+     1001.16
+    ],
+    "perimeterM": [
+     1720.6601717798212,
+     2603.086578651014,
+     3846.761902332485,
+     5292.274887854692,
+     6361.980515339464,
+     7361.3917703090065,
+     9329.331162702407,
+     11771.240251292505,
+     12466.387437550122,
+     14154.915574973978,
+     13203.961030678927,
+     13663.372285648471,
+     17221.67747730646,
+     19598.073580374352,
+     21421.16015902537,
+     23611.52595828996,
+     22065.718600252527,
+     21239.028124669403,
+     21179.028124669403,
+     21201.74890405583,
+     21343.586565896563,
+     21323.88093841179,
+     21536.012972767756,
+     21484.17531092702
+    ],
+    "appPerimeterKmAtMarks": [
+     1.6964600329384882,
+     2.4033183799961915,
+     3.628539514896211,
+     5.136503988619312,
+     6.031857894892402,
+     6.927211801165494,
+     8.859291283123216,
+     11.356857442727101,
+     11.875220230569417,
+     13.477432483900213,
+     12.440706908215581,
+     12.91194580625405,
+     16.493361431346415,
+     18.566812582715677,
+     20.357520395261858,
+     22.50165738133689,
+     20.99369290761379,
+     20.16902483604647,
+     20.121900946242626,
+     20.0983390013407,
+     20.333958450359937,
+     20.263272615654166,
+     20.4988920646734,
+     20.333958450359937
+    ],
+    "headRosMeanPerHour": [
+     3.0886184339722,
+     3.856422712405523,
+     2.9498833417892456,
+     0.7803805137674014
+    ],
+    "headRosMaxPerHour": [
+     6,
+     5.904659271240234,
+     6,
+     1.359360933303833
+    ],
+    "maxRosMeanPerHour": [
+     2.4807486489415167,
+     3.550873190164566,
+     3.141889915863673,
+     0.5571590567628543
+    ],
+    "spots": 3
+   },
+   "NT-step2": {
+    "cellM": 30,
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaHa": [
+     13.95,
+     30.06,
+     45.9,
+     72.81,
+     110.61,
+     167.49,
+     258.03,
+     371.97,
+     421.47,
+     460.98,
+     503.46,
+     547.47,
+     620.1,
+     697.23,
+     762.66,
+     852.21,
+     893.25,
+     917.01,
+     930.69,
+     943.2,
+     955.71,
+     970.65,
+     985.05,
+     1000.98
+    ],
+    "perimeterM": [
+     1780.6601717798212,
+     3020.0714267493645,
+     4603.158005400378,
+     5797.127701597077,
+     6446.833329081849,
+     7658.376618407357,
+     9933.595231414336,
+     12279.108216936542,
+     12346.387437550122,
+     13551.900423072328,
+     13398.519471906084,
+     13737.930726875627,
+     17631.383104791235,
+     19502.926394116737,
+     21427.190462828672,
+     23596.967517062807,
+     22410.277041479683,
+     21326.89609031344,
+     21095.058428472705,
+     21039.322497184632,
+     21259.616869699865,
+     21261.74890405583,
+     21364.17531092702,
+     21291.74890405583
+    ],
+    "appPerimeterKmAtMarks": [
+     1.7435839227423353,
+     2.827433388230814,
+     4.429645641561608,
+     5.5606189968539335,
+     6.126105674500097,
+     7.257079029792422,
+     9.471901850573225,
+     11.68672467135403,
+     11.780972450961725,
+     13.100441365469438,
+     12.676326357234815,
+     13.05331747566559,
+     16.870352549777188,
+     18.51968869291183,
+     20.16902483604647,
+     22.430971546631124,
+     21.323560136240722,
+     20.192586780948396,
+     19.86271955232147,
+     19.95696733192916,
+     20.07477705643878,
+     20.145462891144547,
+     20.239710670752242,
+     20.16902483604647
+    ],
+    "headRosMeanPerHour": [
+     2.7575162932276727,
+     3.591602051258087,
+     3.2126118580500287,
+     0.6653585831324259
+    ],
+    "headRosMaxPerHour": [
+     6,
+     4.1647844314575195,
+     6,
+     1.5729689598083496
+    ],
+    "maxRosMeanPerHour": [
+     2.205242082476616,
+     3.926775672038396,
+     3.1076506674289703,
+     0.6045550013581912
+    ],
+    "spots": 4
+   }
+  },
+  "pairs": [
+   {
+    "a": "LN30",
+    "b": "NT-step5",
+    "areaRatioBoverA": [
+     1,
+     0.9627329192546583,
+     0.9701492537313433,
+     1.0078636959370904,
+     1.0042408821034776,
+     1.005190311418685,
+     1.00038211692778,
+     1.0097135740971357,
+     1.0301010535368738,
+     1.0333528379169103,
+     1.0254420786719598,
+     1.0197412076974122,
+     1.013313825896123,
+     1.0147250456085484,
+     1.0136612021857925,
+     1.0124481327800832,
+     1.0024222850222042,
+     0.9958819492107069,
+     0.995557701593433,
+     0.9970462124821344,
+     0.9979350478693448,
+     1.0010183299389002,
+     0.9993622448979592,
+     0.9993711256850238
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9993711256850238,
+    "perimeterRatioAtEnd": 1.004548543192186,
+    "coarseBlocksBurntInBoth": 2805,
+    "coarseBlocksOnlyA": 26,
+    "coarseBlocksOnlyB": 25,
+    "jaccard": 0.9821428571428571,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -9.683333333333334,
+     "p25": -1.35,
+     "p50": -0.05,
+     "p75": 1.0166666666666666,
+     "p95": 3.9833333333333334,
+     "n": 2805
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 1.0333333333333334,
+     "p90": 6.683333333333334,
+     "p95": 13.7,
+     "max": 87.66666666666667
+    }
+   },
+   {
+    "a": "LN30",
+    "b": "NT-step2",
+    "areaRatioBoverA": [
+     1.0064935064935066,
+     1.0372670807453415,
+     1.0874200426439231,
+     1.0602883355176933,
+     1.0424088210347753,
+     1.0732410611303345,
+     1.095529231944975,
+     1.0293897882938978,
+     1.0068802408084285,
+     0.9990247708211429,
+     1.0093828942619993,
+     1.009124087591241,
+     1.0080468178493052,
+     1.0095126400833985,
+     1.0066524114991684,
+     1.0074476008085966,
+     1.0017157852240612,
+     0.999019511716835,
+     0.9986479961371318,
+     0.9985707479752264,
+     0.9967148488830486,
+     0.9984262173671543,
+     0.9971756559766763,
+     0.9991914473093164
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9991914473093164,
+    "perimeterRatioAtEnd": 0.9955511456241327,
+    "coarseBlocksBurntInBoth": 2816,
+    "coarseBlocksOnlyA": 15,
+    "coarseBlocksOnlyB": 11,
+    "jaccard": 0.9908515130190007,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -4.866666666666666,
+     "p25": -2.816666666666667,
+     "p50": -0.55,
+     "p75": 0.35,
+     "p95": 5.3,
+     "n": 2816
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 2.4833333333333334,
+     "p90": 5,
+     "p95": 8.866666666666667,
+     "max": 66.46666666666667
+    }
+   },
+   {
+    "a": "NT-step5",
+    "b": "NT-step2",
+    "areaRatioBoverA": [
+     1.0064935064935066,
+     1.0774193548387097,
+     1.1208791208791207,
+     1.0520156046814046,
+     1.0380067567567568,
+     1.0676993689041883,
+     1.0951107715813597,
+     1.0194869264923532,
+     0.9774577332498435,
+     0.9667799169497924,
+     0.9843392574344535,
+     0.9895884171140393,
+     0.9948021946289345,
+     0.9948632335944523,
+     0.993085667408883,
+     0.9950609499789828,
+     0.9992952074103907,
+     1.0031505365757605,
+     1.003104083810263,
+     1.0015290519877675,
+     0.9987772761474794,
+     0.9974105243688154,
+     0.9978120156805542,
+     0.9998202085580726
+    ],
+    "timesS": [
+     600,
+     1200,
+     1800,
+     2400,
+     3000,
+     3600,
+     4200,
+     4800,
+     5400,
+     6000,
+     6600,
+     7200,
+     7800,
+     8400,
+     9000,
+     9600,
+     10200,
+     10800,
+     11400,
+     12000,
+     12600,
+     13200,
+     13800,
+     14400
+    ],
+    "areaRatioAtEnd": 0.9998202085580726,
+    "perimeterRatioAtEnd": 0.9910433421769127,
+    "coarseBlocksBurntInBoth": 2803,
+    "coarseBlocksOnlyA": 27,
+    "coarseBlocksOnlyB": 24,
+    "jaccard": 0.9821303433777155,
+    "arrivalErrorMinSigned_BminusA": {
+     "p05": -4.466666666666667,
+     "p25": -3.65,
+     "p50": -0.26666666666666666,
+     "p75": 0.65,
+     "p95": 8.666666666666666,
+     "n": 2803
+    },
+    "arrivalErrorMinAbs": {
+     "p50": 2.6166666666666667,
+     "p90": 6.816666666666666,
+     "p95": 11.083333333333334,
+     "max": 80.43333333333334
+    }
+   }
+  ]
+ },
+ "memory": [
+  {
+   "id": "A-high10",
+   "cells": 360000,
+   "baselineRssMB": 339.9,
+   "afterConstructMB": 876.9,
+   "peakRssSampledMB": 1206.6,
+   "maxRssProcessMB": 1223.3,
+   "peakHeapUsedSampledMB": 229.2,
+   "endHeapUsedAfterGcMB": 65.6,
+   "endRssAfterGcMB": 1200.1,
+   "endArrayBuffersMB": 713.8,
+   "memoryReportMB": 684.444318,
+   "checkpointMB": 115.927648,
+   "checkpoints": 2,
+   "snapshotMB": 18.774576,
+   "keyframeMB": 10.451616,
+   "history": null
+  },
+  {
+   "id": "A-high20",
+   "cells": 90000,
+   "baselineRssMB": 343.8,
+   "afterConstructMB": 539.2,
+   "peakRssSampledMB": 699.4,
+   "maxRssProcessMB": 702.5,
+   "peakHeapUsedSampledMB": 104.9,
+   "endHeapUsedAfterGcMB": 63.6,
+   "endRssAfterGcMB": 675.9,
+   "endArrayBuffersMB": 260,
+   "memoryReportMB": 264.527605,
+   "checkpointMB": 79.919047,
+   "checkpoints": 3,
+   "snapshotMB": 5.705136,
+   "keyframeMB": 3.611616,
+   "history": null
+  },
+  {
+   "id": "A-high30",
+   "cells": 40000,
+   "baselineRssMB": 342.7,
+   "afterConstructMB": 475.3,
+   "peakRssSampledMB": 599.3,
+   "maxRssProcessMB": 600.4,
+   "peakHeapUsedSampledMB": 83.9,
+   "endHeapUsedAfterGcMB": 63.4,
+   "endRssAfterGcMB": 598.7,
+   "endArrayBuffersMB": 197.9,
+   "memoryReportMB": 189.002895,
+   "checkpointMB": 76.593861,
+   "checkpoints": 5,
+   "snapshotMB": 3.5532,
+   "keyframeMB": 2.611616,
+   "history": null
+  },
+  {
+   "id": "A-std10",
+   "cells": 360000,
+   "baselineRssMB": 334.8,
+   "afterConstructMB": 924.3,
+   "peakRssSampledMB": 1180.9,
+   "maxRssProcessMB": 1183.8,
+   "peakHeapUsedSampledMB": 132.2,
+   "endHeapUsedAfterGcMB": 65.7,
+   "endRssAfterGcMB": 1180.4,
+   "endArrayBuffersMB": 686.8,
+   "memoryReportMB": 658.426168,
+   "checkpointMB": 116.931194,
+   "checkpoints": 2,
+   "snapshotMB": 17.84606,
+   "keyframeMB": 9.5147,
+   "history": null
+  },
+  {
+   "id": "A-std20",
+   "cells": 90000,
+   "baselineRssMB": 341,
+   "afterConstructMB": 507.1,
+   "peakRssSampledMB": 662,
+   "maxRssProcessMB": 667.6,
+   "peakHeapUsedSampledMB": 88.8,
+   "endHeapUsedAfterGcMB": 63.6,
+   "endRssAfterGcMB": 662,
+   "endArrayBuffersMB": 228.9,
+   "memoryReportMB": 233.050313,
+   "checkpointMB": 75.411999,
+   "checkpoints": 3,
+   "snapshotMB": 4.76142,
+   "keyframeMB": 2.6747,
+   "history": null
+  },
+  {
+   "id": "A-std30",
+   "cells": 40000,
+   "baselineRssMB": 339.2,
+   "afterConstructMB": 440.1,
+   "peakRssSampledMB": 554.1,
+   "maxRssProcessMB": 554.1,
+   "peakHeapUsedSampledMB": 89.9,
+   "endHeapUsedAfterGcMB": 63.5,
+   "endRssAfterGcMB": 553.7,
+   "endArrayBuffersMB": 165.9,
+   "memoryReportMB": 164.453911,
+   "checkpointMB": 79.100101,
+   "checkpoints": 6,
+   "snapshotMB": 2.615372,
+   "keyframeMB": 1.6747,
+   "history": null
+  },
+  {
+   "id": "AA-fast",
+   "cells": 40000,
+   "baselineRssMB": 334.8,
+   "afterConstructMB": 426.6,
+   "peakRssSampledMB": 469.7,
+   "maxRssProcessMB": 469.7,
+   "peakHeapUsedSampledMB": 82.7,
+   "endHeapUsedAfterGcMB": 59,
+   "endRssAfterGcMB": 469.7,
+   "endArrayBuffersMB": 91.3,
+   "memoryReportMB": 90.922663,
+   "checkpointMB": 24.359625,
+   "checkpoints": 5,
+   "snapshotMB": 2.27038,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "AA-high",
+   "cells": 40000,
+   "baselineRssMB": 339.4,
+   "afterConstructMB": 472.3,
+   "peakRssSampledMB": 532.1,
+   "maxRssProcessMB": 532.1,
+   "peakHeapUsedSampledMB": 75.2,
+   "endHeapUsedAfterGcMB": 59.8,
+   "endRssAfterGcMB": 532.1,
+   "endArrayBuffersMB": 155.5,
+   "memoryReportMB": 149.317571,
+   "checkpointMB": 38.752225,
+   "checkpoints": 5,
+   "snapshotMB": 3.531296,
+   "keyframeMB": 2.611616,
+   "history": null
+  },
+  {
+   "id": "AA-std",
+   "cells": 40000,
+   "baselineRssMB": 340.8,
+   "afterConstructMB": 444.8,
+   "peakRssSampledMB": 495.3,
+   "maxRssProcessMB": 495.3,
+   "peakHeapUsedSampledMB": 75.1,
+   "endHeapUsedAfterGcMB": 59.7,
+   "endRssAfterGcMB": 495.3,
+   "endArrayBuffersMB": 110.8,
+   "memoryReportMB": 111.857679,
+   "checkpointMB": 28.349125,
+   "checkpoints": 5,
+   "snapshotMB": 2.59438,
+   "keyframeMB": 1.6747,
+   "history": null
+  },
+  {
+   "id": "D-fast-a",
+   "cells": 40000,
+   "baselineRssMB": 342.3,
+   "afterConstructMB": 430.8,
+   "peakRssSampledMB": 522.4,
+   "maxRssProcessMB": 522.4,
+   "peakHeapUsedSampledMB": 82.7,
+   "endHeapUsedAfterGcMB": 63.1,
+   "endRssAfterGcMB": 522.4,
+   "endArrayBuffersMB": 150.7,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "D-fast-b",
+   "cells": 40000,
+   "baselineRssMB": 347,
+   "afterConstructMB": 435.8,
+   "peakRssSampledMB": 530.6,
+   "maxRssProcessMB": 530.6,
+   "peakHeapUsedSampledMB": 83.4,
+   "endHeapUsedAfterGcMB": 63.1,
+   "endRssAfterGcMB": 530.6,
+   "endArrayBuffersMB": 153.6,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "D-fast-chunk60",
+   "cells": 40000,
+   "baselineRssMB": 337.8,
+   "afterConstructMB": 428.1,
+   "peakRssSampledMB": 522.1,
+   "maxRssProcessMB": 522.1,
+   "peakHeapUsedSampledMB": 86.7,
+   "endHeapUsedAfterGcMB": 63.1,
+   "endRssAfterGcMB": 522.1,
+   "endArrayBuffersMB": 153.1,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "D-fast-seed2",
+   "cells": 40000,
+   "baselineRssMB": 339.8,
+   "afterConstructMB": 429.8,
+   "peakRssSampledMB": 533.3,
+   "maxRssProcessMB": 533.3,
+   "peakHeapUsedSampledMB": 88,
+   "endHeapUsedAfterGcMB": 63,
+   "endRssAfterGcMB": 533.3,
+   "endArrayBuffersMB": 166.7,
+   "memoryReportMB": 149.894544,
+   "checkpointMB": 81.953802,
+   "checkpoints": 7,
+   "snapshotMB": 2.282508,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "D-std-a",
+   "cells": 40000,
+   "baselineRssMB": 336.1,
+   "afterConstructMB": 441.2,
+   "peakRssSampledMB": 504,
+   "maxRssProcessMB": 504,
+   "peakHeapUsedSampledMB": 89.7,
+   "endHeapUsedAfterGcMB": 63.2,
+   "endRssAfterGcMB": 503.8,
+   "endArrayBuffersMB": 123.8,
+   "memoryReportMB": 125.416574,
+   "checkpointMB": 40.895476,
+   "checkpoints": 5,
+   "snapshotMB": 2.809708,
+   "keyframeMB": 1.8347,
+   "history": null
+  },
+  {
+   "id": "D-std-b",
+   "cells": 40000,
+   "baselineRssMB": 341.5,
+   "afterConstructMB": 444.9,
+   "peakRssSampledMB": 495.3,
+   "maxRssProcessMB": 496.8,
+   "peakHeapUsedSampledMB": 91,
+   "endHeapUsedAfterGcMB": 63.3,
+   "endRssAfterGcMB": 494.5,
+   "endArrayBuffersMB": 123.8,
+   "memoryReportMB": 125.416574,
+   "checkpointMB": 40.895476,
+   "checkpoints": 5,
+   "snapshotMB": 2.809708,
+   "keyframeMB": 1.8347,
+   "history": null
+  },
+  {
+   "id": "E-32000",
+   "cells": 40000,
+   "baselineRssMB": 350.1,
+   "afterConstructMB": 436.7,
+   "peakRssSampledMB": 546.2,
+   "maxRssProcessMB": 546.7,
+   "peakHeapUsedSampledMB": 86.9,
+   "endHeapUsedAfterGcMB": 62.9,
+   "endRssAfterGcMB": 545.9,
+   "endArrayBuffersMB": 163.1,
+   "memoryReportMB": 151.563471,
+   "checkpointMB": 79.944217,
+   "checkpoints": 6,
+   "snapshotMB": 2.291564,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "E-8000",
+   "cells": 40000,
+   "baselineRssMB": 339.9,
+   "afterConstructMB": 428.2,
+   "peakRssSampledMB": 521.9,
+   "maxRssProcessMB": 521.9,
+   "peakHeapUsedSampledMB": 83.6,
+   "endHeapUsedAfterGcMB": 62.8,
+   "endRssAfterGcMB": 521.9,
+   "endArrayBuffersMB": 152.6,
+   "memoryReportMB": 152.576471,
+   "checkpointMB": 84.038905,
+   "checkpoints": 9,
+   "snapshotMB": 2.309932,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "E-off",
+   "cells": 40000,
+   "baselineRssMB": 339.8,
+   "afterConstructMB": 430.3,
+   "peakRssSampledMB": 502.3,
+   "maxRssProcessMB": 502.3,
+   "peakHeapUsedSampledMB": 84.7,
+   "endHeapUsedAfterGcMB": 61.6,
+   "endRssAfterGcMB": 502.3,
+   "endArrayBuffersMB": 129.7,
+   "memoryReportMB": 132.57312,
+   "checkpointMB": 65.176546,
+   "checkpoints": 9,
+   "snapshotMB": 2.27038,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "H-fast10",
+   "cells": 360000,
+   "baselineRssMB": 340.3,
+   "afterConstructMB": 800.5,
+   "peakRssSampledMB": 1379.6,
+   "maxRssProcessMB": 1391.6,
+   "peakHeapUsedSampledMB": 176,
+   "endHeapUsedAfterGcMB": 65.5,
+   "endRssAfterGcMB": 1379.6,
+   "endArrayBuffersMB": 808.6,
+   "memoryReportMB": 670.021427,
+   "checkpointMB": 154.018273,
+   "checkpoints": 2,
+   "snapshotMB": 16.043292,
+   "keyframeMB": 7.7507,
+   "history": {
+    "totalMB": 117.064508,
+    "frames": 240,
+    "keyframes": 12,
+    "thinned": 5,
+    "at": [
+     {
+      "t": 1800,
+      "bytesMB": 60.3,
+      "frames": 30,
+      "keyframes": 6,
+      "thinned": 0
+     },
+     {
+      "t": 3600,
+      "bytesMB": 104.1,
+      "frames": 60,
+      "keyframes": 12,
+      "thinned": 0
+     },
+     {
+      "t": 5400,
+      "bytesMB": 92.2,
+      "frames": 90,
+      "keyframes": 9,
+      "thinned": 1
+     },
+     {
+      "t": 7200,
+      "bytesMB": 143.3,
+      "frames": 120,
+      "keyframes": 15,
+      "thinned": 1
+     },
+     {
+      "t": 9000,
+      "bytesMB": 139.5,
+      "frames": 150,
+      "keyframes": 15,
+      "thinned": 2
+     },
+     {
+      "t": 10800,
+      "bytesMB": 125.9,
+      "frames": 180,
+      "keyframes": 14,
+      "thinned": 3
+     },
+     {
+      "t": 12600,
+      "bytesMB": 118.1,
+      "frames": 210,
+      "keyframes": 13,
+      "thinned": 4
+     },
+     {
+      "t": 14400,
+      "bytesMB": 111.6,
+      "frames": 240,
+      "keyframes": 12,
+      "thinned": 5
+     }
+    ]
+   }
+  },
+  {
+   "id": "H-fast20",
+   "cells": 90000,
+   "baselineRssMB": 340.9,
+   "afterConstructMB": 493.1,
+   "peakRssSampledMB": 738.8,
+   "maxRssProcessMB": 738.8,
+   "peakHeapUsedSampledMB": 79.6,
+   "endHeapUsedAfterGcMB": 63.4,
+   "endRssAfterGcMB": 738.8,
+   "endArrayBuffersMB": 328,
+   "memoryReportMB": 211.633054,
+   "checkpointMB": 73.129478,
+   "checkpoints": 3,
+   "snapshotMB": 4.434956,
+   "keyframeMB": 2.3507,
+   "history": {
+    "totalMB": 115.183788,
+    "frames": 240,
+    "keyframes": 48,
+    "thinned": 0,
+    "at": [
+     {
+      "t": 1800,
+      "bytesMB": 17.3,
+      "frames": 30,
+      "keyframes": 6,
+      "thinned": 0
+     },
+     {
+      "t": 3600,
+      "bytesMB": 30.2,
+      "frames": 60,
+      "keyframes": 12,
+      "thinned": 0
+     },
+     {
+      "t": 5400,
+      "bytesMB": 44.6,
+      "frames": 90,
+      "keyframes": 18,
+      "thinned": 0
+     },
+     {
+      "t": 7200,
+      "bytesMB": 59.4,
+      "frames": 120,
+      "keyframes": 24,
+      "thinned": 0
+     },
+     {
+      "t": 9000,
+      "bytesMB": 72.6,
+      "frames": 150,
+      "keyframes": 30,
+      "thinned": 0
+     },
+     {
+      "t": 10800,
+      "bytesMB": 85,
+      "frames": 180,
+      "keyframes": 36,
+      "thinned": 0
+     },
+     {
+      "t": 12600,
+      "bytesMB": 97.5,
+      "frames": 210,
+      "keyframes": 42,
+      "thinned": 0
+     },
+     {
+      "t": 14400,
+      "bytesMB": 109.8,
+      "frames": 240,
+      "keyframes": 48,
+      "thinned": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "H-fast30",
+   "cells": 40000,
+   "baselineRssMB": 334.6,
+   "afterConstructMB": 422.9,
+   "peakRssSampledMB": 593.3,
+   "maxRssProcessMB": 593.3,
+   "peakHeapUsedSampledMB": 78.7,
+   "endHeapUsedAfterGcMB": 63.7,
+   "endRssAfterGcMB": 593.3,
+   "endArrayBuffersMB": 208.4,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": {
+    "totalMB": 62.758908,
+    "frames": 240,
+    "keyframes": 48,
+    "thinned": 0,
+    "at": [
+     {
+      "t": 1800,
+      "bytesMB": 9.3,
+      "frames": 30,
+      "keyframes": 6,
+      "thinned": 0
+     },
+     {
+      "t": 3600,
+      "bytesMB": 16.4,
+      "frames": 60,
+      "keyframes": 12,
+      "thinned": 0
+     },
+     {
+      "t": 5400,
+      "bytesMB": 24.2,
+      "frames": 90,
+      "keyframes": 18,
+      "thinned": 0
+     },
+     {
+      "t": 7200,
+      "bytesMB": 32.1,
+      "frames": 120,
+      "keyframes": 24,
+      "thinned": 0
+     },
+     {
+      "t": 9000,
+      "bytesMB": 39.3,
+      "frames": 150,
+      "keyframes": 30,
+      "thinned": 0
+     },
+     {
+      "t": 10800,
+      "bytesMB": 46.2,
+      "frames": 180,
+      "keyframes": 36,
+      "thinned": 0
+     },
+     {
+      "t": 12600,
+      "bytesMB": 53,
+      "frames": 210,
+      "keyframes": 42,
+      "thinned": 0
+     },
+     {
+      "t": 14400,
+      "bytesMB": 59.9,
+      "frames": 240,
+      "keyframes": 48,
+      "thinned": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "H-std30",
+   "cells": 40000,
+   "baselineRssMB": 339.9,
+   "afterConstructMB": 445.1,
+   "peakRssSampledMB": 652.7,
+   "maxRssProcessMB": 652.7,
+   "peakHeapUsedSampledMB": 78.9,
+   "endHeapUsedAfterGcMB": 64.2,
+   "endRssAfterGcMB": 652.7,
+   "endArrayBuffersMB": 278.6,
+   "memoryReportMB": 164.453911,
+   "checkpointMB": 79.100101,
+   "checkpoints": 6,
+   "snapshotMB": 2.615372,
+   "keyframeMB": 1.6747,
+   "history": {
+    "totalMB": 94.850028,
+    "frames": 240,
+    "keyframes": 48,
+    "thinned": 0,
+    "at": [
+     {
+      "t": 1800,
+      "bytesMB": 13.5,
+      "frames": 30,
+      "keyframes": 6,
+      "thinned": 0
+     },
+     {
+      "t": 3600,
+      "bytesMB": 24.6,
+      "frames": 60,
+      "keyframes": 12,
+      "thinned": 0
+     },
+     {
+      "t": 5400,
+      "bytesMB": 36.3,
+      "frames": 90,
+      "keyframes": 18,
+      "thinned": 0
+     },
+     {
+      "t": 7200,
+      "bytesMB": 48.3,
+      "frames": 120,
+      "keyframes": 24,
+      "thinned": 0
+     },
+     {
+      "t": 9000,
+      "bytesMB": 59.5,
+      "frames": 150,
+      "keyframes": 30,
+      "thinned": 0
+     },
+     {
+      "t": 10800,
+      "bytesMB": 69.7,
+      "frames": 180,
+      "keyframes": 36,
+      "thinned": 0
+     },
+     {
+      "t": 12600,
+      "bytesMB": 80.3,
+      "frames": 210,
+      "keyframes": 42,
+      "thinned": 0
+     },
+     {
+      "t": 14400,
+      "bytesMB": 90.5,
+      "frames": 240,
+      "keyframes": 48,
+      "thinned": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "L10-r2",
+   "cells": 360000,
+   "baselineRssMB": 338.1,
+   "afterConstructMB": 793.1,
+   "peakRssSampledMB": 1197.5,
+   "maxRssProcessMB": 1211.4,
+   "peakHeapUsedSampledMB": 144,
+   "endHeapUsedAfterGcMB": 65,
+   "endRssAfterGcMB": 1197.5,
+   "endArrayBuffersMB": 745.3,
+   "memoryReportMB": 670.021427,
+   "checkpointMB": 154.018273,
+   "checkpoints": 2,
+   "snapshotMB": 16.043292,
+   "keyframeMB": 7.7507,
+   "history": null
+  },
+  {
+   "id": "L10-r3",
+   "cells": 360000,
+   "baselineRssMB": 342.1,
+   "afterConstructMB": 805.8,
+   "peakRssSampledMB": 1227.1,
+   "maxRssProcessMB": 1236.5,
+   "peakHeapUsedSampledMB": 128.5,
+   "endHeapUsedAfterGcMB": 65.1,
+   "endRssAfterGcMB": 1224.1,
+   "endArrayBuffersMB": 658.1,
+   "memoryReportMB": 670.021427,
+   "checkpointMB": 154.018273,
+   "checkpoints": 2,
+   "snapshotMB": 16.043292,
+   "keyframeMB": 7.7507,
+   "history": null
+  },
+  {
+   "id": "L10",
+   "cells": 360000,
+   "baselineRssMB": 336.3,
+   "afterConstructMB": 798.4,
+   "peakRssSampledMB": 1220.7,
+   "maxRssProcessMB": 1234.5,
+   "peakHeapUsedSampledMB": 183.7,
+   "endHeapUsedAfterGcMB": 64.9,
+   "endRssAfterGcMB": 1220.7,
+   "endArrayBuffersMB": 658.1,
+   "memoryReportMB": 670.021427,
+   "checkpointMB": 154.018273,
+   "checkpoints": 2,
+   "snapshotMB": 16.043292,
+   "keyframeMB": 7.7507,
+   "history": null
+  },
+  {
+   "id": "L15",
+   "cells": 160000,
+   "baselineRssMB": 340.4,
+   "afterConstructMB": 575,
+   "peakRssSampledMB": 798.6,
+   "maxRssProcessMB": 799.4,
+   "peakHeapUsedSampledMB": 122.1,
+   "endHeapUsedAfterGcMB": 63.4,
+   "endRssAfterGcMB": 793.2,
+   "endArrayBuffersMB": 329.8,
+   "memoryReportMB": 309.330372,
+   "checkpointMB": 69.23041,
+   "checkpoints": 2,
+   "snapshotMB": 7.4491,
+   "keyframeMB": 3.7507,
+   "history": null
+  },
+  {
+   "id": "L20",
+   "cells": 90000,
+   "baselineRssMB": 340.9,
+   "afterConstructMB": 489.6,
+   "peakRssSampledMB": 643.9,
+   "maxRssProcessMB": 643.9,
+   "peakHeapUsedSampledMB": 88,
+   "endHeapUsedAfterGcMB": 62.9,
+   "endRssAfterGcMB": 643.8,
+   "endArrayBuffersMB": 207.5,
+   "memoryReportMB": 211.633054,
+   "checkpointMB": 73.129478,
+   "checkpoints": 3,
+   "snapshotMB": 4.434956,
+   "keyframeMB": 2.3507,
+   "history": null
+  },
+  {
+   "id": "L30-r2",
+   "cells": 40000,
+   "baselineRssMB": 341.2,
+   "afterConstructMB": 428.4,
+   "peakRssSampledMB": 522.4,
+   "maxRssProcessMB": 522.4,
+   "peakHeapUsedSampledMB": 87.4,
+   "endHeapUsedAfterGcMB": 63.2,
+   "endRssAfterGcMB": 522.4,
+   "endArrayBuffersMB": 153.1,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "L30-r3",
+   "cells": 40000,
+   "baselineRssMB": 338.5,
+   "afterConstructMB": 426.2,
+   "peakRssSampledMB": 522.8,
+   "maxRssProcessMB": 522.8,
+   "peakHeapUsedSampledMB": 80.6,
+   "endHeapUsedAfterGcMB": 63.1,
+   "endRssAfterGcMB": 522.8,
+   "endArrayBuffersMB": 148.8,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "L30",
+   "cells": 40000,
+   "baselineRssMB": 339.4,
+   "afterConstructMB": 429.9,
+   "peakRssSampledMB": 526.1,
+   "maxRssProcessMB": 526.1,
+   "peakHeapUsedSampledMB": 89.6,
+   "endHeapUsedAfterGcMB": 63.1,
+   "endRssAfterGcMB": 526.1,
+   "endArrayBuffersMB": 151.7,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "LN10",
+   "cells": 360000,
+   "baselineRssMB": 338.9,
+   "afterConstructMB": 803.6,
+   "peakRssSampledMB": 1158.6,
+   "maxRssProcessMB": 1158.6,
+   "peakHeapUsedSampledMB": 147.9,
+   "endHeapUsedAfterGcMB": 64,
+   "endRssAfterGcMB": 1158.6,
+   "endArrayBuffersMB": 622,
+   "memoryReportMB": 632.139151,
+   "checkpointMB": 121.388005,
+   "checkpoints": 2,
+   "snapshotMB": 16.03038,
+   "keyframeMB": 7.7507,
+   "history": null
+  },
+  {
+   "id": "LN15",
+   "cells": 160000,
+   "baselineRssMB": 341.6,
+   "afterConstructMB": 573,
+   "peakRssSampledMB": 768.5,
+   "maxRssProcessMB": 774.3,
+   "peakHeapUsedSampledMB": 120.4,
+   "endHeapUsedAfterGcMB": 62.3,
+   "endRssAfterGcMB": 768.5,
+   "endArrayBuffersMB": 336.8,
+   "memoryReportMB": 297.757622,
+   "checkpointMB": 58.959732,
+   "checkpoints": 2,
+   "snapshotMB": 7.43038,
+   "keyframeMB": 3.7507,
+   "history": null
+  },
+  {
+   "id": "LN20",
+   "cells": 90000,
+   "baselineRssMB": 349.3,
+   "afterConstructMB": 494.3,
+   "peakRssSampledMB": 630.1,
+   "maxRssProcessMB": 632,
+   "peakHeapUsedSampledMB": 91.2,
+   "endHeapUsedAfterGcMB": 61.8,
+   "endRssAfterGcMB": 626.4,
+   "endArrayBuffersMB": 213.5,
+   "memoryReportMB": 217.889931,
+   "checkpointMB": 80.728987,
+   "checkpoints": 4,
+   "snapshotMB": 4.42038,
+   "keyframeMB": 2.3507,
+   "history": null
+  },
+  {
+   "id": "LN30",
+   "cells": 40000,
+   "baselineRssMB": 340.7,
+   "afterConstructMB": 431.3,
+   "peakRssSampledMB": 499.7,
+   "maxRssProcessMB": 500.5,
+   "peakHeapUsedSampledMB": 78.7,
+   "endHeapUsedAfterGcMB": 61.7,
+   "endRssAfterGcMB": 499.7,
+   "endArrayBuffersMB": 134.9,
+   "memoryReportMB": 132.57312,
+   "checkpointMB": 65.176546,
+   "checkpoints": 9,
+   "snapshotMB": 2.27038,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "N-display10",
+   "cells": 40000,
+   "baselineRssMB": 340.4,
+   "afterConstructMB": 431.7,
+   "peakRssSampledMB": 526.9,
+   "maxRssProcessMB": 526.9,
+   "peakHeapUsedSampledMB": 78.6,
+   "endHeapUsedAfterGcMB": 63.2,
+   "endRssAfterGcMB": 526.9,
+   "endArrayBuffersMB": 148.8,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "N-nosnap",
+   "cells": 40000,
+   "baselineRssMB": 342.3,
+   "afterConstructMB": 430,
+   "peakRssSampledMB": 527.1,
+   "maxRssProcessMB": 527.3,
+   "peakHeapUsedSampledMB": 81.9,
+   "endHeapUsedAfterGcMB": 63,
+   "endRssAfterGcMB": 526.9,
+   "endArrayBuffersMB": 148.8,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "NT-step2",
+   "cells": 40000,
+   "baselineRssMB": 333.4,
+   "afterConstructMB": 423,
+   "peakRssSampledMB": 495.2,
+   "maxRssProcessMB": 495.2,
+   "peakHeapUsedSampledMB": 90.1,
+   "endHeapUsedAfterGcMB": 61.8,
+   "endRssAfterGcMB": 495.2,
+   "endArrayBuffersMB": 129.8,
+   "memoryReportMB": 132.702919,
+   "checkpointMB": 65.306345,
+   "checkpoints": 9,
+   "snapshotMB": 2.27038,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "NT-step5",
+   "cells": 40000,
+   "baselineRssMB": 331.9,
+   "afterConstructMB": 421.9,
+   "peakRssSampledMB": 496.2,
+   "maxRssProcessMB": 496.2,
+   "peakHeapUsedSampledMB": 83.5,
+   "endHeapUsedAfterGcMB": 61.7,
+   "endRssAfterGcMB": 496.2,
+   "endArrayBuffersMB": 131.7,
+   "memoryReportMB": 132.708876,
+   "checkpointMB": 65.312302,
+   "checkpoints": 9,
+   "snapshotMB": 2.27038,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "P-fast10",
+   "cells": 360000,
+   "baselineRssMB": 333.9,
+   "afterConstructMB": 798.8,
+   "peakRssSampledMB": 1094.4,
+   "maxRssProcessMB": 1104.2,
+   "peakHeapUsedSampledMB": 130.3,
+   "endHeapUsedAfterGcMB": 66.2,
+   "endRssAfterGcMB": 1093.8,
+   "endArrayBuffersMB": 605.1,
+   "memoryReportMB": 614.468879,
+   "checkpointMB": 104.690821,
+   "checkpoints": 2,
+   "snapshotMB": 17.492124,
+   "keyframeMB": 9.1907,
+   "history": null
+  },
+  {
+   "id": "P-fast30",
+   "cells": 40000,
+   "baselineRssMB": 339.1,
+   "afterConstructMB": 426.8,
+   "peakRssSampledMB": 525.7,
+   "maxRssProcessMB": 529.5,
+   "peakHeapUsedSampledMB": 84,
+   "endHeapUsedAfterGcMB": 64.9,
+   "endRssAfterGcMB": 528.3,
+   "endArrayBuffersMB": 150.7,
+   "memoryReportMB": 152.676624,
+   "checkpointMB": 84.764786,
+   "checkpoints": 9,
+   "snapshotMB": 2.28206,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "P-std30",
+   "cells": 40000,
+   "baselineRssMB": 338.9,
+   "afterConstructMB": 451.1,
+   "peakRssSampledMB": 516.2,
+   "maxRssProcessMB": 521.2,
+   "peakHeapUsedSampledMB": 85.2,
+   "endHeapUsedAfterGcMB": 65,
+   "endRssAfterGcMB": 505.5,
+   "endArrayBuffersMB": 123.8,
+   "memoryReportMB": 125.416574,
+   "checkpointMB": 40.895476,
+   "checkpoints": 5,
+   "snapshotMB": 2.809708,
+   "keyframeMB": 1.8347,
+   "history": null
+  },
+  {
+   "id": "T-step2",
+   "cells": 40000,
+   "baselineRssMB": 344.8,
+   "afterConstructMB": 435.1,
+   "peakRssSampledMB": 538.2,
+   "maxRssProcessMB": 538.3,
+   "peakHeapUsedSampledMB": 81.6,
+   "endHeapUsedAfterGcMB": 63.2,
+   "endRssAfterGcMB": 538.5,
+   "endArrayBuffersMB": 160.9,
+   "memoryReportMB": 148.615709,
+   "checkpointMB": 80.258319,
+   "checkpoints": 7,
+   "snapshotMB": 2.284668,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "T-step5-c20",
+   "cells": 90000,
+   "baselineRssMB": 344.8,
+   "afterConstructMB": 494.5,
+   "peakRssSampledMB": 650.8,
+   "maxRssProcessMB": 650.8,
+   "peakHeapUsedSampledMB": 88.4,
+   "endHeapUsedAfterGcMB": 62.9,
+   "endRssAfterGcMB": 650.8,
+   "endArrayBuffersMB": 203.8,
+   "memoryReportMB": 207.726202,
+   "checkpointMB": 69.222154,
+   "checkpoints": 3,
+   "snapshotMB": 4.436508,
+   "keyframeMB": 2.3507,
+   "history": null
+  },
+  {
+   "id": "T-step5",
+   "cells": 40000,
+   "baselineRssMB": 339.9,
+   "afterConstructMB": 428.3,
+   "peakRssSampledMB": 528.4,
+   "maxRssProcessMB": 528.4,
+   "peakHeapUsedSampledMB": 84.6,
+   "endHeapUsedAfterGcMB": 63,
+   "endRssAfterGcMB": 528.4,
+   "endArrayBuffersMB": 156.1,
+   "memoryReportMB": 149.227192,
+   "checkpointMB": 80.817882,
+   "checkpoints": 7,
+   "snapshotMB": 2.28462,
+   "keyframeMB": 1.3507,
+   "history": null
+  },
+  {
+   "id": "W-std30",
+   "cells": 40000,
+   "baselineRssMB": 337.2,
+   "afterConstructMB": 441.6,
+   "peakRssSampledMB": 501.3,
+   "maxRssProcessMB": 501.3,
+   "peakHeapUsedSampledMB": 77.9,
+   "endHeapUsedAfterGcMB": 62,
+   "endRssAfterGcMB": 501.1,
+   "endArrayBuffersMB": 128.9,
+   "memoryReportMB": 130.824995,
+   "checkpointMB": 46.406758,
+   "checkpoints": 5,
+   "snapshotMB": 2.802988,
+   "keyframeMB": 1.8347,
+   "history": null
+  },
+  {
+   "id": "W10",
+   "cells": 360000,
+   "baselineRssMB": 341.2,
+   "afterConstructMB": 801.2,
+   "peakRssSampledMB": 1117.9,
+   "maxRssProcessMB": 1117.9,
+   "peakHeapUsedSampledMB": 131.8,
+   "endHeapUsedAfterGcMB": 63.7,
+   "endRssAfterGcMB": 1117.9,
+   "endArrayBuffersMB": 661.8,
+   "memoryReportMB": 638.65113,
+   "checkpointMB": 127.768013,
+   "checkpoints": 2,
+   "snapshotMB": 17.48958,
+   "keyframeMB": 9.1907,
+   "history": null
+  },
+  {
+   "id": "W20",
+   "cells": 90000,
+   "baselineRssMB": 338.1,
+   "afterConstructMB": 486.9,
+   "peakRssSampledMB": 586,
+   "maxRssProcessMB": 586,
+   "peakHeapUsedSampledMB": 77.1,
+   "endHeapUsedAfterGcMB": 61.9,
+   "endRssAfterGcMB": 586,
+   "endArrayBuffersMB": 214.4,
+   "memoryReportMB": 218.826502,
+   "checkpointMB": 82.074527,
+   "checkpoints": 5,
+   "snapshotMB": 4.80326,
+   "keyframeMB": 2.7107,
+   "history": null
+  },
+  {
+   "id": "W30",
+   "cells": 40000,
+   "baselineRssMB": 336.3,
+   "afterConstructMB": 426.3,
+   "peakRssSampledMB": 473.8,
+   "maxRssProcessMB": 473.9,
+   "peakHeapUsedSampledMB": 81.7,
+   "endHeapUsedAfterGcMB": 62.2,
+   "endRssAfterGcMB": 473.9,
+   "endArrayBuffersMB": 106.5,
+   "memoryReportMB": 108.334003,
+   "checkpointMB": 41.071842,
+   "checkpoints": 5,
+   "snapshotMB": 2.44758,
+   "keyframeMB": 1.5107,
+   "history": null
+  },
+  {
+   "id": "WN10",
+   "cells": 360000,
+   "baselineRssMB": 341.2,
+   "afterConstructMB": 805.7,
+   "peakRssSampledMB": 1102.7,
+   "maxRssProcessMB": 1102.7,
+   "peakHeapUsedSampledMB": 135.3,
+   "endHeapUsedAfterGcMB": 62.8,
+   "endRssAfterGcMB": 1102.7,
+   "endArrayBuffersMB": 680.2,
+   "memoryReportMB": 636.075091,
+   "checkpointMB": 127.660094,
+   "checkpoints": 2,
+   "snapshotMB": 17.47038,
+   "keyframeMB": 9.1907,
+   "history": null
+  },
+  {
+   "id": "WN20",
+   "cells": 90000,
+   "baselineRssMB": 345,
+   "afterConstructMB": 495.1,
+   "peakRssSampledMB": 588.6,
+   "maxRssProcessMB": 588.6,
+   "peakHeapUsedSampledMB": 77.9,
+   "endHeapUsedAfterGcMB": 60.9,
+   "endRssAfterGcMB": 588.6,
+   "endArrayBuffersMB": 212.3,
+   "memoryReportMB": 216.620246,
+   "checkpointMB": 80.577487,
+   "checkpoints": 5,
+   "snapshotMB": 4.78038,
+   "keyframeMB": 2.7107,
+   "history": null
+  },
+  {
+   "id": "WN30",
+   "cells": 40000,
+   "baselineRssMB": 348.5,
+   "afterConstructMB": 436.2,
+   "peakRssSampledMB": 478,
+   "maxRssProcessMB": 478,
+   "peakHeapUsedSampledMB": 80.5,
+   "endHeapUsedAfterGcMB": 61.3,
+   "endRssAfterGcMB": 478,
+   "endArrayBuffersMB": 105.8,
+   "memoryReportMB": 105.590612,
+   "checkpointMB": 38.590315,
+   "checkpoints": 5,
+   "snapshotMB": 2.43038,
+   "keyframeMB": 1.5107,
+   "history": null
+  },
+  {
+   "id": "X-std30",
+   "cells": 90000,
+   "baselineRssMB": 343.7,
+   "afterConstructMB": 517.8,
+   "peakRssSampledMB": 669.7,
+   "maxRssProcessMB": 669.7,
+   "peakHeapUsedSampledMB": 86.8,
+   "endHeapUsedAfterGcMB": 64.2,
+   "endRssAfterGcMB": 669.7,
+   "endArrayBuffersMB": 243,
+   "memoryReportMB": 247.834038,
+   "checkpointMB": 88.727216,
+   "checkpoints": 4,
+   "snapshotMB": 4.825756,
+   "keyframeMB": 2.7247,
+   "history": null
+  },
+  {
+   "id": "X10",
+   "cells": 810000,
+   "baselineRssMB": 337.5,
+   "afterConstructMB": 1307.2,
+   "peakRssSampledMB": 1901.9,
+   "maxRssProcessMB": 1931.5,
+   "peakHeapUsedSampledMB": 188.7,
+   "endHeapUsedAfterGcMB": 68.2,
+   "endRssAfterGcMB": 1901.9,
+   "endArrayBuffersMB": 1319.7,
+   "memoryReportMB": 1340.344294,
+   "checkpointMB": 207.20317,
+   "checkpoints": 2,
+   "snapshotMB": 38.69542,
+   "keyframeMB": 20.0407,
+   "history": null
+  },
+  {
+   "id": "X20",
+   "cells": 202500,
+   "baselineRssMB": 342.1,
+   "afterConstructMB": 621,
+   "peakRssSampledMB": 857,
+   "maxRssProcessMB": 859,
+   "peakHeapUsedSampledMB": 125.1,
+   "endHeapUsedAfterGcMB": 63.9,
+   "endRssAfterGcMB": 857,
+   "endArrayBuffersMB": 373.3,
+   "memoryReportMB": 379.546249,
+   "checkpointMB": 81.554894,
+   "checkpoints": 2,
+   "snapshotMB": 9.32244,
+   "keyframeMB": 4.6507,
+   "history": null
+  },
+  {
+   "id": "X30",
+   "cells": 90000,
+   "baselineRssMB": 337.9,
+   "afterConstructMB": 489.3,
+   "peakRssSampledMB": 633.2,
+   "maxRssProcessMB": 637,
+   "peakHeapUsedSampledMB": 86.9,
+   "endHeapUsedAfterGcMB": 63.3,
+   "endRssAfterGcMB": 631.4,
+   "endArrayBuffersMB": 221.4,
+   "memoryReportMB": 221.266595,
+   "checkpointMB": 81.197599,
+   "checkpoints": 4,
+   "snapshotMB": 4.48222,
+   "keyframeMB": 2.4007,
+   "history": null
+  }
+ ]
+}

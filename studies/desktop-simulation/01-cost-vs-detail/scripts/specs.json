@@ -1,0 +1,957 @@
+[
+ {
+  "id": "L30",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "L20",
+  "embers": true,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "L10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "L15",
+  "embers": true,
+  "tier": "fast",
+  "cell": 15,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "hiResCellM": 5,
+  "summary": true
+ },
+ {
+  "id": "A-std30",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "A-high30",
+  "embers": true,
+  "tier": "high",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "AA-fast",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": null
+ },
+ {
+  "id": "AA-std",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": null
+ },
+ {
+  "id": "AA-high",
+  "embers": true,
+  "tier": "high",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": null
+ },
+ {
+  "id": "L30-r2",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "L30-r3",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "E-off",
+  "embers": false,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "E-8000",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxEmbers": 8000
+ },
+ {
+  "id": "E-32000",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxEmbers": 32000
+ },
+ {
+  "id": "T-step5",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxStepS": 5
+ },
+ {
+  "id": "T-step2",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxStepS": 2
+ },
+ {
+  "id": "T-step5-c20",
+  "embers": true,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxStepS": 5
+ },
+ {
+  "id": "N-nosnap",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "none",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "N-display10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "snapshotInterval": 10
+ },
+ {
+  "id": "A-std20",
+  "embers": true,
+  "tier": "standard",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "A-high20",
+  "embers": true,
+  "tier": "high",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "buildTier": "high"
+ },
+ {
+  "id": "D-fast-a",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "D-fast-b",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "D-fast-chunk60",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 60,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "D-fast-seed2",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "seed": 2
+ },
+ {
+  "id": "D-std-a",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "D-std-b",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "hash",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "P-fast30",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "cpuProfile": "P-fast30.cpuprofile"
+ },
+ {
+  "id": "P-std30",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "cpuProfile": "P-std30.cpuprofile"
+ },
+ {
+  "id": "W30",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "W20",
+  "embers": true,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "W10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "W-std30",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  }
+ },
+ {
+  "id": "H-fast30",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "store",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "H-fast20",
+  "embers": true,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "store",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "H-fast10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "store",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "H-std30",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "store",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "X30",
+  "embers": true,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 9000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "X20",
+  "embers": true,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 9000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "X-std30",
+  "embers": true,
+  "tier": "standard",
+  "cell": 30,
+  "extent": 9000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "X10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 9000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 700,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "L10-r2",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "L10-r3",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "LN30",
+  "embers": false,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "LN20",
+  "embers": false,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "LN15",
+  "embers": false,
+  "tier": "fast",
+  "cell": 15,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "hiResCellM": 5,
+  "summary": true
+ },
+ {
+  "id": "LN10",
+  "embers": false,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "NT-step5",
+  "embers": false,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxStepS": 5,
+  "summary": true
+ },
+ {
+  "id": "NT-step2",
+  "embers": false,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 14400,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "maxStepS": 2,
+  "summary": true
+ },
+ {
+  "id": "P-fast10",
+  "embers": true,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "cpuProfile": "P-fast10.cpuprofile"
+ },
+ {
+  "id": "A-std10",
+  "embers": true,
+  "tier": "standard",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  }
+ },
+ {
+  "id": "A-high10",
+  "embers": true,
+  "tier": "high",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "katoomba",
+  "ignition": {
+   "x": -2170,
+   "y": 900,
+   "radius": 60
+  },
+  "buildTier": "high"
+ },
+ {
+  "id": "WN30",
+  "embers": false,
+  "tier": "fast",
+  "cell": 30,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "WN20",
+  "embers": false,
+  "tier": "fast",
+  "cell": 20,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ },
+ {
+  "id": "WN10",
+  "embers": false,
+  "tier": "fast",
+  "cell": 10,
+  "extent": 6000,
+  "windowS": 7200,
+  "chunkS": 300,
+  "hook": "last",
+  "maxWallS": 540,
+  "site": "warrumbungles",
+  "ignition": {
+   "x": -1500,
+   "y": 1000,
+   "radius": 60
+  },
+  "summary": true
+ }
+]

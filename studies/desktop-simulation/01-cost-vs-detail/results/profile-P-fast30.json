@@ -1,0 +1,220 @@
+{
+ "totalMs": 21941,
+ "gcMs": 265,
+ "programMs": 0,
+ "idleMs": 0,
+ "files": [
+  {
+   "name": "src/fire/spread/levelSet.ts",
+   "selfMs": 6099,
+   "pct": 27.8
+  },
+  {
+   "name": "src/fire/spread/FireSpreadModel.ts",
+   "selfMs": 3332,
+   "pct": 15.2
+  },
+  {
+   "name": "src/atmosphere/pyrogenic.ts",
+   "selfMs": 1551,
+   "pct": 7.1
+  },
+  {
+   "name": "src/embers/EmberModel.ts",
+   "selfMs": 1394,
+   "pct": 6.4
+  },
+  {
+   "name": "src/atmosphere/diagnosticWind.ts",
+   "selfMs": 1367,
+   "pct": 6.2
+  },
+  {
+   "name": "src/fire/spread/math.ts",
+   "selfMs": 926,
+   "pct": 4.2
+  },
+  {
+   "name": "src/sim/simulation.ts",
+   "selfMs": 681,
+   "pct": 3.1
+  },
+  {
+   "name": "src/atmosphere/solver.ts",
+   "selfMs": 664,
+   "pct": 3
+  },
+  {
+   "name": "src/atmosphere/base.ts",
+   "selfMs": 493,
+   "pct": 2.2
+  },
+  {
+   "name": "src/fire/models/common.ts",
+   "selfMs": 409,
+   "pct": 1.9
+  },
+  {
+   "name": "src/fire/spread/geometry.ts",
+   "selfMs": 388,
+   "pct": 1.8
+  },
+  {
+   "name": "src/sim/stats.ts",
+   "selfMs": 282,
+   "pct": 1.3
+  },
+  {
+   "name": "((garbage collector))",
+   "selfMs": 265,
+   "pct": 1.2
+  },
+  {
+   "name": "src/explain/rules/terrain.ts",
+   "selfMs": 248,
+   "pct": 1.1
+  },
+  {
+   "name": "(azimuthOf)",
+   "selfMs": 151,
+   "pct": 0.7
+  },
+  {
+   "name": "src/explain/rules/weather.ts",
+   "selfMs": 149,
+   "pct": 0.7
+  },
+  {
+   "name": "(logisticS)",
+   "selfMs": 149,
+   "pct": 0.7
+  },
+  {
+   "name": "src/fire/models/shape.ts",
+   "selfMs": 148,
+   "pct": 0.7
+  },
+  {
+   "name": "src/explain/rules/fire.ts",
+   "selfMs": 147,
+   "pct": 0.7
+  },
+  {
+   "name": "(slopeFactor)",
+   "selfMs": 145,
+   "pct": 0.7
+  },
+  {
+   "name": "src/sim/fireWindPublish.ts",
+   "selfMs": 142,
+   "pct": 0.6
+  },
+  {
+   "name": "src/embers/stats.ts",
+   "selfMs": 141,
+   "pct": 0.6
+  }
+ ],
+ "functions": [
+  {
+   "name": "evaluate @ src/fire/spread/levelSet.ts:163",
+   "selfMs": 3060,
+   "pct": 13.9
+  },
+  {
+   "name": "reinit @ src/fire/spread/levelSet.ts:403",
+   "selfMs": 2592,
+   "pct": 11.8
+  },
+  {
+   "name": "computeCell @ src/fire/spread/FireSpreadModel.ts:1256",
+   "selfMs": 1431,
+   "pct": 6.5
+  },
+  {
+   "name": "solve @ src/atmosphere/pyrogenic.ts:65",
+   "selfMs": 1333,
+   "pct": 6.1
+  },
+  {
+   "name": "sampleBg @ src/atmosphere/diagnosticWind.ts:138",
+   "selfMs": 730,
+   "pct": 3.3
+  },
+  {
+   "name": "advance @ src/embers/EmberModel.ts:1210",
+   "selfMs": 590,
+   "pct": 2.7
+  },
+  {
+   "name": "apply @ src/fire/spread/levelSet.ts:362",
+   "selfMs": 416,
+   "pct": 1.9
+  },
+  {
+   "name": "compute @ src/fire/spread/geometry.ts:95",
+   "selfMs": 385,
+   "pct": 1.8
+  },
+  {
+   "name": "hybridHead @ src/fire/spread/math.ts:81",
+   "selfMs": 376,
+   "pct": 1.7
+  },
+  {
+   "name": "slopeFactor @ src/fire/models/common.ts:41",
+   "selfMs": 363,
+   "pct": 1.7
+  },
+  {
+   "name": "prepareCell @ src/fire/spread/FireSpreadModel.ts:1350",
+   "selfMs": 358,
+   "pct": 1.6
+  },
+  {
+   "name": "addFireHeat @ src/atmosphere/diagnosticWind.ts:108",
+   "selfMs": 337,
+   "pct": 1.5
+  },
+  {
+   "name": "updateFront @ src/fire/spread/FireSpreadModel.ts:1734",
+   "selfMs": 283,
+   "pct": 1.3
+  },
+  {
+   "name": "relax @ src/atmosphere/solver.ts:504",
+   "selfMs": 278,
+   "pct": 1.3
+  },
+  {
+   "name": "(garbage collector) @ ((garbage collector)):0",
+   "selfMs": 265,
+   "pct": 1.2
+  },
+  {
+   "name": "refreshMasks @ src/fire/spread/FireSpreadModel.ts:590",
+   "selfMs": 244,
+   "pct": 1.1
+  },
+  {
+   "name": "originEstimate @ src/fire/spread/FireSpreadModel.ts:1439",
+   "selfMs": 244,
+   "pct": 1.1
+  },
+  {
+   "name": "stepOnce @ src/sim/simulation.ts:1148",
+   "selfMs": 219,
+   "pct": 1
+  },
+  {
+   "name": "gradientToFire @ src/atmosphere/pyrogenic.ts:159",
+   "selfMs": 218,
+   "pct": 1
+  },
+  {
+   "name": "surfaceWindForFire @ src/atmosphere/base.ts:603",
+   "selfMs": 211,
+   "pct": 1
+  }
+ ]
+}
