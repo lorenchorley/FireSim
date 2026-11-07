@@ -166,6 +166,8 @@ export interface ModelCardInput {
   engineSource?: 'real' | 'mock';
   /** What this phone reports (`navigator.hardwareConcurrency` and `deviceMemory`); null where it does not say. */
   phone?: { cores: number | null; memoryGb: number | null };
+  /** The run computes on a desktop (0.8.0, workstream J), so the live speed is that computer's, not this phone's. */
+  onDesktop?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -915,7 +917,7 @@ function engineFacts(input: ModelCardInput, e: EngineInfo | null): CardBlock[] {
     { id: 'eng-tier', key: 'Atmosphere tier', value: TIER_NAME[e.tier], note: tierWords(e, input.settings), live: true },
     {
       id: 'eng-speed',
-      key: 'Computing speed on this phone',
+      key: `Computing speed on ${input.onDesktop ? 'the desktop' : 'this phone'}`,
       value: ok(e.run.simSecondsPerWallSecond) ? `${formatCount(Math.round(e.run.simSecondsPerWallSecond))} s of fire per second` : 'Not measured yet',
       note: ok(e.run.meanStepMs)
         ? `One step takes ${formatNumber(e.run.meanStepMs, e.run.meanStepMs < 10 ? 1 : 0)} ms${ok(a.meanStepMs) ? `, of which the air ${formatNumber(a.meanStepMs, a.meanStepMs < 10 ? 1 : 0)} ms` : ''} (average for this tier); you asked for ${formatPlaybackSpeed(input.settings.defaultSpeed > 0 ? input.settings.defaultSpeed : Infinity)}`

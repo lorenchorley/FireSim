@@ -5,6 +5,10 @@
  * Real modules are found with `import.meta.glob`, so the app still builds while a module does not exist yet, and
  * are loaded lazily (code-split). If a module is missing, fails to load, lacks the expected export, or (for the
  * 3-D view) throws on construction — e.g. no WebGL2 — the mock is used instead and a warning is logged.
+ *
+ * One more choice is made when a run starts: on a page a desktop host serves, the person may have chosen the desktop engine on
+ * Setup, and the run's controller is then the open link's (src/ui/desktopHost.ts `take`); otherwise it is the in-app one. The
+ * desktop engine's own module (src/sim/remote) is loaded by the lazy desktop chunk (src/ui/desktop.ts), only for that run.
  */
 import type { ScenarioData } from '../core/types';
 import type { SceneViewApi } from '../render/api';
@@ -12,6 +16,7 @@ import type { RenderQuality, SceneViewOptions } from '../render/SceneView';
 import type { SliceFieldId, SliceKind } from '../render/slice/types';
 import type { BuildProgress, ScenarioRequest } from '../scenario/request';
 import type { SimController } from '../sim/protocol';
+import { desktopSlot } from './desktopSlot';
 import type { ExternalLegend, LegendProvider } from './legends';
 
 export type BuildScenarioFn = (req: ScenarioRequest, onProgress: (p: BuildProgress) => void, signal?: AbortSignal) => Promise<ScenarioData>;
@@ -20,6 +25,7 @@ export type ModuleSource = 'real' | 'mock';
 
 export interface Services {
   buildScenario: BuildScenarioFn;
+  /** The controller of a run: the desktop link's when the run was started on the desktop engine (desktopSlot.ts), else the in-app one. */
   createController(): SimController;
   /**
    * Create the scene view; falls back to the 2-D mock if the real one throws (reported via `sceneSource`). `quality` is the
@@ -110,7 +116,7 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
           }
         : null,
     buildScenario: scenario ? scenario.buildScenario : mocks.mockBuildScenario,
-    createController: () => (sim ? new sim.SimClient() : new mocks.MockSimController()),
+    createController: () => desktopSlot.get().host?.take() ?? (sim ? new sim.SimClient() : new mocks.MockSimController()),
     createSceneView(container: HTMLElement, opts?: { quality?: RenderQuality }): SceneViewApi {
       if (render) {
         try {

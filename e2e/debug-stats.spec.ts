@@ -5,7 +5,8 @@
  * opens from the menu and from Settings while the run is playing and never pauses it; values update in place once a second
  * (the same DOM nodes, new text); Copy puts the whole page on the clipboard as plain text (group titles, a header with a time,
  * an end marker, no coordinates); when the phone refuses the clipboard the text appears in a box to select; Escape and the
- * hardware Back close it and focus returns to the control that opened it; no pop-up, no network call, text at least 14 px and
+ * hardware Back close it and focus returns to the control that opened it; no pop-up, no network call (no request to another origin; the page's one
+ * question to its own origin at start-up, whether a desktop host serves it, stays on it), text at least 14 px and
  * 44 px group headers in the three looks. (The contrast of its colours is checked by `npm run check:contrast`, the stylesheet
  * rules by src/ui/styles.rules.test.ts, the content by src/ui/debugStats.test.ts.)
  */

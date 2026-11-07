@@ -115,6 +115,17 @@ describe('describeModel: live values follow the scenario and the engine', () => 
     expectClean(c);
   });
 
+  it('on a run that computes on the desktop the live speed is the desktop\'s, and says so (0.8.0, workstream J)', () => {
+    const phone = { cores: 8, memoryGb: 6 };
+    const keyOf = (onDesktop?: boolean): string => {
+      const c = describeModel({ scenario: fastScenario, engine: snap.engine, snapshot: snap, settings, historyBudgetBytes: 100 * 1024 * 1024, phone, ...(onDesktop !== undefined ? { onDesktop } : {}) });
+      return c.sections.find((s) => s.id === 'engine')!.blocks.flatMap((b) => (b.type === 'facts' ? b.facts : [])).find((f) => f.id === 'eng-speed')!.key;
+    };
+    expect(keyOf()).toBe('Computing speed on this phone');
+    expect(keyOf(false)).toBe('Computing speed on this phone');
+    expect(keyOf(true)).toBe('Computing speed on the desktop');
+  });
+
   it('says what an Air slices recording may add on top of the history, from the history budget (an eighth, at most 12 MiB)', () => {
     const MIB = 1048576;
     const noteAt = (history: number): string => {

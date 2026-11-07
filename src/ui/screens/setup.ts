@@ -21,6 +21,7 @@ import type { LatLon } from '../../core/geo';
 import { describeFix, describePlace, getLocation, LocationError, readClipboardText } from '../location';
 import { formatCoordinateText, parseLocationText, rememberableText, type LocationNeedsNetwork, type LocationSource } from '../mapsLink';
 import { resolveMapsShortLink } from '../mapsShortLink';
+import { desktopSlot, watchDesktop } from '../desktopSlot';
 import { demoImageryUrl } from '../imagery';
 import { datasetIcon } from '../labels';
 import type { Services } from '../modules';
@@ -829,6 +830,9 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     },
   });
   const runCard = section('Run', [durChips.el, h('div', { class: 'list card-list' }, onlineToggle.el)], { icon: 'clock', id: 'setup-run' });
+  // The Engine row (0.8.0, workstream J) joins this card only when a desktop host serves the page; without one nothing is added.
+  let unmountEngine: (() => void) | undefined;
+  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard)));
 
   // ───────────── Data for this run (planned, before anything is downloaded) ─────────────
   const planHead = h('p', { class: 'plan-total', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'plan-total' } }, 'Working out the data this run needs…');
@@ -1063,7 +1067,10 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
         renderFooter(true);
         return;
       }
-      opts.onBuild(store.get());
+      // On the desktop engine the link is opened first: a wrong code stays here, said next to the code box.
+      const desktop = desktopSlot.get().host;
+      if (desktop) void desktop.beforeBuild().then((ok) => ok && !destroyed && opts.onBuild(store.get()));
+      else opts.onBuild(store.get());
     },
   });
   function renderFooter(showErrors = false): void {
@@ -1132,6 +1139,8 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       packAbort?.abort();
       thumbs.destroy();
       unsubPerf();
+      stopWatchingDesktop();
+      unmountEngine?.();
       el.remove();
     },
   };

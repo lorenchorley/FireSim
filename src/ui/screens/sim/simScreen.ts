@@ -16,6 +16,7 @@ import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey 
 import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
 import { icon, type IconName } from '../../icons';
 import { thinPath, type Pt } from '../../brushGeometry';
+import { desktopSlot } from '../../desktopSlot';
 import { presetById } from '../../fuelPresets';
 import { fuelWithEdits } from '../../fuelDisplay';
 import { showMePatch } from '../../showMe';
@@ -114,6 +115,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const root = h('div', { class: ['screen', 'sim-screen', `hand-${settingsStore.get().handedness}`], dataset: { testid: 'sim' } }, [sceneHost, dim, annotations, drawLayer, crosshair]);
 
   // ───────────── scene + session ─────────────
+  // First: on the desktop engine this throws when the link closed while the model was built, and no 3-D view has been made yet to leak.
+  const controller = services.createController();
   const { pictureQuality, performance: performanceMode } = settingsStore.get();
   const view = services.createSceneView(sceneHost, { quality: resolveRenderQuality(pictureQuality, performanceMode) });
   const pictureAsk = pictureQualityAsk(pictureQuality, performanceMode); // kept for the statistics: the settings may change during the run
@@ -125,7 +128,6 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   view.setStartTime?.(scenario.startTime);
   view.setLayers(layers.get());
   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
-  const controller = services.createController();
   const session = new SimSession(scenario, controller, view);
   // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
   let stopEvents = (): void => undefined;
@@ -290,12 +292,20 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
   const compassTimer = setInterval(syncCompass, 200);
   unsubs.push(() => clearInterval(compassTimer));
 
-  const simNotice = services.sources.sim === 'mock' || services.sources.scene === 'mock' ? h('p', { class: 'mock-banner' }, services.sources.sim === 'mock' ? 'Demo engine' : '2-D map') : null;
+  // The run that computes on the desktop (the controller above is its link's) says so with the same label the demo engine has.
+  const desktopRun = desktopSlot.get().run;
+  const mapIs2d = services.sources.scene === 'mock';
+  const simNotice =
+    desktopRun || services.sources.sim === 'mock' || mapIs2d
+      ? h('p', { class: ['mock-banner', desktopRun && 'engine-banner'], dataset: { testid: desktopRun ? 'engine-banner' : undefined } }, desktopRun ? (mapIs2d ? `${desktopRun.label} · 2-D map` : desktopRun.label) : services.sources.sim === 'mock' ? 'Demo engine' : '2-D map')
+      : null;
 
   // Simulation failure: the only thing that ever appears uninvited, as a thin strip under the top bar (never a modal).
+  // On a run that computes on the desktop the chip says what the link said ("The desktop connection closed."), so the person knows to start over on This device.
+  const errorText = h('span', { class: ['error-chip-text', desktopRun && 'error-chip-says'] }, 'Simulation problem');
   const errorChip = h('div', { class: 'error-chip', hidden: true, attrs: { role: 'alert' }, dataset: { testid: 'error-chip' } }, [
     icon('warning'),
-    h('span', { class: 'error-chip-text' }, 'Simulation problem'),
+    errorText,
     h(
       'button',
       { type: 'button', class: 'btn btn-text btn-sm error-chip-btn', dataset: { testid: 'error-details' }, on: { click: () => ui.set({ tab: 'insights', sheet: 'half', panelOpen: false, menu: null }) } },
@@ -948,6 +958,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
 
   const unsubErr = session.state.subscribe((s) => {
     errorChip.hidden = !s.error;
+    if (desktopRun && s.error) text(errorText, s.error);
     if (s.error) o.announce(`Simulation error: ${s.error}`);
   }, ['error']);
   unsubs.push(unsubErr);
