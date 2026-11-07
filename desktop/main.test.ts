@@ -6,7 +6,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { request as httpRequest } from 'node:http';
+import { hostname, networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -50,8 +51,8 @@ interface Running {
   exited: Promise<number | null>;
 }
 
-function run(args: string[], distDir = dist): Running {
-  const child = spawn(process.execPath, [runner, ...args], { env: { ...process.env, TEST_DIST: distDir }, stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as ChildProcessWithoutNullStreams;
+function run(args: string[], distDir = dist, env: Record<string, string> = {}): Running {
+  const child = spawn(process.execPath, [runner, ...args], { env: { ...process.env, TEST_DIST: distDir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as ChildProcessWithoutNullStreams;
   children.push(child);
   let out = '';
   let err = '';
@@ -63,7 +64,7 @@ function run(args: string[], distDir = dist): Running {
 
 /** Wait for the banner and read the port of the first address it prints. */
 async function started(r: Running): Promise<{ port: number; code: string }> {
-  await waitFor(() => /Pairing code: [A-Z0-9]+/.test(r.out()) || r.err().length > 0, 20000, 'the banner');
+  await waitFor(() => r.out().includes('Ctrl+C stops it.') || r.err().length > 0, 20000, 'the banner');
   const m = /http:\/\/[\d.]+:(\d+)\/#code=([A-Z0-9]+)/.exec(r.out());
   if (!m) throw new Error(`no address in the output: ${r.out()} ${r.err()}`);
   return { port: Number(m[1]), code: m[2]! };
@@ -90,7 +91,8 @@ describe('npm run desktop', () => {
     const out = r.out();
     expect(out).toContain('FireSim desktop host "Workbench"');
     expect(out).toContain(`http://127.0.0.1:${port}/#code=${code}`);
-    expect(out).toContain('Open this on this computer:');
+    expect(out).toContain('Open this on this computer (the pairing code is after the #):');
+    expect(out).not.toContain('Pairing code:');
     expect(out).not.toContain('TLS'); // the warning is for --lan
     // Served on 127.0.0.1 and on no other address of this computer.
     expect(await canConnect('127.0.0.1', port)).toBe(true);
@@ -106,9 +108,9 @@ describe('npm run desktop', () => {
     r.child.kill('SIGINT');
     expect(await r.exited).toBe(0);
     expect((await c.closed).code).toBe(1001);
-    // The code was printed in the banner (the address and the "Pairing code" line) and in no line after it.
-    const banner = r.out().split('\n').filter((l) => l.includes(code));
-    expect(banner).toHaveLength(2);
+    // The code was printed once, in the address of the banner, and in no line after it.
+    expect(r.out().split(code).length - 1).toBe(1);
+    expect(r.out().split('\n').filter((l) => l.includes(code))).toEqual([`  http://127.0.0.1:${port}/#code=${code}`]);
     const afterBanner = r.out().slice(r.out().indexOf('Ctrl+C stops it.'));
     expect(afterBanner).not.toContain(code);
     expect(r.err()).not.toContain(code);
@@ -132,12 +134,79 @@ describe('npm run desktop', () => {
       expect(r.out(), a).toContain(`http://${a}:${port}/#code=ABCD2345`);
       expect(await canConnect(a, port), `${a} must answer with --lan`).toBe(true);
     }
+    expect(r.out().split('ABCD2345').length - 1).toBe(Math.max(1, lan.length)); // in each address printed, nowhere else
+    expect(r.out()).not.toContain('Pairing code:');
     expect(r.out()).toContain('There is no TLS: use this only on a network you trust.');
     expect(r.out()).toContain('Up to 3 simulations at once.');
     expect(JSON.parse(await (await fetch(`http://127.0.0.1:${port}/__firesim/host`)).text())).toMatchObject({ maxSessions: 3 });
     r.child.kill('SIGINT');
     expect(await r.exited).toBe(0);
   }, 30_000);
+
+  it('refuses a request whose Host is not a name of this computer, and takes this computer name, its .local name and the --allow-host names', async () => {
+    const r = run(['--port', '0', '--allow-host', 'My-Router-Name.lan', '--allow-host', 'second.example']);
+    const { port } = await started(r);
+    const status = (host: string): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const req = httpRequest({ host: '127.0.0.1', port, path: '/__firesim/host', headers: { Host: host } }, (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode ?? 0));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    const own = hostname().toLowerCase();
+    for (const ok of [`127.0.0.1:${port}`, `localhost:${port}`, own, `${own}.local:${port}`, 'my-router-name.lan', `MY-ROUTER-NAME.LAN:${port}`, 'second.example']) expect(await status(ok), ok).toBe(200);
+    for (const bad of [`attacker.example:${port}`, 'third.example', 'my-router-name.lan.attacker.example', `x${own}.local`]) expect(await status(bad), bad).toBe(421);
+    expect(r.out()).toContain('the Host header "attacker.example:');
+    r.child.kill('SIGINT');
+    expect(await r.exited).toBe(0);
+  }, 30_000);
+
+  it('without --allow-host only this computer and the IP addresses are accepted', async () => {
+    const r = run(['--port', '0']);
+    const { port } = await started(r);
+    const status = new Promise<number>((resolve, reject) => {
+      const req = httpRequest({ host: '127.0.0.1', port, path: '/__firesim/host', headers: { Host: 'my-router-name.lan' } }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(await status).toBe(421);
+    r.child.kill('SIGINT');
+    expect(await r.exited).toBe(0);
+  }, 30_000);
+
+  it('--max-frame-mib sets the largest message: a frame above it is closed with 1009, one under it goes through to the engine', async () => {
+    const r = run(['--port', '0', '--max-frame-mib', '1']);
+    const { port, code } = await started(r);
+    const c = await openClient(port);
+    hello(c, code);
+    expect((await welcomeOf(c))?.type).toBe('welcome');
+    c.ws.send(new Uint8Array(512 * 1024)); // under 1 MiB: read by the engine, which says it is not a message
+    await waitFor(() => c.received.length >= 2, 20000, 'the engine\'s answer');
+    expect(c.ws.readyState).toBe(c.ws.OPEN);
+    c.ws.send(new Uint8Array(2 * 1024 * 1024));
+    expect((await c.closed).code).toBe(1009);
+    r.child.kill('SIGINT');
+    expect(await r.exited).toBe(0);
+  }, 60_000);
+
+  it('says so when a --max-old-space-size of Node itself replaces --worker-heap-mib, and not otherwise', async () => {
+    const quiet = run(['--port', '0', '--worker-heap-mib', '512'], dist, { NODE_OPTIONS: '' });
+    await started(quiet);
+    expect(quiet.out()).not.toContain('max-old-space-size');
+    quiet.child.kill('SIGINT');
+    await quiet.exited;
+    const loud = run(['--port', '0', '--worker-heap-mib', '512'], dist, { NODE_OPTIONS: '--max-old-space-size=8192' });
+    await started(loud);
+    expect(loud.out()).toContain('--max-old-space-size is set for Node itself');
+    expect(loud.out()).toContain('--worker-heap-mib');
+    loud.child.kill('SIGINT');
+    await loud.exited;
+  }, 60_000);
 
   it('exits with 2 and says how to build when there is no built app', async () => {
     const empty = join(work, 'no-dist');

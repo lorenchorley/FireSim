@@ -10,11 +10,21 @@ import { Worker } from 'node:worker_threads';
 export interface EngineWorkerData {
   simulation?: { minSnapshotWallMs?: number; tier?: 'auto' | 'fast' | 'standard' | 'high' };
   chunkMs?: number;
+  /** What the worker's decoder accepts of a frame (codec.ts DecodeLimits). */
+  maxHeaderBytes?: number;
+  maxArrays?: number;
+}
+
+/** The limits of a worker thread (`--worker-heap-mib`): its JavaScript heap. Typed arrays are outside it. */
+export interface EngineLimits {
+  maxOldGenerationSizeMb?: number;
 }
 
 export interface EngineEvents {
   /** One frame for the client (a codec frame; ownership passes to the receiver). */
   frame(bytes: Uint8Array): void;
+  /** A line for the host's log about this session (a message the worker dropped); never a frame's content. */
+  note(text: string): void;
   /** The engine failed (an uncaught error in the worker): it is finished. */
   failed(message: string): void;
   /** The thread has ended, for whatever reason. */
@@ -37,12 +47,18 @@ export interface HoldMessage {
   hold: boolean;
 }
 
+/** What a worker sends to the main thread besides frames. */
+export interface NoteMessage {
+  note: string;
+}
+
 /** An engine in a worker thread started from `file` (the built `engineWorker.mjs`). */
-export function workerEngines(file: string | URL, data: EngineWorkerData = {}): EngineFactory {
+export function workerEngines(file: string | URL, data: EngineWorkerData = {}, limits: EngineLimits = {}): EngineFactory {
   return (events) => {
-    const worker = new Worker(file, { workerData: data });
+    const worker = new Worker(file, { workerData: data, ...(limits.maxOldGenerationSizeMb ? { resourceLimits: { maxOldGenerationSizeMb: limits.maxOldGenerationSizeMb } } : {}) });
     worker.on('message', (m: unknown) => {
       if (m instanceof Uint8Array) events.frame(m);
+      else if (m && typeof (m as NoteMessage).note === 'string') events.note((m as NoteMessage).note);
     });
     worker.on('error', (e: Error) => events.failed(`The simulation engine stopped: ${e.message.split('\n')[0]}`));
     worker.on('exit', () => events.exited());

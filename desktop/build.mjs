@@ -9,8 +9,9 @@
 import { build } from 'vite';
 
 /**
- * @param {{ root: string, outDir: string, logLevel?: 'info' | 'warn' | 'error' | 'silent' }} o
- *   root: the repository; outDir: where main.mjs and engineWorker.mjs go (emptied first)
+ * @param {{ root: string, outDir: string, logLevel?: 'info' | 'warn' | 'error' | 'silent', extra?: Record<string, string> }} o
+ *   root: the repository; outDir: where main.mjs and engineWorker.mjs go (emptied first); extra: more programs to build, by name
+ *   (the tests build desktop/engine.ts to run it in a process of its own)
  */
 export async function buildDesktop(o) {
   await build({
@@ -27,7 +28,7 @@ export async function buildDesktop(o) {
       sourcemap: false,
       reportCompressedSize: false,
       rollupOptions: {
-        input: { main: 'desktop/main.ts', engineWorker: 'desktop/engineWorker.ts' },
+        input: { main: 'desktop/main.ts', engineWorker: 'desktop/engineWorker.ts', ...(o.extra ?? {}) },
         output: { format: 'es', entryFileNames: '[name].mjs', chunkFileNames: 'chunks/[name]-[hash].mjs' },
       },
     },

@@ -15,7 +15,7 @@ vi.mock('node:crypto', async (importOriginal) => {
   };
 });
 
-import { addressKey, CODE_ALPHABET, CODE_LENGTH, codesMatch, generateCode, normaliseCode, originAllowed, RateLimiter } from './security';
+import { addressKey, allowedHostNames, CODE_ALPHABET, CODE_LENGTH, codesMatch, FixedWindowCounter, generateCode, hostAllowed, normaliseCode, normaliseHostName, originAllowed, RateLimiter } from './security';
 
 describe('pairing code', () => {
   it('is 8 characters of the alphabet without I, O, 0 and 1, from the random source', () => {
@@ -139,5 +139,82 @@ describe('rate limit on wrong codes', () => {
     expect(r.recordFailure('a', 700_000)).toBe(false); // ten minutes on: that was the first of a new count
     for (let i = 0; i < 10_000; i++) r.recordFailure(`10.0.${i >> 8}.${i & 255}`, 1000 + i);
     expect(r.size).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('host allowlist (DNS rebinding)', () => {
+  const names = allowedHostNames('Desk-PC', ['Station.lan', 'office.example.org']);
+
+  it('accepts an IPv4 literal, a bracketed IPv6 literal, localhost, this computer and its .local name, and the --allow-host names, with or without a port, in any case', () => {
+    for (const h of ['127.0.0.1', '127.0.0.1:4300', '192.168.1.20:4300', '10.0.0.5', '255.255.255.255:1', '[::1]', '[::1]:4300', '[fe80::1ff:fe23:4567:890a]:80', '[::ffff:192.168.1.5]:4300', 'localhost', 'localhost:4300', 'LOCALHOST:4300', 'desk-pc', 'Desk-PC:4300', 'desk-pc.local', 'DESK-PC.LOCAL:4300', 'station.lan:4300', 'office.example.org', 'Office.Example.Org:65535']) {
+      expect(hostAllowed(h, names), h).toBe(true);
+    }
+  });
+
+  it('refuses every other name, a name that only starts or ends like an allowed one, and a header that is not a host', () => {
+    for (const h of [
+      'attacker.example',
+      'attacker.example:4300',
+      '127.0.0.1.attacker.example:4300',
+      'localhost.attacker.example',
+      'attacker-localhost',
+      'xlocalhost',
+      'localhost.',
+      'sub.localhost',
+      'desk-pc.attacker.example',
+      'desk-pc.local.attacker.example',
+      'xdesk-pc.local',
+      'station.lan.evil.example',
+      'lan',
+      '2130706433',
+      '0x7f.0.0.1',
+      '127.1',
+      '256.1.1.1',
+      '1.2.3.4.5',
+      '[::1',
+      '[attacker]',
+      '[::1]x',
+      '[::1]:99999',
+      'localhost:99999',
+      'localhost:',
+      'localhost:abc',
+      'localhost:4300:1',
+      'user@localhost',
+      'localhost@attacker.example',
+      'localhost/x',
+      'local host',
+      'localhost\r\nX: y',
+      '',
+      ' ',
+      'a'.repeat(300),
+      undefined,
+    ]) {
+      expect(hostAllowed(h, names), String(h)).toBe(false);
+    }
+  });
+
+  it('knows this computer under its name and name.local (not twice for a name that already ends in .local), and adds the extra names', () => {
+    expect(allowedHostNames('Desk-PC')).toEqual(['desk-pc', 'desk-pc.local']);
+    expect(allowedHostNames('mac.local')).toEqual(['mac.local']);
+    expect(allowedHostNames('', ['A.b'])).toEqual(['a.b']);
+    expect(allowedHostNames('x', ['x', 'X.local'])).toEqual(['x', 'x.local']);
+    expect(hostAllowed('desk.example', allowedHostNames('vm'))).toBe(false);
+    expect(hostAllowed('desk.example', allowedHostNames('vm', ['desk.example']))).toBe(true);
+  });
+
+  it('takes --allow-host names that are letters, digits, dots and hyphens', () => {
+    expect(normaliseHostName(' Station.LAN ')).toBe('station.lan');
+    for (const bad of ['', 'a b', 'a:4300', '[::1]', '-a', 'a-', '.a', 'a/b', 'a@b', 'a'.repeat(254), 5, null, undefined]) expect(normaliseHostName(bad), String(bad)).toBeNull();
+  });
+});
+
+describe('FixedWindowCounter', () => {
+  it('says exceeded from the event after the limit, within a window, and starts again with the next window', () => {
+    const c = new FixedWindowCounter(3);
+    expect([0, 10, 20, 30, 40].map((t) => c.exceeded(t))).toEqual([false, false, false, true, true]);
+    expect(c.exceeded(999)).toBe(true);
+    expect([1000, 1001, 1002].map((t) => c.exceeded(t))).toEqual([false, false, false]);
+    expect(c.exceeded(1003)).toBe(true);
+    expect(c.exceeded(2500)).toBe(false);
   });
 });

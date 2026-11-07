@@ -11,7 +11,7 @@ import { MessageChannel, parentPort, workerData } from 'node:worker_threads';
 import { SimHost } from '../src/sim/host';
 import type { FromWorker, ToWorker } from '../src/sim/protocol';
 import { CodecError, decodeMessage, encodeMessage } from '../src/sim/remote/codec';
-import type { EngineWorkerData, HoldMessage } from './engine';
+import type { EngineWorkerData, HoldMessage, NoteMessage } from './engine';
 import { HoldGate } from './holdGate';
 
 const port = parentPort;
@@ -26,6 +26,11 @@ channel.port1.unref();
 
 /** A failure of the engine goes to the client as the engine's own sentence: the first line only (the rest of a stack names this computer's files). */
 const forClient = (msg: FromWorker): FromWorker => (msg.type === 'error' ? { type: 'error', message: msg.message.split('\n')[0]! } : msg);
+
+/** A message of the protocol is only for a simulation that exists: until the first `init` everything else would wait in a queue without a limit. */
+let initialised = false;
+let dropped = false;
+const limits = { ...(options.maxHeaderBytes !== undefined ? { maxHeaderBytes: options.maxHeaderBytes } : {}), ...(options.maxArrays !== undefined ? { maxArrays: options.maxArrays } : {}) };
 
 function post(msg: FromWorker): void {
   let bytes: Uint8Array;
@@ -46,12 +51,20 @@ port.on('message', (m: unknown) => {
   if (m instanceof Uint8Array) {
     let msg: ReturnType<typeof decodeMessage>;
     try {
-      msg = decodeMessage(m);
+      msg = decodeMessage(m, limits);
     } catch (e) {
       post({ type: 'error', message: e instanceof CodecError ? `The desktop could not read a message: ${e.message}` : 'The desktop could not read a message.' });
       return;
     }
-    if (msg.type !== 'ping' && msg.type !== 'pong') host.handle(msg as ToWorker);
+    if (msg.type === 'ping' || msg.type === 'pong') return;
+    if (msg.type === 'init') initialised = true;
+    else if (!initialised) {
+      // Dropped, and said once (the type is cut to letters so that a client cannot write what it likes into the log).
+      if (!dropped) port.postMessage({ note: `dropped a "${msg.type.replace(/[^A-Za-z]/g, '').slice(0, 20)}" message that came before init (until init, only init is taken)` } satisfies NoteMessage);
+      dropped = true;
+      return;
+    }
+    host.handle(msg as ToWorker);
   } else if (m && typeof (m as HoldMessage).hold === 'boolean') {
     gate.hold((m as HoldMessage).hold);
   }
