@@ -43,6 +43,8 @@ Open one of these on this computer or on a phone on the same network:
   http://192.168.1.20:4300/#code=ABCD2345
 ```
 
+With `--lan` the last line of the banner also says "There is no TLS: use this only on a network you trust."
+
 Open it in the phone's browser. The phone shows the app that the computer serves and the computer runs the simulation. The
 phone and the computer must be on the same network, and the computer's firewall must let the port through.
 
@@ -69,7 +71,7 @@ example the device's location) are not available through it.
 | `--help` | The usage text. |
 
 Exit codes: 0 after a clean stop (Ctrl+C or `SIGTERM` closes the sockets, ends the workers and exits), 1 when it could not
-start (port in use), 2 for a wrong flag or no built app.
+start (the port is in use or not allowed, or the host could not be built), 2 for a wrong flag or no built app.
 
 ## The pairing code
 
@@ -77,14 +79,17 @@ start (port in use), 2 for a wrong flag or no built app.
 start, printed once at start and never written to a file or a log line. It is compared in constant time. After 5 wrong codes
 from one address, that address is refused for 60 seconds (close code 4429), also with the right code. A browser page must
 also have been served by this host: the handshake of a page from any other origin is refused (the Origin check; a client with
-no Origin header, such as a script, is accepted and still needs the code).
+no Origin header, such as a script, is accepted and still needs the code). The check compares the page's origin with the
+`Host` header it sent; there is no list of allowed host names, so a page that reaches the host under another name passes it
+and only the code stands in the way.
 
 ## What it costs
 
-Measured on a 4-core machine with the Katoomba demo site (6 km, fast tier): the idle host is about 70 MB; each session is a
-worker thread that adds about 110 MB when the scenario is loaded and about 100 MB more after half an hour of simulated fire
-(two such sessions at once: about 470 MB at the peak). A scenario is about 6.5 MB on the wire and one snapshot about 2.2 MB; a
-run at full speed streams about 27 MB/s to the page (more than a Wi-Fi link carries: see the flow control below).
+Measured on one shared 4-core machine with software GL, on loopback, with the Katoomba demo site (6 km, fast tier): the idle
+host is about 70 MB; each session is a worker thread that adds about 110 MB when the scenario is loaded and about 100 MB more
+after half an hour of simulated fire (two sessions running 900 s of fire at once: about 470 MB at the peak). A scenario is about
+6.5 MB on the wire and one snapshot about 2.2 MB; 1800 s of fire took about 2.4 s and streamed about 27 MB/s to the page (more
+than a Wi-Fi link carries: see the flow control below); a round trip on loopback is about 3 ms. A phone over Wi-Fi was never tried.
 
 ## What it serves
 
@@ -107,13 +112,14 @@ run at full speed streams about 27 MB/s to the page (more than a Wi-Fi link carr
 4. Limits: a frame may be 4 KB before the welcome and 256 MiB after it (a scenario is large; above that the host closes with
    1009); the host pings every 20 s and closes a connection that has been silent for 60 s; a connection that has not said hello
    counts against a limit of 16 (further ones get HTTP 503).
-5. When the link is behind, the host holds the engine back (the run waits between chunks) until the link has caught up: the run
-   gets slower and nothing changes in its results.
+5. When the link is behind (more than 16 MiB waiting to be sent), the host holds the engine back (the run waits between chunks)
+   until the link has caught up (below 4 MiB): the run gets slower and nothing changes in its results.
 6. When a session ends (closed, dropped, an error, a stop) its worker thread is terminated and its slot freed. If the worker
-   fails, the page gets an `error` message with the first line of the failure (never a stack or a file name) and the host closes with 1011.
+   fails, the page gets an `error` message with the first line of the failure (never the stack, which names this computer's
+   files; the first line of a message can still name one) and the host closes with 1011.
 
-Logs: one line per connect and close with the address and the session id, and one per refused connection with the reason.
-Never the code, a wrong guess or a scenario.
+Logs: one line per connect and close with the address and the session id, one per refused connection with the reason, and one
+the first time a session's link is behind. Never the code, a wrong guess or a scenario.
 
 ## What is not here
 
@@ -128,7 +134,8 @@ Each is a later decision (contract `docs/plans/0.8.0/J-CONTRACT-desktop-host.md`
 
 Results are the same program's. They are not guaranteed identical to a phone's: a different JavaScript engine and version may
 round differently. What is tested is that the transport changes nothing: the same scenario and seed through the in-thread
-controller and through this host give identical snapshots, bit for bit, at identical simulation times.
+controller and through this host give identical snapshot hashes (every field but the engine's own timing report) at identical
+simulation times, and the last snapshot's arrays are the same bit for bit (`desktop/engine.test.ts`).
 
 ## How it is built
 
