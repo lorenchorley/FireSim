@@ -5,6 +5,7 @@
  * on the first tap, so the entry bundle does not carry it. Every sentence comes from paceSheetModel.ts; this file only lays
  * them out and keeps them current once a second, in place (a tap on a button is never lost to a redraw).
  */
+import { desktopSlot } from '../../desktopSlot';
 import { h, text } from '../../dom';
 import { FAST_ANNOUNCEMENT, paceSheet, speedWord } from '../../paceSheetModel';
 import { list, listRow, pct } from '../../primitives';
@@ -118,6 +119,7 @@ export function mountPaceSheet(ctx: SimContext, panel: HTMLElement, opts: { clos
       pace: s.pace,
       engine: e ? { tier: e.tier, ...(e.mock ? { mock: true } : {}), perf: e.perf } : null,
       remainingS: Math.max(0, ctx.scenario.duration - s.viewTime),
+      ...(desktopSlot.get().run && !desktopSlot.get().run?.restarted ? { where: 'desktop' as const } : {}),
     });
     text(title, view.title);
     text(lead, view.lead);

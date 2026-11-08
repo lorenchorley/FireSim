@@ -15,6 +15,8 @@
  * Opened from Setup (no scenario) it shows the plan of the Setup's current choice.
  */
 import type { ScenarioData, SimSnapshot } from '../../core/types';
+import { historyBudgetFor, pageClassOf } from '../desktopDetail';
+import { levelOf } from '../desktopDetailChoice';
 import { desktopSlot } from '../desktopSlot';
 import { h, setChildren, uniqueId } from '../dom';
 import { icon } from '../icons';
@@ -53,7 +55,8 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
     dataset: { testid: 'model-card' },
   });
 
-  const historyBudget = defaultSnapshotBudget();
+  // The history budget this run was given (a run with a finer Desktop detail on a desktop-class page gets more: desktopDetail.ts historyBudgetFor).
+  const historyBudget = historyBudgetFor(levelOf(opts.scenario?.options), defaultSnapshotBudget(), pageClassOf(globalThis.navigator));
   const nav = globalThis.navigator as { hardwareConcurrency?: number; deviceMemory?: number } | undefined;
   const input = (): Parameters<typeof describeModel>[0] => {
     const snapshot = opts.getSnapshot?.() ?? null;

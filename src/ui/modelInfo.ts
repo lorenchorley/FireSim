@@ -47,6 +47,8 @@ import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
 import type { ScenarioRequest } from '../scenario/request';
 import { FAST_TIER_STEP_S } from '../sim/engineInfo';
 import { SIM_PARAMS } from '../sim/params';
+import { modelCardWords } from './desktopDetail';
+import { levelOf } from './desktopDetailChoice';
 import { formatDuration, formatNumber, formatPlaybackSpeed, formatSpeedHint, formatStepLabel } from './format';
 import type { IconName } from './icons';
 import type { Tone } from './primitives';
@@ -318,7 +320,7 @@ function numbersOf(input: ModelCardInput, e: EngineInfo | null): Numbers | null 
   if (!r) return null;
   const tier = r.options?.tier ?? 'auto';
   const grid3: QualityTier = tier === 'high' ? 'high' : tier === 'fast' ? 'fast' : 'standard';
-  const built = builtFireCell(r.extent, r.options?.fireCellSize, tier);
+  const built = builtFireCell(r.extent, r.options?.fireCellSize, tier, r.options?.desktopDetail);
   const n = Math.max(2, Math.round(r.extent / built.cellM));
   return {
     source: 'request',
@@ -335,6 +337,18 @@ function numbersOf(input: ModelCardInput, e: EngineInfo | null): Numbers | null 
     durationS: r.duration,
     seed: null,
   };
+}
+
+/**
+ * A run (or a Setup preview) with a finer Desktop detail (0.9.0, D35): the owner's words first in "How sure are we?", in the warning style, before the
+ * evidence. Nothing for the standard detail, so its card is the one 0.8.0 made.
+ */
+function detailBlock(input: ModelCardInput): CardBlock[] {
+  const o = input.scenario?.options ?? input.request?.options;
+  const level = levelOf(o);
+  if (!level) return [];
+  const cellM = input.scenario ? input.scenario.terrain.grid.cellSize : SCENARIO_PARAMS.desktopDetailCellM[level];
+  return [{ type: 'text', tone: 'warn', text: modelCardWords(level, cellM, o?.maxEmbers ?? SIM_PARAMS.desktopDetailMaxEmbers[level]) }];
 }
 
 const record = (sc: ScenarioData | null, id: string): DatasetRecord | undefined => sc?.datasets?.find((d) => d.id === id);
@@ -1028,6 +1042,7 @@ export function describeModel(input: ModelCardInput): ModelCard {
     title: 'How sure are we?',
     summary: 'The evidence behind the model, its known open issues and how it was tested.',
     blocks: [
+      ...detailBlock(input),
       {
         type: 'text',
         tone: 'warn',

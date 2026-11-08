@@ -924,3 +924,60 @@ describe('a run that computes on the desktop (0.8.0, workstream J)', () => {
     expect(debugStatsToText(withDesktop())).toContain('  Engine runs on: Desktop Studio PC, 8 cores, Node v22.11.0, link 4.2 ms (The desktop computes the run and this phone draws it)');
   });
 });
+
+describe('a run made with a finer Desktop detail (0.9.0, D35): the label, and no speed test of this phone for a run on the desktop', () => {
+  const desktop = { name: 'Studio PC', cores: 8, node: 'v22.11.0', rttMs: 4.2, closed: false };
+  const finest = (): DebugStatsInput => ({ ...full(), run: { ...full().run!, fireCellM: 10, detail: { level: 'finest', embersMax: 8000 } }, desktop });
+  const speedTest = { state: 'idle' as const, last: null };
+  const canDoIds = (s: DebugStats): string[] => s.groups.find((g) => g.id === 'canDo')!.rows.map((r) => r.id);
+
+  it('the Run group has a row that says "Finer grid, results differ, not validated" with the level, the cell and the embers, and its summary line says it too', () => {
+    const s = buildDebugStats(finest());
+    const r = rowOf(s, 'run', 'detail');
+    expect(r.label).toBe('Desktop detail');
+    expect(r.value).toBe('Finer grid, results differ, not validated');
+    expect(r.note).toMatch(/^Finest level: fire cells of 10.m, up to 8,000 embers\. The standard detail is 30.m cells\.$/);
+    expect(s.groups.find((g) => g.id === 'run')!.summary).toMatch(/10.m cells \(finer grid, results differ, not validated\), seed 1$/);
+    expect(rowOf(s, 'run', 'cell').value).toMatch(/^10.m$/);
+  });
+
+  it('the one-line summary starts with the label, so a pasted headline cannot be taken for a standard run', () => {
+    expect(rowOf(buildDebugStats(finest()), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. On the desktop \(Studio PC, 8 cores\): /);
+    expect(rowOf(buildDebugStats({ ...finest(), desktop: undefined }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. Standard/);
+  });
+
+  it('the copied text has the label in its first line and in the Run group', () => {
+    const t = debugStatsToText(buildDebugStats(finest()));
+    expect(t.split('\n')[1]).toMatch(/\| Finer grid, results differ, not validated · 10.m cells$/);
+    expect(t).toContain('  Desktop detail: Finer grid, results differ, not validated (Finest level: fire cells of 10');
+    expect(buildDebugStats(finest()).header.detail).toMatch(/^Finer grid, results differ, not validated/);
+  });
+
+  it('a standard run has none of it: no row, no header line, and the same text as before', () => {
+    const s = buildDebugStats(full());
+    expect(s.groups.find((g) => g.id === 'run')!.rows.some((r) => r.id === 'detail')).toBe(false);
+    expect('detail' in s.header).toBe(false);
+    expect(debugStatsToText(s)).not.toMatch(/Finer grid/);
+    expect(debugStatsToText(buildDebugStats({ ...full(), run: { ...full().run!, detail: null } }))).toBe(debugStatsToText(s));
+  });
+
+  it('is clean: nothing undefined, NaN or null, for each level', () => {
+    for (const level of ['finer', 'finest'] as const) expectClean(buildDebugStats({ ...full(), run: { ...full().run!, fireCellM: level === 'finer' ? 20 : 10, detail: { level, embersMax: 8000 } }, desktop }));
+  });
+
+  it('on a run that computes on the desktop the phone\'s speed test is not used or offered: the row says so and has no button id', () => {
+    const on = buildDebugStats({ ...full(), desktop, speedTest });
+    expect(rowOf(on, 'canDo', 'speed-test-desktop').value).toBe('Not used on a run that computes on the desktop. The speed above is what the desktop engine measured, step by step, while it computed this run.');
+    expect(canDoIds(on)).not.toContain('speed-test');
+    // This device (or a run started again here) keeps the phone's test as it was.
+    expect(canDoIds(buildDebugStats({ ...full(), speedTest }))).toContain('speed-test');
+    expect(canDoIds(buildDebugStats({ ...full(), desktop: { ...desktop, closed: true, restarted: true, rttMs: null }, speedTest }))).toContain('speed-test');
+  });
+
+  it('Auto says it was decided from a timing test on the desktop for a run that computes there, on this phone otherwise', () => {
+    const ask = (d: DebugStatsInput['desktop']): string => rowOf(buildDebugStats({ ...full(), desktop: d }), 'choices', 'requested').value;
+    expect(ask(desktop)).toBe('Auto (decided when the run starts, from a short timing test on the desktop)');
+    expect(ask(undefined)).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
+    expect(ask({ ...desktop, closed: true, restarted: true, rttMs: null })).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
+  });
+});

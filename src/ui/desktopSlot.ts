@@ -22,6 +22,10 @@ export interface DecorateOptions {
   /** The page's `createLocalController`: a fresh in-app engine, never the desktop's. */
   makeController(): SimController;
   announce(message: string): void;
+  /** Leave the run for Setup (the screen's own exit): "Continue on this device" offers it when this device cannot hold the run's finer detail. */
+  exit?(): void;
+  /** A run with a finer Desktop detail: null when this device can run its grid by itself, else what the chip says instead of offering a restart that would fail (desktopDetailRun.ts). */
+  continueRefusal?(): { short: string; sentence: string; action: string } | null;
 }
 
 /** The desktop's object: the page's logic of it (desktopHost.ts) and the two things that draw, the Engine row and the run's label and error chip. */
