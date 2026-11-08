@@ -9,9 +9,10 @@
  * a rebuild and take 800 to 1,900 on an idle machine). V8 optimises on a thread of its own, so how many rebuilds that takes depends on how much of
  * the machine that thread gets: each case therefore runs until the median of the last 11 windows is quiet (a state, not a count of rebuilds),
  * for at most `SETTLE_MS`, and the number of rebuilds that took is logged. The gate's full run once measured the relief in a forest at 2,282.8
- * bytes a rebuild against the 1,024; beside four busy loops and the other perf tests here it settled after the same 780 rebuilds and read 605, so
- * that failure was not reproduced and the cause of it is not established: a measurement taken before the code had settled is what it looks like,
- * and what the state wait below rules out (a case that never settles now says so, instead of reporting the bytes of code that was still warming up).
+ * bytes a rebuild against the 1,024. That was not reproduced: beside four busy loops and the other perf tests of this repo it settled after the same
+ * 780 rebuilds and read 605, so the cause is not established. The explanation left is code that V8 had not yet optimised when the windows were read,
+ * which a count of rebuilds could not tell from a regression and the state wait rules out: a case that does not settle now fails by saying so, and one
+ * that does is measured after it.
  */
 import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
