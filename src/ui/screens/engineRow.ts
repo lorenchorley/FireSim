@@ -11,6 +11,7 @@ import { CODE_LABEL, CODE_PLACEHOLDER, CONTINUE_HERE, desktopChoiceLabel, ENGINE
 import { h, setChildren, show, uniqueId } from '../dom';
 import { icon } from '../icons';
 import { button, chipChoice } from '../widgets';
+import { mountDetailRow } from './desktopDetailRow';
 
 const PROBLEM_WORDS = { 'needs-code': ENGINE_PROBLEM.needsCode, refused: ENGINE_PROBLEM.refused, 'rate-limited': ENGINE_PROBLEM.rateLimited, unreachable: ENGINE_PROBLEM.unreachable } as const;
 
@@ -56,6 +57,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
   const note = h('div', { class: 'engine-note', id: hintId, attrs: { 'aria-live': 'polite' }, dataset: { testid: 'engine-note' } });
   const row = h('div', { class: 'engine-row', dataset: { testid: 'engine-row' } }, [choice.el, field, note]);
   card.append(row);
+  const unmountDetail = mountDetailRow(host, card); // the Desktop detail (0.9.0), under this row while the desktop is chosen
 
   let shown = '';
   const draw = (s: Readonly<DesktopView>): void => {
@@ -94,6 +96,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
   const unsub = host.state.subscribe(draw);
   return () => {
     unsub();
+    unmountDetail();
     row.remove();
   };
 }

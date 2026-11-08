@@ -104,6 +104,23 @@
   border-radius: var(--r-md);
 }
 
+/* The label of a run made with a finer Desktop detail ("Finer grid, results differ, not validated"): a second chip of the same kind under the engine label,
+   which is one line (24 px) or, after "Continue on this device", a sentence of up to two lines (48 px); it wraps rather than run under the round buttons. */
+.mock-banner.detail-banner {
+  max-width: calc(100% - 2 * var(--edge) - var(--safe-left) - var(--safe-right) - 72px);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.mock-banner ~ .detail-banner {
+  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2) + 28px);
+}
+
+.engine-banner-note ~ .detail-banner {
+  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2) + 52px);
+}
+
 /* ───────────────────────── map controls ───────────────────────── */
 /* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
 .map-fabs {

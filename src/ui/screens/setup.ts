@@ -21,6 +21,7 @@ import type { LatLon } from '../../core/geo';
 import { describeFix, describePlace, getLocation, LocationError, readClipboardText } from '../location';
 import { formatCoordinateText, parseLocationText, rememberableText, type LocationNeedsNetwork, type LocationSource } from '../mapsLink';
 import { resolveMapsShortLink } from '../mapsShortLink';
+import { chosenDetail, chosenDetailRefusal, detailChoice } from '../desktopDetailChoice';
 import { desktopSlot, watchDesktop } from '../desktopSlot';
 import { demoImageryUrl } from '../imagery';
 import { datasetIcon } from '../labels';
@@ -520,7 +521,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   });
   const detailChips = chipChoice({
     label: 'Detail',
-    options: detailChoices(store.get().extentKm, tier()),
+    options: detailChoices(store.get().extentKm, tier(), chosenDetail()),
     value: store.get().detail,
     testId: 'detail',
     onChange: (v) => {
@@ -532,9 +533,9 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   function renderArea(): void {
     const s = store.get();
     extentChips.set(String(s.extentKm) as '3' | '6' | '9');
-    detailChips.setOptions(detailChoices(s.extentKm, tier()));
+    detailChips.setOptions(detailChoices(s.extentKm, tier(), chosenDetail()));
     detailChips.set(s.detail);
-    const c = detailCell(s.extentKm, s.detail, tier());
+    const c = detailCell(s.extentKm, s.detail, tier(), chosenDetail());
     const cells = c.cells.toLocaleString('en-AU');
     const why = c.coarsened ? ` 20 m needs an area of 6 km or less.` : '';
     const wind = windHint(c);
@@ -1111,6 +1112,12 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
     renderArea();
     schedulePlan();
   }, ['performance']);
+  // The Desktop detail (0.9.0) sets the fire cell: the chips and the hint above say what the build will make, and a level this page cannot keep the pictures of says so at once.
+  const unsubDetail = detailChoice.subscribe(() => {
+    renderArea();
+    schedulePlan();
+    renderFooter(chosenDetailRefusal(store.get().extentKm) !== null);
+  });
 
   function renderAll(): void {
     const s = store.get();
@@ -1139,6 +1146,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       packAbort?.abort();
       thumbs.destroy();
       unsubPerf();
+      unsubDetail();
       stopWatchingDesktop();
       unmountEngine?.();
       el.remove();
