@@ -517,6 +517,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       update({ extentKm: Number(v) as ExtentKm });
       renderArea();
       schedulePlan();
+      if (chosenDetail()) renderFooter(chosenDetailRefusal(store.get().extentKm) !== null); // a finer level may not fit this area: say so at once
     },
   });
   const detailChips = chipChoice({
