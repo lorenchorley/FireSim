@@ -32,7 +32,7 @@ if (!fs.existsSync(dist)) {
 /** Budgets (kB): a regression guard with ~10 % headroom over the measured size, not a target. Raise one only with a reason. */
 const BUDGET = {
   entryGzipKb: 195, // index-*.js gzip: the main bundle (all screens, the Data sets screen and the model card text)
-  jsGzipKb: 1000, // every chunk, gzip (the render chunk with three.js and the sim chunk are the big ones)
+  jsGzipKb: 1060, // every chunk, gzip (the render chunk with three.js and the sim chunk are the big ones). 1000 until 0.8.0 (992.9 kB); the owner raised it to 1060 on 2026-11-08 (D37) for the desktop detail setting, the app's desktop link and the validity work: ask again before raising it further
   cssKb: 135, // raw (minified)
   cssGzipKb: 25,
   demoMb: 36, // public/demo (nine sites, 33.1 MiB since Mount Tomah was added on 2026-10-07; it was 31 for the first eight, 29.0 MiB)
