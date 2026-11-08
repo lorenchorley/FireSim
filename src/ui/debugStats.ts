@@ -324,10 +324,11 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
     const s = e.perf?.speed.s10 ?? e.run.simSecondsPerWallSecond;
     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
     const where = i.desktop && !i.desktop.restarted ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
-    const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
-    line = `${finer}${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
+    line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
   }
-  return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
+  // A run made with a finer Desktop detail (0.9.0) starts with the label, whichever engine is reporting, so a pasted headline cannot be taken for a standard run.
+  const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
+  return G('summary', 'Summary', [R('headline', 'In one line', `${finer}${line}`, undefined, true)], 'Tier, speed, memory and this phone in one line');
 }
 
 function runGroup(i: DebugStatsInput): StatGroup {

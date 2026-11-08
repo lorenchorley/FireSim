@@ -944,6 +944,9 @@ describe('a run made with a finer Desktop detail (0.9.0, D35): the label, and no
   it('the one-line summary starts with the label, so a pasted headline cannot be taken for a standard run', () => {
     expect(rowOf(buildDebugStats(finest()), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. On the desktop \(Studio PC, 8 cores\): /);
     expect(rowOf(buildDebugStats({ ...finest(), desktop: undefined }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. Standard/);
+    // whichever engine is reporting: the demo engine (nothing simulated) and a run that has not reported yet start with it too
+    expect(rowOf(buildDebugStats({ ...finest(), engineSource: 'mock' }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. The demo engine is running/);
+    expect(rowOf(buildDebugStats({ ...finest(), engine: null }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. The engine has not reported yet/);
   });
 
   it('the copied text has the label in its first line and in the Run group', () => {

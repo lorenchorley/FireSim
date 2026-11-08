@@ -13,9 +13,9 @@
  *   - the label survives "Continue on this device" when this device can run the grid; when it cannot, the chip says so and offers the standard detail
  *     (nothing is lowered, nothing is started): the tap goes to Setup on This device with the detail row gone
  *   - a level this page cannot keep the pictures of is refused on Setup with a sentence before anything is built (no link opened)
- *   - the row's tap targets and text size at two phone sizes
- * With the real host (`node desktop/run.mjs --port 4501` serving the e2e build): Katoomba 3 km at the Finest level computes on the host, the label shows,
- * the grid is 10 m, and the wall time and the picture sizes are printed (`[desktop-detail] ...`).
+ *   - the row's tap targets and text size at four phone sizes, in light, dark and high contrast
+ * With the real host (`node desktop/run.mjs --port 4501` serving the e2e build): Katoomba at 3 km and at 6 km at the Finest level computes on the host, the
+ * label shows, the grid is 10 m, and the wall time and the picture sizes are printed (`[desktop-detail] ...`).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -353,7 +353,7 @@ test.describe('the stand-in host', () => {
     expect(await go.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
     expect(await missedProbes(go), 'a 44 x 44 px hit area').toBe(0);
     // the whole reason is in the chip's tooltip (the chip has two lines)
-    expect(await chip.locator('.error-chip-text').getAttribute('title')).toMatch(/needs about [\d.]+\sGB of memory, it reports about 0\.25 GB.*It would not be switched to a coarser grid for you\./);
+    expect(await chip.locator('.error-chip-text').getAttribute('title')).toMatch(/needs about [\d.]+\s(?:MB|GB) of memory, it reports about 0\.25 GB.*It would not be switched to a coarser grid for you\./);
     // nothing was started: the spare engine is still idle and the run is still the desktop's last picture
     await page.waitForTimeout(1500);
     expect(await page.evaluate(() => (window as unknown as { __firesim: { session: { controller: { standby: unknown } } } }).__firesim.session.controller.standby !== null)).toBe(true);
@@ -384,7 +384,7 @@ test.describe('the stand-in host', () => {
     const errors = page.locator('.footer-errors');
     await expect(errors).toContainText(/This device cannot keep the pictures of 10\sm cells over 9\skm: each is about 3\d\.\d\sMB and its history has room for about 1 \(50\.3\sMB\)\./);
     await expect(errors).toContainText(/Choose a smaller area or the Finer level\.$/);
-    await page.getByTestId('build').click();
+    await page.getByTestId('build').click({ force: true }); // the button is marked disabled while the form has an error; a tap on it shows the errors
     await expect(page.getByTestId('setup')).toBeVisible();
     await expect(errors).toContainText('This device cannot keep the pictures');
     await page.waitForTimeout(500);
@@ -457,24 +457,26 @@ test.describe('the real host', () => {
   // A machine may send web requests through an HTTP proxy (the CI sandbox does): the browser goes straight to this machine.
   test.use({ actionTimeout: 45_000, proxy: { server: 'http://127.0.0.1:9', bypass: '127.0.0.1,localhost' } });
 
-  test('Katoomba 3 km at the Finest level computes on the host: 10 m cells, the label, and the wall time and picture sizes of 30 minutes of fire', async ({ page }) => {
-    test.setTimeout(600_000);
+  for (const km of [3, 6] as const)
+    test(`Katoomba ${km} km at the Finest level computes on the host: 10 m cells, the label, and the wall time and picture sizes of 30 minutes of fire`, async ({ page }) => {
+    const n = km * 100; // cells a side at 10 m
+    test.setTimeout(900_000);
     const host = await startHost();
     try {
       const t0 = Date.now();
       await page.goto(`${host.origin}/?debug=1#code=${CODE}`);
       await acceptNotice(page);
       await expect(engineChip(page, 'desktop').locator('input')).toBeChecked();
-      // the real builder, offline, the Katoomba demo at 3 km, the fast tier (what 15e measured), preset weather
+      // the real builder, offline, the Katoomba demo at the area, the fast tier (what 15e measured), preset weather
       await page.getByTestId('site-katoomba').click();
-      await sizeChip(page, 3).check({ force: true });
+      await sizeChip(page, km).check({ force: true });
       await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
       await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
       await page.getByTestId('preset-hot-nw-sw-change').click();
       const online = page.getByTestId('online').getByRole('switch');
       if (await online.isChecked()) await page.getByTestId('online').click();
       await levelChip(page, 'finest').click();
-      await expect(areaHint(page)).toContainText('10 m cells, 300 × 300 = 90,000 cells, simple 2-D surface wind');
+      await expect(areaHint(page)).toContainText(`10 m cells, ${n} × ${n} = ${(n * n).toLocaleString('en-AU')} cells, simple 2-D surface wind`);
       await page.getByTestId('build').click();
       await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
       const built0 = Date.now();
@@ -482,17 +484,17 @@ test.describe('the real host', () => {
       // the scenario the host was sent: the level, 10 m cells, 8,000 embers; the host's engine says 10 m too
       const b = await built(page);
       expect(b.options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000, tier: 'fast' });
-      expect(b).toMatchObject({ cellM: 10, nx: 300, extent: 3000 });
+      expect(b).toMatchObject({ cellM: 10, nx: n, extent: km * 1000 });
       await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
       await expect(page.getByTestId('detail-banner')).toContainText(LABEL);
 
       // a fire on the escarpment, then 30 minutes of fire as fast as the host goes
-      await page.evaluate(() => {
+      await page.evaluate((km) => {
         const fs = (window as unknown as { __firesim: { session: { ignite(i: unknown): void; setSpeed(s: number): void; play(): void } } }).__firesim;
-        fs.session.ignite({ id: 'fire-a', kind: 'point', points: [[-800, 300]], radius: 60, origin: 'observed' });
+        fs.session.ignite({ id: 'fire-a', kind: 'point', points: [km === 3 ? [-800, 300] : [-2170, 900]], radius: 60, origin: 'observed' });
         fs.session.setSpeed(Infinity);
         fs.session.play();
-      });
+      }, km);
       const playedAt = Date.now();
       await expect
         .poll(async () => (await session(page)).headTime, { message: 'the host computes 1800 s of fire', timeout: 480_000, intervals: [1000] })
@@ -506,10 +508,10 @@ test.describe('the real host', () => {
         const s = fs.session.snapshots;
         return { cellM: e.fire.cellM, nx: e.fire.nx, embers: e.embers.max, tier: e.tier, speed: e.perf?.speed.mean ?? null, newest: s.newestBytes, keyframeBytes: s.keyframeBytes, keyframes: s.keyframeCount, total: s.totalBytes, budget: s.maxBytes };
       });
-      expect(facts).toMatchObject({ cellM: 10, nx: 300, embers: 8000 });
-      expect(facts.newest).toBeGreaterThan(1e6); // a 10 m picture over 3 km is megabytes, not the few hundred kB of 30 m
+      expect(facts).toMatchObject({ cellM: 10, nx: n, embers: 8000 });
+      expect(facts.newest).toBeGreaterThan(km === 3 ? 1e6 : 10e6); // a 10 m picture is megabytes (4 over 3 km, 16 over 6 km), not the few hundred kB of 30 m
       console.log(
-        `[desktop-detail] real host, Katoomba 3 km, Finest (10 m), tier ${facts.tier}: build ${((built0 - t0) / 1000).toFixed(1)} s from page load; 1800 s of fire in ${wallS.toFixed(1)} s wall (engine mean ${facts.speed?.toFixed(0) ?? 'n/a'}x real time); newest picture ${(facts.newest / 1e6).toFixed(2)} MB, ${facts.keyframes} keyframes ${(facts.keyframeBytes / 1e6).toFixed(1)} MB, history ${(facts.total / 1e6).toFixed(1)} of ${(facts.budget / 1e6).toFixed(0)} MB`,
+        `[desktop-detail] real host, Katoomba ${km} km, Finest (10 m), tier ${facts.tier}: build ${((built0 - t0) / 1000).toFixed(1)} s from page load; 1800 s of fire in ${wallS.toFixed(1)} s wall (engine mean ${facts.speed?.toFixed(0) ?? 'n/a'}x real time); newest picture ${(facts.newest / 1e6).toFixed(2)} MB, ${facts.keyframes} keyframes ${(facts.keyframeBytes / 1e6).toFixed(1)} MB, history ${(facts.total / 1e6).toFixed(1)} of ${(facts.budget / 1e6).toFixed(0)} MB`,
       );
 
       // the statistics say so, in the desktop's own words
@@ -521,7 +523,7 @@ test.describe('the real host', () => {
       await expect(page.getByTestId('debug-group-run-body')).toContainText('Desktop detail');
       await expect(page.getByTestId('debug-group-run-body')).toContainText(`Desktop ${NAME}`);
       await page.getByTestId('debug-group-grids').click();
-      await expect(page.getByTestId('debug-group-grids-body')).toContainText(/300 x 300 cells, 10\sm apart/);
+      await expect(page.getByTestId('debug-group-grids-body')).toContainText(new RegExp(`${n} x ${n} cells, 10\\sm apart`));
       await page.getByTestId('debug-stats-close').click();
     } finally {
       await host.stop();
