@@ -269,6 +269,34 @@ describe('RemoteSimController against the real host', () => {
 });
 
 describe('flow control with the real engine', () => {
+  it('a hold takes effect within a few frames, however much of the run is still to come: the engine does not go on producing the whole run while the host waits for the link', async () => {
+    // Measured on the throttled link of 0.9.0 (desktop/linkMeasure.ts): while the worker continued its run through a MessageChannel of its own, Node took the
+    // messages of that port in one go (up to 1000 in a turn, those the handler posts to itself included), `parentPort` was not read in between, and a hold
+    // reached the worker only when the run was over: 64 MiB of snapshots were produced after the host had said hold at 11 MiB. The worker now yields with an
+    // immediate, between which the event loop turns.
+    const frames: Uint8Array[] = [];
+    const failures: string[] = [];
+    const engine = workerEngines(workerFile, { simulation: { minSnapshotWallMs: 0 } })({ frame: (b) => void frames.push(b), note: () => undefined, failed: (m) => void failures.push(m), exited: () => undefined });
+    const snapshots = (): number => frames.filter((f) => f.byteLength > 1_000_000).length; // a snapshot of the 6 km demo site is 2.2 MB, everything else is small
+    try {
+      engine.receive(encodeMessage({ type: 'init', scenario: withoutContext(await katoomba()) }));
+      await waitFor(() => frames.length >= 1, 60_000, 'ready');
+      engine.receive(encodeMessage({ type: 'run', until: 3600 })); // 61 snapshots, 134 MB: some seconds of compute when nothing holds it back
+      await waitFor(() => snapshots() >= 4, 60_000, 'the first snapshots');
+      engine.hold(true);
+      const atHold = snapshots();
+      await new Promise((r) => setTimeout(r, 1500));
+      const produced = snapshots() - atHold;
+      expect(produced, `${produced} snapshots were produced in the 1.5 s after the hold (of ${61 - atHold} still to come)`).toBeLessThanOrEqual(4);
+      expect(snapshots()).toBeLessThan(61);
+      engine.hold(false);
+      await waitFor(() => snapshots() >= 61, 120_000, 'the end of the run once it was let go');
+      expect(failures).toEqual([]);
+    } finally {
+      await engine.terminate();
+    }
+  }, 240_000);
+
   it('a client that stops reading holds the run back, and the run finishes with every snapshot once it reads again', async () => {
     const logs: string[] = [];
     const h = await realHost({ maxSessions: 1, highWaterBytes: 2 * 1024 * 1024, lowWaterBytes: 512 * 1024, logs });

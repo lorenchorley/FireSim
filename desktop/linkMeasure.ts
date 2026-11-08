@@ -141,6 +141,10 @@ if (welcome.type !== 'welcome') {
 const t0 = performance.now();
 const decodeMs: number[] = [];
 const pongMs: number[] = [];
+/** For each ping: when it was sent and how many bytes had reached the client by then, to say how much stood ahead of its answer. */
+const pingsSent = new Map<number, { at: number; bytes: number }>();
+const aheadMiB: number[] = [];
+const timeline: { sentAtS: number; delayS: number; aheadMiB: number }[] = [];
 const explainMs: number[] = [];
 const pending = new Map<number, number>();
 let reqId = 1;
@@ -171,9 +175,17 @@ ws.on('message', (d: Buffer, isBinary: boolean) => {
       }
       if (!msg.running && msg.time >= runTo - 1e-6 && seen.lastSnapshotTime >= runTo - 1e-6) seen.tRunEnd ??= now;
       break;
-    case 'pong':
+    case 'pong': {
       pongMs.push(now - msg.t);
+      const ping = pingsSent.get(msg.t);
+      if (ping) {
+        pingsSent.delete(msg.t);
+        const ahead = (seen.bytes - ping.bytes) / MIB;
+        aheadMiB.push(ahead);
+        if (pongMs.length % 20 === 1 && timeline.length < 12) timeline.push({ sentAtS: Math.round(((ping.at - t0) / 1000) * 10) / 10, delayS: Math.round(((now - ping.at) / 1000) * 10) / 10, aheadMiB: Math.round(ahead * 10) / 10 });
+      }
       break;
+    }
     case 'explain': {
       const sent = pending.get(msg.reqId);
       if (sent !== undefined) explainMs.push(now - sent);
@@ -193,7 +205,12 @@ ws.send(initFrame);
 for (let i = 0; i < 2400 && seen.tFirstPicture === null && seen.closeCode === null; i++) await sleep(25);
 runStartedAt = performance.now();
 ws.send(encodeMessage({ type: 'run', until: runTo }));
-const pinger = setInterval(() => ws.readyState === ws.OPEN && ws.send(encodeMessage({ type: 'ping', t: performance.now() })), 250);
+const pinger = setInterval(() => {
+  if (ws.readyState !== ws.OPEN) return;
+  const t = performance.now();
+  pingsSent.set(t, { at: t, bytes: seen.bytes });
+  ws.send(encodeMessage({ type: 'ping', t }));
+}, 250);
 const explainer = setInterval(() => {
   if (ws.readyState !== ws.OPEN || seen.tRunEnd !== null) return;
   const id = reqId++;
@@ -237,7 +254,7 @@ console.log(
     throughputMiBps: round(seen.bytes / MIB / (runMs / 1000)),
     decodeMsP50: round(percentile(decodeMs, 50), 2),
     decodeMsMax: round(Math.max(0, ...decodeMs), 1),
-    pong: { n: pongMs.length, p50: round(percentile(pongMs, 50)), p95: round(percentile(pongMs, 95)), max: round(Math.max(0, ...pongMs)) },
+    pong: { n: pongMs.length, p50: round(percentile(pongMs, 50)), p95: round(percentile(pongMs, 95)), max: round(Math.max(0, ...pongMs)), aheadMiBP50: round(percentile(aheadMiB, 50)), aheadMiBMax: round(Math.max(0, ...aheadMiB)), timeline },
     explain: { n: explainMs.length, p50: round(percentile(explainMs, 50)), max: round(Math.max(0, ...explainMs)) },
     pauseToStatusMs: seen.pauseMs === null ? null : round(seen.pauseMs, 0),
     hostRssMiB: { idle: Math.round(idle.rss), peak: Math.round(end.peak), end: Math.round(end.rss), sampledMax: Math.round(Math.max(0, ...peakRss)) },

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { buildDesktop } from './build.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const out = join(here, '.build-test-link');
+const out = join(here, process.env.FIRESIM_LINK_BUILD ?? '.build-test-link');
 await buildDesktop({ root: join(here, '..'), outDir: out, logLevel: 'warn', extra: { linkMeasure: 'desktop/linkMeasure.ts', server: 'desktop/server.ts', engine: 'desktop/engine.ts' } });
 const run = spawnSync(process.execPath, [join(out, 'linkMeasure.mjs'), ...process.argv.slice(2)], { stdio: 'inherit' });
 process.exit(run.status ?? 1);
