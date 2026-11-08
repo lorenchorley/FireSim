@@ -16,6 +16,10 @@
  * stays). The same page under this computer's own name (the control) reads the host's three-field answer and opens the engine link, so the
  * refusals are the host's and not a broken set-up.
  *
+ * Chromium is started with two flags that this set-up needs (each was tried without the other: 4 of the 9 tests failed in both cases): `--disable-features=LocalNetworkAccessChecks`,
+ * because a document that the test fulfils (as the attacker's server would) is classed as public, and Chromium 153 then refuses its `fetch` to a loopback address
+ * before the request leaves the browser (the page of a real server on a loopback name is not refused); and `--no-proxy-server`, because this machine has an environment
+ * proxy, and the engine link (a WebSocket) to a name that is not loopback went through it and never reached the host.
  * Needs no build of the app: it builds the host (desktop/build.mjs) into a folder of its own and serves a one-line page.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -57,7 +61,7 @@ test.beforeAll(async () => {
   );
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROMIUM ?? '/opt/pw-browsers/chromium',
-    args: [`--host-resolver-rules=MAP ${HOSTILE} 127.0.0.1, MAP ${OWN} 127.0.0.1, MAP ${APP_HOST} 127.0.0.1, MAP ${OTHER_APP_HOST} 127.0.0.1`],
+    args: ['--no-proxy-server', '--disable-features=LocalNetworkAccessChecks', `--host-resolver-rules=MAP ${HOSTILE} 127.0.0.1, MAP ${OWN} 127.0.0.1, MAP ${APP_HOST} 127.0.0.1, MAP ${OTHER_APP_HOST} 127.0.0.1`],
   });
 });
 
