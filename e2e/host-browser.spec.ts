@@ -33,6 +33,10 @@ const HOSTILE = 'hostile.example';
 /** This computer's own name, one the host allows (the control), and also mapped to loopback for the browser. */
 const OWN = hostname().toLowerCase();
 const ATTACK_PATH = '/attack.html';
+/** The names of two pages of other origins (an app's page and another page), for the listed-origin check. They are served by the test, as the app serves its own. */
+const APP_HOST = 'app.example';
+const OTHER_APP_HOST = 'other.example';
+const APP_PAGE_PORT = 5555;
 
 let work: string;
 let built: string;
@@ -53,7 +57,7 @@ test.beforeAll(async () => {
   );
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROMIUM ?? '/opt/pw-browsers/chromium',
-    args: [`--host-resolver-rules=MAP ${HOSTILE} 127.0.0.1, MAP ${OWN} 127.0.0.1`],
+    args: [`--host-resolver-rules=MAP ${HOSTILE} 127.0.0.1, MAP ${OWN} 127.0.0.1, MAP ${APP_HOST} 127.0.0.1, MAP ${OTHER_APP_HOST} 127.0.0.1`],
   });
 });
 
@@ -105,6 +109,41 @@ async function startHost(args: string[], port = 0, env: Record<string, string> =
   };
 }
 
+/** What a script of a page does at the host at `target` (`127.0.0.1:PORT`), from its own origin or another: read /__firesim/host, then try the engine link with the code. */
+const script = async ({ target, code }: { target: string; code: string }): Promise<Reading> => {
+  const reading: Reading = { fetchStatus: 0, fetchBody: '', ws: 'not open', wsCloseCode: null };
+  try {
+    const r = await fetch(`http://${target}/__firesim/host`, { cache: 'no-store' });
+    reading.fetchStatus = r.status;
+    reading.fetchBody = await r.text();
+  } catch {
+    reading.fetchStatus = -1; // the browser did not let the page read the answer (CORS) or there was none
+  }
+  await new Promise<void>((resolve) => {
+    const ws = new WebSocket(`ws://${target}/__firesim/engine`);
+    const timer = setTimeout(() => {
+      ws.close();
+      resolve();
+    }, 8000);
+    ws.onopen = () => {
+      reading.ws = 'open';
+      ws.send(JSON.stringify({ type: 'hello', protocol: 2, code }));
+    };
+    ws.onmessage = (ev) => {
+      if (typeof ev.data === 'string' && (JSON.parse(ev.data) as { type: string }).type === 'welcome') reading.ws = 'welcome';
+      clearTimeout(timer);
+      ws.close();
+      resolve();
+    };
+    ws.onclose = (ev) => {
+      reading.wsCloseCode = ev.code;
+      clearTimeout(timer);
+      resolve();
+    };
+  });
+  return reading;
+};
+
 type Reading = {
   fetchStatus: number;
   fetchBody: string;
@@ -124,37 +163,21 @@ async function attack(name: string, port: number): Promise<Reading> {
     const origin = `http://${name}:${port}`;
     await page.route(`${origin}/**`, (route) => (new URL(route.request().url()).pathname === ATTACK_PATH ? route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>attacker</title>' }) : route.continue()));
     await page.goto(`${origin}${ATTACK_PATH}`);
-    return await page.evaluate(
-      async ({ code }): Promise<Reading> => {
-        const r = await fetch('/__firesim/host', { cache: 'no-store' });
-        const fetchBody = await r.text();
-        const reading: Reading = { fetchStatus: r.status, fetchBody, ws: 'not open', wsCloseCode: null };
-        await new Promise<void>((resolve) => {
-          const ws = new WebSocket(`ws://${location.host}/__firesim/engine`);
-          const timer = setTimeout(() => {
-            ws.close();
-            resolve();
-          }, 8000);
-          ws.onopen = () => {
-            reading.ws = 'open';
-            ws.send(JSON.stringify({ type: 'hello', protocol: 2, code }));
-          };
-          ws.onmessage = (ev) => {
-            if (typeof ev.data === 'string' && (JSON.parse(ev.data) as { type: string }).type === 'welcome') reading.ws = 'welcome';
-            clearTimeout(timer);
-            ws.close();
-            resolve();
-          };
-          ws.onclose = (ev) => {
-            reading.wsCloseCode = ev.code;
-            clearTimeout(timer);
-            resolve();
-          };
-        });
-        return reading;
-      },
-      { code: CODE },
-    );
+    return await page.evaluate(script, { target: `${name}:${port}`, code: CODE });
+  } finally {
+    await context.close();
+  }
+}
+
+/** A page of another origin (served by the test, as an app serves its own) that does the same at the host on `hostPort` of this computer. */
+async function fromOtherOrigin(pageHost: string, hostPort: number, code = CODE): Promise<Reading> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    const origin = `http://${pageHost}:${APP_PAGE_PORT}`;
+    await page.route(`${origin}/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>the app</title>' }));
+    await page.goto(`${origin}/index.html`);
+    return await page.evaluate(script, { target: `127.0.0.1:${hostPort}`, code });
   } finally {
     await context.close();
   }
@@ -216,6 +239,46 @@ test.describe('a page on the attacker\'s name, pointed at this computer', () => 
       const r = await attack(HOSTILE, host.port);
       expect(r.fetchStatus).toBe(200);
       expect(r.ws).toBe('welcome');
+    } finally {
+      await host.stop();
+    }
+  });
+});
+
+test.describe('a page of another origin (an app\'s), with --allow-origin', () => {
+  test('a listed origin reads the three fields of /__firesim/host across origins and opens the engine link with the code; another origin does neither', async () => {
+    const host = await startHost(['--allow-origin', `http://${APP_HOST}:${APP_PAGE_PORT}`]);
+    try {
+      const listed = await fromOtherOrigin(APP_HOST, host.port);
+      expect(listed.fetchStatus).toBe(200); // the browser let the page read it: Access-Control-Allow-Origin names this origin
+      expect(JSON.parse(listed.fetchBody)).toEqual({ app: 'firesim-desktop-host', protocol: 2, requiresCode: true });
+      expect(listed.ws).toBe('welcome');
+      const other = await fromOtherOrigin(OTHER_APP_HOST, host.port);
+      expect(other.fetchStatus).toBe(-1); // no Access-Control-Allow-Origin for it: the browser keeps the answer from the page
+      expect(other.ws).toBe('not open'); // refused at the handshake (403)
+      expect(host.log()).toContain(`Apps may connect from: http://${APP_HOST}:${APP_PAGE_PORT}`);
+    } finally {
+      await host.stop();
+    }
+  });
+
+  test('without the flag no other origin gets either', async () => {
+    const host = await startHost([]);
+    try {
+      const r = await fromOtherOrigin(APP_HOST, host.port);
+      expect(r.fetchStatus).toBe(-1);
+      expect(r.ws).toBe('not open');
+    } finally {
+      await host.stop();
+    }
+  });
+
+  test('a listed origin is still held to the code: a wrong one is refused with 4401 in the same browser', async () => {
+    const host = await startHost(['--allow-origin', `http://${APP_HOST}:${APP_PAGE_PORT}`]);
+    try {
+      const r = await fromOtherOrigin(APP_HOST, host.port, 'WRONG234');
+      expect(r.ws).toBe('open'); // the handshake is taken (the origin is listed) ...
+      expect(r.wsCloseCode).toBe(4401); // ... and the hello is not
     } finally {
       await host.stop();
     }

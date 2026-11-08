@@ -282,6 +282,26 @@ A `--max-old-space-size` in `NODE_OPTIONS` or on the command line is a V8 flag o
    `refused a scenario: about 2,526 MiB expected, 1,638 MiB allowed for a session (--max-session-mib)`, and **the link stays open**: the session takes
    another, smaller `init` (until one is taken, every other message is dropped as one that came before `init`).
 
+### What the page uses (`src/sim/remote`)
+
+```ts
+// detect.ts (small, imports nothing; one GET of <base>/__firesim/host, 800 ms)
+interface RemoteHostProbe { app: 'firesim-desktop-host'; protocol: number; requiresCode: boolean }   // what the host says before the code
+interface RemoteHostInfo { app: 'firesim-desktop-host'; protocol: 2; name: string; cores: number; node: string; sessions: number; maxSessions: number }  // the welcome
+detectHost(o?: { base?: string; fetchFn?: typeof fetch; timeoutMs?: number }): Promise<RemoteHostProbe | null>   // null on any failure; another protocol is still a probe
+
+// index.ts (lazy)
+connectRemote(o: { base: string; code: string; probe?: RemoteHostProbe; WebSocketCtor?: typeof WebSocket }): Promise<RemoteConnection>
+interface RemoteConnection { controller: SimController; info: RemoteHostInfo; rttMs(): number | null; onClosed(cb: (reason: string) => void): () => void; close(): void }
+class RemoteAuthError extends Error { reason: 'wrong-code' | 'rate-limited' }            // the code was refused
+class RemoteVersionError extends Error { pageProtocol: number; hostProtocol: number }    // another version of the link: "update the app or the host"
+const TOO_BIG_MESSAGE: string                                                            // the engine error of a scenario that does not fit
+```
+
+`base` is `http://host:port` (an IPv6 address in brackets, `https:` for `wss:`); `connectRemote` makes no request before the socket (the welcome says what the
+host is). A `probe` of another protocol is refused at once with a `RemoteVersionError`; a welcome or a 4426 of another protocol gives the same.
+`detectHost` does not judge the version, so that the page can tell "update" from "no desktop answered".
+
 Logs: one line per connect and close with the address and the session id, one per refused connection with the reason (and one
 per forged `Host` name), and one the first time a session's link is behind. Never the code, a wrong guess or a scenario.
 
