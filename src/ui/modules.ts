@@ -105,7 +105,7 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
     sim: (sim ? 'real' : 'mock') as ModuleSource,
     scene: (render ? 'real' : 'mock') as ModuleSource,
   };
-  // On a page a desktop host serves, the engine starts from the script kept in memory when the link opened, so it needs no host (desktopKeep.ts).
+  // On a page a desktop host serves, the engine starts from the script kept in memory once Desktop was chosen, so it needs no host (desktopKeep.ts).
   const local = (): SimController => (sim ? new sim.SimClient(desktopSlot.get().host?.localWorker?.()) : new mocks.MockSimController());
   const services: Services = {
     sources,

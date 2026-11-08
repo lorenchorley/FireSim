@@ -58,7 +58,7 @@ export function scoreSpeedTest(raw: SpeedRaw, at: number, ref = SPEED_TEST_REFER
 const aborted = (): Error => Object.assign(new Error('The speed test was stopped.'), { name: 'AbortError' });
 
 /**
- * A copy of the worker's script held in memory (a `blob:` address), set by a page that a desktop host serves (ui/desktop.ts) when its link opens,
+ * A copy of the worker's script held in memory (a `blob:` address), set by a page that a desktop host serves (ui/desktop.ts) once Desktop is the engine chosen,
  * so the test can still be run when that host has gone. Without one the worker starts from the script's own address, as it always did.
  */
 let keptWorkerUrl: string | null = null;

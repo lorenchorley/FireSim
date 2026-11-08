@@ -34,7 +34,7 @@ export interface DesktopApi extends DesktopHost {
   /** Labels the run on the map, puts the link's sentence in the error chip and adds "Continue on this device" to it. Returns the stop function. */
   decorate(o: DecorateOptions): () => void;
   /**
-   * A new Web Worker of the page's own engine, started from the script kept in memory when the link opened (desktopKeep.ts), so that an engine
+   * A new Web Worker of the page's own engine, started from the script kept in memory once Desktop was chosen (desktopKeep.ts), so that an engine
    * made after the host is gone does not need it. Absent on a page no host serves (the app's own files are always there), and undefined
    * until the script has been kept: the engine then starts from its own address, as it always did.
    */

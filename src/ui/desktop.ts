@@ -8,7 +8,7 @@
  * 0.9.0 (D36): in the Android app, and in a browser only with the test seam `?desktopaddr=1`, no host serves the page, so nothing is asked at
  * start-up; the Engine row is drawn with an address box and the person types where the desktop is (the address is remembered, never the code).
  * On a page a host DOES serve, this file also keeps in memory what a run needs after that host has died (desktopKeep.ts): the engine's and the
- * speed test's worker scripts, once the link opens, and the chosen demo site's files, while Desktop is chosen.
+ * speed test's worker scripts, and the chosen demo site's files, as soon as Desktop is chosen.
  *
  * The host's modules are lane J1's (src/sim/remote/*), reached by name only: `detectHost` (src/sim/remote/detect.ts, a few lines,
  * loaded with this chunk) and, only when a run starts on the desktop engine, the lazy `connectRemote` (src/sim/remote/index.ts).
@@ -60,7 +60,7 @@ async function loadRemote(): Promise<RemoteModule> {
  * What a running screen, and the statistics, can still ask the host for: the lazy chunks they open on first use (the run's own label and chip, the
  * statistics, the model card, the Air slice panel, the two top-bar sheets, the storage report of the Data sets screen, and since 0.9.0 the data plan
  * of Setup, which a Setup shown again after the host died would ask for). A page the host serves cannot fetch any of them once the host is gone, so
- * they are loaded once, one at a time and when the page is idle, as soon as a link opens.
+ * they are loaded once, one at a time and when the page is idle, as soon as Desktop is chosen.
  */
 const WARM: (() => Promise<unknown>)[] = [
   () => import('./screens/desktopBar'),
@@ -76,7 +76,7 @@ const WARM: (() => Promise<unknown>)[] = [
 
 /**
  * The two worker scripts a page the host serves would otherwise fetch from the host when it makes an engine or runs the speed test. Read once, when
- * the first link opens (a script is 0.5 MB and 5 kB; the dev server's are not files). Not in the app: its own files are always there.
+ * Desktop is first chosen (a script is 0.5 MB and 5 kB; the dev server's are not files). Not in the app: its own files are always there.
  */
 const scripts = new ScriptKeeper(
   { fetchFn: (u, i) => fetch(u, i), makeUrl: (b) => URL.createObjectURL(b) },
