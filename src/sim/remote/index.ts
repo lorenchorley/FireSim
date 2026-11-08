@@ -1,7 +1,7 @@
 /**
  * The lazy entry of the desktop connection (0.8.0 workstream J): the page loads it with `await import('../sim/remote')`
- * only when the user starts a run on the desktop engine. `detect.ts` (the check that a host is there) is the only part in
- * the entry chunk.
+ * only when the user starts a run on the desktop engine. `detect.ts` (the check that a host is there) is the one small part that
+ * loads with the page's own desktop chunk.
  */
 import type { RemoteHostInfo, RemoteHostProbe } from './detect';
 import { PROTOCOL, RemoteAuthError, RemoteSimController, RemoteVersionError, type SocketLike } from './RemoteSimController';

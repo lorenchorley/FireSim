@@ -12,7 +12,13 @@ export const SESSION_MEMORY_SHARE = 0.6;
 export const MIN_DEFAULT_SESSION_MIB = 256;
 
 /**
- * The default of `--max-session-mib`: 60% of the computer's memory divided by the simulations that may run at once (`--max-sessions`),
+ * The memory the host may count on: the computer's (`os.totalmem()`), or the limit of the container or control group it runs in when that is
+ * lower (`process.constrainedMemory()`, 0 or a huge figure when there is none).
+ */
+export const availableMemory = (totalBytes: number, constrainedBytes?: number): number => (constrainedBytes !== undefined && constrainedBytes > 0 && constrainedBytes < totalBytes ? constrainedBytes : totalBytes);
+
+/**
+ * The default of `--max-session-mib`: 60% of the memory (`availableMemory`) divided by the simulations that may run at once (`--max-sessions`),
  * in MiB, at least 256. With every slot in use the sessions can then not be estimated to need more than 60% of the memory in all.
  */
 export const defaultMaxSessionMib = (totalBytes: number, maxSessions: number): number => Math.max(MIN_DEFAULT_SESSION_MIB, Math.floor((SESSION_MEMORY_SHARE * totalBytes) / MIB / Math.max(1, Math.floor(maxSessions))));

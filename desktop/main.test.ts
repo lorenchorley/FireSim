@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
 import { lanAddresses } from './lan';
-import { defaultMaxSessionMib } from './memoryBound';
+import { availableMemory, defaultMaxSessionMib } from './memoryBound';
 import { buildForTests, hello, openClient, waitFor, welcomeOf } from './testHelpers';
 
 let work: string;
@@ -212,12 +212,13 @@ describe('npm run desktop', () => {
   it('says so when a --max-old-space-size of Node itself replaces --worker-heap-mib, and not otherwise', async () => {
     const quiet = run(['--port', '0', '--worker-heap-mib', '512'], dist, { NODE_OPTIONS: '' });
     await started(quiet);
+    await new Promise((r) => setTimeout(r, 300)); // the note, if there were one, is printed right after the banner
     expect(quiet.out()).not.toContain('max-old-space-size');
     quiet.child.kill('SIGINT');
     await quiet.exited;
     const loud = run(['--port', '0', '--worker-heap-mib', '512'], dist, { NODE_OPTIONS: '--max-old-space-size=8192' });
     await started(loud);
-    expect(loud.out()).toContain('--max-old-space-size is set for Node itself');
+    await waitFor(() => loud.out().includes('--max-old-space-size is set for Node itself'), 5000, 'the note');
     expect(loud.out()).toContain('--worker-heap-mib');
     loud.child.kill('SIGINT');
     await loud.exited;
@@ -527,7 +528,7 @@ describe('--max-session-mib', () => {
     await given.exited;
     const plain = run(['--port', '0', '--max-sessions', '3']);
     await started(plain);
-    expect(plain.out()).toContain(`Up to 3 simulations at once, each of at most about ${defaultMaxSessionMib(totalmem(), 3).toLocaleString('en-US')} MiB of memory (--max-session-mib).`);
+    expect(plain.out()).toContain(`Up to 3 simulations at once, each of at most about ${defaultMaxSessionMib(availableMemory(totalmem(), process.constrainedMemory?.()), 3).toLocaleString('en-US')} MiB of memory (--max-session-mib).`);
     plain.child.kill('SIGINT');
     await plain.exited;
   }, 60_000);

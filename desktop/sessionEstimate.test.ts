@@ -8,16 +8,18 @@ import { Simulation } from '../src/sim/simulation';
 import { syntheticScenario } from '../src/sim/testing/scenarios';
 import { encodeMessage } from '../src/sim/remote/codec';
 import { withoutContext } from '../src/sim/client';
-import { defaultMaxSessionMib, MIB } from './memoryBound';
+import { availableMemory, defaultMaxSessionMib, MIB } from './memoryBound';
 import { checkSession, estimateSessionBytes, MODEL_MARGIN, sizeOfScenario } from './sessionEstimate';
 
 const size = (frameMiB: number, fireCells: number, extentM: number, maxEmbers = 4000) => ({ frameBytes: frameMiB * MIB, fireCells, extentM, maxEmbers });
 const mib = (bytes: number): number => bytes / MIB;
 
 /**
- * What real sessions held, measured by lane H on 2026-11-08 on this build machine: SimHost on a Katoomba demo scenario in a process of its own
- * (`node --expose-gc` of a build of desktop/measureSession.ts), `arrayBuffers + heapUsed` after a forced garbage collection at the end of a run of
- * 300 to 1800 s (the scenario counted once, no frame). Label, extent (m), message (MiB), fire cells, measured (MiB).
+ * What real sessions held, measured by lane H on 2026-11-08 on this build machine: SimHost on a scenario in a process of its own (`node desktop/measure.mjs
+ * EXTENT TIER RUN_TO_S [CELL_M]`, which runs `node --expose-gc` on desktop/measureSession.ts), `arrayBuffers + heapUsed` after a forced garbage collection
+ * at the end of a run of 300 to 1800 s (the scenario counted once, no frame). The first nine are the Katoomba demo site (30 m, and 20 m for the high tier
+ * up to 6 km); the last three are `syntheticScenario({ extent, cellSize: 10 })`, the fire cell of the finer detail of 0.9.0 (the tool's fourth argument),
+ * which the tree can run whatever lane K's builder does. Label, extent (m), message (MiB), fire cells, measured (MiB).
  */
 const MEASURED: [string, number, number, number, number][] = [
   ['3 km fast, 30 m', 3000, 1.7, 10_000, 22.5 + 19.3],
@@ -29,10 +31,13 @@ const MEASURED: [string, number, number, number, number][] = [
   ['3 km high, 20 m', 3000, 3.3, 22_500, 49.6 + 19.8],
   ['6 km high, 20 m', 6000, 12.8, 90_000, 192.2 + 18.9],
   ['9 km high (30 m: too big for 20 m)', 9000, 14.5, 90_000, 194.4 + 18.3],
+  ['6 km fast, 10 m (synthetic), 1800 s', 6000, 29.9, 360_000, 549.6 + 17.9],
+  ['6 km high, 10 m (synthetic), 900 s', 6000, 29.9, 360_000, 568.5 + 18.3],
+  ['9 km fast, 10 m (synthetic), 1800 s', 9000, 67.2, 810_000, 1220.6 + 21.4],
 ];
 
 describe('the estimate of a session', () => {
-  it('is above what real sessions held, at every extent and tier measured, and not more than four times above it', () => {
+  it('is above what real sessions held, at every extent, tier and fire cell measured (30 m, 20 m and 10 m), and not more than four times above it', () => {
     for (const [label, extent, frame, cells, held] of MEASURED) {
       const est = mib(estimateSessionBytes(size(frame, cells, extent)));
       expect(est, `${label}: ${est.toFixed(0)} MiB estimated, ${held.toFixed(0)} held`).toBeGreaterThan(held);
@@ -128,6 +133,13 @@ describe('the default of --max-session-mib', () => {
     expect(defaultMaxSessionMib(0, 3)).toBe(256);
     expect(defaultMaxSessionMib(16 * 1024 * MIB, 0)).toBe(9830);
     expect(defaultMaxSessionMib(16 * 1024 * MIB, 2.9)).toBe(4915);
+  });
+
+  it('counts on the limit of the container or control group when it is lower than the computer\'s memory, and on the computer\'s when there is none (0, a huge figure or nothing)', () => {
+    const total = 16 * 1024 * MIB;
+    expect(availableMemory(total, 4 * 1024 * MIB)).toBe(4 * 1024 * MIB);
+    for (const none of [undefined, 0, -1, total, total * 4, 2 ** 63]) expect(availableMemory(total, none), String(none)).toBe(total);
+    expect(defaultMaxSessionMib(availableMemory(total, 4 * 1024 * MIB), 2)).toBe(1228);
   });
 
   it('lets every session use its share at once without the sessions together passing 60% of the memory', () => {

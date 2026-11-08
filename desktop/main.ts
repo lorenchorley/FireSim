@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { parseArgs, UsageError, USAGE } from './cli';
 import { workerEngines } from './engine';
 import { bindAddress, isLoopback, pageUrls } from './lan';
-import { defaultMaxSessionMib, MIB } from './memoryBound';
+import { availableMemory, defaultMaxSessionMib, MIB } from './memoryBound';
 import { OpenTokens, openUrl } from './openToken';
 import { allowedHostNames, APP_ORIGINS, generateCode } from './security';
 import { startHost } from './server';
@@ -56,7 +56,7 @@ export async function main(argv: readonly string[], env: MainEnvironment): Promi
   const code = options.code ?? generateCode();
   const bind = bindAddress(options);
   const allowedOrigins = [...new Set([...(options.allowApp ? APP_ORIGINS : []), ...options.allowOrigins])];
-  const maxSessionMib = options.maxSessionMib ?? defaultMaxSessionMib(totalmem(), options.maxSessions);
+  const maxSessionMib = options.maxSessionMib ?? defaultMaxSessionMib(availableMemory(totalmem(), process.constrainedMemory?.()), options.maxSessions);
   // `--open` starts the browser with a one-use link, not the code: the code would be in the launcher's arguments, which other users of the computer can read.
   const openTokens = options.open ? new OpenTokens() : undefined;
   let host;
