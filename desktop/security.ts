@@ -32,13 +32,52 @@ export function codesMatch(given: unknown, expected: string): boolean {
   return same && g !== null;
 }
 
+/** The origins of the apps that wrap this page: the Android app's WebView (`androidScheme` https) and the iOS one. `--allow-app` lists these two. */
+export const APP_ORIGINS: readonly string[] = ['https://localhost', 'capacitor://localhost'];
+
+/**
+ * An origin as `--allow-origin` takes it and as a browser writes it in an `Origin` header: `scheme://host[:port]` with the scheme
+ * http, https or capacitor, a name, an IPv4 address or an IPv6 address in brackets, and an optional port; lower case, with the
+ * default port left out (a browser leaves it out too). No path, no query, no credentials, no `*` and no `null`: null for those.
+ */
+export function normaliseOrigin(s: unknown): string | null {
+  if (typeof s !== 'string' || s.length > 300) return null;
+  const m = /^(https?|capacitor):\/\/(\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)(?::(\d{1,5}))?$/i.exec(s.trim());
+  if (!m) return null;
+  const scheme = m[1]!.toLowerCase();
+  let host = m[2]!.toLowerCase();
+  if (host.startsWith('[')) {
+    if (!isIPv6(host.slice(1, -1))) return null;
+    // The way a browser writes it: compressed, as the URL parser does (the app scheme has no such parser here, and writes it as given).
+    if (scheme !== 'capacitor') {
+      try {
+        host = new URL(`http://${host}`).hostname;
+      } catch {
+        return null;
+      }
+    }
+  }
+  const port = m[3] === undefined ? null : Number(m[3]);
+  if (port !== null && (port < 1 || port > 65535)) return null;
+  const isDefault = port === null || (scheme === 'http' && port === 80) || (scheme === 'https' && port === 443);
+  return `${scheme}://${host}${isDefault ? '' : `:${port}`}`;
+}
+
+/** The listed origin that `origin` (an Origin header) is, in the form a browser expects back in `Access-Control-Allow-Origin`, or null. */
+export function listedOrigin(origin: string | undefined, allowed: readonly string[]): string | null {
+  const o = normaliseOrigin(origin);
+  return o !== null && allowed.includes(o) ? o : null;
+}
+
 /**
  * A browser sends the page's origin with a WebSocket handshake. A page served by this host has the origin of the address it
- * was fetched from, so its host and port equal the request's `Host` header; a page from anywhere else does not. No Origin at
- * all is a client that is not a browser page (a script, the tests): it still needs the code.
+ * was fetched from, so its host and port equal the request's `Host` header; a page from anywhere else does not, unless its origin
+ * is one the owner listed (`--allow-origin`, `--allow-app`: `allowed`, each from `normaliseOrigin`). No Origin at all is a client
+ * that is not a browser page (a script, the tests): it still needs the code.
  */
-export function originAllowed(origin: string | undefined, host: string | undefined): boolean {
+export function originAllowed(origin: string | undefined, host: string | undefined, allowed: readonly string[] = []): boolean {
   if (origin === undefined) return true;
+  if (listedOrigin(origin, allowed) !== null) return true;
   if (!host) return false;
   let u: URL;
   try {
