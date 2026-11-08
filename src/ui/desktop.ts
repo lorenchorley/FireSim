@@ -22,7 +22,8 @@ import simWorkerUrl from '../sim/worker.ts?worker&url';
 import type { Services } from './modules';
 import { loadSlicePanel } from './screens/sim/sliceToolLoad';
 import { loadAddress, saveAddress } from './desktopAddress';
-import { CodeRefused, startDesktopHost, VersionMismatch, versionNumbers } from './desktopHost';
+import { CodeRefused, HOST_PROTOCOL, startDesktopHost, VersionMismatch, versionNumbers } from './desktopHost';
+import { keepSitePhoto } from './imagery';
 import { keptLoader, keepSiteFiles, ScriptKeeper } from './desktopKeep';
 import { desktopSlot, type DesktopApi } from './desktopSlot';
 import type { ConnectFn, DetectFn, RemoteModule, RemoteSeam } from './desktopTypes';
@@ -127,18 +128,30 @@ const networkAsset: AssetLoader = async (path, signal) => {
   }
 };
 
-/** Keep (or let go of) one bundled demo site's files, as the asset loader's first source. Only the newest call counts. */
+/** Keep (or let go of) one bundled demo site's files, as the asset loader's first source, and its photo (a Blob address) for the 3-D view. Only the newest call counts. */
 let siteCall: AbortController | null = null;
+let photo: { site: string; url: string } | null = null;
 function keepSite(site: string | null): void {
   siteCall?.abort();
   siteCall = null;
+  if (photo) {
+    keepSitePhoto(photo.site, null);
+    URL.revokeObjectURL(photo.url);
+    photo = null;
+  }
   if (!site) {
     setAssetLoader(null);
     return;
   }
   const ctl = (siteCall = new AbortController());
   void keepSiteFiles(site, networkAsset, undefined, ctl.signal).then((kept) => {
-    if (!ctl.signal.aborted) setAssetLoader(keptLoader(kept, networkAsset));
+    if (ctl.signal.aborted) return;
+    setAssetLoader(keptLoader(kept, networkAsset));
+    const jpg = kept.files.get(`demo/${site}/imagery.jpg`);
+    if (jpg) {
+      photo = { site, url: URL.createObjectURL(new Blob([jpg.slice()], { type: 'image/jpeg' })) };
+      keepSitePhoto(site, photo.url);
+    }
   });
 }
 
@@ -167,7 +180,7 @@ export async function startDesktop(params: URLSearchParams, services: Pick<Servi
       if (why) throw new CodeRefused(why);
       if (isVersionError(e, m)) {
         const n = versionNumbers(e);
-        throw new VersionMismatch(n.page, n.host);
+        throw new VersionMismatch(n.page ?? HOST_PROTOCOL, n.host); // this page knows its own version even when the error does not carry it
       }
       throw e;
     }

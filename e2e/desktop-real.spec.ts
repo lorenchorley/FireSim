@@ -172,8 +172,8 @@ const state = (page: Page) =>
 const hasPicture = (page: Page): Promise<boolean> => state(page).then((s) => s.hasSnapshot);
 const head = (page: Page): Promise<number> => state(page).then((s) => s.headTime);
 
-/** The simulation's own Web Worker (the in-page engine); the speed test's and any other worker do not match. */
-const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url())).length;
+/** The simulation's own Web Worker (the in-page engine), started from its own script or (since 0.9.0, on a page a host serves) from the copy kept in memory (a blob address); the speed test's worker is a blob only while that test runs. */
+const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url()) || w.url().startsWith('blob:')).length;
 
 /** Opens the Simulation debug statistics, reads its "Run" group and closes it again. */
 async function runStatistics(page: Page): Promise<string> {

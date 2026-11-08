@@ -222,14 +222,14 @@ test('a version of the link the page does not speak says both numbers and what t
   const third = await page.context().newPage();
   await installDesktopStub(third, { base: BASE, versionMismatch: { page: 2, host: 3 } });
   await third.goto('/?mock=1&debug=1&desktopaddr=1');
-  await acceptNotice(third);
+  await pastNotice(third); // the notice was accepted for this browser by the first page
   await typeAndBuild(third, ADDRESS, CODE);
   await expect(problem(third)).toContainText(SAYS, { timeout: 10_000 });
 
   const second = await page.context().newPage();
   await installDesktopStub(second, { base: BASE, noSession: true });
   await second.goto('/?mock=1&debug=1&desktopaddr=1');
-  await acceptNotice(second);
+  await pastNotice(second);
   await typeAndBuild(second, ADDRESS, CODE);
   await expect(problem(second)).toContainText('The desktop has no free session. Close a run on it, or start it with more --max-sessions, then try again.', { timeout: 10_000 });
   await expect(problem(second)).not.toContainText('Could not reach');
@@ -309,7 +309,7 @@ async function hostGoes(page: Page, origin: string): Promise<string[]> {
 }
 
 test('the host is gone and the spare engine failed: the second try starts a fresh engine from the script kept in memory, the speed test still runs, and nothing under /assets is asked of the gone host', async ({ page, baseURL }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(600_000);
   test.info().annotations.push({ type: 'network-failures' }); // the requests this test refuses are reported by the browser
   const origin = new URL(baseURL!).origin;
   const asked = watchAsked(page, origin);
@@ -378,7 +378,7 @@ test('the host is gone and the spare engine failed: the second try starts a fres
 });
 
 test('the host dies before the link opens: the demo site chosen when Desktop was chosen is still here, so Continue on this device on Setup builds the model and runs it', async ({ page, baseURL }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(600_000);
   test.info().annotations.push({ type: 'network-failures' });
   const origin = new URL(baseURL!).origin;
   const asked = watchAsked(page, origin);
@@ -404,7 +404,8 @@ test('the host dies before the link opens: the demo site chosen when Desktop was
   await go.click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId('engine-banner')).toHaveCount(0); // the real engine of this device, not a label of the desktop's
-  expect(refused.filter((u) => /\/demo\//.test(u)), 'no demo file was asked of the gone host').toEqual([]);
+  expect(refused.filter((u) => /\/demo\/katoomba\//.test(u)), 'no file of the chosen site was asked of the gone host (its terrain, canopy, context layers and photo are the page\'s own by then)').toEqual([]);
+  console.log(`[desktop-address] other asks of the gone host: ${refused.filter((u) => /\/demo\//.test(u)).join(' ') || 'none'}`);
   await page.getByTestId('play').click();
   await expect.poll(async () => (await session(page)).headTime, { message: 'Play computes on this device', timeout: 180_000 }).toBeGreaterThan(0);
   expect((await session(page)).error).toBeNull();

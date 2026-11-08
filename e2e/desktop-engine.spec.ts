@@ -88,8 +88,8 @@ async function missedProbes(loc: Locator): Promise<number> {
 
 const sameOrigin = (url: string, origin: string): boolean => new URL(url).origin === origin;
 
-/** The simulation's own Web Worker (the in-page engine); the speed test's and any other worker do not match. */
-const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url())).length;
+/** The simulation's own Web Worker (the in-page engine), started from its own script or (since 0.9.0, on a page a host serves) from the copy kept in memory (a blob address); the speed test's worker is a blob only while that test runs. */
+const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url()) || w.url().startsWith('blob:')).length;
 
 /** The Setup form for the real builder: the Katoomba demo, preset weather, offline (the build then takes seconds). */
 async function chooseKatoombaOffline(page: Page): Promise<void> {
