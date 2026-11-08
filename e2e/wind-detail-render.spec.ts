@@ -527,16 +527,23 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
   await test.step('the hand-over has no empty frame, in either direction, with the real frame loop', async () => {
     await setLayers(page, { windGlyphs: true, wind: 'surface' });
     await go(50); // the arrows of level 3
-    const sample = (px: number): Promise<{ glyph: number; detail: number; level: number; fade: number }[]> =>
+    // The frames of a move, one a display frame, until the move has ended where it goes (`to`: the detailed streaks all the way in, or the arrows of
+    // level 3 all the way out) and stayed there three frames, and at least 4 s as before. The streaks' fade is a step of at most 0.25 a frame (a frame's
+    // step is capped at 100 ms of the 400 ms), so it needs four frames at the very least: where the frames are 1.7 s apart (a run of two workers and a busy loop: 3 frames
+    // in the 4 s, the fade 0.5 at the end of them, as in the gate's full run) it needs seven seconds and more, which is why the end is a state and not a time. At most 120 s.
+    const sample = (px: number, to: 'in' | 'out'): Promise<{ glyph: number; detail: number; level: number; fade: number }[]> =>
       page.evaluate(
-        ([d]) =>
+        ([d, where]) =>
           new Promise((resolve) => {
             const v = (window as unknown as Handle).__firesim.view;
             const draw = v.renderer.render;
             v.renderer.render = () => undefined; // the frame loop, the camera and the layer run; the software GL does not draw
             const seen: { glyph: number; detail: number; level: number; fade: number }[] = [];
             const t0 = performance.now();
-            v.lookAt(0, 0, d!, 200, 55, false);
+            const arrived = (f: { glyph: number; detail: number; level: number; fade: number }): boolean =>
+              where === 'in' ? f.glyph === 0 && f.level === 4 && f.detail > 0 && f.fade === 1 : f.detail === 0 && f.level === 3 && f.glyph > 0;
+            let held = 0;
+            v.lookAt(0, 0, d as number, 200, 55, false);
             const tick = (): void => {
               const detail = v.scene.getObjectByName('wind-detail')!;
               seen.push({
@@ -545,7 +552,9 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
                 level: v.windGlyphStats!()!.level,
                 fade: detail.material.uniforms.uFade!.value,
               });
-              if (performance.now() - t0 < 4000 && seen.length < 400) requestAnimationFrame(tick);
+              held = arrived(seen[seen.length - 1]!) ? held + 1 : 0;
+              const elapsed = performance.now() - t0;
+              if (elapsed < 120_000 && (elapsed < 4000 || held < 3)) requestAnimationFrame(tick);
               else {
                 v.renderer.render = draw;
                 resolve(seen);
@@ -553,18 +562,18 @@ test('wind detail: the streaks from either switch, the old streaks step aside, r
             };
             requestAnimationFrame(tick);
           }),
-        [px],
+        [px, to] as const,
       );
     const emptyAfterFirst = (frames: { glyph: number; detail: number }[]): number[] => {
       const first = frames.findIndex((f) => f.glyph > 0 || f.detail > 0);
       return frames.flatMap((f, i) => (first >= 0 && i > first && f.glyph === 0 && f.detail === 0 ? [i] : []));
     };
-    const inward = await sample(at(150));
+    const inward = await sample(at(150), 'in');
     expect(emptyAfterFirst(inward), 'frames with nothing drawn on the way in').toEqual([]);
     expect(inward[inward.length - 1]).toMatchObject({ glyph: 0, level: 4 });
     expect(inward[inward.length - 1]!.detail).toBeGreaterThan(0);
     expect(inward[inward.length - 1]!.fade, 'faded in').toBe(1);
-    const outward = await sample(at(50));
+    const outward = await sample(at(50), 'out');
     expect(emptyAfterFirst(outward), 'frames with nothing drawn on the way out').toEqual([]);
     expect(outward[outward.length - 1]).toMatchObject({ detail: 0, level: 3 });
     expect(outward[outward.length - 1]!.glyph).toBeGreaterThan(0);

@@ -213,6 +213,52 @@ const blockBoxes = (
     };
   });
 
+/**
+ * Resolves when the tool's layout is the layout it is going to stay in: the panel has drawn the scene's own latest slice (its canvas carries the slice's number) and
+ * every box the layout checks read has been the same in four display frames in a row. The panel lays a slice out in the display frame after the one that made it
+ * (`setData` only notes it, so that the update that places a line stays short), the height of its picture is part of that layout, and a window that has changed size
+ * reaches the page's observers in a frame of its own (`.dock` also changes its height with a 200 ms CSS transition, which a page only advances on a frame). Where the
+ * frames are seconds apart (the software GL beside another browser: 2 to 4 s between frames in a run of two workers and a busy loop, measured in pace.spec.ts's run) a
+ * read made a fixed time after a change reads the layout from before it, and that is what the gate's full run looks like it read here: Set start's bottom at 753 against
+ * a pinned footer at 726, and at 844 x 390 a body of 158 px where the same flow alone reads 190. (Neither was reproduced: the one run of this flow beside two workers and a
+ * busy loop never reached the step, see the report; the same lag was reproduced and measured for the view's size in layers.spec.ts.) Waits for as many frames as that
+ * takes (at most `maxMs`) and returns how many that was.
+ */
+const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
+  page.evaluate(
+    (max) =>
+      new Promise<number>((resolve) => {
+        const t0 = performance.now();
+        const w = window as unknown as Handle;
+        const box = (sel: string): number[] | null => {
+          const e = document.querySelector(sel);
+          if (!e) return null;
+          const r = e.getBoundingClientRect();
+          return [r.top, r.bottom, r.height, r.width].map(Math.round);
+        };
+        const read = (): { caught: boolean; sig: string } => {
+          const u = w.__firesim.view.slice?.() as { data: { seq: number } | null } | null | undefined;
+          const c = document.querySelector('[data-testid="slice-canvas"]') as HTMLElement | null;
+          const caught = String(u?.data?.seq ?? '') === (c?.dataset.seq ?? '');
+          const boxes = ['[data-testid="air-panel"]', '.slice-tool-body', '[data-testid="slice-canvas"]', '[data-testid="slice-footer"]', '[data-testid="slice-set-a"]', '[data-testid="slice-presets-toggle"]'].map(box);
+          return { caught, sig: JSON.stringify([innerWidth, innerHeight, boxes]) };
+        };
+        let last = '';
+        let same = 0;
+        let frames = 0;
+        const tick = (): void => {
+          frames++;
+          const { caught, sig } = read();
+          same = sig === last ? same + 1 : 0;
+          last = sig;
+          if ((caught && same >= 3) || performance.now() - t0 > max) resolve(frames);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    maxMs,
+  );
+
 /** What the first F8 build got wrong: with the body scrolled to the top, the controls under the button are on the screen, none under the pinned footer (`presets` false: the row of Set start, Set end and Swap only). */
 const expectControlsInView = (at: Awaited<ReturnType<typeof blockBoxes>>, label: string, presets = true): void => {
   const boxes = [['Set start', at.setA], ['Set end', at.setB], ['Swap', at.swap], ...(presets ? [['Presets', at.presets] as const] : [])] as const;
@@ -647,6 +693,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
       await expect(button).toBeVisible();
       await expect(button).toHaveText('Use the 3-D atmosphere');
       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0)); // (the earlier steps scrolled to the controls)
+      await layoutSettled(page); // (the picture's box follows the slice the preset made, and the panel lays that out a display frame after it: see the helper)
       // 0.7.0 (F8, owner question 6): the button is directly under the chips, above the controls, and the words stay under the controls as in 0.6.0. At 412 x 915 the
       // button is wholly in view and inside the sheet with no scroll at all, and Set start, Set end and Swap are above the footer, with the Set start row following
       // the button. (The first F8 build moved the words up too: Set start then sat at y 772 to 812 behind the footer at 802 and Presets was hidden. 0.4.1 to
@@ -1232,7 +1279,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
   // `tapAudit` is the repo's tap rule (scripts/audit-tap-targets.mjs).
   await test.step('844 x 390 with a recording: every control below the picture, scrolled to the middle of the window, has all eight probes on itself', async () => {
     await page.setViewportSize({ width: 844, height: 390 });
-    await page.waitForTimeout(900);
+    await layoutSettled(page); // (a state and not a time: the layout of the panel is a frame behind the new size; see the helper)
     await expect(footer).toBeInViewport();
     const win = await page.evaluate(() => {
       const f = document.querySelector('[data-testid="slice-footer"]')!.getBoundingClientRect();

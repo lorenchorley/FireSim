@@ -51,6 +51,14 @@ async function buildSlow(page: Page): Promise<void> {
   await page.getByTestId('duration').getByRole('radio', { name: /^12/ }).check({ force: true });
   await page.getByTestId('build').click();
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
+  // The drawing is skipped (the frame loop, the clock, the engine and the tracker run as they do; as wind-glyphs.spec.ts does): the page's animation frames come at the
+  // pace of the software GL's frames, which beside another browser are 2 to 4 s apart (measured here, two workers and a busy loop: 1 to 4 frames in 5 s for 140 s), and the
+  // tracker drops its window at every frame more than 2 s after the one before it (paceModel.ts `gapMs`: the display, not the simulation, is slow) and waits 15 s again,
+  // so the tracker published nothing for the first two minutes there (until the other worker's test was over) and in the gate's full run the signal did not come within
+  // 240 s. Nothing in this test looks at a picture.
+  await page.evaluate(() => {
+    (window as unknown as { __firesim: { view: { renderer: { render: () => void } } } }).__firesim.view.renderer.render = () => undefined;
+  });
 }
 
 /** The button's hit area: every probe point 21 px from its centre (and the diagonals at 15 px) lands on the button, like scripts/audit-tap-targets.mjs. */

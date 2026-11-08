@@ -328,7 +328,12 @@ test('gallery 0.7.0: the detailed streaks round the crowns, the Wind detail shee
   // view and starts the count; the sheet repaints in place, and the picture is taken when it says so.
   await page.evaluate(() => (window as unknown as Handle).__firesim.view.activity.setLimit(3000));
   await page.mouse.move(200, 250);
-  await expect(sheet).toContainText('paused to save battery', { timeout: 30_000 });
+  // The view pauses in a frame of its own loop (the idle clock is read there), and the sheet says so a moment later. Beside another browser the frames of the High
+  // picture over the forest are many seconds apart: in a run of two workers and a busy loop the pause came 18 s after the touch (the statistics said the idle clock was
+  // up from 6 s on but no frame had run to pause the layer until about 15 s, and the clock was then started again, which looks like `SceneView.frame` taking a frame more
+  // than 5 s after the one before for a page that was in the background), and the gate's full run did not see it within 30 s. The bound is a state wait's, not the time
+  // the pause takes.
+  await expect(sheet).toContainText('paused to save battery', { timeout: 240_000 });
   await shot(page, '47-wind-streaks-paused');
 });
 
