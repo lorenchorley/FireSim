@@ -362,7 +362,7 @@ function choicesGroup(i: DebugStatsInput): StatGroup {
   const c = e.cadence;
   const rows: StatRow[] = [
     R('tier', 'Tier in use', TIER_NAME[e.tier], e.tierReason, true),
-    R('requested', 'Tier asked for', e.tierRequested === 'auto' ? 'Auto (decided when the run starts, from a short timing test on this phone)' : TIER_NAME[e.tierRequested]),
+    R('requested', 'Tier asked for', e.tierRequested === 'auto' ? `Auto (decided when the run starts, from a short timing test on ${i.desktop && !i.desktop.restarted ? 'the desktop' : 'this phone'})` : TIER_NAME[e.tierRequested]),
     R('cause', 'How it was decided', CAUSE[e.tierCause]),
   ];
   if (e.tierChangedAt !== null) rows.push(R('changed-at', 'Tier changed at', hms(e.tierChangedAt)));

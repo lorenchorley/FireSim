@@ -904,6 +904,12 @@ describe('a run that computes on the desktop (0.8.0, workstream J)', () => {
     expect(rowOf(s, 'summary', 'headline').value).toMatch(/this phone: 8 cores, about 6 GB memory class\.$/);
   });
 
+  it('the timing test of an Auto tier is the desktop\'s on a desktop run, the phone\'s on this device and on a run started again here (0.9.0: it said this phone whatever the engine)', () => {
+    expect(rowOf(buildDebugStats(full()), 'choices', 'requested').value).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
+    expect(rowOf(withDesktop(), 'choices', 'requested').value).toBe('Auto (decided when the run starts, from a short timing test on the desktop)');
+    expect(rowOf(withDesktop({ ...desktop, closed: true, restarted: true }), 'choices', 'requested').value).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
+  });
+
   it('a computer name with a line break or a very long one is one short line', () => {
     const r = rowOf(withDesktop({ ...desktop, name: `Evil\nPC ${'x'.repeat(200)}` }), 'run', 'engine-where').value;
     expect(r).not.toContain('\n');
