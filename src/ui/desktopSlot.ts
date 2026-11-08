@@ -26,10 +26,19 @@ export interface DecorateOptions {
 
 /** The desktop's object: the page's logic of it (desktopHost.ts) and the two things that draw, the Engine row and the run's label and error chip. */
 export interface DesktopApi extends DesktopHost {
-  /** Adds the Engine row to `card` (its chunk loads now) and keeps it in step; `build` presses Build. Returns the function that takes it out again. */
-  mount(card: HTMLElement, build: () => void): () => void;
+  /**
+   * Adds the Engine row to `card` (its chunk loads now) and keeps it in step; `build` presses Build; `siteOf` is the bundled demo site Setup would
+   * build now (null: none), which the row tells the page so it can keep that site while Desktop is chosen. Returns the function that takes it out again.
+   */
+  mount(card: HTMLElement, build: () => void, siteOf?: () => string | null): () => void;
   /** Labels the run on the map, puts the link's sentence in the error chip and adds "Continue on this device" to it. Returns the stop function. */
   decorate(o: DecorateOptions): () => void;
+  /**
+   * A new Web Worker of the page's own engine, started from the script kept in memory when the link opened (desktopKeep.ts), so that an engine
+   * made after the host is gone does not need it. Absent on a page no host serves (the app's own files are always there), and undefined
+   * until the script has been kept: the engine then starts from its own address, as it always did.
+   */
+  localWorker?(): Worker | undefined;
 }
 
 export const desktopSlot = new Store<{ host: DesktopApi | null; run: DesktopRun | null }>({ host: null, run: null });

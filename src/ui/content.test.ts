@@ -1143,14 +1143,16 @@ describe('Help and glossary: the 0.8.0 entry says what the desktop engine says',
   const read = (file: string): string => readFileSync(resolve(__dirname, file), 'utf8');
   /** A source file with its comment lines joined (a sentence of a header comment wraps across lines). */
   const prose = (file: string): string => squash(read(file).replace(/\n\s*\*/g, ' '));
-  const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Studio PC', cores: 8, node: '22.11.0', sessions: 0, maxSessions: 3 };
+  const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 2, name: 'Studio PC', cores: 8, node: '22.11.0', sessions: 0, maxSessions: 3 };
+  /** What a protocol 2 host says before its code (0.9.0): the name and the cores come with the welcome. */
+  const PROBE = { app: 'firesim-desktop-host', protocol: 2, requiresCode: true } as const;
   const env = (over: Partial<HostEnv> = {}): HostEnv => ({
     origin: 'http://192.168.1.20:4300',
     protocol: 'http:',
     native: false,
     hash: '',
     replaceHash: () => undefined,
-    detect: async () => INFO,
+    detect: async () => PROBE,
     connect: async () => {
       throw new Error('not used');
     },
@@ -1210,7 +1212,7 @@ describe('Help and glossary: the 0.8.0 entry says what the desktop engine says',
     expect(replaced).toEqual(['']);
     // The page asks its own origin and nothing else (the one question to /__firesim/host, and the socket on that same host).
     let asked: string | undefined;
-    await startDesktopHost(env({ detect: async (o) => ((asked = o?.base), INFO) }));
+    await startDesktopHost(env({ detect: async (o) => ((asked = o?.base), PROBE) }));
     expect(asked).toBe('http://192.168.1.20:4300');
     expect(read('../sim/remote/index.ts')).toContain('`http://host:port/` to `ws://host:port/__firesim/engine`');
     expect(CODE_LABEL).toBe('Desktop code');

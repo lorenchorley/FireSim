@@ -35,9 +35,11 @@ async function boot(): Promise<void> {
   if (mock) console.info('[FireSim] mock mode');
   bootStep('app');
   const app = new App(root, services, params);
-  // The desktop engine (0.8.0, workstream J): on the web build only, one lazy chunk reads the pairing code from the address and asks the
-  // page's own origin once whether a desktop host serves it. Without a host it does nothing visible; an optional extra never stops the start.
-  if (!Capacitor.isNativePlatform() && /^https?:$/.test(location.protocol)) void import('./ui/desktop').then((m) => m.startDesktop(params, services)).catch(() => undefined);
+  // The desktop engine (0.8.0, workstream J): one lazy chunk reads the pairing code from the address and, on the web build, asks the page's own
+  // origin once whether a desktop host serves it. Without a host it does nothing visible; an optional extra never stops the start. In the Capacitor
+  // app (0.9.0, D36) no host serves the page and nothing is asked: the chunk draws the Engine row with an address box, and only a Build on Desktop
+  // with the address the person typed ever uses the network.
+  if (Capacitor.isNativePlatform() || /^https?:$/.test(location.protocol)) void import('./ui/desktop').then((m) => m.startDesktop(params, services)).catch(() => undefined);
   await app.start();
   bootDone();
   document.documentElement.classList.add('booted');

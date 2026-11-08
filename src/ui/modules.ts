@@ -51,7 +51,7 @@ export interface SceneLegends {
 }
 
 interface SimModule {
-  SimClient: new () => SimController;
+  SimClient: new (worker?: Worker) => SimController;
 }
 interface RenderModule {
   SceneView: new (container: HTMLElement, opts?: SceneViewOptions) => SceneViewApi;
@@ -105,7 +105,8 @@ export async function loadServices(forceMock: boolean): Promise<Services> {
     sim: (sim ? 'real' : 'mock') as ModuleSource,
     scene: (render ? 'real' : 'mock') as ModuleSource,
   };
-  const local = (): SimController => (sim ? new sim.SimClient() : new mocks.MockSimController());
+  // On a page a desktop host serves, the engine starts from the script kept in memory when the link opened, so it needs no host (desktopKeep.ts).
+  const local = (): SimController => (sim ? new sim.SimClient(desktopSlot.get().host?.localWorker?.()) : new mocks.MockSimController());
   const services: Services = {
     sources,
     legendProvider: render && typeof render.legendFor === 'function' ? render.legendFor : null,

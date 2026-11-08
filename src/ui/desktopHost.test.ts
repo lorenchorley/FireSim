@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimController, SimEvents } from '../sim/protocol';
-import { CodeRefused, codeFromHash, DETECT_TIMEOUT_MS, hashWithoutCode, isHostInfo, normaliseCode, startDesktopHost, type HostEnv } from './desktopHost';
-import type { DesktopLink, DesktopRun, HostInfo } from './desktopTypes';
+import { CodeRefused, codeFromHash, DETECT_TIMEOUT_MS, hashWithoutCode, isHostProbe, normaliseCode, startDesktopHost, TYPED_DETECT_TIMEOUT_MS, VersionMismatch, versionNumbers, type HostEnv } from './desktopHost';
+import type { DesktopLink, DesktopRun, HostInfo, HostProbe } from './desktopTypes';
 import type { SwitchableController } from './runController';
 
-const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 1, name: 'Studio PC', cores: 8, node: 'v22.11.0', sessions: 0, maxSessions: 3 };
+const INFO: HostInfo = { app: 'firesim-desktop-host', protocol: 2, name: 'Studio PC', cores: 8, node: 'v22.11.0', sessions: 0, maxSessions: 3 };
+/** What a protocol 2 host says to anyone, before its code: the name and the cores wait for the welcome. */
+const PROBE: HostProbe = { app: 'firesim-desktop-host', protocol: 2, requiresCode: true };
 const ORIGIN = 'http://192.168.1.20:4300';
 
 /** A controller that is only its event line: the page's desktop object listens to `error` on it and hands it to the run. */
@@ -51,10 +53,10 @@ interface Rig {
   runs: (DesktopRun | null)[];
 }
 
-function rig(over: Partial<HostEnv> = {}, answer: unknown = INFO): Rig {
+function rig(over: Partial<HostEnv> = {}, answer: unknown = PROBE): Rig {
   const replaced: string[] = [];
   const runs: (DesktopRun | null)[] = [];
-  const detect = vi.fn(async () => answer as HostInfo | null);
+  const detect = vi.fn(async () => answer as HostProbe | null);
   const connect = vi.fn(async () => fakeLink() as DesktopLink);
   const env: HostEnv = {
     origin: ORIGIN,
@@ -86,16 +88,17 @@ describe('the pairing code in the address', () => {
 });
 
 describe('what the page believes of a host', () => {
-  it('needs the right app and protocol, a name, a node version and at least one core', () => {
-    expect(isHostInfo(INFO)).toBe(true);
-    expect(isHostInfo({ ...INFO, app: 'something-else' })).toBe(false);
-    expect(isHostInfo({ ...INFO, protocol: 2 })).toBe(false);
-    expect(isHostInfo({ ...INFO, cores: 0 })).toBe(false);
-    expect(isHostInfo({ ...INFO, cores: Number.NaN })).toBe(false);
-    expect(isHostInfo({ ...INFO, name: 7 })).toBe(false);
-    expect(isHostInfo({ ...INFO, node: undefined })).toBe(false);
-    expect(isHostInfo(null)).toBe(false);
-    expect(isHostInfo('firesim-desktop-host')).toBe(false);
+  it('needs the right app, protocol 2 and a yes or no for the code; the name and the cores are not part of it any more', () => {
+    expect(isHostProbe(PROBE)).toBe(true);
+    expect(isHostProbe({ ...PROBE, requiresCode: false })).toBe(true);
+    expect(isHostProbe({ ...PROBE, app: 'something-else' })).toBe(false);
+    expect(isHostProbe({ ...PROBE, protocol: 1 })).toBe(false); // protocol 1 said the name and the cores to anyone: a page of this version does not take it
+    expect(isHostProbe({ ...PROBE, protocol: 3 })).toBe(false);
+    expect(isHostProbe({ ...PROBE, requiresCode: 'yes' })).toBe(false);
+    expect(isHostProbe({ app: 'firesim-desktop-host', protocol: 2 })).toBe(false);
+    expect(isHostProbe(INFO)).toBe(false); // the welcome is not the probe
+    expect(isHostProbe(null)).toBe(false);
+    expect(isHostProbe('firesim-desktop-host')).toBe(false);
   });
 });
 
@@ -103,7 +106,8 @@ describe('detection at start-up', () => {
   it('asks once, of the page own origin only, with the 800 ms the contract names', async () => {
     const r = rig();
     const host = await startDesktopHost(r.env);
-    expect(host?.info).toEqual(INFO);
+    expect(host).not.toBeNull();
+    expect(host?.state.get()).toMatchObject({ host: null, typed: false }); // nothing of the host's name or cores before its code
     expect(r.detect).toHaveBeenCalledTimes(1);
     expect(r.detect).toHaveBeenCalledWith({ base: ORIGIN, timeoutMs: 800 });
     expect(DETECT_TIMEOUT_MS).toBe(800);
@@ -124,12 +128,13 @@ describe('detection at start-up', () => {
 
   it('no host: a null answer, an answer of another app, a rejected call, a call that never answers (no host shows anywhere)', async () => {
     expect(await startDesktopHost(rig({}, null).env)).toBeNull();
-    expect(await startDesktopHost(rig({}, { ...INFO, app: 'an-other-app' }).env)).toBeNull();
+    expect(await startDesktopHost(rig({}, { ...PROBE, app: 'an-other-app' }).env)).toBeNull();
+    expect(await startDesktopHost(rig({}, { ...PROBE, protocol: 1 }).env)).toBeNull(); // a host of the old protocol is not one this page can use
     expect(await startDesktopHost(rig({}, '<!doctype html>').env)).toBeNull(); // the page itself came back for the question
     const rejects = rig({ detect: () => Promise.reject(new Error('refused')) });
     expect(await startDesktopHost(rejects.env)).toBeNull();
     vi.useFakeTimers();
-    const silent = rig({ detect: () => new Promise<HostInfo | null>(() => undefined) });
+    const silent = rig({ detect: () => new Promise<HostProbe | null>(() => undefined) });
     const done = startDesktopHost(silent.env);
     await vi.advanceTimersByTimeAsync(1400);
     let settled = false;
@@ -192,7 +197,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
     expect(r.connect).toHaveBeenCalledTimes(1);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', info: INFO }); // the page's own origin, the code as the host wants it, and what the start-up check found (no second question)
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' }); // the page's own origin and the code as the host wants it: protocol 2 has nothing of the start-up check to pass on
   });
 
   it('a code from the address is used but never shown back, and never held in the state the row reads', async () => {
@@ -200,7 +205,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('');
     expect(JSON.stringify(host.state.get())).not.toContain('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', info: INFO });
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' });
     expect(JSON.stringify(r.runs)).not.toContain('ABCD2345');
   });
 
@@ -503,6 +508,257 @@ describe('the end of the link (onClosed), the standby engine and what is warmed'
     expect(await h2.beforeBuild()).toBe(false);
     expect(h2.state.get()).toMatchObject({ problem: 'refused', hasCode: false });
     expect(new CodeRefused().reason).toBe('wrong-code');
+  });
+});
+
+describe('the second step of the chip: the desktop says who it is in its welcome, not before', () => {
+  it('no name and no cores before a link has been opened; after the welcome the view has them, cleaned, and they stay for the page load', async () => {
+    const r = rig({ hash: '#code=ABCD2345', connect: vi.fn(async () => ({ ...fakeLink(), info: { ...INFO, name: '  Studio\n PC ', cores: 12 } }) as DesktopLink) });
+    const host = (await startDesktopHost(r.env))!;
+    expect(host.state.get().host).toBeNull();
+    expect(await host.beforeBuild()).toBe(true);
+    expect(host.state.get().host).toEqual({ name: 'Studio PC', cores: 12 });
+    host.release(); // Setup again: the chip still names the desktop that was met
+    expect(host.state.get().host).toEqual({ name: 'Studio PC', cores: 12 });
+  });
+
+  it('a refused code tells nothing of the host: the view still has none', async () => {
+    const r = rig({ hash: '#code=ABCD2345' });
+    r.connect.mockRejectedValueOnce(new CodeRefused());
+    const host = (await startDesktopHost(r.env))!;
+    await host.beforeBuild();
+    expect(host.state.get().host).toBeNull();
+  });
+});
+
+describe('a version that is not this page\'s', () => {
+  it('a mismatch is its own problem with its own words (the two numbers when the error has them), not a refused code and not "could not reach"', async () => {
+    const r = rig({ hash: '#code=ABCD2345' });
+    r.connect.mockRejectedValueOnce(new VersionMismatch(2, 3));
+    const host = (await startDesktopHost(r.env))!;
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'version', hasCode: true, busy: false });
+    expect(host.state.get().note).toBe('This app and the desktop do not speak the same version of the link (this app speaks version 2, the desktop version 3). Update the app or the desktop host.');
+    host.typeCode('WXYZ2345');
+    expect(host.state.get()).toMatchObject({ problem: null, note: null });
+    r.connect.mockRejectedValueOnce(new VersionMismatch());
+    await host.beforeBuild();
+    expect(host.state.get().note).toBe('This app and the desktop do not speak the same version of the link. Update the app or the desktop host.');
+  });
+
+  it('the two numbers are read from the error under any of the names a module may give them, and only when they are small whole numbers', () => {
+    expect(versionNumbers(Object.assign(new Error('x'), { pageProtocol: 2, hostProtocol: 3 }))).toEqual({ page: 2, host: 3 });
+    expect(versionNumbers(Object.assign(new Error('x'), { page: 2, host: 1 }))).toEqual({ page: 2, host: 1 });
+    expect(versionNumbers(Object.assign(new Error('x'), { expected: 2, actual: 5 }))).toEqual({ page: 2, host: 5 });
+    expect(versionNumbers(new Error('x'))).toEqual({ page: null, host: null });
+    expect(versionNumbers(Object.assign(new Error('x'), { page: '2', host: 2.5 }))).toEqual({ page: null, host: null });
+    expect(versionNumbers(Object.assign(new Error('x'), { page: -1, host: 1e9 }))).toEqual({ page: null, host: null });
+    expect(versionNumbers(null)).toEqual({ page: null, host: null });
+    expect(versionNumbers('RemoteVersionError')).toEqual({ page: null, host: null });
+  });
+
+  it('a desktop with no session to spare is said so, not "could not reach"', async () => {
+    const r = rig({ hash: '#code=ABCD2345' });
+    r.connect.mockRejectedValueOnce(new Error('The desktop has no free session.'));
+    const host = (await startDesktopHost(r.env))!;
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'no-session', hasCode: true });
+  });
+});
+
+describe('a typed address (the Android app, and the test seam)', () => {
+  const typedRig = (over: Partial<HostEnv> = {}): Rig => rig({ typed: true, native: true, protocol: 'https:', origin: 'https://localhost', ...over });
+  const startTyped = async (over: Partial<HostEnv> = {}): Promise<{ host: NonNullable<Awaited<ReturnType<typeof startDesktopHost>>>; r: Rig }> => {
+    const r = typedRig(over);
+    return { host: (await startDesktopHost(r.env))!, r };
+  };
+
+  it('nothing is asked at start-up: the object is made at once, on This device, with the address remembered and no host name', async () => {
+    const { host, r } = await startTyped({ address: '192.168.1.20' });
+    expect(host).not.toBeNull();
+    expect(r.detect).not.toHaveBeenCalled();
+    expect(r.connect).not.toHaveBeenCalled();
+    expect(host.state.get()).toMatchObject({ engine: 'device', typed: true, address: '192.168.1.20', host: null, problem: null });
+  });
+
+  it('an app that is not typed still gets nothing', async () => {
+    expect(await startDesktopHost(rig({ native: true }).env)).toBeNull();
+    expect(await startDesktopHost(rig({ typed: false, native: true }).env)).toBeNull();
+  });
+
+  it('a code in the address is taken out of the bar and not used (the page has no host of its own to come from)', async () => {
+    const r = typedRig({ hash: '#code=ABCD2345' });
+    const host = (await startDesktopHost(r.env))!;
+    expect(r.replaced).toEqual(['']);
+    expect(host.state.get()).toMatchObject({ engine: 'device', hasCode: false, fromLink: false });
+  });
+
+  it('Build on Desktop with no address asks for it, with a bad address says which part is wrong; nothing is probed or opened', async () => {
+    const { host, r } = await startTyped();
+    host.choose('desktop');
+    host.typeCode('ABCD2345');
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'needs-address', note: null });
+    host.typeAddress('ws://192.168.1.20');
+    expect(host.state.get().problem).toBeNull(); // typing takes the words away
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'bad-address' });
+    expect(host.state.get().note).toMatch(/^The address can start with http:\/\/ or https:\/\//);
+    host.typeAddress('192.168.1.20/app');
+    await host.beforeBuild();
+    expect(host.state.get().note).toMatch(/Leave out anything after it/);
+    expect(r.detect).not.toHaveBeenCalled();
+    expect(r.connect).not.toHaveBeenCalled();
+  });
+
+  it('a good address and a code: the address is remembered, probed first (4 s), then the link is opened at that address with the code and nothing else', async () => {
+    const saved: string[] = [];
+    const link = fakeLink();
+    const connect = vi.fn(async (_o: { base: string; code: string }) => link as DesktopLink);
+    const { host, r } = await startTyped({ saveAddress: (t) => void saved.push(t), connect });
+    host.choose('desktop');
+    host.typeAddress('  Desk.local ');
+    host.typeCode('ab cd-2345');
+    expect(await host.beforeBuild()).toBe(true);
+    expect(saved).toEqual(['Desk.local']); // trimmed, as typed: the preferences get the address and nothing else
+    expect(r.detect).toHaveBeenCalledTimes(1);
+    expect(r.detect).toHaveBeenCalledWith({ base: 'http://desk.local:4300', timeoutMs: TYPED_DETECT_TIMEOUT_MS });
+    expect(connect.mock.calls).toEqual([[{ base: 'http://desk.local:4300', code: 'ABCD2345' }]]);
+    expect(JSON.stringify(saved)).not.toContain('ABCD2345');
+    expect(host.state.get().host).toEqual({ name: 'Studio PC', cores: 8 });
+    expect((host.take() as SwitchableController).inner).toBe(link.controller);
+  });
+
+  it('nothing answers at the address: "no answer", the code is not sent anywhere and is kept for the next try', async () => {
+    const { host, r } = await startTyped();
+    r.detect.mockResolvedValueOnce(null);
+    host.choose('desktop');
+    host.typeAddress('192.168.1.20');
+    host.typeCode('ABCD2345');
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get()).toMatchObject({ problem: 'no-answer', hasCode: true, busy: false });
+    expect(r.connect).not.toHaveBeenCalled();
+  });
+
+  it('something is there but will not let this page read it: "not allowed", not "no answer" (told apart by reach)', async () => {
+    const reach = vi.fn(async () => true);
+    const { host, r } = await startTyped({ reach });
+    r.detect.mockResolvedValueOnce(null);
+    host.choose('desktop');
+    host.typeAddress('192.168.1.20:4301');
+    host.typeCode('ABCD2345');
+    expect(await host.beforeBuild()).toBe(false);
+    expect(reach).toHaveBeenCalledWith('http://192.168.1.20:4301');
+    expect(host.state.get().problem).toBe('not-allowed');
+    expect(r.connect).not.toHaveBeenCalled();
+    // a reach that throws is "not there"
+    const { host: h2, r: r2 } = await startTyped({
+      reach: async () => {
+        throw new Error('boom');
+      },
+    });
+    r2.detect.mockResolvedValueOnce(null);
+    h2.choose('desktop');
+    h2.typeAddress('192.168.1.20');
+    h2.typeCode('ABCD2345');
+    await h2.beforeBuild();
+    expect(h2.state.get().problem).toBe('no-answer');
+  });
+
+  it('a desktop that answered the probe but then refuses the link is "not allowed" (the app\'s origin is not on its list); a wrong code and a version mismatch keep their own words', async () => {
+    const { host, r } = await startTyped();
+    host.choose('desktop');
+    host.typeAddress('192.168.1.20');
+    host.typeCode('ABCD2345');
+    r.connect.mockRejectedValueOnce(new Error('Could not reach the desktop.'));
+    expect(await host.beforeBuild()).toBe(false);
+    expect(host.state.get().problem).toBe('not-allowed');
+    r.connect.mockRejectedValueOnce(new CodeRefused());
+    await host.beforeBuild();
+    expect(host.state.get()).toMatchObject({ problem: 'refused', hasCode: false });
+    host.typeCode('ABCD2345');
+    r.connect.mockRejectedValueOnce(new VersionMismatch(2, 1));
+    await host.beforeBuild();
+    expect(host.state.get().problem).toBe('version');
+  });
+
+  it('the code box is not a link\'s: a typed page always asks for the code, and it is never held in the state', async () => {
+    const { host } = await startTyped();
+    host.choose('desktop');
+    host.typeCode('ABCD2345');
+    expect(host.typedCode()).toBe('ABCD2345');
+    expect(JSON.stringify(host.state.get())).not.toContain('ABCD2345');
+  });
+
+  it('a typed page asks for no site to be kept (desktop.ts gives it no keeper): the app\'s files are its own', async () => {
+    const keepSite = vi.fn();
+    const { host } = await startTyped({ keepSite });
+    host.choose('desktop');
+    host.site('katoomba');
+    host.typeAddress('192.168.1.20');
+    host.typeCode('ABCD2345');
+    expect(await host.beforeBuild('katoomba')).toBe(true);
+    expect(keepSite).not.toHaveBeenCalled();
+  });
+});
+
+describe('the demo site kept for the day the host dies at the start', () => {
+  const startOn = async (over: Partial<HostEnv> = {}): Promise<{ host: NonNullable<Awaited<ReturnType<typeof startDesktopHost>>>; r: Rig }> => {
+    const r = rig({ hash: '#code=ABCD2345', ...over });
+    return { host: (await startDesktopHost(r.env))!, r };
+  };
+
+  it('while Desktop is chosen the site Setup would build is kept; a site chosen later replaces it', async () => {
+    const keepSite = vi.fn();
+    const { host } = await startOn({ keepSite });
+    // preselected by the link, so the row (which tells the page the site when it is mounted) keeps it at once
+    host.site('katoomba');
+    expect(keepSite.mock.calls).toEqual([['katoomba']]);
+    host.site('katoomba'); // the same site again: nothing to do
+    expect(keepSite).toHaveBeenCalledTimes(1);
+    host.site('thredbo');
+    expect(keepSite.mock.calls).toEqual([['katoomba'], ['thredbo']]);
+    host.site(null); // not a demo site (or none): the kept one is let go
+    expect(keepSite.mock.calls.at(-1)).toEqual([null]);
+  });
+
+  it('on This device nothing is kept; choosing Desktop keeps the site that was named meanwhile', async () => {
+    const keepSite = vi.fn();
+    const { host } = await startOn({ keepSite, hash: '' });
+    host.site('grose');
+    expect(keepSite).not.toHaveBeenCalled();
+    host.choose('desktop');
+    expect(keepSite.mock.calls).toEqual([['grose']]);
+  });
+
+  it('choosing This device does not let the files go (the tap on Continue on this device chooses it and builds in the same breath)', async () => {
+    const keepSite = vi.fn();
+    const { host } = await startOn({ keepSite });
+    host.site('katoomba');
+    host.choose('device');
+    expect(keepSite.mock.calls).toEqual([['katoomba']]);
+  });
+
+  it('Build tells the site once more (a top-up if Setup changed it), and the files go when a run has started on the desktop', async () => {
+    const keepSite = vi.fn();
+    const { host } = await startOn({ keepSite });
+    host.site('katoomba');
+    expect(await host.beforeBuild('tomah')).toBe(true);
+    expect(keepSite.mock.calls).toEqual([['katoomba'], ['tomah']]);
+    host.take();
+    expect(keepSite.mock.calls.at(-1)).toEqual([null]); // the model is built: the run needs none of it again
+    host.site('tomah'); // Setup shown again: kept again
+    expect(keepSite.mock.calls.at(-1)).toEqual(['tomah']);
+  });
+
+  it('a keeper that throws is no reason to fail', async () => {
+    const { host } = await startOn({
+      keepSite: () => {
+        throw new Error('no memory');
+      },
+    });
+    expect(() => host.site('katoomba')).not.toThrow();
+    expect(await host.beforeBuild('katoomba')).toBe(true);
   });
 });
 

@@ -832,7 +832,8 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
   const runCard = section('Run', [durChips.el, h('div', { class: 'list card-list' }, onlineToggle.el)], { icon: 'clock', id: 'setup-run' });
   // The Engine row (0.8.0, workstream J) joins this card only when a desktop host serves the page; without one nothing is added.
   let unmountEngine: (() => void) | undefined;
-  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard, () => buildBtn.click())));
+  const demoSite = (): string | null => (store.get().where === 'demo' ? store.get().demoSiteId : null); // what a page a host serves keeps while Desktop is chosen
+  const stopWatchingDesktop = watchDesktop((host) => (unmountEngine = host.mount(runCard, () => buildBtn.click(), demoSite)));
 
   // ───────────── Data for this run (planned, before anything is downloaded) ─────────────
   const planHead = h('p', { class: 'plan-total', attrs: { 'aria-live': 'polite' }, dataset: { testid: 'plan-total' } }, 'Working out the data this run needs…');
@@ -1069,7 +1070,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
       }
       // On the desktop engine the link is opened first: a wrong code stays here, said next to the code box.
       const desktop = desktopSlot.get().host;
-      if (desktop) void desktop.beforeBuild().then((ok) => ok && !destroyed && opts.onBuild(store.get()));
+      if (desktop) void desktop.beforeBuild(demoSite()).then((ok) => ok && !destroyed && opts.onBuild(store.get()));
       else opts.onBuild(store.get());
     },
   });
