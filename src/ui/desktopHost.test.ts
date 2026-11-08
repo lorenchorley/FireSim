@@ -751,6 +751,34 @@ describe('the demo site kept for the day the host dies at the start', () => {
     expect(keepSite.mock.calls.at(-1)).toEqual(['tomah']);
   });
 
+  it('what the page would ask a dead host for is loaded once, as soon as Desktop is the engine chosen (not when the link opens: the host may die before it does), and never on This device or in the app', async () => {
+    const warm = vi.fn();
+    const onDevice = await startOn({ warm, hash: '' });
+    expect(warm).not.toHaveBeenCalled();
+    onDevice.host.site('katoomba');
+    expect(warm).not.toHaveBeenCalled();
+    onDevice.host.choose('desktop');
+    expect(warm).toHaveBeenCalledTimes(1);
+    onDevice.host.choose('device');
+    onDevice.host.choose('desktop');
+    await onDevice.host.beforeBuild();
+    expect(warm, 'once however often it is chosen and built').toHaveBeenCalledTimes(1);
+    const linked = vi.fn();
+    await startOn({ warm: linked }); // the link brought a code: Desktop is chosen from the start
+    expect(linked).toHaveBeenCalledTimes(1);
+    const typedWarm = vi.fn();
+    const typed = rig({ typed: true, native: true, warm: typedWarm });
+    const host = (await startDesktopHost(typed.env))!;
+    host.choose('desktop');
+    expect(typedWarm).not.toHaveBeenCalled(); // the app's own files are always there
+    const boom = await startOn({
+      warm: () => {
+        throw new Error('no idle');
+      },
+    });
+    expect(await boom.host.beforeBuild()).toBe(true);
+  });
+
   it('a keeper that throws is no reason to fail', async () => {
     const { host } = await startOn({
       keepSite: () => {

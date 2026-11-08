@@ -156,7 +156,12 @@ export interface HostEnv {
    * script comes from the host: made at once, it is here when the host is gone. The run's controller holds it for the fallback.
    */
   standby?(): SimController | null;
-  /** The link has opened: the moment to load, once and idle, what the running screen can still ask the host for. */
+  /**
+   * Desktop is the engine chosen on a page a host serves (from the start when the link brought a code, else when it is chosen): the moment to load,
+   * once and idle, what the page would ask the host for after it has gone: the screens a running view can open, the engine's script and the
+   * speed test's, the Setup plan. Called at most once (0.8.0 did it when the link opened; a host that dies BEFORE the link opens, which the Setup
+   * path of "Continue on this device" is for, needs it earlier).
+   */
   warm?(): void;
 }
 
@@ -254,7 +259,7 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
   let run: DesktopRun | null = null;
   let wantedSite: string | null = null;
   let keptSite: string | null = null;
-  // The app's page is its own: a typed desktop never serves it, so a typed page has nothing to keep for the host's going away.
+  let prepared = false;
   const state = new Store<DesktopView>({
     engine: code && !typed ? 'desktop' : 'device',
     hasCode: code !== '',
@@ -268,13 +273,23 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
   });
 
   /**
-   * Keep the chosen demo site while Desktop is chosen on a page a host serves. It is not let go when This device is chosen (the tap on
-   * "Continue on this device" chooses it and builds in the next breath: it needs the files then), only when a run has started on the
-   * desktop (`take`: the scenario is built, nothing of the site is needed again) or another site is wanted.
+   * While Desktop is the engine chosen on a page a host serves (a typed page, the app's, has nothing to keep: its files are its own), the page
+   * prepares for the host's going away: it loads what it would then ask the host for (`env.warm`, once) and keeps the chosen demo site's files.
+   * The site is not let go when This device is chosen (the tap on "Continue on this device" chooses it and builds in the next breath: it needs
+   * the files then), only when a run has started on the desktop (`take`: the scenario is built, nothing of the site is needed again) or
+   * another site is wanted.
    */
-  const applySite = (): void => {
-    if (typed || state.get().engine !== 'desktop' || wantedSite === keptSite) return;
-    keep(wantedSite);
+  const prepare = (): void => {
+    if (typed || state.get().engine !== 'desktop') return;
+    if (!prepared) {
+      prepared = true;
+      try {
+        env.warm?.();
+      } catch {
+        /* warming is a help, never a reason to fail */
+      }
+    }
+    if (wantedSite !== keptSite) keep(wantedSite);
   };
   const keep = (site: string | null): void => {
     keptSite = site;
@@ -321,16 +336,18 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
     }
   };
 
+  prepare(); // Desktop chosen from the start (the link brought a code): prepare now
+
   return {
     state,
     choose: (engine) => {
       state.set({ engine, problem: null, note: null });
-      applySite();
+      prepare();
     },
     typeAddress: (text) => state.set({ address: text, problem: null, note: null }),
     site: (id) => {
       wantedSite = id;
-      applySite();
+      prepare();
     },
     typeCode(text) {
       code = normaliseCode(text);
@@ -341,7 +358,7 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
     async beforeBuild(site) {
       if (site !== undefined) {
         wantedSite = site;
-        applySite();
+        prepare();
       }
       const s = state.get();
       if (s.engine !== 'desktop') {
@@ -381,14 +398,13 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
         pending = open(link);
         // The desktop has welcomed the page: it has told who it is, and the chip can say it.
         state.set({ host: { name: cleanName(link.info.name), cores: link.info.cores } });
-        // The link is open while the host is surely up: this device's own engine is made now (its script comes from the host), and what the running screen can still ask for is loaded.
+        // The link is open while the host is surely up: this device's own engine is made now (its script comes from the host, or from the copy kept since Desktop was chosen).
         try {
           pending.standby = env.standby?.() ?? null;
           if (pending.standby) pending.watch = watchStandby(pending.standby);
         } catch {
           pending.standby = null;
         }
-        env.warm?.();
         return true;
       } catch (e) {
         if (e instanceof CodeRefused && e.reason === 'rate-limited') {

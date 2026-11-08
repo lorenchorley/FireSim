@@ -116,16 +116,21 @@ test('a page with no host: no Engine row, no change of Setup, and at most one sa
   if (process.env.EXPECT_REAL_DETECT === '1') expect(asks).toHaveLength(1); // lane J1's detectHost is merged: the one question is asked
 });
 
-test('inside the Capacitor app nothing is asked: no question to the host, and the desktop chunk is not even loaded', async ({ page, context }) => {
+test('inside the Capacitor app nothing is asked at start-up (0.9.0: the Engine row is there, with an address box, and the chip says Desktop (another computer)); nothing is requested until Build on Desktop', async ({ page, context }) => {
   const requests: string[] = [];
   context.on('request', (r) => requests.push(r.url()));
   await emulateCapacitorAndroid(page);
   await openSetup(page, { query: 'mock=1&debug=1' }); // with the stub installed: a host that would answer if it were asked
   await page.waitForTimeout(1500);
-  expect((await remoteCalls(page)).filter((c) => c[0] === 'detect')).toEqual([]);
+  expect((await remoteCalls(page)).filter((c) => c[0] === 'detect'), 'no question to any host at start-up').toEqual([]);
   expect(requests.filter((u) => /__firesim\/host/.test(u))).toEqual([]);
-  expect(requests.filter((u) => /\/assets\/desktop-[^/]*\.js/.test(u))).toEqual([]);
-  await expect(row(page)).toHaveCount(0);
+  // The app has no host to ask: the person types where the desktop is. The row is there, This device is chosen, the box is not shown until Desktop is.
+  await expect(row(page)).toBeVisible();
+  await expect(chip(page, 'device').locator('input')).toBeChecked();
+  await expect(chip(page, 'desktop')).toHaveText('Desktop (another computer)');
+  await expect(page.getByTestId('engine-address')).toBeHidden();
+  await expect(codeBox(page)).toBeHidden();
+  await expect(page.getByTestId('engine-hint')).toHaveText('The simulation runs on this device.');
 });
 
 test('the seam is honoured only with ?debug=1: without it a stub host is not a host', async ({ page }) => {
@@ -144,7 +149,10 @@ test('a host and no code: This device is chosen, Desktop shows a box for the cod
   await expect(row(page)).toBeVisible();
   await expect(page.getByTestId('engine').locator('legend')).toHaveText('Engine');
   await expect(chip(page, 'device')).toContainText('This device');
-  await expect(chip(page, 'desktop')).toContainText('Desktop (Studio PC, 8 cores)');
+  // protocol 2: the host says nothing of itself before its code, so the chip says only Desktop until the welcome (see "a typed code works" below)
+  await expect(chip(page, 'desktop')).toHaveText('Desktop');
+  await expect(page.getByTestId('engine-address')).toHaveCount(1);
+  await expect(page.getByTestId('engine-address')).toBeHidden(); // a page the host serves has no address to type
   await expect(chip(page, 'device').locator('input')).toBeChecked();
   await expect(codeBox(page)).toBeHidden();
   await expect(page.getByTestId('engine-hint')).toHaveText('The simulation runs on this device.');
@@ -213,7 +221,7 @@ test('a code in the address, on the real modules: Desktop is preselected, the ad
   await armPopupWatch(page);
   const calls = await remoteCalls(page);
   expect(calls.filter((c) => c[0] === 'connect')).toEqual([['connect', { base: origin, rightCode: true }]]); // the page's own origin only
-  expect(calls.filter((c) => c[0] === 'info'), 'the start-up answer goes with the connection (it does not ask again)').toEqual([['info', true]]);
+  expect(calls.filter((c) => c[0] === 'info'), 'protocol 2: the probe has nothing to hand to the connection, which learns who the host is from its welcome').toEqual([['info', false]]);
   expect(calls.filter((c) => c[0] === 'init')).toHaveLength(1); // the run is the stub's
   await expect.poll(() => simWorkers(page), { message: 'one idle standby engine is held while the run is the desktop\'s', timeout: 30_000 }).toBe(1);
   expect(calls.filter((c) => c[0] === 'detect')).toEqual([['detect', { base: origin, timeoutMs: 800 }]]);
@@ -722,6 +730,7 @@ test('a typed code works, is remembered for the page load only, and the choice i
   test.setTimeout(180_000);
   await openSetup(page);
   await chip(page, 'desktop').click();
+  await expect(chip(page, 'desktop')).toHaveText('Desktop'); // the two-step label: the desktop has not said who it is yet
   await codeBox(page).fill(`${CODE.slice(0, 4)}-${CODE.slice(4).toLowerCase()}`); // as a phone keyboard might give it
   await expect(codeBox(page)).toHaveValue(`${CODE.slice(0, 4)}-${CODE.slice(4).toLowerCase()}`); // the box shows what was typed
   await page.getByTestId('build').click();
@@ -734,6 +743,7 @@ test('a typed code works, is remembered for the page load only, and the choice i
   // back on Setup (same page load): still Desktop, the typed code is still in the box (as the page keeps it: capitals, no dash)
   await expect(chip(page, 'desktop').locator('input')).toBeChecked();
   await expect(codeBox(page)).toHaveValue(CODE);
+  await expect(chip(page, 'desktop')).toHaveText('Desktop (Studio PC, 8 cores)'); // after its welcome the chip names the desktop
   // a reload forgets both
   await page.reload();
   await pastNotice(page);

@@ -1,37 +1,57 @@
-// Stands in for the desktop host on a page opened with ?debug=1 (0.8.0, workstream J): the test seam `window.__firesimRemote =
-// { detectHost, connectRemote }`. A plain script, run before the page's own: by the e2e specs (through e2e/desktopStub.ts, which
+// Stands in for the desktop host on a page opened with ?debug=1 (0.8.0, workstream J; protocol 2 since 0.9.0): the test seam `window.__firesimRemote =
+// { detectHost, connectRemote, reach }`. A plain script, run before the page's own: by the e2e specs (through e2e/desktopStub.ts, which
 // sets `window.__desktopStubOptions` first) and by the audit scripts (`--init e2e/desktop-stub.init.js`, default options).
-// `detectHost` answers with a host (or none: `noHost`); `connectRemote` accepts one code and hands back a controller that is a small
-// fake: it answers `init` and records what the run asks of it on `window.__remote.calls`. Two ways for the link to go, as a real link has:
-// `window.__remote.fail(message)` is an engine's error message with the link still open; `window.__remote.close(reason)` ends the link
-// (the controller says so with an `error` event, and `onClosed` is called once; `{ quiet: true }` calls `onClosed` only). `failAfterMs`
-// (an option, or `?stubfail=N` in the address, for the audit scripts) closes it that long after the engine was initialised.
-// `unreachable` (an option, or `?stubunreachable=1`) makes the connection fail; `rateLimited` refuses the code the way the desktop does
-// after several wrong ones; `noOnClosed` leaves `onClosed` out (an older module). The code itself is never recorded, only whether it
-// was the right one.
+// It speaks what protocol 2 of the host says (docs/plans/0.9.0/CONTRACT-0.9.0.md section 4.2): `detectHost` answers with the probe
+// `{ app, protocol: 2, requiresCode }` and nothing of the host's name (or none: `noHost`); `connectRemote` accepts one code and hands back a link whose
+// `info` (name, cores, Node, sessions) is what the welcome says, and a controller that is a small fake: it answers `init` and records what the
+// run asks of it on `window.__remote.calls`. Two ways for the link to go, as a real link has: `window.__remote.fail(message)` is an engine's error
+// message with the link still open; `window.__remote.close(reason)` ends the link (the controller says so with an `error` event, and `onClosed` is called
+// once; `{ quiet: true }` calls `onClosed` only). `failAfterMs` (an option, or `?stubfail=N` in the address, for the audit scripts) closes it that long
+// after the engine was initialised. `unreachable` (an option, or `?stubunreachable=1`) makes the connection fail; `rateLimited` refuses the code the
+// way the desktop does after several wrong ones; `noOnClosed` leaves `onClosed` out (an older module).
+// For the typed address (the Android app; `?desktopaddr=1` in a browser): `base` is where the stub's desktop is (`http://192.168.1.20:4300`): the probe and the
+// link answer only there, anywhere else is a desktop that is not there. `notAllowed` is a desktop that is there but does not list this page (the probe
+// is refused as a browser's CORS check refuses it, and `reach` says something is listening). `versionMismatch: { page, host }` makes the connection
+// fail with a RemoteVersionError; `noSession` with a full desktop. The code itself is never recorded, only whether it was the right one.
 (() => {
   const o = window.__desktopStubOptions || {};
   const code = o.code || 'ABCD2345';
   const calls = [];
-  const info = { app: 'firesim-desktop-host', protocol: 1, name: o.name || 'Studio PC', cores: o.cores || 8, node: o.node || 'v22.11.0', sessions: 0, maxSessions: 4 };
+  const probe = { app: 'firesim-desktop-host', protocol: 2, requiresCode: true };
+  // What the welcome says: the host's name and cores are not known to the page before it.
+  const info = { app: 'firesim-desktop-host', protocol: 2, name: o.name || 'Studio PC', cores: o.cores || 8, node: o.node || 'v22.11.0', sessions: 0, maxSessions: 4 };
+  const here = (base) => !o.base || String(base || '').replace(/\/$/, '') === o.base.replace(/\/$/, '');
   let fail = () => undefined;
   let close = () => undefined;
   window.__remote = { calls, fail: (m) => fail(m), close: (reason, how) => close(reason, how) };
   window.__firesimRemote = {
     detectHost: async (opts) => {
       calls.push(['detect', opts]);
-      return o.noHost ? null : info;
+      return o.noHost || o.notAllowed || !here(opts && opts.base) ? null : probe;
+    },
+    reach: async (base) => {
+      calls.push(['reach', base]);
+      return !!o.notAllowed && here(base);
     },
     connectRemote: async (opts) => {
       calls.push(['connect', { base: opts.base, rightCode: opts.code === code }]);
-      calls.push(['info', !!opts.info]); // whether the start-up answer came with it (the connection then does not ask again)
+      calls.push(['info', !!opts.info]); // whether the page handed over anything of the start-up answer (protocol 2: it has none to give)
       if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs));
+      if (!here(opts.base)) throw new Error('Could not reach the desktop.');
       if (opts.code !== code || o.rateLimited) {
         const e = new Error('The desktop did not accept the code.');
         e.name = 'RemoteAuthError';
         e.reason = o.rateLimited ? 'rate-limited' : 'wrong-code';
         throw e;
       }
+      if (o.versionMismatch) {
+        const e = new Error('The desktop speaks another version.');
+        e.name = 'RemoteVersionError';
+        e.page = o.versionMismatch.page;
+        e.host = o.versionMismatch.host;
+        throw e;
+      }
+      if (o.noSession) throw new Error('The desktop has no free session.');
       if (o.unreachable || new URLSearchParams(location.search).get('stubunreachable')) throw new Error('connect failed');
       const listeners = {};
       const emit = (ev, ...a) => (listeners[ev] ? [...listeners[ev]] : []).forEach((cb) => cb(...a));
