@@ -202,7 +202,7 @@ ws.on('message', (d: Buffer, isBinary: boolean) => {
 const peakRss: number[] = [];
 const sampler = setInterval(() => peakRss.push(memoryOf(host.pid!).rss), 250);
 ws.send(initFrame);
-for (let i = 0; i < 2400 && seen.tFirstPicture === null && seen.closeCode === null; i++) await sleep(25);
+for (let i = 0; i < 12_000 && seen.tFirstPicture === null && seen.closeCode === null; i++) await sleep(25); // five minutes at most: 30 MiB of scenario at 5 Mbit/s is 50 s, and then the first picture
 runStartedAt = performance.now();
 ws.send(encodeMessage({ type: 'run', until: runTo }));
 const pinger = setInterval(() => {
