@@ -3,6 +3,19 @@
  * sampling of the slice, the packing) and one read, at the two lattices the design sizes it for (90 x 54, a 6 km line on the 133 m
  * grid; 192 x 56, the longest line), and that a long stream of arrivals, thinning cycles and cuts included, keeps the heap flat and the
  * recording inside its budget. Timings and byte counts go to stderr like the `[slice perf]` lines; the assertions are the design's own limits.
+ *
+ * The time of a call is the smaller of the time that passes and the CPU time the process spends in it (`process.cpuUsage()`, user and system). The
+ * limits are claims about what the work costs, and each of the two holds something else as well: the elapsed time every moment the operating system
+ * gave the core to another process, the CPU time what V8's own threads (the garbage collector's helpers, the compiler) do while the call runs. The work
+ * is at most the smaller of them. Beside four to eight busy loops on this 4-core machine (the gate's full run is like that, four test workers at
+ * once) the median of a call stayed at 0.9 ms while the p95 of a round of elapsed times read 5, 9 and 13 ms, the multiples of a scheduler's quantum,
+ * and one to four of the nine tests failed for it (`record(snapshot)` read 4.97 and 11.76 ms against its 1.5).
+ *
+ * The other thing a neighbour does is slow the core itself down for minutes at a time (it shares the caches or the core's other hardware thread, or the
+ * host does): on this machine the same loop took 0.31 ms for a while and 0.18 ms after it, within one run of a script, and a whole run of this file read a median
+ * of 1.68 ms for `record(snapshot)` where it reads 0.9 (twice in eight runs with nothing of this repo's running beside it). So each round's p95 is divided by how
+ * much slower than its best this process runs just now, measured in the same process on a fixed loop (`speedFactor`), and the limits, which were set on the machine
+ * at its best, stay as they are. A factor is never below 1.
  */
 import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
@@ -21,6 +34,36 @@ import type { SliceData } from './types';
 const log = (s: string): void => {
   process.stderr.write(`[recorder perf] ${s}\n`);
 };
+
+/** CPU time of this process so far (ms). */
+const cpuMs = (): number => {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+};
+
+/** What `f()` cost (ms): the smaller of the elapsed time and the CPU time of the call (see the header). */
+function costOf(f: () => void): number {
+  const w0 = performance.now();
+  const c0 = cpuMs();
+  f();
+  return Math.min(performance.now() - w0, cpuMs() - c0);
+}
+
+/** A fixed loop of the kind of work the tests time (floating point and typed arrays), 4,860 points as the 90 x 54 lattice, and what it costs on this machine at its best (ms; the median of 15 calls). */
+const CALIBRATION_BEST_MS = 0.18;
+const calIn = new Float32Array(4860).map((_, i) => 1 + (i % 17) * 0.37);
+const calOut = new Float32Array(4860);
+function calibrationWork(): void {
+  for (let r = 0; r < 20; r++) for (let i = 0; i < calIn.length; i++) calOut[i] = Math.sqrt(calIn[i]! * calIn[i]! + 1.5) + calOut[i]! * 0.5;
+}
+/** How many times slower than at its best this process runs just now (1 or more): the median of 15 calls of the fixed loop over `CALIBRATION_BEST_MS`. */
+function speedFactor(): number {
+  const xs: number[] = [];
+  for (let i = 0; i < 15; i++) xs.push(costOf(calibrationWork));
+  xs.sort((a, b) => a - b);
+  return Math.max(1, xs[7]! / CALIBRATION_BEST_MS);
+}
+for (let i = 0; i < 300; i++) calibrationWork(); // (warm: the first calls of the loop are interpreted)
 
 const MiB = 1048576;
 const ORIGIN = { lat: -33.7, lon: 150.3 };
@@ -52,24 +95,25 @@ const quantile = (xs: number[], q: number): number => {
 };
 
 /**
- * Median, p95 and max of `f` over `n` calls. On a shared machine another process can take the core for a few milliseconds in any round,
- * which says nothing about `f`, so the round is repeated (up to `rounds` times) while its p95 is over `limit`, and the best round is the
- * answer; the p95 of every round is logged. `setup` runs before each round (a fresh recorder).
+ * Median, p95 and max of the cost of `f` (`costOf`) over `n` calls, in ms, as they would read on this machine at its best: the p95 and the max of a round are divided
+ * by the smaller of the speed factors measured just before and just after it (`speedFactor`), the median is left as it was read. A neighbour can still take the core
+ * for a moment, which says nothing about `f`, so the round is repeated (up to `rounds` times) while its p95 is over `limit`, and the best round is the answer; the p95 of
+ * every round (divided) is logged, and the factor of the best round as `k`. `setup` runs before each round (a fresh recorder).
  */
-function timeIt(f: (i: number) => void, n: number, limit: number, rounds: number, setup: () => void = () => undefined): { p50: number; p95: number; max: number; p95s: number[] } {
+function timeIt(f: (i: number) => void, n: number, limit: number, rounds: number, setup: () => void = () => undefined): { p50: number; p95: number; max: number; p95s: number[]; k: number } {
   setup();
   for (let i = 0; i < 40; i++) f(i); // warm up so that V8 has optimised the loops
-  let best: { p50: number; p95: number; max: number } | null = null;
+  let best: { p50: number; p95: number; max: number; k: number } | null = null;
   const p95s: number[] = [];
   for (let r = 0; r < rounds; r++) {
     setup();
+    const before = speedFactor();
     const ms: number[] = [];
     for (let i = 0; i < n; i++) {
-      const t0 = performance.now();
-      f(i);
-      ms.push(performance.now() - t0);
+      ms.push(costOf(() => f(i)));
     }
-    const round = { p50: quantile(ms, 0.5), p95: quantile(ms, 0.95), max: Math.max(...ms) };
+    const k = Math.min(before, speedFactor());
+    const round = { p50: quantile(ms, 0.5), p95: quantile(ms, 0.95) / k, max: Math.max(...ms) / k, k };
     p95s.push(round.p95);
     if (!best || round.p95 < best.p95) best = round;
     if (best.p95 < limit) break;
@@ -161,7 +205,7 @@ describe('one wanted arrival and one read', () => {
         );
         log(`${name} ${columns} x ${rows}: of that, sampleSlice alone: median ${sampling.p50.toFixed(2)} ms, p95 ${sampling.p95.toFixed(2)} ms; the recorder's own arrive + store: median ${own.p50.toFixed(3)} ms, p95 ${own.p95.toFixed(3)} ms`);
         expect(own.p95).toBeLessThan(ownLimitMs);
-        log(`${name} ${columns} x ${rows}: arrive + sample + store: median ${add.p50.toFixed(2)} ms, p95 ${add.p95.toFixed(2)} ms, max ${add.max.toFixed(2)} ms (p95 of each round: ${add.p95s.map((x) => x.toFixed(2)).join(', ')})`);
+        log(`${name} ${columns} x ${rows}: arrive + sample + store: median ${add.p50.toFixed(2)} ms, p95 ${add.p95.toFixed(2)} ms, max ${add.max.toFixed(2)} ms (p95 of each round: ${add.p95s.map((x) => x.toFixed(2)).join(', ')}; this machine x${add.k.toFixed(2)} its best)`);
         expect(add.p95).toBeLessThan(limitMs);
 
         // read, into a reused slice
@@ -178,7 +222,7 @@ describe('one wanted arrival and one read', () => {
           0.5,
           6,
         );
-        log(`${name} ${columns} x ${rows}: read: median ${read.p50.toFixed(3)} ms, p95 ${read.p95.toFixed(3)} ms, max ${read.max.toFixed(3)} ms (p95 of each round: ${read.p95s.map((x) => x.toFixed(3)).join(', ')})`);
+        log(`${name} ${columns} x ${rows}: read: median ${read.p50.toFixed(3)} ms, p95 ${read.p95.toFixed(3)} ms, max ${read.max.toFixed(3)} ms (p95 of each round: ${read.p95s.map((x) => x.toFixed(3)).join(', ')}; x${read.k.toFixed(2)})`);
         expect(read.p95).toBeLessThan(0.5);
 
         // bytes: the model and the real recorder
@@ -192,6 +236,7 @@ describe('one wanted arrival and one read', () => {
 
         // the thinning itself: the store that crosses the budget (a pointer shuffle, not a copy of the samples)
         const thinMs: number[] = [];
+        const thinK = speedFactor();
         for (let rep = 0; rep < 12; rep++) {
           rec = new SliceRecorder({ budgetBytes: epoch + 60 * per + 100 });
           rec.setLine(key);
@@ -201,9 +246,7 @@ describe('one wanted arrival and one read', () => {
           rec.arrive(t);
           spec.shownTime = t;
           scratch = sampleSlice(sampler, terrain, spec, scratch);
-          const t1 = performance.now();
-          rec.store(scratch!, t);
-          thinMs.push(performance.now() - t1);
+          thinMs.push(costOf(() => rec.store(scratch!, t)) / thinK);
           expect(rec.status().spacingS).toBeGreaterThan(0); // that store did thin
         }
         log(`${name} ${columns} x ${rows}: the store that thins: median ${quantile(thinMs, 0.5).toFixed(3)} ms, max ${Math.max(...thinMs).toFixed(3)} ms`);
@@ -232,7 +275,7 @@ describe('one wanted arrival and one read', () => {
     );
     const st = tl.status();
     const d = tl.read(sectionFromEndpoints([-2900, -1200], [2900, 1500], grid).line!, t, 'prognostic', null, null)!;
-    log(`record(snapshot), ${d.columns} x ${d.rows}: median ${r.p50.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms (p95 of each round: ${r.p95s.map((x) => x.toFixed(2)).join(', ')}); ${st.count} samples, ${st.bytes} B`);
+    log(`record(snapshot), ${d.columns} x ${d.rows}: median ${r.p50.toFixed(2)} ms, p95 ${r.p95.toFixed(2)} ms, max ${r.max.toFixed(2)} ms (p95 of each round: ${r.p95s.map((x) => x.toFixed(2)).join(', ')}; x${r.k.toFixed(2)}); ${st.count} samples, ${st.bytes} B`);
     expect(r.p95).toBeLessThan(1.5);
   });
 });

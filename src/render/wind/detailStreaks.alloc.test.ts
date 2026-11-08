@@ -5,8 +5,13 @@
  * test has already optimised the builder (the pattern of `flowGlyphs.alloc.test.ts`). The clock the builder is given costs what a browser's
  * `performance.now()` costs, a heap number per read, and counts against the kilobyte.
  *
- * "Steady state" is after V8 has optimised the code, which a small rebuild reaches only after 100 to 200 of them: each case runs until
- * three windows in a row are quiet, and the number of rebuilds that took is logged.
+ * "Steady state" is after V8 has optimised the code, which a small rebuild reaches only after 100 to 200 of them (the relief's functions run once
+ * a rebuild and take 800 to 1,900 on an idle machine). V8 optimises on a thread of its own, so how many rebuilds that takes depends on how much of
+ * the machine that thread gets: each case therefore runs until the median of the last 11 windows is quiet (a state, not a count of rebuilds),
+ * for at most `SETTLE_MS`, and the number of rebuilds that took is logged. The gate's full run once measured the relief in a forest at 2,282.8
+ * bytes a rebuild against the 1,024; beside four busy loops and the other perf tests here it settled after the same 780 rebuilds and read 605, so
+ * that failure was not reproduced and the cause of it is not established: a measurement taken before the code had settled is what it looks like,
+ * and what the state wait below rules out (a case that never settles now says so, instead of reporting the bytes of code that was still warming up).
  */
 import * as v8 from 'node:v8';
 import * as vm from 'node:vm';
@@ -93,16 +98,26 @@ function windows(rebuild: () => void, count: number, size: number): number[] {
   return per;
 }
 
-/** Rebuilds until the code has settled: three quiet windows of 20 in a row (at most `limit` rebuilds: 1200, or more for the relief, whose functions run once a rebuild and are optimised later). */
-function settle(rebuild: () => void, limit = 1200): number {
-  let quiet = 0;
-  let done = 0;
-  while (quiet < 3 && done < limit) {
-    const w = windows(rebuild, 1, 20)[0]!;
-    done += 20;
-    quiet = w < 700 ? quiet + 1 : 0;
+/** How long a case may take to settle (ms): an idle machine needs a second or two, and a machine whose cores are all busy a good deal more. */
+const SETTLE_MS = 90_000;
+/** The windows a case is judged settled on, each of 20 rebuilds, and the allocation under which the median of them is quiet (a steady rebuild here is 600 bytes or less, unoptimised code 2,000 or more). */
+const SETTLE_WINDOWS = 11;
+const QUIET_BYTES = 700;
+
+const medianOf = (xs: number[]): number => [...xs].sort((a, b) => a - b)[xs.length >> 1]!;
+
+/** Rebuilds until the code has settled: the median of the last `SETTLE_WINDOWS` windows of 20 is under `QUIET_BYTES`, or `limitMs` has passed (then `settled` is false). */
+function settle(rebuild: () => void, limitMs = SETTLE_MS): { rebuilds: number; settled: boolean } {
+  const recent: number[] = [];
+  const t0 = performance.now();
+  let rebuilds = 0;
+  while (performance.now() - t0 < limitMs) {
+    recent.push(windows(rebuild, 1, 20)[0]!);
+    rebuilds += 20;
+    if (recent.length > SETTLE_WINDOWS) recent.shift();
+    if (recent.length === SETTLE_WINDOWS && medianOf(recent) < QUIET_BYTES) return { rebuilds, settled: true };
   }
-  return done;
+  return { rebuilds, settled: false };
 }
 
 function makeRebuild(b: DetailBuilder, input: DetailInput): () => void {
@@ -114,6 +129,9 @@ function makeRebuild(b: DetailBuilder, input: DetailInput): () => void {
   };
 }
 
+/** The default test timeout of 60 s is not enough where the cores are all busy: a run beside four busy loops and the other perf tests ran out of it with the nine cases all measured. */
+const TEST_MS = 900_000;
+
 describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => {
   it('with TurboFan inlining off, begin and every step of a sliced rebuild, for a tablet, a phone, rough ground, a wall and a calm field', () => {
     v8.setFlagsFromString('--no-turbo-inlining');
@@ -123,20 +141,22 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => 
         const sc = makeDetailScenario({ ...opts, cap: { glyphs: 2000, segments: 12000 } });
         const b = createDetailBuilder('high');
         const rebuild = makeRebuild(b, { ...(relief ? reliefInput(sc, relief) : sc.input), now: browserClock() });
-        const settled = settle(rebuild, relief ? 4000 : 1200);
+        const first = settle(rebuild);
         expect(b.out.lines, name).toBeGreaterThanOrEqual(minLines);
         gc();
         gc();
+        const again = settle(rebuild); // (a collection can throw away code that was not hot enough to keep: the windows below are of the code as it stands after it)
         const per = windows(rebuild, 21, 20).sort((x, y) => x - y);
         const median = per[per.length >> 1]!;
-        lines.push(`${name}: ${b.out.lines} lines, ${b.out.segments} segments; settled after ${settled} rebuilds; ${median.toFixed(0)} B per rebuild (best ${per[0]!.toFixed(0)}, worst ${per[per.length - 1]!.toFixed(0)})`);
+        lines.push(`${name}: ${b.out.lines} lines, ${b.out.segments} segments; settled after ${first.rebuilds} rebuilds and ${again.rebuilds} more after the collections; ${median.toFixed(0)} B per rebuild (best ${per[0]!.toFixed(0)}, worst ${per[per.length - 1]!.toFixed(0)})`);
+        expect(first.settled && again.settled, `${name}: the allocation settled under ${QUIET_BYTES} bytes a rebuild within ${SETTLE_MS / 1000} s (the windows after it: ${per.map((x) => x.toFixed(0)).join(', ')})`).toBe(true);
         expect(median, name).toBeLessThan(1024);
       }
       for (const line of lines) log(line);
     } finally {
       v8.setFlagsFromString('--turbo-inlining');
     }
-  });
+  }, TEST_MS);
 
   it('the builder itself is tiny: with a clock that returns a whole number a rebuild allocates under 256 bytes', () => {
     v8.setFlagsFromString('--no-turbo-inlining');
@@ -145,14 +165,15 @@ describe('a steady rebuild of the detailed streaks allocates under 1 kB', () => 
       const clock = counterClock(0);
       const b = createDetailBuilder('high');
       const rebuild = makeRebuild(b, { ...sc.input, now: clock.now });
-      settle(rebuild);
+      expect(settle(rebuild).settled, 'the allocation settled').toBe(true);
       gc();
       gc();
+      expect(settle(rebuild).settled, 'and again after the collections').toBe(true);
       const per = windows(rebuild, 21, 20).sort((x, y) => x - y);
       log(`whole-number clock: ${per[per.length >> 1]!.toFixed(0)} B per rebuild`);
       expect(per[per.length >> 1]!).toBeLessThan(256);
     } finally {
       v8.setFlagsFromString('--turbo-inlining');
     }
-  });
+  }, TEST_MS);
 });
