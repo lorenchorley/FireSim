@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The desktop link (0.9.0, decision D36): the app's page, at https://localhost, opens ws:// and fetches http:// to a computer on
+  the local network whose address the person types. Android cannot say "private addresses only": a domain-config matches a host
+  name, or a domain and its subdomains, never an address range, and the address is typed at run time, so cleartext is permitted
+  for every host. That is the narrowest rule that lets a typed address work. It changes nothing for https, the trust anchors stay
+  the system's (no user certificates) and the app's own services are all https:// addresses.
+  The WebView needs a second switch for ws:// from an https page: android.allowMixedContent in capacitor.config.ts.
+  tests/build/androidNetwork.test.ts pins this file; scripts/check-android-apk.mjs reads it back out of the built APK.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
