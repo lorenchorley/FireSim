@@ -216,13 +216,13 @@ const blockBoxes = (
 /**
  * Resolves when the tool's layout is the layout it is going to stay in: the panel has drawn the scene's own latest slice (its canvas carries the slice's number) and
  * every box the layout checks read has been the same in four display frames in a row. The panel lays a slice out in the display frame after the one that made it
- * (`setData` only notes it, so that the update that places a line stays short), the height of its picture is part of that layout, and a window that has changed size
- * reaches the page's observers in a frame of its own (`.dock` also changes its height with a 200 ms CSS transition, which a page only advances on a frame). Where the
- * frames are seconds apart (the software GL beside another browser: 2 to 4 s between frames in a run of two workers and a busy loop, measured in pace.spec.ts's run) a
- * read made a fixed time after a change reads the layout from before it, and that is what the gate's full run looks like it read here: Set start's bottom at 753 against
- * a pinned footer at 726, and at 844 x 390 a body of 158 px where the same flow alone reads 190. (Neither was reproduced: the one run of this flow beside two workers and a
- * busy loop never reached the step, see the report; the same lag was reproduced and measured for the view's size in layers.spec.ts.) Waits for as many frames as that
- * takes (at most `maxMs`) and returns how many that was.
+ * (`setData` only notes it, so that the update that places a line stays short), and the height of its picture is part of that layout; a window that has changed size
+ * reaches the page's observers in a frame of its own too. Where the frames are seconds apart (the software GL beside another browser) a read made a fixed time after a
+ * change reads the layout from before it. That is the failure of the gate's full run in step 7 (Set start's bottom at 753 against a pinned footer at 726), reproduced
+ * under two workers and two busy loops: at the read the scene had slice 7 and the panel had drawn slice 6, its picture 227 px tall; 0.4 s later the panel had slice 7
+ * and the picture 159 px (and in the other run of the pair, which read after the panel had caught up, Set start's bottom was at 685). The 844 x 390 audit of the recording test (12 controls missing 3 of 8 probes in the gate, with the body 158 px
+ * where a run alone reads 190) was not reproduced in two runs of the same load, which read a body of 158 px and no misses: that read is taken here too on a layout that
+ * has stopped moving, which is the cause suspected for it. Waits for as many frames as that takes (at most `maxMs`) and returns how many that was.
  */
 const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
   page.evaluate(
