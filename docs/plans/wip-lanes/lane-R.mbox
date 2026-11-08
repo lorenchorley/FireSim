@@ -1,0 +1,326 @@
+From 74b85b99d88e680281512d98da4cb95c408aa2ea Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:41:41 +0000
+Subject: [PATCH 1/2] A view that holds still finishes its forest in one frame
+
+The forest is placed one step per drawn frame (14 to 20 steps), a drawn frame takes the
+software GL about 1.15 s on a busy machine (measured), so a view that held still after the
+idle limit had its placement unfinished for some 20 s while the loop kept drawing a frame
+per step, and 'no frame in 1.5 s' was true in the 2 to 3 s gaps between them. When the view
+is held, the frame now pumps the placement to its end (the same trees as the steps give,
+pinned) and a camera settle that was still waiting gets a frame and is placed.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/render/SceneView.ts            |  8 ++++++--
+ src/render/idleStop.test.ts        | 12 ++++++++++++
+ src/render/vegetationLayer.test.ts | 31 ++++++++++++++++++++++++++++++
+ 3 files changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/src/render/SceneView.ts b/src/render/SceneView.ts
+index c4240aa..bf95d63 100644
+--- a/src/render/SceneView.ts
++++ b/src/render/SceneView.ts
+@@ -1561,6 +1561,10 @@ export class SceneView implements SceneViewApi {
+       this.glyphs.setPaused(idle);
+       if (!idle) this.dirty = true;
+     }
++    // A view that holds still has nothing unfinished: the forest being placed a step a drawn frame (a frame takes the software GL about a second, so that
++    // is some 20 s), or waiting for the camera to settle, is finished in this frame, where nobody sees a hitch, and the view then draws nothing.
++    const settle = this.settleNow || idle;
++    if (idle && this.vegPending) this.dirty = true; // (a settle that was still to come is no ambient animation, and a held view draws no frame for it: this one does)
+     if (!idle) this.u.uClock!.value = (this.u.uClock!.value as number) + dt;
+ 
+     // What moves by itself, apart from the picture changing: it asks for frames only while the view is being used.
+@@ -1595,14 +1599,14 @@ export class SceneView implements SceneViewApi {
+       // (this does nothing until the camera has moved by a tenth of its distance).
+       this.vegPending = now;
+       this.updateVegLod();
+-    } else if (this.vegPending && (this.settleNow || now - this.vegPending > 350) && !this.rig.flying) {
++    } else if (this.vegPending && (settle || now - this.vegPending > 350) && !this.rig.flying) {
+       this.vegPending = 0;
+       this.placeVegetation(false);
+       this.updateVegLod();
+       this.updateVegWind();
+       this.refreshMarkers();
+     }
+-    if (this.vegetation?.pump(this.settleNow ? Infinity : 4)) this.dirty = true;
++    if (this.vegetation?.pump(settle ? Infinity : 4)) this.dirty = true;
+ 
+     const vex = this.vex;
+     if (this.hf && this.domain) {
+diff --git a/src/render/idleStop.test.ts b/src/render/idleStop.test.ts
+index 09b3375..3a0e6a6 100644
+--- a/src/render/idleStop.test.ts
++++ b/src/render/idleStop.test.ts
+@@ -133,6 +133,18 @@ describe('SceneView and the idle stop (source pins: the loop is not run here, so
+     expect(scene).toMatch(/if \(idle !== this\.heldStill\) \{\s+this\.heldStill = idle;\s+this\.glyphs\.setPaused\(idle\);\s+if \(!idle\) this\.dirty = true;\s+\}/);
+   });
+ 
++  it('a view that holds still finishes the forest in one frame: the placement is pumped to its end, and a camera settle that was still waiting is placed then (0.9.0, lane R)', () => {
++    // (measured: a drawn frame takes the software GL about 1.15 s and the placement is a step a drawn frame, so a view held after 3 s had its forest unfinished for some 20 s)
++    expect(scene).toMatch(/const settle = this\.settleNow \|\| idle;/);
++    expect(scene).toMatch(/\} else if \(this\.vegPending && \(settle \|\| now - this\.vegPending > 350\) && !this\.rig\.flying\) \{/);
++    expect(scene).toMatch(/if \(this\.vegetation\?\.pump\(settle \? Infinity : 4\)\) this\.dirty = true;/);
++    // a held view draws a frame when a settle is waiting (the loop would not run for it: it is not an ambient animation), and that frame does the settle
++    expect(scene).toMatch(/const settle = this\.settleNow \|\| idle;\s+if \(idle && this\.vegPending\) this\.dirty = true;/);
++    // and nothing else changed which frames are settled: the screenshots' `renderNow` is the only other way in, and a limit of "never" leaves `idle` false
++    expect(scene.match(/this\.settleNow \? Infinity : 4/g)).toBeNull();
++    expect(scene.match(/pump\(settle \? Infinity : 4\)/g)).toHaveLength(1);
++  });
++
+   it('the CPU particles and the embers are not advanced while idle', () => {
+     expect(scene).toMatch(/if \(!idle && this\.embers\.group\.visible && this\.embers\.active > 0\) this\.embers\.animate\(/);
+     expect(scene).toMatch(/if \(!idle && this\.wind\.currentMode !== 'off' && this\.sampler\) this\.wind\.animate\(/);
+diff --git a/src/render/vegetationLayer.test.ts b/src/render/vegetationLayer.test.ts
+index 980e99b..357d59f 100644
+--- a/src/render/vegetationLayer.test.ts
++++ b/src/render/vegetationLayer.test.ts
+@@ -346,6 +346,37 @@ describe('VegetationLayer staged work', () => {
+     l.dispose();
+   });
+ 
++  // A view that holds still finishes the forest in one frame (SceneView pumps to Infinity once the idle stop has begun): wherever the staged work was left, that
++  // gives the trees the steps would have given (what is drawn does not depend on how the work was spread over frames).
++  it('finishes a placement left at any stage in one go, to the same trees as one pumped a step at a time', () => {
++    const opts = { budget: 8000, heightAt, focus: [0, 0] as [number, number], focusRadius: 700, seed: 2 };
++    const start = (): VegetationLayer => {
++      const l = layer();
++      l.staged = true;
++      l.startPlacement(fm, opts, [0, 0, 505], 1);
++      return l;
++    };
++    const stepped = start();
++    let calls = 0;
++    while (stepped.placing && calls < 100000) {
++      stepped.pump(0.0001);
++      calls++;
++    }
++    expect(calls).toBeGreaterThan(5);
++    for (const done of [0, 1, Math.floor(calls / 3), Math.floor((2 * calls) / 3), calls - 1]) {
++      const l = start();
++      for (let i = 0; i < done; i++) l.pump(0.0001);
++      expect(l.placing, `${done} of ${calls} steps done: work is left`).toBe(true);
++      expect(l.pump(Infinity), `${done} of ${calls}: the picture changes`).toBe(true);
++      expect(l.placing, `${done} of ${calls}: nothing is left`).toBe(false);
++      expect(l.pump(Infinity), `${done} of ${calls}: and a second pump has nothing to do`).toBe(false);
++      expect(l.instanceCount, `${done} of ${calls}`).toBe(stepped.instanceCount);
++      expect(l.stats(), `${done} of ${calls}`).toEqual(stepped.stats());
++      l.dispose();
++    }
++    stepped.dispose();
++  });
++
+   // The view is built before its screen is in the page and used to draw at 1 px tall during a slow engine start: a placement that
+   // finished then was planned for that size (every tree is under a pixel, so none was kept) and stayed that way until the camera
+   // moved or the canopy was switched off and on: a forest-less map. SceneView no longer draws without a size; the layer also plans
+
+From 17cae6b51e0dc6f0d40bae871607d62065d04678 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 09:45:56 +0000
+Subject: [PATCH 2/2] WIP: stopped by the orchestrator at the owner's request;
+ not reviewed, not merged
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/held-forest.spec.ts | 189 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 189 insertions(+)
+ create mode 100644 e2e/held-forest.spec.ts
+
+diff --git a/e2e/held-forest.spec.ts b/e2e/held-forest.spec.ts
+new file mode 100644
+index 0000000..2e771a0
+--- /dev/null
++++ b/e2e/held-forest.spec.ts
+@@ -0,0 +1,189 @@
++/**
++ * A view that holds still has finished its forest (0.9.0, lane R; plan 23.x, the idle-stop investigation) in the real app (bundled Katoomba demo, 6 km, offline,
++ * the fast tier, the High picture tier, the real worker, a Pixel 7 profile at device scale 1, software GL; the idle limit is 3 s, set before the view is built).
++ *
++ * What the investigation found: the forest is placed a few ms a frame, one step per drawn frame (14 to 20 of them), and a frame of the whole scene takes the software GL
++ * about 1.15 s on a busy machine (measured: the median gap between drawn frames, with about 10 ms of script in each). The placement then needs about 20 s, the view holds
++ * still after 3 s, and the loop kept drawing a frame per step with the view held, so the forest was unfinished for the rest of that time, and "no frame in 1.5 s" was
++ * true in the 2 to 3 s gaps between those frames (e2e/wind-motion.spec.ts takes its first picture by hand for that reason).
++ *   - slow frames: the loop is let through at most once in 1.2 s on purpose (the cadence the software GL gives it under load), so that the test does not depend on how
++ *     busy the machine is; the view holds still after 3 s with the placement far from done, and its forest is finished there, in one frame; it then draws nothing (two
++ *     pictures drawn by hand are the same picture) and a touch wakes it
++ *   - a camera that settles after the hold: in a quiet scene, with the loop running at a phone's pace (a frame every 16 ms), the settle that follows a camera move is
++ *     not left waiting for a frame that the view never draws; a view that holds still before the 350 ms settle has the forest placed for where the camera is
++ * Nothing in the console (the guard of ./fixtures).
++ */
++import type { Page } from '@playwright/test';
++import { expect, test } from './fixtures';
++import { acceptNotice } from './helpers';
++
++test.use({ deviceScaleFactor: 1, actionTimeout: 45_000 });
++
++type View = {
++  lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void;
++  setLayers(l: Record<string, unknown>): void;
++  renderNow(): void;
++  renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } } };
++  /** (private members, read here the way the other specs read the rig) */
++  vegetation: { placing: boolean } | null;
++  vegPending: number;
++  vegRadius: number;
++  heldStill: boolean;
++  frame(now: number): void;
++  settleNow: boolean;
++  activity: { setLimit(ms: number): void };
++};
++type Handle = { __firesim: { view: View; session: { play(): void; pause(): void; state: { get(): { snapshot: { atmosphere?: { kind?: string } } | null; headTime: number; playing: boolean } } } } };
++
++interface Held {
++  heldStill: boolean;
++  placing: boolean;
++  vegPending: number;
++  vegRadius: number;
++  frames: number;
++}
++const held = (page: Page): Promise<Held> =>
++  page.evaluate(() => {
++    const v = (window as unknown as Handle).__firesim.view;
++    return { heldStill: v.heldStill, placing: v.vegetation!.placing, vegPending: v.vegPending, vegRadius: v.vegRadius, frames: v.renderer.info.render.frame };
++  });
++const frames = (page: Page): Promise<number> => page.evaluate(() => (window as unknown as Handle).__firesim.view.renderer.info.render.frame);
++const setLayers = (page: Page, l: Record<string, unknown>): Promise<void> => page.evaluate((v) => (window as unknown as Handle).__firesim.view.setLayers(v), l);
++const lookAt = (page: Page, d: number): Promise<void> => page.evaluate((pd) => (window as unknown as Handle).__firesim.view.lookAt(0, 0, pd, 200, 55, false), d);
++const renderNow = (page: Page): Promise<void> => page.evaluate(() => (window as unknown as Handle).__firesim.view.renderNow());
++const setIdleLimit = (page: Page, ms: number): Promise<void> => page.evaluate((v) => (window as unknown as Handle).__firesim.view.activity.setLimit(v), ms);
++
++/** One frame of the 3-D view as a PNG data URL, drawn and read in the same task. */
++const shot = (page: Page): Promise<string> =>
++  page.evaluate(() => {
++    const v = (window as unknown as Handle).__firesim.view;
++    v.renderNow();
++    return v.renderer.domElement.toDataURL('image/png');
++  });
++
++/**
++ * Let the loop through at most once in `everyMs` (a frame drawn by hand, `renderNow`, always goes through): the cadence the software GL gives the loop when the machine
++ * is busy, because the next animation frame comes only after the last picture is on the screen. `0` puts the loop back.
++ */
++const slowLoop = (page: Page, everyMs: number): Promise<void> =>
++  page.evaluate((ms) => {
++    const v = (window as unknown as Handle).__firesim.view as View & { loopFrame?: (now: number) => void };
++    if (!v.loopFrame) v.loopFrame = v.frame.bind(v);
++    const real = v.loopFrame;
++    let last = -Infinity;
++    v.frame = (t: number): void => {
++      if (ms > 0 && !v.settleNow && t - last < ms) return;
++      last = t;
++      real(t);
++    };
++  }, everyMs);
++
++/**
++ * Run the loop the way a phone's GPU does: a frame every 16 ms, whatever the last one cost. (The software GL gives the next animation frame only after the last picture
++ * is on the screen, which takes about a second on a busy machine, longer than the 350 ms the camera takes to settle, and that hides what a fast loop shows.)
++ */
++const fastLoop = (page: Page): Promise<void> =>
++  page.evaluate(() => {
++    const v = (window as unknown as Handle).__firesim.view as View & { renderer: { setAnimationLoop(f: null): void } };
++    v.renderer.setAnimationLoop(null);
++    setInterval(() => v.frame(performance.now()), 16);
++  });
++
++/** Build the Katoomba demo at the fast tier and the High picture tier, with the idle limit 3 s (the view reads it once, when it is built), and pause the run. */
++async function build(page: Page): Promise<void> {
++  await page.goto('/?debug=1');
++  await acceptNotice(page);
++  await page.evaluate(() => ((window as unknown as { __firesimIdleStopMs: number }).__firesimIdleStopMs = 3000));
++  await page.getByTestId('open-settings').click();
++  await expect(page.getByTestId('settings')).toBeVisible();
++  await page.getByTestId('picture-quality').getByRole('radio', { name: 'High' }).check();
++  await page.getByTestId('close-settings').click();
++  await expect(page.getByTestId('settings')).toHaveCount(0);
++  await page.getByTestId('site-katoomba').click();
++  await page.getByTestId('extent').getByRole('radio', { name: '6 km' }).check({ force: true });
++  await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
++  await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
++  await page.getByTestId('preset-hot-nw-sw-change').click();
++  const online = page.getByTestId('online').getByRole('switch');
++  if (await online.isChecked()) await page.getByTestId('online').click();
++  await page.getByTestId('build').click();
++  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
++  await expect.poll(() => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().snapshot?.atmosphere?.kind ?? null), { timeout: 60_000 }).not.toBeNull();
++  await page.evaluate(() => (window as unknown as Handle).__firesim.session.play());
++  await expect.poll(async () => (await page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get())).headTime, { timeout: 120_000 }).toBeGreaterThan(400);
++  await page.evaluate(() => (window as unknown as Handle).__firesim.session.pause());
++  await expect.poll(() => page.evaluate(() => (window as unknown as Handle).__firesim.session.state.get().playing)).toBe(false);
++}
++
++/** A touch on the screen, in the middle of the picture. */
++async function tapScreen(page: Page): Promise<void> {
++  const box = (await page.locator('canvas').first().boundingBox())!;
++  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
++}
++
++test('slow frames: the view holds still after 3 s with the forest far from placed; it is finished there, in one frame, and the view then draws nothing', async ({ page }) => {
++  test.setTimeout(600_000);
++  await build(page);
++  await setLayers(page, { windGlyphs: false, wind: 'surface', windHeight: 'fire' }); // something that moves, so the loop draws until the hold
++  await slowLoop(page, 1200);
++  await lookAt(page, 150); // from the home view: the forest is placed again for a close view
++  await renderNow(page);
++  const seen: Held[] = []; // the first reading that says the view holds still
++  await expect
++    .poll(
++      async () => {
++        const s = await held(page);
++        if (s.heldStill && !seen.length) seen.push(s);
++        return s.heldStill;
++      },
++      { message: 'the view holds still', timeout: 120_000, intervals: [100] },
++    )
++    .toBe(true);
++  const first = seen[0]!;
++  expect(first.placing, `the forest is finished when the view first says it holds still (read: ${JSON.stringify(first)})`).toBe(false);
++  expect(first.vegPending, 'and no placement is waiting for the camera to settle').toBe(0);
++  // It draws the picture with the finished forest, and then nothing: no frame in 3 s (polled, the last picture takes its time).
++  await expect
++    .poll(
++      async () => {
++        const a = await frames(page);
++        await page.waitForTimeout(3000);
++        return (await frames(page)) - a;
++      },
++      { message: 'the held view stops drawing', timeout: 120_000, intervals: [200] },
++    )
++    .toBe(0);
++  const end = await held(page);
++  expect(end.placing).toBe(false);
++  expect(end.frames - first.frames, `frames drawn from the hold to the stop (one picture, not one for each step of the placement: ${first.frames} to ${end.frames})`).toBeLessThanOrEqual(3);
++  // Two pictures drawn by hand while held are the same picture, with no settling picture before them.
++  const a = await shot(page);
++  await page.waitForTimeout(1000);
++  expect((await shot(page)) === a, 'a frame drawn by hand while held is the same frame').toBe(true);
++  // And a touch wakes it.
++  const f0 = await frames(page);
++  await tapScreen(page);
++  await expect.poll(async () => (await frames(page)) - f0, { message: 'a tap wakes the view', timeout: 15_000, intervals: [100] }).toBeGreaterThan(0);
++});
++
++test('a camera that settles after the hold: the forest is placed for where it is, not left waiting for a frame', async ({ page }) => {
++  test.setTimeout(600_000);
++  await build(page);
++  // A quiet scene: trees stay, and nothing else moves or changes with the camera (the wind marks, the names and the roads would each ask for frames of their own).
++  await setLayers(page, { windGlyphs: false, wind: 'off', vegetation: true, understorey: true, windSway: false, flames: false, smoke: false, embers: false, roads: false, fireTrails: false, placeNames: false, imagery: false, insightMarkers: false });
++  await setIdleLimit(page, 300); // shorter than the 350 ms the camera takes to count as settled
++  await fastLoop(page);
++  const before = (await held(page)).vegRadius;
++  expect(before, 'the home view places its forest wide, so that the close view below needs a new placement').toBeGreaterThan(700);
++  await lookAt(page, 150); // a close view: the forest is placed within 500 m (the smallest radius)
++  await renderNow(page);
++  await expect
++    .poll(
++      async () => {
++        const s = await held(page);
++        return s.heldStill && !s.placing && s.vegPending === 0 ? Math.round(s.vegRadius) : -1;
++      },
++      { message: `the view holds still and the forest is placed for the close view (the radius was ${Math.round(before)} m)`, timeout: 60_000, intervals: [200] },
++    )
++    .toBe(500);
++});

@@ -1,0 +1,2767 @@
+From daa5211610ac150bfb2c8f05dc19fec3d96b78e3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 07:57:35 +0000
+Subject: [PATCH 1/5] Desktop detail: the levels, the builder's cell rule, the
+ pure model and the determinism test
+
+Finer is 20 m and Finest 10 m (the two cells plan 15e measured), both with 8,000 embers, any area up to the 9 km measured, the High air allowed and the
+air tier still the person's. SimOptions.desktopDetail records the level; with no level the builder, the request and the snapshot hashes are 0.8.0's
+(the fifteen hashes of a Katoomba 6 km run are stored from the 0.8.0 source). The pure model has the label, the words, the history budget (no growth on a
+phone's page, 384 MiB on a desktop-class one), the picture size and the two refusals (a page that cannot keep the pictures, a device that cannot run the grid).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/core/types.ts                         |   9 +
+ src/scenario/build.ts                     |   4 +-
+ src/scenario/params.desktopDetail.test.ts |  87 ++++++++
+ src/scenario/params.ts                    |  16 +-
+ src/sim/desktopDetail.determinism.test.ts | 110 ++++++++++
+ src/sim/params.ts                         |   9 +-
+ src/ui/desktopDetail.test.ts              | 247 ++++++++++++++++++++++
+ src/ui/desktopDetail.ts                   | 220 +++++++++++++++++++
+ src/ui/desktopDetailChoice.ts             |  55 +++++
+ 9 files changed, 753 insertions(+), 4 deletions(-)
+ create mode 100644 src/scenario/params.desktopDetail.test.ts
+ create mode 100644 src/sim/desktopDetail.determinism.test.ts
+ create mode 100644 src/ui/desktopDetail.test.ts
+ create mode 100644 src/ui/desktopDetail.ts
+ create mode 100644 src/ui/desktopDetailChoice.ts
+
+diff --git a/src/core/types.ts b/src/core/types.ts
+index 6dcefa8..2c61487 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -655,8 +655,17 @@ export interface SimOptions {
+   tier?: 'auto' | QualityTier;
+   /** First-level thickness Δζ₁ (m); tier default. */
+   atmosDz1?: number;
++  /**
++   * 0.9.0 (D35): the Desktop detail the run was built with, absent for the standard detail (so a standard run is exactly what 0.8.0 built).
++   * The engine never reads it: the cell size and the ember cap it implies are already in `fireCellSize` and `maxEmbers`. It is the
++   * record that says "finer grid, results differ, not validated", so the label, the statistics and a restart on this device carry it.
++   */
++  desktopDetail?: DesktopDetailLevel;
+ }
+ 
++/** The finer fire grids the desktop offers (0.9.0): 20 m and 10 m cells. The standard detail is the absence of the choice. */
++export type DesktopDetailLevel = 'finer' | 'finest';
++
+ export type QualityTier = 'fast' | 'standard' | 'high';
+ 
+ export const DEFAULT_SIM_OPTIONS: SimOptions = {
+diff --git a/src/scenario/build.ts b/src/scenario/build.ts
+index ee1d25f..6928e2a 100644
+--- a/src/scenario/build.ts
++++ b/src/scenario/build.ts
+@@ -81,7 +81,9 @@ export function resolveRequest(req: ScenarioRequest): ResolvedRequest {
+     extent = P.demoExtentM;
+     warnings.push(MESSAGES.extentClamped(P.demoExtentM / 1000, req.weather.kind === 'replay' ? 'replays use the bundled 9 km demo area' : 'offline: bundled 9 km demo area'));
+   }
+-  const cell = builtFireCell(extent, req.options?.fireCellSize, req.options?.tier);
++  const detail = req.options?.desktopDetail;
++  if (detail && extent > P.desktopDetailMaxExtentM) throw new RangeError(`The finer grids need an area of ${P.desktopDetailMaxExtentM / 1000} km or less.`);
++  const cell = builtFireCell(extent, req.options?.fireCellSize, req.options?.tier, detail);
+   const fireCellSize = cell.cellM;
+   if (cell.coarsened) warnings.push(MESSAGES.cellCoarsened(P.fireCellM));
+   extent = Math.round(extent / fireCellSize) * fireCellSize;
+diff --git a/src/scenario/params.desktopDetail.test.ts b/src/scenario/params.desktopDetail.test.ts
+new file mode 100644
+index 0000000..578a377
+--- /dev/null
++++ b/src/scenario/params.desktopDetail.test.ts
+@@ -0,0 +1,87 @@
++/**
++ * The builder's side of the Desktop detail (0.9.0, D35): `builtFireCell` with no level is exactly 0.8.0's rule (the table below was written from the
++ * 0.8.0 code before the level existed), a level sets its own cell at any extent the builder takes for it, and a request with a level and an area
++ * beyond what 15e measured is refused rather than coarsened (nothing is lowered silently).
++ */
++import { describe, expect, it } from 'vitest';
++import type { ScenarioRequest } from './request';
++import { resolveOptions, resolveRequest } from './build';
++import { builtFireCell, SCENARIO_PARAMS } from './params';
++
++const KAT = { lat: -33.7, lon: 150.3 };
++const base: ScenarioRequest = { centre: KAT, extent: 6000, weather: { kind: 'now' }, duration: 14400, online: true };
++
++describe('builtFireCell with no level is 0.8.0\'s rule', () => {
++  // [extent m, requested cell, tier, expected cell, coarsened]: the cases of 0.8.0's own tests and the edges of its rule.
++  const table: [number, number | undefined, string | undefined, number, boolean][] = [
++    [6000, undefined, undefined, 30, false],
++    [6000, 30, 'auto', 30, false],
++    [6000, 20, undefined, 20, false],
++    [6000, undefined, 'high', 20, false],
++    [9000, 20, undefined, 30, true],
++    [9000, undefined, 'high', 30, true],
++    [3000, 20, 'fast', 20, false],
++    [6001, 20, undefined, 30, true],
++    [6000, 40, undefined, 30, false],
++    [12000, undefined, 'standard', 30, false],
++  ];
++  for (const [extent, requested, tier, cellM, coarsened] of table)
++    it(`${extent} m, asked ${requested ?? 'nothing'}, tier ${tier ?? 'none'}: ${cellM} m${coarsened ? ' (coarsened)' : ''}`, () => {
++      expect(builtFireCell(extent, requested, tier)).toEqual({ cellM, coarsened });
++      expect(builtFireCell(extent, requested, tier, undefined)).toEqual({ cellM, coarsened });
++    });
++});
++
++describe('a level sets its own cell', () => {
++  it('20 m and 10 m at every area, with every tier and every requested cell, never coarsened', () => {
++    for (const extent of [3000, 6000, 9000, 12000])
++      for (const tier of [undefined, 'fast', 'standard', 'high'])
++        for (const requested of [undefined, 20, 30, 40]) {
++          expect(builtFireCell(extent, requested, tier, 'finer')).toEqual({ cellM: 20, coarsened: false });
++          expect(builtFireCell(extent, requested, tier, 'finest')).toEqual({ cellM: 10, coarsened: false });
++        }
++  });
++
++  it('both are whole multiples of the 10 m ground model, so the builder needs no new elevation grid', () => {
++    for (const cell of Object.values(SCENARIO_PARAMS.desktopDetailCellM)) {
++      expect(cell % SCENARIO_PARAMS.hiResCellM).toBe(0);
++      for (const extent of [3000, 6000, 9000]) expect(extent % cell).toBe(0);
++    }
++  });
++});
++
++describe('resolveRequest with a level', () => {
++  it('builds the level\'s cell with no warning, at the areas Setup offers, and keeps the extent', () => {
++    for (const [level, cell] of [['finer', 20], ['finest', 10]] as const)
++      for (const extent of [3000, 6000, 9000]) {
++        const r = resolveRequest({ ...base, extent, options: { desktopDetail: level, fireCellSize: cell } });
++        expect(r.fireCellSize).toBe(cell);
++        expect(r.extent).toBe(extent);
++        expect(r.warnings).toEqual([]);
++      }
++  });
++
++  it('refuses an area beyond the 9 km that 15e measured, instead of coarsening the grid and keeping the label', () => {
++    expect(SCENARIO_PARAMS.desktopDetailMaxExtentM).toBe(9000);
++    expect(() => resolveRequest({ ...base, extent: 9001, options: { desktopDetail: 'finest' } })).toThrow(/9 km or less/);
++    expect(() => resolveRequest({ ...base, extent: 12000, options: { desktopDetail: 'finer' } })).toThrow(RangeError);
++    // Without a level the 12 km area is still the builder's own business, as in 0.8.0.
++    expect(resolveRequest({ ...base, extent: 12000 }).extent).toBe(12000);
++  });
++
++  it('is the same request with the same answer when no level is given', () => {
++    const r = resolveRequest({ ...base, extent: 9000, options: { fireCellSize: 20 } });
++    expect(r.fireCellSize).toBe(30);
++    expect(r.warnings).toHaveLength(1);
++  });
++});
++
++describe('resolveOptions carries the record', () => {
++  it('desktopDetail and the level\'s embers reach the scenario\'s options; with no level there is no such key', () => {
++    const o = resolveOptions({ ...base, options: { desktopDetail: 'finest', maxEmbers: 8000, fireCellSize: 10 } }, 6000, 10);
++    expect(o).toMatchObject({ desktopDetail: 'finest', maxEmbers: 8000, fireCellSize: 10, tier: 'auto' });
++    const plain = resolveOptions(base, 6000, 30);
++    expect('desktopDetail' in plain).toBe(false);
++    expect(plain.maxEmbers).toBe(4000);
++  });
++});
+diff --git a/src/scenario/params.ts b/src/scenario/params.ts
+index 3adb920..eb78746 100644
+--- a/src/scenario/params.ts
++++ b/src/scenario/params.ts
+@@ -6,6 +6,7 @@
+  * they are configuration-like (service limits, table data) so the whole module can be tuned from one place; the tag
+  * in each comment says which is which.
+  */
++import type { DesktopDetailLevel } from '../core/types';
+ import { DEMO_EXTENT_M } from '../data/demoSites';
+ 
+ export const SCENARIO_PARAMS = Object.freeze({
+@@ -21,6 +22,15 @@ export const SCENARIO_PARAMS = Object.freeze({
+   fireCellM: 30,
+   highDetailCellM: 20,
+   highDetailMaxExtentM: 6000,
++  /**
++   * Desktop detail (0.9.0, D35; plan 15e "Measured"): the fire cell (m) of each finer level, for any extent up to `desktopDetailMaxExtentM`. Both
++   * are whole multiples of `hiResCellM`, so no new elevation grid is needed. 20 m and 10 m are the two cells 15e measured (15 m would need a 5 m
++   * elevation grid); the spread formulas were calibrated at 20 and 30 m, so a finer grid is a different model setting, not a more accurate one,
++   * and every result says so. [H]
++   */
++  desktopDetailCellM: Object.freeze({ finer: 20, finest: 10 }) as Readonly<Record<DesktopDetailLevel, number>>,
++  /** The largest square (m) a finer desktop level is built for: the Setup areas (3, 6, 9 km) are what 15e measured (10 m over 9 km: 1.9 GB peak, 39 MB a snapshot); nothing larger was run. [H] */
++  desktopDetailMaxExtentM: 9000,
+   /** Sub-cell slope above which a 10 m cell counts as cliff (Terrain.cliffFraction contract). [D] */
+   cliffSlopeDeg: 60,
+   /** Percentile of the 10 m sub-cell slopes reported as slopeP90Deg. [D] */
+@@ -203,10 +213,12 @@ export const demoAnnualRainfall = (siteId: string | undefined): number | undefin
+  * was asked for (a requested cell of 20 m or less, or the High tier) AND the extent is at most 6 km; otherwise 30 m. Any
+  * other requested size (e.g. 40 m) builds 30 m cells: the engine's calibrations (level-set viscosity, VLS slope
+  * thresholds, landform classes, ember emission per cell) are made and tested at 20-30 m (spec §2.1). `coarsened` says
+- * that High detail was asked for but the area is too large for it.
++ * that High detail was asked for but the area is too large for it. `desktopDetail` (0.9.0) overrides all of that with the level's own cell.
+  */
+-export function builtFireCell(extentM: number, requestedCellM?: number, tier?: string): { cellM: number; coarsened: boolean } {
++export function builtFireCell(extentM: number, requestedCellM?: number, tier?: string, desktopDetail?: DesktopDetailLevel): { cellM: number; coarsened: boolean } {
+   const P = SCENARIO_PARAMS;
++  // The desktop's finer levels (0.9.0) set the cell themselves, at any extent the builder accepts for them; with none the rules below are exactly 0.8.0's.
++  if (desktopDetail) return { cellM: P.desktopDetailCellM[desktopDetail], coarsened: false };
+   const wantsHigh = (requestedCellM !== undefined && requestedCellM <= P.highDetailCellM) || tier === 'high';
+   if (!wantsHigh) return { cellM: P.fireCellM, coarsened: false };
+   return extentM <= P.highDetailMaxExtentM ? { cellM: P.highDetailCellM, coarsened: false } : { cellM: P.fireCellM, coarsened: true };
+diff --git a/src/sim/desktopDetail.determinism.test.ts b/src/sim/desktopDetail.determinism.test.ts
+new file mode 100644
+index 0000000..e24515f
+--- /dev/null
++++ b/src/sim/desktopDetail.determinism.test.ts
+@@ -0,0 +1,110 @@
++/**
++ * The Desktop detail setting and plan section 4, rules 1 and 2 (0.9.0, D35; contract 4.1 item 5).
++ *
++ *   OFF  With the setting off the snapshot hashes equal 0.8.0's. The scenario is the one `desktop/engine.test.ts` uses for the determinism of the
++ *        transport (Katoomba demo site, 6 km, fast tier, a fire on the escarpment, seed 11), and the fifteen hashes below were taken from the
++ *        0.8.0 source (this tree before any 0.9.0 change; `git diff 7122c74 HEAD -- src desktop` was empty) with the same code, `Simulation`
++ *        advanced to 900 s with a picture every 60 s. They go through the real builder, so a change to the builder's rule for the cell or the
++ *        options would show here. They were not re-taken for this test: if one changes, results changed, and the report must say why.
++ *   ON   With a finer level the same scenario and seed give the same hash twice, a different one from the standard detail's (a finer grid is
++ *        not the same answer), and the grid, the ember cap and the record of the level are the same in every picture of the run: nothing during
++ *        the run (a tier change, an option, a rewind) changes the detail.
++ *
++ * What is measured on the 0.8.0 tree and not here: the Katoomba 6 km run at 10 m is in the real-host run of e2e/desktop-detail.spec.ts and the
++ * 15e study (studies/desktop-simulation); this file keeps to a 3 km area at 10 m so that it runs in seconds.
++ */
++import { describe, expect, it } from 'vitest';
++import type { ScenarioData, SimSnapshot } from '../core/types';
++import { Simulation } from './simulation';
++import { snapshotHash } from './testing/hash';
++import { demoScenario, pointIgnition, withIgnitions } from './testing/scenarios';
++
++/** `time:hash` of every picture of the 0.8.0 run (the 0.8.0 tree, Katoomba 6 km, fast tier, seed 11, fire at (-2170, 900), pictures every 60 s to 900 s). */
++const HASHES_0_8_0 = '60:1084538110 120:3498841198 180:1526728740 240:1652064113 300:3663678893 360:3575792216 420:2912366359 480:3708820897 540:3981135305 600:4269165313 660:1265999462 720:2911373612 780:3197235222 840:3229478989 900:3943397813';
++
++interface Run {
++  snaps: Map<number, SimSnapshot>;
++  sim: Simulation;
++}
++
++function run(sc: ScenarioData, until: number): Run {
++  const snaps = new Map<number, SimSnapshot>();
++  const sim = new Simulation(sc, { hooks: { snapshot: (s) => snaps.set(s.time, s) } });
++  sim.spinUp();
++  sim.advance(until);
++  return { snaps, sim };
++}
++
++const trace = (r: Run): string =>
++  [...r.snaps.keys()]
++    .sort((a, b) => a - b)
++    .map((t) => `${t}:${snapshotHash(r.snaps.get(t)!)}`)
++    .join(' ');
++
++describe('the setting off: the snapshot hashes are 0.8.0\'s', () => {
++  it('Katoomba 6 km, fast tier, seed 11: fifteen pictures, every hash the one the 0.8.0 tree gave', async () => {
++    const base = await demoScenario({ startCivil: [2025, 12, 20, 14], extent: 6000, tier: 'fast', duration: 3600 });
++    const sc = withIgnitions(base, [pointIgnition('escarpment', -2170, 900, 0, 60)], { snapshotInterval: 60, tier: 'fast', seed: 11 });
++    // The standard detail leaves no trace in the scenario: no record, the 30 m grid, the fast tier's 2,000 embers.
++    expect('desktopDetail' in sc.options).toBe(false);
++    expect(sc.terrain.grid.cellSize).toBe(30);
++    expect(sc.options.maxEmbers).toBe(2000);
++    expect(sc.options.fireCellSize).toBe(30);
++    const r = run(sc, 900);
++    expect(r.snaps.size).toBe(15);
++    expect(trace(r)).toBe(HASHES_0_8_0);
++  }, 300_000);
++});
++
++describe('a finer level: reproducible, different from the standard detail, and fixed for the whole run', () => {
++  async function katoomba3(options: Partial<ScenarioData['options']> = {}): Promise<ScenarioData> {
++    const base = await demoScenario({ startCivil: [2025, 12, 20, 14], extent: 3000, tier: 'fast', duration: 3600, options });
++    return withIgnitions(base, [pointIgnition('escarpment', -800, 300, 0, 60)], { snapshotInterval: 60, tier: 'fast', seed: 11, ...options });
++  }
++
++  it('10 m cells with the level recorded: the same scenario and seed give the same hash at every picture, twice (two Simulations, one scenario)', async () => {
++    const sc = await katoomba3({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000 });
++    expect(sc.options.desktopDetail).toBe('finest');
++    expect(sc.terrain.grid.cellSize).toBe(10);
++    expect(sc.terrain.grid.nx).toBe(300);
++    expect(sc.options.maxEmbers).toBe(8000);
++    const a = run(sc, 600);
++    const b = run(sc, 600);
++    expect(a.snaps.size).toBeGreaterThan(8);
++    expect(trace(b)).toBe(trace(a));
++    // The fire burnt, so the hashes mean something.
++    expect(a.snaps.get(600)!.fire.burnState.some((x) => x === 1 || x === 2)).toBe(true);
++  }, 300_000);
++
++  it('a finer grid is not the same answer: its hashes differ from the standard detail\'s over the same area, and the grid is nine times as fine', async () => {
++    const finest = run(await katoomba3({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000 }), 600);
++    const standard = run(await katoomba3(), 600);
++    expect(trace(finest)).not.toBe(trace(standard));
++    expect(finest.snaps.get(600)!.engine!.fire.nx).toBe(300);
++    expect(standard.snaps.get(600)!.engine!.fire.nx).toBe(100);
++  }, 300_000);
++
++  it('the grid, the ember cap and the record are the same in every picture, and nothing during the run changes them (a tier change, options, a rewind)', async () => {
++    const sc = await katoomba3({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000 });
++    const before = JSON.stringify(sc.options);
++    const r = run(sc, 300);
++    r.sim.setQuality('standard'); // the person may change the air tier: the grid is not the tier's
++    r.sim.setOption('embers', false);
++    r.sim.setOption('embers', true);
++    r.sim.setOption('coupling', 0.5);
++    r.sim.setOption('maxStepS', 5);
++    r.sim.advance(600);
++    r.sim.rewind(240);
++    r.sim.advance(600);
++    expect(r.snaps.size).toBeGreaterThan(8);
++    for (const [t, s] of r.snaps) {
++      expect(s.engine!.fire.cellM, `cell at ${t}`).toBe(10);
++      expect(s.engine!.fire.nx, `nx at ${t}`).toBe(300);
++      expect(s.engine!.embers.max, `embers at ${t}`).toBe(8000);
++    }
++    // The scenario object (the page's record of the run) is untouched by the engine.
++    expect(JSON.stringify(sc.options)).toBe(before);
++    expect(sc.options.desktopDetail).toBe('finest');
++    expect(sc.terrain.grid.cellSize).toBe(10);
++  }, 300_000);
++});
+diff --git a/src/sim/params.ts b/src/sim/params.ts
+index 1337fed..eb1b1c8 100644
+--- a/src/sim/params.ts
++++ b/src/sim/params.ts
+@@ -2,7 +2,7 @@
+  * Tunable constants of the orchestrator (spec docs/research/00-synthesis.md §3 cadences, §12.1 chunking, §12.4 ring,
+  * §12.6 tiers and auto-tune). Every [H] value of sim/ lives here.
+  */
+-import type { QualityTier } from '../core/types';
++import type { DesktopDetailLevel, QualityTier } from '../core/types';
+ 
+ export const SIM_PARAMS = Object.freeze({
+   // ── cadences (simulated seconds, §3) ──
+@@ -51,6 +51,13 @@ export const SIM_PARAMS = Object.freeze({
+   autoTuneMinBudgetS: 60,
+   // ── embers (§12.6 tier table) ──
+   maxEmbersByTier: { fast: 2000, standard: 4000, high: 4000 } as Readonly<Record<QualityTier, number>>,
++  /**
++   * Desktop detail (0.9.0, D35): the ember cap of the finer levels, whatever the tier. 8,000 is the 15e row that was run (Katoomba, 4 h, 30 m, fast tier:
++   * 2,483 ha at the fast tier's 2,000, 2,032 ha at 8,000, 2,933 ha at 32,000; one realisation each, so the cap moves the area by tens of percent and there is
++   * no convergence to point to); it costs about a fifth more time than the fast tier's default (32,000 cost 8.5 s an hour against 5.3 s). Both levels use it
++   * because nothing measured says a finer cell wants more. [H]
++   */
++  desktopDetailMaxEmbers: { finer: 8000, finest: 8000 } as Readonly<Record<DesktopDetailLevel, number>>,
+   /** Block size (fire cells) of the front-ROS raster used for the landing callback's rosLocal (exclusion zone) [H]. */
+   frontRosBlock: 8,
+   // ── stats (§12.3) ──
+diff --git a/src/ui/desktopDetail.test.ts b/src/ui/desktopDetail.test.ts
+new file mode 100644
+index 0000000..9fda486
+--- /dev/null
++++ b/src/ui/desktopDetail.test.ts
+@@ -0,0 +1,247 @@
++/**
++ * The Desktop detail setting (0.9.0, D35): what each level sets, the words, and the page's two memory rules. Pure: no DOM, no engine.
++ * The numbers pinned here come from plan 15e "Measured" (a snapshot of 16 MB at 10 m over 6 km and 39 MB over 9 km; 30 m about 2 MB) and from the
++ * history budget of `defaultSnapshotBudget` (6 % of the device's memory, 48 to 160 MiB).
++ */
++import { describe, expect, it } from 'vitest';
++import type { ScenarioRequest } from '../scenario/request';
++import { SCENARIO_PARAMS } from '../scenario/params';
++import { SIM_PARAMS } from '../sim/params';
++import {
++  ASSUMED_MEMORY_GB,
++  DESKTOP_HISTORY_BUDGET,
++  DETAIL_CHOICES,
++  DETAIL_LABEL,
++  PICTURES_KEPT_MIN,
++  applyDetail,
++  detailChipLabel,
++  detailHint,
++  deviceRefusal,
++  historyBudgetFor,
++  isDesktopClass,
++  levelCellM,
++  levelEmbers,
++  levelOf,
++  modelCardWords,
++  pageClassOf,
++  pictureBytes,
++  runLabel,
++  snapshotRefusal,
++  statsWords,
++  type PageClass,
++} from './desktopDetail';
++import { defaultSnapshotBudget } from './session';
++
++const MIB = 1024 * 1024;
++const PHONE: PageClass = { mobile: true, memoryGb: 4 };
++const DESKTOP: PageClass = { mobile: false, memoryGb: 8 };
++
++const request = (options: ScenarioRequest['options'] = {}): ScenarioRequest => ({
++  name: 'Katoomba',
++  centre: { lat: -33.7, lon: 150.3 },
++  extent: 6000,
++  weather: { kind: 'preset', presetId: 'hot-nw-sw-change', start: 0 },
++  duration: 3600,
++  online: false,
++  options,
++});
++
++describe('the levels', () => {
++  it('Standard changes nothing; Finer is 20 m and Finest 10 m, both whole multiples of the 10 m ground model, with 8,000 embers', () => {
++    expect(DETAIL_CHOICES).toEqual(['standard', 'finer', 'finest']);
++    expect(levelCellM('standard')).toBeNull();
++    expect(levelEmbers('standard')).toBeNull();
++    expect(levelCellM('finer')).toBe(20);
++    expect(levelCellM('finest')).toBe(10);
++    expect(levelEmbers('finer')).toBe(8000);
++    expect(levelEmbers('finest')).toBe(8000);
++    for (const c of ['finer', 'finest'] as const) expect(SCENARIO_PARAMS.desktopDetailCellM[c] % SCENARIO_PARAMS.hiResCellM).toBe(0);
++  });
++
++  it('applyDetail sets the cell, the embers and the record, keeps the air tier and every other setting, and does not touch the request it is given', () => {
++    const base = request({ tier: 'high', maxEmbers: 3000, snapshotInterval: 30, maxStepS: 5, fireCellSize: 30 });
++    const frozen = JSON.stringify(base);
++    const out = applyDetail(base, 'finest');
++    expect(out.options).toEqual({ tier: 'high', maxEmbers: 8000, snapshotInterval: 30, maxStepS: 5, fireCellSize: 10, desktopDetail: 'finest' });
++    expect(JSON.stringify(base)).toBe(frozen);
++    expect(out).not.toBe(base);
++    expect(applyDetail(base, 'finer').options).toMatchObject({ fireCellSize: 20, maxEmbers: 8000, desktopDetail: 'finer', tier: 'high' });
++    // The Auto tier stays Auto: the engine (the desktop's) decides it by its own timing; the level never picks a tier.
++    expect(applyDetail(request({ tier: 'auto' }), 'finer').options?.tier).toBe('auto');
++  });
++
++  it('with no level the request is given back as it is (the standard detail adds nothing, not even a key)', () => {
++    const base = request({ tier: 'auto', maxEmbers: 3000 });
++    expect(applyDetail(base, null)).toBe(base);
++    expect('desktopDetail' in (applyDetail(base, null).options ?? {})).toBe(false);
++  });
++
++  it('levelOf reads the record of a scenario or a request, and anything that is not a level is the standard detail', () => {
++    expect(levelOf({ desktopDetail: 'finer' })).toBe('finer');
++    expect(levelOf({ desktopDetail: 'finest' })).toBe('finest');
++    expect(levelOf({})).toBeNull();
++    expect(levelOf(undefined)).toBeNull();
++    expect(levelOf({ desktopDetail: 'standard' as never })).toBeNull();
++    expect(levelOf({ desktopDetail: 'coarse' as never })).toBeNull();
++  });
++});
++
++describe('the words', () => {
++  it('the label is the owner\'s words, exactly', () => {
++    expect(DETAIL_LABEL).toBe('Finer grid, results differ, not validated');
++  });
++
++  it('every place a result is shown says it, with the cell of the run', () => {
++    expect(runLabel('finest')).toBe('Finer grid, results differ, not validated · 10\u00a0m cells');
++    expect(runLabel('finer')).toBe('Finer grid, results differ, not validated · 20\u00a0m cells');
++    expect(statsWords('finest', 10, 8000).value).toBe(DETAIL_LABEL);
++    expect(statsWords('finer', 20, 8000).note).toMatch(/20.m.*8,000 embers.*30.m cells/);
++    const card = modelCardWords('finest', 10, 8000);
++    expect(card.startsWith(DETAIL_LABEL)).toBe(true);
++    expect(card).toMatch(/2,483 ha at 30.m and 2,738 ha at 10.m/);
++    expect(card).toMatch(/1,002 and 1,520 ha with embers off/);
++    expect(card).toMatch(/Nothing says which is closer to a real fire/);
++  });
++
++  it('the chips name the cell, the hint says the cost and that the High air stays the person\'s choice, and Standard has no label', () => {
++    expect(DETAIL_CHOICES.map(detailChipLabel)).toEqual(['Standard', 'Finer · 20 m', 'Finest · 10 m']);
++    expect(detailHint('standard')).not.toMatch(/results differ/);
++    expect(detailHint('finer')).toMatch(/20 m.*8,000 embers.*About 2 times the work.*High 3-D air is allowed and stays your choice in Settings/);
++    expect(detailHint('finest')).toMatch(/10 m.*About 9 times the work.*16 MB a picture over 6 km/);
++  });
++
++  it('is in the voice of the app: no em dashes, no exclamation marks, nothing undefined or NaN', () => {
++    const all = [DETAIL_LABEL, runLabel('finer'), runLabel('finest'), ...DETAIL_CHOICES.flatMap((c) => [detailChipLabel(c), detailHint(c)]), modelCardWords('finer', 20, 8000), statsWords('finest', 10, 8000).note];
++    for (const t of all) {
++      expect(t, t).not.toMatch(/—|!|undefined|NaN|null/);
++    }
++  });
++});
++
++describe('the page class and the history budget (a phone never gets more)', () => {
++  it('reads the browser\'s own words: a hint wins, else the user agent, an iPad that asks for the desktop site is a tablet', () => {
++    expect(pageClassOf({ userAgentData: { mobile: true }, userAgent: 'Mozilla/5.0 (X11; Linux x86_64)', deviceMemory: 8 })).toEqual({ mobile: true, memoryGb: 8 });
++    expect(pageClassOf({ userAgentData: { mobile: false }, userAgent: 'Mozilla/5.0 (X11; Linux x86_64)', deviceMemory: 8 })).toEqual({ mobile: false, memoryGb: 8 });
++    expect(pageClassOf({ userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36', deviceMemory: 8 }).mobile).toBe(true);
++    expect(pageClassOf({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' }).mobile).toBe(true);
++    expect(pageClassOf({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', maxTouchPoints: 5 }).mobile).toBe(true);
++    expect(pageClassOf({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', maxTouchPoints: 0 }).mobile).toBe(false);
++    expect(pageClassOf({ userAgentData: { mobile: false }, userAgent: 'Mozilla/5.0 (Macintosh)', maxTouchPoints: 5 }).mobile).toBe(true);
++    expect(pageClassOf(undefined)).toEqual({ mobile: null, memoryGb: null });
++    expect(pageClassOf({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0' })).toEqual({ mobile: false, memoryGb: null });
++  });
++
++  it('only a page that says it is not a phone and reports the most memory a browser reports is desktop-class', () => {
++    expect(isDesktopClass(DESKTOP)).toBe(true);
++    expect(isDesktopClass({ mobile: false, memoryGb: 4 })).toBe(false);
++    expect(isDesktopClass({ mobile: false, memoryGb: null })).toBe(false);
++    expect(isDesktopClass({ mobile: null, memoryGb: 8 })).toBe(false);
++    expect(isDesktopClass({ mobile: true, memoryGb: 8 })).toBe(false);
++  });
++
++  it('the standard detail never changes the budget, whatever the page', () => {
++    for (const page of [PHONE, DESKTOP, { mobile: null, memoryGb: null }]) for (const base of [48 * MIB, 96 * MIB, 160 * MIB]) expect(historyBudgetFor(null, base, page)).toBe(base);
++  });
++
++  it('a phone\'s page keeps exactly defaultSnapshotBudget at every level, for every memory class a browser reports (no growth on a phone)', () => {
++    for (const level of ['finer', 'finest'] as const)
++      for (const memoryGb of [0.25, 0.5, 1, 2, 3, 4, 8, null])
++        for (const mobile of [true, null]) {
++          const base = defaultSnapshotBudget(memoryGb ?? undefined);
++          expect(historyBudgetFor(level, base, { mobile, memoryGb }), `${level} ${memoryGb} GB mobile=${mobile}`).toBe(base);
++        }
++    // A desktop browser that reports less than the top class does not grow either.
++    for (const memoryGb of [0.5, 1, 2, 4, null]) expect(historyBudgetFor('finest', defaultSnapshotBudget(memoryGb ?? undefined), { mobile: false, memoryGb })).toBe(defaultSnapshotBudget(memoryGb ?? undefined));
++  });
++
++  it('a desktop-class page gets 384 MiB at a finer level, which keeps 24 pictures of 16 MB where 160 MiB keeps 10', () => {
++    expect(DESKTOP_HISTORY_BUDGET).toBe(384 * MIB);
++    expect(historyBudgetFor('finest', defaultSnapshotBudget(8), DESKTOP)).toBe(384 * MIB);
++    expect(historyBudgetFor('finer', defaultSnapshotBudget(8), DESKTOP)).toBe(384 * MIB);
++    expect(Math.floor((384 * MIB) / 16e6)).toBeGreaterThanOrEqual(24);
++    expect(Math.floor((160 * MIB) / 16e6)).toBe(10);
++  });
++});
++
++describe('the size of a picture (plan 15e: 16 MB at 10 m over 6 km, 39 MB over 9 km, about 2 MB at 30 m)', () => {
++  it('agrees with what 15e measured', () => {
++    const mb = (extent: number, cell: number): number => pictureBytes(extent, cell) / 1e6;
++    expect(mb(6000, 10)).toBeGreaterThan(15);
++    expect(mb(6000, 10)).toBeLessThan(18);
++    expect(mb(9000, 10)).toBeGreaterThan(35);
++    expect(mb(9000, 10)).toBeLessThan(42);
++    expect(mb(6000, 30)).toBeGreaterThan(1.5);
++    expect(mb(6000, 30)).toBeLessThan(3);
++    expect(mb(6000, 20)).toBeGreaterThan(mb(6000, 30));
++    expect(mb(6000, 20)).toBeLessThan(mb(6000, 10));
++  });
++});
++
++describe('the page can refuse a detail whose pictures it cannot keep, with a sentence', () => {
++  const refuse = (level: 'finer' | 'finest', extentKm: number, page: PageClass, memoryGb = page.memoryGb ?? undefined): string | null =>
++    snapshotRefusal({ level, extentM: extentKm * 1000, page, baseBudget: defaultSnapshotBudget(memoryGb) })?.sentence ?? null;
++
++  it('keeps room for at least three pictures: a phone of 4 GB takes 10 m over 6 km and 9 km, a phone of 1 GB takes 6 km but not 9 km', () => {
++    expect(PICTURES_KEPT_MIN).toBe(3);
++    expect(refuse('finest', 6, PHONE)).toBeNull();
++    expect(refuse('finest', 9, PHONE)).toBeNull();
++    expect(refuse('finest', 6, { mobile: true, memoryGb: 1 })).toBeNull();
++    const nine = refuse('finest', 9, { mobile: true, memoryGb: 1 });
++    expect(nine).toMatch(/^This device cannot keep the pictures of 10.m cells over 9.km: each is about 3\d\.\d.MB and its history has room for about 1 \(6\d\.\d.MB\)\./);
++    expect(nine).toMatch(/Choose a smaller area or the Finer level\.$/);
++  });
++
++  it('says what to choose instead for each level, and says less than one when not even one fits', () => {
++    expect(refuse('finer', 9, { mobile: true, memoryGb: 0.25 })).toBeNull(); // about 9 MB a picture in 48 MiB
++    const tiny = snapshotRefusal({ level: 'finest', extentM: 9000, page: PHONE, baseBudget: 20 * MIB })!.sentence;
++    expect(tiny).toMatch(/room for less than one/);
++    const finer = snapshotRefusal({ level: 'finer', extentM: 9000, page: PHONE, baseBudget: 8 * MIB })!.sentence;
++    expect(finer).toMatch(/Choose a smaller area or the standard detail\.$/);
++  });
++
++  it('a desktop-class page, with its larger budget, takes what a phone cannot', () => {
++    const base = 20 * MIB;
++    expect(snapshotRefusal({ level: 'finest', extentM: 9000, page: PHONE, baseBudget: base })).not.toBeNull();
++    expect(snapshotRefusal({ level: 'finest', extentM: 9000, page: DESKTOP, baseBudget: base })).toBeNull();
++  });
++});
++
++describe('"Continue on this device" after a desktop run with a finer level: can this device run that grid by itself?', () => {
++  const ask = (level: 'finer' | 'finest', extentM: number, page: PageClass) =>
++    deviceRefusal({ level, extentM, durationS: 4 * 3600, tier: 'auto', maxEmbers: 8000, snapshotIntervalS: 60, page, baseBudget: defaultSnapshotBudget(page.memoryGb ?? undefined) });
++
++  it('a phone of 4 GB can run 20 m over 6 km by itself, and cannot run 10 m over 9 km', () => {
++    expect(ask('finer', 6000, PHONE)).toBeNull();
++    const r = ask('finest', 9000, PHONE)!;
++    expect(r).not.toBeNull();
++    expect(r.sentence).toMatch(/^This device cannot run the 10.m grid of this run by itself: it needs about \d\.\d.GB of memory, it reports about 4 GB, and about a third of that is what an app can use\./);
++    expect(r.sentence).toMatch(/It would not be switched to a coarser grid for you\.$/);
++    expect(r.short).toBe('This device cannot run the 10 m grid of this run.');
++    expect(r.action).toBe('Set up at the standard detail');
++  });
++
++  it('a device that does not say its memory is taken as 3 GB, and says so', () => {
++    expect(ASSUMED_MEMORY_GB).toBe(3);
++    const r = ask('finest', 9000, { mobile: null, memoryGb: null })!;
++    expect(r.sentence).toMatch(/it reports no memory size, so 3 GB is assumed/);
++  });
++
++  it('a desktop-class page can run more than a phone', () => {
++    const need = (page: PageClass) => ask('finest', 6000, page);
++    expect(need({ mobile: true, memoryGb: 2 })).not.toBeNull();
++    expect(need(DESKTOP)).toBeNull();
++  });
++
++  it('never lowers the grid: it only says no and offers the standard detail', () => {
++    const r = ask('finest', 9000, { mobile: true, memoryGb: 2 })!;
++    expect(Object.keys(r).sort()).toEqual(['action', 'sentence', 'short']);
++  });
++});
++
++describe('the cost figures the hint quotes are 15e\'s (one study, one computer)', () => {
++  it('11.7 s and 47.0 s an hour against 5.3 s: about 2.2 and 8.9 times', () => {
++    expect(Math.round((11.7 / 5.3) * 10) / 10).toBe(2.2);
++    expect(Math.round((47.0 / 5.3) * 10) / 10).toBe(8.9);
++    expect(SIM_PARAMS.desktopDetailMaxEmbers.finer).toBe(8000);
++  });
++});
+diff --git a/src/ui/desktopDetail.ts b/src/ui/desktopDetail.ts
+new file mode 100644
+index 0000000..d607579
+--- /dev/null
++++ b/src/ui/desktopDetail.ts
+@@ -0,0 +1,220 @@
++/**
++ * The Desktop detail setting (0.9.0, decision D35; plan 15e "Measured"), as pure logic with no DOM: what each level sets, the words that say
++ * what a result with it is, and the page's two memory rules. Used by the Setup row (screens/desktopDetailRow.ts), the label on the run, the
++ * statistics, the model card and "Continue on this device"; the tests pin every number.
++ *
++ * The levels (chosen from the 15e measurements: 30 m, 20 m and 10 m were run on Katoomba, 6 km and 9 km; 15 m needs a 5 m elevation grid):
++ *   Standard  nothing changes: this is what 0.8.0 built, and a run with it is byte for byte the same (src/sim/desktopDetail.determinism.test.ts)
++ *   Finer     20 m fire cells, about 2.2 times the work of 30 m (11.7 s against 5.3 s an hour of fire, 6 km, fast tier), a snapshot of about 5 MB
++ *   Finest    10 m fire cells, about 8.9 times the work (47.0 s an hour), a snapshot of 16 MB (6 km) to 39 MB (9 km), 1.2 to 1.9 GB on the desktop
++ * A level sets the fire cell, the ember cap and allows the High air; the air tier itself stays the person's choice (Settings, Performance),
++ * and Auto is still decided by the engine's own timing, which on a desktop run is the desktop's. Nothing else changes.
++ *
++ * What it cannot be called is more accurate: Katoomba's 4 h burnt area is 2,483 ha at 30 m and 2,738 ha at 10 m (embers off: 1,002 and 1,520 ha),
++ * and the spread formulas were calibrated at 20 and 30 m. So every place a result is shown says {@link DETAIL_LABEL}.
++ *
++ * Rule 1 and 2 of plan section 4: the level is chosen by the person, recorded with the run (`SimOptions.desktopDetail`) and never changes after the
++ * start; nothing here reads a speed, a display or a statistic.
++ */
++import { formatBytes } from '../core/datasets';
++import { fireWindBytesModel } from '../core/fireWind';
++import type { DesktopDetailLevel, QualityTier } from '../core/types';
++import { atmosphereGrid, keyframeBytesModel, SNAPSHOT_FIRE_BYTES_PER_CELL, workingMemory } from '../scenario/memoryModel';
++import { SCENARIO_PARAMS } from '../scenario/params';
++import { SIM_PARAMS } from '../sim/params';
++import type { DetailChoice } from './desktopDetailChoice';
++
++export { applyDetail, levelOf, type DetailChoice } from './desktopDetailChoice';
++export const DETAIL_CHOICES: readonly DetailChoice[] = ['standard', 'finer', 'finest'];
++
++/** The owner's words (D35). Every result made with a finer level says exactly this. */
++export const DETAIL_LABEL = 'Finer grid, results differ, not validated';
++export const DETAIL_ROW_LABEL = 'Desktop detail';
++
++const MIB = 1024 * 1024;
++const GIB = 1024 * MIB;
++const NB = '\u00a0';
++const bytesText = (b: number): string => formatBytes(b).replace(/ /g, NB);
++const kmText = (extentM: number): string => `${extentM / 1000}${NB}km`;
++const cellText = (cellM: number): string => `${cellM}${NB}m`;
++
++// ───────────────────────────── what a level sets ─────────────────────────────
++
++/** The fire cell (m) of a level; null for the standard detail (the builder's own rule applies). */
++export const levelCellM = (c: DetailChoice): number | null => (c === 'standard' ? null : SCENARIO_PARAMS.desktopDetailCellM[c]);
++/** The ember cap of a level; null for the standard detail (the performance setting's cap applies). */
++export const levelEmbers = (c: DetailChoice): number | null => (c === 'standard' ? null : SIM_PARAMS.desktopDetailMaxEmbers[c]);
++
++// ───────────────────────────── the words ─────────────────────────────
++
++/** The chip of the Setup row. */
++export const detailChipLabel = (c: DetailChoice): string => (c === 'standard' ? 'Standard' : `${c === 'finer' ? 'Finer' : 'Finest'} · ${cellText(levelCellM(c)!)}`);
++
++/**
++ * What the level costs, said once, from the 15e measurements (one study on one 4-core computer, the fast tier over 6 km; yours will differ, and
++ * the desktop's own measured speed is on the statistics once a run is going).
++ */
++export const DETAIL_COST = {
++  finer: 'About 2 times the work of the usual 30 m cells',
++  finest: 'About 9 times the work of the usual 30 m cells, and about 16 MB a picture over 6 km',
++} as const;
++
++/** The sentence under the chips for the chosen level. */
++export function detailHint(c: DetailChoice): string {
++  if (c === 'standard') return 'The usual detail of the app: 30 m fire cells (20 m with Detailed, up to 6 km).';
++  const cell = SCENARIO_PARAMS.desktopDetailCellM[c];
++  const embers = SIM_PARAMS.desktopDetailMaxEmbers[c];
++  return `Fire cells of ${cell} m at any area, up to ${embers.toLocaleString('en-AU')} embers. ${DETAIL_COST[c]} (one study, one computer). The High 3-D air is allowed and stays your choice in Settings.`;
++}
++
++/** Where the person is told what the setting is for: it is offered only with a desktop engine. */
++export const DETAIL_WHERE = 'Only the desktop computer runs the finer grids; this device does not.';
++
++/** The label on a run, in the statistics and in the model card: the owner's words and the cell it was made with. */
++export const runLabel = (level: DesktopDetailLevel): string => `${DETAIL_LABEL} · ${cellText(SCENARIO_PARAMS.desktopDetailCellM[level])} cells`;
++
++/** What the model card's "How sure are we?" says about a run with a finer level (a warning at the top of that section). */
++export function modelCardWords(level: DesktopDetailLevel, cellM: number, embersMax: number): string {
++  return `${DETAIL_LABEL}. This run uses the desktop's ${level} detail: fire cells of ${cellM}${NB}m instead of 30${NB}m and up to ${embersMax.toLocaleString('en-AU')} embers. The spread formulas were set against 20 m and 30 m cells, so a finer grid is a different model setting, not a more accurate one: in one scenario (Katoomba, 4 hours) the burnt area was 2,483 ha at 30 m and 2,738 ha at 10 m, and 1,002 and 1,520 ha with embers off. Nothing says which is closer to a real fire. Compare runs made with the same detail.`;
++}
++
++/** The row of the statistics that says which detail a run has. */
++export function statsWords(level: DesktopDetailLevel, cellM: number, embersMax: number): { value: string; note: string } {
++  return {
++    value: `${DETAIL_LABEL}`,
++    note: `${level === 'finer' ? 'Finer' : 'Finest'} level: fire cells of ${cellM}${NB}m, up to ${embersMax.toLocaleString('en-AU')} embers. The standard detail is 30${NB}m cells.`,
++  };
++}
++
++// ───────────────────────────── memory on the page ─────────────────────────────
++
++/** What the page knows of the device it runs on (`navigator.userAgentData.mobile`, the user agent, `deviceMemory`: all can be missing). */
++export interface PageClass {
++  /** A phone or tablet; null when the browser does not say. */
++  mobile: boolean | null;
++  /** `navigator.deviceMemory` in GB (a coarse bucket, 8 at most); null when absent. */
++  memoryGb: number | null;
++}
++
++/** The part of `navigator` the page class reads. */
++export interface NavigatorLike {
++  userAgent?: string;
++  maxTouchPoints?: number;
++  deviceMemory?: number;
++  userAgentData?: { mobile?: boolean };
++}
++
++/** Read the page class from the browser's own words; a browser that says nothing about being mobile is judged by its user agent. */
++export function pageClassOf(nav: NavigatorLike | undefined): PageClass {
++  const ua = nav?.userAgent ?? '';
++  const hinted = nav?.userAgentData?.mobile;
++  // An iPad asks for the desktop site and says Macintosh, but it has a touch screen.
++  const ipadAsMac = /Macintosh/.test(ua) && (nav?.maxTouchPoints ?? 0) > 1;
++  const mobile = typeof hinted === 'boolean' ? hinted || ipadAsMac : ua ? /Android|iPhone|iPad|iPod|Mobi/i.test(ua) || ipadAsMac : null;
++  return { mobile, memoryGb: typeof nav?.deviceMemory === 'number' && nav.deviceMemory > 0 ? nav.deviceMemory : null };
++}
++
++/** Memory the page assumes of a device that does not say (the assumption `defaultSnapshotBudget` makes). */
++export const ASSUMED_MEMORY_GB = 3;
++
++/**
++ * The history budget of a desktop-class page for a finer level: 384 MiB, against the 48 to 160 MiB of `defaultSnapshotBudget`. Why: one picture of
++ * a 10 m run is 16 MB over 6 km and 39 MB over 9 km, so 160 MiB keeps only 10 or 4 of them and thins a 4 h run about five times (15e); 384 MiB
++ * keeps 24 or 9. It is 5 % of the 8 GB that Chrome reports at most, and the typed arrays of the history are outside the JavaScript heap.
++ */
++export const DESKTOP_HISTORY_BUDGET = 384 * MIB;
++
++/** A page the budget may grow on: it says it is not a phone or tablet and reports the most memory a browser reports (8 GB). A phone's page never is. */
++export const isDesktopClass = (p: PageClass): boolean => p.mobile === false && (p.memoryGb ?? 0) >= 8;
++
++/**
++ * The history budget of a run. `base` is `defaultSnapshotBudget()` (6 % of the device's memory, 48 to 160 MiB). With the standard detail, and on
++ * every page that is not desktop-class, it is `base` exactly: a phone viewing a 10 m run gets 16 MB pictures in the same budget and thins as it does
++ * today. Only a desktop-class page with a finer level gets more (never less than `base`).
++ */
++export function historyBudgetFor(level: DesktopDetailLevel | null, base: number, page: PageClass): number {
++  return level && isDesktopClass(page) ? Math.max(base, DESKTOP_HISTORY_BUDGET) : base;
++}
++
++/**
++ * Bytes of the newest picture of a run (the store's head: the fire arrays and one full keyframe, 23 + 20 bytes a fire cell, the air view and the wind
++ * the fire feels), from the same model as the model card's working memory. 6 km at 10 m: about 16 MB, as 15e measured; at 30 m about 2 MB.
++ */
++export function pictureBytes(extentM: number, cellM: number, tier: QualityTier | 'auto' = 'auto'): number {
++  const t: QualityTier = tier === 'auto' ? 'standard' : tier;
++  const n = Math.round(extentM / cellM);
++  const cells = n * n;
++  const atm = atmosphereGrid(extentM, t);
++  return 2048 + SNAPSHOT_FIRE_BYTES_PER_CELL * cells + keyframeBytesModel(t, cells, atm.columns, atm.nz, fireWindBytesModel(n, n, cellM));
++}
++
++/** The history keeps the first picture, the newest and room for at least one between: a budget under this many pictures cannot be kept. */
++export const PICTURES_KEPT_MIN = 3;
++
++export interface Refusal {
++  /** What is said (a sentence, in the voice of the rest of the app). */
++  sentence: string;
++}
++
++/**
++ * "This page cannot keep the pictures of that grid": null when a run of `level` over `extentM` fits the history budget this page would give it,
++ * else the sentence. Used on Setup (Build is refused with it, next to the chips) before anything is built; never lowers the level by itself.
++ */
++export function snapshotRefusal(o: { level: DesktopDetailLevel; extentM: number; page: PageClass; baseBudget: number; tier?: QualityTier | 'auto' }): Refusal | null {
++  const cellM = SCENARIO_PARAMS.desktopDetailCellM[o.level];
++  const budget = historyBudgetFor(o.level, o.baseBudget, o.page);
++  const one = pictureBytes(o.extentM, cellM, o.tier);
++  if (one * PICTURES_KEPT_MIN <= budget) return null;
++  const room = Math.floor(budget / one);
++  const other = o.level === 'finest' ? 'the Finer level' : 'the standard detail';
++  return {
++    sentence: `This device cannot keep the pictures of ${cellText(cellM)} cells over ${kmText(o.extentM)}: each is about ${bytesText(one)} and its history has room for ${room === 0 ? 'less than one' : `about ${room}`} (${bytesText(budget)}). Choose a smaller area or ${other}.`,
++  };
++}
++
++/**
++ * A third of the device's memory is what a page and its engine can use before the system ends them (the figure behind `defaultSnapshotBudget`:
++ * WebViews are killed at roughly 1 to 1.5 GB on 4 GB phones).
++ */
++export const DEVICE_SHARE = 1 / 3;
++
++/**
++ * What a running engine holds beyond the model card's typed arrays (the JavaScript runtime, its heap, the code): about 300 MB. With it the model
++ * reproduces the peaks 15e measured (6 km: 0.20 GB modelled plus 0.3 against 526 MB measured at 30 m; 0.86 plus 0.3 against 1.2 GB at 10 m; over 9 km
++ * at 10 m 1.59 plus 0.3 against 1.9 GB), which the arrays alone fall 20 % to 60 % short of. [H]
++ */
++export const RUNTIME_OVERHEAD_BYTES = 300e6;
++
++/**
++ * "Continue on this device" after a desktop run with a finer level: can this device run that grid by itself? Null when it can (the same scenario
++ * restarts here and keeps its label), else the sentence and the offer. The memory is the model card's working memory for the run's own grid, tier
++ * and ember cap; the device's is what it reports (3 GB assumed when it does not). Never lowers the detail by itself: the person is offered the
++ * standard detail and chooses.
++ */
++export function deviceRefusal(o: { level: DesktopDetailLevel; extentM: number; durationS: number; tier: QualityTier | 'auto'; maxEmbers: number; snapshotIntervalS?: number; page: PageClass; baseBudget: number }): (Refusal & { short: string; action: string }) | null {
++  const cellM = SCENARIO_PARAMS.desktopDetailCellM[o.level];
++  const n = Math.round(o.extentM / cellM);
++  const need = RUNTIME_OVERHEAD_BYTES + workingMemory({
++    tier: o.tier,
++    fireNx: n,
++    fireNy: n,
++    extentM: o.extentM,
++    fireCellM: cellM,
++    maxEmbers: o.maxEmbers,
++    durationS: o.durationS,
++    ...(o.snapshotIntervalS ? { snapshotIntervalS: o.snapshotIntervalS } : {}),
++    snapshotBudgetBytes: historyBudgetFor(o.level, o.baseBudget, o.page),
++    hiResNx: Math.round(o.extentM / SCENARIO_PARAMS.hiResCellM),
++    hiResNy: Math.round(o.extentM / SCENARIO_PARAMS.hiResCellM),
++  }).totalBytes;
++  const gb = o.page.memoryGb ?? ASSUMED_MEMORY_GB;
++  const can = gb * GIB * DEVICE_SHARE;
++  if (need <= can) return null;
++  const reports = o.page.memoryGb === null ? `it reports no memory size, so ${ASSUMED_MEMORY_GB} GB is assumed` : `it reports about ${gb} GB`;
++  return {
++    sentence: `This device cannot run the ${cellText(cellM)} grid of this run by itself: it needs about ${bytesText(need)} of memory, ${reports}, and about a third of that is what an app can use. It would not be switched to a coarser grid for you.`,
++    // The error chip has two lines for its sentence: this is the short form, the long one goes in its tooltip and the model card.
++    short: `This device cannot run the ${cellText(cellM)} grid of this run.`,
++    action: 'Set up at the standard detail',
++  };
++}
+diff --git a/src/ui/desktopDetailChoice.ts b/src/ui/desktopDetailChoice.ts
+new file mode 100644
+index 0000000..6706908
+--- /dev/null
++++ b/src/ui/desktopDetailChoice.ts
+@@ -0,0 +1,55 @@
++/**
++ * The Desktop detail choice (0.9.0, D35), the few lines the first screen needs of it: what the person chose for this page load, which finer
++ * level (if any) a run built now would have, and the request with that level applied. Everything else of the setting (the words, the memory
++ * rules, the Setup row, the label on the run) is in lazy chunks (src/ui/desktopDetail.ts and the files beside it), loaded only on a page a desktop
++ * host serves.
++ *
++ * Rule 1 and 2 of plan section 4: the choice is the person's, made on Setup, for this page load only (like the Engine choice; nothing is stored);
++ * a level applies only while the engine chosen is the desktop, so a run on this device is built exactly as 0.8.0 built it; and a run keeps the level
++ * it was built with (`SimOptions.desktopDetail`): changing the choice afterwards touches no run.
++ */
++import type { DesktopDetailLevel, SimOptions } from '../core/types';
++import type { ScenarioRequest } from '../scenario/request';
++import { SCENARIO_PARAMS } from '../scenario/params';
++import { SIM_PARAMS } from '../sim/params';
++import { desktopSlot } from './desktopSlot';
++import { Store } from './store';
++
++/** The choice on Setup: the standard detail (nothing changes) or one of the desktop's finer levels. */
++export type DetailChoice = 'standard' | DesktopDetailLevel;
++
++/** `level` is what the row shows; `touched` goes up when the engine choice changes, so the area card redraws its cells. */
++export const detailChoice = new Store<{ level: DetailChoice; touched: number }>({ level: 'standard', touched: 0 });
++
++/** The level a scenario's (or a request's) options were made with: null for the standard detail. A value that is not a level is the standard detail. */
++export function levelOf(options: Pick<SimOptions, 'desktopDetail'> | undefined): DesktopDetailLevel | null {
++  const d = options?.desktopDetail;
++  return d === 'finer' || d === 'finest' ? d : null;
++}
++
++/**
++ * The finer level a run built now would have: the one chosen, and only while the engine chosen is the desktop (a page without a host, or with
++ * This device chosen, has none). Read at the moment of the build, so a link that ended since cannot leave a level behind.
++ */
++export function chosenDetail(): DesktopDetailLevel | null {
++  const c = detailChoice.get().level;
++  return c !== 'standard' && desktopSlot.get().host?.state.get().engine === 'desktop' ? c : null;
++}
++
++/**
++ * The request with the level applied: its cell, its ember cap and the record of it. A new object (the request given is not changed); the air tier,
++ * the display step, the solver step and everything else stay as the person's settings made them. `null` gives the request back as it is.
++ */
++export function applyDetail(req: ScenarioRequest, level: DesktopDetailLevel | null): ScenarioRequest {
++  if (!level) return req;
++  return { ...req, options: { ...req.options, fireCellSize: SCENARIO_PARAMS.desktopDetailCellM[level], maxEmbers: SIM_PARAMS.desktopDetailMaxEmbers[level], desktopDetail: level } };
++}
++
++/**
++ * Set by the Setup row while it is on screen: the sentence that refuses the chosen level for an area (km), or null. Setup's validation asks it, so
++ * Build is refused next to the other things that are wrong with the form, before anything is built.
++ */
++export const detailGate: { refusal: ((extentKm: number) => string | null) | null } = { refusal: null };
++
++/** Why the chosen level cannot be built for this area on this page, or null. */
++export const chosenDetailRefusal = (extentKm: number): string | null => (chosenDetail() && detailGate.refusal ? detailGate.refusal(extentKm) : null);
+
+From 5112d6e402cf6419c8d195f0145dabd97886f64b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 07:57:57 +0000
+Subject: [PATCH 2/5] Desktop detail: the Setup row, the request and Setup's
+ cells
+
+The row (Standard, Finer 20 m, Finest 10 m) is drawn under the Engine row only while the desktop is chosen, with the label in the callout Setup uses for notes.
+buildRequest applies the level only while the desktop is the engine chosen; Setup's Detail chips and hint say the cell the build will make; a level this page
+cannot keep the pictures of is refused by validateSetup before anything is built. The map's label chip has its style.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/styles/sim.css                 |  17 ++++
+ src/ui/desktopDetailChoice.test.ts | 136 +++++++++++++++++++++++++++++
+ src/ui/screens/desktopDetailRow.ts |  68 +++++++++++++++
+ src/ui/screens/engineRow.ts        |   3 +
+ src/ui/screens/setup.ts            |  14 ++-
+ src/ui/setupModel.ts               |  16 ++--
+ 6 files changed, 246 insertions(+), 8 deletions(-)
+ create mode 100644 src/ui/desktopDetailChoice.test.ts
+ create mode 100644 src/ui/screens/desktopDetailRow.ts
+
+diff --git a/src/styles/sim.css b/src/styles/sim.css
+index 1211fe1..7e460d4 100644
+--- a/src/styles/sim.css
++++ b/src/styles/sim.css
+@@ -104,6 +104,23 @@
+   border-radius: var(--r-md);
+ }
+ 
++/* The label of a run made with a finer Desktop detail ("Finer grid, results differ, not validated"): a second chip of the same kind under the engine label,
++   which is one line (24 px) or, after "Continue on this device", a sentence of up to two lines (48 px); it wraps rather than run under the round buttons. */
++.mock-banner.detail-banner {
++  max-width: calc(100% - 2 * var(--edge) - var(--safe-left) - var(--safe-right) - 72px);
++  border-radius: var(--r-md);
++  font-size: var(--fs-sm);
++  line-height: var(--lh-sm);
++}
++
++.mock-banner ~ .detail-banner {
++  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2) + 28px);
++}
++
++.engine-banner-note ~ .detail-banner {
++  top: calc(var(--map-top, var(--topbar-h)) + var(--sp-2) + 52px);
++}
++
+ /* ───────────────────────── map controls ───────────────────────── */
+ /* The right-hand column of round white mini-FABs (Layers, View, Compass), under the top bar; mirrored for left hands. */
+ .map-fabs {
+diff --git a/src/ui/desktopDetailChoice.test.ts b/src/ui/desktopDetailChoice.test.ts
+new file mode 100644
+index 0000000..f3f296c
+--- /dev/null
++++ b/src/ui/desktopDetailChoice.test.ts
+@@ -0,0 +1,136 @@
++/**
++ * The Desktop detail choice and where it reaches the Setup model (0.9.0, D35): a finer level applies only while the desktop is the engine chosen,
++ * the request carries the level and its cell and embers, Setup's chips and hint say the cell the build will make, and a level this page cannot keep the
++ * pictures of is refused by Setup's validation, before anything is built. With no level everything is what 0.8.0 made.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { resolveRequest } from '../scenario/build';
++import { applyDetail, chosenDetail, chosenDetailRefusal, detailChoice, detailGate, levelOf } from './desktopDetailChoice';
++import type { DesktopApi } from './desktopSlot';
++import { desktopSlot } from './desktopSlot';
++import { buildRequest, defaultSetup, detailCell, detailChoices, validateSetup } from './setupModel';
++import { Store } from './store';
++
++const NOW = Date.UTC(2026, 10, 8, 3, 0);
++
++/** A host as far as the choice reads it: the engine chosen. */
++function host(engine: 'device' | 'desktop'): { api: DesktopApi; state: Store<{ engine: 'device' | 'desktop' }> } {
++  const state = new Store<{ engine: 'device' | 'desktop' }>({ engine });
++  return { api: { state } as unknown as DesktopApi, state };
++}
++
++const setup = (over: Partial<ReturnType<typeof defaultSetup>> = {}) => ({ ...defaultSetup(NOW), where: 'demo' as const, demoSiteId: 'katoomba', ...over });
++
++beforeEach(() => {
++  detailChoice.set({ level: 'standard' });
++  detailGate.refusal = null;
++  desktopSlot.set({ host: null, run: null });
++});
++afterEach(() => {
++  detailChoice.set({ level: 'standard' });
++  detailGate.refusal = null;
++  desktopSlot.set({ host: null, run: null });
++});
++
++describe('what a run built now would have', () => {
++  it('is the standard detail on a page with no desktop host, whatever was chosen', () => {
++    detailChoice.set({ level: 'finest' });
++    expect(chosenDetail()).toBeNull();
++  });
++
++  it('is the level chosen only while the engine chosen is the desktop (This device builds a standard run)', () => {
++    const h = host('device');
++    desktopSlot.set({ host: h.api });
++    detailChoice.set({ level: 'finest' });
++    expect(chosenDetail()).toBeNull();
++    h.state.set({ engine: 'desktop' });
++    expect(chosenDetail()).toBe('finest');
++    detailChoice.set({ level: 'finer' });
++    expect(chosenDetail()).toBe('finer');
++    detailChoice.set({ level: 'standard' });
++    expect(chosenDetail()).toBeNull();
++    // The link ended and the engine choice went back to This device: no level is left behind for the next build.
++    detailChoice.set({ level: 'finest' });
++    h.state.set({ engine: 'device' });
++    expect(chosenDetail()).toBeNull();
++  });
++});
++
++describe('buildRequest', () => {
++  it('with no level the request is exactly what 0.8.0 made: no desktopDetail key, 30 m, the performance profile\'s embers and tier', () => {
++    const req = buildRequest(setup(), 'auto', NOW);
++    expect(req.options).toEqual({ fireCellSize: 30, maxEmbers: 3000, tier: 'auto' });
++    expect('desktopDetail' in (req.options ?? {})).toBe(false);
++    const quality = buildRequest(setup({ detail: 'detailed' }), 'quality', NOW);
++    expect(quality.options).toEqual({ fireCellSize: 20, maxEmbers: 4000, tier: 'high' });
++  });
++
++  it('with the desktop and a level it carries the level, its cell and its embers, and keeps the person\'s tier and steps', () => {
++    const h = host('desktop');
++    desktopSlot.set({ host: h.api });
++    detailChoice.set({ level: 'finest' });
++    const req = buildRequest(setup(), { performance: 'quality', timeStep: 30, solverStep: 5 }, NOW);
++    expect(req.options).toEqual({ fireCellSize: 10, maxEmbers: 8000, tier: 'high', snapshotInterval: 30, maxStepS: 5, desktopDetail: 'finest' });
++    // The Fast option of Setup is the fast tier at the level's cell (what 15e measured).
++    expect(buildRequest(setup({ detail: 'fast' }), 'auto', NOW).options).toMatchObject({ fireCellSize: 10, tier: 'fast', desktopDetail: 'finest' });
++    detailChoice.set({ level: 'finer' });
++    expect(buildRequest(setup(), 'auto', NOW).options).toMatchObject({ fireCellSize: 20, maxEmbers: 8000, tier: 'auto', desktopDetail: 'finer' });
++  });
++
++  it('the builder makes the level\'s cell at every area Setup offers, never the phone\'s 30 m or its 6 km rule for 20 m', () => {
++    const h = host('desktop');
++    desktopSlot.set({ host: h.api });
++    for (const level of ['finer', 'finest'] as const) {
++      detailChoice.set({ level });
++      for (const extentKm of [3, 6, 9] as const)
++        for (const detail of ['fast', 'normal', 'detailed'] as const) {
++          const req = buildRequest(setup({ extentKm, detail }), 'auto', NOW);
++          const rr = resolveRequest(req);
++          expect(rr.fireCellSize, `${level} ${extentKm} km ${detail}`).toBe(level === 'finer' ? 20 : 10);
++          expect(rr.extent).toBe(extentKm * 1000);
++          expect(rr.warnings).toEqual([]);
++        }
++    }
++  });
++
++  it('a level changes nothing in a request that was already made', () => {
++    const h = host('desktop');
++    desktopSlot.set({ host: h.api });
++    const standard = buildRequest(setup(), 'auto', NOW);
++    detailChoice.set({ level: 'finest' });
++    expect(standard.options?.desktopDetail).toBeUndefined();
++    expect(applyDetail(standard, 'finest')).not.toBe(standard);
++    expect(standard.options?.fireCellSize).toBe(30);
++    expect(levelOf(buildRequest(setup(), 'auto', NOW).options)).toBe('finest');
++  });
++});
++
++describe('Setup\'s chips and hint say what the build will make', () => {
++  it('the cell of every Detail chip follows the level, and is 0.8.0\'s with none', () => {
++    expect(detailChoices(6, 'auto').map((c) => c.label)).toEqual(['Fast · 30 m 2-D', 'Normal · 30 m', 'Detailed · 20 m']);
++    expect(detailChoices(6, 'auto', null).map((c) => c.label)).toEqual(['Fast · 30 m 2-D', 'Normal · 30 m', 'Detailed · 20 m']);
++    expect(detailChoices(9, 'auto', 'finest').map((c) => c.label)).toEqual(['Fast · 10 m 2-D', 'Normal · 10 m', 'Detailed · 10 m']);
++    expect(detailChoices(9, 'auto', 'finer').map((c) => c.label)).toEqual(['Fast · 20 m 2-D', 'Normal · 20 m', 'Detailed · 20 m']);
++    const c = detailCell(6, 'normal', 'auto', 'finest');
++    expect(c).toMatchObject({ cellM: 10, n: 600, cells: 360000, coarsened: false });
++    expect(detailCell(9, 'detailed', 'auto')).toMatchObject({ cellM: 30, coarsened: true });
++  });
++});
++
++describe('Setup refuses a level this page cannot keep the pictures of', () => {
++  it('asks the gate the row set, only for a chosen level, and adds its sentence to the form\'s errors', () => {
++    const h = host('desktop');
++    desktopSlot.set({ host: h.api });
++    detailGate.refusal = (km) => (km === 9 ? 'This device cannot keep the pictures of 10 m cells over 9 km.' : null);
++    expect(chosenDetailRefusal(9)).toBeNull(); // no level chosen: nothing to refuse
++    expect(validateSetup(setup({ extentKm: 9 }), NOW)).toEqual([]);
++    detailChoice.set({ level: 'finest' });
++    expect(chosenDetailRefusal(6)).toBeNull();
++    expect(chosenDetailRefusal(9)).toMatch(/cannot keep the pictures/);
++    expect(validateSetup(setup({ extentKm: 6 }), NOW)).toEqual([]);
++    expect(validateSetup(setup({ extentKm: 9 }), NOW)).toEqual(['This device cannot keep the pictures of 10 m cells over 9 km.']);
++    // With This device chosen the level does not apply, so nothing is refused.
++    h.state.set({ engine: 'device' });
++    expect(validateSetup(setup({ extentKm: 9 }), NOW)).toEqual([]);
++  });
++});
+diff --git a/src/ui/screens/desktopDetailRow.ts b/src/ui/screens/desktopDetailRow.ts
+new file mode 100644
+index 0000000..a604479
+--- /dev/null
++++ b/src/ui/screens/desktopDetailRow.ts
+@@ -0,0 +1,68 @@
++/**
++ * The "Desktop detail" row of Setup (0.9.0, D35): Standard, Finer (20 m cells) and Finest (10 m cells), drawn under the Engine row and only while the
++ * engine chosen is the desktop (so it is never offered for this device, and a page without a desktop host never has it). What a level sets and what
++ * a result with it is are in src/ui/desktopDetail.ts; the choice itself (kept for this page load only, like the Engine choice) is in
++ * src/ui/desktopDetailChoice.ts, which Setup reads to draw its own cells and to build the request. This file draws the chips, says in words what the
++ * level is ("Finer grid, results differ, not validated" next to the chips, in the callout Setup uses for its other notes) and gives Setup's validation
++ * the sentence that refuses a level this page cannot keep the pictures of. Nothing pops up and nothing is announced as an alert.
++ */
++import type { DesktopHost } from '../desktopHost';
++import { DETAIL_CHOICES, DETAIL_LABEL, DETAIL_ROW_LABEL, DETAIL_WHERE, detailChipLabel, detailHint, pageClassOf, snapshotRefusal } from '../desktopDetail';
++import { chosenDetail, detailChoice, detailGate, type DetailChoice } from '../desktopDetailChoice';
++import { h, setChildren, show, uniqueId } from '../dom';
++import { icon } from '../icons';
++import { defaultSnapshotBudget } from '../session';
++import { chipChoice } from '../widgets';
++
++/** Adds the row to `card` and keeps it in step with the engine choice. Returns the function that takes it out again. */
++export function mountDetailRow(host: DesktopHost, card: HTMLElement): () => void {
++  const hintId = uniqueId('detail-hint');
++  const choice = chipChoice<DetailChoice>({
++    label: DETAIL_ROW_LABEL,
++    options: DETAIL_CHOICES.map((value) => ({ value, label: detailChipLabel(value) })),
++    value: detailChoice.get().level,
++    testId: 'desktop-detail',
++    onChange: (level) => detailChoice.set({ level }),
++  });
++  choice.el.setAttribute('aria-describedby', hintId);
++  const note = h('div', { class: 'engine-note', id: hintId, dataset: { testid: 'desktop-detail-note' } });
++  const row = h('div', { class: 'engine-row detail-row', dataset: { testid: 'desktop-detail-row' } }, [choice.el, note]);
++  card.append(row);
++
++  // Build is refused next to the other things that are wrong with the form, with the sentence of the pure model (nothing is built, nothing is lowered).
++  const page = pageClassOf(globalThis.navigator);
++  detailGate.refusal = (extentKm) => {
++    const level = chosenDetail();
++    return level ? (snapshotRefusal({ level, extentM: extentKm * 1000, page, baseBudget: defaultSnapshotBudget(page.memoryGb ?? undefined) })?.sentence ?? null) : null;
++  };
++
++  let shown = '';
++  const draw = (): void => {
++    const onDesktop = host.state.get().engine === 'desktop';
++    const level = detailChoice.get().level;
++    show(row, onDesktop);
++    choice.set(level);
++    const says = `${onDesktop}|${level}`;
++    if (says === shown) return;
++    shown = says;
++    const children = [h('p', { class: 'hint', dataset: { testid: 'desktop-detail-hint' } }, detailHint(level))];
++    if (level !== 'standard') children.push(h('div', { class: 'callout callout-warn', dataset: { testid: 'desktop-detail-label' } }, [icon('warning'), h('div', null, DETAIL_LABEL)]));
++    children.push(h('p', { class: 'hint' }, DETAIL_WHERE));
++    setChildren(note, children);
++  };
++  draw();
++  // The engine choice changing redraws Setup's own cells too (a level applies only while the desktop is the engine): `touched` tells it.
++  const bump = (): void => detailChoice.set((s) => ({ touched: s.touched + 1 }));
++  const stops = [
++    host.state.subscribe(() => {
++      draw();
++      bump();
++    }, ['engine']),
++    detailChoice.subscribe(draw, ['level']),
++  ];
++  return () => {
++    for (const stop of stops) stop();
++    detailGate.refusal = null;
++    row.remove();
++  };
++}
+diff --git a/src/ui/screens/engineRow.ts b/src/ui/screens/engineRow.ts
+index 4323519..da8981f 100644
+--- a/src/ui/screens/engineRow.ts
++++ b/src/ui/screens/engineRow.ts
+@@ -11,6 +11,7 @@ import { CODE_LABEL, CODE_PLACEHOLDER, CONTINUE_HERE, desktopChoiceLabel, ENGINE
+ import { h, setChildren, show, uniqueId } from '../dom';
+ import { icon } from '../icons';
+ import { button, chipChoice } from '../widgets';
++import { mountDetailRow } from './desktopDetailRow';
+ 
+ const PROBLEM_WORDS = { 'needs-code': ENGINE_PROBLEM.needsCode, refused: ENGINE_PROBLEM.refused, 'rate-limited': ENGINE_PROBLEM.rateLimited, unreachable: ENGINE_PROBLEM.unreachable } as const;
+ 
+@@ -56,6 +57,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
+   const note = h('div', { class: 'engine-note', id: hintId, attrs: { 'aria-live': 'polite' }, dataset: { testid: 'engine-note' } });
+   const row = h('div', { class: 'engine-row', dataset: { testid: 'engine-row' } }, [choice.el, field, note]);
+   card.append(row);
++  const unmountDetail = mountDetailRow(host, card); // the Desktop detail (0.9.0), under this row while the desktop is chosen
+ 
+   let shown = '';
+   const draw = (s: Readonly<DesktopView>): void => {
+@@ -94,6 +96,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
+   const unsub = host.state.subscribe(draw);
+   return () => {
+     unsub();
++    unmountDetail();
+     row.remove();
+   };
+ }
+diff --git a/src/ui/screens/setup.ts b/src/ui/screens/setup.ts
+index c4f72f3..f46a5c8 100644
+--- a/src/ui/screens/setup.ts
++++ b/src/ui/screens/setup.ts
+@@ -21,6 +21,7 @@ import type { LatLon } from '../../core/geo';
+ import { describeFix, describePlace, getLocation, LocationError, readClipboardText } from '../location';
+ import { formatCoordinateText, parseLocationText, rememberableText, type LocationNeedsNetwork, type LocationSource } from '../mapsLink';
+ import { resolveMapsShortLink } from '../mapsShortLink';
++import { chosenDetail, chosenDetailRefusal, detailChoice } from '../desktopDetailChoice';
+ import { desktopSlot, watchDesktop } from '../desktopSlot';
+ import { demoImageryUrl } from '../imagery';
+ import { datasetIcon } from '../labels';
+@@ -520,7 +521,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
+   });
+   const detailChips = chipChoice({
+     label: 'Detail',
+-    options: detailChoices(store.get().extentKm, tier()),
++    options: detailChoices(store.get().extentKm, tier(), chosenDetail()),
+     value: store.get().detail,
+     testId: 'detail',
+     onChange: (v) => {
+@@ -532,9 +533,9 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
+   function renderArea(): void {
+     const s = store.get();
+     extentChips.set(String(s.extentKm) as '3' | '6' | '9');
+-    detailChips.setOptions(detailChoices(s.extentKm, tier()));
++    detailChips.setOptions(detailChoices(s.extentKm, tier(), chosenDetail()));
+     detailChips.set(s.detail);
+-    const c = detailCell(s.extentKm, s.detail, tier());
++    const c = detailCell(s.extentKm, s.detail, tier(), chosenDetail());
+     const cells = c.cells.toLocaleString('en-AU');
+     const why = c.coarsened ? ` 20 m needs an area of 6 km or less.` : '';
+     const wind = windHint(c);
+@@ -1111,6 +1112,12 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
+     renderArea();
+     schedulePlan();
+   }, ['performance']);
++  // The Desktop detail (0.9.0) sets the fire cell: the chips and the hint above say what the build will make, and a level this page cannot keep the pictures of says so at once.
++  const unsubDetail = detailChoice.subscribe(() => {
++    renderArea();
++    schedulePlan();
++    renderFooter(chosenDetailRefusal(store.get().extentKm) !== null);
++  });
+ 
+   function renderAll(): void {
+     const s = store.get();
+@@ -1139,6 +1146,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
+       packAbort?.abort();
+       thumbs.destroy();
+       unsubPerf();
++      unsubDetail();
+       stopWatchingDesktop();
+       unmountEngine?.();
+       el.remove();
+diff --git a/src/ui/setupModel.ts b/src/ui/setupModel.ts
+index 331c0ac..4535bcf 100644
+--- a/src/ui/setupModel.ts
++++ b/src/ui/setupModel.ts
+@@ -12,6 +12,8 @@ import { REPLAYS, WEATHER_PRESETS } from './content';
+ import { isPresetId, WEATHER_PRESETS as SCENARIO_PRESETS } from '../scenario/presets';
+ import type { BeltKitInput } from '../scenario/beltKit';
+ import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
++import type { DesktopDetailLevel } from '../core/types';
++import { applyDetail, chosenDetail, chosenDetailRefusal } from './desktopDetailChoice';
+ import type { PerformanceMode, ScenarioSettings } from './settings';
+ import { performanceProfile } from './settings';
+ 
+@@ -187,6 +189,9 @@ export function validateSetup(s: SetupState, now = Date.now()): string[] {
+   const errs: string[] = [];
+   const c = resolveCentre(s);
+   if ('error' in c) errs.push(c.error);
++  // The Desktop detail (0.9.0): a finer level this page cannot keep the pictures of is refused here, before anything is built.
++  const detailRefused = chosenDetailRefusal(s.extentKm);
++  if (detailRefused) errs.push(detailRefused);
+   if (s.weather === 'past' && s.pastTime > now) errs.push('A past date must be before now.');
+   if (s.weather === 'forecast' && (s.forecastTime < now - 3600_000 || s.forecastTime > now + 16 * 24 * 3600_000)) errs.push('Forecast start must be within the next 16 days.');
+   if (s.weather === 'belt') {
+@@ -303,7 +308,8 @@ export function buildRequest(s: SetupState, settings: PerformanceMode | Scenario
+   };
+   if (c.demoSiteId) req.demoSiteId = c.demoSiteId;
+   if (beltKit) req.beltKit = beltKit;
+-  return req;
++  // Desktop detail (0.9.0): only while the desktop is the engine chosen; with none the request is exactly what 0.8.0 made.
++  return applyDetail(req, chosenDetail());
+ }
+ 
+ /**
+@@ -326,10 +332,10 @@ export function detailHint(extentKm: number, detail: Detail, tier?: string): str
+  * rule buildRequest + scenario/build.ts resolveRequest apply): cell size, cells per side and in all, whether 20 m was asked
+  * for but the area is too large, and whether the wind is the simple 2-D surface model ('Fast' = the fast tier).
+  */
+-export function detailCell(extentKm: number, detail: Detail, tier?: string): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean; windAuto: boolean } {
++export function detailCell(extentKm: number, detail: Detail, tier?: string, desktop?: DesktopDetailLevel | null): { cellM: number; n: number; cells: number; coarsened: boolean; twoD: boolean; windAuto: boolean } {
+   const extentM = extentKm * 1000;
+   const t = detail === 'fast' ? 'fast' : tier;
+-  const built = builtFireCell(extentM, DETAIL_CELL[detail], t);
++  const built = builtFireCell(extentM, DETAIL_CELL[detail], t, desktop ?? undefined);
+   const n = Math.round(extentM / built.cellM);
+   // 'Auto' (the default performance setting) decides when the run starts: it times the 3-D air on this phone and keeps it
+   // unless a whole run would take far too long (about 10 minutes of computing for 6 hours of fire), so 3-D is the usual outcome.
+@@ -344,9 +350,9 @@ export function windHint(c: Pick<ReturnType<typeof detailCell>, 'twoD' | 'windAu
+ }
+ 
+ /** Chip labels of the detail picker for an area and tier: each names the cell size that option really builds ("Normal · 20 m"). */
+-export function detailChoices(extentKm: number, tier?: string): { value: Detail; label: string }[] {
++export function detailChoices(extentKm: number, tier?: string, desktop?: DesktopDetailLevel | null): { value: Detail; label: string }[] {
+   return (['fast', 'normal', 'detailed'] as const).map((value) => {
+-    const c = detailCell(extentKm, value, tier);
++    const c = detailCell(extentKm, value, tier, desktop);
+     return { value, label: `${DETAIL_OPTIONS[value].label} · ${c.cellM} m${c.twoD ? ' 2-D' : ''}` };
+   });
+ }
+
+From 124c77b4f3ab5fbfcd03f3c8ca6aa3b694468d5a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 07:58:04 +0000
+Subject: [PATCH 3/5] Desktop detail: the label on the run, the statistics, the
+ model card, the history budget, the estimator words and the Continue offer
+
+A run made with a finer level loads one small chunk (desktopDetailRun) that gives its history budget (no growth on a phone's page) and the label chip on the map.
+The statistics have a Desktop detail row, the label in their first line and summary, and no speed test of this phone for a run on the desktop; How sure are we?
+says the owner's words first; the slow-run sheet names the desktop when it measured the speed. Continue on this device checks that this device can run the
+run's grid and, if not, says so and offers to set up again at the standard detail (never lowers the grid).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ src/ui/debugStats.test.ts              | 57 ++++++++++++++++++++++
+ src/ui/debugStats.ts                   | 21 +++++---
+ src/ui/desktopDetailRun.test.ts        | 67 ++++++++++++++++++++++++++
+ src/ui/desktopDetailRun.ts             | 50 +++++++++++++++++++
+ src/ui/desktopSlot.ts                  |  4 ++
+ src/ui/modelInfo.desktopDetail.test.ts | 48 ++++++++++++++++++
+ src/ui/modelInfo.ts                    | 17 ++++++-
+ src/ui/paceSheetModel.desktop.test.ts  | 40 +++++++++++++++
+ src/ui/paceSheetModel.ts               | 23 ++++++---
+ src/ui/screens/debugStats.ts           | 11 ++++-
+ src/ui/screens/desktopBar.ts           | 15 ++++++
+ src/ui/screens/modelCard.ts            |  5 +-
+ src/ui/screens/sim/paceSheet.ts        |  2 +
+ src/ui/screens/sim/simScreen.ts        |  9 +++-
+ 14 files changed, 349 insertions(+), 20 deletions(-)
+ create mode 100644 src/ui/desktopDetailRun.test.ts
+ create mode 100644 src/ui/desktopDetailRun.ts
+ create mode 100644 src/ui/modelInfo.desktopDetail.test.ts
+ create mode 100644 src/ui/paceSheetModel.desktop.test.ts
+
+diff --git a/src/ui/debugStats.test.ts b/src/ui/debugStats.test.ts
+index d9906ad..dfdaf40 100644
+--- a/src/ui/debugStats.test.ts
++++ b/src/ui/debugStats.test.ts
+@@ -924,3 +924,60 @@ describe('a run that computes on the desktop (0.8.0, workstream J)', () => {
+     expect(debugStatsToText(withDesktop())).toContain('  Engine runs on: Desktop Studio PC, 8 cores, Node v22.11.0, link 4.2 ms (The desktop computes the run and this phone draws it)');
+   });
+ });
++
++describe('a run made with a finer Desktop detail (0.9.0, D35): the label, and no speed test of this phone for a run on the desktop', () => {
++  const desktop = { name: 'Studio PC', cores: 8, node: 'v22.11.0', rttMs: 4.2, closed: false };
++  const finest = (): DebugStatsInput => ({ ...full(), run: { ...full().run!, fireCellM: 10, detail: { level: 'finest', embersMax: 8000 } }, desktop });
++  const speedTest = { state: 'idle' as const, last: null };
++  const canDoIds = (s: DebugStats): string[] => s.groups.find((g) => g.id === 'canDo')!.rows.map((r) => r.id);
++
++  it('the Run group has a row that says "Finer grid, results differ, not validated" with the level, the cell and the embers, and its summary line says it too', () => {
++    const s = buildDebugStats(finest());
++    const r = rowOf(s, 'run', 'detail');
++    expect(r.label).toBe('Desktop detail');
++    expect(r.value).toBe('Finer grid, results differ, not validated');
++    expect(r.note).toMatch(/^Finest level: fire cells of 10.m, up to 8,000 embers\. The standard detail is 30.m cells\.$/);
++    expect(s.groups.find((g) => g.id === 'run')!.summary).toMatch(/10.m cells \(finer grid, results differ, not validated\), seed 1$/);
++    expect(rowOf(s, 'run', 'cell').value).toMatch(/^10.m$/);
++  });
++
++  it('the one-line summary starts with the label, so a pasted headline cannot be taken for a standard run', () => {
++    expect(rowOf(buildDebugStats(finest()), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. On the desktop \(Studio PC, 8 cores\): /);
++    expect(rowOf(buildDebugStats({ ...finest(), desktop: undefined }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. Standard/);
++  });
++
++  it('the copied text has the label in its first line and in the Run group', () => {
++    const t = debugStatsToText(buildDebugStats(finest()));
++    expect(t.split('\n')[1]).toMatch(/\| Finer grid, results differ, not validated · 10.m cells$/);
++    expect(t).toContain('  Desktop detail: Finer grid, results differ, not validated (Finest level: fire cells of 10');
++    expect(buildDebugStats(finest()).header.detail).toMatch(/^Finer grid, results differ, not validated/);
++  });
++
++  it('a standard run has none of it: no row, no header line, and the same text as before', () => {
++    const s = buildDebugStats(full());
++    expect(s.groups.find((g) => g.id === 'run')!.rows.some((r) => r.id === 'detail')).toBe(false);
++    expect('detail' in s.header).toBe(false);
++    expect(debugStatsToText(s)).not.toMatch(/Finer grid/);
++    expect(debugStatsToText(buildDebugStats({ ...full(), run: { ...full().run!, detail: null } }))).toBe(debugStatsToText(s));
++  });
++
++  it('is clean: nothing undefined, NaN or null, for each level', () => {
++    for (const level of ['finer', 'finest'] as const) expectClean(buildDebugStats({ ...full(), run: { ...full().run!, fireCellM: level === 'finer' ? 20 : 10, detail: { level, embersMax: 8000 } }, desktop }));
++  });
++
++  it('on a run that computes on the desktop the phone\'s speed test is not used or offered: the row says so and has no button id', () => {
++    const on = buildDebugStats({ ...full(), desktop, speedTest });
++    expect(rowOf(on, 'canDo', 'speed-test-desktop').value).toBe('Not used on a run that computes on the desktop. The speed above is what the desktop engine measured, step by step, while it computed this run.');
++    expect(canDoIds(on)).not.toContain('speed-test');
++    // This device (or a run started again here) keeps the phone's test as it was.
++    expect(canDoIds(buildDebugStats({ ...full(), speedTest }))).toContain('speed-test');
++    expect(canDoIds(buildDebugStats({ ...full(), desktop: { ...desktop, closed: true, restarted: true, rttMs: null }, speedTest }))).toContain('speed-test');
++  });
++
++  it('Auto says it was decided from a timing test on the desktop for a run that computes there, on this phone otherwise', () => {
++    const ask = (d: DebugStatsInput['desktop']): string => rowOf(buildDebugStats({ ...full(), desktop: d }), 'choices', 'requested').value;
++    expect(ask(desktop)).toBe('Auto (decided when the run starts, from a short timing test on the desktop)');
++    expect(ask(undefined)).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
++    expect(ask({ ...desktop, closed: true, restarted: true, rttMs: null })).toBe('Auto (decided when the run starts, from a short timing test on this phone)');
++  });
++});
+diff --git a/src/ui/debugStats.ts b/src/ui/debugStats.ts
+index e626aae..9a187ae 100644
+--- a/src/ui/debugStats.ts
++++ b/src/ui/debugStats.ts
+@@ -11,9 +11,10 @@
+  * (people paste this into messages and a developer reads them), and the text ends with a marker so a cut-off paste shows.
+  */
+ import { formatBytes } from '../core/datasets';
+-import type { EngineInfo, QualityTier } from '../core/types';
++import type { DesktopDetailLevel, EngineInfo, QualityTier } from '../core/types';
+ import type { FrameStatsInfo, QualityInfo, TerrainDrawStats, WindGlyphStats } from '../render/api';
+ import type { SliceRecordingStatus } from '../render/slice/types';
++import { DETAIL_LABEL, runLabel, statsWords } from './desktopDetail';
+ import { cleanName, coresWords, engineWhereText } from './desktopWords';
+ import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
+ import type { EventKind, LogEvent } from './eventLog';
+@@ -47,6 +48,8 @@ export interface RunFacts {
+   /** Scenario start (ms since the epoch): a date in the model, not a place. */
+   startTimeMs: number;
+   seed: number;
++  /** 0.9.0 (D35): the run was made with a finer Desktop detail ("Finer grid, results differ, not validated"); absent or null for the standard detail. */
++  detail?: { level: DesktopDetailLevel; embersMax: number } | null;
+ }
+ 
+ /** The computer a run computes on, when it is not this device (the page's DesktopRun with the link's round trip read at this moment). */
+@@ -188,6 +191,8 @@ export interface DebugStats {
+     seed: string | null;
+     /** The one word the screen shows under the title: Live, Paused, Finished, No run yet, Demo engine. */
+     status: 'Live' | 'Paused' | 'Finished' | 'No run yet' | 'Demo engine';
++    /** A run made with a finer Desktop detail (0.9.0): the label, so a pasted copy cannot be taken for a standard run. Absent for the standard detail. */
++    detail?: string;
+   };
+   groups: StatGroup[];
+ }
+@@ -319,7 +324,8 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
+     const s = e.perf?.speed.s10 ?? e.run.simSecondsPerWallSecond;
+     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
+     const where = i.desktop && !i.desktop.restarted ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
+-    line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
++    const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
++    line = `${finer}${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
+   }
+   return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
+ }
+@@ -341,6 +347,7 @@ function runGroup(i: DebugStatsInput): StatGroup {
+       R('place', 'Place', bundledSite(r.id, i.siteNames) ?? 'A custom place (its name and position are never copied)'),
+       R('area', 'Area', `${km} square`),
+       R('cell', 'Fire cell', metres(r.fireCellM)),
++      ...(r.detail ? [R('detail', 'Desktop detail', statsWords(r.detail.level, r.fireCellM, r.detail.embersMax).value, statsWords(r.detail.level, r.fireCellM, r.detail.embersMax).note)] : []),
+       R('duration', 'Run length', longSpan(r.durationS)),
+       R('start', 'Scenario start', ok(r.startTimeMs) ? `${new Date(r.startTimeMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : NOT_YET),
+       R('seed', 'Seed', String(r.seed)),
+@@ -350,7 +357,7 @@ function runGroup(i: DebugStatsInput): StatGroup {
+       R('wall-run', 'Wall time since the run started', ok(clock.runStartMs) ? waited(clock.nowMs - clock.runStartMs) : NOT_YET, undefined, true),
+     );
+   rows.push(R('wall-boot', 'Wall time since the app started', waited(clock.bootMs), undefined, true));
+-  return G('run', 'Run', rows, r ? `${bundledSite(r.id, i.siteNames) ?? 'A custom place'}, ${km}, ${metres(r.fireCellM)} cells, seed ${r.seed}` : NO_RUN);
++  return G('run', 'Run', rows, r ? `${bundledSite(r.id, i.siteNames) ?? 'A custom place'}, ${km}, ${metres(r.fireCellM)} cells${r.detail ? ` (${DETAIL_LABEL.toLowerCase()})` : ''}, seed ${r.seed}` : NO_RUN);
+ }
+ 
+ const CAUSE = { requested: 'Asked for at the start', 'auto-tune': 'The timing test', 'auto-pending': 'The timing test is still running', 'auto-default': 'Auto without a timing test', changed: 'Changed during the run' };
+@@ -362,7 +369,7 @@ function choicesGroup(i: DebugStatsInput): StatGroup {
+   const c = e.cadence;
+   const rows: StatRow[] = [
+     R('tier', 'Tier in use', TIER_NAME[e.tier], e.tierReason, true),
+-    R('requested', 'Tier asked for', e.tierRequested === 'auto' ? 'Auto (decided when the run starts, from a short timing test on this phone)' : TIER_NAME[e.tierRequested]),
++    R('requested', 'Tier asked for', e.tierRequested === 'auto' ? `Auto (decided when the run starts, from a short timing test on ${i.desktop && !i.desktop.restarted ? 'the desktop' : 'this phone'})` : TIER_NAME[e.tierRequested]),
+     R('cause', 'How it was decided', CAUSE[e.tierCause]),
+   ];
+   if (e.tierChangedAt !== null) rows.push(R('changed-at', 'Tier changed at', hms(e.tierChangedAt)));
+@@ -713,7 +720,8 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
+       : 'WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.';
+   const rows = [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)];
+   // The speed test (0.7.0): a fourth row where the screen has the button; its numbers are never read by the engine or the pace tracker (speedTest.deps.test.ts).
+-  if (i.speedTest) rows.push(R('speed-test', 'Speed test', speedTestRowValue(i.speedTest, i.clock.tzOffsetMin)));
++  // On a run that computes on the desktop this phone's test says nothing about it (0.9.0): the numbers above are the desktop engine's own measured steps, and no test of this phone is used or offered.
++  if (i.speedTest) rows.push(i.desktop && !i.desktop.restarted ? R('speed-test-desktop', 'Speed test', 'Not used on a run that computes on the desktop. The speed above is what the desktop engine measured, step by step, while it computed this run.') : R('speed-test', 'Speed test', speedTestRowValue(i.speedTest, i.clock.tzOffsetMin)));
+   return G('canDo', 'What this phone can do', rows, 'Three sentences from the measurements above');
+ }
+ 
+@@ -751,6 +759,7 @@ export function buildDebugStats(input: DebugStatsInput): DebugStats {
+       run: runText,
+       seed: i.run ? `seed ${i.run.seed}` : null,
+       status,
++      ...(i.run?.detail ? { detail: runLabel(i.run.detail.level) } : {}),
+     },
+     groups: [
+       summaryGroup(i),
+@@ -778,7 +787,7 @@ export function buildDebugStats(input: DebugStatsInput): DebugStats {
+ /** The plain-text export: title, one header line, every group, and an end marker. Stable labels; one row per line. */
+ export function debugStatsToText(s: DebugStats): string {
+   const h = s.header;
+-  const out: string[] = [`FireSim: ${s.title}`, ['Copied ' + h.copiedAt, h.app, h.run, ...(h.seed ? [h.seed] : [])].join(' | ')];
++  const out: string[] = [`FireSim: ${s.title}`, ['Copied ' + h.copiedAt, h.app, h.run, ...(h.seed ? [h.seed] : []), ...(h.detail ? [h.detail] : [])].join(' | ')];
+   for (const g of s.groups) {
+     out.push('', `== ${g.title} ==`);
+     for (const r of g.rows) {
+diff --git a/src/ui/desktopDetailRun.test.ts b/src/ui/desktopDetailRun.test.ts
+new file mode 100644
+index 0000000..512c86a
+--- /dev/null
++++ b/src/ui/desktopDetailRun.test.ts
+@@ -0,0 +1,67 @@
++/**
++ * What a run with a finer Desktop detail asks of the page (0.9.0, D35), from its scenario: the history budget it is given (no growth on a phone's page,
++ * more on a desktop-class one) and whether this device can take the run over by itself when the desktop is gone. A run with the standard detail asks for
++ * nothing: its session options are empty, so the session is the one 0.8.0 made.
++ */
++import { describe, expect, it } from 'vitest';
++import type { ScenarioData } from '../core/types';
++import { syntheticScenario } from '../sim/testing/scenarios';
++import { DESKTOP_HISTORY_BUDGET } from './desktopDetail';
++import { continueRefusal, sessionOptions } from './desktopDetailRun';
++import { defaultSnapshotBudget } from './session';
++
++const PIXEL = { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36', userAgentData: { mobile: true }, deviceMemory: 8 };
++const LAPTOP = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36', userAgentData: { mobile: false }, deviceMemory: 8 };
++const OLD_PHONE = { userAgent: 'Mozilla/5.0 (Linux; Android 9; SM-A105F) AppleWebKit/537.36 Chrome/110 Mobile Safari/537.36', userAgentData: { mobile: true }, deviceMemory: 1 };
++
++/** A scenario that carries a level (the run's own grid, ember cap and record are all that the page reads here). */
++function leveled(level: 'finer' | 'finest' | null, extent = 6000): ScenarioData {
++  const base = syntheticScenario({ extent: 3000, duration: 4 * 3600 });
++  const cell = level === 'finest' ? 10 : level === 'finer' ? 20 : 30;
++  return { ...base, extent, options: { ...base.options, fireCellSize: cell, maxEmbers: level ? 8000 : 2000, tier: 'auto', ...(level ? { desktopDetail: level } : {}) } };
++}
++
++describe('the history budget of a run', () => {
++  it('the standard detail asks for nothing: no options at all, on any page', () => {
++    for (const nav of [PIXEL, LAPTOP, OLD_PHONE, undefined]) expect(sessionOptions(leveled(null), nav)).toEqual({});
++  });
++
++  it('a phone viewing a finer run gets exactly the budget it gets today, whatever its memory (no growth on a phone)', () => {
++    for (const level of ['finer', 'finest'] as const) {
++      expect(sessionOptions(leveled(level), PIXEL)).toEqual({ maxBytes: defaultSnapshotBudget(8) });
++      expect(sessionOptions(leveled(level), OLD_PHONE)).toEqual({ maxBytes: defaultSnapshotBudget(1) });
++    }
++  });
++
++  it('a desktop-class page gets 384 MiB, once, at a finer level', () => {
++    expect(sessionOptions(leveled('finest'), LAPTOP)).toEqual({ maxBytes: DESKTOP_HISTORY_BUDGET });
++    expect(DESKTOP_HISTORY_BUDGET).toBeGreaterThan(defaultSnapshotBudget(8));
++    expect(DESKTOP_HISTORY_BUDGET).toBe(384 * 1024 * 1024);
++  });
++});
++
++describe('"Continue on this device": can this device run the grid by itself?', () => {
++  it('nothing is refused for the standard detail', () => {
++    expect(continueRefusal(leveled(null, 9000), OLD_PHONE)).toBeNull();
++    expect(continueRefusal(leveled(null, 9000), PIXEL)).toBeNull();
++  });
++
++  it('a phone of 4 GB cannot take over a 10 m run over 9 km (about 1.9 GB against the third of its memory an app can use), and is told in a sentence, with the standard detail offered', () => {
++    const r = continueRefusal(leveled('finest', 9000), { ...PIXEL, deviceMemory: 4 })!;
++    expect(r).not.toBeNull();
++    expect(r.short).toMatch(/^This device cannot run the 10.m grid of this run\.$/);
++    expect(r.sentence).toMatch(/needs about 1\.9.GB of memory, it reports about 4 GB/);
++    expect(r.action).toBe('Set up at the standard detail');
++    // A phone that reports 8 GB can (a third of it is 2.7 GB): the rule follows what the device says.
++    expect(continueRefusal(leveled('finest', 9000), PIXEL)).toBeNull();
++  });
++
++  it('a laptop can take over what a phone cannot (the same scenario)', () => {
++    expect(continueRefusal(leveled('finest', 6000), LAPTOP)).toBeNull();
++    expect(continueRefusal(leveled('finest', 6000), OLD_PHONE)).not.toBeNull();
++  });
++
++  it('20 m over 6 km is a grid a phone of 4 GB or more can run by itself', () => {
++    expect(continueRefusal(leveled('finer', 6000), { ...PIXEL, deviceMemory: 4 })).toBeNull();
++  });
++});
+diff --git a/src/ui/desktopDetailRun.ts b/src/ui/desktopDetailRun.ts
+new file mode 100644
+index 0000000..f2c9350
+--- /dev/null
++++ b/src/ui/desktopDetailRun.ts
+@@ -0,0 +1,50 @@
++/**
++ * What a run made with a finer Desktop detail adds to the simulation screen (0.9.0, D35), as one lazy chunk that only such a run loads (the first
++ * screen carries none of it): the history budget it gets, the label on the map, and the one question "Continue on this device" must ask first (can
++ * this device run that grid by itself?). The scenario is the record: `scenario.options.desktopDetail`, set when the run was built, so a run restarted on
++ * this device after the desktop went away keeps its label, and nothing here reads a speed, a display or a statistic.
++ */
++import type { ScenarioData } from '../core/types';
++import { deviceRefusal, historyBudgetFor, levelOf, pageClassOf, runLabel } from './desktopDetail';
++import { defaultSnapshotBudget } from './session';
++import { h } from './dom';
++
++/** The session's options for a run: its history budget. `{}` for the standard detail, so the session is exactly the one 0.8.0 made. */
++export function sessionOptions(scenario: ScenarioData, nav: Parameters<typeof pageClassOf>[0] = globalThis.navigator): { maxBytes?: number } {
++  const level = levelOf(scenario.options);
++  if (!level) return {};
++  const page = pageClassOf(nav);
++  return { maxBytes: historyBudgetFor(level, defaultSnapshotBudget(page.memoryGb ?? undefined), page) };
++}
++
++/**
++ * The label on the map, after the engine's own (the demo engine's slot, "Running on the desktop"): the owner's words and the cell of the run. It is
++ * a note on the screen, never a pop-up. Returns the function that takes it out. Null for the standard detail.
++ */
++export function mountLabel(root: HTMLElement, scenario: ScenarioData): (() => void) | null {
++  const level = levelOf(scenario.options);
++  if (!level) return null;
++  const el = h('p', { class: 'mock-banner detail-banner', dataset: { testid: 'detail-banner' } }, runLabel(level));
++  root.append(el);
++  return () => el.remove();
++}
++
++/**
++ * Whether this device can take the run over by itself when the desktop is gone. Null for the standard detail and for a grid this device can hold
++ * (the restart then goes ahead and the run keeps its label); else the sentence and the one thing offered: set up again at the standard detail.
++ */
++export function continueRefusal(scenario: ScenarioData, nav: Parameters<typeof pageClassOf>[0] = globalThis.navigator): ReturnType<typeof deviceRefusal> {
++  const level = levelOf(scenario.options);
++  if (!level) return null;
++  const page = pageClassOf(nav);
++  return deviceRefusal({
++    level,
++    extentM: scenario.extent,
++    durationS: scenario.duration,
++    tier: scenario.options.tier ?? 'auto',
++    maxEmbers: scenario.options.maxEmbers ?? 4000,
++    snapshotIntervalS: scenario.options.snapshotInterval,
++    page,
++    baseBudget: defaultSnapshotBudget(page.memoryGb ?? undefined),
++  });
++}
+diff --git a/src/ui/desktopSlot.ts b/src/ui/desktopSlot.ts
+index 0a826f6..bd1859c 100644
+--- a/src/ui/desktopSlot.ts
++++ b/src/ui/desktopSlot.ts
+@@ -22,6 +22,10 @@ export interface DecorateOptions {
+   /** The page's `createLocalController`: a fresh in-app engine, never the desktop's. */
+   makeController(): SimController;
+   announce(message: string): void;
++  /** Leave the run for Setup (the screen's own exit): "Continue on this device" offers it when this device cannot hold the run's finer detail. */
++  exit?(): void;
++  /** A run with a finer Desktop detail: null when this device can run its grid by itself, else what the chip says instead of offering a restart that would fail (desktopDetailRun.ts). */
++  continueRefusal?(): { short: string; sentence: string; action: string } | null;
+ }
+ 
+ /** The desktop's object: the page's logic of it (desktopHost.ts) and the two things that draw, the Engine row and the run's label and error chip. */
+diff --git a/src/ui/modelInfo.desktopDetail.test.ts b/src/ui/modelInfo.desktopDetail.test.ts
+new file mode 100644
+index 0000000..af1a0a1
+--- /dev/null
++++ b/src/ui/modelInfo.desktopDetail.test.ts
+@@ -0,0 +1,48 @@
++/**
++ * "How sure are we?" for a run made with a finer Desktop detail (0.9.0, D35): the owner's words come first in that section, in the warning
++ * style, with what the run used and the one scenario that shows the grids disagree; the text export carries them; the planned fire cell is the
++ * level's; and a card for the standard detail has none of it (it is the card 0.8.0 made).
++ */
++import { describe, expect, it } from 'vitest';
++import { syntheticScenario } from '../sim/testing/scenarios';
++import { applyDetail } from './desktopDetailChoice';
++import { DETAIL_LABEL } from './desktopDetail';
++import { cardToText, describeModel, type ModelCard } from './modelInfo';
++import { DEFAULT_SETTINGS } from './settings';
++import { buildRequest, defaultSetup } from './setupModel';
++
++const settings = { ...DEFAULT_SETTINGS };
++const sure = (c: ModelCard) => c.sections.find((s) => s.id === 'sure')!;
++const warns = (c: ModelCard): string[] => sure(c).blocks.flatMap((b) => (b.type === 'text' && b.tone === 'warn' ? [b.text] : []));
++const row = (c: ModelCard, id: string) => c.sections.find((s) => s.id === 'glance')!.blocks.flatMap((b) => (b.type === 'rows' ? b.rows : [])).find((r) => r.id === id)!;
++
++describe('the model card of a run with a finer level', () => {
++  it('a Setup preview with the level: the first warning of "How sure are we?" is the label and what the run uses, the slope warning stays after it', () => {
++    const req = applyDetail(buildRequest({ ...defaultSetup(), where: 'demo', demoSiteId: 'katoomba' }, settings), 'finest');
++    const card = describeModel({ scenario: null, request: req, settings });
++    const w = warns(card);
++    expect(w).toHaveLength(2);
++    expect(w[0]!.startsWith(DETAIL_LABEL)).toBe(true);
++    expect(w[0]).toMatch(/finest detail: fire cells of 10.m instead of 30.m and up to 8,000 embers/);
++    expect(w[0]).toMatch(/2,483 ha at 30.m and 2,738 ha at 10.m.*1,002 and 1,520 ha with embers off/);
++    expect(w[0]).toMatch(/Compare runs made with the same detail\.$/);
++    expect(w[1]).toMatch(/On slopes steeper than about/);
++    // The planned grid is the level's, not 30 m.
++    expect(row(card, 'fire').resolution).toMatch(/10.m/);
++  });
++
++  it('a run: the grid and the embers are the scenario\'s own, and the label is in the text export', () => {
++    const sc = syntheticScenario({ extent: 3000, options: { desktopDetail: 'finer', maxEmbers: 8000, fireCellSize: 20 } });
++    const card = describeModel({ scenario: sc, settings });
++    expect(warns(card)[0]).toMatch(new RegExp(`^${DETAIL_LABEL}\\. This run uses the desktop's finer detail: fire cells of ${sc.terrain.grid.cellSize}.m`));
++    expect(cardToText(card)).toContain(DETAIL_LABEL);
++  });
++
++  it('the standard detail has no such warning and no mention anywhere in the card', () => {
++    const card = describeModel({ scenario: null, request: buildRequest({ ...defaultSetup(), where: 'demo', demoSiteId: 'katoomba' }, settings), settings });
++    expect(warns(card)).toHaveLength(1);
++    expect(JSON.stringify(card)).not.toMatch(/Finer grid/);
++    const run = describeModel({ scenario: syntheticScenario({ extent: 3000 }), settings });
++    expect(JSON.stringify(run)).not.toMatch(/Finer grid/);
++  });
++});
+diff --git a/src/ui/modelInfo.ts b/src/ui/modelInfo.ts
+index ff10dcf..d6f4ce7 100644
+--- a/src/ui/modelInfo.ts
++++ b/src/ui/modelInfo.ts
+@@ -47,6 +47,8 @@ import { builtFireCell, SCENARIO_PARAMS } from '../scenario/params';
+ import type { ScenarioRequest } from '../scenario/request';
+ import { FAST_TIER_STEP_S } from '../sim/engineInfo';
+ import { SIM_PARAMS } from '../sim/params';
++import { modelCardWords } from './desktopDetail';
++import { levelOf } from './desktopDetailChoice';
+ import { formatDuration, formatNumber, formatPlaybackSpeed, formatSpeedHint, formatStepLabel } from './format';
+ import type { IconName } from './icons';
+ import type { Tone } from './primitives';
+@@ -318,7 +320,7 @@ function numbersOf(input: ModelCardInput, e: EngineInfo | null): Numbers | null
+   if (!r) return null;
+   const tier = r.options?.tier ?? 'auto';
+   const grid3: QualityTier = tier === 'high' ? 'high' : tier === 'fast' ? 'fast' : 'standard';
+-  const built = builtFireCell(r.extent, r.options?.fireCellSize, tier);
++  const built = builtFireCell(r.extent, r.options?.fireCellSize, tier, r.options?.desktopDetail);
+   const n = Math.max(2, Math.round(r.extent / built.cellM));
+   return {
+     source: 'request',
+@@ -337,6 +339,18 @@ function numbersOf(input: ModelCardInput, e: EngineInfo | null): Numbers | null
+   };
+ }
+ 
++/**
++ * A run (or a Setup preview) with a finer Desktop detail (0.9.0, D35): the owner's words first in "How sure are we?", in the warning style, before the
++ * evidence. Nothing for the standard detail, so its card is the one 0.8.0 made.
++ */
++function detailBlock(input: ModelCardInput): CardBlock[] {
++  const o = input.scenario?.options ?? input.request?.options;
++  const level = levelOf(o);
++  if (!level) return [];
++  const cellM = input.scenario ? input.scenario.terrain.grid.cellSize : SCENARIO_PARAMS.desktopDetailCellM[level];
++  return [{ type: 'text', tone: 'warn', text: modelCardWords(level, cellM, o?.maxEmbers ?? SIM_PARAMS.desktopDetailMaxEmbers[level]) }];
++}
++
+ const record = (sc: ScenarioData | null, id: string): DatasetRecord | undefined => sc?.datasets?.find((d) => d.id === id);
+ 
+ /** Median stamp spacing of a weather series (s). */
+@@ -1028,6 +1042,7 @@ export function describeModel(input: ModelCardInput): ModelCard {
+     title: 'How sure are we?',
+     summary: 'The evidence behind the model, its known open issues and how it was tested.',
+     blocks: [
++      ...detailBlock(input),
+       {
+         type: 'text',
+         tone: 'warn',
+diff --git a/src/ui/paceSheetModel.desktop.test.ts b/src/ui/paceSheetModel.desktop.test.ts
+new file mode 100644
+index 0000000..2593978
+--- /dev/null
++++ b/src/ui/paceSheetModel.desktop.test.ts
+@@ -0,0 +1,40 @@
++/**
++ * The slow-run sheet for a run that computes on the desktop (0.9.0, D35; contract 4.1 item 4): the figures are the engine's own (`perf`, measured by
++ * the engine that computes the run, which is the desktop's), so only the words change: the desktop, not this phone; no "warm phone" reason; and the
++ * footnote says what was measured and that no test of this phone is used. Without `where` the sheet is the one 0.8.0 made, word for word.
++ */
++import { describe, expect, it } from 'vitest';
++import type { PaceInfo } from './paceTypes';
++import { paceSheet, type PaceSheetInput } from './paceSheetModel';
++
++const pace = (over: Partial<PaceInfo> = {}): PaceInfo => ({ level: 'waiting', wanted: 600, achieved: 410, waitingShare: 0.27, capacity: 430, duty: 0.97, aheadS: 12, bufferS: 0.02, sinceMs: 0, ...over });
++const input = (over: Partial<PaceSheetInput> = {}): PaceSheetInput => ({ pace: pace(), engine: { tier: 'standard' }, remainingS: 3600, ...over });
++
++describe('the sheet names the computer that measured the speed', () => {
++  it('waiting: "The desktop is computing about N× right now", and the footnote says it is the desktop engine\'s own measurement', () => {
++    const v = paceSheet(input({ where: 'desktop' }));
++    expect(v.lead).toContain('The desktop is computing about 430× right now, so playback waits');
++    expect(v.lead).not.toMatch(/phone/i);
++    expect(v.footnote).toBe("Measured by the desktop's own engine while it computes this run, over the last 10 seconds. No test of this phone is used.");
++  });
++
++  it('keeping up: "the desktop is computing"', () => {
++    const v = paceSheet(input({ where: 'desktop', pace: pace({ level: 'ok' }) }));
++    expect(v.lead).toContain('the desktop is computing about 430× right now');
++    expect(v.lead).not.toMatch(/phone/i);
++  });
++
++  it('slower than before: the reason is a busy desktop, not a warm phone in battery saver', () => {
++    const perf = { history: [800, 800, 800, 800, 400], modules: [], speed: { s10: 400 } } as never;
++    const v = paceSheet(input({ where: 'desktop', pace: pace({ capacity: 400 }), engine: { tier: 'fast', perf } }));
++    expect(v.reasons.join(' ')).toMatch(/Slower than before.*The desktop may be busy with other work\./);
++    expect(v.reasons.join(' ')).not.toMatch(/warm|battery/);
++  });
++
++  it('this phone, or no `where`: the sheet is word for word the one 0.8.0 made', () => {
++    const v = paceSheet(input());
++    expect(v.lead).toContain('This phone is computing about 430× right now, so playback waits');
++    expect(v.footnote).toBe('Measured on this phone, over the last 10 seconds.');
++    expect(paceSheet(input({ pace: pace({ level: 'ok' }) })).lead).toContain('this phone is computing about 430× right now');
++  });
++});
+diff --git a/src/ui/paceSheetModel.ts b/src/ui/paceSheetModel.ts
+index 03d1312..14d842f 100644
+--- a/src/ui/paceSheetModel.ts
++++ b/src/ui/paceSheetModel.ts
+@@ -40,6 +40,11 @@ export interface PaceSheetInput {
+   engine: PaceSheetEngine | null;
+   /** Simulated seconds from the clock to the end of the run. */
+   remainingS: number;
++  /**
++   * Which computer measured the speed (0.9.0, D35): the desktop when the run computes there. The figures are the engine's own (`perf`, measured by the
++   * engine that computes the run, so the desktop's), never this phone's speed test; only the words change. Absent: this phone.
++   */
++  where?: 'desktop';
+ }
+ 
+ export type PaceRowId = 'air' | 'fire' | 'embers' | 'other';
+@@ -196,9 +201,10 @@ export function playAtSpeed(pace: Pick<PaceInfo, 'wanted' | 'achieved' | 'capaci
+ 
+ // ───────────────────────────── the sentences ─────────────────────────────
+ 
+-function lead(pace: PaceInfo | null): { state: PaceSheetView['state']; title: string; lead: string } {
++function lead(pace: PaceInfo | null, desktop = false): { state: PaceSheetView['state']; title: string; lead: string } {
++  const who = desktop ? 'the desktop' : 'this phone';
+   if (!pace || pace.level === 'ok') {
+-    const asked = pace ? ` You asked for ${speedWord(pace.wanted)}${known(pace.capacity) ? `; this phone is computing about ${speedWord(pace.capacity)} right now` : ''}.` : '';
++    const asked = pace ? ` You asked for ${speedWord(pace.wanted)}${known(pace.capacity) ? `; ${who} is computing about ${speedWord(pace.capacity)} right now` : ''}.` : '';
+     return { state: 'ok', title: 'Keeping up with playback', lead: `The simulation is keeping up now.${asked}` };
+   }
+   const title = 'Running slower than playback';
+@@ -211,7 +217,7 @@ function lead(pace: PaceInfo | null): { state: PaceSheetView['state']; title: st
+   const share = Number.isFinite(pace.waitingShare) ? Math.min(1, Math.max(0, pace.waitingShare)) : 0;
+   const waits = Math.round(share * 10);
+   const wait = waits >= 10 ? 'almost all the time' : waits >= 1 ? `about ${waits} ${waits === 1 ? 'second' : 'seconds'} in every 10` : 'now and then';
+-  const mid = known(pace.capacity) ? `This phone is computing about ${speedWord(pace.capacity)} right now, so playback waits` : 'Playback waits';
++  const mid = known(pace.capacity) ? `${who.charAt(0).toUpperCase()}${who.slice(1)} is computing about ${speedWord(pace.capacity)} right now, so playback waits` : 'Playback waits';
+   return { state: 'waiting', title, lead: `You asked for ${speedWord(pace.wanted)} (${fireEvery(pace.wanted)}). ${mid} for the simulation ${wait}.` };
+ }
+ 
+@@ -221,7 +227,7 @@ interface Reason {
+   short: string;
+ }
+ 
+-function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null): Reason[] {
++function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups | null, desktop = false): Reason[] {
+   const out: Reason[] = [];
+   const tier = engine?.tier;
+   if (g && (tier === 'standard' || tier === 'high') && g.shares.air > REASON_SHARE.air) {
+@@ -234,7 +240,7 @@ function reasonList(pace: PaceInfo, engine: PaceSheetEngine | null, g: Groups |
+   const earlier = earlierSpeed(engine?.perf?.history);
+   if (earlier !== null && known(pace.capacity) && pace.capacity < SLOWER_THAN_EARLIER * earlier) {
+     out.push({
+-      text: `Slower than before (about ${speedWord(earlier)} earlier in this run). The phone may be warm or in battery saver.`,
++      text: `Slower than before (about ${speedWord(earlier)} earlier in this run). ${desktop ? 'The desktop may be busy with other work.' : 'The phone may be warm or in battery saver.'}`,
+       short: `slower than before (about ${speedWord(earlier)} earlier in this run)`,
+     });
+   }
+@@ -269,7 +275,8 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
+   const { engine } = input;
+   // A reading that does not say what was asked for cannot be explained: treat it as no reading.
+   const pace = input.pace && known(input.pace.wanted) && Number.isFinite(input.pace.wanted) ? input.pace : null;
+-  const head = lead(pace);
++  const desktop = input.where === 'desktop';
++  const head = lead(pace, desktop);
+   const g = groups(engine?.perf);
+   const tier = engine?.tier;
+ 
+@@ -298,10 +305,10 @@ export function paceSheet(input: PaceSheetInput): PaceSheetView {
+     ...head,
+     result: { question: 'Does it change the result?', answer: 'No. The same choices give the same fire at any speed. It only takes longer to appear.' },
+     time,
+-    reasons: pace && pace.level !== 'ok' ? reasonList(pace, engine, g).map((r) => r.text) : [],
++    reasons: pace && pace.level !== 'ok' ? reasonList(pace, engine, g, desktop).map((r) => r.text) : [],
+     actions,
+     end: pace && pace.level !== 'ok' ? endLine(pace, input.remainingS) : null,
+     link: 'All the numbers',
+-    footnote: 'Measured on this phone, over the last 10 seconds.',
++    footnote: desktop ? "Measured by the desktop's own engine while it computes this run, over the last 10 seconds. No test of this phone is used." : 'Measured on this phone, over the last 10 seconds.',
+   };
+ }
+diff --git a/src/ui/screens/debugStats.ts b/src/ui/screens/debugStats.ts
+index df494e9..79f97c4 100644
+--- a/src/ui/screens/debugStats.ts
++++ b/src/ui/screens/debugStats.ts
+@@ -11,13 +11,14 @@
+  * the clipboard the text appears in a box to touch and hold. Nothing leaves the phone. Escape and Android Back close it (the
+  * App forwards Back as Escape); Tab stays inside.
+  */
+-import type { ScenarioData } from '../../core/types';
++import type { DesktopDetailLevel, ScenarioData } from '../../core/types';
+ import { DEMO_SITES } from '../../data/demoSites';
+ import type { SceneViewApi } from '../../render/api';
+ import { liveMemory } from '../../scenario/memoryModel';
+ import { bootErrors } from '../bootDiagnostics';
+ import { APP_VERSION, BUILD_MODE, buildId } from '../buildInfo';
+ import { buildDebugStats, debugStatsToText, TITLE, type DebugStats, type DebugStatsInput, type StatGroup, type StatRow } from '../debugStats';
++import { levelOf } from '../desktopDetailChoice';
+ import { desktopSlot } from '../desktopSlot';
+ import { deviceInfoNow, deviceLater, deviceVolatile, type DeviceLater } from '../deviceInfo';
+ import { h, setChildren, svg, text, uniqueId } from '../dom';
+@@ -64,6 +65,12 @@ function desktopFacts(): DebugStatsInput['desktop'] {
+   return r ? { name: r.name, cores: r.cores, node: r.node, rttMs: r.rttMs(), closed: r.closed, restarted: !!r.restarted } : null;
+ }
+ 
++/** The finer Desktop detail the run was made with (0.9.0), as the statistics' run facts take it; nothing for the standard detail. */
++function detailOf(sc: ScenarioData): { detail?: { level: DesktopDetailLevel; embersMax: number } } {
++  const level = levelOf(sc.options);
++  return level ? { detail: { level, embersMax: sc.options.maxEmbers } } : {};
++}
++
+ /** What the app knows right now, gathered for the pure content. */
+ function collect(o: DebugStatsOptions, later: DeviceLater | null, speedTest: DebugStatsInput['speedTest']): DebugStatsInput {
+   const st = o.session?.state.get() ?? null;
+@@ -76,7 +83,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null, speedTest: Deb
+     engine: st?.snapshot?.engine ?? null,
+     engineSource: o.services.sources.sim,
+     desktop: desktopFacts(),
+-    run: sc ? { id: sc.id, extentM: sc.extent, fireCellM: sc.terrain.grid.cellSize, durationS: sc.duration, startTimeMs: sc.startTime, seed: sc.options.seed } : null,
++    run: sc ? { id: sc.id, extentM: sc.extent, fireCellM: sc.terrain.grid.cellSize, durationS: sc.duration, startTimeMs: sc.startTime, seed: sc.options.seed, ...detailOf(sc) } : null,
+     playback: st ? { playing: st.playing, viewTime: st.viewTime, headTime: st.headTime, speed: st.speed, seeking: st.seekTarget !== null, reviewing: st.reviewing, pace: st.pace, workerSpeed: st.workerSpeed } : null,
+     frames: o.view?.frameStats?.() ?? null,
+     longTasks: { supported: longTasks.supported, ...longTasks.recent(performance.now()) },
+diff --git a/src/ui/screens/desktopBar.ts b/src/ui/screens/desktopBar.ts
+index 9cb2f6f..2decba2 100644
+--- a/src/ui/screens/desktopBar.ts
++++ b/src/ui/screens/desktopBar.ts
+@@ -9,6 +9,7 @@
+  * open is only a message in the chip. The action is all or nothing: the button stays, busy, until this device's engine has started; if it
+  * cannot, the chip says so in a sentence and the same button tries again with a fresh engine.
+  */
++import { detailChoice } from '../desktopDetailChoice';
+ import { continueOnDevice } from '../desktopRestart';
+ import { desktopSlot, type DecorateOptions, type DesktopApi } from '../desktopSlot';
+ import { CLOSED_LINK, CONTINUE_BUSY, CONTINUE_FAILED, CONTINUE_HERE, RESTARTED_HERE } from '../desktopWords';
+@@ -28,6 +29,9 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
+   const details = o.chip.querySelector('.error-chip-btn');
+   errorText.classList.add('error-chip-says');
+   o.chip.classList.add('error-chip-acts');
++  // A run with a finer Desktop detail that this device cannot run by itself (0.9.0, D35): the chip says so and offers the standard detail instead of a restart
++  // that would fail; the grid is never lowered for the person, who sets up again (desktopDetailRun.ts decides, from the run's own grid and the device's memory).
++  const refusal = o.continueRefusal?.() ?? null;
+   let again = false; // the run is this device's now
+   let busy = false;
+   let failed = false;
+@@ -40,6 +44,12 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
+       dataset: { testid: 'continue-here' },
+       on: {
+         click: () => {
++          if (refusal) {
++            detailChoice.set({ level: 'standard' });
++            host.choose('device');
++            o.exit?.();
++            return;
++          }
+           const proxy = host.proxy();
+           if (!proxy || busy || again) return;
+           busy = true;
+@@ -90,6 +100,11 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
+     }
+     if (s.error) text(errorText, failed ? CONTINUE_FAILED : ended ? (r?.closedReason ?? s.error) : s.error);
+     text(go, busy ? CONTINUE_BUSY : CONTINUE_HERE);
++    if (refusal && ended && s.error) {
++      text(errorText, `${r?.closedReason ?? s.error} ${refusal.short}`);
++      errorText.title = refusal.sentence;
++      text(go, refusal.action);
++    }
+     go.disabled = busy;
+     show(go, ended && !!s.error);
+   }
+diff --git a/src/ui/screens/modelCard.ts b/src/ui/screens/modelCard.ts
+index 40ea4b1..1a90498 100644
+--- a/src/ui/screens/modelCard.ts
++++ b/src/ui/screens/modelCard.ts
+@@ -15,6 +15,8 @@
+  * Opened from Setup (no scenario) it shows the plan of the Setup's current choice.
+  */
+ import type { ScenarioData, SimSnapshot } from '../../core/types';
++import { historyBudgetFor, pageClassOf } from '../desktopDetail';
++import { levelOf } from '../desktopDetailChoice';
+ import { desktopSlot } from '../desktopSlot';
+ import { h, setChildren, uniqueId } from '../dom';
+ import { icon } from '../icons';
+@@ -53,7 +55,8 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
+     dataset: { testid: 'model-card' },
+   });
+ 
+-  const historyBudget = defaultSnapshotBudget();
++  // The history budget this run was given (a run with a finer Desktop detail on a desktop-class page gets more: desktopDetail.ts historyBudgetFor).
++  const historyBudget = historyBudgetFor(levelOf(opts.scenario?.options), defaultSnapshotBudget(), pageClassOf(globalThis.navigator));
+   const nav = globalThis.navigator as { hardwareConcurrency?: number; deviceMemory?: number } | undefined;
+   const input = (): Parameters<typeof describeModel>[0] => {
+     const snapshot = opts.getSnapshot?.() ?? null;
+diff --git a/src/ui/screens/sim/paceSheet.ts b/src/ui/screens/sim/paceSheet.ts
+index 9fcdfb7..0a44d0a 100644
+--- a/src/ui/screens/sim/paceSheet.ts
++++ b/src/ui/screens/sim/paceSheet.ts
+@@ -5,6 +5,7 @@
+  * on the first tap, so the entry bundle does not carry it. Every sentence comes from paceSheetModel.ts; this file only lays
+  * them out and keeps them current once a second, in place (a tap on a button is never lost to a redraw).
+  */
++import { desktopSlot } from '../../desktopSlot';
+ import { h, text } from '../../dom';
+ import { FAST_ANNOUNCEMENT, paceSheet, speedWord } from '../../paceSheetModel';
+ import { list, listRow, pct } from '../../primitives';
+@@ -118,6 +119,7 @@ export function mountPaceSheet(ctx: SimContext, panel: HTMLElement, opts: { clos
+       pace: s.pace,
+       engine: e ? { tier: e.tier, ...(e.mock ? { mock: true } : {}), perf: e.perf } : null,
+       remainingS: Math.max(0, ctx.scenario.duration - s.viewTime),
++      ...(desktopSlot.get().run && !desktopSlot.get().run?.restarted ? { where: 'desktop' as const } : {}),
+     });
+     text(title, view.title);
+     text(lead, view.lead);
+diff --git a/src/ui/screens/sim/simScreen.ts b/src/ui/screens/sim/simScreen.ts
+index 2fb110d..7ad7756 100644
+--- a/src/ui/screens/sim/simScreen.ts
++++ b/src/ui/screens/sim/simScreen.ts
+@@ -16,6 +16,7 @@ import { layerForOverlay, SCENE_LAYER_KEYS, sceneLayerPatch, type SceneLayerKey
+ import { h, listen, setChildren, svg, text, vibrate } from '../../dom';
+ import { icon, type IconName } from '../../icons';
+ import { thinPath, type Pt } from '../../brushGeometry';
++import { levelOf } from '../../desktopDetailChoice';
+ import { desktopSlot } from '../../desktopSlot';
+ import { presetById } from '../../fuelPresets';
+ import { fuelWithEdits } from '../../fuelDisplay';
+@@ -104,6 +105,8 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
+   const { scenario, services } = o;
+   const tz = scenario.weather.timezone || 'Australia/Sydney';
+   const unsubs: (() => void)[] = [];
++  // A run made with a finer Desktop detail (0.9.0) loads its own small chunk: its history budget and its label. A standard run loads nothing and is built as in 0.8.0.
++  const detail = levelOf(scenario.options) ? await import('../../desktopDetailRun') : null;
+ 
+   // ───────────── DOM skeleton ─────────────
+   const sceneHost = h('div', { class: 'scene-host', dataset: { testid: 'scene' } });
+@@ -128,7 +131,7 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
+   view.setStartTime?.(scenario.startTime);
+   view.setLayers(layers.get());
+   if (o.user) view.setUserLocation(o.user.x, o.user.y, o.user.heading);
+-  const session = new SimSession(scenario, controller, view);
++  const session = new SimSession(scenario, controller, view, detail ? detail.sessionOptions(scenario) : {});
+   // The "Recent events" of the debug statistics (slow-run episodes, engine events, background / foreground): a small chunk of its own.
+   let stopEvents = (): void => undefined;
+   unsubs.push(() => stopEvents());
+@@ -328,7 +331,9 @@ export async function createSimScreen(o: SimScreenOptions): Promise<SimScreen> {
+   root.append(topBar.el, ...(simNotice ? [simNotice] : []), errorChip, fabColumn, toolsMenu.el, mapLegend.el, windDetail.button, credit, panelHost, sheet.el, scrubber.el);
+   // A run that computes on the desktop (the controller above is its link's): a lazy chunk labels it, puts the link's sentence in the chip and adds "Continue on this device".
+   const desktop = desktopSlot.get();
+-  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createLocalController(), announce: o.announce }));
++  if (desktop.run && desktop.host) unsubs.push(desktop.host.decorate({ root, chip: errorChip, notice: simNotice, session, makeController: () => services.createLocalController(), announce: o.announce, exit: o.onExit, ...(detail ? { continueRefusal: () => detail.continueRefusal(scenario) } : {}) }));
++  const stopLabel = detail?.mountLabel(root, scenario); // "Finer grid, results differ, not validated", under the engine's label
++  if (stopLabel) unsubs.push(stopLabel);
+   unsubs.push(() => mapLegend.destroy(), () => windDetail.destroy(), () => toolsMenu.destroy(), () => viewMenu.destroy());
+ 
+   // ───────────── visible map area ─────────────
+
+From dc4b2d5c9072f4450670edb50a7ad36d4b142792 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:11:06 +0000
+Subject: [PATCH 4/5] Desktop detail: e2e on the stand-in host and one run on a
+ real host
+
+e2e/desktop-detail.spec.ts: the choice appears only with the desktop, the label on the map, in the statistics and in How sure are we?, no phone speed test for a
+run on the desktop, the history budget (a phone's page unchanged, a desktop-class page 384 MiB), the label surviving Continue on this device, the offer of the
+standard detail when this device cannot run the grid, the refusal on Setup, the row at four sizes in three looks, and Katoomba 3 km at 10 m on a real host
+(wall time and picture sizes printed). Setup redraws its footer when the area changes under a finer level.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/desktop-detail.spec.ts | 530 +++++++++++++++++++++++++++++++++++++
+ src/ui/screens/setup.ts    |   1 +
+ 2 files changed, 531 insertions(+)
+ create mode 100644 e2e/desktop-detail.spec.ts
+
+diff --git a/e2e/desktop-detail.spec.ts b/e2e/desktop-detail.spec.ts
+new file mode 100644
+index 0000000..879811d
+--- /dev/null
++++ b/e2e/desktop-detail.spec.ts
+@@ -0,0 +1,530 @@
++/**
++ * The Desktop detail setting in the browser (0.9.0, D35; contract 4.1), against the stand-in host of e2e/desktopStub.ts (the page's side alone) and,
++ * in the last test, against a REAL host started as a child process on port 4501.
++ *
++ * With the stand-in host (Pixel 7 profile, the demo builder and demo engine of `?mock=1`, so the builds take no time):
++ *   - the choice appears only with the desktop: no host, no row; a host with This device chosen, the row is there and hidden; Desktop chosen, it shows
++ *     Standard, Finer (20 m) and Finest (10 m), Standard chosen; a finer level shows "Finer grid, results differ, not validated" in the callout, and
++ *     Setup's own Detail chips and hint say the cell the build will make; back on This device they say 30 m again
++ *   - a build with Finest records the level in the scenario (`options.desktopDetail`, 10 m cells, 8,000 embers) and sends the desktop that scenario; the
++ *     map has the label under "Running on the desktop", the statistics have the row and the label in their first line, "How sure are we?" has the
++ *     owner's words first, and the phone's speed test is not offered for a run on the desktop; a Standard build has none of it and 30 m cells
++ *   - the history budget: a phone's page keeps exactly the budget it has today at a finer level; a desktop-class page gets 384 MiB
++ *   - the label survives "Continue on this device" when this device can run the grid; when it cannot, the chip says so and offers the standard detail
++ *     (nothing is lowered, nothing is started): the tap goes to Setup on This device with the detail row gone
++ *   - a level this page cannot keep the pictures of is refused on Setup with a sentence before anything is built (no link opened)
++ *   - the row's tap targets and text size at two phone sizes
++ * With the real host (`node desktop/run.mjs --port 4501` serving the e2e build): Katoomba 3 km at the Finest level computes on the host, the label shows,
++ * the grid is 10 m, and the wall time and the picture sizes are printed (`[desktop-detail] ...`).
++ */
++import { spawn, type ChildProcess } from 'node:child_process';
++import { mkdirSync } from 'node:fs';
++import { fileURLToPath } from 'node:url';
++import type { Locator, Page } from '@playwright/test';
++import { failLink, installDesktopStub, remoteCalls, type DesktopStubOptions } from './desktopStub';
++import { expect, test } from './fixtures';
++import { acceptNotice, armPopupWatch, popups, session, watchPopups } from './helpers';
++
++const SHOTS = process.env.AUDIT_SHOTS ?? 'test-results/desktop-detail';
++mkdirSync(SHOTS, { recursive: true });
++const CODE = 'ABCD2345';
++const LABEL = 'Finer grid, results differ, not validated';
++const MIB = 1024 * 1024;
++
++interface OpenOptions {
++  query?: string;
++  hash?: string;
++  stub?: DesktopStubOptions | false;
++  /** `navigator.deviceMemory` (GB) the page sees: what the history budget and the device's limit follow. */
++  memoryGb?: number;
++  /** A page load after the first of this browser context: the safety notice was accepted then, and shows again only if it was not. */
++  again?: boolean;
++}
++
++async function openSetup(page: Page, o: OpenOptions = {}): Promise<void> {
++  if (o.stub !== false) await installDesktopStub(page, o.stub ?? {});
++  if (o.memoryGb !== undefined) await page.addInitScript((gb) => Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => gb, configurable: true }), o.memoryGb);
++  await page.goto(`/?${o.query ?? 'mock=1&debug=1'}${o.hash ?? ''}`);
++  if (o.again) {
++    await expect(page.getByTestId('setup')).toBeVisible();
++    await page.waitForTimeout(500);
++    if (await page.getByTestId('notice').isVisible()) await page.getByTestId('accept-notice').click();
++  } else await acceptNotice(page);
++  await expect(page.getByTestId('setup')).toBeVisible();
++}
++
++const engineChip = (page: Page, value: 'device' | 'desktop'): Locator => page.getByTestId('engine').locator(`label.chip[data-value=${value}]`);
++const levelChip = (page: Page, value: 'standard' | 'finer' | 'finest'): Locator => page.getByTestId('desktop-detail').locator(`label.chip[data-value=${value}]`);
++const detailRow = (page: Page): Locator => page.getByTestId('desktop-detail-row');
++const areaHint = (page: Page): Locator => page.getByTestId('detail-hint');
++const sizeChip = (page: Page, km: 3 | 6 | 9): Locator => page.getByTestId('extent').getByRole('radio', { name: `${km} km` });
++
++/** The eight probes of the repo's tap audit: a point around the centre that lands on something else is a hit area under 44 x 44 px. */
++async function missedProbes(loc: Locator): Promise<number> {
++  return loc.evaluate((el) => {
++    el.scrollIntoView({ block: 'center' });
++    const r = el.getBoundingClientRect();
++    const cx = r.left + r.width / 2;
++    const cy = r.top + r.height / 2;
++    const label = el.closest('label');
++    return [[-21, 0], [21, 0], [0, -21], [0, 21], [-15, -15], [15, 15], [-15, 15], [15, -15]].filter(([dx, dy]) => {
++      const hit = document.elementFromPoint(cx + dx!, cy + dy!);
++      return !(hit && (el === hit || el.contains(hit) || (label && label.contains(hit))));
++    }).length;
++  });
++}
++
++type Opts = { desktopDetail?: string; fireCellSize: number; maxEmbers: number; tier?: string };
++/** What the page holds of the run it built: the scenario's options and grid, and the history store's budget. */
++const built = (page: Page) =>
++  page.evaluate(() => {
++    const fs = (window as unknown as { __firesim: { scenario: { options: Record<string, unknown>; terrain: { grid: { cellSize: number; nx: number } }; extent: number }; session: { snapshots: { maxBytes: number } } } }).__firesim;
++    return { options: fs.scenario.options as unknown as Opts, cellM: fs.scenario.terrain.grid.cellSize, nx: fs.scenario.terrain.grid.nx, extent: fs.scenario.extent, maxBytes: fs.session.snapshots.maxBytes };
++  });
++
++/** Setup of a run on the desktop through the link (the code comes with the address): the area, the level, then Build. */
++async function buildOnDesktop(page: Page, o: { km: 3 | 6 | 9; level: 'standard' | 'finer' | 'finest' }): Promise<void> {
++  await sizeChip(page, o.km).check({ force: true });
++  if (o.level !== 'standard') await levelChip(page, o.level).click();
++  await page.getByTestId('build').click();
++  await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++}
++
++async function leaveToSetup(page: Page): Promise<void> {
++  await page.getByTestId('menu').click();
++  await page.getByTestId('menu-new').click();
++  await expect(page.getByTestId('setup')).toBeVisible();
++}
++
++test.describe('the stand-in host', () => {
++  test('the choice is there only with the desktop: no host, no row; This device, the row is hidden; Desktop, three levels with Standard chosen', async ({ page }) => {
++    test.setTimeout(120_000);
++    await openSetup(page, { stub: false, query: 'mock=1' });
++    await page.waitForTimeout(1500);
++    await expect(detailRow(page)).toHaveCount(0);
++    await expect(page.getByTestId('desktop-detail')).toHaveCount(0);
++    await page.goto('about:blank');
++
++    await openSetup(page, { again: true });
++    await expect(page.getByTestId('engine-row')).toBeVisible();
++    await expect(engineChip(page, 'device').locator('input')).toBeChecked();
++    await expect(detailRow(page)).toBeHidden(); // mounted, but not offered for this device
++    await expect(page.getByTestId('desktop-detail')).toBeHidden();
++    await engineChip(page, 'desktop').click();
++    await expect(detailRow(page)).toBeVisible();
++    await expect(page.getByTestId('desktop-detail').locator('legend')).toHaveText('Desktop detail');
++    const chips = page.getByTestId('desktop-detail').locator('label.chip .chip-text');
++    await expect(chips).toHaveText(['Standard', 'Finer · 20 m', 'Finest · 10 m']);
++    await expect(levelChip(page, 'standard').locator('input')).toBeChecked();
++    await expect(page.getByTestId('desktop-detail-hint')).toHaveText('The usual detail of the app: 30 m fire cells (20 m with Detailed, up to 6 km).');
++    await expect(page.getByTestId('desktop-detail-label')).toHaveCount(0); // Standard has no label
++    await expect(page.getByTestId('desktop-detail-note')).toContainText('Only the desktop computer runs the finer grids; this device does not.');
++  });
++
++  test('a finer level says the label next to the chips, and Setup\'s own cells say what the build will make; back on This device they say 30 m again', async ({ page }) => {
++    test.setTimeout(120_000);
++    await openSetup(page, {});
++    await sizeChip(page, 3).check({ force: true });
++    await expect(areaHint(page)).toContainText('30 m cells, 100 × 100 = 10,000 cells');
++    await engineChip(page, 'desktop').click();
++    await levelChip(page, 'finest').click();
++    await expect(page.getByTestId('desktop-detail-label')).toHaveText(LABEL);
++    await expect(page.getByTestId('desktop-detail-hint')).toContainText('Fire cells of 10 m at any area, up to 8,000 embers.');
++    await expect(page.getByTestId('desktop-detail-hint')).toContainText('About 9 times the work of the usual 30 m cells, and about 16 MB a picture over 6 km (one study, one computer).');
++    await expect(areaHint(page)).toContainText('10 m cells, 300 × 300 = 90,000 cells');
++    await expect(page.getByTestId('detail').locator('label.chip .chip-text')).toHaveText(['Fast · 10 m 2-D', 'Normal · 10 m', 'Detailed · 10 m']);
++    await levelChip(page, 'finer').click();
++    await expect(areaHint(page)).toContainText('20 m cells, 150 × 150 = 22,500 cells');
++    await expect(page.getByTestId('desktop-detail-hint')).toContainText('Fire cells of 20 m at any area, up to 8,000 embers.');
++    await expect(page.getByTestId('desktop-detail-label')).toHaveText(LABEL);
++    // This device: the level does not apply, and the cells are the usual
++    await engineChip(page, 'device').click();
++    await expect(detailRow(page)).toBeHidden();
++    await expect(areaHint(page)).toContainText('30 m cells, 100 × 100 = 10,000 cells');
++    await expect(page.getByTestId('detail').locator('label.chip .chip-text')).toHaveText(['Fast · 30 m 2-D', 'Normal · 30 m', 'Detailed · 20 m']);
++  });
++
++  for (const [w, h] of [[360, 640], [390, 844], [412, 915], [844, 390]] as const)
++    test(`the row at ${w} x ${h}: inside the screen, 44 px hit areas, text of 14 px or more, in light, dark and high contrast`, async ({ page }) => {
++      test.setTimeout(180_000);
++      await page.setViewportSize({ width: w, height: h });
++      for (const look of ['theme=light', 'theme=dark', 'theme=light&contrast=high']) {
++        await installDesktopStub(page, {});
++        await page.goto(`/?mock=1&debug=1&${look}`);
++        await expect(page.getByTestId('setup')).toBeVisible();
++        await page.waitForTimeout(500);
++        if (await page.getByTestId('notice').isVisible()) await page.getByTestId('accept-notice').click();
++        await expect(page.getByTestId('engine-row')).toBeVisible();
++        await engineChip(page, 'desktop').click();
++        await levelChip(page, 'finest').click();
++        await detailRow(page).scrollIntoViewIfNeeded();
++        const m = await page.evaluate(() => {
++          const r = document.querySelector('[data-testid=desktop-detail-row]')!;
++          const bad: string[] = [];
++          for (const el of r.querySelectorAll('*')) {
++            const b = el.getBoundingClientRect();
++            if (b.width && (b.right > innerWidth + 1 || b.left < -1)) bad.push(`${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)} ${Math.round(b.left)}..${Math.round(b.right)}`);
++          }
++          const small: string[] = [];
++          for (const el of r.querySelectorAll('.chip-text, .hint, .callout div, legend')) {
++            const fs = parseFloat(getComputedStyle(el).fontSize);
++            if (fs < 14) small.push(`${el.tagName.toLowerCase()} ${fs}px`);
++          }
++          return { bad, small, scrollW: document.documentElement.scrollWidth, clientW: document.documentElement.clientWidth };
++        });
++        expect(m.bad, look).toEqual([]);
++        expect(m.small, look).toEqual([]);
++        expect(m.scrollW, look).toBeLessThanOrEqual(m.clientW);
++        for (const v of ['standard', 'finer', 'finest'] as const) expect(await missedProbes(levelChip(page, v)), `${look}: ${v} chip`).toBe(0);
++        await page.screenshot({ path: `${SHOTS}/detail-row-${w}x${h}-${look.replace(/[^a-z]+/g, '-')}.png`, scale: 'css' });
++      }
++    });
++
++  test('a build at the Finest level records it, tells the desktop, and says the label on the map, in the statistics and in "How sure are we?"', async ({ page }) => {
++    test.setTimeout(240_000);
++    await watchPopups(page);
++    await openSetup(page, { hash: `#code=${CODE}`, memoryGb: 4 });
++    await expect(engineChip(page, 'desktop').locator('input')).toBeChecked();
++    await buildOnDesktop(page, { km: 3, level: 'finest' });
++    await armPopupWatch(page);
++
++    // the scenario carries the level, its cell and its embers; the tier stays the performance setting's (Auto)
++    const b = await built(page);
++    expect(b.options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000, tier: 'auto' });
++    expect(b).toMatchObject({ cellM: 10, nx: 300, extent: 3000 });
++    // the desktop was sent that scenario, once
++    expect((await remoteCalls(page)).filter((c) => c[0] === 'init')).toHaveLength(1);
++
++    // the map: the engine's label, then the owner's words in a chip of the same kind below it, inside the screen, not on top of it
++    const engine = page.getByTestId('engine-banner');
++    const label = page.getByTestId('detail-banner');
++    await expect(engine).toHaveText('Running on the desktop');
++    await expect(label).toHaveText(/^Finer grid, results differ, not validated · 10\sm cells$/);
++    const [e, l] = await Promise.all([engine.boundingBox(), label.boundingBox()]);
++    expect(l!.y).toBeGreaterThanOrEqual(e!.y + e!.height - 0.5);
++    expect(l!.x).toBeGreaterThanOrEqual(0);
++    expect(l!.x + l!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
++    expect(await label.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
++
++    // the statistics: the row, the label in the summary line, and the phone's speed test is not used for a run on the desktop
++    await page.getByTestId('menu').click();
++    await page.getByTestId('menu-debug-stats').click();
++    await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
++    await expect(page.getByTestId('debug-stats-headline')).toContainText(LABEL);
++    await page.getByTestId('debug-group-run').click();
++    const run = page.getByTestId('debug-group-run-body');
++    await expect(run).toContainText('Desktop detail');
++    await expect(run).toContainText(LABEL);
++    await expect(run).toContainText('Finest level: fire cells of 10');
++    await page.getByTestId('debug-group-canDo').click();
++    const canDo = page.getByTestId('debug-group-canDo-body');
++    await expect(canDo).toContainText('Not used on a run that computes on the desktop.');
++    await expect(page.getByTestId('speed-test')).toHaveCount(0);
++    await page.getByTestId('debug-stats-close').click();
++    await expect(page.getByTestId('debug-stats')).toHaveCount(0);
++
++    // the model card: the owner's words come first in "How sure are we?"
++    await page.getByTestId('menu').click();
++    await page.getByTestId('menu-model').click();
++    await expect(page.getByTestId('model-card')).toBeVisible({ timeout: 30_000 });
++    await page.getByTestId('model-section-sure').click();
++    const sure = page.getByTestId('model-section-sure-body');
++    await expect(sure.locator('.callout').first()).toContainText(LABEL);
++    await expect(sure.locator('.callout').first()).toContainText('Nothing says which is closer to a real fire');
++    await page.getByTestId('model-card-close').click();
++    expect(await popups(page)).toEqual([]);
++  });
++
++  test('a Standard build on the desktop has none of it: no record, 30 m cells, no label, no row in the statistics', async ({ page }) => {
++    test.setTimeout(180_000);
++    await openSetup(page, { hash: `#code=${CODE}` });
++    await buildOnDesktop(page, { km: 3, level: 'standard' });
++    const b = await built(page);
++    expect('desktopDetail' in b.options).toBe(false);
++    expect(b).toMatchObject({ cellM: 30, nx: 100 });
++    await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
++    await expect(page.getByTestId('detail-banner')).toHaveCount(0);
++    await page.getByTestId('menu').click();
++    await page.getByTestId('menu-debug-stats').click();
++    await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
++    await expect(page.getByTestId('debug-stats-headline')).not.toContainText(LABEL);
++    await page.getByTestId('debug-group-run').click();
++    await expect(page.getByTestId('debug-group-run-body')).not.toContainText('Desktop detail');
++    await page.getByTestId('debug-stats-close').click();
++    // the phone's speed test is the one thing that follows the engine: on the desktop it is not offered, with the standard detail too
++    await page.getByTestId('menu').click();
++    await page.getByTestId('menu-debug-stats').click();
++    await page.getByTestId('debug-group-canDo').click();
++    await expect(page.getByTestId('debug-group-canDo-body')).toContainText('Not used on a run that computes on the desktop.');
++  });
++
++  test('This device chosen after a finer level builds a standard run: the level is not left behind', async ({ page }) => {
++    test.setTimeout(180_000);
++    await openSetup(page, {});
++    await sizeChip(page, 3).check({ force: true });
++    await engineChip(page, 'desktop').click();
++    await expect(page.getByTestId('engine-code')).toBeVisible();
++    await levelChip(page, 'finest').click();
++    await engineChip(page, 'device').click();
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++    const b = await built(page);
++    expect('desktopDetail' in b.options).toBe(false);
++    expect(b.cellM).toBe(30);
++    expect((await remoteCalls(page)).filter((c) => c[0] === 'connect' || c[0] === 'init')).toEqual([]);
++    await expect(page.getByTestId('detail-banner')).toHaveCount(0);
++  });
++
++  test('the history budget: a phone\'s page keeps the budget it has today at the Finest level; a desktop-class page gets 384 MiB', async ({ page, browser }) => {
++    test.setTimeout(240_000);
++    // a phone (the Pixel 7 profile) that reports 2 GB: 6 % of it (122.9 MiB, under the 160 MiB cap), as defaultSnapshotBudget has always said
++    await openSetup(page, { hash: `#code=${CODE}`, memoryGb: 2 });
++    await buildOnDesktop(page, { km: 3, level: 'finest' });
++    expect((await built(page)).maxBytes).toBe(Math.round(2 * 1024 * 0.06 * MIB));
++    // the same phone with the standard detail
++    await leaveToSetup(page);
++    await engineChip(page, 'desktop').click();
++    await expect(levelChip(page, 'finest').locator('input')).toBeChecked(); // the choice is kept for the page load
++    await levelChip(page, 'standard').click();
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++    expect((await built(page)).maxBytes).toBe(Math.round(2 * 1024 * 0.06 * MIB));
++    await page.close();
++
++    // a desktop-class page: a window of a desktop browser that reports the 8 GB class
++    const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false });
++    try {
++      const desk = await context.newPage();
++      await openSetup(desk, { hash: `#code=${CODE}`, memoryGb: 8 });
++      expect(await desk.evaluate(() => (navigator as { userAgentData?: { mobile: boolean } }).userAgentData?.mobile)).toBe(false);
++      await buildOnDesktop(desk, { km: 3, level: 'finest' });
++      expect((await built(desk)).maxBytes).toBe(384 * MIB);
++      await leaveToSetup(desk);
++      await engineChip(desk, 'desktop').click();
++      await levelChip(desk, 'standard').click();
++      await desk.getByTestId('build').click();
++      await expect(desk.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++      expect((await built(desk)).maxBytes).toBe(160 * MIB); // the standard detail on that page is what it was
++    } finally {
++      await context.close();
++    }
++  });
++
++  test('the label survives "Continue on this device" when this device can run the grid; the run is restarted here from the start', async ({ page }) => {
++    test.setTimeout(240_000);
++    await openSetup(page, { hash: `#code=${CODE}`, memoryGb: 8 });
++    await buildOnDesktop(page, { km: 3, level: 'finest' });
++    await expect(page.getByTestId('detail-banner')).toContainText(LABEL);
++    await failLink(page);
++    const go = page.getByTestId('continue-here');
++    await expect(go).toBeVisible();
++    await expect(go).toHaveText('Continue on this device'); // the device can run 3 km at 10 m by itself: the usual offer
++    await expect(page.getByTestId('error-chip')).not.toContainText('cannot run');
++    await go.click();
++    await expect(page.getByTestId('engine-banner')).toHaveText('Running on this device again, from the start.');
++    // the run is the same scenario, with the same record: the label is still there, under the new note
++    await expect(page.getByTestId('detail-banner')).toContainText(LABEL);
++    const b = await built(page);
++    expect(b.options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10 });
++    expect(b.cellM).toBe(10);
++    const [e, l] = await Promise.all([page.getByTestId('engine-banner').boundingBox(), page.getByTestId('detail-banner').boundingBox()]);
++    expect(l!.y, 'the label is under the note, not on top of it').toBeGreaterThanOrEqual(e!.y + e!.height - 0.5);
++    await page.getByTestId('menu').click();
++    await page.getByTestId('menu-debug-stats').click();
++    await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
++    await expect(page.getByTestId('debug-stats-headline')).toContainText(LABEL);
++    await page.getByTestId('debug-group-run').click();
++    await expect(page.getByTestId('debug-group-run-body')).toContainText('This device (the run was started again here, from the start, after the desktop connection closed)');
++    await expect(page.getByTestId('debug-group-run-body')).toContainText(LABEL);
++  });
++
++  test('when this device cannot run the grid, "Continue on this device" says so and offers the standard detail: nothing is lowered or started, and the tap goes to Setup on This device', async ({ page }) => {
++    test.setTimeout(240_000);
++    // a small device: 0.25 GB (a third of it is what an app can use), whose history still holds 3 km at 10 m
++    await openSetup(page, { hash: `#code=${CODE}`, memoryGb: 0.25 });
++    await buildOnDesktop(page, { km: 3, level: 'finest' });
++    await failLink(page);
++    const chip = page.getByTestId('error-chip');
++    const go = page.getByTestId('continue-here');
++    await expect(go).toBeVisible();
++    await expect(chip).toContainText('The desktop connection closed.');
++    await expect(chip).toContainText(/This device cannot run the 10\sm grid of this run\./);
++    await expect(go).toHaveText('Set up at the standard detail');
++    expect(await go.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
++    expect(await missedProbes(go), 'a 44 x 44 px hit area').toBe(0);
++    // the whole reason is in the chip's tooltip (the chip has two lines)
++    expect(await chip.locator('.error-chip-text').getAttribute('title')).toMatch(/needs about [\d.]+\sGB of memory, it reports about 0\.25 GB.*It would not be switched to a coarser grid for you\./);
++    // nothing was started: the spare engine is still idle and the run is still the desktop's last picture
++    await page.waitForTimeout(1500);
++    expect(await page.evaluate(() => (window as unknown as { __firesim: { session: { controller: { standby: unknown } } } }).__firesim.session.controller.standby !== null)).toBe(true);
++    await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
++    expect((await session(page)).error).toBe('The desktop connection closed.');
++    // the tap: Setup, This device chosen, no detail row, the usual cells
++    await go.click();
++    await expect(page.getByTestId('setup')).toBeVisible();
++    await expect(engineChip(page, 'device').locator('input')).toBeChecked();
++    await expect(detailRow(page)).toBeHidden();
++    await sizeChip(page, 3).check({ force: true });
++    await expect(areaHint(page)).toContainText('30 m cells, 100 × 100 = 10,000 cells');
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++    const b = await built(page);
++    expect('desktopDetail' in b.options).toBe(false);
++    expect(b.cellM).toBe(30);
++    await expect(page.getByTestId('detail-banner')).toHaveCount(0);
++  });
++
++  test('a level this page cannot keep the pictures of is refused on Setup with a sentence, before anything is built or any link opened', async ({ page }) => {
++    test.setTimeout(180_000);
++    // 0.25 GB: a history of 48 MiB (50.3 MB), which holds three pictures of 4 MB (3 km at 10 m) and of 16 MB (6 km) but not of 36 MB (9 km)
++    await openSetup(page, { hash: `#code=${CODE}`, memoryGb: 0.25 });
++    await levelChip(page, 'finest').click();
++    await sizeChip(page, 9).check({ force: true });
++    // the sentence is on the form as soon as the area is chosen for that level, and Build is refused with it
++    const errors = page.locator('.footer-errors');
++    await expect(errors).toContainText(/This device cannot keep the pictures of 10\sm cells over 9\skm: each is about 3\d\.\d\sMB and its history has room for about 1 \(50\.3\sMB\)\./);
++    await expect(errors).toContainText(/Choose a smaller area or the Finer level\.$/);
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('setup')).toBeVisible();
++    await expect(errors).toContainText('This device cannot keep the pictures');
++    await page.waitForTimeout(500);
++    expect((await remoteCalls(page)).filter((c) => c[0] === 'connect')).toEqual([]); // no link was opened for a build that was refused
++    expect((await remoteCalls(page)).filter((c) => c[0] === 'init')).toEqual([]);
++    // the same device takes 6 km and 3 km at this level (the refusal is for the area, and the person chooses)
++    await sizeChip(page, 6).check({ force: true });
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++    expect((await built(page)).options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10 });
++    await leaveToSetup(page);
++    await engineChip(page, 'desktop').click();
++    // the same sizes at Finer (20 m) fit: the refusal is for the level, and the person chooses
++    await levelChip(page, 'finer').click();
++    await sizeChip(page, 9).check({ force: true });
++    await page.getByTestId('build').click();
++    await expect(page.getByTestId('sim')).toBeVisible({ timeout: 120_000 });
++    expect((await built(page)).options).toMatchObject({ desktopDetail: 'finer', fireCellSize: 20 });
++  });
++});
++
++// ───────────────────────────── the real host ─────────────────────────────
++
++const ROOT = fileURLToPath(new URL('..', import.meta.url));
++const HOST_PORT = Number(process.env.DESKTOP_DETAIL_HOST_PORT ?? 4501);
++const NAME = 'FireSim detail e2e';
++const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
++
++/** `node desktop/run.mjs --port 4501 --code ABCD2345 ...` as a child process (it serves the `dist/` of the e2e build); resolves when its banner has been printed. */
++async function startHost(): Promise<{ origin: string; stop(): Promise<void> }> {
++  const child: ChildProcess = spawn(process.execPath, ['desktop/run.mjs', '--port', String(HOST_PORT), '--code', CODE, '--name', NAME], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
++  let text = '';
++  let gone = false;
++  const exited = new Promise<void>((resolve) =>
++    child.once('exit', () => {
++      gone = true;
++      resolve();
++    }),
++  );
++  child.stdout!.on('data', (d: Buffer) => (text += d));
++  child.stderr!.on('data', (d: Buffer) => (text += d));
++  const stop = async (): Promise<void> => {
++    if (gone) return;
++    child.kill('SIGTERM');
++    if (!(await Promise.race([exited.then(() => true), pause(10_000).then(() => false)]))) child.kill('SIGKILL');
++    await exited;
++  };
++  try {
++    await new Promise<void>((resolve, reject) => {
++      const timer = setTimeout(() => reject(new Error(`The host printed no address within 60 s:\n${text}`)), 60_000);
++      const done = (): void => {
++        if (!/Pairing code: /.test(text)) return;
++        clearTimeout(timer);
++        resolve();
++      };
++      child.stdout!.on('data', done);
++      void exited.then(() => {
++        clearTimeout(timer);
++        reject(new Error(`The host ended while starting:\n${text}`));
++      });
++    });
++  } catch (e) {
++    await stop();
++    throw e;
++  }
++  return { origin: `http://localhost:${HOST_PORT}`, stop };
++}
++
++test.describe('the real host', () => {
++  // A machine may send web requests through an HTTP proxy (the CI sandbox does): the browser goes straight to this machine.
++  test.use({ actionTimeout: 45_000, proxy: { server: 'http://127.0.0.1:9', bypass: '127.0.0.1,localhost' } });
++
++  test('Katoomba 3 km at the Finest level computes on the host: 10 m cells, the label, and the wall time and picture sizes of 30 minutes of fire', async ({ page }) => {
++    test.setTimeout(600_000);
++    const host = await startHost();
++    try {
++      const t0 = Date.now();
++      await page.goto(`${host.origin}/?debug=1#code=${CODE}`);
++      await acceptNotice(page);
++      await expect(engineChip(page, 'desktop').locator('input')).toBeChecked();
++      // the real builder, offline, the Katoomba demo at 3 km, the fast tier (what 15e measured), preset weather
++      await page.getByTestId('site-katoomba').click();
++      await sizeChip(page, 3).check({ force: true });
++      await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
++      await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
++      await page.getByTestId('preset-hot-nw-sw-change').click();
++      const online = page.getByTestId('online').getByRole('switch');
++      if (await online.isChecked()) await page.getByTestId('online').click();
++      await levelChip(page, 'finest').click();
++      await expect(areaHint(page)).toContainText('10 m cells, 300 × 300 = 90,000 cells, simple 2-D surface wind');
++      await page.getByTestId('build').click();
++      await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
++      const built0 = Date.now();
++
++      // the scenario the host was sent: the level, 10 m cells, 8,000 embers; the host's engine says 10 m too
++      const b = await built(page);
++      expect(b.options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000, tier: 'fast' });
++      expect(b).toMatchObject({ cellM: 10, nx: 300, extent: 3000 });
++      await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
++      await expect(page.getByTestId('detail-banner')).toContainText(LABEL);
++
++      // a fire on the escarpment, then 30 minutes of fire as fast as the host goes
++      await page.evaluate(() => {
++        const fs = (window as unknown as { __firesim: { session: { ignite(i: unknown): void; setSpeed(s: number): void; play(): void } } }).__firesim;
++        fs.session.ignite({ id: 'fire-a', kind: 'point', points: [[-800, 300]], radius: 60, origin: 'observed' });
++        fs.session.setSpeed(Infinity);
++        fs.session.play();
++      });
++      const playedAt = Date.now();
++      await expect
++        .poll(async () => (await session(page)).headTime, { message: 'the host computes 1800 s of fire', timeout: 480_000, intervals: [1000] })
++        .toBeGreaterThanOrEqual(1800);
++      const wallS = (Date.now() - playedAt) / 1000;
++      await page.evaluate(() => (window as unknown as { __firesim: { session: { pause(): void } } }).__firesim.session.pause());
++
++      const facts = await page.evaluate(() => {
++        const fs = (window as unknown as { __firesim: { session: { engineInfo(): { fire: { cellM: number; nx: number }; embers: { max: number }; tier: string; perf?: { speed: { mean: number } } } | null; snapshots: { newestBytes: number; keyframeBytes: number; keyframeCount: number; totalBytes: number; maxBytes: number } } } }).__firesim;
++        const e = fs.session.engineInfo()!;
++        const s = fs.session.snapshots;
++        return { cellM: e.fire.cellM, nx: e.fire.nx, embers: e.embers.max, tier: e.tier, speed: e.perf?.speed.mean ?? null, newest: s.newestBytes, keyframeBytes: s.keyframeBytes, keyframes: s.keyframeCount, total: s.totalBytes, budget: s.maxBytes };
++      });
++      expect(facts).toMatchObject({ cellM: 10, nx: 300, embers: 8000 });
++      expect(facts.newest).toBeGreaterThan(1e6); // a 10 m picture over 3 km is megabytes, not the few hundred kB of 30 m
++      console.log(
++        `[desktop-detail] real host, Katoomba 3 km, Finest (10 m), tier ${facts.tier}: build ${((built0 - t0) / 1000).toFixed(1)} s from page load; 1800 s of fire in ${wallS.toFixed(1)} s wall (engine mean ${facts.speed?.toFixed(0) ?? 'n/a'}x real time); newest picture ${(facts.newest / 1e6).toFixed(2)} MB, ${facts.keyframes} keyframes ${(facts.keyframeBytes / 1e6).toFixed(1)} MB, history ${(facts.total / 1e6).toFixed(1)} of ${(facts.budget / 1e6).toFixed(0)} MB`,
++      );
++
++      // the statistics say so, in the desktop's own words
++      await page.getByTestId('menu').click();
++      await page.getByTestId('menu-debug-stats').click();
++      await expect(page.getByTestId('debug-stats')).toBeVisible({ timeout: 30_000 });
++      await expect(page.getByTestId('debug-stats-headline')).toContainText(LABEL);
++      await page.getByTestId('debug-group-run').click();
++      await expect(page.getByTestId('debug-group-run-body')).toContainText('Desktop detail');
++      await expect(page.getByTestId('debug-group-run-body')).toContainText(`Desktop ${NAME}`);
++      await page.getByTestId('debug-group-grids').click();
++      await expect(page.getByTestId('debug-group-grids-body')).toContainText(/300 x 300 cells, 10\sm apart/);
++      await page.getByTestId('debug-stats-close').click();
++    } finally {
++      await host.stop();
++    }
++  });
++});
+diff --git a/src/ui/screens/setup.ts b/src/ui/screens/setup.ts
+index f46a5c8..ad58365 100644
+--- a/src/ui/screens/setup.ts
++++ b/src/ui/screens/setup.ts
+@@ -517,6 +517,7 @@ export function createSetupScreen(opts: SetupScreenOptions): SetupScreen {
+       update({ extentKm: Number(v) as ExtentKm });
+       renderArea();
+       schedulePlan();
++      if (chosenDetail()) renderFooter(chosenDetailRefusal(store.get().extentKm) !== null); // a finer level may not fit this area: say so at once
+     },
+   });
+   const detailChips = chipChoice({
+
+From b1348b4472262a1c83a871b7c3e103b75caa5bff Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 8 Nov 2026 08:58:44 +0000
+Subject: [PATCH 5/5] Desktop detail: the label starts the statistics summary
+ for every engine; the real-host run also at 6 km
+
+The one-line summary of the statistics starts with the label whichever engine reports (the demo engine and a run that has not reported yet included).
+The e2e fixes: a forced tap on the Build button that the form marks disabled, and MB or GB in the device sentence. The real-host test runs Katoomba at 3 km and 6 km.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ e2e/desktop-detail.spec.ts | 38 ++++++++++++++++++++------------------
+ src/ui/debugStats.test.ts  |  3 +++
+ src/ui/debugStats.ts       |  7 ++++---
+ 3 files changed, 27 insertions(+), 21 deletions(-)
+
+diff --git a/e2e/desktop-detail.spec.ts b/e2e/desktop-detail.spec.ts
+index 879811d..4d5f887 100644
+--- a/e2e/desktop-detail.spec.ts
++++ b/e2e/desktop-detail.spec.ts
+@@ -13,9 +13,9 @@
+  *   - the label survives "Continue on this device" when this device can run the grid; when it cannot, the chip says so and offers the standard detail
+  *     (nothing is lowered, nothing is started): the tap goes to Setup on This device with the detail row gone
+  *   - a level this page cannot keep the pictures of is refused on Setup with a sentence before anything is built (no link opened)
+- *   - the row's tap targets and text size at two phone sizes
+- * With the real host (`node desktop/run.mjs --port 4501` serving the e2e build): Katoomba 3 km at the Finest level computes on the host, the label shows,
+- * the grid is 10 m, and the wall time and the picture sizes are printed (`[desktop-detail] ...`).
++ *   - the row's tap targets and text size at four phone sizes, in light, dark and high contrast
++ * With the real host (`node desktop/run.mjs --port 4501` serving the e2e build): Katoomba at 3 km and at 6 km at the Finest level computes on the host, the
++ * label shows, the grid is 10 m, and the wall time and the picture sizes are printed (`[desktop-detail] ...`).
+  */
+ import { spawn, type ChildProcess } from 'node:child_process';
+ import { mkdirSync } from 'node:fs';
+@@ -353,7 +353,7 @@ test.describe('the stand-in host', () => {
+     expect(await go.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
+     expect(await missedProbes(go), 'a 44 x 44 px hit area').toBe(0);
+     // the whole reason is in the chip's tooltip (the chip has two lines)
+-    expect(await chip.locator('.error-chip-text').getAttribute('title')).toMatch(/needs about [\d.]+\sGB of memory, it reports about 0\.25 GB.*It would not be switched to a coarser grid for you\./);
++    expect(await chip.locator('.error-chip-text').getAttribute('title')).toMatch(/needs about [\d.]+\s(?:MB|GB) of memory, it reports about 0\.25 GB.*It would not be switched to a coarser grid for you\./);
+     // nothing was started: the spare engine is still idle and the run is still the desktop's last picture
+     await page.waitForTimeout(1500);
+     expect(await page.evaluate(() => (window as unknown as { __firesim: { session: { controller: { standby: unknown } } } }).__firesim.session.controller.standby !== null)).toBe(true);
+@@ -384,7 +384,7 @@ test.describe('the stand-in host', () => {
+     const errors = page.locator('.footer-errors');
+     await expect(errors).toContainText(/This device cannot keep the pictures of 10\sm cells over 9\skm: each is about 3\d\.\d\sMB and its history has room for about 1 \(50\.3\sMB\)\./);
+     await expect(errors).toContainText(/Choose a smaller area or the Finer level\.$/);
+-    await page.getByTestId('build').click();
++    await page.getByTestId('build').click({ force: true }); // the button is marked disabled while the form has an error; a tap on it shows the errors
+     await expect(page.getByTestId('setup')).toBeVisible();
+     await expect(errors).toContainText('This device cannot keep the pictures');
+     await page.waitForTimeout(500);
+@@ -457,24 +457,26 @@ test.describe('the real host', () => {
+   // A machine may send web requests through an HTTP proxy (the CI sandbox does): the browser goes straight to this machine.
+   test.use({ actionTimeout: 45_000, proxy: { server: 'http://127.0.0.1:9', bypass: '127.0.0.1,localhost' } });
+ 
+-  test('Katoomba 3 km at the Finest level computes on the host: 10 m cells, the label, and the wall time and picture sizes of 30 minutes of fire', async ({ page }) => {
+-    test.setTimeout(600_000);
++  for (const km of [3, 6] as const)
++    test(`Katoomba ${km} km at the Finest level computes on the host: 10 m cells, the label, and the wall time and picture sizes of 30 minutes of fire`, async ({ page }) => {
++    const n = km * 100; // cells a side at 10 m
++    test.setTimeout(900_000);
+     const host = await startHost();
+     try {
+       const t0 = Date.now();
+       await page.goto(`${host.origin}/?debug=1#code=${CODE}`);
+       await acceptNotice(page);
+       await expect(engineChip(page, 'desktop').locator('input')).toBeChecked();
+-      // the real builder, offline, the Katoomba demo at 3 km, the fast tier (what 15e measured), preset weather
++      // the real builder, offline, the Katoomba demo at the area, the fast tier (what 15e measured), preset weather
+       await page.getByTestId('site-katoomba').click();
+-      await sizeChip(page, 3).check({ force: true });
++      await sizeChip(page, km).check({ force: true });
+       await page.getByTestId('detail').getByRole('radio', { name: /^Fast/ }).check({ force: true });
+       await page.getByTestId('weather-source').getByRole('radio', { name: 'Preset' }).check();
+       await page.getByTestId('preset-hot-nw-sw-change').click();
+       const online = page.getByTestId('online').getByRole('switch');
+       if (await online.isChecked()) await page.getByTestId('online').click();
+       await levelChip(page, 'finest').click();
+-      await expect(areaHint(page)).toContainText('10 m cells, 300 × 300 = 90,000 cells, simple 2-D surface wind');
++      await expect(areaHint(page)).toContainText(`10 m cells, ${n} × ${n} = ${(n * n).toLocaleString('en-AU')} cells, simple 2-D surface wind`);
+       await page.getByTestId('build').click();
+       await expect(page.getByTestId('sim')).toBeVisible({ timeout: 240_000 });
+       const built0 = Date.now();
+@@ -482,17 +484,17 @@ test.describe('the real host', () => {
+       // the scenario the host was sent: the level, 10 m cells, 8,000 embers; the host's engine says 10 m too
+       const b = await built(page);
+       expect(b.options).toMatchObject({ desktopDetail: 'finest', fireCellSize: 10, maxEmbers: 8000, tier: 'fast' });
+-      expect(b).toMatchObject({ cellM: 10, nx: 300, extent: 3000 });
++      expect(b).toMatchObject({ cellM: 10, nx: n, extent: km * 1000 });
+       await expect(page.getByTestId('engine-banner')).toHaveText('Running on the desktop');
+       await expect(page.getByTestId('detail-banner')).toContainText(LABEL);
+ 
+       // a fire on the escarpment, then 30 minutes of fire as fast as the host goes
+-      await page.evaluate(() => {
++      await page.evaluate((km) => {
+         const fs = (window as unknown as { __firesim: { session: { ignite(i: unknown): void; setSpeed(s: number): void; play(): void } } }).__firesim;
+-        fs.session.ignite({ id: 'fire-a', kind: 'point', points: [[-800, 300]], radius: 60, origin: 'observed' });
++        fs.session.ignite({ id: 'fire-a', kind: 'point', points: [km === 3 ? [-800, 300] : [-2170, 900]], radius: 60, origin: 'observed' });
+         fs.session.setSpeed(Infinity);
+         fs.session.play();
+-      });
++      }, km);
+       const playedAt = Date.now();
+       await expect
+         .poll(async () => (await session(page)).headTime, { message: 'the host computes 1800 s of fire', timeout: 480_000, intervals: [1000] })
+@@ -506,10 +508,10 @@ test.describe('the real host', () => {
+         const s = fs.session.snapshots;
+         return { cellM: e.fire.cellM, nx: e.fire.nx, embers: e.embers.max, tier: e.tier, speed: e.perf?.speed.mean ?? null, newest: s.newestBytes, keyframeBytes: s.keyframeBytes, keyframes: s.keyframeCount, total: s.totalBytes, budget: s.maxBytes };
+       });
+-      expect(facts).toMatchObject({ cellM: 10, nx: 300, embers: 8000 });
+-      expect(facts.newest).toBeGreaterThan(1e6); // a 10 m picture over 3 km is megabytes, not the few hundred kB of 30 m
++      expect(facts).toMatchObject({ cellM: 10, nx: n, embers: 8000 });
++      expect(facts.newest).toBeGreaterThan(km === 3 ? 1e6 : 10e6); // a 10 m picture is megabytes (4 over 3 km, 16 over 6 km), not the few hundred kB of 30 m
+       console.log(
+-        `[desktop-detail] real host, Katoomba 3 km, Finest (10 m), tier ${facts.tier}: build ${((built0 - t0) / 1000).toFixed(1)} s from page load; 1800 s of fire in ${wallS.toFixed(1)} s wall (engine mean ${facts.speed?.toFixed(0) ?? 'n/a'}x real time); newest picture ${(facts.newest / 1e6).toFixed(2)} MB, ${facts.keyframes} keyframes ${(facts.keyframeBytes / 1e6).toFixed(1)} MB, history ${(facts.total / 1e6).toFixed(1)} of ${(facts.budget / 1e6).toFixed(0)} MB`,
++        `[desktop-detail] real host, Katoomba ${km} km, Finest (10 m), tier ${facts.tier}: build ${((built0 - t0) / 1000).toFixed(1)} s from page load; 1800 s of fire in ${wallS.toFixed(1)} s wall (engine mean ${facts.speed?.toFixed(0) ?? 'n/a'}x real time); newest picture ${(facts.newest / 1e6).toFixed(2)} MB, ${facts.keyframes} keyframes ${(facts.keyframeBytes / 1e6).toFixed(1)} MB, history ${(facts.total / 1e6).toFixed(1)} of ${(facts.budget / 1e6).toFixed(0)} MB`,
+       );
+ 
+       // the statistics say so, in the desktop's own words
+@@ -521,7 +523,7 @@ test.describe('the real host', () => {
+       await expect(page.getByTestId('debug-group-run-body')).toContainText('Desktop detail');
+       await expect(page.getByTestId('debug-group-run-body')).toContainText(`Desktop ${NAME}`);
+       await page.getByTestId('debug-group-grids').click();
+-      await expect(page.getByTestId('debug-group-grids-body')).toContainText(/300 x 300 cells, 10\sm apart/);
++      await expect(page.getByTestId('debug-group-grids-body')).toContainText(new RegExp(`${n} x ${n} cells, 10\\sm apart`));
+       await page.getByTestId('debug-stats-close').click();
+     } finally {
+       await host.stop();
+diff --git a/src/ui/debugStats.test.ts b/src/ui/debugStats.test.ts
+index dfdaf40..911bf79 100644
+--- a/src/ui/debugStats.test.ts
++++ b/src/ui/debugStats.test.ts
+@@ -944,6 +944,9 @@ describe('a run made with a finer Desktop detail (0.9.0, D35): the label, and no
+   it('the one-line summary starts with the label, so a pasted headline cannot be taken for a standard run', () => {
+     expect(rowOf(buildDebugStats(finest()), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. On the desktop \(Studio PC, 8 cores\): /);
+     expect(rowOf(buildDebugStats({ ...finest(), desktop: undefined }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. Standard/);
++    // whichever engine is reporting: the demo engine (nothing simulated) and a run that has not reported yet start with it too
++    expect(rowOf(buildDebugStats({ ...finest(), engineSource: 'mock' }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. The demo engine is running/);
++    expect(rowOf(buildDebugStats({ ...finest(), engine: null }), 'summary', 'headline').value).toMatch(/^Finer grid, results differ, not validated · 10.m cells\. The engine has not reported yet/);
+   });
+ 
+   it('the copied text has the label in its first line and in the Run group', () => {
+diff --git a/src/ui/debugStats.ts b/src/ui/debugStats.ts
+index 9a187ae..49f93b3 100644
+--- a/src/ui/debugStats.ts
++++ b/src/ui/debugStats.ts
+@@ -324,10 +324,11 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
+     const s = e.perf?.speed.s10 ?? e.run.simSecondsPerWallSecond;
+     const asked = i.playback ? ` (${Number.isFinite(i.playback.speed) ? speedX(i.playback.speed) : 'as fast as possible'} asked for)` : '';
+     const where = i.desktop && !i.desktop.restarted ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
+-    const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
+-    line = `${finer}${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
++    line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
+   }
+-  return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
++  // A run made with a finer Desktop detail (0.9.0) starts with the label, whichever engine is reporting, so a pasted headline cannot be taken for a standard run.
++  const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
++  return G('summary', 'Summary', [R('headline', 'In one line', `${finer}${line}`, undefined, true)], 'Tier, speed, memory and this phone in one line');
+ }
+ 
+ function runGroup(i: DebugStatsInput): StatGroup {
