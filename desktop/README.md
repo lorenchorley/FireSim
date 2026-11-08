@@ -99,7 +99,7 @@ What a listed origin gets, and what it does not:
   `Access-Control-Allow-Private-Network: true` when the browser asks it). No other path of the host has a CORS header, and there is never
   `Access-Control-Allow-Credentials`.
 - **It does not skip the `Host` check.** The host names it allows (below) are checked first, for the app as for every page: an app that
-  reaches the host by a name the owner did not allow gets 421. An IP address of this computer is always allowed, so the typed address
+  reaches the host by a name the owner did not allow gets 421. An IP address is always allowed as the `Host` (it is not a name that an attacker can point somewhere), so the typed address
   `192.168.1.20:4300` works; a name such as `desk.lan` needs `--allow-host desk.lan`.
 - **An origin is not a secret and not unique.** Every app built with Capacitor for Android has the origin `https://localhost`, so with `--allow-app`
   any such app on a phone that can reach the host may try the code; the Origin check keeps web pages of other origins out, **it does not keep
@@ -172,7 +172,7 @@ which says to use `--allow-host`), before the Origin check and before the code i
 wrong codes. A router that gives this computer a name of its own (`desk.lan`) needs `--allow-host desk.lan`. Listing an origin does
 not change this: the `Host` is checked first, for every page.
 
-**Tried in a real browser, not only with forged headers** (`e2e/host-rebinding.spec.ts`): Chromium is started with
+**Tried in a real browser, not only with forged headers** (`e2e/host-browser.spec.ts`): Chromium is started with
 `--host-resolver-rules="MAP hostile.example 127.0.0.1"`, which makes a page of the attacker's own name reach this computer (the state a rebinding attack
 ends in); the page's script reads `/__firesim/host` from its own origin and opens the engine link with the right code. Under the hostile name
 the host answers 421 to both, with and without `--lan` and even when the owner has listed the hostile page's origin with `--allow-origin`; under this
@@ -351,7 +351,7 @@ simulation times, and the last snapshot's arrays are the same bit for bit (`desk
 - `npx tsc --noEmit` type-checks `desktop/` with the rest of the repository.
 - Tests: `npx vitest run desktop src/sim/remote`. They include the real worker thread, the determinism comparison, a real host as a process
   (`main.test.ts`: the flags, the banner, `--open` with a launcher injected and with a program named `xdg-open` at the front of the `PATH`) and
-  the simulated link (`throttle.test.ts`). `e2e/host-rebinding.spec.ts` is the real-browser check of the `Host` allowlist (Playwright).
+  the simulated link (`throttle.test.ts`). `e2e/host-browser.spec.ts` is the real-browser check of the `Host` allowlist (Playwright).
 - Two tools, each built and run by a small runner (the folders `desktop/.build-test-*` are ignored by the version control):
   `node desktop/measure.mjs EXTENT_M TIER RUN_TO_S [CELL_M]` (what one session costs in memory) and
   `node desktop/link.mjs SCENARIO LINK HOLD RUN_S` (the throttled-link measurement). See "What it costs".
