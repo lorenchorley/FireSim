@@ -1561,6 +1561,10 @@ export class SceneView implements SceneViewApi {
       this.glyphs.setPaused(idle);
       if (!idle) this.dirty = true;
     }
+    // A view that holds still has nothing unfinished: the forest being placed a step a drawn frame (a frame takes the software GL about a second, so that
+    // is some 20 s), or waiting for the camera to settle, is finished in this frame, where nobody sees a hitch, and the view then draws nothing.
+    const settle = this.settleNow || idle;
+    if (idle && this.vegPending) this.dirty = true; // (a settle that was still to come is no ambient animation, and a held view draws no frame for it: this one does)
     if (!idle) this.u.uClock!.value = (this.u.uClock!.value as number) + dt;
 
     // What moves by itself, apart from the picture changing: it asks for frames only while the view is being used.
@@ -1595,14 +1599,14 @@ export class SceneView implements SceneViewApi {
       // (this does nothing until the camera has moved by a tenth of its distance).
       this.vegPending = now;
       this.updateVegLod();
-    } else if (this.vegPending && (this.settleNow || now - this.vegPending > 350) && !this.rig.flying) {
+    } else if (this.vegPending && (settle || now - this.vegPending > 350) && !this.rig.flying) {
       this.vegPending = 0;
       this.placeVegetation(false);
       this.updateVegLod();
       this.updateVegWind();
       this.refreshMarkers();
     }
-    if (this.vegetation?.pump(this.settleNow ? Infinity : 4)) this.dirty = true;
+    if (this.vegetation?.pump(settle ? Infinity : 4)) this.dirty = true;
 
     const vex = this.vex;
     if (this.hf && this.domain) {
