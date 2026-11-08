@@ -429,8 +429,9 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   // (the unit test holds the arithmetic; this reads what the real layer says, once the view has taken the new size).
   await page.setViewportSize({ width: 844, height: 390 });
   // The view takes a new size in the page's next rendering step (a ResizeObserver), and on a machine that draws a frame a second that is not 1 s away: the gate's
-  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91. So wait for the state, the
-  // drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
+  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91, and so did a run of two
+  // workers and a busy loop (the canvas's drawing buffer 515 x 1018 for the 844 x 366 box 1.6 s after the resize, 1055 x 457 three seconds later). So wait for the state,
+  // the drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
   await expect
     .poll(
       () =>
