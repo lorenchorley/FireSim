@@ -11,8 +11,11 @@ import { MessageChannel, parentPort, workerData } from 'node:worker_threads';
 import { SimHost } from '../src/sim/host';
 import type { FromWorker, ToWorker } from '../src/sim/protocol';
 import { CodecError, decodeMessage, encodeMessage } from '../src/sim/remote/codec';
+import { TOO_BIG_MESSAGE } from '../src/sim/remote/wire';
 import type { EngineWorkerData, HoldMessage, NoteMessage } from './engine';
 import { HoldGate } from './holdGate';
+import { MIB } from './memoryBound';
+import { checkSession } from './sessionEstimate';
 
 const port = parentPort;
 if (!port) throw new Error('desktop/engineWorker.ts runs as a worker thread.');
@@ -56,8 +59,17 @@ port.on('message', (m: unknown) => {
       return;
     }
     if (msg.type === 'ping' || msg.type === 'pong') return;
-    if (msg.type === 'init') initialised = true;
-    else if (!initialised) {
+    if (msg.type === 'init') {
+      // A scenario that does not fit in the memory a session may have is refused here, before the simulation is built: an engine error the page
+      // can word (its init rejects with the sentence), and the session stays open for a smaller scenario.
+      const verdict = checkSession(m.byteLength, msg.scenario, options.maxSessionBytes);
+      if (!verdict.ok) {
+        port.postMessage({ note: `refused a scenario: about ${Math.round(verdict.estimate / MIB).toLocaleString('en-US')} MiB expected, ${Math.round(verdict.limit / MIB).toLocaleString('en-US')} MiB allowed for a session (--max-session-mib)` } satisfies NoteMessage);
+        post({ type: 'error', message: TOO_BIG_MESSAGE });
+        return;
+      }
+      initialised = true;
+    } else if (!initialised) {
       // Dropped, and said once (the type is cut to letters so that a client cannot write what it likes into the log).
       if (!dropped) port.postMessage({ note: `dropped a "${msg.type.replace(/[^A-Za-z]/g, '').slice(0, 20)}" message that came before init (until init, only init is taken)` } satisfies NoteMessage);
       dropped = true;

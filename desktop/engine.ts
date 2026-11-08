@@ -10,6 +10,8 @@ import { Worker } from 'node:worker_threads';
 export interface EngineWorkerData {
   simulation?: { minSnapshotWallMs?: number; tier?: 'auto' | 'fast' | 'standard' | 'high' };
   chunkMs?: number;
+  /** The most memory (bytes) a scenario may be estimated to need (`--max-session-mib`, sessionEstimate.ts): a bigger one is refused with an engine error. Absent: no limit. */
+  maxSessionBytes?: number;
 }
 
 /** The limits of a worker thread (`--worker-heap-mib`): its JavaScript heap. Typed arrays are outside it. */

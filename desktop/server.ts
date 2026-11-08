@@ -1,11 +1,12 @@
 /**
- * The desktop host (contract 0.8.0 J, 3.2): serves the built app (`dist/`), tells who it is at `/__firesim/host`, and runs
- * one engine session per WebSocket at `/__firesim/engine`.
+ * The desktop host (contract 0.8.0 J, 3.2; protocol 2 since 0.9.0): serves the built app (`dist/`), says at `/__firesim/host`
+ * only that it is a FireSim host and wants a code, and runs one engine session per WebSocket at `/__firesim/engine`.
  *
- * A connection is a stranger until it sends `{"type":"hello","protocol":1,"code":"..."}` as its first frame, as TEXT, within
- * the hello time. The host answers `{"type":"welcome",...}` and from then on every frame is BINARY and carries one codec
- * message, or closes with 4400 (no good hello in time), 4401 (wrong code), 4429 (this address has sent too many wrong
- * codes) or 4503 (no free session). Before the welcome a frame may be a few KB at most; after it, as large as a scenario.
+ * A connection is a stranger until it sends `{"type":"hello","protocol":2,"code":"..."}` as its first frame, as TEXT, within
+ * the hello time. The host answers `{"type":"welcome",...}` (with its name, cores, Node version and session counts: nothing of
+ * that is said before the code) and from then on every frame is BINARY and carries one codec message, or closes with 4400 (no
+ * good hello in time), 4401 (wrong code), 4426 (another version of the link), 4429 (this address has sent too many wrong codes)
+ * or 4503 (no free session). Before the welcome a frame may be a few KB at most; after it, as large as a scenario.
  *
  * Nothing here logs or returns the code, a scenario or an environment variable.
  */
@@ -15,15 +16,17 @@ import { availableParallelism, cpus } from 'node:os';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { decodeMessage, encodeMessage } from '../src/sim/remote/codec';
+import { CLOSE, LINK_PROTOCOL } from '../src/sim/remote/wire';
 import type { Engine, EngineFactory } from './engine';
-import { addressKey, codesMatch, FixedWindowCounter, hostAllowed, normaliseCode, originAllowed, RateLimiter, type RateLimitOptions } from './security';
+import { OPEN_PATH, type OpenTokens } from './openToken';
+import { addressKey, codesMatch, FixedWindowCounter, hostAllowed, listedOrigin, normaliseCode, originAllowed, RateLimiter, type RateLimitOptions } from './security';
 import { serveStatic } from './staticFiles';
 
-export const PROTOCOL = 1;
+export const PROTOCOL = LINK_PROTOCOL;
 export const ENGINE_PATH = '/__firesim/engine';
 export const HOST_PATH = '/__firesim/host';
-/** Close codes of the link (desktop/README.md). */
-export const CLOSE = { normal: 1000, away: 1001, policy: 1008, failed: 1011, badHello: 4400, wrongCode: 4401, rateLimited: 4429, noSession: 4503 } as const;
+/** Close codes of the link (desktop/README.md; src/sim/remote/wire.ts, which the page shares). */
+export { CLOSE };
 
 export interface HostOptions {
   /** The built app (the folder with index.html). */
@@ -42,6 +45,13 @@ export interface HostOptions {
    * anything else gets 421 (DNS rebinding).
    */
   allowedHosts?: readonly string[];
+  /**
+   * The origins (each as `normaliseOrigin` writes it: `--allow-origin`, `--allow-app`) of pages that may open the engine link and read
+   * `/__firesim/host` besides the page this host serves. The code is still needed, and so is a `Host` the owner allowed.
+   */
+  allowedOrigins?: readonly string[];
+  /** `--open`: the one-use links of `/__firesim/open?t=TOKEN`, which answer with a redirect to `/#code=CODE`. Without it that path is not the host's. */
+  openTokens?: OpenTokens;
   /** One engine per session: `workerEngines(file)` in the real host. */
   engines: EngineFactory;
   log?: (line: string) => void;
@@ -143,9 +153,11 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
   const pingsPerSecond = o.pingsPerSecond ?? 20;
   const messagesPerSecond = o.messagesPerSecond ?? 1000;
   const allowedHosts = o.allowedHosts ?? [];
+  const allowedOrigins = o.allowedOrigins ?? [];
   const highWater = o.highWaterBytes ?? 16 * 1024 * 1024;
   const lowWater = o.lowWaterBytes ?? 4 * 1024 * 1024;
   const limiter = new RateLimiter(o.rateLimit);
+  const probe = JSON.stringify({ app: 'firesim-desktop-host', protocol: PROTOCOL, requiresCode: true });
   const code = normaliseCode(o.code);
   if (!code) throw new Error('The pairing code must be 8 to 32 letters and digits.');
 
@@ -178,15 +190,43 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
       res.end();
       return;
     }
-    if ((req.url ?? '/').split('?')[0] === HOST_PATH) {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.writeHead(405, { Allow: 'GET, HEAD' }).end();
+    const path = (req.url ?? '/').split('?')[0];
+    if (path === HOST_PATH) {
+      // A listed origin (an app) may read this from another origin: its own origin back, never `*`, and never with credentials. Others get no CORS header.
+      const listed = listedOrigin(req.headers.origin, allowedOrigins);
+      const cors: Record<string, string> = { Vary: 'Origin', ...(listed ? { 'Access-Control-Allow-Origin': listed } : {}) };
+      if (req.method === 'OPTIONS' && listed) {
+        // The preflight (a browser asks it for a request with headers beyond the plain ones): the same origin, GET and HEAD, and the two headers a no-store fetch adds.
+        res.writeHead(204, { ...cors, 'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS', 'Access-Control-Allow-Headers': 'Cache-Control, Pragma', 'Access-Control-Max-Age': '600', ...(req.headers['access-control-request-private-network'] === 'true' ? { 'Access-Control-Allow-Private-Network': 'true' } : {}), 'Content-Length': '0', 'Cache-Control': 'no-store' });
+        res.end();
         return;
       }
-      // Exactly these fields and nothing else: no code, no paths, no environment.
-      const body = JSON.stringify({ app: 'firesim-desktop-host', protocol: PROTOCOL, name: o.name, cores: cores(), node: process.versions.node, sessions: sessions.size, maxSessions: o.maxSessions });
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': Buffer.byteLength(body) });
-      res.end(req.method === 'HEAD' ? undefined : body);
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(405, { Allow: 'GET, HEAD', Vary: 'Origin' }).end();
+        return;
+      }
+      // Exactly these fields and nothing else: not the code, not the computer's name, cores, Node version or load, no paths, no environment.
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': Buffer.byteLength(probe) });
+      res.end(req.method === 'HEAD' ? undefined : probe);
+      return;
+    }
+    if (path === OPEN_PATH && o.openTokens) {
+      // `--open`: the browser's one-use link. Only a GET spends the token (a HEAD or anything else does not), and the answer is never kept.
+      const quiet = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET', ...quiet }).end();
+        return;
+      }
+      const t = new URL(req.url ?? '/', 'http://host').searchParams.get('t');
+      if (o.openTokens.redeem(t)) {
+        log(`opened the page for the browser this host started (one-use link used)`);
+        res.writeHead(302, { Location: `/#code=${code}`, 'Content-Length': '0', ...quiet });
+        res.end();
+      } else {
+        const text = 'This link was used already or has run out. Open the address the host printed.';
+        res.writeHead(410, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': Buffer.byteLength(text), ...quiet });
+        res.end(text);
+      }
       return;
     }
     serveStatic(o.distDir, req, res).catch(() => {
@@ -206,7 +246,7 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
     }
     if (pathname !== ENGINE_PATH) return refuse(socket, 404, 'Not Found');
     const address = addressKey(req.socket.remoteAddress);
-    if (!originAllowed(req.headers.origin, req.headers.host)) {
+    if (!originAllowed(req.headers.origin, req.headers.host, allowedOrigins)) {
       log(`refused ${address}: a page from another origin`);
       return refuse(socket, 403, 'Forbidden');
     }
@@ -264,7 +304,9 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
         hello = null;
       }
     }
-    if (!hello || hello.type !== 'hello' || hello.protocol !== PROTOCOL || typeof hello.code !== 'string') return { code: CLOSE.badHello, reason: 'bad hello', log: 'a first frame that is not a hello' };
+    if (!hello || hello.type !== 'hello' || !Number.isInteger(hello.protocol) || typeof hello.code !== 'string') return { code: CLOSE.badHello, reason: 'bad hello', log: 'a first frame that is not a hello' };
+    // A hello of another version of the link says nothing of the code, so it is not a wrong code: it gets its own close and the host's version.
+    if (hello.protocol !== PROTOCOL) return { code: CLOSE.badProtocol, reason: `protocol ${PROTOCOL}`, log: `a hello of protocol ${String(hello.protocol).replace(/[^0-9-]/g, '').slice(0, 6)} (this host speaks ${PROTOCOL})` };
     if (!codesMatch(hello.code, code!)) {
       const blocked = limiter.recordFailure(address, t);
       return { code: CLOSE.wrongCode, reason: 'wrong code', log: blocked ? 'wrong code (that address is now refused for a while)' : 'wrong code' };
@@ -287,7 +329,8 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
     const id = randomBytes(6).toString('hex');
     const s: Session = { id, ws, address, engine: undefined as unknown as Engine, lastSeen: now(), held: false, wasHeld: false, overSince: null, pings: new FixedWindowCounter(pingsPerSecond), messages: new FixedWindowCounter(messagesPerSecond), notes: 0, closing: false };
     sessions.set(id, s);
-    ws.send(JSON.stringify({ type: 'welcome', session: id, protocol: PROTOCOL }));
+    // What the host is, said now that the code was right (not before: /__firesim/host does not say it).
+    ws.send(JSON.stringify({ type: 'welcome', session: id, protocol: PROTOCOL, name: o.name, cores: cores(), node: process.versions.node, sessions: sessions.size, maxSessions: o.maxSessions }));
     try {
       liveEngines++;
       s.engine = o.engines({

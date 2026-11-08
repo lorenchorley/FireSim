@@ -17,14 +17,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { CellExplanation, Insight, ScenarioData, SimSnapshot } from '../src/core/types';
 import { LocalSimController, withoutContext } from '../src/sim/client';
 import type { SimController } from '../src/sim/protocol';
-import { connectRemote, RemoteAuthError, type RemoteConnection } from '../src/sim/remote';
+import { connectRemote, RemoteAuthError, TOO_BIG_MESSAGE, type RemoteConnection } from '../src/sim/remote';
 import { decodeMessage, encodeMessage } from '../src/sim/remote/codec';
 import { difference } from '../src/sim/testing/compare';
 import { snapshotHash } from '../src/sim/testing/hash';
 import { demoScenario, pointIgnition, syntheticScenario, withIgnitions } from '../src/sim/testing/scenarios';
 import { Simulation } from '../src/sim/simulation';
 import { workerEngines } from './engine';
+import { MIB } from './memoryBound';
 import { startHost, type HostHandle } from './server';
+import { estimateSessionBytes, sizeOfScenario } from './sessionEstimate';
 import { buildForTests, fakeEngines, hello, openClient, waitFor, welcomeOf } from './testHelpers';
 
 const CODE = 'KATOOMBA';
@@ -55,7 +57,7 @@ afterAll(() => {
   built.remove();
 });
 
-async function realHost(extra: { maxSessions?: number; highWaterBytes?: number; lowWaterBytes?: number; logs?: string[] } = {}): Promise<HostHandle> {
+async function realHost(extra: { maxSessions?: number; highWaterBytes?: number; lowWaterBytes?: number; maxSessionBytes?: number; logs?: string[] } = {}): Promise<HostHandle> {
   const h = await startHost({
     ...(extra.highWaterBytes !== undefined ? { highWaterBytes: extra.highWaterBytes } : {}),
     ...(extra.lowWaterBytes !== undefined ? { lowWaterBytes: extra.lowWaterBytes } : {}),
@@ -66,7 +68,7 @@ async function realHost(extra: { maxSessions?: number; highWaterBytes?: number; 
     name: 'Test desk',
     maxSessions: extra.maxSessions ?? 2,
     // Every snapshot is sent (no wall-clock coalescing), so that the times are the same as an in-thread run's.
-    engines: workerEngines(workerFile, { simulation: { minSnapshotWallMs: 0 } }),
+    engines: workerEngines(workerFile, { simulation: { minSnapshotWallMs: 0 }, ...(extra.maxSessionBytes !== undefined ? { maxSessionBytes: extra.maxSessionBytes } : {}) }),
     log: (l) => void extra.logs?.push(l),
   });
   hosts.push(h);
@@ -172,7 +174,7 @@ describe('RemoteSimController against the real host', () => {
   it('reports who the host is, measures the link, and runs a small scenario like the Web Worker does', async () => {
     const h = await realHost();
     const remote = await connect(h);
-    expect(remote.info).toMatchObject({ app: 'firesim-desktop-host', protocol: 1, name: 'Test desk', maxSessions: 2 });
+    expect(remote.info).toMatchObject({ app: 'firesim-desktop-host', protocol: 2, name: 'Test desk', node: process.versions.node, sessions: 1, maxSessions: 2 });
     await waitFor(() => remote.rttMs() !== null, 5000, 'the first round trip');
     expect(remote.rttMs()!).toBeGreaterThanOrEqual(0);
     expect(remote.rttMs()!).toBeLessThan(1000);
@@ -221,7 +223,7 @@ describe('RemoteSimController against the real host', () => {
     const h = await realHost({ maxSessions: 1 });
     await connect(h);
     await expect(connectRemote({ base: `http://127.0.0.1:${h.port}`, code: CODE })).rejects.toThrow('The desktop has no free session.');
-    await expect(connectRemote({ base: 'http://127.0.0.1:9', code: CODE })).rejects.toThrow('The desktop did not answer.');
+    await expect(connectRemote({ base: 'http://127.0.0.1:9', code: CODE })).rejects.toThrow('Could not reach the desktop.');
   });
 
   it('a lost link is one plain error event and a disposed controller (no exception, no second event)', async () => {
@@ -418,6 +420,52 @@ describe("a worker thread's heap limit (--worker-heap-mib)", () => {
 
   it('is overridden by a --max-old-space-size in NODE_OPTIONS (a V8 flag of the whole process): said in the README', async () => {
     expect(await fillHeap(48, '--max-old-space-size=8192')).toBe('survived');
+  }, 60_000);
+});
+
+describe('the memory bound of a session (--max-session-mib) with the real engine', () => {
+  it('refuses a scenario whose estimate is above the limit with the engine error the page words, builds nothing for it, keeps the session open, and takes a smaller scenario after it', async () => {
+    const small = syntheticScenario({ extent: 2400, ignitions: [pointIgnition('a', -300, 0, 0, 60)], options: { snapshotInterval: 300 } });
+    const big = syntheticScenario({ extent: 6000, cellSize: 10 }); // 360,000 fire cells: the finer detail of 0.9.0, 6 km at 10 m
+    const estimate = (s: ScenarioData): number => estimateSessionBytes(sizeOfScenario(encodeMessage({ type: 'init', scenario: withoutContext(s) }).byteLength, s));
+    const [low, high] = [estimate(small), estimate(big)];
+    expect(high).toBeGreaterThan(low * 10); // the limit has room between them
+    const limit = Math.round(Math.sqrt(low * high));
+    const logs: string[] = [];
+    const h = await realHost({ maxSessionBytes: limit, logs });
+    const remote = await connect(h);
+    const errors: string[] = [];
+    const snaps: SimSnapshot[] = [];
+    const told: string[] = [];
+    remote.controller.on('error', (m) => errors.push(m));
+    remote.controller.on('snapshot', (s) => snaps.push(s));
+    remote.onClosed((r) => told.push(r));
+    // The big one: the engine's own error, and init rejects with the exact sentence.
+    await expect(remote.controller.init(big)).rejects.toThrow(TOO_BIG_MESSAGE);
+    expect(errors).toEqual(["This scenario is too big for the desktop's free memory."]);
+    await waitFor(() => logs.some((l) => l.includes('refused a scenario')), 5000, 'the log line');
+    const line = logs.find((l) => l.includes('refused a scenario'))!;
+    expect(line).toMatch(/refused a scenario: about [\d,]+ MiB expected, [\d,]+ MiB allowed for a session \(--max-session-mib\)/);
+    expect(line).toContain(`${Math.round(limit / MIB).toLocaleString('en-US')} MiB allowed`);
+    // The link is up and the session is alive; nothing was built: a run is dropped as one that came before an init.
+    expect(h.sessions).toBe(1);
+    expect(told).toEqual([]);
+    remote.controller.run(300);
+    await waitFor(() => logs.some((l) => l.includes('dropped a "run" message')), 5000, 'the run to be dropped (no simulation was built)');
+    expect(snaps).toHaveLength(0);
+    // The small one on the same link: it is built, run and answered.
+    expect(Array.isArray(await remote.controller.init(small))).toBe(true);
+    await waitFor(() => snaps.length >= 1, 30_000, 'the first picture of the smaller scenario');
+    remote.controller.run(600);
+    await waitFor(() => snaps.some((s) => s.time === 600), 60_000, 'the run');
+    expect(errors).toHaveLength(1); // the one refusal
+    expect(told).toEqual([]);
+  }, 180_000);
+
+  it('takes every scenario when no limit is set (the host started without --max-session-mib in tests only: the command line always sets one)', async () => {
+    const h = await realHost();
+    const remote = await connect(h);
+    expect(Array.isArray(await remote.controller.init(syntheticScenario({ extent: 2400 })))).toBe(true);
   }, 60_000);
 });
 
