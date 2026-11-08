@@ -11,13 +11,14 @@
 // way the desktop does after several wrong ones; `noOnClosed` leaves `onClosed` out (an older module).
 // For the typed address (the Android app; `?desktopaddr=1` in a browser): `base` is where the stub's desktop is (`http://192.168.1.20:4300`): the probe and the
 // link answer only there, anywhere else is a desktop that is not there. `notAllowed` is a desktop that is there but does not list this page (the probe
-// is refused as a browser's CORS check refuses it, and `reach` says something is listening). `versionMismatch: { page, host }` makes the connection
+// is refused as a browser's CORS check refuses it, and `reach` says something is listening). `hostProtocol: 3` is a host whose probe says another version (the
+// connection then refuses it at once, as the real one does); `versionMismatch: { page, host }` makes the connection
 // fail with a RemoteVersionError; `noSession` with a full desktop. The code itself is never recorded, only whether it was the right one.
 (() => {
   const o = window.__desktopStubOptions || {};
   const code = o.code || 'ABCD2345';
   const calls = [];
-  const probe = { app: 'firesim-desktop-host', protocol: 2, requiresCode: true };
+  const probe = { app: 'firesim-desktop-host', protocol: o.hostProtocol || 2, requiresCode: true };
   // What the welcome says: the host's name and cores are not known to the page before it.
   const info = { app: 'firesim-desktop-host', protocol: 2, name: o.name || 'Studio PC', cores: o.cores || 8, node: o.node || 'v22.11.0', sessions: 0, maxSessions: 4 };
   const here = (base) => !o.base || String(base || '').replace(/\/$/, '') === o.base.replace(/\/$/, '');
@@ -35,8 +36,17 @@
     },
     connectRemote: async (opts) => {
       calls.push(['connect', { base: opts.base, rightCode: opts.code === code }]);
-      calls.push(['info', !!opts.info]); // whether the page handed over anything of the start-up answer (protocol 2: it has none to give)
+      calls.push(['info', !!opts.info]); // whether the page handed over a name or cores of the start-up answer (protocol 2: it has none to give)
+      calls.push(['probe', opts.probe ? opts.probe.protocol : null]); // what the host said before the code, handed over so a host of another version is refused before a socket is opened
       if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs));
+      if (opts.probe && opts.probe.protocol !== 2) {
+        // As the real connectRemote does: a host that said another version before the code is refused at once, whatever the code is.
+        const e = new Error('The desktop speaks another version.');
+        e.name = 'RemoteVersionError';
+        e.pageProtocol = 2;
+        e.hostProtocol = opts.probe.protocol;
+        throw e;
+      }
       if (!here(opts.base)) throw new Error('Could not reach the desktop.');
       if (opts.code !== code || o.rateLimited) {
         const e = new Error('The desktop did not accept the code.');
@@ -47,8 +57,8 @@
       if (o.versionMismatch) {
         const e = new Error('The desktop speaks another version.');
         e.name = 'RemoteVersionError';
-        e.page = o.versionMismatch.page;
-        e.host = o.versionMismatch.host;
+        e.pageProtocol = o.versionMismatch.page;
+        e.hostProtocol = o.versionMismatch.host;
         throw e;
       }
       if (o.noSession) throw new Error('The desktop has no free session.');

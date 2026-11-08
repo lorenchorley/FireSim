@@ -148,7 +148,7 @@ export interface HostEnv {
   replaceHash(hash: string): void;
   detect: DetectFn;
   /** Opens the link; a refused code rejects with {@link CodeRefused}, a protocol mismatch with {@link VersionMismatch}, any other failure with its own error. */
-  connect(o: { base: string; code: string }): Promise<DesktopLink>;
+  connect(o: { base: string; code: string; probe?: HostProbe }): Promise<DesktopLink>;
   /** Tells the screens which run computes on the desktop (null: none). */
   publishRun(run: DesktopRun | null): void;
   /**
@@ -193,11 +193,15 @@ export function hashWithoutCode(hash: string): string {
   return rest ? `#${rest}` : '';
 }
 
-/** What a host says before its code, as the page believes it: the right app, the protocol this page speaks, and whether it wants a code. */
+/**
+ * What a host says before its code, as the page believes it: the right app, a version of the link (any whole number: a host that speaks another
+ * version than this page's {@link HOST_PROTOCOL} is still a host, and the first Build says to update the app or the host instead of "nothing
+ * answered") and whether it wants a code.
+ */
 export function isHostProbe(x: unknown): x is HostProbe {
   if (typeof x !== 'object' || x === null) return false;
   const h = x as Record<string, unknown>;
-  return h.app === 'firesim-desktop-host' && h.protocol === HOST_PROTOCOL && typeof h.requiresCode === 'boolean';
+  return h.app === 'firesim-desktop-host' && Number.isInteger(h.protocol) && (h.protocol as number) >= 1 && typeof h.requiresCode === 'boolean';
 }
 
 /** Asks `base` whether it is a desktop host (once); null for any failure, mismatch or silence. */
@@ -230,11 +234,11 @@ export async function startDesktopHost(env: HostEnv): Promise<DesktopHost | null
   // A typed page has no host of its own to come from: a code in its address is not used (it is only taken out of the bar).
   const code = env.typed ? '' : linked;
   const fromLink = code !== '';
-  if (env.typed) return createHost(env, code, fromLink);
+  if (env.typed) return createHost(env, code, fromLink, null);
   if (env.native || !/^https?:$/.test(env.protocol)) return null;
   const probe = await detect(env, env.origin, DETECT_TIMEOUT_MS);
   if (!probe) return null;
-  return createHost(env, code, fromLink);
+  return createHost(env, code, fromLink, probe);
 }
 
 interface Entry {
@@ -250,7 +254,7 @@ interface Entry {
   off(): void;
 }
 
-function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean): DesktopHost {
+function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean, startProbe: HostProbe | null): DesktopHost {
   const typed = env.typed === true;
   let code = initialCode;
   let fromLink = fromLinkAtStart;
@@ -386,15 +390,19 @@ function createHost(env: HostEnv, initialCode: string, fromLinkAtStart: boolean)
       state.set({ busy: true, problem: null, note: null });
       let probed = false;
       try {
+        // What the desktop said before the code: the start-up question of a page it serves, or the probe of a typed address.
+        let probe = startProbe;
         if (typed) {
           // Before the code goes anywhere, is there a desktop at that address? "Nothing there" and "there, but not for this page" are different words.
-          if (!(await detect(env, base, TYPED_DETECT_TIMEOUT_MS))) {
+          probe = await detect(env, base, TYPED_DETECT_TIMEOUT_MS);
+          if (!probe) {
             state.set({ problem: (await reaches(base)) ? 'not-allowed' : 'no-answer' });
             return false;
           }
           probed = true;
         }
-        const link = await env.connect({ base, code });
+        // The probe goes with the connection: a host of another version of the link is refused at once, with no socket opened, and the code stays here.
+        const link = await env.connect({ base, code, ...(probe ? { probe } : {}) });
         pending = open(link);
         // The desktop has welcomed the page: it has told who it is, and the chip can say it.
         state.set({ host: { name: cleanName(link.info.name), cores: link.info.cores } });

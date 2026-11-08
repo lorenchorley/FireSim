@@ -206,12 +206,25 @@ test('a desktop that is there but will not let the app in says so (and not "no a
 
 test('a version of the link the page does not speak says both numbers and what to do; a full desktop says so', async ({ page }) => {
   test.setTimeout(120_000);
-  await openTyped(page, { stub: { versionMismatch: { page: 2, host: 3 } } });
+  const SAYS = 'This app and the desktop do not speak the same version of the link (this app speaks version 2, the desktop version 3). Update the app or the desktop host.';
+  // the probe says the host speaks version 3: it is still a host, the connection is refused at once (no socket, the code goes nowhere), and the words say to update
+  await openTyped(page, { stub: { hostProtocol: 3 } });
   await typeAndBuild(page, ADDRESS, CODE);
-  await expect(problem(page)).toContainText('This app and the desktop do not speak the same version of the link (this app speaks version 2, the desktop version 3). Update the app or the desktop host.', { timeout: 10_000 });
+  await expect(problem(page)).toContainText(SAYS, { timeout: 10_000 });
   await expect(problem(page)).not.toContainText('did not accept');
+  await expect(problem(page)).not.toContainText('No desktop answered');
+  expect(await calls(page, 'probe'), 'the probe went with the connection').toEqual([[3]]);
+  expect(await calls(page, 'init')).toEqual([]);
   await expect(page.getByTestId('setup')).toBeVisible();
   await expect(page.getByTestId('continue-here-setup')).toBeVisible();
+
+  // a host that says so only in its welcome (an error with the two numbers) is told the same way
+  const third = await page.context().newPage();
+  await installDesktopStub(third, { base: BASE, versionMismatch: { page: 2, host: 3 } });
+  await third.goto('/?mock=1&debug=1&desktopaddr=1');
+  await acceptNotice(third);
+  await typeAndBuild(third, ADDRESS, CODE);
+  await expect(problem(third)).toContainText(SAYS, { timeout: 10_000 });
 
   const second = await page.context().newPage();
   await installDesktopStub(second, { base: BASE, noSession: true });

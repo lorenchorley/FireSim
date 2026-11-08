@@ -31,8 +31,10 @@ export interface DesktopStubOptions {
   base?: string;
   /** Typed address: a desktop that is there but does not list this page (the probe is refused as a browser's CORS check would; something is listening). */
   notAllowed?: boolean;
-  /** The connection fails with a `RemoteVersionError` that carries the two protocol numbers. */
+  /** The connection fails with a `RemoteVersionError` that carries the two protocol numbers (`pageProtocol`, `hostProtocol`: the real error's own fields). */
   versionMismatch?: { page: number; host: number };
+  /** The host's probe says it speaks this version of the link (not 2): the connection refuses it at once with a `RemoteVersionError`, as the real one does. */
+  hostProtocol?: number;
   /** The desktop has no free session. */
   noSession?: boolean;
 }

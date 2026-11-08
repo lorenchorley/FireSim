@@ -92,8 +92,11 @@ describe('what the page believes of a host', () => {
     expect(isHostProbe(PROBE)).toBe(true);
     expect(isHostProbe({ ...PROBE, requiresCode: false })).toBe(true);
     expect(isHostProbe({ ...PROBE, app: 'something-else' })).toBe(false);
-    expect(isHostProbe({ ...PROBE, protocol: 1 })).toBe(false); // protocol 1 said the name and the cores to anyone: a page of this version does not take it
-    expect(isHostProbe({ ...PROBE, protocol: 3 })).toBe(false);
+    expect(isHostProbe({ ...PROBE, protocol: 1 })).toBe(true); // a host of another version is still a host: the page offers it and the first Build says to update the app or the host
+    expect(isHostProbe({ ...PROBE, protocol: 3 })).toBe(true);
+    expect(isHostProbe({ ...PROBE, protocol: 0 })).toBe(false);
+    expect(isHostProbe({ ...PROBE, protocol: 2.5 })).toBe(false);
+    expect(isHostProbe({ ...PROBE, protocol: '2' })).toBe(false);
     expect(isHostProbe({ ...PROBE, requiresCode: 'yes' })).toBe(false);
     expect(isHostProbe({ app: 'firesim-desktop-host', protocol: 2 })).toBe(false);
     expect(isHostProbe(INFO)).toBe(false); // the welcome is not the probe
@@ -129,7 +132,7 @@ describe('detection at start-up', () => {
   it('no host: a null answer, an answer of another app, a rejected call, a call that never answers (no host shows anywhere)', async () => {
     expect(await startDesktopHost(rig({}, null).env)).toBeNull();
     expect(await startDesktopHost(rig({}, { ...PROBE, app: 'an-other-app' }).env)).toBeNull();
-    expect(await startDesktopHost(rig({}, { ...PROBE, protocol: 1 }).env)).toBeNull(); // a host of the old protocol is not one this page can use
+    expect(await startDesktopHost(rig({}, { ...PROBE, protocol: 0 }).env)).toBeNull(); // not a version of anything
     expect(await startDesktopHost(rig({}, '<!doctype html>').env)).toBeNull(); // the page itself came back for the question
     const rejects = rig({ detect: () => Promise.reject(new Error('refused')) });
     expect(await startDesktopHost(rejects.env)).toBeNull();
@@ -197,7 +200,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
     expect(r.connect).toHaveBeenCalledTimes(1);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' }); // the page's own origin and the code as the host wants it: protocol 2 has nothing of the start-up check to pass on
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', probe: PROBE }); // the page's own origin, the code as the host wants it, and what the host said at start-up (so a host of another version is refused before a socket is opened)
   });
 
   it('a code from the address is used but never shown back, and never held in the state the row reads', async () => {
@@ -205,7 +208,7 @@ describe('choosing the engine and starting the run', () => {
     expect(host.typedCode()).toBe('');
     expect(JSON.stringify(host.state.get())).not.toContain('ABCD2345');
     expect(await host.beforeBuild()).toBe(true);
-    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345' });
+    expect(r.connect).toHaveBeenCalledWith({ base: ORIGIN, code: 'ABCD2345', probe: PROBE });
     expect(JSON.stringify(r.runs)).not.toContain('ABCD2345');
   });
 
@@ -623,7 +626,7 @@ describe('a typed address (the Android app, and the test seam)', () => {
     expect(saved).toEqual(['Desk.local']); // trimmed, as typed: the preferences get the address and nothing else
     expect(r.detect).toHaveBeenCalledTimes(1);
     expect(r.detect).toHaveBeenCalledWith({ base: 'http://desk.local:4300', timeoutMs: TYPED_DETECT_TIMEOUT_MS });
-    expect(connect.mock.calls).toEqual([[{ base: 'http://desk.local:4300', code: 'ABCD2345' }]]);
+    expect(connect.mock.calls).toEqual([[{ base: 'http://desk.local:4300', code: 'ABCD2345', probe: PROBE }]]); // the probe of that address goes with the connection
     expect(JSON.stringify(saved)).not.toContain('ABCD2345');
     expect(host.state.get().host).toEqual({ name: 'Studio PC', cores: 8 });
     expect((host.take() as SwitchableController).inner).toBe(link.controller);

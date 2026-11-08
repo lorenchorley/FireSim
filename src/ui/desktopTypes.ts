@@ -5,18 +5,23 @@
  *
  * The page relies on exactly these names (protocol 2, docs/plans/0.9.0/CONTRACT-0.9.0.md section 4.2: the host says little before the code):
  *   detect.ts  `detectHost(opts?: { base?: string; timeoutMs?: number }): Promise<RemoteHostProbe | null>`
- *   index.ts   `connectRemote(o: { base: string; code: string }): Promise<RemoteConnection>`, `class RemoteAuthError extends Error` and
- *              `class RemoteVersionError extends Error` (a page and a host of different protocols)
- *   `RemoteHostProbe`: app, protocol (2), requiresCode
+ *   index.ts   `connectRemote(o: { base: string; code: string; probe?: RemoteHostProbe }): Promise<RemoteConnection>` (`probe`: what `detectHost` said, so a host
+ *              of another version is refused at once, with no socket opened), `class RemoteAuthError extends Error` and `class RemoteVersionError extends
+ *              Error` (a page and a host of different protocols; its `pageProtocol` and `hostProtocol` are the two numbers)
+ *   `RemoteHostProbe`: app, protocol (any whole number: a host of another version is still a host), requiresCode
  *   `RemoteHostInfo`: app, protocol (2), name, cores, node, sessions, maxSessions: what the host's welcome says, after the code
  *   `RemoteConnection`: controller (a SimController), info (RemoteHostInfo), rttMs(), onClosed(cb), close()
  */
 import type { SimController } from '../sim/protocol';
 
-/** What a host says to anyone, before the code (`RemoteHostProbe`): that it is a FireSim desktop host, the protocol it speaks, and that it needs a code. */
+/**
+ * What a host says to anyone, before the code (`RemoteHostProbe`): that it is a FireSim desktop host, the version of the link it speaks, and that it
+ * needs a code. A host of another version is still a host: the page offers it and `connectRemote` refuses it with a `RemoteVersionError`, so the person
+ * is told to update the app or the host and not that nothing answered.
+ */
 export interface HostProbe {
   app: 'firesim-desktop-host';
-  protocol: 2;
+  protocol: number;
   requiresCode: boolean;
 }
 
@@ -48,7 +53,7 @@ export interface DesktopLink {
 }
 
 export type DetectFn = (opts?: { base?: string; timeoutMs?: number }) => Promise<HostProbe | null>;
-export type ConnectFn = (o: { base: string; code: string }) => Promise<DesktopLink>;
+export type ConnectFn = (o: { base: string; code: string; probe?: HostProbe }) => Promise<DesktopLink>;
 
 /** The lazy remote module as the page checks it after loading (src/sim/remote/index.ts). */
 export interface RemoteModule {
