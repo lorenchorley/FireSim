@@ -213,6 +213,54 @@ const blockBoxes = (
     };
   });
 
+/**
+ * Resolves when the tool's layout is the layout it is going to stay in: the panel has drawn the scene's own latest slice (its canvas carries the slice's number) and
+ * every box the layout checks read has been the same in four display frames in a row. The panel lays a slice out in the display frame after the one that made it
+ * (`setData` only notes it, so that the update that places a line stays short), and the height of its picture is part of that layout; a window that has changed size
+ * reaches the page's observers in a frame of its own too. Where the frames are seconds apart (the software GL beside another browser) a read made a fixed time after a
+ * change reads the layout from before it. That is the failure of the gate's full run in step 7 (Set start's bottom at 753 against a pinned footer at 726), reproduced
+ * under two workers and two busy loops: at the read the scene had slice 7 and the panel had drawn slice 6, its picture 227 px tall; 0.4 s later the panel had slice 7
+ * and the picture 159 px (and in the other run of the pair, which read after the panel had caught up, Set start's bottom was at 685). The 844 x 390 audit of the recording
+ * test (12 controls missing 3 of 8 probes in the gate, with the body 158 px where a run alone reads 190 and the free band between the picture and the footer 37 px for 69) is the
+ * same lag: the audit is one task, and the body is 158 px until a display frame has run after the resize. Measured by flipping 412 x 915 and 844 x 390 and auditing at once:
+ * 16 of 20 audits found the body at 158 px and every one of those missed with 12 controls; auditing after 1, 2, 3, 5 or 8 display frames, 50 of 50 found 190 px and no
+ * miss; after this wait 20 of 20 found 190 px and no miss. Waits for as many frames as that takes (at most `maxMs`) and returns how many that was.
+ */
+const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
+  page.evaluate(
+    (max) =>
+      new Promise<number>((resolve) => {
+        const t0 = performance.now();
+        const w = window as unknown as Handle;
+        const box = (sel: string): number[] | null => {
+          const e = document.querySelector(sel);
+          if (!e) return null;
+          const r = e.getBoundingClientRect();
+          return [r.top, r.bottom, r.height, r.width].map(Math.round);
+        };
+        const read = (): { caught: boolean; sig: string } => {
+          const u = w.__firesim.view.slice?.() as { data: { seq: number } | null } | null | undefined;
+          const c = document.querySelector('[data-testid="slice-canvas"]') as HTMLElement | null;
+          const caught = String(u?.data?.seq ?? '') === (c?.dataset.seq ?? '');
+          const boxes = ['[data-testid="air-panel"]', '.slice-tool-body', '[data-testid="slice-canvas"]', '[data-testid="slice-footer"]', '[data-testid="slice-set-a"]', '[data-testid="slice-presets-toggle"]'].map(box);
+          return { caught, sig: JSON.stringify([innerWidth, innerHeight, boxes]) };
+        };
+        let last = '';
+        let same = 0;
+        let frames = 0;
+        const tick = (): void => {
+          frames++;
+          const { caught, sig } = read();
+          same = sig === last ? same + 1 : 0;
+          last = sig;
+          if ((caught && same >= 3) || performance.now() - t0 > max) resolve(frames);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    maxMs,
+  );
+
 /** What the first F8 build got wrong: with the body scrolled to the top, the controls under the button are on the screen, none under the pinned footer (`presets` false: the row of Set start, Set end and Swap only). */
 const expectControlsInView = (at: Awaited<ReturnType<typeof blockBoxes>>, label: string, presets = true): void => {
   const boxes = [['Set start', at.setA], ['Set end', at.setB], ['Swap', at.swap], ...(presets ? [['Presets', at.presets] as const] : [])] as const;
@@ -647,6 +695,7 @@ async function exercise(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<v
       await expect(button).toBeVisible();
       await expect(button).toHaveText('Use the 3-D atmosphere');
       await page.evaluate(() => ((document.querySelector('.slice-tool-body') as HTMLElement).scrollTop = 0)); // (the earlier steps scrolled to the controls)
+      await layoutSettled(page); // (the picture's box follows the slice the preset made, and the panel lays that out a display frame after it: see the helper)
       // 0.7.0 (F8, owner question 6): the button is directly under the chips, above the controls, and the words stay under the controls as in 0.6.0. At 412 x 915 the
       // button is wholly in view and inside the sheet with no scroll at all, and Set start, Set end and Swap are above the footer, with the Set start row following
       // the button. (The first F8 build moved the words up too: Set start then sat at y 772 to 812 behind the footer at 802 and Presets was hidden. 0.4.1 to
@@ -1122,7 +1171,27 @@ function insideSpan(from: number, to: number, k: number): number {
   return Math.min(to - 30, Math.max(from + 30, raw - (raw % 300) + 150));
 }
 
+/** The times of the snapshots the session has delivered since `watchDeliveries`, in the order they arrived (the recorder is fed every one of them). */
+const deliveredTimes = (page: Page): Promise<number[]> => page.evaluate(() => (window as unknown as { __delivered: number[] }).__delivered);
+async function watchDeliveries(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __delivered: number[]; __firesim: { session: { controller: { on(event: string, cb: (s: { time: number }) => void): void } } } };
+    w.__delivered = [];
+    w.__firesim.session.controller.on('snapshot', (snap) => w.__delivered.push(snap.time));
+  });
+}
+/** What a recorder that keeps every picture holds of those arrivals: a snapshot at t drops every sample at or after t (time order), then is kept. */
+function keptOf(arrivals: number[]): number[] {
+  const kept: number[] = [];
+  for (const t of arrivals) {
+    while (kept.length > 0 && kept[kept.length - 1]! >= t) kept.pop();
+    kept.push(t);
+  }
+  return kept;
+}
+
 async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<void> {
+  await watchDeliveries(page);
   await lightScene(page);
   await fireAndRunTo(page, tier === 'diagnosed' ? 370 : 250);
   await armPopupWatch(page);
@@ -1211,7 +1280,14 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
       const age = r.shownTime! - r.recordedAt;
       expect(r.recordedAt, 'a sample at or before the time shown').toBeLessThanOrEqual(r.shownTime! + 0.5);
       expect(r.recordedAt, "newer than the picture's own air").toBeGreaterThan(r.pictureAirTime! + 0.5);
-      expect(age, 'at most one gap behind').toBeLessThanOrEqual(Math.max(2 * spacingS, 1.5 * step));
+      // Which pictures exist is the engine's, and the machine's: it skips a picture that would be one of too many per wall second (`coalesceNow` in simulation.ts; the results
+      // do not change), so the pictures are 60 s apart or more (in runs of this test beside another browser, 60, 120 and 180 s apart in every list taken, and a scrub into a
+      // gap of 120 s read a sample 120 s old where the old bound said 90). So the rule is judged against what was delivered: with every picture kept, the sample read is the
+      // newest delivered at or before the time shown; with the recording thinned, it is at most one thinned gap and one delivered gap behind.
+      const kept = keptOf(await deliveredTimes(page)).filter((x) => x >= from!);
+      const newest = Math.max(...kept.filter((x) => x <= r.shownTime! + 0.5));
+      if (spacingS === 0) expect(r.recordedAt, `the newest picture delivered at or before ${r.shownTime} (delivered: ${kept.filter((x) => Math.abs(x - r.shownTime!) < 400).join(', ')})`).toBe(newest);
+      else expect(age, 'at most one gap behind').toBeLessThanOrEqual(2 * spacingS + Math.max(1.5 * step, ...kept.slice(1).map((x, i) => x - kept[i]!)));
       await expect(footer).toContainText(/recorded air from \d\d:\d\d/);
       if (age > 90) await expect(footer).toContainText(new RegExp(`\\(${Math.max(1, Math.round(age / 60))} min before the time shown\\)`));
       else await expect(footer).not.toContainText('before the time shown');
@@ -1232,7 +1308,7 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
   // `tapAudit` is the repo's tap rule (scripts/audit-tap-targets.mjs).
   await test.step('844 x 390 with a recording: every control below the picture, scrolled to the middle of the window, has all eight probes on itself', async () => {
     await page.setViewportSize({ width: 844, height: 390 });
-    await page.waitForTimeout(900);
+    await layoutSettled(page); // (a state and not a time: the layout of the panel is a frame behind the new size; see the helper)
     await expect(footer).toBeInViewport();
     const win = await page.evaluate(() => {
       const f = document.querySelector('[data-testid="slice-footer"]')!.getBoundingClientRect();

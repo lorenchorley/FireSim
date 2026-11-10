@@ -428,7 +428,20 @@ test('Arrows and flow lines on the real layer: the map legend, and the caption a
   // The farthest zoom on a short landscape phone: a model cell is under 4 px there, so "Zoom in to see the wind arrows." is a line a person can reach
   // (the unit test holds the arithmetic; this reads what the real layer says, once the view has taken the new size).
   await page.setViewportSize({ width: 844, height: 390 });
-  await page.waitForTimeout(1000);
+  // The view takes a new size in the page's next rendering step (a ResizeObserver), and on a machine that draws a frame a second that is not 1 s away: the gate's
+  // full run read 6.48 px a cell at the farthest zoom here, the camera still of the portrait size, where this machine alone reads 2.91, and so did a run of two
+  // workers and a busy loop (the canvas's drawing buffer 515 x 1018 for the 844 x 366 box 1.6 s after the resize, 1055 x 457 three seconds later). So wait for the state,
+  // the drawing buffer of the canvas having the shape of its box (the renderer and the camera were told the size together), and not for a time.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const c = document.querySelector('canvas')!;
+          return c.clientHeight < 400 && Math.abs(c.width / c.height - c.clientWidth / c.clientHeight) < 0.02;
+        }),
+      { message: 'the view has taken the landscape size', timeout: 120_000 },
+    )
+    .toBe(true);
   const far = await page.evaluate(() => {
     const v = (window as unknown as { __firesim: { view: { rig: { controls: { maxDistance: number } }; lookAt(x: number, y: number, d: number, az: number, tilt: number, animate?: boolean): void; renderNow(): void } } }).__firesim.view;
     const d = v.rig.controls.maxDistance;
