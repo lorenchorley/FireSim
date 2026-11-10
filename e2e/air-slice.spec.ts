@@ -1171,7 +1171,27 @@ function insideSpan(from: number, to: number, k: number): number {
   return Math.min(to - 30, Math.max(from + 30, raw - (raw % 300) + 150));
 }
 
+/** The times of the snapshots the session has delivered since `watchDeliveries`, in the order they arrived (the recorder is fed every one of them). */
+const deliveredTimes = (page: Page): Promise<number[]> => page.evaluate(() => (window as unknown as { __delivered: number[] }).__delivered);
+async function watchDeliveries(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __delivered: number[]; __firesim: { session: { controller: { on(event: string, cb: (s: { time: number }) => void): void } } } };
+    w.__delivered = [];
+    w.__firesim.session.controller.on('snapshot', (snap) => w.__delivered.push(snap.time));
+  });
+}
+/** What a recorder that keeps every picture holds of those arrivals: a snapshot at t drops every sample at or after t (time order), then is kept. */
+function keptOf(arrivals: number[]): number[] {
+  const kept: number[] = [];
+  for (const t of arrivals) {
+    while (kept.length > 0 && kept[kept.length - 1]! >= t) kept.pop();
+    kept.push(t);
+  }
+  return kept;
+}
+
 async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise<void> {
+  await watchDeliveries(page);
   await lightScene(page);
   await fireAndRunTo(page, tier === 'diagnosed' ? 370 : 250);
   await armPopupWatch(page);
@@ -1260,7 +1280,14 @@ async function recordFlow(page: Page, tier: 'diagnosed' | 'prognostic'): Promise
       const age = r.shownTime! - r.recordedAt;
       expect(r.recordedAt, 'a sample at or before the time shown').toBeLessThanOrEqual(r.shownTime! + 0.5);
       expect(r.recordedAt, "newer than the picture's own air").toBeGreaterThan(r.pictureAirTime! + 0.5);
-      expect(age, 'at most one gap behind').toBeLessThanOrEqual(Math.max(2 * spacingS, 1.5 * step));
+      // Which pictures exist is the engine's, and the machine's: it skips a picture that would be one of too many per wall second (`coalesceNow` in simulation.ts; the results
+      // do not change), so the pictures are 60 s apart or more (in runs of this test beside another browser, 60, 120 and 180 s apart in every list taken, and a scrub into a
+      // gap of 120 s read a sample 120 s old where the old bound said 90). So the rule is judged against what was delivered: with every picture kept, the sample read is the
+      // newest delivered at or before the time shown; with the recording thinned, it is at most one thinned gap and one delivered gap behind.
+      const kept = keptOf(await deliveredTimes(page)).filter((x) => x >= from!);
+      const newest = Math.max(...kept.filter((x) => x <= r.shownTime! + 0.5));
+      if (spacingS === 0) expect(r.recordedAt, `the newest picture delivered at or before ${r.shownTime} (delivered: ${kept.filter((x) => Math.abs(x - r.shownTime!) < 400).join(', ')})`).toBe(newest);
+      else expect(age, 'at most one gap behind').toBeLessThanOrEqual(2 * spacingS + Math.max(1.5 * step, ...kept.slice(1).map((x, i) => x - kept[i]!)));
       await expect(footer).toContainText(/recorded air from \d\d:\d\d/);
       if (age > 90) await expect(footer).toContainText(new RegExp(`\\(${Math.max(1, Math.round(age / 60))} min before the time shown\\)`));
       else await expect(footer).not.toContainText('before the time shown');
