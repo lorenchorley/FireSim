@@ -46,8 +46,9 @@ describe('the estimate of a session', () => {
   });
 
   it("is above the plan's runs at 10 m: a peak of 1.2 GB for 6 km and 1.9 GB over 9 km (plan 15e; whole processes), and so a scenario of that size is allowed by the default on a 16 GB computer and refused on a small one", () => {
-    const six = estimateSessionBytes(size(40, 360_000, 6000));
-    const nine = estimateSessionBytes(size(83, 810_000, 9000));
+    // the messages are lane K's figures for the Katoomba demo site at 10 m cells (6 km: 46.5 MiB, 9 km: 104.8 MiB, 82% of the default frame cap)
+    const six = estimateSessionBytes(size(46.5, 360_000, 6000));
+    const nine = estimateSessionBytes(size(104.8, 810_000, 9000));
     expect(mib(six)).toBeGreaterThan(1200);
     expect(mib(nine)).toBeGreaterThan(1900);
     const sixteenGiB = defaultMaxSessionMib(16 * 1024 * MIB, 3) * MIB;

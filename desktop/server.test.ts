@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { decodeMessage, encodeMessage } from '../src/sim/remote/codec';
 import { OpenTokens } from './openToken';
-import { CLOSE, startHost, type HostHandle, type HostOptions } from './server';
+import { CLOSE, DEFAULT_HIGH_WATER_BYTES, DEFAULT_LOW_WATER_BYTES, startHost, type HostHandle, type HostOptions } from './server';
 import { fakeEngines, hello, openClient, rawUpgrade, waitFor, welcomeOf, type FakeEngine, type TestClient } from './testHelpers';
 
 const CODE = 'ABCD2345';
@@ -466,6 +466,24 @@ describe('flow control, heartbeat and stop', () => {
     await waitFor(() => engines[0]!.holds.length === 2, 10000, 'the hold to be lifted');
     expect(engines[0]!.holds).toEqual([true, false]);
   }, 30000);
+
+  it('has the pair of numbers the throttled-link measurement chose, 8 MiB to hold and 4 MiB to let go (0.8.0 had 16 and 4), and a host that is given none uses them', async () => {
+    expect(DEFAULT_HIGH_WATER_BYTES).toBe(8 * 1024 * 1024);
+    expect(DEFAULT_LOW_WATER_BYTES).toBe(4 * 1024 * 1024);
+    const { h, engines } = await host(); // no pair given
+    const { c } = await join_(h.port);
+    (c.ws as unknown as { _socket: { pause(): void; resume(): void } })._socket.pause();
+    const frame = new Uint8Array(1024 * 1024);
+    // The kernel takes some of what is sent to a client that does not read (its buffers, up to tens of MiB here); the rest queues in the host and is held at 8 MiB.
+    for (let i = 0; i < 200 && engines[0]!.holds.length === 0; i++) {
+      engines[0]!.events.frame(frame.slice());
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    expect(engines[0]!.holds).toEqual([true]);
+    (c.ws as unknown as { _socket: { resume(): void } })._socket.resume();
+    await waitFor(() => engines[0]!.holds.length === 2, 20000, 'the hold to be lifted');
+    expect(engines[0]!.holds).toEqual([true, false]);
+  }, 60000);
 
   it('pings its sessions, and closes one that has gone silent', async () => {
     const { h, engines } = await host({ pingIntervalMs: 40, deadAfterMs: 250 });

@@ -1,7 +1,7 @@
 /**
  * The throttled-link measurement (0.9.0 contract 4.2, item 6): the REAL host (a process of its own, with its real engine thread) and a client
  * that speaks its protocol, with a simulated link between them (desktop/throttle.ts: a rate and a delay each way), while a real run streams
- * its snapshots. It records what the flow control (the hold at 16 MiB waiting to be sent, the release at 4 MiB) does to the host's memory and
+ * its snapshots. It records what the flow control (the hold when more than HIGH MiB wait to be sent, the release below LOW MiB: the host's own pair is in server.ts) does to the host's memory and
  * to what the page waits for:
  *
  *   - the host's memory: its resident size before the client comes, at the end, and its peak (VmHWM of /proc, so Linux only);
@@ -20,7 +20,7 @@
  * SCENARIO katoomba30 (the Katoomba demo site, 6 km, 30 m cells, fast tier, a fire on the escarpment: 6.5 MB, snapshots of 2.2 MB) or synthetic10
  * (a synthetic 6 km scenario at 10 m cells, fast tier: 30 MB, snapshots of 15 MB, the size the finer detail of 0.9.0 sends).
  * LINK loopback (no link), or MBIT:RTT_MS (20:30 is 20 Mbit/s each way and a round trip of 30 ms, split in half each way).
- * HOLD HIGH:LOW in MiB (16:4 is the host's own pair), or off (the hold is set so high that it never acts).
+ * HOLD HIGH:LOW in MiB (8:4 is the host's own pair since 0.9.0, 16:4 was 0.8.0's), or off (the hold is set so high that it never acts).
  * RUN_S how far the run goes, in seconds of fire. Prints one line of JSON.
  */
 import { spawn } from 'node:child_process';
@@ -43,7 +43,7 @@ const runTo = Number(runArg);
 const link = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(linkArg ?? '');
 const hold = /^(\d+):(\d+)$/.exec(holdArg ?? '');
 if (!['katoomba30', 'synthetic10'].includes(scenarioArg ?? '') || (linkArg !== 'loopback' && !link) || (holdArg !== 'off' && !hold) || !(runTo > 0)) {
-  console.error('usage: node desktop/link.mjs katoomba30|synthetic10 loopback|MBIT:RTT_MS 16:4|off RUN_S');
+  console.error('usage: node desktop/link.mjs katoomba30|synthetic10 loopback|MBIT:RTT_MS HIGH:LOW|off RUN_S');
   process.exit(2);
 }
 

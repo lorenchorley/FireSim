@@ -63,7 +63,7 @@ export const USAGE = `Usage: npm run desktop [-- flags]
                     more). The pairing code is still needed
   --allow-app       the same for the apps (Android: https://localhost, iOS: capacitor://localhost); any app on a phone with
                     that origin may then try the code, so keep the code to yourself. Add --lan for another device to reach this one
-  --max-frame-mib N the largest message a page may send, in MiB (default ${DEFAULT_MAX_FRAME_MIB}; a 6 km scenario is 6.5 MB, a 9 km one at 10 m about 83 MB)
+  --max-frame-mib N the largest message a page may send, in MiB (default ${DEFAULT_MAX_FRAME_MIB}; a 6 km scenario is 6.5 MB, a 9 km one at 10 m about 105 MB)
   --max-session-mib N  the most memory one simulation may be expected to need, in MiB: a scenario whose estimate is above it is
                     refused (default: 60% of this computer's memory divided by --max-sessions)
   --worker-heap-mib N  the JavaScript heap of one simulation's worker thread, in MiB (default ${DEFAULT_WORKER_HEAP_MIB})

@@ -25,6 +25,15 @@ import { serveStatic } from './staticFiles';
 export const PROTOCOL = LINK_PROTOCOL;
 export const ENGINE_PATH = '/__firesim/engine';
 export const HOST_PATH = '/__firesim/host';
+/**
+ * The flow control's pair of numbers (desktop/README.md, "The throttled link"): the host holds the engine back when more than 8 MiB wait to be sent to a
+ * page and lets it go below 4 MiB. 0.8.0 had 16 and 4. On the simulated links of the 0.9.0 measurement the run took as long with either (a slow link is the
+ * limit, whatever the hold) and a ping, a Pause or a "Why here?" waited a third to a half less behind the snapshots already queued (what stands ahead
+ * is about the high mark plus the frame in flight); the low mark stays at 4 MiB so that a link only a little faster than the engine's frames is not left
+ * idle while the next one is made.
+ */
+export const DEFAULT_HIGH_WATER_BYTES = 8 * 1024 * 1024;
+export const DEFAULT_LOW_WATER_BYTES = 4 * 1024 * 1024;
 /** Close codes of the link (desktop/README.md; src/sim/remote/wire.ts, which the page shares). */
 export { CLOSE };
 
@@ -72,7 +81,7 @@ export interface HostOptions {
   /** A session is closed (1008) after more pings (default 20) or messages of any kind (default 1000) than this in one second. */
   pingsPerSecond?: number;
   messagesPerSecond?: number;
-  /** The link is "behind" above this many unsent bytes (default 16 MiB) and caught up below `lowWaterBytes` (default 4 MiB). */
+  /** The link is "behind" above this many unsent bytes (default {@link DEFAULT_HIGH_WATER_BYTES}) and caught up below `lowWaterBytes` (default {@link DEFAULT_LOW_WATER_BYTES}). */
   highWaterBytes?: number;
   lowWaterBytes?: number;
   rateLimit?: RateLimitOptions;
@@ -154,8 +163,8 @@ export async function startHost(o: HostOptions): Promise<HostHandle> {
   const messagesPerSecond = o.messagesPerSecond ?? 1000;
   const allowedHosts = o.allowedHosts ?? [];
   const allowedOrigins = o.allowedOrigins ?? [];
-  const highWater = o.highWaterBytes ?? 16 * 1024 * 1024;
-  const lowWater = o.lowWaterBytes ?? 4 * 1024 * 1024;
+  const highWater = o.highWaterBytes ?? DEFAULT_HIGH_WATER_BYTES;
+  const lowWater = o.lowWaterBytes ?? DEFAULT_LOW_WATER_BYTES;
   const limiter = new RateLimiter(o.rateLimit);
   const probe = JSON.stringify({ app: 'firesim-desktop-host', protocol: PROTOCOL, requiresCode: true });
   const code = normaliseCode(o.code);

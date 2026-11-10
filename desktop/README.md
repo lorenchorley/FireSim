@@ -138,7 +138,7 @@ IPv6 sockets when the computer has them (`desktop/main.test.ts`).
 | `--allow-host NAME` | A name a browser may use to reach this computer, besides an IP address, `localhost`, this computer's own name and its `.local` name (see "Host names" below). Repeat it for more. |
 | `--allow-origin ORIGIN` | A page of this origin (`scheme://host` or `scheme://host:port`, exactly, the scheme `http`, `https` or `capacitor`) may open the engine link and read `/__firesim/host` besides the page the host serves. The code is still needed and the `Host` check still comes first. Repeat it for more. |
 | `--allow-app` | Shorthand for `--allow-origin https://localhost` and `--allow-origin capacitor://localhost`, the origins of the Android and iOS apps. Any app with that origin can then try the code. Add `--lan` for another device to reach the host. |
-| `--max-frame-mib N` | The largest message a page may send, in MiB. Default 128 (a 6 km scenario is 6.5 MB, a 9 km one at 10 m about 83 MB); above it the host closes the connection with 1009. |
+| `--max-frame-mib N` | The largest message a page may send, in MiB. Default 128 (a 6 km scenario is 6.5 MB at 30 m and 46.5 MiB at 10 m, a 9 km one 14.5 MiB at 30 m, 28.6 MiB at 20 m and 104.8 MiB at 10 m, 82% of the default: lane K's figures for the Katoomba demo site); above it the host closes the connection with 1009. A 12 km domain at 10 m would not fit. |
 | `--max-session-mib N` | The most memory one simulation may be estimated to need, in MiB (at least 64): a scenario whose estimate is above it is refused with an engine error, before anything is built. Default: 60% of the computer's memory (`os.totalmem()`, or the limit of the container it runs in when that is lower: `process.constrainedMemory()`) divided by `--max-sessions`, at least 256. See "What it costs". |
 | `--worker-heap-mib N` | The JavaScript heap of one simulation's worker thread, in MiB. Default 4096. See "What it costs": it does not bound the arrays, and a `--max-old-space-size` of Node itself replaces it (the host says so when it starts). |
 | `--help` | The usage text. |
@@ -221,7 +221,7 @@ repository's own memory model of the engine (`src/scenario/memoryModel.ts`: byte
 checkpoints, measured from real `Simulation` allocations) for the heaviest tier (a page can raise the tier after the start), with the ring of checkpoints
 full, **times 2**, plus the scenario twice (the message and the arrays decoded from it are alive together). It is meant to be above the truth and not
 a meter: it is 1.9 to 3.6 times what the nine sessions measured at 30 m and 20 m held (three are in the table), 2.0 to 2.2 times at 10 m, and
-1.06 and 1.33 times the plan's 10 m peaks (whole processes, hours of fire); it is the figure that lets a 10 m scenario over 9 km (about 2.5 GB estimated) in on a 16 GB computer with 3 sessions and
+1.07 and 1.35 times the plan's 10 m peaks of 1.2 and 1.9 GB (whole processes, hours of fire; with lane K's message sizes of the Katoomba demo site at 10 m, 46.5 MiB for 6 km and 104.8 MiB for 9 km, the estimates are 1,286 and 2,570 MiB); it is the figure that lets a 10 m scenario over 9 km (2,570 MiB estimated, a peak of about 1.9 GB measured) in on a 16 GB computer with 3 sessions and
 refuses it on an 8 GB one. `desktop/sessionEstimate.test.ts` pins all of that. The limit it is held to is `--max-session-mib`, by default 60% of the
 computer's memory (or the container's limit) divided by `--max-sessions`, so that every slot in use together cannot be estimated to need more than 60%.
 A refused scenario is an engine error with the sentence `This scenario is too big for the desktop's free memory.` (the page words it from that
@@ -271,15 +271,18 @@ A `--max-old-space-size` in `NODE_OPTIONS` or on the command line is a V8 flag o
    left (so it never makes more than the message is long), and, once all are read, arrays that share bytes (a real 6 km scenario
    is a 123 kB header and 42 arrays). A header with its own `__proto__` field is refused by the decoder and by the encoder. Until the first `init` the engine takes nothing else: any other message is
    dropped, with one log line.
-5. When the link is behind (more than 16 MiB waiting to be sent), the host holds the engine back (the run waits between chunks)
-   until the link has caught up (below 4 MiB): the run gets slower and nothing changes in its results.
+5. When the link is behind (more than **8 MiB** waiting to be sent; 0.8.0 had 16), the host holds the engine back (the run waits between chunks of
+   40 ms: the worker reads the hold within one of them) until the link has caught up (below 4 MiB): the run gets slower and nothing changes in
+   its results. A frame is held back whole: one snapshot of a 9 km domain at 10 m is about 34 to 39 MiB, so the queue can be the 8 MiB and one such
+   frame, under the 64 MiB that closes a session (item 4); a frame above about 55 MiB (a 12 km domain at 10 m) on a slow link would pass it.
+   What this does on a slow link, measured: "The throttled link" under "What it costs".
 6. When a session ends (closed, dropped, an error, a stop) its worker thread is terminated and its slot freed. If the worker
    fails, the page gets an `error` message with the first line of the failure (never the stack, which names this computer's
    files; the first line of a message can still name one) and the host closes with 1011.
 7. **A scenario that does not fit** (its estimate, "What it costs", is above `--max-session-mib`) is refused when its `init` has been decoded
    and before anything is built: the engine sends the ordinary `error` message `This scenario is too big for the desktop's free memory.`
    (`TOO_BIG_MESSAGE` in `src/sim/remote/wire.ts`, exported by `src/sim/remote`; the page's `init` rejects with exactly that sentence), the host logs
-   `refused a scenario: about 2,526 MiB expected, 1,638 MiB allowed for a session (--max-session-mib)`, and **the link stays open**: the session takes
+   `refused a scenario: about 2,570 MiB expected, 1,638 MiB allowed for a session (--max-session-mib)`, and **the link stays open**: the session takes
    another, smaller `init` (until one is taken, every other message is dropped as one that came before `init`).
 
 ### What the page uses (`src/sim/remote`)
