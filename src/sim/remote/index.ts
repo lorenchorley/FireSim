@@ -1,17 +1,19 @@
 /**
  * The lazy entry of the desktop connection (0.8.0 workstream J): the page loads it with `await import('../sim/remote')`
- * only when the user starts a run on the desktop engine. `detect.ts` (the check that a host is there) is the only part in
- * the entry chunk.
+ * only when the user starts a run on the desktop engine. `detect.ts` (the check that a host is there) is the one small part that
+ * loads with the page's own desktop chunk.
  */
-import { detectHost, type RemoteHostInfo } from './detect';
-import { RemoteAuthError, RemoteSimController, type SocketLike } from './RemoteSimController';
+import type { RemoteHostInfo, RemoteHostProbe } from './detect';
+import { PROTOCOL, RemoteAuthError, RemoteSimController, RemoteVersionError, type SocketLike } from './RemoteSimController';
 import type { SimController } from '../protocol';
+import { TOO_BIG_MESSAGE } from './wire';
 
-export { RemoteAuthError };
-export type { RemoteHostInfo };
+export { RemoteAuthError, RemoteVersionError, TOO_BIG_MESSAGE };
+export type { RemoteHostInfo, RemoteHostProbe };
 
 export interface RemoteConnection {
   controller: SimController;
+  /** What the host said of itself in its welcome (after the code was right): name, cores, Node version, sessions. */
   info: RemoteHostInfo;
   /** The last measured round trip of the link (ms), null before the first answer. */
   rttMs(): number | null;
@@ -34,15 +36,15 @@ function engineUrl(base: string): string {
 }
 
 /**
- * Connect to the host at `base` with the pairing `code`. `info` is what `detectHost` already said about it: given, no request is
- * made for it (the page asks `/__firesim/host` once); absent, it is asked here. Rejects with {@link RemoteAuthError} when the code
- * is refused and with a plain Error (a sentence) when there is no host, no free session or no answer. After that every failure is
- * an 'error' event of the controller and the end of the link is told to `onClosed`.
+ * Connect to the host at `base` with the pairing `code`: one socket, and what the host is called comes in its welcome (`info`). No
+ * request is made first. `probe` is what `detectHost` already said: given, a host of another version of the link is refused at once,
+ * before a socket is opened. Rejects with {@link RemoteAuthError} when the code is refused, with {@link RemoteVersionError} when the
+ * host speaks another version of the link and with a plain Error (a sentence) when there is no host, no free session or no answer.
+ * After that every failure is an 'error' event of the controller and the end of the link is told to `onClosed`.
  */
-export async function connectRemote(o: { base: string; code: string; info?: RemoteHostInfo; WebSocketCtor?: typeof WebSocket }): Promise<RemoteConnection> {
-  const info = o.info ?? (await detectHost({ base: o.base, timeoutMs: 5000 }));
-  if (!info) throw new Error('The desktop did not answer.');
+export async function connectRemote(o: { base: string; code: string; probe?: RemoteHostProbe; WebSocketCtor?: typeof WebSocket }): Promise<RemoteConnection> {
+  if (o.probe && o.probe.protocol !== PROTOCOL) throw new RemoteVersionError(PROTOCOL, o.probe.protocol);
   const controller = new RemoteSimController();
   await controller.connect({ url: engineUrl(o.base), code: o.code, ...(o.WebSocketCtor ? { WebSocketCtor: o.WebSocketCtor as unknown as new (url: string) => SocketLike } : {}) });
-  return { controller, info, rttMs: () => controller.rttMs(), onClosed: (cb) => controller.onClosed(cb), close: () => controller.dispose() };
+  return { controller, info: controller.info!, rttMs: () => controller.rttMs(), onClosed: (cb) => controller.onClosed(cb), close: () => controller.dispose() };
 }

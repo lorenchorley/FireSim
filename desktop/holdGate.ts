@@ -1,7 +1,7 @@
 /**
  * The yield of the engine's run loop, with a hold (contract 0.8.0 J, 3.2). `SimHost` runs in chunks and calls `schedule(fn)`
- * to continue after a pause that lets the worker's message queue run. In the worker the pause is a MessageChannel post to
- * itself (`wake`); while the link to the client is behind the gate keeps the continuation back until the hold is lifted, so a
+ * to continue after a pause that lets the worker's message queue run. In the worker the pause is an immediate
+ * (`wake`, engineWorker.ts: a MessageChannel post to itself would not let the queue run, see there); while the link to the client is behind the gate keeps the continuation back until the hold is lifted, so a
  * run that produces pictures faster than the link carries them slows down and does not fill the host's memory. Pure: the wake-up
  * is passed in, so it is tested without a thread.
  */

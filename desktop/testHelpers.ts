@@ -72,13 +72,13 @@ export function openClient(port: number, o: OpenOptions = {}): Promise<TestClien
   });
 }
 
-export const hello = (c: TestClient, code: string, protocol = 1): void => c.ws.send(JSON.stringify({ type: 'hello', protocol, code }));
+export const hello = (c: TestClient, code: string, protocol = 2): void => c.ws.send(JSON.stringify({ type: 'hello', protocol, code }));
 
 /** The text frame the host answered with (a welcome), or null when it closed instead. */
-export async function welcomeOf(c: TestClient): Promise<{ type: string; session: string; protocol: number } | null> {
+export async function welcomeOf(c: TestClient): Promise<{ type: string; session: string; protocol: number; name?: string; cores?: number; node?: string; sessions?: number; maxSessions?: number } | null> {
   const first = await Promise.race([waitFor(() => c.received.length > 0, 5000, 'a frame').then(() => 'frame' as const), c.closed.then(() => 'closed' as const)]);
   const m = first === 'frame' ? c.received[0] : undefined;
-  return typeof m === 'string' ? (JSON.parse(m) as { type: string; session: string; protocol: number }) : null;
+  return typeof m === 'string' ? (JSON.parse(m) as { type: string; session: string; protocol: number; name?: string; cores?: number; node?: string; sessions?: number; maxSessions?: number }) : null;
 }
 
 export interface FakeEngine extends Engine {
