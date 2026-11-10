@@ -38,6 +38,7 @@ import { test as plain, type Locator, type Page } from '@playwright/test';
 import WebSocket from 'ws';
 import { emulateCapacitorAndroid } from './androidBridge';
 import { expect, test } from './fixtures';
+import { untilQuiet } from './desktopStub';
 import { acceptNotice } from './helpers';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -260,6 +261,7 @@ test('1. a page served by the host: the Engine row, Desktop preselected, the cod
     // pinned by its own tests (desktop/server.test.ts): since protocol 2 the count is no longer public before the code.
     await leaveToSetup(page);
     await expect(chip(page, 'desktop')).toHaveText(`Desktop (${NAME}, ${CORES} cores)`);
+    await untilQuiet(() => requests.length, 3, 30_000); // Setup shown again with Desktop chosen keeps the chosen site's files once more: let that finish before the host is stopped
     lap('1 left the run', t0);
 
     // what the page asked, and of whom
@@ -519,6 +521,7 @@ test('5. --lan: the page opened through the non-loopback IPv4 address (as a phon
     expect(requests.filter((u) => /^https?:/.test(u) && !sameOrigin(u, origin))).toEqual([]);
     await leaveToSetup(page);
     await expect(chip(page, 'desktop')).toHaveText(`Desktop (${NAME}, ${CORES} cores)`);
+    await untilQuiet(() => requests.length, 3, 30_000); // Setup shown again with Desktop chosen keeps the chosen site's files once more: let that finish before the host is stopped
     lap('5 total', t0);
   } finally {
     await host.stop();
