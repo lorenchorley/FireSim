@@ -220,9 +220,11 @@ const blockBoxes = (
  * reaches the page's observers in a frame of its own too. Where the frames are seconds apart (the software GL beside another browser) a read made a fixed time after a
  * change reads the layout from before it. That is the failure of the gate's full run in step 7 (Set start's bottom at 753 against a pinned footer at 726), reproduced
  * under two workers and two busy loops: at the read the scene had slice 7 and the panel had drawn slice 6, its picture 227 px tall; 0.4 s later the panel had slice 7
- * and the picture 159 px (and in the other run of the pair, which read after the panel had caught up, Set start's bottom was at 685). The 844 x 390 audit of the recording test (12 controls missing 3 of 8 probes in the gate, with the body 158 px
- * where a run alone reads 190) was not reproduced in two runs of the same load, which read a body of 158 px and no misses: that read is taken here too on a layout that
- * has stopped moving, which is the cause suspected for it. Waits for as many frames as that takes (at most `maxMs`) and returns how many that was.
+ * and the picture 159 px (and in the other run of the pair, which read after the panel had caught up, Set start's bottom was at 685). The 844 x 390 audit of the recording
+ * test (12 controls missing 3 of 8 probes in the gate, with the body 158 px where a run alone reads 190 and the free band between the picture and the footer 37 px for 69) is the
+ * same lag: the audit is one task, and the body is 158 px until a display frame has run after the resize. Measured by flipping 412 x 915 and 844 x 390 and auditing at once:
+ * 16 of 20 audits found the body at 158 px and every one of those missed with 12 controls; auditing after 1, 2, 3, 5 or 8 display frames, 50 of 50 found 190 px and no
+ * miss; after this wait 20 of 20 found 190 px and no miss. Waits for as many frames as that takes (at most `maxMs`) and returns how many that was.
  */
 const layoutSettled = (page: Page, maxMs = 90_000): Promise<number> =>
   page.evaluate(
