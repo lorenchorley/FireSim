@@ -230,6 +230,76 @@ see other programs; it is made from what the scenario claims at the start, so a 
 different tier is not checked again; and it does not replace `--max-frame-mib` (which bounds what a page may send) or `--worker-heap-mib` (a runaway
 JavaScript heap).
 
+### The throttled link (0.9.0)
+
+**What this is, and is not.** A measurement on **one machine with a simulated link**, not Wi-Fi: `desktop/throttle.ts` is a TCP proxy that holds each direction
+to a rate and adds a delay (a round trip split in halves, a queue of 256 KiB with backpressure to the sender); no loss, no jitter, no shared medium. The
+host is the real one (a process of its own with its real engine thread); the client is a Node process that speaks its protocol, so what a phone's browser
+spends decoding a frame is **not** measured (in Node a 15 MiB snapshot decodes in 12 to 20 ms at most). The machine is this 4-core build machine, shared with other
+work, so every time carries that noise; one run per row (at 100 Mbit/s the 16/4 and 4/1 rows were run twice and both runs are given). Each row is `node desktop/link.mjs SCENARIO LINK HOLD RUN_S`
+(`katoomba30 5:80 8:4 1800` is the Katoomba demo site, 6 km, 30 m cells, fast tier, a fire on the escarpment, a link of 5 Mbit/s and a round trip of 80 ms, a
+hold at 8 MiB and a release at 4 MiB, 1800 s of fire: 6.5 MiB to upload, 32 snapshots of 2.2 MiB, 70 MiB in all; `synthetic10` is a synthetic 6 km scenario at 10 m cells
+because the tree has no finer builder: 29.9 MiB to upload, snapshots of 15.3 MiB, 240 s of fire, 5 snapshots, 76.5 MiB). While the run streams the client pings the host every
+250 ms, asks "Why here?" every 2 s and presses Pause once; a ping, an answer and a pause each wait behind the snapshots already queued for the link, and the table says how long
+(median of the pings; "ahead" is how many MiB had reached the client between sending a ping and getting its answer).
+
+**What it found: the flow control of 0.8.0 did not act.** On a link of 5 Mbit/s with a hold at 16 MiB the host's memory and the pings' waits were the same as with no hold at
+all (Katoomba, before the fix: a ping answered after 54.5 to 54.7 s in the median and 103 to 104 s at the 95th for the hold at 16/4, 4/1 and off alike; the run took 110.6 to 110.7 s and the host
+peaked at 294 to 297 MiB in each). The cause: the worker continued its run through a `MessageChannel` of its own, Node takes the messages of a port in one go (up to 1000 in a
+turn, those the handler posts to itself included), so the worker never read `parentPort`, and the host's `hold` reached it when the run was over. A trace showed 64 MiB of
+snapshots produced after the host had said hold at 11 MiB, and a Pause answered when the run ended (1.2 s on loopback, where the whole run takes 1.6). At 10 m on 5 Mbit/s
+the whole run (76 MiB) was queued within a second, more than 64 MiB waited for over 10 s, and **the host closed the session** (1008, "link too slow"; the client saw the
+socket drop with 1006, because the close frame stood behind the queue). That happened in two of the three 10 m runs on 5 Mbit/s (hold 16/4 and no hold); the third (4/1) got through, in 123 s, and I did not find out why it
+escaped the guard. The worker now yields with an
+immediate (`desktop/engineWorker.ts`), between which the event loop turns, and a hold is read within a chunk (40 ms); an unthrottled run takes as long as before (alternating
+three runs each: 2.8, 3.4 and 3.6 s with the channel, 2.8, 3.3 and 3.9 s with the immediate, on a loaded machine). `desktop/engine.test.ts` holds a real run after four snapshots and
+counts what is produced in the next 1.5 s: 24 with the channel, at most 4 now.
+
+**After the fix, Katoomba 6 km at 30 m** (frames of 2.2 MiB; the run is as long as the link needs whatever the hold, because the link is the limit):
+
+| link (rate, round trip) | hold, release | the run took | first picture | a ping answered after (median, 95th) | ahead of a ping (median, most) | host's peak memory |
+|---|---|---|---|---|---|---|
+| loopback | 16/4 | 1.8 s | 1.8 s | 1.1 ms, 16 ms | 0 | 264 MiB |
+| 20 Mbit/s, 30 ms | 16/4 | 28.9 s | 5.2 s | 4.5 s, 8.4 s | 11, 22 MiB | 284 MiB |
+| 20 Mbit/s, 30 ms | 4/1 | 27.9 s | 5.2 s | 2.8 s, 4.3 s | 8.7, 13.2 MiB | 267 MiB |
+| 5 Mbit/s, 80 ms | 16/4 | 114.7 s | 16.3 s | 18.9 s, 34.6 s | 13.2, 22 MiB | 265 MiB |
+| 5 Mbit/s, 80 ms | 8/4 | 114.6 s | 16.3 s | 13.9 s, 24.0 s | 8.8, 17.6 MiB | 263 MiB |
+| 5 Mbit/s, 80 ms | 4/1 | 114.7 s | 16.3 s | 10.9 s, 15.7 s | 6.6, 13.2 MiB | 255 MiB |
+| 5 Mbit/s, 80 ms | no hold | 110.7 s | 16.4 s | 54.5 s, 103 s | 33, 65.8 MiB | 296 MiB |
+
+**After the fix, 6 km at 10 m (synthetic)** (frames of 15.3 MiB, so a frame already in the queue is most of what a ping waits behind):
+
+| link | hold, release | the run took | first picture | a ping answered after (median, 95th) | ahead of a ping (median, most) | host's peak memory |
+|---|---|---|---|---|---|---|
+| loopback | 16/4 | 1.3 s | 6.7 s | 1.7 ms, 5.7 ms | 0 | 829 MiB |
+| 100 Mbit/s, 10 ms | 16/4 | 5.7 s, 5.6 s | 10.1 s, 10.2 s | 1.15 s, 1.29 s (medians of two runs) | 15.3 to 30.6, 30.6 to 45.9 MiB | 799, 807 MiB |
+| 100 Mbit/s, 10 ms | 8/4 | 5.7 s | 10.0 s | 0.66 s | 15.3, 15.3 MiB | 798 MiB |
+| 100 Mbit/s, 10 ms | 4/1 | 5.7 s, 5.7 s | 10.1 s, 10.0 s | 0.81 s, 0.84 s | 15.3, 30.6 MiB | 786, 845 MiB |
+| 20 Mbit/s, 30 ms | 16/4 | 26.2 s | 25.3 s | 7.2 s, 13.2 s | 30.6, 45.9 MiB | 803 MiB |
+| 20 Mbit/s, 30 ms | 8/4 | 26.2 s | 25.9 s | 4.6 s, 7.7 s | 15.3, 30.6 MiB | 760 MiB |
+| 20 Mbit/s, 30 ms | 4/1 | 26.2 s | 25.4 s | 4.6 s, 7.7 s | 15.3, 30.6 MiB | 788 MiB |
+| 5 Mbit/s, 80 ms | 16/4 | 103.3 s | 82.4 s | 29.0 s, 53.0 s | 30.6, 45.9 MiB | 742 MiB |
+| 5 Mbit/s, 80 ms | 4/1 | 103.3 s | 82.3 s | 18.9 s, 32.1 s | 15.3, 30.6 MiB | 757 MiB |
+
+What the numbers say, and what they do not:
+
+- **The hold now keeps the host's memory bounded.** On a slow link the host peaks within 8 per cent of what it does on loopback (30 m: 255 to 284 MiB against 264; 10 m: 742 to 845 MiB against 829),
+  because what queues is about the hold mark and one frame, and the session's own arrays (about 190 MiB at 30 m, 650 MiB at 10 m) are what the host's memory is. With no hold the
+  queue is the whole run: +32 MiB for these 70 MiB runs, and for a long run it grows until the guard (64 MiB waiting for over 10 s) closes the session.
+- **The run takes as long with any hold**: the link is the limit (the rows of a link agree to within a few per cent, and the 100 Mbit/s rows, where the link is not much slower
+  than the engine's 15 MiB frames, agree too: a low release mark did not leave the link idle there).
+- **What the page waits for is set by what stands ahead of the answer**: about the hold mark plus the frame in flight plus the kernel's send buffer (4 MiB on this machine). So the
+  wait falls with the hold mark and has a floor, the frame: at 5 Mbit/s a ping waits about 11 s behind 2.2 MiB frames with the hold at 4 MiB and about 19 s behind 15 MiB frames.
+  **That is long.** A Pause on 5 Mbit/s is seen after 15 to 26 s at 30 m (the run goes on for that long in pictures already queued), and at 10 m the wait is the frames, not the hold.
+  Skipping snapshots of a run that is behind (the page would get fewer pictures, and the history it keeps is made of them) was not tried: it changes what the page receives and is a
+  decision for the owner.
+- **The pair is now 8 MiB and 4 MiB** (it was 16 and 4; `DEFAULT_HIGH_WATER_BYTES` in `server.ts`). The measurement says to lower the hold mark: the run is as long, the memory is no
+  higher and the waits fall by a quarter to two fifths (5 Mbit/s: 18.9 s to 13.9 s at 30 m; 20 Mbit/s: 7.2 s to 4.6 s at 10 m; 100 Mbit/s: 1.2 s to 0.7 s). 4 and 1 was lower still at
+  5 Mbit/s (10.9 s) and cost nothing in any shape measured; the release mark stays at 4 MiB because the cost of a low one for a link only a little faster than the engine's frames
+  was measured at 100 Mbit/s and not at 50 or 150, and the frames of a 9 km domain are larger than the ones measured.
+- **Not measured**: a real network (Wi-Fi's loss, jitter and shared medium; the TCP buffers of a phone, which are smaller than this machine's), a phone's browser decoding a frame,
+  `permessage-deflate` on a link (still off: unmeasured there), the real Katoomba demo site at 10 m (the 10 m rows are a synthetic scenario of the same size), and 4 h runs.
+
 **After a session closes the process keeps about two thirds of its peak, but it is the allocator's, not objects.** With a forced
 garbage collection the host's JavaScript heap was 8 MB and its external memory 4 MB after the worker's arrays were freed (the
 83 MB scenario: 1,578 MB resident with the session up, 1,194 MB after it closed). The rest is free memory that the C allocator
