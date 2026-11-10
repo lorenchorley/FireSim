@@ -5,6 +5,8 @@
  *     embers, the explain engine, the scenario, the session, the pace tracker, the tier choice (Auto) or any other file (a stray import would also pull the
  *     kernels into the entry chunk);
  *   - the test's own files import nothing of the app: no simulation, session, scenario, render or settings code (so it cannot read a run, and the worker stays tiny).
+ * One more file names the test, and only to keep a copy of its worker's script in memory (0.9.0, ui/desktop.ts: a page that a desktop host serves must still be able
+ * to run the test after that host has died): it takes the script's address and `setSpeedTestWorkerUrl` and nothing else (a test below), so it still reads and feeds no result.
  * Type-only imports count as imports: the fence is about knowing the other side exists.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -38,7 +40,7 @@ const ALL = sources(SRC).map((f) => ({ file: posix(relative(SRC, f)), abs: f }))
 const isTest = (f: string): boolean => /\.test\.tsx?$/.test(f) || /\.testing\.tsx?$/.test(f);
 const OWN = ['ui/speedTest.ts', 'ui/speedTest.worker.ts', 'ui/speedTestKernels.ts', 'ui/speedTestModel.ts'];
 /** The only files that may name a speedTest* module, besides the tests of the test itself. */
-const ALLOWED_IMPORTERS = new Set([...OWN, 'ui/debugStats.ts', 'ui/screens/debugStats.ts']);
+const ALLOWED_IMPORTERS = new Set([...OWN, 'ui/debugStats.ts', 'ui/screens/debugStats.ts', 'ui/desktop.ts']);
 const names = (spec: string): boolean => /(^|\/)speedTest[\w.]*$/.test(spec);
 
 describe('who may import the speed test', () => {
@@ -66,7 +68,24 @@ describe('who may import the speed test', () => {
 
   it('the app never builds the worker for anything else: only speedTest.ts names speedTest.worker', () => {
     const users = ALL.filter((f) => specifiers(f.abs).some((s) => /speedTest\.worker/.test(s))).map((f) => f.file);
-    expect(users.filter((f) => !isTest(f))).toEqual(['ui/speedTest.ts']);
+    expect(users.filter((f) => !isTest(f)).sort()).toEqual(['ui/desktop.ts', 'ui/speedTest.ts']); // desktop.ts only keeps a copy of the script (the next test)
+  });
+});
+
+describe('what ui/desktop.ts may do with the speed test (keep a copy of the worker script, and nothing that reads or feeds a result)', () => {
+  const src = (): string => readFileSync(join(SRC, 'ui', 'desktop.ts'), 'utf8');
+  const code = (): string => src().replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  it('names the worker only to take the address of its script, and the module only for setSpeedTestWorkerUrl', () => {
+    expect(specifiers(join(SRC, 'ui', 'desktop.ts')).filter((s) => /speedTest/.test(s)).sort()).toEqual(['./speedTest', './speedTest.worker.ts?worker&url']);
+    expect(code()).toContain("import speedWorkerUrl from './speedTest.worker.ts?worker&url';");
+    expect(code()).toContain('(await import(\'./speedTest\')).setSpeedTestWorkerUrl(speed)');
+    // the dynamic imports of the warm list load the chunk and use nothing of it
+    expect(code()).toContain("() => import('./speedTest'),");
+  });
+
+  it('never runs the test, reads a result of it or touches its kernels or model', () => {
+    expect(code()).not.toMatch(/runSpeedTest|SpeedTestResult|SpeedRaw|speedTestKernels|speedTestModel|measureAll/);
   });
 });
 

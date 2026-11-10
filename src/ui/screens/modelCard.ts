@@ -75,7 +75,8 @@ export function createModelCardScreen(opts: ModelCardOptions): { el: HTMLElement
       historyBudgetBytes: historyBudget,
       engineSource: opts.services.sources.sim,
       phone: { cores: nav?.hardwareConcurrency ?? null, memoryGb: nav?.deviceMemory ?? null },
-      onDesktop: !!opts.scenario && !!desktopSlot.get().run && !desktopSlot.get().run?.restarted,
+      // A run: whether it computes on the desktop. Before a run (Setup's preview): whether Desktop is the engine chosen, so the planning text names who will time the steps.
+      onDesktop: opts.scenario ? !!desktopSlot.get().run && !desktopSlot.get().run?.restarted : desktopSlot.get().host?.state.get().engine === 'desktop',
     };
   };
 

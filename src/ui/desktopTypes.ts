@@ -3,18 +3,32 @@
  * The modules themselves (src/sim/remote/*) are lane J1's and are only ever reached through a dynamic import, so the few names
  * the page uses are declared here, and a type-only file costs the entry chunk nothing.
  *
- * The page relies on exactly these names:
- *   detect.ts  `detectHost(opts?: { base?: string; timeoutMs?: number }): Promise<RemoteHostInfo | null>`
- *   index.ts   `connectRemote(o: { base: string; code: string }): Promise<RemoteConnection>` and `class RemoteAuthError extends Error`
- *   `RemoteHostInfo`: app, protocol, name, cores, node, sessions, maxSessions
- *   `RemoteConnection`: controller (a SimController), info (RemoteHostInfo), rttMs(), close()
+ * The page relies on exactly these names (protocol 2, docs/plans/0.9.0/CONTRACT-0.9.0.md section 4.2: the host says little before the code):
+ *   detect.ts  `detectHost(opts?: { base?: string; timeoutMs?: number }): Promise<RemoteHostProbe | null>`
+ *   index.ts   `connectRemote(o: { base: string; code: string; probe?: RemoteHostProbe }): Promise<RemoteConnection>` (`probe`: what `detectHost` said, so a host
+ *              of another version is refused at once, with no socket opened), `class RemoteAuthError extends Error` and `class RemoteVersionError extends
+ *              Error` (a page and a host of different protocols; its `pageProtocol` and `hostProtocol` are the two numbers)
+ *   `RemoteHostProbe`: app, protocol (any whole number: a host of another version is still a host), requiresCode
+ *   `RemoteHostInfo`: app, protocol (2), name, cores, node, sessions, maxSessions: what the host's welcome says, after the code
+ *   `RemoteConnection`: controller (a SimController), info (RemoteHostInfo), rttMs(), onClosed(cb), close()
  */
 import type { SimController } from '../sim/protocol';
 
-/** The host's answer (`RemoteHostInfo`). */
+/**
+ * What a host says to anyone, before the code (`RemoteHostProbe`): that it is a FireSim desktop host, the version of the link it speaks, and that it
+ * needs a code. A host of another version is still a host: the page offers it and `connectRemote` refuses it with a `RemoteVersionError`, so the person
+ * is told to update the app or the host and not that nothing answered.
+ */
+export interface HostProbe {
+  app: 'firesim-desktop-host';
+  protocol: number;
+  requiresCode: boolean;
+}
+
+/** What the host says of itself in its welcome, after the right code (`RemoteHostInfo`). */
 export interface HostInfo {
   app: 'firesim-desktop-host';
-  protocol: 1;
+  protocol: 2;
   name: string;
   cores: number;
   node: string;
@@ -38,20 +52,22 @@ export interface DesktopLink {
   onClosed?(cb: (reason: string) => void): () => void;
 }
 
-export type DetectFn = (opts?: { base?: string; timeoutMs?: number }) => Promise<HostInfo | null>;
-/** `info` is the answer of the check made at start-up: the connection does not ask the host again when it has it. */
-export type ConnectFn = (o: { base: string; code: string; info?: HostInfo }) => Promise<DesktopLink>;
+export type DetectFn = (opts?: { base?: string; timeoutMs?: number }) => Promise<HostProbe | null>;
+export type ConnectFn = (o: { base: string; code: string; probe?: HostProbe }) => Promise<DesktopLink>;
 
 /** The lazy remote module as the page checks it after loading (src/sim/remote/index.ts). */
 export interface RemoteModule {
   connectRemote: ConnectFn;
   RemoteAuthError?: abstract new (...args: never[]) => Error;
+  RemoteVersionError?: abstract new (...args: never[]) => Error;
 }
 
 /** `window.__firesimRemote`, honoured only with `?debug=1`: the two functions, replaced (the e2e specs put a stub controller behind it). */
 export interface RemoteSeam {
   detectHost?: DetectFn;
   connectRemote?: ConnectFn;
+  /** Is anything listening at `base` that the page may not read (a host that does not list this page's origin)? Only asked after `detectHost` found nothing, to tell "not there" from "not allowed". */
+  reach?: (base: string) => Promise<boolean>;
 }
 
 /**

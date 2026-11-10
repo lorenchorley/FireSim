@@ -21,8 +21,15 @@
  *      and a client with no Origin and no code never gets a session
  *   7. inside the Capacitor app (the real bridge, emulated) the page asks the host nothing and shows no Engine row
  * Each test starts its own host (so the rate limit of 3 cannot reach another) and stops it by its process id.
+ *
+ * 0.9.0 (workstream P): written for the host of protocol 2 (contract docs/plans/0.9.0/CONTRACT-0.9.0.md section 4.2: `GET /__firesim/host` says only
+ * `{ app, protocol: 2, requiresCode }`; the name and the cores come with the welcome, so the chip says "Desktop" until then; the session count is no
+ * longer public, so what the host frees is pinned by its own tests, desktop/server.test.ts). It is SKIPPED, with the reason, on a tree whose host is
+ * still protocol 1 (the marker is the host's `--allow-origin` flag, lane H's): the orchestrator's merge of lane H turns it on. The typed address
+ * and a page from another origin are e2e/desktop-cross-origin.spec.ts. Case 7 now says what the Capacitor app does: asks nothing, shows the row.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { availableParallelism, networkInterfaces } from 'node:os';
@@ -31,10 +38,16 @@ import { test as plain, type Locator, type Page } from '@playwright/test';
 import WebSocket from 'ws';
 import { emulateCapacitorAndroid } from './androidBridge';
 import { expect, test } from './fixtures';
+import { untilQuiet } from './desktopStub';
 import { acceptNotice } from './helpers';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CODE = 'ABCD2345';
+/** Lane H's host (protocol 2, `--allow-origin`, `--allow-app`) is in this tree: its flag parser names the flag. Until then this spec is skipped, never deleted. */
+const HOST_IS_PROTOCOL_2 = readFileSync(new URL('../desktop/cli.ts', import.meta.url), 'utf8').includes('allow-origin');
+const NOT_MERGED = 'lane H is not merged: the host in this tree (desktop/cli.ts) has no --allow-origin and still speaks protocol 1';
+test.skip(!HOST_IS_PROTOCOL_2, NOT_MERGED);
+plain.skip(!HOST_IS_PROTOCOL_2, NOT_MERGED);
 const NAME = 'FireSim e2e';
 const CORES = availableParallelism();
 /** This machine's non-loopback IPv4 address, if it has one (what a phone on the same network would use). */
@@ -121,19 +134,11 @@ test.afterAll(async () => {
   hosts.clear();
 });
 
-interface HostAnswer {
-  app: string;
-  protocol: number;
-  name: string;
-  cores: number;
-  node: string;
-  sessions: number;
-  maxSessions: number;
-}
-/** What the host says of itself (a request from this test, not from the page: the page's own are counted separately). */
-const hostSays = async (h: Host): Promise<HostAnswer> => (await fetch(`${h.origin}/__firesim/host`)).json() as Promise<HostAnswer>;
-const sessionsOf = async (h: Host): Promise<number> => (await hostSays(h)).sessions;
-const waitSessions = (h: Host, n: number, what: string): Promise<void> => expect.poll(() => sessionsOf(h), { message: what, timeout: 20_000, intervals: [250] }).toBe(n);
+/**
+ * What the host says to anyone (a request from this test, not from the page: the page's own are counted separately). Protocol 2: that it is a
+ * FireSim host, the protocol and that it wants a code, and nothing else (the name, the cores and the sessions wait for the welcome, after the code).
+ */
+const hostSays = async (h: Host): Promise<unknown> => (await fetch(`${h.origin}/__firesim/host`)).json();
 
 const row = (page: Page): Locator => page.getByTestId('engine-row');
 const codeBox = (page: Page): Locator => page.getByTestId('engine-code');
@@ -168,8 +173,8 @@ const state = (page: Page) =>
 const hasPicture = (page: Page): Promise<boolean> => state(page).then((s) => s.hasSnapshot);
 const head = (page: Page): Promise<number> => state(page).then((s) => s.headTime);
 
-/** The simulation's own Web Worker (the in-page engine); the speed test's and any other worker do not match. */
-const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url())).length;
+/** The simulation's own Web Worker (the in-page engine), started from its own script or (since 0.9.0, on a page a host serves) from the copy kept in memory (a blob address); the speed test's worker is a blob only while that test runs. */
+const simWorkers = (page: Page): number => page.workers().filter((w) => /\/assets\/worker-[^/]*\.js/.test(w.url()) || w.url().startsWith('blob:')).length;
 
 /** Opens the Simulation debug statistics, reads its "Run" group and closes it again. */
 async function runStatistics(page: Page): Promise<string> {
@@ -194,7 +199,7 @@ const sameOrigin = (url: string, origin: string): boolean => new URL(url).origin
 const lap = (label: string, t0: number): void => console.log(`[desktop-real] ${label}: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 
 /** Opens `url` (the host's page with a code), accepts the notice, builds the real Katoomba run on the desktop engine and waits for the first picture. */
-async function runOnDesktop(page: Page, url: string, host: Host): Promise<void> {
+async function runOnDesktop(page: Page, url: string): Promise<void> {
   await page.goto(url);
   await acceptNotice(page);
   await expect(row(page)).toBeVisible();
@@ -202,7 +207,6 @@ async function runOnDesktop(page: Page, url: string, host: Host): Promise<void> 
   await chooseAndBuild(page);
   await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
   await expect.poll(() => hasPicture(page), { message: 'the first picture comes from the host', timeout: 60_000 }).toBe(true);
-  await waitSessions(host, 1, 'the host counts the run as one session');
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -224,13 +228,13 @@ test('1. a page served by the host: the Engine row, Desktop preselected, the cod
     await acceptNotice(page);
     await expect(row(page)).toBeVisible();
     await expect(chip(page, 'device')).toContainText('This device');
-    await expect(chip(page, 'desktop')).toContainText(`Desktop (${NAME}, ${CORES} cores)`);
+    await expect(chip(page, 'desktop')).toHaveText('Desktop'); // protocol 2: the host has not said who it is yet (the code has not been used)
     await expect(chip(page, 'desktop').locator('input')).toBeChecked(); // a code came with the address
     await expect(codeBox(page)).toBeHidden();
     await expect(page.getByTestId('engine-hint')).toHaveText('The simulation runs on the desktop computer. The code came with the link you opened.');
     await expect(page).not.toHaveURL(/#|code/);
     expect(await page.evaluate(() => location.hash)).toBe('');
-    expect(await sessionsOf(host)).toBe(0);
+    expect(await hostSays(host), 'before the code the host says only that it is a FireSim host, its protocol and that it wants a code').toEqual({ app: 'firesim-desktop-host', protocol: 2, requiresCode: true });
     const asksAtSetup = requests.filter((r) => new URL(r.url).pathname === '/__firesim/host');
     expect(asksAtSetup, 'the page asked the host once before Build').toHaveLength(1);
     expect(asksAtSetup[0]!.method).toBe('GET');
@@ -240,8 +244,7 @@ test('1. a page served by the host: the Engine row, Desktop preselected, the cod
     await expect(page.getByTestId('sim')).toBeVisible({ timeout: 180_000 });
     await expect.poll(() => hasPicture(page), { message: 'snapshots arrive from the host', timeout: 60_000 }).toBe(true);
     lap('1 first picture from the host', t0);
-    expect(await sessionsOf(host), 'one session while the run is on').toBe(1);
-    expect(await (await fetch(`${host.origin}/__firesim/host`)).text(), 'the host says who it is and nothing else').not.toMatch(/ABCD2345|\/home|\/root|dist/);
+    expect(await (await fetch(`${host.origin}/__firesim/host`)).text(), 'the host says who it is and nothing else').not.toMatch(/ABCD2345|\/home|\/root|dist|firesim e2e|cores/i);
 
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { message: 'the time advances on Play (the host computes)', timeout: 120_000 }).toBeGreaterThan(200);
@@ -254,10 +257,12 @@ test('1. a page served by the host: the Engine row, Desktop preselected, the cod
     expect(stats).toContain('Engine runs on');
     expect(stats).toMatch(new RegExp(`Desktop ${NAME}, ${CORES} cores, Node ${process.versions.node.replace(/\./g, '\\.')}, link [\\d.]+ ms`));
 
-    // leaving the run frees the host's session
+    // leaving the run: back on Setup the chip names the desktop from its welcome (the second step of the label). That the host frees the session is
+    // pinned by its own tests (desktop/server.test.ts): since protocol 2 the count is no longer public before the code.
     await leaveToSetup(page);
-    await waitSessions(host, 0, 'the host frees the session once the page leaves the run');
-    lap('1 left the run, session freed', t0);
+    await expect(chip(page, 'desktop')).toHaveText(`Desktop (${NAME}, ${CORES} cores)`);
+    await untilQuiet(() => requests.length, 3, 30_000); // Setup shown again with Desktop chosen keeps the chosen site's files once more: let that finish before the host is stopped
+    lap('1 left the run', t0);
 
     // what the page asked, and of whom
     const all = requests.filter((r) => /^https?:/.test(r.url));
@@ -297,9 +302,9 @@ test('2. This device on a host page: the in-page engine computes (the demo engin
     await expect(page.locator('.mock-banner')).toHaveText('Demo engine'); // the in-page engine under ?mock=1
     expect(sockets, 'no engine link was opened').toEqual([]);
     expect(requests.filter((u) => /__firesim\/engine/.test(u))).toEqual([]);
-    expect(await sessionsOf(host)).toBe(0);
     await page.waitForTimeout(1500);
-    expect(await sessionsOf(host)).toBe(0);
+    expect(sockets, 'still no engine link').toEqual([]);
+    expect((await hostSays(host)) as { protocol: number }).toMatchObject({ protocol: 2 }); // the host is still there and was never given a code
     lap('2 total', t0);
   } finally {
     await host.stop();
@@ -321,7 +326,7 @@ test('3. a wrong code: said next to the box, nothing is built, no session; after
       await expect(page.getByTestId('engine-problem')).toContainText(words[1]!);
       await expect(page.getByTestId('setup')).toBeVisible();
       await expect(page.getByTestId('building')).toHaveCount(0); // nothing is built
-      expect(await sessionsOf(host), `try ${n}: no session`).toBe(0);
+      await expect(chip(page, 'desktop')).toHaveText('Desktop'); // a refused code tells the page nothing of the host
     };
     await wrongTry(null, 1);
     await expect(codeBox(page)).toBeVisible(); // the refused code is forgotten and the box asks for another
@@ -337,7 +342,7 @@ test('3. a wrong code: said next to the box, nothing is built, no session; after
     const close = await new Promise<number>((resolve, reject) => {
       const ws = new WebSocket(`ws://${new URL(host.origin).host}/__firesim/engine`);
       const t = setTimeout(() => reject(new Error('no answer')), 10_000);
-      ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: 1, code: CODE })));
+      ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: 2, code: CODE })));
       ws.on('message', () => resolve(0)); // a welcome would be a failure
       ws.on('close', (c) => {
         clearTimeout(t);
@@ -363,7 +368,7 @@ test('4. the host is killed mid-run: the chip says the link closed, nothing swit
   try {
     const requests: string[] = [];
     context.on('request', (r) => requests.push(r.url()));
-    await runOnDesktop(page, `${host.origin}/?debug=1#code=${CODE}`, host);
+    await runOnDesktop(page, `${host.origin}/?debug=1#code=${CODE}`);
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { timeout: 120_000 }).toBeGreaterThan(150);
     // mark one fire and one wind change, then let it play on
@@ -454,7 +459,7 @@ test('4b. the host dies and nothing was opened or fetched since the link opened:
   test.setTimeout(240_000);
   const host = await startHost();
   try {
-    await runOnDesktop(page, `${host.origin}/?debug=1#code=${CODE}`, host);
+    await runOnDesktop(page, `${host.origin}/?debug=1#code=${CODE}`);
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { timeout: 120_000 }).toBeGreaterThan(60);
     await host.kill();
@@ -507,7 +512,7 @@ test('5. --lan: the page opened through the non-loopback IPv4 address (as a phon
     const requests: string[] = [];
     context.on('request', (r) => requests.push(r.url()));
     const origin = new URL(url!).origin;
-    await runOnDesktop(page, `${origin}/?debug=1#code=${CODE}`, { ...host, origin });
+    await runOnDesktop(page, `${origin}/?debug=1#code=${CODE}`);
     expect(await page.evaluate(() => window.isSecureContext), 'a page opened by a LAN address is not a secure context, as on a phone').toBe(false);
     await page.getByTestId('play').click();
     await expect.poll(() => head(page), { timeout: 120_000 }).toBeGreaterThan(200);
@@ -515,7 +520,8 @@ test('5. --lan: the page opened through the non-loopback IPv4 address (as a phon
     expect(simWorkers(page), 'the one idle standby worker, nothing else').toBe(1);
     expect(requests.filter((u) => /^https?:/.test(u) && !sameOrigin(u, origin))).toEqual([]);
     await leaveToSetup(page);
-    await expect.poll(async () => (await (await fetch(`${origin}/__firesim/host`)).json() as HostAnswer).sessions, { timeout: 20_000 }).toBe(0);
+    await expect(chip(page, 'desktop')).toHaveText(`Desktop (${NAME}, ${CORES} cores)`);
+    await untilQuiet(() => requests.length, 3, 30_000); // Setup shown again with Desktop chosen keeps the chosen site's files once more: let that finish before the host is stopped
     lap('5 total', t0);
   } finally {
     await host.stop();
@@ -567,7 +573,7 @@ plain('6. a page of another origin cannot open the engine link or read the host;
           resolve(`http ${res.statusCode}`);
           req.destroy();
         });
-        ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: 1 }))); // no code
+        ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', protocol: 2 }))); // no code
         ws.on('close', (c) => resolve(`closed ${c}`));
         ws.on('message', () => resolve('welcome'));
         ws.on('error', () => undefined);
@@ -575,7 +581,6 @@ plain('6. a page of another origin cannot open the engine link or read the host;
     expect(await handshake({ Origin: otherOrigin }), 'a page of another origin').toBe('http 403');
     expect(await handshake({ Origin: 'null' }), 'a sandboxed or file page').toBe('http 403');
     expect(await handshake({}), 'no Origin and no code').toBe('closed 4400');
-    expect(await sessionsOf(host)).toBe(0);
     lap('6 total', t0);
   } finally {
     other.close();
@@ -583,7 +588,7 @@ plain('6. a page of another origin cannot open the engine link or read the host;
   }
 });
 
-test('7. inside the Capacitor app the page asks the host nothing and shows no Engine row', async ({ page, context }) => {
+test('7. inside the Capacitor app the page asks the host nothing at start-up; it shows the Engine row with an address box instead (the typed address, 0.9.0)', async ({ page, context }) => {
   test.setTimeout(90_000);
   const t0 = Date.now();
   const host = await startHost();
@@ -598,11 +603,15 @@ test('7. inside the Capacitor app the page asks the host nothing and shows no En
     await expect(page.getByTestId('setup')).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { Capacitor: { isNativePlatform(): boolean } }).Capacitor.isNativePlatform())).toBe(true);
     await page.waitForTimeout(2500); // the host check has an 800 ms limit
-    expect(requests.filter((u) => /__firesim/.test(u))).toEqual([]);
-    expect(requests.filter((u) => /\/assets\/(desktop|detect|remote)-[^/]*\.js/.test(u)), 'the desktop chunks are not even fetched').toEqual([]);
-    await expect(row(page)).toHaveCount(0);
-    await expect(page.getByTestId('engine')).toHaveCount(0);
-    expect(await sessionsOf(host)).toBe(0);
+    expect(requests.filter((u) => /__firesim/.test(u)), 'nothing is asked of the host that served the page: the app has no host of its own to ask').toEqual([]);
+    expect(requests.filter((u) => /\/assets\/remote-[^/]*\.js/.test(u)), 'the wire (the remote chunk) is not fetched until a run starts on the desktop').toEqual([]);
+    // 0.9.0 (D36): the row is there, with This device chosen and the desktop to be found by the address the person types
+    await expect(row(page)).toBeVisible();
+    await expect(chip(page, 'device').locator('input')).toBeChecked();
+    await expect(chip(page, 'desktop')).toHaveText('Desktop (another computer)');
+    await chip(page, 'desktop').click();
+    await expect(page.getByTestId('engine-address')).toBeVisible();
+    expect(requests.filter((u) => /__firesim/.test(u)), 'choosing Desktop asks nothing either: only Build does').toEqual([]);
     lap('7 total', t0);
   } finally {
     await host.stop();

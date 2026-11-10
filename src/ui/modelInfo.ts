@@ -223,6 +223,9 @@ const km = (mm: number): string => `${formatNumber(mm / 1000, mm % 1000 === 0 ? 
 /** A size with a no-break space before the unit. */
 const bytes = (b: number): string => formatBytes(b).replace(/ /g, NB);
 
+/** Who computes the run: the planning text says "the desktop" when a desktop does (0.9.0: it said "this phone" whatever the engine), else "this phone". */
+const engineWhere = (input: Pick<ModelCardInput, 'onDesktop'>): string => (input.onDesktop ? 'the desktop' : 'this phone');
+
 /**
  * The only 3-D air step measured on a phone so far (ms, the first 20 steps with their warm-up, from the phone readout that
  * started the 0.3.0 plan): quoted in the Auto wording in place of the old guess that most phones are too slow, until the debug
@@ -376,6 +379,8 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
   const dt = live ? e.atmosphere.currentStepS : null;
   const is3d = atmosphereIs3d(n, e);
   const rows: ModelRow[] = [];
+  /** Who computes the run and times its own steps: the planning text follows the engine (0.9.0). */
+  const where = engineWhere(input);
 
   // Terrain
   const terr = record(sc, 'terrain');
@@ -543,10 +548,14 @@ function glanceRows(input: ModelCardInput, n: Numbers, e: EngineInfo | null): Mo
     rows.push({
       id: 'atmosphere',
       component: 'Atmosphere (the air)',
-      dimensions: 'Auto: decided when the run starts, from a short timing test on this phone. 3-D air flow unless it would take far too long, else the fast mode (the forecast wind fitted to the terrain)',
+      dimensions: `Auto: decided when the run starts, from a short timing test on ${where}. 3-D air flow unless it would take far too long, else the fast mode (the forecast wind fitted to the terrain)`,
       resolution: `3-D: ${describeAtm(a)}. Fast mode: the forecast wind fitted to the terrain on ${grid2(f.nx, f.ny)} columns`,
       timeStep: `3-D: ${secs(ATMOS_PARAMS.dtMin)} to ${secs(SIM_PARAMS.dtMaxS)}; fast mode: ${secs(FAST_TIER_STEP_S)}`,
-      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it unless the whole run is predicted to take longer than the time limit (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). On the one phone measured so far the 3-D step took about ${FIRST_PHONE_STEP_MS} ms, so Auto chooses the 3-D air; how other phones do is not yet measured (spec §16 item 20). The 3-D air can fall behind when you play faster than the phone computes; the timeline says so.`,
+      method: `At the start the engine times ${SIM_PARAMS.autoTuneSteps} steps of the 3-D air and keeps it unless the whole run is predicted to take longer than the time limit (about ${formatNumber(SIM_PARAMS.autoTuneBudgetS)} s for ${formatDuration(SIM_PARAMS.autoTuneBudgetRefS)} of fire). ${
+        input.onDesktop
+          ? 'The desktop does that timing itself, on its own processor: the one phone measured so far says nothing about it, and the speed it measures is shown under Speed and memory once the run reports.'
+          : `On the one phone measured so far the 3-D step took about ${FIRST_PHONE_STEP_MS} ms, so Auto chooses the 3-D air; how other phones do is not yet measured (spec §16 item 20).`
+      } The 3-D air can fall behind when you play faster than ${where} computes; the timeline says so.`,
       evidence: 'partly',
       evidenceNote: 'See the two modes: 3-D (spec §8.4) or fitted surface wind (spec §8.9); the speed rule is spec §12.6',
       specRef: '§8, §12.6',
@@ -917,7 +926,7 @@ function engineFacts(input: ModelCardInput, e: EngineInfo | null): CardBlock[] {
     { id: 'eng-tier', key: 'Atmosphere tier', value: TIER_NAME[e.tier], note: tierWords(e, input.settings), live: true },
     {
       id: 'eng-speed',
-      key: `Computing speed on ${input.onDesktop ? 'the desktop' : 'this phone'}`,
+      key: `Computing speed on ${engineWhere(input)}`,
       value: ok(e.run.simSecondsPerWallSecond) ? `${formatCount(Math.round(e.run.simSecondsPerWallSecond))} s of fire per second` : 'Not measured yet',
       note: ok(e.run.meanStepMs)
         ? `One step takes ${formatNumber(e.run.meanStepMs, e.run.meanStepMs < 10 ? 1 : 0)} ms${ok(a.meanStepMs) ? `, of which the air ${formatNumber(a.meanStepMs, a.meanStepMs < 10 ? 1 : 0)} ms` : ''} (average for this tier); you asked for ${formatPlaybackSpeed(input.settings.defaultSpeed > 0 ? input.settings.defaultSpeed : Infinity)}`
@@ -952,7 +961,7 @@ export const GLOSSARY: readonly { term: string; gloss: string }[] = [
   { term: 'Head, flank, back', gloss: 'The fastest part of the fire front, its sides, and the part that backs into the wind or downhill.' },
   { term: 'Time step, sub-step', gloss: 'How far the clock jumps between two calculations; a sub-step is a smaller jump inside one step.' },
   { term: 'CFL limit', gloss: 'A step must be short enough that nothing moves more than about one cell in it; faster fire or wind means shorter steps.' },
-  { term: 'Tier', gloss: 'How much of the air the phone simulates: Fast (the forecast wind fitted to the terrain), Standard (3-D air) or High (finer 3-D air). Auto: decided when the run starts, from a short timing test on this phone.' },
+  { term: 'Tier', gloss: 'How much of the air is simulated: Fast (the forecast wind fitted to the terrain), Standard (3-D air) or High (finer 3-D air). Auto: decided when the run starts, from a short timing test on the device that computes the run (this phone, or the desktop).' },
   { term: 'Mass-consistent wind', gloss: 'A wind adjusted so that no air piles up or disappears: it flows around hills and through gaps.' },
   { term: 'Boussinesq flow', gloss: 'A standard simplification of the equations of moving air, good for winds near the ground.' },
   { term: 'Terrain-following grid', gloss: 'Air levels that follow the shape of the ground near the surface and flatten out higher up.' },
@@ -973,7 +982,7 @@ export const GLOSSARY: readonly { term: string; gloss: string }[] = [
 // Headline and the whole card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function headlineOf(mode: ModelCard['mode'], n: Numbers | null, e: EngineInfo | null): string {
+function headlineOf(mode: ModelCard['mode'], n: Numbers | null, e: EngineInfo | null, input: Pick<ModelCardInput, 'onDesktop'>): string {
   if (mode === 'mock') return 'Demo engine: the fire on screen is drawn by a simple stand-in, not simulated.';
   if (!n) return 'Choose a place and the weather in Setup to see how this simulation will work.';
   const lead = mode === 'live' ? '' : 'Planned: ';
@@ -981,7 +990,7 @@ function headlineOf(mode: ModelCard['mode'], n: Numbers | null, e: EngineInfo | 
   const is3d = atmosphereIs3d(n, e);
   if (is3d === true) return `${fire}; the air above it is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart).`;
   if (is3d === false) return `${fire}; the wind is the forecast fitted to the terrain, with no air flow simulated through time (fast mode).`;
-  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) unless a short timing test on this phone, when the run starts, finds it far too slow; then the wind is the forecast fitted to the terrain (fast mode).`;
+  return `${fire}; the air is simulated in 3-D (${grid2(n.atm.nx, n.atm.ny)}${NB}× ${n.atm.nz} cells, ${m(n.atm.dxM)} apart) unless a short timing test on ${engineWhere(input)}, when the run starts, finds it far too slow; then the wind is the forecast fitted to the terrain (fast mode).`;
 }
 
 /** The whole card (pure). */
@@ -1065,7 +1074,7 @@ export function describeModel(input: ModelCardInput): ModelCard {
         : mode === 'preview'
           ? 'A preview of your Setup choice: the numbers are planned with the rules the builder and the engine use.'
           : 'The demo engine is running: nothing here is being simulated.';
-  return { mode, title: 'How this simulation works', headline: headlineOf(mode, n, e), subtitle, sections };
+  return { mode, title: 'How this simulation works', headline: headlineOf(mode, n, e, input), subtitle, sections };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

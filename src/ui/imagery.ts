@@ -31,6 +31,17 @@ function loadImage(url: string, signal?: AbortSignal): Promise<HTMLImageElement>
   });
 }
 
+/**
+ * The photo of one demo site held in memory, as the address of a Blob (0.9.0, ui/desktop.ts): a page that a desktop host serves keeps the chosen site's
+ * files while Desktop is chosen, so that "Continue on this device" still builds if the host dies first, and the 3-D view still gets its photo then.
+ * `url` null lets it go. Nothing else knows of it: without one the photo is read from where it always was.
+ */
+const keptPhoto = new Map<string, string>();
+export function keepSitePhoto(siteId: string, url: string | null): void {
+  if (url === null) keptPhoto.delete(siteId);
+  else keptPhoto.set(siteId, url);
+}
+
 /** URL of a demo site's bundled imagery (for thumbnails). */
 export function demoImageryUrl(siteId: string): string {
   return new URL(`demo/${siteId}/imagery.jpg`, resolveAssetBase()).href;
@@ -48,7 +59,7 @@ export async function loadScenarioImagery(grid: GridSpec, demoSiteId?: string, s
     const crop = imageryCrop(info.meta, grid);
     if (!crop) continue;
     try {
-      const img = await loadImage(new URL(info.url, location.href).href, signal);
+      const img = await loadImage(keptPhoto.get(id) ?? new URL(info.url, location.href).href, signal);
       const scale = Math.min(1, 2048 / Math.max(crop.sw, crop.sh));
       const w = Math.max(64, Math.round(crop.sw * scale));
       const hgt = Math.max(64, Math.round(crop.sh * scale));
