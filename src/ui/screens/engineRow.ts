@@ -15,6 +15,7 @@ import { ADDRESS_LABEL, ADDRESS_PLACEHOLDER, CODE_LABEL, CODE_PLACEHOLDER, CONTI
 import { h, setChildren, show, uniqueId } from '../dom';
 import { icon } from '../icons';
 import { button, chipChoice } from '../widgets';
+import { mountDetailRow } from './desktopDetailRow';
 
 const PROBLEM_WORDS = {
   'needs-code': ENGINE_PROBLEM.needsCode,
@@ -94,6 +95,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
   const note = h('div', { class: 'engine-note', id: hintId, attrs: { 'aria-live': 'polite' }, dataset: { testid: 'engine-note' } });
   const row = h('div', { class: 'engine-row', dataset: { testid: 'engine-row' } }, [choice.el, addressField, field, note]);
   card.append(row);
+  const unmountDetail = mountDetailRow(host, card); // the Desktop detail (0.9.0), under this row while the desktop is chosen
 
   let shown = '';
   let shownOptions = '';
@@ -146,6 +148,7 @@ export function mountEngineRow(host: DesktopHost, card: HTMLElement, build: () =
   const unsub = host.state.subscribe(draw);
   return () => {
     unsub();
+    unmountDetail();
     row.remove();
   };
 }

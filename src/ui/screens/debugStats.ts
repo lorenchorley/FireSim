@@ -11,13 +11,14 @@
  * the clipboard the text appears in a box to touch and hold. Nothing leaves the phone. Escape and Android Back close it (the
  * App forwards Back as Escape); Tab stays inside.
  */
-import type { ScenarioData } from '../../core/types';
+import type { DesktopDetailLevel, ScenarioData } from '../../core/types';
 import { DEMO_SITES } from '../../data/demoSites';
 import type { SceneViewApi } from '../../render/api';
 import { liveMemory } from '../../scenario/memoryModel';
 import { bootErrors } from '../bootDiagnostics';
 import { APP_VERSION, BUILD_MODE, buildId } from '../buildInfo';
 import { buildDebugStats, debugStatsToText, TITLE, type DebugStats, type DebugStatsInput, type StatGroup, type StatRow } from '../debugStats';
+import { levelOf } from '../desktopDetailChoice';
 import { desktopSlot } from '../desktopSlot';
 import { deviceInfoNow, deviceLater, deviceVolatile, type DeviceLater } from '../deviceInfo';
 import { h, setChildren, svg, text, uniqueId } from '../dom';
@@ -64,6 +65,12 @@ function desktopFacts(): DebugStatsInput['desktop'] {
   return r ? { name: r.name, cores: r.cores, node: r.node, rttMs: r.rttMs(), closed: r.closed, restarted: !!r.restarted } : null;
 }
 
+/** The finer Desktop detail the run was made with (0.9.0), as the statistics' run facts take it; nothing for the standard detail. */
+function detailOf(sc: ScenarioData): { detail?: { level: DesktopDetailLevel; embersMax: number } } {
+  const level = levelOf(sc.options);
+  return level ? { detail: { level, embersMax: sc.options.maxEmbers } } : {};
+}
+
 /** What the app knows right now, gathered for the pure content. */
 function collect(o: DebugStatsOptions, later: DeviceLater | null, speedTest: DebugStatsInput['speedTest']): DebugStatsInput {
   const st = o.session?.state.get() ?? null;
@@ -76,7 +83,7 @@ function collect(o: DebugStatsOptions, later: DeviceLater | null, speedTest: Deb
     engine: st?.snapshot?.engine ?? null,
     engineSource: o.services.sources.sim,
     desktop: desktopFacts(),
-    run: sc ? { id: sc.id, extentM: sc.extent, fireCellM: sc.terrain.grid.cellSize, durationS: sc.duration, startTimeMs: sc.startTime, seed: sc.options.seed } : null,
+    run: sc ? { id: sc.id, extentM: sc.extent, fireCellM: sc.terrain.grid.cellSize, durationS: sc.duration, startTimeMs: sc.startTime, seed: sc.options.seed, ...detailOf(sc) } : null,
     playback: st ? { playing: st.playing, viewTime: st.viewTime, headTime: st.headTime, speed: st.speed, seeking: st.seekTarget !== null, reviewing: st.reviewing, pace: st.pace, workerSpeed: st.workerSpeed } : null,
     frames: o.view?.frameStats?.() ?? null,
     longTasks: { supported: longTasks.supported, ...longTasks.recent(performance.now()) },

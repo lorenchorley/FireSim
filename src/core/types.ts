@@ -655,7 +655,16 @@ export interface SimOptions {
   tier?: 'auto' | QualityTier;
   /** First-level thickness Δζ₁ (m); tier default. */
   atmosDz1?: number;
+  /**
+   * 0.9.0 (D35): the Desktop detail the run was built with, absent for the standard detail (so a standard run is exactly what 0.8.0 built).
+   * The engine never reads it: the cell size and the ember cap it implies are already in `fireCellSize` and `maxEmbers`. It is the
+   * record that says "finer grid, results differ, not validated", so the label, the statistics and a restart on this device carry it.
+   */
+  desktopDetail?: DesktopDetailLevel;
 }
+
+/** The finer fire grids the desktop offers (0.9.0): 20 m and 10 m cells. The standard detail is the absence of the choice. */
+export type DesktopDetailLevel = 'finer' | 'finest';
 
 export type QualityTier = 'fast' | 'standard' | 'high';
 

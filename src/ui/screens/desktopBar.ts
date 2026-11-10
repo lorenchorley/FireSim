@@ -9,6 +9,7 @@
  * open is only a message in the chip. The action is all or nothing: the button stays, busy, until this device's engine has started; if it
  * cannot, the chip says so in a sentence and the same button tries again with a fresh engine.
  */
+import { detailChoice } from '../desktopDetailChoice';
 import { continueOnDevice } from '../desktopRestart';
 import { desktopSlot, type DecorateOptions, type DesktopApi } from '../desktopSlot';
 import { CLOSED_LINK, CONTINUE_BUSY, CONTINUE_FAILED, CONTINUE_HERE, RESTARTED_HERE } from '../desktopWords';
@@ -28,6 +29,9 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
   const details = o.chip.querySelector('.error-chip-btn');
   errorText.classList.add('error-chip-says');
   o.chip.classList.add('error-chip-acts');
+  // A run with a finer Desktop detail that this device cannot run by itself (0.9.0, D35): the chip says so and offers the standard detail instead of a restart
+  // that would fail; the grid is never lowered for the person, who sets up again (desktopDetailRun.ts decides, from the run's own grid and the device's memory).
+  const refusal = o.continueRefusal?.() ?? null;
   let again = false; // the run is this device's now
   let busy = false;
   let failed = false;
@@ -40,6 +44,12 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
       dataset: { testid: 'continue-here' },
       on: {
         click: () => {
+          if (refusal) {
+            detailChoice.set({ level: 'standard' });
+            host.choose('device');
+            o.exit?.();
+            return;
+          }
           const proxy = host.proxy();
           if (!proxy || busy || again) return;
           busy = true;
@@ -90,6 +100,11 @@ export function decorateSim(host: DesktopApi, o: DecorateOptions): () => void {
     }
     if (s.error) text(errorText, failed ? CONTINUE_FAILED : ended ? (r?.closedReason ?? s.error) : s.error);
     text(go, busy ? CONTINUE_BUSY : CONTINUE_HERE);
+    if (refusal && ended && s.error) {
+      text(errorText, `${r?.closedReason ?? s.error} ${refusal.short}`);
+      errorText.title = refusal.sentence;
+      text(go, refusal.action);
+    }
     go.disabled = busy;
     show(go, ended && !!s.error);
   }

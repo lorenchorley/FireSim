@@ -11,9 +11,10 @@
  * (people paste this into messages and a developer reads them), and the text ends with a marker so a cut-off paste shows.
  */
 import { formatBytes } from '../core/datasets';
-import type { EngineInfo, QualityTier } from '../core/types';
+import type { DesktopDetailLevel, EngineInfo, QualityTier } from '../core/types';
 import type { FrameStatsInfo, QualityInfo, TerrainDrawStats, WindGlyphStats } from '../render/api';
 import type { SliceRecordingStatus } from '../render/slice/types';
+import { DETAIL_LABEL, runLabel, statsWords } from './desktopDetail';
 import { cleanName, coresWords, engineWhereText } from './desktopWords';
 import { phoneIdentity, type DeviceLater, type DeviceNow } from './deviceInfo';
 import type { EventKind, LogEvent } from './eventLog';
@@ -47,6 +48,8 @@ export interface RunFacts {
   /** Scenario start (ms since the epoch): a date in the model, not a place. */
   startTimeMs: number;
   seed: number;
+  /** 0.9.0 (D35): the run was made with a finer Desktop detail ("Finer grid, results differ, not validated"); absent or null for the standard detail. */
+  detail?: { level: DesktopDetailLevel; embersMax: number } | null;
 }
 
 /** The computer a run computes on, when it is not this device (the page's DesktopRun with the link's round trip read at this moment). */
@@ -188,6 +191,8 @@ export interface DebugStats {
     seed: string | null;
     /** The one word the screen shows under the title: Live, Paused, Finished, No run yet, Demo engine. */
     status: 'Live' | 'Paused' | 'Finished' | 'No run yet' | 'Demo engine';
+    /** A run made with a finer Desktop detail (0.9.0): the label, so a pasted copy cannot be taken for a standard run. Absent for the standard detail. */
+    detail?: string;
   };
   groups: StatGroup[];
 }
@@ -321,7 +326,9 @@ function summaryGroup(i: DebugStatsInput): StatGroup {
     const where = i.desktop && !i.desktop.restarted ? `On the desktop (${cleanName(i.desktop.name)}, ${coresWords(i.desktop.cores)}): ` : '';
     line = `${where}${TIER_NAME[e.tier]}, computing ${ok(s) ? `about ${speedX(s)}` : 'at a speed not measured yet'}${asked}; engine memory ${e.memory ? bytes(e.memory.totalBytes) : 'not measured yet'}; this phone: ${phone}.`;
   }
-  return G('summary', 'Summary', [R('headline', 'In one line', line, undefined, true)], 'Tier, speed, memory and this phone in one line');
+  // A run made with a finer Desktop detail (0.9.0) starts with the label, whichever engine is reporting, so a pasted headline cannot be taken for a standard run.
+  const finer = i.run?.detail ? `${runLabel(i.run.detail.level)}. ` : '';
+  return G('summary', 'Summary', [R('headline', 'In one line', `${finer}${line}`, undefined, true)], 'Tier, speed, memory and this phone in one line');
 }
 
 function runGroup(i: DebugStatsInput): StatGroup {
@@ -341,6 +348,7 @@ function runGroup(i: DebugStatsInput): StatGroup {
       R('place', 'Place', bundledSite(r.id, i.siteNames) ?? 'A custom place (its name and position are never copied)'),
       R('area', 'Area', `${km} square`),
       R('cell', 'Fire cell', metres(r.fireCellM)),
+      ...(r.detail ? [R('detail', 'Desktop detail', statsWords(r.detail.level, r.fireCellM, r.detail.embersMax).value, statsWords(r.detail.level, r.fireCellM, r.detail.embersMax).note)] : []),
       R('duration', 'Run length', longSpan(r.durationS)),
       R('start', 'Scenario start', ok(r.startTimeMs) ? `${new Date(r.startTimeMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : NOT_YET),
       R('seed', 'Seed', String(r.seed)),
@@ -350,7 +358,7 @@ function runGroup(i: DebugStatsInput): StatGroup {
       R('wall-run', 'Wall time since the run started', ok(clock.runStartMs) ? waited(clock.nowMs - clock.runStartMs) : NOT_YET, undefined, true),
     );
   rows.push(R('wall-boot', 'Wall time since the app started', waited(clock.bootMs), undefined, true));
-  return G('run', 'Run', rows, r ? `${bundledSite(r.id, i.siteNames) ?? 'A custom place'}, ${km}, ${metres(r.fireCellM)} cells, seed ${r.seed}` : NO_RUN);
+  return G('run', 'Run', rows, r ? `${bundledSite(r.id, i.siteNames) ?? 'A custom place'}, ${km}, ${metres(r.fireCellM)} cells${r.detail ? ` (${DETAIL_LABEL.toLowerCase()})` : ''}, seed ${r.seed}` : NO_RUN);
 }
 
 const CAUSE = { requested: 'Asked for at the start', 'auto-tune': 'The timing test', 'auto-pending': 'The timing test is still running', 'auto-default': 'Auto without a timing test', changed: 'Changed during the run' };
@@ -713,7 +721,8 @@ function canDoGroup(i: DebugStatsInput): StatGroup {
       : 'WebGL2 is not available, so the 3-D view cannot run and the 2-D map is used.';
   const rows = [R('speed', 'Speed', speed, undefined, true), R('memory', 'Memory', mem, undefined, true), R('graphics', 'Graphics', gfx)];
   // The speed test (0.7.0): a fourth row where the screen has the button; its numbers are never read by the engine or the pace tracker (speedTest.deps.test.ts).
-  if (i.speedTest) rows.push(R('speed-test', 'Speed test', speedTestRowValue(i.speedTest, i.clock.tzOffsetMin)));
+  // On a run that computes on the desktop this phone's test says nothing about it (0.9.0): the numbers above are the desktop engine's own measured steps, and no test of this phone is used or offered.
+  if (i.speedTest) rows.push(i.desktop && !i.desktop.restarted ? R('speed-test-desktop', 'Speed test', 'Not used on a run that computes on the desktop. The speed above is what the desktop engine measured, step by step, while it computed this run.') : R('speed-test', 'Speed test', speedTestRowValue(i.speedTest, i.clock.tzOffsetMin)));
   return G('canDo', 'What this phone can do', rows, 'Three sentences from the measurements above');
 }
 
@@ -751,6 +760,7 @@ export function buildDebugStats(input: DebugStatsInput): DebugStats {
       run: runText,
       seed: i.run ? `seed ${i.run.seed}` : null,
       status,
+      ...(i.run?.detail ? { detail: runLabel(i.run.detail.level) } : {}),
     },
     groups: [
       summaryGroup(i),
@@ -778,7 +788,7 @@ export function buildDebugStats(input: DebugStatsInput): DebugStats {
 /** The plain-text export: title, one header line, every group, and an end marker. Stable labels; one row per line. */
 export function debugStatsToText(s: DebugStats): string {
   const h = s.header;
-  const out: string[] = [`FireSim: ${s.title}`, ['Copied ' + h.copiedAt, h.app, h.run, ...(h.seed ? [h.seed] : [])].join(' | ')];
+  const out: string[] = [`FireSim: ${s.title}`, ['Copied ' + h.copiedAt, h.app, h.run, ...(h.seed ? [h.seed] : []), ...(h.detail ? [h.detail] : [])].join(' | ')];
   for (const g of s.groups) {
     out.push('', `== ${g.title} ==`);
     for (const r of g.rows) {
