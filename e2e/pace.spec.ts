@@ -130,7 +130,9 @@ test('real engine, slow tier, played at 3600x: the signal appears after the wait
   await expect(page.getByTestId('pace-lead')).toBeVisible({ timeout: 30_000 });
   await expect(sheet.getByRole('heading', { name: 'Running slower than playback' })).toBeVisible();
   const lead = (await page.getByTestId('pace-lead').innerText()).replace(/\s+/g, ' ');
-  expect(lead).toMatch(/^(You asked for 3600× \(1 hour of fire every second\)\. This phone is computing about \d+× right now, so playback waits for the simulation (about \d+ seconds? in every 10|almost all the time|now and then)\.|Computing about \d+×; you asked for 3600×\. )/);
+  // The rate is the machine's, so its number is not whole when the machine is slow: `niceSpeed` keeps one decimal below 10× and steps of 0.05 below 1× (a loaded run, two workers
+  // and a busy loop, read "computing about 9.5× right now, so playback waits for the simulation almost all the time" where the pattern had `\d+×`).
+  expect(lead).toMatch(/^(You asked for 3600× \(1 hour of fire every second\)\. This phone is computing about \d+(\.\d+)?× right now, so playback waits for the simulation (about \d+ seconds? in every 10|almost all the time|now and then)\.|Computing about \d+(\.\d+)?×; you asked for 3600×\. )/);
   await expect(page.getByTestId('pace-result')).toContainText('Does it change the result?');
   await expect(page.getByTestId('pace-result')).toContainText('No. The same choices give the same fire at any speed. It only takes longer to appear.');
   await expect(page.getByTestId('pace-actions')).toBeVisible();
