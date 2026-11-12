@@ -1,5 +1,7 @@
 # Prototype plan: option B, the solver in C# on .NET 11 (2026-11-12)
 
+> **Superseded (2026-11-12) by `dotnet-option-b-plan.md` (revision 4), the plan to run; it applies the owner's answers to stage 0 and two independent reviews.** This file is kept as the record.
+>
 > **Read section 11 first.** Revision 3 (after a red team of seven review teams and ten verifiers) adds a stage 0, rebuilds Gates 1 and 2, changes the Gate 3 evidence and replaces sections 5 and 7 where they differ. Sections 1 to 10 are kept as the record; statements found wrong are listed in 11.1.
 
 **What this is.** A staged prototype that answers one question before anyone commits to a rewrite: *would running FireSim's solver in .NET (MAUI on a phone, ASP.NET Core on a desktop) be fast enough, close enough to the TypeScript results, and practical to ship?* Option B is described in the artifact "FireSim on .NET" (https://claude.ai/artifact/VsrSVEJaknFbyWuQh7Svx9): Razor screens plus a C# solver in the .NET process, pictures crossing a message channel to the WebView where Three.js draws them.
