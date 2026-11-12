@@ -1,6 +1,6 @@
 # Incident: the workflow harness relayed answer-key items to the reviewers
 
-**Date:** 2026-11-12. **Status:** found, three benchmark runs withdrawn, tooling fixed, clean reruns not yet done.
+**Date:** 2026-11-12. **Status:** found, three benchmark runs withdrawn, tooling fixed. Two clean repeats by the manual path are published as `AR-004` and `AR-005`. The extended-lens run was not redone.
 
 ## What happened
 
@@ -29,7 +29,7 @@ Every reviewer and every judge of those runs read it. The existing audit did not
 | Extras check of the 19 unmatched findings | Valid. It ran as a plain subagent, not through the workflow, and read neutral claims. |
 | Scorers | Valid in method. They ran as plain subagents. Their figures for the withdrawn runs are void. |
 
-For the record only, and not to be used: the scorers' figures for the withdrawn runs were strict 8 and 7 of 29, lenient 17 of 29 for both. Items named in the leak (**S-1**, **S-4**, **G-7**, **T-5** [the page "needs no change" claim]) moved from not found in run 3 to found in a withdrawn run, which is what a leak would produce, but the run-to-run variation was large anyway: 21 of the 28 in-scope items were found by at least one of the three runs and only 9 by all three. The data cannot separate the two causes.
+For the record only, and not to be used: on the fixed scope of 28 items the withdrawn runs scored strict 7 and 6, lenient 16 and 16. Items named in the leak (**S-1** [host-security parity], **S-4** [no background/kill test], **G-7** [no phone measurement protocol], **T-5** [the page "needs no change" claim]) moved from not found in run 3 to found in a withdrawn run, which is what a leak would produce. The clean reruns later showed the same movement without any leak (AR-004 matched **S-1**, **S-4** and **T-5** strictly), and the withdrawn runs did not score above the clean ones, so there is no sign that the leak lifted recall. That is an absence of evidence, not proof, and the runs stay withdrawn.
 
 ## What was fixed
 
@@ -39,9 +39,9 @@ For the record only, and not to be used: the scorers' figures for the withdrawn 
 
 ## What is still open
 
-- Clean reruns by the manual path (the orchestrator's launch message holds only paths).
-- Whether AR-003 was affected. If its agents are found to have received a relayed message about the benchmark, its figures need the same flag.
-- A fixed scope list for the benchmark. The scorers' split between in scope and needs web changed from 28 and 6 to 29 and 4 between runs, so recall figures used different denominators.
+- Whether AR-003 was affected. If its agents are found to have received a relayed message about the benchmark, its figures need the same flag. Its recall (strict 7, lenient 14 to 16 of 28) sits inside the range of the clean repeats (strict 8 and 9, lenient 18 and 16), which is consistent with no effect.
+- The extended-lens experiment (claims against the repo, measurement method, operations and security parity). Its first run was withdrawn and was stopped part way. It needs a clean manual run.
+- Done since: a fixed scope list (`benchmarks/option-b-plan/scope.md`), because the scorers' split between in scope and needs web had moved from 28 and 6 to 29 and 4 between runs.
 
 ## Lesson
 

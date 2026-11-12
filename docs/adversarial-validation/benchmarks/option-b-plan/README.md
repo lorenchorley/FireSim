@@ -37,6 +37,26 @@ Skill version 3, workflow variant, five Haiku reviewers at high effort and one S
 
 For comparison, the red team that made the key used about 3.8 M tokens and 56 minutes and had every team do at least 12 web lookups.
 
+## Repeats and the noise floor (2026-11-12)
+
+Two clean repeats by the manual path (reports `AR-004` and `AR-005`, same pack, lenses, models and efforts as AR-003), scored by one scorer each over the fixed scope of 28 items. Two earlier repeats by the workflow variant were withdrawn for a relay leak (`../../INCIDENT-2026-11-12-workflow-relay-leak.md`); their figures on the same scope are listed for reference only.
+
+| Run | Path | Strict, in scope (of 28) | Lenient, in scope (of 28) | Status |
+|---|---|---|---|---|
+| AR-003 | workflow | 7 | 14 to 16 (two scorers) | unconfirmed (relay not checked) |
+| AR-004 | manual | 8 | 18 | clean |
+| AR-005 | manual | 9 | 16 | clean (the judge ran a forbidden git command, flagged) |
+| withdrawn A | workflow | 7 | 16 | leaked |
+| withdrawn B | workflow | 6 | 16 | leaked |
+
+What this shows:
+
+- **Totals are stable to about three items.** Strict ranged 6 to 9 and lenient 14 to 18 over five runs. The leaked runs did not score above the clean ones.
+- **Which items are found is not stable.** 24 of the 28 in-scope items were found (matched or partly matched) by at least one of the five runs, and only 6 by all five. The clean run AR-004 found **S-1** [host-security parity], **S-4** [no background/kill test] and **T-5** [page "needs no change"] strictly, which AR-003 had missed, so those misses were chance, not limits of the method.
+- **Four items were never found in any run:** **G-9** [debug builds distort phone timing], **G-10** [stage 2 rates asserted without basis], **N-4** [JavaScript/C# semantic traps] and **N-7** [900 s and 1800 s runs on one site]. These are the real gaps.
+- **One run is a sample.** A change to the skill counts as an improvement only if one run exceeds the clean range by more than the spread (strict 12 or more, lenient 21 or more of 28), or if the mean of at least three runs does. Smaller moves are noise.
+- **Precision is separate.** Extras are mostly true (see above), so recall is the number to move, with the must-fix count watched for inflation: reviewers cited text from outside the pack (the owner's CLAUDE.md), see `SF-AR004-1`.
+
 ## Limits of this benchmark
 
 - The key is what one team found and two verifiers confirmed. It is not the list of all defects, so recall is recall against that list, and the 19 extras cannot be called false positives.
