@@ -40,5 +40,155 @@ Each team returns at most eight findings in a fixed format: a falsifiable claim,
 ## 3. Rules for every team
 Read-only on the repository (read the plan, the artifact file, the reports and the app source; edit nothing; no pushes). Write the final report to `<scratchpad>/redteam/<team>.md` as well as returning it. Heavy work is not needed. Evidence is primary (Microsoft Learn, the dotnet/maui, dotnet/aspnetcore and dotnet/runtime repositories, Android developer documentation, Chromium documentation, papers); secondary sources only to find primary ones. Inference is labelled as inference.
 
-## 4. Results
-*(filled in as the stages finish)*
+## 4. Results (2026-11-12)
+
+The reports and verifier outputs are in `docs/plans/redteam/`. The plan changes are in section 11 of `docs/plans/dotnet-option-b-prototype.md`. A full account of the process, with what worked, what did not and what to change, is in `docs/plans/redteam/PROCESS-REPORT.md`.
+
+### 4.1 What ran
+
+| Stage | Who | Clock (UTC) | Sub-agent tokens |
+|---|---|---|---|
+| Research and design | Orchestrator: 4 web searches, this document | 06:13 to 06:15 | none |
+| A, red teams | 7 teams: R1, R3, R5 and R6 on Sonnet; R2, R4 and R7 on Opus | 06:15 to 06:44. The fastest was R4 (5.6 min), the slowest R3 (27.9 min) | 1.93 M |
+| Merge | Orchestrator: 55 findings became 35, plus 10 planted controls, in 5 batches | 06:44 to 06:49 | none |
+| B, verification | 10 verifiers: one Sonnet and one Opus per batch | 06:49 to 07:06. The fastest was P-S (3.0 min), the slowest N-O (17.0 min) | 1.80 M |
+| C, synthesis | Orchestrator, plus one agent that checked the citations of section 1 | 07:06 on | 0.07 M |
+
+### 4.2 Calibration
+
+All ten verifiers confirmed the planted true claim and refuted the planted false one: 20 judgements out of 20. That tells us less than it seems. The false control could be refuted by opening `src/core/rng.ts`, and the true one sat on Microsoft's own page.
+
+A better test of discrimination came from the real items. Inside claims that the red teams had stated as fact, the verifiers found several errors:
+- BlazorWebView's default origin was given the wrong way round.
+- The ember share was given as 25.6 % where 12.8 % is right, and with it a speed-up cap of 2.2 times where about 1.3 times is right.
+- The claim that "Mono is no longer an option" is false for the GA packs.
+- A disk figure did not appear in the logs it cited.
+- A noise result at 1800 s did not reproduce.
+- The briefs themselves quoted a Gate 2 rate (6.5 MB at 2 per second) that is not in the plan.
+
+### 4.3 Verdicts
+
+S is the Sonnet verifier and O the Opus verifier. C means confirmed and P partly. Severities: B blocker, M major, m minor. The plan column gives the section of the revised plan where each finding is addressed.
+
+| ID | Finding (short) | S | O | Outcome | Plan |
+|---|---|---|---|---|---|
+| P-1 | No measured user-visible shortfall; a free stage 0 | P M | P M | narrowed: almost nothing has been measured on a phone, and the Detail tier may run below 60x | 11.2 (0b) |
+| P-3 | "All pass" reopens D34 without criteria | C m | C M | stands | 11.8 |
+| P-4 | The owner's goal is not recorded; the shell-only route is untested | P M | P M | narrowed: the Razor costs are declared exclusions | 11.2 (0a), 11.6 (4-0) |
+| P-5 | B keeps two solvers (browser, PWA, Continue on this device, Node suites) | C M | C M | stands | 11.2 (0a.2), 11.8 |
+| P-6 | Cheaper routes inside D34 are not compared | P M | C M | stands. WebGPU in WebView is unconfirmed | 11.3 |
+| P-8 | No outcome if phone numbers never come back; cost against 0.9.0 | P M | C M | stands | 11.2, 11.8 |
+| G-1 | All-core C# against one-thread TypeScript | C M | P M | stands. On the phone today's status quo is one thread | 11.3 |
+| G-2 | Bars at or below 15e's "not worth starting"; a kernel, not the whole step | C M | C M | stands | 11.3 |
+| G-4 | Fast tier profiled, while Auto builds Standard | C M | C M | stands | 11.3 |
+| G-5 | No TypeScript baseline on the phone | C M | C B | stands | 11.3 |
+| G-6 | The kernel need not match outputs, draws or thread count | P M | P M | narrowed: embers are 12.8 %; the serial cap is about 1.3 times | 11.3 |
+| G-7 | No phone measurement protocol | C M | C M | stands | 11.3 |
+| G-9 | Debug builds on the phone | C M | C B | stands. A sideloaded Debug APK may not start | 11.1, 11.3 |
+| G-10 | Gate 2 rates not derived; 16 MB is desktop only; measured with the CPU idle | C M | C M | stands | 11.1, 11.4 |
+| N-1 | 1e-15 evidence vacuous; libm noise matters at 3600 s | P m | P m | narrowed: stays inside the bars | 11.1, 11.5 |
+| N-2 | .NET maths uses the C runtime; V8 15 uses LLVM libc | C m | C m | stands | 11.5 |
+| N-4 | JavaScript against C# traps | P m | P M | narrowed: about 4 of 8 reach the solver | 11.5 |
+| N-5 | The 12 % 30-seed bar is weak | P m | P m | narrowed: fallback only | 11.5 |
+| N-6 | Seed 11 tests no ember ignition | P m | P m | narrowed: the plan says so, but the gate names no seed | 11.5 |
+| N-7 | Gate 3 covers only 30 minutes on one site | P M | C M | stands | 11.5 |
+| N-9 | Port is 30,000 to 38,000 lines; stage 4 needs rewind and explain | C M | C B | stands. Test-line count depends on the definition | 11.1, 11.6 |
+| N-10 | Rule 4 against tier `auto` | C m | C m | stands (wording) | 11.5 |
+| T-1 | Routes (a) and (b) are strings decoded on the main thread; (d) and (e) missing | C M | P M | stands. Route (c) is already binary | 11.4 |
+| T-2 | No ASP.NET Core runtime for Android, so no in-app Kestrel | C M | C M | stands. `HttpListener` is an option | 11.1 |
+| T-4 | The container cannot reliably build an APK | C M | P m | narrowed: the build was cut off, not shown to fail | 11.2 (0d) |
+| T-5 | The page depends on Capacitor's bridge | C M | P M | stands. Preferences fall back to localStorage | 11.6 |
+| T-6 | Origins differ; installing over needs the same id, key and a higher versionCode | P m | P M | narrowed: the origin was reversed; a localhost origin is possible | 11.7 |
+| T-8 | Target SDK 37; Android 17 local network permission; WebView floor | C M | C m | stands | 11.4, 11.7 |
+| T-9 | Photino.Blazor targets .NET 8 and 9 only | C m | C m | stands | artifact |
+| S-1 | No host-parity rule; template defaults | C M | C M | stands | 11.6 |
+| S-2 | Loopback on a phone: shared address, typed code, fixed port | C M | C m/M | stands | 11.6 |
+| S-4 | No background, kill or sustained-load test | C M | C M | stands | 11.6 |
+| S-5 | The signing key exists only in this container | C M | C M | stands | 11.2 (0c) |
+| S-7 | Toolchain provenance lives only in logs | C m | P m | narrowed: package versions are recorded on commit | 11.2 (0d) |
+| S-8 | Overstated sizes, "tested", support dates, CoreCLR | P m | P m | narrowed: the verifiers disagree on Mono | 11.1, 11.7 |
+
+**Tally.**
+- Both verifiers confirmed 18 findings. One confirmed and the other said partly on 8 more, so by the tie rule 26 findings stand.
+- Both said partly on 9. The tie rule did not cover this case. I treated each such finding as standing in the narrowed form both verifiers agree on, and recorded what was narrowed (see 4.4).
+- None was refuted and none was "cannot tell".
+- The two verifiers gave the same verdict on 27 of 35 and the same severity on 26 of 35.
+- Where they differed, Opus was the stricter on 5 items (G-1, T-1, T-4, T-5, S-7) and Sonnet on 3 (P-6, P-8, N-7).
+
+### 4.4 What did not work as designed
+
+- **The tie rule had a hole.** "Both partly" was not defined, and 9 of 35 findings landed there. A rule should cover every pair of verdicts.
+- **Answer-first was on trust.** Each batch file held the questions and the claims together. Three Opus verifiers said so in their reports. The answer-first step should be enforced: send the question, collect the answer, then send the claim.
+- **Isolation leaked in places.**
+  - Every team got its own git worktree, but the scratchpad was shared. R1, R3 and R5 read output from the stopped build agents.
+  - R6 opened the first lines of this design document.
+  - No team read another team's report.
+- **The briefs carried my own errors.**
+  - R3's brief stated as fact that V8 computes Math functions the same way on every device. That stopped being true with V8 15. R3 and verifier N-2 corrected it.
+  - R2's brief and batch G quoted a Gate 2 rate that is not in the plan.
+- **Severity was inflated at the source.** The teams filed 8 BLOCKERs. After verification only three items carry a blocker rating, and each from one verifier: G-5, G-9, and N-9 for stage 4 only.
+- **More teams agreeing did not mean a cleaner finding.** Of the four findings raised by four teams, both verifiers confirmed only one, because merging four reports gives a composite claim with more places to be overstated. Of the twelve single-team findings, both verifiers confirmed eight, because they were narrow.
+
+### 4.5 Where the teams disagreed with each other
+
+- **Last-bit maths.**
+  - R2 and R4 listed revision 2's statement ("last-bit math differences are not the risk") as sound.
+  - R3, R5, R6 and R7 attacked it.
+  - Both verifiers re-ran the noise injection. The 1e-15 evidence was vacuous for the fire and the air, while the conclusion held at the bars tested. Each side was half right.
+- **Mono.**
+  - R2 and R3, through secondary sources, said Mono was removed in Preview 6.
+  - Verifier S-O found the GA packs still map `UseMonoRuntime=true` to MonoVM. I confirmed this in the installed .NET for Android and MAUI 11.0.0 targets.
+  - Microsoft Learn says Mono is not supported for MAUI apps that target .NET 11. Not settled.
+- **BlazorWebView origin.** R1 read `0.0.0.0` out of the DLL. T-O traced the default to `0.0.0.1`, with a switch for `0.0.0.0`.
+- **Port size.** R4 and R6 found the 25,000-line figure sound for the solver folders. R3 and R7 counted the import closure. Both counts are right; they measure different things.
+
+### 4.6 The blind team (R7) against our plan
+
+R7 never saw the plan. Its own plan arrived independently at:
+- a stage 0 premise check on the owner's phone;
+- the frozen K1 kernel as the first C# test;
+- one APK that runs both engines in A B B A order, with thermal logging;
+- binary bridges (an intercepted fetch, ArrayBuffer messages);
+- the whole step instead of kernels;
+- the two-solver question;
+- port size including explain.
+
+Each of these was a gap in our plan and was also found by at least one lens team.
+
+R7 had three things no other team had:
+- bit-identity as the correctness gate, by porting V8's fdlibm into C#;
+- measuring the C# kernels as Blazor WebAssembly with AOT, to price the "two solvers" answer;
+- measuring the port rate and extrapolating the total, with a solver freeze during the slice.
+
+Our plan, unlike R7's, covers:
+- host security and the phone's loopback threat;
+- the signing key and saved-data continuity;
+- Capacitor's plugins;
+- target SDK 37;
+- lifecycle;
+- toolchain provenance;
+- the same-tier yardstick from 3a.
+
+R7 made one factual error: it said .NET 11 had not been released. It was released on 2026-11-10.
+
+Adopted from R7 in revision 3:
+- stage 0;
+- the K1 checksum;
+- the one-APK A B B A protocol;
+- the routes (d) and (e);
+- the `FsMath` routing point, which keeps the fdlibm port open.
+
+Not adopted yet:
+- the WebAssembly arm. The owner's answer to 0a.2 decides whether it is needed.
+- the port-rate measurement. It belongs to stage 3.
+
+### 4.7 The sources in section 1, checked afterwards
+
+An agent fetched each citation on 2026-11-12:
+- The Cost of Consensus (arXiv 2605.00914) supports conformity, lower accuracy and a token cost of 2.1 to 3.4 times. It does not contain the claim that "most of the gain comes from majority voting". That claim came from a search summary and is unsourced here.
+- The peer-conformity paper (2609.18998) and the identity-bias paper (2510.07517, which tests anonymisation) are supported.
+- The premortem page (now `corporate.jcx.au/premortem`) supports the 30 % figure and says the quality of the reasons was not assessed.
+- The multi-judge paper (2609.12002) is partly supporting. Its calibration is label-free, and it reports no false-pass rates.
+- The Galileo blog link now redirects to an unrelated page.
+- The UK MoD Red Teaming Handbook (3rd edition, June 2021) supports the assumptions check. The checking agent wrongly reported this PDF as another document; reading the file confirmed the handbook.
+- The US Army handbook was not checked.

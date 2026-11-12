@@ -1,5 +1,7 @@
 # Prototype plan: option B, the solver in C# on .NET 11 (2026-11-12)
 
+> **Read section 11 first.** Revision 3 (after a red team of seven review teams and ten verifiers) adds a stage 0, rebuilds Gates 1 and 2, changes the Gate 3 evidence and replaces sections 5 and 7 where they differ. Sections 1 to 10 are kept as the record; statements found wrong are listed in 11.1.
+
 **What this is.** A staged prototype that answers one question before anyone commits to a rewrite: *would running FireSim's solver in .NET (MAUI on a phone, ASP.NET Core on a desktop) be fast enough, close enough to the TypeScript results, and practical to ship?* Option B is described in the artifact "FireSim on .NET" (https://claude.ai/artifact/VsrSVEJaknFbyWuQh7Svx9): Razor screens plus a C# solver in the .NET process, pictures crossing a message channel to the WebView where Three.js draws them.
 
 **What this is not.** It does not decide the Razor screens (a known, large cost, separate from the risks here). It does not change the app, `src/`, `desktop/` or any release. Decision D34 (one solver, in TypeScript) stays in force until the owner says otherwise after the report. Nothing here is a release or a pull request.
@@ -134,3 +136,201 @@ Stage 3a (the TypeScript reference, agent P3a, merged as `095caf9`) delivered 41
 **Decision taken for stage 3.** The slice ports the TypeScript random generator and its draw order exactly, so that the tight column applies. If the generator cannot be reproduced bit for bit, the loose ensemble bar applies and the report says so.
 
 **Still to run** (not done by P3a): 30-seed TypeScript ensembles, standard and high at 6 km, and timings on a quiet machine.
+
+## 11. Revision 3: what the red team changed (2026-11-12)
+
+Seven isolated review teams attacked this plan, the artifact and the premise behind both. They returned 55 findings, which were merged into 35. Each of the 35 was then checked by two independent verifiers, one Sonnet and one Opus. Planted true and false claims were mixed in to calibrate the verifiers. Method, tallies and every report: `docs/plans/dotnet-option-b-redteam.md` and `docs/plans/redteam/`. No finding was refuted outright, many were narrowed, and several factual errors in sections 3, 5 and 10 were found. Where this section differs from sections 3 to 7, this section applies.
+
+### 11.1 Statements above that were wrong
+
+| Where | Said | What is true | Finding |
+|---|---|---|---|
+| §2 | KVM "not checked" | There is no `/dev/kvm`: no emulator in this container | T-4 |
+| §3 stage 2 | "real sizes (2.2 MB, 6.5 MB, 16 MB; measured in 0.9.0)" | Phone pictures at 30 m are about 0.7, 2.2 and 4.3 to 5.4 MB (3, 6 and 9 km). 6.5 MB is the one-off scenario message, not a picture. 16 MB is a 10 m picture from a synthetic scenario, and 10 m exists only at the desktop detail setting | G-10, S-8 |
+| §3 stage 2 (c), stage 4 | "an in-app Kestrel server" | .NET 11 ships no ASP.NET Core runtime pack for Android (`RuntimePackExcludedRuntimeIdentifiers="android;linux-bionic"`, NuGet 404, dotnet/aspnetcore#35077 open). An in-app server must use `HttpListener` (present in the Android runtime pack, untested on a phone) or `TcpListener` with `WebSocket.CreateFromStream` | T-2 |
+| §5 | "debug builds, sideload" | A Debug build runs unoptimised JIT code with no ReadyToRun, and its assemblies are not inside the APK (Fast Deployment), so a sideloaded Debug APK may not even start. Every APK whose numbers feed a gate is a Release build signed with the debug key | G-9 |
+| §7 | "about 25,000 lines and 15,000 lines of tests" | That counts five folders. The runtime import closure from `src/sim/host.ts` is 37,727 non-test lines in 117 files (an upper bound: comments and blanks included) with 10,700 to 28,900 test lines depending on what is counted (the Vitest code does not carry over; its scenarios and expected values do, as golden data). Stage 4's page also needs rewind, checkpoints, records, insights and explain, which the slice omits, so stage 4 as written would fail by construction | N-9 |
+| §10 item 1 | "So last-bit math differences are not the risk" | The 1e-15 runs barely reached the solver. The fire, air and moisture arrays were identical in all 31 snapshots; float32 storage absorbed the perturbation, and only 1 or 2 of about 4,000 ember floats moved. The hashes changed only because they include `stats.weather` and `stats.ffdi`, which echo the input. Noise the size of real V8-against-glibc differences, injected per call on fast seed 13, behaved like this: <br>• 900 s: nothing changed. <br>• 1800 s: burnt status flipped in 3 of 10 runs (at most 0.19 % of cells). <br>• 3600 s: it flipped in 5 or 6 of 10 runs (0.05 to 0.56 %), with an extra spot fire. <br>All of this stayed inside the bars, so the plan's ranking survives: the random stream matters more than libm. But last-bit maths does flip ember outcomes, and the effect grows with time. It is a real, second-order risk, not "about 0" | N-1 |
+| Artifact | "the current 33 MB APK" | 33 MB is the budget (D37). The 0.8.0 APK is 30,417,340 bytes | S-8 |
+
+### 11.2 New stage 0: the premise, the owner and the preconditions
+
+Nothing below stage 0 starts until it is done. It costs about 15 minutes of the owner's time and very little agent time.
+
+- **0a, three questions for the owner, in one message.**
+  1. What do you want .NET for: a faster solver on the phone, .NET or C# as the language of the screens, one codebase, skills, or something else? (P-4)
+  2. If the solver moves to C#, what runs the app with no .NET process: in a desktop browser and as a PWA, in the page a phone's browser opens from the desktop host, in "Continue on this device", and in the Node validation suite and the e2e tests? Either they keep the TypeScript solver, which means two solvers (D34's reason), or they are dropped. (P-5)
+  3. Will you sideload test APKs and paste the results back within an agreed time, and does this come before or after the 0.9.0 release? (P-8)
+- **0b, measure today's app on the owner's phone, with the current APK.**
+  - Press *Run the speed test* and copy the result.
+  - Read the debug statistics: Auto's decision and its median step.
+  - Read the pace on the Standard and Detail tiers at 60x, 120x and 600x playback.
+  - Record the phone model, Android version and WebView version.
+
+  The one phone measured so far had 4.8 times headroom on Auto's tier choice. By inference from the 2.35 times phone-to-desktop ratio, its Detail tier may run below the default 60x. Only this measurement can settle that. (P-1)
+- **0c, the signing key.** Both APKs on the owner's phone are signed with this container's debug key (`/root/.android/debug.keystore`, certificate SHA-256 `f7570f27…a862e7`). No other copy exists, and Android installs an update only if the certificates match. The key is backed up outside the container (never in this public repository), or the owner chooses a release key. (S-5)
+  - Prototype APKs for stages 1, 2 and 4 use a separate application id (`au.firesim.proto`), so they cannot replace the owner's app or block 0.9.0 (versionCode 13) from installing.
+  - Only stage 5's install-over test uses `au.firesim.app`, the saved key and a versionCode the owner agrees to, and only after the owner's saved data is exported.
+  - This separation was added by the orchestrator, not by a review team.
+- **0d, the build precondition.** At least 15 GB free and a Release APK built here and checked (`aapt2 dump badging`, `apksigner verify`). Otherwise the agents deliver source and an exact recipe for the owner to build. (T-4)
+  - `TOOLCHAIN.md` records every version, URL, hash and licence accepted.
+  - `env.sh` loses its hard-coded scratchpad path.
+  - Package versions are locked. (S-7)
+- **Stop rules.**
+  - The owner's goal is not speed, and 0b shows the 3-D tiers keep the default playback speed: stop the solver port. If a .NET shell is wanted, run only stage 4-0 (below).
+  - The owner will not run phone stages in the agreed time: the phone gates are *undecided*. Container stages may run, and nothing is reported as a pass.
+
+### 11.3 Gate 1, rebuilt (was: all-core C# against one-thread TypeScript)
+
+The old gate compared C# on all cores with TypeScript on one thread. Plan 15e's own Amdahl bounds (1.8 to 2.6 times on 4 cores) mean threads alone could pass it, and D34 already allows those threads in TypeScript. The old gate also measured one fast-tier kernel, while the app's default (Auto) builds the Standard tier, where the air takes about 61 to 69 % of the time. On the phone it had no TypeScript number to divide by. (G-1, G-2, G-4, G-5)
+
+- **What is ported.**
+  - The frozen speed-test kernel K1 (`src/ui/speedTestKernels.ts`). Its checksum `0x7d268009` is the first C# test, and it gives a same-phone baseline.
+  - The hottest kernel of the tier the owner's phone runs: likely the air (`EllipticSolver.relax`, `gradient`, `divergence`, `dynamics.advect`) for Standard, and the level set for the fast tier.
+- **A kernel counts only if all three hold** (G-6):
+  - its outputs equal the TypeScript's bit for bit, which is possible where it uses only + − × ÷ and `sqrt`;
+  - its results are identical on 1, 2, 4 and 8 threads;
+  - its timing includes any random draws, in the TypeScript order. Faithful draw order keeps the ember and spread-breach code serial, which caps the fast tier near 1.3 times on 4 cores.
+- **What is reported**, every time:
+  - C# on one thread against TypeScript on one thread;
+  - C#'s scaling curve over 1 to 8 threads;
+  - all-core C# against TypeScript in Node `worker_threads` on the same partition;
+  - the projected whole-step gain from the profile's phase shares (Amdahl), written beside each kernel ratio.
+- **Bar (proposal).** The projected whole-step gain is at least 1.5 times the *best* TypeScript arm, on the desktop and on the phone.
+- **Phone protocol** (G-7, G-9). One Release APK (`au.firesim.proto`) holds the C# kernels and the same TypeScript kernels running in a WebView worker.
+  - Charge above 50 %, airplane mode, 5 minutes of cool-down.
+  - Run A B B A three times: 30 s of warm-up and 60 s timed per run, then one sustained 10-minute run per engine.
+  - Log the thermal headroom every 10 s (no more often).
+  - Record the SoC's core types and a curve per thread count.
+  - Split the work into many fixed chunks assigned dynamically. Determinism comes from fixed chunk boundaries and a fixed reduction order, not from a fixed thread assignment, so a big/little phone does not wait on its slowest core.
+  - One *Copy* button produces one text block.
+- **The status quo arm** (P-6). The same APK reports `crossOriginIsolated` and SharedArrayBuffer in its WebView, using the cross-origin-isolation allowlist that androidx.webkit 1.18.0 (2026-10-21) adds. If shared memory is available, TypeScript on several workers is measured as a further arm.
+
+### 11.4 Gate 2, rebuilt
+
+- **Five routes, not three** (T-1). Gate 2 stops only if none passes.
+  - (a) BlazorWebView interop and (b) HybridWebView raw messages are baselines. Both carry bytes as a string that the page decodes on its main thread: the shipped `blazor.webview.js` uses `atob` and a per-byte loop, measured here at about 90 to 130 ms per 16 MB.
+  - (c) A loopback WebSocket, served by `HttpListener` or `TcpListener` (11.1).
+  - (d) A `fetch()` on the app's origin, answered through `WebResourceRequested` with a stream.
+  - (e) AndroidX `WebMessageCompat(byte[])` ArrayBuffer messages (`WEB_MESSAGE_ARRAY_BUFFER`).
+- **Main-thread time** includes the page's own decode.
+- **Rates come from the phone, not from a list** (G-10).
+  - The rate is the stage 1 solver speed divided by the display step (10 s and 60 s), at 0.7, 2.2 and about 5 MB, capped at 25 per second.
+  - 16 MB is tested only for the desktop host.
+- **Under load.** Every route is measured while the solver's load is present: a busy loop on N and on N − 1 cores.
+- **Target SDK** (T-8). Every result records it.
+  - The .NET 11 Android workload compiles against API 37, while the current app targets 36.
+  - On Android 17, an app targeting 37 needs `ACCESS_LOCAL_NETWORK` for the Wi-Fi desktop link. Whether 127.0.0.1 counts is undocumented.
+  - Routes (c) to (e) are built at 36 and at 37.
+
+### 11.5 Gate 3, changes
+
+- **Seeds** (N-6). Seed 11 starts no effective spot fire: its burnt area equals the embers-off run. Ember code still runs (572 embers in flight at 1800 s), but an ember-ignition error would not show. Gate 3 runs seeds 12, 13 and 14, and the thread-count test requires seed 13.
+- **Horizons** (N-7). Gate 3 compares at 900 s and 1800 s on one 3 km scenario, while the validation suite runs 6 h and libm-sized noise first matters between 1800 s and 3600 s (N-1). Gate 3 adds two cases, each compared at 1, 2 and 4 h with the time of first divergence reported per seed:
+  - a 4 h Katoomba 6 km run with the wind change, at seeds 12 and 13;
+  - one run on a second site.
+- **Maths** (N-1, N-2). .NET's `Math` calls the platform C library and may differ between operating systems. V8 12.4 (Node 22) uses its own fdlibm port, and V8 15.1 and later forward to LLVM libc, so the TypeScript reference itself changes across V8 versions.
+  - Measured per-call mismatch of V8 12.4 against glibc 2.39: exp 9.7 %, pow 9.8 %, atan2 17.6 %, cbrt 47.8 %, sin and cos 3.3 %.
+  - Every transcendental call in the port goes through one `FsMath` class. That makes a managed fdlibm port (the blind team's proposal) a one-file change if the bars fail. It also makes C# on the phone and C# on the desktop agree bit for bit.
+  - Stage 4 adds one numeric check: C# on the phone, C# in the container, and TypeScript in the phone's WebView, on the same fixture.
+- **Porting conventions, each with one test** (N-4). Applied by every port agent:
+  - read float32 arrays into double locals;
+  - a JavaScript-style round (halves up);
+  - stable sorts or explicit tie-breaks, with NaN sorted last as typed arrays do;
+  - insertion-ordered maps, where delete-then-set moves a key to the end (`src/sim/simulation.ts:1668`);
+  - ordinal string comparison;
+  - saturating casts checked.
+  - These conventions matter beyond tidiness: a sort, map or rounding mismatch in the ember or records code changes the draw order, and that would push Gate 3 onto the weak fallback bar for a fixable bug. About four of the eight differences were shown to reach the solver. NaN ordering, `**` edge cases and saturating casts were not, and they are kept as cheap checks.
+- **Bars.** The exact-port row's "expected difference about 0" is withdrawn. Before porting, a noise-injection control is run on the TypeScript at each gate horizon (900 s to 4 h; more seeds, three tiers). Each C# result is reported beside that noise floor. The bars stay where they are unless the control comes near them.
+  - The 30-seed ensemble bar for a different random stream stays a last resort only. With a 19 to 27 % seed-to-seed variation it fails a correct port 1 to 9 % of the time, and passes a 10 % bias 61 to 66 % of the time (N-5).
+- **Rule 4** (N-10). Bit-identical across thread counts *with the tier pinned explicitly*. Tier `auto` chooses from wall-clock timing, so a faster engine may choose differently.
+
+### 11.6 Stage 4, changes
+
+- **4-0, new, if the owner's goal includes a .NET shell** (P-4). The current app runs unchanged inside a MAUI HybridWebView: its TypeScript worker, no C#. The stage includes the origin and saved-data check. This is the route the artifact itself recommended, and no stage tested it.
+- **Strike "the page needs no change"** (T-5). The page depends on Capacitor's native bridge in at least these places:
+  - `CapacitorHttp`, which reaches services without CORS, including the canopy-height service;
+  - Preferences, which falls back to localStorage;
+  - Geolocation: MAUI's default `WebChromeClient` has no permission handler;
+  - the desktop link's address shown only when `Capacitor.isNativePlatform()`;
+  - the mixed-content setting the desktop link needs.
+
+  Stage 4 writes a parity table with each one's MAUI replacement, and tests with Capacitor absent.
+- **New rule 7, host parity** (S-1). Every refusal the Node host makes, the C# host makes.
+  - The committed `Fs.Host` is the `dotnet new web` template. ASP.NET Core allows every WebSocket origin by default and has no pong timeout. The three Playwright specs named in §3 cover about 8 of the Node host's roughly 26 guards.
+  - A protocol-level conformance suite runs against both hosts.
+  - The C# host sets explicit allowed hosts, origins, keep-alive timeout, frame and decoder limits, and a memory bound.
+- **A loopback link on the phone** (S-2). Every app on the phone connects from 127.0.0.1, so the Node host's per-address limits become global: five wrong hellos from any app lock the page out for 60 s. A fixed port can also be taken first by another app. If route (c) is kept, stage 4 adds:
+  - a per-launch port;
+  - a per-launch 128-bit secret passed over interop, not typed;
+  - limits per connection or per secret;
+  - a co-resident attacker test with a second test app.
+
+  An Origin check stops only browser pages; a native app can forge it.
+- **Lifecycle** (S-4). Android freezes cached apps about 10 s after they are cached and closes their TCP sockets once all their processes are frozen. Protocol 2 closes a link silent for 60 s and does not reconnect. Stage 4 therefore tests:
+  - backgrounding for 30 s, 90 s and 5 minutes;
+  - a process kill;
+  - a 30-minute sustained run with thermal logging, for both engines.
+
+  Whether to use a foreground service or a resumable protocol is the owner's decision, because of Play policy.
+- **Scope** (N-9). The stage 4 page drives a slice without rewind, checkpoints, records, insights or explain, unless a stage 3f ports them. The desktop-host specs that need those features are listed as not run.
+
+### 11.7 Stage 5, changes
+
+- **The origin result is known in advance** (T-6).
+  - HybridWebView serves from `https://0.0.0.1/`.
+  - BlazorWebView serves from `https://0.0.0.1/` by default, or `0.0.0.0` with a switch.
+  - The current app serves from `https://localhost`.
+
+  Web storage is per origin, so a MAUI page cannot see the saved sites and runs. The exception would be a shell that serves `https://localhost` itself, for example a plain WebView with AndroidX `WebViewAssetLoader`; that is untested.
+- **Stage 5 designs the migration.**
+  - a last Capacitor release with export and import;
+  - a native read of the `CapacitorStorage` preferences file, which is possible because an install-over keeps the same app user id.
+
+  It then tests the migration once, with the key from 0c, `au.firesim.app` and a versionCode above the installed one (12 today, 13 after 0.9.0).
+- **The WebView floor.** The current app refuses WebView versions below Chrome 108, and a MAUI shell has no such check. Stage 5 adds one (T-8).
+- **Risks to record** (S-8).
+  - MAUI 11 support ends on 2028-05-09, while the .NET 11 runtime is supported to 2028-11-14.
+  - CoreCLR on Android is new in .NET 11. Microsoft reported start-up and size increases on larger apps.
+  - dotnet/runtime#131370 (frame drops from the Java GC bridge, absent on Mono) is open, with its milestone moved to 12.0.0.
+  - Mono is still reachable: the GA packs map `UseMonoRuntime=true` to MonoVM, and the .NET blog says the opt-out lasts through .NET 11 servicing. Microsoft Learn says Mono is not supported for MAUI apps that target .NET 11. Stage 5 measures Mono only if CoreCLR fails.
+
+### 11.8 What each outcome means (replaces section 7)
+
+| Result | Meaning |
+|---|---|
+| Stage 0: the goal is not speed, and the phone keeps the default playback speed on the 3-D tiers | Stop the solver port. If a .NET shell is wanted, run stage 4-0 only. |
+| Phone numbers not returned in the agreed time | The phone gates are undecided. Container stages may run; nothing is called a pass. |
+| Gate 1 fails (projected whole-step gain under the bar against the best TypeScript arm) | No speed argument for B. Stop. |
+| Gate 1 passes, Gate 2 fails (none of the five routes) | B can only be a desktop-host design. |
+| Gate 3 fails | Not a faithful port as built. The owner decides whether to accept a new reference or stop. |
+| All pass | B is technically feasible. That alone does not reopen D34, which was decided on the cost of two solvers. Reopening it needs: (1) an answer to question 0a.2 (what runs with no .NET process) and the cost of keeping two solvers in agreement if any path keeps TypeScript; (2) B ahead of the best TypeScript arm on the phone; (3) the cost of revalidating the hashes and the validation suite; (4) the port at about 30,000 to 38,000 lines plus 10,000 to 29,000 test lines, with a stated freeze or drift plan for the TypeScript solver; (5) what the work displaces, starting with the 0.9.0 release. (P-3) |
+
+### 11.9 Order and cost
+
+1. **Stage 0.** The owner answers 0a and runs 0b; the orchestrator does 0c and 0d.
+2. **Stages 1 and 2 in one phone APK.** Gates 1 and 2 are measured from one sideload, so each round with the owner yields both numbers. The container work for Gate 1 (the K1 checksum, the kernel and the TypeScript worker arm) can start while the owner answers.
+3. **The noise-injection study** (11.5) on the TypeScript, before any stage 3 port.
+4. **Stage 3**, then stage 4 (4-0 first if asked), then stage 5, then the verifier and the report.
+
+Compared with section 8, stage 0 adds almost nothing, merging stages 1 and 2 saves a sideload round, and the noise-injection study adds one container run. The rule to stop at a failed gate stands.
+
+### 11.10 What the red team checked and found sound
+
+- The API 24 floor matches Microsoft Learn and the app's own `minSdkVersion`.
+- CoreCLR is the default Android runtime and NativeAOT is experimental.
+- The .NET 11 Android native libraries are 16 KB page-aligned.
+- Comparing like with like (same tier, same seed) is right.
+- The random generator (mulberry32) ports bit for bit with `uint` arithmetic.
+- 3a's determinism holds: 31 hashes are identical across processes.
+- The SDK tarball's SHA-512 matches `releases.json`.
+- WebView debugging is enabled only in debug builds, the same as in Capacitor.
+- The line counts for the solver folders alone are right.
+- The prototype keeps D34 out of the app's code.
+
+### 11.11 Not settled
+
+- **P-1, whether a faster solver changes anything the user sees.** Both verifiers rated it *partly*. No shortfall has been measured, but almost nothing has been measured on a phone. Stage 0b decides it.
+- **Mono on Android in .NET 11.** Two review teams said it was removed in Preview 6. One verifier found the GA packs still map `UseMonoRuntime=true` to MonoVM, and the orchestrator confirmed this in the installed packs. Microsoft's pages disagree on whether it is supported. Nothing was built.
+- **Whether 127.0.0.1 counts as local network** under Android 17's permission. It is undocumented, and only a device test can tell.
+- **Whether WebGPU works in Android WebView.** This rests on a Chromium intent-to-ship. Shared memory in WebView rests on androidx.webkit 1.18.0, which the app (1.14.0) does not use yet.
