@@ -32,6 +32,7 @@ Flat `key: value` lines between two `---` lines, so `grep` finds them.
 | `ledger_items`, `ledger_must_fix`, `ledger_should_fix`, `ledger_optional`, `ledger_rejected` | what the judge ruled |
 | `overall_call` | the judge's call |
 | `subagent_tokens`, `other_agent_tokens`, `wall_minutes`, `orchestrator_context_delta` | cost. `subagent_tokens` counts the reviewers and the judge. `other_agent_tokens` counts helper agents that match the run (a scorer, say). Tokens per agent are the size of its last turn's context plus output, about 8 % above the harness's own figure on workflow runs |
+| `recall_strict_all`, `recall_strict_in_scope`, `recall_lenient_in_scope`, `recall_reviewer_level_in_scope` | only when the run was scored against an answer key (`scoring.md`): matched over total, as `n/m` |
 | `isolation` | `clean`, `flags:N`, or `not audited` |
 | `write_refusals`, `retries`, `parse_warnings` | how the run went |
 
@@ -42,9 +43,10 @@ Flat `key: value` lines between two `---` lines, so `grep` finds them.
 3. `Yield`: per reviewer, findings raised, severity at the source, how many the judge ruled valid, partly valid and rejected, how many only that reviewer raised, and the report's size.
 4. `Isolation audit`: per reviewer, flags and the paths read outside the run directory and the skill, with those the pack does not name.
 5. `Flags (automatic)`: refused writes, retries, missing reports, reports over the cap, ledger problems, isolation flags, severity deflation.
-6. `Skill feedback`: lines added by the orchestrator, one per item:
+6. `Scoring against an answer key`, only when `scoring.md` exists: the scorer's counts.
+7. `Skill feedback`: lines added by the orchestrator, one per item:
    `- SF-ARNNN-k | area: <reviewer-prompt|judge-prompt|skill|lenses|scripts|harness> | observation: ... | proposal: ... | evidence: ...`
-7. `Judge digest (verbatim)`: so the findings themselves are searchable from the report.
+8. `Judge digest (verbatim)`: so the findings themselves are searchable from the report.
 
 ## Inputs the script reads
 

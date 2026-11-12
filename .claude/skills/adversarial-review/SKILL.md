@@ -123,7 +123,7 @@ Build the run report. This step is not optional, and it takes no judgement:
 python3 -I <skill dir>/scripts/ar.py report --run-dir <run dir> --context-delta <tokens now minus tokens before> [--forbid <regex> ...]
 ```
 
-`--forbid` takes a regular expression for anything the reviewers must not touch, for example the path of an answer key. The script finds the agents' transcripts by the run directory in their launch messages, so run it in the session that launched them. It writes `RUN-REPORT.draft.md` in the run directory and prints a short summary.
+`--forbid` takes a regular expression for anything the reviewers must not touch, for example the path of an answer key. Pass `--context-delta` only if nothing else happened in this session between launch and completion. If other work fell in that window, leave it out and give an estimate of what the run itself put into this session with `--note`. The script finds the agents' transcripts by the run directory in their launch messages, so run it in the session that launched them. It writes `RUN-REPORT.draft.md` in the run directory and prints a short summary.
 
 Open the draft's `Skill feedback` section only if the run showed something about the skill itself: a rule that was missing, a prompt that misled an agent, a script that failed, a harness refusal. Add one line per item in the exact form shown there. The `Flags (automatic)` section already records the mechanical ones.
 
@@ -141,6 +141,10 @@ Present the digest to the user before changing anything. Also say:
 - your assumed purpose, if you had to assume one,
 - the run id and the report's file name,
 - the audit result and any automatic flags.
+
+### Optional: score the run against a known answer key
+
+Use this only when the work's defects are known independently of the run (a benchmark, a work whose flaws were established by other means). Keep the key outside the run directory and pass its path with `--forbid` in the report step, so the audit shows whether any reviewer touched it. After step 4, start a scorer with the judge's settings (`model: "sonnet"`, `effort: "xhigh"`, since scoring is a judgement), with the launch message "You are the scorer. Read `<skill dir>/scoring-prompt.md` and follow it exactly." and the parameters `KEY_PATH`, `RUN_DIR`, `SNAPSHOT_DIR` (the folder the reviewers could read) and `OUT_PATH` (`<run dir>/scoring.md`). Do this before step 5, so `ar.py report` reads the recall figures into the report. For a figure you will use as a baseline, run a second independent scorer first, with the first scoring moved out of its reach, and report where the two disagree. Scoring is one agent's judgement, not a measurement.
 
 ### 6. Act on it
 

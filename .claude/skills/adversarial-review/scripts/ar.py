@@ -499,6 +499,18 @@ def cmd_report(a):
           ("orchestrator_context_delta", a.context_delta if a.context_delta is not None else "unknown"),
           ("isolation", isolation), ("write_refusals", refused), ("retries", retries),
           ("parse_warnings", len(notes))]
+    scoring = read(os.path.join(run, "scoring.md"))
+    recall_keys = (("Recall strict, all items", "recall_strict_all"), ("Recall strict, in-scope items", "recall_strict_in_scope"),
+                   ("Recall lenient, in-scope items", "recall_lenient_in_scope"),
+                   ("Reviewer-level recall, in-scope items", "recall_reviewer_level_in_scope"))
+    counts_block = []
+    if scoring:
+        for label, key in recall_keys:
+            m = re.search(r"^%s:\s*(\d+)\s*/\s*(\d+)" % re.escape(label), scoring, re.M | re.I)
+            if m:
+                fm.append((key, "%s/%s" % (m.group(1), m.group(2))))
+        counts_block = [l for l in scoring.splitlines()
+                        if re.match(r"^(in scope|needs web|needs other source|needs artifact|Matched|Partly matched|Raised, not ruled|Rejected|Not found|Recall|Reviewer-level recall)\b", l, re.I)]
     out = ["---"] + ["%s: %s" % (k, v) for k, v in fm] + ["---", "",
            "# %s | %s | %s | %s" % (rid_name, date, lens_set, slug), "", "## Summary", "",
            "- Overall call: %s" % (call or "unknown"),
@@ -555,6 +567,10 @@ def cmd_report(a):
         out.append("None.")
     for i, f in enumerate(flags, 1):
         out.append("- FLAG-%s-%d | %s" % (rid_name.replace("-", ""), i, f))
+    if counts_block:
+        out += ["", "## Scoring against an answer key", "",
+                "The run's ledger was scored against a known answer key by a separate agent. The full table is in `scoring.md` in the run directory.", ""]
+        out += ["- " + l.strip() for l in counts_block]
     out += ["", "## Skill feedback", "",
             "One line per item, in this exact form. Leave the line below as it is if there is nothing to add.", "",
             "`- SF-%s-1 | area: <reviewer-prompt|judge-prompt|skill|lenses|scripts|harness> | observation: <what happened> | proposal: <what to change> | evidence: <where>`" % rid_name.replace("-", ""), "",

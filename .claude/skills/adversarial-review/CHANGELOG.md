@@ -2,6 +2,16 @@
 
 Entries name the run report items they came from on an `Implements:` line. The feedback index reads those lines.
 
+## Version 3, revision 2 (2026-11-12)
+
+Source: the feedback lines of run report AR-003.
+
+- The isolation audit counts a path as listed when it sits under a directory the pack names. Helper agents (a scorer) are counted apart from the run's own tokens.
+- Optional step: score a run against a known answer key, with `scoring-prompt.md`. `ar.py report` reads the recall figures from `scoring.md` into the report.
+- Guidance on when the orchestrator's context reading means anything.
+- Implements: SF-AR003-1, SF-AR003-4, SF-AR003-5
+- Left open: SF-AR003-2 (cap the length of a finding), SF-AR003-3 (group Optional items in the digest). Neither has evidence yet that it improves a run.
+
 ## Version 3 (2026-11-12)
 
 Source: the review of another session's red-team process (`docs/adversarial-validation/REVIEW-OF-REDTEAM-SESSION-2026-11-12.md`, items 1, 2, 3, 4 and 6) and the run 2 findings.
