@@ -294,7 +294,7 @@ def find_reviews_dir(given):
     if given:
         return given
     try:
-        root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+        root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()
     except Exception:
         root = os.getcwd()
     return os.path.join(root, "docs", "adversarial-validation", "reviews")
@@ -320,8 +320,8 @@ def skill_version(skill_dir):
         ver = m.group(1)
     commit = ""
     try:
-        commit = subprocess.check_output(["git", "-C", skill_dir, "log", "-1", "--format=%h", "--", "."], text=True).strip()
-        dirty = subprocess.check_output(["git", "-C", skill_dir, "status", "--porcelain", "--", "."], text=True).strip()
+        commit = subprocess.check_output(["git", "-C", skill_dir, "log", "-1", "--format=%h", "--", "."], text=True, stderr=subprocess.DEVNULL).strip()
+        dirty = subprocess.check_output(["git", "-C", skill_dir, "status", "--porcelain", "--", "."], text=True, stderr=subprocess.DEVNULL).strip()
         if dirty:
             commit += "+uncommitted"
     except Exception:
@@ -599,14 +599,7 @@ def front_matter(text):
 def build_index(reviews):
     files = sorted(glob.glob(os.path.join(reviews, "reports", "AR-*.md")))
     rows, sf = [], []
-    changelog = read(os.path.join(os.path.dirname(os.path.dirname(reviews.rstrip("/"))), "..", "..",
-                                  ".claude", "skills", "adversarial-review", "CHANGELOG.md"))
-    if not changelog:
-        try:
-            root = subprocess.check_output(["git", "-C", reviews, "rev-parse", "--show-toplevel"], text=True).strip()
-            changelog = read(os.path.join(root, ".claude", "skills", "adversarial-review", "CHANGELOG.md"))
-        except Exception:
-            changelog = ""
+    changelog = read(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CHANGELOG.md"))
     applied = set(re.findall(r"SF-AR\d{3}-\d+", " ".join(l for l in changelog.splitlines() if "Implements" in l)))
     for f in files:
         t = read(f)
