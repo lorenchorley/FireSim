@@ -427,6 +427,8 @@ def cmd_report(a):
     if not rows:
         notes.append("the ruling has no readable ledger")
     digest = read(os.path.join(run, "digest.md")).strip()
+    # the judge cites a scratchpad path that is gone after the session; the published copy is reviews/run-N/ruling.md
+    digest = re.sub(r"^Full ruling:.*$", "Full ruling: reviews/run-%d/ruling.md" % n, digest, flags=re.M)
     call = (re.search(r"Overall call:\s*(.*)", digest) or [None, ""])[1].strip()
     if not call:
         found = re.findall(r"(ready to send|fix the must-fix items and resend|rethink)", ledger_text, re.I)
@@ -452,7 +454,7 @@ def cmd_report(a):
         yrows.append((rid, v, len(ok), len(part), len(rej), len(uniq)))
 
     # settings and audit
-    forbid = list(a.forbid or [])
+    forbid = ["benchmarks/.*answer-key"] + list(a.forbid or [])  # the benchmark key is always off limits
     srows, audit_rows, flag_lines, total_tokens = [], [], [], 0
     refused = 0
     starts, ends = [], []
@@ -523,16 +525,16 @@ def cmd_report(a):
            % (raised, rev_must, len(rows), n_must, n_should, n_opt, n_rej),
            "- Severity at the source against the ruling: reviewers rated %d must-fix, the judge kept %d." % (rev_must, n_must),
            "- Isolation audit: %s." % isolation,
-           "- Subagent tokens: %s. Wall time: %s minutes. Orchestrator context change: %s tokens."
+           "- Subagent tokens: %s. Wall time: %s minutes. Orchestrator context change: %s."
            % (total_tokens or "unknown", wall if wall is not None else "unknown",
-              a.context_delta if a.context_delta is not None else "not recorded"), "",
+              "%s tokens" % a.context_delta if a.context_delta is not None else "not recorded"), "",
            "## Settings observed", "",
            "| Role | Agent | Model | Effort set | Effort observed | Tokens | Minutes | Tool calls | Writes refused |",
            "|---|---|---|---|---|---|---|---|---|"]
     for x in sorted(srows, key=lambda y: (y["role"] != "reviewer", y["id"])):
         out.append("| %s | %s | %s | %s | %s | %s | %s | %d | %d |" % (
             x["id"] if x["role"] != "other" else "other", x["agent"][:8], ",".join(x["models"]) or x["meta_model"] or "?",
-            x["meta_effort"] or "?", ",".join(x["efforts"]) or "?", x["tokens"] or "?", x["minutes"] or "?",
+            x["meta_effort"] or ("pinned in script" if orchestration == "workflow" else "?"), ",".join(x["efforts"]) or "?", x["tokens"] or "?", x["minutes"] or "?",
             len(x["tools"]), x["refused"]))
     out += ["", "## Yield", "",
             "| Reviewer | Raised | Must-fix | Should-fix | Nitpick | Ruled valid | Partly valid | Rejected | Only this reviewer | Report characters |",
@@ -633,6 +635,7 @@ def build_index(reviews):
     rows, sf = [], []
     changelog = read(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CHANGELOG.md"))
     applied = set(re.findall(r"SF-AR\d{3}-\d+", " ".join(l for l in changelog.splitlines() if "Implements" in l)))
+    closed = set(re.findall(r"SF-AR\d{3}-\d+", " ".join(l for l in changelog.splitlines() if "Closed" in l)))
     for f in files:
         t = read(f)
         fm = front_matter(t)
@@ -654,12 +657,12 @@ def build_index(reviews):
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     write(os.path.join(reviews, "INDEX.md"), head + "\n".join(rows))
     sfh = ("# Skill feedback from run reports (generated)\n\nCollected from the `Skill feedback` section of each run report. "
-           "An item is marked applied when `CHANGELOG.md` in the skill directory has an `Implements:` line naming its id.\n\n"
+           "An item is marked applied when `CHANGELOG.md` in the skill directory has an `Implements:` line naming its id, or closed when a `Closed:` line names it (decided not to do).\n\n"
            "| Id | Run | Area | Observation | Proposal | Evidence | Status |\n|---|---|---|---|---|---|---|\n")
-    sfr = ["| %s | %s | %s | %s | %s | %s | %s |" % (i, r, ar, ob, pr, ev, "applied" if i in applied else "open")
+    sfr = ["| %s | %s | %s | %s | %s | %s | %s |" % (i, r, ar, ob, pr, ev, "applied" if i in applied else "closed" if i in closed else "open")
            for i, r, ar, ob, pr, ev in sf]
     write(os.path.join(reviews, "SKILL-FEEDBACK.md"), sfh + "\n".join(sfr))
-    print("indexed %d reports, %d feedback items (%d open)" % (len(files), len(sf), sum(1 for x in sf if x[0] not in applied)))
+    print("indexed %d reports, %d feedback items (%d open)" % (len(files), len(sf), sum(1 for x in sf if x[0] not in applied | closed)))
 
 
 def cmd_index(a):

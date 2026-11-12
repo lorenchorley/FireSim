@@ -2,6 +2,16 @@
 
 Entries name the run report items they came from on an `Implements:` line. The feedback index reads those lines.
 
+## Version 3, revision 3 (2026-11-12)
+
+Source: the first assessment of run 3 (benchmark baseline) and a reading of `addyosmani/adverse` for lens design.
+
+- `ar.py report`: the summary line reads "not recorded" instead of "not recorded tokens"; the `Effort set` column says "pinned in script" for workflow runs; the digest's `Full ruling:` line is rewritten to the published path `reviews/run-N/ruling.md`; the benchmark answer key (`benchmarks/.*answer-key`) is always a forbidden pattern in the audit.
+- `ar.py index`: a feedback item is shown as `closed` when a `Closed:` line names it.
+- `lenses.md`: new experimental set "Plans, extended" with three lenses written after the scoring of run 3 (claims against the repo, measurement method, operations and security parity), each with an explicit out-of-scope line so they stay orthogonal. Not part of the default run. They are tested against the benchmark before they join the `plans` set.
+- `SKILL.md`: note that on Windows the script runs as `python`, not `python3`.
+- Closed: SF-AR003-2, SF-AR003-3 (decision: not needed; the workflow keeps reports out of the main session and the digest is about 1,000 tokens).
+
 ## Version 3, revision 2 (2026-11-12)
 
 Source: the feedback lines of run report AR-003.

@@ -54,7 +54,7 @@ Every run has an id, `AR-NNN`, a three-digit number counted across all runs. It 
 - the raw material, in `docs/adversarial-validation/reviews/run-N/` (pack, run record, reports, ruling, digest);
 - the run report, in `docs/adversarial-validation/reviews/reports/`, named `AR-NNN_YYYY-MM-DD_<lensset>_<work-slug>.md`, for example `AR-003_2026-11-12_plans_dotnet-option-b-prototype.md`.
 
-`scripts/ar.py` picks the number, builds the name and writes the report. The full format, the front matter keys and how to search them are in `run-report-format.md`.
+`scripts/ar.py` picks the number, builds the name and writes the report. The commands in this file say `python3 -I`; where only `python` exists (a Windows machine with the Store shim), use `python -I`. The full format, the front matter keys and how to search them are in `run-report-format.md`.
 
 ## Procedure
 
@@ -75,7 +75,7 @@ Before launching, read the primary session's `context_usage.used_tokens` from `g
 
 ### 2. Choose the lenses
 
-`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
+`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. The `Plans, extended (experimental)` set adds three lenses that are not in the default run; use them only for a benchmark experiment or when the user names them. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
 
 ### 3. Launch the reviewers
 
