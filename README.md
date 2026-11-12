@@ -1639,3 +1639,7 @@ Since 0.8.0 the same protocol can also run over a WebSocket: on a page that a de
 
 Code: MIT (see `package.json`). Bundled data keep their own licences (table above; CC BY 4.0 requires attribution,
 which the app shows in Settings → About).
+
+## Repository management
+
+The repository follows gitflow: `main` holds releases, `develop` is the next release, and each piece of work is merged into `develop` with a merge commit. **It is managed entirely by agents, autonomously. The owner takes no part in managing it.** See [docs/GITFLOW.md](docs/GITFLOW.md) for the rules and the current state, and [docs/RELEASES.md](docs/RELEASES.md) for the release record.
