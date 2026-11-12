@@ -73,6 +73,7 @@ def _result_text(content):
 
 
 def load_agents(match, dirs):
+    match = match.replace("\\", "/")  # launch messages may use forward slashes where the OS path has backslashes
     agents = []
     for d in dirs:
         for f in sorted(glob.glob(os.path.join(d, "**", "agent-*.jsonl"), recursive=True)):
@@ -89,11 +90,11 @@ def load_agents(match, dirs):
                         if nuser < 3 and m.get("role") == "user":
                             nuser += 1  # workflow agents get the relayed user request first, the task second
                             first += " " + _text_of(m.get("content"))
-                            if nuser == 3 and match not in first:
+                            if nuser == 3 and match not in first.replace("\\", "/"):
                                 break
             except OSError:
                 continue
-            if not first or match not in first:
+            if not first or match not in first.replace("\\", "/"):
                 continue
             agents.append(summarise_agent(f, recs, first))
     return agents
@@ -163,9 +164,12 @@ def summarise_agent(path, recs, first):
         except ValueError:
             pass
     relay = re.search(r"\[Workflow harness [^\]]*user request\][^\n]*\n(.*?)\[Workflow harness", first, re.S)
+    # the harness also relays the assistant message that preceded the user's request, as "assistant context"
+    actx = re.search(r"assistant context\][^\n]*\n(.*?)(?=\[Workflow harness|\Z)", first, re.S)
     return {
         "path": path, "agent": os.path.basename(path)[6:-6], "role": role, "id": rid, "first": first,
         "relayed": len(relay.group(1).strip()) if relay else 0,
+        "relayed_assistant": actx.group(1).strip() if actx else "",
         "meta_model": meta.get("model"), "meta_effort": meta.get("effort"), "description": meta.get("description"),
         "models": sorted(models), "efforts": sorted(efforts), "tools": tools, "refused": refused,
         "tokens": tokens, "minutes": minutes, "start": ts[0] if ts else "", "end": ts[-1] if ts else "",
@@ -487,6 +491,13 @@ def cmd_report(a):
     rev_models = sorted({",".join(x["models"]) or x["meta_model"] or "" for x in agents if x["role"] == "reviewer"})
     rev_eff = sorted({",".join(x["efforts"]) or x["meta_effort"] or "" for x in agents if x["role"] == "reviewer"})
     j = judge[-1] if judge else None
+    leaked = [x for x in agents if x["role"] in ("reviewer", "judge") and x.get("relayed_assistant")]
+    for pat in forbid:  # the relayed text is read by the agent like the pack is
+        if any(re.search(pat, x["relayed_assistant"], re.I) for x in leaked):
+            flag_lines.append("relayed assistant context matched forbidden pattern %r" % pat)
+    if leaked:
+        flag_lines.append("the harness relayed the assistant message that preceded the user's request to %d agents (%d characters, starts: %r). It is text from the orchestrating session. Unless it is neutral, the run is not isolated: for a run scored against an answer key, use the manual path."
+                          % (len(leaked), len(leaked[0]["relayed_assistant"]), leaked[0]["relayed_assistant"][:120]))
     isolation = "not audited" if not audit_rows else ("clean" if not flag_lines else "flags:%d" % len(flag_lines))
     ver, commit = skill_version(skill_dir)
     ver = a.skill_version or ver

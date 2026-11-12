@@ -48,8 +48,13 @@ const reviewerMessage = (i, lens) => [
   '- OUTPUT_MODE: return',
 ].join('\n')
 
-const runReviewer = (lens, i) =>
-  agent(reviewerMessage(i, lens), {
+// A reviewer can fill the structured output with a stub ("Test", a one-line promise) and still pass the schema.
+// The layout in reviewer-prompt.md ends with a Totals line and a Verdict line, so a real report has both.
+const complete = r => !!(r && typeof r.report === 'string' && /Totals:\s*\d+\s+findings/i.test(r.report) && /Verdict:/i.test(r.report))
+const RETRY_NOTE = '- NOTE: the previous reply held no complete report. Put the whole report, in the layout of reviewer-prompt.md ending with the Totals and Verdict lines, in the report field. A summary, a test message or a promise to send it later is not a report.'
+
+const runReviewer = (lens, i, retry = false) =>
+  agent(reviewerMessage(i, lens) + (retry ? '\n' + RETRY_NOTE : ''), {
     label: `R${i + 1} ${lens}`,
     phase: 'Review',
     schema: REVIEW_SCHEMA,
@@ -62,9 +67,10 @@ phase('Review')
 // Barrier on purpose: the judge needs all the reports together.
 const reviews = await parallel(lenses.map((lens, i) => () => runReviewer(lens, i)))
 for (let i = 0; i < reviews.length; i++) {
-  if (!reviews[i]) {
-    log(`R${i + 1} returned nothing; starting it once more`)
-    reviews[i] = await runReviewer(lenses[i], i).catch(() => null)
+  if (!complete(reviews[i])) {
+    log(`R${i + 1} returned ${reviews[i] ? 'an incomplete report' : 'nothing'}; starting it once more`)
+    const again = await runReviewer(lenses[i], i, true).catch(() => null)
+    reviews[i] = complete(again) ? again : null
   }
 }
 const done = reviews.map((r, i) => (r ? i : -1)).filter(i => i >= 0)

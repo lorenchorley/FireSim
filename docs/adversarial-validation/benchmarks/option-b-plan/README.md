@@ -11,14 +11,18 @@ A work whose defects are known independently of the skill, so a change to the sk
 
 ## How to run it
 
-1. `git fetch origin claude/3d-fire-simulation-app-xoy1o6`, then `make-snapshot.sh <dir outside the repository>`.
+**Use the manual path, never the workflow variant.** The workflow harness relays the assistant message that preceded the user's go-ahead to every agent, and a run of this benchmark was withdrawn for it (`../../INCIDENT-2026-11-12-workflow-relay-leak.md`). The launch message of a manual run holds only paths.
+
+1. `git fetch origin claude/3d-fire-simulation-app-xoy1o6` if the commit is not in your clone (`git cat-file -t 853f333`), then `make-snapshot.sh <dir outside the repository>`.
 2. Build the pack as in run 3 (`reviews/run-3/pack.md` is the template: purpose taken from the plan's own opening paragraph, the plan as the work, the snapshot as the sources, "Do not use git"). Use the five `plans` lenses.
 3. Run the skill. Pass `--forbid 'benchmarks/'`, `--forbid 'answer-key'`, `--forbid 'redteam'` and `--forbid 'origin/claude'` to `ar.py report`, so the audit shows any touch of the key or the red team's files.
-4. Score with `scoring-prompt.md` in the skill directory (`KEY_PATH` is `answer-key.md`). For a figure you will compare across runs, use two independent scorers and report both.
+4. Score with `scoring-prompt.md` in the skill directory (`KEY_PATH` is `answer-key.md`, `SCOPE_PATH` is `scope.md`, so every run is scored over the same 28 in-scope items). For a figure you will compare across runs, use two independent scorers and report both.
 
 ## The baseline: AR-003
 
 Skill version 3, workflow variant, five Haiku reviewers at high effort and one Sonnet judge at xhigh, no web research mandated.
+
+**Caveat found later:** the workflow variant also relays the preceding assistant message to every agent. Its report counted only the triggering request, so whether AR-003's agents received any text about the benchmark was not checked, and cannot be checked from the files kept. Treat this baseline as unconfirmed until a clean manual rerun reproduces it.
 
 | Measure | Result |
 |---|---|
@@ -28,6 +32,8 @@ Skill version 3, workflow variant, five Haiku reviewers at high effort and one S
 | Raised by a reviewer but dropped by the judge | none, for the in-scope items |
 | Ruled valid or partly valid with no key counterpart | 19 items (first scorer). Unverified: they may be true defects the red team missed, or noise |
 | Cost | 738,609 subagent tokens for the run (about 13.7 minutes) and 266,848 for two scorers |
+
+**Precision of the extras (2026-11-12).** One independent checker (Sonnet, xhigh) read 19 neutral claims, with no judge verdicts and no key, against the plan and snapshot: 15 Real, 4 Partly real, 0 Not real, 0 Cannot tell, and 1 that matters for the decision to start (**E17** [install route changed after a refusal, no recorded owner OK]). So the judge's unmatched findings are mostly true but minor defects, and the key is not a full defect list. One model's check, not a second opinion. See `extras-check-2026-11-12.md`.
 
 For comparison, the red team that made the key used about 3.8 M tokens and 56 minutes and had every team do at least 12 web lookups.
 

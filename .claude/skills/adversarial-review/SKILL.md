@@ -166,7 +166,9 @@ When the user asks for a workflow (or says "use a workflow"), steps 3 and 4 run 
 - The reviewers return their reports as structured output, and the judge gets them inline. Nothing but a few lines (counts, verdicts and the digest) comes back to this session.
 - Then run step 5. `ar.py report` saves the reports, the ruling and the digest from the agents' own records first (`ar.py extract` does the same on its own), so the run directory ends up identical to a manual run.
 - Pass the workflow's transcript directory to `ar.py` with `--transcripts <dir>` if the script cannot find the agents' records by itself.
-- **Isolation caveat.** The harness gives every workflow agent the user's triggering request verbatim, before the task text. Rule 2 is therefore not fully in your hands in this variant. The report records it as a flag. Check that the request says nothing about the work under review, and if it does, run the manual path instead.
+- **Isolation caveat.** The harness gives every workflow agent the user's triggering request verbatim, before the task text, **and the assistant message that preceded that request** (about 2,000 characters of it, as "assistant context"). Rule 2 is therefore not in your hands in this variant: whatever you wrote to the user just before they said "go" reaches every reviewer and the judge. This was found on 2026-11-12, when a benchmark run received a message that named answer-key items (see `INCIDENT-2026-11-12-workflow-relay-leak.md`). `ar.py report` now flags any relayed assistant message and marks the isolation audit `flags`.
+  - **Never use the workflow variant for a run scored against an answer key.** Use the manual path.
+  - For other runs, use it only when the message before the user's go-ahead says nothing about the work under review, and read the flag in the report.
 - The Workflow variant keeps reviewer output out of this session. The manual path does not: reviewers' final messages arrive here as text. In run 2 that cost about 39,600 tokens of this session's context.
 
 ## Improving the skill from past runs
