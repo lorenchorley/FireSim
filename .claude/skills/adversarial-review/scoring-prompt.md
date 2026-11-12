@@ -20,6 +20,8 @@ For each key item decide, from the key and the snapshot only, whether a reviewer
 
 Give one line of reason per item. Do not open `ruling.md` or the reports until step 1 is written down in your output file.
 
+If the launch message gives `SCOPE_PATH`, do not decide the scope yourself: copy it from that file, with a short reason per item, so every run of the same benchmark is scored over the same items.
+
 ## Step 2: match
 
 For each key item, look in the ledger of `ruling.md`, then in the reports, and decide:

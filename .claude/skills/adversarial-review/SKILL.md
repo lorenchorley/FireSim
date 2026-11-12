@@ -54,7 +54,7 @@ Every run has an id, `AR-NNN`, a three-digit number counted across all runs. It 
 - the raw material, in `docs/adversarial-validation/reviews/run-N/` (pack, run record, reports, ruling, digest);
 - the run report, in `docs/adversarial-validation/reviews/reports/`, named `AR-NNN_YYYY-MM-DD_<lensset>_<work-slug>.md`, for example `AR-003_2026-11-12_plans_dotnet-option-b-prototype.md`.
 
-`scripts/ar.py` picks the number, builds the name and writes the report. The full format, the front matter keys and how to search them are in `run-report-format.md`.
+`scripts/ar.py` picks the number, builds the name and writes the report. The commands in this file say `python3 -I`; where only `python` exists (a Windows machine with the Store shim), use `python -I`. The full format, the front matter keys and how to search them are in `run-report-format.md`.
 
 ## Procedure
 
@@ -75,7 +75,7 @@ Before launching, read the primary session's `context_usage.used_tokens` from `g
 
 ### 2. Choose the lenses
 
-`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
+`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. `lenses-extended.md` holds three experimental plan lenses that are not in the default run; pass their text in `LENS` only for a benchmark experiment or when the user names them. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
 
 ### 3. Launch the reviewers
 
@@ -166,7 +166,9 @@ When the user asks for a workflow (or says "use a workflow"), steps 3 and 4 run 
 - The reviewers return their reports as structured output, and the judge gets them inline. Nothing but a few lines (counts, verdicts and the digest) comes back to this session.
 - Then run step 5. `ar.py report` saves the reports, the ruling and the digest from the agents' own records first (`ar.py extract` does the same on its own), so the run directory ends up identical to a manual run.
 - Pass the workflow's transcript directory to `ar.py` with `--transcripts <dir>` if the script cannot find the agents' records by itself.
-- **Isolation caveat.** The harness gives every workflow agent the user's triggering request verbatim, before the task text. Rule 2 is therefore not fully in your hands in this variant. The report records it as a flag. Check that the request says nothing about the work under review, and if it does, run the manual path instead.
+- **Isolation caveat.** The harness gives every workflow agent the user's triggering request verbatim, before the task text, **and the assistant message that preceded that request** (about 2,000 characters of it, as "assistant context"). Rule 2 is therefore not in your hands in this variant: whatever you wrote to the user just before they said "go" reaches every reviewer and the judge. This was found on 2026-11-12, when a benchmark run received a message that named answer-key items (see `INCIDENT-2026-11-12-workflow-relay-leak.md`). `ar.py report` now flags any relayed assistant message and marks the isolation audit `flags`.
+  - **Never use the workflow variant for a run scored against an answer key.** Use the manual path.
+  - For other runs, use it only when the message before the user's go-ahead says nothing about the work under review, and read the flag in the report.
 - The Workflow variant keeps reviewer output out of this session. The manual path does not: reviewers' final messages arrive here as text. In run 2 that cost about 39,600 tokens of this session's context.
 
 ## Improving the skill from past runs

@@ -73,6 +73,7 @@ def _result_text(content):
 
 
 def load_agents(match, dirs):
+    match = match.replace("\\", "/")  # launch messages may use forward slashes where the OS path has backslashes
     agents = []
     for d in dirs:
         for f in sorted(glob.glob(os.path.join(d, "**", "agent-*.jsonl"), recursive=True)):
@@ -89,11 +90,11 @@ def load_agents(match, dirs):
                         if nuser < 3 and m.get("role") == "user":
                             nuser += 1  # workflow agents get the relayed user request first, the task second
                             first += " " + _text_of(m.get("content"))
-                            if nuser == 3 and match not in first:
+                            if nuser == 3 and match not in first.replace("\\", "/"):
                                 break
             except OSError:
                 continue
-            if not first or match not in first:
+            if not first or match not in first.replace("\\", "/"):
                 continue
             agents.append(summarise_agent(f, recs, first))
     return agents
@@ -163,9 +164,12 @@ def summarise_agent(path, recs, first):
         except ValueError:
             pass
     relay = re.search(r"\[Workflow harness [^\]]*user request\][^\n]*\n(.*?)\[Workflow harness", first, re.S)
+    # the harness also relays the assistant message that preceded the user's request, as "assistant context"
+    actx = re.search(r"assistant context\][^\n]*\n(.*?)(?=\[Workflow harness|\Z)", first, re.S)
     return {
         "path": path, "agent": os.path.basename(path)[6:-6], "role": role, "id": rid, "first": first,
         "relayed": len(relay.group(1).strip()) if relay else 0,
+        "relayed_assistant": actx.group(1).strip() if actx else "",
         "meta_model": meta.get("model"), "meta_effort": meta.get("effort"), "description": meta.get("description"),
         "models": sorted(models), "efforts": sorted(efforts), "tools": tools, "refused": refused,
         "tokens": tokens, "minutes": minutes, "start": ts[0] if ts else "", "end": ts[-1] if ts else "",
@@ -427,6 +431,8 @@ def cmd_report(a):
     if not rows:
         notes.append("the ruling has no readable ledger")
     digest = read(os.path.join(run, "digest.md")).strip()
+    # the judge cites a scratchpad path that is gone after the session; the published copy is reviews/run-N/ruling.md
+    digest = re.sub(r"^Full ruling:.*$", "Full ruling: reviews/run-%d/ruling.md" % n, digest, flags=re.M)
     call = (re.search(r"Overall call:\s*(.*)", digest) or [None, ""])[1].strip()
     if not call:
         found = re.findall(r"(ready to send|fix the must-fix items and resend|rethink)", ledger_text, re.I)
@@ -452,7 +458,7 @@ def cmd_report(a):
         yrows.append((rid, v, len(ok), len(part), len(rej), len(uniq)))
 
     # settings and audit
-    forbid = list(a.forbid or [])
+    forbid = ["benchmarks/.*answer-key"] + list(a.forbid or [])  # the benchmark key is always off limits
     srows, audit_rows, flag_lines, total_tokens = [], [], [], 0
     refused = 0
     starts, ends = [], []
@@ -485,6 +491,13 @@ def cmd_report(a):
     rev_models = sorted({",".join(x["models"]) or x["meta_model"] or "" for x in agents if x["role"] == "reviewer"})
     rev_eff = sorted({",".join(x["efforts"]) or x["meta_effort"] or "" for x in agents if x["role"] == "reviewer"})
     j = judge[-1] if judge else None
+    leaked = [x for x in agents if x["role"] in ("reviewer", "judge") and x.get("relayed_assistant")]
+    for pat in forbid:  # the relayed text is read by the agent like the pack is
+        if any(re.search(pat, x["relayed_assistant"], re.I) for x in leaked):
+            flag_lines.append("relayed assistant context matched forbidden pattern %r" % pat)
+    if leaked:
+        flag_lines.append("the harness relayed the assistant message that preceded the user's request to %d agents (%d characters, starts: %r). It is text from the orchestrating session. Unless it is neutral, the run is not isolated: for a run scored against an answer key, use the manual path."
+                          % (len(leaked), len(leaked[0]["relayed_assistant"]), leaked[0]["relayed_assistant"][:120]))
     isolation = "not audited" if not audit_rows else ("clean" if not flag_lines else "flags:%d" % len(flag_lines))
     ver, commit = skill_version(skill_dir)
     ver = a.skill_version or ver
@@ -523,16 +536,16 @@ def cmd_report(a):
            % (raised, rev_must, len(rows), n_must, n_should, n_opt, n_rej),
            "- Severity at the source against the ruling: reviewers rated %d must-fix, the judge kept %d." % (rev_must, n_must),
            "- Isolation audit: %s." % isolation,
-           "- Subagent tokens: %s. Wall time: %s minutes. Orchestrator context change: %s tokens."
+           "- Subagent tokens: %s. Wall time: %s minutes. Orchestrator context change: %s."
            % (total_tokens or "unknown", wall if wall is not None else "unknown",
-              a.context_delta if a.context_delta is not None else "not recorded"), "",
+              "%s tokens" % a.context_delta if a.context_delta is not None else "not recorded"), "",
            "## Settings observed", "",
            "| Role | Agent | Model | Effort set | Effort observed | Tokens | Minutes | Tool calls | Writes refused |",
            "|---|---|---|---|---|---|---|---|---|"]
     for x in sorted(srows, key=lambda y: (y["role"] != "reviewer", y["id"])):
         out.append("| %s | %s | %s | %s | %s | %s | %s | %d | %d |" % (
             x["id"] if x["role"] != "other" else "other", x["agent"][:8], ",".join(x["models"]) or x["meta_model"] or "?",
-            x["meta_effort"] or "?", ",".join(x["efforts"]) or "?", x["tokens"] or "?", x["minutes"] or "?",
+            x["meta_effort"] or ("pinned in script" if orchestration == "workflow" else "?"), ",".join(x["efforts"]) or "?", x["tokens"] or "?", x["minutes"] or "?",
             len(x["tools"]), x["refused"]))
     out += ["", "## Yield", "",
             "| Reviewer | Raised | Must-fix | Should-fix | Nitpick | Ruled valid | Partly valid | Rejected | Only this reviewer | Report characters |",
@@ -633,6 +646,7 @@ def build_index(reviews):
     rows, sf = [], []
     changelog = read(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "CHANGELOG.md"))
     applied = set(re.findall(r"SF-AR\d{3}-\d+", " ".join(l for l in changelog.splitlines() if "Implements" in l)))
+    closed = set(re.findall(r"SF-AR\d{3}-\d+", " ".join(l for l in changelog.splitlines() if "Closed" in l)))
     for f in files:
         t = read(f)
         fm = front_matter(t)
@@ -654,12 +668,12 @@ def build_index(reviews):
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     write(os.path.join(reviews, "INDEX.md"), head + "\n".join(rows))
     sfh = ("# Skill feedback from run reports (generated)\n\nCollected from the `Skill feedback` section of each run report. "
-           "An item is marked applied when `CHANGELOG.md` in the skill directory has an `Implements:` line naming its id.\n\n"
+           "An item is marked applied when `CHANGELOG.md` in the skill directory has an `Implements:` line naming its id, or closed when a `Closed:` line names it (decided not to do).\n\n"
            "| Id | Run | Area | Observation | Proposal | Evidence | Status |\n|---|---|---|---|---|---|---|\n")
-    sfr = ["| %s | %s | %s | %s | %s | %s | %s |" % (i, r, ar, ob, pr, ev, "applied" if i in applied else "open")
+    sfr = ["| %s | %s | %s | %s | %s | %s | %s |" % (i, r, ar, ob, pr, ev, "applied" if i in applied else "closed" if i in closed else "open")
            for i, r, ar, ob, pr, ev in sf]
     write(os.path.join(reviews, "SKILL-FEEDBACK.md"), sfh + "\n".join(sfr))
-    print("indexed %d reports, %d feedback items (%d open)" % (len(files), len(sf), sum(1 for x in sf if x[0] not in applied)))
+    print("indexed %d reports, %d feedback items (%d open)" % (len(files), len(sf), sum(1 for x in sf if x[0] not in applied | closed)))
 
 
 def cmd_index(a):
