@@ -31,7 +31,7 @@ Flat `key: value` lines between two `---` lines, so `grep` finds them.
 | `findings_raised`, `reviewer_must_fix` | what the reviewers filed |
 | `ledger_items`, `ledger_must_fix`, `ledger_should_fix`, `ledger_optional`, `ledger_rejected` | what the judge ruled |
 | `overall_call` | the judge's call |
-| `subagent_tokens`, `wall_minutes`, `orchestrator_context_delta` | cost. Tokens per agent are the size of its last turn's context plus output |
+| `subagent_tokens`, `other_agent_tokens`, `wall_minutes`, `orchestrator_context_delta` | cost. `subagent_tokens` counts the reviewers and the judge. `other_agent_tokens` counts helper agents that match the run (a scorer, say). Tokens per agent are the size of its last turn's context plus output, about 8 % above the harness's own figure on workflow runs |
 | `isolation` | `clean`, `flags:N`, or `not audited` |
 | `write_refusals`, `retries`, `parse_warnings` | how the run went |
 

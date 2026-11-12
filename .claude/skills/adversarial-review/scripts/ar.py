@@ -258,6 +258,13 @@ def audit(agent, pack, run_dir, skill_dir, forbid):
     flags, reads = [], set()
     own = agent["id"]
     no_git = bool(re.search(r"git history|do not use git", pack, re.I))
+    roots = sorted({r.rstrip("/") for r in re.findall(r"(/[A-Za-z0-9_./-]{3,})", pack)})
+
+    def is_listed(tok):
+        if listed(tok, pack) or any(tok == r or tok.startswith(r + "/") for r in roots):
+            return True
+        rel = tok.lstrip("./")
+        return any(os.path.isdir(r) and os.path.exists(os.path.join(r, rel)) for r in roots)
     for tool, s in touched(agent):
         if agent["role"] == "reviewer":
             for m in re.finditer(r"report-(R\d+)", s):
@@ -285,7 +292,7 @@ def audit(agent, pack, run_dir, skill_dir, forbid):
     skill_dir = skill_dir.rstrip("/")
     other = sorted(t for t in reads if not t.startswith(run_dir.rstrip("/")) and skill_dir not in t
                    and not t.startswith(("/usr", "/bin", "/dev", "/tmp/claude", "/proc")))
-    unlisted = [t for t in other if not listed(t, pack)]
+    unlisted = [t for t in other if not is_listed(t)]
     return sorted(set(flags)), other, unlisted
 
 
@@ -444,8 +451,12 @@ def cmd_report(a):
     srows, audit_rows, flag_lines, total_tokens = [], [], [], 0
     refused = 0
     starts, ends = [], []
+    other_tokens = 0
     for x in agents:
-        total_tokens += x["tokens"] or 0
+        if x["role"] in ("reviewer", "judge"):
+            total_tokens += x["tokens"] or 0
+        else:
+            other_tokens += x["tokens"] or 0
         refused += x["refused"]
         if x["start"]:
             starts.append(x["start"]); ends.append(x["end"])
@@ -483,7 +494,7 @@ def cmd_report(a):
           ("judge_effort", (j and (",".join(j["efforts"]) or j["meta_effort"])) or "unknown"),
           ("findings_raised", raised), ("reviewer_must_fix", rev_must), ("ledger_items", len(rows)),
           ("ledger_must_fix", n_must), ("ledger_should_fix", n_should), ("ledger_optional", n_opt),
-          ("ledger_rejected", n_rej), ("overall_call", call or "unknown"), ("subagent_tokens", total_tokens or "unknown"),
+          ("ledger_rejected", n_rej), ("overall_call", call or "unknown"), ("subagent_tokens", total_tokens or "unknown"), ("other_agent_tokens", other_tokens),
           ("wall_minutes", wall if wall is not None else "unknown"),
           ("orchestrator_context_delta", a.context_delta if a.context_delta is not None else "unknown"),
           ("isolation", isolation), ("write_refusals", refused), ("retries", retries),
