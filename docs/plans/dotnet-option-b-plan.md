@@ -76,7 +76,7 @@ Every phone round is **one** test APK. The owner installs it, opens it, puts the
 - The first screen says, in large type: *This is a test build of FireSim. It measures this phone and sends the numbers to the developer. It does not change your FireSim app. It takes about N minutes.*
 
 **Running.**
-- A **Start** button (one tap) starts the run; the screen stays on (`DeviceDisplay.KeepScreenOn`).
+- The run **starts by itself** when the app opens, after a 10-second countdown with a *Not now* button; the screen stays on (`DeviceDisplay.KeepScreenOn`).
 - Before starting, the app checks charge (> 50 % or charging) and thermal status, waits out a 5-minute cool-down if needed, and records the network state. Airplane mode is asked for but not required; the result records which.
 - A progress line shows the arm being run and the time left. If the owner leaves the app, the run pauses and the screen says so on return (Android throttles a background WebView), and the pause is recorded.
 
@@ -89,7 +89,19 @@ Every phone round is **one** test APK. The owner installs it, opens it, puts the
 - The final screen says: *Done. The results were sent at 14:32 (receipt 7F3A). You can uninstall this test app now.* with an **Uninstall** button (`Intent.ActionDelete` on `package:au.firesim.proto.r1`, which needs the `REQUEST_DELETE_PACKAGES` permission in the manifest; Android then shows its own confirmation). If the send failed, it says so and keeps the Share button.
 
 **The results channel** (T0.6 builds it and proves it with round 0 before any real benchmark):
-- *To be completed from the research in progress : the primary channel, its fallback, who runs it, how the orchestrator reads it back, and why no secret is in the APK.*
+This container accepts no incoming connections, so the numbers must land somewhere it can read. It can read GitHub. The channel therefore ends in a **GitHub issue**, and no GitHub token is ever inside an APK (anyone can unzip an APK; a token there would let anyone write to the repository).
+
+- **Primary, zero taps: a small results endpoint the owner runs.** An Azure Function in C# (the company's stack; a Cloudflare Worker would also do, and both are free at this volume), written here as `Fs.Results/` and deployed by the owner.
+  - The app POSTs its JSON (at most 64 KB) over HTTPS with the round's **upload code**: a random value baked into that APK, accepted at most three times, expiring 14 days after the build. A stolen code can submit at most three junk results for one round and nothing else.
+  - The function checks the schema and size, then opens an issue labelled `bench-result` using a token it holds on the server (a GitHub App installation or a fine-grained token with *Issues: write* on one repository only). It answers with the issue number, which the done screen shows as the receipt.
+  - The orchestrator reads the issue through its GitHub tool. Nothing new is needed in the container.
+  - **Where the issues go.** The repository `lorenchorley/firesim` is public, so its issues are public: device model, Android and WebView versions, timings and temperatures, nothing personal. If the owner prefers, the function writes to a private repository (for example `firesim-results`) that this session is then given access to.
+  - **Owner setup** (T0.6, about 30 minutes): create the Function app, set two secrets (the GitHub token and the list of upload codes), deploy `Fs.Results/` with the steps in its README.
+- **Fallback, one tap, works with no setup: a prefilled GitHub issue.** The done screen's **Send with GitHub** button opens `https://github.com/lorenchorley/firesim/issues/new?title=…&labels=bench-result&body=…` in the phone's browser, with a compact summary (at most 6 KB, because GitHub refuses long addresses). The owner taps *Submit* while signed in to GitHub. The full JSON goes by **Share** (a file through the Android share sheet).
+- **Rejected:** a token in the APK (anyone could extract it); public topic services such as ntfy.sh (the topic name is the only password, and it would be in a public APK); paste sites (public and unreliable); a claude.ai artifact database (it accepts writes only from signed-in viewers inside claude.ai).
+- **Until the endpoint exists**, rounds use the fallback. Round 0 proves whichever is ready, and the plan does not wait for the endpoint.
+- **Permissions in every test APK, and no others:** `INTERNET`, `ACCESS_NETWORK_STATE`, `BATTERY_STATS` (battery level), `REQUEST_DELETE_PACKAGES` (the Uninstall button). If the uninstall screen cannot open, the button opens the app's *App info* page instead (`Settings.ActionApplicationDetailsSettings`).
+- **The result is saved before any send**, so a failed send loses nothing; *Send now* and *Share* stay on the done screen until a receipt arrives.
 
 **Rounds** (the owner's time is the install, one tap and the uninstall; the phone runs unattended):
 
@@ -135,6 +147,7 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
   3. Install the `wasm-tools` workload with the local `dotnet` and an explicit `--version` matching 11.0.100 (NuGet, no script). Record it.
   4. Lock package versions (`packages.lock.json` with `RestorePackagesWithLockFile`).
   5. Build three hello-world checks: a console app (`net11.0`), a `wasmbrowser` app with `RunAOTCompilation=true`, and the MAUI template for `net11.0-android`.
+  6. Build the MAUI template once more with `-p:UseMonoRuntime=true` and record whether NETSDK1242 stops it (it settles revision 3's open Mono question).
 - **Done when:** all three build from a clean clone with `source env.sh`, and `TOOLCHAIN.md` lists everything installed.
 - **Out:** `TOOLCHAIN.md`, `env.sh`, `global.json`, lock files.
 
@@ -151,7 +164,7 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 #### T0.6 The results channel and round 0
 - **Who:** orchestrator (channel), builder (round 0 arms), owner (install). **Needs:** T0.5.
 - **Steps:**
-  1. Set up the channel chosen in section 5.
+  1. Write `Fs.Results/` (an Azure Function in C#, isolated worker: one POST endpoint, schema and size check, upload-code check, issue creation with a server-side token, a README with the deploy steps) and its tests. Write the fallback (the prefilled issue link and Share) into `Fs.TestApp`. **Owner, optional:** deploy `Fs.Results/` and say where the issues should go; round 0 does not wait for it.
   2. Round 0 arms: device facts (model, SoC, core types from `/sys/devices/system/cpu/*/cpufreq`, Android and WebView versions); WebView capabilities (`crossOriginIsolated`, `SharedArrayBuffer`, WebAssembly SIMD and threads feature tests, WebGPU adapter); the frozen speed-test kernel in a WebView worker (checksum `0x7d268009` must match).
   3. Send the APK to the owner (a file in this conversation) with three lines of instructions.
   4. **Owner:** install, open, tap Start, wait for "Done", tap Uninstall.
@@ -202,14 +215,15 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 - **Done when:** all arms produce the same bits as T1.3's reference outputs.
 
 #### T1.5 The WebAssembly arm
-- **Who:** builder. **Needs:** T1.3, T0.4. **Reads:** the research notes in 10.2, `dotnet-blazor/use-js-interop` (the `[JSExport]` parts).
+- **Who:** builder. **Needs:** T1.2 for a first run, T1.3 for the full run, T0.4. **Reads:** the research notes in 10.2, `dotnet-blazor/use-js-interop` (the `[JSExport]` parts).
 - **Steps:**
-  1. Build `Fs.Wasm/`: the kernels behind `[JSExport]` entry points, `browser-wasm`, AOT, SIMD on, trimmed, loaded by `dotnet.js` **inside a Web Worker**; inputs passed as typed arrays.
-  2. Variants: AOT one thread; interpreter one thread (to show what AOT buys); multithreaded only if the .NET 11 support allows it (10.2) and the page is cross-origin isolated.
-  3. A harness page that runs the TypeScript worker arm (T1.4) and the WebAssembly arm on the same input in the same browser, A B B A.
-  4. Run it in the container's Chromium (Playwright).
-  5. Record download size (compressed and not) and start-up time to first result.
-- **Done when:** checksums and bits match T1.3 in the browser; numbers for both arms; sizes.
+  1. Build `Fs.Wasm/`: `Microsoft.NET.Sdk.WebAssembly`, `OutputType=Library` (the shape of the `blazorwebworker` template, without Blazor), the kernels behind `[JSExport]` entry points, published with `RunAOTCompilation=true` (SIMD and exception handling are on by default), trimmed, loaded with `dotnet.create()` from `_framework/dotnet.js` **inside a Web Worker**. Large inputs and outputs cross as `Span<T>` or `ArraySegment<T>` views (no copy; float views are new in .NET 11); a picture leaves the worker as one copy into a transferred `ArrayBuffer`.
+  2. Variants: AOT one thread (the gate arm); interpreter one thread (what AOT buys); **multithreaded only as a labelled experiment** (`WasmEnableThreads`, the `wasm-experimental` workload, a cross-origin-isolated page), never a gate arm (10.2).
+  3. **Early reading:** as soon as T1.2 is done, run its speed-test kernel through steps 1, 2 and 4 and send the ratio to the owner. It is the plan's riskiest unknown and costs one builder hour.
+  4. A harness page that runs the TypeScript worker arm (T1.4) and the WebAssembly arm on the same input in the same browser, A B B A.
+  5. Run it in the container's Chromium (Playwright), and the same bits under Node with the `wasmconsole` shape (the future CI path).
+  6. Record download size (compressed and not), start-up time to first result, and the cost of moving one 5 MB picture out of the worker.
+- **Done when:** checksums and bits match T1.3 in Chromium and Node; numbers for every arm; sizes.
 - **Out:** `Fs.Wasm/`, `harness/`, `reports/1w-desktop.md`.
 
 #### T1.6 Desktop gate report
@@ -229,7 +243,7 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 - **Done when:** a noise-floor table per bar, horizon and tier.
 - **Out:** `reports/2-noise-floor.md` and `.json`.
 
-#### T2.2 The fixtures for phase 4
+#### T2.2 The fixtures for phase 3
 - **Who:** builder. **Needs:** T0.2.
 - **Steps:** export fixtures for: Katoomba 3 km (seeds 12, 13, 14; 900 s and 1,800 s), Katoomba 6 km with the wind change (seeds 12, 13; 1, 2 and 4 h), and one second site from the bundled demo sites, every tier the gate uses, embers on and off.
 - **Done when:** every fixture loads in `ts-export/inspect.mjs`, and its hashes repeat across two processes.
@@ -251,9 +265,13 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 - **Who:** builder. **Needs:** T2.3.
 - **Steps:**
   1. One class through which every transcendental call goes.
-  2. Two implementations behind one switch: the platform `Math` (fast, may differ across operating systems) and a **managed port of fdlibm** using only IEEE basic operations (the same bits on every runtime, and the same bits as V8 12.4's fdlibm where the algorithms match).
-  3. Tests: reference values, and both implementations on 10⁶ random inputs compared with Node's `Math` (count mismatches per function).
-- **Done when:** the managed implementation gives identical bits on `linux-x64` and `browser-wasm` (and on `android-arm64` in round 2); the mismatch counts against V8 are reported.
+  2. Three implementations behind one switch, all managed except the first:
+     - the platform `Math`: native .NET calls the operating system's C library (bionic, glibc, UCRT) and WebAssembly calls musl compiled into the runtime, so it can differ between every runtime;
+     - a **managed port of fdlibm** using only IEEE basic operations and `Sqrt`: the same bits on every runtime, and the same bits as Node 22's V8 12.4 (an fdlibm port) where the algorithms match;
+     - **CoreMathSharp** (MIT, a C# port of CORE-MATH, correctly rounded): the same bits on every runtime by construction, and possibly the same bits as current Chrome, whose V8 15.1+ forwards to LLVM libc (to be measured, not assumed).
+  3. Tests: reference values; each implementation on 10⁶ random inputs per function against Node 22's `Math` and against current Chromium's `Math` (count mismatches); speed of each.
+  4. Choose the default: the managed implementation with the fewest mismatches against the TypeScript reference that Gate 3 compares with, at an acceptable speed.
+- **Done when:** the chosen managed implementation gives identical bits on `linux-x64` and `browser-wasm` (and on `android-arm64` in round 2), and the mismatch and speed table is reported.
 
 #### T3.2 to T3.4 The port, in three areas
 - **Who:** three builders, one per area of T2.3. **Needs:** T2.3, T3.1. **Reads:** the slice map, 10.4, `dotnet-test` skills.
@@ -347,7 +365,7 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 
 #### T6.1 Size, start-up and memory
 - **Who:** builder. **Needs:** T5.2.
-- **Steps:** APK size against the 33 MB budget (the 0.8.0 APK is 30.4 MB); cold start; resident memory; CoreCLR, and Mono only if CoreCLR fails; a WebView floor check like the current app's (Chrome 108); the WebAssembly download size against the budget of Gate 1W. Collected in round 2 where they need the phone.
+- **Steps:** APK size against the 33 MB budget (the 0.8.0 APK is 30.4 MB); cold start; resident memory; CoreCLR (Mono is not an option for these apps: the 11.0.100 SDK carries the error NETSDK1242, "Building {0} projects with the Mono runtime is not supported in .NET 11.0 and later. Use the CoreCLR runtime or target .NET 10.0"; T0.4 confirms with a one-line build that it fires for a MAUI Android project, and if CoreCLR fails here the fallback is .NET 10 (LTS) with Mono, recorded as a risk); a WebView floor check like the current app's (Chrome 108); the WebAssembly download size against the budget of Gate 1W. Collected in round 2 where they need the phone.
 
 #### T6.2 Saved data (round 3)
 - **Who:** builder, owner. **Needs:** T5.1.
@@ -390,7 +408,8 @@ Format of each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orc
 Phase 0  T0.1 ─ T0.2 ─┬─ T0.4 ─ T0.5 ─ T0.6 (round 0, owner)
                       ├─ T0.7
          T0.3 (owner, any time before round 1)
-Phase 1  T1.1 ─ T1.3 ─ T1.4 ─ T1.5 ─ T1.6        T1.2 after T0.4
+Phase 1  T0.4 ─ T1.2 ─ T1.5 early reading (to the owner)
+         T1.1 ─ T1.3 ─ T1.4 ─ T1.5 full ─ T1.6
 Phase 2  T2.1, T2.2 (alongside phase 1); T2.3 after T1.1
 Phase 3  T3.1 ─ T3.2..T3.4 (three builders) ─ T3.5
 Phase 4  T4.1 ─ T4.2 ─ T4.3 (round 1, owner) ─ T4.4 (gates 1, 1W, 2)
@@ -452,7 +471,24 @@ Phase 7  T7.1 ─ T7.2 ─ T7.3 (owner)
 
 ### 10.2 WebAssembly facts (.NET 11)
 
-*To be completed from the research in progress.*
+Researched 2026-11-12 from Microsoft Learn, the dotnet/runtime and dotnet/aspnetcore trackers, the .NET blog and the local 11.0.100 SDK manifests. Confidence high unless marked.
+
+| Fact | Consequence for the plan |
+|---|---|
+| WebAssembly in .NET 11 still runs on **Mono** ("WebAssembly continues to use Mono… not changing in .NET 11", .NET blog 2026-07-14). CoreCLR on WebAssembly is a preview, aimed at .NET 12. MAUI on Android is CoreCLR only. | The solver runs on two runtimes: CoreCLR natively, Mono in browsers. Gate 3's cross-runtime identity test covers both. |
+| Workloads in 11.0.100: `wasm-tools` (runtime packs, the AOT compiler, Emscripten 6.0.2) and `wasm-experimental` (templates and the multithreaded runtime pack). | T0.4 installs `wasm-tools`; `wasm-experimental` only for the threads experiment. |
+| Browser threads (`WasmEnableThreads`) are **experimental**: they need cross-origin isolation, the tracking issue's milestone is "Future", blocking the main thread is unsupported, `[JSExport]` calls stay on one thread, and Blazor WebAssembly does not support them at all. Without threads, `Parallel.For` runs serially (medium). | Gate 1W measures **one thread**. Native C# keeps its threads; in a browser the C# solver is single-threaded, like today's TypeScript worker. |
+| AOT (`RunAOTCompilation`, publish only) roughly doubles the download; IL is stripped after AOT by default; SIMD and exception handling are on by default. | T1.5 reports the download size; Gate 1W's size budget is the owner's. |
+| No published benchmark compares .NET WebAssembly AOT with V8 on numeric loops. | Gate 1W's ratio is unknown until T1.5 measures it; this is the highest-risk number in the plan, so it comes first. |
+| `[JSExport]` passes `Span<T>` and `ArraySegment<T>` of byte, int, double and (new in .NET 11) float as `MemoryView`s without a copy; arrays are copied; the WebAssembly heap cannot be transferred. | Pictures leave the worker with one copy into a transferred buffer. |
+| .NET runs in a Web Worker without Blazor (`dotnet.create()`; a `blazorwebworker` template is new in .NET 11). The `wasmconsole` template runs the same build under Node (templates experimental, APIs supported). | The app's worker can host the C# solver (T5.4); CI and the validation suite can run the WebAssembly build under Node. |
+| Native .NET `Math` calls the platform C library and "may differ between operating systems or architectures" (Learn, 2026-10-16). The WebAssembly runtime calls musl's libm, not JavaScript's `Math` (medium-high). There is no official .NET guidance on deterministic floating point. | `FsMath` with a managed implementation is required, not optional, for one solver with one set of results (T3.1). |
+| Android WebView can get SharedArrayBuffer only through androidx.webkit 1.18.0's cross-origin-isolated allowlist plus a `Document-Isolation-Policy` header, off by default. | Threads in the phone's WebView are a measured capability (round 0), not an assumption. |
+| MAUI 11 targets Android (API 24+), iOS 12.2+ (built on a networked Mac), Mac Catalyst, Windows; Linux only through Avalonia's third-party backend (medium). | T6.3's matrix; iOS cannot be built here. |
+| Support: .NET 11 (STS) to 2028-11-14, the same day as .NET 10 LTS; MAUI 11 to 2028-05-09; .NET 12 LTS expected November 2027. | A move to .NET 12 within about a year of starting is part of T6.4's cost. |
+| Mono for MAUI on Android: the 11.0.100 SDK carries NETSDK1242 ("…not supported in .NET 11.0 and later. Use the CoreCLR runtime or target .NET 10.0"). | Settled by T0.4 step 6; recorded as a risk if CoreCLR misbehaves. |
+
+**Not verified:** relaxed SIMD support; `Parallel.For` behaviour under browser threads in .NET 11; whether bionic, glibc and musl agree bit for bit; CoreMathSharp on WebAssembly; the minimum WebView version for the cross-origin-isolated allowlist.
 
 ### 10.3 Agreement bars for Gate 3
 
