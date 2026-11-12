@@ -114,6 +114,7 @@ def summarise_agent(path, recs, first):
         role, rid = "other", os.path.basename(path)[6:14]
     models, efforts, tools, refused = set(), set(), [], 0
     pending, last_usage, last_text, handback, structured = {}, None, "", None, None
+    results = []
     ts = []
     for o in recs:
         if o.get("timestamp"):
@@ -145,6 +146,7 @@ def summarise_agent(path, recs, first):
                 elif b.get("type") == "text" and msg.get("role") == "assistant":
                     last_text = b.get("text", "")
                 elif b.get("type") == "tool_result":
+                    results.append(_result_text(b.get("content")))
                     if (pending.get(b.get("tool_use_id")) in ("Write", "Edit", "NotebookEdit")
                             and "should return findings as text" in _result_text(b.get("content"))):
                         refused += 1
@@ -167,7 +169,7 @@ def summarise_agent(path, recs, first):
         "meta_model": meta.get("model"), "meta_effort": meta.get("effort"), "description": meta.get("description"),
         "models": sorted(models), "efforts": sorted(efforts), "tools": tools, "refused": refused,
         "tokens": tokens, "minutes": minutes, "start": ts[0] if ts else "", "end": ts[-1] if ts else "",
-        "final": handback if handback is not None else last_text, "structured": structured,
+        "final": handback if handback is not None else last_text, "structured": structured, "results": results,
     }
 
 
@@ -278,8 +280,8 @@ def audit(agent, pack, run_dir, skill_dir, forbid):
             m = re.search(r"\bgit\s+[^;|&\n]*", s)
             flags.append("%s used git although the pack forbids it: %s" % (tool, (m.group(0) if m else s)[:90]))
         for pat in forbid:
-            if re.search(pat, s):
-                flags.append("%s matched forbidden pattern %r" % (tool, pat))
+            if re.search(pat, s, re.I):
+                flags.append("%s call matched forbidden pattern %r" % (tool, pat))
         if tool != "Bash":
             toks = [s.split(" ")[0]] if tool in ("Read", "Write", "Edit") else PATH_TOKEN.findall(s)
         else:
@@ -289,6 +291,9 @@ def audit(agent, pack, run_dir, skill_dir, forbid):
                 reads.add(t)
         if agent["role"] != "reviewer" or tool in ("Write", "Edit"):
             pass
+    for pat in forbid:  # what came back to the agent, not only what it asked for
+        if any(re.search(pat, r, re.I) for r in agent.get("results", [])):
+            flags.append("a tool result contained text matching forbidden pattern %r" % pat)
     skill_dir = skill_dir.rstrip("/")
     other = sorted(t for t in reads if not t.startswith(run_dir.rstrip("/")) and skill_dir not in t
                    and not t.startswith(("/usr", "/bin", "/dev", "/tmp/claude", "/proc")))
@@ -458,14 +463,14 @@ def cmd_report(a):
         else:
             other_tokens += x["tokens"] or 0
         refused += x["refused"]
-        if x["start"]:
+        if x["start"] and x["role"] in ("reviewer", "judge"):
             starts.append(x["start"]); ends.append(x["end"])
         srows.append(x)
-        if x["role"] == "reviewer":
+        if x["role"] in ("reviewer", "judge"):
             fl, other, unl = audit(x, pack, run, skill_dir, forbid)
             audit_rows.append((x, fl, other, unl))
             flag_lines += ["%s: %s" % (x["id"], f) for f in fl]
-        elif x["role"] == "judge":
+        if x["role"] == "judge":
             wrote = [s for t, s in touched(x) if t in ("Write", "Edit")]
             bad = [w for w in wrote if os.path.basename(w) not in ("ruling.md", "digest.md")]
             for w in bad:
