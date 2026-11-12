@@ -35,7 +35,7 @@
 ## 2. Rules for every task
 
 1. **Scope.** Prototype code lives only under `prototypes/dotnet-b/` (and, if O-7 is approved, one workflow file). The app's TypeScript is read, never edited. `tsconfig.json` and the Vitest config do not include the prototype folder. Fixtures are generated, never committed; their exporters are committed.
-2. **Builders.** Every build task is run by a **Sonnet 5.5 agent at high effort** (the owner's instruction) in its own git worktree, touching only the folders its card names, never pushing. At most three builders at once. The orchestrator scope-checks each diff, merges with `--no-ff`, **makes every edit to `FsProto.slnx` and `Directory.Build.props` itself at merge time** (so parallel builders never conflict there), and pushes to `claude/3d-fire-simulation-app-xoy1o6`.
+2. **Builders.** Every build task is run by a **Sonnet 5.5 agent at high effort** (the owner's instruction) in its own git worktree, touching only the folders its card names, never pushing. At most three builders at once. The orchestrator scope-checks each diff, merges with `--no-ff`, **makes every edit to `FsProto.slnx` and `Directory.Build.props` itself at merge time** (so parallel builders never conflict there), and **merges progressively under gitflow** (`docs/GITFLOW.md`): each builder's branch is merged into this session's branch with `--no-ff` as soon as its card's "done when" is checked, and the session branch is then merged into `develop` with a merge commit (no pull request) and pushed, so `develop` always holds every finished card. Nothing is committed directly on `develop` or `main`; `main` is touched only by a release.
 3. **Skills.** Each card names the dotnet/skills `SKILL.md` files to read in full first (map: `prototypes/dotnet-b/SKILLS.md`). Section 9 lists where this plan overrides a skill.
 4. **Numbers carry conditions**: machine, cores, runtime and version, runs, median and spread. Container numbers are *indicative* (4 shared cores). Phone numbers come only from a phone and a **Release** build.
 5. **Determinism is a requirement, not a tolerance.** With the tier pinned (never `auto`, which picks from wall-clock time), the C# solver gives bit-identical results on 1, 2, 4 and 8 threads, and on every runtime: CoreCLR x64, CoreCLR arm64 and Mono WebAssembly. Section 10.4 lists the coding rules that make this possible; an analyzer enforces them (T0.4).
@@ -137,8 +137,8 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 
 #### T0.1 Record the decisions
 - **Who:** orchestrator. **Needs:** none.
-- **Steps:** add a banner to `docs/plans/dotnet-option-b-prototype.md` pointing to this file; commit this plan.
-- **Done when:** both are pushed.
+- **Steps:** add a banner to `docs/plans/dotnet-option-b-prototype.md` pointing to this file; commit this plan; merge the session branch into `develop` (gitflow, merge commit).
+- **Done when:** both are on `develop` (done 2026-11-12, merge commit on `develop`).
 
 #### T0.2 Free the disk
 - **Who:** orchestrator. **Needs:** none.
