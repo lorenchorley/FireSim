@@ -1,6 +1,6 @@
 # Adversarial validation
 
-Documents for the adversarial-review process (`.claude/skills/adversarial-review/`) and the work to extend it.
+Documents for the adversarial-review process (`~/.claude/skills/adversarial-review/`) and the work to extend it.
 
 ## Versioning
 
@@ -25,7 +25,7 @@ Each iteration is a new file. A committed file is not edited afterwards. The fir
 
 ## Run reports
 
-Every run of the skill ends with a report in `reviews/reports/`, made by `.claude/skills/adversarial-review/scripts/ar.py`. The file name is `AR-NNN_YYYY-MM-DD_<lensset>_<work-slug>.md`, and the raw material of run `AR-NNN` is in `reviews/run-N/`. The report starts with `key: value` front matter, so runs can be found with `grep`, for example `grep -l 'lens_set: plans' reviews/reports/*.md`. Lines that start `SF-` in a report's `Skill feedback` section are proposals for the skill, collected in `reviews/SKILL-FEEDBACK.md`. The format is in `.claude/skills/adversarial-review/run-report-format.md`. Runs 1 and 2 happened before this format and have backfilled reports `AR-001` and `AR-002`.
+Every run of the skill ends with a report in `reviews/reports/`, made by `~/.claude/skills/adversarial-review/scripts/ar.py`. The file name is `AR-NNN_YYYY-MM-DD_<lensset>_<work-slug>.md`, and the raw material of run `AR-NNN` is in `reviews/run-N/`. The report starts with `key: value` front matter, so runs can be found with `grep`, for example `grep -l 'lens_set: plans' reviews/reports/*.md`. Lines that start `SF-` in a report's `Skill feedback` section are proposals for the skill, collected in `reviews/SKILL-FEEDBACK.md`. The format is in `~/.claude/skills/adversarial-review/run-report-format.md`. Runs 1 and 2 happened before this format and have backfilled reports `AR-001` and `AR-002`.
 
 ## Notes on `reviews/run-1/`
 

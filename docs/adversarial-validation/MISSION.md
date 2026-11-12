@@ -1,6 +1,6 @@
 # Adversarial validation: mission statement
 
-**Status:** mission of record, revision 1 (2026-11-12). Written from the conversation that produced the `adversarial-review` skill (`.claude/skills/adversarial-review/`, commit `6ec7e70`). Sections 1 to 5 restate what the owner said. Sections 6 and 7 are formulations proposed for the owner to confirm, and are marked *(proposed)*.
+**Status:** mission of record, revision 1 (2026-11-12). Written from the conversation that produced the `adversarial-review` skill (`~/.claude/skills/adversarial-review/`, moved there from this repository on 2026-11-12; originally commit `6ec7e70`). Sections 1 to 5 restate what the owner said. Sections 6 and 7 are formulations proposed for the owner to confirm, and are marked *(proposed)*.
 
 **How to use it:** this is the reference for every later change to the validation process. A plan for changing the process is reviewed against this document, which is use case UC2 applied to the process itself. Change this document on purpose, with a dated note in section 9. Never edit it to fit a plan.
 
