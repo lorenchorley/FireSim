@@ -75,7 +75,7 @@ Before launching, read the primary session's `context_usage.used_tokens` from `g
 
 ### 2. Choose the lenses
 
-`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. The `Plans, extended (experimental)` set adds three lenses that are not in the default run; use them only for a benchmark experiment or when the user names them. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
+`lenses.md` in this skill's directory holds three sets: prose, code and plans. List the names with `grep -E '^## |^\*\*' lenses.md`. Pick the set that matches the work, or use lenses the user named. `lenses-extended.md` holds three experimental plan lenses that are not in the default run; pass their text in `LENS` only for a benchmark experiment or when the user names them. Five by default, but honor another count if the user asks. Overlapping lenses waste reviewers, so keep each one distinct. For a lens the user wrote, pass its text in the launch message.
 
 ### 3. Launch the reviewers
 
