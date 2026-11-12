@@ -113,3 +113,24 @@ The .NET team's skills (https://github.com/dotnet/skills, cloned and read) were 
 | `dotnet-msbuild/directory-build-organization`, `dotnet-nuget/convert-to-cpm` | `Directory.Build.props` is already shared. Central package management is deliberately not adopted yet: each package belongs to one project, so there is no repeated version to centralise. |
 
 **Not applied.** The skills are written as Claude Code or Copilot plugins (`/plugin marketplace add dotnet/skills`). This session cannot install plugins, so the `SKILL.md` files are read directly from the clone and given to the agents by path. The `dotnet11` plugin (System.Text.Json and Process API changes) and the `dotnet-ai` plugin do not touch this prototype.
+
+## 10. Revision 2: what stage 3a found (2026-11-12)
+
+Stage 3a (the TypeScript reference, agent P3a, merged as `095caf9`) delivered 41 fixture folders and the yardstick. Full tables: `prototypes/dotnet-b/reports/3a-tier-difference.md`. What it changes in this plan:
+
+1. **A correction to what I said earlier.** I said last-bit differences in exp, pow and sin between JavaScript and .NET would change the stored hashes. P3a perturbed the wind and temperature by 1e-15 relative (about 4.5 ulp): no float32 arrival value moved in 8 runs, and at 1e-9 the largest change was 1.2 ms. So last-bit math differences are not the risk. **The risk is the ember model's random stream and its draw order.**
+2. **What drives the noise.** Over six fast-tier seeds, 1800 s pairs differ by 20 to 50 % of ever-burning cells and burnt area has a coefficient of variation of 19 %. With embers off the seed-to-seed floor is 0 to 1.9 %. Seed 11 starts no effective spot fire, so it equals the no-embers run; seeds 12 and 13 exercise the ember code.
+3. **The fast tier is a different model.** Fast against standard differs by 34 % of cells with a median arrival-time difference of 204 s. Standard against high (30 m grid) differs by 6.7 % with a median of 11.5 s. A C# port must be compared with the TypeScript of the **same tier**; the fast tier against the standard tier misses every bar by construction.
+4. **The high tier uses 20 m cells** up to 6 km, not 30 m; a reader must take the grid from the file.
+
+**Agreement bars for stage 3, replacing the proposal in section 3** (same tier, same seed, 900 s and 1800 s):
+
+| Case | Bars |
+|---|---|
+| Embers off, any random stream | at most 2.5 % of ever-burning cells differ, burnt area within 2.5 %, median arrival difference at most 30 s, 95th percentile at most 60 s |
+| Embers on, TypeScript random generator and draw order ported exactly | the original bars: 1 %, 2 %, 30 s median (expected difference about 0) |
+| Embers on, a different random stream | no per-seed bar; the mean burnt area over 30 seeds within 12 % of the TypeScript mean |
+
+**Decision taken for stage 3.** The slice ports the TypeScript random generator and its draw order exactly, so that the tight column applies. If the generator cannot be reproduced bit for bit, the loose ensemble bar applies and the report says so.
+
+**Still to run** (not done by P3a): 30-seed TypeScript ensembles, standard and high at 6 km, and timings on a quiet machine.
