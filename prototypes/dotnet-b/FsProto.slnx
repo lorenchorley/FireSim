@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Fs.Bench/Fs.Bench.csproj" />
+  <Project Path="Fs.Compare/Fs.Compare.csproj" />
+  <Project Path="Fs.Host/Fs.Host.csproj" />
+  <Project Path="Fs.Kernel/Fs.Kernel.csproj" />
+</Solution>
