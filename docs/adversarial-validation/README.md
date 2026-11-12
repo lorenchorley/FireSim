@@ -13,6 +13,7 @@ Each iteration is a new file. A committed file is not edited afterwards. The fir
 | `MISSION.md` | Mission statement: goal, principles, use cases UC0 to UC4, research need, open questions | 1 |
 | `ASSESSMENT-2026-11-12.md` | First answers to the open questions Q1 to Q4 | 1 (unchanged) |
 | `ASSESSMENT-2026-11-12-v2.md` | The assessment with ruling items M1, M2 and S1 to S3 applied | 2 |
+| `REVIEW-OF-REDTEAM-SESSION-2026-11-12.md` | Review of another session's red team of a plan (seven teams, anonymised two-verifier check), and what carries over to this process | 1 |
 | `reviews/run-1/` | Adversarial review of assessment revision 1, against `MISSION.md` | |
 | `reviews/run-2/` | Adversarial review of assessment revision 2, with the revised skill (Haiku at high effort for the reviewers, Sonnet at xhigh for the judge). `run.md` records deviations and measurements | |
 
