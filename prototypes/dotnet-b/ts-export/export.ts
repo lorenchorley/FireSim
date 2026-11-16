@@ -22,12 +22,10 @@ import { cpus, platform, release } from 'node:os';
 import type { ScenarioData, SimSnapshot } from '../../../src/core/types';
 import { withoutContext } from '../../../src/sim/client';
 import { encodeMessage } from '../../../src/sim/remote/codec';
-import { resolveOptions } from '../../../src/scenario/build';
 import { Simulation } from '../../../src/sim/simulation';
 import { snapshotHash } from '../../../src/sim/testing/hash';
-import { demoScenario, pointIgnition, withIgnitions } from '../../../src/sim/testing/scenarios';
-import type { Ignition } from '../../../src/core/types';
 import { installNoise, type NoiseHandle } from './noise';
+import { buildScenarioData } from './scenario-build';
 import { SCENARIOS, scenarioByName, type ScenarioDef } from './scenarios';
 
 // The bundle does not sit next to src/, so the asset loader's default (relative to its own module) misses the repository's public/ and the
@@ -75,24 +73,6 @@ if (!outRoot) {
 }
 const dir = join(outRoot, dirName);
 
-function ignitionOf(d: ScenarioDef): Ignition {
-  const g = d.ignition;
-  if (g.kind === 'point') return pointIgnition(g.id, g.at[0], g.at[1], g.time, g.radius);
-  return { id: g.id, kind: 'line', points: [g.from, g.to], time: g.time, origin: 'observed' };
-}
-
-async function build(d: ScenarioDef): Promise<ScenarioData> {
-  const tierOnly = d.grid === 'tier-only';
-  const base = await demoScenario({ ...(d.site ? { site: d.site } : {}), startCivil: d.startCivil, extent: d.extent, tier: tierOnly ? 'standard' : d.tier, duration: d.duration });
-  let extra = {};
-  if (tierOnly) {
-    // The engine options the builder would resolve for this tier, with the fire cell left at the standard grid's.
-    const o = resolveOptions({ options: { tier: d.tier } } as never, d.extent, base.options.fireCellSize);
-    extra = { tier: d.tier, atmosCellSize: o.atmosCellSize, atmosLevels: o.atmosLevels, atmosDz1: o.atmosDz1, maxEmbers: o.maxEmbers };
-  }
-  return withIgnitions(base, [ignitionOf(d)], { snapshotInterval: interval, tier: d.tier, seed, ...extra, ...(d.options ?? {}) });
-}
-
 function gitCommit(): string {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -108,7 +88,7 @@ rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 
 let t0 = wall();
-let scenario = await build(def);
+let scenario = await buildScenarioData(def, seed, interval);
 if (perturb) {
   const w = scenario.weather;
   scenario = { ...scenario, weather: { ...w, hours: w.hours.map((h) => ({ ...h, windSpeed10: h.windSpeed10 * (1 + perturb), temperature: h.temperature * (1 + perturb) })) } };

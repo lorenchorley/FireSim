@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solver in a worker</title>
+</head>
+<body>
+<!--
+  Card T1.5 (d). Served by harness/run-solver-browser.mjs over http on localhost, together with /solver.worker.js (the bundle of
+  vite.solver.config.ts) and the repository's public/ folder (the demo terrain, read by the app's own asset loader with fetch).
+  The runner calls window.runSolver({ scenario, seed?, to?, interval?, keep? }); this page starts a fresh module worker, sends it the run message,
+  and posts every result file back to the runner (POST /out/<name>, raw bytes) so that nothing large goes through the DevTools protocol.
+  The page does nothing else while the worker runs: it is idle.
+-->
+<pre id="log">idle</pre>
+<script>
+  const log = (m) => { document.getElementById('log').textContent = m; };
+  async function post(name, body) {
+    const r = await fetch('/out/' + name, { method: 'POST', body });
+    if (!r.ok) throw new Error('POST ' + name + ' -> ' + r.status);
+  }
+  window.runSolver = (params) => new Promise((resolve, reject) => {
+    const worker = new Worker('/solver.worker.js', { type: 'module' });
+    log('running ' + params.scenario);
+    worker.onerror = (e) => { worker.terminate(); reject(new Error('worker error: ' + (e.message || e.filename + ':' + e.lineno))); };
+    worker.onmessageerror = () => reject(new Error('worker message error'));
+    worker.onmessage = async (e) => {
+      const m = e.data;
+      try {
+        if (m.type === 'error') throw new Error(m.error);
+        const { arrival, initBytes, kept, ...rest } = m;
+        await post('init.bin', initBytes);
+        await post('arrival.f32', arrival);
+        for (const k of kept) await post('snap-' + k.t + '.bin', k.bytes);
+        await post('result.json', JSON.stringify(rest));
+        worker.terminate();
+        log('done ' + params.scenario);
+        resolve({ ok: true, files: 3 + kept.length });
+      } catch (err) {
+        worker.terminate();
+        reject(err);
+      }
+    };
+    worker.postMessage({ cmd: 'run', assetBase: location.origin + '/', ...params });
+  });
+  window.solverPageReady = true;
+</script>
+</body>
+</html>
