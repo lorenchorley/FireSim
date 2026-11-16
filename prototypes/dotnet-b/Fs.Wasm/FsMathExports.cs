@@ -48,10 +48,9 @@ public static partial class FsMathExports
         return s_y[n - 1];
     }
 
-    /// <summary>What the runtime reports about itself, as one line (runtime, whether code is compiled at run time or ahead of time, SIMD and FMA support).</summary>
+    /// <summary>What the runtime reports about itself, as one line (runtime, whether code is compiled at run time or ahead of time, SIMD support; FMA is not reported: the hardware FMA types are banned in solver projects, and WebAssembly has none).</summary>
     [JSExport]
     public static string Info() =>
         $"{RuntimeInformation.FrameworkDescription}; rid {RuntimeInformation.RuntimeIdentifier}; dynamicCode {System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled}; " +
-        $"vector128 {System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated}; packedSimd {System.Runtime.Intrinsics.Wasm.PackedSimd.IsSupported}; " +
-        $"fma {System.Runtime.Intrinsics.X86.Fma.IsSupported}";
+        $"vector128 {System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated}; packedSimd {System.Runtime.Intrinsics.Wasm.PackedSimd.IsSupported}";
 }
