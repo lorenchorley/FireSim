@@ -1,0 +1,2941 @@
+# T3.3 exhaustive site list (generated; `node reports/3-slice-map/summarize.mjs DIR --sites reports/3-slice-sites.md`)
+
+Every site is `file:line | function | text`. Union slice (both gate tiers), cuts as in `run-slice.sh`. Static sites only: a function that runs a million times is still one line.
+
+
+## Math.* calls (and Math constants) (951)
+
+- atmosphere/atmosphere.ts:213 | Atmosphere.constructor | max: `Math.max(nU, nV, nW)`
+- atmosphere/atmosphere.ts:214 | Atmosphere.constructor | max: `Math.max((nx + 1) * ny, nx * (ny + 1))`
+- atmosphere/atmosphere.ts:243 | Atmosphere.constructor | max: `Math.max(P.fireAlphaMin, g.dz1)`
+- atmosphere/atmosphere.ts:268 | Atmosphere.constructor | max: `Math.max(0, iu - 1)`
+- atmosphere/atmosphere.ts:268 | Atmosphere.constructor | min: `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:277 | Atmosphere.constructor | max: `Math.max(0, jv - 1)`
+- atmosphere/atmosphere.ts:277 | Atmosphere.constructor | min: `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:294 | dav | max: `Math.max(0, Math.min(x, nx - 1 - x, y, ny - 1 - y))`
+- atmosphere/atmosphere.ts:294 | dav | min: `Math.min(x, nx - 1 - x, y, ny - 1 - y)`
+- atmosphere/atmosphere.ts:295 | dav | exp: `Math.exp(-d / 2)`
+- atmosphere/atmosphere.ts:315 | sp | sin: `Math.sin((Math.PI / 2) * ((z - zb) / P.spongeDepth))`
+- atmosphere/atmosphere.ts:315 | sp | const:PI: `Math.PI`
+- atmosphere/atmosphere.ts:321 | Atmosphere.constructor | ceil: `Math.ceil((g.zTop + g.relief - g.zMin) / P.meanThetaBandM)`
+- atmosphere/atmosphere.ts:330 | Atmosphere.constructor | hypot: `Math.hypot(g.zsx[c]!, g.zsy[c]!)`
+- atmosphere/atmosphere.ts:331 | Atmosphere.constructor | min: `Math.min(1, (P.thetaDiffSlopeLimit * dz) / (sl * g.dx))`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | min: `Math.min(nBins - 1, Math.max(0, Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM)))`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | max: `Math.max(0, Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM))`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | floor: `Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM)`
+- atmosphere/atmosphere.ts:334 | Atmosphere.constructor | min: `Math.min(dzMin, dz)`
+- atmosphere/atmosphere.ts:348 | Atmosphere.constructor | max: `Math.max(top2, this.st2O[q]! + 1)`
+- atmosphere/atmosphere.ts:404 | Atmosphere.updateNightFields | max: `Math.max(1, this.night.hInv)`
+- atmosphere/atmosphere.ts:410 | wn | min: `Math.min(g.zP90, g.zFloor[c]! + hInv)`
+- atmosphere/atmosphere.ts:420 | cmp | min: `Math.min(g.zP90 - d, g.zFloor[c]! + hInv)`
+- atmosphere/atmosphere.ts:427 | Atmosphere.updateNightFields | min: `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:435 | Atmosphere.updateNightFields | min: `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:453 | Atmosphere.updateNightFields | max: `Math.max(0, hav)`
+- atmosphere/atmosphere.ts:571 | Atmosphere.maxStableDt | min: `Math.min(a, b)`
+- atmosphere/atmosphere.ts:581 | Atmosphere.stepLimit | min: `Math.min(a, b)`
+- atmosphere/atmosphere.ts:712 | Atmosphere.step | max: `Math.max(0, iu - 1)`
+- atmosphere/atmosphere.ts:713 | Atmosphere.step | min: `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:720 | Atmosphere.step | sqrt: `Math.sqrt(uf * uf + vb * vb)`
+- atmosphere/atmosphere.ts:721 | Atmosphere.step | sqrt: `Math.sqrt(ub0 * ub0 + vbb * vbb)`
+- atmosphere/atmosphere.ts:726 | Atmosphere.step | max: `Math.max(0, jv - 1)`
+- atmosphere/atmosphere.ts:727 | Atmosphere.step | min: `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:736 | Atmosphere.step | sqrt: `Math.sqrt(vf * vf + ub * ub)`
+- atmosphere/atmosphere.ts:737 | Atmosphere.step | sqrt: `Math.sqrt(vb0 * vb0 + ubb * ubb)`
+- atmosphere/atmosphere.ts:786 | Atmosphere.step | exp: `Math.exp(-dt / P.smokeTauS)`
+- atmosphere/atmosphere.ts:879 | Atmosphere.divergenceOf | abs: `Math.abs(div[q]!)`
+- atmosphere/atmosphere.ts:882 | Atmosphere.divergenceOf | max: `Math.max(this.maxU, 0.5)`
+- atmosphere/atmosphere.ts:940 | Atmosphere.meanThetaControl | exp: `Math.exp(-dt / tau)`
+- atmosphere/atmosphere.ts:1053 | Atmosphere.sampleAt | min: `Math.min(Math.floor(fx), Math.max(0, g.nx - 2))`
+- atmosphere/atmosphere.ts:1053 | Atmosphere.sampleAt | floor: `Math.floor(fx)`
+- atmosphere/atmosphere.ts:1053 | Atmosphere.sampleAt | max: `Math.max(0, g.nx - 2)`
+- atmosphere/atmosphere.ts:1054 | Atmosphere.sampleAt | min: `Math.min(Math.floor(fy), Math.max(0, g.ny - 2))`
+- atmosphere/atmosphere.ts:1054 | Atmosphere.sampleAt | floor: `Math.floor(fy)`
+- atmosphere/atmosphere.ts:1054 | Atmosphere.sampleAt | max: `Math.max(0, g.ny - 2)`
+- atmosphere/atmosphere.ts:1069 | Atmosphere.sampleAt | min: `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/atmosphere.ts:1069 | Atmosphere.sampleAt | floor: `Math.floor(kf)`
+- atmosphere/atmosphere.ts:1084 | Atmosphere.sample | max: `Math.max(0, zAGL)`
+- atmosphere/atmosphere.ts:1158 | Atmosphere.thetaAt | max: `Math.max(1, this.night.hInv)`
+- atmosphere/atmosphere.ts:1159 | Atmosphere.thetaAt | max: `Math.max(0, hav)`
+- atmosphere/atmosphere.ts:1162 | Atmosphere.thetaAt | min: `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/atmosphere.ts:1162 | Atmosphere.thetaAt | floor: `Math.floor(kf)`
+- atmosphere/base.ts:214 | AtmosBase.constructor | max: `Math.max(ATMOS_PARAMS.minCosSlope, Math.cos(terrain.slopeDeg[k]! * DEG))`
+- atmosphere/base.ts:214 | AtmosBase.constructor | cos: `Math.cos(terrain.slopeDeg[k]! * DEG)`
+- atmosphere/base.ts:217 | AtmosBase.constructor | sin: `Math.sin(asp * DEG)`
+- atmosphere/base.ts:218 | AtmosBase.constructor | cos: `Math.cos(asp * DEG)`
+- atmosphere/base.ts:257 | AtmosBase.setNightState | abs: `Math.abs(night.dTheta - o.dTheta)`
+- atmosphere/base.ts:257 | AtmosBase.setNightState | abs: `Math.abs(night.sn - o.sn)`
+- atmosphere/base.ts:279 | AtmosBase.setAmbient | abs: `Math.abs(angleDiffDeg(a.windDir10, b.windDir10))`
+- atmosphere/base.ts:280 | AtmosBase.setAmbient | ceil: `Math.ceil(dt / (P.subStampS * 1000))`
+- atmosphere/base.ts:289 | AtmosBase.setAmbient | max: `Math.max(a.time, b.time)`
+- atmosphere/base.ts:304 | AtmosBase.setTime | min: `Math.min(i + 1, s.length - 1)`
+- atmosphere/base.ts:363 | AtmosBase.get stampB | min: `Math.min(this.seg + 1, this.seq.length - 1)`
+- atmosphere/base.ts:393 | AtmosBase.buildStencil | min: `Math.min(Math.floor(fx), Math.max(0, nx - 2))`
+- atmosphere/base.ts:393 | AtmosBase.buildStencil | floor: `Math.floor(fx)`
+- atmosphere/base.ts:393 | AtmosBase.buildStencil | max: `Math.max(0, nx - 2)`
+- atmosphere/base.ts:394 | AtmosBase.buildStencil | min: `Math.min(Math.floor(fy), Math.max(0, ny - 2))`
+- atmosphere/base.ts:394 | AtmosBase.buildStencil | floor: `Math.floor(fy)`
+- atmosphere/base.ts:394 | AtmosBase.buildStencil | max: `Math.max(0, ny - 2)`
+- atmosphere/base.ts:414 | AtmosBase.buildStencil | max: `Math.max(P.zRefMin, hO + P.zRefCanopyAdd, g.zetaF[1]! * Jb)`
+- atmosphere/base.ts:416 | AtmosBase.buildStencil | max: `Math.max(this.terrain.elevation[k]! + zRef, zsA + z1)`
+- atmosphere/base.ts:437 | AtmosBase.verticalStencil | min: `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/base.ts:437 | AtmosBase.verticalStencil | floor: `Math.floor(kf)`
+- atmosphere/base.ts:562 | AtmosBase.updateSlopeFlowSpeeds | min: `Math.min(L > 0 ? dzd / L : 0, Math.sin(slope[k]! * DEG))`
+- atmosphere/base.ts:562 | AtmosBase.updateSlopeFlowSpeeds | sin: `Math.sin(slope[k]! * DEG)`
+- atmosphere/base.ts:590 | AtmosBase.templateAirT | max: `Math.max(1, this.night.hInv)`
+- atmosphere/base.ts:596 | AtmosBase.templateAirT | min: `Math.min(1, Math.max(0, dTh) / STABLE_NIGHT_PARAMS.snScaleK)`
+- atmosphere/base.ts:596 | AtmosBase.templateAirT | max: `Math.max(0, dTh)`
+- atmosphere/base.ts:598 | AtmosBase.templateAirT | max: `Math.max(0, hav[k]!)`
+- atmosphere/base.ts:645 | AtmosBase.crestCells | round: `Math.round(windFromDeg / 22.5)`
+- atmosphere/base.ts:697 | AtmosBase.surfaceWindForFire | sqrt: `Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:702 | AtmosBase.surfaceWindForFire | sqrt: `Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:709 | AtmosBase.surfaceWindForFire | sqrt: `Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:715 | AtmosBase.surfaceWindForFire | max: `Math.max(2 * zPlume, P.fireMaskMin)`
+- atmosphere/base.ts:750 | AtmosBase.surfaceWindForFire | min: `Math.min(cap, Math.max(0, (up ? sk : -sk) - along))`
+- atmosphere/base.ts:750 | AtmosBase.surfaceWindForFire | max: `Math.max(0, (up ? sk : -sk) - along)`
+- atmosphere/base.ts:751 | AtmosBase.surfaceWindForFire | max: `Math.max(0, sTop - off)`
+- atmosphere/base.ts:831 | AtmosBase.sampleTurb | cbrt: `Math.cbrt(((G / tK) * (qh / (rho * CP))) * zi)`
+- atmosphere/base.ts:834 | AtmosBase.sampleTurb | max: `Math.max(P.zRefMin, d + 10 * z0)`
+- atmosphere/base.ts:836 | AtmosBase.sampleTurb | hypot: `Math.hypot(this.turbTmp[0]!, this.turbTmp[1]!)`
+- atmosphere/base.ts:837 | AtmosBase.sampleTurb | log: `Math.log(Math.max(1.01, (zr - d) / z0))`
+- atmosphere/base.ts:837 | AtmosBase.sampleTurb | max: `Math.max(1.01, (zr - d) / z0)`
+- atmosphere/base.ts:859 | AtmosBase.columnAt | round: `Math.round((x - g.grid.x0) / g.dx)`
+- atmosphere/base.ts:860 | AtmosBase.columnAt | round: `Math.round((y - g.grid.y0) / g.dx)`
+- atmosphere/base.ts:930 | AtmosBase.commonDiagnostics | max: `Math.max(this.night.hInv, P.breakMinDepth)`
+- atmosphere/base.ts:933 | AtmosBase.commonDiagnostics | max: `Math.max(0, thTop - this.thetaAt(c, z))`
+- atmosphere/base.ts:937 | AtmosBase.commonDiagnostics | max: `Math.max(1, nc)`
+- atmosphere/base.ts:938 | AtmosBase.commonDiagnostics | max: `Math.max(0, (deficit - this.heatSinceSunrise) / this.qValley)`
+- atmosphere/base.ts:957 | AtmosBase.commonDiagnostics | hypot: `Math.hypot(w.windSpeed10, 0)`
+- atmosphere/diagnosticWind.ts:70 | DiagnosticWind.wNight | min: `Math.min(this.grid.zP90 - d, z - this.derived.heightAboveValley[k]! + this.night.hInv)`
+- atmosphere/diagnosticWind.ts:115 | DiagnosticWind.fireWindTier | sqrt: `Math.sqrt(bu * bu + bv * bv)`
+- atmosphere/diagnosticWind.ts:155 | DiagnosticWind.addFireHeat | exp: `Math.exp(-dtPrev / ATMOS_PARAMS.pyroSourceTauS)`
+- atmosphere/diagnosticWind.ts:182 | DiagnosticWind.sampleBg | max: `Math.max(0, zAgl)`
+- atmosphere/diagnosticWind.ts:185 | DiagnosticWind.sampleBg | min: `Math.min(Math.floor(fx), Math.max(0, g.nx - 2))`
+- atmosphere/diagnosticWind.ts:185 | DiagnosticWind.sampleBg | floor: `Math.floor(fx)`
+- atmosphere/diagnosticWind.ts:185 | DiagnosticWind.sampleBg | max: `Math.max(0, g.nx - 2)`
+- atmosphere/diagnosticWind.ts:186 | DiagnosticWind.sampleBg | min: `Math.min(Math.floor(fy), Math.max(0, g.ny - 2))`
+- atmosphere/diagnosticWind.ts:186 | DiagnosticWind.sampleBg | floor: `Math.floor(fy)`
+- atmosphere/diagnosticWind.ts:186 | DiagnosticWind.sampleBg | max: `Math.max(0, g.ny - 2)`
+- atmosphere/diagnosticWind.ts:213 | DiagnosticWind.sampleBg | min: `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/diagnosticWind.ts:213 | DiagnosticWind.sampleBg | floor: `Math.floor(kf)`
+- atmosphere/diagnosticWind.ts:295 | DiagnosticWind.thetaAt | max: `Math.max(1, this.night.hInv)`
+- atmosphere/diagnosticWind.ts:296 | DiagnosticWind.thetaAt | max: `Math.max(0, hav)`
+- atmosphere/dynamics.ts:263 | smagorinsky | max: `Math.max(1, iu - id)`
+- atmosphere/dynamics.ts:264 | smagorinsky | max: `Math.max(1, ju - jd)`
+- atmosphere/dynamics.ts:265 | smagorinsky | max: `Math.max(1e-6, g.zetaC[ku]! - g.zetaC[kd]!)`
+- atmosphere/dynamics.ts:279 | smagorinsky | sqrt: `Math.sqrt(s)`
+- atmosphere/dynamics.ts:317 | diffuseH | min: `Math.min(nz - 1, Math.max(0, kF - (oz > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:317 | diffuseH | max: `Math.max(0, kF - (oz > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:318 | diffuseH | min: `Math.min(nz - 1, kF)`
+- atmosphere/dynamics.ts:320 | diffuseH | min: `Math.min(ny - 1, Math.max(0, jF - (oy > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:320 | diffuseH | max: `Math.max(0, jF - (oy > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:321 | diffuseH | min: `Math.min(ny - 1, jF)`
+- atmosphere/dynamics.ts:324 | diffuseH | min: `Math.min(nx - 1, Math.max(0, iF - (ox > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:324 | diffuseH | max: `Math.max(0, iF - (ox > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:325 | diffuseH | min: `Math.min(nx - 1, iF)`
+- atmosphere/dynamics.ts:358 | columnMap | min: `Math.min(ny - 1, Math.max(0, jF - (oy > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:358 | columnMap | max: `Math.max(0, jF - (oy > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:359 | columnMap | min: `Math.min(ny - 1, jF)`
+- atmosphere/dynamics.ts:361 | columnMap | min: `Math.min(nx - 1, Math.max(0, iF - (ox > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:361 | columnMap | max: `Math.max(0, iF - (ox > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:362 | columnMap | min: `Math.min(nx - 1, iF)`
+- atmosphere/grid.ts:87 | sum | abs: `Math.abs(r - 1)`
+- atmosphere/grid.ts:110 | canopyDrag | max: `Math.max(P.z0Min, P.z0Frac * hBar)`
+- atmosphere/grid.ts:112 | canopyDrag | max: `Math.max(z1 - d, P.zEffZ0Mult * z0)`
+- atmosphere/grid.ts:113 | canopyDrag | min: `Math.min(P.cdMax, (KAPPA_VK / Math.log(zEff / z0)) ** 2)`
+- atmosphere/grid.ts:113 | canopyDrag | log: `Math.log(zEff / z0)`
+- atmosphere/grid.ts:124 | blockAverage | round: `Math.round((y - g.y0) / g.cellSize)`
+- atmosphere/grid.ts:128 | blockAverage | round: `Math.round((x - g.x0) / g.cellSize)`
+- atmosphere/grid.ts:152 | maxSlope | hypot: `Math.hypot(gx, gy)`
+- atmosphere/grid.ts:156 | maxSlope | atan: `Math.atan(m)`
+- atmosphere/grid.ts:156 | maxSlope | const:PI: `Math.PI`
+- atmosphere/grid.ts:214 | buildAtmosGrid | ceil: `Math.ceil((x - dx / 2 - fg.x0) / fg.cellSize - 1e-9)`
+- atmosphere/grid.ts:215 | buildAtmosGrid | floor: `Math.floor((x + dx / 2 - fg.x0) / fg.cellSize - 1e-9)`
+- atmosphere/grid.ts:216 | buildAtmosGrid | ceil: `Math.ceil((y - dx / 2 - fg.y0) / fg.cellSize - 1e-9)`
+- atmosphere/grid.ts:217 | buildAtmosGrid | floor: `Math.floor((y + dx / 2 - fg.y0) / fg.cellSize - 1e-9)`
+- atmosphere/grid.ts:218 | buildAtmosGrid | max: `Math.max(0, j0)`
+- atmosphere/grid.ts:218 | buildAtmosGrid | min: `Math.min(fg.ny - 1, j1)`
+- atmosphere/grid.ts:219 | buildAtmosGrid | max: `Math.max(0, i0)`
+- atmosphere/grid.ts:219 | buildAtmosGrid | min: `Math.min(fg.nx - 1, i1)`
+- atmosphere/grid.ts:226 | buildAtmosGrid | round: `Math.round((x - fg.x0) / fg.cellSize)`
+- atmosphere/grid.ts:227 | buildAtmosGrid | round: `Math.round((y - fg.y0) / fg.cellSize)`
+- atmosphere/grid.ts:245 | buildAtmosGrid | min: `Math.min(zMin, zs[c]!)`
+- atmosphere/grid.ts:246 | buildAtmosGrid | max: `Math.max(zMax, zs[c]!)`
+- atmosphere/grid.ts:249 | buildAtmosGrid | max: `Math.max(opts.atmosTop ?? P.atmosTop, relief + P.reliefMargin)`
+- atmosphere/grid.ts:297 | buildAtmosGrid | max: `Math.max(0, i - 1)`
+- atmosphere/grid.ts:298 | buildAtmosGrid | min: `Math.min(nx - 1, i)`
+- atmosphere/grid.ts:305 | buildAtmosGrid | max: `Math.max(0, j - 1)`
+- atmosphere/grid.ts:306 | buildAtmosGrid | min: `Math.min(ny - 1, j)`
+- atmosphere/grid.ts:316 | buildAtmosGrid | round: `Math.round((fg.y0 + j * fg.cellSize - grid.y0) / dx)`
+- atmosphere/grid.ts:318 | buildAtmosGrid | round: `Math.round((fg.x0 + i * fg.cellSize - grid.x0) / dx)`
+- atmosphere/grid.ts:333 | buildAtmosGrid | min: `Math.min(1, fuel.canopyCover[k]! / P.canopyCoverRef)`
+- atmosphere/grid.ts:354 | buildAtmosGrid | min: `Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))`
+- atmosphere/grid.ts:354 | buildAtmosGrid | floor: `Math.floor(0.9 * sorted.length)`
+- atmosphere/grid.ts:356 | buildAtmosGrid | min: `Math.min(Math.floor((Math.min(nx, ny) - 1) / 2), Math.max(P.daviesMinCells, Math.round(P.daviesFraction * nx))`
+- atmosphere/grid.ts:356 | buildAtmosGrid | floor: `Math.floor((Math.min(nx, ny) - 1) / 2)`
+- atmosphere/grid.ts:356 | buildAtmosGrid | min: `Math.min(nx, ny)`
+- atmosphere/grid.ts:356 | buildAtmosGrid | max: `Math.max(P.daviesMinCells, Math.round(P.daviesFraction * nx))`
+- atmosphere/grid.ts:356 | buildAtmosGrid | round: `Math.round(P.daviesFraction * nx)`
+- atmosphere/massConsistent.ts:103 | MassConsistentSolver.constructor | max: `Math.max(0, iu - 1)`
+- atmosphere/massConsistent.ts:104 | MassConsistentSolver.constructor | min: `Math.min(nx - 1, iu)`
+- atmosphere/massConsistent.ts:113 | MassConsistentSolver.constructor | max: `Math.max(0, jv - 1)`
+- atmosphere/massConsistent.ts:114 | MassConsistentSolver.constructor | min: `Math.min(ny - 1, jv)`
+- atmosphere/massConsistent.ts:133 | MassConsistentSolver.firstGuess | hypot: `Math.hypot(p.u10, p.v10)`
+- atmosphere/massConsistent.ts:138 | blend | max: `Math.max(10, asl - p.zgp)`
+- atmosphere/massConsistent.ts:139 | blend | min: `Math.min(1, (agl - P.firstGuessLow) / (P.firstGuessHigh - P.firstGuessLow))`
+- atmosphere/massConsistent.ts:143 | blend | hypot: `Math.hypot(x - e.x, y - e.y)`
+- atmosphere/massConsistent.ts:144 | blend | exp: `Math.exp(-((d / e.radius) ** 2))`
+- atmosphere/massConsistent.ts:149 | blend | hypot: `Math.hypot(o2[0]!, o2[1]!)`
+- atmosphere/plume.ts:13 | cHaines | min: `Math.min(30, t850 - td850)`
+- atmosphere/plume.ts:19 | buoyancyFlux | const:PI: `Math.PI`
+- atmosphere/plume.ts:27 | briggsRise | max: `Math.max(n2, ATMOS_PARAMS.n2Floor)`
+- atmosphere/plume.ts:28 | briggsRise | sqrt: `Math.sqrt(N2)`
+- atmosphere/plume.ts:29 | briggsRise | cbrt: `Math.cbrt(F / (U * N2))`
+- atmosphere/plume.ts:31 | briggsRise | min: `Math.min(windy, calm)`
+- atmosphere/plume.ts:68 | plumeColumn | max: `Math.max(P.plumeB0Min, Math.sqrt(Math.max(0, burningArea) / Math.PI))`
+- atmosphere/plume.ts:68 | plumeColumn | sqrt: `Math.sqrt(Math.max(0, burningArea) / Math.PI)`
+- atmosphere/plume.ts:68 | plumeColumn | max: `Math.max(0, burningArea)`
+- atmosphere/plume.ts:68 | plumeColumn | const:PI: `Math.PI`
+- atmosphere/plume.ts:69 | plumeColumn | max: `Math.max(P.plumeW0Min, Math.cbrt(F0 / b0))`
+- atmosphere/plume.ts:69 | plumeColumn | cbrt: `Math.cbrt(F0 / b0)`
+- atmosphere/plume.ts:77 | envAt | max: `Math.max(10, agl)`
+- atmosphere/plume.ts:80 | envAt | max: `Math.max(10, agl)`
+- atmosphere/plume.ts:81 | envAt | max: `Math.max(10, z - p.zgp)`
+- atmosphere/plume.ts:100 | n2At | max: `Math.max((G / (0.5 * (a + b))) * ((b - a) / 20), P.n2Floor)`
+- atmosphere/plume.ts:106 | deriv | sqrt: `Math.sqrt(M)`
+- atmosphere/plume.ts:113 | deriv | abs: `Math.abs(w)`
+- atmosphere/plume.ts:113 | deriv | hypot: `Math.hypot(du, dv)`
+- atmosphere/plume.ts:154 | plumeColumn | max: `Math.max(1, pz - es)`
+- atmosphere/plume.ts:165 | plumeColumn | min: `Math.min(z, zSource + P.plumeCap)`
+- atmosphere/plume.ts:192 | pyroFirepowerThreshold | max: `Math.max(1, pz - es)`
+- atmosphere/plume.ts:202 | pyroFirepowerThreshold | max: `Math.max(10, zSource + h - p.zgp)`
+- atmosphere/plume.ts:203 | pyroFirepowerThreshold | hypot: `Math.hypot(o[0]!, o[1]!)`
+- atmosphere/profile.ts:55 | sCoord | max: `Math.max(z, 1e-3)`
+- atmosphere/profile.ts:56 | sCoord | log: `Math.log(zz)`
+- atmosphere/profile.ts:56 | sCoord | log: `Math.log(zt)`
+- atmosphere/profile.ts:61 | mixingRatio | max: `Math.max(1, pHpa - e)`
+- atmosphere/profile.ts:93 | buildProfile | max: `Math.max(0, w.windSpeed10)`
+- atmosphere/profile.ts:156 | qAbove | max: `Math.max(0, z - zgp - zMix)`
+- atmosphere/profile.ts:157 | qAbove | max: `Math.max(1, pz - esat(T))`
+- atmosphere/profile.ts:180 | buildProfile | max: `Math.max(hi[0] + 1000, zgp + 16000)`
+- atmosphere/profile.ts:180 | buildProfile | max: `Math.max(hi[0] + 1000, zgp + 16000)`
+- atmosphere/profile.ts:194 | buildProfile | min: `Math.min(th[q]!, thd[q + 1]!)`
+- atmosphere/profile.ts:222 | buildProfile | max: `Math.max(relief, 1)`
+- atmosphere/profile.ts:227 | buildProfile | max: `Math.max(10, zLo + h - zgp)`
+- atmosphere/profile.ts:228 | buildProfile | hypot: `Math.hypot(out[0]!, out[1]!)`
+- atmosphere/profile.ts:231 | buildProfile | sqrt: `Math.sqrt(Math.max(n2, P.n2Floor))`
+- atmosphere/profile.ts:231 | buildProfile | max: `Math.max(n2, P.n2Floor)`
+- atmosphere/profile.ts:241 | profileWind | log: `Math.log(zAgl / z0)`
+- atmosphere/profile.ts:241 | profileWind | log: `Math.log(p.wz[0]! / z0)`
+- atmosphere/profile.ts:294 | logLawKappa | log: `Math.log(10 / z0)`
+- atmosphere/profile.ts:294 | logLawKappa | log: `Math.log(Math.max(z, 10) / z0)`
+- atmosphere/profile.ts:294 | logLawKappa | max: `Math.max(z, 10)`
+- atmosphere/profile.ts:324 | kappaTable | hypot: `Math.hypot(p.u10, p.v10)`
+- atmosphere/profile.ts:338 | kappaTable | hypot: `Math.hypot(u, v)`
+- atmosphere/profile.ts:362 | kappaLookup | min: `Math.min(n - 1, Math.floor(zc))`
+- atmosphere/profile.ts:362 | kappaLookup | floor: `Math.floor(zc)`
+- atmosphere/pyrogenic.ts:28 | Dst.constructor | sin: `Math.sin((Math.PI * (p + 1) * (i + 0.5)) / n)`
+- atmosphere/pyrogenic.ts:28 | Dst.constructor | const:PI: `Math.PI`
+- atmosphere/pyrogenic.ts:30 | Dst.constructor | sin: `Math.sin((Math.PI * (p + 1)) / (2 * n))`
+- atmosphere/pyrogenic.ts:30 | Dst.constructor | const:PI: `Math.PI`
+- atmosphere/pyrogenic.ts:56 | PyrogenicPotential.constructor | ceil: `Math.ceil(fire.nx / 2)`
+- atmosphere/pyrogenic.ts:57 | PyrogenicPotential.constructor | ceil: `Math.ceil(fire.ny / 2)`
+- atmosphere/pyrogenic.ts:99 | PyrogenicPotential.solve | min: `Math.min(2, fg.ny - 2 * J)`
+- atmosphere/pyrogenic.ts:101 | PyrogenicPotential.solve | min: `Math.min(2, fg.nx - 2 * I)`
+- atmosphere/pyrogenic.ts:189 | PyrogenicPotential.gradientToFire | min: `Math.min(Math.max((j + 0.5) / 2 - 0.5, 0), ny - 1)`
+- atmosphere/pyrogenic.ts:189 | PyrogenicPotential.gradientToFire | max: `Math.max((j + 0.5) / 2 - 0.5, 0)`
+- atmosphere/pyrogenic.ts:190 | PyrogenicPotential.gradientToFire | min: `Math.min(Math.floor(fy), Math.max(0, ny - 2))`
+- atmosphere/pyrogenic.ts:190 | PyrogenicPotential.gradientToFire | floor: `Math.floor(fy)`
+- atmosphere/pyrogenic.ts:190 | PyrogenicPotential.gradientToFire | max: `Math.max(0, ny - 2)`
+- atmosphere/pyrogenic.ts:193 | PyrogenicPotential.gradientToFire | min: `Math.min(Math.max((i + 0.5) / 2 - 0.5, 0), nx - 1)`
+- atmosphere/pyrogenic.ts:193 | PyrogenicPotential.gradientToFire | max: `Math.max((i + 0.5) / 2 - 0.5, 0)`
+- atmosphere/pyrogenic.ts:194 | PyrogenicPotential.gradientToFire | min: `Math.min(Math.floor(fx), Math.max(0, nx - 2))`
+- atmosphere/pyrogenic.ts:194 | PyrogenicPotential.gradientToFire | floor: `Math.floor(fx)`
+- atmosphere/pyrogenic.ts:194 | PyrogenicPotential.gradientToFire | max: `Math.max(0, nx - 2)`
+- atmosphere/pyrogenic.ts:202 | PyrogenicPotential.gradientToFire | sqrt: `Math.sqrt(u * u + v * v)`
+- atmosphere/solver.ts:192 | EllipticSolver.build | ceil: `Math.ceil(fine.nx / 2)`
+- atmosphere/solver.ts:193 | EllipticSolver.build | ceil: `Math.ceil(fine.ny / 2)`
+- atmosphere/solver.ts:244 | EllipticSolver.transfer | min: `Math.min(2, n - 2 * I)`
+- atmosphere/solver.ts:866 | norm2 | sqrt: `Math.sqrt(s)`
+- atmosphere/surface.ts:37 | anabaticSpeed | cbrt: `Math.cbrt((qh * G * dzUp) / (ATMOS_PARAMS.slopeUpCdE * rho * CP * tK))`
+- atmosphere/surface.ts:50 | katabaticSpeed | cbrt: `Math.cbrt((-qh * G * L * sinA) / (rho * CP * tK * cde))`
+- atmosphere/surface.ts:50 | katabaticSpeed | cbrt: `Math.cbrt(1 - Math.exp(-L / Le))`
+- atmosphere/surface.ts:50 | katabaticSpeed | exp: `Math.exp(-L / Le)`
+- atmosphere/surface.ts:55 | expLayerFraction | exp: `Math.exp(-z0 / alpha)`
+- atmosphere/surface.ts:55 | expLayerFraction | exp: `Math.exp(-z1 / alpha)`
+- atmosphere/surface.ts:60 | F | exp: `Math.exp(-(z - H) / decay)`
+- atmosphere/weatherInterp.ts:24 | interpolateHour | round: `Math.round(lerp(a.time, b.time, f))`
+- core/grid.ts:23 | makeGridSpec | max: `Math.max(2, Math.round(extentM / cellSize))`
+- core/grid.ts:23 | makeGridSpec | round: `Math.round(extentM / cellSize)`
+- core/grid.ts:41 | cellAt | round: `Math.round((x - g.x0) / g.cellSize)`
+- core/grid.ts:42 | cellAt | round: `Math.round((y - g.y0) / g.cellSize)`
+- core/grid.ts:52 | sampleBilinear | min: `Math.min(Math.floor(fx), g.nx - 2)`
+- core/grid.ts:52 | sampleBilinear | floor: `Math.floor(fx)`
+- core/grid.ts:53 | sampleBilinear | min: `Math.min(Math.floor(fy), g.ny - 2)`
+- core/grid.ts:53 | sampleBilinear | floor: `Math.floor(fy)`
+- core/grid.ts:95 | boxBlur | min: `Math.min(nx - 1, Math.max(0, t))`
+- core/grid.ts:95 | boxBlur | max: `Math.max(0, t)`
+- core/grid.ts:98 | boxBlur | min: `Math.min(nx - 1, i + r + 1)`
+- core/grid.ts:98 | boxBlur | max: `Math.max(0, i - r)`
+- core/grid.ts:103 | boxBlur | min: `Math.min(ny - 1, Math.max(0, t))`
+- core/grid.ts:103 | boxBlur | max: `Math.max(0, t)`
+- core/grid.ts:106 | boxBlur | min: `Math.min(ny - 1, j + r + 1)`
+- core/grid.ts:106 | boxBlur | max: `Math.max(0, j - r)`
+- core/physics.ts:22 | esat | exp: `Math.exp((17.67 * tC) / (tC + 243.5))`
+- core/physics.ts:27 | dewPointC | log: `Math.log(((clamp(rh, 0.1, 100) / 100) * esat(tC)) / 6.112)`
+- core/physics.ts:38 | logistic | exp: `Math.exp(-g)`
+- core/physics.ts:40 | vpdKpa | max: `Math.max(0, esat(tC) * (1 - rh / 100))`
+- core/physics.ts:122 | nightRelax | exp: `Math.exp(-b * dtS)`
+- core/physics.ts:154 | stableNight | min: `Math.min(dt, Math.max(0, dt - hss * 3600))`
+- core/physics.ts:154 | stableNight | max: `Math.max(0, dt - hss * 3600)`
+- core/physics.ts:163 | stableNight | max: `Math.max(0, inp.breakEta)`
+- core/physics.ts:168 | stableNight | max: `Math.max(0, (tBreak - t) / span)`
+- core/physics.ts:169 | stableNight | exp: `Math.exp((-(1 - g) * dayDt) / (P.tauDecayH * 3600))`
+- core/physics.ts:170 | stableNight | max: `Math.max(0, Math.min(linear, mixed))`
+- core/physics.ts:170 | stableNight | min: `Math.min(linear, mixed)`
+- core/rng.ts:13 | Rng.next | imul: `Math.imul(t ^ (t >>> 15), t | 1)`
+- core/rng.ts:14 | Rng.next | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- core/rng.ts:28 | Rng.normal | sqrt: `Math.sqrt(-2 * Math.log(u))`
+- core/rng.ts:28 | Rng.normal | log: `Math.log(u)`
+- core/rng.ts:28 | Rng.normal | cos: `Math.cos(2 * Math.PI * v)`
+- core/rng.ts:28 | Rng.normal | const:PI: `Math.PI`
+- core/rng.ts:37 | Rng.poisson | max: `Math.max(0, Math.round(mean + Math.sqrt(mean) * this.normal()))`
+- core/rng.ts:37 | Rng.poisson | round: `Math.round(mean + Math.sqrt(mean) * this.normal())`
+- core/rng.ts:37 | Rng.poisson | sqrt: `Math.sqrt(mean)`
+- core/rng.ts:38 | Rng.poisson | exp: `Math.exp(-mean)`
+- core/units.ts:14 | <module> | const:PI: `Math.PI`
+- core/units.ts:15 | <module> | const:PI: `Math.PI`
+- core/units.ts:47 | windToUV | sin: `Math.sin(r)`
+- core/units.ts:47 | windToUV | cos: `Math.cos(r)`
+- core/units.ts:52 | uvToWind | hypot: `Math.hypot(u, v)`
+- core/units.ts:54 | uvToWind | atan2: `Math.atan2(-u, -v)`
+- core/units.ts:58 | vectorAzimuthDeg | atan2: `Math.atan2(u, v)`
+- core/units.ts:61 | azimuthToUnit | sin: `Math.sin(azDeg * DEG)`
+- core/units.ts:61 | azimuthToUnit | cos: `Math.cos(azDeg * DEG)`
+- core/units.ts:65 | compassName | round: `Math.round(wrapDeg(azDeg) / 22.5)`
+- embers/EmberModel.ts:226 | <module> | exp: `Math.exp(-3)`
+- embers/EmberModel.ts:408 | EmberModel.constructor | max: `Math.max(1, Math.floor(opts.maxEmbers))`
+- embers/EmberModel.ts:408 | EmberModel.constructor | floor: `Math.floor(opts.maxEmbers)`
+- embers/EmberModel.ts:424 | EmberModel.constructor | max: `Math.max(g.nx, g.ny)`
+- embers/EmberModel.ts:425 | clampA | min: `Math.min(270, Math.max(100, v))`
+- embers/EmberModel.ts:425 | clampA | max: `Math.max(100, v)`
+- embers/EmberModel.ts:435 | EmberModel.constructor | ceil: `Math.ceil((this.xMax - this.xMin) / this.dxa)`
+- embers/EmberModel.ts:436 | EmberModel.constructor | ceil: `Math.ceil((this.yMax - this.yMin) / this.dxa)`
+- embers/EmberModel.ts:455 | EmberModel.constructor | pow: `Math.pow(cp.vtFloor, 1 / cp.n)`
+- embers/EmberModel.ts:457 | EmberModel.constructor | max: `Math.max(P.weights.lifeFloorFrac * medianTauB(cp, P), P.weights.lifeFloorAbs)`
+- embers/EmberModel.ts:534 | EmberModel.emit | ceil: `Math.ceil(nAct * 1.5)`
+- embers/EmberModel.ts:535 | EmberModel.emit | ceil: `Math.ceil(nAct * 1.5)`
+- embers/EmberModel.ts:536 | EmberModel.emit | ceil: `Math.ceil(nAct * 1.5)`
+- embers/EmberModel.ts:553 | EmberModel.emit | max: `Math.max(this.aUntil[a]!, tArr)`
+- embers/EmberModel.ts:555 | EmberModel.emit | min: `Math.min(tEnd, tFin)`
+- embers/EmberModel.ts:560 | EmberModel.emit | exp: `Math.exp(-(t0 - tArr) / tau)`
+- embers/EmberModel.ts:560 | EmberModel.emit | exp: `Math.exp(-(t1 - tArr) / tau)`
+- embers/EmberModel.ts:577 | EmberModel.emit | floor: `Math.floor(k / nx)`
+- embers/EmberModel.ts:581 | EmberModel.emit | floor: `Math.floor((cx - this.xMin) / this.dxa)`
+- embers/EmberModel.ts:581 | EmberModel.emit | floor: `Math.floor((cy - this.yMin) / this.dxa)`
+- embers/EmberModel.ts:601 | EmberModel.emit | exp: `Math.exp(-dt / P.loft.powerTau)`
+- embers/EmberModel.ts:612 | EmberModel.emit | exp: `Math.exp(-dt / P.weights.rateTau)`
+- embers/EmberModel.ts:660 | EmberModel.step | atan2: `Math.atan2(u, v)`
+- embers/EmberModel.ts:667 | EmberModel.step | exp: `Math.exp(-dt / P.weights.lifeTau)`
+- embers/EmberModel.ts:956 | EmberModel.addCell | pow: `Math.pow(E.barkBase, bh - E.barkRef)`
+- embers/EmberModel.ts:974 | EmberModel.addCell | cbrt: `Math.cbrt(lineBuoyancyFlux(intensity, this.rhoAt(this.terrain.elevation[k]!), T, this.params.transport.chi))`
+- embers/EmberModel.ts:984 | EmberModel.ensureActive | max: `Math.max(n, this.aCell.length * 2)`
+- embers/EmberModel.ts:1091 | EmberModel.updateWeights | max: `Math.max(rest, 0)`
+- embers/EmberModel.ts:1122 | EmberModel.spawn | min: `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1126 | EmberModel.spawn | min: `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1128 | EmberModel.spawn | min: `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1167 | EmberModel.initParticle | max: `Math.max(0, z - zg)`
+- embers/EmberModel.ts:1217 | EmberModel.crestHeight | sin: `Math.sin(from * DEG)`
+- embers/EmberModel.ts:1217 | EmberModel.crestHeight | cos: `Math.cos(from * DEG)`
+- embers/EmberModel.ts:1219 | EmberModel.crestHeight | floor: `Math.floor(k / this.nx)`
+- embers/EmberModel.ts:1221 | EmberModel.crestHeight | ceil: `Math.ceil(this.params.mountain.crestSearch / this.h)`
+- embers/EmberModel.ts:1242 | EmberModel.sourceClassCode | cos: `Math.cos((asp - this.windToDeg) * DEG)`
+- embers/EmberModel.ts:1256 | EmberModel.diagnosePlumeTop | sqrt: `Math.sqrt(Math.max(n2 !== undefined ? n2 : L.nDefault * L.nDefault, 1e-6))`
+- embers/EmberModel.ts:1256 | EmberModel.diagnosePlumeTop | max: `Math.max(n2 !== undefined ? n2 : L.nDefault * L.nDefault, 1e-6)`
+- embers/EmberModel.ts:1263 | EmberModel.diagnosePlumeTop | max: `Math.max(10, L.uHeightFrac * zp)`
+- embers/EmberModel.ts:1264 | EmberModel.diagnosePlumeTop | hypot: `Math.hypot(this.wOut[0]!, this.wOut[1]!)`
+- embers/EmberModel.ts:1267 | EmberModel.diagnosePlumeTop | min: `Math.min(L.zpMax, Math.max(L.zpMin, zp))`
+- embers/EmberModel.ts:1267 | EmberModel.diagnosePlumeTop | max: `Math.max(L.zpMin, zp)`
+- embers/EmberModel.ts:1283 | EmberModel.loft | sqrt: `Math.sqrt(this.r.next())`
+- embers/EmberModel.ts:1284 | EmberModel.loft | log: `Math.log(wc / vt)`
+- embers/EmberModel.ts:1289 | EmberModel.loft | max: `Math.max(wc - vt, P.loft.riseFloor * wc)`
+- embers/EmberModel.ts:1410 | EmberModel.advance | sqrt: `Math.sqrt(r)`
+- embers/EmberModel.ts:1410 | EmberModel.advance | sqrt: `Math.sqrt(Math.sqrt(r))`
+- embers/EmberModel.ts:1410 | EmberModel.advance | sqrt: `Math.sqrt(r)`
+- embers/EmberModel.ts:1410 | EmberModel.advance | pow: `Math.pow(r, n + 1)`
+- embers/EmberModel.ts:1438 | EmberModel.advance | sqrt: `Math.sqrt(TB.cblA)`
+- embers/EmberModel.ts:1514 | EmberModel.advance | sqrt: `Math.sqrt(u * u + v * v)`
+- embers/EmberModel.ts:1552 | EmberModel.advance | cbrt: `Math.cbrt(zr)`
+- embers/EmberModel.ts:1564 | EmberModel.advance | pow: `Math.pow(1 - zz / zi, TB.stableExp)`
+- embers/EmberModel.ts:1574 | EmberModel.advance | pow: `Math.pow(1 - zz / zi, 2 * TB.stableExp - 1)`
+- embers/EmberModel.ts:1600 | EmberModel.advance | exp: `Math.exp((-dte * Math.sqrt(1 + rv * rv)) / th)`
+- embers/EmberModel.ts:1600 | EmberModel.advance | sqrt: `Math.sqrt(1 + rv * rv)`
+- embers/EmberModel.ts:1601 | EmberModel.advance | sqrt: `Math.sqrt(1 - e * e)`
+- embers/EmberModel.ts:1603 | EmberModel.advance | imul: `Math.imul(rs ^ (rs >>> 15), rs | 1)`
+- embers/EmberModel.ts:1604 | EmberModel.advance | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1607 | EmberModel.advance | imul: `Math.imul(rs ^ (rs >>> 15), rs | 1)`
+- embers/EmberModel.ts:1608 | EmberModel.advance | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1611 | EmberModel.advance | exp: `Math.exp(-dte / th)`
+- embers/EmberModel.ts:1617 | EmberModel.advance | exp: `Math.exp((-dte * Math.sqrt(1 + rv * rv)) / tw)`
+- embers/EmberModel.ts:1617 | EmberModel.advance | sqrt: `Math.sqrt(1 + rv * rv)`
+- embers/EmberModel.ts:1619 | EmberModel.advance | imul: `Math.imul(rs ^ (rs >>> 15), rs | 1)`
+- embers/EmberModel.ts:1620 | EmberModel.advance | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1621 | EmberModel.advance | sqrt: `Math.sqrt(1 - e * e)`
+- embers/EmberModel.ts:1622 | EmberModel.advance | exp: `Math.exp(-dte / tw)`
+- embers/EmberModel.ts:1627 | EmberModel.advance | sqrt: `Math.sqrt(r1)`
+- embers/EmberModel.ts:1627 | EmberModel.advance | sqrt: `Math.sqrt(Math.sqrt(r1))`
+- embers/EmberModel.ts:1627 | EmberModel.advance | sqrt: `Math.sqrt(r1)`
+- embers/EmberModel.ts:1627 | EmberModel.advance | pow: `Math.pow(r1, n + 1)`
+- embers/EmberModel.ts:1655 | EmberModel.advance | imul: `Math.imul(rs ^ (rs >>> 15), rs | 1)`
+- embers/EmberModel.ts:1656 | EmberModel.advance | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1702 | EmberModel.advance | min: `Math.min(1, Math.max(0, hp / (hp - hn)))`
+- embers/EmberModel.ts:1702 | EmberModel.advance | max: `Math.max(0, hp / (hp - hn))`
+- embers/EmberModel.ts:1761 | EmberModel.leeEddy | hypot: `Math.hypot(out[0]!, out[1]!)`
+- embers/EmberModel.ts:1764 | EmberModel.leeEddy | sin: `Math.sin(a)`
+- embers/EmberModel.ts:1765 | EmberModel.leeEddy | cos: `Math.cos(a)`
+- embers/EmberModel.ts:1808 | EmberModel.exitDomain | hypot: `Math.hypot(this.tOut[0]!, this.tOut[1]!)`
+- embers/EmberModel.ts:1815 | EmberModel.exitDomain | min: `Math.min(P.stats.edgeBins - 1, Math.floor(d / P.stats.edgeBinM))`
+- embers/EmberModel.ts:1815 | EmberModel.exitDomain | floor: `Math.floor(d / P.stats.edgeBinM)`
+- embers/EmberModel.ts:1833 | EmberModel.land | hypot: `Math.hypot(xl - this.srcX[i]!, yl - this.srcY[i]!)`
+- embers/EmberModel.ts:1844 | EmberModel.land | max: `Math.max(IG.exclusionCells * this.h, info.rosLocal * IG.exclusionTime)`
+- embers/EmberModel.ts:1850 | EmberModel.land | sin: `Math.sin(this.windToDeg * DEG)`
+- embers/EmberModel.ts:1851 | EmberModel.land | cos: `Math.cos(this.windToDeg * DEG)`
+- embers/EmberModel.ts:1867 | EmberModel.land | min: `Math.min(1, info.surfaceHazard / 2)`
+- embers/EmberModel.ts:1870 | EmberModel.land | min: `Math.min(1, info.nearSurfaceHazard / 2)`
+- embers/EmberModel.ts:1879 | EmberModel.land | max: `Math.max(0, 1 - age / tauB)`
+- embers/EmberModel.ts:1880 | EmberModel.land | sqrt: `Math.sqrt(Math.sqrt(m))`
+- embers/EmberModel.ts:1880 | EmberModel.land | sqrt: `Math.sqrt(m)`
+- embers/EmberModel.ts:1887 | EmberModel.land | min: `Math.min(pn - 1, IG.pileMaxN)`
+- embers/EmberModel.ts:1894 | EmberModel.land | exp: `Math.exp(-W * p)`
+- embers/EmberModel.ts:1906 | EmberModel.land | exp: `Math.exp(-lam)`
+- embers/EmberModel.ts:1988 | EmberModel.processIgnitions | exp: `Math.exp(-hz * hv.n * dtc)`
+- embers/EmberModel.ts:2028 | EmberModel.cellIndex | round: `Math.round((x - this.gx0) / this.h)`
+- embers/EmberModel.ts:2029 | EmberModel.cellIndex | round: `Math.round((y - this.gy0) / this.h)`
+- embers/EmberModel.ts:2035 | EmberModel.reliefAt | max: `Math.max(1, Math.round(this.params.mountain.reliefRadius / this.h))`
+- embers/EmberModel.ts:2035 | EmberModel.reliefAt | round: `Math.round(this.params.mountain.reliefRadius / this.h)`
+- embers/EmberModel.ts:2054 | EmberModel.rebuildDensity | ceil: `Math.ceil((hi - this.densLo) / this.densDz)`
+- embers/EmberModel.ts:2056 | EmberModel.rebuildDensity | sqrt: `Math.sqrt(RHO_REF / this.rhoAt(this.densLo + q * this.densDz))`
+- embers/EmberModel.ts:2061 | EmberModel.densAt | round: `Math.round((z - this.densLo) / this.densDz)`
+- embers/EmberModel.ts:2127 | EmberModel.profileMean | hypot: `Math.hypot(this.tOut[0]!, this.tOut[1]!)`
+- embers/EmberModel.ts:2136 | EmberModel.profileMean | hypot: `Math.hypot(su / 16, sv / 16)`
+- embers/EmberModel.ts:2241 | EmberModel.recordResidence | max: `Math.max(0, t - this.tBirth[i]!)`
+- embers/fuelInfo.ts:51 | catalogueCellFuel | max: `Math.max(chm > 0 ? chm : 0, 0.8 * r.hO)`
+- embers/params.ts:414 | <module> | const:PI: `Math.PI`
+- embers/physics.ts:25 | albiniBurnoutTime | const:PI: `Math.PI`
+- embers/physics.ts:28 | albiniFallHeight | const:PI: `Math.PI`
+- embers/physics.ts:34 | powN1 | sqrt: `Math.sqrt(r)`
+- embers/physics.ts:35 | powN1 | sqrt: `Math.sqrt(Math.sqrt(r))`
+- embers/physics.ts:35 | powN1 | sqrt: `Math.sqrt(r)`
+- embers/physics.ts:36 | powN1 | pow: `Math.pow(r, n + 1)`
+- embers/physics.ts:57 | floorRatio | pow: `Math.pow(floor, 1 / n)`
+- embers/physics.ts:97 | fallTime | pow: `Math.pow(q, 1 / (n + 1))`
+- embers/physics.ts:98 | fallTime | max: `Math.max(0, tauB * (1 - r) - a0)`
+- embers/physics.ts:140 | briggsPlumeRise | max: `Math.max(nBv, 1e-3)`
+- embers/physics.ts:141 | briggsPlumeRise | const:PI: `Math.PI`
+- embers/physics.ts:143 | briggsPlumeRise | max: `Math.max(uMs, 0.5)`
+- embers/physics.ts:144 | briggsPlumeRise | cbrt: `Math.cbrt(f / (u * n * n))`
+- embers/physics.ts:145 | briggsPlumeRise | pow: `Math.pow(f, 0.25)`
+- embers/physics.ts:145 | briggsPlumeRise | pow: `Math.pow(n, -0.75)`
+- embers/physics.ts:146 | briggsPlumeRise | min: `Math.min(windy, calm)`
+- embers/physics.ts:190 | heatPerArea | max: `Math.max(rosMs, 1e-3)`
+- embers/plume.ts:87 | PlumeField.build | max: `Math.max(2, Math.ceil((p.plumeDepthZd * p.zd) / dz) + 1)`
+- embers/plume.ts:87 | PlumeField.build | ceil: `Math.ceil((p.plumeDepthZd * p.zd) / dz)`
+- embers/plume.ts:123 | PlumeField.build | floor: `Math.floor((xmin - dxa) / h)`
+- embers/plume.ts:124 | PlumeField.build | floor: `Math.floor((ymin - dxa) / h)`
+- embers/plume.ts:125 | PlumeField.build | ceil: `Math.ceil((xmax + dxa - this.gx0) / h)`
+- embers/plume.ts:126 | PlumeField.build | ceil: `Math.ceil((ymax + dxa - this.gy0) / h)`
+- embers/plume.ts:128 | PlumeField.build | ceil: `Math.ceil((zmax - zmin) / dz)`
+- embers/plume.ts:131 | PlumeField.build | ceil: `Math.ceil(size * 1.25)`
+- embers/plume.ts:139 | PlumeField.build | ceil: `Math.ceil(dxa / h)`
+- embers/plume.ts:147 | PlumeField.build | exp: `Math.exp(-(l * dz) / p.zd)`
+- embers/plume.ts:151 | PlumeField.build | round: `Math.round((z0 + l * dz - this.zBase) / dz)`
+- embers/plume.ts:153 | PlumeField.build | round: `Math.round((cx - this.gx0) / h)`
+- embers/plume.ts:154 | PlumeField.build | round: `Math.round((cy - this.gy0) / h)`
+- embers/plume.ts:167 | PlumeField.build | sqrt: `Math.sqrt(d2)`
+- embers/sampling.ts:23 | FastRng.next | imul: `Math.imul(t ^ (t >>> 15), t | 1)`
+- embers/sampling.ts:24 | FastRng.next | imul: `Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/sampling.ts:42 | FastRng.normal | sqrt: `Math.sqrt(-2 * Math.log(u))`
+- embers/sampling.ts:42 | FastRng.normal | log: `Math.log(u)`
+- embers/sampling.ts:43 | FastRng.normal | const:PI: `Math.PI`
+- embers/sampling.ts:44 | FastRng.normal | sin: `Math.sin(a)`
+- embers/sampling.ts:45 | FastRng.normal | cos: `Math.cos(a)`
+- embers/sampling.ts:50 | FastRng.poisson | max: `Math.max(0, Math.round(mean + Math.sqrt(mean) * this.normal()))`
+- embers/sampling.ts:50 | FastRng.poisson | round: `Math.round(mean + Math.sqrt(mean) * this.normal())`
+- embers/sampling.ts:50 | FastRng.poisson | sqrt: `Math.sqrt(mean)`
+- embers/sampling.ts:51 | FastRng.poisson | exp: `Math.exp(-mean)`
+- embers/sampling.ts:70 | inverseNormalCdf | sqrt: `Math.sqrt(-2 * Math.log(p))`
+- embers/sampling.ts:70 | inverseNormalCdf | log: `Math.log(p)`
+- embers/sampling.ts:74 | inverseNormalCdf | sqrt: `Math.sqrt(-2 * Math.log(1 - p))`
+- embers/sampling.ts:74 | inverseNormalCdf | log: `Math.log(1 - p)`
+- embers/sampling.ts:95 | <module> | sqrt: `Math.sqrt(s2 / NORMAL_TABLE_SIZE)`
+- embers/sampling.ts:105 | <module> | sqrt: `Math.sqrt(2 * Math.PI)`
+- embers/sampling.ts:105 | <module> | const:PI: `Math.PI`
+- embers/sampling.ts:107 | lnPdf | exp: `Math.exp(-((lnT - mu) * (lnT - mu)) / (2 * s * s))`
+- embers/sampling.ts:109 | luPdf | log: `Math.log(b / a)`
+- embers/sampling.ts:113 | natureTauBDensity | log: `Math.log(tau)`
+- embers/sampling.ts:114 | natureTauBDensity | log: `Math.log(c.tauB.median)`
+- embers/sampling.ts:118 | natureTauBDensity | log: `Math.log(m)`
+- embers/sampling.ts:127 | sampleNature | exp: `Math.exp(c.tauB.sigmaLn * r.normal())`
+- embers/sampling.ts:130 | sampleNature | exp: `Math.exp(r.next() * Math.log(rb.tailMax / rb.tailMin))`
+- embers/sampling.ts:130 | sampleNature | log: `Math.log(rb.tailMax / rb.tailMin)`
+- embers/sampling.ts:131 | sampleNature | min: `Math.min(rb.means.length - 1, (r.next() * rb.means.length) | 0)`
+- embers/sampling.ts:132 | sampleNature | exp: `Math.exp(-(rb.sigmaLn * rb.sigmaLn) / 2 + rb.sigmaLn * r.normal())`
+- embers/sampling.ts:146 | proposalMeanTauB | exp: `Math.exp((c.tauB.sigmaLn * c.tauB.sigmaLn) / 2)`
+- embers/sampling.ts:151 | proposalMeanTauB | log: `Math.log(rb.tailMax / rb.tailMin)`
+- embers/sampling.ts:162 | proposalMeanTauB | exp: `Math.exp((q.p2 * q.p2) / 2)`
+- embers/sampling.ts:162 | proposalMeanTauB | log: `Math.log(q.p2 / q.p1)`
+- embers/sampling.ts:197 | sampleClass | exp: `Math.exp(c.vt0.sigmaLn * r.normal())`
+- embers/sampling.ts:203 | sampleClass | min: `Math.min(c.vt0.max, Math.max(c.vt0.min, c.vt0.median))`
+- embers/sampling.ts:203 | sampleClass | max: `Math.max(c.vt0.min, c.vt0.median)`
+- embers/sampling.ts:211 | sampleClass | exp: `Math.exp(q.p2 * r.normal())`
+- embers/sampling.ts:211 | sampleClass | exp: `Math.exp(r.next() * Math.log(q.p2 / q.p1))`
+- embers/sampling.ts:211 | sampleClass | log: `Math.log(q.p2 / q.p1)`
+- embers/sampling.ts:214 | sampleClass | log: `Math.log(tauB)`
+- embers/sampling.ts:214 | sampleClass | log: `Math.log(q.p1)`
+- embers/sampling.ts:220 | sampleClass | exp: `Math.exp(c.tauF.sigmaLn * r.normal())`
+- fire/models/common.ts:14 | powPos | exp: `Math.exp(a * Math.log(x))`
+- fire/models/common.ts:14 | powPos | log: `Math.log(x)`
+- fire/models/common.ts:19 | <module> | const:LN2: `Math.LN2`
+- fire/models/common.ts:27 | slopeFactor | exp: `Math.exp(thetaDeg * LN2_10)`
+- fire/models/common.ts:31 | slopeFactor | exp: `Math.exp(-thetaDeg * LN2_10)`
+- fire/models/common.ts:38 | slopeFactorCapped | log2: `Math.log2(P.slope.sfMax)`
+- fire/models/common.ts:59 | flameHeightVesta | exp: `Math.exp(0.723 * Math.log(rosMh) + 0.64 * hElM)`
+- fire/models/common.ts:59 | flameHeightVesta | log: `Math.log(rosMh)`
+- fire/models/common.ts:62 | flameHeightShrub | exp: `Math.exp(-4.142 + 0.633 * Math.log(iKwm))`
+- fire/models/common.ts:62 | flameHeightShrub | log: `Math.log(iKwm)`
+- fire/models/common.ts:66 | flameHeightGrass | exp: `Math.exp(0.295 * Math.log(rosMh / 3600))`
+- fire/models/common.ts:66 | flameHeightGrass | log: `Math.log(rosMh / 3600)`
+- fire/models/common.ts:69 | byramFlameLength | exp: `Math.exp(0.46 * Math.log(iKwm))`
+- fire/models/common.ts:69 | byramFlameLength | log: `Math.log(iKwm)`
+- fire/models/grass.ts:21 | grassPhiM | exp: `Math.exp(-0.108 * mPct)`
+- fire/models/grass.ts:26 | grassPhiC | exp: `Math.exp(-0.0996 * (curingPct - 20))`
+- fire/models/heath.ts:37 | heathRefitRos | exp: `Math.exp(RF.c0 + RF.cSqrtU2 * Math.sqrt(u2) + RF.cLogit * Math.log(m / (1 - m)) + RF.cLnH * Math.log(h))`
+- fire/models/heath.ts:37 | heathRefitRos | sqrt: `Math.sqrt(u2)`
+- fire/models/heath.ts:37 | heathRefitRos | log: `Math.log(m / (1 - m))`
+- fire/models/heath.ts:37 | heathRefitRos | log: `Math.log(h)`
+- fire/models/heath.ts:48 | heathV1Ros | pow: `Math.pow(waf * u, 0.9102)`
+- fire/models/heath.ts:48 | heathV1Ros | pow: `Math.pow(h, 0.227)`
+- fire/models/heath.ts:48 | heathV1Ros | exp: `Math.exp(-0.0762 * mPct)`
+- fire/models/kernel.ts:115 | headRosKernel | log: `Math.log(fl / 10)`
+- fire/models/kernel.ts:115 | headRosKernel | log: `Math.log(understoreyHeight(p.fhsEl, p.hEl))`
+- fire/models/kernel.ts:115 | headRosKernel | log: `Math.log(wrf)`
+- fire/models/pine.ts:19 | <module> | log: `Math.log(0.36 / 0.13)`
+- fire/models/pine.ts:31 | pineCriticalIntensity | sqrt: `Math.sqrt(x)`
+- fire/models/pine.ts:37 | pineStandWind | log: `Math.log((10 + 0.36 * h) / (0.13 * h))`
+- fire/models/pine.ts:42 | pineActiveCrownRos | exp: `Math.exp(0.8966 * Math.log(wsKmh) - 0.1714 * mPct)`
+- fire/models/pine.ts:42 | pineActiveCrownRos | log: `Math.log(wsKmh)`
+- fire/models/shape.ts:25 | lbForest | exp: `Math.exp(0.0505 * u)`
+- fire/models/shape.ts:27 | lbForest | exp: `Math.exp(0.0505 * u)`
+- fire/models/shape.ts:35 | lbGrass | pow: `Math.pow(u, 0.464)`
+- fire/models/vestaMk2.ts:66 | sat | exp: `Math.exp(-g)`
+- fire/models/vestaMk2.ts:81 | vestaMk2Eval | log: `Math.log(u)`
+- fire/models/vestaMk2.ts:94 | vestaMk2Eval | exp: `Math.exp(R1_EU * Math.log(u - 1) + R1_EFL * lnFl)`
+- fire/models/vestaMk2.ts:94 | vestaMk2Eval | log: `Math.log(u - 1)`
+- fire/models/vestaMk2.ts:99 | vestaMk2Eval | exp: `Math.exp(R2_EU * lnU + R2_EFL * lnFl + R2_EHU * lnHu)`
+- fire/models/vestaMk2.ts:102 | vestaMk2Eval | exp: `Math.exp(R3_EU * (lnU + lnWrf))`
+- fire/models/vestaMk2.ts:137 | vestaMk2Core | log: `Math.log(fl / 10)`
+- fire/models/vestaMk2.ts:137 | vestaMk2Core | log: `Math.log(hu > 0 ? hu : M.hu.huMin)`
+- fire/models/vestaMk2.ts:137 | vestaMk2Core | log: `Math.log(w)`
+- fire/spread/FireSpreadModel.ts:62 | <module> | const:PI: `Math.PI`
+- fire/spread/FireSpreadModel.ts:63 | <module> | const:PI: `Math.PI`
+- fire/spread/FireSpreadModel.ts:332 | FireSpreadModel.constructor | abs: `Math.abs(fuel.grid.cellSize - g.cellSize)`
+- fire/spread/FireSpreadModel.ts:364 | FireSpreadModel.constructor | min: `Math.min(this.P.vls.slopeLoDeg, this.P.sep.slopeLoDeg)`
+- fire/spread/FireSpreadModel.ts:377 | FireSpreadModel.constructor | max: `Math.max(1, ns)`
+- fire/spread/FireSpreadModel.ts:495 | FireSpreadModel.initStatic | sqrt: `Math.sqrt(gx * gx + gy * gy)`
+- fire/spread/FireSpreadModel.ts:500 | FireSpreadModel.initStatic | atan: `Math.atan(tn)`
+- fire/spread/FireSpreadModel.ts:520 | FireSpreadModel.initStatic | hypot: `Math.hypot(di, dj)`
+- fire/spread/FireSpreadModel.ts:540 | FireSpreadModel.refreshStaticFuel | max: `Math.max(1, Math.ceil(P.treeRadiusM / h))`
+- fire/spread/FireSpreadModel.ts:540 | FireSpreadModel.refreshStaticFuel | ceil: `Math.ceil(P.treeRadiusM / h)`
+- fire/spread/FireSpreadModel.ts:559 | FireSpreadModel.refreshStaticFuel | hypot: `Math.hypot(di, dj)`
+- fire/spread/FireSpreadModel.ts:612 | FireSpreadModel.ignite | max: `Math.max(ign.radius ?? 0, this.P.levelSet.ignitionRadiusCells * this.h)`
+- fire/spread/FireSpreadModel.ts:619 | FireSpreadModel.ignite | hypot: `Math.hypot(x - px, y - py)`
+- fire/spread/FireSpreadModel.ts:632 | FireSpreadModel.ignite | min: `Math.min(x0, x)`
+- fire/spread/FireSpreadModel.ts:633 | FireSpreadModel.ignite | max: `Math.max(x1, x)`
+- fire/spread/FireSpreadModel.ts:634 | FireSpreadModel.ignite | min: `Math.min(y0, y)`
+- fire/spread/FireSpreadModel.ts:635 | FireSpreadModel.ignite | max: `Math.max(y1, y)`
+- fire/spread/FireSpreadModel.ts:648 | FireSpreadModel.igniteAt | hypot: `Math.hypot(xx - x, yy - y)`
+- fire/spread/FireSpreadModel.ts:686 | FireSpreadModel.refreshMasks | round: `Math.round((((from % 360) + 360) % 360) / secW)`
+- fire/spread/FireSpreadModel.ts:686 | FireSpreadModel.refreshMasks | round: `Math.round(360 / secW)`
+- fire/spread/FireSpreadModel.ts:707 | FireSpreadModel.refreshMasks | min: `Math.min(SP.reliefFactor * rel, SP.maxDistM)`
+- fire/spread/FireSpreadModel.ts:887 | FireSpreadModel.headCells | sqrt: `Math.sqrt(cx * cx + cy * cy)`
+- fire/spread/FireSpreadModel.ts:1062 | FireSpreadModel.syncClock | abs: `Math.abs(et)`
+- fire/spread/FireSpreadModel.ts:1232 | FireSpreadModel.upwindMaxIntensity | sin: `Math.sin(fromDeg * DEG)`
+- fire/spread/FireSpreadModel.ts:1233 | FireSpreadModel.upwindMaxIntensity | cos: `Math.cos(fromDeg * DEG)`
+- fire/spread/FireSpreadModel.ts:1236 | FireSpreadModel.upwindMaxIntensity | max: `Math.max(1, Math.round(this.P.vls.upwindM / h))`
+- fire/spread/FireSpreadModel.ts:1236 | FireSpreadModel.upwindMaxIntensity | round: `Math.round(this.P.vls.upwindM / h)`
+- fire/spread/FireSpreadModel.ts:1245 | FireSpreadModel.upwindMaxIntensity | round: `Math.round(i + s * ux + l * px)`
+- fire/spread/FireSpreadModel.ts:1246 | FireSpreadModel.upwindMaxIntensity | round: `Math.round(j + s * uy + l * py)`
+- fire/spread/FireSpreadModel.ts:1291 | FireSpreadModel.computeCell | sqrt: `Math.sqrt(u * u + v * v)`
+- fire/spread/FireSpreadModel.ts:1300 | FireSpreadModel.computeCell | abs: `Math.abs(uKmh - kU)`
+- fire/spread/FireSpreadModel.ts:1325 | FireSpreadModel.computeCell | sqrt: `Math.sqrt(env.fireIndU[k]! * env.fireIndU[k]! + env.fireIndV[k]! * env.fireIndV[k]!)`
+- fire/spread/FireSpreadModel.ts:1337 | FireSpreadModel.computeCell | atan: `Math.atan(gx * Math.sin(ax * DEG) + gy * Math.cos(ax * DEG))`
+- fire/spread/FireSpreadModel.ts:1337 | FireSpreadModel.computeCell | sin: `Math.sin(ax * DEG)`
+- fire/spread/FireSpreadModel.ts:1337 | FireSpreadModel.computeCell | cos: `Math.cos(ax * DEG)`
+- fire/spread/FireSpreadModel.ts:1367 | FireSpreadModel.computeCell | atan: `Math.atan(gx * hyb.ey - gy * hyb.ex)`
+- fire/spread/FireSpreadModel.ts:1677 | FireSpreadModel.igniteGeometry | max: `Math.max(0, Math.floor((x0 - pad - grid.x0) / h))`
+- fire/spread/FireSpreadModel.ts:1677 | FireSpreadModel.igniteGeometry | floor: `Math.floor((x0 - pad - grid.x0) / h)`
+- fire/spread/FireSpreadModel.ts:1678 | FireSpreadModel.igniteGeometry | min: `Math.min(nx - 1, Math.ceil((x1 + pad - grid.x0) / h))`
+- fire/spread/FireSpreadModel.ts:1678 | FireSpreadModel.igniteGeometry | ceil: `Math.ceil((x1 + pad - grid.x0) / h)`
+- fire/spread/FireSpreadModel.ts:1679 | FireSpreadModel.igniteGeometry | max: `Math.max(0, Math.floor((y0 - pad - grid.y0) / h))`
+- fire/spread/FireSpreadModel.ts:1679 | FireSpreadModel.igniteGeometry | floor: `Math.floor((y0 - pad - grid.y0) / h)`
+- fire/spread/FireSpreadModel.ts:1680 | FireSpreadModel.igniteGeometry | min: `Math.min(ny - 1, Math.ceil((y1 + pad - grid.y0) / h))`
+- fire/spread/FireSpreadModel.ts:1680 | FireSpreadModel.igniteGeometry | ceil: `Math.ceil((y1 + pad - grid.y0) / h)`
+- fire/spread/FireSpreadModel.ts:1697 | FireSpreadModel.igniteGeometry | abs: `Math.abs(p)`
+- fire/spread/FireSpreadModel.ts:1754 | FireSpreadModel.updateHeat | exp: `Math.exp(-(aa - tA) / tau)`
+- fire/spread/FireSpreadModel.ts:1754 | FireSpreadModel.updateHeat | exp: `Math.exp(-(bb - tA) / tau)`
+- fire/spread/FireSpreadModel.ts:1806 | FireSpreadModel.updateFront | sqrt: `Math.sqrt(cx * cx + cy * cy)`
+- fire/spread/FireSpreadModel.ts:1815 | FireSpreadModel.updateFront | sin: `Math.sin(sd * DEG)`
+- fire/spread/FireSpreadModel.ts:1816 | FireSpreadModel.updateFront | cos: `Math.cos(sd * DEG)`
+- fire/spread/FireSpreadModel.ts:1861 | FireSpreadModel.decayJunctions | exp: `Math.exp(-dt / this.P.junction.tauS)`
+- fire/spread/FireSpreadModel.ts:1885 | FireSpreadModel.detectJunctions | cos: `Math.cos(JP.minNormalDiffDeg * DEG)`
+- fire/spread/FireSpreadModel.ts:1921 | FireSpreadModel.detectJunctions | acos: `Math.acos(Math.max(-1, Math.min(1, minDot)))`
+- fire/spread/FireSpreadModel.ts:1921 | FireSpreadModel.detectJunctions | max: `Math.max(-1, Math.min(1, minDot))`
+- fire/spread/FireSpreadModel.ts:1921 | FireSpreadModel.detectJunctions | min: `Math.min(1, minDot)`
+- fire/spread/FireSpreadModel.ts:1969 | FireSpreadModel.rollDebris | abs: `Math.abs(nxt - cur)`
+- fire/spread/FireSpreadModel.ts:1969 | FireSpreadModel.rollDebris | const:SQRT2: `Math.SQRT2`
+- fire/spread/FireSpreadModel.ts:1976 | FireSpreadModel.rollDebris | pow: `Math.pow(1 - p, len / DP.stepM)`
+- fire/spread/geometry.ts:16 | distToSegment | sqrt: `Math.sqrt(px * px + py * py)`
+- fire/spread/geometry.ts:21 | distToPolyline | hypot: `Math.hypot(x - pts[0]![0], y - pts[0]![1])`
+- fire/spread/geometry.ts:59 | polylineLength | hypot: `Math.hypot(pts[i + 1]![0] - pts[i]![0], pts[i + 1]![1] - pts[i]![1])`
+- fire/spread/geometry.ts:60 | polylineLength | hypot: `Math.hypot(pts[0]![0] - pts[pts.length - 1]![0], pts[0]![1] - pts[pts.length - 1]![1])`
+- fire/spread/geometry.ts:78 | DistanceTransform.constructor | max: `Math.max(nx, ny)`
+- fire/spread/geometry.ts:114 | DistanceTransform.compute | sqrt: `Math.sqrt(q)`
+- fire/spread/levelSet.ts:134 | LevelSetCore.constructor | min: `Math.min(n, 1024)`
+- fire/spread/levelSet.ts:169 | LevelSetCore.lowerPhi | abs: `Math.abs(p)`
+- fire/spread/levelSet.ts:306 | LevelSetCore.evaluate | sqrt: `Math.sqrt(cx * cx + cy * cy)`
+- fire/spread/levelSet.ts:321 | LevelSetCore.evaluate | sqrt: `Math.sqrt(a2 * c2 + (s2 > 0 ? b2 * s2 : 0))`
+- fire/spread/levelSet.ts:358 | LevelSetCore.evaluate | sqrt: `Math.sqrt(g2)`
+- fire/spread/levelSet.ts:372 | LevelSetCore.ensureScratch | min: `Math.min(this.n, Math.max(need, Math.ceil(this.tend1.length * 1.5)))`
+- fire/spread/levelSet.ts:372 | LevelSetCore.ensureScratch | max: `Math.max(need, Math.ceil(this.tend1.length * 1.5))`
+- fire/spread/levelSet.ts:372 | LevelSetCore.ensureScratch | ceil: `Math.ceil(this.tend1.length * 1.5)`
+- fire/spread/levelSet.ts:478 | LevelSetCore.reinit | max: `Math.max(0, i0 - grow)`
+- fire/spread/levelSet.ts:479 | LevelSetCore.reinit | max: `Math.max(0, j0 - grow)`
+- fire/spread/levelSet.ts:480 | LevelSetCore.reinit | min: `Math.min(nx - 1, i1 + grow)`
+- fire/spread/levelSet.ts:481 | LevelSetCore.reinit | min: `Math.min(ny - 1, j1 + grow)`
+- fire/spread/levelSet.ts:528 | LevelSetCore.reinit | sqrt: `Math.sqrt(h2 - diff * diff)`
+- fire/spread/math.ts:17 | <module> | const:PI: `Math.PI`
+- fire/spread/math.ts:18 | <module> | const:PI: `Math.PI`
+- fire/spread/math.ts:22 | azimuthOf | atan2: `Math.atan2(x, y)`
+- fire/spread/math.ts:28 | angleBetweenDeg | abs: `Math.abs((((a - b) % 360) + 540) % 360 - 180)`
+- fire/spread/math.ts:68 | hybridHead | sqrt: `Math.sqrt(gx * gx + gy * gy)`
+- fire/spread/math.ts:76 | hybridHead | atan: `Math.atan(tanT)`
+- fire/spread/math.ts:80 | hybridHead | sqrt: `Math.sqrt(vx * vx + vy * vy)`
+- fire/spread/math.ts:97 | hybridHead | acos: `Math.acos(Math.max(-1, Math.min(1, wx * upX + wy * upY)))`
+- fire/spread/math.ts:97 | hybridHead | max: `Math.max(-1, Math.min(1, wx * upX + wy * upY))`
+- fire/spread/math.ts:97 | hybridHead | min: `Math.min(1, wx * upX + wy * upY)`
+- fire/spread/math.ts:106 | finishHybrid | atan: `Math.atan(gx * out.ex + gy * out.ey)`
+- fire/spread/math.ts:140 | gullySteer | abs: `Math.abs(diff)`
+- fire/spread/math.ts:141 | gullySteer | min: `Math.min(1, (alphaDeg - GP.minAlongSlopeDeg) / GP.spanDeg)`
+- fire/spread/math.ts:146 | gullySteer | sin: `Math.sin(out.e * DEG)`
+- fire/spread/math.ts:147 | gullySteer | cos: `Math.cos(out.e * DEG)`
+- fire/spread/math.ts:185 | ellipseSpeeds | sqrt: `Math.sqrt(1 - 1 / (lbB * lbB))`
+- fire/spread/math.ts:215 | offsetEllipseSpeed | sqrt: `Math.sqrt(a * a * c2 + rF * rF * (1 - c2 > 0 ? 1 - c2 : 0))`
+- fire/spread/math.ts:235 | logisticS | exp: `Math.exp((-4 * (x - c)) / w)`
+- fire/spread/math.ts:240 | alignmentWeight | min: `Math.min(1, (dDeg - AP.alignFullDeg) / (AP.alignHalfDeg - AP.alignFullDeg))`
+- fire/spread/math.ts:252 | relaxEngagement | exp: `Math.exp(-dt / tau)`
+- fire/spread/math.ts:261 | buildFraction | exp: `Math.exp((-alpha * ageS) / 60)`
+- fire/spread/math.ts:267 | lineIgnitionOrigin | min: `Math.min(BP.lineMaxB0, Math.max(0, lengthM) / BP.lineRefLengthM)`
+- fire/spread/math.ts:267 | lineIgnitionOrigin | max: `Math.max(0, lengthM)`
+- fire/spread/math.ts:268 | lineIgnitionOrigin | log: `Math.log(1 - b0)`
+- fire/spread/math.ts:279 | leeAlignment | cos: `Math.cos((aspectDeg - windToDeg) * DEG)`
+- fire/spread/math.ts:290 | vlsScore | cos: `Math.cos(VP.aspectLoDeg * DEG)`
+- fire/spread/math.ts:290 | vlsScore | cos: `Math.cos(VP.aspectHiDeg * DEG)`
+- fire/spread/math.ts:305 | leeSeparation | cos: `Math.cos(SP.leeLoDeg * DEG)`
+- fire/spread/math.ts:305 | leeSeparation | cos: `Math.cos(SP.leeHiDeg * DEG)`
+- fire/spread/math.ts:315 | vlsLateralRate | sin: `Math.sin((2 * Math.PI * sinceActS) / periodS)`
+- fire/spread/math.ts:315 | vlsLateralRate | const:PI: `Math.PI`
+- fire/spread/math.ts:323 | junctionGeometric | sin: `Math.sin((theta0Deg * DEG) / 2)`
+- fire/spread/math.ts:333 | breachProbability | exp: `Math.exp(BR.c0 + BR.cI * intensityKwm - (trees ? BR.bTrees : BR.bOpen) * widthM)`
+- fire/spread/params.ts:293 | resolveSpreadParams | min: `Math.min(a.gMaxMax, Math.max(a.gMaxMin, Number.isFinite(a.gMax) ? a.gMax : SPREAD_PARAMS.attachment.gMax))`
+- fire/spread/params.ts:293 | resolveSpreadParams | max: `Math.max(a.gMaxMin, Number.isFinite(a.gMax) ? a.gMax : SPREAD_PARAMS.attachment.gMax)`
+- fire/terrainFeatures.ts:31 | <module> | const:PI: `Math.PI`
+- fire/terrainFeatures.ts:32 | <module> | const:PI: `Math.PI`
+- fire/terrainFeatures.ts:123 | <module> | const:SQRT2: `Math.SQRT2`
+- fire/terrainFeatures.ts:123 | <module> | const:SQRT2: `Math.SQRT2`
+- fire/terrainFeatures.ts:123 | <module> | const:SQRT2: `Math.SQRT2`
+- fire/terrainFeatures.ts:123 | <module> | const:SQRT2: `Math.SQRT2`
+- fire/terrainFeatures.ts:179 | zAt | floor: `Math.floor(fx)`
+- fire/terrainFeatures.ts:180 | zAt | floor: `Math.floor(fy)`
+- fire/terrainFeatures.ts:333 | stepDist | abs: `Math.abs((a % nx) - (b % nx))`
+- fire/terrainFeatures.ts:334 | stepDist | abs: `Math.abs(Math.floor(a / nx) - Math.floor(b / nx))`
+- fire/terrainFeatures.ts:334 | stepDist | floor: `Math.floor(a / nx)`
+- fire/terrainFeatures.ts:334 | stepDist | floor: `Math.floor(b / nx)`
+- fire/terrainFeatures.ts:335 | stepDist | const:SQRT2: `Math.SQRT2`
+- fire/terrainFeatures.ts:349 | pathEnds | tan: `Math.tan(P.pathFlatDeg * DEG)`
+- fire/terrainFeatures.ts:350 | pathEnds | max: `Math.max(P.pathWindowM, h)`
+- fire/terrainFeatures.ts:404 | hornSlope | atan: `Math.atan(Math.sqrt(gx * gx + gy * gy))`
+- fire/terrainFeatures.ts:404 | hornSlope | sqrt: `Math.sqrt(gx * gx + gy * gy)`
+- fire/terrainFeatures.ts:421 | slopeAtScale | max: `Math.max(2, Math.ceil(extX / scaleM))`
+- fire/terrainFeatures.ts:421 | slopeAtScale | ceil: `Math.ceil(extX / scaleM)`
+- fire/terrainFeatures.ts:422 | slopeAtScale | max: `Math.max(2, Math.ceil(extY / scaleM))`
+- fire/terrainFeatures.ts:422 | slopeAtScale | ceil: `Math.ceil(extY / scaleM)`
+- fire/terrainFeatures.ts:426 | slopeAtScale | max: `Math.max(1, Math.round(scaleM / src.grid.cellSize))`
+- fire/terrainFeatures.ts:426 | slopeAtScale | round: `Math.round(scaleM / src.grid.cellSize)`
+- fire/terrainFeatures.ts:455 | subCellSlopeStats | round: `Math.round((hg.y0 + j * hg.cellSize - fire.y0) / fire.cellSize)`
+- fire/terrainFeatures.ts:457 | subCellSlopeStats | round: `Math.round((hg.x0 + i * hg.cellSize - fire.x0) / fire.cellSize)`
+- fire/terrainFeatures.ts:480 | subCellSlopeStats | floor: `Math.floor(pos)`
+- fire/terrainFeatures.ts:481 | subCellSlopeStats | min: `Math.min(seg.length - 1, lo + 1)`
+- fire/terrainFeatures.ts:551 | TerrainFeaturesImpl.useSector | round: `Math.round(360 / w)`
+- fire/terrainFeatures.ts:552 | TerrainFeaturesImpl.useSector | round: `Math.round(wrap360(windFromDeg) / w)`
+- fire/terrainFeatures.ts:577 | TerrainFeaturesImpl.search | sin: `Math.sin(fromDeg * DEG)`
+- fire/terrainFeatures.ts:578 | TerrainFeaturesImpl.search | cos: `Math.cos(fromDeg * DEG)`
+- fire/terrainFeatures.ts:581 | TerrainFeaturesImpl.search | floor: `Math.floor(P.crest.maxDistM / step + 1e-9)`
+- fire/terrainFeatures.ts:587 | TerrainFeaturesImpl.search | round: `Math.round((x - g.x0) / g.cellSize)`
+- fire/terrainFeatures.ts:588 | TerrainFeaturesImpl.search | round: `Math.round((y - g.y0) / g.cellSize)`
+- fire/terrainFeatures.ts:683 | computeTerrainFeatures | max: `Math.max(1, Math.round(P.axisHalfSpanM / h))`
+- fire/terrainFeatures.ts:683 | computeTerrainFeatures | round: `Math.round(P.axisHalfSpanM / h)`
+- fire/terrainFeatures.ts:694 | computeTerrainFeatures | floor: `Math.floor(upk / nx)`
+- fire/terrainFeatures.ts:694 | computeTerrainFeatures | floor: `Math.floor(dn / nx)`
+- fire/terrainFeatures.ts:695 | computeTerrainFeatures | atan2: `Math.atan2(dx, dy)`
+- fire/terrainFeatures.ts:707 | computeTerrainFeatures | floor: `Math.floor(tp.halfWidthM / tp.stepM + 1e-9)`
+- fire/terrainFeatures.ts:711 | sideRiseSlope | floor: `Math.floor(maxM / stepM + 1e-9)`
+- fire/terrainFeatures.ts:722 | sideRiseSlope | atan: `Math.atan(best / bestD)`
+- fire/terrainFeatures.ts:731 | computeTerrainFeatures | cos: `Math.cos(ax * DEG)`
+- fire/terrainFeatures.ts:732 | computeTerrainFeatures | sin: `Math.sin(ax * DEG)`
+- fire/terrainFeatures.ts:735 | computeTerrainFeatures | min: `Math.min(L.slope, R.slope)`
+- fire/terrainFeatures.ts:736 | computeTerrainFeatures | min: `Math.min(L.rise, R.rise)`
+- fire/terrainFeatures.ts:741 | computeTerrainFeatures | ceil: `Math.ceil(tp.wallInfluenceM / h)`
+- fire/terrainFeatures.ts:755 | computeTerrainFeatures | hypot: `Math.hypot(di, dj)`
+- fire/terrainFeatures.ts:844 | computeTerrainFeatures | floor: `Math.floor(nv.searchM / sStep + 1e-9)`
+- fire/terrainFeatures.ts:845 | computeTerrainFeatures | tan: `Math.tan(nv.minWallSlopeDeg * DEG)`
+- fire/terrainFeatures.ts:856 | wallSide | max: `Math.max(0, d - sStep)`
+- fire/terrainFeatures.ts:872 | computeTerrainFeatures | cos: `Math.cos(ax * DEG)`
+- fire/terrainFeatures.ts:873 | computeTerrainFeatures | sin: `Math.sin(ax * DEG)`
+- fire/terrainFeatures.ts:882 | computeTerrainFeatures | round: `Math.round((x + side * d * px - g.x0) / h)`
+- fire/terrainFeatures.ts:883 | computeTerrainFeatures | round: `Math.round((y + side * d * py - g.y0) / h)`
+- fuel/catalogue.ts:133 | r | round: `Math.round(v * 1000)`
+- fuel/catalogue.ts:235 | r | round: `Math.round(v * 100)`
+- fuel/fuelMap.ts:117 | canopyHeightEffFor | max: `Math.max(chmHeight, P.hOEffTypeFactor * hType)`
+- fuel/fuelMap.ts:119 | canopyHeightEffFor | max: `Math.max(chmHeight, P.hOEffTypeFactor * hType)`
+- fuel/hazard.ts:104 | loadFromLitterDepthMm | max: `Math.max(0, depthMm)`
+- fuel/moisture/afdrs.ts:65 | rainMemoryMc2 | exp: `Math.exp(-3.132 * rain48)`
+- fuel/moisture/afdrs.ts:65 | rainMemoryMc2 | exp: `Math.exp(-0.0858 * h)`
+- fuel/moisture/afdrs.ts:69 | grassMoisture | max: `Math.max(5, 9.58 - 0.205 * tC + 0.138 * rh)`
+- fuel/moisture/air.ts:21 | lapseRate | max: `Math.max(1, reliefM)`
+- fuel/moisture/air.ts:75 | isThermalBelt | abs: `Math.abs(hav - hInv)`
+- fuel/moisture/availability.ts:31 | fuelAvailabilityMk2 | exp: `Math.exp(-0.9306 * df)`
+- fuel/moisture/availability.ts:49 | faBlendWeight | cos: `Math.cos((aspectDeg - P.blendAspectDeg) * DEG)`
+- fuel/moisture/drought.ts:23 | kbdiIncrement | exp: `Math.exp(0.0875 * tMaxC + 1.5552)`
+- fuel/moisture/drought.ts:23 | kbdiIncrement | exp: `Math.exp(-0.001736 * annualRainMm)`
+- fuel/moisture/drought.ts:33 | kbdiPass | min: `Math.min(KBDI_MAX, Math.max(0, k0))`
+- fuel/moisture/drought.ts:33 | kbdiPass | max: `Math.max(0, k0)`
+- fuel/moisture/drought.ts:37 | kbdiPass | min: `Math.min(KBDI_MAX, k + kbdiIncrement(k, d.tMax, annualRainMm))`
+- fuel/moisture/drought.ts:40 | kbdiPass | min: `Math.min(p, Math.max(0, KBDI_SPELL_INTERCEPTION - removed))`
+- fuel/moisture/drought.ts:40 | kbdiPass | max: `Math.max(0, KBDI_SPELL_INTERCEPTION - removed)`
+- fuel/moisture/drought.ts:42 | kbdiPass | max: `Math.max(0, k - (p - rem))`
+- fuel/moisture/drought.ts:61 | droughtFactorFromX | exp: `Math.exp(-(k + 30) / 40)`
+- fuel/moisture/drought.ts:62 | droughtFactorFromX | min: `Math.min(10, df)`
+- fuel/moisture/drought.ts:106 | droughtFactor | min: `Math.min(1, rainRecencyX(rain, nLast), droughtXLimit(kbdi))`
+- fuel/moisture/drought.ts:173 | droughtState | max: `Math.max(365, daily.length)`
+- fuel/moisture/fastMath.ts:24 | <module> | round: `Math.round((T_HI - T_LO) * T_INV)`
+- fuel/moisture/fastMath.ts:30 | <module> | exp: `Math.exp(0.0365 * t)`
+- fuel/moisture/fastMath.ts:51 | <module> | min: `Math.min(100, i / H_INV)`
+- fuel/moisture/fastMath.ts:52 | <module> | exp: `Math.exp((h - 100) / 10)`
+- fuel/moisture/fastMath.ts:53 | <module> | exp: `Math.exp(-0.115 * h)`
+- fuel/moisture/fastMath.ts:100 | <module> | exp: `Math.exp(-i / X_INV)`
+- fuel/moisture/fastMath.ts:110 | fillExpTable | exp: `Math.exp(a * j * step)`
+- fuel/moisture/fuelPhysics.ts:19 | vanWagnerEd | exp: `Math.exp((h - 100) / 10)`
+- fuel/moisture/fuelPhysics.ts:19 | vanWagnerEd | exp: `Math.exp(-0.115 * h)`
+- fuel/moisture/fuelPhysics.ts:34 | vanWagnerRate | sqrt: `Math.sqrt(Math.max(0, wKmh))`
+- fuel/moisture/fuelPhysics.ts:34 | vanWagnerRate | max: `Math.max(0, wKmh)`
+- fuel/moisture/fuelPhysics.ts:34 | vanWagnerRate | exp: `Math.exp(0.0365 * tC)`
+- fuel/moisture/fuelPhysics.ts:63 | beamTransmittance | max: `Math.max(p.sinSunFloor, Math.sin((sunElevDeg * Math.PI) / 180))`
+- fuel/moisture/fuelPhysics.ts:63 | beamTransmittance | sin: `Math.sin((sunElevDeg * Math.PI) / 180)`
+- fuel/moisture/fuelPhysics.ts:63 | beamTransmittance | const:PI: `Math.PI`
+- fuel/moisture/fuelPhysics.ts:64 | beamTransmittance | exp: `Math.exp((-p.beamExtinction * lai) / s)`
+- fuel/moisture/fuelPhysics.ts:69 | diffuseTransmittance | exp: `Math.exp(-p.diffuseExtinction * lai)`
+- fuel/moisture/fuelPhysics.ts:79 | litterWind | max: `Math.max(wrf, 1e-3)`
+- fuel/moisture/fuelPhysics.ts:144 | rainMemory | exp: `Math.exp(-3.132 * p48Throughfall)`
+- fuel/moisture/fuelPhysics.ts:144 | rainMemory | exp: `Math.exp(-0.0858 * Math.max(0, hE))`
+- fuel/moisture/fuelPhysics.ts:144 | rainMemory | max: `Math.max(0, hE)`
+- fuel/moisture/fuelPhysics.ts:154 | dewTerm | min: `Math.min(p.dewMaxPp, (100 * lDew) / p.dewStoreMm)`
+- fuel/moisture/fuelPhysics.ts:165 | ignitionProbability | max: `Math.max(0, mPct)`
+- fuel/moisture/fuelPhysics.ts:166 | ignitionProbability | exp: `Math.exp(-15.1 * m)`
+- fuel/moisture/model.ts:274 | MoistureModel.constructor | max: `Math.max(1, terrain.maxElevation - terrain.minElevation)`
+- fuel/moisture/model.ts:303 | MoistureModel.resolveCell | min: `Math.min(1, Math.max(0, p.cover || 0))`
+- fuel/moisture/model.ts:303 | MoistureModel.resolveCell | max: `Math.max(0, p.cover || 0)`
+- fuel/moisture/model.ts:314 | MoistureModel.resolveCell | min: `Math.min(cType, Math.max(P.chmCoverFloor * cType, cRaw))`
+- fuel/moisture/model.ts:314 | MoistureModel.resolveCell | max: `Math.max(P.chmCoverFloor * cType, cRaw)`
+- fuel/moisture/model.ts:315 | MoistureModel.resolveCell | max: `Math.max(0, p.lai || 0)`
+- fuel/moisture/model.ts:316 | MoistureModel.resolveCell | min: `Math.min(1, Math.max(0, p.cRef || 0))`
+- fuel/moisture/model.ts:316 | MoistureModel.resolveCell | max: `Math.max(0, p.cRef || 0)`
+- fuel/moisture/model.ts:390 | MoistureModel.hoursSinceRain | max: `Math.max(0, (t - this.tLastRain) / HOUR_MS)`
+- fuel/moisture/model.ts:403 | MoistureModel.advance | max: `Math.max(P.sinSunFloor, Math.sin((F.sunElev * Math.PI) / 180))`
+- fuel/moisture/model.ts:403 | MoistureModel.advance | sin: `Math.sin((F.sunElev * Math.PI) / 180)`
+- fuel/moisture/model.ts:403 | MoistureModel.advance | const:PI: `Math.PI`
+- fuel/moisture/model.ts:406 | MoistureModel.advance | min: `Math.min(1, Math.max(0, F.cloudFrac))`
+- fuel/moisture/model.ts:406 | MoistureModel.advance | max: `Math.max(0, F.cloudFrac)`
+- fuel/moisture/model.ts:411 | MoistureModel.advance | max: `Math.max(dtH, 1e-9)`
+- fuel/moisture/model.ts:420 | MoistureModel.advance | min: `Math.min(1, dTheta / STABLE_NIGHT_PARAMS.snScaleK)`
+- fuel/moisture/model.ts:577 | MoistureModel.advance | sqrt: `Math.sqrt(u10 * 3.6)`
+- fuel/moisture/model.ts:613 | MoistureModel.advance | exp: `Math.exp(-3.132 * tfNow)`
+- fuel/moisture/model.ts:613 | MoistureModel.advance | exp: `Math.exp(-0.0858 * he)`
+- fuel/moisture/model.ts:693 | MoistureModel.update | sin: `Math.sin((ctx.sunElevation * Math.PI) / 180)`
+- fuel/moisture/model.ts:693 | MoistureModel.update | const:PI: `Math.PI`
+- fuel/moisture/model.ts:727 | MoistureModel.initialise | max: `Math.max(seriesStart, t0 - P.spinUpHours * HOUR_MS)`
+- fuel/moisture/model.ts:755 | MoistureModel.initialise | min: `Math.min(1, Math.max(0, (w.cloudCover ?? 0) / 100))`
+- fuel/moisture/model.ts:755 | MoistureModel.initialise | max: `Math.max(0, (w.cloudCover ?? 0) / 100)`
+- fuel/moisture/model.ts:760 | MoistureModel.initialise | sin: `Math.sin((sunElev * Math.PI) / 180)`
+- fuel/moisture/model.ts:760 | MoistureModel.initialise | const:PI: `Math.PI`
+- fuel/moisture/model.ts:776 | MoistureModel.initialise | sin: `Math.sin((sunElev * Math.PI) / 180)`
+- fuel/moisture/model.ts:776 | MoistureModel.initialise | const:PI: `Math.PI`
+- fuel/moisture/model.ts:794 | MoistureModel.initialise | min: `Math.min(t0, t + Math.max(0.25, P.spinUpStepH) * HOUR_MS)`
+- fuel/moisture/model.ts:794 | MoistureModel.initialise | max: `Math.max(0.25, P.spinUpStepH)`
+- fuel/moisture/model.ts:798 | MoistureModel.initialise | abs: `Math.abs(bias)`
+- fuel/moisture/model.ts:830 | MoistureModel.calibrationDeviation | min: `Math.min(tC, F.tdS - (this.params.dewLapse * (this.medianZ - F.zS)) / 1000)`
+- fuel/moisture/model.ts:859 | MoistureModel.seedRainHistory | min: `Math.min(2, r.length)`
+- fuel/moisture/model.ts:885 | MoistureModel.buildLut | max: `Math.max(0, Math.floor((c.z[k]! - zMin) / P.lutElevBand))`
+- fuel/moisture/model.ts:885 | MoistureModel.buildLut | floor: `Math.floor((c.z[k]! - zMin) / P.lutElevBand)`
+- fuel/moisture/model.ts:886 | MoistureModel.buildLut | min: `Math.min(bins - 1, Math.floor(c.cover[k]! * bins))`
+- fuel/moisture/model.ts:886 | MoistureModel.buildLut | floor: `Math.floor(c.cover[k]! * bins)`
+- fuel/moisture/night.ts:45 | integrateStableNight | min: `Math.min(to, t + stepS * 1000)`
+- fuel/moisture/night.ts:88 | spinUpStableNight | max: `Math.max(series.hours[0]!.time, t0 - hours * 3.6e6)`
+- scenario/weather.ts:79 | precipWindow | min: `Math.min(H, Math.max(1, hs[j]!.time - hs[j - 1]!.time))`
+- scenario/weather.ts:79 | precipWindow | max: `Math.max(1, hs[j]!.time - hs[j - 1]!.time)`
+- sim/simulation.ts:411 | Simulation.constructor | abs: `Math.abs(fg.cellSize - g.cellSize)`
+- sim/simulation.ts:411 | Simulation.constructor | abs: `Math.abs(fg.x0 - g.x0)`
+- sim/simulation.ts:411 | Simulation.constructor | abs: `Math.abs(fg.y0 - g.y0)`
+- sim/simulation.ts:452 | Simulation.constructor | max: `Math.max(0, e.time)`
+- sim/simulation.ts:454 | Simulation.constructor | max: `Math.max(0, ign.time)`
+- sim/simulation.ts:513 | Simulation.constructor | ceil: `Math.ceil(g.nx / B)`
+- sim/simulation.ts:514 | Simulation.constructor | ceil: `Math.ceil(g.ny / B)`
+- sim/simulation.ts:592 | Simulation.spinUp | min: `Math.min(this.atm.maxStableDt(), P.dtMaxS, this.spinTotal - this.spinDone)`
+- sim/simulation.ts:620 | Simulation.advance | min: `Math.min(until, this.duration)`
+- sim/simulation.ts:729 | Simulation.nextSnapshotAfter | floor: `Math.floor(t / i + EPS)`
+- sim/simulation.ts:1139 | Simulation.buildAtmosphere | max: `Math.max(0, Math.min(stampIndex(hs, tMs), hs.length - 2))`
+- sim/simulation.ts:1139 | Simulation.buildAtmosphere | min: `Math.min(stampIndex(hs, tMs), hs.length - 2)`
+- sim/simulation.ts:1140 | Simulation.buildAtmosphere | min: `Math.min(this.stampIdx + 1, hs.length - 1)`
+- sim/simulation.ts:1282 | Simulation.stepOnce | max: `Math.max(0, (tMs - this.lastNightMs) / 1000)`
+- sim/simulation.ts:1292 | Simulation.stepOnce | max: `Math.max(0, dtM)`
+- sim/simulation.ts:1296 | Simulation.stepOnce | floor: `Math.floor(t / P.solarIntervalS + EPS)`
+- sim/simulation.ts:1309 | Simulation.stepOnce | round: `Math.round(wrapDeg(w.windDir10) / P.sectorDeg)`
+- sim/simulation.ts:1309 | Simulation.stepOnce | round: `Math.round(360 / P.sectorDeg)`
+- sim/simulation.ts:1313 | Simulation.stepOnce | floor: `Math.floor(t / P.minuteS + EPS)`
+- sim/simulation.ts:1318 | Simulation.stepOnce | abs: `Math.abs(t / P.checkpointIntervalS - Math.round(t / P.checkpointIntervalS))`
+- sim/simulation.ts:1318 | Simulation.stepOnce | round: `Math.round(t / P.checkpointIntervalS)`
+- sim/simulation.ts:1323 | Simulation.stepOnce | floor: `Math.floor(t / P.fastWindIntervalS + EPS)`
+- sim/simulation.ts:1333 | Simulation.stepOnce | max: `Math.max(1, Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval))`
+- sim/simulation.ts:1333 | Simulation.stepOnce | min: `Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval)`
+- sim/simulation.ts:1334 | Simulation.stepOnce | min: `Math.min(this.atm.maxStableDt(), P.dtMaxS)`
+- sim/simulation.ts:1335 | Simulation.stepOnce | min: `Math.min(dtTier, userCap)`
+- sim/simulation.ts:1338 | Simulation.stepOnce | min: `Math.min((Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS, (Math.floor(t / interval + EPS) + 1) * interval)`
+- sim/simulation.ts:1338 | Simulation.stepOnce | floor: `Math.floor(t / P.minuteS + EPS)`
+- sim/simulation.ts:1338 | Simulation.stepOnce | floor: `Math.floor(t / interval + EPS)`
+- sim/simulation.ts:1340 | Simulation.stepOnce | max: `Math.max(1, Math.ceil(rem / dtMax - 1e-9))`
+- sim/simulation.ts:1340 | Simulation.stepOnce | ceil: `Math.ceil(rem / dtMax - 1e-9)`
+- sim/simulation.ts:1387 | Simulation.stepOnce | floor: `Math.floor(tEnd / P.minuteS + EPS)`
+- sim/simulation.ts:1409 | Simulation.stepOnce | max: `Math.max(this.lastSnapT, this.t)`
+- sim/simulation.ts:1422 | Simulation.stepOnce | floor: `Math.floor(this.t / P.checkpointIntervalS + EPS)`
+- sim/simulation.ts:1433 | Simulation.stepOnce | max: `Math.max(0, Math.min(tEnd, this.timeReached) - t)`
+- sim/simulation.ts:1433 | Simulation.stepOnce | min: `Math.min(tEnd, this.timeReached)`
+- sim/simulation.ts:1526 | Simulation.u10Now | sqrt: `Math.sqrt(a * a + b * b)`
+- sim/simulation.ts:1575 | Simulation.landingFn | hypot: `Math.hypot(gx, gy)`
+- sim/simulation.ts:1581 | Simulation.landingFn | hypot: `Math.hypot(this.env.windBgU[k]!, this.env.windBgV[k]!)`
+- sim/stats.ts:177 | frontRosBlocks | floor: `Math.floor(j / b)`
+- sim/stats.ts:177 | frontRosBlocks | floor: `Math.floor(i / b)`
+- sim/stats.ts:187 | frontRosAt | floor: `Math.floor(i / b)`
+- sim/stats.ts:188 | frontRosAt | floor: `Math.floor(j / b)`
+- terrain/analysis.ts:210 | slidingMinMax | max: `Math.max(nx, ny)`
+- terrain/analysis.ts:211 | slidingMinMax | max: `Math.max(nx, ny)`
+- terrain/analysis.ts:387 | stdDev | sqrt: `Math.sqrt(Math.max(0, s2 / f.length - m * m))`
+- terrain/analysis.ts:387 | stdDev | max: `Math.max(0, s2 / f.length - m * m)`
+- terrain/analysis.ts:407 | buildTerrain | max: `Math.max(1, Math.round(TPI_RADIUS_M / h))`
+- terrain/analysis.ts:407 | buildTerrain | round: `Math.round(TPI_RADIUS_M / h)`
+- terrain/analysis.ts:408 | buildTerrain | max: `Math.max(1, Math.round(TPI_SMALL_RADIUS_M / h))`
+- terrain/analysis.ts:408 | buildTerrain | round: `Math.round(TPI_SMALL_RADIUS_M / h)`
+- terrain/analysis.ts:409 | buildTerrain | max: `Math.max(1, Math.round(CURVATURE_SMOOTH_RADIUS_M / h))`
+- terrain/analysis.ts:409 | buildTerrain | round: `Math.round(CURVATURE_SMOOTH_RADIUS_M / h)`
+- terrain/analysis.ts:410 | buildTerrain | max: `Math.max(1, Math.round(CRITICAL_POINT_SMOOTH_RADIUS_M / h))`
+- terrain/analysis.ts:410 | buildTerrain | round: `Math.round(CRITICAL_POINT_SMOOTH_RADIUS_M / h)`
+- terrain/analysis.ts:411 | buildTerrain | max: `Math.max(1, Math.round(RELATIVE_POSITION_RADIUS_M / h))`
+- terrain/analysis.ts:411 | buildTerrain | round: `Math.round(RELATIVE_POSITION_RADIUS_M / h)`
+- terrain/analysis.ts:413 | buildTerrain | max: `Math.max(rL, rS, 2 * rH + 1, 2 * rC + 1)`
+- terrain/analysis.ts:470 | buildTerrain | atan: `Math.atan(Math.sqrt(gx * gx + gy * gy))`
+- terrain/analysis.ts:470 | buildTerrain | sqrt: `Math.sqrt(gx * gx + gy * gy)`
+- terrain/analysis.ts:476 | buildTerrain | atan2: `Math.atan2(-gx, -gy)`
+- terrain/analysis.ts:478 | buildTerrain | fround: `Math.fround(az)`
+- terrain/analysis.ts:611 | classifyLandforms | sqrt: `Math.sqrt(0.25 * (a - c) * (a - c) + b * b)`
+- terrain/analysis.ts:618 | classifyLandforms | atan2: `Math.atan2(2 * b, a - c)`
+- terrain/analysis.ts:619 | classifyLandforms | cos: `Math.cos(th)`
+- terrain/analysis.ts:620 | classifyLandforms | sin: `Math.sin(th)`
+- terrain/solar.ts:72 | solarEphemeris | sin: `Math.sin(Mr)`
+- terrain/solar.ts:72 | solarEphemeris | sin: `Math.sin(2 * Mr)`
+- terrain/solar.ts:72 | solarEphemeris | sin: `Math.sin(3 * Mr)`
+- terrain/solar.ts:75 | solarEphemeris | cos: `Math.cos(v)`
+- terrain/solar.ts:77 | solarEphemeris | sin: `Math.sin(omega)`
+- terrain/solar.ts:79 | solarEphemeris | cos: `Math.cos(omega)`
+- terrain/solar.ts:80 | solarEphemeris | asin: `Math.asin(Math.sin(eps) * Math.sin(lambda))`
+- terrain/solar.ts:80 | solarEphemeris | sin: `Math.sin(eps)`
+- terrain/solar.ts:80 | solarEphemeris | sin: `Math.sin(lambda)`
+- terrain/solar.ts:81 | solarEphemeris | tan: `Math.tan(eps / 2)`
+- terrain/solar.ts:86 | solarEphemeris | sin: `Math.sin(2 * L0r)`
+- terrain/solar.ts:87 | solarEphemeris | sin: `Math.sin(Mr)`
+- terrain/solar.ts:88 | solarEphemeris | sin: `Math.sin(Mr)`
+- terrain/solar.ts:88 | solarEphemeris | cos: `Math.cos(2 * L0r)`
+- terrain/solar.ts:89 | solarEphemeris | sin: `Math.sin(4 * L0r)`
+- terrain/solar.ts:90 | solarEphemeris | sin: `Math.sin(2 * Mr)`
+- terrain/solar.ts:97 | refraction | tan: `Math.tan(el * DEG)`
+- terrain/solar.ts:118 | solarPosition | min: `Math.min(1, Math.max(-1, Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(H)))`
+- terrain/solar.ts:118 | solarPosition | max: `Math.max(-1, Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(H))`
+- terrain/solar.ts:118 | solarPosition | sin: `Math.sin(phi)`
+- terrain/solar.ts:118 | solarPosition | sin: `Math.sin(d)`
+- terrain/solar.ts:118 | solarPosition | cos: `Math.cos(phi)`
+- terrain/solar.ts:118 | solarPosition | cos: `Math.cos(d)`
+- terrain/solar.ts:118 | solarPosition | cos: `Math.cos(H)`
+- terrain/solar.ts:119 | solarPosition | acos: `Math.acos(cosZ)`
+- terrain/solar.ts:120 | solarPosition | atan2: `Math.atan2(-Math.sin(H) * Math.cos(d), Math.sin(d) * Math.cos(phi) - Math.cos(d) * Math.cos(H) * Math.sin(phi)`
+- terrain/solar.ts:120 | solarPosition | sin: `Math.sin(H)`
+- terrain/solar.ts:120 | solarPosition | cos: `Math.cos(d)`
+- terrain/solar.ts:120 | solarPosition | sin: `Math.sin(d)`
+- terrain/solar.ts:120 | solarPosition | cos: `Math.cos(phi)`
+- terrain/solar.ts:120 | solarPosition | cos: `Math.cos(d)`
+- terrain/solar.ts:120 | solarPosition | cos: `Math.cos(H)`
+- terrain/solar.ts:120 | solarPosition | sin: `Math.sin(phi)`
+- terrain/solar.ts:152 | sunTimes | floor: `Math.floor((timeMs / 60000 + lonMin) / 1440)`
+- terrain/solar.ts:158 | sunTimes | cos: `Math.cos(90.833 * DEG)`
+- terrain/solar.ts:164 | event | sin: `Math.sin(phi)`
+- terrain/solar.ts:164 | event | sin: `Math.sin(d)`
+- terrain/solar.ts:164 | event | cos: `Math.cos(phi)`
+- terrain/solar.ts:164 | event | cos: `Math.cos(d)`
+- terrain/solar.ts:166 | event | acos: `Math.acos(c)`
+- terrain/solar.ts:192 | airMass | cos: `Math.cos(z * DEG)`
+- terrain/solar.ts:220 | clearSkyIrradiance | sin: `Math.sin(elevationDeg * DEG)`
+- terrain/solar.ts:222 | clearSkyIrradiance | exp: `Math.exp(-altitude / 8434.5)`
+- terrain/solar.ts:225 | clearSkyIrradiance | exp: `Math.exp(-altitude / 8000)`
+- terrain/solar.ts:226 | clearSkyIrradiance | exp: `Math.exp(-altitude / 1250)`
+- terrain/solar.ts:229 | clearSkyIrradiance | max: `Math.max(0, cg1 * i0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (tl - 1))))`
+- terrain/solar.ts:229 | clearSkyIrradiance | exp: `Math.exp(-cg2 * am * (fh1 + fh2 * (tl - 1)))`
+- terrain/solar.ts:231 | clearSkyIrradiance | max: `Math.max(0, b * i0 * Math.exp(-0.09 * am * (tl - 1)))`
+- terrain/solar.ts:231 | clearSkyIrradiance | exp: `Math.exp(-0.09 * am * (tl - 1))`
+- terrain/solar.ts:233 | clearSkyIrradiance | max: `Math.max(0, 1 - (0.1 - 0.2 * Math.exp(-tl)) / (0.1 + 0.882 / fh1))`
+- terrain/solar.ts:233 | clearSkyIrradiance | exp: `Math.exp(-tl)`
+- terrain/solar.ts:234 | clearSkyIrradiance | min: `Math.min(dni1, dni2)`
+- terrain/solar.ts:235 | clearSkyIrradiance | max: `Math.max(0, ghi - dni * cz)`
+- terrain/solar.ts:239 | cloudAttenuation | min: `Math.min(1, Math.max(0, cloudCover / 100))`
+- terrain/solar.ts:239 | cloudAttenuation | max: `Math.max(0, cloudCover / 100)`
+- terrain/solar.ts:246 | erbsDecomposition | max: `Math.max(0, ghi)`
+- terrain/solar.ts:246 | erbsDecomposition | max: `Math.max(0, ghi)`
+- terrain/solar.ts:247 | erbsDecomposition | sin: `Math.sin(elevationDeg * DEG)`
+- terrain/solar.ts:248 | erbsDecomposition | max: `Math.max(cz, 0.065)`
+- terrain/solar.ts:249 | erbsDecomposition | min: `Math.min(1, ghi / i0h)`
+- terrain/solar.ts:255 | erbsDecomposition | min: `Math.min((ghi - dhi) / Math.max(cz, 0.065), extraterrestrial(distanceAU))`
+- terrain/solar.ts:255 | erbsDecomposition | max: `Math.max(cz, 0.065)`
+- terrain/solar.ts:256 | erbsDecomposition | max: `Math.max(0, dni)`
+- terrain/solar.ts:273 | forEachDigitalLine | abs: `Math.abs(uy)`
+- terrain/solar.ts:273 | forEachDigitalLine | abs: `Math.abs(ux)`
+- terrain/solar.ts:283 | forEachDigitalLine | round: `Math.round(exact)`
+- terrain/solar.ts:351 | castShadows | sin: `Math.sin(a)`
+- terrain/solar.ts:352 | castShadows | cos: `Math.cos(a)`
+- terrain/solar.ts:353 | castShadows | tan: `Math.tan(sunElevation * DEG)`
+- terrain/solar.ts:357 | castShadows | max: `Math.max(nx, ny)`
+- terrain/solar.ts:358 | castShadows | max: `Math.max(nx, ny)`
+- terrain/solar.ts:411 | skyViewFactor | sqrt: `Math.sqrt(1 + dzdx[k]! * dzdx[k]! + dzdy[k]! * dzdy[k]!)`
+- terrain/solar.ts:412 | skyViewFactor | max: `Math.max(nx, ny)`
+- terrain/solar.ts:413 | skyViewFactor | max: `Math.max(nx, ny)`
+- terrain/solar.ts:414 | skyViewFactor | max: `Math.max(nx, ny)`
+- terrain/solar.ts:415 | skyViewFactor | max: `Math.max(nx, ny)`
+- terrain/solar.ts:416 | skyViewFactor | max: `Math.max(nx, ny)`
+- terrain/solar.ts:417 | skyViewFactor | const:PI: `Math.PI`
+- terrain/solar.ts:419 | skyViewFactor | const:PI: `Math.PI`
+- terrain/solar.ts:420 | skyViewFactor | sin: `Math.sin(phi)`
+- terrain/solar.ts:421 | skyViewFactor | cos: `Math.cos(phi)`
+- terrain/solar.ts:456 | skyViewFactor | atan: `Math.atan(tanH)`
+- terrain/solar.ts:540 | splitGhi | max: `Math.max(0, ghi || 0)`
+- terrain/solar.ts:540 | splitGhi | max: `Math.max(0, ghi || 0)`
+- terrain/solar.ts:541 | splitGhi | sin: `Math.sin(elevationDeg * DEG)`
+- terrain/solar.ts:543 | splitGhi | min: `Math.min(1, Math.max(0, (r - 0.25) / 0.75))`
+- terrain/solar.ts:543 | splitGhi | max: `Math.max(0, (r - 0.25) / 0.75)`
+- terrain/solar.ts:547 | splitGhi | min: `Math.min(((1 - kd) * ghi) / cz, clear.dni)`
+- terrain/solar.ts:548 | splitGhi | max: `Math.max(0, ghi - dni * cz)`
+- terrain/solar.ts:563 | horizontalIrradiance | min: `Math.min(Math.max(0, opts.ghi), MAX_CLEAR_SKY_RATIO * clear.ghi)`
+- terrain/solar.ts:563 | horizontalIrradiance | max: `Math.max(0, opts.ghi)`
+- terrain/solar.ts:596 | insolation | sin: `Math.sin(a)`
+- terrain/solar.ts:596 | insolation | cos: `Math.cos(e)`
+- terrain/solar.ts:597 | insolation | cos: `Math.cos(a)`
+- terrain/solar.ts:597 | insolation | cos: `Math.cos(e)`
+- terrain/solar.ts:598 | insolation | sin: `Math.sin(e)`
+- terrain/solar.ts:599 | insolation | max: `Math.max(lz, 0.087)`
+- terrain/solar.ts:600 | insolation | min: `Math.min(1, irr.dni / extraterrestrial(sun.distanceAU))`
+- terrain/solar.ts:608 | insolation | sqrt: `Math.sqrt(1 + p * p + q * q)`
+
+## `**` (35)
+
+- atmosphere/atmosphere.ts:315 | sp | square: `Math.sin((Math.PI / 2) * ((z - zb) / P.spongeDepth)) ** 2`
+- atmosphere/dynamics.ts:244 | smagorinsky | square: `(P.smagCs * dx) ** 2`
+- atmosphere/dynamics.ts:276 | smagorinsky | square: `(uy + vx) ** 2`
+- atmosphere/dynamics.ts:276 | smagorinsky | square: `(uz + wx) ** 2`
+- atmosphere/dynamics.ts:276 | smagorinsky | square: `(vz + wy) ** 2`
+- atmosphere/dynamics.ts:281 | smagorinsky | square: `(P.smagCs * dz) ** 2`
+- atmosphere/grid.ts:87 | sum | variable: `r ** levels`
+- atmosphere/grid.ts:113 | canopyDrag | square: `(KAPPA_VK / Math.log(zEff / z0)) ** 2`
+- atmosphere/grid.ts:259 | buildAtmosGrid | variable: `r ** k`
+- atmosphere/massConsistent.ts:144 | blend | square: `(d / e.radius) ** 2`
+- atmosphere/plume.ts:30 | briggsRise | const 0.25: `F ** 0.25`
+- atmosphere/plume.ts:30 | briggsRise | variable: `N ** -0.75`
+- atmosphere/plume.ts:208 | pyroFirepowerThreshold | square: `(zfcAGL / 1000) ** 2`
+- atmosphere/profile.ts:114 | buildProfile | variable: `(P.synthTopAGL / top[0]) ** P.synthExponent`
+- atmosphere/profile.ts:118 | buildProfile | variable: `(z / top[0]) ** P.synthExponent`
+- atmosphere/pyrogenic.ts:30 | Dst.constructor | square: `Math.sin((Math.PI * (p + 1)) / (2 * n)) ** 2`
+- atmosphere/solver.ts:798 | EllipticSolver.solve | variable: `(rel / first) ** (1 / it)`
+- atmosphere/solver.ts:851 | EllipticSolver.pcg | variable: `(rel / first) ** (1 / total)`
+- core/physics.ts:31 | pressureIsa | const 5.25588: `(1 - 2.25577e-5 * zM) ** 5.25588`
+- core/physics.ts:33 | exner | variable: `(pHpa / 1000) ** RCP`
+- fuel/moisture/drought.ts:85 | rainRecencyX | const 1.3: `nDays ** 1.3`
+- fuel/moisture/fastMath.ts:52 | <module> | const 0.679: `h ** 0.679`
+- fuel/moisture/fastMath.ts:55 | <module> | const 1.7: `r ** 1.7`
+- fuel/moisture/fastMath.ts:56 | <module> | const 8: `r ** 8`
+- fuel/moisture/fuelPhysics.ts:19 | vanWagnerEd | const 0.679: `h ** 0.679`
+- fuel/moisture/fuelPhysics.ts:34 | vanWagnerRate | const 1.7: `r ** 1.7`
+- fuel/moisture/fuelPhysics.ts:170 | ignitionProbability | const 4.3: `x ** 4.3`
+- terrain/solar.ts:81 | solarEphemeris | square: `Math.tan(eps / 2) ** 2`
+- terrain/solar.ts:99 | refraction | const 3: `te ** 3`
+- terrain/solar.ts:99 | refraction | const 5: `te ** 5`
+- terrain/solar.ts:192 | airMass | variable: `(96.07995 - z) ** -1.6364`
+- terrain/solar.ts:239 | cloudAttenuation | const 3.4: `Math.min(1, Math.max(0, cloudCover / 100)) ** 3.4`
+- terrain/solar.ts:252 | erbsDecomposition | square: `kt ** 2`
+- terrain/solar.ts:252 | erbsDecomposition | const 3: `kt ** 3`
+- terrain/solar.ts:252 | erbsDecomposition | const 4: `kt ** 4`
+
+## Bit operations (190)
+
+- atmosphere/atmosphere.ts:1063 | Atmosphere.sampleAt | `q >> 1`
+- atmosphere/atmosphere.ts:1063 | Atmosphere.sampleAt | `q & 1`
+- atmosphere/atmosphere.ts:1064 | Atmosphere.sampleAt | `q & 1`
+- atmosphere/atmosphere.ts:1064 | Atmosphere.sampleAt | `q >> 1`
+- atmosphere/base.ts:71 | select | `(lo + hi) >> 1`
+- atmosphere/base.ts:91 | median | `(n - 1) >> 1`
+- atmosphere/base.ts:92 | median | `n >> 1`
+- atmosphere/base.ts:94 | median | `n >> 1`
+- atmosphere/base.ts:1003 | AtmosBase.medianColumn | `idx.length >> 1`
+- atmosphere/diagnosticWind.ts:194 | DiagnosticWind.sampleBg | `q >> 1`
+- atmosphere/diagnosticWind.ts:194 | DiagnosticWind.sampleBg | `q & 1`
+- atmosphere/diagnosticWind.ts:195 | DiagnosticWind.sampleBg | `q & 1`
+- atmosphere/diagnosticWind.ts:195 | DiagnosticWind.sampleBg | `q >> 1`
+- atmosphere/dynamics.ts:96 | displacements | `fx | 0`
+- atmosphere/dynamics.ts:98 | displacements | `fy | 0`
+- atmosphere/dynamics.ts:100 | displacements | `fz | 0`
+- atmosphere/dynamics.ts:187 | advect | `xd | 0`
+- atmosphere/dynamics.ts:189 | advect | `yd | 0`
+- atmosphere/dynamics.ts:191 | advect | `zd | 0`
+- atmosphere/grid.ts:418 | levelFrac | `(lo + hi) >> 1`
+- atmosphere/pyrogenic.ts:86 | PyrogenicPotential.solve | `j >> 1`
+- atmosphere/pyrogenic.ts:86 | PyrogenicPotential.solve | `i >> 1`
+- atmosphere/solver.ts:598 | EllipticSolver.relax | `(j + colour) & 1`
+- atmosphere/solver.ts:614 | EllipticSolver.relax | `(j + colour) & 1`
+- atmosphere/solver.ts:644 | EllipticSolver.residual7 | `(j + colour) & 1`
+- core/rng.ts:8 | Rng.constructor | `seed >>> 0`
+- core/rng.ts:12 | Rng.next | `(this.s + 0x6d2b79f5) >>> 0`
+- core/rng.ts:13 | Rng.next | `t ^ (t >>> 15)`
+- core/rng.ts:13 | Rng.next | `t >>> 15`
+- core/rng.ts:13 | Rng.next | `t | 1`
+- core/rng.ts:14 | Rng.next | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- core/rng.ts:14 | Rng.next | `t ^ (t >>> 7)`
+- core/rng.ts:14 | Rng.next | `t >>> 7`
+- core/rng.ts:14 | Rng.next | `t | 61`
+- core/rng.ts:15 | Rng.next | `(t ^ (t >>> 14)) >>> 0`
+- core/rng.ts:15 | Rng.next | `t ^ (t >>> 14)`
+- core/rng.ts:15 | Rng.next | `t >>> 14`
+- core/rng.ts:52 | Rng.set state | `v >>> 0`
+- embers/EmberModel.ts:461 | EmberModel.constructor | `m & (1 << c)`
+- embers/EmberModel.ts:461 | EmberModel.constructor | `1 << c`
+- embers/EmberModel.ts:462 | EmberModel.constructor | `m & (1 << c)`
+- embers/EmberModel.ts:462 | EmberModel.constructor | `1 << c`
+- embers/EmberModel.ts:651 | EmberModel.step | `(this.stepId + 1) >>> 0`
+- embers/EmberModel.ts:958 | EmberModel.addCell | `mask |= 1 << CLS_FLAKE`
+- embers/EmberModel.ts:958 | EmberModel.addCell | `1 << CLS_FLAKE`
+- embers/EmberModel.ts:959 | EmberModel.addCell | `mask |= 1 << CLS_RIBBON`
+- embers/EmberModel.ts:959 | EmberModel.addCell | `1 << CLS_RIBBON`
+- embers/EmberModel.ts:960 | EmberModel.addCell | `mask |= 1 << CLS_LEAF`
+- embers/EmberModel.ts:960 | EmberModel.addCell | `1 << CLS_LEAF`
+- embers/EmberModel.ts:961 | EmberModel.addCell | `mask |= (1 << CLS_TWIG) | (1 << 4)`
+- embers/EmberModel.ts:961 | EmberModel.addCell | `(1 << CLS_TWIG) | (1 << 4)`
+- embers/EmberModel.ts:961 | EmberModel.addCell | `1 << CLS_TWIG`
+- embers/EmberModel.ts:961 | EmberModel.addCell | `1 << 4`
+- embers/EmberModel.ts:1273 | EmberModel.loft | `this.state[i]! & ~ST_NEEDLOFT`
+- embers/EmberModel.ts:1273 | EmberModel.loft | `~ST_NEEDLOFT`
+- embers/EmberModel.ts:1301 | EmberModel.loft | `this.state[i]! | ST_RISING`
+- embers/EmberModel.ts:1342 | EmberModel.riseStep | `this.state[i]! & ~ST_RISING`
+- embers/EmberModel.ts:1342 | EmberModel.riseStep | `~ST_RISING`
+- embers/EmberModel.ts:1372 | EmberModel.advance | `this.state[i]! & ST_NEEDLOFT`
+- embers/EmberModel.ts:1373 | EmberModel.advance | `this.state[i]! & ST_RISING`
+- embers/EmberModel.ts:1479 | EmberModel.advance | `((x - gx0) * invH + 0.5) | 0`
+- embers/EmberModel.ts:1480 | EmberModel.advance | `((y - gy0) * invH + 0.5) | 0`
+- embers/EmberModel.ts:1488 | EmberModel.advance | `st |= ST_EDDY`
+- embers/EmberModel.ts:1504 | EmberModel.advance | `((z - densLo) * invDensDz + 0.5) | 0`
+- embers/EmberModel.ts:1602 | EmberModel.advance | `(rs + 0x6d2b79f5) >>> 0`
+- embers/EmberModel.ts:1603 | EmberModel.advance | `rs ^ (rs >>> 15)`
+- embers/EmberModel.ts:1603 | EmberModel.advance | `rs >>> 15`
+- embers/EmberModel.ts:1603 | EmberModel.advance | `rs | 1`
+- embers/EmberModel.ts:1604 | EmberModel.advance | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1604 | EmberModel.advance | `t ^ (t >>> 7)`
+- embers/EmberModel.ts:1604 | EmberModel.advance | `t >>> 7`
+- embers/EmberModel.ts:1604 | EmberModel.advance | `t | 61`
+- embers/EmberModel.ts:1605 | EmberModel.advance | `((t ^ (t >>> 14)) >>> 0) >>> 20`
+- embers/EmberModel.ts:1605 | EmberModel.advance | `(t ^ (t >>> 14)) >>> 0`
+- embers/EmberModel.ts:1605 | EmberModel.advance | `t ^ (t >>> 14)`
+- embers/EmberModel.ts:1605 | EmberModel.advance | `t >>> 14`
+- embers/EmberModel.ts:1606 | EmberModel.advance | `(rs + 0x6d2b79f5) >>> 0`
+- embers/EmberModel.ts:1607 | EmberModel.advance | `rs ^ (rs >>> 15)`
+- embers/EmberModel.ts:1607 | EmberModel.advance | `rs >>> 15`
+- embers/EmberModel.ts:1607 | EmberModel.advance | `rs | 1`
+- embers/EmberModel.ts:1608 | EmberModel.advance | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1608 | EmberModel.advance | `t ^ (t >>> 7)`
+- embers/EmberModel.ts:1608 | EmberModel.advance | `t >>> 7`
+- embers/EmberModel.ts:1608 | EmberModel.advance | `t | 61`
+- embers/EmberModel.ts:1609 | EmberModel.advance | `((t ^ (t >>> 14)) >>> 0) >>> 20`
+- embers/EmberModel.ts:1609 | EmberModel.advance | `(t ^ (t >>> 14)) >>> 0`
+- embers/EmberModel.ts:1609 | EmberModel.advance | `t ^ (t >>> 14)`
+- embers/EmberModel.ts:1609 | EmberModel.advance | `t >>> 14`
+- embers/EmberModel.ts:1618 | EmberModel.advance | `(rs + 0x6d2b79f5) >>> 0`
+- embers/EmberModel.ts:1619 | EmberModel.advance | `rs ^ (rs >>> 15)`
+- embers/EmberModel.ts:1619 | EmberModel.advance | `rs >>> 15`
+- embers/EmberModel.ts:1619 | EmberModel.advance | `rs | 1`
+- embers/EmberModel.ts:1620 | EmberModel.advance | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1620 | EmberModel.advance | `t ^ (t >>> 7)`
+- embers/EmberModel.ts:1620 | EmberModel.advance | `t >>> 7`
+- embers/EmberModel.ts:1620 | EmberModel.advance | `t | 61`
+- embers/EmberModel.ts:1621 | EmberModel.advance | `((t ^ (t >>> 14)) >>> 0) >>> 20`
+- embers/EmberModel.ts:1621 | EmberModel.advance | `(t ^ (t >>> 14)) >>> 0`
+- embers/EmberModel.ts:1621 | EmberModel.advance | `t ^ (t >>> 14)`
+- embers/EmberModel.ts:1621 | EmberModel.advance | `t >>> 14`
+- embers/EmberModel.ts:1654 | EmberModel.advance | `(rs + 0x6d2b79f5) >>> 0`
+- embers/EmberModel.ts:1655 | EmberModel.advance | `rs ^ (rs >>> 15)`
+- embers/EmberModel.ts:1655 | EmberModel.advance | `rs >>> 15`
+- embers/EmberModel.ts:1655 | EmberModel.advance | `rs | 1`
+- embers/EmberModel.ts:1656 | EmberModel.advance | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/EmberModel.ts:1656 | EmberModel.advance | `t ^ (t >>> 7)`
+- embers/EmberModel.ts:1656 | EmberModel.advance | `t >>> 7`
+- embers/EmberModel.ts:1656 | EmberModel.advance | `t | 61`
+- embers/EmberModel.ts:1657 | EmberModel.advance | `(t ^ (t >>> 14)) >>> 0`
+- embers/EmberModel.ts:1657 | EmberModel.advance | `t ^ (t >>> 14)`
+- embers/EmberModel.ts:1657 | EmberModel.advance | `t >>> 14`
+- embers/EmberModel.ts:1659 | EmberModel.advance | `st |= ST_REFLAMED`
+- embers/EmberModel.ts:1685 | EmberModel.advance | `fx | 0`
+- embers/EmberModel.ts:1686 | EmberModel.advance | `fy | 0`
+- embers/EmberModel.ts:1728 | EmberModel.turbColumn | `((x - this.xMin) / this.dxa) | 0`
+- embers/EmberModel.ts:1729 | EmberModel.turbColumn | `((y - this.yMin) / this.dxa) | 0`
+- embers/EmberModel.ts:1832 | EmberModel.land | `st & ST_REFLAMED`
+- embers/EmberModel.ts:1904 | EmberModel.land | `(this.fuel.flags ? this.fuel.flags[k]! : 0) & FuelFlag.HeavyFuel`
+- embers/EmberModel.ts:1920 | EmberModel.land | `st & ST_EDDY`
+- embers/EmberModel.ts:1943 | EmberModel.provenance | `this.state[i]! & ST_EDDY`
+- embers/EmberModel.ts:2012 | EmberModel.ground | `fx | 0`
+- embers/EmberModel.ts:2013 | EmberModel.ground | `fy | 0`
+- embers/EmberModel.ts:2239 | EmberModel.recordResidence | `this.state[i]! & ST_INJECTED`
+- embers/EmberModel.ts:2246 | EmberModel.syncIn | `this.rng.state >>> 0`
+- embers/fuelInfo.ts:64 | hasStringybark | `c.flags & FuelFlag.Stringybark`
+- embers/fuelInfo.ts:69 | hasRibbonBark | `c.flags & FuelFlag.RibbonBark`
+- embers/plume.ts:189 | PlumeField.sample | `fx | 0`
+- embers/plume.ts:190 | PlumeField.sample | `fy | 0`
+- embers/plume.ts:191 | PlumeField.sample | `fz | 0`
+- embers/sampling.ts:19 | FastRng.constructor | `state >>> 0`
+- embers/sampling.ts:22 | FastRng.next | `(this.s + 0x6d2b79f5) >>> 0`
+- embers/sampling.ts:23 | FastRng.next | `t ^ (t >>> 15)`
+- embers/sampling.ts:23 | FastRng.next | `t >>> 15`
+- embers/sampling.ts:23 | FastRng.next | `t | 1`
+- embers/sampling.ts:24 | FastRng.next | `t ^= t + Math.imul(t ^ (t >>> 7), t | 61)`
+- embers/sampling.ts:24 | FastRng.next | `t ^ (t >>> 7)`
+- embers/sampling.ts:24 | FastRng.next | `t >>> 7`
+- embers/sampling.ts:24 | FastRng.next | `t | 61`
+- embers/sampling.ts:25 | FastRng.next | `(t ^ (t >>> 14)) >>> 0`
+- embers/sampling.ts:25 | FastRng.next | `t ^ (t >>> 14)`
+- embers/sampling.ts:25 | FastRng.next | `t >>> 14`
+- embers/sampling.ts:84 | <module> | `1 << NORMAL_TABLE_BITS`
+- embers/sampling.ts:101 | tableNormal | `(r.next() * NORMAL_TABLE_SIZE) | 0`
+- embers/sampling.ts:131 | sampleNature | `(r.next() * rb.means.length) | 0`
+- embers/sampling.ts:171 | medianTauB | `(m.length - 1) >> 1`
+- fire/models/kernel.ts:78 | mk2Invalid | `r |= KernelInvalid.Wind`
+- fire/models/kernel.ts:79 | mk2Invalid | `r |= KernelInvalid.Moisture`
+- fire/models/kernel.ts:80 | mk2Invalid | `r |= KernelInvalid.Wrf`
+- fire/models/kernel.ts:152 | headRosKernel | `inv |= KernelInvalid.Curing`
+- fire/models/kernel.ts:153 | headRosKernel | `inv |= KernelInvalid.Moisture`
+- fire/models/kernel.ts:174 | headRosKernel | `inv |= KernelInvalid.Moisture`
+- fire/models/kernel.ts:175 | headRosKernel | `inv |= KernelInvalid.Wind`
+- fire/spread/FireSpreadModel.ts:1425 | FireSpreadModel.prepareCell | `(ell.capped ? FLAG_CAPPED : 0) | (s.eruptive ? FLAG_ERUPTIVE : 0)`
+- fire/spread/FireSpreadModel.ts:1619 | FireSpreadModel.recordArrival | `this.pFlags[k]! & FLAG_CAPPED`
+- fire/spread/FireSpreadModel.ts:1951 | FireSpreadModel.rollDebris | `this.fc.flags[k]! & FuelFlag.HeavyFuel`
+- fire/spread/fuelCache.ts:106 | FuelCache.refresh | `(p.underWoodland ? 1 : 0) | (p.wetSubmodel ? 2 : 0) | (p.spotting ? 4 : 0)`
+- fire/spread/fuelCache.ts:106 | FuelCache.refresh | `(p.underWoodland ? 1 : 0) | (p.wetSubmodel ? 2 : 0)`
+- fire/spread/fuelCache.ts:181 | FuelCache.load | `b & 1`
+- fire/spread/fuelCache.ts:182 | FuelCache.load | `b & 2`
+- fire/spread/fuelCache.ts:183 | FuelCache.load | `b & 4`
+- fire/spread/levelSet.ts:508 | LevelSetCore.reinit | `o & 1`
+- fire/spread/levelSet.ts:509 | LevelSetCore.reinit | `o & 1`
+- fire/spread/levelSet.ts:510 | LevelSetCore.reinit | `o & 1`
+- fire/spread/levelSet.ts:511 | LevelSetCore.reinit | `o & 2`
+- fire/spread/levelSet.ts:512 | LevelSetCore.reinit | `o & 2`
+- fire/spread/levelSet.ts:513 | LevelSetCore.reinit | `o & 2`
+- fire/terrainFeatures.ts:142 | MinHeap.push | `(i - 1) >> 1`
+- fuel/fuelMap.ts:79 | <module> | `FuelFlag.UserEdited | FuelFlag.Road`
+- fuel/fuelMap.ts:416 | fuelParamsInto | `ctx & CTX_CHM_VALID`
+- fuel/fuelMap.ts:418 | fuelParamsInto | `flags & FuelFlag.UnderWoodland`
+- fuel/moisture/air.ts:81 | medianOf | `v.length >> 1`
+- fuel/moisture/fastMath.ts:15 | lerpTable | `x | 0`
+- fuel/moisture/model.ts:493 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:497 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:513 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:531 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:540 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:554 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:560 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:565 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:583 | MoistureModel.advance | `x | 0`
+- fuel/moisture/model.ts:593 | MoistureModel.advance | `x | 0`
+- fuel/moisture/weather.ts:19 | stampIndex | `(lo + hi) >> 1`
+- scenario/weather.ts:28 | stampIndex | `(lo + hi) >> 1`
+- terrain/analysis.ts:284 | sanitiseElevation | `(k / nx) | 0`
+- terrain/analysis.ts:294 | sanitiseElevation | `(k / nx) | 0`
+- terrain/analysis.ts:321 | sanitiseElevation | `(k / nx) | 0`
+- terrain/analysis.ts:353 | sanitiseElevation | `(k / nx) | 0`
+- terrain/solar.ts:370 | castShadows | `(k / nx) | 0`
+- terrain/solar.ts:428 | skyViewFactor | `(k / nx) | 0`
+
+## Typed-array element stores (921)
+
+- atmosphere/atmosphere.ts:196 | Atmosphere.constructor | Float64Array: `this.invVol[k * plane + c] = 1 / (g.J[c]! * g.dx * g.dx * g.dzeta[k]!)`
+- atmosphere/atmosphere.ts:249 | Atmosphere.constructor | Float32Array: `this.zAslC[o] = g.zs[c]! + g.zetaC[k]! * J`
+- atmosphere/atmosphere.ts:252 | Atmosphere.constructor | Float32Array: `this.fS[o] = expLayerFraction(z0, z1, alphaS)`
+- atmosphere/atmosphere.ts:253 | Atmosphere.constructor | Float32Array: `this.fF[o] = expLayerFraction(z0, z1, alphaF)`
+- atmosphere/atmosphere.ts:270 | Atmosphere.constructor | Float32Array: `this.zAglU[f] = agl`
+- atmosphere/atmosphere.ts:271 | Atmosphere.constructor | Float32Array: `this.zAslU[f] = zs + agl`
+- atmosphere/atmosphere.ts:279 | Atmosphere.constructor | Float32Array: `this.zAglV[f] = agl`
+- atmosphere/atmosphere.ts:280 | Atmosphere.constructor | Float32Array: `this.zAslV[f] = zs + agl`
+- atmosphere/atmosphere.ts:287 | Atmosphere.constructor | Float32Array: `this.zAglW[m * plane + c] = agl`
+- atmosphere/atmosphere.ts:288 | Atmosphere.constructor | Float32Array: `this.zAslW[m * plane + c] = g.zs[c]! + agl`
+- atmosphere/atmosphere.ts:300 | Atmosphere.constructor | Float32Array: `this.dvU[j * nx1 + iu] = dav(iu - 0.5, j)`
+- atmosphere/atmosphere.ts:301 | Atmosphere.constructor | Float32Array: `this.dvV[jv * nx + i] = dav(i, jv - 0.5)`
+- atmosphere/atmosphere.ts:302 | Atmosphere.constructor | Float32Array: `this.dvC[j * nx + i] = dav(i, j)`
+- atmosphere/atmosphere.ts:316 | Atmosphere.constructor | Float32Array: `this.spongeC[k] = sp(g.zetaC[k]!)`
+- atmosphere/atmosphere.ts:317 | Atmosphere.constructor | Float32Array: `this.spongeW[m] = sp(g.zetaF[m]!)`
+- atmosphere/atmosphere.ts:331 | Atmosphere.constructor | Float32Array: `this.slopeLim[o] = sl > 0 ? Math.min(1, (P.thetaDiffSlopeLimit * dz) / (sl * g.dx)) : 1`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | Uint16Array: `this.bin[o] = Math.min(nBins - 1, Math.max(0, Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM)))`
+- atmosphere/atmosphere.ts:343 | Atmosphere.constructor | Float64Array: `z2[k] = terrain.elevation[k]! + 2`
+- atmosphere/atmosphere.ts:344 | Atmosphere.constructor | Float32Array: `this.piFire[k] = exner(pressureIsa(z2[k]!))`
+- atmosphere/atmosphere.ts:377 | Atmosphere.onStampDerived | Float32Array: `gth[o] = G / thE`
+- atmosphere/atmosphere.ts:378 | Atmosphere.onStampDerived | Float32Array: `dth[o] = dThetaEnvDz(p, z)`
+- atmosphere/atmosphere.ts:383 | Atmosphere.onStampDerived | Float32Array: `hc[o] = 1 / (rho * CP * pi * g.J[c]! * g.dzeta[k]!)`
+- atmosphere/atmosphere.ts:428 | Atmosphere.updateNightFields | Float32Array: `this.nuU[f] = wn(this.zAglU[f]!, this.zAslU[f]!, c) * inv`
+- atmosphere/atmosphere.ts:429 | Atmosphere.updateNightFields | Float32Array: `this.cmpU[f] = cmp(this.zAslU[f]!, c)`
+- atmosphere/atmosphere.ts:436 | Atmosphere.updateNightFields | Float32Array: `this.nuV[f] = wn(this.zAglV[f]!, this.zAslV[f]!, c) * inv`
+- atmosphere/atmosphere.ts:437 | Atmosphere.updateNightFields | Float32Array: `this.cmpV[f] = cmp(this.zAslV[f]!, c)`
+- atmosphere/atmosphere.ts:444 | Atmosphere.updateNightFields | Float32Array: `this.nuW[f] = wn(this.zAglW[f]!, this.zAslW[f]!, c) * inv`
+- atmosphere/atmosphere.ts:445 | Atmosphere.updateNightFields | Float32Array: `this.cmpW[f] = cmp(this.zAslW[f]!, c)`
+- atmosphere/atmosphere.ts:453 | Atmosphere.updateNightFields | Float32Array: `this.cpT[o] = dTh > 0 && hav < hInv ? -dTh * (1 - Math.max(0, hav) / hInv) : 0`
+- atmosphere/atmosphere.ts:469 | lerpInto | Float32Array: `out[q] = x[q]! + (y[q]! - x[q]!) * a`
+- atmosphere/atmosphere.ts:498 | Atmosphere.updateMasks | Uint8Array: `au[f0] = ub[f0]! < 0 ? 1 : 0`
+- atmosphere/atmosphere.ts:499 | Atmosphere.updateMasks | Uint8Array: `au[f0 + nx] = ub[f0 + nx]! > 0 ? 1 : 0`
+- atmosphere/atmosphere.ts:504 | Atmosphere.updateMasks | Uint8Array: `av[fs] = vb[fs]! < 0 ? 1 : 0`
+- atmosphere/atmosphere.ts:505 | Atmosphere.updateMasks | Uint8Array: `av[fn] = vb[fn]! > 0 ? 1 : 0`
+- atmosphere/atmosphere.ts:554 | Atmosphere.addFireHeat | Float64Array: `this.hC[c] = this.hC[c]! / this.qfC[c]!`
+- atmosphere/atmosphere.ts:623 | Atmosphere.step | Float32Array: `w[nz * plane + c] = 0`
+- atmosphere/atmosphere.ts:647 | Atmosphere.step | Float64Array: `bs[b] = 0`
+- atmosphere/atmosphere.ts:656 | Atmosphere.step | Float32Array: `w[o + c] = w[o + c]! + dt * 0.5 * (gth[ob + c]! * (th[ob + c]! - bm[bin[ob + c]!]!) + gth[o + c]! * (th[o + c]`
+- atmosphere/atmosphere.ts:659 | Atmosphere.step | Float32Array: `w[o + c] = w[o + c]! + dt * 0.5 * (gth[ob + c]! * th[ob + c]! + gth[o + c]! * th[o + c]!)`
+- atmosphere/atmosphere.ts:665 | Atmosphere.step | Float32Array: `th[o + c] = th[o + c]! - dt * 0.5 * (w[o + c]! + w[o + plane + c]!) * dth[o + c]!`
+- atmosphere/atmosphere.ts:675 | Atmosphere.step | Float32Array: `th[o + c] = th[o + c]! + dt * q * this.fS[o + c]! * hc[o + c]!`
+- atmosphere/atmosphere.ts:694 | Atmosphere.step | Float32Array: `th[o] = th[o]! + dt * dq * hc[o]!`
+- atmosphere/atmosphere.ts:695 | Atmosphere.step | Float32Array: `sm[o] = sm[o]! + (dt * dq * smk) / (J * g.dzeta[k]!)`
+- atmosphere/atmosphere.ts:702 | Atmosphere.step | Float32Array: `th[o] = P.thetaCap`
+- atmosphere/atmosphere.ts:722 | Atmosphere.step | Float32Array: `u[f] = (u[f]! + a * spb * bgU[f]!) / (1 + a * sp)`
+- atmosphere/atmosphere.ts:738 | Atmosphere.step | Float32Array: `v[f] = (v[f]! + a * spb * bgV[f]!) / (1 + a * sp)`
+- atmosphere/atmosphere.ts:788 | Atmosphere.step | Float32Array: `s[o] = s[o]! * f`
+- atmosphere/atmosphere.ts:809 | Atmosphere.sponge | Float32Array: `this.w[m * plane + c] = this.w[m * plane + c]! * f`
+- atmosphere/atmosphere.ts:816 | Atmosphere.sponge | Float32Array: `this.u[q] = (this.u[q]! + r * this.bgU[q]!) * f`
+- atmosphere/atmosphere.ts:817 | Atmosphere.sponge | Float32Array: `this.v[q] = (this.v[q]! + r * this.bgV[q]!) * f`
+- atmosphere/atmosphere.ts:820 | Atmosphere.sponge | Float32Array: `this.th[o] = (this.th[o]! + r * this.cpT[o]!) * f`
+- atmosphere/atmosphere.ts:861 | Atmosphere.project | Float64Array: `phi[q] = phi[q]! + dphi[q]!`
+- atmosphere/atmosphere.ts:902 | Atmosphere.davies | Float32Array: `u[f] = u[f]! - lam * (u[f]! - this.bgU[f]!)`
+- atmosphere/atmosphere.ts:909 | Atmosphere.davies | Float32Array: `v[f] = v[f]! - lam * (v[f]! - this.bgV[f]!)`
+- atmosphere/atmosphere.ts:917 | Atmosphere.davies | Float32Array: `this.th[o] = this.th[o]! - d * (this.th[o]! - target)`
+- atmosphere/atmosphere.ts:918 | Atmosphere.davies | Float32Array: `this.sm[o] = this.sm[o]! * (1 - d)`
+- atmosphere/atmosphere.ts:919 | Atmosphere.davies | Float32Array: `w[o] = w[o]! - d * (w[o]! - this.bgW[o]!)`
+- atmosphere/atmosphere.ts:932 | Atmosphere.bandMeans | Float64Array: `sum[bin[o]!] += th[o]! - cp[o]!`
+- atmosphere/atmosphere.ts:933 | Atmosphere.bandMeans | Float64Array: `sum[b] = this.binCnt[b]! > 0 ? sum[b]! / this.binCnt[b]! : 0`
+- atmosphere/atmosphere.ts:945 | Atmosphere.meanThetaControl | Float32Array: `th[o] = th[o]! - f * sum[bin[o]!]!`
+- atmosphere/atmosphere.ts:991 | Atmosphere.fireWindTier | Float32Array: `du[k] = dyU`
+- atmosphere/atmosphere.ts:992 | Atmosphere.fireWindTier | Float32Array: `dv[k] = dyV`
+- atmosphere/atmosphere.ts:1012 | Atmosphere.fireWindTier | Float32Array: `outU[k] = wu`
+- atmosphere/atmosphere.ts:1013 | Atmosphere.fireWindTier | Float32Array: `outV[k] = wv`
+- atmosphere/atmosphere.ts:1014 | Atmosphere.fireWindTier | Float32Array: `outIndU[k] = iu`
+- atmosphere/atmosphere.ts:1015 | Atmosphere.fireWindTier | Float32Array: `outIndV[k] = iv`
+- atmosphere/atmosphere.ts:1017 | Atmosphere.fireWindTier | Float32Array: `outU[k] = dyU`
+- atmosphere/atmosphere.ts:1018 | Atmosphere.fireWindTier | Float32Array: `outV[k] = dyV`
+- atmosphere/atmosphere.ts:1019 | Atmosphere.fireWindTier | Float32Array: `outIndU[k] = 0`
+- atmosphere/atmosphere.ts:1020 | Atmosphere.fireWindTier | Float32Array: `outIndV[k] = 0`
+- atmosphere/atmosphere.ts:1037 | Atmosphere.addAirAnomaly | Float32Array: `A[o] = th[o]! - cp[o]!`
+- atmosphere/atmosphere.ts:1041 | Atmosphere.addAirAnomaly | Float32Array: `outT[k] = outT[k]! + tmp[k]! * pi[k]!`
+- atmosphere/atmosphere.ts:1076 | Atmosphere.sampleAt | Float32Array: `out[0] = a`
+- atmosphere/atmosphere.ts:1077 | Atmosphere.sampleAt | Float32Array: `out[1] = b`
+- atmosphere/atmosphere.ts:1078 | Atmosphere.sampleAt | Float32Array: `out[2] = c3`
+- atmosphere/atmosphere.ts:1090 | Atmosphere.sample | Float32Array: `out[0] = this.tmp2b[0]!`
+- atmosphere/atmosphere.ts:1091 | Atmosphere.sample | Float32Array: `out[1] = this.tmp2b[1]!`
+- atmosphere/atmosphere.ts:1092 | Atmosphere.sample | Float32Array: `out[2] = 0`
+- atmosphere/atmosphere.ts:1252 | removeMeanF64 | Float64Array: `a[q] = a[q]! - m`
+- atmosphere/atmosphere.ts:1256 | mulInto | Float32Array: `out[q] = a[q]! * b[q]!`
+- atmosphere/atmosphere.ts:1260 | subInPlace | Float32Array: `a[q] = a[q]! - b[q]!`
+- atmosphere/atmosphere.ts:1264 | addInPlace | Float32Array: `a[q] = a[q]! + b[q]!`
+- atmosphere/atmosphere.ts:1271 | nudge | Float32Array: `f[q] = (f[q]! + r * bg[q]!) / (1 + r)`
+- atmosphere/base.ts:79 | select | Float32Array: `a[i] = a[j]!`
+- atmosphere/base.ts:80 | select | Float32Array: `a[j] = t`
+- atmosphere/base.ts:213 | AtmosBase.constructor | Float32Array: `this.albedo[k] = ATMOS_PARAMS.albedo[fuel.type[k] as keyof typeof ATMOS_PARAMS.albedo] ?? ATMOS_PARAMS.albedoD`
+- atmosphere/base.ts:214 | AtmosBase.constructor | Float32Array: `this.cosSlope[k] = Math.max(ATMOS_PARAMS.minCosSlope, Math.cos(terrain.slopeDeg[k]! * DEG))`
+- atmosphere/base.ts:217 | AtmosBase.constructor | Float32Array: `this.downX[k] = Math.sin(asp * DEG)`
+- atmosphere/base.ts:218 | AtmosBase.constructor | Float32Array: `this.downY[k] = Math.cos(asp * DEG)`
+- atmosphere/base.ts:232 | AtmosBase.constructor | Float32Array: `this.pRatio[k] = pressureIsa(terrain.elevation[k]! + 2) / pgp`
+- atmosphere/base.ts:340 | AtmosBase.deriveStamp | Float32Array: `kr[k] = re`
+- atmosphere/base.ts:341 | AtmosBase.deriveStamp | Float32Array: `ki[k] = im`
+- atmosphere/base.ts:344 | AtmosBase.deriveStamp | Float32Array: `fu[k] = re * u - im * v`
+- atmosphere/base.ts:345 | AtmosBase.deriveStamp | Float32Array: `fv[k] = re * v + im * u`
+- atmosphere/base.ts:408 | AtmosBase.buildStencil | Int32Array: `this.stC[4 * k + q] = cs[q]!`
+- atmosphere/base.ts:409 | AtmosBase.buildStencil | Float32Array: `this.stW[4 * k + q] = ws[q]!`
+- atmosphere/base.ts:415 | AtmosBase.buildStencil | Float32Array: `this.zRef[k] = zRef`
+- atmosphere/base.ts:416 | AtmosBase.buildStencil | Float64Array: `zAslOut[k] = Math.max(this.terrain.elevation[k]! + zRef, zsA + z1)`
+- atmosphere/base.ts:439 | AtmosBase.verticalStencil | Int32Array: `o8[8 * k + 2 * q] = k0 * g.plane + c`
+- atmosphere/base.ts:440 | AtmosBase.verticalStencil | Float32Array: `w8[8 * k + 2 * q] = w * (1 - t)`
+- atmosphere/base.ts:441 | AtmosBase.verticalStencil | Int32Array: `o8[8 * k + 2 * q + 1] = (g.nz > 1 ? k0 + 1 : k0) * g.plane + c`
+- atmosphere/base.ts:442 | AtmosBase.verticalStencil | Float32Array: `w8[8 * k + 2 * q + 1] = w * t`
+- atmosphere/base.ts:486 | AtmosBase.sampleFire | Float32Array: `outU[k] = su`
+- atmosphere/base.ts:487 | AtmosBase.sampleFire | Float32Array: `outV[k] = sv`
+- atmosphere/base.ts:496 | AtmosBase.sampleFire1 | Float32Array: `out[k] = w8[b]! * f[o8[b]!]! + w8[b + 1]! * f[o8[b + 1]!]! + w8[b + 2]! * f[o8[b + 2]!]! + w8[b + 3]! * f[o8[b`
+- atmosphere/base.ts:530 | AtmosBase.setSurfaceHeating | Float32Array: `this.qhFire[k] = q`
+- atmosphere/base.ts:533 | AtmosBase.setSurfaceHeating | Float64Array: `this.qhCol[c] = g.fireCount[c]! > 0 ? this.qhCol[c]! / g.fireCount[c]! : 0`
+- atmosphere/base.ts:566 | AtmosBase.updateSlopeFlowSpeeds | Float32Array: `this.slopeS[k] = Number.isFinite(S) ? S : 0`
+- atmosphere/base.ts:601 | AtmosBase.templateAirT | Float32Array: `out[k] = Ts - (gamma * (zq - zs)) / 1000 - dTh * (1 - h / hInv)`
+- atmosphere/base.ts:602 | AtmosBase.templateAirT | Float32Array: `out[k] = Ts - (gamma * (z[k]! - zs)) / 1000`
+- atmosphere/base.ts:614 | AtmosBase.airAt | Float32Array: `outRho[k] = (c * pr[k]!) / (outT[k]! + 273.15)`
+- atmosphere/base.ts:638 | AtmosBase.blendBgFire | Float32Array: `outU[k] = au[k]! + (bu[k]! - au[k]!) * a`
+- atmosphere/base.ts:639 | AtmosBase.blendBgFire | Float32Array: `outV[k] = av[k]! + (bv[k]! - av[k]!) * a`
+- atmosphere/base.ts:650 | AtmosBase.crestCells | Int32Array: `arr[k] = this.features.crest(k, dir)?.kCrest ?? -1`
+- atmosphere/base.ts:697 | AtmosBase.surfaceWindForFire | Float32Array: `outRidge[k] = Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:698 | AtmosBase.surfaceWindForFire | Float32Array: `outRidge[k] = NaN`
+- atmosphere/base.ts:702 | AtmosBase.surfaceWindForFire | Float32Array: `ridgeSp[nr++] = Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:709 | AtmosBase.surfaceWindForFire | Float32Array: `ridgeSp[nr++] = Math.sqrt(a * a + b * b)`
+- atmosphere/base.ts:724 | AtmosBase.surfaceWindForFire | Float32Array: `mfA[k] = m > 0 ? (m < 1 ? m : 1) : 0`
+- atmosphere/base.ts:755 | AtmosBase.surfaceWindForFire | Float32Array: `outU[k] = outU[k]! + du`
+- atmosphere/base.ts:756 | AtmosBase.surfaceWindForFire | Float32Array: `outV[k] = outV[k]! + dv`
+- atmosphere/base.ts:757 | AtmosBase.surfaceWindForFire | Float32Array: `outBgU[k] = outBgU[k]! + du`
+- atmosphere/base.ts:758 | AtmosBase.surfaceWindForFire | Float32Array: `outBgV[k] = outBgV[k]! + dv`
+- atmosphere/base.ts:761 | AtmosBase.surfaceWindForFire | Float32Array: `sf[k] = sTop`
+- atmosphere/base.ts:772 | AtmosBase.surfaceWindForFire | Float32Array: `outU[k] = (1 - s) * outU[k]! - s * dxA[k]! * e`
+- atmosphere/base.ts:773 | AtmosBase.surfaceWindForFire | Float32Array: `outV[k] = (1 - s) * outV[k]! - s * dyA[k]! * e`
+- atmosphere/base.ts:838 | AtmosBase.sampleTurb | Float32Array: `out[0] = zi`
+- atmosphere/base.ts:839 | AtmosBase.sampleTurb | Float32Array: `out[1] = wStar`
+- atmosphere/base.ts:840 | AtmosBase.sampleTurb | Float32Array: `out[2] = uStar`
+- atmosphere/diagnosticWind.ts:98 | DiagnosticWind.fireWindTier | Float32Array: `outBgU[k] = bu`
+- atmosphere/diagnosticWind.ts:99 | DiagnosticWind.fireWindTier | Float32Array: `outBgV[k] = bv`
+- atmosphere/diagnosticWind.ts:135 | DiagnosticWind.fireWindTier | Float32Array: `outIndU[k] = iu`
+- atmosphere/diagnosticWind.ts:136 | DiagnosticWind.fireWindTier | Float32Array: `outIndV[k] = iv`
+- atmosphere/diagnosticWind.ts:137 | DiagnosticWind.fireWindTier | Float32Array: `outU[k] = bu + iu`
+- atmosphere/diagnosticWind.ts:138 | DiagnosticWind.fireWindTier | Float32Array: `outV[k] = bv + iv`
+- atmosphere/diagnosticWind.ts:156 | DiagnosticWind.addFireHeat | Float32Array: `src[k] = src[k]! + (heatKwM2[k]! - src[k]!) * w`
+- atmosphere/diagnosticWind.ts:221 | DiagnosticWind.sampleBg | Float32Array: `out[0] = su`
+- atmosphere/diagnosticWind.ts:222 | DiagnosticWind.sampleBg | Float32Array: `out[1] = sv`
+- atmosphere/diagnosticWind.ts:223 | DiagnosticWind.sampleBg | Float32Array: `out[2] = sw`
+- atmosphere/dynamics.ts:45 | collocate | Float32Array: `uc[o + i] = a`
+- atmosphere/dynamics.ts:46 | collocate | Float32Array: `vc[o + i] = b`
+- atmosphere/dynamics.ts:47 | collocate | Float32Array: `wc[o + i] = c`
+- atmosphere/dynamics.ts:51 | collocate | Float32Array: `Ui[o + i] = a * invdx`
+- atmosphere/dynamics.ts:52 | collocate | Float32Array: `Vi![o + i] = b * invdx`
+- atmosphere/dynamics.ts:53 | collocate | Float32Array: `Wi![o + i] = om * idz`
+- atmosphere/dynamics.ts:67 | collocate | Float64Array: `stats[0] = mh`
+- atmosphere/dynamics.ts:68 | collocate | Float64Array: `stats[1] = mv`
+- atmosphere/dynamics.ts:123 | displacements | Float32Array: `Dx[o] = dt * vx`
+- atmosphere/dynamics.ts:124 | displacements | Float32Array: `Dy[o] = dt * vy`
+- atmosphere/dynamics.ts:125 | displacements | Float32Array: `Dz[o] = dt * vz`
+- atmosphere/dynamics.ts:211 | advect | Float32Array: `dst[rowF + iF] = sz * (w00 * src[q]! + w10 * src[a]! + w01 * src[b]! + w11 * src[c]!) + tz * (w00 * src[d]! + `
+- atmosphere/dynamics.ts:212 | advect | Float32Array: `dst2![rowF + iF] = sz * (w00 * src2[q]! + w10 * src2[a]! + w01 * src2[b]! + w11 * src2[c]!) + tz * (w00 * src2`
+- atmosphere/dynamics.ts:283 | smagorinsky | Float32Array: `kmh[o] = a > limH ? limH : a`
+- atmosphere/dynamics.ts:285 | smagorinsky | Float32Array: `kmv[o] = a > limV ? limV : a`
+- atmosphere/dynamics.ts:287 | smagorinsky | Float32Array: `khh[o] = (a > limH ? limH : a) * slopeLim[o]!`
+- atmosphere/dynamics.ts:289 | smagorinsky | Float32Array: `khv[o] = a > limV ? limV : a`
+- atmosphere/dynamics.ts:334 | diffuseH | Float32Array: `dst[q] = s0 + c * Kf * lap`
+- atmosphere/dynamics.ts:364 | columnMap | Int32Array: `c0[q] = jc0 * nx + ic0`
+- atmosphere/dynamics.ts:365 | columnMap | Int32Array: `c1[q] = jc1 * nx + ic1`
+- atmosphere/dynamics.ts:367 | columnMap | Float64Array: `invJ2[q] = 1 / (J * J)`
+- atmosphere/dynamics.ts:384 | diffuseVLevels | Float64Array: `kw[q] = 0`
+- atmosphere/dynamics.ts:399 | diffuseVLevels | Float64Array: `kw[q] = ku`
+- atmosphere/dynamics.ts:404 | diffuseVLevels | Float64Array: `cp[idx] = cc / den`
+- atmosphere/dynamics.ts:405 | diffuseVLevels | Float32Array: `f[idx] = f[idx]! / den`
+- atmosphere/dynamics.ts:408 | diffuseVLevels | Float64Array: `cp[idx] = cc / den`
+- atmosphere/dynamics.ts:409 | diffuseVLevels | Float32Array: `f[idx] = (f[idx]! + a * f[idx - planeF]!) / den`
+- atmosphere/dynamics.ts:417 | diffuseVLevels | Float32Array: `f[idx] = f[idx]! + cp[idx]! * f[idx + planeF]!`
+- atmosphere/dynamics.ts:447 | diffuseVW | Float64Array: `cp[idx] = last ? 0 : cc / den`
+- atmosphere/dynamics.ts:448 | diffuseVW | Float32Array: `w[idx] = (rhs + (first ? 0 : aa * w[idx - plane]!)) / den`
+- atmosphere/dynamics.ts:455 | diffuseVW | Float32Array: `w[idx] = w[idx]! + cp[idx]! * w[idx + plane]!`
+- atmosphere/grid.ts:166 | gaussPass | Float64Array: `tmp[r + i] = 0.25 * z[r + il]! + 0.5 * z[r + i]! + 0.25 * z[r + ir]!`
+- atmosphere/grid.ts:172 | gaussPass | Float64Array: `z[j * nx + i] = 0.25 * tmp[jd * nx + i]! + 0.5 * tmp[j * nx + i]! + 0.25 * tmp[ju * nx + i]!`
+- atmosphere/grid.ts:207 | buildAtmosGrid | Float64Array: `zs[c] = acc.sum[c]! / acc.cnt[c]!`
+- atmosphere/grid.ts:224 | buildAtmosGrid | Float64Array: `zs[c] = s / nn`
+- atmosphere/grid.ts:228 | buildAtmosGrid | Float64Array: `zs[c] = terrain.elevation[fj * fg.nx + fi]!`
+- atmosphere/grid.ts:259 | buildAtmosGrid | Float64Array: `dzeta[k] = dz1 * r ** k`
+- atmosphere/grid.ts:260 | buildAtmosGrid | Float64Array: `zetaF[k] = acc0`
+- atmosphere/grid.ts:268 | buildAtmosGrid | Float64Array: `zetaF[k] = acc0`
+- atmosphere/grid.ts:269 | buildAtmosGrid | Float64Array: `zetaC[k] = acc0 + dzeta[k]! / 2`
+- atmosphere/grid.ts:272 | buildAtmosGrid | Float64Array: `zetaF[nz] = Hp`
+- atmosphere/grid.ts:274 | buildAtmosGrid | Float64Array: `dzetaW[0] = zetaC[0]!`
+- atmosphere/grid.ts:275 | buildAtmosGrid | Float64Array: `dzetaW[m] = zetaC[m]! - zetaC[m - 1]!`
+- atmosphere/grid.ts:276 | buildAtmosGrid | Float64Array: `dzetaW[nz] = Hp - zetaC[nz - 1]!`
+- atmosphere/grid.ts:285 | buildAtmosGrid | Float64Array: `J[c] = (zTop - zs[c]!) / Hp`
+- atmosphere/grid.ts:290 | buildAtmosGrid | Float64Array: `zsx[c] = (zs[ir]! - zs[il]!) / (dx * (ir - il || 1))`
+- atmosphere/grid.ts:291 | buildAtmosGrid | Float64Array: `zsy[c] = (zs[ju]! - zs[jd]!) / (dx * ((ju - jd) / nx || 1))`
+- atmosphere/grid.ts:299 | buildAtmosGrid | Float64Array: `Ju[j * (nx + 1) + i] = 0.5 * (a + b)`
+- atmosphere/grid.ts:307 | buildAtmosGrid | Float64Array: `Jv[j * nx + i] = 0.5 * (a + b)`
+- atmosphere/grid.ts:320 | buildAtmosGrid | Int32Array: `colOfFire[j * fg.nx + i] = c`
+- atmosphere/grid.ts:336 | buildAtmosGrid | Float32Array: `hBar[c] = fireCount[c]! > 0 ? hsum[c]! / fireCount[c]! : 0`
+- atmosphere/grid.ts:341 | buildAtmosGrid | Float32Array: `z0[c] = cdv.z0`
+- atmosphere/grid.ts:342 | buildAtmosGrid | Float32Array: `disp[c] = cdv.d`
+- atmosphere/grid.ts:343 | buildAtmosGrid | Float32Array: `cd[c] = cdv.cd`
+- atmosphere/grid.ts:352 | buildAtmosGrid | Float32Array: `zFloor[c] = zs[c]! - (fireCount[c]! > 0 ? havSum[c]! / fireCount[c]! : 0)`
+- atmosphere/massConsistent.ts:56 | setGroundW | Float32Array: `w[c] = uc * g.zsx[c]! + vc * g.zsy[c]!`
+- atmosphere/massConsistent.ts:71 | facesToCentres | Float32Array: `uc[o + i] = 0.5 * (u[fu + i]! + u[fu + i + 1]!)`
+- atmosphere/massConsistent.ts:72 | facesToCentres | Float32Array: `vc[o + i] = 0.5 * (v[fv + i]! + v[fv + i + nx]!)`
+- atmosphere/massConsistent.ts:73 | facesToCentres | Float32Array: `wc[o + i] = 0.5 * (w[o + i]! + w[o + plane + i]!)`
+- atmosphere/massConsistent.ts:106 | MassConsistentSolver.constructor | Float32Array: `this.uAgl[f] = agl`
+- atmosphere/massConsistent.ts:107 | MassConsistentSolver.constructor | Float32Array: `this.uAsl[f] = 0.5 * (a + b) + agl`
+- atmosphere/massConsistent.ts:116 | MassConsistentSolver.constructor | Float32Array: `this.vAgl[f] = agl`
+- atmosphere/massConsistent.ts:117 | MassConsistentSolver.constructor | Float32Array: `this.vAsl[f] = 0.5 * (a + b) + agl`
+- atmosphere/massConsistent.ts:159 | MassConsistentSolver.firstGuess | Float32Array: `u[f] = blend(this.uAgl[f]!, this.uAsl[f]!, 0, g.grid.x0 + (iu - 0.5) * dx, y)`
+- atmosphere/massConsistent.ts:166 | MassConsistentSolver.firstGuess | Float32Array: `v[f] = blend(this.vAgl[f]!, this.vAsl[f]!, 1, g.grid.x0 + i * dx, y)`
+- atmosphere/plume.ts:83 | envAt | Float64Array: `env[0] = a0[0]! * (1 - t) + env[0]! * t`
+- atmosphere/plume.ts:84 | envAt | Float64Array: `env[1] = a0[1]! * (1 - t) + env[1]! * t`
+- atmosphere/plume.ts:91 | plumeColumn | Float64Array: `s[0] = b0 * b0 * w0`
+- atmosphere/plume.ts:92 | plumeColumn | Float64Array: `s[1] = b0 * b0 * w0 * w0`
+- atmosphere/plume.ts:93 | plumeColumn | Float64Array: `s[2] = F0`
+- atmosphere/plume.ts:94 | plumeColumn | Float64Array: `s[3] = s[0]! * env[0]!`
+- atmosphere/plume.ts:95 | plumeColumn | Float64Array: `s[4] = s[0]! * env[1]!`
+- atmosphere/plume.ts:96 | plumeColumn | Float64Array: `s[5] = s[0]! * mixingRatioAt(p, z0)`
+- atmosphere/plume.ts:115 | deriv | Float64Array: `d[0] = ent`
+- atmosphere/plume.ts:116 | deriv | Float64Array: `d[1] = (Q * y[2]!) / M`
+- atmosphere/plume.ts:117 | deriv | Float64Array: `d[2] = -Q * n2At(z)`
+- atmosphere/plume.ts:118 | deriv | Float64Array: `d[3] = ent * env[0]!`
+- atmosphere/plume.ts:119 | deriv | Float64Array: `d[4] = ent * env[1]!`
+- atmosphere/plume.ts:120 | deriv | Float64Array: `d[5] = ent * mixingRatioAt(p, z)`
+- atmosphere/plume.ts:131 | plumeColumn | Float64Array: `mid[q] = s[q]! + 0.5 * dz * k1[q]!`
+- atmosphere/plume.ts:133 | plumeColumn | Float64Array: `s[q] = mid[q]!`
+- atmosphere/plume.ts:137 | plumeColumn | Float64Array: `s[q] = s[q]! + dz * k2[q]!`
+- atmosphere/profile.ts:129 | buildProfile | Float64Array: `wz[q] = dedup[q]![0]`
+- atmosphere/profile.ts:130 | buildProfile | Float64Array: `wsC[q] = sCoord(dedup[q]![0])`
+- atmosphere/profile.ts:131 | buildProfile | Float64Array: `wu[q] = dedup[q]![1]`
+- atmosphere/profile.ts:132 | buildProfile | Float64Array: `wv[q] = dedup[q]![2]`
+- atmosphere/profile.ts:188 | buildProfile | Float64Array: `tz[q] = tSamples[q]![0]`
+- atmosphere/profile.ts:189 | buildProfile | Float64Array: `th[q] = tSamples[q]![1]`
+- atmosphere/profile.ts:190 | buildProfile | Float64Array: `qv[q] = tSamples[q]![2]`
+- atmosphere/profile.ts:193 | buildProfile | Float64Array: `thd[nt - 1] = th[nt - 1]!`
+- atmosphere/profile.ts:194 | buildProfile | Float64Array: `thd[q] = Math.min(th[q]!, thd[q + 1]!)`
+- atmosphere/profile.ts:242 | profileWind | Float32Array: `out[0] = p.wu[0]! * f`
+- atmosphere/profile.ts:243 | profileWind | Float32Array: `out[1] = p.wv[0]! * f`
+- atmosphere/profile.ts:247 | profileWind | Float32Array: `out[0] = p.wu[n - 1]!`
+- atmosphere/profile.ts:248 | profileWind | Float32Array: `out[1] = p.wv[n - 1]!`
+- atmosphere/profile.ts:254 | profileWind | Float32Array: `out[0] = p.wu[q]! + (p.wu[q + 1]! - p.wu[q]!) * t`
+- atmosphere/profile.ts:255 | profileWind | Float32Array: `out[1] = p.wv[q]! + (p.wv[q + 1]! - p.wv[q]!) * t`
+- atmosphere/profile.ts:321 | kappaTable | Float64Array: `lu[k] = out[0]!`
+- atmosphere/profile.ts:322 | kappaTable | Float64Array: `lv[k] = out[1]!`
+- atmosphere/profile.ts:340 | kappaTable | Float32Array: `mag[z] = logLawKappa(z)`
+- atmosphere/profile.ts:341 | kappaTable | Float32Array: `re[z] = mag[z]!`
+- atmosphere/profile.ts:342 | kappaTable | Float32Array: `im[z] = 0`
+- atmosphere/profile.ts:344 | kappaTable | Float32Array: `mag[z] = s10 / sp`
+- atmosphere/profile.ts:347 | kappaTable | Float32Array: `re[z] = (p.u10 * u + p.v10 * v) / d`
+- atmosphere/profile.ts:348 | kappaTable | Float32Array: `im[z] = (p.v10 * u - p.u10 * v) / d`
+- atmosphere/profile.ts:350 | kappaTable | Float32Array: `re[z] = mag[z]!`
+- atmosphere/profile.ts:351 | kappaTable | Float32Array: `im[z] = 0`
+- atmosphere/pyrogenic.ts:28 | Dst.constructor | Float64Array: `this.S[p * n + i] = Math.sin((Math.PI * (p + 1) * (i + 0.5)) / n)`
+- atmosphere/pyrogenic.ts:29 | Dst.constructor | Float64Array: `this.invNorm[p] = p === n - 1 ? 1 / n : 2 / n`
+- atmosphere/pyrogenic.ts:30 | Dst.constructor | Float64Array: `this.lam[p] = 4 * Math.sin((Math.PI * (p + 1)) / (2 * n)) ** 2`
+- atmosphere/pyrogenic.ts:68 | PyrogenicPotential.constructor | Float64Array: `this.SxT[i * n + p] = this.dx.S[p * n + i]!`
+- atmosphere/pyrogenic.ts:102 | PyrogenicPotential.solve | Float64Array: `q[J * nx + I] = (k * q[J * nx + I]!) / (cx * cy)`
+- atmosphere/pyrogenic.ts:121 | PyrogenicPotential.solve | Float64Array: `t[r + p] = t[r + p]! + qv * SxT[o + p]!`
+- atmosphere/pyrogenic.ts:123 | PyrogenicPotential.solve | Uint8Array: `rowHas[J] = has`
+- atmosphere/pyrogenic.ts:129 | PyrogenicPotential.solve | Float64Array: `t[r + p] = t[r + p]! * invNx[p]!`
+- atmosphere/pyrogenic.ts:141 | PyrogenicPotential.solve | Float64Array: `psi[ro + p] = psi[ro + p]! + sv * t[r + p]!`
+- atmosphere/pyrogenic.ts:145 | PyrogenicPotential.solve | Float64Array: `psi[ro + p] = (psi[ro + p]! * f) / (this.dx.lam[p]! + lamY)`
+- atmosphere/pyrogenic.ts:154 | PyrogenicPotential.solve | Float64Array: `t[r + p] = t[r + p]! + sv * psi[ro + p]!`
+- atmosphere/pyrogenic.ts:163 | PyrogenicPotential.solve | Float64Array: `psi[r + i] = psi[r + i]! + tv * Sx[o + i]!`
+- atmosphere/pyrogenic.ts:182 | PyrogenicPotential.gradientToFire | Float64Array: `gx[c] = (e - w) / (2 * h)`
+- atmosphere/pyrogenic.ts:183 | PyrogenicPotential.gradientToFire | Float64Array: `gy[c] = (n - s) / (2 * h)`
+- atmosphere/pyrogenic.ts:208 | PyrogenicPotential.gradientToFire | Float32Array: `this.up[k] = u`
+- atmosphere/pyrogenic.ts:209 | PyrogenicPotential.gradientToFire | Float32Array: `this.vp[k] = v`
+- atmosphere/solver.ts:112 | EllipticSolver.constructor | Float64Array: `this.fzeta[m] = 1 - g.zetaF[m]! / g.Hp`
+- atmosphere/solver.ts:155 | EllipticSolver.build | Float32Array: `L0.cx[f] = c`
+- atmosphere/solver.ts:168 | EllipticSolver.build | Float32Array: `L0.cy[f] = c`
+- atmosphere/solver.ts:182 | EllipticSolver.build | Float32Array: `L0.cz[m * plane + c] = v`
+- atmosphere/solver.ts:243 | EllipticSolver.transfer | Int32Array: `start[I] = coarsened ? 2 * I : I`
+- atmosphere/solver.ts:244 | EllipticSolver.transfer | Int32Array: `width[I] = coarsened ? Math.min(2, n - 2 * I) : 1`
+- atmosphere/solver.ts:245 | EllipticSolver.transfer | Float64Array: `cc[I] = start[I]! + width[I]! / 2`
+- atmosphere/solver.ts:250 | EllipticSolver.transfer | Int32Array: `p0[i] = 0`
+- atmosphere/solver.ts:251 | EllipticSolver.transfer | Int32Array: `p1[i] = 0`
+- atmosphere/solver.ts:252 | EllipticSolver.transfer | Float64Array: `a0[i] = dirLo ? xi / cc[0]! : 1`
+- atmosphere/solver.ts:253 | EllipticSolver.transfer | Float64Array: `a1[i] = 0`
+- atmosphere/solver.ts:257 | EllipticSolver.transfer | Int32Array: `p0[i] = nc - 1`
+- atmosphere/solver.ts:258 | EllipticSolver.transfer | Int32Array: `p1[i] = nc - 1`
+- atmosphere/solver.ts:259 | EllipticSolver.transfer | Float64Array: `a0[i] = dirHi ? (n - xi) / (n - cc[nc - 1]!) : 1`
+- atmosphere/solver.ts:260 | EllipticSolver.transfer | Float64Array: `a1[i] = 0`
+- atmosphere/solver.ts:266 | EllipticSolver.transfer | Int32Array: `p0[i] = I`
+- atmosphere/solver.ts:267 | EllipticSolver.transfer | Int32Array: `p1[i] = I + 1`
+- atmosphere/solver.ts:268 | EllipticSolver.transfer | Float64Array: `a0[i] = 1 - w`
+- atmosphere/solver.ts:269 | EllipticSolver.transfer | Float64Array: `a1[i] = w`
+- atmosphere/solver.ts:322 | EllipticSolver.coarsen | Float32Array: `C.cx[(k * C.ny + J) * cnx1 + IU] = s / d`
+- atmosphere/solver.ts:334 | EllipticSolver.coarsen | Float32Array: `C.cy[(k * (C.ny + 1) + JV) * C.nx + I] = s / d`
+- atmosphere/solver.ts:345 | EllipticSolver.coarsen | Float32Array: `C.cz[m * C.plane + J * C.nx + I] = s`
+- atmosphere/solver.ts:361 | EllipticSolver.finishLevel | Float32Array: `L.diag[k * plane + c] = L.cx[fu]! + L.cx[fu + 1]! + L.cy[fv]! + L.cy[fv + nx]! + L.cz[k * plane + c]! + L.cz[(`
+- atmosphere/solver.ts:373 | EllipticSolver.finishLevel | Float32Array: `L.tInv[idx] = inv`
+- atmosphere/solver.ts:375 | EllipticSolver.finishLevel | Float32Array: `L.tC[idx] = cPrev`
+- atmosphere/solver.ts:399 | EllipticSolver.gradient | Float64Array: `sx[c] = 0`
+- atmosphere/solver.ts:400 | EllipticSolver.gradient | Float64Array: `sy[c] = 0`
+- atmosphere/solver.ts:401 | EllipticSolver.gradient | Float64Array: `gw[c] = 0`
+- atmosphere/solver.ts:402 | EllipticSolver.gradient | Float64Array: `sx[nz * plane + c] = 0`
+- atmosphere/solver.ts:403 | EllipticSolver.gradient | Float64Array: `sy[nz * plane + c] = 0`
+- atmosphere/solver.ts:412 | EllipticSolver.gradient | Float64Array: `sx[o + c] = g.zsx[c]! * fz * d`
+- atmosphere/solver.ts:413 | EllipticSolver.gradient | Float64Array: `sy[o + c] = g.zsy[c]! * fz * d`
+- atmosphere/solver.ts:414 | EllipticSolver.gradient | Float64Array: `gw[o + c] = d / (g.J[c]! * dzw)`
+- atmosphere/solver.ts:421 | EllipticSolver.gradient | Float64Array: `gw[o + c] = topActive ? -phi[ob + c]! / (g.J[c]! * dzw) : 0`
+- atmosphere/solver.ts:439 | EllipticSolver.gradient | Float64Array: `gu[f] = phi[o + cR]! * inv2dx - cross / (g.Ju[jr]! * dzk * 0.5)`
+- atmosphere/solver.ts:440 | EllipticSolver.gradient | Float64Array: `gu[f] = 0`
+- atmosphere/solver.ts:446 | EllipticSolver.gradient | Float64Array: `gu[fr + iu] = (phi[o + cR]! - phi[o + cL]!) * invdx - cross / (g.Ju[jr + iu]! * dzk)`
+- atmosphere/solver.ts:453 | EllipticSolver.gradient | Float64Array: `gu[f] = -phi[o + cL]! * inv2dx - cross / (g.Ju[jr + nx]! * dzk * 0.5)`
+- atmosphere/solver.ts:454 | EllipticSolver.gradient | Float64Array: `gu[f] = 0`
+- atmosphere/solver.ts:466 | EllipticSolver.gradient | Float64Array: `gv[f] = 0`
+- atmosphere/solver.ts:471 | EllipticSolver.gradient | Float64Array: `gv[f] = sgn * phi[o + c]! * inv2dx - cross / (g.Jv[jr + i]! * dzk * 0.5)`
+- atmosphere/solver.ts:480 | EllipticSolver.gradient | Float64Array: `gv[fr + i] = (phi[o + cN]! - phi[o + cS]!) * invdx - cross / (g.Jv[jr + i]! * dzk)`
+- atmosphere/solver.ts:507 | EllipticSolver.divergence | Float64Array: `wt[c] = 0`
+- atmosphere/solver.ts:508 | EllipticSolver.divergence | Float64Array: `wt[nz * plane + c] = scaleW * w[nz * plane + c]!`
+- atmosphere/solver.ts:523 | EllipticSolver.divergence | Float64Array: `wt[o + c] = scaleW * w[o + c]! - 0.25 * scaleU * fz * (g.zsx[c]! * uS + g.zsy[c]! * vS)`
+- atmosphere/solver.ts:540 | EllipticSolver.divergence | Float64Array: `out[o + c] = hx * (g.Ju[ju + i + 1]! * u[fu + i + 1]! - g.Ju[ju + i]! * u[fu + i]!) + hx * (g.Jv[jv + i + nx]!`
+- atmosphere/solver.ts:553 | EllipticSolver.applyFull | Float64Array: `out[q] = -out[q]!`
+- atmosphere/solver.ts:561 | EllipticSolver.correct | Float32Array: `u[f] = u[f]! + sh * gu[f]!`
+- atmosphere/solver.ts:562 | EllipticSolver.correct | Float32Array: `v[f] = v[f]! + sh * gv[f]!`
+- atmosphere/solver.ts:564 | EllipticSolver.correct | Float32Array: `w[f] = w[f]! + sv * gw[f]!`
+- atmosphere/solver.ts:606 | EllipticSolver.relax | Float32Array: `x[idx] = rhs * tInv[idx]!`
+- atmosphere/solver.ts:616 | EllipticSolver.relax | Float32Array: `x[idx] = x[idx]! + tC[idx]! * x[idx + plane]!`
+- atmosphere/solver.ts:653 | EllipticSolver.residual7 | Float32Array: `r[idx] = s`
+- atmosphere/solver.ts:677 | EllipticSolver.restrict | Float64Array: `row[I] = 0`
+- atmosphere/solver.ts:682 | EllipticSolver.restrict | Float64Array: `row[px0[i]!] += ax0[i]! * v`
+- atmosphere/solver.ts:683 | EllipticSolver.restrict | Float64Array: `row[px1[i]!] += ax1[i]! * v`
+- atmosphere/solver.ts:691 | EllipticSolver.restrict | Float32Array: `cb[J0 + I] += b0 * v`
+- atmosphere/solver.ts:692 | EllipticSolver.restrict | Float32Array: `cb[J1 + I] += b1 * v`
+- atmosphere/solver.ts:719 | EllipticSolver.prolongAdd | Float64Array: `row[I] = b0 * cx[J0 + I]! + b1 * cx[J1 + I]!`
+- atmosphere/solver.ts:721 | EllipticSolver.prolongAdd | Float32Array: `x[fr + i] += ax0[i]! * row[px0[i]!]! + ax1[i]! * row[px1[i]!]!`
+- atmosphere/solver.ts:794 | EllipticSolver.solve | Float64Array: `r[q] = rhs[q]! - r[q]!`
+- atmosphere/solver.ts:805 | EllipticSolver.solve | Float64Array: `phi[q] = phi[q]! + z[q]!`
+- atmosphere/solver.ts:823 | EllipticSolver.pcg | Float64Array: `r[q] = rhs[q]! - r[q]!`
+- atmosphere/solver.ts:836 | EllipticSolver.pcg | Float64Array: `phi[q] = phi[q]! + alpha * p[q]!`
+- atmosphere/solver.ts:837 | EllipticSolver.pcg | Float64Array: `r[q] = r[q]! - alpha * Ap[q]!`
+- atmosphere/solver.ts:847 | EllipticSolver.pcg | Float64Array: `p[q] = z[q]! + beta * p[q]!`
+- atmosphere/solver.ts:879 | removeMean | Float32Array: `a[q] = a[q]! - m`
+- core/grid.ts:97 | boxBlur | Float32Array: `tmp[row + i] = acc / w`
+- core/grid.ts:105 | boxBlur | Float32Array: `out[j * nx + i] = acc / w`
+- embers/EmberModel.ts:451 | EmberModel.constructor | Float64Array: `this.clsN[c] = cp.n`
+- embers/EmberModel.ts:452 | EmberModel.constructor | Float64Array: `this.clsFloor[c] = cp.vtFloor`
+- embers/EmberModel.ts:453 | EmberModel.constructor | Float64Array: `this.clsReflame[c] = cp.reflameRate`
+- embers/EmberModel.ts:454 | EmberModel.constructor | Uint8Array: `this.clsNCode[c] = cp.n === 1 ? 0 : cp.n === 0.5 ? 1 : cp.n === 0.25 ? 2 : 3`
+- embers/EmberModel.ts:455 | EmberModel.constructor | Float64Array: `this.clsRc[c] = cp.vtFloor > 0 ? Math.pow(cp.vtFloor, 1 / cp.n) : 0`
+- embers/EmberModel.ts:456 | EmberModel.constructor | Float64Array: `this.lifePrior[c] = proposalMeanTauB(cp, P)`
+- embers/EmberModel.ts:457 | EmberModel.constructor | Float64Array: `this.lifeFloor[c] = Math.max(P.weights.lifeFloorFrac * medianTauB(cp, P), P.weights.lifeFloorAbs)`
+- embers/EmberModel.ts:462 | EmberModel.constructor | Float64Array: `this.shareTable[m * N_CLASSES + c] = m & (1 << c) && s > 0 ? P.classes[c]!.share / s : 0`
+- embers/EmberModel.ts:547 | EmberModel.emit | Int32Array: `this.colIndex[c] = -1`
+- embers/EmberModel.ts:556 | EmberModel.emit | Float64Array: `this.scratchT0[a] = t0`
+- embers/EmberModel.ts:557 | EmberModel.emit | Float64Array: `this.scratchT1[a] = t1`
+- embers/EmberModel.ts:558 | EmberModel.emit | Float64Array: `sN[a * N_CLASSES + c] = 0`
+- embers/EmberModel.ts:570 | EmberModel.emit | Float64Array: `sN[a * N_CLASSES + c] = dN`
+- embers/EmberModel.ts:586 | EmberModel.emit | Int32Array: `this.colIndex[col] = this.sources.push(cx, cy, this.terrain.elevation[k]!, w0, alpha)`
+- embers/EmberModel.ts:589 | EmberModel.emit | Float64Array: `this.sources.x[s] = cx`
+- embers/EmberModel.ts:590 | EmberModel.emit | Float64Array: `this.sources.y[s] = cy`
+- embers/EmberModel.ts:591 | EmberModel.emit | Float64Array: `this.sources.z0[s] = this.terrain.elevation[k]!`
+- embers/EmberModel.ts:592 | EmberModel.emit | Float64Array: `this.sources.w0[s] = w0`
+- embers/EmberModel.ts:593 | EmberModel.emit | Float64Array: `this.sources.alpha[s] = alpha`
+- embers/EmberModel.ts:594 | EmberModel.emit | Float64Array: `this.sources.alpha[s] = alpha`
+- embers/EmberModel.ts:596 | EmberModel.emit | Float64Array: `this.aUntil[a] = t1`
+- embers/EmberModel.ts:615 | EmberModel.emit | Float64Array: `this.rateNow[c] = classSum[c]! / dt`
+- embers/EmberModel.ts:616 | EmberModel.emit | Float64Array: `this.rateM[c] = this.rateM[c]! * beta + this.rateNow[c]! * (1 - beta)`
+- embers/EmberModel.ts:638 | EmberModel.emit | Uint8Array: `this.cellState[this.aCell[a]!] = 2`
+- embers/EmberModel.ts:934 | EmberModel.addCell | Uint8Array: `this.cellState[k] = 2`
+- embers/EmberModel.ts:965 | EmberModel.addCell | Int32Array: `this.aCell[a] = k`
+- embers/EmberModel.ts:968 | EmberModel.addCell | Float64Array: `this.aUntil[a] = tArr > this.time ? tArr : this.time`
+- embers/EmberModel.ts:969 | EmberModel.addCell | Float64Array: `this.aTArr[a] = tArr`
+- embers/EmberModel.ts:970 | EmberModel.addCell | Float32Array: `this.aTau[a] = cf.tauF > 0 ? cf.tauF : 30`
+- embers/EmberModel.ts:971 | EmberModel.addCell | Float32Array: `this.aAmp[a] = amp`
+- embers/EmberModel.ts:972 | EmberModel.addCell | Uint8Array: `this.aMask[a] = mask`
+- embers/EmberModel.ts:974 | EmberModel.addCell | Float32Array: `this.aFL13[a] = intensity > 0 ? Math.cbrt(lineBuoyancyFlux(intensity, this.rhoAt(this.terrain.elevation[k]!), `
+- embers/EmberModel.ts:975 | EmberModel.addCell | Float32Array: `this.aHeat[a] = intensity > 0 ? (intensity / ros) * h * h : 0`
+- embers/EmberModel.ts:976 | EmberModel.addCell | Float32Array: `this.aFH[a] = fh`
+- embers/EmberModel.ts:977 | EmberModel.addCell | Float32Array: `this.aHO[a] = cf.hOEff`
+- embers/EmberModel.ts:978 | EmberModel.addCell | Float32Array: `this.aI[a] = intensity`
+- embers/EmberModel.ts:979 | EmberModel.addCell | Uint8Array: `this.cellState[k] = 1`
+- embers/EmberModel.ts:1021 | EmberModel.removeActive | Int32Array: `this.aCell[a] = this.aCell[l]!`
+- embers/EmberModel.ts:1022 | EmberModel.removeActive | Float64Array: `this.aUntil[a] = this.aUntil[l]!`
+- embers/EmberModel.ts:1023 | EmberModel.removeActive | Float64Array: `this.aTArr[a] = this.aTArr[l]!`
+- embers/EmberModel.ts:1024 | EmberModel.removeActive | Float32Array: `this.aTau[a] = this.aTau[l]!`
+- embers/EmberModel.ts:1025 | EmberModel.removeActive | Float32Array: `this.aAmp[a] = this.aAmp[l]!`
+- embers/EmberModel.ts:1026 | EmberModel.removeActive | Uint8Array: `this.aMask[a] = this.aMask[l]!`
+- embers/EmberModel.ts:1027 | EmberModel.removeActive | Float32Array: `this.aFL13[a] = this.aFL13[l]!`
+- embers/EmberModel.ts:1028 | EmberModel.removeActive | Float32Array: `this.aHeat[a] = this.aHeat[l]!`
+- embers/EmberModel.ts:1029 | EmberModel.removeActive | Float32Array: `this.aFH[a] = this.aFH[l]!`
+- embers/EmberModel.ts:1030 | EmberModel.removeActive | Float32Array: `this.aHO[a] = this.aHO[l]!`
+- embers/EmberModel.ts:1031 | EmberModel.removeActive | Float32Array: `this.aI[a] = this.aI[l]!`
+- embers/EmberModel.ts:1059 | EmberModel.updateWeights | Float64Array: `nbar[c] = nb > this.rateNow[c]! ? nb : this.rateNow[c]!`
+- embers/EmberModel.ts:1065 | EmberModel.updateWeights | Uint8Array: `free[c] = nbar[c]! > 0 ? 1 : 0`
+- embers/EmberModel.ts:1067 | EmberModel.updateWeights | Float64Array: `life[c] = this.lifeEstimate(c)`
+- embers/EmberModel.ts:1069 | EmberModel.updateWeights | Float64Array: `low[c] = thr > Pw.wMin ? thr : Pw.wMin`
+- embers/EmberModel.ts:1081 | EmberModel.updateWeights | Float64Array: `this.wC[c] = low[c]!`
+- embers/EmberModel.ts:1083 | EmberModel.updateWeights | Uint8Array: `free[c] = 0`
+- embers/EmberModel.ts:1095 | EmberModel.updateWeights | Float64Array: `this.wC[c] = w > low[c]! ? w : low[c]!`
+- embers/EmberModel.ts:1146 | EmberModel.spawn | Float64Array: `this.wCarry[c] = 0`
+- embers/EmberModel.ts:1149 | EmberModel.spawn | Uint8Array: `this.srcClass[i] = this.sourceClassCode(k)`
+- embers/EmberModel.ts:1150 | EmberModel.spawn | Uint8Array: `this.state[i] = ST_NEEDLOFT`
+- embers/EmberModel.ts:1155 | EmberModel.initParticle | Float32Array: `this.px[i] = x`
+- embers/EmberModel.ts:1156 | EmberModel.initParticle | Float32Array: `this.py[i] = y`
+- embers/EmberModel.ts:1157 | EmberModel.initParticle | Float32Array: `this.pz[i] = z`
+- embers/EmberModel.ts:1158 | EmberModel.initParticle | Float32Array: `this.up[i] = 0`
+- embers/EmberModel.ts:1159 | EmberModel.initParticle | Float32Array: `this.vp[i] = 0`
+- embers/EmberModel.ts:1160 | EmberModel.initParticle | Float32Array: `this.wp[i] = 0`
+- embers/EmberModel.ts:1161 | EmberModel.initParticle | Float32Array: `this.age[i] = 0`
+- embers/EmberModel.ts:1162 | EmberModel.initParticle | Float32Array: `this.vt0[i] = vt0`
+- embers/EmberModel.ts:1163 | EmberModel.initParticle | Float32Array: `this.tauB[i] = tauB`
+- embers/EmberModel.ts:1164 | EmberModel.initParticle | Float32Array: `this.flameEnd[i] = tauF`
+- embers/EmberModel.ts:1165 | EmberModel.initParticle | Float32Array: `this.W[i] = w`
+- embers/EmberModel.ts:1166 | EmberModel.initParticle | Float32Array: `this.zLaunch[i] = z`
+- embers/EmberModel.ts:1167 | EmberModel.initParticle | Float32Array: `this.maxH[i] = Math.max(0, z - zg)`
+- embers/EmberModel.ts:1168 | EmberModel.initParticle | Float32Array: `this.sumU[i] = 0`
+- embers/EmberModel.ts:1169 | EmberModel.initParticle | Float32Array: `this.sumV[i] = 0`
+- embers/EmberModel.ts:1170 | EmberModel.initParticle | Float32Array: `this.cn[i] = cn`
+- embers/EmberModel.ts:1171 | EmberModel.initParticle | Float32Array: `this.srcX[i] = x`
+- embers/EmberModel.ts:1172 | EmberModel.initParticle | Float32Array: `this.srcY[i] = y`
+- embers/EmberModel.ts:1173 | EmberModel.initParticle | Float32Array: `this.rx[i] = x`
+- embers/EmberModel.ts:1174 | EmberModel.initParticle | Float32Array: `this.ry[i] = y`
+- embers/EmberModel.ts:1175 | EmberModel.initParticle | Float32Array: `this.rz[i] = z`
+- embers/EmberModel.ts:1176 | EmberModel.initParticle | Float32Array: `this.riseT[i] = 0`
+- embers/EmberModel.ts:1177 | EmberModel.initParticle | Float32Array: `this.fl13[i] = fl13`
+- embers/EmberModel.ts:1178 | EmberModel.initParticle | Float64Array: `this.tBirth[i] = tBirth`
+- embers/EmberModel.ts:1179 | EmberModel.initParticle | Uint8Array: `this.cls[i] = c`
+- embers/EmberModel.ts:1180 | EmberModel.initParticle | Uint8Array: `this.state[i] = 0`
+- embers/EmberModel.ts:1181 | EmberModel.initParticle | Uint8Array: `this.srcClass[i] = 1`
+- embers/EmberModel.ts:1182 | EmberModel.initParticle | Int32Array: `this.srcCell[i] = k`
+- embers/EmberModel.ts:1273 | EmberModel.loft | Uint8Array: `this.state[i] = this.state[i]! & ~ST_NEEDLOFT`
+- embers/EmberModel.ts:1295 | EmberModel.loft | Float32Array: `this.rx[i] = x + u * tilt`
+- embers/EmberModel.ts:1296 | EmberModel.loft | Float32Array: `this.ry[i] = y + v * tilt`
+- embers/EmberModel.ts:1297 | EmberModel.loft | Float32Array: `this.rz[i] = zg + zL`
+- embers/EmberModel.ts:1298 | EmberModel.loft | Float32Array: `this.riseT[i] = this.age[i]! + tRise`
+- embers/EmberModel.ts:1301 | EmberModel.loft | Uint8Array: `this.state[i] = this.state[i]! | ST_RISING`
+- embers/EmberModel.ts:1320 | EmberModel.riseStep | Float32Array: `this.px[i] = sx + (this.rx[i]! - sx) * f`
+- embers/EmberModel.ts:1321 | EmberModel.riseStep | Float32Array: `this.py[i] = sy + (this.ry[i]! - sy) * f`
+- embers/EmberModel.ts:1322 | EmberModel.riseStep | Float32Array: `this.pz[i] = sz + (this.rz[i]! - sz) * f`
+- embers/EmberModel.ts:1323 | EmberModel.riseStep | Float32Array: `this.age[i] = age`
+- embers/EmberModel.ts:1325 | EmberModel.riseStep | Float32Array: `this.maxH[i] = hh`
+- embers/EmberModel.ts:1338 | EmberModel.riseStep | Float32Array: `this.px[i] = x`
+- embers/EmberModel.ts:1339 | EmberModel.riseStep | Float32Array: `this.py[i] = y`
+- embers/EmberModel.ts:1340 | EmberModel.riseStep | Float32Array: `this.pz[i] = z`
+- embers/EmberModel.ts:1341 | EmberModel.riseStep | Float32Array: `this.age[i] = age`
+- embers/EmberModel.ts:1342 | EmberModel.riseStep | Uint8Array: `this.state[i] = this.state[i]! & ~ST_RISING`
+- embers/EmberModel.ts:1344 | EmberModel.riseStep | Float32Array: `this.maxH[i] = hh`
+- embers/EmberModel.ts:1736 | EmberModel.turbColumn | Uint32Array: `this.turbStamp[col] = this.stepId`
+- embers/EmberModel.ts:1739 | EmberModel.turbColumn | Float32Array: `this.turbCache[3 * col] = t[0]!`
+- embers/EmberModel.ts:1740 | EmberModel.turbColumn | Float32Array: `this.turbCache[3 * col + 1] = t[1]!`
+- embers/EmberModel.ts:1741 | EmberModel.turbColumn | Float32Array: `this.turbCache[3 * col + 2] = t[2]!`
+- embers/EmberModel.ts:1764 | EmberModel.leeEddy | Float32Array: `out[0] = (1 - s) * u - s * M.eddyFraction * ur * Math.sin(a)`
+- embers/EmberModel.ts:1765 | EmberModel.leeEddy | Float32Array: `out[1] = (1 - s) * v - s * M.eddyFraction * ur * Math.cos(a)`
+- embers/EmberModel.ts:1771 | EmberModel.storeState | Float32Array: `this.px[i] = x`
+- embers/EmberModel.ts:1772 | EmberModel.storeState | Float32Array: `this.py[i] = y`
+- embers/EmberModel.ts:1773 | EmberModel.storeState | Float32Array: `this.pz[i] = z`
+- embers/EmberModel.ts:1774 | EmberModel.storeState | Float32Array: `this.up[i] = up`
+- embers/EmberModel.ts:1775 | EmberModel.storeState | Float32Array: `this.vp[i] = vp`
+- embers/EmberModel.ts:1776 | EmberModel.storeState | Float32Array: `this.wp[i] = wp`
+- embers/EmberModel.ts:1777 | EmberModel.storeState | Float32Array: `this.age[i] = age`
+- embers/EmberModel.ts:1778 | EmberModel.storeState | Float32Array: `this.flameEnd[i] = flameEnd`
+- embers/EmberModel.ts:1779 | EmberModel.storeState | Float32Array: `this.maxH[i] = maxH`
+- embers/EmberModel.ts:1780 | EmberModel.storeState | Float32Array: `this.sumU[i] = sumU`
+- embers/EmberModel.ts:1781 | EmberModel.storeState | Float32Array: `this.sumV[i] = sumV`
+- embers/EmberModel.ts:1782 | EmberModel.storeState | Uint8Array: `this.state[i] = st`
+- embers/EmberModel.ts:1883 | EmberModel.land | Float64Array: `this.pileT0[k] = t`
+- embers/EmberModel.ts:1884 | EmberModel.land | Float32Array: `this.pileN[k] = 0`
+- embers/EmberModel.ts:1886 | EmberModel.land | Float32Array: `this.pileN[k] = this.pileN[k]! + W`
+- embers/EmberModel.ts:2038 | EmberModel.reliefAt | Float32Array: `rel[q] = mm.max[q]! - mm.min[q]!`
+- embers/EmberModel.ts:2056 | EmberModel.rebuildDensity | Float64Array: `this.densLut[q] = Math.sqrt(RHO_REF / this.rhoAt(this.densLo + q * this.densDz))`
+- embers/EmberModel.ts:2102 | EmberModel.profileAt | Float32Array: `out[0] = 0`
+- embers/EmberModel.ts:2103 | EmberModel.profileAt | Float32Array: `out[1] = 0`
+- embers/EmberModel.ts:2104 | EmberModel.profileAt | Float32Array: `out[2] = 0`
+- embers/EmberModel.ts:2108 | EmberModel.profileAt | Float32Array: `out[0] = this.profU[0]!`
+- embers/EmberModel.ts:2109 | EmberModel.profileAt | Float32Array: `out[1] = this.profV[0]!`
+- embers/EmberModel.ts:2111 | EmberModel.profileAt | Float32Array: `out[0] = this.profU[n - 1]!`
+- embers/EmberModel.ts:2112 | EmberModel.profileAt | Float32Array: `out[1] = this.profV[n - 1]!`
+- embers/EmberModel.ts:2117 | EmberModel.profileAt | Float32Array: `out[0] = this.profU[j - 1]! + (this.profU[j]! - this.profU[j - 1]!) * f`
+- embers/EmberModel.ts:2118 | EmberModel.profileAt | Float32Array: `out[1] = this.profV[j - 1]! + (this.profV[j]! - this.profV[j - 1]!) * f`
+- embers/EmberModel.ts:2120 | EmberModel.profileAt | Float32Array: `out[2] = 0`
+- embers/EmberModel.ts:2207 | EmberModel.removeAt | Float32Array: `this.px[i] = this.px[l]!`
+- embers/EmberModel.ts:2208 | EmberModel.removeAt | Float32Array: `this.py[i] = this.py[l]!`
+- embers/EmberModel.ts:2209 | EmberModel.removeAt | Float32Array: `this.pz[i] = this.pz[l]!`
+- embers/EmberModel.ts:2210 | EmberModel.removeAt | Float32Array: `this.up[i] = this.up[l]!`
+- embers/EmberModel.ts:2211 | EmberModel.removeAt | Float32Array: `this.vp[i] = this.vp[l]!`
+- embers/EmberModel.ts:2212 | EmberModel.removeAt | Float32Array: `this.wp[i] = this.wp[l]!`
+- embers/EmberModel.ts:2213 | EmberModel.removeAt | Float32Array: `this.age[i] = this.age[l]!`
+- embers/EmberModel.ts:2214 | EmberModel.removeAt | Float32Array: `this.vt0[i] = this.vt0[l]!`
+- embers/EmberModel.ts:2215 | EmberModel.removeAt | Float32Array: `this.tauB[i] = this.tauB[l]!`
+- embers/EmberModel.ts:2216 | EmberModel.removeAt | Float32Array: `this.flameEnd[i] = this.flameEnd[l]!`
+- embers/EmberModel.ts:2217 | EmberModel.removeAt | Float32Array: `this.W[i] = this.W[l]!`
+- embers/EmberModel.ts:2218 | EmberModel.removeAt | Float32Array: `this.zLaunch[i] = this.zLaunch[l]!`
+- embers/EmberModel.ts:2219 | EmberModel.removeAt | Float32Array: `this.maxH[i] = this.maxH[l]!`
+- embers/EmberModel.ts:2220 | EmberModel.removeAt | Float32Array: `this.sumU[i] = this.sumU[l]!`
+- embers/EmberModel.ts:2221 | EmberModel.removeAt | Float32Array: `this.sumV[i] = this.sumV[l]!`
+- embers/EmberModel.ts:2222 | EmberModel.removeAt | Float32Array: `this.cn[i] = this.cn[l]!`
+- embers/EmberModel.ts:2223 | EmberModel.removeAt | Float32Array: `this.srcX[i] = this.srcX[l]!`
+- embers/EmberModel.ts:2224 | EmberModel.removeAt | Float32Array: `this.srcY[i] = this.srcY[l]!`
+- embers/EmberModel.ts:2225 | EmberModel.removeAt | Float32Array: `this.rx[i] = this.rx[l]!`
+- embers/EmberModel.ts:2226 | EmberModel.removeAt | Float32Array: `this.ry[i] = this.ry[l]!`
+- embers/EmberModel.ts:2227 | EmberModel.removeAt | Float32Array: `this.rz[i] = this.rz[l]!`
+- embers/EmberModel.ts:2228 | EmberModel.removeAt | Float32Array: `this.riseT[i] = this.riseT[l]!`
+- embers/EmberModel.ts:2229 | EmberModel.removeAt | Float32Array: `this.fl13[i] = this.fl13[l]!`
+- embers/EmberModel.ts:2230 | EmberModel.removeAt | Float64Array: `this.tBirth[i] = this.tBirth[l]!`
+- embers/EmberModel.ts:2231 | EmberModel.removeAt | Uint8Array: `this.cls[i] = this.cls[l]!`
+- embers/EmberModel.ts:2232 | EmberModel.removeAt | Uint8Array: `this.state[i] = this.state[l]!`
+- embers/EmberModel.ts:2233 | EmberModel.removeAt | Uint8Array: `this.srcClass[i] = this.srcClass[l]!`
+- embers/EmberModel.ts:2234 | EmberModel.removeAt | Int32Array: `this.srcCell[i] = this.srcCell[l]!`
+- embers/plume.ts:36 | PlumeSources.push | Float64Array: `this.x[s] = x`
+- embers/plume.ts:37 | PlumeSources.push | Float64Array: `this.y[s] = y`
+- embers/plume.ts:38 | PlumeSources.push | Float64Array: `this.z0[s] = z0`
+- embers/plume.ts:39 | PlumeSources.push | Float64Array: `this.w0[s] = w0`
+- embers/plume.ts:40 | PlumeSources.push | Float64Array: `this.alpha[s] = alpha`
+- embers/plume.ts:105 | PlumeField.build | Float64Array: `this.ax[s * nl + l] = x`
+- embers/plume.ts:106 | PlumeField.build | Float64Array: `this.ay[s * nl + l] = y`
+- embers/plume.ts:172 | PlumeField.build | Float32Array: `this.w[idx] = v`
+- embers/plume.ts:173 | PlumeField.build | Float32Array: `this.a[idx] = alpha`
+- embers/sampling.ts:92 | <module> | Float64Array: `t[i] = z`
+- fire/spread/FireSpreadModel.ts:370 | FireSpreadModel.constructor | Int32Array: `this.steep[ns++] = k`
+- fire/spread/FireSpreadModel.ts:381 | FireSpreadModel.constructor | Uint8Array: `burnState[k] = this.flammable[k] ? BurnState.Unburnt : BurnState.NonFlammable`
+- fire/spread/FireSpreadModel.ts:406 | FireSpreadModel.constructor | Float32Array: `ls.sTx[k] = this.upY[k]!`
+- fire/spread/FireSpreadModel.ts:407 | FireSpreadModel.constructor | Float32Array: `ls.sTy[k] = -this.upX[k]!`
+- fire/spread/FireSpreadModel.ts:496 | FireSpreadModel.initStatic | Float32Array: `this.gX[k] = gx`
+- fire/spread/FireSpreadModel.ts:497 | FireSpreadModel.initStatic | Float32Array: `this.gY[k] = gy`
+- fire/spread/FireSpreadModel.ts:498 | FireSpreadModel.initStatic | Float32Array: `this.upX[k] = tn > 0 ? gx / tn : 0`
+- fire/spread/FireSpreadModel.ts:499 | FireSpreadModel.initStatic | Float32Array: `this.upY[k] = tn > 0 ? gy / tn : 0`
+- fire/spread/FireSpreadModel.ts:500 | FireSpreadModel.initStatic | Float32Array: `this.slope[k] = Math.atan(tn) * RAD`
+- fire/spread/FireSpreadModel.ts:527 | FireSpreadModel.initStatic | Int32Array: `this.descent[k] = best`
+- fire/spread/FireSpreadModel.ts:547 | FireSpreadModel.refreshStaticFuel | Uint8Array: `this.flammable[k] = flam ? 1 : 0`
+- fire/spread/FireSpreadModel.ts:548 | FireSpreadModel.refreshStaticFuel | Uint8Array: `this.canBurn[k] = flam && this.fc.spreadable[k] === 1 ? 1 : 0`
+- fire/spread/FireSpreadModel.ts:550 | FireSpreadModel.refreshStaticFuel | Float32Array: `this.breakW[k] = w > 0 ? w : 0`
+- fire/spread/FireSpreadModel.ts:566 | FireSpreadModel.refreshStaticFuel | Uint8Array: `this.treesNear[k] = trees`
+- fire/spread/FireSpreadModel.ts:673 | FireSpreadModel.refreshMasks | Float32Array: `this.vls[k] = 0`
+- fire/spread/FireSpreadModel.ts:674 | FireSpreadModel.refreshMasks | Float32Array: `this.sep[k] = 0`
+- fire/spread/FireSpreadModel.ts:675 | FireSpreadModel.refreshMasks | Int32Array: `this.vlsZone[k] = 0`
+- fire/spread/FireSpreadModel.ts:676 | FireSpreadModel.refreshMasks | Uint8Array: `this.vlsActive[k] = 0`
+- fire/spread/FireSpreadModel.ts:706 | FireSpreadModel.refreshMasks | Float32Array: `this.vls[k] = vlsScore(s30[k]!, lee, uR, sRidge, M[k]!, VP)`
+- fire/spread/FireSpreadModel.ts:708 | FireSpreadModel.refreshMasks | Float32Array: `this.sep[k] = leeSeparation(s30[k]!, lee, uR, sepOk, SP)`
+- fire/spread/FireSpreadModel.ts:739 | FireSpreadModel.prepare | Float32Array: `ls.sVls[k] = this.vlsRateAt(k, z, t)`
+- fire/spread/FireSpreadModel.ts:740 | FireSpreadModel.prepare | Float32Array: `ls.sVls[k] = 0`
+- fire/spread/FireSpreadModel.ts:894 | FireSpreadModel.headCells | Uint8Array: `mask[k] = 1`
+- fire/spread/FireSpreadModel.ts:895 | FireSpreadModel.headCells | Float32Array: `dirX[k] = nX`
+- fire/spread/FireSpreadModel.ts:896 | FireSpreadModel.headCells | Float32Array: `dirY[k] = nY`
+- fire/spread/FireSpreadModel.ts:1099 | FireSpreadModel.computeCrests | Int32Array: `this.cK[a] = ok ? tmp.kCrest : -1`
+- fire/spread/FireSpreadModel.ts:1100 | FireSpreadModel.computeCrests | Float32Array: `this.cD[a] = ok ? tmp.d : Infinity`
+- fire/spread/FireSpreadModel.ts:1101 | FireSpreadModel.computeCrests | Float32Array: `this.cZ[a] = ok ? tmp.zCrest : NaN`
+- fire/spread/FireSpreadModel.ts:1102 | FireSpreadModel.computeCrests | Float32Array: `this.cRel[a] = ok ? tmp.relief : NaN`
+- fire/spread/FireSpreadModel.ts:1127 | FireSpreadModel.relabelZones | Int32Array: `this.zoneOld[a] = vlsZone[k]!`
+- fire/spread/FireSpreadModel.ts:1128 | FireSpreadModel.relabelZones | Int32Array: `vlsZone[k] = 0`
+- fire/spread/FireSpreadModel.ts:1146 | FireSpreadModel.relabelZones | Uint8Array: `this.zActive[L] = 1`
+- fire/spread/FireSpreadModel.ts:1147 | FireSpreadModel.relabelZones | Float64Array: `this.zTAct[L] = oldT[Lo]!`
+- fire/spread/FireSpreadModel.ts:1148 | FireSpreadModel.relabelZones | Float64Array: `this.zTp[L] = oldP[Lo]!`
+- fire/spread/FireSpreadModel.ts:1149 | FireSpreadModel.relabelZones | Float64Array: `this.zLast[L] = oldL[Lo]!`
+- fire/spread/FireSpreadModel.ts:1156 | FireSpreadModel.relabelZones | Uint8Array: `this.vlsActive[k] = z > 0 && this.zActive[z] === 1 ? 1 : 0`
+- fire/spread/FireSpreadModel.ts:1179 | check | Uint8Array: `this.zSat[z] = 1`
+- fire/spread/FireSpreadModel.ts:1203 | FireSpreadModel.updateVlsActivation | Float64Array: `this.zLast[z] = t`
+- fire/spread/FireSpreadModel.ts:1205 | FireSpreadModel.updateVlsActivation | Uint8Array: `this.zActive[z] = 1`
+- fire/spread/FireSpreadModel.ts:1206 | FireSpreadModel.updateVlsActivation | Float64Array: `this.zTAct[z] = t`
+- fire/spread/FireSpreadModel.ts:1207 | FireSpreadModel.updateVlsActivation | Float64Array: `this.zTp[z] = this.rng.range(VP.periodMinS, VP.periodMaxS)`
+- fire/spread/FireSpreadModel.ts:1211 | FireSpreadModel.updateVlsActivation | Uint8Array: `this.zActive[z] = 0`
+- fire/spread/FireSpreadModel.ts:1219 | FireSpreadModel.updateVlsActivation | Uint8Array: `this.vlsActive[k] = z > 0 && this.zActive[z] === 1 ? 1 : 0`
+- fire/spread/FireSpreadModel.ts:1266 | FireSpreadModel.zeroSpeed | Float32Array: `ls.sA2[k] = 0`
+- fire/spread/FireSpreadModel.ts:1267 | FireSpreadModel.zeroSpeed | Float32Array: `ls.sB2[k] = 0`
+- fire/spread/FireSpreadModel.ts:1268 | FireSpreadModel.zeroSpeed | Float32Array: `ls.sC[k] = 0`
+- fire/spread/FireSpreadModel.ts:1269 | FireSpreadModel.zeroSpeed | Float32Array: `ls.sVls[k] = 0`
+- fire/spread/FireSpreadModel.ts:1270 | FireSpreadModel.zeroSpeed | Float32Array: `this.pRH[k] = 0`
+- fire/spread/FireSpreadModel.ts:1271 | FireSpreadModel.zeroSpeed | Float32Array: `this.pRB[k] = 0`
+- fire/spread/FireSpreadModel.ts:1272 | FireSpreadModel.zeroSpeed | Float32Array: `this.pRF[k] = 0`
+- fire/spread/FireSpreadModel.ts:1273 | FireSpreadModel.zeroSpeed | Float32Array: `this.pRHyb[k] = 0`
+- fire/spread/FireSpreadModel.ts:1385 | FireSpreadModel.prepareCell | Float32Array: `this.kU[k] = s.uKmh`
+- fire/spread/FireSpreadModel.ts:1386 | FireSpreadModel.prepareCell | Float32Array: `this.kM[k] = s.m`
+- fire/spread/FireSpreadModel.ts:1387 | FireSpreadModel.prepareCell | Float32Array: `this.kFA[k] = s.fa`
+- fire/spread/FireSpreadModel.ts:1388 | FireSpreadModel.prepareCell | Float32Array: `this.kR0[k] = s.r0`
+- fire/spread/FireSpreadModel.ts:1389 | FireSpreadModel.prepareCell | Float32Array: `this.kRw[k] = s.rw`
+- fire/spread/FireSpreadModel.ts:1390 | FireSpreadModel.prepareCell | Uint8Array: `this.kPhase[k] = s.phase`
+- fire/spread/FireSpreadModel.ts:1391 | FireSpreadModel.prepareCell | Uint8Array: `this.kValid[k] = s.valid`
+- fire/spread/FireSpreadModel.ts:1392 | FireSpreadModel.prepareCell | Float32Array: `this.kCfb[k] = s.cfb`
+- fire/spread/FireSpreadModel.ts:1393 | FireSpreadModel.prepareCell | Float32Array: `this.kRs[k] = s.rs`
+- fire/spread/FireSpreadModel.ts:1395 | FireSpreadModel.prepareCell | Int32Array: `ls.prepStamp[k] = ls.stamp`
+- fire/spread/FireSpreadModel.ts:1396 | FireSpreadModel.prepareCell | Float64Array: `this.tPrep[k] = t`
+- fire/spread/FireSpreadModel.ts:1397 | FireSpreadModel.prepareCell | Uint8Array: `ls.touched[k] = 1`
+- fire/spread/FireSpreadModel.ts:1400 | FireSpreadModel.prepareCell | Float32Array: `this.pFws[k] = s.fws`
+- fire/spread/FireSpreadModel.ts:1409 | FireSpreadModel.prepareCell | Float32Array: `ls.sA2[k] = a * a`
+- fire/spread/FireSpreadModel.ts:1410 | FireSpreadModel.prepareCell | Float32Array: `ls.sB2[k] = bF * bF`
+- fire/spread/FireSpreadModel.ts:1411 | FireSpreadModel.prepareCell | Float32Array: `ls.sC[k] = c`
+- fire/spread/FireSpreadModel.ts:1412 | FireSpreadModel.prepareCell | Float32Array: `ls.sEx[k] = s.hyb.ex`
+- fire/spread/FireSpreadModel.ts:1413 | FireSpreadModel.prepareCell | Float32Array: `ls.sEy[k] = s.hyb.ey`
+- fire/spread/FireSpreadModel.ts:1414 | FireSpreadModel.prepareCell | Float32Array: `ls.sVls[k] = s.vlsR`
+- fire/spread/FireSpreadModel.ts:1415 | FireSpreadModel.prepareCell | Float32Array: `this.pThetaE[k] = s.hyb.thetaE`
+- fire/spread/FireSpreadModel.ts:1416 | FireSpreadModel.prepareCell | Float32Array: `this.pRHyb[k] = s.hyb.rHyb`
+- fire/spread/FireSpreadModel.ts:1417 | FireSpreadModel.prepareCell | Float32Array: `this.pA[k] = s.a`
+- fire/spread/FireSpreadModel.ts:1418 | FireSpreadModel.prepareCell | Float32Array: `this.pE[k] = s.e`
+- fire/spread/FireSpreadModel.ts:1419 | FireSpreadModel.prepareCell | Float32Array: `this.pG[k] = s.g`
+- fire/spread/FireSpreadModel.ts:1420 | FireSpreadModel.prepareCell | Float32Array: `this.pLb[k] = ell.lbB`
+- fire/spread/FireSpreadModel.ts:1421 | FireSpreadModel.prepareCell | Float32Array: `this.pRH[k] = ell.rH`
+- fire/spread/FireSpreadModel.ts:1422 | FireSpreadModel.prepareCell | Float32Array: `this.pRB[k] = ell.rB`
+- fire/spread/FireSpreadModel.ts:1423 | FireSpreadModel.prepareCell | Float32Array: `this.pRF[k] = ell.rF`
+- fire/spread/FireSpreadModel.ts:1424 | FireSpreadModel.prepareCell | Float32Array: `this.pFws[k] = s.fws`
+- fire/spread/FireSpreadModel.ts:1425 | FireSpreadModel.prepareCell | Uint8Array: `this.pFlags[k] = (ell.capped ? FLAG_CAPPED : 0) | (s.eruptive ? FLAG_ERUPTIVE : 0)`
+- fire/spread/FireSpreadModel.ts:1426 | FireSpreadModel.prepareCell | Float64Array: `this.originEst[k] = s.origin`
+- fire/spread/FireSpreadModel.ts:1427 | FireSpreadModel.prepareCell | Float32Array: `this.attach[k] = s.a * s.e`
+- fire/spread/FireSpreadModel.ts:1428 | FireSpreadModel.prepareCell | Float32Array: `this.buildArr[k] = s.build`
+- fire/spread/FireSpreadModel.ts:1505 | FireSpreadModel.breachDraw | Uint8Array: `this.breachState[k] = breached ? 1 : 2`
+- fire/spread/FireSpreadModel.ts:1506 | FireSpreadModel.breachDraw | Float64Array: `this.breachUntil[k] = t + this.P.breach.holdS`
+- fire/spread/FireSpreadModel.ts:1507 | FireSpreadModel.breachDraw | Uint8Array: `this.ls.touched[k] = 1`
+- fire/spread/FireSpreadModel.ts:1564 | FireSpreadModel.recordArrival | Float32Array: `f.arrivalTime[k] = tA`
+- fire/spread/FireSpreadModel.ts:1565 | FireSpreadModel.recordArrival | Uint8Array: `f.burnState[k] = BurnState.Burning`
+- fire/spread/FireSpreadModel.ts:1566 | FireSpreadModel.recordArrival | Uint8Array: `ls.touched[k] = 1`
+- fire/spread/FireSpreadModel.ts:1567 | FireSpreadModel.recordArrival | Float64Array: `this.origin[k] = this.originEstimateAtArrival(k, tA)`
+- fire/spread/FireSpreadModel.ts:1568 | FireSpreadModel.recordArrival | Float32Array: `f.ros[k] = r`
+- fire/spread/FireSpreadModel.ts:1569 | FireSpreadModel.recordArrival | Float32Array: `f.spreadDir[k] = azimuthOf(nX, nY)`
+- fire/spread/FireSpreadModel.ts:1581 | FireSpreadModel.recordArrival | Float32Array: `f.intensity[k] = IO.intensity`
+- fire/spread/FireSpreadModel.ts:1582 | FireSpreadModel.recordArrival | Float32Array: `f.flameHeight[k] = IO.flameHeight`
+- fire/spread/FireSpreadModel.ts:1583 | FireSpreadModel.recordArrival | Uint8Array: `f.phase[k] = this.kPhase[k]!`
+- fire/spread/FireSpreadModel.ts:1584 | FireSpreadModel.recordArrival | Float32Array: `this.wC[k] = IO.w`
+- fire/spread/FireSpreadModel.ts:1585 | FireSpreadModel.recordArrival | Float32Array: `this.crownFrac[k] = IO.crownShare`
+- fire/spread/FireSpreadModel.ts:1586 | FireSpreadModel.recordArrival | Float32Array: `this.cfb[k] = IO.cfb`
+- fire/spread/FireSpreadModel.ts:1587 | FireSpreadModel.recordArrival | Float32Array: `this.direction[k] = dir`
+- fire/spread/FireSpreadModel.ts:1591 | FireSpreadModel.recordArrival | Float32Array: `this.fBase[k] = fx.base`
+- fire/spread/FireSpreadModel.ts:1592 | FireSpreadModel.recordArrival | Float32Array: `this.fWind[k] = fx.wind`
+- fire/spread/FireSpreadModel.ts:1593 | FireSpreadModel.recordArrival | Float32Array: `this.fFuel[k] = fx.fuel`
+- fire/spread/FireSpreadModel.ts:1594 | FireSpreadModel.recordArrival | Float32Array: `this.fMoist[k] = fx.moisture`
+- fire/spread/FireSpreadModel.ts:1595 | FireSpreadModel.recordArrival | Float32Array: `this.fSlope[k] = fx.slope`
+- fire/spread/FireSpreadModel.ts:1596 | FireSpreadModel.recordArrival | Float32Array: `this.fTerrain[k] = fx.terrain`
+- fire/spread/FireSpreadModel.ts:1599 | FireSpreadModel.recordArrival | Float32Array: `this.fShare[k] = fws`
+- fire/spread/FireSpreadModel.ts:1601 | FireSpreadModel.recordArrival | Uint8Array: `f.driver[k] = driver`
+- fire/spread/FireSpreadModel.ts:1615 | FireSpreadModel.recordArrival | Uint8Array: `f.driver[k] = attributeDriver(att, this.P.attribution)`
+- fire/spread/FireSpreadModel.ts:1618 | FireSpreadModel.recordArrival | Uint8Array: `this.cValid[k] = this.isValidated( this.kValid[k]!, this.pThetaE[k]!, (this.pFlags[k]! & FLAG_CAPPED) !== 0, t`
+- fire/spread/FireSpreadModel.ts:1622 | FireSpreadModel.recordArrival | Int32Array: `this.active[this.activeCount++] = k`
+- fire/spread/FireSpreadModel.ts:1623 | FireSpreadModel.recordArrival | Float32Array: `this.crownOut[k] = IO.crownShare`
+- fire/spread/FireSpreadModel.ts:1666 | FireSpreadModel.propagateOrigin | Float64Array: `this.originEst[q] = o`
+- fire/spread/FireSpreadModel.ts:1667 | FireSpreadModel.propagateOrigin | Uint8Array: `this.ls.touched[q] = 1`
+- fire/spread/FireSpreadModel.ts:1692 | FireSpreadModel.igniteGeometry | Float32Array: `f.arrivalTime[k] = time`
+- fire/spread/FireSpreadModel.ts:1693 | FireSpreadModel.igniteGeometry | Uint8Array: `f.burnState[k] = BurnState.Burning`
+- fire/spread/FireSpreadModel.ts:1694 | FireSpreadModel.igniteGeometry | Float64Array: `this.origin[k] = org`
+- fire/spread/FireSpreadModel.ts:1697 | FireSpreadModel.igniteGeometry | Float64Array: `this.originEst[k] = org`
+- fire/spread/FireSpreadModel.ts:1702 | FireSpreadModel.igniteGeometry | Uint8Array: `ls.touched[this.pendingIgn[a]!] = 1`
+- fire/spread/FireSpreadModel.ts:1755 | FireSpreadModel.updateHeat | Float32Array: `this.heat[k] = q`
+- fire/spread/FireSpreadModel.ts:1757 | FireSpreadModel.updateHeat | Uint8Array: `f.burnState[k] = t1 - tA < HP.burningTau * tau ? BurnState.Burning : BurnState.BurntOut`
+- fire/spread/FireSpreadModel.ts:1760 | FireSpreadModel.updateHeat | Float32Array: `this.crownOut[k] = 0`
+- fire/spread/FireSpreadModel.ts:1764 | FireSpreadModel.updateHeat | Int32Array: `this.active[w++] = k`
+- fire/spread/FireSpreadModel.ts:1779 | FireSpreadModel.updateFront | Uint8Array: `this.isFront[k] = 0`
+- fire/spread/FireSpreadModel.ts:1780 | FireSpreadModel.updateFront | Float32Array: `this.nc[k] = 0`
+- fire/spread/FireSpreadModel.ts:1798 | FireSpreadModel.updateFront | Int32Array: `this.frontBuf[nf++] = k`
+- fire/spread/FireSpreadModel.ts:1799 | FireSpreadModel.updateFront | Uint8Array: `this.isFront[k] = 1`
+- fire/spread/FireSpreadModel.ts:1807 | FireSpreadModel.updateFront | Float32Array: `this.frontNX[k] = cn > 0 ? cx / cn : ls.sEx[k]!`
+- fire/spread/FireSpreadModel.ts:1808 | FireSpreadModel.updateFront | Float32Array: `this.frontNY[k] = cn > 0 ? cy / cn : ls.sEy[k]!`
+- fire/spread/FireSpreadModel.ts:1820 | FireSpreadModel.updateFront | Float32Array: `this.nc[k] = byramConvectiveNumber(f.intensity[k]!, along, f.ros[k]!, rho, tc, this.P.nc)`
+- fire/spread/FireSpreadModel.ts:1839 | FireSpreadModel.updateFront | Int32Array: `this.burnFrontBuf[nb++] = k`
+- fire/spread/FireSpreadModel.ts:1867 | FireSpreadModel.decayJunctions | Float32Array: `jun[k] = 1`
+- fire/spread/FireSpreadModel.ts:1868 | FireSpreadModel.decayJunctions | Uint8Array: `this.inJun[k] = 0`
+- fire/spread/FireSpreadModel.ts:1870 | FireSpreadModel.decayJunctions | Float32Array: `jun[k] = v`
+- fire/spread/FireSpreadModel.ts:1871 | FireSpreadModel.decayJunctions | Int32Array: `this.junList[w++] = k`
+- fire/spread/FireSpreadModel.ts:1907 | FireSpreadModel.detectJunctions | Float32Array: `bx[m] = fx`
+- fire/spread/FireSpreadModel.ts:1908 | FireSpreadModel.detectJunctions | Float32Array: `by[m] = fy`
+- fire/spread/FireSpreadModel.ts:1925 | FireSpreadModel.detectJunctions | Float32Array: `ls.sJun[k] = boost`
+- fire/spread/FireSpreadModel.ts:1927 | FireSpreadModel.detectJunctions | Uint8Array: `this.inJun[k] = 1`
+- fire/spread/FireSpreadModel.ts:1928 | FireSpreadModel.detectJunctions | Int32Array: `this.junList[this.junCount++] = k`
+- fire/spread/fuelCache.ts:100 | FuelCache.refresh | Uint8Array: `this.type[k] = p.type`
+- fire/spread/fuelCache.ts:101 | FuelCache.refresh | Uint8Array: `this.fuelClass[k] = p.fuelClass`
+- fire/spread/fuelCache.ts:102 | FuelCache.refresh | Uint8Array: `this.family[k] = codeOf(FAMILIES, p.family)`
+- fire/spread/fuelCache.ts:103 | FuelCache.refresh | Uint8Array: `this.moistureFamily[k] = codeOf(MOISTURE_FAMILIES, p.moistureFamily)`
+- fire/spread/fuelCache.ts:104 | FuelCache.refresh | Uint8Array: `this.grassState[k] = codeOf(GRASS_STATES, p.grassState)`
+- fire/spread/fuelCache.ts:105 | FuelCache.refresh | Uint8Array: `this.barkClass[k] = codeOf(BARK_CLASSES, p.barkClass)`
+- fire/spread/fuelCache.ts:106 | FuelCache.refresh | Uint8Array: `this.bits[k] = (p.underWoodland ? 1 : 0) | (p.wetSubmodel ? 2 : 0) | (p.spotting ? 4 : 0)`
+- fire/spread/fuelCache.ts:107 | FuelCache.refresh | Uint16Array: `this.flags[k] = p.flags`
+- fire/spread/fuelCache.ts:108 | FuelCache.refresh | Float32Array: `this.surfaceLoad[k] = p.surfaceLoad`
+- fire/spread/fuelCache.ts:109 | FuelCache.refresh | Float32Array: `this.nearSurfaceLoad[k] = p.nearSurfaceLoad`
+- fire/spread/fuelCache.ts:110 | FuelCache.refresh | Float32Array: `this.elevatedLoad[k] = p.elevatedLoad`
+- fire/spread/fuelCache.ts:111 | FuelCache.refresh | Float32Array: `this.canopyLoad[k] = p.canopyLoad`
+- fire/spread/fuelCache.ts:112 | FuelCache.refresh | Float32Array: `this.fhsS[k] = p.fhsS`
+- fire/spread/fuelCache.ts:113 | FuelCache.refresh | Float32Array: `this.fhsEl[k] = p.fhsEl`
+- fire/spread/fuelCache.ts:114 | FuelCache.refresh | Float32Array: `this.barkHazard[k] = p.barkHazard`
+- fire/spread/fuelCache.ts:115 | FuelCache.refresh | Float32Array: `this.hEl[k] = p.hEl`
+- fire/spread/fuelCache.ts:116 | FuelCache.refresh | Float32Array: `this.hO[k] = p.hO`
+- fire/spread/fuelCache.ts:117 | FuelCache.refresh | Float32Array: `this.hOEff[k] = p.hOEff`
+- fire/spread/fuelCache.ts:118 | FuelCache.refresh | Float32Array: `this.cover[k] = p.cover`
+- fire/spread/fuelCache.ts:119 | FuelCache.refresh | Float32Array: `this.wrf[k] = p.wrf`
+- fire/spread/fuelCache.ts:120 | FuelCache.refresh | Float32Array: `this.grassWaf[k] = p.grassWaf`
+- fire/spread/fuelCache.ts:121 | FuelCache.refresh | Float32Array: `this.curing[k] = p.curing`
+- fire/spread/fuelCache.ts:122 | FuelCache.refresh | Float32Array: `this.tauF[k] = p.tauF`
+- fire/spread/fuelCache.ts:123 | FuelCache.refresh | Float32Array: `this.receptivity[k] = p.receptivity`
+- fire/spread/fuelCache.ts:143 | FuelCache.refresh | Uint8Array: `this.spreadable[k] = ok && p.type !== FuelType.NonFuel && p.type !== FuelType.Water ? 1 : 0`
+- fire/spread/geometry.ts:98 | DistanceTransform.compute | Float64Array: `f[j] = s ? 0 : BIG`
+- fire/spread/geometry.ts:101 | DistanceTransform.compute | Float64Array: `tmp[j * nx + i] = d[j]!`
+- fire/spread/geometry.ts:110 | DistanceTransform.compute | Float64Array: `f[i] = tmp[row + i]!`
+- fire/spread/geometry.ts:114 | DistanceTransform.compute | Float32Array: `out[row + i] = q >= BIG * 0.5 ? Infinity : Math.sqrt(q) * cellSize`
+- fire/spread/geometry.ts:127 | DistanceTransform.dt1 | Float64Array: `d[q] = BIG`
+- fire/spread/geometry.ts:130 | DistanceTransform.dt1 | Int32Array: `v[0] = q0`
+- fire/spread/geometry.ts:131 | DistanceTransform.dt1 | Float64Array: `z[0] = -Infinity`
+- fire/spread/geometry.ts:132 | DistanceTransform.dt1 | Float64Array: `z[1] = Infinity`
+- fire/spread/geometry.ts:145 | DistanceTransform.dt1 | Int32Array: `v[0] = q`
+- fire/spread/geometry.ts:146 | DistanceTransform.dt1 | Float64Array: `z[0] = -Infinity`
+- fire/spread/geometry.ts:147 | DistanceTransform.dt1 | Float64Array: `z[1] = Infinity`
+- fire/spread/geometry.ts:151 | DistanceTransform.dt1 | Int32Array: `v[k] = q`
+- fire/spread/geometry.ts:152 | DistanceTransform.dt1 | Float64Array: `z[k] = s`
+- fire/spread/geometry.ts:153 | DistanceTransform.dt1 | Float64Array: `z[k + 1] = Infinity`
+- fire/spread/geometry.ts:159 | DistanceTransform.dt1 | Float64Array: `d[q] = (q - vk) * (q - vk) + f[vk]!`
+- fire/spread/geometry.ts:179 | labelComponents4 | Int32Array: `stack[sp++] = seed`
+- fire/spread/geometry.ts:180 | labelComponents4 | Int32Array: `labels[seed] = count`
+- fire/spread/geometry.ts:186 | labelComponents4 | Int32Array: `labels[k - 1] = count`
+- fire/spread/geometry.ts:187 | labelComponents4 | Int32Array: `stack[sp++] = k - 1`
+- fire/spread/geometry.ts:190 | labelComponents4 | Int32Array: `labels[k + 1] = count`
+- fire/spread/geometry.ts:191 | labelComponents4 | Int32Array: `stack[sp++] = k + 1`
+- fire/spread/geometry.ts:194 | labelComponents4 | Int32Array: `labels[k - nx] = count`
+- fire/spread/geometry.ts:195 | labelComponents4 | Int32Array: `stack[sp++] = k - nx`
+- fire/spread/geometry.ts:198 | labelComponents4 | Int32Array: `labels[k + nx] = count`
+- fire/spread/geometry.ts:199 | labelComponents4 | Int32Array: `stack[sp++] = k + nx`
+- fire/spread/levelSet.ts:132 | LevelSetCore.constructor | Uint8Array: `this.edge[j * this.nx + i] = 1`
+- fire/spread/levelSet.ts:167 | LevelSetCore.lowerPhi | Float64Array: `this.phi[k] = p`
+- fire/spread/levelSet.ts:168 | LevelSetCore.lowerPhi | Float64Array: `this.phiS[k] = p`
+- fire/spread/levelSet.ts:175 | LevelSetCore.lowerPhi | Uint8Array: `this.inBand[k] = 2`
+- fire/spread/levelSet.ts:176 | LevelSetCore.lowerPhi | Int32Array: `this.pendingInsert[this.pendingCount++] = k`
+- fire/spread/levelSet.ts:186 | LevelSetCore.commitInserts | Int32Array: `this.band[this.bandCount++] = k`
+- fire/spread/levelSet.ts:187 | LevelSetCore.commitInserts | Uint8Array: `this.inBand[k] = 1`
+- fire/spread/levelSet.ts:188 | LevelSetCore.commitInserts | Uint8Array: `this.touched[k] = 1`
+- fire/spread/levelSet.ts:239 | LevelSetCore.evaluate | Float64Array: `out[a] = -sb`
+- fire/spread/levelSet.ts:241 | LevelSetCore.evaluate | Float32Array: `r1[a] = 0`
+- fire/spread/levelSet.ts:242 | LevelSetCore.evaluate | Float32Array: `n1x[a] = sEx[k]!`
+- fire/spread/levelSet.ts:243 | LevelSetCore.evaluate | Float32Array: `n1y[a] = sEy[k]!`
+- fire/spread/levelSet.ts:281 | LevelSetCore.evaluate | Float64Array: `out[a] = 0`
+- fire/spread/levelSet.ts:283 | LevelSetCore.evaluate | Float32Array: `r1[a] = 0`
+- fire/spread/levelSet.ts:284 | LevelSetCore.evaluate | Float32Array: `n1x[a] = sEx[k]!`
+- fire/spread/levelSet.ts:285 | LevelSetCore.evaluate | Float32Array: `n1y[a] = sEy[k]!`
+- fire/spread/levelSet.ts:334 | LevelSetCore.evaluate | Float64Array: `out[a] = -R`
+- fire/spread/levelSet.ts:336 | LevelSetCore.evaluate | Float32Array: `r1[a] = R`
+- fire/spread/levelSet.ts:337 | LevelSetCore.evaluate | Float32Array: `n1x[a] = nxv`
+- fire/spread/levelSet.ts:338 | LevelSetCore.evaluate | Float32Array: `n1y[a] = nyv`
+- fire/spread/levelSet.ts:358 | LevelSetCore.evaluate | Float64Array: `out[a] = -R * Math.sqrt(g2) + (lap < 0 ? nuH * R * lap : 0)`
+- fire/spread/levelSet.ts:360 | LevelSetCore.evaluate | Float32Array: `r1[a] = R`
+- fire/spread/levelSet.ts:361 | LevelSetCore.evaluate | Float32Array: `n1x[a] = nxv`
+- fire/spread/levelSet.ts:362 | LevelSetCore.evaluate | Float32Array: `n1y[a] = nyv`
+- fire/spread/levelSet.ts:420 | LevelSetCore.apply | Float64Array: `phiS[k] = phi[k]! + dt * tend1[a]!`
+- fire/spread/levelSet.ts:429 | LevelSetCore.apply | Float64Array: `phi[k] = pn`
+- fire/spread/levelSet.ts:430 | LevelSetCore.apply | Float64Array: `phiS[k] = pn`
+- fire/spread/levelSet.ts:432 | LevelSetCore.apply | Int32Array: `this.arrA[nArr] = a`
+- fire/spread/levelSet.ts:433 | LevelSetCore.apply | Float64Array: `this.arrP0[nArr] = p0`
+- fire/spread/levelSet.ts:434 | LevelSetCore.apply | Float64Array: `this.arrPn[nArr] = pn`
+- fire/spread/levelSet.ts:443 | LevelSetCore.apply | Float32Array: `this.sBurnt[band[a]!] = this.r1[a]!`
+- fire/spread/levelSet.ts:475 | LevelSetCore.reinit | Uint8Array: `inBand[k] = 0`
+- fire/spread/levelSet.ts:495 | LevelSetCore.reinit | Uint8Array: `fixed[k] = 1`
+- fire/spread/levelSet.ts:496 | LevelSetCore.reinit | Float32Array: `dist[k] = neg ? -p : p`
+- fire/spread/levelSet.ts:498 | LevelSetCore.reinit | Uint8Array: `fixed[k] = 0`
+- fire/spread/levelSet.ts:499 | LevelSetCore.reinit | Float32Array: `dist[k] = far`
+- fire/spread/levelSet.ts:529 | LevelSetCore.reinit | Float32Array: `dist[k] = dn`
+- fire/spread/levelSet.ts:562 | LevelSetCore.reinit | Int32Array: `band[nb++] = k`
+- fire/spread/levelSet.ts:563 | LevelSetCore.reinit | Uint8Array: `inBand[k] = 1`
+- fire/spread/levelSet.ts:564 | LevelSetCore.reinit | Uint8Array: `this.touched[k] = 1`
+- fire/spread/levelSet.ts:566 | LevelSetCore.reinit | Float64Array: `phi[k] = v`
+- fire/spread/levelSet.ts:567 | LevelSetCore.reinit | Float64Array: `phiS[k] = v`
+- fire/terrainFeatures.ts:144 | MinHeap.push | Float64Array: `keys[i] = keys[p]!`
+- fire/terrainFeatures.ts:145 | MinHeap.push | Int32Array: `vals[i] = vals[p]!`
+- fire/terrainFeatures.ts:148 | MinHeap.push | Float64Array: `keys[i] = key`
+- fire/terrainFeatures.ts:149 | MinHeap.push | Int32Array: `vals[i] = v`
+- fire/terrainFeatures.ts:164 | MinHeap.pop | Float64Array: `keys[i] = keys[c]!`
+- fire/terrainFeatures.ts:165 | MinHeap.pop | Int32Array: `vals[i] = vals[c]!`
+- fire/terrainFeatures.ts:168 | MinHeap.pop | Float64Array: `keys[i] = lk`
+- fire/terrainFeatures.ts:169 | MinHeap.pop | Int32Array: `vals[i] = lv`
+- fire/terrainFeatures.ts:203 | priorityFloodFill | Float64Array: `zf[k] = Number.isFinite(z[k]!) ? z[k]! : -1e9`
+- fire/terrainFeatures.ts:208 | priorityFloodFill | Uint8Array: `closed[k] = 1`
+- fire/terrainFeatures.ts:217 | priorityFloodFill | Uint8Array: `closed[k] = 1`
+- fire/terrainFeatures.ts:233 | priorityFloodFill | Uint8Array: `closed[k] = 1`
+- fire/terrainFeatures.ts:235 | priorityFloodFill | Float64Array: `zf[k] = zc + eps`
+- fire/terrainFeatures.ts:236 | priorityFloodFill | Int32Array: `pit[pitTail++] = k`
+- fire/terrainFeatures.ts:264 | d8Receivers | Int32Array: `recv[c] = best`
+- fire/terrainFeatures.ts:278 | flowAccumulation | Int32Array: `indeg[recv[k]!]++`
+- fire/terrainFeatures.ts:285 | flowAccumulation | Int32Array: `order[tail++] = k`
+- fire/terrainFeatures.ts:290 | flowAccumulation | Float64Array: `acc[r] += acc[c]!`
+- fire/terrainFeatures.ts:292 | flowAccumulation | Float64Array: `bestAcc[r] = acc[c]!`
+- fire/terrainFeatures.ts:293 | flowAccumulation | Int32Array: `mainDonor[r] = c`
+- fire/terrainFeatures.ts:295 | flowAccumulation | Int32Array: `--indeg[r]`
+- fire/terrainFeatures.ts:295 | flowAccumulation | Int32Array: `order[tail++] = r`
+- fire/terrainFeatures.ts:325 | ascentPointers | Int32Array: `up[c] = best`
+- fire/terrainFeatures.ts:371 | pathEnds | Int32Array: `end[c] = c`
+- fire/terrainFeatures.ts:372 | pathEnds | Float32Array: `dist[c] = 0`
+- fire/terrainFeatures.ts:375 | pathEnds | Int32Array: `stack[top++] = c`
+- fire/terrainFeatures.ts:381 | pathEnds | Int32Array: `end[k] = end[nk]!`
+- fire/terrainFeatures.ts:382 | pathEnds | Float32Array: `dist[k] = dist[nk]! + stepDist(nx, h, k, nk)`
+- fire/terrainFeatures.ts:404 | hornSlope | Float32Array: `out[j * nx + i] = Math.atan(Math.sqrt(gx * gx + gy * gy)) * RAD`
+- fire/terrainFeatures.ts:434 | slopeAtScale | Float32Array: `z30[j * nx + i] = s / (m * m)`
+- fire/terrainFeatures.ts:439 | slopeAtScale | Float32Array: `out[j * g.nx + i] = sampleBilinear(g30, s30, g.x0 + i * g.cellSize, g.y0 + j * g.cellSize)`
+- fire/terrainFeatures.ts:459 | subCellSlopeStats | Int32Array: `owner[j * hg.nx + i] = k`
+- fire/terrainFeatures.ts:460 | subCellSlopeStats | Int32Array: `count[k + 1]++`
+- fire/terrainFeatures.ts:463 | subCellSlopeStats | Int32Array: `count[k + 1] += count[k]!`
+- fire/terrainFeatures.ts:468 | subCellSlopeStats | Float32Array: `vals[fill[k]!++] = hs[p]!`
+- fire/terrainFeatures.ts:482 | subCellSlopeStats | Float32Array: `slopeP90Deg[k] = seg[lo]! + (seg[hi]! - seg[lo]!) * (pos - lo)`
+- fire/terrainFeatures.ts:483 | subCellSlopeStats | Float32Array: `cliffFraction[k] = steep / seg.length`
+- fire/terrainFeatures.ts:596 | TerrainFeaturesImpl.search | Float32Array: `this.cD![k] = d`
+- fire/terrainFeatures.ts:609 | TerrainFeaturesImpl.crestInto | Int32Array: `cK[k] = kc`
+- fire/terrainFeatures.ts:612 | TerrainFeaturesImpl.crestInto | Float32Array: `this.cZ![k] = zc`
+- fire/terrainFeatures.ts:613 | TerrainFeaturesImpl.crestInto | Float32Array: `this.cRel![k] = zc - (this.z[k]! - this.hav[k]!)`
+- fire/terrainFeatures.ts:664 | computeTerrainFeatures | Uint8Array: `drainage[k] = flowAcc[k]! >= P.drainageMinAreaM2 ? 1 : 0`
+- fire/terrainFeatures.ts:675 | computeTerrainFeatures | Float32Array: `valleyDrop[k] = vd > 0 ? vd : 0`
+- fire/terrainFeatures.ts:677 | computeTerrainFeatures | Float32Array: `crestRise[k] = cr > 0 ? cr : 0`
+- fire/terrainFeatures.ts:678 | computeTerrainFeatures | Float32Array: `crestDist[k] = up.dist[k]!`
+- fire/terrainFeatures.ts:700 | computeTerrainFeatures | Float32Array: `axisOwn[k] = ax`
+- fire/terrainFeatures.ts:737 | computeTerrainFeatures | Float32Array: `tAxis[k] = clamp01((dMin - tp.slopeLoDeg) / tp.slopeSpanDeg) * clamp01((hG - tp.riseLoM) / tp.riseSpanM)`
+- fire/terrainFeatures.ts:760 | computeTerrainFeatures | Float32Array: `trench[c] = t`
+- fire/terrainFeatures.ts:761 | computeTerrainFeatures | Int32Array: `owner[c] = k`
+- fire/terrainFeatures.ts:764 | computeTerrainFeatures | Float32Array: `nearest[c] = d`
+- fire/terrainFeatures.ts:765 | computeTerrainFeatures | Float32Array: `gullyAxis[c] = axisOwn[k]!`
+- fire/terrainFeatures.ts:772 | computeTerrainFeatures | Float32Array: `gullyAxis[k] = axisOwn[k]!`
+- fire/terrainFeatures.ts:774 | computeTerrainFeatures | Float32Array: `trench[k] = tAxis[k]!`
+- fire/terrainFeatures.ts:775 | computeTerrainFeatures | Int32Array: `owner[k] = k`
+- fire/terrainFeatures.ts:788 | computeTerrainFeatures | Int32Array: `queue[tail++] = s`
+- fire/terrainFeatures.ts:789 | computeTerrainFeatures | Int32Array: `gullyBase[s] = -2`
+- fire/terrainFeatures.ts:804 | computeTerrainFeatures | Int32Array: `gullyBase[q] = -2`
+- fire/terrainFeatures.ts:805 | computeTerrainFeatures | Int32Array: `queue[tail++] = q`
+- fire/terrainFeatures.ts:809 | computeTerrainFeatures | Int32Array: `gullyBase[c] = low`
+- fire/terrainFeatures.ts:814 | computeTerrainFeatures | Int32Array: `gullyBase[k] = gullyBase[o]!`
+- fire/terrainFeatures.ts:834 | computeTerrainFeatures | Uint8Array: `ridge[k] = L === Landform.Ridge || L === Landform.Peak || L === Landform.Spur || rp >= P.ridge.minRelPos ? 1 :`
+- fire/terrainFeatures.ts:836 | computeTerrainFeatures | Uint8Array: `saddle[k] = L === Landform.Saddle || (det < detMax && terrain.slopeDeg[k]! <= P.saddle.maxSlopeDeg && rp >= P.`
+- fire/terrainFeatures.ts:837 | computeTerrainFeatures | Uint8Array: `cliff[k] = L === Landform.Cliff || (cliffFrac !== undefined && cliffFrac[k]! >= P.cliff.minFraction) || (p90 !`
+- fire/terrainFeatures.ts:878 | computeTerrainFeatures | Uint8Array: `narrowValley[k] = 1`
+- fire/terrainFeatures.ts:884 | computeTerrainFeatures | Uint8Array: `narrowValley[cj * nx + ci] = 1`
+- fuel/moisture/fastMath.ts:29 | <module> | Float64Array: `ESAT[i] = esat(t)`
+- fuel/moisture/fastMath.ts:30 | <module> | Float64Array: `RATE_T[i] = 0.0579 * Math.exp(0.0365 * t)`
+- fuel/moisture/fastMath.ts:52 | <module> | Float64Array: `ED_A[i] = 0.942 * h ** 0.679 + 11 * Math.exp((h - 100) / 10)`
+- fuel/moisture/fastMath.ts:53 | <module> | Float64Array: `ED_B[i] = 0.18 * (1 - Math.exp(-0.115 * h))`
+- fuel/moisture/fastMath.ts:55 | <module> | Float64Array: `K_A[i] = 0.424 * (1 - r ** 1.7)`
+- fuel/moisture/fastMath.ts:56 | <module> | Float64Array: `K_B[i] = 0.0694 * (1 - r ** 8)`
+- fuel/moisture/fastMath.ts:67 | <module> | Float64Array: `edk[4 * i] = ED_A[i]!`
+- fuel/moisture/fastMath.ts:68 | <module> | Float64Array: `edk[4 * i + 1] = ED_B[i]!`
+- fuel/moisture/fastMath.ts:69 | <module> | Float64Array: `edk[4 * i + 2] = K_A[i]!`
+- fuel/moisture/fastMath.ts:70 | <module> | Float64Array: `edk[4 * i + 3] = K_B[i]!`
+- fuel/moisture/fastMath.ts:100 | <module> | Float64Array: `EXPNEG[i] = Math.exp(-i / X_INV)`
+- fuel/moisture/fastMath.ts:110 | fillExpTable | Float64Array: `out[j] = Math.exp(a * j * step)`
+- fuel/moisture/model.ts:318 | MoistureModel.resolveCell | Uint8Array: `c.fam[k] = fam`
+- fuel/moisture/model.ts:319 | MoistureModel.resolveCell | Float32Array: `c.cover[k] = cover`
+- fuel/moisture/model.ts:320 | MoistureModel.resolveCell | Float32Array: `c.lai[k] = lai`
+- fuel/moisture/model.ts:321 | MoistureModel.resolveCell | Float32Array: `c.cRef[k] = cRef`
+- fuel/moisture/model.ts:327 | MoistureModel.resolveCell | Float32Array: `c.laiRef[k] = cType > 1e-3 ? (laiType * cRef) / cType : laiType`
+- fuel/moisture/model.ts:328 | MoistureModel.resolveCell | Float32Array: `c.wrf[k] = p.wrf > 0 ? p.wrf : 1`
+- fuel/moisture/model.ts:329 | MoistureModel.resolveCell | Float32Array: `c.uFac[k] = 1 / (P.uFDivisor * c.wrf[k]!)`
+- fuel/moisture/model.ts:330 | MoistureModel.resolveCell | Float32Array: `c.tauD[k] = diffuseTransmittance(cover, lai, P)`
+- fuel/moisture/model.ts:331 | MoistureModel.resolveCell | Float32Array: `c.tauDRef[k] = diffuseTransmittance(cRef, c.laiRef[k]!, P)`
+- fuel/moisture/model.ts:332 | MoistureModel.resolveCell | Float32Array: `c.sC[k] = interceptionCapacity(cover, P)`
+- fuel/moisture/model.ts:335 | MoistureModel.resolveCell | Float32Array: `c.gully[k] = vesta ? gullyOffsetBase(this.derived.tpiSmall[k]!, lf === Landform.Gully || lf === Landform.Valle`
+- fuel/moisture/model.ts:336 | MoistureModel.resolveCell | Float32Array: `c.offset[k] = Number.isFinite(p.moistureOffset) ? p.moistureOffset : 0`
+- fuel/moisture/model.ts:337 | MoistureModel.resolveCell | Float32Array: `this.faBlend[k] = fam === MFam.WetForest ? faBlendWeight(this.derived.tpiSmall[k]!, this.terrain.aspectDeg[k]!`
+- fuel/moisture/model.ts:343 | set | Float32Array: `this.availability[k] = cellAvailability(this.moistureFamilies[k]!, this.df, this.kbdi, this.cells.wrf[k]!, thi`
+- fuel/moisture/model.ts:500 | MoistureModel.advance | Float32Array: `airT[k] = t`
+- fuel/moisture/model.ts:501 | MoistureModel.advance | Float32Array: `airRH[k] = rh`
+- fuel/moisture/model.ts:521 | MoistureModel.advance | Float32Array: `fuelTemp[k] = tF`
+- fuel/moisture/model.ts:524 | MoistureModel.advance | Float32Array: `field[k] = 0`
+- fuel/moisture/model.ts:525 | MoistureModel.advance | Float32Array: `afdrs[k] = 0`
+- fuel/moisture/model.ts:526 | MoistureModel.advance | Float32Array: `anomaly[k] = 0`
+- fuel/moisture/model.ts:598 | MoistureModel.advance | Float32Array: `mLag[k] = m`
+- fuel/moisture/model.ts:612 | MoistureModel.advance | Float32Array: `hE[k] = he`
+- fuel/moisture/model.ts:620 | MoistureModel.advance | Float32Array: `lDew[k] = ld`
+- fuel/moisture/model.ts:624 | MoistureModel.advance | Float32Array: `lDew[k] = ld`
+- fuel/moisture/model.ts:628 | MoistureModel.advance | Float32Array: `field[k] = mm < mMin ? mMin : mm > mMax ? mMax : mm`
+- fuel/moisture/model.ts:629 | MoistureModel.advance | Float32Array: `afdrs[k] = mA`
+- fuel/moisture/model.ts:630 | MoistureModel.advance | Float32Array: `anomaly[k] = a`
+- fuel/moisture/model.ts:893 | MoistureModel.buildLut | Int32Array: `keyOf[k] = id`
+- fuel/moisture/model.ts:902 | MoistureModel.buildLut | Float64Array: `acc[id * 5] += c.z[k]!`
+- fuel/moisture/model.ts:903 | MoistureModel.buildLut | Float64Array: `acc[id * 5 + 1] += c.cover[k]!`
+- fuel/moisture/model.ts:904 | MoistureModel.buildLut | Float64Array: `acc[id * 5 + 2] += c.lai[k]!`
+- fuel/moisture/model.ts:905 | MoistureModel.buildLut | Float64Array: `acc[id * 5 + 3] += c.wrf[k]!`
+- fuel/moisture/model.ts:906 | MoistureModel.buildLut | Float64Array: `acc[id * 5 + 4] += c.sC[k]!`
+- fuel/moisture/model.ts:907 | MoistureModel.buildLut | Uint8Array: `u.fam[id] = c.fam[k]!`
+- fuel/moisture/model.ts:911 | MoistureModel.buildLut | Float32Array: `u.z[id] = acc[id * 5]! * q`
+- fuel/moisture/model.ts:912 | MoistureModel.buildLut | Float32Array: `u.cover[id] = acc[id * 5 + 1]! * q`
+- fuel/moisture/model.ts:913 | MoistureModel.buildLut | Float32Array: `u.lai[id] = acc[id * 5 + 2]! * q`
+- fuel/moisture/model.ts:914 | MoistureModel.buildLut | Float32Array: `u.wrf[id] = acc[id * 5 + 3]! * q`
+- fuel/moisture/model.ts:915 | MoistureModel.buildLut | Float32Array: `u.uFac[id] = 1 / (P.uFDivisor * u.wrf[id]!)`
+- fuel/moisture/model.ts:916 | MoistureModel.buildLut | Float32Array: `u.sC[id] = acc[id * 5 + 4]! * q`
+- fuel/moisture/model.ts:917 | MoistureModel.buildLut | Float32Array: `u.hav[id] = NO_POOL`
+- fuel/moisture/model.ts:918 | MoistureModel.buildLut | Float32Array: `u.tauD[id] = diffuseTransmittance(u.cover[id]!, u.lai[id]!, P)`
+- fuel/moisture/model.ts:928 | MoistureModel.copyLutToCells | Float32Array: `c.mLag[k] = u.mLag[id]!`
+- fuel/moisture/model.ts:929 | MoistureModel.copyLutToCells | Float32Array: `c.lDew[k] = u.lDew[id]!`
+- fuel/moisture/model.ts:930 | MoistureModel.copyLutToCells | Float32Array: `c.hE[k] = u.hE[id]!`
+- sim/simulation.ts:599 | Simulation.spinUp | Float64Array: `this.spinTimes[this.spinTimed++] = ms`
+- sim/simulation.ts:1500 | Simulation.moistureCtx | Uint8Array: `bm[k] = tArr[k]! <= lim ? 1 : 0`
+- sim/simulation.ts:1526 | Simulation.u10Now | Float32Array: `u10[k] = Math.sqrt(a * a + b * b)`
+- sim/stats.ts:179 | frontRosBlocks | Float32Array: `out[q] = r`
+- terrain/analysis.ts:173 | padOdd | Float32Array: `out[o + i] = f[s + i]!`
+- terrain/analysis.ts:178 | padOdd | Float32Array: `out[o - t] = 2 * left - f[s + tl]!`
+- terrain/analysis.ts:179 | padOdd | Float32Array: `out[o + nx - 1 + t] = 2 * right - f[s + nx - 1 - tl]!`
+- terrain/analysis.ts:191 | padOdd | Float32Array: `out[ob + c] = 2 * out[bottom + c]! - out[rb + c]!`
+- terrain/analysis.ts:192 | padOdd | Float32Array: `out[ot + c] = 2 * out[top + c]! - out[rt + c]!`
+- terrain/analysis.ts:223 | pass | Int32Array: `dqMin[t0++] = next`
+- terrain/analysis.ts:225 | pass | Int32Array: `dqMax[t1++] = next`
+- terrain/analysis.ts:231 | pass | Float32Array: `dMin[off + i * stride] = src[off + dqMin[h0]! * stride]!`
+- terrain/analysis.ts:232 | pass | Float32Array: `dMax[off + i * stride] = src[off + dqMax[h1]! * stride]!`
+- terrain/analysis.ts:267 | sanitiseElevation | Uint8Array: `state[k] = 1`
+- terrain/analysis.ts:285 | sanitiseElevation | Uint8Array: `state[k] = 2`
+- terrain/analysis.ts:286 | sanitiseElevation | Int32Array: `ring[len++] = k`
+- terrain/analysis.ts:310 | sanitiseElevation | Float32Array: `vals[q] = s / c`
+- terrain/analysis.ts:313 | sanitiseElevation | Float32Array: `out[ring[q]!] = vals[q]!`
+- terrain/analysis.ts:314 | sanitiseElevation | Uint8Array: `state[ring[q]!] = 1`
+- terrain/analysis.ts:330 | sanitiseElevation | Uint8Array: `state[kk] = 2`
+- terrain/analysis.ts:331 | sanitiseElevation | Int32Array: `next[nl++] = kk`
+- terrain/analysis.ts:346 | sanitiseElevation | Int32Array: `holes[nh++] = k`
+- terrain/analysis.ts:362 | sanitiseElevation | Float32Array: `out[k] = out[k]! + d`
+- terrain/analysis.ts:468 | buildTerrain | Float32Array: `dzdx[k] = gx`
+- terrain/analysis.ts:469 | buildTerrain | Float32Array: `dzdy[k] = gy`
+- terrain/analysis.ts:471 | buildTerrain | Float32Array: `slopeDeg[k] = sl`
+- terrain/analysis.ts:472 | buildTerrain | Float32Array: `aspectDeg[k] = NaN`
+- terrain/analysis.ts:479 | buildTerrain | Float32Array: `aspectDeg[k] = af >= 360 ? 0 : af`
+- terrain/analysis.ts:481 | buildTerrain | Float32Array: `tpi[k] = ze - meanL[p]!`
+- terrain/analysis.ts:482 | buildTerrain | Float32Array: `tpiSmall[k] = ze - meanS[p]!`
+- terrain/analysis.ts:489 | buildTerrain | Float32Array: `hxx[k] = sxx`
+- terrain/analysis.ts:490 | buildTerrain | Float32Array: `hyy[k] = syy`
+- terrain/analysis.ts:491 | buildTerrain | Float32Array: `hxy[k] = sxy`
+- terrain/analysis.ts:500 | buildTerrain | Float32Array: `profileCurvature[k] = g2 > 1e-10 ? -zss : 0`
+- terrain/analysis.ts:501 | buildTerrain | Float32Array: `planCurvature[k] = g2 > 1e-10 ? -ztt : 0`
+- terrain/analysis.ts:503 | buildTerrain | Float32Array: `curvature[k] = -(ztt + beta * zss)`
+- terrain/analysis.ts:507 | buildTerrain | Float32Array: `cxx[k] = (smoothC[p + 1]! - 2 * c0 + smoothC[p - 1]!) * invH2`
+- terrain/analysis.ts:508 | buildTerrain | Float32Array: `cyy[k] = (smoothC[p + pw]! - 2 * c0 + smoothC[p - pw]!) * invH2`
+- terrain/analysis.ts:509 | buildTerrain | Float32Array: `cxy[k] = (smoothC[p + pw + 1]! - smoothC[p + pw - 1]! - smoothC[p - pw + 1]! + smoothC[p - pw - 1]!) * inv4H2`
+- terrain/analysis.ts:510 | buildTerrain | Float32Array: `cgx[k] = (smoothC[p + 1]! - smoothC[p - 1]!) * inv2h`
+- terrain/analysis.ts:511 | buildTerrain | Float32Array: `cgy[k] = (smoothC[p + pw]! - smoothC[p - pw]!) * inv2h`
+- terrain/analysis.ts:522 | buildTerrain | Float32Array: `localRelief[k] = range`
+- terrain/analysis.ts:523 | buildTerrain | Float32Array: `heightAboveValley[k] = z[k]! - mm.min[k]!`
+- terrain/analysis.ts:524 | buildTerrain | Float32Array: `relPos[k] = range > 1 ? (z[k]! - mm.min[k]!) / range : 0.5`
+- terrain/analysis.ts:602 | classifyLandforms | Uint8Array: `out[k] = Landform.Cliff`
+- terrain/analysis.ts:628 | classifyLandforms | Uint8Array: `out[k] = isPeak ? Landform.Peak : Landform.Saddle`
+- terrain/analysis.ts:647 | classifyLandforms | Uint8Array: `out[k] = lf`
+- terrain/solar.ts:284 | forEachDigitalLine | Int32Array: `off[a] = o`
+- terrain/solar.ts:285 | forEachDigitalLine | Float64Array: `frac[a] = (exact - o) * h`
+- terrain/solar.ts:296 | forEachDigitalLine | Int32Array: `buf[len] = rowMajor ? a * nx + b : b * nx + a`
+- terrain/solar.ts:297 | forEachDigitalLine | Float64Array: `shift[len] = frac[a]!`
+- terrain/solar.ts:372 | castShadows | Float32Array: `out[k] = 0`
+- terrain/solar.ts:377 | castShadows | Float32Array: `out[k] = f <= 0 ? 0 : f >= 1 ? 1 : f`
+- terrain/solar.ts:411 | skyViewFactor | Float32Array: `cosS[k] = 1 / Math.sqrt(1 + dzdx[k]! * dzdx[k]! + dzdy[k]! * dzdy[k]!)`
+- terrain/solar.ts:428 | skyViewFactor | Float64Array: `pos[t] = (x0 + (k % nx) * h + ex) * ux + (y0 + ((k / nx) | 0) * h + ey) * uy`
+- terrain/solar.ts:429 | skyViewFactor | Float64Array: `zl[t] = z[k]! + dzdx[k]! * ex + dzdy[k]! * ey`
+- terrain/solar.ts:452 | skyViewFactor | Int32Array: `stack[top++] = t`
+- terrain/solar.ts:456 | skyViewFactor | Float32Array: `acc[k] += cosS[k]! * (c2 - gu * (HALF_PI - Math.atan(tanH) - tanH * c2))`
+- terrain/solar.ts:463 | skyViewFactor | Float32Array: `acc[k] = v < 0 ? 0 : v > 1 ? 1 : v`
+- terrain/solar.ts:612 | insolation | Float32Array: `direct[k] = beam`
+- terrain/solar.ts:613 | insolation | Float32Array: `total[k] = beam + (cosi > 0 ? (dhiCirc * cosi * lit) / cosZ : 0) + dhiIso * v + refl * (1 - v)`
+- terrain/solar.ts:614 | insolation | Uint8Array: `shaded[k] = lit < 0.5 ? 1 : 0`
+
+## Typed-array fill / set (110)
+
+- atmosphere/atmosphere.ts:515 | Atmosphere.initialiseState | Float32Array: `this.u.set(this.bgU)`
+- atmosphere/atmosphere.ts:516 | Atmosphere.initialiseState | Float32Array: `this.v.set(this.bgV)`
+- atmosphere/atmosphere.ts:517 | Atmosphere.initialiseState | Float32Array: `this.w.set(this.bgW)`
+- atmosphere/atmosphere.ts:518 | Atmosphere.initialiseState | Float32Array: `this.th.set(this.cpT)`
+- atmosphere/atmosphere.ts:519 | Atmosphere.initialiseState | Float32Array: `this.sm.fill(0)`
+- atmosphere/atmosphere.ts:520 | Atmosphere.initialiseState | Float64Array: `this.phi.fill(0)`
+- atmosphere/atmosphere.ts:536 | Atmosphere.addFireHeat | Float64Array: `this.qfS.fill(0)`
+- atmosphere/atmosphere.ts:537 | Atmosphere.addFireHeat | Float64Array: `this.qfC.fill(0)`
+- atmosphere/atmosphere.ts:538 | Atmosphere.addFireHeat | Float64Array: `this.hC.fill(0)`
+- atmosphere/atmosphere.ts:698 | Atmosphere.step | Float64Array: `this.qfS.fill(0)`
+- atmosphere/atmosphere.ts:699 | Atmosphere.step | Float64Array: `this.qfC.fill(0)`
+- atmosphere/atmosphere.ts:930 | Atmosphere.bandMeans | Float64Array: `sum.fill(0)`
+- atmosphere/base.ts:526 | AtmosBase.setSurfaceHeating | Float64Array: `this.qhCol.fill(0)`
+- atmosphere/base.ts:718 | AtmosBase.surfaceWindForFire | Float32Array: `mfA.fill(0)`
+- atmosphere/massConsistent.ts:170 | MassConsistentSolver.firstGuess | Float32Array: `w.fill(0)`
+- atmosphere/pyrogenic.ts:80 | PyrogenicPotential.solve | Float64Array: `q.fill(0)`
+- atmosphere/pyrogenic.ts:92 | PyrogenicPotential.solve | Float64Array: `this.psi.fill(0)`
+- atmosphere/pyrogenic.ts:93 | PyrogenicPotential.solve | Float32Array: `this.up.fill(0)`
+- atmosphere/pyrogenic.ts:94 | PyrogenicPotential.solve | Float32Array: `this.vp.fill(0)`
+- atmosphere/pyrogenic.ts:111 | PyrogenicPotential.solve | Float64Array: `t.fill(0)`
+- atmosphere/pyrogenic.ts:133 | PyrogenicPotential.solve | Float64Array: `psi.fill(0)`
+- atmosphere/pyrogenic.ts:148 | PyrogenicPotential.solve | Float64Array: `t.fill(0)`
+- atmosphere/pyrogenic.ts:157 | PyrogenicPotential.solve | Float64Array: `psi.fill(0)`
+- atmosphere/solver.ts:35 | allLateralActive | Uint8Array: `new Uint8Array(g.nU).fill(1)`
+- atmosphere/solver.ts:35 | allLateralActive | Uint8Array: `new Uint8Array(g.nV).fill(1)`
+- atmosphere/solver.ts:634 | EllipticSolver.residual7 | Float32Array: `r.fill(0)`
+- atmosphere/solver.ts:662 | EllipticSolver.restrict | Float32Array: `cb.fill(0)`
+- atmosphere/solver.ts:739 | EllipticSolver.vcycle | Float32Array: `C.x.fill(0)`
+- atmosphere/solver.ts:750 | EllipticSolver.precondition | Float32Array: `L0.b.set(r)`
+- atmosphere/solver.ts:752 | EllipticSolver.precondition | Float32Array: `L0.x.fill(0)`
+- atmosphere/solver.ts:754 | EllipticSolver.precondition | Float64Array: `z.set(L0.x)`
+- atmosphere/solver.ts:760 | EllipticSolver.smoothOnly | Float32Array: `L0.b.set(r)`
+- atmosphere/solver.ts:762 | EllipticSolver.smoothOnly | Float32Array: `L0.x.fill(0)`
+- atmosphere/solver.ts:764 | EllipticSolver.smoothOnly | Float64Array: `z.set(L0.x)`
+- atmosphere/solver.ts:781 | EllipticSolver.solve | Float64Array: `phi.fill(0)`
+- atmosphere/solver.ts:826 | EllipticSolver.pcg | Float64Array: `p.set(z)`
+- embers/EmberModel.ts:329 | EmberModel.constructor | Float64Array: `new Float64Array(N_CLASSES).fill(1)`
+- embers/EmberModel.ts:329 | <module> | Float64Array: `new Float64Array(N_CLASSES).fill(1)`
+- embers/EmberModel.ts:370 | EmberModel.constructor | Float64Array: `new Float64Array(1).fill(1)`
+- embers/EmberModel.ts:370 | <module> | Float64Array: `new Float64Array(1).fill(1)`
+- embers/EmberModel.ts:433 | EmberModel.constructor | Float64Array: `new Float64Array(this.nCells).fill(-Infinity)`
+- embers/EmberModel.ts:438 | EmberModel.constructor | Int32Array: `new Int32Array(this.nxa * nya).fill(-1)`
+- embers/EmberModel.ts:540 | EmberModel.emit | Float64Array: `classSum.fill(0)`
+- embers/EmberModel.ts:987 | gi | Int32Array: `b.set(a)`
+- embers/EmberModel.ts:992 | gf | Float32Array: `b.set(a)`
+- embers/EmberModel.ts:997 | gd | Float64Array: `b.set(a)`
+- embers/EmberModel.ts:1002 | gu | Uint8Array: `b.set(a)`
+- embers/plume.ts:47 | g | Float64Array: `b.set(a)`
+- embers/plume.ts:134 | PlumeField.build | Float32Array: `this.w.fill(0, 0, size)`
+- embers/plume.ts:135 | PlumeField.build | Float32Array: `this.a.fill(0, 0, size)`
+- fire/spread/FireSpreadModel.ts:375 | FireSpreadModel.constructor | Int32Array: `new Int32Array(ns).fill(-1)`
+- fire/spread/FireSpreadModel.ts:384 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(Infinity)`
+- fire/spread/FireSpreadModel.ts:389 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/spread/FireSpreadModel.ts:410 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/spread/FireSpreadModel.ts:411 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/spread/FireSpreadModel.ts:412 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/spread/FireSpreadModel.ts:416 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:418 | FireSpreadModel.constructor | Uint8Array: `new Uint8Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:424 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:425 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:432 | FireSpreadModel.constructor | Float64Array: `new Float64Array(n).fill(Infinity)`
+- fire/spread/FireSpreadModel.ts:433 | FireSpreadModel.constructor | Float64Array: `new Float64Array(n).fill(Infinity)`
+- fire/spread/FireSpreadModel.ts:436 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:437 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:438 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:439 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:440 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:442 | FireSpreadModel.constructor | Uint8Array: `new Uint8Array(n).fill(1)`
+- fire/spread/FireSpreadModel.ts:454 | FireSpreadModel.constructor | Float32Array: `new Float32Array(n).fill(Infinity)`
+- fire/spread/FireSpreadModel.ts:505 | FireSpreadModel.initStatic | Int32Array: `this.descent.set(recv)`
+- fire/spread/FireSpreadModel.ts:657 | FireSpreadModel.refreshMoistureCache | Float32Array: `this.mCache.set(env.moisture)`
+- fire/spread/FireSpreadModel.ts:658 | FireSpreadModel.refreshMoistureCache | Float32Array: `this.faCache.set(env.availability)`
+- fire/spread/FireSpreadModel.ts:864 | FireSpreadModel.headCells | Uint8Array: `mask.fill(0)`
+- fire/spread/FireSpreadModel.ts:1112 | grow | Uint8Array: `g.set(a as never)`
+- fire/spread/FireSpreadModel.ts:1137 | FireSpreadModel.relabelZones | Uint8Array: `this.zActive.fill(0, 0, count + 1)`
+- fire/spread/FireSpreadModel.ts:1138 | FireSpreadModel.relabelZones | Float64Array: `this.zTAct.fill(0, 0, count + 1)`
+- fire/spread/FireSpreadModel.ts:1139 | FireSpreadModel.relabelZones | Float64Array: `this.zTp.fill(0, 0, count + 1)`
+- fire/spread/FireSpreadModel.ts:1140 | FireSpreadModel.relabelZones | Float64Array: `this.zLast.fill(0, 0, count + 1)`
+- fire/spread/FireSpreadModel.ts:1171 | FireSpreadModel.updateVlsActivation | Uint8Array: `this.zSat.fill(0, 0, count + 1)`
+- fire/spread/geometry.ts:104 | DistanceTransform.compute | Float32Array: `out.fill(Infinity)`
+- fire/spread/levelSet.ts:114 | LevelSetCore.constructor | Float64Array: `new Float64Array(n).fill(params.farCells * this.h)`
+- fire/spread/levelSet.ts:115 | LevelSetCore.constructor | Float64Array: `new Float64Array(n).fill(params.farCells * this.h)`
+- fire/spread/levelSet.ts:120 | LevelSetCore.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/levelSet.ts:122 | LevelSetCore.constructor | Float32Array: `new Float32Array(n).fill(1)`
+- fire/spread/levelSet.ts:172 | LevelSetCore.lowerPhi | Int32Array: `g.set(this.pendingInsert)`
+- fire/terrainFeatures.ts:279 | flowAccumulation | Float64Array: `new Float64Array(n).fill(area)`
+- fire/terrainFeatures.ts:281 | flowAccumulation | Int32Array: `new Int32Array(n).fill(-1)`
+- fire/terrainFeatures.ts:347 | pathEnds | Int32Array: `new Int32Array(n).fill(-1)`
+- fire/terrainFeatures.ts:561 | TerrainFeaturesImpl.useSector | Int32Array: `this.cK.fill(-2)`
+- fire/terrainFeatures.ts:682 | computeTerrainFeatures | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/terrainFeatures.ts:684 | computeTerrainFeatures | Float32Array: `new Float32Array(n).fill(NaN)`
+- fire/terrainFeatures.ts:742 | computeTerrainFeatures | Float32Array: `new Float32Array(n).fill(Infinity)`
+- fire/terrainFeatures.ts:743 | computeTerrainFeatures | Int32Array: `new Int32Array(n).fill(-1)`
+- fire/terrainFeatures.ts:781 | computeTerrainFeatures | Int32Array: `new Int32Array(n).fill(-1)`
+- fuel/fuelMap.ts:127 | ensureFuelArrays | Float32Array: `new Float32Array(n).fill(NaN)`
+- fuel/fuelMap.ts:128 | ensureFuelArrays | Float32Array: `new Float32Array(n).fill(NaN)`
+- fuel/fuelMap.ts:129 | ensureFuelArrays | Float32Array: `new Float32Array(n).fill(NaN)`
+- fuel/moisture/model.ts:282 | MoistureModel.constructor | Float32Array: `c.z.set(terrain.elevation)`
+- fuel/moisture/model.ts:283 | MoistureModel.constructor | Float32Array: `c.hav.set(derived.heightAboveValley)`
+- fuel/moisture/model.ts:731 | MoistureModel.initialise | Float32Array: `this.cells.hE.fill(hsr)`
+- fuel/moisture/model.ts:732 | MoistureModel.initialise | Float32Array: `this.cells.lDew.fill(0)`
+- fuel/moisture/model.ts:737 | MoistureModel.initialise | Float32Array: `lut.units.hE.fill(hsr)`
+- fuel/moisture/model.ts:738 | MoistureModel.initialise | Float32Array: `lut.units.lDew.fill(0)`
+- sim/simulation.ts:491 | f32 | Float32Array: `new Float32Array(n).fill(v)`
+- sim/simulation.ts:1363 | Simulation.stepOnce | Float32Array: `this.heatPrev.set(this.fire.heatRelease())`
+- sim/simulation.ts:1364 | Simulation.stepOnce | Float32Array: `this.crownPrev.set(this.fire.crownShare())`
+- sim/stats.ts:168 | frontRosBlocks | Float32Array: `out.fill(0)`
+- terrain/analysis.ts:263 | sanitiseElevation | Float32Array: `out.fill(0)`
+- terrain/solar.ts:348 | castShadows | Float32Array: `out.fill(1)`
+- terrain/solar.ts:588 | insolation | Uint8Array: `shaded.fill(1)`
+
+## Index expressions built from a rounding call or `| 0` (7)
+
+- atmosphere/grid.ts:354 | buildAtmosGrid | `sorted[Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))]`
+- core/units.ts:65 | compassName | `COMPASS16[Math.round(wrapDeg(azDeg) / 22.5) % 16]`
+- embers/EmberModel.ts:1605 | EmberModel.advance | `nt[((t ^ (t >>> 14)) >>> 0) >>> 20]`
+- embers/EmberModel.ts:1609 | EmberModel.advance | `nt[((t ^ (t >>> 14)) >>> 0) >>> 20]`
+- embers/EmberModel.ts:1621 | EmberModel.advance | `nt[((t ^ (t >>> 14)) >>> 0) >>> 20]`
+- embers/sampling.ts:101 | tableNormal | `NORMAL_TABLE[(r.next() * NORMAL_TABLE_SIZE) | 0]`
+- embers/sampling.ts:131 | sampleNature | `rb.means[Math.min(rb.means.length - 1, (r.next() * rb.means.length) | 0)]`
+
+## sort / reverse (15)
+
+- atmosphere/atmosphere.ts:555 | Atmosphere.addFireHeat | `Array.from(cols).sort((a, b) => a - b)`
+- atmosphere/base.ts:1002 | AtmosBase.medianColumn | `Array.from({ length: g.plane }, (_, c) => c).sort((a, b) => g.zs[a]! - g.zs[b]!)`
+- atmosphere/grid.ts:353 | buildAtmosGrid | `Float32Array.from(terrain.elevation).sort()`
+- atmosphere/profile.ts:107 | buildProfile | `samples.sort((a, b) => a[0] - b[0])`
+- atmosphere/profile.ts:151 | buildProfile | `tSamples.sort((a, b) => a[0] - b[0])`
+- embers/EmberModel.ts:1208 | EmberModel.buildVictims | `pri.sort((a, b) => this.age[a]! - this.age[b]! || b - a)`
+- embers/EmberModel.ts:2083 | EmberModel.rebuildProfile | `pts.sort((a, b) => a[0] - b[0])`
+- embers/sampling.ts:170 | medianTauB | `[...p.ribbonTauB.means].sort((a, b) => a - b)`
+- fire/spread/levelSet.ts:191 | LevelSetCore.commitInserts | `this.band.subarray(0, this.bandCount).sort()`
+- fire/terrainFeatures.ts:476 | subCellSlopeStats | `vals.subarray(a, b).sort()`
+- fuel/moisture/air.ts:79 | medianOf | `Float64Array.from(a as ArrayLike<number>).filter(Number.isFinite).sort()`
+- fuel/moisture/model.ts:863 | MoistureModel.seedRainHistory | reverse: `days.reverse()`
+- fuel/moisture/model.ts:872 | MoistureModel.seedRainHistory | `this.rain.sort((a, b) => a.t - b.t)`
+- sim/simulation.ts:455 | Simulation.constructor | `[...this.records.values()].sort(recordOrder)`
+- sim/simulation.ts:938 | Simulation.applyDueRecords | `due.sort(recordOrder)`
+
+## new Map / Set (19)
+
+- atmosphere/atmosphere.ts:100 | Atmosphere.constructor | WeakMap: `new WeakMap<Stamp, StampDyn>()`
+- atmosphere/atmosphere.ts:100 | <module> | WeakMap: `new WeakMap<Stamp, StampDyn>()`
+- atmosphere/atmosphere.ts:539 | Atmosphere.addFireHeat | Set: `new Set<number>()`
+- atmosphere/base.ts:155 | AtmosBase.constructor | Map: `new Map<number, Int32Array>()`
+- atmosphere/base.ts:155 | <module> | Map: `new Map<number, Int32Array>()`
+- atmosphere/base.ts:284 | AtmosBase.setAmbient | Map: `new Map<string, Stamp>()`
+- fire/models/fuelRef.ts:55 | <module> | Map: `new Map<FuelType, ModelFuelRow>()`
+- fire/models/fuelRef.ts:56 | <module> | Map: `new Map<number, ModelClassOverrides | null>()`
+- fire/models/fuelRef.ts:57 | <module> | Map: `new Map<FuelType, CellFuelParams>()`
+- fuel/moisture/model.ts:881 | MoistureModel.buildLut | Map: `new Map<number, number>()`
+- sim/simulation.ts:340 | Simulation.constructor | Map: `new Map<number, SimRecord>()`
+- sim/simulation.ts:340 | <module> | Map: `new Map<number, SimRecord>()`
+- sim/simulation.ts:343 | Simulation.constructor | Set: `new Set<number>()`
+- sim/simulation.ts:343 | <module> | Set: `new Set<number>()`
+- terrain/analysis.ts:150 | <module> | WeakMap: `new WeakMap<Terrain, TerrainDerived>()`
+- terrain/solar.ts:313 | <module> | WeakMap: `new WeakMap<Terrain, TerrainSolarCache>()`
+- terrain/solar.ts:319 | cacheFor | Map: `new Map()`
+- terrain/solar.ts:319 | cacheFor | Map: `new Map()`
+- terrain/solar.ts:504 | <module> | WeakMap: `new WeakMap<Terrain, number>()`
+
+## Map / Set iteration (6)
+
+- atmosphere/atmosphere.ts:554 | Atmosphere.addFireHeat | for-of Set: `cols`
+- atmosphere/atmosphere.ts:555 | Atmosphere.addFireHeat | Array.from(Map|Set): `Array.from(cols)`
+- sim/simulation.ts:455 | Simulation.constructor | Map.values: `this.records.values()`
+- sim/simulation.ts:934 | Simulation.applyDueRecords | for-of MapIterator: `this.records.values()`
+- sim/simulation.ts:934 | Simulation.applyDueRecords | Map.values: `this.records.values()`
+- terrain/solar.ts:385 | castShadows | Map.keys: `cache.shadows.keys()`
+
+## Object.keys/values/entries/assign, for-in (5)
+
+- embers/params.ts:422 | deepFreeze | Object.values: `Object.values(v as Record<string, unknown>)`
+- embers/params.ts:437 | merge | Object.keys: `Object.keys(base)`
+- embers/params.ts:455 | clone | Object.entries: `Object.entries(v as Record<string, unknown>)`
+- fire/spread/params.ts:287 | resolveSpreadParams | Object.keys: `Object.keys(SPREAD_PARAMS)`
+- fuel/fuelMap.ts:494 | cloneFuelMap | Object.entries: `Object.entries(f)`
+
+## String-keyed object access and `in` (26)
+
+- atmosphere/grid.ts:101 | atmosCellSize | string-index: `ATMOS_TIERS[tier]`
+- atmosphere/grid.ts:192 | buildAtmosGrid | string-index: `ATMOS_TIERS[tier]`
+- atmosphere/weatherInterp.ts:32 | interpolateHour | string-index: `a[key]`
+- atmosphere/weatherInterp.ts:32 | interpolateHour | string-index: `b[key]`
+- atmosphere/weatherInterp.ts:33 | interpolateHour | string-index: `out[key]`
+- embers/params.ts:438 | merge | string-index: `base[key]`
+- embers/params.ts:439 | merge | string-index: `over[key]`
+- embers/params.ts:440 | merge | string-index: `out[key]`
+- embers/params.ts:441 | merge | string-index: `out[key]`
+- embers/params.ts:442 | merge | string-index: `out[key]`
+- embers/params.ts:455 | clone | string-index: `o[k]`
+- fire/spread/params.ts:288 | resolveSpreadParams | string-index: `SPREAD_PARAMS[key]`
+- fire/spread/params.ts:289 | resolveSpreadParams | string-index: `o[key]`
+- fire/spread/params.ts:290 | resolveSpreadParams | string-index: `out[key]`
+- fire/spread/params.ts:292 | resolveSpreadParams | string-index: `out['attachment']`
+- fuel/fuelMap.ts:494 | cloneFuelMap | string-index: `out[key]`
+- fuel/fuelMap.ts:496 | cloneFuelMap | string-index: `out['buildContext']`
+- fuel/hazard.ts:37 | polyline | string-index: `RATING_LOAD[layer]`
+- fuel/hazard.ts:90 | fhsFromLoad | string-index: `POLY[layer]`
+- fuel/moisture/afdrs.ts:29 | familyCode | string-index: `FAMILY_CODE[f]`
+- scenario/weather.ts:148 | set | string-index: `(out as unknown as Record<string, number>)[k]`
+- sim/simulation.ts:432 | Simulation.constructor | string-index: `SIM_PARAMS.maxEmbersByTier[this.tierReq === 'fast' ? 'fast' : 'standard']`
+- sim/simulation.ts:537 | Simulation.constructor | string-index: `this.perfInit['total']`
+- sim/simulation.ts:1159 | Simulation.buildEmbers | string-index: `SIM_PARAMS.maxEmbersByTier[tier]`
+- sim/simulation.ts:1476 | Simulation.fireWinds | string-index: `this.perfMods['airAt']`
+- sim/simulation.ts:1476 | Simulation.fireWinds | string-index: `this.perfMods['airAt']`
+
+## JavaScript truthiness on numbers (99)
+
+- atmosphere/atmosphere.ts:556 | Atmosphere.addFireHeat | cond: `this.fireCols.length`
+- atmosphere/atmosphere.ts:679 | Atmosphere.step | cond: `this.fireCols.length`
+- atmosphere/atmosphere.ts:1064 | Atmosphere.sampleAt | cond: `q & 1`
+- atmosphere/atmosphere.ts:1064 | Atmosphere.sampleAt | cond: `q >> 1`
+- atmosphere/base.ts:91 | median | cond: `n % 2`
+- atmosphere/base.ts:299 | AtmosBase.setTime | !: `!s.length`
+- atmosphere/base.ts:537 | AtmosBase.setSurfaceHeating | cond: `this.valleyCols.length`
+- atmosphere/base.ts:587 | AtmosBase.templateAirT | &&: `w.boundaryLayerHeight && w.boundaryLayerHeight > 0`
+- atmosphere/base.ts:699 | AtmosBase.surfaceWindForFire | cond: `ridge[k]`
+- atmosphere/base.ts:826 | AtmosBase.sampleTurb | &&: `w.boundaryLayerHeight && w.boundaryLayerHeight > 0`
+- atmosphere/diagnosticWind.ts:195 | DiagnosticWind.sampleBg | cond: `q & 1`
+- atmosphere/diagnosticWind.ts:195 | DiagnosticWind.sampleBg | cond: `q >> 1`
+- atmosphere/grid.ts:150 | maxSlope | ||: `ir - il || 1`
+- atmosphere/grid.ts:151 | maxSlope | ||: `(ju - jd) / nx || 1`
+- atmosphere/grid.ts:290 | buildAtmosGrid | ||: `ir - il || 1`
+- atmosphere/grid.ts:291 | buildAtmosGrid | ||: `(ju - jd) / nx || 1`
+- atmosphere/plume.ts:206 | pyroFirepowerThreshold | cond: `n`
+- atmosphere/profile.ts:109 | buildProfile | !: `!dedup.length`
+- atmosphere/profile.ts:136 | buildProfile | &&: `w.surfacePressure && w.surfacePressure > 300`
+- atmosphere/profile.ts:141 | buildProfile | &&: `w.boundaryLayerHeight && w.boundaryLayerHeight > 0`
+- atmosphere/pyrogenic.ts:127 | PyrogenicPotential.solve | !: `!rowHas[J]`
+- atmosphere/pyrogenic.ts:138 | PyrogenicPotential.solve | !: `!rowHas[J]`
+- atmosphere/solver.ts:151 | EllipticSolver.build | cond: `activeU[f]`
+- atmosphere/solver.ts:164 | EllipticSolver.build | cond: `activeV[f]`
+- atmosphere/solver.ts:436 | EllipticSolver.gradient | cond: `activeU[f]`
+- atmosphere/solver.ts:450 | EllipticSolver.gradient | cond: `activeU[f]`
+- atmosphere/solver.ts:465 | EllipticSolver.gradient | !: `!activeV[f]`
+- atmosphere/weatherInterp.ts:43 | interpolateHour | cond: `prof.length`
+- atmosphere/weatherInterp.ts:63 | interpolateHour | cond: `lv.length`
+- core/rng.ts:8 | Rng.constructor | ||: `seed >>> 0 || 0x9e3779b9`
+- embers/EmberModel.ts:461 | EmberModel.constructor | cond: `m & (1 << c)`
+- embers/EmberModel.ts:462 | EmberModel.constructor | &&: `m & (1 << c) && s > 0`
+- embers/EmberModel.ts:565 | EmberModel.emit | cond: `vls && vls[k]`
+- embers/EmberModel.ts:583 | EmberModel.emit | cond: `vls && vls[k]`
+- embers/EmberModel.ts:651 | EmberModel.step | ||: `(this.stepId + 1) >>> 0 || 1`
+- embers/EmberModel.ts:1066 | EmberModel.updateWeights | !: `!free[c]`
+- embers/EmberModel.ts:1077 | EmberModel.updateWeights | !: `!free[c]`
+- embers/EmberModel.ts:1093 | EmberModel.updateWeights | !: `!free[c]`
+- embers/EmberModel.ts:1208 | EmberModel.buildVictims | ||: `this.age[a]! - this.age[b]! || b - a`
+- embers/EmberModel.ts:1372 | EmberModel.advance | cond: `this.state[i]! & ST_NEEDLOFT`
+- embers/EmberModel.ts:1373 | EmberModel.advance | cond: `this.state[i]! & ST_RISING`
+- embers/EmberModel.ts:1832 | EmberModel.land | cond: `st & ST_REFLAMED`
+- embers/EmberModel.ts:2088 | EmberModel.rebuildProfile | &&: `hs.length && hh - hs[hs.length - 1]! < 1`
+- embers/EmberModel.ts:2239 | EmberModel.recordResidence | cond: `this.state[i]! & ST_INJECTED`
+- fire/spread/FireSpreadModel.ts:381 | FireSpreadModel.constructor | cond: `this.flammable[k]`
+- fire/spread/FireSpreadModel.ts:515 | FireSpreadModel.initStatic | !: `!di`
+- fire/spread/FireSpreadModel.ts:515 | FireSpreadModel.initStatic | !: `!dj`
+- fire/spread/FireSpreadModel.ts:554 | FireSpreadModel.refreshStaticFuel | !: `!trees`
+- fire/spread/FireSpreadModel.ts:614 | FireSpreadModel.ignite | !: `!pts.length`
+- fire/spread/FireSpreadModel.ts:646 | FireSpreadModel.igniteAt | !: `!this.canBurn[k]`
+- fire/spread/FireSpreadModel.ts:796 | FireSpreadModel.minuteTasks | &&: `this.debrisList.length && this.debrisList[0]!.t < t - keep`
+- fire/spread/FireSpreadModel.ts:1442 | FireSpreadModel.maxNbr | !: `!di`
+- fire/spread/FireSpreadModel.ts:1442 | FireSpreadModel.maxNbr | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1462 | FireSpreadModel.maxBurntNbr | !: `!di`
+- fire/spread/FireSpreadModel.ts:1462 | FireSpreadModel.maxBurntNbr | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1484 | FireSpreadModel.originEstimate | !: `!di`
+- fire/spread/FireSpreadModel.ts:1484 | FireSpreadModel.originEstimate | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1521 | FireSpreadModel.hasBurntNbr | !: `!di`
+- fire/spread/FireSpreadModel.ts:1521 | FireSpreadModel.hasBurntNbr | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1641 | FireSpreadModel.originEstimateAtArrival | !: `!di`
+- fire/spread/FireSpreadModel.ts:1641 | FireSpreadModel.originEstimateAtArrival | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1662 | FireSpreadModel.propagateOrigin | !: `!di`
+- fire/spread/FireSpreadModel.ts:1662 | FireSpreadModel.propagateOrigin | !: `!dj`
+- fire/spread/FireSpreadModel.ts:1710 | FireSpreadModel.processPendingIgnitions | !: `!cells.length`
+- fire/spread/FireSpreadModel.ts:1724 | FireSpreadModel.applyDueDebris | !: `!this.pendingDebris.length`
+- fire/spread/levelSet.ts:508 | LevelSetCore.reinit | cond: `o & 1`
+- fire/spread/levelSet.ts:509 | LevelSetCore.reinit | cond: `o & 1`
+- fire/spread/levelSet.ts:510 | LevelSetCore.reinit | cond: `o & 1`
+- fire/spread/levelSet.ts:511 | LevelSetCore.reinit | cond: `o & 2`
+- fire/spread/levelSet.ts:512 | LevelSetCore.reinit | cond: `o & 2`
+- fire/spread/levelSet.ts:513 | LevelSetCore.reinit | cond: `o & 2`
+- fire/terrainFeatures.ts:207 | priorityFloodFill | !: `!closed[k]`
+- fire/terrainFeatures.ts:216 | priorityFloodFill | !: `!closed[k]`
+- fire/terrainFeatures.ts:232 | priorityFloodFill | cond: `closed[k]`
+- fire/terrainFeatures.ts:591 | TerrainFeaturesImpl.search | !: `!ridge[c]`
+- fire/terrainFeatures.ts:686 | computeTerrainFeatures | !: `!drainage[k]`
+- fire/terrainFeatures.ts:726 | computeTerrainFeatures | !: `!drainage[k]`
+- fire/terrainFeatures.ts:745 | computeTerrainFeatures | !: `!drainage[k]`
+- fire/terrainFeatures.ts:771 | computeTerrainFeatures | &&: `drainage[k] && Number.isFinite(axisOwn[k]!)`
+- fire/terrainFeatures.ts:785 | computeTerrainFeatures | !: `!drainage[s]`
+- fire/terrainFeatures.ts:803 | computeTerrainFeatures | &&: `drainage[q] && trench[q]! >= tp.baseMinT`
+- fire/terrainFeatures.ts:867 | computeTerrainFeatures | !: `!drainage[k]`
+- fuel/moisture/air.ts:82 | medianOf | cond: `v.length % 2`
+- fuel/moisture/model.ts:303 | MoistureModel.resolveCell | ||: `p.cover || 0`
+- fuel/moisture/model.ts:315 | MoistureModel.resolveCell | ||: `p.lai || 0`
+- fuel/moisture/model.ts:316 | MoistureModel.resolveCell | ||: `p.cRef || 0`
+- fuel/moisture/model.ts:378 | MoistureModel.addRain | cond: `drop`
+- fuel/moisture/model.ts:797 | MoistureModel.initialise | cond: `calibN`
+- fuel/moisture/model.ts:854 | MoistureModel.seedRainHistory | cond: `series.daily && series.daily.length`
+- fuel/moisture/model.ts:856 | MoistureModel.seedRainHistory | cond: `series.rainLast20 && series.rainLast20.length`
+- scenario/weather.ts:54 | profileMix | cond: `out.length`
+- scenario/weather.ts:70 | levelsMix | cond: `out.length`
+- scenario/weather.ts:200 | seriesSpan | cond: `hs.length`
+- sim/records.ts:26 | recordOrder | ||: `a.time - b.time || a.seq - b.seq`
+- sim/simulation.ts:1386 | Simulation.stepOnce | cond: `ins.length`
+- sim/simulation.ts:1602 | Simulation.applyPendingSpots | !: `!this.pendingSpots.length`
+- terrain/solar.ts:301 | forEachDigitalLine | cond: `len`
+- terrain/solar.ts:540 | splitGhi | ||: `ghi || 0`
+- terrain/solar.ts:540 | splitGhi | ||: `ghi || 0`
+
+## Comparison with NaN (0)
+
+
+## Number.isFinite / isNaN / parse (94)
+
+- atmosphere/atmosphere.ts:550 | Atmosphere.addFireHeat | Number.isFinite: `Number.isFinite(hEff[k]!)`
+- atmosphere/base.ts:216 | AtmosBase.constructor | Number.isFinite: `Number.isFinite(asp)`
+- atmosphere/base.ts:289 | AtmosBase.setAmbient | Number.isFinite: `Number.isFinite(this.time)`
+- atmosphere/base.ts:412 | AtmosBase.buildStencil | Number.isFinite: `Number.isFinite(hO)`
+- atmosphere/base.ts:516 | AtmosBase.setSurfaceHeating | Number.isFinite: `Number.isFinite(w.cloudCover)`
+- atmosphere/base.ts:529 | AtmosBase.setSurfaceHeating | Number.isFinite: `Number.isFinite(kbdi)`
+- atmosphere/base.ts:566 | AtmosBase.updateSlopeFlowSpeeds | Number.isFinite: `Number.isFinite(S)`
+- atmosphere/base.ts:714 | AtmosBase.surfaceWindForFire | Number.isFinite: `Number.isFinite(ctx.plumeTopAGL)`
+- atmosphere/base.ts:770 | AtmosBase.surfaceWindForFire | Number.isFinite: `Number.isFinite(ur)`
+- atmosphere/base.ts:899 | AtmosBase.commonDiagnostics | Number.isFinite: `Number.isFinite(l850.height)`
+- atmosphere/base.ts:906 | AtmosBase.commonDiagnostics | Number.isFinite: `Number.isFinite(v)`
+- atmosphere/base.ts:956 | AtmosBase.commonDiagnostics | Number.isFinite: `Number.isFinite(plumeTop)`
+- atmosphere/base.ts:966 | AtmosBase.commonDiagnostics | Number.isFinite: `Number.isFinite(r.pft)`
+- atmosphere/grid.ts:131 | blockAverage | Number.isFinite: `Number.isFinite(z)`
+- atmosphere/grid.ts:334 | buildAtmosGrid | Number.isFinite: `Number.isFinite(h)`
+- atmosphere/plume.ts:147 | plumeColumn | Number.isNaN: `Number.isNaN(out.lclASL)`
+- atmosphere/plume.ts:178 | pyroFirepowerThreshold | Number.isFinite: `Number.isFinite(pl.lclASL)`
+- atmosphere/plume.ts:178 | pyroFirepowerThreshold | Number.isFinite: `Number.isFinite(pl.thetaLcl)`
+- atmosphere/plume.ts:196 | pyroFirepowerThreshold | Number.isFinite: `Number.isFinite(zfc)`
+- atmosphere/profile.ts:84 | buildProfile | Number.isFinite: `Number.isFinite(l.height)`
+- atmosphere/profile.ts:84 | buildProfile | Number.isFinite: `Number.isFinite(l.temperature)`
+- atmosphere/profile.ts:96 | buildProfile | Number.isFinite: `Number.isFinite(p.speed)`
+- atmosphere/profile.ts:96 | buildProfile | Number.isFinite: `Number.isFinite(p.dir)`
+- atmosphere/profile.ts:102 | buildProfile | Number.isFinite: `Number.isFinite(l.windSpeed)`
+- atmosphere/profile.ts:102 | buildProfile | Number.isFinite: `Number.isFinite(l.windDir)`
+- atmosphere/profile.ts:370 | alphaVRatio | Number.isFinite: `Number.isFinite(r)`
+- atmosphere/weatherInterp.ts:9 | lerpOpt | Number.isFinite: `Number.isFinite(a)`
+- atmosphere/weatherInterp.ts:10 | lerpOpt | Number.isFinite: `Number.isFinite(b)`
+- core/physics.ts:110 | stableNightGate | Number.isFinite: `Number.isFinite(u10)`
+- core/physics.ts:111 | stableNightGate | Number.isFinite: `Number.isFinite(cloudPct)`
+- core/physics.ts:149 | stableNight | Number.isFinite: `Number.isFinite(inp.hoursSinceSunrise)`
+- core/physics.ts:159 | stableNight | Number.isFinite: `Number.isFinite(inp.rain24)`
+- core/physics.ts:162 | stableNight | Number.isFinite: `Number.isFinite(inp.breakEta)`
+- fire/spread/FireSpreadModel.ts:492 | FireSpreadModel.initStatic | Number.isNaN: `Number.isNaN(terrain.aspectDeg[k]!)`
+- fire/spread/FireSpreadModel.ts:790 | FireSpreadModel.minuteTasks | Number.isFinite: `Number.isFinite(this.lastMinuteT)`
+- fire/spread/FireSpreadModel.ts:1062 | FireSpreadModel.syncClock | Number.isFinite: `Number.isFinite(et)`
+- fire/spread/FireSpreadModel.ts:1072 | FireSpreadModel.windFrom | Number.isFinite: `Number.isFinite(w)`
+- fire/spread/FireSpreadModel.ts:1540 | FireSpreadModel.factorsFor | Number.isFinite: `Number.isFinite(RF.fuel)`
+- fire/spread/math.ts:138 | gullySteer | Number.isNaN: `Number.isNaN(axisDeg)`
+- fire/spread/math.ts:279 | leeAlignment | Number.isNaN: `Number.isNaN(aspectDeg)`
+- fire/spread/params.ts:293 | resolveSpreadParams | Number.isFinite: `Number.isFinite(a.gMax)`
+- fire/terrainFeatures.ts:203 | priorityFloodFill | Number.isFinite: `Number.isFinite(z[k]!)`
+- fire/terrainFeatures.ts:594 | TerrainFeaturesImpl.search | Number.isFinite: `Number.isFinite(zNext)`
+- fire/terrainFeatures.ts:715 | sideRiseSlope | Number.isFinite: `Number.isFinite(zz)`
+- fire/terrainFeatures.ts:726 | computeTerrainFeatures | Number.isFinite: `Number.isFinite(ax)`
+- fire/terrainFeatures.ts:745 | computeTerrainFeatures | Number.isFinite: `Number.isFinite(axisOwn[k]!)`
+- fire/terrainFeatures.ts:771 | computeTerrainFeatures | Number.isFinite: `Number.isFinite(axisOwn[k]!)`
+- fire/terrainFeatures.ts:853 | wallSide | Number.isFinite: `Number.isFinite(zz)`
+- fire/terrainFeatures.ts:867 | computeTerrainFeatures | Number.isFinite: `Number.isFinite(ax)`
+- fuel/fuelMap.ts:417 | fuelParamsInto | Number.isFinite: `Number.isFinite(fuel.canopyCover[k])`
+- fuel/moisture/air.ts:20 | lapseRate | Number.isFinite: `Number.isFinite(blhM)`
+- fuel/moisture/availability.ts:49 | faBlendWeight | Number.isNaN: `Number.isNaN(aspectDeg)`
+- fuel/moisture/availability.ts:50 | faBlendWeight | Number.isFinite: `Number.isFinite(tpiSmall)`
+- fuel/moisture/drought.ts:38 | kbdiPass | Number.isFinite: `Number.isFinite(d.rain)`
+- fuel/moisture/drought.ts:100 | droughtFactor | Number.isFinite: `Number.isFinite(v)`
+- fuel/moisture/drought.ts:102 | droughtFactor | Number.isFinite: `Number.isFinite(rainTodayMm)`
+- fuel/moisture/drought.ts:172 | droughtState | Number.isFinite: `Number.isFinite(d.rain)`
+- fuel/moisture/model.ts:336 | MoistureModel.resolveCell | Number.isFinite: `Number.isFinite(p.moistureOffset)`
+- fuel/moisture/model.ts:371 | MoistureModel.addRain | Number.isFinite: `Number.isFinite(rateMmH)`
+- fuel/moisture/model.ts:390 | MoistureModel.hoursSinceRain | Number.isFinite: `Number.isFinite(this.tLastRain)`
+- fuel/moisture/model.ts:719 | MoistureModel.initialise | Number.isFinite: `Number.isFinite(series.sourceElevation)`
+- fuel/moisture/model.ts:758 | MoistureModel.initialise | Number.isFinite: `Number.isFinite(kt)`
+- fuel/moisture/model.ts:786 | MoistureModel.initialise | Number.isFinite: `Number.isFinite(d)`
+- fuel/moisture/night.ts:15 | hoursSinceSunrise | Number.isFinite: `Number.isFinite(rise)`
+- fuel/moisture/weather.ts:27 | lin | Number.isFinite: `Number.isFinite(a)`
+- fuel/moisture/weather.ts:27 | lin | Number.isFinite: `Number.isFinite(b)`
+- fuel/moisture/weather.ts:73 | pick | Number.isFinite: `Number.isFinite(v)`
+- scenario/weather.ts:36 | lin | Number.isFinite: `Number.isFinite(a)`
+- scenario/weather.ts:36 | lin | Number.isFinite: `Number.isFinite(b)`
+- scenario/weather.ts:102 | pick | Number.isFinite: `Number.isFinite(v)`
+- sim/simulation.ts:469 | Simulation.constructor | Number.isFinite: `Number.isFinite(kbdi)`
+- sim/simulation.ts:469 | Simulation.constructor | Number.isFinite: `Number.isFinite(df)`
+- sim/simulation.ts:471 | Simulation.constructor | Number.isFinite: `Number.isFinite(kbdi)`
+- sim/simulation.ts:472 | Simulation.constructor | Number.isFinite: `Number.isFinite(df)`
+- sim/simulation.ts:1176 | Simulation.emberEnv | Number.isFinite: `Number.isFinite(this.diag.nSquared)`
+- sim/simulation.ts:1291 | Simulation.stepOnce | Number.isFinite: `Number.isFinite(this.lastSolarT)`
+- sim/simulation.ts:1300 | Simulation.stepOnce | Number.isFinite: `Number.isFinite(this.lastSunMs)`
+- sim/simulation.ts:1453 | Simulation.fireWinds | Number.isFinite: `Number.isFinite(this.plumeTopAGL)`
+- sim/simulation.ts:1482 | Simulation.plumeTop | Number.isFinite: `Number.isFinite(d.plumeTopASL)`
+- sim/simulation.ts:1490 | Simulation.plumeTop | Number.isFinite: `Number.isFinite(e)`
+- sim/simulation.ts:1538 | Simulation.solarAt | Number.isFinite: `Number.isFinite(ghi)`
+- sim/simulation.ts:1573 | Simulation.landingFn | Number.isFinite: `Number.isFinite(dl)`
+- sim/simulation.ts:1573 | Simulation.landingFn | Number.isFinite: `Number.isFinite(dr)`
+- sim/simulation.ts:1574 | Simulation.landingFn | Number.isFinite: `Number.isFinite(ddn)`
+- sim/simulation.ts:1574 | Simulation.landingFn | Number.isFinite: `Number.isFinite(dup)`
+- sim/simulation.ts:1623 | Simulation.addSpot | Number.isFinite: `Number.isFinite(distance)`
+- sim/simulation.ts:2146 | clamp01 | Number.isFinite: `Number.isFinite(v)`
+- terrain/analysis.ts:260 | sanitiseElevation | Number.isFinite: `Number.isFinite(elevation[k]!)`
+- terrain/analysis.ts:267 | sanitiseElevation | Number.isFinite: `Number.isFinite(out[k]!)`
+- terrain/analysis.ts:346 | sanitiseElevation | Number.isFinite: `Number.isFinite(elevation[k]!)`
+- terrain/solar.ts:174 | sunTimes | Number.isFinite: `Number.isFinite(rise)`
+- terrain/solar.ts:174 | sunTimes | Number.isFinite: `Number.isFinite(set)`
+- terrain/solar.ts:562 | horizontalIrradiance | Number.isFinite: `Number.isFinite(opts.ghi)`
+- terrain/solar.ts:565 | horizontalIrradiance | Number.isFinite: `Number.isFinite(opts.cloudCover)`
+
+## Date and Intl (11)
+
+- fuel/moisture/model.ts:754 | MoistureModel.initialise | Date#getUTCMonth: `new Date(t + (lon / 15) * HOUR_MS).getUTCMonth()`
+- fuel/moisture/model.ts:754 | MoistureModel.initialise | new Date: `new Date(t + (lon / 15) * HOUR_MS)`
+- fuel/moisture/model.ts:858 | MoistureModel.seedRainHistory | Date.parse: `Date.parse('${localSolarDate(t0, lon)}T00:00:00Z')`
+- fuel/moisture/model.ts:860 | MoistureModel.seedRainHistory | Date#toISOString: `new Date(y - i * 86400000).toISOString()`
+- fuel/moisture/model.ts:860 | MoistureModel.seedRainHistory | new Date: `new Date(y - i * 86400000)`
+- fuel/moisture/model.ts:867 | MoistureModel.seedRainHistory | Date.parse: `Date.parse('${d.date}T00:00:00Z')`
+- fuel/moisture/model.ts:1015 | localSolarDate | Date#toISOString: `new Date(ms + (lon / 15) * HOUR_MS).toISOString()`
+- fuel/moisture/model.ts:1015 | localSolarDate | new Date: `new Date(ms + (lon / 15) * HOUR_MS)`
+- sim/simulation.ts:394 | Simulation.constructor | Date.now: `Date.now()`
+- sim/simulation.ts:1501 | Simulation.moistureCtx | Date#getUTCMonth: `new Date(tMs + (this.lon / 15) * 3.6e6).getUTCMonth()`
+- sim/simulation.ts:1501 | Simulation.moistureCtx | new Date: `new Date(tMs + (this.lon / 15) * 3.6e6)`
+
+## String and JSON formatting of numbers (20)
+
+- atmosphere/atmosphere.ts:462 | Atmosphere.refreshBlend | template number: `'${A.hour.time}|${B.hour.time}|${this.wgt}'`
+- atmosphere/base.ts:62 | stampKey | template number: `'${w.time}|${w.windSpeed10.toFixed(4)}|${w.windDir10.toFixed(3)}|${w.temperature.toFixed(3)}|${(w.pressureLeve`
+- atmosphere/base.ts:62 | stampKey | .toFixed: `w.windSpeed10.toFixed(4)`
+- atmosphere/base.ts:62 | stampKey | .toFixed: `w.windDir10.toFixed(3)`
+- atmosphere/base.ts:62 | stampKey | .toFixed: `w.temperature.toFixed(3)`
+- fuel/catalogue.ts:279 | <module> | template number: `'FUEL_CLASSES[${i}] has id ${c.id}'`
+- fuel/moisture/drought.ts:174 | droughtState | template number: `'Annual rainfall unknown: using 1.25 × the last ${daily.length} days (${r.toFixed(0)} mm).'`
+- fuel/moisture/drought.ts:174 | droughtState | .toFixed: `r.toFixed(0)`
+- fuel/moisture/drought.ts:176 | droughtState | template number: `'Only ${daily.length} days of rainfall history: KBDI may under-read.'`
+- fuel/moisture/model.ts:257 | MoistureModel.constructor | template number: `'MoistureModel: fuel grid (${fuel.type.length}) differs from terrain grid (${n})'`
+- fuel/moisture/model.ts:683 | MoistureModel.update | template number: `'MoistureModel.update: insolation arrays (${sun.direct.length}) differ from the fire grid (${n})'`
+- fuel/moisture/model.ts:684 | MoistureModel.update | template number: `'MoistureModel.update: ctx.u10 (${ctx.u10.length}) differs from the fire grid (${n})'`
+- fuel/moisture/model.ts:685 | MoistureModel.update | template number: `'MoistureModel.update: ctx.airT (${ctx.airT.length}) differs from the fire grid (${n})'`
+- fuel/moisture/model.ts:686 | MoistureModel.update | template number: `'MoistureModel.update: ctx.burnt (${ctx.burnt.length}) differs from the fire grid (${n})'`
+- fuel/moisture/model.ts:720 | MoistureModel.initialise | .toFixed: `this.medianZ.toFixed(0)`
+- fuel/moisture/model.ts:800 | MoistureModel.initialise | template number: `'Moisture calibration: the dry-forest reference column departs from the AFDRS period-1 value by ${bias.toFixed`
+- fuel/moisture/model.ts:800 | MoistureModel.initialise | .toFixed: `bias.toFixed(2)`
+- terrain/analysis.ts:403 | buildTerrain | template number: `'buildTerrain: elevation has ${elevation.length} cells, grid has ${n}'`
+- terrain/solar.ts:337 | castShadows | .toFixed: `sunAzimuth.toFixed(2)`
+- terrain/solar.ts:337 | castShadows | .toFixed: `sunElevation.toFixed(2)`
+
+## Coercions, includes / indexOf (1)
+
+- fire/spread/fuelCache.ts:28 | codeOf | .indexOf: `list.indexOf(v)`
+
+## Rng calls (11)
+
+- core/rng.ts:18 | Rng.range | `this.next()`
+- core/rng.ts:26 | Rng.normal | `this.next()`
+- core/rng.ts:27 | Rng.normal | `this.next()`
+- core/rng.ts:37 | Rng.poisson | `this.normal()`
+- core/rng.ts:43 | Rng.poisson | `this.next()`
+- fire/spread/FireSpreadModel.ts:1207 | FireSpreadModel.updateVlsActivation | `this.rng.range(VP.periodMinS, VP.periodMaxS)`
+- fire/spread/FireSpreadModel.ts:1504 | FireSpreadModel.breachDraw | `this.rng.next()`
+- fire/spread/FireSpreadModel.ts:1954 | FireSpreadModel.rollDebris | `this.rng.poisson(lambda)`
+- fire/spread/FireSpreadModel.ts:1976 | FireSpreadModel.rollDebris | `this.rng.next()`
+- fire/spread/FireSpreadModel.ts:1981 | FireSpreadModel.rollDebris | `this.rng.next()`
+- fire/spread/FireSpreadModel.ts:1984 | FireSpreadModel.rollDebris | `this.rng.range(DP.delayMinS, DP.delayMaxS)`
+
+## Math.min / Math.max (NaN and -0 semantics) (359)
+
+- atmosphere/atmosphere.ts:213 | Atmosphere.constructor | `Math.max(nU, nV, nW)`
+- atmosphere/atmosphere.ts:214 | Atmosphere.constructor | `Math.max((nx + 1) * ny, nx * (ny + 1))`
+- atmosphere/atmosphere.ts:243 | Atmosphere.constructor | `Math.max(P.fireAlphaMin, g.dz1)`
+- atmosphere/atmosphere.ts:268 | Atmosphere.constructor | `Math.max(0, iu - 1)`
+- atmosphere/atmosphere.ts:268 | Atmosphere.constructor | `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:277 | Atmosphere.constructor | `Math.max(0, jv - 1)`
+- atmosphere/atmosphere.ts:277 | Atmosphere.constructor | `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:294 | dav | `Math.max(0, Math.min(x, nx - 1 - x, y, ny - 1 - y))`
+- atmosphere/atmosphere.ts:294 | dav | `Math.min(x, nx - 1 - x, y, ny - 1 - y)`
+- atmosphere/atmosphere.ts:331 | Atmosphere.constructor | `Math.min(1, (P.thetaDiffSlopeLimit * dz) / (sl * g.dx))`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | `Math.min(nBins - 1, Math.max(0, Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM)))`
+- atmosphere/atmosphere.ts:332 | Atmosphere.constructor | `Math.max(0, Math.floor((this.zAslC[o]! - g.zMin) / P.meanThetaBandM))`
+- atmosphere/atmosphere.ts:334 | Atmosphere.constructor | `Math.min(dzMin, dz)`
+- atmosphere/atmosphere.ts:348 | Atmosphere.constructor | `Math.max(top2, this.st2O[q]! + 1)`
+- atmosphere/atmosphere.ts:404 | Atmosphere.updateNightFields | `Math.max(1, this.night.hInv)`
+- atmosphere/atmosphere.ts:410 | wn | `Math.min(g.zP90, g.zFloor[c]! + hInv)`
+- atmosphere/atmosphere.ts:420 | cmp | `Math.min(g.zP90 - d, g.zFloor[c]! + hInv)`
+- atmosphere/atmosphere.ts:427 | Atmosphere.updateNightFields | `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:435 | Atmosphere.updateNightFields | `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:453 | Atmosphere.updateNightFields | `Math.max(0, hav)`
+- atmosphere/atmosphere.ts:571 | Atmosphere.maxStableDt | `Math.min(a, b)`
+- atmosphere/atmosphere.ts:581 | Atmosphere.stepLimit | `Math.min(a, b)`
+- atmosphere/atmosphere.ts:712 | Atmosphere.step | `Math.max(0, iu - 1)`
+- atmosphere/atmosphere.ts:713 | Atmosphere.step | `Math.min(nx - 1, iu)`
+- atmosphere/atmosphere.ts:726 | Atmosphere.step | `Math.max(0, jv - 1)`
+- atmosphere/atmosphere.ts:727 | Atmosphere.step | `Math.min(ny - 1, jv)`
+- atmosphere/atmosphere.ts:882 | Atmosphere.divergenceOf | `Math.max(this.maxU, 0.5)`
+- atmosphere/atmosphere.ts:1053 | Atmosphere.sampleAt | `Math.min(Math.floor(fx), Math.max(0, g.nx - 2))`
+- atmosphere/atmosphere.ts:1053 | Atmosphere.sampleAt | `Math.max(0, g.nx - 2)`
+- atmosphere/atmosphere.ts:1054 | Atmosphere.sampleAt | `Math.min(Math.floor(fy), Math.max(0, g.ny - 2))`
+- atmosphere/atmosphere.ts:1054 | Atmosphere.sampleAt | `Math.max(0, g.ny - 2)`
+- atmosphere/atmosphere.ts:1069 | Atmosphere.sampleAt | `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/atmosphere.ts:1084 | Atmosphere.sample | `Math.max(0, zAGL)`
+- atmosphere/atmosphere.ts:1158 | Atmosphere.thetaAt | `Math.max(1, this.night.hInv)`
+- atmosphere/atmosphere.ts:1159 | Atmosphere.thetaAt | `Math.max(0, hav)`
+- atmosphere/atmosphere.ts:1162 | Atmosphere.thetaAt | `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/base.ts:214 | AtmosBase.constructor | `Math.max(ATMOS_PARAMS.minCosSlope, Math.cos(terrain.slopeDeg[k]! * DEG))`
+- atmosphere/base.ts:289 | AtmosBase.setAmbient | `Math.max(a.time, b.time)`
+- atmosphere/base.ts:304 | AtmosBase.setTime | `Math.min(i + 1, s.length - 1)`
+- atmosphere/base.ts:363 | AtmosBase.get stampB | `Math.min(this.seg + 1, this.seq.length - 1)`
+- atmosphere/base.ts:393 | AtmosBase.buildStencil | `Math.min(Math.floor(fx), Math.max(0, nx - 2))`
+- atmosphere/base.ts:393 | AtmosBase.buildStencil | `Math.max(0, nx - 2)`
+- atmosphere/base.ts:394 | AtmosBase.buildStencil | `Math.min(Math.floor(fy), Math.max(0, ny - 2))`
+- atmosphere/base.ts:394 | AtmosBase.buildStencil | `Math.max(0, ny - 2)`
+- atmosphere/base.ts:414 | AtmosBase.buildStencil | `Math.max(P.zRefMin, hO + P.zRefCanopyAdd, g.zetaF[1]! * Jb)`
+- atmosphere/base.ts:416 | AtmosBase.buildStencil | `Math.max(this.terrain.elevation[k]! + zRef, zsA + z1)`
+- atmosphere/base.ts:437 | AtmosBase.verticalStencil | `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/base.ts:562 | AtmosBase.updateSlopeFlowSpeeds | `Math.min(L > 0 ? dzd / L : 0, Math.sin(slope[k]! * DEG))`
+- atmosphere/base.ts:590 | AtmosBase.templateAirT | `Math.max(1, this.night.hInv)`
+- atmosphere/base.ts:596 | AtmosBase.templateAirT | `Math.min(1, Math.max(0, dTh) / STABLE_NIGHT_PARAMS.snScaleK)`
+- atmosphere/base.ts:596 | AtmosBase.templateAirT | `Math.max(0, dTh)`
+- atmosphere/base.ts:598 | AtmosBase.templateAirT | `Math.max(0, hav[k]!)`
+- atmosphere/base.ts:715 | AtmosBase.surfaceWindForFire | `Math.max(2 * zPlume, P.fireMaskMin)`
+- atmosphere/base.ts:750 | AtmosBase.surfaceWindForFire | `Math.min(cap, Math.max(0, (up ? sk : -sk) - along))`
+- atmosphere/base.ts:750 | AtmosBase.surfaceWindForFire | `Math.max(0, (up ? sk : -sk) - along)`
+- atmosphere/base.ts:751 | AtmosBase.surfaceWindForFire | `Math.max(0, sTop - off)`
+- atmosphere/base.ts:834 | AtmosBase.sampleTurb | `Math.max(P.zRefMin, d + 10 * z0)`
+- atmosphere/base.ts:837 | AtmosBase.sampleTurb | `Math.max(1.01, (zr - d) / z0)`
+- atmosphere/base.ts:930 | AtmosBase.commonDiagnostics | `Math.max(this.night.hInv, P.breakMinDepth)`
+- atmosphere/base.ts:933 | AtmosBase.commonDiagnostics | `Math.max(0, thTop - this.thetaAt(c, z))`
+- atmosphere/base.ts:937 | AtmosBase.commonDiagnostics | `Math.max(1, nc)`
+- atmosphere/base.ts:938 | AtmosBase.commonDiagnostics | `Math.max(0, (deficit - this.heatSinceSunrise) / this.qValley)`
+- atmosphere/diagnosticWind.ts:70 | DiagnosticWind.wNight | `Math.min(this.grid.zP90 - d, z - this.derived.heightAboveValley[k]! + this.night.hInv)`
+- atmosphere/diagnosticWind.ts:182 | DiagnosticWind.sampleBg | `Math.max(0, zAgl)`
+- atmosphere/diagnosticWind.ts:185 | DiagnosticWind.sampleBg | `Math.min(Math.floor(fx), Math.max(0, g.nx - 2))`
+- atmosphere/diagnosticWind.ts:185 | DiagnosticWind.sampleBg | `Math.max(0, g.nx - 2)`
+- atmosphere/diagnosticWind.ts:186 | DiagnosticWind.sampleBg | `Math.min(Math.floor(fy), Math.max(0, g.ny - 2))`
+- atmosphere/diagnosticWind.ts:186 | DiagnosticWind.sampleBg | `Math.max(0, g.ny - 2)`
+- atmosphere/diagnosticWind.ts:213 | DiagnosticWind.sampleBg | `Math.min(Math.floor(kf), g.nz - 2)`
+- atmosphere/diagnosticWind.ts:295 | DiagnosticWind.thetaAt | `Math.max(1, this.night.hInv)`
+- atmosphere/diagnosticWind.ts:296 | DiagnosticWind.thetaAt | `Math.max(0, hav)`
+- atmosphere/dynamics.ts:263 | smagorinsky | `Math.max(1, iu - id)`
+- atmosphere/dynamics.ts:264 | smagorinsky | `Math.max(1, ju - jd)`
+- atmosphere/dynamics.ts:265 | smagorinsky | `Math.max(1e-6, g.zetaC[ku]! - g.zetaC[kd]!)`
+- atmosphere/dynamics.ts:317 | diffuseH | `Math.min(nz - 1, Math.max(0, kF - (oz > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:317 | diffuseH | `Math.max(0, kF - (oz > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:318 | diffuseH | `Math.min(nz - 1, kF)`
+- atmosphere/dynamics.ts:320 | diffuseH | `Math.min(ny - 1, Math.max(0, jF - (oy > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:320 | diffuseH | `Math.max(0, jF - (oy > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:321 | diffuseH | `Math.min(ny - 1, jF)`
+- atmosphere/dynamics.ts:324 | diffuseH | `Math.min(nx - 1, Math.max(0, iF - (ox > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:324 | diffuseH | `Math.max(0, iF - (ox > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:325 | diffuseH | `Math.min(nx - 1, iF)`
+- atmosphere/dynamics.ts:358 | columnMap | `Math.min(ny - 1, Math.max(0, jF - (oy > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:358 | columnMap | `Math.max(0, jF - (oy > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:359 | columnMap | `Math.min(ny - 1, jF)`
+- atmosphere/dynamics.ts:361 | columnMap | `Math.min(nx - 1, Math.max(0, iF - (ox > 0 ? 1 : 0)))`
+- atmosphere/dynamics.ts:361 | columnMap | `Math.max(0, iF - (ox > 0 ? 1 : 0))`
+- atmosphere/dynamics.ts:362 | columnMap | `Math.min(nx - 1, iF)`
+- atmosphere/grid.ts:110 | canopyDrag | `Math.max(P.z0Min, P.z0Frac * hBar)`
+- atmosphere/grid.ts:112 | canopyDrag | `Math.max(z1 - d, P.zEffZ0Mult * z0)`
+- atmosphere/grid.ts:113 | canopyDrag | `Math.min(P.cdMax, (KAPPA_VK / Math.log(zEff / z0)) ** 2)`
+- atmosphere/grid.ts:218 | buildAtmosGrid | `Math.max(0, j0)`
+- atmosphere/grid.ts:218 | buildAtmosGrid | `Math.min(fg.ny - 1, j1)`
+- atmosphere/grid.ts:219 | buildAtmosGrid | `Math.max(0, i0)`
+- atmosphere/grid.ts:219 | buildAtmosGrid | `Math.min(fg.nx - 1, i1)`
+- atmosphere/grid.ts:245 | buildAtmosGrid | `Math.min(zMin, zs[c]!)`
+- atmosphere/grid.ts:246 | buildAtmosGrid | `Math.max(zMax, zs[c]!)`
+- atmosphere/grid.ts:249 | buildAtmosGrid | `Math.max(opts.atmosTop ?? P.atmosTop, relief + P.reliefMargin)`
+- atmosphere/grid.ts:297 | buildAtmosGrid | `Math.max(0, i - 1)`
+- atmosphere/grid.ts:298 | buildAtmosGrid | `Math.min(nx - 1, i)`
+- atmosphere/grid.ts:305 | buildAtmosGrid | `Math.max(0, j - 1)`
+- atmosphere/grid.ts:306 | buildAtmosGrid | `Math.min(ny - 1, j)`
+- atmosphere/grid.ts:333 | buildAtmosGrid | `Math.min(1, fuel.canopyCover[k]! / P.canopyCoverRef)`
+- atmosphere/grid.ts:354 | buildAtmosGrid | `Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))`
+- atmosphere/grid.ts:356 | buildAtmosGrid | `Math.min(Math.floor((Math.min(nx, ny) - 1) / 2), Math.max(P.daviesMinCells, Math.round(P.daviesFraction * nx))`
+- atmosphere/grid.ts:356 | buildAtmosGrid | `Math.min(nx, ny)`
+- atmosphere/grid.ts:356 | buildAtmosGrid | `Math.max(P.daviesMinCells, Math.round(P.daviesFraction * nx))`
+- atmosphere/massConsistent.ts:103 | MassConsistentSolver.constructor | `Math.max(0, iu - 1)`
+- atmosphere/massConsistent.ts:104 | MassConsistentSolver.constructor | `Math.min(nx - 1, iu)`
+- atmosphere/massConsistent.ts:113 | MassConsistentSolver.constructor | `Math.max(0, jv - 1)`
+- atmosphere/massConsistent.ts:114 | MassConsistentSolver.constructor | `Math.min(ny - 1, jv)`
+- atmosphere/massConsistent.ts:138 | blend | `Math.max(10, asl - p.zgp)`
+- atmosphere/massConsistent.ts:139 | blend | `Math.min(1, (agl - P.firstGuessLow) / (P.firstGuessHigh - P.firstGuessLow))`
+- atmosphere/plume.ts:13 | cHaines | `Math.min(30, t850 - td850)`
+- atmosphere/plume.ts:27 | briggsRise | `Math.max(n2, ATMOS_PARAMS.n2Floor)`
+- atmosphere/plume.ts:31 | briggsRise | `Math.min(windy, calm)`
+- atmosphere/plume.ts:68 | plumeColumn | `Math.max(P.plumeB0Min, Math.sqrt(Math.max(0, burningArea) / Math.PI))`
+- atmosphere/plume.ts:68 | plumeColumn | `Math.max(0, burningArea)`
+- atmosphere/plume.ts:69 | plumeColumn | `Math.max(P.plumeW0Min, Math.cbrt(F0 / b0))`
+- atmosphere/plume.ts:77 | envAt | `Math.max(10, agl)`
+- atmosphere/plume.ts:80 | envAt | `Math.max(10, agl)`
+- atmosphere/plume.ts:81 | envAt | `Math.max(10, z - p.zgp)`
+- atmosphere/plume.ts:100 | n2At | `Math.max((G / (0.5 * (a + b))) * ((b - a) / 20), P.n2Floor)`
+- atmosphere/plume.ts:154 | plumeColumn | `Math.max(1, pz - es)`
+- atmosphere/plume.ts:165 | plumeColumn | `Math.min(z, zSource + P.plumeCap)`
+- atmosphere/plume.ts:192 | pyroFirepowerThreshold | `Math.max(1, pz - es)`
+- atmosphere/plume.ts:202 | pyroFirepowerThreshold | `Math.max(10, zSource + h - p.zgp)`
+- atmosphere/profile.ts:55 | sCoord | `Math.max(z, 1e-3)`
+- atmosphere/profile.ts:61 | mixingRatio | `Math.max(1, pHpa - e)`
+- atmosphere/profile.ts:93 | buildProfile | `Math.max(0, w.windSpeed10)`
+- atmosphere/profile.ts:156 | qAbove | `Math.max(0, z - zgp - zMix)`
+- atmosphere/profile.ts:157 | qAbove | `Math.max(1, pz - esat(T))`
+- atmosphere/profile.ts:180 | buildProfile | `Math.max(hi[0] + 1000, zgp + 16000)`
+- atmosphere/profile.ts:180 | buildProfile | `Math.max(hi[0] + 1000, zgp + 16000)`
+- atmosphere/profile.ts:194 | buildProfile | `Math.min(th[q]!, thd[q + 1]!)`
+- atmosphere/profile.ts:222 | buildProfile | `Math.max(relief, 1)`
+- atmosphere/profile.ts:227 | buildProfile | `Math.max(10, zLo + h - zgp)`
+- atmosphere/profile.ts:231 | buildProfile | `Math.max(n2, P.n2Floor)`
+- atmosphere/profile.ts:294 | logLawKappa | `Math.max(z, 10)`
+- atmosphere/profile.ts:362 | kappaLookup | `Math.min(n - 1, Math.floor(zc))`
+- atmosphere/pyrogenic.ts:99 | PyrogenicPotential.solve | `Math.min(2, fg.ny - 2 * J)`
+- atmosphere/pyrogenic.ts:101 | PyrogenicPotential.solve | `Math.min(2, fg.nx - 2 * I)`
+- atmosphere/pyrogenic.ts:189 | PyrogenicPotential.gradientToFire | `Math.min(Math.max((j + 0.5) / 2 - 0.5, 0), ny - 1)`
+- atmosphere/pyrogenic.ts:189 | PyrogenicPotential.gradientToFire | `Math.max((j + 0.5) / 2 - 0.5, 0)`
+- atmosphere/pyrogenic.ts:190 | PyrogenicPotential.gradientToFire | `Math.min(Math.floor(fy), Math.max(0, ny - 2))`
+- atmosphere/pyrogenic.ts:190 | PyrogenicPotential.gradientToFire | `Math.max(0, ny - 2)`
+- atmosphere/pyrogenic.ts:193 | PyrogenicPotential.gradientToFire | `Math.min(Math.max((i + 0.5) / 2 - 0.5, 0), nx - 1)`
+- atmosphere/pyrogenic.ts:193 | PyrogenicPotential.gradientToFire | `Math.max((i + 0.5) / 2 - 0.5, 0)`
+- atmosphere/pyrogenic.ts:194 | PyrogenicPotential.gradientToFire | `Math.min(Math.floor(fx), Math.max(0, nx - 2))`
+- atmosphere/pyrogenic.ts:194 | PyrogenicPotential.gradientToFire | `Math.max(0, nx - 2)`
+- atmosphere/solver.ts:244 | EllipticSolver.transfer | `Math.min(2, n - 2 * I)`
+- core/grid.ts:23 | makeGridSpec | `Math.max(2, Math.round(extentM / cellSize))`
+- core/grid.ts:52 | sampleBilinear | `Math.min(Math.floor(fx), g.nx - 2)`
+- core/grid.ts:53 | sampleBilinear | `Math.min(Math.floor(fy), g.ny - 2)`
+- core/grid.ts:95 | boxBlur | `Math.min(nx - 1, Math.max(0, t))`
+- core/grid.ts:95 | boxBlur | `Math.max(0, t)`
+- core/grid.ts:98 | boxBlur | `Math.min(nx - 1, i + r + 1)`
+- core/grid.ts:98 | boxBlur | `Math.max(0, i - r)`
+- core/grid.ts:103 | boxBlur | `Math.min(ny - 1, Math.max(0, t))`
+- core/grid.ts:103 | boxBlur | `Math.max(0, t)`
+- core/grid.ts:106 | boxBlur | `Math.min(ny - 1, j + r + 1)`
+- core/grid.ts:106 | boxBlur | `Math.max(0, j - r)`
+- core/physics.ts:40 | vpdKpa | `Math.max(0, esat(tC) * (1 - rh / 100))`
+- core/physics.ts:154 | stableNight | `Math.min(dt, Math.max(0, dt - hss * 3600))`
+- core/physics.ts:154 | stableNight | `Math.max(0, dt - hss * 3600)`
+- core/physics.ts:163 | stableNight | `Math.max(0, inp.breakEta)`
+- core/physics.ts:168 | stableNight | `Math.max(0, (tBreak - t) / span)`
+- core/physics.ts:170 | stableNight | `Math.max(0, Math.min(linear, mixed))`
+- core/physics.ts:170 | stableNight | `Math.min(linear, mixed)`
+- core/rng.ts:37 | Rng.poisson | `Math.max(0, Math.round(mean + Math.sqrt(mean) * this.normal()))`
+- embers/EmberModel.ts:408 | EmberModel.constructor | `Math.max(1, Math.floor(opts.maxEmbers))`
+- embers/EmberModel.ts:424 | EmberModel.constructor | `Math.max(g.nx, g.ny)`
+- embers/EmberModel.ts:425 | clampA | `Math.min(270, Math.max(100, v))`
+- embers/EmberModel.ts:425 | clampA | `Math.max(100, v)`
+- embers/EmberModel.ts:457 | EmberModel.constructor | `Math.max(P.weights.lifeFloorFrac * medianTauB(cp, P), P.weights.lifeFloorAbs)`
+- embers/EmberModel.ts:553 | EmberModel.emit | `Math.max(this.aUntil[a]!, tArr)`
+- embers/EmberModel.ts:555 | EmberModel.emit | `Math.min(tEnd, tFin)`
+- embers/EmberModel.ts:984 | EmberModel.ensureActive | `Math.max(n, this.aCell.length * 2)`
+- embers/EmberModel.ts:1091 | EmberModel.updateWeights | `Math.max(rest, 0)`
+- embers/EmberModel.ts:1122 | EmberModel.spawn | `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1126 | EmberModel.spawn | `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1128 | EmberModel.spawn | `Math.min(fh, E.hBark)`
+- embers/EmberModel.ts:1167 | EmberModel.initParticle | `Math.max(0, z - zg)`
+- embers/EmberModel.ts:1256 | EmberModel.diagnosePlumeTop | `Math.max(n2 !== undefined ? n2 : L.nDefault * L.nDefault, 1e-6)`
+- embers/EmberModel.ts:1263 | EmberModel.diagnosePlumeTop | `Math.max(10, L.uHeightFrac * zp)`
+- embers/EmberModel.ts:1267 | EmberModel.diagnosePlumeTop | `Math.min(L.zpMax, Math.max(L.zpMin, zp))`
+- embers/EmberModel.ts:1267 | EmberModel.diagnosePlumeTop | `Math.max(L.zpMin, zp)`
+- embers/EmberModel.ts:1289 | EmberModel.loft | `Math.max(wc - vt, P.loft.riseFloor * wc)`
+- embers/EmberModel.ts:1702 | EmberModel.advance | `Math.min(1, Math.max(0, hp / (hp - hn)))`
+- embers/EmberModel.ts:1702 | EmberModel.advance | `Math.max(0, hp / (hp - hn))`
+- embers/EmberModel.ts:1815 | EmberModel.exitDomain | `Math.min(P.stats.edgeBins - 1, Math.floor(d / P.stats.edgeBinM))`
+- embers/EmberModel.ts:1844 | EmberModel.land | `Math.max(IG.exclusionCells * this.h, info.rosLocal * IG.exclusionTime)`
+- embers/EmberModel.ts:1867 | EmberModel.land | `Math.min(1, info.surfaceHazard / 2)`
+- embers/EmberModel.ts:1870 | EmberModel.land | `Math.min(1, info.nearSurfaceHazard / 2)`
+- embers/EmberModel.ts:1879 | EmberModel.land | `Math.max(0, 1 - age / tauB)`
+- embers/EmberModel.ts:1887 | EmberModel.land | `Math.min(pn - 1, IG.pileMaxN)`
+- embers/EmberModel.ts:2035 | EmberModel.reliefAt | `Math.max(1, Math.round(this.params.mountain.reliefRadius / this.h))`
+- embers/EmberModel.ts:2241 | EmberModel.recordResidence | `Math.max(0, t - this.tBirth[i]!)`
+- embers/fuelInfo.ts:51 | catalogueCellFuel | `Math.max(chm > 0 ? chm : 0, 0.8 * r.hO)`
+- embers/physics.ts:98 | fallTime | `Math.max(0, tauB * (1 - r) - a0)`
+- embers/physics.ts:140 | briggsPlumeRise | `Math.max(nBv, 1e-3)`
+- embers/physics.ts:143 | briggsPlumeRise | `Math.max(uMs, 0.5)`
+- embers/physics.ts:146 | briggsPlumeRise | `Math.min(windy, calm)`
+- embers/physics.ts:190 | heatPerArea | `Math.max(rosMs, 1e-3)`
+- embers/plume.ts:87 | PlumeField.build | `Math.max(2, Math.ceil((p.plumeDepthZd * p.zd) / dz) + 1)`
+- embers/sampling.ts:50 | FastRng.poisson | `Math.max(0, Math.round(mean + Math.sqrt(mean) * this.normal()))`
+- embers/sampling.ts:131 | sampleNature | `Math.min(rb.means.length - 1, (r.next() * rb.means.length) | 0)`
+- embers/sampling.ts:203 | sampleClass | `Math.min(c.vt0.max, Math.max(c.vt0.min, c.vt0.median))`
+- embers/sampling.ts:203 | sampleClass | `Math.max(c.vt0.min, c.vt0.median)`
+- fire/spread/FireSpreadModel.ts:364 | FireSpreadModel.constructor | `Math.min(this.P.vls.slopeLoDeg, this.P.sep.slopeLoDeg)`
+- fire/spread/FireSpreadModel.ts:377 | FireSpreadModel.constructor | `Math.max(1, ns)`
+- fire/spread/FireSpreadModel.ts:540 | FireSpreadModel.refreshStaticFuel | `Math.max(1, Math.ceil(P.treeRadiusM / h))`
+- fire/spread/FireSpreadModel.ts:612 | FireSpreadModel.ignite | `Math.max(ign.radius ?? 0, this.P.levelSet.ignitionRadiusCells * this.h)`
+- fire/spread/FireSpreadModel.ts:632 | FireSpreadModel.ignite | `Math.min(x0, x)`
+- fire/spread/FireSpreadModel.ts:633 | FireSpreadModel.ignite | `Math.max(x1, x)`
+- fire/spread/FireSpreadModel.ts:634 | FireSpreadModel.ignite | `Math.min(y0, y)`
+- fire/spread/FireSpreadModel.ts:635 | FireSpreadModel.ignite | `Math.max(y1, y)`
+- fire/spread/FireSpreadModel.ts:707 | FireSpreadModel.refreshMasks | `Math.min(SP.reliefFactor * rel, SP.maxDistM)`
+- fire/spread/FireSpreadModel.ts:1236 | FireSpreadModel.upwindMaxIntensity | `Math.max(1, Math.round(this.P.vls.upwindM / h))`
+- fire/spread/FireSpreadModel.ts:1677 | FireSpreadModel.igniteGeometry | `Math.max(0, Math.floor((x0 - pad - grid.x0) / h))`
+- fire/spread/FireSpreadModel.ts:1678 | FireSpreadModel.igniteGeometry | `Math.min(nx - 1, Math.ceil((x1 + pad - grid.x0) / h))`
+- fire/spread/FireSpreadModel.ts:1679 | FireSpreadModel.igniteGeometry | `Math.max(0, Math.floor((y0 - pad - grid.y0) / h))`
+- fire/spread/FireSpreadModel.ts:1680 | FireSpreadModel.igniteGeometry | `Math.min(ny - 1, Math.ceil((y1 + pad - grid.y0) / h))`
+- fire/spread/FireSpreadModel.ts:1921 | FireSpreadModel.detectJunctions | `Math.max(-1, Math.min(1, minDot))`
+- fire/spread/FireSpreadModel.ts:1921 | FireSpreadModel.detectJunctions | `Math.min(1, minDot)`
+- fire/spread/geometry.ts:78 | DistanceTransform.constructor | `Math.max(nx, ny)`
+- fire/spread/levelSet.ts:134 | LevelSetCore.constructor | `Math.min(n, 1024)`
+- fire/spread/levelSet.ts:372 | LevelSetCore.ensureScratch | `Math.min(this.n, Math.max(need, Math.ceil(this.tend1.length * 1.5)))`
+- fire/spread/levelSet.ts:372 | LevelSetCore.ensureScratch | `Math.max(need, Math.ceil(this.tend1.length * 1.5))`
+- fire/spread/levelSet.ts:478 | LevelSetCore.reinit | `Math.max(0, i0 - grow)`
+- fire/spread/levelSet.ts:479 | LevelSetCore.reinit | `Math.max(0, j0 - grow)`
+- fire/spread/levelSet.ts:480 | LevelSetCore.reinit | `Math.min(nx - 1, i1 + grow)`
+- fire/spread/levelSet.ts:481 | LevelSetCore.reinit | `Math.min(ny - 1, j1 + grow)`
+- fire/spread/math.ts:97 | hybridHead | `Math.max(-1, Math.min(1, wx * upX + wy * upY))`
+- fire/spread/math.ts:97 | hybridHead | `Math.min(1, wx * upX + wy * upY)`
+- fire/spread/math.ts:141 | gullySteer | `Math.min(1, (alphaDeg - GP.minAlongSlopeDeg) / GP.spanDeg)`
+- fire/spread/math.ts:240 | alignmentWeight | `Math.min(1, (dDeg - AP.alignFullDeg) / (AP.alignHalfDeg - AP.alignFullDeg))`
+- fire/spread/math.ts:267 | lineIgnitionOrigin | `Math.min(BP.lineMaxB0, Math.max(0, lengthM) / BP.lineRefLengthM)`
+- fire/spread/math.ts:267 | lineIgnitionOrigin | `Math.max(0, lengthM)`
+- fire/spread/params.ts:293 | resolveSpreadParams | `Math.min(a.gMaxMax, Math.max(a.gMaxMin, Number.isFinite(a.gMax) ? a.gMax : SPREAD_PARAMS.attachment.gMax))`
+- fire/spread/params.ts:293 | resolveSpreadParams | `Math.max(a.gMaxMin, Number.isFinite(a.gMax) ? a.gMax : SPREAD_PARAMS.attachment.gMax)`
+- fire/terrainFeatures.ts:350 | pathEnds | `Math.max(P.pathWindowM, h)`
+- fire/terrainFeatures.ts:421 | slopeAtScale | `Math.max(2, Math.ceil(extX / scaleM))`
+- fire/terrainFeatures.ts:422 | slopeAtScale | `Math.max(2, Math.ceil(extY / scaleM))`
+- fire/terrainFeatures.ts:426 | slopeAtScale | `Math.max(1, Math.round(scaleM / src.grid.cellSize))`
+- fire/terrainFeatures.ts:481 | subCellSlopeStats | `Math.min(seg.length - 1, lo + 1)`
+- fire/terrainFeatures.ts:683 | computeTerrainFeatures | `Math.max(1, Math.round(P.axisHalfSpanM / h))`
+- fire/terrainFeatures.ts:735 | computeTerrainFeatures | `Math.min(L.slope, R.slope)`
+- fire/terrainFeatures.ts:736 | computeTerrainFeatures | `Math.min(L.rise, R.rise)`
+- fire/terrainFeatures.ts:856 | wallSide | `Math.max(0, d - sStep)`
+- fuel/fuelMap.ts:117 | canopyHeightEffFor | `Math.max(chmHeight, P.hOEffTypeFactor * hType)`
+- fuel/fuelMap.ts:119 | canopyHeightEffFor | `Math.max(chmHeight, P.hOEffTypeFactor * hType)`
+- fuel/hazard.ts:104 | loadFromLitterDepthMm | `Math.max(0, depthMm)`
+- fuel/moisture/afdrs.ts:69 | grassMoisture | `Math.max(5, 9.58 - 0.205 * tC + 0.138 * rh)`
+- fuel/moisture/air.ts:21 | lapseRate | `Math.max(1, reliefM)`
+- fuel/moisture/drought.ts:33 | kbdiPass | `Math.min(KBDI_MAX, Math.max(0, k0))`
+- fuel/moisture/drought.ts:33 | kbdiPass | `Math.max(0, k0)`
+- fuel/moisture/drought.ts:37 | kbdiPass | `Math.min(KBDI_MAX, k + kbdiIncrement(k, d.tMax, annualRainMm))`
+- fuel/moisture/drought.ts:40 | kbdiPass | `Math.min(p, Math.max(0, KBDI_SPELL_INTERCEPTION - removed))`
+- fuel/moisture/drought.ts:40 | kbdiPass | `Math.max(0, KBDI_SPELL_INTERCEPTION - removed)`
+- fuel/moisture/drought.ts:42 | kbdiPass | `Math.max(0, k - (p - rem))`
+- fuel/moisture/drought.ts:62 | droughtFactorFromX | `Math.min(10, df)`
+- fuel/moisture/drought.ts:106 | droughtFactor | `Math.min(1, rainRecencyX(rain, nLast), droughtXLimit(kbdi))`
+- fuel/moisture/drought.ts:173 | droughtState | `Math.max(365, daily.length)`
+- fuel/moisture/fastMath.ts:51 | <module> | `Math.min(100, i / H_INV)`
+- fuel/moisture/fuelPhysics.ts:34 | vanWagnerRate | `Math.max(0, wKmh)`
+- fuel/moisture/fuelPhysics.ts:63 | beamTransmittance | `Math.max(p.sinSunFloor, Math.sin((sunElevDeg * Math.PI) / 180))`
+- fuel/moisture/fuelPhysics.ts:79 | litterWind | `Math.max(wrf, 1e-3)`
+- fuel/moisture/fuelPhysics.ts:144 | rainMemory | `Math.max(0, hE)`
+- fuel/moisture/fuelPhysics.ts:154 | dewTerm | `Math.min(p.dewMaxPp, (100 * lDew) / p.dewStoreMm)`
+- fuel/moisture/fuelPhysics.ts:165 | ignitionProbability | `Math.max(0, mPct)`
+- fuel/moisture/model.ts:274 | MoistureModel.constructor | `Math.max(1, terrain.maxElevation - terrain.minElevation)`
+- fuel/moisture/model.ts:303 | MoistureModel.resolveCell | `Math.min(1, Math.max(0, p.cover || 0))`
+- fuel/moisture/model.ts:303 | MoistureModel.resolveCell | `Math.max(0, p.cover || 0)`
+- fuel/moisture/model.ts:314 | MoistureModel.resolveCell | `Math.min(cType, Math.max(P.chmCoverFloor * cType, cRaw))`
+- fuel/moisture/model.ts:314 | MoistureModel.resolveCell | `Math.max(P.chmCoverFloor * cType, cRaw)`
+- fuel/moisture/model.ts:315 | MoistureModel.resolveCell | `Math.max(0, p.lai || 0)`
+- fuel/moisture/model.ts:316 | MoistureModel.resolveCell | `Math.min(1, Math.max(0, p.cRef || 0))`
+- fuel/moisture/model.ts:316 | MoistureModel.resolveCell | `Math.max(0, p.cRef || 0)`
+- fuel/moisture/model.ts:390 | MoistureModel.hoursSinceRain | `Math.max(0, (t - this.tLastRain) / HOUR_MS)`
+- fuel/moisture/model.ts:403 | MoistureModel.advance | `Math.max(P.sinSunFloor, Math.sin((F.sunElev * Math.PI) / 180))`
+- fuel/moisture/model.ts:406 | MoistureModel.advance | `Math.min(1, Math.max(0, F.cloudFrac))`
+- fuel/moisture/model.ts:406 | MoistureModel.advance | `Math.max(0, F.cloudFrac)`
+- fuel/moisture/model.ts:411 | MoistureModel.advance | `Math.max(dtH, 1e-9)`
+- fuel/moisture/model.ts:420 | MoistureModel.advance | `Math.min(1, dTheta / STABLE_NIGHT_PARAMS.snScaleK)`
+- fuel/moisture/model.ts:727 | MoistureModel.initialise | `Math.max(seriesStart, t0 - P.spinUpHours * HOUR_MS)`
+- fuel/moisture/model.ts:755 | MoistureModel.initialise | `Math.min(1, Math.max(0, (w.cloudCover ?? 0) / 100))`
+- fuel/moisture/model.ts:755 | MoistureModel.initialise | `Math.max(0, (w.cloudCover ?? 0) / 100)`
+- fuel/moisture/model.ts:794 | MoistureModel.initialise | `Math.min(t0, t + Math.max(0.25, P.spinUpStepH) * HOUR_MS)`
+- fuel/moisture/model.ts:794 | MoistureModel.initialise | `Math.max(0.25, P.spinUpStepH)`
+- fuel/moisture/model.ts:830 | MoistureModel.calibrationDeviation | `Math.min(tC, F.tdS - (this.params.dewLapse * (this.medianZ - F.zS)) / 1000)`
+- fuel/moisture/model.ts:859 | MoistureModel.seedRainHistory | `Math.min(2, r.length)`
+- fuel/moisture/model.ts:885 | MoistureModel.buildLut | `Math.max(0, Math.floor((c.z[k]! - zMin) / P.lutElevBand))`
+- fuel/moisture/model.ts:886 | MoistureModel.buildLut | `Math.min(bins - 1, Math.floor(c.cover[k]! * bins))`
+- fuel/moisture/night.ts:45 | integrateStableNight | `Math.min(to, t + stepS * 1000)`
+- fuel/moisture/night.ts:88 | spinUpStableNight | `Math.max(series.hours[0]!.time, t0 - hours * 3.6e6)`
+- scenario/weather.ts:79 | precipWindow | `Math.min(H, Math.max(1, hs[j]!.time - hs[j - 1]!.time))`
+- scenario/weather.ts:79 | precipWindow | `Math.max(1, hs[j]!.time - hs[j - 1]!.time)`
+- sim/simulation.ts:452 | Simulation.constructor | `Math.max(0, e.time)`
+- sim/simulation.ts:454 | Simulation.constructor | `Math.max(0, ign.time)`
+- sim/simulation.ts:592 | Simulation.spinUp | `Math.min(this.atm.maxStableDt(), P.dtMaxS, this.spinTotal - this.spinDone)`
+- sim/simulation.ts:620 | Simulation.advance | `Math.min(until, this.duration)`
+- sim/simulation.ts:1139 | Simulation.buildAtmosphere | `Math.max(0, Math.min(stampIndex(hs, tMs), hs.length - 2))`
+- sim/simulation.ts:1139 | Simulation.buildAtmosphere | `Math.min(stampIndex(hs, tMs), hs.length - 2)`
+- sim/simulation.ts:1140 | Simulation.buildAtmosphere | `Math.min(this.stampIdx + 1, hs.length - 1)`
+- sim/simulation.ts:1282 | Simulation.stepOnce | `Math.max(0, (tMs - this.lastNightMs) / 1000)`
+- sim/simulation.ts:1292 | Simulation.stepOnce | `Math.max(0, dtM)`
+- sim/simulation.ts:1333 | Simulation.stepOnce | `Math.max(1, Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval))`
+- sim/simulation.ts:1333 | Simulation.stepOnce | `Math.min(this.opts.maxStepS > 0 ? this.opts.maxStepS : Infinity, interval)`
+- sim/simulation.ts:1334 | Simulation.stepOnce | `Math.min(this.atm.maxStableDt(), P.dtMaxS)`
+- sim/simulation.ts:1335 | Simulation.stepOnce | `Math.min(dtTier, userCap)`
+- sim/simulation.ts:1338 | Simulation.stepOnce | `Math.min((Math.floor(t / P.minuteS + EPS) + 1) * P.minuteS, (Math.floor(t / interval + EPS) + 1) * interval)`
+- sim/simulation.ts:1340 | Simulation.stepOnce | `Math.max(1, Math.ceil(rem / dtMax - 1e-9))`
+- sim/simulation.ts:1409 | Simulation.stepOnce | `Math.max(this.lastSnapT, this.t)`
+- sim/simulation.ts:1433 | Simulation.stepOnce | `Math.max(0, Math.min(tEnd, this.timeReached) - t)`
+- sim/simulation.ts:1433 | Simulation.stepOnce | `Math.min(tEnd, this.timeReached)`
+- terrain/analysis.ts:210 | slidingMinMax | `Math.max(nx, ny)`
+- terrain/analysis.ts:211 | slidingMinMax | `Math.max(nx, ny)`
+- terrain/analysis.ts:387 | stdDev | `Math.max(0, s2 / f.length - m * m)`
+- terrain/analysis.ts:407 | buildTerrain | `Math.max(1, Math.round(TPI_RADIUS_M / h))`
+- terrain/analysis.ts:408 | buildTerrain | `Math.max(1, Math.round(TPI_SMALL_RADIUS_M / h))`
+- terrain/analysis.ts:409 | buildTerrain | `Math.max(1, Math.round(CURVATURE_SMOOTH_RADIUS_M / h))`
+- terrain/analysis.ts:410 | buildTerrain | `Math.max(1, Math.round(CRITICAL_POINT_SMOOTH_RADIUS_M / h))`
+- terrain/analysis.ts:411 | buildTerrain | `Math.max(1, Math.round(RELATIVE_POSITION_RADIUS_M / h))`
+- terrain/analysis.ts:413 | buildTerrain | `Math.max(rL, rS, 2 * rH + 1, 2 * rC + 1)`
+- terrain/solar.ts:118 | solarPosition | `Math.min(1, Math.max(-1, Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(H)))`
+- terrain/solar.ts:118 | solarPosition | `Math.max(-1, Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(H))`
+- terrain/solar.ts:229 | clearSkyIrradiance | `Math.max(0, cg1 * i0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (tl - 1))))`
+- terrain/solar.ts:231 | clearSkyIrradiance | `Math.max(0, b * i0 * Math.exp(-0.09 * am * (tl - 1)))`
+- terrain/solar.ts:233 | clearSkyIrradiance | `Math.max(0, 1 - (0.1 - 0.2 * Math.exp(-tl)) / (0.1 + 0.882 / fh1))`
+- terrain/solar.ts:234 | clearSkyIrradiance | `Math.min(dni1, dni2)`
+- terrain/solar.ts:235 | clearSkyIrradiance | `Math.max(0, ghi - dni * cz)`
+- terrain/solar.ts:239 | cloudAttenuation | `Math.min(1, Math.max(0, cloudCover / 100))`
+- terrain/solar.ts:239 | cloudAttenuation | `Math.max(0, cloudCover / 100)`
+- terrain/solar.ts:246 | erbsDecomposition | `Math.max(0, ghi)`
+- terrain/solar.ts:246 | erbsDecomposition | `Math.max(0, ghi)`
+- terrain/solar.ts:248 | erbsDecomposition | `Math.max(cz, 0.065)`
+- terrain/solar.ts:249 | erbsDecomposition | `Math.min(1, ghi / i0h)`
+- terrain/solar.ts:255 | erbsDecomposition | `Math.min((ghi - dhi) / Math.max(cz, 0.065), extraterrestrial(distanceAU))`
+- terrain/solar.ts:255 | erbsDecomposition | `Math.max(cz, 0.065)`
+- terrain/solar.ts:256 | erbsDecomposition | `Math.max(0, dni)`
+- terrain/solar.ts:357 | castShadows | `Math.max(nx, ny)`
+- terrain/solar.ts:358 | castShadows | `Math.max(nx, ny)`
+- terrain/solar.ts:412 | skyViewFactor | `Math.max(nx, ny)`
+- terrain/solar.ts:413 | skyViewFactor | `Math.max(nx, ny)`
+- terrain/solar.ts:414 | skyViewFactor | `Math.max(nx, ny)`
+- terrain/solar.ts:415 | skyViewFactor | `Math.max(nx, ny)`
+- terrain/solar.ts:416 | skyViewFactor | `Math.max(nx, ny)`
+- terrain/solar.ts:540 | splitGhi | `Math.max(0, ghi || 0)`
+- terrain/solar.ts:540 | splitGhi | `Math.max(0, ghi || 0)`
+- terrain/solar.ts:543 | splitGhi | `Math.min(1, Math.max(0, (r - 0.25) / 0.75))`
+- terrain/solar.ts:543 | splitGhi | `Math.max(0, (r - 0.25) / 0.75)`
+- terrain/solar.ts:547 | splitGhi | `Math.min(((1 - kd) * ghi) / cz, clear.dni)`
+- terrain/solar.ts:548 | splitGhi | `Math.max(0, ghi - dni * cz)`
+- terrain/solar.ts:563 | horizontalIrradiance | `Math.min(Math.max(0, opts.ghi), MAX_CLEAR_SKY_RATIO * clear.ghi)`
+- terrain/solar.ts:563 | horizontalIrradiance | `Math.max(0, opts.ghi)`
+- terrain/solar.ts:599 | insolation | `Math.max(lz, 0.087)`
+- terrain/solar.ts:600 | insolation | `Math.min(1, irr.dni / extraterrestrial(sun.distanceAU))`
