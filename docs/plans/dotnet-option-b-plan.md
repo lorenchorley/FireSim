@@ -220,6 +220,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
   2. Group self-time by phase: air (`EllipticSolver.relax`, `gradient`, `divergence`, `dynamics.advect`), level set, embers, coupling (pyrogenic), moisture, other. Picture encoding is not in the exporter and is measured in T5.1.
   3. For each phase, the transcendental calls per step (instrumented count), so projections can weight `FsMath`'s cost.
 - **Done when:** a table of phase shares and call counts per tier, three runs, with spread; it agrees with §15e's shares within 10 points or says why not.
+- **Result (merged 2026-11-16, `reports/1-profile.md`):** standard tier: air 63.5 % (71 % of a cold run with the 900 s spin-up), embers 12.3, fire 9.6, coupling 4.9; hottest `EllipticSolver.relax` 15.1 %, then `dynamics.advect` 9.3, `divergence` 5.4, `gradient` 5.0 (the elliptic solver's own functions 29.4 % together). Fast tier at 30 min: fire 25.9, embers 24.1, coupling 19.3, picture 11.1, detectors 8.9; **no function above 8.4 %** (`PyrogenicPotential.solve`); the shares move with fire size (at 4 h the level set's `evaluate` is 13.6 %, `reinit` 10.1, the pyrogenic solve 9.2). About 21,000 transcendental calls per step in both tiers, almost all in fire and embers; the air solve calls none worth weighting (it has 72,001 `x ** 2` squares per step). The plan's count of `Math` calls missed `**` (42 sites in the solver, 65 in the app).
 - **Out:** `reports/1-profile.md`, `.json`.
 
 #### T1.2 The frozen speed-test kernels in C#
@@ -240,7 +241,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 - **Out:** `reports/1-fsmath.md`, `.json`.
 
 #### T1.4 The hottest kernel of each gate tier in C#
-- **Who:** builder (one per tier if both are large). **Needs:** T1.1, T1.3. **Reads:** the TypeScript files T1.1 names, `dotnet-advanced/vectorization` with section 9's overrides, `dotnet-diag/analyzing-dotnet-performance`, 10.4.
+- **Who:** builder (one per tier if both are large). **Needs:** T1.1, T1.3. **Kernels, from T1.1:** *standard tier* the air solve: `EllipticSolver.relax`, `gradient`, `divergence` (`src/atmosphere/solver.ts`) and `dynamics.advect` (about 35 % of the step together, dense array loops, the best vectorisation and threading candidates); *fast tier* the level set (`LevelSetCore.evaluate`, `reinit`) and `PyrogenicPotential.solve` (already ported by K1, in `Fs.Kernel/Pyrogenic/`: bring it under the rules of 10.4 instead of starting again). The fast tier has no single dominant kernel and its embers (24 %) must stay serial in the faithful draw order, so expect a small whole-step gain there; say so in the report. **Reads:** the TypeScript files T1.1 names, `dotnet-advanced/vectorization` with section 9's overrides, `dotnet-diag/analyzing-dotnet-performance`, 10.4.
 - **Steps:**
   1. Port three ways: scalar; element-wise `Vector128<T>` where it vectorises, reductions scalar in a fixed order; `Parallel.For` over many fixed chunks assigned dynamically, combined in chunk order.
   2. Tests: bits equal to the TypeScript's on fixture inputs where the kernel uses only + − × ÷ and `sqrt` (otherwise equal to the TypeScript run with the same `FsMath` implementation, through a test-only shim in the harness); identical on 1, 2, 4 and 8 threads; random draws timed, in the TypeScript order.
@@ -585,6 +586,7 @@ Each with at least one unit test, and enforced by the analyzers of T0.4 where an
 - **Maths:** every function except `Abs`, `Sqrt`, `Floor`, `Ceiling`, `Truncate` and `CopySign` goes through `FsMath`; no `Math.FusedMultiplyAdd`; no `TensorPrimitives`, `Vector<T>`, horizontal vector sums or `*Native` members.
 - **Min and max:** port what the TypeScript does, literally: `Math.max`/`Math.min` in JavaScript are IEEE `maximum`/`minimum` (NaN propagates, −0 < +0), which C#'s `Math.Max`/`Math.Min` match; a ternary `a > b ? a : b` stays a ternary.
 - **Conversions:** no raw float-to-integer casts; `FsConv` for `ToInt32`, `ToUint32`, typed-array stores (wrapping), `Uint8ClampedArray` stores (clamping), `Math.round` (halves up: 0.49999999999999994 → 0, −2.5 → −2), `Math.fround`, `Math.imul`.
+- **Powers:** `x ** 2` is `x * x`; any other `**` or `Math.pow` goes through `FsMath.Pow` (the solver has 42 `**` sites, the standard tier's air solve makes 72,001 squares per step).
 - **Floating point:** float32 arrays read into double locals; arithmetic in double where the TypeScript's is; no float32 arithmetic.
 - **Order:** stable sorts or explicit tie-breaks, NaN last as typed arrays sort; insertion-ordered maps, where delete-then-set moves a key to the end (`src/sim/simulation.ts:1668`); reductions in a fixed order, never by thread.
 - **Strings:** ordinal comparison.
