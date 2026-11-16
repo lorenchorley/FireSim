@@ -1,0 +1,3 @@
+# build-time secrets and settings: endpoint, upload code, results repository (see README.md). Never commit.
+Local.props
+*.local.props

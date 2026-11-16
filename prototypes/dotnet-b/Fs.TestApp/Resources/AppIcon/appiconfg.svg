@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <!-- Foreground of the test icon: a flame, and across it a red diagonal band that says TEST.
+         The letters are drawn as rectangles, not as text, so the result does not depend on a font being installed in the build container.
+         Everything that matters sits inside the centre 66 % (the adaptive-icon safe zone). -->
+    <path d="M228 96 C260 140 300 168 300 228 C300 268 270 296 228 296 C186 296 156 268 156 228 C156 196 176 176 188 156 C196 172 204 176 210 176 C204 148 214 120 228 96 Z" fill="#FF9800" />
+    <path d="M228 156 C246 184 268 200 268 232 C268 256 250 272 228 272 C206 272 188 256 188 232 C188 214 204 204 210 188 C216 198 220 200 224 200 C220 182 222 170 228 156 Z" fill="#FFEB3B" />
+    <g transform="rotate(-32 228 228)">
+        <rect x="-60" y="186" width="576" height="84" fill="#D50000" />
+        <rect x="-60" y="186" width="576" height="4" fill="#FFFFFF" fill-opacity="0.6" />
+        <rect x="-60" y="266" width="576" height="4" fill="#FFFFFF" fill-opacity="0.6" />
+        <g fill="#FFFFFF">
+            <!-- T -->
+            <rect x="149" y="204" width="32" height="9" />
+            <rect x="160.5" y="204" width="9" height="48" />
+            <!-- E -->
+            <rect x="191" y="204" width="9" height="48" />
+            <rect x="191" y="204" width="30" height="9" />
+            <rect x="191" y="223.5" width="26" height="9" />
+            <rect x="191" y="243" width="30" height="9" />
+            <!-- S -->
+            <rect x="233" y="204" width="30" height="9" />
+            <rect x="233" y="204" width="9" height="26" />
+            <rect x="233" y="223.5" width="30" height="9" />
+            <rect x="254" y="223.5" width="9" height="29" />
+            <rect x="233" y="243" width="30" height="9" />
+            <!-- T -->
+            <rect x="273" y="204" width="32" height="9" />
+            <rect x="284.5" y="204" width="9" height="48" />
+        </g>
+    </g>
+</svg>
