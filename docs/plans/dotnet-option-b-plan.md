@@ -25,7 +25,7 @@
 | # | Decision | Default until answered | Needed by |
 |---|---|---|---|
 | O-4 | Before or after the 0.9.0 release? | The prototype never touches the app and uses its own application ids; its container work can run alongside the 0.9.0 work; phone rounds are scheduled with you | Round 1 |
-| O-5 | Signing key (T0.3) | Test APKs use the debug key; the real app's key is still only in this container | Before round 1 |
+| O-5 | Signing key of the **real app** (T0.3) | Test APKs are signed with .NET's own default debug key, a different key from the real app's (their ids differ, so no test APK ever touches the real app); the real app's key is still only in this container | Before round 1 |
 | O-6 | Results endpoint and where results go (T0.6a) | The one-tap GitHub fallback; results as issues in a **private** repository you create (for example `firesim-results`) and give this session access to | Round 1 (fallback works from round 0) |
 | O-7 | Free arm64 CI on GitHub (T0.8) | Not set up. It adds one workflow file under `.github/workflows/` that runs the prototype's hash tests on GitHub's free arm64 runners | Phase 1 |
 | O-8 | The bars in section 4 | As proposed | Before each gate |
@@ -61,7 +61,7 @@ Paths are relative to `prototypes/dotnet-b/` unless they start with `src/`, `doc
 | Disk | **8 GB free**; Android and WebAssembly builds need about 15 GB. 52 agent worktrees take 7.2 GB (T0.2). |
 | Committed prototype | Solution `FsProto.slnx` (lists `Fs.Kernel`, `Fs.Bench`, `Fs.Compare`, `Fs.Host`; `Fs.Transport/` is an empty folder); `ts-export/` (the fixture exporter: `node run.mjs export NAME [--seed N] [--to S] [--perturb EPS]`, 11 scenarios in `ts-export/scenarios.ts`, all `duration: 3600`); the 3a reports. Fixtures (41 folders) are in the scratchpad. |
 | Stopped work, not committed | K1, worktree `agent-afd949a55c8e205d1`: a C# port and BenchmarkDotNet bench of `PyrogenicPotential.solve` with desktop numbers. T2, worktree `agent-af4301a383218d8d9`: the start of the MAUI transport app. |
-| Signing | The installed FireSim (0.8.0, versionCode 12) is signed with this container's debug key, SHA-256 `f7570f27…a862e7`. No other copy exists. |
+| Signing | The installed FireSim (0.8.0, versionCode 12) is signed with this container's debug key `/root/.android/debug.keystore`, SHA-256 `f7570f27…a862e7`. No other copy exists. The .NET Android build (T0.4) made and uses a **different** debug key, `/root/.local/share/Xamarin/Mono for Android/debug.keystore` (SHA-256 `94aa0085…4da3`); test APKs are signed with that one. |
 | App facts used below | Frozen speed-test kernels `src/ui/speedTestKernels.ts`, checksums in `src/ui/speedTest.test.ts:26` (`stencilAfter3: 0x7d268009`, `copyAfter2: 0x1e84aad9`); random generator mulberry32 `src/core/rng.ts`; snapshot hash `src/sim/testing/hash.ts` (hashes typed arrays' raw bytes); weather preset `hot-nw-sw-change` (`src/sim/testing/scenarios.ts`, the south-west change about 2 h in); demo sites `public/demo/` (barrington, budawangs, gospers, grose, kanangra, katoomba, thredbo, tomah, warrumbungles); Node host `desktop/`; validation tests `src/sim/validation/`; worker protocol `src/sim/host.ts` and `src/sim/remote/codec.ts`; "Continue on this device" `src/ui/desktopHost.ts`; desktop stand-in for tests `e2e/desktopStub.ts`, `e2e/desktop-stub.init.js`. |
 | Size of the solver | Runtime import closure from `src/sim/host.ts`: 37,727 lines in 117 files. `Math` calls in `src/{sim,fire,embers,atmosphere,terrain,core}`: max 356, abs 247, min 220, floor 116, round 113, cos 113, exp 107, sin 101, sqrt 95, **hypot 91**, tan 62, log 58, ceil 47, pow 31, imul 24, atan 23, atan2 18, cbrt 10, fround 7, acos 6, asin 3, sign 2, sinh, log2, log10 1 each. |
 
@@ -154,7 +154,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
   1. **Owner:** choose (a) keep the debug key: the orchestrator sends `/root/.android/debug.keystore` to you as a file in this conversation (never committed) and you store it safely; or (b) a new release key for the real app, accepting that the next real release installs only after an uninstall (export your saved data first).
   2. **Owner:** say in the chat that it is stored (a) or chosen (b).
   3. **Orchestrator:** record the choice and the fingerprint in `TOOLCHAIN.md`.
-- **Done when:** the owner's confirmation is in the conversation. Test APKs use the debug key either way.
+- **Done when:** the owner's confirmation is in the conversation. Test APKs use .NET's default debug key either way (T0.4 found it differs from the real app's key; only the saved-data round T7.2 needs one key for its two builds, and both are built here).
 
 #### T0.4 Toolchain, analyzers and the test project
 - **Who:** builder. **Needs:** T0.2. **Reads:** `dotnet/setup-local-sdk`, `dotnet-maui/dotnet-maui-doctor`, `dotnet-test/scaffold-dotnet-test-project`, section 10.4.
@@ -172,8 +172,8 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 - **Who:** builder. **Needs:** T0.4. **Reads:** `dotnet-maui/dotnet-maui-doctor`, section 5.
 - **Steps:**
   1. `Fs.TestApp/`: a MAUI app with section 5's labelling, countdown, block runner, thermal and battery gating, pause detection, save-then-send, done and uninstall screens. Arms are pluggable: name, time estimate, `RunAsync(IProgress, CancellationToken)` returning a JSON node. A HybridWebView page hosts browser-side arms; its assets are served with `Document-Isolation-Policy: isolate-and-require-corp` and the app sets androidx.webkit 1.18's cross-origin-isolated allowlist for its own origin when `WebViewFeature.CROSS_ORIGIN_ISOLATED_ALLOWLIST` is supported (the result records whether shared memory was obtained).
-  2. Build `-c Release -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:ProtoRound=0`, signed with the debug key; `ProtoRound` sets id, title, version name and icon.
-  3. Check: `aapt2 dump badging` (id, label, versionName, targetSdk, the three permissions and no others), `apksigner verify --print-certs` (fingerprint `f7570f27…`), size, assemblies inside the APK.
+  2. Build `-c Release -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:ProtoRound=0`, signed with .NET's default debug key (no key material is printed or committed); `ProtoRound` sets id, title, version name and icon.
+  3. Check: `aapt2 dump badging` (id, label, versionName, targetSdk, the three permissions and no others), `apksigner verify --print-certs` (the fingerprint is recorded in `TOOLCHAIN.md`: `94aa0085…4da3` today), size, assemblies inside the APK.
   4. Extend `reports/RESULTS-SCHEMA.md` (rule 11) and write `Fs.TestApp/README.md` (how to add an arm).
 - **Done when:** the APK passes step 3, and a container dry run of the block runner (arms stubbed) produces a schema-valid document.
 - **Out:** `Fs.TestApp/`, `reports/0-apk-check.md`.
