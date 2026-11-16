@@ -28,6 +28,7 @@
   <ItemGroup>
     <Compile Include="..\Fs.TestApp.Core\Sending\Senders.cs" Link="Linked\Senders.cs" />
     <Compile Include="..\Fs.TestApp.Core\Sending\GitHubIssueUrl.cs" Link="Linked\GitHubIssueUrl.cs" />
+    <Compile Include="..\Fs.TestApp.Core\Round0\Digests.cs" Link="Linked\Digests.cs" />
     <Compile Include="..\Fs.Tests\TestApp\TestDocs.cs" Link="Linked\TestDocs.cs" />
   </ItemGroup>
 
