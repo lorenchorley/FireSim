@@ -1,5 +1,7 @@
 using FsTestApp.Arms;
+using FsTestApp.Device;
 using FsTestApp.Results;
+using FsTestApp.Round0;
 using FsTestApp.Runner;
 using FsTestApp.Sending;
 using FsTestApp.Session;
@@ -25,6 +27,9 @@ public sealed class TestPage : ContentPage
 	readonly Button github = new() { Text = "Send with GitHub", IsVisible = false };
 	readonly Button share = new() { Text = "Share", IsVisible = false };
 	readonly Button uninstall = new() { Text = "Uninstall", IsVisible = false };
+	readonly Label summary = new() { FontSize = 14, TextColor = Colors.White, IsVisible = false };
+	readonly Label crashLabel = new() { FontSize = 12, TextColor = Color.FromArgb("#FFCDD2"), IsVisible = false };
+	readonly string? previousCrash;
 	readonly Label webLabel = new() { Text = "Page host:", FontSize = 12, TextColor = Colors.White, IsVisible = true };
 	bool keepOnSet;
 
@@ -35,9 +40,11 @@ public sealed class TestPage : ContentPage
 		var cfg = BuildConfig.Results;
 		var store = new FileResultStore(Path.Combine(FileSystem.AppDataDirectory, "results"));
 		var sender = new HttpResultsSender(cfg, new HttpClient());
-		host = new ArmHost();
-		var plan = StubPlan.Build(host);
-		session = new TestSession(plan, device, new AndroidRunEnvironment(), store, sender, cfg, SystemClock.Instance) { BeforeRun = PrepareWebViewAsync };
+		bool round0 = BuildConfig.Round == Round0Plan.Round;
+		host = new ArmHost(round0 ? Round0Plan.WebFiles : null);
+		var plan = round0 ? BuildRound0Plan(host, device) : StubPlan.Build(host);
+		previousCrash = CrashNote.TakePrevious();
+		session = new TestSession(plan, device, new AndroidRunEnvironment(), store, sender, cfg, SystemClock.Instance, round0 ? Round0Plan.Options() : null) { BeforeRun = PrepareWebViewAsync };
 		session.Changed += snap => MainThread.BeginInvokeOnMainThread(() => Render(snap));
 		host.PageVisibilityChanged += hidden => session.NotifyWebViewVisibility(!hidden);
 
@@ -55,10 +62,15 @@ public sealed class TestPage : ContentPage
 			Content = new VerticalStackLayout
 			{
 				Padding = new Thickness(20, 40, 20, 20), Spacing = 16,
-				Children = { title, main, bar, detail, buttons, webLabel, host.View },
+				Children = { title, main, bar, detail, summary, crashLabel, buttons, webLabel, host.View },
 			},
 		};
 		main.Text = session.FirstScreenText;
+		if (previousCrash != null)
+		{
+			crashLabel.Text = "The app stopped unexpectedly last time. What it left behind (also sent with the results):\n" + previousCrash;
+			crashLabel.IsVisible = true;
+		}
 		Loaded += async (_, _) => await Guarded(StartAsync);
 	}
 
@@ -68,8 +80,13 @@ public sealed class TestPage : ContentPage
 		await session.RunAsync(CancellationToken.None);
 	}
 
+	/// <summary>Round 0's arms: device facts (native), WebView facts and the frozen kernels (in the page). One block each, in that order.</summary>
+	static TestPlan BuildRound0Plan(ArmHost host, IDeviceState device)
+		=> Round0Plan.Build(new DeviceFactsArm(new AndroidDeviceProbe(), device, new FileSysfs()), new WebViewFactsArm(host), new KernelsArm(host));
+
 	async Task PrepareWebViewAsync(RunLog log, CancellationToken ct)
 	{
+		if (previousCrash != null) log.AddError("previous launch", previousCrash);
 		bool ready = await host.WaitReadyAsync(TimeSpan.FromSeconds(20), ct);
 		if (!ready) log.AddError("webview", "the HybridWebView page did not report ready within 20 s: browser-side arms will fail");
 		log.Document.WebView = await host.ProbeAsync(ct);
@@ -123,6 +140,7 @@ public sealed class TestPage : ContentPage
 				break;
 			case SessionPhase.Done:
 				main.Text = s.DoneLine ?? ScreenText.DoneNotSent;
+				ShowSummary();
 				detail.Text = string.Join("\n", new[] { s.PreviousUninstallNote, string.IsNullOrEmpty(s.Message) ? null : s.Message, BuildConfig.Results.HasEndpoint ? null : "This build has no results endpoint set." }.Where(t => !string.IsNullOrEmpty(t)));
 				break;
 			case SessionPhase.Failed:
@@ -131,6 +149,19 @@ public sealed class TestPage : ContentPage
 				break;
 		}
 		webLabel.Text = "Page host: " + (host.LastStatus ?? (host.IsReady ? "ready" : "loading"));
+	}
+
+	/// <summary>What the run found, in words, under the Done line: one line per check and any problems, so a failure is visible without opening the result file.</summary>
+	void ShowSummary()
+	{
+		try
+		{
+			var doc = session.Document;
+			var lines = doc == null ? Array.Empty<string>() : RunSummary.Lines(doc);
+			summary.Text = string.Join("\n", lines);
+			summary.IsVisible = lines.Count > 0;
+		}
+		catch (Exception) { summary.IsVisible = false; }
 	}
 
 	static string TimeLeft(double seconds)

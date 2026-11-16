@@ -55,6 +55,18 @@ M:System.Convert.ToUInt64(System.Double);use FsConv (JavaScript conversion seman
 M:System.Convert.ToUInt64(System.Object);use FsConv: Convert.ToUInt64 on a boxed double or float converts with its own rounding (half to even), a third rule beside the cast and JavaScript's
 M:System.Convert.ToUInt64(System.Object,System.IFormatProvider);use FsConv: Convert.ToUInt64 on a boxed double or float converts with its own rounding (half to even), a third rule beside the cast and JavaScript's
 M:System.Convert.ToUInt64(System.Single);use FsConv (JavaScript conversion semantics, plan 10.4): Convert.ToUInt64(Single) rounds half to even, a third rule beside the cast and JavaScript's
+M:System.Decimal.ConvertToIntegerNative``1(System.Decimal);use FsConv (JavaScript conversion semantics, plan 10.4): Decimal.ConvertToInteger saturates, a float-to-integer rule of its own
+M:System.Decimal.ConvertToInteger``1(System.Decimal);use FsConv (JavaScript conversion semantics, plan 10.4): Decimal.ConvertToInteger saturates, a float-to-integer rule of its own
+M:System.Decimal.ToByte(System.Decimal);use FsConv (plan 10.4): decimal.ToByte is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToDouble(System.Decimal);use FsConv (plan 10.4): decimal.ToDouble is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToInt16(System.Decimal);use FsConv (plan 10.4): decimal.ToInt16 is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToInt32(System.Decimal);use FsConv (plan 10.4): decimal.ToInt32 is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToInt64(System.Decimal);use FsConv (plan 10.4): decimal.ToInt64 is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToSByte(System.Decimal);use FsConv (plan 10.4): decimal.ToSByte is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToSingle(System.Decimal);use FsConv (plan 10.4): decimal.ToSingle is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToUInt16(System.Decimal);use FsConv (plan 10.4): decimal.ToUInt16 is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToUInt32(System.Decimal);use FsConv (plan 10.4): decimal.ToUInt32 is the decimal cast, with a rounding or overflow rule of its own
+M:System.Decimal.ToUInt64(System.Decimal);use FsConv (plan 10.4): decimal.ToUInt64 is the decimal cast, with a rounding or overflow rule of its own
 M:System.Double.Acos(System.Double);use FsMath (plan 10.4): Double.Acos calls the platform maths library or an estimate
 M:System.Double.AcosPi(System.Double);use FsMath (plan 10.4): Double.AcosPi calls the platform maths library or an estimate
 M:System.Double.Acosh(System.Double);use FsMath (plan 10.4): Double.Acosh calls the platform maths library or an estimate
@@ -71,6 +83,7 @@ M:System.Double.BitIncrement(System.Double);use FsMath (plan 10.4): Double.BitIn
 M:System.Double.Cbrt(System.Double);use FsMath (plan 10.4): Double.Cbrt calls the platform maths library or an estimate
 M:System.Double.ClampNative(System.Double,System.Double,System.Double);use FsMath (plan 10.4): Double.ClampNative calls the platform maths library or an estimate
 M:System.Double.ConvertToIntegerNative``1(System.Double);use FsMath (plan 10.4): Double.ConvertToIntegerNative calls the platform maths library or an estimate
+M:System.Double.ConvertToInteger``1(System.Double);use FsConv (JavaScript conversion semantics, plan 10.4): Double.ConvertToInteger saturates, a float-to-integer rule of its own
 M:System.Double.Cos(System.Double);use FsMath (plan 10.4): Double.Cos calls the platform maths library or an estimate
 M:System.Double.CosPi(System.Double);use FsMath (plan 10.4): Double.CosPi calls the platform maths library or an estimate
 M:System.Double.Cosh(System.Double);use FsMath (plan 10.4): Double.Cosh calls the platform maths library or an estimate
@@ -126,6 +139,7 @@ M:System.Half.BitIncrement(System.Half);use FsMath (plan 10.4): Half.BitIncremen
 M:System.Half.Cbrt(System.Half);use FsMath (plan 10.4): Half.Cbrt calls the platform maths library or an estimate
 M:System.Half.ClampNative(System.Half,System.Half,System.Half);use FsMath (plan 10.4): Half.ClampNative calls the platform maths library or an estimate
 M:System.Half.ConvertToIntegerNative``1(System.Half);use FsMath (plan 10.4): Half.ConvertToIntegerNative calls the platform maths library or an estimate
+M:System.Half.ConvertToInteger``1(System.Half);use FsConv (JavaScript conversion semantics, plan 10.4): Half.ConvertToInteger saturates, a float-to-integer rule of its own
 M:System.Half.Cos(System.Half);use FsMath (plan 10.4): Half.Cos calls the platform maths library or an estimate
 M:System.Half.CosPi(System.Half);use FsMath (plan 10.4): Half.CosPi calls the platform maths library or an estimate
 M:System.Half.Cosh(System.Half);use FsMath (plan 10.4): Half.Cosh calls the platform maths library or an estimate
@@ -332,9 +346,13 @@ M:System.Runtime.Intrinsics.Arm.Sve.TrigonometricMultiplyAddCoefficient(System.N
 M:System.Runtime.Intrinsics.Vector128.Asin(System.Runtime.Intrinsics.Vector128{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector128.Asin(System.Runtime.Intrinsics.Vector128{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector128.ClampNative``1(System.Runtime.Intrinsics.Vector128{``0},System.Runtime.Intrinsics.Vector128{``0},System.Runtime.Intrinsics.Vector128{``0});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.ClampNative may differ by hardware
+M:System.Runtime.Intrinsics.Vector128.ConvertToInt32(System.Runtime.Intrinsics.Vector128{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector128.ConvertToInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector128.ConvertToInt32Native(System.Runtime.Intrinsics.Vector128{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.ConvertToInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector128.ConvertToInt64(System.Runtime.Intrinsics.Vector128{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector128.ConvertToInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector128.ConvertToInt64Native(System.Runtime.Intrinsics.Vector128{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.ConvertToInt64Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector128.ConvertToUInt32(System.Runtime.Intrinsics.Vector128{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector128.ConvertToUInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector128.ConvertToUInt32Native(System.Runtime.Intrinsics.Vector128{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.ConvertToUInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector128.ConvertToUInt64(System.Runtime.Intrinsics.Vector128{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector128.ConvertToUInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector128.ConvertToUInt64Native(System.Runtime.Intrinsics.Vector128{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.ConvertToUInt64Native may differ by hardware
 M:System.Runtime.Intrinsics.Vector128.Cos(System.Runtime.Intrinsics.Vector128{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.Cos may differ by hardware
 M:System.Runtime.Intrinsics.Vector128.Cos(System.Runtime.Intrinsics.Vector128{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector128.Cos may differ by hardware
@@ -377,9 +395,13 @@ M:System.Runtime.Intrinsics.Vector128.Sum``1(System.Runtime.Intrinsics.Vector128
 M:System.Runtime.Intrinsics.Vector256.Asin(System.Runtime.Intrinsics.Vector256{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector256.Asin(System.Runtime.Intrinsics.Vector256{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector256.ClampNative``1(System.Runtime.Intrinsics.Vector256{``0},System.Runtime.Intrinsics.Vector256{``0},System.Runtime.Intrinsics.Vector256{``0});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.ClampNative may differ by hardware
+M:System.Runtime.Intrinsics.Vector256.ConvertToInt32(System.Runtime.Intrinsics.Vector256{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector256.ConvertToInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector256.ConvertToInt32Native(System.Runtime.Intrinsics.Vector256{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.ConvertToInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector256.ConvertToInt64(System.Runtime.Intrinsics.Vector256{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector256.ConvertToInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector256.ConvertToInt64Native(System.Runtime.Intrinsics.Vector256{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.ConvertToInt64Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector256.ConvertToUInt32(System.Runtime.Intrinsics.Vector256{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector256.ConvertToUInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector256.ConvertToUInt32Native(System.Runtime.Intrinsics.Vector256{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.ConvertToUInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector256.ConvertToUInt64(System.Runtime.Intrinsics.Vector256{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector256.ConvertToUInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector256.ConvertToUInt64Native(System.Runtime.Intrinsics.Vector256{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.ConvertToUInt64Native may differ by hardware
 M:System.Runtime.Intrinsics.Vector256.Cos(System.Runtime.Intrinsics.Vector256{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.Cos may differ by hardware
 M:System.Runtime.Intrinsics.Vector256.Cos(System.Runtime.Intrinsics.Vector256{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector256.Cos may differ by hardware
@@ -422,9 +444,13 @@ M:System.Runtime.Intrinsics.Vector256.Sum``1(System.Runtime.Intrinsics.Vector256
 M:System.Runtime.Intrinsics.Vector512.Asin(System.Runtime.Intrinsics.Vector512{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector512.Asin(System.Runtime.Intrinsics.Vector512{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector512.ClampNative``1(System.Runtime.Intrinsics.Vector512{``0},System.Runtime.Intrinsics.Vector512{``0},System.Runtime.Intrinsics.Vector512{``0});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.ClampNative may differ by hardware
+M:System.Runtime.Intrinsics.Vector512.ConvertToInt32(System.Runtime.Intrinsics.Vector512{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector512.ConvertToInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector512.ConvertToInt32Native(System.Runtime.Intrinsics.Vector512{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.ConvertToInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector512.ConvertToInt64(System.Runtime.Intrinsics.Vector512{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector512.ConvertToInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector512.ConvertToInt64Native(System.Runtime.Intrinsics.Vector512{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.ConvertToInt64Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector512.ConvertToUInt32(System.Runtime.Intrinsics.Vector512{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector512.ConvertToUInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector512.ConvertToUInt32Native(System.Runtime.Intrinsics.Vector512{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.ConvertToUInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector512.ConvertToUInt64(System.Runtime.Intrinsics.Vector512{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector512.ConvertToUInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector512.ConvertToUInt64Native(System.Runtime.Intrinsics.Vector512{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.ConvertToUInt64Native may differ by hardware
 M:System.Runtime.Intrinsics.Vector512.Cos(System.Runtime.Intrinsics.Vector512{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.Cos may differ by hardware
 M:System.Runtime.Intrinsics.Vector512.Cos(System.Runtime.Intrinsics.Vector512{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector512.Cos may differ by hardware
@@ -467,9 +493,13 @@ M:System.Runtime.Intrinsics.Vector512.Sum``1(System.Runtime.Intrinsics.Vector512
 M:System.Runtime.Intrinsics.Vector64.Asin(System.Runtime.Intrinsics.Vector64{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector64.Asin(System.Runtime.Intrinsics.Vector64{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.Asin may differ by hardware
 M:System.Runtime.Intrinsics.Vector64.ClampNative``1(System.Runtime.Intrinsics.Vector64{``0},System.Runtime.Intrinsics.Vector64{``0},System.Runtime.Intrinsics.Vector64{``0});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.ClampNative may differ by hardware
+M:System.Runtime.Intrinsics.Vector64.ConvertToInt32(System.Runtime.Intrinsics.Vector64{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector64.ConvertToInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector64.ConvertToInt32Native(System.Runtime.Intrinsics.Vector64{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.ConvertToInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector64.ConvertToInt64(System.Runtime.Intrinsics.Vector64{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector64.ConvertToInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector64.ConvertToInt64Native(System.Runtime.Intrinsics.Vector64{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.ConvertToInt64Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector64.ConvertToUInt32(System.Runtime.Intrinsics.Vector64{System.Single});use FsConv (JavaScript conversion semantics, plan 10.4): Vector64.ConvertToUInt32 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector64.ConvertToUInt32Native(System.Runtime.Intrinsics.Vector64{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.ConvertToUInt32Native may differ by hardware
+M:System.Runtime.Intrinsics.Vector64.ConvertToUInt64(System.Runtime.Intrinsics.Vector64{System.Double});use FsConv (JavaScript conversion semantics, plan 10.4): Vector64.ConvertToUInt64 is a float-to-integer rule of its own (saturating in .NET 11)
 M:System.Runtime.Intrinsics.Vector64.ConvertToUInt64Native(System.Runtime.Intrinsics.Vector64{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.ConvertToUInt64Native may differ by hardware
 M:System.Runtime.Intrinsics.Vector64.Cos(System.Runtime.Intrinsics.Vector64{System.Double});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.Cos may differ by hardware
 M:System.Runtime.Intrinsics.Vector64.Cos(System.Runtime.Intrinsics.Vector64{System.Single});element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): Vector64.Cos may differ by hardware
@@ -597,6 +627,7 @@ M:System.Single.BitIncrement(System.Single);use FsMath (plan 10.4): Single.BitIn
 M:System.Single.Cbrt(System.Single);use FsMath (plan 10.4): Single.Cbrt calls the platform maths library or an estimate
 M:System.Single.ClampNative(System.Single,System.Single,System.Single);use FsMath (plan 10.4): Single.ClampNative calls the platform maths library or an estimate
 M:System.Single.ConvertToIntegerNative``1(System.Single);use FsMath (plan 10.4): Single.ConvertToIntegerNative calls the platform maths library or an estimate
+M:System.Single.ConvertToInteger``1(System.Single);use FsConv (JavaScript conversion semantics, plan 10.4): Single.ConvertToInteger saturates, a float-to-integer rule of its own
 M:System.Single.Cos(System.Single);use FsMath (plan 10.4): Single.Cos calls the platform maths library or an estimate
 M:System.Single.CosPi(System.Single);use FsMath (plan 10.4): Single.CosPi calls the platform maths library or an estimate
 M:System.Single.Cosh(System.Single);use FsMath (plan 10.4): Single.Cosh calls the platform maths library or an estimate
@@ -652,6 +683,9 @@ M:System.UIntPtr.CreateChecked``1(``0);use FsConv (plan 10.4): UIntPtr.CreateChe
 M:System.UIntPtr.CreateSaturating``1(``0);use FsConv (plan 10.4): UIntPtr.CreateSaturating converts a float or double with its own rounding or saturation, not by a visible cast
 M:System.UIntPtr.CreateTruncating``1(``0);use FsConv (plan 10.4): UIntPtr.CreateTruncating converts a float or double with its own rounding or saturation, not by a visible cast
 N:System.Numerics.Tensors;System.Numerics.Tensors (TensorPrimitives, Tensor<T>) may differ between operating systems and architectures (plan 9)
+N:System.Runtime.Intrinsics.Arm;platform intrinsics are banned in solver code: estimate, approximation and fused operations differ by hardware (plan 9, 10.4): use the portable Vector64/128/256/512<T> API
+N:System.Runtime.Intrinsics.Wasm;platform intrinsics are banned in solver code: estimate, approximation and fused operations differ by hardware (plan 9, 10.4): use the portable Vector64/128/256/512<T> API
+N:System.Runtime.Intrinsics.X86;platform intrinsics are banned in solver code: estimate, approximation and fused operations differ by hardware (plan 9, 10.4): use the portable Vector64/128/256/512<T> API
 T:System.Numerics.IBinaryFloatingPointIeee754`1;generic-math Exp, Pow, FusedMultiplyAdd, ScaleB and friends: use FsMath
 T:System.Numerics.IExponentialFunctions`1;generic-math call into the platform maths library: use FsMath
 T:System.Numerics.IFloatingPointIeee754`1;generic-math Exp, Pow, FusedMultiplyAdd, ScaleB and friends: use FsMath

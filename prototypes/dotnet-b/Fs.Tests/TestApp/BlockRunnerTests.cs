@@ -261,7 +261,7 @@ public sealed class DryRunTests
         try
         {
             var results = await DryRunScenarios.RunAllAsync(dir);
-            Assert.AreEqual(10, results.Count);
+            Assert.AreEqual(11, results.Count);
             var failed = results.Where(r => !r.Passed).Select(r => r.Name + ": " + string.Join(" | ", r.Checks.Where(c => c.StartsWith("FAIL")))).ToList();
             Assert.AreEqual(0, failed.Count, string.Join("\n", failed));
         }

@@ -5,6 +5,7 @@
   <Project Path="Fs.Host/Fs.Host.csproj" />
   <Project Path="Fs.Kernel/Fs.Kernel.csproj" />
   <Project Path="Fs.Tests/Fs.Tests.csproj" />
+  <Project Path="Fs.Wasm/Fs.Wasm.csproj" />
   <Project Path="Fs.TestApp.Core/Fs.TestApp.Core.csproj" />
   <Project Path="Fs.TestApp.DryRun/Fs.TestApp.DryRun.csproj" />
 </Solution>

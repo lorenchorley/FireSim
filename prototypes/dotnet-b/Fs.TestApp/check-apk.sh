@@ -48,6 +48,13 @@ for a in Fs.TestApp.dll Fs.TestApp.Core.dll Microsoft.Maui.dll System.Private.Co
   echo "$STORE" | grep -qF "$a" && check ok "assembly store holds $a" || check bad "assembly store holds $a"
 done
 echo "$LIST" | grep -q "assets/wwwroot/index.html" && echo "$LIST" | grep -q "assets/wwwroot/arm-host.js" && check ok "HybridWebView host page and script in assets/wwwroot" || check bad "wwwroot assets"
+# round 0 (T0.6b): the page script with the WebView arms and the worker bundle of the two frozen kernels must be in the APK, with the frozen checksum words inside the bundle's source text
+if [ "$ROUND" = 0 ]; then
+  echo "$LIST" | grep -q "assets/wwwroot/round0-arms.js" && echo "$LIST" | grep -q "assets/wwwroot/speedtest.worker.js" && check ok "round 0 page script and speed-test worker bundle in assets/wwwroot" || check bad "round 0 page script and worker bundle in assets/wwwroot"
+  unzip -p "$APK" assets/wwwroot/round0-arms.js 2>/dev/null | grep -q "webview-facts" && unzip -p "$APK" assets/wwwroot/round0-arms.js 2>/dev/null | grep -q "speedtest-kernels" && check ok "round0-arms.js registers webview-facts and speedtest-kernels" || check bad "round0-arms.js arms"
+  unzip -p "$APK" assets/wwwroot/speedtest.worker.js 2>/dev/null | grep -q "stencilAfter3" && unzip -p "$APK" assets/wwwroot/speedtest.worker.js 2>/dev/null | grep -q "copyAfter2" && check ok "speedtest.worker.js reports both checksums" || check bad "speedtest.worker.js checksums"
+  # the sendable build adds the repository name; the committed default is empty. Print what this APK carries (assembly metadata is inside the assembly store, not readable here): see reports/0-round0.md
+fi
 unzip -p "$APK" classes.dex classes2.dex 2>/dev/null | strings | grep -q "CROSS_ORIGIN_ISOLATED_ALLOWLIST" && check ok "androidx.webkit 1.18 (CROSS_ORIGIN_ISOLATED_ALLOWLIST) is in the dex" || check bad "androidx.webkit 1.18 in the dex"
 
 echo "--- manifest (compiled)"

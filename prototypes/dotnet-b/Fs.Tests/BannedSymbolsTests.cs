@@ -114,7 +114,7 @@ public sealed class BannedSymbolsTests
     // ---- the real BannedApiAnalyzers, run over snippets, with this file as its AdditionalFile ----
 
     private static Task<string[]> Rs0030Async(string body) => Rs0030MembersAsync($$"""
-        void M(double d, float f, double[] a, Vector128<float> v, Vector128<double> vd, object o, Vector128<short> vs)
+        void M(double d, float f, double[] a, Vector128<float> v, Vector128<double> vd, object o, Vector128<short> vs, Vector128<int> vi, Vector128<long> vl)
         {
             {{body}}
         }
@@ -130,6 +130,7 @@ public sealed class BannedSymbolsTests
             using System.Runtime.Intrinsics;
             using System.Runtime.Intrinsics.X86;
             using System.Runtime.Intrinsics.Arm;
+            using System.Runtime.Intrinsics.Wasm;
             class C
             {
                 {{members}}
@@ -221,6 +222,74 @@ public sealed class BannedSymbolsTests
     [DataRow("var x = Int128.CreateTruncating(d);", "Int128.CreateTruncating")]
     [DataRow("var x = UInt128.CreateSaturating(d);", "UInt128.CreateSaturating")]
     [DataRow("var x = BigInteger.CreateTruncating(d);", "BigInteger.CreateTruncating")]
+    // T0.4c hole 1: the platform-intrinsics namespaces X86, Arm and Wasm, outright (estimate and approximation intrinsics, IsSupported, nested types, fully qualified)
+    [DataRow("var x = Sse.Reciprocal(v);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse.ReciprocalSqrt(v);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse.ReciprocalScalar(v);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse.IsSupported;", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse2.IsSupported;", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse41.Floor(v);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx.Reciprocal(Vector256.Create(1f));", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx.ReciprocalSqrt(Vector256.Create(1f));", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx2.IsSupported;", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx2.X64.IsSupported;", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx512F.Reciprocal14(Vector512.Create(1.0));", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Avx512F.ReciprocalSqrt14(Vector512.Create(1.0));", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Popcnt.IsSupported;", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = AdvSimd.ReciprocalEstimate(v);", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = AdvSimd.ReciprocalSquareRootEstimate(v);", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = AdvSimd.ReciprocalStep(v, v);", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = AdvSimd.ReciprocalSquareRootStep(v, v);", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = AdvSimd.Arm64.ReciprocalEstimate(vd);", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = AdvSimd.IsSupported;", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = ArmBase.IsSupported;", "System.Runtime.Intrinsics.Arm")]
+    // Sve is evaluation-only (SYSLIB5003 is a compile error unless suppressed): suppressing it does not get past the ban
+    [DataRow("#pragma warning disable SYSLIB5003\nvar x = Sve.IsSupported;", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("#pragma warning disable SYSLIB5003\nvar x = Sve.ReciprocalEstimate(default(Vector<float>));", "System.Runtime.Intrinsics.Arm")]
+    [DataRow("var x = PackedSimd.IsSupported;", "System.Runtime.Intrinsics.Wasm")]
+    [DataRow("var x = PackedSimd.Add(vi, vi);", "System.Runtime.Intrinsics.Wasm")]
+    [DataRow("var x = PackedSimd.Sqrt(v);", "System.Runtime.Intrinsics.Wasm")]
+    [DataRow("var x = System.Runtime.Intrinsics.X86.Sse.Reciprocal(v);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate(v);", "System.Runtime.Intrinsics.Arm")]
+    // the neighbours that T0.4b kept allowed (exact integer operations, plain Add) are banned by T0.4c with the rest of the namespace
+    [DataRow("var x = Sse2.Add(vd, vd) + Sse2.Multiply(vd, vd);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = Sse2.MultiplyAddAdjacent(vs, vs);", "System.Runtime.Intrinsics.X86")]
+    [DataRow("var x = AdvSimd.Add(v, v);", "System.Runtime.Intrinsics.Arm")]
+    // T0.4c, found by reflection beyond the card: the same conversions as static methods of double, float, Half and decimal
+    [DataRow("var x = double.ConvertToInteger<int>(d);", "double.ConvertToInteger")]
+    [DataRow("var x = float.ConvertToInteger<long>(f);", "float.ConvertToInteger")]
+    [DataRow("var x = Half.ConvertToInteger<int>(Half.One);", "Half.ConvertToInteger")]
+    [DataRow("var x = decimal.ConvertToInteger<int>(1m);", "decimal.ConvertToInteger")]
+    [DataRow("var x = decimal.ConvertToIntegerNative<int>(1m);", "decimal.ConvertToIntegerNative")]
+    [DataRow("var x = double.ConvertToIntegerNative<int>(d);", "double.ConvertToIntegerNative")]
+    [DataRow("var x = decimal.ToInt32(1m);", "decimal.ToInt32")]
+    [DataRow("var x = decimal.ToInt64(1m);", "decimal.ToInt64")]
+    [DataRow("var x = decimal.ToUInt64(1m);", "decimal.ToUInt64")]
+    [DataRow("var x = decimal.ToByte(1m);", "decimal.ToByte")]
+    [DataRow("var x = decimal.ToDouble(1m);", "decimal.ToDouble")]
+    [DataRow("var x = decimal.ToSingle(1m);", "decimal.ToSingle")]
+    // T0.4c hole 2: the Vector64/128/256/512.ConvertTo{Int32,Int64,UInt32,UInt64} family and the Native forms
+    [DataRow("var x = Vector128.ConvertToInt32(v);", "Vector128.ConvertToInt32")]
+    [DataRow("var x = Vector128.ConvertToInt64(vd);", "Vector128.ConvertToInt64")]
+    [DataRow("var x = Vector128.ConvertToUInt32(v);", "Vector128.ConvertToUInt32")]
+    [DataRow("var x = Vector128.ConvertToUInt64(vd);", "Vector128.ConvertToUInt64")]
+    [DataRow("var x = Vector128.ConvertToInt64Native(vd);", "Vector128.ConvertToInt64Native")]
+    [DataRow("var x = Vector128.ConvertToUInt32Native(v);", "Vector128.ConvertToUInt32Native")]
+    [DataRow("var x = Vector128.ConvertToUInt64Native(vd);", "Vector128.ConvertToUInt64Native")]
+    [DataRow("var x = Vector64.ConvertToInt32(Vector64.Create(1f));", "Vector64.ConvertToInt32")]
+    [DataRow("var x = Vector64.ConvertToInt64(Vector64.Create(1.0));", "Vector64.ConvertToInt64")]
+    [DataRow("var x = Vector64.ConvertToUInt32(Vector64.Create(1f));", "Vector64.ConvertToUInt32")]
+    [DataRow("var x = Vector64.ConvertToUInt64Native(Vector64.Create(1.0));", "Vector64.ConvertToUInt64Native")]
+    [DataRow("var x = Vector256.ConvertToInt32(Vector256.Create(1f));", "Vector256.ConvertToInt32")]
+    [DataRow("var x = Vector256.ConvertToInt64(Vector256.Create(1.0));", "Vector256.ConvertToInt64")]
+    [DataRow("var x = Vector256.ConvertToUInt32(Vector256.Create(1f));", "Vector256.ConvertToUInt32")]
+    [DataRow("var x = Vector256.ConvertToUInt64(Vector256.Create(1.0));", "Vector256.ConvertToUInt64")]
+    [DataRow("var x = Vector256.ConvertToInt32Native(Vector256.Create(1f));", "Vector256.ConvertToInt32Native")]
+    [DataRow("var x = Vector512.ConvertToInt32(Vector512.Create(1f));", "Vector512.ConvertToInt32")]
+    [DataRow("var x = Vector512.ConvertToInt64(Vector512.Create(1.0));", "Vector512.ConvertToInt64")]
+    [DataRow("var x = Vector512.ConvertToUInt32(Vector512.Create(1f));", "Vector512.ConvertToUInt32")]
+    [DataRow("var x = Vector512.ConvertToUInt64(Vector512.Create(1.0));", "Vector512.ConvertToUInt64")]
+    [DataRow("var x = Vector512.ConvertToUInt64Native(Vector512.Create(1.0));", "Vector512.ConvertToUInt64Native")]
     public async Task BanApiReportsTheBannedCall(string body, string symbolPart)
     {
         var messages = await Rs0030Async(body);
@@ -377,6 +446,61 @@ public sealed class BannedSymbolsTests
         Assert.IsFalse(s_file.Value.Entries.Any(e => e.StartsWith("M:System.Double.Create") || e.StartsWith("M:System.Single.Create") || e.StartsWith("M:System.Half.Create")));
     }
 
+    // ---- T0.4c: the platform-intrinsics namespaces and the Vector ConvertTo family ----
+
+    [TestMethod]
+    public void EveryPlatformIntrinsicsNamespaceIsBannedAndThePortableOnesAreNot()
+    {
+        var intrinsics = s_compilation.Value.GlobalNamespace.GetNamespaceMembers().Single(n => n.Name == "System").GetNamespaceMembers().Single(n => n.Name == "Runtime")
+            .GetNamespaceMembers().Single(n => n.Name == "Intrinsics");
+        var children = intrinsics.GetNamespaceMembers().Select(n => n.Name).ToArray();
+        CollectionAssert.IsSubsetOf(new[] { "X86", "Arm", "Wasm" }, children, "the three namespaces the card names must exist");
+
+        var missing = children.Select(n => "N:System.Runtime.Intrinsics." + n).Where(id => !s_file.Value.Entries.Contains(id)).ToArray();
+        CollectionAssert.AreEqual(Array.Empty<string>(), missing, "a namespace of the runtime is not banned: regenerate BannedSymbols.txt (or decide it is portable)");
+
+        // the portable API lives in System.Runtime.Intrinsics itself: not banned, as a namespace or as a type
+        Assert.IsFalse(s_file.Value.Entries.Contains("N:System.Runtime.Intrinsics"), "banning the parent namespace would ban Vector128<T>");
+        Assert.IsFalse(s_file.Value.Entries.Any(e => e.StartsWith("T:System.Runtime.Intrinsics.Vector") || e.StartsWith("T:System.Runtime.Intrinsics.ISimdVector")), "Vector64/128/256/512<T> are portable types");
+    }
+
+    [TestMethod]
+    public void EveryConvertToIntegerAndDecimalToNumberStaticMethodIsBanned()
+    {
+        string[] decimalNames = ["ToByte", "ToSByte", "ToInt16", "ToUInt16", "ToInt32", "ToUInt32", "ToInt64", "ToUInt64", "ToDouble", "ToSingle"];
+        var missing = new List<string>();
+        int count = 0;
+        foreach (var type in new[] { "System.Double", "System.Single", "System.Half", "System.Decimal" })
+            foreach (var m in PublicStaticMethods(type).Where(m => m.Name is "ConvertToInteger" or "ConvertToIntegerNative" || (type == "System.Decimal" && decimalNames.Contains(m.Name))))
+            {
+                count++;
+                if (!s_file.Value.Entries.Contains(m.GetDocumentationCommentId()!)) missing.Add(m.GetDocumentationCommentId()!);
+            }
+        Assert.AreEqual(4 * 2 + 10, count, "ConvertToInteger and ConvertToIntegerNative on four types, and ten decimal.ToXxx");
+        CollectionAssert.AreEqual(Array.Empty<string>(), missing, "not banned, but should be: regenerate BannedSymbols.txt");
+    }
+
+    [TestMethod]
+    public void EveryVectorConvertToIntegerOverloadIsBannedAndTheOnesToFloatAreNot()
+    {
+        string[] banned = ["ConvertToInt32", "ConvertToInt64", "ConvertToUInt32", "ConvertToUInt64"];
+        var missing = new List<string>();
+        var wronglyBanned = new List<string>();
+        int count = 0;
+        foreach (var type in new[] { "System.Runtime.Intrinsics.Vector64", "System.Runtime.Intrinsics.Vector128", "System.Runtime.Intrinsics.Vector256", "System.Runtime.Intrinsics.Vector512" })
+            foreach (var m in PublicStaticMethods(type).Where(m => m.Name.StartsWith("ConvertTo", StringComparison.Ordinal)))
+            {
+                var id = m.GetDocumentationCommentId()!;
+                bool expected = banned.Contains(m.Name) || banned.Select(b => b + "Native").Contains(m.Name);
+                if (expected) count++;
+                if (expected && !s_file.Value.Entries.Contains(id)) missing.Add(id);
+                if (!expected && s_file.Value.Entries.Contains(id)) wronglyBanned.Add(id);
+            }
+        Assert.AreEqual(4 * 8, count, "eight ConvertToInt32/Int64/UInt32/UInt64 (and Native) members on each of Vector64, 128, 256 and 512");
+        CollectionAssert.AreEqual(Array.Empty<string>(), missing, "not banned, but should be: regenerate BannedSymbols.txt");
+        CollectionAssert.AreEqual(Array.Empty<string>(), wronglyBanned, "banned, but it converts an integer to a float (IEEE-defined)");
+    }
+
     [TestMethod]
     [DataRow("var x = Math.Abs(d);")]
     [DataRow("var x = Math.Sqrt(d);")]
@@ -397,15 +521,26 @@ public sealed class BannedSymbolsTests
     [DataRow("var x = Vector128.Add(v, v) + Vector128.Multiply(v, v) + Vector128.Subtract(v, v);")]
     [DataRow("var x = Vector128.ConditionalSelect(Vector128.GreaterThan(v, v), v, v);")]
     [DataRow("var x = Vector128.Multiply(vd, vd) + vd;")]
-    [DataRow("var x = Sse2.Add(vd, vd) + Sse2.Multiply(vd, vd);")]
-    [DataRow("var x = Sse2.MultiplyAddAdjacent(vs, vs);")]
-    [DataRow("var x = AdvSimd.Add(v, v);")]
     [DataRow("var x = Convert.ToDouble(5) + Convert.ToDouble(5L) + Convert.ToDouble(f) + Convert.ToDouble(d);")]
     [DataRow("var x = Convert.ToSingle(d) + Convert.ToSingle(5);")]
     [DataRow("var x = Convert.ToInt32(\"12\") + Convert.ToInt32(5L) + Convert.ToInt32(true) + Convert.ToInt32('a');")]
     [DataRow("var x = Convert.ToString(d) + Convert.ToString(5) + Convert.ToHexString(new byte[1]);")]
     [DataRow("var x = double.CreateTruncating(5) + double.CreateSaturating(5L) + float.CreateChecked(5) + double.CreateTruncating(f);")]
     [DataRow("var x = int.Parse(\"3\") + int.MaxValue + int.Max(1, 2) + int.Abs(-1);")]
+    [DataRow("var x = decimal.Add(1m, 2m) + decimal.Negate(1m) + decimal.Parse(\"1\");")]
+    [DataRow("var x = double.IsNaN(d) || double.IsInfinity(d) || float.IsNaN(f) || Half.IsNaN(Half.One);")]
+    // T0.4c: the portable vector API stays allowed, including the integer-to-float conversions (IEEE-defined) and the widening and narrowing forms
+    [DataRow("var x = Vector128.ConvertToDouble(vl);")]
+    [DataRow("var x = Vector128.ConvertToSingle(vi);")]
+    [DataRow("var x = Vector256.ConvertToDouble(Vector256.Create(1L)); var y = Vector512.ConvertToSingle(Vector512.Create(1));")]
+    [DataRow("var x = Vector128.WidenLower(v) + Vector128.WidenUpper(v);")]
+    [DataRow("var x = Vector128.Narrow(vd, vd);")]
+    [DataRow("var x = Vector128.IsHardwareAccelerated || Vector256.IsHardwareAccelerated || Vector512.IsHardwareAccelerated || Vector64.IsHardwareAccelerated;")]
+    [DataRow("var x = Vector128.Create(1.0).AsInt64() + Vector128.CreateScalarUnsafe(d).AsInt64();")]
+    [DataRow("var x = Vector128.LoadUnsafe(ref a[0]) + Vector128.Multiply(vd, vd) + Vector128.Min(vd, vd) + Vector128.Max(vd, vd) + Vector128.Abs(vd) + Vector128.Sqrt(vd);")]
+    [DataRow("var x = Vector128.ShiftLeft(vi, 2) + Vector128.ShiftRightLogical(vi, 2);")]
+    [DataRow("var x = Vector256.Add(Vector256.Create(1f), Vector256.Create(2f)); var y = Vector512.Add(Vector512.Create(1f), Vector512.Create(2f));")]
+    [DataRow("var x = Vector128.Floor(vd) + Vector128.Ceiling(vd) + Vector128.Truncate(vd);")]
     public async Task BanApiAllowsTheAllowedCalls(string body)
     {
         var messages = await Rs0030Async(body);
