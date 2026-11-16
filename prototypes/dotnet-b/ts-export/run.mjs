@@ -14,6 +14,7 @@
  * Math.pow, pow-lowering-plugin.mjs, and goes to a separate build folder). Without it nothing is installed and the build is as it always was.
  * --keep T,T,..: write snap-T.bin only for these simulated times (hashes and arrival.f32 are always complete): for runs that are many.
  * --interval S: override the scenario's snapshot cadence.
+ * --probes (after the scenario name): the probe build of card T3.4 (probes/): the same run with the recorders on, output in <fixture>/probes/; determinism NAME --probes shows the probes change nothing.
  *   node prototypes/dotnet-b/ts-export/run.mjs verify      --out FIXTURES_DIR [NAME ...]   decode every file with the app's codec, check hashes and arrival.f32
  *   node prototypes/dotnet-b/ts-export/run.mjs study       --out FIXTURES_DIR        tier and seed difference study (needs the fixtures below)
  *   node prototypes/dotnet-b/ts-export/run.mjs list                                  the scenario names
@@ -31,8 +32,10 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
 const noisy = process.argv.includes('--noise');
+// --probes: the T3.4 probe build (probes/plugin.mjs wraps the boundary functions, FS_PROBES=1 starts the recorders); observation only, see probes/install.ts.
+const probing = process.argv.includes('--probes');
 // FS_BUILD_DIR: another build folder, so that two runs of this script at once (one under the heavy lock, one a short check) do not rebuild under each other.
-const buildDir = process.env.FS_BUILD_DIR ?? join(root, 'prototypes', 'dotnet-b', 'fixtures', noisy ? '.build-ts-export-noise' : '.build-ts-export');
+const buildDir = process.env.FS_BUILD_DIR ?? join(root, 'prototypes', 'dotnet-b', 'fixtures', noisy ? '.build-ts-export-noise' : probing ? '.build-ts-export-probes' : '.build-ts-export');
 const LONG = ['katoomba6-fast-4h', 'katoomba3-standard-4h', 'warrumbungles6-fast-4h', 'katoomba6-fast-4h-noembers', 'katoomba3-standard-4h-noembers'];
 const ALL = ['katoomba3-fast', 'katoomba6-fast', 'katoomba3-standard', 'katoomba3-high', 'katoomba3-high30', 'katoomba3-point', 'anchor-080-katoomba6-point', 'katoomba3-fast-noembers', 'katoomba3-standard-noembers', 'katoomba3-high-noembers', 'katoomba3-high30-noembers'];
 
@@ -51,6 +54,12 @@ async function build() {
     const p = powLowering();
     plugins.push(p);
     process.on('exit', () => console.error(`noise build: ${p.stats.sites} '**' sites in ${p.stats.files} files lowered to Math.pow`));
+  }
+  if (probing) {
+    const { probeWrap } = await import('./probes/plugin.mjs');
+    const p = probeWrap(root);
+    plugins.push(p);
+    process.on('exit', () => console.error(`probe build: ${p.stats.wrapped} functions wrapped in ${p.stats.files} files${p.stats.missing.length ? `; NOT FOUND: ${p.stats.missing.join(' ')}` : ''}`));
   }
   await viteBuild({
     root,
@@ -73,7 +82,7 @@ async function build() {
 
 function exportOne(name, extra = []) {
   const out = opt('out');
-  const r = spawnSync(process.execPath, ['--max-old-space-size=4096', join(buildDir, 'export.mjs'), name, '--out', out, ...extra], { stdio: ['ignore', 'pipe', 'inherit'], cwd: root, encoding: 'utf8', env: { ...process.env, FS_REPO_ROOT: root, ...(noisy ? { FS_POW_LOWERED: '1' } : {}) } });
+  const r = spawnSync(process.execPath, ['--max-old-space-size=4096', join(buildDir, 'export.mjs'), name, '--out', out, ...extra], { stdio: ['ignore', 'pipe', 'inherit'], cwd: root, encoding: 'utf8', env: { ...process.env, FS_REPO_ROOT: root, ...(noisy ? { FS_POW_LOWERED: '1' } : {}), ...(probing ? { FS_PROBES: '1' } : {}) } });
   process.stdout.write(r.stdout ?? '');
   if (r.status !== 0) console.error(`export ${name} ${extra.join(' ')} exited with ${r.status}`);
   return r.status ?? 1;
