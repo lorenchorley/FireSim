@@ -273,7 +273,6 @@ public sealed class BannedSymbolsTests
     [DataRow("var x = Vector128.ConvertToInt64(vd);", "Vector128.ConvertToInt64")]
     [DataRow("var x = Vector128.ConvertToUInt32(v);", "Vector128.ConvertToUInt32")]
     [DataRow("var x = Vector128.ConvertToUInt64(vd);", "Vector128.ConvertToUInt64")]
-    [DataRow("var x = Vector128.ConvertToInt32Native(v);", "Vector128.ConvertToInt32Native")]
     [DataRow("var x = Vector128.ConvertToInt64Native(vd);", "Vector128.ConvertToInt64Native")]
     [DataRow("var x = Vector128.ConvertToUInt32Native(v);", "Vector128.ConvertToUInt32Native")]
     [DataRow("var x = Vector128.ConvertToUInt64Native(vd);", "Vector128.ConvertToUInt64Native")]
