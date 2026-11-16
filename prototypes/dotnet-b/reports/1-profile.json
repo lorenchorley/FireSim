@@ -1,0 +1,6421 @@
+{
+ "stage": "1-profile",
+ "when": "2026-11-16T14:05:36.632Z",
+ "machine": {
+  "label": "container (shared)",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "cores": 4,
+  "os": "Linux 6.18.44-fc-v470",
+  "runtime": "Node v22.22.0 (V8)"
+ },
+ "indicative": true,
+ "commit": "0fcd110a421973757c005b57fa693c29cc88b8a7",
+ "runs": [
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard step loop wall (profiler off)",
+   "medianMs": 3813.2882399999994,
+   "p95Ms": 3925.087585,
+   "minMs": 3695.2984120000006,
+   "maxMs": 3925.087585,
+   "notes": "189 steps, 1800 s simulated; p95Ms is the max of 3 runs"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard 3-D spin-up wall (profiler off)",
+   "medianMs": 1008.9431179999999,
+   "p95Ms": 1023.41391,
+   "minMs": 951.7672170000001,
+   "maxMs": 1023.41391,
+   "notes": "900 s of 3-D air steps before the fire starts"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase air (CPU profile)",
+   "medianMs": 3022.288959174931,
+   "p95Ms": 3146.5013114081876,
+   "minMs": 2945.269702374131,
+   "maxMs": 3146.5013114081876,
+   "notes": "share of the step loop 63.5 % (min 63.5, max 64.2); app timers 65.4 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase fire (CPU profile)",
+   "medianMs": 458.8620511455772,
+   "p95Ms": 477.23302635780857,
+   "minMs": 429.85554229686807,
+   "maxMs": 477.23302635780857,
+   "notes": "share of the step loop 9.6 % (min 9.3, max 9.7); app timers 9.9 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase coupling (CPU profile)",
+   "medianMs": 234.0170000000017,
+   "p95Ms": 248.84800000000095,
+   "minMs": 226.86100000000147,
+   "maxMs": 248.84800000000095,
+   "notes": "share of the step loop 4.9 % (min 4.9, max 5.1); app timers 5.0 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase embers (CPU profile)",
+   "medianMs": 585.3664599774339,
+   "p95Ms": 616.2414811358793,
+   "minMs": 565.5663926780165,
+   "maxMs": 616.2414811358793,
+   "notes": "share of the step loop 12.3 % (min 12.2, max 12.6); app timers 12.5 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase moisture (CPU profile)",
+   "medianMs": 79.55661689801381,
+   "p95Ms": 87.081,
+   "minMs": 61.66382654617973,
+   "maxMs": 87.081,
+   "notes": "share of the step loop 1.7 % (min 1.3, max 1.8); app timers 1.5 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase detectors (CPU profile)",
+   "medianMs": 133.31976332742417,
+   "p95Ms": 143.11900000000034,
+   "minMs": 129.61016917321248,
+   "maxMs": 143.11900000000034,
+   "notes": "share of the step loop 2.8 % (min 2.8, max 2.9); app timers 2.5 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase picture (CPU profile)",
+   "medianMs": 104.94397173282324,
+   "p95Ms": 108.50200000000028,
+   "minMs": 98.28924739250982,
+   "maxMs": 108.50200000000028,
+   "notes": "share of the step loop 2.2 % (min 2.1, max 2.2); app timers 2.2 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase checkpoints (CPU profile)",
+   "medianMs": 13.668789239039679,
+   "p95Ms": 14.490193574300452,
+   "minMs": 12.735000000000003,
+   "maxMs": 14.490193574300452,
+   "notes": "share of the step loop 0.3 % (min 0.3, max 0.3); app timers 0.3 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba3-standard phase other (CPU profile)",
+   "medianMs": 117.44500000000026,
+   "p95Ms": 126.70199580404716,
+   "minMs": 111.21488737077945,
+   "maxMs": 126.70199580404716,
+   "notes": "share of the step loop 2.5 % (min 2.4, max 2.6); app timers 0.6 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast step loop wall (profiler off)",
+   "medianMs": 1792.3142739999998,
+   "p95Ms": 1897.7051609999999,
+   "minMs": 1510.550417,
+   "maxMs": 1897.7051609999999,
+   "notes": "180 steps, 1800 s simulated; p95Ms is the max of 3 runs"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase air (CPU profile)",
+   "medianMs": 0.17408712066595375,
+   "p95Ms": 0.37192802933448577,
+   "minMs": 0.15038229887736715,
+   "maxMs": 0.37192802933448577,
+   "notes": "share of the step loop 0.0 % (min 0.0, max 0.0); app timers 0.3 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase fire (CPU profile)",
+   "medianMs": 470.531426213864,
+   "p95Ms": 518.3339999999985,
+   "minMs": 440.98936042092714,
+   "maxMs": 518.3339999999985,
+   "notes": "share of the step loop 25.9 % (min 25.3, max 26.5); app timers 27.0 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase coupling (CPU profile)",
+   "medianMs": 350.26595127317273,
+   "p95Ms": 396.5636795557945,
+   "minMs": 333.79600000000073,
+   "maxMs": 396.5636795557945,
+   "notes": "share of the step loop 19.3 % (min 19.2, max 20.3); app timers 18.5 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase embers (CPU profile)",
+   "medianMs": 437.0372550056369,
+   "p95Ms": 474.8281174503587,
+   "minMs": 414.93299999999965,
+   "maxMs": 474.8281174503587,
+   "notes": "share of the step loop 24.1 % (min 23.8, max 24.3); app timers 24.0 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase moisture (CPU profile)",
+   "medianMs": 99.10665111349445,
+   "p95Ms": 113.08500000000025,
+   "minMs": 86.27181001412966,
+   "maxMs": 113.08500000000025,
+   "notes": "share of the step loop 5.5 % (min 5.0, max 5.8); app timers 7.0 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase detectors (CPU profile)",
+   "medianMs": 161.66200000000035,
+   "p95Ms": 184.16088334029413,
+   "minMs": 138.73523432111966,
+   "maxMs": 184.16088334029413,
+   "notes": "share of the step loop 8.9 % (min 8.0, max 9.4); app timers 8.7 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase picture (CPU profile)",
+   "medianMs": 200.9180000000005,
+   "p95Ms": 220.0570000000007,
+   "minMs": 186.58900000000028,
+   "maxMs": 220.0570000000007,
+   "notes": "share of the step loop 11.1 % (min 10.7, max 11.2); app timers 12.6 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase checkpoints (CPU profile)",
+   "medianMs": 21.143766877051135,
+   "p95Ms": 35.269557703498656,
+   "minMs": 17.99782471653034,
+   "maxMs": 35.269557703498656,
+   "notes": "share of the step loop 1.2 % (min 1.0, max 1.8); app timers 1.3 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 3,
+   "name": "katoomba6-fast phase other (CPU profile)",
+   "medianMs": 73.98342644203778,
+   "p95Ms": 83.93905462433241,
+   "minMs": 58.58958411732033,
+   "maxMs": 83.93905462433241,
+   "notes": "share of the step loop 4.1 % (min 3.4, max 4.3); app timers 1.3 %"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard step loop wall, 4 h run (profiler off)",
+   "medianMs": 23596.643831,
+   "p95Ms": 23596.643831,
+   "minMs": 23596.643831,
+   "maxMs": 23596.643831,
+   "notes": "sensitivity run, 1 run only, --duration 14400 --to 14400, 1448 steps, 3753 cells burnt"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase air, 4 h run (CPU profile)",
+   "medianMs": 19440.23500000318,
+   "p95Ms": 19440.23500000318,
+   "minMs": 19440.23500000318,
+   "maxMs": 19440.23500000318,
+   "notes": "share of the step loop 71.1 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase fire, 4 h run (CPU profile)",
+   "medianMs": 3379.4829999999038,
+   "p95Ms": 3379.4829999999038,
+   "minMs": 3379.4829999999038,
+   "maxMs": 3379.4829999999038,
+   "notes": "share of the step loop 12.4 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase coupling, 4 h run (CPU profile)",
+   "medianMs": 1431.2840000000076,
+   "p95Ms": 1431.2840000000076,
+   "minMs": 1431.2840000000076,
+   "maxMs": 1431.2840000000076,
+   "notes": "share of the step loop 5.2 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase embers, 4 h run (CPU profile)",
+   "medianMs": 1375.826000000012,
+   "p95Ms": 1375.826000000012,
+   "minMs": 1375.826000000012,
+   "maxMs": 1375.826000000012,
+   "notes": "share of the step loop 5.0 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase moisture, 4 h run (CPU profile)",
+   "medianMs": 144.3160000000003,
+   "p95Ms": 144.3160000000003,
+   "minMs": 144.3160000000003,
+   "maxMs": 144.3160000000003,
+   "notes": "share of the step loop 0.5 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase detectors, 4 h run (CPU profile)",
+   "medianMs": 543.8629999999976,
+   "p95Ms": 543.8629999999976,
+   "minMs": 543.8629999999976,
+   "maxMs": 543.8629999999976,
+   "notes": "share of the step loop 2.0 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase picture, 4 h run (CPU profile)",
+   "medianMs": 276.5870000000004,
+   "p95Ms": 276.5870000000004,
+   "minMs": 276.5870000000004,
+   "maxMs": 276.5870000000004,
+   "notes": "share of the step loop 1.0 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase checkpoints, 4 h run (CPU profile)",
+   "medianMs": 63.25999999999996,
+   "p95Ms": 63.25999999999996,
+   "minMs": 63.25999999999996,
+   "maxMs": 63.25999999999996,
+   "notes": "share of the step loop 0.2 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba3-standard phase other, 4 h run (CPU profile)",
+   "medianMs": 688.2299999999942,
+   "p95Ms": 688.2299999999942,
+   "minMs": 688.2299999999942,
+   "maxMs": 688.2299999999942,
+   "notes": "share of the step loop 2.5 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast step loop wall, 4 h run (profiler off)",
+   "medianMs": 12012.492730999998,
+   "p95Ms": 12012.492730999998,
+   "minMs": 12012.492730999998,
+   "maxMs": 12012.492730999998,
+   "notes": "sensitivity run, 1 run only, --duration 14400 --to 14400, 1440 steps, 8110 cells burnt"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase air, 4 h run (CPU profile)",
+   "medianMs": 1.8010000000000002,
+   "p95Ms": 1.8010000000000002,
+   "minMs": 1.8010000000000002,
+   "maxMs": 1.8010000000000002,
+   "notes": "share of the step loop 0.0 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase fire, 4 h run (CPU profile)",
+   "medianMs": 7947.983999999565,
+   "p95Ms": 7947.983999999565,
+   "minMs": 7947.983999999565,
+   "maxMs": 7947.983999999565,
+   "notes": "share of the step loop 48.4 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase coupling, 4 h run (CPU profile)",
+   "medianMs": 2604.883000000029,
+   "p95Ms": 2604.883000000029,
+   "minMs": 2604.883000000029,
+   "maxMs": 2604.883000000029,
+   "notes": "share of the step loop 15.9 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase embers, 4 h run (CPU profile)",
+   "medianMs": 2440.940000000008,
+   "p95Ms": 2440.940000000008,
+   "minMs": 2440.940000000008,
+   "maxMs": 2440.940000000008,
+   "notes": "share of the step loop 14.9 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase moisture, 4 h run (CPU profile)",
+   "medianMs": 397.23900000000094,
+   "p95Ms": 397.23900000000094,
+   "minMs": 397.23900000000094,
+   "maxMs": 397.23900000000094,
+   "notes": "share of the step loop 2.4 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase detectors, 4 h run (CPU profile)",
+   "medianMs": 990.4289999999955,
+   "p95Ms": 990.4289999999955,
+   "minMs": 990.4289999999955,
+   "maxMs": 990.4289999999955,
+   "notes": "share of the step loop 6.0 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase picture, 4 h run (CPU profile)",
+   "medianMs": 797.2270000000007,
+   "p95Ms": 797.2270000000007,
+   "minMs": 797.2270000000007,
+   "maxMs": 797.2270000000007,
+   "notes": "share of the step loop 4.9 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase checkpoints, 4 h run (CPU profile)",
+   "medianMs": 104.06600000000017,
+   "p95Ms": 104.06600000000017,
+   "minMs": 104.06600000000017,
+   "maxMs": 104.06600000000017,
+   "notes": "share of the step loop 0.6 %; 1 run"
+  },
+  {
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "n": 1,
+   "name": "katoomba6-fast phase other, 4 h run (CPU profile)",
+   "medianMs": 1147.1240000000041,
+   "p95Ms": 1147.1240000000041,
+   "minMs": 1147.1240000000041,
+   "maxMs": 1147.1240000000041,
+   "notes": "share of the step loop 7.0 %; 1 run"
+  }
+ ],
+ "gate": {
+  "bar": "phase shares agree with plan 15e within 10 points, or the difference is explained",
+  "measured": "standard air 63.5 % vs 63 % (within 0.5); fast tier within 10 points on every phase at 4 h (fire 48.4 vs 58, embers 14.9 vs 13, coupling 15.9 vs 11, air 0.0 vs 5) but not at 30 min (fire 25.9, embers 24.1, coupling 19.3)",
+  "result": "pass with explanation",
+  "why": "the fast tier's shares move with the size of the fire (664 cells burnt at 30 min, 8110 at 4 h); standard agrees at both durations"
+ },
+ "notRun": [
+  "Picture encoding (the exporter does not encode a picture for the page): measured in T5.1",
+  "Katoomba 6 km standard tier: no such scenario exists; the card now names katoomba3-standard",
+  "katoomba3-high and the 10 m rows of plan 15e were not profiled (not asked)"
+ ],
+ "detail": {
+  "katoomba3-standard": {
+   "tier": "standard",
+   "burntCells": [
+    996,
+    996,
+    996
+   ],
+   "steps": {
+    "advanceSteps": 189,
+    "atmStepsSpinUp": 0,
+    "atmStepsAdvance": 0,
+    "simSeconds": 1800
+   },
+   "simSeconds": 1800,
+   "runs": 3,
+   "wallAdvanceMsProfiled": {
+    "median": 4796.4319319999995,
+    "min": 4679.8238679999995,
+    "max": 4944.255008,
+    "values": [
+     4796.4319319999995,
+     4679.8238679999995,
+     4944.255008
+    ]
+   },
+   "wallSpinUpMsProfiled": {
+    "median": 1201.0050190000002,
+    "min": 1195.9244630000003,
+    "max": 1370.416572,
+    "values": [
+     1201.0050190000002,
+     1370.416572,
+     1195.9244630000003
+    ]
+   },
+   "wallAdvanceMsPlain": {
+    "median": 3813.2882399999994,
+    "min": 3695.2984120000006,
+    "max": 3925.087585,
+    "values": [
+     3813.2882399999994,
+     3695.2984120000006,
+     3925.087585
+    ]
+   },
+   "wallSpinUpMsPlain": {
+    "median": 1008.9431179999999,
+    "min": 951.7672170000001,
+    "max": 1023.41391,
+    "values": [
+     1008.9431179999999,
+     951.7672170000001,
+     1023.41391
+    ]
+   },
+   "msPerStepPlain": {
+    "median": 20.17612825396825,
+    "min": 19.551843449735454,
+    "max": 20.76765917989418,
+    "values": [
+     20.17612825396825,
+     19.551843449735454,
+     20.76765917989418
+    ]
+   },
+   "profileWindowMs": {
+    "median": 4757.739000000034,
+    "min": 4639.231999999951,
+    "max": 4898.781999999941,
+    "values": [
+     4757.739000000034,
+     4639.231999999951,
+     4898.781999999941
+    ]
+   },
+   "profileSpinUpMs": {
+    "median": 1184.4349999999847,
+    "min": 1181.7479999999775,
+    "max": 1359.2600000000446,
+    "values": [
+     1181.7479999999775,
+     1359.2600000000446,
+     1184.4349999999847
+    ]
+   },
+   "gcMsOfProcess": {
+    "median": 152.3250000000002,
+    "min": 150.24900000000025,
+    "max": 157.5580000000001,
+    "values": [
+     157.5580000000001,
+     152.3250000000002,
+     150.24900000000025
+    ]
+   },
+   "phaseShareAdvancePct": {
+    "air": {
+     "median": 63.52363925753197,
+     "min": 63.48614818948832,
+     "max": 64.23027828975091,
+     "values": [
+      64.23027828975091,
+      63.52363925753197,
+      63.48614818948832
+     ]
+    },
+    "fire": {
+     "median": 9.644540214281907,
+     "min": 9.265661693506008,
+     "max": 9.741871068314824,
+     "values": [
+      9.265661693506008,
+      9.741871068314824,
+      9.644540214281907
+     ]
+    },
+    "coupling": {
+     "median": 4.918659892860874,
+     "min": 4.890055078081973,
+     "max": 5.079793303723332,
+     "values": [
+      4.918659892860874,
+      4.890055078081973,
+      5.079793303723332
+     ]
+    },
+    "embers": {
+     "median": 12.303458848361158,
+     "min": 12.190948688878299,
+     "max": 12.579483658098823,
+     "values": [
+      12.579483658098823,
+      12.303458848361158,
+      12.190948688878299
+     ]
+    },
+    "moisture": {
+     "median": 1.6721517699481465,
+     "min": 1.3291817815142761,
+     "max": 1.777605127152036,
+     "values": [
+      1.3291817815142761,
+      1.6721517699481465,
+      1.777605127152036
+     ]
+    },
+    "detectors": {
+     "median": 2.8021663930581986,
+     "min": 2.7937850310830292,
+     "max": 2.921522125295677,
+     "values": [
+      2.7937850310830292,
+      2.8021663930581986,
+      2.921522125295677
+     ]
+    },
+    "picture": {
+     "median": 2.2057530211897394,
+     "min": 2.118653419197636,
+     "max": 2.214877085773598,
+     "values": [
+      2.118653419197636,
+      2.2057530211897394,
+      2.214877085773598
+     ]
+    },
+    "checkpoints": {
+     "median": 0.28729590334904,
+     "min": 0.27450664247875806,
+     "max": 0.29579176159095516,
+     "values": [
+      0.29579176159095516,
+      0.27450664247875806,
+      0.28729590334904
+     ]
+    },
+    "other": {
+     "median": 2.468504472397486,
+     "min": 2.397269362057785,
+     "max": 2.586397921035243,
+     "values": [
+      2.468504472397486,
+      2.586397921035243,
+      2.397269362057785
+     ]
+    }
+   },
+   "phaseShareWithSpinUpPct": {
+    "air": {
+     "median": 51.125054391450774,
+     "min": 49.12916446333439,
+     "max": 51.450722932805945,
+     "values": [
+      51.450722932805945,
+      49.12916446333439,
+      51.125054391450774
+     ]
+    },
+    "fire": {
+     "median": 7.534360302556021,
+     "min": 7.422122482968614,
+     "max": 7.766696469976389,
+     "values": [
+      7.422122482968614,
+      7.534360302556021,
+      7.766696469976389
+     ]
+    },
+    "coupling": {
+     "median": 3.9400204091700384,
+     "min": 3.7819672010899015,
+     "max": 4.0907302830065735,
+     "values": [
+      3.9400204091700384,
+      3.7819672010899015,
+      4.0907302830065735
+     ]
+    },
+    "embers": {
+     "median": 9.81730554737742,
+     "min": 9.515491560212078,
+     "max": 10.076610993508318,
+     "values": [
+      10.076610993508318,
+      9.515491560212078,
+      9.81730554737742
+     ]
+    },
+    "moisture": {
+     "median": 1.2932417014142892,
+     "min": 1.0647215828572372,
+     "max": 1.4314958680579875,
+     "values": [
+      1.0647215828572372,
+      1.2932417014142892,
+      1.4314958680579875
+     ]
+    },
+    "detectors": {
+     "median": 2.2379205476836654,
+     "min": 2.1671946882649915,
+     "max": 2.3526860869832866,
+     "values": [
+      2.2379205476836654,
+      2.1671946882649915,
+      2.3526860869832866
+     ]
+    },
+    "picture": {
+     "median": 1.7059287567608687,
+     "min": 1.6971162661017682,
+     "max": 1.78362862939135,
+     "values": [
+      1.6971162661017682,
+      1.7059287567608687,
+      1.78362862939135
+     ]
+    },
+    "checkpoints": {
+     "median": 0.2313578489802381,
+     "min": 0.21230335891087312,
+     "max": 0.23693965488938634,
+     "values": [
+      0.23693965488938634,
+      0.21230335891087312,
+      0.2313578489802381
+     ]
+    },
+    "other": {
+     "median": 1.977359324130182,
+     "min": 1.9305081505394535,
+     "max": 2.00031941361263,
+     "values": [
+      1.977359324130182,
+      2.00031941361263,
+      1.9305081505394535
+     ]
+    },
+    "spinUp (3-D air spin-up, 900 s)": {
+     "median": 19.896465805884837,
+     "min": 19.47053672423652,
+     "max": 22.660028553843958,
+     "values": [
+      19.896465805884837,
+      22.660028553843958,
+      19.47053672423652
+     ]
+    }
+   },
+   "appTimersShareAdvancePct": {
+    "air": {
+     "median": 65.3697084824131,
+     "min": 65.31906408537297,
+     "max": 65.51539126930469,
+     "values": [
+      65.51539126930469,
+      65.31906408537297,
+      65.3697084824131
+     ]
+    },
+    "fire": {
+     "median": 9.901257734014925,
+     "min": 9.727731962141943,
+     "max": 9.993492457069525,
+     "values": [
+      9.993492457069525,
+      9.901257734014925,
+      9.727731962141943
+     ]
+    },
+    "coupling": {
+     "median": 5.035753944986519,
+     "min": 4.999025489065926,
+     "max": 5.310880973327702,
+     "values": [
+      4.999025489065926,
+      5.035753944986519,
+      5.310880973327702
+     ]
+    },
+    "embers": {
+     "median": 12.47600373044577,
+     "min": 12.321128813011224,
+     "max": 12.565652415186882,
+     "values": [
+      12.47600373044577,
+      12.565652415186882,
+      12.321128813011224
+     ]
+    },
+    "moisture": {
+     "median": 1.5476304065178879,
+     "min": 1.4976234348591213,
+     "max": 1.7564459017877567,
+     "values": [
+      1.4976234348591213,
+      1.5476304065178879,
+      1.7564459017877567
+     ]
+    },
+    "detectors": {
+     "median": 2.4579428758184823,
+     "min": 2.3941345371310048,
+     "max": 2.5357017136894946,
+     "values": [
+      2.3941345371310048,
+      2.5357017136894946,
+      2.4579428758184823
+     ]
+    },
+    "picture": {
+     "median": 2.152512961963145,
+     "min": 2.114436650528119,
+     "max": 2.1945670118532976,
+     "values": [
+      2.1945670118532976,
+      2.152512961963145,
+      2.114436650528119
+     ]
+    },
+    "checkpoints": {
+     "median": 0.31370466633079463,
+     "min": 0.30045569642734404,
+     "max": 0.31577300774650463,
+     "values": [
+      0.31577300774650463,
+      0.31370466633079463,
+      0.30045569642734404
+     ]
+    },
+    "other": {
+     "median": 0.6287220719373785,
+     "min": 0.6139890625241733,
+     "max": 0.6412686445443159,
+     "values": [
+      0.6139890625241733,
+      0.6287220719373785,
+      0.6412686445443159
+     ]
+    }
+   },
+   "appTimersSpinUpShareOfRunPct": {
+    "median": 20.258592018242457,
+    "min": 20.047360454948677,
+    "max": 20.460979201616038,
+    "values": [
+     20.460979201616038,
+     20.047360454948677,
+     20.258592018242457
+    ]
+   },
+   "kernelsAdvance": [
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 716.3249999999978,
+      "min": 704.1609999999971,
+      "max": 731.5609999999964,
+      "values": [
+       716.3249999999978,
+       704.1609999999971,
+       731.5609999999964
+      ]
+     },
+     "sharePct": {
+      "median": 15.05599613597956,
+      "min": 14.933528375012509,
+      "max": 15.178395906908829,
+      "values": [
+       15.05599613597956,
+       15.178395906908829,
+       14.933528375012509
+      ]
+     }
+    },
+    {
+     "kernel": "advect src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 444.5039999999988,
+      "min": 431.1939999999992,
+      "max": 459.17699999999917,
+      "values": [
+       444.5039999999988,
+       431.1939999999992,
+       459.17699999999917
+      ]
+     },
+     "sharePct": {
+      "median": 9.342757137371253,
+      "min": 9.294512540006703,
+      "max": 9.373289115539428,
+      "values": [
+       9.342757137371253,
+       9.294512540006703,
+       9.373289115539428
+      ]
+     }
+    },
+    {
+     "kernel": "divergence src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 256.2580000000021,
+      "min": 246.34000000000174,
+      "max": 266.22200000000134,
+      "values": [
+       246.34000000000174,
+       256.2580000000021,
+       266.22200000000134
+      ]
+     },
+     "sharePct": {
+      "median": 5.434452890534923,
+      "min": 5.177669477035204,
+      "max": 5.523715994371585,
+      "values": [
+       5.177669477035204,
+       5.523715994371585,
+       5.434452890534923
+      ]
+     }
+    },
+    {
+     "kernel": "gradient src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 232.28100000000165,
+      "min": 231.99800000000192,
+      "max": 250.50400000000207,
+      "values": [
+       231.99800000000192,
+       232.28100000000165,
+       250.50400000000207
+      ]
+     },
+     "sharePct": {
+      "median": 5.006884760236266,
+      "min": 4.876223769315641,
+      "max": 5.113597624879104,
+      "values": [
+       4.876223769315641,
+       5.006884760236266,
+       5.113597624879104
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseVLevels src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 202.25900000000107,
+      "min": 190.07900000000137,
+      "max": 202.93100000000135,
+      "values": [
+       202.25900000000107,
+       190.07900000000137,
+       202.93100000000135
+      ]
+     },
+     "sharePct": {
+      "median": 4.142478681435585,
+      "min": 4.097208331034175,
+      "max": 4.251157955491035,
+      "values": [
+       4.251157955491035,
+       4.097208331034175,
+       4.142478681435585
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 190.92600000000112,
+      "min": 175.87400000000076,
+      "max": 192.92100000000107,
+      "values": [
+       192.92100000000107,
+       190.92600000000112,
+       175.87400000000076
+      ]
+     },
+     "sharePct": {
+      "median": 4.054888256795921,
+      "min": 3.590157716754958,
+      "max": 4.115465663282266,
+      "values": [
+       4.054888256795921,
+       4.115465663282266,
+       3.590157716754958
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseH src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 163.42100000000062,
+      "min": 145.74800000000084,
+      "max": 176.38700000000105,
+      "values": [
+       176.38700000000105,
+       145.74800000000084,
+       163.42100000000062
+      ]
+     },
+     "sharePct": {
+      "median": 3.335951671252213,
+      "min": 3.141640685354869,
+      "max": 3.7073702445636423,
+      "values": [
+       3.7073702445636423,
+       3.141640685354869,
+       3.335951671252213
+      ]
+     }
+    },
+    {
+     "kernel": "step src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 154.24200000000042,
+      "min": 146.63900000000095,
+      "max": 155.74000000000083,
+      "values": [
+       155.74000000000083,
+       146.63900000000095,
+       154.24200000000042
+      ]
+     },
+     "sharePct": {
+      "median": 3.160846450447025,
+      "min": 3.148578565039274,
+      "max": 3.273403606208741,
+      "values": [
+       3.273403606208741,
+       3.160846450447025,
+       3.148578565039274
+      ]
+     }
+    },
+    {
+     "kernel": "displacements src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 131.59000000000037,
+      "min": 130.7110000000005,
+      "max": 136.90200000000038,
+      "values": [
+       136.90200000000038,
+       131.59000000000037,
+       130.7110000000005
+      ]
+     },
+     "sharePct": {
+      "median": 2.8364608624876224,
+      "min": 2.668234675476518,
+      "max": 2.8774592301090793,
+      "values": [
+       2.8774592301090793,
+       2.8364608624876224,
+       2.668234675476518
+      ]
+     }
+    },
+    {
+     "kernel": "smagorinsky src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 131.0740000000006,
+      "min": 124.04200000000047,
+      "max": 141.55100000000053,
+      "values": [
+       141.55100000000053,
+       124.04200000000047,
+       131.0740000000006
+      ]
+     },
+     "sharePct": {
+      "median": 2.6756446806574,
+      "min": 2.6737615191480355,
+      "max": 2.975173711714735,
+      "values": [
+       2.975173711714735,
+       2.6737615191480355,
+       2.6756446806574
+      ]
+     }
+    },
+    {
+     "kernel": "sampleAt src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 116.80400000000027,
+      "min": 99.24800000000023,
+      "max": 118.75200000000034,
+      "values": [
+       116.80400000000027,
+       99.24800000000023,
+       118.75200000000034
+      ]
+     },
+     "sharePct": {
+      "median": 2.424112769255741,
+      "min": 2.139319611521935,
+      "max": 2.4550316862694537,
+      "values": [
+       2.4550316862694537,
+       2.139319611521935,
+       2.424112769255741
+      ]
+     }
+    },
+    {
+     "kernel": "collocate src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 104.89600000000024,
+      "min": 101.71700000000018,
+      "max": 108.48300000000029,
+      "values": [
+       104.89600000000024,
+       101.71700000000018,
+       108.48300000000029
+      ]
+     },
+     "sharePct": {
+      "median": 2.2047447327396372,
+      "min": 2.1925396272486752,
+      "max": 2.214489234262753,
+      "values": [
+       2.2047447327396372,
+       2.1925396272486752,
+       2.214489234262753
+      ]
+     }
+    },
+    {
+     "kernel": "project src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 95.69200000000022,
+      "min": 88.59200000000014,
+      "max": 97.37500000000011,
+      "values": [
+       95.69200000000022,
+       88.59200000000014,
+       97.37500000000011
+      ]
+     },
+     "sharePct": {
+      "median": 1.987738993080347,
+      "min": 1.909626420924866,
+      "max": 2.0112914979152814,
+      "values": [
+       2.0112914979152814,
+       1.909626420924866,
+       1.987738993080347
+      ]
+     }
+    },
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 82.32500000000013,
+      "min": 80.13200000000003,
+      "max": 82.508,
+      "values": [
+       82.508,
+       80.13200000000003,
+       82.32500000000013
+      ]
+     },
+     "sharePct": {
+      "median": 1.7272686513630033,
+      "min": 1.6805197700163248,
+      "max": 1.7341850824519673,
+      "values": [
+       1.7341850824519673,
+       1.7272686513630033,
+       1.6805197700163248
+      ]
+     }
+    },
+    {
+     "kernel": "stepOnce src/sim/simulation.ts",
+     "selfMs": {
+      "median": 78.03200000000008,
+      "min": 75.18300000000002,
+      "max": 78.71899999999998,
+      "values": [
+       78.71899999999998,
+       78.03200000000008,
+       75.18300000000002
+      ]
+     },
+     "sharePct": {
+      "median": 1.6545464137481987,
+      "min": 1.534728428413449,
+      "max": 1.682002538351195,
+      "values": [
+       1.6545464137481987,
+       1.682002538351195,
+       1.534728428413449
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 61.98299999999994,
+      "min": 54.7839999999999,
+      "max": 66.82299999999991,
+      "values": [
+       54.7839999999999,
+       66.82299999999991,
+       61.98299999999994
+      ]
+     },
+     "sharePct": {
+      "median": 1.2652736945632748,
+      "min": 1.1514713186242354,
+      "max": 1.4403892713276811,
+      "values": [
+       1.1514713186242354,
+       1.4403892713276811,
+       1.2652736945632748
+      ]
+     }
+    },
+    {
+     "kernel": "residual7 src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 61.742999999999896,
+      "min": 56.67499999999987,
+      "max": 63.55699999999992,
+      "values": [
+       56.67499999999987,
+       61.742999999999896,
+       63.55699999999992
+      ]
+     },
+     "sharePct": {
+      "median": 1.2974041302511663,
+      "min": 1.1912170886212854,
+      "max": 1.3308883884229232,
+      "values": [
+       1.1912170886212854,
+       1.3308883884229232,
+       1.2974041302511663
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 61.486999999999895,
+      "min": 54.634999999999934,
+      "max": 64.1659999999999,
+      "values": [
+       54.634999999999934,
+       64.1659999999999,
+       61.486999999999895
+      ]
+     },
+     "sharePct": {
+      "median": 1.2551487288064795,
+      "min": 1.1483395789470492,
+      "max": 1.3831168607217872,
+      "values": [
+       1.1483395789470492,
+       1.3831168607217872,
+       1.2551487288064795
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "selfMs": {
+      "median": 58.35599999999994,
+      "min": 57.84599999999995,
+      "max": 64.29299999999999,
+      "values": [
+       64.29299999999999,
+       58.35599999999994,
+       57.84599999999995
+      ]
+     },
+     "sharePct": {
+      "median": 1.2578806147224488,
+      "min": 1.1808241313861414,
+      "max": 1.351335161512633,
+      "values": [
+       1.351335161512633,
+       1.2578806147224488,
+       1.1808241313861414
+      ]
+     }
+    },
+    {
+     "kernel": "lerpInto src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 53.75499999999996,
+      "min": 49.74299999999996,
+      "max": 57.16399999999988,
+      "values": [
+       57.16399999999988,
+       49.74299999999996,
+       53.75499999999996
+      ]
+     },
+     "sharePct": {
+      "median": 1.097313577130001,
+      "min": 1.0722248854982999,
+      "max": 1.2014950799108457,
+      "values": [
+       1.2014950799108457,
+       1.0722248854982999,
+       1.097313577130001
+      ]
+     }
+    },
+    {
+     "kernel": "fireWindTier src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 49.76599999999998,
+      "min": 39.76499999999997,
+      "max": 49.91399999999994,
+      "values": [
+       49.91399999999994,
+       39.76499999999997,
+       49.76599999999998
+      ]
+     },
+     "sharePct": {
+      "median": 1.0158851730899758,
+      "min": 0.8571461828164746,
+      "max": 1.0491117734705409,
+      "values": [
+       1.0491117734705409,
+       0.8571461828164746,
+       1.0158851730899758
+      ]
+     }
+    },
+    {
+     "kernel": "restrict src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 41.67899999999997,
+      "min": 39.75699999999997,
+      "max": 43.36499999999998,
+      "values": [
+       41.67899999999997,
+       39.75699999999997,
+       43.36499999999998
+      ]
+     },
+     "sharePct": {
+      "median": 0.8760253557414492,
+      "min": 0.8569737404811916,
+      "max": 0.8852200404100551,
+      "values": [
+       0.8760253557414492,
+       0.8569737404811916,
+       0.8852200404100551
+      ]
+     }
+    },
+    {
+     "kernel": "prolongAdd src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 40.58900000000001,
+      "min": 39.96199999999994,
+      "max": 42.53199999999997,
+      "values": [
+       42.53199999999997,
+       39.96199999999994,
+       40.58900000000001
+      ]
+     },
+     "sharePct": {
+      "median": 0.8613925753228199,
+      "min": 0.828552893351868,
+      "max": 0.8939540399336673,
+      "values": [
+       0.8939540399336673,
+       0.8613925753228199,
+       0.828552893351868
+      ]
+     }
+    },
+    {
+     "kernel": "step src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 38.13399999999999,
+      "min": 29.71400000000001,
+      "max": 38.84499999999998,
+      "values": [
+       38.84499999999998,
+       29.71400000000001,
+       38.13399999999999
+      ]
+     },
+     "sharePct": {
+      "median": 0.778438395503218,
+      "min": 0.6404939438251919,
+      "max": 0.8164592467136113,
+      "values": [
+       0.8164592467136113,
+       0.6404939438251919,
+       0.778438395503218
+      ]
+     }
+    },
+    {
+     "kernel": "addAirAnomaly src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 36.20899999999998,
+      "min": 29.807999999999993,
+      "max": 39.032999999999994,
+      "values": [
+       36.20899999999998,
+       29.807999999999993,
+       39.032999999999994
+      ]
+     },
+     "sharePct": {
+      "median": 0.7610547783306255,
+      "min": 0.6425201412647678,
+      "max": 0.7967898959374078,
+      "values": [
+       0.7610547783306255,
+       0.6425201412647678,
+       0.7967898959374078
+      ]
+     }
+    }
+   ],
+   "kernelsWithSpinUp": [
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 15.12531301103946,
+      "min": 14.916219493731825,
+      "max": 15.558343663707472,
+      "values": [
+       15.12531301103946,
+       15.558343663707472,
+       14.916219493731825
+      ]
+     }
+    },
+    {
+     "kernel": "advect src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 10.505839982476587,
+      "min": 10.2637629590904,
+      "max": 10.625742925166211,
+      "values": [
+       10.505839982476587,
+       10.2637629590904,
+       10.625742925166211
+      ]
+     }
+    },
+    {
+     "kernel": "divergence src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 5.352431123203483,
+      "min": 5.1170917623020475,
+      "max": 5.545010312591938,
+      "values": [
+       5.1170917623020475,
+       5.545010312591938,
+       5.352431123203483
+      ]
+     }
+    },
+    {
+     "kernel": "step src/atmosphere/atmosphere.ts",
+     "sharePct": {
+      "median": 5.340125484871899,
+      "min": 5.176241452507854,
+      "max": 5.37862950116737,
+      "values": [
+       5.37862950116737,
+       5.340125484871899,
+       5.176241452507854
+      ]
+     }
+    },
+    {
+     "kernel": "gradient src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 5.325192246142231,
+      "min": 5.114549455197079,
+      "max": 5.373367172949501,
+      "values": [
+       5.114549455197079,
+       5.373367172949501,
+       5.325192246142231
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseVLevels src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 4.445263090236703,
+      "min": 4.435848209850102,
+      "max": 4.474460504754037,
+      "values": [
+       4.474460504754037,
+       4.435848209850102,
+       4.445263090236703
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseH src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.65045337031382,
+      "min": 3.5665797337064205,
+      "max": 3.9584900177405977,
+      "values": [
+       3.9584900177405977,
+       3.5665797337064205,
+       3.65045337031382
+      ]
+     }
+    },
+    {
+     "kernel": "smagorinsky src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.225527349207111,
+      "min": 3.080524663184016,
+      "max": 3.3200342049742693,
+      "values": [
+       3.3200342049742693,
+       3.225527349207111,
+       3.080524663184016
+      ]
+     }
+    },
+    {
+     "kernel": "displacements src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.190763781451159,
+      "min": 3.106842974695835,
+      "max": 3.2775404218260262,
+      "values": [
+       3.190763781451159,
+       3.2775404218260262,
+       3.106842974695835
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "sharePct": {
+      "median": 3.1828999688588606,
+      "min": 2.891134740056173,
+      "max": 3.2481088013156807,
+      "values": [
+       3.2481088013156807,
+       3.1828999688588606,
+       2.891134740056173
+      ]
+     }
+    },
+    {
+     "kernel": "collocate src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 2.559059393513277,
+      "min": 2.5290894603957437,
+      "max": 2.6664201602669513,
+      "values": [
+       2.559059393513277,
+       2.6664201602669513,
+       2.5290894603957437
+      ]
+     }
+    },
+    {
+     "kernel": "project src/atmosphere/atmosphere.ts",
+     "sharePct": {
+      "median": 2.125234142181071,
+      "min": 2.0614257226069963,
+      "max": 2.1631666169148938,
+      "values": [
+       2.1631666169148938,
+       2.125234142181071,
+       2.0614257226069963
+      ]
+     }
+    }
+   ],
+   "fileGroupsAdvancePct": {
+    "src/sim": {
+     "median": 4.18521858790426,
+     "min": 4.149582488055254,
+     "max": 4.242771619040031,
+     "values": [
+      4.242771619040031,
+      4.18521858790426,
+      4.149582488055254
+     ]
+    },
+    "src/fire/other (spread model, rate models)": {
+     "median": 6.18798542517389,
+     "min": 6.113765383094757,
+     "max": 6.315161605476713,
+     "values": [
+      6.113765383094757,
+      6.18798542517389,
+      6.315161605476713
+     ]
+    },
+    "src/fire/spread/levelSet": {
+     "median": 3.7047372183535243,
+     "min": 3.5156194990939897,
+     "max": 3.9281501765810147,
+     "values": [
+      3.5156194990939897,
+      3.9281501765810147,
+      3.7047372183535243
+     ]
+    },
+    "src/core": {
+     "median": 0.9104712150898028,
+     "min": 0.8769711831607346,
+     "max": 1.1265011105286515,
+     "values": [
+      0.8769711831607346,
+      1.1265011105286515,
+      0.9104712150898028
+     ]
+    },
+    "other (runtime, node internals, harness)": {
+     "median": 0.6727775525307244,
+     "min": 0.655216208199985,
+     "max": 0.8688077975300906,
+     "values": [
+      0.6727775525307244,
+      0.655216208199985,
+      0.8688077975300906
+     ]
+    },
+    "src/atmosphere/other": {
+     "median": 43.02508256133988,
+     "min": 42.187715552919514,
+     "max": 43.56432750934801,
+     "values": [
+      43.56432750934801,
+      42.187715552919514,
+      43.02508256133988
+     ]
+    },
+    "src/fuel/moisture + terrain/solar": {
+     "median": 0.8935757089659541,
+     "min": 0.8706182402604659,
+     "max": 0.9255770107753428,
+     "values": [
+      0.8935757089659541,
+      0.8706182402604659,
+      0.9255770107753428
+     ]
+    },
+    "src/atmosphere/solver (elliptic)": {
+     "median": 29.38146665844772,
+     "min": 29.0814607526808,
+     "max": 29.802260374131013,
+     "values": [
+      29.0814607526808,
+      29.802260374131013,
+      29.38146665844772
+     ]
+    },
+    "src/embers": {
+     "median": 8.878481984825047,
+     "min": 8.521260999162713,
+     "max": 9.025416275797435,
+     "values": [
+      8.878481984825047,
+      9.025416275797435,
+      8.521260999162713
+     ]
+    },
+    "src/explain": {
+     "median": 2.160248807259066,
+     "min": 2.0309180485046037,
+     "max": 2.1978524457712436,
+     "values": [
+      2.160248807259066,
+      2.0309180485046037,
+      2.1978524457712436
+     ]
+    }
+   },
+   "unmappedChildren": [
+    {
+     "child": "lap src/sim/simulation.ts",
+     "ms": 8.612
+    },
+    {
+     "child": "setTime src/atmosphere/base.ts",
+     "ms": 5.037999999999999
+    },
+    {
+     "child": "stableNightInputAt src/fuel/moisture/night.ts",
+     "ms": 4.22
+    },
+    {
+     "child": "weatherNow src/sim/simulation.ts",
+     "ms": 4.154999999999999
+    },
+    {
+     "child": "applyDueRecords src/sim/simulation.ts",
+     "ms": 3.022
+    },
+    {
+     "child": "applyPendingSpots src/sim/simulation.ts",
+     "ms": 1.557
+    },
+    {
+     "child": "endStep src/sim/perfStats.ts",
+     "ms": 1.204
+    },
+    {
+     "child": "rainBefore src/fuel/moisture/weather.ts",
+     "ms": 0.996
+    },
+    {
+     "child": "solarPosition src/terrain/solar.ts",
+     "ms": 0.8760000000000001
+    },
+    {
+     "child": "stableNight src/core/physics.ts",
+     "ms": 0.527
+    }
+   ],
+   "counts": {
+    "advanceSteps": 189,
+    "spinUpAtmSteps": 76,
+    "repeatable": true,
+    "perStepByPhase": {
+     "air": {
+      "exp": 794.1693121693122,
+      "sqrt": 12026.878306878307,
+      "**2": 72001
+     },
+     "fire": {
+      "cos": 1847.4603174603174,
+      "sqrt": 33440.04232804233,
+      "exp": 4979.05291005291,
+      "log": 440.3862433862434,
+      "sin": 82.56613756613757,
+      "atan": 1576.94708994709,
+      "atan2": 527.1904761904761,
+      "acos": 522.4973544973545,
+      "pow": 152.24867724867724,
+      "hypot": 2.3333333333333335,
+      "**": 0.005291005291005291
+     },
+     "coupling": {
+      "sqrt": 7213.8994708994705
+     },
+     "embers": {
+      "exp": 6019.89417989418,
+      "log": 918.2169312169312,
+      "pow": 72.34391534391534,
+      "sin": 177.25925925925927,
+      "cos": 288.83597883597884,
+      "atan2": 1,
+      "cbrt": 1324.7037037037037,
+      "hypot": 469.3121693121693,
+      "sqrt": 16028.465608465609,
+      "**": 96.24338624338624
+     },
+     "moisture": {
+      "exp": 16,
+      "sin": 0.5185185185185185,
+      "cos": 0.35978835978835977,
+      "tan": 0.042328042328042326,
+      "atan2": 0.07936507936507936,
+      "acos": 0.015873015873015872,
+      "asin": 0.015873015873015872,
+      "cbrt": 142.1904761904762,
+      "hypot": 0.06349206349206349,
+      "sqrt": 418.51851851851853,
+      "**": 0.06349206349206349,
+      "**2": 0.015873015873015872
+     },
+     "detectors": {
+      "exp": 9.714285714285714,
+      "log": 26.52910052910053,
+      "sin": 92.47619047619048,
+      "cos": 80.83597883597884,
+      "cbrt": 0.15873015873015872,
+      "hypot": 64.51851851851852,
+      "sqrt": 224.48677248677248,
+      "**": 74.4920634920635,
+      "pow": 4.079365079365079,
+      "tan": 1.9047619047619047,
+      "atan": 22,
+      "atan2": 64.33862433862434,
+      "acos": 1.2698412698412698,
+      "asin": 1.5873015873015872,
+      "**2": 1.5873015873015872
+     },
+     "picture": {
+      "exp": 284.978835978836,
+      "log": 0.31746031746031744,
+      "pow": 0.6349206349206349,
+      "sin": 1.2698412698412698,
+      "cos": 1.2698412698412698,
+      "atan2": 0.6349206349206349,
+      "hypot": 0.6349206349206349
+     },
+     "checkpoints": {
+      "sqrt": 52.91005291005291
+     },
+     "other": {
+      "log": 1.4973544973544974,
+      "hypot": 14.084656084656086,
+      "sqrt": 6.190476190476191,
+      "sin": 166.73015873015873,
+      "cos": 85.73015873015873,
+      "atan2": 12,
+      "exp": 1.433862433862434,
+      "tan": 14,
+      "acos": 9,
+      "asin": 11,
+      "**": 7.322751322751323,
+      "**2": 11,
+      "cbrt": 0.010582010582010581
+     }
+    },
+    "perStepTotal": {
+     "exp": 12105.243386243386,
+     "sqrt": 69411.39153439153,
+     "**2": 72013.60317460318,
+     "cos": 2304.4920634920636,
+     "log": 1386.94708994709,
+     "sin": 520.8201058201058,
+     "atan": 1598.94708994709,
+     "atan2": 605.2433862433862,
+     "acos": 532.7830687830688,
+     "pow": 229.3068783068783,
+     "hypot": 550.9470899470899,
+     "**": 178.12698412698413,
+     "cbrt": 1467.063492063492,
+     "tan": 15.947089947089948,
+     "asin": 12.603174603174603
+    },
+    "totalsAdvance": {
+     "exp": 2287891,
+     "sqrt": 13118753,
+     "**2": 13610571,
+     "cos": 435549,
+     "log": 262133,
+     "sin": 98435,
+     "atan": 302201,
+     "atan2": 114391,
+     "acos": 100696,
+     "pow": 43339,
+     "hypot": 104129,
+     "**": 33666,
+     "cbrt": 277275,
+     "tan": 3014,
+     "asin": 2382
+    },
+    "spinUpTotals": {
+     "exp": 82,
+     "sin": 30,
+     "cos": 22,
+     "tan": 2,
+     "atan2": 5,
+     "acos": 1,
+     "asin": 1,
+     "cbrt": 8958,
+     "hypot": 4,
+     "sqrt": 614586,
+     "**": 4,
+     "**2": 5472077
+    },
+    "spinUpPerAtmStep": {
+     "exp": 1.0789473684210527,
+     "sin": 0.39473684210526316,
+     "cos": 0.2894736842105263,
+     "tan": 0.02631578947368421,
+     "atan2": 0.06578947368421052,
+     "acos": 0.013157894736842105,
+     "asin": 0.013157894736842105,
+     "cbrt": 117.86842105263158,
+     "hypot": 0.05263157894736842,
+     "sqrt": 8086.6578947368425,
+     "**": 0.05263157894736842,
+     "**2": 72001.01315789473
+    },
+    "constructTotals": {
+     "exp": 159637,
+     "log": 124087,
+     "pow": 8,
+     "sin": 131569,
+     "cos": 91889,
+     "tan": 9766,
+     "atan": 271506,
+     "atan2": 14085,
+     "acos": 6436,
+     "asin": 8006,
+     "hypot": 119474,
+     "sqrt": 935518,
+     "**": 141982,
+     "**2": 9055
+    },
+    "topSitesByPhase": {
+     "air": [
+      {
+       "site": "exp F @ src/atmosphere/surface.ts",
+       "estCalls": 149504,
+       "estPerStep": 791.026455026455
+      },
+      {
+       "site": "exp Atmosphere.meanThetaControl @ src/atmosphere/atmosphere.ts",
+       "estCalls": 272,
+       "estPerStep": 1.439153439153439
+      },
+      {
+       "site": "exp Atmosphere.step @ src/atmosphere/atmosphere.ts",
+       "estCalls": 224,
+       "estPerStep": 1.1851851851851851
+      }
+     ],
+     "fire": [
+      {
+       "site": "exp slopeFactor @ src/fire/models/common.ts",
+       "estCalls": 498592,
+       "estPerStep": 2638.05291005291
+      },
+      {
+       "site": "cos leeSeparation @ src/fire/spread/math.ts",
+       "estCalls": 131152,
+       "estPerStep": 693.925925925926
+      },
+      {
+       "site": "cos leeAlignment @ src/fire/spread/math.ts",
+       "estCalls": 127744,
+       "estPerStep": 675.8941798941798
+      },
+      {
+       "site": "acos hybridHead @ src/fire/spread/math.ts",
+       "estCalls": 99664,
+       "estPerStep": 527.3227513227513
+      },
+      {
+       "site": "exp buildFraction @ src/fire/spread/math.ts",
+       "estCalls": 98992,
+       "estPerStep": 523.7671957671957
+      },
+      {
+       "site": "atan2 azimuthOf @ src/fire/spread/math.ts",
+       "estCalls": 98656,
+       "estPerStep": 521.989417989418
+      },
+      {
+       "site": "atan finishHybrid @ src/fire/spread/math.ts",
+       "estCalls": 98512,
+       "estPerStep": 521.2275132275132
+      },
+      {
+       "site": "atan FireSpreadModel.computeCell @ src/fire/spread/FireSpreadModel.ts",
+       "estCalls": 98448,
+       "estPerStep": 520.8888888888889
+      }
+     ],
+     "coupling": [],
+     "embers": [
+      {
+       "site": "exp EmberModel.advance @ src/embers/EmberModel.ts",
+       "estCalls": 931536,
+       "estPerStep": 4928.761904761905
+      },
+      {
+       "site": "cbrt EmberModel.advance @ src/embers/EmberModel.ts",
+       "estCalls": 235312,
+       "estPerStep": 1245.037037037037
+      },
+      {
+       "site": "log EmberModel.loft @ src/embers/EmberModel.ts",
+       "estCalls": 62928,
+       "estPerStep": 332.95238095238096
+      },
+      {
+       "site": "exp sampleClass @ src/embers/sampling.ts",
+       "estCalls": 45776,
+       "estPerStep": 242.2010582010582
+      },
+      {
+       "site": "exp FastRng.poisson @ src/embers/sampling.ts",
+       "estCalls": 45680,
+       "estPerStep": 241.6931216931217
+      },
+      {
+       "site": "hypot landingFn @ src/sim/simulation.ts",
+       "estCalls": 40992,
+       "estPerStep": 216.88888888888889
+      },
+      {
+       "site": "log natureTauBDensity @ src/embers/sampling.ts",
+       "estCalls": 36288,
+       "estPerStep": 192
+      },
+      {
+       "site": "exp lnPdf @ src/embers/sampling.ts",
+       "estCalls": 34624,
+       "estPerStep": 183.1957671957672
+      }
+     ],
+     "moisture": [
+      {
+       "site": "cbrt anabaticSpeed @ src/atmosphere/surface.ts",
+       "estCalls": 26880,
+       "estPerStep": 142.22222222222223
+      },
+      {
+       "site": "exp fillExpTable @ src/fuel/moisture/fastMath.ts",
+       "estCalls": 3008,
+       "estPerStep": 15.915343915343914
+      },
+      {
+       "site": "cos solarPosition @ src/terrain/solar.ts",
+       "estCalls": 32,
+       "estPerStep": 0.1693121693121693
+      },
+      {
+       "site": "cos windToUV @ src/core/units.ts",
+       "estCalls": 32,
+       "estPerStep": 0.1693121693121693
+      },
+      {
+       "site": "atan2 uvToWind @ src/core/units.ts",
+       "estCalls": 32,
+       "estPerStep": 0.1693121693121693
+      },
+      {
+       "site": "hypot uvToWind @ src/core/units.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08465608465608465
+      },
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08465608465608465
+      },
+      {
+       "site": "sin insolation @ src/terrain/solar.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08465608465608465
+      }
+     ],
+     "detectors": [
+      {
+       "site": "atan2 azimuthOf @ src/explain/util.ts",
+       "estCalls": 12448,
+       "estPerStep": 65.86243386243386
+      },
+      {
+       "site": "hypot CycleContext.bgSpeed @ src/explain/context.ts",
+       "estCalls": 5616,
+       "estPerStep": 29.714285714285715
+      },
+      {
+       "site": "log sCoord @ src/atmosphere/profile.ts",
+       "estCalls": 4832,
+       "estPerStep": 25.566137566137566
+      },
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 3488,
+       "estPerStep": 18.455026455026456
+      },
+      {
+       "site": "cos along @ src/explain/util.ts",
+       "estCalls": 3264,
+       "estPerStep": 17.26984126984127
+      },
+      {
+       "site": "sin along @ src/explain/util.ts",
+       "estCalls": 3168,
+       "estPerStep": 16.761904761904763
+      },
+      {
+       "site": "hypot CycleContext.windSpeed @ src/explain/context.ts",
+       "estCalls": 2944,
+       "estPerStep": 15.576719576719576
+      },
+      {
+       "site": "hypot deriv @ src/atmosphere/plume.ts",
+       "estCalls": 2880,
+       "estPerStep": 15.238095238095237
+      }
+     ],
+     "picture": [
+      {
+       "site": "exp DecayRaster.at @ src/embers/stats.ts",
+       "estCalls": 53792,
+       "estPerStep": 284.6137566137566
+      },
+      {
+       "site": "sin windToUV @ src/core/units.ts",
+       "estCalls": 272,
+       "estPerStep": 1.439153439153439
+      },
+      {
+       "site": "cos windToUV @ src/core/units.ts",
+       "estCalls": 192,
+       "estPerStep": 1.0158730158730158
+      },
+      {
+       "site": "pow vesta2012R0 @ src/fire/models/vesta2012.ts",
+       "estCalls": 160,
+       "estPerStep": 0.8465608465608465
+      },
+      {
+       "site": "hypot uvToWind @ src/core/units.ts",
+       "estCalls": 144,
+       "estPerStep": 0.7619047619047619
+      },
+      {
+       "site": "atan2 uvToWind @ src/core/units.ts",
+       "estCalls": 80,
+       "estPerStep": 0.42328042328042326
+      },
+      {
+       "site": "log flameHeightVesta @ src/fire/models/common.ts",
+       "estCalls": 48,
+       "estPerStep": 0.25396825396825395
+      },
+      {
+       "site": "pow vesta2012PhiM @ src/fire/models/vesta2012.ts",
+       "estCalls": 32,
+       "estPerStep": 0.1693121693121693
+      }
+     ],
+     "checkpoints": [],
+     "other": [
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 22864,
+       "estPerStep": 120.97354497354497
+      },
+      {
+       "site": "cos solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 5824,
+       "estPerStep": 30.814814814814813
+      },
+      {
+       "site": "cos solarPosition @ src/terrain/solar.ts",
+       "estCalls": 4144,
+       "estPerStep": 21.925925925925927
+      },
+      {
+       "site": "sin windToUV @ src/core/units.ts",
+       "estCalls": 3680,
+       "estPerStep": 19.47089947089947
+      },
+      {
+       "site": "cos windToUV @ src/core/units.ts",
+       "estCalls": 3056,
+       "estPerStep": 16.16931216931217
+      },
+      {
+       "site": "sin solarPosition @ src/terrain/solar.ts",
+       "estCalls": 2800,
+       "estPerStep": 14.814814814814815
+      },
+      {
+       "site": "asin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 2464,
+       "estPerStep": 13.037037037037036
+      },
+      {
+       "site": "sin event @ src/terrain/solar.ts",
+       "estCalls": 2272,
+       "estPerStep": 12.02116402116402
+      }
+     ]
+    },
+    "samplingNote": "call sites: every 16th non-sqrt Math call, first stack frame outside the wrapper; estCalls = samples x 16"
+   },
+   "conditions": {
+    "node": "v22.22.0",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "runs": [
+     {
+      "tag": "katoomba3-standard-time-r1",
+      "loadavgStart": [
+       1.62,
+       1.82,
+       1.24
+      ],
+      "loadavgEnd": [
+       1.68,
+       1.83,
+       1.25
+      ],
+      "uptimeStart": "13:57:48 up 33 min,  0 user,  load average: 1.62, 1.82, 1.24",
+      "uptimeEnd": "13:57:56 up 33 min,  0 user,  load average: 1.68, 1.83, 1.25",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:57:48.591Z"
+     },
+     {
+      "tag": "katoomba3-standard-time-r2",
+      "loadavgStart": [
+       1.84,
+       1.86,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.79,
+       1.84,
+       1.27
+      ],
+      "uptimeStart": "13:58:11 up 33 min,  0 user,  load average: 1.84, 1.86, 1.27",
+      "uptimeEnd": "13:58:19 up 33 min,  0 user,  load average: 1.79, 1.84, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:11.848Z"
+     },
+     {
+      "tag": "katoomba3-standard-time-r3",
+      "loadavgStart": [
+       1.76,
+       1.83,
+       1.28
+      ],
+      "loadavgEnd": [
+       1.78,
+       1.84,
+       1.28
+      ],
+      "uptimeStart": "13:58:35 up 33 min,  0 user,  load average: 1.76, 1.83, 1.28",
+      "uptimeEnd": "13:58:43 up 34 min,  0 user,  load average: 1.78, 1.84, 1.28",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:35.094Z"
+     },
+     {
+      "tag": "katoomba3-standard-plain-r1",
+      "loadavgStart": [
+       1.68,
+       1.83,
+       1.25
+      ],
+      "loadavgEnd": [
+       1.62,
+       1.82,
+       1.25
+      ],
+      "uptimeStart": "13:57:56 up 33 min,  0 user,  load average: 1.68, 1.83, 1.25",
+      "uptimeEnd": "13:58:03 up 33 min,  0 user,  load average: 1.62, 1.82, 1.25",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:57:56.943Z"
+     },
+     {
+      "tag": "katoomba3-standard-plain-r2",
+      "loadavgStart": [
+       1.79,
+       1.84,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.8,
+       1.85,
+       1.27
+      ],
+      "uptimeStart": "13:58:19 up 33 min,  0 user,  load average: 1.79, 1.84, 1.27",
+      "uptimeEnd": "13:58:26 up 33 min,  0 user,  load average: 1.80, 1.85, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:19.869Z"
+     },
+     {
+      "tag": "katoomba3-standard-plain-r3",
+      "loadavgStart": [
+       1.78,
+       1.84,
+       1.28
+      ],
+      "loadavgEnd": [
+       1.66,
+       1.81,
+       1.28
+      ],
+      "uptimeStart": "13:58:43 up 34 min,  0 user,  load average: 1.78, 1.84, 1.28",
+      "uptimeEnd": "13:58:49 up 34 min,  0 user,  load average: 1.66, 1.81, 1.28",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:43.262Z"
+     },
+     {
+      "tag": "katoomba3-standard-count-r1",
+      "loadavgStart": [
+       1.5,
+       1.76,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.35,
+       1.71,
+       1.27
+      ],
+      "uptimeStart": "13:59:18 up 34 min,  0 user,  load average: 1.50, 1.76, 1.27",
+      "uptimeEnd": "13:59:34 up 34 min,  0 user,  load average: 1.35, 1.71, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:59:18.434Z"
+     },
+     {
+      "tag": "katoomba3-standard-count-r2",
+      "loadavgStart": [
+       1.35,
+       1.71,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.48,
+       1.72,
+       1.28
+      ],
+      "uptimeStart": "13:59:34 up 34 min,  0 user,  load average: 1.35, 1.71, 1.27",
+      "uptimeEnd": "13:59:50 up 35 min,  0 user,  load average: 1.48, 1.72, 1.28",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:59:34.523Z"
+     }
+    ]
+   }
+  },
+  "katoomba6-fast": {
+   "tier": "fast",
+   "burntCells": [
+    664,
+    664,
+    664
+   ],
+   "steps": {
+    "advanceSteps": 180,
+    "atmStepsSpinUp": 0,
+    "atmStepsAdvance": 0,
+    "simSeconds": 1800
+   },
+   "simSeconds": 1800,
+   "runs": 3,
+   "wallAdvanceMsProfiled": {
+    "median": 1868.5875649999998,
+    "min": 1807.8199319999999,
+    "max": 2015.415903,
+    "values": [
+     2015.415903,
+     1807.8199319999999,
+     1868.5875649999998
+    ]
+   },
+   "wallSpinUpMsProfiled": {
+    "median": 0.11899600000015198,
+    "min": 0.09811899999976958,
+    "max": 0.13905100000010862,
+    "values": [
+     0.13905100000010862,
+     0.09811899999976958,
+     0.11899600000015198
+    ]
+   },
+   "wallAdvanceMsPlain": {
+    "median": 1792.3142739999998,
+    "min": 1510.550417,
+    "max": 1897.7051609999999,
+    "values": [
+     1510.550417,
+     1792.3142739999998,
+     1897.7051609999999
+    ]
+   },
+   "wallSpinUpMsPlain": {
+    "median": 0.08889700000008816,
+    "min": 0.07421599999997852,
+    "max": 0.12786199999982273,
+    "values": [
+     0.12786199999982273,
+     0.08889700000008816,
+     0.07421599999997852
+    ]
+   },
+   "msPerStepPlain": {
+    "median": 9.957301522222222,
+    "min": 8.391946761111111,
+    "max": 10.542806449999999,
+    "values": [
+     8.391946761111111,
+     9.957301522222222,
+     10.542806449999999
+    ]
+   },
+   "profileWindowMs": {
+    "median": 1814.6559999999974,
+    "min": 1740.7809999999995,
+    "max": 1956.2939999999992,
+    "values": [
+     1956.2939999999992,
+     1740.7809999999995,
+     1814.6559999999974
+    ]
+   },
+   "profileSpinUpMs": {
+    "median": 0,
+    "min": 0,
+    "max": 0,
+    "values": [
+     0,
+     0,
+     0
+    ]
+   },
+   "gcMsOfProcess": {
+    "median": 166.62600000000006,
+    "min": 164.78900000000024,
+    "max": 174.32299999999995,
+    "values": [
+     164.78900000000024,
+     166.62600000000006,
+     174.32299999999995
+    ]
+   },
+   "phaseShareAdvancePct": {
+    "air": {
+     "median": 0.00959339514849944,
+     "min": 0.008638783332157646,
+     "max": 0.01901186781406506,
+     "values": [
+      0.008638783332157646,
+      0.00959339514849944,
+      0.01901186781406506
+     ]
+    },
+    "fire": {
+     "median": 25.929510949395624,
+     "min": 25.332845453904152,
+     "max": 26.495710767399924,
+     "values": [
+      26.495710767399924,
+      25.929510949395624,
+      25.332845453904152
+     ]
+    },
+    "coupling": {
+     "median": 19.302057870647285,
+     "min": 19.17507141909297,
+     "max": 20.271169852578122,
+     "values": [
+      19.302057870647285,
+      19.17507141909297,
+      20.271169852578122
+     ]
+    },
+    "embers": {
+     "median": 24.083752237649314,
+     "min": 23.83602532426536,
+     "max": 24.271817909289652,
+     "values": [
+      24.083752237649314,
+      23.83602532426536,
+      24.271817909289652
+     ]
+    },
+    "moisture": {
+     "median": 5.461456668012813,
+     "min": 4.955925530789323,
+     "max": 5.780572858680766,
+     "values": [
+      5.780572858680766,
+      5.461456668012813,
+      4.955925530789323
+     ]
+    },
+    "detectors": {
+     "median": 8.908685723354761,
+     "min": 7.969712118935105,
+     "max": 9.4137631327548,
+     "values": [
+      7.969712118935105,
+      9.4137631327548,
+      8.908685723354761
+     ]
+    },
+    "picture": {
+     "median": 11.071960746279228,
+     "min": 10.718694654870447,
+     "max": 11.248667122630893,
+     "values": [
+      11.248667122630893,
+      10.718694654870447,
+      11.071960746279228
+     ]
+    },
+    "checkpoints": {
+     "median": 1.1651666694431984,
+     "min": 1.033893678557518,
+     "max": 1.8028761374056592,
+     "values": [
+      1.033893678557518,
+      1.1651666694431984,
+      1.8028761374056592
+     ]
+    },
+    "other": {
+     "median": 4.076994562167038,
+     "min": 3.365706778585034,
+     "max": 4.290717787016289,
+     "values": [
+      4.076994562167038,
+      4.290717787016289,
+      3.365706778585034
+     ]
+    }
+   },
+   "phaseShareWithSpinUpPct": {
+    "air": {
+     "median": 0.00959339514849944,
+     "min": 0.008638783332157646,
+     "max": 0.01901186781406506,
+     "values": [
+      0.008638783332157646,
+      0.00959339514849944,
+      0.01901186781406506
+     ]
+    },
+    "fire": {
+     "median": 25.929510949395624,
+     "min": 25.332845453904152,
+     "max": 26.495710767399924,
+     "values": [
+      26.495710767399924,
+      25.929510949395624,
+      25.332845453904152
+     ]
+    },
+    "coupling": {
+     "median": 19.302057870647285,
+     "min": 19.17507141909297,
+     "max": 20.271169852578122,
+     "values": [
+      19.302057870647285,
+      19.17507141909297,
+      20.271169852578122
+     ]
+    },
+    "embers": {
+     "median": 24.083752237649314,
+     "min": 23.83602532426536,
+     "max": 24.271817909289652,
+     "values": [
+      24.083752237649314,
+      23.83602532426536,
+      24.271817909289652
+     ]
+    },
+    "moisture": {
+     "median": 5.461456668012813,
+     "min": 4.955925530789323,
+     "max": 5.780572858680766,
+     "values": [
+      5.780572858680766,
+      5.461456668012813,
+      4.955925530789323
+     ]
+    },
+    "detectors": {
+     "median": 8.908685723354761,
+     "min": 7.969712118935105,
+     "max": 9.4137631327548,
+     "values": [
+      7.969712118935105,
+      9.4137631327548,
+      8.908685723354761
+     ]
+    },
+    "picture": {
+     "median": 11.071960746279228,
+     "min": 10.718694654870447,
+     "max": 11.248667122630893,
+     "values": [
+      11.248667122630893,
+      10.718694654870447,
+      11.071960746279228
+     ]
+    },
+    "checkpoints": {
+     "median": 1.1651666694431984,
+     "min": 1.033893678557518,
+     "max": 1.8028761374056592,
+     "values": [
+      1.033893678557518,
+      1.1651666694431984,
+      1.8028761374056592
+     ]
+    },
+    "other": {
+     "median": 4.076994562167038,
+     "min": 3.365706778585034,
+     "max": 4.290717787016289,
+     "values": [
+      4.076994562167038,
+      4.290717787016289,
+      3.365706778585034
+     ]
+    },
+    "spinUp (3-D air spin-up, 900 s)": {
+     "median": 0,
+     "min": 0,
+     "max": 0,
+     "values": [
+      0,
+      0,
+      0
+     ]
+    }
+   },
+   "appTimersShareAdvancePct": {
+    "air": {
+     "median": 0.3002788244133542,
+     "min": 0.2635004167765549,
+     "max": 0.3181220740650399,
+     "values": [
+      0.3002788244133542,
+      0.2635004167765549,
+      0.3181220740650399
+     ]
+    },
+    "fire": {
+     "median": 27.030928078430843,
+     "min": 26.458212216699998,
+     "max": 27.28991170281505,
+     "values": [
+      27.030928078430843,
+      26.458212216699998,
+      27.28991170281505
+     ]
+    },
+    "coupling": {
+     "median": 18.544446279543923,
+     "min": 17.420291582871013,
+     "max": 18.6298311458202,
+     "values": [
+      18.6298311458202,
+      18.544446279543923,
+      17.420291582871013
+     ]
+    },
+    "embers": {
+     "median": 23.988933504216714,
+     "min": 22.793721463536837,
+     "max": 24.66593237898601,
+     "values": [
+      24.66593237898601,
+      22.793721463536837,
+      23.988933504216714
+     ]
+    },
+    "moisture": {
+     "median": 7.029620878766098,
+     "min": 5.981140416828757,
+     "max": 8.702322799813563,
+     "values": [
+      7.029620878766098,
+      8.702322799813563,
+      5.981140416828757
+     ]
+    },
+    "detectors": {
+     "median": 8.668356429035573,
+     "min": 8.029083319482481,
+     "max": 9.097860214845193,
+     "values": [
+      9.097860214845193,
+      8.029083319482481,
+      8.668356429035573
+     ]
+    },
+    "picture": {
+     "median": 12.568352767464976,
+     "min": 10.636113394792252,
+     "max": 13.612052693739958,
+     "values": [
+      10.636113394792252,
+      12.568352767464976,
+      13.612052693739958
+     ]
+    },
+    "checkpoints": {
+     "median": 1.3407283272241188,
+     "min": 1.2317655101558551,
+     "max": 1.5024031476725517,
+     "values": [
+      1.3407283272241188,
+      1.2317655101558551,
+      1.5024031476725517
+     ]
+    },
+    "other": {
+     "median": 1.2687067567219308,
+     "min": 1.2187884487553489,
+     "max": 1.408595226525811,
+     "values": [
+      1.2687067567219308,
+      1.408595226525811,
+      1.2187884487553489
+     ]
+    }
+   },
+   "appTimersSpinUpShareOfRunPct": {
+    "median": 0,
+    "min": 0,
+    "max": 0,
+    "values": [
+     0,
+     0,
+     0
+    ]
+   },
+   "kernelsAdvance": [
+    {
+     "kernel": "solve src/atmosphere/pyrogenic.ts",
+     "selfMs": {
+      "median": 155.7120000000008,
+      "min": 140.00200000000055,
+      "max": 165.1250000000013,
+      "values": [
+       165.1250000000013,
+       140.00200000000055,
+       155.7120000000008
+      ]
+     },
+     "sharePct": {
+      "median": 8.440704720251729,
+      "min": 8.042482081318706,
+      "max": 8.5807998871412,
+      "values": [
+       8.440704720251729,
+       8.042482081318706,
+       8.5807998871412
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 124.85200000000044,
+      "min": 115.94300000000028,
+      "max": 128.4460000000005,
+      "values": [
+       128.4460000000005,
+       115.94300000000028,
+       124.85200000000044
+      ]
+     },
+     "sharePct": {
+      "median": 6.660401279655528,
+      "min": 6.5657820348066585,
+      "max": 6.8802020878888674,
+      "values": [
+       6.5657820348066585,
+       6.660401279655528,
+       6.8802020878888674
+      ]
+     }
+    },
+    {
+     "kernel": "sampleBg src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 106.77200000000026,
+      "min": 97.68600000000015,
+      "max": 122.43400000000031,
+      "values": [
+       122.43400000000031,
+       97.68600000000015,
+       106.77200000000026
+      ]
+     },
+     "sharePct": {
+      "median": 5.88387000070539,
+      "min": 5.611619152552802,
+      "max": 6.258466263250839,
+      "values": [
+       6.258466263250839,
+       5.611619152552802,
+       5.88387000070539
+      ]
+     }
+    },
+    {
+     "kernel": "addFireHeat src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 63.796,
+      "min": 53.659999999999975,
+      "max": 70.8440000000001,
+      "values": [
+       63.796,
+       53.659999999999975,
+       70.8440000000001
+      ]
+     },
+     "sharePct": {
+      "median": 3.261064032297805,
+      "min": 3.082524453104669,
+      "max": 3.9039906186076148,
+      "values": [
+       3.261064032297805,
+       3.082524453104669,
+       3.9039906186076148
+      ]
+     }
+    },
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 58.35299999999991,
+      "min": 54.24099999999996,
+      "max": 60.84199999999994,
+      "values": [
+       58.35299999999991,
+       60.84199999999994,
+       54.24099999999996
+      ]
+     },
+     "sharePct": {
+      "median": 2.9890513684136297,
+      "min": 2.9828338685289597,
+      "max": 3.4950978899700744,
+      "values": [
+       2.9828338685289597,
+       3.4950978899700744,
+       2.9890513684136297
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 54.88799999999998,
+      "min": 50.92599999999996,
+      "max": 56.99499999999996,
+      "values": [
+       56.99499999999996,
+       54.88799999999998,
+       50.92599999999996
+      ]
+     },
+     "sharePct": {
+      "median": 2.9134168995048797,
+      "min": 2.8063721168089173,
+      "max": 3.1530675024601025,
+      "values": [
+       2.9134168995048797,
+       3.1530675024601025,
+       2.8063721168089173
+      ]
+     }
+    },
+    {
+     "kernel": "compute src/fire/spread/geometry.ts",
+     "selfMs": {
+      "median": 51.96699999999994,
+      "min": 48.652999999999935,
+      "max": 53.444999999999936,
+      "values": [
+       53.444999999999936,
+       48.652999999999935,
+       51.96699999999994
+      ]
+     },
+     "sharePct": {
+      "median": 2.7948949350894767,
+      "min": 2.7319513324684306,
+      "max": 2.863738361430487,
+      "values": [
+       2.7319513324684306,
+       2.7948949350894767,
+       2.863738361430487
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "selfMs": {
+      "median": 44.46599999999998,
+      "min": 38.87499999999999,
+      "max": 46.237,
+      "values": [
+       44.46599999999998,
+       46.237,
+       38.87499999999999
+      ]
+     },
+     "sharePct": {
+      "median": 2.272971240519063,
+      "min": 2.1422793080341425,
+      "max": 2.6561066555758606,
+      "values": [
+       2.272971240519063,
+       2.6561066555758606,
+       2.1422793080341425
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 41.890999999999984,
+      "min": 41.211999999999975,
+      "max": 50.668999999999976,
+      "values": [
+       50.668999999999976,
+       41.211999999999975,
+       41.890999999999984
+      ]
+     },
+     "sharePct": {
+      "median": 2.3674431189219085,
+      "min": 2.308481607533331,
+      "max": 2.5900503707520444,
+      "values": [
+       2.5900503707520444,
+       2.3674431189219085,
+       2.308481607533331
+      ]
+     }
+    },
+    {
+     "kernel": "stepOnce src/sim/simulation.ts",
+     "selfMs": {
+      "median": 37.757999999999996,
+      "min": 29.703,
+      "max": 41.79099999999999,
+      "values": [
+       37.757999999999996,
+       41.79099999999999,
+       29.703
+      ]
+     },
+     "sharePct": {
+      "median": 1.9300779944118835,
+      "min": 1.636839158496158,
+      "max": 2.400704051802036,
+      "values": [
+       1.9300779944118835,
+       2.400704051802036,
+       1.636839158496158
+      ]
+     }
+    },
+    {
+     "kernel": "gradientToFire src/atmosphere/pyrogenic.ts",
+     "selfMs": {
+      "median": 37.65199999999997,
+      "min": 35.120000000000026,
+      "max": 41.86999999999998,
+      "values": [
+       37.65199999999997,
+       35.120000000000026,
+       41.86999999999998
+      ]
+     },
+     "sharePct": {
+      "median": 2.0174852551814406,
+      "min": 1.9246595859313573,
+      "max": 2.3073243634055185,
+      "values": [
+       1.9246595859313573,
+       2.0174852551814406,
+       2.3073243634055185
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/fuel/moisture/model.ts",
+     "selfMs": {
+      "median": 36.561999999999955,
+      "min": 29.19399999999999,
+      "max": 45.016999999999996,
+      "values": [
+       45.016999999999996,
+       29.19399999999999,
+       36.561999999999955
+      ]
+     },
+     "sharePct": {
+      "median": 2.0148171333850606,
+      "min": 1.6770633411095364,
+      "max": 2.301136741205566,
+      "values": [
+       2.301136741205566,
+       1.6770633411095364,
+       2.0148171333850606
+      ]
+     }
+    },
+    {
+     "kernel": "typedArrayFootprint src/core/datasets.ts",
+     "selfMs": {
+      "median": 35.88799999999999,
+      "min": 29.962999999999997,
+      "max": 37.50700000000001,
+      "values": [
+       37.50700000000001,
+       29.962999999999997,
+       35.88799999999999
+      ]
+     },
+     "sharePct": {
+      "median": 1.9172476120664903,
+      "min": 1.7212389151765792,
+      "max": 1.9776751075685994,
+      "values": [
+       1.9172476120664903,
+       1.7212389151765792,
+       1.9776751075685994
+      ]
+     }
+    },
+    {
+     "kernel": "prepareCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 29.55000000000001,
+      "min": 26.26000000000002,
+      "max": 39.77099999999998,
+      "values": [
+       39.77099999999998,
+       29.55000000000001,
+       26.26000000000002
+      ]
+     },
+     "sharePct": {
+      "median": 1.6975139319650212,
+      "min": 1.4471062283981126,
+      "max": 2.032976638480719,
+      "values": [
+       2.032976638480719,
+       1.6975139319650212,
+       1.4471062283981126
+      ]
+     }
+    },
+    {
+     "kernel": "apply src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 28.96999999999999,
+      "min": 24.745000000000005,
+      "max": 29.581000000000003,
+      "values": [
+       28.96999999999999,
+       24.745000000000005,
+       29.581000000000003
+      ]
+     },
+     "sharePct": {
+      "median": 1.4808612611396856,
+      "min": 1.4214884008959203,
+      "max": 1.6301161211821988,
+      "values": [
+       1.4808612611396856,
+       1.4214884008959203,
+       1.6301161211821988
+      ]
+     }
+    },
+    {
+     "kernel": "step src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 27.94600000000001,
+      "min": 26.76400000000001,
+      "max": 36.627999999999986,
+      "values": [
+       36.627999999999986,
+       26.76400000000001,
+       27.94600000000001
+      ]
+     },
+     "sharePct": {
+      "median": 1.5400163998024996,
+      "min": 1.537470824876881,
+      "max": 1.8723157153270418,
+      "values": [
+       1.8723157153270418,
+       1.537470824876881,
+       1.5400163998024996
+      ]
+     }
+    },
+    {
+     "kernel": "refreshMasks src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 24.913999999999994,
+      "min": 22.267,
+      "max": 33.822,
+      "values": [
+       33.822,
+       22.267,
+       24.913999999999994
+      ]
+     },
+     "sharePct": {
+      "median": 1.372932390491643,
+      "min": 1.279138501626569,
+      "max": 1.7288812417765438,
+      "values": [
+       1.7288812417765438,
+       1.279138501626569,
+       1.372932390491643
+      ]
+     }
+    },
+    {
+     "kernel": "makeSnapshot src/sim/simulation.ts",
+     "selfMs": {
+      "median": 24.887000000000018,
+      "min": 22.922000000000004,
+      "max": 32.585,
+      "values": [
+       32.585,
+       22.922000000000004,
+       24.887000000000018
+      ]
+     },
+     "sharePct": {
+      "median": 1.3714445051844566,
+      "min": 1.3167652909814622,
+      "max": 1.6656494371500403,
+      "values": [
+       1.6656494371500403,
+       1.3167652909814622,
+       1.3714445051844566
+      ]
+     }
+    },
+    {
+     "kernel": "detect src/explain/rules/types.ts",
+     "selfMs": {
+      "median": 22.790999999999997,
+      "min": 14.684000000000003,
+      "max": 24.95600000000001,
+      "values": [
+       24.95600000000001,
+       14.684000000000003,
+       22.790999999999997
+      ]
+     },
+     "sharePct": {
+      "median": 1.2559405198561067,
+      "min": 0.8435294273087774,
+      "max": 1.2756773777356585,
+      "values": [
+       1.2756773777356585,
+       0.8435294273087774,
+       1.2559405198561067
+      ]
+     }
+    },
+    {
+     "kernel": "publishFireWind src/sim/fireWindPublish.ts",
+     "selfMs": {
+      "median": 22.09,
+      "min": 21.02999999999999,
+      "max": 22.404000000000007,
+      "values": [
+       22.404000000000007,
+       22.09,
+       21.02999999999999
+      ]
+     },
+     "sharePct": {
+      "median": 1.1588973337095305,
+      "min": 1.1452266377139642,
+      "max": 1.2689706516787584,
+      "values": [
+       1.1452266377139642,
+       1.2689706516787584,
+       1.1588973337095305
+      ]
+     }
+    },
+    {
+     "kernel": "landingFn src/sim/simulation.ts",
+     "selfMs": {
+      "median": 20.240000000000006,
+      "min": 16.068999999999992,
+      "max": 22.014999999999986,
+      "values": [
+       22.014999999999986,
+       20.240000000000006,
+       16.068999999999992
+      ]
+     },
+     "sharePct": {
+      "median": 1.1253421009316593,
+      "min": 0.8855121852295981,
+      "max": 1.1626965138061602,
+      "values": [
+       1.1253421009316593,
+       1.1626965138061602,
+       0.8855121852295981
+      ]
+     }
+    },
+    {
+     "kernel": "fireWindTier src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 19.353999999999996,
+      "min": 18.163000000000004,
+      "max": 22.353,
+      "values": [
+       22.353,
+       19.353999999999996,
+       18.163000000000004
+      ]
+     },
+     "sharePct": {
+      "median": 1.1117998185871745,
+      "min": 1.0009059568314893,
+      "max": 1.1426196675959754,
+      "values": [
+       1.1426196675959754,
+       1.1117998185871745,
+       1.0009059568314893
+      ]
+     }
+    },
+    {
+     "kernel": "walk src/sim/simulation.ts",
+     "selfMs": {
+      "median": 18.797,
+      "min": 17.131,
+      "max": 20.767999999999994,
+      "values": [
+       18.797,
+       17.131,
+       20.767999999999994
+      ]
+     },
+     "sharePct": {
+      "median": 0.984098516700263,
+      "min": 0.9608473981927056,
+      "max": 1.144459335543487,
+      "values": [
+       0.9608473981927056,
+       0.984098516700263,
+       1.144459335543487
+      ]
+     }
+    },
+    {
+     "kernel": "view src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 16.999000000000002,
+      "min": 14.566999999999997,
+      "max": 20.450999999999993,
+      "values": [
+       20.450999999999993,
+       14.566999999999997,
+       16.999000000000002
+      ]
+     },
+     "sharePct": {
+      "median": 0.9367615680327306,
+      "min": 0.8368083061568342,
+      "max": 1.0453950173133486,
+      "values": [
+       1.0453950173133486,
+       0.8368083061568342,
+       0.9367615680327306
+      ]
+     }
+    },
+    {
+     "kernel": "relabelZones src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 16.431000000000004,
+      "min": 15.315000000000003,
+      "max": 17.582,
+      "values": [
+       17.582,
+       15.315000000000003,
+       16.431000000000004
+      ]
+     },
+     "sharePct": {
+      "median": 0.8987401689112172,
+      "min": 0.879777525145323,
+      "max": 0.9054608697185598,
+      "values": [
+       0.8987401689112172,
+       0.879777525145323,
+       0.9054608697185598
+      ]
+     }
+    }
+   ],
+   "kernelsWithSpinUp": [
+    {
+     "kernel": "solve src/atmosphere/pyrogenic.ts",
+     "sharePct": {
+      "median": 8.44070472025173,
+      "min": 8.042482081318706,
+      "max": 8.5807998871412,
+      "values": [
+       8.44070472025173,
+       8.042482081318706,
+       8.5807998871412
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "sharePct": {
+      "median": 6.660401279655529,
+      "min": 6.5657820348066585,
+      "max": 6.880202087888868,
+      "values": [
+       6.5657820348066585,
+       6.660401279655529,
+       6.880202087888868
+      ]
+     }
+    },
+    {
+     "kernel": "sampleBg src/atmosphere/diagnosticWind.ts",
+     "sharePct": {
+      "median": 5.88387000070539,
+      "min": 5.611619152552801,
+      "max": 6.258466263250838,
+      "values": [
+       6.258466263250838,
+       5.611619152552801,
+       5.88387000070539
+      ]
+     }
+    },
+    {
+     "kernel": "addFireHeat src/atmosphere/diagnosticWind.ts",
+     "sharePct": {
+      "median": 3.2610640322978055,
+      "min": 3.082524453104669,
+      "max": 3.9039906186076148,
+      "values": [
+       3.2610640322978055,
+       3.082524453104669,
+       3.9039906186076148
+      ]
+     }
+    },
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 2.9890513684136297,
+      "min": 2.98283386852896,
+      "max": 3.4950978899700744,
+      "values": [
+       2.98283386852896,
+       3.4950978899700744,
+       2.9890513684136297
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 2.9134168995048797,
+      "min": 2.8063721168089173,
+      "max": 3.153067502460102,
+      "values": [
+       2.9134168995048797,
+       3.153067502460102,
+       2.8063721168089173
+      ]
+     }
+    },
+    {
+     "kernel": "compute src/fire/spread/geometry.ts",
+     "sharePct": {
+      "median": 2.794894935089477,
+      "min": 2.7319513324684306,
+      "max": 2.863738361430487,
+      "values": [
+       2.7319513324684306,
+       2.794894935089477,
+       2.863738361430487
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "sharePct": {
+      "median": 2.367443118921908,
+      "min": 2.308481607533331,
+      "max": 2.5900503707520444,
+      "values": [
+       2.5900503707520444,
+       2.367443118921908,
+       2.308481607533331
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "sharePct": {
+      "median": 2.272971240519063,
+      "min": 2.1422793080341425,
+      "max": 2.65610665557586,
+      "values": [
+       2.272971240519063,
+       2.65610665557586,
+       2.1422793080341425
+      ]
+     }
+    },
+    {
+     "kernel": "gradientToFire src/atmosphere/pyrogenic.ts",
+     "sharePct": {
+      "median": 2.0174852551814406,
+      "min": 1.9246595859313573,
+      "max": 2.307324363405518,
+      "values": [
+       1.9246595859313573,
+       2.0174852551814406,
+       2.307324363405518
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/fuel/moisture/model.ts",
+     "sharePct": {
+      "median": 2.0148171333850606,
+      "min": 1.6770633411095361,
+      "max": 2.301136741205566,
+      "values": [
+       2.301136741205566,
+       1.6770633411095361,
+       2.0148171333850606
+      ]
+     }
+    },
+    {
+     "kernel": "stepOnce src/sim/simulation.ts",
+     "sharePct": {
+      "median": 1.9300779944118835,
+      "min": 1.636839158496158,
+      "max": 2.4007040518020357,
+      "values": [
+       1.9300779944118835,
+       2.4007040518020357,
+       1.636839158496158
+      ]
+     }
+    }
+   ],
+   "fileGroupsAdvancePct": {
+    "src/sim": {
+     "median": 11.690369647915936,
+     "min": 11.113290893701109,
+     "max": 13.016111733756317,
+     "values": [
+      11.690369647915936,
+      13.016111733756317,
+      11.113290893701109
+     ]
+    },
+    "src/fire/other (spread model, rate models)": {
+     "median": 18.73897862735421,
+     "min": 18.194936640507944,
+     "max": 19.48137652111593,
+     "values": [
+      19.48137652111593,
+      18.194936640507944,
+      18.73897862735421
+     ]
+    },
+    "src/fire/spread/levelSet": {
+     "median": 7.7328705826338835,
+     "min": 7.65196846690735,
+     "max": 8.382157204151504,
+     "values": [
+      7.65196846690735,
+      8.382157204151504,
+      7.7328705826338835
+     ]
+    },
+    "src/atmosphere/other": {
+     "median": 18.85486836072514,
+     "min": 18.772791819634445,
+     "max": 19.28559652248044,
+     "values": [
+      18.772791819634445,
+      19.28559652248044,
+      18.85486836072514
+     ]
+    },
+    "src/fuel/moisture + terrain/solar": {
+     "median": 3.864038142766456,
+     "min": 3.4451203224299873,
+     "max": 4.826268444313592,
+     "values": [
+      4.826268444313592,
+      3.4451203224299873,
+      3.864038142766456
+     ]
+    },
+    "other (runtime, node internals, harness)": {
+     "median": 1.5643354219764518,
+     "min": 1.557863970252434,
+     "max": 1.9146328560344255,
+     "values": [
+      1.5643354219764518,
+      1.557863970252434,
+      1.9146328560344255
+     ]
+    },
+    "src/core": {
+     "median": 3.4060450024687907,
+     "min": 3.282147495865357,
+     "max": 3.640199274751138,
+     "values": [
+      3.640199274751138,
+      3.282147495865357,
+      3.4060450024687907
+     ]
+    },
+    "src/atmosphere/pyrogenic (coupling solve)": {
+     "median": 10.365364306183107,
+     "min": 10.059967336500154,
+     "max": 10.888124250546726,
+     "values": [
+      10.365364306183107,
+      10.059967336500154,
+      10.888124250546726
+     ]
+    },
+    "src/embers": {
+     "median": 16.159873068467576,
+     "min": 16.011805996440213,
+     "max": 16.409446198067315,
+     "values": [
+      16.011805996440213,
+      16.159873068467576,
+      16.409446198067315
+     ]
+    },
+    "src/explain": {
+     "median": 6.616225705588489,
+     "min": 5.995520100761968,
+     "max": 7.077705085702218,
+     "values": [
+      5.995520100761968,
+      6.616225705588489,
+      7.077705085702218
+     ]
+    }
+   },
+   "unmappedChildren": [
+    {
+     "child": "stableNightInputAt src/fuel/moisture/night.ts",
+     "ms": 9.551000000000002
+    },
+    {
+     "child": "lap src/sim/simulation.ts",
+     "ms": 7.574999999999999
+    },
+    {
+     "child": "applyPendingSpots src/sim/simulation.ts",
+     "ms": 6.543
+    },
+    {
+     "child": "weatherNow src/sim/simulation.ts",
+     "ms": 4.435
+    },
+    {
+     "child": "setTime src/atmosphere/base.ts",
+     "ms": 3.972000000000001
+    },
+    {
+     "child": "applyDueRecords src/sim/simulation.ts",
+     "ms": 2.297
+    },
+    {
+     "child": "rainBefore src/fuel/moisture/weather.ts",
+     "ms": 1.943
+    },
+    {
+     "child": "solarPosition src/terrain/solar.ts",
+     "ms": 1.26
+    },
+    {
+     "child": "endStep src/sim/perfStats.ts",
+     "ms": 0.5409999999999999
+    },
+    {
+     "child": "lmstHour src/core/physics.ts",
+     "ms": 0.364
+    }
+   ],
+   "counts": {
+    "advanceSteps": 180,
+    "spinUpAtmSteps": 0,
+    "repeatable": true,
+    "perStepByPhase": {
+     "air": {},
+     "fire": {
+      "cos": 5919.972222222223,
+      "sqrt": 34262.12777777778,
+      "exp": 4246.655555555555,
+      "log": 205.7277777777778,
+      "sin": 83.81666666666666,
+      "atan": 1395.3666666666666,
+      "atan2": 464.4888888888889,
+      "acos": 460.8,
+      "pow": 106.65555555555555,
+      "**": 0.011111111111111112
+     },
+     "coupling": {
+      "sqrt": 9990.1,
+      "exp": 1
+     },
+     "embers": {
+      "exp": 4152.555555555556,
+      "log": 546.5666666666667,
+      "pow": 9.305555555555555,
+      "sin": 156.5888888888889,
+      "cos": 207.01111111111112,
+      "atan2": 1,
+      "cbrt": 721.5722222222222,
+      "hypot": 445.5777777777778,
+      "sqrt": 10989.766666666666,
+      "**": 45.516666666666666
+     },
+     "moisture": {
+      "exp": 16.8,
+      "sin": 0.5444444444444444,
+      "cos": 0.37777777777777777,
+      "tan": 0.044444444444444446,
+      "atan2": 0.08333333333333333,
+      "acos": 0.016666666666666666,
+      "asin": 0.016666666666666666,
+      "cbrt": 547.6166666666667,
+      "hypot": 0.06666666666666667,
+      "sqrt": 1774.0722222222223,
+      "**": 0.1111111111111111,
+      "**2": 0.03888888888888889
+     },
+     "detectors": {
+      "exp": 19.8,
+      "log": 60.81666666666667,
+      "sin": 103.95555555555555,
+      "cos": 91.72222222222223,
+      "cbrt": 0.3333333333333333,
+      "hypot": 89.81111111111112,
+      "sqrt": 275.3722222222222,
+      "**": 107.03333333333333,
+      "pow": 3.6777777777777776,
+      "tan": 2,
+      "atan": 20.977777777777778,
+      "atan2": 98.95555555555555,
+      "acos": 1.3333333333333333,
+      "asin": 1.6666666666666667,
+      "**2": 1.6666666666666667
+     },
+     "picture": {
+      "exp": 324.60555555555555,
+      "log": 0.3333333333333333,
+      "pow": 0.6666666666666666,
+      "sin": 1.3333333333333333,
+      "cos": 1.3333333333333333,
+      "atan2": 0.6666666666666666,
+      "hypot": 0.6666666666666666
+     },
+     "checkpoints": {
+      "sqrt": 222.22222222222223
+     },
+     "other": {
+      "log": 0.005555555555555556,
+      "hypot": 21.966666666666665,
+      "sqrt": 7.033333333333333,
+      "sin": 168.22222222222223,
+      "cos": 87.22222222222223,
+      "atan2": 12,
+      "exp": 1,
+      "tan": 14,
+      "acos": 9,
+      "asin": 11,
+      "**": 6,
+      "**2": 11
+     }
+    },
+    "perStepTotal": {
+     "cos": 6307.638888888889,
+     "sqrt": 57520.694444444445,
+     "exp": 8762.416666666666,
+     "log": 813.45,
+     "sin": 514.4611111111111,
+     "atan": 1416.3444444444444,
+     "atan2": 577.1944444444445,
+     "acos": 471.15,
+     "pow": 120.30555555555556,
+     "**": 158.67222222222222,
+     "cbrt": 1269.5222222222221,
+     "hypot": 558.0888888888888,
+     "tan": 16.044444444444444,
+     "asin": 12.683333333333334,
+     "**2": 12.705555555555556
+    },
+    "totalsAdvance": {
+     "cos": 1135375,
+     "sqrt": 10353725,
+     "exp": 1577235,
+     "log": 146421,
+     "sin": 92603,
+     "atan": 254942,
+     "atan2": 103895,
+     "acos": 84807,
+     "pow": 21655,
+     "**": 28561,
+     "cbrt": 228514,
+     "hypot": 100456,
+     "tan": 2888,
+     "asin": 2283,
+     "**2": 2287
+    },
+    "spinUpTotals": {},
+    "spinUpPerAtmStep": {},
+    "constructTotals": {
+     "exp": 217240,
+     "log": 275374,
+     "pow": 8,
+     "sin": 211352,
+     "cos": 224500,
+     "tan": 9766,
+     "atan": 1086076,
+     "atan2": 48485,
+     "acos": 6436,
+     "asin": 8006,
+     "hypot": 338125,
+     "sqrt": 3769885,
+     "**": 44045,
+     "**2": 10301
+    },
+    "topSitesByPhase": {
+     "air": [],
+     "fire": [
+      {
+       "site": "cos leeAlignment @ src/fire/spread/math.ts",
+       "estCalls": 466816,
+       "estPerStep": 2593.4222222222224
+      },
+      {
+       "site": "exp slopeFactor @ src/fire/models/common.ts",
+       "estCalls": 421504,
+       "estPerStep": 2341.688888888889
+      },
+      {
+       "site": "cos leeSeparation @ src/fire/spread/math.ts",
+       "estCalls": 377696,
+       "estPerStep": 2098.311111111111
+      },
+      {
+       "site": "cos vlsScore @ src/fire/spread/math.ts",
+       "estCalls": 207600,
+       "estPerStep": 1153.3333333333333
+      },
+      {
+       "site": "acos hybridHead @ src/fire/spread/math.ts",
+       "estCalls": 84736,
+       "estPerStep": 470.75555555555553
+      },
+      {
+       "site": "exp relaxEngagement @ src/fire/spread/math.ts",
+       "estCalls": 83040,
+       "estPerStep": 461.3333333333333
+      },
+      {
+       "site": "exp logisticS @ src/fire/spread/math.ts",
+       "estCalls": 82320,
+       "estPerStep": 457.3333333333333
+      },
+      {
+       "site": "atan FireSpreadModel.computeCell @ src/fire/spread/FireSpreadModel.ts",
+       "estCalls": 81904,
+       "estPerStep": 455.02222222222224
+      }
+     ],
+     "coupling": [
+      {
+       "site": "exp DiagnosticWind.addFireHeat @ src/atmosphere/diagnosticWind.ts",
+       "estCalls": 208,
+       "estPerStep": 1.1555555555555554
+      }
+     ],
+     "embers": [
+      {
+       "site": "exp EmberModel.advance @ src/embers/EmberModel.ts",
+       "estCalls": 609616,
+       "estPerStep": 3386.7555555555555
+      },
+      {
+       "site": "cbrt EmberModel.advance @ src/embers/EmberModel.ts",
+       "estCalls": 117952,
+       "estPerStep": 655.2888888888889
+      },
+      {
+       "site": "hypot landingFn @ src/sim/simulation.ts",
+       "estCalls": 45024,
+       "estPerStep": 250.13333333333333
+      },
+      {
+       "site": "log EmberModel.loft @ src/embers/EmberModel.ts",
+       "estCalls": 32800,
+       "estPerStep": 182.22222222222223
+      },
+      {
+       "site": "exp FastRng.poisson @ src/embers/sampling.ts",
+       "estCalls": 29392,
+       "estPerStep": 163.2888888888889
+      },
+      {
+       "site": "exp sampleClass @ src/embers/sampling.ts",
+       "estCalls": 23648,
+       "estPerStep": 131.37777777777777
+      },
+      {
+       "site": "exp DecayRaster.add @ src/embers/stats.ts",
+       "estCalls": 23424,
+       "estPerStep": 130.13333333333333
+      },
+      {
+       "site": "hypot EmberModel.land @ src/embers/EmberModel.ts",
+       "estCalls": 22048,
+       "estPerStep": 122.4888888888889
+      }
+     ],
+     "moisture": [
+      {
+       "site": "cbrt anabaticSpeed @ src/atmosphere/surface.ts",
+       "estCalls": 98560,
+       "estPerStep": 547.5555555555555
+      },
+      {
+       "site": "exp fillExpTable @ src/fuel/moisture/fastMath.ts",
+       "estCalls": 3008,
+       "estPerStep": 16.711111111111112
+      },
+      {
+       "site": "sin windToUV @ src/core/units.ts",
+       "estCalls": 64,
+       "estPerStep": 0.35555555555555557
+      },
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 32,
+       "estPerStep": 0.17777777777777778
+      },
+      {
+       "site": "sin solarPosition @ src/terrain/solar.ts",
+       "estCalls": 32,
+       "estPerStep": 0.17777777777777778
+      },
+      {
+       "site": "sin insolation @ src/terrain/solar.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08888888888888889
+      },
+      {
+       "site": "sin erbsDecomposition @ src/terrain/solar.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08888888888888889
+      },
+      {
+       "site": "cos solarPosition @ src/terrain/solar.ts",
+       "estCalls": 16,
+       "estPerStep": 0.08888888888888889
+      }
+     ],
+     "detectors": [
+      {
+       "site": "atan2 azimuthOf @ src/explain/util.ts",
+       "estCalls": 17984,
+       "estPerStep": 99.91111111111111
+      },
+      {
+       "site": "log sCoord @ src/atmosphere/profile.ts",
+       "estCalls": 10752,
+       "estPerStep": 59.733333333333334
+      },
+      {
+       "site": "hypot CycleContext.bgSpeed @ src/explain/context.ts",
+       "estCalls": 6464,
+       "estPerStep": 35.91111111111111
+      },
+      {
+       "site": "hypot deriv @ src/atmosphere/plume.ts",
+       "estCalls": 6224,
+       "estPerStep": 34.577777777777776
+      },
+      {
+       "site": "sin stepCell @ src/explain/util.ts",
+       "estCalls": 3472,
+       "estPerStep": 19.288888888888888
+      },
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 3232,
+       "estPerStep": 17.955555555555556
+      },
+      {
+       "site": "exp esat @ src/core/physics.ts",
+       "estCalls": 3120,
+       "estPerStep": 17.333333333333332
+      },
+      {
+       "site": "sin along @ src/explain/util.ts",
+       "estCalls": 3072,
+       "estPerStep": 17.066666666666666
+      }
+     ],
+     "picture": [
+      {
+       "site": "exp DecayRaster.at @ src/embers/stats.ts",
+       "estCalls": 58384,
+       "estPerStep": 324.35555555555555
+      },
+      {
+       "site": "cos windToUV @ src/core/units.ts",
+       "estCalls": 272,
+       "estPerStep": 1.511111111111111
+      },
+      {
+       "site": "atan2 uvToWind @ src/core/units.ts",
+       "estCalls": 240,
+       "estPerStep": 1.3333333333333333
+      },
+      {
+       "site": "sin windToUV @ src/core/units.ts",
+       "estCalls": 160,
+       "estPerStep": 0.8888888888888888
+      },
+      {
+       "site": "hypot uvToWind @ src/core/units.ts",
+       "estCalls": 64,
+       "estPerStep": 0.35555555555555557
+      },
+      {
+       "site": "pow vesta2012PhiM @ src/fire/models/vesta2012.ts",
+       "estCalls": 64,
+       "estPerStep": 0.35555555555555557
+      },
+      {
+       "site": "exp flameHeightVesta @ src/fire/models/common.ts",
+       "estCalls": 48,
+       "estPerStep": 0.26666666666666666
+      },
+      {
+       "site": "pow vesta2012R0 @ src/fire/models/vesta2012.ts",
+       "estCalls": 48,
+       "estPerStep": 0.26666666666666666
+      }
+     ],
+     "checkpoints": [],
+     "other": [
+      {
+       "site": "sin solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 21216,
+       "estPerStep": 117.86666666666666
+      },
+      {
+       "site": "cos solarEphemeris @ src/terrain/solar.ts",
+       "estCalls": 6384,
+       "estPerStep": 35.46666666666667
+      },
+      {
+       "site": "cos solarPosition @ src/terrain/solar.ts",
+       "estCalls": 3504,
+       "estPerStep": 19.466666666666665
+      },
+      {
+       "site": "cos windToUV @ src/core/units.ts",
+       "estCalls": 3264,
+       "estPerStep": 18.133333333333333
+      },
+      {
+       "site": "sin windToUV @ src/core/units.ts",
+       "estCalls": 3200,
+       "estPerStep": 17.77777777777778
+      },
+      {
+       "site": "sin solarPosition @ src/terrain/solar.ts",
+       "estCalls": 2944,
+       "estPerStep": 16.355555555555554
+      },
+      {
+       "site": "hypot <anon> @ src/fire/spread/FireSpreadModel.ts",
+       "estCalls": 2320,
+       "estPerStep": 12.88888888888889
+      },
+      {
+       "site": "cos event @ src/terrain/solar.ts",
+       "estCalls": 2240,
+       "estPerStep": 12.444444444444445
+      }
+     ]
+    },
+    "samplingNote": "call sites: every 16th non-sqrt Math call, first stack frame outside the wrapper; estCalls = samples x 16"
+   },
+   "conditions": {
+    "node": "v22.22.0",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "runs": [
+     {
+      "tag": "katoomba6-fast-time-r1",
+      "loadavgStart": [
+       2.18,
+       1.92,
+       1.23
+      ],
+      "loadavgEnd": [
+       2.25,
+       1.94,
+       1.24
+      ],
+      "uptimeStart": "13:56:51 up 32 min,  0 user,  load average: 2.18, 1.92, 1.23",
+      "uptimeEnd": "13:56:56 up 32 min,  0 user,  load average: 2.25, 1.94, 1.24",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:56:51.474Z"
+     },
+     {
+      "tag": "katoomba6-fast-time-r2",
+      "loadavgStart": [
+       1.62,
+       1.82,
+       1.25
+      ],
+      "loadavgEnd": [
+       1.65,
+       1.82,
+       1.25
+      ],
+      "uptimeStart": "13:58:03 up 33 min,  0 user,  load average: 1.62, 1.82, 1.25",
+      "uptimeEnd": "13:58:07 up 33 min,  0 user,  load average: 1.65, 1.82, 1.25",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:03.273Z"
+     },
+     {
+      "tag": "katoomba6-fast-time-r3",
+      "loadavgStart": [
+       1.8,
+       1.85,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.74,
+       1.83,
+       1.27
+      ],
+      "uptimeStart": "13:58:26 up 33 min,  0 user,  load average: 1.80, 1.85, 1.27",
+      "uptimeEnd": "13:58:30 up 33 min,  0 user,  load average: 1.74, 1.83, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:26.106Z"
+     },
+     {
+      "tag": "katoomba6-fast-plain-r1",
+      "loadavgStart": [
+       1.86,
+       1.88,
+       1.25
+      ],
+      "loadavgEnd": [
+       1.79,
+       1.87,
+       1.24
+      ],
+      "uptimeStart": "13:57:26 up 32 min,  0 user,  load average: 1.86, 1.88, 1.25",
+      "uptimeEnd": "13:57:30 up 32 min,  0 user,  load average: 1.79, 1.87, 1.24",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:57:26.929Z"
+     },
+     {
+      "tag": "katoomba6-fast-plain-r2",
+      "loadavgStart": [
+       1.65,
+       1.82,
+       1.25
+      ],
+      "loadavgEnd": [
+       1.84,
+       1.86,
+       1.27
+      ],
+      "uptimeStart": "13:58:07 up 33 min,  0 user,  load average: 1.65, 1.82, 1.25",
+      "uptimeEnd": "13:58:11 up 33 min,  0 user,  load average: 1.84, 1.86, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:07.712Z"
+     },
+     {
+      "tag": "katoomba6-fast-plain-r3",
+      "loadavgStart": [
+       1.74,
+       1.83,
+       1.27
+      ],
+      "loadavgEnd": [
+       1.76,
+       1.83,
+       1.28
+      ],
+      "uptimeStart": "13:58:30 up 33 min,  0 user,  load average: 1.74, 1.83, 1.27",
+      "uptimeEnd": "13:58:34 up 33 min,  0 user,  load average: 1.76, 1.83, 1.28",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:30.696Z"
+     },
+     {
+      "tag": "katoomba6-fast-count-r1",
+      "loadavgStart": [
+       1.66,
+       1.81,
+       1.28
+      ],
+      "loadavgEnd": [
+       1.64,
+       1.8,
+       1.28
+      ],
+      "uptimeStart": "13:58:49 up 34 min,  0 user,  load average: 1.66, 1.81, 1.28",
+      "uptimeEnd": "13:59:03 up 34 min,  0 user,  load average: 1.64, 1.80, 1.28",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:58:49.864Z"
+     },
+     {
+      "tag": "katoomba6-fast-count-r2",
+      "loadavgStart": [
+       1.64,
+       1.8,
+       1.28
+      ],
+      "loadavgEnd": [
+       1.5,
+       1.76,
+       1.27
+      ],
+      "uptimeStart": "13:59:03 up 34 min,  0 user,  load average: 1.64, 1.80, 1.28",
+      "uptimeEnd": "13:59:18 up 34 min,  0 user,  load average: 1.50, 1.76, 1.27",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T13:59:03.885Z"
+     }
+    ]
+   }
+  }
+ },
+ "detail4hSensitivity": {
+  "katoomba3-standard": {
+   "tier": "standard",
+   "burntCells": [
+    3753
+   ],
+   "steps": {
+    "advanceSteps": 1448,
+    "atmStepsSpinUp": 0,
+    "atmStepsAdvance": 0,
+    "simSeconds": 14400
+   },
+   "simSeconds": 14400,
+   "runs": 1,
+   "wallAdvanceMsProfiled": {
+    "median": 27470.926602000003,
+    "min": 27470.926602000003,
+    "max": 27470.926602000003,
+    "values": [
+     27470.926602000003
+    ]
+   },
+   "wallSpinUpMsProfiled": {
+    "median": 1054.8156410000001,
+    "min": 1054.8156410000001,
+    "max": 1054.8156410000001,
+    "values": [
+     1054.8156410000001
+    ]
+   },
+   "wallAdvanceMsPlain": {
+    "median": 23596.643831,
+    "min": 23596.643831,
+    "max": 23596.643831,
+    "values": [
+     23596.643831
+    ]
+   },
+   "wallSpinUpMsPlain": {
+    "median": 1033.4073360000002,
+    "min": 1033.4073360000002,
+    "max": 1033.4073360000002,
+    "values": [
+     1033.4073360000002
+    ]
+   },
+   "msPerStepPlain": {
+    "median": 16.296024745165745,
+    "min": 16.296024745165745,
+    "max": 16.296024745165745,
+    "values": [
+     16.296024745165745
+    ]
+   },
+   "profileWindowMs": {
+    "median": 27343.084000003095,
+    "min": 27343.084000003095,
+    "max": 27343.084000003095,
+    "values": [
+     27343.084000003095
+    ]
+   },
+   "profileSpinUpMs": {
+    "median": 1044.5469999999937,
+    "min": 1044.5469999999937,
+    "max": 1044.5469999999937,
+    "values": [
+     1044.5469999999937
+    ]
+   },
+   "gcMsOfProcess": {
+    "median": 214.80900000000017,
+    "min": 214.80900000000017,
+    "max": 214.80900000000017,
+    "values": [
+     214.80900000000017
+    ]
+   },
+   "phaseShareAdvancePct": {
+    "air": {
+     "median": 71.09744826150913,
+     "min": 71.09744826150913,
+     "max": 71.09744826150913,
+     "values": [
+      71.09744826150913
+     ]
+    },
+    "fire": {
+     "median": 12.359553150623102,
+     "min": 12.359553150623102,
+     "max": 12.359553150623102,
+     "values": [
+      12.359553150623102
+     ]
+    },
+    "coupling": {
+     "median": 5.234537552530086,
+     "min": 5.234537552530086,
+     "max": 5.234537552530086,
+     "values": [
+      5.234537552530086
+     ]
+    },
+    "embers": {
+     "median": 5.031714783891445,
+     "min": 5.031714783891445,
+     "max": 5.031714783891445,
+     "values": [
+      5.031714783891445
+     ]
+    },
+    "moisture": {
+     "median": 0.5277970838987437,
+     "min": 0.5277970838987437,
+     "max": 0.5277970838987437,
+     "values": [
+      0.5277970838987437
+     ]
+    },
+    "detectors": {
+     "median": 1.9890331317415988,
+     "min": 1.9890331317415988,
+     "max": 1.9890331317415988,
+     "values": [
+      1.9890331317415988
+     ]
+    },
+    "picture": {
+     "median": 1.0115428091431422,
+     "min": 1.0115428091431422,
+     "max": 1.0115428091431422,
+     "values": [
+      1.0115428091431422
+     ]
+    },
+    "checkpoints": {
+     "median": 0.2313564921937584,
+     "min": 0.2313564921937584,
+     "max": 0.2313564921937584,
+     "values": [
+      0.2313564921937584
+     ]
+    },
+    "other": {
+     "median": 2.5170167344690024,
+     "min": 2.5170167344690024,
+     "max": 2.5170167344690024,
+     "values": [
+      2.5170167344690024
+     ]
+    }
+   },
+   "phaseShareWithSpinUpPct": {
+    "air": {
+     "median": 68.4813572502794,
+     "min": 68.4813572502794,
+     "max": 68.4813572502794,
+     "values": [
+      68.4813572502794
+     ]
+    },
+    "fire": {
+     "median": 11.904772892107609,
+     "min": 11.904772892107609,
+     "max": 11.904772892107609,
+     "values": [
+      11.904772892107609
+     ]
+    },
+    "coupling": {
+     "median": 5.041928296164804,
+     "min": 5.041928296164804,
+     "max": 5.041928296164804,
+     "values": [
+      5.041928296164804
+     ]
+    },
+    "embers": {
+     "median": 4.846568563610899,
+     "min": 4.846568563610899,
+     "max": 4.846568563610899,
+     "values": [
+      4.846568563610899
+     ]
+    },
+    "moisture": {
+     "median": 0.5083763417947225,
+     "min": 0.5083763417947225,
+     "max": 0.5083763417947225,
+     "values": [
+      0.5083763417947225
+     ]
+    },
+    "detectors": {
+     "median": 1.915844967831019,
+     "min": 1.915844967831019,
+     "max": 1.915844967831019,
+     "values": [
+      1.915844967831019
+     ]
+    },
+    "picture": {
+     "median": 0.974322232101616,
+     "min": 0.974322232101616,
+     "max": 0.974322232101616,
+     "values": [
+      0.974322232101616
+     ]
+    },
+    "checkpoints": {
+     "median": 0.22284353350934102,
+     "min": 0.22284353350934102,
+     "max": 0.22284353350934102,
+     "values": [
+      0.22284353350934102
+     ]
+    },
+    "other": {
+     "median": 2.4244009653356398,
+     "min": 2.4244009653356398,
+     "max": 2.4244009653356398,
+     "values": [
+      2.4244009653356398
+     ]
+    },
+    "spinUp (3-D air spin-up, 900 s)": {
+     "median": 3.679584957264944,
+     "min": 3.679584957264944,
+     "max": 3.679584957264944,
+     "values": [
+      3.679584957264944
+     ]
+    }
+   },
+   "appTimersShareAdvancePct": {
+    "air": {
+     "median": 70.75964092335309,
+     "min": 70.75964092335309,
+     "max": 70.75964092335309,
+     "values": [
+      70.75964092335309
+     ]
+    },
+    "fire": {
+     "median": 12.858929015061765,
+     "min": 12.858929015061765,
+     "max": 12.858929015061765,
+     "values": [
+      12.858929015061765
+     ]
+    },
+    "coupling": {
+     "median": 5.323736533656718,
+     "min": 5.323736533656718,
+     "max": 5.323736533656718,
+     "values": [
+      5.323736533656718
+     ]
+    },
+    "embers": {
+     "median": 5.408117184497008,
+     "min": 5.408117184497008,
+     "max": 5.408117184497008,
+     "values": [
+      5.408117184497008
+     ]
+    },
+    "moisture": {
+     "median": 0.5721585391804486,
+     "min": 0.5721585391804486,
+     "max": 0.5721585391804486,
+     "values": [
+      0.5721585391804486
+     ]
+    },
+    "detectors": {
+     "median": 1.860188356924631,
+     "min": 1.860188356924631,
+     "max": 1.860188356924631,
+     "values": [
+      1.860188356924631
+     ]
+    },
+    "picture": {
+     "median": 1.1355309533018325,
+     "min": 1.1355309533018325,
+     "max": 1.1355309533018325,
+     "values": [
+      1.1355309533018325
+     ]
+    },
+    "checkpoints": {
+     "median": 0.2081807752896378,
+     "min": 0.2081807752896378,
+     "max": 0.2081807752896378,
+     "values": [
+      0.2081807752896378
+     ]
+    },
+    "other": {
+     "median": 1.8735177187348777,
+     "min": 1.8735177187348777,
+     "max": 1.8735177187348777,
+     "values": [
+      1.8735177187348777
+     ]
+    }
+   },
+   "appTimersSpinUpShareOfRunPct": {
+    "median": 4.090762593088543,
+    "min": 4.090762593088543,
+    "max": 4.090762593088543,
+    "values": [
+     4.090762593088543
+    ]
+   },
+   "kernelsAdvance": [
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 4034.7249999998503,
+      "min": 4034.7249999998503,
+      "max": 4034.7249999998503,
+      "values": [
+       4034.7249999998503
+      ]
+     },
+     "sharePct": {
+      "median": 14.75592511802763,
+      "min": 14.75592511802763,
+      "max": 14.75592511802763,
+      "values": [
+       14.75592511802763
+      ]
+     }
+    },
+    {
+     "kernel": "advect src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 3245.5289999998636,
+      "min": 3245.5289999998636,
+      "max": 3245.5289999998636,
+      "values": [
+       3245.5289999998636
+      ]
+     },
+     "sharePct": {
+      "median": 11.869652304032332,
+      "min": 11.869652304032332,
+      "max": 11.869652304032332,
+      "values": [
+       11.869652304032332
+      ]
+     }
+    },
+    {
+     "kernel": "gradient src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 1695.8180000000161,
+      "min": 1695.8180000000161,
+      "max": 1695.8180000000161,
+      "values": [
+       1695.8180000000161
+      ]
+     },
+     "sharePct": {
+      "median": 6.201999745163436,
+      "min": 6.201999745163436,
+      "max": 6.201999745163436,
+      "values": [
+       6.201999745163436
+      ]
+     }
+    },
+    {
+     "kernel": "divergence src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 1678.375000000027,
+      "min": 1678.375000000027,
+      "max": 1678.375000000027,
+      "values": [
+       1678.375000000027
+      ]
+     },
+     "sharePct": {
+      "median": 6.138206648525226,
+      "min": 6.138206648525226,
+      "max": 6.138206648525226,
+      "values": [
+       6.138206648525226
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseVLevels src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 1391.9490000000176,
+      "min": 1391.9490000000176,
+      "max": 1391.9490000000176,
+      "values": [
+       1391.9490000000176
+      ]
+     },
+     "sharePct": {
+      "median": 5.090680334375816,
+      "min": 5.090680334375816,
+      "max": 5.090680334375816,
+      "values": [
+       5.090680334375816
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseH src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 1083.056999999997,
+      "min": 1083.056999999997,
+      "max": 1083.056999999997,
+      "values": [
+       1083.056999999997
+      ]
+     },
+     "sharePct": {
+      "median": 3.960990647579748,
+      "min": 3.960990647579748,
+      "max": 3.960990647579748,
+      "values": [
+       3.960990647579748
+      ]
+     }
+    },
+    {
+     "kernel": "smagorinsky src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 945.9189999999907,
+      "min": 945.9189999999907,
+      "max": 945.9189999999907,
+      "values": [
+       945.9189999999907
+      ]
+     },
+     "sharePct": {
+      "median": 3.4594451745087844,
+      "min": 3.4594451745087844,
+      "max": 3.4594451745087844,
+      "values": [
+       3.4594451745087844
+      ]
+     }
+    },
+    {
+     "kernel": "displacements src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 941.3139999999973,
+      "min": 941.3139999999973,
+      "max": 941.3139999999973,
+      "values": [
+       941.3139999999973
+      ]
+     },
+     "sharePct": {
+      "median": 3.442603621449178,
+      "min": 3.442603621449178,
+      "max": 3.442603621449178,
+      "values": [
+       3.442603621449178
+      ]
+     }
+    },
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 937.1059999999947,
+      "min": 937.1059999999947,
+      "max": 937.1059999999947,
+      "values": [
+       937.1059999999947
+      ]
+     },
+     "sharePct": {
+      "median": 3.427213989467642,
+      "min": 3.427213989467642,
+      "max": 3.427213989467642,
+      "values": [
+       3.427213989467642
+      ]
+     }
+    },
+    {
+     "kernel": "collocate src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 797.9039999999956,
+      "min": 797.9039999999956,
+      "max": 797.9039999999956,
+      "values": [
+       797.9039999999956
+      ]
+     },
+     "sharePct": {
+      "median": 2.9181199896833334,
+      "min": 2.9181199896833334,
+      "max": 2.9181199896833334,
+      "values": [
+       2.9181199896833334
+      ]
+     }
+    },
+    {
+     "kernel": "step src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 767.1769999999938,
+      "min": 767.1769999999938,
+      "max": 767.1769999999938,
+      "values": [
+       767.1769999999938
+      ]
+     },
+     "sharePct": {
+      "median": 2.805744224023548,
+      "min": 2.805744224023548,
+      "max": 2.805744224023548,
+      "values": [
+       2.805744224023548
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 700.2229999999961,
+      "min": 700.2229999999961,
+      "max": 700.2229999999961,
+      "values": [
+       700.2229999999961
+      ]
+     },
+     "sharePct": {
+      "median": 2.5608779170627454,
+      "min": 2.5608779170627454,
+      "max": 2.5608779170627454,
+      "values": [
+       2.5608779170627454
+      ]
+     }
+    },
+    {
+     "kernel": "project src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 568.2729999999979,
+      "min": 568.2729999999979,
+      "max": 568.2729999999979,
+      "values": [
+       568.2729999999979
+      ]
+     },
+     "sharePct": {
+      "median": 2.0783061632694158,
+      "min": 2.0783061632694158,
+      "max": 2.0783061632694158,
+      "values": [
+       2.0783061632694158
+      ]
+     }
+    },
+    {
+     "kernel": "fireWindTier src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 462.5899999999993,
+      "min": 462.5899999999993,
+      "max": 462.5899999999993,
+      "values": [
+       462.5899999999993
+      ]
+     },
+     "sharePct": {
+      "median": 1.6917989207067754,
+      "min": 1.6917989207067754,
+      "max": 1.6917989207067754,
+      "values": [
+       1.6917989207067754
+      ]
+     }
+    },
+    {
+     "kernel": "lerpInto src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 404.6639999999988,
+      "min": 404.6639999999988,
+      "max": 404.6639999999988,
+      "values": [
+       404.6639999999988
+      ]
+     },
+     "sharePct": {
+      "median": 1.4799501036530955,
+      "min": 1.4799501036530955,
+      "max": 1.4799501036530955,
+      "values": [
+       1.4799501036530955
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 395.85799999999847,
+      "min": 395.85799999999847,
+      "max": 395.85799999999847,
+      "values": [
+       395.85799999999847
+      ]
+     },
+     "sharePct": {
+      "median": 1.4477445192354808,
+      "min": 1.4477445192354808,
+      "max": 1.4477445192354808,
+      "values": [
+       1.4477445192354808
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 360.64900000000057,
+      "min": 360.64900000000057,
+      "max": 360.64900000000057,
+      "values": [
+       360.64900000000057
+      ]
+     },
+     "sharePct": {
+      "median": 1.3189770400440555,
+      "min": 1.3189770400440555,
+      "max": 1.3189770400440555,
+      "values": [
+       1.3189770400440555
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "selfMs": {
+      "median": 352.53999999999985,
+      "min": 352.53999999999985,
+      "max": 352.53999999999985,
+      "values": [
+       352.53999999999985
+      ]
+     },
+     "sharePct": {
+      "median": 1.2893205462849764,
+      "min": 1.2893205462849764,
+      "max": 1.2893205462849764,
+      "values": [
+       1.2893205462849764
+      ]
+     }
+    },
+    {
+     "kernel": "residual7 src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 314.2260000000016,
+      "min": 314.2260000000016,
+      "max": 314.2260000000016,
+      "values": [
+       314.2260000000016
+      ]
+     },
+     "sharePct": {
+      "median": 1.1491973619360787,
+      "min": 1.1491973619360787,
+      "max": 1.1491973619360787,
+      "values": [
+       1.1491973619360787
+      ]
+     }
+    },
+    {
+     "kernel": "sampleAt src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 277.99300000000045,
+      "min": 277.99300000000045,
+      "max": 277.99300000000045,
+      "values": [
+       277.99300000000045
+      ]
+     },
+     "sharePct": {
+      "median": 1.0166848772434338,
+      "min": 1.0166848772434338,
+      "max": 1.0166848772434338,
+      "values": [
+       1.0166848772434338
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseVW src/atmosphere/dynamics.ts",
+     "selfMs": {
+      "median": 238.88000000000196,
+      "min": 238.88000000000196,
+      "max": 238.88000000000196,
+      "values": [
+       238.88000000000196
+      ]
+     },
+     "sharePct": {
+      "median": 0.8736395645786516,
+      "min": 0.8736395645786516,
+      "max": 0.8736395645786516,
+      "values": [
+       0.8736395645786516
+      ]
+     }
+    },
+    {
+     "kernel": "davies src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 236.2110000000022,
+      "min": 236.2110000000022,
+      "max": 236.2110000000022,
+      "values": [
+       236.2110000000022
+      ]
+     },
+     "sharePct": {
+      "median": 0.8638784125447425,
+      "min": 0.8638784125447425,
+      "max": 0.8638784125447425,
+      "values": [
+       0.8638784125447425
+      ]
+     }
+    },
+    {
+     "kernel": "nudge src/atmosphere/atmosphere.ts",
+     "selfMs": {
+      "median": 227.59600000000154,
+      "min": 227.59600000000154,
+      "max": 227.59600000000154,
+      "values": [
+       227.59600000000154
+      ]
+     },
+     "sharePct": {
+      "median": 0.8323713594266681,
+      "min": 0.8323713594266681,
+      "max": 0.8323713594266681,
+      "values": [
+       0.8323713594266681
+      ]
+     }
+    },
+    {
+     "kernel": "restrict src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 202.54300000000177,
+      "min": 202.54300000000177,
+      "max": 202.54300000000177,
+      "values": [
+       202.54300000000177
+      ]
+     },
+     "sharePct": {
+      "median": 0.7407467277647936,
+      "min": 0.7407467277647936,
+      "max": 0.7407467277647936,
+      "values": [
+       0.7407467277647936
+      ]
+     }
+    },
+    {
+     "kernel": "prolongAdd src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 194.83200000000187,
+      "min": 194.83200000000187,
+      "max": 194.83200000000187,
+      "values": [
+       194.83200000000187
+      ]
+     },
+     "sharePct": {
+      "median": 0.7125458123157571,
+      "min": 0.7125458123157571,
+      "max": 0.7125458123157571,
+      "values": [
+       0.7125458123157571
+      ]
+     }
+    }
+   ],
+   "kernelsWithSpinUp": [
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 14.784220634682034,
+      "min": 14.784220634682034,
+      "max": 14.784220634682034,
+      "values": [
+       14.784220634682034
+      ]
+     }
+    },
+    {
+     "kernel": "advect src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 11.986540898743872,
+      "min": 11.986540898743872,
+      "max": 11.986540898743872,
+      "values": [
+       11.986540898743872
+      ]
+     }
+    },
+    {
+     "kernel": "gradient src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 6.182798416675999,
+      "min": 6.182798416675999,
+      "max": 6.182798416675999,
+      "values": [
+       6.182798416675999
+      ]
+     }
+    },
+    {
+     "kernel": "divergence src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 6.094066109284845,
+      "min": 6.094066109284845,
+      "max": 6.094066109284845,
+      "values": [
+       6.094066109284845
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseVLevels src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 5.1009857074718905,
+      "min": 5.1009857074718905,
+      "max": 5.1009857074718905,
+      "values": [
+       5.1009857074718905
+      ]
+     }
+    },
+    {
+     "kernel": "diffuseH src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.987863587489473,
+      "min": 3.987863587489473,
+      "max": 3.987863587489473,
+      "values": [
+       3.987863587489473
+      ]
+     }
+    },
+    {
+     "kernel": "smagorinsky src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.5171867634882314,
+      "min": 3.5171867634882314,
+      "max": 3.5171867634882314,
+      "values": [
+       3.5171867634882314
+      ]
+     }
+    },
+    {
+     "kernel": "displacements src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 3.493979472960915,
+      "min": 3.493979472960915,
+      "max": 3.493979472960915,
+      "values": [
+       3.493979472960915
+      ]
+     }
+    },
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 3.301106739057911,
+      "min": 3.301106739057911,
+      "max": 3.301106739057911,
+      "values": [
+       3.301106739057911
+      ]
+     }
+    },
+    {
+     "kernel": "step src/atmosphere/atmosphere.ts",
+     "sharePct": {
+      "median": 3.237529753715252,
+      "min": 3.237529753715252,
+      "max": 3.237529753715252,
+      "values": [
+       3.237529753715252
+      ]
+     }
+    },
+    {
+     "kernel": "collocate src/atmosphere/dynamics.ts",
+     "sharePct": {
+      "median": 2.9397909251388565,
+      "min": 2.9397909251388565,
+      "max": 2.9397909251388565,
+      "values": [
+       2.9397909251388565
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 2.466648238452585,
+      "min": 2.466648238452585,
+      "max": 2.466648238452585,
+      "values": [
+       2.466648238452585
+      ]
+     }
+    }
+   ],
+   "fileGroupsAdvancePct": {
+    "src/sim": {
+     "median": 1.8655978967110693,
+     "min": 1.8655978967110693,
+     "max": 1.8655978967110693,
+     "values": [
+      1.8655978967110693
+     ]
+    },
+    "src/fire/other (spread model, rate models)": {
+     "median": 6.1800307529312235,
+     "min": 6.1800307529312235,
+     "max": 6.1800307529312235,
+     "values": [
+      6.1800307529312235
+     ]
+    },
+    "src/fire/spread/levelSet": {
+     "median": 6.538154218448152,
+     "min": 6.538154218448152,
+     "max": 6.538154218448152,
+     "values": [
+      6.538154218448152
+     ]
+    },
+    "other (runtime, node internals, harness)": {
+     "median": 0.327695295819557,
+     "min": 0.327695295819557,
+     "max": 0.327695295819557,
+     "values": [
+      0.327695295819557
+     ]
+    },
+    "src/fuel/moisture + terrain/solar": {
+     "median": 0.40825314364680915,
+     "min": 0.40825314364680915,
+     "max": 0.40825314364680915,
+     "values": [
+      0.40825314364680915
+     ]
+    },
+    "src/atmosphere/other": {
+     "median": 48.147955804825756,
+     "min": 48.147955804825756,
+     "max": 48.147955804825756,
+     "values": [
+      48.147955804825756
+     ]
+    },
+    "src/core": {
+     "median": 0.37664734526649785,
+     "min": 0.37664734526649785,
+     "max": 0.37664734526649785,
+     "values": [
+      0.37664734526649785
+     ]
+    },
+    "src/atmosphere/solver (elliptic)": {
+     "median": 30.895048268869328,
+     "min": 30.895048268869328,
+     "max": 30.895048268869328,
+     "values": [
+      30.895048268869328
+     ]
+    },
+    "src/embers": {
+     "median": 3.696419174954404,
+     "min": 3.696419174954404,
+     "max": 3.696419174954404,
+     "values": [
+      3.696419174954404
+     ]
+    },
+    "src/explain": {
+     "median": 1.5641980985025372,
+     "min": 1.5641980985025372,
+     "max": 1.5641980985025372,
+     "values": [
+      1.5641980985025372
+     ]
+    }
+   },
+   "unmappedChildren": [
+    {
+     "child": "setAmbient src/atmosphere/base.ts",
+     "ms": 364.371000000001
+    },
+    {
+     "child": "setTime src/atmosphere/base.ts",
+     "ms": 32.79300000000001
+    },
+    {
+     "child": "weatherNow src/sim/simulation.ts",
+     "ms": 29.040999999999997
+    },
+    {
+     "child": "lap src/sim/simulation.ts",
+     "ms": 26.130999999999997
+    },
+    {
+     "child": "stableNightInputAt src/fuel/moisture/night.ts",
+     "ms": 21.267999999999997
+    },
+    {
+     "child": "solarPosition src/terrain/solar.ts",
+     "ms": 3.9450000000000003
+    },
+    {
+     "child": "applyDueRecords src/sim/simulation.ts",
+     "ms": 3.5349999999999997
+    },
+    {
+     "child": "endStep src/sim/perfStats.ts",
+     "ms": 3.4
+    },
+    {
+     "child": "applyPendingSpots src/sim/simulation.ts",
+     "ms": 2.7430000000000003
+    },
+    {
+     "child": "rainBefore src/fuel/moisture/weather.ts",
+     "ms": 2.671
+    }
+   ],
+   "conditions": {
+    "node": "v22.22.0",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "runs": [
+     {
+      "tag": "katoomba3-standard-time-r1",
+      "loadavgStart": [
+       1.55,
+       1.76,
+       1.34
+      ],
+      "loadavgEnd": [
+       1.33,
+       1.69,
+       1.32
+      ],
+      "uptimeStart": "14:01:10 up 36 min,  0 user,  load average: 1.55, 1.76, 1.34",
+      "uptimeEnd": "14:01:40 up 36 min,  0 user,  load average: 1.33, 1.69, 1.32",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T14:01:10.149Z"
+     },
+     {
+      "tag": "katoomba3-standard-plain-r1",
+      "loadavgStart": [
+       1.33,
+       1.69,
+       1.32
+      ],
+      "loadavgEnd": [
+       1.29,
+       1.65,
+       1.32
+      ],
+      "uptimeStart": "14:01:40 up 36 min,  0 user,  load average: 1.33, 1.69, 1.32",
+      "uptimeEnd": "14:02:06 up 37 min,  0 user,  load average: 1.29, 1.65, 1.32",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T14:01:40.580Z"
+     }
+    ]
+   }
+  },
+  "katoomba6-fast": {
+   "tier": "fast",
+   "burntCells": [
+    8110
+   ],
+   "steps": {
+    "advanceSteps": 1440,
+    "atmStepsSpinUp": 0,
+    "atmStepsAdvance": 0,
+    "simSeconds": 14400
+   },
+   "simSeconds": 14400,
+   "runs": 1,
+   "wallAdvanceMsProfiled": {
+    "median": 16641.18036,
+    "min": 16641.18036,
+    "max": 16641.18036,
+    "values": [
+     16641.18036
+    ]
+   },
+   "wallSpinUpMsProfiled": {
+    "median": 0.10900200000014593,
+    "min": 0.10900200000014593,
+    "max": 0.10900200000014593,
+    "values": [
+     0.10900200000014593
+    ]
+   },
+   "wallAdvanceMsPlain": {
+    "median": 12012.492730999998,
+    "min": 12012.492730999998,
+    "max": 12012.492730999998,
+    "values": [
+     12012.492730999998
+    ]
+   },
+   "wallSpinUpMsPlain": {
+    "median": 0.07862199999999575,
+    "min": 0.07862199999999575,
+    "max": 0.07862199999999575,
+    "values": [
+     0.07862199999999575
+    ]
+   },
+   "msPerStepPlain": {
+    "median": 8.342008840972222,
+    "min": 8.342008840972222,
+    "max": 8.342008840972222,
+    "values": [
+     8.342008840972222
+    ]
+   },
+   "profileWindowMs": {
+    "median": 16431.692999999603,
+    "min": 16431.692999999603,
+    "max": 16431.692999999603,
+    "values": [
+     16431.692999999603
+    ]
+   },
+   "profileSpinUpMs": {
+    "median": 0,
+    "min": 0,
+    "max": 0,
+    "values": [
+     0
+    ]
+   },
+   "gcMsOfProcess": {
+    "median": 332.94599999999963,
+    "min": 332.94599999999963,
+    "max": 332.94599999999963,
+    "values": [
+     332.94599999999963
+    ]
+   },
+   "phaseShareAdvancePct": {
+    "air": {
+     "median": 0.010960526100384445,
+     "min": 0.010960526100384445,
+     "max": 0.010960526100384445,
+     "values": [
+      0.010960526100384445
+     ]
+    },
+    "fire": {
+     "median": 48.369842352822424,
+     "min": 48.369842352822424,
+     "max": 48.369842352822424,
+     "values": [
+      48.369842352822424
+     ]
+    },
+    "coupling": {
+     "median": 15.852797395862325,
+     "min": 15.852797395862325,
+     "max": 15.852797395862325,
+     "values": [
+      15.852797395862325
+     ]
+    },
+    "embers": {
+     "median": 14.855073059118538,
+     "min": 14.855073059118538,
+     "max": 14.855073059118538,
+     "values": [
+      14.855073059118538
+     ]
+    },
+    "moisture": {
+     "median": 2.41751717245454,
+     "min": 2.41751717245454,
+     "max": 2.41751717245454,
+     "values": [
+      2.41751717245454
+     ]
+    },
+    "detectors": {
+     "median": 6.027552973391235,
+     "min": 6.027552973391235,
+     "max": 6.027552973391235,
+     "values": [
+      6.027552973391235
+     ]
+    },
+    "picture": {
+     "median": 4.8517642095675715,
+     "min": 4.8517642095675715,
+     "max": 4.8517642095675715,
+     "values": [
+      4.8517642095675715
+     ]
+    },
+    "checkpoints": {
+     "median": 0.633324880156918,
+     "min": 0.633324880156918,
+     "max": 0.633324880156918,
+     "values": [
+      0.633324880156918
+     ]
+    },
+    "other": {
+     "median": 6.981167430526069,
+     "min": 6.981167430526069,
+     "max": 6.981167430526069,
+     "values": [
+      6.981167430526069
+     ]
+    }
+   },
+   "phaseShareWithSpinUpPct": {
+    "air": {
+     "median": 0.010960526100384445,
+     "min": 0.010960526100384445,
+     "max": 0.010960526100384445,
+     "values": [
+      0.010960526100384445
+     ]
+    },
+    "fire": {
+     "median": 48.369842352822424,
+     "min": 48.369842352822424,
+     "max": 48.369842352822424,
+     "values": [
+      48.369842352822424
+     ]
+    },
+    "coupling": {
+     "median": 15.852797395862325,
+     "min": 15.852797395862325,
+     "max": 15.852797395862325,
+     "values": [
+      15.852797395862325
+     ]
+    },
+    "embers": {
+     "median": 14.855073059118538,
+     "min": 14.855073059118538,
+     "max": 14.855073059118538,
+     "values": [
+      14.855073059118538
+     ]
+    },
+    "moisture": {
+     "median": 2.41751717245454,
+     "min": 2.41751717245454,
+     "max": 2.41751717245454,
+     "values": [
+      2.41751717245454
+     ]
+    },
+    "detectors": {
+     "median": 6.027552973391235,
+     "min": 6.027552973391235,
+     "max": 6.027552973391235,
+     "values": [
+      6.027552973391235
+     ]
+    },
+    "picture": {
+     "median": 4.8517642095675715,
+     "min": 4.8517642095675715,
+     "max": 4.8517642095675715,
+     "values": [
+      4.8517642095675715
+     ]
+    },
+    "checkpoints": {
+     "median": 0.633324880156918,
+     "min": 0.633324880156918,
+     "max": 0.633324880156918,
+     "values": [
+      0.633324880156918
+     ]
+    },
+    "other": {
+     "median": 6.981167430526069,
+     "min": 6.981167430526069,
+     "max": 6.981167430526069,
+     "values": [
+      6.981167430526069
+     ]
+    },
+    "spinUp (3-D air spin-up, 900 s)": {
+     "median": 0,
+     "min": 0,
+     "max": 0,
+     "values": [
+      0
+     ]
+    }
+   },
+   "appTimersShareAdvancePct": {
+    "air": {
+     "median": 0.3002220024128445,
+     "min": 0.3002220024128445,
+     "max": 0.3002220024128445,
+     "values": [
+      0.3002220024128445
+     ]
+    },
+    "fire": {
+     "median": 48.14933452948928,
+     "min": 48.14933452948928,
+     "max": 48.14933452948928,
+     "values": [
+      48.14933452948928
+     ]
+    },
+    "coupling": {
+     "median": 16.034837021949425,
+     "min": 16.034837021949425,
+     "max": 16.034837021949425,
+     "values": [
+      16.034837021949425
+     ]
+    },
+    "embers": {
+     "median": 14.468749938568903,
+     "min": 14.468749938568903,
+     "max": 14.468749938568903,
+     "values": [
+      14.468749938568903
+     ]
+    },
+    "moisture": {
+     "median": 2.7863365969716076,
+     "min": 2.7863365969716076,
+     "max": 2.7863365969716076,
+     "values": [
+      2.7863365969716076
+     ]
+    },
+    "detectors": {
+     "median": 6.37827647530342,
+     "min": 6.37827647530342,
+     "max": 6.37827647530342,
+     "values": [
+      6.37827647530342
+     ]
+    },
+    "picture": {
+     "median": 5.683680731411049,
+     "min": 5.683680731411049,
+     "max": 5.683680731411049,
+     "values": [
+      5.683680731411049
+     ]
+    },
+    "checkpoints": {
+     "median": 0.6596066249563924,
+     "min": 0.6596066249563924,
+     "max": 0.6596066249563924,
+     "values": [
+      0.6596066249563924
+     ]
+    },
+    "other": {
+     "median": 5.538956078937079,
+     "min": 5.538956078937079,
+     "max": 5.538956078937079,
+     "values": [
+      5.538956078937079
+     ]
+    }
+   },
+   "appTimersSpinUpShareOfRunPct": {
+    "median": 0,
+    "min": 0,
+    "max": 0,
+    "values": [
+     0
+    ]
+   },
+   "kernelsAdvance": [
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 2228.993000000025,
+      "min": 2228.993000000025,
+      "max": 2228.993000000025,
+      "values": [
+       2228.993000000025
+      ]
+     },
+     "sharePct": {
+      "median": 13.565205971168515,
+      "min": 13.565205971168515,
+      "max": 13.565205971168515,
+      "values": [
+       13.565205971168515
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 1667.1710000000187,
+      "min": 1667.1710000000187,
+      "max": 1667.1710000000187,
+      "values": [
+       1667.1710000000187
+      ]
+     },
+     "sharePct": {
+      "median": 10.146069549863542,
+      "min": 10.146069549863542,
+      "max": 10.146069549863542,
+      "values": [
+       10.146069549863542
+      ]
+     }
+    },
+    {
+     "kernel": "solve src/atmosphere/pyrogenic.ts",
+     "selfMs": {
+      "median": 1511.0980000000047,
+      "min": 1511.0980000000047,
+      "max": 1511.0980000000047,
+      "values": [
+       1511.0980000000047
+      ]
+     },
+     "sharePct": {
+      "median": 9.196240460432417,
+      "min": 9.196240460432417,
+      "max": 9.196240460432417,
+      "values": [
+       9.196240460432417
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 787.0799999999991,
+      "min": 787.0799999999991,
+      "max": 787.0799999999991,
+      "values": [
+       787.0799999999991
+      ]
+     },
+     "sharePct": {
+      "median": 4.7900115952751685,
+      "min": 4.7900115952751685,
+      "max": 4.7900115952751685,
+      "values": [
+       4.7900115952751685
+      ]
+     }
+    },
+    {
+     "kernel": "sampleBg src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 710.1040000000008,
+      "min": 710.1040000000008,
+      "max": 710.1040000000008,
+      "values": [
+       710.1040000000008
+      ]
+     },
+     "sharePct": {
+      "median": 4.321551041636537,
+      "min": 4.321551041636537,
+      "max": 4.321551041636537,
+      "values": [
+       4.321551041636537
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "selfMs": {
+      "median": 696.854000000003,
+      "min": 696.854000000003,
+      "max": 696.854000000003,
+      "values": [
+       696.854000000003
+      ]
+     },
+     "sharePct": {
+      "median": 4.240914189426615,
+      "min": 4.240914189426615,
+      "max": 4.240914189426615,
+      "values": [
+       4.240914189426615
+      ]
+     }
+    },
+    {
+     "kernel": "compute src/fire/spread/geometry.ts",
+     "selfMs": {
+      "median": 471.6150000000009,
+      "min": 471.6150000000009,
+      "max": 471.6150000000009,
+      "values": [
+       471.6150000000009
+      ]
+     },
+     "sharePct": {
+      "median": 2.8701546456595333,
+      "min": 2.8701546456595333,
+      "max": 2.8701546456595333,
+      "values": [
+       2.8701546456595333
+      ]
+     }
+    },
+    {
+     "kernel": "apply src/fire/spread/levelSet.ts",
+     "selfMs": {
+      "median": 321.0120000000003,
+      "min": 321.0120000000003,
+      "max": 321.0120000000003,
+      "values": [
+       321.0120000000003
+      ]
+     },
+     "sharePct": {
+      "median": 1.9536148831408184,
+      "min": 1.9536148831408184,
+      "max": 1.9536148831408184,
+      "values": [
+       1.9536148831408184
+      ]
+     }
+    },
+    {
+     "kernel": "hybridHead src/fire/spread/math.ts",
+     "selfMs": {
+      "median": 315.22700000000054,
+      "min": 315.22700000000054,
+      "max": 315.22700000000054,
+      "values": [
+       315.22700000000054
+      ]
+     },
+     "sharePct": {
+      "median": 1.9184085291759536,
+      "min": 1.9184085291759536,
+      "max": 1.9184085291759536,
+      "values": [
+       1.9184085291759536
+      ]
+     }
+    },
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "selfMs": {
+      "median": 303.26799999999986,
+      "min": 303.26799999999986,
+      "max": 303.26799999999986,
+      "values": [
+       303.26799999999986
+      ]
+     },
+     "sharePct": {
+      "median": 1.8456284449813372,
+      "min": 1.8456284449813372,
+      "max": 1.8456284449813372,
+      "values": [
+       1.8456284449813372
+      ]
+     }
+    },
+    {
+     "kernel": "addFireHeat src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 293.17100000000033,
+      "min": 293.17100000000033,
+      "max": 293.17100000000033,
+      "values": [
+       293.17100000000033
+      ]
+     },
+     "sharePct": {
+      "median": 1.7841801206972856,
+      "min": 1.7841801206972856,
+      "max": 1.7841801206972856,
+      "values": [
+       1.7841801206972856
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "selfMs": {
+      "median": 252.2130000000006,
+      "min": 252.2130000000006,
+      "max": 252.2130000000006,
+      "values": [
+       252.2130000000006
+      ]
+     },
+     "sharePct": {
+      "median": 1.534917917466001,
+      "min": 1.534917917466001,
+      "max": 1.534917917466001,
+      "values": [
+       1.534917917466001
+      ]
+     }
+    },
+    {
+     "kernel": "slopeFactor src/fire/models/common.ts",
+     "selfMs": {
+      "median": 246.6690000000003,
+      "min": 246.6690000000003,
+      "max": 246.6690000000003,
+      "values": [
+       246.6690000000003
+      ]
+     },
+     "sharePct": {
+      "median": 1.5011782413413288,
+      "min": 1.5011782413413288,
+      "max": 1.5011782413413288,
+      "values": [
+       1.5011782413413288
+      ]
+     }
+    },
+    {
+     "kernel": "gradientToFire src/atmosphere/pyrogenic.ts",
+     "selfMs": {
+      "median": 238.7430000000009,
+      "min": 238.7430000000009,
+      "max": 238.7430000000009,
+      "values": [
+       238.7430000000009
+      ]
+     },
+     "sharePct": {
+      "median": 1.4529421892193743,
+      "min": 1.4529421892193743,
+      "max": 1.4529421892193743,
+      "values": [
+       1.4529421892193743
+      ]
+     }
+    },
+    {
+     "kernel": "prepareCell src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 225.2130000000003,
+      "min": 225.2130000000003,
+      "max": 225.2130000000003,
+      "values": [
+       225.2130000000003
+      ]
+     },
+     "sharePct": {
+      "median": 1.3706013129627346,
+      "min": 1.3706013129627346,
+      "max": 1.3706013129627346,
+      "values": [
+       1.3706013129627346
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/fuel/moisture/model.ts",
+     "selfMs": {
+      "median": 192.18800000000044,
+      "min": 192.18800000000044,
+      "max": 192.18800000000044,
+      "values": [
+       192.18800000000044
+      ]
+     },
+     "sharePct": {
+      "median": 1.1696177624545754,
+      "min": 1.1696177624545754,
+      "max": 1.1696177624545754,
+      "values": [
+       1.1696177624545754
+      ]
+     }
+    },
+    {
+     "kernel": "refreshMasks src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 176.64500000000044,
+      "min": 176.64500000000044,
+      "max": 176.64500000000044,
+      "values": [
+       176.64500000000044
+      ]
+     },
+     "sharePct": {
+      "median": 1.075026170462196,
+      "min": 1.075026170462196,
+      "max": 1.075026170462196,
+      "values": [
+       1.075026170462196
+      ]
+     }
+    },
+    {
+     "kernel": "ellipseSpeeds src/fire/spread/math.ts",
+     "selfMs": {
+      "median": 172.91100000000034,
+      "min": 172.91100000000034,
+      "max": 172.91100000000034,
+      "values": [
+       172.91100000000034
+      ]
+     },
+     "sharePct": {
+      "median": 1.0523017926394105,
+      "min": 1.0523017926394105,
+      "max": 1.0523017926394105,
+      "values": [
+       1.0523017926394105
+      ]
+     }
+    },
+    {
+     "kernel": "publishFireWind src/sim/fireWindPublish.ts",
+     "selfMs": {
+      "median": 163.37500000000026,
+      "min": 163.37500000000026,
+      "max": 163.37500000000026,
+      "values": [
+       163.37500000000026
+      ]
+     },
+     "sharePct": {
+      "median": 0.9942676022489235,
+      "min": 0.9942676022489235,
+      "max": 0.9942676022489235,
+      "values": [
+       0.9942676022489235
+      ]
+     }
+    },
+    {
+     "kernel": "fireWindTier src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 154.18200000000016,
+      "min": 154.18200000000016,
+      "max": 154.18200000000016,
+      "values": [
+       154.18200000000016
+      ]
+     },
+     "sharePct": {
+      "median": 0.9383208413156447,
+      "min": 0.9383208413156447,
+      "max": 0.9383208413156447,
+      "values": [
+       0.9383208413156447
+      ]
+     }
+    },
+    {
+     "kernel": "updateFront src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 153.44000000000023,
+      "min": 153.44000000000023,
+      "max": 153.44000000000023,
+      "values": [
+       153.44000000000023
+      ]
+     },
+     "sharePct": {
+      "median": 0.9338051775918886,
+      "min": 0.9338051775918886,
+      "max": 0.9338051775918886,
+      "values": [
+       0.9338051775918886
+      ]
+     }
+    },
+    {
+     "kernel": "makeSnapshot src/sim/simulation.ts",
+     "selfMs": {
+      "median": 149.35400000000016,
+      "min": 149.35400000000016,
+      "max": 149.35400000000016,
+      "values": [
+       149.35400000000016
+      ]
+     },
+     "sharePct": {
+      "median": 0.9089385981103941,
+      "min": 0.9089385981103941,
+      "max": 0.9089385981103941,
+      "values": [
+       0.9089385981103941
+      ]
+     }
+    },
+    {
+     "kernel": "stepOnce src/sim/simulation.ts",
+     "selfMs": {
+      "median": 139.76900000000035,
+      "min": 139.76900000000035,
+      "max": 139.76900000000035,
+      "values": [
+       139.76900000000035
+      ]
+     },
+     "sharePct": {
+      "median": 0.8506062035117362,
+      "min": 0.8506062035117362,
+      "max": 0.8506062035117362,
+      "values": [
+       0.8506062035117362
+      ]
+     }
+    },
+    {
+     "kernel": "prepare src/fire/spread/FireSpreadModel.ts",
+     "selfMs": {
+      "median": 136.7490000000001,
+      "min": 136.7490000000001,
+      "max": 136.7490000000001,
+      "values": [
+       136.7490000000001
+      ]
+     },
+     "sharePct": {
+      "median": 0.8322270870080364,
+      "min": 0.8322270870080364,
+      "max": 0.8322270870080364,
+      "values": [
+       0.8322270870080364
+      ]
+     }
+    },
+    {
+     "kernel": "view src/atmosphere/diagnosticWind.ts",
+     "selfMs": {
+      "median": 121.83600000000023,
+      "min": 121.83600000000023,
+      "max": 121.83600000000023,
+      "values": [
+       121.83600000000023
+      ]
+     },
+     "sharePct": {
+      "median": 0.7414695491207337,
+      "min": 0.7414695491207337,
+      "max": 0.7414695491207337,
+      "values": [
+       0.7414695491207337
+      ]
+     }
+    }
+   ],
+   "kernelsWithSpinUp": [
+    {
+     "kernel": "evaluate src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 13.565205971168515,
+      "min": 13.565205971168515,
+      "max": 13.565205971168515,
+      "values": [
+       13.565205971168515
+      ]
+     }
+    },
+    {
+     "kernel": "reinit src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 10.14606954986354,
+      "min": 10.14606954986354,
+      "max": 10.14606954986354,
+      "values": [
+       10.14606954986354
+      ]
+     }
+    },
+    {
+     "kernel": "solve src/atmosphere/pyrogenic.ts",
+     "sharePct": {
+      "median": 9.196240460432417,
+      "min": 9.196240460432417,
+      "max": 9.196240460432417,
+      "values": [
+       9.196240460432417
+      ]
+     }
+    },
+    {
+     "kernel": "computeCell src/fire/spread/FireSpreadModel.ts",
+     "sharePct": {
+      "median": 4.7900115952751685,
+      "min": 4.7900115952751685,
+      "max": 4.7900115952751685,
+      "values": [
+       4.7900115952751685
+      ]
+     }
+    },
+    {
+     "kernel": "sampleBg src/atmosphere/diagnosticWind.ts",
+     "sharePct": {
+      "median": 4.321551041636537,
+      "min": 4.321551041636537,
+      "max": 4.321551041636537,
+      "values": [
+       4.321551041636537
+      ]
+     }
+    },
+    {
+     "kernel": "advance src/embers/EmberModel.ts",
+     "sharePct": {
+      "median": 4.240914189426615,
+      "min": 4.240914189426615,
+      "max": 4.240914189426615,
+      "values": [
+       4.240914189426615
+      ]
+     }
+    },
+    {
+     "kernel": "compute src/fire/spread/geometry.ts",
+     "sharePct": {
+      "median": 2.8701546456595333,
+      "min": 2.8701546456595333,
+      "max": 2.8701546456595333,
+      "values": [
+       2.8701546456595333
+      ]
+     }
+    },
+    {
+     "kernel": "apply src/fire/spread/levelSet.ts",
+     "sharePct": {
+      "median": 1.9536148831408184,
+      "min": 1.9536148831408184,
+      "max": 1.9536148831408184,
+      "values": [
+       1.9536148831408184
+      ]
+     }
+    },
+    {
+     "kernel": "hybridHead src/fire/spread/math.ts",
+     "sharePct": {
+      "median": 1.9184085291759538,
+      "min": 1.9184085291759538,
+      "max": 1.9184085291759538,
+      "values": [
+       1.9184085291759538
+      ]
+     }
+    },
+    {
+     "kernel": "relax src/atmosphere/solver.ts",
+     "sharePct": {
+      "median": 1.845628444981337,
+      "min": 1.845628444981337,
+      "max": 1.845628444981337,
+      "values": [
+       1.845628444981337
+      ]
+     }
+    },
+    {
+     "kernel": "addFireHeat src/atmosphere/diagnosticWind.ts",
+     "sharePct": {
+      "median": 1.7841801206972856,
+      "min": 1.7841801206972856,
+      "max": 1.7841801206972856,
+      "values": [
+       1.7841801206972856
+      ]
+     }
+    },
+    {
+     "kernel": "surfaceWindForFire src/atmosphere/base.ts",
+     "sharePct": {
+      "median": 1.534917917466001,
+      "min": 1.534917917466001,
+      "max": 1.534917917466001,
+      "values": [
+       1.534917917466001
+      ]
+     }
+    }
+   ],
+   "fileGroupsAdvancePct": {
+    "src/sim": {
+     "median": 5.654901171778346,
+     "min": 5.654901171778346,
+     "max": 5.654901171778346,
+     "values": [
+      5.654901171778346
+     ]
+    },
+    "src/fire/other (spread model, rate models)": {
+     "median": 23.112913562832716,
+     "min": 23.112913562832716,
+     "max": 23.112913562832716,
+     "values": [
+      23.112913562832716
+     ]
+    },
+    "src/fire/spread/levelSet": {
+     "median": 25.804170026789308,
+     "min": 25.804170026789308,
+     "max": 25.804170026789308,
+     "values": [
+      25.804170026789308
+     ]
+    },
+    "src/atmosphere/other": {
+     "median": 12.406883453823546,
+     "min": 12.406883453823546,
+     "max": 12.406883453823546,
+     "values": [
+      12.406883453823546
+     ]
+    },
+    "other (runtime, node internals, harness)": {
+     "median": 1.0442076784175822,
+     "min": 1.0442076784175822,
+     "max": 1.0442076784175822,
+     "values": [
+      1.0442076784175822
+     ]
+    },
+    "src/fuel/moisture + terrain/solar": {
+     "median": 2.050336505191583,
+     "min": 2.050336505191583,
+     "max": 2.050336505191583,
+     "values": [
+      2.050336505191583
+     ]
+    },
+    "src/core": {
+     "median": 0.8041228618378118,
+     "min": 0.8041228618378118,
+     "max": 0.8041228618378118,
+     "values": [
+      0.8041228618378118
+     ]
+    },
+    "src/atmosphere/pyrogenic (coupling solve)": {
+     "median": 10.649182649651884,
+     "min": 10.649182649651884,
+     "max": 10.649182649651884,
+     "values": [
+      10.649182649651884
+     ]
+    },
+    "src/embers": {
+     "median": 9.511764855879713,
+     "min": 9.511764855879713,
+     "max": 9.511764855879713,
+     "values": [
+      9.511764855879713
+     ]
+    },
+    "src/explain": {
+     "median": 5.0402049259319535,
+     "min": 5.0402049259319535,
+     "max": 5.0402049259319535,
+     "values": [
+      5.0402049259319535
+     ]
+    },
+    "src/atmosphere/solver (elliptic)": {
+     "median": 3.921312307867555,
+     "min": 3.921312307867555,
+     "max": 3.921312307867555,
+     "values": [
+      3.921312307867555
+     ]
+    }
+   },
+   "unmappedChildren": [
+    {
+     "child": "setAmbient src/atmosphere/base.ts",
+     "ms": 809.5929999999955
+    },
+    {
+     "child": "setTime src/atmosphere/base.ts",
+     "ms": 39.321
+    },
+    {
+     "child": "weatherNow src/sim/simulation.ts",
+     "ms": 29.654
+    },
+    {
+     "child": "lap src/sim/simulation.ts",
+     "ms": 27.749
+    },
+    {
+     "child": "stableNightInputAt src/fuel/moisture/night.ts",
+     "ms": 22.485999999999994
+    },
+    {
+     "child": "solarPosition src/terrain/solar.ts",
+     "ms": 7.534
+    },
+    {
+     "child": "Simulation.clock src/sim/simulation.ts",
+     "ms": 7.501
+    },
+    {
+     "child": "applyPendingSpots src/sim/simulation.ts",
+     "ms": 5.47
+    },
+    {
+     "child": "applyDueRecords src/sim/simulation.ts",
+     "ms": 3.451
+    },
+    {
+     "child": "stableNight src/core/physics.ts",
+     "ms": 2.721
+    }
+   ],
+   "conditions": {
+    "node": "v22.22.0",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cores": 4,
+    "runs": [
+     {
+      "tag": "katoomba6-fast-time-r1",
+      "loadavgStart": [
+       1.78,
+       1.83,
+       1.34
+      ],
+      "loadavgEnd": [
+       1.7,
+       1.8,
+       1.34
+      ],
+      "uptimeStart": "14:00:36 up 35 min,  0 user,  load average: 1.78, 1.83, 1.34",
+      "uptimeEnd": "14:00:55 up 36 min,  0 user,  load average: 1.70, 1.80, 1.34",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T14:00:36.028Z"
+     },
+     {
+      "tag": "katoomba6-fast-plain-r1",
+      "loadavgStart": [
+       1.7,
+       1.8,
+       1.34
+      ],
+      "loadavgEnd": [
+       1.55,
+       1.76,
+       1.34
+      ],
+      "uptimeStart": "14:00:55 up 36 min,  0 user,  load average: 1.70, 1.80, 1.34",
+      "uptimeEnd": "14:01:10 up 36 min,  0 user,  load average: 1.55, 1.76, 1.34",
+      "waitedS": 0,
+      "highLoadAtStart": false,
+      "startedAt": "2026-11-16T14:00:55.601Z"
+     }
+    ]
+   }
+  }
+ }
+}
