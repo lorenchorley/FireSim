@@ -27,6 +27,8 @@ switch (args.Length > 0 ? args[0] : "")
         return Merge(args[1], args[2], args[3], args[4]);
     case "fsmath-run": // T1.3: every FsMath candidate over fixed input files, outputs as raw float64 (FsMathRun)
         return FsMathRun.Run(args[1..]);
+    case "fsmath-vectors": // T1.3: CoreMathSharp against the test vectors of its own repository (FsMathVectors)
+        return FsMathVectors.Run(args[1..]);
     case "fsmath-ns": // T1.3: ns per call of every function and implementation, a stopwatch loop in this process (FsMathNs)
         return FsMathNs.Run(args[1..]);
     default:

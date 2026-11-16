@@ -57,7 +57,7 @@ for fn in fns:
     outs = {i: load(f'{set_dir}/{fn}.{i}.f64') for i in IMPLS if os.path.exists(f'{set_dir}/{fn}.{i}.f64')}
     k = max(1, -(-n // cap))
     checked = 0
-    stats = {i: {'notCorrectlyRounded': 0, 'maxUlp': 0, 'examples': []} for i in outs}
+    stats = {i: {'notCorrectlyRounded': 0, 'maxUlp': 0, 'nanVsNumber': 0, 'examples': [], 'worst': None} for i in outs}
     for c in range(0, n, k):
         a = [x[ar * c + j] for j in range(ar)]
         if not all(v - v == 0 for v in a):  # NaN or infinite argument
@@ -74,7 +74,11 @@ for fn in fns:
             if u:
                 s = stats[i]
                 s['notCorrectlyRounded'] += 1
+                if u >= (1 << 62):
+                    s['nanVsNumber'] += 1
                 s['maxUlp'] = max(s['maxUlp'], u)
+                if s['worst'] is None or u > s['worst']['ulp']:
+                    s['worst'] = {'call': c, 'args': [repr(v) for v in a], 'got': repr(o[c]), 'correct': repr(y), 'ulp': u}
                 if len(s['examples']) < 4:
                     s['examples'].append({'call': c, 'args': [repr(v) for v in a], 'got': repr(o[c]), 'correct': repr(y), 'ulp': u})
     result[fn] = {'callsInSet': n, 'stride': k, 'checked': checked, 'impls': stats}

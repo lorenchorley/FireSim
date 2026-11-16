@@ -1,5 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace Fs.Bench;
 
@@ -11,10 +13,20 @@ namespace Fs.Bench;
 /// (the default job for final numbers; <c>--job Dry</c> then <c>--job Short</c> while developing). Hypot has no System.Math member: its "platform" row is
 /// double.Hypot, CoreLib's own managed algorithm, not libm.
 /// </summary>
+[Config(typeof(FsMathBenchConfig))]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByParams)]
 [CategoriesColumn]
 public class FsMathBench
 {
+    /// <summary>
+    /// BenchmarkDotNet 0.15.8 does not recognise the net11.0 runtime moniker (its out-of-process project toolchain throws "GetRuntimeVersion not implemented for NotRecognized"),
+    /// so the default job runs in process (InProcessEmitToolchain); the default job's warm-up, pilot and iteration counts are unchanged.
+    /// </summary>
+    private sealed class FsMathBenchConfig : ManualConfig
+    {
+        public FsMathBenchConfig() => AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
+    }
+
     private const int N = 4096;
 
     [Params("exp", "log", "pow", "sin", "cos", "tan", "atan", "atan2", "acos", "asin", "sinh", "cbrt", "log2", "log10", "hypot")]

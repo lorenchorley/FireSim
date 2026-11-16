@@ -55,7 +55,7 @@ def exact(fn, a):
     """The function at the arguments a (floats) as an mpf, +-inf, or None when the exponent is certain to overflow or underflow (decided by the caller)."""
     x = [mpf(v) for v in a]
     if fn == 'exp':
-        return mpmath.exp(x[0]) if x[0] > -800 else mpf(0)
+        return mpf(0) if x[0] <= -800 else (mpf('inf') if x[0] >= 800 else mpmath.exp(x[0]))  # beyond +-800 the result under- or overflows for certain
     if fn == 'log':
         return mpmath.log(x[0])
     if fn == 'log2':
@@ -68,6 +68,8 @@ def exact(fn, a):
             if x[1] > 0:
                 return mpf(0)  # the sign of a zero result is applied by the caller
             return mpf('-inf') if (odd and neg(a[0])) else mpf('inf')
+        if x[0] < 0 and x[1] != int(x[1]):
+            raise ValueError('negative base, non-integer exponent: NaN')
         return mpmath.power(x[0], x[1]) if abs(x[1] * mpmath.log(abs(x[0]))) < 800 else None
     if fn == 'sin':
         return mpmath.sin(x[0])

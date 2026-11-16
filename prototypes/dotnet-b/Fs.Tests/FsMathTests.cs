@@ -341,7 +341,7 @@ public sealed class FsMathEdgeTests
         Is(impl, "hypot", 0.0, -0.0, -0.0);
         Is(impl, "hypot", 1.0, 1.0, 0.0);
         Is(impl, "hypot", 1.4142135623730951e308, 1e308, 1e308);     // no overflow: scaled by the largest
-        Assert.IsTrue(double.IsFinite(FsMath.Hypot(double.MaxValue, double.MaxValue)) == false, "sqrt(2) * MaxValue overflows to Infinity");
+        Assert.IsTrue(double.IsPositiveInfinity(FsMath.Hypot(double.MaxValue, double.MaxValue)), "sqrt(2) * MaxValue overflows to Infinity");
         Is(impl, "hypot", 5.0, 0.0, 5.0);
         // three arguments
         Assert.AreEqual(3.0, FsMath.Hypot(1.0, 2.0, 2.0));
@@ -349,6 +349,9 @@ public sealed class FsMathEdgeTests
         Assert.IsTrue(double.IsNaN(FsMath.Hypot(NaN, 1.0, 2.0)));
         Assert.AreEqual(0.0, FsMath.Hypot(0.0, -0.0, 0.0));
     }
+
+    private static void AssertSame(double expected, double actual) =>
+        Assert.IsTrue(Under.SameBits(expected, actual), $"FsMath gave {actual:R} (bits {Under.Bits(actual):X16}), the selected implementation's own function gives {expected:R} (bits {Under.Bits(expected):X16})");
 
     [TestMethod]
     [DoNotParallelize]
@@ -366,21 +369,21 @@ public sealed class FsMathEdgeTests
                 for (int i = 0; i < 2000; i++)
                 {
                     double x = (rng.NextDouble() - 0.5) * 20, y = (rng.NextDouble() + 0.1) * 5;
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "exp")(x), FsMath.Exp(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "sin")(x), FsMath.Sin(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "cos")(x), FsMath.Cos(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "tan")(x), FsMath.Tan(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "atan")(x), FsMath.Atan(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "cbrt")(x), FsMath.Cbrt(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "sinh")(x), FsMath.Sinh(x)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "log")(y), FsMath.Log(y)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "log2")(y), FsMath.Log2(y)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "log10")(y), FsMath.Log10(y)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "acos")(x / 10), FsMath.Acos(x / 10)));
-                    Assert.IsTrue(Under.SameBits(Under.F1(name, "asin")(x / 10), FsMath.Asin(x / 10)));
-                    Assert.IsTrue(Under.SameBits(Under.F2(name, "pow")(y, x), FsMath.Pow(y, x)));
-                    Assert.IsTrue(Under.SameBits(Under.F2(name, "atan2")(x, y), FsMath.Atan2(x, y)));
-                    Assert.IsTrue(Under.SameBits(Under.F2(name, "hypot")(x, y), FsMath.Hypot(x, y)));
+                    AssertSame(Under.F1(name, "exp")(x), FsMath.Exp(x));
+                    AssertSame(Under.F1(name, "sin")(x), FsMath.Sin(x));
+                    AssertSame(Under.F1(name, "cos")(x), FsMath.Cos(x));
+                    AssertSame(Under.F1(name, "tan")(x), FsMath.Tan(x));
+                    AssertSame(Under.F1(name, "atan")(x), FsMath.Atan(x));
+                    AssertSame(Under.F1(name, "cbrt")(x), FsMath.Cbrt(x));
+                    AssertSame(Under.F1(name, "sinh")(x), FsMath.Sinh(x));
+                    AssertSame(Under.F1(name, "log")(y), FsMath.Log(y));
+                    AssertSame(Under.F1(name, "log2")(y), FsMath.Log2(y));
+                    AssertSame(Under.F1(name, "log10")(y), FsMath.Log10(y));
+                    AssertSame(Under.F1(name, "acos")(x / 10), FsMath.Acos(x / 10));
+                    AssertSame(Under.F1(name, "asin")(x / 10), FsMath.Asin(x / 10));
+                    AssertSame(Under.F2(name, "pow")(y, x), FsMath.Pow(y, x));
+                    AssertSame(Under.F2(name, "atan2")(x, y), FsMath.Atan2(x, y));
+                    AssertSame(Under.F2(name, "hypot")(x, y), FsMath.Hypot(x, y));
                 }
             }
         }
@@ -478,6 +481,62 @@ public sealed class FsMathGoldenTests
         var g = Data.Value.Single(d => d.Fn == fn);
         var (_, max) = Run("fdlibm", g, g.Cr, out string first);
         Assert.IsTrue(max <= 2, $"fdlibm {fn}: {max} ulp from the correctly rounded value; {first}");
+    }
+}
+
+/// <summary>
+/// The special-value table (golden/fsmath-specials-node22.json): every function at every combination of 27 special values (+-0, +-1, +-Infinity, NaN, subnormals, +-MaxValue,
+/// ...) with the bits of Node 22's result. FdLibm must give Node's bits for every one (NaN equal to NaN). CoreMathSharp must too wherever the result is NaN, infinite or zero
+/// (that is where JavaScript's own rules live: pow(1, Infinity) is NaN, pow(NaN, 0) is 1, atan2's quadrants, hypot's Infinity beating NaN) and within 2 ulp elsewhere.
+/// </summary>
+[TestClass]
+public sealed class FsMathSpecialsTests
+{
+    private static readonly Lazy<(double[] Values, Dictionary<string, (int Arity, double[] Node22)> F)> Data = new(() =>
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "golden", "fsmath-specials-node22.json")));
+        var values = doc.RootElement.GetProperty("values").EnumerateArray().Select(e => Under.FromHex(e.GetString()!)).ToArray();
+        var f = new Dictionary<string, (int, double[])>();
+        foreach (var p in doc.RootElement.GetProperty("functions").EnumerateObject())
+            f[p.Name] = (p.Value.GetProperty("arity").GetInt32(), p.Value.GetProperty("node22").EnumerateArray().Select(e => Under.FromHex(e.GetString()!)).ToArray());
+        return (values, f);
+    });
+
+    public static IEnumerable<string> FunctionNames => Under.Names;
+
+    private static List<string> Check(string impl, string fn, bool exactEverywhere)
+    {
+        var (values, f) = Data.Value;
+        var (arity, expected) = f[fn];
+        int n = values.Length;
+        Assert.AreEqual(arity == 1 ? n : n * n, expected.Length);
+        var bad = new List<string>();
+        for (int i = 0; i < expected.Length; i++)
+        {
+            double a = arity == 1 ? values[i] : values[i / n], b = arity == 1 ? 0 : values[i % n];
+            double got = Under.Call(impl, fn, a, b);
+            double want = expected[i];
+            bool exactClass = exactEverywhere || double.IsNaN(want) || double.IsInfinity(want) || want == 0;
+            bool ok = exactClass ? Under.SameBits(want, got) : Under.Ulp(want, got) <= 2;
+            if (!ok) bad.Add($"{impl} {fn}({a:R}{(arity == 2 ? $", {b:R}" : "")}) = {got:R}, Node 22 gives {want:R}");
+        }
+        return bad;
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(FunctionNames))]
+    public void FdLibmGivesNode22sBitsOnEverySpecialValue(string fn)
+    {
+        var bad = Check("fdlibm", fn, exactEverywhere: true);
+        Assert.AreEqual(0, bad.Count, string.Join("; ", bad.Take(6)));
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(FunctionNames))]
+    public void CoreMathSharpFollowsJavaScriptOnSpecialValues(string fn)
+    {
+        var bad = Check("cms", fn, exactEverywhere: false);
+        Assert.AreEqual(0, bad.Count, string.Join("; ", bad.Take(6)));
     }
 }
 

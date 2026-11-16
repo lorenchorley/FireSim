@@ -34,7 +34,7 @@ if (engine === 'node') {
   page.on('console', (m) => { if (m.type() === 'error') console.error('[page]', m.text()); });
   page.on('pageerror', (e) => console.error('[pageerror]', e.message));
   const mime = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.dat': 'application/octet-stream', '.html': 'text/html' };
-  await page.route('http://fsmath.test/**', async (route) => {
+  await page.route('https://fsmath.test/**', async (route) => {
     const req = route.request();
     const u = new URL(req.url());
     if (u.pathname === '/index.html') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>fsmath wasm</title>' });
@@ -47,7 +47,7 @@ if (engine === 'node') {
     }
     return route.fulfill({ status: 404 });
   });
-  await page.goto('http://fsmath.test/index.html');
+  await page.goto('https://fsmath.test/index.html');
   const cdp = await browser.newBrowserCDPSession();
   const v8 = (await cdp.send('Browser.getVersion')).jsVersion;
   const res = await page.evaluate(async ({ cmd, present, n, repeats }) => {
