@@ -52,9 +52,9 @@ const lapPhase = (l) => LAP_PHASE[l] ?? 'other';
 function childPhase(fn, file) {
   const f = file;
   const is = (re) => re.test(f);
-  if (is(/atmosphere\/atmosphere\./) && ['step', 'maxStableDt', 'stepLimit'].includes(fn)) return 'air';
-  if (is(/atmosphere\/atmosphere\./) && fn === 'addFireHeat') return 'coupling';
-  if (is(/atmosphere\/atmosphere\./) && fn === 'diagnostics') return 'detectors';
+  if (is(/atmosphere\/(atmosphere|diagnosticWind)\./) && ['step', 'maxStableDt', 'stepLimit'].includes(fn)) return 'air';
+  if (is(/atmosphere\/(atmosphere|diagnosticWind)\./) && fn === 'addFireHeat') return 'coupling';
+  if (is(/atmosphere\/(atmosphere|diagnosticWind)\./) && fn === 'diagnostics') return 'detectors';
   if (is(/sim\/simulation\./) && fn === 'fireWinds') return 'coupling';
   if (is(/atmosphere\/base\./) && ['surfaceWindForFire', 'airAt'].includes(fn)) return 'coupling';
   if (is(/fire\/spread\//) || is(/fire\/terrainFeatures/)) return 'fire';

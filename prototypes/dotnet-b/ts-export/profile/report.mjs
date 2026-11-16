@@ -2,7 +2,7 @@
 /**
  * Turns analyze.mjs's summary into reports/1-profile.json (RESULTS-SCHEMA.md) and prints the markdown tables the report uses.
  *
- *   node prototypes/dotnet-b/ts-export/profile/report.mjs --summary SUMMARY.json --json prototypes/dotnet-b/reports/1-profile.json [--tables TABLES.md]
+ *   node prototypes/dotnet-b/ts-export/profile/report.mjs --summary SUMMARY.json --json prototypes/dotnet-b/reports/1-profile.json [--tables TABLES.md] [--extra SUMMARY-4H.json] [--gate-measured S --gate-result R --gate-why W]
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -81,6 +81,15 @@ for (const n of NAMES) {
     runs.push({ ...base, name: `${n} phase ${ph} (CPU profile)`, medianMs: ms, p95Ms: (s.profileWindowMs.max * sh.max) / 100, minMs: (s.profileWindowMs.min * sh.min) / 100, maxMs: (s.profileWindowMs.max * sh.max) / 100, notes: `share of the step loop ${f1(sh.median)} % (min ${f1(sh.min)}, max ${f1(sh.max)}); app timers ${f1(s.appTimersShareAdvancePct[ph].median)} %` });
   }
 }
+const L = opt('extra') ? JSON.parse(readFileSync(opt('extra'), 'utf8')) : null;
+if (L) {
+  for (const n of Object.keys(L.scenarios)) {
+    const s = L.scenarios[n];
+    const base = { impl: 'ts', runtime: 'v8-node', threads: 1, n: 1 };
+    runs.push({ ...base, name: `${n} step loop wall, 4 h run (profiler off)`, medianMs: s.wallAdvanceMsPlain.median, p95Ms: s.wallAdvanceMsPlain.median, minMs: s.wallAdvanceMsPlain.median, maxMs: s.wallAdvanceMsPlain.median, notes: `sensitivity run, 1 run only, --duration 14400 --to 14400, ${s.steps.advanceSteps} steps, ${s.burntCells[0]} cells burnt` });
+    for (const ph of PH) runs.push({ ...base, name: `${n} phase ${ph}, 4 h run (CPU profile)`, medianMs: (s.profileWindowMs.median * s.phaseShareAdvancePct[ph].median) / 100, p95Ms: (s.profileWindowMs.median * s.phaseShareAdvancePct[ph].median) / 100, minMs: (s.profileWindowMs.median * s.phaseShareAdvancePct[ph].median) / 100, maxMs: (s.profileWindowMs.median * s.phaseShareAdvancePct[ph].median) / 100, notes: `share of the step loop ${f1(s.phaseShareAdvancePct[ph].median)} %; 1 run` });
+  }
+}
 const json = {
   stage: '1-profile',
   when: new Date().toISOString(),
@@ -91,6 +100,7 @@ const json = {
   gate: { bar: 'phase shares agree with plan 15e within 10 points, or the difference is explained', measured: opt('gate-measured') ?? 'see report', result: opt('gate-result') ?? 'not run', why: opt('gate-why') ?? '' },
   notRun: ['Picture encoding (the exporter does not encode a picture for the page): measured in T5.1', 'Katoomba 6 km standard tier: no such scenario exists; the card now names katoomba3-standard', 'katoomba3-high and the 10 m rows of plan 15e were not profiled (not asked)'],
   detail: S.scenarios,
+  detail4hSensitivity: L ? L.scenarios : undefined,
 };
 writeFileSync(opt('json'), JSON.stringify(json, null, 1));
 console.log(`wrote ${opt('json')}`);
