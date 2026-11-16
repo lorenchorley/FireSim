@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using FsTestApp.Arms;
 using FsTestApp.Device;
 using FsTestApp.Results;
+using FsTestApp.Round0;
 using FsTestApp.Runner;
 using FsTestApp.Sending;
 using FsTestApp.Session;
@@ -99,6 +100,14 @@ public static class DryRunScenarios
             return s;
         }
 
+        public TestSession NewSession(TestPlan plan)
+        {
+            var sender = new HttpResultsSender(Config, Http, ClientTimeout);
+            var s = new TestSession(plan, Device, new FakeEnv(), Store, sender, Config, SystemClock.Instance, Options);
+            s.Changed += snap => { lock (Snapshots) Snapshots.Add(snap); };
+            return s;
+        }
+
         public void Dispose() { Endpoint.Dispose(); Http.Dispose(); }
     }
 
@@ -125,7 +134,7 @@ public static class DryRunScenarios
         {
             ("a-happy-path", HappyPath), ("b-lost-answer", LostAnswer), ("c-offline-then-online", OfflineThenOnline), ("d-pause-reruns-block", PauseRerunsBlock),
             ("e-server-errors-then-ok", ServerErrors), ("f-rejected-then-fallbacks", RejectedThenFallbacks), ("g-low-battery-aborts", LowBattery),
-            ("h-no-endpoint", NoEndpoint), ("i-relaunch-resumes", RelaunchResumes), ("j-not-now", NotNowThenStart),
+            ("h-no-endpoint", NoEndpoint), ("i-relaunch-resumes", RelaunchResumes), ("j-not-now", NotNowThenStart), ("k-round0-plan", Round0),
         })
         {
             if (only != null && !name.StartsWith(only, StringComparison.Ordinal)) continue;
@@ -328,5 +337,40 @@ public static class DryRunScenarios
         await run.WaitAsync(TimeSpan.FromSeconds(15));
         Check(checks, ref ok, s.Snapshot.Receipt != null, "Start: the run went through to a receipt");
         return new ScenarioResult("j-not-now", ok, checks, s.RunId == null ? null : rig.Store.DocumentPath(s.RunId));
+    }
+
+    // K: round 0's plan end to end in the container: the real device-facts arm over a fake phone and a fake sysfs, the two WebView arms skipped (no WebView here).
+    public static async Task<ScenarioResult> Round0(string dir)
+    {
+        var checks = new List<string>(); bool ok = true;
+        using var rig = new Rig(dir);
+        var plan = Round0Plan.Build(
+            new DeviceFactsArm(new FakeDeviceProbe(), rig.Device, InMemorySysfs.ThreeClusterPhone()),
+            new SkippedArm(Round0Plan.WebViewFactsName, RuntimeNames.V8WebView, "no WebView in the container"),
+            new SkippedArm(Round0Plan.KernelsName, RuntimeNames.V8WebView, "no WebView in the container"));
+        var s = rig.NewSession(plan);
+        Check(checks, ref ok, s.FirstScreenText.Contains("connectivity and device check") && s.FirstScreenText.Contains("about 2 minutes"), "first screen says it is a connectivity and device check, about 2 minutes: " + s.FirstScreenText);
+        await s.RunAsync(CancellationToken.None);
+        var json = rig.Store.LoadDocumentJson(s.RunId!)!;
+        var saved = ResultJsonContext.Deserialize(json)!;
+        var errors = ResultValidator.Validate(json);
+        Check(checks, ref ok, s.Snapshot.Phase == SessionPhase.Done && s.Snapshot.Receipt != null, "ended on the Done screen with a receipt");
+        Check(checks, ref ok, errors.Count == 0, "saved document is schema-valid" + (errors.Count > 0 ? ": " + errors[0] : ""));
+        Check(checks, ref ok, saved.Round == 0 && saved.RoundName == "link check" && saved.Status == RunStatus.Complete, "round 0 'link check', status complete");
+        Check(checks, ref ok, saved.Blocks.Count == 3 && saved.Blocks.All(b => b.Status == BlockStatus.Ok), "3 blocks (device, WebView, speed), all ok");
+        Check(checks, ref ok, saved.Arms.Select(a => a.Name).SequenceEqual(new[] { "device-facts", "webview-facts", "speedtest-kernels" }), "arms in order: " + string.Join(", ", saved.Arms.Select(a => a.Name)));
+        Check(checks, ref ok, saved.Arms.Skip(1).All(a => a.Runtime == RuntimeNames.V8WebView && a.Result is JsonObject r && r["skipped"] is JsonValue), "the two WebView arms are recorded as skipped, runtime v8-webview");
+        var facts = saved.Arms[0].Result as JsonObject;
+        var clusters = facts?["cpu"]?["clusters"] as JsonArray;
+        Check(checks, ref ok, clusters?.Count == 3, $"device facts: 3 CPU clusters from the fake sysfs ({clusters?.Count})");
+        Check(checks, ref ok, (facts?["cpu"]?["cores"] as JsonArray)?[7]?["armCore"]?.ToString() == "Cortex-X3", "device facts: core 7 is a Cortex-X3 from /proc/cpuinfo");
+        var failures = facts?["failures"] as JsonArray;
+        Check(checks, ref ok, failures != null && failures.Any(f => f?["item"]?.ToString() == "screen.refreshRateHz") && failures.Any(f => f?["item"]?.ToString() == "battery.(whole section)"),
+              $"device facts: the two planned failures are recorded, the rest still collected ({failures?.Count} failures)");
+        Check(checks, ref ok, facts?["hardware"]?["model"]?.ToString() == "Dry Run 1" && facts?["state"]?["thermalStatus"]?.ToString() == "none", "device facts: model and thermal status at start present");
+        Check(checks, ref ok, json.Length < ResultDocument.MaxPostBytes, $"document is {json.Length} bytes (cap {ResultDocument.MaxPostBytes})");
+        var lines = RunSummary.Lines(saved);
+        Check(checks, ref ok, lines.Any(l => l.StartsWith("device-facts: ok")) && lines.Any(l => l.StartsWith("webview-facts: skipped")) && lines.Any(l => l.StartsWith("speedtest-kernels: skipped")), "summary lines: " + string.Join(" | ", lines));
+        return new ScenarioResult("k-round0-plan", ok, checks, rig.Store.DocumentPath(s.RunId!), json);
     }
 }

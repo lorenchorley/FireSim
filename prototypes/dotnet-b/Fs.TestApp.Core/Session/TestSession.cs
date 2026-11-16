@@ -33,7 +33,8 @@ public sealed class SessionOptions
     public BackoffPolicy Backoff { get; init; } = new();
 }
 
-public sealed record TestPlan(int Round, string RoundName, IReadOnlyList<Block> Blocks)
+/// <param name="IntroText">The first screen's text when the round has its own wording (round 0 says it is a connectivity and device check); null: the plan's standard text.</param>
+public sealed record TestPlan(int Round, string RoundName, IReadOnlyList<Block> Blocks, string? IntroText = null)
 {
     public double EstimatedSeconds => BlockPlan.EstimatedSeconds(Blocks);
     public int Minutes => ScreenText.Minutes(EstimatedSeconds);
@@ -75,7 +76,7 @@ public sealed class TestSession
 
     public SessionSnapshot Snapshot { get { lock (gate) return snapshot; } }
     public TestPlan Plan => plan;
-    public string FirstScreenText => ScreenText.First(plan.Minutes);
+    public string FirstScreenText => plan.IntroText ?? ScreenText.First(plan.Minutes);
     public string? RunId => runId;
     public ResultDocument? Document => doc;
 
