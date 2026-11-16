@@ -1,22 +1,16 @@
-using System.Numerics.Tensors;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Fs.Kernel.Air;
 
 namespace Fs.Kernel;
 
-/// <summary>How the dense row accumulations are computed. Every mode gives bit-identical results (see the class remarks).</summary>
+/// <summary>How the dense row accumulations are computed. Both modes give bit-identical results (see the class remarks).</summary>
 public enum SimdMode
 {
     /// <summary>The literal port: one axpy loop per (row, coefficient), plain scalar code.</summary>
     Scalar,
-    /// <summary>System.Numerics.Tensors: TensorPrimitives.Multiply then Add per (row, coefficient) (the framework-API candidate; two passes, a scratch row).</summary>
-    Tensor,
-    /// <summary>Explicit Vector128&lt;double&gt;, partial sums held in registers across all rows. The only width a phone (ARM64 NEON) accelerates.</summary>
+    /// <summary>Explicit <c>Vector128&lt;double&gt;</c>, partial sums held in registers across all rows. The only width a phone (ARM64 NEON) and WebAssembly accelerate, and the only one the plan allows (section 9).</summary>
     V128,
-    /// <summary>Explicit Vector256&lt;double&gt; (AVX2 on x64). Needs Vector256.IsHardwareAccelerated.</summary>
-    V256,
-    /// <summary>V256 where accelerated, else V128 where accelerated, else Scalar.</summary>
-    Auto,
 }
 
 /// <summary>
@@ -25,13 +19,21 @@ public enum SimdMode
 /// separable discrete sine transform written as dense matrix products ("axpy" row updates), and u_p = grad(psi) is interpolated back to the
 /// fire grid and capped at pyroMax. Storage is float32 (q in, u_p / v_p out), arithmetic is double (psi, the work arrays), as in the TypeScript.
 ///
-/// The scalar contract (what every faster form must reproduce bit for bit): each output element of a row accumulation is
-/// 0 + c_i0 * x_i0 + c_i1 * x_i1 + ... over the contributing rows i in ascending order, each product and each sum rounded to double separately
-/// (no fused multiply-add: the JIT does not contract a*b+c and the vector code multiplies and adds with separate operators, as V8 does not either).
+/// Card T1.4b brought the K1 salvage under the rules of plan 10.4: the sine tables go through <see cref="FsMath.Sin"/> (and are, with the default
+/// fdlibm implementation, the bits of Node 22's <c>Math.sin</c>), <c>x ** 2</c> is <c>x * x</c>, there is no float-to-integer cast (<see cref="AirTrunc"/>),
+/// float32 is widened with <c>Vector128.WidenLower</c>, and <c>TensorPrimitives</c> and <c>Vector256</c> are gone (banned / not portable). It builds with the
+/// analyzers on and no exemption.
 ///
-/// Forms: SolveScalar (literal port), SolveTensor, SolveVector128, SolveVector256, SolveVector (Auto), and SolveParallel (Auto inside Parallel.For
-/// over a FIXED decomposition: rows are cut into chunks of ChunkRows rows whatever the thread count, every output row is produced by exactly one chunk
-/// with the same operation order and there is no cross-chunk reduction, so the result cannot depend on the number of threads or on which thread ran a chunk).
+/// <b>The scalar contract</b> (what every faster form must reproduce bit for bit): each output element of a row accumulation is
+/// 0 + c_i0 * x_i0 + c_i1 * x_i1 + ... over the contributing rows i in ascending order, each product and each sum rounded to double separately
+/// (no fused multiply-add: the plan's rule 10.4 forbids it and RyuJIT does not contract a*b+c; the vector code multiplies and adds with separate operators).
+///
+/// <b>What can run in parallel.</b> Every phase is a function of a row range and every output row is written by exactly one chunk: (1) coarsen and forward
+/// x transform (row J of the transform needs only row J of the coarse source), (2) y transform and eigenvalue division (output row qy sums over all J in
+/// ascending order: a read of the whole previous array, so a barrier before it), (3) inverse y transform, (4) inverse x transform, (5) coarse gradient,
+/// (6) bilinear to the fire grid with the cap. Between two phases there is a barrier (the end of a <c>Parallel.For</c>). The sums over rows i are
+/// inside one output row, so they keep the TypeScript's order whatever the chunking, and there is no reduction across chunks except the boolean "any
+/// source" (an OR over per-chunk flags, order independent). Chunks are <see cref="ChunkRows"/> rows, a constant: never a function of the thread count.
 /// </summary>
 public sealed class PyrogenicKernel
 {
@@ -45,19 +47,18 @@ public sealed class PyrogenicKernel
     /// <summary>Potential on the coarse grid (m2/s) and u_p, v_p on the fire grid (m/s).</summary>
     public readonly double[] Psi;
     public readonly float[] Up, Vp;
-    readonly double[] _tmp, _q, _gx, _gy;
+    readonly double[] _tmp, _q;
+    /// <summary>The coarse gradient (m/s, doubles): exposed so that tests can compare an intermediate that no float32 store has rounded.</summary>
+    public readonly double[] Gx, Gy;
     readonly byte[] _rowHas;
     readonly bool[] _chunkAny;
 
     // per-call state (read by the phases; set at the start of a solve; one solve at a time per instance)
-    float[] _src = Array.Empty<float>();
-    SimdMode _mode;
+    float[] _src = [];
+    bool _vec;
     readonly int _chunksCoarse, _chunksFire;
-    ParallelOptions _opt = new() { MaxDegreeOfParallelism = 1 };
-    // phase delegates, created once (no allocation per solve)
+    // phase delegates, created once (no allocation per solve apart from Parallel.For's own)
     readonly Action<int> _dFirst, _dY, _dInvY, _dInvX, _dGrad, _dFire;
-
-    [ThreadStatic] static double[]? s_scratch;
 
     public PyrogenicKernel(int fireNx, int fireNy, double cellSize, double pyroK = 6e-4, double pyroMax = 5)
     {
@@ -78,8 +79,8 @@ public sealed class PyrogenicKernel
         Psi = new double[nc];
         _tmp = new double[nc];
         _q = new double[nc];
-        _gx = new double[nc];
-        _gy = new double[nc];
+        Gx = new double[nc];
+        Gy = new double[nc];
         Up = new float[fireNx * fireNy];
         Vp = new float[fireNx * fireNy];
         _rowHas = new byte[Ny];
@@ -94,6 +95,9 @@ public sealed class PyrogenicKernel
         _dFire = c => ToFire(c * ChunkRows, Math.Min(FireNy, (c + 1) * ChunkRows));
     }
 
+    /// <summary>The sine basis, its inverse squared norm and the eigenvalue factor (the TypeScript's <c>Dst</c>). Tests compare the tables with the TypeScript's.</summary>
+    public (double[] S, double[] InvNorm, double[] Lam) Tables(bool y) => y ? (_sy, _invNy, _lamY) : (_sx, _invNx, _lamX);
+
     static (double[] s, double[] invNorm, double[] lam) BuildDst(int n)
     {
         var s = new double[n * n];
@@ -101,10 +105,10 @@ public sealed class PyrogenicKernel
         var lam = new double[n];
         for (int p = 0; p < n; p++)
         {
-            for (int i = 0; i < n; i++) s[p * n + i] = Math.Sin(Math.PI * (p + 1) * (i + 0.5) / n);
+            for (int i = 0; i < n; i++) s[p * n + i] = FsMath.Sin(Math.PI * (p + 1) * (i + 0.5) / n);
             inv[p] = p == n - 1 ? 1.0 / n : 2.0 / n;
-            double sn = Math.Sin(Math.PI * (p + 1) / (2.0 * n));
-            lam[p] = 4 * (sn * sn);
+            double sn = FsMath.Sin(Math.PI * (p + 1) / (2.0 * n));
+            lam[p] = 4 * (sn * sn); // 4 * Math.sin(..) ** 2 in the TypeScript: the square is a product (plan 10.4)
         }
         return (s, inv, lam);
     }
@@ -113,26 +117,19 @@ public sealed class PyrogenicKernel
     // Entry points
     // ------------------------------------------------------------------------------------------------------------------------------------------
 
-    /// <summary>The mode Auto resolves to on this machine.</summary>
-    public static SimdMode ResolveAuto() => Vector256.IsHardwareAccelerated ? SimdMode.V256 : Vector128.IsHardwareAccelerated ? SimdMode.V128 : SimdMode.Scalar;
-
-    public void SolveScalar(float[] q) => Run(q, SimdMode.Scalar, 0);
-    public void SolveTensor(float[] q) => Run(q, SimdMode.Tensor, 0);
-    public void SolveVector128(float[] q) => Run(q, SimdMode.V128, 0);
-    public void SolveVector256(float[] q) => Run(q, SimdMode.V256, 0);
-    public void SolveVector(float[] q) => Run(q, SimdMode.Auto, 0);
-    public void Solve(float[] q, SimdMode mode) => Run(q, mode, 0);
+    public void SolveScalar(float[] q) => Run(q, false, 0);
+    public void SolveVector128(float[] q) => Run(q, true, 0);
+    public void Solve(float[] q, SimdMode mode) => Run(q, mode == SimdMode.V128, 0);
+    public void Solve(float[] q, KernelExec exec) => Run(q, exec.Vector, exec.Threads < 2 ? 0 : exec.Threads);
 
     /// <param name="threads">maximum degree of parallelism (1 = Parallel.For on the calling thread only); the result is the same for every value.</param>
-    public void SolveParallel(float[] q, int threads, SimdMode mode = SimdMode.Auto) => Run(q, mode, Math.Max(1, threads));
+    public void SolveParallel(float[] q, int threads, SimdMode mode = SimdMode.V128) => Run(q, mode == SimdMode.V128, Math.Max(1, threads));
 
-    void Run(float[] qFire, SimdMode mode, int threads)
+    void Run(float[] qFire, bool vector, int threads)
     {
         if (qFire.Length != FireNx * FireNy) throw new ArgumentException("q has the wrong length");
-        if (mode == SimdMode.V256 && !Vector256.IsHardwareAccelerated) throw new NotSupportedException("Vector256 is not hardware accelerated here");
-        if (mode == SimdMode.V128 && !Vector128.IsHardwareAccelerated) throw new NotSupportedException("Vector128 is not hardware accelerated here");
         _src = qFire;
-        _mode = mode == SimdMode.Auto ? ResolveAuto() : mode;
+        _vec = vector;
         Array.Clear(_chunkAny);
         if (threads == 0)
         {
@@ -147,21 +144,20 @@ public sealed class PyrogenicKernel
             ToFire(0, FireNy);
             return;
         }
-        if (_opt.MaxDegreeOfParallelism != threads) _opt = new ParallelOptions { MaxDegreeOfParallelism = threads };
         // 1+2. coarsen and forward x transform of the same coarse rows (row J of the transform needs only row J of the coarse source: one phase, one barrier)
-        Parallel.For(0, _chunksCoarse, _opt, _dFirst);
+        KernelPar.Chunks(_chunksCoarse, threads, _dFirst);
         if (!AnySource()) { ClearOutputs(); return; }
-        Parallel.For(0, _chunksCoarse, _opt, _dY);     // 3. y transform and division by the eigenvalues (output rows qy)
-        Parallel.For(0, _chunksCoarse, _opt, _dInvY);  // 4. inverse y transform (reads Psi, writes tmp)
-        Parallel.For(0, _chunksCoarse, _opt, _dInvX);  // 5. inverse x transform (reads tmp, writes Psi)
-        Parallel.For(0, _chunksCoarse, _opt, _dGrad);  // 6. gradient on the coarse grid
-        Parallel.For(0, _chunksFire, _opt, _dFire);    //    bilinear to the fire grid with the cap
+        KernelPar.Chunks(_chunksCoarse, threads, _dY);     // 3. y transform and division by the eigenvalues (output rows qy)
+        KernelPar.Chunks(_chunksCoarse, threads, _dInvY);  // 4. inverse y transform (reads Psi, writes tmp)
+        KernelPar.Chunks(_chunksCoarse, threads, _dInvX);  // 5. inverse x transform (reads tmp, writes Psi)
+        KernelPar.Chunks(_chunksCoarse, threads, _dGrad);  // 6. gradient on the coarse grid
+        KernelPar.Chunks(_chunksFire, threads, _dFire);    //    bilinear to the fire grid with the cap
     }
 
     bool AnySource()
     {
         bool any = false;
-        foreach (bool b in _chunkAny) any |= b;
+        for (int c = 0; c < _chunkAny.Length; c++) any |= _chunkAny[c]; // chunk order (an OR: order does not matter)
         return any;
     }
 
@@ -197,7 +193,7 @@ public sealed class PyrogenicKernel
                     {
                         int i = 2 * I + di;
                         if (i >= FireNx) break;
-                        double v = qFire[j * FireNx + i];
+                        double v = F32Word.Load(qFire, j * FireNx + i);
                         if (v > 0) { s += v; any = true; }
                     }
                 }
@@ -261,8 +257,8 @@ public sealed class PyrogenicKernel
                 double e = I < Nx - 1 ? Psi[c + 1] : -Psi[c];
                 double s = J > 0 ? Psi[c - Nx] : -Psi[c];
                 double n = J < Ny - 1 ? Psi[c + Nx] : -Psi[c];
-                _gx[c] = (e - w) / twoH;
-                _gy[c] = (n - s) / twoH;
+                Gx[c] = (e - w) / twoH;
+                Gy[c] = (n - s) / twoH;
             }
         }
     }
@@ -273,19 +269,19 @@ public sealed class PyrogenicKernel
         for (int j = j0; j < j1; j++)
         {
             double fy = Math.Min(Math.Max((j + 0.5) / 2 - 0.5, 0), Ny - 1);
-            int J0 = Math.Min((int)Math.Floor(fy), Math.Max(0, Ny - 2));
+            int J0 = Math.Min(AirTrunc.NonNegative(fy), Math.Max(0, Ny - 2)); // floor(fy): fy is in [0, Ny - 1]
             double ty = fy - J0;
             for (int i = 0; i < FireNx; i++)
             {
                 double fx = Math.Min(Math.Max((i + 0.5) / 2 - 0.5, 0), Nx - 1);
-                int I0 = Math.Min((int)Math.Floor(fx), Math.Max(0, Nx - 2));
+                int I0 = Math.Min(AirTrunc.NonNegative(fx), Math.Max(0, Nx - 2));
                 double tx = fx - I0;
                 int c = J0 * Nx + I0;
                 int c1 = Nx > 1 ? c + 1 : c;
                 int c2 = Ny > 1 ? c + Nx : c;
                 int c3 = Nx > 1 && Ny > 1 ? c + Nx + 1 : c;
-                double u = (_gx[c] * (1 - tx) + _gx[c1] * tx) * (1 - ty) + (_gx[c2] * (1 - tx) + _gx[c3] * tx) * ty;
-                double v = (_gy[c] * (1 - tx) + _gy[c1] * tx) * (1 - ty) + (_gy[c2] * (1 - tx) + _gy[c3] * tx) * ty;
+                double u = (Gx[c] * (1 - tx) + Gx[c1] * tx) * (1 - ty) + (Gx[c2] * (1 - tx) + Gx[c3] * tx) * ty;
+                double v = (Gy[c] * (1 - tx) + Gy[c1] * tx) * (1 - ty) + (Gy[c2] * (1 - tx) + Gy[c3] * tx) * ty;
                 double sp = Math.Sqrt(u * u + v * v);
                 if (sp > _cap)
                 {
@@ -310,22 +306,11 @@ public sealed class PyrogenicKernel
         int n = y.Length;
         if (count > 0 && (cs < 0 || cs + (count - 1) * cstride >= coef.Length || (count - 1) * xstride + n > x.Length || (mask != null && mask.Length < count)))
             throw new ArgumentOutOfRangeException(nameof(count));
-        switch (_mode)
-        {
-            case SimdMode.V256:
-                if (Vector256.IsHardwareAccelerated && n >= Vector256<double>.Count) { Accum256(y, coef, cs, cstride, count, x, xstride, mask, skipZero); return; }
-                break;
-            case SimdMode.V128:
-                if (Vector128.IsHardwareAccelerated && n >= Vector128<double>.Count) { Accum128(y, coef, cs, cstride, count, x, xstride, mask, skipZero); return; }
-                break;
-            case SimdMode.Tensor:
-                AccumTensor(y, coef, cs, cstride, count, x, xstride, mask, skipZero);
-                return;
-        }
+        if (_vec && n >= Vector128<double>.Count) { Accum128(y, coef, cs, cstride, count, x, xstride, mask, skipZero); return; }
         AccumAxpy(y, coef, cs, cstride, count, x, xstride, mask, skipZero);
     }
 
-    // the literal port (and the small-input / no-SIMD fallback): clear, then one axpy per contributing row
+    // the literal port (and the small-input fallback): clear, then one axpy per contributing row
     static void AccumAxpy(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
     {
         y.Clear();
@@ -339,67 +324,8 @@ public sealed class PyrogenicKernel
         }
     }
 
-    // framework API: TensorPrimitives.Multiply (x * c into a scratch row) then Add (y += scratch). Contract-preserving (IEEE multiply, then IEEE add).
-    static void AccumTensor(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
-    {
-        y.Clear();
-        var tmp = (s_scratch is { } sc && sc.Length >= y.Length ? sc : s_scratch = new double[Math.Max(256, y.Length)]).AsSpan(0, y.Length);
-        for (int i = 0; i < count; i++)
-        {
-            if (mask != null && mask[i] == 0) continue;
-            double c = coef[cs + i * cstride];
-            if (skipZero && c == 0) continue;
-            TensorPrimitives.Multiply(x.AsSpan(i * xstride, y.Length), c, tmp);
-            TensorPrimitives.Add(y, tmp, y);
-        }
-    }
-
-    // Vector256: partial sums in registers across all rows. Blocks of 4 vectors, then single vectors, then the tail by recomputing the LAST full vector
+    // Vector128: partial sums in registers across all rows. Blocks of 4 vectors, then single vectors, then the tail by recomputing the LAST full vector
     // (idempotent: an output lane depends only on x and coef, never on y's old contents, so the overlapped lanes get the same bits twice).
-    static void Accum256(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
-    {
-        const int W = 4; // Vector256<double>.Count
-        int n = y.Length;
-        ref double xr = ref MemoryMarshal.GetArrayDataReference(x);
-        ref double yr = ref MemoryMarshal.GetReference(y);
-        int p = 0;
-        for (; p + 4 * W <= n; p += 4 * W)
-        {
-            Vector256<double> a0 = Vector256<double>.Zero, a1 = a0, a2 = a0, a3 = a0;
-            for (int i = 0; i < count; i++)
-            {
-                if (mask != null && mask[i] == 0) continue;
-                double c = coef[cs + i * cstride];
-                if (skipZero && c == 0) continue;
-                var vc = Vector256.Create(c);
-                nuint o = (nuint)(i * xstride + p);
-                a0 += vc * Vector256.LoadUnsafe(ref xr, o);
-                a1 += vc * Vector256.LoadUnsafe(ref xr, o + W);
-                a2 += vc * Vector256.LoadUnsafe(ref xr, o + 2 * W);
-                a3 += vc * Vector256.LoadUnsafe(ref xr, o + 3 * W);
-            }
-            a0.StoreUnsafe(ref yr, (nuint)p);
-            a1.StoreUnsafe(ref yr, (nuint)(p + W));
-            a2.StoreUnsafe(ref yr, (nuint)(p + 2 * W));
-            a3.StoreUnsafe(ref yr, (nuint)(p + 3 * W));
-        }
-        for (; p + W <= n; p += W) One256(ref yr, ref xr, p, coef, cs, cstride, count, xstride, mask, skipZero);
-        if (p < n) One256(ref yr, ref xr, n - W, coef, cs, cstride, count, xstride, mask, skipZero);
-    }
-
-    static void One256(ref double yr, ref double xr, int p, double[] coef, int cs, int cstride, int count, int xstride, byte[]? mask, bool skipZero)
-    {
-        Vector256<double> a = Vector256<double>.Zero;
-        for (int i = 0; i < count; i++)
-        {
-            if (mask != null && mask[i] == 0) continue;
-            double c = coef[cs + i * cstride];
-            if (skipZero && c == 0) continue;
-            a += Vector256.Create(c) * Vector256.LoadUnsafe(ref xr, (nuint)(i * xstride + p));
-        }
-        a.StoreUnsafe(ref yr, (nuint)p);
-    }
-
     static void Accum128(Span<double> y, double[] coef, int cs, int cstride, int count, double[] x, int xstride, byte[]? mask, bool skipZero)
     {
         const int W = 2; // Vector128<double>.Count

@@ -17,13 +17,6 @@ dotnet_diagnostic.FS0001.severity = none
 dotnet_diagnostic.RS0030.severity = none
 dotnet_diagnostic.FS0001.severity = none
 
-# NOT A GATE KERNEL. Fs.Kernel/Pyrogenic/ is the K1 salvage (a port of PyrogenicPotential.solve, benchmarked with Math.Sin and TensorPrimitives, with raw
-# casts). It was committed unreviewed (T0.7) and is not solver code that any gate rests on, so both rules are off for this folder only.
-# Remove this section when the folder is reviewed and brought into line, or deleted.
-[Fs.Kernel/Pyrogenic/**.cs]
-dotnet_diagnostic.RS0030.severity = none
-dotnet_diagnostic.FS0001.severity = none
-
 # T1.3: third-party source vendored unchanged (CoreMathSharp 1.0.0, MIT, a C# port of CORE-MATH; its README, LICENSE and the pinned commit are in
 # Fs.Kernel/ThirdParty/CoreMathSharp/VENDORED.md). It is not ours to edit, it uses raw double-to-integer casts on values it has already rounded, and
 # Math.BitIncrement/BitDecrement inside Polyfill, which are exact operations. FsMath.cs (the only caller) is itself exempt. FsMath's tests compare it

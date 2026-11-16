@@ -8,7 +8,8 @@
 #       PackedSimd.Add (the namespaces X86, Arm, Wasm), Vector128/256/512.ConvertToInt32/Int64/UInt32/UInt64, double.ConvertToInteger, decimal.ToInt32   -> the build FAILS with RS0030 for every one of them
 #   1d. (T0.4c) a bad file with one cast per new FS0001 rule: (int)Half, (long)decimal, (double)decimal, (float)decimal, (Int128)double   -> the build FAILS with FS0001 for each
 #   2. the same code (1, 1b, 1c and 1d) in FsMath.cs and FsConv.cs (exempt by file name)            -> the build PASSES
-#   3. the same code in Fs.Kernel/Pyrogenic/ (the "not a gate kernel" folder)               -> the build PASSES
+#   3. (T1.4b) the same code in Fs.Kernel/Pyrogenic/ (until T1.4b the "not a gate kernel" folder, exempt by path): it is a solver folder like any other now
+#      -> the build FAILS with RS0030 and FS0001, and with RS0030 for every symbol of 1b and 1c and FS0001 for every cast of 1d
 #   4. the same code in a project that is not a solver project                              -> the build PASSES
 # Run (from anywhere):   bash prototypes/dotnet-b/Fs.Analyzers/tools/demo-bad-solver.sh        Needs `source prototypes/dotnet-b/env.sh` first.
 # Nothing in the repository is touched: the copy lives in a fresh mktemp directory and is deleted at the end (set KEEP=1 to keep it).
@@ -127,10 +128,18 @@ out="$(build Fs.Kernel/Fs.Kernel.csproj)"; echo "$out"
 echo "$out" | grep -q 'Build succeeded' || { echo "UNEXPECTED: 2 did not succeed"; status=1; }
 rm "$tmp/Fs.Kernel/FsMath.cs" "$tmp/Fs.Kernel/FsConv.cs"
 
-echo; echo "=== 3. the same code in Fs.Kernel/Pyrogenic/ (the not-a-gate-kernel folder; expect SUCCESS) ==="
+echo; echo "=== 3. the same code in Fs.Kernel/Pyrogenic/ (exempt until T1.4b; expect FAILURE: no folder of a solver project is exempt any more) ==="
 emit Salvage > "$tmp/Fs.Kernel/Pyrogenic/Salvage.cs"
 out="$(build Fs.Kernel/Fs.Kernel.csproj)"; echo "$out"
-echo "$out" | grep -q 'Build succeeded' || { echo "UNEXPECTED: 3 did not succeed"; status=1; }
+echo "$out" | grep -q 'Build FAILED' || { echo "UNEXPECTED: 3 did not fail (the Pyrogenic exemption is gone)"; status=1; }
+echo "$out" | grep 'error RS0030' | grep -q 'Pyrogenic/Salvage.cs' || { echo "UNEXPECTED: 3: no RS0030 in Pyrogenic/Salvage.cs"; status=1; }
+echo "$out" | grep 'error FS0001' | grep -q 'Pyrogenic/Salvage.cs' || { echo "UNEXPECTED: 3: no FS0001 in Pyrogenic/Salvage.cs"; status=1; }
+for sym in "${expected_t04b[@]}" "${expected_t04c[@]}"; do
+  echo "$out" | grep 'error RS0030' | grep 'Pyrogenic/Salvage.cs' | grep -qF "The symbol '$sym" || { echo "UNEXPECTED: 3: no RS0030 for $sym in Pyrogenic/"; status=1; }
+done
+for sym in "${expected_t04c_casts[@]}"; do
+  echo "$out" | grep 'error FS0001' | grep 'Pyrogenic/Salvage.cs' | grep -qF "$sym" || { echo "UNEXPECTED: 3: no FS0001 for $sym in Pyrogenic/"; status=1; }
+done
 rm "$tmp/Fs.Kernel/Pyrogenic/Salvage.cs"
 
 echo; echo "=== 4. the same code in Fs.Other (not a solver project; expect SUCCESS) ==="

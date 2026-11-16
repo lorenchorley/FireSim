@@ -111,7 +111,7 @@ static int Merge(string fixtureDir, string bdnJson, string tsJson, string outJso
         ["correctness"] = JsonSerializer.SerializeToNode(check),
         ["speedups"] = new JsonObject
         {
-            ["scalarVsTs"] = T("Scalar"), ["tensorPrimitivesVsTs"] = T("TensorPrimitives"), ["vector128VsTs"] = T("Vector128"), ["vector256VsTs"] = T("Vector256"),
+            ["scalarVsTs"] = T("Scalar"), ["vector128VsTs"] = T("Vector128"),
             ["parallel1VsTs"] = T("Parallel1"), ["parallel2VsTs"] = T("Parallel2"), ["parallel4VsTs"] = T("Parallel4"), ["parallel8VsTs"] = T("Parallel8"),
         },
         ["gate"] = new JsonObject
