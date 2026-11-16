@@ -29,6 +29,10 @@ public static class ScreenText
     public static string First(int minutes) =>
         $"This is a test build of FireSim. It measures this phone and sends the numbers to the developer. It does not change your FireSim app. It takes about {minutes} {(minutes == 1 ? "minute" : "minutes")}. Keep this screen open.";
 
+    /// <summary>Round 0's first screen: the plan's text with its own opening (it is a link check, so it says what it checks).</summary>
+    public static string FirstRound0(int minutes) =>
+        $"This is a test build of FireSim. It is a connectivity and device check: it reads this phone's model and WebView, runs a short speed check and sends the numbers to the developer. It does not change your FireSim app. It takes about {minutes} {(minutes == 1 ? "minute" : "minutes")}. Keep this screen open.";
+
     public static string Done(string time, string receipt) => $"Done. Results sent at {time} (receipt: {receipt}). You can uninstall this test app now.";
 
     public const string DoneNotSent = "Done. The results are saved on this phone but have not been sent yet. Use Send now, Send with GitHub or Share. You can uninstall this test app after they are sent.";

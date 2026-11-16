@@ -4,6 +4,7 @@ public static class MauiProgram
 {
 	public static MauiApp CreateMauiApp()
 	{
+		CrashNote.Install();
 		var builder = MauiApp.CreateBuilder();
 		builder.UseMauiApp<TestApplication>();
 		return builder.Build();

@@ -105,8 +105,10 @@ public static class GitHubIssueUrl
               .Append(' ').Append(Math.Round(a.DurationMs / 1000.0, 2).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(" s");
             if (level <= 1 && a.Result != null)
             {
-                int cap = level == 0 ? 300 : 100;
-                sb.Append(" ").Append(Clean(Compact(a.Result), cap));
+                // an arm that says what it found in one line (round 0's arms do: Round0/Digests.cs) is printed by that line, whole, at both levels
+                string? digest = Round0.Digests.Of(a.Result);
+                if (digest != null) sb.Append(" | ").Append(Clean(digest, Round0.Digests.MaxLength));
+                else sb.Append(" ").Append(Clean(Compact(a.Result), level == 0 ? 300 : 100));
             }
             if (a.Error != null) sb.Append(" error=").Append(Clean(a.Error, level == 0 ? 160 : 60));
             sb.Append('\n');

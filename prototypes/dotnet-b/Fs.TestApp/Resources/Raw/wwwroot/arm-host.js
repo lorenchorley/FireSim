@@ -9,7 +9,7 @@
 //
 // To add an arm: add an entry to window.fsArms below, an async function (args, ctx) that returns a JSON-serialisable object and calls
 // ctx.progress(fraction, text) now and then, and checks ctx.cancelled() at each yield (a pause cancels the arm; the block is re-run).
-// Then list the arm in the C# plan as new WebArm(host, "<name>", <estimated seconds>). T0.6b adds the real arms.
+// Then list the arm in the C# plan as new WebArm(host, "<name>", <estimated seconds>). Round 0's arms are in round0-arms.js (loaded before this file).
 (function () {
   'use strict';
 
@@ -26,6 +26,8 @@
   document.addEventListener('visibilitychange', function () {
     send({ t: 'visibility', hidden: document.hidden === true });
   });
+
+  function safe(fn) { try { return fn(); } catch (e) { return { error: String(e).slice(0, 200) }; } }
 
   const running = new Map(); // runId -> { cancelled: bool }
 
@@ -49,7 +51,9 @@
     };
   }
 
-  window.fsArms = { 'web-stub': stubArm };
+  // round0-arms.js (loaded first) may already have registered its arms: add to them, never replace
+  window.fsArms = window.fsArms || {};
+  window.fsArms['web-stub'] = stubArm;
 
   window.fsProbe = async function () {
     let headerSeenByPage = null;
@@ -62,7 +66,8 @@
       headerSeenByPage: headerSeenByPage,
       webAssembly: typeof WebAssembly,
       hardwareConcurrency: navigator.hardwareConcurrency | 0,
-      // T0.6b adds WebAssembly SIMD and threads feature detection here
+      // WebAssembly SIMD and threads support, SharedArrayBuffer, Atomics (round0-arms.js, when this build has it)
+      features: window.fsRound0 ? safe(function () { return window.fsRound0.quickFeatures(); }) : null,
     };
     return JSON.stringify({
       origin: location.origin,
