@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- T0.5 container dry run: the app's session logic (countdown, gating, block runner, save-then-send, retry, receipt) driven by a simulated phone, stub arms
+       and an in-process HttpListener that plays the results endpoint. No Android needed. Fs.Tests also runs the scenarios.
+         run it with: dotnet run (flag: project) Fs.TestApp.DryRun, optionally followed by a double dash and: out DIR
+       Not a solver project. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FsTestApp.DryRun</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fs.TestApp.Core\Fs.TestApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- T0.5: the part of the test app that needs no Android: arms, block runner, device gating (behind IDeviceState), the result document and its schema
+       validator, save-then-send storage, the senders (primary POST, prefilled GitHub issue URL, Share path) and retry. Fs.TestApp (MAUI) references this.
+       Not a solver project: the banned-API rules and FS0001 do not apply here (Directory.Build.props lists the solver projects by name).
+       The schema is the single file reports/results.schema.json, embedded so the app and the tests validate against the same text. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FsTestApp</RootNamespace>
+    <AssemblyName>Fs.TestApp.Core</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- the Android Release build trims: System.Text.Json is used through source generation only, and the validator walks JsonNode (no reflection) -->
+    <IsTrimmable>true</IsTrimmable>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\reports\results.schema.json" LogicalName="results.schema.json" Link="Results\results.schema.json" />
+  </ItemGroup>
+
+</Project>
