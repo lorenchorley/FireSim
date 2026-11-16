@@ -26,7 +26,10 @@ for (const name of dirs) {
   if (init.scenario?.terrain.grid.nx !== meta.fireGrid.nx) problems.push('init terrain grid differs from meta.fireGrid');
   if (JSON.stringify(init.scenario?.ignitions) !== JSON.stringify(JSON.parse(readFileSync(join(dir, 'ignitions.json'), 'utf8')))) problems.push('init ignitions differ from ignitions.json');
   let last: SimSnapshot | undefined;
+  // A fixture exported with --keep has only some snapshot files (meta.snapshotsWritten); their hashes are checked, and arrival.f32 against the last of them.
+  const written: number[] | undefined = meta.snapshotsWritten;
   for (const t of Object.keys(hashes).map(Number).sort((a, b) => a - b)) {
+    if (written && !written.includes(t)) continue;
     const m = decodeMessage(new Uint8Array(readFileSync(join(dir, `snap-${t}.bin`)))) as { type: string; snapshot?: SimSnapshot };
     if (m.type !== 'snapshot' || !m.snapshot) {
       problems.push(`snap-${t}.bin is a ${m.type} message`);
@@ -39,7 +42,8 @@ for (const name of dirs) {
   }
   const b = readFileSync(join(dir, 'arrival.f32'));
   const arr = new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
-  if (!last || arr.length !== last.fire.arrivalTime.length) problems.push('arrival.f32 length differs from the last snapshot');
+  if (written && last && last.time !== meta.arrival.atTimeS) console.log(`  note: ${name}: the last snapshot file is not the last snapshot, arrival.f32 is not compared`);
+  else if (!last || arr.length !== last.fire.arrivalTime.length) problems.push('arrival.f32 length differs from the last snapshot');
   else for (let i = 0; i < arr.length; i++) {
     const a = last.fire.arrivalTime[i]!;
     if (arr[i] !== (Number.isFinite(a) ? a : -1)) {

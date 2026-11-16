@@ -5,8 +5,15 @@
  * prototypes/dotnet-b/fixtures/.build-ts-export (git ignores `fixtures/`), then runs it with Node, one process per scenario.
  *
  *   node prototypes/dotnet-b/ts-export/run.mjs export all  --out FIXTURES_DIR        every named scenario, one after another
- *   node prototypes/dotnet-b/ts-export/run.mjs export NAME --out FIXTURES_DIR [--seed N] [--to S] [--dir NAME] [--perturb EPS]
- *   node prototypes/dotnet-b/ts-export/run.mjs determinism --out FIXTURES_DIR        katoomba3-fast twice in separate processes, hashes compared
+ *   node prototypes/dotnet-b/ts-export/run.mjs export long --out FIXTURES_DIR        the five 4 h scenarios (stage 3, T3.1a), one after another
+ *   node prototypes/dotnet-b/ts-export/run.mjs export NAME --out FIXTURES_DIR [--seed N] [--to S] [--dir NAME] [--perturb EPS] [--noise SEED] [--noise-scale F] [--keep T,T,..] [--interval S]
+ *   node prototypes/dotnet-b/ts-export/run.mjs determinism [NAME] --out FIXTURES_DIR [--to S] [--seed N] [--noise SEED] [--clean]
+ *                                                                                    NAME (default katoomba3-fast) twice in separate processes, every snapshot hash and arrival.f32 compared
+ *
+ * --noise SEED installs per-call libm-sized noise on the transcendental Math functions for the run (noise.ts; the build then also lowers `**` to
+ * Math.pow, pow-lowering-plugin.mjs, and goes to a separate build folder). Without it nothing is installed and the build is as it always was.
+ * --keep T,T,..: write snap-T.bin only for these simulated times (hashes and arrival.f32 are always complete): for runs that are many.
+ * --interval S: override the scenario's snapshot cadence.
  *   node prototypes/dotnet-b/ts-export/run.mjs verify      --out FIXTURES_DIR [NAME ...]   decode every file with the app's codec, check hashes and arrival.f32
  *   node prototypes/dotnet-b/ts-export/run.mjs study       --out FIXTURES_DIR        tier and seed difference study (needs the fixtures below)
  *   node prototypes/dotnet-b/ts-export/run.mjs list                                  the scenario names
@@ -23,7 +30,10 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..', '..');
-const buildDir = join(root, 'prototypes', 'dotnet-b', 'fixtures', '.build-ts-export');
+const noisy = process.argv.includes('--noise');
+// FS_BUILD_DIR: another build folder, so that two runs of this script at once (one under the heavy lock, one a short check) do not rebuild under each other.
+const buildDir = process.env.FS_BUILD_DIR ?? join(root, 'prototypes', 'dotnet-b', 'fixtures', noisy ? '.build-ts-export-noise' : '.build-ts-export');
+const LONG = ['katoomba6-fast-4h', 'katoomba3-standard-4h', 'warrumbungles6-fast-4h', 'katoomba6-fast-4h-noembers', 'katoomba3-standard-4h-noembers'];
 const ALL = ['katoomba3-fast', 'katoomba6-fast', 'katoomba3-standard', 'katoomba3-high', 'katoomba3-high30', 'katoomba3-point', 'anchor-080-katoomba6-point', 'katoomba3-fast-noembers', 'katoomba3-standard-noembers', 'katoomba3-high-noembers', 'katoomba3-high30-noembers'];
 
 function opt(name) {
@@ -35,9 +45,17 @@ async function build() {
   const { build: viteBuild } = await import('vite');
   rmSync(buildDir, { recursive: true, force: true });
   mkdirSync(buildDir, { recursive: true });
+  const plugins = [];
+  if (noisy) {
+    const { powLowering } = await import('./pow-lowering-plugin.mjs');
+    const p = powLowering();
+    plugins.push(p);
+    process.on('exit', () => console.error(`noise build: ${p.stats.sites} '**' sites in ${p.stats.files} files lowered to Math.pow`));
+  }
   await viteBuild({
     root,
     configFile: false,
+    plugins,
     publicDir: false,
     logLevel: 'warn',
     build: {
@@ -55,7 +73,7 @@ async function build() {
 
 function exportOne(name, extra = []) {
   const out = opt('out');
-  const r = spawnSync(process.execPath, ['--max-old-space-size=4096', join(buildDir, 'export.mjs'), name, '--out', out, ...extra], { stdio: ['ignore', 'pipe', 'inherit'], cwd: root, encoding: 'utf8', env: { ...process.env, FS_REPO_ROOT: root } });
+  const r = spawnSync(process.execPath, ['--max-old-space-size=4096', join(buildDir, 'export.mjs'), name, '--out', out, ...extra], { stdio: ['ignore', 'pipe', 'inherit'], cwd: root, encoding: 'utf8', env: { ...process.env, FS_REPO_ROOT: root, ...(noisy ? { FS_POW_LOWERED: '1' } : {}) } });
   process.stdout.write(r.stdout ?? '');
   if (r.status !== 0) console.error(`export ${name} ${extra.join(' ')} exited with ${r.status}`);
   return r.status ?? 1;
@@ -63,7 +81,7 @@ function exportOne(name, extra = []) {
 
 const cmd = process.argv[2];
 if (cmd === 'list') {
-  console.log(ALL.join('\n'));
+  console.log(ALL.join('\n') + '\n' + LONG.join('\n'));
 } else if (cmd === 'export') {
   const what = process.argv[3];
   if (!opt('out') || !what) {
@@ -71,24 +89,37 @@ if (cmd === 'list') {
     process.exit(2);
   }
   await build();
-  const extra = ['seed', 'to', 'dir', 'perturb'].flatMap((k) => (opt(k) !== undefined ? [`--${k}`, opt(k)] : []));
+  const extra = ['seed', 'to', 'dir', 'perturb', 'noise', 'noise-scale', 'keep', 'interval'].flatMap((k) => (opt(k) !== undefined ? [`--${k}`, opt(k)] : []));
   let bad = 0;
-  for (const n of what === 'all' ? ALL : [what]) bad += exportOne(n, what === 'all' ? [] : extra) === 0 ? 0 : 1;
+  const group = what === 'all' ? ALL : what === 'long' ? LONG : [what];
+  // A group is exported with each scenario's own seed and folder name; the other options (--to, --noise, --keep, ...) apply to every member of `long`.
+  const groupExtra = what === 'long' ? ['to', 'noise', 'noise-scale', 'keep', 'interval'].flatMap((k) => (opt(k) !== undefined ? [`--${k}`, opt(k)] : [])) : [];
+  for (const n of group) bad += exportOne(n, group.length > 1 ? groupExtra : extra) === 0 ? 0 : 1;
   process.exit(bad ? 1 : 0);
 } else if (cmd === 'determinism') {
+  // NAME (default katoomba3-fast) exported twice, each in its own process, into <out>/determinism-a and -b (katoomba3-fast) or
+  // <out>/determinism-NAME-a and -b; every snapshot hash and the arrival raster are compared. Exit 1 if anything differs.
   const out = opt('out');
   if (!out) {
-    console.error('usage: run.mjs determinism --out FIXTURES_DIR');
+    console.error('usage: run.mjs determinism [NAME] --out FIXTURES_DIR [--to S] [--seed N] [--noise SEED] [--clean]');
     process.exit(2);
   }
+  const rest = process.argv.slice(3).filter((a, i, v) => !a.startsWith('--') && !(v[i - 1] ?? '').startsWith('--'));
+  const name = rest[0] ?? 'katoomba3-fast';
   await build();
-  const runs = ['determinism-a', 'determinism-b'];
-  for (const d of runs) if (exportOne('katoomba3-fast', ['--dir', d]) !== 0) process.exit(1);
+  const base = name === 'katoomba3-fast' ? 'determinism' : `determinism-${name}`;
+  const runs = [`${base}-a`, `${base}-b`];
+  const extra = ['seed', 'to', 'noise', 'noise-scale', 'interval'].flatMap((k) => (opt(k) !== undefined ? [`--${k}`, opt(k)] : []));
+  // Snapshot files are not needed to compare hashes; keep only the last one (verify checks it) so that a 4 h run does not write its whole record twice.
+  for (const d of runs) if (exportOne(name, ['--dir', d, '--keep', 'last', ...extra]) !== 0) process.exit(1);
   const [a, b] = runs.map((d) => JSON.parse(readFileSync(join(out, d, 'hashes.json'), 'utf8')));
   const keys = Object.keys(a);
   const diff = keys.filter((k) => a[k] !== b[k]);
-  const same = keys.length === Object.keys(b).length && diff.length === 0;
-  console.log(JSON.stringify({ snapshots: keys.length, differing: diff, identical: same }));
+  const arrivalSame = Buffer.compare(readFileSync(join(out, runs[0], 'arrival.f32')), readFileSync(join(out, runs[1], 'arrival.f32'))) === 0;
+  const same = keys.length === Object.keys(b).length && diff.length === 0 && arrivalSame;
+  const last = keys.map(Number).sort((x, y) => x - y).at(-1);
+  console.log(JSON.stringify({ scenario: name, noise: opt('noise'), snapshots: keys.length, lastS: last, differing: diff, arrivalIdentical: arrivalSame, identical: same }));
+  if (process.argv.includes('--clean')) for (const d of runs) rmSync(join(out, d), { recursive: true, force: true });
   process.exit(same ? 0 : 1);
 } else if (cmd === 'verify') {
   // decode every file of the fixtures with the app's codec and check hashes.json and arrival.f32 against them
