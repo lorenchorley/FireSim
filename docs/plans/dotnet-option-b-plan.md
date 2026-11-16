@@ -358,6 +358,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 - **Who:** builder. **Needs:** T3.1a.
 - **Steps:** export, with and without embers: `katoomba3-fast` and `katoomba3-standard` at seeds 12, 13 and 14 (900 s, 1,800 s); the three `-4h` scenarios at seeds 12 and 13 (1, 2, 4 h).
 - **Done when:** every fixture loads in `ts-export/inspect.mjs`, and `node run.mjs determinism NAME` passes for every scenario used.
+- **Scheduling (orchestrator, 2026-11-16):** deferred until just before T4.1 (disk: the `-4h` fixtures need several GB and 7 to 8 GB are free; T3.4's recorded frames already cover the first areas). T3.1b and T3.1c run as **one builder** (`T3.1bc`, shared metric module `ts-export/bars.mjs`; the bars need only `arrival.f32`, so no run fixtures are kept; long runs go under the heavy lock in chunks of at most 15 minutes so that timed benchmarks interleave).
 
 #### T3.3 The slice map
 - **Who:** builder. **Needs:** T1.1. **Reads:** `src/sim/host.ts`, `src/sim/remote/codec.ts` and their imports.
