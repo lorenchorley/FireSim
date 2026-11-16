@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+    <!-- Stage 2 (T2): MAUI Android test app, "can pictures cross to the WebView?".
+         Android only (this container is Linux; there is no iOS/Windows toolchain and none is needed). -->
+    <PropertyGroup>
+        <TargetFramework>net11.0-android</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>FsTransport</RootNamespace>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Disable MAUI CSS handling so Blazor can handle it -->
+        <EnableDefaultCssItems>false</EnableDefaultCssItems>
+
+        <ApplicationTitle>FS Transport</ApplicationTitle>
+        <ApplicationId>au.firesim.transport</ApplicationId>
+        <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+        <ApplicationVersion>1</ApplicationVersion>
+
+        <!-- minimum API 24 (Android 7.0) -->
+        <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+
+        <!-- The phone is arm64; a single ABI keeps the APK and the build small. Override with -p:RuntimeIdentifier=android-x64 for an x86_64 emulator. -->
+        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">android-arm64</RuntimeIdentifier>
+        <!-- a debug APK that installs by itself: the assemblies live inside the APK (no fast-deploy) -->
+        <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+        <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+        <!-- the Harness console project lives in a sub-folder and must not be compiled into the app -->
+        <DefaultItemExcludes>$(DefaultItemExcludes);Harness/**;web/**</DefaultItemExcludes>
+        <NoWarn>$(NoWarn);NU1510;CA1416;CS8632</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+    </ItemGroup>
+
+    <!-- The measurement page is plain HTML/JS in web/. HybridWebView serves Resources/Raw/wwwroot, so the same three files are linked in there... -->
+    <ItemGroup>
+        <MauiAsset Include="web\measure.html" LogicalName="wwwroot/measure.html" />
+        <MauiAsset Include="web\measure.js" LogicalName="wwwroot/measure.js" />
+        <MauiAsset Include="web\measure.css" LogicalName="wwwroot/measure.css" />
+    </ItemGroup>
+
+    <!-- ...and BlazorWebView serves the Razor project's wwwroot as static web assets: wwwroot/index.html (a trivial host page) plus the same
+         measure.js and measure.css, which are copied from web/ by wwwroot/_sync (see the Target below) so there is one source of truth. -->
+    <Target Name="SyncWebToWwwroot" BeforeTargets="BeforeBuild;ResolveStaticWebAssetsConfiguration;GenerateStaticWebAssetsManifest">
+        <Copy SourceFiles="web\measure.js;web\measure.css" DestinationFolder="wwwroot" SkipUnchangedFiles="true" />
+    </Target>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+        <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
+    </ItemGroup>
+
+</Project>

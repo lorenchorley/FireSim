@@ -20,3 +20,15 @@
 
 ## Result
 Free disk went from 8 GB to 17 GB (`df -BG`); the plan's bar is at least 15 GB.
+
+## T0.7 salvage (2026-11-16)
+Both stopped lanes' uncommitted work was copied as-is into the repository (build output excluded). It is **unreviewed**:
+- **K1** (`agent-afd949a55c8e205d1`): `Fs.Kernel/Pyrogenic/PyrogenicKernel.cs` (446 lines, the C# port of `src/atmosphere/pyrogenic.ts`
+  `PyrogenicPotential.solve`), `Fs.Bench/` (BenchmarkDotNet, a Node harness in `ts/`, `run-bench.sh`, `PhoneBench.cs`),
+  `reports/1-kernel-results.json` (indicative desktop numbers, container, 4 shared cores). `Fs.Bench` builds in Release.
+  This is **not a gate kernel**: the gate kernels are T1.2 (frozen speed-test kernels) and T1.4 (hottest kernel per tier).
+  T1.2 and T1.4 may reuse its structure; it does not follow the rule-5 coding rules of the plan (it calls `System.Math`) until T0.4's analyzers are applied.
+- **T2** (`agent-af4301a383218d8d9`): `Fs.Transport/` (a MAUI project that compiled in Debug, `HostApi.cs`, `Bench/BenchCore.cs`,
+  `Bench/LoopbackWsServer.cs`, `env-android.sh`). Reusable for T0.5 (`Fs.TestApp`) and T5.1 (picture routes). It is not in `FsProto.slnx`.
+  `env-android.sh` is the Android build environment (Microsoft JDK, Android SDK, NuGet cache in the scratchpad).
+- The two worktrees are removed; their branches remain.
