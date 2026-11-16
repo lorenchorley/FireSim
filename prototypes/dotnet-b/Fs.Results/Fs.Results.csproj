@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- T0.6a: the results endpoint (plan section 5): an Azure Function, isolated worker, .NET 10, for the Flex Consumption plan.
+       Not in FsProto.slnx on purpose (net10.0 and Azure packages); build it with `dotnet build Fs.Results`. Not a solver project.
+       Directory.Build.props turns on package lock files for every project: packages.lock.json is committed beside this file. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <RootNamespace>FsResults</RootNamespace>
+    <AssemblyName>Fs.Results</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
+    <PackageReference Include="Azure.Data.Tables" Version="12.13.0" />
+  </ItemGroup>
+
+  <!-- The validator and the document types are the T0.5 sources, linked (not copied) so the phone app and the endpoint validate with the same code.
+       Fs.TestApp.Core targets net11.0, so a project reference is not possible from net10.0. -->
+  <ItemGroup>
+    <Compile Include="..\Fs.TestApp.Core\Results\ResultSchema.cs" Link="Linked\ResultSchema.cs" />
+    <Compile Include="..\Fs.TestApp.Core\Results\ResultDocument.cs" Link="Linked\ResultDocument.cs" />
+  </ItemGroup>
+
+  <!-- the schema is the single file reports/results.schema.json, embedded so the endpoint and the phone app validate against the same text -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\reports\results.schema.json" LogicalName="results.schema.json" Link="results.schema.json" />
+  </ItemGroup>
+
+</Project>
