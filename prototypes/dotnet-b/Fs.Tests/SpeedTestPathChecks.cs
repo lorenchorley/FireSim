@@ -58,12 +58,15 @@ public sealed class SpeedTestPathChecks
                 {
                     int nz = 3 + (int)((seed + (uint)nx) % 3);
                     var s = new StencilKernel(nx, ny, nz, seed * 7919 + (uint)nx, KernelPath.Scalar);
+                    var plain = new StencilKernel(nx, ny, nz, seed * 7919 + (uint)nx, KernelPath.ScalarPlain);
                     var v = new StencilKernel(nx, ny, nz, seed * 7919 + (uint)nx, KernelPath.Vector128);
                     for (int sweep = 1; sweep <= 5; sweep++)
                     {
                         SpeedTest.Sweeps(s, 1);
+                        SpeedTest.Sweeps(plain, 1);
                         SpeedTest.Sweeps(v, 1);
-                        AssertSameBits(s.Values, v.Values, $"stencil {nx}x{ny}x{nz} seed {seed} sweep {sweep}");
+                        AssertSameBits(s.Values, v.Values, $"stencil {nx}x{ny}x{nz} seed {seed} sweep {sweep}: vector");
+                        AssertSameBits(s.Values, plain.Values, $"stencil {nx}x{ny}x{nz} seed {seed} sweep {sweep}: plain scalar");
                     }
                     cases++;
                 }
@@ -77,9 +80,12 @@ public sealed class SpeedTestPathChecks
         {
             var s = new StencilKernel(45, 45, 20, seed, KernelPath.Scalar);
             var v = new StencilKernel(45, 45, 20, seed, KernelPath.Vector128);
+            var plain = new StencilKernel(45, 45, 20, seed, KernelPath.ScalarPlain);
             SpeedTest.Sweeps(s, 3);
             SpeedTest.Sweeps(v, 3);
-            AssertSameBits(s.Values, v.Values, $"app grid seed {seed}");
+            SpeedTest.Sweeps(plain, 3);
+            AssertSameBits(s.Values, v.Values, $"app grid seed {seed}: vector");
+            AssertSameBits(s.Values, plain.Values, $"app grid seed {seed}: plain scalar");
         }
     }
 

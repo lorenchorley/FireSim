@@ -38,10 +38,15 @@ public static class SpeedTestConstants
 /// <summary>Which implementation a kernel runs. Both must give identical bits.</summary>
 public enum KernelPath
 {
-    /// <summary>The contract: plain scalar loops, the same arithmetic order as the TypeScript.</summary>
+    /// <summary>The contract: scalar loops, the same arithmetic order as the TypeScript (K1 widens through <c>vcvtps2pd</c>, see <c>StencilCore.W</c>).</summary>
     Scalar,
     /// <summary>Element-wise <c>Vector128</c> (2 doubles or 4 floats per vector), no reductions; bit-identical to <see cref="Scalar"/>.</summary>
     Vector128,
+    /// <summary>
+    /// K1 only (K2 treats it as <see cref="Scalar"/>): the literal port with <c>(double)f[i]</c> widenings, bit-identical to <see cref="Scalar"/> but about twice
+    /// as slow on x64 because the JIT emits <c>vcvtss2sd xmm, xmm, [mem]</c>, whose merge operand chains the conversions. Kept so the benchmark can show it.
+    /// </summary>
+    ScalarPlain,
 }
 
 /// <summary>One timed kernel (mirror of the TypeScript <c>Kernel</c> interface).</summary>

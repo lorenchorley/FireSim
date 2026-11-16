@@ -11,6 +11,8 @@ using Fs.Kernel;
 //   selftest                          every SIMD mode this process can run against the scalar contract (run it under DOTNET_EnableAVX2=0 / DOTNET_EnableHWIntrinsic=0 too)
 //   check FIXTURE_DIR                 C# against the captured TypeScript outputs; modes and thread counts against scalar
 //   phone [REPEATS]                   what a phone screen calls (PhoneBench.RunAsync), on the synthetic source
+//   --filter "*SpeedTest*" --job Short --artifacts DIR   (T1.2) the frozen speed-test kernels under BenchmarkDotNet (needs BDN 0.16 for net11.0)
+//   speedtest-merge STENCIL_BDN.json COPY_BDN.json TS.json OUT.json   (T1.2) BDN + Node results -> reports/1-speedtest-kernels.json
 //   merge FIXTURE_DIR BDN.json TS.json OUT.json
 //                                     the BenchmarkDotNet results + the Node results -> reports/1-kernel-results.json
 switch (args.Length > 0 ? args[0] : "")
@@ -23,6 +25,8 @@ switch (args.Length > 0 ? args[0] : "")
     case "phone":
         Console.Write(PhoneBench.RunAsync(args.Length > 1 ? int.Parse(args[1]) : 30).GetAwaiter().GetResult());
         return 0;
+    case "speedtest-merge":
+        return SpeedTestMerge.Run(args[1..]);
     case "merge":
         return Merge(args[1], args[2], args[3], args[4]);
     default:

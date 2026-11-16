@@ -13,17 +13,42 @@ namespace Fs.Kernel.SpeedTest;
 /// </summary>
 public static class StencilCore
 {
+    /// <summary>float32 to double, exactly (every float is a double). Written as a one-lane Vector128 widening so that the JIT emits <c>vcvtps2pd</c> (which writes a whole register) instead of <c>vcvtss2sd xmm6, xmm6, [mem]</c> (which also reads the old xmm6: a false dependency that chains all fourteen conversions of a cell, see the report).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static double W(float[] f, int idx) => Vector128.WidenLower(Vector128.CreateScalarUnsafe(f[idx])).ToScalar();
+
     /// <summary>The scalar contract for one interior cell. Arithmetic is double, in the TypeScript's order; <paramref name="c"/> = z*nxy + j*nx + i.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static void Cell(float[] a, float[] b, float[] u, float[] v, float[] w, int nx, int nxy, int i, int j, int z, int c)
+    {
+        double around = W(a, c - 1) + W(a, c + 1) + W(a, c - nx) + W(a, c + nx) + W(a, c - nxy) + W(a, c + nxy);
+        double x = i - W(u, c);
+        double y = j - W(v, c);
+        double s = z - W(w, c);
+        int i0 = i - (x < i ? 1 : 0); // == x | 0 (a compare to 0 or 1, not a branch)
+        int j0 = j - (y < j ? 1 : 0);
+        int k0 = z - (s < z ? 1 : 0);
+        double fx = x - i0;
+        double fy = y - j0;
+        double fz = s - k0;
+        int o = k0 * nxy + j0 * nx + i0;
+        double c0 = (W(a, o) * (1 - fx) + W(a, o + 1) * fx) * (1 - fy) + (W(a, o + nx) * (1 - fx) + W(a, o + nx + 1) * fx) * fy;
+        double c1 = (W(a, o + nxy) * (1 - fx) + W(a, o + nxy + 1) * fx) * (1 - fy)
+                    + (W(a, o + nxy + nx) * (1 - fx) + W(a, o + nxy + nx + 1) * fx) * fy;
+        b[c] = (float)(0.88 * (c0 * (1 - fz) + c1 * fz) + 0.02 * around);
+    }
+
+    /// <summary>The same cell with the plain widening <c>(double)f[idx]</c> (the literal port). Bit-identical to <see cref="Cell"/>; kept to measure what the false dependency costs (<see cref="KernelPath.ScalarPlain"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static void CellPlain(float[] a, float[] b, float[] u, float[] v, float[] w, int nx, int nxy, int i, int j, int z, int c)
     {
         double around = (double)a[c - 1] + (double)a[c + 1] + (double)a[c - nx] + (double)a[c + nx] + (double)a[c - nxy] + (double)a[c + nxy];
         double x = i - (double)u[c];
         double y = j - (double)v[c];
         double s = z - (double)w[c];
-        int i0 = x < i ? i - 1 : i; // == x | 0
-        int j0 = y < j ? j - 1 : j;
-        int k0 = s < z ? z - 1 : z;
+        int i0 = i - (x < i ? 1 : 0); // == x | 0 (a compare to 0 or 1, not a branch)
+        int j0 = j - (y < j ? 1 : 0);
+        int k0 = z - (s < z ? 1 : 0);
         double fx = x - i0;
         double fy = y - j0;
         double fz = s - k0;
@@ -44,8 +69,18 @@ public static class StencilCore
                 Cell(a, b, u, v, w, nx, nxy, i, j, z, z * nxy + j * nx + i);
     }
 
+    /// <summary>Part <paramref name="p"/> of a sweep (the plane z = p + 1), scalar with the plain widening (see <see cref="CellPlain"/>).</summary>
+    public static void PartScalarPlain(float[] a, float[] b, float[] u, float[] v, float[] w, int nx, int ny, int p)
+    {
+        int nxy = nx * ny;
+        int z = p + 1;
+        for (int j = 1; j < ny - 1; j++)
+            for (int i = 1; i < nx - 1; i++)
+                CellPlain(a, b, u, v, w, nx, nxy, i, j, z, z * nxy + j * nx + i);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static Vector128<double> Pair(float[] f, int idx) => Vector128.Create((double)f[idx], (double)f[idx + 1]);
+    static Vector128<double> Pair(float[] f, int idx) => Vector128.WidenLower(Vector128.Create(f[idx], f[idx + 1], 0f, 0f));
 
     /// <summary>
     /// The same plane with two adjacent cells in each <c>Vector128&lt;double&gt;</c> (two lanes: a double is 64 bits). Every operation is the scalar's, lane for
@@ -67,19 +102,20 @@ public static class StencilCore
             {
                 int c = z * nxy + j * nx + i;
                 Vector128<double> around = Pair(a, c - 1) + Pair(a, c + 1) + Pair(a, c - nx) + Pair(a, c + nx) + Pair(a, c - nxy) + Pair(a, c + nxy);
-                Vector128<double> x = Vector128.Create((double)i, (double)(i + 1)) - Pair(u, c);
+                Vector128<double> ix = Vector128.Create((double)i, (double)(i + 1));
+                Vector128<double> x = ix - Pair(u, c);
                 Vector128<double> y = jv - Pair(v, c);
                 Vector128<double> s = zv - Pair(w, c);
-                // the truncations, per lane, by integer arithmetic (as in Cell)
-                int i0a = x.GetElement(0) < i ? i - 1 : i;
-                int i0b = x.GetElement(1) < i + 1 ? i : i + 1;
-                int j0a = y.GetElement(0) < j ? j - 1 : j;
-                int j0b = y.GetElement(1) < j ? j - 1 : j;
-                int k0a = s.GetElement(0) < z ? z - 1 : z;
-                int k0b = s.GetElement(1) < z ? z - 1 : z;
-                Vector128<double> fx = x - Vector128.Create((double)i0a, (double)i0b);
-                Vector128<double> fy = y - Vector128.Create((double)j0a, (double)j0b);
-                Vector128<double> fz = s - Vector128.Create((double)k0a, (double)k0b);
+                // the truncations, per lane: a compare mask is -1 (x < cell: truncation is cell - 1) or 0 (it is the cell)
+                Vector128<long> mx = Vector128.LessThan(x, ix).AsInt64();
+                Vector128<long> my = Vector128.LessThan(y, jv).AsInt64();
+                Vector128<long> mz = Vector128.LessThan(s, zv).AsInt64();
+                int i0a = i + (int)mx.GetElement(0), i0b = i + 1 + (int)mx.GetElement(1);
+                int j0a = j + (int)my.GetElement(0), j0b = j + (int)my.GetElement(1);
+                int k0a = z + (int)mz.GetElement(0), k0b = z + (int)mz.GetElement(1);
+                Vector128<double> fx = x - Vector128.ConditionalSelect(mx.AsDouble(), ix - one, ix);
+                Vector128<double> fy = y - Vector128.ConditionalSelect(my.AsDouble(), jv - one, jv);
+                Vector128<double> fz = s - Vector128.ConditionalSelect(mz.AsDouble(), zv - one, zv);
                 int oa = k0a * nxy + j0a * nx + i0a;
                 int ob = k0b * nxy + j0b * nx + i0b;
                 Vector128<double> omx = one - fx;
@@ -99,7 +135,7 @@ public static class StencilCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static Vector128<double> Gather(float[] f, int ia, int ib) => Vector128.Create((double)f[ia], (double)f[ib]);
+    static Vector128<double> Gather(float[] f, int ia, int ib) => Vector128.WidenLower(Vector128.Create(f[ia], f[ib], 0f, 0f));
 }
 
 /// <summary>K1 as a timed kernel: buffers, the fixed-seed inputs, the parts of a sweep.</summary>
@@ -155,6 +191,7 @@ public sealed class StencilKernel : ISpeedKernel
     public void Part(int p)
     {
         if (_path == KernelPath.Vector128) StencilCore.PartVector128(_a, _b, _u, _v, _w, _nx, _ny, p);
+        else if (_path == KernelPath.ScalarPlain) StencilCore.PartScalarPlain(_a, _b, _u, _v, _w, _nx, _ny, p);
         else StencilCore.PartScalar(_a, _b, _u, _v, _w, _nx, _ny, p);
     }
 

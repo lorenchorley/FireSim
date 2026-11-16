@@ -162,6 +162,7 @@ public sealed class SpeedTestKernelTests
             w[i] = edges[(int)(rnd.Next() * edges.Length)];
         }
         var scalar = new StencilKernel(nx, ny, nz, a, u, v, w, KernelPath.Scalar);
+        var plain = new StencilKernel(nx, ny, nz, a, u, v, w, KernelPath.ScalarPlain);
         var vector = new StencilKernel(nx, ny, nz, a, u, v, w, KernelPath.Vector128);
         float[] o = (float[])a.Clone();
         for (int sweep = 0; sweep < 4; sweep++)
@@ -183,7 +184,9 @@ public sealed class SpeedTestKernelTests
                     }
             o = b;
             SpeedTest.Sweeps(scalar, 1);
+            SpeedTest.Sweeps(plain, 1);
             SpeedTest.Sweeps(vector, 1);
+            CollectionAssert.AreEqual(Bits(o), Bits(plain.Values), $"plain scalar differs from the cast oracle after sweep {sweep + 1}");
             CollectionAssert.AreEqual(Bits(o), Bits(scalar.Values), $"scalar differs from the cast oracle after sweep {sweep + 1}");
             CollectionAssert.AreEqual(Bits(o), Bits(vector.Values), $"vector differs from the cast oracle after sweep {sweep + 1}");
         }
