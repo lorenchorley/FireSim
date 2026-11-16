@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://firesim.invalid/option-b/results.schema.json",
+  "title": "FireSim option B result documents",
+  "description": "Root: the result document of a test APK (kind firesim-test-result). $defs/containerResults: the reports/<stage>-results.json files written by container tasks. Both carry runtime and build (plan rule 11). Validated by Fs.TestApp.Core (ResultSchema), which implements the subset of JSON Schema used here: type (also arrays of types), enum, const, required, properties, additionalProperties (boolean or schema), items, minItems, maxItems, minLength, maxLength, pattern, minimum, maximum, $ref to #/$defs/*, format date-time. Prose: reports/RESULTS-SCHEMA.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "round", "runId", "idempotencyKey", "build", "startedUtc", "status", "device", "conditions", "blocks", "arms", "logs", "errors"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "firesim-test-result" },
+    "round": { "type": "integer", "minimum": 0, "maximum": 99 },
+    "roundName": { "type": "string", "maxLength": 64 },
+    "runId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "idempotencyKey": { "type": "string", "pattern": "^([0-9a-f]{64}|unavailable):[0-9a-f]{32}$", "description": "build.apkSha256 + ':' + runId; the same for every send of this run." },
+    "build": { "$ref": "#/$defs/build" },
+    "startedUtc": { "type": "string", "format": "date-time" },
+    "finishedUtc": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["complete", "partial", "aborted", "cancelled"] },
+    "device": { "$ref": "#/$defs/device" },
+    "conditions": { "$ref": "#/$defs/conditions" },
+    "webView": { "$ref": "#/$defs/webView" },
+    "blocks": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/block" } },
+    "arms": { "type": "array", "maxItems": 2000, "items": { "$ref": "#/$defs/arm" } },
+    "logs": { "$ref": "#/$defs/logs" },
+    "errors": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/error" } }
+  },
+  "$defs": {
+    "runtime": {
+      "enum": ["coreclr", "mono-wasm-aot", "mono-wasm-interp", "coreclr-wasm", "v8-node", "v8-chromium", "v8-webview"],
+      "description": "Which runtime produced a measurement (plan rule 11)."
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration", "commit", "apkSha256", "applicationId", "appVersion", "targetFramework"],
+      "properties": {
+        "configuration": { "enum": ["Release", "Debug"] },
+        "commit": { "type": "string", "maxLength": 64 },
+        "apkSha256": { "type": "string", "pattern": "^([0-9a-f]{64}|unavailable)$", "description": "SHA-256 of the installed APK, computed by the app at run time (an APK cannot contain its own hash); 64 zeros in tests and the dry run; 'unavailable' if the file could not be read." },
+        "applicationId": { "type": "string", "maxLength": 128 },
+        "appVersion": { "type": "string", "maxLength": 128 },
+        "targetFramework": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cores"],
+      "properties": {
+        "manufacturer": { "type": "string", "maxLength": 128 },
+        "model": { "type": "string", "maxLength": 128 },
+        "soc": { "type": "string", "maxLength": 128 },
+        "apiLevel": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "androidRelease": { "type": "string", "maxLength": 64 },
+        "abis": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 32 } },
+        "cores": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "cpuCores": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/cpuCore" } },
+        "ramMb": { "type": "integer", "minimum": 0 },
+        "webViewVersion": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "package": { "type": "string", "maxLength": 128 }, "version": { "type": "string", "maxLength": 128 } }
+        },
+        "dotnet": { "type": "string", "maxLength": 128 },
+        "processArch": { "type": "string", "maxLength": 32 }
+      }
+    },
+    "cpuCore": {
+      "type": "object", "additionalProperties": false, "required": ["cpu"],
+      "properties": { "cpu": { "type": "integer", "minimum": 0 }, "maxKhz": { "type": "integer", "minimum": 0 }, "minKhz": { "type": "integer", "minimum": 0 } }
+    },
+    "conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "airplaneMode": { "type": "boolean" },
+        "networkAtStart": { "type": "boolean" },
+        "batteryStartPercent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "chargingAtStart": { "type": "boolean" },
+        "powerSaverAtStart": { "type": "boolean" },
+        "thermalAtStart": { "$ref": "#/$defs/thermalStatus" }
+      }
+    },
+    "thermalStatus": { "enum": ["unknown", "none", "light", "moderate", "severe", "critical", "emergency", "shutdown"] },
+    "webView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageReported"],
+      "properties": {
+        "origin": { "type": "string", "maxLength": 256 },
+        "crossOriginIsolated": { "type": "boolean" },
+        "sharedArrayBuffer": { "enum": ["function", "undefined", "object"], "description": "typeof SharedArrayBuffer" },
+        "userAgent": { "type": "string", "maxLength": 512 },
+        "isolationHeaderSent": { "type": "boolean" },
+        "isolationHeaderValue": { "type": "string", "maxLength": 128 },
+        "pageReported": { "type": "boolean" },
+        "allowlist": {
+          "type": "object", "additionalProperties": false, "required": ["libraryPresent", "applied"],
+          "properties": {
+            "libraryPresent": { "type": "boolean" },
+            "featureSupported": { "type": "boolean" },
+            "applied": { "type": "boolean" },
+            "origin": { "type": "string", "maxLength": 256 },
+            "error": { "type": "string", "maxLength": 1024 }
+          }
+        },
+        "extra": { "type": "object" }
+      }
+    },
+    "block": {
+      "type": "object", "additionalProperties": false, "required": ["index", "name", "attempt", "status", "startedAtMs", "durationMs"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "maxLength": 128 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["ok", "paused", "failed", "skipped"] },
+        "startedAtMs": { "type": "number", "minimum": 0 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "gateOutcome": { "enum": ["Ready", "ReadyThermalTimeout", "BatteryLow"] }
+      }
+    },
+    "arm": {
+      "type": "object", "additionalProperties": false, "required": ["block", "blockAttempt", "name", "runtime", "status", "startedAtMs", "durationMs", "estimatedSeconds"],
+      "properties": {
+        "block": { "type": "integer", "minimum": 0 },
+        "blockAttempt": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "maxLength": 96 },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "status": { "enum": ["ok", "error", "paused", "skipped"] },
+        "startedAtMs": { "type": "number", "minimum": 0 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "estimatedSeconds": { "type": "number", "minimum": 0 },
+        "result": { "description": "The arm's own JSON; any type." },
+        "error": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "logs": {
+      "type": "object", "additionalProperties": false, "required": ["thermal", "battery", "pauses", "gating"],
+      "properties": {
+        "thermal": { "type": "array", "maxItems": 5000, "items": {
+          "type": "object", "additionalProperties": false, "required": ["tMs", "status"],
+          "properties": { "tMs": { "type": "number", "minimum": 0 }, "status": { "$ref": "#/$defs/thermalStatus" }, "headroom": { "type": "number" } } } },
+        "battery": { "type": "array", "maxItems": 5000, "items": {
+          "type": "object", "additionalProperties": false, "required": ["tMs"],
+          "properties": { "tMs": { "type": "number", "minimum": 0 }, "percent": { "type": "integer", "minimum": 0, "maximum": 100 }, "charging": { "type": "boolean" },
+            "chargeCounterUah": { "type": "integer" }, "powerSaver": { "type": "boolean" } } } },
+        "pauses": { "type": "array", "maxItems": 2000, "items": {
+          "type": "object", "additionalProperties": false, "required": ["tMs", "kind"],
+          "properties": { "tMs": { "type": "number", "minimum": 0 },
+            "kind": { "enum": ["native-pause", "native-resume", "screen-off", "screen-on", "webview-hidden", "webview-visible"] },
+            "block": { "type": "integer", "minimum": 0 }, "arm": { "type": "string", "maxLength": 96 } } } },
+        "gating": { "type": "array", "maxItems": 1000, "items": {
+          "type": "object", "additionalProperties": false, "required": ["tMs", "block", "outcome", "waitedMs"],
+          "properties": { "tMs": { "type": "number", "minimum": 0 }, "block": { "type": "integer", "minimum": 0 },
+            "outcome": { "enum": ["Ready", "ReadyThermalTimeout", "BatteryLow"] }, "waitedMs": { "type": "number", "minimum": 0 }, "reason": { "type": "string", "maxLength": 512 } } } }
+      }
+    },
+    "error": {
+      "type": "object", "additionalProperties": false, "required": ["tMs", "where", "message"],
+      "properties": {
+        "tMs": { "type": "number", "minimum": 0 },
+        "where": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 256 },
+        "message": { "type": "string", "maxLength": 2048 },
+        "stack": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "containerResults": {
+      "description": "reports/<stage>-results.json written by container tasks. Extra fields are allowed (case, kernel, gitCommit, ...); the fields below are the contract.",
+      "type": "object",
+      "required": ["stage", "when", "machine", "indicative", "runs"],
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "when": { "type": "string", "format": "date-time" },
+        "machine": {
+          "type": "object", "required": ["label", "cores"],
+          "properties": { "label": { "type": "string" }, "cpu": { "type": "string" }, "cores": { "type": "integer", "minimum": 1 }, "os": { "type": "string" }, "runtime": { "type": "string" } }
+        },
+        "indicative": { "type": "boolean" },
+        "build": {
+          "type": "object", "required": ["configuration"],
+          "properties": { "configuration": { "enum": ["Release", "Debug"] }, "commit": { "type": "string" }, "apkSha256": { "type": "string", "pattern": "^([0-9a-f]{64}|unavailable)$" } }
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["name", "n", "medianMs"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "impl": { "type": "string" },
+              "runtime": { "$ref": "#/$defs/runtime" },
+              "threads": { "type": "integer", "minimum": 1 },
+              "n": { "type": "integer", "minimum": 1 },
+              "medianMs": { "type": "number", "minimum": 0 },
+              "p95Ms": { "type": "number", "minimum": 0 },
+              "minMs": { "type": "number", "minimum": 0 },
+              "maxMs": { "type": "number", "minimum": 0 },
+              "notes": { "type": "string" }
+            }
+          }
+        },
+        "gate": {
+          "type": "object", "required": ["result"],
+          "properties": { "bar": { "type": "string" }, "measured": { "type": "string" }, "result": { "enum": ["pass", "stop", "not run"] }, "why": { "type": "string" } }
+        },
+        "notRun": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

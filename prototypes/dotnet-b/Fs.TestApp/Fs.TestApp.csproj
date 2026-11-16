@@ -1,0 +1,102 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- T0.5: the test APK ("FireSim TEST r<N>", plan section 5). Android only (this container is Linux). NOT in FsProto.slnx: it needs the maui-android workload.
+	     Build a round (heavy: run it under flock /tmp/firesim-heavy.lock; README.md has the whole recipe):
+	       source prototypes/dotnet-b/env.sh
+	       dotnet build prototypes/dotnet-b/Fs.TestApp -c Release -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:ProtoRound=0
+	     ProtoRound sets the application id (au.firesim.proto.r<N>), the launcher title, the version name and the icon tint. ProtoCommit (default: the short
+	     hash from git rev-parse) goes into the version name. ProtoEndpoint, ProtoUploadCode and ProtoGitHubRepo are injected at build time (never committed): see README.md. -->
+	<PropertyGroup>
+		<TargetFramework>net11.0-android</TargetFramework>
+		<!-- the phone is arm64; one ABI keeps the APK and the build small -->
+		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">android-arm64</RuntimeIdentifier>
+		<OutputType>Exe</OutputType>
+		<RootNamespace>FsTestApp.App</RootNamespace>
+		<AssemblyName>Fs.TestApp</AssemblyName>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+		<!-- JSON goes through source generators only: no reflection serializer in a trimmed Release build -->
+		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+		<!-- the only package-wide warning silenced: CA1416 (platform APIs are guarded at run time, by API level, inside try/catch) -->
+		<NoWarn>$(NoWarn);CA1416</NoWarn>
+	</PropertyGroup>
+
+	<!-- ===== labelling (plan section 5) ===== -->
+	<PropertyGroup>
+		<ProtoRound Condition="'$(ProtoRound)' == ''">0</ProtoRound>
+		<ApplicationId>au.firesim.proto.r$(ProtoRound)</ApplicationId>
+		<ApplicationTitle>FireSim TEST r$(ProtoRound)</ApplicationTitle>
+		<ApplicationVersion>1</ApplicationVersion>
+		<!-- the version name is completed with the commit by the target below, before the manifest is written -->
+		<ApplicationDisplayVersion>0.1.0-test.r$(ProtoRound)</ApplicationDisplayVersion>
+		<!-- one colour per round, so two test icons side by side are told apart; the red TEST band is in the foreground of every one -->
+		<ProtoIconColor Condition="'$(ProtoRound)' == '0'">#455A64</ProtoIconColor>
+		<ProtoIconColor Condition="'$(ProtoRound)' == '1'">#1B5E20</ProtoIconColor>
+		<ProtoIconColor Condition="'$(ProtoRound)' == '2'">#4A148C</ProtoIconColor>
+		<ProtoIconColor Condition="'$(ProtoRound)' == '3'">#0D47A1</ProtoIconColor>
+		<ProtoIconColor Condition="'$(ProtoRound)' == '4'">#E65100</ProtoIconColor>
+		<ProtoIconColor Condition="'$(ProtoIconColor)' == ''">#37474F</ProtoIconColor>
+	</PropertyGroup>
+
+	<!-- Optional local settings (endpoint, upload code, results repository): Local.props is ignored by git (see .gitignore here) and never committed.
+	     The same three can be passed as -p:ProtoEndpoint=... on the command line or as environment variables. -->
+	<Import Project="Local.props" Condition="Exists('Local.props')" />
+
+	<Target Name="FsProtoCommit" BeforeTargets="_GetAndroidPackageName">
+		<Exec Condition="'$(ProtoCommit)' == ''" Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true" WorkingDirectory="$(MSBuildProjectDirectory)">
+			<Output TaskParameter="ConsoleOutput" PropertyName="_FsGitCommit" />
+		</Exec>
+		<PropertyGroup>
+			<ProtoCommit Condition="'$(ProtoCommit)' == ''">$(_FsGitCommit)</ProtoCommit>
+			<ProtoCommit Condition="'$(ProtoCommit)' == ''">unknown</ProtoCommit>
+			<ApplicationDisplayVersion>0.1.0-test.r$(ProtoRound)+$(ProtoCommit)</ApplicationDisplayVersion>
+		</PropertyGroup>
+	</Target>
+
+	<!-- ===== build-time values the app reads (assembly metadata); empty unless given ===== -->
+	<ItemGroup>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>ProtoRound</_Parameter1><_Parameter2>$(ProtoRound)</_Parameter2></AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>ProtoEndpoint</_Parameter1><_Parameter2>$(ProtoEndpoint)</_Parameter2></AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>ProtoUploadCode</_Parameter1><_Parameter2>$(ProtoUploadCode)</_Parameter2></AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>ProtoGitHubRepo</_Parameter1><_Parameter2>$(ProtoGitHubRepo)</_Parameter2></AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>Configuration</_Parameter1><_Parameter2>$(Configuration)</_Parameter2></AssemblyAttribute>
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>TargetFramework</_Parameter1><_Parameter2>$(TargetFramework)</_Parameter2></AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- App icon: a solid tinted background and a foreground with the red diagonal TEST band -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="$(ProtoIconColor)" />
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#B71C1C" BaseSize="128,128" />
+		<!-- the HybridWebView host page and its scripts: served by MAUI's HybridWebView from wwwroot (HybridRoot) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+	</ItemGroup>
+
+	<!-- AndroidX WebKit 1.18.0 (cross-origin-isolated allowlist): no NuGet binding of 1.18 exists (Xamarin.AndroidX.Webkit ends at 1.17.1), so the Java library is added
+	     from Google Maven without a C# binding (Bind=false) and reached by Java reflection (Platforms/Android/IsolationAllowlist.cs). -->
+	<ItemGroup>
+		<AndroidMavenLibrary Include="androidx.webkit:webkit" Version="1.18.0" Repository="Google" Bind="false" VerifyDependencies="false" />
+	</ItemGroup>
+	<!-- the download is not checksummed by the SDK: the build compares it with the hash recorded when it was first fetched and inspected (2026-11-16, also matching Google Maven's .sha1 a2f431c9...) -->
+	<PropertyGroup>
+		<FsWebkitAarSha256>f15a0bd7d51f4bb8dffdd3a2cf5829f9a7de9ad4ba2682fa85d619032050581f</FsWebkitAarSha256>
+	</PropertyGroup>
+	<Target Name="FsVerifyWebkitAar" AfterTargets="_MavenRestore">
+		<GetFileHash Files="@(_ResolvedAndroidMavenLibraries)" Algorithm="SHA256">
+			<Output TaskParameter="Items" ItemName="_FsMavenHash" />
+		</GetFileHash>
+		<Error Condition="'@(_FsMavenHash->Count())' == '0'" Text="FsVerifyWebkitAar: no resolved Maven library to check" />
+		<Error Condition="'%(_FsMavenHash.FileHash)' != '$(FsWebkitAarSha256)'" Text="androidx.webkit AAR hash %(_FsMavenHash.FileHash) is not the expected $(FsWebkitAarSha256) (%(_FsMavenHash.Identity))" />
+	</Target>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Fs.TestApp.Core\Fs.TestApp.Core.csproj" />
+	</ItemGroup>
+
+</Project>
