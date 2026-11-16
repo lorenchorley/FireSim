@@ -4,6 +4,8 @@
   <Project Path="Fs.Compare/Fs.Compare.csproj" />
   <Project Path="Fs.Host/Fs.Host.csproj" />
   <Project Path="Fs.Kernel/Fs.Kernel.csproj" />
+  <Project Path="Fs.Results/Fs.Results.csproj" />
+  <Project Path="Fs.Results.Tests/Fs.Results.Tests.csproj" />
   <Project Path="Fs.Tests/Fs.Tests.csproj" />
   <Project Path="Fs.Wasm/Fs.Wasm.csproj" />
   <Project Path="Fs.TestApp.Core/Fs.TestApp.Core.csproj" />
