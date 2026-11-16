@@ -179,6 +179,15 @@
         "dependencies": {
           "System.Numerics.Tensors": "[11.0.0, )"
         }
+      },
+      "fs.testapp.core": {
+        "type": "Project"
+      },
+      "fs.testapp.dryrun": {
+        "type": "Project",
+        "dependencies": {
+          "Fs.TestApp.Core": "[1.0.0, )"
+        }
       }
     }
   }

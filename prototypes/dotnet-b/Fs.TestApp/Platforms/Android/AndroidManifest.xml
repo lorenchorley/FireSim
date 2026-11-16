@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+	<!-- Plan section 5: INTERNET, ACCESS_NETWORK_STATE and REQUEST_DELETE_PACKAGES, and no others.
+	     INTERNET and ACCESS_NETWORK_STATE: send the result, notice the network. REQUEST_DELETE_PACKAGES: the Uninstall button (ACTION_DELETE).
+	     No BATTERY_STATS (never granted to a sideloaded app: charge comes from the sticky ACTION_BATTERY_CHANGED broadcast), no location, no storage.
+	     The library manifests add two more through the manifest merger: USE_BIOMETRIC and USE_FINGERPRINT come from androidx.biometric, pulled in by androidx.credentials, which
+	     MAUI's dependencies reference; this app never uses either, so they are removed below (tools:node remove).
+	     The merger also adds a uses-permission for the app's own signature permission DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION (from androidx.core). It is NOT removed: Android does not
+	     give an app its own permission unless it asks for it, and androidx.core uses that permission to deliver broadcasts to receivers registered as not exported on Android 12 and below,
+	     so removing it could silently break a library's receiver. It grants nothing and shows no prompt; reports/0-apk-check.md lists it. -->
+	<application android:allowBackup="false" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" />
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+	<uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove" />
+	<uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />
+</manifest>
