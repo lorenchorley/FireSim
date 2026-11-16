@@ -150,6 +150,12 @@ const onSnapshot = (s: SimSnapshot): void => {
 let noise: NoiseHandle | undefined;
 if (noiseSeed !== undefined) noise = installNoise(noiseSeed, noiseScale);
 t0 = wall();
+// Probes (run.mjs --probes, FS_PROBES=1; probes/install.ts): observation only, started before the solver is built, finished after the run.
+let probes: { finish(sim: unknown): void } | undefined;
+if (process.env.FS_PROBES) {
+  const { startProbes } = await import('./probes/install');
+  probes = startProbes({ outDir: join(dir, 'probes'), scenario: def.name, seed, runTo, tier: def.tier, embers: (scenario.options as { embers?: boolean }).embers !== false, initBytes });
+}
 const sim = new Simulation(scenario, { minSnapshotWallMs: 0, hooks: { snapshot: onSnapshot } });
 T.constructMs = wall() - t0;
 // What SimHost does at init: post the t0 picture.
@@ -162,6 +168,7 @@ sim.advance(runTo);
 T.advanceMs = wall() - t0;
 // A run that ends between two pictures gets a run-end snapshot, as the host asks for.
 sim.emitRunEnd();
+probes?.finish(sim);
 const noiseReport = noise?.report();
 noise?.restore();
 const runMs = T.spinUpMs + T.advanceMs;
