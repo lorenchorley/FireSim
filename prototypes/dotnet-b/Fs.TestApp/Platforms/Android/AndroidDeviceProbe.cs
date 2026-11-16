@@ -134,8 +134,8 @@ public sealed class AndroidDeviceProbe : IDeviceProbe
 		b.Add("dotnet", () => RuntimeInformation.FrameworkDescription);
 		b.Add("processArchitecture", () => RuntimeInformation.ProcessArchitecture.ToString());
 		b.Add("osArchitecture", () => RuntimeInformation.OSArchitecture.ToString());
-		b.Add("is64BitProcess", () => Environment.Is64BitProcess);
-		b.Add("processorCount", () => Environment.ProcessorCount);
+		b.Add("is64BitProcess", () => System.Environment.Is64BitProcess);
+		b.Add("processorCount", () => System.Environment.ProcessorCount);
 		b.Add("javaAvailableProcessors", () => Java.Lang.Runtime.GetRuntime()?.AvailableProcessors());
 		b.Add("osArch", () => Java.Lang.JavaSystem.GetProperty("os.arch"));
 		b.Add("nativeLibraryDir", () => Ctx.ApplicationInfo?.NativeLibraryDir is { } d ? Path.GetFileName(d.TrimEnd('/')) : null);

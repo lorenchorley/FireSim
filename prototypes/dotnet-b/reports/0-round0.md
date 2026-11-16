@@ -152,3 +152,25 @@ See the end of this file for the APK that was built (path, size, SHA-256, the ou
 * Round 0 APK: `dotnet build prototypes/dotnet-b/Fs.TestApp -c Release -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:ProtoRound=0`, then
   `bash prototypes/dotnet-b/Fs.TestApp/check-apk.sh <apk> 0` (now also checks that the round 0 page script and the worker bundle are in the APK). **`ProtoGitHubRepo`, `ProtoEndpoint` and `ProtoUploadCode` are empty in
   what is committed and in the APK built for this card**: the orchestrator builds the sendable APK with them (`README.md`); until then *Send with GitHub* says there is no repository and *Share* is the only way out.
+
+## 7. The APK built for this card
+
+Built 2026-11-16 from commit `a9f0b82` plus the one-line `System.Environment` fix of `AndroidDeviceProbe.cs` (committed after it), in the shared build container (Linux x64, 4 shared cores; the build waited about 70 minutes for the
+heavy lock, so the 1 min 23 s MSBuild time is the only timing worth quoting, and it is indicative). **0 warnings, 0 errors.**
+
+| | |
+|---|---|
+| File | `/tmp/claude-0/-home-user-FireSim/3863bd8b-64fd-5360-ae9d-8f33436d6372/scratchpad/T0.6b/au.firesim.proto.r0-Signed.apk` (never committed) |
+| Size | 18,578,948 bytes |
+| SHA-256 | `24457fc6ab8322116a4d464cb6aeac07a22a4782ce5ef8148a00bdeee36435df` (also in `...apk.sha256` beside it; the signature is not deterministic, so a rebuild has another hash) |
+| Application id, label, version name | `au.firesim.proto.r0`, `FireSim TEST r0`, `0.1.0-test.r0+a9f0b82` |
+| Target / min SDK, ABI | 37 / 24, arm64-v8a, CoreCLR, not debuggable |
+| Signer | .NET's default debug key, certificate SHA-256 `94aa0085...4da3` |
+| `ProtoEndpoint`, `ProtoUploadCode`, `ProtoGitHubRepo` | all empty in this APK (the orchestrator builds the sendable APK) |
+
+`check-apk.sh <apk> 0`: **ALL CHECKS PASSED** (the T0.5 checks and the three new round 0 ones: `round0-arms.js` and `speedtest.worker.js` are in `assets/wwwroot`, the page script registers both WebView arms, the worker
+reports both checksums). The full output is in `check-apk-r0.txt` beside the APK. The assembly store is compressed, so the round 0 types cannot be read from the APK by `strings`; they were checked in the trimmer's output
+instead (`obj/.../linked/Fs.TestApp.Core.dll` and `Fs.TestApp.dll` contain `device-facts`, `webview-facts`, `speedtest-kernels` and the round 0 first-screen text), i.e. trimming did not remove the round 0 code.
+
+Container checks run for the final state: `dotnet run --project Fs.TestApp.DryRun`: 11 of 11 scenarios (the T0.5 ten and `k-round0-plan`); `dotnet test --project Fs.Tests`: 307 tests, all passed (0 failed, 0 skipped);
+`node harness/check-round0-js.mjs`: all checks passed (both frozen checksums reproduced by the committed bundle in node 22; 49 Mcells/s and 4.0 GB/s in node on this shared container, indicative only).
