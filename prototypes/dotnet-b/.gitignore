@@ -3,3 +3,4 @@ obj/
 fixtures/
 *.user
 .vs/
+.bdn/

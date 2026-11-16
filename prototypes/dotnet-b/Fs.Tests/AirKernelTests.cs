@@ -11,7 +11,7 @@ namespace Fs.Tests;
 /// 2. on synthetic grids of every row length, the forms agree with the scalar form bit for bit, with and without NaN and -0 in the input;
 /// 3. explicit NaN and -0 expectations that do not depend on the TypeScript;
 /// 4. the scalar and vector forms allocate nothing per call; the parallel form's allocation is measured (Parallel.For's own).
-/// The fixtures are made by Fs.Bench/ts/air/capture.ts (scripts in Fs.Bench/ts/air/README.md); without them the fixture tests are inconclusive, never green.
+/// The fixtures are made by Fs.Bench/ts/air/capture.ts (regenerate with Fs.Bench/ts/air/regen.sh); without them the fixture tests are inconclusive, never green.
 /// </summary>
 [TestClass]
 public sealed class AirKernelTests
