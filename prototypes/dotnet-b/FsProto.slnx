@@ -1,6 +1,8 @@
 <Solution>
+  <Project Path="Fs.Analyzers/Fs.Analyzers.csproj" />
   <Project Path="Fs.Bench/Fs.Bench.csproj" />
   <Project Path="Fs.Compare/Fs.Compare.csproj" />
   <Project Path="Fs.Host/Fs.Host.csproj" />
   <Project Path="Fs.Kernel/Fs.Kernel.csproj" />
+  <Project Path="Fs.Tests/Fs.Tests.csproj" />
 </Solution>

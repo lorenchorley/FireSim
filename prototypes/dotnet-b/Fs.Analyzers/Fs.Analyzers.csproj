@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Roslyn analyzer FS0001 (plan T0.4): an explicit cast from float or double to an integer type is banned in solver code.
+       It must be netstandard2.0 to load into the compiler. Solver projects reference it as an analyzer through Solver.props.
+       Fs.Tests also references it as an ordinary assembly, to unit-test it in process. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- the throwaway generator of ../BannedSymbols.txt lives in tools/ and is a separate file-based app, not part of the analyzer -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tools/**</DefaultItemExcludes>
+    <!-- RS2008: release-tracking files are for analyzers that ship in a package; this one is built and used inside the repository -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roslyn 5.0.0 API: older than the 11.0.100 SDK's compiler (5.12), which is what loads it. PrivateAssets: the compiler supplies Roslyn. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

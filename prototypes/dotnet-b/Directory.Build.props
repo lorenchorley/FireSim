@@ -5,4 +5,20 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
+
+  <!-- T0.4: lock every package version. packages.lock.json is committed beside each project. CI and clean-clone builds restore in locked mode
+       (set CI=true, or pass -p:RestoreLockedMode=true); when a package version changes on purpose, restore once without it and commit the new lock file. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <!-- T0.4: the solver projects (plan rule 5, section 10.4) get the banned-API rules and the FS0001 cast analyzer; no other project does.
+       Fs.Analyzers/Solver.props says what that is. Add a project to the list by name when it contains solver code. FsMath.cs, FsConv.cs and
+       Fs.Kernel/Pyrogenic/ are exempt by path (.editorconfig). Fs.Bench, Fs.Transport, Fs.TestApp, Fs.Host, Fs.Results, Fs.Tests,
+       Fs.Compare and the hello projects are not solver projects. -->
+  <PropertyGroup>
+    <FsSolverProjects>;Fs.Kernel;Fs.Wasm;</FsSolverProjects>
+  </PropertyGroup>
+  <Import Project="Fs.Analyzers/Solver.props" Condition="$(FsSolverProjects.Contains(';$(MSBuildProjectName);'))" />
 </Project>

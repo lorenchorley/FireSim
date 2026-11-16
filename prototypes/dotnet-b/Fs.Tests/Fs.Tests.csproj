@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Fs.Tests (plan T0.4): MSTest on Microsoft.Testing.Platform (the runner is selected in global.json, so `dotnet test` runs in native MTP mode).
+         dotnet test (flag: project) Fs.Tests          or          dotnet test (flag: solution) FsProto.slnx
+       Not a solver project: the banned-API rules and FS0001 do not apply here (tests call Math freely).
+       Holds: the smoke test, the tests of the FS0001 analyzer, and the tests that BannedSymbols.txt is complete and bans what it should. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <EnableMSTestRunner>true</EnableMSTestRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.5.3" />
+    <!-- to compile snippets in process and run the analyzers over them; the same Roslyn API version as Fs.Analyzers -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <!-- only to find the real BannedApiAnalyzers assembly (GeneratePathProperty) and copy it next to the tests: it must not analyze this project -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" ExcludeAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fs.Kernel\Fs.Kernel.csproj" />
+    <ProjectReference Include="..\Fs.Analyzers\Fs.Analyzers.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\BannedSymbols.txt" Link="BannedSymbols.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_CodeAnalysis_BannedApiAnalyzers)\analyzers\dotnet\cs\*.dll" Link="banned-api-analyzers\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
