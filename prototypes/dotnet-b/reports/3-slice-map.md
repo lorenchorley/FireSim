@@ -5,6 +5,8 @@ Companion files: `reports/3-slice-sites.md` (every site, file:line, generated), 
 
 **Conditions.** Repository commit `0cc17cc` (the session branch after the merge of T1.3), TypeScript 5.9.3 (`node_modules/typescript` of the main checkout, read only), Node v22.22.0, the shared container (4 cores; each script runs in about 6 s, no heavy lock needed). "Lines" are **function span lines**: the first to the last line of a function as the TypeScript parser sees it (comments and blanks inside included, the JSDoc above it not), nested functions counted once; `wc -l` gives the whole-file figures. The slice is computed, not read by eye: `slice.mjs` follows every identifier that resolves to a function, method, accessor or constructor (calls, `new`, callbacks handed over by value, getters), interface methods to every implementing class and base methods to every override. That **over-approximates** (a branch a tier never takes is still followed), so every figure below is an upper bound for "what must be ported", except where a section says it was trimmed by hand. Cut points are regular expressions in `run-slice.sh`; each is a statement in section 1.3 that the physics never reads what it removes.
 
+> **Orchestrator addendum (2026-11-16, after T3.4, `3-probes.md`):** `PlumeField` is never reached in either gate tier (`emberLoft` is `'briggs'`): **it is not ported**, so §1.1 item 6 and the plume part of area A9 (about 270 C# lines) are dropped from the estimate. Fifteen probed functions were reached by no run (list in the plan's T3.4 result): they are ported last in their area as stubs that throw `NotImplementedException` naming the function. Decisions on Q1 to Q6 are in the plan's T3.3 result.
+
 ## 0. Result in numbers
 
 | | |
