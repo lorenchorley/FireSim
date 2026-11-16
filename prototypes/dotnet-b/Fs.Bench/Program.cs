@@ -29,6 +29,10 @@ switch (args.Length > 0 ? args[0] : "")
         return SpeedTestMerge.Run(args[1..]);
     case "merge":
         return Merge(args[1], args[2], args[3], args[4]);
+    case "air-threads": // T1.4a: thread curve of the air kernels (AirMerge.Threads)
+        return AirMerge.Threads(args[1..]);
+    case "air-merge": // T1.4a: BDN + Node results -> reports/1-air-kernels.json (AirMerge.Run)
+        return AirMerge.Run(args[1..]);
     case "fsmath-run": // T1.3: every FsMath candidate over fixed input files, outputs as raw float64 (FsMathRun)
         return FsMathRun.Run(args[1..]);
     case "fsmath-vectors": // T1.3: CoreMathSharp against the test vectors of its own repository (FsMathVectors)
