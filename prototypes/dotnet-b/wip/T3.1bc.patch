@@ -1,0 +1,666 @@
+From fd9eb43ba7cf58b0cb6f3a49d039f39824ddb398 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 18:50:58 +0000
+Subject: [PATCH 1/2] T3.1b/c: bars.mjs, the metrics of plan 10.3 from two
+ arrival rasters, with node tests
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ prototypes/dotnet-b/ts-export/bars.mjs      | 163 +++++++++++++++++++
+ prototypes/dotnet-b/ts-export/bars.test.mjs | 169 ++++++++++++++++++++
+ 2 files changed, 332 insertions(+)
+ create mode 100644 prototypes/dotnet-b/ts-export/bars.mjs
+ create mode 100644 prototypes/dotnet-b/ts-export/bars.test.mjs
+
+diff --git a/prototypes/dotnet-b/ts-export/bars.mjs b/prototypes/dotnet-b/ts-export/bars.mjs
+new file mode 100644
+index 0000000..38deea2
+--- /dev/null
++++ b/prototypes/dotnet-b/ts-export/bars.mjs
+@@ -0,0 +1,163 @@
++/**
++ * bars.mjs (cards T3.1b and T3.1c): the agreement metrics of plan section 10.3, computed from two `arrival.f32` rasters and a horizon. Pure functions, no
++ * dependency; `node --test prototypes/dotnet-b/ts-export/bars.test.mjs` tests them on synthetic rasters.
++ *
++ * INPUT. `arrival.f32` is what ts-export/export.ts writes (and harness/run-solver-browser.mjs): nx*ny float32, little endian, row-major, the arrival time in
++ * seconds from scenario start of the LAST snapshot's fire.arrivalTime, and -1 for a cell that never burnt (the snapshot's +Infinity is converted at export).
++ * A cell's arrival time is set once, when it ignites, so the raster of a 4 h run also holds every earlier state: at horizon H a cell is burnt iff 0 <= arrival <= H.
++ * A nested run (one 4 h run read at 900 s, 1,800 s, ...) is therefore the same as one run per horizon (checked on a pair of runs, reports/3-floors.md).
++ *
++ * UNBURNT. A cell is unburnt at horizon H when its arrival is -1 (any negative value), NaN, +-Infinity, or later than H. Nothing else is special.
++ *
++ * REFERENCE AND CANDIDATE. `ref` is the reference run (the noise-free TypeScript in Node 22: plan 10.3); `cand` is the run compared with it (a noisy run, the
++ * browser, later the C# port). Ratios and percentages are relative to the reference where they have a direction.
++ *
++ * THE METRICS at horizon H (all counted over the fire grid; cells are square and equal, so counts of cells are ratios of areas; `cellSizeM`, when given,
++ * only turns counts into hectares):
++ *   burntRef, burntCand      cells burnt by H in each run.
++ *   ever                     cells burnt by H in EITHER run ("ever-burning" cells).
++ *   disagree                 cells burnt by H in exactly one of the two runs (a differing burnt status).
++ *   disagreePct              100 * disagree / ever  (0 when ever = 0).  Bar: 1 % (embers on) or 2.5 % (embers off).
++ *   areaRatio                burntCand / burntRef  (NaN when both are 0; +Infinity when only burntRef is 0).
++ *   areaDiffPct              100 * |areaRatio - 1|, the "burnt area within x %" of the bars (0 when both are 0, +Infinity when only the reference is empty).
++ *                            Bar: 2 % (embers on) or 2.5 % (embers off). `areaSignedPct` = 100 * (areaRatio - 1) keeps the sign.
++ *   both                     cells burnt by H in both runs.
++ *   d = |arrCand - arrRef|   seconds, for the cells in `both` (float32 values widened to double, subtracted in double).
++ *   differing                cells in `both` with d > 0.
++ *   medianAbsS, p95AbsS, maxAbsS   the median, 95th percentile and maximum of d over `both` (NaN when `both` is 0). Quantiles by linear interpolation between
++ *                            the order statistics at rank q*(n-1) (the default of numpy; the median of an even count is the mean of the middle two).
++ *                            Bars: median <= 30 s; p95 <= 60 s (embers off only).
++ *
++ * FIRST DIVERGENCE (`firstDivergence`). Burnt status at time t differs from the moment the earlier of a cell's two arrival times is passed (a cell that
++ * ignites in one run at a and in the other at b > a, or never, differs in status for t in [a, b), and in arrival time from b on), so:
++ *   exactS                   min over all cells whose two arrival times differ (unburnt counts as +Infinity) of min(arrCand, arrRef); null if the rasters are identical.
++ *                            At every t >= exactS some bar metric is nonzero (status difference while t < max, arrival difference from max on).
++ *   snapshotS                the first time of the snapshot grid (default every 300 s, the cadence of the 4 h scenarios) that is >= exactS: the first
++ *                            snapshot at which any bar metric is nonzero; null if none up to the last time of the grid, or the rasters are identical.
++ *   firstExceedS             for each bar the first grid time at which the metric is above the bar (null if never up to the last grid time).
++ * Hashes cannot be used for a noisy run (its t = 0 snapshot already differs), and for the arrival raster they add nothing: the raster is the fire state.
++ */
++import fs from 'node:fs';
++
++/** The bars of plan 10.3 (same tier, same seed, "embers on, generator and draw order ported exactly" and "embers off"). null = no bar. */
++export const BARS = {
++  embersOn: { disagreePct: 1, areaDiffPct: 2, medianAbsS: 30, p95AbsS: null },
++  embersOff: { disagreePct: 2.5, areaDiffPct: 2.5, medianAbsS: 30, p95AbsS: 60 },
++};
++
++/** The horizons of T3.1b and T3.1c (seconds): 900 s, 1,800 s, 1 h, 2 h, 4 h. */
++export const HORIZONS = [900, 1800, 3600, 7200, 14400];
++
++/** The metric names that have bars, in report order. */
++export const METRICS = ['disagreePct', 'areaDiffPct', 'medianAbsS', 'p95AbsS'];
++
++/** Reads an arrival.f32 file as a Float32Array (aligned copy). */
++export function readArrival(file) {
++  const b = fs.readFileSync(file);
++  if (b.length % 4 !== 0) throw new Error(`${file}: ${b.length} bytes is not a whole number of float32`);
++  return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length));
++}
++
++/** True when the cell is burnt by horizon h (0 <= arrival <= h; NaN, -1, any negative value and +-Infinity are unburnt). */
++export function burntBy(arrival, h) {
++  return arrival >= 0 && arrival <= h; // false for NaN and negatives; +Infinity fails the second test
++}
++
++/** Linear-interpolation quantile of an ascending-sorted array (NaN if empty). */
++export function quantileSorted(sorted, q) {
++  const n = sorted.length;
++  if (n === 0) return NaN;
++  const r = q * (n - 1);
++  const lo = Math.floor(r);
++  const hi = Math.ceil(r);
++  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (r - lo);
++}
++
++/** The metrics of the header at one horizon. `ref` and `cand` are Float32Array (or arrays) of equal length. */
++export function barMetrics(ref, cand, horizon, cellSizeM) {
++  if (ref.length !== cand.length) throw new Error(`rasters differ in size: ${ref.length} and ${cand.length} cells`);
++  let burntRef = 0, burntCand = 0, ever = 0, disagree = 0, both = 0, differing = 0, maxAbsS = 0;
++  const abs = [];
++  for (let i = 0; i < ref.length; i++) {
++    const a = ref[i], b = cand[i];
++    const ba = burntBy(a, horizon), bb = burntBy(b, horizon);
++    if (ba) burntRef++;
++    if (bb) burntCand++;
++    if (ba || bb) ever++;
++    if (ba !== bb) disagree++;
++    if (ba && bb) {
++      both++;
++      const d = Math.abs(b - a);
++      if (d > 0) differing++;
++      if (d > maxAbsS) maxAbsS = d;
++      abs.push(d);
++    }
++  }
++  abs.sort((x, y) => x - y);
++  const bothEmpty = burntRef === 0 && burntCand === 0;
++  const areaRatio = burntRef === 0 ? (burntCand === 0 ? NaN : Infinity) : burntCand / burntRef;
++  const m = {
++    horizonS: horizon,
++    cells: ref.length,
++    burntRef, burntCand, ever, disagree,
++    disagreePct: ever ? (100 * disagree) / ever : 0,
++    areaRatio,
++    areaDiffPct: bothEmpty ? 0 : 100 * Math.abs(areaRatio - 1),
++    areaSignedPct: bothEmpty ? 0 : 100 * (areaRatio - 1),
++    both, differing,
++    medianAbsS: quantileSorted(abs, 0.5),
++    p95AbsS: quantileSorted(abs, 0.95),
++    maxAbsS: both ? maxAbsS : NaN,
++  };
++  if (cellSizeM) {
++    m.burntRefHa = (burntRef * cellSizeM * cellSizeM) / 1e4;
++    m.burntCandHa = (burntCand * cellSizeM * cellSizeM) / 1e4;
++  }
++  return m;
++}
++
++/** Each metric as a fraction of its bar (null where the case has no bar). NaN metrics (no cell burnt in both) count as 0: nothing differs. */
++export function barFractions(m, embers = true) {
++  const bar = embers ? BARS.embersOn : BARS.embersOff;
++  const out = {};
++  for (const k of METRICS) out[k] = bar[k] === null ? null : Number.isNaN(m[k]) ? 0 : m[k] / bar[k];
++  return out;
++}
++
++/** The largest fraction of a bar over the metrics that have a bar (the number a verdict is made from). */
++export function worstFraction(m, embers = true) {
++  return Math.max(...Object.values(barFractions(m, embers)).filter((x) => x !== null));
++}
++
++/**
++ * Verdict words of the report for a worst fraction of a bar r (the largest metric/bar ratio): r >= 1 "at or above the bar"; r <= 0.1 "far below the bar"
++ * (a factor of 10 or more); otherwise "within a factor of N of the bar", N = ceil(1 / r).
++ */
++export function verdict(r) {
++  if (!(r > 0)) return 'floor far below the bar (zero)';
++  if (r >= 1) return 'at or above the bar';
++  if (r <= 0.1) return 'floor far below the bar';
++  return `within a factor of ${Math.ceil(1 / r)} of the bar`;
++}
++
++/** First divergence and first exceedance of each bar over a grid of times (see the header). */
++export function firstDivergence(ref, cand, { gridS, embers = true } = {}) {
++  if (ref.length !== cand.length) throw new Error(`rasters differ in size: ${ref.length} and ${cand.length} cells`);
++  const grid = gridS ?? Array.from({ length: 48 }, (_, i) => 300 * (i + 1));
++  const t = (x) => (x >= 0 && Number.isFinite(x) ? x : Infinity);
++  let exactS = Infinity;
++  for (let i = 0; i < ref.length; i++) {
++    const a = t(ref[i]), b = t(cand[i]);
++    if (a === b) continue;
++    const m = Math.min(a, b);
++    if (m < exactS) exactS = m;
++  }
++  const snapshotS = Number.isFinite(exactS) ? (grid.find((g) => g >= exactS) ?? null) : null;
++  const bar = embers ? BARS.embersOn : BARS.embersOff;
++  const firstExceedS = Object.fromEntries(METRICS.map((k) => [k, null]));
++  for (const g of grid) {
++    const m = barMetrics(ref, cand, g);
++    for (const k of METRICS) if (bar[k] !== null && firstExceedS[k] === null && m[k] > bar[k]) firstExceedS[k] = g;
++  }
++  return { exactS: Number.isFinite(exactS) ? exactS : null, snapshotS, firstExceedS };
++}
+diff --git a/prototypes/dotnet-b/ts-export/bars.test.mjs b/prototypes/dotnet-b/ts-export/bars.test.mjs
+new file mode 100644
+index 0000000..dec01d9
+--- /dev/null
++++ b/prototypes/dotnet-b/ts-export/bars.test.mjs
+@@ -0,0 +1,169 @@
++// node --test prototypes/dotnet-b/ts-export/bars.test.mjs
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { barMetrics, burntBy, firstDivergence, quantileSorted, verdict, worstFraction, BARS } from './bars.mjs';
++
++const raster = (vals) => Float32Array.from(vals);
++// 6 cells burn at 0, 100, 200, 300, 400, 500; six never (-1)
++const base = () => raster([0, 100, 200, 300, 400, 500, -1, -1, -1, -1, -1, -1]);
++const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} != ${b}`);
++
++test('burntBy: arrival <= horizon; the sentinel -1, NaN and infinities are unburnt', () => {
++  assert.equal(burntBy(0, 0), true);
++  assert.equal(burntBy(300, 300), true);
++  assert.equal(burntBy(300.5, 300), false);
++  assert.equal(burntBy(-1, 1e9), false);
++  assert.equal(burntBy(NaN, 1e9), false);
++  assert.equal(burntBy(Infinity, 1e9), false);
++  assert.equal(burntBy(-Infinity, 1e9), false);
++});
++
++test('identical rasters: every metric zero at every horizon', () => {
++  for (const h of [0, 150, 300, 600, 14400]) {
++    const m = barMetrics(base(), base(), h);
++    assert.equal(m.disagree, 0);
++    assert.equal(m.disagreePct, 0);
++    assert.equal(m.areaDiffPct, 0);
++    assert.equal(m.differing, 0);
++    assert.equal(m.maxAbsS, 0);
++    assert.equal(m.medianAbsS, 0);
++    assert.equal(worstFraction(m), 0);
++  }
++  const f = firstDivergence(base(), base(), { gridS: [300, 600] });
++  assert.deepEqual(f, { exactS: null, snapshotS: null, firstExceedS: { disagreePct: null, areaDiffPct: null, medianAbsS: null, p95AbsS: null } });
++});
++
++test('one flipped cell: burnt in the candidate only', () => {
++  const c = base();
++  c[6] = 250; // one extra cell, burnt at 250 s
++  const m = barMetrics(base(), c, 600);
++  assert.equal(m.burntRef, 6);
++  assert.equal(m.burntCand, 7);
++  assert.equal(m.ever, 7);
++  assert.equal(m.disagree, 1);
++  near(m.disagreePct, 100 / 7);
++  near(m.areaRatio, 7 / 6);
++  near(m.areaDiffPct, 100 / 6);
++  near(m.areaSignedPct, 100 / 6);
++  assert.equal(m.both, 6);
++  assert.equal(m.differing, 0);
++  assert.equal(m.medianAbsS, 0);
++  // before the extra cell burns it does not count; at 250 it does
++  assert.equal(barMetrics(base(), c, 249).disagree, 0);
++  assert.equal(barMetrics(base(), c, 250).disagree, 1);
++  // the other way round: burnt in the reference only (area ratio below 1, negative signed difference)
++  const r = barMetrics(c, base(), 600);
++  assert.equal(r.disagree, 1);
++  assert.ok(r.areaSignedPct < 0);
++  near(r.areaDiffPct, 100 / 7);
++  // first divergence: the cell ignites at 250 in one run only
++  const f = firstDivergence(base(), c, { gridS: [100, 200, 300, 400] });
++  assert.equal(f.exactS, 250);
++  assert.equal(f.snapshotS, 300);
++  assert.equal(f.firstExceedS.disagreePct, 300); // 1/7 = 14 % > 1 %
++  assert.equal(f.firstExceedS.areaDiffPct, 300); // 1/6 = 16.7 % > 2 %
++  assert.equal(f.firstExceedS.medianAbsS, null);
++});
++
++test('shifted arrivals: statistics over the cells burnt in both', () => {
++  const ref = raster([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, -1, -1]);
++  const cand = raster([10, 25, 20, 40, 51, 60, 70, 140, 90, 100, -1, -1]); // d = 0 5 10 0 1 0 0 60 0 0
++  const m = barMetrics(ref, cand, 1000);
++  assert.equal(m.both, 10);
++  assert.equal(m.differing, 4);
++  assert.equal(m.maxAbsS, 60);
++  assert.equal(m.disagree, 0);
++  assert.equal(m.areaDiffPct, 0);
++  // sorted d: 0 0 0 0 0 0 1 5 10 60: median (0+0)/2 = 0; p95: rank .95*9 = 8.55, 10 + .55*(60-10) = 37.5
++  assert.equal(m.medianAbsS, 0);
++  near(m.p95AbsS, 37.5);
++  // a shift of every cell by a whole 40 s: median 40
++  const all = barMetrics(ref, ref.map((x) => (x >= 0 ? x + 40 : x)), 1000);
++  assert.equal(all.medianAbsS, 40);
++  assert.equal(all.p95AbsS, 40);
++  assert.equal(all.differing, 10);
++  // at horizon 75 s the 80 vs 140 cell is burnt in neither
++  const early = barMetrics(ref, cand, 75);
++  assert.equal(early.both, 7);
++  assert.equal(early.disagree, 0);
++  // cell 1: 20 vs 25 -> min 20; cell 2: 30 vs 20 -> min 20
++  const f = firstDivergence(ref, cand, { gridS: [10, 20, 30] });
++  assert.equal(f.exactS, 20);
++  assert.equal(f.snapshotS, 20);
++  // a 1 s shift is a status difference in between: 50 vs 51 at t = 50.5
++  const s = barMetrics(raster([50, -1]), raster([51, -1]), 50.5);
++  assert.equal(s.disagree, 1);
++  assert.equal(s.both, 0);
++});
++
++test('empty sets and the quantile helper', () => {
++  assert.ok(Number.isNaN(quantileSorted([], 0.5)));
++  assert.equal(quantileSorted([7], 0.95), 7);
++  assert.equal(quantileSorted([1, 2, 3, 4], 0.5), 2.5);
++  assert.equal(quantileSorted([1, 2, 3], 0.5), 2);
++  assert.equal(quantileSorted([0, 10], 0.95), 9.5);
++  const m = barMetrics(raster([-1, -1]), raster([-1, -1]), 100);
++  assert.equal(m.ever, 0);
++  assert.equal(m.disagreePct, 0);
++  assert.equal(m.areaDiffPct, 0);
++  assert.ok(Number.isNaN(m.areaRatio));
++  assert.ok(Number.isNaN(m.medianAbsS));
++  assert.equal(worstFraction(m), 0);
++});
++
++test('NaN and unburnt handling', () => {
++  // NaN, -1, +Infinity and -Infinity are all "unburnt" and equal one another
++  const ref = raster([100, NaN, -1, Infinity, -Infinity, 200]);
++  const cand = raster([100, -1, NaN, -1, Infinity, 200]);
++  const m = barMetrics(ref, cand, 1e6);
++  assert.equal(m.burntRef, 2);
++  assert.equal(m.burntCand, 2);
++  assert.equal(m.disagree, 0);
++  assert.equal(m.differing, 0);
++  assert.equal(firstDivergence(ref, cand, { gridS: [300] }).exactS, null);
++  // burnt in the reference only, NaN in the candidate: a flipped cell
++  const m2 = barMetrics(raster([100, 200]), raster([100, NaN]), 1e6);
++  assert.equal(m2.disagree, 1);
++  assert.equal(m2.ever, 2);
++  assert.equal(m2.disagreePct, 50);
++  assert.equal(m2.areaRatio, 0.5);
++  // reference empty, candidate not
++  const m3 = barMetrics(raster([-1, -1]), raster([5, -1]), 10);
++  assert.equal(m3.areaRatio, Infinity);
++  assert.equal(m3.areaDiffPct, Infinity);
++  assert.equal(m3.disagreePct, 100);
++  // a size mismatch is an error, not a silent truncation
++  assert.throws(() => barMetrics(raster([1]), raster([1, 2]), 10));
++});
++
++test('bars, fractions and the verdict words', () => {
++  assert.deepEqual(BARS.embersOn, { disagreePct: 1, areaDiffPct: 2, medianAbsS: 30, p95AbsS: null });
++  const m = { disagreePct: 0.5, areaDiffPct: 0.2, medianAbsS: 3, p95AbsS: 90 };
++  assert.equal(worstFraction(m, true), 0.5); // no p95 bar with embers on
++  assert.equal(worstFraction(m, false), 90 / 60);
++  assert.equal(verdict(0), 'floor far below the bar (zero)');
++  assert.equal(verdict(0.05), 'floor far below the bar');
++  assert.equal(verdict(0.1), 'floor far below the bar');
++  assert.equal(verdict(0.3), 'within a factor of 4 of the bar');
++  assert.equal(verdict(0.5), 'within a factor of 2 of the bar');
++  assert.equal(verdict(1), 'at or above the bar');
++  assert.equal(verdict(5.8), 'at or above the bar');
++});
++
++test('first exceedance of each bar over the grid', () => {
++  // 100 cells burn at 10, 20, ..., 1000 s; the candidate never burns the last 5 and ignites cell 10 (110 s) 40 s late
++  const ref = raster(Array.from({ length: 100 }, (_, i) => 10 * (i + 1)));
++  const cand = Float32Array.from(ref);
++  for (let i = 95; i < 100; i++) cand[i] = -1;
++  cand[10] += 40;
++  const f = firstDivergence(ref, cand, { gridS: [100, 500, 960, 1000] });
++  assert.equal(f.exactS, 110);
++  assert.equal(f.snapshotS, 500);
++  // 500 s: cell 10 burnt in both, 40 s apart; nothing else. 960 s: ref 96 burnt, cand 95: 1/96 = 1.04 % of cells (> 1 %), area 1.04 % (< 2 %)
++  assert.equal(f.firstExceedS.disagreePct, 960);
++  assert.equal(f.firstExceedS.areaDiffPct, 1000); // 5 of 100 at 1000 s
++  assert.equal(f.firstExceedS.medianAbsS, null);
++  assert.equal(f.firstExceedS.p95AbsS, null); // no p95 bar with embers on
++  const off = firstDivergence(ref, cand, { gridS: [100, 500, 960, 1000], embers: false });
++  assert.equal(off.firstExceedS.disagreePct, 1000); // 2.5 % bar: 1.04 % at 960 is below, 5 % at 1000 is above
++});
+-- 
+2.43.0
+
+
+From 6104a8ca62171196158f9f569006d9b51a44797b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 19:29:53 +0000
+Subject: [PATCH 2/2] WIP (stopped by the owner before it finished; not
+ verified): uncommitted work of the builder at the stop
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016zPE7K49ycKieo7wJdrBFN
+---
+ prototypes/dotnet-b/ts-export/floors-run.mjs | 112 +++++++++++++
+ prototypes/dotnet-b/ts-export/floors.mjs     | 161 +++++++++++++++++++
+ 2 files changed, 273 insertions(+)
+ create mode 100644 prototypes/dotnet-b/ts-export/floors-run.mjs
+ create mode 100644 prototypes/dotnet-b/ts-export/floors.mjs
+
+diff --git a/prototypes/dotnet-b/ts-export/floors-run.mjs b/prototypes/dotnet-b/ts-export/floors-run.mjs
+new file mode 100644
+index 0000000..353cce0
+--- /dev/null
++++ b/prototypes/dotnet-b/ts-export/floors-run.mjs
+@@ -0,0 +1,112 @@
++#!/usr/bin/env node
++/**
++ * Runner of the T3.1b / T3.1c matrix (the noise floor and the engine floor). One chunk of jobs per call, so that each call can sit under
++ * `flock /tmp/firesim-heavy.lock` for about 15 minutes and release it; jobs already in the store are skipped, so calls resume where the last stopped.
++ *
++ *   FS_BUILD_DIR=... FS_BUILD_DIR_NOISE=... FS_SOLVER_OUT=... node floors-run.mjs --store DIR --work DIR [--budget SECONDS] [--draws 10] [--kinds ref,chrome,chromeinit,noise] [--list]
++ *
++ * Jobs (scenario, seed): katoomba6-fast-4h and katoomba3-standard-4h at seeds 12, 13, 14; warrumbungles6-fast-4h at seed 13 (5 draws).
++ *   ref         Node 22, no noise (ts-export/export.mjs build): the reference of both floors.
++ *   chrome      Chromium, the browser building its own scenario (harness/run-solver-browser.mjs): engine floor, primary arm.
++ *   chromeinit  Chromium, the solver on the Node reference's init.bin (--init-from): engine floor without the scenario build's last-bit differences.
++ *   noise01..   Node 22 with `--noise K` (K = 1..draws), compared with `ref`.
++ * Each job writes its run folder under --work, copies arrival.f32, hashes.json and meta.json into <store>/<scenario>/seed<S>/<kind>/ and deletes the run folder
++ * (the references keep init.bin and the snapshot files of the five horizons in <work>/refs/ until the Chromium arms have been compared; `--clean-refs` removes them).
++ * For the Chromium arms the pair (reference, browser) is also compared array by array at the horizons with `harness/compare-fixtures.mjs`; that JSON is stored as compare.json.
++ * Every job appends {job, kind, seconds, ...} to <store>/ledger.jsonl: the wall time under the lock is the sum of `seconds` (the 4 h cap of the plan).
++ * The Node builds and the browser bundle must exist (see floors-run.mjs --list; the first run of each is made by hand, see reports/3-floors.md).
++ */
++import { spawnSync } from 'node:child_process';
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++const repo = path.resolve(here, '..', '..', '..');
++const opt = (n, d) => {
++  const i = process.argv.indexOf(`--${n}`);
++  return i >= 0 ? process.argv[i + 1] : d;
++};
++const store = opt('store');
++const work = opt('work');
++const budgetS = Number(opt('budget', '780'));
++const draws = Number(opt('draws', '10'));
++const kinds = new Set(opt('kinds', 'ref,chrome,chromeinit,noise').split(','));
++const buildClean = process.env.FS_BUILD_DIR;
++const buildNoise = process.env.FS_BUILD_DIR_NOISE;
++if (!store || !work || !buildClean || !buildNoise || !process.env.FS_SOLVER_OUT) {
++  console.error('needs --store, --work, FS_BUILD_DIR, FS_BUILD_DIR_NOISE, FS_SOLVER_OUT');
++  process.exit(2);
++}
++const KEEP = '900,1800,3600,7200,14400';
++const CELLS = [];
++for (const scenario of ['katoomba6-fast-4h', 'katoomba3-standard-4h']) for (const seed of [12, 13, 14]) CELLS.push({ scenario, seed, draws, estS: scenario.startsWith('katoomba3') ? 32 : 20 });
++CELLS.push({ scenario: 'warrumbungles6-fast-4h', seed: 13, draws: Math.min(5, draws), estS: 20 });
++
++const dirOf = (c, kind) => path.join(store, c.scenario, `seed${c.seed}`, kind);
++const done = (c, kind) => fs.existsSync(path.join(dirOf(c, kind), 'meta.json'));
++const refDir = (c) => path.join(work, 'refs', `${c.scenario}-seed${c.seed}`);
++const jobs = [];
++if (kinds.has('ref')) for (const c of CELLS) jobs.push({ c, kind: 'ref' });
++if (kinds.has('chrome')) for (const c of CELLS) jobs.push({ c, kind: 'chrome' });
++if (kinds.has('chromeinit')) for (const c of CELLS) jobs.push({ c, kind: 'chromeinit' });
++if (kinds.has('noise')) for (let k = 1; k <= draws; k++) for (const c of CELLS) if (k <= c.draws) jobs.push({ c, kind: `noise${String(k).padStart(2, '0')}`, noise: k });
++const pending = jobs.filter((j) => !done(j.c, j.kind));
++if (process.argv.includes('--list')) {
++  console.log(`${jobs.length} jobs, ${pending.length} pending`);
++  for (const j of pending) console.log(`${j.c.scenario} seed${j.c.seed} ${j.kind}`);
++  process.exit(0);
++}
++
++fs.mkdirSync(work, { recursive: true });
++fs.mkdirSync(store, { recursive: true });
++const t00 = Date.now();
++let ran = 0;
++for (const j of pending) {
++  const { c, kind } = j;
++  const elapsed = (Date.now() - t00) / 1000;
++  const est = c.estS * (kind.startsWith('chrome') ? 1.6 : 1.3) + 8;
++  if (elapsed + est > budgetS) {
++    console.log(`budget: ${Math.round(elapsed)} s used of ${budgetS}, next job ${c.scenario} seed${c.seed} ${kind} (est ${Math.round(est)} s) left for the next call`);
++    break;
++  }
++  if (kind.startsWith('chrome') && !fs.existsSync(path.join(refDir(c), 'init.bin'))) {
++    console.log(`skip ${c.scenario} seed${c.seed} ${kind}: reference run folder not in ${path.join(work, 'refs')}`);
++    continue;
++  }
++  const t0 = Date.now();
++  const name = `${c.scenario}-seed${c.seed}-${kind}`;
++  const out = kind === 'ref' ? path.join(work, 'refs') : path.join(work, 'run');
++  const dirName = kind === 'ref' ? `${c.scenario}-seed${c.seed}` : name;
++  const keep = kind === 'ref' || kind.startsWith('chrome') ? KEEP : 'none';
++  fs.mkdirSync(out, { recursive: true });
++  let r;
++  if (kind === 'ref' || kind.startsWith('noise')) {
++    const noisy = kind.startsWith('noise');
++    r = spawnSync(process.execPath, ['--max-old-space-size=4096', path.join(noisy ? buildNoise : buildClean, 'export.mjs'), c.scenario, '--out', out, '--seed', String(c.seed), '--dir', dirName, '--keep', keep, ...(noisy ? ['--noise', String(j.noise)] : [])], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, FS_REPO_ROOT: repo, ...(noisy ? { FS_POW_LOWERED: '1' } : {}) } });
++  } else {
++    r = spawnSync(process.execPath, [path.join(repo, 'prototypes/dotnet-b/harness/run-solver-browser.mjs'), c.scenario, '--out', out, '--seed', String(c.seed), '--dir', dirName, '--keep', keep, ...(kind === 'chromeinit' ? ['--init-from', refDir(c)] : [])], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], env: process.env });
++  }
++  const seconds = (Date.now() - t0) / 1000;
++  const runDir = path.join(out, dirName);
++  if (r.status !== 0 || !fs.existsSync(path.join(runDir, 'arrival.f32'))) {
++    console.error(`FAILED ${name} (exit ${r.status}); stdout: ${r.stdout}`);
++    fs.appendFileSync(path.join(store, 'ledger.jsonl'), JSON.stringify({ job: name, kind, failed: true, status: r.status, seconds }) + '\n');
++    process.exit(1);
++  }
++  const dest = dirOf(c, kind);
++  fs.mkdirSync(dest, { recursive: true });
++  fs.copyFileSync(path.join(runDir, 'arrival.f32'), path.join(dest, 'arrival.f32'));
++  fs.copyFileSync(path.join(runDir, 'hashes.json'), path.join(dest, 'hashes.json'));
++  if (kind.startsWith('chrome')) {
++    const cmp = spawnSync(process.execPath, [path.join(repo, 'prototypes/dotnet-b/harness/compare-fixtures.mjs'), refDir(c), runDir, '--json', path.join(dest, 'compare.json'), '--quiet'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
++    if (cmp.status !== 0) console.error(`compare-fixtures exit ${cmp.status} for ${name}`);
++  }
++  fs.copyFileSync(path.join(runDir, 'meta.json'), path.join(dest, 'meta.json')); // last: its presence marks the job done
++  if (kind !== 'ref') fs.rmSync(runDir, { recursive: true, force: true });
++  ran++;
++  const line = JSON.stringify({ job: name, kind, seconds: Math.round(seconds * 10) / 10, result: r.stdout.trim().split('\n').pop() });
++  fs.appendFileSync(path.join(store, 'ledger.jsonl'), line + '\n');
++  console.log(line);
++}
++console.log(`chunk done: ${ran} jobs, ${Math.round((Date.now() - t00) / 1000)} s`);
+diff --git a/prototypes/dotnet-b/ts-export/floors.mjs b/prototypes/dotnet-b/ts-export/floors.mjs
+new file mode 100644
+index 0000000..9a88e75
+--- /dev/null
++++ b/prototypes/dotnet-b/ts-export/floors.mjs
+@@ -0,0 +1,161 @@
++#!/usr/bin/env node
++/**
++ * Aggregates the store of floors-run.mjs into the tables of reports/3-floors.md and the JSON reports/3-floors.json (stage `3-floors`).
++ *
++ *   node floors.mjs --store DIR --json OUT.json [--md OUT.md]
++ *
++ * Metrics are those of bars.mjs (definitions in its header), candidate against the noise-free Node 22 reference of the same scenario and seed, at the horizons
++ * 900 s, 1,800 s, 1 h, 2 h and 4 h, read from the 4 h arrival raster (a cell is burnt by H iff 0 <= arrival <= H). The three scenarios have embers on, so the
++ * bars are those of plan 10.3 "embers on": 1 % of ever-burning cells, area within 2 %, median arrival difference 30 s (there is no 95th-percentile bar; the
++ * 60 s of the embers-off row is shown beside it as a reference). Each tier's verdict takes the largest metric-to-bar ratio ("worst fraction of a bar").
++ */
++import fs from 'node:fs';
++import path from 'node:path';
++import { BARS, HORIZONS, METRICS, barFractions, barMetrics, firstDivergence, readArrival, verdict, worstFraction } from './bars.mjs';
++
++const opt = (n) => {
++  const i = process.argv.indexOf(`--${n}`);
++  return i >= 0 ? process.argv[i + 1] : undefined;
++};
++const store = opt('store');
++if (!store || !opt('json')) {
++  console.error('usage: floors.mjs --store DIR --json OUT.json [--md OUT.md]');
++  process.exit(2);
++}
++const TIER = { 'katoomba6-fast-4h': 'fast, Katoomba 6 km', 'katoomba3-standard-4h': 'standard, Katoomba 3 km', 'warrumbungles6-fast-4h': 'fast, Warrumbungles 6 km' };
++const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
++const stats = (xs) => {
++  const v = xs.filter((x) => !Number.isNaN(x)).sort((a, b) => a - b);
++  if (!v.length) return { n: 0, mean: NaN, min: NaN, median: NaN, max: NaN };
++  const mid = v.length >> 1;
++  return { n: v.length, mean: v.reduce((a, b) => a + b, 0) / v.length, min: v[0], median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2, max: v[v.length - 1] };
++};
++const dirs = (d) => (fs.existsSync(d) ? fs.readdirSync(d).filter((x) => fs.statSync(path.join(d, x)).isDirectory()).sort() : []);
++const ledger = fs.existsSync(path.join(store, 'ledger.jsonl')) ? fs.readFileSync(path.join(store, 'ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
++
++const out = { scenarios: [], conditions: {}, ledger: { jobs: ledger.length, secondsInJobs: Math.round(ledger.reduce((a, l) => a + (l.seconds ?? 0), 0)) } };
++const gridS = Array.from({ length: 48 }, (_, i) => 300 * (i + 1));
++
++function measure(ref, cand, cellSize) {
++  const byH = {};
++  for (const h of HORIZONS) {
++    const m = barMetrics(ref, cand, h, cellSize);
++    byH[h] = { ...m, fractions: barFractions(m, true), worstFraction: worstFraction(m, true), worstFractionEmbersOff: worstFraction(m, false) };
++  }
++  return { horizons: byH, first: firstDivergence(ref, cand, { gridS, embers: true }) };
++}
++
++for (const scenario of dirs(store)) {
++  const sc = { scenario, tier: TIER[scenario] ?? scenario, embers: true, seeds: {}, pooled: {} };
++  for (const seedDir of dirs(path.join(store, scenario))) {
++    const seed = Number(seedDir.replace('seed', ''));
++    const base = path.join(store, scenario, seedDir);
++    if (!fs.existsSync(path.join(base, 'ref', 'meta.json'))) continue;
++    const ref = readArrival(path.join(base, 'ref', 'arrival.f32'));
++    const refMeta = readJson(path.join(base, 'ref', 'meta.json'));
++    const cs = refMeta.fireGrid.cellSize;
++    const entry = { seed, cellSizeM: cs, cells: ref.length, refBurntCells: refMeta.arrival.burntCells, refBurntHa: (refMeta.arrival.burntCells * cs * cs) / 1e4, refBurntByHorizonHa: {}, noise: { draws: [] }, chrome: null, chromeinit: null };
++    for (const h of HORIZONS) entry.refBurntByHorizonHa[h] = (ref.reduce((a, x) => a + (x >= 0 && x <= h ? 1 : 0), 0) * cs * cs) / 1e4;
++    for (const kind of dirs(base).filter((k) => k.startsWith('noise'))) {
++      const cand = readArrival(path.join(base, kind, 'arrival.f32'));
++      const meta = readJson(path.join(base, kind, 'meta.json'));
++      entry.noise.draws.push({ kind, noiseSeed: meta.noise?.seed, ...measure(ref, cand, cs), identicalToRef: Buffer.compare(fs.readFileSync(path.join(base, kind, 'arrival.f32')), fs.readFileSync(path.join(base, 'ref', 'arrival.f32'))) === 0, noiseCalls: meta.noise ? Object.values(meta.noise.calls ?? {}).reduce((a, b) => a + b, 0) : undefined, noiseNudged: meta.noise ? Object.values(meta.noise.nudged ?? {}).reduce((a, b) => a + b, 0) : undefined });
++    }
++    // per horizon summaries over the draws of this seed
++    entry.noise.summary = {};
++    for (const h of HORIZONS) {
++      const s = { draws: entry.noise.draws.length };
++      for (const k of [...METRICS, 'areaSignedPct', 'worstFraction', 'maxAbsS']) s[k] = stats(entry.noise.draws.map((d) => d.horizons[h][k]));
++      s.drawsAtOrAboveBar = entry.noise.draws.filter((d) => d.horizons[h].worstFraction >= 1).length;
++      entry.noise.summary[h] = s;
++    }
++    const exact = entry.noise.draws.map((d) => d.first.exactS ?? Infinity);
++    const snap = entry.noise.draws.map((d) => d.first.snapshotS ?? Infinity);
++    entry.noise.firstDivergence = { exactS: stats(exact.filter(Number.isFinite)), snapshotS: stats(snap.filter(Number.isFinite)), drawsIdenticalToRef: entry.noise.draws.filter((d) => d.identicalToRef).length, perDraw: entry.noise.draws.map((d) => ({ kind: d.kind, exactS: d.first.exactS, snapshotS: d.first.snapshotS, firstExceedS: d.first.firstExceedS })) };
++    for (const arm of ['chrome', 'chromeinit']) {
++      const d = path.join(base, arm);
++      if (!fs.existsSync(path.join(d, 'meta.json'))) continue;
++      const cand = readArrival(path.join(d, 'arrival.f32'));
++      const meta = readJson(path.join(d, 'meta.json'));
++      const e = { ...measure(ref, cand, cs), identicalToRef: Buffer.compare(fs.readFileSync(path.join(d, 'arrival.f32')), fs.readFileSync(path.join(base, 'ref', 'arrival.f32'))) === 0, engine: meta.engine, initFrom: meta.initFrom };
++      const hashesRef = readJson(path.join(base, 'ref', 'hashes.json'));
++      const hashesC = readJson(path.join(d, 'hashes.json'));
++      const times = Object.keys(hashesRef).map(Number).sort((a, b) => a - b);
++      const differing = times.filter((t) => hashesRef[t] !== hashesC[t]);
++      e.hashes = { snapshots: times.length, equal: times.length - differing.length, firstDifferingS: differing[0] ?? null, differingTimes: differing.length <= 12 ? differing : `${differing.length} of ${times.length}` };
++      if (fs.existsSync(path.join(d, 'compare.json'))) {
++        const c = readJson(path.join(d, 'compare.json'));
++        e.arrays = {
++          initIdenticalExceptWallClock: c.init?.identicalExceptWallClock ?? null,
++          initDifferingScalars: c.init?.differingScalarCount ?? null,
++          initDifferingArrays: c.init ? Object.keys(c.init.differingArrays ?? {}).length : null,
++          snapshotsCompared: (c.snapshots ?? []).map((s) => ({ t: s.t, arraysCompared: s.arraysCompared, arraysDiffering: s.arraysDiffering, differingScalarCount: s.differingScalarCount })),
++          firstSnapshotWithDifferingArraysS: c.growth?.firstSnapshotWithDifferingArraysS ?? null,
++          largestArrayDiffAtLastSnapshot: (() => {
++            const last = (c.snapshots ?? []).at(-1);
++            if (!last?.differingArrays) return null;
++            return Object.fromEntries(Object.entries(last.differingArrays).map(([k, v]) => [k, { differing: v.differing, of: v.n, maxAbs: v.maxAbs }]));
++          })(),
++        };
++      }
++      entry[arm] = e;
++    }
++    sc.seeds[seed] = entry;
++  }
++  // pooled over seeds and draws, per horizon
++  for (const h of HORIZONS) {
++    const draws = Object.values(sc.seeds).flatMap((e) => e.noise.draws.map((d) => d.horizons[h]));
++    const p = { noiseDraws: draws.length };
++    for (const k of [...METRICS, 'areaSignedPct', 'worstFraction']) p[`noise_${k}`] = stats(draws.map((d) => d[k]));
++    p.noiseDrawsAtOrAboveBar = draws.filter((d) => d.worstFraction >= 1).length;
++    p.noiseVerdictWorstDraw = verdict(p.noise_worstFraction.max);
++    p.noiseVerdictMeanDraw = verdict(p.noise_worstFraction.mean);
++    for (const arm of ['chrome', 'chromeinit']) {
++      const es = Object.values(sc.seeds).map((e) => e[arm]?.horizons[h]).filter(Boolean);
++      p[`${arm}_seeds`] = es.length;
++      p[`${arm}_worstFraction`] = es.length ? Math.max(...es.map((x) => x.worstFraction)) : null;
++      p[`${arm}_verdict`] = es.length ? verdict(p[`${arm}_worstFraction`]) : null;
++      for (const k of METRICS) p[`${arm}_max_${k}`] = es.length ? Math.max(...es.map((x) => (Number.isNaN(x[k]) ? 0 : x[k]))) : null;
++    }
++    sc.pooled[h] = p;
++  }
++  out.scenarios.push(sc);
++}
++fs.writeFileSync(opt('json'), JSON.stringify(out, (k, v) => (typeof v === 'number' && !Number.isFinite(v) ? (Number.isNaN(v) ? 'NaN' : v > 0 ? 'Infinity' : '-Infinity') : v), 1));
++
++// ---- markdown tables ----
++const f = (x, d = 2) => (x === null || x === undefined ? 'n/a' : typeof x === 'string' ? x : Number.isNaN(x) ? 'NaN' : !Number.isFinite(x) ? String(x) : x.toFixed(d));
++const hl = (h) => (h === 900 ? '900 s' : h === 1800 ? '1,800 s' : h === 3600 ? '1 h' : h === 7200 ? '2 h' : '4 h');
++const lines = [];
++const bar = BARS.embersOn;
++lines.push(`Bars (embers on): cells ${bar.disagreePct} %, area ${bar.areaDiffPct} %, median ${bar.medianAbsS} s (embers off: ${BARS.embersOff.disagreePct} %, ${BARS.embersOff.areaDiffPct} %, ${BARS.embersOff.medianAbsS} s, p95 ${BARS.embersOff.p95AbsS} s).`);
++for (const sc of out.scenarios) {
++  lines.push('', `### ${sc.scenario} (${sc.tier})`, '');
++  lines.push('Noise floor, per seed (mean / min / max over draws), by horizon.', '');
++  lines.push('| seed | horizon | draws | cells differ, % of ever-burning | area difference, % (signed mean) | median arrival diff, s | 95th pct, s | worst fraction of a bar | draws at or above a bar |');
++  lines.push('|---|---|---|---|---|---|---|---|---|');
++  for (const [seed, e] of Object.entries(sc.seeds)) for (const h of HORIZONS) {
++    const s = e.noise.summary[h];
++    const t = (st, d = 2) => `${f(st.mean, d)} / ${f(st.min, d)} / ${f(st.max, d)}`;
++    lines.push(`| ${seed} | ${hl(h)} | ${s.draws} | ${t(s.disagreePct)} | ${t(s.areaDiffPct)} (${f(s.areaSignedPct.mean)}) | ${t(s.medianAbsS, 1)} | ${t(s.p95AbsS, 1)} | ${f(s.worstFraction.mean)} / ${f(s.worstFraction.max)} | ${s.drawsAtOrAboveBar} of ${s.draws} |`);
++  }
++  lines.push('', 'First divergence of the noise draws (seconds into the fire; exact = the first moment any cell differs; snapshot = the next 300 s snapshot).', '');
++  lines.push('| seed | draws | draws bit-identical to the reference | exact: min / median / max | snapshot: min / median / max |');
++  lines.push('|---|---|---|---|---|');
++  for (const [seed, e] of Object.entries(sc.seeds)) {
++    const fd = e.noise.firstDivergence;
++    lines.push(`| ${seed} | ${e.noise.draws.length} | ${fd.drawsIdenticalToRef} | ${f(fd.exactS.min, 0)} / ${f(fd.exactS.median, 0)} / ${f(fd.exactS.max, 0)} | ${f(fd.snapshotS.min, 0)} / ${f(fd.snapshotS.median, 0)} / ${f(fd.snapshotS.max, 0)} |`);
++  }
++  lines.push('', 'Engine floor: Chromium against Node 22, no noise. `own` = the browser builds its own scenario (primary); `init` = the browser solver on Node\'s init.bin.', '');
++  lines.push('| seed | arm | horizon | cells differ, % | area diff, % (signed) | median s | 95th pct s | max s | worst fraction of a bar |');
++  lines.push('|---|---|---|---|---|---|---|---|---|');
++  for (const [seed, e] of Object.entries(sc.seeds)) for (const arm of ['chrome', 'chromeinit']) {
++    if (!e[arm]) continue;
++    for (const h of HORIZONS) {
++      const m = e[arm].horizons[h];
++      lines.push(`| ${seed} | ${arm === 'chrome' ? 'own' : 'init'} | ${hl(h)} | ${f(m.disagreePct, 3)} | ${f(m.areaDiffPct, 3)} (${f(m.areaSignedPct, 3)}) | ${f(m.medianAbsS, 3)} | ${f(m.p95AbsS, 3)} | ${f(m.maxAbsS, 3)} | ${f(m.worstFraction, 4)} |`);
++    }
++  }
++}
++fs.writeFileSync(opt('md') ?? opt('json').replace(/\.json$/, '.tables.md'), lines.join('\n') + '\n');
++console.log(`wrote ${opt('json')}; scenarios: ${out.scenarios.map((s) => `${s.scenario} (${Object.keys(s.seeds).length} seeds)`).join(', ')}`);
+-- 
+2.43.0
+
