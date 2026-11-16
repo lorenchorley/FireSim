@@ -311,6 +311,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
   2. A noise wrapper used only by the exporter (`--noise SEED`): per-call relative noise of the size of real libm differences on every transcendental `Math` function in section 3's list (`exp`, `log`, `pow`, `sin`, `cos`, `tan`, `atan`, `atan2`, `acos`, `asin`, `sinh`, `cbrt`, `log2`, `log10`, `hypot`), never on `sqrt` or the exact functions.
   3. `determinism NAME` accepts any scenario (it is limited to `katoomba3-fast` today).
 - **Done when:** each new scenario exports, and `determinism` passes on each.
+- **Result (merged 2026-11-16):** all five `-4h` scenarios export (8 to 27 s wall time each) and are deterministic; the 4 h scenarios start at **14:00** (with the preset's 12:00 start the south-west change arrives only at about 4 h; at 14:00 it passes 1.7 to 2.5 h in, as §15e's runs); the Warrumbungles ignition is the point (-1500, 1000) radius 60 of `studies/desktop-simulation/01-cost-vs-detail/README.md`; snapshot cadence is 300 s; the noise wrapper covers 15 functions plus `**`, with rates measured here (`reports/3-scenarios.md`). Details for T3.1b: use `--keep 900,1800,3600,7200,14400` (0.7 GB instead of 4.8 GB), compare noisy runs by arrival rasters and arrays (a noisy run's hashes differ from the start), and one noise draw on `katoomba3-standard-4h` already flipped 5.8 % of cells, far outside the 10.3 bars, which T3.1b must show to be a single draw or a real floor.
 
 #### T3.1b The noise floor
 - **Who:** builder. **Needs:** T3.1a.

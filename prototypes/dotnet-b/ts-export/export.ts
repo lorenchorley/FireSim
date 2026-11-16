@@ -3,7 +3,14 @@
  * and the desktop host drive it) on one named scenario and writes the files a C# reader needs. Built and started by run.mjs; see README.md in
  * this folder for the formats and the commands.
  *
- *   node run.mjs export NAME [--out DIR] [--seed N] [--to SECONDS] [--dir NAME] [--perturb EPS]
+ *   node run.mjs export NAME [--out DIR] [--seed N] [--to SECONDS] [--dir NAME] [--perturb EPS] [--noise SEED] [--noise-scale F] [--keep LIST] [--interval S]
+ *
+ * --noise SEED: for the duration of the run (from the solver's construction to its last step; the scenario is built clean, so init.bin is the
+ *   one of the noise-free fixture) the transcendental `Math` functions carry libm-sized per-call noise (noise.ts). --noise-scale F multiplies
+ *   every mismatch rate (0 = the wrapper installed but never moving a result: a check that it is transparent).
+ * --keep LIST: which snap-<t>.bin files to write: `all` (default), `none`, `last`, or comma-separated simulated seconds (the last one is always
+ *   written with `last`). hashes.json and arrival.f32 are complete either way; meta.json lists `snapshotsWritten`.
+ * --interval S: snapshot cadence, overriding the scenario's.
  *
  * It reads the app's code and never edits it.
  */
@@ -20,6 +27,7 @@ import { Simulation } from '../../../src/sim/simulation';
 import { snapshotHash } from '../../../src/sim/testing/hash';
 import { demoScenario, pointIgnition, withIgnitions } from '../../../src/sim/testing/scenarios';
 import type { Ignition } from '../../../src/core/types';
+import { installNoise, type NoiseHandle } from './noise';
 import { SCENARIOS, scenarioByName, type ScenarioDef } from './scenarios';
 
 // The bundle does not sit next to src/, so the asset loader's default (relative to its own module) misses the repository's public/ and the
@@ -50,7 +58,16 @@ const runTo = arg('to') !== undefined ? Number(arg('to')) : def.runTo;
  * about 4.5 ulp of a double). Everything else is as the named scenario.
  */
 const perturb = arg('perturb') !== undefined ? Number(arg('perturb')) : 0;
-const dirName = arg('dir') ?? (seed !== def.seed ? `${def.name}-seed${seed}` : perturb ? `${def.name}-pert${arg('perturb')}` : def.name);
+const noiseSeed = arg('noise') !== undefined ? Number(arg('noise')) : undefined;
+if (noiseSeed !== undefined && !Number.isInteger(noiseSeed)) {
+  console.error('--noise needs an integer seed');
+  process.exit(2);
+}
+const noiseScale = arg('noise-scale') !== undefined ? Number(arg('noise-scale')) : 1;
+const interval = arg('interval') !== undefined ? Number(arg('interval')) : def.snapshotInterval;
+const keepArg = arg('keep') ?? 'all';
+const keepTimes = new Set(keepArg === 'all' || keepArg === 'none' || keepArg === 'last' ? [] : keepArg.split(',').map(Number));
+const dirName = arg('dir') ?? (seed !== def.seed ? `${def.name}-seed${seed}` : perturb ? `${def.name}-pert${arg('perturb')}` : def.name) + (noiseSeed !== undefined ? `-noise${noiseSeed}` : '');
 const outRoot = arg('out');
 if (!outRoot) {
   console.error('--out DIR is required (the fixtures root; the fixture goes to DIR/<name>/)');
@@ -66,14 +83,14 @@ function ignitionOf(d: ScenarioDef): Ignition {
 
 async function build(d: ScenarioDef): Promise<ScenarioData> {
   const tierOnly = d.grid === 'tier-only';
-  const base = await demoScenario({ startCivil: d.startCivil, extent: d.extent, tier: tierOnly ? 'standard' : d.tier, duration: d.duration });
+  const base = await demoScenario({ ...(d.site ? { site: d.site } : {}), startCivil: d.startCivil, extent: d.extent, tier: tierOnly ? 'standard' : d.tier, duration: d.duration });
   let extra = {};
   if (tierOnly) {
     // The engine options the builder would resolve for this tier, with the fire cell left at the standard grid's.
     const o = resolveOptions({ options: { tier: d.tier } } as never, d.extent, base.options.fireCellSize);
     extra = { tier: d.tier, atmosCellSize: o.atmosCellSize, atmosLevels: o.atmosLevels, atmosDz1: o.atmosDz1, maxEmbers: o.maxEmbers };
   }
-  return withIgnitions(base, [ignitionOf(d)], { snapshotInterval: d.snapshotInterval, tier: d.tier, seed, ...extra, ...(d.options ?? {}) });
+  return withIgnitions(base, [ignitionOf(d)], { snapshotInterval: interval, tier: d.tier, seed, ...extra, ...(d.options ?? {}) });
 }
 
 function gitCommit(): string {
@@ -104,6 +121,7 @@ writeFileSync(join(dir, 'init.bin'), initBytes);
 writeFileSync(join(dir, 'ignitions.json'), JSON.stringify(scenario.ignitions, null, 2));
 
 const hashes: Record<string, number> = {};
+const written: number[] = [];
 const snapBytes: Record<string, number> = {};
 let lastArrival: Float32Array | null = null;
 let lastGrid = scenario.terrain.grid;
@@ -113,7 +131,13 @@ const onSnapshot = (s: SimSnapshot): void => {
   const k = String(s.time);
   const e0 = wall();
   const bytes = encodeMessage({ type: 'snapshot', snapshot: s });
-  writeFileSync(join(dir, `snap-${s.time}.bin`), bytes);
+  // 'last': the file of the latest snapshot is kept, and the one it replaces is removed (the run's last time is not known in advance).
+  const write = keepArg === 'all' || keepTimes.has(s.time) || keepArg === 'last';
+  if (write) {
+    writeFileSync(join(dir, `snap-${s.time}.bin`), bytes);
+    written.push(s.time);
+    if (keepArg === 'last' && written.length > 1) rmSync(join(dir, `snap-${written.shift()}.bin`), { force: true });
+  }
   T.encodeMs += wall() - e0;
   hashes[k] = snapshotHash(s);
   snapBytes[k] = bytes.byteLength;
@@ -122,6 +146,9 @@ const onSnapshot = (s: SimSnapshot): void => {
   lastTime = s.time;
 };
 
+// The noise is on from the solver's construction to the end of the run; the scenario above was built without it.
+let noise: NoiseHandle | undefined;
+if (noiseSeed !== undefined) noise = installNoise(noiseSeed, noiseScale);
 t0 = wall();
 const sim = new Simulation(scenario, { minSnapshotWallMs: 0, hooks: { snapshot: onSnapshot } });
 T.constructMs = wall() - t0;
@@ -135,6 +162,8 @@ sim.advance(runTo);
 T.advanceMs = wall() - t0;
 // A run that ends between two pictures gets a run-end snapshot, as the host asks for.
 sim.emitRunEnd();
+const noiseReport = noise?.report();
+noise?.restore();
 const runMs = T.spinUpMs + T.advanceMs;
 const tierNow = sim.tier;
 
@@ -184,8 +213,10 @@ const meta = {
   startTimeUtcMs: scenario.startTime,
   durationS: scenario.duration,
   runToS: runTo,
-  snapshotIntervalS: def.snapshotInterval,
+  snapshotIntervalS: interval,
   snapshotTimesS: times,
+  snapshotsWritten: [...written].sort((a, b) => a - b),
+  noise: noiseReport && { ...noiseReport, powLowered: process.env.FS_POW_LOWERED === '1', note: 'noise.ts: per-call, measured V8 12.4 vs glibc 2.39 mismatch rates; on from the solver construction to the end of the run' },
   fireGrid: { nx: g.nx, ny: g.ny, cellSize: g.cellSize, x0: g.x0, y0: g.y0, origin: g.origin },
   terrainGridMatchesFireGrid: scenario.terrain.grid.nx === g.nx && scenario.terrain.grid.cellSize === g.cellSize,
   options: scenario.options,
@@ -206,6 +237,6 @@ const meta = {
 };
 writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
 console.log(
-  JSON.stringify({ fixture: dirName, ok: hashCheck ? hashCheck.equal : true, snapshots: times.length, burntCells: burnt, cells: arrival.length, runMs: Math.round(runMs), initBytes: initBytes.byteLength, snapBytes: firstSnap }),
+  JSON.stringify({ fixture: dirName, ...(noiseSeed !== undefined ? { noise: noiseSeed } : {}), ok: hashCheck ? hashCheck.equal : true, snapshots: times.length, burntCells: burnt, cells: arrival.length, runMs: Math.round(runMs), initBytes: initBytes.byteLength, snapBytes: firstSnap }),
 );
 process.exit(hashCheck && !hashCheck.equal ? 3 : 0);
