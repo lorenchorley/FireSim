@@ -4,7 +4,10 @@
 #   1b. (T0.4b) a bad file with one line per new ban: Fma.MultiplyAdd, AdvSimd.FusedMultiplyAdd, AdvSimd.Arm64.FusedMultiplyAdd, Vector128.FusedMultiplyAdd,
 #       double.FusedMultiplyAdd, Convert.ToInt32(double), Convert.ToInt64(float), Convert.ChangeType, int.CreateTruncating, byte.CreateSaturating,
 #       T.CreateChecked (generic math)                                                      -> the build FAILS, with RS0030 for every one of them
-#   2. the same code (1 and 1b) in FsMath.cs and FsConv.cs (exempt by file name)            -> the build PASSES
+#   1c. (T0.4c) a bad file with one line per new ban: Sse.Reciprocal, Sse.ReciprocalSqrt, Avx512F.Reciprocal14, AdvSimd.ReciprocalEstimate, Avx2.IsSupported, Sve.IsSupported,
+#       PackedSimd.Add (the namespaces X86, Arm, Wasm), Vector128/256/512.ConvertToInt32/Int64/UInt32/UInt64, double.ConvertToInteger, decimal.ToInt32   -> the build FAILS with RS0030 for every one of them
+#   1d. (T0.4c) a bad file with one cast per new FS0001 rule: (int)Half, (long)decimal, (double)decimal, (float)decimal, (Int128)double   -> the build FAILS with FS0001 for each
+#   2. the same code (1, 1b, 1c and 1d) in FsMath.cs and FsConv.cs (exempt by file name)            -> the build PASSES
 #   3. the same code in Fs.Kernel/Pyrogenic/ (the "not a gate kernel" folder)               -> the build PASSES
 #   4. the same code in a project that is not a solver project                              -> the build PASSES
 # Run (from anywhere):   bash prototypes/dotnet-b/Fs.Analyzers/tools/demo-bad-solver.sh        Needs `source prototypes/dotnet-b/env.sh` first.
@@ -42,8 +45,37 @@ body2='static class CLASS2 {
 }'
 expected_t04b=("Fma.MultiplyAdd" "AdvSimd.FusedMultiplyAdd" "AdvSimd.Arm64.FusedMultiplyAdd" "Vector128.FusedMultiplyAdd" "double.FusedMultiplyAdd"
   "Convert.ToInt32(double)" "Convert.ToInt64(float)" "Convert.ChangeType(object?, Type)" "int.CreateTruncating" "byte.CreateSaturating" "INumberBase<TSelf>.CreateChecked")
-# a file holding both bodies, as classes named $1 and $1T04b
-emit() { echo "$usings"; echo "$body" | sed "s/CLASS/$1/"; echo "$body2" | sed "s/CLASS2/${1}T04b/"; }
+# T0.4c: one line per banned namespace and per Vector.ConvertTo family (RS0030), and one cast per new FS0001 rule
+# Sve is evaluation-only: SYSLIB5003 is a compile error unless suppressed (the ban holds either way)
+usings3='#pragma warning disable SYSLIB5003
+using System.Runtime.Intrinsics.Wasm;'
+body3='static class CLASS3 {
+  public static Vector128<float> A(Vector128<float> v) => Sse.Reciprocal(v);
+  public static Vector128<float> B(Vector128<float> v) => Sse.ReciprocalSqrt(v);
+  public static Vector512<double> C(Vector512<double> v) => Avx512F.Reciprocal14(v);
+  public static Vector128<float> D(Vector128<float> v) => AdvSimd.ReciprocalEstimate(v);
+  public static bool E() => Avx2.IsSupported;
+  public static bool F() => Sve.IsSupported;
+  public static Vector128<int> G(Vector128<int> v) => PackedSimd.Add(v, v);
+  public static Vector128<int> H(Vector128<float> v) => Vector128.ConvertToInt32(v);
+  public static Vector128<long> I(Vector128<double> v) => Vector128.ConvertToInt64(v);
+  public static Vector256<uint> J(Vector256<float> v) => Vector256.ConvertToUInt32(v);
+  public static Vector512<ulong> K(Vector512<double> v) => Vector512.ConvertToUInt64(v);
+  public static int L(double d) => double.ConvertToInteger<int>(d);
+  public static int M(decimal m) => decimal.ToInt32(m);
+}'
+# the namespace ban reports the namespace ('System.Runtime.Intrinsics.X86') once per use; lines A to G of body3 are the seven uses, the rest name their member
+expected_t04c=("System.Runtime.Intrinsics.X86" "System.Runtime.Intrinsics.Arm" "System.Runtime.Intrinsics.Wasm" "Vector128.ConvertToInt32(" "Vector128.ConvertToInt64(" "Vector256.ConvertToUInt32(" "Vector512.ConvertToUInt64(" "double.ConvertToInteger<" "decimal.ToInt32(")
+body4='static class CLASS4 {
+  public static int A(Half h) => (int)h;
+  public static long B(decimal m) => (long)m;
+  public static double C(decimal m) => (double)m;
+  public static float D(decimal m) => (float)m;
+  public static Int128 E(double d) => (Int128)d;
+}'
+expected_t04c_casts=("from 'Half' to 'int'" "from 'decimal' to 'long'" "from 'decimal' to 'double'" "from 'decimal' to 'float'" "from 'double' to 'Int128'")
+# a file holding all the bodies, as classes named $1, $1T04b, $1T04c and $1T04cCasts
+emit() { echo "$usings"; echo "$usings3"; echo "$body" | sed "s/CLASS/$1/"; echo "$body2" | sed "s/CLASS2/${1}T04b/"; echo "$body3" | sed "s/CLASS3/${1}T04c/"; echo "$body4" | sed "s/CLASS4/${1}T04cCasts/"; }
 echo 'static class Fine { public static double F(double x) => Math.Sqrt(Math.Abs(x)) + Math.Floor(x) + Math.Max(x, 1.0); }' > "$tmp/Fs.Kernel/Fine.cs"
 status=0
 build() { ( cd "$tmp" && dotnet build "$1" -nologo -v:q 2>&1 | grep -E 'error|Build succeeded|Warn|FAILED' | sed "s|$tmp/||; s|\[$tmp/.*||" | sort -u ); }
@@ -63,6 +95,30 @@ for sym in "${expected_t04b[@]}"; do
 done
 echo "$out" | grep -q 'error FS0001' && { echo "UNEXPECTED: 1b: FS0001 in a file without a cast"; status=1; }
 rm "$tmp/Fs.Kernel/BadT04b.cs"
+
+echo; echo "=== 1c. Fs.Kernel/BadT04c.cs: one line per new ban (T0.4c; expect FAILURE with RS0030 for each of the ${#expected_t04c[@]}) ==="
+{ echo "$usings"; echo "$usings3"; echo "$body3" | sed 's/CLASS3/BadT04c/'; } > "$tmp/Fs.Kernel/BadT04c.cs"
+out="$(build Fs.Kernel/Fs.Kernel.csproj)"; echo "$out"
+echo "$out" | grep -q 'Build FAILED' || { echo "UNEXPECTED: 1c did not fail"; status=1; }
+for sym in "${expected_t04c[@]}"; do
+  echo "$out" | grep 'error RS0030' | grep -qF "The symbol '$sym" || { echo "UNEXPECTED: 1c: no RS0030 for $sym"; status=1; }
+done
+# each of the seven namespace lines (A to G, lines 5 to 11 of the file) must fail on its own
+for ln in 5 6 7 8 9 10 11; do
+  echo "$out" | grep 'error RS0030' | grep -qF "BadT04c.cs($ln," || { echo "UNEXPECTED: 1c: no RS0030 on line $ln"; status=1; }
+done
+echo "$out" | grep -q 'error FS0001' && { echo "UNEXPECTED: 1c: FS0001 in a file without a cast"; status=1; }
+rm "$tmp/Fs.Kernel/BadT04c.cs"
+
+echo; echo "=== 1d. Fs.Kernel/BadT04cCasts.cs: one cast per new FS0001 rule (T0.4c; expect FAILURE with FS0001 for each of the ${#expected_t04c_casts[@]}) ==="
+{ echo "$usings"; echo "$body4" | sed 's/CLASS4/BadT04cCasts/'; } > "$tmp/Fs.Kernel/BadT04cCasts.cs"
+out="$(build Fs.Kernel/Fs.Kernel.csproj)"; echo "$out"
+echo "$out" | grep -q 'Build FAILED' || { echo "UNEXPECTED: 1d did not fail"; status=1; }
+for sym in "${expected_t04c_casts[@]}"; do
+  echo "$out" | grep 'error FS0001' | grep -qF "$sym" || { echo "UNEXPECTED: 1d: no FS0001 for $sym"; status=1; }
+done
+echo "$out" | grep -q 'error RS0030' && { echo "UNEXPECTED: 1d: RS0030 in a file without a banned call"; status=1; }
+rm "$tmp/Fs.Kernel/BadT04cCasts.cs"
 
 echo; echo "=== 2. the same code in FsMath.cs and FsConv.cs (exempt by file name; expect SUCCESS) ==="
 emit FsMath > "$tmp/Fs.Kernel/FsMath.cs"
