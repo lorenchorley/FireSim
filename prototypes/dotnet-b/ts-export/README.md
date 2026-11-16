@@ -9,7 +9,9 @@ arrival raster. It reads the app's code (`src/sim`, `src/scenario`, `src/core`) 
 FIX=<scratchpad>/dotnet-fixtures          # any folder; git ignores prototypes/dotnet-b/fixtures only
 flock /tmp/firesim-heavy.lock node prototypes/dotnet-b/ts-export/run.mjs export all --out $FIX           # every scenario below, one process each
 flock /tmp/firesim-heavy.lock node prototypes/dotnet-b/ts-export/run.mjs export katoomba3-fast --out $FIX [--seed 12] [--to 900] [--dir name]
-node prototypes/dotnet-b/ts-export/run.mjs determinism --out $FIX    # katoomba3-fast twice, separate processes, hashes compared (exit 1 if any differs)
+node prototypes/dotnet-b/ts-export/run.mjs determinism [NAME] --out $FIX [--to S] [--seed N] [--noise SEED] [--clean]   # NAME (default katoomba3-fast) twice, separate processes, every snapshot hash and arrival.f32 compared (exit 1 if any differs)
+flock /tmp/firesim-heavy.lock node prototypes/dotnet-b/ts-export/run.mjs export long --out $FIX     # the five 4 h scenarios of stage 3 (see below)
+node prototypes/dotnet-b/ts-export/run.mjs export katoomba6-fast-4h --out $FIX --noise 7 --keep 900,1800,3600,7200,14400   # libm-sized noise, snapshot files only at those times
 node prototypes/dotnet-b/ts-export/run.mjs verify --out $FIX         # decode every file with the app's codec; check hashes.json and arrival.f32
 node prototypes/dotnet-b/ts-export/run.mjs study --out $FIX --json study.json   # tier and seed difference study (markdown to stdout)
 node prototypes/dotnet-b/ts-export/results.mjs --out $FIX --study study.json --to prototypes/dotnet-b/reports/3a-results.json
@@ -36,6 +38,18 @@ The `study.mjs` seed groups expect these extra fixtures (all produced by `export
 | `katoomba3-point` | point ignition (-800,300) radius 60, as `src/sim/desktopDetail.determinism.test.ts`, civil start 14:00, fast, seed 11 | 100x100 @ 30 m | 100 m, 20 | 2000 | 900 s |
 | `anchor-080-katoomba6-point` | extra, regression anchor: the 0.8.0 test scenario (6 km, point (-2170,900)); its 15 hashes equal the published 0.8.0 ones | 200x200 @ 30 m | 133 m, 20 | 2000 | 900 s |
 | `*-noembers` | extra: the same with the option `embers=false` | | | | 1800 s |
+
+Stage 3 (T3.1a) adds the 4 h scenarios, all preset `hot-nw-sw-change`, civil start 14:00, seed 11, snapshots every 300 s (so 900, 1,800, 3,600, 7,200 and 14,400 s are all snapshots), `export long` runs them:
+
+| name | what | fire grid | air grid (cell, levels) | embers cap | to |
+|---|---|---|---|---|---|
+| `katoomba6-fast-4h` | Katoomba, 6 km, fast, 310 m line | 200x200 @ 30 m | 133 m, 20 | 2000 | 14,400 s |
+| `katoomba3-standard-4h` | Katoomba, 3 km, standard, 310 m line | 100x100 @ 30 m | 100 m, 20 | 4000 | 14,400 s |
+| `warrumbungles6-fast-4h` | Warrumbungles, 6 km, fast, point (-1500, 1000) radius 60 m (the §15e measurement's ignition) | 200x200 @ 30 m | 133 m, 20 | 2000 | 14,400 s |
+| `katoomba6-fast-4h-noembers`, `katoomba3-standard-4h-noembers` | the first two with `embers=false` | | | | 14,400 s |
+
+`--noise SEED` (`noise.ts`, `pow-lowering-plugin.mjs`): see `reports/3-scenarios.md`. It never touches the scenario build, so `init.bin` equals the noise-free fixture's; the fixture
+folder name gets `-noise<SEED>` unless `--dir` is given; `meta.json` has a `noise` record (calls and nudged calls per function). `--keep` and `--interval` are described in `export.ts`.
 
 `high` was not capped: it runs in about 8 s here. Civil start is Australia/Sydney (AEDT, UTC+11): 12:00 is `startTimeUtcMs` 1766192400000.
 
