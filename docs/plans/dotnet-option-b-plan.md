@@ -168,6 +168,13 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 - **Done when:** the three builds succeed from a clean clone; `Fs.Tests` runs (one trivial test); a deliberately bad file (`Math.Exp` and a `(int)` cast in a solver project) fails the build with the banned-API and `FS0001` diagnostics; `TOOLCHAIN.md` lists everything installed.
 - **Out:** `TOOLCHAIN.md`, `env.sh`, `global.json`, `Fs.Tests/`, `Fs.Analyzers/`, `BannedSymbols.txt`, lock files.
 
+#### T0.4b Close three holes in the banned-API list
+- **Who:** builder. **Needs:** T0.4 (merged). **Reads:** `prototypes/dotnet-b/TOOLCHAIN.md` section 5, `Fs.Analyzers/tools/GenBannedSymbols.cs`.
+- **Why:** T0.4's builder reported three ways to break rule 5 that the list does not cover: hardware fused multiply-add through `System.Runtime.Intrinsics.X86.Fma`, the Arm equivalents (`AdvSimd.FusedMultiplyAdd*`) and `Vector128.FusedMultiplyAdd`; float-to-integer conversion through `Convert.ToInt32(double)` and the other `Convert.To*` overloads that take a float or double; and `int.CreateTruncating`, `CreateSaturating` and `CreateChecked` (and the same on the other integer types) applied to a float or double. Min and max stay allowed (10.4 says to port them literally).
+- **Steps:** extend the generator and `BannedSymbols.txt`; add tests (the Roslyn-snippet tests in `Fs.Tests`) for each new ban and for the allowed neighbours; add the three to the bad-file demo.
+- **Done when:** `dotnet test` passes with the new cases, and the demo shows each new ban failing the build in a solver project and building in an exempt file.
+- **Out:** `Fs.Analyzers/`, `BannedSymbols.txt`, `Fs.Tests/`, `TOOLCHAIN.md` section 5.
+
 #### T0.5 The test-app shell and a proven Release APK
 - **Who:** builder. **Needs:** T0.4. **Reads:** `dotnet-maui/dotnet-maui-doctor`, section 5.
 - **Steps:**
