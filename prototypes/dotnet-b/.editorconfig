@@ -1,0 +1,25 @@
+# Analyzer severities for the solver projects (plan T0.4). Only a solver project runs the two analyzers (Directory.Build.props lists them,
+# Fs.Analyzers/Solver.props adds them), so the first section changes nothing for Fs.Bench, Fs.Host, Fs.Transport, Fs.TestApp, Fs.Tests and the rest.
+root = true
+
+[*.cs]
+# a banned API (Fs.Analyzers BannedSymbols.txt, rule RS0030) and a float-to-integer cast (FS0001) break the build
+dotnet_diagnostic.RS0030.severity = error
+dotnet_diagnostic.FS0001.severity = error
+
+# The only exempt solver files, by file name, anywhere in a solver project: FsMath.cs is where the maths functions are implemented and FsConv.cs where
+# the JavaScript conversions are implemented (plan 10.4). Later tasks create them in Fs.Kernel/ and need no change here.
+[FsMath.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none
+
+[FsConv.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none
+
+# NOT A GATE KERNEL. Fs.Kernel/Pyrogenic/ is the K1 salvage (a port of PyrogenicPotential.solve, benchmarked with Math.Sin and TensorPrimitives, with raw
+# casts). It was committed unreviewed (T0.7) and is not solver code that any gate rests on, so both rules are off for this folder only.
+# Remove this section when the folder is reviewed and brought into line, or deleted.
+[Fs.Kernel/Pyrogenic/**.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none

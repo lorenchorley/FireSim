@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- T0.4 hello build 2: a WebAssembly library with one [JSExport] method, published with Mono AOT (needs the wasm-tools workload).
+         source prototypes/dotnet-b/env.sh
+         flock /tmp/firesim-heavy.lock dotnet publish prototypes/dotnet-b/hello/wasm -c Release -p:RunAOTCompilation=true
+       The output is bin/Release/net11.0/publish/wwwroot/_framework/ (dotnet.js, dotnet.native.wasm, the AOT-compiled assemblies).
+       This is the shape plan T1.6a gives Fs.Wasm. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">true</RunAOTCompilation>
+  </PropertyGroup>
+
+</Project>

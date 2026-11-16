@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- Imported by Directory.Build.props into every SOLVER project (the names in $(FsSolverProjects)); no other project sees any of this.
+       Plan: docs/plans/dotnet-option-b-plan.md rule 5 (determinism), 10.4 (coding rules), card T0.4.
+
+       What a solver project gets:
+         1. Microsoft.CodeAnalysis.BannedApiAnalyzers (RS0030) with ../BannedSymbols.txt: no System.Math/MathF members but Abs Sqrt Floor Ceiling
+            Truncate CopySign Min Max; no Math.Round, FusedMultiplyAdd, TensorPrimitives, Vector<T>, Vector128.Sum/Dot, *Native members.
+         2. The FS0001 analyzer (Fs.Analyzers): no explicit float/double to integer cast.
+         3. Both rules are ERRORS and FsMath.cs, FsConv.cs (by file name) and Fs.Kernel/Pyrogenic/ are exempt: see ../.editorconfig (an analyzer config
+            file at the root applies to every project below it, but only a solver project runs the analyzers, so it changes nothing elsewhere).
+       The rules are off in Fs.Bench, Fs.Transport, Fs.TestApp, Fs.Host, Fs.Results, Fs.Tests (they are not solver code). -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)..\BannedSymbols.txt" Link="BannedSymbols.txt" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Fs.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

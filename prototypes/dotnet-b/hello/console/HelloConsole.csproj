@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- T0.4 hello build 1: a net11.0 console app. Copy this folder to start another console project.
+         source prototypes/dotnet-b/env.sh && dotnet run (the project flag) prototypes/dotnet-b/hello/console -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

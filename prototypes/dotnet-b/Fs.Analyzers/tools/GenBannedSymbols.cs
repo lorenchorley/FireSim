@@ -1,0 +1,108 @@
+// Regenerates ../../BannedSymbols.txt from the running .NET runtime's public API by reflection.
+//
+//   source env.sh && dotnet run Fs.Analyzers/tools/GenBannedSymbols.cs > BannedSymbols.txt     (from prototypes/dotnet-b/)
+//
+// Why a generator: BannedApiAnalyzers matches a method only by its full documentation-comment ID (a bare `M:System.Math.Exp` bans nothing,
+// checked on 5.6.0), so every overload of every banned member needs its own line. The generator keeps the list complete for the runtime in
+// use; Fs.Tests (BannedSymbolsCoverageTests) re-checks, with the same reflection, that nothing banned is missing.
+//
+// The rule (plan section 10.4): in solver code every function except Abs, Sqrt, Floor, Ceiling, Truncate, CopySign (and Min/Max, ported
+// literally) goes through FsMath; no Math.FusedMultiplyAdd, TensorPrimitives, Vector<T>, horizontal vector sums or *Native members;
+// every Math.Round overload is banned (FsConv.Round has JavaScript's rounding).
+#pragma warning disable IL2070 // reflection over runtime types in a throwaway generator
+using System.Reflection;
+using System.Runtime.Intrinsics;
+using System.Text;
+
+var lines = new List<string>();
+
+// 1. System.Math and System.MathF: every public static method with a floating-point parameter that is not on the allowed list, plus every Round.
+var allowedMath = new HashSet<string> { "Abs", "Sqrt", "Floor", "Ceiling", "Truncate", "CopySign", "Min", "Max" };
+foreach (var t in new[] { typeof(Math), typeof(MathF) })
+    foreach (var m in Methods(t))
+    {
+        bool fp = m.GetParameters().Any(p => IsFloat(p.ParameterType));
+        bool banned = m.Name == "Round" || (!allowedMath.Contains(m.Name) && fp);
+        if (banned) lines.Add(Line(m, ReasonMath(t, m)));
+    }
+
+// 2. double / float static members that duplicate Math (generic-math statics): the same names as banned for Math, plus the estimate and Native families.
+var namedBanned = new HashSet<string>
+{
+    "Acos","Acosh","AcosPi","Asin","Asinh","AsinPi","Atan","Atanh","AtanPi","Atan2","Atan2Pi","Cbrt","Cos","CosPi","Cosh","Exp","Exp2","Exp10",
+    "ExpM1","Exp2M1","Exp10M1","FusedMultiplyAdd","Hypot","ILogB","Ieee754Remainder","Log","Log2","Log10","LogP1","Log2P1","Log10P1","Pow","ReciprocalEstimate",
+    "ReciprocalSqrtEstimate","RootN","Round","ScaleB","Sin","SinCos","SinPi","Sinh","Tan","TanPi","Tanh","MultiplyAddEstimate","BitIncrement","BitDecrement",
+};
+foreach (var t in new[] { typeof(double), typeof(float), typeof(Half) })
+    foreach (var m in Methods(t))
+        if (namedBanned.Contains(m.Name) || m.Name.EndsWith("Native"))
+            lines.Add(Line(m, $"use FsMath (plan 10.4): {t.Name}.{m.Name} calls the platform maths library or an estimate"));
+
+// 3. Vector64/128/256/512 and System.Numerics.Vector statics: transcendental, rounding, estimate, horizontal (Sum, Dot) and *Native members.
+var vectorBanned = new HashSet<string>(namedBanned) { "Sum", "Dot" };
+foreach (var t in new[] { typeof(Vector64), typeof(Vector128), typeof(Vector256), typeof(Vector512) })
+    foreach (var m in Methods(t))
+        if (vectorBanned.Contains(m.Name) || m.Name.EndsWith("Native"))
+            lines.Add(Line(m, $"element-wise Vector128<T> only; reductions are scalar in a fixed order (plan 9, 10.4): {t.Name}.{m.Name} may differ by hardware"));
+
+// 4. Whole types.
+string[] types =
+{
+    "System.Numerics.Vector`1|Vector<T> is 256 bits on AVX2 and 128 on arm64 and WebAssembly, so the reduction order changes (plan 9)",
+    "System.Numerics.Vector|its members work on Vector<T> (plan 9)",
+    "System.Numerics.Tensors.TensorPrimitives|results may differ between operating systems and architectures (plan 9)",
+    "System.Numerics.IExponentialFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.IHyperbolicFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.ILogarithmicFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.IPowerFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.IRootFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.ITrigonometricFunctions`1|generic-math call into the platform maths library: use FsMath",
+    "System.Numerics.IFloatingPoint`1|generic-math Round and friends: use FsMath / FsConv",
+    "System.Numerics.IFloatingPointIeee754`1|generic-math Exp, Pow, FusedMultiplyAdd, ScaleB and friends: use FsMath",
+    "System.Numerics.IBinaryFloatingPointIeee754`1|generic-math Exp, Pow, FusedMultiplyAdd, ScaleB and friends: use FsMath",
+};
+foreach (var s in types) { var p = s.Split('|'); lines.Add($"T:{p[0]};{p[1]}"); }
+lines.Add("N:System.Numerics.Tensors;System.Numerics.Tensors (TensorPrimitives, Tensor<T>) may differ between operating systems and architectures (plan 9)");
+
+Console.Out.NewLine = "\n";
+Console.WriteLine("# GENERATED by Fs.Analyzers/tools/GenBannedSymbols.cs on " + Environment.Version + " (" + RuntimeInformationName() + "): do not edit by hand.");
+Console.WriteLine("# Applies to solver projects only (Fs.Analyzers/Solver.props); FsMath.cs, FsConv.cs and Fs.Kernel/Pyrogenic/ are exempt (.editorconfig).");
+Console.WriteLine("# Plan: docs/plans/dotnet-option-b-plan.md sections 2 (rule 5), 9 and 10.4.");
+foreach (var l in lines.Distinct().OrderBy(x => x, StringComparer.Ordinal)) Console.WriteLine(l);
+
+static string RuntimeInformationName() => System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+static IEnumerable<MethodInfo> Methods(Type t) => t.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly).Where(m => !m.IsSpecialName);
+static bool IsFloat(Type t) { t = t.IsByRef ? t.GetElementType()! : t; return t == typeof(double) || t == typeof(float) || t == typeof(Half); }
+
+static string ReasonMath(Type t, MethodInfo m) => m.Name == "Round"
+    ? $"use FsConv.Round (JavaScript Math.round: halves up): {t.Name}.Round has other tie rules"
+    : $"use FsMath.{m.Name} (plan 10.4): {t.Name}.{m.Name} is not on the allowed list (Abs, Sqrt, Floor, Ceiling, Truncate, CopySign, Min, Max)";
+
+static string Line(MethodInfo m, string reason) => $"M:{TypeId(m.DeclaringType!)}.{m.Name}{(m.IsGenericMethodDefinition ? "``" + m.GetGenericArguments().Length : "")}{ParamList(m)};{reason}";
+
+static string ParamList(MethodInfo m)
+{
+    var ps = m.GetParameters();
+    return ps.Length == 0 ? "" : "(" + string.Join(",", ps.Select(p => ParamId(p.ParameterType, m))) + ")";
+}
+
+// Documentation-comment ID of a parameter type: `N / ``N for generic parameters, {A,B} for constructed types, [] arrays, * pointers, @ by-ref.
+static string ParamId(Type t, MethodInfo m)
+{
+    if (t.IsByRef) return ParamId(t.GetElementType()!, m) + "@";
+    if (t.IsPointer) return ParamId(t.GetElementType()!, m) + "*";
+    if (t.IsArray) return ParamId(t.GetElementType()!, m) + "[" + new string(',', t.GetArrayRank() - 1) + "]";
+    if (t.IsGenericParameter)
+        return t.DeclaringMethod != null ? "``" + t.GenericParameterPosition : "`" + t.GenericParameterPosition;
+    if (t.IsConstructedGenericType)
+        return TypeId(t.GetGenericTypeDefinition()).Split('`')[0] + "{" + string.Join(",", t.GetGenericArguments().Select(a => ParamId(a, m))) + "}";
+    return TypeId(t);
+}
+
+static string TypeId(Type t)
+{
+    var sb = new StringBuilder();
+    if (t.IsNested) sb.Append(TypeId(t.DeclaringType!)).Append('.').Append(t.Name);
+    else sb.Append(t.Namespace).Append('.').Append(t.Name);
+    return sb.ToString();
+}
