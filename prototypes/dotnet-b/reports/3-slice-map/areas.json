@@ -1,0 +1,488 @@
+{
+ "ratio": 1.7,
+ "ratioNote": "C# lines per TypeScript function-span line, measured on Fs.Kernel/Pyrogenic/PyrogenicKernel.cs (scalar-only subset, 287 lines) against the 4 reachable functions of src/atmosphere/pyrogenic.ts (166 lines): 287/166 = 1.73",
+ "areas": [
+  {
+   "id": "A1",
+   "title": "Shared types, decode, generator, weather series, drought and stable night, numeric helpers",
+   "needs": [],
+   "tier": "both",
+   "select": [
+    [
+     "src/core/rng.ts"
+    ],
+    [
+     "src/core/grid.ts"
+    ],
+    [
+     "src/core/units.ts"
+    ],
+    [
+     "src/core/physics.ts"
+    ],
+    [
+     "src/scenario/weather.ts"
+    ],
+    [
+     "src/fuel/moisture/weather.ts"
+    ],
+    [
+     "src/sim/records.ts"
+    ],
+    [
+     "src/fuel/moisture/drought.ts"
+    ],
+    [
+     "src/fuel/moisture/night.ts"
+    ]
+   ],
+   "extraTs": [
+    {
+     "what": "src/sim/remote/codec.ts decode path: lines 34-90 (KINDS, NON_FINITE, limits, align8) and 198-294 (Decoder, decodeValue, decodeMessage)",
+     "lines": 154
+    }
+   ],
+   "tablesCode": 35,
+   "tablesWhat": "src/sim/params.ts (SIM_PARAMS)",
+   "typeMembers": 441,
+   "typeCount": 38,
+   "typesWhat": "src/core/types.ts + src/core/simTypes.ts: the 37 types the slice names, 436 members (typecount.mjs)"
+  },
+  {
+   "id": "A2",
+   "title": "Terrain: derived fields, solar geometry and insolation",
+   "needs": [
+    "A1"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/terrain/analysis.ts"
+    ],
+    [
+     "src/terrain/solar.ts"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 64,
+   "typeCount": 11,
+   "typesWhat": "TerrainDerived, LandformThresholds, InsolationResult, SolarPosition, ..."
+  },
+  {
+   "id": "A3",
+   "title": "Terrain features (ridges, drainage, crests) and the fuel map",
+   "needs": [
+    "A1",
+    "A2"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fire/terrainFeatures.ts"
+    ],
+    [
+     "src/fuel/catalogue.ts"
+    ],
+    [
+     "src/fuel/fuelMap.ts"
+    ],
+    [
+     "src/fuel/hazard.ts"
+    ]
+   ],
+   "tablesCode": 312,
+   "tablesWhat": "src/fuel/catalogue.ts 236 and src/fuel/hazard.ts 73 (code lines of whole files; the tables are most of them)",
+   "typeMembers": 42,
+   "typeCount": 8,
+   "typesWhat": "TerrainFeaturesData, ResolvedFuelClass, ModelFuelRow, FuelMapExt, ..."
+  },
+  {
+   "id": "A4",
+   "title": "Dead-fuel moisture model, availability, AFDRS moisture, fuel parameters",
+   "needs": [
+    "A1",
+    "A2",
+    "A3"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fuel/moisture/model.ts"
+    ],
+    [
+     "src/fuel/moisture/afdrs.ts"
+    ],
+    [
+     "src/fuel/moisture/air.ts"
+    ],
+    [
+     "src/fuel/moisture/availability.ts"
+    ],
+    [
+     "src/fuel/moisture/fastMath.ts"
+    ],
+    [
+     "src/fuel/moisture/fuelPhysics.ts"
+    ],
+    [
+     "src/fuel/moisture/params.ts"
+    ],
+    [
+     "src/fuel/params.ts"
+    ]
+   ],
+   "tablesCode": 246,
+   "tablesWhat": "src/fuel/params.ts 123 and src/fuel/moisture/params.ts 123",
+   "typeMembers": 151,
+   "typeCount": 8,
+   "typesWhat": "MoistureParams 58, FuelParams 57, UnitSet 24, StepForcing 26, ..."
+  },
+  {
+   "id": "A5",
+   "title": "Fire behaviour models, fuel reference rows and spread-direction maths",
+   "needs": [
+    "A1",
+    "A3"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fire/models/common.ts"
+    ],
+    [
+     "src/fire/models/factors.ts"
+    ],
+    [
+     "src/fire/models/grass.ts"
+    ],
+    [
+     "src/fire/models/heath.ts"
+    ],
+    [
+     "src/fire/models/kernel.ts"
+    ],
+    [
+     "src/fire/models/pine.ts"
+    ],
+    [
+     "src/fire/models/shape.ts"
+    ],
+    [
+     "src/fire/models/vestaMk2.ts"
+    ],
+    [
+     "src/fire/models/params.ts"
+    ],
+    [
+     "src/fire/spread/math.ts"
+    ],
+    [
+     "src/fire/models/fuelRef.ts"
+    ]
+   ],
+   "tablesCode": 220,
+   "tablesWhat": "src/fire/models/params.ts 96, src/fire/models/fuelRef.ts 124 (code lines of whole files)",
+   "typeMembers": 99,
+   "typeCount": 10,
+   "typesWhat": "HeadKernelOut, PineOut, Mk2Out, HybridOut, EllipseSpeedsOut, ..."
+  },
+  {
+   "id": "A6",
+   "title": "Level set, distance transform, fuel cache, spread parameters",
+   "needs": [
+    "A1",
+    "A3",
+    "A5"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fire/spread/levelSet.ts"
+    ],
+    [
+     "src/fire/spread/geometry.ts"
+    ],
+    [
+     "src/fire/spread/fuelCache.ts"
+    ],
+    [
+     "src/fire/spread/stateRegistry.ts"
+    ],
+    [
+     "src/fire/spread/params.ts"
+    ]
+   ],
+   "tablesCode": 163,
+   "tablesWhat": "src/fire/spread/params.ts (SPREAD_PARAMS)",
+   "typeMembers": 5,
+   "typeCount": 4,
+   "typesWhat": ""
+  },
+  {
+   "id": "A7",
+   "title": "FireSpreadModel part 1: construction, masks, prepare, cell speed, step",
+   "needs": [
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fire/spread/FireSpreadModel.ts",
+     "^FireSpreadModel\\.(constructor|makePrep|initStatic|refreshStaticFuel|setTime|refreshMoistureCache|refreshMasks|prepare|step|minuteTasks|aux|heatRelease|crownShare|frontCells|firePowerW|headCells|syncClock|mountainOn|windFrom|computeCrests|ensureZoneCapacity|relabelZones|updateVlsActivation|upwindMaxIntensity|vlsRateAt|zeroSpeed|holding|computeCell|prepareCell|maxNbr|maxBurntNbr|hasBurntNbr|originEstimate|breachDraw|isValidated|factorsFor)$|^(makePrep|f32|grow|check)$"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 42,
+   "typeCount": 5,
+   "typesWhat": "Prep, DebrisIgnition, BreachEvent, FactorScratch, PendingDebris"
+  },
+  {
+   "id": "A8",
+   "title": "FireSpreadModel part 2: ignition, arrival, front, heat, junctions, debris",
+   "needs": [
+    "A7"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/fire/spread/FireSpreadModel.ts",
+     "^FireSpreadModel\\.(ignite|igniteAt|takeDebrisIgnitions|takeBreachEvents|recordArrival|originEstimateAtArrival|propagateOrigin|igniteGeometry|processPendingIgnitions|applyDueDebris|updateHeat|updateFront|refreshFrontDist|decayJunctions|detectJunctions|rollDebris)$|^push$"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 0,
+   "typeCount": 0,
+   "typesWhat": ""
+  },
+  {
+   "id": "A9",
+   "title": "Embers, leaf modules: parameters, sampling, physics, plume field, cell fuel",
+   "needs": [
+    "A1",
+    "A3"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/embers/params.ts"
+    ],
+    [
+     "src/embers/sampling.ts"
+    ],
+    [
+     "src/embers/physics.ts"
+    ],
+    [
+     "src/embers/plume.ts"
+    ],
+    [
+     "src/embers/fuelInfo.ts"
+    ]
+   ],
+   "tablesCode": 343,
+   "tablesWhat": "src/embers/params.ts (EMBER_PARAMS, 11 groups, class table)",
+   "typeMembers": 38,
+   "typeCount": 9,
+   "typesWhat": "EmberParams, EmberClassParams, EmberDraw, ClassRow, ..."
+  },
+  {
+   "id": "A10",
+   "title": "EmberModel part 1: construction, emission, weights, spawn, particle store",
+   "needs": [
+    "A9"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/embers/EmberModel.ts",
+     "^EmberModel\\.(constructor|setEnvironment|emit|step|cellFuel|addCell|ensureActive|removeActive|lifeEstimate|updateWeights|spawn|initParticle|acquireSlot|buildVictims|crestHeight|sourceClassCode|diagnosePlumeTop|loft|riseStep|allocParticles|removeAt|recordResidence|syncIn|syncOut)$|^(clampA|gi|gf|gd|gu|clamp01)$"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 54,
+   "typeCount": 8,
+   "typesWhat": "EmberModelOptions, EmberEnvironment, EmberLandingEvent, PendingIgnition, Holdover, ..."
+  },
+  {
+   "id": "A11",
+   "title": "EmberModel part 2: transport loop, landing, ignitions, ground and profile lookups",
+   "needs": [
+    "A10"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/embers/EmberModel.ts",
+     "^EmberModel\\.(advance|turbColumn|leeEddy|storeState|exitDomain|land|provenance|schedule|processIgnitions|ground|cellIndex|reliefAt|rhoAt|rebuildDensity|densAt|rebuildProfile|profileAt|profileMean)$"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 0,
+   "typeCount": 0,
+   "typesWhat": ""
+  },
+  {
+   "id": "A12",
+   "title": "Air, shared support: grid, profile, plume, wind interpolation, surface fluxes, mass-consistent wind",
+   "needs": [
+    "A1",
+    "A2",
+    "A3"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/atmosphere/grid.ts"
+    ],
+    [
+     "src/atmosphere/profile.ts"
+    ],
+    [
+     "src/atmosphere/plume.ts"
+    ],
+    [
+     "src/atmosphere/weatherInterp.ts"
+    ],
+    [
+     "src/atmosphere/surface.ts"
+    ],
+    [
+     "src/atmosphere/massConsistent.ts"
+    ],
+    [
+     "src/atmosphere/index.ts"
+    ],
+    [
+     "src/atmosphere/params.ts"
+    ]
+   ],
+   "tablesCode": 148,
+   "tablesWhat": "src/atmosphere/params.ts (ATMOS_PARAMS, ATMOS_TIERS)",
+   "typeMembers": 100,
+   "typeCount": 11,
+   "typesWhat": "AtmosGrid 39, BackgroundProfile 22, BgWind 11, PlumeResult 8, ..."
+  },
+  {
+   "id": "A13",
+   "title": "Air, elliptic (Poisson) solver",
+   "needs": [
+    "A1"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/atmosphere/solver.ts"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 29,
+   "typeCount": 3,
+   "typesWhat": "Level, SolveResult, BoundaryMasks"
+  },
+  {
+   "id": "A14",
+   "title": "Air, common base and the fast tier: AtmosBase, DiagnosticWind, PyrogenicPotential",
+   "needs": [
+    "A12",
+    "A13",
+    "A2"
+   ],
+   "tier": "fast + base of standard",
+   "select": [
+    [
+     "src/atmosphere/base.ts"
+    ],
+    [
+     "src/atmosphere/diagnosticWind.ts"
+    ],
+    [
+     "src/atmosphere/pyrogenic.ts"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 12,
+   "typeCount": 3,
+   "typesWhat": "Stamp, AtmosphereOptions, FireWindContextExt"
+  },
+  {
+   "id": "A15",
+   "title": "Simulation: constructor, stepOnce, spin-up, records, coupling, host harness",
+   "needs": [
+    "A4",
+    "A8",
+    "A11",
+    "A14"
+   ],
+   "tier": "both",
+   "select": [
+    [
+     "src/sim/simulation.ts"
+    ],
+    [
+     "src/sim/stats.ts"
+    ]
+   ],
+   "extraCs": [
+    {
+     "what": "fixture harness: init decode into the Simulation, snapshot extraction for T4.5 (arrival, burn state, moisture, air arrays), run loop (not TS: no TS counterpart)",
+     "lines": 250
+    }
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 8,
+   "typeCount": 2,
+   "typesWhat": "SimulationOptions, SimRecord"
+  },
+  {
+   "id": "A16",
+   "title": "Standard tier air: Atmosphere (3-D Boussinesq step, sponge, projection, fire heat)",
+   "needs": [
+    "A14",
+    "A12",
+    "A13"
+   ],
+   "tier": "standard only",
+   "select": [
+    [
+     "src/atmosphere/atmosphere.ts"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 0,
+   "typeCount": 0,
+   "typesWhat": "ColumnMap"
+  },
+  {
+   "id": "A17",
+   "title": "Standard tier air: 3-D dynamics operators (advection, diffusion, Smagorinsky, collocation)",
+   "needs": [
+    "A12",
+    "A13"
+   ],
+   "tier": "standard only",
+   "select": [
+    [
+     "src/atmosphere/dynamics.ts"
+    ]
+   ],
+   "tablesCode": 0,
+   "tablesWhat": "",
+   "typeMembers": 4,
+   "typeCount": 1,
+   "typesWhat": "ColumnMap"
+  }
+ ]
+}
