@@ -234,6 +234,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
 - **Who:** builder. **Needs:** T0.4, T0.7. **Reads:** `src/ui/speedTestKernels.ts`, `src/ui/speedTest.test.ts`, `dotnet-diag/microbenchmarking`, 10.4.
 - **Steps:** port both kernels to `Fs.Kernel/SpeedTest/` (float32 storage, double arithmetic exactly where the TypeScript does); tests in `Fs.Tests` for both checksums; BenchmarkDotNet against the TypeScript in Node on the same input.
 - **Done when:** both checksum tests pass on `linux-x64`; bench numbers exist.
+- **Result (merged 2026-11-16, `reports/1-speedtest-kernels.md`):** both checksums reproduced on every path (scalar, plain scalar, `Vector128`, and six child processes with AVX2, AVX-512, hardware intrinsics, tiered compilation and OSR switched off in turn); 96 tests pass. Whole-sweep time, container, indicative: kernel K1 (stencil) TypeScript 0.655 ms, C# scalar 0.592 (1.11×), `Vector128` 0.449 (1.46×); kernel K2 (copy) TypeScript 3.83 ms, C# scalar 1.70 (2.26×), `Vector128` 1.41 (2.72×). **Two findings:** (1) the literal `(double)f[i]` read of float32 data is 2.36× slower than Node on x64 because the JIT emits `vcvtss2sd` with a false dependency; widening with `Vector128.WidenLower(Vector128.CreateScalarUnsafe(f))` gives identical bits at 2.36× the speed (rule in 10.4); (2) BenchmarkDotNet 0.15.8 cannot run on net11.0 ("GetRuntimeVersion not implemented"), so the prototype pins **0.16.0-preview.2**, accepted for a prototype.
 
 #### T1.3 `FsMath` candidates
 - **Who:** builder. **Needs:** T0.4. **Reads:** 10.2, 10.4.
@@ -594,6 +595,7 @@ Each with at least one unit test, and enforced by the analyzers of T0.4 where an
 - **Min and max:** port what the TypeScript does, literally: `Math.max`/`Math.min` in JavaScript are IEEE `maximum`/`minimum` (NaN propagates, −0 < +0), which C#'s `Math.Max`/`Math.Min` match; a ternary `a > b ? a : b` stays a ternary.
 - **Conversions:** no raw float-to-integer casts; `FsConv` for `ToInt32`, `ToUint32`, typed-array stores (wrapping), `Uint8ClampedArray` stores (clamping), `Math.round` (halves up: 0.49999999999999994 → 0, −2.5 → −2), `Math.fround`, `Math.imul`.
 - **Powers:** `x ** 2` is `x * x`; any other `**` or `Math.pow` goes through `FsMath.Pow` (the solver has 42 `**` sites, the standard tier's air solve makes 72,001 squares per step).
+- **Widening:** read float32 into double with `Vector128.WidenLower(Vector128.CreateScalarUnsafe(value))` (or a vector widen), not a plain `(double)f[i]`: same bits, and on x64 it avoids a JIT false dependency that made the literal version 2.36 times slower than Node on the speed-test stencil (T1.2).
 - **Floating point:** float32 arrays read into double locals; arithmetic in double where the TypeScript's is; no float32 arithmetic.
 - **Order:** stable sorts or explicit tie-breaks, NaN last as typed arrays sort; insertion-ordered maps, where delete-then-set moves a key to the end (`src/sim/simulation.ts:1668`); reductions in a fixed order, never by thread.
 - **Strings:** ordinal comparison.
