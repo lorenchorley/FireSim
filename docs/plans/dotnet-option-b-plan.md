@@ -292,6 +292,7 @@ Each card: **who** (builder = Sonnet 5.5 high agent in a worktree; orchestrator 
   1. Add the T1.4 kernels to `Fs.Wasm`. Variants: Mono AOT, one thread (the gate arm); Mono interpreter (what AOT buys); **CoreCLR WebAssembly** (`UseMonoRuntime=false`, the preview runtime .NET 12 is moving to), labelled experimental; Mono with `WasmEnableThreads` (`wasm-experimental`, cross-origin-isolated page), labelled experimental. Experimental arms never decide a gate.
   2. A harness page running T1.5(c) and the WebAssembly arms on the same input, A B B A, in Chromium; the same bits under Node.
   3. Record: download size (compressed and not), start-up to first result, peak WebAssembly memory per tier, the cost of moving a 5 MB picture out of the worker (one copy into a transferred buffer), and the AOT build time.
+  4. (From T1.6a) An **interference check**: the TypeScript kernel and the WebAssembly kernel in the same worker and in the same page, in both orders, against each in a fresh process (T1.6a saw the TypeScript copy kernel run 45 % slower in Node after the .NET runtime had run the 16 MiB copy); say whether the app's real arrangement (the TypeScript solver and the WebAssembly solver never in one worker) makes it irrelevant.
 - **Done when:** bits match T1.4 in Chromium and Node for every non-experimental arm; every number is in the report.
 - **Out:** `Fs.Wasm/`, `harness/`, `reports/1w-desktop.md`.
 
