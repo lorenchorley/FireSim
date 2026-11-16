@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- Fs.Wasm (plan T1.3; T1.6a and T1.6b extend it): the solver's WebAssembly library, the shape of hello/wasm (Mono, OutputType=Library, [JSExport] entry points).
+       A SOLVER project (Directory.Build.props): the banned-API rules and FS0001 apply to it, so nothing here may call System.Math's transcendental functions.
+         source prototypes/dotnet-b/env.sh
+         flock /tmp/firesim-heavy.lock dotnet publish prototypes/dotnet-b/Fs.Wasm -c Release                          Mono AOT (RunAOTCompilation defaults to true below)
+         flock /tmp/firesim-heavy.lock dotnet publish prototypes/dotnet-b/Fs.Wasm -c Release -p:RunAOTCompilation=false     the interpreter
+       The output is bin/Release/net11.0/publish/wwwroot/_framework/ (dotnet.js, dotnet.native.wasm, the assemblies). Fs.Bench/fsmath/wasm-run.mjs runs it under Node
+       and in Chromium. Needs the wasm-tools workload (TOOLCHAIN.md). Not in FsProto.slnx until the orchestrator adds it (T1.3 report). -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RunAOTCompilation Condition="'$(RunAOTCompilation)' == ''">true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fs.Kernel\Fs.Kernel.csproj" />
+  </ItemGroup>
+
+</Project>

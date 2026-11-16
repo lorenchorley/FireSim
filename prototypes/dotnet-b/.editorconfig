@@ -23,3 +23,11 @@ dotnet_diagnostic.FS0001.severity = none
 [Fs.Kernel/Pyrogenic/**.cs]
 dotnet_diagnostic.RS0030.severity = none
 dotnet_diagnostic.FS0001.severity = none
+
+# T1.3: third-party source vendored unchanged (CoreMathSharp 1.0.0, MIT, a C# port of CORE-MATH; its README, LICENSE and the pinned commit are in
+# Fs.Kernel/ThirdParty/CoreMathSharp/VENDORED.md). It is not ours to edit, it uses raw double-to-integer casts on values it has already rounded, and
+# Math.BitIncrement/BitDecrement inside Polyfill, which are exact operations. FsMath.cs (the only caller) is itself exempt. FsMath's tests compare it
+# bit for bit with correctly rounded references on the machine and in WebAssembly, which is what stands in for the analyzers here.
+[Fs.Kernel/ThirdParty/**.cs]
+dotnet_diagnostic.RS0030.severity = none
+dotnet_diagnostic.FS0001.severity = none
