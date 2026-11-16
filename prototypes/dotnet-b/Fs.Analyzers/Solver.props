@@ -8,7 +8,10 @@
             Truncate CopySign Min Max; no Math.Round, FusedMultiplyAdd, TensorPrimitives, Vector<T>, Vector128.Sum/Dot, *Native members.
             Card T0.4b: also no hardware FMA through X86.Fma / AdvSimd / Sve / Avx512F intrinsics, no Convert.To* of a float or double (or of an object),
             Convert.ChangeType, and no int.CreateTruncating / CreateSaturating / CreateChecked (any integer type, INumberBase<T>).
-         2. The FS0001 analyzer (Fs.Analyzers): no explicit float/double to integer cast.
+            Card T0.4c: also no platform intrinsics at all (the namespaces System.Runtime.Intrinsics.X86, .Arm, .Wasm), no Vector64/128/256/512.ConvertToInt32/Int64/
+            UInt32/UInt64, no ConvertToInteger on double/float/Half/decimal, no decimal.ToInt32 and siblings.
+         2. The FS0001 analyzer (Fs.Analyzers): no explicit float/double to integer cast; since T0.4c also none from Half or decimal to an integer, from decimal to
+            float/double/Half, to Int128/UInt128/BigInteger, or hidden in foreach (int x in doubles).
          3. Both rules are ERRORS and FsMath.cs, FsConv.cs (by file name) and Fs.Kernel/Pyrogenic/ are exempt: see ../.editorconfig (an analyzer config
             file at the root applies to every project below it, but only a solver project runs the analyzers, so it changes nothing elsewhere).
        The rules are off in Fs.Bench, Fs.Transport, Fs.TestApp, Fs.Host, Fs.Results, Fs.Tests (they are not solver code). -->
