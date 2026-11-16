@@ -127,3 +127,8 @@ The `scenario.ignitions` array as given to the solver: `[{ "id", "kind":"line"|"
 `new Simulation(scenario, { minSnapshotWallMs: 0, hooks: { snapshot } })`, then `snapshot()` once (what `SimHost.init` posts), `spinUp()`, `advance(runTo)`, `emitRunEnd()`:
 exactly the calls `src/sim/desktopDetail.determinism.test.ts` makes (plus the t0 snapshot), with no wall-clock coalescing, so every cadence snapshot is delivered.
 `anchor-080-katoomba6-point` proves it: its 15 hashes are those the 0.8.0 tree gave.
+
+## Probes (card T3.4)
+
+`run.mjs export NAME --probes ...` (after the scenario name) builds with `probes/plugin.mjs` and starts the recorders of `probes/` (environment tape, air tape, call recorders, golden draws, a per-step state tape) before the solver is built; nothing in `src/` is edited and the output goes to `<fixture>/probes/`. `node probes/run-probes.mjs all|check|unchanged|coverage --out DIR` regenerates the files, compares them with the committed `probes/goldens/` and shows that `determinism` is unchanged with probes on. Formats, sizes, what proves which area and how a C# loader reads the files: `reports/3-probes.md`.
+
