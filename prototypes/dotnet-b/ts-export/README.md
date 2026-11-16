@@ -49,7 +49,7 @@ Stage 3 (T3.1a) adds the 4 h scenarios, all preset `hot-nw-sw-change`, civil sta
 | `katoomba6-fast-4h-noembers`, `katoomba3-standard-4h-noembers` | the first two with `embers=false` | | | | 14,400 s |
 
 `--noise SEED` (`noise.ts`, `pow-lowering-plugin.mjs`): see `reports/3-scenarios.md`. It never touches the scenario build, so `init.bin` equals the noise-free fixture's; the fixture
-folder name gets `-noise<SEED>` unless `--dir` is given; `meta.json` has a `noise` record (calls and nudged calls per function). `--keep` and `--interval` are described in `export.ts`.
+folder name gets `-noise<SEED>` unless `--dir` is given; `meta.json` has a `noise` record (calls and nudged calls per function). `--keep` and `--interval` are described in `export.ts`. Snapshot hashes are comparable only between runs with the same snapshot interval (`insights` and `layers.landing` depend on it; the fire, moisture, air and ember arrays do not).
 
 `high` was not capped: it runs in about 8 s here. Civil start is Australia/Sydney (AEDT, UTC+11): 12:00 is `startTimeUtcMs` 1766192400000.
 
