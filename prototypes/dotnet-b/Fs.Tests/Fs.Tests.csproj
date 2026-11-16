@@ -29,6 +29,8 @@
 
   <ItemGroup>
     <None Include="..\BannedSymbols.txt" Link="BannedSymbols.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- T1.3: the FsMath golden file (Node 22's bits and the correctly rounded results); Fs.Bench/fsmath/gen-golden.mjs and cr-reference.py write it -->
+    <None Include="golden\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(PkgMicrosoft_CodeAnalysis_BannedApiAnalyzers)\analyzers\dotnet\cs\*.dll" Link="banned-api-analyzers\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
