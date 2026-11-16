@@ -81,6 +81,14 @@ It must be re-entrant, report progress, and stop promptly when the token is canc
    summaries (medians, spreads, checksums), not raw samples.
 5. Test the new arm's logic in the container where it has any (a unit test in `../Fs.Tests`), and run `dotnet run --project Fs.TestApp.DryRun` (in `..`) with the arm listed.
 
+## Round 0 (T0.6b): the arms of `-p:ProtoRound=0`
+
+`ProtoRound=0` builds the link check: `TestPage` takes `Round0Plan` (in `../Fs.TestApp.Core/Round0/`) instead of the stub plan, and the page host serves `Round0Plan.WebFiles`.
+Three blocks, one arm each: `device-facts` (native: `AndroidDeviceProbe` sections plus `CpuFacts` over `/sys` and `/proc/cpuinfo`), `webview-facts` and `speedtest-kernels` (both in the page,
+`wwwroot/round0-arms.js`; the kernels run in `wwwroot/speedtest.worker.js`, built from `src/ui/speedTestKernels.ts` by `../harness/build-speedtest.sh`, committed). The two WebView arms are wrapped by
+`WebHost/Round0Arms.cs`, which adds the native side and the verdict (`WebViewFactsMerge`, `KernelChecks`). Each arm result starts with a one-line `digest` that the prefilled-issue fallback prints.
+`../reports/0-round0.md` describes every field. Rounds above 0 still use the stub plan until their builders replace it.
+
 ## The WebView host and cross-origin isolation
 
 MAUI's `HybridWebView` serves `Resources/Raw/wwwroot` from `https://0.0.0.1/`. MAUI's own asset path sets only `Content-Type`, so `ArmHost` answers requests for the files it was given
