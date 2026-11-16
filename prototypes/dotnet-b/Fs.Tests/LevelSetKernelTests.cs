@@ -63,6 +63,20 @@ public sealed class LevelSetKernelTests
     }
 
     [TestMethod]
+    public void TheManagedSha256EqualsThePlatformsOnEveryLengthUpTo200()
+    {
+        // the case runner falls back to the managed hash where the platform has none (the WebAssembly build); the fallback is the code that runs there
+        var r = new FastTestData.Rng(3);
+        for (int n = 0; n <= 200; n++)
+        {
+            var data = new byte[n];
+            for (int i = 0; i < n; i++) data[i] = (byte)(r.Next() * 256);
+            CollectionAssert.AreEqual(System.Security.Cryptography.SHA256.HashData(data), FastCaseRunner.Sha256Managed(data), $"length {n}");
+        }
+        Assert.AreEqual("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", Convert.ToHexStringLower(FastCaseRunner.Sha256Managed([])));
+    }
+
+    [TestMethod]
     public void TheGoldenFilesAreSmall()
     {
         long total = 0;

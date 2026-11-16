@@ -33,6 +33,12 @@ switch (args.Length > 0 ? args[0] : "")
         return AirMerge.Threads(args[1..]);
     case "air-merge": // T1.4a: BDN + Node results -> reports/1-air-kernels.json (AirMerge.Run)
         return AirMerge.Run(args[1..]);
+    case "fast-threads": // T1.4b: thread curve of the fast tier's kernels (FastMerge.Threads)
+        return FastMerge.Threads(args[1..]);
+    case "fast-aggregate": // T1.4b: the aggregate hash of every computed hash on this machine, as the WebAssembly driver prints it (FastMerge.Aggregate)
+        return FastMerge.Aggregate(args[1..]);
+    case "fast-merge": // T1.4b: BDN + Node results -> reports/1-fast-kernels.json (FastMerge.Run)
+        return FastMerge.Run(args[1..]);
     case "fsmath-run": // T1.3: every FsMath candidate over fixed input files, outputs as raw float64 (FsMathRun)
         return FsMathRun.Run(args[1..]);
     case "fsmath-vectors": // T1.3: CoreMathSharp against the test vectors of its own repository (FsMathVectors)
