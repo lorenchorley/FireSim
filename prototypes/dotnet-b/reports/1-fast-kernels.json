@@ -1,0 +1,2958 @@
+{
+ "stage": "1-fast-kernels",
+ "when": "2026-11-17T11:43:43Z",
+ "machine": {
+  "label": "container",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "cores": 4,
+  "os": "Ubuntu 24.04.5 LTS",
+  "runtime": ".NET 11.0.0",
+  "vector128Accelerated": true,
+  "vector256Accelerated": true,
+  "vector512Accelerated": true,
+  "node": "v22.22.0",
+  "v8": "12.4.254.21-node.33",
+  "bdnVersion": "0.16.0-preview.2",
+  "bdnHost": {
+   "BenchmarkDotNetCaption": "BenchmarkDotNet",
+   "BenchmarkDotNetVersion": "0.16.0-preview.2",
+   "OsVersion": "Linux Ubuntu 24.04.5 LTS (Noble Numbat)",
+   "ProcessorName": "Intel Xeon Processor 2.10GHz",
+   "PhysicalProcessorCount": 1,
+   "PhysicalCoreCount": 4,
+   "LogicalCoreCount": 4,
+   "RuntimeVersion": ".NET 11.0.0 (11.0.0, 11.0.26.53018)",
+   "Architecture": "X64",
+   "HasAttachedDebugger": false,
+   "HasRyuJit": true,
+   "Configuration": "RELEASE",
+   "DotNetCliVersion": "11.0.100",
+   "ChronometerFrequency": {
+    "Hertz": 1000000000
+   },
+   "HardwareTimerKind": "Unknown"
+  }
+ },
+ "indicative": true,
+ "kernels": "LevelSetCore.evaluate and reinit (src/fire/spread/levelSet.ts) and PyrogenicPotential.solve (src/atmosphere/pyrogenic.ts) on real frames of katoomba6-fast-4h at 900 s and 14,100 s (Fs.Bench/ts/fast/capture.ts)",
+ "frameSizes": {
+  "k6f-900": {
+   "bandCount": 1606,
+   "stage1HookCells": 143
+  },
+  "k6f-late": {
+   "bandCount": 9690,
+   "stage1HookCells": 526
+  }
+ },
+ "runs": [
+  {
+   "name": "fast evalStage1 Scalar [k6f-900]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 50,
+   "medianMs": 0.019756981552124023,
+   "meanMs": 0.02013795929382324,
+   "stdDevMs": 0.0008050519243607196,
+   "p95Ms": 0.02169528157958984,
+   "minMs": 0.019441697204589842,
+   "maxMs": 0.02241140542602539,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.6375477152064848,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 Vector [k6f-900]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 53,
+   "medianMs": 0.029413532012939454,
+   "meanMs": 0.02952070112523493,
+   "stdDevMs": 0.0012265918411985168,
+   "p95Ms": 0.03155466298217773,
+   "minMs": 0.027921029968261717,
+   "maxMs": 0.032844044921875,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.099935906569289,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 Parallel4 [k6f-900]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 40,
+   "medianMs": 0.029752999069213866,
+   "meanMs": 0.02960490446395874,
+   "stdDevMs": 0.0010341543911252446,
+   "p95Ms": 0.031087043927001953,
+   "minMs": 0.02750085888671875,
+   "maxMs": 0.031362419219970704,
+   "allocatedBytesPerOp": 2128,
+   "speedupVsTs": 1.0873861799543354,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 ParallelVector4 [k6f-900]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 60,
+   "medianMs": 0.03424384002685547,
+   "meanMs": 0.03405012067667643,
+   "stdDevMs": 0.0014984890274440277,
+   "p95Ms": 0.036272030831909184,
+   "minMs": 0.030186927307128908,
+   "maxMs": 0.03726456512451172,
+   "allocatedBytesPerOp": 2128,
+   "speedupVsTs": 0.9447830609734414,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 Scalar [k6f-late]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 93,
+   "medianMs": 0.09670024438476563,
+   "meanMs": 0.09862098809617566,
+   "stdDevMs": 0.005555374195146569,
+   "p95Ms": 0.11043507009277344,
+   "minMs": 0.09281739636230468,
+   "maxMs": 0.11336805578613281,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.8022498403056213,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 Vector [k6f-late]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 94,
+   "medianMs": 0.16108751928710938,
+   "meanMs": 0.16382605625363614,
+   "stdDevMs": 0.011722197602299067,
+   "p95Ms": 0.1857196478637695,
+   "minMs": 0.1488050568847656,
+   "maxMs": 0.19430126611328125,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.0818839396821265,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 Parallel4 [k6f-late]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 99,
+   "medianMs": 0.13385050390625,
+   "meanMs": 0.1342566381885259,
+   "stdDevMs": 0.008567180607637092,
+   "p95Ms": 0.14849982165527345,
+   "minMs": 0.11569718041992187,
+   "maxMs": 0.15501749609375,
+   "allocatedBytesPerOp": 2052,
+   "speedupVsTs": 1.3020346947817556,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 ParallelVector4 [k6f-late]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 97,
+   "medianMs": 0.14968294018554687,
+   "meanMs": 0.14949627910810648,
+   "stdDevMs": 0.010099066178274866,
+   "p95Ms": 0.16641837548828126,
+   "minMs": 0.12695582250976561,
+   "maxMs": 0.1747032900390625,
+   "allocatedBytesPerOp": 1992,
+   "speedupVsTs": 1.1643143820125628,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Scalar [k6f-900]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 99,
+   "medianMs": 0.013874079376220703,
+   "meanMs": 0.013916803486679539,
+   "stdDevMs": 0.0008157791037861336,
+   "p95Ms": 0.015064128993225097,
+   "minMs": 0.012750002807617188,
+   "maxMs": 0.016383106491088865,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.6671376437185994,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Vector [k6f-900]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 72,
+   "medianMs": 0.01947549803161621,
+   "meanMs": 0.019848331838819715,
+   "stdDevMs": 0.0009714882269320555,
+   "p95Ms": 0.021843243518066408,
+   "minMs": 0.018778241149902345,
+   "maxMs": 0.022230212158203123,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.187646136827337,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Parallel4 [k6f-900]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 40,
+   "medianMs": 0.01323372762298584,
+   "meanMs": 0.013188603316116333,
+   "stdDevMs": 0.00046723385586397003,
+   "p95Ms": 0.013991019160461424,
+   "minMs": 0.01225126483154297,
+   "maxMs": 0.014171632522583008,
+   "allocatedBytesPerOp": 2131,
+   "speedupVsTs": 1.7478068658344297,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 ParallelVector4 [k6f-900]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 68,
+   "medianMs": 0.017806177703857423,
+   "meanMs": 0.01773704400320614,
+   "stdDevMs": 0.0008413809021529346,
+   "p95Ms": 0.01900136875,
+   "minMs": 0.015860870666503907,
+   "maxMs": 0.01939160076904297,
+   "allocatedBytesPerOp": 2130,
+   "speedupVsTs": 1.298987373074832,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Scalar [k6f-late]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 13,
+   "medianMs": 0.06249163952636719,
+   "meanMs": 0.0625305626126803,
+   "stdDevMs": 0.00094447489682593,
+   "p95Ms": 0.06404233654785156,
+   "minMs": 0.06136199072265625,
+   "maxMs": 0.06434460412597656,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 2.1148108931296115,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Vector [k6f-late]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 99,
+   "medianMs": 0.09706958410644531,
+   "meanMs": 0.0995897617779356,
+   "stdDevMs": 0.005935109154084692,
+   "p95Ms": 0.11139130758056641,
+   "minMs": 0.09290628649902344,
+   "maxMs": 0.11655746057128906,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.3614769365341823,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 Parallel4 [k6f-late]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 87,
+   "medianMs": 0.044432251159667965,
+   "meanMs": 0.044556428146888476,
+   "stdDevMs": 0.002419401582585392,
+   "p95Ms": 0.04826036059570313,
+   "minMs": 0.038804953125,
+   "maxMs": 0.0507708466796875,
+   "allocatedBytesPerOp": 2038,
+   "speedupVsTs": 2.9743710154360294,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage2 ParallelVector4 [k6f-late]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 98,
+   "medianMs": 0.06516176422119141,
+   "meanMs": 0.06545245932567363,
+   "stdDevMs": 0.004290183182142993,
+   "p95Ms": 0.07379273141479492,
+   "minMs": 0.05337761877441406,
+   "maxMs": 0.07448042602539062,
+   "allocatedBytesPerOp": 2032,
+   "speedupVsTs": 2.0281525765828006,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Scalar [k6f-900]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 99,
+   "medianMs": 0.531578908203125,
+   "meanMs": 0.5337811823607165,
+   "stdDevMs": 0.033394755002073825,
+   "p95Ms": 0.5997534983398437,
+   "minMs": 0.4878277529296875,
+   "maxMs": 0.62464993359375,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.4888438720705919,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Vector [k6f-900]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 62,
+   "medianMs": 0.4742020439453125,
+   "meanMs": 0.4824839949439264,
+   "stdDevMs": 0.021691802329560264,
+   "p95Ms": 0.5263209170410156,
+   "minMs": 0.4608547705078125,
+   "maxMs": 0.5409026513671875,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.66898901028666,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Parallel4 [k6f-900]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 61,
+   "medianMs": 0.6830306533203125,
+   "meanMs": 0.682952302878458,
+   "stdDevMs": 0.028699196208683952,
+   "p95Ms": 0.73233259375,
+   "minMs": 0.62356491796875,
+   "maxMs": 0.7450850810546875,
+   "allocatedBytesPerOp": 5641,
+   "speedupVsTs": 1.1587151999004757,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit ParallelVector4 [k6f-900]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 96,
+   "medianMs": 0.6792948334960938,
+   "meanMs": 0.6879886068318686,
+   "stdDevMs": 0.04021101338647477,
+   "p95Ms": 0.7630277973632813,
+   "minMs": 0.614697712890625,
+   "maxMs": 0.7875175478515625,
+   "allocatedBytesPerOp": 5652,
+   "speedupVsTs": 1.165087618769221,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Scalar [k6f-late]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 82,
+   "medianMs": 2.540253228515625,
+   "meanMs": 2.59390399337843,
+   "stdDevMs": 0.13241123940962013,
+   "p95Ms": 2.8568355810546877,
+   "minMs": 2.4553711015625,
+   "maxMs": 2.95249118359375,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.316621493658696,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Vector [k6f-late]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 33,
+   "medianMs": 2.36329246484375,
+   "meanMs": 2.3945753489583335,
+   "stdDevMs": 0.06736226344238594,
+   "p95Ms": 2.5210658195312496,
+   "minMs": 2.333668375,
+   "maxMs": 2.5935193515625,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.4152086759269098,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit Parallel4 [k6f-late]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 91,
+   "medianMs": 2.34955099609375,
+   "meanMs": 2.36063976510989,
+   "stdDevMs": 0.13123002259788588,
+   "p95Ms": 2.570115583984375,
+   "minMs": 2.013783125,
+   "maxMs": 2.696025609375,
+   "allocatedBytesPerOp": 143944,
+   "speedupVsTs": 1.4234855959968766,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast reinit ParallelVector4 [k6f-late]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 83,
+   "medianMs": 2.18204408984375,
+   "meanMs": 2.1970333142413403,
+   "stdDevMs": 0.11671969253019918,
+   "p95Ms": 2.3977489558593748,
+   "minMs": 1.9112170625,
+   "maxMs": 2.45120736328125,
+   "allocatedBytesPerOp": 144084,
+   "speedupVsTs": 1.5327609627901975,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Scalar [k6f-900]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 86,
+   "medianMs": 2.162910400390625,
+   "meanMs": 2.172828063045058,
+   "stdDevMs": 0.11733113408521978,
+   "p95Ms": 2.37371285546875,
+   "minMs": 1.99032928125,
+   "maxMs": 2.49447823828125,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.9997254621458358,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Vector [k6f-900]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 17,
+   "medianMs": 1.386861525390625,
+   "meanMs": 1.389146743336397,
+   "stdDevMs": 0.024200399549128133,
+   "p95Ms": 1.421542225,
+   "minMs": 1.357333103515625,
+   "maxMs": 1.4465909375,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 3.1187158348652937,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Parallel4 [k6f-900]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 49,
+   "medianMs": 1.447419240234375,
+   "meanMs": 1.4488028589365434,
+   "stdDevMs": 0.05766171623265561,
+   "p95Ms": 1.52279997890625,
+   "minMs": 1.3277253671875,
+   "maxMs": 1.5482083671875,
+   "allocatedBytesPerOp": 12241,
+   "speedupVsTs": 2.988233733372793,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro ParallelVector4 [k6f-900]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 65,
+   "medianMs": 0.90792415234375,
+   "meanMs": 0.9095896881911057,
+   "stdDevMs": 0.042511745758347964,
+   "p95Ms": 0.9767488107421876,
+   "minMs": 0.7988783837890625,
+   "maxMs": 1.0131878828125,
+   "allocatedBytesPerOp": 12029,
+   "speedupVsTs": 4.763863797252085,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Scalar [k6f-late]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 97,
+   "medianMs": 3.3484914296875,
+   "meanMs": 3.3697758228092787,
+   "stdDevMs": 0.19536271566599403,
+   "p95Ms": 3.6652027265625,
+   "minMs": 3.0716767265625,
+   "maxMs": 3.8871564921875,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 1.8809840587196203,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Vector [k6f-late]",
+   "impl": "cs-vector",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 92,
+   "medianMs": 1.605671712890625,
+   "meanMs": 1.6304685495923914,
+   "stdDevMs": 0.08907765000115435,
+   "p95Ms": 1.7870422622070312,
+   "minMs": 1.522788697265625,
+   "maxMs": 1.906761013671875,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 3.9226318489864904,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro Parallel4 [k6f-late]",
+   "impl": "cs-parallel4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 99,
+   "medianMs": 1.90290541015625,
+   "meanMs": 1.904158454565183,
+   "stdDevMs": 0.12776755281981653,
+   "p95Ms": 2.1144535322265625,
+   "minMs": 1.510265005859375,
+   "maxMs": 2.226206552734375,
+   "allocatedBytesPerOp": 12284,
+   "speedupVsTs": 3.309917017622165,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast pyro ParallelVector4 [k6f-late]",
+   "impl": "cs-parallelvector4",
+   "runtime": "coreclr",
+   "threads": 4,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 97,
+   "medianMs": 0.972032783203125,
+   "meanMs": 0.9691476855267397,
+   "stdDevMs": 0.059050718691078766,
+   "p95Ms": 1.0599179738281248,
+   "minMs": 0.7941238515625,
+   "maxMs": 1.10668662890625,
+   "allocatedBytesPerOp": 12217,
+   "speedupVsTs": 6.479677546724546,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast restore Scalar [k6f-900]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "restore",
+   "n": 58,
+   "medianMs": 0.009155000267028809,
+   "meanMs": 0.009286367738921067,
+   "stdDevMs": 0.0004074165862614016,
+   "p95Ms": 0.010045343310546875,
+   "minMs": 0.008868364242553712,
+   "maxMs": 0.010401555938720703,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 0.9014745777442039,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast restore Scalar [k6f-late]",
+   "impl": "cs-scalar",
+   "runtime": "coreclr",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "restore",
+   "n": 27,
+   "medianMs": 0.00985996583557129,
+   "meanMs": 0.009944272563227902,
+   "stdDevMs": 0.00023440895742258565,
+   "p95Ms": 0.010431869738769532,
+   "minMs": 0.009750369720458984,
+   "maxMs": 0.010624569061279296,
+   "allocatedBytesPerOp": 0,
+   "speedupVsTs": 0.9377314438823428,
+   "notes": "BenchmarkDotNet 0.16.0-preview.2, default job, out of process; median over iterations of the per-operation time"
+  },
+  {
+   "name": "fast evalStage1 TypeScript [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 1000,
+   "medianMs": 0.032353000000057364,
+   "meanMs": 0.04941760999999496,
+   "stdDevMs": 0.13374757268433313,
+   "p95Ms": 0.055955000000039945,
+   "minMs": 0.03132400000004054,
+   "maxMs": 2.3493089999999484,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.0316 to 0.0326 ms"
+  },
+  {
+   "name": "fast evalStage2 TypeScript [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 1000,
+   "medianMs": 0.0231300000000374,
+   "meanMs": 0.024604047000005267,
+   "stdDevMs": 0.01156637897310822,
+   "p95Ms": 0.027387000000089756,
+   "minMs": 0.02288799999996627,
+   "maxMs": 0.3037650000001122,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.0230 to 0.0232 ms"
+  },
+  {
+   "name": "fast reinit TypeScript [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 1000,
+   "medianMs": 0.7914380000001984,
+   "meanMs": 0.8237072159999862,
+   "stdDevMs": 0.22875506646738322,
+   "p95Ms": 0.9181020000005446,
+   "minMs": 0.7494850000002771,
+   "maxMs": 4.0500700000002325,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.7857 to 0.8028 ms"
+  },
+  {
+   "name": "fast restore TypeScript [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "restore",
+   "n": 1000,
+   "medianMs": 0.00825299999996787,
+   "meanMs": 0.008443304999995235,
+   "stdDevMs": 0.0014325511169410326,
+   "p95Ms": 0.008378000000448083,
+   "minMs": 0.008167999999386666,
+   "maxMs": 0.026154000000133237,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.0082 to 0.0083 ms"
+  },
+  {
+   "name": "fast pyro TypeScript [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 1000,
+   "medianMs": 4.325227000001178,
+   "meanMs": 4.539833528999999,
+   "stdDevMs": 0.662624343724115,
+   "p95Ms": 5.625973999998678,
+   "minMs": 4.227789999999004,
+   "maxMs": 11.23148399999991,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 4.3212 to 4.3415 ms"
+  },
+  {
+   "name": "fast evalStage1 TypeScript [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 1000,
+   "medianMs": 0.1742779999999584,
+   "meanMs": 0.18527570600000468,
+   "stdDevMs": 0.09629574921895317,
+   "p95Ms": 0.20417199999997138,
+   "minMs": 0.16846000000009553,
+   "maxMs": 2.519032000000152,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.1693 to 0.1743 ms"
+  },
+  {
+   "name": "fast evalStage2 TypeScript [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 1000,
+   "medianMs": 0.1321579999998903,
+   "meanMs": 0.14144432499999812,
+   "stdDevMs": 0.0665860220108193,
+   "p95Ms": 0.1611830000001646,
+   "minMs": 0.12582100000008722,
+   "maxMs": 2.024960000000192,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.1312 to 0.1323 ms"
+  },
+  {
+   "name": "fast reinit TypeScript [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 1000,
+   "medianMs": 3.3445519999995668,
+   "meanMs": 3.5746801250000115,
+   "stdDevMs": 0.7468858069746269,
+   "p95Ms": 5.108279999999468,
+   "minMs": 3.23656100000062,
+   "maxMs": 10.964900999999372,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 3.3348 to 3.3705 ms"
+  },
+  {
+   "name": "fast restore TypeScript [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "restore",
+   "n": 1000,
+   "medianMs": 0.009245999999620835,
+   "meanMs": 0.00949284199997237,
+   "stdDevMs": 0.0016629234135076096,
+   "p95Ms": 0.009399000000485103,
+   "minMs": 0.009148999999524676,
+   "maxMs": 0.0277299999997922,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 0.0091 to 0.0099 ms"
+  },
+  {
+   "name": "fast pyro TypeScript [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 1000,
+   "medianMs": 6.298459000001458,
+   "meanMs": 6.697015117999984,
+   "stdDevMs": 2.469230530024271,
+   "p95Ms": 8.419756999999663,
+   "minMs": 6.134642999999414,
+   "maxMs": 65.08655799999906,
+   "allocatedBytesPerOp": null,
+   "speedupVsTs": 1,
+   "notes": "original src kernels under Node, one thread; median of the three runs' medians, runs' medians 6.2889 to 6.3557 ms"
+  },
+  {
+   "name": "fast evalStage1 mono-aot scalar [k6f-900]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.0316,
+   "minMs": 0.0316,
+   "maxMs": 0.0316,
+   "p95Ms": 0.0316,
+   "ratioToTsSameEngine": 0.9884575682691469,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage1 mono-aot vector128 [k6f-900]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.07295,
+   "minMs": 0.0727,
+   "maxMs": 0.0732,
+   "p95Ms": 0.0732,
+   "ratioToTsSameEngine": 2.281898088773236,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast evalStage1 typescript abba [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.03196900000000369,
+   "minMs": 0.03155900000001566,
+   "maxMs": 0.03237899999999172,
+   "p95Ms": 0.03237899999999172,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage2 mono-aot scalar [k6f-900]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.02015,
+   "minMs": 0.0201,
+   "maxMs": 0.0202,
+   "p95Ms": 0.0202,
+   "ratioToTsSameEngine": 0.8758204024859378,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage2 mono-aot vector128 [k6f-900]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.027,
+   "minMs": 0.0268,
+   "maxMs": 0.0272,
+   "p95Ms": 0.0272,
+   "ratioToTsSameEngine": 1.1735558742987753,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast evalStage2 typescript abba [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.023007000000006883,
+   "minMs": 0.02295700000013312,
+   "maxMs": 0.023056999999880645,
+   "p95Ms": 0.023056999999880645,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast reinit mono-aot scalar [k6f-900]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 0.7101500000000001,
+   "minMs": 0.6979,
+   "maxMs": 0.7224,
+   "p95Ms": 0.7224,
+   "ratioToTsSameEngine": 0.8857493696602322,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast reinit mono-aot vector128 [k6f-900]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 0.6629,
+   "minMs": 0.6577,
+   "maxMs": 0.6681,
+   "p95Ms": 0.6681,
+   "ratioToTsSameEngine": 0.8268158236256677,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast reinit typescript abba [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 0.8017505000002529,
+   "minMs": 0.8015690000001996,
+   "maxMs": 0.8019320000003063,
+   "p95Ms": 0.8019320000003063,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast restore mono-aot scalar [k6f-900]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "restore",
+   "n": 2000,
+   "medianMs": 0.0335,
+   "minMs": 0.0335,
+   "maxMs": 0.0335,
+   "p95Ms": 0.0335,
+   "ratioToTsSameEngine": 4.051520831969187,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast restore typescript abba [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "restore",
+   "n": 2000,
+   "medianMs": 0.008268500000212953,
+   "minMs": 0.008257999999841559,
+   "maxMs": 0.008279000000584347,
+   "p95Ms": 0.008279000000584347,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast pyro mono-aot scalar [k6f-900]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 2.5183999999999997,
+   "minMs": 2.4968,
+   "maxMs": 2.54,
+   "p95Ms": 2.54,
+   "ratioToTsSameEngine": 0.5813239523749717,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast pyro mono-aot vector128 [k6f-900]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 2.0821,
+   "minMs": 2.0706,
+   "maxMs": 2.0936,
+   "p95Ms": 2.0936,
+   "ratioToTsSameEngine": 0.4806125322585486,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast pyro typescript abba [k6f-900]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-900",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 4.332180000000335,
+   "minMs": 4.3051980000000185,
+   "maxMs": 4.3591620000006515,
+   "p95Ms": 4.3591620000006515,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage1 mono-aot scalar [k6f-late]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.1648,
+   "minMs": 0.1641,
+   "maxMs": 0.1655,
+   "p95Ms": 0.1655,
+   "ratioToTsSameEngine": 0.9446047763298597,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage1 mono-aot vector128 [k6f-late]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.37385,
+   "minMs": 0.3695,
+   "maxMs": 0.3782,
+   "p95Ms": 0.3782,
+   "ratioToTsSameEngine": 2.142842813294406,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast evalStage1 typescript abba [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage1",
+   "n": 2000,
+   "medianMs": 0.17446449999999913,
+   "minMs": 0.1735030000002098,
+   "maxMs": 0.17542599999978847,
+   "p95Ms": 0.17542599999978847,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage2 mono-aot scalar [k6f-late]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.10735,
+   "minMs": 0.1069,
+   "maxMs": 0.1078,
+   "p95Ms": 0.1078,
+   "ratioToTsSameEngine": 0.8102498301760973,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast evalStage2 mono-aot vector128 [k6f-late]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.14024999999999999,
+   "minMs": 0.1392,
+   "maxMs": 0.1413,
+   "p95Ms": 0.1413,
+   "ratioToTsSameEngine": 1.0585704581480915,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast evalStage2 typescript abba [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "evalStage2",
+   "n": 2000,
+   "medianMs": 0.13248999999996158,
+   "minMs": 0.13239199999998164,
+   "maxMs": 0.13258799999994153,
+   "p95Ms": 0.13258799999994153,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast reinit mono-aot scalar [k6f-late]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 3.09755,
+   "minMs": 3.0927,
+   "maxMs": 3.1024,
+   "p95Ms": 3.1024,
+   "ratioToTsSameEngine": 0.9234224599249488,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast reinit mono-aot vector128 [k6f-late]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 3.00235,
+   "minMs": 2.974,
+   "maxMs": 3.0307,
+   "p95Ms": 3.0307,
+   "ratioToTsSameEngine": 0.8950420243597907,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast reinit typescript abba [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "reinit",
+   "n": 2000,
+   "medianMs": 3.354423499999939,
+   "minMs": 3.3306759999995847,
+   "maxMs": 3.378171000000293,
+   "p95Ms": 3.378171000000293,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast restore mono-aot scalar [k6f-late]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "restore",
+   "n": 2000,
+   "medianMs": 0.037500000000000006,
+   "minMs": 0.0369,
+   "maxMs": 0.0381,
+   "p95Ms": 0.0381,
+   "ratioToTsSameEngine": 4.017139796578012,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast restore typescript abba [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "restore",
+   "n": 2000,
+   "medianMs": 0.009334999999737192,
+   "minMs": 0.009105999999519554,
+   "maxMs": 0.00956399999995483,
+   "p95Ms": 0.00956399999995483,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast pyro mono-aot scalar [k6f-late]",
+   "impl": "cs-wasm-scalar",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 3.71115,
+   "minMs": 3.4541,
+   "maxMs": 3.9682,
+   "p95Ms": 3.9682,
+   "ratioToTsSameEngine": 0.5851884247122686,
+   "notes": "Mono WebAssembly AOT under Node 22 (V8 12.4), one thread; median of the two runs of an A B B A (TypeScript, WebAssembly, WebAssembly, TypeScript; fresh processes), each 1,000 single operations after a 1.5 s warm-up; p95Ms here is the larger run median, not a percentile"
+  },
+  {
+   "name": "fast pyro mono-aot vector128 [k6f-late]",
+   "impl": "cs-wasm-vector",
+   "runtime": "mono-wasm-aot",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 2.65125,
+   "minMs": 2.3463,
+   "maxMs": 2.9562,
+   "p95Ms": 2.9562,
+   "ratioToTsSameEngine": 0.4180593107307445,
+   "notes": "as the scalar line, Vector128 form"
+  },
+  {
+   "name": "fast pyro typescript abba [k6f-late]",
+   "impl": "ts",
+   "runtime": "v8-node",
+   "threads": 1,
+   "case": "k6f-late",
+   "kernel": "pyro",
+   "n": 2000,
+   "medianMs": 6.341803500000424,
+   "minMs": 6.324001000000862,
+   "maxMs": 6.359605999999985,
+   "p95Ms": 6.359605999999985,
+   "notes": "the TypeScript of the Mono AOT A B B A (two fresh processes); p95Ms here is the larger run median, not a percentile"
+  }
+ ],
+ "projection": {
+  "basis": "reports/1-profile.md shares (fast tier: 1,800 s run evaluate 3.0, reinit 2.9, pyrogenic 8.4 %; 4 h run 13.6, 10.1, 9.2 % of the katoomba6-fast step loop); every other phase taken as no faster",
+  "amdahl": {
+   "k6f-900": {
+    "sharePercent": 14.3,
+    "ceiling": 1.1668611435239207
+   },
+   "k6f-late": {
+    "sharePercent": 32.9,
+    "ceiling": 1.4903129657228018
+   }
+  },
+  "byForm": [
+   {
+    "fixture": "k6f-900",
+    "form": "Scalar",
+    "kernelSpeedups": {
+     "evaluate": 1.6497546752482293,
+     "reinitNet": 1.4991369807218526,
+     "pyrogenic": 1.9997254621458358
+    },
+    "newShareOfOldStepPercent": 93.65347510696864,
+    "projectedStepSpeedup": 1.0677660373604132
+   },
+   {
+    "fixture": "k6f-900",
+    "form": "Vector",
+    "kernelSpeedups": {
+     "evaluate": 1.1348762687566023,
+     "reinitNet": 1.684098438312044,
+     "pyrogenic": 3.1187158348652937
+    },
+    "newShareOfOldStepPercent": 92.75886586267931,
+    "projectedStepSpeedup": 1.0780640650354705
+   },
+   {
+    "fixture": "k6f-900",
+    "form": "Parallel4",
+    "kernelSpeedups": {
+     "evaluate": 1.290700741123483,
+     "reinitNet": 1.1622099662625793,
+     "pyrogenic": 2.988233733372793
+    },
+    "newShareOfOldStepPercent": 93.33059009031469,
+    "projectedStepSpeedup": 1.0714600636643508
+   },
+   {
+    "fixture": "k6f-900",
+    "form": "ParallelVector4",
+    "kernelSpeedups": {
+     "evaluate": 1.065955448606047,
+     "reinitNet": 1.1686889230661874,
+     "pyrogenic": 4.763863797252085
+    },
+    "newShareOfOldStepPercent": 92.75906422356935,
+    "projectedStepSpeedup": 1.0780617596462425
+   },
+   {
+    "fixture": "k6f-900",
+    "form": "best of each",
+    "kernelSpeedups": {
+     "evaluate": 1.6497546752482293,
+     "reinitNet": 1.684098438312044,
+     "pyrogenic": 4.763863797252085
+    },
+    "newShareOfOldStepPercent": 91.00371638434864,
+    "projectedStepSpeedup": 1.09885622228499
+   },
+   {
+    "fixture": "k6f-late",
+    "form": "Scalar",
+    "kernelSpeedups": {
+     "evaluate": 1.92494738092875,
+     "reinitNet": 1.318097881934515,
+     "pyrogenic": 1.8809840587196203
+    },
+    "newShareOfOldStepPercent": 86.71874194055253,
+    "projectedStepSpeedup": 1.1531532603246486
+   },
+   {
+    "fixture": "k6f-late",
+    "form": "Vector",
+    "kernelSpeedups": {
+     "evaluate": 1.187013628413292,
+     "reinitNet": 1.4172091196180743,
+     "pyrogenic": 3.9226318489864904
+    },
+    "newShareOfOldStepPercent": 88.02937124724586,
+    "projectedStepSpeedup": 1.1359844854410301
+   },
+   {
+    "fixture": "k6f-late",
+    "form": "Parallel4",
+    "kernelSpeedups": {
+     "evaluate": 1.7188201959665006,
+     "reinitNet": 1.4255326694276824,
+     "pyrogenic": 3.309917017622165
+    },
+    "newShareOfOldStepPercent": 84.87700087331311,
+    "projectedStepSpeedup": 1.1781754653331753
+   },
+   {
+    "fixture": "k6f-late",
+    "form": "ParallelVector4",
+    "kernelSpeedups": {
+     "evaluate": 1.4263139547517645,
+     "reinitNet": 1.5354619174020754,
+     "pyrogenic": 6.479677546724546
+    },
+    "newShareOfOldStepPercent": 84.63271649339183,
+    "projectedStepSpeedup": 1.1815761580547643
+   },
+   {
+    "fixture": "k6f-late",
+    "form": "best of each",
+    "kernelSpeedups": {
+     "evaluate": 1.92494738092875,
+     "reinitNet": 1.5354619174020754,
+     "pyrogenic": 6.479677546724546
+    },
+    "newShareOfOldStepPercent": 82.16277706479791,
+    "projectedStepSpeedup": 1.2170961543952528
+   }
+  ]
+ },
+ "gate": {
+  "bar": "Gate 1, fast tier: projected whole-step gain >= 1.2x over the best TypeScript arm (its faithful random draw order caps it near 1.3x on 4 cores)",
+  "measured": "projection 1.099x at the 30-minute shares and 1.217x at the 4 h shares with the best form of each of the three kernels (Amdahl ceilings 1.167x and 1.490x); assumes the rest of the step is no faster",
+  "result": "not run",
+  "why": "a kernel-only projection on the container's shared cores, against one TypeScript thread; the embers (24 % at 30 minutes) stay serial in the faithful draw order; the whole-step measurement is T6.4 / T6.6"
+ },
+ "notRun": [
+  "arm64 execution (the android-arm64 build only proves the library compiles; it needs the phone, round 1)",
+  "phone and browser timings",
+  "the other fast-tier phases (embers, wind for the fire, moisture, picture, detectors)",
+  "WebAssembly timing in Chromium and in the phone WebView (T1.6b; only Node 22 here)",
+  "the fire model hook (prepareCell) is not ported: the evaluate benchmark answers the lazy speed requests with the coefficients the real hook wrote (recorded)",
+  "CoreMathSharp as the default FsMath: the pyrogenic sine tables would then differ from Node 22 in the last bit and need the test-only shim; with the default (fdlibm) the tables equal Node 22 exactly"
+ ],
+ "conditions": {
+  "loadAverageLog": [
+   "ts1 before: 11:01:27 1.00 1.15 1.19",
+   "ts1 after: 11:01:58 1.00 1.13 1.18",
+   "eval1 before: 11:01:58 1.00 1.13 1.18",
+   "eval1 after: 11:10:41 2.54 1.92 1.52",
+   "eval2 before: 11:10:42 2.54 1.92 1.52",
+   "eval2 after: 11:19:15 3.05 2.48 1.90",
+   "reinit before: 11:19:15 3.05 2.48 1.90",
+   "reinit after: 11:27:12 3.02 2.29 1.96",
+   "pyro before: 11:27:12 3.02 2.29 1.96",
+   "pyro after: 11:35:52 3.09 2.37 2.08",
+   "restore before: 11:35:52 3.09 2.37 2.08",
+   "restore after: 11:37:27 1.49 2.04 1.99",
+   "ts2 before: 11:37:27 1.49 2.04 1.99",
+   "ts2 after: 11:37:58 1.29 1.93 1.96",
+   "ts3 before: 11:37:58 1.29 1.93 1.96",
+   "ts3 after: 11:38:29 1.16 1.83 1.92",
+   "tsw1 before: 11:38:29 1.16 1.83 1.92",
+   "tsw1 after: 11:39:01 1.10 1.75 1.89",
+   "wasm1 before: 11:39:01 1.10 1.75 1.89",
+   "wasm1 after: 11:39:50 1.04 1.63 1.84",
+   "wasm2 before: 11:39:50 1.04 1.63 1.84",
+   "wasm2 after: 11:40:38 1.02 1.54 1.80",
+   "tsw2 before: 11:40:38 1.02 1.54 1.80",
+   "tsw2 after: 11:41:09 1.01 1.48 1.77"
+  ],
+  "columns": "name before|after: UTC time, load average over 1, 5 and 15 minutes (/proc/loadavg); the BenchmarkDotNet sessions run 4 threads in the Parallel cases, which is part of their own load"
+ },
+ "threadCurve": {
+  "when": "2026-11-17T11:43:10Z",
+  "cores": 4,
+  "method": "stopwatch, 400 single operations after 400 ms warm-up, median",
+  "cells": [
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "scalar",
+    "medianMs": 0.0203
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "vector128",
+    "medianMs": 0.028
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par1",
+    "medianMs": 0.0203
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par2",
+    "medianMs": 0.0294
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par4",
+    "medianMs": 0.0222
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par8",
+    "medianMs": 0.0206
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec1",
+    "medianMs": 0.0281
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec2",
+    "medianMs": 0.0425
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec4",
+    "medianMs": 0.0248
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec8",
+    "medianMs": 0.0269
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "scalar",
+    "medianMs": 0.0141
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "vector128",
+    "medianMs": 0.0195
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par1",
+    "medianMs": 0.0141
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par2",
+    "medianMs": 0.0096
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par4",
+    "medianMs": 0.0125
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par8",
+    "medianMs": 0.0118
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec1",
+    "medianMs": 0.0195
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec2",
+    "medianMs": 0.0169
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec4",
+    "medianMs": 0.0139
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec8",
+    "medianMs": 0.0124
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "scalar",
+    "medianMs": 0.6441
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "vector128",
+    "medianMs": 0.6154
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par1",
+    "medianMs": 0.6386
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par2",
+    "medianMs": 0.7576
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par4",
+    "medianMs": 0.7899
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par8",
+    "medianMs": 0.7825
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec1",
+    "medianMs": 0.6184
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec2",
+    "medianMs": 0.7417
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec4",
+    "medianMs": 0.7644
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec8",
+    "medianMs": 0.7759
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "scalar",
+    "medianMs": 1.7467
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "vector128",
+    "medianMs": 1.4551
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par1",
+    "medianMs": 1.7418
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par2",
+    "medianMs": 1.0437
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par4",
+    "medianMs": 1.0371
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par8",
+    "medianMs": 0.9409
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec1",
+    "medianMs": 1.4832
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec2",
+    "medianMs": 0.9504
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec4",
+    "medianMs": 0.8494
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec8",
+    "medianMs": 0.8474
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "scalar",
+    "medianMs": 0.0203
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "vector128",
+    "medianMs": 0.028
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par1",
+    "medianMs": 0.0205
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par2",
+    "medianMs": 0.0354
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par4",
+    "medianMs": 0.0267
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par8",
+    "medianMs": 0.0246
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec1",
+    "medianMs": 0.0281
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec2",
+    "medianMs": 0.037
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec4",
+    "medianMs": 0.0226
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec8",
+    "medianMs": 0.0272
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "scalar",
+    "medianMs": 0.0141
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "vector128",
+    "medianMs": 0.0196
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par1",
+    "medianMs": 0.0141
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par2",
+    "medianMs": 0.0098
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par4",
+    "medianMs": 0.0107
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par8",
+    "medianMs": 0.0098
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec1",
+    "medianMs": 0.0195
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec2",
+    "medianMs": 0.0234
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec4",
+    "medianMs": 0.0147
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec8",
+    "medianMs": 0.0146
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "scalar",
+    "medianMs": 0.6482
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "vector128",
+    "medianMs": 0.6208
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par1",
+    "medianMs": 0.6485
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par2",
+    "medianMs": 0.7726
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par4",
+    "medianMs": 0.731
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par8",
+    "medianMs": 0.7469
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec1",
+    "medianMs": 0.6239
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec2",
+    "medianMs": 0.7768
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec4",
+    "medianMs": 0.7026
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec8",
+    "medianMs": 0.691
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "scalar",
+    "medianMs": 1.7506
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "vector128",
+    "medianMs": 1.4763
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par1",
+    "medianMs": 1.7391
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par2",
+    "medianMs": 1.1731
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par4",
+    "medianMs": 0.9878
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par8",
+    "medianMs": 0.9458
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec1",
+    "medianMs": 1.4802
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec2",
+    "medianMs": 0.9035
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec4",
+    "medianMs": 0.8511
+   },
+   {
+    "fixture": "k6f-900",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec8",
+    "medianMs": 0.8102
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "scalar",
+    "medianMs": 0.109
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "vector128",
+    "medianMs": 0.1779
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par1",
+    "medianMs": 0.106
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par2",
+    "medianMs": 0.1513
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par4",
+    "medianMs": 0.1166
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "par8",
+    "medianMs": 0.1153
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec1",
+    "medianMs": 0.1787
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec2",
+    "medianMs": 0.1613
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec4",
+    "medianMs": 0.1433
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage1",
+    "form": "parvec8",
+    "medianMs": 0.1411
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "scalar",
+    "medianMs": 0.0763
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "vector128",
+    "medianMs": 0.1165
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par1",
+    "medianMs": 0.0753
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par2",
+    "medianMs": 0.0733
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par4",
+    "medianMs": 0.0398
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "par8",
+    "medianMs": 0.0337
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec1",
+    "medianMs": 0.1138
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec2",
+    "medianMs": 0.1136
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec4",
+    "medianMs": 0.0457
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "evalStage2",
+    "form": "parvec8",
+    "medianMs": 0.0464
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "scalar",
+    "medianMs": 2.7106
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "vector128",
+    "medianMs": 2.6461
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par1",
+    "medianMs": 2.7111
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par2",
+    "medianMs": 2.9556
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par4",
+    "medianMs": 2.2564
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "par8",
+    "medianMs": 2.4077
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec1",
+    "medianMs": 2.6663
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec2",
+    "medianMs": 3.0073
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec4",
+    "medianMs": 2.4081
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "reinit",
+    "form": "parvec8",
+    "medianMs": 2.4737
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "scalar",
+    "medianMs": 2.4472
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "vector128",
+    "medianMs": 1.6441
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par1",
+    "medianMs": 2.3441
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par2",
+    "medianMs": 1.5846
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par4",
+    "medianMs": 1.3412
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "par8",
+    "medianMs": 1.3477
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec1",
+    "medianMs": 1.628
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec2",
+    "medianMs": 0.9726
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec4",
+    "medianMs": 0.9845
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "default",
+    "kernel": "pyro",
+    "form": "parvec8",
+    "medianMs": 0.9758
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "scalar",
+    "medianMs": 0.1088
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "vector128",
+    "medianMs": 0.1832
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par1",
+    "medianMs": 0.1071
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par2",
+    "medianMs": 0.1373
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par4",
+    "medianMs": 0.1279
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "par8",
+    "medianMs": 0.1149
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec1",
+    "medianMs": 0.181
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec2",
+    "medianMs": 0.1679
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec4",
+    "medianMs": 0.1723
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage1",
+    "form": "parvec8",
+    "medianMs": 0.1584
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "scalar",
+    "medianMs": 0.0819
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "vector128",
+    "medianMs": 0.1136
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par1",
+    "medianMs": 0.0751
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par2",
+    "medianMs": 0.0517
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par4",
+    "medianMs": 0.0368
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "par8",
+    "medianMs": 0.0342
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec1",
+    "medianMs": 0.1152
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec2",
+    "medianMs": 0.0927
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec4",
+    "medianMs": 0.0776
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "evalStage2",
+    "form": "parvec8",
+    "medianMs": 0.0477
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "scalar",
+    "medianMs": 2.7245
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "vector128",
+    "medianMs": 2.6521
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par1",
+    "medianMs": 2.7593
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par2",
+    "medianMs": 2.8861
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par4",
+    "medianMs": 2.3374
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "par8",
+    "medianMs": 2.3165
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec1",
+    "medianMs": 2.6696
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec2",
+    "medianMs": 3.0232
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec4",
+    "medianMs": 2.3752
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "reinit",
+    "form": "parvec8",
+    "medianMs": 2.6172
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "scalar",
+    "medianMs": 2.3493
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "vector128",
+    "medianMs": 1.6536
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par1",
+    "medianMs": 2.3519
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par2",
+    "medianMs": 1.5054
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par4",
+    "medianMs": 1.4153
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "par8",
+    "medianMs": 1.3833
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec1",
+    "medianMs": 1.6715
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec2",
+    "medianMs": 1.1133
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec4",
+    "medianMs": 1.0114
+   },
+   {
+    "fixture": "k6f-late",
+    "thresholds": "forced",
+    "kernel": "pyro",
+    "form": "parvec8",
+    "medianMs": 1.0221
+   }
+  ]
+ },
+ "tsLoadavgAtStartOfEachRun": [
+  {
+   "fixture": "k6f-900",
+   "loadavgAtStart": [
+    1,
+    1.14,
+    1.19
+   ]
+  },
+  {
+   "fixture": "k6f-900",
+   "loadavgAtStart": [
+    1.38,
+    1.98,
+    1.97
+   ]
+  },
+  {
+   "fixture": "k6f-900",
+   "loadavgAtStart": [
+    1.23,
+    1.89,
+    1.94
+   ]
+  },
+  {
+   "fixture": "k6f-late",
+   "loadavgAtStart": [
+    1,
+    1.13,
+    1.18
+   ]
+  },
+  {
+   "fixture": "k6f-late",
+   "loadavgAtStart": [
+    1.29,
+    1.93,
+    1.96
+   ]
+  },
+  {
+   "fixture": "k6f-late",
+   "loadavgAtStart": [
+    1.16,
+    1.83,
+    1.92
+   ]
+  }
+ ],
+ "build": {
+  "configuration": "Release",
+  "commit": "27d238d"
+ },
+ "wasmNode": {
+  "method": "median of the two runs of each side (A B B A: TypeScript, WebAssembly, WebAssembly, TypeScript; every run a fresh process; 1,000 single operations after a 1.5 s warm-up)",
+  "fixtures": {
+   "k6f-900": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "wasmRuntime": ".NET 11.0.0; rid browser-wasm; dynamicCode False; vector128 True",
+    "loadavgAtStart": {
+     "ts": [
+      [
+       1.14,
+       1.8,
+       1.91
+      ],
+      [
+       1.01,
+       1.51,
+       1.79
+      ]
+     ],
+     "wasm": [
+      [
+       1.07,
+       1.7,
+       1.87
+      ],
+      [
+       1.03,
+       1.59,
+       1.82
+      ]
+     ]
+    },
+    "kernels": {
+     "evalStage1": {
+      "tsMs": 0.03196900000000369,
+      "tsMinMs": 0.03155900000001566,
+      "tsMaxMs": 0.03237899999999172,
+      "scalarMs": 0.0316,
+      "scalarMinMs": 0.0316,
+      "scalarMaxMs": 0.0316,
+      "scalarRatio": 0.9884575682691469,
+      "vectorMs": 0.07295,
+      "vectorMinMs": 0.0727,
+      "vectorMaxMs": 0.0732,
+      "vectorRatio": 2.281898088773236
+     },
+     "evalStage2": {
+      "tsMs": 0.023007000000006883,
+      "tsMinMs": 0.02295700000013312,
+      "tsMaxMs": 0.023056999999880645,
+      "scalarMs": 0.02015,
+      "scalarMinMs": 0.0201,
+      "scalarMaxMs": 0.0202,
+      "scalarRatio": 0.8758204024859378,
+      "vectorMs": 0.027,
+      "vectorMinMs": 0.0268,
+      "vectorMaxMs": 0.0272,
+      "vectorRatio": 1.1735558742987753
+     },
+     "reinit": {
+      "tsMs": 0.8017505000002529,
+      "tsMinMs": 0.8015690000001996,
+      "tsMaxMs": 0.8019320000003063,
+      "scalarMs": 0.7101500000000001,
+      "scalarMinMs": 0.6979,
+      "scalarMaxMs": 0.7224,
+      "scalarRatio": 0.8857493696602322,
+      "vectorMs": 0.6629,
+      "vectorMinMs": 0.6577,
+      "vectorMaxMs": 0.6681,
+      "vectorRatio": 0.8268158236256677
+     },
+     "restore": {
+      "tsMs": 0.008268500000212953,
+      "tsMinMs": 0.008257999999841559,
+      "tsMaxMs": 0.008279000000584347,
+      "scalarMs": 0.0335,
+      "scalarMinMs": 0.0335,
+      "scalarMaxMs": 0.0335,
+      "scalarRatio": 4.051520831969187
+     },
+     "pyro": {
+      "tsMs": 4.332180000000335,
+      "tsMinMs": 4.3051980000000185,
+      "tsMaxMs": 4.3591620000006515,
+      "scalarMs": 2.5183999999999997,
+      "scalarMinMs": 2.4968,
+      "scalarMaxMs": 2.54,
+      "scalarRatio": 0.5813239523749717,
+      "vectorMs": 2.0821,
+      "vectorMinMs": 2.0706,
+      "vectorMaxMs": 2.0936,
+      "vectorRatio": 0.4806125322585486
+     }
+    },
+    "ratios": {
+     "evaluate": {
+      "scalar": 0.941319848661053,
+      "vector": 1.8180660651917342
+     },
+     "reinitNet": {
+      "scalar": 0.8527603650744011,
+      "vector": 0.7932127004770976
+     },
+     "pyro": {
+      "scalar": 0.5813239523749717,
+      "vector": 0.4806125322585486
+     }
+    },
+    "projectedStepTimeRatio": {
+     "scalar": 0.9588008580464867,
+     "vector": 0.9749166029793058
+    }
+   },
+   "k6f-late": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "wasmRuntime": ".NET 11.0.0; rid browser-wasm; dynamicCode False; vector128 True",
+    "loadavgAtStart": {
+     "ts": [
+      [
+       1.1,
+       1.75,
+       1.89
+      ],
+      [
+       1.01,
+       1.48,
+       1.77
+      ]
+     ],
+     "wasm": [
+      [
+       1.04,
+       1.63,
+       1.84
+      ],
+      [
+       1.02,
+       1.54,
+       1.8
+      ]
+     ]
+    },
+    "kernels": {
+     "evalStage1": {
+      "tsMs": 0.17446449999999913,
+      "tsMinMs": 0.1735030000002098,
+      "tsMaxMs": 0.17542599999978847,
+      "scalarMs": 0.1648,
+      "scalarMinMs": 0.1641,
+      "scalarMaxMs": 0.1655,
+      "scalarRatio": 0.9446047763298597,
+      "vectorMs": 0.37385,
+      "vectorMinMs": 0.3695,
+      "vectorMaxMs": 0.3782,
+      "vectorRatio": 2.142842813294406
+     },
+     "evalStage2": {
+      "tsMs": 0.13248999999996158,
+      "tsMinMs": 0.13239199999998164,
+      "tsMaxMs": 0.13258799999994153,
+      "scalarMs": 0.10735,
+      "scalarMinMs": 0.1069,
+      "scalarMaxMs": 0.1078,
+      "scalarRatio": 0.8102498301760973,
+      "vectorMs": 0.14024999999999999,
+      "vectorMinMs": 0.1392,
+      "vectorMaxMs": 0.1413,
+      "vectorRatio": 1.0585704581480915
+     },
+     "reinit": {
+      "tsMs": 3.354423499999939,
+      "tsMinMs": 3.3306759999995847,
+      "tsMaxMs": 3.378171000000293,
+      "scalarMs": 3.09755,
+      "scalarMinMs": 3.0927,
+      "scalarMaxMs": 3.1024,
+      "scalarRatio": 0.9234224599249488,
+      "vectorMs": 3.00235,
+      "vectorMinMs": 2.974,
+      "vectorMaxMs": 3.0307,
+      "vectorRatio": 0.8950420243597907
+     },
+     "restore": {
+      "tsMs": 0.009334999999737192,
+      "tsMinMs": 0.009105999999519554,
+      "tsMaxMs": 0.00956399999995483,
+      "scalarMs": 0.037500000000000006,
+      "scalarMinMs": 0.0369,
+      "scalarMaxMs": 0.0381,
+      "scalarRatio": 4.017139796578012
+     },
+     "pyro": {
+      "tsMs": 6.341803500000424,
+      "tsMinMs": 6.324001000000862,
+      "tsMaxMs": 6.359605999999985,
+      "scalarMs": 3.71115,
+      "scalarMinMs": 3.4541,
+      "scalarMaxMs": 3.9682,
+      "scalarRatio": 0.5851884247122686,
+      "vectorMs": 2.65125,
+      "vectorMinMs": 2.3463,
+      "vectorMaxMs": 2.9562,
+      "vectorRatio": 0.4180593107307445
+     }
+    },
+    "ratios": {
+     "evaluate": {
+      "scalar": 0.8866134883184147,
+      "vector": 1.6748410595057763
+     },
+     "reinitNet": {
+      "scalar": 0.9147889510247085,
+      "vector": 0.8863293153528885
+     },
+     "pyro": {
+      "scalar": 0.5851884247122686,
+      "vector": 0.4180593107307445
+     }
+    },
+    "projectedStepTimeRatio": {
+     "scalar": 0.9378104535383287,
+     "vector": 1.0267591015306559
+    }
+   }
+  }
+ },
+ "mutationChecks": [
+  {
+   "kernel": "reinit",
+   "mutant": "sweep-sum-reassociated",
+   "frames": 4,
+   "caughtByDoubleDistance": 4,
+   "caughtByFloat32Distance": 0
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "lap",
+   "caught": 8,
+   "of": 8,
+   "outputs": [
+    "out"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "visc",
+   "caught": 7,
+   "of": 8,
+   "outputs": [
+    "out"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "g2",
+   "caught": 8,
+   "of": 8,
+   "outputs": [
+    "out"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "fma",
+   "caught": 8,
+   "of": 8,
+   "outputs": [
+    "out"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "normal",
+   "caught": 8,
+   "of": 8,
+   "outputs": [
+    "maxC",
+    "out"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "cfl",
+   "caught": 1,
+   "of": 8,
+   "outputs": [
+    "maxC"
+   ]
+  },
+  {
+   "kernel": "evaluate",
+   "mutant": "swap",
+   "caught": 0,
+   "of": 8,
+   "outputs": []
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "lerp-detail",
+   "fixture": "k6f-900",
+   "doubleDiffers": 13947,
+   "cells": 40000,
+   "float32Differs": 0
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "lerp-detail",
+   "fixture": "k6f-late",
+   "doubleDiffers": 13875,
+   "cells": 40000,
+   "float32Differs": 0
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "reverse",
+   "caught": 2,
+   "of": 2,
+   "outputs": [
+    "gx",
+    "gy",
+    "psi",
+    "vp"
+   ]
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "scale",
+   "caught": 2,
+   "of": 2,
+   "outputs": [
+    "gx",
+    "gy",
+    "psi"
+   ]
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "lerp",
+   "caught": 0,
+   "of": 2,
+   "outputs": []
+  },
+  {
+   "kernel": "pyrogenic",
+   "mutant": "swap",
+   "caught": 0,
+   "of": 2,
+   "outputs": []
+  }
+ ],
+ "tests": {
+  "fsTestsPassed": 614,
+  "note": "dotnet test --project Fs.Tests -c Release; includes the child-process runs (AVX2, AVX-512, hardware intrinsics, tiering, PGO and OSR off), the 9-form bit-equality tests on the real frames and the mutation tests"
+ }
+}

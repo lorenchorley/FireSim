@@ -81,13 +81,13 @@ public static class FastMerge
         return 0;
     }
 
-    /// <summary>A scratch probe for the developer (not part of any result): reinit with the float32 and the double distance array, evaluate, on both fixtures, scalar.</summary>
+    /// <summary>A scratch probe for the developer (not part of any result): reinit with the float32 and the double distance array, evaluate and the pyrogenic solve, on both fixtures (run it under different DOTNET_ settings to see what the JIT settings do).</summary>
     public static int Diag(string[] args)
     {
         foreach (string fixture in new[] { "k6f-900", "k6f-late" })
         {
             var o = FastOpsFactory.Create(fixture);
-            Console.WriteLine($"{fixture}: reinit float32 dist {Median(() => o.Reinit(KernelExec.Scalar)):F4} ms; reinit double dist {Median(() => { o.Restore(); o.Ls3.ReinitWide(KernelExec.Scalar); return o.Ls3.BandCount; }):F4} ms; restore {Median(() => o.Restore()):F4} ms; evalStage1 {Median(() => o.Eval1(KernelExec.Scalar)):F4} ms; evalStage1 vector {Median(() => o.Eval1(KernelExec.Vec)):F4} ms; evalStage2 {Median(() => o.Eval2(KernelExec.Scalar)):F4} ms");
+            Console.WriteLine($"{fixture}: reinit float32 dist {Median(() => o.Reinit(KernelExec.Scalar)):F4} ms; reinit double dist {Median(() => { o.Restore(); o.Ls3.ReinitWide(KernelExec.Scalar); return o.Ls3.BandCount; }):F4} ms; restore {Median(() => o.Restore()):F4} ms; evalStage1 {Median(() => o.Eval1(KernelExec.Scalar)):F4} ms; evalStage1 vector {Median(() => o.Eval1(KernelExec.Vec)):F4} ms; evalStage2 {Median(() => o.Eval2(KernelExec.Scalar)):F4} ms; pyro scalar {Median(() => o.Solve(KernelExec.Scalar)):F4} ms; pyro vector {Median(() => o.Solve(KernelExec.Vec)):F4} ms");
         }
         return 0;
     }
