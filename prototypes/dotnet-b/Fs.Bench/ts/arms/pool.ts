@@ -63,12 +63,14 @@ export class Pool {
   readonly threads: number;
   readonly spinUs: number;
   private readonly ctl: Int32Array;
+  private readonly gen0: number;
   private jobs: ChunkFn[] = [];
   /** regions run and chunks run on this thread, for the report */
   regions = 0;
 
   constructor(ctl: Int32Array, opt: PoolOptions) {
     this.ctl = ctl;
+    this.gen0 = Atomics.load(ctl, CTL_GEN); // set-up of every thread finishes before the first region (the caller waits for every 'ready')
     this.threads = opt.threads;
     this.spinUs = opt.spinUs;
   }
@@ -134,7 +136,8 @@ export class Pool {
   serve(): void {
     const ctl = this.ctl;
     const want = this.threads - 2; // the value of DONE before the last helper's increment
-    let seen = Atomics.load(ctl, CTL_GEN);
+    // the generation at set-up, not at the moment this loop starts: the driver may already have begun its first region (found when a timed run hung in its first kernel)
+    let seen = this.gen0;
     for (;;) {
       // wait for a new generation: spin, then sleep
       const t0 = performance.now();
