@@ -24,7 +24,7 @@ public static class PhoneBench
         ThreadPool.SetMinThreads(16, 16);
         var c = f.Cases[0];
         var k = new PyrogenicKernel(f.FireNx, f.FireNy, f.CellSizeM, f.PyroK, f.PyroMax);
-        var forms = new List<(string, Action)> { ("scalar", () => k.SolveScalar(c.Q)), ("Vector128", () => k.SolveVector128(c.Q)), ("Auto", () => k.SolveVector(c.Q)) };
+        var forms = new List<(string, Action)> { ("scalar", () => k.SolveScalar(c.Q)), ("Vector128", () => k.SolveVector128(c.Q)) };
         foreach (int t in new[] { 1, 2, 4, 8 }) forms.Add(($"parallel x{t}", () => k.SolveParallel(c.Q, t)));
         foreach (var (name, run) in forms)
         {

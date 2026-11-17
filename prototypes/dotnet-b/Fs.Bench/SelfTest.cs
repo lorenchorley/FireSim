@@ -14,7 +14,7 @@ public static class SelfTest
 {
     public static int Run(Action<string> log)
     {
-        log($"selftest: Vector128.IsHardwareAccelerated={Vector128.IsHardwareAccelerated} Vector256.IsHardwareAccelerated={Vector256.IsHardwareAccelerated} Vector512.IsHardwareAccelerated={Vector512.IsHardwareAccelerated}; Auto = {PyrogenicKernel.ResolveAuto()}");
+        log($"selftest: Vector128.IsHardwareAccelerated={Vector128.IsHardwareAccelerated} Vector256.IsHardwareAccelerated={Vector256.IsHardwareAccelerated} Vector512.IsHardwareAccelerated={Vector512.IsHardwareAccelerated}");
         int[] nxs = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17, 18, 19, 23, 24, 25, 31, 32, 33, 34, 35, 47, 48, 49, 63, 64, 65, 100 };
         int[] nys = { 1, 2, 3, 5, 8, 13, 100 };
         var rng = new Random(20261112);

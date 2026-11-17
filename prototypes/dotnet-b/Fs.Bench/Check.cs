@@ -18,10 +18,7 @@ public static class Check
     public static IEnumerable<SimdMode> AvailableModes()
     {
         yield return SimdMode.Scalar;
-        yield return SimdMode.Tensor;
-        if (Vector128.IsHardwareAccelerated) yield return SimdMode.V128;
-        if (Vector256.IsHardwareAccelerated) yield return SimdMode.V256;
-        yield return SimdMode.Auto;
+        yield return SimdMode.V128; // also without hardware acceleration (then software Vector128, which must give the same bits)
     }
 
     public static List<CaseCheck> Run(KernelFixture f, Action<string> log, int repeats = 5)
@@ -40,7 +37,7 @@ public static class Check
             {
                 var km = new PyrogenicKernel(f.FireNx, f.FireNy, f.CellSizeM, f.PyroK, f.PyroMax);
                 km.Solve(c.Q, m);
-                modes[m == SimdMode.Auto ? $"Auto({PyrogenicKernel.ResolveAuto()})" : m.ToString()] = Same(km, refPsi, refUp, refVp);
+                modes[m.ToString()] = Same(km, refPsi, refUp, refVp);
             }
 
             var par = new Dictionary<int, bool>();
@@ -79,7 +76,7 @@ public static class Check
             all.Add(cc);
             log($"{c.Name} (t={c.SimTimeS} s, {c.NonZeroSourceCells} source cells): scalar C# vs TypeScript capture: psi max|diff| {psiMaxAbs:E2} (scale {psiScale:E2}, rel {psiMaxRel:E2}, {psiNe}/{cc.PsiLen} not bit-equal); " +
                 $"u_p max|diff| {upMaxAbs:E2}, v_p {vpMaxAbs:E2} (scale {upScale:E2} m/s; {upNe}/{cc.UpLen} and {vpNe}/{cc.UpLen} not bit-equal, max {upUlp}/{vpUlp} float32 ulp)");
-            log("   serial modes == scalar bitwise: " + string.Join(", ", modes.Select(p => $"{p.Key} {p.Value}")) + $"; parallel (Auto, x{repeats} each, reused and fresh instances): " + string.Join(", ", par.Select(p => $"{p.Key} threads {p.Value}")));
+            log("   serial modes == scalar bitwise: " + string.Join(", ", modes.Select(p => $"{p.Key} {p.Value}")) + $"; parallel (Vector128, x{repeats} each, reused and fresh instances): " + string.Join(", ", par.Select(p => $"{p.Key} threads {p.Value}")));
         }
         return all;
     }

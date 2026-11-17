@@ -34,13 +34,7 @@ public class PyrogenicBench
     public float[] Scalar() { _k.SolveScalar(_q); return _k.Up; }
 
     [Benchmark]
-    public float[] TensorPrimitives() { _k.SolveTensor(_q); return _k.Up; }
-
-    [Benchmark]
     public float[] Vector128() { _k.SolveVector128(_q); return _k.Up; }
-
-    [Benchmark]
-    public float[] Vector256() { _k.SolveVector256(_q); return _k.Up; }
 
     [Benchmark]
     public float[] Parallel1() { _k.SolveParallel(_q, 1); return _k.Up; }
